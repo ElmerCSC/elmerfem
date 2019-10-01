@@ -3107,5 +3107,479 @@ CONTAINS
 
     Ccount = 1
   END SUBROUTINE CountCalvingEvents
+
+
+  ! Takes two meshes which are assumed to represent the same domain
+  ! and interpolates variables between them. Uses full dimension 
+  ! interpolation (InterpolateMeshToMesh) for all nodes, then picks
+  ! up missing boundary nodes using reduced dim 
+  ! (InterpolateVarToVarReduced)
+  SUBROUTINE SwitchMesh(Model, Solver, OldMesh, NewMesh)
+
+    IMPLICIT NONE
+
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t) :: Solver
+    TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
+    !-------------------------------------------------
+    TYPE(Solver_t), POINTER :: WorkSolver
+    TYPE(Variable_t), POINTER :: Var=>NULL(), NewVar=>NULL(), WorkVar=>NULL()
+    TYPE(Valuelist_t), POINTER :: Params
+    TYPE(Matrix_t), POINTER :: WorkMatrix=>NULL()
+    LOGICAL :: Found, Global, GlobalBubbles, Debug, DoPrevValues, &
+         NoMatrix, DoOptimizeBandwidth, PrimaryVar, HasValuesInPartition, &
+         PrimarySolver
+    LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
+    INTEGER :: i,j,k,DOFs, nrows,n
+    INTEGER, POINTER :: WorkPerm(:)=>NULL()
+    REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
+    REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
+         globaleps, localeps
+    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, WorkName
+
+    INTERFACE
+       SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
+            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
+         !------------------------------------------------------------------------------
+         USE Lists
+         USE SParIterComm
+         USE Interpolation
+         USE CoordinateSystems
+         !-------------------------------------------------------------------------------
+         TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
+         TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
+         LOGICAL, OPTIONAL :: UseQuadrantTree
+         LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
+         TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+         CHARACTER(LEN=*),OPTIONAL :: MaskName
+       END SUBROUTINE InterpolateMeshToMesh
+    END INTERFACE
+
+    SolverName = "SwitchMesh"
+    Debug = .FALSE.
+    Params => Solver % Values
+    CALL Info( 'Remesher', ' ',Level=4 )
+    CALL Info( 'Remesher', '-------------------------------------',Level=4 )
+    CALL Info( 'Remesher', ' Switching from old to new mesh...',Level=4 )
+    CALL Info( 'Remesher', '-------------------------------------',Level=4 )
+    CALL Info( 'Remesher', ' ',Level=4 )
+
+    IF(ASSOCIATED(NewMesh % Variables)) CALL Fatal(SolverName,&
+         "New mesh already has variables associated!")
+
+    !interpolation epsilons
+    globaleps = 1.0E-2_dp
+    localeps = 1.0E-2_dp
+
+    !----------------------------------------------
+    ! Get the orientation of the calving front
+    ! & compute rotation matrix
+    !----------------------------------------------
+    PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', &
+         Found, UnfoundFatal=.TRUE.)
+    DO i=1,3
+       FrontOrientation(i) = PArray(i,1)
+    END DO
+    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
+    UnRotationMatrix = TRANSPOSE(RotationMatrix)
+
+    !----------------------------------------------
+    !               Action
+    !----------------------------------------------
+
+    CALL CopyIntrinsicVars(OldMesh, NewMesh)
+
+    !----------------------------------------------
+    ! Add Variables to NewMesh
+    !----------------------------------------------
+
+    Var => OldMesh % Variables
+    DO WHILE( ASSOCIATED(Var) )
+
+       DoPrevValues = ASSOCIATED(Var % PrevValues)
+       WorkSolver => Var % Solver
+       HasValuesInPartition = .TRUE.
+
+       !Do nothing if it already exists
+       NewVar => VariableGet( NewMesh % Variables, Var % Name, ThisOnly = .TRUE.)
+       IF(ASSOCIATED(NewVar)) THEN
+          NULLIFY(NewVar)
+          Var => Var % Next
+          CYCLE
+       END IF
+
+       DOFs = Var % DOFs
+       Global = (SIZE(Var % Values) .EQ. DOFs)
+
+       !Allocate storage for values and perm
+       IF(Global) THEN 
+          ALLOCATE(WorkReal(DOFs))
+          WorkReal = Var % Values
+
+          CALL VariableAdd( NewMesh % Variables, NewMesh, &
+               Var % Solver, TRIM(Var % Name), &
+               Var % DOFs, WorkReal)
+
+       ELSE !Regular field variable
+          ALLOCATE(WorkPerm(NewMesh % NumberOfNodes))
+
+          IF(.NOT. ASSOCIATED(WorkSolver)) THEN
+             WRITE(Message, '(a,a,a)') "Variable ",Var % Name," has no solver, unexpected."
+             CALL Fatal(SolverName, Message)
+          END IF
+
+          PrimaryVar = ASSOCIATED(WorkSolver % Variable, Var)
+
+          IF(PrimaryVar) THEN !Take care of the matrix
+             NoMatrix = ListGetLogical( WorkSolver % Values, 'No matrix',Found)
+             !Issue here, this will recreate matrix for every variable associated w/ solver.
+
+             IF(.NOT. NoMatrix) THEN
+                IF(ParEnv % MyPE == 0) PRINT *, 'Computing matrix for variable: ',TRIM(Var % Name)
+
+                DoOptimizeBandwidth = ListGetLogical( WorkSolver % Values, &
+                     'Optimize Bandwidth', Found )
+                IF ( .NOT. Found ) DoOptimizeBandwidth = .TRUE.
+
+                GlobalBubbles = ListGetLogical( WorkSolver % Values, &
+                     'Bubbles in Global System', Found )
+                IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
+                WorkMatrix => CreateMatrix(Model, WorkSolver, &
+                     NewMesh, WorkPerm, DOFs, MATRIX_CRS, DoOptimizeBandwidth, &
+                     ListGetString( WorkSolver % Values, 'Equation' ), &
+                     GlobalBubbles = GlobalBubbles )
+
+                IF(ASSOCIATED(WorkMatrix)) THEN
+                   WorkMatrix % Comm = ELMER_COMM_WORLD
+
+                   WorkMatrix % Symmetric = ListGetLogical( WorkSolver % Values, &
+                        'Linear System Symmetric', Found )
+
+                   WorkMatrix % Lumped = ListGetLogical( WorkSolver % Values, &
+                        'Lumped Mass Matrix', Found )
+
+                   CALL AllocateVector( WorkMatrix % RHS, WorkMatrix % NumberOfRows )
+                   WorkMatrix % RHS = 0.0_dp
+                   WorkMatrix % RHS_im => NULL()
+
+                   ALLOCATE(WorkMatrix % Force(WorkMatrix % NumberOfRows, WorkSolver % TimeOrder+1))
+                   WorkMatrix % Force = 0.0_dp
+                ELSE
+                   !No nodes in this partition now
+                   NoMatrix = .TRUE.
+                END IF
+             END IF
+
+             IF ( ASSOCIATED(Var % EigenValues) ) THEN
+                n = SIZE(Var % EigenValues)
+
+                IF ( n > 0 ) THEN
+                   WorkSolver % NOFEigenValues = n
+                   CALL AllocateVector( NewVar % EigenValues,n )
+                   CALL AllocateArray( NewVar % EigenVectors, n, &
+                        SIZE(NewVar % Values) ) 
+
+                   NewVar % EigenValues  = 0.0d0
+                   NewVar % EigenVectors = 0.0d0
+                   IF(.NOT.NoMatrix) THEN
+                      CALL AllocateVector( WorkMatrix % MassValues, SIZE(WorkMatrix % Values) )
+                      WorkMatrix % MassValues = 0.0d0
+                   END IF
+                END IF
+             END IF
+
+             IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
+             WorkSolver % Matrix => WorkMatrix
+
+             !Check for duplicate solvers with same var
+             DO j=1,Model % NumberOfSolvers
+                IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
+                IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
+                IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
+                !Ideally, the solver's old matrix would be freed here, but apart from the 
+                !first timestep, it'll be a duplicate
+                IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkMatrix)) CYCLE
+                CALL FreeMatrix(Model % Solvers(j) % Matrix)
+                Model % Solvers(j) % Matrix => WorkMatrix
+             END DO
+
+             NULLIFY(WorkMatrix)
+
+             !NOTE: We don't switch Solver % Variable here, because
+             !Var % Solver % Var doesn't necessarily point to self
+             !if solver has more than one variable. We do this below.
+          ELSE
+             k = InitialPermutation(WorkPerm, Model, WorkSolver, &
+                  NewMesh, ListGetString(WorkSolver % Values,'Equation'))
+          END IF !Primary var
+
+          HasValuesInPartition = COUNT(WorkPerm>0) > 0
+          IF(HasValuesInPartition) THEN
+             ALLOCATE(WorkReal(COUNT(WorkPerm>0)*DOFs))
+          ELSE
+             !this is silly but it matches AddEquationBasics
+             ALLOCATE(WorkReal(NewMesh % NumberOfNodes * DOFs))
+          END IF
+
+          WorkReal = 0.0_dp
+          CALL VariableAdd( NewMesh % Variables, NewMesh, &
+               Var % Solver, TRIM(Var % Name), &
+               Var % DOFs, WorkReal, WorkPerm, &
+               Var % Output, Var % Secondary, Var % TYPE )
+
+       END IF !Not global
+
+       NewVar => VariableGet( NewMesh % Variables, Var % Name, ThisOnly = .TRUE. )
+       IF(.NOT.ASSOCIATED(NewVar)) CALL Fatal(SolverName,&
+            "Problem creating variable on new mesh.")
+
+       IF(DoPrevValues) THEN 
+          ALLOCATE(NewVar % PrevValues( SIZE(NewVar % Values), SIZE(Var % PrevValues,2) ))
+       END IF
+
+       !Add the components of variables with more than one DOF
+       !NOTE, this implementation assumes the vector variable
+       !comes before the scalar components in the list.
+       !e.g., we add Mesh Update and so here we add MU 1,2,3
+       !SO: next time round, new variable (MU 1) already exists
+       !and so it's CYCLE'd
+       IF((DOFs > 1) .AND. (.NOT.Global)) THEN
+          nrows = SIZE(WorkReal)
+          DO i=1,DOFs
+
+             WorkReal2 => WorkReal( i:nrows-DOFs+i:DOFs )
+             WorkName = ComponentName(TRIM(Var % Name),i)
+             CALL VariableAdd( NewMesh % Variables, NewMesh, &
+                  Var % Solver, WorkName, &
+                  1, WorkReal2, WorkPerm, &
+                  Var % Output, Var % Secondary, Var % TYPE )
+
+             IF(DoPrevValues) THEN
+                WorkVar => VariableGet( NewMesh % Variables, WorkName, .TRUE. )
+                IF(.NOT. ASSOCIATED(WorkVar)) CALL Fatal(SolverName, &
+                     "Error allocating Remesh Update PrevValues.")
+
+                NULLIFY(WorkVar % PrevValues)
+                WorkVar % PrevValues => NewVar % PrevValues(i:nrows-DOFs+i:DOFs,:)
+             END IF
+
+             NULLIFY(WorkReal2)
+          END DO
+       END IF
+
+       NULLIFY(WorkReal, WorkPerm)
+       Var => Var % Next
+    END DO
+
+    !set partitions to active, so variable can be -global -nooutput
+    CALL ParallelActive(.TRUE.) 
+    !MPI_BSend buffer issue in this call to InterpolateMeshToMesh
+    CALL InterpolateMeshToMesh( OldMesh, NewMesh, OldMesh % Variables, UnfoundNodes=UnfoundNodes)
+    IF(ANY(UnfoundNodes)) THEN
+       PRINT *, ParEnv % MyPE, ' missing ', COUNT(UnfoundNodes),' out of ',SIZE(UnfoundNodes),&
+            ' nodes in SwitchMesh.'
+    END IF
+
+    !---------------------------------------------------------
+    ! For top, bottom and calving front BC, do reduced dim 
+    ! interpolation to avoid epsilon problems
+    !---------------------------------------------------------
+
+    CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
+         "Top Surface Mask",globaleps=globaleps,localeps=localeps)
+    CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
+         "Bottom Surface Mask",globaleps=globaleps,localeps=localeps)
+
+    CALL RotateMesh(OldMesh, RotationMatrix)
+    CALL RotateMesh(NewMesh, RotationMatrix)
+
+    CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
+         "Calving Front Mask", UnfoundNodes,globaleps=globaleps,localeps=localeps)
+
+    !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
+    ! find a few points, due to vertical adjustment to account for GroundedSolver.
+    ! Briefly, the 'DoGL' sections of CalvingRemesh adjust the Z coordinate of
+    ! basal nodes which are grounded, to ensure they match the bed dataset.
+    ! Thus, it's not impossible for points on the new mesh to sit slightly outside
+    ! the old.
+    ! However, these points should sit behind or on the old calving front, so
+    ! InterpMaskedBC... on the bed should get them. Thus the only thing that may
+    ! be missed would be variables defined solely on the front. Currently, none
+    ! of these are important for the next timestep, so this should be fine.
+
+    CALL RotateMesh(NewMesh, UnrotationMatrix)
+    CALL RotateMesh(OldMesh, UnrotationMatrix)
+
+    !-----------------------------------------------
+    ! Point solvers at the correct mesh and variable
+    !-----------------------------------------------
+
+    DO i=1,Model % NumberOfSolvers
+       WorkSolver => Model % Solvers(i)
+
+       WorkSolver % Mesh => NewMesh !note, assumption here that there's only one active mesh
+
+       !hack to get SingleSolver to recompute
+       !should be taken care of by Mesh % Changed, but
+       !this is reset by CoupledSolver for some reason
+       WorkSolver % NumberOfActiveElements = -1 
+
+       IF(.NOT. ASSOCIATED(WorkSolver % Variable)) CYCLE
+       IF(WorkSolver % Variable % NameLen == 0) CYCLE !dummy  !invalid read
+
+       !Check for multiple solvers with same var:
+       !If one of the duplicate solvers is only executed before the simulation (or never),
+       !then we don't point the variable at this solver. (e.g. initial groundedmask).
+       !If both solvers are executed during each timestep, we have a problem.
+       !If neither are, it doesn't matter, and so the the later occurring solver will have
+       !the variable pointed at it (arbitrary).
+       PrimarySolver = .TRUE.
+       DO j=1,Model % NumberOfSolvers
+          IF(j==i) CYCLE
+          IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
+          IF(TRIM(Model % Solvers(j) % Variable % Name) == WorkSolver % Variable % Name) THEN
+
+             IF( (WorkSolver % SolverExecWhen == SOLVER_EXEC_NEVER) .OR. &
+                  (WorkSolver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL) ) THEN
+                IF((Model % Solvers(j) % SolverExecWhen == SOLVER_EXEC_NEVER) .OR. &
+                     (Model % Solvers(j) % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL) ) THEN
+                   PrimarySolver = .TRUE.
+                ELSE
+                   PrimarySolver = .FALSE.
+                   WorkSolver % Matrix => NULL()
+                   EXIT
+                END IF
+             ELSE
+                IF( (Model % Solvers(j) % SolverExecWhen == SOLVER_EXEC_NEVER) .OR. &
+                     (Model % Solvers(j) % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL) ) THEN
+                   PrimarySolver = .TRUE.
+                   EXIT
+                ELSE
+                   WRITE(Message, '(A,A)') "Unable to determine main solver for variable: ", &
+                        TRIM(WorkSolver % Variable % Name)
+                   CALL Fatal(SolverName, Message)
+                END IF
+             END IF
+
+          END IF
+       END DO
+
+       WorkVar => VariableGet(NewMesh % Variables, &
+            WorkSolver % Variable % Name, .TRUE.) !invalid read
+
+       IF(ASSOCIATED(WorkVar)) THEN
+          WorkSolver % Variable => WorkVar
+          IF(PrimarySolver) WorkVar % Solver => WorkSolver
+       ELSE
+          WRITE(Message, '(a,a,a)') "Variable ",WorkSolver % Variable % Name," wasn't &
+               &correctly switched to the new mesh." !invalid read
+          PRINT *, i,' debug, solver equation: ', ListGetString(WorkSolver % Values, "Equation")
+          CALL Fatal(SolverName, Message)
+       END IF
+
+    END DO
+
+
+    NewMesh % Next => OldMesh % Next
+    Model % Meshes => NewMesh
+    Model % Mesh => NewMesh
+    Model % Variables => NewMesh % Variables
+
+    !Free old mesh and associated variables
+    CALL ReleaseMesh(OldMesh)
+    DEALLOCATE(OldMesh)
+    DEALLOCATE(UnfoundNodes)
+
+    OldMesh => Model % Meshes
+
+  END SUBROUTINE SwitchMesh
+
+  SUBROUTINE InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, Variables, MaskName, &
+       SeekNodes, globaleps, localeps)
+
+    USE InterpVarToVar
+
+    IMPLICIT NONE
+
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t) :: Solver
+    TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
+    TYPE(Variable_t), POINTER :: Variables
+    INTEGER, POINTER :: OldMaskPerm(:)=>NULL(), NewMaskPerm(:)=>NULL()
+    INTEGER, POINTER  :: InterpDim(:)
+    INTEGER :: i,dummyint
+    REAL(KIND=dp), OPTIONAL :: globaleps,localeps
+    REAL(KIND=dp) :: geps,leps
+    LOGICAL :: Debug
+    LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
+    LOGICAL, POINTER, OPTIONAL :: SeekNodes(:)
+    CHARACTER(LEN=*) :: MaskName
+
+    CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
+         .FALSE., NewMaskPerm, dummyint)
+
+    CALL MakePermUsingMask( Model, Solver, OldMesh, MaskName, &
+         .FALSE., OldMaskPerm, dummyint)
+
+    ALLOCATE(OldMaskLogical(SIZE(OldMaskPerm)),&
+         NewMaskLogical(SIZE(NewMaskPerm)))
+
+    OldMaskLogical = (OldMaskPerm <= 0)
+    NewMaskLogical = (NewMaskPerm <= 0)
+    IF(PRESENT(SeekNodes)) NewMaskLogical = &
+         NewMaskLogical .OR. .NOT. SeekNodes
+
+    IF(PRESENT(globaleps)) THEN
+      geps = globaleps
+    ELSE
+      geps = 1.0E-4
+    END IF
+
+    IF(PRESENT(localeps)) THEN
+      leps = localeps
+    ELSE
+      leps = 1.0E-4
+    END IF
+
+    IF(Debug) PRINT *, ParEnv % MyPE,'Debug, on boundary: ',TRIM(MaskName),' seeking ',&
+         COUNT(.NOT. NewMaskLogical),' of ',SIZE(NewMaskLogical),' nodes.'
+
+    ALLOCATE(InterpDim(1))
+    InterpDim(1) = 3
+
+    CALL ParallelActive(.TRUE.)
+    CALL InterpolateVarToVarReduced(OldMesh, NewMesh, "remesh update 1", InterpDim, &
+         UnfoundNodes, OldMaskLogical, NewMaskLogical, Variables=OldMesh % Variables, &
+         GlobalEps=geps, LocalEps=leps)
+
+    IF(ANY(UnfoundNodes)) THEN
+      !NewMaskLogical changes purpose, now it masks supporting nodes
+      NewMaskLogical = (NewMaskPerm <= 0)
+
+      DO i=1, SIZE(UnfoundNodes)
+          IF(UnfoundNodes(i)) THEN
+             PRINT *,ParEnv % MyPE,'Didnt find point: ', i, &
+                  ' x:', NewMesh % Nodes % x(i),&
+                  ' y:', NewMesh % Nodes % y(i),&
+                  ' z:', NewMesh % Nodes % z(i)
+
+             CALL InterpolateUnfoundPoint( i, NewMesh, "remesh update 1", InterpDim, &
+                  NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
+          END IF
+       END DO
+
+       WRITE(Message, '(i0,a,a,a,i0,a,i0,a)') ParEnv % MyPE,&
+            ' Failed to find all points on face: ',MaskName, ', ',&
+            COUNT(UnfoundNodes),' of ',COUNT(.NOT. NewMaskLogical),' missing points.'
+       CALL Warn("InterpMaskedBCReduced", Message)
+    END IF
+
+    DEALLOCATE(OldMaskLogical, &
+         NewMaskLogical, NewMaskPerm, &
+         OldMaskPerm, UnfoundNodes)
+
+  END SUBROUTINE InterpMaskedBCReduced
+
 END MODULE CalvingGeometry
 
