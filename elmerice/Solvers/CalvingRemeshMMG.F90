@@ -72,9 +72,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
-  INTEGER :: i,j,k,l,n,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
+  INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),front_BC_ID, &
-       my_calv_front,calv_front, ncalv_parts, group_calve, comm_calve, group_world,ecode, NElNodes
+       my_calv_front,calv_front, ncalv_parts, group_calve, comm_calve, group_world,ecode, NElNodes,&
+       target_bodyid
   INTEGER, POINTER :: NodeIndexes(:)
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:),elem_fixed(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:)
@@ -106,6 +107,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     END IF
   END DO
 
+  !Get Body ID
+  target_bodyid = Mesh % Elements(1) % BodyID
+  IF(target_bodyid /= 1) CALL Warn(SolverName, "Body ID is not 1, this case might not be well handled")
 
   !TODO - unhardcode (detect?) this
   front_BC_id = 1
@@ -447,12 +451,19 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           !on some split calving elements
           NewMeshR % ParallelInfo % GlobalDOFs(Element % NodeIndexes) = 0
           CYCLE
+        ELSE IF(Element % BodyID == 2) THEN
+          Element % BodyID = target_bodyid
+        ELSE
+          PRINT *,'Erroneous body id: ',Element % BodyID
+          CALL Fatal(SolverName, "Bad body id!")
         END IF
 
         !Get rid of any isolated elements (I think?)
         CALL MMG3D_Get_AdjaTet(mmgMesh, i, adjList,ierr)
-        IF(ALL(adjList == 0)) RmElem(i) = .TRUE.
-
+        IF(ALL(adjList == 0)) THEN
+          RmElem(i) = .TRUE.
+          IF(Debug) PRINT *,'Found an isolated body element: ',i
+        END IF
         !Mark all nodes in valid elements for keeping
         RmNode(Element % NodeIndexes(1:NElNodes)) = .FALSE.
       END DO
@@ -464,7 +475,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         Element => NewMeshR % Elements(i)
         NElNodes = Element % TYPE % NumberOfNodes
 
+        !Get rid of non-triangles
         IF(Element % TYPE % ElementCode /= 303) THEN
+          RmElem(i) = .TRUE.
+          CYCLE
+        END IF
+
+        !Get rid of boundary elements without BCID (newly created internal)
+        IF(Element % BoundaryInfo % Constraint == 0) THEN
           RmElem(i) = .TRUE.
           CYCLE
         END IF
@@ -484,7 +502,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
             CALL MMG3D_Get_AdjaTet(mmgMesh, ParentElem % ElementIndex, adjList,ierr)
             DO j=1,4
               IF(adjlist(j) == 0) CYCLE
-              IF(NewMeshR % Elements(adjlist(j)) % BodyID == 2) THEN
+              IF(NewMeshR % Elements(adjlist(j)) % BodyID == target_bodyid) THEN
                 Element % BoundaryInfo % Left => NewMeshR % Elements(adjList(j))
                 EXIT
               END IF
@@ -499,15 +517,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END DO
 
       !Set constraint 10 (the newly formed calving front) to front_BC_id
-      !and (temporarily (TODO)) set 0 to 4 so that it doesn't break WriteMeshToDisk2
       !NOTE: I think this will be 10 * the previous BC ID...
       DO i=NBulk+1, NBulk + NBdry
         Element => NewMeshR % Elements(i)
         IF(Element % BoundaryInfo % Constraint == 10) &
              Element % BoundaryInfo % Constraint = front_BC_id
-
-        IF(Element % BoundaryInfo % Constraint == 0) &
-             Element % BoundaryInfo % Constraint = 4
       END DO
      
 
@@ -603,12 +617,13 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    CALL CheckMeshQuality(FinalMesh)
 
+   FinalMesh % Name = TRIM(Mesh % Name)
+   FinalMesh % OutputActive = .TRUE.
+   FinalMesh % Changed = .TRUE. 
 
-   CALL SwitchMesh(Model, Solver, Model % Mesh, FinalMesh)
+   CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
+   ! CALL MeshStabParams( Model % Mesh )
 
-   Model % Mesh => FinalMesh
-   Solver % Mesh => FinalMesh
-   Model % Meshes => FinalMesh
 
    CALL ReleaseMesh(GatheredMesh)
 
