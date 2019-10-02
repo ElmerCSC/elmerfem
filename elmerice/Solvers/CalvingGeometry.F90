@@ -3108,6 +3108,17 @@ CONTAINS
     Ccount = 1
   END SUBROUTINE CountCalvingEvents
 
+ ! shortest distance of c to segment ab, a b and c are in 2D
+  FUNCTION  PointLineSegmDist2D(a, b, c)  RESULT (pdis)
+    REAL(KIND=dp) :: a(2), b(2), c(2), n(2), v(2), dd, t, pdis
+    n=b-a                      ! Vector ab 
+    dd = (n(1)**2.+n(2)**2.)   ! Length of ab squared                                          
+    dd = DOT_PRODUCT(n,n) ! alternative writing
+    t = DOT_PRODUCT(c-a,b-a)/dd
+    dd = MAXVAL( (/0.0_dp, MINVAL( (/1.0_dp,t/) ) /) ) 
+    v = c - a - dd * n  
+    pdis=sqrt(v(1)**2.+v(2)**2.) 
+  END FUNCTION PointLineSegmDist2D 
 
   ! Takes two meshes which are assumed to represent the same domain
   ! and interpolates variables between them. Uses full dimension 
