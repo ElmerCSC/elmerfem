@@ -55,12 +55,12 @@ SET(ElmerIce_SRC AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     ./AdjointSSA/AdjointSSA_CostContSolver.F90 ./AdjointSSA/AdjointSSA_CostFluxDivSolver.F90
     ./AdjointSSA/AdjointSSA_GradientSolver.F90 Calving.F90 FrontDisplacement.F90 
     TwoMeshes.F90 ProjectCalving.F90 ComputeCalvingNormal.F90 
-    CalvingGeometry.F90 Calving3D.F90 Calving3D_lset.F90 CalvingRemesh.F90
+    CalvingGeometry.F90 Calving3D.F90 Calving3D_lset_test.F90 CalvingRemesh.F90
     CalvingFrontAdvance3D.F90 Emergence.F90 SSAmask.F90 
     GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90 )
 
 IF(HAVE_MMG)
-  SET(ElmerIce_SRC ${ElmerIce_SRC} CalvingRemeshMMG.F90)
+  SET(ElmerIce_SRC ${ElmerIce_SRC} CalvingRemeshMMG.F90 ) #MMG3DSolver.F90 <- defunct?
 ENDIF()
 
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
