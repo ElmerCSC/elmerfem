@@ -601,6 +601,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
 
+   CALL CheckMeshQuality(FinalMesh)
+
 
    CALL SwitchMesh(Model, Solver, Model % Mesh, FinalMesh)
 
@@ -610,8 +612,67 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    CALL ReleaseMesh(GatheredMesh)
 
-   !TODO here - call something like SwitchMesh from CalvingRemesh.F90 to 
-   !handle the interpolation of the variables, the reconstruction of the
-   !solver matrices etc.
+CONTAINS
+
+  SUBROUTINE CheckMeshQuality(Mesh)
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Element_t),POINTER :: Element
+    REAL(KIND=dp) :: U,V,W,detJ,Basis(10), mean 
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: i,j,n,l,k
+    LOGICAL :: stat
+    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CheckMeshQuality"
+
+    n = Mesh % MaxElementNodes
+    ALLOCATE(ElementNodes % x(n),&
+         ElementNodes % y(n),&
+         ElementNodes % z(n))
+
+    DO j=1,2
+      IF(j==1) mean = 0.0
+      DO i=1,Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(i)
+        n = Element % TYPE % NumberOfNodes
+        NodeIndexes => Element % NodeIndexes
+
+        !Check element for duplicate node indexes
+        DO k=1,n
+          DO l=1,n
+            IF(l==k) CYCLE
+            IF(NodeIndexes(k) == NodeIndexes(l)) THEN
+              WRITE(Message, '(A,i0,A)') "Mesh Element ",i," has duplicate node indexes!"
+              CALL Fatal(FuncName,Message)
+            END IF
+          END DO
+        END DO
+
+        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
+        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
+        ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
+
+        stat = ElementInfo( Element,ElementNodes,U,V,W,detJ, &
+             Basis )
+        !Check detj - warn if deviates from mean, fatal if <= 0
+        IF(j==2) THEN
+          IF(detj <= 0.0) THEN
+            WRITE(Message, '(A,i0,A)') "Element ",j," has detj <= 0" 
+            CALL Fatal(FuncName, Message)
+          ELSE IF(detj < mean/10.0 .OR. detj > mean*10.0) THEN
+            WRITE(Message, '(i0,A,i0,A,F10.2,A,F10.2,A)') ParEnv % MyPE,' element ',&
+                 i,' detj (',detj,') deviates from mean (',mean,')'
+            CALL Warn(FuncName, Message)
+          END IF
+        ELSE
+          mean = mean + detj
+        END IF
+      END DO
+      IF(j==1) mean = mean / Mesh % NumberOfBulkElements
+    END DO
+
+
+
+  END SUBROUTINE CheckMeshQuality
 
 END SUBROUTINE CalvingRemeshMMG
