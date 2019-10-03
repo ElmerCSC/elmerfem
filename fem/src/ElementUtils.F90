@@ -2741,10 +2741,11 @@ CONTAINS
 
      TYPE(Nodes_t) :: en
      INTEGER :: i,j,n
-     INTEGER, POINTER :: Indexes(:)
 
      INTEGER :: istat
      
+     n = Element % TYPE % NumberOfNodes
+
      ALLOCATE( en % x( n ),   &
                en % y( n ),   &
                en % z( n ), STAT=istat )
@@ -2753,27 +2754,64 @@ CONTAINS
        CALL Fatal('ElementCharacteristicLengths','Allocation error for ElementNodes')
      END IF
 
-     n = Element % TYPE % NumberOfNodes
-     Indexes => Element % NodeIndexes
-
-     en % x(1:n) = Model % Nodes % x(Indexes)
-     en % y(1:n) = Model % Nodes % y(Indexes)
-     en % z(1:n) = Model % Nodes % z(Indexes)
+     en % x(1:n) = Model % Nodes % x(Element % NodeIndexes)
+     en % y(1:n) = Model % Nodes % y(Element % NodeIndexes)
+     en % z(1:n) = Model % Nodes % z(Element % NodeIndexes)
      
      Charlengths = 0._dp
      DO i = 1, n
        DO j = 1, n
-         Dist = SQRT((en % x(i)-en % x(j))**2. + (en % y(i)-en % y(j))**2. + (en % z(i)-en % z(j))**2.)
-         IF (Dist < Charlengths(1)) THEN
-           Charlengths(1) = Dist
-         ELSE IF (Dist > Charlengths(2)) THEN
-           Charlengths(2) = Dist
+         IF (i /= j) THEN
+           Dist = SQRT((en % x(i)-en % x(j))**2. + (en % y(i)-en % y(j))**2. + (en % z(i)-en % z(j))**2.)
+           IF (Dist < Charlengths(1)) THEN
+             Charlengths(1) = Dist
+           ELSE IF (Dist > Charlengths(2)) THEN
+             Charlengths(2) = Dist
+           END IF
          END IF
        END DO
      END DO
      
    END FUNCTION ElementCharacteristicLengths
    
+   !------------------------------------------------------------------------------
+   !> Return normal of degenerate Element 
+   !------------------------------------------------------------------------------
+   FUNCTION NormalOfDegenerateElement(Model, Element ) RESULT ( Normal ) 
+     IMPLICIT NONE
+     TYPE(Model_t) :: Model
+     TYPE(Element_t) :: Element
+     REAL(KIND=dp) :: a(3), b(3), c(3), Normal(3)
+
+     TYPE(Nodes_t) :: en
+     INTEGER :: i,n
+
+     INTEGER :: istat
+     
+     n = Element % TYPE % NumberOfNodes
+
+     ALLOCATE( en % x( n ),   &
+               en % y( n ),   &
+               en % z( n ), STAT=istat )
+
+     IF( istat /= 0 ) THEN
+       CALL Fatal('ElementCharacteristicLengths','Allocation error for ElementNodes')
+     END IF
+
+     en % x(1:n) = Model % Nodes % x(Element % NodeIndexes)
+     en % y(1:n) = Model % Nodes % y(Element % NodeIndexes)
+     en % z(1:n) = Model % Nodes % z(Element % NodeIndexes)
+
+     a = (/ en % x(1), en % y(1), en % z(1) /)
+     b = (/ en % x(2), en % y(2), en % z(2) /)
+     c = (/ en % x(n), en % y(n), en % z(n) /)
+
+     Normal = crossproduct(a-b, a-c)
+
+     Normal = Normal / SQRT(SUM(c**2))
+     
+   END FUNCTION NormalOfDegenerateElement
+ 
 END MODULE ElementUtils
 
 !> \} ElmerLib
