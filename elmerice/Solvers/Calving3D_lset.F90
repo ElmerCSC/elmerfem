@@ -993,14 +993,16 @@
     
     ! TO DO add function that calculates CCW to get left or right!  
     IF (PathCount > 0 ) THEN
-     DO i=1,Solver % Mesh % NumberOfNodes
+     DO i=1,Solver % Mesh % NumberOfNodes ! testing
         !   find closest bounding box:
         xx = Solver % Mesh % Nodes % x(i)
         yy = Solver % Mesh % Nodes % y(i)
         CurrentPath => CrevassePaths
-        TempDist =  MaxMeshDist
-        DO WHILE(ASSOCIATED(CurrentPath))
-           !  PRINT *, CurrentPath % ID, CurrentPath % Left, CurrentPath % Right, CurrentPath % Extent
+        TempDist =  MaxMeshDist ! should set this to maxval(distvalues)?! but try avoid dependence on distance wrt calving front
+        j=1
+!!!! know I have just one path
+        !        DO WHILE(ASSOCIATED(CurrentPath))
+        ! st with this do while loop goes wrong, maybe related to letting closest path point at current path? it breaks at line below here, xl = ..
            xl=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(1))
            yl=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(1))
            xr=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes))
@@ -1010,9 +1012,11 @@
            jmin = CurrentPath % ID
            ClosestPath => CurrentPath
            END IF
-           CurrentPath => CurrentPath % Next
-        END DO ! now closest crevasse is nr j so can I take crevassepath => CrevassePaths(j)
+!           CurrentPath => CurrentPath % Next
+           j=j+1
+!!!!!   END DO ! now closest crevasse is nr j so can I take crevassepath => CrevassePaths(j)
         IF (ClosestPath % ID /= jmin ) PRINT *, 'Programming Error closest crevasse path should have ID', jmin
+        PRINT *, 'Shortest distance to closest crevassepath ',TempDist
         CurrentPath => ClosestPath ! TO DO does this work?
         TempDist =  MaxMeshDist
         xl=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(1))
@@ -1029,6 +1033,7 @@
          END DO
          !   now for jmin, calculate CCW or somehow whether + or - and set
          SignDistValues(SignDistPerm(i)) =  TempDist ! or not using Perm?!
+         PRINT *, 'Shortest distance to closest segment in crevassepath ',TempDist
      END DO
     END IF    !paths exist
     ! 
@@ -1117,13 +1122,13 @@
     rt0 = RealTime()
 
     !Output some information
-    CALL CalvingStats(MaxBergVolume)
-    IF(MaxBergVolume > PauseVolumeThresh) THEN
-      PauseSolvers = .TRUE.
-    ELSE
-      PauseSolvers = .FALSE.
-    END IF
-
+    !CALL CalvingStats(MaxBergVolume)
+    ! IF(MaxBergVolume > PauseVolumeThresh) THEN
+    !   PauseSolvers = .TRUE.
+    ! ELSE
+    !   PauseSolvers = .FALSE.
+    ! END IF
+PRINT *,'not calculating maxbergvolume now, depends on columns!'
     CALL SParIterAllReduceOR(PauseSolvers) !Really this should just be Boss sending to all
     CALL ListAddLogical( Model % Simulation, 'Calving Pause Solvers', PauseSolvers )
     IF(Debug) PRINT *,ParEnv % MyPE, ' Calving3D, pause solvers: ', PauseSolvers
