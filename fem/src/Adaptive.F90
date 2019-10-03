@@ -135,7 +135,7 @@ CONTAINS
     RefMesh => Solver % Mesh
 
     IF( RefMesh % DiscontMesh ) THEN
-      CALL Fatal('RefineMesh','Adaptive refinement not possible for discontinous mesh!')
+      CALL Fatal('RefineMesh','Adaptive refinement not possible for discontinuous mesh!')
     END IF
 
     

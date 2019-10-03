@@ -182,12 +182,12 @@
 
          <Parameter  Widget="Edit" Enabled="False">
            <Name> Pressure Wave 1 Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
            <StatusTip> Give pressure 1 condition value for this boundary. </StatusTip>
          </Parameter>
          <Parameter  Widget="Edit" Enabled="False">
            <Name> Pressure Wave 2 Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
            <StatusTip> Give pressure 2 condition value for this boundary. </StatusTip>
          </Parameter>
 

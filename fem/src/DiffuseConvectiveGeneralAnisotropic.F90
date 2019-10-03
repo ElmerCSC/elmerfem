@@ -36,7 +36,7 @@
 
 
 !---------------------------------------------------------------------------------
-!>  Diffuse-convective local matrix computing in general euclidian coordinates.
+!>  Diffuse-convective local matrix computing in general euclidean coordinates.
 !---------------------------------------------------------------------------------
 !> \ingroup ElmerLib
 !> \{
@@ -53,7 +53,7 @@ MODULE DiffuseConvectiveGeneral
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for diffusion-convection
-!>  equation (genaral euclidian coordinate system): 
+!>  equation (genaral euclidean coordinate system): 
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveGenCompose( MassMatrix,StiffMatrix,ForceVector,  &
     LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,PhaseChange,Temperature,Enthalpy,&

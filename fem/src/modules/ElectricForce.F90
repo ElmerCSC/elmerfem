@@ -37,7 +37,7 @@
 
 !------------------------------------------------------------------------------
 !>  Calculates the force due to static electric field by integrating 
-!>  Maxwell stress tensor over specified boundaries.
+!>  Maxwell stress tensor over specified boundaries. Nodal forces added later.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
@@ -62,17 +62,19 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Variable_t), POINTER :: Var, DVar
+  TYPE(Variable_t), POINTER :: FieldVar, NodalVar, PotVar, DVar
   TYPE(Nodes_t) :: ElementNodes, ParentNodes
   TYPE(Element_t), POINTER   :: CurrentElement, Parent
   TYPE(ValueList_t), POINTER :: Material
   REAL(KIND=dp), ALLOCATABLE :: LocalPotential(:), Permittivity(:,:,:) 
-  REAL(KIND=dp), POINTER :: Potential(:), Pwrk(:,:,:), ForceDensity(:)
+  REAL(KIND=dp), POINTER :: Potential(:), Pwrk(:,:,:), ForceDensity(:), NodalForce(:)
   REAL(KIND=dp) :: Force(3), MomentAbout(3), Moment(3), &
     Area, PermittivityOfVacuum, sf
-  INTEGER, POINTER :: NodeIndexes(:), Visited(:), PotentialPerm(:)
+  INTEGER, POINTER :: NodeIndexes(:), PotentialPerm(:)
+  REAL(KIND=dp), ALLOCATABLE :: NodalWeight(:)
   INTEGER :: DIM, t, pn, n, k, s, i, j, istat
-  LOGICAL :: stat, CalculateMoment, ActiveBoundary, DoDisplacedBoundaries, FirstTime = .TRUE.
+  LOGICAL :: stat, CalculateMoment, ActiveBoundary, DoDisplacedBoundaries, &
+      FirstTime = .TRUE., CalculateNodal, CalculateField
   CHARACTER(LEN=MAX_NAME_LEN) :: PotName, VariableName
 
 !------------------------------------------------------------------------------
@@ -86,34 +88,50 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !    Figure out the mesh that potential solver is using
 !------------------------------------------------------------------------------
-
+  
   PotName = ListGetString( Solver % Values, 'Potential Field Name', stat )
   IF(.NOT. Stat) PotName = 'Potential'
   IF ( .NOT. stat ) THEN
-    Var => VariableGet( Mesh % Variables, PotName ) 
-    IF(ASSOCIATED(Var)) THEN
-      Potential => Var % Values
-      PotentialPerm => Var % Perm
+    PotVar => VariableGet( Mesh % Variables, PotName ) 
+    IF(ASSOCIATED(PotVar)) THEN
+      Potential => PotVar % Values
+      PotentialPerm => PotVar % Perm
     ELSE
       CALL Fatal('ElectricForce','Potential field does not exist:'//TRIM(PotName))
     END IF
   END IF
 
-  Var => VariableGet( Mesh % Variables, 'Electric Force Density' )
-  IF(.NOT. ASSOCIATED(Var) ) THEN
+  
+  CalculateNodal = ListGetLogical( Solver % Values,'Calculate Nodal Force',stat )
+  NodalVar => VariableGet( Mesh % Variables, 'Electric Nodal Force' )
+  IF(.NOT. ASSOCIATED(NodalVar) .AND. CalculateNodal ) THEN
+    CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
+        'Electric Nodal Force', Dim, Perm = PotentialPerm )
+    NodalVar => VariableGet( Mesh % Variables, 'Electric Nodal Force' )
+  ELSE IF( ASSOCIATED( NodalVar ) ) THEN
+    CalculateNodal = .TRUE.
+  END IF
+  IF( CalculateNodal ) NodalForce => NodalVar % Values    
+  
+  CalculateField = ListGetLogical( Solver % Values,'Calculate Force Density',stat )
+  IF(.NOT. CalculateNodal ) CalculateField = .TRUE.
+  FieldVar => VariableGet( Mesh % Variables, 'Electric Force Density' )
+  IF(.NOT. ASSOCIATED(FieldVar) .AND. CalculateField ) THEN
     CALL VariableAddVector( Mesh % Variables, Mesh, Solver, &
         'Electric Force Density', Dim, Perm = PotentialPerm )
-    Var => VariableGet( Mesh % Variables, 'Electric Force Density' )
+    FieldVar => VariableGet( Mesh % Variables, 'Electric Force Density' )
+  ELSE IF( ASSOCIATED( FieldVar ) ) THEN
+    CalculateField = .TRUE.
   END IF
-  ForceDensity => Var % Values
-
+  IF( CalculateField ) ForceDensity => FieldVar % Values
+      
   n = Mesh % MaxElementNodes
   ALLOCATE( ElementNodes % x( n ), &
 	ElementNodes % y(n), ElementNodes % z(n) )
   ALLOCATE( ParentNodes % x( n ), &
 	ParentNodes % y(n), ParentNodes % z(n) )
   ALLOCATE( LocalPotential( n ), Permittivity( 3, 3, n ) ) 
-  ALLOCATE( Visited( Mesh % NumberOfNodes ) )
+  ALLOCATE( NodalWeight( Mesh % NumberOfNodes ) )
 
 !------------------------------------------------------------------------------
 
@@ -153,7 +171,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
   Force  = 0.0d0
   Moment = 0.0d0
   ForceDensity = 0.0d0
-  Visited = 0
+  NodalWeight = 0.0_dp
 
   DO t = Mesh % NumberOfBulkElements + 1, &
       Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -231,7 +249,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
       
 !------------------------------------------------------------------------------
 
-    stat = ALL( Var % Perm( NodeIndexes ) > 0 )
+    stat = ALL( PotVar % Perm( NodeIndexes ) > 0 )
     
     IF ( .NOT. stat ) THEN
       WRITE( Message, *) 'No potential available for specified boundary'
@@ -269,14 +287,14 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
     LocalPotential = 0.0d0
     LocalPotential(1:pn) = Potential( PotentialPerm( Parent % NodeIndexes ) )
     
-    CALL MaxwellStressTensorIntegrate( Force, Moment, Area )
-      
+    CALL MaxwellStressTensorIntegrate( Force, Moment, Area )      
   END DO
 
+  
   DO i= 1, Mesh % NumberOfNodes
-    IF ( Visited(i) > 0 ) THEN
+    IF ( NodalWeight(i) > 0 ) THEN
       DO j = 1, Dim
-        ForceDensity(Dim*(i-1)+j) = ForceDensity(Dim*i-Dim+j) / Visited(i)
+        ForceDensity(Dim*(i-1)+j) = ForceDensity(Dim*i-Dim+j) / NodalWeight(i)
       END DO
     END IF
   END DO
@@ -311,18 +329,23 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
   CALL ListAddConstReal( Model % Simulation, &
       'res: Electric Force 1', Force(1)  )
    
-  DEALLOCATE( ElementNodes % x, &
-	ElementNodes % y, ElementNodes % z )
-  DEALLOCATE( ParentNodes % x, &
-	ParentNodes % y, ParentNodes % z )
+  DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
+  DEALLOCATE( ParentNodes % x, ParentNodes % y, ParentNodes % z )
   DEALLOCATE( LocalPotential, Permittivity )
-  DEALLOCATE( Visited )
+  DEALLOCATE( NodalWeight )
 
-  Var => VariableGet( Mesh % Variables, 'Electric Force Density' ,ThisOnly=.TRUE. )
-  Var % PrimaryMesh => Mesh
-  CALL InvalidateVariable( Model % Meshes,  Mesh, 'Electric Force Density' )
-  Var % Valid = .TRUE.
-  
+  ! These are some obsolite stuff but let's do this anyways
+  IF( CalculateField ) THEN
+    FieldVar % PrimaryMesh => Mesh
+    CALL InvalidateVariable( Model % Meshes,  Mesh, 'Electric Force Density' )
+    FieldVar % Valid = .TRUE.
+  END IF
+  IF( CalculateNodal ) THEN
+    NodalVar % PrimaryMesh => Mesh
+    CALL InvalidateVariable( Model % Meshes,  Mesh, 'Electric Force Density' )
+    NodalVar % Valid = .TRUE.
+  END IF
+    
   CALL SetCurrentMesh( Model, Solver % Mesh )
 
 CONTAINS
@@ -341,12 +364,12 @@ CONTAINS
     REAL(KIND=dp) :: u,v,w,s, detJ, x(n), y(n), z(n)
     REAL(KIND=dp) :: Tensor(3,3), Normal(3), EField(3), DFlux(3), Lforce(3), &
       LMoment(3), Radius(3)
-    REAL(KIND=dp) :: ElementArea, ElementForce(3), xpos, ypos, zpos
+    REAL(KIND=dp) :: ElementWeight(n), ElementForce(3,n), xpos, ypos, zpos
     INTEGER :: N_Integ
     INTEGER :: i,j,l
     LOGICAL :: stat
 
-    ElementArea = 0.0d0
+    ElementWeight = 0.0d0
     ElementForce = 0.0d0
 
 !------------------------------------------------------------------------------
@@ -450,22 +473,29 @@ CONTAINS
         Moment = Moment + s * Lmoment
       END IF
 
-      ElementForce = ElementForce + s * LForce
-      ElementArea = ElementArea + s * SUM( Basis(1:n) )
+      DO i=1,n      
+        ElementForce(:,i) = ElementForce(:,i) + s * LForce * Basis(i)
+        ElementWeight(i) = ElementWeight(i) + s * Basis(i)
+      END DO
 
 !------------------------------------------------------------------------------
     END DO
-
-    ElementForce = ElementForce / ElementArea
+    
     DO i=1, n
       k = PotentialPerm( CurrentElement % NodeIndexes(i))
       DO j = 1, Dim
-        ForceDensity( Dim*(k-1)+j ) = ForceDensity(Dim*(k-1)+j) &
-            + ElementForce(j)
+        IF( CalculateNodal ) THEN
+          NodalForce( Dim*(k-1)+j ) = NodalForce(Dim*(k-1)+j) &
+              + ElementForce(j,i)
+        END IF
+        IF( CalculateField ) THEN
+          ForceDensity( Dim*(k-1)+j ) = ForceDensity(Dim*(k-1)+j) &
+              + ElementForce(j,i) 
+        END IF
       END DO
-      Visited( k ) = Visited( k ) + 1
+      NodalWeight(k) = NodalWeight(k) + ElementWeight(i)
     END DO
-
+  
 !------------------------------------------------------------------------------
   END SUBROUTINE MaxwellStressTensorIntegrate
 !------------------------------------------------------------------------------

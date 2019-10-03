@@ -1737,7 +1737,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>  Diffuse-convective local matrix computing for general euclidian coordinates.
+!>  Diffuse-convective local matrix computing for general euclidean coordinates.
 !>  Returns element local matrices and RSH vector for diffusion-convection
 !>  equation.
 !------------------------------------------------------------------------------
@@ -2346,7 +2346,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for boundary conditions
-!>  of diffusion convection equation in general euclidian coordinates.
+!>  of diffusion convection equation in general euclidean coordinates.
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveGenBoundary( BoundaryMatrix,BoundaryVector, &
               LoadVector,NodalAlpha,Element,n,Nodes)

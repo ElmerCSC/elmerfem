@@ -658,7 +658,7 @@ void Meshutils::findEdgeElementPoints(mesh_t *mesh)
 
   // delete old points, if any:
   if(mesh->getPoints() > 0) {
-    cout << "Deleteing old points and creating new" << endl;
+    cout << "Deleting old points and creating new" << endl;
     cout.flush();
     for(int i = 0; i < mesh->getPoints(); i++) {
       mesh->getPoint(i)->deleteNodeIndexes();
@@ -1247,7 +1247,7 @@ int Meshutils::divideEdgeBySharpPoints(mesh_t *mesh)
   }
   index++;
   
-  // Create a hopefully mesh indepedent indexing of groupings to enable
+  // Create a hopefully mesh independent indexing of groupings to enable
   // reapplying merge/division operations after remeshing. The indices
   // are given based on group bounding box corner distances from a given
   // point. Fails if two groups have same bbox, which should not happen 
@@ -1455,7 +1455,7 @@ int Meshutils::divideSurfaceBySharpEdges(mesh_t *mesh)
   }
   index++;
 
-  // Create a hopefully mesh indepedent indexing of groupings to enable
+  // Create a hopefully mesh independent indexing of groupings to enable
   // reapplying merge/division operations after remeshing. The indices
   // are given based on group bounding box corner distances from a given
   // point. Fails if two groups have same bbox, which should not happen 

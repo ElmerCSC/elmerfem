@@ -56,7 +56,8 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:), ElmerIndexes(:), MaskPerm(:)
 
   INTEGER, PARAMETER :: LENGTH = 1024
-  CHARACTER(LEN=LENGTH) :: OutputFile, Txt, FieldName, CompName
+  CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
+  CHARACTER(MAX_NAME_LEN) :: OutputFile, OutputDirectory
   INTEGER :: GmshUnit
     
   SAVE VisitedTimes
@@ -95,10 +96,15 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   OutputFile = GetString( Solver % Values, 'Output File Name', Found )
-  IF( .NOT.Found ) OutputFile = 'Output.msh'
-
-  IF(INDEX(OutputFile,'.') == 0) WRITE( OutputFile,'(A,A)') TRIM(OutputFile),".msh"
-
+  IF( Found ) THEN
+    IF(INDEX(OutputFile,'.') == 0) WRITE( OutputFile,'(A,A)') TRIM(OutputFile),".msh"
+  ELSE
+    OutputFile = 'Output.msh'
+  END IF
+    
+  CALL SolverOutputDirectory( Solver, OutputFile, OutputDirectory, UseMeshDir = .TRUE. )
+  OutputFile = TRIM(OutputDirectory)// '/' //TRIM(OutputFile)
+   
   dim = CoordinateSystemDimension()
   IF( VisitedTimes > 1 ) THEN
     IF( AlterTopology ) THEN

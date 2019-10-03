@@ -1430,7 +1430,7 @@
           IF(ANY(UnfoundNodes)) THEN
              DO i=1, SIZE(UnfoundNodes)
                 IF(UnfoundNodes(i)) THEN
-                   PRINT *,'Didnt find point: ', i, ' x:', WorkMesh % Nodes % x(i),&
+                   PRINT *,'Did not find point: ', i, ' x:', WorkMesh % Nodes % x(i),&
                         ' y:', WorkMesh % Nodes % y(i),&
                         ' z:', WorkMesh % Nodes % z(i)
                 END IF

@@ -832,7 +832,7 @@ CONTAINS
               END IF
             END DO
             
-            ! If there are many possible candinate parents for the orphan take into account the 
+            ! If there are many possible candidate parents for the orphan take into account the 
             ! sum of all normalized contributions
             !----------------------------------------------------------------------------------
             IF( OrphansBest .AND. nbonds > 2) THEN

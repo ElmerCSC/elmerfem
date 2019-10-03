@@ -811,7 +811,7 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------
-!> Compuation of normal flux.
+!> Computation of normal flux.
 !> Note that this is calculated on the nodal points only
 !> using a single boundary element. The direction of the normal
 !> may be somewhat different on the nodal point when calculated using 
@@ -1007,20 +1007,8 @@ CONTAINS
     SideFile = ListGetString(Params,'Filename',GotIt )
     IF(.NOT. GotIt) SideFile = DefaultSideFile
 
-    IF ( .NOT. FileNameQualified(SideFile) ) THEN
-      OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-      IF(.NOT. GotIt ) OutputDirectory = GetString( Model % Simulation,&
-          'Output Directory',GotIt)
-      IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
-        SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
-        IF( Solver % TimesVisited == 0 ) THEN
-          CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-        END IF
-      ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-        SideFile = TRIM(OutputPath)// '/' //TRIM(SideFile)
-      END IF
-    END IF
-
+    CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
+    SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
 
     SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
 
@@ -1034,9 +1022,7 @@ CONTAINS
 
     CALL Info('SaveLine','Saving line data to file: '//TRIM(SideParFile),Level=12)
 
-
     FileAppend = ListGetLogical(Params,'File Append',GotIt )
-
 
     IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
       OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND')

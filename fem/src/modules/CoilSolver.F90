@@ -1113,7 +1113,7 @@ CONTAINS
 
   
 
-  ! Choose end nodes as assingled by "Coil Start" and "Coil End" flags.
+  ! Choose end nodes as assigned by "Coil Start" and "Coil End" flags.
   ! The result of this imitate the previous routine in order to be able
   ! to use the same way to computed the resulting currents.
   !--------------------------------------------------------------------

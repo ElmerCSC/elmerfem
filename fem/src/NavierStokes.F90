@@ -205,7 +205,7 @@ MODULE NavierStokes
      REAL(KIND=dp) :: gradPDiscConst, CmodelConst
      REAL(KIND=dp) ::SWxSU(n), StrainS(2*n, 4)
      INTEGER :: P2P1stop, ii, jj, kk, ll
-     ! end of transposed varible 
+     ! end of transposed variable 
 
      
 !------------------------------------------------------------------------------
@@ -1003,7 +1003,7 @@ MODULE NavierStokes
 
 !!------------------------------------------------------------------------------
 !!    Loop over basis functions (of both unknowns and weights)
-!!    Then the stuff i havent vectorized yet
+!!    Then the stuff I haven't vectorized yet
 !!------------------------------------------------------------------------------
     
 !------------------------------------------------------------------------------

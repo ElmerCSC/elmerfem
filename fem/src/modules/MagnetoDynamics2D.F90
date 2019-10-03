@@ -649,8 +649,11 @@ CONTAINS
         END DO
       END IF
 
-      FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (LoadAtip * Basis(1:nd) + &
-           (M_ip(1)*dBasisdx(1:nd,2)-M_ip(2)*dBasisdx(1:nd,1)))
+      FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (LoadAtip * Basis(1:nd) - &
+          (M_ip(1)*dBasisdx(1:nd,2)-M_ip(2)*dBasisdx(1:nd,1)))
+      IF ( CSymmetry ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (M_ip(2)) * Basis(1:nd)/x
+      END IF
       IF(zirka) then
         FORCE(1:nd) = FORCE(1:nd) - (H_ip(1)*Bt(1:nd,1) + H_ip(2)*Bt(1:nd,2)) * IP % s(t) * detJ
       END IF
@@ -1587,8 +1590,11 @@ CONTAINS
         END DO
       END IF
 
-      FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (LoadAtip * Basis(1:nd) + &
+      FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (LoadAtip * Basis(1:nd) - &
            (M_ip(1)*dBasisdx(1:nd,2)-M_ip(2)*dBasisdx(1:nd,1)))
+      IF ( CSymmetry ) THEN
+        FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (M_ip(2)) * Basis(1:nd)/x
+      END IF
     END DO
 
     IF (HBcurve.AND.NewtonRaphson) THEN

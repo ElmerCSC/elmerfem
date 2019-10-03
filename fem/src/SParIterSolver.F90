@@ -215,7 +215,7 @@ st = realtime()
 
   !----------------------------------------------------------------------
   !
-  ! Compute the memory allocations for splitted matrix blocks
+  ! Compute the memory allocations for split matrix blocks
   !
   !----------------------------------------------------------------------
     InsideMRows = 0; InsideMCols = 0
@@ -1868,7 +1868,7 @@ INTEGER::inside
       xmlfile = TRIM(xmlfile)//C_NULL_CHAR
 
       ! tolerance and max iter are taken from the Elmer
-      ! internal list to overrule the settings inthe XML file
+      ! internal list to overrule the settings in the XML file
       TOL = ListGetConstReal( Params, &
            'Linear System Convergence Tolerance', Found )
       IF ( .NOT. Found ) TOL=-1.0

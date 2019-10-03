@@ -75,7 +75,7 @@ Solver 1
   Exported Variable 2 = -dg testvar b
 
 ! These can be used to toggle exported variable passive/active somewhere
-! In effect the lenght of the variable will be smaller
+! In effect the length of the variable will be smaller
   Exported Variable 1 Mask = String "body force: mask a"
   Exported Variable 2 Mask = String "body force: testvar b" ! use the generic logical
 

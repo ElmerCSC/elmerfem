@@ -797,7 +797,7 @@ CONTAINS
     !PRINT *,'ElemAdj:',ElemAdj
 
     ! We only used mesh and face tables to create the dual mesh.
-    ! Now relase them. 
+    ! Now release them. 
     CALL ReleaseMeshEdgeTables( Mesh )
     CALL ReleaseMeshFaceTables( Mesh )
     
@@ -3744,7 +3744,7 @@ CONTAINS
            ALLOCATE( Mesh % Halo(t) % Neighbours(nhalo) )
            j = 0
            DO i=MinPart, MaxPart
-             ! The owner is always considred, hence don't add that to the halo elements
+             ! The owner is always considered, hence don't add that to the halo elements
              IF( ElementPart(t) == i ) CYCLE
              j = j + 1
              Mesh % Halo(t) % Neighbours(j) = i

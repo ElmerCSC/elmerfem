@@ -4150,7 +4150,7 @@ CONTAINS
   SUBROUTINE VelocitySolve( l, n, A, x, b, dim, MaxRounds, Tol, StoppingCriterionType )
 !-----------------------------------------------------------------------------------
 !   This subroutine solves the velocity preconditioning system without requiring 
-!   that the assemby has been made for the preconditioning system. The required
+!   that the assembly has been made for the preconditioning system. The required
 !   matrix-vector products are performed by extracting the required entries from
 !   the primary coefficient matrix A. This version uses diagonal preconditioning.
 !----------------------------------------------------------------------------------- 

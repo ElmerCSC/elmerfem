@@ -75,7 +75,7 @@ Solver 3
   Operator 3 = boundary sum
   Variable 3 = Flow Solution Loads 3
 
-! use this norm to ensure consistancy
+! use this norm to ensure consistency
   Show Norm Index = 3
 End 
 

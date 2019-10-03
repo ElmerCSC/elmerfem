@@ -34,7 +34,7 @@ struct CRSType {
   int created;
 };
 
-/* Struture GridType includes the subcell structure of the 
+/* Structure GridType includes the subcell structure of the 
    geometry and the meshing information. The elements may be 
    directly derived from this structures but it takes some 
    time and is not easy to comprehend. Therefore structures 
@@ -133,7 +133,7 @@ struct GridType {
    for each subcell is saved to structure CellType. Specific subroutines 
    are then used to calculate element or knot information using this 
    information. Cell is one macroscopic building block that may be 
-   devided to M x N elements. It may even consist of one element. */
+   divided to M x N elements. It may even consist of one element. */
 struct CellType {
   int nonodes,  /* number of nodes within an element */
     dimension,  /* 1D or 2D */
@@ -194,7 +194,7 @@ struct FemType {
     nocorners,     /* number material corners in the mesh */
     timesteps,     /* number of timesteps */
     periodicexist, /* does the periodic vector exist? */
-    *periodic,     /* peridic ordering vector, if needed */
+    *periodic,     /* periodic ordering vector, if needed */
     nodeconnectexist,  /* does the node connection vector exist? */
     *nodeconnect,      /* connections between nodes, if needed */
     elemconnectexist,  /* does the element connection vector exist? */
@@ -239,7 +239,7 @@ struct FemType {
    are saved into this structure. It is used for setting
    the boundary conditions. In physics it is typical that
    the BCs are more complicated than the equations in the 
-   bulk and therefore the stucture must be such that it 
+   bulk and therefore the structure must be such that it 
    enables the use of a wide variety of BCs. */
 struct BoundaryType {
   int created,       /* is boundary created? */
@@ -284,7 +284,7 @@ struct PointType {
 
 
 /* Physical parameters are read with a general manner. 
-   They may be added without contraints. */
+   They may be added without constraints. */
 struct ModelType {
   int iparameters,            /* number of int parameters */
     rparameters,              /* number of Real parameters */
@@ -322,7 +322,7 @@ struct ElmergridType {
     partbcoptim,  /* apply aggressive optimization to node sharing on bcs */
     partitions, /* number of simple geometric partitions */
     partdim[3],
-    partjoin,   /* number of parallel dimenions to be joined */
+    partjoin,   /* number of parallel dimensions to be joined */
     inmethod,   /* method in which mesh is read in to ElmerGrid */
     outmethod,  /* method in which the mesh is written by ElmerGrid */
     sidemap[3*MAXBOUNDARIES],

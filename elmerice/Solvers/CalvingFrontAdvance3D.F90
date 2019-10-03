@@ -895,7 +895,7 @@
            END IF
 
          ELSE
-           PRINT *,'Debug, found no intersection, so nodes arent QUITE tangled: ',i,j
+           PRINT *,'Debug, found no intersection, so nodes are not QUITE tangled: ',i,j
 
            Tangled(i:j) = .TRUE.
            TangledPivotIdx(i:j) = PivotIdx

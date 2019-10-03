@@ -31,7 +31,7 @@
 ! *****************************************************************************
 !  Optimize a cost function 
 !    using quasi-Newton M1QN3 Routine in Reverse Communication
-!    Using Euclidian inner product
+!    Using Euclidean inner product
 !
 !  Parallel Only   2D/3D
 !

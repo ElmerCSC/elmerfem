@@ -7520,7 +7520,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Variable_t), POINTER :: TimestepVar
 
-      ! These are used temporarely for debugging purposes
+      ! These are used temporarily for debugging purposes
       INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster
       LOGICAL :: SaveElem, DebugElem, SaveErr
       CHARACTER(LEN=20) :: FileName
@@ -8686,7 +8686,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Variable_t), POINTER :: TimestepVar
 
-      ! These are used temporarely for debugging purposes
+      ! These are used temporarily for debugging purposes
       INTEGER :: SaveInd
       LOGICAL :: SaveElem
       CHARACTER(LEN=20) :: FileName
@@ -19217,7 +19217,7 @@ CONTAINS
         IF( i == direction ) CYCLE
         j = FixingNodes( i )
 
-        ! Do not meausure distance to unset nodes!
+        ! Do not measure distance to unset nodes!
         IF( j == 0 ) CYCLE
 
         ! This would lead to division by zero later on

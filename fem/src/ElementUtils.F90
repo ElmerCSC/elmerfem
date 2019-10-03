@@ -2711,6 +2711,68 @@ CONTAINS
      
    END FUNCTION DegenerateElement
 
+   !------------------------------------------------------------------------------
+   !> Return the aspect ratio of an element 
+   !------------------------------------------------------------------------------
+   FUNCTION ElementAspectRatio(Model, Element ) RESULT ( AspectRatio ) 
+     IMPLICIT NONE
+     TYPE(Model_t) Model
+     TYPE(Element_t) :: Element
+     REAL(KIND=dp) :: AspectRatio
+     REAL(KIND=dp) :: CharLen(2)
+
+     CharLen = ElementCharacteristicLengths(Model, Element)
+     IF (CharLen(1) .LE. 0) THEN
+       AspectRatio = HUGE(AspectRatio)
+     ELSE
+       AspectRatio = CharLen(2)/CharLen(1)
+     END IF
+   END FUNCTION ElementAspectRatio
+
+   !------------------------------------------------------------------------------
+   !> Return the characteristic lengths of an element 
+   !------------------------------------------------------------------------------
+   FUNCTION ElementCharacteristicLengths(Model, Element ) RESULT ( Charlengths ) 
+     IMPLICIT NONE
+     TYPE(Model_t) :: Model
+     TYPE(Element_t) :: Element
+     REAL(KIND=dp) :: Charlengths(2)
+     REAL(KIND=dp) :: Dist
+
+     TYPE(Nodes_t) :: en
+     INTEGER :: i,j,n
+     INTEGER, POINTER :: Indexes(:)
+
+     INTEGER :: istat
+     
+     ALLOCATE( en % x( n ),   &
+               en % y( n ),   &
+               en % z( n ), STAT=istat )
+
+     IF( istat /= 0 ) THEN
+       CALL Fatal('ElementCharacteristicLengths','Allocation error for ElementNodes')
+     END IF
+
+     n = Element % TYPE % NumberOfNodes
+     Indexes => Element % NodeIndexes
+
+     en % x(1:n) = Model % Nodes % x(Indexes)
+     en % y(1:n) = Model % Nodes % y(Indexes)
+     en % z(1:n) = Model % Nodes % z(Indexes)
+     
+     Charlengths = 0._dp
+     DO i = 1, n
+       DO j = 1, n
+         Dist = SQRT((en % x(i)-en % x(j))**2. + (en % y(i)-en % y(j))**2. + (en % z(i)-en % z(j))**2.)
+         IF (Dist < Charlengths(1)) THEN
+           Charlengths(1) = Dist
+         ELSE IF (Dist > Charlengths(2)) THEN
+           Charlengths(2) = Dist
+         END IF
+       END DO
+     END DO
+     
+   END FUNCTION ElementCharacteristicLengths
    
 END MODULE ElementUtils
 

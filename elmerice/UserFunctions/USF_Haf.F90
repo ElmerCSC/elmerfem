@@ -85,12 +85,12 @@ FUNCTION Calculate_Haf ( Model, nodenumber, nodeHeight) RESULT(Haf)
      
      thickName = GetString( BC, 'Haf Thickness', GotIt )
      IF (.NOT.Gotit) THEN
-        CALL Fatal(FunctionName, 'Cant find >Haf Thickness< in BC')           
+        CALL Fatal(FunctionName, 'Can not find >Haf Thickness< in BC')           
      END IF
      
      rhoRatio = GetConstReal( BC, 'Haf rhoRatio', GotIt )
      IF (.NOT.Gotit) THEN
-        CALL Fatal(FunctionName, 'Cant find >Haf rhoRatio< in BC')           
+        CALL Fatal(FunctionName, 'Can not find >Haf rhoRatio< in BC')           
      END IF
      
   END IF

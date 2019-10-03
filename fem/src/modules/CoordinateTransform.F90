@@ -317,6 +317,13 @@ CONTAINS
       CoordSys(1,1:3) = normalized(MATMUL( alpha(1:nn), dBasisdx(1:nn,:)))
       CoordSys(2,1:3) = normalized(MATMUL( beta(1:nn), dBasisdx(1:nn,:)))
       CoordSys(3,1:3) = normalized(crossproduct(CoordSys(1,1:3), CoordSys(2,1:3)))
+
+      IF (ANY(ISNAN(CoordSys))) THEN
+        print *, "Element index = ", GetElementIndex(Element)
+        print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
+        CALL Fatal('CoordinateTransform','Element coordinate system is NaN, this could be &
+          due to a poor mesh. Please check all the elements so that their aspect ratio is small enough.') 
+      END IF
  
       CoordSys2 = CoordSys
  

@@ -27,8 +27,8 @@ Material 1
 
 $ mag = 1006582
 $ ang = pi/2
-  Magnetization 1 = Real $ mag*cos(ang)
-  Magnetization 2 = Real $ mag*sin(ang)
+  Magnetization 1 = Real $ -mag*cos(ang)
+  Magnetization 2 = Real $ -mag*sin(ang)
 
   Youngs Modulus=1
   Poisson Ratio=0.35
