@@ -2290,7 +2290,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
-    LOGICAL :: IsBulk
+    LOGICAL :: IsBulk, Found
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
     CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
@@ -2339,6 +2339,7 @@ CONTAINS
 
       Element % Type => Element0 % Type
       n = Element % Type % NumberOfNodes
+      Element % NDOFs = n
 
       IF( n <= 0 .OR. n > 27 ) THEN
         CALL Fatal(Caller,'Invalid number of nodes')
@@ -2472,6 +2473,7 @@ CONTAINS
         END IF
 
         n = Element % Type % NumberOfNodes
+        Element % NDOFs = n
 
         Element % GElementIndex = elemindex
         Element % ElementIndex = t
@@ -2488,7 +2490,6 @@ CONTAINS
           Element % BodyId = geom_id
           icount = icount + 3
         ELSE
-          Element % BodyId = 0
           IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
             ALLOCATE( Element % BoundaryInfo, STAT = allocstat )
             IF( allocstat /= 0 ) THEN
@@ -2497,6 +2498,8 @@ CONTAINS
           END IF
 
           Element % BoundaryInfo % Constraint = geom_id
+          Element % BodyId  = ListGetInteger( &
+             Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
 
           ! These are the left and right boundary indexes that currently are not used at all!
           LeftParent(t) = PPack % idata(icount+4)
