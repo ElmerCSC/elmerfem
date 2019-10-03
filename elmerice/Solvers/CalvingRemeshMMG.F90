@@ -605,9 +605,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CALL Fatal(SolverName, 'Bad GID 0')
    END DO
 
-   IF(ANY(GatheredMesh % Elements % GElementIndex <= 0)) CALL Fatal(SolverName, 'Element has ID 0')
-
-
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution
    !-------------------------------
@@ -621,10 +618,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    FinalMesh % OutputActive = .TRUE.
    FinalMesh % Changed = .TRUE. 
 
+   !Actually switch the model's mesh
    CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
-   ! CALL MeshStabParams( Model % Mesh )
+   !Recompute mesh bubbles etc
+   CALL MeshStabParams( Model % Mesh )
 
-
+   !Release the old mesh
    CALL ReleaseMesh(GatheredMesh)
 
 CONTAINS
@@ -645,6 +644,32 @@ CONTAINS
          ElementNodes % y(n),&
          ElementNodes % z(n))
 
+    !check for duplicate element & node indices (locally only)
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      IF(Mesh % Elements(i) % GElementIndex <= 0) CALL Fatal(SolverName, 'Element has ID 0')
+      DO j=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        IF(i==j) CYCLE
+        IF(Mesh % Elements(i) % GElementIndex == Mesh % Elements(j) % GElementIndex) THEN
+          PRINT *,ParEnv % MyPE,' elements ',i,j,' have same GElementIndex: ',&
+               Mesh % Elements(j) % GElementIndex
+          CALL Fatal(SolverName, "Duplicate GElementIndexes!")
+        END IF
+      END DO
+    END DO
+
+    DO i=1,Mesh % NumberOfNodes
+      IF(Mesh % ParallelInfo % GlobalDOFs(i) <= 0) CALL Fatal(SolverName, 'Node has ID 0')
+      DO j=1,Mesh % NumberOfNodes
+        IF(i==j) CYCLE
+        IF(Mesh % ParallelInfo % GlobalDOFs(i) == Mesh % ParallelInfo % GlobalDOFs(j)) THEN
+          PRINT *,ParEnv % MyPE,' nodes ',i,j,' have same GlobalDOF: ',&
+               Mesh % ParallelInfo % GlobalDOFs(j)
+          CALL Fatal(SolverName, "Duplicate GlobalDOFs!")
+        END IF
+      END DO
+    END DO
+
+    !Check element detj etc
     DO j=1,2
       IF(j==1) mean = 0.0
       DO i=1,Mesh % NumberOfBulkElements
@@ -685,6 +710,7 @@ CONTAINS
       END DO
       IF(j==1) mean = mean / Mesh % NumberOfBulkElements
     END DO
+
 
 
 
