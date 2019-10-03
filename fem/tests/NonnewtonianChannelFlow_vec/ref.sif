@@ -1,8 +1,6 @@
-! Test case for nonnewtoanin model with vectorized bulk assembly.
-! Note that this is not quite the same case as the unvectorized version.
-! The real reference is ref.sif
-!
-! P.R. 3.10.2019
+! Ideal 1D flow obtained by periodic BCs for the pressure
+! This enables testing of nonnewtonian velocity profiles
+! For the first nonlinear system iteration newtonian model is enforced.
 
 $ pext = 1.0
 
@@ -19,7 +17,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = case.vtu
+  Post File = ref.vtu
   Set Dirichlet BCs by BC Numbering = True
 End
 
@@ -37,7 +35,7 @@ End
 Solver 1
   Equation = Navier-Stokes
 
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Stabilization Method = Bubbles !Stabilized
 
   Steady State Convergence Tolerance = 1.0e-5
 
@@ -45,14 +43,11 @@ Solver 1
   Nonlinear System Max Iterations = 30
 
 ! activates also the newtonian linearization of viscosity
-! For some reason it does not improve things? 
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
 
-!  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Relaxation Factor = 1.0
-!  Nonlinear System Newton After Tolerance = 1.0e-3
-
-! This is set True by default both in FlowSolve and this solver
-  Relative Pressure Relaxation = Logical False
+!  gradp discretization = Logical True
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BicgstabL
@@ -62,9 +57,14 @@ Solver 1
   Linear System Residual Output = 10
   Linear System Preconditioning = ILU2
 
-  Stokes Flow = Logical True
-  GradP Discretization = Logical False
-  Div-Curl Discretization = Logical False
+! If this is more than zero the newtonian fluid prevails
+!  Newtonian Viscosity Condition = Variable nonlin iter
+!    Real 
+!      1.0 1.0
+!      2.0 -1.0
+!    End 
+
+  NS Convect = False
 End
 
 
@@ -73,13 +73,6 @@ Equation 1 :: Active Solvers=1
 Material 1
   Density = 1.0
   Viscosity = 1.0
-
-! If this is more than zero the newtonian fluid prevails
-!  Newtonian Viscosity Condition = Variable "nonlin iter"
-!    Real 
-!      1.0 1.0
-!      2.0 -1.0
-!    End 
 
 ! shear thinning power law fluid
   Viscosity Model = String "power law"
@@ -92,7 +85,12 @@ End
 Boundary Condition 1
   Target Boundaries(1) = 2
   Name = "Right"
+
   Velocity 2 = 0.0
+!  Periodic BC = 2
+!  Periodic BC Pressure = Logical True
+!  Periodic BC Offset Pressure = Real 10.0
+!  Periodic BC Velocity 2 = Logical True
 End
 
 Boundary Condition 2
@@ -110,5 +108,6 @@ Boundary Condition 3
 End
 
 
-!Solver 1 :: Reference Norm = 6.06798943E-03
-Solver 1 :: Reference Norm = 6.06500518E-03
+Solver 1 :: Reference Norm = 6.06798943E-03
+
+

@@ -1884,11 +1884,13 @@ END SUBROUTINE GetMaxDefs
      !Mesh % ParallelInfo % NumberOfIfDOFs = 0
      !Mesh % ParallelInfo % GlobalDOFs => NodeTags
 
-     IF(.NOT. Parallel ) RETURN
 
+     ! This also for serial runs ...
      DO i=1,Mesh % NumberOfBulkElements
        Mesh % Elements(i) % GElementIndex = ElementTags(i)
      END DO
+
+     IF(.NOT. Parallel ) RETURN
 
      n = Mesh % NumberOfNodes + &
          Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &

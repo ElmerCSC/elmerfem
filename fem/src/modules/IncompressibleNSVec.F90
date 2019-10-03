@@ -544,11 +544,11 @@ END BLOCK
       TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
           ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
           ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
-          ViscTemp_h
+          ViscTemp_h, ViscCond_h
       REAL(KIND=dp), SAVE :: R
-      REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2 
+      REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond 
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:)
-      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:) ! ,ViscDerVec(:) => NULL()
+      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:) 
 
       
 !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec)
@@ -560,6 +560,8 @@ END BLOCK
         CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
 
         IF( ListGetElementSomewhere( ViscModel_h) ) THEN
+          CALL ListInitElementKeyword( ViscCond_h,'Material','Newtonian Viscosity Condition')      
+
           CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
           CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
           CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
@@ -604,7 +606,18 @@ END BLOCK
         RETURN
       END IF
 
+      ! Initialize derivative of viscosity for when newtonian linearization is used
+      IF( ViscNewton ) THEN
+        ViscDerVec(1:ngp) = 0.0_dp
+      END IF
 
+      ! This reverts the viscosity model to linear 
+      ViscCond = ListGetElementReal( ViscCond_h,Element=Element,Found=Found)
+      IF( Found .AND. ViscCond > 0.0 ) THEN
+        EffViscVec => ViscVec0        
+        RETURN      
+      END IF
+        
       ! Deallocate too small storage if needed 
       IF (ALLOCATED(ss)) THEN
         IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec)
@@ -633,9 +646,6 @@ END BLOCK
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
 
-      IF( ViscNewton ) THEN
-        ViscDerVec(1:ngp) = 0.0_dp
-      END IF
 
       
       SELECT CASE( ViscModel )       
@@ -1154,7 +1164,8 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
   END IF
 
   ! Study only velocity components in linear system
-  CALL ListAddNewInteger( Solver % Values, 'Nonlinear System Norm DOFs', dim )
+  CALL ListAddNewInteger(Params, 'Nonlinear System Norm DOFs', dim )
+  CALL ListAddNewLogical(Params, 'Relative Pressure Relaxation', .TRUE. )
 
   ! Automate the choice for the variational formulation:
   CALL ListAddNewLogical(Params, 'GradP Discretization', .FALSE.)
