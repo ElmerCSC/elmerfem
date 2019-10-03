@@ -31,7 +31,7 @@
 
 !Subroutine for predicting calving in 3D
 
- SUBROUTINE Find_Calving3D_LSet ( Model, Solver, dt, TransientSimulation )
+ SUBROUTINE Find_Calving3D_LSet_test ( Model, Solver, dt, TransientSimulation )
 
    USE CalvingGeometry
    USE MainUtils
@@ -2174,4 +2174,4 @@ CONTAINS
     END IF
 
   END SUBROUTINE CalvingStats
-END SUBROUTINE Find_Calving3D_LSet
+END SUBROUTINE Find_Calving3D_LSet_Test
