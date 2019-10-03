@@ -37,7 +37,7 @@ End
 Solver 1
   Equation = Navier-Stokes
 
-  Procedure = "./IncompressibleNS" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
 
   Steady State Convergence Tolerance = 1.0e-5
 
