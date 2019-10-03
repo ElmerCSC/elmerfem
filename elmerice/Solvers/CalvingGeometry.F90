@@ -626,12 +626,12 @@ CONTAINS
   ! NOTE: if this breaks, it could be due to two paths
   !       sharing a node. Thinking about it, I see no reason
   !       this should be an issue, but we'll see...
-  SUBROUTINE ValidateCrevassePaths(Mesh, CrevassePaths, FrontOrientation, PathCount, ValidPathCount)
+  SUBROUTINE ValidateCrevassePaths(Mesh, CrevassePaths, FrontOrientation, PathCount)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     REAL(KIND=dp) :: FrontOrientation(3)
-    INTEGER :: PathCount, ValidPathCount, First, Last, LeftIdx, RightIdx
+    INTEGER :: PathCount, First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
          ShiftTo, Dir1(2), Dir2(2)

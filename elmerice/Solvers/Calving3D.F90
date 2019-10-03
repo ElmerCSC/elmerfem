@@ -992,8 +992,8 @@
 
        CALL FindCrevassePaths(IsoMesh, IMOnFront, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount, ValidPathCount)
-
+       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
+Debug=.True.
        !Debugging statements
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
@@ -1007,16 +1007,18 @@
                      ' x: ',IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),&
                      ' y: ',IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
              END DO
+             PRINT *,'ID, left, right, extent', CurrentPath % ID, CurrentPath % Left, &
+                  CurrentPath % Right, CurrentPath % Extent
              PRINT *, ''
              CurrentPath => CurrentPath % Next
           END DO
        END IF
-
+Debug=.FALSE.
        ALLOCATE(DeleteMe(IsoMesh % NumberOfBulkElements))
        DeleteMe = .FALSE.
 
        DO i=1, IsoMesh % NumberOfBulkElements
-          IF(ElementPathID(CrevassePaths, i) == 0) DeleteMe(i) = .TRUE.
+         IF(ElementPathID(CrevassePaths, i) == 0) DeleteMe(i) = .TRUE.
        END DO
 
        IF(Debug) THEN

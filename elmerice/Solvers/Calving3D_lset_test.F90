@@ -58,7 +58,7 @@
    INTEGER :: i,j,k,n,counter, dim, dummyint, TotalNodes, NoNodes, &
         comm, ierr, Me, PEs, ExtrudedLevels, FaceNodeCount, start, fin, &
         stride, MaxNN, Next, NodesPerLevel, LeftTgt, RightTgt, &
-        county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
+        county, PMeshBCNums(3), DOFs, PathCount,  active,&
         WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
         FrontLineCount, ShiftIdx
    INTEGER, PARAMETER :: GeoUnit = 11
@@ -997,7 +997,7 @@
 
        CALL FindCrevassePaths(IsoMesh, IMOnFront, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount, ValidPathCount)
+       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
 
        !Debugging statements
        IF(Debug) THEN

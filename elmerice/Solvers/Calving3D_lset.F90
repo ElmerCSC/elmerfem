@@ -62,7 +62,7 @@
         stride, MaxNN, Next, LeftTgt, RightTgt, &   
         county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
         WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
-        FrontLineCount, ShiftIdx
+        FrontLineCount, ShiftIdx,NoCrevNodes
    INTEGER, PARAMETER :: GeoUnit = 11
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
@@ -73,7 +73,7 @@
         OrderPerm(:), SignDistPerm(:)
    INTEGER, ALLOCATABLE :: MyFaceNodeNums(:), PFaceNodeCount(:),&
         !FNColumns(:),
-        disps(:), WritePoints(:), FrontColumnList(:)
+        disps(:), WritePoints(:), CrevEnd(:),CrevStart(:),FrontColumnList(:) ! TO DO rm frontcolumnlist
    REAL(KIND=dp) :: FrontOrientation(3), MaxHolder, &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
@@ -90,7 +90,7 @@
         DistValues(:), SignDistValues(:), CIndexValues(:), WorkReal(:), &
         CalvingValues(:), ForceVector(:)
    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), HeightDirich(:), &
-        Rot_y_coords(:,:), Rot_z_coords(:,:)
+        Rot_y_coords(:,:), Rot_z_coords(:,:), CrevX(:),CrevY(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         CIndexVarName, filename_root, filename,MaskName,&
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
@@ -910,8 +910,8 @@
 
        CALL FindCrevassePaths(IsoMesh, IMOnFront, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount, ValidPathCount)
-
+       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
+Debug = .TRUE.
        !Debugging statements
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
@@ -986,61 +986,117 @@
     SignDistVar => VariableGet(Mesh % Variables, "SignedDistance", .TRUE.)
     SignDistValues => SignDistVar % Values
     SignDistPerm => SignDistVar % Perm
-   
-    !MPI_BCAST isomesh to all partitions!
-
-    !make sure that code works for empty isomesh as well!!
-    
-    ! TO DO add function that calculates CCW to get left or right!  
-    IF (PathCount > 0 ) THEN
-     DO i=1,Solver % Mesh % NumberOfNodes ! testing
-        !   find closest bounding box:
-        xx = Solver % Mesh % Nodes % x(i)
-        yy = Solver % Mesh % Nodes % y(i)
-        CurrentPath => CrevassePaths
-        TempDist =  MaxMeshDist ! should set this to maxval(distvalues)?! but try avoid dependence on distance wrt calving front
-        j=1
-!!!! know I have just one path
-        !        DO WHILE(ASSOCIATED(CurrentPath))
-        ! st with this do while loop goes wrong, maybe related to letting closest path point at current path? it breaks at line below here, xl = ..
-           xl=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(1))
-           yl=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(1))
-           xr=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes))
-           yr=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes))
-           IF( TempDist > PointLineSegmDist2D((/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN ! TO DO initialize BBoxDis or use other variable
-           TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) )
-           jmin = CurrentPath % ID
-           ClosestPath => CurrentPath
-           END IF
-!           CurrentPath => CurrentPath % Next
-           j=j+1
-!!!!!   END DO ! now closest crevasse is nr j so can I take crevassepath => CrevassePaths(j)
-        IF (ClosestPath % ID /= jmin ) PRINT *, 'Programming Error closest crevasse path should have ID', jmin
-        PRINT *, 'Shortest distance to closest crevassepath ',TempDist
-        CurrentPath => ClosestPath ! TO DO does this work?
-        TempDist =  MaxMeshDist
-        xl=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(1))
-        yl=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(1)) 
-        DO j=1, CurrentPath % NumberOfNodes - 1
-           xr=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(j+1))
-           yr=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(j+1))
-           IF(TempDist > PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN
-           TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) ) 
-           jmin = j
-           END IF
-           xl = xr
-           yl = yr
+    CurrentPath => CrevassePaths
+IF(Debug) THEN
+    PRINT *, ' IsoMesh % NumberOfNodes',  IsoMesh % NumberOfNodes
+    PRINT *, 'IsoMesh % NumberOfBoundaryElements', IsoMesh % NumberOfBoundaryElements
+    PRINT *, 'PathCount', PathCount
+END IF 
+    ! boss contains isomesh and crevpaths 
+IF (Boss) THEN
+   IF(IsoMesh % NumberOfNodes > 0 ) THEN
+      CurrentPath => CrevassePaths
+      NoCrevNodes=0 ! Number of Crevasse nodes
+      DO WHILE(ASSOCIATED(CurrentPath))
+         NoCrevNodes=NoCrevNodes+CurrentPath % NumberOfNodes
+         CurrentPath => CurrentPath % Next
+      END DO
+      ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
+           CrevEnd(PathCount),CrevStart(PathCount))
+      CurrentPath => CrevassePaths
+      j=1
+      k=1
+      CrevStart(1)=1
+      DO WHILE(ASSOCIATED(CurrentPath))
+         DO i=1,CurrentPath % NumberOfNodes
+            CrevX(j)=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i))
+            CrevY(j)=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
+            IF(k < CurrentPath % ID.AND.CurrentPath % ID>0) THEN
+               CrevEnd(k)=j
+               IF(k < PathCount) CrevStart(k+1)=j+1
+               k=CurrentPath % ID
+            END IF
+            ! more efficient memory usage would be to only pass first and/or last crev node per path.
+            j=j+1
          END DO
-         !   now for jmin, calculate CCW or somehow whether + or - and set
-         SignDistValues(SignDistPerm(i)) =  TempDist ! or not using Perm?!
-         PRINT *, 'Shortest distance to closest segment in crevassepath ',TempDist
-     END DO
-    END IF    !paths exist
+         CurrentPath => CurrentPath % Next
+      END DO
+      IF(j/=NoCrevNodes+1) PRINT *, 'programming error'
+      CrevEnd(PathCount)=NoCrevNodes ! TO DO this shouldnt be necessary but st wrong with last assignment crevasse end above
+      PRINT *, NoCrevNodes
+      PRINT *, CrevStart
+      PRINT *, CrevEnd
+   END IF
+END IF
+
+CALL MPI_BCAST(NoCrevNodes,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+CALL MPI_BCAST(PathCount,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
+    IF (.NOT. Boss) ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
+         CrevEnd(PathCount),CrevStart(PathCount))! (because already created on boss)
+CALL MPI_BCAST(CrevX,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+CALL MPI_BCAST(CrevY,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+CALL MPI_BCAST(CrevEnd,PathCount,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
+CALL MPI_BCAST(CrevStart,PathCount,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)  
+!above IF(Parallel) but that's assumed implicitly 
+    !make sure that code works for empty isomesh as well!!
+
+IF (PathCount > 0 ) THEN
+   DO i=1,Solver % Mesh % NumberOfNodes ! testing
+ PRINT *, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes ! here should not just be fr\
+ont?! 
+      !   find closest bounding box:
+      xx = Solver % Mesh % Nodes % x(i)
+      yy = Solver % Mesh % Nodes % y(i)
+      TempDist = 1000000000.0! MaxMeshDist ! should set this to maxval(distvalues)?! but try avoid dependence on distance wrt calving front       
+      ! DO j=1, PathCount
+      !    xl=CrevX(CrevStart(j)) !FINDLOC cannot be passed as an actual argument.)
+      !    yl=CrevY(CrevStart(j))
+      !    xr=CrevX(CrevEnd(j))
+      !    yr=CrevY(CrevEnd(j)) 
+      !    IF( TempDist > PointLineSegmDist2D((/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN ! TO DO initialize BBoxDis or use other variable
+      !       TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) )
+      !       jmin = j
+      !    END IF
+      ! END DO
+      ! PRINT *, 'Shortest distance to closest crevassepath ',jmin, TempDist
+      ! TempDist = 100000000000.0 !MaxMeshDist
+      ! xl=CrevX(CrevStart(jmin))
+      ! yl=CrevY(CrevStart(jmin))
+      ! DO j=CrevStart(jmin), CrevEnd(jmin)-1
+      !    xr=CrevX(j+1)
+      !    yr=CrevY(j+1)
+      !    IF(TempDist > PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN
+      !       TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) ) 
+      !       jmin = j
+      !    END IF
+      !    xl = xr
+      !    yl = yr
+      ! END DO
+      ! try brute force instead
+      DO j=1, PathCount
+         DO k=CrevStart(j), CrevEnd(j)-1
+            xl=CrevX(k);yl=CrevY(k)
+            xr=CrevX(k+1);yr=CrevY(k+1)
+            IF(TempDist > PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN
+            TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) )
+            jmin = k  
+         END IF             
+END DO
+      END DO      
+      !   now for jmin, calculate CCW or somehow whether + or - and set
+      xr=CrevX(jmin+1); yr=CrevY(jmin+1)
+      xl=CrevX(jmin); yl = CrevY(jmin)
+! does not work yet      TempDist = -1.0 * SIGN(TempDist, (xr-xl)*(yy-yl) -(yr-yl)*(xx-xl) ) !sign( det(LR,Lx) )
+      SignDistValues(SignDistPerm(i)) =  TempDist 
+      PRINT *, 'Shortest distance to closest segment in crevassepath ',TempDist
+      PRINT *, 'jmin is ',jmin
+   END DO
+END IF    !paths exist
     ! 
  !        SignDistValues(SignDistPerm(i)) =  shortestsignedDistance ( Solver % Mesh % Nodes % x(i), &
  !            Solver % Mesh % Nodes % y(i), 
  !   END DO
-
+Debug = .FALSE.
     ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
     IsCalvingNode = .FALSE.
     CalvingValues = 0.0_dp !initialize
