@@ -504,7 +504,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   Mesh => Solver % Mesh
   DIM = CoordinateSystemDimension()
 
-  ! Do some initalialization: allocate space, check fields  
+  ! Do some initialization: allocate space, check fields  
   !------------------------------------------------------------------------
   IF( VisitedTimes == 1 ) THEN
     TimeOrder = GetInteger( Params,'Time Order',Found)

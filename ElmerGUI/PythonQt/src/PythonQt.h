@@ -400,7 +400,7 @@ private:
   //! stores the meta info of known Qt C++ wrapper classes
   QMultiHash<QByteArray, PythonQtSlotInfo *> _knownQtDecoratorSlots;
 
-  //! names of qobject derived classes that can be casted to qobject savely
+  //! names of qobject derived classes that can be casted to qobject safely
   QHash<QByteArray, bool> _knownQObjectClassNames;
 
   //! stores signal receivers for QObjects

@@ -4033,7 +4033,7 @@ void MainWindow::viewCoordinatesSlot()
   if( glWidget->toggleCoordinates() )
     logMessage("Coordinates shown");
   else 
-    logMessage("Cordinates hidden");
+    logMessage("Coordinates hidden");
 
   synchronizeMenuToState();
 }
@@ -4755,7 +4755,7 @@ void MainWindow::showParaViewSlot()
 
   currentDir = QDir(saveDirName);
   
-  // Paraview can deal with case..vtu kind of argments which however,
+  // Paraview can deal with case..vtu kind of arguments which however,
   // fail if there is only one file. Use dirty check to see that there
   // are more than one file. 
   if(!parallelActive) {  
@@ -5046,7 +5046,7 @@ void MainWindow::remeshSlot()
     
   } else {
 
-    logMessage("Remesh: uknown generator type");
+    logMessage("Remesh: unknown generator type");
     return;
 
   }

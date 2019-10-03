@@ -138,7 +138,7 @@ void WriteFluentFormat (const Mesh & mesh,
 	      
 	  if (eli2==i) cout << "error in WRITE_FLUENT!!!" << endl;
 	      
-	  if (eli2 > i) //dont write faces two times!
+	  if (eli2 > i) //don't write faces two times!
 	    {
 	      //i: left cell, eli: right cell
 	      outfile << hex << face.PNum(2) << " "

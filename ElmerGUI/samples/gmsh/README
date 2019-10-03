@@ -1,4 +1,4 @@
-Gmsh is an automatic 3D finite element grid generator with a build-in
+Gmsh is an automatic 3D finite element grid generator with a built-in
 CAD engine and post-processor. Its design goal is to provide a simple
 meshing tool for academic problems with parametric input and advanced
 visualization capabilities. See http://www.geuz.org/gmsh/

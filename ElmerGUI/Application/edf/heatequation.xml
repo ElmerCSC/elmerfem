@@ -104,7 +104,7 @@
 
          <Parameter Widget="Label">
            <Name> Radiation Factor computation </Name>
-           <Whatis>  In some cases the geometry or the emissivities of the radiation boundaries change. This may require the recomputation of the view factors and Gebhardt factors. For that purpose also dynamic computation of the factors is enabled and it is controlled by the keywords below. The radiation factors are also automatically computed, if no files for the factors are given allthough radiation boundaries exist. </Whatis>
+           <Whatis>  In some cases the geometry or the emissivities of the radiation boundaries change. This may require the recomputation of the view factors and Gebhardt factors. For that purpose also dynamic computation of the factors is enabled and it is controlled by the keywords below. The radiation factors are also automatically computed, if no files for the factors are given although radiation boundaries exist. </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox">
             <Name> Update View Factors</Name>
@@ -127,7 +127,7 @@
          </Parameter>
          <Parameter Widget="Edit">
             <Name> Implicit Gebhardt Factor Fraction</Name>
-            <Whatis> In computing heat transfer problems with radiation in an implicit manner, the matrix structure becomes partially filled. This affects the performance of the linear equation solvers and also increases the memory requirements. On the other hand explicit treatment of radiation slows down the convergence significantly. This keyword allows that the largest Gebhardt factors are treated in an implicit manner, whereas the smallest are treated explicitely. The value should lie in between zero (fully explicit) and one (fully implicit). </Whatis>
+            <Whatis> In computing heat transfer problems with radiation in an implicit manner, the matrix structure becomes partially filled. This affects the performance of the linear equation solvers and also increases the memory requirements. On the other hand explicit treatment of radiation slows down the convergence significantly. This keyword allows that the largest Gebhardt factors are treated in an implicit manner, whereas the smallest are treated explicitly. The value should lie in between zero (fully explicit) and one (fully implicit). </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox">
            <Name> Matrix Topology Fixed</Name>
@@ -356,7 +356,7 @@
 
          <Parameter  Widget="Edit" Enabled="False">
            <Name> Temperature Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
            <StatusTip> Give temperature condition value for this boundary. </StatusTip>
          </Parameter>
 

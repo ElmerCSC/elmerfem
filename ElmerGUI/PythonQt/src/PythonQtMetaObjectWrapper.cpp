@@ -144,7 +144,7 @@ static PyObject *PythonQtMetaObjectWrapper_getattro(PyObject *obj,PyObject *name
     return PythonQtSlotFunction_New(member._slot, obj, NULL);
   }
   
-  // look for the interal methods (className(), help())
+  // look for the internal methods (className(), help())
   PyObject* internalMethod = Py_FindMethod( PythonQtMetaObjectWrapper_methods, obj, (char*)attributeName);
   if (internalMethod) {
     return internalMethod;

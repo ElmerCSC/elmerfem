@@ -60,7 +60,7 @@ $  usage of the function and type of the parameters
 @  globals effected directly by this routine
 !  current known bugs or limitations
 &  functions called by this function
-~  these functions may intrest you as an alternative function or
+~  these functions may interest you as an alternative function or
 |  because they control this function somehow
 =====================================================================*/
 
