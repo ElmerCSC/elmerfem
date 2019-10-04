@@ -9246,7 +9246,9 @@ END FUNCTION SearchNodeL
       iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       IterNo = NINT( iterVar % Values(1) )
       Solver % Variable % NonlinIter = IterNo
-      iterVar % Values(1) = IterNo + 1 
+
+      Skip = ListGetLogical( SolverParams,'Skip Advance Nonlinear iter',Stat)
+      IF( .not. Skip )  iterVar % Values(1) = IterNo + 1 
 
       IF( .NOT. Solver % NewtonActive ) THEN
         i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
