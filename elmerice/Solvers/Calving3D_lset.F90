@@ -996,34 +996,39 @@
              NoCrevNodes=NoCrevNodes+CurrentPath % NumberOfNodes
              CurrentPath => CurrentPath % Next
           END DO
-          ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-               CrevEnd(NoPaths),CrevStart(NoPaths))
-          CurrentPath => CrevassePaths
-          j=1;k=1
-          n=CurrentPath % ID ! first ID may not be 1..
-          CrevStart(1)=1
-          DO WHILE(ASSOCIATED(CurrentPath))
-             DO i=1,CurrentPath % NumberOfNodes
+
+          IF(NoPaths > 0) THEN
+
+            ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
+                 CrevEnd(NoPaths),CrevStart(NoPaths))
+            CurrentPath => CrevassePaths
+            j=1;k=1
+            n=CurrentPath % ID ! first ID may not be 1..
+            CrevStart(1)=1
+            DO WHILE(ASSOCIATED(CurrentPath))
+              DO i=1,CurrentPath % NumberOfNodes
                 CrevX(j)=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i))
                 CrevY(j)=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
                 IF(n < CurrentPath % ID .AND. CurrentPath % ID>0) THEN ! non valid paths set to 0?
-                   CrevEnd(k)=j-1
-                   IF(k < NoPaths) CrevStart(k+1)=j
-                   n=CurrentPath % ID
-                   k=k+1
+                  CrevEnd(k)=j-1
+                  IF(k < NoPaths) CrevStart(k+1)=j
+                  n=CurrentPath % ID
+                  k=k+1
                 END IF
                 j=j+1
-             END DO
-             CurrentPath => CurrentPath % Next
-          END DO
-          IF(j/=NoCrevNodes+1) PRINT *, 'programming error'
-          CrevEnd(NoPaths)=NoCrevNodes
-          IF (Debug) THEN
-             PRINT *, 'number of crevasse nodes', NoCrevNodes
-             PRINT *, 'crevasse start numbers', CrevStart
-             PRINT *, 'crevasse end numbers',CrevEnd
+              END DO
+              CurrentPath => CurrentPath % Next
+            END DO
+            IF(j/=NoCrevNodes+1) PRINT *, 'programming error'
+            CrevEnd(NoPaths)=NoCrevNodes
+            IF (Debug) THEN
+              PRINT *, 'number of crevasse nodes', NoCrevNodes
+              PRINT *, 'crevasse start numbers', CrevStart
+              PRINT *, 'crevasse end numbers',CrevEnd
+            END IF
           END IF
        END IF
+
        NodeHolder(3)=0.0_dp
        DO i=1,NoPaths
           NodeHolder(1) = CrevX(CrevStart(i))
