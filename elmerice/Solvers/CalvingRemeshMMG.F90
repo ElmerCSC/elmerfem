@@ -670,10 +670,10 @@ CONTAINS
 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Nodes_t) :: ElementNodes
-    TYPE(Element_t),POINTER :: Element
+    TYPE(Element_t),POINTER :: Element, Parent
     REAL(KIND=dp) :: U,V,W,detJ,Basis(10), mean 
     INTEGER, POINTER :: NodeIndexes(:)
-    INTEGER :: i,j,n,l,k
+    INTEGER :: i,j,n,l,k, count
     LOGICAL :: stat
     CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CheckMeshQuality"
 
@@ -681,6 +681,36 @@ CONTAINS
     ALLOCATE(ElementNodes % x(n),&
          ElementNodes % y(n),&
          ElementNodes % z(n))
+
+    !Check all BC elements have parents
+    DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(i)
+      Parent => Element % BoundaryInfo % Left
+      IF( .NOT. ASSOCIATED(Parent) ) THEN
+        Parent => Element % BoundaryInfo % Right
+      END IF
+      IF( .NOT. ASSOCIATED( Parent ) ) THEN
+        PRINT *,ParEnv % MyPE,i,' BC element without parent! constraint: ',Element % BoundaryInfo % constraint, &
+             ' body id: ',Element % BodyID,' nodes: ',Element % NodeIndexes,&
+             ' global: ',Mesh % ParallelInfo % GlobalDOFs(Element%NodeIndexes)
+
+        NodeIndexes => Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
+
+        DO j=1, Mesh % NumberOfBulkElements
+          Parent => Mesh % Elements(j)
+          count = 0
+
+          DO k=1,3
+            IF(ANY(Parent % NodeIndexes == Element % NodeIndexes(k))) count=count+1
+          END DO
+
+          IF(count > 2) PRINT *, ParEnv % MyPE,i,j,' found unpointed parent'
+          IF(count > 0) PRINT *, ParEnv % MyPE,i,j,' found a hanger ',count
+        END DO
+
+      END IF
+    END DO
 
     !check for duplicate element & node indices (locally only)
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
