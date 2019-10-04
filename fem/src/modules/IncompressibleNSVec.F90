@@ -342,7 +342,6 @@ CONTAINS
             dbasisdxvec(:, :, 1), dbasisdxvec(:,:, 2), weight_c, stifford(:,:,i,j))
 
         i = 2; j = 1
-        i=2;j=1
         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             dbasisdxvec(:, :, 1), dbasisdxvec(:,:,2), weight_b, stifford(:,:,i,j))
         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
@@ -379,7 +378,7 @@ CONTAINS
 
     IF (GradPVersion) THEN
        ! b(u,q) = (u, grad q) part
-        DO i = 1, dim
+      DO i = 1, dim
         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             BasisVec, dbasisdxvec(:,:,i), detJVec, stifford(:,:,i,dofs))
         StiffOrd(:,:,dofs,i) = transpose(stifford(:,:,i,dofs))
@@ -401,7 +400,6 @@ CONTAINS
       DO i = 1, dim
         mass(i::dofs, i::dofs) = mass(i::dofs, i::dofs) + VelocityMass(1:ntot, 1:ntot)
       END DO
-      !CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, PressureMass, -kappavec)
 
       !mass(dofs::dofs, dofs::dofs) = mass(dofs::dofs, dofs::dofs) + PressureMass(1:ntot,1:ntot)
 
@@ -544,15 +542,14 @@ END BLOCK
       TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
           ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
           ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
-          ViscTemp_h, ViscCond_h
+          ViscTemp_h
       REAL(KIND=dp), SAVE :: R
-      REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond 
-      REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:)
+      REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
+      LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE.
+      REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
       REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
-      REAL(KIND=dp), ALLOCATABLE, SAVE :: ArrheniusFactorVec(:)
-      INTEGER, SAVE :: ngpallo = -1
       
-!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec)
+!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
      
       IF(InitHandles ) THEN
         CALL Info('EffectiveViscosityVec','Initializing handles for viscosity models',Level=8)
@@ -561,8 +558,13 @@ END BLOCK
         CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
 
         IF( ListGetElementSomewhere( ViscModel_h) ) THEN
-          CALL ListInitElementKeyword( ViscCond_h,'Material','Newtonian Viscosity Condition')      
-
+          ViscCond = ListGetCReal( CurrentModel % Solver % Values,&
+              'Newtonian Viscosity Condition',Found )      
+          ConstantVisc = ( Found .AND. ViscCond > 0.0_dp ) 
+          
+          IF( ListGetLogical( CurrentModel % Solver % Values,&
+              'Constant-Viscosity Start', Found) ) ConstantVisc = (.NOT. Visited ) 
+          
           CALL ListInitElementKeyword( ViscExp_h,'Material','Viscosity Exponent')      
           CALL ListInitElementKeyword( ViscCritical_h,'Material','Critical Shear Rate')      
           CALL ListInitElementKeyword( ViscNominal_h,'Material','Nominal Shear Rate')      
@@ -596,6 +598,8 @@ END BLOCK
             IF (.NOT.Found) R = 8.314_dp
           END IF
         END IF
+
+        Visited = .TRUE.
       END IF
 
       ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
@@ -613,20 +617,19 @@ END BLOCK
       END IF
 
       ! This reverts the viscosity model to linear 
-      ViscCond = ListGetElementReal( ViscCond_h,Element=Element,Found=Found)
-      IF( Found .AND. ViscCond > 0.0 ) THEN
+      IF( ConstantVisc ) THEN
         EffViscVec => ViscVec0        
         RETURN      
       END IF
         
       ! Deallocate too small storage if needed 
       IF (ALLOCATED(ss)) THEN
-        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec)
+        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ArrheniusFactorVec )
       END IF
 
       ! Allocate storage if needed
       IF (.NOT. ALLOCATED(ss)) THEN
-        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),STAT=allocstat)
+        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
           CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
         END IF
@@ -654,7 +657,8 @@ END BLOCK
       CASE('glen')
         c2 = ListGetElementReal( ViscGlenExp_h,Element=Element,Found=Found)
 
-        ! the second invariant is not taken from the strain rate tensor, but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
+        ! the second invariant is not taken from the strain rate tensor,
+        ! but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
         s(1:ngp) = ss(1:ngp)/4.0_dp
 
         c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
@@ -679,13 +683,8 @@ END BLOCK
           Q1 = ListGetElementReal( ViscEne1_h,Element=Element)
           Q2 = ListGetElementReal( ViscEne2_h,Element=Element)
 #if 1
+          ! WHERE is faster than DO + IF
           TempVec => ListGetElementRealVec( ViscTemp_h, ngp, BasisVec, Element )
-
-          IF( ngpallo < ngp ) THEN
-            IF( ngpallo > 0 ) DEALLOCATE( ArrheniusFactorVec )
-            ALLOCATE( ArrheniusFactorVec(ngp) )
-            ngpallo = ngp
-          END IF
           
           WHERE( TempVec(1:ngp ) < Tlimit )
             ArrheniusFactorVec(1:ngp) = A1 * EXP( -Q1/(R * (273.15_dp + TempVec(1:ngp))))
@@ -1371,11 +1370,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
-      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  &
-           DivCurlForm, GradPVersion, &
-           SpecificLoad, StokesFlow, &
-           dt, LinearAssembly, nb, &
-           Newton, Transient,  InitHandles, SchurSolver )
+      CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .TRUE., &
+          SchurSolver )
     END DO
     InitHandles = .FALSE.
     
@@ -1393,7 +1390,8 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., SchurSolver )
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., &
+          SchurSolver )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
