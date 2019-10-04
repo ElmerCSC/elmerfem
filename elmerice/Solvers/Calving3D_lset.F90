@@ -46,7 +46,7 @@
    LOGICAL :: TransientSimulation
 !-----------------------------------------------
    TYPE(ValueList_t), POINTER :: Params
-   TYPE(Variable_t), POINTER :: CalvingVar, &
+   TYPE(Variable_t), POINTER :: CalvingVar, &  ! TO DO rm many unused variables here
         DistVar, CIndexVar, HeightVar, CrevVar, TimestepVar,SignDistVar
    TYPE(Solver_t), POINTER :: PCSolver => NULL(), &
         VTUOutputSolver => NULL(), IsoSolver => NULL()
@@ -62,7 +62,7 @@
         stride, MaxNN, Next, LeftTgt, RightTgt, &   
         county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
         WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
-        FrontLineCount, ShiftIdx,NoCrevNodes
+        FrontLineCount, ShiftIdx,NoCrevNodes, NoPaths
    INTEGER, PARAMETER :: GeoUnit = 11
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
@@ -78,8 +78,9 @@
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
         Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
-        PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, &
-        gradLimit, Displace, y_coord(2), ShiftTo, TempDist, xl,xr,yl, yr, xx,yy,&
+        PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, dxdy,&
+        gradLimit, Displace, y_coord(2), ShiftTo, TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
+        angle,angle0,&
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -436,7 +437,6 @@
     ELSE
        TotalNodes = NoNodes
     END IF
- !!! removed lots here because depends on extruded levels
  
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -911,8 +911,7 @@
        CALL FindCrevassePaths(IsoMesh, IMOnFront, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
        CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
-Debug = .TRUE.
-       !Debugging statements
+!Debug = .TRUE.    !Debugging statements
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
           CurrentPath => CrevassePaths
@@ -921,7 +920,7 @@ Debug = .TRUE.
              PRINT *, 'Current path elems:', CurrentPath % ElementNumbers
              PRINT *, 'Current path nodes:', CurrentPath % NodeNumbers
              DO i=1, CurrentPath % NumberOfNodes
-                PRINT *,'path node: ',i,' nodenum: ',CurrentPath % NodeNumbers(i),&
+                PRINT *,'path ID', CurrentPath % ID, 'path node: ',i,&
                      ' x: ',IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),&
                      ' y: ',IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
              END DO
@@ -969,15 +968,8 @@ Debug = .TRUE.
             IsoMesh % Nodes % y(0),&
             IsoMesh % Nodes % z(0))
     END IF !Boss
-! at this point Isomesh only contains valid crevasse paths that cause calving (?) which makes that if heightvar exists on isomesh, it only exists on new front.
 
-
-    ! TO DO EEF start calculating signed distance here
-    ! check whether calving sizes are sufficient
-    ! when all that done, checking whether calving occurs by
-    !each partition checks for CalvingVar % Values < 0
-! then parallel reduce with MPI_LOR on 'CalvingOccurs'
-
+    ! calculate signed distance here
     ALLOCATE(WorkReal(NoNodes))
     WorkReal = 0.0_dp
     CALL VariableAdd(Mesh % Variables, Mesh, Solver, &
@@ -987,127 +979,130 @@ Debug = .TRUE.
     SignDistValues => SignDistVar % Values
     SignDistPerm => SignDistVar % Perm
     CurrentPath => CrevassePaths
-IF(Debug) THEN
-    PRINT *, ' IsoMesh % NumberOfNodes',  IsoMesh % NumberOfNodes
-    PRINT *, 'IsoMesh % NumberOfBoundaryElements', IsoMesh % NumberOfBoundaryElements
-    PRINT *, 'PathCount', PathCount
-END IF 
+
+    IF(Debug) THEN
+       PRINT *, ' IsoMesh % NumberOfNodes',  IsoMesh % NumberOfNodes
+       PRINT *, 'IsoMesh % NumberOfBoundaryElements', IsoMesh % NumberOfBoundaryElements
+       PRINT *, 'PathCount', PathCount
+    END IF
     ! boss contains isomesh and crevpaths 
-IF (Boss) THEN
-   IF(IsoMesh % NumberOfNodes > 0 ) THEN
-      CurrentPath => CrevassePaths
-      NoCrevNodes=0 ! Number of Crevasse nodes
-      DO WHILE(ASSOCIATED(CurrentPath))
-         NoCrevNodes=NoCrevNodes+CurrentPath % NumberOfNodes
-         CurrentPath => CurrentPath % Next
-      END DO
-      ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-           CrevEnd(PathCount),CrevStart(PathCount))
-      CurrentPath => CrevassePaths
-      j=1
-      k=1
-      CrevStart(1)=1
-      DO WHILE(ASSOCIATED(CurrentPath))
-         DO i=1,CurrentPath % NumberOfNodes
-            CrevX(j)=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i))
-            CrevY(j)=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
-            IF(k < CurrentPath % ID.AND.CurrentPath % ID>0) THEN
-               CrevEnd(k)=j
-               IF(k < PathCount) CrevStart(k+1)=j+1
-               k=CurrentPath % ID
-            END IF
-            ! more efficient memory usage would be to only pass first and/or last crev node per path.
-            j=j+1
-         END DO
-         CurrentPath => CurrentPath % Next
-      END DO
-      IF(j/=NoCrevNodes+1) PRINT *, 'programming error'
-      CrevEnd(PathCount)=NoCrevNodes ! TO DO this shouldnt be necessary but st wrong with last assignment crevasse end above
-      PRINT *, NoCrevNodes
-      PRINT *, CrevStart
-      PRINT *, CrevEnd
-   END IF
-END IF
+    IF (Boss) THEN
+       IF(IsoMesh % NumberOfNodes > 0 ) THEN ! check if there is any valid paths
+          CurrentPath => CrevassePaths
+          NoCrevNodes=0 ! Number of Crevasse nodes
+          NoPaths=0
+          DO WHILE(ASSOCIATED(CurrentPath))
+             NoPaths=NoPaths+1
+             NoCrevNodes=NoCrevNodes+CurrentPath % NumberOfNodes
+             CurrentPath => CurrentPath % Next
+          END DO
+          ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
+               CrevEnd(NoPaths),CrevStart(NoPaths))
+          CurrentPath => CrevassePaths
+          j=1;k=1
+          n=CurrentPath % ID ! first ID may not be 1..
+          CrevStart(1)=1
+          DO WHILE(ASSOCIATED(CurrentPath))
+             DO i=1,CurrentPath % NumberOfNodes
+                CrevX(j)=IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i))
+                CrevY(j)=IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
+                IF(n < CurrentPath % ID .AND. CurrentPath % ID>0) THEN ! non valid paths set to 0?
+                   CrevEnd(k)=j-1
+                   IF(k < NoPaths) CrevStart(k+1)=j
+                   n=CurrentPath % ID
+                   k=k+1
+                END IF
+                j=j+1
+             END DO
+             CurrentPath => CurrentPath % Next
+          END DO
+          IF(j/=NoCrevNodes+1) PRINT *, 'programming error'
+          CrevEnd(NoPaths)=NoCrevNodes
+          IF (Debug) THEN
+             PRINT *, 'number of crevasse nodes', NoCrevNodes
+             PRINT *, 'crevasse start numbers', CrevStart
+             PRINT *, 'crevasse end numbers',CrevEnd
+          END IF
+       END IF
+       NodeHolder(3)=0.0_dp
+       DO i=1,NoPaths
+          NodeHolder(1) = CrevX(CrevStart(i))
+          NodeHolder(2) =CrevY(CrevStart(i))
+          NodeHolder = MATMUL(RotationMatrix, NodeHolder)
+          y_coord(1) = NodeHolder(2)
+          NodeHolder(1) = CrevX(CrevEnd(i))
+          NodeHolder(2) = CrevY(CrevEnd(i))
+          NodeHolder(3) = FrontNodes % z(FrontLineCount)
+          NodeHolder = MATMUL(RotationMatrix, NodeHolder)
+          y_coord(2) = NodeHolder(2)
+          LeftToRight = y_coord(2) > y_coord(1) ! TO DO check if this doesnt break for special cases
+          IF(LeftToRight) THEN
+             CrevX(CrevStart(i):CrevEnd(i))=CrevX(CrevEnd(i):CrevStart(i):-1)
+             CrevY(CrevStart(i):CrevEnd(i))=CrevY(CrevEnd(i):CrevStart(i):-1)
+          END IF
+       END DO
+       IF (Debug) Print *, CrevX
+    END IF
+
 
 CALL MPI_BCAST(NoCrevNodes,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-CALL MPI_BCAST(PathCount,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
+CALL MPI_BCAST(NoPaths,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
     IF (.NOT. Boss) ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
          CrevEnd(PathCount),CrevStart(PathCount))! (because already created on boss)
 CALL MPI_BCAST(CrevX,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
 CALL MPI_BCAST(CrevY,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
-CALL MPI_BCAST(CrevEnd,PathCount,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
-CALL MPI_BCAST(CrevStart,PathCount,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)  
+CALL MPI_BCAST(CrevEnd,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
+CALL MPI_BCAST(CrevStart,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)  
 !above IF(Parallel) but that's assumed implicitly 
     !make sure that code works for empty isomesh as well!!
 
-IF (PathCount > 0 ) THEN
-   DO i=1,Solver % Mesh % NumberOfNodes ! testing
- PRINT *, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes ! here should not just be fr\
-ont?! 
-      !   find closest bounding box:
+ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
+IsCalvingNode=.FALSE.
+
+IF (NoPaths > 0 ) THEN
+   DO i=1,Solver % Mesh % NumberOfNodes !
+      IF (Debug) PRINT *, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes 
       xx = Solver % Mesh % Nodes % x(i)
       yy = Solver % Mesh % Nodes % y(i)
-      TempDist = 1000000000.0! MaxMeshDist ! should set this to maxval(distvalues)?! but try avoid dependence on distance wrt calving front       
-      ! DO j=1, PathCount
-      !    xl=CrevX(CrevStart(j)) !FINDLOC cannot be passed as an actual argument.)
-      !    yl=CrevY(CrevStart(j))
-      !    xr=CrevX(CrevEnd(j))
-      !    yr=CrevY(CrevEnd(j)) 
-      !    IF( TempDist > PointLineSegmDist2D((/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN ! TO DO initialize BBoxDis or use other variable
-      !       TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) )
-      !       jmin = j
-      !    END IF
-      ! END DO
-      ! PRINT *, 'Shortest distance to closest crevassepath ',jmin, TempDist
-      ! TempDist = 100000000000.0 !MaxMeshDist
-      ! xl=CrevX(CrevStart(jmin))
-      ! yl=CrevY(CrevStart(jmin))
-      ! DO j=CrevStart(jmin), CrevEnd(jmin)-1
-      !    xr=CrevX(j+1)
-      !    yr=CrevY(j+1)
-      !    IF(TempDist > PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN
-      !       TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) ) 
-      !       jmin = j
-      !    END IF
-      !    xl = xr
-      !    yl = yr
-      ! END DO
-      ! try brute force instead
-      DO j=1, PathCount
+      MinDist = MAXVAL(DistValues) ! NOTE dependency on Dist here
+      ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+      DO j=1, NoPaths
          DO k=CrevStart(j), CrevEnd(j)-1
             xl=CrevX(k);yl=CrevY(k)
             xr=CrevX(k+1);yr=CrevY(k+1)
-            IF(TempDist > PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/)) ) THEN
-            TempDist = PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/) )
-            jmin = k  
-         END IF             
-END DO
-      END DO      
-      !   now for jmin, calculate CCW or somehow whether + or - and set
-      xr=CrevX(jmin+1); yr=CrevY(jmin+1)
-      xl=CrevX(jmin); yl = CrevY(jmin)
-! does not work yet      TempDist = -1.0 * SIGN(TempDist, (xr-xl)*(yy-yl) -(yr-yl)*(xx-xl) ) !sign( det(LR,Lx) )
-      SignDistValues(SignDistPerm(i)) =  TempDist 
-      PRINT *, 'Shortest distance to closest segment in crevassepath ',TempDist
-      PRINT *, 'jmin is ',jmin
+            TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/)) 
+            IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
+               angle = (xr-xl)*(yy-yl)-(xx-xl)*(yr-yl) ! angle to get sign of distance function
+               ! In case distance is equal, favor segment with clear angles
+               ! angle0 doesn't need to be initialized as TempDist < (ABS(MinDist) - AEPS) holds
+               ! at some point, angle only important if TempDist ~= MinDist
+               IF( (TempDist < (ABS(MinDist) - AEPS)) .OR. (ABS(angle) > ABS(angle0)) ) THEN
+                  IF( angle < 0.0) THEN ! TO DO possibly direction(i) * angle if not always same
+                     MinDist = -TempDist
+                     IsCalvingNode(i) = .TRUE.  
+                  ELSE
+                     MinDist = TempDist
+                  END IF
+                  angle0 = angle
+                  jmin=k ! TO DO rm jmin? not necessary anymore
+               END IF
+            END IF
+         END DO
+      END DO
+      SignDistValues(SignDistPerm(i)) =  MinDist
+ IF(Debug)     PRINT *, 'Shortest distance to closest segment in crevassepath ',MinDist
+ IF(Debug)     PRINT *, 'jmin is ',jmin
    END DO
-END IF    !paths exist
-    ! 
- !        SignDistValues(SignDistPerm(i)) =  shortestsignedDistance ( Solver % Mesh % Nodes % x(i), &
- !            Solver % Mesh % Nodes % y(i), 
- !   END DO
+END IF
 Debug = .FALSE.
-    ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
-    IsCalvingNode = .FALSE.
-    CalvingValues = 0.0_dp !initialize
+CalvingValues = SignDistValues
  
-  !  CalvingOccurs = .FALSE.
-    
-    !each partition checks whether at least one node has a significant calving event
+    ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
+ !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
+! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
+    ! then parallel reduce with MPI_LOR on 'CalvingOccurs'
     ! NOTE; what happens if calving event is divided over 2 partitions with insignificant in each
     ! but significant in total? should something be done to avoid that they're filtered out?
- !   TO DO EEF IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
-! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used? 
     !Pass CalvingOccurs to all processes, add to simulation
     CALL SParIterAllReduceOR(CalvingOccurs)
     CALL ListAddLogical( Model % Simulation, 'CalvingOccurs', CalvingOccurs )
