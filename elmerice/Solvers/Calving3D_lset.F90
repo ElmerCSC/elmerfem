@@ -1096,7 +1096,9 @@ IF (NoPaths > 0 ) THEN
 END IF
 Debug = .FALSE.
 CalvingValues = SignDistValues
- 
+IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
+
+
     ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
  !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
 ! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
