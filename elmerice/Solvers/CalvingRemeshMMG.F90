@@ -658,6 +658,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    !Actually switch the model's mesh
    CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
+
+   !After SwitchMesh because we need GroundedMask
+   CALL EnforceGroundedMask(Mesh)
+
    !Recompute mesh bubbles etc
    CALL MeshStabParams( Model % Mesh )
 
@@ -693,22 +697,7 @@ CONTAINS
         PRINT *,ParEnv % MyPE,i,' BC element without parent! constraint: ',Element % BoundaryInfo % constraint, &
              ' body id: ',Element % BodyID,' nodes: ',Element % NodeIndexes,&
              ' global: ',Mesh % ParallelInfo % GlobalDOFs(Element%NodeIndexes)
-
-        NodeIndexes => Element % NodeIndexes
-        n = Element % TYPE % NumberOfNodes
-
-        DO j=1, Mesh % NumberOfBulkElements
-          Parent => Mesh % Elements(j)
-          count = 0
-
-          DO k=1,3
-            IF(ANY(Parent % NodeIndexes == Element % NodeIndexes(k))) count=count+1
-          END DO
-
-          IF(count > 2) PRINT *, ParEnv % MyPE,i,j,' found unpointed parent'
-          IF(count > 0) PRINT *, ParEnv % MyPE,i,j,' found a hanger ',count
-        END DO
-
+        CALL Fatal(SolverName, "BC Element without parent!")
       END IF
     END DO
 
@@ -783,5 +772,46 @@ CONTAINS
 
 
   END SUBROUTINE CheckMeshQuality
+
+  !Takes a mesh with GroundedMask defined on the base, and
+  !ensures that grounded nodes remain grounded
+  !i.e. sets z = min zs bottom wherever GroundedMask>-0.5
+  SUBROUTINE EnforceGroundedMask(Mesh)
+    TYPE(Mesh_t), POINTER :: Mesh
+    !-------------------------
+    TYPE(ValueList_t), POINTER :: Material
+    TYPE(Variable_t), POINTER :: GMaskVar
+    REAL(KIND=dp), POINTER :: GMask(:)
+    REAL(KIND=dp) :: zb
+    INTEGER :: i,n
+    INTEGER, POINTER :: GMaskPerm(:)
+    CHARACTER(MAX_NAME_LEN) :: FuncName="EnforceGroundedMask", GMaskVarName
+
+    GMaskVarName = "GroundedMask"
+    GMaskVar => VariableGet(Mesh % Variables, GMaskVarName, .TRUE.)
+    IF(.NOT.ASSOCIATED(GMaskVar)) THEN
+      CALL Info(FuncName, "Didn't find GroundedMask, so not enforcing bed height",Level=5)
+      RETURN
+    END IF
+
+    Material => GetMaterial(Mesh % Elements(1)) !TODO, this is not generalised
+
+    GMask => GMaskVar % Values
+    GMaskPerm => GMaskVar % Perm
+
+    DO i=1,Mesh % NumberOfNodes
+      IF(GMaskPerm(i) == 0) CYCLE
+      zb = ListGetRealAtNode(Material, "Min Zs Bottom",i,UnfoundFatal=.TRUE.)
+
+      !Floating -> check no penetration
+      !Grounded -> set to bedrock height
+      IF(GMask(GMaskPerm(i)) < -0.5) THEN
+        IF(Mesh % Nodes % z(i) < zb) Mesh % Nodes % z(i) = zb
+      ELSE
+        Mesh % Nodes % z(i) = zb
+      END IF
+    END DO
+
+  END SUBROUTINE EnforceGroundedMask
 
 END SUBROUTINE CalvingRemeshMMG
