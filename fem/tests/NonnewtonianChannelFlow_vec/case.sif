@@ -19,8 +19,8 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Output Intervals = 1
+
   Post File = case.vtu
-  Set Dirichlet BCs by BC Numbering = True
 End
 
 Constants
@@ -47,12 +47,16 @@ Solver 1
 ! activates also the newtonian linearization of viscosity
 ! For some reason it does not improve things? 
 
-!  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Iterations = 100
   Nonlinear System Relaxation Factor = 1.0
-!  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Tolerance = 0.0
 
 ! This is set True by default both in FlowSolve and this solver
-  Relative Pressure Relaxation = Logical False
+!  Relative Pressure Relaxation = Logical True
+
+  Linear System Scaling = False
+
+  Relative Integration Order = 1
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BicgstabL
@@ -103,8 +107,15 @@ Boundary Condition 2
 End
 
 Boundary Condition 3
-  Target Boundaries(2) = 1 3
-  Name = "TopBottom"
+  Target Boundaries(1) = 1 
+  Name = "Bottom"
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 3
+  Name = "Top"
   Velocity 1 = 0.0
   Velocity 2 = 0.0
 End

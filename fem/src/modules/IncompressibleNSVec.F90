@@ -548,8 +548,9 @@ END BLOCK
       REAL(KIND=dp), SAVE :: R
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Temp, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond 
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:)
-      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:) 
-
+      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
+      REAL(KIND=dp), ALLOCATABLE, SAVE :: ArrheniusFactorVec(:)
+      INTEGER, SAVE :: ngpallo = -1
       
 !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec)
      
@@ -677,7 +678,34 @@ END BLOCK
           A2 = ListGetElementReal( ViscRate2_h,Element=Element)
           Q1 = ListGetElementReal( ViscEne1_h,Element=Element)
           Q2 = ListGetElementReal( ViscEne2_h,Element=Element)
+#if 1
+          TempVec => ListGetElementRealVec( ViscTemp_h, ngp, BasisVec, Element )
 
+          IF( ngpallo < ngp ) THEN
+            IF( ngpallo > 0 ) DEALLOCATE( ArrheniusFactorVec )
+            ALLOCATE( ArrheniusFactorVec(ngp) )
+            ngpallo = ngp
+          END IF
+          
+          WHERE( TempVec(1:ngp ) < Tlimit )
+            ArrheniusFactorVec(1:ngp) = A1 * EXP( -Q1/(R * (273.15_dp + TempVec(1:ngp))))
+          ELSE WHERE( TempVec(1:ngp) > 0.0_dp ) 
+            ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp)))
+          ELSE WHERE
+            ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp + TempVec(1:ngp))))
+          END WHERE
+          
+          EhfVec => ListGetElementRealVec( ViscGlenFactor_h, ngp, BasisVec,Element=Element )
+          ViscVec(1:ngp) = 0.5_dp * (EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) * &
+              s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+          
+          IF( ViscNewton ) THEN
+            WHERE( s(1:ngp) > c3 ) 
+              ViscDerVec(1:ngp) = 0.5_dp * (  EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) &
+                    * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+            END WHERE
+          END IF                      
+#else 
           DO i=1,ngp
             Temp = ListGetElementReal( ViscTemp_h,BasisVec(i,:),Element=Element,&
                 Found=Found,GaussPoint=i)
@@ -706,6 +734,8 @@ END BLOCK
             END IF
             
           END DO
+#endif 
+          
         END IF
         
 
@@ -722,7 +752,7 @@ END BLOCK
        
         IF (ViscNewton ) THEN
           WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
-              ViscVec0(1:ngp) * (c2-1)/2 * ss(i)**((c2-1)/2-1)
+              ViscVec0(1:ngp) * (c2-1)/2 * ss(1:ngp)**((c2-1)/2-1)
         END IF
         
         c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
@@ -750,7 +780,8 @@ END BLOCK
           ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
           
           IF( ViscNewton ) THEN
-            ViscDerVec(1:ngp) = c1*(1+c3**c4*ss**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*ss(1:ngp)**(c4/2-1)
+            ViscDerVec(1:ngp) = c1*(1+c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*&
+                ss(1:ngp)**(c4/2-1)
           END IF
         ELSE
           ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
@@ -777,18 +808,23 @@ END BLOCK
 
         s(1:ngp) = SQRT(ss(1:ngp))
 
-        DO i=1,ngp          
-          IF(c2*s(i) < 1.0d-5) THEN
-            ViscVec(i) = ViscVec0(i) + c1
-          ELSE
-            ViscVec(i) = ViscVec0(i) + c1 * LOG(c2*s(i)+SQRT(c2*c2*ss(i)+1))/(c2*ss(i))
-
-            IF( ViscNewton ) THEN
-              ViscDerVec(i) =  c1*(c2/(2*s(i))+c2**2/(2*SQRT(c2**2*ss(i)+1)))/((c2*s(i)+SQRT(c2*ss(i)+1))*c2*s(i)) - &
-                  c1*LOG(c2*s(i)+SQRT(c2**2*ss(i)+1))/(c2*s(i)**3)/2
-            END IF
-          END IF
-        END DO
+        IF( ViscNewton ) THEN          
+          WHERE( c2*s(1:ngp) < 1.0d-5 )
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
+            ViscDerVec(1:ngp) = 0.0_dp
+          ELSE WHERE
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+            ViscDerVec(1:ngp) = c1*(c2/(2*s(1:ngp))+c2**2/(2*SQRT(c2**2*ss(1:ngp)+1)))/ &
+                ((c2*s(1:ngp)+SQRT(c2*ss(1:ngp)+1))*c2*s(1:ngp)) - &
+                c1*LOG(c2*s(1:ngp)+SQRT(c2**2*ss(1:ngp)+1))/(c2*s(1:ngp)**3)/2
+          END WHERE
+        ELSE
+          WHERE( c2*s(1:ngp) < 1.0d-5 )
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
+          ELSE WHERE
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+          END WHERE
+        END IF
 
       CASE DEFAULT 
         CALL Fatal('EffectiveViscosityVec','Unknown material model')
@@ -1165,6 +1201,8 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
 
   ! Study only velocity components in linear system
   CALL ListAddNewInteger(Params, 'Nonlinear System Norm DOFs', dim )
+
+  ! This should be true to incompressible flows where pressure level is not uniquely determined
   CALL ListAddNewLogical(Params, 'Relative Pressure Relaxation', .TRUE. )
 
   ! Automate the choice for the variational formulation:
