@@ -2497,6 +2497,13 @@ CONTAINS
             END IF
           END IF
 
+          !Check geom id is legal
+          IF(geom_id <= 0 .OR. geom_id > Model % NumberOfBCs) THEN
+            PRINT *, ParEnv % MyPE,'Received element ',i,' from part: ',&
+                 part,' with constraint: ',geom_id
+            CALL Fatal(Caller, "Unexpected constraint on BC element")
+          END IF
+
           Element % BoundaryInfo % Constraint = geom_id
           Element % BodyId  = ListGetInteger( &
              Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
