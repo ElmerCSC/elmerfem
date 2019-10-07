@@ -223,8 +223,8 @@
      ALLOCATE(FNColumns(Mesh % NumberOfNodes))
      FNColumns = MOD(Mesh % ParallelInfo % GlobalDOFs, NodesPerLevel)
 
-     PRINT *,ParEnv % MyPE, ' debug, nodesperlevel, totalnodes, extrudedlevels: ',&
-          NodesPerLevel, TotalNOdes, ExtrudedLevels
+     !PRINT *,ParEnv % MyPE, ' debug, nodesperlevel, totalnodes, extrudedlevels: ',&
+     !     NodesPerLevel, TotalNOdes, ExtrudedLevels
    END IF
 
    !Get the elevation variable
@@ -254,6 +254,8 @@
    Material => GetMaterial()
    SeaLevel = GetCReal(Material, 'Sea Level', Found)
    IF(.NOT. Found) SeaLevel = 0.0_dp
+   !PRINT *, 'P1',ParEnv % myPE
+   !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
    IF(Calving) THEN
      !Find all GL nodes on hydromesh
@@ -390,6 +392,8 @@
        END DO !j
      END DO !i
      DEALLOCATE(DistArray, BMRDistArray, XArray, YArray, ZArray)
+     !PRINT *, 'P2',ParEnv % myPE
+     !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
      !If distance < mesh res, continue
      !If distance > mesh res, but < (say) 500m, also continue (probably means
@@ -479,6 +483,8 @@
      !IF(PlCount > 0 .AND. MAXVAL(PlFinalQ)<1E-4) THEN
        !PlCount = 0
      !END IF
+     !PRINT *, 'P3',ParEnv % myPE
+     !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
      !Link everything up to the output array at relevant points further down
      !Model (at moment) has vertical calving front, so, for plume model, xi is
@@ -560,6 +566,8 @@
        END DO
        IF(Output == 0) PlCount = 0
      END IF !PlCount > 0
+     !PRINT *, 'P4',ParEnv % myPE
+     !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
      
      !Work out whether x or y axis is major frontal axis
      !Allocate TotalPlCount and OutputSize to give fixed size for MPI - ensures
@@ -614,7 +622,8 @@
          PlZ(:) = 9999.0
          PlMR(:) = -10000.0
        END IF
-       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+       !PRINT *, 'P5',ParEnv % myPE
+       !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
      
        !MPI stuff to make everything available to all processes - send z and MR 
        !to separate arrays using PlCount as row index, I think
@@ -664,6 +673,8 @@
          END DO
          DEALLOCATE(Row)
        END IF
+       !PRINT *, 'P6',ParEnv % myPE
+       !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        !MPI call to send full final plume arrays to every partition
        CALL MPI_BCAST(PlZArray, OutputSize*TotalPlCount, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
@@ -1213,10 +1224,16 @@
    END IF !Not Calving
 
    IF(Calving .AND. TotalPlCount > 0) THEN
+     !PRINT *, 'P7',ParEnv % myPE
+     !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
    !Get model outputs into BMelt variable
      ALLOCATE(SearchIndex(2), FPOLZ(OutputSize), FPOLMR(OutputSize))
      DO i=1, Mesh % NumberOfNodes
        IF(MeltPerm(i) <= 0) CYCLE
+       IF(Mesh % Nodes % z(i) .GE. 0.0) THEN
+          PMeltRate(MeltPerm(i)) = 0.0
+          CYCLE
+       END IF
        IF(AxisIndex==1) THEN
          Node = Mesh % Nodes % x(i)
        ELSE
@@ -1274,14 +1291,16 @@
        !Then linearly interpolate between the two resulting melt values at that
        !depth and then add Gaussian decay, if relevant (i.e. if off one end of
        !plume list)
-       IF(PlDist(1) == 0) THEN
+       IF(PlDist(1) == 0.0) THEN
          PlProp = 0.0
        ELSE      
          PlProp = (PlDist(2)) / (PlDist(1))
        END IF
        PMeltRate(MeltPerm(i)) = (PlProp * Plume1MR + ((1-PlProp) * Plume2MR))
        IF(NoPlume) THEN
-         PMeltRate(MeltPerm(i)) = PMeltrate(MeltPerm(i)) * EXP(-(PlDist(2))**2.0)
+         IF(PlDist(2) .NE. 0.0) THEN
+           PMeltRate(MeltPerm(i)) = PMeltrate(MeltPerm(i)) * EXP(-(PlDist(2))**2.0)
+         END IF
        END IF
        IF(PMeltRate(MeltPerm(i)) < 0.0) PMeltRate(MeltPerm(i)) = 0.0
 
@@ -1290,6 +1309,8 @@
      DEALLOCATE(SearchIndex, FPOLZ, FPOLMR)
      NULLIFY(ZPointer, MRPointer)
    END IF
+   !PRINT *, 'P8',ParEnv % myPE
+   !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
    IF(RemoveToe) THEN
      !Identify columns of front nodes, and add artificial 'toe' melting to
@@ -1331,6 +1352,10 @@
 
          aboveIdx = MeltPerm(ColumnPerm(OrderPerm(i+1)))
          meIdx = MeltPerm(ColumnPerm(OrderPerm(i)))
+         IF(WorkNodes % z(i) .GE. 0.0) THEN
+           ToeMeltRate(meIdx) = 0.0
+           CYCLE
+         END IF
 
          aboveMelt = PMeltRate(aboveIdx) + BMeltRate(aboveIdx) + ToeMeltRate(aboveIdx)
          meMelt = PMeltRate(meIdx) + BMeltRate(meIdx) + ToeMeltRate(meIdx)
@@ -1347,6 +1372,8 @@
      END DO
      DEALLOCATE(FNColumns)
    END IF
+   !PRINT *, 'P9',ParEnv % myPE
+   !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
    !Possibility to scale plume and background melt contributions to observed average
    IF(AverageMelt .OR. OutputStats) THEN
@@ -1461,6 +1488,8 @@
         IF(Debug) PRINT *,'Plume, Scaling plume melt by factor: ', scale
       END IF
     END IF
+    !PRINT *, 'P10',ParEnv % myPE
+    !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     IF(OutputStats) THEN
       IF(ParEnv % MyPE == 0) THEN
@@ -1497,6 +1526,8 @@
         CLOSE( OutFileUnit )
       END IF
     END IF
+    !PRINT *, 'P11',ParEnv % myPE
+    !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     !Total melt rate is background rate + plume
     MeltRate = PMeltRate + BMeltRate
@@ -1505,9 +1536,11 @@
       MeltRate = MeltRate + ToeMeltRate
       ToeCalveVar % Values = ToeMeltRate
     END IF
-    
+   
+    !Sometimes, if there's not much water in the system, the ODE solver will
+    !generate NaNs in some places. This will just zero them out. 
     DO i=1,SIZE(MeltRate)
-      IF(ISNAN(MeltRate(i))) MeltRate(i) = 10000.0_dp
+      IF(ISNAN(MeltRate(i))) MeltRate(i) = 0.0_dp
     END DO
     
     NULLIFY(WorkVar, WorkSolver, HydroMesh, Edge, ZOutput, MROutput, WorkVar2,&
