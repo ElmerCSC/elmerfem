@@ -3698,7 +3698,8 @@ END IF
      REAL(KIND=dp) :: DetJWrk(VECTOR_BLOCK_LENGTH)
      REAL(KIND=dp) :: LtoGMapsWrk(VECTOR_BLOCK_LENGTH,3,3)
      
-     INTEGER :: i
+     INTEGER :: i, l, n, dim, cdim, ll, ncl, lln
+     LOGICAL :: elem
 !DIR$ ATTRIBUTES ALIGN:64::uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGMapsWrk
      
      !------------------------------------------------------------------------------
@@ -3724,13 +3725,62 @@ END IF
      IF(PRESENT(dBasisdx))  &
        dBasisdx = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
-     retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
-           uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
+     IF(ASSOCIATED(Element % PDefs) .OR. Element % Type % BasisFunctionDegree<2) THEN
+       retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
+             uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
+     ELSE
+       retval = .TRUE.
+       n    = Element % TYPE % NumberOfNodes
+       dim  = Element % TYPE % DIMENSION
+       cdim = CoordinateSystemDimension()
+
+       DO ll=1,nc,VECTOR_BLOCK_LENGTH
+         lln = MIN(ll+VECTOR_BLOCK_LENGTH-1,nc)
+         ncl = lln-ll+1
+
+         ! Block copy input
+         uWrk(1:ncl) = u(ll:lln)
+         IF (cdim > 1) THEN
+           vWrk(1:ncl) = v(ll:lln)
+         END IF
+         IF (cdim > 2) THEN
+           wWrk(1:ncl) = w(ll:lln)
+         END IF
+
+         DO l=1,ncl
+           CALL NodalBasisFunctions(n, Basis(l,:), element, uWrk(l), vWrk(l), wWrk(l))
+           CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l))
+           !--------------------------------------------------------------
+         END DO
+
+         ! Element (contravariant) metric and square root of determinant
+         !--------------------------------------------------------------
+         elem = ElementMetricVec( Element, Nodes, ncl, n, DetJWrk, &
+                nbmax, dBasisdxWrk, LtoGMapsWrk )
+
+         IF (.NOT. elem) THEN
+           retval = .FALSE.
+           RETURN
+           END IF
+
+         !_ELMER_OMP_SIMD
+         DO i=1,ncl
+           DetJ(i+ll-1)=DetJWrk(i)
+         END DO
+
+         ! Get global basis functions
+         !--------------------------------------------------------------
+         ! First derivatives
+         IF (PRESENT(dBasisdx)) THEN
+!DIR$ FORCEINLINE
+           CALL ElementInfoVec_ElementBasisToGlobal(ncl, n, nbmax, dBasisdxWrk, dim, cdim, LtoGMapsWrk, ll, dBasisdx)
+         END IF
+       END DO
+     END IF
    END FUNCTION ElementInfoVec
      
    FUNCTION ElementInfoVec_ComputePElementBasis(Element, Nodes, nc, u, v, w, DetJ, nbmax, Basis, &
-                                                uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, &
-                                                DetJWrk, LtoGmapsWrk, dBasisdx) RESULT(retval)
+      uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGmapsWrk, dBasisdx) RESULT(retval)
      IMPLICIT NONE
      TYPE(Element_t), TARGET :: Element    !< Element structure
      TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
