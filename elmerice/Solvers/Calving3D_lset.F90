@@ -36,7 +36,8 @@
    USE CalvingGeometry
    USE MainUtils
    USE InterpVarToVar
- 
+   USE MeshUtils
+
    IMPLICIT NONE
 
 !-----------------------------------------------
@@ -45,9 +46,10 @@
    REAL(KIND=dp) :: dt
    LOGICAL :: TransientSimulation
 !-----------------------------------------------
-   TYPE(ValueList_t), POINTER :: Params
+   TYPE(ValueList_t), POINTER :: Params, MeshParams => NULL()
    TYPE(Variable_t), POINTER :: CalvingVar, &  ! TO DO rm many unused variables here
-        DistVar, CIndexVar, HeightVar, CrevVar, TimestepVar,SignDistVar
+        DistVar, CIndexVar, HeightVar, CrevVar, TimestepVar,SignDistVar, HitCountVar, &
+        IsolineIDVar
    TYPE(Solver_t), POINTER :: PCSolver => NULL(), &
         VTUOutputSolver => NULL(), IsoSolver => NULL()
    TYPE(Matrix_t), POINTER :: StiffMatrix
@@ -56,21 +58,17 @@
    TYPE(Nodes_t), TARGET :: WorkNodes, FaceNodesT, LeftNodes, RightNodes, FrontNodes
    TYPE(Nodes_t), POINTER :: WriteNodes
    INTEGER :: i,j,jmin,k,n,counter, dim, dummyint, TotalNodes, NoNodes, &
-!        comm, ierr, Me, PEs, ExtrudedLevels, FaceNodeCount, start, fin, &
-!        stride, MaxNN, Next, NodesPerLevel, LeftTgt, RightTgt, &
         comm, ierr, Me, PEs, FaceNodeCount, start, fin, &
-        stride, MaxNN, Next, LeftTgt, RightTgt, &   
         county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
         WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
         FrontLineCount, ShiftIdx,NoCrevNodes, NoPaths
    INTEGER, PARAMETER :: GeoUnit = 11
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
-        PlaneFrontPerm(:)=>NULL(), PlaneLeftPerm(:)=>NULL(), &
-        PlaneRightPerm(:)=>NULL(), NodeNums(:), FrontNodeNums(:), RightNodeNums(:), &
-        LeftNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), ColumnPerm(:), &
+        NodeNums(:), FrontNodeNums(:), &
+        LeftNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), &
         CIndexPerm(:), BList(:), WorkPerm(:), InterpDim(:),&
-        OrderPerm(:), SignDistPerm(:)
+        OrderPerm(:), SignDistPerm(:), NodeIndexes(:)
    INTEGER, ALLOCATABLE :: MyFaceNodeNums(:), PFaceNodeCount(:),&
         !FNColumns(:),
         disps(:), WritePoints(:), CrevEnd(:),CrevStart(:),FrontColumnList(:) ! TO DO rm frontcolumnlist
@@ -101,8 +99,8 @@
         SaveParallelActive, InGroup, PauseSolvers, LeftToRight, MovedOne, ShiftSecond, &
         MoveMesh=.FALSE.
    LOGICAL, POINTER :: UnfoundNodes(:)=>NULL(), PWorkLogical(:)
-   LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), &
-        DeleteMe(:), IsCalvingNode(:), WorkLogical(:)
+   LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), IMOnMargin(:), &
+        DeleteMe(:), IsCalvingNode(:), WorkLogical(:), PlaneEdgeElem(:)
 
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath, ClosestPath
 
@@ -166,7 +164,8 @@
    CIndexValues => CIndexVar % Values
    CIndexPerm => CIndexVar % Perm
 
-   !This solver's variable, two dofs, holds x and y pseudo mesh update
+   !This solver's variable - holds the levelset value for
+   ! CalvingRemeshMMG - negative where calving occurs
    CalvingVar => Solver % Variable
    IF(.NOT.ASSOCIATED(CalvingVar)) &
       CALL Fatal(SolverName, "Find_Calving3D_Lset has no variable!")
@@ -236,458 +235,33 @@
    ! 3D extension: If any ( planar principal stress + water_pressure) > 0, crevasse exists
    !-----------------------------------------------------------
 
-!--------------Generate 2D plane mesh-------------------
-
-   !Use GetDomainEdge for Front, Left and Right
-   !Returns full domain edge to Boss partition only
-   CALL GetDomainEdge(Model, Mesh, TopPerm, LeftMaskName, &
-        LeftNodes, LeftNodeNums, Parallel, Simplify=.FALSE.) ! TO DO add MinDist here?
-   CALL GetDomainEdge(Model, Mesh, TopPerm, RightMaskName, &
-        RightNodes, RightNodeNums, Parallel, Simplify=.FALSE.)  ! TO DO add MinDist here?
-   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontMaskName, &
-        FrontNodes, FrontNodeNums, Parallel, Simplify=.FALSE.)  ! TO DO add MinDist here?
-
-   !Determine whether front columns are arranged
-   !left to right, and reorder if not. useful later...
-   IF(Boss) THEN
-     FrontLineCount = SIZE(FrontNodeNums)
-
-     NodeHolder(1) = FrontNodes % x(1)
-     NodeHolder(2) = FrontNodes % y(1)
-     NodeHolder(3) = FrontNodes % z(1)
-     NodeHolder = MATMUL(RotationMatrix, NodeHolder)
-     y_coord(1) = NodeHolder(2)
-
-     NodeHolder(1) = FrontNodes % x(FrontLineCount)
-     NodeHolder(2) = FrontNodes % y(FrontLineCount)
-     NodeHolder(3) = FrontNodes % z(FrontLineCount)
-     NodeHolder = MATMUL(RotationMatrix, NodeHolder)
-     y_coord(2) = NodeHolder(2)
-
-     LeftToRight = y_coord(2) > y_coord(1)
-
-     IF(.NOT. LeftToRight) THEN
-       IF(Debug) PRINT *,'Debug, switching to LeftToRight'
-       FrontNodeNums = FrontNodeNums(FrontLineCount:1:-1)
-       FrontNodes % x = FrontNodes % x(FrontLineCount:1:-1)
-       FrontNodes % y = FrontNodes % y(FrontLineCount:1:-1)
-       FrontNodes % z = FrontNodes % z(FrontLineCount:1:-1)
-     END IF
-   END IF
-
-   IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
-   IF(Boss) THEN
-      !Remove Left and Right nodes beyond the calving search distance
-      !NOTE: technically this doesn't guarantee that resulting nodes
-      !will be a contiguous subsection of the original, but it almost
-      !certainly will be the case
-
-      IF(ANY(FrontNodeNums == LeftNodeNums(1))) THEN
-         LeftTgt = 1
-      ELSE
-         LeftTgt = LeftNodes % NumberOfNodes
-      END IF
-
-      IF(ANY(FrontNodeNums == RightNodeNums(1))) THEN
-         RightTgt = 1
-      ELSE
-         RightTgt = RightNodes % NumberOfNodes
-      END IF
-
-      ALLOCATE(RemoveNode(LeftNodes % NumberOfNodes))
-      RemoveNode = .FALSE.
-      DO i=1,LeftNodes % NumberOfNodes
-         IF(NodeDist2D(LeftNodes, LeftTgt, i) > MaxMeshDist) &
-              RemoveNode(i) = .TRUE.
-      END DO
-      CALL RemoveNodes(LeftNodes, RemoveNode, LeftNodeNums)
-      DEALLOCATE(RemoveNode)
-
-      ALLOCATE(RemoveNode(RightNodes % NumberOfNodes))
-      RemoveNode = .FALSE.
-      DO i=1,RightNodes % NumberOfNodes
-         IF(NodeDist2D(RightNodes, RightTgt, i) > MaxMeshDist) &
-              RemoveNode(i) = .TRUE.
-      END DO
-      CALL RemoveNodes(RightNodes, RemoveNode, RightNodeNums)
-      DEALLOCATE(RemoveNode)
-
-   END IF
-
-   !---------------------------------------------
-   !
-   ! Get maximum coverage of calving front (i.e. vertical shadow of front)
-   !
-   !---------------------------------------------
-
-    !Cycle all boundary elements in current partition, get calving face nodes
-    ALLOCATE(MyFaceNodeNums(FaceNodeCount))
-    j = 0
-    DO i=1, NoNodes
-       IF(FrontPerm(i) <= 0) CYCLE
-       j = j + 1
-       MyFaceNodeNums(j) = i
-    END DO
-    !Now MyFaceNodeNums is a list of all nodes on the calving boundary.
-
-    !Send calving front nodes to boss partition
-    IF(Parallel) THEN
-
-       Me = ParEnv % MyPe
-       PEs = ParEnv % PEs
-       comm = ELMER_COMM_WORLD
-
-       !Send node COUNT
-       IF(Boss) ALLOCATE(PFaceNodeCount(PEs))
-
-       CALL MPI_GATHER(FaceNodeCount,1,MPI_INTEGER,PFaceNodeCount,&
-            1,MPI_INTEGER, 0, comm, ierr)
-
-       IF(Boss) THEN
-          FaceNodesT % NumberOfNodes = SUM(PFaceNodeCount)
-          n = FaceNodesT % NumberOfNodes
-          ALLOCATE(FaceNodeNums(n),&
-               FaceNodesT % x(n),&
-               FaceNodesT % y(n),&
-               FaceNodesT % z(n),&
-               disps(PEs)) !variable to hold array offset from each proc
-          !work out where in array to put data from each proc
-          !how to deal with zero size?
-          disps(1) = 0
-          DO i=2,PEs
-             disps(i) = disps(i-1) + PFaceNodeCount(i-1)
-          END DO
-       END IF
-
-       !Global NodeNumbers
-       CALL MPI_GATHERV(Mesh % ParallelInfo % GlobalDOFs(MyFaceNodeNums),&
-            FaceNodeCount,MPI_INTEGER,&
-            FaceNodeNums,PFaceNodeCount,&
-            disps,MPI_INTEGER,0,comm, ierr)
-       !X coords
-       CALL MPI_GATHERV(Mesh % Nodes % x(MyFaceNodeNums),&
-            FaceNodeCount,MPI_DOUBLE_PRECISION,&
-            FaceNodesT % x,PFaceNodeCount,&
-            disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
-       !Y coords
-       CALL MPI_GATHERV(Mesh % Nodes % y(MyFaceNodeNums),&
-            FaceNodeCount,MPI_DOUBLE_PRECISION,&
-            FaceNodesT % y,PFaceNodeCount,&
-            disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
-       !Z coords
-       CALL MPI_GATHERV(Mesh % Nodes % z(MyFaceNodeNums),&
-            FaceNodeCount,MPI_DOUBLE_PRECISION,&
-            FaceNodesT % z,PFaceNodeCount,&
-            disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
-
-       IF(Boss) THEN
-          IF(Debug) THEN
-             PRINT *, 'Debug Remesh, pre removal nodes: '
-             DO i=1,FaceNodesT % NumberOfNodes
-                PRINT *, FaceNodesT % x(i),FaceNodesT % y(i),FaceNodesT % z(i)
-             END DO
-          END IF
-
-          !Remove duplicates!!!
-          ALLOCATE(RemoveNode(FaceNodesT % NumberOfNodes))
-          RemoveNode = .FALSE.
-          DO i=2,FaceNodesT % NumberOfNodes
-             IF(ANY(FaceNodeNums(1:i-1) == FaceNodeNums(i))) THEN
-                RemoveNode(i) = .TRUE.
-             END IF
-          END DO
-
-          CALL RemoveNodes(FaceNodesT, RemoveNode, FaceNodeNums)
-
-          IF(Debug) THEN
-             PRINT *, 'Size of FaceNodeNums: ', SIZE(FaceNodeNums)
-             PRINT *, 'Debug Calving3D, post removal nodes: '
-             DO i=1,FaceNodesT % NumberOfNodes
-                PRINT *, FaceNodesT % x(i),FaceNodesT % y(i),FaceNodesT % z(i)
-             END DO
-          END IF
-       END IF
-
-    ELSE !Serial
-       n = FaceNodeCount
-       ALLOCATE(FaceNodeNums(n),&
-            FaceNodesT % x(n),&
-            FaceNodesT % y(n),&
-            FaceNodesT % z(n))
-
-       !This seems a little redundant but it saves
-       !some lines of code later on...
-       FaceNodeNums = MyFaceNodeNums
-       FaceNodesT % x = Mesh % Nodes % x(MyFaceNodeNums)
-       FaceNodesT % y = Mesh % Nodes % y(MyFaceNodeNums)
-       FaceNodesT % z = Mesh % Nodes % z(MyFaceNodeNums)
-    END IF
-
-    !--------------------------------------------------------------------
-
-    !Need global mesh structure info
-    IF(Parallel) THEN
-       !Rather than summing NoNodes from each part, we simply find
-       !the maximum global node number
-       CALL MPI_AllReduce(MAXVAL(Mesh % ParallelInfo % GlobalDOFs), TotalNodes, &
-            1, MPI_INTEGER, MPI_MAX, comm,ierr)
-       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
-    ELSE
-       TotalNodes = NoNodes
-    END IF
- 
-    rt = RealTime() - rt0
-    IF(ParEnv % MyPE == 0) &
-         PRINT *, 'Time taken up to mesh creation: ', rt
-    rt0 = RealTime()
-
-    IF(Boss) THEN
-
-       !Produce gmsh .geo file
-       WRITE(filename,'(A,A)') TRIM(filename_root), ".geo"
-
-       OPEN( UNIT=GeoUnit, FILE=filename, STATUS='UNKNOWN')
-
-       WriteNodeCount = SIZE(FrontNodeNums) + &
-            SIZE(LeftNodeNums) + &
-            SIZE(RightNodeNums) - 2
-
-       !-------------Write Points---------------
-       ALLOCATE(WritePoints(WriteNodeCount))
-       counter = 1
-       DO i=1,3 !cycle boundaries
-          SELECT CASE(i)
-          CASE(1) !left
-             WriteNodes => LeftNodes
-             NodeNums => LeftNodeNums
-          CASE(2) !front
-             WriteNodes => FrontNodes
-             NodeNums => FrontNodeNums
-          CASE(3) !right
-             WriteNodes => RightNodes
-             NodeNums => RightNodeNums
-          END SELECT
-
-          n = WriteNodes % NumberOfNodes
-          IF(n /= SIZE(NodeNums)) CALL Fatal("Calving3D","Size mismatch in perm size")
-
-          !Determine order
-          IF(i==1) THEN !left edge, find which end neighbours calving front
-             IF(ANY(FrontNodeNums == LeftNodeNums(1))) THEN
-                start=n;fin=2;stride=-1
-                next = NodeNums(1)
-             ELSE IF(ANY(FrontNodeNums == LeftNodeNums(SIZE(LeftNodeNums)))) THEN
-                start=1;fin=n-1;stride=1
-                next = NodeNums(n)
-             ELSE
-                CALL Fatal(SolverName,"Problem joining up a closed loop for footprint mesh.")
-             END IF
-          ELSE
-             IF(NodeNums(1)==next) THEN
-                start=1;fin=n-1;stride=1
-                IF(i==3) fin = n
-                next = NodeNums(n)
-             ELSE IF(NodeNums(n)==next) THEN
-                start=n;fin=2;stride=-1
-                IF(i==3) fin = 1
-                next = NodeNums(1)
-             ELSE
-                PRINT *, 'i, NodeNums(1), (n), next: ',i,NodeNums(1), NodeNums(n), next
-                CALL Fatal(SolverName,"Problem joining up a closed loop for footprint mesh.")
-             END IF
-          END IF
-
-          DO j=start,fin,stride !cycle nodes except last, these are overlap
-             WRITE( GeoUnit,'(A,I0,A,ES20.11,A,ES20.11,A,ES20.11,A,ES20.11,A)')&
-                  'Point(',NodeNums(j),') = {',&
-                  WriteNodes % x(j),',',&
-                  WriteNodes % y(j),',',&
-                  0.0,',',& !don't need z coord for footprint
-                  MeshEdgeMinLC,'};'
-             WritePoints(counter) = NodeNums(j)
-             counter = counter + 1
-          END DO
-          WRITE(GeoUnit,'(A)') ''
-       END DO
-
-       !---------------Write lines------------------
-       DO i=1,WriteNodeCount-1
-          WRITE( GeoUnit,'(A,i0,A,i0,A,i0,A)') 'Line(',WritePoints(i),') = {'&
-               ,WritePoints(i),',',WritePoints(i+1),'};'
-       END DO
-       WRITE( GeoUnit,'(A,i0,A,i0,A,i0,A)') 'Line(',WritePoints(WriteNodeCount),') = {',&
-            WritePoints(WriteNodeCount),',',WritePoints(1),'};'
-
-       !------------Write physical lines-------------
-       counter = 1
-       DO i=1,3 !cycle boundaries
-          SELECT CASE(i)
-          CASE(1) !left
-             NodeNums => LeftNodeNums
-             MaskName = LeftMaskName
-          CASE(2) !front
-             NodeNums => FrontNodeNums
-             MaskName = FrontMaskName
-          CASE(3) !right
-             NodeNums => RightNodeNums
-             MaskName = RightMaskName
-          END SELECT
-
-
-          !Find BC number for physical line
-          DO j=1,Model % NumberOfBCs
-             Found = ListCheckPresent(Model % BCs(j) % Values,MaskName)
-             IF(Found) THEN
-                BList => ListGetIntegerArray( Model % BCs(j) % Values, &
-                     'Target Boundaries', Found )
-                IF(SIZE(BList)>1) CALL Fatal(SolverName,&
-                     "Could not uniquely determine target BC")
-                MeshBC = BList(1)
-                PMeshBCNums(i) = j !Use this later
-                EXIT
-             END IF
-          END DO
-          IF(Debug) THEN
-             PRINT *, 'Debug Calving3D, BC number for ',TRIM(MaskName),' is: ',MeshBC
-          END IF
-
-          WRITE(GeoUnit,'(A,i0,A)') 'Physical Line(',MeshBC,') = {'
-          DO j=1,SIZE(NodeNums)-2
-             WRITE(GeoUnit,'(i0,A)') WritePoints(counter),','
-             counter = counter + 1
-          END DO
-          !Last line
-          WRITE(GeoUnit,'(i0,A)') WritePoints(counter),'};'
-          counter = counter + 1
-       END DO
-
-       !--------------Write Line Loop-----------------
-       WRITE(GeoUnit, '(A)') 'Line Loop(1) = {'
-       DO i=1,WriteNodeCount-1
-          WRITE(GeoUnit,'(i0,A)') WritePoints(i),','
-       END DO
-       WRITE(GeoUnit,'(i0,A)') WritePoints(WriteNodeCount),'};'
-
-       WRITE(GeoUnit,'(A)') 'Plane Surface(1)={1};'
-       WRITE(GeoUnit,'(A)') 'Physical Surface(3)={1};'
-       !TODO, check existing number of bodies, write next, instead of '3'
-
-       !-------------Write attractor etc--------------
-       WRITE(GeoUnit,'(A)') 'Field[1] = Attractor;'
-       WRITE(GeoUnit,'(A)') 'Field[1].NNodesByEdge = 100.0;'
-       WRITE(GeoUnit,'(A)') 'Field[1].NodesList = {'
-       DO i=1,SIZE(FrontNodeNums)-1
-          WRITE(GeoUnit,'(I0,A)') FrontNodeNums(i),','
-       END DO
-       WRITE(GeoUnit,'(I0,A)') FrontNodeNums(SIZE(FrontNodeNums)),'};'
-
-       WRITE(GeoUnit, '(A)') 'Field[2] = Threshold;'
-       WRITE(GeoUnit, '(A)') 'Field[2].IField = 1;'
-       WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].LcMin = ',MeshEdgeMinLC,';'
-       WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].LcMax = ',MeshEdgeMaxLC,';'
-       WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].DistMin = ',MeshLCMinDist,';'
-       WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].DistMax = ',MeshLCMaxDist,';'
-
-       WRITE(GeoUnit, '(A)') 'Background Field = 2;'
-       WRITE(GeoUnit, '(A)') 'Mesh.CharacteristicLengthExtendFromBoundary = 0;'
-
-       rt = RealTime() - rt0
-       IF(ParEnv % MyPE == 0) &
-            PRINT *, 'Time taken to write mesh file: ', rt
-       rt0 = RealTime()
-
-       !-----------system call gmsh------------------
-       !'env -i' obscures all environment variables, so gmsh doesn't see any
-       !MPI stuff and break down.
-       CALL EXECUTE_COMMAND_LINE( "env -i PATH=$PATH LD_LIBRARY_PATH=$LD_LIBRARY_PATH gmsh -2 "// filename, .TRUE., ierr )
-
-       IF(ierr > 1) THEN
-         IF(ierr == 127) THEN
-           CALL Fatal(SolverName, "The 3D Calving implementation depends on GMSH, but this has not been found.")
-         END IF
-         WRITE(Message, '(A,i0)') "Error executing gmsh, error code: ",ierr
-         CALL Fatal(SolverName,Message)
-       END IF
-
-       rt = RealTime() - rt0
-       IF(ParEnv % MyPE == 0) &
-            PRINT *, 'Time taken to execute gmsh: ', rt
-       rt0 = RealTime()
-
-       !-----------system call ElmerGrid------------------
-       WRITE(Message, '(A,A,A)') "ElmerGrid 14 2 ",TRIM(filename_root),".msh"
-
-       CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
-       IF(ierr /= 0) THEN
-          WRITE(Message, '(A,i0)') "Error executing ElmerGrid, error code: ",ierr
-          CALL Fatal(SolverName,Message)
-       END IF
-
-
-    END IF !Boss only
-    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
-    rt = RealTime() - rt0
-    IF(ParEnv % MyPE == 0) &
-         PRINT *, 'Time taken to execute ElmerGrid: ', rt
-    rt0 = RealTime()
-
-    !Load the mesh
-    MeshDir = ""
-
-    CurrentModel % DIMENSION = 2
-    PlaneMesh => LoadMesh2( Model, MeshDir, filename_root, .FALSE., 1, 0 )
-    CurrentModel % DIMENSION = 3
-    !NOTE: checked that planemesh exists on every PE, seems fine
-
-    rt = RealTime() - rt0
-    IF(ParEnv % MyPE == 0) &
-         PRINT *, 'Time taken to load mesh: ', rt
-    rt0 = RealTime()
-
-    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
-    IF(Boss) THEN
-      ! clear up mesh files
-      CLOSE(GeoUnit)
-      IF(MoveMesh) THEN
-
-        !Make the directory
-        TimestepVar => VariableGet( Mesh % Variables, "Timestep", .TRUE. )
-        WRITE(MoveMeshFullPath,'(A,A,I4.4)') TRIM(MoveMeshDir), &
-             TRIM(filename_root),INT(TimestepVar % Values(1))
-
-        WRITE(Message,'(A,A)') "mkdir -p ",TRIM(MoveMeshFullPath)
-        CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
-
-        !Move the files
-
-        WRITE(Message,'(A,A,A,A)') "mv ",TRIM(filename_root),"* ",&
-             TRIM(MoveMeshFullPath)
-        CALL EXECUTE_COMMAND_LINE( Message, .TRUE., ierr )
-
-      ELSE
-        WRITE(Message,'(A,A,A,A,A,A)') "rm -r ",TRIM(filename)," ",&
-             TRIM(filename_root),".msh ",TRIM(filename_root)
-        CALL EXECUTE_COMMAND_LINE( Message, .FALSE., ierr )
-      END IF
-    END IF
-
+   !TODO here - rotate the main mesh, or determine the rotated extent
+   ! to pass for Grid Min X, etc
+
+    CALL ListAddConstReal(MeshParams,"Grid Mesh Min X",-100.0_dp)
+    CALL ListAddConstReal(MeshParams,"Grid Mesh Max X",5100.0_dp)
+    CALL ListAddConstReal(MeshParams,"Grid Mesh Min Y",-100.0_dp)
+    CALL ListAddConstReal(MeshParams,"Grid Mesh Max Y",2000.0_dp)
+    CALL ListAddConstReal(MeshParams,"Grid Mesh dx",20.0_dp)
+
+    PlaneMesh => CreateRectangularMesh(MeshParams)
     PlaneMesh % Name = "calving_plane"
     PlaneMesh % OutputActive = .TRUE.
     PlaneMesh % Changed = .TRUE.
+
+    ! CALL WriteMeshToDisk2(Model, PlaneMesh, ".")
+
+    rt = RealTime() - rt0
+    IF(ParEnv % MyPE == 0) &
+         PRINT *, 'Time taken to create rectangular mesh: ', rt
+    rt0 = RealTime()
+
+    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
     WorkMesh => Mesh % Next
     Mesh % Next => PlaneMesh
 
     CALL CopyIntrinsicVars(Mesh, PlaneMesh)
-
-    rt = RealTime() - rt0
-    IF(ParEnv % MyPE == 0) &
-         PRINT *, 'Time taken to tidy mesh files etc: ', rt
-    rt0 = RealTime()
 
     !----------------------------------------------------
     ! Project Calving Solver to get % fractured
@@ -732,8 +306,23 @@
     WorkReal = 0.0_dp
     CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "basal_cindex", &
          1, WorkReal, WorkPerm)
+    NULLIFY(WorkReal)
+
+    !Helper var for determining edges in isoline
+    ALLOCATE(WorkReal(n))
+    WorkReal = 0.0_dp
+    CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "isoline id", &
+         1, WorkReal, WorkPerm)
+    NULLIFY(WorkReal)
+
+    !Variable to hold the number of hits in ProjectCalving
+    ALLOCATE(WorkReal(n))
+    WorkReal = 0.0_dp
+    CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "hitcount", &
+         1, WorkReal, WorkPerm)
     NULLIFY(WorkReal, WorkPerm)
 
+    !Solver variable - crevasse penetration in range 0-1
     CrevVar => VariableGet(PlaneMesh % Variables, "ave_cindex", .TRUE.)
     PCSolver % Variable => CrevVar
     PCSolver % Matrix % Perm => CrevVar % Perm
@@ -765,21 +354,43 @@
 
     IF(Boss) THEN
 
-       !Generate PlaneMesh perms to quickly get nodes on each boundary
-       CALL MakePermUsingMask( Model, Solver, PlaneMesh, FrontMaskName, &
-            .FALSE., PlaneFrontPerm, dummyint)
-       CALL MakePermUsingMask( Model, Solver, PlaneMesh, LeftMaskName, &
-            .FALSE., PlaneLeftPerm, dummyint)
-       CALL MakePermUsingMask( Model, Solver, PlaneMesh, RightMaskName, &
-            .FALSE., PlaneRightPerm, dummyint)
+      HitCountVar => VariableGet(PlaneMesh % Variables, "hitcount", .TRUE.,UnfoundFatal=.TRUE.)
+      IsolineIdVar => VariableGet(PlaneMesh % Variables, "isoline id", .TRUE.,UnfoundFatal=.TRUE.)
 
-       ! Set ave_cindex values to 0.0 on front
-       ! In fact, right at the very front, ave_cindex is undefined,
-       ! but it ensures that isolines will contact the front
-       DO i=1, PlaneMesh % NumberOfNodes
-          IF(PlaneFrontPerm(i) > 0) CrevVar % Values(CrevVar % Perm(i)) = 0.0_dp
-       END DO
+      !Set PlaneMesh exterior nodes to ave_cindex = 1 (no calving)
+      !                             and IsolineID = 1 (exterior)
+      DO i=1,PlaneMesh % NumberOfNodes
+        IF(HitCountVar % Values(HitCountVar % Perm(i)) <= 0.0_dp) THEN
+          CrevVar % Values(CrevVar % Perm(i)) = 1.0
+          IsolineIDVar % Values(IsolineIDVar % Perm(i)) = 1.0
+        END IF
+      END DO
 
+      !PlaneMesh nodes in elements which cross the 3D domain boundary
+      !get ave_cindex = 0 (to enable CrevassePaths/isolines to reach the edge)
+      !Also mark elements which cross the edge of the 3D domain (TODO - not used!)
+      ALLOCATE(PlaneEdgeElem(PlaneMesh % NumberOfBulkElements))
+      PlaneEdgeElem = .FALSE.
+
+      DO i=1, PlaneMesh % NumberOfBulkElements
+        NodeIndexes => PlaneMesh % Elements(i) % NodeIndexes
+        n = PlaneMesh % Elements(i) % TYPE % NumberOfNodes
+
+        !Some but not all element nodes have hitcount == 0
+        IF((.NOT. ALL(HitCountVar % Values(HitCountVar % Perm(NodeIndexes(1:n))) <= 0.0_dp)) .AND. &
+             ANY(HitCountVar % Values(HitCountVar % Perm(NodeIndexes(1:n))) <= 0.0_dp)) THEN
+
+          PlaneEdgeElem(i) = .TRUE.
+
+          !Mark nodes just outside the edge to CrevVar = 0.0
+          DO j=1,n
+            IF(HitCountVar % Values(HitCountVar % Perm(NodeIndexes(j))) <= 0.0_dp) &
+                 CrevVar % Values(CrevVar % Perm(NodeIndexes(j))) = 0.0
+          END DO
+
+        END IF
+      END DO
+      PRINT *,'Debug - PlaneEdgeElem: ',COUNT(PlaneEdgeElem)
 
        ! Locate Isosurface Solver
        DO i=1,Model % NumberOfSolvers
@@ -805,7 +416,7 @@
        ParEnv % PEs = PEs
 
        !Immediately following call to Isosurface solver, the resulting
-       !isoline mesh is the last the list. We want to remove it from the
+       !isoline mesh is the last in the list. We want to remove it from the
        !Model % Mesh linked list and attach it to PlaneMesh
        WorkMesh => Model % Mesh
        DO WHILE(ASSOCIATED(WorkMesh % Next))
@@ -823,43 +434,71 @@
        !
        !-------------------------------------------------
 
+       !-------------------------------------------------
+       ! Need to map boundary info from the main
+       ! 3D mesh to the IsoMesh. We ask Isosurface Solver
+       ! to interpolate the 'Isoline ID' var, which is
+       ! 1 where the PlaneMesh didn't hit the 3D mesh, and
+       ! 0 elsewhere. This does not allow us to distinguish
+       ! between frontal and lateral Isomesh elements/nodes
+       ! but it identifies candidate boundary elements in
+       ! Isomesh.
+       !-------------------------------------------------
+
        ALLOCATE(IMOnFront(IsoMesh % NumberOfNodes), &
-            IMOnSide(IsoMesh % NumberOfNodes))
-       IMOnFront = .FALSE.; IMOnSide = .FALSE.
-       search_eps = EPSILON(PlaneMesh % Nodes % x(1))
+            IMOnSide(IsoMesh % NumberOfNodes),&
+            IMOnMargin(IsoMesh % NumberOfNodes))
+       IMOnFront=.FALSE.; IMOnSide=.FALSE.; IMOnMargin=.FALSE.
+       ! search_eps = EPSILON(PlaneMesh % Nodes % x(1))
 
+       IsolineIdVar => VariableGet(IsoMesh % Variables, "isoline id", .TRUE.,UnfoundFatal=.TRUE.)
        DO i=1, IsoMesh % NumberOfNodes
-          Found = .FALSE.
-          DO j=1, PlaneMesh % NumberOfNodes
-             IF(ABS(PlaneMesh % Nodes % x(j) - &
-                  IsoMesh % Nodes % x(i)) < search_eps) THEN
-                IF(ABS(PlaneMesh % Nodes % y(j) - &
-                     IsoMesh % Nodes % y(i)) < search_eps) THEN
-                   Found = .TRUE.
-                   EXIT
-                END IF
-             END IF
-          END DO
-          IF(.NOT. Found) THEN
-             WRITE(Message,'(A,i0,A)') "Unable to locate isomesh node ",i," in PlaneMesh."
-             CALL Fatal(SolverName, Message)
-          END IF
-
-          IF(PlaneFrontPerm(j) > 0) IMOnFront(i) = .TRUE.
-          IF((PlaneLeftPerm(j) > 0) .OR. &
-               (PlaneRightPerm(j) > 0)) IMOnSide(i) = .TRUE.
+         ImOnMargin(i) = IsolineIDVar % Values(IsolineIDVar % Perm(i)) > 0.0_dp
        END DO
+
+       !Now cycle elements: for those with a node either side
+       !of domain boundary, cycle 3d mesh boundary elements
+       !looking for a 2D intersection. This identifies the
+       !physical boundary for the isomesh node.
+       DO i=1, IsoMesh % NumberOfBulkElements
+         NodeIndexes => Isomesh % Elements(i) % NodeIndexes
+         IF(IMOnMargin(NodeIndexes(1)) .EQV. IMOnMargin(NodeIndexes(2))) CYCLE
+
+         !TODO - here - need efficient algorithm to find intersection
+       END DO
+
+       !    Found = .FALSE.
+       !    DO j=1, PlaneMesh % NumberOfNodes
+       !       IF(ABS(PlaneMesh % Nodes % x(j) - &
+       !            IsoMesh % Nodes % x(i)) < search_eps) THEN
+       !          IF(ABS(PlaneMesh % Nodes % y(j) - &
+       !               IsoMesh % Nodes % y(i)) < search_eps) THEN
+       !             Found = .TRUE.
+       !             EXIT
+       !          END IF
+       !       END IF
+       !    END DO
+       !    IF(.NOT. Found) THEN
+       !       WRITE(Message,'(A,i0,A)') "Unable to locate isomesh node ",i," in PlaneMesh."
+       !       CALL Fatal(SolverName, Message)
+       !    END IF
+
+       !    ! IF(PlaneFrontPerm(j) > 0) IMOnFront(i) = .TRUE.
+       !    ! IF((PlaneLeftPerm(j) > 0) .OR. &
+       !    !      (PlaneRightPerm(j) > 0)) IMOnSide(i) = .TRUE.
+       ! END DO
 
        IF(Debug) THEN
           PRINT *, 'debug, count IMOnFront: ', COUNT(IMOnFront)
           PRINT *, 'debug, count IMOnSide: ', COUNT(IMOnSide)
+          PRINT *, 'debug, count IMOnMargin: ', COUNT(IMOnMargin)
           PRINT *, 'debug, isomesh bulkelements,', IsoMesh % NumberOfBulkElements
           PRINT *, 'debug, isomesh boundaryelements,', IsoMesh % NumberOfBoundaryElements
           PRINT *, 'debug, size isomesh elements: ', SIZE(IsoMesh % Elements)
        END IF
 
        !-----------------------------------------------------------------
-       ! Cycle elements, deleting any which lie wholly on the front (or side)
+       ! Cycle elements, deleting any which lie wholly on a margin
        !-----------------------------------------------------------------
 
        ALLOCATE(DeleteMe( IsoMesh % NumberOfBulkElements ))
@@ -867,8 +506,7 @@
        DO i=1, IsoMesh % NumberOfBulkElements
           Element => IsoMesh % Elements(i)
           N = Element % TYPE % NumberOfNodes
-          IF(ALL(IMOnFront(Element % NodeIndexes(1:N))) .OR. &
-             ALL(IMOnSide(Element % NodeIndexes(1:N)))) THEN
+          IF(ALL(IMOnMargin(Element % NodeIndexes(1:N)))) THEN
              !delete the element, we don't need it
              DeleteMe(i) = .TRUE.
           END IF
@@ -878,8 +516,6 @@
 
        ALLOCATE(WorkElements(COUNT(.NOT. DeleteMe)))
        WorkElements = PACK(IsoMesh % Elements, (.NOT. DeleteMe))
-
-       PRINT *, 'debug, size of workelements: ', SIZE(WorkElements)
 
        IF(Debug) THEN
          DO i=1, SIZE(WorkElements)
@@ -908,10 +544,11 @@
        ! remain, but this also isn't a problem as InterpVarToVar
        ! cycles elements, not nodes.
 
-       CALL FindCrevassePaths(IsoMesh, IMOnFront, CrevassePaths, PathCount)
+       CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
+       !TODO - pull from MMigrate? - need to check logic here
        CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
-!Debug = .TRUE.    !Debugging statements
+
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
           CurrentPath => CrevassePaths
@@ -985,6 +622,7 @@
        PRINT *, 'IsoMesh % NumberOfBoundaryElements', IsoMesh % NumberOfBoundaryElements
        PRINT *, 'PathCount', PathCount
     END IF
+
     ! boss contains isomesh and crevpaths 
     IF (Boss) THEN
        IF(IsoMesh % NumberOfNodes > 0 ) THEN ! check if there is any valid paths
@@ -1032,12 +670,13 @@
        NodeHolder(3)=0.0_dp
        DO i=1,NoPaths
           NodeHolder(1) = CrevX(CrevStart(i))
-          NodeHolder(2) =CrevY(CrevStart(i))
+          NodeHolder(2) = CrevY(CrevStart(i))
           NodeHolder = MATMUL(RotationMatrix, NodeHolder)
           y_coord(1) = NodeHolder(2)
           NodeHolder(1) = CrevX(CrevEnd(i))
           NodeHolder(2) = CrevY(CrevEnd(i))
-          NodeHolder(3) = FrontNodes % z(FrontLineCount)
+          ! NodeHolder(3) = FrontNodes % z(FrontLineCount)
+          !TODO - Ask Eef about this ---^
           NodeHolder = MATMUL(RotationMatrix, NodeHolder)
           y_coord(2) = NodeHolder(2)
           LeftToRight = y_coord(2) > y_coord(1) ! TO DO check if this doesnt break for special cases
@@ -1120,7 +759,6 @@ IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
        !If only insignificant calving events occur, reset everything
        CalvingValues = 0.0_dp
        IsCalvingNode = .FALSE.
-       !TODO, check we can just RETURN now...
     END IF
 
     ! because isomesh has no bulk?
@@ -1207,23 +845,6 @@ PRINT *,'not calculating maxbergvolume now, depends on columns!'
     CALL ReleaseMesh(PlaneMesh)
 
     DEALLOCATE(TopPerm, BotPerm, LeftPerm, RightPerm, FrontPerm)
-
-    IF(Parallel) DEALLOCATE(MyFaceNodeNums)
-
-    IF(Boss) THEN
-       DEALLOCATE(FaceNodeNums, &
-                  FaceNodesT % x, &
-                  FaceNodesT % y, &
-                  FaceNodesT % z, &
-                  RemoveNode,&
-                  PlaneFrontPerm,&
-                  PlaneLeftPerm,&
-                  PlaneRightPerm&
-                  )
-
-       IF(Parallel) DEALLOCATE(disps, PFaceNodeCount)
-
-    END IF
 
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
