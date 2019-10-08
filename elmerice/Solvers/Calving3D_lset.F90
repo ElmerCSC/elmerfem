@@ -154,7 +154,8 @@
    MeshLCMinDist = ListGetConstReal(Params, "Calving Mesh LC Min Dist",Found, UnfoundFatal=.TRUE.)
    MeshLCMaxDist = ListGetConstReal(Params, "Calving Mesh LC Max Dist",Found, UnfoundFatal=.TRUE.)
    MaxMeshDist = ListGetConstReal(Params, "Calving Search Distance",Found, UnfoundFatal=.TRUE.)
-   CrevasseThreshold = ListGetConstReal(Params, "Crevasse Penetration Threshold", Found, UnfoundFatal=.TRUE.)
+   CrevasseThreshold = ListGetConstReal(Params, "Crevasse Penetration Threshold", Found, &
+        UnfoundFatal=.TRUE.)
 
    DistVar => VariableGet(Model % Variables, DistVarName, .TRUE., UnfoundFatal=.TRUE.)
    DistValues => DistVar % Values
@@ -686,66 +687,69 @@
           END IF
        END DO
        IF (Debug) Print *, CrevX
-    END IF
+     END IF
 
 
-CALL MPI_BCAST(NoCrevNodes,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-CALL MPI_BCAST(NoPaths,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
-    IF (.NOT. Boss) ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
-         CrevEnd(PathCount),CrevStart(PathCount))! (because already created on boss)
-CALL MPI_BCAST(CrevX,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
-CALL MPI_BCAST(CrevY,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
-CALL MPI_BCAST(CrevEnd,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr) 
-CALL MPI_BCAST(CrevStart,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)  
-!above IF(Parallel) but that's assumed implicitly 
-    !make sure that code works for empty isomesh as well!!
+     CALL MPI_BCAST(NoCrevNodes,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(NoPaths,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     IF (.NOT. Boss) ALLOCATE(CrevX(NoCrevNodes),CrevY(NoCrevNodes),&
+          CrevEnd(PathCount),CrevStart(PathCount))! (because already created on boss)
+     CALL MPI_BCAST(CrevX,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(CrevY,NoCrevNodes,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(CrevEnd,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(CrevStart,NoPaths,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     !above IF(Parallel) but that's assumed implicitly
+     !make sure that code works for empty isomesh as well!!
 
-ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
-IsCalvingNode=.FALSE.
+     ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
+     IsCalvingNode=.FALSE.
 
-IF (NoPaths > 0 ) THEN
-   DO i=1,Solver % Mesh % NumberOfNodes !
-      IF (Debug) PRINT *, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes 
-      xx = Solver % Mesh % Nodes % x(i)
-      yy = Solver % Mesh % Nodes % y(i)
-      MinDist = MAXVAL(DistValues) ! NOTE dependency on Dist here
-      ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
-      DO j=1, NoPaths
-         DO k=CrevStart(j), CrevEnd(j)-1
-            xl=CrevX(k);yl=CrevY(k)
-            xr=CrevX(k+1);yr=CrevY(k+1)
-            TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/)) 
-            IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
+     IF (NoPaths > 0 ) THEN
+       DO i=1,Solver % Mesh % NumberOfNodes
+         IF (Debug) PRINT *, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
+         xx = Solver % Mesh % Nodes % x(i)
+         yy = Solver % Mesh % Nodes % y(i)
+         MinDist = MAXVAL(DistValues) ! NOTE dependency on Dist here
+
+         ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+         DO j=1, NoPaths
+           DO k=CrevStart(j), CrevEnd(j)-1
+             xl=CrevX(k);yl=CrevY(k)
+             xr=CrevX(k+1);yr=CrevY(k+1)
+             TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/))
+             IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
                angle = (xr-xl)*(yy-yl)-(xx-xl)*(yr-yl) ! angle to get sign of distance function
                ! In case distance is equal, favor segment with clear angles
                ! angle0 doesn't need to be initialized as TempDist < (ABS(MinDist) - AEPS) holds
                ! at some point, angle only important if TempDist ~= MinDist
                IF( (TempDist < (ABS(MinDist) - AEPS)) .OR. (ABS(angle) > ABS(angle0)) ) THEN
-                  IF( angle < 0.0) THEN ! TO DO possibly direction(i) * angle if not always same
-                     MinDist = -TempDist
-                     IsCalvingNode(i) = .TRUE.  
-                  ELSE
-                     MinDist = TempDist
-                  END IF
-                  angle0 = angle
-                  jmin=k ! TO DO rm jmin? not necessary anymore
+                 IF( angle < 0.0) THEN ! TO DO possibly direction(i) * angle if not always same
+                   MinDist = -TempDist
+                   IsCalvingNode(i) = .TRUE.
+                 ELSE
+                   MinDist = TempDist
+                 END IF
+                 angle0 = angle
+                 jmin=k ! TO DO rm jmin? not necessary anymore
                END IF
-            END IF
+             END IF
+           END DO
          END DO
-      END DO
-      SignDistValues(SignDistPerm(i)) =  MinDist
- IF(Debug)     PRINT *, 'Shortest distance to closest segment in crevassepath ',MinDist
- IF(Debug)     PRINT *, 'jmin is ',jmin
-   END DO
-END IF
-Debug = .FALSE.
-CalvingValues = SignDistValues
-IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
+
+         SignDistValues(SignDistPerm(i)) =  MinDist
+         IF(Debug)     PRINT *, 'Shortest distance to closest segment in crevassepath ',MinDist
+         IF(Debug)     PRINT *, 'jmin is ',jmin
+       END DO
+     END IF
+
+     Debug = .FALSE.
+     CalvingValues = SignDistValues
+     IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
 
 
-    ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
- !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
-! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
+     ! TO DO check in each partition whether calving sizes are sufficient and whether calving occurs by
+     !  IF( integrate negative part of signdistance < -MinCalvingSize) CalvingOccurs = .TRUE.
+     ! IsCalvingNode = (SignDistValues < 0 ) if they have same perm, but not actually used?    
     ! then parallel reduce with MPI_LOR on 'CalvingOccurs'
     ! NOTE; what happens if calving event is divided over 2 partitions with insignificant in each
     ! but significant in total? should something be done to avoid that they're filtered out?
@@ -810,7 +814,7 @@ IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
 
        ParEnv % PEs = PEs
 
-    END IF
+     END IF
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -824,7 +828,9 @@ IF(MINVAL(SignDistValues) < - AEPS) CalvingOccurs = .TRUE.
     ! ELSE
     !   PauseSolvers = .FALSE.
     ! END IF
-PRINT *,'not calculating maxbergvolume now, depends on columns!'
+
+    PRINT *,'not calculating maxbergvolume now, depends on columns!'
+
     CALL SParIterAllReduceOR(PauseSolvers) !Really this should just be Boss sending to all
     CALL ListAddLogical( Model % Simulation, 'Calving Pause Solvers', PauseSolvers )
     IF(Debug) PRINT *,ParEnv % MyPE, ' Calving3D, pause solvers: ', PauseSolvers
