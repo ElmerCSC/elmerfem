@@ -292,11 +292,12 @@ SUBROUTINE Set_MMG3D_Parameters(SolverParams)
 END SUBROUTINE Set_MMG3D_Parameters
 
 
-SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
+SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
   !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: NewMesh
   LOGICAL :: Parallel
+  LOGICAL, OPTIONAL, ALLOCATABLE :: FixedNodes(:), FixedElems(:)
   !------------------------------------------------------------------------------
 
 #ifdef HAVE_MMG
@@ -307,7 +308,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
   INTEGER :: ref,corner,required,ridge
   INTEGER :: parent,ied
   INTEGER :: ii,kk
-  LOGICAL :: Debug
+  LOGICAL :: Found, Debug
 
   !> a) get the size of the mesh: vertices, tetra,prisms, triangles, quads,edges
   CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
@@ -323,6 +324,15 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
   NewMesh%MaxElementNodes=4
   NewMesh%MaxElementDOFs=4
   NewMesh%MeshDim=3
+
+  IF(PRESENT(FixedNodes)) THEN
+    ALLOCATE(FixedNodes(NVerts))
+    FixedNodes = .FALSE.
+  END IF
+  IF(PRESENT(FixedElems)) THEN
+    ALLOCATE(FixedElems(NTetras+NTris))
+    FixedNodes = .FALSE.
+  END IF
 
   IF(NPrisms /= 0) CALL Fatal("MMG3D", "Programming Error: MMG3D returns prisms")
   IF(NQuads /= 0) CALL Fatal("MMG3D", "Programming Error: MMG3D returns quads")
@@ -352,6 +362,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
         NewMesh % ParallelInfo % GlobalDOFs(ii) = 0
       END IF
     END IF
+    IF(PRESENT(FixedNodes)) FixedNodes(ii) = required > 0
   End do
 
   IF (DEBUG) PRINT *,'MMG3D_Get_vertex DONE'
@@ -372,6 +383,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
          NodeIndexes(4), &
          Element % BodyId, & !TODO - many tetras end up with very high BodyIDs
          required,ierr)
+    IF(PRESENT(FixedElems)) FixedElems(ii) = required > 0
   END DO
   IF (DEBUG) PRINT *,'MMG3D_Get_tets DONE'
 
@@ -401,6 +413,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel)
     Allocate(Element % BoundaryInfo)
     Element % BoundaryInfo % Constraint=ref
 
+    IF(PRESENT(FixedElems)) FixedElems(kk) = required > 0
   END DO
 
   kk=NewMesh % NumberOfBulkElements
