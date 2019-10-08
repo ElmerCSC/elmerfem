@@ -18262,6 +18262,116 @@ CONTAINS
 
   END FUNCTION CreateLineMesh
 
+  !Creates a regular 2D mesh of 404 elements
+  !The resulting mesh has no boundary elements etc for now
+  !Should only be used for e.g. mesh to mesh interpolation
+  FUNCTION CreateRectangularMesh(Params) RESULT(Mesh)
+
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    REAL(KIND=dp) :: min_x, max_x, min_y, max_y, dx, dy
+    INTEGER :: i, j, k, n, counter, nnx, nny, nex, ney, &
+         NoNodes, NoElements, col, row
+    LOGICAL :: Found
+    TYPE(Element_t), POINTER :: Element
+    TYPE(ElementType_t),POINTER :: elmt
+    REAL(KIND=dp) :: MeshVector(3), Length, Coord(3)
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshName, FuncName="CreateRectangularMesh"
+
+!------------------------------------------------------------------------------
+    Mesh => NULL()
+    IF ( .NOT. ASSOCIATED( Params ) ) RETURN
+    Mesh => AllocateMesh()
+
+    CALL Info(FuncName,'Creating 2D mesh on-the-fly')
+
+    !Get parameters from valuelist
+    min_x = ListGetConstReal(Params, "Grid Mesh Min X",UnfoundFatal=.TRUE.)
+    max_x = ListGetConstReal(Params, "Grid Mesh Max X",UnfoundFatal=.TRUE.)
+    min_y = ListGetConstReal(Params, "Grid Mesh Min Y",UnfoundFatal=.TRUE.)
+    max_y = ListGetConstReal(Params, "Grid Mesh Max Y",UnfoundFatal=.TRUE.)
+    dx    = ListGetConstReal(Params, "Grid Mesh dx",UnfoundFatal=.TRUE.)
+    dy    = ListGetConstReal(Params, "Grid Mesh dy",Found)
+    IF(.NOT. Found) dy = dx
+
+    IF(max_x <= min_x .OR. max_y <= min_y .OR. dx <= 0.0_dp .OR. dy <= 0.0_dp) &
+         CALL Fatal(FuncName, "Bad Grid Mesh parameters!")
+
+    !number of nodes in x and y direction (and total)
+    nnx = FLOOR((max_x - min_x) / dx) + 1
+    nny = FLOOR((max_y - min_y) / dy) + 1
+    NoNodes = nnx * nny
+
+    !number of elements in x and y direction (and total)
+    nex = nnx - 1
+    ney = nny - 1
+    NoElements = nex * ney
+
+
+!   Define nodal coordinates
+!   -------------------------------
+    CALL AllocateVector( Mesh % Nodes % x, NoNodes )
+    CALL AllocateVector( Mesh % Nodes % y, NoNodes )
+    CALL AllocateVector( Mesh % Nodes % z, NoNodes )
+    x => Mesh % Nodes % x
+    y => Mesh % Nodes % y
+    z => Mesh % Nodes % z
+
+    z = 0.0_dp !2D
+
+    !Define node positions
+    counter = 0
+    DO i=1,nnx
+      DO j=1,nny
+        counter = counter + 1
+        x(counter) = min_x + (i-1)*dx
+        y(counter) = min_y + (j-1)*dy
+      END DO
+    END DO
+
+!   Define elements
+!   -------------------------------
+    CALL AllocateVector( Mesh % Elements, NoElements )
+
+    Elmt => GetElementType( 404 )
+
+    DO i=1,NoElements
+      Element => Mesh % Elements(i)
+      Element % TYPE => Elmt
+      Element % EdgeIndexes => NULL()
+      Element % FaceIndexes => NULL()
+      Element % ElementIndex = i
+      CALL AllocateVector( Element % NodeIndexes, 4 )
+      Element % Ndofs = 4
+
+      col = MOD(i-1,ney)
+      row = (i-1)/ney
+
+      !THIS HERE NEEDS FIXED!!!!!
+      Element % NodeIndexes(1) = (row * nny) + col + 1
+      Element % NodeIndexes(2) = (row * nny) + col + 2
+      Element % NodeIndexes(4) = ((row+1) * nny) + col + 1
+      Element % NodeIndexes(3) = ((row+1) * nny) + col + 2
+
+      Element % BodyId = 1
+      Element % PartIndex = ParEnv % myPE
+    END DO
+
+!   Update new mesh node count:
+!   ---------------------------
+
+    Mesh % NumberOfNodes = NoNodes
+    Mesh % Nodes % NumberOfNodes = NoNodes
+    Mesh % NumberOfBulkElements = NoElements
+    Mesh % MaxElementNodes = 4
+    Mesh % MaxElementDOFs = 4
+    Mesh % MeshDim = 2
+
+  END FUNCTION CreateRectangularMesh
+
   SUBROUTINE ElmerMeshToDualGraph(Mesh, DualGraph, UseBoundaryMesh)
     IMPLICIT NONE
 
