@@ -1812,6 +1812,12 @@ CONTAINS
        Boss = .TRUE. !only one part in serial, so it's in charge of computation
     END IF
 
+    IF(Boss .AND. Debug) THEN
+      PRINT *, '================================================='
+      PRINT *, ' Locating domain edge for ',TRIM(EdgeMaskName)
+      PRINT *, '================================================='
+    END IF
+
     IF(PRESENT(Simplify)) THEN
        Simpl = Simplify
     ELSE 
