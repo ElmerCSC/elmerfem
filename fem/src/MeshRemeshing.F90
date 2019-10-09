@@ -777,4 +777,148 @@ SUBROUTINE MapNewParallelInfo(OldMesh, NewMesh)
   END DO
 END SUBROUTINE MapNewParallelInfo
 
+
+!A subroutine for a 3D mesh (in serial) with MMG3D
+!Inputs:
+!   InMesh - the initial mesh
+!   Metric - 2D real array specifying target metric
+!   NodeFixed, ElemFixed - Optional mask to specify 'required' entities
+!Output:
+!   OutMesh - the improved mesh
+!
+SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
+
+  TYPE(Mesh_t), POINTER :: InMesh, OutMesh
+  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:)
+  LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
+  !-----------
+  REAL(KIND=dp), ALLOCATABLE :: Metric(:,:)
+  REAL(KIND=dp) :: hsiz(3)
+  INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType
+  LOGICAL :: Debug, Parallel, TensorMet
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName
+
+#ifdef HAVE_MMG
+
+  Debug = .TRUE.
+  Parallel = ParEnv % PEs > 1
+  FuncName = "RemeshMMG3D"
+
+  !Scalar, vector, tensor metric?
+  MetricDim = SIZE(TargetLength,2)
+  NNodes = InMesh % NumberOfNodes
+  NBulk = InMesh % NumberOfBulkElements
+  NBdry = InMesh % NumberOfBoundaryElements
+
+  IF(MetricDim == 1) THEN
+    TensorMet = .FALSE.
+  ELSE IF(MetricDim == 3) THEN
+    TensorMet = .TRUE.
+  ELSE
+    CALL Fatal(FuncName,"Unexpected Metric Dimension!")
+  END IF
+
+
+  !Convert target length to metric
+  IF(.NOT. TensorMet) THEN
+
+    SolType = MMG5_Scalar
+    ALLOCATE(Metric(NNodes,1))
+    !TODO - check this - in anistropic case, Metric = edge length?
+    Metric(:,1) = TargetLength(:,1)
+
+  ELSE
+
+    SolType = MMG5_Tensor
+    !Upper triangle of symmetric tensor: 11,12,13,22,23,33
+    ALLOCATE(Metric(NNodes,6))
+    Metric = 0.0_dp
+    DO i=1,NNodes
+      !Metric = 1.0/(edge_length**2)
+      Metric(i,1) = 1.0 / (TargetLength(i,1)**2.0)
+      Metric(i,4) = 1.0 / (TargetLength(i,2)**2.0)
+      Metric(i,6) = 1.0 / (TargetLength(i,3)**2.0)
+    END DO
+
+  END IF
+
+!  hsiz = (/2000.0,2000.0,150.0/)
+  mmgMesh = 0
+  mmgSol  = 0
+
+  CALL MMG3D_Init_mesh(MMG5_ARG_start, &
+       MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+       MMG5_ARG_end)
+
+  CALL SET_MMG3D_MESH(InMesh,Parallel)
+
+  !Set the metric values at nodes
+  CALL MMG3D_Set_SolSize(mmgMesh, mmgSol, MMG5_Vertex, NNodes, SolType,ierr)
+  IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set solution size.")
+
+  DO i=1,NNodes
+    IF(TensorMet) THEN
+      IF(Debug) PRINT *,'debug sol at ',i,' is: ',Metric(i,:)
+      CALL MMG3D_Set_TensorSol(mmgSol,Metric(i,1),Metric(i,2),Metric(i,3),&
+           Metric(i,4),Metric(i,5),Metric(i,6),i,ierr)
+      IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set tensor solution at vertex")
+    ELSE
+      CALL MMG3D_Set_ScalarSol(mmgSol,Metric(i,1),i,ierr)
+      IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
+    END IF
+  END DO
+
+  CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hausd,&
+       20.0_dp,ierr)
+
+  CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
+         1.4_dp,ierr)
+
+  !Take care of fixed nodes/elements if requested
+  IF(PRESENT(NodeFixed)) THEN
+    DO i=1,NNodes
+      IF(NodeFixed(i)) THEN
+        CALL MMG3D_SET_REQUIREDVERTEX(mmgMesh,i,ierr)
+      END IF
+    END DO
+  END IF
+
+  IF(PRESENT(ElemFixed)) THEN
+    DO i=1,NBulk + NBdry
+      IF(ElemFixed(i)) THEN
+        IF(i <= NBulk) THEN
+          CALL MMG3D_SET_REQUIREDTETRAHEDRON(mmgMesh,i,ierr)
+        ELSE
+          CALL MMG3D_SET_REQUIREDTRIANGLE(mmgMesh,i-NBulk,ierr)
+        END IF
+      END IF
+    END DO
+  END IF
+
+
+  IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
+  ! CALL SET_MMG3D_PARAMETERS(SolverParams)
+
+  CALL MMG3D_mmg3dlib(mmgMesh,mmgSol,ierr)
+  IF ( ierr == MMG5_STRONGFAILURE ) THEN
+    PRINT*,"BAD ENDING OF MMG3DLIB: UNABLE TO SAVE MESH"
+    STOP MMG5_STRONGFAILURE
+  ELSE IF ( ierr == MMG5_LOWFAILURE ) THEN
+    PRINT*,"BAD ENDING OF MMG3DLIB"
+  ENDIF
+  IF (DEBUG) PRINT *,'--**-- MMG3D_mmg3dlib DONE'
+
+  CALL MMG3D_SaveMesh(mmgMesh,"test_MMG3D_remesh.mesh",LEN(TRIM("test_MMG3D_remesh.mesh")),ierr)
+
+  !! GET THE NEW MESH
+  CALL GET_MMG3D_MESH(OutMesh,Parallel)
+
+
+
+#else
+  CALL Fatal(FuncName, "Remeshing utility MMG3D has not been installed")
+#endif
+
+END SUBROUTINE RemeshMMG3D
+
 END MODULE MeshRemeshing
