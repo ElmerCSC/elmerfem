@@ -3632,7 +3632,7 @@ CONTAINS
 
     LOGICAL :: FirstTime=.TRUE.,Constant
 
-    SAVE :: FirstTime,Constant,PArray
+    SAVE :: FirstTime,Constant,PArray,OrientSaved
 
     IF(FirstTime) THEN
       FirstTime = .FALSE.

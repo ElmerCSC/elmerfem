@@ -60,7 +60,7 @@
         MeltRate, Displace(3), NodeHolder(3), DangerGrad, ShiftTo, direction, &
         ShiftDist, y_coord(2), epsShift, ShiftToY, LongRangeLimit, MaxDisplacement, LimitZ, &
         p1(2),p2(2),q1(2),q2(2),intersect(2), LeftY, RightY, EpsTangle,thisEps,Shift, thisY
-   REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), Advance(:)
+   REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), ColumnNormals(:,:), &
         TangledShiftTo(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
@@ -119,10 +119,7 @@
 
    !Get the orientation of the calving front, compute rotation matrix
    !TODO: generalize and link
-   PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', Found, UnfoundFatal=.TRUE.)
-   DO i=1,3
-      FrontOrientation(i) = PArray(i,1)
-   END DO
+   FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
 
    DangerGrad = ListGetConstReal(Params, "Front Gradient Threshold", Found)

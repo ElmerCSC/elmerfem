@@ -83,8 +83,7 @@
         rt0, rt, RealTime
 #endif
 
-   REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), &
-        DistValues(:), CIndexValues(:), WorkReal(:), &
+   REAL(KIND=dp), POINTER :: DistValues(:), CIndexValues(:), WorkReal(:), &
         CalvingValues(:), ForceVector(:)
    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), HeightDirich(:), &
         Rot_y_coords(:,:), Rot_z_coords(:,:)
@@ -196,11 +195,7 @@
         .FALSE., FrontPerm, FaceNodeCount)
 
    !Get the orientation of the calving front, compute rotation matrix
-   PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', &
-        Found, UnfoundFatal=.TRUE.)
-   DO i=1,3
-      FrontOrientation(i) = PArray(i,1)
-   END DO
+   FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
    UnRotationMatrix = TRANSPOSE(RotationMatrix)
 

@@ -288,7 +288,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   TYPE(Variable_t), POINTER :: Var, RefVar, TimeVar, CalvingVar, TangledVar
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) ::FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3)
-  REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), TimestepSizes(:,:)
+  REAL(KIND=dp), POINTER :: TimestepSizes(:,:)
   REAL(KIND=dp) :: time, dt, PseudoSSdt, SaveDt, LastRemeshTime, TimeSinceRemesh, ForceRemeshTime,&
        ZThresh, global_eps, local_eps
   LOGICAL :: Debug, Parallel, CalvingOccurs, RemeshOccurs, PauseSolvers, Found, &
@@ -391,11 +391,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   END IF !FirstTime
 
   !Get the orientation of the front and compute rotation matrices
-  PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', &
-       Found, UnfoundFatal=.TRUE.)
-  DO i=1,3
-     FrontOrientation(i) = PArray(i,1)
-  END DO
+  FrontOrientation = GetFrontOrientation(Model)
   RotationMatrix = ComputeRotationMatrix(FrontOrientation)
   UnRotationMatrix = TRANSPOSE(RotationMatrix)
 
