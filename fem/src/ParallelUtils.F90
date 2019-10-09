@@ -83,7 +83,7 @@ CONTAINS
        TYPE(Matrix_t), POINTER :: Matrix
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
-       INTEGER :: i, j, k, l, m, n, DOFs, PDOFs
+       INTEGER :: i, j, k, l, m, n, DOFs, PDOFs, bdofs
        LOGICAL :: DGSolver, Found, GB, Global_dof, LocalConstraints, DiscontBC, &
                      OwnersGiven, NeighboursGiven, DGReduced
        TYPE(Mesh_t), POINTER :: Mesh
@@ -271,7 +271,11 @@ CONTAINS
 
            DO i=1,Mesh % NumberOfBulkElements
              Element=>Mesh % Elements(i)
-             DO l=1,Element % BDOFs
+
+             bdofs = Solver % Def_Dofs(Element % Type % ElementCode/100, &
+                    Element % Bodyid, 5)
+
+             DO l=1,bdofs
                DO j=1,DOFs 
                  k = Matrix % Perm(DOFs*(l_beg+Element % BubbleIndexes(l)-1)+j)
                  IF(k==0) CYCLE
