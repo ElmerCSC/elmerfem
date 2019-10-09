@@ -3410,12 +3410,9 @@ ELMER_SOLVER_HOME &
     INTEGER(KIND=IntOff_k) :: Pos
     INTEGER :: iostat, FileCount
     CHARACTER(1) :: E
-#ifdef USE_ISO_C_BINDINGS
     REAL(dp) :: tstart, tstop
-#else
-    REAL(dp) :: tstart, tstop, CPUTime
-#endif
-    SAVE TotalDOFs
+
+    SAVE TotalDOFs, PermSize, FieldSize
 
     tstart = CPUTime()
 !------------------------------------------------------------------------------
@@ -3546,7 +3543,6 @@ ELMER_SOLVER_HOME &
       ALLOCATE( RestartVariableFound(j) )
       RestartVariableCount = j
       RestartVariableFound = .FALSE.
-
 
       DO WHILE( ReadAndTrim(RestartUnit,Row) )
         nlen = LEN_TRIM(Row)        
@@ -3942,7 +3938,7 @@ ELMER_SOLVER_HOME &
            CALL Info('LoadRestartFile','Reading permutation order for: '//TRIM(Row),Level=12)
            CALL ReadPerm( RestartUnit, Perm, GotPerm )
            CALL Info('LoadRestartFile','Succesfully read permutation order for: '//TRIM(Row),Level=20)
-          END IF
+         END IF
 
          IF( LoadThis ) THEN
            Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
