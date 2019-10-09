@@ -2079,6 +2079,10 @@ CONTAINS
           PRINT *, 'boss size(SegStarts_Gather): ', SIZE(SegStarts_Gather)
           PRINT *, 'boss PartSegments: ', PartSegments
           PRINT *, 'boss disps:', disps
+          DO i=1,ParEnv % PEs
+            IF(PartNodesOnEdge(i) == 0) CYCLE
+            PRINT *, 'partition ',i-1,' NoNodesOnEdge: ',PartNodesOnEdge(i)
+          END DO
        END IF
        
        IF(Boss) THEN
@@ -2217,7 +2221,7 @@ CONTAINS
                 END IF
              END DO
 
-             IF(Debug) PRINT *, i, ': Neighbours: ', PartNeighbourList(i) % Neighbours
+             IF(Debug) PRINT *, i-1, ': Neighbours: ', PartNeighbourList(i) % Neighbours
              !find a corner partition
              IF(ANY(PartNeighbourList(i) % Neighbours == prev)) next = i
           END DO
