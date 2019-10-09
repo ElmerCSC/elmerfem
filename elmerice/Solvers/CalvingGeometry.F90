@@ -3621,5 +3621,43 @@ CONTAINS
 
   END SUBROUTINE InterpMaskedBCReduced
 
+  !Function to return the orientation of a calving front
+  !If specified in SIF, returns this, otherwise computes it
+  FUNCTION GetFrontOrientation(Model) RESULT (Orientation)
+    TYPE(Model_t) :: Model
+    !--------------------------
+    INTEGER :: i
+    REAL(KIND=dp) :: Orientation(3),OrientSaved(3)
+    REAL(KIND=dp), POINTER :: PArray(:,:) => NULL()
+
+    LOGICAL :: FirstTime=.TRUE.,Constant
+
+    SAVE :: FirstTime,Constant,PArray
+
+    IF(FirstTime) THEN
+      FirstTime = .FALSE.
+      !TODO - this will need to be defined on individual boundary conditions
+      !if we want to handle multiple calving fronts in same simulation.
+      PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', &
+           Constant)
+      DO i=1,3
+        OrientSaved(i) = PArray(i,1)
+      END DO
+      IF(Constant) THEN
+        CALL Info("GetFrontOrientation","Using predefined Front Orientation from SIF.", Level=6)
+      ELSE
+        CALL Info("GetFrontOrientation","No predefined Front Orientation, computing instead.", Level=6)
+      END IF
+    END IF
+
+    IF(Constant) THEN
+      Orientation = OrientSaved
+      RETURN
+    ELSE
+      !Not implemented yet
+    END IF
+
+  END FUNCTION GetFrontOrientation
+
 END MODULE CalvingGeometry
 
