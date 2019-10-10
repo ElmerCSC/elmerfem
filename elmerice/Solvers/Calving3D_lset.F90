@@ -643,7 +643,7 @@
        CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
        !TODO - pull from MMigrate? - need to check logic here
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
+       ! CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
 
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
