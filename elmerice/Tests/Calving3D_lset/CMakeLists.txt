@@ -1,4 +1,4 @@
-IF(HAVE_MMG)
+IF(HAVE_MMG AND HAVE_ZOLTAN)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
   CONFIGURE_FILE(calvingMMG.sif calvingMMG.sif COPYONLY)
