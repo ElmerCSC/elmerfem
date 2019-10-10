@@ -760,7 +760,7 @@ END INTERFACE
      LOGICAL, POINTER               :: INTERFACE(:)
      INTEGER, POINTER               :: GlobalDOFs(:)
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
-     INTEGER, POINTER               :: Gorder(:) => Null()
+     INTEGER, POINTER               :: Gorder(:) => NULL()
 
      LOGICAL, POINTER               :: FaceInterface(:)
      TYPE(NeighbourList_t),POINTER  :: FaceNeighbourList(:)
@@ -810,6 +810,8 @@ END INTERFACE
          BodyWeight(:), MaterialWeight(:)
 
      INTEGER, POINTER :: RePartition(:) => NULL()
+     TYPE(NeighbourList_t), POINTER :: Halo(:) => NULL()
+     LOGICAL :: HaveHalo = .FALSE.
      
    END TYPE Mesh_t
 

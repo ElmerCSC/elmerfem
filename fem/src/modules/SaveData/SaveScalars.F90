@@ -208,18 +208,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    IF ( .NOT. FileNameQualified(ScalarsFile) ) THEN
-      OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-      IF(.NOT. GotIt) OutputDirectory = GetString( Model % Simulation,&
-          'Output Directory',GotIt) 
-      IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
-        ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
-        CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-      ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-        ScalarsFile = TRIM(OutputPath)// '/' //TRIM(ScalarsFile)
-      END IF
-    END IF
-
+    CALL SolverOutputDirectory( Solver, ScalarsFile, OutputDirectory )
+    ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
+    
     Numbering = ListGetLogical(Params,'Filename Numbering',GotIt)
 
     IF( Numbering  ) THEN
@@ -1206,6 +1197,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
       
       OPEN(NEWUNIT=NamesUnit, FILE=ScalarNamesFile)
+      
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
         WRITE(NamesUnit,'(A)') TRIM(Message)

@@ -138,7 +138,7 @@ static void Instructions()
   printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
   printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
   printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
-  printf("-cloneinds           : when performing cloning should cloned entitities be given new indexes\n");
+  printf("-cloneinds           : when performing cloning should cloned entities be given new indexes\n");
   printf("-unite               : the meshes will be united\n");
   printf("-unitenooverlap      : the meshes will be united without overlap in entity numbering\n");
   printf("-polar real          : map 2D mesh to a cylindrical shell with given radius\n");
@@ -164,8 +164,8 @@ static void Instructions()
   printf("-3d / -2d / -1d      : mesh is 3, 2 or 1-dimensional (applies to examples)\n");
   printf("-isoparam            : ensure that higher order elements are convex\n");
   printf("-nonames             : disable use of mesh.names even if it would be supported by the format\n");
-  printf("-nosave              : disable saving part alltogether\n");
-  printf("-nooverwrite         : if mesh already exists don't overwite it\n");
+  printf("-nosave              : disable saving part altogether\n");
+  printf("-nooverwrite         : if mesh already exists don't overwrite it\n");
   printf("-vtuone              : start real node indexes in vtu file from one\n");
   printf("-timer               : show timer information\n");
   printf("-infofile str        : file for saving the timer and size information\n");

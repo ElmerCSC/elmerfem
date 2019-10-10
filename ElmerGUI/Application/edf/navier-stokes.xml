@@ -424,7 +424,7 @@
 
          <Parameter Widget="Edit">
             <Name> Surface Tension Expansion Coefficient </Name>
-            <Whatis> Triggers a tangetial stress boundary condition to be used. If the keyword Surface Tension Expansion Coefficient is given, a linear dependence of the surface tension coefficient on the temperature is assumed. Note that this boundary condition is the tangential derivative of the surface tension coefficient. </Whatis>
+            <Whatis> Triggers a tangential stress boundary condition to be used. If the keyword Surface Tension Expansion Coefficient is given, a linear dependence of the surface tension coefficient on the temperature is assumed. Note that this boundary condition is the tangential derivative of the surface tension coefficient. </Whatis>
          </Parameter>
          <Parameter Widget="Edit">
             <Name> Slip Coefficient 1 </Name>

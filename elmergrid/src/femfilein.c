@@ -339,7 +339,7 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"inp");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadAbaqusInput: opening of the ABAQUS-file '%s' wasn't succesfull !\n",
+      printf("LoadAbaqusInput: opening of the ABAQUS-file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -824,7 +824,7 @@ omstart:
 
 static int ReadAbaqusField(FILE *in,char *buffer,int *argtype,int *argno)
 /* This subroutine reads the Abaqus file format and tries to make
-   sence out of it. 
+   sense out of it. 
    */
 {
   int i,val,digits;
@@ -914,7 +914,7 @@ int LoadAbaqusOutput(struct FemType *data,char *prefix,int info)
   AddExtension(prefix,filename,"fil");
 
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadAbaqusOutput: opening of the Abaqus-file '%s' wasn't succesfull !\n",
+    printf("LoadAbaqusOutput: opening of the Abaqus-file '%s' wasn't successful !\n",
 	   filename);
     return(1);
   }
@@ -1107,7 +1107,7 @@ int LoadNastranInput(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"nas");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadNastranInput: opening of the Nastran file '%s' wasn't succesfull !\n",
+      printf("LoadNastranInput: opening of the Nastran file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -1350,7 +1350,7 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"FDNEUT");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadFidapInput: opening of the Fidap-file '%s' wasn't succesfull !\n",
+      printf("LoadFidapInput: opening of the Fidap-file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -2005,7 +2005,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	  bctypes[bcind] = TRUE;
 	}
 	
-	/* Find 1st unsed boundarytype */
+	/* Find 1st unused boundarytype */
 	for(i=1;i<=maxside;i++) 
 	  if(bctypes[i] && !bctypeused[i]) break;
 	
@@ -2125,7 +2125,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
   if ((in = fopen(prefix,"r")) == NULL) {
     AddExtension(prefix,filename,"dat");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadFieldviewInput: opening of the Fieldview-file '%s' wasn't succesfull !\n",
+      printf("LoadFieldviewInput: opening of the Fieldview-file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -2656,7 +2656,7 @@ int LoadGidInput(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"msh");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadGidInput: opening of the GID-file '%s' wasn't succesfull !\n",
+      printf("LoadGidInput: opening of the GID-file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -3013,7 +3013,7 @@ int LoadComsolMesh(struct FemType *data,char *prefix,int info)
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"mphtxt");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadComsolMesh: opening of the Comsol mesh file '%s' wasn't succesfull !\n",
+      printf("LoadComsolMesh: opening of the Comsol mesh file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -3178,7 +3178,7 @@ end:
   if(!allocated) {
 
     if(noknots == 0 || noelements == 0 || maxnodes == 0) {
-       printf("Invalid mesh consits of %d knots and %d %d-node elements.\n",
+       printf("Invalid mesh consists of %d knots and %d %d-node elements.\n",
 	     noknots,noelements,maxnodes);     
        fclose(in);
        return(2);
@@ -3505,7 +3505,7 @@ allocate:
 	if(k <= 0 || k > maxindx) 
 	  printf("index out of bounds %d\n",k);
 	else if(revindx[k] <= 0) 
-	  printf("unkonwn node %d %d in element %d\n",k,revindx[k],i);
+	  printf("unknown node %d %d in element %d\n",k,revindx[k],i);
 	else 
 	  data->topology[i][j] = revindx[k];
       }      
@@ -3719,7 +3719,7 @@ omstart:
 	if(k <= 0 || k > maxindx) 
 	  printf("index out of bounds %d\n",k);
 	else if(revindx[k] <= 0) 
-	  printf("unkonwn node %d %d in element %d\n",k,revindx[k],i);
+	  printf("unknown node %d %d in element %d\n",k,revindx[k],i);
 	else 
 	  data->topology[i][j] = revindx[k];
       }      
@@ -4145,7 +4145,7 @@ omstart:
 	if(k <= 0 || k > maxindx) 
 	  printf("index out of bounds %d\n",k);
 	else if(revindx[k] <= 0) 
-	  printf("unkonwn node %d %d in element %d\n",k,revindx[k],i);
+	  printf("unknown node %d %d in element %d\n",k,revindx[k],i);
 	else 
 	  data->topology[i][j] = revindx[k];
       }      
@@ -4589,7 +4589,7 @@ omstart:
 	if(k <= 0 || k > maxindx) 
 	  printf("index out of bounds %d\n",k);
 	else if(revindx[k] <= 0) 
-	  printf("unkonwn node %d %d in element %d\n",k,revindx[k],i);
+	  printf("unknown node %d %d in element %d\n",k,revindx[k],i);
 	else 
 	  data->topology[i][j] = revindx[k];
       }      
@@ -4804,7 +4804,7 @@ omstart:
 	if(k <= 0 || k > maxindx) 
 	  printf("index out of bounds %d\n",k);
 	else if(revindx[k] <= 0) 
-	  printf("unkonwn node %d %d in element %d\n",k,revindx[k],i);
+	  printf("unknown node %d %d in element %d\n",k,revindx[k],i);
 	else 
 	  data->topology[i][j] = revindx[k];
       }      
@@ -5021,7 +5021,7 @@ int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"unv");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadUniversalMesh: opening of the universal mesh file '%s' wasn't succesfull !\n",
+      printf("LoadUniversalMesh: opening of the universal mesh file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -5598,7 +5598,7 @@ int LoadCGsimMesh(struct FemType *data,char *prefix,int info)
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"plt");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCGsimMesh: opening of the CGsim mesh file '%s' wasn't succesfull !\n",
+      printf("LoadCGsimMesh: opening of the CGsim mesh file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -5690,7 +5690,7 @@ omstart:
 
   if(!allocated) {
     if(noknots == 0 || noelements == 0 || maxnodes == 0) {
-       printf("Invalid mesh consits of %d knots and %d %d-node elements.\n",
+       printf("Invalid mesh consists of %d knots and %d %d-node elements.\n",
 	     noknots,noelements,maxnodes);     
        fclose(in);
        return(2);
@@ -5776,7 +5776,7 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"TRA");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadFluxMesh: opening of the Flux mesh file '%s' wasn't succesfull !\n",
+      printf("LoadFluxMesh: opening of the Flux mesh file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -6113,7 +6113,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"PF3");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadFluxMesh3D: opening of the Flux mesh file '%s' wasn't succesfull !\n",
+      printf("LoadFluxMesh3D: opening of the Flux mesh file '%s' wasn't successful !\n",
 	     filename);
       return(1);
     }
@@ -6196,12 +6196,12 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 	if( i != j ) {
 	  printf("It seems that reordering of elements should be performed! (%d %d)\n",i,j);
 	}
-	next_int(&cp);              //2 internal elemnt type description
-	next_int(&cp);              //3 internal elemnt type description
+	next_int(&cp);              //2 internal element type description
+	next_int(&cp);              //3 internal element type description
 	matind = next_int(&cp);     //4 number of the belonging region
 	dimplusone = next_int(&cp); //5 dimensiality 4-3D 3-2D
 	next_int(&cp);              //6 zero here always
-	next_int(&cp);              //7 internal elemnt type description
+	next_int(&cp);              //7 internal element type description
 	nonodes = next_int(&cp);    //8 number of nodes
 		
 	elmertype = FluxToElmerType3D( nonodes, dimplusone-1 );

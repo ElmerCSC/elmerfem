@@ -2711,7 +2711,107 @@ CONTAINS
      
    END FUNCTION DegenerateElement
 
+   !------------------------------------------------------------------------------
+   !> Return the aspect ratio of an element 
+   !------------------------------------------------------------------------------
+   FUNCTION ElementAspectRatio(Model, Element ) RESULT ( AspectRatio ) 
+     IMPLICIT NONE
+     TYPE(Model_t) Model
+     TYPE(Element_t) :: Element
+     REAL(KIND=dp) :: AspectRatio
+     REAL(KIND=dp) :: CharLen(2)
+
+     CharLen = ElementCharacteristicLengths(Model, Element)
+     IF (CharLen(1) .LE. 0) THEN
+       AspectRatio = HUGE(AspectRatio)
+     ELSE
+       AspectRatio = CharLen(2)/CharLen(1)
+     END IF
+   END FUNCTION ElementAspectRatio
+
+   !------------------------------------------------------------------------------
+   !> Return the characteristic lengths of an element 
+   !------------------------------------------------------------------------------
+   FUNCTION ElementCharacteristicLengths(Model, Element ) RESULT ( Charlengths ) 
+     IMPLICIT NONE
+     TYPE(Model_t) :: Model
+     TYPE(Element_t) :: Element
+     REAL(KIND=dp) :: Charlengths(2)
+     REAL(KIND=dp) :: Dist
+
+     TYPE(Nodes_t) :: en
+     INTEGER :: i,j,n
+
+     INTEGER :: istat
+     
+     n = Element % TYPE % NumberOfNodes
+
+     ALLOCATE( en % x( n ),   &
+               en % y( n ),   &
+               en % z( n ), STAT=istat )
+
+     IF( istat /= 0 ) THEN
+       CALL Fatal('ElementCharacteristicLengths','Allocation error for ElementNodes')
+     END IF
+
+     en % x(1:n) = Model % Nodes % x(Element % NodeIndexes)
+     en % y(1:n) = Model % Nodes % y(Element % NodeIndexes)
+     en % z(1:n) = Model % Nodes % z(Element % NodeIndexes)
+     
+     Charlengths = 0._dp
+     DO i = 1, n
+       DO j = 1, n
+         IF (i /= j) THEN
+           Dist = SQRT((en % x(i)-en % x(j))**2. + (en % y(i)-en % y(j))**2. + (en % z(i)-en % z(j))**2.)
+           IF (Dist < Charlengths(1)) THEN
+             Charlengths(1) = Dist
+           ELSE IF (Dist > Charlengths(2)) THEN
+             Charlengths(2) = Dist
+           END IF
+         END IF
+       END DO
+     END DO
+     
+   END FUNCTION ElementCharacteristicLengths
    
+   !------------------------------------------------------------------------------
+   !> Return normal of degenerate Element 
+   !------------------------------------------------------------------------------
+   FUNCTION NormalOfDegenerateElement(Model, Element ) RESULT ( Normal ) 
+     IMPLICIT NONE
+     TYPE(Model_t) :: Model
+     TYPE(Element_t) :: Element
+     REAL(KIND=dp) :: a(3), b(3), c(3), Normal(3)
+
+     TYPE(Nodes_t) :: en
+     INTEGER :: i,n
+
+     INTEGER :: istat
+     
+     n = Element % TYPE % NumberOfNodes
+
+     ALLOCATE( en % x( n ),   &
+               en % y( n ),   &
+               en % z( n ), STAT=istat )
+
+     IF( istat /= 0 ) THEN
+       CALL Fatal('ElementCharacteristicLengths','Allocation error for ElementNodes')
+     END IF
+
+     en % x(1:n) = Model % Nodes % x(Element % NodeIndexes)
+     en % y(1:n) = Model % Nodes % y(Element % NodeIndexes)
+     en % z(1:n) = Model % Nodes % z(Element % NodeIndexes)
+
+     a = (/ en % x(1), en % y(1), en % z(1) /)
+     b = (/ en % x(2), en % y(2), en % z(2) /)
+     c = (/ en % x(n), en % y(n), en % z(n) /)
+
+     Normal = crossproduct(a-b, a-c)
+
+     Normal = Normal / SQRT(SUM(c**2))
+     
+   END FUNCTION NormalOfDegenerateElement
+ 
 END MODULE ElementUtils
 
 !> \} ElmerLib

@@ -298,7 +298,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), EpsAtIpVec(:), SourceAtIpVec(:)
     REAL(KIND=dp) :: eps0, weight
-    LOGICAL :: Stat,Found
+    LOGICAL :: Stat,Found, Pref
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -328,12 +328,12 @@ CONTAINS
     
     dim = CoordinateSystemDimension()
 
-    ! Currently the vectorized basis always use p-elements which have different
-    ! local coordinate convention
+    ! Use p-element basis, unless 2nd or 3rd order nodal element
+    Pref = isPElement(Element) .OR. Element % Type % BasisFunctionDegree<2
     IF( RelOrder /= 0 ) THEN
-      IP = GaussPoints( Element, PReferenceElement = .TRUE., RelOrder = RelOrder)
+      IP = GaussPoints( Element, PReferenceElement = Pref, RelOrder = RelOrder)
     ELSE
-      IP = GaussPoints( Element, PReferenceElement = .TRUE. )      
+      IP = GaussPoints( Element, PReferenceElement = Pref )
     END IF
       
     ngp = IP % n

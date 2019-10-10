@@ -2484,6 +2484,7 @@ CONTAINS
       CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
 
       ! We do probably not want to compute the change within each iteration
+      CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.TRUE.)         
       CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.TRUE.)         
         
       ! Revert back if the matrix was set not complex
@@ -2675,6 +2676,7 @@ CONTAINS
     CALL ListPopNameSpace('block:') ! block:
 
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
+    CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.FALSE.)
     CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.FALSE.)
 
       

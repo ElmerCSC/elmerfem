@@ -536,8 +536,12 @@ CONTAINS
 300 CONTINUE
 
   IF ( SkipAssembly) THEN
-    A % RHS = A % BulkRHS
-    A % Values = A % BulkValues
+    DO i=1,SIZE(A % RHS)
+      A % RHS(i) = A % BulkRHS(i)
+    END  DO      
+    DO i=1,SIZE(A % Values)
+      A % Values(i) = A % BulkValues(i)
+    END DO
     IF ( ConstantBulk    ) GOTO 100
     IF ( ConstantSystem  ) GOTO 200
   END IF
@@ -690,7 +694,15 @@ CONTAINS
   IF( JFixSolve ) THEN    
     CALL Info('WhitneyAVSolver','Solving the fixing potential',Level=7)
     JFixPhase = 2
+    
+    IF( ListGetLogical( SolverParams,'Precomputed Fixing Term',Found ) ) THEN
+      CALL Info('WhitneyAVSolver','Adding precomputed source term: g fix')
+      Var => VariableGet( Mesh % Variables,'g fix')
+      JFixRhs = JfixRhs + Var % Values
+    END IF
+
     CALL JFixPotentialSolver(Model,Solver,dt,Transient)
+   
     
     CALL Info('WhitneyAVSolver','Adding the fixing potential to the r.h.s. of AV equation',Level=10)   
     DO t=1,active
@@ -704,6 +716,15 @@ CONTAINS
     CALL Info('WhitneyAVSolver','Finished adding the fixing potential',Level=10)   
   END IF
 
+
+  ! This adds a precomputed source term to r.h.s. of the equation.
+  ! Note that this is assumed to be already mapped to nodes. 
+  IF( ListGetLogical( SolverParams,'Precomputed Source Term',Found ) ) THEN
+    CALL Info('WhitneyAVSolver','Adding precomputed source term: g')
+    Var => VariableGet( Mesh % Variables,'g')
+    Solver % Matrix % Rhs = Solver % Matrix % Rhs + Var % Values
+  END IF
+  
   
 100 CONTINUE
 
@@ -868,6 +889,7 @@ CONTAINS
      END IF
   END IF
 
+  
   norm = DefaultSolve()
   Converged = Solver % Variable % NonlinConverged==1
 

@@ -13,7 +13,7 @@ Simulation
   Coordinate System = Cartesian 
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Post File = "case.ep"
+  Post File = "case.vtu"
 End
 
 Constants
@@ -149,8 +149,7 @@ End
 
 
 
-Solver 3 :: Reference Norm = Real 0.23697253E-03
-RUN
+Solver 3 :: Reference Norm = 2.36963985E-04
 
 !End Of File
 

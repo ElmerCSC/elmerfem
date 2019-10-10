@@ -1,0 +1,166 @@
+! Bending 2D beam under the influence of electrostatic forces
+! The forces are computed to nodal force values from the Maxwell stress tensor
+! using the solution of the electrostatic equation.
+!
+! This version modifies the historical example by using
+! nodal forces instead of force densities.
+!
+! P.R. 27.9.2019
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "beam_in_air"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Name = "beam"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "air"
+  Equation = 2
+  Material = 2
+End
+
+
+Equation 1
+  Active Solvers = 3
+  Plane Stress = FALSE
+End
+
+Equation 2
+  Active Solvers(2) = 1 2
+  Calculate Electric Energy = True
+End
+
+
+
+Solver 1
+  Equation = StatElecSolver
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+  Calculate Electric Field = True
+  Calculate Electric Flux = False
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-4
+
+! This must be allocated here because it is referred to before being created in Solver 2
+  Exported Variable 1 = -dofs 2 Electric Force Density
+End
+
+Solver 2
+!  Exec Solver = never
+
+  Equation = Electric Force
+  Procedure = "ElectricForce" "StatElecForce"
+
+  Calculate Nodal Force = Logical True
+End
+
+
+Solver 3
+  Equation = "LinearDisp"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "Displacement"
+  Variable DOFs = Integer 2
+  Displace Mesh = Logical FALSE
+
+  Linear System Solver = Direct
+  Linear System Symmetric = Logical True
+  Linear System Scaling = Logical False
+  Linear System Iterative Method = BiCGStab
+  Linear System Direct Method = UMFPACK
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 200
+  Linear System Preconditioning = ILU2
+
+  Nonlinear System Convergence Tolerance = Real 1.0e-7
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Relaxation Factor = Real 1
+
+  Steady State Convergence Tolerance= 1.0e-6
+  Optimize Bandwidth = True
+End
+
+
+Solver 4
+  Exec Solver = Never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+
+  Variable 1 = Displacement 2
+  Operator 1 = max abs  
+End
+
+Material 1
+  Density = Real 1
+  Youngs Modulus = Real 1e9
+  Poisson Ratio = Real 0.3
+End
+
+Material 2
+  Relative Permittivity = 1
+End
+
+
+Boundary Condition 1
+  Name = "beam_fixed"
+  Target Boundaries = 1
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Name = "beam_sides"
+  Target Boundaries = 2
+  Potential = 0.0
+  Calculate Electric Force = True
+
+  Displacement 1 Load = Equals "Electric Nodal Force 1"
+  Displacement 2 Load = Equals "Electric Nodal Force 2"
+
+!  Force 1 = Equals "Electric Force Density 1"
+!  Force 2 = Equals "Electric Force Density 2"
+End
+
+Boundary Condition 3
+  Name = "floor"
+  Target Boundaries = 3
+  Potential = 1.0e6
+End
+
+Boundary Condition 4
+  Name = "ext_walls"
+  Target Boundaries = 4
+End
+
+
+Solver 3 :: Reference Norm = 2.36963984E-04
+
+
+!End Of File
+

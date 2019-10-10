@@ -1,5 +1,5 @@
 !----------------------------------------------------------------------------
-! A test case for mortar BCs and drag compuation of rotating beam.
+! A test case for mortar BCs and drag computation of rotating beam.
 ! The idea is to scan over drag angle.
 !
 ! P.R. 30.9.2016

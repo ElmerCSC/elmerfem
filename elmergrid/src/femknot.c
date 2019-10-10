@@ -1623,10 +1623,10 @@ int CreateBoundary(struct CellType *cell,struct FemType *data,
 		   struct BoundaryType *bound,int material1,int material2,
 		   int solidmat,int boundarytype)
 /* This subroutine makes a boundary which includes all sides that separate
-   two materials that fullfill the conditions in the function call. If both
+   two materials that fulfill the conditions in the function call. If both
    materials are positive only the sides for which both of the materials
    coincide are accepted. In other cases the negative argument tells which
-   conditions the positive argument should fullfill. Note that on a boundary
+   conditions the positive argument should fulfill. Note that on a boundary
    where knots are created only for the other material, this material
    should be the latter one in the function call (material). The physical
    properties (emissivity) of the materials are taken from the one given
@@ -1888,7 +1888,7 @@ restart:
   size = 1;
   side = 1;
 
-  /* The chain is followed in positive direction while succesful,
+  /* The chain is followed in positive direction while successful,
      if not the direction is changed and so on... */
   for(;;) {	
     for(i=side+1;i<=bound->nosides;i++) {
@@ -2017,7 +2017,7 @@ int CreatePoints(struct CellType *cell,struct FemType *data,
 omstart:
   i = 0;
 
-  /* Create nodes that are devided by the two materials specified */
+  /* Create nodes that are divided by the two materials specified */
   if(pointmode == 4) {
     for(no=1; no <= data->nocells; no++) 
       if(cell[no].material == param2) {
@@ -2949,7 +2949,7 @@ int ElementsToTriangles(struct FemType *data,struct BoundaryType *bound,
     evenodd = maxanglej % 2;
 
 
-    /* No triangularization is performed unless the crtical angle is exceeded. */
+    /* No triangularization is performed unless the critical angle is exceeded. */
     if( maxangle < critangle ) {
       triangles = 1;
       newtype = elementtype;
@@ -3136,7 +3136,7 @@ int ElementsToTriangles(struct FemType *data,struct BoundaryType *bound,
 			 data,sideind,&sideelemtype);	
 	
 	if(sideelemtype/100 != 2) {
-	  printf("ElementsToTriangles: implemeted only for BCs 202 and 203\n");
+	  printf("ElementsToTriangles: implemented only for BCs 202 and 203\n");
 	  continue;
 	}
 	
@@ -5578,7 +5578,7 @@ int IncreaseElementOrderOld(struct FemType *data,int info)
     goto edgeloop;
   }
 
-  printf("There are alltogether %d edges in the elements\n",noedges);
+  printf("There are altogether %d edges in the elements\n",noedges);
 
   arrange = Rvector(1,noedges);
   for(i=1;i<=noedges;i++) 
@@ -8656,7 +8656,7 @@ omstart:
 
 
   /* In case one wants to fit the mesh inside the original mesh 
-     the mesh nodes may be put to new positions using an appropiate filter. */
+     the mesh nodes may be put to new positions using an appropriate filter. */
 
 
   /* For higher order elements remove the middlenodes from the list of cornernodes */
@@ -9233,7 +9233,7 @@ int CreateBoundaryLayerDivide(struct FemType *data,struct BoundaryType *bound,
       if(elemhits != 2) nonewelements += nlayer + 1;
     }
   }
-  printf("There will %d new elemenets\n",nonewelements);
+  printf("There will %d new elements\n",nonewelements);
 
   /* This is a conservative estimate */
   nonewnodes = 2*nonewelements;

@@ -504,7 +504,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   Mesh => Solver % Mesh
   DIM = CoordinateSystemDimension()
 
-  ! Do some initalialization: allocate space, check fields  
+  ! Do some initialization: allocate space, check fields  
   !------------------------------------------------------------------------
   IF( VisitedTimes == 1 ) THEN
     TimeOrder = GetInteger( Params,'Time Order',Found)
@@ -828,7 +828,7 @@ CONTAINS
         Particles % Velocity(No,2) = COS( Angle ) * Velo(2) + SIN( Angle ) * Velo(1)
 
         ! For higher order scheme enforce the previous velocity also to zero since
-        ! otheriwse there is a funny velocity correction added.
+        ! otherwise there is a funny velocity correction added.
         IF( Particles % TimeOrder > 1 ) THEN
           Particles % PrevVelocity(No,:) = Particles % Velocity(No,:)
         END IF

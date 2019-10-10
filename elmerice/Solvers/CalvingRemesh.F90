@@ -569,7 +569,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
 
      Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
      IF(.NOT. ASSOCIATED(Var)) THEN
-        WRITE(Message,'(A,A)') "Listed mesh update variable but cant find: ",VarName
+        WRITE(Message,'(A,A)') "Listed mesh update variable but can not find: ",VarName
         CALL Fatal(SolverName, Message)
      END IF
      Var % Values = 0.0_dp
@@ -588,13 +588,13 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
 
      Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
      IF(.NOT. ASSOCIATED(Var)) THEN
-        WRITE(Message,'(A,A)') "Listed FreeSurface variable but cant find: ",VarName
+        WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",VarName
         CALL Fatal(SolverName, Message)
      END IF
 
      RefVar => VariableGet( Model % Mesh % Variables, "Reference "//TRIM(VarName), .TRUE. )
      IF(.NOT. ASSOCIATED(RefVar)) THEN
-        WRITE(Message,'(A,A)') "Listed FreeSurface variable but cant find: ",&
+        WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",&
              "Reference "//TRIM(VarName)
         CALL Fatal(SolverName, Message)
      END IF
@@ -2143,7 +2143,7 @@ CONTAINS
     IF(ANY(UnfoundNodes)) THEN
        DO i=1, SIZE(UnfoundNodes)
           IF(UnfoundNodes(i)) THEN
-             PRINT *,ParEnv % MyPE,' Didnt find point: ', i, ' x:', ExtrudedMesh % Nodes % x(i),&
+             PRINT *,ParEnv % MyPE,' Did not find point: ', i, ' x:', ExtrudedMesh % Nodes % x(i),&
                   ' y:', ExtrudedMesh % Nodes % y(i),&
                   ' z:', ExtrudedMesh % Nodes % z(i)
              CALL InterpolateUnfoundPoint( i, ExtrudedMesh, "ActualHeight", InterpDim,&
@@ -2446,7 +2446,7 @@ CONTAINS
     IF(ANY(UnfoundNodes)) THEN
        DO i=1, SIZE(UnfoundNodes)
           IF(UnfoundNodes(i)) THEN
-             PRINT *,ParEnv % MyPE,'Didnt find point: ', i,&
+             PRINT *,ParEnv % MyPE,'Did not find point: ', i,&
                   ' frontperm: ',ExtrudedFrontPerm(i),&
                   ' x:', ExtrudedMesh % Nodes % x(i),&
                   ' y:', ExtrudedMesh % Nodes % y(i),&
@@ -3457,7 +3457,7 @@ CONTAINS
 
       DO i=1, SIZE(UnfoundNodes)
           IF(UnfoundNodes(i)) THEN
-             PRINT *,ParEnv % MyPE,'Didnt find point: ', i, &
+             PRINT *,ParEnv % MyPE,'Did not find point: ', i, &
                   ' x:', NewMesh % Nodes % x(i),&
                   ' y:', NewMesh % Nodes % y(i),&
                   ' z:', NewMesh % Nodes % z(i)

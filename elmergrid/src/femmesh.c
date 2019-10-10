@@ -127,7 +127,7 @@ void InitGrid(struct GridType *grid)
   grid->zhelicityexists = FALSE;
   grid->zhelicity = 0.0;
 
-  /* Initilizes the numbering of the cells. */
+  /* Initializes the numbering of the cells. */
   for(j=0;j<=MAXCELLS+1;j++)
     for(i=0;i<=MAXCELLS+1;i++) 
       grid->structure[j][i] = MAT_NOTHING; 
@@ -305,7 +305,7 @@ void ExampleGrid2D(struct GridType **grids,int *nogrids,int info)
   
 void ExampleGrid3D(struct GridType **grids,int *nogrids,int info) 
 /* Creates an example grid that might be used to analyze 
-   a simple accelaration sensor. */
+   a simple acceleration sensor. */
 {
   int i,j;
   struct GridType *grid;
@@ -404,7 +404,7 @@ void ExampleGrid3D(struct GridType **grids,int *nogrids,int info)
 
 void SetElementDivision(struct GridType *grid,Real relh,int info)
 /* Given the densities and ratios in each cell finds the 
-   optimum way to devide the mesh into elements. 
+   optimum way to divide the mesh into elements. 
    The procedure is the following:
    For each subcell set the minimum number of elements 
    then add one element at a time till the number of 
@@ -437,7 +437,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
 	  grid->structure[j][i] <= grid->lastmaterial)   
         grid->numbered[j][i] = ++grid->nocells; 
     }
-  if(0) printf("The mesh is devided into %d separate subcells.\n",grid->nocells);
+  if(0) printf("The mesh is divided into %d separate subcells.\n",grid->nocells);
   
   /* Put the linearity flags. */
   for(i=1; i<= nx ;i++) {
@@ -460,7 +460,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
 
 
  /* If there are no materials no elements either.
-     Otherwise at least grid->minelems elments 
+     Otherwise at least grid->minelems elements 
      If you want to number elements even if they are 
      not there change this initialization to minelems. */
   if(grid->autoratio) {

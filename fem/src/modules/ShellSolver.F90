@@ -189,6 +189,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   TYPE(Nodes_t) :: Nodes
   TYPE(ValueList_t), POINTER :: SolverPars
   TYPE(Variable_t), POINTER :: NodalPDir1, NodalPDir2, NodalPDir3, Director
+  TYPE(Variable_t), POINTER :: Displacement3D
   TYPE(Matrix_t), POINTER :: PMatrix
 
   LOGICAL :: Found
@@ -202,6 +203,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: SolveBenchmarkCase
   LOGICAL :: MassAssembly, HarmonicAssembly
   LOGICAL :: Parallel
+  LOGICAL :: SolidShellCoupling
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -292,6 +294,18 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
     IF ( .NOT. ASSOCIATED(VisitsList) ) &
         CALL AllocateVector(VisitsList, SIZE(NodalPDir1 % Values)/3)
     VisitsList = 0
+  END IF
+  !
+  ! Check if a 3-D elasticity solution (expected to have the name "Displacement")
+  ! is available for computing the BCs of the shell model from it:
+  !
+  Displacement3D => VariableGet(Mesh % Variables, 'Displacement', .TRUE.)
+  IF (ASSOCIATED(Displacement3D)) THEN
+    ! Both the fields must be available in some common nodes to make this functional: 
+    SolidShellCoupling = COUNT(Displacement3D % Perm > 0 .AND. &
+        Solver % Variable % Perm > 0) > 0
+  ELSE
+    SolidShellCoupling = .FALSE.
   END IF
 
   IF (.NOT. ASSOCIATED(Indices)) ALLOCATE( Indices(Mesh % MaxElementDOFs) )
@@ -542,6 +556,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
+    IF (SolidShellCoupling) CALL SetSolidCouplingBCs(Model, Solver, Displacement3D)
 
     ! ---------------------------------------------------------------------------------
     ! The solution variable is the solution increment while the sif-file specifies
@@ -740,8 +755,8 @@ CONTAINS
     Pver = IsPVer
   END FUNCTION UsePElement
 
-    
-  
+
+
 ! ---------------------------------------------------------------------------------
 ! This subroutine uses an ordinary field variable or mesh.director file arranged as
 !
@@ -1300,7 +1315,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
-    REAL(KIND=dp), POINTER, INTENT(OUT) :: A(:,:), cpars(:)
+    REAL(KIND=dp), INTENT(OUT) :: A(:,:), cpars(:)
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
 !------------------------------------------------------------------------------
     LOGICAL :: WithThreeNodes
@@ -1407,8 +1422,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
-    REAL(KIND=dp), POINTER, INTENT(OUT) :: cpars(:)
-    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(OUT) :: A(:,:)
+    REAL(KIND=dp), INTENT(OUT) :: cpars(:)
+    REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: A(:,:)
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
 !------------------------------------------------------------------------------
     LOGICAL :: WithThreeNodes
@@ -4496,6 +4511,278 @@ CONTAINS
   END SUBROUTINE ShellBoundaryMatrix
 !------------------------------------------------------------------------------
 
+! ---------------------------------------------------------------------------------    
+!> This subroutine constrains the shell solution to obey the 3-D displacement 
+!> field which should be solved before the shell solver is executed. The rotation-
+!> like variables (directional derivatives) of the shell model are calculated from 
+!> the solution at solid nodes found in the positive and negative direction 
+!> of the shell normal (director). The displacement vector of the mid-surface is
+!> also constrained. The implementation is not yet perfect as when
+!> the nodes where this constraint is activated are listed by using
+!> the "Target Nodes" keyword, a redundant director specification should be
+!> given in a Boundary Condition section of the sif file. However, the redundant 
+!> definition is not needed if the constraint is activated by referring to 
+!> the boundary numbering, which is expected to be a more convenient way.
+! ---------------------------------------------------------------------------------    
+  SUBROUTINE SetSolidCouplingBCs(Model, Solver, Displacement)
+! ---------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    TYPE(Model_t), INTENT(IN) :: Model                 !< The current model structure
+    TYPE(Solver_t), INTENT(INOUT) :: Solver            !< The shell solver
+    TYPE(Variable_t), POINTER, INTENT(INOUT) :: Displacement !< The variable of 3-D elasticity 
+! ---------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Matrix_t), POINTER :: ShellMatrix, A
+    TYPE(ValueList_t), POINTER :: ValueList
+    TYPE(Element_t), POINTER :: BGElement, Parent
+
+    LOGICAL :: Found, SolidCoupling, GivenTargetNodes
+
+    INTEGER, ALLOCATABLE, TARGET :: BoundaryNodes(:)
+    INTEGER, ALLOCATABLE :: ActiveElementList(:)
+    INTEGER, ALLOCATABLE :: NearNodes(:)
+    INTEGER, POINTER :: Perm(:), NodeIndices(:)
+    INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
+    INTEGER :: BC, TargetCount, TargetNode, TargetInd, Row, ShellDOFs, DOFs
+    INTEGER :: i, j, k, l, n, p, jz, lz, np, i0
+    INTEGER :: Active, Family
+
+    REAL(KIND=dp), ALLOCATABLE :: NearCoordinates(:,:), AllDirectors(:,:)
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    REAL(KIND=dp) :: res_z, maxres_z, minres_z
+    REAL(KIND=dp) :: U_mid(3), U_upper(3), U_lower(3), h_eff
+    REAL(KIND=dp) :: d(3), d_h(3), v(3), DNU(3)
+! ---------------------------------------------------------------------------------
+    IF (.NOT. ListGetLogicalAnyBC(Model, 'Structure Interface')) RETURN
+    IF (.NOT. Displacement % DOFs == 3) THEN
+      CALL Warn('SetSolidCouplingBCs', 'Structure coupling possible in 3D only')
+      RETURN
+    ELSE
+      DOFs = 3
+    END IF
+    
+    IF (.NOT. ASSOCIATED(Displacement % Solver)) CALL Fatal('SetSolidCouplingBCs', &
+        'The solver pointer of displacement variable is not associated')
+
+    CALL Info('SetSolidCouplingBCs', 'Creating BCs for solid-shell coupling', Level=9)
+
+    ShellMatrix => Solver % Matrix
+    ShellDOFs = Solver % Variable % DOFs
+    IF (.NOT. ALLOCATED(ShellMatrix % ConstrainedDOF)) &
+        ALLOCATE(ShellMatrix % ConstrainedDOF(ShellMatrix % NumberOfRows))
+
+    Mesh => Model % Solver % Mesh
+
+    A => Displacement % Solver % Matrix
+    Diag => A % Diag
+    Rows => A % Rows
+    Cols => A % Cols
+    Perm => Displacement % Perm
+
+    IF (.NOT. ASSOCIATED(A % InvPerm)) THEN
+      ALLOCATE(A % InvPerm(A % NumberOfRows))
+      DO i = 1,SIZE(Perm)
+        IF (Perm(i) > 0) THEN
+          A % InvPerm(Perm(i)) = i
+        END IF
+      END DO
+    END IF
+
+    Active = GetNOFBoundaryElements()
+    DO BC=1,Model % NumberOfBCs
+      ValueList => Model % BCs(BC) % Values
+      SolidCoupling = ListGetLogical(ValueList, 'Structure Interface', Found)
+      IF (.NOT. SolidCoupling) CYCLE
+
+      NodeIndices => ListGetIntegerArray(ValueList, 'Target Nodes', GivenTargetNodes)
+
+      IF (GivenTargetNodes) THEN
+        TargetCount = SIZE(NodeIndices)
+        !
+        ! Here the director definition is sought from the BC definition, 
+        ! although the director should already be available from the specification 
+        ! of a shell model. The redundant definition is not needed if the 
+        ! constraint is activated by referring to the boundary numbering.
+        !
+        IF (.NOT.ListCheckPresent(ValueList, 'Director 1') .AND. &
+            .NOT.ListCheckPresent(ValueList, 'Director 2') .AND. &
+            .NOT.ListCheckPresent(ValueList, 'Director 3')) THEN
+          CALL Fatal('SetSolidCouplingBCs', &
+              'Director must be defined in the BC section when using Target Nodes')
+        ELSE
+          ALLOCATE(AllDirectors(3,TargetCount))
+          AllDirectors(1,1:TargetCount) = ListGetReal(ValueList, 'Director 1', TargetCount, NodeIndices, Found)
+          AllDirectors(2,1:TargetCount) = ListGetReal(ValueList, 'Director 2', TargetCount, NodeIndices, Found)
+          AllDirectors(3,1:TargetCount) = ListGetReal(ValueList, 'Director 3', TargetCount, NodeIndices, Found)
+        END IF        
+
+      ELSE
+        !
+        ! We shall loop over the elements in order to list target nodes where the coupling BC 
+        ! is activated. The value of director must be sought from the parent elements.
+        !
+        IF (.NOT. ALLOCATED(ActiveElementList)) ALLOCATE(ActiveElementList(Active))
+        ActiveElementList = 0
+        !
+        ! First, figure out suitable sizes for some arrays:
+        !
+        n = 0
+        p = 0
+        DO k=1, Active
+          BGElement => GetBoundaryElement(k)
+          Family = GetElementFamily(BGElement)
+          IF (.NOT.(ActiveBoundaryElement() .AND. Family == 2)) CYCLE
+          IF (BGElement % BoundaryInfo % Constraint /= Model % BCs(BC) % Tag ) CYCLE
+          p = p + BGElement % TYPE % NumberOfNodes
+          n = n + 1
+          ActiveElementList(n) = k
+        END DO
+        ! print *, 'ACTIVE BC ELEMENTS = ', N
+        ! print *, 'ACTIVE BC NODES = ', P       
+        ALLOCATE(BoundaryNodes(p))
+        ALLOCATE(AllDirectors(3,p))
+        !
+        ! Then, write data to the arrays:
+        !
+        l = 0
+        DO k=1,n
+          BGElement => GetBoundaryElement(ActiveElementList(k))
+          DirectorValues => NULL()
+          Parent => BGElement % BoundaryInfo % Left
+          IF (ASSOCIATED(Parent)) &
+              DirectorValues => GetElementalDirector(Parent)
+          IF (.NOT. ASSOCIATED(DirectorValues)) THEN
+            Parent => BGElement % BoundaryInfo % Right
+            DirectorValues => GetElementalDirector(Parent)
+          END IF
+          IF (.NOT. ASSOCIATED(DirectorValues)) CALL Fatal('SetSolidCouplingBCs', &
+              'Director cannot be found from parent elements')
+
+          DO i=1, BGElement % TYPE % NumberOfNodes
+            DO j=1, Parent % TYPE % NumberOfNodes
+              IF (BGElement % NodeIndexes(i) == Parent % NodeIndexes(j)) THEN
+                i0 = 3*(j-1)
+                l = l + 1
+                AllDirectors(1:3,l) = DirectorValues(i0+1:i0+3)
+                BoundaryNodes(l) = BGElement % NodeIndexes(i)
+                EXIT
+              END IF
+            END DO
+          END DO
+        END DO
+        NodeIndices => BoundaryNodes(:)
+        TargetCount = l
+      END IF
+
+      DO p=1,TargetCount
+        TargetNode = NodeIndices(p)
+        TargetInd = Perm(NodeIndices(p))
+        IF (TargetInd == 0) CYCLE
+        !------------------------------------------------------------------------------
+        ! Find nodes which can potentially be used to calculate the normal derivative
+        ! of the 3-D solution:
+        !------------------------------------------------------------------------------
+        Row = TargetInd * DOFs
+        n = (Rows(Row+1)-1 - Rows(Row)-Dofs+1)/DOFs + 1
+        ALLOCATE(NearNodes(n), NearCoordinates(3,n))
+
+        k = 0
+        DO i = Rows(Row)+Dofs-1, Rows(Row+1)-1, Dofs
+          j = Cols(i)/Dofs
+          k = k + 1
+          NearNodes(k) = A % InvPerm(j)
+        END DO
+        ! PRINT *, 'POTENTIAL NODE CONNECTIONS:'
+        ! print *, 'Nodes near target=', NearNodes(1:k)       
+
+        !
+        ! The position vectors for the potential nodes:
+        !
+        NearCoordinates(1,1:n) = Mesh % Nodes % x(NearNodes(1:n)) - Mesh % Nodes % x(TargetNode)
+        NearCoordinates(2,1:n) = Mesh % Nodes % y(NearNodes(1:n)) - Mesh % Nodes % y(TargetNode)
+        NearCoordinates(3,1:n) = Mesh % Nodes % z(NearNodes(1:n)) - Mesh % Nodes % z(TargetNode)  
+
+        d = AllDirectors(:,p)
+        e3 = d/SQRT(DOT_PRODUCT(d,d))
+        !------------------------------------------------------------------------------
+        ! Seek for nodes which are closest to be parallel to d and have a non-negligible
+        ! component with respect to d
+        !------------------------------------------------------------------------------
+        maxres_z = 0.0d0
+        minres_z = 0.0d0
+        jz = 0
+        lz = 0
+        DO i=1,n
+          IF (NearNodes(i) == TargetNode) CYCLE
+
+          res_z = DOT_PRODUCT(e3(:), NearCoordinates(:,i)) / &
+              SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
+          !
+          ! Skip nearly orthogonal couplings:
+          !
+          IF (ABS(res_z) < 2.0d-2) CYCLE
+
+          IF (res_z > 0.0d0) THEN
+            !
+            ! A near node is on +d side
+            !
+            IF (res_z > maxres_z) THEN
+              jz = NearNodes(i)
+              maxres_z = res_z
+            END IF
+          ELSE
+            !
+            ! A near node is on -d side
+            !
+            IF (res_z < minres_z) THEN
+              lz = NearNodes(i)
+              minres_z = res_z
+            END IF
+          END IF
+        END DO
+
+        ! PRINT *, 'HANDLING NODE = ', TargetNode
+        ! PRINT *, 'UPPER NODE = ', JZ
+        ! PRINT *, 'LOWER NODE = ', LZ
+
+        ! Now, evaluate the directional derivative DNU(:) in the normal direction:
+        i = Perm(lz)
+        j = Perm(jz)
+        k = Perm(TargetNode)
+        U_lower(1:3) = Displacement % Values(i*DOFs-2:i*DOFs)
+        U_upper(1:3) = Displacement % Values(j*DOFs-2:j*DOFs)
+        U_mid(1:3) = Displacement % Values(k*DOFs-2:k*DOFs)
+        v(1:3) = [Mesh % Nodes % x(jz) - Mesh % Nodes % x(lz), &
+            Mesh % Nodes % y(jz) - Mesh % Nodes % y(lz), &
+            Mesh % Nodes % z(jz) - Mesh % Nodes % z(lz)]
+        h_eff = SQRT(DOT_PRODUCT(v,v))
+        DNU(:) = -1.0d0/h_eff * (U_upper(:) - U_lower(:))
+
+        d_h = v/SQRT(DOT_PRODUCT(v,v))
+        IF (ABS(DOT_PRODUCT(d_h,e3)) < 0.98d0) THEN
+          CALL Warn('SetSolidCouplingBCs', 'A BC omitted: Solid-model nodes does not span the director')
+          CYCLE
+        END IF
+
+        !
+        ! Finally, constrain the shell to follow the deformation of the solid: 
+        !
+        k = (Solver % Variable % Perm(TargetNode)-1) * ShellDOFs
+        ShellMatrix % DValues(k+1:k+3) = U_mid(1:3)
+        Solver % Matrix % ConstrainedDOF(k+1:k+3) = .TRUE.
+        ShellMatrix % DValues(k+4:k+6) = DNU(1:3)
+        Solver % Matrix % ConstrainedDOF(k+4:k+6) = .TRUE.
+            
+        DEALLOCATE(NearNodes, NearCoordinates)
+      END DO
+      IF (ALLOCATED(AllDirectors)) DEALLOCATE(AllDirectors)
+      IF (ALLOCATED(BoundaryNodes)) DEALLOCATE(BoundaryNodes)
+    END DO
+    IF (ALLOCATED(ActiveElementList)) DEALLOCATE(ActiveElementList)
+! ---------------------------------------------------------------------------------
+  END SUBROUTINE SetSolidCouplingBCs
+! ---------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 ! Define what strain reduction strategy is applied and set parameters that

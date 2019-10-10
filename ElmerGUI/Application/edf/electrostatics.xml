@@ -84,12 +84,12 @@
 
          <Parameter  Widget="Edit">
            <Name> Potential Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
          </Parameter>
 
          <Parameter  Widget="Edit" Enabled="True" Visible="True">
            <Name>Capacitance Body</Name>
-           <Whatis> This keyword should be provided for capacitance matrix computation only. The numbers should provide continuous numbering from 1 to the total number of bodies. Ground may be defined with value 0 or by explicitely setting potential to zero somewhere.</Whatis>
+           <Whatis> This keyword should be provided for capacitance matrix computation only. The numbers should provide continuous numbering from 1 to the total number of bodies. Ground may be defined with value 0 or by explicitly setting potential to zero somewhere.</Whatis>
          </Parameter>
  
          <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
