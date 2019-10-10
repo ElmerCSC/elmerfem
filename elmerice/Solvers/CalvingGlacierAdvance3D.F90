@@ -46,7 +46,8 @@
    TYPE(Mesh_t), POINTER :: Mesh
    TYPE(Nodes_t), TARGET :: FrontNodes
    TYPE(ValueList_t), POINTER :: Params
-   TYPE(Variable_t), POINTER :: Var, VeloVar, MeltVar, NormalVar, TangledVar
+   TYPE(Variable_t), POINTER :: Var, VeloVar, MeltVar, NormalVar, TangledVar, &
+        DistVar
 ! TO DO clean all unused variables
    INTEGER :: i, j, k, m, n, DOFs, TotalNodes,&
         FaceNodeCount, DummyInt,  hits, ierr, FrontLineCount, county,&
@@ -57,10 +58,9 @@
    INTEGER, ALLOCATABLE :: FrontLocalNodeNumbers(:), &
         NodeNumbers(:), TangledGroup(:), TangledPivotIdx(:), UpdatedDirection(:)
    REAL(KIND=dp) :: FrontOrientation(3),RotationMatrix(3,3),&
-        NodeVelo(3), NodeMelt(3), NodeNormal(3), CornerDirection(2),&
-        MeltRate, Displace(3), NodeHolder(3), DangerGrad, ShiftTo, direction, &
-        ShiftDist, y_coord(2), epsShift, ShiftToY, LongRangeLimit, MaxDisplacement, LimitZ, &
-        p1(2),p2(2),q1(2),q2(2),intersect(2), LeftY, RightY, EpsTangle,thisEps,Shift, thisY
+        NodeVelo(3), NodeMelt(3), NodeNormal(3), RailDir(2),&
+        MeltRate, Displace(3), y_coord(2), epsShift, LongRangeLimit, MaxDisplacement, &
+        EpsTangle,thisEps,Shift, thisY
    REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), &
         TangledShiftTo(:)
@@ -72,7 +72,7 @@
         NormalVarName, FrontMaskName, TopMaskName, TangledVarName, &
         LeftMaskName, RightMaskName
 
-   SAVE :: FirstTime
+   SAVE :: FirstTime ! TO DO not actually using FirstTime here?
 
    !-----------------------------------------------
    ! Initialisation
@@ -156,46 +156,56 @@
    !         Everything following this DO loop is taking care of
    !         unprojectability/high gradient etc
    !--------------------------------------
-   
+    
    DO i=1,Mesh % NumberOfNodes
-      IF((FrontPerm(i) <= 0).AND.(LeftPerm(i) <= 0).AND.(RightPerm(i) <= 0)) THEN
-         Perm(i)=0
+      IF(Perm(i) <= 0) CYCLE
+
+      IF(FrontMelting .AND. (FrontPerm(i) >0 )) THEN
+         IF(MeltVar % Perm(i) <= 0) &
+              CALL Fatal(SolverName, "Permutation error on front node!")
+
+
+         !Scalar melt value from Plume solver
+         MeltRate = MeltVar % Values(MeltVar % Perm(i))
+
+         NodeNormal(1) = NormalVar % Values(((NormalVar % Perm(i)-1)*NormalVar % DOFs) + 1)
+         NodeNormal(2) = NormalVar % Values(((NormalVar % Perm(i)-1)*NormalVar % DOFs) + 2)
+         NodeNormal(3) = NormalVar % Values(((NormalVar % Perm(i)-1)*NormalVar % DOFs) + 3)
+
+         NodeMelt = NodeNormal * MeltRate
+      ELSE
+         NodeMelt = 0.0_dp
       END IF
-   END DO
 
-   DO i=1,Mesh % NumberOfNodes
-     IF(Perm(i) <= 0) CYCLE
-
-     IF(FrontMelting.AND.FrontPerm(i)>0) THEN
-       IF(MeltVar % Perm(i) <= 0) &
-            CALL Fatal(SolverName, "Permutation error on front node!")
+      !Compute front normal component of velocity
+      NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
+      NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
+      NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
 
 
-       !Scalar melt value from Plume solver
-       MeltRate = MeltVar % Values(MeltVar % Perm(i))
-
-       NodeNormal(1) = NormalVar % Values(((NormalVar % Perm(i)-1)*NormalVar % DOFs) + 1)
-       NodeNormal(2) = NormalVar % Values(((NormalVar % Perm(i)-1)*NormalVar % DOFs) + 2)
-       NodeNormal(3) = NormalVar % Values(((NormalVar % Perm(i)-1)*NormalVar % DOFs) + 3)
-
-       NodeMelt = NodeNormal * MeltRate
-     ELSE
-       NodeMelt = 0.0_dp
-     END IF
-
-     !Compute front normal component of velocity
-     NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
-     NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
-     NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
-
-
-     Displace = 0.0
-
-     Displace(1) =  NodeVelo(1) - NodeMelt(1)
-     Displace(2) =  NodeVelo(2) - NodeMelt(2)
-     Displace(3) =  NodeVelo(3) - NodeMelt(3)
-
-     Displace = Displace * dt
+      Displace = 0.0
+      IF ( FrontPerm(i) > 0 ) THEN
+         Displace(1) =  NodeVelo(1) - NodeMelt(1)
+         Displace(2) =  NodeVelo(2) - NodeMelt(2)
+         Displace(3) =  NodeVelo(3) - NodeMelt(3)
+         IF ((LeftPerm(i)>0) .OR. (RightPerm(i)>0)) THEN   ! TO DO on left or right corner
+            ! Strategy to project displace along rail direction:
+            ! get x,y coordinate of node i, 
+            ! compute direction of rail by finding prev and next rail node
+            ! only do x,y direction; no penetration in vertical is handled by freesurf.
+            ! NOTE mass is not conserved but for small timesteps and a relatively thin lateral boundary it should be insignificant..
+            IF(LeftPerm(i)>0) THEN ! HARD CODED FOR PLANMESH, st RailDir not unitvector
+               RailDir=(/-1.0,-5.0/)
+            ELSE ! on right corner
+               RailDir=(/1.0,-5.0/)
+            END IF
+            Displace(1:2) = DOT_PRODUCT(Displace(1:2),RailDir) * &
+                 RailDir / DOT_PRODUCT(RailDir,RailDir)
+            ! TO DO check whether x,y + displace*dt intersects with next line segment
+            ! if it does, find point on next line segment with distance displ*dt from current x,y and send node there
+         END IF
+         Displace = Displace * dt
+      END IF
 
      IF(MAXVAL(Displace) > MaxDisplacement) THEN
        WRITE(Message,'(A,i0,A)') "Maximum allowable front displacement exceeded for node ",i,". Limiting..."
@@ -214,7 +224,6 @@
 
    FirstTime = .FALSE.
 
-   DEALLOCATE(FrontPerm, &
-        TopPerm)
+!   DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
 
  END SUBROUTINE GlacierAdvance3D
