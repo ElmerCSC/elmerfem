@@ -70,7 +70,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !--------------------------------------
   TYPE(Variable_t), POINTER :: CalvingVar
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,FinalMesh
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),front_BC_ID, &
@@ -80,9 +80,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
-  REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:)
+  REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
+       target_length(:,:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
-       elem_send(:), RmElem(:), RmNode(:)
+       elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
   SolverParams => GetSolverParams()
@@ -430,7 +431,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
 
-      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE.)
+      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
       NewMeshR % Name = Mesh % Name
 
@@ -586,6 +587,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
+      new_fixed_elem = PACK(new_fixed_elem, .NOT. RmElem)
+      new_fixed_node = PACK(new_fixed_node, .NOT. RmNode)
+
       IF(Debug) THEN
         DO i=1,NewMeshR % NumberOfNodes
           PRINT *, ParEnv % MyPE,' debug new ',i,&
@@ -602,12 +606,23 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END DO
       END IF
 
+      !Anisotropic mesh improvement following calving cut:
+      !TODO - unhardcode!
+      ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
+      target_length(:,1) = 300.0
+      target_length(:,2) = 300.0
+      target_length(:,3) = 50.0
+
+      CALL RemeshMMG3D(NewMeshR, target_length, NewMeshRR, new_fixed_node, new_fixed_elem)
+
       !Update parallel info from old mesh nodes (shared node neighbours)
-      CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+      CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
 
       CALL ReleaseMesh(GatheredMesh)
-      GatheredMesh => NewMeshR
+      CALL ReleaseMesh(NewMeshR)
+      GatheredMesh => NewMeshRR
       NewMeshR => NULL()
+      NewMeshRR => NULL()
    END IF
 
    !Wait for all partitions to finish

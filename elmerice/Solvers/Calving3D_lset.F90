@@ -54,31 +54,32 @@
         VTUOutputSolver => NULL(), IsoSolver => NULL()
    TYPE(Matrix_t), POINTER :: StiffMatrix
    TYPE(Mesh_t), POINTER :: Mesh, PlaneMesh, IsoMesh, WorkMesh, WorkMesh2
-   TYPE(Element_t), POINTER :: Element, WorkElements(:)
+   TYPE(Element_t), POINTER :: Element, WorkElements(:),IceElement
    TYPE(Nodes_t), TARGET :: WorkNodes, FaceNodesT, LeftNodes, RightNodes, FrontNodes
    TYPE(Nodes_t), POINTER :: WriteNodes
    INTEGER :: i,j,jmin,k,n,counter, dim, dummyint, TotalNodes, NoNodes, &
         comm, ierr, Me, PEs, FaceNodeCount, start, fin, &
-        county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
-        WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
-        FrontLineCount, ShiftIdx,NoCrevNodes, NoPaths
+        DOFs, PathCount, ValidPathCount, active,&
+        WriteNodeCount, MeshBC, col, LeftConstraint, RightConstraint, FrontConstraint,&
+        FrontLineCount, ShiftIdx,NoCrevNodes, NoPaths, IMBdryCount
    INTEGER, PARAMETER :: GeoUnit = 11
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
         NodeNums(:), FrontNodeNums(:), &
         LeftNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), &
         CIndexPerm(:), BList(:), WorkPerm(:), InterpDim(:),&
-        OrderPerm(:), SignDistPerm(:), NodeIndexes(:)
+        OrderPerm(:), SignDistPerm(:), NodeIndexes(:),IceNodeIndexes(:),&
+        EdgeMap(:,:)
    INTEGER, ALLOCATABLE :: MyFaceNodeNums(:), PFaceNodeCount(:),&
-        !FNColumns(:),
-        disps(:), WritePoints(:), CrevEnd(:),CrevStart(:),FrontColumnList(:) ! TO DO rm frontcolumnlist
+        disps(:), WritePoints(:), CrevEnd(:),CrevStart(:),IMBdryConstraint(:),&
+        IMBdryENums(:)
    REAL(KIND=dp) :: FrontOrientation(3), MaxHolder, &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
         Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
         PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, dxdy,&
-        gradLimit, Displace, y_coord(2), ShiftTo, TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
-        angle,angle0,&
+        Displace, y_coord(2), ShiftTo, TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
+        angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2), &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -88,24 +89,27 @@
    REAL(KIND=dp), POINTER :: DistValues(:), SignDistValues(:), CIndexValues(:), &
         WorkReal(:), CalvingValues(:), ForceVector(:)
    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), HeightDirich(:), &
-        Rot_y_coords(:,:), Rot_z_coords(:,:), CrevX(:),CrevY(:)
+        Rot_y_coords(:,:), Rot_z_coords(:,:), CrevX(:),CrevY(:),IMBdryNodes(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         CIndexVarName, filename_root, filename,MaskName,&
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
         MeshDir, PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
         MoveMeshDir,MoveMeshFullPath
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
-        SaveParallelActive, InGroup, PauseSolvers, LeftToRight, MovedOne, ShiftSecond, &
+        SaveParallelActive, PauseSolvers, LeftToRight, MovedOne, ShiftSecond, &
         MoveMesh=.FALSE.
    LOGICAL, POINTER :: UnfoundNodes(:)=>NULL(), PWorkLogical(:)
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), IMOnMargin(:), &
-        DeleteMe(:), IsCalvingNode(:), WorkLogical(:), PlaneEdgeElem(:)
+        IMOnLeft(:), IMOnRight(:),&
+        IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), WorkLogical(:), PlaneEdgeElem(:)
 
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath, ClosestPath
 
    SAVE :: FirstTime, SolverName, Params, Parallel, Boss, dim, Debug, &
         DistVarName, CIndexVarName, PC_EqName, Iso_EqName, &
-        MinCalvingSize, PauseVolumeThresh, gradLimit, MoveMesh
+        MinCalvingSize, PauseVolumeThresh, MoveMesh,LeftConstraint, &
+        RightConstraint, FrontConstraint,TopMaskName, BotMaskName, &
+        LeftMaskName, RightMaskName, FrontMaskName
 
 !---------------Get Variables and Parameters for Solution-----------
 
@@ -116,7 +120,13 @@
       Params => Solver % Values
       Parallel = (ParEnv % PEs > 1)
       Boss = (ParEnv % MyPE == 0) .OR. (.NOT. Parallel)
-      Debug = .FALSE.
+      Debug = .TRUE.
+
+      TopMaskName = "Top Surface Mask"
+      BotMaskName = "Bottom Surface Mask"
+      LeftMaskName = "Left Sidewall Mask"
+      RightMaskName = "Right Sidewall Mask"
+      FrontMaskName = "Calving Front Mask"
 
       dim = CoordinateSystemDimension()
       IF(dim /= 3) CALL Fatal(SolverName, "Solver only works in 3D!")
@@ -140,9 +150,17 @@
       PauseVolumeThresh = ListGetConstReal(Params, "Pause Solvers Minimum Iceberg Volume", Found)
       IF(.NOT. Found) PauseVolumeThresh = 0.0_dp
 
-      gradLimit = ListGetConstReal(Params, "Front Gradient Limit", Found)
-      IF(.NOT. Found) gradLimit = 100.0_dp
-
+      !Get the boundary constraint of the left, right & front boundaries
+      LeftConstraint = 0; RightConstraint = 0; FrontConstraint = 0
+      DO i=1,Model % NumberOfBCs
+        IF(ListCheckPresent(Model % BCs(i) % Values,FrontMaskName)) &
+             FrontConstraint = Model % BCs(i) % Tag
+        IF(ListCheckPresent(Model % BCs(i) % Values,LeftMaskName)) &
+             LeftConstraint = Model % BCs(i) % Tag
+        IF(ListCheckPresent(Model % BCs(i) % Values,RightMaskName)) &
+             RightConstraint = Model % BCs(i) % Tag
+      END DO
+      IF(Debug) PRINT *,'Front, Left, Right constraints: ',FrontConstraint,LeftConstraint,RightConstraint
    END IF !FirstTime
 
    Mesh => Model % Mesh
@@ -179,12 +197,6 @@
    NoNodes = Mesh % NumberOfNodes
    ALLOCATE( TopPerm(NoNodes), BotPerm(NoNodes), LeftPerm(NoNodes),&
         RightPerm(NoNodes), FrontPerm(NoNodes))
-
-   TopMaskName = "Top Surface Mask"
-   BotMaskName = "Bottom Surface Mask"
-   LeftMaskName = "Left Sidewall Mask"
-   RightMaskName = "Right Sidewall Mask"
-   FrontMaskName = "Calving Front Mask"
 
    !Generate perms to quickly get nodes on each boundary
    CALL MakePermUsingMask( Model, Solver, Mesh, TopMaskName, &
@@ -442,9 +454,13 @@
        !-------------------------------------------------
 
        ALLOCATE(IMOnFront(IsoMesh % NumberOfNodes), &
+            IMOnLeft(IsoMesh % NumberOfNodes),&
+            IMOnRight(IsoMesh % NumberOfNodes),&
             IMOnSide(IsoMesh % NumberOfNodes),&
             IMOnMargin(IsoMesh % NumberOfNodes))
        IMOnFront=.FALSE.; IMOnSide=.FALSE.; IMOnMargin=.FALSE.
+       IMOnLeft=.FALSE.; IMOnRight=.FALSE.
+
        ! search_eps = EPSILON(PlaneMesh % Nodes % x(1))
 
        IsolineIdVar => VariableGet(IsoMesh % Variables, "isoline id", .TRUE.,UnfoundFatal=.TRUE.)
@@ -452,37 +468,121 @@
          ImOnMargin(i) = IsolineIDVar % Values(IsolineIDVar % Perm(i)) > 0.0_dp
        END DO
 
-       !Now cycle elements: for those with a node either side
-       !of domain boundary, cycle 3d mesh boundary elements
-       !looking for a 2D intersection. This identifies the
-       !physical boundary for the isomesh node.
-       DO i=1, IsoMesh % NumberOfBulkElements
-         NodeIndexes => Isomesh % Elements(i) % NodeIndexes
-         IF(IMOnMargin(NodeIndexes(1)) .EQV. IMOnMargin(NodeIndexes(2))) CYCLE
+       !Count the elements which cross through the ice domain boundary
+       !and fill IMBdryNodes to send to other partitions
+       ALLOCATE(IMElemOnMargin(IsoMesh % NumberOfBulkElements))
+       IMElemOnMargin = .FALSE.
 
-         !TODO - here - need efficient algorithm to find intersection
+       DO k=1,2 !2 passes, count then fill
+         IMBdryCount = 0
+         DO i=1, IsoMesh % NumberOfBulkElements
+           NodeIndexes => Isomesh % Elements(i) % NodeIndexes
+           IF(IMOnMargin(NodeIndexes(1)) .EQV. IMOnMargin(NodeIndexes(2))) CYCLE
+           IMElemOnMargin(i) = .TRUE.
+           IMBdryCount = IMBdryCount + 1
+
+           IF(k==2) THEN
+             IMBdryNodes(IMBdryCount,1) = Isomesh % Nodes % x(NodeIndexes(1))
+             IMBdryNodes(IMBdryCount,2) = Isomesh % Nodes % y(NodeIndexes(1))
+             IMBdryNodes(IMBdryCount,3) = Isomesh % Nodes % x(NodeIndexes(2))
+             IMBdryNodes(IMBdryCount,4) = Isomesh % Nodes % y(NodeIndexes(2))
+             IMBdryENums(IMBdryCount) = i
+           END IF
+         END DO
+         IF(k==1) ALLOCATE(IMBdryNodes(IMBdryCount,4),IMBdryENums(IMBdryCount))
        END DO
+     END IF
 
-       !    Found = .FALSE.
-       !    DO j=1, PlaneMesh % NumberOfNodes
-       !       IF(ABS(PlaneMesh % Nodes % x(j) - &
-       !            IsoMesh % Nodes % x(i)) < search_eps) THEN
-       !          IF(ABS(PlaneMesh % Nodes % y(j) - &
-       !               IsoMesh % Nodes % y(i)) < search_eps) THEN
-       !             Found = .TRUE.
-       !             EXIT
-       !          END IF
-       !       END IF
-       !    END DO
-       !    IF(.NOT. Found) THEN
-       !       WRITE(Message,'(A,i0,A)') "Unable to locate isomesh node ",i," in PlaneMesh."
-       !       CALL Fatal(SolverName, Message)
-       !    END IF
+     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
-       !    ! IF(PlaneFrontPerm(j) > 0) IMOnFront(i) = .TRUE.
-       !    ! IF((PlaneLeftPerm(j) > 0) .OR. &
-       !    !      (PlaneRightPerm(j) > 0)) IMOnSide(i) = .TRUE.
-       ! END DO
+     !Pass isoline boundary elements to all partitions to get info
+     !about which boundary they cross
+
+     CALL MPI_BCAST(IMBdryCount,1,MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     IF(.NOT. Boss) ALLOCATE(IMBdryNodes(IMBdryCount,4))
+
+     CALL MPI_BCAST(IMBdryNodes,IMBdryCount*4, MPI_DOUBLE_PRECISION,&
+          0, ELMER_COMM_WORLD, ierr)
+     ALLOCATE(IMBdryConstraint(IMBdryCount))
+     IMBdryConstraint = 0
+
+     !Now cycle elements: for those with a node either side
+     !of domain boundary, cycle 3d mesh boundary elements
+     !looking for a 2D intersection. This identifies the
+     !physical boundary for the isomesh node.
+     DO i=1, IMBdryCount
+
+       a1(1) = IMBdryNodes(i,1)
+       a1(2) = IMBdryNodes(i,2)
+       a2(1) = IMBdryNodes(i,3)
+       a2(2) = IMBdryNodes(i,4)
+
+       !Slightly extend the length of the element to account for floating point
+       !precision issues:
+       a2a1 = (a2 - a1) * 0.1
+       a1 = a1 - a2a1
+       a2 = a2 + a2a1
+
+       DO j=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
+            Mesh % NumberOfBoundaryElements
+
+         IceElement => Mesh % Elements(j)
+         IF(IceElement % BoundaryInfo % Constraint /= FrontConstraint .AND. &
+              IceElement % BoundaryInfo % Constraint /= LeftConstraint .AND. &
+              IceElement % BoundaryInfo % Constraint /= RightConstraint) CYCLE
+
+         IceNodeIndexes => IceElement  % NodeIndexes
+
+         EdgeMap => LGetEdgeMap(IceElement % TYPE % ElementCode / 100)
+
+         !set K = element number of edges
+         ! cycle K, setting edge to b1 b2, checking
+         n = SIZE(EdgeMap,1)
+         DO k=1,n
+           b1(1) = Mesh % Nodes % x(IceNodeIndexes(EdgeMap(k,1)))
+           b1(2) = Mesh % Nodes % y(IceNodeIndexes(EdgeMap(k,1)))
+           b2(1) = Mesh % Nodes % x(IceNodeIndexes(EdgeMap(k,2)))
+           b2(2) = Mesh % Nodes % y(IceNodeIndexes(EdgeMap(k,2)))
+
+           !TODO - here - need efficient algorithm to find intersection
+           CALL LineSegmentsIntersect ( a1, a2, b1, b2, isect, Found)
+
+           IF(Found) THEN
+             !set the element BC id here!
+             CALL Assert(ASSOCIATED(IceElement % BoundaryInfo), SolverName,&
+                  "Boundary element has no % boundaryinfo!")
+             IMBdryConstraint(i) = IceElement % BoundaryInfo % Constraint
+             IF(Debug) PRINT *,ParEnv % MyPE,' isomesh element ',i,' hit ',j,'constraint: ', &
+                  IceElement % BoundaryInfo % Constraint,' xy: ',a1
+             EXIT
+           END IF
+         END DO
+         IF(Found) EXIT
+       END DO
+     END DO
+
+     !Send info back to boss
+     IF(Boss) THEN
+       CALL MPI_Reduce(MPI_IN_PLACE, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+            MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
+     ELSE
+       CALL MPI_Reduce(IMBdryConstraint, IMBdryConstraint, IMBdryCount, MPI_INTEGER, &
+            MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
+     END IF
+
+     IF(Boss) THEN
+
+       IF(ANY(IMBdryConstraint == 0)) THEN
+         PRINT *,'Debug constraints: ', IMBdryConstraint
+         CALL Fatal(SolverName,"Failed to identify boundary constraint for all isomesh edge elements")
+       END IF
+
+       DO i=1,IMBdryCount
+         k = IMBdryENums(i)
+         IF(IMBdryConstraint(i) == FrontConstraint) IMOnFront(k) = .TRUE.
+         IF(IMBdryConstraint(i) == LeftConstraint) IMOnLeft(k) = .TRUE.
+         IF(IMBdryConstraint(i) == RightConstraint) IMOnRight(k) = .TRUE.
+       END DO
 
        IF(Debug) THEN
           PRINT *, 'debug, count IMOnFront: ', COUNT(IMOnFront)
@@ -543,7 +643,7 @@
        CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
        !TODO - pull from MMigrate? - need to check logic here
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
+       ! CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
 
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
