@@ -5243,7 +5243,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, OPTIONAL :: AntiPeriodic 
     !----------------------------------------------------------------------
     INTEGER :: n, i1, i2, j1, j2, k1, k2, mini, samecount, doubleusecount
-    REAL(KIND=dp) :: x1, y1, x2, y2
+    REAL(KIND=dp) :: x1, y1, z1, x2, y2, z2
     REAL(KIND=dp) :: ss, minss, maxminss
     LOGICAL, ALLOCATABLE :: NodeUsed(:)
 
@@ -5277,6 +5277,7 @@ END SUBROUTINE GetMaxDefs
 
       x1 = BMesh1 % Nodes % x(i1)
       y1 = BMesh1 % Nodes % y(i1)      
+      z1 = BMesh1 % Nodes % z(i1)      
 
       minss = HUGE(minss)
       mini = 0
@@ -5284,8 +5285,9 @@ END SUBROUTINE GetMaxDefs
       DO i2=1,Bmesh2 % NumberOfNodes
         x2 = BMesh2 % Nodes % x(i2)
         y2 = BMesh2 % Nodes % y(i2)
+        z2 = BMesh2 % Nodes % z(i2)
 
-        ss = (x1-x2)**2 + (y1-y2)**2
+        ss = (x1-x2)**2 + (y1-y2)**2 + (z1-z2)**2
         IF( ss < minss ) THEN
           minss = ss
           mini = i2
