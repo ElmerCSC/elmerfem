@@ -23,14 +23,14 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback
+! *  Authors: Peter RÃ¥back
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: 23.10.2007
-! *  Modified by: Peter Råback
+! *  Modified by: Peter RÃ¥back
 ! *  Modification date: 1.9.2008
 ! *
 ! *****************************************************************************/
@@ -74,7 +74,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: NodeIndexes(:), PressurePerm(:)
 
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
-      UseVelocity, SideCorrection, Bubbles, ApplyLimiter
+      UseVelocity, SideCorrection, Bubbles, ApplyLimiter, LinearModel
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
       mfp0, Pres, Dens
@@ -163,6 +163,8 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   DO iter = 1,NoIterations
 
+    LinearModel = ( iter == 1 ) .AND. ListGetLogical( Params,'Linear First Iteration',GotIt)
+    
     WRITE(Message,'(A,T35,I5)') 'Reynolds iteration:',iter
     CALL Info('ReynoldsSolver',Message,Level=5)
 
@@ -242,6 +244,11 @@ CONTAINS
     DO t=1,Solver % NumberOfActiveElements
 
       Element => GetActiveElement(t)
+
+      IF( Element % TYPE % ElementCode > 500 ) THEN
+        CALL Fatal('ReynoldsSolver','This is a reduced dimensional solver for 1D and 2D only!')
+      END IF
+      
       n  = GetElementNOFNodes()
       nd = GetElementNOFDOFs()
       
@@ -329,26 +336,27 @@ CONTAINS
           ViscosityType = Viscosity_Newtonian          
         END IF
 
-        CompressibilityModel = GetString(Material,'Compressibility Model',GotIt)        
-        IF(GotIt) THEN
-          IF(CompressibilityModel == 'incompressible') THEN
-            CompressibilityType = Compressibility_None
-          ELSE IF(CompressibilityModel == 'weakly compressible') THEN
-            CompressibilityType = Compressibility_Weak
-            ReferencePressure = GetCReal( Material,'Reference Pressure',GotIt)           
-            BulkModulus = GetCReal( Material, 'Bulk Modulus')
-          ELSE IF(CompressibilityModel == 'isothermal ideal gas') THEN
-            CompressibilityType = Compressibility_GasIsothermal
-            ReferencePressure = GetCReal( Material,'Reference Pressure')           
-          ELSE IF(CompressibilityModel == 'adiabatic ideal gas') THEN
-            CompressibilityType = Compressibility_GasAdiabatic
-            HeatRatio = GetCReal( Material, 'Specific Heat Ratio')
-            ReferencePressure = GetCReal( Material,'Reference Pressure')                      
-          ELSE
-            CALL Warn('ReynoldsSolver','Unknown compressibility model')
+        CompressibilityType = Compressibility_None
+        IF( .NOT. LinearModel ) THEN
+          CompressibilityModel = GetString(Material,'Compressibility Model',GotIt)        
+          IF(GotIt) THEN
+            IF(CompressibilityModel == 'incompressible') THEN
+              CompressibilityType = Compressibility_None
+            ELSE IF(CompressibilityModel == 'weakly compressible') THEN
+              CompressibilityType = Compressibility_Weak
+              ReferencePressure = GetCReal( Material,'Reference Pressure',GotIt)           
+              BulkModulus = GetCReal( Material, 'Bulk Modulus')
+            ELSE IF(CompressibilityModel == 'isothermal ideal gas') THEN
+              CompressibilityType = Compressibility_GasIsothermal
+              ReferencePressure = GetCReal( Material,'Reference Pressure')           
+            ELSE IF(CompressibilityModel == 'adiabatic ideal gas') THEN
+              CompressibilityType = Compressibility_GasAdiabatic
+              HeatRatio = GetCReal( Material, 'Specific Heat Ratio')
+              ReferencePressure = GetCReal( Material,'Reference Pressure')                      
+            ELSE
+              CALL Warn('ReynoldsSolver','Unknown compressibility model')
+            END IF
           END IF
-        ELSE          
-          CompressibilityType = Compressibility_None
         END IF
       END IF
 
@@ -543,7 +551,7 @@ CONTAINS
       ! Normal velocity: right-hand-side force vector
       L = Density * NormalVelo
 
-      ! Tangential velocity: Both rhs and matix contribution
+      ! Tangential velocity: Both rhs and matrix contribution
       SLR = 0.0d0
       SLL = 0.0d0
 
@@ -1213,7 +1221,7 @@ CONTAINS
       END DO
 
 !------------------------------------------------------------------------------
-!  Different viscosity models. Should be consistant with the main solver.
+!  Different viscosity models. Should be consistent with the main solver.
 !------------------------------------------------------------------------------
 
       SELECT CASE (ViscosityType)
@@ -1309,7 +1317,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: Found, Calculate
-    INTEGER :: Dim,GivenDim
+    INTEGER :: Dim,GivenDim,dofs
 !------------------------------------------------------------------------------
     Params => GetSolverParams()
     Dim = CoordinateSystemDimension()
@@ -1321,6 +1329,7 @@ CONTAINS
       CALL ListAddString( Params,'Variable', &
           'FilmPressure Heating' )
     ELSE IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
+      CALL Info('ReynoldsPostprocess_init','Defaulting field name to: ReynoldsPost')
       CALL ListAddString( Params,'Variable', &
           '-nooutput ReynoldsPost' )      
     END IF
@@ -1333,12 +1342,14 @@ CONTAINS
     IF( Calculate ) THEN
       GivenDim = ListGetInteger(Params,'Calculate Force Dim',Found)
       IF( Dim == 1 .OR. GivenDim == 2 ) THEN
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-            '-dofs 2 FilmPressure Force' )
+        dofs = 2
       ELSE
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-            '-dofs 3 FilmPressure Force' )
+        dofs = 3
       END IF
+      CALL Info('ReynoldsPostprocess_init','Creating FilmPressure Force with '&
+          //TRIM(I2S(dofs))//' components',Level=12)
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+          '-dofs '//TRIM(I2S(dofs))//' FilmPressure Force' )
     END IF
 
     ! The dofs of flux is fixed by default 3 since there can be leakage 
@@ -1348,29 +1359,25 @@ CONTAINS
     IF( Calculate ) THEN
       GivenDim = ListGetInteger(Params,'Calculate Flux Dim',Found)
       IF( Dim == 1 .OR. GivenDim == 2 ) THEN
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            '-dofs 2 FilmPressure Flux' )
+        dofs = 2
       ELSE
-        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            '-dofs 3 FilmPressure Flux' )
+        dofs = 3
       END IF
+      CALL Info('ReynoldsPostprocess_init','Creating FilmPressure Flux with '&
+          //TRIM(I2S(dofs))//' components',Level=12)
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
+          '-dofs '//TRIM(I2S(dofs))//' FilmPressure Flux' )
     END IF
 
     CALL ListAddInteger( Params, 'Time derivative order', 0 )
 
     ! Add linear system defaults: cg+diagonal
-    IF(.NOT. ListCheckPresent(Params,'Linear System Solver')) &
-      CALL ListAddString(Params,'Linear System Solver','Iterative')
-    IF(.NOT. ListCheckPresent(Params,'Linear System Iterative Method')) &
-      CALL ListAddString(Params,'Linear System Iterative Method','cg')
-    IF(.NOT. ListCheckPresent(Params,'Linear System Preconditioning')) &
-      CALL ListAddString(Params,'Linear System Preconditioning','diagonal')
-    IF(.NOT. ListCheckPresent(Params,'Linear System Max Iterations')) &
-      CALL ListAddInteger(Params,'Linear System Max Iterations',500)
-    IF(.NOT. ListCheckPresent(Params,'Linear System Residual Output')) &
-      CALL ListAddInteger(Params,'Linear System Residual Output',10)
-    IF(.NOT. ListCheckPresent(Params,'Linear System Convergence Tolerance')) &
-      CALL ListAddConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)
+    CALL ListAddString(Params,'Linear System Solver','Iterative')
+    CALL ListAddNewString(Params,'Linear System Iterative Method','cg')
+    CALL ListAddNewString(Params,'Linear System Preconditioning','diagonal')
+    CALL ListAddNewInteger(Params,'Linear System Max Iterations',500)
+    CALL ListAddNewInteger(Params,'Linear System Residual Output',10)
+    CALL ListAddNewConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE ReynoldsPostprocess_Init

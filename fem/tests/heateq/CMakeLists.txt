@@ -5,5 +5,4 @@ CONFIGURE_FILE( TempDist.sif TempDist.sif COPYONLY)
 
 file(COPY Mesh ELMERSOLVER_STARTINFO Mesh1.mif  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(heateq)
-ADD_ELMER_LABEL(heateq quick)
+ADD_ELMER_TEST(heateq LABELS quick namespace)

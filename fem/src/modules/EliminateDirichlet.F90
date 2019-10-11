@@ -38,7 +38,7 @@
 !> \{
 
 !------------------------------------------------------------------------------
-!>  Subroutine for reducing a linsystem DOFs by eliminating DOFs correspondig
+!>  Subroutine for reducing a linsystem DOFs by eliminating DOFs corresponding
 !>  to known DOF values.
 !------------------------------------------------------------------------------
  RECURSIVE INTEGER FUNCTION EliminateDirichlet( Model, Solver, A, b, x, n, DOFs, Norm )
@@ -54,7 +54,7 @@
   TYPE(model_t)  :: Model        !> All model information (mesh,materials,BCs,etc...)
   TYPE(solver_t) :: Solver       !> Linear equation solver options
   TYPE(matrix_t), POINTER :: A   !> Linear equation matrix information
-  INTEGER :: DOFs                !> Number of degrees of freedon of the equation
+  INTEGER :: DOFs                !> Number of degrees of freedom of the equation
   INTEGER :: n                   !> Length of unknown vector
   REAL(KIND=dp) :: b(n)          !> The unknown in the linear equation
   REAL(KIND=dp) :: x(n)          !> The right hand side of the linear equation

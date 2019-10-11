@@ -1427,7 +1427,7 @@ Debug=.FALSE.
           IF(ANY(UnfoundNodes)) THEN
              DO i=1, SIZE(UnfoundNodes)
                 IF(UnfoundNodes(i)) THEN
-                   PRINT *,'Didnt find point: ', i, ' x:', WorkMesh % Nodes % x(i),&
+                   PRINT *,'Did not find point: ', i, ' x:', WorkMesh % Nodes % x(i),&
                         ' y:', WorkMesh % Nodes % y(i),&
                         ' z:', WorkMesh % Nodes % z(i)
                 END IF
@@ -1569,7 +1569,7 @@ Debug=.FALSE.
              !NOTE: This produces evenly spaced nodes (vertically). Not an issue because 
              ! will be remeshed anyway...
              DO k=GroupStart, GroupEnd
-                prop = (REAL(k) - (GroupStart - 1)) / (GroupCount + 1) !REAL to force real arithmatic
+                prop = (REAL(k) - (GroupStart - 1)) / (GroupCount + 1) !REAL to force real arithmetic
                 HeightDirich(ColumnPerm(OrderPerm(k))) = BotZ + ( (TopZ - BotZ) * prop)
                 IF(Debug) THEN
                    PRINT *,'debug node: ',ColumnPerm(OrderPerm(k)),' has prop: ',prop,&

@@ -3,21 +3,21 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! *
-! *  This program is distributed in the hope that it will be useful,
+! *  This library is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
-! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-! *  Boston, MA 02110-1301, USA.
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
@@ -227,7 +227,7 @@ end function
 function lua_tolstring(L, n, slen) result(sp)
   type(c_ptr) :: L
   integer(kind=c_int) :: n
-  character(kind=c_char, len=:), pointer :: sp
+  character(kind=c_char), pointer :: sp
 
   character(kind=c_char, len=:), allocatable :: s
   type(c_ptr) :: c_s
@@ -240,7 +240,7 @@ end function
 function luaL_checkstring(L, n, slen) result(sp)
   type(c_ptr) :: L
   integer(kind=c_int) :: n
-  character(kind=c_char, len=:), pointer :: sp
+  character(kind=c_char), pointer :: sp
 
   character(kind=c_char, len=:), allocatable :: s
   type(c_ptr) :: c_s
@@ -330,7 +330,7 @@ subroutine lua_eval_f(L, fname, X, y)
   end do
 end subroutine
 
-!> Execute fname in lua state L, dont collect results from stack but expect user to collect them.
+!> Execute fname in lua state L, do not collect results from stack but expect user to collect them.
 subroutine lua_exec_fun(L, fname, nin, nout)
   type(LuaState_t) :: L
   character(kind=c_char), intent(in) :: fname(*)

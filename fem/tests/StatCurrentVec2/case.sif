@@ -1,0 +1,86 @@
+! A test case for the new StatCurrentSolveVec module.
+!
+! This version with two solvers with namespace.
+!
+! P.R. 21.3.2019
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "angle"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian 
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Post File = "case.vtu"
+  Output Version Numbers = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = StaticCurrentA
+  Variable = PotA
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  NameSpace = "a:"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 1
+
+  Vector Assembly = Logical True
+
+!  Calculate Volume Current = True
+!  Calculate Electric Field = True
+End
+
+Solver 2
+  Equation = StaticCurrentB
+  Variable = PotB
+  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  NameSpace = "b:"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 1
+
+  Vector Assembly = Logical True
+  
+!  Calculate Volume Current = True
+!  Calculate Electric Field = True
+End
+
+Material 1
+  Electric Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Name = "BC1" 
+  Target Boundaries = 1
+  PotA = Real 0.0
+  b: Current Density = 2.0
+End
+
+Boundary Condition 2
+  Name = "BC2"
+  Target Boundaries = 2
+  PotB = Real 1.0
+  a: Current Density = 1.0
+End
+
+Solver 1 :: Reference Norm = 1.46010733E+00
+Solver 2 :: Reference Norm = 3.82481020E+00
+
+!End Of File
+

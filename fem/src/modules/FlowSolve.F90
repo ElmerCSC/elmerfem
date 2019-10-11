@@ -71,7 +71,7 @@
     USE Adaptive
     USE DefUtils
     USE FreeSurface
-
+    USE ElementDescription, ONLY: GetEdgeMap
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -371,8 +371,11 @@
           ALLOCATE( PseudoPressure(n),STAT=istat ) 
        END IF
 
+!------------------------------------------------------------------------------
+!     This hack is needed  cause of the fluctuating pressure levels
+!------------------------------------------------------------------------------
        IF( AllIncompressible ) THEN
-         CALL Info('FlowSole','Enforcing relative pressure relaxation',Level=8)
+         CALL Info('FlowSolve','Enforcing relative pressure relaxation',Level=8)
          CALL ListAddNewLogical( Solver % Values,'Relative Pressure Relaxation',.TRUE.)
        END IF
        
@@ -1283,37 +1286,6 @@
 
       n = NSDOFs * LocalNodes
 
-!------------------------------------------------------------------------------
-!     This hack is needed  cause of the fluctuating pressure levels
-!------------------------------------------------------------------------------
-
-      !IF ( NonlinearRelax /= 1.0d0 ) THEN
-      !   IF ( CompressibilityModel == Incompressible ) THEN
-      !      s = FlowSolution(NSDOFs)
-      !      FlowSolution(NSDOFs:n:NSDOFs) = FlowSolution(NSDOFs:n:NSDOFs)-s
-      !      PSolution(NSDOFs:n:NSDOFs)=PSolution(NSDOFs:n:NSDOFs)-PSolution(NSDOFs)
-      !   END IF
-
-      !   FlowSolution(1:n) = (1-NonlinearRelax)*PSolution(1:n) + &
-      !              NonlinearRelax*FlowSolution(1:n)
-       
-      !   IF ( CompressibilityModel == Incompressible ) THEN
-      !      FlowSolution(NSDOFs:n:NSDOFs)=FlowSolution(NSDOFs:n:NSDOFs)+s
-      !   END IF
-
-      !  RelaxBefore = GetLogical( Solver % Values, &
-      !        'Nonlinear system Relaxation Before', gotIt )
-      !  IF ( .NOT.gotIt .OR. RelaxBefore ) THEN
-      !    CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .FALSE. )
-
-      !    Solver % Variable % Norm = ComputeNorm(Solver, n, PSolution)
-
-      !    CALL ComputeChange( Solver, .FALSE., n, FlowSolution, PSolution )
-
-       !   Solver % Variable % Norm = ComputeNorm(Solver, n, FlowSolution)
-        !END IF
-      ! END IF
-      !RelativeChange = Solver % Variable % NonlinChange
 
 !------------------------------------------------------------------------------
 

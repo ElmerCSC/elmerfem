@@ -1,0 +1,27 @@
+# fortrangis and proj INC AND LIB dirs
+PROJ_INC=/usr/local/include
+PROJ_LIB=/usr/local/lib
+# NETCDF INC AND LIB dirs
+NETCDF_INC=/usr/local/include
+NETCDF_LIB=/usr/local/lib
+
+##
+LIBS= MakeCDOGridDesc READ_CELL_NETCDF READ_CELL_NETCDF2 CELL_TO_NODE
+
+#
+all: $(LIBS)
+#
+% : %.F90
+	elmerf90 $^ -o $@
+#
+MakeCDOGridDesc:MakeCDOGridDesc.F90
+	elmerf90 -I$(PROJ_INC) $^ -o $@ -L$(PROJ_LIB) -lproj -lfortranc -lfortrangis
+#
+READ_CELL_NETCDF: READ_CELL_NETCDF.F90
+	elmerf90 -I$(NETCDF_INC) $^ -o $@ -L$(NETCDF_LIB) -lnetcdf -lnetcdff
+#
+READ_CELL_NETCDF2: READ_CELL_NETCDF.F90
+	elmerf90 -I$(NETCDF_INC) $^ -o $@ -L$(NETCDF_LIB) -lnetcdf -lnetcdff
+
+clean:
+	rm -f $(LIBS)

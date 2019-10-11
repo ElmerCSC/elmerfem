@@ -26,6 +26,29 @@ ELSE()
   MESSAGE(WARNING "  \n Missing: >NetCDF_INCLUDE_DIR< , >NetCDF_LIBRARY<,  >NetCDFF_LIBRARY< \n some functionalities will be disabled")
 ENDIF(NetCDF_FOUND)
 
+# ---------------------- #
+# -- HDF5 libraries -- #
+#----------------------- #
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Elmer/Ice package: Looking for [HDF5] & [HDF5 Fortran] libraries")
+
+FIND_PACKAGE(PHDF5)
+
+IF(PHDF5_FOUND)
+
+  SET(HAVE_HDF5 TRUE)
+  MARK_AS_ADVANCED(HAVE_HDF5)
+  INCLUDE_DIRECTORIES(${PHDF5_INCLUDE_DIR})
+  ADD_DEFINITIONS(-DHAVE_HDF5)
+
+  MESSAGE(STATUS "  HDF5:           " "${PHDF5_FOUND}")
+  MESSAGE(STATUS "  HDF5_INC:       " "${PHDF5_INCLUDE_DIR}")
+  MESSAGE(STATUS "  HDF5_LIBS:     " "${PHDF5_LIBRARIES}")
+ELSE()
+  MESSAGE(STATUS "Library not found: >HDF5_FOUND< ")
+  MESSAGE(WARNING "  \n Missing: >HDF5_INCLUDE_DIR< , >HDF5_LIBRARY<,  >HDF5F_LIBRARY< \n some functionalities will be disabled")
+ENDIF(PHDF5_FOUND)
+
 
 # ---------------------- #
 # -- LOOK FOR MMG     -- #
@@ -37,7 +60,7 @@ ENDIF()
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
-SET(ElmerIce_SRC AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90 
+SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90 
     CaffeSolver.F90 ComputeDevStressNS.F90 ComputeEigenValues.F90 
     ComputeNormal.F90 ComputeStrainRate.F90 DeformationalHeat.F90 
     EPLSolver.F90 fAandfB_in.F90 FabricSolve.F90 Flowdepth.F90 
@@ -53,7 +76,8 @@ SET(ElmerIce_SRC AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     ./AdjointSSA/AdjointSSA_AdjointSolver.F90 ./AdjointSSA/AdjointSSA_CostDiscSolver.F90
     ./AdjointSSA/AdjointSSA_CostRegSolver.F90 ./AdjointSSA/AdjointSSA_SSASolver.F90
     ./AdjointSSA/AdjointSSA_CostContSolver.F90 ./AdjointSSA/AdjointSSA_CostFluxDivSolver.F90
-    ./AdjointSSA/AdjointSSA_GradientSolver.F90 Calving.F90 FrontDisplacement.F90 
+    ./AdjointSSA/AdjointSSA_GradientSolver.F90 PermafrostMaterials.F90 Permafrost.F90
+    Calving.F90 FrontDisplacement.F90 
     TwoMeshes.F90 ProjectCalving.F90 ComputeCalvingNormal.F90 
     CalvingGeometry.F90 Calving3D.F90 Calving3D_lset.F90 CalvingGlacierAdvance3D.F90 CalvingRemesh.F90
     CalvingFrontAdvance3D.F90 Emergence.F90 SSAmask.F90 
@@ -93,6 +117,9 @@ TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
 
 IF(HAVE_NETCDF)
 TARGET_LINK_LIBRARIES(ElmerIceSolvers ${NetCDF_LIBRARIES})
+ENDIF()
+IF(HAVE_HDF5)
+TARGET_LINK_LIBRARIES(ElmerIceSolvers ${PHDF5_LIBRARIES})
 ENDIF()
 # IF(HAVE_MMG)
 #   TARGET_LINK_LIBRARIES(ElmerIceSolvers ${MMG_LIBRARY})

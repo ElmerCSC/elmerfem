@@ -1,7 +1,39 @@
-!-----------------------------------------------------------------------------
-!> A prototype solver for advection-diffusion-reaction equation,
-!> This equation is generic and intended for education purposes
-!> but may also serve as a starting point for more complex solvers.
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+!
+!/*****************************************************************************/
+! *
+! * A prototype solver for advection-diffusion-reaction equation,
+! * This equation is generic and intended for education purposes
+! * but may also serve as a starting point for more complex solvers.
+! *
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *****************************************************************************/
+
 !------------------------------------------------------------------------------
 SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -53,8 +85,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
       IF(ActiveBoundaryElement()) THEN
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
-        nb = GetElementNOFBDOFs()
-        CALL LocalMatrixBC(  Element, n, nd+nb )
+        CALL LocalMatrixBC(  Element, n, nd )
       END IF
     END DO
 
@@ -65,8 +96,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
     ! And finally, solve:
     !--------------------
     Norm = DefaultSolve()
-
-    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
+    IF( DefaultConverged() ) EXIT    
 
   END DO
 
@@ -164,7 +194,7 @@ CONTAINS
     END DO
 
     IF(TransientSimulation) CALL Default1stOrderTime(MASS,STIFF,FORCE)
-    CALL LCondensate( nd-nb, nb, STIFF, FORCE )
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -238,35 +268,6 @@ CONTAINS
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
-!------------------------------------------------------------------------------
-
-! Perform static condensation in case bubble dofs are present
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( N, Nb, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-    INTEGER :: N, Nb
-    REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
-         Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
-
-    IF ( Nb <= 0 ) RETURN
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = (/ (i, i=n+1,n+nb) /)
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,nb )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

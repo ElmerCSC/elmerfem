@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -339,7 +339,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     
     IF( i /= itop ) CYCLE	
 
-    ! First node of streamline is initilized	
+    ! First node of streamline is initialized	
     !-------------------------------------------------------------------
     k = i
     v1(1) = Flow( FlowDofs*(FlowPerm(k)-1) + 1 ) 

@@ -236,7 +236,7 @@
     <parameter name="Sound speed" >5000.0</parameter>
   </material>
 
-   <material name="Water (frozen in Celcius)" >
+   <material name="Water (frozen in Celsius)" >
      <parameter name="Density" >910.0</parameter>
      <parameter name="Heat conductivity" >Variable Temperature; Real MATC "9.828*exp(-5.7E-03*(tx+273.15))"</parameter>
      <parameter name="Heat capacity" >Variable Temperature; Real MATC "146.3+(7.253*(tx+273.15))"</parameter>

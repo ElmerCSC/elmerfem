@@ -119,14 +119,14 @@
      PRINT*,'Reading Model ...       '
 
 !------------------------------------------------------------------------------
-                                                                                                              
+
      OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', ERR=10 )
      GOTO 20
-                                                                                                              
+
 10   CONTINUE
-                                                                                                              
-     CALL Fatal( 'GebhardtFactors', 'Unable to find ELMERSOLVER_STARTINFO, cant execute.' )
-                                                                                                              
+
+     CALL Fatal( 'GebhardtFactors', 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
+
 20   CONTINUE
        READ(1,'(a)') ModelName
      CLOSE(1)

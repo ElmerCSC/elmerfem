@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -227,7 +227,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END DO
 
-    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize') ) THEN
+    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize',Found) ) THEN
       MaxDeform = MAXVAL( ABS( Solver % Variable % Values ) )
       MaxDeform = ParallelReduction( MaxDeform, 2 )      
       WRITE(Message,'(A,ES12.3)') 'Normalizing deformation by:',MaxDeform
@@ -263,7 +263,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 2') .OR. &
       ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 3')
    IF( AnyMeshTranslate ) THEN
-     CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolite keyword',Level=3)
+     CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolete keyword',Level=3)
      CALL Warn('RigidMeshMapper','Replace with > Mesh Translate < ')
      AnyMeshTranslate = .FALSE.
    END IF

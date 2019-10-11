@@ -100,7 +100,7 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: MinHeight3D(:), MaxHeight3D(:), MinWidth3D(:), MaxWidth3D(:)
   REAL(KIND=dp), ALLOCATABLE :: IntBasis(:,:), IntExtent(:)
 
-  INTEGER :: MaxInt, Int
+  INTEGER :: MaxInt, NoInt
   INTEGER, POINTER :: Perm2D(:), Perm3D(:), PlanePerm(:), VolumePerm(:)
   INTEGER :: i,j,k,k2,l,n,t,node
   INTEGER :: PlaneNodes, VolumeElements, Dofs3D, Dofs2D, corners, face, Intersections
@@ -300,9 +300,9 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
   END IF
 
 
-  ! By contruction split everything into triangles        
+  ! By construction split everything into triangles
   corners = 3
-  
+
   TriangleElement % TYPE => GetElementType( 303, .FALSE. )
 
   FaceElement => TriangleElement
@@ -330,7 +330,7 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
 
     !   Loop over 3D elements:
     !   -------------------
-    Int = 0
+    NoInt = 0
     Vals = 0
     
 
@@ -392,8 +392,8 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
         Loops(5) = Loops(5) + 1
 
         Intersections = Intersections + 1
-        Int = Int + 1
-        IF(Int > MaxInt) CALL AllocateMoreSpace()
+        NoInt = NoInt + 1
+        IF(NoInt > MaxInt) CALL AllocateMoreSpace()
 
         CALL NodalBasisFunctions(Corners, Basis, FaceElement, up, vp, 0.0d0)
 
@@ -403,9 +403,9 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
           cp = ATAN2(x1, y1)
         END IF
 
-        IntExtent(Int) = cp
-        IntBasis(1:corners,Int) = Basis(1:corners)
-        IntNodes(1:corners,Int) = Element % NodeIndexes( inds(1:corners) ) 
+        IntExtent(NoInt) = cp
+        IntBasis(1:corners,NoInt) = Basis(1:corners)
+        IntNodes(1:corners,NoInt) = Element % NodeIndexes( inds(1:corners) ) 
       END DO
 
       IF( Intersections /= 0 .AND. Intersections /= 2 ) THEN
@@ -415,24 +415,24 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
     END DO
 
     
-    IF(Int > MinimumHits) THEN
+    IF(NoInt > MinimumHits) THEN
       
       Loops(7) = Loops(7) + 1
 
-      IF( Int == 1 ) THEN
+      IF( NoInt == 1 ) THEN
         DO l=1,Dofs2D
           Vals(l) = SUM( IntBasis(:,k) * Values3D( Dofs3D * (Perm3D(IntNodes(:,1)) - 1) + l) )
         END DO
       ELSE
       
-        DO i=1,Int 
+        DO i=1,NoInt 
           IntOrder(i) = i
         END DO
         
-        CALL SortR( Int, IntOrder, IntExtent)
+        CALL SortR( NoInt, IntOrder, IntExtent)
         
         Vals = 0.0d0
-        DO j=1,Int-1
+        DO j=1,NoInt-1
           k = IntOrder(j)
           k2 = IntOrder(j+1)
           DO l=1,Dofs2D
@@ -443,8 +443,8 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
         END DO
         
         IF(Rotate) THEN
-          cf = 2*PI -  (IntExtent(1) - IntExtent(Int))
-          k = IntOrder(Int)
+          cf = 2*PI -  (IntExtent(1) - IntExtent(NoInt))
+          k = IntOrder(NoInt)
           k2 = IntOrder(1)      
           DO l=1,Dofs2D         
             Field1 = SUM( IntBasis(:,k) * Values3D( Dofs3D*(Perm3D(IntNodes(:,k))-1) + l) )     
@@ -453,7 +453,7 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
           END DO
           Vals = Vals / (2.0_dp*PI)
         ELSE
-          Vals = Vals / (IntExtent(1)-IntExtent(Int)) 
+          Vals = Vals / (IntExtent(1)-IntExtent(NoInt)) 
         END IF
       END IF
     ELSE 
@@ -607,39 +607,39 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF(.NOT. Visited ) THEN  
-      TetraFaceMap(1,:) = (/ 1, 2, 3 /)
-      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-      TetraFaceMap(3,:) = (/ 2, 3, 4 /)
-      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+      TetraFaceMap(1,:) = [ 1, 2, 3 ]
+      TetraFaceMap(2,:) = [ 1, 2, 4 ]
+      TetraFaceMap(3,:) = [ 2, 3, 4 ]
+      TetraFaceMap(4,:) = [ 3, 1, 4 ]
       
-      WedgeFaceMap(1,:) = (/ 1, 2, 3 /)
-      WedgeFaceMap(2,:) = (/ 4, 5, 6 /)
-      WedgeFaceMap(3,:) = (/ 1, 2, 5 /)
-      WedgeFaceMap(4,:) = (/ 5, 4, 1 /)
-      WedgeFaceMap(5,:) = (/ 3, 2, 5 /)
-      WedgeFaceMap(6,:) = (/ 5, 6, 3/)
-      WedgeFaceMap(7,:) = (/ 3, 1, 4 /)
-      WedgeFaceMap(8,:) = (/ 4, 6, 3/)
+      WedgeFaceMap(1,:) = [ 1, 2, 3 ]
+      WedgeFaceMap(2,:) = [ 4, 5, 6 ]
+      WedgeFaceMap(3,:) = [ 1, 2, 5 ]
+      WedgeFaceMap(4,:) = [ 5, 4, 1 ]
+      WedgeFaceMap(5,:) = [ 3, 2, 5 ]
+      WedgeFaceMap(6,:) = [ 5, 6, 3]
+      WedgeFaceMap(7,:) = [ 3, 1, 4 ]
+      WedgeFaceMap(8,:) = [ 4, 6, 3]
       
-      PyramidFaceMap(1,:) = (/ 1, 2, 3 /)
-      PyramidFaceMap(2,:) = (/ 3, 4, 1 /)
-      PyramidFaceMap(3,:) = (/ 1, 2, 5 /)
-      PyramidFaceMap(4,:) = (/ 2, 3, 5 /)
-      PyramidFaceMap(5,:) = (/ 3, 4, 5 /)
-      PyramidFaceMap(6,:) = (/ 4, 1, 5 /)
+      PyramidFaceMap(1,:) = [ 1, 2, 3 ]
+      PyramidFaceMap(2,:) = [ 3, 4, 1 ]
+      PyramidFaceMap(3,:) = [ 1, 2, 5 ]
+      PyramidFaceMap(4,:) = [ 2, 3, 5 ]
+      PyramidFaceMap(5,:) = [ 3, 4, 5 ]
+      PyramidFaceMap(6,:) = [ 4, 1, 5 ]
       
-      BrickFaceMap(1,:) = (/ 1, 2, 3 /)
-      BrickFaceMap(2,:) = (/ 3, 4, 1 /)
-      BrickFaceMap(3,:) = (/ 5, 6, 7 /)
-      BrickFaceMap(4,:) = (/ 7, 8, 5 /)      
-      BrickFaceMap(5,:) = (/ 1, 2, 6 /)
-      BrickFaceMap(6,:) = (/ 6, 5, 1 /)      
-      BrickFaceMap(7,:) = (/ 2, 3, 7 /)
-      BrickFaceMap(8,:) = (/ 7, 6, 2 /)      
-      BrickFaceMap(9,:) = (/ 3, 4, 8 /)
-      BrickFaceMap(10,:) = (/ 8, 7, 3 /)      
-      BrickFaceMap(11,:) = (/ 4, 1, 5 /)
-      BrickFaceMap(12,:) = (/ 5, 8, 4 /)
+      BrickFaceMap(1,:) = [ 1, 2, 3 ]
+      BrickFaceMap(2,:) = [ 3, 4, 1 ]
+      BrickFaceMap(3,:) = [ 5, 6, 7 ]
+      BrickFaceMap(4,:) = [ 7, 8, 5 ]      
+      BrickFaceMap(5,:) = [ 1, 2, 6 ]
+      BrickFaceMap(6,:) = [ 6, 5, 1 ]      
+      BrickFaceMap(7,:) = [ 2, 3, 7 ]
+      BrickFaceMap(8,:) = [ 7, 6, 2 ]      
+      BrickFaceMap(9,:) = [ 3, 4, 8 ]
+      BrickFaceMap(10,:) = [ 8, 7, 3 ]      
+      BrickFaceMap(11,:) = [ 4, 1, 5 ]
+      BrickFaceMap(12,:) = [ 5, 8, 4 ]
 
       Visited = .TRUE.
     END IF
@@ -859,7 +859,7 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: MinHeight3D(:), MaxHeight3D(:), MinWidth3D(:), MaxWidth3D(:)
   REAL(KIND=dp), POINTER :: IntValues(:,:), IntBasis(:,:), IntExtent(:)
 
-  INTEGER :: MaxInt, Int
+  INTEGER :: MaxInt, NoInt
   INTEGER, POINTER :: Perm2D(:), Perm3D(:), PlanePerm(:), VolumePerm(:)
   INTEGER :: i,j,k,k2,l,n,t,lnode,node
   INTEGER :: PlaneNodes, VolumeElements, Dofs, corners, face, Intersections
@@ -879,7 +879,7 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
   TYPE(ValueTable_t) :: ValueTable3D(10), ValueTable2D(10)
 
   TYPE PointStore_t
-    INTEGER :: Int
+    INTEGER :: NoInt
     REAL(KIND=dp),POINTER :: IntExtent(:), IntValues(:,:)
   END TYPE PointStore_t
   TYPE(PointStore_t), ALLOCATABLE :: PointStore(:)
@@ -998,7 +998,7 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
     CALL Info( 'ProjectToPlane', Message, LEVEL=16 )
 
     !------------------------------------------------------------------------------
-    ! Possible permutation of coorinate directions
+    ! Possible permutation of coordinate directions
     !------------------------------------------------------------------------------
     VolumeX => Mesh3D % Nodes % x
     VolumeY => Mesh3D % Nodes % y      
@@ -1117,15 +1117,15 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
   DO i=1,PlaneNodes
     ALLOCATE( PointStore(i) % IntValues(Dofs,MaxInt), &
               PointStore(i) % IntExtent(MaxInt) )
-    PointStore(i) % Int = 0
+    PointStore(i) % NoInt = 0
     PointStore(i) % IntExtent = 0
     PointStore(i) % IntValues = 0
   END DO
 
 
-  ! By contruction split everything into triangles        
+  ! By construction split everything into triangles
   corners = 3
-  
+
   TriangleElement % TYPE => GetElementType( 303, .FALSE. )
 
   FaceElement => TriangleElement
@@ -1154,7 +1154,7 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
 
     ! Loop over 3D elements:
     ! ---------------------
-    Int = 0
+    NoInt = 0
     DO t = 1, VolumeElements
       
       Loops(2) = Loops(2) + 1
@@ -1225,8 +1225,8 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
         ! store extent of the line + value(s) at point of
         ! intersection:
         ! ------------------------------------------------
-        PointStore(lnode) % Int = PointStore(lnode) % Int + 1
-        curr=PointStore(lnode) % Int
+        PointStore(lnode) % NoInt = PointStore(lnode) % NoInt + 1
+        curr=PointStore(lnode) % NoInt
         IF (curr>SIZE(PointStore(lnode) % IntExtent)) &
             CALL AllocateMoreSpace(PointStore(lnode), MaxInt)
 
@@ -1310,7 +1310,7 @@ CONTAINS
       IF ( pe==ParEnv % PEs-1 ) peNodes=peNodesn
       peEnd = peStart+peNodes-1
 
-      totcount=SUM(PointStore(peStart:peEnd) % Int)
+      totcount=SUM(PointStore(peStart:peEnd) % NoInt)
       ALLOCATE( cm_int(peNodes) ); cm_int=0
 
       IF ( totcount>0 ) THEN
@@ -1320,11 +1320,11 @@ CONTAINS
         j=0; totcount=0
         DO lnode=peStart,peEnd
           j = j + 1
-          cm_int(j) = PointStore(lnode) % Int
+          cm_int(j) = PointStore(lnode) % NoInt
           DO k=1,cm_int(j)
             totcount=totcount+1
-            int=Dofs*(totcount-1)
-            cm_values(int+1:int+Dofs) = &
+            NoInt=Dofs*(totcount-1)
+            cm_values(NoInt+1:NoInt+Dofs) = &
                PointStore(lnode) % IntValues(1:Dofs,k)
             cm_extent(totcount) = PointStore(lnode) % IntExtent(k)
            END DO
@@ -1374,18 +1374,18 @@ CONTAINS
         totcount = 0
         DO lnode=myStart,myStart+myNodes-1
           j=j+1
-          curr = PointStore(lnode) % Int
+          curr = PointStore(lnode) % NoInt
           IF ( curr+cm_int(j)>SIZE(PointStore(lnode) % IntExtent)) &
             CALL AllocateMoreSpace(PointStore(lnode),cm_int(j))
 
           DO k=1,cm_int(j)
             totcount=totcount+1
             curr=curr+1
-            int = Dofs*(totcount-1)
+            NoInt = Dofs*(totcount-1)
             PointStore(lnode) % IntExtent(curr) = cm_extent(totcount)
-            PointStore(lnode) % IntValues(:,curr) = cm_values(int+1:int+Dofs)
+            PointStore(lnode) % IntValues(:,curr) = cm_values(NoInt+1:NoInt+Dofs)
           END DO
-          PointStore(lnode) % Int=curr
+          PointStore(lnode) % NoInt=curr
         END DO
         DEALLOCATE(cm_values, cm_extent)
       END IF
@@ -1403,24 +1403,24 @@ CONTAINS
       lnode = Perm2D(node)
       IF(lnode<myStart .OR. lnode>myStart+myNodes-1) CYCLE
 
-      Int = PointStore(lnode) % Int
-      IF (Int<=MinimumHits) CYCLE
+      NoInt = PointStore(lnode) % NoInt
+      IF (NoInt<=MinimumHits) CYCLE
 
       IntValues => PointStore(lnode) % IntValues
       IntExtent => PointStore(lnode) % IntExtent
 
       Loops(7) = Loops(7) + 1
 
-      IF( Int == 1 ) THEN
+      IF( NoInt == 1 ) THEN
         DO i=1,Dofs
           Vals(l) = IntValues(l,1)
         END DO
       ELSE
-        ALLOCATE(IntOrder(Int)); IntOrder = [(i,i=1,Int)]
-        CALL SortR(Int, IntOrder, IntExtent)
+        ALLOCATE(IntOrder(NoInt)); IntOrder = [(i,i=1,NoInt)]
+        CALL SortR(NoInt, IntOrder, IntExtent)
       
         Vals = 0.0d0
-        DO j=1,Int-1
+        DO j=1,NoInt-1
           k = IntOrder(j)
           k2 = IntOrder(j+1)
           DO l=1,Dofs
@@ -1431,8 +1431,8 @@ CONTAINS
         END DO
       
         IF(Rotate) THEN
-          cf = 2*PI-(IntExtent(1) - IntExtent(Int))
-          k = IntOrder(Int)
+          cf = 2*PI-(IntExtent(1) - IntExtent(NoInt))
+          k = IntOrder(NoInt)
           k2 = IntOrder(1)      
           DO l=1,Dofs         
             Field1 = IntValues(l,k)
@@ -1441,7 +1441,7 @@ CONTAINS
           END DO
           Vals = Vals / (2.0_dp*PI)
         ELSE
-          Vals = Vals / (IntExtent(1)-IntExtent(Int)) 
+          Vals = Vals / (IntExtent(1)-IntExtent(NoInt)) 
         END IF
 
         DEALLOCATE(IntOrder)
@@ -1467,7 +1467,7 @@ CONTAINS
       ALLOCATE(cm_int(PlaneNodes),cm_int0(PlaneNodes))
       cm_int0 = 0
       DO i=myStart,myStart+myNodes-1
-        cm_int0(i) = PointStore(i) % Int
+        cm_int0(i) = PointStore(i) % NoInt
       END DO
       CALL MPI_ALLREDUCE( cm_int0,cm_int,PlaneNodes, &
         MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr )
@@ -1483,11 +1483,11 @@ CONTAINS
       IF ( lnode<=0 ) CYCLE
 
       IF ( ParEnv % Pes>1 ) THEN
-        Int = cm_int(lnode)
+        NoInt = cm_int(lnode)
       ELSE
-        Int = PointStore(lnode) % Int
+        NoInt = PointStore(lnode) % NoInt
       END IF
-      IF ( int>MinimumHits ) CYCLE
+      IF ( NoInt > MinimumHits ) CYCLE
 
       x0 = PlaneX(node)
       y0 = PlaneY(node)
@@ -1689,39 +1689,39 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF(.NOT. Visited ) THEN  
-      TetraFaceMap(1,:) = (/ 1, 2, 3 /)
-      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-      TetraFaceMap(3,:) = (/ 2, 3, 4 /)
-      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
+      TetraFaceMap(1,:) = [ 1, 2, 3 ]
+      TetraFaceMap(2,:) = [ 1, 2, 4 ]
+      TetraFaceMap(3,:) = [ 2, 3, 4 ]
+      TetraFaceMap(4,:) = [ 3, 1, 4 ]
       
-      WedgeFaceMap(1,:) = (/ 1, 2, 3 /)
-      WedgeFaceMap(2,:) = (/ 4, 5, 6 /)
-      WedgeFaceMap(3,:) = (/ 1, 2, 5 /)
-      WedgeFaceMap(4,:) = (/ 5, 4, 1 /)
-      WedgeFaceMap(5,:) = (/ 3, 2, 5 /)
-      WedgeFaceMap(6,:) = (/ 5, 6, 3/)
-      WedgeFaceMap(7,:) = (/ 3, 1, 4 /)
-      WedgeFaceMap(8,:) = (/ 4, 6, 3/)
+      WedgeFaceMap(1,:) = [ 1, 2, 3 ]
+      WedgeFaceMap(2,:) = [ 4, 5, 6 ]
+      WedgeFaceMap(3,:) = [ 1, 2, 5 ]
+      WedgeFaceMap(4,:) = [ 5, 4, 1 ]
+      WedgeFaceMap(5,:) = [ 3, 2, 5 ]
+      WedgeFaceMap(6,:) = [ 5, 6, 3]
+      WedgeFaceMap(7,:) = [ 3, 1, 4 ]
+      WedgeFaceMap(8,:) = [ 4, 6, 3]
       
-      PyramidFaceMap(1,:) = (/ 1, 2, 3 /)
-      PyramidFaceMap(2,:) = (/ 3, 4, 1 /)
-      PyramidFaceMap(3,:) = (/ 1, 2, 5 /)
-      PyramidFaceMap(4,:) = (/ 2, 3, 5 /)
-      PyramidFaceMap(5,:) = (/ 3, 4, 5 /)
-      PyramidFaceMap(6,:) = (/ 4, 1, 5 /)
+      PyramidFaceMap(1,:) = [ 1, 2, 3 ]
+      PyramidFaceMap(2,:) = [ 3, 4, 1 ]
+      PyramidFaceMap(3,:) = [ 1, 2, 5 ]
+      PyramidFaceMap(4,:) = [ 2, 3, 5 ]
+      PyramidFaceMap(5,:) = [ 3, 4, 5 ]
+      PyramidFaceMap(6,:) = [ 4, 1, 5 ]
       
-      BrickFaceMap(1,:) = (/ 1, 2, 3 /)
-      BrickFaceMap(2,:) = (/ 3, 4, 1 /)
-      BrickFaceMap(3,:) = (/ 5, 6, 7 /)
-      BrickFaceMap(4,:) = (/ 7, 8, 5 /)      
-      BrickFaceMap(5,:) = (/ 1, 2, 6 /)
-      BrickFaceMap(6,:) = (/ 6, 5, 1 /)      
-      BrickFaceMap(7,:) = (/ 2, 3, 7 /)
-      BrickFaceMap(8,:) = (/ 7, 6, 2 /)      
-      BrickFaceMap(9,:) = (/ 3, 4, 8 /)
-      BrickFaceMap(10,:) = (/ 8, 7, 3 /)      
-      BrickFaceMap(11,:) = (/ 4, 1, 5 /)
-      BrickFaceMap(12,:) = (/ 5, 8, 4 /)
+      BrickFaceMap(1,:) = [ 1, 2, 3 ]
+      BrickFaceMap(2,:) = [ 3, 4, 1 ]
+      BrickFaceMap(3,:) = [ 5, 6, 7 ]
+      BrickFaceMap(4,:) = [ 7, 8, 5 ]      
+      BrickFaceMap(5,:) = [ 1, 2, 6 ]
+      BrickFaceMap(6,:) = [ 6, 5, 1 ]      
+      BrickFaceMap(7,:) = [ 2, 3, 7 ]
+      BrickFaceMap(8,:) = [ 7, 6, 2 ]      
+      BrickFaceMap(9,:) = [ 3, 4, 8 ]
+      BrickFaceMap(10,:) = [ 8, 7, 3 ]      
+      BrickFaceMap(11,:) = [ 4, 1, 5 ]
+      BrickFaceMap(12,:) = [ 5, 8, 4 ]
 
       Visited = .TRUE.
     END IF

@@ -110,11 +110,10 @@ END SUBROUTINE StatCurrentSolver_Init
        LocalStiffMatrix(:,:), Load(:), LocalForce(:)
 
      REAL (KIND=DP) :: Norm, HeatingTot, VolTot, CurrentTot, ControlTarget, ControlScaling = 1.0
-     REAL (KIND=DP) :: MinPotential, MaxPotential, Resistance
-#ifdef USE_ISO_C_BINDINGS
+     REAL (KIND=DP) :: Resistance, PotDiff
      REAL (KIND=DP) :: at, st, at0
-#else
-     REAL (KIND=DP) :: at, st, at0, CPUTime, RealTime
+#ifndef USE_ISO_C_BINDINGS
+     REAL (KIND=DP) :: CPUTime, RealTime
 #endif
 
      INTEGER, POINTER :: NodeIndexes(:)
@@ -383,10 +382,6 @@ END SUBROUTINE StatCurrentSolver_Init
        END DO
        CALL DefaultFinishBulkAssembly()
 
-
-       MinPotential = HUGE(MinPotential)
-       MaxPotential = -HUGE(MaxPotential)
-
        !------------------------------------------------------------------------------
        !     Neumann boundary conditions
        !------------------------------------------------------------------------------
@@ -409,16 +404,6 @@ END SUBROUTINE StatCurrentSolver_Init
              n = CurrentElement % TYPE % NumberOfNodes
              NodeIndexes => CurrentElement % NodeIndexes
              IF ( ANY( PotentialPerm(NodeIndexes) <= 0 ) ) CYCLE
-
-             !------------------------------------------------------------------------------
-             !         Memorize the min and max potential as given by Dirichtlet BCs
-             !------------------------------------------------------------------------------          
-             Load(1:n) = ListGetReal(Model % BCs(i) % Values, &
-                 ComponentName(Solver % Variable), n, NodeIndexes, gotIt)
-             IF(GotIt) THEN
-               MinPotential = MIN(MinPotential, MINVAL(Load(1:n)))
-               MaxPotential = MAX(MaxPotential, MAXVAL(Load(1:n)))             
-             END IF
 
              FluxBC = ListGetLogical(Model % BCs(i) % Values, &
                  'Current Density BC',gotIt) 
@@ -452,13 +437,6 @@ END SUBROUTINE StatCurrentSolver_Init
          END DO ! of i=1,model bcs
        END DO   ! Neumann BCs
        !------------------------------------------------------------------------------
-
-
-       ! parallel reduction needed
-       IF ( ParEnv % PEs > 1) THEN
-         MinPotential = ParallelReduction(MinPotential,1)
-         MaxPotential = ParallelReduction(MaxPotential,2)
-       END IF
 
        !------------------------------------------------------------------------------
        !    FinishAssembly must be called after all other assembly steps, but before
@@ -504,9 +482,11 @@ END SUBROUTINE StatCurrentSolver_Init
          CALL Info( 'StatCurrentSolve', Message, Level=4 )
          CALL ListAddConstReal( Model % Simulation, &
              'RES: Total Joule Heating', Heatingtot )
-
-         IF( MaxPotential > MinPotential) THEN
-           Resistance = (MaxPotential - MinPotential)**2 / HeatingTot
+         
+         PotDiff = DirichletDofsRange( Solver )
+         
+         IF( PotDiff > 0 ) THEN
+           Resistance = PotDiff**2 / HeatingTot
            WRITE( Message, * ) 'Effective Resistance  :', Resistance
            CALL Info( 'StatCurrentSolve', Message, Level=4 )
            CALL ListAddConstReal( Model % Simulation, &
@@ -522,8 +502,8 @@ END SUBROUTINE StatCurrentSolver_Init
          IF( ControlPower ) THEN
            ControlScaling = SQRT( ControlTarget / HeatingTot )
          ELSE IF( ControlCurrent ) THEN
-           IF( MaxPotential - MinPotential > 0.0d0 ) THEN
-             CurrentTot = HeatingTot / (MaxPotential - MinPotential)
+           IF( PotDiff > 0.0d0 ) THEN
+             CurrentTot = HeatingTot / PotDiff
              ControlScaling = ControlTarget / CurrentTot
              WRITE( Message, * ) 'Total Current         :', CurrentTot
              CALL Info( 'StatCurrentSolve', Message, Level=4 )

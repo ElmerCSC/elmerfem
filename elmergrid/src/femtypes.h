@@ -9,6 +9,7 @@
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
+#define LONGLINESIZE 1201  
 #define MAXNAMESIZE 30      /* maximum size of the variablename */
 #define MAXPARAMS 30        /* maximum number of parameters */
 #define MAXVARS 20          /* maximum number of variables at the sides */
@@ -20,6 +21,7 @@
 #define MAXBCS 1000         /* maximum number of BCs in naming */
 #define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
+#define MAXHALOMODES 10
 
 #define CONPLAIN 0
 #define CONDISCONT 1
@@ -32,7 +34,7 @@ struct CRSType {
   int created;
 };
 
-/* Struture GridType includes the subcell structure of the 
+/* Structure GridType includes the subcell structure of the 
    geometry and the meshing information. The elements may be 
    directly derived from this structures but it takes some 
    time and is not easy to comprehend. Therefore structures 
@@ -131,7 +133,7 @@ struct GridType {
    for each subcell is saved to structure CellType. Specific subroutines 
    are then used to calculate element or knot information using this 
    information. Cell is one macroscopic building block that may be 
-   devided to M x N elements. It may even consist of one element. */
+   divided to M x N elements. It may even consist of one element. */
 struct CellType {
   int nonodes,  /* number of nodes within an element */
     dimension,  /* 1D or 2D */
@@ -192,7 +194,7 @@ struct FemType {
     nocorners,     /* number material corners in the mesh */
     timesteps,     /* number of timesteps */
     periodicexist, /* does the periodic vector exist? */
-    *periodic,     /* peridic ordering vector, if needed */
+    *periodic,     /* periodic ordering vector, if needed */
     nodeconnectexist,  /* does the node connection vector exist? */
     *nodeconnect,      /* connections between nodes, if needed */
     elemconnectexist,  /* does the element connection vector exist? */
@@ -237,7 +239,7 @@ struct FemType {
    are saved into this structure. It is used for setting
    the boundary conditions. In physics it is typical that
    the BCs are more complicated than the equations in the 
-   bulk and therefore the stucture must be such that it 
+   bulk and therefore the structure must be such that it 
    enables the use of a wide variety of BCs. */
 struct BoundaryType {
   int created,       /* is boundary created? */
@@ -248,7 +250,7 @@ struct BoundaryType {
     maparea,         /* mappings of the area */
     open,            /* is the closure partially open? */
     echain,          /* does the chain exist? */
-    ediscont,        /* does the discontinous boundary exist */
+    ediscont,        /* does the discontinuous boundary exist */
     chainsize;       /* size of the chain */ 
   int *parent,       /* primary parents of the sides */
     *parent2,        /* secondary parents of the sides */
@@ -282,7 +284,7 @@ struct PointType {
 
 
 /* Physical parameters are read with a general manner. 
-   They may be added without contraints. */
+   They may be added without constraints. */
 struct ModelType {
   int iparameters,            /* number of int parameters */
     rparameters,              /* number of Real parameters */
@@ -314,12 +316,13 @@ struct ElmergridType {
     layermove,  /* map the created layer to the original geometry */
     metis,      /* number of Metis partitions */
     metiscontig,  /* is Metis partitioning contiguous */
+    metisseed,   /* seed for Metis partitioning routines */
     partopt,    /* free parameter for optimization */
     partoptim,  /* apply aggressive optimization to node sharing on bulk */
     partbcoptim,  /* apply aggressive optimization to node sharing on bcs */
     partitions, /* number of simple geometric partitions */
     partdim[3],
-    partjoin,   /* number of parallel dimenions to be joined */
+    partjoin,   /* number of parallel dimensions to be joined */
     inmethod,   /* method in which mesh is read in to ElmerGrid */
     outmethod,  /* method in which the mesh is written by ElmerGrid */
     sidemap[3*MAXBOUNDARIES],
@@ -363,7 +366,7 @@ struct ElmergridType {
     connectboundsset[MAXBOUNDARIES],
     connectboundsnosets,
     partorder,
-    partitionhalo, /* create halo for the partitioning */
+    parthalo[MAXHALOMODES], /* create halo for the partitioning */
     partitionindirect, /* should one create indirect connections between nodes */
     partbw, /* minimize bandwidth for partitions */
     parthypre, /* renumber for hypre */
@@ -379,7 +382,8 @@ struct ElmergridType {
     rotatecurve,
     timeron,
     nosave,
-    nooverwrite;
+    nooverwrite,
+    unitenooverlap;
 
   Real cscale[3], 
     corder[3],

@@ -34,7 +34,7 @@ Elmer/GiD tutorial in 2D                                     ML 16.5.2004
 
 5) Choose Data -> Problem type -> elmer
 
-6) Assing boundary conditions to the boundary lines by choosing Data -> 
+6) Assign boundary conditions to the boundary lines by choosing Data -> 
    Condition. Select "LineCondition" with Index=1 and assign it to all four
    boundary lines of the rectangle. NOTE: Only the boundary elements with
    Index>0 will be written in the mesh file "mesh.boundary".

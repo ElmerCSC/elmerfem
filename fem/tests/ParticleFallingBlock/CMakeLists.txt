@@ -6,5 +6,4 @@ ADD_ELMERTEST_MODULE(ParticleFallingBlock CalculateFraction CalculateFraction.F9
 
 file(COPY block.grd CalculateFraction.F90 ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ParticleFallingBlock)
-ADD_ELMER_LABEL(ParticleFallingBlock particle)
+ADD_ELMER_TEST(ParticleFallingBlock LABELS particle transient)

@@ -23,7 +23,7 @@
 !
 ! ******************************************************************************
 ! *
-! *  Authors: Peter R�back, Joe Todd
+! *  Authors: Peter Råback, Joe Todd
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -159,7 +159,7 @@ CONTAINS
     n = COUNT((.NOT. FoundNodes) .OR. (PointLocalDistance > 0.0_dp))
     dn = n
     IF(Debug) THEN
-       PRINT *, 'Partition ',ParEnv % MyPE,' couldnt find ',n,'points!'
+       PRINT *, 'Partition ',ParEnv % MyPE,' could not find ',n,'points!'
     END IF
     CALL SParActiveSUM(dn,2)
 
@@ -209,7 +209,7 @@ CONTAINS
                1101, ELMER_COMM_WORLD, ierr )
        END DO
     ELSE
-       ! Extract nodes that we didnt find from our own partition...
+       ! Extract nodes that we didn't find from our own partition...
        ! ------------------------------------------------------------
        ALLOCATE( Perm(n), nodes_x(n), nodes_y(n),nodes_z(n) ); Perm=0
        j = 0
@@ -400,7 +400,7 @@ CONTAINS
        unfound = n - nfound
        IF(unfound > 0) THEN
           PRINT *, 'InterpVarToVar','Parallel: Found ',nfound,&
-               ' nodes but still cant find ',unfound,' nodes!'
+               ' nodes but still cannot find ',unfound,' nodes!'
        END IF
 
        ! send interpolated values back to the owner:
@@ -517,7 +517,7 @@ CONTAINS
             2103+1, ELMER_COMM_WORLD, status, ierr )
 
        Nvar => VariableGet( NewMesh % Variables,HeightName,ThisOnly=.TRUE.)
-       IF(.NOT. ASSOCIATED(Nvar)) CALL Fatal("InterpVarToVar","Couldnt get variable from &
+       IF(.NOT. ASSOCIATED(Nvar)) CALL Fatal("InterpVarToVar","Could not get variable from &
             &temporary mesh!")
 
        !Ddetermine which nodes were found BETTER than previously

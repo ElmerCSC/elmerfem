@@ -593,100 +593,7 @@ CONTAINS
    END SUBROUTINE SwapMesh
 !------------------------------------------------------------------------------
 
-   !> Create permutation for fields on integration points, optionally with mask.
-   !> The non-masked version is saved to Solver structure for reuse while the
-   !> masked version may be unique to every variable. 
-   !-----------------------------------------------------------------------------------
-   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName )
-
-     TYPE(Solver_t), POINTER :: Solver
-     INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName      
-     
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(GaussIntegrationPoints_t) :: IP
-     TYPE(Element_t), POINTER :: Element
-     INTEGER :: t, n, IpCount , RelOrder, nIp
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-     LOGICAL :: Found, ActiveElem
-     INTEGER, POINTER :: IpOffset(:) 
-     TYPE(ValueList_t), POINTER :: BF
-
-     n = 0
-     IF( PRESENT( MaskPerm ) ) n = n + 1
-     IF( PRESENT( MaskName ) ) n = n + 1
-     IF( PRESENT( SecName ) ) n = n + 1
-     
-     IF( n /= 0 .AND. n /= 3 ) THEN
-       CALL Fatal('CreateIpPerm','Either none or all optional parameters must be present!')
-     END IF
-
-     IF( PRESENT( MaskPerm ) ) THEN
-       CALL Info('CreateIpPerm','Creating masked permutation for integration points',Level=8)
-     ELSE       
-       IF( ASSOCIATED( Solver % IpTable ) ) THEN
-         CALL Info('CreateIpPerm','IpTable already allocated, returning')
-       END IF
-       CALL Info('CreateIpPerm','Creating permuation for integration points',Level=8)       
-     END IF
-       
-     EquationName = ListGetString( Solver % Values, 'Equation', Found)
-     IF( .NOT. Found ) THEN
-       CALL Fatal('CreateIpPerm','Equation not present!')
-     END IF     
-     
-     Mesh => Solver % Mesh
-     NULLIFY( IpOffset ) 
-
-     n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-     ALLOCATE( IpOffset( n + 1) )
-     
-     IpOffset = 0     
-     IpCount = 0
-
-     RelOrder = ListGetInteger( Solver % Values, 'Relative Integration Order', Found)
-     nIp = ListGetInteger( Solver % Values,'Gauss Points on Ip Variables', Found ) 
-     
-     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-       Element => Mesh % Elements(t)
-            
-       IF( Element % PartIndex == ParEnv % myPE ) THEN
-         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
            
-           IF( PRESENT( MaskName ) ) THEN
-             BF => ListGetSection( Element, SecName )
-             ActiveElem = ListGetLogicalGen( BF, MaskName )
-           ELSE
-             ActiveElem = .TRUE.
-           END IF
-           
-           IF( ActiveElem ) THEN
-             IF( nIp > 0 ) THEN
-               IpCount = IpCount + nIp
-             ELSE
-               IP = GaussPoints( Element, RelOrder = RelOrder )
-               IpCount = IpCount + Ip % n
-             END IF
-           END IF
-         END IF
-       END IF
-         
-       IpOffset(t+1) = IpCount
-     END DO
-
-     IF( PRESENT( MaskPerm ) ) THEN
-       MaskPerm => IpOffset
-     ELSE
-       ALLOCATE( Solver % IpTable ) 
-       Solver % IpTable % IpOffset => IpOffset
-       Solver % IpTable % IpCount = IpCount
-     END IF
-       
-     CALL Info('CreateIpPerm','Created permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
-     
-   END SUBROUTINE CreateIpPerm
-
-
    SUBROUTINE CheckAndCreateDGIndexes( Mesh, ActiveElem ) 
      TYPE(Mesh_t), POINTER :: Mesh
      LOGICAL, OPTIONAL :: ActiveElem(:)
@@ -809,10 +716,11 @@ CONTAINS
 
      ! If they have not been allocated before the allocate DGIndexes for all bulk elements
      IF(.NOT. HaveSome ) THEN       
+       CALL Info('CreateDGPerm','Creating DG indexes for bulk elements',Level=15)
 
        ! Number the bulk indexes such that each node gets a new index
        DGIndex = 0       
-       DO t=1,Mesh % NumberOfBulkElements 
+       DO t=1,Mesh % NumberOfBulkElements !+ Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(t)
          n = Element % TYPE % NumberOfNodes         
          ALLOCATE( Element % DGindexes( n ) )
@@ -823,11 +731,13 @@ CONTAINS
        END DO
        
        ! Make boundary elements to inherit the bulk indexes
+       ! We neglect this as for now since it seems this causes problems in deallocation later on...
+#if 0
        DO t=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(t)
          n = Element % TYPE % NumberOfNodes
-         
+               
          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
          DO k=1,2
            IF( k == 1 ) THEN
@@ -835,31 +745,36 @@ CONTAINS
            ELSE 
              Parent => Element % BoundaryInfo % Right
            END IF
-           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
-           
-           IF( ASSOCIATED( Parent % DGIndexes ) ) THEN
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE           
+           IF( .NOT. ASSOCIATED( Parent % DGIndexes ) ) CYCLE
+
+           IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
              ALLOCATE( Element % DGIndexes(n) ) 
-             DO i = 1, n
-               DO j = 1, Parent % TYPE % NumberOfNodes
-                 IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
-                   Element % DGIndexes(i) = Parent % DGIndexes(j)
-                   EXIT
-                 END IF
-               END DO
-             END DO
-             EXIT
+             Element % DgIndexes = 0
            END IF
+           DO i = 1, n
+             IF( Element % DGIndexes(i) > 0 ) CYCLE
+             DO j = 1, Parent % TYPE % NumberOfNodes
+               IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                 Element % DGIndexes(i) = Parent % DGIndexes(j)
+                 EXIT
+               END IF
+             END DO
+           END DO
+           IF( ANY( Element % DGIndexes == 0 ) ) PRINT *,'t dg:',t,n,Element % DGIndexes
+           EXIT
          END DO
-         
        END DO
+#endif
      END IF
      
      CALL Info('CreateDGPerm','Size of DgPerm table: '//TRIM(I2S(DGIndex)),Level=12)
      
      ALLOCATE( DGPerm( DGIndex ) ) 
      DGPerm = 0
-     
-     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+
+     ! If we consider boundary element above do that also here
+     DO t=1,Mesh % NumberOfBulkElements !+ Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
             
        IF( Element % PartIndex == ParEnv % myPE ) THEN
@@ -1026,7 +941,7 @@ CONTAINS
 !> Add the generic stuff related to each Solver. 
 !> A few solvers are for historical reasons given a special treatment. 
 !------------------------------------------------------------------------------
-  SUBROUTINE AddEquationBasics( Solver, Name,Transient )
+  SUBROUTINE AddEquationBasics( Solver, Name, Transient )
 !------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: Solver
     LOGICAL :: Transient
@@ -1044,8 +959,9 @@ CONTAINS
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
-        VariableGlobal, VariableIP, VariableElem, VariableDG, DG, NoMatrix, IsAssemblySolver, &
-        IsCoupledSolver, IsBlockSolver, IsProcedure, IsStepsSolver, LegacySolver, UseMask
+        VariableGlobal, VariableIP, VariableElem, VariableDG, VariableNodal, &
+        DG, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, IsProcedure, &
+        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt
     
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
@@ -1054,7 +970,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Matrix_t), POINTER :: NewMatrix, Oldmatrix
 
-    TYPE(Variable_t), POINTER :: Var
+    TYPE(Variable_t), POINTER :: Var, PVar
     TYPE(Variable_t), POINTER :: NewVariable
 
     REAL(KIND=dp) :: tt, InitValue
@@ -1173,13 +1089,18 @@ CONTAINS
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
     !----------------------------------------------------------------------------------
+    DoIt = .FALSE.
     IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
       END IF
-      CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
+      DoIt = .TRUE.
     END IF
-    IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) THEN
+    IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) DoIt = .TRUE.
+    IF( ListGetLogical( SolverParams,'Apply Conforming BCs',Found ) ) DoIt = .TRUE.
+    
+    IF( DoIt ) THEN
+      CALL Info('AddEquationBasics','Enforcing use of global mass matrix needed by other features!')
       CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
     END IF
 
@@ -1231,7 +1152,7 @@ CONTAINS
         AssProc = GetProcAddr( TRIM(proc_name)//'_bulk', abort=.FALSE. )
         CALL Info('AddEquationBasics','Checking for _bulk solver',Level=12)
         IF ( AssProc /= 0 ) THEN
-          CALL Info('AddEquationBasics','Solver will be be perfomed in steps',Level=8)
+          CALL Info('AddEquationBasics','Solver will be be performed in steps',Level=8)
           Solver % SolverMode = SOLVER_MODE_STEPS
         END IF        
       END IF
@@ -1605,29 +1526,30 @@ CONTAINS
           CALL FreeMatrix( Solver % Matrix )
         END IF
        
-!       IF (Nrows>0) THEN
-          CALL Info('AddEquationBasics','Creating solver variable',Level=12)
-          ALLOCATE(Solution(Nrows),STAT=AllocStat)
-          IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Solution')
+        CALL Info('AddEquationBasics','Creating solver variable',Level=12)
+        ALLOCATE(Solution(Nrows),STAT=AllocStat)
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationBasics','Allocation error for Solution')
 
-          !$OMP PARALLEL DO
-          DO i=1,Nrows
-             Solution(i) = InitValue
+        !$OMP PARALLEL DO
+        DO i=1,Nrows
+          Solution(i) = InitValue
+        END DO
+        !$OMP END PARALLEL DO
+        CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            var_name(1:n), DOFs, Solution, Perm, Output=VariableOutput )          
+        Solver % Variable => VariableGet( Solver % Mesh % Variables, var_name(1:n) )        
+        Solver % Variable % PeriodicFlipActive = Solver % PeriodicFlipActive
+        
+        IF ( DOFs > 1 ) THEN
+          DO i=1,DOFs
+            tmpname = ComponentName( var_name(1:n), i )
+            Component => Solution( i:Nrows-DOFs+i:DOFs )
+            CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+                tmpname, 1, Component, Perm, Output=VariableOutput )
+            PVar => VariableGet( Solver % Mesh % Variables, tmpname )
+            PVar % PeriodicFlipActive = Solver % PeriodicFlipActive
           END DO
-          !$OMP END PARALLEL DO
-          CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              var_name(1:n), DOFs, Solution, Perm, Output=VariableOutput )          
-          Solver % Variable => VariableGet( Solver % Mesh % Variables, var_name(1:n) )
-          
-          IF ( DOFs > 1 ) THEN
-            DO i=1,DOFs
-              tmpname = ComponentName( var_name(1:n), i )
-              Component => Solution( i:Nrows-DOFs+i:DOFs )
-              CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                  tmpname, 1, Component, Perm, Output=VariableOutput )
-            END DO
-          END IF
-!       END IF
+        END IF
 
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
 
@@ -1684,9 +1606,7 @@ CONTAINS
           mask_name = tmpname(1:i3)
         END IF
       END IF
-      
-
-      
+            
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' DOFs'
       DOFs = ListGetInteger( SolverParams, str, Found )
       IF ( .NOT. Found ) THEN
@@ -1707,8 +1627,10 @@ CONTAINS
       VariableIp = .FALSE.      
       VariableElem = .FALSE.
       VariableDG = .FALSE.
+      VariableNodal = .FALSE.
       VariableType = Solver % Variable % TYPE
-            
+      InheritVarType = .FALSE.
+      
       DO WHILE( var_name(1:1) == '-' )
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
@@ -1727,6 +1649,10 @@ CONTAINS
         ELSE IF ( SEQL(var_name, '-elem ') ) THEN
           VariableElem = .TRUE.
           var_name(1:LEN(var_name)-6) = var_name(7:)
+
+        ELSE IF ( SEQL(var_name, '-nodal ') ) THEN
+          VariableNodal = .TRUE.
+          var_name(1:LEN(var_name)-7) = var_name(8:)
           
         ELSE IF ( SEQL(var_name, '-dg ') ) THEN
           VariableDG = .TRUE.
@@ -1792,12 +1718,20 @@ CONTAINS
           END IF
           nsize = nsize * DOFs
 
+        ELSE IF( VariableNodal ) THEN
+          VariableType = Variable_on_nodes
+          NULLIFY( Perm ) 
+          CALL MakePermUsingMask( CurrentModel, Solver, Solver % Mesh, Mask_Name, &
+              .TRUE., Perm, nsize )
+          nsize = DOFs * nsize
+          
         ELSE IF( VariableGlobal ) THEN
           VariableType = Variable_global
           nSize = DOFs
           NULLIFY( Perm )
 
-        ELSE
+        ELSE ! Follow the primary type
+          InheritVarType = .TRUE.
           IF( UseMask ) THEN
             NULLIFY( Perm )
             CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, sec_name, Perm, nsize )
@@ -1822,11 +1756,36 @@ CONTAINS
         END IF
         NewVariable => VariableGet( Solver % Mesh % Variables, Var_name )
         IF(ASSOCIATED( NewVariable ) ) THEN
-          CALL Info('AddEquationBasics','Succesfully created variable: '//TRIM(var_name),Level=12)          
+          CALL Info('AddEquationBasics','Succesfully created variable: '&
+              //ComponentName(var_name),Level=12)                    
         ELSE
           CALL Warn('AddEquationBasics','Could not create variable: '//TRIM(var_name))
         END IF
         
+        IF( InheritVarType ) NewVariable % PeriodicFlipActive = Solver % PeriodicFlipActive
+        
+        str = TRIM(ComponentName(Var_name ))//' Transient'
+        TransientVar = ListGetLogical( SolverParams, str, Found )        
+        
+        IF(.NOT. Found ) THEN
+          str = TRIM( ComponentName(Var_name) )//' Calculate Velocity'
+          TransientVar = ListGetLogical( SolverParams, str, Found )        
+        END IF
+        IF(.NOT. Found ) THEN
+          str = TRIM( ComponentName( Var_name ) )//' Calculate Acceleration'
+          TransientVar = ListGetLogical( SolverParams, str, Found )        
+        END IF
+        
+        IF( TransientVar ) THEN
+          n = 2
+          CALL Info('AddEquationBasics','Allocating prevvalues of size 2 for exported variable',Level=12)
+          ALLOCATE(NewVariable % PrevValues(nsize,n))
+          NewVariable % PrevValues = 0.0_dp
+
+          ! Create upon request the variables for the external fields
+          CALL CreateTimeDerivativeVariables( Solver, NewVariable )
+        END IF
+          
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( var_name )
           DO j=1,DOFs
@@ -1847,8 +1806,11 @@ CONTAINS
             ELSE
               CALL Warn('AddEquationBasics','Could not create variable: '//TRIM(tmpname))
             END IF
+
+            IF( InheritVarType ) NewVariable % PeriodicFlipActive = Solver % PeriodicFlipActive
           END DO
         END IF
+
       END IF
     END DO
 
@@ -1921,12 +1883,111 @@ CONTAINS
       IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
     END IF
 
-    Solver % MortarProc = 0
-    str = ListGetString( Solver % Values, 'External Projector Procedure', Found )
-    IF ( Found ) Solver % MortarProc = GetProcAddr( str )
-
   END SUBROUTINE AddEquationBasics
 
+
+
+  ! Create 1st and 2nd derirvatives of the solution either for postprocessing, 
+  ! dependencies, or for higher order restarts. The optional argument is intended
+  ! for exported variables.
+  !---------------------------------------------------------------------------
+  SUBROUTINE CreateTimeDerivativeVariables( Solver, Var )
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Variable_t), POINTER, OPTIONAL :: Var
+
+    TYPE(Variable_t), POINTER :: pVar
+    CHARACTER(LEN=MAX_NAME_LEN) :: kword, str, varname
+    REAL(KIND=dp), POINTER :: Component(:)
+    INTEGER :: k
+    LOGICAL :: Found, DoIt
+    INTEGER :: TimeOrder
+    
+    IF( PRESENT( Var ) ) THEN
+      pVar => Var
+      kword = TRIM(ComponentName(Var % Name))//' Calculate Velocity'
+    ELSE
+      pVar => Solver % Variable
+      kword = 'Calculate Velocity'
+    END IF
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+    IF(.NOT. DoIt) THEN
+      IF( PRESENT( Var ) ) THEN
+        kword = TRIM(ComponentName(Var % Name))//' Nonlinear Calculate Velocity'
+      ELSE
+        kword = 'Nonlinear Calculate Velocity'
+      END IF
+    END IF
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+         
+    IF( DoIt ) THEN
+      ! For exported variable we assume 1st order scheme
+      IF( PRESENT( Var ) ) THEN
+        TimeOrder = 1        
+      ELSE
+        TimeOrder = Solver % TimeOrder
+      END IF
+      
+      IF( TimeOrder < 1 ) THEN
+        CALL Warn('CreateTimeDerivativeVariables',&
+            'Velocity computation implemented only for time-dependent variables')
+      ELSE IF ( TimeOrder == 1 ) THEN
+        str = TRIM(ComponentName(pVar % Name))//' Velocity'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, pVar % Dofs, Perm = pVar % Perm, VarType = pVar % Type )
+      ELSE IF ( Solver % TimeOrder >= 2 ) THEN
+        Component => pVar % PrevValues(:,1)
+        str = TRIM( ComponentName( pVar % Name ) ) // ' Velocity'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pVar % Type )
+      END IF
+    END IF
+   
+    IF( PRESENT( Var ) ) THEN
+      kword = TRIM(ComponentName(Var % Name))//' Calculate Acceleration'
+    ELSE
+      kword = 'Calculate Acceleration'
+    END IF
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+   
+    IF( DoIt ) THEN
+      IF( TimeOrder < 1 ) THEN
+        CALL Warn('CreateTimeDerivativeVariables',&
+            'Acceleration computation implemented only for time-dependent variables')      
+      ELSE IF ( TimeOrder == 1 ) THEN
+        str = TRIM(ComponentName(pVar % Name))//' Acceleration'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm, VarType = pVar % Type )
+      ELSE IF ( TimeOrder >= 2 ) THEN
+        Component => Solver % Variable % PrevValues(:,2)
+        str = TRIM( ComponentName( pVar % Name ) ) // ' Acceleration'
+        CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+            str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pVar % Type )
+      END IF
+    END IF
+
+    IF( PRESENT( Var ) ) THEN
+      kword = TRIM(ComponentName(Var % Name))//' Transient Restart'
+    ELSE
+      kword = 'Transient Restart'
+    END IF    
+    DoIt = ListGetLogical( Solver % Values, kword, Found)
+        
+    IF( DoIt ) THEN
+      IF( .NOT. ASSOCIATED( pVar % PrevValues ) ) THEN
+        CALL Warn('AddEquationSolution',&
+            'Transient restart requires PrevValues!')
+      ELSE 
+        DO k = 1, SIZE( pVar % PrevValues, 2 )
+          Component => pVar % PrevValues(:,k)
+          str = TRIM( pVar % Name ) //' PrevValues'//TRIM(I2S(k))          
+          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pvar % Type )
+        END DO
+      END IF
+    END IF
+
+  END SUBROUTINE CreateTimeDerivativeVariables
+      
 
 !------------------------------------------------------------------------------  
 !> Add information that is typically only needed if there's a matrix equation
@@ -1944,7 +2005,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, &
-         VariableOutput, MGAlgebraic,MultigridActive, HarmonicMode
+         VariableOutput, MGAlgebraic,MultigridActive, HarmonicMode, DoIt
     INTEGER :: MgLevels, AllocStat
     REAL(KIND=dp), POINTER :: Component(:)
     REAL(KIND=dp), POINTER :: freqv(:,:)
@@ -1990,21 +2051,62 @@ CONTAINS
         
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
             var_name, Solver % Variable % DOFs, Solution, &
-            Solver % Variable % Perm, Output=VariableOutput )
-
+            Solver % Variable % Perm, Output=VariableOutput, Type = Solver % Variable % Type )
+        
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( Var_name )
           DO j=1,DOFs
             tmpname = ComponentName( var_name(1:n), j )
             Component => Solution( j:nRows-DOFs+j:DOFs )
             CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                tmpname, 1, Component, Perm, Output=VariableOutput )
+                tmpname, 1, Component, Perm, Output=VariableOutput, Type = Solver % Variable % Type )
           END DO
         END IF
         NULLIFY( Solution )
       END IF
     END IF
 
+        
+    !------------------------------------------------------------------------------
+    ! Optionally create variable for saving permutation vector.
+    ! This is mainly for debugging purposes and is therefore commented out.
+    !------------------------------------------------------------------------------
+#if 0
+    DoIt = .FALSE.
+    IF( ASSOCIATED( Solver % Variable ) ) THEN
+      DoIt = ListGetLogical( Solver % Values,'Save Global Dofs', Found ) 
+      IF( Solver % Variable % TYPE /= Variable_on_nodes_on_elements  ) THEN              
+        CALL Info('AddEquationSolution','Saving of global dof indexes only for DG variable!')
+        DoIt = .FALSE.
+      END IF
+    END IF
+
+    IF( DoIt ) THEN
+      Var_name = GetVarName(Solver % Variable) // ' GDofs'      
+      Var => VariableGet( Solver % Mesh % Variables, var_name )
+      
+      IF ( .NOT. ASSOCIATED(Var) ) THEN
+        n = SIZE(Solver % Variable % Values) / Solver % Variable % Dofs
+        ALLOCATE( Solution(n), STAT = AllocStat )
+        Solution = 0.0_dp
+        IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error Gdofs')
+        
+        Solution = 0.0d0
+        Perm => Solver % Variable % Perm
+        
+        CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+            var_name, 1, Solution, Solver % Variable % Perm, TYPE = Solver % Variable % TYPE )
+        
+        IF( ParEnv % PEs == 1 ) THEN
+          DO i = 1, SIZE( Solution )
+            Solution(i) = 1.0_dp * i
+          END DO
+        END IF        
+        NULLIFY( Solution )
+      END IF
+    END IF
+#endif    
+    
     ! Create a additional variable for the limiters. For elasticity, for example
     ! the variable will be the contact load. 
     IF ( ListGetLogical( Solver % Values,'Apply Limiter', Found ) .OR. &
@@ -2023,7 +2125,7 @@ CONTAINS
 
         CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
             var_name, Solver % Variable % DOFs, Solution, &
-            Solver % Variable % Perm, Output=VariableOutput )
+            Solver % Variable % Perm, Output=VariableOutput, Type = Solver % Variable % Type )
 
         IF ( DOFs > 1 ) THEN
           n = LEN_TRIM( Var_name )
@@ -2031,7 +2133,7 @@ CONTAINS
             tmpname = ComponentName( var_name(1:n), j )
             Component => Solution( j:nRows-DOFs+j:DOFs )
             CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
-                tmpname, 1, Component, Perm, Output=VariableOutput )
+                tmpname, 1, Component, Perm, Output=VariableOutput, Type = Solver % Variable % Type )
           END DO
         END IF
         NULLIFY( Solution )
@@ -2129,62 +2231,24 @@ CONTAINS
         END IF
       END IF
 
-
-      IF( ListGetLogical( Solver % Values,'Calculate Velocity',Found) .OR. &
-        ListGetLogical( Solver % Values,'Nonlinear Calculate Velocity',Found) ) THEN
-	IF( Solver % TimeOrder < 1 ) THEN
-          CALL Warn('AddEquationSolution',&
-              'Velocity computation implemented only for time-dependent equations')
-        ELSE IF ( Solver % TimeOrder == 1 ) THEN
-          str = TRIM( Solver % Variable % Name ) // ' Velocity'
-          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
-        ELSE IF ( Solver % TimeOrder >= 2 ) THEN
-          Component => Solver % Variable % PrevValues(:,1)
-          str = TRIM( Solver % Variable % Name ) // ' Velocity'
-          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
-              Secondary = .TRUE. )
-        END IF
-      END IF
-
-      IF( ListGetLogical( Solver % Values,'Calculate Acceleration',Found) ) THEN
-        IF ( Solver % TimeOrder == 1 ) THEN
-          CALL Warn('AddEquationSolution',&
-              'Acceleration computation implemented only for 2nd order time equations')
-        ELSE IF ( Solver % TimeOrder >= 2 ) THEN
-          Component => Solver % Variable % PrevValues(:,2)
-          str = TRIM( Solver % Variable % Name ) // ' Acceleration'
-          CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
-              Secondary = .TRUE. )
-        END IF
-      END IF
-
-      IF( ListGetLogical( Solver % Values,'Transient Restart',Found) ) THEN
-        IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
-          CALL Warn('AddEquationSolution',&
-              'Transient restart requires PrevValues!')
-        ELSE 
-          DO k = 1, SIZE( Solver % Variable % PrevValues, 2 )
-            Component => Solver % Variable % PrevValues(:,k)
-            str = TRIM( Solver % Variable % Name ) //' PrevValues'//TRIM(I2S(k))
-            CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-                str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
-                Secondary = .TRUE. )
-          END DO
-        END IF
-      END IF
-
-
-
+      ! Create 1st and 2nd derirvatives of the solution either for postprocessing, 
+      ! dependencies, or for higher order restarts
+      CALL CreateTimeDerivativeVariables( Solver )
+      
     ELSE
       Solver % TimeOrder = 0
 
-      IF( ListGetLogical( Solver % Values,'Calculate Derivative',Found) ) THEN
-        str = TRIM( Solver % Variable % Name ) // ' Derivative'
+      DoIt = ListGetLogical( Solver % Values,'Calculate Derivative',Found)
+      IF( .NOT. Found ) THEN
+        DoIt = ListGetLogical( Solver % Values,'Nonlinear Calculate Derivative',Found)
+      END IF
+      IF( DoIt ) THEN
+        str = GetVarname(Solver % Variable) // ' Derivative'
         CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
+            str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm, &
+            VarType = Solver % Variable % TYPE )
+        Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+        Var % Values = 0.0_dp
       END IF
 
       IF ( EigAnal ) THEN
@@ -2551,7 +2615,6 @@ CONTAINS
      Solver % SolverExecWhen = SOLVER_EXEC_NEVER
      Solver % LinBeforeProc = 0
      Solver % LinAfterProc = 0
-     Solver % MortarProc = 0
 
      IF ( Parenv  % PEs >1 ) THEN
        CALL ParallelInitMatrix( Solver, Solver % Matrix )
@@ -2922,7 +2985,7 @@ CONTAINS
        END DO
 
 !------------------------------------------------------------------------------
-!      Go trough number of solvers (heat,laminar or turbulent flow, etc...)
+!      Go through number of solvers (heat,laminar or turbulent flow, etc...)
 !------------------------------------------------------------------------------
        DO k=1,Model % NumberOfSolvers
 !------------------------------------------------------------------------------
@@ -3627,7 +3690,7 @@ CONTAINS
       
       BulkMode = .TRUE.
 200   IF(BulkMode) THEN
-        ! CALL Info('CoupledSolver','Starting constraing bulk assembly',Level=5)
+        ! CALL Info('CoupledSolver','Starting constraint bulk assembly',Level=5)
         ElementsFirst = 1
         ElementsLast = Mesh % NumberOfBulkElements 
       ELSE
@@ -4804,10 +4867,10 @@ CONTAINS
       IF( Solver % Variable % NonlinConverged > 0 ) EXIT
     END DO
 
-    SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
-    IF( SolverAddr /= 0 ) THEN
-      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
-    END IF
+    !SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
+    !IF( SolverAddr /= 0 ) THEN
+    !  CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+    !END IF
     
 
   END SUBROUTINE ExecSolverInSteps
@@ -5025,12 +5088,35 @@ CONTAINS
            Solver % Matrix % ParMatrix % ParEnv % ActiveComm = &
                     Solver % Matrix % Comm
            ParEnv = Solver % Matrix % ParMatrix % ParEnv
+
+#if 0
+           ! This one is mainly for debugging of parallel problems
+           BLOCK
+             TYPE(Variable_t), POINTER :: Gvar
+             
+             GVar => VariableGet( Solver % Mesh % Variables,&
+                 Solver % Variable % Name(Solver % Variable NameLen)//' Gdofs')      
+             IF ( ASSOCIATED(GVar) ) THEN               
+               DO i = 1, SIZE( GVar % Perm )
+                 j = GVar % Perm(i)
+                 IF( j == 0 ) CYCLE
+                 k = Solver % Matrix % ParallelInfo % GlobalDOFs(j)
+                 GVar % Values(j) = 1.0_dp * k
+               END DO
+             END IF
+           END BLOCK             
+#endif
+           
          END IF
        END IF
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
 
+
+
+
+     
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
@@ -5050,6 +5136,24 @@ CONTAINS
        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
      END IF
 
+     ! Special slot for post-processing solvers
+     ! This makes it convenient to separate the solution and postprocessing.
+     ! This solver must use the same structures as the primary solver. 
+     !-----------------------------------------------------------------------
+     BLOCK 
+       CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
+       ProcName = ListGetString( Solver % Values,'Procedure', Found )
+       SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
+       IF( SolverAddr /= 0 ) THEN
+         CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+       END IF
+     END BLOCK
+
+     ! Compute all dependent fields, components and derivatives related to the primary solver.
+     !-----------------------------------------------------------------------   
+     CALL UpdateDependentObjects( Solver, .TRUE. ) 
+
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -5293,26 +5397,6 @@ CONTAINS
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
-
-
-!---------------------------------------------------------------------
-! After each solver one may do some special derived fields etc. 
-!---------------------------------------------------------------------
-     
-
-     ! Update the variables that depend on this solver
-     IF( ListGetLogical( Params,&
-           'Update Exported Variables', Found) ) THEN
-       CALL UpdateExportedVariables( Solver )	
-     END IF
-    
-
-     ! Update the components that depend on this solver
-     UpdateComponents => ListGetIntegerArray( Params, &
-         'Update Components', Found )   
-     IF( Found ) CALL UpdateDependentComponents( UpdateComponents )	
-     
-
 
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested

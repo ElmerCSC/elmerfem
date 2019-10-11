@@ -1,0 +1,83 @@
+!------------------------------------------------------------------------------
+! Perform an interpolation test to verify that the expected convergence rate is
+! maintained when non-homogeneous BCs are specified for face finite elements. 
+! The solver employed seeks the best approximation with respect to norm that 
+! can be adjusted (L2 or energy). Now only one 3-D test solution has been 
+! implemented (Test Mode = Integer 2 having the exact solution q=(1,1,1) so the 
+! computational solution should actually reproduce the solution up to the 
+! accuracy of linear solver).
+!------------------------------------------------------------------------------
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+!----------------------------------------------------------
+! Parameter for defining the energy inner product: 
+!----------------------------------------------------------
+Material 1
+  Material Param = Real 0.0e-5
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Interpolation test"
+  Variable = "Q"
+  Variable DOFs = 1
+  Procedure = "FaceFEInterpolationTest" "BestApproximationSolver"
+
+  ! The following keyword must be turned on for the Nedelec tetrahedra of
+  ! the second kind (together with changing the element type):
+  !---------------------------------------------------------------------
+  Second Kind Basis = Logical True
+
+  Compute Div Error = Logical False
+  Test Mode = Integer 2
+
+  ! Element definition:
+  !-------------------------------------------------------------------
+  !Element = "n:0 f:1"      ! the Nedelec tetrahedra of the first kind
+  Element = "n:0 f:3"      ! the Nedelec tetrahedra of the second kind
+
+  Optimize Bandwidth = True
+  Bubbles in Global System = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = IDRS
+  Linear System Preconditioning = none
+!  Linear System Row Equilibration = Logical True
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-11
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Q {f} 1 = Real 1.0
+  Q {f} 2 = Real 1.0
+  Q {f} 3 = Real 1.0
+End
+
+! The test norm for the Nedelec tetrahedra of the first kind
+!Solver 1 :: Reference Norm = Real 5.21207913E-03
+
+! The test norm for the Nedelec tetrahedra of the second kind
+Solver 1 :: Reference Norm = Real 3.00919529E-03
+
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-6

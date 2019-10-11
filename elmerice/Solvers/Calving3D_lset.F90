@@ -533,7 +533,7 @@
 
          IceNodeIndexes => IceElement  % NodeIndexes
 
-         EdgeMap => LGetEdgeMap(IceElement % TYPE % ElementCode / 100)
+         EdgeMap => GetEdgeMap(IceElement % TYPE % ElementCode / 100)
 
          !set K = element number of edges
          ! cycle K, setting edge to b1 b2, checking

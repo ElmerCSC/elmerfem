@@ -565,7 +565,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
 
      Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
      IF(.NOT. ASSOCIATED(Var)) THEN
-        WRITE(Message,'(A,A)') "Listed mesh update variable but cant find: ",VarName
+        WRITE(Message,'(A,A)') "Listed mesh update variable but can not find: ",VarName
         CALL Fatal(SolverName, Message)
      END IF
      Var % Values = 0.0_dp
@@ -584,13 +584,13 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
 
      Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
      IF(.NOT. ASSOCIATED(Var)) THEN
-        WRITE(Message,'(A,A)') "Listed FreeSurface variable but cant find: ",VarName
+        WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",VarName
         CALL Fatal(SolverName, Message)
      END IF
 
      RefVar => VariableGet( Model % Mesh % Variables, "Reference "//TRIM(VarName), .TRUE. )
      IF(.NOT. ASSOCIATED(RefVar)) THEN
-        WRITE(Message,'(A,A)') "Listed FreeSurface variable but cant find: ",&
+        WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",&
              "Reference "//TRIM(VarName)
         CALL Fatal(SolverName, Message)
      END IF
@@ -2018,7 +2018,7 @@ CONTAINS
     ALLOCATE(WorkPerm(SIZE(FrontPerm)))
     WorkPerm = FrontPerm
 
-    CALL VariableRemove(OldMesh % Variables, "ActualHeight")
+    CALL VariableRemove(OldMesh % Variables, "ActualHeight", .FALSE.)
     CALL VariableAdd(OldMesh % Variables, OldMesh, Solver, "ActualHeight", 1,&
          ActualHeight, WorkPerm)
 
@@ -2033,7 +2033,7 @@ CONTAINS
        WorkReal(WorkPerm(i)) = OldMesh % Nodes % z(i)
     END DO
 
-    CALL VariableRemove(OldMesh % Variables, "FrontExtent")
+    CALL VariableRemove(OldMesh % Variables, "FrontExtent", .FALSE.)
     CALL VariableAdd(OldMesh % Variables, OldMesh, Solver, "FrontExtent", 1,&
          WorkReal, WorkPerm)
 
@@ -2106,7 +2106,7 @@ CONTAINS
     END DO
 
     NULLIFY(WorkReal, WorkPerm)
-    
+
     !Add rotated front height as var to both
     !InterpVarToVarReduced
     ALLOCATE(InterpDim(1)); InterpDim = (/3/);
@@ -2139,7 +2139,7 @@ CONTAINS
     IF(ANY(UnfoundNodes)) THEN
        DO i=1, SIZE(UnfoundNodes)
           IF(UnfoundNodes(i)) THEN
-             PRINT *,ParEnv % MyPE,' Didnt find point: ', i, ' x:', ExtrudedMesh % Nodes % x(i),&
+             PRINT *,ParEnv % MyPE,' Did not find point: ', i, ' x:', ExtrudedMesh % Nodes % x(i),&
                   ' y:', ExtrudedMesh % Nodes % y(i),&
                   ' z:', ExtrudedMesh % Nodes % z(i)
              CALL InterpolateUnfoundPoint( i, ExtrudedMesh, "ActualHeight", InterpDim,&
@@ -2278,7 +2278,6 @@ CONTAINS
     !  put the nodes back to pre-calving geometry
     CALL DisplaceCalvingFront(OldMesh, CalvingVar, -1)
 
-
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
          PRINT *, 'Remesh, Time taken to Extrude Mesh and do front interp: ', rt
@@ -2346,14 +2345,19 @@ CONTAINS
 
     !Add to ExtrudedMesh 
     n = ExtrudedMesh % NumberOfNodes
-    ALLOCATE(TopVarValues(n),BottomVarValues(n),TopVarPerm(n),BottomVarPerm(n))
-    TopVarPerm = 0; BottomVarPerm = 0;
     NodesPerLevel = n / ExtrudeLevels
+    ALLOCATE(TopVarValues(NodesPerLevel),BottomVarValues(NodesPerLevel),TopVarPerm(n),BottomVarPerm(n))
+    TopVarPerm = 0; BottomVarPerm = 0;
 
     DO i=1,NodesPerLevel
        BottomVarPerm(i) = i
        TopVarPerm(n - NodesPerLevel + i) = i
     END DO
+
+    !These variables will be added to ExtrudedMesh (with wrong Perm) by Exported Variable
+    !in Remesh Mesh Update. So, get rid of them and rewrite
+    CALL VariableRemove(ExtrudedMesh % Variables, TopVarName, .FALSE.)
+    CALL VariableRemove(ExtrudedMesh % Variables, BottomVarName, .FALSE.)
 
     CALL VariableAdd(ExtrudedMesh % Variables, ExtrudedMesh, Solver, TopVarName, 1, &
          TopVarValues, TopVarPerm, .TRUE.)
@@ -2438,7 +2442,7 @@ CONTAINS
     IF(ANY(UnfoundNodes)) THEN
        DO i=1, SIZE(UnfoundNodes)
           IF(UnfoundNodes(i)) THEN
-             PRINT *,ParEnv % MyPE,'Didnt find point: ', i,&
+             PRINT *,ParEnv % MyPE,'Did not find point: ', i,&
                   ' frontperm: ',ExtrudedFrontPerm(i),&
                   ' x:', ExtrudedMesh % Nodes % x(i),&
                   ' y:', ExtrudedMesh % Nodes % y(i),&
@@ -2726,6 +2730,7 @@ CONTAINS
     !   2) Calving front from interpolated "ActualHeight"
     !-----------------------------------------
     !TODO: Possibility to remove other dirichlets from SIF and implement them like this:
+
     DO i=1, ExtrudedMesh % NumberOfNodes
        IF(HeightVar % Perm(i)>0) THEN
           CALL SetDirichtletPoint( StiffMatrix, ForceVector,1,1, &
@@ -2970,7 +2975,6 @@ CONTAINS
     rt0 = RealTime()
 
   END SUBROUTINE CalvingRemesh
-
 
   ! Sets the value of coordinate variables from 
   ! a given mesh.

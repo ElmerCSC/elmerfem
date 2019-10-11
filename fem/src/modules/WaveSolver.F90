@@ -115,8 +115,7 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
       IF (ActiveBoundaryElement()) THEN
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
-        nb = GetElementNOFBDOFs(Element)
-        CALL LocalMatrixBC(Element, n, nd+nb, InitHandles)
+        CALL LocalMatrixBC(Element, n, nd, InitHandles)
       END IF
     END DO
 
@@ -241,7 +240,7 @@ CONTAINS
     ! Applying static condensation is a risky endeavour since the values of 
     ! the bubble DOFs at previous time steps are not recovered, disable the 
     ! static condensation?
-    CALL LCondensate( nd-nb, nb, STIFF, FORCE )
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     CALL DefaultUpdateEquations(STIFF, FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -322,35 +321,6 @@ CONTAINS
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( N, Nb, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-    INTEGER :: N, Nb
-    REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
-         Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
-
-    IF ( Nb <= 0 ) RETURN
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = (/ (i, i=n+1,n+nb) /)
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,nb )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

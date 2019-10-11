@@ -132,7 +132,7 @@ macro(CHECK_Fortran_SOURCE_COMPILES SOURCE VAR)
       set(${VAR} 1 CACHE INTERNAL "Test ${VAR}")
       message(STATUS "Performing Test ${VAR} - Success")
       file(APPEND ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeOutput.log
-        "Performing C SOURCE FILE Test ${VAR} succeded with the following output:\n"
+        "Performing C SOURCE FILE Test ${VAR} succeeded with the following output:\n"
         "${OUTPUT}\n"
         "Source file was:\n${SOURCE}\n")
     else()

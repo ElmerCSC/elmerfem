@@ -1,4 +1,4 @@
-
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -257,7 +257,7 @@ CONTAINS
     INTEGER :: slen,n_Circuits
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
 
-    ! Read Circuit defintions from MATC:
+    ! Read Circuit definitions from MATC:
     ! ----------------------------------
     cmd = "Circuits"
     slen = LEN_TRIM(cmd)
@@ -1122,8 +1122,8 @@ CONTAINS
         RowId = Cvar % ValueId + nm
 
         nn = COUNT(r_cnt>0)
-        IF(r_cnt(Cvar % Owner+1)<=0) nn=nn+1
-        
+        IF( r_cnt(CVar % Owner+1)<=0 ) Nn=nn+1
+
         IF (Circuits(p) % Harmonic) THEN
           DO j=1,Cvar % Dofs
             IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1))%Neighbours)) THEN
@@ -1131,7 +1131,7 @@ CONTAINS
               ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(nn))
             END IF
             CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(1)   = CVar % Owner
-            CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(1) = CVar % Owner
+            CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(1) = Cvar % Owner
             l = 1
             DO k=0,ParEnv % PEs-1
               IF(k==CVar % Owner) CYCLE
@@ -1141,7 +1141,7 @@ CONTAINS
                 CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(l) = k
               END IF
             END DO
-            CM % RowOwner(RowId + AddIndex(j-1)) = Cvar % Owner
+            CM % RowOwner(RowId + AddIndex(j-1))   = Cvar % Owner
             CM % RowOwner(RowId + AddImIndex(j-1)) = Cvar % Owner
           END DO
         ELSE
@@ -1515,7 +1515,7 @@ CONTAINS
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER :: p,i,j,k,Indexes(nd)
     INTEGER, OPTIONAL :: Jsind
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
@@ -1549,6 +1549,13 @@ CONTAINS
     
     DO p=ncdofs1,ncdofs2
       j = Indexes(p)
+
+      IF( ASSOCIATED( CurrentModel % Mesh % PeriodicPerm ) ) THEN
+        ! If we have periodicity eliminated only flag the master in Done
+        k = CurrentModel % Mesh % PeriodicPerm(j)
+        IF( k > 0 ) j = k
+      END IF
+
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
         j = PS(j)
@@ -1576,7 +1583,7 @@ CONTAINS
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER :: p,i,j,k,Indexes(nd)
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
     LOGICAL :: First=.TRUE.
@@ -1607,6 +1614,13 @@ CONTAINS
     END IF
     DO p=ncdofs1,ncdofs2
       j = Indexes(p)
+
+      IF( ASSOCIATED( CurrentModel % Mesh % PeriodicPerm ) ) THEN
+        ! If we have periodicity eliminated only flag the master in Done
+        k = CurrentModel % Mesh % PeriodicPerm(j)
+        IF( k > 0 ) j = k
+      END IF
+
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
         j = PS(j)
@@ -1677,7 +1691,7 @@ CONTAINS
       END DO
 
       DO j=1,ncdofs
-        q=j
+        q=j                        
         IF (dim == 3) q=q+nn
         IF (PRESENT(Cols)) THEN  
           q = PS(Indexes(q))
@@ -1724,7 +1738,7 @@ CONTAINS
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
     Circuit_tot_n = CurrentModel%Circuit_tot_n
     
-    ! Initialialize Circuit matrix:
+    ! Initialize Circuit matrix:
     ! -----------------------------
     PS => Asolver % Variable % Perm
     nm =  Asolver % Matrix % NumberOfRows
@@ -1777,7 +1791,7 @@ CONTAINS
 
     Cnts = 0
 
-    ! CREATE COLMUNS:
+    ! CREATE COLUMNS:
     ! ===============
 
     CALL CreateBasicCircuitEquations(Rows, Cols, Cnts)

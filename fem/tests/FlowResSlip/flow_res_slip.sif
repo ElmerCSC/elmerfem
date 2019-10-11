@@ -1,4 +1,4 @@
-! This case describes the flow trough a very small hole
+! This case describes the flow through a very small hole
 ! where the flow is effectively Stokes flow. Then a flow resistance
 ! may be defined for the flow.
 !
@@ -75,7 +75,7 @@ Solver 3
   Operator 3 = boundary sum
   Variable 3 = Flow Solution Loads 3
 
-! use this norm to ensure consistancy
+! use this norm to ensure consistency
   Show Norm Index = 3
 End 
 

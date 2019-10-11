@@ -55,7 +55,7 @@ MODULE NavierStokesGeneral
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for Navier-Stokes-Equations
-!>  in general Euclidian coordinate system.
+!>  in general Euclidean coordinate system.
 !------------------------------------------------------------------------------
    SUBROUTINE NavierStokesGeneralCompose  (                               &
             MassMatrix,StiffMatrix,ForceVector,LoadVector,NodalViscosity, &

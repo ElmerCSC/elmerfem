@@ -75,6 +75,7 @@ MODULE Lists
    INTEGER, PARAMETER :: SECTION_TYPE_COMPONENT = 6
    INTEGER, PARAMETER :: SECTION_TYPE_SIMULATION = 7
    INTEGER, PARAMETER :: SECTION_TYPE_CONSTANTS = 8
+   INTEGER, PARAMETER :: SECTION_TYPE_EQUATION = 9
    
 
    INTEGER, PARAMETER :: MAX_FNC = 32
@@ -186,6 +187,7 @@ MODULE Lists
 
 CONTAINS
 
+!> Tag the active degrees of freedom and number them in order of appearance. 
 !------------------------------------------------------------------------------
   FUNCTION InitialPermutation( Perm,Model,Solver,Mesh, &
                    Equation,DGSolver,GlobalBubbles ) RESULT(k)
@@ -195,17 +197,17 @@ CONTAINS
      TYPE(Mesh_t)   :: Mesh
      TYPE(Solver_t), TARGET :: Solver
      INTEGER :: Perm(:)
-     INTEGER :: k
      CHARACTER(LEN=*) :: Equation
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
 !------------------------------------------------------------------------------
-     INTEGER i,j,l,t,n,e, EDOFs, FDOFs, BDOFs, ndofs, el_id
+     INTEGER i,j,l,t,n,e,k,k1,EDOFs, FDOFs, BDOFs, ndofs, el_id
      INTEGER :: Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
-     LOGICAL :: FoundDG, DG, GB, Found, Radiation
+     LOGICAL :: FoundDG, DG, DB, GB, Found, Radiation
      TYPE(Element_t),POINTER :: Element, Edge, Face
-!------------------------------------------------------------------------------
+     CHARACTER(*), PARAMETER :: Caller = 'InitialPermutation'
+ !------------------------------------------------------------------------------
      Perm = 0
      k = 0
      EDOFs = Mesh % MaxEdgeDOFs
@@ -218,6 +220,109 @@ CONTAINS
      DG = .FALSE.
      IF ( PRESENT(DGSolver) ) DG=DGSolver
      FoundDG = .FALSE.
+
+     IF( DG ) THEN    
+       DB = ListGetLogical( Solver % Values,'DG Reduced Basis',Found ) 
+     ELSE
+       DB = .FALSE.
+     END IF
+       
+     ! Discontinuous bodies need special body-wise numbering
+     IF ( DB ) THEN
+       BLOCK
+         INTEGER, ALLOCATABLE :: NodeIndex(:)
+         INTEGER :: body_id, MaxGroup, group0, group
+         INTEGER, POINTER :: DgMap(:), DgMaster(:), DgSlave(:)
+         LOGICAL :: GotDgMap, GotMaster, GotSlave
+         
+         DgMap => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Mapping',GotDgMap )
+         DgMaster => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Master Bodies',GotMaster )
+         DgSlave => ListGetIntegerArray( Solver % Values,'DG Reduced Basis Slave Bodies',GotSlave )
+                  
+         IF( GotDgMap ) THEN
+           IF( SIZE( DgMap ) /= Model % NumberOfBodies ) THEN
+             CALL Fatal('InitialPermutation','Invalid size of > Dg Reduced Basis Mapping <')
+           END IF
+           MaxGroup = MAXVAL( DgMap )
+         ELSE IF( GotMaster ) THEN
+           MaxGroup = 2
+         ELSE
+           MaxGroup = Model % NumberOfBodies
+         END IF
+         
+         ALLOCATE( NodeIndex( Mesh % NumberOfNodes ) )
+         
+         DO group0 = 1, MaxGroup
+
+           ! If we have master-slave lists then nullify the slave nodes at the master
+           ! interface since we want new indexes here. 
+           IF( GotSlave .AND. group0 == 2 ) THEN             
+             DO t=1,Mesh % NumberOfBulkElements
+               Element => Mesh % Elements(t)                
+               group = Element % BodyId               
+               IF( ANY( DgSlave == group ) ) THEN                 
+                 NodeIndex( Element % NodeIndexes ) = 0
+               END IF
+             END DO
+           ELSE
+             ! In generic case nullify all indexes already set            
+             NodeIndex = 0
+           END IF
+           
+           k1 = k
+
+           CALL Info('InitialPermutation',&
+               'Group '//TRIM(I2S(group0))//' starts from index '//TRIM(I2S(k1)),Level=10)
+           
+           DO t=1,Mesh % NumberOfBulkElements
+             Element => Mesh % Elements(t) 
+             
+             group = Element % BodyId
+             
+             IF( GotMaster ) THEN
+               IF( group0 == 1 ) THEN
+                 ! First loop number dofs in "master bodies" only
+                 IF( .NOT. ANY( DgMaster == group ) ) CYCLE
+               ELSE 
+                 ! Second loop number dofs in all bodies except "master bodies"
+                 IF( ANY( DgMaster == group ) ) CYCLE
+               END IF
+             ELSE IF( GotDgMap ) THEN
+               group = DgMap( group ) 
+               IF( group0 /= group ) CYCLE
+             ELSE
+               IF( group0 /= group ) CYCLE
+             END IF
+               
+             IF ( CheckElementEquation(Model,Element,Equation) ) THEN
+               FoundDG = FoundDG .OR. Element % DGDOFs > 0
+               DO i=1,Element % DGDOFs
+                 j = Element % NodeIndexes(i)
+                 IF( NodeIndex(j) == 0 ) THEN
+                   k = k + 1
+                   NodeIndex(j) = k
+                 END IF
+                 Perm( Element % DGIndexes(i) ) = NodeIndex(j)
+               END DO
+             END IF
+           END DO
+
+           IF( k > k1 ) THEN
+             CALL Info( Caller,'Group '//TRIM(I2S(group0))//&
+                 ' has '//TRIM(I2S(k-k1))//' db dofs',Level=15)
+           END IF
+         END DO
+
+         CALL Info(Caller,'Numbered '//TRIM(I2S(k))//&
+             ' db nodes from bulk hits',Level=15)
+
+         IF ( FoundDG ) THEN
+           RETURN ! Discontinuous bodies !!!
+         END IF
+       END BLOCK
+     END IF
+
+
      IF ( DG ) THEN
        DO t=1,Mesh % NumberOfEdges
          n = 0
@@ -231,7 +336,7 @@ CONTAINS
                 END DO
              END IF
          END IF
-
+         
          Element => Mesh % Edges(t) % BoundaryInfo % Right
          IF ( ASSOCIATED( Element ) ) THEN
              IF ( CheckElementEquation(Model,Element,Equation) ) THEN
@@ -252,6 +357,11 @@ CONTAINS
          END DO
        END DO
 
+       CALL Info(Caller,'Numbered '//TRIM(I2S(k))//&
+           ' nodes from face hits',Level=15)
+       k1 = k
+
+       
        DO t=1,Mesh % NumberOfFaces
          n = 0
          Element => Mesh % Faces(t) % BoundaryInfo % Left
@@ -285,6 +395,9 @@ CONTAINS
          END DO
        END DO
 
+       CALL Info(Caller,'Numbered '//TRIM(I2S(k-k1))//&
+           ' nodes from bulk hits',Level=15)
+       
        IF ( FoundDG ) THEN
           RETURN ! Discontinuous galerkin !!!
        END IF
@@ -471,6 +584,35 @@ CONTAINS
        t = t + 1
      END DO
 
+     ! Here we create the initial permutation such that the conforming dofs are eliminated. 
+     IF( ListGetLogical( Solver % Values,'Apply Conforming BCs',Found ) ) THEN
+       Solver % PeriodicFlipActive = .FALSE.
+       n = 0
+       IF( ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
+         ! Set the eliminated dofs to zero and renumber
+         WHERE( Mesh % PeriodicPerm > 0 ) Perm = -Perm
+
+         k = 0                  
+         DO i=1,SIZE( Perm )
+           IF( Perm(i) > 0 ) THEN
+             k = k + 1
+             Perm(i) = k
+           END IF
+         END DO
+                          
+         DO i=1,SIZE( Mesh % PeriodicPerm )
+           j = Mesh % PeriodicPerm(i)
+           IF( j > 0 .AND. Perm(i) /= 0 ) THEN             
+             Perm(i) = Perm(j)
+             IF(Mesh % PeriodicFlip(i)) n = n + 1
+           END IF
+         END DO
+
+         Solver % PeriodicFlipActive = ( n > 0 )
+         CALL Info('InitialPermutation','Number of periodic flips in the field: '//TRIM(I2S(n)),Level=8)
+       END IF
+     END IF
+    
      IF ( ALLOCATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs)
      IF ( ALLOCATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
 !------------------------------------------------------------------------------
@@ -509,7 +651,7 @@ CONTAINS
               
       Flag = .FALSE.      
       IF ( body_id > 0 .AND. body_id <= Model % NumberOfBodies ) THEN
-         k = ListGetInteger( Model % Bodies(body_id) % Values, 'Equation', &
+         k = ListGetInteger( Model % Bodies(body_id) % Values, 'Equation', Found, &
                  minv=1, maxv=Model % NumberOFEquations )
          IF ( k > 0 ) THEN
            Flag = ListGetLogical(Model % Equations(k) % Values,Equation,Found)
@@ -657,6 +799,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReleaseVariableList( VariableList )
 !------------------------------------------------------------------------------
+use spariterglobals
     TYPE(Variable_t), POINTER :: VariableList
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: Ptr(:)
@@ -714,6 +857,8 @@ CONTAINS
           Var1 => Var1 % Next
        END DO
 
+       IF(SIZE(Var % Values)<=0) GotValues = .FALSE.
+
        IF (ASSOCIATED(Var % Perm)) THEN
          Var1 => VariableList
          DO WHILE(ASSOCIATED(Var1))
@@ -733,22 +878,22 @@ CONTAINS
        
        IF ( GotValues ) THEN
         IF ( ASSOCIATED( Var % Values ) ) &
-            DEALLOCATE( Var % Values )
+           DEALLOCATE( Var % Values )
 
          IF ( ASSOCIATED( Var % PrevValues ) ) &
-	   DEALLOCATE( Var % PrevValues )
+           DEALLOCATE( Var % PrevValues )
 
          IF ( ASSOCIATED( Var % EigenValues ) ) &
-            DEALLOCATE( Var % EigenValues )
+           DEALLOCATE( Var % EigenValues )
 
          IF ( ASSOCIATED( Var % EigenVectors ) ) &
-            DEALLOCATE( Var % EigenVectors )
+           DEALLOCATE( Var % EigenVectors )
 
          IF ( ASSOCIATED( Var % SteadyValues ) ) &
-            DEALLOCATE( Var % SteadyValues )
+           DEALLOCATE( Var % SteadyValues )
 
          IF ( ASSOCIATED( Var % NonlinValues ) ) &
-            DEALLOCATE( Var % NonlinValues )
+           DEALLOCATE( Var % NonlinValues )
        END IF
        NULLIFY( Var % EigenVectors, Var % EigenValues )
        NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
@@ -807,19 +952,25 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Deletes a variable (by name) from list of variables
 !------------------------------------------------------------------------------
-  SUBROUTINE VariableRemove(Variables, NameIn)
+  SUBROUTINE VariableRemove(Variables, NameIn, WarnMiss)
     
     IMPLICIT NONE
 !-----------------------------------------------
     TYPE(Variable_t), POINTER :: Variables
     CHARACTER(LEN=*) :: NameIn
+    LOGICAL, OPTIONAL :: WarnMiss
 !-----------------------------------------------    
     TYPE(Variable_t), POINTER :: Var, Prev, RmVar
     CHARACTER(LEN=LEN_TRIM(NameIn)) :: Name
-    LOGICAL :: GotIt
+    LOGICAL :: GotIt, WarnMissing
     INTEGER :: k
 
     GotIt = .FALSE.
+    IF(PRESENT(WarnMiss)) THEN
+      WarnMissing = WarnMiss
+    ELSE
+      WarnMissing = .TRUE.
+    END IF
 
     Var => Variables
     Prev => NULL()
@@ -850,7 +1001,7 @@ CONTAINS
     END DO
 
     IF(.NOT. GotIt) THEN
-       CALL Warn("VariableRemove","Couldn't find the variable, returning...")
+       IF(WarnMissing) CALL Warn("VariableRemove","Couldn't find the variable, returning...")
        RETURN
     END IF
 
@@ -893,7 +1044,7 @@ CONTAINS
 !> Also allocates the field values if not given in the parameter list. 
 !------------------------------------------------------------------------------
     SUBROUTINE VariableAddVector( Variables,Mesh,Solver,Name,DOFs,Values,&
-      Perm,Output,Secondary,TYPE,Global,InitValue,IpPoints)
+      Perm,Output,Secondary,VarType,Global,InitValue,IpPoints)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
@@ -904,14 +1055,14 @@ CONTAINS
       LOGICAL, OPTIONAL :: Output
       INTEGER, OPTIONAL, POINTER :: Perm(:)
       LOGICAL, OPTIONAL :: Secondary
-      INTEGER, OPTIONAL :: TYPE
+      INTEGER, OPTIONAL :: VarType
       LOGICAL, OPTIONAL :: Global
       REAL(KIND=dp), OPTIONAL :: InitValue
       LOGICAL, OPTIONAL :: IpPoints
 !------------------------------------------------------------------------------
       CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
       REAL(KIND=dp), POINTER :: Component(:), TmpValues(:)
-      INTEGER :: i,nsize, ndofs
+      INTEGER :: i,nsize, ndofs, FieldType
       LOGICAL :: IsPerm, IsGlobal, IsIPPoints
 !------------------------------------------------------------------------------
             
@@ -928,6 +1079,13 @@ CONTAINS
       IsPerm = PRESENT( Perm ) 
       IF( PRESENT( Global ) ) IsGlobal = Global
       IF( PRESENT( IPPoints ) ) IsIPPoints = IPPoints
+
+      IF( PRESENT( VarType ) ) THEN
+        FieldType = VarType
+      ELSE
+        FieldType = variable_on_nodes
+      END IF
+
       
 
       CALL Info('VariableAddVector','Adding variable > '//TRIM(Name)//' < with '&
@@ -951,6 +1109,8 @@ CONTAINS
         ELSE
           nsize = Mesh % NumberOfNodes          
         END IF
+        CALL Info('VariableAddVector','Allocating field of size: '//TRIM(I2S(nsize)),Level=12)
+        
         NULLIFY(TmpValues)
         ALLOCATE(TmpValues(ndofs*nsize))
         TmpValues = 0.0_dp         
@@ -965,12 +1125,12 @@ CONTAINS
           tmpname = ComponentName(Name,i)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
-              Perm,Output,Secondary,Type)
+              Perm,Output,Secondary,VarType)
         END DO
       END IF
 
       CALL VariableAdd( Variables,Mesh,Solver,Name,nDOFs,TmpValues,&
-            Perm,Output,Secondary,Type)
+            Perm,Output,Secondary,VarType)
 
 !------------------------------------------------------------------------------
     END SUBROUTINE VariableAddVector
@@ -1783,6 +1943,82 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Finds an entry in the list by its name and returns a handle to it.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRename( list, name, name2, Found ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: name, name2
+     LOGICAL, OPTIONAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(:), ALLOCATABLE :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     CHARACTER(LEN=LEN_TRIM(Name2)) :: str2
+     INTEGER :: k, k2, n
+
+     IF(PRESENT(Found)) Found = .FALSE.
+
+     ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+     
+     k = StringToLowerCase( str,Name,.TRUE. )
+     
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n==k ) THEN
+         IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
+     
+     IF( ASSOCIATED( ptr ) ) THEN
+       k2 = StringToLowerCase( str2,Name2,.TRUE. )
+       ptr % Name(1:k2) = str2(1:k2)
+       ptr % NameLen = k2 
+       !PRINT *,'renaming >'//str(1:k)//'< to >'//str2(1:k2)//'<', k, k2
+     END IF
+          
+     IF ( PRESENT(Found) ) THEN
+       Found = ASSOCIATED(ptr)
+     ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
+       CALL Warn( 'ListRename', ' ' )
+       WRITE(Message,*) 'Requested property: ', '[',TRIM(Name),'], not found'
+       CALL Warn( 'ListRename', Message )
+       CALL Warn( 'ListRename', ' ' )
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRename
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Rename all given keywords in BC section.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListRenameAllBC( Model, Name, Name2 ) 
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name, Name2
+     LOGICAL :: Found
+     INTEGER :: bc, n
+
+     n = 0
+     DO bc = 1,Model % NumberOfBCs
+       CALL ListRename( Model % BCs(bc) % Values, Name, Name2, Found )
+       IF( Found ) n = n + 1
+     END DO
+     IF( n > 0 ) CALL Info('ListRenameAllBCs',&
+         TRIM(Name)//' ranamed to '//TRIM(Name2)//' on '//TRIM(I2S(n))//' BCs',Level=6)
+     
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListRenameAllBC
+!------------------------------------------------------------------------------
+
+   
+  
+
 !-----------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !> This one just finds a keyword with the same start as specified by 'name'.
@@ -2315,6 +2551,48 @@ CONTAINS
    END FUNCTION ListCheckPresent
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Just checks if there is a untreated keyword in the routine in the list.
+!> In case there is return a warning. 
+!------------------------------------------------------------------------------
+   SUBROUTINE ListUntreatedWarn( List, Name, Caller ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*), OPTIONAL :: Caller
+!------------------------------------------------------------------------------
+     IF( ListCheckPresent( List, Name ) ) THEN
+       IF( PRESENT( Caller ) ) THEN
+         CALL Warn(Caller,'Untreated keyword may cause problems: '//TRIM(Name))
+       ELSE
+         CALL Warn('ListUntreatedWarn','Untreated keyword may cause problems: '//TRIM(Name))
+       END IF
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListUntreatedWarn
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Just checks if there is a untreated keyword in the routine in the list.
+!> In case there is return a Fatal. 
+!------------------------------------------------------------------------------
+   SUBROUTINE ListUntreatedFatal( List, Name, Caller ) 
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*), OPTIONAL :: Caller
+!------------------------------------------------------------------------------
+     IF( ListCheckPresent( List, Name ) ) THEN
+       IF( PRESENT( Caller ) ) THEN
+         CALL Fatal(Caller,'Untreated keyword: '//TRIM(Name))
+       ELSE
+         CALL Fatal('ListUntreatedFatal','Untreated keyword: '//TRIM(Name))
+       END IF
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListUntreatedFatal
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Just checks if a prefix is present in the list.
@@ -2912,7 +3190,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> A generalized version of ListGetLogical. Uses logical, only if the keyword is
 !> of type locical, otherwise returns True if the keyword is present.
-!> Since the absense if a sign of False there is no separate Found flag.
+!> Since the absence if a sign of False there is no separate Found flag.
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ListGetLogicalGen( List, Name) RESULT(L)
 !------------------------------------------------------------------------------
@@ -3257,21 +3535,22 @@ CONTAINS
   
 !------------------------------------------------------------------------------
 !> Given a string containing comma-separated variablenames, reads the strings
-!> and obtains the corresponging variables to a table.
+!> and obtains the corresponding variables to a table.
 !------------------------------------------------------------------------------
   SUBROUTINE ListParseStrToVars( str, slen, name, count, VarTable, &
-      SomeAtIp, SomeAtNodes )
+      SomeAtIp, SomeAtNodes, AllGlobal )
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str, name
      INTEGER :: slen, count
      TYPE(VariableTable_t) :: VarTable(:)
-     LOGICAL :: SomeAtIp, SomeAtNodes
+     LOGICAL :: SomeAtIp, SomeAtNodes, AllGlobal
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Var
 
      SomeAtIp = .FALSE.
      SomeAtNodes = .FALSE.
+     AllGlobal = .TRUE.
      
      count=0
      l0=1
@@ -3299,6 +3578,7 @@ CONTAINS
          VarTable(count+3) % Variable => VariableGet( CurrentModel % Variables,"coordinate 3")
          count = count + 3 
          SomeAtNodes = .TRUE.
+         AllGlobal = .FALSE.
        ELSE
          Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
          IF ( .NOT. ASSOCIATED( Var ) ) THEN
@@ -3310,7 +3590,9 @@ CONTAINS
          END IF
          count = count + 1
          VarTable(count) % Variable => Var
-
+     
+         IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.
+                
          IF( Var % TYPE == Variable_on_gauss_points ) THEN
            SomeAtIp = .TRUE.
          ELSE
@@ -3331,15 +3613,13 @@ CONTAINS
 !-------------------------------------------------------------------------------------
 !> Given a table of variables and a node index return the variable values on the node.
 !-------------------------------------------------------------------------------------
-  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count, AllGlobal )
+  SUBROUTINE VarsToValuesOnNodes( VarCount, VarTable, ind, T, count )
 !------------------------------------------------------------------------------
      INTEGER :: Varcount
      TYPE(VariableTable_t) :: VarTable(:)
      INTEGER :: ind
      INTEGER :: count
      REAL(KIND=dp) :: T(:)
-     LOGICAL :: AllGlobal
-     LOGICAL :: SomeAtIp
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,k1,l,varsize,vari
@@ -3347,11 +3627,12 @@ CONTAINS
      LOGICAL :: Failed
      
      count = 0
-     AllGlobal = .TRUE.
      Failed = .FALSE.
      
-     DO Vari = 1, VarCount 
+     DO Vari = 1, VarCount
+       
        Var => VarTable(Vari) % Variable
+
        Varsize = SIZE( Var % Values ) / Var % Dofs 
        
        IF( Varsize == 1 ) THEN
@@ -3360,7 +3641,6 @@ CONTAINS
            T(count) = Var % Values(l)
          END DO
        ELSE
-         AllGlobal = .FALSE.
          k1 = ind
          
          IF ( Var % TYPE == Variable_on_gauss_points ) THEN
@@ -3456,20 +3736,18 @@ CONTAINS
 
    
 !------------------------------------------------------------------------------
-  SUBROUTINE ListParseStrToValues( str, slen, ind, name, T, count, AllGlobal )!, SomeIp )
+  SUBROUTINE ListParseStrToValues( str, slen, ind, name, T, count, AllGlobal    )
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str, name
      REAL(KIND=dp)  :: T(:)
      INTEGER :: slen, count, ind
-     LOGICAL :: AllGlobal
-     LOGICAL :: SomeIp
+     LOGICAL :: AllGlobal 
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Variable, CVar
 
      AllGlobal = .TRUE.
-     SomeIp = .FALSE.
      
      count=0
      l0=1
@@ -3498,15 +3776,13 @@ CONTAINS
            CALL Fatal('ListParseStrToValues','Can''t find independent variable:['// &
                TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']')
          END IF
-         IF( SIZE( Variable % Values ) > 1 ) AllGlobal = .FALSE.
+         IF( SIZE( Variable % Values ) > Variable % Dofs ) AllGlobal = .FALSE.
        ELSE
          AllGlobal = .FALSE.
-         Variable => VariableGet( CurrentModel % Variables,'Coordinate 1' )
+         Variable => VariableGet( CurrentModel % Variables,'Coordinate 1' )         
        END IF
        
        IF( Variable % TYPE == Variable_on_gauss_points ) THEN
-         SomeIp = .TRUE.
-         
          DO l=1,Variable % DOFs
            count = count + 1
            T(count) = HUGE(1.0_dp)
@@ -3752,7 +4028,7 @@ CONTAINS
        CALL ListPushActiveName(Name)
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, VarTable, &
-           SomeAtIp, SomeAtNodes )
+           SomeAtIp, SomeAtNodes, AllGlobal )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -3760,7 +4036,7 @@ CONTAINS
        DO i=1,n
          k = NodeIndexes(i)
 
-         CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+         CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j )
          
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
@@ -3807,7 +4083,7 @@ CONTAINS
        CALL matc( cmd, tmp_str, k )
 
        CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, Name, VarCount, &
-           VarTable, SomeAtIp, SomeAtNodes )
+           VarTable, SomeAtIp, SomeAtNodes, AllGlobal )
        IF( SomeAtIp ) THEN
          CALL Fatal('ListGetReal','Function cannot deal with variables on IPs!')
        END IF
@@ -3816,7 +4092,7 @@ CONTAINS
        DO i=1,n
          k = NodeIndexes(i)
 
-         CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+         CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j )
          
 #ifdef HAVE_LUA
          IF ( .not. ptr % LuaFun ) THEN
@@ -4051,17 +4327,56 @@ CONTAINS
    END FUNCTION ListGetFun
 !------------------------------------------------------------------------------
 
+   RECURSIVE SUBROUTINE ListInitHandle( Handle )
 
+     TYPE(ValueHandle_t) :: Handle
 
+     Handle % ValueType = -1
+     Handle % SectionType = -1
+     Handle % ListId = -1
+     Handle % Element => NULL()
+     Handle % List => NULL()
+     Handle % Ptr  => NULL()
+     Handle % Nodes => NULL()
+     Handle % Indexes => NULL()
+     Handle % nValuesVec = 0
+     Handle % ValuesVec => NULL()
+     Handle % Values => NULL()
+     Handle % ParValues => NULL()
+     Handle % ParNo = 0
+     Handle % DefIValue = 0
+     Handle % DefRValue = 0.0_dp
+     Handle % Rdim = 0
+     Handle % RTensor => NULL()
+     Handle % RTensorValues => NULL()
+     Handle % DefLValue = .FALSE.
+     Handle % Initialized = .FALSE.
+     Handle % AllocationsDone = .FALSE.
+     Handle % ConstantEverywhere = .FALSE.
+     Handle % GlobalEverywhere = .FALSE.
+     Handle % GlobalInList = .FALSE.
+     Handle % EvaluateAtIP = .FALSE.
+     Handle % SomeVarAtIp = .FALSE.
+     Handle % SomewhereEvaluateAtIP = .FALSE.
+     Handle % NotPresentAnywhere = .FALSE.
+     Handle % UnfoundFatal = .FALSE.
+     Handle % GotMinv = .FALSE.
+     Handle % GotMaxv = .FALSE.
+     Handle % VarCount = 0
+     Handle % HandleIm => NULL()
+     Handle % Handle2 => NULL()
+     Handle % Handle3 => NULL()
+     
+   END SUBROUTINE ListInitHandle
 
 
 !------------------------------------------------------------------------------
 !> Initializes the handle to save just a little bit for constant valued.
 !> This is not mandatory but may still be used. 
 !------------------------------------------------------------------------------
-   SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
+   RECURSIVE SUBROUTINE ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
        DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,&
-       FoundSomewhere)
+       FoundSomewhere,InitIm,InitVec3D)
 !------------------------------------------------------------------------------
      TYPE(ValueHandle_t) :: Handle
      CHARACTER(LEN=*)  :: Section,Name
@@ -4072,6 +4387,8 @@ CONTAINS
      LOGICAL, OPTIONAL :: UnfoundFatal
      LOGICAL, OPTIONAL :: EvaluateAtIp
      LOGICAL, OPTIONAL :: FoundSomewhere
+     LOGICAL, OPTIONAL :: InitIm
+     LOGICAL, OPTIONAL :: InitVec3D     
      !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      TYPE(ValueListEntry_t), POINTER :: ptr
@@ -4083,9 +4400,52 @@ CONTAINS
      REAL(KIND=dp), POINTER :: Basis(:)
      INTEGER, POINTER :: NodeIndexes(:)
      TYPE(Element_t), POINTER :: Element
-     LOGICAL :: GotIt
+     LOGICAL :: GotIt, FoundSomewhere1, FoundSomewhere2
      !------------------------------------------------------------------------------
+     
+     IF( PRESENT( InitIm ) ) THEN
+       IF( InitIm ) THEN
+         IF( .NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+           ALLOCATE( Handle % HandleIm )
+           CALL ListInitHandle( Handle % HandleIm ) 
+        END IF
+         CALL Info('ListInitElementKeyword','Treating real part of keyword',Level=12)         
+         CALL ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
+         IF( PRESENT( FoundSomewhere) ) FoundSomewhere1 = FoundSomewhere
+         
+         CALL Info('ListInitElementKeyword','Treating imaginary part of keyword',Level=12)                 
+         CALL ListInitElementKeyword( Handle % HandleIm,Section,TRIM(Name)//' im',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
+         IF( PRESENT( FoundSomewhere ) ) FoundSomewhere =  FoundSomewhere .OR. FoundSomewhere1
+         RETURN
+       END IF
+     END IF
 
+     IF( PRESENT( InitVec3D ) ) THEN
+       IF( InitVec3D ) THEN
+         IF( .NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
+           ALLOCATE( Handle % Handle2 )
+           CALL ListInitHandle( Handle % Handle2 ) 
+         END IF
+         IF( .NOT. ASSOCIATED( Handle % Handle3 ) ) THEN           
+           ALLOCATE( Handle % Handle3 )           
+           CALL ListInitHandle( Handle % Handle3 ) 
+         END IF
+
+         CALL ListInitElementKeyword( Handle,Section,TRIM(Name)//' 1',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere)
+         IF( PRESENT( FoundSomewhere) ) FoundSomewhere1 = FoundSomewhere
+         CALL ListInitElementKeyword( Handle % Handle2,Section,TRIM(Name)//' 2',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere)
+         IF( PRESENT( FoundSomewhere) ) FoundSomewhere2 = FoundSomewhere
+         CALL ListInitElementKeyword( Handle % Handle3,Section,TRIM(Name)//' 3',minv,maxv,&
+             DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere)         
+         IF( PRESENT( FoundSomewhere ) ) FoundSomewhere = FoundSomewhere .OR. &
+             FoundSomewhere1 .OR. FoundSomewhere2
+         RETURN
+       END IF
+     END IF
      
      CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=10)
 
@@ -4114,6 +4474,9 @@ CONTAINS
      CASE('Component')
        Handle % SectionType = SECTION_TYPE_COMPONENT
 
+     CASE('Equation')
+       Handle % SectionType = SECTION_TYPE_EQUATION
+
      CASE DEFAULT
        CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(Section))
 
@@ -4127,11 +4490,13 @@ CONTAINS
      Handle % NotPresentAnywhere = .TRUE.
      Handle % SomewhereEvaluateAtIP = .FALSE.
      Handle % GlobalEverywhere = .TRUE.
+     Handle % SomeVarAtIp = .FALSE.
      Handle % Name = Name 
      Handle % ListId = -1
      Handle % EvaluateAtIp = .FALSE.       
      Handle % List => NULL()
      Handle % Element => NULL()
+     Handle % Unfoundfatal = .FALSE.
      IF (.NOT. ASSOCIATED( Ptr ) ) THEN
        Handle % Ptr => ListAllocate()
      END IF
@@ -4172,6 +4537,10 @@ CONTAINS
          IF( i > Model % NumberOfICs ) EXIT
          List => Model % ICs(i) % Values
 
+       CASE( SECTION_TYPE_EQUATION )
+         IF( i > Model % NumberOfEquations ) EXIT
+         List => Model % Equations(i) % Values
+
        CASE( SECTION_TYPE_BC )
          IF( i > Model % NumberOfBCs ) EXIT        
          List => Model % BCs(i) % Values
@@ -4184,7 +4553,7 @@ CONTAINS
          CALL Fatal('ListInitElementKeyword','Unknown section: '//TRIM(I2S(Handle % SectionType)))
 
        END SELECT
-
+  
        ! If the parameter is not defined in some list we cannot really be sure
        ! that it is intentionally used as a zero. Hence we cannot assume that the
        ! keyword is constant. 
@@ -4337,7 +4706,8 @@ CONTAINS
    END SUBROUTINE ListInitElementKeyword
 !------------------------------------------------------------------------------
 
-
+     
+   
 !------------------------------------------------------------------------------
 !> Given a pointer to the element and the correct handle for the keyword find
 !> the list where the keyword valued should be found in. 
@@ -4363,7 +4733,6 @@ CONTAINS
        List => Handle % List
        RETURN
      END IF
-
 
      ! Ok, not the same element, get the index that determines the list
      IF( Handle % BulkElement ) THEN     
@@ -4406,7 +4775,12 @@ CONTAINS
        id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
            'Material', ListFound )         
        IF(ListFound) List => CurrentModel % Materials(id) % Values
-       
+
+     CASE( SECTION_TYPE_EQUATION ) 
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Equation', ListFound )         
+       IF(ListFound) List => CurrentModel % Equations(id) % Values
+      
      CASE( SECTION_TYPE_BC )      
        IF( ListId <= 0 .OR. ListId > CurrentModel % NumberOfBCs ) RETURN
        IF( CurrentModel % BCs(ListId) % Tag == ListId ) THEN
@@ -4421,7 +4795,7 @@ CONTAINS
        CALL Fatal('ElementHandleList','Unknown section type!')
        
      END SELECT
-       
+     
      IF( ListFound ) THEN
        ! We still have chance that this is the same list
        IF( ASSOCIATED( List, Handle % List ) ) THEN
@@ -4431,15 +4805,166 @@ CONTAINS
        END IF
      ELSE
        Handle % List => NULL()
-     END IF     
-     
+     END IF          
      
    END FUNCTION ElementHandleList
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Given an index related to the related to the correct section returns the correct
+!> value list and a logical flag if there are no more.
+!------------------------------------------------------------------------------
+   FUNCTION SectionHandleList( Handle, ListId, EndLoop ) RESULT( List )
+
+     TYPE(ValueHandle_t) :: Handle
+     TYPE(ValueList_t), POINTER :: List
+     INTEGER :: ListId
+     LOGICAL :: EndLoop
+!------------------------------------------------------------------------------     
+     LOGICAL :: Found
+     INTEGER :: id
+     
+     List => NULL()     
+
+     IF( Handle % SectionType == SECTION_TYPE_BC ) THEN            
+       EndLoop = ( ListId <= 0 .OR. ListId > CurrentModel % NumberOfBCs )
+     ELSE
+       EndLoop = ( ListId > CurrentModel % NumberOfBodies )
+     END IF       
+     IF( EndLoop ) RETURN
+     
+     
+     SELECT CASE ( Handle % SectionType )
+
+     CASE( SECTION_TYPE_BODY )
+       List => CurrentModel % Bodies(ListId) % Values
+
+     CASE( SECTION_TYPE_BF )
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Body Force', Found )         
+       IF( Found ) List => CurrentModel % BodyForces(id) % Values
+
+     CASE( SECTION_TYPE_IC )
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Initial Condition', Found )         
+       IF(Found) List => CurrentModel % ICs(id) % Values
+
+     CASE( SECTION_TYPE_MATERIAL ) 
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Material', Found )         
+       IF(Found) List => CurrentModel % Materials(id) % Values
+
+     CASE( SECTION_TYPE_EQUATION ) 
+       id = ListGetInteger( CurrentModel % Bodies(ListId) % Values, &
+           'Equation',Found )         
+       IF(Found) List => CurrentModel % Equations(id) % Values
+
+     CASE( SECTION_TYPE_BC )             
+       List => CurrentModel % BCs(ListId) % Values
+
+     CASE( -1 )
+       CALL Fatal('SectionHandleList','Handle not initialized!')
+
+     CASE DEFAULT 
+       CALL Fatal('SectionHandleList','Unknown section type!')
+
+     END SELECT
+
+   END FUNCTION SectionHandleList
+!------------------------------------------------------------------------------
 
 
-   FUNCTION ListGetElementRealParent( Handle, Basis, Element, Found ) RESULT( RValue ) 
+
+!------------------------------------------------------------------------------
+!> Compares a string valued parameter in elements and return True if they are the same.
+!------------------------------------------------------------------------------
+   FUNCTION ListCompareElementAnyString( Handle, RefValue ) RESULT( Same )
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     CHARACTER(LEN=*) :: RefValue     
+     LOGICAL :: Same
+!------------------------------------------------------------------------------     
+     CHARACTER(LEN=MAX_NAME_LEN) :: ThisValue     
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL :: Found, EndLoop
+     INTEGER :: id, n
+!------------------------------------------------------------------------------
+
+     Same = .FALSE.
+     
+     ! If value is not present anywhere then return False
+     IF( Handle % NotPresentAnywhere ) RETURN
+
+     id = 0
+     DO WHILE (.TRUE.) 
+       id = id + 1
+       List => SectionHandleList( Handle, id, EndLoop ) 
+       IF( EndLoop ) EXIT
+       IF(.NOT. ASSOCIATED( List ) ) CYCLE
+       
+       ThisValue = ListGetString( List, Handle % Name, Found )
+       IF( Found ) THEN         
+         n = len_TRIM(ThisValue)
+         Same = ( ThisValue(1:n) == RefValue )
+         IF( Same ) EXIT
+       END IF
+     END DO
+              
+   END FUNCTION ListCompareElementAnyString
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Checks whether any of the logical flags has the desired logical value.
+!------------------------------------------------------------------------------
+   FUNCTION ListCompareElementAnyLogical( Handle, RefValue ) RESULT( Same )
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     LOGICAL :: RefValue 
+     LOGICAL :: Same
+!------------------------------------------------------------------------------     
+     LOGICAL :: ThisValue
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL :: Found, EndLoop
+     INTEGER :: id, CValueLen
+!------------------------------------------------------------------------------
+
+     Same = .FALSE.
+     
+     ! If value is not present anywhere then return False
+     IF( Handle % NotPresentAnywhere ) RETURN
+
+     id = 0
+     DO WHILE (.TRUE.) 
+       id = id + 1
+       List => SectionHandleList( Handle, id, EndLoop ) 
+       IF( EndLoop ) EXIT
+       IF(.NOT. ASSOCIATED( List ) ) CYCLE
+       
+       ThisValue = ListGetLogical( List, Handle % Name, Found )
+       IF( Found ) THEN         
+         IF( ThisValue .AND. RefValue ) THEN
+           Same = .TRUE.
+         ELSE IF(.NOT. ThisValue .AND. .NOT. RefValue ) THEN
+           Same = .TRUE.
+         END IF
+         IF( Same ) EXIT
+       END IF
+     END DO
+     
+   END FUNCTION ListCompareElementAnyLogical
+!------------------------------------------------------------------------------
+
+   
+       
+
+!------------------------------------------------------------------------------
+!> Get value of parameter from either of the parents.
+!> If the value is found then the Left/Right parent is memorized internally.
+!> Might not be economical if there are two keywords that toggle but usually
+!> we just fetch one keyword from the parents.
+!------------------------------------------------------------------------------
+  FUNCTION ListGetElementRealParent( Handle, Basis, Element, Found ) RESULT( RValue ) 
      
      TYPE(ValueHandle_t) :: Handle
      TYPE(Element_t), OPTIONAL, POINTER :: Element
@@ -4513,10 +5038,10 @@ CONTAINS
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z
-     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+!     TYPE(VariableTable_t), SAVE :: VarTable(MAX_FNC)
      REAL(KIND=dp), POINTER :: F(:)
      REAL(KIND=dp), POINTER :: ParF(:,:)
-     INTEGER :: i,j,k,j2,k2,k1,l,l0,l1,lsize,n,bodyid,id,varcount,n1,n2
+     INTEGER :: i,j,k,j2,k2,k1,l,l0,l1,lsize,n,bodyid,id,n1,n2
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
      LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound, &
          ElementSame
@@ -4559,7 +5084,6 @@ CONTAINS
      ! Find the correct list to look the keyword in.
      ! Bulk and boundary elements are treated separately.
      List => ElementHandleList( PElement, Handle, ListSame, ListFound ) 
-     
 
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
@@ -4587,7 +5111,7 @@ CONTAINS
        Handle % Found = IntFound
        IF(.NOT. IntFound ) THEN
          IF( Handle % UnfoundFatal ) THEN
-           CALL Fatal('ListGetElementReal','Could not find keyword in list: '//TRIM(Handle % Name))
+           CALL Fatal('ListGetElementReal','Could not find required keyword in list: '//TRIM(Handle % Name))
          END IF
          RETURN
        END IF
@@ -4617,20 +5141,42 @@ CONTAINS
        
        ! It does not make sense to evaluate global variables at IP
        IF( Handle % SomewhereEvaluateAtIp ) THEN
-         ! Check whether the keyword should be evaluated at integration point directly
-         IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
-           Handle % EvaluateAtIp = .TRUE.
+         ! Check whether the keyword should be evaluated at integration point directly                  
+         ! Only these dependency type may depend on position
+         IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
+             ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR .OR.  &
+             ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_PROC ) THEN
+           Handle % EvaluateAtIP = ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt )           
          ELSE
            Handle % EvaluateAtIp = .FALSE.
-         END IF
+         END IF         
+       END IF
+
+       IF( Ptr % DepNameLen > 0 ) THEN         
+         CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+             Handle % Name, Handle % VarCount, Handle % VarTable, &
+             SomeAtIp, SomeAtNodes, AllGlobal )
+
+         Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
+         
+         ! If some input parameter is given at integration point
+         ! we don't have any option other than evaluate things on IPs
+         IF( SomeAtIP ) Handle % EvaluateAtIp = .TRUE.
+         Handle % SomeVarAtIp = SomeAtIp 
+         
+         ! If all variables are global ondes we don't need to evaluate things on IPs
+         IF( AllGlobal ) Handle % EvaluateAtIp = .FALSE.
+
+       ELSE
+         Handle % GlobalInList = ( ptr % PROCEDURE == 0 )
        END IF
      ELSE
        IF( Handle % UnfoundFatal ) THEN
          CALL Fatal('ListGetElementReal','Could not find list for required keyword: '//TRIM(Handle % Name))
        END IF         
        Rvalue = Handle % DefRValue 
-
-       Handle % Values(1) = RValue
+       
+       !Handle % Values(1) = RValue
        IF( PRESENT(Found) ) THEN
          Found = .FALSE.
          Handle % Found = .FALSE.
@@ -4638,26 +5184,13 @@ CONTAINS
        RETURN
      END IF
 
-
      
-     
-     IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
-         ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN
-
-       CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
-           Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
-
-       ! If some input parameter is given at integration point we don't have any option other than evaluate things on IPs
-       IF( SomeAtIP ) Handle % EvaluateAtIp = .TRUE.
-     END IF
-
-     
+    
      ! Either evaluate parameter directly at IP, 
      ! or first at nodes and then using basis functions at IP.
      ! The latter is the default. 
      !------------------------------------------------------------------
-     IF( Handle % EvaluateAtIp ) THEN
-
+     IF( Handle % EvaluateAtIp ) THEN       
        IF(.NOT. PRESENT(Basis)) THEN
          CALL Fatal('ListGetElementReal','Parameter > Basis < is required!')
        END IF
@@ -4707,14 +5240,15 @@ CONTAINS
            DO i=1,n
              k = NodeIndexes(i)
 
-             CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
-             
-             IF( AllGlobal ) THEN
-               CALL Fatal('ListGetElementReal','Constant lists should not need to be here')
-             END IF
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
              
              Handle % ParNo = j 
              Handle % ParValues(1:j,i) = T(1:j)
+
+             ! If the dependency table includes just global values (such as time) 
+             ! the values will be the same for all element entries.
+             IF( Handle % GlobalInList ) EXIT
+            
            END DO
          END IF
          ParF => Handle % ParValues         
@@ -4728,21 +5262,25 @@ CONTAINS
          DO j=1,Handle % ParNo 
            T(j) = SUM( Basis(1:n) *  Handle % ParValues(j,1:n) )
          END DO
-
-         ! This one only deals with the variables on IPs, nodal ones have been fecthed already
-         IF( SomeAtIp ) THEN
+         
+         ! This one only deals with the variables on IPs, nodal ones are fetched separately
+         IF( Handle % SomeVarAtIp ) THEN
            IF( .NOT. PRESENT( GaussPoint ) ) THEN
              CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
            END IF
-           CALL VarsToValuesOnIps( VarCount, VarTable, GaussPoint, T, j )
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, GaussPoint, T, j )
          END IF         
          
-         ! there is no node index, so use zero
-         j = 0 
+         ! there is no node index, pass the negative GaussPoint as to separate it from positive node index
          IF ( ptr % PROCEDURE /= 0 ) THEN
-           CALL ListPushActiveName(Handle % name)
+           IF( PRESENT( GaussPoint ) ) THEN
+             j = -GaussPoint
+           ELSE
+             j = 0
+           END IF
+           !CALL ListPushActiveName(Handle % name)
            Rvalue = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
-           CALL ListPopActiveName()
+           !CALL ListPopActiveName()
          ELSE
            RValue = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
                T(1), ptr % CubicCoeff )
@@ -4755,17 +5293,13 @@ CONTAINS
          END DO
          
          ! This one only deals with the variables on IPs, nodal ones have been fecthed already
-         IF( SomeAtIp ) THEN
+         IF( Handle % SomeVarAtIp ) THEN
            IF( .NOT. PRESENT( GaussPoint ) ) THEN
              CALL Fatal('ListGetElementReal','Evaluation of ip fields requires gauss points as parameter!')
            END IF
-           CALL VarsToValuesOnIps( VarCount, VarTable, GaussPoint, T, j )
+           CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, GaussPoint, T, j )
          END IF
-         
-         
-         ! there is no node index, so use zero (it could be the gauss point index as well!)
-         j = 0 
-         
+                          
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
          WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
          k = LEN_TRIM(cmd)
@@ -4789,16 +5323,16 @@ CONTAINS
            y = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
            z = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
 
-           CALL ListPushActiveName(Handle % name)
+           !CALL ListPushActiveName(Handle % name)
            RValue = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
-           CALL ListPopActiveName()
+           !CALL ListPopActiveName()
          ELSE
            CALL Fatal('ListGetElementReal','Constant scalar evaluation failed at ip!')
          END IF
            
        CASE DEFAULT
          
-         CALL Fatal('ListGetElementReal','Unknown case for avaluation at ip')
+         CALL Fatal('ListGetElementReal','Unknown case for avaluation at ip: '//TRIM(I2S(ptr % Type)))
          
        END SELECT
        
@@ -4846,7 +5380,6 @@ CONTAINS
            
          CASE( LIST_TYPE_CONSTANT_SCALAR )
            
-           Handle % GlobalInList = .TRUE.                      
            IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
              WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
                  '] not used consistently.'
@@ -4857,15 +5390,15 @@ CONTAINS
 
 
          CASE( LIST_TYPE_VARIABLE_SCALAR )
-           CALL ListPushActiveName(Handle % name)
+           !CALL ListPushActiveName(Handle % name)
 
-           CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
-               Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
+           T = 1.0_dp
            
            DO i=1,n
              k = NodeIndexes(i)
-             CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
-             
+
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
+
              IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
                IF ( ptr % PROCEDURE /= 0 ) THEN
                  F(i) = ptr % Coeff * &
@@ -4884,18 +5417,14 @@ CONTAINS
 
                  ! If the dependency table includes just global values (such as time) 
                  ! the values will be the same for all element entries.
-                 IF( AllGlobal ) THEN
-                   Handle % GlobalInList = .TRUE.
-                   EXIT
-                 END IF
-                 
+                 IF( Handle % GlobalInList ) EXIT
+
                END IF
              END IF
            END DO
-           CALL ListPopActiveName()
+           !CALL ListPopActiveName()
            
          CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
-           Handle % GlobalInList = .TRUE.
            
            TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
            WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
@@ -4909,21 +5438,17 @@ CONTAINS
            F(1) = ptr % Coeff * F(1) 
 
          CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
-           Handle % GlobalInList = .FALSE.
 
            TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
            WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
            k = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k )
-
-           CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
-               Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
            
            DO i=1,n
              k = NodeIndexes(i)
-             CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
 #ifdef HAVE_LUA
-             IF ( .not. ptr % LuaFun ) THEN
+             IF ( .NOT. ptr % LuaFun ) THEN
 #endif
 
                IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
@@ -4932,7 +5457,7 @@ CONTAINS
                    k1 = LEN_TRIM(cmd)
                    CALL matc( cmd, tmp_str, k1 )
                  END DO
-
+                 
                  cmd = ptr % CValue
                  k1 = LEN_TRIM(cmd)
                  CALL matc( cmd, tmp_str, k1 )
@@ -4940,19 +5465,15 @@ CONTAINS
                  F(i) = ptr % Coeff * F(i)
                END IF
 #ifdef HAVE_LUA
-               ELSE
-                 call ElmerEvalLua(LuaState, ptr, T, F(i), varcount)
-               END IF
+             ELSE
+               CALL ElmerEvalLua(LuaState, ptr, T, F(i), Handle % varcount)
+             END IF
 #endif
 
-             IF( AllGlobal ) THEN
-               Handle % GlobalInList = .TRUE.
-               EXIT
-             END IF            
+             IF( Handle % GlobalInList ) EXIT
            END DO
 
          CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
-           Handle % GlobalInList = .FALSE.
            
            IF ( ptr % PROCEDURE == 0 ) THEN
              WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
@@ -4961,7 +5482,7 @@ CONTAINS
              RETURN
            END IF
            
-           CALL ListPushActiveName(Handle % name)
+           !CALL ListPushActiveName(Handle % name)
            DO i=1,n
              F(i) = ptr % Coeff * &
                  ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
@@ -4969,24 +5490,23 @@ CONTAINS
                  CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
                  CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
            END DO
-           CALL ListPopActiveName()
+           !CALL ListPopActiveName()
 
            
          CASE ( LIST_TYPE_CONSTANT_TENSOR )
            
-           Handle % GlobalInList = .TRUE.
            n1 = SIZE( Handle % Rtensor, 1 )
            n2 = SIZE( Handle % Rtensor, 2 )
            
            IF ( ptr % PROCEDURE /= 0 ) THEN
-             CALL ListPushActiveName(Handle % name)
+             !CALL ListPushActiveName(Handle % name)
              DO i=1,n1
                DO j=1,n2
                  Handle % Rtensor(i,j) = ExecConstRealFunction( ptr % PROCEDURE, &
                      CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
                END DO
              END DO
-             CALL ListPopActiveName()
+             !CALL ListPopActiveName()
            ELSE
              Handle % Rtensor(:,:) = ptr % FValues(:,:,1)
            END IF
@@ -5005,10 +5525,10 @@ CONTAINS
            k = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k )
            
-           CALL ListPushActiveName(Handle % name)
+           !CALL ListPushActiveName(Handle % name)
            
-           CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
-               Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
+           !CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+           !    Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes, AllGlobal )
            
            IF( PRESENT( Indexes ) ) THEN
              n = SIZE( Indexes )
@@ -5024,7 +5544,7 @@ CONTAINS
            DO i=1,n
              k = NodeIndexes(i)
              
-             CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j, AllGlobal )
+             CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
              
              IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
 #ifdef HAVE_LUA
@@ -5043,7 +5563,7 @@ CONTAINS
                
 #ifdef HAVE_LUA
              ELSE
-               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, varcount)
+               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, Handle % varcount)
              END IF
 #endif
              ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
@@ -5058,15 +5578,14 @@ CONTAINS
                END DO
              END IF
              
-             CALL ListPopActiveName()
+             !CALL ListPopActiveName()
              
              IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
                Handle % Rtensor = ptr % Coeff * Handle % Rtensor
              END IF
              
-             IF( AllGlobal ) THEN
-               Handle % GlobalInList = .TRUE.               
-               EXIT
+             IF( Handle % GlobalInList ) THEN
+               EXIT              
              ELSE
                DO j2=1,N1
                  DO k2=1,N2               
@@ -5126,12 +5645,228 @@ CONTAINS
        END IF
      END IF
 
-
    END FUNCTION ListGetElementReal
 !------------------------------------------------------------------------------
 
-  
    
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting the imaginary part of the keyword if it
+!> has been properly initialized. For the solver modules it is more convenient
+!> as the code becomes more compact when using the "HandleIm" field instead of a
+!> totally new handle.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementIm( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(Rvalue)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     REAL(KIND=dp)  :: Rvalue
+
+     IF(.NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+       CALL Fatal('ListGetElementIm','Initialize with imaginary component!')
+     END IF
+     Rvalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,&
+         GaussPoint,Rdim,Rtensor)
+   END FUNCTION ListGetElementIm
+     
+
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting both the real and imaginary part of the keyword if it
+!> has been properly initialized. For the solver modules it is convenient since the
+!> final code is more compact. This does not work with vector valued keywords yet!
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementComplex( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(Zvalue)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     COMPLEX(KIND=dp) :: Zvalue
+
+     REAL(KIND=dp) :: RValue, Ivalue
+     LOGICAL :: RFound
+     
+     IF(.NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+       CALL Fatal('ListGetElementComplex','Initialize with imaginary component!')
+     END IF
+
+     IF( Handle % NotPresentAnywhere .AND. Handle % HandleIm % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       Zvalue = CMPLX( Handle % DefRValue, 0.0_dp )
+       RETURN
+     END IF
+     
+     Rvalue = ListGetElementReal(Handle,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) RFound = Found 
+
+     Ivalue = ListGetElementReal(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found = Found .OR. RFound 
+
+     Zvalue = CMPLX( Rvalue, Ivalue ) 
+          
+   END FUNCTION ListGetElementComplex
+       
+
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting a 3D real vector.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementReal3D( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(RValue3D)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     REAL(KIND=dp)  :: RValue3D(3)
+
+     LOGICAL :: Found1, Found2
+     
+     IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
+       CALL Fatal('ListGetElementReal3D','Initialize with 3D components!')
+     END IF
+
+     IF( Handle % NotPresentAnywhere .AND. Handle % Handle2 % NotPresentAnywhere &
+         .AND.  Handle % Handle3 % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RValue3D = 0.0_dp
+       RETURN
+     END IF
+     
+     Rvalue3D(1) = ListGetElementReal(Handle,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found1 = Found 
+
+     Rvalue3D(2) = ListGetElementReal(Handle % Handle2,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found2 = Found
+
+     Rvalue3D(3) = ListGetElementReal(Handle % Handle3,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found = Found1 .OR. Found2 .OR. Found 
+     
+   END FUNCTION ListGetElementReal3D
+
+
+!------------------------------------------------------------------------------
+!> This is a wrapper to get gradient of a real valued keyword with functional dependencies.  
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementRealGrad( Handle,dBasisdx,Element,Found,Indexes) RESULT(RGrad)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     ! dBasisdx is required since it is used to evaluate the gradient
+     REAL(KIND=dp) :: dBasisdx(:,:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     REAL(KIND=dp)  :: RGrad(3)
+     LOGICAL :: Lfound
+     INTEGER :: i
+     
+     RGrad = 0.0_dp
+     
+     IF( Handle % NotPresentAnywhere ) THEN
+       IF( PRESENT( Found ) ) Found = .FALSE.
+       RETURN
+     END IF
+
+     ! Derivative of constant is zero
+     IF( Handle % ConstantEverywhere ) THEN
+       IF( PRESENT( Found ) ) Found = .TRUE.      
+       RETURN
+     END IF
+
+     ! Obtain gradient of a scalar field going through the partial derivatives of the components
+     DO i=1,3     
+       RGrad(i) = ListGetElementReal(Handle,dBasisdx(:,i),Element,Lfound,Indexes)
+       ! If we don't have it needless to contunue to 2nd and 3rd dimensions
+       IF(.NOT. Lfound ) EXIT
+     END DO
+     IF( PRESENT( Found ) ) Found = Lfound
+     
+   END FUNCTION ListGetElementRealGrad
+
+
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting divergence of a 3D real vector.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementRealDiv( Handle,dBasisdx,Element,Found,Indexes) RESULT(Rdiv)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     ! dBasisdx is required since it is used to evaluate the divergence
+     REAL(KIND=dp) :: dBasisdx(:,:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     REAL(KIND=dp)  :: Rdiv(3)
+
+     LOGICAL :: Found1, Found2, Found3
+
+     Rdiv = 0.0_dp
+     
+     IF(.NOT. ASSOCIATED( Handle % Handle2 ) ) THEN
+       CALL Fatal('ListGetElementReal3D','Initialize with 3D components!')
+     END IF
+
+     IF( Handle % NotPresentAnywhere .AND. Handle % Handle2 % NotPresentAnywhere &
+         .AND.  Handle % Handle3 % NotPresentAnywhere ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     END IF
+
+     Rdiv(1) = ListGetElementReal(Handle,dBasisdx(:,1),Element,Found1,Indexes)
+     Rdiv(2) = ListGetElementReal(Handle % Handle2,dBasisdx(:,2),Element,Found2,Indexes)
+     Rdiv(3) = ListGetElementReal(Handle % Handle3,dBasisdx(:,3),Element,Found3,Indexes)
+     IF( PRESENT( Found ) ) Found = Found1 .OR. Found2 .OR. Found3
+     
+   END FUNCTION ListGetElementRealDiv
+
+
+   
+!------------------------------------------------------------------------------
+!> This is just a wrapper for getting a 3D complex vector.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementComplex3D( Handle,Basis,Element,Found,Indexes,&
+       GaussPoint,Rdim,Rtensor) RESULT(ZValue3D)
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, POINTER, OPTIONAL :: Indexes(:)
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: Rdim
+     REAL(KIND=dp), POINTER, OPTIONAL :: Rtensor(:,:)
+     COMPLEX(KIND=dp)  :: ZValue3D(3)
+
+     REAL(KIND=dp)  :: RValue3D(3), IValue3D(3)
+     LOGICAL :: RFound
+     
+     IF(.NOT. ASSOCIATED( Handle % HandleIm ) ) THEN
+       CALL Fatal('ListGetElementComplex3D','Initialize with imaginary component!')
+     END IF
+     
+     Rvalue3D = ListGetElementReal3D(Handle,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) RFound = Found 
+     
+     Ivalue3D = ListGetElementReal3D(Handle % HandleIm,Basis,Element,Found,Indexes,GaussPoint)
+     IF( PRESENT( Found ) ) Found = Found .OR. RFound
+     
+     Zvalue3D = CMPLX( Rvalue3D, Ivalue3D )     
+     
+   END FUNCTION ListGetElementComplex3D
+
    
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in all the Gaussian integration points.
@@ -5149,10 +5884,11 @@ CONTAINS
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z, RValue
-     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
+!     TYPE(VariableTable_t) :: VarTable(MAX_FNC)
      REAL(KIND=dp), POINTER :: F(:)
      REAL(KIND=dp), POINTER :: ParF(:,:)
-     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp,varcount
+     INTEGER :: i,j,k,k1,l,l0,l1,lsize,n,bodyid,id,node,gp
+     !,varcount
      CHARACTER(LEN=MAX_NAME_LEN) :: cmd, tmp_str
      LOGICAL :: AllGlobal, SomeAtIp, SomeAtNodes, ListSame, ListFound, GotIt, IntFound
      TYPE(Element_t), POINTER :: PElement
@@ -5229,13 +5965,32 @@ CONTAINS
        
        ! It does not make sense to evaluate global variables at IP
        IF( Handle % SomewhereEvaluateAtIp ) THEN
+         ! Check whether the keyword should be evaluated at integration point directly                  
+         ! Only these dependency type may depend on position
+         IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
+             ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR .OR.  &
+             ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_PROC ) THEN
          ! Check whether the keyword should be evaluated at integration point directly
-         IF( ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt ) ) THEN
-           Handle % EvaluateAtIp = .TRUE.
+           Handle % EvaluateAtIp = ListGetLogical( List, TRIM( Handle % Name )//' At IP',GotIt )
          ELSE
            Handle % EvaluateAtIp = .FALSE.
          END IF
        END IF
+
+       
+       IF( ptr % DepNameLen > 0 ) THEN
+         CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
+             Handle % Name, Handle % VarCount, Handle % VarTable, &
+             SomeAtIp, SomeAtNodes, AllGlobal )
+         IF( SomeAtIp ) Handle % EvaluateAtIp = .TRUE.
+         Handle % GlobalInList = ( AllGlobal .AND. ptr % PROCEDURE == 0 )
+         IF( SomeAtIP ) Handle % EvaluateAtIp = .TRUE.
+         IF( AllGlobal ) Handle % EvaluateAtIp = .FALSE.
+         Handle % SomeVarAtIp = SomeAtIp 
+       ELSE
+         Handle % GlobalInList = ( ptr % PROCEDURE == 0 )
+       END IF
+
      ELSE
        IF( Handle % UnfoundFatal ) THEN
          CALL Fatal('ListGetElementRealVec','Could not find list for required keyword: '//TRIM(Handle % Name))
@@ -5257,15 +6012,6 @@ CONTAINS
        END IF
        RETURN
      END IF
-
-     
-     IF( ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR .OR. &
-         ptr % TYPE == LIST_TYPE_VARIABLE_SCALAR_STR ) THEN       
-         CALL ListParseStrToVars( Ptr % DependName, Ptr % DepNameLen, &
-             Handle % Name, VarCount, VarTable, SomeAtIp, SomeAtNodes )
-         IF( SomeAtIp ) Handle % EvaluateAtIp = .TRUE.
-       END IF
-         
 
      ! Either evaluate parameter directly at IP, 
      ! or first at nodes and then using basis functions at IP.
@@ -5302,9 +6048,9 @@ CONTAINS
          
          DO i=1,n
            node = NodeIndexes(i)
-           CALL VarsToValuesOnNodes( VarCount, VarTable, node, T, j, AllGlobal )
+           CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, node, T, j )
 
-           IF( AllGlobal ) THEN
+           IF( Handle % GlobalInList ) THEN
              CALL Warn('ListGetElementRealVec','Constant expression need not be evaluated at IPs!')
            END IF
 
@@ -5312,7 +6058,6 @@ CONTAINS
            Handle % ParValues(1:j,i) = T(1:j)
          END DO
 
-         Handle % GlobalInList = .FALSE.
          ParF => Handle % ParValues         
        END IF
 
@@ -5323,7 +6068,7 @@ CONTAINS
 
          ! there is no node index, so use zero
          IF ( ptr % PROCEDURE /= 0 ) THEN
-           CALL ListPushActiveName(Handle % name)
+           !CALL ListPushActiveName(Handle % name)
            node = 0 
 
            DO gp = 1, ngp          
@@ -5333,7 +6078,7 @@ CONTAINS
              Rvalue = ExecRealFunction( ptr % PROCEDURE, CurrentModel, node, T )
              Handle % ValuesVec(gp) = RValue
            END DO
-           CALL ListPopActiveName()
+           !CALL ListPopActiveName()
          ELSE
            DO gp = 1, ngp          
              DO j=1,Handle % ParNo 
@@ -5367,8 +6112,8 @@ CONTAINS
            END DO
 
            ! This one only deals with the variables on IPs, nodal ones have been fecthed already
-           IF( SomeAtIp ) THEN
-             CALL VarsToValuesOnIps( VarCount, VarTable, gp, T, j )
+           IF( Handle % SomeVarAtIp ) THEN
+             CALL VarsToValuesOnIps( Handle % VarCount, Handle % VarTable, gp, T, j )
            END IF
 
 #ifdef HAVE_LUA
@@ -5398,18 +6143,18 @@ CONTAINS
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
 
          IF ( ptr % PROCEDURE /= 0 ) THEN
-           CALL ListPushActiveName(Handle % name)
+           !CALL ListPushActiveName(Handle % name)
 
            DO gp = 1, ngp          
 
-             x = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n) ) )
-             y = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
-             z = SUM( BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
+             x = SUM(BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n)))
+             y = SUM(BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n)))
+             z = SUM(BasisVec(gp,1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n)))
 
              RValue = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
              Handle % ValuesVec(gp) = RValue
            END DO
-           CALL ListPopActiveName()
+           !CALL ListPopActiveName()
 
          ELSE
            CALL Fatal('ListGetElementRealVec','Constant scalar evaluation failed at ip!')
@@ -5443,7 +6188,6 @@ CONTAINS
 
        CASE( LIST_TYPE_CONSTANT_SCALAR )
 
-         Handle % GlobalInList = .TRUE.                      
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
            WRITE(Message,*) 'Value type for property [', TRIM(Handle % Name), &
                '] not used consistently.'
@@ -5455,13 +6199,12 @@ CONTAINS
 
 
        CASE( LIST_TYPE_VARIABLE_SCALAR )
-         Handle % GlobalInList = .FALSE.
 
-         CALL ListPushActiveName(Handle % name)
+         !CALL ListPushActiveName(Handle % name)
 
          DO i=1,n
            node = NodeIndexes(i)
-           CALL VarsToValuesOnNodes( VarCount, VarTable, node, T, j, AllGlobal )
+           CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, node, T, j )
            
            IF ( ptr % PROCEDURE /= 0 ) THEN
              F(i) = ptr % Coeff * &
@@ -5480,27 +6223,19 @@ CONTAINS
 
              ! If the dependency table includes just global values (such as time) 
              ! the values will be the same for all element entries.
-             IF( AllGlobal ) THEN
-               Handle % GlobalInList = .TRUE.
-               EXIT
-             END IF
+             IF( Handle % GlobalInList ) EXIT
            END IF
          END DO
          
          IF( Handle % GlobalInList ) THEN
            Handle % ValuesVec(1:ngp) = F(1)
          ELSE
-           DO gp=1,ngp
-             Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
-           END DO
+           Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
-         CALL ListPopActiveName()
-
+         !CALL ListPopActiveName()
 
 
        CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
-
-         Handle % GlobalInList = .TRUE.
 
          TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
          WRITE( cmd, '(a,e15.8)' ) 'st = ', TVar % Values(1)
@@ -5518,8 +6253,6 @@ CONTAINS
 
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
 
-         Handle % GlobalInList = .FALSE.
-
 #ifdef HAVE_LUA
          IF ( .not. ptr % LuaFun ) THEN
 #endif
@@ -5533,45 +6266,39 @@ CONTAINS
 
          DO i=1,n
            k = NodeIndexes(i)
-           CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, &
-               Handle % Name, T, j, AllGlobal)
+           
+           CALL VarsToValuesOnNodes( Handle % VarCount, Handle % VarTable, k, T, j )
+
 #ifdef HAVE_LUA
            IF ( .not. ptr % LuaFun ) THEN
 #endif
-           IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
-             DO l=1,j
-               WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+             IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
+               DO l=1,j
+                 WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+                 k1 = LEN_TRIM(cmd)
+                 CALL matc( cmd, tmp_str, k1 )
+               END DO
+
+               cmd = ptr % CValue
                k1 = LEN_TRIM(cmd)
                CALL matc( cmd, tmp_str, k1 )
-             END DO
-
-             cmd = ptr % CValue
-             k1 = LEN_TRIM(cmd)
-             CALL matc( cmd, tmp_str, k1 )
-             READ( tmp_str(1:k1), * ) F(i)
-             F(i) = ptr % Coeff * F(i)
-           END IF
+               READ( tmp_str(1:k1), * ) F(i)
+               F(i) = ptr % Coeff * F(i)
+             END IF
 #ifdef HAVE_LUA
-         ELSE
-           call ElmerEvalLuaS(LuaState, ptr, T, F(i), j)
-           F(i) = ptr % coeff * F(i)
-         END IF
-#endif
-
-           IF( AllGlobal ) THEN
-             Handle % GlobalInList = .TRUE.
-             EXIT
+           ELSE
+             call ElmerEvalLuaS(LuaState, ptr, T, F(i), j)
+             F(i) = ptr % coeff * F(i)
            END IF
+#endif
+           IF( Handle % GlobalInList ) EXIT
          END DO
 
-         IF( AllGlobal ) THEN
+         IF( Handle % GlobalInList ) THEN
            Handle % ValuesVec(1:ngp) = F(1)
          ELSE
-           DO gp=1,ngp
-             Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
-           END DO
+           Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
          END IF
-
 
        CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
          IF ( ptr % PROCEDURE == 0 ) THEN
@@ -5581,7 +6308,7 @@ CONTAINS
            RETURN
          END IF
 
-         CALL ListPushActiveName(Handle % name)
+         !CALL ListPushActiveName(Handle % name)
          DO i=1,n
            F(i) = ptr % Coeff * &
                ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
@@ -5589,11 +6316,9 @@ CONTAINS
                CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
                CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
          END DO
-         CALL ListPopActiveName()
+         !CALL ListPopActiveName()
 
-         DO gp=1,ngp
-           Handle % ValuesVec(gp) = SUM( BasisVec(gp,1:n) *  F(1:n) )
-         END DO
+         Handle % ValuesVec(1:ngp) = MATMUL( BasisVec(1:ngp,1:n), F(1:n) )
 
        CASE DEFAULT
          CALL Fatal('ListGetElementRealVec','Impossible entry type: '//TRIM(I2S(ptr % Type)))
@@ -5808,6 +6533,21 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Is the keyword present somewhere
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementSomewhere( Handle ) RESULT( Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueHandle_t) :: Handle
+     LOGICAL :: Found 
+!------------------------------------------------------------------------------     
+     Found = .NOT. ( Handle % NotPresentAnywhere )
+
+   END FUNCTION ListGetElementSomewhere
+!------------------------------------------------------------------------------     
+
+
+   
 
 !------------------------------------------------------------------------------
 !> Compares a string valued parameter in elements and return True if they are the same.
@@ -5882,7 +6622,159 @@ CONTAINS
    END FUNCTION ListCompareElementString
 !------------------------------------------------------------------------------
 
+
      
+!------------------------------------------------------------------------------
+!> Initializes the variable handle in a similar manner as the keyword handle is
+!> initialized. This handle is more compact. Does not support p-fields or
+!> Hcurl & Hdiv fields yet. 
+!------------------------------------------------------------------------------
+   SUBROUTINE ListInitElementVariable( Handle, Name, USolver, UVariable, tStep )
+!------------------------------------------------------------------------------
+     TYPE(VariableHandle_t) :: Handle
+     CHARACTER(LEN=*), OPTIONAL  :: Name
+     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
+     INTEGER, OPTIONAL :: tStep
+
+     REAL(KIND=dp), POINTER :: Values(:)
+     TYPE(Variable_t), POINTER :: Variable
+     TYPE(Solver_t)  , POINTER :: Solver
+     TYPE(Element_t),  POINTER :: Element
+
+     Handle % Variable => NULL() 
+     Handle % Values => NULL()
+     Handle % Perm => NULL()
+     Handle % Element => NULL()
+          
+     IF ( PRESENT(USolver) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+            
+     IF ( PRESENT(name) ) THEN
+       Variable => VariableGet( Solver % Mesh % Variables, name )
+     ELSE IF( PRESENT( UVariable ) ) THEN
+       Variable => UVariable
+     ELSE
+       Variable => Solver % Variable 
+     END IF
+     
+     IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
+     
+     Handle % Variable => Variable
+     
+     IF ( PRESENT(tStep) ) THEN
+       IF ( tStep < 0 ) THEN
+         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
+             Handle % Values => Variable % PrevValues(:,-tStep)
+       END IF
+     ELSE
+       Handle % Values => Variable % Values      
+     END IF
+     Handle % Perm => Variable % Perm
+     
+   END SUBROUTINE ListInitElementVariable
+!------------------------------------------------------------------------------
+
+     
+!------------------------------------------------------------------------------
+!> Get a scalar field (e.g. potential or pressure) at the integration point.
+!> Works with different types of fields.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementScalarSolution( Handle, Basis, Element, Found, GaussPoint, nd  ) RESULT ( Val )
+     
+     TYPE(VariableHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, OPTIONAL :: nd
+     INTEGER, OPTIONAL :: GaussPoint
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: Val
+     
+     TYPE( Element_t), POINTER :: pElement
+     INTEGER :: j, n
+     INTEGER :: Indexes(100)
+     LOGICAL :: SameElement
+          
+     Val = 0.0_dp
+     
+     IF( PRESENT( Found ) ) Found = .FALSE.
+     
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
+
+     ! Find the pointer to the element, if not given
+     IF( PRESENT( Element ) ) THEN
+       PElement => Element
+     ELSE
+       PElement => CurrentModel % CurrentElement
+     END IF
+     
+     SameElement = ASSOCIATED( Handle % Element, pElement )
+     IF( SameElement ) THEN
+       IF( .NOT. Handle % ActiveElement ) RETURN
+     ELSE
+       Handle % Element => pElement
+     END IF
+     
+     ! If variable is defined on gauss points return that instead
+     IF( Handle % Variable % TYPE == Variable_on_gauss_points ) THEN
+       IF( .NOT. PRESENT( GaussPoint ) ) THEN
+         CALL Fatal('GetElementScalar','GaussPoint required for gauss point variable!')
+       END IF
+       
+       j = pElement % ElementIndex
+       n = Handle % Perm(j+1) - Handle % Perm(j)
+       Handle % ActiveElement = ( n > 0 ) 
+       
+       IF( n == 0 ) RETURN             
+       val = Handle % Values(Handle % Perm(j) + GaussPoint )
+
+     ELSE IF( Handle % Variable % TYPE == Variable_on_elements ) THEN       
+       j = Handle % Perm( pElement % ElementIndex ) 
+       Handle % ActiveElement = ( j > 0 ) 
+       
+       IF( j == 0 ) RETURN             
+       val = Handle % Values(j) 
+       
+     ELSE
+       IF( .NOT. PRESENT( Basis ) ) THEN
+         CALL Fatal('GetElementScalar','Basis required for non gauss-point variable!')
+       END IF
+       
+       IF( .NOT. SameElement ) THEN
+         IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
+           n = pElement % TYPE % NumberOfNodes
+           Indexes(1:n) = pElement % DGIndexes(1:n)
+         ELSE
+           n = pElement % TYPE % NumberOfNodes
+           Indexes(1:n) = pElement % NodeIndexes
+         END IF
+
+         IF( PRESENT( nd ) ) THEN
+           n = MIN( nd, n ) 
+         END IF
+         
+         IF( ASSOCIATED( Handle % Perm ) ) THEN
+           Handle % ActiveElement = ALL( Handle % Perm( Indexes(1:n) ) /= 0 )
+           IF(.NOT. Handle % ActiveElement ) RETURN
+           Handle % ElementValues(1:n) = Handle % Values( Handle % Perm( Indexes(1:n) ) )
+         ELSE
+           Handle % ActiveElement = .TRUE.
+           Handle % ElementValues(1:n) = Handle % Values( Indexes(1:n) )           
+         END IF
+       ELSE
+         n = Handle % n
+       END IF
+       val = SUM( Basis(1:n) * Handle % ElementValues(1:n) )
+     END IF
+
+     IF( PRESENT( Found ) ) Found = .TRUE.
+     
+   END FUNCTION ListGetElementScalarSolution
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Gets a constant real array from the list by its name.
@@ -6148,6 +7040,8 @@ CONTAINS
        END IF
        IF( .NOT. AnyFound ) RETURN
        GOTO 200
+     ELSE
+       Found = lFound
      END IF
 
      F = 0._dp
@@ -6863,14 +7757,11 @@ CONTAINS
         Var => Var % Next
         CYCLE        
       ELSE IF( Var % TYPE == Variable_on_gauss_points ) THEN
-        CALL Warn('CreateListForSaving','Gauss point fields might not be fully functional!')
-        !Var => Var % Next
-        !CYCLE        
+        CONTINUE
+
       ELSE IF( Var % TYPE == Variable_on_elements ) THEN
-        CALL Warn('CreateListForSaving','Elemental fields might not be fully functional!')
-        
-        !Var => Var % Next
-        !CYCLE        
+        CONTINUE
+
       END IF
 
       ! Skip if variable is otherwise strange in size

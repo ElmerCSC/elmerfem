@@ -835,7 +835,7 @@ SUBROUTINE InitHysteresis(Model,Solver) ! {{{
     allocate(zirkamodel % curves(n_dir, ipindex))
     ZirkaEntry % PROCEDURE = TRANSFER(c_loc(zirkamodel), ZirkaEntry % PROCEDURE)
 
-    ! Initalize saturation loops and saturation curve
+    ! Initialize saturation loops and saturation curve
     call GetConstRealArray(Material, BHasc, 'Ascending BH curve', found) 
     if(.not. Found) call fatal('InitHysteresis', 'Ascending BH curve not found')
     call GetConstRealArray(Material, BHSingle, 'Single valued BH curve', found)

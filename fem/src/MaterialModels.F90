@@ -318,7 +318,7 @@ this ise not in USE
                  Temp =  SUM(Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes(1:n))))
               ELSE
                  WRITE(Message, '(A,A,A)') 'Could not find variable ',&
-                      TRIM(TemperatureName),' to inquire temperatur field for Glen'
+                      TRIM(TemperatureName),' to inquire temperature field for Glen'
                  CALL FATAL('EffectiveViscosity',Message)
               END IF
            

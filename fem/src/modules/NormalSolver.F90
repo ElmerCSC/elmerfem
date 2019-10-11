@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back, Juha Ruokolainen
+! *  Authors: Peter Råback, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -55,7 +55,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t),POINTER :: SolverParams
+  TYPE(ValueList_t), POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: Vname, VarName, CondName
   INTEGER :: i,j,k,dim,DOFs
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
@@ -194,9 +194,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:,:), Basis(:)
-    REAL(KIND=dp) :: Weight,Normal(3),detJ
+    REAL(KIND=dp), POINTER :: ArrayPtr(:) => NULL()
+    REAL(KIND=dp) :: Weight, Normal(3), detJ, Point(3), r(3)
 
-    LOGICAL :: Found
+    LOGICAL :: Found, CheckOrientation
 
     INTEGER :: elem,t,i,j,p,q,n,nd, Rank
 
@@ -214,7 +215,15 @@ CONTAINS
       CALL GetElementNodes( Nodes )
       nd = GetElementNOFDOFs()
       n  = GetElementNOFNodes()
-      
+
+      ArrayPtr => ListGetConstRealArray1(GetBodyParams(Element), 'Point on Negative Side', CheckOrientation)
+      IF (CheckOrientation) THEN
+        Point = 0.0d0
+        DO i=1,SIZE(ArrayPtr)
+          Point(i) = ArrayPtr(i)
+        END DO
+      END IF
+
       ! Integrate local stresses:
       ! -------------------------
       IntegStuff = GaussPoints( Element )
@@ -239,6 +248,12 @@ CONTAINS
         
         Normal = NormalVector( Element, Nodes, &
            IntegStuff % u(t), IntegStuff % v(t), .TRUE. )
+        IF (CheckOrientation) THEN
+          r(1) = SUM(Basis(1:n) * Nodes % x(1:n)) - Point(1)
+          r(2) = SUM(Basis(1:n) * Nodes % y(1:n)) - Point(2)
+          r(3) = SUM(Basis(1:n) * Nodes % z(1:n)) - point(3)
+          IF (SUM(Normal*r) < 0.0d0) Normal = -Normal
+        END IF
         DO i=1,dim
           FORCE(i,1:nd) = FORCE(i,1:nd) + Weight*Normal(i)*Basis(1:nd)
         END DO

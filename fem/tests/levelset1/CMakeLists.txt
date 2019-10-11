@@ -6,4 +6,4 @@ ADD_ELMERTEST_MODULE(levelset1 InitSquare InitSquare.f90)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO InitSquare.f90  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(levelset1)
+ADD_ELMER_TEST(levelset1 LABELS transient)

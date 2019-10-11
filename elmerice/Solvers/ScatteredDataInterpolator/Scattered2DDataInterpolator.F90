@@ -31,7 +31,7 @@
 ! *****************************************************************************
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!  Interpolate scattered 2D data readed from an ASCII file (x y Value)
+!  Interpolate scattered 2D data read from an ASCII file (x y Value)
 !    in the mesh nodes using:
 !     - nn-c library (http://code.google.com/p/nn-c/): linear and Natural
 !               Neighbours interpolation
@@ -200,7 +200,7 @@
                ! comes back to beginning of file
                rewind(unit=io,iostat=ok)
 
-               ! read datas
+               ! read data
                do i = 1, nin
                    read(io,*,iostat = ok) pin(i)%x,pin(i)%y,pin(i)%z
                end do

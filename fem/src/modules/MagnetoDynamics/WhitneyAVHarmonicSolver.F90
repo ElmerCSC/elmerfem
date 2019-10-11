@@ -119,7 +119,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
 
   COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), AirGapMu(:)
 
@@ -128,11 +128,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
-  TYPE(Variable_t), POINTER :: fixJpot, HbCurveVar
+  TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
   LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -147,7 +147,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   TYPE(ValueList_t), POINTER :: CompParams
 
-  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
+  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
        GapLength, AirGapMu
@@ -188,7 +188,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
-          MASS(N,N), Tcoef(3,3,N), RotM(3,3,N), &
+          MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
           GapLength(N), AirGapMu(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
@@ -206,16 +206,28 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
     CALL Fatal('WhitneyHarmonicAVSolver','Harmonic solution requires frequency!')
   END IF
     
-  
-  FixJ = GetLogical(SolverParams,'Fix input Current Density', Found)
-
-  ! If not specified compute the Jfix field only if there is a specified current BC
+  Jfix = GetLogical(SolverParams,'Fix input Current Density', Found)
   IF(.NOT. Found ) THEN
-    FixJ = ListCheckPrefixAnyBodyForce( Model,'Current Density' )
+    ! If not specified compute the Jfix field only if there is a specified current BC
+    Jfix = ListCheckPrefixAnyBodyForce( Model,'Current Density' )
   END IF
+  JfixSolve = Jfix
 
-  IF (FixJ) CALL JfixPotentialSolver(Model,Solver,dt,Transient)
-
+  IF (Jfix) THEN
+    JfixPhase = 1
+    CALL JfixPotentialSolver(Model,Solver,dt,Transient)
+    JfixVar => VariableGet(Mesh % Variables, 'Jfix')    
+    JfixVarIm => VariableGet(Mesh % Variables, 'Jfix Im')    
+    IF(.NOT. ASSOCIATED( JfixRhsC ) ) THEN
+      CALL Fatal('WhitneyAVHarmonicSolver','JfixRhsC should be associated!')
+    END IF
+    IF(.NOT. ASSOCIATED( JFixSurfacePerm ) ) THEN
+      CALL Fatal('WhitneyAVHarmonicSolver','JFixVecSurfacePerm should be associated!')
+    END IF
+    IF(.NOT. ALLOCATED( JFixSurfaceVecC ) ) THEN
+      CALL Fatal('WhitneyAVHarmonicSolver','JFixVecSurfaceVecC should be associated!')
+    END IF   
+  END IF  
   
   HbCurveVarName = GetString( SolverParams,'H-B Curve Variable', GotHbCurveVar )
   IF( GotHbCurveVar ) THEN
@@ -253,10 +265,13 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
+
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
     IF( EdgeBasis ) CALL ListAddLogical(SolverParams,'Linear System Refactorize',.FALSE.)
+
+    JFixSolve = .FALSE.
   END DO
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
@@ -285,8 +300,8 @@ CONTAINS
     Active = GetNOFActive()
     DO t=1,active
        Element => GetActiveElement(t)
-       n  = GetElementNOFNodes() ! kulmat
-       nd = GetElementNOFDOFs()  ! vapausasteet
+       n  = GetElementNOFNodes() ! vertices
+       nd = GetElementNOFDOFs()  ! dofs
        
        IF (SIZE(Tcoef,3) /= n) THEN
          DEALLOCATE(Tcoef)
@@ -378,16 +393,47 @@ CONTAINS
 
        !Get element local matrix and rhs vector:
        !----------------------------------------
-       CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+       CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
           LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
-    END DO
+       
+       ! Memorize stuff for the fixing potential
+       ! 1) Divergence of the source term
+       ! 2) The source terms at the surface to determine the direction
+       !-------------------------------------------------------------------
+       IF( JFixSolve ) THEN
+         JFixRhsC(JFixVar % Perm(Element % NodeIndexes)) = &
+             JFixRhsC(JFixVar % Perm(Element % NodeIndexes)) + JFixFORCE(1:n)
+         DO i=1,n
+           j = JfixSurfacePerm(Element % NodeIndexes(i) )         
+           IF( j > 0 ) JfixSurfaceVecC(3*j-2:3*j) = &
+               JfixSurfaceVecC(3*j-2:3*j) + JFixVec(1:3,i)
+         END DO
+       END IF
+     END DO
+    
+     IF( JfixSolve ) THEN    
+       CALL Info('WhitneyAVHarmonicSolver','Solving the fixing potential')
+       JfixPhase = 2 
+       CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
-    !
+       CALL Info('WhitneyAVHarmonicSolver','Adding the fixing potential to the r.h.s. of AV equation')   
+       DO t=1,active
+         Element => GetActiveElement(t)
+         n  = GetElementNOFNodes() 
+         nd = GetElementNOFDOFs()  
+         nb = GetElementNOFBDOFs() 
+
+         CALL LocalFixMatrixC( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)      
+       END DO
+       CALL Info('WhitneyAVHarmonicSolver','Finished adding the fixing potential',Level=10)   
+     END IF
+
+    
     ! Robin type of BC in terms of H:
     !--------------------------------
     Active = GetNOFBoundaryElements()
@@ -441,6 +487,7 @@ CONTAINS
        
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
+
 
     CALL DefaultFinishAssembly()
 
@@ -1350,23 +1397,22 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
             LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
             PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
-    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
-                        LamCond(:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
+    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n), Nu(3,3)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd), &
+    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
                      RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
 
@@ -1404,10 +1450,14 @@ CONTAINS
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
-    FixJpotC=0._dp
-    IF (FixJ) THEN
-      CALL GetVectorLocalSolution( FixJPot, 'Jfix')
-      FixJPotC = CMPLX(FixJPot(1,1:n),FixJPot(2,1:n),dp)
+    IF( Jfix ) THEN
+      IF( JfixSolve ) THEN
+        JfixFORCE = 0.0_dp
+        JfixVec = 0.0_dp
+      ELSE
+        JfixPot(1:n) = CMPLX( JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) ), &
+            JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ) )
+      END IF
     END IF
 
     JAC = 0._dp
@@ -1485,7 +1535,7 @@ CONTAINS
          EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-
+    
     DO t=1,IP % n
        IF (PiolaVersion) THEN
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -1576,12 +1626,25 @@ CONTAINS
  
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
-       L = L - MATMUL(FixJPotC, dBasisdx(1:n,:))
-
+      
        ! Compute C * grad(V), where C is a tensor
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
 
+       IF( Jfix ) THEN
+         IF( JFixSolve ) THEN
+           ! If we haven't solved for the disbalance of source terms assemble it here
+           DO i = 1,n
+             p = i
+             JFixFORCE(p) = JFixFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
+             JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
+           END DO
+         ELSE         
+           ! If we have already solved for the Jfix potential use it here
+           L = L - MATMUL(JfixPot, dBasisdx(1:n,:))
+         END IF
+       END IF
+                
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
@@ -1670,7 +1733,8 @@ CONTAINS
                         SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
-    END DO
+
+     END DO
 
     IF ( Newton ) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
@@ -1681,6 +1745,74 @@ CONTAINS
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
+
+!-----------------------------------------------------------------------------
+  SUBROUTINE LocalFixMatrixC( FORCE, &
+      Element, n, nd, PiolaVersion, SecondOrder )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
+    COMPLEX(KIND=dp) :: JfixPot(nd), L(3)
+    LOGICAL :: Stat 
+    INTEGER :: t, i, p, np, EdgeBasisDegree
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2
+    ELSE
+      EdgeBasisDegree = 1
+    END IF
+
+    CALL GetElementNodes( Nodes )
+
+    FORCE = 0.0d0
+    JfixPot(1:n) = CMPLX( JfixVar % Values(JfixVar % Perm(Element % NodeIndexes)), &
+        JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)) )
+    
+!    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
+
+    
+    ! Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
+    
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+    DO t=1,IP % n
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )        
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+      
+      L = MATMUL(JfixPot(1:n), dBasisdx(1:n,:))
+      DO i = 1,nd-np
+        p = i+np
+        FORCE(p) = FORCE(p) - SUM(L*WBasis(i,:)) * detJ * IP%s(t) 
+      END DO
+    END DO
+
+    CALL DefaultUpdateForce(FORCE, Element )
+   
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalFixMatrixC
+!------------------------------------------------------------------------------
+
+  
+ 
+  
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
@@ -1884,6 +2016,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
+    USE ElementDescription, ONLY: GetEdgeMap
+
     IMPLICIT NONE
     REAL(KIND=dp) :: p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     COMPLEX(KIND=dp) :: S

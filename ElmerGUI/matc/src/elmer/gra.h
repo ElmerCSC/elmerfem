@@ -1,7 +1,7 @@
 /*
  * Graphics primitives are loaded dynamically to a global
  * array of functions. To make a graphics driver to a specific
- * device one has to make the following functions (named diffrently
+ * device one has to make the following functions (named differently
  * of course) and edit routine gra_init to load these functions
  * to array of functions when the device is selected.
  * 

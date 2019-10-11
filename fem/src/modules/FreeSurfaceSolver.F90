@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Thomas Zwinger, Peter R�back, Juha Ruokolainen, Mikko Lyly
+! *  Authors: Thomas Zwinger, Peter Råback, Juha Ruokolainen, Mikko Lyly
 ! *  Email:   Thomas.Zwinger@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -245,7 +245,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        NeedOldValues, LimitDisp,  Bubbles = .TRUE.,&
        NormalFlux = .TRUE., SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.,&
-       RotateFS, ReAllocate=.TRUE., ResetLimiters=.FALSE.
+       RotateFS, ReAllocate=.TRUE., ResetLimiters=.FALSE., ComputeLocalMaxDisp=.FALSE.
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
@@ -258,7 +258,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: &
        at,st,totat,totst,Norm,PrevNorm,LocalBottom, cv, &
-       Relax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
+       Relax, LRelax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
        NodeHolder(3)
 #else
@@ -275,7 +275,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), &
        STIFF(:,:),SourceFunc(:),FORCE(:), TimeForce(:), &
        MASS(:,:), Velo(:,:), Flux(:,:), LowerLimit(:), UpperLimit(:), &
-       OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:), ElemFreeSurf(:)
+       OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:), ElemFreeSurf(:),&
+       LocalMaxDisp(:)
 
   CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, FlowSolName,ConvectionFlag, StabilizeFlag
 
@@ -292,7 +293,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        ElemFreeSurf, Flux, SubstantialSurface, NormalFlux,&
        UseBodyForce, LimitedSolution, LowerLimit, &
        UpperLimit, ActiveNode, ResetLimiters, OldValues, OldRHS, &
-       ResidualVector, StiffVector, MeshVelocity
+       ResidualVector, StiffVector, MeshVelocity, &
+       ComputeLocalMaxDisp, LocalMaxDisp
   !------------------------------------------------------------------------------
   !    Get variables for the solution
   !------------------------------------------------------------------------------
@@ -301,7 +303,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   FreeSurfPerm => Solver % Variable % Perm       ! Permutations for free surface displacement
   PreFreeSurf  => Solver % Variable % PrevValues ! Nodal values for free surface displacement
   !------------------------------------------------------------------------------
-  !    Get variabel/solver name
+  !    Get variable/solver name
   !------------------------------------------------------------------------------
   IF (VariableName .NE. TRIM(Solver % Variable % Name)) THEN
     VariableName = TRIM(Solver % Variable % Name)
@@ -311,10 +313,10 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   END IF
     
   SolverName = 'FreeSurfaceSolver ('// TRIM(Solver % Variable % Name) // ')'
-  
+
   !------------------------------------------------------------------------------
   !    if this partition (or the serial problem) has no free surface,
-  !    then nothing to be doneGet variabel/solver name
+  !    then nothing to be doneGet variable/solver name
   !------------------------------------------------------------------------------
   IF ( COUNT(FreeSurfPerm/=0)==0) THEN
      IF (ParEnv % PEs > 1) THEN
@@ -353,7 +355,12 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT.Found ) NonlinearIter = 1
 
   MaxDisp = GetConstReal( SolverParams, 'Maximum Displacement', LimitDisp)
+  ComputeLocalMaxDisp = GetLogical( SolverParams, 'Compute Local Maximum Displacement', Found)
 
+  IF (Found) THEN
+    CALL Info(SolverName, '"Compute Local Maximum Displacement" set - ignoring global limitation, if given',Level=3 )
+    LimitDisp=.TRUE.
+  END IF
   Relax = GetCReal( SolverParams, 'Relaxation Factor', Found)
   IF(.NOT. Found) Relax = 1.0_dp
   NeedOldValues = (Found .AND. (Relax < 1.0_dp)) .OR. LimitDisp 
@@ -444,7 +451,9 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            Flux, &
            ElemFreeSurf,&
            SourceFunc )
-
+      IF (ComputeLocalMaxDisp) THEN
+         DEALLOCATE( LocalMaxDisp )
+      END IF
       IF( ApplyDirichlet ) THEN
         DEALLOCATE( LowerLimit,                      &
              UpperLimit, &
@@ -455,7 +464,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
              OldValues, &
              OldRHS)
       END IF
-
+      
       !IF( NeedOldValues ) DEALLOCATE( OldFreeSurf ) 
     END IF
 
@@ -492,7 +501,14 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
         CALL Fatal(SolverName,'Memory allocation error 2, Aborting.')
       END IF
     END IF
-
+    
+    IF (ComputeLocalMaxDisp) THEN
+      ALLOCATE( LocalMaxDisp(MMAX), STAT=istat )
+      IF ( istat /= 0 ) THEN
+        CALL Fatal(SolverName,'Memory allocation error 3, Aborting.')
+      END IF
+    END IF
+    
     IF( ApplyDirichlet ) THEN
       ALLOCATE( LowerLimit( MMAX ), &
            UpperLimit( MMAX ), &
@@ -504,7 +520,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            OldRHS( L ), &
            STAT=istat )
       IF ( istat /= 0 ) THEN
-        CALL Fatal(SolverName,'Memory allocation error 3, Aborting.')
+        CALL Fatal(SolverName,'Memory allocation error 4, Aborting.')
       END IF
       ActiveNode = .FALSE.
       ResidualVector = 0.0_dp
@@ -614,6 +630,17 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
           LimitedSolution(CurrentElement % Nodeindexes(1:N), 2) = Found
         END IF
 
+        IF (ComputeLocalMaxDisp) THEN
+          LocalMaxDisp(CurrentElement % Nodeindexes(1:N)) = &
+               ListGetReal(BodyForce, 'Max Displacement ' // TRIM(VariableName),n,CurrentElement % NodeIndexes, Found)
+          IF (.NOT.Found) THEN
+            WRITE(Message,*) '"Compute Local Max Displacement" set but ', &
+                 'Max Displacement'//TRIM(VariableName), ' not found'
+            CALL WARN(SolverName, Message)
+            ComputeLocalMaxDisp = .FALSE.
+          END IF
+        END IF
+        
         ! get flow soulution and velocity field from it
         !----------------------------------------------
         ConvectionFlag = GetString( Equation, 'Convection', Found )
@@ -915,26 +942,34 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      IF(NeedOldValues) THEN
        IF(LimitDisp) THEN 
-         maxdh = -HUGE(maxdh)         
-         DO i=1, Model % NumberOfNodes
-           j = FreeSurfPerm(i)
-           IF(j > 0) THEN
-             maxdh = MAX(maxdh, ABS(FreeSurf(j)-PreFreeSurf(j,1)))
+         IF (.NOT.ComputeLocalMaxDisp) THEN
+           maxdh = -HUGE(maxdh)         
+           DO i=1, Model % NumberOfNodes
+             j = FreeSurfPerm(i)
+             IF(j > 0) THEN
+               maxdh = MAX(maxdh, ABS(FreeSurf(j)-PreFreeSurf(j,1)))
+             END IF
+           END DO
+           maxdh = ParallelReduction(maxdh,2)
+           IF(maxdh > MaxDisp) THEN
+             Relax = Relax * MaxDisp/maxdh
            END IF
-         END DO
-         maxdh = ParallelReduction(maxdh,2)
-         IF(maxdh > MaxDisp) THEN
-           Relax = Relax * MaxDisp/maxdh
+           WRITE(Message,'(a,E9.2)') 'Maximum displacement ',maxdh
+           CALL Info( SolverName, Message, Level=4 )
          END IF
-         WRITE(Message,'(a,E9.2)') 'Maximum displacement ',maxdh
-         CALL Info( SolverName, Message, Level=4 )
        END IF
        WRITE(Message,'(a,F9.2)') 'pp Relaxation factor',Relax
        CALL Info( SolverName, Message, Level=4 )
        DO i=1, Model % NumberOfNodes
-         j = FreeSurfPerm(i)
+         j = FreeSurfPerm(i) 
          IF(j > 0) THEN
-           FreeSurf(j) = Relax * FreeSurf(j) + (1-Relax) * PreFreeSurf(j,1)
+           LRelax = Relax
+           IF (ComputeLocalMaxDisp) THEN
+             maxdh = ABS(FreeSurf(j)-PreFreeSurf(j,1))
+             IF (maxdh > LocalMaxDisp(i)) &
+                  LRelax = Relax * LocalMaxDisp(i)/maxdh
+           END IF
+           FreeSurf(j) = LRelax * FreeSurf(j) + (1-LRelax) * PreFreeSurf(j,1)
          END IF
        END DO
      END IF

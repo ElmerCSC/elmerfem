@@ -282,18 +282,24 @@ CONTAINS
     INTEGER :: PDMaxIter
  
     CALL GetElementNodes(Nodes)
-    tmpvar => VariableGet( Mesh % Variables, 'alpha')
+    tmpvar => VariableGet( Mesh % Variables, 'alpha direction')
     IF(ASSOCIATED(tmpvar)) THEN
-      CALL GetLocalSolution(alpha,'alpha')
-    ELSE
       CALL GetLocalSolution(alpha,'alpha direction')
+    ELSE
+      tmpvar => VariableGet( Mesh % Variables, 'alpha')
+      IF(ASSOCIATED(tmpvar)) THEN
+        CALL GetLocalSolution(alpha,'alpha')
+      END IF
     END IF
 
-    tmpvar => VariableGet( Mesh % Variables, 'beta')
+    tmpvar => VariableGet( Mesh % Variables, 'beta direction')
     IF(ASSOCIATED(tmpvar)) THEN
-      CALL GetLocalSolution(beta,'beta')
-    ELSE
       CALL GetLocalSolution(beta,'beta direction')
+    ELSE
+      tmpvar => VariableGet( Mesh % Variables, 'beta')
+      IF(ASSOCIATED(tmpvar)) THEN
+        CALL GetLocalSolution(beta,'beta')
+      END IF
     END IF
 
     DO j=1,nn
@@ -309,7 +315,25 @@ CONTAINS
       ! surface
       ! -----------------------------------------------------
       CoordSys(1,1:3) = normalized(MATMUL( alpha(1:nn), dBasisdx(1:nn,:)))
+      IF (ANY(ISNAN(CoordSys(1,:)))) THEN
+        print *, "Element index = ", GetElementIndex(Element)
+        print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
+        CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
+          due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system alpha vector.') 
+        CoordSys(1,1:3) = NormalOfDegenerateElement(Model, Element)
+        IF (ANY(ISNAN(CoordSys(1,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+      END IF
+
       CoordSys(2,1:3) = normalized(MATMUL( beta(1:nn), dBasisdx(1:nn,:)))
+      IF (ANY(ISNAN(CoordSys(2,:)))) THEN
+        print *, "Element index = ", GetElementIndex(Element)
+        print *, "Element aspect ratio = ", ElementAspectRatio(Model, Element)
+        CALL Warn('CoordinateTransform','Element coordinate system is NaN, this could be &
+          due to a poor mesh. Let us try to use the degenerate element normal as the local coordinate system beta vector.') 
+        CoordSys(2,1:3) = NormalOfDegenerateElement(Model, Element)
+        IF (ANY(ISNAN(CoordSys(2,:)))) CALL Fatal('CoordinateTransform','Degenerate element normal did not work...') 
+      END IF
+
       CoordSys(3,1:3) = normalized(crossproduct(CoordSys(1,1:3), CoordSys(2,1:3)))
  
       CoordSys2 = CoordSys

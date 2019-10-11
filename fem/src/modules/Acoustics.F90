@@ -4032,7 +4032,7 @@ CONTAINS
     IF ( .NOT. ASSOCIATED( Values ) ) THEN
        Diag => A % Diag
 
-       !DO i=1,n/2    ! THIS IS PROPABLY ERRATIC IN CVS-VERSION
+       !DO i=1,n/2    ! THIS IS PROBABLY ERRATIC IN CVS-VERSION
        DO i=1,n
           x = CMPLX( A % Values(Diag(2*i-1)), -A % Values(Diag(2*i-1)+1), kind=dp )
           b(i) = b(i) / x
@@ -4150,7 +4150,7 @@ CONTAINS
   SUBROUTINE VelocitySolve( l, n, A, x, b, dim, MaxRounds, Tol, StoppingCriterionType )
 !-----------------------------------------------------------------------------------
 !   This subroutine solves the velocity preconditioning system without requiring 
-!   that the assemby has been made for the preconditioning system. The required
+!   that the assembly has been made for the preconditioning system. The required
 !   matrix-vector products are performed by extracting the required entries from
 !   the primary coefficient matrix A. This version uses diagonal preconditioning.
 !----------------------------------------------------------------------------------- 

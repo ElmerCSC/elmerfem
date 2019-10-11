@@ -36,9 +36,9 @@ Material 1
   ! List material constants as {density, Young's modulus, Poisson's ratio}:
   Material Constants(3) = Real 1.0 70e9 0.3
   Density = 1.0
-  Youngs Modulus = 70e9
-  Poisson Ratio = 0.3
   Reference Temperature = 293.0
+  UMAT Subroutine = File "UMATLib" "linear_isotropic"
+  Name = "linear isotropic"  ! This specifies the CMNAME argument of UMAT
 End
 
 Solver 1
@@ -60,9 +60,6 @@ Solver 1
   Calculate Stresses = True
   Calculate Loads = Logical False
 
-  ! UMAT part:
-  ! ----------
-  Use UMAT = Logical True
   Large Deflection = False ! Switch to the small strain formulation 
   Initialize State Variables = Logical False
 

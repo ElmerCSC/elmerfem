@@ -70,6 +70,8 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
     PRINT *,'Testing keywords: '//TRIM(KeywordName_lua) // ' and ' // trim(KeywordName_matc)
     ! CALL ListInitElementKeyword( RealVal_h,'Material',KeywordName_lua )
 
+    ! Skipping for now since it fails
+    
     DO elem=1,NoActive
       Element => GetActiveElement(elem)
       Material => GetMaterial()
@@ -79,6 +81,7 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
       indexes => Element % NodeIndexes
       ALLOCATE(realval_matc_vec(3,N), realval_lua_vec(3,N))
 
+      Found = .false.
       CALL ListGetRealVector( Material, KeywordName_lua,  RealVal_lua_vec,  N, Indexes, Found )
       IF(.NOT. Found ) then
         print *, '>'// KeywordName_Lua //'< not found'

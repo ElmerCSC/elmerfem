@@ -715,11 +715,11 @@
          IF(DontMove(i)) THEN
            ShiftSecond = .FALSE.
            DontMove(i-1) = .TRUE.
-           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, dont move second: ',i
+           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, do not move second: ',i
          ELSE IF(DontMove(i-1)) THEN
            ShiftSecond = .TRUE.
            DontMove(i) = .TRUE.
-           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, dont move first: ',i-1
+           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, do not move first: ',i-1
          ELSE
            IF(SUM(Rot_z_coords(i,:)) > SUM(Rot_z_coords(i-1,:))) THEN
              ShiftSecond = .TRUE.
@@ -892,7 +892,7 @@
            END IF
 
          ELSE
-           PRINT *,'Debug, found no intersection, so nodes arent QUITE tangled: ',i,j
+           PRINT *,'Debug, found no intersection, so nodes are not QUITE tangled: ',i,j
 
            Tangled(i:j) = .TRUE.
            TangledPivotIdx(i:j) = PivotIdx

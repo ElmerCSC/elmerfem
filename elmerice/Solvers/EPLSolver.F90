@@ -31,7 +31,7 @@
 ! *****************************************************************************
 !> Limited solver to compute the water head in a sediment layer
 !> Exported Variables EPLHead (dof=1)
-!> The solver is treated on DIM-1, wit DIM-2 boundary conditions
+!> The solver is treated on DIM-1, with DIM-2 boundary conditions
 ! *****************************************************************************
 
 RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
@@ -527,7 +527,7 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
 
         LOAD(1:N) = - EPLToIDS(1:N)
 
-        !Computing the Storing coeficient and transmitivity of the equivqlent porous layer 
+        !Computing the Storing coefficient and transmitivity of the equivalent porous layer 
         !----------------------------------------------------------------------------------
         CALL ListGetRealArray( Material,'EPL Transmitivity',Hwrk,N, Element % NodeIndexes,Found)
         IF(.NOT.Found) THEN

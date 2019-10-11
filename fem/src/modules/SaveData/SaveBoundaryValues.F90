@@ -83,7 +83,7 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
   CALL Info('SaveBoundaryValues','Creating selected boundary values as fields')
 
   !------------------------------------------------
-  ! Set some pointers and other initilization stuff
+  ! Set some pointers and other initialization stuff
   !------------------------------------------------
   Params => GetSolverParams()
   PointerToSolver => Solver
@@ -178,7 +178,7 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
 
   !-------------------------------------------------------
   ! Loop all parameters to be exported and update their values.
-  ! NoParams is set the 1st time the suboutine is visited. 
+  ! NoParams is set the 1st time the subroutine is visited. 
   !--------------------------------------------------------
   DO ParamNo=1,NoParams 
     IF(.NOT. Valid(ParamNo)) CYCLE !prevents segfaults...

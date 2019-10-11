@@ -711,7 +711,7 @@ CONTAINS
 
                IF ( nj <= 0 ) CYCLE
 !
-!              s=A(Q_j)^T, only entries correspoding to
+!              s=A(Q_j)^T, only entries corresponding to
 !              nonzeros in P_i actually computed, then
 !              B_ij = DOT( P_i, A(Q_j)^T ):
 !              ------------------------------------------
@@ -774,7 +774,7 @@ CONTAINS
 
                   DO CDOF=0,DOFs-1
 !
-!                    s = A(Q_j)^T, only entries correspoding to
+!                    s = A(Q_j)^T, only entries corresponding to
 !                    nonzeros in P_i actually  computed, then
 !                    B_ij = DOT( P_i, A(Q_j)^T ):
 !                    ------------------------------------------
@@ -1303,7 +1303,7 @@ CONTAINS
 
      NB = 0
 
-     IF ( ListGetLogical( Params, 'Discontinuous Galerkin', Found ) ) THEN
+     IF ( Solver % DG ) THEN
         DO i=1,Element % DGDOFs
            NB = NB + 1
            Indexes(NB) = Element % DGIndexes(i)
@@ -1498,7 +1498,7 @@ CONTAINS
 !> Also some ideas of compatible relaxation have been tested within the context but their usability has
 !> so far been rather limited.
 !
-!        Author: Peter R�back
+!        Author: Peter Råback
 !        Modified by: 
 !        Date of modification: 30.10.2003
 !------------------------------------------------------------------------------
@@ -1567,7 +1567,7 @@ CONTAINS
     Parallel = ParEnv % PEs > 1
     InvLevel = 1 + Solver % MultiGridTotal - Level
 
-    ! This is a counter that for the first full resursive round keeps the 
+    ! This is a counter that for the first full recursive round keeps the
     ! flag NewLinearSystem true.
     IF ( Level == Solver % MultiGridLevel ) THEN
       IF( ListGetLogical(Params,'MG Recompute Projector',GotIt) ) THEN
@@ -5089,7 +5089,7 @@ CONTAINS
 !> This provides in princinple an economical approach to multilevel schemes.
 !> The utilization of the routines are still not complete.
 ! 
-!       Author: Peter R�back
+!       Author: Peter Råback
 !       Modified by: 
 !       Date of modification: 30.10.2007
 !------------------------------------------------------------------------------
@@ -5166,7 +5166,7 @@ CONTAINS
       ForceVector(1:n) = ForceVector(1:n) / RHSnorm
     END IF
 
-    ! This is a counter that for the first full resursive round keeps the 
+    ! This is a counter that for the first full recursive round keeps the
     ! flag NewLinearSystem true.
     IF ( Level == Solver % MultiGridLevel ) THEN
       NewLinearSystem = .TRUE.
@@ -5190,6 +5190,8 @@ CONTAINS
 
       LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
 
+      IF(.NOT. Found ) LowestSolver = ListGetString(Params,'mglowest: Linear System Solver',Found)
+      
       IF ( .NOT. Found ) THEN
         LowestSolver = 'direct'
         LIter = ListGetLogical(Params,'MG Lowest Linear Solver Iterative',Found)
@@ -5685,9 +5687,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>     Project cluster matrix A to B: B = PAR
-!>     The projector is formed implicitely.
+!>     The projector is formed implicitly.
 !------------------------------------------------------------------------------
-   SUBROUTINE CRS_ClusterMatrixCreate( A, CF, B, Components ) 
+   SUBROUTINE CRS_ClusterMatrixCreate( A, CF, B, Components )
 !------------------------------------------------------------------------------
       TYPE(Matrix_t), POINTER :: A,B
       INTEGER, POINTER :: CF(:)

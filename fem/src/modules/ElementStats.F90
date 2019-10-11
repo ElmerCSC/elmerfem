@@ -37,6 +37,7 @@
 SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE ElementDescription, ONLY: GetEdgeMap
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------

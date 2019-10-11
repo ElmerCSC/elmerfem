@@ -1,0 +1,256 @@
+! Modefied old legacy 2D electrical machine test case.
+! Reference case for the conforming BC case - results should be same.
+!
+! P.R. 16.5.2019
+
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "PM_machine"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+
+  Timestep Sizes = 0.001
+  Timestep Intervals = 5
+
+  Timestepping Method= BDF
+  BDF Order = 1
+  Output Intervals(1) = 0
+  Steady State Max Iterations = 1
+
+  Mesh Levels=1
+  Mesh Keep=1
+  Post File   = "ref.vtu"
+End
+
+! Ilma (roottorin ulkokehä kestomagneettien välissä)
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 4
+End
+
+! Akseliteräs
+Body 2
+  Equation = 1
+  Material = 2
+  Body Force = 4
+End
+
+! Levysydän roottori
+Body 3
+  Equation = 1
+  Material = 2
+  Body Force = 4
+End
+
+! Levysydän staattori
+Body 4
+  Equation = 1
+  Material = 2
+  Body Force = 5
+End
+
+! Ilmarako (+jotain)
+Body 5
+  Target Bodies(2) = 5 10
+  Equation = 1
+  Material = 1
+
+  R Inner = Real 0.0982
+  R Outer = Real 0.1000
+End
+
+! Käämi A
+Body 6
+  Equation = 1
+  Material = 3
+  Body Force = 1
+End
+
+! Käämi B
+Body 7
+  Equation = 1
+  Material = 3
+  Body Force = 2
+End
+
+! Käämi C
+Body 8
+  Equation = 1
+  Material = 3
+  Body Force = 3
+End
+
+! Kestomagneetti
+Body 9
+  Equation = 1
+  Material = 4
+  Body Force = 4
+End
+
+
+! Lähde, käämi A + lasketaan jännite
+Body Force 1
+  Current Density = 3e6
+  Calculate Potential=Logical True
+End
+
+! Käämi B, lasketaan jännite
+Body Force 2:: Calculate Potential=Logical True
+
+! Käämi C, lasketaan jännite
+Body Force 3:: Calculate Potential=Logical True
+
+
+! Pyöritetään roottoria 25 Hz taajuudella, verkon pyöritys
+! määritelty alkavaksi nollasta ensimmäisellä askeleella
+Body Force 4
+$omega = 25*360
+  Mesh Rotate 3 = Variable time,timestep size
+    Real MATC "omega*(tx(0)-tx(1))"
+End
+
+! Verkossa ei ole reunaa ulkokehälle, käytetään ehdollista Dirichlet
+! ehtoa volyymille, niin että se koskee vain reunasolmuja
+Body Force 5
+  A = Real 0
+  A Condition = Variable Coordinate
+    Real MATC "x=tx(0);y=tx(1); r=sqrt(x^2+y^2); if(r>0.15499) {1} else {-1}"
+End
+
+! Ilma
+Material 1:: Relative Permeability = 1
+
+! Levysydän/akseliteräs
+Material 2
+! H-B Curve = Variable coupled iter
+!   Real Cubic
+!    Include HB
+!   End
+
+! Electric Conductivity = 0
+  Relative Permeability = 1000
+End
+
+! Kupari
+Material 3
+! Electric Conductivity = 60e6
+  Relative Permeability = 1
+End
+
+! Radiaalisen magnetointivektorin koordinaattisuuntainen komponentti
+$function mx(tx) { r=sqrt(sum(tx^2)); _mx=tx(0)/r; }
+
+! Kestomagneetti
+Material 4
+  Relative Permeability = 1
+
+  $ mag = -8e5
+  Magnetization 1 = Variable Coordinate
+    Real MATC "mag*mx(tx(0) tx(1))
+
+  Magnetization 2 = Variable Coordinate
+    Real MATC "mag*mx(tx(1) tx(0))
+End
+
+Equation 1 :: Active Solvers(2) = 2 3
+
+! Roottorin pyöritys joka aika-askeleen aluksi
+Solver 1
+  Exec Solver = Before timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+End
+
+
+! Vektoripotentiaaliratkaisu + jännitteet + vääntömonentti
+Solver 2
+  Equation = "Mag"
+
+  Variable = "A"
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+
+  NonLinear System Relaxation Factor=1
+
+  Linear System Solver = Iterative
+  Linear System Symmetric=True
+  Linear System Convergence Tolerance = 1.e-10
+  Linear System Max Iterations=1000
+  Linear System Residual Output=10
+  Linear System Abort not Converged=False
+  Linear System preconditioning=ilu2
+  Linear System Iterative Method = BicgstabL
+
+! Linear System Solver = "Direct"
+! Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1e-06
+
+  Nonlinear System Convergence Without Constraints = Logical True
+
+  Apply Mortar BCs = Logical True
+  Mortar BCs Additive = True
+End 
+
+
+! Lasketaan magneetivuontiheys vektoripotentiaalista
+Solver 3
+  Exec Solver = never
+  Equation = ComputeB
+
+  Potential Variable="A"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BicgstabL
+  Linear System Symmetric = True
+  Linear System Max Iterations = 100
+  Linear System Preconditioning = ILU2
+  Linear System Convergence Tolerance = 1.0e-8
+End
+
+! Tallennetaan jännitteet ja vääntömomentti
+Solver 4
+  Exec Solver = never
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "l.dat"
+End
+ 
+! Liikkuva reuna
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Mortar BC = Integer 2
+  Anti Rotational Projector = Logical True
+  Galerkin Projector = Logical True
+End
+Boundary Condition 2:: Target Boundaries(1) = 2
+
+! Periodinen reuna, staattorin osuus
+Boundary Condition 3
+  Target Boundaries(1) = 3
+
+  Mortar BC = Integer 4
+  Anti Radial Projector = Logical True
+  Galerkin Projector = Logical True
+  Mortar BC Static = Logical True
+End
+Boundary Condition 4:: Target Boundaries(1) = 4
+
+! Periodinen reuna, roottorin osuus
+Boundary Condition 5
+  Target Boundaries(1) = 5
+
+  Mortar BC = Integer 6
+  Anti Radial Projector = Logical True
+  Galerkin Projector = Logical True
+  Mortar BC Static = Logical True
+End
+Boundary Condition 6:: Target Boundaries(1) = 6
+
+Solver 2 :: Reference Norm = 3.05952974E-02
+

@@ -27,7 +27,7 @@
 #define CONPERIODIC 2
 #define CONCONSTRAINT 3
 
-/* Struture GridType includes the subcell structure of the 
+/* Structure GridType includes the subcell structure of the 
    geometry and the meshing information. The elements may be 
    directly derived from this structures but it takes some 
    time and is not easy to comprehend. Therefore structures 
@@ -119,7 +119,7 @@ struct GridType {
    for each subcell is saved to structure CellType. Specific subroutines 
    are then used to calculate element or knot information using this 
    information. Cell is one macroscopic building block that may be 
-   devided to M x N elements. It may even consist of one element. */
+   divided to M x N elements. It may even consist of one element. */
 struct CellType {
   int nonodes,  /* number of nodes within an element */
     dimension,  /* 1D or 2D */
@@ -178,7 +178,7 @@ struct FemType {
     invtopoexists,
     timesteps,     /* number of timesteps */
     periodicexist, /* does the periodic vector exist? */
-    *periodic,     /* peridic ordering vector, if needed */
+    *periodic,     /* periodic ordering vector, if needed */
     connectexist,  /* does the connection vector exist? */
     *connect,      /* connections between nodes, if needed */
     partitionexist,/* does the partitioning exist? */
@@ -212,7 +212,7 @@ struct FemType {
    are saved into this structure. It is used for setting
    the boundary conditions. In physics it is typical that
    the BCs are more complicated than the equations in the 
-   bulk and therefore the stucture must be such that it 
+   bulk and therefore the structure must be such that it 
    enables the use of a wide variety of BCs. */
 struct BoundaryType {
   int created,       /* is boundary created? */
@@ -226,7 +226,7 @@ struct BoundaryType {
     mapvf,           /* mappings of the view factors */ 
     open,            /* is the closure partially open? */
     echain,          /* does the chain exist? */
-    ediscont,        /* does the discontinous boundary exist */
+    ediscont,        /* does the discontinuous boundary exist */
     chainsize;       /* size of the chain */ 
   int *parent,       /* primary parents of the sides */
     *parent2,        /* secondary parents of the sides */

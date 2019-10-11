@@ -90,9 +90,9 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, OutputDirectory
+  CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, Str, OutputDirectory
   REAL(KIND=dp) :: x1, x0, x, w, f, Norm
-  INTEGER :: i,j,n,NoPar,NormInd
+  INTEGER :: i,j,n,NoPar,NormInd,IOUnit
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found, GotIt
   
@@ -110,21 +110,14 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 
 
   !------------------------------------------------------------------------------
-  ! For consistancy checks one compute a pseudonorm.
+  ! For consistency checks one compute a pseudonorm.
   !------------------------------------------------------------------------------
   NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
   Norm = 0.0_dp
 
-  IF ( .NOT. FileNameQualified(FileName) ) THEN
-    OutputDirectory = GetString( Params,'Output Directory',GotIt)
-    IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
-      FileName = TRIM(OutputDirectory)// '/' //TRIM(Filename)
-      CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-    ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-      Filename = TRIM(OutputPath)// '/' //TRIM(Filename)
-    END IF
-  END IF
-
+  CALL SolverOutputDirectory( Solver, Filename, OutputDirectory )
+  Filename = TRIM(OutputDirectory)// '/' //TRIM(Filename)
+  
   IF( GetLogical(Params,'Filename Numbering',GotIt)) THEN
     Filename = NextFreeFilename( Filename )
   END IF
@@ -149,26 +142,26 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
     RETURN
   END IF
 
-  OPEN( 10, FILE=FileName )
+  OPEN(NEWUNIT=IOUnit, FILE=FileName )
 
   DO i=1,n
     w = (1.0_dp*(i-1))/(n-1)
     x = x0 + w*(x1-x0)
 
-    WRITE (10,'(I6,ES15.6)',ADVANCE='NO') i,x
+    WRITE (IOUnit,'(I6,ES15.6)',ADVANCE='NO') i,x
     
     DO j=1,NoPar
       WRITE (ParName,'(A,I0)') 'Expression ',j
       f = ListGetFun( Params,ParName,x )
-      WRITE (10,'(ES15.6)',ADVANCE='NO') f     
+      WRITE (IOUnit,'(ES15.6)',ADVANCE='NO') f     
 
       IF( NormInd == j ) Norm = Norm + f*f
     END DO
 
-    WRITE (10,'(A)') ' '     
+    WRITE (IOUnit,'(A)') ' '     
   END DO
   
-  CLOSE( 10 ) 
+  CLOSE( IOUnit ) 
 
   IF( NormInd > 0 ) THEN
     Norm = SQRT( Norm / n )

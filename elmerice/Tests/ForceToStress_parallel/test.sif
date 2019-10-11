@@ -1,0 +1,138 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test ForeToStress Solver              !!
+!!                                       !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo on
+
+Header
+  Mesh DB "." "cube"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "test.result"
+  Post File = "test.vtu"
+  max output level = 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1 !As body 1 does not contains Equation,
+! there is a  Warning in screen output
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  StressAna = Variable Coordinate 1, Coordinate 2
+      Real MATC "100.0*(cos(6.0*pi*tx(0)))*(cos(6.0*pi*tx(1)))"
+End
+
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 1
+  Equation = "Fw"
+  Procedure = File "ElmerIceSolvers" "GetHydrostaticLoads"
+  Variable = Fw[Fx:1 Fy:1 Fz:1]
+  Variable DOFs = 3
+End
+
+Solver 2
+   Equation = "ForceToStress"
+   Procedure = "ElmerIceSolvers" "ForceToStress"
+   Variable = String "Stress"
+   Variable DOFs = 1
+
+   Force Variable Name = String "Fz"
+
+   Exported Variable 1 = StressAna    
+   Exported Variable 1 DOFS = Integer 1
+
+   Linear System Solver = Direct         
+   Linear System Direct Method = umfpack
+End
+
+Solver 3
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  Variable 1 = String "Fz"
+  Operator 1 = String "max"
+  Variable 2 = String "Fz"
+  Operator 2 = String "min"
+  Variable 3 = String "StressAna"
+  Operator 3 = String "max"
+  Variable 4 = String "StressAna"
+  Operator 4 = String "min"
+  Operator 5 = String "cpu time"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!---------------------------------------------------
+!---------------- BOUNDARY CONDITIONS --------------
+!---------------------------------------------------
+!!! BC (y=y0)    
+Boundary Condition 1
+  Target Boundaries = 1
+End
+
+!!! BC à droite (x=xmax) 
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Fx = Logical True
+  Periodic BC Fy = Logical True
+  Periodic BC Fz = Logical True
+  Periodic BC Stress  = Logical True
+End
+
+!!! BC (y=ymax)   
+Boundary Condition 3
+  Target Boundaries = 3
+  Periodic BC = 1 
+  Periodic BC Fx = Logical True
+  Periodic BC Fy = Logical True
+  Periodic BC Fz = Logical True
+  Periodic BC Stress  = Logical True
+End
+
+!!! BC  (x=x0) 
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+Boundary Condition 5
+  Target Boundaries = 5
+  Body Id = 2
+  External Pressure = Variable Coordinate 1, Coordinate 2
+      Real MATC "100.0*(cos(6.0*pi*tx(0)))*(cos(6.0*pi*tx(1)))"
+End
+
+Solver 2 :: Reference Norm = Real 52.6214356 
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=52.6214356,EPS=1E-06\n" );
+

@@ -85,12 +85,12 @@ FUNCTION Calculate_Haf ( Model, nodenumber, nodeHeight) RESULT(Haf)
      
      thickName = GetString( BC, 'Haf Thickness', GotIt )
      IF (.NOT.Gotit) THEN
-        CALL Fatal(FunctionName, 'Cant find >Haf Thickness< in BC')           
+        CALL Fatal(FunctionName, 'Can not find >Haf Thickness< in BC')           
      END IF
      
      rhoRatio = GetConstReal( BC, 'Haf rhoRatio', GotIt )
      IF (.NOT.Gotit) THEN
-        CALL Fatal(FunctionName, 'Cant find >Haf rhoRatio< in BC')           
+        CALL Fatal(FunctionName, 'Can not find >Haf rhoRatio< in BC')           
      END IF
      
   END IF
@@ -106,7 +106,7 @@ FUNCTION Calculate_Haf ( Model, nodenumber, nodeHeight) RESULT(Haf)
   ! we assume sea level is at zero height.  Hence:
   ! (-nodeHeight/rhoRatio) = 
   ! (vertical distance from lower surface to sea level)*rho_ocean / rho_ice = 
-  ! is the thicknes of ice up to floatation. 
+  ! is the thickness of ice up to floatation. 
   IF (nodeHeight.GT.0.0_dp)  THEN
      Haf = thickness
   ELSE

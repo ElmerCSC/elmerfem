@@ -23,6 +23,9 @@ ENDIF()
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
 
+SET(CMAKE_Fortran_MODULE_DIRECTORY
+  ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
+
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
 SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
@@ -43,6 +46,11 @@ SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
 
+SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
+
+# Let user select if the contiguous attribute is used or not
+SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
@@ -54,7 +62,7 @@ MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 ENABLE_TESTING()
 
 SET(ELMER_FEM_MAJOR_VERSION 8)
-SET(ELMER_FEM_MINOR_VERSION 3)
+SET(ELMER_FEM_MINOR_VERSION 4)
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
 
@@ -190,34 +198,43 @@ IF(WITH_Trilinos)
   ENDIF()
 ENDIF()
 
-
-# ZOLTAN Remeshing
-MESSAGE(STATUS "------------------------------------------------")
-MESSAGE(STATUS "Mesh (re)partitioning looking for [Zoltan] tools ")
-
-FIND_PACKAGE(Zoltan)
-
-IF(ZOLTAN_FOUND)
-
-  SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
-  GET_FILENAME_COMPONENT(ZOLTAN_LIBDIR ${ZOLTAN_LIBRARY} DIRECTORY)
-
-  MARK_AS_ADVANCED(HAVE_ZOLTAN)
-  MESSAGE(STATUS "  Zoltan:           " "${ZOLTAN_FOUND}")
-  MESSAGE(STATUS "  Zoltan_INC:       " "${ZOLTAN_INCLUDE_DIR}")
-  MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
-  MESSAGE(STATUS "  Zoltan_LIBDIR:      " "${ZOLTAN_LIBDIR}")
-  ADD_DEFINITIONS(-DHAVE_ZOLTAN)
-
-  INCLUDE_DIRECTORIES(${ZOLTAN_INCLUDE_DIR})
+IF(WITH_Zoltan)
+  # ZOLTAN Remeshing
   MESSAGE(STATUS "------------------------------------------------")
 
-ELSE()
-  MESSAGE(STATUS "  Library not found: >ZOLTAN_FOUND< ")
-  MESSAGE(STATUS "    Missing: >ZOLTAN_INCLUDE_DIR< , >ZOLTAN_LIBRARY< for mesh (re)partitioning")
-ENDIF(ZOLTAN_FOUND)
+  SET(USE_SYSTEM_ZOLTAN FALSE CACHE BOOL "Use system Zoltan library")
+  IF(NOT ${USE_SYSTEM_ZOLTAN})
+    MESSAGE(STATUS "Building Zoltan mesh repartitioner")
+    ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
+    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" ) 
+    MARK_AS_ADVANCED(HAVE_ZOLTAN)
+    MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ELSE()
+    FIND_PACKAGE(Zoltan)
 
-MESSAGE(STATUS "------------------------------------------------")
+    IF(ZOLTAN_FOUND)
+
+      SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
+      GET_FILENAME_COMPONENT(ZOLTAN_LIBDIR ${ZOLTAN_LIBRARY} DIRECTORY)
+
+      MARK_AS_ADVANCED(HAVE_ZOLTAN)
+      MESSAGE(STATUS "  Zoltan:           " "${ZOLTAN_FOUND}")
+      MESSAGE(STATUS "  Zoltan_INC:       " "${ZOLTAN_INCLUDE_DIR}")
+      MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+      MESSAGE(STATUS "  Zoltan_LIBDIR:      " "${ZOLTAN_LIBDIR}")
+
+      INCLUDE_DIRECTORIES(${ZOLTAN_INCLUDE_DIR})
+      MESSAGE(STATUS "------------------------------------------------")
+
+    ELSE()
+      MESSAGE(STATUS "  Library not found: >ZOLTAN_FOUND< ")
+      MESSAGE(STATUS "    Missing: >ZOLTAN_INCLUDE_DIR< , >ZOLTAN_LIBRARY< for mesh (re)partitioning")
+    ENDIF(ZOLTAN_FOUND)
+
+    MESSAGE(STATUS "------------------------------------------------")
+  ENDIF()
+ENDIF(WITH_Zoltan)
 
 # MMG Remeshing
 MESSAGE(STATUS "------------------------------------------------")
@@ -299,7 +316,7 @@ ENDIF()
 
 # Check if Fortran compiler supports contiguous keyword
 INCLUDE(testContiguous)
-IF(CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
+IF(USE_CONTIGUOUS AND CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
   ADD_DEFINITIONS(-DCONTIG=,CONTIGUOUS)
 ELSE()
   ADD_DEFINITIONS(-DCONTIG=)

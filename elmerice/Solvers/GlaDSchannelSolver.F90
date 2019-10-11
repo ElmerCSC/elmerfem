@@ -263,10 +263,11 @@
                 Edge => Solver % Mesh % Edges(t)
                 n = Edge % TYPE % NumberOfNodes
                 IF (.NOT.ASSOCIATED(Edge)) CYCLE
-                IF ((ParEnv % PEs > 1) .AND. &
-                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+                IF (ParEnv % PEs > 1) THEN
+                  IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                END IF
                 IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
-                  EdgeSheet = EdgeSheet + 1
+                EdgeSheet = EdgeSheet + 1
              END DO 
              WRITE(Message,'(a,i0)')'Number of Channels (edges): ', EdgeSheet
              CALL INFO(SolverName, Message, level=3 )
@@ -279,10 +280,11 @@
              DO t=1, Solver % Mesh % NumberOfBoundaryElements
                 Element => GetBoundaryElement(t)
                 ! IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-                IF ((ParEnv % PEs > 1) .AND. &
-                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+                IF (ParEnv % PEs > 1) THEN 
+                  IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                END IF
                 n = GetElementNOFNodes()
-
+                
                 IF ( GetElementFamily() > 1 ) CYCLE
                 NbMoulin = NbMoulin + 1
                 j = Element % NodeIndexes(1)
@@ -320,7 +322,7 @@
      CALL Info( SolverName, ' Channels Output will be saved ', Level=4 )
 
      WRITE(Message,'(A,D15.7)')' Maximum Channel Area: ', &
-        MAXVAL(AreaSolution(AreaPerm(M:M+Solver%Mesh%NumberOfEdges))) 
+        MAXVAL(AreaSolution(AreaPerm(M+1:M+Solver%Mesh%NumberOfEdges))) 
      CALL INFO(SolverName, Message, level=4 )
 
      ! Save results in VTU Format
@@ -426,8 +428,9 @@
         DO t=1, Solver % Mesh % NumberOfEdges 
            Edge => Solver % Mesh % Edges(t)
            IF (.NOT.ASSOCIATED(Edge)) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-              (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+           IF (ParEnv % PEs > 1) THEN
+             IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+           END IF
            n = Edge % TYPE % NumberOfNodes
            IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             
@@ -457,8 +460,9 @@
         DO t=1, Solver % Mesh % NumberOfEdges 
            Edge => Solver % Mesh % Edges(t)
            IF (.NOT.ASSOCIATED(Edge)) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-              (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+           IF (ParEnv % PEs > 1) THEN
+             IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+           END IF
            n = Edge % TYPE % NumberOfNodes
            IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             
@@ -476,8 +480,9 @@
            DO t=1, Solver % Mesh % NumberOfEdges 
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
-              IF ((ParEnv % PEs > 1) .AND. &
-                 (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+              IF (ParEnv % PEs > 1) THEN
+                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+              END IF
               n = Edge % TYPE % NumberOfNodes
               IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             

@@ -333,7 +333,7 @@ static void vis_colscale_delete(colscale_t *colscale)
  *
  *         Output:  none
  *   
- *   Return value:  vis_add_visual_type (malloc success propably)...
+ *   Return value:  vis_add_visual_type (malloc success probably)...
  *
  ******************************************************************************/
 int vis_initialize_colscale_visual()

@@ -262,11 +262,7 @@
         ! Default is False - We allow Channel to growth everywhere
         NoChannel = .False. 
         DO t=1, Solver % Mesh % NumberOfBoundaryElements
-           ! get element information
            Element => GetBoundaryElement(t)
-           !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-            (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
 
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
@@ -653,8 +649,9 @@
               
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
-              IF ((ParEnv % PEs > 1) .AND. &
-                (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+              IF (ParEnv % PEs > 1) THEN
+                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+              END IF
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
@@ -1049,8 +1046,9 @@
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
-                 IF ((ParEnv % PEs > 1) .AND. &
-                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+                 IF (ParEnv % PEs > 1) THEN
+                   IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                 END IF
                  n = Edge % TYPE % NumberOfNodes
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
@@ -1143,7 +1141,7 @@
                  END IF
 
                  k = AreaPerm(M+t)
-                 SELECT CASE(methodSheet)
+                 SELECT CASE(methodChannels)
                  CASE('implicit') 
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
                  CASE('explicit')
@@ -1779,7 +1777,8 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        Ks = Ks * Ngrad**(nbs-2.0_dp) 
 
        Kc = SUM( NodalKc(1:n) * Basis(1:n))
-       Kc = Kc * MAX(CArea,0.0)**(nac - 1.0_dp) 
+! OG 17/06/2019 - CArea in factor of ALPHA 
+       Kc = Kc * MAX(CArea,0.0)**(nac-1.0_dp)
        Kc = Kc * Ngrad**(nbc-2.0_dp)  
 
        PhiG = SUM(NodalHydPot(1:n)*Basis(1:n))
@@ -1817,7 +1816,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        BETA = Bfactor*(Xi - Pii) 
 
        ! Channel flux for output
-       Qcc = ABS(Kc*GradPhi)
+       Qcc = ABS(MAX(CArea,0.0)*Kc*GradPhi)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE GetEvolveChannel

@@ -111,6 +111,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !Get Body ID
   target_bodyid = Mesh % Elements(1) % BodyID
   IF(target_bodyid /= 1) CALL Warn(SolverName, "Body ID is not 1, this case might not be well handled")
+  !For testing - set a calving levelset function to mimic calving events
+  !-------------------
 
   !TODO - unhardcode (detect?) this
   front_BC_id = 1
@@ -166,7 +168,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     my_calv_front = 1 !this is integer (not logical) so we can later move to multiple calving fronts
   END IF
 
-  !TODO - could make this more efficent by cutting out some of the elements from the calved region.
+  !TODO - could make this more efficient by cutting out some of the elements from the calved region.
   !This region will be remeshed too, but we discard it, so the closer we can get to the edge of the
   !calving event, the better.
 
@@ -210,7 +212,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
 
   !This does nothing yet but it will be important - determine
-  !the discrete calving zones, each of which will be seperately remeshed
+  !the discrete calving zones, each of which will be separately remeshed
   !by a nominated boss partition
   !  CALL CountCalvingEvents(Model, Mesh, ccount)
   ccount = 1
@@ -268,7 +270,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !contain entire calving/remeshing regions.
   IF(.NOT. ASSOCIATED(Mesh % Repartition)) THEN
     ALLOCATE(Mesh % Repartition(NBulk+NBdry), STAT=ierr)
-    IF(ierr /= 0) PRINT *,ParEnv % MyPE,' couldnt allocate Mesh % Repartition'
+    IF(ierr /= 0) PRINT *,ParEnv % MyPE,' could not allocate Mesh % Repartition'
   END IF
 
   Mesh % Repartition = ParEnv % MyPE + 1
@@ -365,7 +367,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   END IF
 
-  !Nominated parition does the remeshing
+  !Nominated partition does the remeshing
   IF(ImBoss) THEN
 
       !Initialise MMG datastructures

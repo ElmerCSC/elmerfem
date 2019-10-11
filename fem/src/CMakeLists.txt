@@ -41,7 +41,8 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 ZirkaHysteresis.F90)
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 
+  ZirkaHysteresis.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
@@ -158,9 +159,9 @@ ENDIF()
 
 IF(HAVE_ZOLTAN)
   TARGET_LINK_LIBRARIES(elmersolver ${ZOLTAN_LIBRARY})
-  SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING_MOD}/:${ZOLTAN_LIBDIR}")
-  SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}/:${ZOLTAN_LIBDIR}")
-
+  ADD_DEPENDENCIES(elmersolver ${ZOLTAN_LIBRARY})
+  # SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING_MOD}/:${ZOLTAN_LIBDIR}")
+  # SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}/:${ZOLTAN_LIBDIR}")
 ENDIF()
 
 # ElmerSolver libraries 

@@ -537,7 +537,7 @@ END SUBROUTINE SIASolver
 !------------------------------------------------------------------------------
 !> Allows to have the SIA Velocity as primary variables (and not exported one)
 !> Allow then to have access to the Previous values to construct a stable 
-!> time discretization sheme. 
+!> time discretization scheme. 
 SUBROUTINE SIAVariable( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 

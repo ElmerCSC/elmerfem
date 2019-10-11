@@ -1,4 +1,4 @@
-! Compute heat fluxes over a unit square with a hole shaped like a cresent
+! Compute heat fluxes over a unit square with a hole shaped like a crescent
 ! The results could be used in homogenization of a heat equation.
 ! The full square with the given gradient should give a flux of 1. 
 !
@@ -95,7 +95,7 @@ Material 1
 End
 
 Boundary Condition 1
-  Name = "Cresent"
+  Name = "Crescent"
   Target Boundaries = 1
 End 
 

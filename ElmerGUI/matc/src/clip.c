@@ -87,7 +87,7 @@
    RETURN: Number of points in the polygon inside the box
 
    NOTICE! The new number of points may be GRATER than the in origin!
-           The theoretical number of points newer execeeds twice 
+           The theoretical number of points newer exceeds twice 
            the number in origin. 
 ************************************o*************************************/
 int clip_poly(n,x,y)
@@ -169,7 +169,7 @@ int *n;                            /* Number of points in polygon      */
         else
           if(this) 
           {
-            if(j+2 > i)            /* Too many points whitout shift */
+            if(j+2 > i)            /* Too many points without shift */
             {
               for(k=nn; k>i ; k--) { x[k]=x[k-1]; y[k]=y[k-1]; }
               nn++;

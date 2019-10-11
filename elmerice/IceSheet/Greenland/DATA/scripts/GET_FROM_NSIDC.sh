@@ -7,7 +7,7 @@ if [ $# -eq 0 ]
     echo
     echo "provide the url of the file to download"
 fi
-## test if authentification file exist
+## test if authentication file exist
 if [ ! -e "$HOME/.netrc" ]; then
   echo "~/.netrc does not exist"
   echo 

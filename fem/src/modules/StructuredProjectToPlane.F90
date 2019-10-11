@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -320,7 +320,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       WRITE (TargetName,'(A,A)') TRIM(Oper0)//' '//TRIM(VarName)
     END IF
 
-    IF( Oper == 'height' .OR. Oper == 'depth' .OR. Oper == 'index' .OR. Oper == 'distance' ) THEN
+    IF( Oper == 'height' .OR. Oper == 'depth' .OR. Oper == 'index' .OR. Oper == 'distance') THEN
       ReducedDimensional = .FALSE.
     ELSE
       ReducedDimensional = .TRUE.
@@ -708,9 +708,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           TopField(TopPerm(itop)) = TopField(TopPerm(itop)) + dx 
         END DO
 
-      ! Following three operators may have full dimensional results
-      !--------------------------------------------------------------      
-  
+      ! Following four operators may have full dimensional results
+      !--------------------------------------------------------------              
       CASE ('index')
         FieldOut = 0.0_dp
         DO i=1,nnodes

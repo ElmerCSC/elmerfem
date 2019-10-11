@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Leila Puska, Antti Pursula, Peter R�back
+! *  Authors: Juha Ruokolainen, Leila Puska, Antti Pursula, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -242,6 +242,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
 
+  
   Params => GetSolverParams()
 
   PotentialPerm => Solver % Variable % Perm
@@ -255,7 +256,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
   Norm = Solver % Variable % Norm
   DIM = CoordinateSystemDimension()
-
+  
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -394,7 +395,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
  
   IF(CalculateCapMatrix) NonlinearIter = CapBodies
   
-  CALL DefaultInitialize()
 !------------------------------------------------------------------------------
   CALL Info( 'StatElecSolve', '-------------------------------------',Level=4 )
   CALL Info( 'StatElecSolve', 'STATELEC SOLVER:  ', Level=4 )
@@ -407,10 +407,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      at  = CPUTime()
      at0 = RealTime()
 
+     CALL DefaultInitialize()
+  
      IF ( NonlinearIter > 1 ) THEN
-        WRITE( Message, '(a,I0)' ) 'Electrostatic iteration: ', iter
-        CALL Info( 'StatElecSolve', ' ', LEVEL=4 )
-        CALL Info( 'StatElecSolve', Message, LEVEL=4 )
+       WRITE( Message, '(a,I0)' ) 'Electrostatic iteration: ', iter
+       CALL Info( 'StatElecSolve', ' ', LEVEL=4 )
+       CALL Info( 'StatElecSolve', Message, LEVEL=4 )
      END IF
      CALL Info( 'StatElecSolve', 'Starting Assembly...', Level=4 )
 
@@ -427,7 +429,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
     END IF
 
     CALL BoundaryAssembly()
-
+ 
 !------------------------------------------------------------------------------
 !    Solve the system and we are done.
 !------------------------------------------------------------------------------
@@ -925,7 +927,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        !    Dirichlet boundary settings. Actually no need to call it except for
        !    transient simulations.
        !------------------------------------------------------------------------------
-       CALL DefaultFinishAssembly()
+       CALL DefaultFinishBoundaryAssembly()
+        CALL DefaultFinishAssembly()
 
        !------------------------------------------------------------------------------
        !   This sets the BC flags so that the potential form a permulation

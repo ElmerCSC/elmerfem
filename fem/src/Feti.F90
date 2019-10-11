@@ -1126,8 +1126,8 @@ CONTAINS
           end do
 
           !
-          ! Factorize the G'G, and we are done intializing:
-          ! -----------------------------------------------
+          ! Factorize the G'G, and we are done initializing:
+          ! ------------------------------------------------
           call list_tocrsmatrix(gtg_m)
 
           g_n=gtg_m % numberofrows
@@ -1960,6 +1960,25 @@ END SUBROUTINE FetiProject
 
     TYPE(Element_t), POINTER :: EL
     TYPE(ValueList_t), POINTER :: BC
+
+#ifdef HAVE_CHOLMOD
+#ifdef USE_ISO_C_BINDINGS
+    INTERFACE
+      SUBROUTINE SPQR_NZ(chol,nz) BIND(c,NAME="spqr_nz")
+        USE Types
+        INTEGER :: nz
+        INTEGER(Kind=AddrInt) :: chol
+      END SUBROUTINE SPQR_NZ
+
+      SUBROUTINE SPQR_NullSpace(chol,n,nz,z) BIND(c,NAME="spqr_nullspace")
+        USE Types
+        INTEGER :: nz,n
+        REAL(KIND=dp) :: z(*)
+        INTEGER(Kind=AddrInt) :: chol
+      END SUBROUTINE SPQR_NullSpace
+    END INTERFACE
+#endif
+#endif
 
 !------------------------------------------------------------------------------
 

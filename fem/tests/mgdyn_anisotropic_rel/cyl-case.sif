@@ -25,7 +25,7 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 
-! When stiffness matrix is nonlinear this could be used, but should be checked for consistancy
+! When stiffness matrix is nonlinear this could be used, but should be checked for consistency
   !Nonlinear Timestepping = Logical True
 
   Mesh Levels = 1
@@ -42,7 +42,7 @@ end
 
 Material 2 ! nonlinear material
   Name = "Iron"
-  Relative reluctivity(3,3) = variable coordinate
+  Reluctivity(3,3) = variable coordinate
     real procedure "reluctivity" "reluct"
   Relative Permittivity = 1
 End

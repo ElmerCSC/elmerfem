@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -1439,7 +1439,7 @@ int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 
   skip:  
     if(!hit) {
-      printf("FindParentSide: unsuccesfull (elemtype=%d elemsides=%d parent=%d)\n",
+      printf("FindParentSide: unsuccessful (elemtype=%d elemsides=%d parent=%d)\n",
 		    sideelemtype,elemsides,parent);
 
       printf("parents = %d %d\n",bound->parent[sideelem],bound->parent2[sideelem]);
@@ -1466,11 +1466,11 @@ int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 int CreateBoundary(struct CellType *cell,struct FemType *data,
 		   struct BoundaryType *bound,int material1,int material2,
 		   int solidmat,int boundarytype,int info)
-/* This subroutine makes a boundary which includes all sides that separate 
-   two materials that fullfill the conditions in the function call. If both 
-   materials are positive only the sides for which both of the materials 
-   coinside are accepted. In other cases the negative argument tells which 
-   conditions the positive argument should fullfill. Note that on a boundary
+/* This subroutine makes a boundary which includes all sides that separate
+   two materials that fulfill the conditions in the function call. If both
+   materials are positive only the sides for which both of the materials
+   coincide are accepted. In other cases the negative argument tells which
+   conditions the positive argument should fulfill. Note that on a boundary
    where knots are created only for the other material, this material
    should be the latter one in the function call (material). The physical
    properties (emissivity) of the materials are taken from the one given
@@ -1860,7 +1860,7 @@ int CreatePoints(struct CellType *cell,struct FemType *data,
 omstart:
   i = 0;
 
-  /* Create nodes that are devided by the two materials specified */
+  /* Create nodes that are divided by the two materials specified */
   if(pointmode == 4) {
     for(no=1; no <= data->nocells; no++) 
       if(cell[no].material == param2) {
@@ -2040,8 +2040,8 @@ static int CreateNewNodes(struct FemType *data,int *order,int material,int newkn
 
 int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
 			     int boundtype,int endnodes,int info)
-/* Create secondary points for a given boundary. 
-   This feature is handy when one wants to solve problems with discontinous
+/* Create secondary points for a given boundary.
+   This feature is handy when one wants to solve problems with discontinuous
    field variables.
    */
 {
@@ -2133,7 +2133,7 @@ int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
       }
     }
     disconttype = maxtype + 1;
-    if(info) printf("Type of the other side of discontinous boundary set to %d.\n",disconttype);
+    if(info) printf("Type of the other side of discontinuous boundary set to %d.\n",disconttype);
   }
   else {
     disconttype = boundtype;
@@ -2410,7 +2410,7 @@ int ElementsToTriangles(struct FemType *data,struct BoundaryType *bound,
     evenodd = maxanglej % 2;
 
 
-    /* No triangularization is performed unless the crtical angle is exceeded. */
+    /* No triangularization is performed unless the critical angle is exceeded. */
     if( maxangle < critangle ) {
       triangles = 1;
       newtype = elementtype;
@@ -2597,7 +2597,7 @@ int ElementsToTriangles(struct FemType *data,struct BoundaryType *bound,
 			 data,sideind,&sideelemtype);	
 	
 	if(sideelemtype/100 != 2) {
-	  printf("ElementsToTriangles: implemeted only for BCs 202 and 203\n");
+	  printf("ElementsToTriangles: implemented only for BCs 202 and 203\n");
 	  continue;
 	}
 	
@@ -3755,7 +3755,7 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
     }
   }
   else {
-    if(info) printf("Materials ordered continously between %d and %d\n",minmat,maxmat);
+    if(info) printf("Materials ordered continuously between %d and %d\n",minmat,maxmat);
   }
   free_Ivector(mapmat,minmat,maxmat);
 }
@@ -4657,7 +4657,7 @@ int IncreaseElementOrder(struct FemType *data,int info)
     maxnodes = 20;
   else {
     printf("Not implemented for elementtype %d\n",maxelemtype);
-    bigerror("IncreaseElementOrder: Cant continue the subroutine");
+    bigerror("IncreaseElementOrder: Cannot continue the subroutine");
   }
 
   if(info) printf("New leading elementtype is %d\n",100*(maxelemtype/100)+maxnodes);
@@ -6490,7 +6490,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
   if(!periodicdim[0] && !periodicdim[1] && !periodicdim[2]) return(1);
 
   if(data->periodicexist) {
-    printf("FindPeriodicNodes: Subroutine is called for second time¡\n");
+    printf("FindPeriodicNodes: Subroutine is called for second timeï¿½\n");
     return(2);
   }
 
@@ -7227,7 +7227,7 @@ omstart:
     }
     free_Ivector(inside2,1,noknots);
 
-     /* Still, go trough all elements and if they are not on the list of
+     /* Still, go through all elements and if they are not on the list of
 	active materials assume them outside */
     if(checkmaterials) {
       for(j=1;j<=oldnoelements;j++) {
@@ -7274,7 +7274,7 @@ omstart:
 
 
   /* In case one wants to fit the mesh inside the original mesh 
-     the mesh nodes may be put to new positions using an appropiate filter. */
+     the mesh nodes may be put to new positions using an appropriate filter. */
 
 
   /* For higher order elements remove the middlenodes from the list of cornernodes */
@@ -7847,7 +7847,7 @@ int CreateBoundaryLayerDivide(struct FemType *data,struct BoundaryType *bound,
       if(elemhits != 2) nonewelements += nlayer + 1;
     }
   }
-  printf("There will %d new elemenets\n",nonewelements);
+  printf("There will %d new elements\n",nonewelements);
 
   /* This is a conservative estimate */
   nonewnodes = 2*nonewelements;
@@ -8299,7 +8299,7 @@ int CreateDualGraph(struct FemType *data,int full,int info)
   printf("Creating a dual graph of the finite element mesh\n");  
 
   if(data->dualexists) {
-    printf("The dual graph already exists! You shoule remove the old graph!\n");
+    printf("The dual graph already exists! You should remove the old graph!\n");
   }
 
   maxcon = 0;

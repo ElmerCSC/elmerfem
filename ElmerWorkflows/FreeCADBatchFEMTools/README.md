@@ -1,10 +1,10 @@
 # FreeCADBatchFEMTools - A library for using FreeCAD for FEM preprocessing in batch mode
 FreeCADBatchFEMTools.py is a set of tools for handling batch type preprocessing for 
-Elmer Solver. The library was written by Trafotek Oy in collaboration with VTT Technical 
-Reseach Centre of Finland Ltd supported by Business Finland Oy.
+Elmer Solver. The library was written by Trafotek Oy in collaboration with VTT Technical
+Research Centre of Finland Ltd supported by Business Finland Oy.
 
 # Features
-- Inteded for batch mode usage (automatic preprocessing)
+- Intended for batch mode usage (automatic preprocessing)
 - Creating mesh objects for FreeCAD
 - Manipulating the mesh sizes of solids
 - Creating meshes using Gmsh
@@ -16,15 +16,17 @@ Reseach Centre of Finland Ltd supported by Business Finland Oy.
 - Gmsh 3
 - ElmerGrid (Elmer 8.3)
 
+## Tested FreeCAD versions
+- freecad-daily (2. September 2019)
+
 # Tests
 
 Tests are located at ./tests folder.
 
 # Notes
-- To run scipts in batch mode that use FreeCADBatchFEMTools, use:
+- To run scripts in batch mode that use FreeCADBatchFEMTools, use:
 $ FreeCAD -c $PWD/script_name.py
 
 # Authors
 - Eelis Takala, Trafotek Oy
-- Janne Keranen, VTT Technical Reseach Centre of Finland Ltd 
-
+- Janne Keranen, VTT Technical Research Centre of Finland Ltd 

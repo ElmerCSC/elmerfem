@@ -26,7 +26,7 @@
 ! *  Module for solving losses by utilizing the Fourier expansion of 
 ! *  degrees of freedom.
 ! *
-! *  Authors: Juha Ruokolainen, Peter Råback, Mika Malinen
+! *  Authors: Juha Ruokolainen, Peter RÃ¥back, Mika Malinen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -272,7 +272,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   Ncomp = 0
   OldKeywordStyle = ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient')
   IF( OldKeywordStyle ) THEN
-    CALL Warn('FourierLossSolver','Using old keyword style which may become obsolite!')
+    CALL Warn('FourierLossSolver','Using old keyword style which may become obsolete!')
     NComp = 2
   ELSE
     Ncomp = 0
@@ -601,13 +601,13 @@ CONTAINS
 
     SAVE :: time, ratio, tcycle, InitPending, t0, PreviousCycle  
 
-    ! Often the Fourier transform ends just at the end of time step and then the 
+    ! Often the Fourier transform ends just at the end of time step and then the
     ! initialization of the new Fourier series is left to the next timestep. This
-    ! enables that also the Fourier series may possibly be saved at the end. 
-    ! when choosing saving so that it coinsides with the end of Fourier cycle.
+    ! enables that also the Fourier series may possibly be saved at the end.
+    ! when choosing saving so that it coincides with the end of Fourier cycle.
     IF( InitPending ) THEN
-      !  If this is not initialized to zero then additional tricks for normalization are needed.      
-      DO i=1,FourierDofs 
+      !  If this is not initialized to zero then additional tricks for normalization are needed.
+      DO i=1,FourierDofs
         FourierVars(i) % Var % Values = 0.0_dp
       END DO
     END IF
@@ -650,10 +650,10 @@ CONTAINS
         END IF
       END IF
 
-      ! Substract the start time so that we start conveniently from zero
+      ! Subtract the start time so that we start conveniently from zero
       time = time - t0
 
-      ! Compute the fraction of the timestep needed 
+      ! Compute the fraction of the timestep needed
       LeftRule = .FALSE.
       IF( time <= 0.0 ) THEN
         ratio = 0.0_dp

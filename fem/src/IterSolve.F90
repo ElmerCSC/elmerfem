@@ -100,6 +100,9 @@ CONTAINS
 #ifndef HUTI_SGSPARAM
 #define HUTI_SGSPARAM dpar(3)
 #endif
+#ifndef HUTI_PSEUDOCOMPLEX
+#define HUTI_PSEUDOCOMPLEX ipar(7)
+#endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
 #endif
@@ -181,7 +184,7 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-    LOGICAL :: ComplexSystem
+    LOGICAL :: ComplexSystem, PseudoComplexSystem
     
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -204,7 +207,7 @@ CONTAINS
         HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
 
     REAL(KIND=dp) :: ddot, dnrm2, dznrm2
-    EXTERNAL :: ddot, dnrm2, dznrm2
+    EXTERNAL :: ddot, dnrm2, dznrm2   
     
     COMPLEX(KIND=dp) :: zdotc
     EXTERNAL :: zdotc
@@ -264,19 +267,24 @@ CONTAINS
     
     ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
     IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
-
+    
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
       CALL Info('IterSolver','This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
     END IF
-            
+    
+    PseudoComplexSystem = ListGetLogical( Params,'Linear System Pseudo Complex',Found ) 
+
     IF( ComplexSystem ) THEN
       CALL Info('IterSolver','Matrix is complex valued',Level=10)
-    ELSE
+    ELSE IF( PseudoComplexSystem ) THEN
+      CALL Info('IterSolver','Matrix is pseudo complex valued',Level=10)
+    ELSE    
       CALL Info('IterSolver','Matrix is real valued',Level=12)
     END IF
-   
+
+    
     SELECT CASE(str)
     CASE('bicgstab2')
       IterType = ITER_BiCGStab2
@@ -309,6 +317,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     HUTI_WRKDIM = 0
+    HUTI_PSEUDOCOMPLEX = 0
+    IF( PseudoComplexSystem ) THEN
+      HUTI_PSEUDOCOMPLEX = 1     
+      IF ( ListGetLogical( Params,'Block Split Complex',Found ) ) HUTI_PSEUDOCOMPLEX = 2
+    END IF
     Internal = .FALSE.
     
     SELECT CASE ( IterType )
@@ -838,7 +851,7 @@ CONTAINS
         iterProc = AddrFunc( itermethod_jacobi )
       CASE (ITER_RICHARDSON)
         iterProc = AddrFunc( itermethod_richardson )
-      CASE (ITER_GCR)
+      CASE (ITER_GCR)        
         iterProc = AddrFunc( itermethod_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
@@ -848,7 +861,18 @@ CONTAINS
       END SELECT
       
       IF( Internal ) THEN
-        IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+        
+        IF( PseudoComplexSystem ) THEN
+          IF( HUTI_PSEUDOCOMPLEX == 1 ) THEN
+            CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd',Level=15)
+            dotProc = AddrFunc( PseudoZDotProd )
+          ELSE
+            CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd2',Level=15)
+            dotProc = AddrFunc( PseudoZDotProd2 )             
+          END IF
+        ELSE        
+          IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+        END IF
         IF ( normProc == 0 ) normproc = AddrFunc(dnrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )        
       END IF
@@ -945,13 +969,23 @@ CONTAINS
     stack_pos=stack_pos-1
     
     IF ( ComplexSystem ) HUTI_NDIM = HUTI_NDIM * 2
-!------------------------------------------------------------------------------
-    IF ( HUTI_INFO /= HUTI_CONVERGENCE .AND. ParEnv % myPE==0 ) THEN
+
+    !------------------------------------------------------------------------------
+    IF ( HUTI_INFO == HUTI_CONVERGENCE ) THEN
+      IF( ASSOCIATED( Solver % Variable ) ) THEN
+        Solver % Variable % LinConverged = 1
+      END IF
+    ELSE
       CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
       ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
-        CALL NumericalError( 'IterSolve', 'Too many iterations was needed.')
+        CALL NumericalError( 'IterSolve', 'Too many iterations were needed.')        
+      ELSE IF( HUTI_INFO == HUTI_HALTED ) THEN
+        CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
+      END IF
+      IF( ASSOCIATED( Solver % Variable ) ) THEN
+        Solver % Variable % LinConverged = 0
       END IF
     END IF
 !------------------------------------------------------------------------------
@@ -974,12 +1008,12 @@ CONTAINS
 !> convergence/numerical issues, based on a flag in the SIF. Default
 !> behaviour terminates execution.
 !-----------------------------------------------------------------------
-   SUBROUTINE NumericalError( Caller, String, Fatal )
+   SUBROUTINE NumericalError( Caller, String, IsFatal )
 !-----------------------------------------------------------------------
      CHARACTER(LEN=*) :: Caller, String
-     LOGICAL, OPTIONAL :: Fatal
+     LOGICAL, OPTIONAL :: IsFatal
 !-----------------------------------------------------------------------
-     LOGICAL :: GlobalNumFatal, SolverNumFatal, IsFatal, Found
+     LOGICAL :: GlobalNumFatal, SolverNumFatal, DoFatal, Found
 !-----------------------------------------------------------------------
 
      !Fatality logic:
@@ -988,36 +1022,29 @@ CONTAINS
      ! 3) Respect global abort flag if present
      ! 4) Otherwise fatal (backwards compatibility)
 
-     IF(PRESENT(Fatal)) THEN
-       IsFatal = Fatal
+     IF(PRESENT(IsFatal)) THEN
+       DoFatal = IsFatal
      ELSE
        SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
             'Linear System Abort Not Converged', Found)
        IF(Found) THEN
-         IsFatal = SolverNumFatal
+         DoFatal = SolverNumFatal
        ELSE
          GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
             'Global Abort Not Converged',Found)
          IF(Found) THEN
-           IsFatal = GlobalNumFatal
+           DoFatal = GlobalNumFatal
          ELSE
-           IsFatal = .TRUE.
+           DoFatal = .TRUE.
          END IF
        END IF
      END IF
 
-     IF ( OutputLevelMask(0) ) THEN
-       IF(IsFatal) THEN
-         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-              'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
-       ELSE
-         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-              'NUMERICAL WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-       END IF
-       CALL FLUSH(6)
+     IF(DoFatal) THEN
+       CALL Fatal(Caller,'Numerical Error: '//TRIM(String))
+     ELSE
+       CALL Warn(Caller,'Numerical Error: '//TRIM(String))
      END IF
-
-     IF(IsFatal) STOP
 
 !-----------------------------------------------------------------------
    END SUBROUTINE NumericalError

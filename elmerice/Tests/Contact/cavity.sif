@@ -98,7 +98,7 @@ Initial Condition 2
 
 ! If any change in the mesh, this has to be updated so that
 ! bedrock is the equation of the rock topography
-! this will be used to impose the no-penetration conditon
+! this will be used to impose the no-penetration condition
   Bedrock = Variable Coordinate 1
    Real  
      0.0 0.0 
@@ -244,7 +244,7 @@ Solver 6
   Flow Model = String 'Stokes'
 End
 
-! Not really use, give the stress whithin the ice body
+! Not really use, give the stress within the ice body
 Solver 7 
   Equation = Sij          
   Variable = -nooutput "Sij"

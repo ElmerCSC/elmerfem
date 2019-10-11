@@ -524,7 +524,7 @@ CONTAINS
           IF ( BoundaryIndex <= 0 .OR. BoundaryIndex >  &
               Model % NumberOfBoundaries ) THEN
             WRITE( Message, * ) 'Boundary section number: ',BoundaryIndex, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           Model % BoundaryId(BoundaryIndex) = Arrayn
@@ -570,10 +570,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % ICs(i) % Values)) &
                 Model % ICs(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfICs ) THEN
             WRITE( Message, * ) 'Initial Condition section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           Model % ICs(ArrayN) % Tag = ArrayN
@@ -622,10 +622,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Materials(i) % Values)) &
                 Model % Materials(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfMaterials ) THEN
             WRITE( Message, * ) 'Material section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Materials(Arrayn) % Values
@@ -670,10 +670,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % BodyForces(i) % Values)) &
                 Model % BodyForces(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodyForces ) THEN
             WRITE( Message, * ) 'Body Force section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % BodyForces(Arrayn) % Values
@@ -718,10 +718,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Equations(i) % Values)) &
                 Model % Equations(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfEquations ) THEN
             WRITE( Message, * ) 'Equation section number: ',Arrayn, &
-                ' exeeds header value.'
+                ' exceeds header value.'
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Equations(ArrayN) % Values
@@ -768,10 +768,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Bodies(i) % Values)) &
                 Model % Bodies(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodies ) THEN
             WRITE( Message, * ) 'Body section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Bodies(Arrayn) % Values
@@ -817,10 +817,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Components(i) % Values)) &
                 Model % Components(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfComponents ) THEN
             WRITE( Message, * ) 'Component section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Components(Arrayn) % Values
@@ -881,10 +881,10 @@ CONTAINS
             IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
                 Model % Solvers(i) % Values => ListAllocate()
           END DO
-          
+
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfSolvers ) THEN
             WRITE( Message, * ) 'Solver section number: ',Arrayn, &
-                ' exeeds header value. Aborting. '
+                ' exceeds header value. Aborting. '
             CALL Fatal( 'Model Input', Message )
           END IF
           List => Model % Solvers(Arrayn) % Values
@@ -1239,7 +1239,7 @@ CONTAINS
           OPEN( 1, FILE=TRIM(str1), STATUS='OLD', ERR=10 )
 
 !
-!         Initially 50 buckets, on avarage MAX 4 entries / bucket:
+!         Initially 50 buckets, on average MAX 4 entries / bucket:
 !         --------------------------------------------------------
           hash => HashCreate( 50,4 )
           IF ( .NOT. ASSOCIATED( hash ) ) THEN
@@ -2160,7 +2160,12 @@ CONTAINS
       INTEGER :: lstat, ompthread
       CHARACTER(LEN=256) :: txcmd
 
-      !$OMP PARALLEL Shared(parenv, ModelName) Private(txcmd, ompthread, lstat) Default(none)
+#if USE_ISO_C_BINDINGS
+      character(len=256) :: elmer_home_env
+      CALL getenv("ELMER_HOME", elmer_home_env)
+#endif
+
+      !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
@@ -2178,8 +2183,24 @@ CONTAINS
       lstat = lua_dostring(LuaState, txcmd // c_null_char)
       
       WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
-      lstat = lua_dostring(LuaState, &
-          'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+
+      ! TODO: (2018-09-17) Nowadays ISO_C_BINDINGS are pretty much mandatory to compile elmer
+#if USE_ISO_C_BINDINGS
+      ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
+      ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
+
+      if (trim(elmer_home_env) == "") then
+        lstat = lua_dostring(LuaState, &
+            'loadfile("' // &
+ELMER_SOLVER_HOME &
+                    // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
+      else
+#endif
+        lstat = lua_dostring(LuaState, &
+            'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
+#if USE_ISO_C_BINDINGS
+      end if
+#endif
 
       ! Execute lua parts 
       lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
@@ -2244,6 +2265,7 @@ CONTAINS
            Solver % Def_Dofs(:,:,4) = 0
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
+           Solver % DG = .TRUE.
            CYCLE
         ELSE
            ElementDef = "n:1"
@@ -2265,7 +2287,11 @@ CONTAINS
           EXIT
         END IF
       END DO
-
+     
+      !Solver % GlobalBubbles = ListGetLogical(Solver % Values, &
+      !    'Bubbles in Global System', stat)
+      !IF(.NOT. stat) Solver % GlobalBubbles = .TRUE.
+      
       i = i + 1
     END DO
 
@@ -2329,9 +2355,17 @@ CONTAINS
           SerialMesh => AllocateMesh()
         END IF
 
-        Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
-        CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )
-
+        IF( ParEnv % PEs > 1) THEN
+          Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
+        ELSE
+          CALL Info('LoadMesh','Only one active partition, using the serial mesh as it is!')
+          IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
+            DEALLOCATE( SerialMesh % RePartition ) 
+          END IF
+          Model % Meshes => SerialMesh
+        END IF
+          
+        CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )
@@ -2359,6 +2393,10 @@ CONTAINS
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
+      IF( MeshLevels > 1 ) THEN
+        CALL Info('LOadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
+      END IF
+      
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
       MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
 
@@ -3362,6 +3400,8 @@ CONTAINS
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, RestartVariableList, GotPerm, GotIt
     INTEGER, SAVE, ALLOCATABLE :: RestartVariableSizes(:)
+    LOGICAL, SAVE, ALLOCATABLE :: RestartVariableFound(:)
+    INTEGER, SAVE :: RestartVariableCount
     TYPE(ValueList_t), POINTER :: ResList
     
     REAL(KIND=dp) :: Dummy,Val,Time
@@ -3370,12 +3410,9 @@ CONTAINS
     INTEGER(KIND=IntOff_k) :: Pos
     INTEGER :: iostat, FileCount
     CHARACTER(1) :: E
-#ifdef USE_ISO_C_BINDINGS
     REAL(dp) :: tstart, tstop
-#else
-    REAL(dp) :: tstart, tstop, CPUTime
-#endif
-    SAVE TotalDOFs
+
+    SAVE TotalDOFs, PermSize, FieldSize
 
     tstart = CPUTime()
 !------------------------------------------------------------------------------
@@ -3383,8 +3420,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     CALL Info( 'LoadRestartFile',' ', Level = 4)
     CALL Info( 'LoadRestartFile','--------------------------------------------', Level= 4 )
+    CALL Info( 'LoadRestartFile','Restart for mesh name: '//TRIM(Mesh % Name), Level = 8 )
+    CALL Info( 'LoadRestartFile','Restart for number of nodes: '//TRIM(I2S(Mesh % NumberOfNodes)), Level = 8 )    
+    IF( ASSOCIATED( Mesh % Child ) ) THEN
+      CALL Info('LoadRestartFile','Skipping restart for child mesh',Level=4)
+      RETURN
+    END IF
     CALL Info( 'LoadRestartFile','Reading data from file: '//TRIM(RestartFile), Level = 4 )
-
+    
     IF( PRESENT( RestartList ) ) THEN
       ResList => RestartList
     ELSE
@@ -3397,7 +3440,8 @@ CONTAINS
     ELSE
       CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i< )',Level=10)      
     END IF
-    
+
+        
     Cont = .FALSE.
     IF ( PRESENT( Continuous ) ) Cont = Continuous
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
@@ -3434,7 +3478,7 @@ CONTAINS
       ELSE
         CALL Error( 'LoadRestartFile','=======================================' )
         CALL Error( 'LoadRestartFile','' )
-        CALL Error( 'LoadRestartFile','Expted to find all restart files "'//TRIM(FName)//'"' )
+        CALL Error( 'LoadRestartFile','Could not open parallel restart file "'//TRIM(FName)//'"' )
         CALL Error( 'LoadRestartFile','No restart possible!' )
         CALL Error( 'LoadRestartFile','' )
         CALL Fatal( 'LoadRestartFile','=======================================' )
@@ -3477,14 +3521,29 @@ CONTAINS
         CALL Info( 'LoadRestartFile', 'ASCII 0', Level = 4 )
     END IF
     
-    CALL Info( 'LoadRestartFile','Reading restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
-
+    IF( Binary ) THEN
+      CALL Info( 'LoadRestartFile','Reading binary restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+    ELSE
+      CALL Info( 'LoadRestartFile','Reading ascii restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+    END IF
+      
     ! If we want to skip some of the variables we need to have a list 
     ! of their sizes still. This is particularly true with variables that 
     ! do not have permutation since they could be a field (like coordinate)
     ! or a global variable (like time).
     !----------------------------------------------------------------------
-    IF( RestartVariableList ) THEN      
+    IF( RestartVariableList ) THEN            
+      DO j=1,1000
+        VarName = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
+        IF(.NOT. Found ) EXIT
+      END DO
+      j = j - 1
+      CALL Info('LoadRestartFile','Number of variable to read is: '//TRIM(I2S(j)),Level=10)
+      IF( ALLOCATED( RestartVariableFound ) ) DEALLOCATE( RestartVariableFound ) 
+      ALLOCATE( RestartVariableFound(j) )
+      RestartVariableCount = j
+      RestartVariableFound = .FALSE.
+
       DO WHILE( ReadAndTrim(RestartUnit,Row) )
         nlen = LEN_TRIM(Row)        
         k = INDEX( Row(1:nlen),'total dofs:',.TRUE.) 
@@ -3496,6 +3555,7 @@ CONTAINS
           EXIT
         END IF
       END DO
+      IF(ALLOCATED( RestartVariableSizes) ) DEALLOCATE( RestartVariableSizes)
       ALLOCATE( RestartVariableSizes(TotalDofs) )
       RestartVariableSizes = 0
       REWIND( RestartUnit )
@@ -3539,9 +3599,9 @@ CONTAINS
           Solver => CurrentModel % Solvers(i)
           IF ( Row(k+1:nlen) == ListGetString(Solver % Values, 'Equation',Found)) EXIT
         END DO
-        
+
         ! Figure out the slot where the number of dofs are given and read them
-        ! The rule is to start from ':' and go throug empty space and occupied space
+        ! The rule is to start from ':' and go through empty space and occupied space
         DO j=k-1,1,-1
           IF ( Row(j:j) /= ' ' ) EXIT
         END DO
@@ -3601,6 +3661,10 @@ CONTAINS
           CALL Fatal('LoadRestartFile','Error reading size information: '//TRIM(Row(j+1:)))
         END IF
 
+        CALL Info('LoadRestartFile','Size of the field to load: '//TRIM(I2S(FieldSize)),Level=15)
+        CALL Info('LoadRestartFile','Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=15)
+         
+
         ! read the name of the solver and associate it to existing solver
         !----------------------------------------------------------------
         k = INDEX( Row(j+1:),':')
@@ -3647,8 +3711,11 @@ CONTAINS
             LoadThis = .TRUE.
             ! This makes it possible to request loading of vectors
             ! so that also all the corresponding scalar components (1,2,3,...) are saved. 
-            IF( k > k2 ) LoadThis = ( VERIFY( VarName(k2+1:k),' 0123456789') == 0 ) 
-            IF( LoadThis ) EXIT
+            IF( k > k2 ) LoadThis = ( VERIFY( VarName(k2+1:k),' 0123456789') == 0 )             
+            IF( LoadThis ) THEN
+              RestartVariableFound(j) = .TRUE.
+              EXIT
+            END IF
           END IF
         END DO        
         IF(.NOT. LoadThis ) THEN
@@ -3676,8 +3743,26 @@ CONTAINS
       ! Check whether a variable exists or not. If it does not exist then 
       ! create the variable so that it can be filled with the data.
       !------------------------------------------------------------------
+      
+
       Var => VariableGet( Mesh % Variables, VarName,.TRUE. )      
-      IF ( .NOT.ASSOCIATED(Var) ) THEN
+
+      IF ( ASSOCIATED(Var) ) THEN
+        CALL Info('LoadRestartFile','Using existing variable: '//TRIM(VarName),Level=12)
+
+        IF( FieldSize /= SIZE( Var % Values ) ) THEN
+          CALL Warn('LoadRestartFile','Fields are of different size ('&
+              //TRIM(I2S(FieldSize))//' vs. '//TRIM(I2S(SIZE(Var % Values)))//'): '//TRIM(VarName))
+        ELSE
+          CALL Info('LoadRestartFile','Fields sizes match for: '//TRIM(VarName),Level=20)         
+        END IF
+        IF( PermSize /= SIZE( Var % Perm ) ) THEN
+          CALL Warn('LoadRestartFile','Permutations are of different size ('&
+              //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
+        ELSE
+          CALL Info('LoadRestartFile','Permutation sizes match for: '//TRIM(VarName),Level=20)
+        END IF
+      ELSE
         CALL Info('LoadRestartFile','Creating variable: '//TRIM(VarName),Level=6)
 
         ALLOCATE( Var )
@@ -3703,8 +3788,6 @@ CONTAINS
 !         First add components to the variable list separately...
 !         (must be done this way for the output routines to work properly...)
 !----------------------------------------------------------------------------
-!          NSDOFs = CoordinateSystemDimension() + 1
-!          IF ( Coordinates == CylindricSymmetric ) NSDOFs = NSDOFs + 1
           NSDOFS = Dofs
 
           Velocity1 => Var % Values(1:NSDOFs*Mesh % NumberOfNodes:NSDOFs)
@@ -3834,7 +3917,7 @@ CONTAINS
 
          CALL ReadVariableName( RestartUnit,Row,Stat )
 
-         ! If not all varibales were saved for this time step, and we're not
+         ! If not all variables were saved for this time step, and we're not
          ! using a .pos file, we may have reached the end even though i < TotalDOFs.
          IF ( Stat /= 0 ) EXIT
          IF ( SEQL(Row, "Time:") ) THEN
@@ -3852,17 +3935,21 @@ CONTAINS
          ! while Perm will be the permutation associated with the saved field. 
          ! They could be different, even though the usually are not!
          IF ( FmtVersion > 0 ) THEN
+           CALL Info('LoadRestartFile','Reading permutation order for: '//TRIM(Row),Level=12)
            CALL ReadPerm( RestartUnit, Perm, GotPerm )
+           CALL Info('LoadRestartFile','Succesfully read permutation order for: '//TRIM(Row),Level=20)
          END IF
 
          IF( LoadThis ) THEN
            Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
-           IF ( .NOT. ASSOCIATED(Var) ) THEN
+           IF ( ASSOCIATED(Var) ) THEN
+             CALL Info('LoadRestartFile','Using existing variable for reading: '//TRIM(Row),Level=15)
+           ELSE
              CALL Warn('LoadRestartFile','Variable is not present for reading: '//TRIM(Row))
            END IF
            IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
              DEALLOCATE( Var % Perm ) ; Var % Perm => NULL()
-!            CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
+             CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
            END IF
 
            IF ( ASSOCIATED(Var % Perm) .AND. FmtVersion > 0 ) THEN
@@ -3870,9 +3957,6 @@ CONTAINS
            ELSE
              n = SIZE(Var % Values)
            END IF
-           ! in case of (.NOT. LoadThis) n has already been set
-           CALL Info('LoadRestartFile','Size of variable is '//TRIM(I2S(n)),Level=20)
-           
            ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
            IF( ASSOCIATED( Var % Solver ) ) THEN
              IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
@@ -3880,37 +3964,53 @@ CONTAINS
                Var % Solver % DoneTime = Var % Solver % Order
              END IF
            END IF
-         END IF
-         
-         DO j=1, n
-           IF ( FmtVersion > 0 ) THEN
-             CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
-           ELSE
-             READ( RestartUnit,* ) Node, k, Val
-           END IF
-           
-           ! One can not really omit reading the lines since otherwise at least the 
-           ! ascii format would loose it, but now we can cycle the rest. 
-           IF(.NOT. LoadThis ) CYCLE
-           
-           IF ( .NOT. GotPerm ) THEN
-             Var % Values(k) = Val
-           ELSE IF ( Var % Perm(j) > 0 ) THEN
-             IF ( k > 0 ) Var % Values(Var % Perm(j)) = Val
-           ELSE 
-             Var % Perm(j) = k
-             IF ( k > 0 ) Var % Values(k) = Val
-           END IF
-         END DO
 
-         IF( InfoActive( 20 ) ) THEN
-           PRINT *,'LoadRestartFile range:',ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
-         END IF
+           ! in case of (.NOT. LoadThis) n has already been set
+           IF( n > SIZE( Perm ) ) THEN
+             n = SIZE( Perm )
+             CALL Info('LoadRestartFile','Reducing size of read loop for smaller Perm vector')
+           END IF
+           CALL Info('LoadRestartFile','Size of load loop is '//TRIM(I2S(n)),Level=15)
            
-         IF( LoadThis ) THEN
+           DO j=1, n
+             IF ( FmtVersion > 0 ) THEN             
+               CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
+             ELSE
+               READ( RestartUnit,* ) Node, k, Val
+             END IF
+
+             ! One can not really omit reading the lines since otherwise at least the 
+             ! ascii format would loose it, but now we can cycle the rest. 
+             IF(.NOT. LoadThis ) CYCLE
+
+             IF ( .NOT. GotPerm ) THEN
+               Var % Values(k) = Val
+             ELSE IF( SIZE( Var % Perm ) < j ) THEN
+               CYCLE
+             ELSE IF ( Var % Perm(j) > 0 ) THEN
+               IF ( k > 0 ) Var % Values(Var % Perm(j)) = Val
+             ELSE 
+               Var % Perm(j) = k
+               IF ( k > 0 ) Var % Values(k) = Val
+             END IF
+           END DO
+
+           IF( InfoActive( 20 ) ) THEN
+             PRINT *,'LoadRestartFile range:',ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
+           END IF
+
            CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )
-         END IF
-
+         ELSE
+           ! Just cycle the values, do not even try to be smart
+           DO j=1, FieldSize
+             IF ( FmtVersion > 0 ) THEN             
+               CALL CycleValue( RestartUnit )
+             ELSE
+               READ( RestartUnit,* ) Node, k, Val
+             END IF
+           END DO
+         END IF ! IF( LoadThis ) 
+                      
       END DO
       nt = nt + 1
     END DO
@@ -3927,7 +4027,7 @@ CONTAINS
     END IF
 
 
-    ! This is now obsolite for the new format 
+    ! This is now obsolete for the new format
     IF( FmtVersion < 3 ) THEN
       ! Change variable allocations to correct sizes,
       ! first for vectors...
@@ -3968,6 +4068,13 @@ CONTAINS
       END DO
     END IF
 
+    IF( RestartVariableList ) THEN
+      DO j=1,RestartVariableCount
+        IF( .NOT. RestartVariableFound(j) ) THEN
+          CALL Warn('LoadRestartFile','Could not find restart variable: '//TRIM(I2S(j)))
+        END IF
+      END DO
+    END IF
     
     tstop = CPUTime()
     
@@ -4077,12 +4184,27 @@ CONTAINS
          ELSE
             READ( RestartUnit, * , IOSTAT=iostat ) Val
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in GetValue')
+              CALL Fatal('LoadRestartFile','Error in GetValue for: '//TRIM(Var % Name) ) 
             END IF
          END IF
       END IF
    END SUBROUTINE GetValue
-    
+
+
+   SUBROUTINE CycleValue( RestartUnit )
+     INTEGER, INTENT(IN) :: RestartUnit
+     REAL(dp) :: Val
+
+     IF ( Binary ) THEN
+       CALL BinReadDouble( RestartUnit, Val )
+     ELSE
+       READ( RestartUnit, * , IOSTAT=iostat ) Val
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadRestartFile','Error in CycleValue for: '//TRIM(Var % Name) ) 
+       END IF
+     END IF
+   END SUBROUTINE CycleValue
+   
 
    SUBROUTINE ReadPerm( RestartUnit, Perm, GotPerm )
       INTEGER, INTENT(IN) :: RestartUnit
@@ -4104,7 +4226,7 @@ CONTAINS
          ELSE
             READ( Row(7:),*,IOSTAT=iostat) nPerm, nPositive
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in ReadPerm: '//TRIM(Row))
+              CALL Fatal('LoadRestartFile','Error reading sizes in ReadPerm: '//TRIM(Row))
             END IF
          END IF
       END IF
@@ -4117,6 +4239,7 @@ CONTAINS
          ! asked to read only some variables, in which case the previous Perm
          ! table might be yet unread so we need to jump back to 'Pos' and read
          ! it from there.
+         CALL Info('LoadRestartFile','Using previous permutation vector',Level=15)
          GotPerm = .TRUE.
          RETURN
       ELSE IF ( nPerm == 0 ) THEN
@@ -4127,9 +4250,16 @@ CONTAINS
       END IF
 
       IF( ALLOCATED( Perm ) ) THEN
-        IF( SIZE( Perm ) < nPerm ) DEALLOCATE( Perm ) 
+        IF( SIZE( Perm ) < nPerm ) THEN
+          CALL Warn('LoadRestartFile','Permutation vector too small?')
+          DEALLOCATE( Perm ) 
+        END IF
+        IF( SIZE( Perm ) > nPerm ) THEN
+          CALL Info('LoadRestartFile','Permutation vector too large?',Level=15)
+        END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
+        CALL Warn('LoadRestartFile','Allocating permutation vector of size: '//TRIM(I2S(nPerm)))
         ALLOCATE( Perm(nPerm) )
       END IF
       Perm = 0
@@ -4141,7 +4271,7 @@ CONTAINS
          ELSE
             READ( RestartUnit, * , IOSTAT=iostat) j,k
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error reading in ReadPerm')
+              CALL Fatal('LoadRestartFile','Error reading values in ReadPerm')
             END IF
          END IF
          Perm(j) = k
@@ -4741,7 +4871,7 @@ CONTAINS
       END DO
       WRITE(PostFileUnit,'(a)') '#endgroup all'
 !------------------------------------------------------------------------------
-!   Open result file and go trough it...
+!   Open result file and go through it...
 !------------------------------------------------------------------------------
 
       REWIND(OutputUnit)

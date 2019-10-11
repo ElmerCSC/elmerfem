@@ -89,29 +89,29 @@ Material 1
 
 ! For 3D diagonal conductivity
 !  Heat Conductivity(3) = Variable Coordinate 1
-!    Real 
+!    Real
 !       0 1 20 0
-!       5 2 10 0 
+!       5 2 10 0
 !    End
 
 ! For 2D tensor conductivity
-! Note that 2x2=4 values are in the row and each depends seperately on x.
+! Note that 2x2=4 values are in the row and each depends separately on x.
   Heat Conductivity(2,2) = Variable Coordinate 1
-    Real 
-      0 1 0 0 20 
-      5 2 0 0 10 
+    Real
+      0 1 0 0 20
+      5 2 0 0 10
     End
 End
 
 
 Boundary Condition 1
   Name = "Sides"
-  Target Boundaries(1) = 1 
+  Target Boundaries(1) = 1
 End
 
 Boundary Condition 2
   Name = "Bottom"
-  Target Boundaries(1) = 2 
+  Target Boundaries(1) = 2
   Heat Flux = 1.0
 End
 

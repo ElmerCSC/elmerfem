@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Rï¿½back                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -658,7 +658,7 @@ void Meshutils::findEdgeElementPoints(mesh_t *mesh)
 
   // delete old points, if any:
   if(mesh->getPoints() > 0) {
-    cout << "Deleteing old points and creating new" << endl;
+    cout << "Deleting old points and creating new" << endl;
     cout.flush();
     for(int i = 0; i < mesh->getPoints(); i++) {
       mesh->getPoint(i)->deleteNodeIndexes();
@@ -1247,7 +1247,7 @@ int Meshutils::divideEdgeBySharpPoints(mesh_t *mesh)
   }
   index++;
   
-  // Create a hopefully mesh indepedent indexing of groupings to enable
+  // Create a hopefully mesh independent indexing of groupings to enable
   // reapplying merge/division operations after remeshing. The indices
   // are given based on group bounding box corner distances from a given
   // point. Fails if two groups have same bbox, which should not happen 
@@ -1455,7 +1455,7 @@ int Meshutils::divideSurfaceBySharpEdges(mesh_t *mesh)
   }
   index++;
 
-  // Create a hopefully mesh indepedent indexing of groupings to enable
+  // Create a hopefully mesh independent indexing of groupings to enable
   // reapplying merge/division operations after remeshing. The indices
   // are given based on group bounding box corner distances from a given
   // point. Fails if two groups have same bbox, which should not happen 
@@ -1620,6 +1620,9 @@ void Meshutils::findSurfaceElementNormals(mesh_t *mesh)
     } else if(e1<0) {
       // e0 known, e1 unknown
       bigger = e0;
+    } else if (e0<0) {
+	  // e0 unknown, e1 known
+	  bigger = e1;
     } else {
       // both parents known
       bigger = e0;
@@ -1772,7 +1775,7 @@ void Meshutils::findSurfaceElementNormals(mesh_t *mesh)
       }
   }
 
-  // avarage normals over surfaces connected to vertices if
+  // average normals over surfaces connected to vertices if
   // normals within the limit_angle:
   double limit_angle = cos(50.*3.14159/180.);
 

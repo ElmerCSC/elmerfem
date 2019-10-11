@@ -45,6 +45,7 @@ MODULE NavierStokesCylindrical
   USE DefUtils
   USE Differentials
   USE MaterialModels
+  USE ElementDescription, ONLY: GetEdgeMap
 
   IMPLICIT NONE
 
@@ -1015,7 +1016,7 @@ MODULE NavierStokesCylindrical
      s = SqrtMetric * detJ * S_Integ(t)
 !
 !------------------------------------------------------------------------------
-!    Add to load: tangetial derivative of something
+!    Add to load: tangential derivative of something
 !------------------------------------------------------------------------------
 !
      TangentForce = 0._dp

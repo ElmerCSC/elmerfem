@@ -14,7 +14,7 @@
          <Parameter Widget="Edit" >
             <Name> Reference Temperature </Name>
             <Type> String </Type>
-            <Whatis> This keyword is used to give the temperature occuring in the Boltzmann factor. </Whatis>
+            <Whatis> This keyword is used to give the temperature occurring in the Boltzmann factor. </Whatis>
          </Parameter>    
          <Parameter Widget="Edit" >
             <Name> Charge Number </Name>
@@ -98,7 +98,7 @@ and Negative Charge Number.
 
          <Parameter  Widget="Edit">
            <Name> Potential Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
          </Parameter>
 
          <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>

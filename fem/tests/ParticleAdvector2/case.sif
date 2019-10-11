@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
@@ -23,7 +23,8 @@ Simulation
   Output Intervals = 1
   Timestepping Method = BDF
   BDF Order = 1
-!  Post File = case.ep
+
+!  Post File = case.vtu
 End
 
 Constants
@@ -75,6 +76,10 @@ Solver 1
 
   Optimize bandwidth = True
   Exported Variable 1 = Strides
+
+! optionally the ParticleAdvector can plot the element sizes
+! used for courant number
+  Exported Variable 2 = "-elem element size"
 End
 
 
@@ -153,4 +158,4 @@ End
 
 
 Solver 2 :: Reference Norm = Real 2.8000142
-RUN
+
