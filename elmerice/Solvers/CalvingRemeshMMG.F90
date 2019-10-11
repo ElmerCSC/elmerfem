@@ -143,7 +143,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   PRINT *,ParEnv % MyPE,' remesh_thresh: ',remesh_thresh
 
 
-  !For testing - set a calving levelset function to mimick calving events
+  !Get the calving levelset function (-ve inside calving event, +ve in intact ice)
   !-------------------
   CalvingVar => VariableGet(Mesh % Variables, "Calving Lset", .TRUE., UnfoundFatal=.TRUE.)
 
@@ -609,7 +609,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END IF
 
       !Anisotropic mesh improvement following calving cut:
-      !TODO - unhardcode!
+      !TODO - unhardcode! Also this doesn't work very well yet.
       ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
       target_length(:,1) = 300.0
       target_length(:,2) = 300.0

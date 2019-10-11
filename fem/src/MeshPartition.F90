@@ -284,7 +284,6 @@ CONTAINS
     ! ZOLTAN_OBJ_SIZE_MULTI_FN or ZOLTAN_OBJ_SIZE_FN  - Optional for LB_APPROACH=Repartition.
     ! ZOLTAN_PART_MULTI_FN or ZOLTAN_PART_FN - Optional for LB_APPROACH=Repartition and for REMAP=1. 
 
-    IF(Debug) PRINT *, ParEnv % MyPE,' Defining global element adjacency.'
     IF( Serial ) THEN          
       IF( UsePerm ) THEN
         CALL LocalElemAdjacency( Mesh, ElemAdj, ElemAdjProc, ElemStart, DIM, PartitionPerm )
@@ -308,14 +307,11 @@ CONTAINS
       IF( SIZE( Mesh % Repartition ) < NBulk ) DEALLOCATE(Mesh % Repartition)
     END IF
 
-    IF(Debug) PRINT *, ParEnv % MyPE,' Zoltan finished.'
-
     ! In hybrid partitioning we may herit partitioning that already has some part set.
     IF(.NOT. ASSOCIATED(Mesh % Repartition) ) THEN
       ALLOCATE(Mesh % Repartition(NBulk))
     END IF
 
-    IF(Debug) PRINT *,ParEnv % MyPE,' numExport: ',numExport
     ! By default stay on this proc, only moving elements are returned    
     IF( UsePerm ) THEN
       Mesh % Repartition(InvPerm) = ParEnv % MyPe + 1

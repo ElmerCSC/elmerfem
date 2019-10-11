@@ -308,7 +308,7 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
   INTEGER :: ref,corner,required,ridge
   INTEGER :: parent,ied
   INTEGER :: ii,kk
-  LOGICAL :: Found, Debug
+  LOGICAL :: Debug
 
   !> a) get the size of the mesh: vertices, tetra,prisms, triangles, quads,edges
   CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
@@ -482,11 +482,8 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
   DO i=1,OldNN-1
     IF(old_gdofs(i) == old_gdofs(i+1)) &
          CALL Fatal(FuncName,"OldMesh has duplicate GlobalDOFs")
-    IF(old_gdofs(i) <= 0) &
-         CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs <= 0")
   END DO
-  IF(old_gdofs(OldNN) <= 0) &
-       CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs <= 0")
+  IF(ANY(old_gdofs) <= 0) CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs <= 0")
 
   !Determine locally which GlobalDOFs are available for assignment
   DO i=1, OldNN

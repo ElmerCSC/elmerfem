@@ -2159,8 +2159,6 @@ INCLUDE "mpif.h"
 
     istat = -1
     ALLOCATE( f(n), STAT=istat )
-    ! IF ( n > 0 ) THEN
-    ! END IF
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
