@@ -48,7 +48,7 @@ Simulation
   Timestepping Method = "bdf"
   BDF Order = 1
 
-  Timestep Intervals(1) = 30
+  Timestep Intervals(1) = 2
   Output Intervals(1) = 1
   Timestep Sizes(1) = Real $1.0/365.0 !day step
 
