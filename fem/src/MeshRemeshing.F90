@@ -483,7 +483,7 @@ SUBROUTINE RenumberGDOFs(OldMesh,NewMesh)
     IF(old_gdofs(i) == old_gdofs(i+1)) &
          CALL Fatal(FuncName,"OldMesh has duplicate GlobalDOFs")
   END DO
-  IF(ANY(old_gdofs) <= 0) CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs <= 0")
+  IF(ANY(old_gdofs <= 0)) CALL Fatal(FuncName,"OldMesh has at least 1 GlobalDOFs <= 0")
 
   !Determine locally which GlobalDOFs are available for assignment
   DO i=1, OldNN
