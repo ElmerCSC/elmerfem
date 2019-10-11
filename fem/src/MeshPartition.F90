@@ -397,7 +397,7 @@ CONTAINS
           IF( j == 0 ) CYCLE
         END IF
         ! global_ids(j) = j 
-        global_ids(j) = Mesh % Elements(i) % GElementIndex
+        global_ids(j) = Mesh % Elements(j) % GElementIndex
  
        local_ids(j) = j
       end do
