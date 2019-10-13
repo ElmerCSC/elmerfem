@@ -1,0 +1,114 @@
+! This case demonstrates the use of conforming periodic BCs
+! for 3D elasticity. Conforming BCs enable elimination which
+! results to better convergence of linear systems.
+! 
+! P.R. 10.10.2019
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  
+  Output Intervals = 0
+  Post File = case.vtu
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Disp
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Min Iterations = 2
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+! This enforces the conforming BCs to be taken into account
+  Apply Conforming BCs = Logical True
+End
+
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Youngs modulus = 10.0 ! chosen so that unit load is good
+  Density = 1.0
+  Poisson ratio = 0.3
+End
+
+! BCs 1 & 2 form the conforming buondary pair
+Boundary Condition 1
+  Name = "PeriodicA" 
+  Target Boundaries(1) = 4
+  Conforming BC = 2
+End 
+
+Boundary Condition 2
+  Name = "PeriodicB" 
+  Target Boundaries(1) = 2
+End 
+
+Boundary Condition 3
+  Name = "Bottom" 
+  Target Boundaries(1) = 1
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 3 = Real 0.0
+End 
+
+! We just have some load, this is fast to compute
+Boundary Condition 4
+  Name = "Top"
+  Target Boundaries(1) = 3
+  Force 2 = Equals "Coordinate 1"
+End
+
+Boundary Condition 5
+  Name = "Front"
+  Target Boundaries(1) = 5
+End
+
+Boundary Condition 6
+  Name = "Back"
+  Target Boundaries(1) = 6
+End
+
+
+Solver 1 :: Reference Norm = 9.02709237E-03
