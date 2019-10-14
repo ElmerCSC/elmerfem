@@ -84,7 +84,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        target_length(:,:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
-  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.
+  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.,DoAniso
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -589,40 +589,54 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
-      new_fixed_elem = PACK(new_fixed_elem, .NOT. RmElem)
-      new_fixed_node = PACK(new_fixed_node, .NOT. RmNode)
+      DoAniso = .FALSE.
+      IF(DoAniso) THEN
 
-      IF(Debug) THEN
-        DO i=1,NewMeshR % NumberOfNodes
-          PRINT *, ParEnv % MyPE,' debug new ',i,&
-               ' GDOF: ',NewMeshR % ParallelInfo % GlobalDOFs(i),&
-               ' xyz: ',&
-               NewMeshR % Nodes % x(i),&
-               NewMeshR % Nodes % y(i),&
-               NewMeshR % Nodes % z(i)
+        new_fixed_elem = PACK(new_fixed_elem, .NOT. RmElem)
+        new_fixed_node = PACK(new_fixed_node, .NOT. RmNode)
 
-          IF(NewMeshR % ParallelInfo % GlobalDOFs(i) == 0) CYCLE
-          IF(.NOT. ANY(GatheredMesh % ParallelInfo % GlobalDOFs == &
-               NewMeshR % ParallelInfo % GlobalDOFs(i))) CALL Warn(SolverName, &
-               "Unexpected GID")
-        END DO
+        IF(Debug) THEN
+          DO i=1,NewMeshR % NumberOfNodes
+            PRINT *, ParEnv % MyPE,' debug new ',i,&
+                 ' GDOF: ',NewMeshR % ParallelInfo % GlobalDOFs(i),&
+                 ' xyz: ',&
+                 NewMeshR % Nodes % x(i),&
+                 NewMeshR % Nodes % y(i),&
+                 NewMeshR % Nodes % z(i)
+
+            IF(NewMeshR % ParallelInfo % GlobalDOFs(i) == 0) CYCLE
+            IF(.NOT. ANY(GatheredMesh % ParallelInfo % GlobalDOFs == &
+                 NewMeshR % ParallelInfo % GlobalDOFs(i))) CALL Warn(SolverName, &
+                 "Unexpected GID")
+          END DO
+        END IF
+
+        !Anisotropic mesh improvement following calving cut:
+        !TODO - unhardcode! Also this doesn't work very well yet.
+        ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
+        target_length(:,1) = 300.0
+        target_length(:,2) = 300.0
+        target_length(:,3) = 50.0
+
+        CALL RemeshMMG3D(NewMeshR, target_length, NewMeshRR, new_fixed_node, new_fixed_elem)
+
+        !Update parallel info from old mesh nodes (shared node neighbours)
+        CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
+
+        CALL ReleaseMesh(NewMeshR)
+        NewMeshR => NewMeshRR
+        NewMeshRR => NULL()
+
+      ELSE
+
+        !Update parallel info from old mesh nodes (shared node neighbours)
+        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+
       END IF
 
-      !Anisotropic mesh improvement following calving cut:
-      !TODO - unhardcode! Also this doesn't work very well yet.
-      ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
-      target_length(:,1) = 300.0
-      target_length(:,2) = 300.0
-      target_length(:,3) = 50.0
-
-      CALL RemeshMMG3D(NewMeshR, target_length, NewMeshRR, new_fixed_node, new_fixed_elem)
-
-      !Update parallel info from old mesh nodes (shared node neighbours)
-      CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
-
       CALL ReleaseMesh(GatheredMesh)
-      CALL ReleaseMesh(NewMeshR)
-      GatheredMesh => NewMeshRR
+      ! CALL ReleaseMesh(NewMeshR)
+      GatheredMesh => NewMeshR
       NewMeshR => NULL()
       NewMeshRR => NULL()
    END IF
