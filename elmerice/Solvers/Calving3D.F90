@@ -231,12 +231,12 @@
 
    !Use GetDomainEdge for Front, Left and Right
    !Returns full domain edge to Boss partition only
-   CALL GetDomainEdge(Model, Mesh, TopPerm, LeftMaskName, &
-        LeftNodes, LeftNodeNums, Parallel, Simplify=.FALSE.)
-   CALL GetDomainEdge(Model, Mesh, TopPerm, RightMaskName, &
-        RightNodes, RightNodeNums, Parallel, Simplify=.FALSE.)
-   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontMaskName, &
-        FrontNodes, FrontNodeNums, Parallel, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, LeftNodes, &
+        LeftNodeNums, Parallel,  LeftMaskName, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, RightNodes, &
+        RightNodeNums, Parallel, RightMaskName, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontNodes, &
+        FrontNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
 
    !Determine whether front columns are arranged
    !left to right, and reorder if not. useful later...

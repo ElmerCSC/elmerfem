@@ -293,7 +293,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
        ZThresh, global_eps, local_eps
   LOGICAL :: Debug, Parallel, CalvingOccurs, RemeshOccurs, PauseSolvers, Found, &
        RotFS, FirstTime = .TRUE.,CalvingLastTime, PauseAfterCalving, FrontalBecomeBasal, &
-       TangleOccurs, CheckTangled, NSFail, CheckFlowConvergence
+       TangleOccurs, CheckTangled, NSFail, CheckFlowConvergence, IgnoreCalving
   LOGICAL, POINTER :: NewBasalNode(:)=>NULL()
   CHARACTER(MAX_NAME_LEN) :: SolverName, VarName, EqName, CalvingVarName,&
        FrontMaskName,InMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
@@ -303,7 +303,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   SAVE :: FirstTime, SaveDt, SaveSSiter, PseudoSSdt, LastRemeshTime, ForceRemeshTime, &
        CalvingLastTime,FrontMaskName,InMaskName,TopMaskName,BotMaskName,LeftMaskName,&
        RightMaskName, ZThresh, CalvingVarName, PauseAfterCalving, global_eps, local_eps,&
-       PauseTimeCount
+       PauseTimeCount, IgnoreCalving
 
   Debug = .FALSE.
 
@@ -386,6 +386,13 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
         PauseAfterCalving = .TRUE.
      END IF
 
+     IgnoreCalving = ListGetLogical(Params, "Ignore Calving", Found)
+     IF(.NOT. Found) THEN
+        CALL Info(SolverName, "Can't find 'Ignore Calving' logical in Solver section, &
+             & assuming False")
+        IgnoreCalving = .FALSE.
+     END IF
+
      global_eps = 1.0E-2_dp
      local_eps = 1.0E-2_dp
   END IF !FirstTime
@@ -409,9 +416,13 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   time = TimeVar % Values(1)
 
   !Is there a calving event?
-  CalvingOccurs = ListGetLogical(Model % Simulation, 'CalvingOccurs', Found)
-  IF(.NOT.Found) CALL Warn(SolverName, "Unable to find CalvingOccurs logical, &
-       & assuming no calving event.")
+  IF(.NOT. IgnoreCalving) THEN
+    CalvingOccurs = ListGetLogical(Model % Simulation, 'CalvingOccurs', Found)
+    IF(.NOT.Found) CALL Warn(SolverName, "Unable to find CalvingOccurs logical, &
+         & assuming no calving event.")
+  ELSE
+    CalvingOccurs = .FAlSE.
+  END IF
 
   !Note - two switches: PauseAfterCalving is the rule in the sif (i.e. do or don't)
   !PauseSolvers is marked by Calving3D if calving event exceeding certain size occurred
@@ -896,17 +907,17 @@ CONTAINS
 
     !Get each of the 4 edges of the top surface
     !The result of these calls is only valid in Boss part
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, LeftMaskName, &
-         LeftNodes, LeftLineNodeNums, Parallel, Simplify=.TRUE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, LeftNodes, &
+         LeftLineNodeNums, Parallel, LeftMaskName,Simplify=.TRUE.)
     IF(Debug) CALL Info(SolverName, "Done left domain edge")
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, RightMaskName, &
-         RightNodes, RightLineNodeNums, Parallel, Simplify=.TRUE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, RightNodes, &
+         RightLineNodeNums, Parallel, RightMaskName, Simplify=.TRUE.)
     IF(Debug) CALL Info(SolverName, "Done right domain edge")
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, InMaskName, &
-         BackNodes, BackLineNodeNums, Parallel, Simplify=.TRUE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, BackNodes, &
+         BackLineNodeNums, Parallel, InMaskName, Simplify=.TRUE.)
     IF(Debug) CALL Info(SolverName, "Done back domain edge")
-    CALL GetDomainEdge(Model, OldMesh, TopPerm, FrontMaskName, &
-         FrontNodes, FrontLineNodeNums, Parallel, Simplify=.FALSE.)
+    CALL GetDomainEdge(Model, OldMesh, TopPerm, FrontNodes, &
+         FrontLineNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
     IF(Debug) CALL Info(SolverName, "Done front domain edge")
 
     !Call this again later to remove too close nodes from result
@@ -1655,6 +1666,8 @@ CONTAINS
     !------------------------------------------------------------
     ! Write and generate footprint mesh
     !------------------------------------------------------------
+    ! TODO: This only works on a 4-BC mesh...
+
     IF(Boss) THEN
        AllFail = .FALSE.
 
@@ -1735,6 +1748,9 @@ CONTAINS
             WritePoints(WriteNodeCount),',',WritePoints(1),'};'
 
        !------------Write physical lines-------------
+       !TODO - Adapt this from 4-BC setup. DO WHILE, watch for
+       ! change in BC ID (?) and cycle to next loop
+       ! I think this is the ONLY part of this loop which needs fixing
        counter = 1
        DO i=1,4 !cycle boundaries
           SELECT CASE(i)
@@ -1760,6 +1776,8 @@ CONTAINS
                      'Target Boundaries', Found )
                 IF(SIZE(BList)>1) CALL Fatal(SolverName,&
                      "Could not uniquely determine target BC")
+                !TODO - data is lost (which target BC?)
+                !However - can be detected/guessed by inspecting noncontiguity of given BC
                 MeshBC = BList(1)
                 EXIT
              END IF
