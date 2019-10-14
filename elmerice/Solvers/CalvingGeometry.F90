@@ -626,10 +626,11 @@ CONTAINS
   ! NOTE: if this breaks, it could be due to two paths
   !       sharing a node. Thinking about it, I see no reason
   !       this should be an issue, but we'll see...
-  SUBROUTINE ValidateCrevassePaths(Mesh, CrevassePaths, FrontOrientation, PathCount)
+  SUBROUTINE ValidateCrevassePaths(Mesh, CrevassePaths, FrontOrientation, PathCount, OnLeft, OnRight)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
+    LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:)
     REAL(KIND=dp) :: FrontOrientation(3)
     INTEGER :: PathCount, First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
@@ -642,6 +643,7 @@ CONTAINS
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:)
+    CHARACTER(MAX_NAME_LEN) :: FuncName="ValidateCrevassePaths"
 
     Debug = .FALSE.
     Snakey = .TRUE.
@@ -654,6 +656,38 @@ CONTAINS
 
     ! Find path %left, %right, %extent (width)
     CALL ComputePathExtent(CrevassePaths, Mesh % Nodes, .TRUE.)
+
+    IF(PRESENT(OnLeft) .OR. PRESENT(OnRight)) THEN
+      CALL Assert((PRESENT(OnLeft) .AND. PRESENT(OnRight)), FuncName, &
+           "Provided only one of OnLeft/OnRight!")
+
+      !Check that crevasse path doesn't begin and end on same lateral margin
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
+        !Check node OnLeft, OnRight
+        First = CurrentPath % NodeNumbers(1)
+        Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+        IF((OnLeft(First) .AND. OnLeft(Last)) .OR. &
+             (OnRight(First) .AND. OnRight(Last))) THEN
+          CurrentPath % Valid = .FALSE.
+        END IF
+        CurrentPath => CurrentPath % Next
+      END DO
+
+      !Actually remove previous marked
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
+        WorkPath => CurrentPath % Next
+
+        IF(.NOT. CurrentPath % Valid) THEN
+          IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
+          CALL RemoveCrevassePath(CurrentPath)
+          IF(Debug) CALL Info("ValidateCrevassePaths","Removing a crevasse path which &
+               &starts and ends on same margin")
+        END IF
+        CurrentPath => WorkPath
+      END DO
+    END IF
 
     IF(Snakey) THEN
       !-----------------------------------------------------
