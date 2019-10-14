@@ -109,6 +109,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     IF (Transient) THEN
       CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
       IF (.NOT.Found) CalcVelocities = .FALSE.
+    ELSE
+      CalcVelocities = .FALSE.
     END IF
     
     ! If stress computation is requested somewhere then enforce it 
