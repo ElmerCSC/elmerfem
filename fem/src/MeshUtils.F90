@@ -16491,12 +16491,13 @@ CONTAINS
     LOGICAL, OPTIONAL :: RequireLogical
     LOGICAL, OPTIONAL :: ParallelComm
 !------------------------------------------------------------------------------
-    INTEGER, POINTER :: InvPerm(:)
+    INTEGER, POINTER :: InvPerm(:), Neighbours(:)
     INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:)
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2,This,bf_id,nn,ii(ParEnv % PEs)
     INTEGER :: ierr, status(MPI_STATUS_SIZE), NewDofs
     LOGICAL :: Flag, Found, FirstRound, MaskIsLogical, Hit, Parallel
+    LOGICAL, ALLOCATABLE :: IsNeighbour(:)
     INTEGER :: Indexes(30), ElemStart, ElemFin, Width
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
     TYPE(Element_t), POINTER :: CurrentElement,Elm
@@ -16621,15 +16622,15 @@ CONTAINS
     !Code borrowed from CommunicateLinearSystemTag
     IF( Parallel ) THEN
 
-      ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+      ALLOCATE( IsNeighbour(ParEnv % PEs), fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
 
+      nn = MeshNeighbours(Mesh, IsNeighbour)
       nn = 0
       ineigh = 0
       DO i=0, ParEnv % PEs-1
         k = i+1
-        IF(.NOT.ParEnv % Active(k) ) CYCLE
         IF(i==ParEnv % myPE) CYCLE
-        IF(.NOT.ParEnv % IsNeighbour(k) ) CYCLE
+        IF(.NOT. IsNeighbour(k) ) CYCLE
         nn = nn + 1
         fneigh(nn) = k
         ineigh(k) = nn
