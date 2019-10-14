@@ -64,7 +64,8 @@
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), ColumnNormals(:,:), &
         TangledShiftTo(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
-        Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting
+        Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
+        IgnoreVelo
    LOGICAL, ALLOCATABLE :: DangerZone(:), WorkLogical(:), UpdatedColumn(:),&
         Tangled(:), DontMove(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VeloVarName, MeltVarName, &
@@ -91,13 +92,22 @@
    DOFs = Var % DOFs
    IF(Var % DOFs /= 3) CALL Fatal(SolverName, "Variable should have 3 DOFs...")
 
-   !Get the flow solution
-   VeloVarName = ListGetString(Params, "Flow Solution Variable Name", Found)
+   IgnoreVelo = ListGetLogical(Params, "Ignore Velocity", Found)
    IF(.NOT. Found) THEN
-     CALL Info(SolverName, "Flow Solution Variable Name not found, assuming 'Flow Solution'")
-     VeloVarName = "Flow Solution"
+     IgnoreVelo = .FALSE.
+   ELSE
+     CALL Info(SolverName, "Ignoring velocity (melt undercutting only)")
    END IF
-   VeloVar => VariableGet(Mesh % Variables, VeloVarName, .TRUE., UnfoundFatal=.TRUE.)
+
+   IF(.NOT. IgnoreVelo) THEN
+     !Get the flow solution
+     VeloVarName = ListGetString(Params, "Flow Solution Variable Name", Found)
+     IF(.NOT. Found) THEN
+       CALL Info(SolverName, "Flow Solution Variable Name not found, assuming 'Flow Solution'")
+       VeloVarName = "Flow Solution"
+     END IF
+     VeloVar => VariableGet(Mesh % Variables, VeloVarName, .TRUE., UnfoundFatal=.TRUE.)
+   END IF
 
    !Get melt rate
    MeltVarName = ListGetString(Params, "Melt Variable Name", Found)
@@ -265,11 +275,14 @@
        NodeMelt = 0.0_dp
      END IF
 
-     !Compute front normal component of velocity
-     NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
-     NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
-     NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
-
+     IF(IgnoreVelo) THEN
+       NodeVelo = 0.0
+     ELSE
+       !Compute front normal component of velocity
+       NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
+       NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
+       NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
+     END IF
 
      Displace = 0.0
 

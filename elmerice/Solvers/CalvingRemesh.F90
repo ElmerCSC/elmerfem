@@ -293,7 +293,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
        ZThresh, global_eps, local_eps
   LOGICAL :: Debug, Parallel, CalvingOccurs, RemeshOccurs, PauseSolvers, Found, &
        RotFS, FirstTime = .TRUE.,CalvingLastTime, PauseAfterCalving, FrontalBecomeBasal, &
-       TangleOccurs, CheckTangled, NSFail, CheckFlowConvergence
+       TangleOccurs, CheckTangled, NSFail, CheckFlowConvergence, IgnoreCalving
   LOGICAL, POINTER :: NewBasalNode(:)=>NULL()
   CHARACTER(MAX_NAME_LEN) :: SolverName, VarName, EqName, CalvingVarName,&
        FrontMaskName,InMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
@@ -303,7 +303,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   SAVE :: FirstTime, SaveDt, SaveSSiter, PseudoSSdt, LastRemeshTime, ForceRemeshTime, &
        CalvingLastTime,FrontMaskName,InMaskName,TopMaskName,BotMaskName,LeftMaskName,&
        RightMaskName, ZThresh, CalvingVarName, PauseAfterCalving, global_eps, local_eps,&
-       PauseTimeCount
+       PauseTimeCount, IgnoreCalving
 
   Debug = .FALSE.
 
@@ -386,6 +386,13 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
         PauseAfterCalving = .TRUE.
      END IF
 
+     IgnoreCalving = ListGetLogical(Params, "Ignore Calving", Found)
+     IF(.NOT. Found) THEN
+        CALL Info(SolverName, "Can't find 'Ignore Calving' logical in Solver section, &
+             & assuming False")
+        IgnoreCalving = .FALSE.
+     END IF
+
      global_eps = 1.0E-2_dp
      local_eps = 1.0E-2_dp
   END IF !FirstTime
@@ -409,9 +416,13 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   time = TimeVar % Values(1)
 
   !Is there a calving event?
-  CalvingOccurs = ListGetLogical(Model % Simulation, 'CalvingOccurs', Found)
-  IF(.NOT.Found) CALL Warn(SolverName, "Unable to find CalvingOccurs logical, &
-       & assuming no calving event.")
+  IF(.NOT. IgnoreCalving) THEN
+    CalvingOccurs = ListGetLogical(Model % Simulation, 'CalvingOccurs', Found)
+    IF(.NOT.Found) CALL Warn(SolverName, "Unable to find CalvingOccurs logical, &
+         & assuming no calving event.")
+  ELSE
+    CalvingOccurs = .FAlSE.
+  END IF
 
   !Note - two switches: PauseAfterCalving is the rule in the sif (i.e. do or don't)
   !PauseSolvers is marked by Calving3D if calving event exceeding certain size occurred
