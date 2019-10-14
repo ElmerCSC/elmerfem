@@ -16478,7 +16478,7 @@ CONTAINS
 !> to normal Lagrangian elements.
 !------------------------------------------------------------------------------
   SUBROUTINE MakePermUsingMask( Model,Solver,Mesh,MaskName, &
-       OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical )
+       OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical, ParallelComm )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Mesh_t)   :: Mesh
@@ -16489,17 +16489,26 @@ CONTAINS
     CHARACTER(LEN=*) :: MaskName
     LOGICAL, OPTIONAL :: MaskOnBulk
     LOGICAL, OPTIONAL :: RequireLogical
+    LOGICAL, OPTIONAL :: ParallelComm
 !------------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm(:)
+    INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:)
-    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2,This,bf_id   
-    LOGICAL :: Flag, Found, FirstRound, MaskIsLogical, Hit
+    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2,This,bf_id,nn,ii(ParEnv % PEs)
+    INTEGER :: ierr, status(MPI_STATUS_SIZE), NewDofs
+    LOGICAL :: Flag, Found, FirstRound, MaskIsLogical, Hit, Parallel
     INTEGER :: Indexes(30), ElemStart, ElemFin, Width
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
     TYPE(Element_t), POINTER :: CurrentElement,Elm
     REAL(KIND=dp) :: MinDist, Dist
 !------------------------------------------------------------------------------
-    
+
+    IF(PRESENT(ParallelComm)) THEN
+      Parallel = ParallelComm
+    ELSE
+      Parallel = ParEnv % PEs > 1
+    END IF
+
     ! First check if there are active elements for this mask
     IF( PRESENT( MaskOnBulk ) ) MaskOnBulk = .FALSE.
     IF( PRESENT( RequireLogical ) ) THEN
@@ -16540,12 +16549,11 @@ CONTAINS
           EXIT
        END IF
     END DO
-    
+
     IF( ElemFin - ElemStart <= 0) THEN
        LocalNodes = 0
        RETURN
     END IF
-
 
     k = 0
     Perm = 0
@@ -16608,8 +16616,84 @@ CONTAINS
     END DO
     LocalNodes = k
 
+    !In parallel case, detect nodes which are shared with another partition
+    !which may not have an element on this boundary
+    !Code borrowed from CommunicateLinearSystemTag
+    IF( Parallel ) THEN
+
+      ALLOCATE( fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+
+      nn = 0
+      ineigh = 0
+      DO i=0, ParEnv % PEs-1
+        k = i+1
+        IF(.NOT.ParEnv % Active(k) ) CYCLE
+        IF(i==ParEnv % myPE) CYCLE
+        IF(.NOT.ParEnv % IsNeighbour(k) ) CYCLE
+        nn = nn + 1
+        fneigh(nn) = k
+        ineigh(k) = nn
+      END DO
+
+      n = COUNT(Perm > 0 .AND. Mesh % ParallelInfo % Interface)
+      ALLOCATE( s_e(n, nn ), r_e(n) )
+
+      CALL CheckBuffer( nn*3*n )
+
+      ii = 0
+      DO i=1, Mesh % NumberOfNodes
+        IF(Perm(i) > 0 .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+          DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
+            k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
+            IF ( k == ParEnv % MyPE ) CYCLE
+            k = k + 1
+            k = ineigh(k)
+            IF ( k> 0) THEN
+              ii(k) = ii(k) + 1
+              s_e(ii(k),k) = Mesh % ParallelInfo % GlobalDOFs(i)
+            END IF
+          END DO
+        END IF
+      END DO
+
+      DO i=1, nn
+        j = fneigh(i)
+        CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
+        IF( ii(i) > 0 ) THEN
+          CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
+        END IF
+      END DO
+
+      NewDofs = 0
+
+      DO i=1, nn
+        j = fneigh(i)
+        CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
+        IF ( n>0 ) THEN
+          IF( n>SIZE(r_e)) THEN
+            DEALLOCATE(r_e)
+            ALLOCATE(r_e(n))
+          END IF
+
+          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
+          DO j=1,n
+            k = SearchNode( Mesh % ParallelInfo, r_e(j), Order=Mesh % ParallelInfo % Gorder )
+            IF ( k>0 ) THEN
+              IF(.NOT. Perm(k) > 0) THEN
+                NewDofs = NewDofs + 1
+                Perm(k) = LocalNodes + NewDofs
+              END IF
+            END IF
+          END DO
+        END IF
+      END DO
+      DEALLOCATE(s_e, r_e )
+
+      LocalNodes = LocalNodes + NewDofs
+    END IF
+
     ! Don't optimize bandwidth for parallel cases
-    IF( ParEnv % PEs > 1 .OR. .NOT. OptimizeBW ) RETURN
+    IF( Parallel .OR. .NOT. OptimizeBW ) RETURN
 
     IF(FirstRound) THEN
        ! Allocate space 

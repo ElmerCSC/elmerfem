@@ -844,11 +844,11 @@
 
        !Generate PlaneMesh perms to quickly get nodes on each boundary
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, FrontMaskName, &
-            .FALSE., PlaneFrontPerm, dummyint)
+            .FALSE., PlaneFrontPerm, dummyint, ParallelComm=.FALSE.)
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, LeftMaskName, &
-            .FALSE., PlaneLeftPerm, dummyint)
+            .FALSE., PlaneLeftPerm, dummyint, ParallelComm=.FALSE.)
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, RightMaskName, &
-            .FALSE., PlaneRightPerm, dummyint)
+            .FALSE., PlaneRightPerm, dummyint, ParallelComm=.FALSE.)
 
        ! Set ave_cindex values to 0.0 on front
        ! In fact, right at the very front, ave_cindex is undefined,
