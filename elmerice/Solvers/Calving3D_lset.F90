@@ -635,7 +635,8 @@
 
        CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount, IMOnLeft, IMOnRight)
+       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
+            IMOnLeft, IMOnRight, .FALSE.)
 
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount

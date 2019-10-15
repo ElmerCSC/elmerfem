@@ -626,11 +626,11 @@ CONTAINS
   ! NOTE: if this breaks, it could be due to two paths
   !       sharing a node. Thinking about it, I see no reason
   !       this should be an issue, but we'll see...
-  SUBROUTINE ValidateCrevassePaths(Mesh, CrevassePaths, FrontOrientation, PathCount, OnLeft, OnRight)
+  SUBROUTINE ValidateCrevassePaths(Mesh, CrevassePaths, FrontOrientation, PathCount, OnLeft, OnRight, EnsureProjectible)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
-    LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:)
+    LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:),EnsureProjectible
     REAL(KIND=dp) :: FrontOrientation(3)
     INTEGER :: PathCount, First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
@@ -640,13 +640,20 @@ CONTAINS
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start
     INTEGER, ALLOCATABLE :: WorkInt(:)
-    LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath
+    LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
+         DoProjectible
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:)
     CHARACTER(MAX_NAME_LEN) :: FuncName="ValidateCrevassePaths"
 
     Debug = .FALSE.
     Snakey = .TRUE.
+
+    IF(PRESENT(EnsureProjectible)) THEN
+      DoProjectible = EnsureProjectible
+    ELSE
+      DoProjectible = .TRUE.
+    END IF
 
     RotationMatrix = ComputeRotationMatrix(FrontOrientation)
     UnRotationMatrix = TRANSPOSE(RotationMatrix)
@@ -941,101 +948,103 @@ CONTAINS
     !  which are 'shadowed' by further away elements.
     !-----------------------------------------------------
 
-    CurrentPath => CrevassePaths
-    DO WHILE(ASSOCIATED(CurrentPath))
+    IF(DoProjectible) THEN
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
 
-      ALLOCATE(PathMoveNode(CurrentPath % NumberOfNodes))
-      PathMoveNode = .FALSE.
-
-      DO i=1,CurrentPath % NumberOfNodes
-        n = CurrentPath % NodeNumbers(i)
-        DO j=1,CurrentPath % NumberOfElements
-          ElNo = CurrentPath % ElementNumbers(j)
-          NodeNums = Mesh % Elements(ElNo) % NodeIndexes
-          IF(ANY(NodeNums == n)) CYCLE !Node is in element, skip
-          !Check if node lies between element nodes
-          IF( (Mesh % Nodes % y(NodeNums(1)) > Mesh % Nodes % y(n)) .NEQV. &
-               (Mesh % Nodes % y(NodeNums(2)) > Mesh % Nodes % y(n)) ) THEN
-            !Check the node is in front of the element
-
-            A = MINLOC(Mesh % Nodes % z(NodeNums),1)
-            B = MAXLOC(Mesh % Nodes % z(NodeNums),1)
-            CCW = ((Mesh % Nodes % y(n) - Mesh % Nodes % y(NodeNums(A))) * &
-                 (Mesh % Nodes % z(NodeNums(B)) - Mesh % Nodes % z(NodeNums(A)))) > &
-                 ((Mesh % Nodes % z(n) - Mesh % Nodes % z(NodeNums(A))) * &
-                 (Mesh % Nodes % y(NodeNums(B)) - Mesh % Nodes % y(NodeNums(A))))
-
-            ToLeft = Mesh % Nodes % y(NodeNums(A)) > Mesh % Nodes % y(NodeNums(B))
-
-            IF(CCW .EQV. ToLeft) THEN
-              !Node should be removed
-              PathMoveNode(i) = .TRUE.
-              EXIT
-            END IF
-
-          END IF
-        END DO
-      END DO
-
-      IF(Debug) THEN
-        PRINT *,'Path ',CurrentPath % ID,' has ',&
-             COUNT(PathMoveNode),' nodes which need to be shifted.'
+        ALLOCATE(PathMoveNode(CurrentPath % NumberOfNodes))
+        PathMoveNode = .FALSE.
 
         DO i=1,CurrentPath % NumberOfNodes
-          IF(.NOT. PathMoveNode(i)) CYCLE
-          PRINT *,'Need to move node: ',i,' y: ',&
-               Mesh % Nodes % y(CurrentPath % NodeNumbers(i)),&
-               ' z: ',Mesh % Nodes % z(CurrentPath % NodeNumbers(i))
+          n = CurrentPath % NodeNumbers(i)
+          DO j=1,CurrentPath % NumberOfElements
+            ElNo = CurrentPath % ElementNumbers(j)
+            NodeNums = Mesh % Elements(ElNo) % NodeIndexes
+            IF(ANY(NodeNums == n)) CYCLE !Node is in element, skip
+            !Check if node lies between element nodes
+            IF( (Mesh % Nodes % y(NodeNums(1)) > Mesh % Nodes % y(n)) .NEQV. &
+                 (Mesh % Nodes % y(NodeNums(2)) > Mesh % Nodes % y(n)) ) THEN
+              !Check the node is in front of the element
 
-        END DO
-      END IF
+              A = MINLOC(Mesh % Nodes % z(NodeNums),1)
+              B = MAXLOC(Mesh % Nodes % z(NodeNums),1)
+              CCW = ((Mesh % Nodes % y(n) - Mesh % Nodes % y(NodeNums(A))) * &
+                   (Mesh % Nodes % z(NodeNums(B)) - Mesh % Nodes % z(NodeNums(A)))) > &
+                   ((Mesh % Nodes % z(n) - Mesh % Nodes % z(NodeNums(A))) * &
+                   (Mesh % Nodes % y(NodeNums(B)) - Mesh % Nodes % y(NodeNums(A))))
 
-      !Now that nodes have been marked as shadowed, identify chains
-      !and the location of the node to which these groups of nodes should be moved.
-      Shifted = .TRUE.
-      Start = 1
-      DO WHILE(Shifted)
-        Shifted = .FALSE.
+              ToLeft = Mesh % Nodes % y(NodeNums(A)) > Mesh % Nodes % y(NodeNums(B))
 
-        DO i=Start,CurrentPath % NumberOfNodes
-          IF(PathMoveNode(i)) THEN
-            IF(.NOT. Shifted) THEN
-              Shifted = .TRUE.
-              FirstIndex = i
+              IF(CCW .EQV. ToLeft) THEN
+                !Node should be removed
+                PathMoveNode(i) = .TRUE.
+                EXIT
+              END IF
+
             END IF
-            LastIndex = i
-          ELSE
-            IF(Shifted) EXIT
-          END IF
+          END DO
         END DO
-        IF(.NOT. Shifted) EXIT
 
-        !We have identified a chain from FirstIndex to LastIndex which need to be moved.
-        !They should be moved to either FirstIndex-1 or LastIndex+1
-        !(Whichever is further back)
-        !Note special case at start and end of path
-        IF(FirstIndex == 1) THEN
-          ShiftToMe = CurrentPath % NodeNumbers(LastIndex+1)
-        ELSE IF(LastIndex == CurrentPath % NumberOfNodes) THEN
-          ShiftToMe = CurrentPath % NodeNumbers(FirstIndex-1)
-        ELSE IF(Mesh % Nodes % z(CurrentPath % NodeNumbers(FirstIndex-1)) <&
-             Mesh % Nodes % z(CurrentPath % NodeNumbers(LastIndex+1))) THEN
-          ShiftToMe = CurrentPath % NodeNumbers(FirstIndex-1)
-        ELSE
-          ShiftToMe = CurrentPath % NodeNumbers(LastIndex+1)
+        IF(Debug) THEN
+          PRINT *,'Path ',CurrentPath % ID,' has ',&
+               COUNT(PathMoveNode),' nodes which need to be shifted.'
+
+          DO i=1,CurrentPath % NumberOfNodes
+            IF(.NOT. PathMoveNode(i)) CYCLE
+            PRINT *,'Need to move node: ',i,' y: ',&
+                 Mesh % Nodes % y(CurrentPath % NodeNumbers(i)),&
+                 ' z: ',Mesh % Nodes % z(CurrentPath % NodeNumbers(i))
+
+          END DO
         END IF
 
-        Mesh % Nodes % y(CurrentPath % NodeNumbers(FirstIndex:LastIndex)) = &
-             Mesh % Nodes % y(ShiftToMe)
+        !Now that nodes have been marked as shadowed, identify chains
+        !and the location of the node to which these groups of nodes should be moved.
+        Shifted = .TRUE.
+        Start = 1
+        DO WHILE(Shifted)
+          Shifted = .FALSE.
 
-        IF(Debug) PRINT *,'Shifting nodes ',FirstIndex,' to ',LastIndex,&
-             ' to point: ',Mesh % Nodes % y(ShiftToMe)
-        Start = LastIndex + 1
+          DO i=Start,CurrentPath % NumberOfNodes
+            IF(PathMoveNode(i)) THEN
+              IF(.NOT. Shifted) THEN
+                Shifted = .TRUE.
+                FirstIndex = i
+              END IF
+              LastIndex = i
+            ELSE
+              IF(Shifted) EXIT
+            END IF
+          END DO
+          IF(.NOT. Shifted) EXIT
+
+          !We have identified a chain from FirstIndex to LastIndex which need to be moved.
+          !They should be moved to either FirstIndex-1 or LastIndex+1
+          !(Whichever is further back)
+          !Note special case at start and end of path
+          IF(FirstIndex == 1) THEN
+            ShiftToMe = CurrentPath % NodeNumbers(LastIndex+1)
+          ELSE IF(LastIndex == CurrentPath % NumberOfNodes) THEN
+            ShiftToMe = CurrentPath % NodeNumbers(FirstIndex-1)
+          ELSE IF(Mesh % Nodes % z(CurrentPath % NodeNumbers(FirstIndex-1)) <&
+               Mesh % Nodes % z(CurrentPath % NodeNumbers(LastIndex+1))) THEN
+            ShiftToMe = CurrentPath % NodeNumbers(FirstIndex-1)
+          ELSE
+            ShiftToMe = CurrentPath % NodeNumbers(LastIndex+1)
+          END IF
+
+          Mesh % Nodes % y(CurrentPath % NodeNumbers(FirstIndex:LastIndex)) = &
+               Mesh % Nodes % y(ShiftToMe)
+
+          IF(Debug) PRINT *,'Shifting nodes ',FirstIndex,' to ',LastIndex,&
+               ' to point: ',Mesh % Nodes % y(ShiftToMe)
+          Start = LastIndex + 1
+        END DO
+
+        DEALLOCATE(PathMoveNode)
+        CurrentPath => CurrentPath % Next
       END DO
-
-      DEALLOCATE(PathMoveNode)
-      CurrentPath => CurrentPath % Next
-    END DO
+    END IF !DoProjectible
 
     !NOTE: probably not really necessary here, Shifted nodes don't extend
     !the extent
@@ -1045,7 +1054,8 @@ CONTAINS
     !--------------------------------------------------------
     ! Remove crevassepaths which are contained within others.
     !--------------------------------------------------------
-    !  1) All crevasse paths start and end on the calving front.
+    !  1) All crevasse paths start and end on the calving front
+    !     or lateral margin.
     !  2) Crevasse paths can't cross each other.
     !
     !  Thus, iff a crevasse path is surrounded laterally by
@@ -1097,155 +1107,158 @@ CONTAINS
     ! i.e. the larger calving event takes precedent
     !-------------------------------------------------
 
-    CurrentPath => CrevassePaths
-    DO WHILE(ASSOCIATED(CurrentPath))
+    IF(DoProjectible) THEN
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
 
-      OtherPath => CrevassePaths
-      DO WHILE(ASSOCIATED(OtherPath))
-        IF(ASSOCIATED(OtherPath, CurrentPath)) THEN
-          OtherPath => OtherPath % Next
-          CYCLE
-        END IF
-
-        IF((CurrentPath % Left < OtherPath % Right) .EQV. &
-             (OtherPath % Left < CurrentPath % Right)) THEN !overlap
-
-          IF(Debug) PRINT *,'Debug, paths: ',CurrentPath % ID, OtherPath % ID,' partially overlap'
-
-          !Is the other path to the right or left?
-          OtherRight = CurrentPath % Right < OtherPath % Right
-
-          !Check not fully contained - should have been dealt with above
-          IF((CurrentPath % Right > OtherPath % Right) .NEQV. &
-               (CurrentPath % Left > OtherPath % Left)) THEN
-            CALL Warn("ValidateCrevassePaths","Encountered full overlap which &
-                 &should already have been taken care of! OK if this is rare, &
-                 &otherwise maybe programming error")
+        OtherPath => CrevassePaths
+        DO WHILE(ASSOCIATED(OtherPath))
+          IF(ASSOCIATED(OtherPath, CurrentPath)) THEN
+            OtherPath => OtherPath % Next
+            CYCLE
           END IF
 
-          IF(OtherRight) THEN
-            RightPath => OtherPath
-            LeftPath => CurrentPath
-          ELSE
-            RightPath => CurrentPath
-            LeftPath => OtherPath
-          END IF
+          IF((CurrentPath % Left < OtherPath % Right) .EQV. &
+               (OtherPath % Left < CurrentPath % Right)) THEN !overlap
 
-          !Find the left and rightmost nodes of the two paths
-          DO i=1,LeftPath % NumberOfNodes
-            IF(Debug) PRINT *,'Debug, node ',i,' of leftpath: ',&
-                 Mesh % Nodes % y(LeftPath % NodeNumbers(i)), LeftPath % Right
+            IF(Debug) PRINT *,'Debug, paths: ',CurrentPath % ID, OtherPath % ID,' partially overlap'
 
-            IF(Mesh % Nodes % y(LeftPath % NodeNumbers(i)) >= LeftPath % Right) LeftIdx = i
-          END DO
+            !Is the other path to the right or left?
+            OtherRight = CurrentPath % Right < OtherPath % Right
 
-          DO i=1,RightPath % NumberOfNodes
-            IF(Debug) PRINT *,'Debug, node ',i,' of rightpath: ',&
-                 Mesh % Nodes % y(RightPath % NodeNumbers(i)), RightPath % Left
+            !Check not fully contained - should have been dealt with above
+            IF((CurrentPath % Right > OtherPath % Right) .NEQV. &
+                 (CurrentPath % Left > OtherPath % Left)) THEN
+              CALL Warn("ValidateCrevassePaths","Encountered full overlap which &
+                   &should already have been taken care of! OK if this is rare, &
+                   &otherwise maybe programming error")
+            END IF
 
-            IF(Mesh % Nodes % y(RightPath % NodeNumbers(i)) <= RightPath % Left) RightIdx = i
-          END DO
+            IF(OtherRight) THEN
+              RightPath => OtherPath
+              LeftPath => CurrentPath
+            ELSE
+              RightPath => CurrentPath
+              LeftPath => OtherPath
+            END IF
 
-          !See which is further forward.
-          ShiftRightPath = Mesh % Nodes % z(LeftPath % NodeNumbers(LeftIdx)) < &
-               Mesh % Nodes % z(RightPath % NodeNumbers(RightIdx))
-
-          IF(ShiftRightPath) THEN
-            ShiftTo = Mesh % Nodes % y(LeftPath % NodeNumbers(LeftIdx))
-            DO i=1,RightPath % NumberOfNodes
-              IF(Mesh % Nodes % y(RightPath % NodeNumbers(i)) < ShiftTo) THEN
-                IF(Debug) PRINT *,'Debug, overlap shifting right node ',i,' path '&
-                     ,RightPath % ID,' from ', Mesh % Nodes % y(RightPath % NodeNumbers(i)),&
-                     ' to ',ShiftTo
-                Mesh % Nodes % y(RightPath % NodeNumbers(i)) = ShiftTo
-              END IF
-            END DO
-            CALL ComputePathExtent(RightPath, Mesh % Nodes, .FALSE.)
-
-          ELSE
-            ShiftTo = Mesh % Nodes % y(RightPath % NodeNumbers(RightIdx))
+            !Find the left and rightmost nodes of the two paths
             DO i=1,LeftPath % NumberOfNodes
-              IF(Mesh % Nodes % y(LeftPath % NodeNumbers(i)) > ShiftTo) THEN
-                IF(Debug) PRINT *,'Debug, overlap shifting left node ',i,' path ',&
-                     LeftPath % ID,' from ',Mesh % Nodes % y(LeftPath % NodeNumbers(i)),&
-                     ' to ',ShiftTo
-                Mesh % Nodes % y(LeftPath % NodeNumbers(i)) = ShiftTo
-              END IF
+              IF(Debug) PRINT *,'Debug, node ',i,' of leftpath: ',&
+                   Mesh % Nodes % y(LeftPath % NodeNumbers(i)), LeftPath % Right
+
+              IF(Mesh % Nodes % y(LeftPath % NodeNumbers(i)) >= LeftPath % Right) LeftIdx = i
             END DO
-            CALL ComputePathExtent(LeftPath, Mesh % Nodes, .FALSE.)
 
+            DO i=1,RightPath % NumberOfNodes
+              IF(Debug) PRINT *,'Debug, node ',i,' of rightpath: ',&
+                   Mesh % Nodes % y(RightPath % NodeNumbers(i)), RightPath % Left
+
+              IF(Mesh % Nodes % y(RightPath % NodeNumbers(i)) <= RightPath % Left) RightIdx = i
+            END DO
+
+            !See which is further forward.
+            ShiftRightPath = Mesh % Nodes % z(LeftPath % NodeNumbers(LeftIdx)) < &
+                 Mesh % Nodes % z(RightPath % NodeNumbers(RightIdx))
+
+            IF(ShiftRightPath) THEN
+              ShiftTo = Mesh % Nodes % y(LeftPath % NodeNumbers(LeftIdx))
+              DO i=1,RightPath % NumberOfNodes
+                IF(Mesh % Nodes % y(RightPath % NodeNumbers(i)) < ShiftTo) THEN
+                  IF(Debug) PRINT *,'Debug, overlap shifting right node ',i,' path '&
+                       ,RightPath % ID,' from ', Mesh % Nodes % y(RightPath % NodeNumbers(i)),&
+                       ' to ',ShiftTo
+                  Mesh % Nodes % y(RightPath % NodeNumbers(i)) = ShiftTo
+                END IF
+              END DO
+              CALL ComputePathExtent(RightPath, Mesh % Nodes, .FALSE.)
+
+            ELSE
+              ShiftTo = Mesh % Nodes % y(RightPath % NodeNumbers(RightIdx))
+              DO i=1,LeftPath % NumberOfNodes
+                IF(Mesh % Nodes % y(LeftPath % NodeNumbers(i)) > ShiftTo) THEN
+                  IF(Debug) PRINT *,'Debug, overlap shifting left node ',i,' path ',&
+                       LeftPath % ID,' from ',Mesh % Nodes % y(LeftPath % NodeNumbers(i)),&
+                       ' to ',ShiftTo
+                  Mesh % Nodes % y(LeftPath % NodeNumbers(i)) = ShiftTo
+                END IF
+              END DO
+              CALL ComputePathExtent(LeftPath, Mesh % Nodes, .FALSE.)
+
+            END IF
           END IF
+
+          OtherPath => OtherPath % Next
+        END DO
+
+        CurrentPath => CurrentPath % Next
+      END DO
+
+      !-----------------------------------------------------------------------
+      ! Remove elements whose nodes are in a vertical line
+      !     (to prevent potential issues in interp)
+      !-----------------------------------------------------------------------
+      ! This occurs due to the shifting which occurs above.
+      ! NOTE: This breaks the assumption that element(i) has nodes (i) & (i+1)
+      ! It also breaks the chain! Currently OK but don't rely on this below this
+      ! point, or in Calving3D.F90
+      !-----------------------------------------------------------------------
+
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
+
+        ALLOCATE(DeleteElement(CurrentPath % NumberOfElements),&
+             DeleteNode(CurrentPath % NumberOfNodes))
+        DeleteElement = .FALSE.
+        DeleteNode = .FALSE.
+
+        DO i=1,CurrentPath % NumberOfElements
+          !Element i is composed of nodes i,i+1
+          IF(Mesh % Nodes % y(CurrentPath % NodeNumbers(i)) == &
+               Mesh % Nodes % y(CurrentPath % NodeNumbers(i+1))) THEN
+            DeleteElement(i) = .TRUE.
+            IF(Debug) PRINT *,'Debug, deleting element: ',i,' from path: ',&
+                 CurrentPath % ID,' because its a straight line'
+          END IF
+        END DO
+
+        IF(DeleteElement(1)) DeleteNode(1) = .TRUE.
+        IF(DeleteElement(SIZE(DeleteElement))) DeleteNode(SIZE(DeleteNode)) = .TRUE.
+
+        DO i=2,CurrentPath % NumberOfNodes-1
+          IF(DeleteElement(i-1) .AND. DeleteElement(i)) DeleteNode(i) = .TRUE.
+        END DO
+
+        !Delete them
+        IF(COUNT(DeleteElement) > 0) THEN
+          !elements
+          ALLOCATE(WorkInt(COUNT(.NOT. DeleteElement)))
+          WorkInt = PACK(CurrentPath % ElementNumbers,.NOT.DeleteElement)
+
+          DEALLOCATE(CurrentPath % ElementNumbers)
+          ALLOCATE(CurrentPath % ElementNumbers(SIZE(WorkInt)))
+
+          CurrentPath % ElementNumbers = WorkInt
+          CurrentPath % NumberOfElements = SIZE(WorkInt)
+          DEALLOCATE(WorkInt)
+
+          !nodes
+          ALLOCATE(WorkInt(COUNT(.NOT. DeleteNode)))
+          WorkInt = PACK(CurrentPath % NodeNumbers, .NOT.DeleteNode)
+
+          DEALLOCATE(CurrentPath % NodeNumbers)
+          ALLOCATE(CurrentPath % NodeNumbers(SIZE(WorkInt)))
+
+          CurrentPath % NodeNumbers = WorkInt
+          CurrentPath % NumberOfNodes = SIZE(WorkInt)
+          DEALLOCATE(WorkInt)
         END IF
 
-        OtherPath => OtherPath % Next
+        DEALLOCATE(DeleteElement, DeleteNode)
+        CurrentPath => CurrentPath % Next
       END DO
 
-      CurrentPath => CurrentPath % Next
-    END DO
-
-    !-----------------------------------------------------------------------
-    ! Remove elements whose nodes are in a vertical line
-    !     (to prevent potential issues in interp)
-    !-----------------------------------------------------------------------
-    ! This occurs due to the shifting which occurs above.
-    ! NOTE: This breaks the assumption that element(i) has nodes (i) & (i+1)
-    ! It also breaks the chain! Currently OK but don't rely on this below this
-    ! point, or in Calving3D.F90
-    !-----------------------------------------------------------------------
-
-    CurrentPath => CrevassePaths
-    DO WHILE(ASSOCIATED(CurrentPath))
-
-      ALLOCATE(DeleteElement(CurrentPath % NumberOfElements),&
-           DeleteNode(CurrentPath % NumberOfNodes))
-      DeleteElement = .FALSE.
-      DeleteNode = .FALSE.
-
-      DO i=1,CurrentPath % NumberOfElements
-        !Element i is composed of nodes i,i+1
-        IF(Mesh % Nodes % y(CurrentPath % NodeNumbers(i)) == &
-             Mesh % Nodes % y(CurrentPath % NodeNumbers(i+1))) THEN
-          DeleteElement(i) = .TRUE.
-          IF(Debug) PRINT *,'Debug, deleting element: ',i,' from path: ',&
-               CurrentPath % ID,' because its a straight line'
-        END IF
-      END DO
-
-      IF(DeleteElement(1)) DeleteNode(1) = .TRUE.
-      IF(DeleteElement(SIZE(DeleteElement))) DeleteNode(SIZE(DeleteNode)) = .TRUE.
-
-      DO i=2,CurrentPath % NumberOfNodes-1
-        IF(DeleteElement(i-1) .AND. DeleteElement(i)) DeleteNode(i) = .TRUE.
-      END DO
-
-      !Delete them
-      IF(COUNT(DeleteElement) > 0) THEN
-        !elements
-        ALLOCATE(WorkInt(COUNT(.NOT. DeleteElement)))
-        WorkInt = PACK(CurrentPath % ElementNumbers,.NOT.DeleteElement)
-
-        DEALLOCATE(CurrentPath % ElementNumbers)
-        ALLOCATE(CurrentPath % ElementNumbers(SIZE(WorkInt)))
-
-        CurrentPath % ElementNumbers = WorkInt
-        CurrentPath % NumberOfElements = SIZE(WorkInt)
-        DEALLOCATE(WorkInt)
-
-        !nodes
-        ALLOCATE(WorkInt(COUNT(.NOT. DeleteNode)))
-        WorkInt = PACK(CurrentPath % NodeNumbers, .NOT.DeleteNode)
-
-        DEALLOCATE(CurrentPath % NodeNumbers)
-        ALLOCATE(CurrentPath % NodeNumbers(SIZE(WorkInt)))
-
-        CurrentPath % NodeNumbers = WorkInt
-        CurrentPath % NumberOfNodes = SIZE(WorkInt)
-        DEALLOCATE(WorkInt)
-      END IF
-
-      DEALLOCATE(DeleteElement, DeleteNode)
-      CurrentPath => CurrentPath % Next
-    END DO
+    END IF !DoProjectible
 
     !--------------------------------------------------------
     ! Put the mesh back
