@@ -79,7 +79,8 @@
         Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
         PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, dxdy,&
         Displace, y_coord(2), ShiftTo, TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
-        angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2), &
+        angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
+        buffer, gridmesh_dx, &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -245,17 +246,31 @@
 
    !TODO here - rotate the main mesh, or determine the rotated extent
    ! to pass for Grid Min X, etc
+   ! Use MaxMeshDist...
 
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Min X",-100.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Max X",5100.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Min Y",-100.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh Max Y",2000.0_dp)
-    CALL ListAddConstReal(MeshParams,"Grid Mesh dx",20.0_dp)
+   gridmesh_dx = 20.0_dp
+   buffer = gridmesh_dx * 4
 
-    PlaneMesh => CreateRectangularMesh(MeshParams)
-    PlaneMesh % Name = "calving_plane"
-    PlaneMesh % OutputActive = .TRUE.
-    PlaneMesh % Changed = .TRUE.
+   front_extent = GetFrontExtent(Mesh, RotationMatrix, DistVar, MaxMeshDist, buffer)
+
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Min X",front_extent(1))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Max X",front_extent(2))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Min Y",front_extent(3))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh Max Y",front_extent(4))
+   CALL ListAddConstReal(MeshParams,"Grid Mesh dx",gridmesh_dx)
+
+
+   PRINT *,ParEnv % MyPE,' front extent: ',front_extent
+
+   PlaneMesh => CreateRectangularMesh(MeshParams)
+   PlaneMesh % Nodes % z = PlaneMesh % Nodes % y
+   PlaneMesh % Nodes % y = PlaneMesh % Nodes % x
+   PlaneMesh % Nodes % x = 0.0
+   CALL RotateMesh(PlaneMesh, UnrotationMatrix)
+
+   PlaneMesh % Name = "calving_plane"
+   PlaneMesh % OutputActive = .TRUE.
+   PlaneMesh % Changed = .TRUE.
 
     ! CALL WriteMeshToDisk2(Model, PlaneMesh, ".")
 
@@ -949,6 +964,48 @@
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
 CONTAINS
+
+  !Returns extent: min_x, max_x, min_y, max_y of front in rotated coord system
+  FUNCTION GetFrontExtent(Mesh, RotationMatrix, DistVar, SearchDist, Buffer) RESULT(Extent)
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: DistVar
+    REAL(KIND=dp) :: SearchDist, RotationMatrix(3,3), Extent(4), Buffer
+    !------------------------------
+    REAL(KIND=dp) :: NodeHolder(3)
+    INTEGER :: i,ierr
+
+    !Get the min,max x and y in rotated coords:
+    extent(1) = HUGE(extent(1))
+    extent(2) = -HUGE(extent(1))
+    extent(3) = HUGE(extent(1))
+    extent(4) = -HUGE(extent(1))
+
+    DO i=1,Mesh % NumberOfNodes
+
+      IF(DistVar % Values(DistVar % Perm(i)) > SearchDist) CYCLE
+
+      NodeHolder(1) = Mesh % Nodes % x(i)
+      NodeHolder(2) = Mesh % Nodes % y(i)
+      NodeHolder(3) = Mesh % Nodes % z(i)
+      NodeHolder = MATMUL(RotationMatrix, NodeHolder)
+
+      extent(1) = MIN(extent(1), NodeHolder(2))
+      extent(2) = MAX(extent(2), NodeHolder(2))
+      extent(3) = MIN(extent(3), NodeHolder(3))
+      extent(4) = MAX(extent(4), NodeHolder(3))
+
+    END DO
+
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(1), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(2), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(3), 1, MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr)
+    CALL MPI_AllReduce(MPI_IN_PLACE, extent(4), 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+
+    extent(1) = extent(1) - buffer
+    extent(2) = extent(2) + buffer
+    extent(3) = extent(3) - buffer
+    extent(4) = extent(4) + buffer
+  END FUNCTION GetFrontExtent
 
  !Subroutine to print iceberg information to a file, to be processed in python.
  !Also calculates the size of the largest iceberg and returns it
