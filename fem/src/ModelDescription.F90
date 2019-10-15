@@ -3767,11 +3767,16 @@ ELMER_SOLVER_HOME &
         ELSE
           CALL Info('LoadRestartFile','Fields sizes match for: '//TRIM(VarName),Level=20)         
         END IF
-        IF( PermSize /= SIZE( Var % Perm ) ) THEN
-          CALL Warn('LoadRestartFile','Permutations are of different size ('&
-              //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
-        ELSE
-          CALL Info('LoadRestartFile','Permutation sizes match for: '//TRIM(VarName),Level=20)
+        IF(ASSOCIATED(Var % Perm)) THEN
+          IF( PermSize /= SIZE( Var % Perm ) ) THEN
+            CALL Warn('LoadRestartFile','Permutations are of different size ('&
+                 //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
+          ELSE
+            CALL Info('LoadRestartFile','Permutation sizes match for: '//TRIM(VarName),Level=20)
+          END IF
+        ELSEIF(PermSize > 0) THEN
+            CALL Warn('LoadRestartFile','Existing variable defined without perm: '&
+                 //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
         END IF
       ELSE
         CALL Info('LoadRestartFile','Creating variable: '//TRIM(VarName),Level=6)
@@ -3977,11 +3982,13 @@ ELMER_SOLVER_HOME &
           END IF
 
           ! in case of (.NOT. LoadThis) n has already been set
-          IF( n > SIZE( Perm ) ) THEN
-            n = SIZE( Perm )
-            CALL Info('LoadRestartFile','Reducing size of read loop for smaller Perm vector')
+          IF(GotPerm) THEN
+            IF( n > SIZE( Perm ) ) THEN
+              n = SIZE( Perm )
+              CALL Info('LoadRestartFile','Reducing size of read loop for smaller Perm vector')
+            END IF
+            CALL Info('LoadRestartFile','Size of load loop is '//TRIM(I2S(n)),Level=15)
           END IF
-          CALL Info('LoadRestartFile','Size of load loop is '//TRIM(I2S(n)),Level=15)
 
           DO j=1, n
             IF ( FmtVersion > 0 ) THEN             
