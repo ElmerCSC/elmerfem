@@ -117,7 +117,7 @@ CONTAINS
     INTEGER(Zoltan_INT),DIMENSION(:), POINTER :: importGlobalGids, importLocalGids, importProcs, &
          importToPart,exportGlobalGids,exportLocalGids, exportProcs, exportToPart
     REAL(Zoltan_FLOAT) :: version
-    LOGICAL :: changes,Debug,Serial,Found
+    LOGICAL :: changes,Debug=.FALSE.,Serial,Found
 
     TYPE ElemTable_t
        INTEGER :: counter=0
@@ -206,7 +206,11 @@ CONTAINS
     END IF
 
     ! Set default values for keywords, if not given
-    CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
+    IF(Debug) THEN
+      CALL ListAddNewString( PartParams,"zoltan: debug_level","5")
+    ELSE
+      CALL ListAddNewString( PartParams,"zoltan: debug_level","0")
+    END IF
     CALL ListAddNewString( PartParams,"zoltan: lb_method","graph")
     CALL ListAddNewString( PartParams,"zoltan: graph_package","phg")
     CALL ListAddNewString( PartParams,"zoltan: num_gid_entries","1")
@@ -215,6 +219,8 @@ CONTAINS
     CALL ListAddNewString( PartParams,"zoltan: edge_weight_dim","0")
     CALL ListAddNewString( PartParams,"zoltan: check_graph","0")
     CALL ListAddNewString( PartParams,"zoltan: phg_multilevel","1")
+    IF(Debug) CALL ListAddNewString( PartParams,"zoltan: phg_output_level","2")
+    CALL ListAddNewString( PartParams,"zoltan: imbalance_tol","1.1") !Max load imbalance (default 10%)
 
     ! The settings for serial vs. parallel operation differ slightly
     IF( Serial ) THEN
@@ -223,7 +229,7 @@ CONTAINS
       CALL ListAddNewString( PartParams,"zoltan: num_global_parts",TRIM(I2S(NoPart)))  
     ELSE
       CALL ListAddNewString( PartParams,"zoltan: return_lists","all")    !TODO - we only use export list
-      CALL ListAddNewString( PartParams,"zoltan: lb_approach","refine")  !repartition/refine <- faster
+      CALL ListAddNewString( PartParams,"zoltan: lb_approach","repartition")  !repartition/refine <- faster
     END IF
       
     ! Pass keyword with prefix 'zoltan:' from the value list to zoltan
