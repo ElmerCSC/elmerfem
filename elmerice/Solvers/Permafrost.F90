@@ -3504,7 +3504,7 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
   INTEGER, POINTER :: PorosityPerm(:), NodeIndexes(:)
   REAL(KIND=dp), POINTER :: PorosityValues(:)
   REAL(KIND=dp), ALLOCATABLE :: NodalHits(:)
-  INTEGER :: DIM, i, j, k, NumberOfRockRecords,RockMaterialID,CurrentNode,Active,totalunset,totalset
+  INTEGER :: DIM, i, j, k, N, NumberOfRockRecords,RockMaterialID,CurrentNode,Active,totalunset,totalset
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName="PorosityInit"
   CHARACTER(LEN=MAX_NAME_LEN) :: PorosityName,ElementRockMaterialName
   LOGICAL :: Visited = .False., Found, GotIt,ElementWiseRockMaterial
@@ -3550,9 +3550,11 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
   DO i = 1, Active
     CurrentElement => GetActiveElement(i)
 
-    IF (ParEnv % myPe .NE. CurrentElement % partIndex) CYCLE
+    !PRINT *,"PorosityInit", i,"/",Active
     
-    !NodeIndexes => CurrentElement % NodeIndexes
+    IF (ParEnv % myPe .NE. CurrentElement % partIndex) CYCLE
+    N = GetElementNOFNodes(CurrentElement)
+    NodeIndexes => CurrentElement % NodeIndexes
     Material => GetMaterial(CurrentElement)
     
     IF (.NOT.ASSOCIATED(Material)) CALL FATAL(SolverName,'No Material pointer found')
@@ -3588,9 +3590,11 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
       IF (.NOT.GotIt) CALL FATAL(SolverName,"Rock Material ID not found")
     END IF
 
-    CurrentNode = PorosityPerm(i)
-    !PRINT *,CurrentNode, i
-    PorosityValues(CurrentNode) = CurrentRockMaterial % eta0(RockMaterialID)
+    DO j=1,N
+      CurrentNode = PorosityPerm(NodeIndexes(j))
+      !PRINT *,CurrentNode, i
+      PorosityValues(CurrentNode) = CurrentRockMaterial % eta0(RockMaterialID)
+    END DO
   END DO
   CALL Info(SolverName, '-----------------------------------', Level=1)
   CALL Info(SolverName, 'Initializing porosity to reference ', Level=1)
