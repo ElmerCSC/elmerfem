@@ -3247,9 +3247,26 @@ CONTAINS
     b => A % RHS
     SOL => x % Values
 
+    ! Debugging stuff activated only when "Max Output Level" >= 20
+    IF( InfoActive( 20 ) ) THEN
+      PRINT *,'range b'//TRIM(I2S(ParEnv % MyPe))//':', &
+          MINVAL( b ), MAXVAL( b ), SUM( b ), SUM( ABS( b ) )
+      PRINT *,'range A'//TRIM(I2S(ParEnv % MyPe))//':', &
+          MINVAL( A % Values ), MAXVAL( A % Values ), SUM( A % Values ), SUM( ABS(A % Values) )
+      PRINT *,'range x1'//TRIM(I2S(ParEnv % MyPe))//':', &
+          MINVAL( SOL ), MAXVAL( SOL ), SUM( SOL ), SUM( ABS( SOL ) )
+    END IF
+
+    
 10  CONTINUE
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+    
+    IF( InfoActive( 20 ) ) THEN
+      PRINT *,'range x2'//TRIM(I2S(ParEnv % MyPe))//':', &
+          MINVAL( SOL ), MAXVAL( SOL ), SUM( SOL ), SUM( ABS( SOL ) )
+    END IF
+
     
     IF( LinearSystemTrialing ) THEN
       IF( x % LinConverged > 0 ) THEN

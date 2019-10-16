@@ -2166,8 +2166,12 @@ END SUBROUTINE GetMaxDefs
 
    ! Prepare the mesh for next steps.
    ! For example, create non-nodal mesh structures, periodic projectors etc. 
-   CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
-      
+   IF( ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') ) THEN
+     CALL Info('LoadMesh','This mesh will be extruded, skipping finalization',Level=12)
+     RETURN
+   END IF
+
+   CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)      
    CALL Info('LoadMesh','Preparing mesh done',Level=8)
 
    IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
@@ -2551,7 +2555,7 @@ END SUBROUTINE GetMaxDefs
    SUBROUTINE NonNodalElements()
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
-     INTEGER :: i, j, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id
+     INTEGER :: i, j, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
                 FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
      TYPE(Element_t), POINTER :: Element
@@ -2572,6 +2576,14 @@ END SUBROUTINE GetMaxDefs
      InDofs(:,1) = 1
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
+     ELSE
+       DO s=1,Model % NumberOfSolvers
+         DO i=1,6
+           DO j=1,8
+             inDofs(j,i) = MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i))
+           END DO
+         END DO
+       END DO
      END IF
 
      ! P-basis only over 1st order elements:
@@ -2708,9 +2720,7 @@ END SUBROUTINE GetMaxDefs
        EdgeDOFs(i) = MAX(0,inDOFs(el_id,2))
        FaceDOFs(i) = MAX(0,inDOFs(el_id,3))
 
-       IF ( PRESENT(Def_Dofs) ) THEN
-         IF ( Def_Dofs(el_id,4) == 0 ) inDOFs(el_id,4) = n
-       END IF
+       IF ( inDofs(el_id,4) == 0 ) inDOFs(el_id,4) = n
 
        NULLIFY( Element % DGIndexes )
        IF ( inDOFs(el_id,4) > 0 ) THEN
@@ -3075,6 +3085,7 @@ END SUBROUTINE GetMaxDefs
    ! Set gauss points for each p element
    DO i=1,Mesh % NumberOfBulkElements
      Element => Mesh % Elements(i)
+
      IF ( ASSOCIATED(Element % PDefs) ) THEN
        Element % PDefs % GaussPoints = getNumberOfGaussPoints( Element, Mesh )
      END IF
@@ -11716,6 +11727,9 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
 !------------------------------------------------------------------------------
+
+    CALL Info('MeshExtrude','Creating '//TRIM(I2S(in_levels+1))//' extruded element layers',Level=10)
+
     Mesh_out => AllocateMesh()
 !   Mesh_out = Mesh_in
 
@@ -11725,35 +11739,59 @@ END SUBROUTINE GetMaxDefs
     ! -----------------------------
     n=Mesh_in % NumberOfNodes
     nnodes=(in_levels+2)*n
+    gnodes = nnodes
 
     ALLOCATE( Mesh_out % Nodes % x(nnodes) )
     ALLOCATE( Mesh_out % Nodes % y(nnodes) )
     ALLOCATE( Mesh_out % Nodes % z(nnodes) )
 
     gelements = Mesh_in % NumberOfBulkElements
+
     IF (isParallel) THEN
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
-
+    
+      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal('MeshExtrude','PI_in not associated!')
+      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrude','PI_out not associated!')
+            
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % INTERFACE(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
+      IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
+        CALL Fatal('MeshExtrude','Neighnours not associated!')
+      END IF
+
+      ! For unset neighbours just set the this partition to be the only owner
+      DO i=1,Mesh_in % NumberOfNodes
+        IF (.NOT.ASSOCIATED(PI_in % NeighbourList(i) % Neighbours)) THEN
+          CALL AllocateVector(PI_in % NeighbourList(i) % Neighbours,1)
+          PI_in % NeighbourList(i) % Neighbours(1) = ParEnv % Mype
+        END IF
+      END DO
+      
+    
+    
       j=0
       DO i=1,Mesh_in % NumberOfNodes
         IF (PI_in % NeighbourList(i) % &
             Neighbours(1) == ParEnv % MyPE ) j=j+1
       END DO
+
       CALL MPI_ALLREDUCE(j,gnodes,1, &
            MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
-
+      
       j=0
       DO i=1,Mesh_in % NumberOfBulkElements
         IF (Mesh_in % Elements(i) % PartIndex == ParEnv % MyPE) j=j+1
       END DO
+      
       CALL MPI_ALLREDUCE(j,gelements,1, &
            MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
     END IF
+
+    CALL Info('MeshExtrude','Number of extruded nodes: '//TRIM(I2S(nnodes)),Level=12)
+    CALL Info('MeshExtrude','Number of extruded elements: '//TRIM(I2S(gelements)),Level=12)
 
 
     ! Create the division for the 1D unit mesh
@@ -11919,6 +11957,7 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
 
+#if 0
         k = Mesh_out % Elements(cnt) % DGDOFs
         IF(k>0) THEN
           Mesh_out % Elements(cnt) % DGDOFs = &
@@ -11937,6 +11976,7 @@ END SUBROUTINE GetMaxDefs
           ALLOCATE(Mesh_out % Elements(cnt) % PDefs)
           Mesh_out % Elements(cnt) % PDefs=Mesh_in % Elements(j) % PDefs
         END IF
+#endif
       END DO
     END DO
     Mesh_out % NumberOfBulkElements=cnt
@@ -12232,13 +12272,19 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % MeshDim = 3
     CurrentModel % Dimension = 3
 
+#if 1
+
+    CALL PrepareMesh( CurrentModel, Mesh_out, ParEnv % PEs > 1 )!, Def_Dofs )
+
+#else
     IF ( NeedEdges ) THEN
       CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
       IF (isParallel) CALL SParEdgeNumbering(Mesh_out,.TRUE.)
     END IF
     
     CALL SetMeshMaxDOFs(Mesh_out)
-
+#endif
+    
     IF (PRESENT(ExtrudedMeshName)) THEN
        CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
     END IF
@@ -15786,8 +15832,6 @@ CONTAINS
              END IF
           END IF
        END DO
-
-!      print*,'Found',j-jedges,'interface faces'
 
 !      CALL AllocateVector( IntCnts,  j )
 !      CALL AllocateVector( IntArray, k )
