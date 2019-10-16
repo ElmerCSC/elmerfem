@@ -3,6 +3,7 @@ MODULE MeshRemeshing
 USE DefUtils
 USE Types
 USE MeshUtils
+USE MeshPartition
 
 IMPLICIT NONE
 
@@ -804,10 +805,13 @@ SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
   REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:)
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   !-----------
+  TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: Metric(:,:)
   REAL(KIND=dp) :: hsiz(3)
-  INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType
+  INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType,body_offset,&
+       nBCs
   LOGICAL :: Debug, Parallel, TensorMet
+  LOGICAL, ALLOCATABLE :: RmElement(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName
 
 #ifdef HAVE_MMG
@@ -857,6 +861,23 @@ SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
 !  hsiz = (/2000.0,2000.0,150.0/)
   mmgMesh = 0
   mmgSol  = 0
+
+
+  !---------------------------------
+  ! Issue here: MMG3D will 'helpfully' add any
+  ! missing boundary triangles, assigning them
+  ! % BoundaryInfo % Constraint = Parent % BodyID
+  !
+  ! To deal with this, temporarily offset BodyID of
+  ! all body elems by Model % NumberOfBodies +
+  ! Model % NumberOfBCs + 1, then afterwards we
+  ! delete all the extra BC elems & revert the bodyID
+  !----------------------------------
+  body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
+  nBCs = CurrentModel % NumberOfBCs
+  DO i=1,InMesh % NumberOfBulkElements
+    InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
+  END DO
 
   CALL MMG3D_Init_mesh(MMG5_ARG_start, &
        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
@@ -925,7 +946,24 @@ SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
   !! GET THE NEW MESH
   CALL GET_MMG3D_MESH(OutMesh,Parallel)
 
+  NBulk = OutMesh % NumberOfBulkElements
+  NBdry = OutMesh % NumberOfBoundaryElements
 
+  !Reset the BodyIDs (see above)
+  DO i=1,NBulk
+    OutMesh % Elements(i) % BodyID = OutMesh % Elements(i) % BodyID - body_offset
+  END DO
+
+  !And delete the unneeded BC elems
+  ALLOCATE(RmElement(NBulk+NBdry))
+  RmElement = .FALSE.
+  DO i=NBulk+1,NBulk+NBdry
+    Element => OutMesh % Elements(i)
+    IF(Element % BoundaryInfo % Constraint > nBCs) THEN
+      RmElement(i) = .TRUE.
+    END IF
+  END DO
+  CALL CutMesh(OutMesh, RmElem=RmElement)
 
 #else
   CALL Fatal(FuncName, "Remeshing utility MMG3D has not been installed")
