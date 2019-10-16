@@ -31,8 +31,7 @@
 
 !Remesh the calving model using MMG3D - runs in parallel but remeshing is serial!
 !Takes a level set which defines a calving event (or multiple calving events). Level
-! set is negative inside a calving event, and positive in the remaining domain. This
-! hasn't actually been implemented yet, we use a test function.
+! set is negative inside a calving event, and positive in the remaining domain.
 
 ! Strategy:
 !----------------
@@ -73,9 +72,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
-       my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),front_BC_ID, &
-       my_calv_front,calv_front, ncalv_parts, group_calve, comm_calve, group_world,ecode, NElNodes,&
-       target_bodyid,gdofs(4)
+       my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
+       front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
+       group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4)
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:)
@@ -116,6 +115,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   !TODO - unhardcode (detect?) this
   front_BC_id = 1
+  front_body_id =  ListGetInteger( &
+       Model % BCs(front_bc_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
 
   hmin = ListGetConstReal(SolverParams, &
        "Mesh Hmin", Found)
@@ -546,8 +547,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       END DO
 
-      !Set constraint 10 (the newly formed calving front) to front_BC_id
-      !NOTE: I think this will be 10 * the previous BC ID...
+      !MMG3DLS returns constraint = 10 on newly formed boundary elements
+      !(i.e. the new calving front). Here it is set to front_BC_id
       !And set all BC BodyIDs based on constraint
       DO i=NBulk+1, NBulk + NBdry
 
@@ -555,13 +556,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         Element => NewMeshR % Elements(i)
         geom_id => Element % BoundaryInfo % Constraint
-        IF(geom_id == 10) geom_id = front_BC_id
+
+        IF(geom_id == 10) THEN
+          geom_id = front_BC_id
+
+          Element % BodyId  = front_body_id
+        END IF
 
         CALL Assert((geom_id > 0) .AND. (geom_id <= Model % NumberOfBCs),&
              SolverName,"Unexpected BC element body id!")
 
-        Element % BodyId  = ListGetInteger( &
-             Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
       END DO
      
 

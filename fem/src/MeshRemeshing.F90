@@ -304,11 +304,22 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
   TYPE(Element_t),POINTER ::  Element
   INTEGER, POINTER :: NodeIndexes(:)
+  INTEGER, ALLOCATABLE :: BC2BodyMap(:)
   INTEGER :: NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ierr
   INTEGER :: ref,corner,required,ridge
   INTEGER :: parent,ied
-  INTEGER :: ii,kk
-  LOGICAL :: Debug
+  INTEGER :: i,ii,kk,NoBCs
+  LOGICAL :: Found, Debug
+
+  !Set up a map of BoundaryInfo % Constraint to % BodyID
+  NoBCs = CurrentModel % NumberOfBCs
+  ALLOCATE(BC2BodyMap(NoBCs))
+  BC2BodyMap = 0
+  DO i=1,NoBCs
+    BC2BodyMap(i) = ListGetInteger( &
+           CurrentModel % BCs(i) % Values, 'Body Id', Found)
+    IF(.NOT. Found) BC2BodyMap(i) = 0
+  END DO
 
   !> a) get the size of the mesh: vertices, tetra,prisms, triangles, quads,edges
   CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
@@ -412,6 +423,10 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
 
     Allocate(Element % BoundaryInfo)
     Element % BoundaryInfo % Constraint=ref
+
+    IF(ref > 0 .AND. ref <= CurrentModel % NumberOfBCs) THEN
+      Element % BodyId = BC2BodyMap(ref)
+    END IF
 
     IF(PRESENT(FixedElems)) FixedElems(kk) = required > 0
   END DO
