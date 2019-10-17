@@ -3686,15 +3686,18 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
     TYPE(Variable_t), POINTER :: Variables
+    REAL(KIND=dp), OPTIONAL :: globaleps,localeps
+    LOGICAL, POINTER, OPTIONAL :: SeekNodes(:)
+    CHARACTER(LEN=*) :: MaskName
+    !----------------------------
+    TYPE(Variable_t), POINTER :: Var
     INTEGER, POINTER :: OldMaskPerm(:)=>NULL(), NewMaskPerm(:)=>NULL()
     INTEGER, POINTER  :: InterpDim(:)
     INTEGER :: i,dummyint
-    REAL(KIND=dp), OPTIONAL :: globaleps,localeps
     REAL(KIND=dp) :: geps,leps
     LOGICAL :: Debug
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
-    LOGICAL, POINTER, OPTIONAL :: SeekNodes(:)
-    CHARACTER(LEN=*) :: MaskName
+    CHARACTER(LEN=MAX_NAME_LEN) :: HeightName
 
     CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
          .FALSE., NewMaskPerm, dummyint)
@@ -3722,6 +3725,24 @@ CONTAINS
       leps = 1.0E-4
     END IF
 
+    !Silly hack - InterpolateVarToVarReduced requires a designated 'height' variable
+    !name which it considers the primary target. A quick fix here is to just find a
+    !candidate variable and pass its name.
+    Var => Variables
+    DO WHILE(ASSOCIATED(Var))
+
+      IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
+           (Var % DOFs > 1) .OR. &                    !-multi-dof
+           (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
+           Var % Secondary) THEN                      !-secondary
+        Var => Var % Next
+        CYCLE
+      ELSE
+        HeightName = TRIM(Var % Name)
+        EXIT
+      END IF
+    END DO
+
     IF(Debug) PRINT *, ParEnv % MyPE,'Debug, on boundary: ',TRIM(MaskName),' seeking ',&
          COUNT(.NOT. NewMaskLogical),' of ',SIZE(NewMaskLogical),' nodes.'
 
@@ -3729,7 +3750,7 @@ CONTAINS
     InterpDim(1) = 3
 
     CALL ParallelActive(.TRUE.)
-    CALL InterpolateVarToVarReduced(OldMesh, NewMesh, "remesh update 1", InterpDim, &
+    CALL InterpolateVarToVarReduced(OldMesh, NewMesh, HeightName, InterpDim, &
          UnfoundNodes, OldMaskLogical, NewMaskLogical, Variables=OldMesh % Variables, &
          GlobalEps=geps, LocalEps=leps)
 
@@ -3744,7 +3765,7 @@ CONTAINS
                   ' y:', NewMesh % Nodes % y(i),&
                   ' z:', NewMesh % Nodes % z(i)
 
-             CALL InterpolateUnfoundPoint( i, NewMesh, "remesh update 1", InterpDim, &
+             CALL InterpolateUnfoundPoint( i, NewMesh, HeightName, InterpDim, &
                   NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
           END IF
        END DO
