@@ -78,6 +78,7 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
        "Save Mesh Directory", Found)
   IF(.NOT. Found) CALL FATAL("SaveMesh",&
        "No directory given to save mesh")
+  CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
 
   EveryTime = ListGetLogical( Solver % Values, "Save All Timesteps", Found)
   IF(.NOT. Found) EveryTime = .FALSE.
