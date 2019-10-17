@@ -2166,7 +2166,8 @@ END SUBROUTINE GetMaxDefs
 
    ! Prepare the mesh for next steps.
    ! For example, create non-nodal mesh structures, periodic projectors etc. 
-   IF( ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') ) THEN
+   IF( ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') .OR. &
+       ListCheckPresent( Model % Simulation,'Extruded Mesh Layers') ) THEN
      CALL Info('LoadMesh','This mesh will be extruded, skipping finalization',Level=12)
      RETURN
    END IF
@@ -2174,14 +2175,8 @@ END SUBROUTINE GetMaxDefs
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)      
    CALL Info('LoadMesh','Preparing mesh done',Level=8)
 
-   IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
-     Mesh % MaxElementDOFs  = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementDOFs,2  ) )
-     Mesh % MaxElementNodes = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementNodes,2 ) )
-   END IF
    
  CONTAINS
-
-
 
 
    !------------------------------------------------------------------------------
@@ -2536,8 +2531,8 @@ END SUBROUTINE GetMaxDefs
      
    CALL EnlargeCoordinates( Mesh ) 
 
-   CALL GeneratePeriodicProjectors( Model, Mesh ) 
-
+   CALL GeneratePeriodicProjectors( Model, Mesh )    
+   
    IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', Found ) ) THEN
      CALL InspectQuadraticMesh( Mesh ) 
    END IF
@@ -2545,7 +2540,12 @@ END SUBROUTINE GetMaxDefs
    IF( ListGetLogical( Model % Simulation,'Inspect Mesh',Found ) ) THEN
      CALL InspectMesh( Mesh ) 
    END IF
-     
+
+   IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
+     Mesh % MaxElementDOFs  = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementDOFs,2  ) )
+     Mesh % MaxElementNodes = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementNodes,2 ) )
+   END IF
+   
    
  CONTAINS
      
@@ -11732,7 +11732,6 @@ END SUBROUTINE GetMaxDefs
     CALL Info('MeshExtrude','Creating '//TRIM(I2S(in_levels+1))//' extruded element layers',Level=10)
 
     Mesh_out => AllocateMesh()
-!   Mesh_out = Mesh_in
 
     isParallel = ParEnv % PEs>1
 
@@ -11770,9 +11769,7 @@ END SUBROUTINE GetMaxDefs
           PI_in % NeighbourList(i) % Neighbours(1) = ParEnv % Mype
         END IF
       END DO
-      
-    
-    
+          
       j=0
       DO i=1,Mesh_in % NumberOfNodes
         IF (PI_in % NeighbourList(i) % &
@@ -11957,27 +11954,6 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
-
-#if 0
-        k = Mesh_out % Elements(cnt) % DGDOFs
-        IF(k>0) THEN
-          Mesh_out % Elements(cnt) % DGDOFs = &
-                Mesh_out % Elements(cnt) % TYPE % NumberOFNodes
-          k = Mesh_out % Elements(cnt) % DGDOFs
-          ALLOCATE(Mesh_out % Elements(cnt) % DGIndexes(k))
-          DO l=1,k
-            dg_n = dg_n + 1
-            Mesh_out % Elements(cnt) % DGIndexes(l) = dg_n
-          END DO
-          NeedEdges=.TRUE.
-        END IF
-
-        IF(ASSOCIATED(Mesh_in % Elements(j) % PDefs)) THEN
-          NeedEdges=.TRUE.
-          ALLOCATE(Mesh_out % Elements(cnt) % PDefs)
-          Mesh_out % Elements(cnt) % PDefs=Mesh_in % Elements(j) % PDefs
-        END IF
-#endif
       END DO
     END DO
     Mesh_out % NumberOfBulkElements=cnt
@@ -12261,7 +12237,7 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
     END DO
 
-    END IF
+    END IF ! .NOT. Rotate2Pi
     
 
     Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
@@ -12273,18 +12249,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % MeshDim = 3
     CurrentModel % Dimension = 3
 
-#if 1
-
-    CALL PrepareMesh( CurrentModel, Mesh_out, isParallel )!, Def_Dofs )
-
-#else
-    IF ( NeedEdges ) THEN
-      CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
-      IF (isParallel) CALL SParEdgeNumbering(Mesh_out,.TRUE.)
-    END IF
-    
-    CALL SetMeshMaxDOFs(Mesh_out)
-#endif
+    CALL PrepareMesh( CurrentModel, Mesh_out, isParallel )
     
     IF (PRESENT(ExtrudedMeshName)) THEN
        CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
