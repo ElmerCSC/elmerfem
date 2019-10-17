@@ -635,7 +635,7 @@ CONTAINS
     INTEGER :: PathCount, First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
-         ShiftTo, Dir1(2), Dir2(2)
+         ShiftTo, Dir1(2), Dir2(2), CCW_value
     REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start
@@ -743,12 +743,14 @@ CONTAINS
           Last = CurrentPath % NodeNumbers(i+1)
           n = CurrentPath % NodeNumbers(i)
 
-          CCW = ((Mesh % Nodes % y(n) - Mesh % Nodes % y(First)) * &
-               (Mesh % Nodes % z(Last) - Mesh % Nodes % z(First))) > &
+          CCW_value = ((Mesh % Nodes % y(n) - Mesh % Nodes % y(First)) * &
+               (Mesh % Nodes % z(Last) - Mesh % Nodes % z(First))) - &
                ((Mesh % Nodes % z(n) - Mesh % Nodes % z(First)) * &
                (Mesh % Nodes % y(Last) - Mesh % Nodes % y(First)))
 
-          IF(CCW .NEQV. ToLeft) THEN
+          CCW = CCW_value > 0.0_dp
+
+          IF((CCW .NEQV. ToLeft) .AND. (ABS(CCW_value) > 10*AEPS)) THEN
             Constriction(i) = .TRUE.
             !Calculate constriction direction
 
@@ -843,6 +845,8 @@ CONTAINS
                    SUM(ConstrictDirection(j,:)*Dir2)
               CYCLE
             END IF
+
+            IF(Debug) PRINT *,'Constrictions ',j,i,' face each other, chopping...'
 
             MaxDist = NodeDist3D(Mesh % Nodes,First, Last)
 
