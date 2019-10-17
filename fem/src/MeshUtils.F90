@@ -2580,7 +2580,7 @@ END SUBROUTINE GetMaxDefs
        DO s=1,Model % NumberOfSolvers
          DO i=1,6
            DO j=1,8
-             inDofs(j,i) = MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i))
+             inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
            END DO
          END DO
        END DO
@@ -2707,6 +2707,7 @@ END SUBROUTINE GetMaxDefs
          END IF
          body_id0 = body_id
       END IF
+
 
        el_id = Element % TYPE % ElementCode / 100
 
@@ -12274,7 +12275,7 @@ END SUBROUTINE GetMaxDefs
 
 #if 1
 
-    CALL PrepareMesh( CurrentModel, Mesh_out, ParEnv % PEs > 1 )!, Def_Dofs )
+    CALL PrepareMesh( CurrentModel, Mesh_out, isParallel )!, Def_Dofs )
 
 #else
     IF ( NeedEdges ) THEN
