@@ -2438,6 +2438,11 @@ ELMER_SOLVER_HOME &
           CALL ReleaseMesh(OldMesh)
         END IF
         Model % Meshes => NewMesh
+
+        IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
+          CALL GeneratePeriodicProjectors( Model, NewMesh ) 
+        END IF
+                    
       END DO
 
 
