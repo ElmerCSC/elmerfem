@@ -1820,7 +1820,7 @@ CONTAINS
          GlobalCorners(:), CornerParts(:), PCornerCounts(:)
     LOGICAL :: Debug, ActivePart, Boss, Simpl, NotThis, Found, ThisBC, FullBoundary
     LOGICAL, ALLOCATABLE :: OnEdge(:), ActivePartList(:), RemoveNode(:), IsCornerNode(:)
-    REAL(KIND=dp) :: prec
+    REAL(KIND=dp) :: prec, CCW_value
     REAL(KIND=dp), ALLOCATABLE :: WorkReal(:,:)
     CHARACTER(MAX_NAME_LEN) :: FuncName
 
@@ -2582,20 +2582,21 @@ CONTAINS
        RemoveNode = .FALSE.
 
        DO i=2,OrderedNodes % NumberOfNodes-1 !Test all interior nodes
-          IF(Debug) THEN
-             PRINT *, (NodesGradXY(OrderedNodes,i,i-1))
-             PRINT *, (NodesGradXY(OrderedNodes,i+1,i))
-             PRINT *, 'DIFF: ',ABS(NodesGradXY(OrderedNodes,i,i-1) -&
-                  NodesGradXY(OrderedNodes,i+1,i))
-             PRINT *, ''
-          END IF
+
+          CCW_value = ((OrderedNodes % y(i) - OrderedNodes % y(i+1)) * &
+               (OrderedNodes % x(i-1) - OrderedNodes % x(i+1))) - &
+               ((OrderedNodes % x(i) - OrderedNodes % x(i+1)) * &
+               (OrderedNodes % y(i-1) - OrderedNodes % y(i+1)))
+
+          IF(Debug) PRINT *,'Debug simplify node: ',&
+               OrderedNodes % x(i), OrderedNodes % y(i),' ccw: ',ccw_value
 
           !Need to determine numerical precision of input datapoints
           !i.e. after how many decimal places are values constant
           !e.g. 0.23000000... or 99999...
           prec = MAX(RealAeps(OrderedNodes % x(i)),RealAeps(OrderedNodes % y(i)))
 
-          IF(ABS(NodesGradXY(OrderedNodes,i,i-1) - NodesGradXY(OrderedNodes,i+1,i)) < prec) THEN
+          IF(ABS(CCW_value) < 10*AEPS) THEN
              RemoveNode(i) = .TRUE.
           END IF
        END DO
