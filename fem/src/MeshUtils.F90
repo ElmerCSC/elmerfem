@@ -2166,18 +2166,17 @@ END SUBROUTINE GetMaxDefs
 
    ! Prepare the mesh for next steps.
    ! For example, create non-nodal mesh structures, periodic projectors etc. 
-   CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
-      
+   IF( ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') .OR. &
+       ListCheckPresent( Model % Simulation,'Extruded Mesh Layers') ) THEN
+     CALL Info('LoadMesh','This mesh will be extruded, skipping finalization',Level=12)
+     RETURN
+   END IF
+
+   CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)      
    CALL Info('LoadMesh','Preparing mesh done',Level=8)
 
-   IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
-     Mesh % MaxElementDOFs  = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementDOFs,2  ) )
-     Mesh % MaxElementNodes = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementNodes,2 ) )
-   END IF
    
  CONTAINS
-
-
 
 
    !------------------------------------------------------------------------------
@@ -2532,8 +2531,8 @@ END SUBROUTINE GetMaxDefs
      
    CALL EnlargeCoordinates( Mesh ) 
 
-   CALL GeneratePeriodicProjectors( Model, Mesh ) 
-
+   CALL GeneratePeriodicProjectors( Model, Mesh )    
+   
    IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', Found ) ) THEN
      CALL InspectQuadraticMesh( Mesh ) 
    END IF
@@ -2541,7 +2540,12 @@ END SUBROUTINE GetMaxDefs
    IF( ListGetLogical( Model % Simulation,'Inspect Mesh',Found ) ) THEN
      CALL InspectMesh( Mesh ) 
    END IF
-     
+
+   IF(ListGetLogical( Model % Simulation, 'Parallel Reduce Element Max Sizes', Found ) ) THEN
+     Mesh % MaxElementDOFs  = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementDOFs,2  ) )
+     Mesh % MaxElementNodes = NINT( ParallelReduction( 1.0_dp*Mesh % MaxElementNodes,2 ) )
+   END IF
+   
    
  CONTAINS
      
@@ -2551,7 +2555,7 @@ END SUBROUTINE GetMaxDefs
    SUBROUTINE NonNodalElements()
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
-     INTEGER :: i, j, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id
+     INTEGER :: i, j, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
                 FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
      TYPE(Element_t), POINTER :: Element
@@ -2572,6 +2576,14 @@ END SUBROUTINE GetMaxDefs
      InDofs(:,1) = 1
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
+     ELSE
+       DO s=1,Model % NumberOfSolvers
+         DO i=1,6
+           DO j=1,8
+             inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
+           END DO
+         END DO
+       END DO
      END IF
 
      ! P-basis only over 1st order elements:
@@ -2696,6 +2708,7 @@ END SUBROUTINE GetMaxDefs
          body_id0 = body_id
       END IF
 
+
        el_id = Element % TYPE % ElementCode / 100
 
        ! Apply the elementtypes
@@ -2708,9 +2721,7 @@ END SUBROUTINE GetMaxDefs
        EdgeDOFs(i) = MAX(0,inDOFs(el_id,2))
        FaceDOFs(i) = MAX(0,inDOFs(el_id,3))
 
-       IF ( PRESENT(Def_Dofs) ) THEN
-         IF ( Def_Dofs(el_id,4) == 0 ) inDOFs(el_id,4) = n
-       END IF
+       IF ( inDofs(el_id,4) == 0 ) inDOFs(el_id,4) = n
 
        NULLIFY( Element % DGIndexes )
        IF ( inDOFs(el_id,4) > 0 ) THEN
@@ -3075,6 +3086,7 @@ END SUBROUTINE GetMaxDefs
    ! Set gauss points for each p element
    DO i=1,Mesh % NumberOfBulkElements
      Element => Mesh % Elements(i)
+
      IF ( ASSOCIATED(Element % PDefs) ) THEN
        Element % PDefs % GaussPoints = getNumberOfGaussPoints( Element, Mesh )
      END IF
@@ -11716,9 +11728,10 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
     REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
 !------------------------------------------------------------------------------
-    Mesh_out => AllocateMesh()
-!   Mesh_out = Mesh_in
 
+    CALL Info('MeshExtrude','Creating '//TRIM(I2S(in_levels+1))//' extruded element layers',Level=10)
+
+    Mesh_out => AllocateMesh()
 
     isParallel = ParEnv % PEs>1
 
@@ -11726,35 +11739,57 @@ END SUBROUTINE GetMaxDefs
     ! -----------------------------
     n=Mesh_in % NumberOfNodes
     nnodes=(in_levels+2)*n
+    gnodes = nnodes
 
     ALLOCATE( Mesh_out % Nodes % x(nnodes) )
     ALLOCATE( Mesh_out % Nodes % y(nnodes) )
     ALLOCATE( Mesh_out % Nodes % z(nnodes) )
 
     gelements = Mesh_in % NumberOfBulkElements
+
     IF (isParallel) THEN
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
-
+    
+      IF(.NOT. ASSOCIATED( PI_in ) ) CALL Fatal('MeshExtrude','PI_in not associated!')
+      IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrude','PI_out not associated!')
+            
       ALLOCATE(PI_out % NeighbourList(nnodes))
       ALLOCATE(PI_out % INTERFACE(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
+      IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
+        CALL Fatal('MeshExtrude','Neighnours not associated!')
+      END IF
+
+      ! For unset neighbours just set the this partition to be the only owner
+      DO i=1,Mesh_in % NumberOfNodes
+        IF (.NOT.ASSOCIATED(PI_in % NeighbourList(i) % Neighbours)) THEN
+          CALL AllocateVector(PI_in % NeighbourList(i) % Neighbours,1)
+          PI_in % NeighbourList(i) % Neighbours(1) = ParEnv % Mype
+        END IF
+      END DO
+          
       j=0
       DO i=1,Mesh_in % NumberOfNodes
         IF (PI_in % NeighbourList(i) % &
             Neighbours(1) == ParEnv % MyPE ) j=j+1
       END DO
+
       CALL MPI_ALLREDUCE(j,gnodes,1, &
            MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
-
+      
       j=0
       DO i=1,Mesh_in % NumberOfBulkElements
         IF (Mesh_in % Elements(i) % PartIndex == ParEnv % MyPE) j=j+1
       END DO
+      
       CALL MPI_ALLREDUCE(j,gelements,1, &
            MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
     END IF
+
+    CALL Info('MeshExtrude','Number of extruded nodes: '//TRIM(I2S(nnodes)),Level=12)
+    CALL Info('MeshExtrude','Number of extruded elements: '//TRIM(I2S(gelements)),Level=12)
 
 
     ! Create the division for the 1D unit mesh
@@ -11919,25 +11954,6 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
-
-        k = Mesh_out % Elements(cnt) % DGDOFs
-        IF(k>0) THEN
-          Mesh_out % Elements(cnt) % DGDOFs = &
-                Mesh_out % Elements(cnt) % TYPE % NumberOFNodes
-          k = Mesh_out % Elements(cnt) % DGDOFs
-          ALLOCATE(Mesh_out % Elements(cnt) % DGIndexes(k))
-          DO l=1,k
-            dg_n = dg_n + 1
-            Mesh_out % Elements(cnt) % DGIndexes(l) = dg_n
-          END DO
-          NeedEdges=.TRUE.
-        END IF
-
-        IF(ASSOCIATED(Mesh_in % Elements(j) % PDefs)) THEN
-          NeedEdges=.TRUE.
-          ALLOCATE(Mesh_out % Elements(cnt) % PDefs)
-          Mesh_out % Elements(cnt) % PDefs=Mesh_in % Elements(j) % PDefs
-        END IF
       END DO
     END DO
     Mesh_out % NumberOfBulkElements=cnt
@@ -11947,7 +11963,6 @@ END SUBROUTINE GetMaxDefs
 
     ! include edges (see below)
     NeedEdges =  (NeedEdges .OR. PreserveEdges)
-    
     
     ! -------------------------------------------------------
     IF (PreserveBaseline) THEN
@@ -12222,7 +12237,7 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
     END DO
 
-    END IF
+    END IF ! .NOT. Rotate2Pi
     
 
     Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
@@ -12234,14 +12249,13 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % MeshDim = 3
     CurrentModel % Dimension = 3
 
-    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out,NeedEdges=.TRUE.)
-    CALL SetMeshMaxDOFs(Mesh_out)
-
+    CALL PrepareMesh( CurrentModel, Mesh_out, isParallel )
+    
     IF (PRESENT(ExtrudedMeshName)) THEN
        CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
     END IF
 
-!------------------------------------------------------------------------------
+    !------------------------------------------------------------------------------
   END FUNCTION MeshExtrude
 !------------------------------------------------------------------------------
 
@@ -15785,8 +15799,6 @@ CONTAINS
           END IF
        END DO
 
-!      print*,'Found',j-jedges,'interface faces'
-
 !      CALL AllocateVector( IntCnts,  j )
 !      CALL AllocateVector( IntArray, k )
 !
@@ -16476,7 +16488,7 @@ CONTAINS
 !> to normal Lagrangian elements.
 !------------------------------------------------------------------------------
   SUBROUTINE MakePermUsingMask( Model,Solver,Mesh,MaskName, &
-       OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical )
+       OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical, ParallelComm )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Mesh_t)   :: Mesh
@@ -16487,17 +16499,27 @@ CONTAINS
     CHARACTER(LEN=*) :: MaskName
     LOGICAL, OPTIONAL :: MaskOnBulk
     LOGICAL, OPTIONAL :: RequireLogical
+    LOGICAL, OPTIONAL :: ParallelComm
 !------------------------------------------------------------------------------
-    INTEGER, POINTER :: InvPerm(:)
+    INTEGER, POINTER :: InvPerm(:), Neighbours(:)
+    INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), fneigh(:), ineigh(:)
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:)
-    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2,This,bf_id   
-    LOGICAL :: Flag, Found, FirstRound, MaskIsLogical, Hit
+    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2,This,bf_id,nn,ii(ParEnv % PEs)
+    INTEGER :: ierr, status(MPI_STATUS_SIZE), NewDofs
+    LOGICAL :: Flag, Found, FirstRound, MaskIsLogical, Hit, Parallel
+    LOGICAL, ALLOCATABLE :: IsNeighbour(:)
     INTEGER :: Indexes(30), ElemStart, ElemFin, Width
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
     TYPE(Element_t), POINTER :: CurrentElement,Elm
     REAL(KIND=dp) :: MinDist, Dist
 !------------------------------------------------------------------------------
-    
+
+    IF(PRESENT(ParallelComm)) THEN
+      Parallel = ParallelComm
+    ELSE
+      Parallel = ParEnv % PEs > 1
+    END IF
+
     ! First check if there are active elements for this mask
     IF( PRESENT( MaskOnBulk ) ) MaskOnBulk = .FALSE.
     IF( PRESENT( RequireLogical ) ) THEN
@@ -16538,12 +16560,11 @@ CONTAINS
           EXIT
        END IF
     END DO
-    
+
     IF( ElemFin - ElemStart <= 0) THEN
        LocalNodes = 0
        RETURN
     END IF
-
 
     k = 0
     Perm = 0
@@ -16606,8 +16627,84 @@ CONTAINS
     END DO
     LocalNodes = k
 
+    !In parallel case, detect nodes which are shared with another partition
+    !which may not have an element on this boundary
+    !Code borrowed from CommunicateLinearSystemTag
+    IF( Parallel ) THEN
+
+      ALLOCATE( IsNeighbour(ParEnv % PEs), fneigh(ParEnv % PEs), ineigh(ParEnv % PEs) )
+
+      nn = MeshNeighbours(Mesh, IsNeighbour)
+      nn = 0
+      ineigh = 0
+      DO i=0, ParEnv % PEs-1
+        k = i+1
+        IF(i==ParEnv % myPE) CYCLE
+        IF(.NOT. IsNeighbour(k) ) CYCLE
+        nn = nn + 1
+        fneigh(nn) = k
+        ineigh(k) = nn
+      END DO
+
+      n = COUNT(Perm > 0 .AND. Mesh % ParallelInfo % Interface)
+      ALLOCATE( s_e(n, nn ), r_e(n) )
+
+      CALL CheckBuffer( nn*3*n )
+
+      ii = 0
+      DO i=1, Mesh % NumberOfNodes
+        IF(Perm(i) > 0 .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+          DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
+            k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
+            IF ( k == ParEnv % MyPE ) CYCLE
+            k = k + 1
+            k = ineigh(k)
+            IF ( k> 0) THEN
+              ii(k) = ii(k) + 1
+              s_e(ii(k),k) = Mesh % ParallelInfo % GlobalDOFs(i)
+            END IF
+          END DO
+        END IF
+      END DO
+
+      DO i=1, nn
+        j = fneigh(i)
+        CALL MPI_BSEND( ii(i),1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD,ierr )
+        IF( ii(i) > 0 ) THEN
+          CALL MPI_BSEND( s_e(1:ii(i),i),ii(i),MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,ierr )
+        END IF
+      END DO
+
+      NewDofs = 0
+
+      DO i=1, nn
+        j = fneigh(i)
+        CALL MPI_RECV( n,1,MPI_INTEGER,j-1,110,ELMER_COMM_WORLD, status,ierr )
+        IF ( n>0 ) THEN
+          IF( n>SIZE(r_e)) THEN
+            DEALLOCATE(r_e)
+            ALLOCATE(r_e(n))
+          END IF
+
+          CALL MPI_RECV( r_e,n,MPI_INTEGER,j-1,111,ELMER_COMM_WORLD,status,ierr )
+          DO j=1,n
+            k = SearchNode( Mesh % ParallelInfo, r_e(j), Order=Mesh % ParallelInfo % Gorder )
+            IF ( k>0 ) THEN
+              IF(.NOT. Perm(k) > 0) THEN
+                NewDofs = NewDofs + 1
+                Perm(k) = LocalNodes + NewDofs
+              END IF
+            END IF
+          END DO
+        END IF
+      END DO
+      DEALLOCATE(s_e, r_e )
+
+      LocalNodes = LocalNodes + NewDofs
+    END IF
+
     ! Don't optimize bandwidth for parallel cases
-    IF( ParEnv % PEs > 1 .OR. .NOT. OptimizeBW ) RETURN
+    IF( Parallel .OR. .NOT. OptimizeBW ) RETURN
 
     IF(FirstRound) THEN
        ! Allocate space 
@@ -19362,6 +19459,116 @@ CONTAINS
     CALL Info('CreateLineMesh','All done')
 
   END FUNCTION CreateLineMesh
+
+  !Creates a regular 2D mesh of 404 elements
+  !The resulting mesh has no boundary elements etc for now
+  !Should only be used for e.g. mesh to mesh interpolation
+  FUNCTION CreateRectangularMesh(Params) RESULT(Mesh)
+
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+    REAL(KIND=dp) :: min_x, max_x, min_y, max_y, dx, dy
+    INTEGER :: i, j, k, n, counter, nnx, nny, nex, ney, &
+         NoNodes, NoElements, col, row
+    LOGICAL :: Found
+    TYPE(Element_t), POINTER :: Element
+    TYPE(ElementType_t),POINTER :: elmt
+    REAL(KIND=dp) :: MeshVector(3), Length, Coord(3)
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshName, FuncName="CreateRectangularMesh"
+
+!------------------------------------------------------------------------------
+    Mesh => NULL()
+    IF ( .NOT. ASSOCIATED( Params ) ) RETURN
+    Mesh => AllocateMesh()
+
+    CALL Info(FuncName,'Creating 2D mesh on-the-fly')
+
+    !Get parameters from valuelist
+    min_x = ListGetConstReal(Params, "Grid Mesh Min X",UnfoundFatal=.TRUE.)
+    max_x = ListGetConstReal(Params, "Grid Mesh Max X",UnfoundFatal=.TRUE.)
+    min_y = ListGetConstReal(Params, "Grid Mesh Min Y",UnfoundFatal=.TRUE.)
+    max_y = ListGetConstReal(Params, "Grid Mesh Max Y",UnfoundFatal=.TRUE.)
+    dx    = ListGetConstReal(Params, "Grid Mesh dx",UnfoundFatal=.TRUE.)
+    dy    = ListGetConstReal(Params, "Grid Mesh dy",Found)
+    IF(.NOT. Found) dy = dx
+
+    IF(max_x <= min_x .OR. max_y <= min_y .OR. dx <= 0.0_dp .OR. dy <= 0.0_dp) &
+         CALL Fatal(FuncName, "Bad Grid Mesh parameters!")
+
+    !number of nodes in x and y direction (and total)
+    nnx = FLOOR((max_x - min_x) / dx) + 1
+    nny = FLOOR((max_y - min_y) / dy) + 1
+    NoNodes = nnx * nny
+
+    !number of elements in x and y direction (and total)
+    nex = nnx - 1
+    ney = nny - 1
+    NoElements = nex * ney
+
+
+!   Define nodal coordinates
+!   -------------------------------
+    CALL AllocateVector( Mesh % Nodes % x, NoNodes )
+    CALL AllocateVector( Mesh % Nodes % y, NoNodes )
+    CALL AllocateVector( Mesh % Nodes % z, NoNodes )
+    x => Mesh % Nodes % x
+    y => Mesh % Nodes % y
+    z => Mesh % Nodes % z
+
+    z = 0.0_dp !2D
+
+    !Define node positions
+    counter = 0
+    DO i=1,nnx
+      DO j=1,nny
+        counter = counter + 1
+        x(counter) = min_x + (i-1)*dx
+        y(counter) = min_y + (j-1)*dy
+      END DO
+    END DO
+
+!   Define elements
+!   -------------------------------
+    CALL AllocateVector( Mesh % Elements, NoElements )
+
+    Elmt => GetElementType( 404 )
+
+    DO i=1,NoElements
+      Element => Mesh % Elements(i)
+      Element % TYPE => Elmt
+      Element % EdgeIndexes => NULL()
+      Element % FaceIndexes => NULL()
+      Element % ElementIndex = i
+      CALL AllocateVector( Element % NodeIndexes, 4 )
+      Element % Ndofs = 4
+
+      col = MOD(i-1,ney)
+      row = (i-1)/ney
+
+      !THIS HERE NEEDS FIXED!!!!!
+      Element % NodeIndexes(1) = (row * nny) + col + 1
+      Element % NodeIndexes(2) = (row * nny) + col + 2
+      Element % NodeIndexes(4) = ((row+1) * nny) + col + 1
+      Element % NodeIndexes(3) = ((row+1) * nny) + col + 2
+
+      Element % BodyId = 1
+      Element % PartIndex = ParEnv % myPE
+    END DO
+
+!   Update new mesh node count:
+!   ---------------------------
+
+    Mesh % NumberOfNodes = NoNodes
+    Mesh % Nodes % NumberOfNodes = NoNodes
+    Mesh % NumberOfBulkElements = NoElements
+    Mesh % MaxElementNodes = 4
+    Mesh % MaxElementDOFs = 4
+    Mesh % MeshDim = 2
+
+  END FUNCTION CreateRectangularMesh
 
   SUBROUTINE ElmerMeshToDualGraph(Mesh, DualGraph, UseBoundaryMesh)
     IMPLICIT NONE

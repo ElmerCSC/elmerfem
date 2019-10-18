@@ -1,0 +1,37 @@
+Example of conservative interpolation of SMB forçing for ISMIP6
+
+----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+-* To try this example first get required data:
+	- a mesh of the greenland Ice sheet in EPSG:3413 projection
+		e.g.: http://elmerfem.org/elmerice/wiki/lib/exe/fetch.php?media=eis:greenland:present:greenland_mesh_v0.tar.gz
+	- some reference SMB:
+		e.g. results from MAR v3.9 averaged over 1980-1999
+		ftp://ftp.climato.be/fettweis/MARv3.9/ISMIP6/GrIS/ERA_1958-2017/MARv3.9-ERA-Interim-1980-1999.nc
+
+	- aSMB forcing from ISMIP6:
+		e.g. ftp://searive@cryoftp1.gsfc.nasa.gov/ISMIP6/Projections/GrIS/Atmosphere_Forcing/aSMB_observed/v1/MIROC5-rcp85/aSMB
+		if you don't have access to ISMIP6 data sets you can skip this an adapt the test.
+        - a grid description file for the structured netcdf above
+		e.g. ftp://searive@cryoftp1.gsfc.nasa.gov/ISMIP6/Grids/GrIS/GDFs/grid_ISMIP6_GrIS_01000m.nc
+
+----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+-* Required external softwares and librairies:
+	* CDO
+	* netcdf
+	* fortrangis with proj support
+
+
+----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+RUN the example:
+	1. get the data-sets (see above)
+	2. adapt  Makefile.IN with the links to your install directories for fortrangis and netcdff
+	3. Compile the solvers: make -f Makefile.IN
+	4. RUN MakeCDOGridDesc.sif : 
+		- this will produce an unstructured grid description file of the mesh for CDO
+		- rquired fortrangis to compute (lon,lat) from (x,y) coordinates
+		- restructed to 2D meshes with 303 elements only
+	5. The script Interpolate.sh uses CDO for the conservative interpolation from the initial structured Grid to the Elmer unstructured grid. Results are given as cell values
+	6. READ_CELL_NETCDF.sif shows how to read the unstructured netcdf to get the variable on the 2D mesh; eventually use conservative FE interpolation to convert the elemental variable to a nodal variable 

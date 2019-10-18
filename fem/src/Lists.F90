@@ -952,19 +952,25 @@ use spariterglobals
 !------------------------------------------------------------------------------
 !> Deletes a variable (by name) from list of variables
 !------------------------------------------------------------------------------
-  SUBROUTINE VariableRemove(Variables, NameIn)
+  SUBROUTINE VariableRemove(Variables, NameIn, WarnMiss)
     
     IMPLICIT NONE
 !-----------------------------------------------
     TYPE(Variable_t), POINTER :: Variables
     CHARACTER(LEN=*) :: NameIn
+    LOGICAL, OPTIONAL :: WarnMiss
 !-----------------------------------------------    
     TYPE(Variable_t), POINTER :: Var, Prev, RmVar
     CHARACTER(LEN=LEN_TRIM(NameIn)) :: Name
-    LOGICAL :: GotIt
+    LOGICAL :: GotIt, WarnMissing
     INTEGER :: k
 
     GotIt = .FALSE.
+    IF(PRESENT(WarnMiss)) THEN
+      WarnMissing = WarnMiss
+    ELSE
+      WarnMissing = .TRUE.
+    END IF
 
     Var => Variables
     Prev => NULL()
@@ -995,7 +1001,7 @@ use spariterglobals
     END DO
 
     IF(.NOT. GotIt) THEN
-       CALL Warn("VariableRemove","Couldn't find the variable, returning...")
+       IF(WarnMissing) CALL Warn("VariableRemove","Couldn't find the variable, returning...")
        RETURN
     END IF
 

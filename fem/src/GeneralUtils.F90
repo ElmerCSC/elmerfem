@@ -2128,9 +2128,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( F(n), STAT=istat )
-    END IF
+    ALLOCATE( F(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
@@ -2160,9 +2158,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
@@ -2192,9 +2188,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
@@ -2224,9 +2218,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
@@ -2256,9 +2248,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
       WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
       CALL Error( 'AllocateElementVector', Message )
@@ -2286,10 +2276,8 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n1 > 0 .AND. n2 > 0 ) THEN
-       ALLOCATE( f(n1,n2), STAT=istat )
-    END IF
-    IF ( istat /=  0 ) THEN
+    ALLOCATE( f(n1,n2), STAT=istat )
+    if ( istat /=  0 ) THEN
       WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
       CALL Error( 'AllocateRealArray', Message )
       IF ( PRESENT( From ) ) THEN
@@ -2315,10 +2303,8 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n1 > 0 .AND. n2 > 0 ) THEN
-       ALLOCATE( f(n1,n2), STAT=istat )
-    END IF
-    IF ( istat /=  0 ) THEN
+    ALLOCATE( f(n1,n2), STAT=istat )
+    if ( istat /=  0 ) THEN
       WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
       CALL Error( 'AllocateComplexArray', Message )
       IF ( PRESENT( From ) ) THEN

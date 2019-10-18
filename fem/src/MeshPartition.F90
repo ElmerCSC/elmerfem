@@ -343,7 +343,6 @@ CONTAINS
     END IF
     
     CALL Info(FuncName,'Finished Zoltan partitioning',Level=10)
-
     
   CONTAINS
 
@@ -397,8 +396,8 @@ CONTAINS
           j = PartitionPerm(i)
           IF( j == 0 ) CYCLE
         END IF
-        global_ids(j) = j 
-        !global_ids(j) = Mesh % Elements(i) % ElementIndex
+        ! global_ids(j) = j 
+        global_ids(j) = Mesh % Elements(j) % GElementIndex
  
        local_ids(j) = j
       end do
@@ -472,7 +471,7 @@ CONTAINS
     !-------------------------------------
     TYPE(Element_t), POINTER :: MFacePtr(:), Element
     INTEGER :: i,j,k,m,n,max_elfaces,el1,el2,gface_id, gpar_id,gpar_lid,ierr,counter,&
-         NBulk,NFaces,Sweep,NIFFaces
+         NBulk,NFaces,Sweep,NIFFaces,work_size
     INTEGER, ALLOCATABLE :: ElemConn(:,:), ElemConnPart(:,:), NElConn(:), FaceIFIDX(:),status(:),&
          work_int(:)
     INTEGER, POINTER :: ElFaceIdx(:)
@@ -548,7 +547,11 @@ CONTAINS
 
 
     !Generate shared Face GElementIndex list & respective parent GElementIndex
-    ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(NBulk))
+    !don't know at this point the required size of work_int, if there are lots
+    !of bulk elements, probably NBulk is sufficient, but for only a few
+    !disconnected elements, maybe not. So set min size = 1000
+    work_size = MAX(NBulk, 1000)
+    ALLOCATE(SendFaces(ParEnv % PEs),RecvFaces(ParEnv % PEs),work_int(work_size))
 
     RecvFaces % Count = 0
 
@@ -2649,7 +2652,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Element0
     INTEGER :: i,j,k,n,t,nbulk,nbdry,allocstat,part,elemcode,elemindex,geom_id,sweep,partindex
     INTEGER :: gind,lind,rcount,icount,lcount,minelem,maxelem,newnbdry,newnodes,newnbulk
-    LOGICAL :: IsBulk
+    LOGICAL :: IsBulk, Found
     TYPE(MeshPack_t), POINTER :: PPack
     INTEGER, ALLOCATABLE :: GlobalToLocalElem(:), LeftParent(:), RightParent(:)
     CHARACTER(*), PARAMETER :: Caller = 'UnpackMeshPieces'
@@ -2705,6 +2708,7 @@ CONTAINS
 
       Element % Type => Element0 % Type
       n = Element % Type % NumberOfNodes
+      Element % NDOFs = n
 
       IF( n <= 0 .OR. n > 27 ) THEN
         CALL Fatal(Caller,'Invalid number of nodes')
@@ -2849,6 +2853,7 @@ CONTAINS
         END IF
 
         n = Element % Type % NumberOfNodes
+        Element % NDOFs = n
 
         Element % GElementIndex = elemindex
         Element % ElementIndex = t
@@ -2869,7 +2874,6 @@ CONTAINS
           Element % BodyId = geom_id
           icount = icount + 3
         ELSE
-          Element % BodyId = 0
           IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
             ALLOCATE( Element % BoundaryInfo, STAT = allocstat )
             IF( allocstat /= 0 ) THEN
@@ -2877,7 +2881,16 @@ CONTAINS
             END IF
           END IF
 
+          !Check geom id is legal
+          IF(geom_id <= 0 .OR. geom_id > Model % NumberOfBCs) THEN
+            PRINT *, ParEnv % MyPE,'Received element ',i,' from part: ',&
+                 part,' with constraint: ',geom_id
+            CALL Fatal(Caller, "Unexpected constraint on BC element")
+          END IF
+
           Element % BoundaryInfo % Constraint = geom_id
+          Element % BodyId  = ListGetInteger( &
+             Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
 
           ! These are the left and right boundary indexes that currently are not used at all!
           LeftParent(t) = PPack % idata(icount+4)
