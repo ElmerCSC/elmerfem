@@ -6177,7 +6177,7 @@ END SUBROUTINE PickActiveFace
      xP => x
      yP => y
      zP => z
-     CALL GetRefPElementNodes( Element,xP,yP,zP )
+     CALL GetRefPElementNodes( Element % Type,xP,yP,zP )
      ALLOCATE(bNodes % x(n), bNodes % y(n), bNodes % z(n))
         
      ! Set coordinate points of destination

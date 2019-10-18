@@ -5345,6 +5345,8 @@ CONTAINS
        ScanningLoops = 1
      END IF
 
+     CALL SwapRefElemNodes( ANY(Solver % Def_Dofs(:,:,6)>0) )
+
      DO scan = 1, ScanningLoops        
        !----------------------------------------------------------------------
        ! This is to avoid resetting iteration that may be interesting and we
