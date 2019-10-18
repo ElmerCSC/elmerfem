@@ -147,6 +147,20 @@ Material 1
   Min Zs Bottom = Variable Coordinate 1, Coordinate 2
     Real Procedure "./"$bed_func" ""initbedrock"
 
+  RemeshMMG3D Hmin = Real 40.0
+  RemeshMMG3D Hmax = Real 400.0
+  RemeshMMG3D Hgrad = Real 1.0
+  RemeshMMG3D Hausd = Real 100.0
+  RemeshMMG3D Anisotropic = Logical True
+  RemeshMMG3D Target Length(3) = Variable Coordinate 1
+    Real Procedure "ElmerIceUSF" "GlacierMeshMetricAniso"
+
+  GlacierMeshMetric Max Distance = Real 2000.0
+  GlacierMeshMetric Min Distance = Real 200.0
+  GlacierMeshMetric Max LC = Real 500.0
+  GlacierMeshMetric Min LC = Real 50.0
+  GlacierMeshMetric Vertical LC = Real 50.0
+
 End
 
 !!!!! SOLVERS
@@ -569,7 +583,8 @@ Solver 21
    Mesh Hausd = Real 15.0
    Mesh Hmin = Real 30.0
    Mesh Hmax = Real 500.0
-   Test Remesh Dist = Real 1000.0
+   Mesh Hgrad = Real 0.5
+   Remeshing Distance = Real 1000.0
 End
 
 Solver 22

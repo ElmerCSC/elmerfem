@@ -799,20 +799,24 @@ END SUBROUTINE MapNewParallelInfo
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
+SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
 
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
-  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:)
+  TYPE(ValueList_t), POINTER, OPTIONAL :: Params
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   !-----------
+  TYPE(ValueList_t), POINTER :: FuncParams, Material
   TYPE(Element_t), POINTER :: Element
-  REAL(KIND=dp), ALLOCATABLE :: Metric(:,:)
-  REAL(KIND=dp) :: hsiz(3)
+  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:)
+  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL()
+  REAL(KIND=dp) :: hsiz(3),hmin,hmax,hgrad,hausd
   INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType,body_offset,&
-       nBCs
-  LOGICAL :: Debug, Parallel, TensorMet
+       nBCs,NodeNum(1)
+  LOGICAL :: Debug, Parallel, AnisoFlag
   LOGICAL, ALLOCATABLE :: RmElement(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName
+
+  SAVE :: WorkReal
 
 #ifdef HAVE_MMG
 
@@ -820,48 +824,56 @@ SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
   Parallel = ParEnv % PEs > 1
   FuncName = "RemeshMMG3D"
 
+  !Optionally pass valuelist, by default use the Simulation section
+  IF(PRESENT(Params)) THEN
+    FuncParams => Params
+  ELSE
+    FuncParams => GetMaterial(InMesh % Elements(1)) !TODO, this is not generalised
+  END IF
+
+  !Get parameters from valuelist
+  !hausd, hmin, hmax, hgrad, anisoflag, the metric
   !Scalar, vector, tensor metric?
-  MetricDim = SIZE(TargetLength,2)
+
+  hmin = ListGetConstReal(FuncParams, "RemeshMMG3D Hmin",  Default=20.0_dp)
+  hmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax",  Default=4000.0_dp)
+  hgrad = ListGetConstReal(FuncParams,"RemeshMMG3D Hgrad", Default=0.5_dp)
+  hausd = ListGetConstReal(FuncParams, "RemeshMMG3D Hausd",Default=20.0_dp)
+  AnisoFlag = ListGetLogical(FuncParams, "RemeshMMG3D Anisotropic", Default=.TRUE.)
+
   NNodes = InMesh % NumberOfNodes
   NBulk = InMesh % NumberOfBulkElements
   NBdry = InMesh % NumberOfBoundaryElements
 
-  IF(MetricDim == 1) THEN
-    TensorMet = .FALSE.
-  ELSE IF(MetricDim == 3) THEN
-    TensorMet = .TRUE.
-  ELSE
-    CALL Fatal(FuncName,"Unexpected Metric Dimension!")
-  END IF
-
-
-  !Convert target length to metric
-  IF(.NOT. TensorMet) THEN
-
-    SolType = MMG5_Scalar
-    ALLOCATE(Metric(NNodes,1))
-    !TODO - check this - in anistropic case, Metric = edge length?
-    Metric(:,1) = TargetLength(:,1)
-
-  ELSE
+  IF(AnisoFlag) THEN
 
     SolType = MMG5_Tensor
     !Upper triangle of symmetric tensor: 11,12,13,22,23,33
     ALLOCATE(Metric(NNodes,6))
-    Metric = 0.0_dp
+    Metric = 0.0
     DO i=1,NNodes
+      NodeNum = i
+      CALL ListGetRealArray(FuncParams,"RemeshMMG3D Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
+
       !Metric = 1.0/(edge_length**2)
-      Metric(i,1) = 1.0 / (TargetLength(i,1)**2.0)
-      Metric(i,4) = 1.0 / (TargetLength(i,2)**2.0)
-      Metric(i,6) = 1.0 / (TargetLength(i,3)**2.0)
+      Metric(i,1) = 1.0 / (WorkReal(1,1,1)**2.0)
+      Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
+      Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
+    END DO
+
+  ELSE
+
+    SolType = MMG5_Scalar
+    ALLOCATE(Metric(NNodes, 1))
+    DO i=1,NNodes
+      NodeNum = i
+      Metric(i,:) = ListGetReal(FuncParams,"RemeshMMG3D Target Length", 1, NodeNum, UnfoundFatal=.TRUE.)
     END DO
 
   END IF
 
-!  hsiz = (/2000.0,2000.0,150.0/)
   mmgMesh = 0
   mmgSol  = 0
-
 
   !---------------------------------
   ! Issue here: MMG3D will 'helpfully' add any
@@ -890,7 +902,7 @@ SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
   IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set solution size.")
 
   DO i=1,NNodes
-    IF(TensorMet) THEN
+    IF(AnisoFlag) THEN
       IF(Debug) PRINT *,'debug sol at ',i,' is: ',Metric(i,:)
       CALL MMG3D_Set_TensorSol(mmgSol,Metric(i,1),Metric(i,2),Metric(i,3),&
            Metric(i,4),Metric(i,5),Metric(i,6),i,ierr)
@@ -901,11 +913,14 @@ SUBROUTINE RemeshMMG3D(InMesh,TargetLength,OutMesh,NodeFixed,ElemFixed)
     END IF
   END DO
 
+  CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
+       hmin,ierr)
+  CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmax,&
+       hmax,ierr)
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hausd,&
-       20.0_dp,ierr)
-
+       hausd,ierr)
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
-         1.4_dp,ierr)
+       hgrad,ierr)
 
   !Take care of fixed nodes/elements if requested
   IF(PRESENT(NodeFixed)) THEN

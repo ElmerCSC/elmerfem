@@ -84,7 +84,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.,DoAniso
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
 
@@ -107,42 +107,29 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     END IF
   END DO
 
-  !Get Body ID
+  !Get main Body ID
   target_bodyid = Mesh % Elements(1) % BodyID
   IF(target_bodyid /= 1) CALL Warn(SolverName, "Body ID is not 1, this case might not be well handled")
-  !For testing - set a calving levelset function to mimic calving events
-  !-------------------
 
   !TODO - unhardcode (detect?) this
   front_BC_id = 1
   front_body_id =  ListGetInteger( &
        Model % BCs(front_bc_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
 
-  hmin = ListGetConstReal(SolverParams, &
-       "Mesh Hmin", Found)
-  IF(.NOT. Found) hmin = 20.0
+  hmin = ListGetConstReal(SolverParams, "Mesh Hmin",  Default=20.0_dp)
+  hmax = ListGetConstReal(SolverParams, "Mesh Hmax",  Default=4000.0_dp)
+  hgrad = ListGetConstReal(SolverParams,"Mesh Hgrad", Default=0.5_dp)
+  hausd = ListGetConstReal(SolverParams, "Mesh Hausd",Default=20.0_dp)
+  remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", Default=1000.0_dp)
+  CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", Default="Calving Lset")
 
-  hmax = ListGetConstReal(SolverParams, &
-       "Mesh Hmax", Found)
-  IF(.NOT. Found) hmax = 4000.0
-
-  hgrad = ListGetConstReal(SolverParams, &
-       "Mesh Hgrad", Found)
-  IF(.NOT. Found) hgrad = 0.5
-
-  hausd = ListGetConstReal(SolverParams, &
-       "Mesh Hausd", Found)
-  IF(.NOT. Found) hausd = 20.0
-
-  remesh_thresh = ListGetConstReal(SolverParams, &
-       "Test Remesh Dist", Found)
-  IF(.NOT. Found) remesh_thresh = 1000.0
-
-  PRINT *,ParEnv % MyPE,' hmin: ',hmin
-  PRINT *,ParEnv % MyPE,' hmax: ',hmax
-  PRINT *,ParEnv % MyPE,' hausd: ',hausd
-  PRINT *,ParEnv % MyPE,' remesh_thresh: ',remesh_thresh
-
+  IF(ParEnv % MyPE == 0) THEN
+    PRINT *,ParEnv % MyPE,' hmin: ',hmin
+    PRINT *,ParEnv % MyPE,' hmax: ',hmax
+    PRINT *,ParEnv % MyPE,' hgrad: ',hgrad
+    PRINT *,ParEnv % MyPE,' hausd: ',hausd
+    PRINT *,ParEnv % MyPE,' remeshing distance: ',remesh_thresh
+  END IF
 
   !Get the calving levelset function (-ve inside calving event, +ve in intact ice)
   !-------------------
@@ -432,7 +419,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !! remesh function
       CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
 
-      CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
+      IF(Debug) CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
 
       CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
@@ -593,7 +580,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
-      DoAniso = .FALSE.
+      DoAniso = .TRUE.
       IF(DoAniso) THEN
 
         new_fixed_elem = PACK(new_fixed_elem, .NOT. RmElem)
@@ -622,7 +609,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         target_length(:,2) = 300.0
         target_length(:,3) = 50.0
 
-        CALL RemeshMMG3D(NewMeshR, target_length, NewMeshRR, new_fixed_node, new_fixed_elem)
+        !Parameters for anisotropic remeshing are set in the Materials section, or can &
+        !optionally be passed as a valuelist here. They have prefix RemeshMMG3D
+        !TODO - apparently there is beta-testing capability to do both levelset cut and anisotropic
+        !remeshing in the same step:
+        !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
+        CALL RemeshMMG3D(NewMeshR, NewMeshRR, NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
 
         !Update parallel info from old mesh nodes (shared node neighbours)
         CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
