@@ -2488,21 +2488,29 @@ ELMER_SOLVER_HOME &
         CALL Info('LoadModel',Message,Level=7)
 
         single=.FALSE.
+        nprocs = numprocs
+      
         IF ( SEQL(Name, '-single ') ) THEN
-          single=.TRUE.
+          single=.TRUE.          
           Name=Name(9:)
+          IF( ParEnv % PEs > 1 ) THEN
+            CALL Info('LoadModel','Whole mesh will be read for each partition!',Level=7)
+          END IF
         END IF
 
         nprocs = numprocs
         IF ( SEQL(Name, '-part ') ) THEN
           READ( Name(7:), * ) nprocs
+          IF( ParEnv % PEs > 1 ) THEN
+            CALL Info('LoadModel','This mesh is only active at partitions: '&
+                //TRIM(I2S(nprocs)),Level=7)
+          END IF 
           i = 7
           DO WHILE(Name(i:i)/=' ')
            i=i+1
           END DO
           Name=Name(i+1:)
         END IF
-
 
         OneMeshName = .FALSE.
         k = 1
@@ -2586,7 +2594,8 @@ ELMER_SOLVER_HOME &
           END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
-
+        Model % Solvers(s) % Mesh % SingleMesh = Single
+        
 
         MeshLevels = ListGetInteger( Model % Solvers(s) % Values, 'Mesh Levels', GotIt )
         IF ( .NOT. GotIt ) MeshLevels=1

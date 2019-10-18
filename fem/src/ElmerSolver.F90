@@ -1828,8 +1828,8 @@ END INTERFACE
            ELSE
              OutputName = TRIM(RestartFile)
            END IF
-                      
-           IF ( ParEnv % PEs > 1 ) &
+                                 
+           IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
                OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
            CALL SetCurrentMesh( CurrentModel, Mesh )
 
@@ -1875,10 +1875,10 @@ END INTERFACE
          ELSE
            OutputName = TRIM(RestartFile)
          END IF
-         IF ( ParEnv % PEs > 1 ) &
+         IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
            OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
 
-         CALL SetCurrentMesh( CurrentModel, Mesh )
+         CALL SetCurrentMesh( CurrentModel, Mesh )         
          CALL LoadRestartFile( OutputName, k, Mesh )
 
          StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)

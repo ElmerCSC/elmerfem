@@ -69,7 +69,7 @@ END SUBROUTINE Mesh2MeshSolver_Init0
 SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -82,9 +82,10 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh, ThisMesh, TargetMesh
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var
-  CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName
-  INTEGER :: i
-  LOGICAL :: Found
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName, MaskName
+  INTEGER :: i, n
+  LOGICAL :: Found, GotMaskName, AdditiveMode, DoAdd  
+  REAL(KIND=dp), ALLOCATABLE :: TmpSol(:)
   
   CALL Info('Mesh2MeshSolver','Mapping result between meshes')
 
@@ -119,28 +120,61 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-  CALL Info('Mesh2MeshSolver','Target mesh name is: '//TRIM(TargetMesh % Name),Level=7)
-  
+  CALL Info('Mesh2MeshSolver','Target mesh name is: '//TRIM(TargetMesh % Name),Level=7)   
   CALL SetCurrentMesh( CurrentModel, TargetMesh )
+
+  AdditiveMode = ListGetLogical( Params,'Interpolation Additive',Found ) 
+  IF( AdditiveMode ) THEN
+    CALL Info('Mesh2MeshSolver','Interpolating in additive mode',Level=15)
+  END IF
+  
   DO i = 1,100    
     WRITE (Name,'(A,I0)') 'Variable ',i
     VarName = GetString( Params, Name, Found )
-    IF(.NOT. Found ) EXIT
-    
+    IF(.NOT. Found ) EXIT    
+   
+    WRITE (Name,'(A,I0)') 'Mask ',i
+    MaskName = GetString( Params, Name, GotMaskName )
+   
     ! Use namespace such that in principle each variable could have different set of
     ! interpolation rules attached to them. 
     CALL ListPushNameSpace('var'//TRIM(I2S(i))//':')
 
     ! Here we might invalidate the variable in the primary mesh so that it really needs to be interpolated
     Var => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
-    IF( ASSOCIATED( Var ) ) Var % Valid = .FALSE.
-    
+    IF( ASSOCIATED( Var ) ) THEN
+      Var % Valid = .FALSE.
+    END IF
+
+    ! This is provided if we want the interpolation to be cumulative
+    DoAdd = .FALSE.
+    IF( ASSOCIATED( Var ) ) THEN      
+      IF( AdditiveMode ) THEN
+        n = SIZE( Var % Values ) 
+        IF(ALLOCATED( TmpSol ) ) THEN
+          IF( SIZE( TmpSol ) < n ) DEALLOCATE( TmpSol ) 
+        END IF
+        IF( .NOT. ALLOCATED( TmpSol ) ) THEN
+          ALLOCATE( TmpSol( n ) )
+        END IF
+        DoAdd = .TRUE.
+        TmpSol(1:n) = Var % Values(1:n)
+      END IF
+    END IF
+        
     ! Try to find the variable in target mesh, this includes MeshToMesh interpolation by default
-    Var => VariableGet( TargetMesh % Variables, VarName )
+    IF( GotMaskName ) THEN      
+      Var => VariableGet( TargetMesh % Variables, VarName, MaskName = MaskName )
+    ELSE 
+      Var => VariableGet( TargetMesh % Variables, VarName )
+    END IF
+       
+    IF( DoAdd ) THEN
+      Var % Values(1:n) = Var % Values(1:n) + TmpSol(1:n)
+    END IF
+      
     IF(.NOT. ASSOCIATED( Var ) ) THEN
       CALL Warn('Mesh2MeshSolver','Could not find variable '//TRIM(VarName)//' in part '//TRIM(I2S(ParEnv % MyPe)))
-    ELSE
-      PRINT *,'Variable range: ',i,parenv % mype, MINVAL(Var % values), MAXVAL(Var % values)
     END IF
     
     CALL ListPopNamespace()

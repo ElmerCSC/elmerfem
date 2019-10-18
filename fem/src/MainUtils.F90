@@ -872,14 +872,15 @@ CONTAINS
    !> Create permutation table that follows the degrees of freedom of the primary
    !> permutation but is masked by a flag on the body force section.
    !---------------------------------------------------------------------------------
-   SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, SecName, MaskPerm, nsize )
+   SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, MaskPerm, nsize, SecName )
 
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER :: FullPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName, SecName
+     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
      INTEGER, POINTER :: MaskPerm(:) 
      INTEGER :: nsize
-          
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: SecName
+         
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element
      INTEGER :: t, n, m
@@ -890,12 +891,7 @@ CONTAINS
      
      
      CALL Info('CreateMaskedPerm','Creating variable with mask: '//TRIM(MaskName),Level=8)
-       
-     EquationName = ListGetString( Solver % Values, 'Equation', Found)
-     IF( .NOT. Found ) THEN
-       CALL Fatal('CreateMaskedPerm','Equation not present!')
-     END IF     
-     
+            
      Mesh => Solver % Mesh
      NULLIFY( MaskPerm ) 
 
@@ -906,19 +902,32 @@ CONTAINS
 
      DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
-            
-       IF( Element % PartIndex == ParEnv % myPE ) THEN
-         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
-           
-           BF => ListGetSection( Element, SecName )
-           ActiveElem = ListGetLogicalGen( BF, MaskName )
 
-           IF( ActiveElem ) THEN
-             m = GetElementDOFs( Indexes, Element, Solver )
-             MaskPerm( Indexes(1:m) ) = FullPerm( Indexes(1:m) )
-           END IF
+       IF( ParEnv % PEs > 1 ) THEN
+         IF( t <= Mesh % NumberOfBulkElements ) THEN
+           IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
          END IF
        END IF
+       
+       IF( PRESENT( SecName ) ) THEN
+         BF => ListGetSection( Element, SecName ) 
+       ELSE
+         IF( t <= Mesh % NumberOfBulkElements ) THEN
+           BF => ListGetSection( Element,'body force')
+         ELSE
+           BF => ListGetSection( Element,'boundary condition')
+         END IF
+       END IF
+
+       
+       IF(.NOT. ASSOCIATED( BF ) ) CYCLE
+
+       ActiveElem = ListGetLogicalGen( BF, MaskName )
+
+       IF( ActiveElem ) THEN
+         MaskPerm( Element % NodeIndexes ) = FullPerm( Element % NodeIndexes )
+       END IF
+
      END DO
        
      m = 0
@@ -961,7 +970,7 @@ CONTAINS
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
         VariableGlobal, VariableIP, VariableElem, VariableDG, VariableNodal, &
         DG, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, IsProcedure, &
-        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt
+        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt, GotSecName
     
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
@@ -1586,6 +1595,7 @@ CONTAINS
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' Mask'
       tmpname = ListGetString( SolverParams, str, UseMask )
      
+      GotSecName = .FALSE.
       IF( UseMask ) THEN
         i3 = LEN_TRIM(tmpname) 
         i1 = INDEX(tmpname,':')
@@ -1601,6 +1611,7 @@ CONTAINS
           mask_name = tmpname(i2:i3)
           CALL Info('CreateIpPerm','masking with section: '//TRIM(sec_name),Level=12)
           CALL Info('CreateIpPerm','masking with keyword: '//TRIM(mask_name),Level=12)
+          GotSecName = .TRUE.
         ELSE          
           sec_name = 'body force'
           mask_name = tmpname(1:i3)
@@ -1734,7 +1745,13 @@ CONTAINS
           InheritVarType = .TRUE.
           IF( UseMask ) THEN
             NULLIFY( Perm )
-            CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, sec_name, Perm, nsize )
+            IF( GotSecName ) THEN
+              CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, &
+                  Perm, nsize, sec_name )
+            ELSE
+              CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, &
+                  Perm, nsize )
+            END IF              
             nsize = DOFs * nsize
           ELSE
             nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs          

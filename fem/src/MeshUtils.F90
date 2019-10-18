@@ -2517,7 +2517,8 @@ END SUBROUTINE GetMaxDefs
    INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
    LOGICAL :: Found
 
-
+   
+   
    IF( Mesh % MaxDim == 0) THEN
      CALL SetMeshDimension( Mesh )
    END IF
@@ -2669,7 +2670,7 @@ END SUBROUTINE GetMaxDefs
 
        body_id = Element % BodyId
        n = Element % TYPE % NumberOfNodes
-
+       
        ! Check the Solver specific element types
        IF( Meshdeps ) THEN
          IF ( body_id/=body_id0 ) THEN
@@ -2721,8 +2722,10 @@ END SUBROUTINE GetMaxDefs
        EdgeDOFs(i) = MAX(0,inDOFs(el_id,2))
        FaceDOFs(i) = MAX(0,inDOFs(el_id,3))
 
-       IF ( inDofs(el_id,4) == 0 ) inDOFs(el_id,4) = n
-
+       IF ( inDofs(el_id,4) == 0 ) THEN
+         inDOFs(el_id,4) = n
+       END IF
+         
        NULLIFY( Element % DGIndexes )
        IF ( inDOFs(el_id,4) > 0 ) THEN
          CALL AllocateVector( Element % DGIndexes, inDOFs(el_id,4))
@@ -2735,11 +2738,10 @@ END SUBROUTINE GetMaxDefs
        END IF
        Element % DGDOFs = MAX(0,inDOFs(el_id,4))
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
-
+       
        ! Check if given element is a p element
-       IF (FirstOrderElements.AND.inDOFs(el_id,6) > 0) THEN
+       IF (FirstOrderElements .AND. inDOFs(el_id,6) > 0) THEN
          CALL AllocatePDefinitions(Element)
-
          NeedEdges = .TRUE.
 
          ! Calculate element bubble dofs and set element p
@@ -12142,7 +12144,7 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
-    CALL Info('ExtrudeMesh',Message,Level=8)
+    CALL Info('MeshExtrude',Message,Level=8)
 
     max_body=0
     DO i=1,Mesh_in % NumberOfBulkElements
@@ -12155,7 +12157,7 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     WRITE( Message,'(A,I0)') 'Number of new BCs for layers: ',max_body
-    CALL Info('ExtrudeMesh',Message,Level=8)
+    CALL Info('MeshExtrude',Message,Level=8)
 
 
     ! Add start and finish planes except if we have a full rotational symmetry

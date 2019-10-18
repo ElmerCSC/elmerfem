@@ -1880,7 +1880,7 @@ use spariterglobals
      IF(.NOT.ASSOCIATED(List)) RETURN
 
      k = StringToLowerCase( str,Name,.TRUE. )
-
+     
      IF( ListGetnamespace(strn) ) THEN
        stack => Namespace_stack
        DO WHILE(.TRUE.)
@@ -1912,7 +1912,7 @@ use spariterglobals
      IF ( .NOT. ASSOCIATED(ptr) ) THEN
        Ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
-         n = ptr % NameLen
+         n = ptr % NameLen         
          IF ( n==k ) THEN
            IF ( ptr % Name(1:n) == str(1:n) ) EXIT
          END IF
@@ -3189,7 +3189,8 @@ use spariterglobals
 
 !------------------------------------------------------------------------------
 !> A generalized version of ListGetLogical. Uses logical, only if the keyword is
-!> of type locical, otherwise returns True if the keyword is present.
+!> of type locical, if the type is real it return True for positive values,
+!> and otherwise returns True IF the keyword is present.
 !> Since the absence if a sign of False there is no separate Found flag.
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ListGetLogicalGen( List, Name) RESULT(L)
@@ -3200,17 +3201,27 @@ use spariterglobals
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
      LOGICAL :: Found
+     REAL(KIND=dp) :: Rval
 !------------------------------------------------------------------------------
 
      L = .FALSE.
+     
      ptr => ListFind(List,Name,Found)
-     IF ( ASSOCIATED(ptr) ) THEN
-       IF(ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR ) THEN
-         L = ptr % Lvalue
-       ELSE
-         L = .TRUE.
-       END IF
-     END IF    
+     IF ( .NOT. ASSOCIATED(ptr) ) RETURN
+     
+     IF(ptr % TYPE == LIST_TYPE_LOGICAL ) THEN
+       L = ptr % Lvalue
+       
+     ELSE IF ( ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR .OR. & 
+         ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_STR .OR. &
+         ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_PROC ) THEN
+
+       RVal = ListGetConstReal( List, Name )
+       L = ( RVal > 0.0_dp )
+     ELSE
+       L = .TRUE.
+     END IF
+     
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogicalGen
 !------------------------------------------------------------------------------
@@ -3428,6 +3439,8 @@ use spariterglobals
       NULLIFY( bodylst ) 
     END IF
     LFound = .FALSE.
+
+    NULLIFY( lst )
     
     SELECT CASE ( SectionName ) 
 

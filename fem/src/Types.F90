@@ -814,6 +814,8 @@ END INTERFACE
      INTEGER, POINTER :: RePartition(:) => NULL()
      TYPE(NeighbourList_t), POINTER :: Halo(:) => NULL()
      LOGICAL :: HaveHalo = .FALSE.
+
+     LOGICAL :: SingleMesh = .FALSE.
      
    END TYPE Mesh_t
 
