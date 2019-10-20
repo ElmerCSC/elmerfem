@@ -1531,6 +1531,7 @@ CONTAINS
         ! permutation vector
         !-----------------------------------------------------------------
         IF( ListGetLogical( SolverParams, 'No Matrix', Found ) ) THEN
+          CALL Info('AddEquationBasics','No matrix needed any more, freeing structures!',Level=12)
           Solver % SolverMode = SOLVER_MODE_MATRIXFREE
           CALL FreeMatrix( Solver % Matrix )
         END IF

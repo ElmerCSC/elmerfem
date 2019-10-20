@@ -969,8 +969,11 @@ CONTAINS
     END IF
 
     SaveBoundariesOnly = GetLogical( Params,'Save Boundaries Only',GotIt ) 
+    IF( SaveBoundariesOnly ) CALL Info('VtuOutputSolver','Saving only boundary elements!',Level=15)
+    
     SaveBulkOnly = GetLogical( Params,'Save Bulk Only',GotIt ) 
-
+    IF( SaveBulkOnly ) CALL Info('VtuOutputSolver','Saving only bulk elements!',Level=15)
+    
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 

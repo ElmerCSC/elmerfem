@@ -6,7 +6,7 @@
 !> that speeds up the interpolation.
 !------------------------------------------------------------------------------
      SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
+         NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
 !------------------------------------------------------------------------------
        USE Lists
        USE SParIterComm
@@ -19,11 +19,11 @@
        LOGICAL, OPTIONAL :: UseQuadrantTree
        TYPE(Projector_t), POINTER, OPTIONAL :: Projector
        CHARACTER(LEN=*),OPTIONAL :: MaskName
+       LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
 !-------------------------------------------------------------------------------
        INTEGER, ALLOCATABLE :: perm(:), vperm(:)
        INTEGER, POINTER :: nperm(:)
        LOGICAL, ALLOCATABLE :: FoundNodes(:)
-       LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
        TYPE(Mesh_t), POINTER :: nMesh
        TYPE(VAriable_t), POINTER :: Var, nVar
        INTEGER :: i,j,k,l,nfound,maxrecv,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
