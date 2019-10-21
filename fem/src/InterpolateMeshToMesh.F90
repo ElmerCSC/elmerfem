@@ -80,11 +80,12 @@
       ! we found:
       ! -----------------------------------------------------
 
+      
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
          NewVariables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
 
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
-
+      
       ! special case "all found":
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
@@ -99,6 +100,12 @@
       CALL SParActiveSUM(dn,2)
       IF ( dn==0 ) RETURN
 
+      ! No use to continue even in parallel, since the OldMeshes are all the same!
+      IF( OldMesh % SingleMesh ) THEN
+        CALL Warn('InterpolateMeshToMesh','Could not find all dofs: '//TRIM(I2S(NINT(dn))))
+        RETURN
+      END IF
+      
 
       ! Exchange partition bounding boxes:
       ! ----------------------------------

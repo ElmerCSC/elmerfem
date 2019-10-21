@@ -34,6 +34,26 @@
 ! *
 ! *****************************************************************************/
 
+SUBROUTINE StructuredMeshMapper_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => GetSolverParams()  
+  CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
+  
+END SUBROUTINE StructuredMeshMapper_init
+
+
 !------------------------------------------------------------------------------
 !>  Subroutine for mapping the mesh between given top and bottom surfaces.
 !>  This solver assumes that the mesh is structural so that it could have 
@@ -65,7 +85,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,imid,ii,jj,Rounds,BotMode,TopMode,nsize, nnodes, &
        ActiveDirection,elem, istat, TangledCount
   INTEGER, POINTER :: MaskPerm(:),TopPerm(:),BotPerm(:),TangledMaskPerm(:),TopPointer(:),&
-       BotPointer(:),MidPointer(:),NodeIndexes(:)
+       BotPointer(:),MidPointer(:),NodeIndexes(:),TmpPerm(:)
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
@@ -159,20 +179,24 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     TangledMaskVarName = GetString(SolverParams,'Correct Surface Mask', ComputeTangledMask)
     IF (ComputeTangledMask) THEN
       TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName) )
-      IF (ASSOCIATED(TangledMaskVar)) THEN
-        IF(TangledMaskVar % DOFs /= 1) THEN 
-          CALL Fatal('StructuredMeshMapper','> Correct Surface Mask < variable should have only 1 dof')
-        END IF
-        TangledMask => TangledMaskVar % Values
-        TangledMask = 1.0_dp
-        TangledMaskPerm => TangledMaskVar % Perm
-        WRITE(Message,'(A,A)') 
+      IF(.NOT. ASSOCIATED( TangledMaskVar ) ) THEN
         CALL Info('StructuredMeshMapper',&
-            'Output of > Correct Surface Mask < to: '//TRIM(TangledMaskVarName),Level=6 )
-      ELSE
-        CALL Warn('StructuredMeshMapper',&
-            'Ignoring '//TRIM(TangledMaskVarName)//' given as > Correct Surface Mask < variable, as not found.')
+            'Given > Correct Surface Mask < variable not present, creating it.')
+        ALLOCATE( TmpPerm(Mesh % NumberOfNodes) )
+        DO i=1,Mesh % NumberOfNodes; TmpPerm(i) = i; END DO
+        CALL DefaultVariableAdd( TangledMaskVarname, Perm = TmpPerm, Var = TangledMaskVar )
+        NULLIFY( TmpPerm ) 
       END IF
+        
+      IF(TangledMaskVar % DOFs /= 1) THEN 
+        CALL Fatal('StructuredMeshMapper','> Correct Surface Mask < variable should have only 1 dof')
+      END IF
+      TangledMask => TangledMaskVar % Values
+      TangledMask = 1.0_dp
+      TangledMaskPerm => TangledMaskVar % Perm
+      WRITE(Message,'(A,A)') 
+      CALL Info('StructuredMeshMapper',&
+          'Output of > Correct Surface Mask < to: '//TRIM(TangledMaskVarName),Level=6 )
     END IF
   END IF
 
@@ -613,9 +637,10 @@ CONTAINS
     END DO
        
   END SUBROUTINE BaseVarDisplace
-
-
+  
   
   !------------------------------------------------------------------------------
 END SUBROUTINE StructuredMeshMapper
 !------------------------------------------------------------------------------
+
+

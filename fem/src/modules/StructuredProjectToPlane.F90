@@ -57,15 +57,19 @@ SUBROUTINE StructuredProjectToPlane_init( Model,Solver,dt,TransientSimulation )
   INTEGER :: NormInd
   LOGICAL :: GotIt
 
+  Params => GetSolverParams()
+  
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
-  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
+  NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
   IF( NormInd > 0 ) THEN
-    IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
-      CALL ListAddString( Solver % Values,'Variable','-nooutput -global savescalars_var')
+    IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
+      CALL ListAddString( Params,'Variable','-nooutput -global savescalars_var')
     END IF
   END IF
 
+  CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
+  
 END SUBROUTINE StructuredProjectToPlane_init
 
 

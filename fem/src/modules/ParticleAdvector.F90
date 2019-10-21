@@ -210,6 +210,10 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
     WRITE (Message,'(A,I0,A,I0,A)') 'Timestep ',i,' with ',NoMoving,' moving particles'
     CALL Info('ParticleAdvector',Message,Level=6)
 
+    ! Freeze particles that are too old
+    !----------------------------------------------------------------
+    CALL SetRetiredParticles( )    
+    
     IF( InfoActive( 15 ) ) THEN 
       CALL ParticleInformation(Particles, ParticleStepsTaken, &
           TimeStepsTaken, tottime )
@@ -244,6 +248,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: PTime(:), PCond(:)
     REAL(KIND=dp) :: PTimeConst
     LOGICAL :: Found, GotTime, SomeBodyForce, SomeBC
+    INTEGER :: FixedCount
     TYPE(ValueList_t), POINTER :: Params
 
 
@@ -251,7 +256,7 @@ CONTAINS
 
     SomeBC = ListCheckPresentAnyBC( Model,'Particle Fixed Condition') 
     SomeBodyForce = ListCheckPresentAnyBodyForce( Model,'Particle Fixed Condition') 
-
+    
     IF( .NOT. (SomeBC .OR. SomeBodyForce ) ) RETURN		  
 
     i = Model % MaxElementNodes 
@@ -259,8 +264,10 @@ CONTAINS
 
     PtimeVar => ParticleVariableGet( Particles, 'particle time' )
     GotTime = ASSOCIATED( PTimeVar ) 
-    PTimeConst = ListGetCReal( Params,'Fixed Particle Time',Found)
 
+    PTimeConst = ListGetCReal( Params,'Fixed Particle Time',Found)
+    FixedCount = 0
+    
     IF( SomeBC ) THEN
       DO j=Mesh % NumberOfBulkElements+1,&
   	Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -278,7 +285,10 @@ CONTAINS
           IF( PCond(i) < 0.0_dp ) CYCLE
 
 	  k = Element % NodeIndexes(i)
+          IF( Particles % Status( k ) == PARTICLE_FIXEDCOORD ) CYCLE
+
           Particles % Status( k ) = PARTICLE_FIXEDCOORD
+          FixedCount = FixedCount + 1
 	  IF(.NOT. GotTime ) CYCLE
 
 	  IF( Found ) THEN
@@ -288,11 +298,7 @@ CONTAINS
           END IF 
         END DO
       END DO
-
-      i = COUNT( Particles % Status == PARTICLE_FIXEDCOORD )
-      WRITE( Message,'(A,I0)') 'Number of fixed boundary particles: ',i 
-      CALL Info('SetFixedParticles',Message)
-    END IF 
+    END IF
 
 
     IF( SomeBodyForce ) THEN
@@ -311,8 +317,11 @@ CONTAINS
           IF( PCond(i) < 0.0_dp ) CYCLE
 
 	  k = Element % NodeIndexes(i)
+          IF( Particles % Status( k ) == PARTICLE_FIXEDCOORD ) CYCLE
+
           Particles % Status( k ) = PARTICLE_FIXEDCOORD
-	  IF(.NOT. GotTime ) CYCLE
+          FixedCount = FixedCount + 1
+          IF(.NOT. GotTime ) CYCLE
 
 	  IF( Found ) THEN
             PTimeVar % Values( k ) = PTime(i)
@@ -321,15 +330,51 @@ CONTAINS
           END IF 
         END DO
       END DO
-
-      i = COUNT( Particles % Status == PARTICLE_FIXEDCOORD )
-      WRITE( Message,'(A,I0)') 'Number of fixed bulk particles: ',i 
-      CALL Info('SetFixedParticles',Message)
-    END IF 
-
-   DEALLOCATE( PTime, PCond )
-
+    END IF
+    DEALLOCATE( PTime, PCond )
+              
+    CALL Info('SetFixedParticles','Number of new fixed particles: '&
+        //TRIM(I2S(FixedCount)),Level=7)
+    
   END SUBROUTINE SetFixedParticles 
+
+  
+  !> Eliminate particles that are too old sit an fixed boundaries.
+  !-------------------------------------------------------------------------
+  SUBROUTINE SetRetiredParticles( )
+
+    INTEGER :: i,j,k
+    REAL(KIND=dp) :: MaxIntegTime
+    LOGICAL :: Found, GotMaxIntegTime
+    INTEGER :: FixedCount
+    TYPE(ValueList_t), POINTER :: Params
+
+    Params => GetSolverParams()
+
+    MaxIntegTime = ListGetCReal( Params,'Max Integration Time',GotMaxIntegTime )
+        
+    IF( .NOT. GotMaxIntegTime ) RETURN		  
+
+    PtimeVar => ParticleVariableGet( Particles, 'particle time' )
+    IF(.NOT. ASSOCIATED( PTimeVar ) ) THEN
+      CALL Fatal('SetRetiredParticles','Cannot retire particles without time!')
+    END IF
+
+    FixedCount = 0    
+    DO k=1,SIZE( PTimeVar % Values ) 
+      IF( Particles % Status( k ) == PARTICLE_FIXEDCOORD ) CYCLE
+      IF( PTimeVar % Values( k ) >= MaxIntegTime ) THEN
+        FixedCount = FixedCount + 1
+        Particles % Status( k ) = PARTICLE_FIXEDCOORD
+      END IF
+    END DO
+
+    IF( FixedCount > 0 ) THEN
+      CALL Info('SetRetiredParticles','Number of new retired particles: '&
+          //TRIM(I2S(FixedCount)),Level=7)    
+    END IF
+      
+  END SUBROUTINE SetRetiredParticles
 
   
   !------------------------------------------------------------------------
@@ -965,5 +1010,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
       CALL ListAddString( Solver % Values,'Variable','-nooutput -global particleadvector_var')
     END IF
   END IF
+
+  CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
   
 END SUBROUTINE ParticleAdvector_Init

@@ -1336,7 +1336,8 @@ CONTAINS
        V(1:n) = (/ -1d0,-1d0,1d0,1d0,-1d0,-1d0,1d0,1d0 /)
        W(1:n) = (/ -1d0,-1d0,-1d0,-1d0,1d0,1d0,1d0,1d0 /)
     CASE DEFAULT
-       CALL Warn('PElementMaps::GetRefPElementNodes','Unknown element type')
+      WRITE(Message,'(A,I0)') 'Unknown element type: ',Element % ElementCode
+      CALL Warn('PElementMaps::GetRefPElementNodes',Message)
     END SELECT
 !------------------------------------------------------------------------------
     END SUBROUTINE GetRefPElementNodes
