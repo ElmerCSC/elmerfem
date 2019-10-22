@@ -57,8 +57,8 @@ SUBROUTINE Mesh2MeshSolver_init0( Model,Solver,dt,TransientSimulation )
     
   Params => GetSolverParams()
 
-!  CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
-
+  CALL ListAddNewLogical( Params,'No Matrix',.TRUE.)
+  CALL ListAddNewLogical( Params,'Mesh Enforce Local Copy',.TRUE.)
   
 END SUBROUTINE Mesh2MeshSolver_Init0
 

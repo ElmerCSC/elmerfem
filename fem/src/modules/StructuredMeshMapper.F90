@@ -90,10 +90,10 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
        MidLayerExists, WriteMappedMeshToDisk = .FALSE., GotBaseVar, &
-       BaseDisplaceFirst, RecompStab
+       BaseDisplaceFirst, RecompStab, MapHeight
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
-       TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
-  REAL(KIND=dp) :: at0,at1,at2,Heps
+       TopVal0, BotVal0, MidVal, RefVal, ElemVector(3),DotPro,Eps,Length, MinHeight
+  REAL(KIND=dp) :: at0,at1,at2,Heps,dx
 #ifndef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: CPUTime,RealTime
 #endif
@@ -167,6 +167,12 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   IF( DeTangle ) THEN
     CALL Info('StructuredMeshMapper',&
         '> Correct Surface < in case of intersecting upper and lower surface',Level=4)
+
+    MapHeight = ListCheckPresent( SolverParams,'Mesh Height Map')
+    IF(MapHeight) THEN
+      CALL Info('StructuredMeshMapper','Using function to map heights',Level=5)
+    END IF
+
     MinHeight = GetCReal(SolverParams,'Minimum Height', GotIt)
     IF (.NOT.GotIt .OR. (MinHeight <= 0.0_dp)) THEN
       CALL Fatal('StructuredMeshMapper',&
@@ -175,7 +181,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       WRITE(Message,'(A,E11.4)') 'Adjusting upper surface to maintain minimum height to:', MinHeight
       CALL Info('StructuredMeshMapper',Message,Level=4)
     END IF
-
+      
     TangledMaskVarName = GetString(SolverParams,'Correct Surface Mask', ComputeTangledMask)
     IF (ComputeTangledMask) THEN
       TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName) )
@@ -467,53 +473,49 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       END IF
     END IF
 
-    ! If we have a midlayer fetch the data for that too
     IF( MidLayerExists ) THEN
+      ! If we have a midlayer fetch the data for that too
       MidVal = Field(imid)
       x0mid = OrigCoord(imid)
+    ELSE
+      ! If we don't have midlayer set to to BotVal to make the tangled stuff easier
+      MidVal = BotVal
+      x0mid = x0bot
     END IF
 
     ! Check whether the mesh gets tangled
     ! Note that for midlayer existing we only check the upper part currently!
-    IF( MidLayerExists ) THEN
-      IF( DisplacementMode ) THEN
-        Tangled = ( TopVal + x0top < MidVal + x0mid + MinHeight)
-      ELSE
-        Tangled = ( TopVal < MidVal + MinHeight) 
-      END IF      
-    ELSE      
-      IF( DisplacementMode ) THEN
-        Tangled = ( TopVal + x0top < BotVal + x0bot + MinHeight)
-      ELSE
-        Tangled = ( TopVal < BotVal + MinHeight) 
-      END IF
+    IF( DisplacementMode ) THEN
+      dx = TopVal + x0top - MidVal - x0mid
+    ELSE
+      dx = TopVal - MidVal 
     END IF
-
+    Tangled = ( dx < MinHeight ) 
+    
     IF( MaskExists .AND. Tangled ) THEN
       IF( DeTangle ) CALL Warn('StructuredMeshMapper','Cancelling tanglement when mask exists!')
       Tangled = .FALSE.
     END IF
-
     
     ! If the mesh is tangled then take some action.
     ! Here the lower surface stays intact. This is due to the main application field, 
     ! computational glaciology, where the lower surface of ice is usually nicely constrained. 
     IF( Tangled ) THEN
       TangledCount = TangledCount + 1
-
+            
       IF( DeTangle ) THEN
-        IF( MidLayerExists ) THEN
-          IF( DisplacementMode ) THEN
-            TopVal = MidVal + x0mid + x0top + MinHeight
-          ELSE
-            TopVal = MidVal + MinHeight
-          END IF
+        IF( MapHeight ) THEN
+          ! Map the height from [-\infty,MinHeight] to [MinHeight/2,MinHeight], for example
+          dx = ListGetFun( SolverParams,'Mesh Height Map', dx / MinHeight ) * MinHeight
         ELSE
-          IF( DisplacementMode ) THEN
-            TopVal = BotVal + x0bot + x0top + MinHeight
-          ELSE
-            TopVal = BotVal + MinHeight
-          END IF
+          dx = MinHeight
+        END IF
+
+        ! Note again that if midlayer does not exist, the mid refers to bottom
+        IF( DisplacementMode ) THEN
+          TopVal = MidVal + x0mid + x0top + dx
+        ELSE
+          TopVal = MidVal + dx
         END IF
       END IF
 
@@ -522,8 +524,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       END IF
       IF( .FALSE. ) THEN
         WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
-            "Corrected negative height:", TopVal - BotVal, "=",&
-            TopVal ,"-", BotVal, ". New upper value:", Field(itop)
+            "Corrected negative height:", TopVal - MidVal, "=",&
+            TopVal ,"-", MidVal, ". New upper value:", Field(itop)
         CALL Info('StructuredMeshMapper',Message,Level=9)
       END IF
     END IF

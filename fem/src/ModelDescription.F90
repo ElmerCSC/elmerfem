@@ -2553,7 +2553,7 @@ ELMER_SOLVER_HOME &
         ! If we have requested a unique copy of the mesh then do not check
         ! whether the mesh is already loaded as the primary mesh, or as some
         ! other solver-specific mesh. 
-        IF(ListGetLogical( Model % Solvers(s) % Values,'Mesh Unique',Found ) ) THEN
+        IF(ListGetLogical( Model % Solvers(s) % Values,'Mesh Enforce Local Copy',Found ) ) THEN
           CALL Info('LoadModel','Skipping tests whether the mesh with same name exists!',Level=7)
         ELSE
           Found = .FALSE.
