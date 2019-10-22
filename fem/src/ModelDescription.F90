@@ -2394,7 +2394,7 @@ ELMER_SOLVER_HOME &
       IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LOadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
+        CALL Info('LoadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
       END IF
       
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
@@ -2550,30 +2550,38 @@ ELMER_SOLVER_HOME &
           END DO
         END IF
 
-        Mesh => Model % Meshes
-        Found = .FALSE.
-        DO WHILE( ASSOCIATED( Mesh ) )
-           Found = .TRUE.
-           k = 1
-           j = i+1
-           DO WHILE( MeshName(j:j) /= CHAR(0) )
+        ! If we have requested a unique copy of the mesh then do not check
+        ! whether the mesh is already loaded as the primary mesh, or as some
+        ! other solver-specific mesh. 
+        IF(ListGetLogical( Model % Solvers(s) % Values,'Mesh Unique',Found ) ) THEN
+          CALL Info('LoadModel','Skipping tests whether the mesh with same name exists!',Level=7)
+        ELSE
+          Found = .FALSE.
+          Mesh => Model % Meshes
+          DO WHILE( ASSOCIATED( Mesh ) )
+            Found = .TRUE.
+            k = 1
+            j = i+1
+            DO WHILE( MeshName(j:j) /= CHAR(0) )
               IF ( Mesh % Name(k:k) /= MeshName(j:j) ) THEN
                 Found = .FALSE.
                 EXIT
               END IF
               k = k + 1
               j = j + 1
-           END DO
-           IF ( LEN_TRIM(Mesh % Name) /= k-1 ) Found = .FALSE.
-           IF ( Found ) EXIT
-           Mesh => Mesh % Next
-        END DO
+            END DO
+            IF ( LEN_TRIM(Mesh % Name) /= k-1 ) Found = .FALSE.
+            IF ( Found ) EXIT
+            Mesh => Mesh % Next
+          END DO
 
-        IF ( Found ) THEN
-          Model % Solvers(s) % Mesh => Mesh
-          CYCLE
+          IF ( Found ) THEN
+            CALL Info('LoadModel','Mesh with the same name has already been loaded, cycling.',Level=7) 
+            Model % Solvers(s) % Mesh => Mesh
+            CYCLE
+          END IF
         END IF
-
+          
         DO i=1,6
           DO j=1,8
             Def_Dofs(j,i) = MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i))
