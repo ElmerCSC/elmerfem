@@ -9749,7 +9749,7 @@ END FUNCTION SearchNodeL
     IF( .NOT. ASSOCIATED( pSolver, prevSolver ) ) THEN
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
-      Np = 0
+      Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
       
       VarName = ListGetString( pSolver % Values,'Adaptive Integration Variable',UseAdapt )
       IF( UseAdapt ) THEN

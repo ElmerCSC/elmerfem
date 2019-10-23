@@ -1877,7 +1877,7 @@ CONTAINS
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
      LOGICAL :: pElement, UsePRefElement, Economic
-     INTEGER :: n, eldim, p1d
+     INTEGER :: n, eldim, p1d, ntri, nseg
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
@@ -2004,7 +2004,42 @@ CONTAINS
            IntegStuff = GaussPointsPyramid(n)
         END IF
 
-     CASE (7)
+      CASE (7)
+        IF( PRESENT( np ) ) THEN
+          ! possible values:
+          ! triangle = 1, 3, 4, 6, 7, 11, 12, 17, 20
+          ! segment  = 1, 2, 3, 4, 5, 6,  7,  8,  9, 
+
+          ntri = 0; nseg = 0;
+          SELECT CASE( n )
+          CASE( 1 )
+            ntri = 1; nseg = 1
+          CASE( 6 )
+            ntri = 3; nseg = 2
+          CASE( 8 )
+            ntri = 4; nseg = 2            
+          CASE( 18 )
+            ntri = 6; nseg = 3            
+          CASE( 21 )
+            ntri = 7; nseg = 3
+          CASE( 28 )
+            ntri = 7; nseg = 4 
+          CASE( 44 )
+            ntri = 11; nseg = 4
+          CASE( 48 )
+            ntri = 12; nseg = 4
+          CASE( 85 )
+            ntri = 17; nseg = 5
+          CASE( 100 )
+            ntri = 20; nseg = 5
+          END SELECT
+
+          IF( ntri > 0 ) THEN          
+            IntegStuff = GaussPointsWedge2(ntri,nseg,PReferenceElement=PReferenceElement)
+            RETURN
+          END IF
+        END IF
+        
         IF (pElement) THEN
            IntegStuff = GaussPointsPWedge(n)
         ELSE 
