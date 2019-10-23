@@ -3087,7 +3087,10 @@ CONTAINS
      IF( ListGetLogical( Solver % Values,'Bulk Assembly Timing',Found ) ) THEN 
        CALL ResetTimer('BulkAssembly'//GetVarName(Solver % Variable) ) 
      END IF
-       
+
+     ! This is a slot for calling solver that contribute to the assembly
+     CALL DefaultSlaveSolvers(Solver,'Assembly Solvers')
+                
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultInitialize
 !------------------------------------------------------------------------------
@@ -3201,12 +3204,6 @@ CONTAINS
       CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
     END IF
 
-    IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
-        ListCheckPresent( Params, 'Dump system RHS') ) THEN
-      CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolete')
-      CALL Fatal('DefaultSolve','Use > Linear System Save = True < instead!')
-    END IF
-
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF(.NOT. Found .OR. TRIM( saveslot ) == 'solve') THEN
@@ -3253,8 +3250,6 @@ CONTAINS
           MINVAL( b ), MAXVAL( b ), SUM( b ), SUM( ABS( b ) )
       PRINT *,'range A'//TRIM(I2S(ParEnv % MyPe))//':', &
           MINVAL( A % Values ), MAXVAL( A % Values ), SUM( A % Values ), SUM( ABS(A % Values) )
-      PRINT *,'range x1'//TRIM(I2S(ParEnv % MyPe))//':', &
-          MINVAL( SOL ), MAXVAL( SOL ), SUM( SOL ), SUM( ABS( SOL ) )
     END IF
 
     
@@ -3263,7 +3258,7 @@ CONTAINS
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
     
     IF( InfoActive( 20 ) ) THEN
-      PRINT *,'range x2'//TRIM(I2S(ParEnv % MyPe))//':', &
+      PRINT *,'range x'//TRIM(I2S(ParEnv % MyPe))//':', &
           MINVAL( SOL ), MAXVAL( SOL ), SUM( SOL ), SUM( ABS( SOL ) )
     END IF
 
@@ -5988,7 +5983,7 @@ END SUBROUTINE PickActiveFace
     END IF
 
     Params => GetSolverParams(PSolver)
-
+   
     IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN 
       CALL CheckTimer('BoundaryAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. ) 
     END IF
