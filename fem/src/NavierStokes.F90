@@ -309,7 +309,7 @@ MODULE NavierStokes
      IF ( Bubbles ) THEN
        IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints2 )
      ELSE
-       IntegStuff = GaussPoints( Element )
+       IntegStuff = GaussPointsAdapt( Element )
      END IF
      U_Integ => IntegStuff % u
      V_Integ => IntegStuff % v
