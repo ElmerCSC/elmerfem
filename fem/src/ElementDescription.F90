@@ -89,11 +89,15 @@ CONTAINS
       INTEGER :: n
       TYPE(ElementType_t), POINTER :: et
 !------------------------------------------------------------------------------
-
+      
       et => ElementTypeList
       DO WHILE(ASSOCIATED(et))
         n = et % NumberOfNodes
-        IF( p .AND. ALLOCATED(et % NodeU) ) THEN
+
+        ! Single node does not really have much options here...
+        IF( et % ElementCode < 200 ) THEN
+          CONTINUE
+        ELSE IF( p .AND. ALLOCATED(et % NodeU) ) THEN
           IF ( .NOT.ALLOCATED(et % P_NodeU) ) THEN
             ALLOCATE(et % P_NodeU(n), et % P_NodeV(n), et % P_NodeW(n))
             CALL GetRefPElementNodes( et,  et % P_NodeU, et % P_NodeV, et % P_NodeW )

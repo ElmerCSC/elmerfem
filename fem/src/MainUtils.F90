@@ -2978,6 +2978,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+    CALL Info('SolveEquations','Performing set of solvers in sequence',Level=12)
+    
      DO i=1,CoupledMaxIter
        IF ( TransientSimulation .OR. Scanning ) THEN
          IF( CoupledMaxIter > 1 ) THEN
@@ -4919,7 +4921,8 @@ CONTAINS
       CALL Fatal('SetActiveElementsTable','Equation not present!')
     END IF
 
-    CALL Info('SetActiveElementsTable','Creating active element table for: '//TRIM(EquationName),Level=12)
+    CALL Info('SetActiveElementsTable',&
+        'Creating active element table for: '//TRIM(EquationName),Level=12)
 
 
     Mesh => Solver % Mesh

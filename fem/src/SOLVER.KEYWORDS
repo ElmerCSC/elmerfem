@@ -1690,7 +1690,7 @@ solver:logical:      'mesh enforce local copy'
 solver:logical:      'div-curl discretization'
 solver:logical:      'boundary assembly timing'
 solver:logical:      'bulk assembly timing'
-solver:logical:      'timestep unisotropic courant number'
+solver:real:         'timestep unisotropic courant number'
 solver:real:         'max integration time'
 material:real:       'relative temperature'
 
