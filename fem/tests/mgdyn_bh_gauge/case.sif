@@ -1,3 +1,8 @@
+!
+! See also the alternate test mgdyn_bh_gauge2 for using a more effective linear
+! solver.  
+!
+
 $ fileprefix = "tet"
 
 Header

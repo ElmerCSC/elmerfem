@@ -1,0 +1,99 @@
+! This is used to create the restart file.
+! Not active for the test, just available for completeness.
+!
+! P.R. 18.10.2019
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Output File = "rect.dat"
+  Post File = "rect.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "HeatA"
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "TempA"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+
+  Namespace = "a:"
+End
+
+Solver 2
+  Exec Solver = "Always"
+  Equation = "HeatB"
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "TempB"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+
+  Namespace = "b:"
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce"
+  a: Heat Source = 0.5
+  b: Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1 
+  TempA = Real 0
+  TempB = Real 0.1
+End
+
+Solver 1 :: Reference Norm = 8.98256298E-02
+Solver 2 :: Reference Norm = 2.66457152E-01

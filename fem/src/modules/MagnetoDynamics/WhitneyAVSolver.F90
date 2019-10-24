@@ -536,8 +536,12 @@ CONTAINS
 300 CONTINUE
 
   IF ( SkipAssembly) THEN
-    A % RHS = A % BulkRHS
-    A % Values = A % BulkValues
+    DO i=1,SIZE(A % RHS)
+      A % RHS(i) = A % BulkRHS(i)
+    END  DO      
+    DO i=1,SIZE(A % Values)
+      A % Values(i) = A % BulkValues(i)
+    END DO
     IF ( ConstantBulk    ) GOTO 100
     IF ( ConstantSystem  ) GOTO 200
   END IF

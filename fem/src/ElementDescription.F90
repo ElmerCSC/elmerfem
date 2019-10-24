@@ -67,6 +67,7 @@ MODULE ElementDescription
    !
    LOGICAL, PRIVATE :: TypeListInitialized = .FALSE.
    TYPE(ElementType_t), PRIVATE, POINTER :: ElementTypeList
+
    ! Local workspace for basis function values and mapping
 !    REAL(KIND=dp), ALLOCATABLE, PRIVATE :: BasisWrk(:,:), dBasisdxWrk(:,:,:), &
 !            LtoGMapsWrk(:,:,:), DetJWrk(:), uWrk(:), vWrk(:), wWrk(:)
@@ -78,6 +79,42 @@ MODULE ElementDescription
 
 CONTAINS
 
+!------------------------------------------------------------------------------
+    SUBROUTINE SwapRefElemNodes(p)
+!------------------------------------------------------------------------------
+      USE PelementMaps
+!------------------------------------------------------------------------------
+      LOGICAL :: p
+!------------------------------------------------------------------------------
+      INTEGER :: n
+      TYPE(ElementType_t), POINTER :: et
+!------------------------------------------------------------------------------
+      
+      et => ElementTypeList
+      DO WHILE(ASSOCIATED(et))
+        n = et % NumberOfNodes
+
+        ! Single node does not really have much options here...
+        IF( et % ElementCode < 200 ) THEN
+          CONTINUE
+        ELSE IF( p .AND. ALLOCATED(et % NodeU) ) THEN
+          IF ( .NOT.ALLOCATED(et % P_NodeU) ) THEN
+            ALLOCATE(et % P_NodeU(n), et % P_NodeV(n), et % P_NodeW(n))
+            CALL GetRefPElementNodes( et,  et % P_NodeU, et % P_NodeV, et % P_NodeW )
+          END IF
+          et % NodeU = et % P_NodeU
+          et % NodeV = et % P_NodeV
+          et % NodeW = et % P_NodeW
+        ELSE IF ( ALLOCATED(et % N_NodeU) ) THEN
+          et % NodeU = et % N_NodeU
+          et % NodeV = et % N_NodeV
+          et % NodeW = et % N_NodeW
+        END IF
+        et => et % NextElementType
+      END DO
+!------------------------------------------------------------------------------
+    END SUBROUTINE SwapRefElemNodes
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Add an element description to global list of element types.
@@ -402,7 +439,6 @@ CONTAINS
 !     PRINT*,'Reading element definition file: elements.def'
 !     PRINT*,'----------------------------------------------'
 
-
       !
       ! Add connectivity element types:
       ! -------------------------------
@@ -411,9 +447,6 @@ CONTAINS
       element % GaussPoints0 = 0
       element % GaussPoints2 = 0
       element % StabilizationMK = 0
-      NULLIFY( element % NodeU )
-      NULLIFY( element % NodeV )
-      NULLIFY( element % NodeW )
       DO k=3,64
         element % NumberOfNodes = k
         element % ElementCode = 100 + k
@@ -472,10 +505,6 @@ CONTAINS
 
           BasisTerms = 0
 
-          NULLIFY( element % NodeU )
-          NULLIFY( element % NodeV )
-          NULLIFY( element % NodeW )
-
           gotit = .FALSE.
           DO WHILE( ReadAndTrim(1,str) )
 
@@ -528,21 +557,24 @@ CONTAINS
 
           IF ( gotit ) THEN
             Element % StabilizationMK = 0.0d0
-            IF ( .NOT.ASSOCIATED( element % NodeV ) ) THEN
+            IF ( .NOT.ALLOCATED( element % NodeV ) ) THEN
               ALLOCATE( element % NodeV(element % NumberOfNodes) )
               element % NodeV = 0.0d0
             END IF
 
-            IF ( .NOT.ASSOCIATED( element % NodeW ) ) THEN
+            IF ( .NOT.ALLOCATED( element % NodeW ) ) THEN
               ALLOCATE( element % NodeW(element % NumberOfNodes) )
               element % NodeW = 0.0d0
             END IF
 
             CALL AddElementDescription( element,BasisTerms )
+            IF ( ALLOCATED( element % NodeU ) ) DEALLOCATE( element % NodeU )
+            IF ( ALLOCATED( element % NodeV ) ) DEALLOCATE( element % NodeV )
+            IF ( ALLOCATED( element % NodeW ) ) DEALLOCATE( element % NodeW )
           ELSE
-            IF ( ASSOCIATED( element % NodeU ) ) DEALLOCATE( element % NodeU )
-            IF ( ASSOCIATED( element % NodeV ) ) DEALLOCATE( element % NodeV )
-            IF ( ASSOCIATED( element % NodeW ) ) DEALLOCATE( element % NodeW )
+            IF ( ALLOCATED( element % NodeU ) ) DEALLOCATE( element % NodeU )
+            IF ( ALLOCATED( element % NodeV ) ) DEALLOCATE( element % NodeV )
+            IF ( ALLOCATED( element % NodeW ) ) DEALLOCATE( element % NodeW )
           END IF
         END IF
       END DO
@@ -3698,7 +3730,8 @@ END IF
      REAL(KIND=dp) :: DetJWrk(VECTOR_BLOCK_LENGTH)
      REAL(KIND=dp) :: LtoGMapsWrk(VECTOR_BLOCK_LENGTH,3,3)
      
-     INTEGER :: i
+     INTEGER :: i, l, n, dim, cdim, ll, ncl, lln
+     LOGICAL :: elem
 !DIR$ ATTRIBUTES ALIGN:64::uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGMapsWrk
      
      !------------------------------------------------------------------------------
@@ -3724,13 +3757,62 @@ END IF
      IF(PRESENT(dBasisdx))  &
        dBasisdx = 0._dp ! avoid uninitialized stuff depending on coordinate dimension...
 
-     retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
-           uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
+     IF(ASSOCIATED(Element % PDefs) .OR. Element % Type % BasisFunctionDegree<2) THEN
+       retval =  ElementInfoVec_ComputePElementBasis(Element,Nodes,nc,u,v,w,detJ,nbmax,Basis,&
+             uWrk,vWrk,wWrk,BasisWrk,dBasisdxWrk,DetJWrk,LtoGmapsWrk,dBasisdx)
+     ELSE
+       retval = .TRUE.
+       n    = Element % TYPE % NumberOfNodes
+       dim  = Element % TYPE % DIMENSION
+       cdim = CoordinateSystemDimension()
+
+       DO ll=1,nc,VECTOR_BLOCK_LENGTH
+         lln = MIN(ll+VECTOR_BLOCK_LENGTH-1,nc)
+         ncl = lln-ll+1
+
+         ! Block copy input
+         uWrk(1:ncl) = u(ll:lln)
+         IF (cdim > 1) THEN
+           vWrk(1:ncl) = v(ll:lln)
+         END IF
+         IF (cdim > 2) THEN
+           wWrk(1:ncl) = w(ll:lln)
+         END IF
+
+         DO l=1,ncl
+           CALL NodalBasisFunctions(n, Basis(l,:), element, uWrk(l), vWrk(l), wWrk(l))
+           CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l))
+           !--------------------------------------------------------------
+         END DO
+
+         ! Element (contravariant) metric and square root of determinant
+         !--------------------------------------------------------------
+         elem = ElementMetricVec( Element, Nodes, ncl, n, DetJWrk, &
+                nbmax, dBasisdxWrk, LtoGMapsWrk )
+
+         IF (.NOT. elem) THEN
+           retval = .FALSE.
+           RETURN
+           END IF
+
+         !_ELMER_OMP_SIMD
+         DO i=1,ncl
+           DetJ(i+ll-1)=DetJWrk(i)
+         END DO
+
+         ! Get global basis functions
+         !--------------------------------------------------------------
+         ! First derivatives
+         IF (PRESENT(dBasisdx)) THEN
+!DIR$ FORCEINLINE
+           CALL ElementInfoVec_ElementBasisToGlobal(ncl, n, nbmax, dBasisdxWrk, dim, cdim, LtoGMapsWrk, ll, dBasisdx)
+         END IF
+       END DO
+     END IF
    END FUNCTION ElementInfoVec
      
    FUNCTION ElementInfoVec_ComputePElementBasis(Element, Nodes, nc, u, v, w, DetJ, nbmax, Basis, &
-                                                uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, &
-                                                DetJWrk, LtoGmapsWrk, dBasisdx) RESULT(retval)
+      uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGmapsWrk, dBasisdx) RESULT(retval)
      IMPLICIT NONE
      TYPE(Element_t), TARGET :: Element    !< Element structure
      TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.

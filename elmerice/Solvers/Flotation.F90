@@ -126,6 +126,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   INTEGER :: ActiveDirection
   INTEGER :: t,i,n
   INTEGER :: topnode
+  INTEGER :: Active
 
   LOGICAL,SAVE :: Initialized = .FALSE.
   LOGICAL,SAVE :: ExtrudedMesh=.False.
@@ -207,9 +208,10 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
  IF (ASSOCIATED(DZsDt)) ZsPrev=ZsVar%Values
 
  IF (ASSOCIATED(GLMask)) GLMask%Values = -1.0
- Do t=1,Solver % Mesh % NumberOfBulkElements
-    Element => Solver % Mesh % Elements(t)
-    Model % CurrentElement => Solver % Mesh % Elements(t)
+
+ Active = GetNOFActive()
+ Do t=1,Active
+    Element => GetActiveElement(t)
     n = GetElementNOFNodes(Element)
     NodeIndexes => Element % NodeIndexes
 

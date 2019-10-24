@@ -83,8 +83,7 @@
         rt0, rt, RealTime
 #endif
 
-   REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), &
-        DistValues(:), CIndexValues(:), WorkReal(:), &
+   REAL(KIND=dp), POINTER :: DistValues(:), CIndexValues(:), WorkReal(:), &
         CalvingValues(:), ForceVector(:)
    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), HeightDirich(:), &
         Rot_y_coords(:,:), Rot_z_coords(:,:)
@@ -196,11 +195,7 @@
         .FALSE., FrontPerm, FaceNodeCount)
 
    !Get the orientation of the calving front, compute rotation matrix
-   PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', &
-        Found, UnfoundFatal=.TRUE.)
-   DO i=1,3
-      FrontOrientation(i) = PArray(i,1)
-   END DO
+   FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
    UnRotationMatrix = TRANSPOSE(RotationMatrix)
 
@@ -236,12 +231,12 @@
 
    !Use GetDomainEdge for Front, Left and Right
    !Returns full domain edge to Boss partition only
-   CALL GetDomainEdge(Model, Mesh, TopPerm, LeftMaskName, &
-        LeftNodes, LeftNodeNums, Parallel, Simplify=.FALSE.)
-   CALL GetDomainEdge(Model, Mesh, TopPerm, RightMaskName, &
-        RightNodes, RightNodeNums, Parallel, Simplify=.FALSE.)
-   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontMaskName, &
-        FrontNodes, FrontNodeNums, Parallel, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, LeftNodes, &
+        LeftNodeNums, Parallel,  LeftMaskName, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, RightNodes, &
+        RightNodeNums, Parallel, RightMaskName, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontNodes, &
+        FrontNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
 
    !Determine whether front columns are arranged
    !left to right, and reorder if not. useful later...
@@ -849,11 +844,11 @@
 
        !Generate PlaneMesh perms to quickly get nodes on each boundary
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, FrontMaskName, &
-            .FALSE., PlaneFrontPerm, dummyint)
+            .FALSE., PlaneFrontPerm, dummyint, ParallelComm=.FALSE.)
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, LeftMaskName, &
-            .FALSE., PlaneLeftPerm, dummyint)
+            .FALSE., PlaneLeftPerm, dummyint, ParallelComm=.FALSE.)
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, RightMaskName, &
-            .FALSE., PlaneRightPerm, dummyint)
+            .FALSE., PlaneRightPerm, dummyint, ParallelComm=.FALSE.)
 
        ! Set ave_cindex values to 0.0 on front
        ! In fact, right at the very front, ave_cindex is undefined,
@@ -992,7 +987,7 @@
 
        CALL FindCrevassePaths(IsoMesh, IMOnFront, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount, ValidPathCount)
+       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
 
        !Debugging statements
        IF(Debug) THEN
@@ -1007,6 +1002,8 @@
                      ' x: ',IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),&
                      ' y: ',IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
              END DO
+             PRINT *,'ID, left, right, extent', CurrentPath % ID, CurrentPath % Left, &
+                  CurrentPath % Right, CurrentPath % Extent
              PRINT *, ''
              CurrentPath => CurrentPath % Next
           END DO
@@ -1016,7 +1013,7 @@
        DeleteMe = .FALSE.
 
        DO i=1, IsoMesh % NumberOfBulkElements
-          IF(ElementPathID(CrevassePaths, i) == 0) DeleteMe(i) = .TRUE.
+         IF(ElementPathID(CrevassePaths, i) == 0) DeleteMe(i) = .TRUE.
        END DO
 
        IF(Debug) THEN

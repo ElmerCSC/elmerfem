@@ -3087,7 +3087,10 @@ CONTAINS
      IF( ListGetLogical( Solver % Values,'Bulk Assembly Timing',Found ) ) THEN 
        CALL ResetTimer('BulkAssembly'//GetVarName(Solver % Variable) ) 
      END IF
-       
+
+     ! This is a slot for calling solver that contribute to the assembly
+     CALL DefaultSlaveSolvers(Solver,'Assembly Solvers')
+                
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultInitialize
 !------------------------------------------------------------------------------
@@ -3172,8 +3175,8 @@ CONTAINS
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
     REAL(KIND=dp), POINTER CONTIG :: b(:)
-!    REAL(KIND=dp), POINTER CONTIG :: SOL(:)
-    REAL(KIND=dp), POINTER :: SOL(:)
+    REAL(KIND=dp), POINTER CONTIG :: SOL(:)
+!   REAL(KIND=dp), POINTER :: SOL(:)
 
     LOGICAL :: Found, BackRot
 
@@ -3199,12 +3202,6 @@ CONTAINS
     IF( NameSpaceI > 0 ) THEN
       CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
       CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
-    END IF
-
-    IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
-        ListCheckPresent( Params, 'Dump system RHS') ) THEN
-      CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolete')
-      CALL Fatal('DefaultSolve','Use > Linear System Save = True < instead!')
     END IF
 
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
@@ -3247,9 +3244,24 @@ CONTAINS
     b => A % RHS
     SOL => x % Values
 
+    ! Debugging stuff activated only when "Max Output Level" >= 20
+    IF( InfoActive( 20 ) ) THEN
+      PRINT *,'range b'//TRIM(I2S(ParEnv % MyPe))//':', &
+          MINVAL( b ), MAXVAL( b ), SUM( b ), SUM( ABS( b ) )
+      PRINT *,'range A'//TRIM(I2S(ParEnv % MyPe))//':', &
+          MINVAL( A % Values ), MAXVAL( A % Values ), SUM( A % Values ), SUM( ABS(A % Values) )
+    END IF
+
+    
 10  CONTINUE
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+    
+    IF( InfoActive( 20 ) ) THEN
+      PRINT *,'range x'//TRIM(I2S(ParEnv % MyPe))//':', &
+          MINVAL( SOL ), MAXVAL( SOL ), SUM( SOL ), SUM( ABS( SOL ) )
+    END IF
+
     
     IF( LinearSystemTrialing ) THEN
       IF( x % LinConverged > 0 ) THEN
@@ -5971,7 +5983,7 @@ END SUBROUTINE PickActiveFace
     END IF
 
     Params => GetSolverParams(PSolver)
-
+   
     IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN 
       CALL CheckTimer('BoundaryAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. ) 
     END IF
@@ -6177,7 +6189,7 @@ END SUBROUTINE PickActiveFace
      xP => x
      yP => y
      zP => z
-     CALL GetRefPElementNodes( Element,xP,yP,zP )
+     CALL GetRefPElementNodes( Element % Type,xP,yP,zP )
      ALLOCATE(bNodes % x(n), bNodes % y(n), bNodes % z(n))
         
      ! Set coordinate points of destination

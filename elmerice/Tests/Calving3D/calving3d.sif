@@ -461,6 +461,7 @@ Solver 12
 
   Normal Vector Variable Name = String "Front Normal Vector"
   Flow Solution Variable Name = String "Flow Solution"
+  Ignore Velocity = Logical False !Permits frontal melt only
 
   !regions exceeding this gradient will be modified/checked
   Front Gradient Threshold = Real 5.0
@@ -575,6 +576,7 @@ Solver 21
    Force Remesh After Time = Real 0.1
    Front Normal Z Threshold = Real -0.8
    Pause After Calving Event = Logical True !pause, recompute stress, check for more calving
+   Ignore Calving = Logical False
 
    Linear System Solver = Iterative
    Linear System Iterative Method = BiCGStab

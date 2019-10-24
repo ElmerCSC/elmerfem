@@ -92,7 +92,7 @@ Solver 2
 
   procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
 
-  CheckNaN = Logical True ! Default True; check is interpolation method gives NaN 
+  Look for NaN = Logical True ! Default True; check is interpolation method gives NaN
 	! By default replace NaN by nearest available value
 	! We can replace NaNs by Real value with following flag
   !Replace NaN by = Real -9999999 

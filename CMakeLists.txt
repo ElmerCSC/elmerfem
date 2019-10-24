@@ -48,6 +48,9 @@ SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
+# Let user select if the contiguous attribute is used or not
+SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
@@ -277,7 +280,7 @@ IF(MPI_FOUND)
   ENDIF()
   # Hypre
   IF(WITH_Hypre)
-    FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv QUIET)
+    FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv FEI core QUIET)
   ENDIF()
 
   # Permon
@@ -313,7 +316,7 @@ ENDIF()
 
 # Check if Fortran compiler supports contiguous keyword
 INCLUDE(testContiguous)
-IF(CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
+IF(USE_CONTIGUOUS AND CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
   ADD_DEFINITIONS(-DCONTIG=,CONTIGUOUS)
 ELSE()
   ADD_DEFINITIONS(-DCONTIG=)

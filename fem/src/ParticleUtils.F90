@@ -2208,6 +2208,60 @@ RETURN
   END FUNCTION CharacteristicElementSize
 
 
+
+  !-----------------------------------------------------------------------
+  !> Computes the characterestic time spent for each direction separately.
+  !> Currently can only be computed for one particle at a time. 
+  !-----------------------------------------------------------------------
+  FUNCTION CharacteristicUnisoTime( Particles, No ) RESULT ( CharTime )
+    
+    TYPE(Particle_t), POINTER :: Particles
+    REAL(KIND=dp) :: CharTime
+    INTEGER, OPTIONAL :: No
+    
+    REAL(KIND=dp) :: Center(3),CartSize(3),Velo(3)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: i, t, n, dim
+    LOGICAL :: Visited = .FALSE.
+    
+    SAVE Visited, Mesh, dim, Nodes
+
+    IF(.NOT. Visited ) THEN
+      Mesh => GetMesh()
+      dim = Mesh % MeshDim
+      Visited = .TRUE.
+    END IF
+
+    ! Absolute of velocity in each direction
+    Velo(1:dim) = ABS( Particles % Velocity(No,1:dim) )
+
+    t = Particles % ElementIndex(No)               
+    Element => Mesh % Elements(t)      
+    CALL GetElementNodes( Nodes, Element ) 
+    n = Element % TYPE % NumberOfNodes
+
+    ! Center point of element
+    Center(1) = SUM( Nodes % x(1:n) ) / n
+    Center(2) = SUM( Nodes % y(1:n) ) / n
+    Center(3) = SUM( Nodes % z(1:n) ) / n
+
+    ! Average distance from center multiplied by two in eadh direction
+    CartSize(1) = 2 * SUM( ABS( Nodes % x(1:n) - Center(1) ) ) / n
+    CartSize(2) = 2 * SUM( ABS( Nodes % y(1:n) - Center(2) ) ) / n
+    CartSize(3) = 2 * SUM( ABS( Nodes % z(1:n) - Center(3) ) ) / n
+
+    CharTime = HUGE( CharTime )
+    DO i=1,dim
+      IF( CharTime * Velo(i) > CartSize(i) ) THEN
+        CharTime = CartSize(i) / Velo(i)
+      END IF      
+    END DO
+    
+  END FUNCTION CharacteristicUnisoTime
+
+
   
   !---------------------------------------------------------
   !> Computes the characterestic time spent in an element
@@ -5803,13 +5857,13 @@ RETURN
     INTEGER :: No, Status    
     REAL(KIND=dp) :: dt,dt0,tfin,tprev,dsgoal,hgoal,dtmax,dtmin,dtup,dtlow, &
         CharSpeed, CharTime, dtave
-    LOGICAL :: GotIt,TfinIs,NStepIs,DsGoalIs,HgoalIs,DtIs
-    INTEGER :: nstep, TimeStep, PrevTimeStep = -1, flag
+    LOGICAL :: GotIt,TfinIs,NStepIs,DsGoalIs,HgoalIs,HgoalIsUniso,DtIs
+    INTEGER :: nstep, TimeStep, PrevTimeStep = -1
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: TimeVar, DtVar
     
     SAVE dt0,dsgoal,hgoal,dtmax,dtmin,DtIs,Nstep,&
-        tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,PrevTimeStep, &
+        tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,HgoalIsUniso,PrevTimeStep, &
 	DtVar,TimeVar
     
     dtout = 0.0_dp
@@ -5825,6 +5879,12 @@ RETURN
       
       ! Constraint by relative step size taken (1 means size of the element)
       hgoal = GetCReal( Params,'Timestep Courant Number',HGoalIs)
+
+      ! Constraint by relative step size taken (each cartesian direction of element)
+      HGoalIsUniso = .FALSE.
+      IF(.NOT. HGoalIs ) THEN
+        hgoal = GetCReal( Params,'Timestep Unisotropic Courant Number',HGoalIsUniso)
+      END IF
       
       Nstep = GetInteger( Params,'Max Timestep Intervals',GotIt)
       IF(.NOT. GotIt) Nstep = 1
@@ -5872,12 +5932,13 @@ RETURN
       ELSE IF( HgoalIs ) THEN
         CharTime = CharacteristicElementTime( Particles )
         dt = Hgoal * CharTime ! ElementH / Speed
-
         !PRINT *,'ratio of timesteps:',tfin/dt
       ELSE IF( tfinIs ) THEN
         dt = tfin / Nstep
+      ELSE IF( HgoalIsUniso ) THEN
+        CALL Fatal('GetParticleTimesStep','Cannot use unisotropic courant number with constant dt!')
       ELSE
-        CALL Fatal('GetParticlesTimeStep','Cannot determine timestep size!')
+        CALL Fatal('GetParticleTimeStep','Cannot determine timestep size!')
       END IF
 
       ! Constrain the timestep
@@ -5907,22 +5968,19 @@ RETURN
 
 	tprev = TimeVar % Values(No)        
 
-	flag = 1
-
         IF( DtIs ) THEN
           dt = dt0 
-	  flag = 2
         ELSE IF( DsGoalIs ) THEN
           CharSpeed = CharacteristicSpeed( Particles, No )     
           dt = dsgoal / CharSpeed
-	  flag = 3
         ELSE IF( HgoalIs ) THEN
           CharTime = CharacteristicElementTime( Particles, No )     
           dt = Hgoal * CharTime ! ElementH / Speed
-	  flag = 4
         ELSE IF( tfinIs ) THEN
           dt = tfin / Nstep
-	  flag = 5
+        ELSE IF( HgoalIsUniso ) THEN
+          CharTime = CharacteristicUnisoTime( Particles, No )     
+          dt = Hgoal * CharTime ! ElementH / Speed
         ELSE
           CALL Fatal('GetParticlesTimeStep','Cannot determine timestep size!')
         END IF

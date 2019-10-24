@@ -61,9 +61,7 @@ Solver 1
   Calculate Stresses = False
   Displace Mesh = Logical False
 
-! Dump system matrix = String a1.dat
-! Dump system rhs = String f1.dat
-
+! Linear System Save = Logical True
 
   Steady State Convergence Tolerance = 1.0e-05
 

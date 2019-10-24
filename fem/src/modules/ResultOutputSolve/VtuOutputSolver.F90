@@ -539,13 +539,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   USE VtuXMLFile
-  
-  !USE DefUtils 
-  !USE MeshUtils
-  !USE MainUtils
-  !USE ElementDescription
-  !USE AscBinOutputUtils
-  
+    
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -588,7 +582,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: BufferSize
 
   LOGICAL :: TimeCollection, GroupCollection
-  INTEGER :: GroupId
+  INTEGER :: GroupId, EigenVectorMode
 
 
   Params => GetSolverParams()
@@ -768,9 +762,23 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       END DO
     END IF     
   END IF
+  EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
     CALL Info('VtuOutputSolver','Maximum number of eigen/harmonic modes: '//TRIM(I2S(MaxModes)),Level=7)
+    Str = ListGetString( Params,'Eigen Vector Component', GotIt )
+    IF( GotIt ) THEN
+      IF( Str == 're') THEN
+        CONTINUE
+      ELSE IF( Str == 'im' ) THEN
+        EigenVectorMode = 1
+      ELSE IF( Str == 'abs' ) THEN
+        EigenVectorMode = 2
+      ELSE
+        CALL Fatal('VtuOutputSolver','Invalid value for >Eigen System Mode< :'//TRIM(str))
+      END IF
+    END IF
   END IF
+
 
   ActiveModes2 => ListGetIntegerArray( Params,'Active Constraint Modes',GotActiveModes2 ) 
   IF( GotActiveModes2 ) THEN
@@ -969,8 +977,11 @@ CONTAINS
     END IF
 
     SaveBoundariesOnly = GetLogical( Params,'Save Boundaries Only',GotIt ) 
+    IF( SaveBoundariesOnly ) CALL Info('VtuOutputSolver','Saving only boundary elements!',Level=15)
+    
     SaveBulkOnly = GetLogical( Params,'Save Bulk Only',GotIt ) 
-
+    IF( SaveBulkOnly ) CALL Info('VtuOutputSolver','Saving only bulk elements!',Level=15)
+    
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 
@@ -1276,12 +1287,12 @@ CONTAINS
     INTEGER :: TmpIndexes(27), VarType
     INTEGER :: NamingMode 
     
-    COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
+    COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)    
     REAL(KIND=dp), POINTER :: ConstraintModes(:,:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
-
+    
 
     ! Initialize the auxiliary module for buffered writing
     !--------------------------------------------------------------
@@ -1660,7 +1671,13 @@ CONTAINS
                   ELSE IF( Use2 ) THEN
                     val = Values2(dofs*(j-1)+k)              
                   ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
-                    val = EigenVectors(IndField,dofs*(j-1)+k)                              
+                    IF( EigenVectorMode == 0 ) THEN
+                      val = REAL( EigenVectors(IndField,dofs*(j-1)+k) )
+                    ELSE IF( EigenVectorMode == 1 ) THEN
+                      val = AIMAG( EigenVectors(IndField,dofs*(j-1)+k) )
+                    ELSE
+                      val = ABS( EigenVectors(IndField,dofs*(j-1)+k) )
+                    END IF
                   ELSE IF( NoModes2 > 0 ) THEN
                     val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE

@@ -1315,7 +1315,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
-    REAL(KIND=dp), POINTER, INTENT(OUT) :: A(:,:), cpars(:)
+    REAL(KIND=dp), INTENT(OUT) :: A(:,:), cpars(:)
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
 !------------------------------------------------------------------------------
     LOGICAL :: WithThreeNodes
@@ -1422,8 +1422,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: X1(3), X2(3), d1(3), d2(3)
-    REAL(KIND=dp), POINTER, INTENT(OUT) :: cpars(:)
-    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(OUT) :: A(:,:)
+    REAL(KIND=dp), INTENT(OUT) :: cpars(:)
+    REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: A(:,:)
     REAL(KIND=dp), OPTIONAL, INTENT(IN) :: X3(3), d3(3)
 !------------------------------------------------------------------------------
     LOGICAL :: WithThreeNodes
