@@ -9715,7 +9715,10 @@ END FUNCTION SearchNodeL
 
 
 !------------------------------------------------------------------------------
-!> Adaptive version for getting gaussian integration points
+!> Adaptive version for getting gaussian integration points.
+!> Also saves some time in initializations.
+!> Note: the routine uses the pointer to Solver to check whether definitions
+!> need to be remade. 
 !----------------------------------------------------------------------------------------------
 
   FUNCTION GaussPointsAdapt( Element, Solver, PReferenceElement ) RESULT(IntegStuff)
@@ -9744,12 +9747,12 @@ END FUNCTION SearchNodeL
       pSolver => CurrentModel % Solver
     END IF
 
-    Debug = ( Element % ElementIndex == 0)
+    !Debug = ( Element % ElementIndex == 123)
     
     IF( .NOT. ASSOCIATED( pSolver, prevSolver ) ) THEN
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
-      Np = 0
+      Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
       
       VarName = ListGetString( pSolver % Values,'Adaptive Integration Variable',UseAdapt )
       IF( UseAdapt ) THEN
@@ -9788,7 +9791,7 @@ END FUNCTION SearchNodeL
       END IF
     END IF
       
-    IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
+    !IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
 
     IF( Np > 0 ) THEN
       IntegStuff = GaussPoints( Element, Np = Np, PReferenceElement = PReferenceElement ) 
@@ -9798,7 +9801,7 @@ END FUNCTION SearchNodeL
       IntegStuff = GaussPoints( Element, PReferenceElement = PReferenceElement ) 
     END IF
 
-    IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
+    !IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
       
   END FUNCTION GaussPointsAdapt
   

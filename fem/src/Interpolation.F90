@@ -286,7 +286,7 @@ MODULE Interpolation
 
     trans = PRESENT(EdgeBasis)
     IF(trans) trans=EdgeBasis
-    trans = trans .OR. isPElement(Element)
+    trans = trans .OR. isActivePElement(Element)
 
     IF (trans) THEN
       SELECT CASE(Element % Type % ElementCode/100)

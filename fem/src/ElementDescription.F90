@@ -67,6 +67,7 @@ MODULE ElementDescription
    !
    LOGICAL, PRIVATE :: TypeListInitialized = .FALSE.
    TYPE(ElementType_t), PRIVATE, POINTER :: ElementTypeList
+
    ! Local workspace for basis function values and mapping
 !    REAL(KIND=dp), ALLOCATABLE, PRIVATE :: BasisWrk(:,:), dBasisdxWrk(:,:,:), &
 !            LtoGMapsWrk(:,:,:), DetJWrk(:), uWrk(:), vWrk(:), wWrk(:)
@@ -78,6 +79,42 @@ MODULE ElementDescription
 
 CONTAINS
 
+!------------------------------------------------------------------------------
+    SUBROUTINE SwapRefElemNodes(p)
+!------------------------------------------------------------------------------
+      USE PelementMaps
+!------------------------------------------------------------------------------
+      LOGICAL :: p
+!------------------------------------------------------------------------------
+      INTEGER :: n
+      TYPE(ElementType_t), POINTER :: et
+!------------------------------------------------------------------------------
+      
+      et => ElementTypeList
+      DO WHILE(ASSOCIATED(et))
+        n = et % NumberOfNodes
+
+        ! Single node does not really have much options here...
+        IF( et % ElementCode < 200 ) THEN
+          CONTINUE
+        ELSE IF( p .AND. ALLOCATED(et % NodeU) ) THEN
+          IF ( .NOT.ALLOCATED(et % P_NodeU) ) THEN
+            ALLOCATE(et % P_NodeU(n), et % P_NodeV(n), et % P_NodeW(n))
+            CALL GetRefPElementNodes( et,  et % P_NodeU, et % P_NodeV, et % P_NodeW )
+          END IF
+          et % NodeU = et % P_NodeU
+          et % NodeV = et % P_NodeV
+          et % NodeW = et % P_NodeW
+        ELSE IF ( ALLOCATED(et % N_NodeU) ) THEN
+          et % NodeU = et % N_NodeU
+          et % NodeV = et % N_NodeV
+          et % NodeW = et % N_NodeW
+        END IF
+        et => et % NextElementType
+      END DO
+!------------------------------------------------------------------------------
+    END SUBROUTINE SwapRefElemNodes
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Add an element description to global list of element types.
@@ -402,7 +439,6 @@ CONTAINS
 !     PRINT*,'Reading element definition file: elements.def'
 !     PRINT*,'----------------------------------------------'
 
-
       !
       ! Add connectivity element types:
       ! -------------------------------
@@ -411,9 +447,6 @@ CONTAINS
       element % GaussPoints0 = 0
       element % GaussPoints2 = 0
       element % StabilizationMK = 0
-      NULLIFY( element % NodeU )
-      NULLIFY( element % NodeV )
-      NULLIFY( element % NodeW )
       DO k=3,64
         element % NumberOfNodes = k
         element % ElementCode = 100 + k
@@ -472,10 +505,6 @@ CONTAINS
 
           BasisTerms = 0
 
-          NULLIFY( element % NodeU )
-          NULLIFY( element % NodeV )
-          NULLIFY( element % NodeW )
-
           gotit = .FALSE.
           DO WHILE( ReadAndTrim(1,str) )
 
@@ -528,21 +557,24 @@ CONTAINS
 
           IF ( gotit ) THEN
             Element % StabilizationMK = 0.0d0
-            IF ( .NOT.ASSOCIATED( element % NodeV ) ) THEN
+            IF ( .NOT.ALLOCATED( element % NodeV ) ) THEN
               ALLOCATE( element % NodeV(element % NumberOfNodes) )
               element % NodeV = 0.0d0
             END IF
 
-            IF ( .NOT.ASSOCIATED( element % NodeW ) ) THEN
+            IF ( .NOT.ALLOCATED( element % NodeW ) ) THEN
               ALLOCATE( element % NodeW(element % NumberOfNodes) )
               element % NodeW = 0.0d0
             END IF
 
             CALL AddElementDescription( element,BasisTerms )
+            IF ( ALLOCATED( element % NodeU ) ) DEALLOCATE( element % NodeU )
+            IF ( ALLOCATED( element % NodeV ) ) DEALLOCATE( element % NodeV )
+            IF ( ALLOCATED( element % NodeW ) ) DEALLOCATE( element % NodeW )
           ELSE
-            IF ( ASSOCIATED( element % NodeU ) ) DEALLOCATE( element % NodeU )
-            IF ( ASSOCIATED( element % NodeV ) ) DEALLOCATE( element % NodeV )
-            IF ( ASSOCIATED( element % NodeW ) ) DEALLOCATE( element % NodeW )
+            IF ( ALLOCATED( element % NodeU ) ) DEALLOCATE( element % NodeU )
+            IF ( ALLOCATED( element % NodeV ) ) DEALLOCATE( element % NodeV )
+            IF ( ALLOCATED( element % NodeW ) ) DEALLOCATE( element % NodeW )
           END IF
         END IF
       END DO
