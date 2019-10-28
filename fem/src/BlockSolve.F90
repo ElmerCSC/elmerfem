@@ -39,7 +39,7 @@ MODULE BlockSolve
   LOGICAL, PRIVATE :: isParallel=.FALSE.
 
   TYPE(Variable_t), POINTER :: SolverVar => Null()
-  TYPE(Matrix_t), POINTER :: SolverMatrix => Null()
+  TYPE(Matrix_t), POINTER :: SolverMatrix => Null(), SaveMatrix
 
 CONTAINS
 
@@ -2505,12 +2505,11 @@ CONTAINS
           IF( k <= 0 ) THEN
             CALL Fatal('BlockMatrixPrec','Cannot define the originating block for scaling!')
           END IF
-          l = SIZE( TotMatrix % BlockStruct ) 
         ELSE
           k = i
-          l = NoVar
         END IF
 
+        l = Solver % Variable % DOFs
         Diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
 
         ! Scale x & b to the unscaled system of the tailored preconditioning matrix for given block.
@@ -3136,7 +3135,7 @@ CONTAINS
     LOGICAL :: GotSlaveSolvers, SkipVar
     
     
-    TYPE(Matrix_t), POINTER :: Amat, SaveMatrix, SaveCM
+    TYPE(Matrix_t), POINTER :: Amat, SaveCM
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
@@ -3292,6 +3291,8 @@ CONTAINS
               ParEnv = Amat % ParMatrix % ParEnv
             END IF
           END IF
+
+          Solver % Variable  => SolverVar
         END DO
       END DO
     END IF
