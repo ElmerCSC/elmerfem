@@ -2346,7 +2346,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, Var_save
 
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
-        IsComplex, BlockScaling, DiagScaling, UsePrecMat
+        IsComplex, BlockScaling, DiagScaling, ThisScaling, UsePrecMat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -2416,8 +2416,10 @@ CONTAINS
       END IF
       
       WRITE(Message,'(A,I0)') 'Solving block: ',i
-      CALL Info('BlockMatrixPrec',Message,Level=6)
+      CALL Info('BlockMatrixPrec',Message,Level=8)
 
+      CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
+      
       ! Set pointers to the new linear system
       !-------------------------------------------------------------------
       Var => TotMatrix % SubVector(i) % Var
@@ -2481,8 +2483,6 @@ CONTAINS
         END DO
       END IF
       
-      CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
-
       ! We do probably not want to compute the change within each iteration
       CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.TRUE.)         
       CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.TRUE.)         
@@ -2496,14 +2496,18 @@ CONTAINS
 
       IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b,UsePrecMat)
 
-      IF( DiagScaling .AND. UsePrecMat ) THEN
+      ThisScaling = ListGetLogical( Params,'Linear System Scaling',Found )
+      IF( .NOT. Found ) ThisScaling = DiagScaling
+      
+      IF( ThisScaling .AND. UsePrecMat ) THEN
         n = A % NumberOfRows
         ALLOCATE( diagtmp(n), btmp(n) )
 
         IF( TotMatrix % GotBlockStruct ) THEN
           k = TotMatrix % InvBlockStruct(i)
           IF( k <= 0 ) THEN
-            CALL Fatal('BlockMatrixPrec','Cannot define the originating block for scaling!')
+            CALL Fatal('BlockMatrixPrec','Cannot define the originating block '&
+                //TRIM(I2S(i))//' for scaling!')
           END IF
         ELSE
           k = i
@@ -2554,7 +2558,7 @@ CONTAINS
       
       IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b,UsePrecMat)
 
-      IF( DiagScaling .AND. UsePrecMat ) THEN
+      IF( ThisScaling .AND. UsePrecMat ) THEN
         x(1:n) = x(1:n) / diagtmp(1:n)
         DEALLOCATE( diagtmp, btmp )
       END IF
@@ -2688,7 +2692,7 @@ CONTAINS
       DEALLOCATE( vtmp, rtmp ) 
     END IF
 
-    CALL Info('BlockMatrixPrec','Finished block matrix preconditioning',Level=6)
+    CALL Info('BlockMatrixPrec','Finished block matrix preconditioning',Level=8)
     
   END SUBROUTINE BlockMatrixPrec
 

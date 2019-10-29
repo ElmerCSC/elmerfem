@@ -2124,6 +2124,12 @@ CONTAINS
      CurrElement => GetCurrentElement(Element)
      body_id = CurrElement % BodyId 
 
+     IF( body_id <= 0 ) THEN
+       mat_id = 0
+       IF( PRESENT( Found ) ) Found = .FALSE.
+       RETURN
+     END IF
+     
      IF ( PRESENT( Found ) ) THEN
         mat_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
            'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )

@@ -1573,11 +1573,15 @@ INTEGER::inside
 
   !******************************************************************
 
+  CALL Info('SParIterSolver','Solving linear in parallel with iterative methods',Level=8)
+
   Params => Solver % Values
 
 #ifdef HAVE_HYPRE
     IF (ListGetLogical(Params,'Linear System Use HYPRE', Found )) THEN
 
+      CALL Info('SParIterSolver','Solving linear system using HYPRE library',Level=6)
+      
       Prec = ListGetString(Params,'Linear System Preconditioning', Found )
       ILUn = 0
       hypre_pre = 0
@@ -1586,23 +1590,23 @@ INTEGER::inside
       IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )
 
       IF ( IterativeMethod == 'bicgstab' ) THEN
-        CALL Info("SParIterSolver", "Hypre: BiCGStab",Level=3)
+        CALL Info("SParIterSolver", "Hypre: BiCGStab",Level=5)
         hypre_sol = 0;
       ELSE IF ( IterativeMethod == 'boomeramg' )THEN
-        CALL Info("SParIterSolver", "Hypre: BoomerAMG",Level=3)
+        CALL Info("SParIterSolver", "Hypre: BoomerAMG",Level=5)
         hypre_sol = 1;
       ELSE IF ( IterativeMethod == 'cg' ) THEN
         hypre_sol = 2;
-        CALL Info("SParIterSolver", "Hypre: CG",Level=3)
+        CALL Info("SParIterSolver", "Hypre: CG",Level=5)
       ELSE IF ( IterativeMethod == 'gmres' ) THEN
         hypre_sol = 3;
-        CALL Info("SParIterSolver", "Hypre: GMRes",Level=3)
+        CALL Info("SParIterSolver", "Hypre: GMRes",Level=5)
       ELSE IF ( IterativeMethod == 'flexgmres' ) THEN
         hypre_sol = 4;
-        CALL Info("SParIterSolver", "Hypre: FlexGMRes",Level=3)
+        CALL Info("SParIterSolver", "Hypre: FlexGMRes",Level=5)
       ELSE IF ( IterativeMethod == 'lgmres' ) THEN
         hypre_sol = 5;
-        CALL Info("SParIterSolver", "Hypre: LGMRes",Level=3)
+        CALL Info("SParIterSolver", "Hypre: LGMRes",Level=5)
       ELSE
         CALL Fatal('SParIterSolver','Unknown iterative method: '//TRIM(IterativeMethod))
       END IF
@@ -1629,7 +1633,8 @@ INTEGER::inside
       END IF
 
       hypremethod = hypre_sol * 10 + hypre_pre
-
+      CALL Info('SParIterSolver','Hypre method index: '//TRIM(I2S(hypremethod)),Level=8)
+      
       ! NB.: hypremethod = 0 ... BiCGStab + ILUn
       !                    1 ... BiCGStab + ParaSails
       !                    2 ... BiCGStab + BoomerAMG
@@ -1848,6 +1853,8 @@ INTEGER::inside
       DEALLOCATE( VecEPerNB )
 
 !     CALL ExchangeSourceVec( SourceMatrix, SplittedMatrix, ParallelInfo, RHSVec )
+      CALL Info('SParIterSolver','Finished solving linear system with HYPRE',Level=12)
+
       RETURN
    END IF
 #endif

@@ -143,7 +143,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
 
   CALL Info('Mesh2MeshSolver','Target mesh name is: '//TRIM(TargetMesh % Name),Level=7)   
 
-  IF( ListCheckPresent( Params,'Variable 1') ) THEN
+  IF( .FALSE. .AND. ListCheckPresent( Params,'Variable 1') ) THEN
     CALL Info('Mesh2MeshSolver','Mapping field one at a time as requested',Level=7)
     
     CALL SetCurrentMesh( CurrentModel, TargetMesh )
