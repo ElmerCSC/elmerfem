@@ -5574,7 +5574,7 @@ END SUBROUTINE FaceElementBasisOrdering
          RETURN
        END IF
 
-       IF (cdim == 2 .AND. dim==1) THEN
+       IF (cdim == 2 .AND. dim==1 .OR. cdim == 3 .AND. dim==1) THEN
          CALL Warn('EdgeElementInfo', 'Traces of 2-D edge elements have not been implemented yet')
          RETURN
        END IF
@@ -5879,6 +5879,12 @@ END SUBROUTINE FaceElementBasisOrdering
        ! to local coordinates) evaluated at the integration point. The effect of 
        ! the Piola transformation need to be considered when integrating, so we 
        ! shall return also the values of F, G=F^{-T} and det F.
+       !
+       ! It should be noted that the case of 2-D surface elements embedded in
+       ! the three-dimensional space is handled as a special case. Then F^{-T}
+       ! is replaced by the transpose of the pseudoinverse of F. The Piola 
+       ! transformation then maps a 2-component field to a 3-component vector
+       ! field which is tangential to the 2-D surface.
        !
        ! The construction of edge element bases could be done in an alternate way for 
        ! triangles and tetrahedra, while the chosen approach has the benefit that
@@ -9325,7 +9331,11 @@ END SUBROUTINE FaceElementBasisOrdering
              END DO
           END IF
        ELSE
-
+          ! ----------------------------------------------------------------------
+          ! We should enter this branch in the case of 2-D elements (dim=2) 
+          ! embedded in the three-dimensional space (cdim=3). The following function
+          ! defines LG to be the transpose of the pseudoinverse of F = LF.
+          ! ----------------------------------------------------------------------       
           IF (PerformPiolaTransform .OR. PRESENT(dBasisdx) .OR. ApplyTraceMapping) THEN
              IF ( .NOT. ElementMetric( n, Element, Nodes, &
                   ElmMetric, detJ, dLBasisdx, LG ) ) THEN
@@ -9334,7 +9344,7 @@ END SUBROUTINE FaceElementBasisOrdering
              END IF
           END IF
 
-          IF (ApplyTraceMapping .AND. (dim==2) ) THEN
+          IF (ApplyTraceMapping) THEN
             ! Perform operation b -> b x n. The resulting field transforms under the usual 
             ! Piola transform (like div-conforming field). For a general surface element
             ! embedded in 3D we return B(f(p))=1/sqrt(a) F(b x n) where a is the determinant of
@@ -10177,7 +10187,7 @@ END SUBROUTINE FaceElementBasisOrdering
 !    with Grad the gradient with respect to the reference element coordinates p and 
 !    the referencial description of the spatial field B(x) satisfying B(f(p)) = b(p).
 !    If cdim > dim (e.g. a surface embedded in the 3-dimensional space), X is
-!    the pseudo-inverse of (Grad f)^{T}.
+!    the transpose of the pseudo-inverse of Grad f.
 !-------------------------------------------------------------------------------
      DO i=1,cdim
        DO j=1,dim
