@@ -484,7 +484,7 @@ CONTAINS
        ELSE
          GapLength = GetConstReal( BC, 'Layer Electric Conductivity', Found)
          IF( Found ) THEN
-           AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+           AirGapMu=GetConstReal( BC, 'Layer Relative Permeability', Found)
            IF (.NOT. Found) AirGapMu = 1.0_dp ! if not found default to "air" property           
            CALL LocalMatrixSkinBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd)
          ELSE         
@@ -538,7 +538,7 @@ CONTAINS
     !
     ! Fix unused potential DOFs:
     ! --------------------------
-    !CALL ConstrainUnused(A)
+    CALL ConstrainUnused(A)
 
     !
     ! Linear system solution:
@@ -579,7 +579,7 @@ CONTAINS
       j = 2*(j-1)
       Aval = CMPLX(dDiag(j+1), dDiag(j+2), KIND=dp)
 
-      IF (Aval==0._dp) THEN
+      IF (ABS(Aval)==0._dp) THEN
         A % RHS(j+1) = 0._dp
         CALL ZeroRow(A,j+1)
         A % Values(A % Diag(j+1)) = 1._dp
@@ -1984,19 +1984,17 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC(  STIFF, FORCE, LOAD, SkinCond, SkinMu, Element, n, nd )
+  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, LOAD, SkinCond, SkinMu, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: LOAD(:,:)
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
-    INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element, Parent, Edge
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:,:)
     REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
     LOGICAL :: Stat
-    INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
     COMPLEX(KIND=dp) :: imu, invZs
@@ -2013,7 +2011,7 @@ CONTAINS
     MASS  = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
-    imu = COMPLEX( 0.0_dp, 1.0_dp ) 
+    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
     
     ! Numerical integration:
     !-----------------------
@@ -2021,10 +2019,11 @@ CONTAINS
          EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+
     DO t=1,IP % n
       IF ( PiolaVersion ) THEN
         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -2035,35 +2034,59 @@ CONTAINS
 
       cond = SUM(Basis(1:n) * SkinCond(1:n))
       mu  = muVacuum * SUM(Basis(1:n) * SkinMu(1:n))
-      delta = SQRT( 2/(cond*omega*mu))      
-      invZs = (cond*delta)/(1+imu)
-      
-      DO i = 1,nd-np
-        p = i+np
-        DO j = 1,np
-          q = j
-          STIFF(p,q) = STIFF(p,q) + invZs * &
-              SUM(WBasis(i,:)*dBasisdx(j,:))*detJ*IP%s(t)
-          STIFF(q,p) = STIFF(q,p) + imu * Omega * &
-              delta * cond * SUM(Wbasis(i,:)*dBasisdx(j,:)) * detJ * IP % s(t)
-       END DO
-      END DO
-
-      PRINT *,'skin:',cond,delta,omega,invZs
+      delta = SQRT( 2.0_dp/(cond*omega*mu))      
+      invZs = (cond*delta)/(1.0_dp+imu)
+      !PRINT *,'skin:',cond,delta,omega,invZs
       !PRINT *,'elem:',Element % NodeIndexes
 
-      
-      DO i = 1,np
-        p = i
-        DO j = 1,np
-          q = j
-          STIFF(p,q) = STIFF(p,q) + delta * cond * &
-              SUM(dBasisdx(i,:)*dBasisdx(j,:))*detJ*IP%s(t)
+      !
+      ! The contributions from the constraint n x H x n = 1/Z E x n:
+      !
+      DO i = 1,nd-np
+        p = i+np
+        DO j = 1,nd-np
+          q = j+np
+          !
+          ! The term -i*omega/Z < A x n, v x n> : With ApplyPiolaTransform = .TRUE.
+          ! the edge basis functions returned by the function EdgeElementInfo are automatically 
+          ! tangential and hence the normal doesn't appear in the expression.
+          !
+          STIFF(p,q) = STIFF(p,q) - imu * Omega * invZs * &
+              SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
+        END DO
+
+        DO q = 1,np
+          !
+          ! The term -1/Z < grad V x n, v x n> : 
+          ! Some tensor calculation shows that the component form of this term is analogous to 
+          ! the case < A x n, v x n>. 
+          !
+          STIFF(p,q) = STIFF(p,q) - invZs * &
+              SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
         END DO
       END DO
-      
+
+      !
+      ! The contributions from applying Ohm's law to the tangential surface current 
+      ! which is assumed to be constant over the skin depth: NOTE that a non-vanishing 
+      ! surface current cannot yet be prescribed on the one-dimensional boundary of the skin
+      ! surface via giving a current BC (the conducting skin must be either insulated over its
+      ! boundary or constrained by a Dirichlet condition for the scalar potential).
+      !
+      DO p = 1,np
+        DO q = 1,np
+          STIFF(p,q) = STIFF(p,q) + delta * cond * &
+              SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+        END DO
+
+        DO j = 1,nd-np
+          q = j+np
+          STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
+              SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+        END DO
+      END DO
+
     END DO
-    
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixSkinBC
 !------------------------------------------------------------------------------
