@@ -164,9 +164,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   END IF
 
   IF (PiolaVersion) THEN
-    CALL Info('WhitneyAVSolver', &
+    CALL Info('WhitneyAVHarmonicSolver', &
         'Using Piola Transformed element basis functions',Level=4)
-    CALL Info('WhitneyAVSolver', &
+    CALL Info('WhitneyAVHarmonicSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
         CALL Info('WhitneyAVHarmonicSolver', &
@@ -183,8 +183,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone ) THEN
 
-     IF (Solver % Variable % dofs /= 2) CALL Fatal ('WhitneyAVHarmonicSolver_Init', &
-       'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
+     IF (Solver % Variable % dofs /= 2) CALL Fatal('WhitneyAVHarmonicSolver_Init', &
+         'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
@@ -370,22 +370,22 @@ CONTAINS
          SELECT CASE(LaminateStackModel)
          CASE('low-frequency model')
            LamThick(1:n) = GetReal( Material, 'Laminate Thickness', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Thickness not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Thickness not found!')
   
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Stack Conductivity not found!')
            LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE('wide-frequency-band model')
            LamThick(1:n) = GetReal( Material, 'Laminate Thickness', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Thickness not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Thickness not found!')
 
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Stack Conductivity not found!')
            LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE DEFAULT
-           CALL WARN('WhitneyAVSolver', 'Nonexistent Laminate Stack Model chosen!')
+           CALL WARN('WhitneyAVHarmonicSolver', 'Nonexistent Laminate Stack Model chosen!')
          END SELECT
        END IF
 
@@ -486,7 +486,7 @@ CONTAINS
          IF( Found ) THEN
            AirGapMu=GetConstReal( BC, 'Layer Relative Permeability', Found)
            IF (.NOT. Found) AirGapMu = 1.0_dp ! if not found default to "air" property           
-           CALL LocalMatrixSkinBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd)
+           CALL LocalMatrixSkinBC(STIFF,FORCE,GapLength,AirGapMu,Element,n,nd)
          ELSE         
            CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
          END IF
@@ -1984,10 +1984,10 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, LOAD, SkinCond, SkinMu, Element, n, nd )
+  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd
@@ -2008,7 +2008,6 @@ CONTAINS
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     muVacuum = 4 * PI * 1d-7
     imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
@@ -2023,7 +2022,7 @@ CONTAINS
     DO t=1,IP % n
       IF ( PiolaVersion ) THEN
         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
