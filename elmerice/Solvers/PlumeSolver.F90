@@ -554,12 +554,16 @@
 
          ZOutput => HydroPlume(Pl) % z
          MROutput => HydroPlume(Pl) % meltrate
-         !IF(Q0<1E-4) CYCLE
-
-         !This solves for a line/wedge plume of assumed width of MeshRes
-         !Truncated line/wedge plumes seem better fit for combined channel+sheet
-         !discharge and for Jackson et al. (2017)'s observations
-         CALL PlumeSolver(Zi, Xi, Ta, Sa, Q0, ZOutput, MROutput, MeshRes, PlDepth)
+         IF(Q0 .LE. 0.0) THEN
+           !This avoids the solver failing on Q=0 and spewing NaNs everywhere
+           MROutput(:) = 0.0
+           ZOutput(:) = Zi(:)
+         ELSE
+           !This solves for a line/wedge plume of assumed width of MeshRes
+           !Truncated line/wedge plumes seem better fit for combined channel+sheet
+           !discharge and for Jackson et al. (2017)'s observations
+           CALL PlumeSolver(Zi, Xi, Ta, Sa, Q0, ZOutput, MROutput, MeshRes, PlDepth)
+         END IF
          IF(SIZE(ZOutput)>Output) THEN
            Output = SIZE(ZOutput)
          END IF
@@ -1536,12 +1540,6 @@
       MeltRate = MeltRate + ToeMeltRate
       ToeCalveVar % Values = ToeMeltRate
     END IF
-   
-    !Sometimes, if there's not much water in the system, the ODE solver will
-    !generate NaNs in some places. This will just zero them out. 
-    DO i=1,SIZE(MeltRate)
-      IF(ISNAN(MeltRate(i))) MeltRate(i) = 0.0_dp
-    END DO
     
     NULLIFY(WorkVar, WorkSolver, HydroMesh, Edge, ZOutput, MROutput, WorkVar2,&
            WorkVar3)
