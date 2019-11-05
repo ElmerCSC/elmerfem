@@ -102,7 +102,7 @@
 
       ! No use to continue even in parallel, since the OldMeshes are all the same!
       IF( OldMesh % SingleMesh ) THEN
-        CALL Warn('InterpolateMeshToMesh','Could not find all dofs: '//TRIM(I2S(NINT(dn))))
+        CALL Warn('InterpolateMeshToMesh','Could not find all dofs in single mesh: '//TRIM(I2S(NINT(dn))))
         RETURN
       END IF
       
