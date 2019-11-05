@@ -175,6 +175,7 @@ CONTAINS
      Mesh % Elements => NULL()
      
      Mesh % DiscontMesh = .FALSE.
+     Mesh % SingleMesh = .FALSE.
      Mesh % InvPerm => NULL()
 
      Mesh % MinFaceDOFs = 1000
