@@ -93,7 +93,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        BaseDisplaceFirst, RecompStab, MapHeight
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, RefVal, ElemVector(3),DotPro,Eps,Length, MinHeight
-  REAL(KIND=dp) :: at0,at1,at2,Heps,dx
+  REAL(KIND=dp) :: at0,at1,at2,dx
   REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:),CoordP(:)
   REAL(KIND=dp), ALLOCATABLE :: OrigCoord(:), Field(:), Surface(:)
   TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar, BaseVar
@@ -230,9 +230,15 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   DisplacementMode = GetLogical(SolverParams,'Displacement Mode',Found)
 
-  Heps = GetCReal(SolverParams,'Minimum Mesh Height',GotIt)
-  IF(.NOT. GotIt) Heps = EPSILON( Heps )
+  MinHeight = GetCReal(SolverParams,'Minimum Mesh Height',GotIt)
+  IF(.NOT. GotIt) MinHeight = GetCReal(SolverParams,'Minimum Height', GotIt)
+  IF(.NOT. GotIt) MinHeight = EPSILON( MinHeight ) 
 
+  WRITE(Message,'(A,E11.4)') 'Adjusting upper surface to maintain minimum height to:', MinHeight
+  CALL Info(Caller,Message,Level=6)
+
+  TangledCount = 0
+  
   IF( GotBaseVar .AND. BaseDisplaceFirst ) THEN
     CALL BaseVarDisplace() 
   END IF
@@ -243,6 +249,13 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     CALL BinaryLayerMapper()
   END IF
 
+  IF( TangledCount > 0 ) THEN
+    CALL Warn(Caller,'There seems to be '&
+        //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
+        ') tangled nodes!')
+  END IF
+  
+  
   
   ! If there is a mask then the coordinate is not directly linked to the real coordinate.
   ! Hence we need to do it here for the real coordinate. 
@@ -298,9 +311,7 @@ CONTAINS
   SUBROUTINE BinaryLayerMapper()
 
     !---------------- detangling stuff --------------------------------
-    MinHeight = 0.0_dp
     DeTangle = GetLogical(SolverParams,'Correct Surface',GotIt )
-    TangledCount = 0
     IF( DeTangle ) THEN
       CALL Info(Caller,&
           '> Correct Surface < in case of intersecting upper and lower surface',Level=4)
@@ -310,15 +321,6 @@ CONTAINS
         CALL Info(Caller,'Using function to map heights',Level=5)
       END IF
       
-      MinHeight = GetCReal(SolverParams,'Minimum Height', GotIt)
-      IF (.NOT.GotIt .OR. (MinHeight <= 0.0_dp)) THEN
-        CALL Fatal(Caller,&
-            '> Minimum Height < either set to negative/zero value or not found')
-      ELSE
-        WRITE(Message,'(A,E11.4)') 'Adjusting upper surface to maintain minimum height to:', MinHeight
-        CALL Info(Caller,Message,Level=4)
-      END IF
-
       TangledMaskVarName = GetString(SolverParams,'Correct Surface Mask', ComputeTangledMask)
       IF (ComputeTangledMask) THEN
         TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName) )
@@ -478,8 +480,6 @@ CONTAINS
       END DO
     END IF
     
-    TangledCount = 0
-
     ! Get the new mapping using linear interpolation from bottom and top
     !-------------------------------------------------------------------
     DO i=1,nnodes
@@ -637,11 +637,6 @@ CONTAINS
       IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(j) - OrigCoord(j)
     END DO
 
-    IF( TangledCount > 0 ) THEN
-      CALL Warn(Caller,'There seems to be '&
-          //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
-          ') tangled nodes!')
-    END IF
     
   END SUBROUTINE BinaryLayerMapper
 
@@ -653,19 +648,13 @@ CONTAINS
     REAL(KIND=dp) :: q
     TYPE(Variable_t), POINTER :: FixedVar
 
-    
     ! Get the new mapping using linear interpolation from bottom and top
     !-------------------------------------------------------------------
     CALL Info(Caller,'Mapping using '//TRIM(I2S(NumberOfFixedLayers))//' fixed layers',Level=6)
 
-    IF( DisplacementMode ) THEN
-      CALL Fatal(Caller,'Displacement mode not available for multiple layers!')
-    END IF
-
     IF( MaskExists ) THEN
       CALL Fatal(Caller,'Mask not available yet for multiple layers!')
     END IF
-
     
     i = FixedLayers(1)
     IF( i /= 1 ) THEN
@@ -690,7 +679,7 @@ CONTAINS
         StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),FixedCoord(NumberOfFixedLayers))
     Proj = 0.0_dp
 
-    Debug = .TRUE.
+    Debug = .FALSE.
 
     ! Create the projection matrix used for all strides!
     j = 1    
@@ -755,11 +744,18 @@ CONTAINS
         StrideCoord = MATMUL( Proj, FixedCoord )
       END IF
 
+      ! Fix mesh if it becomes tangled
+      IF( ANY( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < MinHeight ) ) THEN
+        TangledCount = TangledCount + 1
+        DO k = 2,NumberOfLayers
+          StrideCoord(k) = MAX( StrideCoord(k), StrideCoord(k-1)+MinHeight )
+        END DO
+      END IF
+      
       IF( Debug ) THEN
         PRINT *,'FixedCoord:',FixedCoord
         PRINT *,'StrideCoord:',StrideCoord
       END IF
-
       
       Coord(StrideInd) = StrideCoord
 
