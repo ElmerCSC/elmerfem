@@ -121,9 +121,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:)
-
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
+
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
 
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
@@ -150,7 +150,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
-       GapLength, MuParameter
+       GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
@@ -189,7 +189,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
-          GapLength(N), MuParameter(N), Acoef(N), LamCond(N), &
+          GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
@@ -482,11 +482,11 @@ CONTAINS
          IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
          CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
        ELSE
-         LamCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
-         IF( Found ) THEN
+         SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
+         IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
            MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
-           CALL LocalMatrixSkinBC(STIFF,FORCE,LamCond,MuParameter,Element,n,nd)
+           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
          ELSE         
            CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
          END IF
