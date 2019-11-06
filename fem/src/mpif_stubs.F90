@@ -108,6 +108,14 @@ SUBROUTINE mpi_gatherv
   RETURN
 END SUBROUTINE mpi_gatherv
 
+SUBROUTINE mpi_gather
+  RETURN
+END SUBROUTINE mpi_gather
+
+SUBROUTINE mpi_reduce
+  RETURN
+END SUBROUTINE mpi_reduce
+
 ! Parpack 
 SUBROUTINE pdseupd
   RETURN
