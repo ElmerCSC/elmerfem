@@ -121,7 +121,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), AirGapMu(:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
 
@@ -150,7 +150,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
-       GapLength, AirGapMu
+       GapLength, MuParameter
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
@@ -189,7 +189,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
-          GapLength(N), AirGapMu(N), Acoef(N), LamCond(N), &
+          GapLength(N), MuParameter(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
@@ -478,15 +478,15 @@ CONTAINS
        !If air gap length keyword is detected, use air gap boundary condition
        GapLength = GetConstReal( BC, 'Air Gap Length', Found)
        IF (Found) THEN
-         AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
-         IF (.NOT. Found) AirGapMu = 1.0_dp ! if not found default to "air" property
-         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
+         MuParameter=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+         IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
+         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
        ELSE
-         GapLength = GetConstReal( BC, 'Layer Electric Conductivity', Found)
+         LamCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
          IF( Found ) THEN
-           AirGapMu=GetConstReal( BC, 'Layer Relative Permeability', Found)
-           IF (.NOT. Found) AirGapMu = 1.0_dp ! if not found default to "air" property           
-           CALL LocalMatrixSkinBC(STIFF,FORCE,GapLength,AirGapMu,Element,n,nd)
+           MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
+           IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
+           CALL LocalMatrixSkinBC(STIFF,FORCE,LamCond,MuParameter,Element,n,nd)
          ELSE         
            CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
          END IF
