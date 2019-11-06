@@ -167,7 +167,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
  
   IF (LagrangeGauge .AND. Transient .AND. &
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
-    CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    CALL Info("WhitneyAVSolver_Init0", "Gauge field is not projected across mortar boundaries.") 
   END IF
 
 

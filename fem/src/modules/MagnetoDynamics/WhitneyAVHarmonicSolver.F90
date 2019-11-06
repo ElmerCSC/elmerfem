@@ -183,7 +183,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone ) THEN
 
-     IF (Solver % Variable % dofs /= 2) CALL Fatal('WhitneyAVHarmonicSolver_Init', &
+     IF (Solver % Variable % dofs /= 2) CALL Fatal('WhitneyAVHarmonicSolver', &
          'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
