@@ -30,6 +30,7 @@
 from __future__ import print_function
 import Fem
 import FreeCAD
+import Part
 import BOPTools.SplitFeatures
 import ObjectsFem
 import femmesh.gmshtools
@@ -280,10 +281,26 @@ def get_point_from_solid(solid, tolerance=0.0001):
                         return test_point
     return None
 
+def is_point_on_face_edges(face, p2, tol=0.0001):
+    """
+    Checks if given point is on same edge of given face.
+
+    :param face: FreeCAD face object
+    :param p2: FreeCAD Vector object
+    :param tol: float
+
+    :return: bool
+    """
+    vertex = Part.Vertex(p2)
+    for edge in face.Edges:
+        if vertex.distToShape(edge)[0] < tol:
+            return True
+    return False
+
 def get_point_from_face_close_to_edge(face):
     """
     Increases parameter range minimum values of face by one until at least
-    two of the x, y and z coordinates of the corresponding point has moved at least 1mm.
+    two of the x, y and z coordinates of the corresponding point has moved at least 1 unit.
     If point is not found None is returned.
 
     :param face: FreeCAD face object.
@@ -295,8 +312,11 @@ def get_point_from_face_close_to_edge(face):
     u_test, v_test = u_min+1, v_min+1
     while u_test < u_max and v_test < v_max:
         p2 = face.valueAt(u_test, v_test)
-        # Check at least two coordinates moved 1mm
+        # Check at least two coordinates moved 1 unit
         if (abs(p1.x - p2.x) >= 1) + (abs(p1.y - p2.y) >= 1) + (abs(p1.z - p2.z) >= 1) > 1:
+            if is_point_on_face_edges(face, p2):
+                v_test += 0.5
+                continue  # go back at the beginning of while
             if face.isPartOfDomain(u_test, v_test):
                 return p2
             return None
