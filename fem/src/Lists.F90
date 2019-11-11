@@ -4250,7 +4250,7 @@ use spariterglobals
            IF( PRESENT( eps ) ) THEN
              xeps = eps
            ELSE
-             xeps = 1.0e-8
+             xeps = 1.0d-8
            END IF
            T(1) = x - xeps
            F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
@@ -4292,7 +4292,7 @@ use spariterglobals
          IF( PRESENT( eps ) ) THEN
            xeps = eps
          ELSE
-           xeps = 1.0e-8
+           xeps = 1.0d-8
          END IF
          
          WRITE( cmd, * ) 'tx=', x-xeps

@@ -1848,7 +1848,7 @@ CONTAINS
                ! This includes only interface dofs donwstream from
                ! non-contact zone.
                BLOCK
-                 REAL(kind=DP) :: r1(3),r2(3),dr(3),reps=1.0e-6
+                 REAL(kind=DP) :: r1(3),r2(3),dr(3),reps=1.0d-6
                  
                  DO i=1,n
                    j = FieldPerm( NodeIndexes(i) )
@@ -4022,7 +4022,7 @@ CONTAINS
          END DO
        END DO
        
-       CoeffEps = 1.0e-8 * MAXVAL( ABS( CoeffTable ) )
+       CoeffEps = 1.0d-8 * MAXVAL( ABS( CoeffTable ) )
        DO i=1,SIZE( CoeffTable )            
          IF( NodeDone( i ) .AND. ( ABS( CoeffTable(i) ) > CoeffEps ) ) THEN
            DistVar % Values( i ) = DistVar % Values( i ) / CoeffTable( i ) 
@@ -9515,14 +9515,14 @@ END FUNCTION SearchNodeL
       r = x(1:n)-x0(1:n)
       Change = ComputeNorm(Solver, n, r)
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0/ (Norm+PrevNorm)
+        Change = Change * 2.0_dp/ (Norm+PrevNorm)
       END IF
       DEALLOCATE(r)      
 
     CASE('norm')
       Change = ABS( Norm-PrevNorm )
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0/ (Norm+PrevNorm)
+        Change = Change * 2.0_dp/ (Norm+PrevNorm)
       END IF
       
     CASE DEFAULT
@@ -10223,7 +10223,7 @@ END FUNCTION SearchNodeL
       ELSE
         Change = ABS( Norm-PrevNorm )
         IF( Norm + PrevNorm > 0.0) THEN
-          Change = Change * 2.0 / ( Norm + PrevNorm )
+          Change = Change * 2.0_dp / ( Norm + PrevNorm )
         END IF
       END IF
 
@@ -16591,7 +16591,7 @@ CONTAINS
       DO i=1,CouplingNodes
         WallNormal => CouplingNormals(i,:)
         sNormal = SQRT( SUM( WallNormal**2) )
-        IF( sNormal > 1.0e-3 ) THEN
+        IF( sNormal > 1.0d-3 ) THEN
           WallNormal = WallNormal / sNormal 
           PRINT *,'WallNormal:',WallNormal
         ELSE
@@ -17534,7 +17534,7 @@ CONTAINS
        
      EpsVal = ListGetConstReal( Solver % Values,&
          'Minimum Projector Value', Found )
-     IF(.NOT. Found ) EpsVal = 1.0e-8_dp
+     IF(.NOT. Found ) EpsVal = 1.0d-8
      
      
      SumProjectors = ListGetLogical( Solver % Values,&
