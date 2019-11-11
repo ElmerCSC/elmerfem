@@ -17687,7 +17687,7 @@ CONTAINS
     ! Set the dot product tolerance
     !-----------------------------------------------------------------
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
-    IF(.NOT. GotIt) Eps = 1.0d-1_dp
+    IF(.NOT. GotIt) Eps = 1.0d-1
 
     nsize = Mesh % NumberOfBulkElements
     CALL Info('DetectExtrudedElements','Detecting extrusion in the mesh using coordinate: '&
@@ -18989,7 +18989,7 @@ CONTAINS
         !--------------------------------------------------------------------------------------
         IF( ParallelCands > 1.5_dp ) THEN
           Hit = PointInElement( Element, ElementNodes, &
-              Coords, LocalCoords, GlobalEps = 1.0d-3_dp, LocalEps=1.0d-4_dp )	
+              Coords, LocalCoords, GlobalEps = 1.0d-3, LocalEps=1.0d-4 )	
         ELSE
           Hit = PointInElement( Element, ElementNodes, &
               Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	
