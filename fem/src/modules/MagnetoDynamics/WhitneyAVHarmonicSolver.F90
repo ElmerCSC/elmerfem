@@ -2039,28 +2039,28 @@ CONTAINS
       !PRINT *,'elem:',Element % NodeIndexes
 
       !
-      ! The contributions from the constraint n x H x n = 1/Z E x n:
+      ! The contributions from the constraint (H x n) x n = 1/Z E x n:
       !
       DO i = 1,nd-np
         p = i+np
         DO j = 1,nd-np
           q = j+np
           !
-          ! The term -i*omega/Z < A x n, v x n> : With ApplyPiolaTransform = .TRUE.
+          ! The term i*omega/Z < A x n, v x n> : With ApplyPiolaTransform = .TRUE.
           ! the edge basis functions returned by the function EdgeElementInfo are automatically 
           ! tangential and hence the normal doesn't appear in the expression.
           !
-          STIFF(p,q) = STIFF(p,q) - imu * Omega * invZs * &
+          STIFF(p,q) = STIFF(p,q) + imu * Omega * invZs * &
               SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
         END DO
 
         DO q = 1,np
           !
-          ! The term -1/Z < grad V x n, v x n> : 
+          ! The term 1/Z < grad V x n, v x n> : 
           ! Some tensor calculation shows that the component form of this term is analogous to 
           ! the case < A x n, v x n>. 
           !
-          STIFF(p,q) = STIFF(p,q) - invZs * &
+          STIFF(p,q) = STIFF(p,q) + invZs * &
               SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
         END DO
       END DO
