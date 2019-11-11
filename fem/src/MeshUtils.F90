@@ -17062,7 +17062,7 @@ CONTAINS
     ! Set the dot product tolerance
     !-----------------------------------------------------------------
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
-    IF(.NOT. GotIt) Eps = 1.0d-4_dp
+    IF(.NOT. GotIt) Eps = 1.0d-4
 
     VarName = ListGetString(Params,'Mapping Mask Variable',GotIt )
     MaskExists = .FALSE.
