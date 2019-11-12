@@ -1062,12 +1062,12 @@ MODULE Integration
        0.570426980705159d0, &
        0.570426980705159d0, &
        0.570426980705159d0, &
-       0.871002934865444d0, &
-       0.871002934865444d0, &
-       0.871002934865444d0, &
-       0.570426980705159d0, &
-       0.570426980705159d0, &
-       0.570426980705159d0 ]
+       -0.871002934865444d0, &
+       -0.871002934865444d0, &
+       -0.871002934865444d0, &
+       -0.570426980705159d0, &
+       -0.570426980705159d0, &
+       -0.570426980705159d0 ]
 
 !------------------------------------------------------------------------------
 ! Wedge - n=24, p=6
@@ -1165,13 +1165,13 @@ MODULE Integration
        0.809574716992997d0, &
        0.809574716992997d0, &
        0.809574716992997d0, &
-       1.250521622121900d0, &
-       0.685008566774710d0, &
-       0.685008566774710d0, &
-       0.685008566774710d0, &
-       0.809574716992997d0, &
-       0.809574716992997d0, &
-       0.809574716992997d0 ]
+       -1.250521622121900d0, &
+       -0.685008566774710d0, &
+       -0.685008566774710d0, &
+       -0.685008566774710d0, &
+       -0.809574716992997d0, &
+       -0.809574716992997d0, &
+       -0.809574716992997d0 ]
 
 ! continue wedge rules here
 !------------------------------------------------------------------------------
@@ -2060,6 +2060,8 @@ CONTAINS
    END FUNCTION GaussPointsPWedge
 !------------------------------------------------------------------------------
 
+
+   
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D wedge element
 !------------------------------------------------------------------------------
@@ -2314,6 +2316,119 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!>    Return Gaussian integration points for 3D wedge elements using
+!> economical quadratures that are not product of segment and triangle rules.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsWedgeEconomic( n, PReferenceElement ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: n      !< number of points in the requested rule
+      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element 
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      REAL( KIND=dp ) :: ScaleFactor
+      INTEGER :: i
+      LOGICAL :: ConvertToPWedge
+      REAL (KIND=dp) :: uq, vq, wq, sq
+!     INTEGER :: thread, omp_get_thread_num
+!----------------------------------------------------------------------------------
+      ConvertToPWedge = .FALSE.
+      IF ( PRESENT(PReferenceElement) ) THEN
+        ConvertToPWedge = PReferenceElement
+      END IF
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!       thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      SELECT CASE (n)
+      CASE (4)
+         p % u(1:n) = UWedge4P
+         p % v(1:n) = VWedge4P
+         p % w(1:n) = WWedge4P
+         p % s(1:n) = SWedge4P
+      CASE (5)
+         p % u(1:n) = UWedge5P
+         p % v(1:n) = VWedge5P
+         p % w(1:n) = WWedge5P
+         p % s(1:n) = SWedge5P 
+      CASE (6)
+         p % u(1:n) = UWedge6P
+         p % v(1:n) = VWedge6P
+         p % w(1:n) = WWedge6P
+         p % s(1:n) = SWedge6P 
+      CASE (7)
+         p % u(1:n) = UWedge7P
+         p % v(1:n) = VWedge7P
+         p % w(1:n) = WWedge7P
+         p % s(1:n) = SWedge7P
+      CASE (10)
+         p % u(1:n) = UWedge10P
+         p % v(1:n) = VWedge10P
+         p % w(1:n) = WWedge10P
+         p % s(1:n) = SWedge10P 
+      CASE (11)
+         p % u(1:n) = UWedge11P
+         p % v(1:n) = VWedge11P
+         p % w(1:n) = WWedge11P
+         p % s(1:n) = SWedge11P 
+      CASE (14)
+         p % u(1:n) = UWedge14P
+         p % v(1:n) = VWedge14P
+         p % w(1:n) = WWedge14P
+         p % s(1:n) = SWedge14P 
+      CASE (15)
+         p % u(1:n) = UWedge15P
+         p % v(1:n) = VWedge15P
+         p % w(1:n) = WWedge15P
+         p % s(1:n) = SWedge15P 
+      CASE (16)
+         p % u(1:n) = UWedge16P
+         p % v(1:n) = VWedge16P
+         p % w(1:n) = WWedge16P
+         p % s(1:n) = SWedge16P
+      CASE (24)
+         p % u(1:n) = UWedge24P
+         p % v(1:n) = VWedge24P
+         p % w(1:n) = WWedge24P
+         p % s(1:n) = SWedge24P
+         
+      CASE DEFAULT
+        CALL Fatal( 'GaussPointsWedgeEconomic',&
+            'Invalid number of points requested')
+      END SELECT
+
+      p % n = n
+
+      IF (ConvertToPWedge ) THEN
+        DO i=1,P % n  
+          uq = P % u(i) 
+          vq = P % v(i)
+          sq = P % s(i)
+
+          ! first to classical
+          uq = (uq+1.d0)/2.0d0
+          vq = (vq+1.d0)/2.0d0
+
+          ! then to p-convention
+          P % u(i) = -1.0d0 + 2.0d0*uq + vq
+          P % v(i) = SQRT(3.0d0) * vq            
+          P % s(i) = SQRT(3.0d0) * sq / 12.0d0
+        END DO
+      ELSE
+        ! Map to classical Elmer local coordinates in [0,1]
+        p % u(1:n) = ( p % u(1:n)+1.0d0 ) / 2.0d0
+        p % v(1:n) = ( p % v(1:n)+1.0d0 ) / 2.0d0 
+        p % s(1:n) = p % s(1:n) / 4.0d0
+      END IF
+!------------------------------------------------------------------------------
+    END FUNCTION GaussPointsWedgeEconomic
+!------------------------------------------------------------------------------
+
+    
+
+!------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D brick element for
 !>    composite rule
 !>    sum_i=1^nx(sum_j=1^ny(sum_k=1^nz w_ijk f(x_{i,j,k},y_{i,j,k},z_{i,j,k}))).
@@ -2424,7 +2539,7 @@ CONTAINS
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
      LOGICAL :: pElement, UsePRefElement, Economic
-     INTEGER :: n, eldim, p1d, ntri, nseg
+     INTEGER :: n, eldim, p1d, ntri, nseg, necon
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
@@ -2557,32 +2672,34 @@ CONTAINS
           ! triangle = 1, 3, 4, 6, 7, 11, 12, 17, 20
           ! segment  = 1, 2, 3, 4, 5, 6,  7,  8,  9,
 
-          ntri = 0; nseg = 0;
+          ntri = 0; nseg = 0; necon = 0
+
           SELECT CASE( n )
-          CASE( 1 )
-            ntri = 1; nseg = 1
-          CASE( 6 )
-            ntri = 3; nseg = 2
-          CASE( 8 )
-            ntri = 4; nseg = 2
-          CASE( 18 )
-            ntri = 6; nseg = 3
-          CASE( 21 )
-            ntri = 7; nseg = 3
-          CASE( 28 )
-            ntri = 7; nseg = 4
-          CASE( 44 )
-            ntri = 11; nseg = 4
-          CASE( 48 )
-            ntri = 12; nseg = 4
-          CASE( 85 )
-            ntri = 17; nseg = 5
-          CASE( 100 )
-            ntri = 20; nseg = 5
+
+            ! Cases ordered so that we have the segment x triangle rules first
+          CASE( 1, 2, 3)
+            nseg = n
+          CASE( 6, 8 )
+            nseg = 2
+          CASE( 12, 18, 21 )
+            nseg = 3
+          CASE( 28, 44, 48 )
+            nseg = 4
+          CASE( 85, 100 )
+            nseg = 5
+
+            ! The economical rules
+          CASE( 4, 5, 7, 10, 11, 14, 15, 16, 24 )
+            ! Note: we would have 6 and 8 point rules from the economic family as well
+            necon = n 
           END SELECT
 
-          IF( ntri > 0 ) THEN
+          IF( nseg > 0 ) THEN
+            ntri =  n / nseg
             IntegStuff = GaussPointsWedge2(ntri,nseg,PReferenceElement=PReferenceElement)
+            RETURN
+          ELSE IF( necon > 0 ) THEN
+            IntegStuff = GaussPointsWedgeEconomic(necon,PReferenceElement=PReferenceElement)
             RETURN
           END IF
         END IF
