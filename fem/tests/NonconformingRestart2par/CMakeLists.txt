@@ -5,4 +5,4 @@ CONFIGURE_FILE(fine.sif fine.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO mesh_coarse mesh_fine.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(NonconformingRestart2par NPROCS 2)
+ADD_ELMER_TEST(NonconformingRestart2par NPROCS 2 LABELS slow)
