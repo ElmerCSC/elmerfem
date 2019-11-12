@@ -175,7 +175,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: FieldPerm(:), FluxPerm(:)
   INTEGER :: CapBodies, CapBody, Permi, Permj, iter, MaxIterations
   INTEGER :: i, j, k, l, m, istat, bf_id, LocalNodes, DIM, NonlinearIter, &
-      RelIntegOrder, nsize, N, ntot, t, TID
+      nsize, N, ntot, t, TID
   
   LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC, OpenBc, LayerBC
   LOGICAL :: CalculateField, CalculateFlux, CalculateEnergy
@@ -379,8 +379,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
    
-  RelIntegOrder = ListGetInteger( Params,'Relative Integration Order',GotIt)
-
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
@@ -928,7 +926,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        !    transient simulations.
        !------------------------------------------------------------------------------
        CALL DefaultFinishBoundaryAssembly()
-        CALL DefaultFinishAssembly()
+       CALL DefaultFinishAssembly()
 
        !------------------------------------------------------------------------------
        !   This sets the BC flags so that the potential form a permulation
@@ -950,6 +948,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      END SUBROUTINE BoundaryAssembly
      !------------------------------------------------------------------------------
 
+#if 0 
 !------------------------------------------------------------------------------
    SUBROUTINE TotalChargeBC(F,Element,n,Nodes)
 !------------------------------------------------------------------------------
@@ -970,7 +969,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      CALL GetElementNodes( PNodes, Parent )
      pn = Parent % TYPE % NumberOfNodes
 
-     IntegStuff = GaussPoints(Element,RelOrder = RelIntegOrder)
+     IntegStuff = GaussPoints(Element)
 
      F = 0._dp
      DO i=1,IntegStuff % N
@@ -990,7 +989,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    END SUBROUTINE TotalChargeBC
 !------------------------------------------------------------------------------
-
+#endif
 
 !------------------------------------------------------------------------------
 !> Compute the Electric Flux, Electric Field and Electric Energy at model nodes.
@@ -1091,7 +1090,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !    Gauss integration stuff
 !------------------------------------------------------------------------------
-       IntegStuff = GaussPoints( Element )
+       IntegStuff = GaussPointsAdapt( Element )
        U_Integ => IntegStuff % u
        V_Integ => IntegStuff % v
        W_Integ => IntegStuff % w
@@ -1293,7 +1292,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
  
        REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
-       ! REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
        REAL(KIND=dp) :: PiezoForce(ntot), LocalStrain(6), PiezoLoad(3)
 
@@ -1315,7 +1313,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !      Numerical integration
 !------------------------------------------------------------------------------
-       IntegStuff = GaussPoints( Element, RelOrder = RelIntegOrder )
+       IntegStuff = GaussPointsAdapt( Element )
 
        DO t=1,IntegStuff % n
          U = IntegStuff % u(t)
@@ -2175,7 +2173,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
      ResidualNorm = 0.0_dp
      Area = 0.0_dp
 
-     IntegStuff = GaussPoints( Element )
+     IntegStuff = GaussPointsAdapt( Element )
 
      DO t=1,IntegStuff % n
         u = IntegStuff % u(t)

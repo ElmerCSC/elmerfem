@@ -2414,7 +2414,7 @@ CONTAINS
           ! then to p-convention
           P % u(i) = -1.0d0 + 2.0d0*uq + vq
           P % v(i) = SQRT(3.0d0) * vq            
-          P % s(i) = SQRT(3.0d0) * sq / 12.0d0
+          P % s(i) = SQRT(3.0d0) * sq / 2.0d0
         END DO
       ELSE
         ! Map to classical Elmer local coordinates in [0,1]
@@ -2557,12 +2557,12 @@ CONTAINS
        END IF
      END IF
 
-      IF( PRESENT(PReferenceElement)) THEN
-        pElement = PReferenceElement
-      ELSE
-        pElement = isActivePElement(elm)
-      END IF
-
+     IF( PRESENT(PReferenceElement)) THEN
+       pElement = PReferenceElement
+     ELSE
+       pElement = isActivePElement(elm)
+     END IF
+     
      IF ( PRESENT(np) ) THEN
        n = np
      ELSE IF( PRESENT( RelOrder ) ) THEN
@@ -2696,10 +2696,10 @@ CONTAINS
 
           IF( nseg > 0 ) THEN
             ntri =  n / nseg
-            IntegStuff = GaussPointsWedge2(ntri,nseg,PReferenceElement=PReferenceElement)
+            IntegStuff = GaussPointsWedge2(ntri,nseg,PReferenceElement=pElement)
             RETURN
           ELSE IF( necon > 0 ) THEN
-            IntegStuff = GaussPointsWedgeEconomic(necon,PReferenceElement=PReferenceElement)
+            IntegStuff = GaussPointsWedgeEconomic(necon,PReferenceElement=pElement)
             RETURN
           END IF
         END IF

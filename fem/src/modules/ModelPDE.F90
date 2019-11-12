@@ -149,7 +149,12 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints( Element )
+    IP = GaussPointsAdapt( Element )
+    IF( Element % ElementIndex == 1 ) THEN
+      CALL Info('AdvDiffSolver','Integration points in 1st element: '//TRIM(I2S(IP % n)),Level=8)
+    END IF
+
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
