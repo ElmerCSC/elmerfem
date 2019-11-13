@@ -2640,7 +2640,7 @@ CONTAINS
         END IF
 
      CASE (4)
-       IF (isActivePElement(elm)) THEN
+       IF (pElement) THEN
          Economic = .FALSE.
          ! For certain polynomial orders, economic quadratures may be used:
          IF (elm % PDefs % P > 1 .AND.  elm % PDefs % P <= 8) Economic = .TRUE.

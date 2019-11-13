@@ -9735,21 +9735,23 @@ END FUNCTION SearchNodeL
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
-    INTEGER :: i,n,ElementalNp(8)
-    LOGICAL :: Debug
+    INTEGER :: i,n,ElementalNp(8),prevVisited = -1
+    LOGICAL :: Debug, InitDone 
     
     SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
-        ElementalRule, ElementalNp
+        ElementalRule, ElementalNp, prevVisited
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
     ELSE
       pSolver => CurrentModel % Solver
     END IF
+       
+    !Debug = ( Element % ElementIndex == 1)
 
-    !Debug = ( Element % ElementIndex == 123)
-    
-    IF( .NOT. ASSOCIATED( pSolver, prevSolver ) ) THEN
+    InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. ( prevVisited == pSolver % TimesVisited )
+        
+    IF( .NOT. InitDone ) THEN
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
       Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
@@ -9779,7 +9781,8 @@ END FUNCTION SearchNodeL
         !PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
       END IF
 
-      prevSolver => pSolver      
+      prevSolver => pSolver
+      prevVisited = pSolver % TimesVisited
     END IF
 
     IF( UseAdapt ) THEN
@@ -9829,8 +9832,6 @@ END FUNCTION SearchNodeL
       ! PRINT *,'gauss def:',GaussDef(1:n)
       
       DO i=2,8
-        PRINT *,'i:',i
-        
         j = 0
         SELECT CASE( i )
         CASE( 2 )
