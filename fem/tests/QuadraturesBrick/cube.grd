@@ -16,7 +16,7 @@ End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = False
-Triangles = True
+Triangles = False
 Element Ratios 1 = 1 
 Element Ratios 2 = 1 
 Element Ratios 3 = 1 
