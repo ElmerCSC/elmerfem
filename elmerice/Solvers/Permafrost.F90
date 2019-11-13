@@ -4014,7 +4014,7 @@ END SUBROUTINE NodalVariableInit
 !==============================================================================
 !> output of material parameter
 !==============================================================================
-SUBROUTINE PermafrostMaterialOutput( Model,Solver,dt,TransientSimulation )
+SUBROUTINE PermafrostMaterialOutput_old( Model,Solver,dt,TransientSimulation )
   !==============================================================================
   USE DefUtils
   USE PermaFrostMaterials
@@ -4421,9 +4421,192 @@ CONTAINS
     CALL DefaultUpdateEquations(STIFF,FORCE)
     !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixMaterialOutput
-END SUBROUTINE PermafrostMaterialOutput
+END SUBROUTINE PermafrostMaterialOutput_Old
+!==============================================================================
+!> output of material parameter at element
+!==============================================================================
+SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
+  USE DefUtils
+  USE PermaFrostMaterials
 
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+    !------------------------------------------------------------------------------
+  ! Local variables
+  !------------------------------------------------------------------------------
+  ! 1 eta0 (=etat)
+  ! 2 etak
+  ! 3 alphaL
+  ! 4 alphaT  
+  ! 6 cs0
+  !( 8 Es0
+  ! 8 nus0
+  ! 9 ks0
+  ! 10 Kgwh0)
 
+  LOGICAL :: WriteToFile(5)=.FALSE., Found, WriteAll  
+  TYPE(ValueList_t), POINTER :: SolverParams
+
+  
+  SolverParams => GetSolverParams()
+  WriteAll=ListGetLogical(SolverParams,"Export all",Found)
+  IF (WriteAll) THEN
+    WriteToFile(1:5)=.TRUE.
+  ELSE
+    WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)
+    WriteToFile(2)=ListGetLogical(SolverParams,"Export etak",Found)
+    WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
+    WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
+    WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
+  END IF
+  IF(WriteToFile(1)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elmnt eta0")
+  END IF
+  IF(WriteToFile(2)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elmnt etak")
+  END IF
+  IF(WriteToFile(3)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elmnt alphaL")
+  END IF
+  IF(WriteToFile(4)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elmnt alphaT")
+  END IF
+  IF(WriteToFile(5)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elmnt cs0")
+  END IF
+END SUBROUTINE PermafrostElmntOutput_init
+!!!!!!!!!!!!!
+SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
+  USE DefUtils
+  USE PermaFrostMaterials
+
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation  
+  !------------------------------------------------------------------------------
+  ! Local variables
+  !------------------------------------------------------------------------------
+  LOGICAL :: WriteToFile(5)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
+       ElementWiseRockMaterial
+  INTEGER :: Active, t, CurrentValue, NumberOfRockRecords,&
+       NumberOfExportedValues=0, DIM
+  TYPE(Element_t),POINTER :: Element
+  TYPE(ValueList_t), POINTER :: Params, Material,SolverParams
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostElmntOutput'
+  CHARACTER(LEN=MAX_NAME_LEN) :: ElementRockMaterialName, ElmntVarName
+  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
+  TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
+  TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+  TYPE(Variable_t), POINTER :: ElmntVar
+  INTEGER, POINTER :: ElmntVarPerm(:)
+  REAL(KIND=dp), POINTER :: ElmntVarVal(:)
+  
+  SAVE FirstTime, WriteToFile, CurrentRockMaterial, NumberOfRockRecords,&
+       NumberOfExportedValues, DIM
+       
+  
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
+  CALL Info( SolverName, ' Assignment element material variables     ',Level=1 )
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
+
+  SolverParams => GetSolverParams()
+  
+  IF (FirstTime) THEN
+    WriteAll=ListGetLogical(SolverParams,"Export all",Found)
+    IF (WriteAll) THEN
+      WriteToFile(1:5)=.TRUE.
+      NumberOfExportedValues=5
+    ELSE
+      WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)      
+      WriteToFile(2)=ListGetLogical(SolverParams,"Export etak",Found)
+      WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
+      WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
+      WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
+      DO CurrentValue=1,5
+        IF (WriteToFile(CurrentValue)) NumberOfExportedValues=NumberOfExportedValues+1
+      END DO
+    END IF
+  END IF
+  Active = GetNOFActive()
+  DO CurrentValue=1,5
+    IF (.NOT.WriteToFile(CurrentValue)) CYCLE
+    SELECT CASE(CurrentValue)
+    CASE(1)
+      WRITE (ElmntVarName,*) 'eta0'
+    CASE(2)
+      WRITE (ElmntVarName,*) 'etak'
+    CASE(3)
+      WRITE (ElmntVarName,*) 'alphaL'      
+    CASE(4)
+      WRITE (ElmntVarName,*) 'alphaT'
+    CASE(5)
+      WRITE (ElmntVarName,*) 'cs0'
+    END SELECT
+    ElmntVar => VariableGet( Model % Mesh % Variables, TRIM(ElmntVarName))
+    IF (.NOT.ASSOCIATED(ElmntVar)) THEN
+      WRITE(Message,*) 'Variable ',TRIM(ElmntVarName),' is not associated'
+      CALL FATAL(SolverName,Message)
+    END IF
+    ElmntVarPerm => ElmntVar % Perm 
+    ElmntVarVal  => ElmntVar % Values
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      Material => GetMaterial()
+      IF (FirstTime) THEN
+        ! check, whether we have globally or element-wise defined values of rock-material parameters
+        ElementRockMaterialName = GetString(Material,'Element Rock Material File',ElementWiseRockMaterial)
+        IF (ElementWiseRockMaterial) THEN
+          WRITE (Message,*) 'Found "Element Rock Material File"'
+          CALL INFO(SolverName,Message,Level=3)
+          CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
+        END IF
+        IF (ElementWiseRockMaterial) THEN
+          ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+          NumberOfRockRecords = &
+               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+        ELSE
+          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+        END IF
+        
+        IF (NumberOfRockRecords < 1) THEN
+          CALL FATAL(SolverName,'No Rock Material specified')
+        ELSE
+          CALL INFO(SolverName,'Permafrost Rock Material read',Level=3)
+          FirstTime = .FALSE.
+        END IF
+        SELECT CASE(CurrentValue)
+        CASE(1)
+          ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % eta0(t)
+        CASE(2)
+          ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % etak(t)
+        CASE(3)
+          ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % alphaL(t)     
+        CASE(4)
+          ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % alphaT(t)
+        CASE(5)
+          ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % cs0(t)
+        END SELECT
+      END IF
+    END DO
+  END DO
+END SUBROUTINE PermafrostElmntOutput
 !==============================================================================
 !> output of material parameter at IP
 !==============================================================================
