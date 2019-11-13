@@ -444,7 +444,7 @@ def create_boolean_compound(solid_objects, doc):
     there is also a create_mesh_object_and_compound_filter for meshing purpose.
 
     :param solid_objects: list of FreeCAD solid geometry objects.
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :return: FreeCAD compound object.
     """
     doc.recompute()
@@ -455,12 +455,26 @@ def create_boolean_compound(solid_objects, doc):
     comp_obj.purgeTouched()
     return comp_obj
 
+def create_compound(solid_objects, doc, name='Compsolid'):
+    """
+    Creates a FreeCAD compound for the list of FreeCAD solid objects.
+
+    :param solid_objects: list of FreeCAD solid geometry objects.
+    :param doc: FreeCAD document.
+    :param name: String.
+    :return: FreeCAD compound object.
+    """
+    compound = doc.addObject('Part::Compound', name)
+    compound.Links = solid_objects
+    doc.recompute()
+    return compound
+
 def create_xor_object(solid_objects, doc):
     """
     Creates a FreeCAD xor object for the list of FreeCAD solid objects.
 
     :param solid_objects: list of FreeCAD solid geometry objects.
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :return: FreeCAD xor object
     """
     doc.recompute()
@@ -491,7 +505,7 @@ def create_mesh_object(compound_filter, CharacteristicLength, doc):
 
     :param compound_filter: FreeCAD compound filter object
     :param CharacteristicLength: Default mesh size characteristic length
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :return: FreeCAD mesh object
     """
     # Make a FEM mesh and mesh groups for material bodies and boundary conditions
@@ -519,9 +533,12 @@ def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, 
 
     :param solid_objects: list of FreeCAD solid geometry objects
     :param CharacteristicLength: Default mesh size characteristic length
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     """
-    boolean_compound = create_boolean_compound(solid_objects, doc)
+    if len(solid_objects) == 1:  # boolean compound can not be created with only one solid
+        boolean_compound = create_compound(solid_objects, doc)
+    else:
+        boolean_compound = create_boolean_compound(solid_objects, doc)
     compound_filter = create_compound_filter(boolean_compound)
     mesh_object = create_mesh_object(compound_filter, CharacteristicLength, doc)
     return mesh_object, compound_filter
@@ -789,7 +806,7 @@ def create_mesh_group_and_set_mesh_size(mesh_object, doc, name, mesh_size):
     Adds property 'mesh_size' to created group and returns object.
 
     :param mesh_object: FreeCAD mesh object
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :param name: string
     :param mesh_size: float
 
@@ -816,7 +833,7 @@ def merge_boundaries(mesh_object, compound_filter, doc, face_entity_dict, compou
 
     :param mesh_object: FreeCAD mesh object
     :param compound_filter: FreeCAD compound filter
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :param face_entity_dict: dictionary
     :param compound_face_names: tuple containing compound face names in face
     :param face_name_list: list containing already handled face names
@@ -874,7 +891,7 @@ def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_di
     :param mesh_object: FreeCAD mesh object
     :param compound_filter: FreeCAD compound filter
     :param entities_dict: entities dictionary
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
 
     :return: list containing MeshGroup objects with mesh size.
     """
@@ -913,7 +930,7 @@ def find_bodies_with_entities_dict(mesh_object, compound_filter, entities_dict, 
     :param mesh_object: FreeCAD mesh object
     :param compound_filter: FreeCAD compound filter
     :param entities_dict: entities dictionary
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :param point_search: bool
 
     :return: list containing MeshGroup objects with mesh size.
@@ -945,7 +962,7 @@ def define_mesh_sizes_with_mesh_groups(mesh_object, mesh_group_list, doc, ignore
 
     :param mesh_object: FreeCAD mesh object
     :param mesh_group_list: list containing MeshGroups
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :param ignore_list: None or list containing solid names which mesh size is not defined.
     """
     if ignore_list is None:
@@ -963,7 +980,7 @@ def define_mesh_sizes(mesh_object, compound_filter, entities_dict, doc, point_se
     :param mesh_object: FreeCAD mesh object
     :param compound_filter: FreeCAD compound filter
     :param entities_dict: entities dictionary
-    :param doc: FreeCAD document object.
+    :param doc: FreeCAD document.
     :param point_search: bool
     :param ignore_list: None or list containing solid names which mesh size is not defined.
     """
