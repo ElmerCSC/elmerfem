@@ -9756,7 +9756,7 @@ END FUNCTION SearchNodeL
       AdaptNp = 0
       Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
       
-      GaussDef = ListGetString( pSolver % Values,'Element Gauss Points',ElementalRule )
+      GaussDef = ListGetString( pSolver % Values,'Element Integration Points',ElementalRule )
       IF( ElementalRule ) THEN
         CALL ElementalGaussRules( GaussDef )
       END IF
@@ -9814,7 +9814,7 @@ END FUNCTION SearchNodeL
     END IF
 
     !IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
-
+    
 
   CONTAINS
 
