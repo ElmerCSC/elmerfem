@@ -2424,6 +2424,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       RETURN
     END IF
 
+    CALL Info('CRS_BlockMatrixPick','Picking block ('//TRIM(I2S(Nrow))//&
+        ','//TRIM(I2S(Ncol))//') from matrix',Level=10)
+
+    
     N = A % NumberOfRows
     Nsub = N / Blocks
     modNcol = MOD( Ncol,Blocks)
@@ -2432,6 +2436,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Diagonal = ( Nrow == Ncol ) 
 
     IF( NewMatrix ) THEN
+      CALL Info('CRS_BlockMatrixPick','Allocating new matrix',Level=12)
       B % ListMatrix => NULL()
       B % FORMAT = MATRIX_CRS
 
@@ -2454,17 +2459,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END IF
 
       ALLOCATE(B % Rows(nsub+1),B % Cols(kb), B % Values(kb),STAT=istat )
-      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 1')
+      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error for matrix')
+    ELSE
+      CALL Info('CRS_BlockMatrixPick','Using existing matrix structure',Level=12)
     END IF
 
     IF( Diagonal ) THEN
       IF( .NOT. ASSOCIATED( B % Diag ) ) THEN
         ALLOCATE( B % Diag(nsub), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 2')      
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error for diag')      
       END IF
       IF( .NOT. ASSOCIATED( B % Rhs ) ) THEN
         ALLOCATE( B % rhs(nsub), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 3')      
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error rhs')      
       END IF
     END IF
 
