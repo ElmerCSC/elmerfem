@@ -155,6 +155,4 @@ End
 
 Solver 2 :: Reference Norm = Real 262.214259
 Solver 2 :: Reference Norm Tolerance = Real 1E-05
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
 

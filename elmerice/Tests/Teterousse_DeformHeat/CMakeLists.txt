@@ -8,3 +8,4 @@ FILE(COPY ELMERSOLVER_STARTINFO teterousse.msh PROG DESTINATION "${CMAKE_CURRENT
 
 ADD_ELMERICE_TEST(Teterousse_DeformHeat)
 ADD_ELMERICE_LABEL(Teterousse_DeformHeat elmerice-long)
+ADD_ELMERICE_LABEL(Teterousse_DeformHeat slow)
