@@ -4450,8 +4450,11 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: WriteToFile(5)=.FALSE., Found, WriteAll  
   TYPE(ValueList_t), POINTER :: SolverParams
-
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostElmntOutput'
   
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
+  CALL Info( SolverName, ' Assignment element material variables ',Level=1 )
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
   SolverParams => GetSolverParams()
   WriteAll=ListGetLogical(SolverParams,"Export all",Found)
   IF (WriteAll) THEN
@@ -4466,28 +4469,35 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
   IF(WriteToFile(1)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
-         "-elmnt eta0")
+         "-elem -dofs 1 Permafrost_eta0")
+    CALL INFO(SolverName,'Added eta0 as variable',Level=1)
   END IF
   IF(WriteToFile(2)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
-         "-elmnt etak")
+         "-elem -dofs 1 Permafrost_etak")
+    CALL INFO(SolverName,'Added etak as variable',Level=1)
   END IF
   IF(WriteToFile(3)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
-         "-elmnt alphaL")
+         "-elem -dofs 1 Permafrost_alphaL")
+    CALL INFO(SolverName,'Added alphaL as variable',Level=1)
   END IF
   IF(WriteToFile(4)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
-         "-elmnt alphaT")
+         "-elem -dofs 1 Permafrost_alphaT")
+    CALL INFO(SolverName,'Added alphaT as variable',Level=1)
   END IF
   IF(WriteToFile(5)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
-         "-elmnt cs0")
+         "-elem -dofs 1 Permafrost_cs0")
+    CALL INFO(SolverName,'Added cs0 as variable',Level=1)    
   END IF
+  CALL Info( SolverName, 'assignment done',Level=1 )
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
 END SUBROUTINE PermafrostElmntOutput_init
 !!!!!!!!!!!!!
 SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
@@ -4523,7 +4533,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
        
   
   CALL Info( SolverName, '---------------------------------------',Level=1 )
-  CALL Info( SolverName, ' Assignment element material variables     ',Level=1 )
+  CALL Info( SolverName, ' Assignment element material variables ',Level=1 )
   CALL Info( SolverName, '---------------------------------------',Level=1 )
 
   SolverParams => GetSolverParams()
