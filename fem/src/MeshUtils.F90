@@ -175,7 +175,7 @@ CONTAINS
      Mesh % Elements => NULL()
      
      Mesh % DiscontMesh = .FALSE.
-     Mesh % SingleMesh = .FALSE.
+     Mesh % SingleMesh  = .FALSE.
      Mesh % InvPerm => NULL()
 
      Mesh % MinFaceDOFs = 1000
@@ -3472,7 +3472,7 @@ END SUBROUTINE GetMaxDefs
       END IF
     END DO
 
-    ConstantNormals = ( 1 - Dot1Min < 1.0d-6 ) .AND. ( 1 - Dot2Min < 1.0e-6 )     
+    ConstantNormals = ( 1 - Dot1Min < 1.0d-6 ) .AND. ( 1 - Dot2Min < 1.0d-6 )     
     IF( ConstantNormals ) THEN
       WRITE(Message,'(A,3ES12.3)') 'Master normal: ',Normal1
       CALL Info('CheckInterfaceMeshAngle',Message,Level=8)    
@@ -3481,7 +3481,7 @@ END SUBROUTINE GetMaxDefs
       CALL Info('CheckInterfaceMeshAngle',Message,Level=8)    
             
       ! The full angle between the two normals
-      Alpha = ACOS( SUM( Normal1 * Normal2 ) ) * 180 / PI
+      Alpha = ACOS( SUM( Normal1 * Normal2 ) ) * 180.0_dp / PI
       WRITE(Message,'(A,ES12.3)') &
           'Suggested angle between two normals in degs (+/- 180): ',Alpha 
       CALL Info('CheckInterfaceMeshAngle',Message,Level=8)
@@ -3883,7 +3883,7 @@ END SUBROUTINE GetMaxDefs
     END DO ! Number of boundary elements
 
     IF( BCMode == 5 ) THEN
-      BCVal = 180 * BCVal / PI
+      BCVal = 180.0_dp * BCVal / PI
     END IF
     
     j = COUNT( BCPos )
@@ -4581,7 +4581,7 @@ END SUBROUTINE GetMaxDefs
         CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
         
         DO i=1,3
-          Alpha = Angles(i) * PI / 180
+          Alpha = Angles(i) * PI / 180.0_dp
           IF( ABS(Alpha) < TINY(Alpha) ) CYCLE 
           TrfMatrix = Identity
           
@@ -4741,7 +4741,7 @@ END SUBROUTINE GetMaxDefs
     F2Min =  MINVAL( BMesh2 % Nodes % x )
     F2Max =  MAXVAL( BMesh2 % Nodes % x )
     dFii2 = F2Max - F2Min
-    SectorMax = CEILING( 360.0 / dFii2 ) 
+    SectorMax = CEILING( 360.0_dp / dFii2 ) 
 
     WRITE( Message,'(A,I0)') 'Maximum number of sectors: ',SectorMax
     CALL Info('PreRotationalProjector',Message,Level=8)
@@ -5453,7 +5453,7 @@ END SUBROUTINE GetMaxDefs
     ! Determine the coefficient that turns possible angles into units of
     ! ach-lenth. If this is not rotational then there are no angles. 
     IF( Rotational .OR. Cylindrical ) THEN
-      ArcCoeff = (2*PI*Radius)/360.0           
+      ArcCoeff = (2*PI*Radius)/360.0_dp
     ELSE
       ArcCoeff = 1.0_dp
     END IF
@@ -5482,7 +5482,7 @@ END SUBROUTINE GetMaxDefs
     IF(.NOT. Found ) GenericIntegrator = WeakProjector
 
     ! Maximum skew in degrees before treating edges as skewed
-    SkewTol = 0.1  
+    SkewTol = 0.1_dp
 
     ! Check whether generic integrator should be enforced
     IF( DoEdges .AND. .NOT. GenericIntegrator ) THEN
@@ -6046,7 +6046,7 @@ END SUBROUTINE GetMaxDefs
       END DO
 
       ! Move to degrees and give the tolerance in them
-      MaxSkew = MaxSkew * 180.0 / PI
+      MaxSkew = MaxSkew * 180.0_dp / PI
         
 100   DEALLOCATE( NodesM % x, NodesM % y )
 
@@ -6107,9 +6107,9 @@ END SUBROUTINE GetMaxDefs
             IF ( MODULO(Nrange,2) /= 0 ) sgn0 = -1
           END IF
         ELSE IF( FullCircle ) THEN
-          LeftCircle = ABS( x1 ) > 90.0
+          LeftCircle = ABS( x1 ) > 90.0_dp
           IF( LeftCircle ) THEN
-            IF( x1 < 0.0 ) x1 = x1 + 360.0
+            IF( x1 < 0.0 ) x1 = x1 + 360.0_dp
           END IF
         END IF
 
@@ -6148,7 +6148,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Eliminate this special case since it could otherwise give a faulty hit
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
-            IF( xmaxm - xminm > 180.0 ) CYCLE
+            IF( xmaxm - xminm > 180.0_Dp ) CYCLE
           END IF
 
           Dist = MAX( x1-xmaxm, xminm-x1 ) 
@@ -6324,9 +6324,9 @@ END SUBROUTINE GetMaxDefs
         MaxMinBasis = -HUGE(MaxMinBasis)
 
         IF( FullCircle ) THEN
-          LeftCircle = ABS( x1 ) > ArcCoeff * 90.0
+          LeftCircle = ABS( x1 ) > ArcCoeff * 90.0_dp
           IF( LeftCircle ) THEN
-            IF( x1 < 0.0 ) x1 = x1 + ArcCoeff * 360.0
+            IF( x1 < 0.0 ) x1 = x1 + ArcCoeff * 360.0_dp
           END IF
         END IF
 
@@ -6373,7 +6373,7 @@ END SUBROUTINE GetMaxDefs
 
           ! Eliminate this special case since it could otherwise give a faulty hit
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
-            IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
+            IF( xmaxm - xminm > ArcCoeff * 180.0_dp ) CYCLE
           END IF
 
           IF( Repeating ) THEN
@@ -6424,7 +6424,7 @@ END SUBROUTINE GetMaxDefs
         END DO
 
         IF(.NOT. Found ) THEN
-          IF( MaxMinBasis > -1.0e-6 ) THEN
+          IF( MaxMinBasis > -1.0d-6 ) THEN
             CALL Info('LevelProjector',Message,Level=8)
             Found = .TRUE.
           ELSE
@@ -6607,14 +6607,14 @@ END SUBROUTINE GetMaxDefs
               XConst = .TRUE.
               YConst = .FALSE.
               IF( SkewPart == 1 ) THEN
-                x1 = (3.0*x1o + x2o) / 4.0_dp
+                x1 = (3.0_dp*x1o + x2o) / 4.0_dp
               ELSE
-                x1 = (x1o + 3*x2o) / 4.0_dp
+                x1 = (x1o + 3.0_dp*x2o) / 4.0_dp
               END IF
               x2 = x1
               y1 = y1o
               y2 = y2o
-              cskew = 0.5 * ABS(y1-y2) / sedge
+              cskew = 0.5_dp * ABS(y1-y2) / sedge
             ELSE 
               XConst = .FALSE.
               YConst = .TRUE.
@@ -6655,7 +6655,7 @@ END SUBROUTINE GetMaxDefs
             ! If we have a full circle then treat the left-hand-side
             ! differently in order to circumvent the discontinuity of the
             ! angle at 180 degrees. 
-            LeftCircle = ( ABS(x1) > 90.0 .AND. ABS(x2) > 90.0 )
+            LeftCircle = ( ABS(x1) > 90.0_dp .AND. ABS(x2) > 90.0_dp )
             IF( LeftCircle ) THEN
               IF( x1 < 0.0_dp ) x1 = x1 + 360.0_dp
               IF( x2 < 0.0_dp ) x2 = x2 + 360.0_dp
@@ -6708,7 +6708,7 @@ END SUBROUTINE GetMaxDefs
             
             ! If we have a full circle then treat the left part differently
             IF( LeftCircle ) THEN
-              IF( ALL( ABS( NodesM % x(1:n) ) - 90.0 < Xtol ) ) CYCLE
+              IF( ALL( ABS( NodesM % x(1:n) ) - 90.0_dp < Xtol ) ) CYCLE
               DO j=1,n
                 IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = NodesM % x(j) + 360.0_dp
               END DO
@@ -6723,7 +6723,7 @@ END SUBROUTINE GetMaxDefs
             
             ! Eliminate this special case since it could otherwise give a faulty hit
             IF( FullCircle .AND. .NOT. LeftCircle ) THEN
-              IF( xmaxm - xminm > 180.0 ) CYCLE
+              IF( xmaxm - xminm > 180.0_dp ) CYCLE
             END IF
 
             yminm = MINVAL( NodesM % y(1:n) ) 
@@ -6944,7 +6944,7 @@ END SUBROUTINE GetMaxDefs
           DO j=1,ncoeff 
             val = Coeff(j)
 
-            IF( ABS( val ) < 1.0e-12 ) CYCLE
+            IF( ABS( val ) < 1.0d-12 ) CYCLE
 
             CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                 EdgeCol0 + coeffi(j), EdgeScale * EdgeCoeff * val )
@@ -7224,7 +7224,7 @@ END SUBROUTINE GetMaxDefs
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
             ! Omit the element if it is definitely on the right circle
-            IF( ALL( ABS( NodesM % x(1:n) ) - 90.0 < Xtol ) ) CYCLE
+            IF( ALL( ABS( NodesM % x(1:n) ) - 90.0_dp < Xtol ) ) CYCLE
             DO j=1,n
               IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = NodesM % x(j) + 360.0_dp
             END DO
@@ -7238,7 +7238,7 @@ END SUBROUTINE GetMaxDefs
           xmaxm = MAXVAL( NodesM % x(1:n))
                     
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
-            IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
+            IF( xmaxm - xminm > ArcCoeff * 180.0_dp ) CYCLE
           END IF
           
           Overlap = (MIN(xmax, xmaxm)- MAX(xmin,xminm))/(xmax-xmin)
@@ -7346,7 +7346,7 @@ END SUBROUTINE GetMaxDefs
 
             ! This check over area also automatically elimiates redundant nodes
             ! that were detected twice.
-            dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
+            dArea = 0.5_dp*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
             IF( dArea < RelTolY**2 * RefArea ) CYCLE
 
             NodesT % x(2) = x(k+1)
@@ -7413,7 +7413,7 @@ END SUBROUTINE GetMaxDefs
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
 
-                    IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+                    IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )   
                   END DO
@@ -7448,7 +7448,7 @@ END SUBROUTINE GetMaxDefs
                       ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
                     END IF
                     val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
-                    IF( ABS( val ) > 1.0e-12 ) THEN
+                    IF( ABS( val ) > 1.0d-12 ) THEN
                       CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           ii, EdgeCoeff * val ) 
                     END IF
@@ -7459,7 +7459,7 @@ END SUBROUTINE GetMaxDefs
                       ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
                     END IF                    
                     val = -Wtemp * SUM( WBasis(j,:) * WBasisM(i,:) ) 
-                    IF( ABS( val ) > 1.0e-12 ) THEN
+                    IF( ABS( val ) > 1.0d-12 ) THEN
                       CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           ii, EdgeScale * EdgeCoeff * val  ) 
                     END IF
@@ -7629,7 +7629,7 @@ END SUBROUTINE GetMaxDefs
       CenterJM = 0
       IF( Naxial > 1 ) THEN
         DO i=1,BMesh1 % NumberOfNodes
-          IF( BMesh1 % Nodes % x(i)**2 + BMesh1 % Nodes % y(i)**2 < 1.0e-20 ) THEN
+          IF( BMesh1 % Nodes % x(i)**2 + BMesh1 % Nodes % y(i)**2 < 1.0d-20 ) THEN
             CenterI = i
             CALL Info('LevelProjector','Found center node in slave: '&
                 //TRIM(I2S(CenterI)),Level=10)
@@ -7637,7 +7637,7 @@ END SUBROUTINE GetMaxDefs
           END IF
         END DO
         DO i=1,BMesh2 % NumberOfNodes
-          IF( BMesh2 % Nodes % x(i)**2 + BMesh2 % Nodes % y(i)**2 < 1.0e-20 ) THEN
+          IF( BMesh2 % Nodes % x(i)**2 + BMesh2 % Nodes % y(i)**2 < 1.0d-20 ) THEN
             CenterIM = i
             CALL Info('LevelProjector','Found center node in master: '&
                 //TRIM(I2S(CenterI)),Level=10)
@@ -7902,7 +7902,7 @@ END SUBROUTINE GetMaxDefs
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
             ! Omit the element if it is definitely on the right circle
-            IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
+            IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0_dp < ArcTol ) ) CYCLE
             DO j=1,neM
               IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
             END DO
@@ -7911,8 +7911,8 @@ END SUBROUTINE GetMaxDefs
           IF( Repeating ) THEN
             ! Enforce xmaxm to be on the same interval than xmin
             IF( Naxial > 1 ) THEN
-              Nrange1 = FLOOR( Naxial * (amaxm-amin+RelTolX) / 360.0 )
-              Nrange2 = FLOOR( Naxial * (amax-aminm+RelTolX) / 360.0 )
+              Nrange1 = FLOOR( Naxial * (amaxm-amin+RelTolX) / 360.0_dp )
+              Nrange2 = FLOOR( Naxial * (amax-aminm+RelTolX) / 360.0_dp )
               
               ! The two ranges could have just offset of 2*PI, eliminate that
               !Nrange2 = Nrange2 + ((Nrange1 - Nrange2)/Naxial) * Naxial
@@ -7963,7 +7963,7 @@ END SUBROUTINE GetMaxDefs
           xmaxm = MAXVAL( NodesM % x(1:neM) )
 
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
-            IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
+            IF( xmaxm - xminm > ArcCoeff * 180.0_dp ) CYCLE
           END IF
 
 200       IF( xminm > xmax ) GOTO 100
@@ -8208,7 +8208,7 @@ END SUBROUTINE GetMaxDefs
             
             ! This check over area also automatically elimiates redundant nodes
             ! that were detected twice.
-            dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
+            dArea = 0.5_dp*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
 
             IF( DebugElem ) THEN
               PRINT *,'dArea:',dArea,dArea / RefArea
@@ -8404,7 +8404,7 @@ END SUBROUTINE GetMaxDefs
                   END DO
 
                   DO i=1,nM
-                    IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+                    IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
 
                     Nmaster = Nmaster + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
@@ -8456,7 +8456,7 @@ END SUBROUTINE GetMaxDefs
                       END IF
 
                       val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
-                      IF( ABS( val ) > 1.0e-12 ) THEN
+                      IF( ABS( val ) > 1.0d-12 ) THEN
                         Nslave = Nslave + 1
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeCoeff * val ) 
@@ -8474,7 +8474,7 @@ END SUBROUTINE GetMaxDefs
                       END IF
 
                       val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
-                      IF( ABS( val ) > 1.0e-12 ) THEN
+                      IF( ABS( val ) > 1.0d-12 ) THEN
                         Nmaster = Nmaster + 1
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeScale * EdgeCoeff * val  ) 
@@ -8515,7 +8515,7 @@ END SUBROUTINE GetMaxDefs
                       END IF
 
                       val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
-                      IF( ABS( val ) > 1.0e-12 ) THEN
+                      IF( ABS( val ) > 1.0d-12 ) THEN
                         Nslave = Nslave + 1
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeCoeff * val ) 
@@ -8528,7 +8528,7 @@ END SUBROUTINE GetMaxDefs
                       END IF
                       val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
 
-                      IF( ABS( val ) > 1.0e-12 ) THEN
+                      IF( ABS( val ) > 1.0d-12 ) THEN
                         Nmaster = Nmaster + 1                       
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeScale * EdgeCoeff * val  ) 
@@ -8829,7 +8829,7 @@ END SUBROUTINE GetMaxDefs
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
             ! Omit the element if it is definitely on the right circle
-            IF( ALL( ABS( NodesM % x(1:nM) ) - 90.0 < XTol ) ) CYCLE
+            IF( ALL( ABS( NodesM % x(1:nM) ) - 90.0_dp < XTol ) ) CYCLE
             DO j=1,nM
               IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = &
                   NodesM % x(j) + 360.0_dp
@@ -8857,7 +8857,7 @@ END SUBROUTINE GetMaxDefs
           END IF
 
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
-            IF( xmaxm - xminm > 180.0 ) CYCLE
+            IF( xmaxm - xminm > 180.0_dp ) CYCLE
           END IF          
 
 200       IF( xminm >= xmax ) GOTO 100
@@ -9034,7 +9034,7 @@ END SUBROUTINE GetMaxDefs
                 END DO
 
                 DO i=1,n
-                  !IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+                  !IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
                   CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
                       InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val )                   
                 END DO
@@ -9747,7 +9747,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Normalize the axis normal length to one    
     AxisNormal = AxisNormal / SQRT( SUM( AxisNormal ** 2 ) )
-    IF( 1.0_dp - ABS( AxisNormal(3) ) > 1.0e-5 ) THEN
+    IF( 1.0_dp - ABS( AxisNormal(3) ) > 1.0d-5 ) THEN
       CALL Warn('CylinderFit','The cylinder axis is not aligned with z-axis!')
     END IF
 
@@ -9860,8 +9860,8 @@ END SUBROUTINE GetMaxDefs
       CALL Fatal('CylinderFit','Points cannot be an a circle')
     END IF
 
-    X0 =  0.5 * m12 / m11 
-    Y0 = -0.5 * m13 / m11
+    X0 =  0.5_dp * m12 / m11 
+    Y0 = -0.5_dp * m13 / m11
     rad = SQRT( x0**2 + y0**2 + m14/m11 )
 
     Coord = x0 * Tangent1 + y0 * Tangent2
@@ -10033,8 +10033,8 @@ END SUBROUTINE GetMaxDefs
 
         ! Set the offset and revert then the angle to range [-180,180] 
         IF( SetDegOffset ) THEN
-          alpha = MODULO( alpha + DegOffset, 360.0 )            
-          IF( alpha > 180.0 ) alpha = alpha - 360.0
+          alpha = MODULO( alpha + DegOffset, 360.0_dp )            
+          IF( alpha > 180.0_dp ) alpha = alpha - 360.0
         END IF
 
         PMesh % Nodes % x(i) = alpha
@@ -10073,8 +10073,8 @@ END SUBROUTINE GetMaxDefs
             Hit180 = .TRUE.
           ELSE
             IF( fmax >= 0.0 .AND. fmin <= 0.0 ) Hit0 = .TRUE.
-            IF( fmax >= 90.0 .AND. fmin <= 90.0 ) Hit90 = .TRUE.
-            IF( fmax >= -90.0 .AND. fmin <= -90.0 ) Hit270 = .TRUE.
+            IF( fmax >= 90.0_dp .AND. fmin <= 90.0_dp ) Hit90 = .TRUE.
+            IF( fmax >= -90.0_dp .AND. fmin <= -90.0_dp ) Hit270 = .TRUE.
           END IF
         END DO
         FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
@@ -10089,9 +10089,9 @@ END SUBROUTINE GetMaxDefs
           IF( .NOT. Hit0 ) THEN
             Fii = 0.0_dp
           ELSE IF( .NOT. Hit270 ) THEN
-            Fii = -90.0
+            Fii = -90.0_dp
           ELSE IF( .NOT. Hit90 ) THEN
-            Fii = 90.0
+            Fii = 90.0_dp
           END IF
 
           DO j=1,PMesh % NumberOfNodes
@@ -10321,7 +10321,7 @@ END SUBROUTINE GetMaxDefs
           END IF
 
           ! Do the logic for large enough radius
-          IF( rad < 0.5 * maxrad ) CYCLE
+          IF( rad < 0.5_dp * maxrad ) CYCLE
 
           IF( x(1) > 0.0 .AND. ABS(x(2)) < ABS(x(1)) ) Hit0 = .TRUE.
           IF( x(2) > 0.0 .AND. ABS(x(1)) < ABS(x(2)) ) Hit90 = .TRUE.
@@ -10366,7 +10366,7 @@ END SUBROUTINE GetMaxDefs
       err1 = 2 * ABS( dFii1 - dFii2 ) / ( dFii1 + dFii2 )
       WRITE(Message,'(A,ES12.3)') 'Discrepancy in dfii:',err1
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
-      Nsymmetry = 360.0 / ( MIN( dfii1, dfii2 ) ) 
+      Nsymmetry = 360.0_dp / ( MIN( dfii1, dfii2 ) ) 
     END IF
     
     WRITE(Message,'(A,ES12.3)') 'Suggested number of periods:',Nsymmetry
@@ -10485,7 +10485,7 @@ END SUBROUTINE GetMaxDefs
     WRITE(Message,'(A,ES12.3)') 'Discrepancy in minimum radius:',err2
     CALL Info('RadialInterfaceMeshes',Message,Level=8)    
 
-    eps_rad = 1.0e-3
+    eps_rad = 1.0d-3
     IF( err1 > eps_rad .OR. err2 > eps_rad ) THEN
       CALL Warn('RadialInterfaceMeshes','Discrepancy of radius may be too large!')
     END IF
@@ -11584,7 +11584,7 @@ END SUBROUTINE GetMaxDefs
     !---------------------------------------------------------------
     q = ListGetConstReal( ParList,'Extruded Mesh Ratio',GotRatio)
     IF( GotRatio ) THEN
-      IF( ( ABS(ABS(q)-1.0_dp) < 1.0e-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
+      IF( ( ABS(ABS(q)-1.0_dp) < 1.0d-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
         CALL Info('UnitSegmentDivision','Assuming linear division as mesh ratio is close to one!')
         GotRatio = .FALSE.
       END IF
@@ -11605,10 +11605,10 @@ END SUBROUTINE GetMaxDefs
         q = -q
         IF(MODULO(n,2) == 0) THEN
           r = q**(1.0_dp/(n/2-1))
-          h1 = 0.5*(1-r)/(1-r**(n/2))
+          h1 = 0.5_dp*(1-r)/(1-r**(n/2))
         ELSE 
           r = q**(1.0_dp/((n-1)/2))
-          h1 = 0.5 / ( (1-r**((n+1)/2))/(1-r) - 0.5 * r**((n-1)/2))
+          h1 = 0.5_dp / ( (1-r**((n+1)/2))/(1-r) - 0.5_dp * r**((n-1)/2))
         END IF
         
         w(0) = 0.0_dp
@@ -11638,7 +11638,7 @@ END SUBROUTINE GetMaxDefs
 
       ! parameters that determine the accuracy of the iteration
       maxiter = 10000
-      err_eps = 1.0e-6
+      err_eps = 1.0d-6
 
       ! Iterate to have a density distribution
       !---------------------------------------
@@ -11828,7 +11828,7 @@ END SUBROUTINE GetMaxDefs
     Rotate2Pi = .FALSE.
     Rotational = ListGetLogical( CurrentModel % Simulation,'Extruded Mesh Rotational',Found )    
     IF( Rotational ) THEN
-      Rotate2Pi = ( ABS(ABS( MaxCoord-MinCoord ) - 2*PI) < 1.0e-3*PI )
+      Rotate2Pi = ( ABS(ABS( MaxCoord-MinCoord ) - 2*PI) < 1.0d-3*PI )
       IF( Rotate2Pi ) CALL Info('MeshExtrude','Perfoming full 2Pi rotation',Level=6)
     END IF
 
@@ -16795,7 +16795,7 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Quadrant_t), POINTER, SAVE :: RootQuadrant =>NULL(), LeafQuadrant
-    REAL(kind=dp) :: BoundingBox(6), eps2, eps1 = 1e-3, GlobalEps, LocalEps
+    REAL(kind=dp) :: BoundingBox(6), eps2, eps1 = 1d-3, GlobalEps, LocalEps
     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
 
 
@@ -16824,15 +16824,15 @@ CONTAINS
 
       LocalEps = ListGetConstReal( CurrentModel % Simulation,  &
           'Interpolation Local Epsilon', Stat )
-      IF(.NOT. stat) LocalEps = 1.0e-10
+      IF(.NOT. stat) LocalEps = 1.0d-10
 
       GlobalEps = ListGetConstReal( CurrentModel % Simulation,  &
           'Interpolation Global Epsilon', Stat ) 
       IF(.NOT. stat) THEN
         IF( IsRecursive ) THEN
-          GlobalEps = 2.0e-10
+          GlobalEps = 2.0d-10
         ELSE
-          GlobalEps = 1.0e-4
+          GlobalEps = 1.0d-4
         END IF
       END IF
 
@@ -17062,7 +17062,7 @@ CONTAINS
     ! Set the dot product tolerance
     !-----------------------------------------------------------------
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
-    IF(.NOT. GotIt) Eps = 1.0e-4_dp
+    IF(.NOT. GotIt) Eps = 1.0d-4
 
     VarName = ListGetString(Params,'Mapping Mask Variable',GotIt )
     MaskExists = .FALSE.
@@ -17687,7 +17687,7 @@ CONTAINS
     ! Set the dot product tolerance
     !-----------------------------------------------------------------
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
-    IF(.NOT. GotIt) Eps = 1.0e-1_dp
+    IF(.NOT. GotIt) Eps = 1.0d-1
 
     nsize = Mesh % NumberOfBulkElements
     CALL Info('DetectExtrudedElements','Detecting extrusion in the mesh using coordinate: '&
@@ -18235,8 +18235,8 @@ CONTAINS
       Normal = Parray(1:3,1)
     ELSE
       Normal(1) = 1.0
-      Normal(2) = 1.0e-2
-      IF( dim == 3) Normal(3) = 1.0e-4
+      Normal(2) = 1.0d-2
+      IF( dim == 3) Normal(3) = 1.0d-4
     END IF
     Normal = Normal / SQRT( SUM( Normal ** 2) )
 
@@ -18261,7 +18261,7 @@ CONTAINS
       IF(.NOT. GotIt) clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
       IF( GotIt .AND. ClusterSize > 0) THEN
         IF( dim == 2 ) THEN
-          Divisions(1) = ( nsize / clustersize ) ** 0.5
+          Divisions(1) = ( nsize / clustersize ) ** 0.5_dp
           Divisions(2) = ( nsize / ( clustersize * Divisions(1) ) )
         ELSE
           Divisions(1:2) = ( nsize / clustersize ) ** (1.0_dp / 3 )
@@ -18457,9 +18457,9 @@ CONTAINS
       Normal = Parray(1:3,1)
     ELSE
       Normal(1) = 1.0
-      Normal(2) = 1.0e-2
+      Normal(2) = 1.0d-2
       IF( dim == 3) THEN
-        Normal(3) = 1.0e-4
+        Normal(3) = 1.0d-4
       ELSE
         Normal(3) = 0.0_dp
       END IF
@@ -18488,7 +18488,7 @@ CONTAINS
       IF(.NOT. GotIt) clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
       IF( GotIt .AND. ClusterSize > 0) THEN
         IF( dim == 2 ) THEN
-          Divisions(1) = ( nsize / clustersize ) ** 0.5
+          Divisions(1) = ( nsize / clustersize ) ** 0.5_dp
           Divisions(2) = ( nsize / ( clustersize * Divisions(1) ) )
         ELSE
           Divisions(1:2) = ( nsize / clustersize ) ** (1.0_dp / 3 )
@@ -18989,7 +18989,7 @@ CONTAINS
         !--------------------------------------------------------------------------------------
         IF( ParallelCands > 1.5_dp ) THEN
           Hit = PointInElement( Element, ElementNodes, &
-              Coords, LocalCoords, GlobalEps = 1.0e-3_dp, LocalEps=1.0e-4_dp )	
+              Coords, LocalCoords, GlobalEps = 1.0d-3, LocalEps=1.0d-4 )	
         ELSE
           Hit = PointInElement( Element, ElementNodes, &
               Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	

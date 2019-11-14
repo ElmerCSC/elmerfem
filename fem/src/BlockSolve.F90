@@ -582,11 +582,11 @@ CONTAINS
           IF( Amat % NumberOfRows > 0 ) THEN
             SumAbsMat = SUM( ABS( Amat % Values ) )
             IF( SumAbsMat < SQRT( TINY( SumAbsMat ) ) ) THEN
-              CALL Info('BlockSolver','Matrix is actually all zero, eliminating it!',Level=20)
+              CALL Info('BlockSolver','Matrix is actually all zero, eliminating it!',Level=12)
               DEALLOCATE( Amat % Values ) 
               IF( .NOT. ReuseMatrix ) THEN
                 DEALLOCATE( Amat % Rows, Amat % Cols )
-                IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag )
+                IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag, Amat % rhs ) 
               END IF
               Amat % NumberOfRows = 0
             END IF
@@ -2393,8 +2393,9 @@ CONTAINS
     
 #define SOLSYS
 #ifdef SOLSYS
-    IF (isParallel) &
+    IF (isParallel) THEN
       ALLOCATE( x(TotMatrix % MaxSize), b(TotMatrix % MaxSize) )
+    END IF
 #endif
 
     ! Initial guess 
@@ -2689,7 +2690,7 @@ CONTAINS
     Solver % Variable => Var_save
 
     IF( BlockGS ) THEN
-      DEALLOCATE( vtmp, rtmp ) 
+      DEALLOCATE( vtmp, rtmp, xtmp ) 
     END IF
 
     CALL Info('BlockMatrixPrec','Finished block matrix preconditioning',Level=8)
@@ -2892,7 +2893,8 @@ CONTAINS
     INTEGER :: NoVar, ndim, maxsize
     LOGICAL :: Converged, Diverged
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
-    INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:)
+    INTEGER, POINTER :: Offset(:),BlockStruct(:)
+    INTEGER, ALLOCATABLE, TARGET :: poffset(:)
     INTEGER :: i,j,k,l,ia,ib,istat
     LOGICAL :: LS, BlockAV,Found
 
@@ -2908,7 +2910,7 @@ CONTAINS
     NoVar = TotMatrix % NoVar
 
     CALL Info('BlockKrylovIter','Allocating temporal vectors for block system of size: '&
-        //TRIM(I2S(ndim)),Level=8)
+        //TRIM(I2S(ndim)),Level=10)
 
     ALLOCATE(x(ndim), b(ndim),r(ndim),STAT=istat)
     IF( istat /= 0 ) THEN

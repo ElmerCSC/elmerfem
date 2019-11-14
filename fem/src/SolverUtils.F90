@@ -1848,7 +1848,7 @@ CONTAINS
                ! This includes only interface dofs donwstream from
                ! non-contact zone.
                BLOCK
-                 REAL(kind=DP) :: r1(3),r2(3),dr(3),reps=1.0e-6
+                 REAL(kind=DP) :: r1(3),r2(3),dr(3),reps=1.0d-6
                  
                  DO i=1,n
                    j = FieldPerm( NodeIndexes(i) )
@@ -4022,7 +4022,7 @@ CONTAINS
          END DO
        END DO
        
-       CoeffEps = 1.0e-8 * MAXVAL( ABS( CoeffTable ) )
+       CoeffEps = 1.0d-8 * MAXVAL( ABS( CoeffTable ) )
        DO i=1,SIZE( CoeffTable )            
          IF( NodeDone( i ) .AND. ( ABS( CoeffTable(i) ) > CoeffEps ) ) THEN
            DistVar % Values( i ) = DistVar % Values( i ) / CoeffTable( i ) 
@@ -9515,14 +9515,14 @@ END FUNCTION SearchNodeL
       r = x(1:n)-x0(1:n)
       Change = ComputeNorm(Solver, n, r)
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0/ (Norm+PrevNorm)
+        Change = Change * 2.0_dp/ (Norm+PrevNorm)
       END IF
       DEALLOCATE(r)      
 
     CASE('norm')
       Change = ABS( Norm-PrevNorm )
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0/ (Norm+PrevNorm)
+        Change = Change * 2.0_dp/ (Norm+PrevNorm)
       END IF
       
     CASE DEFAULT
@@ -9735,26 +9735,28 @@ END FUNCTION SearchNodeL
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
-    INTEGER :: i,n,ElementalNp(8)
-    LOGICAL :: Debug
+    INTEGER :: i,n,ElementalNp(8),prevVisited = -1
+    LOGICAL :: Debug, InitDone 
     
     SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
-        ElementalRule, ElementalNp
+        ElementalRule, ElementalNp, prevVisited
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
     ELSE
       pSolver => CurrentModel % Solver
     END IF
+       
+    !Debug = ( Element % ElementIndex == 1)
 
-    !Debug = ( Element % ElementIndex == 123)
-    
-    IF( .NOT. ASSOCIATED( pSolver, prevSolver ) ) THEN
+    InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. ( prevVisited == pSolver % TimesVisited )
+        
+    IF( .NOT. InitDone ) THEN
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
       Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
       
-      GaussDef = ListGetString( pSolver % Values,'Element Gauss Points',ElementalRule )
+      GaussDef = ListGetString( pSolver % Values,'Element Integration Points',ElementalRule )
       IF( ElementalRule ) THEN
         CALL ElementalGaussRules( GaussDef )
       END IF
@@ -9779,7 +9781,8 @@ END FUNCTION SearchNodeL
         !PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
       END IF
 
-      prevSolver => pSolver      
+      prevSolver => pSolver
+      prevVisited = pSolver % TimesVisited
     END IF
 
     IF( UseAdapt ) THEN
@@ -9811,7 +9814,7 @@ END FUNCTION SearchNodeL
     END IF
 
     !IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
-
+    
 
   CONTAINS
 
@@ -9829,8 +9832,6 @@ END FUNCTION SearchNodeL
       ! PRINT *,'gauss def:',GaussDef(1:n)
       
       DO i=2,8
-        PRINT *,'i:',i
-        
         j = 0
         SELECT CASE( i )
         CASE( 2 )
@@ -10223,7 +10224,7 @@ END FUNCTION SearchNodeL
       ELSE
         Change = ABS( Norm-PrevNorm )
         IF( Norm + PrevNorm > 0.0) THEN
-          Change = Change * 2.0 / ( Norm + PrevNorm )
+          Change = Change * 2.0_dp / ( Norm + PrevNorm )
         END IF
       END IF
 
@@ -16591,7 +16592,7 @@ CONTAINS
       DO i=1,CouplingNodes
         WallNormal => CouplingNormals(i,:)
         sNormal = SQRT( SUM( WallNormal**2) )
-        IF( sNormal > 1.0e-3 ) THEN
+        IF( sNormal > 1.0d-3 ) THEN
           WallNormal = WallNormal / sNormal 
           PRINT *,'WallNormal:',WallNormal
         ELSE
@@ -17534,7 +17535,7 @@ CONTAINS
        
      EpsVal = ListGetConstReal( Solver % Values,&
          'Minimum Projector Value', Found )
-     IF(.NOT. Found ) EpsVal = 1.0e-8_dp
+     IF(.NOT. Found ) EpsVal = 1.0d-8
      
      
      SumProjectors = ListGetLogical( Solver % Values,&
