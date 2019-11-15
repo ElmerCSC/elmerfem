@@ -70,11 +70,11 @@ def create_geometry(directory):
     entities_list = []
     return_time_list = []
     mesh_size = 20
-    mesh_size_max = mesh_size
+    mesh_size_max = mesh_size*2
 
     print_line('Creating cube geometry...', total_start_time)
     entities_list.append(get_cube_entity_dict('cube1', mesh_size, directory, 0))
-    entities_list.append(get_cube_entity_dict('cube2', mesh_size, directory, 200))
+    entities_list.append(get_cube_entity_dict('cube2', mesh_size*2., directory, 200))
     print_line("Merging entities dictionaries...", total_start_time)
     entities_dict = FreeCADBatchFEMTools.merge_entities_dicts(entities_list, 'All', default_mesh_size=mesh_size_max,
                                                               add_prefixes={'solids': False, 'faces': True})
