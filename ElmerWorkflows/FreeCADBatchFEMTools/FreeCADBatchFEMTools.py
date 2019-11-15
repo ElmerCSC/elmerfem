@@ -526,16 +526,17 @@ def create_mesh(mesh_object):
     error = gmsh_mesh.create_mesh()
     print(error)
 
-def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc):
+def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc, separate_boundaries=False):
     """
-    Creates FreeCAD mesh and compound filter objects. Uses create_boolean_compound and 
+    Creates FreeCAD mesh and compound filter objects. Uses create_boolean_compound/create_compound and
     create_compound_filter, create_mesh_object methods.
 
     :param solid_objects: list of FreeCAD solid geometry objects
     :param CharacteristicLength: Default mesh size characteristic length
     :param doc: FreeCAD document.
+    :param separate_boundaries: Boolean (create compound instead of boolean fragment).
     """
-    if len(solid_objects) == 1:  # boolean compound can not be created with only one solid
+    if len(solid_objects) == 1 or separate_boundaries:  # boolean compound can not be created with only one solid
         boolean_compound = create_compound(solid_objects, doc)
     else:
         boolean_compound = create_boolean_compound(solid_objects, doc)
@@ -615,20 +616,35 @@ def find_compound_filter_solid(compound_filter, solid):
     string = "Solid" + str(solid_found+1)
     return string
 
-def find_compound_filter_boundaries(compound_filter, face):
+def find_compound_filter_boundaries(compound_filter, face, used_compound_face_names=None):
     """
     Finds all faces in the compound filter object which are inside given face.
     Returns a tuple containing all names of the faces in compound filter.
+    If list used_compound_face_names is given checks that found face is not already used and
+    face is not already found here (relates to argument 'separate_boundaries' in other functions).
 
     :param compound_filter: FreeCAD compound filter
     :param face: FreeCAD face object
-
+    :param used_compound_face_names: None or a list.
     :return: tuple
     """
-    face_name_list = []
+    face_name_list, already_found_cfaces = [], []
     for num, cface in enumerate(compound_filter.Shape.Faces):
         if is_face_in_face(cface, face):
-            face_name_list.append("Face" + str(num+1))
+            f_name = "Face" + str(num+1)
+            if used_compound_face_names is not None:
+                if f_name in used_compound_face_names:
+                    continue
+                face_already_found = False
+                for found_cface in already_found_cfaces:
+                    if is_face_in_face(cface, found_cface):
+                        face_already_found = True
+                        break
+                if face_already_found:
+                    FreeCAD.Console.PrintMessage('second continue ({})\n'.format(f_name))
+                    continue
+                already_found_cfaces.append(cface)
+            face_name_list.append(f_name)
     if len(face_name_list) == 0:
         raise ValueError("Faces not found")
     return tuple(face_name_list)
@@ -641,7 +657,6 @@ def find_compound_filter_solids(compound_filter, solid, point_search=True):
     :param compound_filter: FreeCAD compound filter
     :param solid: FreeCAD solid object
     :param point_search: bool
-
     :return: tuple
     """
     solid_name_list = []
@@ -809,7 +824,6 @@ def create_mesh_group_and_set_mesh_size(mesh_object, doc, name, mesh_size):
     :param doc: FreeCAD document.
     :param name: string
     :param mesh_size: float
-
     :return: MeshGroup object
     """
     # The third argument of makeMeshGroup is True, as we want to use labels,
@@ -840,7 +854,6 @@ def merge_boundaries(mesh_object, compound_filter, doc, face_entity_dict, compou
     :param surface_objs: list containing created surface objects same order as in face_name_list
     :param surface_objs_by_compound_face_names: dictionary (for checking if face needs to be merged)
     :param surface_object: None or already created surface object
-
     :return: tuple containing surface object and tuple containing filtered compound names
     """
     filtered_compound_faces = []
@@ -883,36 +896,52 @@ def merge_boundaries(mesh_object, compound_filter, doc, face_entity_dict, compou
 
     return surface_object, tuple(filtered_compound_faces)
 
-def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_dict, doc):
+def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_dict, doc, separate_boundaries=False):
     """
     For all faces in entities_dict, the same face in compound filter is added to a Mesh Group.
-    All faces with same name in entities_dict are merged into one Mesh Group with the original name. 
+    All faces with same name in entities_dict are merged into one Mesh Group with the original name.
+    If separate_boundaries is True calls function :meth:`find_compound_filter_boundaries`
+    with used_compound_face_names list.
 
     :param mesh_object: FreeCAD mesh object
     :param compound_filter: FreeCAD compound filter
     :param entities_dict: entities dictionary
     :param doc: FreeCAD document.
-
+    :param separate_boundaries: Boolean.
     :return: list containing MeshGroup objects with mesh size.
     """
     surface_objs = []
     face_name_list = []
+    all_found_cface_names = []  # needed only for separate boundaries
     surface_objs_by_cface_names = {}
     for num, face in enumerate(entities_dict['faces']):
         if face['name'] in face_name_list:
             # Old name, do not create new MeshGroup
             index_found = face_name_list.index(face['name'])
             found_cface_names = surface_objs[index_found].References[0][1]
-            cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'])
+            if separate_boundaries:
+                cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'],
+                                                              used_compound_face_names=all_found_cface_names)
+                all_found_cface_names.extend(cface_names)
+            else:
+                cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'])
+            FreeCAD.Console.PrintError('1: {}: {} ({})\n'.format(face['name'], cface_names, found_cface_names))
             surface_obj, filtered_cface_names = merge_boundaries(mesh_object, compound_filter, doc, face,
                                                                  cface_names, face_name_list, surface_objs,
                                                                  surface_objs_by_cface_names,
                                                                  surface_object=surface_objs[index_found])
             if len(filtered_cface_names) > 0:
-              surface_obj.References = [(compound_filter, found_cface_names+filtered_cface_names)]
+                surface_obj.References = [(compound_filter, found_cface_names+filtered_cface_names)]
         else:
             # New name, create new MeshGroup
-            cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'])
+            if separate_boundaries:
+                cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'],
+                                                              used_compound_face_names=all_found_cface_names)
+                all_found_cface_names.extend(cface_names)
+            else:
+                cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'])
+            if all_found_cface_names is not None:
+                all_found_cface_names.extend(cface_names)
             surface_obj, filtered_cface_names = merge_boundaries(mesh_object, compound_filter, doc, face,
                                                                  cface_names, face_name_list, surface_objs,
                                                                  surface_objs_by_cface_names, surface_object=None)
@@ -932,7 +961,6 @@ def find_bodies_with_entities_dict(mesh_object, compound_filter, entities_dict, 
     :param entities_dict: entities dictionary
     :param doc: FreeCAD document.
     :param point_search: bool
-
     :return: list containing MeshGroup objects with mesh size.
     """
     solid_objs = []

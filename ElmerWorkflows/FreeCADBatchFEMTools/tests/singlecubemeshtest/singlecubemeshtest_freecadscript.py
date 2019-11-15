@@ -47,7 +47,7 @@ def get_cube_entity_dict(cube_name, mesh_size, directory):
 
     :return: A list containing entities dictionaries.
     """
-    cube = import_step_part(doc, os.path.join(directory, 'stepfiles', 'cube200.step'), cube_name)
+    cube = import_step_part(doc, os.path.join(directory, '..', 'stepfiles', 'cube200.step'), cube_name)
     # create entities dict
     face_picks = [('alpha0', 5), ('alpha1', 0), ('beta0', 4), ('beta1', 2), ('gamma0', 3), ('gamma1', 1)]
     faces = FreeCADBatchFEMTools.pick_faces_from_geometry(cube, face_picks)
