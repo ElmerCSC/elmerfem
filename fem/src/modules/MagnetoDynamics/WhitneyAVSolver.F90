@@ -51,9 +51,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Found, PiolaVersion, SecondOrder, LagrangeGauge, StaticConductivity
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(ValueListEntry_t), POINTER :: VariablePtr
-  INTEGER, PARAMETER :: b_empty = b'0', b_Piola = b'1', &
-       b_Secondorder = b'10', b_Gauge = b'100', &
-       b_Transient = b'1000', b_StaticCond = b'10000'
+  INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
+       b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16
 
   integer :: Paramlist
   Paramlist = 0
@@ -167,7 +166,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
  
   IF (LagrangeGauge .AND. Transient .AND. &
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
-    CALL Info("WhitneyAVSolver", "Gauge field is not projected across mortar boundaries.") 
+    CALL Info("WhitneyAVSolver_Init0", "Gauge field is not projected across mortar boundaries.") 
   END IF
 
 

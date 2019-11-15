@@ -627,7 +627,7 @@ END INTERFACE
 
 #ifdef DEVEL_LISTCOUNTER
      CALL Info('ElmerSolver','Reporting list counters for code optimization purposes only!')
-     CALL Info('ElmerSolver','If you get these lines with production code undefine > LISTCOUNTER < !')
+     CALL Info('ElmerSolver','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
      CALL ReportListCounters( CurrentModel )
 #endif
      

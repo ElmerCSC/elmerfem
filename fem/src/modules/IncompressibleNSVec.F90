@@ -1310,7 +1310,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! This in not fully informative if several element types are present.
   !-----------------------------------------------------------------------------
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
-  IP = GaussPointsAdapt(Element)
+  IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
   CALL Info('IncompressibleNSSolver', &
       'Number of 1st integration points: '//TRIM(I2S(IP % n)), Level=5)
   

@@ -64,7 +64,6 @@ double drand48()
 }
 #endif
 
-
 extern double ShapeFunctionMatrix3[3][3],ShapeFunctionMatrix4[4][4];
 
 
@@ -172,6 +171,7 @@ static void FreeLinks( Geometry_t *Geom )
         Link1 = Link->Next;
         free(Link);
         Link = Link1;
+
      }
      Geom->Link = NULL;
 
@@ -221,48 +221,52 @@ static void IntegrateFromGeometry(int N,double *Factors)
         Elements[i].Flags |= GEOMETRY_FLAG_LEAF;
     }
 
-    RowSums = (double *)calloc( N,sizeof(double) );
-
     MaxLev = 0;
-    k = 0;
+#pragma omp parallel
+{
+    Geometry_t *lel;
+    lel = (Geometry_t *)malloc(N*sizeof(Geometry_t));
+    memcpy(lel,Elements,N*sizeof(Geometry_t));
+
+#pragma omp for private(i,j,Fact) schedule(dynamic,10)
     for( i=0; i<N; i++ )
     {
          for( j=i; j<N; j++ ) Factors[i*N+j] = 0.0;
-         if ( Elements[i].Area<1.0e-10 ) continue;
+         if ( lel[i].Area<1.0e-10 ) continue;
 
-         fprintf( stdout, "row = % 4d of %d: ",i+1,N );
          for( j=i+1; j<N; j++ )
          { 
-            if ( Elements[j].Area<1.0e-10 ) continue;
+            if ( lel[j].Area<1.0e-10 ) continue;
 
-            FreeLinks( &Elements[i] );
-            FreeLinks( &Elements[j] );
+            FreeLinks( &lel[i] );
+            FreeLinks( &lel[j] );
 
-            Elements[i].Flags |= GEOMETRY_FLAG_LEAF;
-            Elements[j].Flags |= GEOMETRY_FLAG_LEAF;
+            lel[i].Flags |= GEOMETRY_FLAG_LEAF;
+            lel[j].Flags |= GEOMETRY_FLAG_LEAF;
 
-            (*ViewFactorCompute[Elements[i].GeometryType])( &Elements[i],&Elements[j],0,0 );
+            (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
   
-            Fact = ComputeViewFactorValue( &Elements[i],0 );
-            Factors[i*N+j] = Fact / Elements[i].Area;
-            Factors[j*N+i] = Fact / Elements[j].Area;
+            Fact = ComputeViewFactorValue( &lel[i],0 );
+            Factors[i*N+j] = Fact / lel[i].Area;
+            Factors[j*N+i] = Fact / lel[j].Area;
          }
 
-         fflush( stdout );
+         FreeChilds( lel[i].Left );
+         lel[i].Left = NULL;
 
-         FreeChilds( Elements[i].Left );
-         Elements[i].Left = NULL;
+         FreeChilds( lel[i].Right );
+         lel[i].Right = NULL;
+    }
 
-         FreeChilds( Elements[i].Right );
-         Elements[i].Right = NULL;
+    free(lel);
+}
 
-         RowSums[i] = 0.0;
-         for( j=0; j<N; j++ )
-         {
-           if ( Elements[j].Area < 1.0e-10 ) continue;
-           RowSums[i] += Factors[i*N+j];
-         }
-         s = RowSums[i];
+    k = 0;
+    for(i=0; i<N; i++ )
+    {
+         s = 0.0;
+         for( j=0; j<N; j++ ) s += Factors[i*N+j];
+
          if ( s < Fmin )
          {
             Fmin = s;
@@ -274,13 +278,9 @@ static void IntegrateFromGeometry(int N,double *Factors)
             Imax = i+1;
          }
          Favg += s;
-         k++;
-
-         fprintf( stdout, "sum=%-4.2f, (min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f)\n", 
-                        s,Imin,Fmin,Imax,Fmax,Favg/k );
     }
-
-    free( RowSums );
+   fprintf( stdout, "surfs: %d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f\n", 
+                       N,Imin,Fmin,Imax,Fmax,Favg/N );
 }
 
 void MakeViewFactorMatrix(int N,double *Factors,int NInteg,int NInteg3)

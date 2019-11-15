@@ -121,9 +121,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), AirGapMu(:)
-
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
+
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
 
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
@@ -150,7 +150,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
-       GapLength, AirGapMu
+       GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
@@ -164,9 +164,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   END IF
 
   IF (PiolaVersion) THEN
-    CALL Info('WhitneyAVSolver', &
+    CALL Info('WhitneyAVHarmonicSolver', &
         'Using Piola Transformed element basis functions',Level=4)
-    CALL Info('WhitneyAVSolver', &
+    CALL Info('WhitneyAVHarmonicSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
         CALL Info('WhitneyAVHarmonicSolver', &
@@ -183,13 +183,13 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone ) THEN
 
-     IF (Solver % Variable % dofs /= 2) CALL Fatal ('WhitneyAVHarmonicSolver_Init', &
-       'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
+     IF (Solver % Variable % dofs /= 2) CALL Fatal('WhitneyAVHarmonicSolver', &
+         'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
-          GapLength(N), AirGapMu(N), Acoef(N), LamCond(N), &
+          GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
@@ -370,22 +370,22 @@ CONTAINS
          SELECT CASE(LaminateStackModel)
          CASE('low-frequency model')
            LamThick(1:n) = GetReal( Material, 'Laminate Thickness', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Thickness not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Thickness not found!')
   
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Stack Conductivity not found!')
            LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE('wide-frequency-band model')
            LamThick(1:n) = GetReal( Material, 'Laminate Thickness', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Thickness not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Thickness not found!')
 
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Stack Conductivity not found!')
            LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE DEFAULT
-           CALL WARN('WhitneyAVSolver', 'Nonexistent Laminate Stack Model chosen!')
+           CALL WARN('WhitneyAVHarmonicSolver', 'Nonexistent Laminate Stack Model chosen!')
          END SELECT
        END IF
 
@@ -476,13 +476,20 @@ CONTAINS
          GetReal( BC, 'Magnetic Transfer Coefficient im', Found), KIND=dp)
 
        !If air gap length keyword is detected, use air gap boundary condition
-       GapLength=GetConstReal( BC, 'Air Gap Length', Found)
+       GapLength = GetConstReal( BC, 'Air Gap Length', Found)
        IF (Found) THEN
-         AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
-         IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
-         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
+         MuParameter=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+         IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
+         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
        ELSE
-         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+         SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
+         IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
+           MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
+           IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
+           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
+         ELSE         
+           CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+         END IF
        END IF
        
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
@@ -503,7 +510,7 @@ CONTAINS
     ! ---------------------------------------------
     IF ( TG ) THEN
       ! temporary fix to some scaling problem (to be resolved)...
-      CALL ListAddLogical( GetSolverParams(), 'Linear System Dirichlet Scaling', .FALSE.) 
+      CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
     END IF
 
     CALL DefaultDirichletBCs()
@@ -572,7 +579,7 @@ CONTAINS
       j = 2*(j-1)
       Aval = CMPLX(dDiag(j+1), dDiag(j+2), KIND=dp)
 
-      IF (Aval==0._dp) THEN
+      IF (ABS(Aval)==0._dp) THEN
         A % RHS(j+1) = 0._dp
         CALL ZeroRow(A,j+1)
         A % Values(A % Diag(j+1)) = 1._dp
@@ -1976,6 +1983,114 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, Element, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
+    LOGICAL :: Stat
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+    COMPLEX(KIND=dp) :: imu, invZs
+    
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
+    
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+
+    DO t=1,IP % n
+      IF ( PiolaVersion ) THEN
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+
+      cond = SUM(Basis(1:n) * SkinCond(1:n))
+      mu  = muVacuum * SUM(Basis(1:n) * SkinMu(1:n))
+      delta = SQRT( 2.0_dp/(cond*omega*mu))      
+      invZs = (cond*delta)/(1.0_dp+imu)
+      !PRINT *,'skin:',cond,delta,omega,invZs
+      !PRINT *,'elem:',Element % NodeIndexes
+
+      !
+      ! The contributions from the constraint (H x n) x n = 1/Z E x n:
+      !
+      DO i = 1,nd-np
+        p = i+np
+        DO j = 1,nd-np
+          q = j+np
+          !
+          ! The term i*omega/Z < A x n, v x n> : With ApplyPiolaTransform = .TRUE.
+          ! the edge basis functions returned by the function EdgeElementInfo are automatically 
+          ! tangential and hence the normal doesn't appear in the expression.
+          !
+          STIFF(p,q) = STIFF(p,q) + imu * Omega * invZs * &
+              SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
+        END DO
+
+        DO q = 1,np
+          !
+          ! The term 1/Z < grad V x n, v x n> : 
+          ! Some tensor calculation shows that the component form of this term is analogous to 
+          ! the case < A x n, v x n>. 
+          !
+          STIFF(p,q) = STIFF(p,q) + invZs * &
+              SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+        END DO
+      END DO
+
+      !
+      ! The contributions from applying Ohm's law to the tangential surface current 
+      ! which is assumed to be constant over the skin depth: NOTE that a non-vanishing 
+      ! surface current cannot yet be prescribed on the one-dimensional boundary of the skin
+      ! surface via giving a current BC (the conducting skin must be either insulated over its
+      ! boundary or constrained by a Dirichlet condition for the scalar potential).
+      !
+      DO p = 1,np
+        DO q = 1,np
+          STIFF(p,q) = STIFF(p,q) + delta * cond * &
+              SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+        END DO
+
+        DO j = 1,nd-np
+          q = j+np
+          STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
+              SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+        END DO
+      END DO
+
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixSkinBC
+!------------------------------------------------------------------------------
+
+  
 !-----------------------------------------------------------------------------
   FUNCTION LocalFluxBC( LOAD, Element, n, nd ) RESULT(Bn)
 !------------------------------------------------------------------------------
