@@ -389,7 +389,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
    SAVE rhow, gravity
-   SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal 
+   SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal,OldMeshTag
 
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
@@ -405,6 +405,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    ! .OR. (NewTime .AND. Model % Mesh % Changed)
    IF(FirstTime) THEN
       NewTime = .TRUE.
+      OldMeshTag = Model % Mesh % MeshTag
    ELSE IF(t > told) THEN
       NewTime = .TRUE.
       told = t

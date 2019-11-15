@@ -554,8 +554,10 @@
 
          ZOutput => HydroPlume(Pl) % z
          MROutput => HydroPlume(Pl) % meltrate
-         IF(Q0 .LE. 0.0) THEN
+         IF(Q0 .LE. 0.0 .OR. PlDepth > -1.0) THEN
            !This avoids the solver failing on Q=0 and spewing NaNs everywhere
+           !and also potential weird geometry edge cases where the PlDepth ends
+           !up zero or positive
            MROutput(:) = 0.0
            ZOutput(:) = Zi(:)
          ELSE
@@ -564,6 +566,9 @@
            !discharge and for Jackson et al. (2017)'s observations
            CALL PlumeSolver(Zi, Xi, Ta, Sa, Q0, ZOutput, MROutput, MeshRes, PlDepth)
          END IF
+         !DO i=1,SIZE(MROutput)
+           !IF(ISNAN(MROutput(i))) PRINT *, 'Found a NaN ',Q0,PlDepth,PlPos(Pl,:)
+         !END DO
          IF(SIZE(ZOutput)>Output) THEN
            Output = SIZE(ZOutput)
          END IF
