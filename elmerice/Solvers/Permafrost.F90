@@ -4556,7 +4556,12 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
     WriteAll=ListGetLogical(SolverParams,"Export all",Found)
     IF (WriteAll) THEN
       WriteToFile(1:6)=.TRUE.
-      NumberOfExportedValues=6
+      NumberOfExportedValues=7
+      WriteToFile(7) = .TRUE.
+      IF (DIM==3) THEN
+        WriteToFile(8)= .TRUE.
+        NumberOfExportedValues=8
+      END IF
     ELSE
       WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)      
       WriteToFile(2)=ListGetLogical(SolverParams,"Export etak",Found)
@@ -4564,13 +4569,17 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
       WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
       WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
+      NumberOfExportedValues = 0
       DO CurrentValue=1,6
         IF (WriteToFile(CurrentValue)) NumberOfExportedValues=NumberOfExportedValues+1
       END DO
       IF (WriteToFile(6)) THEN
         WriteToFile(7) = .TRUE.
-        IF (DIM==3) &
-             WriteToFile(8)= .TRUE.
+        NumberOfExportedValues=NumberOfExportedValues+1
+        IF (DIM==3) THEN
+          WriteToFile(8)= .TRUE.
+          NumberOfExportedValues=NumberOfExportedValues+1
+        END IF
       END IF
     END IF
   END IF
