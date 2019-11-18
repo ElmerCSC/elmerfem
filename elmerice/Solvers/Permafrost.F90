@@ -4448,7 +4448,7 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
   ! 9 ks0
   ! 10 Kgwh0)
 
-  LOGICAL :: WriteToFile(5)=.FALSE., Found, WriteAll  
+  LOGICAL :: WriteToFile(6)=.FALSE., Found, WriteAll
   TYPE(ValueList_t), POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostElmntOutput'
   
@@ -4458,13 +4458,14 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
   SolverParams => GetSolverParams()
   WriteAll=ListGetLogical(SolverParams,"Export all",Found)
   IF (WriteAll) THEN
-    WriteToFile(1:5)=.TRUE.
+    WriteToFile(1:6)=.TRUE.
   ELSE
     WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)
     WriteToFile(2)=ListGetLogical(SolverParams,"Export etak",Found)
     WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
     WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
     WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
+    WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
   END IF
   IF(WriteToFile(1)) THEN 
     CALL ListAddString( SolverParams,&
@@ -4496,6 +4497,12 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
          "-elem -dofs 1 cs0")
     CALL INFO(SolverName,'Added cs0 as variable',Level=1)    
   END IF
+  IF(WriteToFile(6)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 6 Kgwh0")
+    CALL INFO(SolverName,'Added Kgwh0 as variable',Level=1)    
+  END IF
   CALL Info( SolverName, 'assignment done',Level=1 )
   CALL Info( SolverName, '---------------------------------------',Level=1 )
 END SUBROUTINE PermafrostElmntOutput_init
@@ -4513,9 +4520,9 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Local variables
   !------------------------------------------------------------------------------
-  LOGICAL :: WriteToFile(5)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
+  LOGICAL :: WriteToFile(6)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
        ElementWiseRockMaterial
-  INTEGER :: Active, t, RockMaterialID, CurrentValue, NumberOfRockRecords,&
+  INTEGER :: Active, t, J, RockMaterialID, CurrentValue, NumberOfRockRecords,&
        NumberOfExportedValues=0, DIM
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Params, Material,SolverParams
@@ -4541,7 +4548,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   IF (FirstTime) THEN
     WriteAll=ListGetLogical(SolverParams,"Export all",Found)
     IF (WriteAll) THEN
-      WriteToFile(1:5)=.TRUE.
+      WriteToFile(1:6)=.TRUE.
       NumberOfExportedValues=5
     ELSE
       WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)      
@@ -4549,6 +4556,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
       WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
       WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
+      WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
       DO CurrentValue=1,5
         IF (WriteToFile(CurrentValue)) NumberOfExportedValues=NumberOfExportedValues+1
       END DO
@@ -4568,6 +4576,8 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       WRITE (ElmntVarName,'(A)') "alphaT"
     CASE(5)
       WRITE (ElmntVarName,'(A)') "cs0"
+    CASE(6)
+      WRITE (ElmntVarName,'(A)') "Kgwh0"
     END SELECT
     ElmntVar => VariableGet( Model % Mesh % Variables, ElmntVarName)
     IF (.NOT.ASSOCIATED(ElmntVar)) THEN
@@ -4618,8 +4628,18 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       CASE(4)
         ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % alphaT(RockMaterialID)
       CASE(5)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % cs0(RockMaterialID)
-      END SELECT
+        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % cs0(RockMaterialID)        
+      CASE(6)
+        ElmntVarVal((6*(ElmntVarPerm(t) - 1) + 1):(6*(ElmntVarPerm(t) -1) + 6)) = 0.0_dp
+        DO J=1,DIM 
+          ElmntVarVal(6*(ElmntVarPerm(t) - 1) + J) = CurrentRockMaterial % Kgwh0(J,J,RockMaterialID)
+        END DO
+        ElmntVarVal(6*(ElmntVarPerm(t) - 1) + 4) = CurrentRockMaterial % Kgwh0(1,2,RockMaterialID)
+        IF (DIM == 3) THEN
+          ElmntVarVal(6*(ElmntVarPerm(t) - 1) + 5) = CurrentRockMaterial % Kgwh0(1,3,RockMaterialID)
+          ElmntVarVal(6*(ElmntVarPerm(t) - 1) + 5) = CurrentRockMaterial % Kgwh0(2,3,RockMaterialID)
+        END IF   
+    END SELECT
     END DO
   END DO
 END SUBROUTINE PermafrostElmntOutput

@@ -2631,7 +2631,7 @@ CONTAINS
     Kgwh0(1:3,1:3) = CurrentRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
     factor = (muw0/mugw)*(Xi**qexp)/(rhow0*gval)
-    !factor = muw0*(Xi**qexp)/(rhow0*gval)
+    ! this is OK
     !PRINT *,"Kgw:",muw0,mugw,rhow0,Kgwh0,Xi,factor
     Kgw = 0.0_dp
     DO I=1,3
