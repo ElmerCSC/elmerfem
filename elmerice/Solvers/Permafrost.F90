@@ -4541,7 +4541,8 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: ElmntVar
   INTEGER, POINTER :: ElmntVarPerm(:)
   REAL(KIND=dp), POINTER :: ElmntVarVal(:)
-  
+  REAL(KIND=dp) :: LocalCopyOfKgwh0(3,3)  
+
   SAVE FirstTime, WriteToFile, CurrentRockMaterial, NumberOfRockRecords,&
        NumberOfExportedValues, DIM
        
@@ -4575,13 +4576,15 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       END DO
       IF (WriteToFile(6)) THEN
         WriteToFile(7) = .TRUE.
-        NumberOfExportedValues=NumberOfExportedValues+1
+        NumberOfExportedValues=7
         IF (DIM==3) THEN
           WriteToFile(8)= .TRUE.
-          NumberOfExportedValues=NumberOfExportedValues+1
+          NumberOfExportedValues=8
         END IF
       END IF
     END IF
+    WRITE (Message,*) 'Exporting ', NumberOfExportedValues,' values'
+    CALL INFO(SolverName,Message,Level=1)
   END IF
   
   Active = GetNOFActive()
@@ -4605,6 +4608,8 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
     CASE(8)
       WRITE (ElmntVarName,'(A)') "Kgwh0_33"
     END SELECT
+    WRITE (Message,*) 'Writing ', TRIM(ElmntVarName), 'as variable'
+    CALL INFO(SolverName,Message,Level=3)
     ElmntVar => VariableGet( Model % Mesh % Variables, ElmntVarName)
     IF (.NOT.ASSOCIATED(ElmntVar)) THEN
       WRITE(Message,*) 'Variable ',TRIM(ElmntVarName),' is not associated'
@@ -4643,10 +4648,14 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       ELSE
         RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
       END IF
+      IF (CurrentValue >= 6) THEN
+        LocalCopyOfKgwh0(1:3,1:3) = CurrentRockMaterial % Kgwh0(1:3,1:3,RockMaterialID)
+        PRINT *,"eta0:", CurrentRockMaterial % eta0(RockMaterialID), "aL:", CurrentRockMaterial % alphaL(RockMaterialID),"Kgwh0:", LocalCopyOfKgwh0(1:3,1:3)
+      END IF
       SELECT CASE(CurrentValue)
       CASE(1)
         ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % eta0(RockMaterialID)
-        !PRINT *,"eta0: ", ParEnv % MyPE, ":", RockMaterialID, ElmntVarPerm(t), CurrentRockMaterial % eta0(RockMaterialID)
+        !PRINT *,"eta0: ", ParEnv % MyPE, ":", RockMaterialID, ElmntVarPerm(t), CurrentRockMaterial % eta0(RockMaterialID), CurrentRockMaterial % Kgwh0(1,1,RockMaterialID)
       CASE(2)
         ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % etak(RockMaterialID)
       CASE(3)
@@ -4656,11 +4665,12 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       CASE(5)
         ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % cs0(RockMaterialID)        
       CASE(6)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % Kgwh0(1,1,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = LocalCopyOfKgwh0(1,1)
+        !PRINT *, "Kgwh0(", RockMaterialID, ")", CurrentRockMaterial % Kgwh0(1,1,RockMaterialID), CurrentRockMaterial % Kgwh0(2,2,RockMaterialID), CurrentRockMaterial % Kgwh0(2,3,RockMaterialID)
       CASE(7)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % Kgwh0(2,2,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = LocalCopyOfKgwh0(2,2)
       CASE(8)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % Kgwh0(3,3,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = LocalCopyOfKgwh0(3,3)
     END SELECT
     END DO
   END DO
