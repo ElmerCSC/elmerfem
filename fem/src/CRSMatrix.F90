@@ -3040,21 +3040,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     LOGICAL :: Warned
     INTEGER :: i,j,k,l,m,n,istat
-
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER :: ILUValues(:), Values(:)
-
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: st, tx
-#else
-    REAL(KIND=dp) :: CPUTime, st, tx
-#endif
-
     LOGICAL, ALLOCATABLE :: C(:), D(:)
     REAL(KIND=dp), ALLOCATABLE ::  S(:), T(:)
-
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
-
     TYPE(Matrix_t), POINTER :: A1
 !------------------------------------------------------------------------------
     WRITE(Message,'(a,i1,a)')  &
@@ -3235,6 +3226,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          END DO
        END DO
 
+       
 !
 !      Convert the row back to  CRS format:
 !      ------------------------------------
@@ -3247,7 +3239,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        END DO
      END DO
 
-     !
      ! Prescale the diagonal for the LU solve:
      ! ---------------------------------------
      DO i=1,N
@@ -3261,6 +3252,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
+    IF( InfoActive(20) ) THEN
+      PRINT *,'ILU range:',MINVAL(ILUValues),MAXVAL(ILUValues),&
+          SUM(ILUValues)/SIZE(ILUValues),SUM(ABS(ILUValues))/SIZE(ILUValues)
+    END IF
+
     WRITE(Message,'(a,i1,a,i9)') 'ILU(', ILUn, &
         ') (Real), NOF nonzeros: ',ILURows(n+1)
     CALL Info( 'CRS_IncompleteLU', Message, Level=5 )
@@ -3403,21 +3399,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status  !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,istat
-
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER ::  Values(:)
     COMPLEX(KIND=dp), POINTER :: ILUValues(:)
-
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
-
     TYPE(Matrix_t), POINTER :: A1
-
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: st
-#else
-    REAL(KIND=dp) :: st, CPUTime
-#endif
-
     LOGICAL, ALLOCATABLE :: C(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: S(:), T(:)
 !------------------------------------------------------------------------------
@@ -3749,11 +3736,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status    !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: n
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: t
-#else
-    REAL(KIND=dp) :: CPUTime, t
-#endif
 !------------------------------------------------------------------------------
 
     CALL Info( 'CRS_ILUT', 'Starting factorization:', Level=5 )
@@ -3790,21 +3773,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       TYPE(Matrix_t) :: A
 !------------------------------------------------------------------------------
       INTEGER, PARAMETER :: WORKN = 128
-
       INTEGER :: i,j,k,l,istat, RowMin, RowMax
       REAL(KIND=dp) :: NORMA
-
       REAL(KIND=dp), POINTER CONTIG :: Values(:), ILUValues(:), CWork(:)
-
       INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:), &
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
-
       LOGICAL :: C(n)
-#ifdef USE_ISO_C_BINDINGS
       REAL(KIND=dp) :: S(n), cptime, ttime, t
-#else
-      REAL(KIND=dp) :: S(n), CPUTime, cptime, ttime, t
-#endif
 !------------------------------------------------------------------------------
 
       ttime  = CPUTime()
@@ -3961,11 +3936,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status    !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: n
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: t
-#else
-    REAL(KIND=dp) :: CPUTime, t
-#endif
 !------------------------------------------------------------------------------
 
     CALL Info( 'CRS_ComplexILUT', 'ILU(T) (Complex), Starting factorization: ', Level=5 )

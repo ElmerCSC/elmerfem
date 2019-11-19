@@ -321,6 +321,7 @@ CONTAINS
 
         mat_idold = mat_id
 
+        ReferencePressure = GetCReal( Material,'Reference Pressure', GotIt )
         ViscosityModel = GetString(Material,'Viscosity Model',GotIt)
         IF(GotIt) THEN
           IF( ViscosityModel == 'newtonian') THEN
@@ -328,7 +329,6 @@ CONTAINS
           ELSE IF( ViscosityModel == 'rarefied') THEN
             ViscosityType = Viscosity_Rarefied
             mfp0 = GetCReal(Material,'Mean Free Path')            
-            ReferencePressure = GetCReal( Material,'Reference Pressure')           
           ELSE
             CALL Warn('ReynoldsSolver','Unknown viscosity model')
           END IF
@@ -360,9 +360,9 @@ CONTAINS
         END IF
       END IF
 
-      STIFF = 0.0d0
-      MASS = 0.0d0
-      FORCE = 0.0d0
+      STIFF = 0.0_dp
+      MASS = 0.0_dp
+      FORCE = 0.0_dp
       
       CALL LocalBulkMatrix( MASS, STIFF, FORCE, Element, n, nd, ElementNodes, SensMode ) 
                     
@@ -401,7 +401,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     INTEGER :: SensMode
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), SqrtElementMetric
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), detJ
     REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)
     REAL(KIND=dp) :: U, V, W, S, MS, MM, L, A, B, HR, SL(3), SLR, SLL(3), F
     REAL(KIND=dp) :: Normal(3), Velo(3), NormalVelo, TangentVelo(3), Damp, Pres, PrevPres, &
@@ -414,10 +414,10 @@ CONTAINS
     DIM = CoordinateSystemDimension()
     CoordSys = CurrentCoordinateSystem()
 
-    Metric = 0.0d0
-    Metric(1,1) = 1.0d0
-    Metric(2,2) = 1.0d0
-    Metric(3,3) = 1.0d0
+    Metric = 0.0_dp
+    Metric(1,1) = 1.0_dp
+    Metric(2,2) = 1.0_dp
+    Metric(3,3) = 1.0_dp
 
 !------------------------------------------------------------------------------
 !   Numerical integration
@@ -435,22 +435,22 @@ CONTAINS
 !------------------------------------------------------------------------------
     DO t=1,IntegStuff % n
 
-      U = IntegStuff % u(t)
-      V = IntegStuff % v(t)
-      W = IntegStuff % w(t)
-      S = IntegStuff % s(t)
+      u = IntegStuff % u(t)
+      v = IntegStuff % v(t)
+      w = IntegStuff % w(t)
+      s = IntegStuff % s(t)
 
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
-          Basis, dBasisdx, Bubbles = Bubbles)
-    
-      s = s * SqrtElementMetric
+      stat = ElementInfo( Element, Nodes, u, v, w, DetJ, &
+               Basis, dBasisdx, Bubbles = Bubbles)
+
+      s = s * DetJ
       IF ( CoordSys /= Cartesian ) THEN
-        X = SUM( Nodes % X(1:n) * Basis(1:n) )
-        Y = SUM( Nodes % Y(1:n) * Basis(1:n) )
-        Z = SUM( Nodes % Z(1:n) * Basis(1:n) )
+        x = SUM( Nodes % x(1:n) * Basis(1:n) )
+        y = SUM( Nodes % y(1:n) * Basis(1:n) )
+        z = SUM( Nodes % z(1:n) * Basis(1:n) )
         CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,X,Y,Z )
         s = s * SqrtMetric
       END IF
@@ -552,8 +552,8 @@ CONTAINS
       L = Density * NormalVelo
 
       ! Tangential velocity: Both rhs and matrix contribution
-      SLR = 0.0d0
-      SLL = 0.0d0
+      SLR = 0.0_dp
+      SLL = 0.0_dp
 
       DO i=1,dim
         ! The plane element automatically omits the derivative in normal direction
@@ -661,7 +661,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 !             Get element local matrix and rhs vector
 !------------------------------------------------------------------------------
-      
       CALL LocalBoundaryMatrix( MASS, STIFF, FORCE, Element, n, ElementNodes )
                     
 !------------------------------------------------------------------------------
@@ -683,16 +682,15 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalBoundaryMatrix(MassMatrix, StiffMatrix, ForceVector, Element, n, Nodes)
+  SUBROUTINE LocalBoundaryMatrix(MASS, STIFF, FORCE, Element, n, Nodes)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: MassMatrix(:,:), StiffMatrix(:,:), ForceVector(:)
+    REAL(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp) :: Impedance 
-    REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),X,Y,Z
+    REAL(KIND=dp) :: DetJ,U,V,W,S
+    REAL(KIND=dp) :: Basis(n)
     REAL(KIND=dp) :: Visc, dl, mfp, Kn, Damp, TotPres, Pres, Density, Gap, A
     LOGICAL :: Stat
     INTEGER :: i,p,q,t,DIM,CoordSys
@@ -714,10 +712,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
-          Basis, dBasisdx )
+      stat = ElementInfo( Element, Nodes, U, V, W, DetJ, Basis )
       
-      s = s * SqrtElementMetric
+      s = s * DetJ
       
       Gap = SUM( GapHeight(1:n) * Basis(1:n) )
       Pres = SUM( ElemPressure(1:n) * Basis(1:n))
@@ -762,7 +759,7 @@ CONTAINS
 !------------------------------------------------------------------------------
        DO p=1,n
          DO q=1,n
-           StiffMatrix(p,q) = StiffMatrix(p,q) + s * Basis(q) * Basis(p) * A
+           STIFF(p,q) = STIFF(p,q) + s * Basis(q) * Basis(p) * A
          END DO
        END DO
 !------------------------------------------------------------------------------
@@ -770,10 +767,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    END SUBROUTINE LocalBoundaryMatrix
 !------------------------------------------------------------------------------
-
-
-   
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ReynoldsSolver
@@ -795,11 +788,11 @@ SUBROUTINE ReynoldsSolver_init( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
   LOGICAL :: Found
-  CHARACTER(LEN=MAX_NAME_LEN) :: VarName
   TYPE(ValueList_t), POINTER :: Params 
 
-
   Params => GetSolverParams()
+
+  CALL ListAddNewString( Params, 'Variable', 'FilmPressure' )
 
 ! The new way with generic limiters is a library functionality.
 ! The Poisson equation is assembled using different sign that the 
@@ -843,7 +836,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Variable_t), POINTER :: PressureVar, VarResult, SolverVar
   TYPE(Nodes_t) :: ElementNodes
-  TYPE(Element_t),POINTER :: Element, Parent
+  TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Params, Material, Equation
 
   INTEGER, PARAMETER :: Viscosity_Newtonian = 1, Viscosity_Rarefied = 2
@@ -859,7 +852,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
 
   REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, mfp0, HeatSlide, HeatPres, HeatTotal, &
-      Pforce(3), Vforce(3), TotForce, Moment(3), MomentAbout(3)
+      Pforce(3), Vforce(3), TotForce, Moment(3), MomentAbout(3), AmbientPres
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), Viscosity(:), GapHeight(:), &
       Velocity(:,:), ElemPressure(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, PressureName
@@ -891,6 +884,8 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   PressureName = GetString(Params,'Reynolds Pressure Variable Name',GotIt)
   IF(.NOT. GotIt) PressureName = 'FilmPressure'
 
+  AmbientPres = ListGetCReal( Params,'Ambient Pressure',GotIt)
+  
   PressureVar => VariableGet( Solver % Mesh % Variables, PressureName)
   IF(.NOT. ASSOCIATED(PressureVar)) THEN
     CALL Warn('ReynoldsPostprocess','Could not get variable: '//TRIM(PressureName))
@@ -1034,6 +1029,7 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
           
           mat_idold = mat_id
           
+          ReferencePressure = GetCReal( Material,'Reference Pressure', GotIt )
           ViscosityModel = GetString(Material,'Viscosity Model',GotIt)
           IF(GotIt) THEN
             IF( ViscosityModel == 'newtonian') THEN
@@ -1041,7 +1037,6 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
             ELSE IF( ViscosityModel == 'rarefied') THEN
               ViscosityType = Viscosity_Rarefied
               mfp0 = GetCReal(Material,'Mean Free Path')            
-              ReferencePressure = GetCReal( Material,'Reference Pressure')           
             ELSE
               CALL Warn('ReynoldsPostprocess','Unknown viscosity model')
             END IF
@@ -1129,17 +1124,17 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(StiffMatrix, ForceVector, Element, n, nd, Nodes)
+  SUBROUTINE LocalMatrix(STIFF, FORCE, Element, n, nd, Nodes)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: StiffMatrix(:,:), ForceVector(:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), SqrtElementMetric
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), DetJ
     REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)
     REAL(KIND=dp) :: U, V, W, S, A
-    REAL(KIND=dp) :: Vpres(3), Vslide(3), Spres, Sslide
+    REAL(KIND=dp) :: Spres, Sslide
     REAL(KIND=dp) :: Normal(3), Velo(3), TangentVelo(3), Pres, Gap, GradPres(3), &
         Visc, mfp, Kn, TotPres, source, Radius(3)
     LOGICAL :: Stat
@@ -1149,10 +1144,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     CoordSys = CurrentCoordinateSystem()
 
-    Metric = 0.0d0
-    Metric(1,1) = 1.0d0
-    Metric(2,2) = 1.0d0
-    Metric(3,3) = 1.0d0
+    Metric = 0.0_dp
+    Metric(1,1) = 1.0_dp
+    Metric(2,2) = 1.0_dp
+    Metric(3,3) = 1.0_dp
 
 !------------------------------------------------------------------------------
 !   Numerical integration
@@ -1164,22 +1159,21 @@ CONTAINS
 !------------------------------------------------------------------------------
     DO t=1,IntegStuff % n
 
-      U = IntegStuff % u(t)
-      V = IntegStuff % v(t)
-      W = IntegStuff % w(t)
-      S = IntegStuff % s(t)
+      u = IntegStuff % u(t)
+      v = IntegStuff % v(t)
+      w = IntegStuff % w(t)
+      s = IntegStuff % s(t)
 
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
-          Basis, dBasisdx)
+      stat = ElementInfo(Element, Nodes, u, v, w, DetJ, Basis, dBasisdx)
       
-      s = s * SqrtElementMetric
+      s = s * DetJ
       IF ( CoordSys /= Cartesian .OR. CalculateMoment ) THEN
-        X = SUM( Nodes % X(1:n) * Basis(1:n) )
-        Y = SUM( Nodes % Y(1:n) * Basis(1:n) )
-        Z = SUM( Nodes % Z(1:n) * Basis(1:n) )
+        x = SUM( Nodes % x(1:n) * Basis(1:n) )
+        y = SUM( Nodes % y(1:n) * Basis(1:n) )
+        z = SUM( Nodes % z(1:n) * Basis(1:n) )
       END IF
 
       IF( CoordSys /= Cartesian ) THEN
@@ -1242,6 +1236,8 @@ CONTAINS
 !  Coefficients of the differential equation at integration point
 !------------------------------------------------------------------------------
 
+      TotPres = TotPres - AmbientPres
+      
       IF( Mode == 1 ) THEN
         ! Forces resulting from pressure and shear
         Spres = -TotPres * Normal( Component ) 
@@ -1290,9 +1286,9 @@ CONTAINS
       DO p=1,NBasis
         DO q=1,NBasis
           A = Basis(q) * Basis(p)           
-          StiffMatrix(p,q) = StiffMatrix(p,q) + s * A 
+          STIFF(p,q) = STIFF(p,q) + s * A 
         END DO
-        ForceVector(p) = ForceVector(p) + s * Basis(p) * source
+        FORCE(p) = FORCE(p) + s * Basis(p) * source
       END DO
     END DO
 
@@ -1372,10 +1368,10 @@ CONTAINS
 
     CALL ListAddInteger( Params, 'Time derivative order', 0 )
 
-    ! Add linear system defaults: cg+diagonal
-    CALL ListAddString(Params,'Linear System Solver','Iterative')
+    ! Add linear system defaults: cg+ILU0
+    CALL ListAddNewString(Params,'Linear System Solver','Iterative')
     CALL ListAddNewString(Params,'Linear System Iterative Method','cg')
-    CALL ListAddNewString(Params,'Linear System Preconditioning','diagonal')
+    CALL ListAddNewString(Params,'Linear System Preconditioning','ILU0')
     CALL ListAddNewInteger(Params,'Linear System Max Iterations',500)
     CALL ListAddNewInteger(Params,'Linear System Residual Output',10)
     CALL ListAddNewConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)

@@ -9281,7 +9281,7 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= Solver % Variable % NonlinIter ) Relax = .FALSE.
 
         RelativeP = ListGetLogical( SolverParams,'Relative Pressure Relaxation',Stat) 
-        CALL Info(Caller,'Using relative pressure relaxation',Level=10)
+        IF( RelativeP) CALL Info(Caller,'Using relative pressure relaxation',Level=10)
       END IF
       
       SkipConstraints = ListGetLogical(SolverParams,&
@@ -12800,9 +12800,6 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), ALLOCATABLE :: Diag(:), TempVector(:)
     REAL(KIND=dp), POINTER :: bb(:),Res(:)
     REAL(KIND=dp) :: t0,rt0,rst,st,ct
-#ifndef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: CPUTime,RealTime
-#endif
     TYPE(ValueList_t), POINTER :: Params
 
 #ifndef USE_ISO_C_BINDINGS
@@ -17300,9 +17297,6 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
      TYPE(Variable_t), POINTER :: DispVar
      REAL(KIND=dp) :: t0,rt0,rst,st,ct
-#ifndef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: CPUTime,RealTime
-#endif
 
      ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
      ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found) 
