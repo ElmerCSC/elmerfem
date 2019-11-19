@@ -516,14 +516,35 @@ def create_mesh_object(compound_filter, CharacteristicLength, doc):
     mesh_object.ElementOrder = u"1st"
     return mesh_object
 
-def create_mesh(mesh_object):
+def set_mesh_group_elements(gmsh_mesh):
+    """
+    Updates group_elements dictionary in gmsh_mesh.
+
+    :param gmsh_mesh: Instance of gmshtools.GmshTools.
+    """
+    for mg in gmsh_mesh.mesh_obj.MeshGroupList:
+        gmsh_mesh.group_elements[mg.Label] = list(mg.References[0][1])  # tuple to list
+
+def create_mesh(mesh_object, directory=None):
     """
     Create mesh mesh with Gmsh.
 
     :param mesh_object: FreeCAD mesh object
     """
     gmsh_mesh = femmesh.gmshtools.GmshTools(mesh_object)
-    error = gmsh_mesh.create_mesh()
+    # error = gmsh_mesh.create_mesh()
+    # update mesh data
+    gmsh_mesh.start_logs()
+    gmsh_mesh.get_dimension()
+    set_mesh_group_elements(gmsh_mesh)  # gmsh_mesh.get_group_data
+    gmsh_mesh.get_region_data()
+    gmsh_mesh.get_boundary_layer_data()
+    # create mesh
+    gmsh_mesh.get_tmp_file_paths(param_working_dir=directory)
+    gmsh_mesh.get_gmsh_command()
+    gmsh_mesh.write_gmsh_input_files()
+    error = gmsh_mesh.run_gmsh_with_geo()
+    gmsh_mesh.read_and_set_new_mesh()
     print(error)
 
 def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc, separate_boundaries=False):
@@ -641,7 +662,6 @@ def find_compound_filter_boundaries(compound_filter, face, used_compound_face_na
                         face_already_found = True
                         break
                 if face_already_found:
-                    FreeCAD.Console.PrintMessage('second continue ({})\n'.format(f_name))
                     continue
                 already_found_cfaces.append(cface)
             face_name_list.append(f_name)
@@ -777,7 +797,7 @@ def pick_faces_from_geometry(geom_object, face_picks, mesh_sizes=None):
         add_entity_in_list(faces, face_name, face_objects[face_number], mesh_sizes)
     return faces
 
-def merge_entities_dicts(entities_dicts, name, default_mesh_size=None, add_prefixes={'solids':False, 'faces':True}):
+def merge_entities_dicts(entities_dicts, name, default_mesh_size=None, add_prefixes=None):
     """ 
     This method merges all the entities_dicts and optionally prefixes the entity names with the 
     name of the entity. As default the solids are not prefixed but the faces are.
@@ -787,6 +807,8 @@ def merge_entities_dicts(entities_dicts, name, default_mesh_size=None, add_prefi
     :default_mesh_size: float
     :add_prefixes: {'solids':bool, 'faces':bool}
     """
+    if add_prefixes is None:
+        add_prefixes = {'solids': False, 'faces': True}
     entities_out = {'name': name}
     faces = []
     solids = []
@@ -925,7 +947,6 @@ def find_boundaries_with_entities_dict(mesh_object, compound_filter, entities_di
                 all_found_cface_names.extend(cface_names)
             else:
                 cface_names = find_compound_filter_boundaries(compound_filter, face['geometric object'])
-            FreeCAD.Console.PrintError('1: {}: {} ({})\n'.format(face['name'], cface_names, found_cface_names))
             surface_obj, filtered_cface_names = merge_boundaries(mesh_object, compound_filter, doc, face,
                                                                  cface_names, face_name_list, surface_objs,
                                                                  surface_objs_by_cface_names,
@@ -997,8 +1018,8 @@ def define_mesh_sizes_with_mesh_groups(mesh_object, mesh_group_list, doc, ignore
         ignore_list = []
     for mesh_group in mesh_group_list:
         if mesh_group.Label not in ignore_list:
-            solid_obj = ObjectsFem.makeMeshRegion(doc, mesh_object, mesh_group.mesh_size, mesh_group.Name+'_region')
-            solid_obj.References = [(mesh_group.References[0][0], mesh_group.References[0][1])]
+            mesh_region = ObjectsFem.makeMeshRegion(doc, mesh_object, mesh_group.mesh_size, mesh_group.Name+'_region')
+            mesh_region.References = [(mesh_group.References[0][0], mesh_group.References[0][1])]
 
 def define_mesh_sizes(mesh_object, compound_filter, entities_dict, doc, point_search=True, ignore_list=None):
     """
