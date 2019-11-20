@@ -28,6 +28,7 @@
   Original Date: May 2018
 """
 from __future__ import print_function
+import os
 import Fem
 import FreeCAD
 import Part
@@ -525,12 +526,20 @@ def set_mesh_group_elements(gmsh_mesh):
     for mg in gmsh_mesh.mesh_obj.MeshGroupList:
         gmsh_mesh.group_elements[mg.Label] = list(mg.References[0][1])  # tuple to list
 
-def create_mesh(mesh_object, directory=None):
+def create_mesh(mesh_object, directory=False):
     """
     Create mesh mesh with Gmsh.
+    Value of directory determines location gmsh temporary files::
+
+        - False: Use current working directory
+        - None: Let GmshTools decide
+        - something else: try to use given value
 
     :param mesh_object: FreeCAD mesh object
+    :param directory: Gmsh temp file location.
     """
+    if directory is False:
+        directory = os.getcwd()
     gmsh_mesh = femmesh.gmshtools.GmshTools(mesh_object)
     # error = gmsh_mesh.create_mesh()
     # update mesh data
