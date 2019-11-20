@@ -4541,8 +4541,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: ElmntVar
   INTEGER, POINTER :: ElmntVarPerm(:)
   REAL(KIND=dp), POINTER :: ElmntVarVal(:)
-  REAL(KIND=dp) :: LocalCopyOfKgwh0(3,3)  
-
+ 
   SAVE FirstTime, WriteToFile, CurrentRockMaterial, NumberOfRockRecords,&
        NumberOfExportedValues, DIM
        
@@ -4616,7 +4615,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       CALL FATAL(SolverName,Message)
     END IF
     ElmntVarPerm => ElmntVar % Perm 
-    ElmntVarVal  => ElmntVar % Values
+    ElmntVarVal  => ElmntVar % Values    
     DO t=1,Active
       Element => GetActiveElement(t)
       Material => GetMaterial()
@@ -4631,7 +4630,9 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
         IF (ElementWiseRockMaterial) THEN
           ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
           NumberOfRockRecords = &
-               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)         
+           PRINT *, "Kgwh0(1)", CurrentRockMaterial % Kgwh0(1,1,1), &
+             CurrentRockMaterial % Kgwh0(2,2,1), CurrentRockMaterial % Kgwh0(2,3,1)
         ELSE
           NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
         END IF
@@ -4643,34 +4644,37 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
           FirstTime = .FALSE.
         END IF
       END IF
+      CurrentRockMaterial => GlobalRockmaterial
       IF (ElementWiseRockMaterial) THEN
         RockMaterialID = t  ! each element has it's own set of parameters
       ELSE
         RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
       END IF
-      IF (CurrentValue >= 6) THEN
-        LocalCopyOfKgwh0(1:3,1:3) = CurrentRockMaterial % Kgwh0(1:3,1:3,RockMaterialID)
-        PRINT *,"eta0:", CurrentRockMaterial % eta0(RockMaterialID), "aL:", CurrentRockMaterial % alphaL(RockMaterialID),"Kgwh0:", LocalCopyOfKgwh0(1:3,1:3)
-      END IF
+      !IF (CurrentValue >= 6) THEN
+      !  PRINT *,"eta0:", CurrentRockMaterial % eta0(RockMaterialID),&
+      !       "aL:", CurrentRockMaterial % alphaL(RockMaterialID),"Kgwh0:", CurrentRockMaterial % Kgwh0(1:3,1:3,RockMaterialID)
+      !END IF
       SELECT CASE(CurrentValue)
       CASE(1)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % eta0(RockMaterialID)
-        !PRINT *,"eta0: ", ParEnv % MyPE, ":", RockMaterialID, ElmntVarPerm(t), CurrentRockMaterial % eta0(RockMaterialID), CurrentRockMaterial % Kgwh0(1,1,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % eta0(RockMaterialID)
+        !PRINT *,"eta0: ", ParEnv % MyPE, ":", RockMaterialID, ElmntVarPerm(t), GlobalRockMaterial % eta0(RockMaterialID), GlobalRockMaterial % Kgwh0(1,1,RockMaterialID)
       CASE(2)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % etak(RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % etak(RockMaterialID)
       CASE(3)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % alphaL(RockMaterialID)     
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % alphaL(RockMaterialID)     
       CASE(4)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % alphaT(RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % alphaT(RockMaterialID)
       CASE(5)
-        ElmntVarVal(ElmntVarPerm(t)) = CurrentRockMaterial % cs0(RockMaterialID)        
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % cs0(RockMaterialID)        
       CASE(6)
-        ElmntVarVal(ElmntVarPerm(t)) = LocalCopyOfKgwh0(1,1)
-        !PRINT *, "Kgwh0(", RockMaterialID, ")", CurrentRockMaterial % Kgwh0(1,1,RockMaterialID), CurrentRockMaterial % Kgwh0(2,2,RockMaterialID), CurrentRockMaterial % Kgwh0(2,3,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,1,RockMaterialID)
+        PRINT *, "Kgwh0(", RockMaterialID, ")", GlobalRockMaterial % Kgwh0(1,1,RockMaterialID), &
+             GlobalRockMaterial % Kgwh0(2,2,RockMaterialID), GlobalRockMaterial % Kgwh0(3,3,RockMaterialID), &
+             GlobalRockMaterial % etak(RockMaterialID)
       CASE(7)
-        ElmntVarVal(ElmntVarPerm(t)) = LocalCopyOfKgwh0(2,2)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,2,RockMaterialID)
       CASE(8)
-        ElmntVarVal(ElmntVarPerm(t)) = LocalCopyOfKgwh0(3,3)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,2,RockMaterialID)
     END SELECT
     END DO
   END DO
