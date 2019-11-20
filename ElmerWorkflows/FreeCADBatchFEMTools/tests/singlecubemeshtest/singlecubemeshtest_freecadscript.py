@@ -92,7 +92,7 @@ def create_geometry(directory):
     return_time_list.append(('-Find solids:', time.time() - start_time))
     print_line("Defining mesh sizes...", total_start_time)
     start_time = time.time()
-    FreeCADBatchFEMTools.define_mesh_sizes_with_mesh_groups(mesh_object, body_mesh_groups, doc, ignore_list=['air'])
+    FreeCADBatchFEMTools.define_mesh_sizes_with_mesh_groups(mesh_object, body_mesh_groups, doc)
     return_time_list.append(('-Define mesh sizes:', time.time() - start_time))
     FreeCADBatchFEMTools.fit_view()
     start_time = time.time()

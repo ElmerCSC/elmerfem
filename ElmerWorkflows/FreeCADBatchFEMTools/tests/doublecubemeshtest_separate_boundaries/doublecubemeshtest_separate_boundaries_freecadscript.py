@@ -96,15 +96,15 @@ def create_geometry(directory):
     return_time_list.append(('-Find solids:', time.time() - start_time))
     print_line("Defining mesh sizes...", total_start_time)
     start_time = time.time()
-    FreeCADBatchFEMTools.define_mesh_sizes_with_mesh_groups(mesh_object, body_mesh_groups, doc, ignore_list=['air'])
+    FreeCADBatchFEMTools.define_mesh_sizes_with_mesh_groups(mesh_object, body_mesh_groups, doc)
     return_time_list.append(('-Define mesh sizes:', time.time() - start_time))
     FreeCADBatchFEMTools.fit_view()
     start_time = time.time()
     print_line("Creating mesh...", total_start_time)
-    FreeCADBatchFEMTools.create_mesh(mesh_object)
+    FreeCADBatchFEMTools.create_mesh(mesh_object, directory=directory)
     return_time_list.append(('-Create mesh:', time.time() - start_time))
     print_line("Exporting unv...", total_start_time)
-    FreeCADBatchFEMTools.export_unv(os.path.join(directory, 'doublecubemeshtest_separate_boundaries.unv'), mesh_object)
+    FreeCADBatchFEMTools.export_unv(os.path.join(directory, 'separate_boundaries_doublecubemeshtest.unv'), mesh_object)
     print_line("Geometry done", total_start_time)
     return return_time_list + [('-Total time:', time.time() - total_start_time)]
 
