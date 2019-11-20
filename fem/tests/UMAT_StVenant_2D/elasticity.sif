@@ -6,7 +6,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian 2D
 !  Simulation Type = Steady State
   Simulation Type = Scanning 
@@ -36,7 +36,7 @@ Material 1
   Material Constants(3) = Real 1.0 70e9 0.3
   Density = 1.0
   Reference Temperature = 293.0
-  UMAT Subroutine = File "UMATLib" "stvenant_kirchhoff"
+  UMAT Subroutine = "./MyUMAT" "stvenant_kirchhoff"
   Name = "st venant-kirchhoff"  ! This specifies the CMNAME argument of UMAT
 End
 
