@@ -18,7 +18,7 @@
   to the Free Software Foundation, Inc., 51 Franklin Street, 
   Fifth Floor, Boston, MA  02110-1301  USA
 
-  Authors: Eelis Takala, Janne Keranen
+  Authors: Eelis Takala, Janne Keranen, Sami Rannikko
   Emails:  eelis.takala@gmail.com, janne.sami.keranen@vtt.fi
   Address: Trafotek Oy
            Kaarinantie 700

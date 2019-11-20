@@ -12,12 +12,12 @@ Research Centre of Finland Ltd supported by Business Finland Oy.
 - Selecting and naming bodies and boundaries for ElmerSolver
 
 # Requirements
-- FreeCAD 0.18 (tested with Libs: 0.18R13824 (Git))
+- FreeCAD 0.19 (tested with Libs: 0.19R18738 (Git))
 - Gmsh 3
 - ElmerGrid (Elmer 8.3)
 
 ## Tested FreeCAD versions
-- freecad-daily (2. September 2019)
+- freecad-daily (20. November 2019)
 
 # Tests
 
@@ -30,3 +30,4 @@ $ FreeCAD -c $PWD/script_name.py
 # Authors
 - Eelis Takala, Trafotek Oy
 - Janne Keranen, VTT Technical Research Centre of Finland Ltd 
+- Sami Rannikko, Trafotek Oy
