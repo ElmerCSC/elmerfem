@@ -328,7 +328,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        PrevLocalDisplacement, SpringCoeff, Indices
   SAVE MAXSTATEV, InitializeStateVars, TotalSol, LocalExternalForce
   SAVE UmatEnergyVar, UmatStressVar, UmatStateVar, UmatEnergy, UmatStress, UmatState, &
-      UmatEnergy0, UmatStress0, UmatInitDone
+      UmatEnergy0, UmatStress0, UmatState0, UmatInitDone
 !-----------------------------------------------------------------------------------------------------
   INTERFACE
     FUNCTION ElastBoundaryResidual( Model,Edge,Mesh,Quant,Perm, Gnorm ) RESULT(Indicator)
@@ -516,6 +516,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        UmatEnergy = 0.0_dp
        UmatStress = 0.0_dp
        UmatState = 0.0_dp
+
        UmatEnergy0 = 0.0_dp
        UmatStress0 = 0.0_dp
        UmatState0 = 0.0_dp
