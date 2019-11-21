@@ -4080,10 +4080,20 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
          "-elem -dofs 1 Kgwh0_22")
-    IF ( CoordinateSystemDimension() ==3) &
-         CALL ListAddString( SolverParams,&
+    CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
-         "-elem -dofs 1 Kgwh0_33")
+         "-elem -dofs 1 Kgwh0_12")
+    IF ( CoordinateSystemDimension() ==3) THEN
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-elem -dofs 1 Kgwh0_33")
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-elem -dofs 1 Kgwh0_13")
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-elem -dofs 1 Kgwh0_23")
+    END IF
     CALL INFO(SolverName,'Added Kgwh0 as variable',Level=1)    
   END IF
   CALL Info( SolverName, 'assignment done',Level=1 )
@@ -4103,7 +4113,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Local variables
   !------------------------------------------------------------------------------
-  LOGICAL :: WriteToFile(8)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
+  LOGICAL :: WriteToFile(11)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
        ElementWiseRockMaterial
   INTEGER :: Active, t, J, RockMaterialID, CurrentValue, NumberOfRockRecords,&
        NumberOfExportedValues=0, DIM
@@ -4128,14 +4138,18 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   SolverParams => GetSolverParams()
   
   IF (FirstTime) THEN
+    DIM=CoordinateSystemDimension()
     WriteAll=ListGetLogical(SolverParams,"Export all",Found)
     IF (WriteAll) THEN
       WriteToFile(1:6)=.TRUE.
-      NumberOfExportedValues=7
-      WriteToFile(7) = .TRUE.
+      NumberOfExportedValues=8
+      WriteToFile(7) = .TRUE. 
+      WriteToFile(8)= .TRUE.
       IF (DIM==3) THEN
-        WriteToFile(8)= .TRUE.
-        NumberOfExportedValues=8
+        WriteToFile(9)= .TRUE.
+        WriteToFile(10)= .TRUE.
+        WriteToFile(11)= .TRUE.
+        NumberOfExportedValues=11
       END IF
     ELSE
       WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)      
@@ -4144,16 +4158,17 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
       WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
       WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
-      NumberOfExportedValues = 0
-      DO CurrentValue=1,6
-        IF (WriteToFile(CurrentValue)) NumberOfExportedValues=NumberOfExportedValues+1
-      END DO
-      IF (WriteToFile(6)) THEN
+      NumberOfExportedValues = 6
+       IF (WriteToFile(6)) THEN
         WriteToFile(7) = .TRUE.
-        NumberOfExportedValues=7
+        WriteToFile(8) = .TRUE. 
+        NumberOfExportedValues=8
         IF (DIM==3) THEN
-          WriteToFile(8)= .TRUE.
-          NumberOfExportedValues=8
+          WriteToFile(9)= .TRUE.
+          WriteToFile(10)= .TRUE.
+          WriteToFile(11)= .TRUE.
+          NumberOfExportedValues=11
+
         END IF
       END IF
     END IF
@@ -4180,9 +4195,15 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
     CASE(7)
       WRITE (ElmntVarName,'(A)') "Kgwh0_22"
     CASE(8)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_12"
+    CASE(9)
       WRITE (ElmntVarName,'(A)') "Kgwh0_33"
+    CASE(10)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_13"
+    CASE(11)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_23"
     END SELECT
-    WRITE (Message,*) 'Writing ', TRIM(ElmntVarName), 'as variable'
+    WRITE (Message,*) 'Writing ', TRIM(ElmntVarName), ' as variable'
     CALL INFO(SolverName,Message,Level=3)
     ElmntVar => VariableGet( Model % Mesh % Variables, ElmntVarName)
     IF (.NOT.ASSOCIATED(ElmntVar)) THEN
@@ -4206,8 +4227,6 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
           ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
           NumberOfRockRecords = &
                ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)         
-           PRINT *, "Kgwh0(1)", GlobalRockMaterial % Kgwh0(1,1,1), &
-             GlobalRockMaterial % Kgwh0(2,2,1), GlobalRockMaterial % Kgwh0(2,3,1)
         ELSE
           NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
         END IF
@@ -4242,14 +4261,20 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
         ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % cs0(RockMaterialID)        
       CASE(6)
         ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,1,RockMaterialID)
-        PRINT *, "Kgwh0(", RockMaterialID, ")", GlobalRockMaterial % Kgwh0(1,1,RockMaterialID), &
-             GlobalRockMaterial % Kgwh0(2,2,RockMaterialID), GlobalRockMaterial % Kgwh0(3,3,RockMaterialID), &
-             GlobalRockMaterial % etak(RockMaterialID), GlobalRockMaterial % aas(0,RockMaterialID),&
-             GlobalRockMaterial % aas(1,RockMaterialID), GlobalRockMaterial % aas(2,RockMaterialID)
+!!$        PRINT *, "Kgwh0(", RockMaterialID, ")", GlobalRockMaterial % Kgwh0(1,1,RockMaterialID), &
+!!$             GlobalRockMaterial % Kgwh0(2,2,RockMaterialID), GlobalRockMaterial % Kgwh0(3,3,RockMaterialID), &
+!!$             GlobalRockMaterial % etak(RockMaterialID), GlobalRockMaterial % aas(0,RockMaterialID),&
+!!$             GlobalRockMaterial % aas(1,RockMaterialID), GlobalRockMaterial % aas(2,RockMaterialID)
       CASE(7)
         ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,2,RockMaterialID)
       CASE(8)
-        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,2,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,2,RockMaterialID)
+      CASE(9)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(3,3,RockMaterialID)
+      CASE(10)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,3,RockMaterialID)
+      CASE(11)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,3,RockMaterialID)
     END SELECT
     END DO
   END DO
