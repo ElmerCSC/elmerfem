@@ -3504,6 +3504,8 @@ CONTAINS
     !set partitions to active, so variable can be -global -nooutput
     CALL ParallelActive(.TRUE.) 
     !MPI_BSend buffer issue in this call to InterpolateMeshToMesh
+    !Free quadrant tree to ensure its rebuilt in InterpolateMeshToMesh (bug fix)
+    CALL FreeQuadrantTree(OldMesh % RootQuadrant)
     CALL InterpolateMeshToMesh( OldMesh, NewMesh, OldMesh % Variables, UnfoundNodes=UnfoundNodes)
     IF(ANY(UnfoundNodes)) THEN
        PRINT *, ParEnv % MyPE, ' missing ', COUNT(UnfoundNodes),' out of ',SIZE(UnfoundNodes),&
