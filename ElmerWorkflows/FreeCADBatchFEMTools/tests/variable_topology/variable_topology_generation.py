@@ -53,42 +53,7 @@ from FreeCADBatchFEMTools import run_elmergrid
 from FreeCADBatchFEMTools import remove_compare_faces_from_list
 from FreeCADBatchFEMTools import faces_with_vertices_in_symmetry_plane
 from FreeCADBatchFEMTools import create_xor_object
-
-def reduce_half_symmetry(solid, name, planes=None, reversed_direction = False):
-    doc.recompute()
-    if planes==None: return solid
-    plane = planes.pop()
-    doc.recompute()
-    reduced_name = name + '_' + plane
-    tool_box = doc.addObject("Part::Box","CutBox"+reduced_name)
-    x = 10. * solid.Shape.BoundBox.XLength
-    y = 10. * solid.Shape.BoundBox.YLength
-    z = 10. * solid.Shape.BoundBox.ZLength
-    center=solid.Shape.CenterOfMass
-    tool_box.Length = x
-    tool_box.Width = y 
-    tool_box.Height = z
-    if plane == 'zx':
-        tool_box.Placement = App.Placement(App.Vector(center.x-x/2.,0,center.z-z/2.),App.Rotation(App.Vector(0,0,1),0))
-    elif plane == 'xy':
-        tool_box.Placement = App.Placement(App.Vector(center.x-x/2.,center.y-y/2.,0),App.Rotation(App.Vector(0,0,1),0))
-    elif plane == 'yz':
-        tool_box.Placement = App.Placement(App.Vector(0,center.y-y/2.,center.z-z/2.),App.Rotation(App.Vector(0,0,1),0))
-    else:
-        raise ValueError("Wrong keyword for plane variable, should be: zx, xy or yz!")
-    
-    if reversed_direction:
-        half_symmetry = doc.addObject("Part::MultiCommon",reduced_name)
-        half_symmetry.Shapes = [solid, tool_box]
-    else:
-        half_symmetry = doc.addObject("Part::Cut", reduced_name)
-        half_symmetry.Base = solid
-        half_symmetry.Tool = tool_box
-
-    if len(planes) > 0:
-        return reduce_half_symmetry(half_symmetry, reduced_name, planes, reversed_direction)
-
-    return half_symmetry
+from FreeCADBatchFEMTools import reduce_half_symmetry
 
 def create_bar(box_size, bar_lenght, center, name, symmetry_planes=None, mesh_size=None):
     bar_obj = doc.addObject('Part::Box', name+'_obj')
@@ -98,7 +63,7 @@ def create_bar(box_size, bar_lenght, center, name, symmetry_planes=None, mesh_si
     bar_obj.Placement.Base = FreeCAD.Vector(center)- FreeCAD.Vector(box_size/2,0,box_size/2)
     doc.recompute()
      
-    bar_obj = reduce_half_symmetry(bar_obj, name, planes=symmetry_planes)
+    bar_obj = reduce_half_symmetry(bar_obj, name, App, doc, planes=symmetry_planes)
 
     doc.recompute()
     face_picks=[]
@@ -124,7 +89,7 @@ def create_air(bars, x, y, z, name, symmetry_planes=None, mesh_size=None):
     air_with_bars.Width = y
     air_with_bars.Length = x
     air_with_bars.Placement.Base = FreeCAD.Vector(-x/2,-y/2,-z/2)
-    air_with_bars = reduce_half_symmetry(air_with_bars, name, planes=symmetry_planes)
+    air_with_bars = reduce_half_symmetry(air_with_bars, name, App, doc, planes=symmetry_planes)
 
     bar_objs = [bar['main object'] for bar in bars]
     solid_objects = [air_with_bars]+bar_objs
