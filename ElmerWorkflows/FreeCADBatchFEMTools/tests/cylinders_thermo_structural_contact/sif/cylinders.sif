@@ -109,13 +109,26 @@ Boundary Condition 2
   Name = cyl_yz
   Target Boundaries(2) = $ cyl1_yz cyl2_yz
   Displacement 1 = 0.0
-  Temperature = 300.0
+  Temperature = 350.0
 End
 Boundary Condition 3
   Name = cyl_zx
   Target Boundaries(2) = $ cyl1_zx cyl2_zx
   Displacement 2 = 0.0
-  Temperature = 300.0
+  Temperature = 400.0
 End
+Boundary Condition 4
+  Name = cyl1_outer
+  Target Boundaries(1) = $ cyl1_outer
+  Displacement 2 = 0.0
+  Temperature = 400.0
+End
+Boundary Condition 5
+  Name = cyl1_outer
+  Target Boundaries(1) = $ cyl2_inner
+  Displacement 2 = 0.0
+  Temperature = 500.0
+End
+
 Solver 1 :: Reference Norm = 5.38E+02
 Solver 1 :: Reference Norm Tolerance = 1.0E-3

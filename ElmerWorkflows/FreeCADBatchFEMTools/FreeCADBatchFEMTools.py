@@ -818,6 +818,12 @@ def add_symmetry_plane_faces_in_entity_list(entity_list, geom_object, plane, mes
     faces_in_symmetry_plane = faces_with_vertices_in_symmetry_plane(geom_object.Shape.Faces, plane)
     add_geom_obj_list_in_entitylist(entity_list, plane, faces_in_symmetry_plane)
 
+def get_entitylist_faces(entity_list):
+    faces = []
+    for entity in entity_list:
+        faces.append(entity['geometric object'])
+    return faces
+
 def create_entities_dict(name, face_entity_list, solid_entity_list, main_object=None):
     """
     Helper method for creating an entities dictionary.

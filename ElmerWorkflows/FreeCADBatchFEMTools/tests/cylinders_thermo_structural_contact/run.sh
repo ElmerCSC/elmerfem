@@ -7,4 +7,4 @@
 FreeCAD -c ${PWD}/cylinders.py
 ElmerGrid 8 2 cylinders.unv -autoclean
 ElmerSolver
-rm cylinders TEST.PASSED -r
+#rm cylinders TEST.PASSED -r

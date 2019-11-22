@@ -17,6 +17,7 @@ script_directory = os.path.dirname(__file__)
 
 def cylinder(r1, r2, h, symmetry_planes=None, name='cyl', mesh_size=10.):
     if symmetry_planes == None: symmetry_planes = ['yz','zx', 'xy']
+    planes_original = list(symmetry_planes)
     #if symmetry_planes == None: symmetry_planes = ['yz']
     #if symmetry_planes == None: symmetry_planes = ['zx']
     #if symmetry_planes == None: symmetry_planes = ['xy']
@@ -45,10 +46,17 @@ def cylinder(r1, r2, h, symmetry_planes=None, name='cyl', mesh_size=10.):
     # create entities dict
     #face_picks = [('alpha0', 0), ('b2', 1), ('b3', 2), ('b4', 3), ('b5', 4), ('b6', 5)]
     #faces = FBFT.pick_faces_from_geometry(cyl, face_picks)
-    faces = []
-    FBFT.add_symmetry_plane_faces_in_entity_list(faces, cyl, 'xy')
-    FBFT.add_symmetry_plane_faces_in_entity_list(faces, cyl, 'yz')
-    FBFT.add_symmetry_plane_faces_in_entity_list(faces, cyl, 'zx')
+    #faces = []
+    #for plane in planes_original:
+        #FBFT.add_symmetry_plane_faces_in_entity_list(faces, cyl, plane)
+
+    #if symmetry_planes == None: symmetry_planes = ['yz']
+    #if symmetry_planes == None: symmetry_planes = ['zx']
+    #if symmetry_planes == None: symmetry_planes = ['xy']
+
+    face_picks = [('outer', 0), ('yz', 1), ('xy', 2), ('zx', 3), ('end', 4), ('inner', 5)]
+    faces = FBFT.pick_faces_from_geometry(cyl, face_picks)
+
     solids = []
     FBFT.add_entity_in_list(solids, name, cyl, {'mesh size': mesh_size})
     entities_dict = FBFT.create_entities_dict(name, faces, solids, cyl)
