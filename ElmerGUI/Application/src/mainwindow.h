@@ -239,6 +239,12 @@ private slots:
   void viewNormalModeSlot();
 
   void menuBarTriggeredSlot(QAction*);
+  
+  void loadRecentProject0();
+  void loadRecentProject1();
+  void loadRecentProject2();
+  void loadRecentProject3();
+  void loadRecentProject4(); 
 
 private:
   // widgets and helpers:
@@ -265,8 +271,14 @@ private:
   void saveProjectContents(QDomDocument, QString, QVector<DynamicEditor*>&);
   void loadProjectContents(QDomElement, QVector<DynamicEditor*>&, QString);
   QString getDefaultDirName();
+  void loadProject(QString);
+  void loadSettings();
+  void saveSettings();
+  bool loadExtraSolver(QString); // load the solver with specified solver name, Nov 2019 by TS
+  void checkAndLoadExtraSolvers(QFile*);
 
   QMenu *fileMenu;                // File menu
+  QMenu *recentProjectsMenu;      // File -> Recent projects menu
   QMenu *modelMenu;               // Model menu
   QMenu *equationMenu;            // Model -> Equation menu
   QMenu *materialMenu;            // Model -> Material menu
@@ -485,6 +497,10 @@ private:
 //  architectures and it's small so there's no marked adverse effects
   QString homePath;
 //  #endif
+
+  // variables and functions for "Recent projects..." menu
+  QStringList recentProject;
+ 	void addRecentProject(QString, bool);  
 };
 
 #endif // MAINWINDOW_H
