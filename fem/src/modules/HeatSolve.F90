@@ -596,7 +596,7 @@ BLOCK
          gEmissivity = 0._dp
          IF (ASSOCIATED(BC)) NodalEmissivity(1:nr) = GetReal(BC,'Emissivity',Found)
          IF (.NOT. Found) THEN
-           NodalEmissivity(1:nr) = GetParentMatProp('Emissivity',Element)
+           NodalEmissivity(1:nr) = GetParentMatProp('Emissivity',Element,Found)
          END IF
          gEmissivity = SUM(NodalEmissivity(1:nr))/nr
          Emiss(j) = gEmissivity
