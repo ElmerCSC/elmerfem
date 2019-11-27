@@ -580,26 +580,28 @@
      IF(isRadiation) THEN
 BLOCK
        TYPE(ValueList_t), POINTER :: BC
-       INTEGER :: bindex, nr, nb
-       REAL(KIND=dp) :: gEmissivity
+       INTEGER :: bindex, nb
 
        nb = Solver % Mesh % NumberOfBoundaryElements
        ALLOCATE(Areas(nb), Emiss(nb))
+       Areas=0; Emiss=0
+
        DO j=1,nb
          bindex = j + Solver % Mesh % NumberOfBulkElements
          Element => Solver % Mesh % Elements(bindex)
-         nr = Element % Type % NumberOfNodes
-         Areas(j) = ElementArea( Solver % Mesh, Element, nr )
 
          BC => GetBC(Element)
-         Found = .FALSE.
-         gEmissivity = 0._dp
-         IF (ASSOCIATED(BC)) NodalEmissivity(1:nr) = GetReal(BC,'Emissivity',Found)
-         IF (.NOT. Found) THEN
-           NodalEmissivity(1:nr) = GetParentMatProp('Emissivity',Element,Found)
+         IF (ASSOCIATED(BC)) THEN
+           IF (ListCheckPresent(BC, 'Radiation')) THEN
+             n = GetElementNOFNodes(Element)
+             Areas(j) = ElementArea( Solver % Mesh, Element, n )
+
+             NodalEmissivity(1:n) = GetReal(BC,'Emissivity',Found)
+             IF (.NOT. Found) &
+               NodalEmissivity(1:n) = GetParentMatProp('Emissivity',Element)
+             Emiss(j) = SUM(NodalEmissivity(1:n)) / n
+           END IF
          END IF
-         gEmissivity = SUM(NodalEmissivity(1:nr))/nr
-         Emiss(j) = gEmissivity
        END DO
 END BLOCK
      END IF
@@ -1587,7 +1589,7 @@ CONTAINS
 !         Text = ComputeRadiationCoeff(Model,Solver % Mesh,Element,j) / ( Area )
 
           bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
-          Text = Areas(bindex) * Emiss(bindex) * ABS(fact(j)) / Area
+          Text = Areas(bindex) * Emiss(bindex) * ABS(Fact(j)) / Area
 
           Asum = Asum + Text
 
@@ -1605,7 +1607,7 @@ CONTAINS
           IF(j <= ImplicitFactors) THEN
             
             S = (SUM( Temperature( TempPerm( RadiationElement % &
-                NodeIndexes))**4 )/k )**(1.0d0/4.0d0)
+                NodeIndexes))**4 )/k )**(1._dp/4._dp)
 !------------------------------------------------------------------------------
 !          Linearization of the G_jiT^4_j term
 !------------------------------------------------------------------------------
