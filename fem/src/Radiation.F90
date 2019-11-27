@@ -53,7 +53,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    FUNCTION ComputeRadiationLoad( Model, Mesh, Element, Temperature, &
-                 Reorder, Emissivity, Areas, Emiss, AngleFraction) RESULT(T)
+                 Reorder, Emissivity, AngleFraction, Areas, Emiss ) RESULT(T)
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Model_t) :: Model

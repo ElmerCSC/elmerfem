@@ -1562,7 +1562,7 @@ CONTAINS
       IF ( .NOT. NewtonLinearization ) THEN
 
         Text = ComputeRadiationLoad( Model, Solver % Mesh, Element, &
-           Temperature, TempPerm, Emissivity, Areas, Emiss, AngleFraction)
+           Temperature, TempPerm, Emissivity, AngleFraction, Areas, Emiss )
 
       ELSE   !  Full Newton-Raphson solver
 !------------------------------------------------------------------------------
