@@ -1746,8 +1746,17 @@ CONTAINS
      IF(CalculateStrains) THEN
        NodalStrain  = 0.0d0
      END IF
-     CALL DefaultInitialize()
 
+     !CALL DefaultInitialize()
+     
+     CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
+     IF( ALLOCATED(Solver % Matrix % ConstrainedDOF) ) THEN
+       Solver % Matrix % ConstrainedDOF = .FALSE.
+     END IF       
+     IF( ALLOCATED(Solver % Matrix % Dvalues) ) THEN
+       Solver % Matrix % Dvalues = 0._dp
+     END IF
+     
      DO elem = 1,Solver % NumberOfActiveElements
         Element => GetActiveElement(elem, Solver)
         n  = GetElementNOFNodes()
