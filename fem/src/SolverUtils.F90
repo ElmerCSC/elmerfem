@@ -12559,6 +12559,8 @@ END FUNCTION SearchNodeL
             'Feti solver available only in parallel.')
       CASE('block')
         CALL BlockSolveExt( A, x, b, Solver )
+      CASE('amgx')
+        CALL AMGXSolver( A, x, b, Solver )
       CASE DEFAULT
         CALL DirectSolver( A, x, b, Solver )        
       END SELECT
@@ -12669,7 +12671,45 @@ END FUNCTION SearchNodeL
        END IF
     END IF
 
+!------------------------------------------------------------------------------
   END SUBROUTINE SolveLinearSystem
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AMGXSolver( A, x, b, Solver )
+!------------------------------------------------------------------------------
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp) :: x(:), b(:)
+
+    INTERFACE
+      SUBROUTINE AMGSolve(AMGX, n, rows, cols, vals, b, x, config)
+         USE Types
+
+         INTEGER(KIND=C_INTPTR_T) :: AMGX
+         CHARACTER(*) :: config
+         INTEGER :: rows(*), cols(*)
+         REAL(KIND=dp) :: vals(*), b(*), x(*)
+      END SUBROUTINE AMGSolve
+    END INTERFACE
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: config
+    LOGICAL :: found
+    INTEGER :: nonlin_update
+
+    nonlin_update = 0
+    IF ( ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
+      nonlin_update = 1;
+
+    config = ListGetString( Solver % Values, 'AMGX Config')
+
+    A % Rows = A % Rows - 1; A % Cols = A % Cols - 1
+    CALL AMGXSolve( A % AMGX, A % NumberOfRows, A % Rows, A % Cols, &
+         A % Values, b, x, nonlin_update, TRIM(config)//CHAR(0) )
+                                  
+    A % rows = A % rows + 1; A % Cols = A % Cols + 1
+!------------------------------------------------------------------------------
+  END SUBROUTINE AMGXSolver
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -12677,6 +12717,7 @@ END FUNCTION SearchNodeL
 !> be solving for the residual Adx=b-Ax0 where dx=x-x0.
 !------------------------------------------------------------------------------
   SUBROUTINE LinearSystemResidual( A, b, x, r )
+!------------------------------------------------------------------------------
 
     REAL(KIND=dp) CONTIG :: b(:)   
     REAL(KIND=dp) CONTIG :: x(:)   
@@ -12698,8 +12739,9 @@ END FUNCTION SearchNodeL
     DO i=1,n
       r(i) = b(i) - r(i)
     END DO
-
+!------------------------------------------------------------------------------
   END SUBROUTINE LinearSystemResidual
+!------------------------------------------------------------------------------
 
 
 
