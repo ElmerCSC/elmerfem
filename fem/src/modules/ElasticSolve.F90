@@ -3398,7 +3398,7 @@ CONTAINS
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
 
     INTEGER, POINTER :: Permutation(:), Indices(:)
-    INTEGER :: dim, elem, n, nd, i, k, l, p, q, Ind(6), StressDim
+    INTEGER :: dim, elem, n, nd, i, k, l, p, q, Ind(6), StressDim, StressDofs
     INTEGER :: NStateV, ipindex
 
     REAL(KIND=dp), POINTER :: StressTemp(:)
@@ -3468,14 +3468,15 @@ CONTAINS
        CALL ListSetNameSpace('stress:')
     END IF
 
+    StressDofs = UMatStressVar % Dofs
     Model % Solver => StSolver
     NodalStress = 0.0d0
     SForceG = 0.0d0
 
     IF (AxialSymmetry) THEN
-       Ind = (/ 4, 5, 6, 8, 7, 9 /)
+       Ind = (/ 1, 2, 3, 5, 4, 6 /)
     ELSE
-       Ind = (/ 4, 5, 6, 7, 9, 8 /)
+       Ind = (/ 1, 2, 3, 4, 6, 5 /)
     END IF
 
     CALL DefaultInitialize()
@@ -3506,7 +3507,7 @@ CONTAINS
 
        DO t=1,IntegStuff % n
 
-         ipindex = GetIpIndex( t, usolver=solver, element=element, ipvar = UmatEnergyVar )   
+         ipindex = GetIpIndex( t, usolver=solver, element=element, ipvar = UmatStressVar )   
 
           u = IntegStuff % u(t)
           v = IntegStuff % v(t)
@@ -3523,7 +3524,7 @@ CONTAINS
 
              DO i=1,StressDim
                SForce(StressDim*(p-1)+i) = SForce(StressDim*(p-1)+i) + Weight * &
-                     UMatStress(StressDim*(ipIndex-1)+Ind(i)-3) * Basis(p)
+                     UMatStress(StressDofs*(ipIndex-1)+Ind(i)) * Basis(p)
              END DO
           END DO
        END DO
