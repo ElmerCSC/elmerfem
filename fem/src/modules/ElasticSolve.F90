@@ -203,6 +203,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
       NextFreeKeyword('Exported Variable ',SolverParams), &
       '-dofs 3 -ip UmatEnergy' )
 
+  Nstate = 0
   DO i=1,Model % NumberOfMaterials
     Material => Model % Materials(i) % Values
     IF( ListCheckPresent( Material,'UMAT Subroutine') ) THEN
@@ -211,18 +212,21 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
           'Number of Material Constants for UMAT must be specified')
     END IF
   END DO
-
-  CALL Info('Caller','Maximum number of state variables in UMAT:'//TRIM(I2S(Nstate)),Level=7)
+  
+  CALL Info(Caller,'Maximum number of state variables in UMAT: '//TRIM(I2S(Nstate)),Level=7)
   
   ! Create variables for some state variables of a user-defined material model (UMAT):
-  OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
-  IF (OutputStateVars) THEN
-    str = '-dofs '//TRIM(I2S(NState))//' -ip UmatState'
-  ELSE
-    str = '-nooutput -dofs '//TRIM(I2S(NState))//' -ip UmatState'
+  ! Note that Elmer does not like length of zero for the variables.
+  IF( NState > 0 ) THEN
+    OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
+    IF (OutputStateVars) THEN
+      str = '-dofs '//TRIM(I2S(NState))//' -ip UmatState'
+    ELSE
+      str = '-nooutput -dofs '//TRIM(I2S(NState))//' -ip UmatState'
+    END IF
+    CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), str )
   END IF
-  CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), str )
-
+      
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init
 !------------------------------------------------------------------------------
@@ -499,42 +503,48 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          CALL Fatal(Caller,'Could not find variable "UmatStress"')
        END IF
 
-       UmatStateVar => VariableGet( Mesh % Variables, 'UmatState')
-       IF(.NOT. ASSOCIATED( UmatStateVar ) ) THEN
-         CALL Fatal(Caller,'Could not find variable "UmatState"')
-       END IF
-       MaxStateV = UmatStateVar % Dofs
-
        UmatEnergy => UmatEnergyVar % Values
        UmatStress => UmatStressVar % Values                
-       UmatState => UmatStateVar % Values
+
+       UmatEnergy = 0.0_dp
+       UmatStress = 0.0_dp
+
+       ! ----------------------------------------------------------------------
+       ! We also create a similar variable with suffix "0" which keeps the
+       ! the state variables that describe the material state corresponding to 
+       ! the converged solution at the previous time level m. The right values
+       ! of the state variables corresponding to the initial state can be found
+       ! by making an extra UMAT call. Whether this call is needed is indicated
+       ! by the last extra entry: a value < 0 means that the state variables have
+       ! not yet been initiated by the extra call.
+       ! ----------------------------------------------------------------------
 
        ALLOCATE( UmatEnergy0( SIZE( UmatEnergy ) ) ) 
        ALLOCATE( UmatStress0( SIZE( UmatStress ) ) ) 
-       ALLOCATE( UmatState0( SIZE( UmatState ) ) ) 
-       
-       UmatEnergy = 0.0_dp
-       UmatStress = 0.0_dp
-       UmatState = 0.0_dp
-
+              
        UmatEnergy0 = 0.0_dp
        UmatStress0 = 0.0_dp
-       UmatState0 = 0.0_dp
+       
+       UmatStateVar => VariableGet( Mesh % Variables, 'UmatState')
+       IF( ASSOCIATED( UmatStateVar ) ) THEN
+         MaxStateV = UmatStateVar % Dofs
+         CALL Info(Caller,'Maximum number of state variables in UMAT: '&
+             //TRIM(I2S(MaxStateV)),Level=7)
+         UmatState => UmatStateVar % Values         
+         ALLOCATE( UmatState0( SIZE( UmatState ) ) )          
+         UmatState = 0.0_dp         
+         UmatState0 = 0.0_dp
+       ELSE
+         CALL Info(Caller,'Could not find variable "UmatState", assuming no state variable!')
+         MaxStateV = 0
+         UmatState => NULL()
+         UmatState0 => NULL()
+       END IF
       
-        ! ----------------------------------------------------------------------
-        ! We also create a similar variable with suffix "0" which keeps the
-        ! the state variables that describe the material state corresponding to 
-        ! the converged solution at the previous time level m. The right values
-        ! of the state variables corresponding to the initial state can be found
-        ! by making an extra UMAT call. Whether this call is needed is indicated
-        ! by the last extra entry: a value < 0 means that the state variables have
-        ! not yet been initiated by the extra call.
-        ! ----------------------------------------------------------------------
        ALLOCATE( UmatInitDone( SIZE( UmatEnergy ) / 3 ) )
        UmatInitDone = .FALSE.
        
-       InitializeStateVars = GetLogical(SolverParams, 'Initialize State Variables', &
-           GotIt)
+       InitializeStateVars = GetLogical(SolverParams, 'Initialize State Variables',GotIt)
      END IF
 
      !----------------------------------------------------------------
@@ -677,10 +687,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ELSE IF( Scanning ) THEN
     previ = 1
   END IF
-
   
   time = GetTime()
-  PRINT *,'time',time  
   
   CALL DefaultStart()
 
@@ -1208,19 +1216,18 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        ELSE
          NonlinRes = SQRT(SUM(StiffMatrix % RHS(:)**2)) / NonlinRes0
        END IF
-       WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
-           Iter-1, NonLinRes
-       CALL Info('ElasticitySolver', Message, Level=3)        
+       WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
+           //TRIM(I2S(Iter-1))//': ',NonLinRes
+       CALL Info('ElasticitySolver', Message, Level=5)        
 
        IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
-         WRITE(Message,'(a)') 'Nonlinear iteration is terminated succesfully'
-         CALL Info('ElasticitySolver', Message, Level=3)
+         CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
 
          ! Save the state variables corresponding to the converged nonlinear
          ! solution to the array holding the previous solution state:
          UmatEnergy0 = UmatEnergy
          UmatStress0 = UmatStress
-         UmatState0 = UmatState
+         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
          
          Displacement(:) = TotalSol(:)
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
@@ -1241,13 +1248,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        Displacement(:) = TotalSol(:) + Displacement(:)
        IF (iter==NonlinearIter) THEN
          WRITE(Message,'(a)') 'The maximum of nonlinear iterations reached: Terminating...'
-         CALL Info('ElasticitySolver', Message, Level=3)        
+         CALL Info('ElasticitySolver', Message, Level=5)        
 
          ! Save the state variables corresponding to the converged nonlinear
          ! solution to the array holding the previous solution state:
          UmatEnergy0 = UmatEnergy
          UmatStress0 = UmatStress
-         UmatState0 = UmatState
+         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
          
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
          EXIT
@@ -1687,6 +1694,19 @@ CONTAINS
       dStran(5) = 2.0d0 * (Strain(1,3) - Strain0(1,3))
       dStran(6) = 2.0d0 * (Strain(2,3) - Strain0(2,3))
       
+      ! -----------------------------------------------------------------------------
+      ! Get the state variables and 
+      ! the stress as specified at the previous time/load level for converged solution:
+      ! -----------------------------------------------------------------------------
+      EnergyElast = UmatEnergy0(3*(Ipindex-1)+1)
+      EnergyPlast = UmatEnergy0(3*(Ipindex-1)+2)
+      EnergyVisc = UmatEnergy0(3*(Ipindex-1)+3)
+
+      StressVec(1:ntens) = UmatStress0(ntens*(Ipindex-1)+1:ntens*IpIndex)
+      IF( NStateV > 0 ) THEN
+        StateV(1:NstateV) = UmatState0(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV)
+      END IF
+        
       ! ----------------------------------------------------------------------------
       ! Obtain the Cauchy stress and the stress response function derivative 
       ! via UMAT interface. If the state variables have not been initiated to correspond
@@ -1694,14 +1714,7 @@ CONTAINS
       ! an extra UMAT call to obtain the state variables if requested in the sif file.
       ! ----------------------------------------------------------------------------
       INITIALIZE_STATE_VARIABLES: IF ( InitializeStateVars .AND. .NOT. UmatInitDone(ipIndex ) ) THEN
-        
-        EnergyElast = UmatEnergy0(3*(Ipindex-1)+1)
-        EnergyPlast = UmatEnergy0(3*(Ipindex-1)+2)
-        EnergyVisc = UmatEnergy0(3*(Ipindex-1)+3)
-
-        StressVec(1:ntens) = UmatStress0(ntens*(Ipindex-1)+1:ntens*IpIndex)
-        StateV(1:NstateV) = UmatState0(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV)
-        
+                
         ! We insert the identity tensor as the deformation gradient so the initial solution 
         ! should be the zero-displacement solution:
         stran = 0.0d0
@@ -1718,23 +1731,16 @@ CONTAINS
         END IF
 
         ! Update the state variables storage (energy variables are not updated):
-        UmatState0(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NstateV)        
+        IF( NStateV > 0 ) THEN
+          UmatState0(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NstateV)        
+        END IF
+          
         UmatInitDone(ipindex) = .TRUE.
       END IF INITIALIZE_STATE_VARIABLES
 
       ! -----------------------------------------------------------------------------
-      ! Perform the actual UMAT call. Before this, get the state variables and 
-      ! the stress as specified at the previous time/load level for converged solution:
-      ! -----------------------------------------------------------------------------
-      EnergyElast = UmatEnergy0(3*(Ipindex-1)+1)
-      EnergyPlast = UmatEnergy0(3*(Ipindex-1)+2)
-      EnergyVisc = UmatEnergy0(3*(Ipindex-1)+3)
-
-      StressVec(1:ntens) = UmatStress0(ntens*(Ipindex-1)+1:ntens*IpIndex)
-
-      StateV(1:NStateV) = UmatState0(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV)
-      
-      
+      ! Perform the actual UMAT call.
+      ! -----------------------------------------------------------------------------      
       CALL UMATusersubrtn(UMATSubrtn, StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
           EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
           stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
@@ -1750,9 +1756,10 @@ CONTAINS
       UmatEnergy(3*(Ipindex-1)+3) = EnergyVisc
       
       UmatStress(ntens*(Ipindex-1)+1:ntens*IpIndex) = StressVec(1:ntens)
-
-      UmatState(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NStateV) 
-      
+      IF( NStateV > 0 ) THEN
+        UmatState(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NStateV) 
+      END IF
+        
       STIFFMATRIX_FOR_CHOSEN_STRAIN: IF (.NOT. LargeDeflection) THEN
         ! ----------------------------------------
         ! Create the strain-displacement matrix B:
@@ -3307,28 +3314,28 @@ CONTAINS
        IF (AxialSymmetry) THEN
           SELECT CASE(i)
           CASE(1)
-             CALL Info(Caller,'Strain Component 11',Level=3)
+             CALL Info(Caller,'Strain Component 11',Level=5)
           CASE(2)
-             CALL Info(Caller,'Strain Component 33',Level=3)
+             CALL Info(Caller,'Strain Component 33',Level=5)
           CASE(3)
-             CALL Info(Caller,'Strain Component 22',Level=3)                
+             CALL Info(Caller,'Strain Component 22',Level=5)                
           CASE(4)
-             CALL Info(Caller,'Strain Component 12',Level=3)              
+             CALL Info(Caller,'Strain Component 12',Level=5)              
           END SELECT
        ELSE
           SELECT CASE(i)
           CASE(1)
-             CALL Info(Caller,'Strain Component 11',Level=3)
+             CALL Info(Caller,'Strain Component 11',Level=5)
           CASE(2)
-             CALL Info(Caller,'Strain Component 22',Level=3)
+             CALL Info(Caller,'Strain Component 22',Level=5)
           CASE(3)
-             CALL Info(Caller,'Strain Component 33',Level=3)                
+             CALL Info(Caller,'Strain Component 33',Level=5)                
           CASE(4)
-             CALL Info(Caller,'Strain Component 12',Level=3)
+             CALL Info(Caller,'Strain Component 12',Level=5)
           CASE(5)
-             CALL Info(Caller,'Strain Component 23',Level=3)                
+             CALL Info(Caller,'Strain Component 23',Level=5)                
           CASE(6)
-             CALL Info(Caller,'Strain Component 13',Level=3)
+             CALL Info(Caller,'Strain Component 13',Level=5)
           END SELECT
        END IF
 
@@ -3337,7 +3344,7 @@ CONTAINS
 
        res = DefaultSolve()
        WRITE( Message, '(a,g15.8)') 'Solution Norm:', ComputeNorm(StSolver,n)
-       CALL Info( 'GenerateStrainVariable', Message, Level=3 )
+       CALL Info( 'GenerateStrainVariable', Message, Level=5 )
 
        DO l=1,SIZE( Permutation )
           IF ( Permutation(l) <= 0 ) CYCLE
@@ -3449,7 +3456,7 @@ CONTAINS
        ALLOCATE( StSolver % Matrix % RHS(StSolver % Matrix % NumberOfRows) )
        StSolver % Matrix % Comm = Solver % Matrix % Comm      
 
-       IF (AxialSymmetry) THEN
+       IF (AxialSymmetry .OR. dim == 2 ) THEN
           StressDim = 4
        ELSE
           StressDim = 6
@@ -3561,28 +3568,28 @@ CONTAINS
        IF (AxialSymmetry) THEN
           SELECT CASE(i)
           CASE(1)
-             CALL Info(Caller,'Stress Component 11',Level=3)
+             CALL Info(Caller,'Stress Component 11',Level=5)
           CASE(2)
-             CALL Info(Caller,'Stress Component 33',Level=3)
+             CALL Info(Caller,'Stress Component 33',Level=5)
           CASE(3)
-             CALL Info(Caller,'Stress Component 22',Level=3)                
+             CALL Info(Caller,'Stress Component 22',Level=5)                
           CASE(4)
-             CALL Info(Caller,'Stress Component 12',Level=3)              
+             CALL Info(Caller,'Stress Component 12',Level=5)              
           END SELECT
        ELSE
           SELECT CASE(i)
           CASE(1)
-             CALL Info(Caller,'Stress Component 11',Level=3)
+             CALL Info(Caller,'Stress Component 11',Level=5)
           CASE(2)
-             CALL Info(Caller,'Stress Component 22',Level=3)
+             CALL Info(Caller,'Stress Component 22',Level=5)
           CASE(3)
-             CALL Info(Caller,'Stress Component 33',Level=3)                
+             CALL Info(Caller,'Stress Component 33',Level=5)                
           CASE(4)
-             CALL Info(Caller,'Stress Component 12',Level=3)
+             CALL Info(Caller,'Stress Component 12',Level=5)
           CASE(5)
-             CALL Info(Caller,'Stress Component 23',Level=3)                
+             CALL Info(Caller,'Stress Component 23',Level=5)                
           CASE(6)
-             CALL Info(Caller,'Stress Component 13',Level=3)
+             CALL Info(Caller,'Stress Component 13',Level=5)
           END SELECT
        END IF
 
@@ -3591,7 +3598,7 @@ CONTAINS
 
        res = DefaultSolve()
        WRITE( Message, '(a,g15.8)') 'Solution Norm:', ComputeNorm(StSolver,n)
-       CALL Info( 'GenerateStressVariable', Message, Level=3 )
+       CALL Info( 'GenerateStressVariable', Message, Level=5 )
 
        DO l=1,SIZE( Permutation )
           IF ( Permutation(l) <= 0 ) CYCLE
@@ -4052,28 +4059,28 @@ CONTAINS
           IF (AxialSymmetry) THEN
              SELECT CASE(i)
              CASE(1)
-                CALL Info(Caller,'Strain Component 11',Level=3)
+                CALL Info(Caller,'Strain Component 11',Level=5)
              CASE(2)
-                CALL Info(Caller,'Strain Component 33',Level=3)
+                CALL Info(Caller,'Strain Component 33',Level=5)
              CASE(3)
-                CALL Info(Caller,'Strain Component 22',Level=3)                
+                CALL Info(Caller,'Strain Component 22',Level=5)                
              CASE(4)
-                CALL Info(Caller,'Strain Component 12',Level=3)              
+                CALL Info(Caller,'Strain Component 12',Level=5)              
              END SELECT
           ELSE
              SELECT CASE(i)
              CASE(1)
-                CALL Info(Caller,'Strain Component 11',Level=3)
+                CALL Info(Caller,'Strain Component 11',Level=5)
              CASE(2)
-                CALL Info(Caller,'Strain Component 22',Level=3)
+                CALL Info(Caller,'Strain Component 22',Level=5)
              CASE(3)
-                CALL Info(Caller,'Strain Component 33',Level=3)                
+                CALL Info(Caller,'Strain Component 33',Level=5)                
              CASE(4)
-                CALL Info(Caller,'Strain Component 12',Level=3)
+                CALL Info(Caller,'Strain Component 12',Level=5)
              CASE(5)
-                CALL Info(Caller,'Strain Component 23',Level=3)                
+                CALL Info(Caller,'Strain Component 23',Level=5)                
              CASE(6)
-                CALL Info(Caller,'Strain Component 13',Level=3)
+                CALL Info(Caller,'Strain Component 13',Level=5)
              END SELECT
           END IF
 
@@ -4082,7 +4089,7 @@ CONTAINS
 
           res = DefaultSolve()
           WRITE( Message, '(a,g15.8)') 'Solution Norm:', ComputeNorm(StSolver,n)
-          CALL Info( 'ComputeStressAndStrain', Message, Level=3 )
+          CALL Info( 'ComputeStressAndStrain', Message, Level=5 )
 
           DO l=1,SIZE( Permutation )
              IF ( Permutation(l) <= 0 ) CYCLE
@@ -4097,28 +4104,28 @@ CONTAINS
           IF (AxialSymmetry) THEN
              SELECT CASE(i)
              CASE(1)
-                CALL Info(Caller,'Stress Component 11',Level=3)
+                CALL Info(Caller,'Stress Component 11',Level=5)
              CASE(2)
-                CALL Info(Caller,'Stress Component 33',Level=3)
+                CALL Info(Caller,'Stress Component 33',Level=5)
              CASE(3)
-                CALL Info(Caller,'Stress Component 22',Level=3)                
+                CALL Info(Caller,'Stress Component 22',Level=5)                
              CASE(4)
-                CALL Info(Caller,'Stress Component 12',Level=3)              
+                CALL Info(Caller,'Stress Component 12',Level=5)              
              END SELECT
           ELSE
              SELECT CASE(i)
              CASE(1)
-                CALL Info(Caller,'Stress Component 11',Level=3)
+                CALL Info(Caller,'Stress Component 11',Level=5)
              CASE(2)
-                CALL Info(Caller,'Stress Component 22',Level=3)
+                CALL Info(Caller,'Stress Component 22',Level=5)
              CASE(3)
-                CALL Info(Caller,'Stress Component 33',Level=3)                
+                CALL Info(Caller,'Stress Component 33',Level=5)                
              CASE(4)
-                CALL Info(Caller,'Stress Component 12',Level=3)
+                CALL Info(Caller,'Stress Component 12',Level=5)
              CASE(5)
-                CALL Info(Caller,'Stress Component 23',Level=3)                
+                CALL Info(Caller,'Stress Component 23',Level=5)                
              CASE(6)
-                CALL Info(Caller,'Stress Component 13',Level=3)
+                CALL Info(Caller,'Stress Component 13',Level=5)
              END SELECT
           END IF
 
@@ -4127,7 +4134,7 @@ CONTAINS
 
           res = DefaultSolve()
           WRITE( Message, '(a,g15.8)') 'Solution Norm:', ComputeNorm(StSolver,n)
-          CALL Info( 'ComputeStressAndStrain', Message, Level=3 )
+          CALL Info( 'ComputeStressAndStrain', Message, Level=5 )
 
           DO l=1,SIZE( Permutation )
              IF ( Permutation(l) <= 0 ) CYCLE
