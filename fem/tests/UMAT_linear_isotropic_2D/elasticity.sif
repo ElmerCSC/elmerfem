@@ -6,7 +6,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian 2D
 !  Simulation Type = Steady State
   Simulation Type = Scanning 
@@ -56,13 +56,12 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1.0e-7
   Steady State Convergence Tolerance = 1.0e-4
 
-  Calculate Strains = True
-  Calculate Stresses = True
+!  Calculate Strains = True
+!  Calculate Stresses = True
   Calculate Loads = Logical False
 
   Large Deflection = False ! Switch to the small strain formulation 
   Initialize State Variables = Logical False
-
 End
 
 Equation 1
@@ -81,4 +80,4 @@ Boundary Condition 2
 !  Surface Traction 2 = Real -5.0e7
 End
 
-Solver 1 :: Reference Norm = Real 0.71222549E-01
+Solver 1 :: Reference Norm = 3.56112744E-02
