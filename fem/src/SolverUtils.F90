@@ -669,7 +669,7 @@ CONTAINS
          CALL Fatal('RestoreBulkMatrix','Cannot restore matrix of different size!')
        END IF
        DO i=1,n
-         A % Values(1:n) = A % BulkValues(1:n)
+         A % Values(i) = A % BulkValues(i)
        END DO
      END IF
 
@@ -679,7 +679,7 @@ CONTAINS
          CALL Fatal('RestoreBulkMatrix','Cannot restore mass matrix of different size!')
        END IF
        DO i=1,n
-         A % MassValues(1:n) = A % BulkMassValues(1:n)
+         A % MassValues(i) = A % BulkMassValues(i)
        END DO
      END IF
 
@@ -689,7 +689,7 @@ CONTAINS
          CALL Fatal('RestoreBulkMatrix','Cannot restore damp matrix of different size!')
        END IF
        DO i=1,n
-         A % MassValues(1:n) = A % BulkMassValues(1:n)
+         A % DampValues(i) = A % BulkDampValues(i)
        END DO
      END IF
      
@@ -1005,8 +1005,9 @@ CONTAINS
      CurrSol => Solver % Variable % Values
      PrevSol => Solver % Variable % PrevValues
 
+     
      SELECT CASE( Method )
-
+       
      CASE( 'fs' ) 
        CALL FractionalStep_CRS( dt, Matrix, Force, PrevSol(:,1), Solver )
 
