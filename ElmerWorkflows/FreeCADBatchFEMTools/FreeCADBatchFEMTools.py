@@ -28,6 +28,7 @@
   Original Date: May 2018
 """
 from __future__ import print_function
+import os
 import Fem
 import FreeCAD
 import Part
@@ -99,6 +100,46 @@ def faces_with_vertices_in_symmetry_plane(face_object_list, plane=None, abs_tol=
             if not isclose(compare_value, 0., abs_tol=abs_tol): break
         if i==len(vertices)-1 and isclose(center_compare_value, 0., abs_tol=abs_tol): face_object_list_out.append(face_object)
     return face_object_list_out
+
+def reduce_half_symmetry(solid, name, App, doc, planes=None, reversed_direction = False):
+    doc.recompute()
+    if planes==None: return solid
+    plane = planes.pop()
+    doc.recompute()
+    reduced_name = name + '_' + plane
+    tool_box = doc.addObject("Part::Box","CutBox"+reduced_name)
+    x = 10. * solid.Shape.BoundBox.XLength
+    y = 10. * solid.Shape.BoundBox.YLength
+    z = 10. * solid.Shape.BoundBox.ZLength
+    if isinstance(solid, Part.Feature):
+        center=solid.Shape.Solids[0].CenterOfMass
+    else:
+        center=solid.Shape.CenterOfMass
+    
+    tool_box.Length = x
+    tool_box.Width = y 
+    tool_box.Height = z
+    if plane == 'zx':
+        tool_box.Placement = App.Placement(App.Vector(center.x-x/2.,0,center.z-z/2.),App.Rotation(App.Vector(0,0,1),0))
+    elif plane == 'xy':
+        tool_box.Placement = App.Placement(App.Vector(center.x-x/2.,center.y-y/2.,0),App.Rotation(App.Vector(0,0,1),0))
+    elif plane == 'yz':
+        tool_box.Placement = App.Placement(App.Vector(0,center.y-y/2.,center.z-z/2.),App.Rotation(App.Vector(0,0,1),0))
+    else:
+        raise ValueError("Wrong keyword for plane variable, should be: zx, xy or yz!")
+    
+    if reversed_direction:
+        half_symmetry = doc.addObject("Part::MultiCommon",reduced_name)
+        half_symmetry.Shapes = [solid, tool_box]
+    else:
+        half_symmetry = doc.addObject("Part::Cut", reduced_name)
+        half_symmetry.Base = solid
+        half_symmetry.Tool = tool_box
+
+    if len(planes) > 0:
+        return reduce_half_symmetry(half_symmetry, reduced_name, App, doc, planes, reversed_direction)
+
+    return half_symmetry
 
 def faces_same_center_of_masses(face1, face2, tolerance=0.0001):    
     """
@@ -525,12 +566,20 @@ def set_mesh_group_elements(gmsh_mesh):
     for mg in gmsh_mesh.mesh_obj.MeshGroupList:
         gmsh_mesh.group_elements[mg.Label] = list(mg.References[0][1])  # tuple to list
 
-def create_mesh(mesh_object, directory=None):
+def create_mesh(mesh_object, directory=False):
     """
     Create mesh mesh with Gmsh.
+    Value of directory determines location gmsh temporary files::
+
+        - False: Use current working directory
+        - None: Let GmshTools decide
+        - something else: try to use given value
 
     :param mesh_object: FreeCAD mesh object
+    :param directory: Gmsh temp file location.
     """
+    if directory is False:
+        directory = os.getcwd()
     gmsh_mesh = femmesh.gmshtools.GmshTools(mesh_object)
     # error = gmsh_mesh.create_mesh()
     # update mesh data
@@ -755,6 +804,26 @@ def add_entity_in_list(entity_list, name, geom_object, mesh_sizes=None):
                         'geometric object': geom_object,
                         'mesh size': mesh_size})
 
+def add_geom_obj_list_in_entitylist(entity_list, name, geom_obj_list, mesh_sizes=None):
+    """
+    Adds a list of geometry objects in entitylist using add_entity_in_list(entity_list, name, geom_object, mesh_sizes=None)
+    """
+    for geom_object in geom_obj_list:
+        add_entity_in_list(entity_list, name, geom_object, mesh_sizes)
+
+def add_symmetry_plane_faces_in_entity_list(entity_list, geom_object, plane, mesh_sizes=None):
+    """
+    Adds symmetry plane faces using add_geom_obj_list_in_entitylist(entity_list, name, geom_obj_list, mesh_sizes=None)
+    """
+    faces_in_symmetry_plane = faces_with_vertices_in_symmetry_plane(geom_object.Shape.Faces, plane)
+    add_geom_obj_list_in_entitylist(entity_list, plane, faces_in_symmetry_plane)
+
+def get_entitylist_faces(entity_list):
+    faces = []
+    for entity in entity_list:
+        faces.append(entity['geometric object'])
+    return faces
+
 def create_entities_dict(name, face_entity_list, solid_entity_list, main_object=None):
     """
     Helper method for creating an entities dictionary.
@@ -884,6 +953,7 @@ def merge_boundaries(mesh_object, compound_filter, doc, face_entity_dict, compou
             surf_obj = surface_objs_by_compound_face_names[cface_name]
             old_face_name = surf_obj.Label
             new_face_name = '{}_{}'.format(old_face_name, face_entity_dict['name'])
+
             old_found_cface_names = surf_obj.References[0][1]
             filtered_old_found_cface_names = [cfname_i for cfname_i in old_found_cface_names if cfname_i != cface_name]
             if len(filtered_old_found_cface_names) == 0:

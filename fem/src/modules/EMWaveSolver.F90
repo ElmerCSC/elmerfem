@@ -160,7 +160,7 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  ! Use by some solvers e.g. SaveLine to aknowledge E as edge field
+  ! Use by some solvers e.g. SaveLine to acknowledge E as edge field
   CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
   IF( ListGetLogical( SolverParams,'Constant Bulk Matrix',Found ) ) THEN
     CALL ListAddNewLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)    
@@ -194,11 +194,11 @@ END SUBROUTINE EMWaveSolver_Init0
 
 
 !------------------------------------------------------------------------------
-!> Solve the electric field E from the rot-rot equation
+!> Solve the electric field E from the curl-curl equation
 ! 
-!> rot (1/mu_r) rot E - \kappa_0^2 epsilon_r E = i omega mu_0 J
+!> curl (1/mu) curl E + d^2 (epsilon E)/dt^2 + d/dt (sigma E) = -d/dt J
 !
-!>  using edge elements (Nedelec/W basis of lowest degree) 
+!> using edge elements (curl-conforming vector finite elements at most degree 2) 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
@@ -230,7 +230,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   SAVE STIFF, DAMP, MASS, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
 
-  CALL Info('VectorHelmholztSolver','Solving electromagnetic waves in time',Level=5)
+  CALL Info('EMWaveSolver','Solving electromagnetic waves in time',Level=5)
 
   SolverParams => GetSolverParams()
 
@@ -277,7 +277,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
     CALL DoBoundaryAssembly()
     
-    ! Default routines for finisging assembly and solving the system
+    ! Default routines for finishing assembly and solving the system
     Norm = DefaultSolve()
     IF( DefaultConverged() ) EXIT
 
@@ -287,7 +287,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
   CALL DefaultFinish()
   
-  CALL Info('VectorHelmholztSolver','All done',Level=10)
+  CALL Info('EMWaveSolver','All done',Level=10)
   
 
   
@@ -344,7 +344,7 @@ CONTAINS
 
     InitHandles = .TRUE.
 
-    ! Robin type of BC in terms of H:
+    ! Robin type of BC in terms of E:
     !--------------------------------
     Active = GetNOFBoundaryElements()
     DO t=1,Active
@@ -452,15 +452,15 @@ CONTAINS
         FORCE(i) = FORCE(i) - SUM(L*WBasis(i,:)) * weight
         
         DO j = 1,nd
-          ! the mu^-1 curl u . curl v 
+          ! the mu^-1 curl E . curl v 
           STIFF(i,j) = STIFF(i,j) + muinv * &
               SUM(RotWBasis(i,:) * RotWBasis(j,:)) * weight
           
-          ! the term d^2 ( \epsilon u.v ) / dt^2
+          ! the term d^2 ( \epsilon E) / dt^2 . v
           MASS(i,j) = MASS(i,j) +  &
               eps * SUM(WBasis(j,:) * WBasis(i,:)) * weight
 
-          ! the term d ( \rho u.v ) / dt for conducting materials
+          ! the term d ( \sigma E) / dt .v for conducting materials
           DAMP(i,j) = DAMP(i,j) +  &
               cond * SUM(WBasis(j,:) * WBasis(i,:)) * weight
         END DO

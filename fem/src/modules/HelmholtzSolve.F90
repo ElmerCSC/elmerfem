@@ -145,7 +145,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
           WallVelocity(3,N), STAT=istat )
 
      IF ( istat /= 0 ) THEN
-        CALL Fatal( 'HelmholzSolve', 'Memory allocation error.' )
+        CALL Fatal( 'HelmholtzSolve', 'Memory allocation error.' )
      END IF
 
      AllocationsDone = .TRUE.

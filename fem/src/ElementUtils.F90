@@ -691,30 +691,48 @@ CONTAINS
         Radiation = Radiation .OR. (Equation == 'heat equation')
 
       IF ( Radiation ) THEN
-        DO i = Mesh % NumberOfBulkElements+1, &
-          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        CALL Info('MakeListMatrix','Adding radiation matrix',Level=14)
 
-          Element => Mesh % Elements(i)
-          IF ( ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) THEN
-             DO j=1,Element % TYPE % NumberOfNodes
-                k1 = Reorder(Element % NodeIndexes(j))
+        BLOCK
+         INTEGER, ALLOCATABLE :: Inds(:)
+         INTEGER :: cnt
 
-                NumberOfFactors = Element % BoundaryInfo % &
-                  GebhardtFactors % NumberOfImplicitFactors
+          DO i = Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
-                DO n=1,NumberOfFactors
+            Element => Mesh % Elements(i)
+            IF ( ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) THEN
+               DO j=1,Element % TYPE % NumberOfNodes
+                 k1 = Reorder(Element % NodeIndexes(j))
 
-                  Elm => Mesh % Elements( Element % BoundaryInfo % &
-                              GebhardtFactors % Elements(n) )
+                 NumberOfFactors = Element % BoundaryInfo % &
+                               GebhardtFactors % NumberOfImplicitFactors
 
-                  DO k=1,Elm % TYPE % NumberOfNodes
-                     k2 = Reorder( Elm % NodeIndexes(k) )
-                     Lptr => List_GetMatrixIndex( List,k1,k2 )
-                  END DO
-                END DO
-             END DO
-          END IF
-        END DO
+                 IF (.NOT.ALLOCATED(inds)) THEN
+                   ALLOCATE(inds(4*NumberOfFactors))
+                 ELSE IF(SIZE(inds)<4*NumberOfFactors) THEN
+                   DEALLOCATE(inds)
+                   ALLOCATE(inds(4*NumberOfFactors))
+                 END IF
+
+                 cnt = 0
+                 DO n=1,NumberOfFactors
+
+                   Elm => Mesh % Elements( Element % BoundaryInfo % &
+                           GebhardtFactors % Elements(n) )
+
+                   DO k=1,Elm % Type % NumberOfNodes
+                     cnt = cnt + 1
+                     inds(cnt) = Reorder(Elm % NodeIndexes(k))
+                   END DO
+                 END DO
+                 CALL Sort(cnt,inds)
+                 CALL List_AddMatrixIndexes(List,k1,cnt,inds)
+               END DO
+            END IF
+          END DO
+        END BLOCK
+        CALL Info('MakeListMatrix','Done Adding radiation matrix',Level=14)
       END IF
 
       DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements+ &
@@ -1132,6 +1150,7 @@ CONTAINS
         Radiation = Radiation .OR. (Equation == 'heat equation')
 
       IF ( Radiation ) THEN
+        CALL Info('MakeListMatrixArray','Adding radiation matrix',Level=14)
         DO i = Mesh % NumberOfBulkElements+1, &
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
@@ -1156,6 +1175,7 @@ CONTAINS
              END DO
           END IF
         END DO
+        CALL Info('MakeListMatrixArray','Done Adding radiation matrix',Level=14)
       END IF
 
       ! TODO: Add multithreading

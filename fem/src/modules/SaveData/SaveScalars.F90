@@ -139,11 +139,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t) :: ElementNodes
   LOGICAL :: MovingMesh, GotCoeff, &
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
-      ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
+      ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, SaveCVS, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
       MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar, &
-      Numbering, NodalOper, GotNodalOper, SaveFluxRange, PosOper, NegOper
+      Numbering, NodalOper, GotNodalOper, SaveFluxRange, PosOper, NegOper, SaveJson, &
+      StartNewFile
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -165,13 +166,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       MaskName, OldMaskName, SaveName
   INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
-      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen      
+      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen, &
+      startpos
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
 #ifndef USE_ISO_C_BINDINGS
   REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory
 #endif
+
+  SAVE :: startpos
   
 !------------------------------------------------------------------------------
 
@@ -222,7 +226,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
       
     ScalarNamesFile = TRIM(ScalarsFile) // TRIM(".names")
-    LiveGraph = ListGetLogical(Params,'Live Graph',GotIt) 
+    SaveCVS = ListGetLogical(Params,'Live Graph',GotIt)
+    IF(.NOT. GotIt) SaveCVS = ListGetLogical(Params,'CVS Format',GotIt)
+    SaveJson = ListGetLogical(Params,'Json Format',GotIt)
   END IF
 
   EchoValues = ListGetLogical( Params,'Echo Values',GotIt)
@@ -1302,10 +1308,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     
       !------------------------------------------------------------------------------
-      ! Save data in livegraph format
+      ! Save data in CVS format for, e.g. Livegraph 
       !------------------------------------------------------------------------------
     
-      IF(LiveGraph) THEN
+      IF(SaveCVS .AND. WriteCore ) THEN
         ! Save data as comma-separated-values (cvs-file)
         IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
           OPEN(NEWUNIT=ScalarsUnit, FILE=TRIM(ScalarsFile)//'.csv',POSITION='APPEND')      
@@ -1323,7 +1329,81 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         WRITE (ScalarsUnit,'(ES22.12E3)') Values(NoValues)
         CLOSE(ScalarsUnit)
       END IF
-    END IF   
+
+      IF(SaveJson .AND. WriteCore ) THEN
+        CALL Info('SaveScalars','Saving data in jason format o file: '&
+            //TRIM(ScalarsFile)//'.json',Level=6)
+
+        IF(ParallelWrite) CALL Warn('SaveScalars','Use "Parallel Reduce=True" with JSON format!')
+        IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
+    
+        ! Save data in JSON format
+        StartNewFile = ( Solver % TimesVisited == 0 .AND. .NOT. FileAppend)
+
+        IF( StartNewFile ) THEN 
+          OPEN(NEWUNIT=ScalarsUnit, ACCESS='stream',FORM='formatted',&
+              FILE=TRIM(ScalarsFile)//'.json')
+
+          WRITE( ScalarsUnit, '(A)' ) '{'
+
+          DateStr = GetVersion()
+          WRITE( ScalarsUnit,'(A)') '  "elmerver": "'//TRIM(DateStr)//'",'     
+
+          DateStr = GetRevision( GotIt )
+          IF( GotIt ) THEN
+            WRITE( ScalarsUnit,'(A)') '  "elmerrev": "'//TRIM(DateStr)//'",'
+          END IF
+
+          DateStr = GetCompilationDate( GotIt )
+          IF( GotIt ) THEN
+            WRITE( ScalarsUnit,'(A)') '  "elmercompiled": "'//TRIM(DateStr)//'",'
+          END IF
+
+          DateStr = GetSifName( GotIt ) 
+          IF( GotIt ) THEN
+            WRITE( ScalarsUnit,'(A)') '  "siffile": "'//TRIM(DateStr)//'",'
+          END IF
+            
+          DateStr = FormatDate()      
+          WRITE( ScalarsUnit,'(A)') '  "starttime": "'//TRIM(DateStr)//'",'
+
+          WRITE( ScalarsUnit,'(A)') '  "columns": '//TRIM(I2S(NoValues))//','
+                    
+          WRITE( ScalarsUnit, '(A)',ADVANCE='no' ) '  "names":['
+ 
+          DO No=1,NoValues 
+            WRITE(ScalarsUnit,'(A)',ADVANCE='no') '"'//TRIM(ValueNames(No))//'"'
+            IF(No<NoValues) WRITE(ScalarsUnit,'(A)',ADVANCE='no') ','
+          END DO
+          WRITE( ScalarsUnit, '(A)' ) '],'
+          WRITE( ScalarsUnit, '(A)' ) '  "values":'
+          WRITE( ScalarsUnit, '(A)' ) '  ['
+          WRITE( ScalarsUnit, '(A)', ADVANCE='no' ) '    ['
+        ELSE
+          OPEN(NEWUNIT=ScalarsUnit, ACCESS='stream',FORM='formatted',&
+              STATUS='old', POSITION='append',&
+              FILE=TRIM(ScalarsFile)//'.json')
+
+          ! Jump to the start position from previous visit
+          WRITE( ScalarsUnit,'(A)', POS=startpos, ADVANCE='no' ) '   ,['
+        END IF
+                 
+        DO No=1,NoValues-1
+          WRITE (ScalarsUnit,'(ES22.12E3,A)',advance='no') Values(No),","
+        END DO
+        WRITE (ScalarsUnit,'(ES22.12E3,A)') Values(No),"]"
+
+        ! Mark the start position for next visit
+        INQUIRE(ScalarsUnit,POS=startpos)    
+        
+        WRITE( ScalarsUnit, '(A)' ) '  ]'
+        WRITE( ScalarsUnit, '(A)' ) '}'
+
+        CLOSE(ScalarsUnit)
+      END IF
+
+      
+    END IF
   END IF ! of SaveFile
   
   !------------------------------------------------------------------------------
