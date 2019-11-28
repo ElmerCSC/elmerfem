@@ -56,7 +56,6 @@
 #include <QDebug>
 
 #include "mainwindow.h"
-#include "yesnocheckdialog.h"
 
 #ifdef EG_VTK
 #include "vtkpost/vtkpost.h"
@@ -2149,7 +2148,7 @@ void MainWindow::loadProject(QString projectDirName)
     if(spe->generalOptions == NULL) {
       spe->generalOptions = new DynamicEditor;
 
-      // following 3 lines were moved into if() block to avoid doubled general tabs (Nov 2019 by TS) 
+      // following 3 lines were moved into if() block to avoid doubled "Solver specific options" tabs (Nov 2019 by TS) 
       spe->generalOptions->setupTabs(elmerDefs, "Solver", id);
       spe->generalOptions->populateHash(&item);
       spe->ui.solverControlTabs->insertTab(0, spe->generalOptions->tabWidget->widget(id), "Solver specific options");	
@@ -2219,40 +2218,29 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   progressBar->setValue(14);
   if(glWidget->hasMesh()) {
-  
-    QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-    QSettings settings(iniFileName, QSettings::IniFormat);
-    bool bRegenerate =  settings.value("regenerateSifFileWhenLoadingProject/regenerate", 0).toInt() != 0;
-    if( settings.value("regenerateSifFileWhenLoadingProject/dontAskMeAgain", 0).toInt() == 0){
-      YesNoCheckDialog dialog(this);
-      bRegenerate = dialog.exec() == QDialog::Accepted;
-      settings.setValue("regenerateSifFileWhenLoadingProject/regenerate", bRegenerate? 1:0);
-      settings.setValue("regenerateSifFileWhenLoadingProject/dontAskMeAgain", dialog.checkState() == Qt::Checked? 1:0);
-    }
-    if(bRegenerate){
-      logMessage("Regenerating and saving the solver input file...");
-      generateSifSlot();
+    logMessage("Regenerating and saving the solver input file...");
 
-      QFile file;
-      QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
-      file.setFileName(sifName);
-      file.open(QIODevice::WriteOnly);
-      QTextStream sif(&file);    
-      QApplication::setOverrideCursor(Qt::WaitCursor);
-      sif << sifWindow->getTextEdit()->toPlainText();
-      QApplication::restoreOverrideCursor();
-      file.close();
-      
-      file.setFileName("ELMERSOLVER_STARTINFO");
-      file.open(QIODevice::WriteOnly);
-      QTextStream startinfo(&file);
-  #if WITH_QT5
-      startinfo << sifName.toLatin1() << "\n1\n";    
-  #else
-      startinfo << sifName.toAscii() << "\n1\n";    
-  #endif
-      file.close();
-    }
+    generateSifSlot();
+
+    QFile file;
+    QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
+    file.setFileName(sifName);
+    file.open(QIODevice::WriteOnly);
+    QTextStream sif(&file);    
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    sif << sifWindow->getTextEdit()->toPlainText();
+    QApplication::restoreOverrideCursor();
+    file.close();
+    
+    file.setFileName("ELMERSOLVER_STARTINFO");
+    file.open(QIODevice::WriteOnly);
+    QTextStream startinfo(&file);
+#if WITH_QT5
+    startinfo << sifName.toLatin1() << "\n1\n";    
+#else
+    startinfo << sifName.toAscii() << "\n1\n";    
+#endif
+    file.close();
   }
 
   logMessage("Ready");
@@ -7392,11 +7380,7 @@ void MainWindow::loadSettings()
     resize(w,h);
   }
   
-  /*
   if(settings.value("mainWindow/maximized", false).toBool()) showMaximized();
-  w = settings.value("treeWidget/width", -10000).toInt();
-  if(w != -10000) resize(w, height());
-  */
   
   x = settings.value("solverLogWindow/x", -10000).toInt();
   y = settings.value("solverLogWindow/y", -10000).toInt();
@@ -7648,4 +7632,18 @@ void MainWindow::checkAndLoadExtraSolvers(QFile* file)
   }else{
     logMessage(" failed to open project file" + name);
   }
+}
+
+QVariant MainWindow::settings_value(const QString & key, const QVariant &defaultValue) const
+{
+  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QSettings settings(iniFileName, QSettings::IniFormat);
+  return settings.value(key, defaultValue);
+}
+
+void MainWindow::settings_setValue(const QString & key, const QVariant & value)
+{
+  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QSettings settings(iniFileName, QSettings::IniFormat);
+  settings.setValue(key, value);
 }

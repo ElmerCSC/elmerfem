@@ -101,6 +101,9 @@ public:
 
   void parseCmdLine();
 
+  QVariant settings_value(const QString & key, const QVariant & defaultValue = QVariant()) const;
+  void settings_setValue(const QString & key, const QVariant & value);
+  
 protected:
   void contextMenuEvent(QContextMenuEvent *event);
 
