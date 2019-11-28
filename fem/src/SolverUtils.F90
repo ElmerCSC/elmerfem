@@ -12697,6 +12697,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: found
     INTEGER :: nonlin_update
 
+#ifdef HAVE_AMGX
     nonlin_update = 0
     IF ( ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
       nonlin_update = 1;
@@ -12708,6 +12709,9 @@ END FUNCTION SearchNodeL
          A % Values, b, x, nonlin_update, TRIM(config)//CHAR(0) )
                                   
     A % rows = A % rows + 1; A % Cols = A % Cols + 1
+#else
+    CALL Fatal('AMGXSolver', 'AMGX doesn't seem to be included.')
+#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXSolver
 !------------------------------------------------------------------------------
