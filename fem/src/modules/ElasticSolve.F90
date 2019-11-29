@@ -681,13 +681,16 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   GlobalPseudoTraction = GetLogical( SolverParams, 'Pseudo-Traction', GotIt)
 
 
+  ! If we need the previous timestep for UMAT, what is the step we need? 
   previ = 0
   IF (UseUMAT) THEN
-    previ = 3
-  ELSE IF( Scanning ) THEN
-    previ = 1
+    IF( TransientSimulation ) THEN
+      previ = 3
+    ELSE IF( Scanning ) THEN
+      previ = 1
+    END IF
   END IF
-  
+    
   time = GetTime()
   
   CALL DefaultStart()
