@@ -1155,7 +1155,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CASE DEFAULT
            SELECT CASE(dim)
            CASE(2)
-             IF (HasLorenzVelocity) THEN
+             IF (HasLorenzVelocity .AND. .NOT. CSymmetry) THEN
                ! Add v x curl A
                E(1,3) = E(1,3) - rot_velo(1) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,1)) - &
                    rot_velo(2) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,2))
@@ -1232,7 +1232,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CASE DEFAULT
            SELECT CASE(dim)
            CASE(2)
-             IF (HasLorenzVelocity) THEN
+             IF (HasLorenzVelocity .AND. .NOT. CSymmetry) THEN
                ! Add v x curl A
                E(1,3) = E(1,3) - rot_velo(1) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,1)) - &
                    rot_velo(2) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,2))
