@@ -955,6 +955,7 @@ CONTAINS
       DEALLOCATE(bC,xC)
     ELSE
       CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+
       CALL IterCall( iterProc, x, b, ipar, dpar, work, &
           mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     ENDIF

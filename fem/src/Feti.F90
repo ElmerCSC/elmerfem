@@ -2183,7 +2183,7 @@ END SUBROUTINE FetiProject
     IF(dumptofiles) THEN
       CALL SaveR()
       CALL Info( 'Feti:', 'File dumping completed, exiting.')
-      CALL ParallelFinalize(); STOP
+      CALL ParallelFinalize(); STOP EXIT_OK
     END IF
     
 

@@ -6243,8 +6243,7 @@ END SUBROUTINE PickActiveFace
              DetJ, Basis )
 
         IF (.NOT. stat) THEN
-           WRITE (*,*) 'DefUtils::MapGaussPoints: Element to map degenerate'
-           STOP
+           CALL Fatal( 'DefUtils::MapGaussPoints', 'Element to map degenerate')
         END IF
 
         ! Get mapped points
@@ -6566,7 +6565,7 @@ END SUBROUTINE PickActiveFace
      CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
      LOGICAL :: Condition
 !-----------------------------------------------------------------------
-     IF ( .NOT. OutputLevelMask(0) ) STOP
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      IF(Condition) RETURN !Assertion passed
 
@@ -6587,9 +6586,7 @@ END SUBROUTINE PickActiveFace
      IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
 #endif
 
-     STOP
-
-     CALL FLUSH(6)
+     STOP EXIT_ERROR
 !-----------------------------------------------------------------------
    END SUBROUTINE Assert
 !-----------------------------------------------------------------------

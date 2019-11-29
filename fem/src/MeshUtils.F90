@@ -11315,7 +11315,7 @@ END SUBROUTINE GetMaxDefs
             Projector % InvPerm, Parallel = ParallelNumbering ) 
       END IF
 
-      IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
+      IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP EXIT_OK
     END IF    
 
     CALL CheckTimer('PeriodicProjector',Delete=.TRUE.)

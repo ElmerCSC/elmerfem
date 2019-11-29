@@ -5428,7 +5428,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         PRINT *, 'CONFLICTING SIGN REVERSIONS SUGGESTED'
         PRINT *, RevertSign(1:4)
         PRINT *, RevertSign2(1:4)
-        STOP
+        STOP EXIT_ERROR
       END IF
     END IF
 

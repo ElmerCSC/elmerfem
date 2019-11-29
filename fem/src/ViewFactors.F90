@@ -92,7 +92,7 @@
      INTEGER :: divide
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
 #ifdef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: at0
+     REAL(KIND=dp) :: at0, rt0
 
      INTERFACE
         ! void viewfactors3d
@@ -125,7 +125,7 @@
         END SUBROUTINE viewfactorsaxis
      END INTERFACE
 #else
-     REAL(KIND=dp) :: at0, CPUTime
+     REAL(KIND=dp) :: at0, rt0, CPUTime, RealTime
 #endif
 
      INTEGER, POINTER :: Timesteps(:)
@@ -481,7 +481,7 @@
        
        CALL Info( 'ViewFactors', 'Computing viewfactors...', Level=4 )
 
-       at0 = CPUTime()
+       at0 = CPUTime(); rt0 = RealTime()
        
        Combine = GetLogical( GetSolverParams(), 'Viewfactor combine elements',GotIt)
        IF ( .NOT. GotIt ) Combine = .TRUE.
@@ -506,12 +506,12 @@
          IF ( .NOT. GotIt ) Nrays = 1
 
          CALL ViewFactors3D( &
-             N, Surfaces, TYPE, Coords, Normals, &
-             0, Surfaces, TYPE, Coords, Normals, &
+             N, Surfaces, Type, Coords, Normals, &
+             0, Surfaces, Type, Coords, Normals, &
              Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
        END IF
        
-       WRITE (Message,'(A,F8.2)') 'View factors computed in time (s):',CPUTime()-at0
+       WRITE (Message,'(A,F8.2,F8.2)') 'View factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
        CALL Info( 'ViewFactors',Message, Level=3 )
        
        

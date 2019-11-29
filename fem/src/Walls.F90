@@ -78,7 +78,10 @@
          DFX = D_WALL_LAW( UFRIC,UT,DENSIT,VISCOS,DIST,ROUGH )
 
 ! Newton step:
-         IF (DFX.EQ.0.0d0) STOP 'dfx=0'
+         IF (DFX.EQ.0.0d0) THEN
+            PRINT*,'Walls:: SOLVE_UFRIC: dfx = 0'
+            STOP 1
+         END IF
          UFRIC = UFRIC - FX/DFX
          YPLUS = DENSIT * UFRIC * DIST / VISCOS
          IF ( DABS(FX) <= TOL ) EXIT

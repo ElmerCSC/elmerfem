@@ -61,7 +61,7 @@ CONTAINS
       ENDIF 
       IF ( (ixc.lt.0) .or. (ixc.gt.3) ) then 
          WRITE (6, * ) 'Error in exc: ixc = ', ixc 
-         STOP 
+         STOP 1
          RETURN 
       ENDIF 
 !                                                                       
@@ -326,7 +326,7 @@ CONTAINS
       ENDIF 
       IF ( (ixc.lt.0) .or. (ixc.gt.3) ) THEN 
          WRITE (6, * ) 'Error in exc: ixc = ', ixc 
-         STOP 
+         STOP  1
          RETURN 
       ENDIF 
 !                                                                       
