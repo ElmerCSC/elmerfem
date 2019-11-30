@@ -9381,7 +9381,7 @@ END FUNCTION SearchNodeL
 
     Norm = ComputeNorm(Solver, n, x)
     Solver % Variable % Norm = Norm
-
+    
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
@@ -9515,8 +9515,10 @@ END FUNCTION SearchNodeL
       ALLOCATE(r(n))
       r = x(1:n)-x0(1:n)
       Change = ComputeNorm(Solver, n, r)
-      IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0_dp/ (Norm+PrevNorm)
+      IF( .NOT. ConvergenceAbsolute ) THEN
+        IF( Norm + PrevNorm > 0.0) THEN
+          Change = Change * 2.0_dp/ (Norm+PrevNorm)
+        END IF
       END IF
       DEALLOCATE(r)      
 
@@ -14321,7 +14323,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
               SkipConstraints
   SAVE MultiplierValues, SolverPointer
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
+  CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName, str
   TYPE(ListMatrix_t), POINTER :: cList
   TYPE(ListMatrixEntry_t), POINTER :: cPtr, cPrev, cTmp
 
@@ -15056,6 +15058,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       IF( SkipConstraints ) THEN
         CALL Info('SolveWithLinearRestriction','Nonlinear system consistent norm must skip constraints',Level=5)
       END IF
+    END IF
+    str = ListGetString( Solver % values, 'NonLinear System Convergence Measure',Found )
+    IF( str == 'solution' ) THEN
+      SkipConstraints = .TRUE.
+      CALL Info('SolveWithLinearRestriction',&
+          'Nonlinear system convergence measure == "solution" must skip constraints',Level=5)
     END IF
     IF( SkipConstraints ) THEN
       CALL Info('SolveWithLinearRestriction','Enforcing convergence without constraints to True',Level=5)
