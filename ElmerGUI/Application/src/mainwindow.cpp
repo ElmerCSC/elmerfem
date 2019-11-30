@@ -475,7 +475,7 @@ void MainWindow::createActions()
 
   // Sif -> Auto sif generation
   suppressAutoSifGenerationAct = new QAction(QIcon(""), tr("&Suppress auto generation"), this);
-  suppressAutoSifGenerationAct->setStatusTip(tr("Supress auto sif file generation in saving/loading to protect manually edited sif contents in sif editor"));
+  suppressAutoSifGenerationAct->setStatusTip(tr("Suppress auto sif file generation in saving/loading to protect manually edited sif contents in sif editor"));
   connect(suppressAutoSifGenerationAct , SIGNAL(triggered()), this, SLOT(suppressAutoSifGenerationSlot()));
   suppressAutoSifGenerationAct->setCheckable(true);
   suppressAutoSifGenerationAct->setChecked(settings_value("sif/suppressAutoSifGeneration", false).toBool());
