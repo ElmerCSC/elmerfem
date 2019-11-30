@@ -473,6 +473,13 @@ void MainWindow::createActions()
   showsifAct->setStatusTip(tr("Edit solver input file"));
   connect(showsifAct, SIGNAL(triggered()), this, SLOT(showsifSlot()));
 
+  // Sif -> Auto sif generation
+  suppressAutoSifGenerationAct = new QAction(QIcon(""), tr("&Suppress auto generation"), this);
+  suppressAutoSifGenerationAct->setStatusTip(tr("Supress auto sif file generation in saving/loading to protect manually edited sif contents in sif editor"));
+  connect(suppressAutoSifGenerationAct , SIGNAL(triggered()), this, SLOT(suppressAutoSifGenerationSlot()));
+  suppressAutoSifGenerationAct->setCheckable(true);
+  suppressAutoSifGenerationAct->setChecked(settings_value("sif/suppressAutoSifGeneration", false).toBool());
+    
   // Mesh -> Control
   meshcontrolAct = new QAction(QIcon(":/icons/configure.png"), tr("&Configure..."), this);
   meshcontrolAct->setShortcut(tr("Ctrl+C"));
@@ -770,7 +777,7 @@ void MainWindow::createMenus()
   fileMenu->addAction(openAct);
   fileMenu->addAction(loadAct);
   fileMenu->addAction(loadProjectAct);
-  recentProjectsMenu = fileMenu->addMenu(tr("&Recent projects..."));
+  recentProjectsMenu = fileMenu->addMenu(tr("&Recent projects"));
   recentProjectsMenu->setEnabled(false);
   fileMenu->addSeparator();
   fileMenu->addAction(editDefinitionsAct);
@@ -907,7 +914,9 @@ void MainWindow::createMenus()
   editMenu->addAction(generateSifAct);
   editMenu->addSeparator();
   editMenu->addAction(showsifAct);
-
+  editMenu->addSeparator();
+  editMenu->addAction(suppressAutoSifGenerationAct);
+  
   //  SolverMenu
   solverMenu = menuBar()->addMenu(tr("&Run"));
   solverMenu->addAction(parallelSettingsAct);
@@ -1489,7 +1498,9 @@ void MainWindow::saveSlot()
     return;
   }
 
-  generateSifSlot();
+  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    generateSifSlot();
+  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1513,7 +1524,9 @@ void MainWindow::saveAsSlot()
     return;
   }
 
-  generateSifSlot();
+  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    generateSifSlot();
+  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1527,7 +1540,9 @@ void MainWindow::saveProjectSlot()
     return;
   }
 
-  generateSifSlot();
+  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    generateSifSlot();
+  }
 
   QString defaultDirName = getDefaultDirName();
 
@@ -2218,29 +2233,47 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   progressBar->setValue(14);
   if(glWidget->hasMesh()) {
-    logMessage("Regenerating and saving the solver input file...");
 
-    generateSifSlot();
+    if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+      logMessage("Regenerating and saving the solver input file...");
+      generateSifSlot();
 
-    QFile file;
-    QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
-    file.setFileName(sifName);
-    file.open(QIODevice::WriteOnly);
-    QTextStream sif(&file);    
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    sif << sifWindow->getTextEdit()->toPlainText();
-    QApplication::restoreOverrideCursor();
-    file.close();
-    
-    file.setFileName("ELMERSOLVER_STARTINFO");
-    file.open(QIODevice::WriteOnly);
-    QTextStream startinfo(&file);
-#if WITH_QT5
-    startinfo << sifName.toLatin1() << "\n1\n";    
-#else
-    startinfo << sifName.toAscii() << "\n1\n";    
-#endif
-    file.close();
+      QFile file;
+      QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
+      file.setFileName(sifName);
+      file.open(QIODevice::WriteOnly);
+      QTextStream sif(&file);    
+      QApplication::setOverrideCursor(Qt::WaitCursor);
+      sif << sifWindow->getTextEdit()->toPlainText();
+      QApplication::restoreOverrideCursor();
+      file.close();
+      
+      file.setFileName("ELMERSOLVER_STARTINFO");
+      file.open(QIODevice::WriteOnly);
+      QTextStream startinfo(&file);
+  #if WITH_QT5
+      startinfo << sifName.toLatin1() << "\n1\n";    
+  #else
+      startinfo << sifName.toAscii() << "\n1\n";    
+  #endif
+      file.close();
+    }else{
+      QFile file;
+      QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
+      file.setFileName(sifName);
+      if(file.open(QIODevice::ReadOnly)){      
+        QTextStream inputStream(&file);
+        QString line = inputStream.readAll();
+        file.close();
+        sifWindow->getTextEdit()->clear();
+        sifWindow->getTextEdit()->append(line);
+        sifWindow->setFirstTime(true);
+        sifWindow->setFound(false);
+        logMessage( sifName + " loaded.");        
+      }else{
+        logMessage( " failed to open " + sifName); 
+      }
+    }
   }
 
   logMessage("Ready");
@@ -5753,6 +5786,10 @@ void MainWindow::generateSifSlot()
   sifGenerator->makeBoundaryBlocks();
 }
 
+void MainWindow::suppressAutoSifGenerationSlot()
+{
+  settings_setValue("sif/suppressAutoSifGeneration", suppressAutoSifGenerationAct->isChecked());
+}
 
 // Boundary selected by double clicking (signaled by glWidget::select):
 //-----------------------------------------------------------------------------
@@ -7622,6 +7659,39 @@ void MainWindow::checkAndLoadExtraSolvers(QFile* file)
         i1 = line.indexOf("/", i0+7);
         if(i1 > 0){
           name = line.mid(i0+6, i1-i0-6);
+          if(!loadedSolverName.contains(name) ){
+            loadExtraSolver(name);
+            
+            //update list (to avoid doubled loading - one solver file can generate multiple tabs)
+            loadedSolverName.clear();           
+            QDomElement root = elmerDefs->documentElement();
+            QDomElement elem = root.firstChildElement("PDE");         
+            while(!elem.isNull()) {
+              QDomElement pdeName = elem.firstChildElement("Name");
+              loadedSolverName.append(pdeName.text().trimmed());
+              elem = elem.nextSiblingElement();
+            }
+                    
+          }
+        }
+      }
+    }
+  }else{
+    logMessage(" failed to open project file" + name);
+  }
+  
+/*
+  QString name;
+  if (file->open(QIODevice::ReadOnly | QIODevice::Text)){
+    QTextStream in(file);
+    while (!in.atEnd()) {
+      QString line = in.readLine();
+      int i0, i1;
+      i0=line.indexOf("<key>/");
+      if( i0 >= 0){
+        i1 = line.indexOf("/", i0+7);
+        if(i1 > 0){
+          name = line.mid(i0+6, i1-i0-6);
           if(!loadedSolverName.contains(name) && !unloadedSolverName.contains(name) ){
             unloadedSolverName.append(name);
             loadExtraSolver(name);
@@ -7632,6 +7702,7 @@ void MainWindow::checkAndLoadExtraSolvers(QFile* file)
   }else{
     logMessage(" failed to open project file" + name);
   }
+  */
 }
 
 QVariant MainWindow::settings_value(const QString & key, const QVariant &defaultValue) const
