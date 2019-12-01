@@ -2569,7 +2569,7 @@ CONTAINS
     REAL(KIND=dp) :: nu1, nu2, xc
     !-------------------------
     IF (.NOT.ConstVal) THEN
-      xc = Salinity/Xi
+      xc = MAX(Salinity/Xi,0.0_dp)
       nu1 = (CurrentSolventMaterial % nu10) *&
            GeneralPolynomial(Temperature,T0,T0,&
            CurrentSolventMaterial % anw(0:5),&
@@ -2586,8 +2586,9 @@ CONTAINS
            EXP(nu1 * (Temperature - T0) + nu2 * (xc - 0.0))
       IF ((mugw .NE. mugw) .OR. (mugw > HUGE(mugw))) THEN
         WRITE (Message,*) 'invalid value:' , mugw,&
-             'Input values: muw0/nu1/nu2/xc/Salinity/Xi: ',&
+             'Input values: muw0/nu1/nu2/T/T0/xc/Salinity/Xi: ',&
              CurrentSolventMaterial % muw0, nu1,nu2,Temperature, T0, xc, Salinity, Xi
+       ! PRINT *, nu1 * (Temperature - T0), nu2 * (xc - 0.0)
         CALL FATAL("PermafrostMaterials(mugw)",Message)
       END IF
     END IF

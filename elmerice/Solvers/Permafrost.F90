@@ -2602,15 +2602,15 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
   
-!!$  IF (FirstTime) THEN
-!!$    ! handles to local variables
-!!$    CALL ListInitElementKeyword( Temperature_h, 'Material', 'Temperature Variable' )
-!!$    CALL ListInitElementKeyword( Pressure_h, 'Material', 'Pressure Variable' )
-!!$    CALL ListInitElementKeyword( Salinity_h, 'Material', 'Salinity Variable' )
-!!$    CALL ListInitElementKeyword( Porosity_h, 'Material', 'Porosity Variable' )
-!!$      ! Handle to salinity Source (possible description of heat source at elements/IP's) 
-!!$    CALL ListInitElementKeyword( Load_h,'Body Force','Salinity Source' )
-!!$  END IF
+  IF (FirstTime) THEN
+    ! handles to local variables
+    CALL ListInitElementKeyword( Temperature_h, 'Material', 'Temperature Variable' )
+    CALL ListInitElementKeyword( Pressure_h, 'Material', 'Pressure Variable' )
+    CALL ListInitElementKeyword( Salinity_h, 'Material', 'Salinity Variable' )
+    CALL ListInitElementKeyword( Porosity_h, 'Material', 'Porosity Variable' )
+      ! Handle to salinity Source (possible description of heat source at elements/IP's) 
+    CALL ListInitElementKeyword( Load_h,'Body Force','Salinity Source' )
+  END IF
   
   maxiter = ListGetInteger( Params,&
        'Nonlinear System Max Iterations',Found,minv=1)
@@ -2651,8 +2651,8 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
           CALL INFO(SolverName,'Permafrost Rock Material read',Level=3)
           FirstTime = .FALSE.
         END IF
-        !CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
-        !CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )        
+        CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )
+        CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )        
       END IF
 
       n  = GetElementNOFNodes()
