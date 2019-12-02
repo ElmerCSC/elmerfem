@@ -653,17 +653,24 @@ CONTAINS
         END DO
       END IF
 
-      IF (WithVelocity .AND. .NOT. CSymmetry) THEN
+      IF (WithVelocity) THEN
         !
         ! Create an additional Lorentz effect so that the electric field
         ! has an added term v x curl A:
         !
         Velo(1:2) = [ SUM(Basis(1:n)*Lorentz_velo(1,1:n)), &
                       SUM(Basis(1:n)*Lorentz_velo(2,1:n)) ]
-        DO p=1,nd
-          STIFF(p,1:nd) = STIFF(p,1:nd) + IP % s(t) * DetJ * C_ip * Basis(p) * ( & 
-              Velo(2) * Bt(1:nd,1) - Velo(1) * Bt(1:nd,2) )
-        END DO
+        IF (CSymmetry) THEN
+          DO p=1,nd
+            STIFF(p,1:nd) = STIFF(p,1:nd) + IP % s(t) * DetJ * C_ip * Basis(p) * ( & 
+                -Velo(2) * Bt(1:nd,1) + Velo(1) * Bt(1:nd,2) )
+          END DO
+        ELSE
+          DO p=1,nd
+            STIFF(p,1:nd) = STIFF(p,1:nd) + IP % s(t) * DetJ * C_ip * Basis(p) * ( & 
+                Velo(2) * Bt(1:nd,1) - Velo(1) * Bt(1:nd,2) )
+          END DO
+        END IF
       END IF
 
       IF ( CSymmetry ) THEN
@@ -1608,7 +1615,7 @@ CONTAINS
         END DO
       END IF
 
-      IF (WithVelocity .AND. .NOT. CSymmetry) THEN
+      IF (WithVelocity) THEN
         !
         ! Create an additional Lorentz effect so that the electric field
         ! has an added term v x curl A:
@@ -1617,7 +1624,7 @@ CONTAINS
             SUM(Basis(1:n)*Lorentz_velo(2,1:n)) ]
         DO p=1,nd
           STIFF(p,1:nd) = STIFF(p,1:nd) + IP % s(t) * DetJ * C_ip * Basis(p) * ( & 
-              Velo(2) * Bt(1:nd,1) - Velo(1) * Bt(1:nd,2) )
+              -Velo(2) * Bt(1:nd,1) + Velo(1) * Bt(1:nd,2) )
         END DO
       END IF
 

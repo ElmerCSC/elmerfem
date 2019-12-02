@@ -1155,12 +1155,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CASE DEFAULT
            SELECT CASE(dim)
            CASE(2)
-             IF (HasLorenzVelocity .AND. .NOT. CSymmetry) THEN
-               ! Add v x curl A
-               E(1,3) = E(1,3) - rot_velo(1) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,1)) - &
-                   rot_velo(2) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,2))
-               E(2,3) = E(2,3) - rot_velo(1) * SUM(SOL(2,1:nd) * dBasisdx(1:nd,1)) - &
-                   rot_velo(2) * SUM(SOL(2,1:nd) * dBasisdx(1:nd,2))
+             IF (HasLorenzVelocity) THEN
+               ! Add v x curl A:
+               IF (CSymmetry) THEN
+                 E(1,3) = E(1,3) - rot_velo(1) * B(1,2) + rot_velo(2) * B(1,1)
+                 E(2,3) = E(2,3) - rot_velo(1) * B(2,2) + rot_velo(2) * B(2,1)
+               ELSE
+                 E(1,3) = E(1,3) + rot_velo(1) * B(1,2) - rot_velo(2) * B(1,1)
+                 E(2,3) = E(2,3) + rot_velo(1) * B(2,2) - rot_velo(2) * B(2,1)
+               END IF
              END IF
              !
              ! To make this perfect, the electric field corresponding to the source
@@ -1232,10 +1235,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CASE DEFAULT
            SELECT CASE(dim)
            CASE(2)
-             IF (HasLorenzVelocity .AND. .NOT. CSymmetry) THEN
+             IF (HasLorenzVelocity) THEN
                ! Add v x curl A
-               E(1,3) = E(1,3) - rot_velo(1) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,1)) - &
-                   rot_velo(2) * SUM(SOL(1,1:nd) * dBasisdx(1:nd,2))
+               IF (CSymmetry) THEN
+                 E(1,3) = E(1,3) - rot_velo(1) * B(1,2) + rot_velo(2) * B(1,1)
+               ELSE
+                 E(1,3) = E(1,3) + rot_velo(1) * B(1,2) - rot_velo(2) * B(1,1)
+               END IF
              END IF
              !
              ! To make this perfect, the electric field corresponding to the source
