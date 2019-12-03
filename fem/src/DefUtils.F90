@@ -2636,19 +2636,6 @@ CONTAINS
    Order = MAX( MIN( Solver % DoneTime, Solver % Order ), 1)   
    HasMass = ASSOCIATED( Solver % Matrix % MassValues )
 
-   Method = ListGetString( Solver % Values, 'Timestepping Method', Found )
-   IF ( Method == 'bdf' ) THEN
-     Dts(1) = Solver % Dt
-     ConstantDt = .TRUE.
-     IF(Order > 1) THEN
-       DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
-       DO i=2,Order
-         Dts(i) = DtVar % PrevValues(1,i-1)
-         IF(ABS(Dts(i)-Dts(1)) > 1.0d-6 * Dts(1)) ConstantDt = .FALSE.
-       END DO
-     END IF
-   END IF
-   
    HasFCT = ListGetLogical( Solver % Values,'Linear System FCT', Found )
 
    IF( HasFCT ) THEN
@@ -2686,7 +2673,19 @@ CONTAINS
    MASS = 0.0_dp
    X = 0.0_dp
 
-
+   Method = ListGetString( Solver % Values, 'Timestepping Method', Found )
+   IF ( Method == 'bdf' ) THEN
+     Dts(1) = Solver % Dt
+     ConstantDt = .TRUE.
+     IF(Order > 1) THEN
+       DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
+       DO i=2,Order
+         Dts(i) = DtVar % PrevValues(1,i-1)
+         IF(ABS(Dts(i)-Dts(1)) > 1.0d-6 * Dts(1)) ConstantDt = .FALSE.
+       END DO
+     END IF
+   END IF
+   
    DO i=1,Solver % Matrix % NumberOFRows
      n = 0
      k = 0
@@ -2718,7 +2717,7 @@ CONTAINS
        CALL FractionalStep( n, Solver % dt, MASS, STIFF, FORCE, &
            X(:,1), Solver % Beta, Solver )
        
-     CASE('bdf')
+     CASE('bdf')       
        IF(ConstantDt) THEN
          CALL BDFLocal( n, Solver % dt, MASS, STIFF, FORCE, X, Order )
        ELSE

@@ -1012,9 +1012,9 @@ CONTAINS
        CALL FractionalStep_CRS( dt, Matrix, Force, PrevSol(:,1), Solver )
 
      CASE('bdf')
-       Dts(1) = Dt
        ConstantDt = .TRUE.
        IF(Order > 1) THEN
+         Dts(1) = Dt
          DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
          DO i=2,Order
            Dts(i) = DtVar % PrevValues(1,i-1)

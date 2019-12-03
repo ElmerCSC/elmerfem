@@ -1826,6 +1826,61 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+   FUNCTION CreateDiagMatrix( Model, Solver, Dofs, TimeOrder ) RESULT(Matrix)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t), TARGET :: Solver
+     INTEGER :: DOFs
+     TYPE(Matrix_t), POINTER :: Matrix
+     INTEGER, OPTIONAL :: TimeOrder
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     INTEGER i,j,k
+!------------------------------------------------------------------------------
+
+     Matrix => NULL()
+
+     !IF ( ListGetLogical( Solver % Values, 'No matrix',Found)) RETURN
+     
+     ! Create a list matrix that allows for unspecified entries in the matrix 
+     ! structure to be introduced.
+     Matrix => AllocateMatrix()
+     Matrix % FORMAT = MATRIX_LIST
+     
+     ! Initialize matrix indices
+     DO i = 1, Dofs
+       CALL List_AddMatrixIndex(Matrix % ListMatrix, i, i) 
+     END DO
+
+     CALL List_ToCRSMatrix(Matrix)
+     CALL CRS_SortMatrix(Matrix,.TRUE.)
+     
+     CALL Info('CreateOdeMatrix','Number of rows in diag matrix: '//&
+         TRIM(I2S(Matrix % NumberOfRows)), Level=9)
+
+     IF( PRESENT( TimeOrder ) ) THEN
+       IF( TimeOrder >= 1 ) THEN
+         ALLOCATE( Matrix % MassValues( SIZE( Matrix % Values ) ) )
+         Matrix % MassValues = 0.0_dp
+       END IF
+       IF( TimeOrder >= 2 ) THEN
+         ALLOCATE( Matrix % DampValues( SIZE( Matrix % Values ) ) )
+         Matrix % DampValues = 0.0_dp
+       END IF
+     END IF
+     
+     Matrix % Solver => Solver
+     Matrix % DGMatrix = .FALSE.
+     Matrix % Subband = 1
+     Matrix % COMPLEX = .FALSE.
+     ! Matrix % FORMAT  = MatrixFormat
+
+!------------------------------------------------------------------------------
+   END FUNCTION CreateDiagMatrix
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &

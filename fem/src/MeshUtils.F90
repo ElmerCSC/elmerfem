@@ -437,7 +437,7 @@ CONTAINS
       END IF
 
 !------------------------------------------------------------------------------
-END SUBROUTINE GetMaxDefs
+  END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
@@ -503,7 +503,42 @@ END SUBROUTINE GetMaxDefs
 
   END SUBROUTINE MarkHaloNodes
 
- 
+
+
+  ! Mark nodes that are associated with at least some boundary element.
+  !------------------------------------------------------------------------------
+  SUBROUTINE MarkBCNodes(Mesh,BCNode,NoBCNodes)
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, ALLOCATABLE :: BCNode(:)
+    INTEGER :: NoBCNodes
+
+    INTEGER :: elem
+    TYPE(Element_t), POINTER :: Element
+
+    CALL Info('MarkInterfaceNodes','Marking interface nodes',Level=8)
+
+    IF(.NOT. ALLOCATED( BCNode ) ) THEN
+      ALLOCATE( BCNode( Mesh % NumberOfNodes ) )
+    END IF
+    BCNode = .FALSE. 
+
+    DO elem=Mesh % NumberOfBulkElements + 1, &
+        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      Element => Mesh % Elements( elem )         
+      !IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+
+      BCNode(Element % NodeIndexes) = .TRUE.
+    END DO
+
+    NoBCNodes = COUNT( BCNode )
+
+    CALL Info('MarkBCNodes','Number of BC nodes: '//TRIM(I2S(NoBCNodes)),Level=8)
+
+  END SUBROUTINE MarkBCNodes
+
+
+  
 
 !> Create a discontinuous mesh over requested boundaries.
 !> The nodes are duplicated in order to facilitate the discontinuity.
