@@ -706,9 +706,9 @@
            END DO
 
            IF(FullMatrix) THEN
-             GFactorFull(t,t) = GFactorFull(t,t) + 1.0D0
+             GFactorFull(t,t) = GFactorFull(t,t) + 1._dp
            ELSE
-             CALL CRS_AddToMatrixElement( GFactorSP,t,t,1.0D0 )
+             CALL CRS_AddToMatrixElement( GFactorSP,t,t,1._dp )
            END IF
 
            EXIT
@@ -741,11 +741,14 @@
          RHS(t-1) = 0.0_dp
        END IF
 
+
        IF(FullMatrix) THEN
          CALL FIterSolver( RadiationSurfaces, SOL, RHS, Solver )
        ELSE
          IF(IterSolveGebhardt) THEN
+           Solver % Matrix => GFactorSP
            CALL IterSolver( GFactorSP, SOL, RHS, Solver )
+!------------------------------------------------------------------------------
          ELSE           
            IF(t == 1) THEN
              CALL ListAddLogical( Solver % Values, &
@@ -788,7 +791,7 @@
          Vals => ViewFactors(i) % Factors
          Cols => ViewFactors(i) % Elements
          
-         s = 0.0d0
+         s = 0.0_dp
          DO k=1,ViewFactors(i) % NumberOfFactors
            Colj = InvElementNumbers(Cols(k)-j0)
            s = s + Vals(k) * SOL(Colj)
@@ -800,9 +803,8 @@
        END DO
 
        FactorSum = SUM(Fac)
-       ConsideredSum = 0.0d0
+       ConsideredSum = 0.0_dp
 
-       
        ImplicitLimit = ListGetConstReal( TSolver % Values, &
            'Implicit Gebhardt Factor Fraction', ImplicitLimitIs) 
 
@@ -923,7 +925,6 @@
        END IF
 
      END DO
-
 
      WRITE(Message,'(A,T35,ES15.4)') 'Minimum Gebhardt factors sum',MinSum
      CALL Info('RadiationFactors',Message,LEVEL=4)
@@ -1102,20 +1103,27 @@
        INTEGER(KIND=AddrInt) :: AddrFunc
        EXTERNAL :: AddrFunc
 #endif
+       LOGICAL :: Found
        INTEGER(KIND=addrInt) :: iterProc, mvProc, dProc=0
 !------------------------------------------------------------------------------
        
        ipar = 0
-       dpar = 0.0D0
+       dpar = 0.0_dp
        
        HUTI_WRKDIM = HUTI_CGS_WORKSIZE
+       mvProc    = AddrFunc(rMatvec)
+
+       iterProc  = AddrFunc(HUTI_D_CGS)
        wsize = HUTI_WRKDIM
        
        HUTI_NDIM     = N
-       HUTI_DBUGLVL  = 0
-       HUTI_MAXIT    = 100
+       HUTI_DBUGLVL  = GetInteger( SOlverParam % Values, &
+                'Linear System Residual Output', Found)
+       HUTI_MAXIT    = GetInteger( SolverParam % Values, &
+                'Linear System Max Iterations', Found )
+       IF(.NOT.Found) HUTI_MAXIT = 100
        
-       ALLOCATE( work(wsize,N) )
+       ALLOCATE( work(wsize,n) )
        
        IF ( ALL(x == 0.0) ) THEN
          HUTI_INITIALX = HUTI_RANDOMX
@@ -1123,13 +1131,15 @@
          HUTI_INITIALX = HUTI_USERSUPPLIEDX
        END IF
        
-       HUTI_TOLERANCE = 1.0d-10
+       HUTI_TOLERANCE = GetCReal( SolverParam % Values, &
+               'Linear System Convergence Tolerance', Found)
+       IF(.NOT.Found) HUTI_TOLERANCE = 1.d-10
+
+       HUTI_MAXTOLERANCE = 1d20
        
-       iterProc  = AddrFunc(HUTI_D_CGS)
-       mvProc    = AddrFunc(rMatvec)
        CALL IterCall( iterProc,x,b,ipar,dpar,work,mvProc, &
-                 dProc, dProc, dProc, dProc, dProc )
-       
+             dProc, dProc, dProc, dProc, dProc )
+
        DEALLOCATE( work )
        
      END SUBROUTINE FIterSolver
@@ -1177,17 +1187,18 @@
      
      INTEGER :: i,j,n
      REAL (KIND=dp) :: s
+
      
      n = HUTI_NDIM
      CALL DGEMV('N',n,n,1._dp,GFactorFull,n,u,1,0._dp,v,1)
      
-   ! DO i=1,n
-   !   s = 0.0D0
-   !   DO j=1,n
-   !     s = s + GFactorFull(i,j) * u(j)
-   !   END DO
-   !   v(i) = s
-   ! END DO
+!    DO i=1,n
+!      s = 0.0D0
+!      DO j=1,n
+!        s = s + GFactorFull(i,j) * u(j)
+!      END DO
+!      v(i) = s
+!    END DO
      
    END SUBROUTINE RMatvec
 
