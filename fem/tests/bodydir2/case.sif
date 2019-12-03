@@ -16,7 +16,7 @@ Simulation
   Simulation Type = Steady state
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = case.ep
+  Post File = case.vtu
 
 ! The flow is initiated by max. to blowers that are read by the UDF.
 ! The definitions for the 1st blower.
