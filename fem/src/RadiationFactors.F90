@@ -89,7 +89,7 @@
          maxds,refds,ds,x,y,z,&
          dx,dy,dz,x0(1),y0(1),MeshU(TSolver % Mesh % MaxElementNodes)
      REAL (KIND=dp), POINTER :: Vals(:), Wrk(:,:)
-     REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:)
+     REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:), RowSums(:)
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
          ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
          GeometryFixedTol, BackScale(3), Coord(3)
@@ -725,9 +725,11 @@
 
      MinSum = HUGE(MinSum)
      MaxSum = -HUGE(MaxSum)
+     ALLOCATE(RowSums(RadiationSurfaces))
+     RowSums = 0
           
      st = RealTime()
-     
+
      DO t=1,RadiationSurfaces
 
        RHS(t) = 1.0_dp
@@ -764,9 +766,6 @@
        END IF
        CALL ListRemove(Solver % Values,'Linear System Free Factorization')
 
-       SolSum = SUM(SOL)
-       MinSum = MIN(MinSum,SolSum)
-       MaxSum = MAX(MaxSum,SolSum)
 
        CurrentElement => Model % Elements(ElementNumbers(t))
        n = CurrentElement % TYPE % NumberOfNodes
@@ -797,13 +796,13 @@
            s = s + Vals(k) * SOL(Colj)
          END DO
          Fac(i) = Emissivity * s
-         IF ( Fac(i) > MinFactor ) THEN
-           n = n + 1
-         END IF
+         IF (Fac(i)>MinFactor ) n=n+1
+         RowSums(i) = RowSums(i) + Fac(i)
        END DO
 
        FactorSum = SUM(Fac)
        ConsideredSum = 0.0_dp
+
 
        ImplicitLimit = ListGetConstReal( TSolver % Values, &
            'Implicit Gebhardt Factor Fraction', ImplicitLimitIs) 
@@ -833,9 +832,7 @@
        ELSE
          n = 0
          DO i=1,RadiationSurfaces
-           IF ( Fac(i) > MinFactor ) THEN
-             n = n + 1
-           END IF
+           IF ( Fac(i) > MinFactor ) n = n + 1
          END DO
        END IF
 
@@ -923,8 +920,10 @@
          CALL Info( 'RadiationFactors', Message, Level=5 )
          st = RealTime()
        END IF
-
      END DO
+
+     MinSum = MINVAL(RowSums)
+     MaxSum = MAXVAL(RowSums)
 
      WRITE(Message,'(A,T35,ES15.4)') 'Minimum Gebhardt factors sum',MinSum
      CALL Info('RadiationFactors',Message,LEVEL=4)
