@@ -184,12 +184,12 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
      END IF
   END IF
 
-  IF(.NOT. ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine') ) RETURN
+  IF (.NOT. ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine') ) RETURN
 
   
   ! Following definitions only apply to UMAT
 
-  IF( dim == 3 ) THEN
+  IF ( dim == 3 ) THEN
     CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable ',SolverParams), &
         '-ip UmatStress[UmatStress_xx:1 UmatStress_yy:1 UmatStress_zz:1 UmatStress_xy:1 UmatStress_yz:1 UmatStress_xz:1]' )
@@ -257,7 +257,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: StiffMatrix, PMatrix
   TYPE(Solver_t), POINTER :: PSolver
-  TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var, StateSol, StateDir
+  TYPE(Variable_t), POINTER :: StressSol, TempSol, FlowSol, Var
   TYPE(ValueList_t), POINTER :: SolverParams, Material, PrevMaterial, BC, Equation, BodyForce
   TYPE(Nodes_t) :: ElementNodes, ParentNodes, FlowNodes
   TYPE(Element_t), POINTER :: CurrentElement, ParentElement, FlowElement
@@ -267,7 +267,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        AxialSymmetry
-  LOGICAL :: UseUMAT, InitializeStateVars, OutputStateVars, HenckyStrain
+  LOGICAL :: UseUMAT, InitializeStateVars, HenckyStrain
   LOGICAL :: LargeDeflection
   LOGICAL :: MixedFormulation
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
@@ -327,7 +327,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        LocalTemperature,AllocationsDone,ReferenceTemperature,BoundaryDispl, &
        ElasticModulus, PoissonRatio,Density,Damping,HeatExpansionCoeff, &
        LocalDisplacement, Velocity, Pressure, PrevSOL, CalculateStrains, CalculateStresses, &
-       OutputStateVars, NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, &
+       NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, &
        Tresca, PrincipalAngle, CalcPrincipalAngle, CalcPrincipal, &
        PrevLocalDisplacement, SpringCoeff, Indices
   SAVE MAXSTATEV, InitializeStateVars, TotalSol, LocalExternalForce
@@ -486,20 +486,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
      IF (UseUMAT .AND. (.NOT. AllocationsDone) ) THEN
        ! ---------------------------------------------------------------------
-       ! The state variables as stored
-       ! they evolve during the nonlinear iteration to obtain the solution
-       ! at the new time level m+1. Allocation is done for the given number 
-       ! of state variables + 9 additional variables which are three energy 
-       ! variables and six stress components:
+       ! Stress and energy variables are always created when a UMAT subroutine
+       ! is used. Get pointers to these variables:
        ! ---------------------------------------------------------------------
               
        UmatEnergyVar => VariableGet( Mesh % Variables, 'UmatEnergy')
-       IF(.NOT. ASSOCIATED( UmatEnergyVar ) ) THEN
+       IF (.NOT. ASSOCIATED( UmatEnergyVar ) ) THEN
          CALL Fatal(Caller,'Could not find variable "UmatEnergy"')
        END IF
 
        UmatStressVar => VariableGet( Mesh % Variables, 'UmatStress')
-       IF(.NOT. ASSOCIATED( UmatStressVar ) ) THEN
+       IF (.NOT. ASSOCIATED( UmatStressVar ) ) THEN
          CALL Fatal(Caller,'Could not find variable "UmatStress"')
        END IF
 
@@ -510,13 +507,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        UmatStress = 0.0_dp
 
        ! ----------------------------------------------------------------------
-       ! We also create a similar variable with suffix "0" which keeps the
-       ! the state variables that describe the material state corresponding to 
-       ! the converged solution at the previous time level m. The right values
+       ! We also create similar variables with suffix "0" to keep the variable
+       ! values corresponding to the converged solution at the previous time 
+       ! level m. In addition to the stress and energy variables, we need to 
+       ! save the state variables as they evolve during the nonlinear iteration 
+       ! to obtain the solution at the new time level m+1. The right values
        ! of the state variables corresponding to the initial state can be found
-       ! by making an extra UMAT call. Whether this call is needed is indicated
-       ! by the last extra entry: a value < 0 means that the state variables have
-       ! not yet been initiated by the extra call.
+       ! by making an extra UMAT call. Check whether this call is needed.
        ! ----------------------------------------------------------------------
 
        ALLOCATE( UmatEnergy0( SIZE( UmatEnergy ) ) ) 
@@ -554,12 +551,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CalculateStresses = GetLogical(SolverParams, 'Calculate Stresses', GotIt ) 
 
      IF (UseUMAT) THEN
-        OutputStateVars = GetLogical(SolverParams, 'Output State Variables', GotIt)
         ! Principal tensors are not yet available:
         CalcPrincipal = .FALSE.
         CalcPrincipalAngle = .FALSE.
      ELSE
-        OutputStateVars = .FALSE.
         CalcPrincipal = GetLogical(SolverParams, 'Calculate Principal', GotIt )     
         CalcPrincipalAngle = GetLogical(SolverParams, 'Calculate PAngle', GotIt )
         ! Principal angle computation enforces component calculation:
@@ -630,17 +625,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            CALL Fatal('ElasticSolver','Variable > Principal Strain < does not exits!')
         END IF
      END IF
-  END IF
-
-  IF (UseUMAT .AND. OutputStateVars) THEN
-    StateSol => VariableGet(Mesh % Variables, 'StateVar')
-    IF ( .NOT. ASSOCIATED(StateSol) ) THEN
-      CALL Fatal('ElasticSolver','Variable "StateVar" does not exits!')
-    END IF
-    StateDir => VariableGet(Mesh % Variables, 'StateDir')
-    IF ( .NOT. ASSOCIATED(StateDir) ) THEN
-      CALL Fatal('ElasticSolver','Variable "StateDir" does not exits!')
-    END IF
   END IF
 
   ALLOCATE( PrevSOL(SIZE(Displacement)) )
@@ -752,11 +736,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         PoissonRatio = 0.0d0
 
         IF (UseUMAT) THEN
-          CALL GetConstRealArray( Material, MaterialConstants, 'Material Constants', GotIt)
+           CALL GetConstRealArray( Material, MaterialConstants, 'Material Constants', GotIt)
            IF ( SIZE(MaterialConstants,1) < NPROPS) &
                 CALL Fatal(Caller,'Check the size of Material Constants array')
            UMATModel = ListGetString(Material, 'Name', GotIt)
-         ELSE
+        ELSE
            IF (NeoHookeanMaterial) THEN
               ElasticModulus(1,1,1:n) = ListGetReal( Material, &
                    'Youngs Modulus', n, NodeIndexes, GotIt )
@@ -814,9 +798,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         InertialLoad = 0.0D0
 
         IF ( ASSOCIATED(BodyForce) ) THEN
-          LoadVector(1,1:n) = GetReal( BodyForce, 'Stress Bodyforce 1', GotIt )
-
-          LoadVector(2,1:n) = GetReal( BodyForce, 'Stress Bodyforce 2', GotIt )
+           LoadVector(1,1:n) = GetReal( BodyForce, 'Stress Bodyforce 1', GotIt )
+           LoadVector(2,1:n) = GetReal( BodyForce, 'Stress Bodyforce 2', GotIt )
            IF ( dim > 2 ) THEN
               LoadVector(3,1:n) = GetReal( BodyForce, 'Stress Bodyforce 3', GotIt )
            END IF
@@ -1098,27 +1081,22 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            NormalTangential = GetLogical( BC, 'Normal-Tangential ' // & 
                 GetVarName(Solver % Variable), GotIt )
 
-           IF ( CoordinateSystem == Cartesian .OR. AxialSymmetry) THEN
-              CALL LocalBoundaryMatrix( LocalStiffMatrix, LocalForce, &
-                   LoadVector, SpringCoeff, NormalSpring, Alpha, Beta, LocalDisplacement, &
-                   CurrentElement, n, ntot, ParentElement, ParentElement % TYPE % NumberOfNodes, &
-                   nd, ParentNodes, FlowElement, FlowNOFNodes, FlowNodes, Velocity,  &
-                   Pressure, Viscosity, Density, CompressibilityDefined, AxialSymmetry, &
-                   NormalTangential, PseudoTraction, MixedFormulation, LargeDeflection)
+           CALL LocalBoundaryMatrix( LocalStiffMatrix, LocalForce, &
+               LoadVector, SpringCoeff, NormalSpring, Alpha, Beta, LocalDisplacement, &
+               CurrentElement, n, ntot, ParentElement, ParentElement % TYPE % NumberOfNodes, &
+               nd, ParentNodes, FlowElement, FlowNOFNodes, FlowNodes, Velocity,  &
+               Pressure, Viscosity, Density, CompressibilityDefined, AxialSymmetry, &
+               NormalTangential, PseudoTraction, MixedFormulation, LargeDeflection)
 
-              IF (UseUmat .AND. Iter == 1) THEN
-                ! ---------------------------------------------------------------------------
-                ! Update the RHS vector which contains just the contribution of external loads
-                ! for the purpose of nonlinear error estimation:
-                ! ---------------------------------------------------------------------------
-                ValuesSaved => StiffMatrix % RHS
-                StiffMatrix % RHS => StiffMatrix % BulkRHS
-                CALL DefaultUpdateForce(LocalForce)
-                Solver % Matrix % RHS => ValuesSaved
-              END IF              
-
-           ELSE
-              CALL Fatal(Caller, 'Unsupported coordinate system')
+           IF (UseUmat .AND. Iter == 1) THEN
+             ! ---------------------------------------------------------------------------
+             ! Update the RHS vector which contains just the contribution of external loads
+             ! for the purpose of nonlinear error estimation:
+             ! ---------------------------------------------------------------------------
+             ValuesSaved => StiffMatrix % RHS
+             StiffMatrix % RHS => StiffMatrix % BulkRHS
+             CALL DefaultUpdateForce(LocalForce)
+             Solver % Matrix % RHS => ValuesSaved
            END IF
 
            !------------------------------------------------------------------------------
@@ -1250,8 +1228,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      IF (UseUmat) THEN
        Displacement(:) = TotalSol(:) + Displacement(:)
        IF (iter==NonlinearIter) THEN
-         WRITE(Message,'(a)') 'The maximum of nonlinear iterations reached: Terminating...'
-         CALL Info('ElasticitySolver', Message, Level=5)        
+         CALL Info('ElasticitySolver', &
+             'The maximum of nonlinear iterations reached: Terminating...', Level=5)        
 
          ! Save the state variables corresponding to the converged nonlinear
          ! solution to the array holding the previous solution state:
@@ -1351,9 +1329,9 @@ CONTAINS
     
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MassMatrix(:,:), DampMatrix(:,:), StiffMatrix(:,:)
-    REAL(KIND=dp) :: ExternalForceVector(:)
+    REAL(KIND=dp) :: ForceVector(:), ExternalForceVector(:)
     REAL(KIND=dp) :: time, dt
-    REAL(KIND=dp) :: ForceVector(:), LoadVector(:,:), InertialLoad(:,:)
+    REAL(KIND=dp) :: LoadVector(:,:), InertialLoad(:,:)
     REAL(KIND=dp), POINTER :: MaterialConstants(:,:)
     INTEGER :: NrInProps
     INTEGER :: NStateV
@@ -2262,7 +2240,7 @@ CONTAINS
           ! Anisotropic material is handled in this branch. 
           !-------------------------------------------------------------------------
           IF (dim /= 3 ) &
-               CALL Fatal( Caller,  'Material anistropy implemented only for 3-d' )
+               CALL Fatal( Caller,  'Material anisotropy implemented only for 3-d' )
           IF (AxialSymmetry) &
                CALL Fatal(Caller, 'Axially symmetric option is not supported for anisotropic materials')
 
@@ -3517,7 +3495,7 @@ CONTAINS
 
        DO t=1,IntegStuff % n
 
-         ipindex = GetIpIndex( t, usolver=solver, element=element, ipvar = UmatStressVar )   
+          ipindex = GetIpIndex( t, usolver=solver, element=element, ipvar = UmatStressVar )   
 
           u = IntegStuff % u(t)
           v = IntegStuff % v(t)
