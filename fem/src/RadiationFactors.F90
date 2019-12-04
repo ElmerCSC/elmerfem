@@ -990,7 +990,7 @@
        CLOSE(10)
      END IF
 
-     DEALLOCATE(Solver, InvElementNumbers,RowSpace,Reorder,RHS,SOL,Fac,FacPerm)
+     DEALLOCATE(Solver, InvElementNumbers,RowSpace,Reorder,RHS,SOL,Fac,FacPerm,RowSums)
      IF(FullMatrix) THEN
        DEALLOCATE(GFactorFull)
      ELSE
