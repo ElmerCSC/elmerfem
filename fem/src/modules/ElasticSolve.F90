@@ -3386,8 +3386,9 @@ CONTAINS
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
 
     INTEGER, POINTER :: Permutation(:), Indices(:)
-    INTEGER :: dim, elem, n, nd, i, k, l, p, q, Ind(6), StressDim, StressDofs
-    INTEGER :: NStateV, ipindex
+    INTEGER :: dim, elem, n, nd, i, k, l, p, q, Ind(6) 
+    INTEGER :: StressDim, StressDofs, StressComponents
+    INTEGER :: ipindex
 
     REAL(KIND=dp), POINTER :: StressTemp(:)
     REAL(KIND=dp), ALLOCATABLE :: SForceG(:)
@@ -3398,7 +3399,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: eqname
     
     SAVE FirstTime, StSolver, Permutation, Force, SForceG, StressTemp, Eqname, Nodes, UseMask
-    SAVE StressDim
+    SAVE StressDim, StressComponents
  !--------------------------------------------------------------------------------------------
     IF (.NOT. CalculateStress) RETURN
 
@@ -3442,6 +3443,16 @@ CONTAINS
        ELSE
           StressDim = 6
        END IF
+
+       ! The number of components in the variable "Stress" 
+       ! (TO DO: Reduce the size of "Stress" for 2D cases without axial symmetry
+       ! to avoid the difference in StressDim/StressComponents):
+       IF (AxialSymmetry) THEN
+          StressComponents = 4
+       ELSE
+          StressComponents = 6
+       END IF       
+
        ALLOCATE( SForceG(StSolver % Matrix % NumberOfRows*StressDim) )
 
        ALLOCATE( StressTemp(StSolver % Matrix % NumberOfRows) )
@@ -3479,7 +3490,6 @@ CONTAINS
 
        Equation => GetEquation()
        Material => GetMaterial()
-       NStateV = GetInteger(Material, 'Number of State Variables', Found)
        !---------------------------------------
        ! Check if stresses wanted for this body:
        ! ---------------------------------------
@@ -3583,7 +3593,7 @@ CONTAINS
 
        DO l=1,SIZE( Permutation )
           IF ( Permutation(l) <= 0 ) CYCLE
-          NodalStress(StressDim*(Perm(l)-1)+i) = StSolver % Variable % Values(Permutation(l))
+          NodalStress(StressComponents*(Perm(l)-1)+i) = StSolver % Variable % Values(Permutation(l))
        END DO
     END DO
 

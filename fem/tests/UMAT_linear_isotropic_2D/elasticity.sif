@@ -56,8 +56,8 @@ Solver 1
   Nonlinear System Convergence Tolerance = 1.0e-7
   Steady State Convergence Tolerance = 1.0e-4
 
-!  Calculate Strains = True
-!  Calculate Stresses = True
+  Calculate Strains = True
+  Calculate Stresses = True
   Calculate Loads = Logical False
 
   Large Deflection = False ! Switch to the small strain formulation 
