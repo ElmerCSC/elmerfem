@@ -1663,18 +1663,26 @@ CONTAINS
       Stran(1) = Strain0(1,1)
       Stran(2) = Strain0(2,2)
       Stran(3) = Strain0(3,3)
-      Stran(4) = 2.0d0 * Strain0(1,2)
-      Stran(5) = 2.0d0 * Strain0(1,3)
-      Stran(6) = 2.0d0 * Strain0(2,3)
+      IF (AxialSymmetry) THEN
+        Stran(4) = 2.0d0 * Strain0(1,3)
+      ELSE
+        Stran(4) = 2.0d0 * Strain0(1,2)
+        Stran(5) = 2.0d0 * Strain0(1,3)
+        Stran(6) = 2.0d0 * Strain0(2,3)
+      END IF
 
       ! The umat variable giving the candidate for the strain increment:
       dStran(1) = Strain(1,1) - Strain0(1,1)
       dStran(2) = Strain(2,2) - Strain0(2,2)
       dStran(3) = Strain(3,3) - Strain0(3,3)
-      dStran(4) = 2.0d0 * (Strain(1,2) - Strain0(1,2))
-      dStran(5) = 2.0d0 * (Strain(1,3) - Strain0(1,3))
-      dStran(6) = 2.0d0 * (Strain(2,3) - Strain0(2,3))
-      
+      IF (AxialSymmetry) THEN
+        dStran(4) = 2.0d0 * (Strain(1,3) - Strain0(1,3))
+      ELSE
+        dStran(4) = 2.0d0 * (Strain(1,2) - Strain0(1,2))
+        dStran(5) = 2.0d0 * (Strain(1,3) - Strain0(1,3))
+        dStran(6) = 2.0d0 * (Strain(2,3) - Strain0(2,3))
+      END IF
+
       ! -----------------------------------------------------------------------------
       ! Get the state variables and 
       ! the stress as specified at the previous time/load level for converged solution:
@@ -1745,25 +1753,35 @@ CONTAINS
         ! ----------------------------------------
         ! Create the strain-displacement matrix B:
         ! ----------------------------------------
-        DO p=1,ntot
-          DO i=1,cdim
-            B(i,(p-1)*dofs+i) = dBasis(p,i)
+        IF (AxialSymmetry) THEN
+          DO p=1,ntot
+            B(1,(p-1)*dofs+1) = dBasis(p,1)
+            B(2,(p-1)*dofs+1) = 1.0d0/r * Basis(p)
+            B(3,(p-1)*dofs+2) = dBasis(p,2)
+            B(4,(p-1)*dofs+1) = dBasis(p,2)
+            B(4,(p-1)*dofs+2) = dBasis(p,1)
           END DO
-          DO i=1,nshr
-            SELECT CASE(i)
-            CASE(1)
-              B(ndi+i,(p-1)*dofs+1) = dBasis(p,2)
-              B(ndi+i,(p-1)*dofs+2) = dBasis(p,1)
-            CASE(2)
-              B(ndi+i,(p-1)*dofs+1) = dBasis(p,3)
-              B(ndi+i,(p-1)*dofs+3) = dBasis(p,1)
-            CASE(3)
-              B(ndi+i,(p-1)*dofs+2) = dBasis(p,3)
-              B(ndi+i,(p-1)*dofs+3) = dBasis(p,2)
-            END SELECT
+        ELSE
+          DO p=1,ntot
+            DO i=1,cdim
+              B(i,(p-1)*dofs+i) = dBasis(p,i)
+            END DO
+            DO i=1,nshr
+              SELECT CASE(i)
+              CASE(1)
+                B(ndi+i,(p-1)*dofs+1) = dBasis(p,2)
+                B(ndi+i,(p-1)*dofs+2) = dBasis(p,1)
+              CASE(2)
+                B(ndi+i,(p-1)*dofs+1) = dBasis(p,3)
+                B(ndi+i,(p-1)*dofs+3) = dBasis(p,1)
+              CASE(3)
+                B(ndi+i,(p-1)*dofs+2) = dBasis(p,3)
+                B(ndi+i,(p-1)*dofs+3) = dBasis(p,2)
+              END SELECT
+            END DO
           END DO
-        END DO
-       
+        END IF
+
         CALL StrainEnergyDensity(StiffMatrix, StressDer, B, ntens, totdofs, s)
         
         ! Internal force terms for the residual vector:
@@ -3473,7 +3491,7 @@ CONTAINS
     SForceG = 0.0d0
 
     IF (AxialSymmetry) THEN
-       Ind = (/ 1, 2, 3, 5, 4, 6 /)
+       Ind = (/ 1, 2, 3, 4, 5, 6 /)
     ELSE
        Ind = (/ 1, 2, 3, 4, 6, 5 /)
     END IF
