@@ -634,12 +634,12 @@ CONTAINS
     INTEGER :: PathCount, First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
-         ShiftTo, Dir1(2), Dir2(2)
+         ShiftTo, Dir1(2), Dir2(2),a1(2),a2(2),b1(2),b2(2),intersect(2)
     REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start
     INTEGER, ALLOCATABLE :: WorkInt(:)
-    LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath
+    LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath,headland
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:)
 
@@ -726,6 +726,7 @@ CONTAINS
 
             IF(Debug) PRINT *, 'Debug, node ',i,' dir1,2: ',Dir1, Dir2
             IF(Debug) PRINT *, 'Debug, node ',i,' constriction direction: ',ConstrictDirection(i,:)
+            IF(Debug) PRINT *, 'Debug, node ',i,' xyz: ',Mesh % Nodes % x(n),Mesh % Nodes % y(n),Mesh % Nodes % z(n)
           END IF
         END DO
 
@@ -803,6 +804,34 @@ CONTAINS
               CYCLE
             END IF
 
+            IF(Debug) PRINT *,'Constrictions ',i,j,' do face each other: ',&
+                 SUM(ConstrictDirection(i,:)*Dir1)
+
+            !test that the line drawn between the constriction doesn't intersect
+            !any intermediate elements as this indicates
+            !crossing a headland (difficult to draw - but it's bad news)
+            !
+            ! -  ---      ---- -
+            !  \/   \    /   \/
+            !        ----
+            !
+
+            a1(1) = Mesh % Nodes % y(First)
+            a1(2) = Mesh % Nodes % z(First)
+            a2(1) = Mesh % Nodes % y(Last)
+            a2(2) = Mesh % Nodes % z(Last)
+            headland = .FALSE.
+            DO k=i+1,j-2
+              b1(1) = Mesh % Nodes % y(k)
+              b1(2) = Mesh % Nodes % z(k)
+              b2(1) = Mesh % Nodes % y(k+1)
+              b2(2) = Mesh % Nodes % z(k+1)
+
+              CALL LineSegmentsIntersect(a1,a2,b1,b2,intersect,headland)
+              IF(headland) EXIT
+            END DO
+            IF(headland) CYCLE
+
             MaxDist = NodeDist3D(Mesh % Nodes,First, Last)
 
             DO k=i+1,j-1
@@ -814,6 +843,8 @@ CONTAINS
                    (NodeDist3D(Mesh % Nodes, Last, n) <= MaxDist)) CYCLE !within range
 
               FarNode(k) = .TRUE.
+              IF(Debug) PRINT *,'Far node: ',k,' xyz: ',Mesh % Nodes % x(n),&
+                   Mesh % Nodes % y(n),Mesh % Nodes % z(n)
 
             END DO
           END DO
