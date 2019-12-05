@@ -1809,9 +1809,18 @@ CONTAINS
         ! a symmetric tensor:
         !---------------------------------------------------------------------------
         Stress = StressVec(1)*SymBasis1 + StressVec(2)*SymBasis2 + &
-            StressVec(3)*SymBasis3 + 2.0d0*StressVec(4)*SymBasis4 
-        IF (nshr == 3) Stress = Stress + 2.0d0*StressVec(5)*SymBasis5 + &
-            2.0d0*StressVec(6)*SymBasis6
+            StressVec(3)*SymBasis3
+        SELECT CASE(nshr)
+        CASE(1)
+          IF (AxialSymmetry) THEN
+            Stress = Stress + 2.0d0*StressVec(4)*SymBasis5
+          ELSE
+            Stress = Stress + 2.0d0*StressVec(4)*SymBasis4
+          END IF
+        CASE(3)
+          Stress = Stress + 2.0d0*StressVec(4)*SymBasis4 + &
+              2.0d0*StressVec(5)*SymBasis5 + 2.0d0*StressVec(6)*SymBasis6
+        END SELECT
 
         !--------------------------------------------------
         ! The first Piola-Kirchhoff stress
@@ -1856,18 +1865,34 @@ CONTAINS
             WorkVec1(1,1) = WorkTensor1(1,1)
             WorkVec1(2,1) = WorkTensor1(2,2)
             WorkVec1(3,1) = WorkTensor1(3,3)
-            WorkVec1(4,1) = WorkTensor1(1,2) +  WorkTensor1(2,1)
-            IF (nshr == 3) THEN
+            SELECT CASE(nshr)
+            CASE(1)
+              IF (AxialSymmetry) THEN
+                WorkVec1(4,1) = WorkTensor1(1,3) +  WorkTensor1(3,1)
+              ELSE
+                WorkVec1(4,1) = WorkTensor1(1,2) +  WorkTensor1(2,1)
+              END IF
+            CASE(3)
+              WorkVec1(4,1) = WorkTensor1(1,2) +  WorkTensor1(2,1)
               WorkVec1(5,1) = WorkTensor1(1,3) +  WorkTensor1(3,1)
               WorkVec1(6,1) = WorkTensor1(2,3) +  WorkTensor1(3,2)
-            END IF
+            END SELECT
+
             WorkVec2(1:ntens,1) = MATMUL(TRANSPOSE(StressDer(1:ntens,1:ntens)),WorkVec1(1:ntens,1))
             ! The following is based on the assumed symmetry of StressDer(:,:):
             WorkTensor3 = WorkVec2(1,1)*SymBasis1 + WorkVec2(2,1)*SymBasis2 + &
-                WorkVec2(3,1)*SymBasis3 + 2.0d0*WorkVec2(4,1)*SymBasis4
-            IF (nshr == 3) THEN
-              WorkTensor3 = WorkTensor3 + 2.0d0*WorkVec2(5,1)*SymBasis5 + 2.0d0*WorkVec2(6,1)*SymBasis6
-            END IF            
+                WorkVec2(3,1)*SymBasis3
+            SELECT CASE(nshr)
+            CASE(1)
+              IF (AxialSymmetry) THEN
+                WorkTensor3 = WorkTensor3 + 2.0d0*WorkVec2(4,1)*SymBasis5
+              ELSE
+                WorkTensor3 = WorkTensor3 + 2.0d0*WorkVec2(4,1)*SymBasis4
+              END IF
+            CASE(3)
+              WorkTensor3 = WorkTensor3 + 2.0d0*WorkVec2(4,1)*SymBasis4 + &
+                  2.0d0*WorkVec2(5,1)*SymBasis5 + 2.0d0*WorkVec2(6,1)*SymBasis6
+            END SELECT
             
             ! -------------------------------------------------------------------------------------
             ! The computation of the differential of the Hencky strain function is based on
