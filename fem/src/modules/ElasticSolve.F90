@@ -189,19 +189,39 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   
   ! Following definitions only apply to UMAT
 
+  OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
+
   IF ( dim == 3 ) THEN
-    CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable ',SolverParams), &
-        '-ip UmatStress[UmatStress_xx:1 UmatStress_yy:1 UmatStress_zz:1 UmatStress_xy:1 UmatStress_yz:1 UmatStress_xz:1]' )
-  ELSE 
-    CALL ListAddString( SolverParams,&
-        NextFreeKeyword('Exported Variable ',SolverParams), &
-        '-ip UmatStress[UmatStress_xx:1 UmatStress_zz:1 UmatStress_yy:1 UmatStress_xy:1]' )
+    IF (OutputStateVars) THEN
+      CALL ListAddString( SolverParams,&
+          NextFreeKeyword('Exported Variable ',SolverParams), &
+          '-ip UmatStress[UmatStress_xx:1 UmatStress_yy:1 UmatStress_zz:1 UmatStress_xy:1 UmatStress_yz:1 UmatStress_xz:1]' )
+    ELSE
+      str = 'UmatStress[UmatStress_xx:1 UmatStress_yy:1 UmatStress_zz:1 UmatStress_xy:1 UmatStress_yz:1 UmatStress_xz:1]'
+      str = '-nooutput -ip '//TRIM(str)
+      CALL ListAddString( SolverParams, NextFreeKeyword('Exported Variable ',SolverParams), str)
+    END IF
+  ELSE
+    IF (OutputStateVars) THEN
+      CALL ListAddString( SolverParams,&
+          NextFreeKeyword('Exported Variable ',SolverParams), &
+          '-ip UmatStress[UmatStress_xx:1 UmatStress_zz:1 UmatStress_yy:1 UmatStress_xy:1]' )
+    ELSE
+      CALL ListAddString( SolverParams,&
+          NextFreeKeyword('Exported Variable ',SolverParams), &
+          '-nooutput -ip UmatStress[UmatStress_xx:1 UmatStress_zz:1 UmatStress_yy:1 UmatStress_xy:1]' )
+    END IF
   END IF
 
-  CALL ListAddString( SolverParams,&
-      NextFreeKeyword('Exported Variable ',SolverParams), &
-      '-dofs 3 -ip UmatEnergy' )
+  IF (OutputStateVars) THEN
+    CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable ',SolverParams), &
+        '-dofs 3 -ip UmatEnergy' )
+  ELSE
+    CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable ',SolverParams), &
+        '-nooutput -dofs 3 -ip UmatEnergy' )
+  END IF
 
   Nstate = 0
   DO i=1,Model % NumberOfMaterials
@@ -218,7 +238,6 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   ! Create variables for some state variables of a user-defined material model (UMAT):
   ! Note that Elmer does not like length of zero for the variables.
   IF( NState > 0 ) THEN
-    OutputStateVars = GetLogical(SolverParams, 'Output State Variables', Found)
     IF (OutputStateVars) THEN
       str = '-dofs '//TRIM(I2S(NState))//' -ip UmatState'
     ELSE

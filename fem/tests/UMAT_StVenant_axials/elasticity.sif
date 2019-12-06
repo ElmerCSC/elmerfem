@@ -36,8 +36,17 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-5
   Linear System Solver = Direct
 !  Linear System Direct Method = umfpack
+
+  !
+  ! "Output State Variables" controls whether the UMAT variables at integration
+  ! points (the state and energy variables and stresses) are output to
+  ! the vtu file. "Calculate Stresses" and "Calculate Strains" activates
+  ! the stress/strain calculation via global L2-projection to obtain nodal fields.
+  !
+  Output State Variables = True
   Calculate Stresses = True
   Calculate Strains = True
+
   Nonlinear System Convergence Tolerance = 1e-5
   Nonlinear System Max Iterations = 20
   Displace Mesh = False
