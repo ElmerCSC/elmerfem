@@ -2548,14 +2548,14 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
        PorosityPerm(:),SalinityPerm(:),GWfluxPerm1(:),&
        TemperatureDtPerm(:), PressureDtPerm(:), SalinityDtPerm(:),&
        GWfluxPerm2(:),GWfluxPerm3(:)
-  REAL(KIND=dp) :: Norm, meanfactor
+  REAL(KIND=dp) :: Norm, meanfactor, MinSalinity, MinSalinityValue, AverageCorrectedValue
   REAL(KIND=dp),POINTER :: Temperature(:), Pressure(:), Porosity(:), Salinity(:),&
        TemperatureDt(:), PressureDt(:), SalinityDt(:),&
        GWflux1(:),GWflux2(:),GWflux3(:)
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,GivenGWFlux=.FALSE.,&
        ComputeDt=.FALSE., ElementWiseRockMaterial, ActiveMassMatrix = .TRUE., &
-       InitializeSteadyState = .FALSE.
+       InitializeSteadyState = .FALSE., CorrectValues=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostSoluteTransport'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, VarName, TemperatureName, GWfluxName, PhaseChangeModel,&
@@ -2616,6 +2616,20 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
        'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
 
+  CorrectValues = GetLogical(Params, 'Correct Values', Found)
+  IF (CorrectValues) THEN
+    CALL INFO(SolverName,' "Correct Values" set - negative salinities will be reset to minimum value')
+    MinSalinity = GetConstReal(Params, 'Minimum Salinity', Found)
+    IF (.NOT.Found) THEN
+      CALL WARN(SolverName,' "Minimum Salinity" no found, setting to 1.0E-12')
+      MinSalinity = 1.0d-12
+    ELSE
+      WRITE(Message,*) ' "Minimum Salinity" set to ', MinSalinity
+      CALL INFO(SolverName,Message,Level=3)
+    END IF
+  END IF
+  
+  
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
@@ -2695,6 +2709,26 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
     !--------------------
     Norm = DefaultSolve()
     IF( Solver % Variable % NonlinConverged > 0 ) EXIT
+
+    IF (CorrectValues) THEN
+      J=0
+      AverageCorrectedValue=0.0_dp
+      MinSalinityValue = MinSalinity
+      DO I = 1, Solver % Mesh % NumberOfNodes
+        IF (SalinityPerm(I) < 1) CYCLE
+        IF (Salinity(SalinityPerm(I)) < MinSalinity) THEN
+          AverageCorrectedValue=AverageCorrectedValue+Salinity(SalinityPerm(I))
+          Salinity(SalinityPerm(I))=MinSalinity          
+          MinSalinityValue = MIN(Salinity(SalinityPerm(I)), MinSalinityValue)
+          J=J+1
+        END IF
+      END DO
+      WRITE(Message,*) 'Corrected ',J,' values that where smaller than ',MinSalinity,'.'
+      CALL INFO(SolverName,Message,Level=3)
+      WRITE(Message,*) 'Min. corrected salinity value:',  MinSalinityValue,&
+           '. Average corrected:',AverageCorrectedValue/(1.0_dp*J)
+      CALL INFO(SolverName,Message,Level=3)
+    END IF
 
   END DO
 
