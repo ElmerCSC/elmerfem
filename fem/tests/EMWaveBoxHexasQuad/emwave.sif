@@ -147,9 +147,9 @@ End
 
 
 Body Force 1
-  !Current Density 1 = ...
-  !Current Density 2 = ...
-  !Current Density 3 = ...
+  !Current Density Rate 1 = ...
+  !Current Density Rate 2 = ...
+  !Current Density Rate 3 = ...
 End
 
 
@@ -159,9 +159,6 @@ Boundary Condition 1
 
   E {e} 2 = Variable "time"
     Real MATC "sin(w*tx)"
-
-  ! E {e} = Real 0
-  ! E {f} = Real 0
 
   ! Electric Damping Coefficient = ...
   ! Magnetic Boundary Load 1 = ...
@@ -174,7 +171,6 @@ Boundary Condition 2
   Target Boundaries(1) = 6 
 
   E {e} = Real 0
-  E {f} = Real 0
 End
 
 Boundary Condition 3
@@ -182,7 +178,6 @@ Boundary Condition 3
   Target Boundaries(4) = 1 2 3 4 
 
   E {e} = Real 0
-  E {f} = Real 0
 End
 
 
