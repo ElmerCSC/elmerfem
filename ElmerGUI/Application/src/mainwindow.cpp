@@ -122,6 +122,9 @@ MainWindow::MainWindow()
   // widgets and utilities:
   updateSplash("ElmerGUI loading...");
   glWidget = new GLWidget(this);
+  #ifdef WIN32
+    glWidget->stateDrawSharpEdges = false;
+  #endif  
   setCentralWidget(glWidget);
   sifWindow = new SifWindow(this);
   meshControl = new MeshControl(this);
@@ -278,12 +281,15 @@ MainWindow::MainWindow()
   if(defW <= 200) defW = 200;
   if(defH <= 200) defH = 200;
   this->resize(defW, defH);
+  
+  loadSettings();
 }
 
 // dtor...
 //-----------------------------------------------------------------------------
 MainWindow::~MainWindow()
 {
+  saveSettings();
   qApp->closeAllWindows();
 }
 
@@ -467,6 +473,13 @@ void MainWindow::createActions()
   showsifAct->setStatusTip(tr("Edit solver input file"));
   connect(showsifAct, SIGNAL(triggered()), this, SLOT(showsifSlot()));
 
+  // Sif -> Auto sif generation
+  suppressAutoSifGenerationAct = new QAction(QIcon(""), tr("&Suppress auto generation"), this);
+  suppressAutoSifGenerationAct->setStatusTip(tr("Suppress auto sif file generation in saving/loading to protect manually edited sif contents in sif editor"));
+  connect(suppressAutoSifGenerationAct , SIGNAL(triggered()), this, SLOT(suppressAutoSifGenerationSlot()));
+  suppressAutoSifGenerationAct->setCheckable(true);
+  suppressAutoSifGenerationAct->setChecked(settings_value("sif/suppressAutoSifGeneration", false).toBool());
+    
   // Mesh -> Control
   meshcontrolAct = new QAction(QIcon(":/icons/configure.png"), tr("&Configure..."), this);
   meshcontrolAct->setShortcut(tr("Ctrl+C"));
@@ -764,6 +777,8 @@ void MainWindow::createMenus()
   fileMenu->addAction(openAct);
   fileMenu->addAction(loadAct);
   fileMenu->addAction(loadProjectAct);
+  recentProjectsMenu = fileMenu->addMenu(tr("&Recent projects"));
+  recentProjectsMenu->setEnabled(false);
   fileMenu->addSeparator();
   fileMenu->addAction(editDefinitionsAct);
   fileMenu->addSeparator();
@@ -899,7 +914,9 @@ void MainWindow::createMenus()
   editMenu->addAction(generateSifAct);
   editMenu->addSeparator();
   editMenu->addAction(showsifAct);
-
+  editMenu->addSeparator();
+  editMenu->addAction(suppressAutoSifGenerationAct);
+  
   //  SolverMenu
   solverMenu = menuBar()->addMenu(tr("&Run"));
   solverMenu->addAction(parallelSettingsAct);
@@ -1481,7 +1498,9 @@ void MainWindow::saveSlot()
     return;
   }
 
-  generateSifSlot();
+  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    generateSifSlot();
+  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1505,7 +1524,9 @@ void MainWindow::saveAsSlot()
     return;
   }
 
-  generateSifSlot();
+  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    generateSifSlot();
+  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1519,7 +1540,9 @@ void MainWindow::saveProjectSlot()
     return;
   }
 
-  generateSifSlot();
+  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    generateSifSlot();
+  }
 
   QString defaultDirName = getDefaultDirName();
 
@@ -1770,6 +1793,10 @@ void MainWindow::saveProjectSlot()
 
   progressBar->hide();
   progressLabel->hide();
+  
+  setWindowTitle( QString("ElmerGUI - ") + projectDirName);
+  addRecentProject(projectDirName, true);  
+  
 }
 
 
@@ -1824,7 +1851,12 @@ void MainWindow::loadProjectSlot()
   QString defaultDirName = getDefaultDirName();
 
   QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  
+  loadProject(projectDirName);
+}
 
+void MainWindow::loadProject(QString projectDirName)
+{
   if (!projectDirName.isEmpty()) {
     logMessage("Project directory: " + projectDirName);
   } else {
@@ -1847,6 +1879,13 @@ void MainWindow::loadProjectSlot()
 
   logMessage("Clearing model data");
   modelClearSlot();
+ 
+  //Re-initialize definitions and edfEditor
+  delete elmerDefs;
+  delete edfEditor;
+  elmerDefs = new QDomDocument;
+  edfEditor = new EdfEditor;
+  loadDefinitions(); 
 
   // Load project doc:
   //-------------------
@@ -1894,6 +1933,12 @@ void MainWindow::loadProjectSlot()
 
     return;
   }
+  
+  // load extra solvers from /edf-extra
+  checkAndLoadExtraSolvers(&projectFile);
+    
+  setWindowTitle( QString("ElmerGUI - ") + projectDirName);
+  addRecentProject(projectDirName, true);  
 
   QDomElement contents = projectDoc.documentElement();
 
@@ -2115,12 +2160,14 @@ void MainWindow::loadProjectSlot()
     SolverParameterEditor *spe = solverParameterEditor[index];
     spe->solverName = name;
 
-    if(spe->generalOptions == NULL) 
+    if(spe->generalOptions == NULL) {
       spe->generalOptions = new DynamicEditor;
 
-    spe->generalOptions->setupTabs(elmerDefs, "Solver", id);
-    spe->generalOptions->populateHash(&item);
-    spe->ui.solverControlTabs->insertTab(0, spe->generalOptions->tabWidget->widget(id), "Solver specific options");	
+      // following 3 lines were moved into if() block to avoid doubled "Solver specific options" tabs (Nov 2019 by TS) 
+      spe->generalOptions->setupTabs(elmerDefs, "Solver", id);
+      spe->generalOptions->populateHash(&item);
+      spe->ui.solverControlTabs->insertTab(0, spe->generalOptions->tabWidget->widget(id), "Solver specific options");	
+    }
   }
 
   //===========================================================================
@@ -2186,29 +2233,47 @@ void MainWindow::loadProjectSlot()
   //===========================================================================
   progressBar->setValue(14);
   if(glWidget->hasMesh()) {
-    logMessage("Regenerating and saving the solver input file...");
 
-    generateSifSlot();
+    if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+      logMessage("Regenerating and saving the solver input file...");
+      generateSifSlot();
 
-    QFile file;
-    QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
-    file.setFileName(sifName);
-    file.open(QIODevice::WriteOnly);
-    QTextStream sif(&file);    
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    sif << sifWindow->getTextEdit()->toPlainText();
-    QApplication::restoreOverrideCursor();
-    file.close();
-    
-    file.setFileName("ELMERSOLVER_STARTINFO");
-    file.open(QIODevice::WriteOnly);
-    QTextStream startinfo(&file);
-#if WITH_QT5
-    startinfo << sifName.toLatin1() << "\n1\n";    
-#else
-    startinfo << sifName.toAscii() << "\n1\n";    
-#endif
-    file.close();
+      QFile file;
+      QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
+      file.setFileName(sifName);
+      file.open(QIODevice::WriteOnly);
+      QTextStream sif(&file);    
+      QApplication::setOverrideCursor(Qt::WaitCursor);
+      sif << sifWindow->getTextEdit()->toPlainText();
+      QApplication::restoreOverrideCursor();
+      file.close();
+      
+      file.setFileName("ELMERSOLVER_STARTINFO");
+      file.open(QIODevice::WriteOnly);
+      QTextStream startinfo(&file);
+  #if WITH_QT5
+      startinfo << sifName.toLatin1() << "\n1\n";    
+  #else
+      startinfo << sifName.toAscii() << "\n1\n";    
+  #endif
+      file.close();
+    }else{
+      QFile file;
+      QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
+      file.setFileName(sifName);
+      if(file.open(QIODevice::ReadOnly)){      
+        QTextStream inputStream(&file);
+        QString line = inputStream.readAll();
+        file.close();
+        sifWindow->getTextEdit()->clear();
+        sifWindow->getTextEdit()->append(line);
+        sifWindow->setFirstTime(true);
+        sifWindow->setFound(false);
+        logMessage( sifName + " loaded.");        
+      }else{
+        logMessage( " failed to open " + sifName); 
+      }
+    }
   }
 
   logMessage("Ready");
@@ -3866,6 +3931,13 @@ void MainWindow::modelClearSlot()
       delete bodyPropertyEditor[i];
   
   bodyPropertyEditor.clear();
+ 
+  // clear solver specific settings:
+  for(int i = 0; i < solverParameterEditor.size(); i++)
+    if(solverParameterEditor[i])
+      delete solverParameterEditor[i];
+      
+  solverParameterEditor.clear(); 
 }
 
 
@@ -4303,7 +4375,9 @@ void MainWindow::showallSlot()
   int lists = glWidget->getLists();
   
   glWidget->stateDrawSurfaceMesh = true;
+  #ifndef WIN32
   glWidget->stateDrawSharpEdges = true;
+  #endif   
   glWidget->stateDrawSurfaceElements = true;
   glWidget->stateDrawEdgeElements = true;
 
@@ -4333,7 +4407,9 @@ void MainWindow::resetSlot()
 
   glWidget->stateFlatShade = true;
   glWidget->stateDrawSurfaceMesh = true;
+  #ifndef WIN32
   glWidget->stateDrawSharpEdges = true;
+  #endif
   glWidget->stateDrawSurfaceElements = true;
   glWidget->stateDrawEdgeElements = true;
   glWidget->stateDrawSurfaceNumbers = false;
@@ -5710,6 +5786,10 @@ void MainWindow::generateSifSlot()
   sifGenerator->makeBoundaryBlocks();
 }
 
+void MainWindow::suppressAutoSifGenerationSlot()
+{
+  settings_setValue("sif/suppressAutoSifGeneration", suppressAutoSifGenerationAct->isChecked());
+}
 
 // Boundary selected by double clicking (signaled by glWidget::select):
 //-----------------------------------------------------------------------------
@@ -7318,4 +7398,323 @@ QString MainWindow::getDefaultDirName()
     defaultDirName = saveDirName;
 
   return defaultDirName;
+}
+
+// Load settings to ./ElmerGUI.ini
+//-----------------------------------------------------------------------------
+void MainWindow::loadSettings()
+{
+  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QSettings settings(iniFileName, QSettings::IniFormat);
+  
+  int x,y,w,h;
+  x = settings.value("mainWindow/x", -10000).toInt();
+  y = settings.value("mainWindow/y", -10000).toInt();
+  w = settings.value("mainWindow/width", -10000).toInt(); 
+  h = settings.value("mainWindow/height", -10000).toInt();
+  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
+    move(x,y);
+    resize(w,h);
+  }
+  
+  if(settings.value("mainWindow/maximized", false).toBool()) showMaximized();
+  
+  x = settings.value("solverLogWindow/x", -10000).toInt();
+  y = settings.value("solverLogWindow/y", -10000).toInt();
+  w = settings.value("solverLogWindow/width", -10000).toInt(); 
+  h = settings.value("solverLogWindow/height", -10000).toInt();
+  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
+    solverLogWindow->move(x,y);
+    solverLogWindow->resize(w,h);
+  }
+  
+  x = settings.value("sifWindow/x", -10000).toInt();
+  y = settings.value("sifWindow/y", -10000).toInt();
+  w = settings.value("sifWindow/width", -10000).toInt(); 
+  h = settings.value("sifWindow/height", -10000).toInt();
+  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
+    sifWindow->move(x,y);
+    sifWindow->resize(w,h);
+  }
+  
+#ifdef EG_QWT
+  x = settings.value("convergenceView/x", -10000).toInt();
+  y = settings.value("convergenceView/y", -10000).toInt();
+  w = settings.value("convergenceView/width", -10000).toInt(); 
+  h = settings.value("convergenceView/height", -10000).toInt();
+  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
+    convergenceView->move(x,y);
+    convergenceView->resize(w,h);
+  }
+#endif
+
+  int n = settings.value("recentProject/n", 0).toInt();
+  QString key = "recentProject/";
+  char num[]="01234";
+  QString path;
+  for(int i = n-1; i >= 0; i--){
+    path = settings.value( key + num[i], "$").toString();
+    if(path != "$")
+    addRecentProject(path, false);    
+  }
+}
+
+// Save settings to ./ElmerGUI.ini
+//-----------------------------------------------------------------------------
+void MainWindow::saveSettings()
+{
+  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QSettings settings(iniFileName, QSettings::IniFormat);
+  settings.setValue("mainWindow/x", x());
+  settings.setValue("mainWindow/y", y());  
+  settings.setValue("mainWindow/width", width());
+  settings.setValue("mainWindow/height", height());
+  settings.setValue("mainWindow/maximized", isMaximized());
+  
+  settings.setValue("treeWidget/width", width());  
+  settings.setValue("solverLogWindow/x", solverLogWindow->x());
+  settings.setValue("solverLogWindow/y", solverLogWindow->y());  
+  settings.setValue("solverLogWindow/width", solverLogWindow->width());
+  settings.setValue("solverLogWindow/height", solverLogWindow->height());
+  settings.setValue("sifWindow/x", sifWindow->x());
+  settings.setValue("sifWindow/y", sifWindow->y());  
+  settings.setValue("sifWindow/width", sifWindow->width());
+  settings.setValue("sifWindow/height", sifWindow->height());
+    
+#ifdef EG_QWT  
+  settings.setValue("convergenceView/x", convergenceView->x());
+  settings.setValue("convergenceView/y", convergenceView->y());  
+  settings.setValue("convergenceView/width", convergenceView->width());
+  settings.setValue("convergenceView/height", convergenceView->height());
+#endif
+}
+
+void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
+{
+ if( recentProject.indexOf(dir) != -1){
+    recentProject.removeAt(recentProject.indexOf(dir));
+  }
+  recentProject.prepend(dir);
+
+  int i = 0;
+  recentProjectsMenu->clear();
+
+  if( i < 5 && i < recentProject.size() ){
+    QAction *act = new QAction(recentProject.at(i), this);
+    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject0()));
+    recentProjectsMenu->addAction(act);
+  }
+  i++;
+  if( i < 5 && i < recentProject.size() ){
+    QAction *act = new QAction(recentProject.at(i), this);
+    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject1()));
+    recentProjectsMenu->addAction(act);
+  }
+  i++;
+  if( i < 5 && i < recentProject.size() ){
+    QAction *act = new QAction(recentProject.at(i), this);
+    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject2()));
+    recentProjectsMenu->addAction(act);
+  }
+  i++;
+  if( i < 5 && i < recentProject.size() ){
+    QAction *act = new QAction(recentProject.at(i), this);
+    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject3()));
+    recentProjectsMenu->addAction(act);
+  }
+  i++; 
+  if( i < 5 && i < recentProject.size() ){
+    QAction *act = new QAction(recentProject.at(i), this);
+    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject4()));
+    recentProjectsMenu->addAction(act);
+  }
+  recentProjectsMenu->setEnabled(recentProject.size() > 0);
+  
+  if(bSaveToIni){
+    QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+    QSettings settings(iniFileName, QSettings::IniFormat);
+    int n = recentProject.size();
+    if(n > 5) n = 5;
+    settings.setValue("recentProject/n", n);
+    QString key = "recentProject/";
+    char num[]="01234";
+    for(int i = 0; i < n; i++){
+      settings.setValue( key + num[i], recentProject.at(i));    
+    }
+  }
+}
+
+void MainWindow::loadRecentProject0()
+{
+  loadProject(recentProject.at(0));
+}
+
+void MainWindow::loadRecentProject1()
+{
+  loadProject(recentProject.at(1));
+}
+
+void MainWindow::loadRecentProject2()
+{
+  loadProject(recentProject.at(2));
+}
+
+void MainWindow::loadRecentProject3()
+{
+  loadProject(recentProject.at(3));
+}
+
+void MainWindow::loadRecentProject4()
+{
+  loadProject(recentProject.at(4));
+}
+
+bool MainWindow::loadExtraSolver(QString solverName){
+
+#ifdef __APPLE__DONTGO_HERE_TODO
+  QString extraDirpath = this->homePath +  "/edf-extra";            
+#else
+  QString extraDirPath = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf-extra";
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if(!elmerGuiHome.isEmpty())
+    extraDirPath = elmerGuiHome + "/edf-extra";  
+
+  extraDirPath.replace('\\', '/');
+#endif
+
+  QString name;
+  QDir extraDir(extraDirPath);
+  QStringList nameFilters;
+  nameFilters << "*.xml";
+  QString message;
+  QStringList fileNameList = extraDir.entryList(nameFilters, QDir::Files | QDir::Readable);
+  for(int i= 0; i < fileNameList.size(); i++){
+    QFile file(extraDirPath + "/" + fileNameList.at(i));
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)){
+      QTextStream in(&file);
+      while (!in.atEnd()) {
+        QString line = in.readLine();
+        if(line.indexOf("<PDE Name=") > 0){
+            line = in.readLine();
+            while( line.indexOf("<Name>") == -1 && !in.atEnd()) line = in.readLine();
+            int i0 = line.indexOf("<Name>");
+            if(i0 >= 0){
+              int i1 = line.indexOf("</Name>", i0+6);
+              if(i1 > 0){
+                name = line.mid(i0+6, i1-i0-6).trimmed();
+                  if(solverName.trimmed() == name){
+                    file.close();
+
+                    message = "Load " + extraDirPath + "/" + fileNameList.at(i) + "... ";
+                    #if WITH_QT5
+                      cout << string(message.toLatin1()); cout.flush();
+                    #else
+                      cout << string(message.toAscii()); cout.flush();
+                    #endif
+
+                    edfEditor->appendFrom(extraDirPath + "/" + fileNameList.at(i));
+
+                    cout << "done" << endl;
+
+                    return true;
+                  }
+              }
+            }
+          }
+        }
+
+        file.close();
+    }else{
+      logMessage(" failed to open " + fileNameList.at(i));
+      return false;
+    }
+  }
+  logMessage(" Extra solver " + solverName + " not found");
+  return false;
+
+}
+
+void MainWindow::checkAndLoadExtraSolvers(QFile* file)
+{
+  QStringList loadedSolverName;
+  QStringList unloadedSolverName;
+  QDomElement root = elmerDefs->documentElement();
+  QDomElement elem = root.firstChildElement("PDE");         
+  while(!elem.isNull()) {
+    QDomElement pdeName = elem.firstChildElement("Name");
+    loadedSolverName.append(pdeName.text().trimmed());
+    elem = elem.nextSiblingElement();
+  }        
+
+  QString name;
+  if (file->open(QIODevice::ReadOnly | QIODevice::Text)){
+    QTextStream in(file);
+    while (!in.atEnd()) {
+      QString line = in.readLine();
+      int i0, i1;
+      i0=line.indexOf("<key>/");
+      if( i0 >= 0){
+        i1 = line.indexOf("/", i0+7);
+        if(i1 > 0){
+          name = line.mid(i0+6, i1-i0-6);
+          if(!loadedSolverName.contains(name) ){
+            loadExtraSolver(name);
+            
+            //update list (to avoid doubled loading - one solver file can generate multiple tabs)
+            loadedSolverName.clear();           
+            QDomElement root = elmerDefs->documentElement();
+            QDomElement elem = root.firstChildElement("PDE");         
+            while(!elem.isNull()) {
+              QDomElement pdeName = elem.firstChildElement("Name");
+              loadedSolverName.append(pdeName.text().trimmed());
+              elem = elem.nextSiblingElement();
+            }
+                    
+          }
+        }
+      }
+    }
+  }else{
+    logMessage(" failed to open project file" + name);
+  }
+  
+/*
+  QString name;
+  if (file->open(QIODevice::ReadOnly | QIODevice::Text)){
+    QTextStream in(file);
+    while (!in.atEnd()) {
+      QString line = in.readLine();
+      int i0, i1;
+      i0=line.indexOf("<key>/");
+      if( i0 >= 0){
+        i1 = line.indexOf("/", i0+7);
+        if(i1 > 0){
+          name = line.mid(i0+6, i1-i0-6);
+          if(!loadedSolverName.contains(name) && !unloadedSolverName.contains(name) ){
+            unloadedSolverName.append(name);
+            loadExtraSolver(name);
+          }
+        }
+      }
+    }
+  }else{
+    logMessage(" failed to open project file" + name);
+  }
+  */
+}
+
+QVariant MainWindow::settings_value(const QString & key, const QVariant &defaultValue) const
+{
+  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QSettings settings(iniFileName, QSettings::IniFormat);
+  return settings.value(key, defaultValue);
+}
+
+void MainWindow::settings_setValue(const QString & key, const QVariant & value)
+{
+  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QSettings settings(iniFileName, QSettings::IniFormat);
+  settings.setValue(key, value);
 }
