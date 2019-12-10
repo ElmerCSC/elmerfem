@@ -407,9 +407,9 @@ CONTAINS
     SAVE Cd_h, Mu_h, Eps_h, Cond_h, AllocationsDone
 
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density 1')
-      CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density 2')
-      CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density 3')
+      CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density Rate 1')
+      CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density Rate 2')
+      CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density Rate 3')
 
       ! These have been normalized by mu0 and eps0 in _init section
       CALL ListInitElementKeyword( Mu_h,'Material','Relative Permeability')
@@ -657,7 +657,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   ! Electric field is always computed
   CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
-      "Elfied E[Elfied E:3]");
+      "Elfield E[Elfield E:3]");
 
   ! When requested we may also compute the 1st and 2nd time derivative.
   ! They exist by default as whitney fields but also needs to be projected
