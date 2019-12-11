@@ -18,6 +18,7 @@ INTEGER :: MMGPARAM_hmax = MMG3D_DPARAM_hmax
 INTEGER :: MMGPARAM_iso = MMG3D_IPARAM_iso
 INTEGER :: MMGPARAM_hgrad = MMG3D_DPARAM_hgrad
 INTEGER :: MMGPARAM_angle = MMG3D_IPARAM_angle
+INTEGER :: MMGPARAM_angleDetection = MMG3D_DPARAM_angleDetection
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 #endif
@@ -921,6 +922,14 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
        hausd,ierr)
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
        hgrad,ierr)
+
+  !Turn off sharp angle detection (0)
+  CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle, &
+       0,ierr)
+  !Option to set angle detection threshold:
+  ! CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
+  !      85.0_dp,ierr)
+
 
   !Take care of fixed nodes/elements if requested
   IF(PRESENT(NodeFixed)) THEN

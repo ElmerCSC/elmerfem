@@ -371,6 +371,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Request isosurface discretization
       CALL MMG3D_Set_iparameter(mmgMesh, mmgSol, MMGPARAM_iso, 1,ierr)
 
+      !set angle detection on (1, default) and set threshold angle (85 degrees)
+      !TODO - here & in MeshRemesh, need a better strategy than automatic detection
+      !i.e. feed in edge elements.
+      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_angle, &
+           1,ierr)
+      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_angleDetection,&
+           85.0_dp,ierr)
+
       !Set geometric parameters for remeshing
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
            hmin,ierr)
