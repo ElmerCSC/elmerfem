@@ -713,13 +713,77 @@ CONTAINS
     REAL(KIND=dp) :: U,V,W,detJ,Basis(10), mean 
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,n,l,k, count
-    LOGICAL :: stat
+    INTEGER, ALLOCATABLE :: counters(:)
+    LOGICAL :: stat,Debug
     CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CheckMeshQuality"
 
+    Debug = .FALSE.
     n = Mesh % MaxElementNodes
     ALLOCATE(ElementNodes % x(n),&
          ElementNodes % y(n),&
          ElementNodes % z(n))
+
+    !Some debug stats on the number of elements in each body/boundary
+    IF(Debug) THEN
+      ALLOCATE(counters(-2:10))
+
+      !Some stats
+      counters = 0
+      DO i=1,Mesh % NumberOfBulkElements
+        n = Mesh % Elements(i) % BodyID
+        counters(n) = counters(n) + 1
+      END DO
+
+      DO i=-2,10
+        PRINT *,ParEnv % MyPE,' body body id: ',i,' count: ',counters(i),' of ',&
+             Mesh % NumberOfBulkElements
+      END DO
+
+
+      counters = 0
+      DO i=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        n = Mesh % Elements(i) % BodyID
+        IF(n <= 10 .AND. n > -3) THEN
+          counters(n) = counters(n) + 1
+        ELSE
+          PRINT *,ParEnv % MyPE,' unexpected BC body id: ',n,i
+        END IF
+      END DO
+
+      DO i=0,4
+        PRINT *,ParEnv % MyPE,' BC body id: ',i,' count: ',counters(i),' of ',&
+             Mesh % NumberOfBoundaryElements, REAL(counters(i))/REAL(Mesh % NumberOfBoundaryElements)
+      END DO
+
+      counters = 0
+      DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        n = Mesh % Elements(i) % BoundaryInfo % Constraint
+        IF(n <= 10 .AND. n > -3) THEN
+          counters(n) = counters(n) + 1
+        ELSE
+          PRINT *,ParEnv % MyPE,' unexpected constraint: ',n,i
+        END IF
+      END DO
+
+      DO i=0,6
+        PRINT *,ParEnv % MyPE,' BC constraint: ',i,' count: ',counters(i),' of ',Mesh % NumberOfBoundaryElements,&
+             REAL(counters(i))/REAL(Mesh % NumberOfBoundaryElements)
+      END DO
+
+      counters = 0
+      DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        n = Mesh % Elements(i) % BoundaryInfo % OutBody
+        IF(n <= 10 .AND. n > -3) THEN
+          counters(n) = counters(n) + 1
+        ELSE
+          PRINT *,ParEnv % MyPE,' unexpected outbody: ',n,i
+        END IF
+      END DO
+
+      DO i=-2,10
+        PRINT *,ParEnv % MyPE,' outbody: ',i,' count: ',counters(i),' of ',Mesh % NumberOfBoundaryElements
+      END DO
+    END IF
 
     !Check all BC elements have parents
     DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
