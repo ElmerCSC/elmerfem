@@ -2708,8 +2708,9 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
     ! And finally, solve:
     !--------------------
     Norm = DefaultSolve()
-    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
+    ! correct values to positive (if requested)
+    !------------------------------------------
     IF (CorrectValues) THEN
       J=0
       AverageCorrectedValue=0.0_dp
@@ -2718,8 +2719,8 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
         IF (SalinityPerm(I) < 1) CYCLE
         IF (Salinity(SalinityPerm(I)) < MinSalinity) THEN
           AverageCorrectedValue=AverageCorrectedValue+Salinity(SalinityPerm(I))
-          Salinity(SalinityPerm(I))=MinSalinity          
           MinSalinityValue = MIN(Salinity(SalinityPerm(I)), MinSalinityValue)
+          Salinity(SalinityPerm(I))=MinSalinity          
           J=J+1
         END IF
       END DO
@@ -2730,6 +2731,9 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
       CALL INFO(SolverName,Message,Level=3)
     END IF
 
+    ! non-linear iteration converged?
+    !--------------------------------
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
   END DO
 
   CALL DefaultFinish()
