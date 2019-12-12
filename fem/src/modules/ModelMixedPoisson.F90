@@ -251,6 +251,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
 !------------------------------------------------------------------------------
+    USE ElementDescription, ONLY : PickActiveFace
+    IMPLICIT NONE
+
     TYPE(Element_t), POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: n   ! The number of background element nodes
