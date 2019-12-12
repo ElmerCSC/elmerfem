@@ -16609,7 +16609,7 @@ CONTAINS
        END IF       
        IF( .NOT. Hit ) CYCLE       
        
-       n = CurrentElement % NDOFs               
+       n = CurrentElement % TYPE % NumberOfNodes
        Indexes(1:n) = CurrentElement % NodeIndexes(1:n)
        
        IF( FirstRound ) THEN
