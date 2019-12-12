@@ -17068,15 +17068,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit, bc_ind
+	UpHit, DownHit, bc_ind, jmin, jmax
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
-#ifndef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: CPUTime
-#endif
     REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
-                 ElemVector(3), DotPro, Eps, MinTop, MaxTop, MinBot, MaxBot
+        ElemVector(3), DotPro, MaxDotPro, MinDotPro, Eps, MinTop, &
+        MaxTop, MinBot, MaxBot
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
@@ -17252,7 +17250,10 @@ CONTAINS
  	IF( DoCoordTransform ) THEN
           CALL CoordinateTransformationNodal( CoordTransform, Vector )
         END IF
-  
+
+        MaxDotPro = -1.0_dp
+        MinDotPro = 1.0_dp
+        
         DO j=i+1,n
           jj = NodeIndexes(j)
           
@@ -17268,25 +17269,37 @@ CONTAINS
 
           Length = SQRT(SUM(ElemVector*ElemVector))
           DotPro = SUM(ElemVector * UnitVector) / Length
-          
-          IF(DotPro > 1.0_dp - Eps) THEN 
-            IF( MaskExists ) THEN
-              IF( UpActive ) UpPointer(MaskPerm(ii)) = jj
-              IF( DownActive ) DownPointer(MaskPerm(jj)) = ii              
-            ELSE
-              IF( UpActive ) UpPointer(ii) = jj
-              IF( DownActive ) DownPointer(jj) = ii
-            END IF
-          ELSE IF(DotPro < Eps - 1.0_dp) THEN
-            IF( MaskExists ) THEN
-              IF( DownActive ) DownPointer(MaskPerm(ii)) = jj
-              IF( UpActive ) UpPointer(MaskPerm(jj)) = ii
-            ELSE
-              IF( DownActive ) DownPointer(ii) = jj
-              IF( UpActive ) UpPointer(jj) = ii              
-            END IF
+
+          IF( DotPro > MaxDotPro ) THEN
+            MaxDotPro = DotPro
+            jmax = jj
           END IF
+          IF( DotPro < MinDotPro ) THEN
+            MinDotPro = DotPro
+            jmin = jj
+          END IF          
         END DO
+          
+        IF(MaxDotPro > 1.0_dp - Eps) THEN 
+          IF( MaskExists ) THEN
+            IF( UpActive ) UpPointer(MaskPerm(ii)) = jmax
+            IF( DownActive ) DownPointer(MaskPerm(jmax)) = ii              
+          ELSE
+            IF( UpActive ) UpPointer(ii) = jmax
+            IF( DownActive ) DownPointer(jmax) = ii
+          END IF
+        END IF
+            
+        IF(MinDotPro < Eps - 1.0_dp) THEN
+          IF( MaskExists ) THEN
+            IF( DownActive ) DownPointer(MaskPerm(ii)) = jmin
+            IF( UpActive ) UpPointer(MaskPerm(jmin)) = ii
+          ELSE
+            IF( DownActive ) DownPointer(ii) = jmin
+            IF( UpActive ) UpPointer(jmin) = ii              
+          END IF
+        END IF
+
       END DO
     END DO
     DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
