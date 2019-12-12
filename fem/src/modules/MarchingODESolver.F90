@@ -325,19 +325,12 @@ CONTAINS
   FUNCTION FirstExtrudedMaterial() RESULT ( Material ) 
     TYPE(Valuelist_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: t
     
     Material => NULL()
-    DO t=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)
-      IF( MaskExist ) THEN
-        IF( ANY( MaskPerm( Element % NodeIndexes ) == 0 ) ) CYCLE
-      END IF
-      IF( ANY( Var3D % Perm( Element % NodeIndexes ) == 0 ) ) CYCLE
+    Element => GetActiveElement(1) 
+    IF( ASSOCIATED( Element ) ) THEN
       Material => GetMaterial(Element)
-      EXIT
-    END DO
-
+    END IF
     IF(.NOT. ASSOCIATED( Material ) ) THEN
       CALL Fatal(Caller,'Could not set material for extruded domain!')
     END IF
