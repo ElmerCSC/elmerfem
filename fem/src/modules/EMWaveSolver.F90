@@ -241,6 +241,13 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
     PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
   END IF
 
+  IF (CoordinateSystemDimension() == 2) THEN
+    IF (.NOT. PiolaVersion) &
+        CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
+    IF (SecondOrder) &
+        CALL Fatal('EMWaveSolver', 'A 2D model does not yet support Quadratic Approximation')
+  END IF
+
   dofs = Solver % Variable % Dofs
 
   eps0 = GetConstReal( Model % Constants,'Permittivity of Vacuum')
@@ -396,7 +403,7 @@ CONTAINS
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ, weight, eps, mu, muinv, L(3), cond
-    REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),WBasis(nd,3),RotWBasis(nd,3)
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3),WBasis(nd,3),RotWBasis(nd,3)
     LOGICAL :: Stat
     INTEGER :: t, i, j
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -472,7 +479,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  !-----------------------------------------------------------------------------
+!-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( MASS, DAMP, STIFF, FORCE, Element, n, nd, PiolaVersion, InitHandles )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:)
@@ -482,7 +489,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ,Normal(3),Tem(n)
     REAL(KIND=dp) :: B, L(3), muinv, mu, weight, tanWBasis(3)
-    REAL(KIND=dp) :: Basis(nd), WBasis(nd,3), RotWBasis(nd,3),dBasisdx(nd,3) 
+    REAL(KIND=dp) :: Basis(n), WBasis(nd,3), RotWBasis(nd,3), dBasisdx(n,3) 
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, p, q
@@ -524,11 +531,20 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     DO t=1,IP % n
-      stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
-      
+      !
+      ! We need to branch as the only way to get the traces of 2D vector finite elements 
+      ! is to call EdgeElementInfo:
+      !
+      IF (GetElementFamily(Element) == 2) THEN
+        stat = EdgeElementInfo(Element, Nodes, IP % u(t), IP % v(t), IP % w(t), detF = detJ, &
+            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+      END IF
+
       Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
-      weight = detJ * IP%s(t)
+      weight = detJ * IP % s(t)
 
       mu = mu0 * ListGetElementReal( mu_h, Basis, Parent )
       muinv = 1.0_dp / mu
@@ -607,10 +623,10 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
     CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
   END IF
 
-  ! In case we are solving truly discontinuous Galerkin fields then we do it by assemblying
+  ! In case we are solving truly discontinuous Galerkin fields then we do it by assembling
   ! normal linear system. Here we allocate for the DG type of fields that are computed elementwise
   ! while the FE fields are solved using standard Galerkin. Hence unintuitively we exit here
-  ! for elemental fields if the primary field is itself elemenetal.
+  ! for elemental fields if the primary field is itself elemental.
   !-----------------------------------------------------------------------------------------------
   IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 
