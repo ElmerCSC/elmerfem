@@ -85,11 +85,7 @@
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
          ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
          GeometryFixedTol, BackScale(3), Coord(3)
-#ifdef USE_ISO_C_BINDINGS
      REAL (KIND=dp) :: at, at0, st
-#else
-     REAL (KIND=dp) :: at, at0, st, RealTime, CPUTime
-#endif
      INTEGER :: BandSize,SubbandSize,RadiationSurfaces, GeometryFixedAfter, &
          Row,Col,MatrixElements, MatrixFormat, maxind, TimesVisited=0, &
          RadiationBody, MaxRadiationBody, MatrixEntries, ImplicitEntries, &
@@ -182,9 +178,9 @@
 !------------------------------------------------------------------------------
 
      at0 = CPUTime()
-     CALL Info('RadiationFactors','----------------------------------------------------',LEVEL=4)
-     CALL Info('RadiationFactors','Computing radiation factors for heat transfer',       LEVEL=4)
-     CALL Info('RadiationFactors','----------------------------------------------------',LEVEL=4)
+     CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
+     CALL Info('RadiationFactors','Computing radiation factors for heat transfer',       Level=5)
+     CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
 
      ConstantEmissivity = FirstTime .AND. ( UpdateGebhardtFactors .OR. UpdateViewFactors )
 
@@ -269,20 +265,19 @@
      END DO
 
      IF ( RadiationSurfaces == 0 ) THEN
-       CALL Info('RadiationFactors','No surfaces participating in radiation',LEVEL=4)
+       CALL Info('RadiationFactors','No surfaces participating in radiation',Level=5)
        DEALLOCATE(ActiveNodes)
        RETURN
      ELSE
-       WRITE (Message,'(A,I9,A,I9)') 'Total number of Radiation Surfaces',RadiationSurfaces,' of',&
-           Model % NumberOfBoundaryElements
-       CALL Info('RadiationFactors',Message,LEVEL=4)
+       CALL Info('RadiationFactors','Total number of Radiation Surfaces '//TRIM(I2S(RadiationSurfaces))// &
+           ' out of '//TRIM(I2S(Model % NumberOfBoundaryElements)),Level=5)
      END IF
 
      ! Check that the geometry has really changed before computing the viewfactors 
      IF(.NOT. FirstTime .AND. UpdateViewFactors) THEN
 
        ! This is a dirty thrick where the input file is stampered
-       CALL Info('RadiationFactors','Checking changes in mesh.nodes file!',LEVEL=4)
+       CALL Info('RadiationFactors','Checking changes in mesh.nodes file!',Level=5)
        
        OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.new'
        
@@ -322,8 +317,7 @@
 
        IF(.NOT. GotIt) THEN
          UpdateViewFactors = .TRUE.        
-         WRITE(Message,'(A,A)') 'Mismatch in coordinates compared to file ',TRIM(OutputName)
-         CALL Info('RadiationFactors',Message)
+         CALL Info('RadiationFactors','Mismatch in coordinates compared to file: '//TRIM(OutputName))
        ELSE
          WRITE(Message,'(A,E15.5)') 'Maximum geometry alteration on radiation BCs:',maxds
          CALL Info('RadiationFactors',Message)
@@ -382,9 +376,10 @@
 
      IF(ComputeViewFactors .OR. (.NOT. FirstTime .AND. UpdateViewFactors)) THEN
        
-       ! This is a dirty thrick where the input file is stampered
+       ! This is a dirty thrick where the input mesh is scaled after loading.
+       ! We need to perform scaling and backscaling then here too. 
        IF(.NOT. FirstTime) THEN
-         CALL Info('RadiationFactors','Temporarely updating the mesh.nodes file!',LEVEL=4)
+         CALL Info('RadiationFactors','Temporarely updating the mesh.nodes file!',Level=5)
 
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'         
          OutputName2 = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes.orig'         
@@ -445,9 +440,9 @@
      IF(FirstTime) TopologyTest = .FALSE. 
 
      RadiationBody = 0
-     ALLOCATE( ElementNumbers(Model % NumberOfBoundaryElements), STAT=istat )
-     ALLOCATE( RelAreas(Model % NumberOfBoundaryElements), STAT=istat )
-     ALLOCATE( Areas(Model % NumberOfBoundaryElements), STAT=istat )
+     ALLOCATE( ElementNumbers(Model % NumberOfBoundaryElements), &
+         RelAreas(Model % NumberOfBoundaryElements), &
+         Areas(Model % NumberOfBoundaryElements), STAT=istat )
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 2.')
 
 20   RadiationBody = RadiationBody + 1
@@ -480,17 +475,16 @@
      RelAreas(1:n) = Areas(1:n) / MAXVAL(Areas(1:n))
 
      IF(MaxRadiationBody > 1) THEN
-       WRITE (Message,'(A,I9,A,I9)') 'Number of Radiation Surfaces',RadiationSurfaces,&
-           ' for boundary',RadiationBody
-       CALL Info('RadiationFactors',Message,LEVEL=4)
+       CALL Info('RadiationFactors','Number of Radiation Surfaces '//TRIM(I2S(RadiationSurfaces))// &
+           ' for boundary '//TRIM(I2S(RadiationBody)),Level=5)
        IF(RadiationSurfaces == 0) GOTO 30
      END IF
 
      ALLOCATE( RowSpace( RadiationSurfaces ), Reorder( RadiationSurfaces ), &
          InvElementNumbers(Model % NumberOfBoundaryElements), STAT=istat )
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 3.')
      RowSpace = 0
      ReOrder = 0
-     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 3.')
 
      ! Make the inverse of the list of element numbers of boundaries
      InvElementNumbers = 0
@@ -529,8 +523,8 @@
        END IF
        
        IF ( LEN_TRIM(Model % Mesh % Name) > 0 ) THEN
-         OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) &
-             // '/' // TRIM(ViewFactorsFile)
+         OutputName = TRIM(OutputPath) // '/' // TRIM(Model % Mesh % Name) // &
+             '/' // TRIM(ViewFactorsFile)
        ELSE
          OutputName = TRIM(ViewFactorsFile)
        END IF
@@ -600,14 +594,14 @@
 
      ALLOCATE( RHS(RadiationSurfaces), SOL(RadiationSurfaces),&
          Fac(RadiationSurfaces), FacPerm(RadiationSurfaces), STAT=istat )
-     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 4.')
+     IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 6.')
 
      ! The coefficient matrix 
-     CALL Info('RadiationFactors','Computing factors...',LEVEL=4)
+     CALL Info('RadiationFactors','Computing factors...',Level=5)
 
      IF(FullMatrix) THEN
        ALLOCATE(GFactorFull(RadiationSurfaces,RadiationSurfaces),STAT=istat)
-       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 5.')
+       IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 7.')
        GFactorFull = 0.0_dp
      ELSE 
        ! Assembly the matrix form
@@ -634,7 +628,7 @@
        MatrixEntries = SIZE(GFactorSP % Cols)
        WRITE(Message,'(A,T35,ES15.4)') 'View factors filling (%)',(100.0 * MatrixEntries) / &
            (RadiationSurfaces**2)
-       CALL Info('RadiationFactors',Message,LEVEL=4)
+       CALL Info('RadiationFactors',Message,Level=5)
      END IF
 
      MatrixEntries = 0
@@ -812,7 +806,7 @@
            END DO
            Fac(i) = s*Emissivity(t)*Emissivity(i)
 
-! rowsums should add up to 1
+           ! rowsums should add up to 1
            s = Fac(i)*RelAreas(t)/(RelAreas(i)*Emissivity(i))
            IF (s>MinFactor ) n=n+1
            RowSums(i) = RowSums(i) + s
@@ -940,18 +934,18 @@
      MaxSum = MAXVAL(RowSums)
 
      WRITE(Message,'(A,T35,2ES15.4)') 'Minimum Gebhardt factors sum',MINVAL(RowSums)
-     CALL Info('RadiationFactors',Message,LEVEL=4)
+     CALL Info('RadiationFactors',Message,Level=5)
      WRITE(Message,'(A,T35,2ES15.4)') 'Maximum Gebhardt factors sum',MAXVAL(RowSums)
-     CALL Info('RadiationFactors',Message,LEVEL=4)
+     CALL Info('RadiationFactors',Message,Level=5)
      WRITE(Message,'(A,T35,ES15.4)') 'Maximum share of omitted factors',MaxOmittedFactor
-     CALL Info('RadiationFactors',Message,LEVEL=4)
+     CALL Info('RadiationFactors',Message,Level=5)
      WRITE(Message,'(A,T35,ES15.4)') 'Gebhardt factors filling (%)',(100.0 * MatrixEntries) / &
          (RadiationSurfaces**2)
-     CALL Info('RadiationFactors',Message,LEVEL=4)
+     CALL Info('RadiationFactors',Message,Level=5)
      IF(ImplicitEntries > 0) THEN
        WRITE(Message,'(A,T35,ES15.4)') 'Implicit factors filling (%)',(100.0 * ImplicitEntries) / &
            (RadiationSurfaces**2)
-       CALL Info('RadiationFactors',Message,LEVEL=4)
+       CALL Info('RadiationFactors',Message,Level=5)
      END IF
 
 
@@ -978,7 +972,7 @@
        OPEN( 10,File=TRIM(OutputName) )
        
        WRITE (Message,'(A,A)') 'Writing Gephardt Factors to file: ',TRIM(OutputName)
-       CALL Info('RadiationFactors',Message,LEVEL=4)
+       CALL Info('RadiationFactors',Message,Level=5)
        
        WRITE( 10,* ) RadiationSurfaces
        
@@ -1022,7 +1016,7 @@
 
      IF(.NOT. (FirstTime .OR. TopologyTest .OR. TopologyFixed) ) THEN
 
-       CALL Info('RadiationFactors','Reorganizing the matrix structure',LEVEL=4)
+       CALL Info('RadiationFactors','Reorganizing the matrix structure',Level=5)
 
        MatrixFormat =  Tsolver % Matrix % FORMAT
        OptimizeBW = ListGetLogical(TSolver % Values,'Optimize Bandwidth',GotIt) 
@@ -1085,34 +1079,26 @@
  
      WRITE (Message,'(A,T35,ES15.4)') 'All done time (s)',CPUTime()-at0
      CALL Info('RadiationFactors',Message)
-     CALL Info('RadiationFactors','----------------------------------------------------',LEVEL=4)
+     CALL Info('RadiationFactors','----------------------------------------------------',Level=5)
      
      
    CONTAINS
 
 #include "huti_fdefs.h"
      SUBROUTINE FIterSolver( N,x,b,SolverParam )
-#ifdef USE_ISO_C_BINDINGS
        USE huti_sfe
-#endif
        IMPLICIT NONE
        
        TYPE(Solver_t) :: SolverParam
-       
        REAL (KIND=dp), DIMENSION(:) CONTIG :: x,b
-       REAL (KIND=dp) :: dpar(50)
-       
-       INTEGER :: ipar(50),wsize,N
+       INTEGER :: N
+
+       REAL (KIND=dp) :: dpar(50)       
+       INTEGER :: ipar(50),wsize
        REAL (KIND=dp), ALLOCATABLE :: work(:,:)
 !------------------------------------------------------------------------------
-#ifndef USE_ISO_C_BINDINGS
-       INTEGER  :: HUTI_D_CGS
-       EXTERNAL :: HUTI_D_CGS
-       INTEGER(KIND=AddrInt) :: AddrFunc
-#else
        INTEGER(KIND=AddrInt) :: AddrFunc
        EXTERNAL :: AddrFunc
-#endif
        LOGICAL :: Found
        INTEGER(KIND=addrInt) :: iterProc, mvProc, dProc=0
 !------------------------------------------------------------------------------
