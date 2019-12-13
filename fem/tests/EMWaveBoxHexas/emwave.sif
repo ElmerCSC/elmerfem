@@ -19,7 +19,7 @@ Simulation
 
   Coordinate System = "Cartesian"
   Simulation Type = Transient
-  Timestepping Method = implicit euler
+  Timestepping Method = Bossak
   Timestep Sizes = $2*pi/(w*nwave)
 
 ! For the test we have 1/2 wave. Change this to a larger value when needed.

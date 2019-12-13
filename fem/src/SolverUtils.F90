@@ -8409,11 +8409,16 @@ END FUNCTION SearchNodeL
        END IF
 
        IF ( .NOT.GotIt ) THEN
-         CALL Warn( 'InitializeTimestep', &
+         IF (Solver % TimeOrder > 1) THEN
+           Method = 'bossak'
+           Solver % Beta = 1.0d0
+         ELSE
+           CALL Warn( 'InitializeTimestep', &
                'Timestepping method defaulted to IMPLICIT EULER' )
 
-         Solver % Beta = 1.0D0
-         Method = 'implicit euler'
+           Solver % Beta = 1.0D0
+           Method = 'implicit euler'
+         END IF
        END IF
 
      ELSE
@@ -8458,6 +8463,9 @@ END FUNCTION SearchNodeL
              WRITE( Message, * ) 'Invalid order BDF ',  Solver % Order
              CALL Fatal( 'InitializeTimestep', Message )
            END IF
+
+         CASE('bossak')
+           Solver % Beta = 1.0d0
 
          CASE DEFAULT 
            WRITE( Message, * ) 'Unknown timestepping method: ',Method
