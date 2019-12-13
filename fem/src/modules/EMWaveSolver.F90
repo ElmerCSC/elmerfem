@@ -487,7 +487,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: DetJ,Normal(3),Tem(n)
+    REAL(KIND=dp) :: DetJ, Tem(n)
     REAL(KIND=dp) :: B, L(3), muinv, mu, weight, tanWBasis(3)
     REAL(KIND=dp) :: Basis(n), WBasis(nd,3), RotWBasis(nd,3), dBasisdx(n,3) 
     LOGICAL :: Stat
@@ -543,7 +543,7 @@ CONTAINS
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
       END IF
 
-      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
+!      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       weight = detJ * IP % s(t)
 
       mu = mu0 * ListGetElementReal( mu_h, Basis, Parent )
@@ -558,16 +558,25 @@ CONTAINS
         L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )
       END IF
       DO i = 1,nd
-        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
-        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
+!        NOTE that the edge basis function 
+!             which has been received here is automatically tangential to the 
+!             boundary, so computing tangential projection is unnecessary
+!
+!        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
+!        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
+
+        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
       END DO
 
       B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
       IF( Found ) THEN
         DO i = 1,nd
-          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal * WBasis(i,:))
+!          Again, computing tangential projection is unnecessary here
+!
+!          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal * WBasis(i,:))
           DO j = 1,nd
-            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
+!            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
+            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(WBasis(i,:) * WBasis(j,:)) * weight
           END DO
         END DO
       END IF
