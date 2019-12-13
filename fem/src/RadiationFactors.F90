@@ -55,22 +55,13 @@
 
    SUBROUTINE RadiationFactors( TSolver, FirstTime )
 
-     USE RadiationFactorGlobals
-     USE Types
-     USE Lists
-     USE CoordinateSystems
-     USE SolverUtils
-     USE MainUtils
-     USE ModelDescription
-     USE ElementDescription
-     USE ElementUtils
-     USE GeneralUtils
      USE DefUtils
+     USE RadiationFactorGlobals
 
      IMPLICIT NONE
 
-     TYPE(Solver_t) :: TSolver
      LOGICAL :: FirstTime
+     TYPE(Solver_t) :: TSolver
 
 !------------------------------------------------------------------------------
 !    Local variables
@@ -78,18 +69,19 @@
      TYPE(Model_t), POINTER :: Model
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Solver_t), POINTER :: Solver
-     TYPE(Element_t), POINTER :: CurrentElement
+     TYPE(Element_t), POINTER :: Element
      TYPE(Matrix_t), POINTER :: Amatrix
      TYPE(Factors_t), POINTER :: GebhardtFactors, ViewFactors(:)
 
      INTEGER :: i,j,k,l,t,n,n2,istat,Colj,j0,couplings, sym 
 
      REAL (KIND=dp) :: SimulationTime,dt,MinFactor,MaxOmittedFactor, ConsideredSum
-     REAL (KIND=dp) :: s,Norm,PrevNorm,Emissivity,Transmissivity,Reflectivity,&
+     REAL (KIND=dp) :: s,r,Norm,PrevNorm,Transmittivity, &
          maxds,refds,ds,x,y,z,&
          dx,dy,dz,x0(1),y0(1),MeshU(TSolver % Mesh % MaxElementNodes)
      REAL (KIND=dp), POINTER :: Vals(:), Wrk(:,:)
-     REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:), RowSums(:)
+     REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:), RowSums(:), &
+             Reflectivity(:), Emissivity(:), Areas(:), RelAreas(:), Diag(:)
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
          ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
          GeometryFixedTol, BackScale(3), Coord(3)
@@ -114,9 +106,12 @@
      LOGICAL :: GotIt, SaveFactors, UpdateViewFactors, UpdateGebhardtFactors, &
          ComputeViewFactors, OptimizeBW, TopologyTest, TopologyFixed, &
          FilesExist, FullMatrix, ImplicitLimitIs, IterSolveGebhardt, &
-         ConstantEmissivity, Found, Debug
+         ConstantEmissivity, Found, Debug, gSymm, gTriv
      LOGICAL, POINTER :: ActiveNodes(:)
      LOGICAL :: DoScale
+
+
+     TYPE(ValueList_t), POINTER :: Params, BC
      
      SAVE TimesVisited 
 
@@ -126,8 +121,7 @@
 
      Found = .FALSE.
      DO i=1,Model % NumberOfBCs
-       RadiationFlag = ListGetString( Model % BCs(i) % Values, &
-             'Radiation', GotIt )
+       RadiationFlag = GetString( Model % BCs(i) % Values, 'Radiation', GotIt )
         IF (GotIt) THEN
           IF ( RadiationFlag == 'diffuse gray' ) Found = .TRUE.
         END IF
@@ -146,24 +140,26 @@
 
      IF(.NOT. FirstTime) TimesVisited = TimesVisited + 1
 
-     UpdateViewFactors = ListGetLogical( TSolver % Values,  &
-         'Update View Factors',GotIt )
-     GeometryFixedAfter = ListGetInteger(TSolver % Values, &
+     Params => TSolver % Values
+
+     UpdateViewFactors = GetLogical( Params, 'Update View Factors', GotIt )
+
+     GeometryFixedAfter = GetInteger( Params, &
          'View Factors Fixed After Iterations',GotIt)
      IF(.NOT. GotIt) GeometryFixedAfter = HUGE(GeometryFixedAfter)
+
      IF( UpdateViewFactors ) THEN
        IF(GeometryFixedAfter < TimesVisited) UpdateViewFactors = .FALSE.
        IF(TimesVisited > 1 ) THEN
          SteadyChange = TSolver % Variable % SteadyChange
-         GeometryFixedTol = ListGetConstReal(TSolver % Values, &
-         'View Factors Fixed Tolerance',GotIt)
+         GeometryFixedTol = GetConstReal( Params, 'View Factors Fixed Tolerance',GotIt)
          IF(GotIt .AND. SteadyChange < GeometryFixedTol) UpdateViewFactors = .FALSE.
        END IF
      END IF 
 
-     UpdateGebhardtFactors = ListGetLogical( TSolver % Values,  &
-         'Update Gebhardt Factors',GotIt )
-     FactorsFixedAfter = ListGetInteger(TSolver % Values, &
+     UpdateGebhardtFactors = GetLogical( Params, 'Update Gebhardt Factors',GotIt )
+
+     FactorsFixedAfter = GetInteger( Params, &
          'Gebhardt Factors Fixed After Iterations',GotIt)
      IF(.NOT. GotIt) FactorsFixedAfter = HUGE(FactorsFixedAfter)
 
@@ -197,19 +193,16 @@
        y0(1) = 1.0
      END IF
 
-     FullMatrix = ListGetLogical( TSolver % Values,  &
-         'Gebhardt Factors Solver Full',GotIt) 
+     FullMatrix = GetLogical( Params, 'Gebhardt Factors Solver Full',GotIt) 
      IF( FullMatrix ) THEN
        CALL Info('RadiationFactors','Using full matrix for Gebhardt factors',Level=6)
      ELSE
        CALL Info('RadiationFactors','Using sparse matrix for Gebhardt factors',Level=6)
      END IF
 
-     IterSolveGebhardt =  ListGetLogical( TSolver % Values,  &
-         'Gebhardt Factors Solver Iterative',GotIt) 
+     IterSolveGebhardt =  GetLogical( Params, 'Gebhardt Factors Solver Iterative',GotIt) 
      IF(.NOT. GotIt) THEN
-       SolverType = ListGetString( TSolver % Values, &
-           'radiation: Linear System Solver', GotIt )
+       SolverType = GetString( Params, 'radiation: Linear System Solver', GotIt )
        IF( GotIt ) THEN
          IF( SolverType == 'iterative' ) IterSolveGebhardt = .TRUE. 
        END IF
@@ -220,8 +213,7 @@
        CALL Info('RadiationFactors','Using direct solver for Gebhardt factors',Level=6)
      END IF
        
-     ComputeViewFactors = ListGetLogical( TSolver % Values,  &
-         'Compute View Factors',GotIt )
+     ComputeViewFactors = GetLogical( Params, 'Compute View Factors',GotIt )
 
 !------------------------------------------------------------------------------
 !    Compute the number of elements at the surface and check if the 
@@ -237,33 +229,32 @@
      DO t=Model % NumberOfBulkElements+1, &
          Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
        
-       CurrentElement => Model % Elements(t)
-       k = CurrentElement % BoundaryInfo % Constraint
+       Element => Model % Elements(t)
+       k = Element % BoundaryInfo % Constraint
        
-       IF ( CurrentElement % TYPE % ElementCode /= 101 ) THEN
+       IF ( Element % TYPE % ElementCode /= 101 ) THEN
          DO i=1,Model % NumberOfBCs
            IF ( Model % BCs(i) % Tag == k ) THEN
-             RadiationFlag = ListGetString( Model % BCs(i) % Values, &
-                 'Radiation', GotIt )
+             RadiationFlag = GetString( Model % BCs(i) % Values, 'Radiation', GotIt )
              IF ( RadiationFlag == 'diffuse gray' ) THEN
-               l = MAX(1, ListGetInteger( Model % BCs(i) % Values,'Radiation Boundary',GotIt) )
+               l = MAX(1, GetInteger( Model % BCs(i) % Values,'Radiation Boundary',GotIt) )
                MaxRadiationBody = MAX(l, MaxRadiationBody)
 
-               NodeIndexes =>  CurrentElement % NodeIndexes
-               n = CurrentElement % TYPE % NumberOfNodes
+               NodeIndexes =>  Element % NodeIndexes
+               n = Element % TYPE % NumberOfNodes
 
                ActiveNodes(NodeIndexes) = .TRUE.
                RadiationSurfaces = RadiationSurfaces + 1
                  
                IF(GeometryFixedAfter == TimesVisited) THEN
-                 MeshU(1:n) = ListGetReal(Model % BCs(i) % Values,'Mesh Update 1',n,NodeIndexes,GotIt)
+                 MeshU(1:n) = GetReal(Model % BCs(i) % Values, 'Mesh Update 1',GotIt, Element)
                  IF(.NOT. GotIt) THEN
                    WRITE (Message,'(A,I3)') 'Freezing Mesh Update 1 for bc',i
                    CALL Info('RadiationFactors',Message)
                    CALL ListAddDepReal( Model % BCs(i) % Values,'Mesh Update 1', &
                        'Mesh Update 1',1, x0, y0 )
                  END IF
-                 MeshU(1:n) = ListGetReal(Model % BCs(i) % Values,'Mesh Update 2',n,NodeIndexes,GotIt)
+                 MeshU(1:n) = GetReal(Model % BCs(i) % Values,'Mesh Update 2',GotIt, Element)
                  IF(.NOT. GotIt) THEN
                    WRITE (Message,'(A,I3)') 'Freezing Mesh Update 2 for bc',i
                    CALL Info('RadiationFactors',Message)
@@ -363,7 +354,7 @@
      FilesExist = .TRUE.
      DO RadiationBody = 1, MaxRadiationBody 
 
-       ViewFactorsFile = ListGetString(Model % Simulation,'View Factors',GotIt)
+       ViewFactorsFile = GetString(Model % Simulation,'View Factors',GotIt)
        
        IF ( .NOT.GotIt ) THEN
          ViewFactorsFile = 'ViewFactors.dat'
@@ -443,15 +434,11 @@
 !    Load the different view factors
 !------------------------------------------------------------------------------
 
-     TopologyFixed = ListGetLogical( TSolver % Values, &
-         'Matrix Topology Fixed',GotIt)
-
-     MinFactor = ListGetConstReal( TSolver % Values, &
-         'Minimum Gebhardt Factor',GotIt )
+     TopologyFixed = GetLogical( Params, 'Matrix Topology Fixed',GotIt)
+     MinFactor = GetConstReal( Params, 'Minimum Gebhardt Factor',GotIt )
      IF(.NOT. GotIt) MinFactor = 1.0d-20
      
-     SaveFactors = ListGetLogical( TSolver % Values, &
-         'Save Gebhardt Factors',GotIt )
+     SaveFactors = ListGetLogical( Params, 'Save Gebhardt Factors',GotIt )
    
      MaxOmittedFactor = 0.0d0   
      TopologyTest = .TRUE.
@@ -459,6 +446,8 @@
 
      RadiationBody = 0
      ALLOCATE( ElementNumbers(Model % NumberOfBoundaryElements), STAT=istat )
+     ALLOCATE( RelAreas(Model % NumberOfBoundaryElements), STAT=istat )
+     ALLOCATE( Areas(Model % NumberOfBoundaryElements), STAT=istat )
      IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 2.')
 
 20   RadiationBody = RadiationBody + 1
@@ -469,27 +458,26 @@
      DO t=Model % NumberOfBulkElements+1, &
             Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
 
-       CurrentElement => Model % Elements(t)
-       k = CurrentElement % BoundaryInfo % Constraint
-       
-       IF ( CurrentElement % TYPE % ElementCode /= 101 ) THEN
-         DO i=1,Model % NumberOfBCs
-           IF ( Model % BCs(i) % Tag == k ) THEN
-             RadiationFlag = ListGetString( Model % BCs(i) % Values, &
-                 'Radiation', GotIt )
-             IF ( RadiationFlag == 'diffuse gray' ) THEN
-               l = MAX(1, ListGetInteger( Model % BCs(i) % Values,'Radiation Boundary',GotIt) )
-               NodeIndexes =>  CurrentElement % NodeIndexes
-               n = CurrentElement % TYPE % NumberOfNodes
-               IF(l == RadiationBody) THEN
-                 RadiationSurfaces = RadiationSurfaces + 1
-                 ElementNumbers(RadiationSurfaces) = t
-               END IF
-             END IF
-           END IF
-         END DO
+       Element => Model % Elements(t)
+       Model % CurrentElement => Element
+       IF ( Element % TYPE % ElementCode == 101 ) CYCLE
+
+       BC => GetBC(Element)
+       IF(.NOT.ASSOCIATED(BC)) CYCLE
+
+       RadiationFlag = GetString( BC, 'Radiation', GotIt )
+       IF ( RadiationFlag == 'diffuse gray' ) THEN
+         l = MAX(1, GetInteger( BC,'Radiation Boundary',GotIt) )
+         n = GetElementNOFNodes(Element)
+         IF(l == RadiationBody) THEN
+           RadiationSurfaces = RadiationSurfaces + 1
+           ElementNumbers(RadiationSurfaces) = t
+           Areas(RadiationSurfaces) = ElementArea(Mesh,Element,n)
+         END IF
        END IF
      END DO
+     n = RadiationSurfaces
+     RelAreas(1:n) = Areas(1:n) / MAXVAL(Areas(1:n))
 
      IF(MaxRadiationBody > 1) THEN
        WRITE (Message,'(A,I9,A,I9)') 'Number of Radiation Surfaces',RadiationSurfaces,&
@@ -534,7 +522,7 @@
        END IF
        TSOlver % Mesh % ViewFactors => ViewFactors
 
-       ViewFactorsFile = ListGetString(Model % Simulation,'View Factors',GotIt)
+       ViewFactorsFile = GetString(Model % Simulation,'View Factors',GotIt)
        
        IF ( .NOT.GotIt ) THEN
          ViewFactorsFile = 'ViewFactors.dat'
@@ -571,12 +559,9 @@
          ELSE 
 	   n2 = SIZE( ViewFactors(i) % Factors) 
 	   IF(n /=  n2 ) THEN
-             IF(ASSOCIATED(ViewFactors(i) % Elements)) &
-	       DEALLOCATE( ViewFactors(i) % Elements )
-	     IF(ASSOCIATED(ViewFactors(i) % Factors)) &
-               DEALLOCATE( ViewFactors(i) % Factors )
-             ALLOCATE( ViewFactors(i) % Elements(n) )
-             ALLOCATE( ViewFactors(i) % Factors(n) )
+             IF(ASSOCIATED(ViewFactors(i) % Elements)) DEALLOCATE( ViewFactors(i) % Elements )
+	     IF(ASSOCIATED(ViewFactors(i) % Factors))  DEALLOCATE( ViewFactors(i) % Factors )
+             ALLOCATE( ViewFactors(i) % Elements(n), ViewFactors(i) % Factors(n) )
            END IF
            ViewFactors(i) % NumberOfFactors = n
          END IF
@@ -584,20 +569,19 @@
          Vals => ViewFactors(i) % Factors
          Cols => ViewFactors(i) % Elements
 
-	 Vals = 0
-         Cols = 0
+	 Vals = 0; Cols = 0
 
          DO j=1,n
            READ(10,*) t,Cols(j),Vals(j)         
+           Vals(j) = RelAreas(i) * Vals(j)  ! Scale by area to make symmetric
            Cols(j) = ElementNumbers(Cols(j))
          END DO
        END DO
        CLOSE(10)
      END IF
 
-
      ! Check whether the element already sees itself, it will when 
-     ! gebhardt factors are com�1puted. Also compute matrix size.
+     ! gebhardt factors are computed. Also compute matrix size.
      DO i=1,RadiationSurfaces
        Cols => ViewFactors(i) % Elements
        n = ViewFactors(i) % NumberOfFactors
@@ -610,10 +594,7 @@
            EXIT
          END IF
        END DO
-       IF ( k == 0 ) THEN
-         RowSpace(i) = RowSpace(i) + 1
-       END IF
-       
+       IF ( k == 0 ) RowSpace(i) = RowSpace(i) + 1
      END DO
      MatrixElements = SUM(RowSpace(1:RadiationSurfaces))
 
@@ -627,7 +608,7 @@
      IF(FullMatrix) THEN
        ALLOCATE(GFactorFull(RadiationSurfaces,RadiationSurfaces),STAT=istat)
        IF ( istat /= 0 ) CALL Fatal('RadiationFactors','Memory allocation error 5.')
-       GFactorFull = 0.0d0
+       GFactorFull = 0.0_dp
      ELSE 
        ! Assembly the matrix form
        DO i=1,RadiationSurfaces
@@ -658,160 +639,193 @@
 
      MatrixEntries = 0
      ImplicitEntries = 0
-     Emissivity = ListGetConstReal( TSolver % Values,'Constant Emissivity',GotIt )
+
+     ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces))
+     Emissivity = GetConstReal( Params,'Constant Emissivity',GotIt )
      IF(.NOT. GotIt) Emissivity = 0.5_dp
-     Transmissivity = 0.0_dp
+     Reflectivity = 1-Emissivity
+
+     IF(.NOT. ConstantEmissivity) THEN
+       DO i=1,RadiationSurfaces
+         Element => Model % Elements(ElementNumbers(i))
+         n = GetElementNOFNodes(Element)
+         BC => GetBC(Element)
+         Emissivity(i) = SUM(GetReal(BC, 'Emissivity', Found, Element))/n
+         IF( Found ) THEN
+           Transmittivity = SUM(GetReal(BC,'Transmissivity', Found, Element))/n
+           Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
+         ELSE
+            Emissivity(i) = SUM(GetParentMatProp( 'Emissivity', Element, Found))/n
+            IF(.NOT. Found) THEN
+              WRITE( Message,'(A,I3,I3)') 'Emissivity not found in BC: ',i,k
+              CALL Fatal('RadiationFactors',Message)
+            END IF
+            Transmittivity = SUM(GetParentMatProp('Transmissivity',Element, Found))/n
+            Reflectivity(i) = 1 - Emissivity(i) - Transmittivity
+         END IF
+       END DO
+     END IF
+
+
+     ALLOCATE(Diag(RadiationSurfaces)); Diag=0
 
      ! Fill the matrix for gebhardt factors
-     DO t=1,RadiationSurfaces
+     ! Scale by (1-Emissivity) to get a symmetric system, if all emissivities are not equal to unity anywhere
 
-       CurrentElement => Model % Elements(ElementNumbers(t))
-       n = CurrentElement % Type % NumberOfNodes
-       k = CurrentElement % BoundaryInfo % Constraint
-       NodeIndexes => CurrentElement % NodeIndexes
+     gTriv = ALL(ABS(Reflectivity)<=AEPS)
+     gSymm = ALL(ABS(Reflectivity)>AEPS) .OR. gTriv
 
-       DO i=1,Model % NumberOfBCs
-         IF ( Model % BCs(i) % Tag  == k ) THEN
+     IF(.NOT. gTriv) THEN
+       r=1._dp
+       DO i=1,RadiationSurfaces
 
-           IF(.NOT. ConstantEmissivity) THEN
-             Emissivity = SUM( ListGetReal( Model % BCs(i) % Values, &
-                    'Emissivity', n, NodeIndexes, Found) ) / n
-             IF( Found ) THEN
-               Transmissivity = SUM( ListGetReal( Model % BCs(i) % Values, &
-                    'Transmissivity', n, NodeIndexes, Found) ) / n
-             ELSE
-                Emissivity = SUM( GetParentMatProp( 'Emissivity', CurrentElement, Found) ) / n
-	        IF(.NOT. Found) THEN
-	          WRITE( Message,'(A,I3,I3)') 'Emissivity not found in BC: ',i,k
-                  CALL Fatal('RadiationFactors',Message)
-	        END IF 
-                Transmissivity = SUM( GetParentMatProp( 'Transmissivity', CurrentElement, Found) ) / n
-             END IF  
-           END IF
+         Element => Model % Elements(ElementNumbers(i))
 
-           Reflectivity = 1 - Emissivity - Transmissivity
+         Vals => ViewFactors(i) % Factors
+         Cols => ViewFactors(i) % Elements
 
-           Vals => ViewFactors(t) % Factors
-           Cols => ViewFactors(t) % Elements
+         if ( gSymm ) r = Reflectivity(i)
+         DO j=1,ViewFactors(i) % NumberOfFactors
+           Colj = InvElementNumbers(Cols(j)-j0)
 
-           DO j=1,ViewFactors(t) % NumberOfFactors
-
-             Colj = InvElementNumbers(Cols(j)-j0)
-
-             IF(FullMatrix) THEN
-               GFactorFull(t,Colj) = GFactorFull(t,Colj) - Reflectivity*Vals(j)
-             ELSE
-               CALL CRS_AddToMatrixElement( GFactorSP,t,Colj,-Reflectivity*Vals(j) )
-             END IF
-           END DO
-
-           IF(FullMatrix) THEN
-             GFactorFull(t,t) = GFactorFull(t,t) + 1._dp
+           IF (gSymm) THEN
+             s = Reflectivity(i)*Reflectivity(colj)
            ELSE
-             CALL CRS_AddToMatrixElement( GFactorSP,t,t,1._dp )
+             s = Reflectivity(i)
            END IF
+           IF(FullMatrix) THEN
+             GFactorFull(i,colj) = GFactorFull(i,colj)-s*Vals(j)
+           ELSE
+             CALL CRS_AddToMatrixElement(GFactorSP,i,colj,-s*Vals(j))
+           END IF
+         END DO
 
-           EXIT
+         Diag(i) = Diag(i) + r*RelAreas(i)
+         IF(FullMatrix) THEN
+           GFactorFull(i,i) = GFactorFull(i,i) + r*RelAreas(i)
+         ELSE
+           CALL CRS_AddToMatrixElement( GFactorSP,i,i,r*RelAreas(i) )
          END IF
        END DO
 
-     END DO
+       ! Scale matrix to unit diagonals
+       Diag = SQRT(1._dp/Diag)
+       DO i=1,RadiationSurfaces
+         IF(FullMatrix) THEN
+           DO j=1,RadiationSurfaces
+             GFactorFull(i,j) = GFactorFull(i,j)*Diag(i)*Diag(j)
+           END DO
+         ELSE
+           DO j=GFactorSP % Rows(i),GFactorSP % Rows(i+1)-1
+             GFactorSP % Values(j) = GFactorSP % Values(j)*Diag(i)*Diag(GFactorSP % Cols(j))
+           END DO
+         END IF
+       END DO
+     END IF
 
      ALLOCATE( Solver )
      CALL InitFactorSolver(TSolver, Solver)
+     Params => TSolver % Values
      
      RHS = 0.0D0
      SOL = 1.0D-4
 
-     MinSum = HUGE(MinSum)
-     MaxSum = -HUGE(MaxSum)
      ALLOCATE(RowSums(RadiationSurfaces))
-     RowSums = 0
+     RowSums=0
           
      st = RealTime()
 
+     n = 0
      DO t=1,RadiationSurfaces
 
-       RHS(t) = 1.0_dp
 
-       ! It may be a good initial start that the Gii is 
-       ! the same as previously
-       IF(t > 1) THEN
-         PrevSelf = SOL(t)
-         SOL(t) = SOL(t-1)
-         SOL(t-1) = PrevSelf
-         RHS(t-1) = 0.0_dp
-       END IF
+       IF ( gTriv ) THEN
 
-
-       IF(FullMatrix) THEN
-         CALL FIterSolver( RadiationSurfaces, SOL, RHS, Solver )
-       ELSE
-         IF(IterSolveGebhardt) THEN
-           Solver % Matrix => GFactorSP
-           CALL IterSolver( GFactorSP, SOL, RHS, Solver )
-!------------------------------------------------------------------------------
-         ELSE           
-           IF(t == 1) THEN
-             CALL ListAddLogical( Solver % Values, &
-                 'Linear System Refactorize', .TRUE. )
-             CALL ListAddLogical( Solver % Values, &
-                 'Linear System Free Factorization', .FALSE. )
-           ELSE IF(t==2) THEN
-             CALL ListAddLogical( Solver % Values, &
-                 'Linear System Refactorize', .FALSE. )
-           END IF
-           CALL DirectSolver( GFactorSP, SOL, RHS, Solver )
-         END IF
-       END IF
-       CALL ListRemove(Solver % Values,'Linear System Free Factorization')
-
-
-       CurrentElement => Model % Elements(ElementNumbers(t))
-       n = CurrentElement % TYPE % NumberOfNodes
-       NodeIndexes => CurrentElement % NodeIndexes
-       
-       IF(.NOT. ConstantEmissivity) THEN
-         k = CurrentElement % BoundaryInfo % Constraint
-         DO j=1,Model % NumberOfBCs
-           IF ( Model % BCs(j) % Tag == k ) THEN
-             Emissivity = SUM(ListGetReal( Model % BCs(j) % Values, &
-               'Emissivity', n, NodeIndexes, Found)) / n
-             IF( .NOT. Found ) THEN
-               Emissivity = SUM( GetParentMatProp( 'Emissivity', CurrentElement) ) / n
-             END IF 
-             EXIT
-           END IF
-         END DO
-       END IF       
-
-       n = 0
-       DO i=1,RadiationSurfaces
-         Vals => ViewFactors(i) % Factors
-         Cols => ViewFactors(i) % Elements
-         
-         s = 0.0_dp
-         DO k=1,ViewFactors(i) % NumberOfFactors
+         Vals => ViewFactors(t) % Factors
+         Cols => ViewFactors(t) % Elements
+         Fac = 0._dp
+         DO k=1,ViewFactors(t) % NumberOfFactors
            Colj = InvElementNumbers(Cols(k)-j0)
-           s = s + Vals(k) * SOL(Colj)
+           Fac(Colj) = Vals(k) / RelAreas(t)
          END DO
-         Fac(i) = Emissivity * s
-         IF (Fac(i)>MinFactor ) n=n+1
-         RowSums(i) = RowSums(i) + Fac(i)
-       END DO
+
+         DO i=1,RadiationSurfaces
+           s = Fac(i)*RelAreas(t)/(RelAreas(i)*Emissivity(i))
+           IF (s>MinFactor ) n=n+1
+           RowSums(i) = RowSums(i) + s
+         END DO
+
+       ELSE
+         RHS(t) = Diag(t)
+
+         ! It may be a good initial start that the Gii is 
+         ! the same as previously
+         IF (t>1) THEN
+           PrevSelf = SOL(t)
+           SOL(t) = SOL(t-1)
+           SOL(t-1) = PrevSelf
+           RHS(t-1) = 0.0_dp
+         END IF
+
+         SOL = SOL/Diag
+         IF(FullMatrix) THEN
+           CALL FIterSolver( RadiationSurfaces, SOL, RHS, Solver )
+         ELSE
+           IF(IterSolveGebhardt) THEN
+             Solver % Matrix => GFactorSP
+             CALL IterSolver( GFactorSP, SOL, RHS, Solver )
+!------------------------------------------------------------------------------
+           ELSE           
+             IF (t==1) THEN
+               CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', .TRUE. )
+               CALL ListAddLogical( Solver % Values, 'Linear System Free Factorization', .FALSE. )
+             ELSE IF(t==2) THEN
+               CALL ListAddLogical( Solver % Values, 'Linear System Refactorize', .FALSE. )
+             END IF
+  
+             IF(.NOT.gSymm) THEN
+               IF(GetString(Solver % Values,'Linear System Direct Method', Found)=='cholmod')THEN
+                 CALL Warn('RadiationFactors', 'Can not use Cholesky solver if any emissivity==1')
+                 CALL ListAddString( Solver % Values, 'Linear System Direct Method', 'UMFpack' )
+               END IF
+             END IF
+             
+             CALL DirectSolver( GFactorSP, SOL, RHS, Solver )
+           END IF
+         END IF
+         SOL = SOL*Diag
+         CALL ListRemove(Solver % Values,'Linear System Free Factorization')
+
+         n = 0
+         DO i=1,RadiationSurfaces
+           Vals => ViewFactors(i) % Factors
+           Cols => ViewFactors(i) % Elements
+
+           s = 0.0_dp
+           DO k=1,ViewFactors(i) % NumberOfFactors
+             Colj = InvElementNumbers(Cols(k)-j0)
+             IF(gSymm) THEN
+               s = s + Reflectivity(colj)*Vals(k)*SOL(colj)
+             ELSE
+               s = s + Vals(k)*SOL(colj)
+             END IF 
+           END DO
+           Fac(i) = s*Emissivity(t)*Emissivity(i)
+
+! rowsums should add up to 1
+           s = Fac(i)*RelAreas(t)/(RelAreas(i)*Emissivity(i))
+           IF (s>MinFactor ) n=n+1
+           RowSums(i) = RowSums(i) + s
+         END  DO
+       END IF
 
        FactorSum = SUM(Fac)
        ConsideredSum = 0.0_dp
 
-
-       ImplicitLimit = ListGetConstReal( TSolver % Values, &
-           'Implicit Gebhardt Factor Fraction', ImplicitLimitIs) 
-
-       NeglectLimit = ListGetConstReal( TSolver % Values, &
-           'Neglected Gebhardt Factor Fraction', GotIt) 
+       ImplicitLimit = GetConstReal( Params, 'Implicit Gebhardt Factor Fraction', ImplicitLimitIs) 
+       NeglectLimit  = GetConstReal( Params, 'Neglected Gebhardt Factor Fraction', GotIt) 
        IF(.NOT. GotIt) NeglectLimit = 1.0d-6
        
-
        IF(ImplicitLimitIs) THEN
          DO i=1,RadiationSurfaces
            FacPerm(i) = i
@@ -821,10 +835,10 @@
          CALL SortR( RadiationSurfaces, FacPerm, Fac) 
          Fac(1) = Fac(1) - FactorSum        
 
-         ConsideredSum = 0.0d0
+         ConsideredSum = 0.0_dp
          n = 0
          DO i=1,RadiationSurfaces
-           IF(ConsideredSum < (1.0-NeglectLimit) * FactorSum) THEN
+           IF(ConsideredSum < (1.0_dp-NeglectLimit) * FactorSum) THEN
              ConsideredSum = ConsideredSum + Fac(i)
              n = i
            END IF           
@@ -837,11 +851,11 @@
        END IF
 
        MatrixEntries = MatrixEntries + n
-       CurrentElement => Model % Elements(ElementNumbers(t))
-       GebhardtFactors => CurrentElement % BoundaryInfo % GebhardtFactors       
+       Element => Model % Elements(ElementNumbers(t))
+       GebhardtFactors => Element % BoundaryInfo % GebhardtFactors       
        IF ( .NOT. ASSOCIATED( GebhardtFactors ) ) THEN
          ALLOCATE( GebhardtFactors )
-         CurrentElement % BoundaryInfo % GebhardtFactors => GebhardtFactors
+         Element % BoundaryInfo % GebhardtFactors => GebhardtFactors
        END IF
 
        IF(FirstTime) THEN
@@ -925,9 +939,9 @@
      MinSum = MINVAL(RowSums)
      MaxSum = MAXVAL(RowSums)
 
-     WRITE(Message,'(A,T35,ES15.4)') 'Minimum Gebhardt factors sum',MinSum
+     WRITE(Message,'(A,T35,2ES15.4)') 'Minimum Gebhardt factors sum',MINVAL(RowSums)
      CALL Info('RadiationFactors',Message,LEVEL=4)
-     WRITE(Message,'(A,T35,ES15.4)') 'Maximum Gebhardt factors sum',MaxSum
+     WRITE(Message,'(A,T35,2ES15.4)') 'Maximum Gebhardt factors sum',MAXVAL(RowSums)
      CALL Info('RadiationFactors',Message,LEVEL=4)
      WRITE(Message,'(A,T35,ES15.4)') 'Maximum share of omitted factors',MaxOmittedFactor
      CALL Info('RadiationFactors',Message,LEVEL=4)
@@ -943,8 +957,7 @@
 
      ! Save factors is mainly for debugging purposes
      IF(SaveFactors) THEN
-       GebhardtFactorsFile = ListGetString(Model % Simulation, &
-           'Gebhardt Factors',GotIt )
+       GebhardtFactorsFile = GetString(Model % Simulation, 'Gebhardt Factors',GotIt )
        
        IF ( .NOT.GotIt ) THEN
          GebhardtFactorsFile = 'GebhardtFactors.dat'
@@ -974,8 +987,8 @@
        END DO
        
        DO t=1,RadiationSurfaces
-         CurrentElement => Model % Elements(ElementNumbers(t))
-         GebhardtFactors => CurrentElement % BoundaryInfo % GebhardtFactors
+         Element => Model % Elements(ElementNumbers(t))
+         GebhardtFactors => Element % BoundaryInfo % GebhardtFactors
          
          n = GebhardtFactors % NumberOfFactors 
          Vals => GebhardtFactors % Factors
@@ -990,7 +1003,8 @@
        CLOSE(10)
      END IF
 
-     DEALLOCATE(Solver, InvElementNumbers,RowSpace,Reorder,RHS,SOL,Fac,FacPerm,RowSums)
+     DEALLOCATE(Solver, InvElementNumbers,RowSpace,Reorder,RHS,SOL,Fac,FacPerm,RowSums, &
+                   Emissivity, Reflectivity,Diag )
      IF(FullMatrix) THEN
        DEALLOCATE(GFactorFull)
      ELSE
@@ -1052,14 +1066,11 @@
 
        ! TODO: CreateMatrix should do these:
        ! -----------------------------------
-       AMatrix % Lumped = ListGetLogical( TSolver % Values, &
-           'Lumped Mass Matrix', GotIt )
-       AMatrix % Symmetric = ListGetLogical( TSolver % Values, &
-           'Linear System Symmetric', GotIt )       
+       AMatrix % Lumped = GetLogical( Params, 'Lumped Mass Matrix', GotIt )
+       AMatrix % Symmetric = ListGetLogical( Params, 'Linear System Symmetric', GotIt )       
        
        n = AMatrix % NumberOFRows
        ALLOCATE( AMatrix % RHS(n) )
-
 
        ! Transient case additional allocations:
        ! --------------------------------------

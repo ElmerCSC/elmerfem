@@ -1552,7 +1552,6 @@ CONTAINS
       REAL(KIND=dp) :: Area, Asum, gEmissivity, Base(12)
       REAL(KIND=dp), POINTER :: Fact(:)
       INTEGER :: i,j,k,l,m,ImplicitFactors, nf,nr, bindex, nb
-      TYPE(ValueList_t), POINTER :: BC
       INTEGER, POINTER :: ElementList(:)
 !------------------------------------------------------------------------------
 !     If linear iteration compute radiation load
@@ -1584,12 +1583,10 @@ CONTAINS
 
           RadiationElement => Solver % Mesh % Elements(ElementList(j))
 
-          BC => Model % BCs(RadiationElement % BoundaryInfo % Constraint) % Values
-
 !         Text = ComputeRadiationCoeff(Model,Solver % Mesh,Element,j) / ( Area )
-
-          bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
-          Text = Areas(bindex) * Emiss(bindex) * ABS(Fact(j)) / Area
+!         bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
+!         Text = Areas(bindex) * Emiss(bindex) * ABS(Fact(j)) / Area
+          Text = Fact(j)
 
           Asum = Asum + Text
 
