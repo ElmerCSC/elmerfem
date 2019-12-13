@@ -59,7 +59,6 @@ Solver 1
 
   Quadratic Approximation = False
   Use Piola Transform = True
-  Element = "n:0 e:1 -quad b:2"
 
   Linear System Scaling = True
   Linear System Solver = String "Iterative"
@@ -140,3 +139,6 @@ End
 
 
 Solver 1 :: Reference Norm = 4.85876745E-03
+
+! For "Quadratic Approximation = True":
+!Solver 1 :: Reference Norm = 2.45795628E-03

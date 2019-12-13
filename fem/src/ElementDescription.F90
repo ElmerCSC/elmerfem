@@ -5761,8 +5761,8 @@ END SUBROUTINE PickActiveFace
        !-----------------------------------------------------------------------
        SELECT CASE(Element % TYPE % ElementCode / 100)
        CASE(2)
-         IF (SecondOrder) CALL Fatal('EdgeElementInfo', &
-             'Traces of 2-D edge elements (of order 2) have not been implemented yet')
+         IF (SecondOrder .AND. n==3) CALL Fatal('EdgeElementInfo', &
+             'The lowest-order background mesh needed for trace evaluation over an edge')
          IF (Create2ndKindBasis) CALL Fatal('EdgeElementInfo', &
              'Traces of 2-D edge elements (the 2nd family) have not been implemented yet')
          DOFs = 1
@@ -6123,6 +6123,9 @@ END SUBROUTINE PickActiveFace
              EdgeBasis(1,1) = -0.5d0
            ELSE
              EdgeBasis(1,1) = 0.5d0
+           END IF
+           IF (SecondOrder) THEN
+             EdgeBasis(2,1) = 1.5d0 * u
            END IF
            CurlBasis(1:DOFs,:) = 0.0d0
 
