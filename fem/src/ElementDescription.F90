@@ -5765,7 +5765,11 @@ END SUBROUTINE PickActiveFace
              'The lowest-order background mesh needed for trace evaluation over an edge')
          IF (Create2ndKindBasis) CALL Fatal('EdgeElementInfo', &
              'Traces of 2-D edge elements (the 2nd family) have not been implemented yet')
-         DOFs = 1
+         IF (SecondOrder) THEN
+           DOFs = 2
+         ELSE
+           DOFs = 1
+         END IF
          DO q=1,2
            Basis(q) = LineNodalPBasis(q, u)
            dLBasisdx(q,1) = dLineNodalPBasis(q, u)
