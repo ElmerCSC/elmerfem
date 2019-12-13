@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( elasticity.sif elasticity.sif COPYONLY)
+ADD_ELMERTEST_MODULE(UMAT_StVenant_axials LocalUMAT LocalUMAT.F90)
+
+file(COPY tank.grd ELMERSOLVER_STARTINFO LocalUMAT.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(UMAT_StVenant_axials LABELS elasticity umat quick)

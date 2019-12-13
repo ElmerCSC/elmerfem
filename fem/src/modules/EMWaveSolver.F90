@@ -241,6 +241,13 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
     PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
   END IF
 
+  IF (CoordinateSystemDimension() == 2) THEN
+    IF (.NOT. PiolaVersion) &
+        CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
+    IF (SecondOrder) &
+        CALL Fatal('EMWaveSolver', 'A 2D model does not yet support Quadratic Approximation')
+  END IF
+
   dofs = Solver % Variable % Dofs
 
   eps0 = GetConstReal( Model % Constants,'Permittivity of Vacuum')
@@ -396,7 +403,7 @@ CONTAINS
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ, weight, eps, mu, muinv, L(3), cond
-    REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),WBasis(nd,3),RotWBasis(nd,3)
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3),WBasis(nd,3),RotWBasis(nd,3)
     LOGICAL :: Stat
     INTEGER :: t, i, j
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -407,9 +414,9 @@ CONTAINS
     SAVE Cd_h, Mu_h, Eps_h, Cond_h, AllocationsDone
 
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density 1')
-      CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density 2')
-      CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density 3')
+      CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density Rate 1')
+      CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density Rate 2')
+      CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density Rate 3')
 
       ! These have been normalized by mu0 and eps0 in _init section
       CALL ListInitElementKeyword( Mu_h,'Material','Relative Permeability')
@@ -472,7 +479,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  !-----------------------------------------------------------------------------
+!-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( MASS, DAMP, STIFF, FORCE, Element, n, nd, PiolaVersion, InitHandles )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:)
@@ -480,9 +487,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: DetJ,Normal(3),Tem(n)
+    REAL(KIND=dp) :: DetJ, Tem(n)
     REAL(KIND=dp) :: B, L(3), muinv, mu, weight, tanWBasis(3)
-    REAL(KIND=dp) :: Basis(nd), WBasis(nd,3), RotWBasis(nd,3),dBasisdx(nd,3) 
+    REAL(KIND=dp) :: Basis(n), WBasis(nd,3), RotWBasis(nd,3), dBasisdx(n,3) 
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, p, q
@@ -524,11 +531,20 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     DO t=1,IP % n
-      stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
-      
-      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
-      weight = detJ * IP%s(t)
+      !
+      ! We need to branch as the only way to get the traces of 2D vector finite elements 
+      ! is to call EdgeElementInfo:
+      !
+      IF (GetElementFamily(Element) == 2) THEN
+        stat = EdgeElementInfo(Element, Nodes, IP % u(t), IP % v(t), IP % w(t), detF = detJ, &
+            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+      END IF
+
+!      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
+      weight = detJ * IP % s(t)
 
       mu = mu0 * ListGetElementReal( mu_h, Basis, Parent )
       muinv = 1.0_dp / mu
@@ -542,16 +558,25 @@ CONTAINS
         L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )
       END IF
       DO i = 1,nd
-        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
-        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
+!        NOTE that the edge basis function 
+!             which has been received here is automatically tangential to the 
+!             boundary, so computing tangential projection is unnecessary
+!
+!        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
+!        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
+
+        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
       END DO
 
       B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
       IF( Found ) THEN
         DO i = 1,nd
-          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal * WBasis(i,:))
+!          Again, computing tangential projection is unnecessary here
+!
+!          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal * WBasis(i,:))
           DO j = 1,nd
-            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
+!            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
+            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(WBasis(i,:) * WBasis(j,:)) * weight
           END DO
         END DO
       END IF
@@ -607,10 +632,10 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
     CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
   END IF
 
-  ! In case we are solving truly discontinuous Galerkin fields then we do it by assemblying
+  ! In case we are solving truly discontinuous Galerkin fields then we do it by assembling
   ! normal linear system. Here we allocate for the DG type of fields that are computed elementwise
   ! while the FE fields are solved using standard Galerkin. Hence unintuitively we exit here
-  ! for elemental fields if the primary field is itself elemenetal.
+  ! for elemental fields if the primary field is itself elemental.
   !-----------------------------------------------------------------------------------------------
   IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 
@@ -657,7 +682,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   ! Electric field is always computed
   CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
-      "Elfied E[Elfied E:3]");
+      "Elfield E[Elfield E:3]");
 
   ! When requested we may also compute the 1st and 2nd time derivative.
   ! They exist by default as whitney fields but also needs to be projected

@@ -365,7 +365,7 @@
      Constants => GetConstants()
      IF( IsRadiation ) THEN
        StefanBoltzmann = ListGetConstReal( Model % Constants, &
-                     'Stefan Boltzmann' )
+                     'Stefan Boltzmann',UnfoundFatal=.TRUE.)
      END IF
 
 !------------------------------------------------------------------------------
@@ -2274,7 +2274,7 @@ CONTAINS
               Emissivity = SUM( NodalEmissivity(1:En)) / En
 
               StefanBoltzMann = &
-                    ListGetConstReal( Model % Constants,'Stefan Boltzmann' )
+                  ListGetConstReal( Model % Constants,'Stefan Boltzmann',UnfoundFatal=.TRUE. )
 
            !---------------------
            CASE( 'diffuse gray' )

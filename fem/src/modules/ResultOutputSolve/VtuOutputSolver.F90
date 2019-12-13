@@ -292,15 +292,17 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Stat, AllocationsDone = .FALSE.
+    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
 
-    SAVE Nodes, Basis, MASS, LOAD, AllocationsDone
+    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
 !------------------------------------------------------------------------------
 
     Mesh => GetMesh()
     IF( .NOT. AllocationsDone ) THEN
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
+      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
+          CurrentCoordinateSystem() == CylindricSymmetric
       AllocationsDone = .TRUE.
     END IF
     
@@ -314,10 +316,15 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element, nip )
+
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
       Weight = IP % s(t) * DetJ
 
+      IF( CSymmetry ) THEN
+        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+      END IF
+      
       DO p=1,n
         LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
         DO q=1,n

@@ -645,10 +645,12 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   INTEGER :: i, dofs, n, nb, nd, t, active, CondRank
   LOGICAL :: Found, InitHandles
   TYPE(Mesh_t), POINTER :: Mesh
-  REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:)  
+  REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:),&
+      PotInteg(:),PotVol(:)
   INTEGER, POINTER :: WeightPerm(:)
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver_post'
-  LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights, Axisymmetric
+  LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights, &
+      Axisymmetric, CalcAvePotential
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) :: HeatingTot, Voltot
   REAL(KIND=dp), POINTER :: CondTensor(:,:)  
@@ -671,6 +673,15 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   ConstantWeights = ListGetLogical( Params,'Constant Weights',Found ) 
 
   AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )     
+
+  CalcAvePotential = ListGetLogical( Params,'Calculate Average Potential',Found )
+
+  IF( CalcAvePotential ) THEN   
+    n = Model % NumberOfBodies 
+    ALLOCATE( PotInteg(n), PotVol(n) )
+    PotInteg = 0.0_dp
+    PotVol = 0.0_dp
+  END IF
   
   ! Joule losses: type 1, component 1
   PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Joule Heating')
@@ -742,6 +753,32 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
     CALL GlobalPostScale()
   END IF
 
+  IF( CalcAvePotential ) THEN
+    BLOCK        
+      REAL(KIND=dp), ALLOCATABLE:: PotTmp(:)
+      INTEGER :: ierr      
+      REAL(KIND=dp) :: PotAve
+      n = Model % NumberOfBodies
+      IF( ParEnv % PEs > 1 ) THEN
+        ALLOCATE( PotTmp(n) )        
+        CALL MPI_ALLREDUCE(PotVol,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+        PotVol = PotTmp
+        CALL MPI_ALLREDUCE(PotInteg,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+        PotInteg = PotTmp
+        DEALLOCATE( PotTmp ) 
+      END IF
+
+      DO i = 1, n
+        IF( PotVol(i) < EPSILON( PotVol(i) ) ) CYCLE
+        PotAve = PotInteg(i) / PotVol(i)
+        WRITE( Message,'(A,ES12.5)') 'Average body'//TRIM(I2S(i))//' potential: ',PotAve
+        CALL Info(Caller,Message,Level=7)
+        CALL ListAddConstReal( Model % Simulation,&
+            'res: Average body'//TRIM(I2S(i))//' potential',PotAve)
+      END DO
+    END BLOCK
+  END IF
+    
   CALL Info(Caller,'All done',Level=12)
   
 
@@ -860,6 +897,12 @@ CONTAINS
       Heat = SUM( Grad(1:dim) * CondGrad(1:dim) )      
       IF( CalcHeating ) THEN
         Force(2,1:n) = Force(2,1:n) + Heat * Weight * Basis(1:n)
+      END IF
+
+      IF( CalcAvePotential ) THEN
+        i = Element % BodyId
+        PotVol(i) = PotVol(i) + Weight
+        PotInteg(i) = PotInteg(i) + Weight * SUM( Basis(1:n) * ElementPot(1:n) ) 
       END IF
       
       VolTot = VolTot + Weight
