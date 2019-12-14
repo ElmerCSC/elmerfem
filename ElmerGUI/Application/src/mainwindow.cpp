@@ -131,7 +131,7 @@ MainWindow::MainWindow()
   boundaryDivide = new BoundaryDivide(this);
   meshingThread = new MeshingThread(this);
   meshutils = new Meshutils;
-  solverLogWindow = new SifWindow(this);
+  solverLogWindow = new SolverLogWindow(this);
   solver = new QProcess(this);
   post = new QProcess(this);
   compiler = new QProcess(this);
@@ -757,6 +757,10 @@ void MainWindow::createActions()
   aboutAct = new QAction(QIcon(":/icons/help-about.png"), tr("About..."), this);
   aboutAct->setStatusTip(tr("Information about the program"));
   connect(aboutAct, SIGNAL(triggered()), this, SLOT(showaboutSlot()));
+  
+  generateAndSaveSifThenSaveProjectThenRunSolverAct = new QAction(QIcon(":/icons/arrow-right-double.png"), tr("&Generate, save and run"), this);
+  generateAndSaveSifThenSaveProjectThenRunSolverAct->setStatusTip(tr("Generate and save sif, save project, then run solver"));
+  connect(generateAndSaveSifThenSaveProjectThenRunSolverAct, SIGNAL(triggered()), this, SLOT(generateAndSaveSifThenSaveProjectThenRunSolverSlot()));  ;
 
 #if WIN32
 #else
@@ -1063,6 +1067,7 @@ void MainWindow::createToolBars()
   solverToolBar = addToolBar(tr("&Solver"));
   solverToolBar->addAction(runsolverAct);
   solverToolBar->addAction(resultsAct);
+  solverToolBar->addAction(generateAndSaveSifThenSaveProjectThenRunSolverAct);
 
   if(egIni->isSet("hidetoolbars")) {
     fileToolBar->hide();
@@ -1515,7 +1520,7 @@ void MainWindow::saveAsSlot()
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  saveDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save"), defaultDirName);
 
   if (!saveDirName.isEmpty()) {
     logMessage("Output directory " + saveDirName);
@@ -1540,13 +1545,9 @@ void MainWindow::saveProjectSlot()
     return;
   }
 
-  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
-    generateSifSlot();
-  }
-
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
 
   if (!projectDirName.isEmpty()) {
     logMessage("Project directory " + projectDirName);
@@ -1554,7 +1555,21 @@ void MainWindow::saveProjectSlot()
     logMessage("Unable to save project: directory undefined");
     return;
   }
+  
+  saveProject(projectDirName);
+}
 
+bool MainWindow::saveProject(QString projectDirName)
+{  
+  if(!glWidget->hasMesh()) {
+    logMessage("Unable to save project: no mesh");
+    return false;
+  }
+  
+  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    generateSifSlot();
+  }
+  
   progressBar->show();
   progressBar->setRange(0, 13);
 
@@ -1796,7 +1811,10 @@ void MainWindow::saveProjectSlot()
   
   setWindowTitle( QString("ElmerGUI - ") + projectDirName);
   addRecentProject(projectDirName, true);  
+  currentProjectDirName = projectDirName;  
+
   
+  return true;
 }
 
 
@@ -1938,7 +1956,8 @@ void MainWindow::loadProject(QString projectDirName)
   checkAndLoadExtraSolvers(&projectFile);
     
   setWindowTitle( QString("ElmerGUI - ") + projectDirName);
-  addRecentProject(projectDirName, true);  
+  addRecentProject(projectDirName, true);
+  currentProjectDirName = projectDirName;  
 
   QDomElement contents = projectDoc.documentElement();
 
@@ -7717,4 +7736,74 @@ void MainWindow::settings_setValue(const QString & key, const QVariant & value)
   QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QSettings settings(iniFileName, QSettings::IniFormat);
   settings.setValue(key, value);
+}
+
+void MainWindow::saveSifWindowContentsToSifFileAndRunSolver()
+{
+  // Save solver input file:
+  //-------------------------
+  QFile file;
+  QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
+  file.setFileName(sifName);
+  file.open(QIODevice::WriteOnly);
+  QTextStream sif(&file);
+
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  sif << sifWindow->getTextEdit()->toPlainText();
+  QApplication::restoreOverrideCursor();
+
+  file.close();
+  
+  runsolverSlot();
+}
+
+void MainWindow::generateAndSaveSifThenSaveProjectThenRunSolverSlot()
+{
+
+  //------- generate sif -------//
+  generateSifSlot();
+  cout << "Sif generated." ;
+
+
+  //------- Save sif -------//
+  QFile file;
+  QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
+  file.setFileName(sifName);
+  file.open(QIODevice::WriteOnly);
+  QTextStream sif(&file);
+
+  QApplication::setOverrideCursor(Qt::WaitCursor);
+  sif << sifWindow->getTextEdit()->toPlainText();
+  QApplication::restoreOverrideCursor();
+
+  file.close();
+  cout << "sif saved." << endl;
+    
+    
+  //------- Save project -------//
+  if(!glWidget->hasMesh()) {
+    logMessage("Unable to save project: no mesh");
+    return;
+  }
+
+  QString projectDirName = currentProjectDirName;
+  if(projectDirName.isEmpty())
+  {
+    QString defaultDirName = getDefaultDirName();
+    projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
+
+    if (!projectDirName.isEmpty()) {
+      logMessage("Project directory " + projectDirName);
+    } else {
+      logMessage("Unable to save project: directory undefined");
+      return;
+    }
+  }  
+  bool ret = saveProject(projectDirName);
+
+  
+   //------- Run solver -------// 
+  if(ret){
+    runsolverSlot();
+  }
 }

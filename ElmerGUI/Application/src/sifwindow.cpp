@@ -41,6 +41,7 @@
 #include <QtGui>
 #include <iostream>
 #include "sifwindow.h"
+#include "mainwindow.h"
 
 #if WITH_QT5
 #include <QtWidgets>
@@ -49,6 +50,118 @@
 #endif
 
 using namespace std;
+
+SifHighlighter::SifHighlighter(int type, QTextDocument *parent)
+    : QSyntaxHighlighter(parent)
+{
+  if(type != SIF_HIGHLIGHTING_LIGHT && type != SIF_HIGHLIGHTING_DARK) return;
+  
+  int d = -20;
+	QColor yellow  = QColor( 181+d, 137+d,   0);
+	QColor orange  = QColor( 203+d,  75+d,  22);
+	QColor red     = QColor( 220+d,  50+d,  47+d);
+	QColor magenta = QColor( 211+d,  54+d, 130+d);
+	QColor violet  = QColor( 108+d, 113+d, 196+d);
+	QColor blue    = QColor(  38+d, 139+2*d, 210+d);
+	QColor cyan    = QColor(  42+d, 161+d, 152+d);
+	QColor green   = QColor( 133+d, 153+d,   0);
+
+  if(type == SIF_HIGHLIGHTING_DARK)
+  {
+     d = 20;
+     yellow  = QColor( 181+d, 137+d,   0+d);
+     orange  = QColor( 203+d,  75+d,  22+d);
+     red     = QColor( 220+d,  50+d,  47+d);
+     magenta = QColor( 211+d,  54+d, 130+d);
+     violet  = QColor( 108+d, 113+d, 196+d);
+     blue    = QColor(  38+d, 139+d, 210+2*d);
+     cyan    = QColor(  42+d, 161+d, 152+d);
+     green   = QColor( 133+d, 153+d,   0);  
+  }
+	
+	QColor cBlock 	= blue;
+	QColor cKeyword = violet;
+	QColor cValue 	= cyan;
+	QColor cQuotation = orange;
+	QColor cComment	= green;
+	QColor cSuffix = magenta;
+	
+    HighlightingRule rule;
+    
+    blockFormat.setForeground(cBlock);
+    QStringList blockPatterns;
+    blockPatterns << "^\\s*Equation\\s+[1-9][0-9]*\\s*$" << "^\\s*Material\\s+[1-9][0-9]*\\s*$" 
+                  << "^\\s*Body\\s+Force\\s+[1-9][0-9]*\\s*$" << "^\\s*Initial\\s+Condition\\s+[1-9][0-9]*\\s*$"
+                  << "^\\s*Boundary\\s+Condition\\s+[1-9][0-9]*\\s*$" << "^\\s*Component\\s+[1-9][0-9]*\\s*$"
+                  << "^\\s*Solver\\s+[1-9][0-9]*\\s*$" << "^\\s*Body\\s+[1-9][0-9]*\\s*$"
+                  << "^\\s*Header\\s*$" << "^\\s*Simulation\\s*$" << "^\\s*Constants\\s*$" << "^\\s*End\\s*$"
+                  
+                  << "^\\s*Equation\\s+[1-9][0-9]*\\s*!" << "^\\s*Material\\s+[1-9][0-9]*\\s*!" 
+                  << "^\\s*Body\\s+Force\\s+[1-9][0-9]*\\s*!" << "^\\s*Initial\\s+Condition\\s+[1-9][0-9]*\\s*!"
+                  << "^\\s*Boundary\\s+Condition\\s+[1-9][0-9]*\\s*!" << "^\\s*Component\\s+[1-9][0-9]*\\s*!"
+                  << "^\\s*Solver\\s+[1-9][0-9]*\\s*!" << "^\\s*Body\\s+[1-9][0-9]*\\s*!"
+                  << "^\\s*Header\\s*!" << "^\\s*Simulation\\s*!" << "^\\s*Constants\\s*!" << "^\\s*End\\s*!"
+                  ;
+    foreach (const QString &pattern, blockPatterns) {
+        rule.pattern = QRegExp(pattern, Qt::CaseInsensitive);
+        rule.format = blockFormat;
+        highlightingRules.append(rule);
+    }
+    
+    keywordFormat.setForeground(cKeyword);
+    rule.pattern = QRegExp("\\bInteger\\b", Qt::CaseInsensitive);
+    rule.format = keywordFormat;
+    highlightingRules.append(rule);  
+    rule.pattern = QRegExp("\\bReal\\b", Qt::CaseInsensitive);
+    rule.format = keywordFormat;
+    highlightingRules.append(rule);
+    rule.pattern = QRegExp("\\bLogical\\b", Qt::CaseInsensitive);
+    rule.format = keywordFormat;
+    highlightingRules.append(rule);
+    rule.pattern = QRegExp("\\bMATC\\b", Qt::CaseInsensitive);
+    rule.format = keywordFormat;
+    highlightingRules.append(rule); 
+    rule.pattern = QRegExp("\\bEquals\\b", Qt::CaseInsensitive);
+    rule.format = keywordFormat;
+    highlightingRules.append(rule);
+    
+    valueFormat.setForeground(cValue);
+    rule.pattern = QRegExp("\\bTrue\\b", Qt::CaseInsensitive);
+    rule.format = valueFormat;
+    highlightingRules.append(rule);  
+    rule.pattern = QRegExp("\\bFalse\\b", Qt::CaseInsensitive);
+    rule.format = valueFormat;
+    highlightingRules.append(rule);
+         
+    quotationFormat.setForeground(cQuotation);
+    rule.pattern = QRegExp("\".*\"");
+    rule.format = quotationFormat;
+    highlightingRules.append(rule); 
+		
+	  suffixFormat.setForeground(cSuffix);
+    rule.pattern = QRegExp("\\([1-9][0-9]*\\)", Qt::CaseInsensitive);
+    rule.format = suffixFormat;
+    highlightingRules.append(rule); 
+    
+    commentFormat.setForeground(cComment);
+		commentFormat.setFontWeight(QFont::Normal); 	
+    rule.pattern = QRegExp("![^\n]*");
+    rule.format = commentFormat;
+    highlightingRules.append(rule); 
+}
+
+void SifHighlighter::highlightBlock(const QString &text)
+{
+    foreach (const HighlightingRule &rule, highlightingRules) {
+        QRegExp expression(rule.pattern);
+        int index = expression.indexIn(text);
+        while (index >= 0) {
+            int length = expression.matchedLength();
+            setFormat(index, length, rule.format);
+            index = expression.indexIn(text, index + length);
+        }
+    }
+}
 
 SifWindow::SifWindow(QWidget *parent)
   : QMainWindow(parent)
@@ -73,6 +186,25 @@ SifWindow::SifWindow(QWidget *parent)
 
   setWindowTitle(tr("Solver Input File"));
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  highlighter = NULL;
+
+	QString strFont = ((MainWindow*) parent)->settings_value(QString("sifWindow/font"), QString("")).toString();
+	QFont font;
+	if(!strFont.isEmpty() && font.fromString(strFont)){
+		font.setFixedPitch(true);
+		textEdit->setFont(font);
+		lineEdit->setFont(font);
+	}
+	
+	int syntaxHighlighting = ((MainWindow*) parent)->settings_value(QString("sifWindow/highlighting"), SIF_HIGHLIGHTING_NONE).toInt();
+	if(syntaxHighlighting == SIF_HIGHLIGHTING_NONE){
+		highlightingNoneSlot();
+	}else	if(syntaxHighlighting == SIF_HIGHLIGHTING_LIGHT){
+		highlightingLightSlot();
+	}else if(syntaxHighlighting == SIF_HIGHLIGHTING_DARK){
+		highlightingDarkSlot();
+	}
 }
 
 SifWindow::~SifWindow()
@@ -151,6 +283,29 @@ void SifWindow::createActions()
   findAct->setShortcut(tr("Ctrl+F"));
   findAct->setStatusTip(tr("Find text in document"));
   connect(findAct, SIGNAL(triggered()), this, SLOT(findSlot()));
+	
+	fontAct = new QAction(QIcon(""), tr("&Font"), this);
+  findAct->setStatusTip(tr("Select font"));
+  connect(fontAct, SIGNAL(triggered()), this, SLOT(fontSlot()));
+	
+	highlightingNoneAct = new QAction(QIcon(""), tr("&None"), this);
+  highlightingNoneAct->setStatusTip(tr("No highlighting"));
+  highlightingNoneAct->setCheckable(true);
+  connect(highlightingNoneAct, SIGNAL(triggered()), this, SLOT(highlightingNoneSlot()));
+
+	highlightingLightAct = new QAction(QIcon(""), tr(" &Light"), this);
+  highlightingLightAct->setStatusTip(tr("Highlight in light theme"));
+  highlightingLightAct->setCheckable(true);
+  connect(highlightingLightAct, SIGNAL(triggered()), this, SLOT(highlightingLightSlot()));
+
+	highlightingDarkAct = new QAction(QIcon(""), tr(" &Dark"), this);
+  highlightingDarkAct->setStatusTip(tr("Highlight in dark theme"));
+  highlightingDarkAct->setCheckable(true);
+  connect(highlightingDarkAct, SIGNAL(triggered()), this, SLOT(highlightingDarkSlot()));
+	
+	saveAndRunAct = new QAction(QIcon(":/icons/arrow-right.png"), tr("&Save sif and run"), this);
+	saveAndRunAct->setStatusTip(tr("Save sif and run solver WITHOUT saving project"));
+  connect(saveAndRunAct, SIGNAL(triggered()), this, SLOT(saveAndRunSlot()));	
 }
 
 void SifWindow::createMenus()
@@ -159,6 +314,7 @@ void SifWindow::createMenus()
   fileMenu->addAction(newAct);
   fileMenu->addAction(openAct);
   fileMenu->addAction(saveAct);
+	fileMenu->addAction(saveAndRunAct);
   fileMenu->addSeparator();
   fileMenu->addAction(printAct);
   fileMenu->addSeparator();
@@ -170,6 +326,13 @@ void SifWindow::createMenus()
   editMenu->addAction(pasteAct);
   editMenu->addSeparator();
   editMenu->addAction(findAct);
+	
+	preferenceMenu = menuBar()->addMenu(tr("&Preference"));
+	preferenceMenu->addAction(fontAct);
+	highlightingMenu = preferenceMenu->addMenu(tr("&Syntax highlighting"));
+	highlightingMenu->addAction(highlightingNoneAct);
+  highlightingMenu->addAction(highlightingLightAct);
+  highlightingMenu->addAction(highlightingDarkAct);	
 }
 
 void SifWindow::createToolBars()
@@ -178,6 +341,7 @@ void SifWindow::createToolBars()
   fileToolBar->addAction(newAct);
   fileToolBar->addAction(openAct);
   fileToolBar->addAction(saveAct);
+	fileToolBar->addAction(saveAndRunAct);
   fileToolBar->addAction(printAct);
 
   editToolBar = addToolBar(tr("&Edit"));
@@ -323,4 +487,56 @@ void SifWindow::findSlot()
   }
 
   statusBar()->showMessage(tr("Ready"));
+}
+
+void SifWindow::fontSlot()
+{
+	bool ok;
+	QFont font = QFontDialog::getFont(&ok, textEdit->font());
+	if (ok) {
+	  font.setFixedPitch(true);
+		textEdit->setFont(font);
+		lineEdit->setFont(font);
+	}
+	((MainWindow*) parent())->settings_setValue(QString("sifWindow/font"), font.toString());
+}
+void SifWindow::highlightingNoneSlot()
+{
+	QString style = "";
+	setStyleSheet(style);
+	delete highlighter;
+	highlighter = NULL;
+	((MainWindow*) parent())->settings_setValue(QString("sifWindow/highlighting"), SIF_HIGHLIGHTING_NONE);
+	highlightingNoneAct->setChecked(true);	
+	highlightingLightAct->setChecked(false);
+	highlightingDarkAct->setChecked(false);
+}
+
+void SifWindow::highlightingLightSlot()
+{
+	QString style = "QTextEdit { color: #384e55; background: #fffdf6}";	
+	setStyleSheet(style);
+	delete highlighter;
+  highlighter = new SifHighlighter(SIF_HIGHLIGHTING_LIGHT, textEdit->document());
+	((MainWindow*) parent())->settings_setValue(QString("sifWindow/highlighting"), SIF_HIGHLIGHTING_LIGHT);
+	highlightingNoneAct->setChecked(false);	
+	highlightingLightAct->setChecked(true);
+	highlightingDarkAct->setChecked(false);
+}
+
+void SifWindow::highlightingDarkSlot()
+{
+	QString style = "QTextEdit { color: #c3b1b1; background: #00080f}";
+	setStyleSheet(style);
+	delete highlighter;
+  highlighter = new SifHighlighter(SIF_HIGHLIGHTING_DARK,textEdit->document());
+	((MainWindow*) parent())->settings_setValue(QString("sifWindow/highlighting"), SIF_HIGHLIGHTING_DARK);	
+	highlightingNoneAct->setChecked(false);	
+	highlightingLightAct->setChecked(false);
+	highlightingDarkAct->setChecked(true);
+}
+
+void SifWindow::saveAndRunSlot()
+{
+  ((MainWindow*) parent())->saveSifWindowContentsToSifFileAndRunSolver();
 }
