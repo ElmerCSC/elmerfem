@@ -563,7 +563,7 @@ CONTAINS
 !        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
 !        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
 
-        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
+        FORCE(i) = FORCE(i) - muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
       END DO
 
       B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
