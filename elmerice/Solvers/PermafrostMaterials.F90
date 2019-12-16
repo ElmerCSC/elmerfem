@@ -697,7 +697,7 @@ CONTAINS
           END IF
           CurrentElement => Solver % Mesh % Elements(I)
           !! IMPORTANT: Mind that all ReceivingArray numbers ar N-1 with respect to the document (input_data_forsmark_2d)
-          GlobalRockMaterial % ks0th(I) = ReceivingArray(12) ! shall be changed to tensor
+          GlobalRockMaterial % ks0th(I) = ReceivingArray(11) ! shall be changed to tensor
           !-----------------------------
           GlobalRockMaterial % e1(I) = ReceivingArray(33) ! e1 (mail from Juha 11.10.)
           !IF (GlobalRockMaterial % e1(I) > 0.01) PRINT *,"e1:", ReceivingArray(34)
