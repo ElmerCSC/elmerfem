@@ -2,7 +2,7 @@
  *                                                                           *
  *  Elmer, A Finite Element Software for Multiphysical Problems              *
  *                                                                           *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland    *
+ *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland   *
  *                                                                           *
  *  This program is free software; you can redistribute it and/or            *
  *  modify it under the terms of the GNU General Public License              *
@@ -30,7 +30,7 @@
  *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
- *  Address: CSC - IT Center for Science Ltd.                                 *
+ *  Address: CSC - IT Center for Science Ltd.                                *
  *           Keilaranta 14                                                   *
  *           02101 Espoo, Finland                                            *
  *                                                                           *
@@ -56,27 +56,26 @@ SifHighlighter::SifHighlighter(int type, QTextDocument *parent)
 {
   if(type != SIF_HIGHLIGHTING_LIGHT && type != SIF_HIGHLIGHTING_DARK) return;
   
-  int d = -20;
-	QColor yellow  = QColor( 181+d, 137+d,   0);
-	QColor orange  = QColor( 203+d,  75+d,  22);
-	QColor red     = QColor( 220+d,  50+d,  47+d);
-	QColor magenta = QColor( 211+d,  54+d, 130+d);
-	QColor violet  = QColor( 108+d, 113+d, 196+d);
-	QColor blue    = QColor(  38+d, 139+2*d, 210+d);
-	QColor cyan    = QColor(  42+d, 161+d, 152+d);
-	QColor green   = QColor( 133+d, 153+d,   0);
+	QColor yellow  = QColor( 161,  97,   0);
+	QColor orange  = QColor( 183,  55,  22);
+	QColor red     = QColor( 100,  30,  27);
+	QColor magenta = QColor( 191,  34, 110);
+	QColor violet  = QColor(  88,  93, 176);
+	QColor blue    = QColor(  18,  99, 190);
+	QColor cyan    = QColor(  22, 141, 132);
+	QColor green   = QColor( 113, 113,   0);
 
   if(type == SIF_HIGHLIGHTING_DARK)
   {
-     d = 20;
-     yellow  = QColor( 181+d, 137+d,   0+d);
-     orange  = QColor( 203+d,  75+d,  22+d);
-     red     = QColor( 220+d,  50+d,  47+d);
-     magenta = QColor( 211+d,  54+d, 130+d);
-     violet  = QColor( 108+d, 113+d, 196+d);
-     blue    = QColor(  38+d, 139+d, 210+2*d);
-     cyan    = QColor(  42+d, 161+d, 152+d);
-     green   = QColor( 133+d, 153+d,   0);  
+     yellow  = QColor( 201, 157,  20);
+     orange  = QColor( 223,  95,  42);
+     red     = QColor( 240,  70,  67);
+     magenta = QColor( 231,  74, 150);
+     violet  = QColor( 128, 133, 216);
+     blue    = QColor(  58, 159, 250);
+     cyan    = QColor(  62, 181, 172);
+     green   = QColor( 153, 173,   0);  
+    
   }
 	
 	QColor cBlock 	= blue;
@@ -303,8 +302,8 @@ void SifWindow::createActions()
   highlightingDarkAct->setCheckable(true);
   connect(highlightingDarkAct, SIGNAL(triggered()), this, SLOT(highlightingDarkSlot()));
 	
-	saveAndRunAct = new QAction(QIcon(":/icons/arrow-right.png"), tr("&Save sif and run"), this);
-	saveAndRunAct->setStatusTip(tr("Save sif and run solver WITHOUT saving project"));
+	saveAndRunAct = new QAction(QIcon(":/icons/arrow-right.png"), tr("&Save and run"), this);
+	saveAndRunAct->setStatusTip(tr("Save the sif and project (without auto-generating sif),  then run solver "));
   connect(saveAndRunAct, SIGNAL(triggered()), this, SLOT(saveAndRunSlot()));	
 }
 
@@ -538,5 +537,5 @@ void SifWindow::highlightingDarkSlot()
 
 void SifWindow::saveAndRunSlot()
 {
-  ((MainWindow*) parent())->saveSifWindowContentsToSifFileAndRunSolver();
+  ((MainWindow*) parent())->saveAndRun(false);
 }

@@ -56,28 +56,26 @@ SolverLogHighlighter::SolverLogHighlighter(int type, QTextDocument *parent)
 {
 
   if(type != SOLVERLOG_HIGHLIGHTING_LIGHT && type != SOLVERLOG_HIGHLIGHTING_DARK) return;
-  
-  int d = -20;
-	QColor yellow  = QColor( 181+d, 137+d,   0);
-	QColor orange  = QColor( 203+d,  75+d,  22);
-	QColor red     = QColor( 220+d,  50+d,  47+d);
-	QColor magenta = QColor( 211+d,  54+d, 130+d);
-	QColor violet  = QColor( 108+d, 113+d, 196+d);
-	QColor blue    = QColor(  38+d, 139+2*d, 210+d);
-	QColor cyan    = QColor(  42+d, 161+d, 152+d);
-	QColor green   = QColor( 133+d, 153+d,   0);
+
+	QColor yellow  = QColor( 161, 117,   0);
+	QColor orange  = QColor( 183,  55,  22);
+	QColor red     = QColor( 200,  30,  27);
+	QColor magenta = QColor( 191,  34, 110);
+	QColor violet  = QColor(  88,  93, 176);
+	QColor blue    = QColor(  18,  99, 190);
+	QColor cyan    = QColor(  22, 141, 132);
+	QColor green   = QColor( 113, 113,   0);
 
   if(type == SOLVERLOG_HIGHLIGHTING_DARK)
   {
-     d = 20;
-     yellow  = QColor( 181+d, 137+d,   0+d);
-     orange  = QColor( 203+d,  75+d,  22+d);
-     red     = QColor( 220+d,  50+d,  47+d);
-     magenta = QColor( 211+d,  54+d, 130+d);
-     violet  = QColor( 108+d, 113+d, 196+d);
-     blue    = QColor(  38+d, 139+d, 210+2*d);
-     cyan    = QColor(  42+d, 161+d, 152+d);
-     green   = QColor( 133, 153+2*d,   0);  
+     yellow  = QColor( 201, 157,  20);
+     orange  = QColor( 223,  95,  42);
+     red     = QColor( 240,  70,  67);
+     magenta = QColor( 231,  74, 150);
+     violet  = QColor( 128, 133, 216);
+     blue    = QColor(  58, 159, 250);
+     cyan    = QColor(  62, 181, 172);
+     green   = QColor( 133, 173,   0);  
   }
 
 	

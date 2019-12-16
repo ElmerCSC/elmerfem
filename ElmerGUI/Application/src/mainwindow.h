@@ -104,7 +104,7 @@ public:
   
   QVariant settings_value(const QString & key, const QVariant & defaultValue = QVariant()) const;
   void settings_setValue(const QString & key, const QVariant & value);
-  void saveSifWindowContentsToSifFileAndRunSolver();
+  void saveAndRun(bool generateSif);
   
 protected:
   void contextMenuEvent(QContextMenuEvent *event);
@@ -183,7 +183,7 @@ private slots:
   void killresultsSlot();         // Solver -> Kill post process
   void compileSolverSlot();       // Solver -> Compile...
   void showaboutSlot();           // Help -> About...
-  void generateAndSaveSifThenSaveProjectThenRunSolverSlot();
+  void generateAndSaveAndRunSlot();
 
   // other private slots:
   void meshingStartedSlot();          // signal emitted by meshingThread
@@ -381,7 +381,7 @@ private:
   QAction *paraviewAct;           // Solver -> Launch Paraview
   QAction *compileSolverAct;      // Solver -> Compile...
   QAction *aboutAct;              // Help -> About...
-  QAction *generateAndSaveSifThenSaveProjectThenRunSolverAct;
+  QAction *generateAndSaveAndRunAct;
 
   // property editors etc:
   GeneralSetup *generalSetup;
@@ -514,6 +514,9 @@ private:
  	
  	// String to store current project dir for "generate, save and run" button
  	QString currentProjectDirName;
+ 	
+ 	bool suppressAutoSifGeneration;
+ 	
 };
 
 #endif // MAINWINDOW_H
