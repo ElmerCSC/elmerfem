@@ -186,39 +186,43 @@
          EXIT
        ENDIF
      END DO
- 
+
+     IF ( .NOT. ASSOCIATED(Mesh) ) THEN
+       CALL Fatal('ViewFactors','No heat equation definition. Cannot compute factors.')
+     END IF
 
 #define SYMMETRY_NOW .TRUE.
      IF(SYMMETRY_NOW) THEN
        DO i=1,6
          SELECT CASE(i)
          CASE(1)
-           Plane = GetCReal( Solver % Values, 'Symmetry x min', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation Symmetry x min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry x', GotIt );
          CASE(2)
-           Plane = GetCReal( Solver % Values, 'Symmetry x max', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation Symmetry x max', Found );
          CASE(3)
-           Plane = GetCReal( Solver % Values, 'Symmetry y min', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation Symmetry y min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry y', GotIt );
          CASE(4)
-           Plane = GetCReal( Solver % Values, 'Symmetry y max', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation Symmetry y max', Found );
          CASE(5)
-           Plane = GetCReal( Solver % Values, 'Symmetry z min', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation Symmetry z min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry z', GotIt );
          CASE(6)
-           Plane = GetCReal( Solver % Values, 'Symmetry z max', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation Symmetry z max', Found );
          END SELECT
 
          IF(.NOT. Found ) CYCLE
 
+         CALL Info('ViewFactors','Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
+         
          CALL MirrorMesh(Mesh, i, Plane)
        END DO
      END  IF
 
-     IF ( .NOT. ASSOCIATED(Mesh) ) THEN
-       CALL Fatal('ViewFactors','No heat equation definition. Cannot compute factors.')
-     END IF
      CALL SetCurrentMesh( Model,Mesh )
 
-     CALL Info( 'ViewFactors', '... Done',Level=3 )
-     CALL Info( 'ViewFactors', ' ',Level=3 )
+     CALL Info( 'ViewFactors','Number of nodes in mesh: '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
 
 !------------------------------------------------------------------------------
 !    Figure out requested coordinate system
@@ -350,8 +354,7 @@
          END IF
        END IF
        
-       WRITE( LMessage,'(A,I9)' ) 'Number of surfaces participating in radiation',N
-       CALL Info('ViewFactors',LMessage)
+       CALL Info('ViewFactors','Number of surfaces participating in radiation: '//TRIM(I2S(N)))
        
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
@@ -539,20 +542,26 @@
          DO l=1,6
            SELECT CASE(l)
            CASE(1)
-             Plane = GetCReal( Solver % Values, 'Symmetry x min', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation Symmetry x min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry x', GotIt );
+             ! Note that Plane is zero if 1st keyword not found!
            CASE(2)
-             Plane = GetCReal( Solver % Values, 'Symmetry x max', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation Symmetry x max', Found );
            CASE(3)
-             Plane = GetCReal( Solver % Values, 'Symmetry y min', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation Symmetry y min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry y', GotIt );
            CASE(4)
-             Plane = GetCReal( Solver % Values, 'Symmetry y max', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation Symmetry y max', Found );
            CASE(5)
-             Plane = GetCReal( Solver % Values, 'Symmetry z min', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation Symmetry z min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry z', GotIt );
            CASE(6)
-             Plane = GetCReal( Solver % Values, 'Symmetry z max', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation Symmetry z max', Found );
            END SELECT
            IF(.NOT.Found) CYCLE
 
+           CALL Info('ViewFactors','Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
+           
            k = 0
            DO i=1,n/2
            DO j=1,n/2

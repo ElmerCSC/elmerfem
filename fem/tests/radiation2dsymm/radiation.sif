@@ -66,8 +66,8 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Relaxation Factor = 0.7
 
-  Symmetry x max = Real 0
-  Symmetry y max = Real 0
+  Radiation Symmetry x max = Real 0
+  Radiation Symmetry y max = Real 0
 
   Viewfactor area tolerance   = 1
   Viewfactor factor tolerance = 1
