@@ -193,17 +193,17 @@
        DO i=1,6
          SELECT CASE(i)
          CASE(1)
-           Plane = GetCReal( Solver % Values, 'Symmetry x min', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation symmetry x min', Found );
          CASE(2)
-           Plane = GetCReal( Solver % Values, 'Symmetry x max', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation symmetry x max', Found );
          CASE(3)
-           Plane = GetCReal( Solver % Values, 'Symmetry y min', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation symmetry y min', Found );
          CASE(4)
-           Plane = GetCReal( Solver % Values, 'Symmetry y max', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation symmetry y max', Found );
          CASE(5)
-           Plane = GetCReal( Solver % Values, 'Symmetry z min', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation symmetry z min', Found );
          CASE(6)
-           Plane = GetCReal( Solver % Values, 'Symmetry z max', Found );
+           Plane = GetCReal( Solver % Values, 'Radiation symmetry z max', Found );
          END SELECT
 
          IF(.NOT. Found ) CYCLE
@@ -539,17 +539,17 @@
          DO l=1,6
            SELECT CASE(l)
            CASE(1)
-             Plane = GetCReal( Solver % Values, 'Symmetry x min', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation symmetry x min', Found );
            CASE(2)
-             Plane = GetCReal( Solver % Values, 'Symmetry x max', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation symmetry x max', Found );
            CASE(3)
-             Plane = GetCReal( Solver % Values, 'Symmetry y min', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation symmetry y min', Found );
            CASE(4)
-             Plane = GetCReal( Solver % Values, 'Symmetry y max', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation symmetry y max', Found );
            CASE(5)
-             Plane = GetCReal( Solver % Values, 'Symmetry z min', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation symmetry z min', Found );
            CASE(6)
-             Plane = GetCReal( Solver % Values, 'Symmetry z max', Found );
+             Plane = GetCReal( Solver % Values, 'Radiation symmetry z max', Found );
            END SELECT
            IF(.NOT.Found) CYCLE
 
