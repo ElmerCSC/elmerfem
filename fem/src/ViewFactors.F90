@@ -539,7 +539,7 @@
        CALL Info( 'ViewFactors',Message, Level=3 )
 
        IF(SYMMETRY_NOW) THEN
-         DO l=1,6
+         DO l=6,1,-1
            SELECT CASE(l)
            CASE(1)
              Plane = GetCReal( Solver % Values, 'Radiation Symmetry x min', Found );
