@@ -15,7 +15,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 ! Output File = "radiation.result"
-! Post File = "radiation.ep"
+  Post File = "radiation.ep"
 End
 
 Body 1
@@ -66,12 +66,12 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Relaxation Factor = 0.7
 
-  Radiation Symmetry x max = Real 0
-  Radiation Symmetry y max = Real 0
+  Radiation symmetry x max = Real 0.5
+  Radiation symmetry y max = Real 0.5
 
   Viewfactor area tolerance   = 1
   Viewfactor factor tolerance = 1
-  Viewfactor number Of Rays = 1
+  Viewfactor number Of Rays = 12
 End
 
 Equation 1

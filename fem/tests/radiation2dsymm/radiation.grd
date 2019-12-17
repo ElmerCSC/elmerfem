@@ -2,8 +2,8 @@
 Version = 210903
 Coordinate System = Cartesian 2D
 Subcell Divisions in 2D = 4 4
-Subcell Limits 1 = -0.6 -0.5 -0.25 0 1 1.1
-Subcell Limits 2 = -0.6 -0.5 -0.25 0 1 1.1
+Subcell Limits 1 = -0.1 0.0 0.25 0.5 1
+Subcell Limits 2 = -0.1 0.0 0.25 0.5 1
 Material Structure in 2D
 4 4 4 4
 1 3 2 4
