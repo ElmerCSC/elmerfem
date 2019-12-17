@@ -152,9 +152,9 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
     END IF    
     IF( SecondOrder ) THEN
       CALL ListAddString( SolverParams, "Element", &
-          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
+          "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
     ELSE IF (PiolaVersion) THEN    
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
     ELSE
       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
     END IF
@@ -244,8 +244,6 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   IF (CoordinateSystemDimension() == 2) THEN
     IF (.NOT. PiolaVersion) &
         CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
-    IF (SecondOrder) &
-        CALL Fatal('EMWaveSolver', 'A 2D model does not yet support Quadratic Approximation')
   END IF
 
   dofs = Solver % Variable % Dofs
@@ -565,7 +563,7 @@ CONTAINS
 !        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
 !        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
 
-        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
+        FORCE(i) = FORCE(i) - muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
       END DO
 
       B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
