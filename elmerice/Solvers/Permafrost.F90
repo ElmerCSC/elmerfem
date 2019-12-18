@@ -702,7 +702,7 @@ CONTAINS
         IF (FluxOutput) THEN
           GWfluxVar1 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(1)
           GWfluxVar2 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(2)
-          IF (DIM == 3) GWfluxVar2 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(2)
+          IF (DIM == 3) GWfluxVar3 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(3)
         END IF
       END IF
       
