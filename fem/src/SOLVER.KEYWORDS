@@ -1704,4 +1704,8 @@ solver:logical:      'bulk assembly timing'
 solver:real:         'timestep unisotropic courant number'
 solver:real:         'max integration time'
 material:real:       'relative temperature'
+solver:logical:      'viewfactor symmetry x'
+solver:logical:      'viewfactor symmetry y'
+solver:logical:      'viewfactor symmetry z'
+
 
