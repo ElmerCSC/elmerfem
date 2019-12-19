@@ -101,7 +101,12 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   Params => GetSolverParams()
   Mesh => Solver % Mesh
   PSolver => Solver
-
+  
+  ! In principle we could use the same solver to advect many fields on
+  ! same extruded mesh. Hence these are not saved. 
+  Var3D => Solver % Variable
+  VarName = TRIM( Var3D % Name ) 
+  
   IF( .NOT. Initialized ) THEN
     CALL Info(Caller,'Initializing structured mesh and ODE structures',Level=7)
 
@@ -128,6 +133,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ALLOCATE( BotPerm( Mesh % NumberOfNodes ) )
     BotPerm = 0
     DO i=1,Mesh % NumberOfNodes
+      ! The variable to be marched does not exist at the 1st layer
+      IF( Var3D % Perm(i) == 0 ) CYCLE
+
       IF( RequireBC ) THEN
         IF( .NOT. BcNode(i) ) CYCLE
       END IF
@@ -137,15 +145,20 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         j = MaskPerm(i)
         IF( j == 0 ) CYCLE
       END IF      
-
+           
       ! This is not at the bottom
       IF(BotPointer(j) /= i) CYCLE
 
       ! Ok, check that also the next node would be at BC
-      ! The 1st layer may be an exeption
+      ! The 1st layer may be an exeption, check for 2nd too
+
+      ! The variable to be marched does not exist 
+      IF( Var3D % Perm(UpPointer(j)) == 0 ) CYCLE
+
+      ! We want BC node but don't have one
       IF( RequireBC ) THEN
         IF( .NOT. BcNode(UpPointer(j)) ) CYCLE
-      END IF
+      END IF      
       
       BotNodes = BotNodes + 1
       BotPerm(i) = BotNodes
@@ -163,11 +176,6 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     CALL Info(Caller,'Initialization done',Level=10)
   END IF
   
-  ! In principle we could use the same solver to advect many fields on
-  ! same extruded mesh. Hence these are not saved. 
-  Var3D => Solver % Variable
-  VarName = TRIM( Var3D % Name ) 
-
   ! The variable on the layer
   n = BotNodes
     
@@ -231,6 +239,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
           InvPerm(j) = i
         END IF
       END DO
+      
       IF( ParabolicModel ) THEN
         xvec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
       ELSE
@@ -244,12 +253,11 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       
       CYCLE
     END IF
-
     
     ! Find the next level of nodes, and remember the previous one. 
     PrevInvPerm = InvPerm
     InvPerm = UpPointer(PrevInvPerm)
-
+    
     ! xi is the value of x at the previous iterate of this layer
     IF( ParabolicModel ) THEN
       xivec(1:n) = 0.5_dp * Var3D % Values(Var3D % Perm(InvPerm))**2 
@@ -316,7 +324,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   CALL Info(Caller,'All done',Level=5)
   CALL Info(Caller,'-----------------------------------------------------',Level=6)
 
-
+  
 CONTAINS
 
   ! Finds pointer to the extruded material.
