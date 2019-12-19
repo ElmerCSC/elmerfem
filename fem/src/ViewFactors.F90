@@ -196,20 +196,20 @@
        DO i=1,6
          SELECT CASE(i)
          CASE(1)
-           Plane = GetCReal( Solver % Values, 'Radiation Symmetry x min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry x', GotIt );
+           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry x', GotIt );
          CASE(2)
-           Plane = GetCReal( Solver % Values, 'Radiation Symmetry x max', Found );
+           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x max', Found );
          CASE(3)
-           Plane = GetCReal( Solver % Values, 'Radiation Symmetry y min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry y', GotIt );
+           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry y', GotIt );
          CASE(4)
-           Plane = GetCReal( Solver % Values, 'Radiation Symmetry y max', Found );
+           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y max', Found );
          CASE(5)
-           Plane = GetCReal( Solver % Values, 'Radiation Symmetry z min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry z', GotIt );
+           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry z', GotIt );
          CASE(6)
-           Plane = GetCReal( Solver % Values, 'Radiation Symmetry z max', Found );
+           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z max', Found );
          END SELECT
 
          IF(.NOT. Found ) CYCLE
@@ -542,21 +542,21 @@
          DO l=6,1,-1
            SELECT CASE(l)
            CASE(1)
-             Plane = GetCReal( Solver % Values, 'Radiation Symmetry x min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry x', GotIt );
+             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry x', GotIt );
              ! Note that Plane is zero if 1st keyword not found!
            CASE(2)
-             Plane = GetCReal( Solver % Values, 'Radiation Symmetry x max', Found );
+             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x max', Found );
            CASE(3)
-             Plane = GetCReal( Solver % Values, 'Radiation Symmetry y min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry y', GotIt );
+             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry y', GotIt );
            CASE(4)
-             Plane = GetCReal( Solver % Values, 'Radiation Symmetry y max', Found );
+             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y max', Found );
            CASE(5)
-             Plane = GetCReal( Solver % Values, 'Radiation Symmetry z min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Radiation Symmetry z', GotIt );
+             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry z', GotIt );
            CASE(6)
-             Plane = GetCReal( Solver % Values, 'Radiation Symmetry z max', Found );
+             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z max', Found );
            END SELECT
            IF(.NOT.Found) CYCLE
 

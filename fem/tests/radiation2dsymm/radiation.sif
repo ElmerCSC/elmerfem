@@ -15,7 +15,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 ! Output File = "radiation.result"
-  Post File = "radiation.ep"
+  Post File = "radiation.vtu"
 End
 
 Body 1
@@ -66,8 +66,8 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Relaxation Factor = 0.7
 
-  Radiation symmetry x max = Real 0.5
-  Radiation symmetry y max = Real 0.5
+  Viewfactor symmetry x max = Real 0.5
+  Viewfactor symmetry y max = Real 0.5
 
   Viewfactor area tolerance   = 1
   Viewfactor factor tolerance = 1
@@ -100,7 +100,5 @@ Boundary Condition 3
 End
 
 
-
 Solver 1 :: Reference Norm = Real 3.29253109E+02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
-RUN
