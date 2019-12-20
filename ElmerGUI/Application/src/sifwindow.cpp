@@ -525,7 +525,7 @@ void SifWindow::highlightingLightSlot()
 
 void SifWindow::highlightingDarkSlot()
 {
-	QString style = "QTextEdit { color: #c3b1b1; background: #00080f}";
+	QString style = "QTextEdit { color: #c3b1b1; background: #000814}";
 	setStyleSheet(style);
 	delete highlighter;
   highlighter = new SifHighlighter(SIF_HIGHLIGHTING_DARK,textEdit->document());

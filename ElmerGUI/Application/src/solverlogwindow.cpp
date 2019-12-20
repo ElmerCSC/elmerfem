@@ -499,7 +499,7 @@ void SolverLogWindow::highlightingLightSlot()
 
 void SolverLogWindow::highlightingDarkSlot()
 {
-	QString style = "QTextEdit { color: #c3b1b1; background: #00080f}";	
+	QString style = "QTextEdit { color: #c3b1b1; background: #000814}";	
 	setStyleSheet(style);
 	delete highlighter;
   highlighter = new SolverLogHighlighter(SOLVERLOG_HIGHLIGHTING_DARK, textEdit->document());
