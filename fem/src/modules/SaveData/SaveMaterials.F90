@@ -135,13 +135,13 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
     
     FieldPerm = 0
     
-    DO elementNumber=1,Mesh % NumberOfBulkElements
+    DO elementNumber=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       
       CurrentElement => Mesh % Elements(elementNumber)
       !------------------------------------------------------------------
       ! do nothing, if we are dealing with a halo-element in parallel run
       !------------------------------------------------------------------
-      IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
+      !IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
       
       n = GetElementNOFNodes(CurrentElement)
       NodeIndexes => CurrentElement % NodeIndexes           
@@ -152,6 +152,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       ELSE
         ValueList => GetBodyForce(CurrentElement)
       END IF
+      IF(.NOT. ASSOCIATED( ValueList ) ) CYCLE
       IF( ListCheckPresent(ValueList, TRIM(ParamName(ParamNo))) ) THEN
         FieldPerm( NodeIndexes ) = 1
       END IF
@@ -205,7 +206,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
     
     IF( MAXVAL( FieldPerm ) <= 0 ) CYCLE
     
-    DO elementNumber=1,Mesh % NumberOfBulkElements
+    DO elementNumber=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       
       CurrentElement => Mesh % Elements(elementNumber)
       IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
@@ -222,6 +223,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       ELSE
         ValueList => GetBodyForce(CurrentElement)
       END IF
+      IF(.NOT. ASSOCIATED( ValueList ) ) CYCLE
       LocalParam(1:n) = ListGetReal(ValueList, TRIM(ParamName(ParamNo)), &
           n, NodeIndexes, GotIt)
       IF(.NOT. GotIt) CYCLE

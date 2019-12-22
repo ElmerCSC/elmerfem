@@ -520,24 +520,24 @@ CONTAINS
      END IF
 
      IF (isPElement(Element)) THEN
-       CALL GetRefPElementNodes(Element, &
+       CALL GetRefPElementNodes(Element % Type, &
                ElementNodes % x, &
                ElementNodes % y, & 
                ElementNodes % z)
      ELSE
-       IF (ASSOCIATED(Element % Type % NodeU)) THEN
+       IF (ALLOCATED(Element % Type % NodeU)) THEN
          !DIR$ IVDEP
          DO i=1,n
            ElementNodes % x(i) = Element % Type % NodeU(i)
          END DO
        END IF
-       IF (ASSOCIATED(Element % Type % NodeV)) THEN
+       IF (ALLOCATED(Element % Type % NodeV)) THEN
          !DIR$ IVDEP
          DO i=1,n
            ElementNodes % y(i) = Element % Type % NodeV(i)
          END DO
        END IF
-       IF (ASSOCIATED(Element % Type % NodeW)) THEN
+       IF (ALLOCATED(Element % Type % NodeW)) THEN
          !DIR$ IVDEP
          DO i=1,n
            ElementNodes % z(i) = Element % Type % NodeW(i)

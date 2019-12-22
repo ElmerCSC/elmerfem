@@ -4,7 +4,7 @@ Sand      1
 0.35      eta0
 0.1       etak
 3.5       ks0th
-0.006     ew
+0.006     e1
 0.0       bs
 2600.0    rhos0
 840.0     cs0
@@ -37,7 +37,7 @@ Granite   2
 0.01      eta0
 0.01      etak
 3.0851    ks0th
-0.006     ew
+0.006     e1
 0.6411    bs
 2780.0    rhos0
 700.0     cs0
@@ -70,7 +70,7 @@ Till      3
 0.25      eta0
 0.25      etak
 2.0       ks0th
-0.002     ew
+0.002     e1
 0.0       bs
 2000.0    rhos0
 1250.0    cs0
@@ -103,7 +103,7 @@ Gravel    4
 0.25      eta0
 0.25      etak
 5.5       ks0th
-0.006     ew
+0.006     e1
 0.0       bs
 2650.0    rhos0
 800.0     cs0
@@ -136,7 +136,7 @@ Silt      5
 0.40      eta0
 0.40      etak
 1.8       ks0th
-0.0025    ew
+0.0025    e1
 0.0       bs
 2650.0    rhos0
 900.0     cs0

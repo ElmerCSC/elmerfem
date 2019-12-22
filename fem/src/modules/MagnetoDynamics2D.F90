@@ -598,7 +598,7 @@ CONTAINS
              CoilBody = .TRUE.
     !         CALL GetElementRotM(Element, RotM, n)
           CASE DEFAULT
-             CALL Fatal ('MagnetoDynamics2DHarmonic', 'Non existent Coil Type Chosen!')
+             CALL Fatal ('MagnetoDynamics2D', 'Non existent Coil Type Chosen!')
           END SELECT
         END IF
       END IF

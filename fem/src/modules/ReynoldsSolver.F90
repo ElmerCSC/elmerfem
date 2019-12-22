@@ -902,7 +902,8 @@ SUBROUTINE ReynoldsPostprocess( Model,Solver,dt,TransientSimulation )
   IF( COUNT( PressurePerm > 0 ) <= 0) RETURN
 
   DIM = CoordinateSystemDimension()
-
+  ReferencePressure = 0.0_dp
+  
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------

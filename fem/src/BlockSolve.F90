@@ -39,7 +39,7 @@ MODULE BlockSolve
   LOGICAL, PRIVATE :: isParallel=.FALSE.
 
   TYPE(Variable_t), POINTER :: SolverVar => Null()
-  TYPE(Matrix_t), POINTER :: SolverMatrix => Null()
+  TYPE(Matrix_t), POINTER :: SolverMatrix => Null(), SaveMatrix
 
 CONTAINS
 
@@ -582,11 +582,11 @@ CONTAINS
           IF( Amat % NumberOfRows > 0 ) THEN
             SumAbsMat = SUM( ABS( Amat % Values ) )
             IF( SumAbsMat < SQRT( TINY( SumAbsMat ) ) ) THEN
-              CALL Info('BlockSolver','Matrix is actually all zero, eliminating it!',Level=20)
+              CALL Info('BlockSolver','Matrix is actually all zero, eliminating it!',Level=12)
               DEALLOCATE( Amat % Values ) 
               IF( .NOT. ReuseMatrix ) THEN
                 DEALLOCATE( Amat % Rows, Amat % Cols )
-                IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag )
+                IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag, Amat % rhs ) 
               END IF
               Amat % NumberOfRows = 0
             END IF
@@ -2346,7 +2346,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, Var_save
 
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
-        IsComplex, BlockScaling, DiagScaling, UsePrecMat
+        IsComplex, BlockScaling, DiagScaling, ThisScaling, UsePrecMat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -2393,8 +2393,9 @@ CONTAINS
     
 #define SOLSYS
 #ifdef SOLSYS
-    IF (isParallel) &
+    IF (isParallel) THEN
       ALLOCATE( x(TotMatrix % MaxSize), b(TotMatrix % MaxSize) )
+    END IF
 #endif
 
     ! Initial guess 
@@ -2416,8 +2417,10 @@ CONTAINS
       END IF
       
       WRITE(Message,'(A,I0)') 'Solving block: ',i
-      CALL Info('BlockMatrixPrec',Message,Level=6)
+      CALL Info('BlockMatrixPrec',Message,Level=8)
 
+      CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
+      
       ! Set pointers to the new linear system
       !-------------------------------------------------------------------
       Var => TotMatrix % SubVector(i) % Var
@@ -2481,8 +2484,6 @@ CONTAINS
         END DO
       END IF
       
-      CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
-
       ! We do probably not want to compute the change within each iteration
       CALL ListAddLogical( Asolver % Values,'Skip Advance Nonlinear iter',.TRUE.)         
       CALL ListAddLogical( Asolver % Values,'Skip Compute Nonlinear Change',.TRUE.)         
@@ -2496,21 +2497,24 @@ CONTAINS
 
       IF( BlockScaling ) CALL BlockMatrixScaling(.TRUE.,i,i,b,UsePrecMat)
 
-      IF( DiagScaling .AND. UsePrecMat ) THEN
+      ThisScaling = ListGetLogical( Params,'Linear System Scaling',Found )
+      IF( .NOT. Found ) ThisScaling = DiagScaling
+      
+      IF( ThisScaling .AND. UsePrecMat ) THEN
         n = A % NumberOfRows
         ALLOCATE( diagtmp(n), btmp(n) )
 
         IF( TotMatrix % GotBlockStruct ) THEN
           k = TotMatrix % InvBlockStruct(i)
           IF( k <= 0 ) THEN
-            CALL Fatal('BlockMatrixPrec','Cannot define the originating block for scaling!')
+            CALL Fatal('BlockMatrixPrec','Cannot define the originating block '&
+                //TRIM(I2S(i))//' for scaling!')
           END IF
-          l = SIZE( TotMatrix % BlockStruct ) 
         ELSE
           k = i
-          l = NoVar
         END IF
 
+        l = Solver % Variable % DOFs
         Diagtmp(1:n) = Solver % Matrix % DiagScaling(k::l)
 
         ! Scale x & b to the unscaled system of the tailored preconditioning matrix for given block.
@@ -2555,7 +2559,7 @@ CONTAINS
       
       IF( BlockScaling ) CALL BlockMatrixScaling(.FALSE.,i,i,b,UsePrecMat)
 
-      IF( DiagScaling .AND. UsePrecMat ) THEN
+      IF( ThisScaling .AND. UsePrecMat ) THEN
         x(1:n) = x(1:n) / diagtmp(1:n)
         DEALLOCATE( diagtmp, btmp )
       END IF
@@ -2686,10 +2690,10 @@ CONTAINS
     Solver % Variable => Var_save
 
     IF( BlockGS ) THEN
-      DEALLOCATE( vtmp, rtmp ) 
+      DEALLOCATE( vtmp, rtmp, xtmp ) 
     END IF
 
-    CALL Info('BlockMatrixPrec','Finished block matrix preconditioning',Level=6)
+    CALL Info('BlockMatrixPrec','Finished block matrix preconditioning',Level=8)
     
   END SUBROUTINE BlockMatrixPrec
 
@@ -2889,7 +2893,8 @@ CONTAINS
     INTEGER :: NoVar, ndim, maxsize
     LOGICAL :: Converged, Diverged
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
-    INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:)
+    INTEGER, POINTER :: Offset(:),BlockStruct(:)
+    INTEGER, ALLOCATABLE, TARGET :: poffset(:)
     INTEGER :: i,j,k,l,ia,ib,istat
     LOGICAL :: LS, BlockAV,Found
 
@@ -2905,7 +2910,7 @@ CONTAINS
     NoVar = TotMatrix % NoVar
 
     CALL Info('BlockKrylovIter','Allocating temporal vectors for block system of size: '&
-        //TRIM(I2S(ndim)),Level=8)
+        //TRIM(I2S(ndim)),Level=10)
 
     ALLOCATE(x(ndim), b(ndim),r(ndim),STAT=istat)
     IF( istat /= 0 ) THEN
@@ -3136,7 +3141,7 @@ CONTAINS
     LOGICAL :: GotSlaveSolvers, SkipVar
     
     
-    TYPE(Matrix_t), POINTER :: Amat, SaveMatrix, SaveCM
+    TYPE(Matrix_t), POINTER :: Amat, SaveCM
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
@@ -3292,6 +3297,8 @@ CONTAINS
               ParEnv = Amat % ParMatrix % ParEnv
             END IF
           END IF
+
+          Solver % Variable  => SolverVar
         END DO
       END DO
     END IF

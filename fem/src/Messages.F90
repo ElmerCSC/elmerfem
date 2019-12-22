@@ -93,18 +93,22 @@ CONTAINS
        IF ( OutputCaller ) THEN
          WRITE( *,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
        END IF
-
-       ! If there are several partitions to be saved than plot the partition too
-       IF ( MaxOutputPE > 0 ) THEN
-         WRITE( *,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '
-       END IF
      END IF
 
 
      IF ( nadv ) THEN
-        WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)
+       ! If there are several partitions to be saved than plot the partition too
+       IF( MaxOutputPE > 0 ) THEN
+         WRITE( *,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
+       ELSE         
+         WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)
+       END IF
      ELSE
-        WRITE( *,'(A)', ADVANCE = 'YES' ) TRIM(String)
+       IF( MaxOutputPE > 0 ) THEN
+         WRITE( *,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
+       ELSE
+         WRITE( *,'(A)', ADVANCE = 'YES' ) TRIM(String)
+       END IF
      END IF
      nadv1 = nadv
 
@@ -156,15 +160,25 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
-          'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-     ELSE
-        IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+       IF ( MaxOutputPE > 0 ) THEN
+         WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='NO' ) &
+             'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
+       ELSE
+         WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
              'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-        ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
-        END IF
+       END IF
+     ELSE
+       IF ( .NOT. nadv1 ) THEN
+         IF( MaxOutputPE > 0 ) THEN
+           WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='YES' ) &
+               'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
+         ELSE
+           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+               'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
+         END IF
+       ELSE
+         WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+       END IF
      END IF
      nadv1 = nadv
      CALL FLUSH(6)
