@@ -144,6 +144,9 @@ private:
   void createMenus();
   void createToolBars();
   void createStatusBar();
+  
+  void resizeEvent(QResizeEvent* event);
+  void moveEvent(QMoveEvent* event);  
 };
 
 #endif

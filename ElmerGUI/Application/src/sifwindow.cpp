@@ -204,6 +204,21 @@ SifWindow::SifWindow(QWidget *parent)
 	}else if(syntaxHighlighting == SIF_HIGHLIGHTING_DARK){
 		highlightingDarkSlot();
 	}
+
+  int x,y,w,h;  
+  x = ((MainWindow*) parent)->settings_value("sifWindow/x", -10000).toInt();
+  y = ((MainWindow*) parent)->settings_value("sifWindow/y", -10000).toInt();
+  w = ((MainWindow*) parent)->settings_value("sifWindow/width", -10000).toInt(); 
+  h = ((MainWindow*) parent)->settings_value("sifWindow/height", -10000).toInt();
+  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
+    move(x,y);
+    if(w > QApplication::desktop()->width()) w = QApplication::desktop()->width();
+    if(h > QApplication::desktop()->height()) h = QApplication::desktop()->height();    
+    resize(w,h);
+  }
+  if(((MainWindow*) parent)->settings_value("sifWindow/maximized", false).toBool()){
+    setWindowState(windowState() ^ Qt::WindowMaximized);
+  }
 }
 
 SifWindow::~SifWindow()
@@ -538,4 +553,30 @@ void SifWindow::highlightingDarkSlot()
 void SifWindow::saveAndRunSlot()
 {
   ((MainWindow*) parent())->saveAndRun(false);
+}
+
+void SifWindow::resizeEvent(QResizeEvent* event)
+{
+  if( !isMaximized() && !isMinimized() ){
+    ((MainWindow*) parent())->settings_setValue("sifWindow/width", width());
+    ((MainWindow*) parent())->settings_setValue("sifWindow/height", height());
+    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
+  }else if( isMaximized() ){
+    ((MainWindow*) parent())->settings_setValue("sifWindow/width", event->oldSize().width());
+    ((MainWindow*) parent())->settings_setValue("sifWindow/height", event->oldSize().height());
+    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
+  }
+}
+
+void SifWindow::moveEvent(QMoveEvent* event)
+{ 
+  if( !isMaximized() && !isMinimized() ){
+    ((MainWindow*) parent())->settings_setValue("sifWindow/x", x());
+    ((MainWindow*) parent())->settings_setValue("sifWindow/y", y());
+    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
+  }else if( isMaximized() ){
+    ((MainWindow*) parent())->settings_setValue("sifWindow/x", x() + event->oldPos().x() - event->pos().x() );
+    ((MainWindow*) parent())->settings_setValue("sifWindow/y", y() + event->oldPos().y() - event->pos().y() );
+    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
+  }
 }

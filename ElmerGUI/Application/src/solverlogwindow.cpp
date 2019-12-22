@@ -184,6 +184,21 @@ SolverLogWindow::SolverLogWindow(QWidget *parent)
 	}else if(syntaxHighlighting == SOLVERLOG_HIGHLIGHTING_DARK){
 		highlightingDarkSlot();
 	}
+
+  int x,y,w,h;  
+  x = ((MainWindow*) parent)->settings_value("solverLogWindow/x", -10000).toInt();
+  y = ((MainWindow*) parent)->settings_value("solverLogWindow/y", -10000).toInt();
+  w = ((MainWindow*) parent)->settings_value("solverLogWindow/width", -10000).toInt(); 
+  h = ((MainWindow*) parent)->settings_value("solverLogWindow/height", -10000).toInt();
+  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
+    move(x,y);
+    if(w > QApplication::desktop()->width()) w = QApplication::desktop()->width();
+    if(h > QApplication::desktop()->height()) h = QApplication::desktop()->height();    
+    resize(w,h);
+  }
+  if(((MainWindow*) parent)->settings_value("solverLogWindow/maximized", false).toBool()){
+    setWindowState(windowState() ^ Qt::WindowMaximized);
+  }
 }
 
 SolverLogWindow::~SolverLogWindow()
@@ -507,4 +522,30 @@ void SolverLogWindow::highlightingDarkSlot()
 	highlightingNoneAct->setChecked(false);	
 	highlightingLightAct->setChecked(false);
 	highlightingDarkAct->setChecked(true);
+}
+
+void SolverLogWindow::resizeEvent(QResizeEvent* event)
+{
+  if( !isMaximized() && !isMinimized() ){
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/width", width());
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/height", height());
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
+  }else if( isMaximized() ){
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/width", event->oldSize().width());
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/height", event->oldSize().height());
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
+  }
+}
+
+void SolverLogWindow::moveEvent(QMoveEvent* event)
+{ 
+  if( !isMaximized() && !isMinimized() ){
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/x", x());
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/y", y());
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
+  }else if( isMaximized() ){
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/x", x() + event->oldPos().x() - event->pos().x() );
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/y", y() + event->oldPos().y() - event->pos().y() );
+    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
+  }
 }

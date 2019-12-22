@@ -108,7 +108,9 @@ public:
   
 protected:
   void contextMenuEvent(QContextMenuEvent *event);
-
+  void resizeEvent(QResizeEvent* event);
+  void moveEvent(QMoveEvent* event);
+  
 private slots:
   // menu slots:
   void openSlot();                // File -> Open...

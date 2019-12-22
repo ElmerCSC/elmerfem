@@ -146,6 +146,10 @@ private:
   bool showSSHistory;
 
   QIcon iconChecked;
+  
+protected:
+  void resizeEvent(QResizeEvent* event);
+  void moveEvent(QMoveEvent* event); 
 };
 
 #endif // CONVERGENCEVIEW_H

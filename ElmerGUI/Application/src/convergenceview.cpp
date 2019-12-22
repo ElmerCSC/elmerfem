@@ -41,6 +41,7 @@
 #include <QtGui>
 #include <iostream>
 #include "convergenceview.h"
+#include "mainwindow.h"
 
 using namespace std;
 
@@ -156,6 +157,22 @@ ConvergenceView::ConvergenceView(Limit *limit, QWidget *parent)
   showSSHistory = false;
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  int x,y,w,h;  
+  x = ((MainWindow*) parent)->settings_value("convergenceView/x", -10000).toInt();
+  y = ((MainWindow*) parent)->settings_value("convergenceView/y", -10000).toInt();
+  w = ((MainWindow*) parent)->settings_value("convergenceView/width", -10000).toInt(); 
+  h = ((MainWindow*) parent)->settings_value("convergenceView/height", -10000).toInt();
+  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
+    move(x,y);
+    if(w > QApplication::desktop()->width()) w = QApplication::desktop()->width();
+    if(h > QApplication::desktop()->height()) h = QApplication::desktop()->height();    
+    resize(w,h);
+  }
+  if(((MainWindow*) parent)->settings_value("convergenceView/maximized", false).toBool()){
+    setWindowState(windowState() ^ Qt::WindowMaximized);
+  }
+  
 }
 
 ConvergenceView::~ConvergenceView()
@@ -420,4 +437,30 @@ void ConvergenceView::showSSHistorySlot()
 void ConvergenceView::clearHistorySlot()
 {
   removeData();
+}
+
+void ConvergenceView::resizeEvent(QResizeEvent* event)
+{
+  if( !isMaximized() && !isMinimized() ){
+    ((MainWindow*) parent())->settings_setValue("convergenceView/width", width());
+    ((MainWindow*) parent())->settings_setValue("convergenceView/height", height());
+    ((MainWindow*) parent())->settings_setValue("convergenceView/maximized", isMaximized());
+  }else if( isMaximized() ){
+    ((MainWindow*) parent())->settings_setValue("convergenceView/width", event->oldSize().width());
+    ((MainWindow*) parent())->settings_setValue("convergenceView/height", event->oldSize().height());
+    ((MainWindow*) parent())->settings_setValue("convergenceView/maximized", isMaximized());
+  }
+}
+
+void ConvergenceView::moveEvent(QMoveEvent* event)
+{ 
+  if( !isMaximized() && !isMinimized() ){
+    ((MainWindow*) parent())->settings_setValue("convergenceView/x", x());
+    ((MainWindow*) parent())->settings_setValue("convergenceView/y", y());
+    ((MainWindow*) parent())->settings_setValue("convergenceView/maximized", isMaximized());
+  }else if( isMaximized() ){
+    ((MainWindow*) parent())->settings_setValue("convergenceView/x", x() + event->oldPos().x() - event->pos().x() );
+    ((MainWindow*) parent())->settings_setValue("convergenceView/y", y() + event->oldPos().y() - event->pos().y() );
+    ((MainWindow*) parent())->settings_setValue("convergenceView/maximized", isMaximized());
+  }
 }

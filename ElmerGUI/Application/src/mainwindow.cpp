@@ -7421,13 +7421,39 @@ QString MainWindow::getDefaultDirName()
   return defaultDirName;
 }
 
+void MainWindow::resizeEvent(QResizeEvent* event)
+{
+  if( !isMaximized() && !isMinimized() ){
+    settings_setValue("mainWindow/width", width());
+    settings_setValue("mainWindow/height", height());
+    settings_setValue("mainWindow/maximized", isMaximized());
+  }else if( isMaximized() ){
+    settings_setValue("mainWindow/width", event->oldSize().width());
+    settings_setValue("mainWindow/height", event->oldSize().height());
+    settings_setValue("mainWindow/maximized", isMaximized());
+  }
+}
+
+void MainWindow::moveEvent(QMoveEvent* event)
+{ 
+  if( !isMaximized() && !isMinimized() ){
+    settings_setValue("mainWindow/x", x());
+    settings_setValue("mainWindow/y", y());
+    settings_setValue("mainWindow/maximized", isMaximized());
+  }else if( isMaximized() ){
+    settings_setValue("mainWindow/x", x() + event->oldPos().x() - event->pos().x() );
+    settings_setValue("mainWindow/y", y() + event->oldPos().y() - event->pos().y() );
+    settings_setValue("mainWindow/maximized", isMaximized());
+  }
+}
+
 // Load settings to ./ElmerGUI.ini
 //-----------------------------------------------------------------------------
 void MainWindow::loadSettings()
 {
   QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QSettings settings(iniFileName, QSettings::IniFormat);
-  
+
   int x,y,w,h;
   x = settings.value("mainWindow/x", -10000).toInt();
   y = settings.value("mainWindow/y", -10000).toInt();
@@ -7435,39 +7461,11 @@ void MainWindow::loadSettings()
   h = settings.value("mainWindow/height", -10000).toInt();
   if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
     move(x,y);
+    if(w > QApplication::desktop()->width()) w = QApplication::desktop()->width();
+    if(h > QApplication::desktop()->height()) h = QApplication::desktop()->height();    
     resize(w,h);
   }
-  
   if(settings.value("mainWindow/maximized", false).toBool()) showMaximized();
-  
-  x = settings.value("solverLogWindow/x", -10000).toInt();
-  y = settings.value("solverLogWindow/y", -10000).toInt();
-  w = settings.value("solverLogWindow/width", -10000).toInt(); 
-  h = settings.value("solverLogWindow/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    solverLogWindow->move(x,y);
-    solverLogWindow->resize(w,h);
-  }
-  
-  x = settings.value("sifWindow/x", -10000).toInt();
-  y = settings.value("sifWindow/y", -10000).toInt();
-  w = settings.value("sifWindow/width", -10000).toInt(); 
-  h = settings.value("sifWindow/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    sifWindow->move(x,y);
-    sifWindow->resize(w,h);
-  }
-  
-#ifdef EG_QWT
-  x = settings.value("convergenceView/x", -10000).toInt();
-  y = settings.value("convergenceView/y", -10000).toInt();
-  w = settings.value("convergenceView/width", -10000).toInt(); 
-  h = settings.value("convergenceView/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    convergenceView->move(x,y);
-    convergenceView->resize(w,h);
-  }
-#endif
 
   int n = settings.value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
@@ -7478,6 +7476,7 @@ void MainWindow::loadSettings()
     if(path != "$")
     addRecentProject(path, false);    
   }
+  
 }
 
 // Save settings to ./ElmerGUI.ini
@@ -7486,28 +7485,6 @@ void MainWindow::saveSettings()
 {
   QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QSettings settings(iniFileName, QSettings::IniFormat);
-  settings.setValue("mainWindow/x", x());
-  settings.setValue("mainWindow/y", y());  
-  settings.setValue("mainWindow/width", width());
-  settings.setValue("mainWindow/height", height());
-  settings.setValue("mainWindow/maximized", isMaximized());
-  
-  settings.setValue("treeWidget/width", width());  
-  settings.setValue("solverLogWindow/x", solverLogWindow->x());
-  settings.setValue("solverLogWindow/y", solverLogWindow->y());  
-  settings.setValue("solverLogWindow/width", solverLogWindow->width());
-  settings.setValue("solverLogWindow/height", solverLogWindow->height());
-  settings.setValue("sifWindow/x", sifWindow->x());
-  settings.setValue("sifWindow/y", sifWindow->y());  
-  settings.setValue("sifWindow/width", sifWindow->width());
-  settings.setValue("sifWindow/height", sifWindow->height());
-    
-#ifdef EG_QWT  
-  settings.setValue("convergenceView/x", convergenceView->x());
-  settings.setValue("convergenceView/y", convergenceView->y());  
-  settings.setValue("convergenceView/width", convergenceView->width());
-  settings.setValue("convergenceView/height", convergenceView->height());
-#endif
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
