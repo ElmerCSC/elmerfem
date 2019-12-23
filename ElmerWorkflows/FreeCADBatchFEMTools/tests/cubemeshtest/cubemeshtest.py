@@ -34,6 +34,5 @@ else:
     try:
         p = subprocess.Popen([args.freecad_executable, '-c', freecadscript_name])
         p.communicate()
-    except:
+    except Exception:
         print("Running FreeCAD failed!!! Try to give the correct FreeCAD executable as an argument (--freecad-executable, -fe)")
-        exit()

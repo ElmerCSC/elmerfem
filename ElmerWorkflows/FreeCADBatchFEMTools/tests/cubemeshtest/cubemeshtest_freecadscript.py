@@ -163,7 +163,7 @@ def create_cube_geometry(nof_cubes, mesh_size, length, width, height, cube_dista
 def create_geometry(nof_cubes, mesh_size, find_boundaries_from_entities_dict, find_solids_from_entities_dict, directory,
                     add_air, point_search, use_spheres, mesh_size_air):
     """
-    Creates geometry fof cubes and exports unv file.
+    Creates geometry for cubes/spheres and exports unv file.
 
     :param nof_cubes: Number of cubes/spheres created.
     :param mesh_size: Mesh size for cubes/spheres.

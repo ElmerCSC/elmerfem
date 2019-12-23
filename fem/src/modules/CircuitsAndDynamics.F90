@@ -763,7 +763,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! R = (1/sigma * js,js):
       ! ----------------------
       IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(gradv*MATMUL(C,gradv))
+      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3)
       Comp % Resistance = Comp % Resistance + localR
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
@@ -1382,6 +1382,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ! R = (1/sigma * js,js):
         ! ----------------------
         localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+
         Comp % Resistance = Comp % Resistance + localR
         
         CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
@@ -1647,7 +1648,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! R = (1/sigma * js,js):
       ! ----------------------
       IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(gradv*MATMUL(C,gradv))
+      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3)
+
       Comp % Resistance = Comp % Resistance + localR
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)

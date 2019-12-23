@@ -669,7 +669,7 @@ CONTAINS
          CALL Fatal('RestoreBulkMatrix','Cannot restore matrix of different size!')
        END IF
        DO i=1,n
-         A % Values(1:n) = A % BulkValues(1:n)
+         A % Values(i) = A % BulkValues(i)
        END DO
      END IF
 
@@ -679,7 +679,7 @@ CONTAINS
          CALL Fatal('RestoreBulkMatrix','Cannot restore mass matrix of different size!')
        END IF
        DO i=1,n
-         A % MassValues(1:n) = A % BulkMassValues(1:n)
+         A % MassValues(i) = A % BulkMassValues(i)
        END DO
      END IF
 
@@ -689,7 +689,7 @@ CONTAINS
          CALL Fatal('RestoreBulkMatrix','Cannot restore damp matrix of different size!')
        END IF
        DO i=1,n
-         A % MassValues(1:n) = A % BulkMassValues(1:n)
+         A % DampValues(i) = A % BulkDampValues(i)
        END DO
      END IF
      
@@ -1005,15 +1005,16 @@ CONTAINS
      CurrSol => Solver % Variable % Values
      PrevSol => Solver % Variable % PrevValues
 
+     
      SELECT CASE( Method )
-
+       
      CASE( 'fs' ) 
        CALL FractionalStep_CRS( dt, Matrix, Force, PrevSol(:,1), Solver )
 
      CASE('bdf')
-       Dts(1) = Dt
        ConstantDt = .TRUE.
        IF(Order > 1) THEN
+         Dts(1) = Dt
          DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
          DO i=2,Order
            Dts(i) = DtVar % PrevValues(1,i-1)
@@ -8408,11 +8409,16 @@ END FUNCTION SearchNodeL
        END IF
 
        IF ( .NOT.GotIt ) THEN
-         CALL Warn( 'InitializeTimestep', &
+         IF (Solver % TimeOrder > 1) THEN
+           Method = 'bossak'
+           Solver % Beta = 1.0d0
+         ELSE
+           CALL Warn( 'InitializeTimestep', &
                'Timestepping method defaulted to IMPLICIT EULER' )
 
-         Solver % Beta = 1.0D0
-         Method = 'implicit euler'
+           Solver % Beta = 1.0D0
+           Method = 'implicit euler'
+         END IF
        END IF
 
      ELSE
@@ -8457,6 +8463,9 @@ END FUNCTION SearchNodeL
              WRITE( Message, * ) 'Invalid order BDF ',  Solver % Order
              CALL Fatal( 'InitializeTimestep', Message )
            END IF
+
+         CASE('bossak')
+           Solver % Beta = 1.0d0
 
          CASE DEFAULT 
            WRITE( Message, * ) 'Unknown timestepping method: ',Method
@@ -9281,7 +9290,7 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= Solver % Variable % NonlinIter ) Relax = .FALSE.
 
         RelativeP = ListGetLogical( SolverParams,'Relative Pressure Relaxation',Stat) 
-        CALL Info(Caller,'Using relative pressure relaxation',Level=10)
+        IF( RelativeP) CALL Info(Caller,'Using relative pressure relaxation',Level=10)
       END IF
       
       SkipConstraints = ListGetLogical(SolverParams,&
@@ -9380,7 +9389,7 @@ END FUNCTION SearchNodeL
 
     Norm = ComputeNorm(Solver, n, x)
     Solver % Variable % Norm = Norm
-
+    
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
     !--------------------------------------------------------------------------
@@ -9514,8 +9523,10 @@ END FUNCTION SearchNodeL
       ALLOCATE(r(n))
       r = x(1:n)-x0(1:n)
       Change = ComputeNorm(Solver, n, r)
-      IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0_dp/ (Norm+PrevNorm)
+      IF( .NOT. ConvergenceAbsolute ) THEN
+        IF( Norm + PrevNorm > 0.0) THEN
+          Change = Change * 2.0_dp/ (Norm+PrevNorm)
+        END IF
       END IF
       DEALLOCATE(r)      
 
@@ -12800,9 +12811,6 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), ALLOCATABLE :: Diag(:), TempVector(:)
     REAL(KIND=dp), POINTER :: bb(:),Res(:)
     REAL(KIND=dp) :: t0,rt0,rst,st,ct
-#ifndef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: CPUTime,RealTime
-#endif
     TYPE(ValueList_t), POINTER :: Params
 
 #ifndef USE_ISO_C_BINDINGS
@@ -14323,7 +14331,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
               SkipConstraints
   SAVE MultiplierValues, SolverPointer
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
+  CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName, str
   TYPE(ListMatrix_t), POINTER :: cList
   TYPE(ListMatrixEntry_t), POINTER :: cPtr, cPrev, cTmp
 
@@ -15059,6 +15067,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         CALL Info('SolveWithLinearRestriction','Nonlinear system consistent norm must skip constraints',Level=5)
       END IF
     END IF
+    str = ListGetString( Solver % values, 'NonLinear System Convergence Measure',Found )
+    IF( str == 'solution' ) THEN
+      SkipConstraints = .TRUE.
+      CALL Info('SolveWithLinearRestriction',&
+          'Nonlinear system convergence measure == "solution" must skip constraints',Level=5)
+    END IF
     IF( SkipConstraints ) THEN
       CALL Info('SolveWithLinearRestriction','Enforcing convergence without constraints to True',Level=5)
       CALL ListAddLogical( Solver % Values, &
@@ -15492,7 +15506,7 @@ CONTAINS
     
     IF( ListGetLogical( Params,'Linear System Save and Stop',Found ) ) THEN
       CALL Info('SaveLinearSystem','Just saved matrix and stopped!',Level=4)
-      STOP
+      STOP EXIT_OK
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveLinearSystem
@@ -17300,9 +17314,6 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
      TYPE(Variable_t), POINTER :: DispVar
      REAL(KIND=dp) :: t0,rt0,rst,st,ct
-#ifndef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: CPUTime,RealTime
-#endif
 
      ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
      ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found) 

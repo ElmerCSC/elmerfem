@@ -13,8 +13,7 @@ Simulation
   Steady State Max Iterations = 1
   
   Output Intervals = 0
-!  Post File = case.ep
-
+!  Post File = case.vtu
 
 ! Parameters for the User Defined Function, SphereBottom
   Sphere Radius = Real 2.0
@@ -49,25 +48,18 @@ Solver 1
   Linear System Iterative Method = "BiCGStabl"
   BiCgStabl Polynomial Degree = 4
   Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Convergence Tolerance = 1.0e-8
   Linear System Abort Not Converged = True
   Linear System Preconditioning = "none"
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
 
+! These work as well and could be useful when linear system is hard to solve
+!  Linear System Residual Mode = True
+!  Linear System Convergence Tolerance = 1.0e-04
+
   Apply Limiter = Logical True
 End
-
-Solver 2
-  Equation = Result Output
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-
-  Output File Name = case
-  Output Format = Vtu
-
-  Exec Solver = never
-End
-
 
 
 Equation 1

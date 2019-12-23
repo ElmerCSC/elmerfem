@@ -437,7 +437,7 @@ CONTAINS
       END IF
 
 !------------------------------------------------------------------------------
-END SUBROUTINE GetMaxDefs
+  END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
@@ -503,7 +503,42 @@ END SUBROUTINE GetMaxDefs
 
   END SUBROUTINE MarkHaloNodes
 
- 
+
+
+  ! Mark nodes that are associated with at least some boundary element.
+  !------------------------------------------------------------------------------
+  SUBROUTINE MarkBCNodes(Mesh,BCNode,NoBCNodes)
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, ALLOCATABLE :: BCNode(:)
+    INTEGER :: NoBCNodes
+
+    INTEGER :: elem
+    TYPE(Element_t), POINTER :: Element
+
+    CALL Info('MarkInterfaceNodes','Marking interface nodes',Level=8)
+
+    IF(.NOT. ALLOCATED( BCNode ) ) THEN
+      ALLOCATE( BCNode( Mesh % NumberOfNodes ) )
+    END IF
+    BCNode = .FALSE. 
+
+    DO elem=Mesh % NumberOfBulkElements + 1, &
+        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      Element => Mesh % Elements( elem )         
+      !IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+
+      BCNode(Element % NodeIndexes) = .TRUE.
+    END DO
+
+    NoBCNodes = COUNT( BCNode )
+
+    CALL Info('MarkBCNodes','Number of BC nodes: '//TRIM(I2S(NoBCNodes)),Level=8)
+
+  END SUBROUTINE MarkBCNodes
+
+
+  
 
 !> Create a discontinuous mesh over requested boundaries.
 !> The nodes are duplicated in order to facilitate the discontinuity.
@@ -11319,7 +11354,7 @@ END SUBROUTINE GetMaxDefs
             Projector % InvPerm, Parallel = ParallelNumbering ) 
       END IF
 
-      IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
+      IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP EXIT_OK
     END IF    
 
     CALL CheckTimer('PeriodicProjector',Delete=.TRUE.)
@@ -11574,7 +11609,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,J,iter,maxiter
     REAL(KIND=dp) :: q,r,h1,hn,minhn,err_eps,err,xn
     REAL(KIND=dp), ALLOCATABLE :: wold(:),h(:)
-    LOGICAL :: Found, GotRatio
+    LOGICAL :: Found, GotRatio, FunExtruded, Fun1D
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: ParList
     
@@ -11583,17 +11618,21 @@ END SUBROUTINE GetMaxDefs
     ELSE
       ParList => CurrentModel % Simulation
     END IF
+
+    FunExtruded = ListCheckPresent( ParList,'Extruded Mesh Density')
+    Fun1D = ListCheckPresent( ParList,'1D Mesh Density')
     
     ! Geometric division
     !---------------------------------------------------------------
     q = ListGetConstReal( ParList,'Extruded Mesh Ratio',GotRatio)
+    IF(.NOT. GotRatio) q = ListGetConstReal( ParList,'1D Mesh Ratio',GotRatio)
     IF( GotRatio ) THEN
       IF( ( ABS(ABS(q)-1.0_dp) < 1.0d-6 ) .OR. (q < 0.0_dp .AND. n <= 2) ) THEN
         CALL Info('UnitSegmentDivision','Assuming linear division as mesh ratio is close to one!')
         GotRatio = .FALSE.
       END IF
     END IF
-
+    
     IF( GotRatio ) THEN
       CALL Info('UnitSegmentDivision','Creating geometric division',Level=5)
 
@@ -11628,7 +11667,7 @@ END SUBROUTINE GetMaxDefs
             
     ! Generic division given by a function
     !-----------------------------------------------------------------------
-    ELSE IF( ListCheckPresent( ParList,'Extruded Mesh Density') ) THEN
+    ELSE IF( FunExtruded .OR. Fun1D ) THEN
 
       CALL Info('UnitSegmentDivision','Creating functional division',Level=5)
 
@@ -11658,7 +11697,11 @@ END SUBROUTINE GetMaxDefs
         DO i=1,n
           xn = (w(i)+w(i-1))/2.0_dp
           minhn = MIN( minhn, w(i)-w(i-1) )
-          h(i) = ListGetFun( ParList,'Extruded Mesh Density', xn )
+          IF( FunExtruded ) THEN
+            h(i) = ListGetFun( ParList,'Extruded Mesh Density', xn )
+          ELSE
+            h(i) = ListGetFun( ParList,'1D Mesh Density', xn )
+          END IF
           IF( h(i) < EPSILON( h(i) ) ) THEN
             CALL Fatal('UnitSegmentDivision','Given value for h(i) was negative!')
           END IF
@@ -11699,7 +11742,7 @@ END SUBROUTINE GetMaxDefs
         w(i) = i/(1._dp * n)
       END DO
     END IF
-
+    
     CALL Info('UnitSegmentDivision','Mesh division ready',Level=9)
     DO i=0,n
       WRITE( Message, '(A,I0,A,ES12.4)') 'w(',i,') : ',w(i)
@@ -17029,15 +17072,13 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit, bc_ind
+	UpHit, DownHit, bc_ind, jmin, jmax
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
-#ifndef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: CPUTime
-#endif
     REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
-                 ElemVector(3), DotPro, Eps, MinTop, MaxTop, MinBot, MaxBot
+        ElemVector(3), DotPro, MaxDotPro, MinDotPro, Eps, MinTop, &
+        MaxTop, MinBot, MaxBot
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
@@ -17213,7 +17254,10 @@ CONTAINS
  	IF( DoCoordTransform ) THEN
           CALL CoordinateTransformationNodal( CoordTransform, Vector )
         END IF
-  
+
+        MaxDotPro = -1.0_dp
+        MinDotPro = 1.0_dp
+        
         DO j=i+1,n
           jj = NodeIndexes(j)
           
@@ -17229,25 +17273,37 @@ CONTAINS
 
           Length = SQRT(SUM(ElemVector*ElemVector))
           DotPro = SUM(ElemVector * UnitVector) / Length
-          
-          IF(DotPro > 1.0_dp - Eps) THEN 
-            IF( MaskExists ) THEN
-              IF( UpActive ) UpPointer(MaskPerm(ii)) = jj
-              IF( DownActive ) DownPointer(MaskPerm(jj)) = ii              
-            ELSE
-              IF( UpActive ) UpPointer(ii) = jj
-              IF( DownActive ) DownPointer(jj) = ii
-            END IF
-          ELSE IF(DotPro < Eps - 1.0_dp) THEN
-            IF( MaskExists ) THEN
-              IF( DownActive ) DownPointer(MaskPerm(ii)) = jj
-              IF( UpActive ) UpPointer(MaskPerm(jj)) = ii
-            ELSE
-              IF( DownActive ) DownPointer(ii) = jj
-              IF( UpActive ) UpPointer(jj) = ii              
-            END IF
+
+          IF( DotPro > MaxDotPro ) THEN
+            MaxDotPro = DotPro
+            jmax = jj
           END IF
+          IF( DotPro < MinDotPro ) THEN
+            MinDotPro = DotPro
+            jmin = jj
+          END IF          
         END DO
+          
+        IF(MaxDotPro > 1.0_dp - Eps) THEN 
+          IF( MaskExists ) THEN
+            IF( UpActive ) UpPointer(MaskPerm(ii)) = jmax
+            IF( DownActive ) DownPointer(MaskPerm(jmax)) = ii              
+          ELSE
+            IF( UpActive ) UpPointer(ii) = jmax
+            IF( DownActive ) DownPointer(jmax) = ii
+          END IF
+        END IF
+            
+        IF(MinDotPro < Eps - 1.0_dp) THEN
+          IF( MaskExists ) THEN
+            IF( DownActive ) DownPointer(MaskPerm(ii)) = jmin
+            IF( UpActive ) UpPointer(MaskPerm(jmin)) = ii
+          ELSE
+            IF( DownActive ) DownPointer(ii) = jmin
+            IF( UpActive ) UpPointer(jmin) = ii              
+          END IF
+        END IF
+
       END DO
     END DO
     DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
@@ -19357,13 +19413,14 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
-    INTEGER :: i, j, k, n, NoNodes, NoElements, ActiveDirection, Order, BodyId
+    INTEGER :: i, j, k, n, NoNodes, NoElements, ActiveDirection, Order, BodyId, ne
     LOGICAL :: Found
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementType_t),POINTER :: elmt
     REAL(KIND=dp) :: MeshVector(3), Length, Coord(3)
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshName
-
+    REAL(KIND=dp), ALLOCATABLE :: w(:)
+    
 !------------------------------------------------------------------------------
     Mesh => NULL()
     IF ( .NOT. ASSOCIATED( Params ) ) RETURN
@@ -19389,6 +19446,7 @@ CONTAINS
 
 !   Compute the resulting mesh parameters
 !--------------------------------------------------------------
+    ne = Order + 1
     NoNodes = NoElements + 1 + NoElements * (Order - 1)    
     MeshVector = 0.0_dp
     MeshVector( ABS( ActiveDirection ) ) = 1.0_dp
@@ -19404,9 +19462,13 @@ CONTAINS
     x => Mesh % Nodes % x
     y => Mesh % Nodes % y
     z => Mesh % Nodes % z
-   
+
+    ALLOCATE( w(0:NoNodes-1) )
+    
+    CALL UnitSegmentDivision( w, NoNodes-1, Params )
+    
     DO i=1, NoNodes
-      Coord = MeshVector * (i-1) / (NoNodes-1)
+      Coord = MeshVector * w(i-1)
 
       x(i) = Coord(1)
       y(i) = Coord(2)
@@ -19418,11 +19480,7 @@ CONTAINS
 !   -------------------------------
     CALL AllocateVector( Mesh % Elements, NoElements )
 
-    IF( Order == 1 ) THEN
-      Elmt => GetElementType( 202 )
-    ELSE
-      Elmt => GetElementType( 203 )
-    END IF
+    Elmt => GetElementType( 200 + ne )
 
     DO i=1,NoElements
       Element => Mesh % Elements(i)      
@@ -19430,18 +19488,16 @@ CONTAINS
       Element % EdgeIndexes => NULL()
       Element % FaceIndexes => NULL()     
       Element % ElementIndex = i
-      IF( Order == 1 ) THEN
-        CALL AllocateVector( Element % NodeIndexes, 2 )
-        Element % Ndofs = 2
-        Element % NodeIndexes(1) = i
-        Element % NodeIndexes(2) = i + 1
-      ELSE IF( Order == 2 ) THEN
-        CALL AllocateVector( Element % NodeIndexes, 3 )
-        Element % Ndofs = 3
-        Element % NodeIndexes(1) = 2*i-1
-        Element % NodeIndexes(2) = 2*i+1
-        Element % NodeIndexes(3) = 2*i
-      END IF
+
+      CALL AllocateVector( Element % NodeIndexes, ne )
+      Element % Ndofs = ne
+
+      Element % NodeIndexes(1) = (i-1)*Order + 1
+      Element % NodeIndexes(2) = i*Order + 1
+
+      DO j=3,ne
+        Element % NodeIndexes(j) = (i-1)*Order + j-1
+      END DO
       
       Element % BodyId = BodyId
       Element % PartIndex = ParEnv % myPE
@@ -19453,8 +19509,8 @@ CONTAINS
     Mesh % NumberOfNodes = NoNodes
     Mesh % Nodes % NumberOfNodes = NoNodes
     Mesh % NumberOfBulkElements = NoElements
-    Mesh % MaxElementNodes = 1 + Order
-    Mesh % MaxElementDOFs = 1 + Order
+    Mesh % MaxElementNodes = ne
+    Mesh % MaxElementDOFs = ne
     Mesh % MeshDim = 1
 
     WRITE(Message,'(A,I0)') 'Number of elements created: ',NoElements

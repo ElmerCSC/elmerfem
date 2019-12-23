@@ -716,3 +716,55 @@ void EdfEditor::keyReleaseEvent(QKeyEvent *event)
     altPressed = false;
 }
 
+// Append from specified file path Nov 2019 by TS
+//----------------------------------------------------------------------------
+bool EdfEditor::appendFrom(QString path)
+{
+  QString fileName = path;
+
+  if(fileName.isEmpty())
+    return false;
+
+  QFile file;
+  file.setFileName(fileName);
+  file.open(QIODevice::ReadOnly);
+
+  QDomDocument tmpDoc;
+
+  QString errStr;
+  int errRow;
+  int errCol;
+
+  if(!tmpDoc.setContent(&file, true, &errStr, &errRow, &errCol)) {
+    QMessageBox::information(window(), tr("Elmer definitions file"),
+			     tr("Parse error at line %1, col %2:\n%3")
+			     .arg(errRow).arg(errCol).arg(errStr));
+    file.close();
+    return false;
+
+  } else {
+
+    if(tmpDoc.documentElement().tagName() != "edf") {
+      QMessageBox::information(window(), tr("Elmer definitions file"),
+			       tr("This is not an edf file"));
+      file.close();
+      return false;      
+    }
+  }
+
+  // add new elements to the document
+  QDomElement root = elmerDefs->documentElement();
+  QDomElement tmpRoot = tmpDoc.documentElement();
+
+  QDomElement element = tmpRoot.firstChildElement();
+  while(!element.isNull()) {
+    root.appendChild(element);
+    element = tmpRoot.firstChildElement();
+  }
+
+  setupEditor(elmerDefs);
+
+  edfTree->setCurrentItem(NULL);
+
+  return true;
+}

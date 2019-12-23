@@ -5241,7 +5241,9 @@ END BLOCK
           F(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
        END DO
 
-       SELECT CASE( dim )    
+       SELECT CASE( dim )
+       CASE(1)
+          DetF = sqrt(SUM(F(1:3,1)**2))
        CASE (2)
           DetF = F(1,1)*F(2,2) - F(1,2)*F(2,1)
        CASE(3)
@@ -5301,6 +5303,26 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     FaceMap => GetEdgeMap(3) 
 
     IF (.NOT. PRESENT(FaceIndex)) last_face = 3
+    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+        'Too small array for listing element faces')
+    
+    DO q=first_face,last_face
+      DO j=1,2
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,2
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+
+      IF (FaceIndices(2) < FaceIndices(1)) RevertSign(q) = .TRUE.
+    END DO
+
+  CASE(4)
+    FaceMap => GetEdgeMap(4)
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 4
     IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
         'Too small array for listing element faces')
     
@@ -5428,7 +5450,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         PRINT *, 'CONFLICTING SIGN REVERSIONS SUGGESTED'
         PRINT *, RevertSign(1:4)
         PRINT *, RevertSign2(1:4)
-        STOP
+        STOP EXIT_ERROR
       END IF
     END IF
 
@@ -5529,6 +5551,71 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
 END SUBROUTINE FaceElementBasisOrdering
 !-----------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Here the given element can be supposed to be some face of its parent element.
+!> The index of the face in reference to the parent element and pointer
+!> to the face are returned. The given element and the face returned are thus
+!> representations of the same entity but they may still be indexed differently.
+!------------------------------------------------------------------------------
+SUBROUTINE PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
+!------------------------------------------------------------------------------
+  IMPLICIT NONE
+  TYPE(Mesh_t), POINTER, INTENT(IN) :: Mesh  
+  TYPE(Element_t), POINTER, INTENT(IN) :: Parent, Element
+  TYPE(Element_t), POINTER, INTENT(OUT) :: Face
+  INTEGER, INTENT(OUT) :: ActiveFaceId
+!------------------------------------------------------------------------------
+  INTEGER :: matches, k, l
+!------------------------------------------------------------------------------
+  SELECT CASE(Element % TYPE % ElementCode / 100)
+  CASE(2)
+    IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
+      DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
+        Face => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
+        matches = 0
+        DO k=1,Element % TYPE % NumberOfNodes
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
+                matches=matches+1
+          END DO
+        END DO
+        IF (matches==Element % TYPE % NumberOfNodes) EXIT
+      END DO
+    ELSE
+      matches = 0
+    END IF
+  CASE(3,4)
+    IF ( ASSOCIATED(Parent % FaceIndexes) ) THEN
+      DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
+        Face => Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
+        IF ((Element % TYPE % ElementCode / 100) /= (Face % TYPE % ElementCode / 100)) CYCLE
+        matches = 0
+        DO k=1,Element % TYPE % NumberOfNodes
+          DO l=1,Face % TYPE % NumberOfNodes
+            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
+                matches=matches+1
+          END DO
+        END DO
+        IF (matches == Element % TYPE % NumberOfNodes ) EXIT
+      END DO
+    ELSE
+      matches = 0
+    END IF
+  CASE DEFAULT
+    CALL Fatal('PickActiveFace', 'Element variable is of a wrong dimension')
+  END SELECT
+
+  IF (matches /= Element % TYPE % NumberOfNodes) THEN
+    Face => NULL()
+    ActiveFaceId = 0
+    CALL Warn('PickActiveFace', 'The element is not a face of given parent')
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE PickActiveFace
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
 !> Perform the cross product of two vectors
 !------------------------------------------------------------------------------
@@ -5600,6 +5687,7 @@ END SUBROUTINE FaceElementBasisOrdering
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
        TYPE(Mesh_t), POINTER :: Mesh
+       TYPE(Element_t), POINTER :: Parent, Face
        INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndices(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(4,3), WorkCurlBasis(4,3)
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
@@ -5608,8 +5696,10 @@ END SUBROUTINE FaceElementBasisOrdering
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
+       LOGICAL :: RevertSign(4)
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
+       INTEGER :: ActiveFaceId
 !----------------------------------------------------------------------------------------------------------
 
        Mesh => CurrentModel % Solver % Mesh
@@ -5656,10 +5746,10 @@ END SUBROUTINE FaceElementBasisOrdering
          RETURN
        END IF
 
-       IF (cdim == 2 .AND. dim==1 .OR. cdim == 3 .AND. dim==1) THEN
-         CALL Warn('EdgeElementInfo', 'Traces of 2-D edge elements have not been implemented yet')
-         RETURN
-       END IF
+       !IF (cdim == 3 .AND. dim==1) THEN
+       !  CALL Warn('EdgeElementInfo', 'Traces of 2-D edge elements have not been implemented yet')
+       !  RETURN
+       !END IF
 
        !-----------------------------------------------------------------------
        ! The standard nodal basis functions on the reference element and
@@ -5670,6 +5760,20 @@ END SUBROUTINE FaceElementBasisOrdering
        ! simplifies the implementation of element assembly procedures.
        !-----------------------------------------------------------------------
        SELECT CASE(Element % TYPE % ElementCode / 100)
+       CASE(2)
+         IF (SecondOrder .AND. n==3) CALL Fatal('EdgeElementInfo', &
+             'The lowest-order background mesh needed for trace evaluation over an edge')
+         IF (Create2ndKindBasis) CALL Fatal('EdgeElementInfo', &
+             'Traces of 2-D edge elements (the 2nd family) have not been implemented yet')
+         IF (SecondOrder) THEN
+           DOFs = 2
+         ELSE
+           DOFs = 1
+         END IF
+         DO q=1,2
+           Basis(q) = LineNodalPBasis(q, u)
+           dLBasisdx(q,1) = dLineNodalPBasis(q, u)
+         END DO
        CASE(3)
          IF (SecondOrder) THEN
            ! DOFs is the number of H(curl)-conforming basis functions: 
@@ -5995,6 +6099,40 @@ END SUBROUTINE FaceElementBasisOrdering
          END DO
        ELSE
          SELECT CASE(Element % TYPE % ElementCode / 100)
+         CASE(2)
+           !--------------------------------------------------------------
+           ! This is a special case to return the tangential components 
+           ! trace of 2D elements
+           !--------------------------------------------------------------
+           !
+           ! The sign reversion of basis must be checked via the parent element:
+           !
+           Parent => Element % BoundaryInfo % Left
+           IF (.NOT. ASSOCIATED(Parent)) THEN
+             Parent => Element % BoundaryInfo % Right
+           END IF
+           IF (.NOT. ASSOCIATED(Parent)) RETURN
+           !
+           ! Identify the edge representing the element among the edges of 
+           ! the parent element:
+           !
+           CALL PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
+           IF (ActiveFaceId == 0) RETURN
+           !
+           ! Use the parent element to check whether sign reversions are needed:
+           !
+           CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+           
+           IF (RevertSign(ActiveFaceId)) THEN
+             EdgeBasis(1,1) = -0.5d0
+           ELSE
+             EdgeBasis(1,1) = 0.5d0
+           END IF
+           IF (SecondOrder) THEN
+             EdgeBasis(2,1) = 1.5d0 * u
+           END IF
+           CurlBasis(1:DOFs,:) = 0.0d0
+
          CASE(3)
            !--------------------------------------------------------------
            ! This branch is for handling triangles. Note that

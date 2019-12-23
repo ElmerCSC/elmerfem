@@ -148,6 +148,7 @@ CONTAINS
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
       IMPLICIT NONE
+      CHARACTER(LEN=MAX_NAME_LEN) :: msg
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, localNode
@@ -159,8 +160,8 @@ CONTAINS
       localEdge = BrickFaceEdgeMap(face,localNode)
 
       IF (localEdge == 0) THEN
-         WRITE (*,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
-         STOP
+         WRITE (msg,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
+         CALL Fatal('getBrickFaceEdgeMap', msg)
       END IF
     END FUNCTION getBrickFaceEdgeMap
 

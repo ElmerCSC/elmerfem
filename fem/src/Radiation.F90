@@ -53,57 +53,76 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    FUNCTION ComputeRadiationLoad( Model, Mesh, Element, Temperature, &
-                 Reorder, Emissivity, AngleFraction) RESULT(T)
+                 Reorder, Emissivity, AngleFraction, Areas, Emiss ) RESULT(T)
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Model_t) :: Model
      TYPE(Element_t)  :: Element
      INTEGER :: Reorder(:)
-     REAL(KIND=dp) :: Temperature(:),Emissivity
-     REAL(KIND=dp), OPTIONAL :: AngleFraction
+     REAL(KIND=dp), OPTIONAL :: AngleFraction, Areas(:), Emiss(:)
      REAL(KIND=dp) :: T
+     REAL(KIND=dp) :: Temperature(:), Emissivity
 
      REAL(KIND=dp) :: Asum
-     TYPE(Element_t),POINTER  :: CurrentElement
-     INTEGER :: i,j,n
+     TYPE(Element_t),POINTER  :: RadElement
+     INTEGER :: i,j,n, bindex
      REAL(KIND=dp), POINTER :: Vals(:)
      INTEGER, POINTER :: Cols(:)
      REAL(KIND=dp) :: A1,A2,Emissivity1
      LOGICAL :: Found
 !------------------------------------------------------------------------------
 
-     A1 = Emissivity * ElementArea(Mesh,Element,Element % TYPE % NumberOfNodes)
+     IF(PRESENT(Areas) .AND. PRESENT(Emiss) ) THEN
 
-     Cols => Element % BoundaryInfo % GebhardtFactors % Elements
-     Vals => Element % BoundaryInfo % GebhardtFactors % Factors
+       bindex = Element % ElementIndex - Mesh % NumberOfBulkElements
+       A1  = Emiss(bIndex)**2
 
-     T = 0.0D0
-     Asum = 0.0d0
-     DO i=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
-       CurrentElement => Mesh % Elements(Cols(i))
-       n = CurrentElement % TYPE % NumberOfNodes
+       Cols => Element % BoundaryInfo % GebhardtFactors % Elements
+       Vals => Element % BoundaryInfo % GebhardtFactors % Factors
 
-       Emissivity1 = SUM(ListGetReal( Model % BCs(CurrentElement % &
-            BoundaryInfo % Constraint) % Values, 'Emissivity', &
-            n, CurrentElement % NodeIndexes, Found) ) / n
-       IF(.NOT. Found) THEN
-          Emissivity1 = SUM(GetParentMatProp('Emissivity',CurrentElement)) / n 
-       END IF
+       T = 0._dp
+       Asum = 0._dp
+       DO i=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+         RadElement => Mesh % Elements(Cols(i))
+         n = RadElement % TYPE % NumberOfNodes
+  
+         bindex = Cols(i) - Mesh % NumberOfBulkElements
+         A2 = Emiss(bindex)
 
-       A2 = Emissivity1 * ElementArea( Mesh,CurrentElement, &
-              CurrentElement % TYPE % NumberOfNodes )
+         T=T+A2*Vals(i)*SUM(Temperature(Reorder(RadElement % NodeIndexes))/n)**4
+         Asum = Asum + A2*Vals(i)
+       END DO
+     ELSE
+       A1 = Emissivity**2
 
-       T = T + A2 * ABS(Vals(i)) * &
-         SUM(Temperature(Reorder(CurrentElement % NodeIndexes))/N)**4
+       Cols => Element % BoundaryInfo % GebhardtFactors % Elements
+       Vals => Element % BoundaryInfo % GebhardtFactors % Factors
 
-       Asum = Asum + A2 * ABS(Vals(i))
-     END DO
+       T = 0.0_dp
+       Asum = 0.0_dp
+       DO i=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+         RadElement => Mesh % Elements(Cols(i))
+         n = RadElement % TYPE % NumberOfNodes
 
-     T = (T/A1)**(1.0D0/4.0D0)
-     IF(PRESENT(AngleFraction)) THEN
-       AngleFraction = Asum / A1
+         Emissivity1 = SUM(ListGetReal( Model % BCs(RadElement % &
+              BoundaryInfo % Constraint) % Values, 'Emissivity', &
+              n, RAdElement % NodeIndexes, Found) ) / n
+         IF(.NOT. Found) THEN
+            Emissivity1 = SUM(GetParentMatProp('Emissivity',RadElement)) / n
+         END IF
+
+         A2 = Emissivity1
+         T = T + A2 * Vals(i) * &
+           SUM(Temperature(Reorder(RadElement % NodeIndexes))/n)**4
+
+         Asum = Asum + A2 * Vals(i)
+       END DO
      END IF
 
+     T = (T/A1)**(1._dp/4._dp)
+
+     IF(PRESENT(AngleFraction)) AngleFraction = Asum
+!------------------------------------------------------------------------------
    END FUNCTION ComputeRadiationLoad
 !------------------------------------------------------------------------------
 

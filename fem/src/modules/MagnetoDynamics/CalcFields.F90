@@ -49,14 +49,11 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
-  LOGICAL :: Found, ElementalFields, RealField, LorentzConductivity, FoundVar
+  LOGICAL :: Found, ElementalFields, RealField, FoundVar
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
-
-  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
-      ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
@@ -1156,15 +1153,32 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END SELECT
 
          CASE DEFAULT
-           ! -Grad(V)
-           IF(dim==3) THEN
+           SELECT CASE(dim)
+           CASE(2)
+             IF (HasLorenzVelocity) THEN
+               ! Add v x curl A:
+               IF (CSymmetry) THEN
+                 E(1,3) = E(1,3) - rot_velo(1) * B(1,2) + rot_velo(2) * B(1,1)
+                 E(2,3) = E(2,3) - rot_velo(1) * B(2,2) + rot_velo(2) * B(2,1)
+               ELSE
+                 E(1,3) = E(1,3) + rot_velo(1) * B(1,2) - rot_velo(2) * B(1,1)
+                 E(2,3) = E(2,3) + rot_velo(1) * B(2,2) - rot_velo(2) * B(2,1)
+               END IF
+             END IF
+             !
+             ! To make this perfect, the electric field corresponding to the source
+             ! should be returned on the source region
+             !
+           CASE(3)
+             ! -Grad(V)
              E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
-           END IF
 
-           IF( ImposeBodyForcePotential ) THEN
-             E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-           END IF             
+             IF( ImposeBodyForcePotential ) THEN
+               E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             END IF
+           END SELECT
+
          END SELECT
          
        ELSE   ! Real case
@@ -1219,19 +1233,36 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END SELECT
 
          CASE DEFAULT
-           IF(dim==3 .AND. Transient) THEN
-             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-           END IF
+           SELECT CASE(dim)
+           CASE(2)
+             IF (HasLorenzVelocity) THEN
+               ! Add v x curl A
+               IF (CSymmetry) THEN
+                 E(1,3) = E(1,3) - rot_velo(1) * B(1,2) + rot_velo(2) * B(1,1)
+               ELSE
+                 E(1,3) = E(1,3) + rot_velo(1) * B(1,2) - rot_velo(2) * B(1,1)
+               END IF
+             END IF
+             !
+             ! To make this perfect, the electric field corresponding to the source
+             ! should be returned on the source region
+             !
+           CASE(3)
+             IF (Transient) THEN
+               E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+             END IF
 
-           IF (np > 0 .AND. dim==3 .AND. .NOT. Transient) THEN
-             E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-           ELSE IF ( PrecomputedElectricPot ) THEN
-             E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-           END IF
+             IF (np > 0 .AND. .NOT. Transient) THEN
+               E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+             ELSE IF ( PrecomputedElectricPot ) THEN
+               E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             END IF
 
-           IF( ImposeBodyForcePotential ) THEN
-             E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-           END IF
+             IF ( ImposeBodyForcePotential ) THEN
+               E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             END IF
+           END SELECT
+
 
          END SELECT
        END IF
