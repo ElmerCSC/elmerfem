@@ -7657,7 +7657,7 @@ use spariterglobals
     TYPE(Variable_t), POINTER :: Variables, Var, Var1
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, VarStr, VarStrComp, VarStrExt, str
     LOGICAL :: IsVector, Set, GotIt, ComponentVector, ThisOnly, IsIndex, &
-        EnforceVectors, UseGeneric
+        EnforceVectors, UseGeneric, DisplacementV
     INTEGER :: Nvector, Nscalar
     TYPE(ValueList_t), POINTER :: Params
 
@@ -7747,9 +7747,20 @@ use spariterglobals
 
     EnforceVectors = ListGetLogical( Params,'Enforce Vectors',GotIt)
     IF(.NOT. GotIt ) EnforceVectors = .TRUE.
+
+
+    ! For historical reasons treat "displacement" in a special way
+    ! but only if it exists as vector. Otherwise it will be treated by its components.
+    ! This fixes output for the elasticity solver in case of mixed solution.
+    Var => Variables
+    DisplacementV = .FALSE.
+    DO WHILE( ASSOCIATED( Var ) )
+      IF( Var % Name == 'displacement' ) DisplacementV = .TRUE.
+      Var => Var % Next
+    END DO
+
     
     Var => Variables
-
 
     DO WHILE( ASSOCIATED( Var ) )
       ! Skip if variable is not active for saving       
@@ -7832,14 +7843,12 @@ use spariterglobals
           END IF
         END IF
 
-      CASE( 'displacement 1','displacement 2','displacement 3')
+      !CASE( 'displacement 1','displacement 2','displacement 3')
         
 
-      CASE DEFAULT
-  
+      CASE DEFAULT        
         ! All vector variables are assumed to be saved using its components
-        ! rather than vector itself.
-
+        ! rather than vector itself.        
         IF ( VarDim == 1 ) THEN
           Set = .TRUE. 
           
@@ -7896,9 +7905,14 @@ use spariterglobals
               END IF
             END IF
           END IF
-
+       
           ! Remove the trailing numbers as they are not needed in this case.
-          IF(IsVector) WRITE(VarName,'(A)') TRIM(str(1:j-2))
+          IF( Set ) THEN
+            IF(IsVector) WRITE(VarName,'(A)') TRIM(str(1:j-2))
+
+            ! This is a special case as historically this is saved as vector
+            IF(VarName == 'displacement' .AND. DisplacementV ) Set = .FALSE. 
+          END IF
         END IF
       END SELECT
 
