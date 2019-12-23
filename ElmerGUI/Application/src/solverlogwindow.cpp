@@ -523,29 +523,3 @@ void SolverLogWindow::highlightingDarkSlot()
 	highlightingLightAct->setChecked(false);
 	highlightingDarkAct->setChecked(true);
 }
-
-void SolverLogWindow::resizeEvent(QResizeEvent* event)
-{
-  if( !isMaximized() && !isMinimized() ){
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/width", width());
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/height", height());
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
-  }else if( isMaximized() ){
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/width", event->oldSize().width());
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/height", event->oldSize().height());
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
-  }
-}
-
-void SolverLogWindow::moveEvent(QMoveEvent* event)
-{ 
-  if( !isMaximized() && !isMinimized() ){
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/x", x());
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/y", y());
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
-  }else if( isMaximized() ){
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/x", x() + event->oldPos().x() - event->pos().x() );
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/y", y() + event->oldPos().y() - event->pos().y() );
-    ((MainWindow*) parent())->settings_setValue("solverLogWindow/maximized", isMaximized());
-  }
-}

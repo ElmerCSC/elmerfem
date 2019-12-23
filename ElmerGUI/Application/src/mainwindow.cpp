@@ -7421,70 +7421,74 @@ QString MainWindow::getDefaultDirName()
   return defaultDirName;
 }
 
-void MainWindow::resizeEvent(QResizeEvent* event)
-{
-  if( !isMaximized() && !isMinimized() ){
-    settings_setValue("mainWindow/width", width());
-    settings_setValue("mainWindow/height", height());
-    settings_setValue("mainWindow/maximized", isMaximized());
-  }else if( isMaximized() ){
-    settings_setValue("mainWindow/width", event->oldSize().width());
-    settings_setValue("mainWindow/height", event->oldSize().height());
-    settings_setValue("mainWindow/maximized", isMaximized());
-  }
-}
-
-void MainWindow::moveEvent(QMoveEvent* event)
-{ 
-  if( !isMaximized() && !isMinimized() ){
-    settings_setValue("mainWindow/x", x());
-    settings_setValue("mainWindow/y", y());
-    settings_setValue("mainWindow/maximized", isMaximized());
-  }else if( isMaximized() ){
-    settings_setValue("mainWindow/x", x() + event->oldPos().x() - event->pos().x() );
-    settings_setValue("mainWindow/y", y() + event->oldPos().y() - event->pos().y() );
-    settings_setValue("mainWindow/maximized", isMaximized());
-  }
-}
-
-// Load settings to ./ElmerGUI.ini
+// Load settings
 //-----------------------------------------------------------------------------
 void MainWindow::loadSettings()
 {
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
+  restoreGeometry(settings_value("mainWindow/geometry").toByteArray());
+  restoreState(settings_value("mainWindow/windowState").toByteArray());
 
-  int x,y,w,h;
-  x = settings.value("mainWindow/x", -10000).toInt();
-  y = settings.value("mainWindow/y", -10000).toInt();
-  w = settings.value("mainWindow/width", -10000).toInt(); 
-  h = settings.value("mainWindow/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    move(x,y);
-    if(w > QApplication::desktop()->width()) w = QApplication::desktop()->width();
-    if(h > QApplication::desktop()->height()) h = QApplication::desktop()->height();    
-    resize(w,h);
-  }
-  if(settings.value("mainWindow/maximized", false).toBool()) showMaximized();
+  sifWindow->restoreGeometry(settings_value("sifWindow/geometry").toByteArray());
+  sifWindow->restoreState(settings_value("sifWindow/windowState").toByteArray());
 
-  int n = settings.value("recentProject/n", 0).toInt();
+  solverLogWindow->restoreGeometry(settings_value("solverLogWindow/geometry").toByteArray());
+  solverLogWindow->restoreState(settings_value("solverLogWindow/windowState").toByteArray());
+
+#ifdef EG_QWT
+  convergenceView->restoreGeometry(settings_value("convergenceView/geometry").toByteArray());
+  convergenceView->restoreState(settings_value("convergenceView/windowState").toByteArray());
+#endif
+
+#ifdef EG_OCC
+  cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());
+  cadView->restoreState(settings_value("cadView/windowState").toByteArray());
+#endif
+
+#ifdef EG_VTK
+  vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
+  vtkPost->restoreState(settings_value("vtkPost/windowState").toByteArray());
+#endif
+
+  int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
   char num[]="01234";
   QString path;
   for(int i = n-1; i >= 0; i--){
-    path = settings.value( key + num[i], "$").toString();
+    path = settings_value( key + num[i], "$").toString();
     if(path != "$")
     addRecentProject(path, false);    
   }
   
 }
 
-// Save settings to ./ElmerGUI.ini
+// Save settings
 //-----------------------------------------------------------------------------
 void MainWindow::saveSettings()
-{
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
+{ 
+  settings_setValue("mainWindow/geometry", saveGeometry());
+  settings_setValue("mainWindow/windowState", saveState());
+
+  settings_setValue("sifWindow/geometry", sifWindow->saveGeometry());
+  settings_setValue("sifWindow/windowState", sifWindow->saveState());
+
+  settings_setValue("solverLogWindow/geometry", solverLogWindow->saveGeometry());
+  settings_setValue("solverLogWindow/windowState", solverLogWindow->saveState());  
+
+#ifdef EG_QWT
+  settings_setValue("convergenceView/geometry", convergenceView->saveGeometry());
+  settings_setValue("convergenceView/windowState", convergenceView->saveState());
+#endif
+
+#ifdef EG_OCC
+  settings_setValue("cadView/geometry", cadView->saveGeometry());
+  settings_setValue("cadView/windowState", cadView->saveState());
+#endif
+
+#ifdef EG_VTK
+  settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
+  settings_setValue("vtkPost/windowState", vtkPost->saveState());
+#endif
+  
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
@@ -7529,15 +7533,13 @@ void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
   recentProjectsMenu->setEnabled(recentProject.size() > 0);
   
   if(bSaveToIni){
-    QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-    QSettings settings(iniFileName, QSettings::IniFormat);
     int n = recentProject.size();
     if(n > 5) n = 5;
-    settings.setValue("recentProject/n", n);
+    settings_setValue("recentProject/n", n);
     QString key = "recentProject/";
     char num[]="01234";
     for(int i = 0; i < n; i++){
-      settings.setValue( key + num[i], recentProject.at(i));    
+      settings_setValue( key + num[i], recentProject.at(i));    
     }
   }
 }
@@ -7756,4 +7758,9 @@ void MainWindow::saveAndRun(bool generateSif)
 void MainWindow::generateAndSaveAndRunSlot()
 {
   saveAndRun(true);
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+  saveSettings();
 }

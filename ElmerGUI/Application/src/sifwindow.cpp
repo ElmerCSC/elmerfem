@@ -554,29 +554,3 @@ void SifWindow::saveAndRunSlot()
 {
   ((MainWindow*) parent())->saveAndRun(false);
 }
-
-void SifWindow::resizeEvent(QResizeEvent* event)
-{
-  if( !isMaximized() && !isMinimized() ){
-    ((MainWindow*) parent())->settings_setValue("sifWindow/width", width());
-    ((MainWindow*) parent())->settings_setValue("sifWindow/height", height());
-    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
-  }else if( isMaximized() ){
-    ((MainWindow*) parent())->settings_setValue("sifWindow/width", event->oldSize().width());
-    ((MainWindow*) parent())->settings_setValue("sifWindow/height", event->oldSize().height());
-    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
-  }
-}
-
-void SifWindow::moveEvent(QMoveEvent* event)
-{ 
-  if( !isMaximized() && !isMinimized() ){
-    ((MainWindow*) parent())->settings_setValue("sifWindow/x", x());
-    ((MainWindow*) parent())->settings_setValue("sifWindow/y", y());
-    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
-  }else if( isMaximized() ){
-    ((MainWindow*) parent())->settings_setValue("sifWindow/x", x() + event->oldPos().x() - event->pos().x() );
-    ((MainWindow*) parent())->settings_setValue("sifWindow/y", y() + event->oldPos().y() - event->pos().y() );
-    ((MainWindow*) parent())->settings_setValue("sifWindow/maximized", isMaximized());
-  }
-}

@@ -142,10 +142,6 @@ private:
   void createMenus();
   void createToolBars();
   void createStatusBar();
-  
-protected:
-  void resizeEvent(QResizeEvent* event);
-  void moveEvent(QMoveEvent* event);  
 };
 
 #endif
