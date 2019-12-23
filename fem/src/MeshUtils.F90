@@ -2091,7 +2091,7 @@ CONTAINS
    !------------------------------------------------------------------------------    
    INTEGER :: i,j,k,n
    INTEGER :: BaseNameLen, Save_Dim
-   LOGICAL :: GotIt, Found
+   LOGICAL :: GotIt, Found, ForcePrep=.FALSE.
    CHARACTER(MAX_NAME_LEN) :: FileName
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
@@ -2197,13 +2197,17 @@ CONTAINS
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
    IF( PRESENT( LoadOnly ) ) THEN
-     IF( LoadOnly ) RETURN
+     IF( LoadOnly ) THEN
+       RETURN
+     ELSE
+       ForcePrep = .TRUE.
+     END IF
    END IF
 
    ! Prepare the mesh for next steps.
    ! For example, create non-nodal mesh structures, periodic projectors etc. 
-   IF( ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') .OR. &
-       ListCheckPresent( Model % Simulation,'Extruded Mesh Layers') ) THEN
+   IF( (ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') .OR. &
+       ListCheckPresent( Model % Simulation,'Extruded Mesh Layers')) .AND. (.NOT. ForcePrep) ) THEN
      CALL Info('LoadMesh','This mesh will be extruded, skipping finalization',Level=12)
      RETURN
    END IF
@@ -16648,7 +16652,7 @@ CONTAINS
        END IF       
        IF( .NOT. Hit ) CYCLE       
        
-       n = CurrentElement % NDOFs               
+       n = CurrentElement % TYPE % NumberOfNodes
        Indexes(1:n) = CurrentElement % NodeIndexes(1:n)
        
        IF( FirstRound ) THEN

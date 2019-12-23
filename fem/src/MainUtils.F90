@@ -1260,6 +1260,7 @@ CONTAINS
     IF(.NOT. Found ) THEN
       ! Variable does not exist
       !------------------------------------------------------
+      CALL Info('AddEquationBasics','Creating null variable with no name',Level=15)
 
       ALLOCATE( Solver % Variable )
       Solver % Variable % Name = ''
@@ -1278,6 +1279,8 @@ CONTAINS
       !-----------------------------------------------------------------
       
     ELSE
+      CALL Info('AddEquationBasics','Treating variable string: '//TRIM(var_name),Level=15)
+
       ! It may be a normal field variable or a global (0D) variable
       !------------------------------------------------------------------------
       VariableGlobal = ListGetLogical( SolverParams, 'Variable Global', Found )
@@ -1305,24 +1308,20 @@ CONTAINS
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
-        END IF
         
-        IF ( SEQL(var_name, '-global ') ) THEN
+        ELSE IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
-        END IF
         
-        IF ( SEQL(var_name, '-ip ') ) THEN
+        ELSE IF ( SEQL(var_name, '-ip ') ) THEN
           VariableIp = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
-        END IF
 
-         IF ( SEQL(var_name, '-elem ') ) THEN
+        ELSE IF ( SEQL(var_name, '-elem ') ) THEN
           VariableElem = .TRUE.
           var_name(1:LEN(var_name)-6) = var_name(7:)
-        END IF
                
-        IF ( SEQL(var_name, '-dofs ') ) THEN
+        ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs
           i = 7
           j = LEN_TRIM( var_name )
@@ -1331,6 +1330,8 @@ CONTAINS
             IF ( i > j ) EXIT
           END DO
           var_name(1:LEN(var_name)-i) = var_name(i+1:)
+        ELSE
+          CALL Fatal('AddEquationBasics','Do not know how to parse: '//TRIM(var_name))
         END IF
       END DO
       IF ( DOFs == 0 ) DOFs = 1
@@ -1644,13 +1645,15 @@ CONTAINS
       InheritVarType = .FALSE.
       
       DO WHILE( var_name(1:1) == '-' )
+
+        PRINT *,'analyzing: ',l,TRIM(var_name)
+
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
-        END IF
-
+          
         ! Different types of variables: global, ip, elem, dg
-        IF ( SEQL(var_name, '-global ') ) THEN
+        ELSE IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
           
@@ -1669,10 +1672,8 @@ CONTAINS
         ELSE IF ( SEQL(var_name, '-dg ') ) THEN
           VariableDG = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
-
-        END IF
-            
-        IF ( SEQL(var_name, '-dofs ') ) THEN
+                  
+        ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs 
           j = LEN_TRIM( var_name )
           k = 7
@@ -1681,7 +1682,10 @@ CONTAINS
             IF ( k > j ) EXIT
           END DO
           var_name(1:LEN(var_name)-(k+2)) = var_name(k+1:)
+        ELSE
+          CALL Fatal('AddEquationBasics','Do not know how to parse: '//TRIM(var_name))          
         END IF
+        
       END DO
       IF ( DOFs == 0 ) DOFs = 1
 
