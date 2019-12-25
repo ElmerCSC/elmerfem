@@ -7426,28 +7426,22 @@ QString MainWindow::getDefaultDirName()
 void MainWindow::loadSettings()
 {
   restoreGeometry(settings_value("mainWindow/geometry").toByteArray());
-  restoreState(settings_value("mainWindow/windowState").toByteArray());
-
   sifWindow->restoreGeometry(settings_value("sifWindow/geometry").toByteArray());
-  sifWindow->restoreState(settings_value("sifWindow/windowState").toByteArray());
-
   solverLogWindow->restoreGeometry(settings_value("solverLogWindow/geometry").toByteArray());
-  solverLogWindow->restoreState(settings_value("solverLogWindow/windowState").toByteArray());
 
 #ifdef EG_QWT
   convergenceView->restoreGeometry(settings_value("convergenceView/geometry").toByteArray());
-  convergenceView->restoreState(settings_value("convergenceView/windowState").toByteArray());
 #endif
 
+/*
 #ifdef EG_OCC
   cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());
-  cadView->restoreState(settings_value("cadView/windowState").toByteArray());
 #endif
 
 #ifdef EG_VTK
   vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
-  vtkPost->restoreState(settings_value("vtkPost/windowState").toByteArray());
 #endif
+*/
 
   int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
@@ -7466,28 +7460,22 @@ void MainWindow::loadSettings()
 void MainWindow::saveSettings()
 { 
   settings_setValue("mainWindow/geometry", saveGeometry());
-  settings_setValue("mainWindow/windowState", saveState());
-
   settings_setValue("sifWindow/geometry", sifWindow->saveGeometry());
-  settings_setValue("sifWindow/windowState", sifWindow->saveState());
-
   settings_setValue("solverLogWindow/geometry", solverLogWindow->saveGeometry());
-  settings_setValue("solverLogWindow/windowState", solverLogWindow->saveState());  
 
 #ifdef EG_QWT
   settings_setValue("convergenceView/geometry", convergenceView->saveGeometry());
-  settings_setValue("convergenceView/windowState", convergenceView->saveState());
 #endif
 
+/*
 #ifdef EG_OCC
   settings_setValue("cadView/geometry", cadView->saveGeometry());
-  settings_setValue("cadView/windowState", cadView->saveState());
 #endif
 
 #ifdef EG_VTK
   settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
-  settings_setValue("vtkPost/windowState", vtkPost->saveState());
 #endif
+*/
   
 }
 
