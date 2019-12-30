@@ -978,6 +978,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      HasVelocity = .FALSE.
+     HasLorenzVelocity = .FALSE.
      IF(ASSOCIATED(BodyForce)) THEN
        CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
        CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
