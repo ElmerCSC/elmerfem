@@ -102,10 +102,10 @@
      LOGICAL :: GotIt, SaveFactors, UpdateViewFactors, UpdateGebhardtFactors, &
          ComputeViewFactors, OptimizeBW, TopologyTest, TopologyFixed, &
          FilesExist, FullMatrix, ImplicitLimitIs, IterSolveGebhardt, &
-         ConstantEmissivity, Found, Debug, gSymm, gTriv
+         ConstantEmissivity, Found, Debug, gSymm, gTriv, BinaryMode
      LOGICAL, POINTER :: ActiveNodes(:)
      LOGICAL :: DoScale
-
+     INTEGER, PARAMETER :: VFUnit = 10
 
      TYPE(ValueList_t), POINTER :: Params, BC
      
@@ -286,7 +286,7 @@
          OutputName = TRIM(OutputPath) // '/' // TRIM(Mesh % Name) // '/mesh.nodes'
        END IF
 
-       OPEN( 10,File=TRIM(OutputName) )
+       OPEN( VFUnit,File=TRIM(OutputName) )
        dx = MAXVAL(Mesh % Nodes % x) - MINVAL(Mesh % Nodes % x)
        dy = MAXVAL(Mesh % Nodes % y) - MINVAL(Mesh % Nodes % y)
        dz = MAXVAL(Mesh % Nodes % z) - MINVAL(Mesh % Nodes % z)
@@ -297,7 +297,7 @@
        GotIt = .FALSE.
 
        DO i=1,Mesh % NumberOfNodes
-         READ(10,*,ERR=10,END=10) j,k,x,y,z
+         READ(VFUnit,*,ERR=10,END=10) j,k,x,y,z
          IF(i == Mesh % NumberOfNodes) GotIt = .TRUE.
          IF(ActiveNodes(i)) THEN
            dx = Mesh % Nodes % x(i) - x
@@ -313,7 +313,7 @@
 
 10     CONTINUE
 
-       CLOSE(10)
+       CLOSE(VFUnit)
 
        IF(.NOT. GotIt) THEN
          UpdateViewFactors = .TRUE.        
@@ -396,7 +396,7 @@
            END DO
          END IF
 
-         OPEN( 10,FILE=TRIM(OutputName), STATUS='unknown' )                 
+         OPEN( VFUnit,FILE=TRIM(OutputName), STATUS='unknown' )                 
          DO i=1,Mesh % NumberOfNodes
            Coord(1) = Mesh % Nodes % x(i)
            Coord(2) = Mesh % Nodes % y(i)
@@ -404,9 +404,9 @@
 
            IF( DoScale ) Coord = BackScale * Coord
            
-           WRITE( 10,'(i7,i3,3f20.12)' ) i,-1, Coord
+           WRITE( VFUnit,'(i7,i3,3f20.12)' ) i,-1, Coord
          END DO
-         CLOSE(10)
+         CLOSE(VFUnit)
        END IF
        
        ! Compute the factors using an external program call
@@ -540,12 +540,31 @@
          GOTO 30
        END IF
 
-       OPEN( 10,File=TRIM(OutputName) )
 
+       BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+         
+       IF( BinaryMode ) THEN
+         CALL Info('RadiationFactors','Loading view factors in binary mode',Level=5)
+
+         OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
+             ACCESS = 'stream', STATUS='old', ACTION='read' )         
+         READ( VFUnit ) n
+         IF( n /= RadiationSurfaces ) THEN
+           CALL Fatal('RadiationFactors','Mismatch in viewfactor file size: '&
+               //TRIM(I2S(n))//' vs. '//TRIM(I2S(RadiationSurfaces)))
+         END IF
+       ELSE
+         OPEN( VFUnit,File=TRIM(OutputName) )
+       END IF
+                
        ! Read in the ViewFactors
        DO i=1,RadiationSurfaces
-         READ( 10,* ) n
-
+         IF( BinaryMode ) THEN
+           READ( VFUnit ) n
+         ELSE
+           READ( VFUnit,* ) n
+         END IF
+           
          IF(FirstTime) THEN
            ViewFactors(i) % NumberOfFactors = n
            ALLOCATE( ViewFactors(i) % Elements(n) )
@@ -564,14 +583,18 @@
          Cols => ViewFactors(i) % Elements
 
 	 Vals = 0; Cols = 0
-
+  
          DO j=1,n
-           READ(10,*) t,Cols(j),Vals(j)         
+           IF( BinaryMode ) THEN
+             READ(VFUnit) Cols(j),Vals(j)         
+           ELSE
+             READ(VFUnit,*) t,Cols(j),Vals(j)         
+           END IF
            Vals(j) = RelAreas(i) * Vals(j)  ! Scale by area to make symmetric
            Cols(j) = ElementNumbers(Cols(j))
          END DO
        END DO
-       CLOSE(10)
+       CLOSE(VFUnit)
      END IF
 
      ! Check whether the element already sees itself, it will when 
@@ -969,15 +992,15 @@
          WRITE(OutputName,'(A,I1)') TRIM(OutputName2), RadiationBody
        END IF
 
-       OPEN( 10,File=TRIM(OutputName) )
+       OPEN( VFUnit,File=TRIM(OutputName) )
        
        WRITE (Message,'(A,A)') 'Writing Gephardt Factors to file: ',TRIM(OutputName)
        CALL Info('RadiationFactors',Message,Level=5)
        
-       WRITE( 10,* ) RadiationSurfaces
+       WRITE( VFUnit,* ) RadiationSurfaces
        
        DO t=1,RadiationSurfaces
-         WRITE(10,*) t,ElementNumbers(t)
+         WRITE(VFUnit,*) t,ElementNumbers(t)
        END DO
        
        DO t=1,RadiationSurfaces
@@ -988,13 +1011,13 @@
          Vals => GebhardtFactors % Factors
          Cols => GebhardtFactors % Elements
          
-         WRITE( 10,* ) n
+         WRITE( VFUnit,* ) n
          DO i=1,n
-           WRITE(10,*) t,InvElementNumbers(Cols(i)-j0),Vals(i)
+           WRITE(VFUnit,*) t,InvElementNumbers(Cols(i)-j0),Vals(i)
          END DO
        END DO
        
-       CLOSE(10)
+       CLOSE(VFUnit)
      END IF
 
      DEALLOCATE(Solver, InvElementNumbers,RowSpace,Reorder,RHS,SOL,Fac,FacPerm,RowSums, &

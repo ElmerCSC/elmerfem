@@ -84,7 +84,7 @@
      REAL(KIND=dp) :: Norm,PrevNorm,MinFactor, Normal_in, Plane
  
      TYPE(Nodes_t) :: ElementNodes
-     TYPE(ValueList_t), POINTER :: BC, Material
+     TYPE(ValueList_t), POINTER :: BC, Material, Params
 
      INTEGER :: LeftNode,RightNode,LeftBody,RightBody,RadBody
      REAL(KIND=dp) :: NX,NY,NZ,NRM(3),DensL,DensR
@@ -139,6 +139,7 @@
      TYPE(Element_t), POINTER :: RadElements(:)
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
      LOGICAL :: RadiationOpen, Combine
+     INTEGER, PARAMETER :: VFUnit = 10
 
      EXTERNAL MatvecViewFact,DiagPrecViewFact
 
@@ -174,7 +175,7 @@
      Model => LoadModel( ModelName,.FALSE.,1,0 )
 
      CurrentModel => Model
-
+          
      NULLIFY( Mesh )
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
@@ -186,30 +187,33 @@
          EXIT
        ENDIF
      END DO
-
+     
      IF ( .NOT. ASSOCIATED(Mesh) ) THEN
        CALL Fatal('ViewFactors','No heat equation definition. Cannot compute factors.')
      END IF
 
+     Params => GetSolverParams()
+
+     
 #define SYMMETRY_NOW .TRUE.
      IF(SYMMETRY_NOW) THEN
        DO i=1,6
          SELECT CASE(i)
          CASE(1)
-           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry x', GotIt );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry x min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry x', GotIt );
          CASE(2)
-           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x max', Found );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry x max', Found );
          CASE(3)
-           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry y', GotIt );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry y min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry y', GotIt );
          CASE(4)
-           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y max', Found );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry y max', Found );
          CASE(5)
-           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z min', Found );
-           IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry z', GotIt );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry z min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry z', GotIt );
          CASE(6)
-           Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z max', Found );
+           Plane = GetCReal( Params, 'Viewfactor Symmetry z max', Found );
          END SELECT
 
          IF(.NOT. Found ) CYCLE
@@ -273,7 +277,7 @@
      ! when several radiation boundaries are needed both the original and
      ! the new elementlist needs to be in the memory. Thus the hassle.
 
-     MinFactor = ListGetConstReal(Solver % Values,'Minimum View Factor',GotIt)
+     MinFactor = ListGetConstReal(Params,'Minimum View Factor',GotIt)
      IF(.NOT. GotIt) MinFactor = 1.0d-20
 
      CALL AllocateVector( RadElements, Mesh % NumberOfBoundaryElements, 'ViewFactors' )
@@ -507,7 +511,7 @@
 
        at0 = CPUTime(); rt0 = RealTime()
        
-       Combine = GetLogical( GetSolverParams(), 'Viewfactor combine elements',GotIt)
+       Combine = GetLogical( Params, 'Viewfactor combine elements',GotIt)
        IF ( .NOT. GotIt ) Combine = .TRUE.
        IF( Combine ) THEN
          CombineInt = 1
@@ -516,17 +520,17 @@
        END IF
 
        IF ( CylindricSymmetry ) THEN
-         divide = GetInteger( GetSolverParams(), 'Viewfactor divide',GotIt)
+         divide = GetInteger( Params, 'Viewfactor divide',GotIt)
          IF ( .NOT. GotIt ) Divide = 1
          CALL ViewFactorsAxis( N, Surfaces, Coords, Factors, divide, CombineInt )
        ELSE
-         AreaEPS = GetConstReal( GetSolverParams(), 'Viewfactor Area Tolerance',  GotIt )
+         AreaEPS = GetConstReal( Params, 'Viewfactor Area Tolerance',  GotIt )
          IF ( .NOT. GotIt ) AreaEPS = 1.0d-1
-         FactEPS = GetConstReal( GetSolverParams(), 'Viewfactor Factor Tolerance ', GotIt )
+         FactEPS = GetConstReal( Params, 'Viewfactor Factor Tolerance ', GotIt )
          IF ( .NOT. GotIt ) FactEPS = 1.0d-2
-         RayEPS = GetConstReal( GetSolverParams(), 'Viewfactor Raytrace Tolerace',  GotIt )
+         RayEPS = GetConstReal( Params, 'Viewfactor Raytrace Tolerace',  GotIt )
          IF ( .NOT. GotIt ) RayEPS = 1.0d-5
-         Nrays = GetInteger( GetSolverParams(), 'Viewfactor Number of Rays ',  GotIt )
+         Nrays = GetInteger( Params, 'Viewfactor Number of Rays ',  GotIt )
          IF ( .NOT. GotIt ) Nrays = 1
 
          CALL ViewFactors3D( &
@@ -542,21 +546,21 @@
          DO l=6,1,-1
            SELECT CASE(l)
            CASE(1)
-             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry x', GotIt );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry x min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry x', GotIt );
              ! Note that Plane is zero if 1st keyword not found!
            CASE(2)
-             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry x max', Found );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry x max', Found );
            CASE(3)
-             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry y', GotIt );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry y min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry y', GotIt );
            CASE(4)
-             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry y max', Found );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry y max', Found );
            CASE(5)
-             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z min', Found );
-             IF(.NOT. Found ) Found = ListGetLogical( Solver % Values, 'Viewfactor Symmetry z', GotIt );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry z min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry z', GotIt );
            CASE(6)
-             Plane = GetCReal( Solver % Values, 'Viewfactor Symmetry z max', Found );
+             Plane = GetCReal( Params, 'Viewfactor Symmetry z max', Found );
            END SELECT
            IF(.NOT.Found) CYCLE
 
@@ -678,26 +682,57 @@ end do
          OutputName = TRIM(ViewFactorsFile)
        END IF
        
-       OPEN( 1,File=TRIM(OutputName),STATUS='UNKNOWN' )
-       
-       ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
-       MinFactor = MinFactor / 10.0
-       
-       DO i=1,N
-         k = 0
-         DO j=1,N
-           IF ( Factors((i-1)*N+j) > MinFactor ) k = k + 1
-         END DO
-         WRITE( 1,* ) k
-         DO j=1,N
-           IF ( Factors((i-1)*N+j) > MinFactor ) THEN
-             WRITE( 1,* ) i,j,Factors((i-1)*N+j)
-           END IF
-         END DO
-       END DO
-       
-       CLOSE(1)
+       BLOCK
+         LOGICAL :: BinaryMode
+         LOGICAL, ALLOCATABLE :: SaveMask(:)
+         ALLOCATE( SaveMask(SIZE(Factors)))
+                  
+         ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
+         MinFactor = MinFactor / 10.0
+         
+         BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+         
+         SaveMask = ( Factors > MinFactor )
 
+         IF( BinaryMode ) THEN
+           CALL Info('ViewFactors','Saving view factors in binary mode',Level=5)
+
+           OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
+               ACCESS = 'stream', STATUS='replace', ACTION='write' )
+           
+           WRITE( VFUnit ) N
+
+           DO i=1,N
+             k = COUNT( SaveMask((i-1)*N+1:i*N) )
+             WRITE( VFUnit ) k 
+             DO j=1,N
+               IF( SaveMask((i-1)*N+j ) ) THEN
+                 WRITE( VFUnit ) j,Factors((i-1)*N+j)
+               END IF
+             END DO
+           END DO           
+         ELSE
+           CALL Info('ViewFactors','Saving view factors in ascii mode',Level=5)
+
+           OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), STATUS='unknown' )
+           
+           DO i=1,N
+             k = COUNT( SaveMask((i-1)*N+1:i*N) )
+             WRITE( VFUnit,* ) k
+             DO j=1,N
+               IF ( SaveMask((i-1)*N+j) ) THEN
+                 WRITE( VFUnit,* ) i,j,Factors((i-1)*N+j)
+               END IF
+             END DO
+           END DO
+         END IF
+           
+         CLOSE(VFUnit)
+
+         DEALLOCATE( SaveMask ) 
+         
+       END BLOCK
+         
        IF ( CylindricSymmetry ) THEN
          DEALLOCATE( Surfaces, Factors)
        ELSE
