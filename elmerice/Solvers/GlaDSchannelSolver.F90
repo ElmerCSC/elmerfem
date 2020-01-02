@@ -22,7 +22,7 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Mauro Werder 
+! *  Authors: Olivier Gagliardini, Mauro Werder, Mondher Chekki 
 ! *  Email:   olivier.gagliardini@ujf-grenoble.fr, m_werder@sfu.ca 
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - Scientific Computing Ltd.
@@ -335,6 +335,7 @@
            WRITE(proc_number,'(i4.4)') ParEnv%myPe+1
            WRITE(number_procs,'(i4.4)') ParEnv%PEs 
            proc_number = ADJUSTL(proc_number)
+     ! Add the number of procs as a suffix in case of multiple runs with different partitions
            PVtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'//TRIM(number_procs)//'procs_'//TRIM(nit)//'.pvtu'
            VtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'//TRIM(number_procs)//'procs_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu'
            VtuUnit = 1500 +ParEnv%myPe
