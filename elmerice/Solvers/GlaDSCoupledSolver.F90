@@ -1171,9 +1171,11 @@
 
            WRITE( Message, * ) 'S (NRM,RELC) : ',iter, Norm, RelativeChange
            CALL Info( SolverName, Message, Level=3 )
-           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),MAXLOC(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
+           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) ,&
+                AreaPerm(M+1:M+t) /=0))),MAXLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
            CALL Info( SolverName, Message, Level=3 )
-           WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),MINLOC(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
+           WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),&
+                MINLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
 
 
     !      !----------------------
