@@ -337,7 +337,8 @@
            proc_number = ADJUSTL(proc_number)
      ! Add the number of procs as a suffix in case of multiple runs with different partitions
            PVtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'//TRIM(number_procs)//'procs_'//TRIM(nit)//'.pvtu'
-           VtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'//TRIM(number_procs)//'procs_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu'
+           VtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'&
+                //TRIM(number_procs)//'procs_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu'
            VtuUnit = 1500 +ParEnv%myPe
         ELSE
            VtuUnit = 1500 
@@ -382,7 +383,8 @@
               WRITE(proc_number,'(i4.4)') i
               proc_number = ADJUSTL(proc_number)
               WRITE( PVtuUnit,'(A)') &
-              '    <Piece Source="'//TRIM(OutPutFileName)//'_'//TRIM(number_procs)//'procs_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu" />'
+                   '    <Piece Source="'//TRIM(OutPutFileName)//'_'&
+                   //TRIM(number_procs)//'procs_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu" />'
            ENDDO
            WRITE( PVtuUnit,'(A)') '  </PUnstructuredGrid>'
            WRITE( PVtuUnit,'(A)') '</VTKFile>'
