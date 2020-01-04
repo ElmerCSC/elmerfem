@@ -29,6 +29,8 @@ mpirun -np 2 ElmerSolver_mpi glads_2d.sif
 # Notes: Create Mesh from .geo
 ###############################
 
+# Need gmsh version 3.0.6 or less
+# Otherwise you will not be able to create the same mesh 
 
 gmsh -1 -2 mesh_B5.geo
 ElmerGrid 14 2 mesh_B5.msh -autoclean
@@ -46,6 +48,7 @@ Results established:
 Mondher CHEKKI  IGE
 Gricad Cluster: Dahu
 Compiler version:  intel/intelmpi version 18.0.5
-Revision 926851c7 
+                   gcc/gfortran version 6.3.0
+Revision bddcb7f2
 
 
