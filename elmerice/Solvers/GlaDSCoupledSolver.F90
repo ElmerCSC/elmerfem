@@ -456,7 +456,13 @@
     ! check on the coupled Convergence is done on the potential solution only
     M = Model % Mesh % NumberOfNodes
     Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
-    PrevCoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M)
+
+    IF (ParEnv % PEs > 1) THEN
+       PrevCoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M)
+    ELSE
+       PrevCoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) &
+                               & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
+    END IF
 
     DO iterC = 1, CoupledIter
 
@@ -1037,7 +1043,13 @@
         t = Solver % Mesh % NumberOfEdges 
         M = Model % Mesh % NumberOfNodes
         tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
-        PrevNorm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
+
+        IF (ParEnv % PEs > 1) THEN
+            PrevNorm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
+        ELSE
+           PrevNorm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
+                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
+        END IF
 
         DO iter = 1, NonlinearIter
               DO t=1, Solver % Mesh % NumberOfEdges 
@@ -1159,7 +1171,12 @@
 
            t = Solver % Mesh % NumberOfEdges 
            tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
-           Norm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
+           IF (ParEnv % PEs > 1) THEN
+               Norm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
+           ELSE
+               Norm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
+                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
+           END IF
 
            IF ( PrevNorm + Norm /= 0.0d0 ) THEN
               RelativeChange = 2.0d0 * ABS( PrevNorm-Norm ) / (PrevNorm + Norm)
@@ -1195,7 +1212,12 @@
 
       !   Check for convergence                           
       Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
-      CoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M) 
+      IF (ParEnv % PEs > 1) THEN
+         CoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M) 
+      ELSE
+         CoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) & 
+                             & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
+      END IF
       
       IF ( PrevCoupledNorm + CoupledNorm /= 0.0d0 ) THEN
          RelativeChange = 2.0d0 * ABS( PrevCoupledNorm-CoupledNorm ) / (PrevCoupledNorm + CoupledNorm)
@@ -1274,9 +1296,14 @@
       END DO
 
       ! Mean nodal value
-      WHERE(Refq > 0.0_dp)
-         qSolution = qSolution / Refq
-      END WHERE
+      DO i=1,n
+         DO j=1,dimSheet
+            k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
+            IF ( Refq(k) > 0.0_dp ) THEN 
+              qSolution(k) = qSolution(k)/Refq(k) 
+            END IF
+         END DO  
+      END DO
 
    END IF
 
