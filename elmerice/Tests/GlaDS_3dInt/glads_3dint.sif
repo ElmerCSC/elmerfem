@@ -365,9 +365,9 @@ End
 Boundary Condition 6
   Name = "surface"
 End
-Solver 2 :: Reference Norm = Real 8.28329885E+00 
+Solver 2 :: Reference Norm = Real 8.28146474E+00 
 Solver 2 :: Reference Norm Tolerance = Real 1E-04
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=8.28329885E+00,EPS=1E-04\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=8.28146474E+00,EPS=1E-04\n" );
 
