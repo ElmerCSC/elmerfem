@@ -79,24 +79,29 @@ if __name__=='__main__':
 	if nbpartition >1:
 		mesh_dir = '%s/partitioning.%s'%(mesh,np.str(nbpartition))
 		if file_donot_exists(mesh_dir):
-			exit_error("Directory does not exit: Please use the  ElmerGrid command for mesh partitionning")
+			exit_error("Directory %s does not exit: Please use the  ElmerGrid command for mesh partitionning"%(mesh_dir))
 	else:
 		mesh_dir = '%s'%(mesh)
 		if file_donot_exists(mesh_dir):
-			exit_error("Directory does not exit")
+			exit_error("Directory %s does not exit"%(mesh_dir))
+	if file_donot_exists(moulin_file):
+		exit_error("Moulin file %s does not exit"%(moulin_file))
 
 	# Read global node file and get the number of all nodes
-	nodeAll=pd.read_table('%s/mesh.nodes'%(mesh), dtype=float , header=None, sep='\s+').fillna(0).values
+	# Depending on the mesh, columns do not have the same size
+	# In order to fix this , fill columns with -999999 value
+
+	nodeAll=pd.read_table('%s/mesh.nodes'%(mesh), dtype=float , header=None, sep='\s+').fillna(-999999).values
 	NnodeAll=np.size(nodeAll,0)
 	MoulinAssign=np.zeros(NnodeAll)
 	# Read the moulin coordinates
-	Moulin=pd.read_table(moulin_file, dtype=float , header=None, sep='\s+').fillna(0).values
+	Moulin=pd.read_table(moulin_file, dtype=float , header=None, sep='\s+').fillna(-999999).values
 	if Moulin.size == 2:
 	    Moulin=Moulin.reshape(1,2)	
 	ms=np.size(Moulin,0)
 	NodeMoulin=np.zeros(ms) 
 	gbc_file='%s/mesh.boundary'%(mesh)
-	gbc=pd.read_table(gbc_file, dtype=float , header=None, sep='\s+').fillna(0).values
+	gbc=pd.read_table(gbc_file, dtype=float , header=None, sep='\s+').fillna(-999999).values
 	MaxBC = np.max(gbc[:,1]) 
 
 	for kk in np.arange(nbpartition): 
@@ -111,11 +116,11 @@ if __name__=='__main__':
 			bc_file='%s/mesh.boundary'%(mesh_dir)
 			header_file='%s/mesh.header'%(mesh_dir)
 		# Open the mesh.nodes file to find the nodes number
-		nodes=pd.read_table(nodes_file, dtype=float , header=None, sep='\s+').fillna(0).values
+		nodes=pd.read_table(nodes_file, dtype=float , header=None, sep='\s+').fillna(-999999).values
 		# Open the mesh.elements
-		elements=pd.read_table(elements_file, dtype=float , header=None, sep='\s+').fillna(0).values
+		elements=pd.read_table(elements_file, dtype=float , header=None, sep='\s+').fillna(-999999).values
 		# Read the BC file
-		bc=pd.read_table(bc_file, dtype=float , header=None, sep='\s+').fillna(0).values
+		bc=pd.read_table(bc_file, dtype=float , header=None, sep='\s+').fillna(-999999).values
 		# Read the header file
 		head=open(header_file)
 		header=[]
@@ -162,7 +167,10 @@ if __name__=='__main__':
 			# Rewrite the file and add the 101 elements
 			fid1=open(bc_file,'w');
 			for ii in np.arange(nBC):
-			    fid1.write(" ".join(["%g"%(v) for v in bc[ii,:]]))
+			    boundline = bc[ii,:]
+			    # Remove columns with -999999 before writing
+			    indexes = np.where( boundline != -999999)
+			    fid1.write(" ".join(["%g"%(v) for v in boundline[indexes]]))
 			    fid1.write("\n")
 			jj=0
 			for ii in np.arange(ms):
