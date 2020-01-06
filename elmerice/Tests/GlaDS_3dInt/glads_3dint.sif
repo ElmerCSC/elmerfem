@@ -242,7 +242,10 @@ Solver 2
   Exported Variable 8 = -dofs 1 "Flux from Moulins"
 
   Linear System Solver = Direct     
-  Linear System Direct Method = MUMPS 
+
+  !Replace UMFPACK with MUMPS IF you are using
+  !multiple partitions 
+  Linear System Direct Method = UMFPACK
 
   Nonlinear System Max Iterations = 10
   Nonlinear System Convergence Tolerance  = 1.0e-6
@@ -284,7 +287,10 @@ Solver 5
   Exec Solver = Never
   Equation = "Navier-Stokes"
   Linear System Solver = Direct     
-  Linear System Direct Method = MUMPS 
+
+  !Replace UMFPACK with MUMPS IF you are using
+  !multiple partitions 
+  Linear System Direct Method = UMFPACK
 
   Nonlinear System Max Iterations = 50
   Nonlinear System Convergence Tolerance  = 1.0e-5

@@ -13,6 +13,13 @@ mpirun -np 1 ElmerSolver_mpi glads_3dint.sif
 # Run on 2 procs
 #################
 
+# Replace UMFPACK with MUMPS in the sif
+# file if you are using  multiple partitions
+
+# Mesh with 2 partitions (mesh_B5/partitioning.2)
+# including moulins nodes is provided with this test 
+
+
 # Create 2  partitions
 ElmerGrid  2 2 mesh_B5  -partition  2 1 1
 
