@@ -11,6 +11,7 @@ End
 Simulation
   Simulation Type = Steady State
   mesh levels = 1
+!  Post File = cylinder.vtu
 End
 
 Solver 1
@@ -99,7 +100,7 @@ End
 Material 2
   Relative Permeability = Real $ mur_2
   Relative Permittivity = Real 1
-  Electric Conductivity = Real 1e-3
+  Electric Conductivity = Real 1e5
 End
 
 Body Force 1
@@ -140,5 +141,5 @@ Equation 1
   Active Solvers(2) = 1 2
 End
 
-Solver 3 :: Reference Norm = Real 2.4096E+002
+Solver 3 :: Reference Norm = Real 4.25680046E+01
 Solver 3 :: Reference Norm Tolerance = Real 1e-3
