@@ -46,5 +46,7 @@
    <file>icons/edit-find.png</file>
    <file>icons/document-new.png</file>
    <file>icons/view-preview.png</file>
+   <file>icons/arrow-right.png</file>
+   <file>icons/arrow-right-double.png</file>
 </qresource>
 </RCC>

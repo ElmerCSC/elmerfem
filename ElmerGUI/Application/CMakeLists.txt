@@ -29,6 +29,7 @@ SET(HEADERS src/bodypropertyeditor.h
   src/sifwindow.h 
   src/solverparameters.h 
   src/summaryeditor.h 
+  src/solverlogwindow.h 
   plugins/egconvert.h 
   plugins/egdef.h 
   plugins/egmain.h 
@@ -83,6 +84,7 @@ SET(SOURCES src/bodypropertyeditor.cpp
   src/sifwindow.cpp 
   src/solverparameters.cpp 
   src/summaryeditor.cpp 
+  src/solverlogwindow.cpp 
   plugins/egconvert.cpp 
   plugins/egmain.cpp 
   plugins/egmesh.cpp 
