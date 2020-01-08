@@ -46,7 +46,7 @@
 #define SIF_HIGHLIGHTING_DARK	2
 
 #include <QMainWindow>
-#include <QSyntaxHighlighter.h>
+#include <QSyntaxHighlighter>
 
 class QTextEdit;
 class QLineEdit;
