@@ -4855,10 +4855,10 @@ void MainWindow::showParaViewSlot()
   // fail if there is only one file. Use dirty check to see that there
   // are more than one file. 
   if(!parallelActive) {  
-    secondName = pvFile.baseName()+"0002.vtu";
+    secondName = pvFile.baseName()+"_t0002.vtu";
   }
   else {
-    secondName = pvFile.baseName()+"0002.pvtu";
+    secondName = pvFile.baseName()+"_t0002.pvtu";
   }
     
   QFile secondFile(secondName);
@@ -4869,7 +4869,7 @@ void MainWindow::showParaViewSlot()
     if(secondFile.exists()) 
       args << pvFile.baseName() + "..vtu";
     else
-      args << pvFile.baseName() + "0001.vtu";
+      args << pvFile.baseName() + "_t0001.vtu";
   }
 
       
@@ -4879,7 +4879,7 @@ void MainWindow::showParaViewSlot()
     if(secondFile.exists())     
       args << pvFile.baseName() + "..pvtu";
     else
-      args << pvFile.baseName() + "0001.pvtu";   
+      args << pvFile.baseName() + "_t0001.pvtu";   
   }
   
   // Launch ParaView
@@ -6956,11 +6956,11 @@ void MainWindow::showaboutSlot()
 			"uses elmergrid, nglib, and optionally tetlib, "
 			"as finite element mesh generators:\n\n"
 			"http://www.csc.fi/elmer/\n"
-			"http://www.hpfem.jku.at/netgen/\n"
+                        "https://ngsolve.org/\n"
 			"http://tetgen.berlios.de/\n\n"
-			"ElmerGUI uses the Qt4 Cross-Platform "
-			"Application Framework by Qtsoftware:\n\n"
-			"http://www.qtsoftware.com/\n\n"
+			"ElmerGUI uses the Qt Cross-Platform "
+			"Application Framework by The Qt Company:\n\n"
+			"http://www.qt.io/\n\n"
 #ifdef EG_VTK
 			"This version of ElmerGUI contains a built-in "
 			"postprocessor based on the Visualization Toolkit "
@@ -6991,10 +6991,10 @@ void MainWindow::showaboutSlot()
 			"http://www.mcs.anl.gov/research/projects/mpich2/\n\n"
 #endif
 			"The GPL-licensed source code of ElmerGUI is available "
-			"from the SVN repository at Sourceforge.net\n\n"
-			"http://sourceforge.net/projects/elmerfem/\n\n"
-            "Written by Mikko Lyly, Juha Ruokolainen, "
-            "Peter R�back and Sampo Sillanp�� 2008-2014"));
+			"from the git repository\n\n"
+			"https://github.com/ElmerCSC/elmerfem/\n\n"
+            "Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki,\n"
+            "Peter Raback and Sampo Sillanpaa 2008-2020"));
 }
 
 
