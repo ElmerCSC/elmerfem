@@ -148,6 +148,18 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
           UpNodePointer = UpPointer, DownNodePointer = DownPointer, &
           NumberOfLayers = NumberOfLayers, NodeLayer = NodeLayer )
       NumberOfLayers = NumberOfLayers + 1
+      
+      i = FixedLayers(1) 
+      IF( i /= 1 ) THEN
+        CALL Warn(Caller,'Enforcing first fixed layer to: 1 (was '//TRIM(I2S(i))//')')
+        FixedLayers(1) = 1
+      END IF
+      i = FixedLayers(NumberOfFixedLayers)
+      IF( i /= NumberOfLayers ) THEN
+        CALL Warn(Caller,'Enforcing last fixed layer to: '&
+            //TRIM(I2S(NumberOfLayers))//' (was '//TRIM(I2S(i))//')')
+        FixedLayers(NumberOfFixedLayers) = NumberOfLayers
+      END IF
     ELSE
       CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = Var, &
           TopNodePointer = TopPointer, BotNodePointer = BotPointer, &
@@ -656,15 +668,6 @@ CONTAINS
       CALL Fatal(Caller,'Mask not available yet for multiple layers!')
     END IF
     
-    i = FixedLayers(1)
-    IF( i /= 1 ) THEN
-      CALL Fatal(Caller,'First layer should be one, not: '//TRIM(I2S(i)))
-    END IF
-    i = FixedLayers(NumberOfFixedLayers)
-    IF( i /= NumberOfLayers ) THEN
-      CALL Fatal(Caller,'Last layer should be '//TRIM(I2S(NumberOfLayers))//', not: '//TRIM(I2S(i)))
-    END IF
-
     VarName = ListGetString( SolverParams,'Fixed Layer Variable',UnfoundFatal = .TRUE. )
     FixedVar => VariableGet( Mesh % Variables, VarName ) 
     IF(.NOT. ASSOCIATED( FixedVar ) ) THEN
@@ -680,7 +683,7 @@ CONTAINS
     Proj = 0.0_dp
 
     Debug = .FALSE.
-
+    
     ! Create the projection matrix used for all strides!
     j = 1    
     DO i = 1, NumberOfLayers
