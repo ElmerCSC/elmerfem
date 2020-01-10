@@ -1887,7 +1887,15 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
     cp=line;
 
     for(i=0;i<8;i++) {
-      ind = next_int(&cp);
+      if (noknots < 1000000) {
+        ind = next_int(&cp);
+      }                      
+      else if (noknots < 100000000) {
+        ind = next_int_n(&cp,8);
+      }
+      else {
+        ind = next_int_n(&cp,10);
+      }
       if(cp[0] == '.') cp++;
       topology[i] = revindx[ind];
     }
@@ -1909,7 +1917,15 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	imax = 20;
 
       for(i=8;i<imax;i++) {
-	ind = next_int(&cp);
+      	if (noknots < 1000000) {
+	  ind = next_int(&cp);
+        }                      
+        else if (noknots < 100000000) {
+          ind = next_int_n(&cp,8);
+        }
+        else {
+          ind = next_int_n(&cp,10);
+        }
 	if(cp[0] == '.') cp++;
 	topology[i] = revindx[ind];
       }
