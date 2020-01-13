@@ -554,7 +554,7 @@
 
          ZOutput => HydroPlume(Pl) % z
          MROutput => HydroPlume(Pl) % meltrate
-         IF(Q0 .LE. 0.0 .OR. PlDepth > -5.0) THEN
+         IF(Q0 .LE. 0.0 .OR. PlDepth > -10.0) THEN
            !This avoids the solver failing on Q=0 and spewing NaNs everywhere
            !and also potential weird geometry edge cases where the PlDepth ends
            !up zero or positive
