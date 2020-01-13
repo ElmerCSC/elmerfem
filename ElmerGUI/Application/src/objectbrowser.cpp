@@ -1489,7 +1489,7 @@ void ObjectBrowser::viewNormalModeSlot(){
 
 bool ObjectBrowser::connect1(const QObject * sender, const char * signal, const QObject * receiver, const char * method, Qt::ConnectionType type /*= Qt::AutoConnection*/){
   disconnect(sender, signal, receiver, method);
-  connect(sender, signal, receiver, method, type);
+  return connect(sender, signal, receiver, method, type);
 }
 
 void ObjectBrowser::bodyCheckBoxChangedSlot(int state){
