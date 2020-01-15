@@ -909,7 +909,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	if( ptr1[0] == '=' ) {
 	  /* remove possible trailing white space */
 	  if(line2[k-1] == ' ') k--;	    
-	  line2[k] = NULL;
+	  line2[k] = '\0';
 	  break;
 	}
 	if(started || ptr1[0] != ' ') {
@@ -1163,7 +1163,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 #ifdef MINGW32
     fail = mkdir(directoryname);
 #else
-    fail = mkdir(directoryname,0700);
+    fail = mkdir(directoryname,0750);
 #endif
     if(fail) {
       printf("Could not create a result directory!\n");
@@ -1442,7 +1442,7 @@ int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 #ifdef MINGW32
     fail = mkdir(directoryname);
 #else
-    fail = mkdir(directoryname,0700);
+    fail = mkdir(directoryname,0750);
 #endif
     if(fail) {
       printf("Could not create a result directory!\n");
@@ -5244,14 +5244,14 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 #ifdef MINGW32
   mkdir(directoryname);
 #else
-  fail = mkdir(directoryname,0700);
+  fail = mkdir(directoryname,0750);
 #endif
   if(info && !fail) printf("Created mesh directory: %s\n",directoryname);
   fail = chdir(directoryname);
 #ifdef MINGW32
   fail = mkdir(subdirectoryname);
 #else
-  fail = mkdir(subdirectoryname,0700);
+  fail = mkdir(subdirectoryname,0750);
 #endif
   if(fail) {
     if(info) printf("Reusing existing subdirectory: %s\n",subdirectoryname);

@@ -1,4 +1,8 @@
 ! Historical test case for axially symmetric radiation.
+!
+! This case uses binary format for view factors to pack the file.
+!
+! P.R. 2.1.2020
 
 Check Keywords Warn
 
@@ -67,6 +71,8 @@ Solver 1
   NonLinear System Convergence Tolerance = 1.0e-8
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Relaxation Factor = 0.7
+
+  Viewfactor Binary Output  = Logical True
 End
 
 Equation 1

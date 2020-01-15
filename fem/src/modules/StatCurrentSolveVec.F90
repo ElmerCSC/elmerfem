@@ -761,9 +761,9 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
       n = Model % NumberOfBodies
       IF( ParEnv % PEs > 1 ) THEN
         ALLOCATE( PotTmp(n) )        
-        CALL MPI_ALLREDUCE(PotVol,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+        CALL MPI_ALLREDUCE(PotVol,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
         PotVol = PotTmp
-        CALL MPI_ALLREDUCE(PotInteg,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+        CALL MPI_ALLREDUCE(PotInteg,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
         PotInteg = PotTmp
         DEALLOCATE( PotTmp ) 
       END IF

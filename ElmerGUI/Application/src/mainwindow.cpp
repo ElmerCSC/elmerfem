@@ -131,7 +131,7 @@ MainWindow::MainWindow()
   boundaryDivide = new BoundaryDivide(this);
   meshingThread = new MeshingThread(this);
   meshutils = new Meshutils;
-  solverLogWindow = new SifWindow(this);
+  solverLogWindow = new SolverLogWindow(this);
   solver = new QProcess(this);
   post = new QProcess(this);
   compiler = new QProcess(this);
@@ -478,7 +478,8 @@ void MainWindow::createActions()
   suppressAutoSifGenerationAct->setStatusTip(tr("Suppress auto sif file generation in saving/loading to protect manually edited sif contents in sif editor"));
   connect(suppressAutoSifGenerationAct , SIGNAL(triggered()), this, SLOT(suppressAutoSifGenerationSlot()));
   suppressAutoSifGenerationAct->setCheckable(true);
-  suppressAutoSifGenerationAct->setChecked(settings_value("sif/suppressAutoSifGeneration", false).toBool());
+  suppressAutoSifGeneration = settings_value("sif/suppressAutoSifGeneration", false).toBool();
+  suppressAutoSifGenerationAct->setChecked(suppressAutoSifGeneration);
     
   // Mesh -> Control
   meshcontrolAct = new QAction(QIcon(":/icons/configure.png"), tr("&Configure..."), this);
@@ -757,6 +758,10 @@ void MainWindow::createActions()
   aboutAct = new QAction(QIcon(":/icons/help-about.png"), tr("About..."), this);
   aboutAct->setStatusTip(tr("Information about the program"));
   connect(aboutAct, SIGNAL(triggered()), this, SLOT(showaboutSlot()));
+  
+  generateAndSaveAndRunAct = new QAction(QIcon(":/icons/arrow-right-double.png"), tr("&Generate, save and run"), this);
+  generateAndSaveAndRunAct->setStatusTip(tr("Generate and save sif, save project, then run solver"));
+  connect(generateAndSaveAndRunAct, SIGNAL(triggered()), this, SLOT(generateAndSaveAndRunSlot()));  ;
 
 #if WIN32
 #else
@@ -1063,6 +1068,7 @@ void MainWindow::createToolBars()
   solverToolBar = addToolBar(tr("&Solver"));
   solverToolBar->addAction(runsolverAct);
   solverToolBar->addAction(resultsAct);
+  solverToolBar->addAction(generateAndSaveAndRunAct);
 
   if(egIni->isSet("hidetoolbars")) {
     fileToolBar->hide();
@@ -1498,7 +1504,7 @@ void MainWindow::saveSlot()
     return;
   }
 
-  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+  if( !suppressAutoSifGeneration ){
     generateSifSlot();
   }
   saveElmerMesh(saveDirName);
@@ -1515,7 +1521,7 @@ void MainWindow::saveAsSlot()
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  saveDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save"), defaultDirName);
 
   if (!saveDirName.isEmpty()) {
     logMessage("Output directory " + saveDirName);
@@ -1524,7 +1530,7 @@ void MainWindow::saveAsSlot()
     return;
   }
 
-  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+  if( !suppressAutoSifGeneration){
     generateSifSlot();
   }
   saveElmerMesh(saveDirName);
@@ -1540,13 +1546,9 @@ void MainWindow::saveProjectSlot()
     return;
   }
 
-  if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
-    generateSifSlot();
-  }
-
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
 
   if (!projectDirName.isEmpty()) {
     logMessage("Project directory " + projectDirName);
@@ -1554,7 +1556,21 @@ void MainWindow::saveProjectSlot()
     logMessage("Unable to save project: directory undefined");
     return;
   }
+  
+  saveProject(projectDirName);
+}
 
+bool MainWindow::saveProject(QString projectDirName)
+{  
+  if(!glWidget->hasMesh()) {
+    logMessage("Unable to save project: no mesh");
+    return false;
+  }
+  
+  if( !suppressAutoSifGeneration){
+    generateSifSlot();
+  }
+  
   progressBar->show();
   progressBar->setRange(0, 13);
 
@@ -1796,7 +1812,10 @@ void MainWindow::saveProjectSlot()
   
   setWindowTitle( QString("ElmerGUI - ") + projectDirName);
   addRecentProject(projectDirName, true);  
+  currentProjectDirName = projectDirName;  
+
   
+  return true;
 }
 
 
@@ -1938,7 +1957,8 @@ void MainWindow::loadProject(QString projectDirName)
   checkAndLoadExtraSolvers(&projectFile);
     
   setWindowTitle( QString("ElmerGUI - ") + projectDirName);
-  addRecentProject(projectDirName, true);  
+  addRecentProject(projectDirName, true);
+  currentProjectDirName = projectDirName;  
 
   QDomElement contents = projectDoc.documentElement();
 
@@ -2234,7 +2254,7 @@ void MainWindow::loadProject(QString projectDirName)
   progressBar->setValue(14);
   if(glWidget->hasMesh()) {
 
-    if( !settings_value("sif/suppressAutoSifGeneration", false).toBool()){
+    if( !suppressAutoSifGeneration){
       logMessage("Regenerating and saving the solver input file...");
       generateSifSlot();
 
@@ -4835,10 +4855,10 @@ void MainWindow::showParaViewSlot()
   // fail if there is only one file. Use dirty check to see that there
   // are more than one file. 
   if(!parallelActive) {  
-    secondName = pvFile.baseName()+"0002.vtu";
+    secondName = pvFile.baseName()+"_t0002.vtu";
   }
   else {
-    secondName = pvFile.baseName()+"0002.pvtu";
+    secondName = pvFile.baseName()+"_t0002.pvtu";
   }
     
   QFile secondFile(secondName);
@@ -4849,7 +4869,7 @@ void MainWindow::showParaViewSlot()
     if(secondFile.exists()) 
       args << pvFile.baseName() + "..vtu";
     else
-      args << pvFile.baseName() + "0001.vtu";
+      args << pvFile.baseName() + "_t0001.vtu";
   }
 
       
@@ -4859,7 +4879,7 @@ void MainWindow::showParaViewSlot()
     if(secondFile.exists())     
       args << pvFile.baseName() + "..pvtu";
     else
-      args << pvFile.baseName() + "0001.pvtu";   
+      args << pvFile.baseName() + "_t0001.pvtu";   
   }
   
   // Launch ParaView
@@ -5788,7 +5808,8 @@ void MainWindow::generateSifSlot()
 
 void MainWindow::suppressAutoSifGenerationSlot()
 {
-  settings_setValue("sif/suppressAutoSifGeneration", suppressAutoSifGenerationAct->isChecked());
+  suppressAutoSifGeneration = suppressAutoSifGenerationAct->isChecked();
+  settings_setValue("sif/suppressAutoSifGeneration", suppressAutoSifGeneration);
 }
 
 // Boundary selected by double clicking (signaled by glWidget::select):
@@ -6935,11 +6956,11 @@ void MainWindow::showaboutSlot()
 			"uses elmergrid, nglib, and optionally tetlib, "
 			"as finite element mesh generators:\n\n"
 			"http://www.csc.fi/elmer/\n"
-			"http://www.hpfem.jku.at/netgen/\n"
+                        "https://ngsolve.org/\n"
 			"http://tetgen.berlios.de/\n\n"
-			"ElmerGUI uses the Qt4 Cross-Platform "
-			"Application Framework by Qtsoftware:\n\n"
-			"http://www.qtsoftware.com/\n\n"
+			"ElmerGUI uses the Qt Cross-Platform "
+			"Application Framework by The Qt Company:\n\n"
+			"http://www.qt.io/\n\n"
 #ifdef EG_VTK
 			"This version of ElmerGUI contains a built-in "
 			"postprocessor based on the Visualization Toolkit "
@@ -6970,10 +6991,10 @@ void MainWindow::showaboutSlot()
 			"http://www.mcs.anl.gov/research/projects/mpich2/\n\n"
 #endif
 			"The GPL-licensed source code of ElmerGUI is available "
-			"from the SVN repository at Sourceforge.net\n\n"
-			"http://sourceforge.net/projects/elmerfem/\n\n"
-            "Written by Mikko Lyly, Juha Ruokolainen, "
-            "Peter R�back and Sampo Sillanp�� 2008-2014"));
+			"from the git repository\n\n"
+			"https://github.com/ElmerCSC/elmerfem/\n\n"
+            "Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki,\n"
+            "Peter Raback and Sampo Sillanpaa 2008-2020"));
 }
 
 
@@ -7400,93 +7421,62 @@ QString MainWindow::getDefaultDirName()
   return defaultDirName;
 }
 
-// Load settings to ./ElmerGUI.ini
+// Load settings
 //-----------------------------------------------------------------------------
 void MainWindow::loadSettings()
 {
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
-  
-  int x,y,w,h;
-  x = settings.value("mainWindow/x", -10000).toInt();
-  y = settings.value("mainWindow/y", -10000).toInt();
-  w = settings.value("mainWindow/width", -10000).toInt(); 
-  h = settings.value("mainWindow/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    move(x,y);
-    resize(w,h);
-  }
-  
-  if(settings.value("mainWindow/maximized", false).toBool()) showMaximized();
-  
-  x = settings.value("solverLogWindow/x", -10000).toInt();
-  y = settings.value("solverLogWindow/y", -10000).toInt();
-  w = settings.value("solverLogWindow/width", -10000).toInt(); 
-  h = settings.value("solverLogWindow/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    solverLogWindow->move(x,y);
-    solverLogWindow->resize(w,h);
-  }
-  
-  x = settings.value("sifWindow/x", -10000).toInt();
-  y = settings.value("sifWindow/y", -10000).toInt();
-  w = settings.value("sifWindow/width", -10000).toInt(); 
-  h = settings.value("sifWindow/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    sifWindow->move(x,y);
-    sifWindow->resize(w,h);
-  }
-  
+  restoreGeometry(settings_value("mainWindow/geometry").toByteArray());
+  sifWindow->restoreGeometry(settings_value("sifWindow/geometry").toByteArray());
+  solverLogWindow->restoreGeometry(settings_value("solverLogWindow/geometry").toByteArray());
+
 #ifdef EG_QWT
-  x = settings.value("convergenceView/x", -10000).toInt();
-  y = settings.value("convergenceView/y", -10000).toInt();
-  w = settings.value("convergenceView/width", -10000).toInt(); 
-  h = settings.value("convergenceView/height", -10000).toInt();
-  if(x != -10000 && y != -10000 && w != -10000 && h != -10000 && x < QApplication::desktop()->width()-100 && y < QApplication::desktop()->height()-100){
-    convergenceView->move(x,y);
-    convergenceView->resize(w,h);
-  }
+  convergenceView->restoreGeometry(settings_value("convergenceView/geometry").toByteArray());
 #endif
 
-  int n = settings.value("recentProject/n", 0).toInt();
+/*
+#ifdef EG_OCC
+  cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());
+#endif
+
+#ifdef EG_VTK
+  vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
+#endif
+*/
+
+  int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
   char num[]="01234";
   QString path;
   for(int i = n-1; i >= 0; i--){
-    path = settings.value( key + num[i], "$").toString();
+    path = settings_value( key + num[i], "$").toString();
     if(path != "$")
     addRecentProject(path, false);    
   }
+  
 }
 
-// Save settings to ./ElmerGUI.ini
+// Save settings
 //-----------------------------------------------------------------------------
 void MainWindow::saveSettings()
-{
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
-  settings.setValue("mainWindow/x", x());
-  settings.setValue("mainWindow/y", y());  
-  settings.setValue("mainWindow/width", width());
-  settings.setValue("mainWindow/height", height());
-  settings.setValue("mainWindow/maximized", isMaximized());
-  
-  settings.setValue("treeWidget/width", width());  
-  settings.setValue("solverLogWindow/x", solverLogWindow->x());
-  settings.setValue("solverLogWindow/y", solverLogWindow->y());  
-  settings.setValue("solverLogWindow/width", solverLogWindow->width());
-  settings.setValue("solverLogWindow/height", solverLogWindow->height());
-  settings.setValue("sifWindow/x", sifWindow->x());
-  settings.setValue("sifWindow/y", sifWindow->y());  
-  settings.setValue("sifWindow/width", sifWindow->width());
-  settings.setValue("sifWindow/height", sifWindow->height());
-    
-#ifdef EG_QWT  
-  settings.setValue("convergenceView/x", convergenceView->x());
-  settings.setValue("convergenceView/y", convergenceView->y());  
-  settings.setValue("convergenceView/width", convergenceView->width());
-  settings.setValue("convergenceView/height", convergenceView->height());
+{ 
+  settings_setValue("mainWindow/geometry", saveGeometry());
+  settings_setValue("sifWindow/geometry", sifWindow->saveGeometry());
+  settings_setValue("solverLogWindow/geometry", solverLogWindow->saveGeometry());
+
+#ifdef EG_QWT
+  settings_setValue("convergenceView/geometry", convergenceView->saveGeometry());
 #endif
+
+/*
+#ifdef EG_OCC
+  settings_setValue("cadView/geometry", cadView->saveGeometry());
+#endif
+
+#ifdef EG_VTK
+  settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
+#endif
+*/
+  
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
@@ -7531,15 +7521,13 @@ void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
   recentProjectsMenu->setEnabled(recentProject.size() > 0);
   
   if(bSaveToIni){
-    QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-    QSettings settings(iniFileName, QSettings::IniFormat);
     int n = recentProject.size();
     if(n > 5) n = 5;
-    settings.setValue("recentProject/n", n);
+    settings_setValue("recentProject/n", n);
     QString key = "recentProject/";
     char num[]="01234";
     for(int i = 0; i < n; i++){
-      settings.setValue( key + num[i], recentProject.at(i));    
+      settings_setValue( key + num[i], recentProject.at(i));    
     }
   }
 }
@@ -7717,4 +7705,50 @@ void MainWindow::settings_setValue(const QString & key, const QVariant & value)
   QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QSettings settings(iniFileName, QSettings::IniFormat);
   settings.setValue(key, value);
+}
+
+void MainWindow::saveAndRun(bool generateSif)
+{
+  
+  //------- Save project -------//
+  if(!glWidget->hasMesh()) {
+    logMessage("Unable to save project: no mesh");
+    return;
+  }
+
+  QString projectDirName = currentProjectDirName;
+  if(projectDirName.isEmpty())
+  {
+    QString defaultDirName = getDefaultDirName();
+    projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
+
+    if (!projectDirName.isEmpty()) {
+      logMessage("Project directory " + projectDirName);
+    } else {
+      logMessage("Unable to save project: directory undefined");
+      return;
+    }
+  }  
+  
+  bool previousState = suppressAutoSifGeneration;
+  suppressAutoSifGeneration = !generateSif;
+  bool ret = saveProject(projectDirName);
+  suppressAutoSifGeneration = previousState;
+
+  
+   //------- Run solver -------// 
+  if(ret){
+    runsolverSlot();
+  }
+  
+}
+
+void MainWindow::generateAndSaveAndRunSlot()
+{
+  saveAndRun(true);
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+  saveSettings();
 }
