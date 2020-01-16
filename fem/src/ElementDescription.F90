@@ -12016,13 +12016,14 @@ END SUBROUTINE PickActiveFace
 !> do not have the luxury of knowing the local coordinates and hence the center
 !> point is used as default.
 !------------------------------------------------------------------------------
-  FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent) RESULT(Normal)
+  FUNCTION NormalVector( Boundary,BoundaryNodes,u0,v0,Check,Parent,Turn) RESULT(Normal)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Boundary
     TYPE(Nodes_t)   :: BoundaryNodes
     REAL(KIND=dp), OPTIONAL :: u0,v0
     LOGICAL, OPTIONAL :: Check
     TYPE(Element_t), POINTER, OPTIONAL :: Parent
+    LOGICAL, OPTIONAL :: Turn
     REAL(KIND=dp) :: Normal(3)
 !------------------------------------------------------------------------------
     LOGICAL :: CheckBody, CheckParent
@@ -12128,9 +12129,9 @@ END SUBROUTINE PickActiveFace
     END SELECT
 
     IF( CheckParent ) THEN
-      CALL CheckNormalDirectionParent( Boundary, Normal, x, y, z, Parent )   
+      CALL CheckNormalDirectionParent( Boundary, Normal, x, y, z, Parent,Turn )   
     ELSE
-      CALL CheckNormalDirection( Boundary,Normal,x,y,z )
+      CALL CheckNormalDirection( Boundary,Normal,x,y,z,Turn )
     END IF
 
 !------------------------------------------------------------------------------
