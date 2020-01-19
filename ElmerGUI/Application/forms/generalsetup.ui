@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>687</width>
-    <height>680</height>
+    <height>675</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -19,6 +19,54 @@
   <property name="windowTitle">
    <string>Setup</string>
   </property>
+	
+	<layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+	 
+	<widget class="QScrollArea" name="scrollArea">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>687</width>
+     <height>675</height>
+    </rect>
+   </property>
+	 
+ <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+</property>
+
+   <property name="frameShape">
+    <enum>QFrame::NoFrame</enum>
+   </property>
+   <property name="horizontalScrollBarPolicy">
+    <enum>Qt::ScrollBarAlwaysOff</enum>
+   </property>
+   <property name="widgetResizable">
+    <bool>true</bool>
+   </property>
+	 
+   <widget class="QWidget" name="scrollAreaWidgetContents">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>0</y>
+      <width>687</width>
+      <height>675</height>
+     </rect>
+    </property>
+	
+ <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>	
+</property>
+	
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="QGroupBox" name="headerGroup">
@@ -108,7 +156,7 @@
      <property name="minimumSize">
       <size>
        <width>0</width>
-       <height>300</height>
+       <height>0</height>
       </size>
      </property>
      <property name="baseSize">
@@ -604,6 +652,14 @@
     </layout>
    </item>
   </layout>
+
+	
+	</widget>
+	</widget>
+	</item>
+	</layout>
+
+	
  </widget>
  <resources>
   <include location="../ElmerGUI.qrc"/>

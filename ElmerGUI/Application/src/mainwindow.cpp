@@ -5874,6 +5874,12 @@ void MainWindow::boundarySelectedSlot(list_t *l)
     glWidget->shiftPressed = false;
     glWidget->altPressed = false;
 
+    if(l->getNature() != PDE_BOUNDARY){
+      /*Ignore when double clicking a body of 2D geometry under boundary selection mode*/
+      raise();
+      return;
+    }
+    
     // renumbering:
     int n = glWidget->boundaryMap.value(l->getIndex());
 
@@ -5904,6 +5910,7 @@ void MainWindow::boundarySelectedSlot(list_t *l)
 
     boundaryEdit->setWindowTitle("Properties for boundary " + QString::number(l->getIndex()));
     boundaryEdit->show();
+    boundaryEdit->raise();    
   }
 
   BodyPropertyEditor *bodyEdit = NULL;
@@ -5995,6 +6002,7 @@ void MainWindow::boundarySelectedSlot(list_t *l)
     }
 
     bodyEdit->show();
+    bodyEdit->raise();
   }
 }
 

@@ -889,11 +889,11 @@ void ObjectBrowser::boundarySelectedSlot(list_t* l){
 
 
 
-  if( qApp->activeWindow() != (QWidget*)mainwindow/*== this*/){// i.e. if property editor for body/boundary poped up by doubleclikng mesh
- 
-    dialog = (QDialog*) qApp->activeWindow();
- 
-  }else{  //i.e. if no property editor for body/boundary poped up by doubleclikng mesh
+  if(mainwindow->bodyEditActive  && mainwindow->glWidget->currentlySelectedBody != -1)
+  {
+    int m = mainwindow->glWidget->bodyMap.value(mainwindow->glWidget->currentlySelectedBody);
+    dialog = (QDialog*) mainwindow->bodyPropertyEditor[m];
+  }else{
   
     for( int i=0; i< mainwindow->glWidget->boundaryMap.count(); i++ ) {
       int n = mainwindow->glWidget->boundaryMap.key(i);
@@ -903,12 +903,6 @@ void ObjectBrowser::boundarySelectedSlot(list_t* l){
           dialog = mainwindow->boundaryPropertyEditor[m];	
         }
       }
-    }
-    
-    
-    if(mainwindow->bodyEditActive && dialog != NULL){
-      // In the case of 3D geometry, select the whole body when a surface was selected under body selection mode.
-      dialog = (QDialog*) qApp->activeWindow();
     }
     
     if(dialog == NULL){
