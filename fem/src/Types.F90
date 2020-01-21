@@ -494,10 +494,11 @@ END INTERFACE
      TYPE(Variable_t), POINTER :: Variable=>NULL()
      REAL(KIND=dp),POINTER :: Values(:)=>NULL()
      INTEGER,POINTER :: Perm(:)=>NULL()
+     INTEGER :: dofs
      INTEGER :: tstep = 0
      TYPE(Element_t), POINTER :: Element
      LOGICAL :: ActiveElement = .FALSE.
-     REAL(KIND=dp) :: ElementValues(100)
+     INTEGER :: Indexes(100)
      INTEGER :: n = 0
    END TYPE VariableHandle_t
    
