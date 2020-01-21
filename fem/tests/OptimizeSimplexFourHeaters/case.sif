@@ -17,7 +17,7 @@ Simulation
   Steady State Max Iterations = 1
   Timestep Intervals = 250
   Output Intervals = 0
-  Post File = "case.ep"
+  Post File = "case.vtu"
 End
 
 Constants
@@ -110,8 +110,9 @@ End
 
 Solver 2
   Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
-  Variable DOFs = 1
+
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
   Linear System Max Iterations = 300

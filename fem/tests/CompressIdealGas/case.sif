@@ -98,6 +98,9 @@ Solver 2
 !  Exec Solver = never
 
   Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
   Stabilize = True
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-6
