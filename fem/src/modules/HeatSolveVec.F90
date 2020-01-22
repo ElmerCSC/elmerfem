@@ -46,8 +46,12 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
+  ! Default variable name
   CALL ListAddNewString( Params,'Variable','Temperature')
-    
+
+  ! Tell the matrix structure creation about the need of view factor coupling
+  CALL ListAddNewLogical( Params,'Radiation Solver',.TRUE.)
+  
   DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
   DB = GetLogical( Params,'DG Reduced Basis',Found ) 
   
