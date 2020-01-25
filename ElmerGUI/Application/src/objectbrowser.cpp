@@ -189,7 +189,28 @@ void ObjectBrowser::focusChangedSlot(QWidget* old, QWidget* now){
     selectTreeItemByID( boundaryConditionParentTreeItem, ((DynamicEditor*)now)->ID);
     return;
   }
-
+  if(now->windowTitle().indexOf(QString("Properties for body")) == 0){
+    int n = bodyPropertyParentTreeItem->childCount();
+    for(int i = 0; i < n; i++){
+      QTreeWidgetItem* item = bodyPropertyParentTreeItem->child(i);
+      if(item->data(0, Qt::UserRole).value<qulonglong>() == (qulonglong)now){
+        tree->setCurrentItem(item);
+        return;
+      }
+    }
+    return;
+  }
+  if(now->windowTitle().indexOf(QString("Properties for boundary")) == 0){
+    int n = boundaryPropertyParentTreeItem->childCount();
+    for(int i = 0; i < n; i++){
+      QTreeWidgetItem* item = boundaryPropertyParentTreeItem->child(i);
+      if(item->data(0, Qt::UserRole).value<qulonglong>() == (qulonglong)now){
+        tree->setCurrentItem(item);
+        return;
+      }
+    }
+    return;
+  }
 }
 
 void ObjectBrowser::treeItemClickedSlot(QTreeWidgetItem *item, int column){
@@ -806,6 +827,8 @@ void ObjectBrowser::modelClearSlot(){
   while(treeItem = bodyForceParentTreeItem->takeChild(0)) delete treeItem;
   while(treeItem = initialConditionParentTreeItem->takeChild(0)) delete treeItem;
   while(treeItem = boundaryConditionParentTreeItem->takeChild(0)) delete treeItem;
+
+  openSlot();
 }
 
 void ObjectBrowser::treeItemExpandedSlot(QTreeWidgetItem* item){ //used to update body and boundary parent
@@ -833,28 +856,29 @@ void ObjectBrowser::updateBoundaryProperties(BoundaryPropertyEditor* selectThis 
   for( int i=0; i< mainwindow->glWidget->boundaryMap.count(); i++ )
   {
     int n = mainwindow->glWidget->boundaryMap.key(i);
-	if ( n >= 0 ) {
-		int m = mainwindow->glWidget->boundaryMap.value(n);
+    if ( n >= 0 ) {
+      int m = mainwindow->glWidget->boundaryMap.value(n);
 
-		if(m >= mainwindow->boundaryPropertyEditor.size()) mainwindow->boundaryPropertyEditor.resize(m + 1);
+      if(m >= mainwindow->boundaryPropertyEditor.size()) mainwindow->boundaryPropertyEditor.resize(m + 1);
 
-		if(!mainwindow->boundaryPropertyEditor[m])  mainwindow->boundaryPropertyEditor[m] = new BoundaryPropertyEditor;
+      if(!mainwindow->boundaryPropertyEditor[m])  mainwindow->boundaryPropertyEditor[m] = new BoundaryPropertyEditor;
 
-		BoundaryPropertyEditor *pe = mainwindow->boundaryPropertyEditor[m];		
-	
-		treeItem = new QTreeWidgetItem();
-		boundaryPropertyParentTreeItem->addChild(treeItem);			
-		
-		treeItem->setText(0, "Boundary " + QString::number(n));
-		//if(pe->touched && pe->condition != 0) treeItem->setText(0, "Boundary " + QString::number(n));
-		//else treeItem->setText(0, "*Boundary " + QString::number(n));
+      BoundaryPropertyEditor *pe = mainwindow->boundaryPropertyEditor[m];		
+    
+      treeItem = new QTreeWidgetItem();
+      boundaryPropertyParentTreeItem->addChild(treeItem);			
+      
+      treeItem->setText(0, "Boundary " + QString::number(n));
+      //if(pe->touched && pe->condition != 0) treeItem->setText(0, "Boundary " + QString::number(n));
+      //else treeItem->setText(0, "*Boundary " + QString::number(n));
 
-		treeItem->setData(0, Qt::UserRole, QVariant::fromValue( (qulonglong)pe));		
-		if(pe->condition != 0){			
-			treeItem->setText(1, pe->condition->nameEdit->text().trimmed());
-			treeItem->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->condition));	
-		}		
-	}
+      treeItem->setData(0, Qt::UserRole, QVariant::fromValue( (qulonglong)pe));		
+      if(pe->condition != 0){			
+        if(pe->touched) treeItem->setText(1, pe->condition->nameEdit->text().trimmed());
+        else treeItem->setText(1, "<Canceled>" + pe->condition->nameEdit->text().trimmed());
+        treeItem->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->condition));	
+      }		
+    }
   }	 
   
   if(selectThis != NULL){  
@@ -1221,67 +1245,68 @@ void ObjectBrowser::updateBodyProperties(BodyPropertyEditor* selectThis /*=NULL*
   for( int i=0; i< mainwindow->glWidget->bodyMap.count(); i++ )
   {
     int n = mainwindow->glWidget->bodyMap.key(i);
-	if ( n >= 0 ) {
-		int m = mainwindow->glWidget->bodyMap.value(n);
+    if ( n >= 0 ) {
+      int m = mainwindow->glWidget->bodyMap.value(n);
 
-		if(m >= mainwindow->bodyPropertyEditor.size()) mainwindow->bodyPropertyEditor.resize(m + 1);
+      if(m >= mainwindow->bodyPropertyEditor.size()) mainwindow->bodyPropertyEditor.resize(m + 1);
 
-		if(!mainwindow->bodyPropertyEditor[m])  mainwindow->bodyPropertyEditor[m] = new BodyPropertyEditor;
+      if(!mainwindow->bodyPropertyEditor[m])  mainwindow->bodyPropertyEditor[m] = new BodyPropertyEditor;
 
-		BodyPropertyEditor *pe = mainwindow->bodyPropertyEditor[m];
+      BodyPropertyEditor *pe = mainwindow->bodyPropertyEditor[m];
 
-		treeItem = new QTreeWidgetItem();
-		bodyPropertyParentTreeItem->addChild(treeItem);
-		QString title = pe->ui.nameEdit->text().trimmed();
-    if(title.isEmpty()) {
-      title = "Body " + QString::number(n);
-    }
-    
-    if(!pe->touched){
-      treeItem->setText(0, title);
-      //treeItem->setText(0, "*" + title);
-    }else{
-      QString sifbody = "Body " + QString::number(count++);
-      QString sifname = title;
-      if(pe->ui.nameEdit->text().trimmed().isEmpty()){
-        sifname = sifbody;
+      treeItem = new QTreeWidgetItem();
+      bodyPropertyParentTreeItem->addChild(treeItem);
+      QString title = pe->ui.nameEdit->text().trimmed();
+      if(title.isEmpty()) {
+        title = "Body Property " + QString::number(n);
       }
-      treeItem->setText(0, title);
-      treeItem->setText(1, " <" + sifbody + " \"" + sifname +"\">");
+      
+      if(!pe->touched){
+        treeItem->setText(0, title);
+        if(pe->equation || pe->material || pe->force || pe->initial) treeItem->setText(1, "<Canceled>");
+      }else{
+        QString sifbody = "Body " + QString::number(count++);
+        QString sifname = title;
+        if(pe->ui.nameEdit->text().trimmed().isEmpty()){
+          sifname = sifbody;
+        }
+        treeItem->setText(0, title);
+        //treeItem->setText(1, "<" + sifbody + " \"" + sifname +"\">");
+        treeItem->setText(1,  sifbody + " in sif");
+      }
+
+      treeItem->setData(0, Qt::UserRole, QVariant::fromValue( (qulonglong)pe));
+
+      if(pe->equation != 0){
+        QTreeWidgetItem* child = new QTreeWidgetItem();
+        treeItem->addChild(child);
+        child->setText(0, "Equation");			
+        child->setText(1, pe->equation->nameEdit->text().trimmed());
+        child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->equation));	
+      }
+      if(pe->material != 0){
+        QTreeWidgetItem* child = new QTreeWidgetItem();
+        treeItem->addChild(child);
+        child->setText(0, "Material");	
+        child->setText(1, pe->material->nameEdit->text().trimmed());
+        child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->material));	
+      }
+      if(pe->force != 0){
+        QTreeWidgetItem* child = new QTreeWidgetItem();
+        treeItem->addChild(child);
+        child->setText(0, "Body force");	
+        child->setText(1, pe->force->nameEdit->text().trimmed());
+        child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->force));	
+      }
+      if(pe->initial != 0){
+        QTreeWidgetItem* child = new QTreeWidgetItem();
+        treeItem->addChild(child);
+        child->setText(0, "Initial condition");	
+        child->setText(1, pe->initial->nameEdit->text().trimmed());
+        child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->initial));	
+      }
+      treeItem->setExpanded(true);
     }
-
-		treeItem->setData(0, Qt::UserRole, QVariant::fromValue( (qulonglong)pe));
-
-		if(pe->equation != 0){
-			QTreeWidgetItem* child = new QTreeWidgetItem();
-			treeItem->addChild(child);
-			child->setText(0, "Equation");			
-			child->setText(1, pe->equation->nameEdit->text().trimmed());
-			child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->equation));	
-		}
-		if(pe->material != 0){
-			QTreeWidgetItem* child = new QTreeWidgetItem();
-			treeItem->addChild(child);
-			child->setText(0, "Material");	
-			child->setText(1, pe->material->nameEdit->text().trimmed());
-			child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->material));	
-		}
-		if(pe->force != 0){
-			QTreeWidgetItem* child = new QTreeWidgetItem();
-			treeItem->addChild(child);
-			child->setText(0, "Body force");	
-			child->setText(1, pe->force->nameEdit->text().trimmed());
-			child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->force));	
-		}
-		if(pe->initial != 0){
-			QTreeWidgetItem* child = new QTreeWidgetItem();
-			treeItem->addChild(child);
-			child->setText(0, "Initial condition");	
-			child->setText(1, pe->initial->nameEdit->text().trimmed());
-			child->setData(1, Qt::UserRole, QVariant::fromValue( (qulonglong)pe->initial));	
-		}
-		treeItem->setExpanded(true);
-	}
   }	 
   
   if(selectThis != NULL){  

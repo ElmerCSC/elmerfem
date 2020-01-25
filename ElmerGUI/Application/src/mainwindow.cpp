@@ -2600,7 +2600,8 @@ void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe)
         QCheckBox *a;
 
         if ( title.isEmpty() )
-          a = new QCheckBox("Body " + QString::number(n));
+          //a = new QCheckBox("Body " + QString::number(n));
+          a = new QCheckBox("Body Property " + QString::number(n));
         else
           a = new QCheckBox(title);
 
@@ -2872,7 +2873,7 @@ void MainWindow::pdeEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Equation deleted");
   }
@@ -3017,7 +3018,7 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Material deleted");
 
@@ -3153,7 +3154,7 @@ void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Body force deleted");
   }
@@ -3285,7 +3286,7 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
     pe->close();
     
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Initial condition deleted");
   }
@@ -3499,7 +3500,7 @@ void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Boundary condition deleted");
   }
@@ -5946,7 +5947,8 @@ void MainWindow::boundarySelectedSlot(list_t *l)
       bodyEdit->setWindowTitle("Properties for body " + QString::number(current));
 
       // if(bodyEdit->ui.nameEdit->text().trimmed().isEmpty())
-      bodyEdit->ui.nameEdit->setText("Body Property{Boundary " + QString::number(n+1) +  "}");
+      //bodyEdit->ui.nameEdit->setText("Body Property{Boundary " + QString::number(n+1) +  "}");
+      bodyEdit->ui.nameEdit->setText("Body {Boundary " + QString::number(n+1) +  "}");
     }
   }
 
