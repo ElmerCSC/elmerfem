@@ -42,8 +42,8 @@ using namespace std;
 
 ObjectBrowser::ObjectBrowser(QMainWindow *parent, Qt::WindowFlags flags) : QDockWidget("Object Browser", parent, flags)
 {
-  setTitleBarWidget(NULL);
-  setFeatures(/*QDockWidget::NoDockWidgetFeatures*/  QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable);
+  setTitleBarWidget(new QWidget());
+  setFeatures(QDockWidget::NoDockWidgetFeatures /*QDockWidget::DockWidgetFloatable | QDockWidget::DockWidgetMovable*/);
   setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea );
   if(parent) parent->addDockWidget(Qt::LeftDockWidgetArea, this); 
   
