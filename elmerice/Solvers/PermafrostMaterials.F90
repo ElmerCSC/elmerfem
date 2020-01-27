@@ -83,6 +83,11 @@ MODULE PermafrostMaterials
      INTEGER, ALLOCATABLE :: acsl(:),aasl(:),cksl(:)
      CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   END TYPE RockMaterial_t
+
+  TYPE(SolventMaterial_t), TARGET :: GlobalSolventMaterial
+  TYPE(SoluteMaterial_t), TARGET :: GlobalSoluteMaterial
+  TYPE(RockMaterial_t) :: GlobalRockmaterial
+  
   
 CONTAINS
   !---------------------------------------------------------------------------------------------
@@ -372,24 +377,21 @@ CONTAINS
   END SUBROUTINE ReadPermafrostSoluteMaterial
 
   !---------------------------------------------------------------------------------------------
-  FUNCTION ReadPermafrostRockMaterial( Params,Constants,CurrentRockMaterial ) RESULT(NumerOfRockRecords)
+  FUNCTION ReadPermafrostRockMaterial( Params ) RESULT(NumerOfRockRecords)
     IMPLICIT NONE
-    TYPE(ValueList_t), POINTER :: Params, Constants
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
-    TYPE(RockMaterial_t), TARGET :: LocalRockMaterial
+    TYPE(ValueList_t), POINTER :: Params
     Integer :: NumerOfRockRecords
-
+    !--------------
     INTEGER :: i,j,k,l, n,t, active, DIM, ok,InitialNumerOfRockRecords, EntryNumber
     INTEGER,parameter :: io=21
     LOGICAL :: Found, fexist, FirstTime=.TRUE., AllocationsDone=.FALSE., DataRead=.FALSE.
     CHARACTER(LEN=MAX_NAME_LEN) ::  MaterialFileName, NewMaterialFileName, str, Comment
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='ReadPermafrostRockMaterial'
 
-    SAVE AllocationsDone,DataRead,InitialNumerOfRockRecords,LocalRockMaterial,MaterialFileName
+    SAVE AllocationsDone,DataRead,InitialNumerOfRockRecords,MaterialFileName
 
     IF (DataRead) THEN
       NumerOfRockRecords = InitialNumerOfRockRecords
-      CurrentRockMaterial => LocalRockMaterial
       RETURN
     ELSE ! we read Data from file database
       DIM = CoordinateSystemDimension()
@@ -453,58 +455,58 @@ CONTAINS
       !M = Model % Mesh % NumberOfNodes
       IF (AllocationsDone) THEN
         DEALLOCATE(&
-             LocalRockMaterial % ks0th,&
-             LocalRockMaterial % e1,&
-             LocalRockMaterial % bs,&
-             LocalRockMaterial % rhos0,&
-             LocalRockMaterial % cs0,&
-             LocalRockMaterial % Xi0,&
-             LocalRockMaterial % eta0,&
-             LocalRockMaterial % etak,&
-             LocalRockMaterial % hs0,&
-             LocalRockMaterial % Kgwh0, &
-             LocalRockMaterial % qexp, &
-             LocalRockMaterial % alphaL, &
-             LocalRockMaterial % alphaT, &
-             LocalRockMaterial % RadGen, &
-             LocalRockMaterial % acs, &
-             LocalRockMaterial % as0, &
-             LocalRockMaterial % aas, &
-             LocalRockMaterial % ks0, &
-             LocalRockMaterial % cks, &
-             LocalRockMaterial % Es0, &
-             LocalRockMaterial % nuS0, &
-             LocalRockMaterial % acsl, &
-             LocalRockMaterial % aasl, &
-             LocalRockMaterial % cksl, &
-             LocalRockMaterial % VariableBaseName)
+             GlobalRockMaterial % ks0th,&
+             GlobalRockMaterial % e1,&
+             GlobalRockMaterial % bs,&
+             GlobalRockMaterial % rhos0,&
+             GlobalRockMaterial % cs0,&
+             GlobalRockMaterial % Xi0,&
+             GlobalRockMaterial % eta0,&
+             GlobalRockMaterial % etak,&
+             GlobalRockMaterial % hs0,&
+             GlobalRockMaterial % Kgwh0, &
+             GlobalRockMaterial % qexp, &
+             GlobalRockMaterial % alphaL, &
+             GlobalRockMaterial % alphaT, &
+             GlobalRockMaterial % RadGen, &
+             GlobalRockMaterial % acs, &
+             GlobalRockMaterial % as0, &
+             GlobalRockMaterial % aas, &
+             GlobalRockMaterial % ks0, &
+             GlobalRockMaterial % cks, &
+             GlobalRockMaterial % Es0, &
+             GlobalRockMaterial % nuS0, &
+             GlobalRockMaterial % acsl, &
+             GlobalRockMaterial % aasl, &
+             GlobalRockMaterial % cksl, &
+             GlobalRockMaterial % VariableBaseName)
       END IF
       ALLOCATE(&
-           LocalRockMaterial % ks0th(NumerOfRockRecords),&
-           LocalRockMaterial % e1(NumerOfRockRecords),&
-           LocalRockMaterial % bs(NumerOfRockRecords),&
-           LocalRockMaterial % rhos0(NumerOfRockRecords),&
-           LocalRockMaterial % cs0(NumerOfRockRecords),&
-           LocalRockMaterial % Xi0(NumerOfRockRecords),&
-           LocalRockMaterial % eta0(NumerOfRockRecords),&
-           LocalRockMaterial % etak(NumerOfRockRecords),&
-           LocalRockMaterial % hs0(NumerOfRockRecords),&
-           LocalRockMaterial % Kgwh0(3,3,NumerOfRockRecords),&
-           LocalRockMaterial % qexp(NumerOfRockRecords), &
-           LocalRockMaterial % alphaL(NumerOfRockRecords), &
-           LocalRockMaterial % alphaT(NumerOfRockRecords), &
-           LocalRockMaterial % RadGen(NumerOfRockRecords), &
-           LocalRockMaterial % acs(0:5,NumerOfRockRecords), &
-           LocalRockMaterial % as0(NumerOfRockRecords), &
-           LocalRockMaterial % aas(0:5,NumerOfRockRecords), &
-           LocalRockMaterial % ks0(NumerOfRockRecords), &
-           LocalRockMaterial % cks(0:5,NumerOfRockRecords), &
-           LocalRockMaterial % Es0(NumerOfRockRecords), &
-           LocalRockMaterial % nuS0(NumerOfRockRecords), &
-           LocalRockMaterial % acsl(NumerOfRockRecords), &     
-           LocalRockMaterial % aasl(NumerOfRockRecords), &
-           LocalRockMaterial % cksl(NumerOfRockRecords), &
-           LocalRockMaterial % VariableBaseName(NumerOfRockRecords),&
+           GlobalRockMaterial % ks0th(NumerOfRockRecords),&
+           GlobalRockMaterial % e1(NumerOfRockRecords),&
+           GlobalRockMaterial % bs(NumerOfRockRecords),&
+           GlobalRockMaterial % rhos0(NumerOfRockRecords),&
+           GlobalRockMaterial % cs0(NumerOfRockRecords),&
+           GlobalRockMaterial % Xi0(NumerOfRockRecords),&
+           GlobalRockMaterial % eta0(NumerOfRockRecords),&
+           GlobalRockMaterial % etak(NumerOfRockRecords),&
+           GlobalRockMaterial % hs0(NumerOfRockRecords),&
+           GlobalRockMaterial % Kgwh0(3,3,NumerOfRockRecords),&
+           GlobalRockMaterial % qexp(NumerOfRockRecords), &
+           GlobalRockMaterial % alphaL(NumerOfRockRecords), &
+           GlobalRockMaterial % alphaT(NumerOfRockRecords), &
+           GlobalRockMaterial % RadGen(NumerOfRockRecords), &
+           GlobalRockMaterial % acs(0:5,NumerOfRockRecords), &
+           GlobalRockMaterial % as0(NumerOfRockRecords), &
+           GlobalRockMaterial % aas(0:5,NumerOfRockRecords), &
+           GlobalRockMaterial % ks0(NumerOfRockRecords), &
+           GlobalRockMaterial % cks(0:5,NumerOfRockRecords), &
+           GlobalRockMaterial % Es0(NumerOfRockRecords), &
+           GlobalRockMaterial % nuS0(NumerOfRockRecords), &
+           GlobalRockMaterial % acsl(NumerOfRockRecords), &     
+           GlobalRockMaterial % aasl(NumerOfRockRecords), &
+           GlobalRockMaterial % cksl(NumerOfRockRecords), &
+           GlobalRockMaterial % VariableBaseName(NumerOfRockRecords),&
            STAT=OK)
       AllocationsDone = .TRUE.
       DataRead = .TRUE.
@@ -514,7 +516,7 @@ CONTAINS
       END IF
       
       DO I=1,NumerOfRockRecords
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % VariableBaseName(I), EntryNumber
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % VariableBaseName(I), EntryNumber
         IF (EntryNumber /= I) THEN
           WRITE(Message,'(A,I3,A,I3)') &
                "Entry number", EntryNumber, "does not match expected number ",I
@@ -522,41 +524,41 @@ CONTAINS
           CALL FATAL(FunctionName,Message)
         ELSE
           WRITE(Message,'(A,A,A,I3,A)')&
-               "Material ", TRIM(LocalRockMaterial % VariableBaseName(I)),&
+               "Material ", TRIM(GlobalRockMaterial % VariableBaseName(I)),&
                " entry number ", EntryNumber, " will be read in"
           CALL INFO(FunctionName,Message,Level=3)
         END IF
-        WRITE(Message,'(A,I2,A,A)') "Input for Variable No.",I,": ", LocalRockMaterial % VariableBaseName(I)
+        WRITE(Message,'(A,I2,A,A)') "Input for Variable No.",I,": ", GlobalRockMaterial % VariableBaseName(I)
         CALL INFO(FunctionName,Message,Level=9)
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % Xi0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % eta0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % etak(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % ks0th(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % e1(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % bs(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % rhos0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % cs0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % hs0(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Xi0(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % eta0(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % etak(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0th(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % e1(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % bs(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % rhos0(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cs0(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % hs0(I), Comment
         DO J=1,3
           DO K=1,3
-            READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % Kgwh0(J,K,I), Comment
+            READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Kgwh0(J,K,I), Comment
           END DO
         END DO
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % qexp(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % alphaL(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % alphaT(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % RadGen(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % acs(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % as0(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % aas(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % ks0(I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % qexp(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaL(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaT(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % RadGen(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acs(0:5,I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % as0(I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aas(0:5,I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0(I),  Comment
         !--------------------
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % cks(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % Es0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % nuS0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % acsl(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % aasl(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) LocalRockMaterial % cksl(I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cks(0:5,I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Es0(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % nuS0(I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acsl(I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(I),  Comment
       END DO
       WRITE(Message,'(A,I2,A,A)') "Read ",NumerOfRockRecords," rock material records from file ", TRIM(MaterialFileName)
       CALL INFO(FunctionName,Message,Level=1)
@@ -565,7 +567,6 @@ CONTAINS
         WRITE(Message,'(I3,A,I3)') I,"records read, which is smaller than given number ", NumerOfRockRecords
         CALL FATAL(FunctionName,Message)
       ELSE
-        CurrentRockMaterial => LocalRockMaterial
         WRITE(Message,'(A,I2,A,A)') "Read ",NumerOfRockRecords," rock material records from file ", TRIM(MaterialFileName)
         CALL INFO(FunctionName,Message,Level=1)
       END IF
@@ -578,10 +579,9 @@ CONTAINS
   END FUNCTION ReadPermafrostRockMaterial
   
   !---------------------------------------------------------------------------------------------  
-  FUNCTION ReadPermafrostElementRockMaterial(CurrentRockMaterial,MaterialFileName,Solver,DIM,SkipInit) RESULT(NumberOfRockRecords)
+  FUNCTION ReadPermafrostElementRockMaterial(MaterialFileName,Solver,DIM,SkipInit) RESULT(NumberOfRockRecords)
     IMPLICIT NONE
     CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: MaterialFileName
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(Solver_t) :: Solver
     INTEGER :: NumberOfRockRecords,DIM
     LOGICAL, OPTIONAL :: SkipInit
@@ -640,31 +640,31 @@ CONTAINS
         mmaxglobalelementnumber = NoElements
       END IF      
       ALLOCATE(&           
-           LocalRockMaterial % ks0th(NoElements),&
-           LocalRockMaterial % e1(NoElements),&
-           LocalRockMaterial % bs(NoElements),&
-           LocalRockMaterial % rhos0(NoElements),&
-           LocalRockMaterial % Xi0(NoElements),&
-           LocalRockMaterial % eta0(NoElements),&
-           LocalRockMaterial % etak(NoElements),&
-           LocalRockMaterial % hs0(NoElements),&
-           LocalRockMaterial % Kgwh0(3,3,NoElements),&
-           LocalRockMaterial % qexp(NoElements), &
-           LocalRockMaterial % alphaL(NoElements), &
-           LocalRockMaterial % alphaT(NoElements), &
-           LocalRockMaterial % RadGen(NoElements), &
-           LocalRockMaterial % cs0(NoElements),&
-           LocalRockMaterial % acs(0:5,NoElements), &
-           LocalRockMaterial % as0(NoElements), &
-           LocalRockMaterial % aas(0:5,NoElements), &
-           LocalRockMaterial % ks0(NoElements), &
-           LocalRockMaterial % cks(0:5,NoElements), &
-           LocalRockMaterial % Es0(NoElements),&
-           LocalRockMaterial % nus0(NoElements),&
-           LocalRockMaterial % acsl(NoElements), &
-           LocalRockMaterial % aasl(NoElements), &
-           LocalRockMaterial % cksl(NoElements), &
-           LocalRockMaterial % VariableBaseName(NoElements),&
+           GlobalRockMaterial % ks0th(NoElements),&
+           GlobalRockMaterial % e1(NoElements),&
+           GlobalRockMaterial % bs(NoElements),&
+           GlobalRockMaterial % rhos0(NoElements),&
+           GlobalRockMaterial % Xi0(NoElements),&
+           GlobalRockMaterial % eta0(NoElements),&
+           GlobalRockMaterial % etak(NoElements),&
+           GlobalRockMaterial % hs0(NoElements),&
+           GlobalRockMaterial % Kgwh0(3,3,NoElements),&
+           GlobalRockMaterial % qexp(NoElements), &
+           GlobalRockMaterial % alphaL(NoElements), &
+           GlobalRockMaterial % alphaT(NoElements), &
+           GlobalRockMaterial % RadGen(NoElements), &
+           GlobalRockMaterial % cs0(NoElements),&
+           GlobalRockMaterial % acs(0:5,NoElements), &
+           GlobalRockMaterial % as0(NoElements), &
+           GlobalRockMaterial % aas(0:5,NoElements), &
+           GlobalRockMaterial % ks0(NoElements), &
+           GlobalRockMaterial % cks(0:5,NoElements), &
+           GlobalRockMaterial % Es0(NoElements),&
+           GlobalRockMaterial % nus0(NoElements),&
+           GlobalRockMaterial % acsl(NoElements), &
+           GlobalRockMaterial % aasl(NoElements), &
+           GlobalRockMaterial % cksl(NoElements), &
+           GlobalRockMaterial % VariableBaseName(NoElements),&
            STAT=OK)
       OPEN(unit = io, file = TRIM(MaterialFileName), status = 'old',iostat = ok)
       IF (ok /= 0) THEN
@@ -697,70 +697,69 @@ CONTAINS
           END IF
           CurrentElement => Solver % Mesh % Elements(I)
           !! IMPORTANT: Mind that all ReceivingArray numbers ar N-1 with respect to the document (input_data_forsmark_2d)
-          LocalRockMaterial % ks0th(I) = ReceivingArray(12) ! shall be changed to tensor
+          GlobalRockMaterial % ks0th(I) = ReceivingArray(11) ! shall be changed to tensor
           !-----------------------------
-          LocalRockMaterial % e1(I) = ReceivingArray(33) ! e1 (mail from Juha 11.10.)
-          !IF (LocalRockMaterial % e1(I) > 0.01) PRINT *,"e1:", ReceivingArray(34)
-          !IF (LocalRockMaterial % e1(I) < 0.0) PRINT *,"e1:", ReceivingArray(34)
-          LocalRockMaterial % bs(I) = ReceivingArray(23) ! b11,1 (mail from Juha 11.10.)
-          LocalRockMaterial % rhos0(I) = ReceivingArray(1)
-          LocalRockMaterial % Xi0(I) = ReceivingArray(32)
+          GlobalRockMaterial % e1(I) = ReceivingArray(33) ! e1 (mail from Juha 11.10.)
+          !IF (GlobalRockMaterial % e1(I) > 0.01) PRINT *,"e1:", ReceivingArray(34)
+          !IF (GlobalRockMaterial % e1(I) < 0.0) PRINT *,"e1:", ReceivingArray(34)
+          GlobalRockMaterial % bs(I) = ReceivingArray(23) ! b11,1 (mail from Juha 11.10.)
+          GlobalRockMaterial % rhos0(I) = ReceivingArray(1)
+          GlobalRockMaterial % Xi0(I) = ReceivingArray(32)
           !-----------------------------
-          LocalRockMaterial % eta0(I) = ReceivingArray(30) ! eta_t (mail from Juha 11.10.)
-          LocalRockMaterial % etak(I) = ReceivingArray(31)
-          LocalRockMaterial % hs0(I) = 0.0_dp! will be removed
+          GlobalRockMaterial % eta0(I) = ReceivingArray(30) ! eta_t (mail from Juha 11.10.)
+          GlobalRockMaterial % etak(I) = ReceivingArray(31)
+          GlobalRockMaterial % hs0(I) = 0.0_dp! will be removed
           !----------------------------- Hydrol. Conductivity
-          LocalRockMaterial % Kgwh0 = 0.0_dp
+          !GlobalRockMaterial % Kgwh0 = 0.0_dp
 
           IF(DIM==2) THEN
-            LocalRockMaterial % Kgwh0(1,1,I) = ReceivingArray(35)
-            LocalRockMaterial % Kgwh0(2,2,I) = ReceivingArray(37)
-            LocalRockMaterial % Kgwh0(1,2,I) = ReceivingArray(39)
-            LocalRockMaterial % Kgwh0(2,1,I) = LocalRockMaterial % Kgwh0(1,2,I)
+            GlobalRockMaterial % Kgwh0(1,1,I) = ReceivingArray(35)
+            GlobalRockMaterial % Kgwh0(2,2,I) = ReceivingArray(37)
+            GlobalRockMaterial % Kgwh0(1,2,I) = ReceivingArray(39)
+            GlobalRockMaterial % Kgwh0(2,1,I) = ReceivingArray(39)
+            GlobalRockMaterial % Kgwh0(3,1:3,I) = 0.0_dp
+            GlobalRockMaterial % Kgwh0(1:3,3,I) = 0.0_dp
           ELSE
-            LocalRockMaterial % Kgwh0(1,1,I) = ReceivingArray(35)
-            !PRINT *,"ReceivingArray(34-41)",ReceivingArray(34:41)
-            LocalRockMaterial % Kgwh0(2,2,I) = ReceivingArray(36)
-            LocalRockMaterial % Kgwh0(3,3,I) = ReceivingArray(37)
-            LocalRockMaterial % Kgwh0(1,2,I) = ReceivingArray(38)
-            LocalRockMaterial % Kgwh0(1,3,I) = ReceivingArray(39)
-            LocalRockMaterial % Kgwh0(2,3,I) = ReceivingArray(40)
-            LocalRockMaterial % Kgwh0(2,1,I) = LocalRockMaterial % Kgwh0(1,2,I)
-            LocalRockMaterial % Kgwh0(3,1,I) = LocalRockMaterial % Kgwh0(1,3,I)
-          LocalRockMaterial % Kgwh0(3,2,I) = LocalRockMaterial % Kgwh0(2,3,I)
+            GlobalRockMaterial % Kgwh0(1,1,I) = ReceivingArray(35)
+            GlobalRockMaterial % Kgwh0(2,2,I) = ReceivingArray(36)
+            GlobalRockMaterial % Kgwh0(3,3,I) = ReceivingArray(37)
+            GlobalRockMaterial % Kgwh0(1,2,I) = ReceivingArray(38)
+            GlobalRockMaterial % Kgwh0(1,3,I) = ReceivingArray(39)
+            GlobalRockMaterial % Kgwh0(2,3,I) = ReceivingArray(40)
+            GlobalRockMaterial % Kgwh0(2,1,I) = ReceivingArray(38)
+            GlobalRockMaterial % Kgwh0(3,1,I) = ReceivingArray(39)
+            GlobalRockMaterial % Kgwh0(3,2,I) = ReceivingArray(40)
           END IF
-          !PRINT *,"Kgwh0=",LocalRockMaterial % Kgwh0(1,1:2,I)
-          !PRINT *,LocalRockMaterial % Kgwh0(2,1:2,I) 
           !-----------------------------
-          LocalRockMaterial % qexp(I) = ReceivingArray(41) !?????????????????????????????????????????????
-          LocalRockMaterial % alphaL(I) = ReceivingArray(47)
-          LocalRockMaterial % alphaT(I) = ReceivingArray(48)
-          LocalRockMaterial % RadGen(I) = ReceivingArray(29)
+          GlobalRockMaterial % qexp(I) = ReceivingArray(41) !?????????????????????????????????????????????
+          GlobalRockMaterial % alphaL(I) = ReceivingArray(47)
+          GlobalRockMaterial % alphaT(I) = ReceivingArray(48)
+          GlobalRockMaterial % RadGen(I) = ReceivingArray(29)
           !-----------------------------
-          LocalRockMaterial % cs0(I) = ReceivingArray(8)
-          LocalRockMaterial % acs(0,I) =  ReceivingArray(9)
-          LocalRockMaterial % acs(1,I) =  ReceivingArray(10)
-          LocalRockMaterial % acs(2:5,I) = 0.0_dp
-          LocalRockMaterial % acsl(I)= 1
+          GlobalRockMaterial % cs0(I) = ReceivingArray(8)
+          GlobalRockMaterial % acs(0,I) =  ReceivingArray(9)
+          GlobalRockMaterial % acs(1,I) =  ReceivingArray(10)
+          GlobalRockMaterial % acs(2:5,I) = 0.0_dp
+          GlobalRockMaterial % acsl(I)= 1
           !-----------------------------
-          LocalRockMaterial % as0(I)= ReceivingArray(2)
-          LocalRockMaterial % aas(0,I) =  ReceivingArray(3)
-          LocalRockMaterial % aas(1,I) =  ReceivingArray(4)
-          LocalRockMaterial % aas(2:5,I) = 0.0_dp
-          LocalRockMaterial % aasl(I)= 1
+          GlobalRockMaterial % as0(I)= ReceivingArray(2)
+          GlobalRockMaterial % aas(0,I) =  ReceivingArray(3)
+          GlobalRockMaterial % aas(1,I) =  ReceivingArray(4)
+          GlobalRockMaterial % aas(2:5,I) = 0.0_dp
+          GlobalRockMaterial % aasl(I)= 1
           !-----------------------------
-          LocalRockMaterial % ks0(I)= ReceivingArray(5)
-          LocalRockMaterial % cks(0,I) = ReceivingArray(6)
-          LocalRockMaterial % cks(1,I) = ReceivingArray(7)
-          LocalRockMaterial % cks(2:5,I)= 0.0_dp
-          LocalRockMaterial % cksl(I)= 1
+          GlobalRockMaterial % ks0(I)= ReceivingArray(5)
+          GlobalRockMaterial % cks(0,I) = ReceivingArray(6)
+          GlobalRockMaterial % cks(1,I) = ReceivingArray(7)
+          GlobalRockMaterial % cks(2:5,I)= 0.0_dp
+          GlobalRockMaterial % cksl(I)= 1
           !-----------------------------
-          LocalRockMaterial % Es0(I) = ReceivingArray(49)
-          LocalRockMaterial % nus0(I) = ReceivingArray(50)
+          GlobalRockMaterial % Es0(I) = ReceivingArray(49)
+          GlobalRockMaterial % nus0(I) = ReceivingArray(50)
           WRITE(Message,*) 'Element',I
-          LocalRockMaterial % VariableBaseName(I) = TRIM(Message)
+          GlobalRockMaterial % VariableBaseName(I) = TRIM(Message)
         END DO
-        LocalRockMaterial % NumerOfRockRecords = NoElements
+        GlobalRockMaterial % NumerOfRockRecords = NoElements
         NumberOfRockRecords = NoElements
 50      CLOSE(io)
         IF (LocalNoElements < NoElements) THEN
@@ -776,20 +775,18 @@ CONTAINS
           CALL FATAL(TRIM(SubroutineName),Message)
         ELSE
           IF (Parallel) THEN
-            PRINT *, TRIM(SubroutineName), ': Parallel proc.', ParEnv % myPe, '. Read ', NoElements, 'entries in file'
+            PRINT *, TRIM(SubroutineName), ': Parallel proc.', ParEnv % myPe, '. Read ', NoElements, 'entries from file'
           ELSE
-            WRITE (Message,*) 'Read ',LocalNoElements,' entries in file ',TRIM(MaterialFileName)
+            WRITE (Message,*) 'Read ',LocalNoElements,' entries from file ',TRIM(MaterialFileName)
             CALL INFO(TRIM(SubroutineName),Message,Level=3)
           END IF
         END IF
       END IF
       IF (Parallel) DEALLOCATE(GlobalToLocalPerm)
       CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
-      CurrentRockMaterial => LocalRockMaterial
       FirstTime = .FALSE.
     ELSE
-      CurrentRockMaterial => LocalRockMaterial
-      NumberOfRockRecords = NoElements
+            NumberOfRockRecords = NoElements
     END IF
     RETURN
 60  WRITE (Message,*) 'I/O error at entry ',CurrentNo,' of file ',TRIM(MaterialFileName)
@@ -1641,10 +1638,9 @@ CONTAINS
     deltaG = gwa - gia
   END FUNCTION deltaG
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetBi(CurrentSoluteMaterial,CurrentRockMaterial,RockMaterialID,&
+  FUNCTION GetBi(CurrentSoluteMaterial,RockMaterialID,&
        Xi0Tilde,Salinity,Update) RESULT(bi)
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     REAL(KIND=dp), INTENT(IN) :: Xi0Tilde,Salinity
     INTEGER,  INTENT(IN) :: RockMaterialID
     REAL(KIND=dp):: bi(4)
@@ -1653,7 +1649,7 @@ CONTAINS
     REAL(KIND=dp)::  aux,d1,d2,e1
 
     IF (Update) THEN
-      e1 = CurrentRockMaterial % e1(RockMaterialID)
+      e1 = GlobalRockMaterial % e1(RockMaterialID)
       bi(3) = (1.0_dp - Xi0Tilde)*e1
       bi(4) = Xi0Tilde*e1
     ELSE
@@ -1682,17 +1678,16 @@ CONTAINS
     biYc(2) = (d1*(1.0_dp + Salinity) + d2*Salinity*(2.0_dp + Salinity))*aux**3.0_dp
   END FUNCTION GetBiYc
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetB(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+  FUNCTION GetB(RockMaterialID,CurrentSolventMaterial,&
        Xi0tilde,delta,deltaG,GasConstant,bi,Temperature) RESULT(B)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp), INTENT(IN) :: Xi0tilde,delta,deltaG,GasConstant,bi(4),Temperature
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: B
     REAL(KIND=dp) :: e1,Mw
     Mw = CurrentSolventMaterial % Mw
-    e1 = CurrentRockMaterial % e1(RockMaterialID)
+    e1 = GlobalRockMaterial % e1(RockMaterialID)
 
     B =(Mw*deltaG/(GasConstant*Temperature) - bi(1) + bi(3))/(delta + bi(2) + bi(4)) 
         
@@ -1702,9 +1697,8 @@ CONTAINS
     END IF
   END FUNCTION GetB
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION D(CurrentRockMaterial,RockMaterialID,delta,bi)
+  REAL (KIND=dp) FUNCTION D(RockMaterialID,delta,bi)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: delta,bi(4)
     ! local
@@ -1715,8 +1709,7 @@ CONTAINS
     END IF
   END FUNCTION D
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetXi0Tilde(CurrentRockMaterial,RockMaterialID,Porosity) RESULT(Xi0tilde)
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
+  FUNCTION GetXi0Tilde(RockMaterialID,Porosity) RESULT(Xi0tilde)
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID    
     REAL(KIND=dp), INTENT(IN) :: Porosity
@@ -1725,8 +1718,8 @@ CONTAINS
     LOGICAL :: FirstTime = .TRUE.
     SAVE FirstTime
 
-    Xi0 = CurrentRockMaterial % Xi0(RockMaterialID)
-    eta0 = CurrentRockMaterial % eta0(RockMaterialID)
+    Xi0 = GlobalRockMaterial % Xi0(RockMaterialID)
+    eta0 = GlobalRockMaterial % eta0(RockMaterialID)
     IF (Porosity <= 0.0_dp) THEN
       IF (Xi0 == 0.0_dp) THEN
         Xi0tilde = 1.0_dp
@@ -1739,10 +1732,9 @@ CONTAINS
     END IF
   END FUNCTION GetXi0Tilde
   !---------------------------------------------------------------------------------------------
-  REAL(KIND=dp) FUNCTION fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+  REAL(KIND=dp) FUNCTION fw(RockMaterialID,CurrentSolventMaterial,&
        Xi0tilde,rhow,Xi,GasConstant,Temperature)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi0tilde,rhow,Xi,GasConstant,Temperature
@@ -1752,7 +1744,7 @@ CONTAINS
     !   IF (Xi > Xi0tilde) THEN
     !     fw = 0.0_dp
     !   ELSE
-    !     e1 = CurrentRockMaterial % e1(RockMaterialID)
+    !     e1 = GlobalRockMaterial % e1(RockMaterialID)
     !     Mw = CurrentSolventMaterial % Mw
     !     fw = rhow*GasConstant*Temperature*e1*Xi0tilde/(Mw*Xi)
     !   END IF
@@ -1835,17 +1827,16 @@ CONTAINS
     END IF
   END FUNCTION XiYc
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION XiEta(CurrentRockMaterial,RockMaterialID,&
+  REAL (KIND=dp) FUNCTION XiEta(RockMaterialID,&
        B,D,bi,biYc,Xi,delta,Porosity)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     INTEGER, INTENT(IN) :: RockMaterialID    
     REAL(KIND=dp), INTENT(IN) :: B,D,bi(4),biYc(2),Xi,delta,Porosity
     !local
     REAL(KIND=dp) :: aux1, aux2, aux3, aux_sqrt,Xi0,eta0
 
-    Xi0 = CurrentRockMaterial % Xi0(RockMaterialID)
-    eta0 = CurrentRockMaterial % eta0(RockMaterialID)
+    Xi0 = GlobalRockMaterial % Xi0(RockMaterialID)
+    eta0 = GlobalRockMaterial % eta0(RockMaterialID)
     
     aux_sqrt = B*B + 4.0_dp*D
     
@@ -1861,7 +1852,7 @@ CONTAINS
     END IF
   END FUNCTION XiEta
   !----------------------------------------------------------------------
-  SUBROUTINE GetXiHartikainen (CurrentRockMaterial,RockMaterialID,&
+  SUBROUTINE GetXiHartikainen (RockMaterialID,&
        CurrentSoluteMaterial,CurrentSolventMaterial,&
        TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
        Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -1871,7 +1862,6 @@ CONTAINS
 
     IMPLICIT NONE
 
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER :: RockMaterialID
@@ -1885,15 +1875,15 @@ CONTAINS
          giaAtIP,giaTAtIP,giapAtIP,deltaGAtIP,DAtIP,BAtIP
     !---------------------------
     IF (ComputeXi .OR. (ComputeXiT .OR. ComputeXiYC .OR. ComputeXiP)) THEN
-      biAtIP = GetBi(CurrentSoluteMaterial,CurrentRockMaterial,RockMaterialID,&
+      biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.FALSE.) 
       gwaAtIP = gwa(CurrentSolventMaterial,&
            p0,T0,rhowAtIP,TemperatureAtIP,PressureAtIP)     
       giaAtIP = gia(CurrentSolventMaterial,&
            p0,T0,rhoiAtIP,TemperatureAtIP,PressureAtIP)
       deltaGAtIP = deltaG(gwaAtIP,giaAtIP)
-      DAtIP= D(CurrentRockMaterial,RockMaterialID,deltaInElement,biAtIP)
-      BAtIP = GetB(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+      DAtIP= D(RockMaterialID,deltaInElement,biAtIP)
+      BAtIP = GetB(RockMaterialID,CurrentSolventMaterial,&
            Xi0tilde,deltaInElement,deltaGAtIP,GasConstant,biAtIP,TemperatureAtIP)
     ELSE
       CALL WARN("GetXiHartikainen","Nothing to be done - why did you call this routine?")
@@ -1904,7 +1894,7 @@ CONTAINS
     
     ! updates of derivatives
     IF (XiAtIP < Xi0tilde)  THEN
-      biAtIP = GetBi(CurrentSoluteMaterial,CurrentRockMaterial,RockMaterialID,&
+      biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.TRUE.)
       XiAtIP = GetXi(BAtIP,DAtIP)
     END IF
@@ -1937,55 +1927,52 @@ CONTAINS
   ! Densities and their derivatives, thermal expansion, isothermal chemical compaction and
   !     compressibility coefficients
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION rhos(CurrentRockMaterial,RockMaterialID,&
+  REAL (KIND=dp) FUNCTION rhos(RockMaterialID,&
        T0,p0,Temperature,Pressure,ConstVal)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: T0,p0,Temperature,Pressure
     LOGICAL :: ConstVal
     !----------------------
     REAL(KIND=dp) :: aux1,aux2
     !----------------------
-    rhos = CurrentRockMaterial % rhos0(RockMaterialID)
+    rhos = GlobalRockMaterial % rhos0(RockMaterialID)
     IF (.NOT.ConstVal) THEN
       !aux1 = GeneralIntegral(Pressure,p0,p0,&
-      !     CurrentRockMaterial % ks0(RockMaterialID),&
-      !     CurrentRockMaterial % cks(0:5,RockMaterialID),&
-      !     CurrentRockMaterial % cksl(RockMaterialID))
+      !     GlobalRockMaterial % ks0(RockMaterialID),&
+      !     GlobalRockMaterial % cks(0:5,RockMaterialID),&
+      !     GlobalRockMaterial % cksl(RockMaterialID))
       ! a shortcut, as only cks(0) = 1
-      aux1 = (CurrentRockMaterial % ks0(RockMaterialID)) * (Pressure - p0)
+      aux1 = (GlobalRockMaterial % ks0(RockMaterialID)) * (Pressure - p0)
       aux2 = GeneralIntegral(Temperature,T0,T0,&
-           CurrentRockMaterial % as0(RockMaterialID),&
-           CurrentRockMaterial % aas(0:5,RockMaterialID),&
-           CurrentRockMaterial % aasl(RockMaterialID))
+           GlobalRockMaterial % as0(RockMaterialID),&
+           GlobalRockMaterial % aas(0:5,RockMaterialID),&
+           GlobalRockMaterial % aasl(RockMaterialID))
       rhos = rhos * EXP(aux1 - aux2)
     END IF
   END FUNCTION rhos
   !---------------------------------------------------------------------------------------------
-  REAL(KIND=dp) FUNCTION rhosT(CurrentRockMaterial,RockMaterialID,rhos,T0,Temperature)
+  REAL(KIND=dp) FUNCTION rhosT(RockMaterialID,rhos,T0,Temperature)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     REAL(KIND=dp), INTENT(IN) :: rhos,T0,Temperature
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: alphaS
 
-    alphaS = CurrentRockMaterial % as0(RockMaterialID) *&
+    alphaS = GlobalRockMaterial % as0(RockMaterialID) *&
 	 GeneralPolynomial(Temperature,T0,T0,&
-         CurrentRockMaterial % aas(0:5,RockMaterialID),&
-         CurrentRockMaterial % aasl(RockMaterialID))
+         GlobalRockMaterial % aas(0:5,RockMaterialID),&
+         GlobalRockMaterial % aasl(RockMaterialID))
     rhosT = rhos * alphaS
   END FUNCTION rhosT
 !---------------------------------------------------------------------------------------------
-  REAL(KIND=dp) FUNCTION rhosp(CurrentRockMaterial,RockMaterialID,rhos,p0,Pressure)
+  REAL(KIND=dp) FUNCTION rhosp(RockMaterialID,rhos,p0,Pressure)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: rhos,p0,Pressure
     !--------------------
     REAL(KIND=dp) ::  kappas
     !--------------------
-    kappas = ( CurrentRockMaterial % ks0(RockMaterialID))
+    kappas = ( GlobalRockMaterial % ks0(RockMaterialID))
     rhosP = rhos * kappas
   END FUNCTION rhosp
   !---------------------------------------------------------------------------------------------
@@ -2279,22 +2266,21 @@ CONTAINS
     rhogwYc = ((1.0_dp - xc)*rhowYc + xc*rhocYc +  rhow + rhoc)/Xi
   END FUNCTION rhogwYc
   !---------------------------------------------------------------------------------------------
-  REAL (KIND=dp) FUNCTION cs(CurrentRockMaterial,RockMaterialID,T0,Temperature,ConstVal)
+  REAL (KIND=dp) FUNCTION cs(RockMaterialID,T0,Temperature,ConstVal)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: T0,Temperature
     LOGICAL :: ConstVal
     !----------------------
     REAL(KIND=dp) :: aux
     !----------------------
-    cs = CurrentRockMaterial % cs0(RockMaterialID)
-    !PRINT *,"cs:", Temperature,T0,CurrentRockMaterial % cs0(RockMaterialID),&
-    !     CurrentRockMaterial % acs(0:5,RockMaterialID),CurrentRockMaterial % acsl(RockMaterialID)
+    cs = GlobalRockMaterial % cs0(RockMaterialID)
+    !PRINT *,"cs:", Temperature,T0,GlobalRockMaterial % cs0(RockMaterialID),&
+    !     GlobalRockMaterial % acs(0:5,RockMaterialID),GlobalRockMaterial % acsl(RockMaterialID)
     IF (.NOT.ConstVal) &
          cs = cs * GeneralPolynomial(Temperature,T0,T0,&
-         CurrentRockMaterial % acs(0:5,RockMaterialID),&
-         CurrentRockMaterial % acsl(RockMaterialID))
+         GlobalRockMaterial % acs(0:5,RockMaterialID),&
+         GlobalRockMaterial % acsl(RockMaterialID))
   END FUNCTION cs
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION cw(CurrentSolventMaterial,T0,Xi,Temperature,Salinity,ConstVal)
@@ -2496,12 +2482,11 @@ CONTAINS
     KGTT = unittensor*((1.0_dp - meanfactor)*KGhTT + meanfactor * KGaTT)
   END FUNCTION GetKGTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION  GetDtd(CurrentRockMaterial,RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
+  FUNCTION  GetDtd(RockMaterialID,Xi,Porosity,JgwD)RESULT(Dtd)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity,JgwD(3)
     REAL(KIND=dp) :: Dtd(3,3)
     INTEGER, INTENT(IN) :: RockMaterialID
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     !-------------------------
     REAL(KIND=dp) :: unittensor(3,3),absJgwD,alphaL,alphaT
     INTEGER :: I,J
@@ -2509,8 +2494,8 @@ CONTAINS
     unittensor=RESHAPE([1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,1.0], SHAPE(unittensor))
     absJgwD = SQRT(SUM(JgwD(1:3)*JgwD(1:3)))
     IF(absJgwD > 0.0_dp) THEN
-      alphaL = CurrentRockMaterial % alphaL(RockMaterialID)
-      alphaT = CurrentRockMaterial % alphaT(RockMaterialID)
+      alphaL = GlobalRockMaterial % alphaL(RockMaterialID)
+      alphaT = GlobalRockMaterial % alphaT(RockMaterialID)
       DO I=1,3
         DO J=1,3
           Dtd(I,J) = alphaT*absJgwD*unittensor(I,J) + (alphaL - alphaT)*JgwD(I)*JgwD(J)/absJgwD
@@ -2534,10 +2519,9 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCgwpp(rhogw,rhoi,rhogwp,rhoip,rhosp,&
        kappaG,Xi,Xip,&
-       CurrentRockMaterial,RockMaterialID,Porosity)RESULT(Cgwpp)
+       RockMaterialID,Porosity)RESULT(Cgwpp)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhogwp,rhoip,rhosp,kappaG,Xi,Xip,Porosity
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: Cgwpp
     !-------------------------
@@ -2562,16 +2546,15 @@ CONTAINS
     CgwpYc = Porosity * ( (rhogw - rhoi) * XiYc  + Xi * rhogwYc )
   END FUNCTION GetCgwpYc
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetCgwpI1(rhogw,rhoi,Xi,kappaG,CurrentRockMaterial,RockMaterialID)RESULT(CgwpI1)
+  FUNCTION GetCgwpI1(rhogw,rhoi,Xi,kappaG,RockMaterialID)RESULT(CgwpI1)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,Xi,kappaG
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: CgwpI1
     !-------------------------
     REAL(KIND=dp) :: kappas
     !-------------------------
-    kappas = CurrentRockMaterial % ks0(RockMaterialID)
+    kappas = GlobalRockMaterial % ks0(RockMaterialID)
     CgwpI1 = (Xi * rhogw + (1.0_dp - Xi) * rhoi)*(kappaG)/3.0_dp
   END FUNCTION GetCgwpI1
   !---------------------------------------------------------------------------------------------
@@ -2586,7 +2569,7 @@ CONTAINS
     REAL(KIND=dp) :: nu1, nu2, xc
     !-------------------------
     IF (.NOT.ConstVal) THEN
-      xc = Salinity/Xi
+      xc = MAX(Salinity/Xi,0.0_dp)
       nu1 = (CurrentSolventMaterial % nu10) *&
            GeneralPolynomial(Temperature,T0,T0,&
            CurrentSolventMaterial % anw(0:5),&
@@ -2603,17 +2586,17 @@ CONTAINS
            EXP(nu1 * (Temperature - T0) + nu2 * (xc - 0.0))
       IF ((mugw .NE. mugw) .OR. (mugw > HUGE(mugw))) THEN
         WRITE (Message,*) 'invalid value:' , mugw,&
-             'Input values: muw0/nu1/nu2/xc/Salinity/Xi: ',&
+             'Input values: muw0/nu1/nu2/T/T0/xc/Salinity/Xi: ',&
              CurrentSolventMaterial % muw0, nu1,nu2,Temperature, T0, xc, Salinity, Xi
+       ! PRINT *, nu1 * (Temperature - T0), nu2 * (xc - 0.0)
         CALL FATAL("PermafrostMaterials(mugw)",Message)
       END IF
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,&
        mugw,Xi,MinKgw)RESULT(Kgw)
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
     REAL(KIND=dp), INTENT(IN) :: Xi,MinKgw,mugw
@@ -2627,11 +2610,11 @@ CONTAINS
          CALL FATAL("Permafrost(GetKgw)","Unphysical viscosity detected")
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
-    qexp = CurrentRockMaterial % qexp(RockMaterialID)
-    Kgwh0(1:3,1:3) = CurrentRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
+    qexp = GlobalRockMaterial % qexp(RockMaterialID)
+    Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
     factor = (muw0/mugw)*(Xi**qexp)/(rhow0*gval)
-    !factor = muw0*(Xi**qexp)/(rhow0*gval)
+    ! this is OK
     !PRINT *,"Kgw:",muw0,mugw,rhow0,Kgwh0,Xi,factor
     Kgw = 0.0_dp
     DO I=1,3
@@ -2662,9 +2645,8 @@ CONTAINS
   !---------------------------------------------------------------------------------------------
   ! functions specific to solute transport
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKc(CurrentRockMaterial,RockMaterialID,Dm,Xi,JgwD,Porosity)RESULT(Kc) 
+  FUNCTION GetKc(RockMaterialID,Dm,Xi,JgwD,Porosity)RESULT(Kc) 
     IMPLICIT NONE
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     REAL(KIND=dp), INTENT(IN) :: Dm,Xi,JgwD(3),Porosity
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: alphaL,alphaT,Kc(3,3), unittensor(3,3), aux, eL(3),absJgwD
@@ -2678,8 +2660,8 @@ CONTAINS
     Kc =  Dm * unittensor
     absJgwD = SQRT(SUM(JgwD(1:3) * JgwD(1:3)))
     IF (absJgwD > 0.0_dp) THEN
-      alphaL = CurrentRockMaterial % alphaL(RockMaterialID)
-      alphaT = CurrentRockMaterial % alphaT(RockMaterialID)
+      alphaL = GlobalRockMaterial % alphaL(RockMaterialID)
+      alphaT = GlobalRockMaterial % alphaT(RockMaterialID)
       eL = JgwD/absJgwD
       aux = absJgwD/(Porosity * Xi)   
       DO I=1,3
@@ -2781,49 +2763,45 @@ CONTAINS
     CcYcYc = Porosity*(rhoc + Salinity*rhocYc)
   END FUNCTION CcYcYc
   !---------------------------------------------------------------------------------------------
-  REAL(Kind=dp) FUNCTION RadiogenicHeatProduction(CurrentRockMaterial,RockMaterialID,Depth,RefDepth)
+  REAL(Kind=dp) FUNCTION RadiogenicHeatProduction(RockMaterialID,Depth,RefDepth)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Depth,RefDepth
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
-    INTEGER, INTENT(IN) :: RockMaterialID
+      INTEGER, INTENT(IN) :: RockMaterialID
     !---------
-    RadiogenicHeatProduction = CurrentRockMaterial % RadGen(RockMaterialID) &
+    RadiogenicHeatProduction = GlobalRockMaterial % RadGen(RockMaterialID) &
          * EXP(-Depth/RefDepth)    
   END FUNCTION RadiogenicHeatProduction
   !---------------------------------------------------------------------------------------------
   ! functions specific to ground deformation
   !---------------------------------------------------------------------------------------------
-  REAL(Kind=dp) FUNCTION EG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,Xi,Porosity)    
+  REAL(Kind=dp) FUNCTION EG(CurrentSolventMaterial,RockMaterialID,Xi,Porosity)    
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
-    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
-    !PRINT *,"EG", Porosity, Xi, RockMaterialID, CurrentRockMaterial % Es0(RockMaterialID)
-    EG = (1.0_dp - Porosity)*(CurrentRockMaterial % Es0(RockMaterialID))&
-         /(1.0_dp - (CurrentRockMaterial % eta0(RockMaterialID))) &
+    !PRINT *,"EG", Porosity, Xi, RockMaterialID, GlobalRockMaterial % Es0(RockMaterialID)
+    EG = (1.0_dp - Porosity)*(GlobalRockMaterial % Es0(RockMaterialID))&
+         /(1.0_dp - (GlobalRockMaterial % eta0(RockMaterialID))) &
          + Porosity * (1.0_dp - Xi) * (CurrentSolventMaterial % Ei0)
   END FUNCTION EG
   !---------------------------------------------------------------------------------------------
-  REAL(Kind=dp) FUNCTION nuG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,Xi,Porosity)
+  REAL(Kind=dp) FUNCTION nuG(CurrentSolventMaterial,RockMaterialID,Xi,Porosity)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     !---------
-    nuG = (1.0_dp - Porosity)*(CurrentRockMaterial % nuS0(RockMaterialID))&
+    nuG = (1.0_dp - Porosity)*(GlobalRockMaterial % nuS0(RockMaterialID))&
          +  Porosity * (1.0_dp - Xi) * (CurrentSolventMaterial % nui0)
   END FUNCTION nuG
   !---------------------------------------------------------------------------------------------
-  REAL(Kind=dp) FUNCTION betaG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,Xi,Porosity)
+  REAL(Kind=dp) FUNCTION betaG(CurrentSolventMaterial,RockMaterialID,Xi,Porosity)
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: Xi,Porosity
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
-    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID
     !---------
-    betaG = (1.0_dp - Porosity)*(CurrentRockMaterial % betas(RockMaterialID)&
+    betaG = (1.0_dp - Porosity)*(GlobalRockMaterial % betas(RockMaterialID)&
          +  Porosity * (1.0_dp - Xi) * (CurrentSolventMaterial % betai))
   END FUNCTION BetaG
   !---------------------------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-/*****************************************************************************/
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -102,18 +102,16 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     SELECT CASE (Paramlist)
     CASE (b_Piola + b_Transient + b_Secondorder, &
-         b_Piola + b_Transient + b_Secondorder + b_StaticCond )
-      CALL ListAddString( SolverParams, &
-           "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+         b_Piola + b_Gauge + b_Secondorder, &
+         b_Piola + b_Transient + b_Secondorder + b_StaticCond, &
+         b_Piola + b_Secondorder + b_StaticCond)
+      CALL ListAddString( SolverParams, "Element", &
+         "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola + b_Transient, &
          b_Piola + b_Transient + b_StaticCond, &
          b_Piola + b_Transient + b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
-
-    CASE (b_Piola + b_Gauge + b_Secondorder)
-      CALL ListAddString( SolverParams, &
-           "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola + b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
@@ -270,9 +268,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
-    IF (SecondOrder) &
-        CALL Info('WhitneyAVSolver', &
-        'Using quadratic approximation, pyramidical elements are not yet available',Level=4)
   END IF
 
   SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient

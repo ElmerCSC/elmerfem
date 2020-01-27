@@ -528,7 +528,7 @@ CONTAINS
 
     IF (iinfo(1)<0) THEN
       PRINT *, 'Error occurred in umf4sym: ', iinfo(1)
-      STOP
+      STOP EXIT_ERROR
     END IF
 
     IF ( BigMode ) THEN
@@ -539,7 +539,7 @@ CONTAINS
 
     IF (iinfo(1)<0) THEN
       PRINT*, 'Error occurred in umf4num: ', iinfo(1)
-      STOP
+      STOP EXIT_ERROR
     ENDIF
 
     IF ( BigMode ) THEN
@@ -562,7 +562,7 @@ CONTAINS
 
   IF (iinfo(1)<0) THEN
     PRINT*, 'Error occurred in umf4sol: ', iinfo(1)
-    STOP
+    STOP EXIT_ERROR
   END IF
  
   FreeFactorize = ListGetLogical( Solver % Values, &
@@ -1973,7 +1973,7 @@ CONTAINS
 
         IF (ierror .NE. 0) THEN
           WRITE(*,*) 'The following ERROR was detected: ', ierror
-          STOP
+          STOP EXIT_ERROR
         END IF
 
 !..     Factorization.
@@ -1983,7 +1983,7 @@ CONTAINS
 
         IF (ierror .NE. 0) THEN
            WRITE(*,*) 'The following ERROR was detected: ', ierror
-          STOP
+          STOP EXIT_ERROR
         ENDIF
       END IF
 

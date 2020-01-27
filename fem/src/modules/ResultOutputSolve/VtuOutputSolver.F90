@@ -29,6 +29,8 @@ MODULE VtuXMLFile
 
 CONTAINS
 
+  ! Map element code of Elmer to the code used by VTK.
+  !-----------------------------------------------------------------------------------
   FUNCTION Elmer2VtkElement( ElmerCode, SaveLinear ) RESULT ( VTKCode )
     INTEGER :: ElmerCode
     LOGICAL :: SaveLinear
@@ -99,6 +101,8 @@ CONTAINS
   END FUNCTION Elmer2VtkElement
 
 
+  ! Map elemental node indexes of Elmer to the order used by VTK.
+  !-----------------------------------------------------------------------------------
   SUBROUTINE Elmer2VtkIndexes( Element, DgElem, SaveLinear, NodeIndexes )
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: DgElem
@@ -195,6 +199,7 @@ CONTAINS
   ! Check whether there is any discontinuous galerkin field to be saved. 
   ! It does not make sense to use discontinuous saving if there are no discontinuous fields.
   ! It will even result to errors since probably there are no DG indexes either. 
+  !-----------------------------------------------------------------------------------------
   FUNCTION CheckAnyDGField(Model,Params) RESULT ( HaveAnyDG ) 
     TYPE(Model_t) :: Model
     TYPE(ValueList_t), POINTER :: Params
@@ -236,7 +241,9 @@ CONTAINS
 
 
 
-  ! Average fields within bodies
+  ! Average fields within bodies. Offers good compromise between file size
+  ! and honoring discontinuities. 
+  !-----------------------------------------------------------------------
   SUBROUTINE AverageBodyFields( Mesh ) 
     
     TYPE(Mesh_t), POINTER :: Mesh
@@ -279,7 +286,10 @@ CONTAINS
 
   END SUBROUTINE AverageBodyFields
 
-
+  
+  ! When we have a field defined on IP points we may temporarily swap it to be a field
+  ! defined on DG points. This is done by solving small linear system for each element.
+  !------------------------------------------------------------------------------------
   SUBROUTINE Ip2DgField( Element, nip, fip, ndg, fdg )
     !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
@@ -292,15 +302,17 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Stat, AllocationsDone = .FALSE.
+    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
 
-    SAVE Nodes, Basis, MASS, LOAD, AllocationsDone
+    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
 !------------------------------------------------------------------------------
 
     Mesh => GetMesh()
     IF( .NOT. AllocationsDone ) THEN
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
+      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
+          CurrentCoordinateSystem() == CylindricSymmetric
       AllocationsDone = .TRUE.
     END IF
     
@@ -314,10 +326,15 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element, nip )
+
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
       Weight = IP % s(t) * DetJ
 
+      IF( CSymmetry ) THEN
+        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+      END IF
+      
       DO p=1,n
         LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
         DO q=1,n
@@ -333,8 +350,8 @@ CONTAINS
   END SUBROUTINE Ip2DgField
 
 
-
-
+  ! This routine changes the IP field to DG field just while the results are being written.
+  !---------------------------------------------------------------------------------------
   SUBROUTINE Ip2DgSwapper( Mesh, Var ) 
 
     TYPE( Mesh_t), POINTER :: Mesh
@@ -446,6 +463,9 @@ CONTAINS
   END SUBROUTINE Ip2DgSwapper
     
 
+  ! Write the filename for saving .vtu, .pvd, and .pvtu files.
+  ! Partname, partition and timestep may be added to the name.
+  !------------------------------------------------------------------------------------
   SUBROUTINE VtuFileNaming( BaseFile, VtuFile, Suffix, GroupId, FileIndex, Part, NoPath ) 
     CHARACTER(LEN=*), INTENT(IN) :: BaseFile, Suffix
     CHARACTER(LEN=*), INTENT(INOUT) :: VtuFile
@@ -523,11 +543,9 @@ CONTAINS
     !PRINT *,'vtufile:',TRIM(VtuFile)
 
   END SUBROUTINE VtuFileNaming
-
-
-
   
 END MODULE VtuXMLFile
+
 
 !------------------------------------------------------------------------------
 !> Subroutine for saving the results in XML based VTK format (VTU). Both ascii and binary
@@ -929,6 +947,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 CONTAINS
 
 
+  ! Given different criteria fos saving create a geometrical mask for elements
+  ! and continuous numbering for the associated nodes.
+  !------------------------------------------------------------------------------  
   SUBROUTINE GenerateSaveMask()
 
     IF(.NOT. ALLOCATED( NodePerm ) ) ALLOCATE(NodePerm(Mesh % NumberOfNodes))
@@ -1144,7 +1165,10 @@ CONTAINS
 
   END SUBROUTINE GenerateSaveMask
     
-  
+
+  ! Given the geometric permutation, create the dof permutation used in saving
+  ! the different parts.
+  !-----------------------------------------------------------------------------  
   SUBROUTINE GenerateSavePermutation()
 
     NumberOfDofNodes = 0
@@ -1158,15 +1182,17 @@ CONTAINS
         CALL Info('VtuOutputSolver','Saving results as discontinuous DG fields',Level=15)
       END IF
 
-      k = 0
-      DO i=1,Mesh % NumberOfBulkElements         
-        CurrentElement => Mesh % Elements(i)
-        k = k + CurrentElement % TYPE % NumberOfNodes
-      END DO
-      CALL Info('VtuOutputSolver','Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
-      ALLOCATE( DgPerm(k) )
+      IF( .NOT. ALLOCATED( DgPerm ) ) THEN
+        k = 0
+        DO i=1,Mesh % NumberOfBulkElements         
+          CurrentElement => Mesh % Elements(i)
+          k = k + CurrentElement % TYPE % NumberOfNodes
+        END DO
+        CALL Info('VtuOutputSolver','Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
+        ALLOCATE( DgPerm(k) )
+      END IF
       DgPerm = 0
-
+        
       DO Sweep=1,2
         l = 0
         IF( DG ) THEN
@@ -1195,7 +1221,7 @@ CONTAINS
           DO i=1,Model % NumberOfBodies
             BodyVisited = 0
             DO j=1,Mesh % NumberOfBulkElements         
-              IF(.NOT. ActiveElem(i) ) CYCLE
+              IF(.NOT. ActiveElem(j) ) CYCLE
               CurrentElement => Mesh % Elements(j)
               IF( CurrentElement % BodyId /= i ) CYCLE
               NodeIndexes => CurrentElement % NodeIndexes
@@ -2319,6 +2345,8 @@ CONTAINS
   END SUBROUTINE WriteVtuFile
 
 
+  ! Write collection file that may include timesteps and/or parts
+  !--------------------------------------------------------------
   SUBROUTINE WritePvdFile( PvdFile, DataSetFile, nTime, Model )
     CHARACTER(LEN=*), INTENT(IN) :: PvdFile, DataSetFile
     INTEGER :: nTime, RecLen = 0
@@ -2380,7 +2408,8 @@ CONTAINS
   END SUBROUTINE WritePvdFile
 
 
-
+  ! Write parallel holder for serial vtu files.
+  !-----------------------------------------------------------------------------
   SUBROUTINE WritePvtuFile( PvtuFile, Model )
     CHARACTER(LEN=*), INTENT(IN) :: PVtuFile
     TYPE(Model_t) :: Model 

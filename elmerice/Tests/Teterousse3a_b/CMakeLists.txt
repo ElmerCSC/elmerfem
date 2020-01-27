@@ -7,3 +7,4 @@ FILE(COPY ELMERSOLVER_STARTINFO PROG teterousse.msh DESTINATION "${CMAKE_CURRENT
 
 ADD_ELMERICE_TEST(Teterousse3a_b)
 ADD_ELMERICE_LABEL(Teterousse3a_b elmerice-long)
+ADD_ELMERICE_LABEL(Teterousse3a_b slow)

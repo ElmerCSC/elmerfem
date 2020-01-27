@@ -19,3 +19,4 @@ create_module_file.sh
 run_mgdyn_tests.sh
 fem/tests/CircuitsAndDynamics
 slurm*out
+ElmerGUI/CMakeLists.txt

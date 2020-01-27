@@ -12,7 +12,7 @@ Simulation
   Coordinate System = Cartesian
   Simulation Type = Steady
   Steady State Max Iterations = 1
-  Post File = case.ep
+  Post File = case.vtu
   Set Dirichlet BCs by BC Numbering=True
 End
 

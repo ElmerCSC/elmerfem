@@ -148,6 +148,18 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
           UpNodePointer = UpPointer, DownNodePointer = DownPointer, &
           NumberOfLayers = NumberOfLayers, NodeLayer = NodeLayer )
       NumberOfLayers = NumberOfLayers + 1
+      
+      i = FixedLayers(1) 
+      IF( i /= 1 ) THEN
+        CALL Warn(Caller,'Enforcing first fixed layer to: 1 (was '//TRIM(I2S(i))//')')
+        FixedLayers(1) = 1
+      END IF
+      i = FixedLayers(NumberOfFixedLayers)
+      IF( i /= NumberOfLayers ) THEN
+        CALL Warn(Caller,'Enforcing last fixed layer to: '&
+            //TRIM(I2S(NumberOfLayers))//' (was '//TRIM(I2S(i))//')')
+        FixedLayers(NumberOfFixedLayers) = NumberOfLayers
+      END IF
     ELSE
       CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = Var, &
           TopNodePointer = TopPointer, BotNodePointer = BotPointer, &
@@ -642,7 +654,7 @@ CONTAINS
 
   
   SUBROUTINE MultiLayerMapper()
-    REAL(KIND=dp), ALLOCATABLE :: Proj(:,:), StrideCoord(:),FixedCoord(:)
+    REAL(KIND=dp), ALLOCATABLE :: Proj(:,:), StrideCoord(:),FixedCoord(:),OrigStride(:)
     INTEGER, ALLOCATABLE :: StrideInd(:),StridePerm(:)
     LOGICAL :: Hit, Debug 
     REAL(KIND=dp) :: q
@@ -656,15 +668,6 @@ CONTAINS
       CALL Fatal(Caller,'Mask not available yet for multiple layers!')
     END IF
     
-    i = FixedLayers(1)
-    IF( i /= 1 ) THEN
-      CALL Fatal(Caller,'First layer should be one, not: '//TRIM(I2S(i)))
-    END IF
-    i = FixedLayers(NumberOfFixedLayers)
-    IF( i /= NumberOfLayers ) THEN
-      CALL Fatal(Caller,'Last layer should be '//TRIM(I2S(NumberOfLayers))//', not: '//TRIM(I2S(i)))
-    END IF
-
     VarName = ListGetString( SolverParams,'Fixed Layer Variable',UnfoundFatal = .TRUE. )
     FixedVar => VariableGet( Mesh % Variables, VarName ) 
     IF(.NOT. ASSOCIATED( FixedVar ) ) THEN
@@ -676,12 +679,37 @@ CONTAINS
     END IF
     
     ALLOCATE( Proj(NumberOfLayers,NumberOfFixedLayers),StrideInd(NumberOfLayers),&
-        StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),FixedCoord(NumberOfFixedLayers))
+        StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),&
+        FixedCoord(NumberOfFixedLayers),OrigStride(NumberOfLayers))
     Proj = 0.0_dp
 
     Debug = .FALSE.
-
+    
     ! Create the projection matrix used for all strides!
+
+    ! Define a representative 1D stride from the Original coordinates.
+    ! Note that we assume that the mesh refinement strategy is the same everywhere. 
+    DO i=1,nnodes
+      ibot = BotPointer(i)
+
+      ! Start mapping from bottom
+      IF( ibot /= i ) CYCLE
+
+      j = ibot
+      StrideCoord(1) = OrigCoord(j)
+      DO k = 2,NumberOfLayers
+        j = UpPointer(j)
+        StrideCoord(k) = OrigCoord(j)
+      END DO
+      
+      IF( Debug ) THEN
+        PRINT *,'StrideCoord0:',StrideCoord
+      END IF
+
+      EXIT
+    END DO
+
+    ! Now create a projection matrix for a single stride so that our mapping will be fast
     j = 1    
     DO i = 1, NumberOfLayers
       Hit = .FALSE.
@@ -691,7 +719,9 @@ CONTAINS
           IF( Debug ) PRINT *,'Proj('//TRIM(I2S(i))//','//TRIM(I2S(j))//')=',Proj(i,j)
           Hit = .TRUE.
         ELSE IF( FixedLayers(j) < i .AND. FixedLayers(j+1) > i ) THEN
-          q = 1.0_dp*(i-FixedLayers(j)) / (FixedLayers(j+1)-FixedLayers(j))
+          !q = 1.0_dp*(i-FixedLayers(j)) / (FixedLayers(j+1)-FixedLayers(j))
+          q = 1.0_dp*(StrideCoord(i)-StrideCoord(FixedLayers(j))) / &
+              (StrideCoord(FixedLayers(j+1))-StrideCoord(FixedLayers(j)))
           Proj(i,j+1) = q
           Proj(i,j) = 1-q
           IF( Debug ) THEN
@@ -708,7 +738,7 @@ CONTAINS
     END DO
     
 
-    ! Go through all 1D strides
+    ! Go through all 1D strides and perform mapping for mesh
     DO i=1,nnodes
       ibot = BotPointer(i)
 

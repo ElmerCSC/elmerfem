@@ -447,7 +447,6 @@ END INTERFACE
            ELSE
              CALL Fatal( ' ', 'Keyword [Timestep Sizes] MUST be ' //  &
                  'defined for time dependent simulations' )
-             STOP
            END IF
          END IF 
 

@@ -91,7 +91,6 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   USE DefUtils
   USE PermaFrostMaterials
-
   IMPLICIT NONE
   !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -106,7 +105,6 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: TemperatureVar,PressureVar,PorosityVar,SalinityVar,&
        TemperatureDtVar, DummyDtVar,SalinityDtVar,&
        DummyGWfluxVar,StressInvVar
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, Active,iter, maxiter, istat,StressInvDOFs
@@ -136,7 +134,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   TYPE(ValueHandle_t) :: Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        TemperatureDt_h, SalinityDt_h, StressInv_h,StressInvDt_h,Vstar1_h, Vstar2_h, Vstar3_h
   
-  SAVE DIM,FirstTime,AllocationsDone,CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,&
+  SAVE DIM,FirstTime,AllocationsDone,CurrentSoluteMaterial,CurrentSolventMaterial,&
        ElementWiseRockMaterial, ComputeDeformation, FluxOutput,&
        StressInvAllocationsDone, StressInvDtAllocationsDone, OffsetDensity, &
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
@@ -294,11 +292,11 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
           CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
         END IF
         IF (ElementWiseRockMaterial) THEN
-          ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+          ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
           NumberOfRockRecords = &
-               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+               ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
         ELSE
-          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
         END IF
         IF (NumberOfRockRecords < 1) THEN
           PRINT *, "NumberOfRockRecords=", NumberOfRockRecords
@@ -325,7 +323,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       ! compose element-wise contributions to matrix and R.H.S
 
       CALL LocalMatrixDarcy( Model, Element, t, N, ND+NB, Active,  &
-           CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,&
+           CurrentSoluteMaterial,CurrentSolventMaterial,&
            PhaseChangeModel,ElementWiseRockMaterial, ActiveMassMatrix, &
            ComputeDt,ComputeDeformation,HydroGeo, OffsetDensity,FluxOutput)
     END DO
@@ -361,7 +359,7 @@ CONTAINS
 
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixDarcy( Model, Element, ElementID, n, nd, NoElements,&
-       CurrentRockMaterial, CurrentSoluteMaterial,CurrentSolventMaterial,&
+       CurrentSoluteMaterial,CurrentSolventMaterial,&
        PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix,&
        ComputeDt,ComputeDeformation,HydroGeo,OffsetDensity,FluxOutput)
     IMPLICIT NONE
@@ -369,7 +367,6 @@ CONTAINS
     TYPE(Model_t) :: Model
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements
     TYPE(Element_t), POINTER :: Element
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     LOGICAL :: ElementWiseRockMaterial,ActiveMassMatrix,ComputeDt,&
@@ -381,7 +378,7 @@ CONTAINS
     REAL(KIND=dp) :: JgwDAtIP(3),JcFAtIP(3), DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3),&
          fcAtIP(3), DispersionCoefficient ! from salinity transport
     REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,ksthAtIP  ! function values needed for KGTT  XiAtIP,
-    REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP,bijAtIP(2,2),bijYcAtIP(2,2),&
+    REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP,bijAtIP(2,2),bijYctIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
     REAL(KIND=dp) :: fwAtIP, mugwAtIP !  JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
@@ -545,35 +542,35 @@ CONTAINS
 
       ! Materialproperties (basically densities and derivatives of it)
       ! needed at IP for Xi computation (anything ELSE thereafter)
-      rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
+      rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
       IF (ConstVal) THEN
         rhospAtIP = 0.0_dp
         rhosTAtIP = 0.0_dp
       ELSE
-        rhospAtIP =rhosp(CurrentRockMaterial,RockMaterialID,rhosAtIP,p0,PressureAtIP)
-        rhosTAtIP =rhosT(CurrentRockMaterial,RockMaterialID,rhosAtIP,T0,TemperatureAtIP)
+        rhospAtIP =rhosp(RockMaterialID,rhosAtIP,p0,PressureAtIP)
+        rhosTAtIP =rhosT(RockMaterialID,rhosAtIP,T0,TemperatureAtIP)
       END IF
       rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)      
       rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
-      Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+      Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
 
       ! unfrozen pore-water content at IP
       SELECT CASE(PhaseChangeModel)
       CASE('anderson') ! classic simpified Anderson model
         XiAtIP(IPPerm) = &
              GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiTAtIP = &
              XiAndersonT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)        
       CASE DEFAULT ! Hartikainen model
-        CALL  GetXiHartikainen(CurrentRockMaterial,RockMaterialID,&
+        CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -582,7 +579,7 @@ CONTAINS
              .FALSE.,.TRUE.,.FALSE.,.TRUE.,.FALSE.)
         IF (XiAtIP(IPPerm) .NE. XiAtIP(IPPerm)) THEN
           PRINT *, "Darcy: XiAtIP", B1AtIP,D1AtIP,Xi0Tilde
-          PRINT *, "Darcy:  XiAtIP", deltaInElement, CurrentRockMaterial % e1(RockMaterialID), bijAtIP
+          PRINT *, "Darcy:  XiAtIP", deltaInElement, GlobalRockMaterial % e1(RockMaterialID), bijAtIP
           PRINT *, "Darcy:  XiAtIP", Xi0tilde,SalinityAtIP
           PRINT *, "Darcy: XiAtIP", B1AtIP*B1AtIP + D1AtIP !1.0/(1.0 + 0.5*B1AtIP + SQRT(B1AtIP*B1AtIP + D1AtIP)
           CALL FATAL(SolverName,"XiAtIP is NaN")
@@ -648,12 +645,12 @@ CONTAINS
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       KgwAtIP = 0.0_dp
-      KgwAtIP = GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+      KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
            mugwAtIP,XiAtIP(IPPerm),MinKgw)
       KgwpTAtIP = 0.0_dp
       KgwppAtIP = 0.0_dp
       IF (CryogenicSuction) THEN
-        fwAtIP = fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
              Xi0Tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
         KgwppAtIP = GetKgwpp(fwAtIP,XiPAtIP,KgwAtIP)
         KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
@@ -665,8 +662,8 @@ CONTAINS
  
 
       ! Elastic properties at IP
-      EGAtIP = EG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
-      nuGAtIP = nuG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
+      EGAtIP = EG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
+      nuGAtIP = nuG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
       kappaGAtIP = kappaG(EGAtIP,nuGAtIP)
       
       ! capacities at IP
@@ -675,7 +672,7 @@ CONTAINS
       ELSE
         CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
              kappaGAtIP,XiAtIP(IPPerm),XiPAtIP,&
-             CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+             RockMaterialID,PorosityAtIP)
         !PRINT *,"CgwppAtIP:",CgwppAtIP," KgwppAtIP", KgwppAtIP
       END IF
       CgwpTAtIP = GetCgwpT(rhogwAtIP,rhoiAtIP,rhogwTAtIP,rhoiTAtIP,rhosTAtIP,XiAtIP(IPPerm),XiTAtIP,PorosityAtIP)
@@ -684,7 +681,7 @@ CONTAINS
       END IF
       IF (ComputeDeformation) THEN
         CgwpI1AtIP = GetCgwpI1(rhogwAtIP,rhoiAtIP,XiAtIP(IPPerm),&
-             kappaGAtIP,CurrentRockMaterial,RockMaterialID)
+             kappaGAtIP,RockMaterialID)
         IF (CgwpI1AtIP > 1.0d-03) THEN ! sanity check
           PRINT *,"CgwpI1AtIP", CgwpI1AtIP,&
                XiAtIP(IPPerm),rhogwAtIP,rhoiAtIP,kappaGAtIP, EGAtIP, nuGAtIP
@@ -705,7 +702,7 @@ CONTAINS
         IF (FluxOutput) THEN
           GWfluxVar1 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(1)
           GWfluxVar2 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(2)
-          IF (DIM == 3) GWfluxVar2 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(2)
+          IF (DIM == 3) GWfluxVar3 % Values(GWfluxPerm(ElementID) + t) = JgwDAtIP(3)
         END IF
       END IF
       
@@ -714,7 +711,7 @@ CONTAINS
         IF (ConstantDispersion) THEN
           KcAtIP = GetConstKC(DispersionCoefficient)
         ELSE
-          KcAtIP = GetKc(CurrentRockMaterial,RockMaterialID,DmAtIP,XiAtIP(IPPerm),JgwDAtIP,PorosityAtIP)
+          KcAtIP = GetKc(RockMaterialID,DmAtIP,XiAtIP(IPPerm),JgwDAtIP,PorosityAtIP)
         END IF  
         fcAtIP = GetFc(rhocAtIP,rhowAtIP,Gravity,r12AtIP,XiTAtIP,XiPAtIP,XiAtIP(IPPerm),gradPAtIP,gradTAtIP)
         KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
@@ -782,7 +779,7 @@ CONTAINS
       DO p=1,nd     
         FORCE(p) = FORCE(p) + Weight * rhogwAtIP *  SUM(fluxgAtIP(1:DIM)*dBasisdx(p,1:DIM))
         FORCE(p) = FORCE(p) - &
-             Weight * Basis(p) * CurrentRockMaterial % etak(RockMaterialID) *&
+             Weight * Basis(p) * GlobalRockMaterial % etak(RockMaterialID) *&
              (rhocAtIP - rhowAtIP)* SUM(JcFAtIP(1:DIM)*dBasisdx(p,1:DIM))
         FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
         IF (CryogenicSuction) &
@@ -1182,7 +1179,6 @@ CONTAINS
     IMPLICIT NONE
     TYPE(FieldTable_t) :: Fields(3)
     !------------------------------------------------------------------------------
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER :: elem,t,i,j,k,p,q,n,nd, DIM,Rank, RockMaterialID, Active, IPPerm
@@ -1210,7 +1206,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel,ElementRockMaterialName
        ! -------------------------------------------------------------
     SAVE Nodes, ConstantsRead, DIM, meanfactor,GasConstant, N0,DeltaT, eps,T0, p0,Gravity,&
-         CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,&
+         CurrentSoluteMaterial,CurrentSolventMaterial,&
          FirstTime,ElementWiseRockMaterial
     ! -------------------------------------------------------------
     
@@ -1242,12 +1238,12 @@ CONTAINS
           CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
         END IF
         IF (ElementWiseRockMaterial) THEN
-          ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+          ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
           NumberOfRockRecords = &
-               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+               ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
           PRINT *, "NumberOfRockRecords", NumberOfRockRecords
         ELSE
-          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
         END IF
         IF (NumberOfRockRecords < 1) THEN
           CALL FATAL(SolverName,'No Rock Material specified')
@@ -1328,29 +1324,29 @@ CONTAINS
         IF (.NOT.Found) CALL FATAL(SolverName,'Unable to compute Pressure gradient')
 
         !Materialproperties needed at IP
-        rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
+        rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
         !        rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
         rhowAtIP =  rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
         rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
-        Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+        Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
 
         ! unfrozen pore-water content at IP
         SELECT CASE(PhaseChangeModel)
         CASE('anderson')
           XiAtIP = &
                GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-               CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+               CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           XiTAtIP = &
                XiAndersonT(XiAtIP,0.011_dp,-0.66_dp,9.8d-08,&
-               CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+               CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           XiPAtIP   = &
                XiAndersonP(XiAtIp,0.011_dp,-0.66_dp,9.8d-08,&
-               CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+               CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
         CASE DEFAULT ! Hartikainen model
-          CALL  GetXiHartikainen(CurrentRockMaterial,RockMaterialID,&
+          CALL  GetXiHartikainen(RockMaterialID,&
                CurrentSoluteMaterial,CurrentSolventMaterial,&
                TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
                Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -1363,9 +1359,9 @@ CONTAINS
         mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
         KgwAtIP = 0.0_dp
-        KgwAtIP = GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
              mugwAtIP,XiAtIP,MinKgw)
-        fwAtIP = fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
              Xi0Tilde,rhowAtIP,XiAtIP,GasConstant,TemperatureAtIP)
         KgwpTAtIP = 0.0_dp
         KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
@@ -1398,7 +1394,6 @@ CONTAINS
   SUBROUTINE BulkAssembly()
     IMPLICIT NONE
     !------------------------------------------------------------------------------
-    TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER :: elem,t,i,j,k,p,q,n,nd, DIM,Rank, RockMaterialID, Active
@@ -1426,7 +1421,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel,ElementRockMaterialName
     ! -------------------------------------------------------------
     SAVE Nodes, ConstantsRead, DIM, meanfactor,GasConstant, N0,DeltaT, eps,T0, p0,Gravity,&
-         CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,&
+         CurrentSoluteMaterial,CurrentSolventMaterial,&
          FirstTime,ElementWiseRockMaterial
     ! -------------------------------------------------------------
 
@@ -1459,12 +1454,12 @@ CONTAINS
           CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
         END IF
         IF (ElementWiseRockMaterial) THEN
-          ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+          ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
           NumberOfRockRecords = &
-               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+               ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
           !PRINT *, "NumberOfRockRecords", NumberOfRockRecords
         ELSE
-          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
         END IF
         IF (NumberOfRockRecords < 1) THEN
           CALL FATAL(SolverName,'No Rock Material specified')
@@ -1544,29 +1539,29 @@ CONTAINS
         IF (.NOT.Found) CALL FATAL(SolverName,'Unable to compute Pressure gradient')
 
         !Materialproperties needed at IP
-        rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
+        rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
         !        rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
         rhowAtIP =  rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
         rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
-        Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+        Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
 
         ! unfrozen pore-water content at IP
         SELECT CASE(PhaseChangeModel)
         CASE('anderson')
           XiAtIP = &
                GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-               CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+               CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           XiTAtIP = &
                XiAndersonT(XiAtIP,0.011_dp,-0.66_dp,9.8d-08,&
-               CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+               CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           XiPAtIP   = &
                XiAndersonP(XiAtIp,0.011_dp,-0.66_dp,9.8d-08,&
-               CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+               CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
         CASE DEFAULT ! Hartikainen model
-          CALL  GetXiHartikainen(CurrentRockMaterial,RockMaterialID,&
+          CALL  GetXiHartikainen(RockMaterialID,&
                CurrentSoluteMaterial,CurrentSolventMaterial,&
                TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
                Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -1579,9 +1574,9 @@ CONTAINS
         mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
         KgwAtIP = 0.0_dp
-        KgwAtIP = GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
              mugwAtIP,XiAtIP,MinKgw)
-        fwAtIP = fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
              Xi0Tilde,rhowAtIP,XiAtIP,GasConstant,TemperatureAtIP)
         KgwpTAtIP = 0.0_dp
         KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
@@ -1891,7 +1886,6 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: TemperatureVar,PressureVar,PorosityVar,SalinityVar,&
        TemperatureDtVar, PressureDtVar, SalinityDtVar,&
        DepthVar, DummyGWfluxVar
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat,DepthDOFs
@@ -1918,7 +1912,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
        Vstar1_h, Vstar2_h, Vstar3_h
 
   SAVE DIM,FirstTime,AllocationsDone,FluxOutput,DepthName,XiAtIPName,&
-       CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
+       CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
        ElementWiseRockMaterial,ComputeDt,DepthExists,&
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        PressureVelo_h, SalinityVelo_h, Depth_h, &
@@ -2028,11 +2022,11 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
           CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
         END IF
         IF (ElementWiseRockMaterial) THEN
-          ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+          ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
           NumberOfRockRecords = &
-               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+               ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
         ELSE
-          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
         END IF
 
         IF (NumberOfRockRecords < 1) THEN
@@ -2057,7 +2051,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
       END IF
 
       CALL LocalMatrixHTEQ(  Element, t, Active, n, nd+nb,&
-           CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+           CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,&
            ActiveMassMatrix,FluxOutput)
     END DO
@@ -2095,14 +2089,13 @@ CONTAINS
   ! Assembly of the matrix entries arising from the bulk elements
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixHTEQ(  Element, ElementID, NoElements, n, nd,&
-       CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+       CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial,&
        ActiveMassMatrix,FluxOutput)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
-    TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix, FluxOutput
@@ -2223,7 +2216,7 @@ CONTAINS
       IF (DepthExists) &
            RefDepth = GetConstReal(Material,'Radiogenic Reference Depth',DepthExists)
       IF (DepthExists)  &
-        LoadAtIP = LoadAtIP  + RadiogenicHeatProduction(CurrentRockMaterial,RockMaterialID,DepthAtIP,RefDepth)
+        LoadAtIP = LoadAtIP  + RadiogenicHeatProduction(RockMaterialID,DepthAtIP,RefDepth)
 
       ! System variables (Temperature, Porosity, Pressure, Salinity) at IP
       PorosityAtIP = ListGetElementReal( Porosity_h, Basis, Element, Found, GaussPoint=t)
@@ -2255,7 +2248,7 @@ CONTAINS
       !Materialproperties needed for computing Xi at IP
       rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
       rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!      
-      Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+      Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
 
       ! unfrozen pore-water content at IP
       IPPerm = XiAtIPPerm(ElementID) + t
@@ -2263,18 +2256,18 @@ CONTAINS
       CASE('anderson')
         XiAtIP(IPPerm) = &
              GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiTAtIP = &
              XiAndersonT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
       CASE DEFAULT ! Hartikainen model
-        CALL  GetXiHartikainen (CurrentRockMaterial,RockMaterialID,&
+        CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -2285,12 +2278,12 @@ CONTAINS
 
       !Materialproperties needed at IP:
       rhowAtIP = rhowupdate(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal)
-      rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
+      rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
       rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP(IPPerm),TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
       !PRINT *,"HTEQ: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
 
       ! heat capacities
-      csAtIP   = cs(CurrentRockMaterial,RockMaterialID,&
+      csAtIP   = cs(RockMaterialID,&
            T0,TemperatureAtIP,ConstVal)
       cwAtIP   = cw(CurrentSolventMaterial,&
            T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
@@ -2306,8 +2299,8 @@ CONTAINS
            T0,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP,ConstVal)
 
       ! heat conductivity at IP
-      ksthAtIP = GetKalphath(CurrentRockMaterial % ks0th(RockMaterialID),&
-           CurrentRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
+      ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
+           GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
       kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
       kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)
       kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)
@@ -2339,9 +2332,9 @@ CONTAINS
         mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
         KgwAtIP = 0.0_dp
-        KgwAtIP = GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
              mugwAtIP,XiAtIP(IPPerm),MinKgw)
-        fwAtIP = fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
              Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
         KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
         IF (CryogenicSuction) THEN
@@ -2365,7 +2358,7 @@ CONTAINS
       ! add thermal dispersion in Hydro-Geological Mode
       !------------------------------------------------
       IF (HydroGeo) THEN
-        DtdAtIP = GetDtd(CurrentRockMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP,JgwDAtIP)
+        DtdAtIP = GetDtd(RockMaterialID,XiAtIP(IPPerm),PorosityAtIP,JgwDAtIP)
         DO I=1,DIM
           DO J=1,DIM
             KGTTAtIP(I,J) = KGTTAtIP(I,J) + CGWTTAtIP * DtdAtIP(I,J)
@@ -2547,7 +2540,6 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PressureVar,SalinityVar,PorosityVar,TemperatureVar,&
        TemperatureDtVar, PressureDtVar, SalinityDtVar,&
        GWfluxVar1,GWfluxVar2,GWfluxVar3
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat
@@ -2556,14 +2548,14 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
        PorosityPerm(:),SalinityPerm(:),GWfluxPerm1(:),&
        TemperatureDtPerm(:), PressureDtPerm(:), SalinityDtPerm(:),&
        GWfluxPerm2(:),GWfluxPerm3(:)
-  REAL(KIND=dp) :: Norm, meanfactor
+  REAL(KIND=dp) :: Norm, meanfactor, MinSalinity, MinSalinityValue, AverageCorrectedValue
   REAL(KIND=dp),POINTER :: Temperature(:), Pressure(:), Porosity(:), Salinity(:),&
        TemperatureDt(:), PressureDt(:), SalinityDt(:),&
        GWflux1(:),GWflux2(:),GWflux3(:)
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,GivenGWFlux=.FALSE.,&
        ComputeDt=.FALSE., ElementWiseRockMaterial, ActiveMassMatrix = .TRUE., &
-       InitializeSteadyState = .FALSE.
+       InitializeSteadyState = .FALSE., CorrectValues=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostSoluteTransport'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, VarName, TemperatureName, GWfluxName, PhaseChangeModel,&
@@ -2571,7 +2563,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   TYPE(ValueHandle_t) :: Temperature_h, Pressure_h, Salinity_h, Porosity_h, Load_h
   
   SAVE DIM,FirstTime,AllocationsDone,GivenGWFlux,&
-       CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
+       CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
        ElementWiseRockMaterial,&
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        ActiveMassMatrix, InitializeSteadyState
@@ -2624,6 +2616,20 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
        'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
 
+  CorrectValues = GetLogical(Params, 'Correct Values', Found)
+  IF (CorrectValues) THEN
+    CALL INFO(SolverName,' "Correct Values" set - negative salinities will be reset to minimum value')
+    MinSalinity = GetConstReal(Params, 'Minimum Salinity', Found)
+    IF (.NOT.Found) THEN
+      CALL WARN(SolverName,' "Minimum Salinity" no found, setting to 1.0E-12')
+      MinSalinity = 1.0d-12
+    ELSE
+      WRITE(Message,*) ' "Minimum Salinity" set to ', MinSalinity
+      CALL INFO(SolverName,Message,Level=3)
+    END IF
+  END IF
+  
+  
   ! Nonlinear iteration loop:
   !--------------------------
   DO iter=1,maxiter
@@ -2637,7 +2643,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
       Element => GetActiveElement(t)
       Material => GetMaterial()
       IF (FirstTime) THEN        
-
+        
         ! check, whether we have globally or element-wise defined values of rock-material parameters
         ElementRockMaterialName = GetString(Material,'Element Rock Material File',ElementWiseRockMaterial)
         IF (ElementWiseRockMaterial) THEN
@@ -2646,11 +2652,11 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
           CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
         END IF
         IF (ElementWiseRockMaterial) THEN
-          ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+          ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
           NumberOfRockRecords = &
-               ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+               ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
         ELSE
-          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material)
         END IF
 
         IF (NumberOfRockRecords < 1) THEN
@@ -2675,7 +2681,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
       END IF
 
       CALL LocalMatrixSolute(  Element, t, Active, n, nd+nb,&
-           CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+           CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,ActiveMassMatrix)
     END DO
 
@@ -2690,7 +2696,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
         nd = GetElementNOFDOFs()
         nb = GetElementNOFBDOFs()
         CALL LocalMatrixBCSolute(  Element, t, Active, n, nd+nb,&
-             CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+             CurrentSoluteMaterial, CurrentSolventMaterial,&
              NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial)
        ! PRINT *,"Solute:",t,"of",Active,":",n, nb
       END IF
@@ -2702,8 +2708,32 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
     ! And finally, solve:
     !--------------------
     Norm = DefaultSolve()
-    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
+    ! correct values to positive (if requested)
+    !------------------------------------------
+    IF (CorrectValues) THEN
+      J=0
+      AverageCorrectedValue=0.0_dp
+      MinSalinityValue = MinSalinity
+      DO I = 1, Solver % Mesh % NumberOfNodes
+        IF (SalinityPerm(I) < 1) CYCLE
+        IF (Salinity(SalinityPerm(I)) < MinSalinity) THEN
+          AverageCorrectedValue=AverageCorrectedValue+Salinity(SalinityPerm(I))
+          MinSalinityValue = MIN(Salinity(SalinityPerm(I)), MinSalinityValue)
+          Salinity(SalinityPerm(I))=MinSalinity          
+          J=J+1
+        END IF
+      END DO
+      WRITE(Message,*) 'Corrected ',J,' values that where smaller than ',MinSalinity,'.'
+      CALL INFO(SolverName,Message,Level=3)
+      WRITE(Message,*) 'Min. corrected salinity value:',  MinSalinityValue,&
+           '. Average corrected:',AverageCorrectedValue/(1.0_dp*J)
+      CALL INFO(SolverName,Message,Level=3)
+    END IF
+
+    ! non-linear iteration converged?
+    !--------------------------------
+    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
   END DO
 
   CALL DefaultFinish()
@@ -2713,13 +2743,12 @@ CONTAINS
   ! Assembly of the matrix entries arising from the bulk elements
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixSolute(  Element, ElementID, NoElements, n, nd,&
-       CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+       CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
-    TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
 !!$    REAL(KIND=dp) :: NodalTemperature(:), NodalSalinity(:),&
@@ -2844,7 +2873,7 @@ CONTAINS
       ! water/ice densitities
       rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)      
       rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
-      Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+      Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
       !PRINT *,"Solute: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
 
       ! unfrozen pore-water content at IP
@@ -2852,19 +2881,19 @@ CONTAINS
       CASE('anderson')
         XiAtIP(IPPerm) = &
              GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiTAtIP = &
              XiAndersonT(XiAtIP(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiPAtIP   = &
              XiAndersonP(XiAtIp(IPPerm),0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
       CASE DEFAULT ! Hartikainen model
         XiBefore =  XiAtIP(IPPerm)
-        CALL  GetXiHartikainen(CurrentRockMaterial,RockMaterialID,&
+        CALL  GetXiHartikainen(RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -2880,7 +2909,7 @@ CONTAINS
       rhocPAtIP = rhocP(CurrentSoluteMaterial,rhocAtIP,ConstVal)
       rhocYcAtIP = rhocYc(CurrentSoluteMaterial,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal)
       rhocTAtIP = rhocT(CurrentSoluteMaterial,rhocAtIP,T0,TemperatureAtIP,ConstVal)
-      rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
+      rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
 
       ! capacities of solutes      
       CcYcTAtIP = CcYcT(rhocTAtIP,PorosityAtIP,SalinityAtIP)
@@ -2896,10 +2925,10 @@ CONTAINS
       mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
            XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       KgwAtIP = 0.0_dp
-      KgwAtIP = GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+      KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
            mugwAtIP,XiAtIP(IPPerm),MinKgw)
       !PRINT *, "Solute: Kgw", KgwAtIP(1,1)
-      fwAtIP = fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+      fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
            Xi0tilde,rhowAtIP,XiAtIP(IPPerm),GasConstant,TemperatureAtIP)
       KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
       IF (CryogenicSuction) THEN
@@ -2939,7 +2968,7 @@ CONTAINS
         !PRINT *,"DispersionCoefficient",KcAtIP
       ELSE
         DummyTensor = GetConstKC(3.565d-06)
-        KcAtIP = GetKc(CurrentRockMaterial,RockMaterialID,DmAtIP,XiAtIP(IPPerm),JgwDAtIP,PorosityAtIP)
+        KcAtIP = GetKc(RockMaterialID,DmAtIP,XiAtIP(IPPerm),JgwDAtIP,PorosityAtIP)
         !PRINT *,"Solute: Kc", KcAtIP(1,1), DummyTensor(1,1), DmAtIP,XiAtIP(IPPerm),JgwDAtIP(1:2),PorosityAtIP
       END IF
       KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
@@ -3003,14 +3032,13 @@ CONTAINS
   ! Assembly of the matrix entries arising from the Neumann and Robin conditions
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBCSolute(Element, ElementID, NoElements, n, nd,&
-       CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+       CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial)
     USE DefUtils
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
-    TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     LOGICAL, INTENT(IN) :: ElementWiseRockMaterial!GivenGWflux, 
@@ -3133,7 +3161,7 @@ CONTAINS
         ! water/ice densitities
         rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal) !!
         rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
-        Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+        Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
         !PRINT *,"Solute: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
 
         ! unfrozen pore-water content at IP
@@ -3141,11 +3169,11 @@ CONTAINS
         CASE('anderson')
           XiAtIP = &
                GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-               CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+               CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
                T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
           ! NB: XiTAtIP, XiPAtIP not needed
         CASE DEFAULT ! Hartikainen model
-          CALL  GetXiHartikainen(CurrentRockMaterial,RockMaterialID,&
+          CALL  GetXiHartikainen(RockMaterialID,&
                CurrentSoluteMaterial,CurrentSolventMaterial,&
                TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
                Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -3348,7 +3376,6 @@ SUBROUTINE PorosityInit_old(Model, Solver, Timestep, TransientSimulation )
   TYPE(Element_t), POINTER :: CurrentElement
   TYPE(Variable_t), POINTER :: PorosityVariable
   TYPE(ValueList_t), POINTER :: SolverParams,Material
-  TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
   INTEGER, POINTER :: PorosityPerm(:), NodeIndexes(:)
   REAL(KIND=dp), POINTER :: PorosityValues(:)
   REAL(KIND=dp), ALLOCATABLE :: NodalHits(:)
@@ -3358,7 +3385,7 @@ SUBROUTINE PorosityInit_old(Model, Solver, Timestep, TransientSimulation )
   LOGICAL :: Visited = .False., Found, GotIt,ElementWiseRockMaterial
 
   SAVE Visited,ElementWiseRockMaterial,NodalHits
-  !,DIM,CurrentRockMaterial,NumberOfRockRecords
+  !,DIM,NumberOfRockRecords
 
   !------------------------------------------------------------------------------
 
@@ -3417,12 +3444,12 @@ SUBROUTINE PorosityInit_old(Model, Solver, Timestep, TransientSimulation )
         WRITE (Message,*) 'Found "Element Rock Material File"'
         CALL INFO(SolverName,Message,Level=3)
         CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
-        ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+        ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
         NumberOfRockRecords = &
-             ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+             ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
         PRINT *, "NumberOfRockRecords", NumberOfRockRecords
       ELSE
-        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
       END IF
       IF (NumberOfRockRecords < 1) THEN
         CALL FATAL(SolverName,'No Rock Material specified')
@@ -3445,8 +3472,8 @@ SUBROUTINE PorosityInit_old(Model, Solver, Timestep, TransientSimulation )
       CurrentNode = CurrentElement % NodeIndexes(k)!PorosityPerm(CurrentElement % NodeIndexes(k))
       NodalHits(CurrentNode) = NodalHits(CurrentNode) + 1.0_dp
       PorosityValues(CurrentNode) = &
-           PorosityValues(CurrentNode) + CurrentRockMaterial % eta0(RockMaterialID)
-      !PRINT *,CurrentNode,CurrentRockMaterial % eta0(RockMaterialID)
+           PorosityValues(CurrentNode) + GlobalRockMaterial % eta0(RockMaterialID)
+      !PRINT *,CurrentNode,GlobalRockMaterial % eta0(RockMaterialID)
     END DO
   END DO
 
@@ -3500,7 +3527,6 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
   TYPE(Element_t), POINTER :: CurrentElement
   TYPE(Variable_t), POINTER :: PorosityVariable
   TYPE(ValueList_t), POINTER :: SolverParams,Material
-  TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
   INTEGER, POINTER :: PorosityPerm(:), NodeIndexes(:)
   REAL(KIND=dp), POINTER :: PorosityValues(:)
   REAL(KIND=dp), ALLOCATABLE :: NodalHits(:)
@@ -3510,7 +3536,7 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
   LOGICAL :: Visited = .False., Found, GotIt,ElementWiseRockMaterial
 
   SAVE Visited,ElementWiseRockMaterial,NodalHits
-  !,DIM,CurrentRockMaterial,NumberOfRockRecords
+  !,DIM,NumberOfRockRecords
 
   !------------------------------------------------------------------------------
 
@@ -3567,12 +3593,12 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
         WRITE (Message,*) 'Found "Element Rock Material File"'
         CALL INFO(SolverName,Message,Level=3)
         CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
-        ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+        ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
         NumberOfRockRecords = &
-             ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+             ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
         PRINT *, "NumberOfRockRecords", NumberOfRockRecords
       ELSE
-        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
       END IF
       IF (NumberOfRockRecords < 1) THEN
         CALL FATAL(SolverName,'No Rock Material specified')
@@ -3593,7 +3619,7 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
     DO j=1,N
       CurrentNode = PorosityPerm(NodeIndexes(j))
       !PRINT *,CurrentNode, i
-      PorosityValues(CurrentNode) = CurrentRockMaterial % eta0(RockMaterialID)
+      PorosityValues(CurrentNode) = GlobalRockMaterial % eta0(RockMaterialID)
     END DO
   END DO
   CALL Info(SolverName, '-----------------------------------', Level=1)
@@ -3620,7 +3646,6 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
   TYPE(Element_t), POINTER :: CurrentElement
   TYPE(Variable_t), POINTER :: PorosityVariable, TemperatureVar, PressureVar, StrainVar
   TYPE(ValueList_t), POINTER :: SolverParams,Material
-  TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
   INTEGER, POINTER :: PorosityPerm(:), StrainPerm(:), TemperaturePerm(:), PressurePerm(:), NodeIndexes(:)
   REAL(KIND=dp), POINTER :: PorosityValues(:), Strain(:), Temperature(:), Pressure(:),&
        NodalStrain(:), NodalTemperature(:), NodalPressure(:),&
@@ -3646,7 +3671,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
        StrainPerm, TemperaturePerm, PressurePerm,&
        StrainVarExists, TemperatureVarExists, PressureVarExists, &
        DIM, N0, GasConstant, DeltaT, T0, p0, eps, Gravity,&
-       CurrentRockMaterial,NumberOfRockRecords
+       NumberOfRockRecords
 
   !------------------------------------------------------------------------------
   CALL Info(SolverName, '-----------------------------------', Level=1)
@@ -3761,12 +3786,12 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
         CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
       END IF
       IF (ElementWiseRockMaterial) THEN
-        ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+        ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
         NumberOfRockRecords = &
-             ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+             ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
         PRINT *, "NumberOfRockRecords", NumberOfRockRecords
       ELSE
-        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
       END IF
       IF (NumberOfRockRecords < 1) THEN
         CALL FATAL(SolverName,'No Rock Material specified')
@@ -3797,7 +3822,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
     ! Loop over nodes of element
     DO k = 1, N
       CurrentNode = CurrentElement % NodeIndexes(k)
-      PrevNodalrhos = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,&
+      PrevNodalrhos = rhos(RockMaterialID,T0,p0,&
            PrevNodalTemperature(k),&
            PrevNodalPressure(k),ConstVal)
       IF (PrevNodalrhos .NE. PrevNodalrhos) THEN
@@ -3809,7 +3834,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
            CurrentElement % NodeIndexes(k)
         CALL FATAL(SolverName,'Exiting')
       END IF
-      Nodalrhos = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,&
+      Nodalrhos = rhos(RockMaterialID,T0,p0,&
            NodalTemperature(k),&
            NodalPressure(k),ConstVal)
       IF (Nodalrhos .NE. Nodalrhos) THEN
@@ -3888,7 +3913,7 @@ SUBROUTINE NodalVariableInit(Model, Solver, Timestep, TransientSimulation )
   LOGICAL :: Visited = .FALSE., Found, Parallel, GotIt, FromFile=.FALSE.
 
   !SAVE Visited
-  !,DIM,CurrentRockMaterial,NumberOfRockRecords
+  !,DIM,NumberOfRockRecords
 
   !------------------------------------------------------------------------------
 
@@ -4012,10 +4037,9 @@ SUBROUTINE NodalVariableInit(Model, Solver, Timestep, TransientSimulation )
 END SUBROUTINE NodalVariableInit
 
 !==============================================================================
-!> output of material parameter
+!> output of material parameter at element
 !==============================================================================
-SUBROUTINE PermafrostMaterialOutput( Model,Solver,dt,TransientSimulation )
-  !==============================================================================
+SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
   USE PermaFrostMaterials
 
@@ -4025,405 +4049,274 @@ SUBROUTINE PermafrostMaterialOutput( Model,Solver,dt,TransientSimulation )
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
+    !------------------------------------------------------------------------------
+  ! Local variables
+  !------------------------------------------------------------------------------
+  ! 1 eta0 (=etat)
+  ! 2 etak
+  ! 3 alphaL
+  ! 4 alphaT  
+  ! 6 cs0
+  !( 8 Es0
+  ! 8 nus0
+  ! 9 ks0
+  ! 10 Kgwh0)
+
+  LOGICAL :: WriteToFile(6)=.FALSE., Found, WriteAll
+  TYPE(ValueList_t), POINTER :: SolverParams
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostElmntOutput'
+  
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
+  CALL Info( SolverName, ' Assignment element material variables ',Level=1 )
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
+  SolverParams => GetSolverParams()
+  WriteAll=ListGetLogical(SolverParams,"Export all",Found)
+  IF (WriteAll) THEN
+    WriteToFile(1:6)=.TRUE.
+  ELSE
+    WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)
+    WriteToFile(2)=ListGetLogical(SolverParams,"Export etak",Found)
+    WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
+    WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
+    WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
+    WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
+  END IF
+  IF(WriteToFile(1)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 eta0")
+    CALL INFO(SolverName,'Added eta0 as variable',Level=1)
+  END IF
+  IF(WriteToFile(2)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 etak")
+    CALL INFO(SolverName,'Added etak as variable',Level=1)
+  END IF
+  IF(WriteToFile(3)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 alphaL")
+    CALL INFO(SolverName,'Added alphaL as variable',Level=1)
+  END IF
+  IF(WriteToFile(4)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 alphaT")
+    CALL INFO(SolverName,'Added alphaT as variable',Level=1)
+  END IF
+  IF(WriteToFile(5)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 cs0")
+    CALL INFO(SolverName,'Added cs0 as variable',Level=1)    
+  END IF
+  IF(WriteToFile(6)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 Kgwh0_11")
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 Kgwh0_22")
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 Kgwh0_12")
+    IF ( CoordinateSystemDimension() ==3) THEN
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-elem -dofs 1 Kgwh0_33")
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-elem -dofs 1 Kgwh0_13")
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-elem -dofs 1 Kgwh0_23")
+    END IF
+    CALL INFO(SolverName,'Added Kgwh0 as variable',Level=1)    
+  END IF
+  CALL Info( SolverName, 'assignment done',Level=1 )
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
+END SUBROUTINE PermafrostElmntOutput_init
+!!!!!!!!!!!!!
+SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
+  USE DefUtils
+  USE PermaFrostMaterials
+
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation  
   !------------------------------------------------------------------------------
   ! Local variables
   !------------------------------------------------------------------------------
+  LOGICAL :: WriteToFile(11)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
+       ElementWiseRockMaterial
+  INTEGER :: Active, t, J, RockMaterialID, CurrentValue, NumberOfRockRecords,&
+       NumberOfExportedValues=0, DIM
   TYPE(Element_t),POINTER :: Element
-  TYPE(ValueList_t), POINTER :: Params, Material
-  TYPE(Variable_t), POINTER :: PressureVar,PorosityVar,SalinityVar,TemperatureVar,&
-       TemperatureDtVar, PressureDtVar, SalinityDtVar, &
-       GWFluxVar1,GWFluxVar2,GWFluxVar3
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
+  TYPE(ValueList_t), POINTER :: Params, Material,SolverParams
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostElmntOutput'
+  CHARACTER(LEN=MAX_NAME_LEN) :: ElementRockMaterialName, ElmntVarName
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
-  INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat,TensorComponent(2)
-  INTEGER,PARAMETER :: io=24
-  INTEGER,POINTER :: TemperaturePerm(:), PressurePerm(:),PorosityPerm(:),SalinityPerm(:),&
-       TemperatureDtPerm(:), PressureDtPerm(:), SalinityDtPerm(:),&
-       OutputPropertyPerm(:),GWfluxPerm1(:),GWfluxPerm2(:),GWfluxPerm3(:)
-  REAL(KIND=dp) :: Norm, meanfactor
-  REAL(KIND=dp),POINTER :: Temperature(:), Pressure(:), Porosity(:), Salinity(:),&
-       TemperatureDt(:), PressureDt(:), SalinityDt(:),&
-       OutputProperty(:),GWflux1(:),GWflux2(:),GWflux3(:)
-  REAL(KIND=dp),POINTER :: NodalPorosity(:), NodalPressure(:), NodalSalinity(:),&
-       NodalTemperature(:), NodalGwFlux(:,:),&
-       NodalTemperatureDt(:),NodalPressureDt(:),NodalSalinityDt(:)
-  LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
-       ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE., &
-       ComputeDt=.FALSE.,ComputeXiT=.FALSE.,ElementWiseRockMaterial,GivenGWflux
-  !CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
-  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostMaterialOutput'
-  CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, SalinityName, TemperatureName,&
-       PhaseChangeModel, VariableName,ElementRockMaterialName
+  TYPE(Variable_t), POINTER :: ElmntVar
+  INTEGER, POINTER :: ElmntVarPerm(:)
+  REAL(KIND=dp), POINTER :: ElmntVarVal(:)
+ 
+  SAVE FirstTime, WriteToFile, NumberOfRockRecords,&
+       NumberOfExportedValues, DIM
+       
+  
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
+  CALL Info( SolverName, ' Assignment element material variables ',Level=1 )
+  CALL Info( SolverName, '---------------------------------------',Level=1 )
 
-  SAVE DIM,FirstTime,AllocationsDone,CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,&
-       NumberOfRockRecords,NodalPorosity,NodalPressure,NodalSalinity,NodalTemperature,NodalGwFlux,&
-       NodalTemperatureDt,NodalPressureDt,NodalSalinityDt, &
-       ElementWiseRockMaterial
-  !------------------------------------------------------------------------------
-  Params => GetSolverParams()
-  VariableName = ListGetString(Params,"Output Property",Found)
-  ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
+  SolverParams => GetSolverParams()
+  
+  IF (FirstTime) THEN
+    DIM=CoordinateSystemDimension()
+    WriteAll=ListGetLogical(SolverParams,"Export all",Found)
+    IF (WriteAll) THEN
+      WriteToFile(1:6)=.TRUE.
+      NumberOfExportedValues=8
+      WriteToFile(7) = .TRUE. 
+      WriteToFile(8)= .TRUE.
+      IF (DIM==3) THEN
+        WriteToFile(9)= .TRUE.
+        WriteToFile(10)= .TRUE.
+        WriteToFile(11)= .TRUE.
+        NumberOfExportedValues=11
+      END IF
+    ELSE
+      WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)      
+      WriteToFile(2)=ListGetLogical(SolverParams,"Export etak",Found)
+      WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
+      WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
+      WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
+      WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
+      NumberOfExportedValues = 6
+       IF (WriteToFile(6)) THEN
+        WriteToFile(7) = .TRUE.
+        WriteToFile(8) = .TRUE. 
+        NumberOfExportedValues=8
+        IF (DIM==3) THEN
+          WriteToFile(9)= .TRUE.
+          WriteToFile(10)= .TRUE.
+          WriteToFile(11)= .TRUE.
+          NumberOfExportedValues=11
 
-  IF (.NOT.Found) &
-       CALL INFO(SolverName, ' "Output Property" not found')
-
-  TensorComponent(1:2) = ListGetInteger(Params,"Output Property Component",Found)
-  IF (.NOT.Found) TensorComponent = 1
-
-  CALL DefaultInitialize()
-
-  ! Assign output variables
-  OutputProperty => Solver % Variable % Values
-  OutputPropertyPerm => Solver % Variable % Perm
-
-  ! Read Variables
-  CALL AssignVars(Solver,Model,AllocationsDone,&
-       NodalTemperature,NodalPressure,NodalPorosity,NodalSalinity,NodalGWflux, &
-       NodalTemperatureDt,NodalPressureDt,NodalSalinityDt, &
-       TemperatureVar, PressureVar, PorosityVar,SalinityVar, &
-       TemperatureDtVar, PressureDtVar, SalinityDtVar, &
-       GWFluxVar1,GWFluxVar2,GWFluxVar3, &
-       TemperaturePerm, PressurePerm, PorosityPerm,SalinityPerm, &
-       TemperatureDtPerm, PressureDtPerm, SalinityDtPerm, &
-       GWfluxPerm1, GWfluxPerm2,GWfluxPerm3, &
-       Temperature, Pressure, Porosity,Salinity,&
-       TemperatureDt, PressureDt, SalinityDt,&
-       GWFlux1,GWFlux2,GWFlux3, &
-       NoPressure, NoSalinity,ConstantPorosity,GivenGWFlux,DIM,ComputeDt,SolverName)
-
-  Active = GetNOFActive()
-
-
-  DO t=1,Active
-    Element => GetActiveElement(t)      
-    n  = GetElementNOFNodes(Element)
-    Material => GetMaterial(Element)
-    PhaseChangeModel = ListGetString(Material, &
-         'Permafrost Phase Change Model', Found )
-    IF (Found) THEN
-      WRITE (Message,'(A,A)') '"Permafrost Phase Change Model" set to ', TRIM(PhaseChangeModel)
-      CALL INFO(SolverName,Message,Level=9)
+        END IF
+      END IF
     END IF
-
-    IF (FirstTime) THEN
-      dim = CoordinateSystemDimension()
-      ! check, whether we have globally or element-wise defined values of rock-material parameters
-      ElementRockMaterialName = GetString(Material,'Element Rock Material File',ElementWiseRockMaterial)
-      IF (ElementWiseRockMaterial) THEN
-        WRITE (Message,*) 'Found "Element Rock Material File"'
-        CALL INFO(SolverName,Message,Level=3)
-        CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
-      END IF
-      IF (ElementWiseRockMaterial) THEN
-        ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
-        NumberOfRockRecords = &
-             ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
-        PRINT *, "NumberOfRockRecords", NumberOfRockRecords
-      ELSE
-        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
-      END IF
-      IF (NumberOfRockRecords < 1) THEN
-        CALL FATAL(SolverName,'No Rock Material specified')
-      ELSE
-        CALL INFO(SolverName,'Permafrost Rock Material read',Level=3)
-        FirstTime = .FALSE.
-      END IF
-      CALL SetPermafrostSolventMaterial( CurrentSolventMaterial )
-      CALL ReadPermafrostSoluteMaterial( Material,Model % Constants,CurrentSoluteMaterial )        
-    END IF
-
-    CALL ReadVars(N,Element,Model,Material,&
-         NodalTemperature,NodalPressure,NodalPorosity,NodalSalinity,NodalGWflux,&
-         Temperature, Pressure, Porosity,Salinity,GWFlux1,GWFlux2,GWFlux3,&
-         TemperaturePerm, PressurePerm, PorosityPerm,SalinityPerm,&
-         GWfluxPerm1,GWfluxPerm2,GWfluxPerm3,&
-         NoSalinity,NoPressure,ConstantPorosity,GivenGWFlux,&
-         PorosityName,SolverName,DIM)
-
-    CALL LocalMatrixMaterialOutput( Element, t, Active, n, nd,&
-         NodalTemperature, NodalPressure, NodalPorosity, NodalSalinity,&
-         NodalGWflux, GivenGWflux,&
-         CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
-         NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, &
-         VariableName,TensorComponent)
-  END DO
-
-  CALL DefaultFinishBoundaryAssembly()
-  CALL DefaultFinishAssembly()
-  CALL DefaultDirichletBCs()
-
-  ! And finally, solve:
-  !--------------------
-  Norm = DefaultSolve()
-  IF (TRIM(VariableName) == 'kgw') THEN
-    DO I=1,Solver % Mesh % NumberOfNodes
-      OutputProperty(OutputPropertyPerm(i)) = EXP(OutputProperty(OutputPropertyPerm(i)))
-    END DO
+    WRITE (Message,*) 'Exporting ', NumberOfExportedValues,' values'
+    CALL INFO(SolverName,Message,Level=1)
   END IF
-  CALL INFO("SolverName","Computation of " // TRIM(VariableName) // "done",Level=1)
-
-CONTAINS
-  ! Assembly of the matrix entries arising from the bulk elements
-  !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixMaterialOutput( Element, ElementID, NoElements, n, nd,&
-       NodalTemperature, NodalPressure, NodalPorosity, NodalSalinity,&
-       NodalGWflux, GivenGWflux,&
-       CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
-       NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, &
-       VariableName,TensorComponent)
-    !------------------------------------------------------------------------------
-    IMPLICIT NONE
-    INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords, TensorComponent(2)
-    TYPE(Element_t), POINTER :: Element
-    TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
-    TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
-    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
-    REAL(KIND=dp) :: NodalTemperature(:), NodalSalinity(:),&
-         NodalGWflux(:,:), NodalPorosity(:), NodalPressure(:)
-    LOGICAL, INTENT(IN) :: GivenGWflux, ElementWiseRockMaterial
-    CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
-
-    !    INTEGER :: n,TensorComponent(2)
-    !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: CGTTAtIP, CgwTTAtIP, CGTpAtIP, CGTycAtIP,KGTTAtIP(3,3)   ! needed in equation
-    REAL(KIND=dp) :: XiAtIP, Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,&
-         ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,hiAtIP,hwAtIP  ! function values needed for C's and KGTT
-    REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP, bijAtIP(2,2), bijYcAtIP(2,2),&
-         gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
-    REAL(KIND=dp) ::  gradTAtIP(3),gradPAtIP(3),JgwDAtIP(3),KgwAtIP(3,3),KgwpTAtIP(3,3),MinKgw,KgwppAtIP(3,3),fwAtIP,mugwAtIP!  JgwD stuff
-    REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
-    REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
-    REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,rhogwAtIP,csAtIP,cwAtIP,ciAtIP,ccAtIP ! material properties at IP
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
-         TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
-         StiffPQ, meanfactor
-    REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
-    REAL(KIND=dp), POINTER :: gWork(:,:)
-    REAL(KIND=DP) :: PropertyAtIP
-    INTEGER :: i,t,p,q,DIM, RockMaterialID
-    LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,ConstantMeanFactor=.FALSE.,&
-         CryogenicSuction=.FALSE.
-    TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BodyForce, Material
-    TYPE(Nodes_t) :: Nodes
-    CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName, VariableName
-    CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='Permafrost(LocalMatrixMaterialOutput)'
-    !------------------------------------------------------------------------------
-    SAVE Nodes, ConstantsRead, DIM, GasConstant, N0,DeltaT, T0, p0,eps,Gravity
-    !------------------------------------------------------------------------------
-    gradTAtIP = 0.0_dp
-    gradPAtIP = 0.0_dp
-    IF(.NOT.ConstantsRead) THEN
-      ConstantsRead = &
-           ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
+  
+  Active = GetNOFActive()
+  DO CurrentValue=1,NumberOfExportedValues
+    IF (.NOT.WriteToFile(CurrentValue)) CYCLE
+    SELECT CASE(CurrentValue)
+    CASE(1)
+      WRITE (ElmntVarName,'(A)') "eta0"
+    CASE(2)
+      WRITE (ElmntVarName,'(A)') "etak"
+    CASE(3)
+      WRITE (ElmntVarName,'(A)') "alphaL"      
+    CASE(4)
+      WRITE (ElmntVarName,'(A)') "alphaT"
+    CASE(5)
+      WRITE (ElmntVarName,'(A)') "cs0"
+    CASE(6)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_11"
+    CASE(7)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_22"
+    CASE(8)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_12"
+    CASE(9)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_33"
+    CASE(10)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_13"
+    CASE(11)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_23"
+    END SELECT
+    WRITE (Message,*) 'Writing ', TRIM(ElmntVarName), ' as variable'
+    CALL INFO(SolverName,Message,Level=3)
+    ElmntVar => VariableGet( Model % Mesh % Variables, ElmntVarName)
+    IF (.NOT.ASSOCIATED(ElmntVar)) THEN
+      WRITE(Message,*) 'Variable ',TRIM(ElmntVarName),' is not associated'
+      CALL FATAL(SolverName,Message)
     END IF
-
-    CALL GetElementNodes( Nodes )
-    MASS  = 0._dp
-    STIFF = 0._dp
-    FORCE = 0._dp
-    LOAD = 0._dp
-
-    ! Get stuff from SIF BodyForce section
-    BodyForce => GetBodyForce()
-    IF ( ASSOCIATED(BodyForce) ) &
-         LOAD(1:n) = GetReal( BodyForce,'Heat Source', Found )
-
-    ! Get stuff from SIF Material section
-    Material => GetMaterial(Element)
-    IF (ElementWiseRockMaterial) THEN
-      RockMaterialID = ElementID  ! each element has it's own set of parameters
-    ELSE
-      RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
-    END IF
-
-    ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
-    IF (.NOT.Found) THEN
-      ConstVal = .FALSE.
-    ELSE
-      IF (ConstVal) &
-           CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
-    END IF
-
-    meanfactor = GetConstReal(Material,"Conductivity Arithmetic Mean Weight",ConstantMeanFactor)
-    
-    !IF (.NOT.Found) THEN
-    !  CALL INFO(FunctionName,'"Conductivity Arithmetic Mean Weight" not found. Using default unity value.',Level=9)
-    !  meanfactor = 1.0_dp
-    !END IF
-    MinKgw = GetConstReal( Material, &
-         'Hydraulic Conductivity Limit', Found)
-    IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
-         MinKgw = 1.0D-14
-
-    deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
-
-    ! Numerical integration:
-    !-----------------------
-    IP = GaussPoints( Element )
-    DO t=1,IP % n
-      ! Basis function values & derivatives at the integration point:
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-           IP % W(t), detJ, Basis, dBasisdx )
-
-      ! The source term at the integration point:
-      LoadAtIP = SUM( Basis(1:n) * LOAD(1:n) )
-
-      ! Variables (Temperature, Porosity, Pressure, Salinity) at IP
-      TemperatureAtIP = SUM( Basis(1:N) * NodalTemperature(1:N) )
-      PorosityAtIP = SUM( Basis(1:N) * NodalPorosity(1:N))
-      PressureAtIP = SUM( Basis(1:N) * NodalPressure(1:N))      
-      SalinityAtIP = SUM( Basis(1:N) * NodalSalinity(1:N))
-      
-      
-      !Materialproperties needed at IP
-
-      rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal) !!
-      rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
-      Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
-
-      ! unfrozen pore-water content at IP
-      SELECT CASE(PhaseChangeModel)
-      CASE('anderson')
-        XiAtIP = &
-             GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
-        XiTAtIP = &
-             XiAndersonT(XiAtIP,0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
-        XiPAtIP   = &
-             XiAndersonP(XiAtIp,0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
-             T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
-      CASE DEFAULT ! Hartikainen model
-        CALL  GetXiHartikainen(CurrentRockMaterial,RockMaterialID,&
-             CurrentSoluteMaterial,CurrentSolventMaterial,&
-             TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
-             Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
-             GasConstant,p0,T0,&
-             XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
-             .FALSE.,.TRUE.,.TRUE.,.FALSE.,.FALSE.)
-      END SELECT
-      
-      IF (.NOT.ConstantMeanFactor) & 
-           meanfactor = 1.0_dp - PorosityAtIP * XiAtIp
-      
-      !Materialproperties needed at IP:
-      rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
-      rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
-
-      ! heat capacities
-      csAtIP   = cs(CurrentRockMaterial,RockMaterialID,&
-           T0,TemperatureAtIP,ConstVal)
-      cwAtIP   = cw(CurrentSolventMaterial,&
-           T0,XiAtIP,TemperatureAtIP,SalinityAtIP,ConstVal)
-      ciAtIP   = ci(CurrentSolventMaterial,&
-           T0,TemperatureAtIP,ConstVal)
-      ccAtIP   = cc(CurrentSoluteMaterial,&
-           T0,TemperatureAtIP,SalinityAtIP,ConstVal)
-
-      ! latent heat
-      hiAtIP = hi(CurrentSolventMaterial,&
-           T0,TemperatureAtIP,ConstVal)
-      hwAtIP = hw(CurrentSolventMaterial,&
-           T0,XiAtIP,TemperatureAtIP,SalinityAtIP,ConstVal)
-
-      ! heat conductivity at IP
-      ksthAtIP = GetKalphath(CurrentRockMaterial % ks0th(RockMaterialID),&
-           CurrentRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
-      kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
-      kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)
-      kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)      
-      KGTTAtIP = GetKGTT(ksthAtIP,kwthAtIP,kithAtIP,kcthAtIP,XiAtIP,&
-           SalinityATIP,PorosityAtIP,meanfactor)
-
-      ! heat capacities at IP
-      CGTTAtIP = &
-           GetCGTT(XiAtIP,XiTAtIP,rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,&
-           cwAtIP,ciAtIP,csAtIP,ccAtIP,hiAtIP,hwAtIP,&
-           PorosityAtIP,SalinityAtIP)
-      CgwTTAtIP = GetCgwTT(rhowAtIP,rhocAtIP,cwAtIP,ccAtIP,XiAtIP,SalinityAtIP)
-      CGTpAtIP = GetCGTp(rhoiAtIP,hiAtIP,hwAtIP,XiPAtIP,PorosityAtIP) !NEW
-      CGTycAtIP = GetCGTyc(rhoiAtIP,hiAtIP,hwAtIP,XiYcAtIP,PorosityAtIP) !NEW
-
-      ! groundwater flux at IP
-      JgwDAtIP = 0.0_dp
-      IF (GivenGWFlux) THEN
-        DO I=1,DIM
-          JgwDAtIP(I) = SUM( Basis(1:N) * NodalGWflux(I,1:N)) 
-        END DO
-      ELSE        
-        mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
-             XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
-        KgwAtIP = 0.0_dp
-        KgwAtIP = GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP,MinKgw)
-        fwAtIP = fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
-             Xi0tilde,rhowAtIP,XiAtIP,GasConstant,TemperatureAtIP)
-        KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
-        KgwppAtIP = GetKgwpp(fwAtIP,XiPAtIP,KgwAtIP)
-        rhogwAtIP = rhogw(rhowAtIP,rhocAtIP,XiAtIP,SalinityAtIP)
-        DO i=1,DIM
-          gradTAtIP(i) =  SUM(NodalTemperature(1:N)*dBasisdx(1:N,i))
-          gradPAtIP(i) =  SUM(NodalPressure(1:N) * dBasisdx(1:N,i))
-        END DO
-        JgwDAtIP = GetJgwD(KgwppAtIP,KgwpTAtIP,KgwAtIP,gradpAtIP,gradTAtIP,Gravity,rhogwAtIP,DIM,CryogenicSuction)
+    ElmntVarPerm => ElmntVar % Perm 
+    ElmntVarVal  => ElmntVar % Values    
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      Material => GetMaterial()
+      IF (FirstTime) THEN
+        ! check, whether we have globally or element-wise defined values of rock-material parameters
+        ElementRockMaterialName = GetString(Material,'Element Rock Material File',ElementWiseRockMaterial)
+        IF (ElementWiseRockMaterial) THEN
+          WRITE (Message,*) 'Found "Element Rock Material File"'
+          CALL INFO(SolverName,Message,Level=3)
+          CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
+        END IF
+        IF (ElementWiseRockMaterial) THEN
+          ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
+          NumberOfRockRecords = &
+               ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)         
+        ELSE
+          NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
+        END IF
+        
+        IF (NumberOfRockRecords < 1) THEN
+          CALL FATAL(SolverName,'No Rock Material specified')
+        ELSE
+          CALL INFO(SolverName,'Permafrost Rock Material read',Level=3)
+          FirstTime = .FALSE.
+        END IF
       END IF
-
-      ! select parameter name for output
-      SELECT CASE(VariableName)
-      CASE('kgw')
-        mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
-             XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
-        KgwAtIP =  GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
-             mugwAtIP,XiAtIP,MinKgw)
-        IF (KgwAtIP(TensorComponent(1),TensorComponent(2)) <= 0.0_dp) STOP
-        PropertyAtIP = KgwAtIP(TensorComponent(1),TensorComponent(2))
-        !IF (PropertyAtIP < 0.0_dp) THEN
-        !  PRINT *, "KgwAtIP < 0 =", KgwAtIP, muw0,muw0,XiAtIP,rhow0,qexp,Kgwh0,MinKgw!
-        ! STOP
-        ! ELSE
-        !   PRINT *, "KgwAtIP=", PropertyAtIP
-        ! END IF
-      CASE('rhogw')       
-        PropertyAtIP = rhogwAtIP
-      CASE('gwa')
-        PropertyAtIP = gwaAtIP
-      CASE('mugw')
-        PropertyAtIP = mugwAtIP
-      CASE('kgwpt')
-        PropertyAtIP = KgwpTAtIP(TensorComponent(1),TensorComponent(2))
-      CASE('kgwpp')
-        PropertyAtIP = KgwppAtIP(TensorComponent(1),TensorComponent(2))
-      CASE('CgwTT')
-        PropertyAtIP = CGTTAtIP
-      CASE('KGTT')
-        PropertyAtIP = KGTTAtIP(TensorComponent(1),TensorComponent(2))
-      CASE DEFAULT
-        WRITE(Message,*) ' Variable "', TRIM(VariableName), '" not implemented.'
-        CALL FATAL(SolverName,Message)
-      END SELECT
-
-      Weight = IP % s(t) * DetJ
-
-      DO p=1,n
-        DO q=1,n
-          Stiff(p,q) = Stiff(p,q) + Weight * Basis(q) * Basis(p)
-        END DO
-      END DO
-      FORCE(1:n) = FORCE(1:n) + Weight * PropertyAtIP * Basis(1:n)
-
+      IF (ElementWiseRockMaterial) THEN
+        RockMaterialID = t  ! each element has it's own set of parameters
+      ELSE
+        RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
+      END IF
+      !IF (CurrentValue >= 6) THEN
+      !  PRINT *,"eta0:", GlobalRockMaterial % eta0(RockMaterialID),&
+      !       "aL:", GlobalRockMaterial % alphaL(RockMaterialID),"Kgwh0:", GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID)
+      !END IF
+      SELECT CASE(CurrentValue)
+      CASE(1)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % eta0(RockMaterialID)
+        !PRINT *,"eta0: ", ParEnv % MyPE, ":", RockMaterialID, ElmntVarPerm(t), GlobalRockMaterial % eta0(RockMaterialID), GlobalRockMaterial % Kgwh0(1,1,RockMaterialID)
+      CASE(2)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % etak(RockMaterialID)
+      CASE(3)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % alphaL(RockMaterialID)     
+      CASE(4)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % alphaT(RockMaterialID)
+      CASE(5)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % cs0(RockMaterialID)        
+      CASE(6)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,1,RockMaterialID)
+!!$        PRINT *, "Kgwh0(", RockMaterialID, ")", GlobalRockMaterial % Kgwh0(1,1,RockMaterialID), &
+!!$             GlobalRockMaterial % Kgwh0(2,2,RockMaterialID), GlobalRockMaterial % Kgwh0(3,3,RockMaterialID), &
+!!$             GlobalRockMaterial % etak(RockMaterialID), GlobalRockMaterial % aas(0,RockMaterialID),&
+!!$             GlobalRockMaterial % aas(1,RockMaterialID), GlobalRockMaterial % aas(2,RockMaterialID)
+      CASE(7)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,2,RockMaterialID)
+      CASE(8)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,2,RockMaterialID)
+      CASE(9)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(3,3,RockMaterialID)
+      CASE(10)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,3,RockMaterialID)
+      CASE(11)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,3,RockMaterialID)
+    END SELECT
     END DO
-
-    CALL DefaultUpdateEquations(STIFF,FORCE)
-    !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrixMaterialOutput
-END SUBROUTINE PermafrostMaterialOutput
-
-
+  END DO
+END SUBROUTINE PermafrostElmntOutput
 !==============================================================================
 !> output of material parameter at IP
 !==============================================================================
@@ -4446,7 +4339,6 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: TemperatureVar,PressureVar,PorosityVar,SalinityVar,&
        TemperatureDtVar, PressureDtVar, SalinityDtVar,&
        GWfluxVar1,GWfluxVar2,GWfluxVar3,DepthVar
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat,DepthDOFs
@@ -4473,7 +4365,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   TYPE(ValueHandle_t) :: Load_h
 
   SAVE DIM,FirstTime,AllocationsDone,GivenGWFlux,DepthName,&
-       CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
+       CurrentSoluteMaterial,CurrentSolventMaterial,NumberOfRockRecords,&
        NodalPorosity,NodalPressure,NodalSalinity,NodalTemperature,NodalGWflux,NodalDepth,&
        NodalTemperatureDt,NodalPressureDt,NodalSalinityDt,&
        ElementWiseRockMaterial,ComputeDt
@@ -4511,11 +4403,11 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
         CALL INFO(SolverName,'Using element-wise rock material definition',Level=3)
       END IF
       IF (ElementWiseRockMaterial) THEN
-        ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+        ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
         NumberOfRockRecords = &
-             ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,Solver,DIM)
+             ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
       ELSE
-        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+        NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
       END IF
 
       IF (NumberOfRockRecords < 1) THEN
@@ -4551,7 +4443,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
     CALL SetIPValues(  Element, t, Active, n, nd+nb,&
          NodalTemperature, NodalPressure, NodalPorosity, NodalSalinity,&           
          NodalGWflux, NodalDepth, GivenGWflux, DepthExists, &
-         CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+          CurrentSoluteMaterial, CurrentSolventMaterial,&
          NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial)
 
   END DO
@@ -4560,13 +4452,12 @@ CONTAINS
   SUBROUTINE SetIPValues(   Element, ElementID, NoElements, n, nd,&
        NodalTemperature, NodalPressure, NodalPorosity, NodalSalinity,&
        NodalGWflux, NodalDepth,GivenGWflux,DepthExists, &
-       CurrentRockMaterial, CurrentSoluteMaterial, CurrentSolventMaterial,&
+       CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
-    TYPE(RockMaterial_t),POINTER :: CurrentRockMaterial
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     REAL(KIND=dp) :: NodalTemperature(:), NodalSalinity(:),&
@@ -4620,8 +4511,8 @@ CONTAINS
       IF (Found) THEN
         DO I=1,N
 
-          !               RadiogenicHeatProduction(CurrentRockMaterial,RockMaterialID,NodalDepth(I),RefDepth)
-          !PRINT *,"HTEQ: RGEN",RadiogenicHeatProduction(CurrentRockMaterial,RockMaterialID,NodalDepth(I),RefDepth), NodalDepth(I)
+          !               RadiogenicHeatProduction(RockMaterialID,NodalDepth(I),RefDepth)
+          !PRINT *,"HTEQ: RGEN",RadiogenicHeatProduction(RockMaterialID,NodalDepth(I),RefDepth), NodalDepth(I)
         END DO
 
       END IF
@@ -4677,25 +4568,25 @@ CONTAINS
 
       rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
       rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!      
-      Xi0Tilde = GetXi0Tilde(CurrentRockMaterial,RockMaterialID,PorosityAtIP)
+      Xi0Tilde = GetXi0Tilde(RockMaterialID,PorosityAtIP)
 
       ! unfrozen pore-water content at IP
       SELECT CASE(PhaseChangeModel)
       CASE('anderson')
         XiAtIP = &
              GetXiAnderson(0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiTAtIP = &
              XiAndersonT(XiAtIP,0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)
         XiPAtIP   = &
              XiAndersonP(XiAtIp,0.011_dp,-0.66_dp,9.8d-08,&
-             CurrentSolventMaterial % rhow0,CurrentRockMaterial % rhos0(RockMaterialID),&
+             CurrentSolventMaterial % rhow0,GlobalRockMaterial % rhos0(RockMaterialID),&
              T0,TemperatureAtIP,PressureAtIP,PorosityAtIP)       
       CASE DEFAULT ! Hartikainen model
-        CALL  GetXiHartikainen (CurrentRockMaterial,RockMaterialID,&
+        CALL  GetXiHartikainen (RockMaterialID,&
              CurrentSoluteMaterial,CurrentSolventMaterial,&
              TemperatureAtIP,PressureAtIP,SalinityAtIP,PorosityAtIP,&
              Xi0tilde,deltaInElement,rhowAtIP,rhoiAtIP,&
@@ -4706,12 +4597,12 @@ CONTAINS
 
       !Materialproperties needed at IP:
       rhowAtIP = rhowupdate(CurrentSolventMaterial,rhowAtIP,XiAtIP,SalinityAtIP,ConstVal)
-      rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
+      rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)!!
       rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
       !PRINT *,"SetIPValues: rhowAtIP, rhoiAtIP, rhosAtIP", rhowAtIP, rhoiAtIP, rhosAtIP
 
       ! heat capacities
-      csAtIP   = cs(CurrentRockMaterial,RockMaterialID,&
+      csAtIP   = cs(RockMaterialID,&
            T0,TemperatureAtIP,ConstVal)
       cwAtIP   = cw(CurrentSolventMaterial,&
            T0,XiAtIP,TemperatureAtIP,SalinityAtIP,ConstVal)
@@ -4733,8 +4624,8 @@ CONTAINS
  
 
       ! heat conductivity at IP
-      ksthAtIP = GetKalphath(CurrentRockMaterial % ks0th(RockMaterialID),&
-           CurrentRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
+      ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
+           GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
       kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
       kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)
       kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)
@@ -4767,9 +4658,9 @@ CONTAINS
         mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
         KgwAtIP = 0.0_dp
-        KgwAtIP = GetKgw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
              mugwAtIP,XiAtIP,MinKgw)
-        fwAtIP = fw(CurrentRockMaterial,RockMaterialID,CurrentSolventMaterial,&
+        fwAtIP = fw(RockMaterialID,CurrentSolventMaterial,&
              Xi0tilde,rhowAtIP,XiAtIP,GasConstant,TemperatureAtIP)
         KgwpTAtIP = GetKgwpT(fwAtIP,XiTAtIP,KgwAtIP)
         IF (CryogenicSuction) THEN
@@ -4791,7 +4682,7 @@ CONTAINS
 
       ! add thermal dispersion in Hydro-Geological Mode
       IF (HydroGeo) THEN
-        DtdAtIP = GetDtd(CurrentRockMaterial,RockMaterialID,XiAtIP,PorosityAtIP,JgwDAtIP)
+        DtdAtIP = GetDtd(RockMaterialID,XiAtIP,PorosityAtIP,JgwDAtIP)
         DO I=1,DIM
           DO J=1,DIM
             KGTTAtIP(I,J) = KGTTAtIP(I,J) + CGWTTAtIP * DtdAtIP(I,J)
@@ -4818,7 +4709,6 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
   TYPE(Solver_t) :: DummySolver
   TYPE(ValueList_t), POINTER :: Material
   TYPE(Element_t),POINTER :: Element
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: RockMaterialID, NumberOfRockRecords, DIM, t, i, IPPerm
   REAL(KIND=dp) :: EGAtIP, nuGAtIP
@@ -4829,7 +4719,7 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
   CHARACTER(LEN=MAX_NAME_LEN) :: ElementRockMaterialName
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName = 'PermafrostMaterials (GetKGuu)'
   !-----------
-  SAVE FirstTime,NumberOfRockRecords,CurrentSolventMaterial,CurrentRockMaterial,DIM,ElementWiseRockMaterial
+  SAVE FirstTime,NumberOfRockRecords,CurrentSolventMaterial,DIM,ElementWiseRockMaterial
 
 
   Element => Model % CurrentElement
@@ -4857,11 +4747,11 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
       CALL INFO(FunctionName,'Using element-wise rock material definition',Level=3)
     END IF
     IF (ElementWiseRockMaterial) THEN
-      ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+      ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
       NumberOfRockRecords = &
-           ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
+           ReadPermafrostElementRockMaterial(ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
     ELSE
-      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
     END IF
 
     IF (NumberOfRockRecords < 1) THEN
@@ -4879,8 +4769,8 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
     RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found, UnfoundFatal=.TRUE.)
   END IF
 
-  EGAtIP = EG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
-  nuGAtIP = nuG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
+  EGAtIP = EG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
+  nuGAtIP = nuG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
   KGuuAtIP = KGuu(EGAtIP,nuGAtIP,DIM)
 END FUNCTION GetKGuu
 !---------------------------------------------------------------------------------------------
@@ -4895,7 +4785,6 @@ FUNCTION GetBetaG(Model,IPNo,ArgumentsAtIP) RESULT(betaGAtIP)
   TYPE(Solver_t) :: DummySolver
   TYPE(ValueList_t), POINTER :: Material
   TYPE(Element_t),POINTER :: Element
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: RockMaterialID, NumberOfRockRecords, DIM, t, i, IPPerm
   REAL(KIND=dp) :: EGAtIP, nuGAtIP, PorosityAtIP, XiAtIP
@@ -4903,7 +4792,7 @@ FUNCTION GetBetaG(Model,IPNo,ArgumentsAtIP) RESULT(betaGAtIP)
   CHARACTER(LEN=MAX_NAME_LEN) :: ElementRockMaterialName
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName = 'PermafrostMaterials (GetBetaG)'
   !-----------
-  SAVE FirstTime,NumberOfRockRecords,CurrentRockMaterial,DIM,ElementWiseRockMaterial
+  SAVE FirstTime,NumberOfRockRecords,DIM,ElementWiseRockMaterial
 
   Element => Model % CurrentElement
   IF (.NOT.ASSOCIATED(Element)) CALL FATAL(FunctionName,'Element not associated')
@@ -4921,11 +4810,11 @@ FUNCTION GetBetaG(Model,IPNo,ArgumentsAtIP) RESULT(betaGAtIP)
       CALL INFO(FunctionName,'Using element-wise rock material definition',Level=3)
     END IF
     IF (ElementWiseRockMaterial) THEN
-      ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+      ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
       NumberOfRockRecords = &
-           ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
+           ReadPermafrostElementRockMaterial(ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
     ELSE
-      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
     END IF
 
     IF (NumberOfRockRecords < 1) THEN
@@ -4944,7 +4833,7 @@ FUNCTION GetBetaG(Model,IPNo,ArgumentsAtIP) RESULT(betaGAtIP)
   END IF
   PorosityAtIP = ArgumentsAtIP(1)
   XiAtIP = ArgumentsAtIP(2)
-  betaGAtIP = betaG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,XiAtIP,PorosityAtIP)
+  betaGAtIP = betaG(CurrentSolventMaterial,RockMaterialID,XiAtIP,PorosityAtIP)
 END FUNCTION GetBetaG
   !---------------------------------------------------------------------------------------------
 FUNCTION GetNuG(Model,IPNo,ArgumentsAtIP) RESULT(nuGAtIP)
@@ -4959,7 +4848,6 @@ FUNCTION GetNuG(Model,IPNo,ArgumentsAtIP) RESULT(nuGAtIP)
   TYPE(Solver_t) :: DummySolver
   TYPE(ValueList_t), POINTER :: Material
   TYPE(Element_t),POINTER :: Element
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: RockMaterialID, NumberOfRockRecords, DIM, t, i, IPPerm
   REAL(KIND=dp) :: PorosityAtIP, XiAtIP
@@ -4967,7 +4855,7 @@ FUNCTION GetNuG(Model,IPNo,ArgumentsAtIP) RESULT(nuGAtIP)
   CHARACTER(LEN=MAX_NAME_LEN) :: ElementRockMaterialName
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName = 'PermafrostMaterials (GetNuG)'
   !-----------
-  SAVE FirstTime,NumberOfRockRecords,CurrentRockMaterial,CurrentSolventMaterial,DIM,ElementWiseRockMaterial
+  SAVE FirstTime,NumberOfRockRecords,CurrentSolventMaterial,DIM,ElementWiseRockMaterial
   
   IF (FirstTime) CALL INFO("Permafrost(GetNuG)","Initializing",Level=1)
   PorosityAtIP=ArgumentsAtIP(1)
@@ -4989,11 +4877,11 @@ FUNCTION GetNuG(Model,IPNo,ArgumentsAtIP) RESULT(nuGAtIP)
       CALL INFO(FunctionName,'Using element-wise rock material definition',Level=3)
     END IF
     IF (ElementWiseRockMaterial) THEN
-      ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+      ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
       NumberOfRockRecords = &
-           ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
+           ReadPermafrostElementRockMaterial(ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
     ELSE
-      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
     END IF
 
     IF (NumberOfRockRecords < 1) THEN
@@ -5011,7 +4899,7 @@ FUNCTION GetNuG(Model,IPNo,ArgumentsAtIP) RESULT(nuGAtIP)
     RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
   END IF
 
-  nuGAtIP = nuG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,XiAtIP,PorosityAtIP)
+  nuGAtIP = nuG(CurrentSolventMaterial,RockMaterialID,XiAtIP,PorosityAtIP)
   !PRINT *,"getNuG:", nuGAtIP, XiAtIp(IPPerm),PorosityAtIP
 END FUNCTION GetNuG
 !---------------------------------------------------------------------------------------------
@@ -5026,7 +4914,6 @@ FUNCTION GetEG(Model,DummyIPNo,ArgumentsAtIP) RESULT(EGAtIP)
   TYPE(Solver_t) :: DummySolver
   TYPE(ValueList_t), POINTER :: Material
   TYPE(Element_t),POINTER :: Element
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: RockMaterialID, NumberOfRockRecords, DIM, t, i, IPPerm
   REAL(KIND=dp) :: PorosityAtIP, XiAtIP
@@ -5034,7 +4921,7 @@ FUNCTION GetEG(Model,DummyIPNo,ArgumentsAtIP) RESULT(EGAtIP)
   CHARACTER(LEN=MAX_NAME_LEN) :: ElementRockMaterialName
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName = 'PermafrostMaterials (GetNuG)'
   !-----------
-  SAVE FirstTime,NumberOfRockRecords,CurrentRockMaterial,CurrentSolventMaterial,DIM,ElementWiseRockMaterial
+  SAVE FirstTime,NumberOfRockRecords,CurrentSolventMaterial,DIM,ElementWiseRockMaterial
 
   PorosityAtIP=ArgumentsAtIP(1)
   XiAtIP=ArgumentsAtIP(2)
@@ -5056,11 +4943,11 @@ FUNCTION GetEG(Model,DummyIPNo,ArgumentsAtIP) RESULT(EGAtIP)
       CALL INFO(FunctionName,'Using element-wise rock material definition',Level=3)
     END IF
     IF (ElementWiseRockMaterial) THEN
-      ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+      ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
       NumberOfRockRecords = &
-           ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
+           ReadPermafrostElementRockMaterial(ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
     ELSE
-      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
     END IF
 
     IF (NumberOfRockRecords < 1) THEN
@@ -5077,7 +4964,7 @@ FUNCTION GetEG(Model,DummyIPNo,ArgumentsAtIP) RESULT(EGAtIP)
   ELSE
     RockMaterialID = ListGetInteger(Material,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
   END IF
-  EGAtIP = EG(CurrentSolventMaterial,CurrentRockMaterial,RockMaterialID,XiAtIP,PorosityAtIP)
+  EGAtIP = EG(CurrentSolventMaterial,RockMaterialID,XiAtIP,PorosityAtIP)
   !IF ((EGAtIP < 1.0d05) .OR. (EGAtIP > 1.0d07)) PRINT *,"GetEG",EGAtIP,XiAtIP,PorosityAtIP
 END FUNCTION GetEG
 !---------------------------------------------------------------------------------------------
@@ -5100,7 +4987,6 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
   INTEGER ::  DIM, t,NumberOfRockRecords, RockMaterialID, IPPerm
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
-  TYPE(RockMaterial_t), POINTER :: CurrentRockMaterial
   TYPE(Solver_t) :: DummySolver
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName = 'Permafrost (GetElasticityForce)'
   CHARACTER(LEN=MAX_NAME_LEN) :: ElementRockMaterialName
@@ -5108,7 +4994,7 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
        ElementWiseRockMaterial, OffsetDensity=.FALSE.
 
   SAVE ConstantsRead,ElementWiseRockMaterial,GasConstant, DIM, N0, DeltaT, T0, p0, eps, Gravity,&
-       NumberOfRockRecords,FirstTime,CurrentRockMaterial,CurrentSoluteMaterial,CurrentSolventMaterial,&
+       NumberOfRockRecords,FirstTime,CurrentSoluteMaterial,CurrentSolventMaterial,&
        OffsetDensity
 
   
@@ -5151,11 +5037,11 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
       CALL INFO(FunctionName,'Using element-wise rock material definition',Level=3)
     END IF
     IF (ElementWiseRockMaterial) THEN
-      ! read element-wise material parameter (CurrentRockMaterial will have one entry each element)
+      ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
       NumberOfRockRecords = &
-           ReadPermafrostElementRockMaterial(CurrentRockMaterial,ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
+           ReadPermafrostElementRockMaterial(ElementRockMaterialName,DummySolver,DIM,SkipInit=.TRUE.)
     ELSE
-      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material,Model % Constants,CurrentRockMaterial )
+      NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
     END IF
     IF (NumberOfRockRecords < 1) THEN
       PRINT *, "NumberOfRockRecords=", NumberOfRockRecords
@@ -5186,7 +5072,7 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
   rhowAtIP = rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
   !IF (rhowAtIP .NE. rhocAtIP) CALL FATAL(FunctionName,'rhowAtIP is NaN') 
   rhoiAtIP = rhoi(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
-  rhosAtIP = rhos(CurrentRockMaterial,RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
+  rhosAtIP = rhos(RockMaterialID,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
   rhogwAtIP = rhogw(rhowAtIP,rhocAtIP,XiAtIP,SalinityAtIP)
   !!!! IF (Time == 0) store that one at IP
 

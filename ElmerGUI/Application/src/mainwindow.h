@@ -69,6 +69,7 @@
 #include "operation.h"
 #include "materiallibrary.h"
 #include "twod/twodview.h"
+#include "solverlogwindow.h"
 
 #ifdef EG_QWT
 #include "convergenceview.h"
@@ -100,10 +101,15 @@ public:
   ~MainWindow();
 
   void parseCmdLine();
-
+  
+  QVariant settings_value(const QString & key, const QVariant & defaultValue = QVariant()) const;
+  void settings_setValue(const QString & key, const QVariant & value);
+  void saveAndRun(bool generateSif);
+  
 protected:
   void contextMenuEvent(QContextMenuEvent *event);
-
+  void closeEvent(QCloseEvent *event);
+  
 private slots:
   // menu slots:
   void openSlot();                // File -> Open...
@@ -127,6 +133,7 @@ private slots:
   void modelClearSlot();          // Model -> Clear
   void generateSifSlot();         // Edit -> Generate sif
   void showsifSlot();             // Edit -> Solver input file...
+  void suppressAutoSifGenerationSlot();       // Sif -> Auto sif generation
   void editDefinitionsSlot();     // Edit -> Definitions...
   void meshcontrolSlot();         // Mesh -> Control...
   void remeshSlot();              // Mesh -> Remesh
@@ -177,6 +184,7 @@ private slots:
   void killresultsSlot();         // Solver -> Kill post process
   void compileSolverSlot();       // Solver -> Compile...
   void showaboutSlot();           // Help -> About...
+  void generateAndSaveAndRunSlot();
 
   // other private slots:
   void meshingStartedSlot();          // signal emitted by meshingThread
@@ -239,6 +247,12 @@ private slots:
   void viewNormalModeSlot();
 
   void menuBarTriggeredSlot(QAction*);
+  
+  void loadRecentProject0();
+  void loadRecentProject1();
+  void loadRecentProject2();
+  void loadRecentProject3();
+  void loadRecentProject4(); 
 
 private:
   // widgets and helpers:
@@ -248,7 +262,7 @@ private:
   BoundaryDivide *boundaryDivide; // boundary division control
   Meshutils *meshutils;           // mesh manipulation utilities  
   MeshingThread *meshingThread;   // meshing thread
-  SifWindow *solverLogWindow;     // Solver log
+  SolverLogWindow *solverLogWindow;     // Solver log
   SifGenerator *sifGenerator;     // SIF generator
   EdfEditor *edfEditor;           // Edf editor
 #ifdef EG_QWT
@@ -265,8 +279,15 @@ private:
   void saveProjectContents(QDomDocument, QString, QVector<DynamicEditor*>&);
   void loadProjectContents(QDomElement, QVector<DynamicEditor*>&, QString);
   QString getDefaultDirName();
+  void loadProject(QString);
+  bool saveProject(QString);  
+  void loadSettings();
+  void saveSettings();
+  bool loadExtraSolver(QString); // load the solver with specified solver name, Nov 2019 by TS
+  void checkAndLoadExtraSolvers(QFile*);
 
   QMenu *fileMenu;                // File menu
+  QMenu *recentProjectsMenu;      // File -> Recent projects menu
   QMenu *modelMenu;               // Model menu
   QMenu *equationMenu;            // Model -> Equation menu
   QMenu *materialMenu;            // Model -> Material menu
@@ -310,6 +331,7 @@ private:
   QAction *modelClearAct;         // Model -> Clear
   QAction *generateSifAct;        // Edit -> Generate sif
   QAction *showsifAct;            // Edit -> Edit SIF...
+  QAction *suppressAutoSifGenerationAct;  // Sif -> Auto sif generation
   QAction *editDefinitionsAct;    // Edit -> Edit SIF...
   QAction *viewFullScreenAct;     // View -> Full screen
   QAction *hidesurfacemeshAct;    // View -> Show surface mesh
@@ -360,6 +382,7 @@ private:
   QAction *paraviewAct;           // Solver -> Launch Paraview
   QAction *compileSolverAct;      // Solver -> Compile...
   QAction *aboutAct;              // Help -> About...
+  QAction *generateAndSaveAndRunAct;
 
   // property editors etc:
   GeneralSetup *generalSetup;
@@ -485,6 +508,16 @@ private:
 //  architectures and it's small so there's no marked adverse effects
   QString homePath;
 //  #endif
+
+  // variables and functions for "Recent projects..." menu
+  QStringList recentProject;
+ 	void addRecentProject(QString, bool);  
+ 	
+ 	// String to store current project dir for "generate, save and run" button
+ 	QString currentProjectDirName;
+ 	
+ 	bool suppressAutoSifGeneration;
+ 	
 };
 
 #endif // MAINWINDOW_H
