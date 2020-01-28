@@ -9629,17 +9629,18 @@ CONTAINS
                         IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
                       END IF
 
-                      jj = 2 * ( ind - 1 ) + ( j - 4 )
+                      jj = 2 * ( ind - 1 ) + ( j - ne )
                       nrow = FaceRow0 + jj
-                      jj = 2 * ( Element % ElementIndex - 1) + ( j - 4 ) 
+                      jj = 2 * ( Element % ElementIndex - 1) + ( j - ne ) 
                       Projector % InvPerm( nrow ) = FaceCol0 + jj
                     END IF
 
-                    DO i=1,neM+nfM
-                      IF( i <= neM ) THEN
+
+                    DO i=1,ne+nf
+                      IF( i <= ne ) THEN
                         ii = Element % EdgeIndexes(i) + EdgeCol0
                       ELSE
-                        ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
+                        ii = 2 * ( Element % ElementIndex - 1 ) + ( i - ne ) + FaceCol0
                       END IF
 
                       val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
@@ -9648,11 +9649,13 @@ CONTAINS
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeCoeff * val ) 
                       END IF
-
+                    END DO
+                      
+                    DO i=1,neM+nfM
                       IF( i <= neM ) THEN
                         ii = ElementM % EdgeIndexes(i) + EdgeCol0
                       ELSE
-                        ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
+                        ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - neM ) + FaceCol0
                       END IF
                       val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
 
