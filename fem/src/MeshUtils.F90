@@ -8628,8 +8628,90 @@ CONTAINS
 
     END SUBROUTINE AddProjectorWeakStrides
 
+
+    SUBROUTINE LocalEdgeSolutionCoeffs( BC, Element, Nodes, ne, nf, PiolaVersion, SecondOrder, &
+        dim, cFact )
+      TYPE(ValueList_t), POINTER :: BC
+      TYPE(Element_t), POINTER :: Element
+      TYPE(Nodes_t) :: Nodes
+      INTEGER :: ne, nf, dim
+      LOGICAL :: PiolaVersion, SecondOrder            
+      REAL(KIND=dp) :: cFact(:)
+
+      TYPE(GaussIntegrationPoints_t) :: IP
+      INTEGER :: i,j,m,nip,AllocStat
+      REAL(KIND=dp) :: u,v,w,uq,vq,CMass(6,6),CForce(6),detJ,wtemp
+      REAL(KIND=dp), POINTER, SAVE :: Basis(:),WBasis(:,:),RotWBasis(:,:), &
+          dBasisdx(:,:)
+      LOGICAL :: stat, Visited = .FALSE.
+      REAL(KIND=dp) :: cvec(2)
+      REAL(KIND=dp), POINTER :: pCvec(:,:)
+       
+      SAVE Visited, cVec 
+      
+      
+      IF( .NOT. Visited ) THEN
+        m = 12 
+        ALLOCATE( Basis(m), WBasis(m,3), RotWBasis(m,3), dBasisdx(m,3), STAT=AllocStat )
+        IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 3')
+        
+        pCvec => ListGetConstRealArray( BC,'Level Projector Debug Vector',Found)
+        IF( Found ) THEN                  
+          Cvec(1:2) = pCvec(1:2,1)
+        ELSE
+          Cvec = 1.0_dp
+        END IF
+        Visited = .TRUE.
+      END IF
+
+          
+      IP = GaussPoints( Element ) 
+      CMass = 0.0_dp
+      cForce = 0.0_dp                   
+      m = ne + nf
+      
+      DO nip=1, IP % n 
+        u = IP % u(nip)
+        v = IP % v(nip)
+        w = 0.0_dp
+
+        IF (PiolaVersion) THEN
+          ! Take into account that the reference elements are different:
+          IF ( ne == 3) THEN
+            uq = u
+            vq = v
+            u = -1.0d0 + 2.0d0*uq + vq
+            v = SQRT(3.0d0)*vq
+          END IF
+          IF (SecondOrder) THEN
+            stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+                DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+                BasisDegree = 2, ApplyPiolaTransform = .TRUE.)
+          ELSE
+            stat = ElementInfo( Element, Nodes, u, v, w, &
+                detJ, Basis, dBasisdx, EdgeBasis=WBasis)
+          END IF
+        ELSE
+          stat = ElementInfo( Element, Nodes, u, v, w, &
+              detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)              
+        END IF
+
+        wtemp = detJ * IP % s(nip)
+        DO i=1,m
+          DO j=1,m
+            CMASS(i,j) = CMASS(i,j) + wtemp * SUM( WBasis(i,1:dim) * WBasis(j,1:dim) )
+          END DO
+          CFORCE(i) = CFORCE(i) + wtemp * SUM( WBasis(i,1:dim) * cVec(1:dim) )
+        END DO
+      END DO
+      CALL LUSolve(m, CMass(1:m,1:m), cForce(1:m) )
+      cFact(1:m) = cForce(1:m)                    
+      
+    END SUBROUTINE LocalEdgeSolutionCoeffs
     
 
+  
     !----------------------------------------------------------------------
     ! Create weak projector for the remaining nodes and edges
     ! using generic algo that can deal with triangles and quadrilaterals.
@@ -8657,7 +8739,7 @@ CONTAINS
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol, &
           amin, amax, aminM, amaxM, rmin2, rmax2, rmin2M, rmax2M
-      REAL(KIND=dp) :: TotRefArea, TotSumArea
+      REAL(KIND=dp) :: TotRefArea, TotSumArea, Area
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), POINTER :: Alpha(:), AlphaM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
@@ -8667,12 +8749,13 @@ CONTAINS
 
       ! These are used temporarily for debugging purposes
       INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster
-      LOGICAL :: SaveElem, DebugElem, SaveErr
+      LOGICAL :: SaveElem, DebugElem, SaveErr, DebugEdge
+      REAL(KIND=dp) :: sums, summ, summ2, summabs, EdgeProj(2), EdgeProjM(2), ci, &
+          EdgeErr, MaxEdgeErr, cFact(6),cFactM(6)
       CHARACTER(LEN=20) :: FileName
-
-      REAL(KIND=dp) :: Area
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
 
+      
       CALL Info('LevelProjector','Creating weak constraints using a generic integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
@@ -8680,7 +8763,7 @@ CONTAINS
       SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
       DebugInd = ListGetInteger( BC,'Level Projector Debug Element Index',Found )
       SaveErr = ListGetLogical( BC,'Level Projector Save Fraction',Found)
-
+      DebugEdge = ListGetLogical( BC,'Level Projector Debug Edge',Found )
       
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
@@ -8747,7 +8830,11 @@ CONTAINS
       Nslave = 0
       Nmaster = 0
 
-
+      IF( DebugEdge ) THEN        
+        sums = 0.0_dp; summ = 0.0_dp; summ2 = 0.0_dp; summabs = 0.0_dp
+        MaxEdgeErr = 0.0_dp
+      END IF
+      
       ! Identify center nodes for axial projectors since at the origin the angle
       ! is impossible to determine. Instead for the origin the angle is the average
       ! of the other angles in the element.
@@ -8774,8 +8861,7 @@ CONTAINS
         END DO
       END IF
         
-        
-      
+              
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         ! Optionally save the submesh for specified element, for vizualization and debugging
@@ -8881,7 +8967,13 @@ CONTAINS
           zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:ne)) )
           zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:ne)) )
         END IF
-
+        
+        IF( DebugEdge ) THEN
+          CALL LocalEdgeSolutionCoeffs( BC, Element, Nodes, ne, nf, &
+              PiolaVersion, SecondOrder, 2, cFact )
+          EdgeProj = 0.0_dp; EdgeProjM = 0.0_dp
+        END IF
+        
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
 
@@ -8934,6 +9026,8 @@ CONTAINS
         !--------------------------------------------------------------------
         ElemCands = 0
         ElemHits = 0
+
+        
         DO indM=1,BMesh2 % NumberOfBulkElements
 
           ElementM => BMesh2 % Elements(indM)        
@@ -9240,6 +9334,11 @@ CONTAINS
           kmax = k          
           IF( kmax < 3 ) GOTO 100
 
+          IF( DebugEdge ) THEN          
+            CALL LocalEdgeSolutionCoeffs( BC, ElementM, NodesM, neM, nfM, &
+                PiolaVersion, SecondOrder, 2, cFactM )
+          END IF
+          
           sgn0 = 1
           IF( AntiRepeating ) THEN
             IF ( MODULO(Nrange,2) /= 0 ) sgn0 = -1
@@ -9643,9 +9742,15 @@ CONTAINS
                         ii = 2 * ( Element % ElementIndex - 1 ) + ( i - ne ) + FaceCol0
                       END IF
 
+                      IF( DebugEdge ) THEN
+                        ci = cFact(i)
+                        sums = sums + ci * EdgeCoeff * val                         
+                        EdgeProj(1:2) = EdgeProj(1:2) + ci * Wtemp * Wbasis(i,1:2)
+                      END IF
+                        
                       val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
                       IF( ABS( val ) > 1.0d-12 ) THEN
-                        Nslave = Nslave + 1
+                        Nslave = Nslave + 1                          
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeCoeff * val ) 
                       END IF
@@ -9657,10 +9762,20 @@ CONTAINS
                       ELSE
                         ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - neM ) + FaceCol0
                       END IF
-                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
 
+                      IF( DebugEdge ) THEN
+                        ci = cFactM(i)
+                        summ = summ + ci * EdgeScale * EdgeCoeff * val
+                        summabs = summabs + ABS( ci * EdgeScale * EdgeCoeff * val )                        
+                        IF( NRange /= NRange1 ) THEN
+                          summ2 = summ2 + ci * EdgeScale * EdgeCoeff * val
+                        END IF                        
+                        EdgeProjM(1:2) = EdgeProjM(1:2) + ci * Wtemp * sgn0 * WbasisM(i,1:2)
+                      END IF
+                        
+                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
                       IF( ABS( val ) > 1.0d-12 ) THEN
-                        Nmaster = Nmaster + 1                       
+                        Nmaster = Nmaster + 1
                         CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                             ii, EdgeScale * EdgeCoeff * val  ) 
                       END IF
@@ -9730,12 +9845,19 @@ CONTAINS
           WRITE( 11, * ) ind,SUM( Nodes % x(1:ne))/ne, SUM( Nodes % y(1:ne))/ne, Err
         END IF
 
+        IF( DebugEdge ) THEN        
+          EdgeErr = SUM( ABS( EdgeProj-EdgeProjM) ) / SUM( ABS(EdgeProj)+ABS(EdgeProjM) )          
+          IF( EdgeErr > 1.0e-3 ) THEN
+            PRINT *,'EdgeProj:',ind,EdgeErr,EdgeProj,EdgeProjM          
+          END IF
+          MaxEdgeErr = MAX( MaxEdgeErr, EdgeErr ) 
+        END IF
         
       END DO
 
       IF( SaveErr ) CLOSE(11)
       
-        
+      
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
           NodesM % x, NodesM % y, NodesM % z, &
           NodesT % x, NodesT % y, NodesT % z, &
@@ -9788,7 +9910,24 @@ CONTAINS
       CALL Info('LevelProjector','Number of master entries: '&
           //TRIM(I2S(Nmaster)),Level=10)
 
+      IF( DebugEdge ) THEN
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: err',err) 
 
+        WRITE( Message,'(A,ES15.6)') 'Slave entries total sum:', sums
+        CALL Info('LevelProjector',Message,Level=8)
+        WRITE( Message,'(A,ES15.6)') 'Master entries total sum:', summ
+        CALL Info('LevelProjector',Message,Level=8)
+        WRITE( Message,'(A,ES15.6)') 'Master entries total sum2:', summ2
+        CALL Info('LevelProjector',Message,Level=8)
+        WRITE( Message,'(A,ES15.6)') 'Maximum edge projection error:', MaxEdgeErr
+        CALL Info('LevelProjector',Message,Level=6)
+
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: sums',sums) 
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: summ',summ) 
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: summ2',summ2) 
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: summabs',summabs) 
+        CALL ListAddConstReal( CurrentModel % Simulation,'res: maxedgerr',MaxEdgeErr)
+      END IF
 
     END SUBROUTINE AddProjectorWeakGeneric
 
