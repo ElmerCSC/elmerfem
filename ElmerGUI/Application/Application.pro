@@ -151,6 +151,7 @@ HEADERS += src/bodypropertyeditor.h \
            src/solverparameters.h \
            src/summaryeditor.h \
            src/solverlogwindow.h \
+           src/objectbrowser.h \
            plugins/egconvert.h \
            plugins/egdef.h \
            plugins/egmain.h \
@@ -204,6 +205,7 @@ SOURCES += src/bodypropertyeditor.cpp \
            src/solverparameters.cpp \
            src/summaryeditor.cpp \
            src/solverlogwindow.cpp \
+           src/objectbrowser.cpp \
            plugins/egconvert.cpp \
            plugins/egmain.cpp \
            plugins/egmesh.cpp \

@@ -70,6 +70,7 @@
 #include "materiallibrary.h"
 #include "twod/twodview.h"
 #include "solverlogwindow.h"
+#include "objectbrowser.h"
 
 #ifdef EG_QWT
 #include "convergenceview.h"
@@ -95,6 +96,8 @@ class VtkPost;
 class MainWindow : public QMainWindow
 {
   Q_OBJECT
+  
+  friend class ObjectBrowser;
     
 public:
   MainWindow();
@@ -176,6 +179,7 @@ private slots:
   void showTwodViewSlot();        // View -> Show 2D view...
   void showVtkPostSlot();         // View -> Show VTK post processor...
   void showParaViewSlot();        // View -> Use ParaView for postprocessing
+  void showObjectBrowserSlot();   // view -> Show Object Browser 
   void parallelSettingsSlot();    // Solver -> Parallel settings
   void runsolverSlot();           // Solver -> Run solver
   void killsolverSlot();          // Solver -> Kill solver
@@ -248,11 +252,11 @@ private slots:
 
   void menuBarTriggeredSlot(QAction*);
   
-  void loadRecentProject0();
-  void loadRecentProject1();
-  void loadRecentProject2();
-  void loadRecentProject3();
-  void loadRecentProject4(); 
+  void loadRecentProject0Slot();
+  void loadRecentProject1Slot();
+  void loadRecentProject2Slot();
+  void loadRecentProject3Slot();
+  void loadRecentProject4Slot(); 
 
 private:
   // widgets and helpers:
@@ -314,6 +318,11 @@ private:
   QAction *openAct;               // File -> Open...
   QAction *loadAct;               // File -> Load...
   QAction *loadProjectAct;        // File -> Load project....
+  QAction *recentProject0Act;
+  QAction *recentProject1Act;
+  QAction *recentProject2Act;
+  QAction *recentProject3Act;
+  QAction *recentProject4Act;
   QAction *saveAct;               // File -> Save...
   QAction *saveAsAct;             // File -> Save As...
   QAction *saveProjectAct;        // File -> Save project...
@@ -365,6 +374,7 @@ private:
   QAction *showCadModelAct;       // View -> Show cad model...
   QAction *showTwodViewAct;       // View -> Show 2d view...
   QAction *showVtkPostAct;        // View -> Show VTK post processor...
+  QAction *showObjectBrowserAct;  // View -> Show Object Browser
   QAction *meshcontrolAct;        // Mesh -> Control...
   QAction *remeshAct;             // Mesh -> Remesh
   QAction *stopMeshingAct;        // Mesh -> Kill generator
@@ -518,6 +528,7 @@ private:
  	
  	bool suppressAutoSifGeneration;
  	
+ 	ObjectBrowser* objectBrowser;
 };
 
 #endif // MAINWINDOW_H
