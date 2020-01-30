@@ -892,7 +892,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      IF (CoilBody) THEN
        
-       !CALL GetLocalSolution(Wbase, 'w')
        Call GetWPotential(Wbase)
   
        SELECT CASE (CoilType)
@@ -1020,13 +1019,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           END IF
        END IF
 
+       s = IP % s(j) * detJ
 
        grads_coeff = -1._dp/GetCircuitModelDepth()
        IF( CSymmetry ) THEN
          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
          grads_coeff = grads_coeff/xcoord
+         s = s * xcoord 
        END IF
-
+                
+       
        DO k=1,vDOFs
          SELECT CASE(dim)
          CASE(2)
@@ -1368,8 +1370,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
          END IF
        END IF
-
-       s = IP % s(j) * detJ
 
        IF(ASSOCIATED(HB) .AND. RealField) THEN 
          Energy = Energy + s*(0.5*PR_ip*SUM(E**2) + w_dens)
@@ -2110,11 +2110,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
         E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
         E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+
+        s = IP % s(j) * detJ
+        IF( CSymmetry ) THEN
+          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) ) 
+          s = s * xcoord 
+        END IF
         
         ! Compute the (real) power to maintain the surface current j_S in terms of 
         ! the surface impedance from the power density P_S = 1/2 Real(1/Zs) E.conjugate(E)
         Power = Power + HarmPowerCoeff * REAL(1.0_dp/Zs) * &
-            (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * detJ * IP % s(j)
+            (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * s 
 
         ! The total power required to maintain the current in the layer when the current density is
         ! assumed to be constant through the layer thickness:
@@ -2214,7 +2220,7 @@ CONTAINS
     LOGICAL :: FirstTime = .TRUE.
     REAL(KIND=dp) :: B2, GapLength_ip, LeftCenter(3), &
       RightCenter(3), BndCenter(3), LeftNormal(3), RightNormal(3), &
-      NF_ip_l(27,3), NF_ip_r(27,3)
+      NF_ip_l(27,3), NF_ip_r(27,3), xcoord
     TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
     TYPE(Nodes_t), SAVE :: LPNodes, RPNodes
     REAL(KIND=dp) :: F(3,3)
@@ -2322,8 +2328,6 @@ CONTAINS
 
       
       DO j = 1,IP % n
-        s = IP % s(j)
-
         IF ( PiolaVersion ) THEN
           stat = EdgeElementInfo( BElement, Nodes, IP % U(j), IP % V(j), IP % W(j), &
             F = F, DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
@@ -2338,8 +2342,12 @@ CONTAINS
         R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
         GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
 
-        s = s * detJ
-
+        s = detJ * IP % s(j)        
+        IF ( CSymmetry ) THEN
+          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
+          s = s * xcoord 
+        END IF
+          
         Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
         IF(HasLeft)  THEN
           IF( SUM(normal*(LeftCenter - bndcenter)) >= 0 ) THEN
