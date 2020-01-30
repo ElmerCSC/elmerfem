@@ -283,9 +283,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
   
 
-  LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
-       RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
-       AxialSymmetry
+  LOGICAL :: GotForceBC, GotFSIBC, GotSpring, GotIt, NewtonLinearization = .FALSE., &
+      Isotropic = .TRUE., RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, &
+      NeoHookeanMaterial = .FALSE., AxialSymmetry
   LOGICAL :: UseUMAT, InitializeStateVars, HenckyStrain
   LOGICAL :: LargeDeflection
   LOGICAL :: MixedFormulation
@@ -965,46 +965,47 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            Alpha      = 0.0D0
            Beta       = 0.0D0
            SpringCoeff = 0.0d0
+           
            !------------------------------------------------------------------------------
-           ! The components of surface forces 
+           ! The components of surface forces
+           ! We assume that consistently either keyword type is used.
            !------------------------------------------------------------------------------
            GotForceBC = .FALSE.
-           LoadVector(1,1:n) = GetReal( BC, 'Surface Traction 1', GotIt )
-           IF (.NOT. GotIt) LoadVector(1,1:n) = GetReal( BC, 'Force 1', GotIt )
-           GotForceBC = GotForceBC .OR. GotIt
-
-           LoadVector(2,1:n) = GetReal( BC, 'Surface Traction 2', GotIt )
-           IF (.NOT. GotIt) LoadVector(2,1:n) = GetReal( BC, 'Force 2', GotIt )
-           GotForceBC = GotForceBC .OR. GotIt
-
-           LoadVector(3,1:n) = GetReal( BC, 'Surface Traction 3', GotIt )
-           IF (.NOT. GotIt) LoadVector(3,1:n) = GetReal( BC, 'Force 3', GotIt )
-           GotForceBC = GotForceBC .OR. GotIt
-
+           IF( ListCheckPrefix( BC,'Surface Traction' ) ) THEN
+             GotForceBC = .TRUE.
+             LoadVector(1,1:n) = GetReal( BC, 'Surface Traction 1', GotIt )
+             LoadVector(2,1:n) = GetReal( BC, 'Surface Traction 2', GotIt )
+             LoadVector(3,1:n) = GetReal( BC, 'Surface Traction 3', GotIt )
+           ELSE IF( ListCheckPrefix( BC,'Force' ) ) THEN
+             GotForceBC = .TRUE.
+             LoadVector(1,1:n) = GetReal( BC, 'Force 1', GotIt )
+             LoadVector(2,1:n) = GetReal( BC, 'Force 2', GotIt )
+             LoadVector(3,1:n) = GetReal( BC, 'Force 3', GotIt )
+           END IF
+             
            Beta(1:n) = GetReal( BC, 'Normal Surface Traction', GotIt )
            IF (.NOT. GotIt) Beta(1:n) = GetReal( BC, 'Normal Force', gotIt )
            GotForceBC = GotForceBC .OR. GotIt
 
-           GotForceBC = GotForceBC .OR. GetLogical( BC, 'Force BC', GotIt )
-
-           SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
-           IF ( .NOT. NormalSpring ) THEN
-              DO i=1,dim
+           GotSpring = ListCheckPrefix( BC,'Spring' )
+           IF( GotSpring ) THEN           
+             SpringCoeff(1:n,1,1) = GetReal( BC, 'Spring', NormalSpring )           
+             IF ( .NOT. NormalSpring ) THEN
+               DO i=1,dim
                  SpringCoeff(1:n,i,i) = GetReal( BC, ComponentName('Spring',i), GotIt)
-              END DO
-
-              DO i=1,dim
+               END DO
+               DO i=1,dim
                  DO j=1,dim
-                    IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
-                         SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), GotIt)
+                   IF (ListCheckPresent(BC,'Spring '//TRIM(i2s(i))//i2s(j) )) &
+                       SpringCoeff(1:n,i,j)=GetReal( BC, 'Spring '//TRIM(i2s(i))//i2s(j), GotIt)
                  END DO
-              END DO
+               END DO
+             END IF
            END IF
-
+             
            GotFSIBC = GetLogical( BC, 'FSI BC', GotIt )
-           IF(.NOT. GotIt ) GotFSIBc = ASSOCIATED( FlowSol  ) 
 
-           IF ( .NOT. GotForceBC .AND. .NOT. GotFSIBC .AND. ALL( SpringCoeff==0.0d0 ) ) CYCLE
+           IF ( .NOT. ( GotForceBC .OR. GotFSIBC .OR. GotSpring ) ) CYCLE
 
            PseudoTraction = GetLogical( BC, 'Pseudo-Traction', GotIt)
            IF(.NOT. GotIt ) PseudoTraction = GlobalPseudoTraction
@@ -1089,11 +1090,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                  
                  CompressibilityDefined = .FALSE.
                  IF ( GotIt ) THEN
-                   IF ( CompressibilityFlag /= 'incompressible' ) THEN 
-!.AND. &
-!                       CompressibilityFlag /= 'artificial compressible') THEN
-                     CompressibilityDefined = .TRUE.
-                   END IF
+                   CompressibilityDefined = ( CompressibilityFlag /= 'incompressible' )  &
+                       .OR. ( CompressibilityFlag /= 'artificial compressible') 
                  END IF
                  
                  DragCoeff = ListGetCReal( BC,'FSI Drag Multiplier',GotIt)
@@ -1108,7 +1106,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                 GetVarName(Solver % Variable), GotIt )
 
            CALL LocalBoundaryMatrix( LocalStiffMatrix, LocalForce, &
-               LoadVector, SpringCoeff, NormalSpring, Alpha, Beta, LocalDisplacement, &
+               LoadVector, SpringCoeff, GotSpring, NormalSpring, Alpha, Beta, LocalDisplacement, &
                CurrentElement, n, ntot, ParentElement, ParentElement % TYPE % NumberOfNodes, &
                nd, ParentNodes, FlowElement, FlowNOFNodes, FlowNodes, Velocity,  &
                Pressure, Viscosity, Density, CompressibilityDefined, AxialSymmetry, &
@@ -2873,7 +2871,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalBoundaryMatrix(BoundaryMatrix,BoundaryVector, &
-       LoadVector, NodalSpringCoeff,NormalSpring,NodalAlpha,NodalBeta, &
+       LoadVector, NodalSpringCoeff,GotSpring,NormalSpring,NodalAlpha,NodalBeta, &
        LocalDisplacement,Element,n,ntot,Parent,pn,pntot,ParentNodes,Flow,fn, &
        FlowNodes,Velocity,Pressure,NodalViscosity, NodalDensity, &
        CompressibilityDefined, AxialSymmetry, NormalTangential, &
@@ -2884,7 +2882,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:)
     REAL(KIND=dp) :: LoadVector(:,:), NodalSpringCoeff(:,:,:)
-    LOGICAL :: NormalSpring
+    LOGICAL :: GotSpring, NormalSpring
     REAL(KIND=dp) :: NodalAlpha(:,:), NodalBeta(:)
     REAL(KIND=dp) :: LocalDisplacement(:,:)
     TYPE(Element_t), POINTER :: Element
@@ -3115,37 +3113,39 @@ CONTAINS
        ! Spring terms on the boundary: These contributions are defined with respect the undeformed 
        ! configuration.
        ! -------------------------------------------------------------------------------------------
-       IF (NormalSpring) THEN
-          SpringCoeff(1,1) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,1,1))
-          DO p=1,ntot
-             DO i=1,dim 
-                DO q=1,ntot
-                   DO j=1,dim 
-                      BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) = BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) + &
-                           SpringCoeff(1,1) * Basis(q) * RefNormal(j) * Basis(p) * RefNormal(i) * s
-                   END DO
-                END DO
-             END DO
-          END DO
-       ELSE
-          DO i=1,dim
-             DO j=1,dim
-                SpringCoeff(i,j) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,i,j))
-             END DO
-          END DO
-          ! TO DO: More general spring conditions should be treated here
-          DO p=1,ntot
-             DO i=1,dim 
-                DO q=1,ntot
-                   DO j=1,dim 
-                      BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) = BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) + &
-                           SpringCoeff(i,j) * Basis(q) * Basis(p) * s
-                   END DO
-                END DO
-             END DO
-          END DO
-       END IF
 
+       IF( GotSpring ) THEN
+         IF (NormalSpring) THEN
+           SpringCoeff(1,1) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,1,1))
+           DO p=1,ntot
+             DO i=1,dim 
+               DO q=1,ntot
+                 DO j=1,dim 
+                   BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) = BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) + &
+                       SpringCoeff(1,1) * Basis(q) * RefNormal(j) * Basis(p) * RefNormal(i) * s
+                 END DO
+               END DO
+             END DO
+           END DO
+         ELSE 
+           DO i=1,dim
+             DO j=1,dim
+               SpringCoeff(i,j) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,i,j))
+             END DO
+           END DO
+           ! TO DO: More general spring conditions should be treated here
+           DO p=1,ntot
+             DO i=1,dim 
+               DO q=1,ntot
+                 DO j=1,dim 
+                   BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) = BoundaryMatrix((p-1)*DOFs+i,(q-1)*DOFs+j) + &
+                       SpringCoeff(i,j) * Basis(q) * Basis(p) * s
+                 END DO
+               END DO
+             END DO
+           END DO
+         END IF
+       END IF
 
        !     NOTE: Currently Alpha parameter is set to be zero so the following has no effect:
        !     ---------------------------------------------------------------------------------

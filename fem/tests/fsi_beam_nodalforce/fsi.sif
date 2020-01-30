@@ -121,6 +121,8 @@ Boundary Condition 3
   Displacement 1 Load = Opposes "Flow Solution Loads 1"
   Displacement 2 Load = Opposes "Flow Solution Loads 2"
 
+  Fsi Bc = Logical False
+
   Mesh Update 1 = Equals Displacement 1
   Mesh Update 2 = Equals Displacement 2
 End
