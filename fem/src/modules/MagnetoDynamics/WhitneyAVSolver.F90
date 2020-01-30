@@ -39,12 +39,10 @@
 SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -53,8 +51,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   TYPE(ValueListEntry_t), POINTER :: VariablePtr
   INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
        b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16
-
-  integer :: Paramlist
+  INTEGER :: Paramlist
   Paramlist = 0
 
   SolverParams => GetSolverParams()
@@ -165,15 +162,42 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   IF (LagrangeGauge .AND. Transient .AND. &
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver_Init0", "Gauge field is not projected across mortar boundaries.") 
-  END IF
-
-
+  END IF  
+  
   ! THIS ENFORCES THE NEW STRATEGY !!!!
   CALL ListAddLogical( SolverParams,'Generic Source Fixing',.TRUE.)
   
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE MagnetoDynamicsUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+
+  Mesh => GetMesh()
+  IF( Mesh % MeshDim /= 3 ) THEN
+    CALL Fatal('WhitneyAVSolver_Init','Solver requires 3D mesh!')
+  END IF
+  
+  IF( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric ) THEN
+    CALL Fatal('WhitneyAVSolver_Init','Solver not applicable to axially axisymmetric cases!')
+  END IF
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE WhitneyAVSolver_Init
+!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
