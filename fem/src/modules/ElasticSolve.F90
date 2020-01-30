@@ -421,9 +421,16 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   FlowSol => VariableGet( Mesh % Variables, 'Flow Solution' )
   IF ( ASSOCIATED( FlowSol) ) THEN
-     FlowPerm => FlowSol % Perm
-     k = SIZE( FlowSol % Values )
-     FlowSolution => FlowSol % Values
+    FlowPerm => FlowSol % Perm
+    k = SIZE( FlowSol % Values )
+    FlowSolution => FlowSol % Values
+    IF( .NOT. ListGetLogicalAnyBC( Model,'FSI BC' ) ) THEN
+      CALL Warn(Caller,'Note that "FSI BC" is not activated automatically any more!')
+    END IF
+  ELSE
+    IF( ListGetLogicalAnyBC( Model,'FSI BC' ) ) THEN
+      CALL Warn(Caller,'FSI BC requires flow field that is not available')
+    END IF
   END IF
 
   MeshDisplacementActive = ListGetLogical( SolverParams, &
@@ -2895,16 +2902,13 @@ CONTAINS
     REAL(KIND=dp) :: Basis(ntot)
     REAL(KIND=dp) :: dBasisdx(ntot,3),SqrtElementMetric, MetricTerm
     REAL(KIND=dp) :: x(n),y(n),z(n), fx(n), fy(n), fz(n), Density
-
     REAL(KIND=dp) :: PBasis(pntot)
     REAL(KIND=dp) :: PdBasisdx(pntot,3),PSqrtElementMetric
-
     REAL(KIND=dp) :: FBasis(fn)
     REAL(KIND=dp) :: FdBasisdx(fn,3),FSqrtElementMetric
-
     REAL(KIND=dp) :: u,v,w,s,r,ParentU,ParentV,ParentW
     REAL(KIND=dp) :: FlowStress(3,3),Viscosity
-    REAL(KIND=dp) :: Force(3),Alpha(3),Beta,Normal(3),RefNormal(3),Identity(3,3)
+    REAL(KIND=dp) :: Force(3),Alpha(3),Beta,Normal(3),RefNormal(3),FluidNormal(3),Identity(3,3)
     REAL(KIND=dp) :: Grad(3,3),DefG(3,3),DetDefG,CofDefG(3,3),ScaleFactor
     REAL(KIND=dp) :: SpringCoeff(3,3)
     REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
@@ -3038,7 +3042,10 @@ CONTAINS
                 FlowStress(i,i) = FlowStress(i,i) - Viscosity * (2.0d0/3.0d0)*TRACE(Grad,dim)
              END IF
           END DO
-       END IF
+
+          ! Do we really need this, or isn't FluidNormal always opposite to structure normal? 
+          FluidNormal = NormalVector(Element,Nodes,u,v,Parent=Parent) 
+        END IF
 
        ! -------------------------------------------------------
        ! Normal vector and its transformation:
@@ -3059,7 +3066,13 @@ CONTAINS
        ! -----------------------------------------------------------------------------------
        Force = SUM( NodalBeta(1:n)*Basis(1:n) ) * Normal
        IF ( ASSOCIATED( Flow ) ) THEN
-          Force = Force + MATMUL( FlowStress, Normal )
+         ! If the reference normal and fluid normal point to same direction
+         ! then add the force, otherwise deduce
+         IF( SUM( Normal * FluidNormal ) > 0 ) THEN
+           Force = Force + MATMUL( FlowStress, Normal )
+         ELSE
+           Force = Force - MATMUL( FlowStress, Normal )
+         END IF           
        END IF
        DO q=1,ntot
           DO i=1,dim

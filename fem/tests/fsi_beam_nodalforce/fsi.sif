@@ -56,6 +56,9 @@ Solver 1
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Relaxation Factor = 1.0
   Steady State Convergence Tolerance = 1.0e-6
+
+! Calculate reaction loads to be applied to the structure
+  Calculate Loads = True
 End
 
 Solver 2
@@ -112,7 +115,12 @@ Boundary Condition 3
   Target Boundaries = 3
   Velocity 1 = 0.0
   Velocity 2 = 0.0
-  FSI BC = True
+
+! This does the same thing as "Fsi BC" except on
+! a discrete level.
+  Displacement 1 Load = Opposes "Flow Solution Loads 1"
+  Displacement 2 Load = Opposes "Flow Solution Loads 2"
+
   Mesh Update 1 = Equals Displacement 1
   Mesh Update 2 = Equals Displacement 2
 End
@@ -130,9 +138,9 @@ Boundary Condition 5
   Displacement 2 = 0.0
 End
 
-Solver 1 :: Reference Norm = 5.64320950E-01
-Solver 2 :: Reference Norm = 4.33280914E-01
-Solver 3 :: Reference Norm = 4.52908250E-01
+Solver 1 :: Reference Norm = 5.63258981E-01
+Solver 2 :: Reference Norm = 4.87290215E-01
+Solver 3 :: Reference Norm = 5.10276397E-01
 
 !End
 
