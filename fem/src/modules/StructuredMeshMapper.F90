@@ -90,7 +90,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
        MidLayerExists, WriteMappedMeshToDisk = .FALSE., GotBaseVar, &
-       BaseDisplaceFirst, RecompStab, MapHeight
+       BaseDisplaceFirst, RecompStab, MapHeight, BotProj
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, RefVal, ElemVector(3),DotPro,Eps,Length, MinHeight
   REAL(KIND=dp) :: at0,at1,at2,dx
@@ -136,6 +136,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   FixedLayers => ListGetIntegerArray( SolverParams,'Fixed Layer Indexes',MultiLayer)
   NumberOfFixedLayers = SIZE( FixedLayers )
 
+  BotProj = ListGetLogical(SolverParams,'Project To Bottom',Found ) 
+
+  
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
     IF(ASSOCIATED(TopPointer)) DEALLOCATE(TopPointer)
@@ -668,6 +671,8 @@ CONTAINS
       CALL Fatal(Caller,'Mask not available yet for multiple layers!')
     END IF
     
+    DeTangle = GetLogical(SolverParams,'Correct Surface',GotIt )
+
     VarName = ListGetString( SolverParams,'Fixed Layer Variable',UnfoundFatal = .TRUE. )
     FixedVar => VariableGet( Mesh % Variables, VarName ) 
     IF(.NOT. ASSOCIATED( FixedVar ) ) THEN
@@ -775,13 +780,24 @@ CONTAINS
       END IF
 
       ! Fix mesh if it becomes tangled
-      IF( ANY( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < MinHeight ) ) THEN
-        TangledCount = TangledCount + 1
-        DO k = 2,NumberOfLayers
-          StrideCoord(k) = MAX( StrideCoord(k), StrideCoord(k-1)+MinHeight )
-        END DO
+      IF( DeTangle ) THEN
+        IF( BotProj ) THEN
+          IF( ANY( StrideCoord(1:NumberOfLayers-1)-StrideCoord(2:NumberOfLayers) < MinHeight ) ) THEN
+            TangledCount = TangledCount + 1
+            DO k = 2,NumberOfLayers
+              StrideCoord(k) = MIN( StrideCoord(k), StrideCoord(k-1)-MinHeight )
+            END DO
+          END IF
+        ELSE
+          IF( ANY( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < MinHeight ) ) THEN
+            TangledCount = TangledCount + 1
+            DO k = 2,NumberOfLayers
+              StrideCoord(k) = MAX( StrideCoord(k), StrideCoord(k-1)+MinHeight )
+            END DO
+          END IF
+        END IF
       END IF
-      
+        
       IF( Debug ) THEN
         PRINT *,'FixedCoord:',FixedCoord
         PRINT *,'StrideCoord:',StrideCoord
@@ -803,8 +819,7 @@ CONTAINS
         END WHERE
       END IF
       
-      Debug = .FALSE.
-      
+      Debug = .FALSE.      
     END DO
 
     CALL Info('StructureMeshMapper','Finished multilayer mapping',Level=8)
