@@ -37,6 +37,7 @@ import ObjectsFem
 import femmesh.gmshtools
 import math
 import itertools
+import subprocess
 
 
 def fit_view():
@@ -560,23 +561,53 @@ def create_mesh_object(compound_filter, CharacteristicLength, doc):
 def set_mesh_group_elements(gmsh_mesh):
     """
     Updates group_elements dictionary in gmsh_mesh.
+    Rewritten gmsh_mesh.get_group_data without finding mesh group elements again
 
     :param gmsh_mesh: Instance of gmshtools.GmshTools.
     """
     for mg in gmsh_mesh.mesh_obj.MeshGroupList:
         gmsh_mesh.group_elements[mg.Label] = list(mg.References[0][1])  # tuple to list
+    if gmsh_mesh.group_elements:
+        FreeCAD.Console.PrintMessage('  {}\n'.format(gmsh_mesh.group_elements))
 
-def create_mesh(mesh_object, directory=False):
+def run_gmsh(gmsh_mesh, gmsh_log_file=None):
+    """
+    Runs gmsh. Writes gmsh output to gmsh_log_file if given.
+
+    :param gmsh_mesh: Instance of gmshtools.GmshTools.
+    :param gmsh_log_file: None or path to gmsh_log.
+
+    :return: Gmsh stderr, None or error string.
+    """
+    if gmsh_log_file is None:
+        error = gmsh_mesh.run_gmsh_with_geo()
+    else:
+        try:
+            with open(gmsh_log_file, 'w') as f:
+                p = subprocess.Popen([gmsh_mesh.gmsh_bin, '-', gmsh_mesh.temp_file_geo],
+                                     stdout=f, stderr=subprocess.PIPE)
+                no_value, error = p.communicate()
+                if error:
+                    f.write(str(error))
+                    f.flush()
+        except Exception:
+            error = 'Error executing gmsh'
+    return error
+
+def create_mesh(mesh_object, directory=False, gmsh_log_file=None):
     """
     Create mesh mesh with Gmsh.
     Value of directory determines location gmsh temporary files::
 
         - False: Use current working directory
-        - None: Let GmshTools decide
+        - None: Let GmshTools decide (temp directory)
         - something else: try to use given value
 
     :param mesh_object: FreeCAD mesh object
     :param directory: Gmsh temp file location.
+    :param gmsh_log_file: None or path to gmsh_log.
+
+    :return: None or gmsh error text.
     """
     if directory is False:
         directory = os.getcwd()
@@ -592,9 +623,12 @@ def create_mesh(mesh_object, directory=False):
     gmsh_mesh.get_tmp_file_paths(param_working_dir=directory)
     gmsh_mesh.get_gmsh_command()
     gmsh_mesh.write_gmsh_input_files()
-    error = gmsh_mesh.run_gmsh_with_geo()
+    error = run_gmsh(gmsh_mesh, gmsh_log_file)
     gmsh_mesh.read_and_set_new_mesh()
-    print(error)
+    if error:
+        FreeCAD.Console.PrintError('{}\n'.format(error))
+        return error
+    gmsh_mesh.read_and_set_new_mesh()
 
 def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc, separate_boundaries=False):
     """
@@ -625,9 +659,7 @@ def run_elmergrid(export_path, mesh_object, out_dir=None):
     # Export to UNV file for Elmer
     export_objects = [mesh_object]
     Fem.export(export_objects, export_path)
-
-    optional_path_to_elmer = ''  # optional path to ElmerGrid
-    elmerGrid_command = optional_path_to_elmer + 'ElmerGrid 8 2 ' + export_path + ' -autoclean -names'
+    elmerGrid_command = 'ElmerGrid 8 2 ' + export_path + ' -autoclean -names'
     if out_dir is not None:
         elmerGrid_command += ' -out ' + out_dir
 

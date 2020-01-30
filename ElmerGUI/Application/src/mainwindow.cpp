@@ -377,6 +377,18 @@ void MainWindow::createActions()
   loadProjectAct->setStatusTip(tr("Load previously saved project"));
   connect(loadProjectAct, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));
 
+  // File -> Recent Projects
+  recentProject0Act = new QAction("", this);
+  connect(recentProject0Act, SIGNAL(triggered()), this, SLOT(loadRecentProject0Slot()));
+  recentProject1Act = new QAction("", this);
+  connect(recentProject1Act, SIGNAL(triggered()), this, SLOT(loadRecentProject1Slot()));
+  recentProject2Act = new QAction("", this);
+  connect(recentProject2Act, SIGNAL(triggered()), this, SLOT(loadRecentProject2Slot()));
+  recentProject3Act = new QAction("", this);
+  connect(recentProject3Act, SIGNAL(triggered()), this, SLOT(loadRecentProject3Slot()));
+  recentProject4Act = new QAction("", this);
+  connect(recentProject4Act, SIGNAL(triggered()), this, SLOT(loadRecentProject4Slot()));
+  
   // File -> Definitions...
   editDefinitionsAct = new QAction(QIcon(":/icons/games-config-custom.png"), tr("&Definitions..."), this);
   editDefinitionsAct->setStatusTip(tr("Load and edit Elmer sif definitions file"));
@@ -440,13 +452,13 @@ void MainWindow::createActions()
   connect(addBoundaryConditionAct, SIGNAL(triggered()), this, SLOT(addBoundaryConditionSlot()));
 
   // Model -> Set body properties
-  bodyEditAct = new QAction(QIcon(), tr("Set body properties"), this);
+  bodyEditAct = new QAction(QIcon(":/icons/set-body-property.png"), tr("Set body properties"), this);
   bodyEditAct->setStatusTip(tr("Set body properties (equivalent to holding down the SHIFT key)"));
   connect(bodyEditAct, SIGNAL(triggered()), this, SLOT(bodyEditSlot()));
   bodyEditAct->setCheckable(true);
 
   // Model -> Set boundary conditions
-  bcEditAct = new QAction(QIcon(), tr("Set boundary properties"), this);
+  bcEditAct = new QAction(QIcon(":/icons/set-boundary-property.png"), tr("Set boundary properties"), this);
   bcEditAct->setStatusTip(tr("Set boundary properties (equivalent to holding down the ALT key)"));
   connect(bcEditAct, SIGNAL(triggered()), this, SLOT(bcEditSlot()));
   bcEditAct->setCheckable(true);
@@ -705,6 +717,12 @@ void MainWindow::createActions()
   showTwodViewAct->setStatusTip(tr("Displays the 2d geometry in a separate window"));
   connect(showTwodViewAct, SIGNAL(triggered()), this, SLOT(showTwodViewSlot()));
 
+  // View -> Show Object Browser
+  showObjectBrowserAct = new QAction(QIcon(), tr("Show Object Browser"), this);
+  showObjectBrowserAct->setStatusTip(tr("Show Object Browser"));
+  connect(showObjectBrowserAct, SIGNAL(triggered()), this, SLOT(showObjectBrowserSlot()));
+  showObjectBrowserAct->setCheckable(true);
+  
   // Solver -> Parallel settings
   parallelSettingsAct = new QAction(QIcon(), tr("Parallel settings..."), this);
   parallelSettingsAct->setStatusTip(tr("Choose parameters and methods for parallel solution"));
@@ -913,6 +931,8 @@ void MainWindow::createMenus()
   viewMenu->addAction(showCadModelAct);
 #endif
   viewMenu->addAction(showTwodViewAct);
+  viewMenu->addSeparator();  
+  viewMenu->addAction(showObjectBrowserAct);  
 
   // Edit menu
   editMenu = menuBar()->addMenu(tr("&Sif"));
@@ -1063,6 +1083,9 @@ void MainWindow::createToolBars()
   meshToolBar->addSeparator();
   meshToolBar->addAction(edgeDivideAct);
   meshToolBar->addAction(edgeUnifyAct);
+  meshToolBar->addSeparator();
+  meshToolBar->addAction(bodyEditAct);
+  meshToolBar->addAction(bcEditAct);  
 
   // Solver toolbar
   solverToolBar = addToolBar(tr("&Solver"));
@@ -2577,7 +2600,8 @@ void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe)
         QCheckBox *a;
 
         if ( title.isEmpty() )
-          a = new QCheckBox("Body " + QString::number(n));
+          //a = new QCheckBox("Body " + QString::number(n));
+          a = new QCheckBox("Body Property " + QString::number(n));
         else
           a = new QCheckBox(title);
 
@@ -2849,7 +2873,7 @@ void MainWindow::pdeEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Equation deleted");
   }
@@ -2994,7 +3018,7 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Material deleted");
 
@@ -3130,7 +3154,7 @@ void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Body force deleted");
   }
@@ -3262,7 +3286,7 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
     pe->close();
     
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Initial condition deleted");
   }
@@ -3476,7 +3500,7 @@ void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
     pe->close();
 
     pe->ID = -100;
-    pe->nameEdit->setText("***removed***");
+    pe->nameEdit->setText("");
 
     logMessage("Boundary condition deleted");
   }
@@ -5851,6 +5875,12 @@ void MainWindow::boundarySelectedSlot(list_t *l)
     glWidget->shiftPressed = false;
     glWidget->altPressed = false;
 
+    if(l->getNature() != PDE_BOUNDARY){
+      /*Ignore when double clicking a body of 2D geometry under boundary selection mode*/
+      raise();
+      return;
+    }
+    
     // renumbering:
     int n = glWidget->boundaryMap.value(l->getIndex());
 
@@ -5881,6 +5911,7 @@ void MainWindow::boundarySelectedSlot(list_t *l)
 
     boundaryEdit->setWindowTitle("Properties for boundary " + QString::number(l->getIndex()));
     boundaryEdit->show();
+    boundaryEdit->raise();    
   }
 
   BodyPropertyEditor *bodyEdit = NULL;
@@ -5916,7 +5947,8 @@ void MainWindow::boundarySelectedSlot(list_t *l)
       bodyEdit->setWindowTitle("Properties for body " + QString::number(current));
 
       // if(bodyEdit->ui.nameEdit->text().trimmed().isEmpty())
-      bodyEdit->ui.nameEdit->setText("Body Property{Boundary " + QString::number(n+1) +  "}");
+      //bodyEdit->ui.nameEdit->setText("Body Property{Boundary " + QString::number(n+1) +  "}");
+      bodyEdit->ui.nameEdit->setText("Body {Boundary " + QString::number(n+1) +  "}");
     }
   }
 
@@ -5972,6 +6004,7 @@ void MainWindow::boundarySelectedSlot(list_t *l)
     }
 
     bodyEdit->show();
+    bodyEdit->raise();
   }
 }
 
@@ -7453,6 +7486,12 @@ void MainWindow::loadSettings()
     addRecentProject(path, false);    
   }
   
+  if( settings_value("objectBrowser/show", true).toBool()){
+    objectBrowser = new ObjectBrowser(this);  
+    showObjectBrowserAct->setChecked(true);
+  }else{
+    objectBrowser = NULL;    
+  }
 }
 
 // Save settings
@@ -7477,6 +7516,12 @@ void MainWindow::saveSettings()
 #endif
 */
   
+  if(showObjectBrowserAct->isChecked() && objectBrowser != NULL){
+    settings_setValue("objectBrowser/show", true); 
+  }else{
+    settings_setValue("objectBrowser/show", false);  
+  }
+  
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
@@ -7487,36 +7532,37 @@ void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
   recentProject.prepend(dir);
 
   int i = 0;
-  recentProjectsMenu->clear();
+  
+  recentProjectsMenu->removeAction(recentProject0Act);  
+  recentProjectsMenu->removeAction(recentProject1Act);  
+  recentProjectsMenu->removeAction(recentProject2Act);  
+  recentProjectsMenu->removeAction(recentProject3Act);  
+  recentProjectsMenu->removeAction(recentProject4Act);
+  recentProjectsMenu->clear(); // just in case
 
   if( i < 5 && i < recentProject.size() ){
-    QAction *act = new QAction(recentProject.at(i), this);
-    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject0()));
-    recentProjectsMenu->addAction(act);
+    recentProject0Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject0Act);
   }
   i++;
   if( i < 5 && i < recentProject.size() ){
-    QAction *act = new QAction(recentProject.at(i), this);
-    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject1()));
-    recentProjectsMenu->addAction(act);
+    recentProject1Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject1Act);
   }
   i++;
   if( i < 5 && i < recentProject.size() ){
-    QAction *act = new QAction(recentProject.at(i), this);
-    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject2()));
-    recentProjectsMenu->addAction(act);
+    recentProject2Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject2Act);
   }
   i++;
   if( i < 5 && i < recentProject.size() ){
-    QAction *act = new QAction(recentProject.at(i), this);
-    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject3()));
-    recentProjectsMenu->addAction(act);
+    recentProject3Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject3Act);
   }
   i++; 
   if( i < 5 && i < recentProject.size() ){
-    QAction *act = new QAction(recentProject.at(i), this);
-    connect(act, SIGNAL(triggered()), this, SLOT(loadRecentProject4()));
-    recentProjectsMenu->addAction(act);
+    recentProject4Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject4Act);
   }
   recentProjectsMenu->setEnabled(recentProject.size() > 0);
   
@@ -7532,27 +7578,27 @@ void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
   }
 }
 
-void MainWindow::loadRecentProject0()
+void MainWindow::loadRecentProject0Slot()
 {
   loadProject(recentProject.at(0));
 }
 
-void MainWindow::loadRecentProject1()
+void MainWindow::loadRecentProject1Slot()
 {
   loadProject(recentProject.at(1));
 }
 
-void MainWindow::loadRecentProject2()
+void MainWindow::loadRecentProject2Slot()
 {
   loadProject(recentProject.at(2));
 }
 
-void MainWindow::loadRecentProject3()
+void MainWindow::loadRecentProject3Slot()
 {
   loadProject(recentProject.at(3));
 }
 
-void MainWindow::loadRecentProject4()
+void MainWindow::loadRecentProject4Slot()
 {
   loadProject(recentProject.at(4));
 }
@@ -7751,4 +7797,16 @@ void MainWindow::generateAndSaveAndRunSlot()
 void MainWindow::closeEvent(QCloseEvent* event)
 {
   saveSettings();
+  delete objectBrowser;  
+}
+
+void MainWindow::showObjectBrowserSlot()
+{
+  if(showObjectBrowserAct->isChecked()){
+    delete objectBrowser; // just in case
+    objectBrowser = new ObjectBrowser(this);
+  }else{
+    delete objectBrowser;
+    objectBrowser = NULL;  
+  }
 }

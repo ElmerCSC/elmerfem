@@ -51,14 +51,12 @@ Solver 2
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
   Linear System Symmetric = True
   Potential Variable = String "AV"
-  Use Piola Transform = Logical false
 
   Calculate Current Density = Logical True
   Calculate Electric Field = Logical True
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Vector Potential = Logical True
   Calculate Magnetic Flux Density = Logical True
-  Calculate Field Energy = Logical True
   Calculate Elemental Fields = Logical True
   Calculate Joule Heating = Logical True
   Calculate Nodal Forces = Logical True

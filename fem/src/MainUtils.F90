@@ -1646,7 +1646,7 @@ CONTAINS
       
       DO WHILE( var_name(1:1) == '-' )
 
-        PRINT *,'analyzing: ',l,TRIM(var_name)
+        ! PRINT *,'analyzing: ',l,TRIM(var_name)
 
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
