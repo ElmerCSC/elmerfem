@@ -67,6 +67,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   USE CoordinateSystems
   USE MeshUtils
+  USE ParallelUtils
   USE DefUtils
 
   IMPLICIT NONE
@@ -659,10 +660,16 @@ CONTAINS
   SUBROUTINE MultiLayerMapper()
     REAL(KIND=dp), ALLOCATABLE :: Proj(:,:), StrideCoord(:),FixedCoord(:),OrigStride(:)
     INTEGER, ALLOCATABLE :: StrideInd(:),StridePerm(:)
-    LOGICAL :: Hit, Debug 
+    INTEGER :: ierr, PEs
+    LOGICAL :: Hit, Debug, ProjDone = .FALSE. 
     REAL(KIND=dp) :: q
-    TYPE(Variable_t), POINTER :: FixedVar
+    TYPE(Variable_t), POINTER :: FixedVar    
+    INTEGER :: status(MPI_STATUS_SIZE)
 
+    
+    SAVE :: ProjDone, Proj, StrideCoord, FixedCoord, StridePerm, OrigStride, StrideInd
+
+    
     ! Get the new mapping using linear interpolation from bottom and top
     !-------------------------------------------------------------------
     CALL Info(Caller,'Mapping using '//TRIM(I2S(NumberOfFixedLayers))//' fixed layers',Level=6)
@@ -682,38 +689,58 @@ CONTAINS
       CALL Fatal(Caller,'Invalid number of components in fixed layer variable:'&
           //TRIM(I2S(FixedVar % Dofs)))
     END IF
-    
-    ALLOCATE( Proj(NumberOfLayers,NumberOfFixedLayers),StrideInd(NumberOfLayers),&
-        StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),&
-        FixedCoord(NumberOfFixedLayers),OrigStride(NumberOfLayers))
-    Proj = 0.0_dp
 
-    Debug = .FALSE.
-    
-    ! Create the projection matrix used for all strides!
-
-    ! Define a representative 1D stride from the Original coordinates.
-    ! Note that we assume that the mesh refinement strategy is the same everywhere. 
-    DO i=1,nnodes
-      ibot = BotPointer(i)
-
-      ! Start mapping from bottom
-      IF( ibot /= i ) CYCLE
-
-      j = ibot
-      StrideCoord(1) = OrigCoord(j)
-      DO k = 2,NumberOfLayers
-        j = UpPointer(j)
-        StrideCoord(k) = OrigCoord(j)
-      END DO
+    IF(.NOT. ProjDone ) THEN
+      ALLOCATE( Proj(NumberOfLayers,NumberOfFixedLayers),StrideInd(NumberOfLayers),&
+          StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),&
+          FixedCoord(NumberOfFixedLayers),OrigStride(NumberOfLayers))
+      Proj = 0.0_dp
       
-      IF( Debug ) THEN
-        PRINT *,'StrideCoord0:',StrideCoord
+      Debug = .FALSE.
+    
+      ! Create the projection matrix used for all strides!
+      
+      ! Define a representative 1D stride from the Original coordinates.
+      ! Note that we assume that the mesh refinement strategy is the same everywhere. 
+      DO i=1,nnodes
+        ibot = BotPointer(i)
+
+        ! Start mapping from bottom
+        IF( ibot /= i ) CYCLE
+
+        j = ibot
+        StrideCoord(1) = OrigCoord(j)
+        DO k = 2,NumberOfLayers
+          j = UpPointer(j)
+          StrideCoord(k) = OrigCoord(j)
+        END DO
+
+        IF( Debug ) THEN
+          PRINT *,'StrideCoord0:',StrideCoord
+        END IF
+
+        EXIT
+      END DO
+
+      ! Use the same projection matrix in every slot
+      PEs = ParEnv % PEs 
+      IF( PEs > 1 ) THEN
+        CALL Info(Caller,'Communicating stride from 0 to all',Level=8)
+        IF( ParEnv % MyPe == 0 ) THEN
+          DO i=2,PEs                
+            CALL MPI_BSEND( StrideCoord,NumberOfLayers,MPI_DOUBLE_PRECISION,i-1,1301,ELMER_COMM_WORLD,ierr )
+          END DO
+        ELSE
+          CALL MPI_RECV( StrideCoord,NumberOfLayers,MPI_DOUBLE_PRECISION,0,1301,ELMER_COMM_WORLD,status,ierr )   
+        END IF
+        CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
+        CALL Info(Caller,'Done Communicating stride',Level=15)
       END IF
 
-      EXIT
-    END DO
-
+      ProjDone = .TRUE.
+    END IF
+    
+      
     ! Now create a projection matrix for a single stride so that our mapping will be fast
     j = 1    
     DO i = 1, NumberOfLayers

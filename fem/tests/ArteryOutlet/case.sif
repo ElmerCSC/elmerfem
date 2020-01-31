@@ -271,7 +271,7 @@ Boundary Condition 6
   Velocity 2 = Equals "Mesh Velocity 2"
   Mesh Update 1 = Equals "Displacement 1"
   Mesh Update 2 = Equals "Displacement 2"
-  Force BC = Logical True
+  FSI BC = Logical True
 End
 
 ! Fluid wall starying fixed
