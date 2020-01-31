@@ -3040,8 +3040,11 @@ CONTAINS
                 FlowStress(i,i) = FlowStress(i,i) - Viscosity * (2.0d0/3.0d0)*TRACE(Grad,dim)
              END IF
           END DO
-
-          ! Do we really need this, or isn't FluidNormal always opposite to structure normal? 
+          !
+          ! In the case of an internal boundary (the model uses parent elements
+          ! on both sides), the following command should create the normal vector
+          ! pointing outwards from the structural body:
+          !
           FluidNormal = NormalVector(Element,Nodes,u,v,Parent=Parent) 
         END IF
 
@@ -3064,9 +3067,10 @@ CONTAINS
        ! -----------------------------------------------------------------------------------
        Force = SUM( NodalBeta(1:n)*Basis(1:n) ) * Normal
        IF ( ASSOCIATED( Flow ) ) THEN
-         ! If the reference normal and fluid normal point to same direction
-         ! then add the force, otherwise deduce
-         IF( SUM( Normal * FluidNormal ) > 0 ) THEN
+         ! In the case of an internal boundary, the direction of RefNormal may not
+         ! point outwards from the structural body, so we need to test to obtain
+         ! the right sign:
+         IF ( SUM( RefNormal * FluidNormal ) > 0 ) THEN
            Force = Force + MATMUL( FlowStress, Normal )
          ELSE
            Force = Force - MATMUL( FlowStress, Normal )
