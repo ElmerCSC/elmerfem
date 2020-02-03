@@ -661,13 +661,14 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Proj(:,:), StrideCoord(:),FixedCoord(:),OrigStride(:)
     INTEGER, ALLOCATABLE :: StrideInd(:),StridePerm(:)
     INTEGER :: ierr, PEs
-    LOGICAL :: Hit, Debug, ProjDone = .FALSE. 
+    LOGICAL :: Hit, ConstantProj, ProjDone = .FALSE., AllocationsDone = .FALSE.
     REAL(KIND=dp) :: q
     TYPE(Variable_t), POINTER :: FixedVar    
     INTEGER :: status(MPI_STATUS_SIZE)
-
     
-    SAVE :: ProjDone, Proj, StrideCoord, FixedCoord, StridePerm, OrigStride, StrideInd
+    
+    SAVE :: ProjDone, AllocationsDone, Proj, StrideCoord, FixedCoord, &
+        StridePerm, OrigStride, StrideInd
 
     
     ! Get the new mapping using linear interpolation from bottom and top
@@ -679,7 +680,8 @@ CONTAINS
     END IF
     
     DeTangle = GetLogical(SolverParams,'Correct Surface',GotIt )
-
+    ConstantProj = GetLogical(SolverParams,'Constant Mesh Projector',GotIt )
+    
     VarName = ListGetString( SolverParams,'Fixed Layer Variable',UnfoundFatal = .TRUE. )
     FixedVar => VariableGet( Mesh % Variables, VarName ) 
     IF(.NOT. ASSOCIATED( FixedVar ) ) THEN
@@ -690,18 +692,22 @@ CONTAINS
           //TRIM(I2S(FixedVar % Dofs)))
     END IF
 
-    IF(.NOT. ProjDone ) THEN
+    IF(.NOT. AllocationsDone ) THEN
       ALLOCATE( Proj(NumberOfLayers,NumberOfFixedLayers),StrideInd(NumberOfLayers),&
           StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),&
           FixedCoord(NumberOfFixedLayers),OrigStride(NumberOfLayers))
+      AllocationsDone = .TRUE.
       Proj = 0.0_dp
-      
-      Debug = .FALSE.
-    
-      ! Create the projection matrix used for all strides!
-      
+    END IF
+
+    ! Create a projection matrix using a single stride so that our mapping will be fast
+    ! The same projection matrix will be used then always.
+    !----------------------------------------------------------------------------------
+    IF( ConstantProj .AND. .NOT. ProjDone ) THEN   
+
       ! Define a representative 1D stride from the Original coordinates.
       ! Note that we assume that the mesh refinement strategy is the same everywhere. 
+      !-------------------------------------------------------------------------------
       DO i=1,nnodes
         ibot = BotPointer(i)
 
@@ -714,18 +720,15 @@ CONTAINS
           j = UpPointer(j)
           StrideCoord(k) = OrigCoord(j)
         END DO
-
-        IF( Debug ) THEN
-          PRINT *,'StrideCoord0:',StrideCoord
-        END IF
-
         EXIT
       END DO
 
       ! Use the same projection matrix in every slot
+      ! In parallel communicate from process "0"
+      !--------------------------------------------------------------------
       PEs = ParEnv % PEs 
       IF( PEs > 1 ) THEN
-        CALL Info(Caller,'Communicating stride from 0 to all',Level=8)
+        CALL Info(Caller,'Communicating stride from 0 to all',Level=12)
         IF( ParEnv % MyPe == 0 ) THEN
           DO i=2,PEs                
             CALL MPI_BSEND( StrideCoord,NumberOfLayers,MPI_DOUBLE_PRECISION,i-1,1301,ELMER_COMM_WORLD,ierr )
@@ -737,39 +740,31 @@ CONTAINS
         CALL Info(Caller,'Done Communicating stride',Level=15)
       END IF
 
+      ! Finally create the projection matrix.
+      j = 1    
+      DO i = 1, NumberOfLayers
+        Hit = .FALSE.
+        DO j = 1, NumberOfFixedLayers+1
+          IF( FixedLayers(j) == i ) THEN
+            Proj(i,j) = 1.0_dp
+            Hit = .TRUE.
+          ELSE IF( FixedLayers(j) < i .AND. FixedLayers(j+1) > i ) THEN
+            q = 1.0_dp*(StrideCoord(i)-StrideCoord(FixedLayers(j))) / &
+                (StrideCoord(FixedLayers(j+1))-StrideCoord(FixedLayers(j)))
+            Proj(i,j+1) = q
+            Proj(i,j) = 1-q
+            Hit = .TRUE.
+          END IF
+          IF( Hit ) EXIT
+        END DO
+        IF(.NOT. Hit ) THEN
+          CALL Fatal(Caller,'Could not find mapping for layer: '//TRIM(I2S(i)))
+        END IF
+      END DO       
       ProjDone = .TRUE.
     END IF
-    
       
-    ! Now create a projection matrix for a single stride so that our mapping will be fast
-    j = 1    
-    DO i = 1, NumberOfLayers
-      Hit = .FALSE.
-      DO j = 1, NumberOfFixedLayers+1
-        IF( FixedLayers(j) == i ) THEN
-          Proj(i,j) = 1.0_dp
-          IF( Debug ) PRINT *,'Proj('//TRIM(I2S(i))//','//TRIM(I2S(j))//')=',Proj(i,j)
-          Hit = .TRUE.
-        ELSE IF( FixedLayers(j) < i .AND. FixedLayers(j+1) > i ) THEN
-          !q = 1.0_dp*(i-FixedLayers(j)) / (FixedLayers(j+1)-FixedLayers(j))
-          q = 1.0_dp*(StrideCoord(i)-StrideCoord(FixedLayers(j))) / &
-              (StrideCoord(FixedLayers(j+1))-StrideCoord(FixedLayers(j)))
-          Proj(i,j+1) = q
-          Proj(i,j) = 1-q
-          IF( Debug ) THEN
-            PRINT *,'Proj('//TRIM(I2S(i))//','//TRIM(I2S(j))//')=',Proj(i,j)
-            PRINT *,'Proj('//TRIM(I2S(i))//','//TRIM(I2S(j+1))//')=',Proj(i,j+1)
-          END IF
-          Hit = .TRUE.
-        END IF
-        IF( Hit ) EXIT
-      END DO
-      IF(.NOT. Hit ) THEN
-        CALL Fatal(Caller,'Could not find mapping for layer: '//TRIM(I2S(i)))
-      END IF
-    END DO
     
-
     ! Go through all 1D strides and perform mapping for mesh
     DO i=1,nnodes
       ibot = BotPointer(i)
@@ -777,6 +772,7 @@ CONTAINS
       ! Start mapping from bottom
       IF( ibot /= i ) CYCLE
 
+      ! Create stride for this column
       j = ibot
       StrideCoord(1) = OrigCoord(j)
       StrideInd(1) = j
@@ -787,9 +783,28 @@ CONTAINS
         itop = j
       END DO
 
-      IF( Debug ) THEN
-        PRINT *,'StrideCoord0:',StrideCoord
-        PRINT *,'StrideInd:',StrideInd
+      ! Create a new projection matrix for this column
+      IF(.NOT. ConstantProj ) THEN
+        j = 1    
+        DO k = 1, NumberOfLayers
+          Hit = .FALSE.
+          DO j = 1, NumberOfFixedLayers+1
+            IF( FixedLayers(j) == k ) THEN
+              Proj(k,j) = 1.0_dp
+              Hit = .TRUE.
+            ELSE IF( FixedLayers(j) < k .AND. FixedLayers(j+1) > k ) THEN
+              q = 1.0_dp*(StrideCoord(k)-StrideCoord(FixedLayers(j))) / &
+                  (StrideCoord(FixedLayers(j+1))-StrideCoord(FixedLayers(j)))
+              Proj(k,j+1) = q
+              Proj(k,j) = 1-q
+              Hit = .TRUE.
+            END IF
+            IF( Hit ) EXIT
+          END DO
+          IF(.NOT. Hit ) THEN
+            CALL Fatal(Caller,'Could not find mapping for layer: '//TRIM(I2S(k)))
+          END IF
+        END DO
       END IF
       
       ! We can either have the fixed layer variable at top or bottom, not elsewhere!
@@ -824,12 +839,7 @@ CONTAINS
           END IF
         END IF
       END IF
-        
-      IF( Debug ) THEN
-        PRINT *,'FixedCoord:',FixedCoord
-        PRINT *,'StrideCoord:',StrideCoord
-      END IF
-      
+              
       Coord(StrideInd) = StrideCoord
 
       IF( GotVeloVar ) THEN
@@ -845,8 +855,6 @@ CONTAINS
           UpdateVar % Values( StridePerm ) = Coord(StrideInd) - OrigCoord(StrideInd)
         END WHERE
       END IF
-      
-      Debug = .FALSE.      
     END DO
 
     CALL Info('StructureMeshMapper','Finished multilayer mapping',Level=8)

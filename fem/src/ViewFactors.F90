@@ -89,7 +89,7 @@
      INTEGER :: LeftNode,RightNode,LeftBody,RightBody,RadBody
      REAL(KIND=dp) :: NX,NY,NZ,NRM(3),DensL,DensR
 
-     INTEGER :: divide
+     INTEGER :: divide, nprob
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
 #ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at0, rt0
@@ -576,24 +576,25 @@
            n = n/2
          END DO
        END IF
-
-#if 0
-write(1,*) 2*n,n, 1,4,'vector: nrm scalar:view'
-do i=1,n
-  Element => RadElements(i)
-  write(1,*) model % nodes % x(element % nodeindexes(1)), mesh % nodes % y(element % nodeindexes(1)),0
-  write(1,*) model % nodes % x(element % nodeindexes(2)), mesh % nodes % y(element % nodeindexes(2)),0
-end do
-do i=1,n
-  Element => RadElements(i)
-  write(1,*) element % boundaryinfo % constraint, ' 202 ', 2*(i-1),2*(i-1)+1
-end do
-do i=1,n
-  write(1,*) normals(3*(i-1)+1:3*(i-1)+3), factors((3-1)*n+i)
-  write(1,*) normals(3*(i-1)+1:3*(i-1)+3), factors((3-1)*n+i)
-end do
-#endif
        
+#if 0
+       write(1,*) 2*n,n, 1,4,'vector: nrm scalar:view'
+       do i=1,n
+         Element => RadElements(i)
+         write(1,*) model % nodes % x(element % nodeindexes(1)), mesh % nodes % y(element % nodeindexes(1)),0
+         write(1,*) model % nodes % x(element % nodeindexes(2)), mesh % nodes % y(element % nodeindexes(2)),0
+       end do
+       do i=1,n
+         Element => RadElements(i)
+         write(1,*) element % boundaryinfo % constraint, ' 202 ', 2*(i-1),2*(i-1)+1
+       end do
+       do i=1,n
+         write(1,*) normals(3*(i-1)+1:3*(i-1)+3), factors((3-1)*n+i)
+         write(1,*) normals(3*(i-1)+1:3*(i-1)+3), factors((3-1)*n+i)
+       end do
+#endif
+
+       nprob = 0
        DO i=1,N
          s = 0.0_dp
          DO j=1,N
@@ -601,13 +602,7 @@ end do
            s = s + Factors((i-1)*N+j)
          END DO
          
-	 IF( .NOT. RadiationOpen .AND. s < 0.1 ) THEN
-	  PRINT *,'Problematic row sum',i,s,n
-	  j = Surfaces(2*i-1)
-	  PRINT *,'coord 1:',j,Coords(2*j-1),Coords(2*j)
-	  j = Surfaces(2*i)
-	  PRINT *,'coord 2:',j,Coords(2*j-1),Coords(2*j)
-         END IF
+	 IF( .NOT. RadiationOpen .AND. s < 0.5 ) nprob = nprob + 1
 
          IF(i == 1) THEN
            Fmin = s 
@@ -616,25 +611,26 @@ end do
            FMin = MIN( FMin,s )
            FMax = MAX( FMax,s )
          END IF
-       END DO
-       
+       END DO       
        
        CALL Info( 'ViewFactors', ' ', Level=3 )
        CALL info( 'ViewFactors', 'Viewfactors before manipulation: ', Level=3 )
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       WRITE( LMessage, * ) '        Minimum row sum: ',FMin
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       WRITE( LMessage, * ) '        Maximum row sum: ',FMax
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       
+       WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
+       CALL Info( 'ViewFactors', Message )
+       WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
+       CALL Info( 'ViewFactors', Message )
+       IF(nprob>0) CALL info( 'ViewFactors', 'Number of rowsums below 0.5 is: '&
+           //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
        
        at0 = CPUTime()
 
        IF( RadiationOpen ) THEN
-         CALL Info( 'ViewFactors','Symmetrizing Factors... ', Level=3 )
+         CALL Info( 'ViewFactors','Symmetrizing Factors... ')
        ELSE
-         CALL Info( 'ViewFactors','Normalizaing Factors...',Level=3)
+         CALL Info( 'ViewFactors','Normalizaing Factors...')
+         IF( Fmin < EPSILON( Fmin ) ) THEN
+           CALL Fatal('ViewFactors','Invalied view factors for normalization, check your geometry!')
+         END IF       
        END IF
 
        CALL NormalizeFactors( Model )
@@ -656,16 +652,17 @@ end do
        CALL Info( 'ViewFactors',Message, Level=3 )
        
        CALL Info( 'ViewFactors', ' ', Level=3 )
-       CALL info( 'ViewFactors', 'Viewfactors after manipulation: ', Level=3 )
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       WRITE( LMessage, * ) '        Minimum row sum: ',FMin
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       WRITE( LMessage, * ) '        Maximum row sum: ',FMax
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       IF( FMax > 1.0_dp ) THEN
+       CALL info( 'ViewFactors', 'Viewfactors after manipulation: ')
+       WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
+       CALL Info( 'ViewFactors', Message )
+       WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
+       CALL Info( 'ViewFactors', Message )
+       IF( FMax > 1.001 ) THEN
          CALL Warn('ViewFactors','Rowsum of view factors should not be larger than one!')
        END IF
-       CALL Info( 'ViewFactors', ' ', Level=3 )
+       IF( FMin > 0.999 ) THEN
+         CALL Warn('ViewFactors','Rowsum of view factors should not be larger than one!')
+       END IF
 
 
        ViewFactorsFile = GetString( GetSimulation(),'View Factors',GotIt)
