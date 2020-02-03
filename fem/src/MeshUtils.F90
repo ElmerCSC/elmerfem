@@ -2596,20 +2596,23 @@ CONTAINS
    SUBROUTINE NonNodalElements()
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
-     INTEGER :: i, j, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id
+     INTEGER :: i, j, k, l, s, n, DGIndex, body_id, body_id0, eq_id, solver_id, el_id, &
+         mat_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
-                FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
-     TYPE(Element_t), POINTER :: Element
+         FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
+         FirstOrderElements, InheritDG, Hit
+     TYPE(Element_t), POINTER :: Element, Parent, pParent
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
      CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
      
+     
      EdgeDOFs => NULL()
      CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
      FaceDOFs => NULL()
-     CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
-
+     CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )     
+    
      DGIndex = 0
      NeedEdges = .FALSE.
 
@@ -2812,6 +2815,12 @@ CONTAINS
            Mesh % MaxElementNodes,Element % TYPE % NumberOfNodes )
      END DO
 
+     InheritDG = .FALSE.
+     IF( dgindex > 0 ) THEN
+       InheritDG = ListCheckPresentAnyMaterial( CurrentModel,'DG Parent Material')
+     END IF
+
+     
      ! non-nodal elements in boundary elements
      !------------------------------------------------------------    
      DO i = Mesh % NumberOfBulkElements + 1, &
@@ -2858,6 +2867,57 @@ CONTAINS
            Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
        END IF
+
+       ! Optionally also set DG indexes for BCs
+       ! It is easy for outside boundaries, but for internal boundaries
+       ! we need a flag "DG Parent Material".
+       IF( InheritDG ) THEN
+         IF(.NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+           ALLOCATE( Element % DGIndexes(n) )
+           Element % DGIndexes = 0
+         END IF
+         
+         Hit = .TRUE.
+         k = 0
+         DO l=1,2        
+           IF(l==1) THEN
+             Parent => Element % BoundaryInfo % Left
+           ELSE
+             Parent => Element % BoundaryInfo % Right
+           END IF
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+           k = k + 1
+           pParent => Parent
+           
+           mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values,&
+               'Material',Found )
+           IF(mat_id > 0 ) THEN           
+             VList => CurrentModel % Materials(mat_id) % Values
+           END IF
+           IF( ASSOCIATED(Vlist) ) THEN
+             Hit = ListGetLogical(Vlist,'DG Parent Material',Found )
+           END IF
+           IF( Hit ) EXIT
+         END DO
+         
+         IF( k == 0 ) THEN
+           CALL Fatal('NonnodalElements','Cannot define DG indexes for BC!')
+         ELSE IF( k == 1 ) THEN
+           Parent = pParent        
+         ELSE IF(.NOT. Hit ) THEN
+           CALL Fatal('NonnodalElements','Cannot define DG indexes for internal BC!')       
+         END IF
+         
+         DO l=1,n
+           DO j=1, Parent % TYPE % NumberOfNodes
+             IF( Element % NodeIndexes(l) == Parent % NodeIndexes(j) ) THEN
+               Element % DGIndexes(l) = Parent % DGIndexes(j)
+               EXIT
+             END IF
+           END DO
+         END DO
+       END IF
+       
      END DO
 
      IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
