@@ -2591,6 +2591,8 @@ CONTAINS
        ! PRINT *, nu1 * (Temperature - T0), nu2 * (xc - 0.0)
         CALL FATAL("PermafrostMaterials(mugw)",Message)
       END IF
+    ELSE
+      mugw = CurrentSolventMaterial % muw0
     END IF
   END FUNCTION mugw
   !---------------------------------------------------------------------------------------------
