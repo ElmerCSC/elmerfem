@@ -908,13 +908,20 @@ CONTAINS
       ! The might be missing entries due to duplicate numbering etc.
       ! For some fields this is not detrimental, thus just a warning.
       !--------------------------------------------------------------------
+      IF( Model % NumberOfBCs == 0 ) THEN
+        CALL Warn('LoadInputFile','There are no BCs in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of BCs: '//TRIM(I2S(Model % NumberOfBCs)),Level=12)
+      END IF
       DO i = 1, Model % NumberOFBCs
         IF( ListEmpty(Model % BCs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Boundary Condition ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
-      
+
+      CALL Info('LoadInputFile','Number of Body Forces: '&
+          //TRIM(I2S(Model % NumberOfBodyForces)),Level=12)
       DO i = 1, Model % NumberOfBodyForces
         IF( ListEmpty(Model % BodyForces(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body Force ',i
@@ -922,20 +929,30 @@ CONTAINS
         END IF
       END DO
 
+      CALL Info('LoadInputFile','Number of Initial Conditions: '&
+          //TRIM(I2S(Model % NumberOfICs)),Level=12)
       DO i = 1, Model % NumberOfICs
         IF( ListEmpty(Model % ICs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Initial Condition ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
-      
+
+      CALL Info('LoadInputFile','Number of Materials: '&
+          //TRIM(I2S(Model % NumberOfMaterials)),Level=12)      
       DO i = 1, Model % NumberOfMaterials         
         IF( ListEmpty(Model % Materials(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Material ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
-
+      
+      IF( Model % NumberOfEquations == 0 ) THEN
+        CALL Warn('LoadInputFile','There are no Equations in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of Equations: '&
+            //TRIM(I2S(Model % NumberOfEquations)),Level=12)
+      END IF
       DO i = 1, Model % NumberOFEquations 
         IF( ListEmpty(Model % Equations(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Equation ',i
@@ -943,6 +960,12 @@ CONTAINS
         END IF
       END DO
     
+      IF( Model % NumberOfSolvers == 0 ) THEN
+        CALL Fatal('LoadInputFile','There are no Solvers in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of Solvers: '&
+            //TRIM(I2S(Model % NumberOfSolvers)),Level=12)
+      END IF
       DO i = 1, Model % NumberOfSolvers         
         IF( ListEmpty(Model % Solvers(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Solver ',i
@@ -950,6 +973,12 @@ CONTAINS
         END IF
       END DO
 
+      IF( Model % NumberOfBodies == 0 ) THEN
+        CALL Warn('LoadInputFile','There are no Bodies in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of Bodies: '&
+            //TRIM(I2S(Model % NumberOfBodies)),Level=12)
+      END IF     
       DO i = 1, Model % NumberOfBodies
         IF( ListEmpty(Model % Bodies(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body ',i
