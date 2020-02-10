@@ -4481,12 +4481,12 @@ use spariterglobals
            ALLOCATE( Handle % HandleIm )
            CALL ListInitHandle( Handle % HandleIm ) 
         END IF
-         CALL Info('ListInitElementKeyword','Treating real part of keyword',Level=12)         
+         CALL Info('ListInitElementKeyword','Treating real part of keyword',Level=15)         
          CALL ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
              DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
          IF( PRESENT( FoundSomewhere) ) FoundSomewhere1 = FoundSomewhere
          
-         CALL Info('ListInitElementKeyword','Treating imaginary part of keyword',Level=12)                 
+         CALL Info('ListInitElementKeyword','Treating imaginary part of keyword',Level=15)                 
          CALL ListInitElementKeyword( Handle % HandleIm,Section,TRIM(Name)//' im',minv,maxv,&
              DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
          IF( PRESENT( FoundSomewhere ) ) FoundSomewhere =  FoundSomewhere .OR. FoundSomewhere1
@@ -4519,7 +4519,7 @@ use spariterglobals
        END IF
      END IF
      
-     CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=10)
+     CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=12)
 
      Model => CurrentModel
      Handle % BulkElement = .TRUE.
@@ -4719,7 +4719,7 @@ use spariterglobals
 
      CALL Info('ListInitElementKeyword',&
          'Initiated handle for: > '//TRIM(Handle % Name)//' < of type: '// &
-         TRIM(I2S(Handle % ValueType)),Level=10)
+         TRIM(I2S(Handle % ValueType)),Level=12)
 
      IF( PRESENT( UnfoundFatal ) ) THEN
        Handle % Unfoundfatal = UnfoundFatal
