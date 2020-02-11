@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>newProjectDialog</class>
+ <widget class="QDialog" name="newProjectDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>681</width>
+    <height>491</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>New project</string>
+  </property>
+  <property name="locale">
+   <locale language="English" country="UnitedStates"/>
+  </property>
+  <widget class="QDialogButtonBox" name="buttonBox">
+   <property name="geometry">
+    <rect>
+     <x>320</x>
+     <y>450</y>
+     <width>341</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+   <property name="standardButtons">
+    <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+   </property>
+   <property name="centerButtons">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QGroupBox" name="groupBox_2">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>70</y>
+     <width>651</width>
+     <height>111</height>
+    </rect>
+   </property>
+   <property name="title">
+    <string>Geometry input</string>
+   </property>
+   <widget class="QRadioButton" name="radioButton_elmerMesh">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>20</y>
+      <width>101</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Elmer mesh</string>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radioButton_geometryFile">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>50</y>
+      <width>111</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Geometry file</string>
+    </property>
+   </widget>
+   <widget class="QRadioButton" name="radioButton_later">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>80</y>
+      <width>121</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Later</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_meshDir">
+    <property name="enabled">
+     <bool>true</bool>
+    </property>
+    <property name="geometry">
+     <rect>
+      <x>130</x>
+      <y>20</y>
+      <width>131</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Select mesh dir</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_meshDir">
+    <property name="geometry">
+     <rect>
+      <x>270</x>
+      <y>20</y>
+      <width>371</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="frameShape">
+     <enum>QFrame::Box</enum>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_geometryFile">
+    <property name="geometry">
+     <rect>
+      <x>270</x>
+      <y>50</y>
+      <width>371</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="frameShape">
+     <enum>QFrame::Box</enum>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_geometryFile">
+    <property name="geometry">
+     <rect>
+      <x>130</x>
+      <y>50</y>
+      <width>131</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Select geometry file</string>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QGroupBox" name="groupBox_1">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>10</y>
+     <width>651</width>
+     <height>51</height>
+    </rect>
+   </property>
+   <property name="title">
+    <string>Project directory</string>
+   </property>
+   <widget class="QPushButton" name="pushButton_projectDir">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>20</y>
+      <width>131</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Select project dir</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_projectDir">
+    <property name="geometry">
+     <rect>
+      <x>150</x>
+      <y>20</y>
+      <width>491</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="frameShape">
+     <enum>QFrame::Box</enum>
+    </property>
+    <property name="text">
+     <string/>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QGroupBox" name="groupBox_3">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>190</y>
+     <width>651</width>
+     <height>251</height>
+    </rect>
+   </property>
+   <property name="title">
+    <string>Equation definition files (EDFs)</string>
+   </property>
+   <widget class="QPushButton" name="pushButton_removeSolver">
+    <property name="geometry">
+     <rect>
+      <x>380</x>
+      <y>140</y>
+      <width>75</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Remove &gt;&gt;</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="pushButton_addSolver">
+    <property name="geometry">
+     <rect>
+      <x>380</x>
+      <y>100</y>
+      <width>75</width>
+      <height>23</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>&lt;&lt; Add</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label">
+    <property name="geometry">
+     <rect>
+      <x>190</x>
+      <y>20</y>
+      <width>441</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; text-decoration: underline;&quot;&gt;Extra EFDs to be added&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+    </property>
+   </widget>
+   <widget class="QListWidget" name="listWidget_selectedSolvers">
+    <property name="geometry">
+     <rect>
+      <x>190</x>
+      <y>40</y>
+      <width>171</width>
+      <height>181</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QListWidget" name="listWidget_unselectedSolvers">
+    <property name="geometry">
+     <rect>
+      <x>470</x>
+      <y>40</y>
+      <width>171</width>
+      <height>181</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_defaultSolvers">
+    <property name="geometry">
+     <rect>
+      <x>0</x>
+      <y>40</y>
+      <width>141</width>
+      <height>181</height>
+     </rect>
+    </property>
+    <property name="locale">
+     <locale language="English" country="UnitedStates"/>
+    </property>
+    <property name="text">
+     <string>TextLabel</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_2">
+    <property name="geometry">
+     <rect>
+      <x>30</x>
+      <y>20</y>
+      <width>131</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; text-decoration: underline;&quot;&gt;Default EDFs&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_3">
+    <property name="geometry">
+     <rect>
+      <x>30</x>
+      <y>230</y>
+      <width>441</width>
+      <height>21</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;You can add Extra EDFs anytime from File-&amp;gt;Definition menu &lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+    </property>
+   </widget>
+  </widget>
+  <zorder>groupBox_1</zorder>
+  <zorder>buttonBox</zorder>
+  <zorder>groupBox_2</zorder>
+  <zorder>groupBox_3</zorder>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

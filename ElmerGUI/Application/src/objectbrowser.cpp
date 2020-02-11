@@ -150,6 +150,9 @@ ObjectBrowser::ObjectBrowser(QMainWindow *parent, Qt::WindowFlags flags) : QDock
     
   QApplication* q = (QApplication*) QCoreApplication::instance();
   connect(q, SIGNAL(focusChanged(QWidget*, QWidget*)), this, SLOT(focusChangedSlot(QWidget*, QWidget*)));
+ 
+  connect(mainwindow->newProjectAct, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));
+ 
   
   loadProjectSlot();
 }

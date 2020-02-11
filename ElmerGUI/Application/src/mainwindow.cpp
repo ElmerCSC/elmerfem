@@ -56,6 +56,7 @@
 #include <QDebug>
 
 #include "mainwindow.h"
+#include "newprojectdialog.h"
 
 #ifdef EG_VTK
 #include "vtkpost/vtkpost.h"
@@ -376,6 +377,11 @@ void MainWindow::createActions()
   loadProjectAct = new QAction(QIcon(":/icons/document-import.png"), tr("Load &project..."), this);
   loadProjectAct->setStatusTip(tr("Load previously saved project"));
   connect(loadProjectAct, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));
+
+  // File -> New project...
+  newProjectAct = new QAction(QIcon(":/icons/document-new.png"), tr("&New project..."), this);
+  newProjectAct->setStatusTip(tr("Create a new project"));
+  connect(newProjectAct, SIGNAL(triggered()), this, SLOT(newProjectSlot()));
 
   // File -> Recent Projects
   recentProject0Act = new QAction("", this);
@@ -797,17 +803,18 @@ void MainWindow::createMenus()
 {
   // File menu
   fileMenu = menuBar()->addMenu(tr("&File"));
-  fileMenu->addAction(openAct);
-  fileMenu->addAction(loadAct);
+  fileMenu->addAction(newProjectAct);
   fileMenu->addAction(loadProjectAct);
   recentProjectsMenu = fileMenu->addMenu(tr("&Recent projects"));
   recentProjectsMenu->setEnabled(false);
+  fileMenu->addAction(saveProjectAct);  
   fileMenu->addSeparator();
-  fileMenu->addAction(editDefinitionsAct);
-  fileMenu->addSeparator();
+  fileMenu->addAction(openAct);
+  fileMenu->addAction(loadAct);
   fileMenu->addAction(saveAct);
   fileMenu->addAction(saveAsAct);
-  fileMenu->addAction(saveProjectAct);
+  fileMenu->addSeparator();
+  fileMenu->addAction(editDefinitionsAct); 
   fileMenu->addSeparator();
   fileMenu->addAction(savePictureAct);
   fileMenu->addSeparator();
@@ -1059,13 +1066,15 @@ void MainWindow::createToolBars()
 {
   // File toolbar
   fileToolBar = addToolBar(tr("&File"));
+  fileToolBar->addAction(newProjectAct);
+  fileToolBar->addAction(loadProjectAct);  
+  fileToolBar->addAction(saveProjectAct);
+  fileToolBar->addSeparator();  
   fileToolBar->addAction(openAct);
   fileToolBar->addAction(loadAct);
-  fileToolBar->addAction(loadProjectAct);
-  fileToolBar->addSeparator();
   fileToolBar->addAction(saveAct);
   fileToolBar->addAction(saveAsAct);
-  fileToolBar->addAction(saveProjectAct);
+
   fileToolBar->addSeparator();
   fileToolBar->addAction(savePictureAct);
 
@@ -1129,6 +1138,115 @@ void MainWindow::createStatusBar()
 //                                File MENU
 //
 //*****************************************************************************
+
+// File -> Open...
+//-----------------------------------------------------------------------------
+void MainWindow::newProjectSlot()
+{
+  NewProjectDialog dlg;
+  
+#ifdef __APPLE__DONTGO_HERE_TODO
+  QString extraDirpath = this->homePath +  "/edf-extra";            
+#else
+  QString extraDirPath = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf-extra";
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if(!elmerGuiHome.isEmpty())
+    extraDirPath = elmerGuiHome + "/edf-extra";  
+
+  extraDirPath.replace('\\', '/');
+#endif
+
+  QString defaultDir = getDefaultDirName();
+  dlg.setDirectories( defaultDir,extraDirPath);
+  
+  if(dlg.exec() == QDialog::Accepted){
+
+    // re-initialize
+    modelClearSlot();
+    delete elmerDefs; elmerDefs = new QDomDocument;
+    delete edfEditor; edfEditor = new EdfEditor; 
+    loadDefinitions();
+    geometryInputFileName = "";  
+    
+    // widgets and utilities:
+    sifWindow->getTextEdit()->clear();
+    solverLogWindow->getTextEdit()->clear();
+    delete generalSetup; generalSetup = new GeneralSetup(this);
+    summaryEditor->ui.summaryEdit->clear();
+    delete twodView; twodView = new TwodView;
+
+#ifdef EG_QWT
+    convergenceView->removeData();
+#endif
+
+#ifdef EG_VTK
+    delete vtkPost; vtkPost = new VtkPost(this);
+    vtkPostMeshUnifierRunning = false;    
+#endif
+
+#ifdef EG_OCC
+    delete cadView; cadView = new CadView();
+    if(egIni->isPresent("deflection"))
+      cadView->setDeflection(egIni->value("deflection").toDouble());
+#endif
+    
+    //delete operations
+    operation_t *p = operation.next;
+    operation_t *q = NULL;
+    while(p != NULL) {
+      if(p->select_set != NULL) delete [] p->select_set;
+      q = p->next;
+      if(p != NULL) delete p;
+      p = q;
+    }
+    operations = 0;
+    operation.next = NULL;    
+    
+    // load extra solvers
+    QString message;
+    for(int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++){
+      message = "Load " + extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
+      #if WITH_QT5
+        cout << string(message.toLatin1()); cout.flush();
+      #else
+        cout << string(message.toAscii()); cout.flush();
+      #endif    
+      edfEditor->appendFrom(extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text());
+      cout << " done" << endl;
+    }
+    
+    // load Elmer mesh/open geometry file
+    if(dlg.ui.radioButton_elmerMesh->isChecked() && !dlg.ui.label_meshDir->text().isEmpty()){
+       loadElmerMesh(dlg.ui.label_meshDir->text());
+    }else if(dlg.ui.radioButton_geometryFile->isChecked() && !dlg.ui.label_geometryFile->text().isEmpty()){
+      QString fileName = dlg.ui.label_geometryFile->text();
+      geometryInputFileName = fileName;
+      saveDirName = "";
+      readInputFile(fileName);
+
+      if(egIni->isSet("automesh")) remeshSlot();
+    }else{
+    
+      if(glWidget->hasMesh()) {
+        glWidget->getMesh()->clear();
+        glWidget->deleteMesh();
+      }
+
+      glWidget->newMesh();
+
+      meshutils->findSurfaceElementEdges(glWidget->getMesh());
+      meshutils->findSurfaceElementNormals(glWidget->getMesh());
+  
+      glWidget->rebuildLists();
+    }
+    
+    saveProject(dlg.ui.label_projectDir->text());
+  }
+  
+}
+
 
 void MainWindow::parseCmdLine()
 {
