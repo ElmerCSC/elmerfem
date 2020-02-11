@@ -1845,7 +1845,6 @@ END INTERFACE
        END DO
      END IF
  
-     
      ! Do the standard global restart
      !-----------------------------------------------------------------
      RestartList => CurrentModel % Simulation    
@@ -1888,7 +1887,31 @@ END INTERFACE
 
          Mesh => Mesh % Next
        END DO
-     END IF     
+     ELSE
+       StartTime = ListGetConstReal( CurrentModel % Simulation  ,'Start Time',GotIt)
+       Mesh => CurrentModel % Meshes
+
+       j = 0
+       IF( GotIt ) THEN
+         DO WHILE( ASSOCIATED(Mesh) ) 
+           j = j + 1
+
+           ! Make sure that if a mesh has already been restarted 
+           ! it is not being done again. 
+           IF( MeshDone(j) ) THEN
+             CALL Info('Restart','Already done mesh: '//TRIM(Mesh % Name))
+             Mesh => Mesh % Next
+             CYCLE
+           END IF
+           MeshDone(j) = .TRUE.
+           Var  => VariableGet( Mesh % Variables, 'Time' )
+           IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
+           WRITE(Message,*) 'Found "Start Time" (without restart) and setting time-variable to t=',StartTime
+           CALL INFO("Restart",Message,Level=1)
+         END DO
+       END IF
+     END IF
+ 
      
 !------------------------------------------------------------------------------
    END SUBROUTINE Restart
