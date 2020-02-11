@@ -2520,7 +2520,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
        ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE.,GivenGWFlux=.FALSE.,&
        ComputeDt=.FALSE., ElementWiseRockMaterial, ActiveMassMatrix = .TRUE., &
-       InitializeSteadyState = .FALSE., CorrectValues=.FALSE.
+       InitializeSteadyState = .FALSE., CorrectValues=.FALSE., ExtForce=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostSoluteTransport'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, VarName, TemperatureName, GWfluxName, PhaseChangeModel,&
@@ -2543,6 +2543,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   Params => GetSolverParams()
 
   ComputeDt = GetLogical(Params,'Compute Time Derivatives',Found)
+  ExtForce = GetLogical(Params,'Compute External Force fc', Found)
 
   Salinity => Solver % Variable % Values
   IF (.NOT.ASSOCIATED(Salinity)) THEN
@@ -2657,7 +2658,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
 
       CALL LocalMatrixSolute(  Element, t, Active, n, nd+nb,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
-           NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,ActiveMassMatrix)
+           NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,ActiveMassMatrix, ExtForce)
     END DO
 
     CALL DefaultFinishBulkAssembly()
@@ -2733,7 +2734,8 @@ CONTAINS
   !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixSolute(  Element, ElementID, NoElements, n, nd,&
        CurrentSoluteMaterial, CurrentSolventMaterial,&
-       NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix)
+       NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix,&
+       ExtForce)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
@@ -2742,7 +2744,7 @@ CONTAINS
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
 !!$    REAL(KIND=dp) :: NodalTemperature(:), NodalSalinity(:),&
 !!$         NodalGWflux(:,:), NodalPorosity(:), NodalPressure(:)
-    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix !GivenGWflux, 
+    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial,ActiveMassMatrix, ExtForce !GivenGWflux, 
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: vstarAtIP(3)   ! needed in equation
@@ -2989,12 +2991,9 @@ CONTAINS
           STIFF (p,q) = STIFF(p,q) &
                - Weight * rhocAtIP * Basis(q) * SUM(JgwDAtIP(1:DIM) * dBasisdx(p,1:DIM))/XiAtIP(IPPerm)
           !PRINT *,'SoluteTransport:', JgwDAtIP(1:DIM), rhocAtIP
-          ! porosity rhoc  (u,(Kc.fc).grad(v))         
-          DO i=1,DIM
-            extforceFlux =  SUM(KcAtIP(i,1:DIM)*fcAtIP(1:DIM))
-          END DO
-          STIFF (p,q) = STIFF(p,q) &
-               - Weight * PorosityAtIP * rhocAtIP * Basis(q) * SUM(extforceFlux(1:DIM) * dBasisdx(p,1:DIM))
+          ! porosity rhoc  (u,(Kc.fc).grad(v))
+          
+ 
 
           ! time derivative (CcYcYc*du/dt,v):
           ! ------------------------------
@@ -3003,6 +3002,18 @@ CONTAINS
         END DO
       END DO
 
+      ! if we use ext. force
+      IF (ExtForce) THEN
+        DO p=1,nd
+          DO q=1,nd
+            DO i=1,DIM
+              extforceFlux =  SUM(KcAtIP(i,1:DIM)*fcAtIP(1:DIM))
+            END DO
+            STIFF (p,q) = STIFF(p,q) &
+                 - Weight * PorosityAtIP * rhocAtIP * Basis(q) * SUM(extforceFlux(1:DIM) * dBasisdx(p,1:DIM))
+          END DO
+        END DO
+      END IF
 
       LoadAtIP = LoadAtIP !+ TemperatureTimeDer * CcYcTAtIP + PressureTimeDer * CcYcPAtIP 
 
