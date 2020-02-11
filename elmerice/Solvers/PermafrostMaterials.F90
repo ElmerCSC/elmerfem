@@ -2570,6 +2570,7 @@ CONTAINS
     !-------------------------
     IF (.NOT.ConstVal) THEN
       xc = MAX(Salinity/Xi,0.0_dp)
+      xc = MIN(xc,0.2_dp)
       nu1 = (CurrentSolventMaterial % nu10) *&
            GeneralPolynomial(Temperature,T0,T0,&
            CurrentSolventMaterial % anw(0:5),&
