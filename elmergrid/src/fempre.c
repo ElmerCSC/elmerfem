@@ -95,6 +95,7 @@ static void Instructions()
   printf("13) .msh      : GID mesh format\n");
   printf("14) .msh      : Gmsh mesh format\n");
   printf("15) .ep.i     : Partitioned ElmerPost format\n");
+  printf("16) .2dm      : 2D triangular FVCOM format\n");
 #if 0
   printf("16)  .d       : Easymesh input format\n");
   printf("17) .msh      : Nastran format\n");
@@ -469,6 +470,21 @@ int main(int argc, char *argv[])
     Goodbye();
     break;
 
+  case 16:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFvcomMesh(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
+
+
+    
 #if 0
   case 16: 
     InitializeKnots(&(data[nofile]));
