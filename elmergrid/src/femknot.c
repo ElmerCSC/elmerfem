@@ -7721,7 +7721,6 @@ void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
   noelements = data->noelements;
   noknots = data->noknots;
   
-  /* sideelements = nbc - bccount; */
   sideelements = nbc - bccount;
   printf("Expected number of BC elements: %d\n",sideelements);
 
@@ -7777,8 +7776,7 @@ void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
 
     same = FALSE;
 
-    /* Whether to have this condition or not is somewhat an open question to me. */
-    /* if( bctags[bci] != bctags[bci+1] ) continue; */
+    if( bctags[bci] != bctags[bci+1] ) continue; 
 
     sideind[0] = bcinds[bci];
     sideind[1] = bcinds[bci+1];

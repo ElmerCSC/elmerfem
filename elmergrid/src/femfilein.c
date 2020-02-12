@@ -4763,6 +4763,9 @@ omstart:
 
 	for(i=0;i<10;i++) {
 	  j = next_int(&cp);
+
+	  nbc += 1;
+	  bcinds[nbc] = abs(j);
 	  
 	  if( j < 0 ) {
 	    bccount += 1;
@@ -4773,10 +4776,6 @@ omstart:
 
 	    nbc0 = nbc+1;
 	    break;
-	  }
-	  else {	    
-	    nbc += 1;
-	    bcinds[nbc] = j;
 	  }
 	}	
       }
