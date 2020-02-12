@@ -55,7 +55,7 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
   DB = GetLogical( Params,'DG Reduced Basis',Found ) 
   
-  IF( (DG .OR. DB) ) THEN
+  IF( DG .OR. DB ) THEN
     ! Enforcing indirect nodal connections in parallel for DG just to be sure
     ! The special BCs may require this. 
     CALL ListAddLogical( Params,'DG Indirect Connections',.TRUE.)
@@ -139,7 +139,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
   DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
   DB = GetLogical( Params,'DG Reduced Basis',Found ) 
-    
+
   maxiter = ListGetInteger( Params, &
       'Nonlinear System Max Iterations',Found,minv=1)
   IF(.NOT. Found ) maxiter = 1
@@ -318,7 +318,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CALL DefaultFinish()
 
 CONTAINS 
-
+  
 
 !------------------------------------------------------------------------------
 ! Assembly of the matrix entries arising from the bulk elements. SIMD version.
@@ -677,7 +677,6 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
         RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h 
-    TYPE(VariableHandle_t), SAVE :: Temperature_h
     TYPE(Element_t), POINTER :: Parent
 
     SAVE Nodes
@@ -685,7 +684,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
-
+    
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( HeatFlux_h,'Boundary Condition','Heat Flux')
       CALL ListInitElementKeyword( HeatTrans_h,'Boundary Condition','Heat Transfer Coefficient')
@@ -695,9 +694,7 @@ CONTAINS
       CALL ListInitElementKeyword( RadExtTemp_h,'Boundary Condition','Radiation External Temperature')
       CALL ListInitElementKeyword( EmisBC_h,'Boundary Condition','Emissivity')
       CALL ListInitElementKeyword( EmisMat_h,'Material','Emissivity')
-
-      CALL ListInitElementVariable( Temperature_h )
-      
+            
       InitHandles = .FALSE.
     END IF
 
@@ -716,11 +713,12 @@ CONTAINS
     ! This routine does not do diffuse gray radiation.
     ! Pass on the information to the routine that does. 
     DiffuseGray = RadDiffuse
-
+    Parent => NULL()
     
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element )
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -765,13 +763,17 @@ CONTAINS
 
         ! Basis not treated right yet        
         ! Emis = ListGetElementRealParent( EmisMat_h, Basis, Element, Found ) RESULT( RValue ) 
-        Emis = ListGetElementRealParent( EmisMat_h, Element = Element, Found = Found ) 
+        Emis = ListGetElementRealParent( EmisMat_h, Element = Element, Found = Found )
         IF( .NOT. Found ) THEN
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
 
-        T0 = ListGetElementScalarSolution( Temperature_h, Basis, Element )
-                      
+       IF( DG ) THEN
+          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % DGIndexes(1:n))))
+        ELSE
+          T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes)))
+        END IF
+          
         IF( Newton ) THEN
           RadC = StefBoltz * Emis * 4*T0**3
           RadF = StefBoltz * Emis * (3*T0**4+RadText**4) 
@@ -799,17 +801,7 @@ CONTAINS
     END IF
 
     IF( DG ) THEN
-      ! Default gluing Does not work in conjunction with DG/DB
-      Parent => Element % BoundaryInfo % Left
-      DO i=1,n
-        DO j=1, Parent % TYPE % NumberOfNodes
-          IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
-            Indexes(i) = TempPerm( Parent % DGIndexes(j) )
-            EXIT
-          END IF
-        END DO
-      END DO
-
+      Indexes(1:n) = TempPerm( Element % DGIndexes(1:n) )
       CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
           Solver % Matrix % Rhs, FORCE, n, 1, Indexes(1:n), UElement=Element)      
     ELSE    
@@ -855,8 +847,12 @@ CONTAINS
        END IF
          
        n = GetElementNOFNodes(Element)
-       
-       NodalTemp(1:n) = Temperature( TempPerm(Element % NodeIndexes) )
+
+       IF( DG ) THEN
+         NodalTemp(1:n) = Temperature( TempPerm(Element % DGIndexes) )
+       ELSE
+         NodalTemp(1:n) = Temperature( TempPerm(Element % NodeIndexes) )
+       END IF
        Temps4(j) = ( SUM( NodalTemp(1:n)**4 )/ n )**(1._dp/4._dp)       
        
        IF( PRESENT( Emiss ) ) THEN
@@ -894,7 +890,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t) :: Nodes
-    INTEGER, POINTER :: ElementList(:)
+    INTEGER, POINTER :: ElementList(:),pIndexes(:)
     REAL(KIND=dp), POINTER :: ForceVector(:)
     
     REAL(KIND=dp) :: x,NodalTemp(12),&
@@ -941,8 +937,12 @@ CONTAINS
     STIFF(1:n,1:n) = 0.0_dp
     FORCE(1:n) = 0.0_dp      
 
-    NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
-    
+    IF( DG ) THEN
+      NodalTemp(1:n) = Temperature( TempPerm( Element % DGIndexes ) )
+    ELSE
+      NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
+    END IF
+      
     ! Go through surfaces (j) this surface (i) is getting radiated from.
     !------------------------------------------------------------------------------        
     IF ( Newton ) THEN                
@@ -992,14 +992,25 @@ CONTAINS
           
           ! Integrate the contribution of surface j over surface j and add to global matrix
           !------------------------------------------------------------------------------                    
-          DO p=1,n
-            k1 = TempPerm( Element % NodeIndexes(p) )            
-            DO q=1,k
-              k2 = TempPerm( RadElement % NodeIndexes(q) )
-              CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
+          IF( Dg ) THEN
+            DO p=1,n
+              k1 = TempPerm( Element % DGIndexes(p) )            
+              DO q=1,k
+                k2 = TempPerm( RadElement % DGIndexes(q) )
+                CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
+              END DO
+              ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
             END DO
-            ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
-          END DO
+          ELSE
+            DO p=1,n
+              k1 = TempPerm( Element % NodeIndexes(p) )            
+              DO q=1,k
+                k2 = TempPerm( RadElement % NodeIndexes(q) )
+                CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
+              END DO
+              ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
+            END DO
+          END IF
         ELSE
           ! Explicit part, no linearization
           !------------------------------------------------------------------------
@@ -1075,15 +1086,22 @@ CONTAINS
     ! Glue standard local matrix equation to the global matrix
     ! The view factor part has already been glued.
     !-----------------------------------------------------------------
+    
+    IF( DG ) THEN
+      pIndexes => Element % DGIndexes
+    ELSE
+      pIndexes => Element % NodeIndexes
+    END IF
+
     DO p=1,n
-      k1 = TempPerm( Element % NodeIndexes(p) )
+      k1 = TempPerm( pIndexes(p) )
       DO q=1,n
-        k2 = TempPerm( Element % NodeIndexes(q) )
+        k2 = TempPerm( pIndexes(q) )
         CALL AddToMatrixElement( Solver % Matrix,k1,k2,STIFF(p,q))
       END DO
       ForceVector(k1) = ForceVector(k1) + FORCE(p)
     END DO
-    
+      
   END SUBROUTINE LocalMatrixDiffuseGray
 !------------------------------------------------------------------------------
 

@@ -167,15 +167,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen, &
-      startpos
+      jsonpos
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
-#ifndef USE_ISO_C_BINDINGS
-  REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory
-#endif
 
-  SAVE :: startpos
+  SAVE :: jsonpos
   
 !------------------------------------------------------------------------------
 
@@ -391,7 +388,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           Var2 => VariableGet( Model % Variables, TRIM(VariableName)//' 2' )
           Var3 => VariableGet( Model % Variables, TRIM(VariableName)//' 3' )          
         ELSE
-          CALL Fatal('SaveScalars','Requested variable does not exist: '//TRIM(VariableName))
+          CALL Warn('SaveScalars','Requested variable does not exist: '//TRIM(VariableName))
+          CYCLE
         END IF
       ELSE
         ComponentVar = .FALSE.
@@ -724,7 +722,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END IF
  
         BoundaryHits = 0
-        BoundaryFluxes = 0.0_dp         
+        BoundaryFluxes = 0.0_dp
         CALL BoundaryStatistics(Var, Oper, GotCoeff, &
             CoefficientName, BoundaryFluxes, BoundaryHits)
         
@@ -1385,7 +1383,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
               FILE=TRIM(ScalarsFile)//'.json')
 
           ! Jump to the start position from previous visit
-          WRITE( ScalarsUnit,'(A)', POS=startpos, ADVANCE='no' ) '   ,['
+          WRITE( ScalarsUnit,'(A)', POS=jsonpos, ADVANCE='no' ) '   ,['
         END IF
                  
         DO No=1,NoValues-1
@@ -1394,7 +1392,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         WRITE (ScalarsUnit,'(ES22.12E3,A)') Values(No),"]"
 
         ! Mark the start position for next visit
-        INQUIRE(ScalarsUnit,POS=startpos)    
+        INQUIRE(ScalarsUnit,POS=jsonpos)    
         
         WRITE( ScalarsUnit, '(A)' ) '  ]'
         WRITE( ScalarsUnit, '(A)' ) '}'
@@ -2722,8 +2720,12 @@ CONTAINS
     LOGICAL :: Stat, Permutated    
     INTEGER :: i,j,k,p,q,t,DIM,bc,n,hits,istat
 
-
-    ALLOCATE(NodesComputed(SIZE(Var % Perm)),STAT=istat)
+    IF( ASSOCIATED( Var % Perm ) ) THEN
+      n = SIZE( Var % Perm )
+    ELSE
+      n = Mesh % NumberOfNodes
+    END IF
+    ALLOCATE(NodesComputed(n),STAT=istat)
     IF( istat /= 0 ) CALL Fatal('BoundaryStatistics','Memory allocation error') 
 	
     NodesComputed = .FALSE.
