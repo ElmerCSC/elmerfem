@@ -56,8 +56,6 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
   SolverParams => GetSolverParams()
 
-  LagrangeGauge = .FALSE.
-
   StaticConductivity = ListGetLogical( SolverParams,'Static Conductivity',Found )
   IF( .NOT. Found ) THEN
     IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
@@ -72,10 +70,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       StaticConductivity = .TRUE.
     END IF
   END IF
-  IF( StaticConductivity ) THEN
+  IF (.NOT. Transient .AND. StaticConductivity) THEN
     CALL Info("WhitneyAVSolver_Init0",'Including scalar potential in AV equation!',Level=6)
-  ELSE
-    CALL Info("WhitneyAVSolver_Init0",'Ignoring scalar potential in AV equation!',Level=6)    
   END IF
 
   LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
@@ -148,7 +144,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF(.NOT. ( StaticConductivity .OR. LagrangeGauge ) ) THEN
+  IF (.NOT. Transient .AND. .NOT. ( StaticConductivity .OR. LagrangeGauge ) ) THEN
     CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
   END IF
     
@@ -453,7 +449,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL ListAddInteger(SolverParams,'Norm Permutation',nNodes+1)
 
 
-  ! Resolve internal non.linearities, if requeted:
+  ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, 'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
