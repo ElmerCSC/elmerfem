@@ -2,7 +2,7 @@
  *                                                                           *
  *  Elmer, A Finite Element Software for Multiphysical Problems              *
  *                                                                           *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland    *
+ *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland   *
  *                                                                           *
  *  This program is free software; you can redistribute it and/or            *
  *  modify it under the terms of the GNU General Public License              *
@@ -30,7 +30,7 @@
  *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
- *  Address: CSC - IT Center for Science Ltd.                                 *
+ *  Address: CSC - IT Center for Science Ltd.                                *
  *           Keilaranta 14                                                   *
  *           02101 Espoo, Finland                                            *
  *                                                                           *
@@ -1217,6 +1217,16 @@ void MainWindow::newProjectSlot()
       cout << " done" << endl;
     }
     
+    // reset mesh
+    if(glWidget->hasMesh()) {
+      glWidget->getMesh()->clear();
+      glWidget->deleteMesh();
+    }
+    glWidget->newMesh();
+    meshutils->findSurfaceElementEdges(glWidget->getMesh());
+    meshutils->findSurfaceElementNormals(glWidget->getMesh());
+    glWidget->rebuildLists();
+      
     // load Elmer mesh/open geometry file
     if(dlg.ui.radioButton_elmerMesh->isChecked() && !dlg.ui.label_meshDir->text().isEmpty()){
        loadElmerMesh(dlg.ui.label_meshDir->text());
@@ -1225,23 +1235,10 @@ void MainWindow::newProjectSlot()
       geometryInputFileName = fileName;
       saveDirName = "";
       readInputFile(fileName);
-
       if(egIni->isSet("automesh")) remeshSlot();
-    }else{
-    
-      if(glWidget->hasMesh()) {
-        glWidget->getMesh()->clear();
-        glWidget->deleteMesh();
-      }
-
-      glWidget->newMesh();
-
-      meshutils->findSurfaceElementEdges(glWidget->getMesh());
-      meshutils->findSurfaceElementNormals(glWidget->getMesh());
-  
-      glWidget->rebuildLists();
     }
     
+    // save project
     saveProject(dlg.ui.label_projectDir->text());
   }
   

@@ -2,7 +2,7 @@
  *                                                                           *
  *  Elmer, A Finite Element Software for Multiphysical Problems              *
  *                                                                           *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland    *
+ *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland   *
  *                                                                           *
  *  This program is free software; you can redistribute it and/or            *
  *  modify it under the terms of the GNU General Public License              *
@@ -23,14 +23,14 @@
 
 /*****************************************************************************
  *                                                                           *
- *  ElmerGUI newproject                                                   *
+ *  ElmerGUI newproject                                                      *
  *                                                                           *
  *****************************************************************************
  *                                                                           *
  *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
- *  Address: CSC - IT Center for Science Ltd.                                 *
+ *  Address: CSC - IT Center for Science Ltd.                                *
  *           Keilaranta 14                                                   *
  *           02101 Espoo, Finland                                            *
  *                                                                           *
@@ -39,6 +39,7 @@
  *****************************************************************************/
 
 #include <QtGui>
+#include <QFileDialog>
 #include <iostream>
 #include "newprojectdialog.h"
 
@@ -124,19 +125,16 @@ void NewProjectDialog::setDirectories(QString& defaultDir, QString& extraDirName
   
   ui.listWidget_unselectedSolvers->addItems(fileNameList);
   
-  QString labelString("<html><body><ul>");
+  QString labelString;
   QDir edfDir(extraDirPath + "/../edf");
   fileNameList = edfDir.entryList(nameFilters, QDir::Files | QDir::Readable);
   for(int i=0; i<fileNameList.size(); i++){
     if( fileNameList[i] != "edf.xml" && fileNameList[i] != "egini.xml" && fileNameList[i] != "egmaterials.xml")
     {
-      labelString +=  "<li>" + fileNameList[i] + "</li>";
+      labelString +=  " " + fileNameList[i] + "\n";
     }
   }
-  labelString += "</ul></body></html>";
   ui.label_defaultSolvers->setText(labelString);
-  
-  
 }
 
 void NewProjectDialog::addSolverClicked(bool b){
