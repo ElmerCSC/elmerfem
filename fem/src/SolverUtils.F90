@@ -8625,6 +8625,7 @@ END FUNCTION SearchNodeL
     IF ( .NOT.ASSOCIATED( PrimVar) ) RETURN
 
     DO WHILE( ASSOCIATED(Mesh) )
+      ! Make the same variable invalid in all other meshes.
       IF ( .NOT.ASSOCIATED( PrimaryMesh, Mesh) ) THEN
         Var => VariableGet( Mesh % Variables, Name, ThisOnly=.TRUE.)
         IF ( ASSOCIATED( Var ) ) THEN
@@ -8633,67 +8634,29 @@ END FUNCTION SearchNodeL
         END IF
 
         IF ( PrimVar % DOFs > 1 ) THEN
-          IF ( .FALSE. .AND. PrimVar % Name == 'flow solution' ) THEN
-            Var1 => VariableGet( Mesh % Variables, 'Velocity 1', .TRUE.)
+          DO i=1,PrimVar % DOFs
+            tmpname = ComponentName( Name, i )
+            Var1 => VariableGet( Mesh % Variables, tmpname, .TRUE. )
             IF ( ASSOCIATED( Var1 ) ) THEN
-               Var1 % Valid = .FALSE.
-               Var1 % PrimaryMesh => PrimaryMesh
+              Var1 % Valid = .FALSE.
+              Var1 % PrimaryMesh => PrimaryMesh
             END IF
-            Var1 => VariableGet( Mesh % Variables, 'Velocity 2', .TRUE.)
-            IF ( ASSOCIATED( Var1 ) ) THEN
-               Var1 % Valid = .FALSE.
-               Var1 % PrimaryMesh => PrimaryMesh
-            END IF
-            Var1 => VariableGet( Mesh % Variables, 'Velocity 3', .TRUE.)
-            IF ( ASSOCIATED( Var1 ) ) THEN
-               Var1 % Valid = .FALSE.
-               Var1 % PrimaryMesh => PrimaryMesh
-            END IF
-            Var1 => VariableGet( Mesh % Variables, 'Pressure', .TRUE.)
-            IF ( ASSOCIATED( Var1 ) ) THEN
-               Var1 % Valid = .FALSE.
-               Var1 % PrimaryMesh => PrimaryMesh
-            END IF
-            Var1 => VariableGet( Mesh % Variables, 'Surface', .TRUE.)
-            IF ( ASSOCIATED( Var1 ) ) THEN
-               Var1 % Valid = .FALSE.
-               Var1 % PrimaryMesh => PrimaryMesh
-            END IF
-          ELSE
-            DO i=1,PrimVar % DOFs
-              tmpname = ComponentName( Name, i )
-              Var1 => VariableGet( Mesh % Variables, tmpname, .TRUE. )
-              IF ( ASSOCIATED( Var1 ) ) THEN
-                 Var1 % Valid = .FALSE.
-                 Var1 % PrimaryMesh => PrimaryMesh
-              END IF
-            END DO
-          END IF
+          END DO
         END IF
       END IF
       Mesh => Mesh % Next
     END DO 
 
+    ! Tell that values have changed in the primary mesh.
+    ! Interpolation can then be activated if we request the same variable in the
+    ! other meshes. 
     PrimVar % ValuesChanged = .TRUE.
     IF ( PrimVar % DOFs > 1 ) THEN
-      IF ( .FALSE. .AND. PrimVar % Name == 'flow solution' ) THEN
-        Var => VariableGet( PrimaryMesh % Variables, 'Surface', .TRUE.)
+      DO i=1,PrimVar % DOFs
+        tmpname = ComponentName( Name, i )
+        Var => VariableGet( PrimaryMesh % Variables, tmpname, .TRUE. )
         IF ( ASSOCIATED(Var) ) Var % ValuesChanged = .TRUE.
-        Var => VariableGet( PrimaryMesh % Variables, 'Pressure', .TRUE.)
-        IF ( ASSOCIATED(Var) ) Var % ValuesChanged = .TRUE.
-        Var => VariableGet( PrimaryMesh % Variables, 'Velocity 1', .TRUE.)
-        IF ( ASSOCIATED(Var) ) Var % ValuesChanged = .TRUE.
-        Var => VariableGet( PrimaryMesh % Variables, 'Velocity 2', .TRUE.)
-        IF ( ASSOCIATED(Var) ) Var % ValuesChanged = .TRUE.
-        Var => VariableGet( PrimaryMesh % Variables, 'Velocity 3', .TRUE.)
-        IF ( ASSOCIATED(Var) ) Var % ValuesChanged = .TRUE.
-      ELSE
-        DO i=1,PrimVar % DOFs
-          tmpname = ComponentName( Name, i )
-          Var => VariableGet( PrimaryMesh % Variables, tmpname, .TRUE. )
-          IF ( ASSOCIATED(Var) ) Var % ValuesChanged = .TRUE.
-        END DO
-      END IF
+      END DO
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE InvalidateVariable

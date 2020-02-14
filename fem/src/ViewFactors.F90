@@ -660,8 +660,8 @@
        IF( FMax > 1.001 ) THEN
          CALL Warn('ViewFactors','Rowsum of view factors should not be larger than one!')
        END IF
-       IF( FMin > 0.999 ) THEN
-         CALL Warn('ViewFactors','Rowsum of view factors should not be larger than one!')
+       IF( FMin < 0.999 ) THEN
+         CALL Warn('ViewFactors','Rowsum of view factors should not be smaller than one!')
        END IF
 
 

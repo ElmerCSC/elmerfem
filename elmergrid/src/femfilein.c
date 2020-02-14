@@ -4687,6 +4687,145 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
 }
 
 
+
+int LoadFvcomMesh(struct FemType *data,struct BoundaryType *bound,
+		  char *filename,int info)
+{
+  int noknots = 0,noelements = 0,maxnodes,dim;
+  int elemind[MAXNODESD2],elementtype;
+  int i,j,k,allocated,*revindx=NULL,maxindx;
+  int elemnodes,maxelemtype,elemtype0,bclines;
+  int usetaggeom,tagmat,bccount;
+  int *bcinds,*bctags,nbc,nbc0,bc_id;
+  FILE *in;
+  char *cp,line[MAXLINESIZE];
+
+
+  if ((in = fopen(filename,"r")) == NULL) {
+    printf("LoadFVCOMInput: The opening of the FVCOM mesh file %s failed!\n",filename);
+    return(1);
+  }
+  if(info) printf("Loading mesh in FVCOM format from file %s\n",filename);
+
+  allocated = FALSE;
+  dim = 2;
+  maxnodes = 0;
+  maxindx = 0;
+  maxelemtype = 303;
+  usetaggeom = FALSE;
+
+  noelements = 0;
+  bclines = 0;
+    
+  
+omstart:
+
+  noelements = 0;
+  noknots = 0;
+  nbc = 0;
+  nbc0 = 1;
+  bclines = 0;
+  bccount = 0;
+  
+  for(;;) {
+    if(Getrow(line,in,FALSE)) goto end;
+    if(line[0]=='\0') goto end;
+    
+    if(memcmp(line,"E3T",3) == 0 ) {
+      noelements += 1;
+      if(allocated) {
+	cp = line+4;
+	i = next_int(&cp);
+	if(i != noelements ) printf("Invalid element number: %d %d\n",noelements,i);		  
+
+	data->elementtypes[i] = 303;
+	for(k=0;k<3;k++)
+	  data->topology[i][k] = next_int(&cp);
+	data->material[i] = next_int(&cp);
+      }
+    }
+    else if(memcmp(line,"ND",2) == 0 ) {
+      noknots += 1;
+      if(allocated) {
+	cp = line+3;
+	i = next_int(&cp);
+	if(i != noknots ) printf("Invalid node number: %d %d\n",noknots,i);	
+	data->x[i] = next_real(&cp);
+	data->y[i] = next_real(&cp);
+	if(dim > 2) data->z[i] = next_real(&cp);
+      }
+    }
+    else if(memcmp(line,"NS",2) == 0 ) {
+      bclines += 1;
+      
+      if(allocated){
+	cp = line+3;
+
+	for(i=0;i<10;i++) {
+	  j = next_int(&cp);
+
+	  nbc += 1;
+	  bcinds[nbc] = abs(j);
+	  
+	  if( j < 0 ) {
+	    bccount += 1;
+	    bc_id = next_int(&cp);
+
+	    for(k=nbc0;k<=nbc;k++)
+	      bctags[k] = bc_id;	    
+
+	    nbc0 = nbc+1;
+	    break;
+	  }
+	}	
+      }
+    }
+    else if(memcmp(line,"MESH2D",6) == 0 ) {
+      if(!allocated) printf("Yes, we have MESH2D as we should\n");
+    }
+    else if(memcmp(line,"MESHNAME",8) == 0 ) {
+      if(!allocated) printf("Mesh name found but not used: %s\n",line+9);
+    }
+  }
+
+ end:
+
+
+  if(!allocated) {
+    maxnodes = maxelemtype % 100;
+    InitializeKnots(data);
+    data->dim = dim;
+    data->maxnodes = maxnodes;
+    data->noelements = noelements;
+    data->noknots = noknots;    
+    
+    if(info) printf("Allocating for %d knots and %d elements.\n",noknots,noelements);
+    AllocateKnots(data);
+    
+    printf("Number of BC lines: %d\n",bclines);
+    bcinds = Ivector(1,10*bclines);        
+    bctags = Ivector(1,10*bclines);
+    for(i=1;i<=10*bclines;i++) bcinds[i] = bctags[i] = 0;
+    
+    rewind(in);
+    allocated = TRUE;
+    goto omstart;
+  }
+
+  printf("Number of different BCs: %d\n",bccount);  
+  printf("Number of BC nodes: %d\n",nbc);  
+
+  NodesToBoundaryChain(data,bound,bcinds,bctags,nbc,bccount,info);
+
+  free_Ivector(bcinds,1,10*bclines);
+  free_Ivector(bctags,1,10*bclines);
+  
+  if(info) printf("Successfully read the mesh from the FVCOM file!\n");
+
+  return(0);
+}
+
+
 int LoadGeoInput(struct FemType *data,struct BoundaryType *bound,
 		 char *filename,int info)
 {

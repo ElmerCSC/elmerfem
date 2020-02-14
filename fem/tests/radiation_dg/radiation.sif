@@ -1,0 +1,120 @@
+! Initially a historical test case for axially symmetric radiation.
+! Now with vectorized version of heat solver.
+! Discontinuous Galerkin with reduced basis.
+!
+! P.R. 4.2.2020
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "radiation"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Axi Symmetric
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "radiation.vtu"
+  vtu: discontinuous bodies = Logical True
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+  Initial Condition = 1
+End
+
+Body 3
+  Equation = 1
+  Material = 3
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 500.0
+End
+
+Body Force 1
+  Heat Source = 10000
+End
+
+Material 1
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+  Emissivity = 1.0
+  DG Parent Material = Logical True
+End
+
+Material 2
+  Density = 1.0
+  Heat Conductivity = 5.0
+  Heat Capacity = 1.0
+  Emissivity = 1.0
+  DG Parent Material = Logical True
+End
+
+Material 3
+  Density = 1.0
+  Heat Conductivity = 0.1
+  Heat Capacity = 1.0
+End
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolveVec" "HeatSolver"
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Newton After Tolerance = 0.1
+  Nonlinear System Max Iterations = 50
+  NonLinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Relaxation Factor = 0.5
+
+  Viewfactor Binary Output = Logical True
+  Discontinuous Galerkin = Logical True
+  DG Reduced Basis = Logical True
+  DG Reduced Basis Master Bodies(1) = Integer 1 
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Radiation = Diffuse Gray
+  Heat Gap = Logical True
+  Heat Gap Coefficient = Real 1.0e1
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Radiation = Diffuse Gray
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Temperature = 100.0
+End
+
+Solver 1 :: Reference Norm = 1.65339204E+02

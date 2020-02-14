@@ -908,13 +908,20 @@ CONTAINS
       ! The might be missing entries due to duplicate numbering etc.
       ! For some fields this is not detrimental, thus just a warning.
       !--------------------------------------------------------------------
+      IF( Model % NumberOfBCs == 0 ) THEN
+        CALL Warn('LoadInputFile','There are no BCs in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of BCs: '//TRIM(I2S(Model % NumberOfBCs)),Level=12)
+      END IF
       DO i = 1, Model % NumberOFBCs
         IF( ListEmpty(Model % BCs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Boundary Condition ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
-      
+
+      CALL Info('LoadInputFile','Number of Body Forces: '&
+          //TRIM(I2S(Model % NumberOfBodyForces)),Level=12)
       DO i = 1, Model % NumberOfBodyForces
         IF( ListEmpty(Model % BodyForces(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body Force ',i
@@ -922,20 +929,30 @@ CONTAINS
         END IF
       END DO
 
+      CALL Info('LoadInputFile','Number of Initial Conditions: '&
+          //TRIM(I2S(Model % NumberOfICs)),Level=12)
       DO i = 1, Model % NumberOfICs
         IF( ListEmpty(Model % ICs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Initial Condition ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
-      
+
+      CALL Info('LoadInputFile','Number of Materials: '&
+          //TRIM(I2S(Model % NumberOfMaterials)),Level=12)      
       DO i = 1, Model % NumberOfMaterials         
         IF( ListEmpty(Model % Materials(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Material ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
-
+      
+      IF( Model % NumberOfEquations == 0 ) THEN
+        CALL Warn('LoadInputFile','There are no Equations in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of Equations: '&
+            //TRIM(I2S(Model % NumberOfEquations)),Level=12)
+      END IF
       DO i = 1, Model % NumberOFEquations 
         IF( ListEmpty(Model % Equations(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Equation ',i
@@ -943,6 +960,12 @@ CONTAINS
         END IF
       END DO
     
+      IF( Model % NumberOfSolvers == 0 ) THEN
+        CALL Fatal('LoadInputFile','There are no Solvers in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of Solvers: '&
+            //TRIM(I2S(Model % NumberOfSolvers)),Level=12)
+      END IF
       DO i = 1, Model % NumberOfSolvers         
         IF( ListEmpty(Model % Solvers(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Solver ',i
@@ -950,6 +973,12 @@ CONTAINS
         END IF
       END DO
 
+      IF( Model % NumberOfBodies == 0 ) THEN
+        CALL Warn('LoadInputFile','There are no Bodies in the system!')
+      ELSE
+        CALL Info('LoadInputFile','Number of Bodies: '&
+            //TRIM(I2S(Model % NumberOfBodies)),Level=12)
+      END IF     
       DO i = 1, Model % NumberOfBodies
         IF( ListEmpty(Model % Bodies(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body ',i
@@ -3410,12 +3439,12 @@ ELMER_SOLVER_HOME &
 !> Loads the result file that has been saved by an earlier Elmer simulation.
 !> This makes it possible to restart the simulation.
 !------------------------------------------------------------------------------
-  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF,RestartList)
+  SUBROUTINE LoadRestartFile( RestartFile,TimeCount,Mesh,Continuous,EOF,SolverId)
     CHARACTER(LEN=*) :: RestartFile
     INTEGER :: TimeCount
     TYPE(Mesh_T), POINTER :: Mesh
     LOGICAL, OPTIONAL :: Continuous,EOF
-    TYPE(ValueList_t), POINTER, OPTIONAL :: RestartList
+    INTEGER, OPTIONAL :: SolverId
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
     CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
@@ -3445,33 +3474,35 @@ ELMER_SOLVER_HOME &
     CHARACTER(1) :: E
     REAL(dp) :: tstart, tstop
 
+    CHARACTER(*), PARAMETER :: Caller = 'LoadRestartFile'
+    
     SAVE TotalDOFs, PermSize, FieldSize
 
     tstart = CPUTime()
 !------------------------------------------------------------------------------
 !   Open restart file and search for the right position
 !------------------------------------------------------------------------------
-    CALL Info( 'LoadRestartFile',' ', Level = 4)
-    CALL Info( 'LoadRestartFile','--------------------------------------------', Level= 4 )
-    CALL Info( 'LoadRestartFile','Restart for mesh name: '//TRIM(Mesh % Name), Level = 8 )
-    CALL Info( 'LoadRestartFile','Restart for number of nodes: '//TRIM(I2S(Mesh % NumberOfNodes)), Level = 8 )    
+    CALL Info( Caller,' ', Level = 4)
+    CALL Info( Caller,'--------------------------------------------', Level= 4 )
+    CALL Info( Caller,'Restart for mesh name: '//TRIM(Mesh % Name), Level = 8 )
+    CALL Info( Caller,'Restart for number of nodes: '//TRIM(I2S(Mesh % NumberOfNodes)), Level = 8 )    
     IF( ASSOCIATED( Mesh % Child ) ) THEN
-      CALL Info('LoadRestartFile','Skipping restart for child mesh',Level=4)
+      CALL Info(Caller,'Skipping restart for child mesh',Level=4)
       RETURN
     END IF
-    CALL Info( 'LoadRestartFile','Reading data from file: '//TRIM(RestartFile), Level = 4 )
+    CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
     
-    IF( PRESENT( RestartList ) ) THEN
-      ResList => RestartList
+    IF( PRESENT( SolverId ) ) THEN
+      ResList => CurrentModel % Solvers(SolverId) % Values
     ELSE
       ResList => CurrentModel % Simulation
     END IF
     
     RestartVariableList = ListCheckPresent( ResList,'Restart Variable 1')
     IF( RestartVariableList ) THEN
-      CALL Info('LoadRestartFile','Reading only variables given by: Restart Variable i',Level=10)
+      CALL Info(Caller,'Reading only variables given by: "Restart Variable i"',Level=10)
     ELSE
-      CALL Info('LoadRestartFile','Reading all variables (if not wanted use >Restart Variable i< )',Level=10)      
+      CALL Info(Caller,'Reading all variables (if not wanted use "Restart Variable i" )',Level=10)      
     END IF
 
         
@@ -3496,25 +3527,25 @@ ELMER_SOLVER_HOME &
  
     FileCount = NINT( ParallelReduction( 1.0_dp * FileCount ) )
     IF( FileCount == 0 ) THEN
-      CALL Error( 'LoadRestartFile','=======================================' )
-      CALL Error( 'LoadRestartFile','' )
-      CALL Error( 'LoadRestartFile','Could not open file "'//TRIM(FName)//'"' )
-      CALL Error( 'LoadRestartFile','No restart possible!' )
-      CALL Error( 'LoadRestartFile','' )
-      CALL Fatal( 'LoadRestartFile','=======================================' )
+      CALL Error( Caller,'=======================================' )
+      CALL Error( Caller,'' )
+      CALL Error( Caller,'Could not open file "'//TRIM(FName)//'"' )
+      CALL Error( Caller,'No restart possible!' )
+      CALL Error( Caller,'' )
+      CALL Fatal( Caller,'=======================================' )
     ELSE IF( FileCount < ParEnv % PEs ) THEN
-      CALL Info('LoadRestartFile','Succefully opened '//TRIM(I2S(FileCount))//&
+      CALL Info(Caller,'Succefully opened '//TRIM(I2S(FileCount))//&
           ' restart files out of '//TRIM(I2S(ParEnv % PEs)),Level=6)
       IF( ListGetLogical( ResList,'Restart Error Continue',Found ) ) THEN
         ! This partition does not have a mesh
         IF( iostat /= 0 ) RETURN 
       ELSE
-        CALL Error( 'LoadRestartFile','=======================================' )
-        CALL Error( 'LoadRestartFile','' )
-        CALL Error( 'LoadRestartFile','Could not open parallel restart file "'//TRIM(FName)//'"' )
-        CALL Error( 'LoadRestartFile','No restart possible!' )
-        CALL Error( 'LoadRestartFile','' )
-        CALL Fatal( 'LoadRestartFile','=======================================' )
+        CALL Error( Caller,'=======================================' )
+        CALL Error( Caller,'' )
+        CALL Error( Caller,'Could not open parallel restart file "'//TRIM(FName)//'"' )
+        CALL Error( Caller,'No restart possible!' )
+        CALL Error( Caller,'' )
+        CALL Fatal( Caller,'=======================================' )
       END IF
     END IF
     
@@ -3523,41 +3554,41 @@ ELMER_SOLVER_HOME &
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
     READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
     IF( iostat /= 0 ) THEN
-      CALL Fatal('LoadRestartFile','Error reading header line!')
+      CALL Fatal(Caller,'Error reading header line!')
     END IF
 
     IF ( Row(3:8) == 'BINARY' ) THEN
         Binary = .TRUE.
         FmtVersion = 1
         E = Row(1:1)
-        CALL Info( 'LoadRestartFile', TRIM(Row(3:)), Level = 4 )
+        CALL Info( Caller, TRIM(Row(3:)), Level = 4 )
     ELSE IF ( Row(2:7) == 'BINARY' ) THEN
         Binary = .TRUE.
         FmtVersion = 2
         READ( Row(9:9),'(I1)',IOSTAT=iostat) FmtVersion
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadRestartFile','Error reading version: '//TRIM(Row))
+          CALL Fatal(Caller,'Error reading version: '//TRIM(Row))
         END IF
         i = INDEX( Row, "." )
         E = Row(i+1:i+1)
-        CALL Info( 'LoadRestartFile', TRIM(Row(2:)), Level = 4 )
+        CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
     ELSE IF ( Row(2:6) == 'ASCII' ) THEN
         Binary = .FALSE.
         READ( Row(8:8),'(I1)',IOSTAT=iostat) FmtVersion
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadRestartFile','Error reading version: '//TRIM(Row))
+          CALL Fatal(Caller,'Error reading version: '//TRIM(Row))
         END IF
-        CALL Info( 'LoadRestartFile', TRIM(Row(2:)), Level = 4 )
+        CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
     ELSE 
         Binary = .FALSE.
         FmtVersion = 0
-        CALL Info( 'LoadRestartFile', 'ASCII 0', Level = 4 )
+        CALL Info( Caller, 'ASCII 0', Level = 4 )
     END IF
     
     IF( Binary ) THEN
-      CALL Info( 'LoadRestartFile','Reading binary restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+      CALL Info( Caller,'Reading binary restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
     ELSE
-      CALL Info( 'LoadRestartFile','Reading ascii restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
+      CALL Info( Caller,'Reading ascii restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
     END IF
       
     ! If we want to skip some of the variables we need to have a list 
@@ -3571,7 +3602,7 @@ ELMER_SOLVER_HOME &
         IF(.NOT. Found ) EXIT
       END DO
       j = j - 1
-      CALL Info('LoadRestartFile','Number of variable to read is: '//TRIM(I2S(j)),Level=10)
+      CALL Info(Caller,'Number of variable to read is: '//TRIM(I2S(j)),Level=10)
       IF( ALLOCATED( RestartVariableFound ) ) DEALLOCATE( RestartVariableFound ) 
       ALLOCATE( RestartVariableFound(j) )
       RestartVariableCount = j
@@ -3583,7 +3614,7 @@ ELMER_SOLVER_HOME &
         IF( k /= 0 ) THEN
           READ( Row(k+11:nlen),*,IOSTAT=iostat ) TotalDofs
           IF( iostat /= 0 ) THEN
-            CALL Fatal('LoadRestartFile','Unable to load total dofs!')
+            CALL Fatal(Caller,'Unable to load total dofs!')
           END IF
           EXIT
         END IF
@@ -3613,9 +3644,9 @@ ELMER_SOLVER_HOME &
       IF( k /= 0 ) THEN
         READ( Row(k+11:nlen),*,IOSTAT=iostat ) TotalDofs
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadRestartFile','Unable to load total dofs!')
+          CALL Fatal(Caller,'Unable to load total dofs!')
         END IF
-        CALL Info('LoadRestartFile','Total number of dofs to load: '//I2S(TotalDofs) )
+        CALL Info(Caller,'Total number of dofs to load: '//I2S(TotalDofs) )
         EXIT
       END IF
 
@@ -3643,10 +3674,10 @@ ELMER_SOLVER_HOME &
         END DO
         READ(Row(k+1:),*,IOSTAT=iostat) DOFs
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadRestartFile','Error reading DOFs: '//TRIM(Row(k+1:)))
+          CALL Fatal(Caller,'Error reading DOFs: '//TRIM(Row(k+1:)))
         END IF
 
-        IF( Dofs < 1 ) CALL Fatal('LoadRestartFile','The Dofs should be positive: '//i2s(DOFs))
+        IF( Dofs < 1 ) CALL Fatal(Caller,'The Dofs should be positive: '//i2s(DOFs))
         
         ! Figure out the name of the variable
         j = INDEX(Row,'[')
@@ -3669,20 +3700,20 @@ ELMER_SOLVER_HOME &
             VarName = TRIM(Row(1:j-1))
             FullName = VarName
           ELSE
-            CALL Warn('LoadRestartFile','Cannot read variable name: '//TRIM(Row))
+            CALL Warn(Caller,'Cannot read variable name: '//TRIM(Row))
           END IF
         ELSE
           FullName = TRIM(Row(1:j))
           j = INDEX( Row,'[')
           IF( j == 0 ) THEN
-            CALL Warn('LoadRestartFile','Missing left parenthesis: '//TRIM(Row))
+            CALL Warn(Caller,'Missing left parenthesis: '//TRIM(Row))
             VarName = FullName
           ELSE
             VarName = TRIM(Row(1:j-1))
           END IF
         END IF
 
-        CALL Info('LoadRestartFile','Reading variable: '//TRIM(VarName),Level=12)
+        CALL Info(Caller,'Reading variable: '//TRIM(VarName),Level=12)
         
         ! read the size of field, size or perm and number of dofs per node
         !-----------------------------------------------------------------
@@ -3691,11 +3722,11 @@ ELMER_SOLVER_HOME &
         j = j+k
         READ(Row(j+1:),*,IOSTAT=iostat) FieldSize,PermSize,DOFs
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadRestartFile','Error reading size information: '//TRIM(Row(j+1:)))
+          CALL Fatal(Caller,'Error reading size information: '//TRIM(Row(j+1:)))
         END IF
 
-        CALL Info('LoadRestartFile','Size of the field to load: '//TRIM(I2S(FieldSize)),Level=15)
-        CALL Info('LoadRestartFile','Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=15)
+        CALL Info(Caller,'Size of the field to load: '//TRIM(I2S(FieldSize)),Level=15)
+        CALL Info(Caller,'Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=15)
          
 
         ! read the name of the solver and associate it to existing solver
@@ -3716,14 +3747,22 @@ ELMER_SOLVER_HOME &
         END DO
 
         IF( Found ) THEN
-          CALL Info('LoadRestartFile','Associated to existing solver',Level=20)
+          CALL Info(Caller,'Associated variable to solver using Eq: '//TRIM(I2S(i)),Level=20)
         ELSE IF( PermSize > 0 ) THEN
-          CALL Warn('LoadRestartFile','Could not associate variable to solver: '//TRIM(VarName))
-          ! Associated to some solver at least 
-          Solver => CurrentModel % Solvers(1)
+          IF( PRESENT( SolverId ) ) THEN
+            i = SolverId
+          ELSE
+            ! If we don't have the SolverId as an argument we are doing a general restart.
+            ! Then assign new field to the first solver without a solver-specific mesh. 
+            DO i = 1,CurrentModel % NumberOfSolvers
+              IF( .NOT. ListCheckPresent( CurrentModel % Solvers(i) % Values,'Mesh') ) EXIT
+            END DO
+          END IF
+          CALL Info(Caller,'Associated variable to solver using Mesh: '//TRIM(I2S(i)),Level=20)
+          Solver => CurrentModel % Solvers(i)
         END IF
       ELSE
-        CALL Fatal('LoadRestartFile','Unknown file version: '//I2S(FmtVersion))
+        CALL Fatal(Caller,'Unknown file version: '//I2S(FmtVersion))
       END IF
 
       ! The user may optionally give a list of the fields to be loaded from the 
@@ -3753,7 +3792,7 @@ ELMER_SOLVER_HOME &
         END DO        
         IF(.NOT. LoadThis ) THEN
           IF( FieldSize == 0 ) THEN
-            CALL Fatal('LoadRestartFile','Cannot pick variables with old format!')
+            CALL Fatal(Caller,'Cannot pick variables with old format!')
           END IF
           IF( Dofs == 1 ) THEN
              IF(PermSize > 0) THEN
@@ -3766,7 +3805,7 @@ ELMER_SOLVER_HOME &
       END IF
 
       IF( LEN_TRIM( VarName ) == 0 ) THEN
-        CALL Warn('LoadRestartFile','Could not deduce variable name!')
+        CALL Warn(Caller,'Could not deduce variable name!')
         LoadThis = .FALSE.
       END IF
 
@@ -3781,27 +3820,32 @@ ELMER_SOLVER_HOME &
       Var => VariableGet( Mesh % Variables, VarName,.TRUE. )      
 
       IF ( ASSOCIATED(Var) ) THEN
-        CALL Info('LoadRestartFile','Using existing variable: '//TRIM(VarName),Level=12)
+        CALL Info(Caller,'Using existing variable: '//TRIM(VarName),Level=12)
 
+        IF( Dofs /= Var % Dofs ) THEN
+          CALL Fatal(Caller,'Fields have different number of components ('&
+              //TRIM(I2S(Dofs))//' vs. '//TRIM(I2S(Var % Dofs))//'): '//TRIM(VarName))
+        END IF
+        
         IF( FieldSize /= SIZE( Var % Values ) ) THEN
-          CALL Warn('LoadRestartFile','Fields are of different size ('&
+          CALL Warn(Caller,'Fields are of different size ('&
               //TRIM(I2S(FieldSize))//' vs. '//TRIM(I2S(SIZE(Var % Values)))//'): '//TRIM(VarName))
         ELSE
-          CALL Info('LoadRestartFile','Fields sizes match for: '//TRIM(VarName),Level=20)         
+          CALL Info(Caller,'Fields sizes match for: '//TRIM(VarName),Level=20)         
         END IF
         IF(ASSOCIATED(Var % Perm)) THEN
           IF( PermSize /= SIZE( Var % Perm ) ) THEN
-            CALL Warn('LoadRestartFile','Permutations are of different size ('&
+            CALL Warn(Caller,'Permutations are of different size ('&
                  //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
           ELSE
-            CALL Info('LoadRestartFile','Permutation sizes match for: '//TRIM(VarName),Level=20)
+            CALL Info(Caller,'Permutation sizes match for: '//TRIM(VarName),Level=20)
           END IF
         ELSEIF(PermSize > 0) THEN
-            CALL Warn('LoadRestartFile','Existing variable defined without perm: '&
+            CALL Warn(Caller,'Existing variable defined without perm: '&
                  //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
         END IF
       ELSE
-        CALL Info('LoadRestartFile','Creating variable: '//TRIM(VarName),Level=6)
+        CALL Info(Caller,'Creating variable: '//TRIM(VarName),Level=6)
 
         ALLOCATE( Var )
 
@@ -3921,9 +3965,9 @@ ELMER_SOLVER_HOME &
          IF ( PRESENT( EOF ) ) THEN
             EOF = .TRUE.
          ELSE IF ( TimeCount /= 0 ) THEN
-            CALL Warn( 'LoadRestartFile','Did not find data at the requested point' )
+            CALL Warn( Caller,'Did not find data at the requested point' )
             WRITE( Message,'(A,I6)') 'Reading from the last existing point: ',nt-1
-            CALL Warn( 'LoadRestartFile',Message)
+            CALL Warn( Caller,Message)
          END IF
          EXIT
       END IF
@@ -3935,10 +3979,10 @@ ELMER_SOLVER_HOME &
       IF ( ASSOCIATED( tStepVar ) ) tStepVar % Values(1) = Timestep
 
       WRITE( Message,'(A,ES12.3)') 'Reading time sequence: ',Time
-      CALL Info( 'LoadRestartFile',Message, Level=4)
+      CALL Info( Caller,Message, Level=4)
 
       WRITE( Message,'(A,I0)') 'Reading timestep: ',Timestep
-      CALL Info( 'LoadRestartFile',Message, Level=4)
+      CALL Info( Caller,Message, Level=4)
       
       DO i=1,TotalDOFs
 
@@ -3964,30 +4008,30 @@ ELMER_SOLVER_HOME &
         END IF
 
         IF( LoadThis ) THEN
-          CALL Info('LoadRestartFile','Reading Variable: '//TRIM(Row),Level=12)
+          CALL Info(Caller,'Reading Variable: '//TRIM(Row),Level=12)
         ELSE
-          CALL Info('LoadRestartFile','Cycling Variable: '//TRIM(Row),Level=12)          
+          CALL Info(Caller,'Cycling Variable: '//TRIM(Row),Level=12)          
         END IF
 
         ! Note that Var % Perm is the permutation associated with the current field
         ! while Perm will be the permutation associated with the saved field. 
         ! They could be different, even though the usually are not!
         IF ( FmtVersion > 0 ) THEN
-          CALL Info('LoadRestartFile','Reading permutation order for: '//TRIM(Row),Level=12)
+          CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=12)
           CALL ReadPerm( RestartUnit, Perm, GotPerm )           
-          CALL Info('LoadRestartFile','Succesfully read permutation order for: '//TRIM(Row),Level=20)
+          CALL Info(Caller,'Succesfully read permutation order for: '//TRIM(Row),Level=20)
         END IF
 
         IF( LoadThis ) THEN
           Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
           IF ( ASSOCIATED(Var) ) THEN
-            CALL Info('LoadRestartFile','Using existing variable for reading: '//TRIM(Row),Level=15)
+            CALL Info(Caller,'Using existing variable for reading: '//TRIM(Row),Level=15)
           ELSE
-            CALL Warn('LoadRestartFile','Variable is not present for reading: '//TRIM(Row))
+            CALL Warn(Caller,'Variable is not present for reading: '//TRIM(Row))
           END IF
           IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
             DEALLOCATE( Var % Perm ) ; Var % Perm => NULL()
-            CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
+            CALL Fatal(Caller,'Permutation should either exist or not!')
           END IF
 
           IF ( ASSOCIATED(Var % Perm) .AND. FmtVersion > 0 ) THEN
@@ -3998,7 +4042,7 @@ ELMER_SOLVER_HOME &
           ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
           IF( ASSOCIATED( Var % Solver ) ) THEN
             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
-              CALL Info('LoadRestartFile','Assuming variable to have transient initialization: '//TRIM(Row),Level=6)
+              CALL Info(Caller,'Assuming variable to have transient initialization: '//TRIM(Row),Level=6)
               Var % Solver % DoneTime = Var % Solver % Order
             END IF
           END IF
@@ -4007,9 +4051,9 @@ ELMER_SOLVER_HOME &
           IF(GotPerm) THEN
             IF( n > SIZE( Perm ) ) THEN
               n = SIZE( Perm )
-              CALL Info('LoadRestartFile','Reducing size of read loop for smaller Perm vector')
+              CALL Info(Caller,'Reducing size of read loop for smaller Perm vector')
             END IF
-            CALL Info('LoadRestartFile','Size of load loop is '//TRIM(I2S(n)),Level=15)
+            CALL Info(Caller,'Size of load loop is '//TRIM(I2S(n)),Level=15)
           END IF
 
           DO j=1, n
@@ -4118,7 +4162,7 @@ ELMER_SOLVER_HOME &
     IF( RestartVariableList ) THEN
       DO j=1,RestartVariableCount
         IF( .NOT. RestartVariableFound(j) ) THEN
-          CALL Warn('LoadRestartFile','Could not find restart variable: '//TRIM(I2S(j)))
+          CALL Warn(Caller,'Could not find restart variable: '//TRIM(I2S(j)))
         END IF
       END DO
     END IF
@@ -4126,9 +4170,9 @@ ELMER_SOLVER_HOME &
     tstop = CPUTime()
     
     WRITE( Message,'(A,ES15.4)') 'Time spent for restart (s): ', tstop - tstart
-    CALL Info( 'LoadRestartFile',Message, Level = 4)
-    CALL Info( 'LoadRestartFile', 'All done', Level = 4 )
-    CALL Info( 'LoadRestartFile','--------------------------------------------', Level = 4 )
+    CALL Info( Caller,Message, Level = 4)
+    CALL Info( Caller, 'All done', Level = 4 )
+    CALL Info( Caller,'--------------------------------------------', Level = 4 )
 
 
 CONTAINS
@@ -4179,9 +4223,9 @@ CONTAINS
             Pos = tmp
             IF ( PRESENT(FoundTStep) ) FoundTStep = TimeStep
          ELSE
-            CALL Warn( 'LoadRestartFile',&
+            CALL Warn( Caller,&
                  'Did not find the the requested timestep in the positions file;' )
-            CALL Warn( 'LoadRestartFile','using the last found one instead.')
+            CALL Warn( Caller,'using the last found one instead.')
             Offset2 = -TimeStepSize + VarNr*8
             CALL BinFSeek( PosUnit, Offset2 , BIN_SEEK_END )
             CALL BinReadInt8( PosUnit, tmp )
@@ -4231,7 +4275,7 @@ CONTAINS
          ELSE
             READ( RestartUnit, * , IOSTAT=iostat ) Val
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error in GetValue for: '//TRIM(Var % Name) ) 
+              CALL Fatal(Caller,'Error in GetValue for: '//TRIM(Var % Name) ) 
             END IF
          END IF
       END IF
@@ -4247,7 +4291,7 @@ CONTAINS
      ELSE
        READ( RestartUnit, * , IOSTAT=iostat ) Val
        IF( iostat /= 0 ) THEN
-         CALL Fatal('LoadRestartFile','Error in CycleValue')
+         CALL Fatal(Caller,'Error in CycleValue')
        END IF
      END IF
    END SUBROUTINE CycleValue
@@ -4273,7 +4317,7 @@ CONTAINS
          ELSE
             READ( Row(7:),*,IOSTAT=iostat) nPerm, nPositive
             IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error reading sizes in ReadPerm: '//TRIM(Row))
+              CALL Fatal(Caller,'Error reading sizes in ReadPerm: '//TRIM(Row))
             END IF
          END IF
       END IF
@@ -4286,7 +4330,7 @@ CONTAINS
          ! asked to read only some variables, in which case the previous Perm
          ! table might be yet unread so we need to jump back to 'Pos' and read
          ! it from there.
-         CALL Info('LoadRestartFile','Using previous permutation vector',Level=15)
+         CALL Info(Caller,'Using previous permutation vector',Level=15)
          GotPerm = .TRUE.
          RETURN
       ELSE IF ( nPerm == 0 ) THEN
@@ -4298,30 +4342,30 @@ CONTAINS
 
       IF( ALLOCATED( Perm ) ) THEN
         IF( SIZE( Perm ) < nPerm ) THEN
-          CALL Warn('LoadRestartFile','Permutation vector too small?')
+          CALL Warn(Caller,'Permutation vector too small?')
           DEALLOCATE( Perm ) 
         END IF
         IF( SIZE( Perm ) > nPerm ) THEN
-          CALL Info('LoadRestartFile','Permutation vector too large?',Level=15)
+          CALL Info(Caller,'Permutation vector too large?',Level=15)
         END IF
       END IF
       IF( .NOT. ALLOCATED( Perm ) ) THEN
-        CALL Warn('LoadRestartFile','Allocating permutation vector of size: '//TRIM(I2S(nPerm)))
+        CALL Info(Caller,'Allocating permutation vector of size: '//TRIM(I2S(nPerm)),Level=15)
         ALLOCATE( Perm(nPerm) )
       END IF
       Perm = 0
 
       DO i = 1, nPositive
-         IF ( Binary ) THEN
-            CALL BinReadInt4( RestartUnit, j )
-            CALL BinReadInt4( RestartUnit, k )
-         ELSE
-            READ( RestartUnit, * , IOSTAT=iostat) j,k
-            IF( iostat /= 0 ) THEN
-              CALL Fatal('LoadRestartFile','Error reading values in ReadPerm')
-            END IF
-         END IF
-         Perm(j) = k
+        IF ( Binary ) THEN
+          CALL BinReadInt4( RestartUnit, j )
+          CALL BinReadInt4( RestartUnit, k )
+        ELSE
+          READ( RestartUnit, * , IOSTAT=iostat) j,k
+          IF( iostat /= 0 ) THEN
+            CALL Fatal(Caller,'Error reading values in ReadPerm')
+          END IF
+        END IF
+        Perm(j) = k
       END DO
 
       GotPerm = .TRUE.
@@ -4342,103 +4386,103 @@ CONTAINS
    END SUBROUTINE ReadVariableName
 
 
-  SUBROUTINE ReadTime( RestartUnit,SavedCount,Timestep,Time,Stat )
-  ! Read SavedCount, Timestep and Time.  Stat is set to 0 for success, < 0 for
-  ! end-of-file, and > 0 for error.
-    INTEGER, INTENT(IN) :: RestartUnit
-    INTEGER, INTENT(OUT) :: SavedCount, Timestep
-    REAL(dp), INTENT(OUT) :: Time
-    INTEGER, INTENT(OUT) :: Stat
-    CHARACTER(LEN=:), ALLOCATABLE :: String
-    ALLOCATE(CHARACTER(32)::String)
+   SUBROUTINE ReadTime( RestartUnit,SavedCount,Timestep,Time,Stat )
+     ! Read SavedCount, Timestep and Time.  Stat is set to 0 for success, < 0 for
+     ! end-of-file, and > 0 for error.
+     INTEGER, INTENT(IN) :: RestartUnit
+     INTEGER, INTENT(OUT) :: SavedCount, Timestep
+     REAL(dp), INTENT(OUT) :: Time
+     INTEGER, INTENT(OUT) :: Stat
+     CHARACTER(LEN=:), ALLOCATABLE :: String
+     ALLOCATE(CHARACTER(32)::String)
 
-    IF ( Binary ) THEN
-      CALL BinReadString( RestartUnit, String, Stat )
-      IF (Stat /= 0) RETURN
-      CALL BinReadInt4( RestartUnit, SavedCount, Stat )
-      CALL BinReadInt4( RestartUnit, Timestep, Stat )
-      CALL BinReadDouble( RestartUnit, Time, Stat )
-    ELSE
-      DO WHILE( ReadAndTrim(RestartUnit,String) )
-        IF ( SEQL(String, 'time:') ) THEN
-          READ( String(7:),*,IOSTAT=iostat) SavedCount,Timestep,Time
-          IF( iostat /= 0 ) THEN
-            CALL Fatal('LoadRestartFile','Error in ReadTime!')
-          END IF
-          Stat = 0
-          RETURN
-        END IF
-      END DO
-      Stat = -1
-    END IF
-  END SUBROUTINE ReadTime
+     IF ( Binary ) THEN
+       CALL BinReadString( RestartUnit, String, Stat )
+       IF (Stat /= 0) RETURN
+       CALL BinReadInt4( RestartUnit, SavedCount, Stat )
+       CALL BinReadInt4( RestartUnit, Timestep, Stat )
+       CALL BinReadDouble( RestartUnit, Time, Stat )
+     ELSE
+       DO WHILE( ReadAndTrim(RestartUnit,String) )
+         IF ( SEQL(String, 'time:') ) THEN
+           READ( String(7:),*,IOSTAT=iostat) SavedCount,Timestep,Time
+           IF( iostat /= 0 ) THEN
+             CALL Fatal(Caller,'Error in ReadTime!')
+           END IF
+           Stat = 0
+           RETURN
+         END IF
+       END DO
+       Stat = -1
+     END IF
+   END SUBROUTINE ReadTime
 
-!------------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE InvalidateVariable( TopMesh,PrimaryMesh,Name )
-!------------------------------------------------------------------------------
-    CHARACTER(LEN=*) :: Name
-    TYPE(Mesh_t),  POINTER :: TopMesh,PrimaryMesh
-!------------------------------------------------------------------------------
-    CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
-    INTEGER :: i
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Variable_t), POINTER :: Var,Var1
-!------------------------------------------------------------------------------
-    Mesh => TopMesh
+   !------------------------------------------------------------------------------
+   RECURSIVE SUBROUTINE InvalidateVariable( TopMesh,PrimaryMesh,Name )
+     !------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Name
+     TYPE(Mesh_t),  POINTER :: TopMesh,PrimaryMesh
+     !------------------------------------------------------------------------------
+     CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
+     INTEGER :: i
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Variable_t), POINTER :: Var,Var1
+     !------------------------------------------------------------------------------
+     Mesh => TopMesh
 
-    DO WHILE( ASSOCIATED(Mesh) )
-      IF ( .NOT.ASSOCIATED( PrimaryMesh, Mesh) ) THEN
-        Var => VariableGet( Mesh % Variables, Name, .TRUE.)
-        IF ( ASSOCIATED( Var ) ) THEN
-          Var % Valid = .FALSE.
-          Var % PrimaryMesh => PrimaryMesh
-          IF ( Var % DOFs > 1 ) THEN
+     DO WHILE( ASSOCIATED(Mesh) )
+       IF ( .NOT.ASSOCIATED( PrimaryMesh, Mesh) ) THEN
+         Var => VariableGet( Mesh % Variables, Name, .TRUE.)
+         IF ( ASSOCIATED( Var ) ) THEN
+           Var % Valid = .FALSE.
+           Var % PrimaryMesh => PrimaryMesh
+           IF ( Var % DOFs > 1 ) THEN
 
-! This should not be needed no more
-            IF ( .FALSE. .AND. Var % Name == 'flow solution' ) THEN
-              Var1 => VariableGet( Mesh % Variables, 'Velocity 1', .TRUE.)
-              IF ( ASSOCIATED( Var1 ) ) THEN
+             ! This should not be needed no more
+             IF ( .FALSE. .AND. Var % Name == 'flow solution' ) THEN
+               Var1 => VariableGet( Mesh % Variables, 'Velocity 1', .TRUE.)
+               IF ( ASSOCIATED( Var1 ) ) THEN
                  Var1 % Valid = .FALSE.
                  Var1 % PrimaryMesh => PrimaryMesh
-              END IF
-              Var1 => VariableGet( Mesh % Variables, 'Velocity 2', .TRUE.)
-              IF ( ASSOCIATED( Var1 ) ) THEN
+               END IF
+               Var1 => VariableGet( Mesh % Variables, 'Velocity 2', .TRUE.)
+               IF ( ASSOCIATED( Var1 ) ) THEN
                  Var1 % Valid = .FALSE.
                  Var1 % PrimaryMesh => PrimaryMesh
-              END IF
-              Var1 => VariableGet( Mesh % Variables, 'Velocity 3', .TRUE.)
-              IF ( ASSOCIATED( Var1 ) ) THEN
+               END IF
+               Var1 => VariableGet( Mesh % Variables, 'Velocity 3', .TRUE.)
+               IF ( ASSOCIATED( Var1 ) ) THEN
                  Var1 % Valid = .FALSE.
                  Var1 % PrimaryMesh => PrimaryMesh
-              END IF
-              Var1 => VariableGet( Mesh % Variables, 'Pressure', .TRUE.)
-              IF ( ASSOCIATED( Var1 ) ) THEN
+               END IF
+               Var1 => VariableGet( Mesh % Variables, 'Pressure', .TRUE.)
+               IF ( ASSOCIATED( Var1 ) ) THEN
                  Var1 % Valid = .FALSE.
                  Var1 % PrimaryMesh => PrimaryMesh
-              END IF
-              Var1 => VariableGet( Mesh % Variables, 'Surface', .TRUE.)
-              IF ( ASSOCIATED( Var1 ) ) THEN
+               END IF
+               Var1 => VariableGet( Mesh % Variables, 'Surface', .TRUE.)
+               IF ( ASSOCIATED( Var1 ) ) THEN
                  Var1 % Valid = .FALSE.
                  Var1 % PrimaryMesh => PrimaryMesh
-              END IF
-            ELSE
-              DO i=1,Var % DOFs
-                tmpname = ComponentName( Name, i )
-                Var1 => VariableGet( Mesh % Variables, tmpname, .TRUE. )
-                IF ( ASSOCIATED( Var1 ) ) THEN
+               END IF
+             ELSE
+               DO i=1,Var % DOFs
+                 tmpname = ComponentName( Name, i )
+                 Var1 => VariableGet( Mesh % Variables, tmpname, .TRUE. )
+                 IF ( ASSOCIATED( Var1 ) ) THEN
                    Var1 % Valid = .FALSE.
                    Var1 % PrimaryMesh => PrimaryMesh
-                END IF
-              END DO
-            END IF
-          END IF
-        END IF
-      END IF
-!     CALL InvalidateVariable( Mesh % Child, PrimaryMesh, Name )
-      Mesh => Mesh % Next
-    END DO 
-!------------------------------------------------------------------------------
-  END SUBROUTINE InvalidateVariable
+                 END IF
+               END DO
+             END IF
+           END IF
+         END IF
+       END IF
+       !     CALL InvalidateVariable( Mesh % Child, PrimaryMesh, Name )
+       Mesh => Mesh % Next
+     END DO
+     !------------------------------------------------------------------------------
+   END SUBROUTINE InvalidateVariable
 !------------------------------------------------------------------------------
   END SUBROUTINE LoadRestartFile
 !------------------------------------------------------------------------------
