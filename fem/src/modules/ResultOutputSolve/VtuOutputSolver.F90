@@ -221,9 +221,9 @@ CONTAINS
         FieldName = GetString( Params, TRIM(Txt), Found )
         IF(.NOT. Found) EXIT
         
-        Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+        Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=.TRUE.)
         IF(.NOT. ASSOCIATED(Solution)) THEN
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=.TRUE.)
         END IF
         IF( .NOT. ASSOCIATED( Solution ) ) CYCLE
 
@@ -462,7 +462,7 @@ CONTAINS
     
   END SUBROUTINE Ip2DgSwapper
     
-
+  
   ! Write the filename for saving .vtu, .pvd, and .pvtu files.
   ! Partname, partition and timestep may be added to the name.
   !------------------------------------------------------------------------------------
@@ -490,6 +490,7 @@ CONTAINS
       SELECT CASE( NameOrder(j) )
 
       CASE( 1 ) 
+        ! If we have groups then the piece is set to include the name of the body/bc. 
         IF( GroupId > 0 ) THEN
           IF( GroupId <= CurrentModel % NumberOfBodies ) THEN
             GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name")
@@ -501,10 +502,12 @@ CONTAINS
         END IF
 
       CASE( 2 )         
-        IF( PRESENT( Part ) ) THEN
-          PEs = ParEnv % PEs
-          IF( PEs == 1 ) CYCLE
+        PEs = ParEnv % PEs
+        IF( PEs == 1 ) CYCLE
 
+        IF( PRESENT( Part ) ) THEN
+          ! In parallel the mesh consists of pieces called partitions.
+          ! Give each partition a name that includes the partition. 
           IF( LegacyMode ) THEN
             WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",Part,"par"            
           ELSE
@@ -518,9 +521,22 @@ CONTAINS
               WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM(VtuFile),"_",PEs,"np",Part
             END IF
           END IF
+        ELSE
+          ! Also add number to the wrapper files as it is difficult otheriwse
+          ! quickly see on which partitioning they were computed. 
+          IF ( PEs < 10) THEN                    
+            WRITE( VtuFile,'(A,A,I1.1,A)') TRIM(VtuFile),"_",PEs,"np"
+          ELSE IF ( PEs < 100) THEN                    
+            WRITE( VtuFile,'(A,A,I2.2,A)') TRIM(VtuFile),"_",PEs,"np"
+          ELSE IF ( PEs < 1000) THEN                    
+            WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile),"_",PEs,"np"
+          ELSE
+            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",PEs,"np"
+          END IF
         END IF
 
       CASE( 3 )         
+        ! This is for adding time (or nonlinear iteration/scanning) to the filename.
         IF( FileIndex > 0 ) THEN
           IF( FileIndex < 10000 ) THEN        
             WRITE( VtuFile,'(A,A,I4.4)') TRIM(VtuFile),"_t",FileIndex
@@ -591,7 +607,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:), Indexes(:)
   LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, ConstraintAnalysis, &
       WriteIds, SaveBoundariesOnly, SaveBulkOnly, SaveLinear, &
-      GotMaskName, NoPermutation, SaveElemental, SaveNodal, GotMaskCond
+      GotMaskName, NoPermutation, SaveElemental, SaveNodal, GotMaskCond, NoInterp
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
   INTEGER, ALLOCATABLE :: BodyVisited(:),GeometryBodyMap(:),GeometryBCMap(:)
   REAL(KIND=dp), ALLOCATABLE :: MaskCond(:)
@@ -607,6 +623,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   Mesh => Model % Mesh
   MeshDim = Mesh % MeshDim
 
+  NoInterp = .TRUE.
+  IF( ListGetLogical( Params,'Enable Interpolation',GotIt ) ) THEN
+    NoInterp = .FALSE.
+  END IF
+  
   DG = GetLogical( Params,'Discontinuous Galerkin',GotIt)
   DN = GetLogical( Params,'Discontinuous Bodies',GotIt)
   IF( DG .OR. DN ) THEN    
@@ -971,7 +992,7 @@ CONTAINS
     GotMaskName = .FALSE.
     Str = GetString( Params,'Mask Variable',MaskExists)
     IF( MaskExists ) THEN
-      MaskVar => VariableGet(Model % Variables,TRIM(Str))
+      MaskVar => VariableGet(Model % Variables,TRIM(Str),ThisOnly=NoInterp)
       IF( ASSOCIATED(MaskVar)) MaskPerm => MaskVar % Perm
       MaskExists = ASSOCIATED(MaskPerm)
       IF( MaskExists ) THEN
@@ -1387,7 +1408,7 @@ CONTAINS
     DispDofs = 0
     Disp2Dofs = 0
     IF(RemoveDisp) THEN
-      Solution => VariableGet( Model % Mesh % Variables, 'Displacement')
+      Solution => VariableGet( Model % Mesh % Variables, 'Displacement',ThisOnly=NoInterp)
       IF( ASSOCIATED( Solution ) ) THEN
         Solver => Solution % Solver
         L = GetLogical( GetSolverParams(Solver),'Displace Mesh',Found)
@@ -1399,7 +1420,7 @@ CONTAINS
         END IF
       END IF
 
-      Solution => VariableGet( Model % Mesh % Variables, 'Mesh Update')
+      Solution => VariableGet( Model % Mesh % Variables, 'Mesh Update',ThisOnly=NoInterp)
       IF( ASSOCIATED( Solution ) ) THEN
         Disp2Perm => Solution % Perm
         Disp2Values => Solution % Values
@@ -1433,10 +1454,10 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Find the variable with the given name in the normal manner 
           !---------------------------------------------------------------------
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
           ComponentVector = .FALSE.
           IF(.NOT. ASSOCIATED(Solution)) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE
@@ -1547,17 +1568,17 @@ CONTAINS
               CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
               CYCLE
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values2 => Solution % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values3 => Solution % Values
               dofs = 3
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
           END IF
           
           !---------------------------------------------------------------------
@@ -1572,7 +1593,7 @@ CONTAINS
 
             FieldName2 = GetString( Params, TRIM(Txt), Found )
             IF( Found ) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName2))
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName2),ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) THEN 
                 Values2 => Solution % Values
                 Perm2 => Solution % Perm 
@@ -1772,7 +1793,7 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Find the variable with the given name in the normal manner 
           !---------------------------------------------------------------------
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
           ComponentVector = .FALSE.
 
           ! If we are looking for a vector just one dofs won't do!
@@ -1782,7 +1803,7 @@ CONTAINS
           END IF
 
           IF(.NOT. ASSOCIATED(Solution)) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE 
@@ -1817,12 +1838,12 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values2 => Solution % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values3 => Solution % Values
               dofs = 3
@@ -2511,11 +2532,11 @@ CONTAINS
             EXIT
           END IF
 
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
           ComponentVector = .FALSE.
 
           IF(.NOT. ASSOCIATED(Solution)) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE
@@ -2567,9 +2588,9 @@ CONTAINS
 
           dofs = Solution % DOFs
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) dofs = 2
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) dofs = 3
           END IF
 
@@ -2635,11 +2656,11 @@ CONTAINS
             END IF
             IF(.NOT. Found ) EXIT
 
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
             ComponentVector = .FALSE.
 
             IF(.NOT. ASSOCIATED(Solution)) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) THEN 
                 ComponentVector = .TRUE.
               ELSE 
@@ -2690,9 +2711,9 @@ CONTAINS
 
             dofs = Solution % DOFs
             IF( ComponentVector ) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) dofs = 2
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) dofs = 3
             END IF
 

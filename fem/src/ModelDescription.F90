@@ -3822,6 +3822,11 @@ ELMER_SOLVER_HOME &
       IF ( ASSOCIATED(Var) ) THEN
         CALL Info(Caller,'Using existing variable: '//TRIM(VarName),Level=12)
 
+        IF( Dofs /= Var % Dofs ) THEN
+          CALL Fatal(Caller,'Fields have different number of components ('&
+              //TRIM(I2S(Dofs))//' vs. '//TRIM(I2S(Var % Dofs))//'): '//TRIM(VarName))
+        END IF
+        
         IF( FieldSize /= SIZE( Var % Values ) ) THEN
           CALL Warn(Caller,'Fields are of different size ('&
               //TRIM(I2S(FieldSize))//' vs. '//TRIM(I2S(SIZE(Var % Values)))//'): '//TRIM(VarName))
