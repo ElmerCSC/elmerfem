@@ -588,7 +588,7 @@ def run_gmsh(gmsh_mesh, gmsh_log_file=None):
                                      stdout=f, stderr=subprocess.PIPE)
                 no_value, error = p.communicate()
                 if error:
-                    f.write(str(error))
+                    f.write(str(error) + '\n')
                     f.flush()
         except Exception:
             error = 'Error executing gmsh'
@@ -628,7 +628,6 @@ def create_mesh(mesh_object, directory=False, gmsh_log_file=None):
     if error:
         FreeCAD.Console.PrintError('{}\n'.format(error))
         return error
-    gmsh_mesh.read_and_set_new_mesh()
 
 def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc, separate_boundaries=False):
     """
