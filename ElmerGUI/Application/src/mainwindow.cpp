@@ -2149,6 +2149,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                               LOAD OPERATIONS
   //===========================================================================
+  logMessage("Loading operations...");  
   progressBar->setValue(5);
   QDomElement ops = contents.firstChildElement("operations");
   operations = operation.readFromProject(&projectDoc, &ops);
@@ -2156,6 +2157,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                            LOAD GENERAL SETUP
   //===========================================================================
+  logMessage("Loading general setup...");  
   progressBar->setValue(6);
   QDomElement gsBlock = contents.firstChildElement("generalsetup");
   generalSetup->readFromProject(&projectDoc, &gsBlock);
@@ -2163,6 +2165,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD PARALLEL SETTINGS
   //===========================================================================
+  logMessage("Loading parallel settings...");  
   progressBar->setValue(7);
   QDomElement paraBlock = contents.firstChildElement("parallelsettings");
   parallel->readFromProject(&projectDoc, &paraBlock);
@@ -2170,6 +2173,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                            LOAD MESH PARAMETERS
   //===========================================================================
+  logMessage("Loading mesh parameters...");  
   progressBar->setValue(8);
   QDomElement meshParams = contents.firstChildElement("meshparameters");
   meshControl->readFromProject(&projectDoc, &meshParams);
@@ -2177,6 +2181,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD SOLVER PARAMETERS
   //===========================================================================
+  logMessage("Loading solver parameters...");
   progressBar->setValue(9);
   QDomElement speBlock = contents.firstChildElement("solverparameters");
 
@@ -2278,6 +2283,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                        LOAD DYNAMIC EDITOR CONTENTS
   //===========================================================================
+  logMessage("Loading dynamic editor contents...");   
   progressBar->setValue(11);
   QDomElement element = projectDoc.documentElement().firstChildElement("equation");
   loadProjectContents(element, equationEditor, "Equation");
@@ -2294,6 +2300,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD SOLVER SPECIFIC OPTIONS
   //===========================================================================
+  logMessage("Loading solver specific options...");   
   progressBar->setValue(12);
   QDomElement solverOptionsBlock = contents.firstChildElement("solverspecificoptions");
 
@@ -2359,6 +2366,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                           LOAD BODY PROPERTIES
   //===========================================================================
+  logMessage("Loading body properties...");    
   progressBar->setValue(13);
   QDomElement bodyBlock = contents.firstChildElement("bodyproperties");
 
@@ -2388,6 +2396,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD BOUNDARY PROPERTIES
   //===========================================================================
+  logMessage("Loading boundary properties...");    
   progressBar->setValue(13);
   QDomElement boundaryBlock = contents.firstChildElement("boundaryproperties");
 
