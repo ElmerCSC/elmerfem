@@ -27,14 +27,8 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
- *  Email:   Juha.Ruokolainen@csc.fi                                         *
- *  Web:     http://www.csc.fi/elmer                                         *
- *  Address: CSC - IT Center for Science Ltd.                                *
- *           Keilaranta 14                                                   *
- *           02101 Espoo, Finland                                            *
- *                                                                           *
- *  Original Date: 15 Mar 2008                                               *
+ *  Author: Saeki Takayuki                                                   *
+ *  Original Date: 15 Feb 2020                                               *
  *                                                                           *
  *****************************************************************************/
 

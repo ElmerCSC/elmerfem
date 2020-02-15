@@ -411,11 +411,16 @@ void MainWindow::createActions()
   saveAsAct->setStatusTip(tr("Save Elmer mesh and sif-files"));
   connect(saveAsAct, SIGNAL(triggered()), this, SLOT(saveAsSlot()));
 
-  // File -> Save project...
-  saveProjectAct = new QAction(QIcon(":/icons/document-export.png"), tr("&Save project..."), this);
+  // File -> Save project
+  saveProjectAct = new QAction(QIcon(":/icons/document-export.png"), tr("&Save project"), this);
   saveProjectAct->setStatusTip(tr("Save current project"));
   connect(saveProjectAct, SIGNAL(triggered()), this, SLOT(saveProjectSlot()));
 
+  // File -> Save project as...
+  saveProjectAsAct = new QAction(QIcon(":/icons/edit-copy.png"), tr("&Save project as..."), this);
+  saveProjectAsAct->setStatusTip(tr("Save current project by specifing directory"));
+  connect(saveProjectAsAct, SIGNAL(triggered()), this, SLOT(saveProjectAsSlot()));
+  
   // File -> Save picture as...
   savePictureAct = new QAction(QIcon(":/icons/view-preview.png"), tr("&Save picture as..."), this);
   savePictureAct->setStatusTip(tr("Save picture in file"));
@@ -807,7 +812,9 @@ void MainWindow::createMenus()
   fileMenu->addAction(loadProjectAct);
   recentProjectsMenu = fileMenu->addMenu(tr("&Recent projects"));
   recentProjectsMenu->setEnabled(false);
-  fileMenu->addAction(saveProjectAct);  
+  fileMenu->addAction(saveProjectAct);
+  fileMenu->addAction(saveProjectAct);
+  fileMenu->addAction(saveProjectAsAct);    
   fileMenu->addSeparator();
   fileMenu->addAction(openAct);
   fileMenu->addAction(loadAct);
@@ -1067,8 +1074,9 @@ void MainWindow::createToolBars()
   // File toolbar
   fileToolBar = addToolBar(tr("&File"));
   fileToolBar->addAction(newProjectAct);
-  fileToolBar->addAction(loadProjectAct);  
+  fileToolBar->addAction(loadProjectAct);
   fileToolBar->addAction(saveProjectAct);
+  fileToolBar->addAction(saveProjectAsAct);
   fileToolBar->addSeparator();  
   fileToolBar->addAction(openAct);
   fileToolBar->addAction(loadAct);
@@ -1168,7 +1176,8 @@ void MainWindow::newProjectSlot()
     delete elmerDefs; elmerDefs = new QDomDocument;
     delete edfEditor; edfEditor = new EdfEditor; 
     loadDefinitions();
-    geometryInputFileName = "";  
+    geometryInputFileName = "";
+    currentProjectDirName = "";
     
     // widgets and utilities:
     sifWindow->getTextEdit()->clear();
@@ -1675,9 +1684,28 @@ void MainWindow::saveAsSlot()
 }
 
 
-// File -> Save project...
+// File -> Save project
 //-----------------------------------------------------------------------------
 void MainWindow::saveProjectSlot()
+{
+  if(!glWidget->hasMesh()) {
+    logMessage("Unable to save project: no mesh");
+    return;
+  }
+
+  QString projectDirName = currentProjectDirName;
+  if (!projectDirName.isEmpty()) {
+    logMessage("Project directory " + projectDirName);
+    saveProject(projectDirName);
+  } else {
+    saveProjectAsSlot();
+  }
+  
+}
+
+// File -> Save project as...
+//-----------------------------------------------------------------------------
+void MainWindow::saveProjectAsSlot()
 {
   if(!glWidget->hasMesh()) {
     logMessage("Unable to save project: no mesh");
