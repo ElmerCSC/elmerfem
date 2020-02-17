@@ -216,7 +216,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:)
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
-                                LamCond(:), Wbase(:), RotM(:,:,:)
+                                LamCond(:), Wbase(:), RotM(:,:,:), &
+                                ThinLineCrossect(:),ThinLineCond(:)
+
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:), &
       JFixVec(:,:),PrevSol(:), DConstr(:,:)
 
@@ -251,7 +253,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     
   SAVE STIFF, LOAD, MASS, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
-       Acoef_t, DConstr
+       Acoef_t, DConstr, ThinLineCrossect, ThinLineCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
@@ -355,14 +357,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
      IF(ALLOCATED(FORCE)) THEN
        DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, TCoef, GapLength, AirGapMu, &
-             Acoef, LamThick, LamCond, WBase, RotM, DConstr, Acoef_t )
+             Acoef, LamThick, LamCond, WBase, RotM, DConstr, Acoef_t,ThinLineCrossect, ThinLineCond )
      END IF
 
      ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N),  &
-          DConstr(N,N), Acoef_t(3,3,N), STAT=istat )
+          DConstr(N,N), Acoef_t(3,3,N), &
+          ThinLineCrossect(N), ThinLineCond(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
      END IF
@@ -762,6 +765,15 @@ CONTAINS
      Load(5,1:n) = GetReal( BC, 'Electric Transfer Coefficient', Found )
      FoundAny = FoundAny .OR. Found
      
+     ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
+
+     IF (Found) THEN
+       CALL Info("WhitneyAVSolver", "Found a Thin Line Element", level=10)
+       ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
+       IF (.NOT. Found) CALL Fatal('DoSolve','Thin Line Conductivity not found!')
+       CALL LocalMatrixThinLine(STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd )
+     END IF
+ 
      !If air gap length keyword is detected, use air gap boundary condition
      GapLength=GetConstReal( BC, 'Air Gap Length', Found)
      IF (Found) THEN
@@ -773,7 +785,7 @@ CONTAINS
      ELSE
        CYCLE
      END IF
-     
+    
      CALL DefaultUpdateEquations(STIFF,FORCE,Element)
   END DO
   
@@ -2596,6 +2608,94 @@ END SUBROUTINE LocalConstraintMatrix
   END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixThinLine(  STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp) :: LOAD(:,:), CrossectArea(:), Conductivity(:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C, Area
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
+
+       C  = SUM(Basis(1:n) * Conductivity(1:n))
+       Area= SUM(Basis(1:n) * CrossectArea(1:n))
+
+       C = 1d8
+       Area= 1e-6
+ 
+       CONDUCTOR: IF ( C /= 0._dp ) THEN
+         IF ( Transient ) THEN
+           DO p=1,np
+             DO q=1,np
+
+               ! Compute the conductivity term <C grad V,grad v> for stiffness 
+               ! matrix (anisotropy taken into account)
+               ! -------------------------------------------
+
+               STIFF(p,q) = STIFF(p,q) + Area * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+
+             END DO
+             DO j=1,nd-np
+               q = j+np
+
+               ! Compute the conductivity term <C A,grad v> for 
+               ! mass matrix (anisotropy taken into account)
+               ! -------------------------------------------
+               MASS(p,q) = MASS(p,q) + Area * C * SUM(RotWBasis(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
+
+               ! Compute the conductivity term <C grad V, eta> for 
+               ! stiffness matrix (anisotropy taken into account)
+               ! ------------------------------------------------
+               STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*RotWBasis(j,:))*detJ*IP % s(t)
+             END DO
+           END DO
+         ELSE
+           print *, "Not implemented!"
+         END IF
+       END IF CONDUCTOR
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixThinLine
+!------------------------------------------------------------------------------
+
+ 
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
