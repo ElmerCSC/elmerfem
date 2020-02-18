@@ -15,7 +15,7 @@ Simulation
   Output Intervals = 100
 
 ! Output File = "Step_small.result"
-  Post File = "Step_small.ep"
+  Post File = "Step_small.vtu"
 End
 
 

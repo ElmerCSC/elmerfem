@@ -17,7 +17,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals = 0
-  Post File = "test.ep"
+!  Post File = "test.vtu"
 End
 
 Body 1

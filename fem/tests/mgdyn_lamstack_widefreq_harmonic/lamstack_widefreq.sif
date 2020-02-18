@@ -21,8 +21,7 @@ Simulation
 
   Angular Frequency = Real $ omega
 
-   Post File = toroidalcoil.ep
-
+! Post File = toroidalcoil.ep
 End
 
 Initial Condition 1
