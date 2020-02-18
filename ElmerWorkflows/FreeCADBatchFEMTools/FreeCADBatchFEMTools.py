@@ -647,13 +647,14 @@ def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, 
     mesh_object = create_mesh_object(compound_filter, CharacteristicLength, doc)
     return mesh_object, compound_filter
 
-def run_elmergrid(export_path, mesh_object, out_dir=None):
+def run_elmergrid(export_path, mesh_object, out_dir=None, log_file=None):
     """
     Run ElmerGrid as an external process if it found in the operating system.
 
     :param export_path: path where the result is written
     :param mesh_object: FreeCAD mesh object that is to be exported
     :param out_dir: directory where to write mesh files (if not given unv file name is used)
+    :param log_file: None or a string.
     """
     # Export to UNV file for Elmer
     export_objects = [mesh_object]
@@ -662,15 +663,21 @@ def run_elmergrid(export_path, mesh_object, out_dir=None):
     if out_dir is not None:
         elmerGrid_command += ' -out ' + out_dir
 
-    from PySide import QtCore, QtGui
-    try:
+    FreeCAD.Console.PrintMessage('Running ' + elmerGrid_command + '\n')
+    if log_file is not None:
+        with open(log_file, 'w') as f:
+            p = subprocess.Popen(elmerGrid_command.split(), stdout=f, stderr=subprocess.STDOUT)
+            p.communicate()
+    else:
+        from PySide import QtCore, QtGui
+        try:
             process = QtCore.QProcess()
             process.startDetached(elmerGrid_command)
-            FreeCAD.Console.PrintMessage('Running ' + elmerGrid_command + '\n')
-            FreeCAD.Console.PrintMessage('Finished ' + elmerGrid_command + '\n')
-    except:
+        except:
             FreeCAD.Console.PrintError('Error')
             QtGui.QMessageBox.critical(None, 'Error', 'Error!!', QtGui.QMessageBox.Abort)
+    FreeCAD.Console.PrintMessage('Finished ElmerGrid\n')
+
 
 def export_unv(export_path, mesh_object):
     """
