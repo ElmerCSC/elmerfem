@@ -27,6 +27,8 @@ MODULE VtuXMLFile
   USE ElementDescription
   USE AscBinOutputUtils
 
+  IMPLICIT NONE 
+  
 CONTAINS
 
   ! Map element code of Elmer to the code used by VTK.
@@ -298,7 +300,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Weight, DetJ
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
-    INTEGER :: i,t,p,q
+    INTEGER :: i,t,p,q,n
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
     TYPE(Mesh_t), POINTER :: Mesh
@@ -466,20 +468,23 @@ CONTAINS
   ! Write the filename for saving .vtu, .pvd, and .pvtu files.
   ! Partname, partition and timestep may be added to the name.
   !------------------------------------------------------------------------------------
-  SUBROUTINE VtuFileNaming( BaseFile, VtuFile, Suffix, GroupId, FileIndex, Part, NoPath ) 
+  SUBROUTINE VtuFileNaming( BaseFile, VtuFile, Suffix, GroupId, FileIndex, Part, NoPath, ParallelBase ) 
     CHARACTER(LEN=*), INTENT(IN) :: BaseFile, Suffix
     CHARACTER(LEN=*), INTENT(INOUT) :: VtuFile
     INTEGER :: GroupId, FileIndex
     INTEGER, OPTIONAL :: Part
     LOGICAL, OPTIONAL :: NoPath
+    LOGICAL, OPTIONAL :: ParallelBase
 
     CHARACTER(MAX_NAME_LEN) :: GroupName
-    INTEGER :: i,NameOrder(3),PEs
-    LOGICAL :: LegacyMode
+    INTEGER :: i,j,NameOrder(3),PEs
+    LOGICAL :: LegacyMode, ParallelBaseName
 
     
     NameOrder = [1,2,3]
     LegacyMode = .FALSE.
+    ParallelBaseName = .FALSE.
+    IF( PRESENT( ParallelBase ) ) ParallelBaseName = ParallelBase
     
     
     VtuFile = BaseFile
@@ -524,17 +529,19 @@ CONTAINS
         ELSE
           ! Also add number to the wrapper files as it is difficult otheriwse
           ! quickly see on which partitioning they were computed. 
-          IF ( PEs < 10) THEN                    
-            WRITE( VtuFile,'(A,A,I1.1,A)') TRIM(VtuFile),"_",PEs,"np"
-          ELSE IF ( PEs < 100) THEN                    
-            WRITE( VtuFile,'(A,A,I2.2,A)') TRIM(VtuFile),"_",PEs,"np"
-          ELSE IF ( PEs < 1000) THEN                    
-            WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile),"_",PEs,"np"
-          ELSE
-            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",PEs,"np"
+          IF( ParallelBaseName ) THEN
+            IF ( PEs < 10) THEN                    
+              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM(VtuFile),"_",PEs,"np"
+            ELSE IF ( PEs < 100) THEN                    
+              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM(VtuFile),"_",PEs,"np"
+            ELSE IF ( PEs < 1000) THEN                    
+              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile),"_",PEs,"np"
+            ELSE
+              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",PEs,"np"
+            END IF
           END IF
         END IF
-
+          
       CASE( 3 )         
         ! This is for adding time (or nonlinear iteration/scanning) to the filename.
         IF( FileIndex > 0 ) THEN
@@ -615,7 +622,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 ! Parameters for buffered binary output
   INTEGER :: BufferSize
 
-  LOGICAL :: TimeCollection, GroupCollection
+  LOGICAL :: TimeCollection, GroupCollection, ParallelBase
   INTEGER :: GroupId, EigenVectorMode
 
 
@@ -663,11 +670,12 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     BinaryOutput = .NOT. AsciiOutput
   END IF
 
+  ParallelBase = GetLogical( Params,'Partition Numbering',GotIt )
+  
   IF( BinaryOutput ) THEN
     BufferSize = GetInteger( Params,'Binary Output Buffer Size',GotIt)
     IF( .NOT. GotIt ) BufferSize = MAX(1000, Mesh % NumberOfNodes )
   END IF
-
   
   SaveElemental = GetLogical( Params,'Save Elemental Fields',GotIt)
   IF(.NOT. GotIt) SaveElemental = .TRUE.
@@ -907,7 +915,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   IF(Parallel) THEN
     ! Generate the filename for saving
     !--------------------------------------------------------------------
-    CALL VtuFileNaming( BaseFile, PvtuFile,'.pvtu', GroupId, FileIndex ) 
+    CALL VtuFileNaming( BaseFile, PvtuFile,'.pvtu', GroupId, FileIndex, ParallelBase = ParallelBase )
     CALL Info('VtuOutputSolver','Writing the pvtu file: '//TRIM(PvtuFile), Level=10)
     CALL WritePvtuFile( PVtuFile, Model )
     CALL Info('VtuOutputSolver','Finished writing pvtu file',Level=12)
@@ -917,7 +925,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! Write the Vtu file with all the data
   !--------------------------------------------------------------------------
   IF( NumberOfDofNodes > 0 ) THEN
-    CALL VtuFileNaming( BaseFile, VtuFile,'.vtu', GroupId, FileIndex, Part+1) 
+    CALL VtuFileNaming( BaseFile, VtuFile,'.vtu', GroupId, FileIndex, Part+1 ) 
     CALL Info('VtuOutputSolver','Writing the vtu file: '//TRIM(VtuFile),Level=7)
     CALL WriteVtuFile( VtuFile, Model, FixedMesh )
     CALL Info('VtuOutputSolver','Finished writing vtu file',Level=12)
@@ -926,10 +934,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! For transient simulation or group collections write a holder for indivisual files
   !-----------------------------------------------------------------------------------
   IF( TimeCollection .OR. GroupCollection ) THEN
-    CALL VtuFileNaming( BaseFile, PvdFile,'.pvd', GroupId, FileIndex )    
+    CALL VtuFileNaming( BaseFile, PvdFile,'.pvd', GroupId, FileIndex, ParallelBase = ParallelBase )    
     WRITE( PvdFile,'(A,".pvd")' ) TRIM(BaseFile)
     IF( Parallel ) THEN
-      CALL VtuFileNaming( BaseFile, DataSetFile,'.pvtu', GroupId, FileIndex, NoPath = .TRUE. ) 
+      CALL VtuFileNaming( BaseFile, DataSetFile,'.pvtu', GroupId, FileIndex, &
+          NoPath = .TRUE., ParallelBase = ParallelBase ) 
     ELSE      
       CALL VtuFileNaming( BaseFile, DataSetFile,'.vtu', GroupId, FileIndex, NoPath = .TRUE. ) 
     END IF
