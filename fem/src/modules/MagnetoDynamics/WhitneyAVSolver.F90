@@ -2633,76 +2633,55 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C, Area
+    REAL(KIND=dp) :: C, Area
     LOGICAL :: Stat
-    INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+    INTEGER :: t, i, j, np, p, q
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
-    EdgeBasisDegree = 1
-    IF (SecondOrder) EdgeBasisDegree = 2
-
     STIFF = 0.0_dp
     FORCE = 0.0_dp
-    MASS  = 0.0_dp
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
-         EdgeBasisDegree=EdgeBasisDegree)
+    IP = GaussPoints(Element)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
-
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
 
        C  = SUM(Basis(1:n) * Conductivity(1:n))
        Area= SUM(Basis(1:n) * CrossectArea(1:n))
 
-       C = 1d8
-       Area= 1e-6
- 
        CONDUCTOR: IF ( C /= 0._dp ) THEN
-         IF ( Transient ) THEN
-           DO p=1,np
-             DO q=1,np
+         DO p=1,np
+           DO q=1,np
 
-               ! Compute the conductivity term <C grad V,grad v> for stiffness 
-               ! matrix (anisotropy taken into account)
-               ! -------------------------------------------
+             ! Compute the conductivity term <C grad V,grad v> for stiffness 
+             ! matrix (anisotropy taken into account)
+             ! -------------------------------------------
 
-               STIFF(p,q) = STIFF(p,q) + Area * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+             STIFF(p,q) = STIFF(p,q) + Area * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
 
-             END DO
-             DO j=1,nd-np
-               q = j+np
-
-               ! Compute the conductivity term <C A,grad v> for 
-               ! mass matrix (anisotropy taken into account)
-               ! -------------------------------------------
-               MASS(p,q) = MASS(p,q) + Area * C * SUM(RotWBasis(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
-
-               ! Compute the conductivity term <C grad V, eta> for 
-               ! stiffness matrix (anisotropy taken into account)
-               ! ------------------------------------------------
-               STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*RotWBasis(j,:))*detJ*IP % s(t)
-             END DO
            END DO
-         ELSE
-           print *, "Not implemented!"
-         END IF
+!             DO j=1,nd-np
+!               q = j+np
+!
+!               ! Compute the conductivity term <C A,grad v> for 
+!               ! mass matrix (anisotropy taken into account)
+!               ! -------------------------------------------
+!               MASS(p,q) = MASS(p,q) + Area * C * SUM(RotWBasis(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
+!
+!               ! Compute the conductivity term <C grad V, eta> for 
+!               ! stiffness matrix (anisotropy taken into account)
+!               ! ------------------------------------------------
+!               STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*RotWBasis(j,:))*detJ*IP % s(t)
+!             END DO
+         END DO
        END IF CONDUCTOR
     END DO
 

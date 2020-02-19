@@ -1,7 +1,6 @@
 ! Simple case for testing the massive coil in transient 3D simulation.
 ! eelis.takala@gmail.com
 Check Keywords "Warn"
-INCLUDE sif/cable-circuits.definitions
 INCLUDE cable1d/mesh.names
 Header 1
    Mesh DB "." "cable1d"
