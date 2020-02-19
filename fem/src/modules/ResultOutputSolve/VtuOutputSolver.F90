@@ -27,8 +27,12 @@ MODULE VtuXMLFile
   USE ElementDescription
   USE AscBinOutputUtils
 
+  IMPLICIT NONE 
+  
 CONTAINS
 
+  ! Map element code of Elmer to the code used by VTK.
+  !-----------------------------------------------------------------------------------
   FUNCTION Elmer2VtkElement( ElmerCode, SaveLinear ) RESULT ( VTKCode )
     INTEGER :: ElmerCode
     LOGICAL :: SaveLinear
@@ -99,6 +103,8 @@ CONTAINS
   END FUNCTION Elmer2VtkElement
 
 
+  ! Map elemental node indexes of Elmer to the order used by VTK.
+  !-----------------------------------------------------------------------------------
   SUBROUTINE Elmer2VtkIndexes( Element, DgElem, SaveLinear, NodeIndexes )
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: DgElem
@@ -195,6 +201,7 @@ CONTAINS
   ! Check whether there is any discontinuous galerkin field to be saved. 
   ! It does not make sense to use discontinuous saving if there are no discontinuous fields.
   ! It will even result to errors since probably there are no DG indexes either. 
+  !-----------------------------------------------------------------------------------------
   FUNCTION CheckAnyDGField(Model,Params) RESULT ( HaveAnyDG ) 
     TYPE(Model_t) :: Model
     TYPE(ValueList_t), POINTER :: Params
@@ -216,9 +223,9 @@ CONTAINS
         FieldName = GetString( Params, TRIM(Txt), Found )
         IF(.NOT. Found) EXIT
         
-        Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+        Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=.TRUE.)
         IF(.NOT. ASSOCIATED(Solution)) THEN
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=.TRUE.)
         END IF
         IF( .NOT. ASSOCIATED( Solution ) ) CYCLE
 
@@ -236,7 +243,9 @@ CONTAINS
 
 
 
-  ! Average fields within bodies
+  ! Average fields within bodies. Offers good compromise between file size
+  ! and honoring discontinuities. 
+  !-----------------------------------------------------------------------
   SUBROUTINE AverageBodyFields( Mesh ) 
     
     TYPE(Mesh_t), POINTER :: Mesh
@@ -279,7 +288,10 @@ CONTAINS
 
   END SUBROUTINE AverageBodyFields
 
-
+  
+  ! When we have a field defined on IP points we may temporarily swap it to be a field
+  ! defined on DG points. This is done by solving small linear system for each element.
+  !------------------------------------------------------------------------------------
   SUBROUTINE Ip2DgField( Element, nip, fip, ndg, fdg )
     !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
@@ -288,19 +300,21 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Weight, DetJ
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
-    INTEGER :: i,t,p,q
+    INTEGER :: i,t,p,q,n
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Stat, AllocationsDone = .FALSE.
+    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
 
-    SAVE Nodes, Basis, MASS, LOAD, AllocationsDone
+    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
 !------------------------------------------------------------------------------
 
     Mesh => GetMesh()
     IF( .NOT. AllocationsDone ) THEN
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
+      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
+          CurrentCoordinateSystem() == CylindricSymmetric
       AllocationsDone = .TRUE.
     END IF
     
@@ -314,10 +328,15 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element, nip )
+
     DO t=1,IP % n
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
       Weight = IP % s(t) * DetJ
 
+      IF( CSymmetry ) THEN
+        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+      END IF
+      
       DO p=1,n
         LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
         DO q=1,n
@@ -333,8 +352,8 @@ CONTAINS
   END SUBROUTINE Ip2DgField
 
 
-
-
+  ! This routine changes the IP field to DG field just while the results are being written.
+  !---------------------------------------------------------------------------------------
   SUBROUTINE Ip2DgSwapper( Mesh, Var ) 
 
     TYPE( Mesh_t), POINTER :: Mesh
@@ -445,21 +464,27 @@ CONTAINS
     
   END SUBROUTINE Ip2DgSwapper
     
-
-  SUBROUTINE VtuFileNaming( BaseFile, VtuFile, Suffix, GroupId, FileIndex, Part, NoPath ) 
+  
+  ! Write the filename for saving .vtu, .pvd, and .pvtu files.
+  ! Partname, partition and timestep may be added to the name.
+  !------------------------------------------------------------------------------------
+  SUBROUTINE VtuFileNaming( BaseFile, VtuFile, Suffix, GroupId, FileIndex, Part, NoPath, ParallelBase ) 
     CHARACTER(LEN=*), INTENT(IN) :: BaseFile, Suffix
     CHARACTER(LEN=*), INTENT(INOUT) :: VtuFile
     INTEGER :: GroupId, FileIndex
     INTEGER, OPTIONAL :: Part
     LOGICAL, OPTIONAL :: NoPath
+    LOGICAL, OPTIONAL :: ParallelBase
 
     CHARACTER(MAX_NAME_LEN) :: GroupName
-    INTEGER :: i,NameOrder(3),PEs
-    LOGICAL :: LegacyMode
+    INTEGER :: i,j,NameOrder(3),PEs
+    LOGICAL :: LegacyMode, ParallelBaseName
 
     
     NameOrder = [1,2,3]
     LegacyMode = .FALSE.
+    ParallelBaseName = .FALSE.
+    IF( PRESENT( ParallelBase ) ) ParallelBaseName = ParallelBase
     
     
     VtuFile = BaseFile
@@ -470,6 +495,7 @@ CONTAINS
       SELECT CASE( NameOrder(j) )
 
       CASE( 1 ) 
+        ! If we have groups then the piece is set to include the name of the body/bc. 
         IF( GroupId > 0 ) THEN
           IF( GroupId <= CurrentModel % NumberOfBodies ) THEN
             GroupName = ListGetString( CurrentModel % Bodies(GroupId) % Values,"Name")
@@ -481,10 +507,12 @@ CONTAINS
         END IF
 
       CASE( 2 )         
-        IF( PRESENT( Part ) ) THEN
-          PEs = ParEnv % PEs
-          IF( PEs == 1 ) CYCLE
+        PEs = ParEnv % PEs
+        IF( PEs == 1 ) CYCLE
 
+        IF( PRESENT( Part ) ) THEN
+          ! In parallel the mesh consists of pieces called partitions.
+          ! Give each partition a name that includes the partition. 
           IF( LegacyMode ) THEN
             WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",Part,"par"            
           ELSE
@@ -498,9 +526,24 @@ CONTAINS
               WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM(VtuFile),"_",PEs,"np",Part
             END IF
           END IF
+        ELSE
+          ! Also add number to the wrapper files as it is difficult otheriwse
+          ! quickly see on which partitioning they were computed. 
+          IF( ParallelBaseName ) THEN
+            IF ( PEs < 10) THEN                    
+              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM(VtuFile),"_",PEs,"np"
+            ELSE IF ( PEs < 100) THEN                    
+              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM(VtuFile),"_",PEs,"np"
+            ELSE IF ( PEs < 1000) THEN                    
+              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile),"_",PEs,"np"
+            ELSE
+              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",PEs,"np"
+            END IF
+          END IF
         END IF
-
+          
       CASE( 3 )         
+        ! This is for adding time (or nonlinear iteration/scanning) to the filename.
         IF( FileIndex > 0 ) THEN
           IF( FileIndex < 10000 ) THEN        
             WRITE( VtuFile,'(A,A,I4.4)') TRIM(VtuFile),"_t",FileIndex
@@ -523,11 +566,9 @@ CONTAINS
     !PRINT *,'vtufile:',TRIM(VtuFile)
 
   END SUBROUTINE VtuFileNaming
-
-
-
   
 END MODULE VtuXMLFile
+
 
 !------------------------------------------------------------------------------
 !> Subroutine for saving the results in XML based VTK format (VTU). Both ascii and binary
@@ -573,7 +614,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:), Indexes(:)
   LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, ConstraintAnalysis, &
       WriteIds, SaveBoundariesOnly, SaveBulkOnly, SaveLinear, &
-      GotMaskName, NoPermutation, SaveElemental, SaveNodal, GotMaskCond
+      GotMaskName, NoPermutation, SaveElemental, SaveNodal, GotMaskCond, NoInterp
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
   INTEGER, ALLOCATABLE :: BodyVisited(:),GeometryBodyMap(:),GeometryBCMap(:)
   REAL(KIND=dp), ALLOCATABLE :: MaskCond(:)
@@ -581,7 +622,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 ! Parameters for buffered binary output
   INTEGER :: BufferSize
 
-  LOGICAL :: TimeCollection, GroupCollection
+  LOGICAL :: TimeCollection, GroupCollection, ParallelBase
   INTEGER :: GroupId, EigenVectorMode
 
 
@@ -589,6 +630,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   Mesh => Model % Mesh
   MeshDim = Mesh % MeshDim
 
+  NoInterp = .TRUE.
+  IF( ListGetLogical( Params,'Enable Interpolation',GotIt ) ) THEN
+    NoInterp = .FALSE.
+  END IF
+  
   DG = GetLogical( Params,'Discontinuous Galerkin',GotIt)
   DN = GetLogical( Params,'Discontinuous Bodies',GotIt)
   IF( DG .OR. DN ) THEN    
@@ -624,11 +670,12 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     BinaryOutput = .NOT. AsciiOutput
   END IF
 
+  ParallelBase = GetLogical( Params,'Partition Numbering',GotIt )
+  
   IF( BinaryOutput ) THEN
     BufferSize = GetInteger( Params,'Binary Output Buffer Size',GotIt)
     IF( .NOT. GotIt ) BufferSize = MAX(1000, Mesh % NumberOfNodes )
   END IF
-
   
   SaveElemental = GetLogical( Params,'Save Elemental Fields',GotIt)
   IF(.NOT. GotIt) SaveElemental = .TRUE.
@@ -868,7 +915,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   IF(Parallel) THEN
     ! Generate the filename for saving
     !--------------------------------------------------------------------
-    CALL VtuFileNaming( BaseFile, PvtuFile,'.pvtu', GroupId, FileIndex ) 
+    CALL VtuFileNaming( BaseFile, PvtuFile,'.pvtu', GroupId, FileIndex, ParallelBase = ParallelBase )
     CALL Info('VtuOutputSolver','Writing the pvtu file: '//TRIM(PvtuFile), Level=10)
     CALL WritePvtuFile( PVtuFile, Model )
     CALL Info('VtuOutputSolver','Finished writing pvtu file',Level=12)
@@ -878,7 +925,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! Write the Vtu file with all the data
   !--------------------------------------------------------------------------
   IF( NumberOfDofNodes > 0 ) THEN
-    CALL VtuFileNaming( BaseFile, VtuFile,'.vtu', GroupId, FileIndex, Part+1) 
+    CALL VtuFileNaming( BaseFile, VtuFile,'.vtu', GroupId, FileIndex, Part+1 ) 
     CALL Info('VtuOutputSolver','Writing the vtu file: '//TRIM(VtuFile),Level=7)
     CALL WriteVtuFile( VtuFile, Model, FixedMesh )
     CALL Info('VtuOutputSolver','Finished writing vtu file',Level=12)
@@ -887,10 +934,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   ! For transient simulation or group collections write a holder for indivisual files
   !-----------------------------------------------------------------------------------
   IF( TimeCollection .OR. GroupCollection ) THEN
-    CALL VtuFileNaming( BaseFile, PvdFile,'.pvd', GroupId, FileIndex )    
+    CALL VtuFileNaming( BaseFile, PvdFile,'.pvd', GroupId, FileIndex, ParallelBase = ParallelBase )    
     WRITE( PvdFile,'(A,".pvd")' ) TRIM(BaseFile)
     IF( Parallel ) THEN
-      CALL VtuFileNaming( BaseFile, DataSetFile,'.pvtu', GroupId, FileIndex, NoPath = .TRUE. ) 
+      CALL VtuFileNaming( BaseFile, DataSetFile,'.pvtu', GroupId, FileIndex, &
+          NoPath = .TRUE., ParallelBase = ParallelBase ) 
     ELSE      
       CALL VtuFileNaming( BaseFile, DataSetFile,'.vtu', GroupId, FileIndex, NoPath = .TRUE. ) 
     END IF
@@ -929,6 +977,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 CONTAINS
 
 
+  ! Given different criteria fos saving create a geometrical mask for elements
+  ! and continuous numbering for the associated nodes.
+  !------------------------------------------------------------------------------  
   SUBROUTINE GenerateSaveMask()
 
     IF(.NOT. ALLOCATED( NodePerm ) ) ALLOCATE(NodePerm(Mesh % NumberOfNodes))
@@ -950,7 +1001,7 @@ CONTAINS
     GotMaskName = .FALSE.
     Str = GetString( Params,'Mask Variable',MaskExists)
     IF( MaskExists ) THEN
-      MaskVar => VariableGet(Model % Variables,TRIM(Str))
+      MaskVar => VariableGet(Model % Variables,TRIM(Str),ThisOnly=NoInterp)
       IF( ASSOCIATED(MaskVar)) MaskPerm => MaskVar % Perm
       MaskExists = ASSOCIATED(MaskPerm)
       IF( MaskExists ) THEN
@@ -1144,7 +1195,10 @@ CONTAINS
 
   END SUBROUTINE GenerateSaveMask
     
-  
+
+  ! Given the geometric permutation, create the dof permutation used in saving
+  ! the different parts.
+  !-----------------------------------------------------------------------------  
   SUBROUTINE GenerateSavePermutation()
 
     NumberOfDofNodes = 0
@@ -1158,15 +1212,17 @@ CONTAINS
         CALL Info('VtuOutputSolver','Saving results as discontinuous DG fields',Level=15)
       END IF
 
-      k = 0
-      DO i=1,Mesh % NumberOfBulkElements         
-        CurrentElement => Mesh % Elements(i)
-        k = k + CurrentElement % TYPE % NumberOfNodes
-      END DO
-      CALL Info('VtuOutputSolver','Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
-      ALLOCATE( DgPerm(k) )
+      IF( .NOT. ALLOCATED( DgPerm ) ) THEN
+        k = 0
+        DO i=1,Mesh % NumberOfBulkElements         
+          CurrentElement => Mesh % Elements(i)
+          k = k + CurrentElement % TYPE % NumberOfNodes
+        END DO
+        CALL Info('VtuOutputSolver','Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
+        ALLOCATE( DgPerm(k) )
+      END IF
       DgPerm = 0
-
+        
       DO Sweep=1,2
         l = 0
         IF( DG ) THEN
@@ -1195,7 +1251,7 @@ CONTAINS
           DO i=1,Model % NumberOfBodies
             BodyVisited = 0
             DO j=1,Mesh % NumberOfBulkElements         
-              IF(.NOT. ActiveElem(i) ) CYCLE
+              IF(.NOT. ActiveElem(j) ) CYCLE
               CurrentElement => Mesh % Elements(j)
               IF( CurrentElement % BodyId /= i ) CYCLE
               NodeIndexes => CurrentElement % NodeIndexes
@@ -1361,7 +1417,7 @@ CONTAINS
     DispDofs = 0
     Disp2Dofs = 0
     IF(RemoveDisp) THEN
-      Solution => VariableGet( Model % Mesh % Variables, 'Displacement')
+      Solution => VariableGet( Model % Mesh % Variables, 'Displacement',ThisOnly=NoInterp)
       IF( ASSOCIATED( Solution ) ) THEN
         Solver => Solution % Solver
         L = GetLogical( GetSolverParams(Solver),'Displace Mesh',Found)
@@ -1373,7 +1429,7 @@ CONTAINS
         END IF
       END IF
 
-      Solution => VariableGet( Model % Mesh % Variables, 'Mesh Update')
+      Solution => VariableGet( Model % Mesh % Variables, 'Mesh Update',ThisOnly=NoInterp)
       IF( ASSOCIATED( Solution ) ) THEN
         Disp2Perm => Solution % Perm
         Disp2Values => Solution % Values
@@ -1407,10 +1463,10 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Find the variable with the given name in the normal manner 
           !---------------------------------------------------------------------
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
           ComponentVector = .FALSE.
           IF(.NOT. ASSOCIATED(Solution)) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE
@@ -1521,17 +1577,17 @@ CONTAINS
               CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
               CYCLE
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values2 => Solution % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values3 => Solution % Values
               dofs = 3
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
           END IF
           
           !---------------------------------------------------------------------
@@ -1546,7 +1602,7 @@ CONTAINS
 
             FieldName2 = GetString( Params, TRIM(Txt), Found )
             IF( Found ) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName2))
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName2),ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) THEN 
                 Values2 => Solution % Values
                 Perm2 => Solution % Perm 
@@ -1746,7 +1802,7 @@ CONTAINS
           !---------------------------------------------------------------------
           ! Find the variable with the given name in the normal manner 
           !---------------------------------------------------------------------
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
           ComponentVector = .FALSE.
 
           ! If we are looking for a vector just one dofs won't do!
@@ -1756,7 +1812,7 @@ CONTAINS
           END IF
 
           IF(.NOT. ASSOCIATED(Solution)) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE 
@@ -1791,12 +1847,12 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values2 => Solution % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values3 => Solution % Values
               dofs = 3
@@ -2319,6 +2375,8 @@ CONTAINS
   END SUBROUTINE WriteVtuFile
 
 
+  ! Write collection file that may include timesteps and/or parts
+  !--------------------------------------------------------------
   SUBROUTINE WritePvdFile( PvdFile, DataSetFile, nTime, Model )
     CHARACTER(LEN=*), INTENT(IN) :: PvdFile, DataSetFile
     INTEGER :: nTime, RecLen = 0
@@ -2380,7 +2438,8 @@ CONTAINS
   END SUBROUTINE WritePvdFile
 
 
-
+  ! Write parallel holder for serial vtu files.
+  !-----------------------------------------------------------------------------
   SUBROUTINE WritePvtuFile( PvtuFile, Model )
     CHARACTER(LEN=*), INTENT(IN) :: PVtuFile
     TYPE(Model_t) :: Model 
@@ -2482,11 +2541,11 @@ CONTAINS
             EXIT
           END IF
 
-          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
           ComponentVector = .FALSE.
 
           IF(.NOT. ASSOCIATED(Solution)) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN 
               ComponentVector = .TRUE.
             ELSE
@@ -2538,9 +2597,9 @@ CONTAINS
 
           dofs = Solution % DOFs
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) dofs = 2
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) dofs = 3
           END IF
 
@@ -2606,11 +2665,11 @@ CONTAINS
             END IF
             IF(.NOT. Found ) EXIT
 
-            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+            Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName),ThisOnly=NoInterp)
             ComponentVector = .FALSE.
 
             IF(.NOT. ASSOCIATED(Solution)) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) THEN 
                 ComponentVector = .TRUE.
               ELSE 
@@ -2661,9 +2720,9 @@ CONTAINS
 
             dofs = Solution % DOFs
             IF( ComponentVector ) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) dofs = 2
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
               IF( ASSOCIATED(Solution)) dofs = 3
             END IF
 

@@ -10,7 +10,7 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 
-  Post File   = "test.ep"
+  Post File = "test.vtu"
 End
 
 Body 1

@@ -34,7 +34,10 @@ Solver 1
   Equation = "MGDynamics"
   Variable = "P"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
-  Element = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2"
+
+  ! Static Conductivity activates the computation of the scalar potential: 
+  Static Conductivity = True
+
   Use Piola Transform = Logical True
   Quadratic Approximation = True
 
@@ -57,8 +60,6 @@ End
 
 Solver 2
   Equation = "MGDynamicsCalc"
-  Use Piola Transform = Logical True
-  Quadratic Approximation = True
 
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
   Linear System Symmetric = True
@@ -97,7 +98,6 @@ End
 
 Boundary Condition 1
   Target Boundaries(4) = 1 2 3 4
-  P {e} = Real 0
   P {e} 1 = Real 0
   P {e} 2 = Real 0
   P {e} 3 = Real 0
@@ -106,7 +106,6 @@ End
 Boundary Condition 2
   Target Boundaries(1) = 5
   P = Real 2.0
-  P {e} = Real 0
   P {e} 1 = Real 0
   P {e} 2 = Real 0
   P {e} 3 = Real 0
@@ -115,7 +114,6 @@ End
 Boundary Condition 3
   Target Boundaries(1) = 6
   P = Real 0.0
-  P {e} = Real 0
   P {e} 1 = Real 0
   P {e} 2 = Real 0
   P {e} 3 = Real 0

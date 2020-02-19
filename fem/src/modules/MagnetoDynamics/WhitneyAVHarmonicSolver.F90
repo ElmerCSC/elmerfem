@@ -83,6 +83,28 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+SUBROUTINE WhitneyAVHarmonicSolver_Init(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE MagnetoDynamicsUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+
+  Mesh => GetMesh()
+  IF( Mesh % MeshDim /= 3 ) THEN
+    CALL Fatal('WhitneyAVHarmonicSolver_Init','Solver requires 3D mesh!')
+  END IF
+    
+!------------------------------------------------------------------------------
+END SUBROUTINE WhitneyAVHarmonicSolver_Init
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !>  Solve vector potential A, scale potential V
@@ -168,10 +190,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
         'Using Piola Transformed element basis functions',Level=4)
     CALL Info('WhitneyAVHarmonicSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
-    IF (SecondOrder) &
-        CALL Info('WhitneyAVHarmonicSolver', &
-        'Using quadratic approximation, pyramidical elements are not yet available',Level=4)   
- END IF
+  END IF
 
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------

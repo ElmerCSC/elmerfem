@@ -29,6 +29,8 @@ SET(HEADERS src/bodypropertyeditor.h
   src/sifwindow.h 
   src/solverparameters.h 
   src/summaryeditor.h 
+  src/objectbrowser.h 
+  src/solverlogwindow.h 
   plugins/egconvert.h 
   plugins/egdef.h 
   plugins/egmain.h 
@@ -83,6 +85,8 @@ SET(SOURCES src/bodypropertyeditor.cpp
   src/sifwindow.cpp 
   src/solverparameters.cpp 
   src/summaryeditor.cpp 
+  src/solverlogwindow.cpp 
+  src/objectbrowser.cpp 
   plugins/egconvert.cpp 
   plugins/egmain.cpp 
   plugins/egmesh.cpp 
@@ -251,7 +255,7 @@ IF(WITH_PYTHONQT)
 ENDIF()
 
 IF(NOT(WIN32) AND ELMERSOLVER_RPATH_STRING)
-  SET_TARGET_PROPERTIES(ElmerGUI PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
+  SET_TARGET_PROPERTIES(ElmerGUI PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 INSTALL(TARGETS ElmerGUI RUNTIME DESTINATION "bin" COMPONENT "elmergui")
 INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/edf DESTINATION "share/ElmerGUI" COMPONENT "elmergui")

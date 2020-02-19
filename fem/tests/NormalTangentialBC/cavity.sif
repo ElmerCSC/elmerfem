@@ -25,7 +25,7 @@ Simulation
 
   Steady State Max Iterations = 2
   Steady State Min Iterations = 1
-  Post File = "sinus_mesh.ep"
+!  Post File = "sinus_mesh.vtu"
 End
 
 Body 1

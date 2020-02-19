@@ -425,7 +425,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Apply second order Bossok time integration scheme to the elementwise matrix
+!> Apply second order Bossak time integration scheme to the elementwise matrix
 !> entry.
 !------------------------------------------------------------------------------
    SUBROUTINE Bossak2ndOrder( N, dt, MassMatrix, DampMatrix, StiffMatrix, &

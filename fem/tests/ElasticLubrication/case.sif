@@ -197,14 +197,11 @@ Boundary Condition 7
   Target Boundaries = 7
 
 ! continuous way of setting fsi conditions
-  FSI BC = Logical False
-!  Normal Target Body = 2
+!  FSI BC = Logical True
 
-! discrete way
-  Displacement 1 Load = Variable Flow Solution Loads 1
-    Real MATC "-tx"
-  Displacement 2 Load = Variable Flow Solution Loads 2
-    Real MATC "-tx"
+! discrete way for setting fsi conditions
+  Displacement 1 Load = Opposes "Flow Solution Loads 1"
+  Displacement 2 Load = Opposes "Flow Solution Loads 2"
 
   Velocity 1 = 0
   Velocity 2 = 0
@@ -215,7 +212,6 @@ Boundary Condition 7
 End
 
 Solver 3 :: Reference Norm = Real 3.43299851740606671E-008
-RUN
 
 
 

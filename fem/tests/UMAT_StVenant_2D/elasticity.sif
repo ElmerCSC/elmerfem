@@ -15,7 +15,8 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 ! Output File = "elasticity.result"
-! Post File = "beam.vtu"
+ Post File = "beam.vtu"
+ vtu: Discontinuous Galerkin = Logical True
 End
 
 Body 1
@@ -58,6 +59,7 @@ Solver 1
   Calculate Strains = True
   Calculate Stresses = True
   Calculate Loads = Logical False
+  Output State Variables = True
 
   Large Deflection = True ! The value False switches to the small strain formulation 
   Initialize State Variables = Logical False

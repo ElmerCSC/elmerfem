@@ -9,7 +9,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations  = 500
 
-!  Post File = "channel.ep"
+!  Post File = "channel.vtu"
   Output File = "channel.dat"
 End
 

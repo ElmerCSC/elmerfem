@@ -3483,6 +3483,67 @@ use spariterglobals
 !------------------------------------------------------------------------------
 
 
+  SUBROUTINE ListWarnUnsupportedKeyword( SectionName, Keyword, Found, FatalFound ) 
+
+    CHARACTER(LEN=*) :: SectionName, Keyword
+
+    LOGICAL, OPTIONAL :: Found, FatalFound
+    LOGICAL :: LFound, LFatal
+    CHARACTER(LEN=MAX_NAME_LEN) ::  str
+    INTEGER :: k
+    
+    k = StringToLowerCase( str,SectionName )
+        
+    LFatal = .FALSE.
+    IF( PRESENT( FatalFound ) ) LFatal = FatalFound
+    
+    SELECT CASE ( str ) !TRIM( str ) ) 
+
+    CASE( 'body' )     
+      LFound = ListCheckPresentAnyBody( CurrentModel, Keyword ) 
+               
+    CASE( 'material' )
+      LFound = ListCheckPresentAnyMaterial( CurrentModel, Keyword ) 
+
+    CASE( 'body force' )
+      LFound = ListCheckPresentAnyBodyForce( CurrentModel, Keyword ) 
+      
+    CASE( 'solver' )
+      LFound = ListCheckPresentAnySolver( CurrentModel, Keyword ) 
+
+    CASE( 'equation' )
+      LFound = ListCheckPresentAnyEquation( CurrentModel, Keyword ) 
+
+    CASE( 'boundary condition' )
+      LFound = ListCheckPresentAnyBC( CurrentModel, Keyword ) 
+
+    CASE( 'simulation' )
+      LFound = ListCheckPresent( CurrentModel % Simulation, Keyword ) 
+
+    CASE( 'constants' )
+      LFound = ListCheckPresent( CurrentModel % Constants, Keyword ) 
+        
+    CASE DEFAULT
+      CALL Fatal('ListWarnUnsupportedKeyword',&
+          'Unknown section for "'//TRIM(Keyword)//'": '//TRIM(SectionName))
+            
+    END SELECT
+
+    IF( LFound ) THEN
+      IF( LFatal ) THEN
+        CALL Fatal('ListWarnUnsupportedKeyword',&
+            'Keyword in section "'//TRIM(SectionName)//'" not supported: '//TRIM(Keyword) )
+      ELSE
+        CALL Warn('ListWarnUnsupportedKeyword',&
+            'Keyword in section "'//TRIM(SectionName)//'" not supported: '//TRIM(Keyword) )
+      END IF
+    END IF
+      
+    IF( PRESENT( Found ) ) Found = LFound
+    
+  END SUBROUTINE ListWarnUnsupportedKeyword
+  
+
 !> Get pointer to list of section
 !------------------------------------------------------------------------------
   FUNCTION ListGetSectionId( Element, SectionName, Found ) RESULT(id)
@@ -4420,12 +4481,12 @@ use spariterglobals
            ALLOCATE( Handle % HandleIm )
            CALL ListInitHandle( Handle % HandleIm ) 
         END IF
-         CALL Info('ListInitElementKeyword','Treating real part of keyword',Level=12)         
+         CALL Info('ListInitElementKeyword','Treating real part of keyword',Level=15)         
          CALL ListInitElementKeyword( Handle,Section,Name,minv,maxv,&
              DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
          IF( PRESENT( FoundSomewhere) ) FoundSomewhere1 = FoundSomewhere
          
-         CALL Info('ListInitElementKeyword','Treating imaginary part of keyword',Level=12)                 
+         CALL Info('ListInitElementKeyword','Treating imaginary part of keyword',Level=15)                 
          CALL ListInitElementKeyword( Handle % HandleIm,Section,TRIM(Name)//' im',minv,maxv,&
              DefRValue,DefIValue,DefLValue,UnfoundFatal,EvaluateAtIp,FoundSomewhere,InitVec3D=InitVec3D)
          IF( PRESENT( FoundSomewhere ) ) FoundSomewhere =  FoundSomewhere .OR. FoundSomewhere1
@@ -4458,7 +4519,7 @@ use spariterglobals
        END IF
      END IF
      
-     CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=10)
+     CALL Info('ListInitElementKeyword','Treating keyword: '//TRIM(Name),Level=12)
 
      Model => CurrentModel
      Handle % BulkElement = .TRUE.
@@ -4658,7 +4719,7 @@ use spariterglobals
 
      CALL Info('ListInitElementKeyword',&
          'Initiated handle for: > '//TRIM(Handle % Name)//' < of type: '// &
-         TRIM(I2S(Handle % ValueType)),Level=10)
+         TRIM(I2S(Handle % ValueType)),Level=12)
 
      IF( PRESENT( UnfoundFatal ) ) THEN
        Handle % Unfoundfatal = UnfoundFatal
@@ -4989,7 +5050,6 @@ use spariterglobals
 
      SAVE lefttest
 
-
      ! Find the pointer to the element, if not given
      IF( PRESENT( Element ) ) THEN
        PElement => Element
@@ -4997,15 +5057,15 @@ use spariterglobals
        PElement => CurrentModel % CurrentElement
      END IF
 
-          
      IntFound = .FALSE.
      IF( lefttest) THEN
        Parent => PElement % BoundaryInfo % Left
      ELSE 
        Parent => PElement % BoundaryInfo % Right
      END IF
-     RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
 
+     RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
+     
      ! If not found do the same thing with the other parent
      IF(.NOT. IntFound ) THEN
        IF( lefttest) THEN
@@ -5014,7 +5074,7 @@ use spariterglobals
          Parent => PElement % BoundaryInfo % Left
        END IF
        RValue = ListGetElementReal( Handle, Basis, Parent, IntFound, PElement % NodeIndexes )
-
+       
        ! reverse the order in which left and right parent are tested
        IF( IntFound ) lefttest = .NOT. lefttest
      END IF
@@ -6657,7 +6717,8 @@ use spariterglobals
      Handle % Values => NULL()
      Handle % Perm => NULL()
      Handle % Element => NULL()
-          
+     Handle % dofs = 0
+     
      IF ( PRESENT(USolver) ) THEN
        Solver => USolver
      ELSE
@@ -6675,6 +6736,7 @@ use spariterglobals
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
      
      Handle % Variable => Variable
+     Handle % dofs = Variable % Dofs
      
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep < 0 ) THEN
@@ -6694,19 +6756,20 @@ use spariterglobals
 !> Get a scalar field (e.g. potential or pressure) at the integration point.
 !> Works with different types of fields.
 !------------------------------------------------------------------------------
-   FUNCTION ListGetElementScalarSolution( Handle, Basis, Element, Found, GaussPoint, nd  ) RESULT ( Val )
+   FUNCTION ListGetElementScalarSolution( Handle, Basis, Element, Found, &
+       GaussPoint, dof  ) RESULT ( Val )
      
      TYPE(VariableHandle_t) :: Handle
      REAL(KIND=dp), OPTIONAL :: Basis(:)
      TYPE( Element_t), POINTER, OPTIONAL :: Element
-     INTEGER, OPTIONAL :: nd
      INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: dof
      LOGICAL, OPTIONAL :: Found
      REAL(KIND=dp) :: Val
      
      TYPE( Element_t), POINTER :: pElement
-     INTEGER :: j, n
-     INTEGER :: Indexes(100)
+     INTEGER :: i,j, k, n
+     INTEGER, POINTER :: Indexes(:)
      LOGICAL :: SameElement
           
      Val = 0.0_dp
@@ -6728,65 +6791,130 @@ use spariterglobals
      ELSE
        Handle % Element => pElement
      END IF
+
+     IF( Handle % dofs > 1 ) THEN
+       IF( .NOT. PRESENT( dof ) ) THEN
+         CALL Fatal('ListGetElementScalarSolution','Argument "dof" is needed for vector fields!')
+       END IF
+     END IF
      
      ! If variable is defined on gauss points return that instead
      IF( Handle % Variable % TYPE == Variable_on_gauss_points ) THEN
        IF( .NOT. PRESENT( GaussPoint ) ) THEN
-         CALL Fatal('GetElementScalar','GaussPoint required for gauss point variable!')
+         CALL Fatal('ListGetElementScalarSolution','Argument "GaussPoint" required as an argument!')
        END IF
        
        j = pElement % ElementIndex
-       n = Handle % Perm(j+1) - Handle % Perm(j)
-       Handle % ActiveElement = ( n > 0 ) 
-       
-       IF( n == 0 ) RETURN             
-       val = Handle % Values(Handle % Perm(j) + GaussPoint )
+
+       IF( .NOT. SameElement ) THEN
+         n = Handle % Perm(j+1) - Handle % Perm(j)
+         Handle % ActiveElement = ( n > 0 )        
+         IF( n == 0 ) RETURN
+       END IF
+         
+       k = Handle % Perm(j) + GaussPoint
+
+       IF( Handle % Dofs == 1 ) THEN
+         val = Handle % Values( k )
+       ELSE         
+         val = Handle % Values( Handle % Dofs * (k-1) + dof )
+       END IF
 
      ELSE IF( Handle % Variable % TYPE == Variable_on_elements ) THEN       
        j = Handle % Perm( pElement % ElementIndex ) 
        Handle % ActiveElement = ( j > 0 ) 
        
        IF( j == 0 ) RETURN             
-       val = Handle % Values(j) 
-       
+
+       IF( Handle % Dofs == 1 ) THEN
+         val = Handle % Values( j )
+       ELSE         
+         val = Handle % Values( Handle % Dofs * (j-1) + dof )
+       END IF
+     
      ELSE
        IF( .NOT. PRESENT( Basis ) ) THEN
-         CALL Fatal('GetElementScalar','Basis required for non gauss-point variable!')
+         CALL Fatal('ListGetElementScalarSolution',&
+             'Argument "Basis" required for non gauss-point variable!')
        END IF
        
        IF( .NOT. SameElement ) THEN
          IF( Handle % Variable % TYPE == Variable_on_nodes_on_elements ) THEN       
            n = pElement % TYPE % NumberOfNodes
-           Indexes(1:n) = pElement % DGIndexes(1:n)
+           Indexes => pElement % DGIndexes
+           IF(.NOT. ASSOCIATED( Indexes ) ) THEN
+             CALL Fatal('ListGetElementScalarSolution','DGIndexes not associated!')
+           END IF
          ELSE
            n = pElement % TYPE % NumberOfNodes
-           Indexes(1:n) = pElement % NodeIndexes
+           Indexes => pElement % NodeIndexes
          END IF
 
-         IF( PRESENT( nd ) ) THEN
-           n = MIN( nd, n ) 
-         END IF
+         Handle % n = n         
          
          IF( ASSOCIATED( Handle % Perm ) ) THEN
-           Handle % ActiveElement = ALL( Handle % Perm( Indexes(1:n) ) /= 0 )
+           Handle % Indexes(1:n) = Handle % Perm( Indexes(1:n) ) 
+           Handle % ActiveElement = ALL( Handle % Indexes(1:n) /= 0 )
            IF(.NOT. Handle % ActiveElement ) RETURN
-           Handle % ElementValues(1:n) = Handle % Values( Handle % Perm( Indexes(1:n) ) )
          ELSE
+           Handle % Indexes(1:n) = [(i,i=1,4)]
            Handle % ActiveElement = .TRUE.
-           Handle % ElementValues(1:n) = Handle % Values( Indexes(1:n) )           
          END IF
-       ELSE
-         n = Handle % n
        END IF
-       val = SUM( Basis(1:n) * Handle % ElementValues(1:n) )
-     END IF
 
+       n = Handle % n
+       IF( Handle % Dofs == 1 ) THEN
+         val = SUM( Basis(1:n) * Handle % Values( Handle % Indexes(1:n) ) )
+       ELSE
+         val = SUM( Basis(1:n) * Handle % Values( &
+             Handle % dofs*(Handle % Indexes(1:n)-1)+dof ) )
+       END IF
+
+     END IF
+              
      IF( PRESENT( Found ) ) Found = .TRUE.
      
    END FUNCTION ListGetElementScalarSolution
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Get a vector field (e.g. velocity or displacement) at the integration point.
+!> Works with different types of fields.
+!------------------------------------------------------------------------------
+   FUNCTION ListGetElementVectorSolution( Handle, Basis, Element, Found, GaussPoint, &
+       dofs  ) &
+       RESULT ( Val3D )
+     
+     TYPE(VariableHandle_t) :: Handle
+     REAL(KIND=dp), OPTIONAL :: Basis(:)
+     TYPE( Element_t), POINTER, OPTIONAL :: Element
+     INTEGER, OPTIONAL :: GaussPoint
+     INTEGER, OPTIONAL :: dofs
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: Val3D(3)
 
+     INTEGER :: dof, Ldofs
+     
+     Val3D = 0.0_dp
+
+     IF( .NOT. ASSOCIATED( Handle % Variable ) ) RETURN
+     
+     IF( PRESENT( dofs ) ) THEN
+       Ldofs = dofs
+     ELSE
+       Ldofs = MIN( 3, Handle % Dofs )
+     END IF
+         
+     DO dof = 1, Ldofs
+       Val3D(dof) = ListGetElementScalarSolution( Handle, Basis, Element, Found, &
+           GaussPoint, dof  )       
+      IF( .NOT. Handle % ActiveElement ) RETURN
+     END DO
+     
+   END FUNCTION ListGetElementVectorSolution
+     
+    
+   
 !------------------------------------------------------------------------------
 !> Gets a constant real array from the list by its name.
 !------------------------------------------------------------------------------
@@ -7635,7 +7763,7 @@ use spariterglobals
    END FUNCTION ListGetLogicalAnyEquation
 !------------------------------------------------------------------------------
 
-
+   
 !------------------------------------------------------------------------------
 !> Elmer may include scalar and vector variables which may be known by their
 !> original name or have an alias. For historical reasons they are introduced
@@ -7657,7 +7785,7 @@ use spariterglobals
     TYPE(Variable_t), POINTER :: Variables, Var, Var1
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, VarStr, VarStrComp, VarStrExt, str
     LOGICAL :: IsVector, Set, GotIt, ComponentVector, ThisOnly, IsIndex, &
-        EnforceVectors, UseGeneric
+        EnforceVectors, UseGeneric, DisplacementV
     INTEGER :: Nvector, Nscalar
     TYPE(ValueList_t), POINTER :: Params
 
@@ -7747,9 +7875,20 @@ use spariterglobals
 
     EnforceVectors = ListGetLogical( Params,'Enforce Vectors',GotIt)
     IF(.NOT. GotIt ) EnforceVectors = .TRUE.
+
+
+    ! For historical reasons treat "displacement" in a special way
+    ! but only if it exists as vector. Otherwise it will be treated by its components.
+    ! This fixes output for the elasticity solver in case of mixed solution.
+    Var => Variables
+    DisplacementV = .FALSE.
+    DO WHILE( ASSOCIATED( Var ) )
+      IF( Var % Name == 'displacement' ) DisplacementV = .TRUE.
+      Var => Var % Next
+    END DO
+
     
     Var => Variables
-
 
     DO WHILE( ASSOCIATED( Var ) )
       ! Skip if variable is not active for saving       
@@ -7832,14 +7971,12 @@ use spariterglobals
           END IF
         END IF
 
-      CASE( 'displacement 1','displacement 2','displacement 3')
+      !CASE( 'displacement 1','displacement 2','displacement 3')
         
 
-      CASE DEFAULT
-  
+      CASE DEFAULT        
         ! All vector variables are assumed to be saved using its components
-        ! rather than vector itself.
-
+        ! rather than vector itself.        
         IF ( VarDim == 1 ) THEN
           Set = .TRUE. 
           
@@ -7896,9 +8033,14 @@ use spariterglobals
               END IF
             END IF
           END IF
-
+       
           ! Remove the trailing numbers as they are not needed in this case.
-          IF(IsVector) WRITE(VarName,'(A)') TRIM(str(1:j-2))
+          IF( Set ) THEN
+            IF(IsVector) WRITE(VarName,'(A)') TRIM(str(1:j-2))
+
+            ! This is a special case as historically this is saved as vector
+            IF(VarName == 'displacement' .AND. DisplacementV ) Set = .FALSE. 
+          END IF
         END IF
       END SELECT
 

@@ -49,14 +49,11 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
-  LOGICAL :: Found, ElementalFields, RealField, LorentzConductivity, FoundVar
+  LOGICAL :: Found, ElementalFields, RealField, FoundVar
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
-
-  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
-      ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
@@ -499,7 +496,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, Power, Energy, w_dens, R_t_ip(3,3)
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
-   REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3) 
+   REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
 
@@ -895,7 +892,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      IF (CoilBody) THEN
        
-       !CALL GetLocalSolution(Wbase, 'w')
        Call GetWPotential(Wbase)
   
        SELECT CASE (CoilType)
@@ -981,6 +977,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      HasVelocity = .FALSE.
+     HasLorenzVelocity = .FALSE.
+     HasAngularVelocity = .FALSE.
      IF(ASSOCIATED(BodyForce)) THEN
        CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
        CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
@@ -1021,13 +1019,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           END IF
        END IF
 
+       s = IP % s(j) * detJ
 
        grads_coeff = -1._dp/GetCircuitModelDepth()
        IF( CSymmetry ) THEN
          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
          grads_coeff = grads_coeff/xcoord
+         s = s * xcoord 
        END IF
-
+                
+       
        DO k=1,vDOFs
          SELECT CASE(dim)
          CASE(2)
@@ -1056,11 +1057,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
        END IF
 
-       ! Compute convection type term coming from rotation
+       ! Compute the velocity field in the form v + w x r:
        ! -------------------------------------------------
        IF(HasVelocity) THEN
          rot_velo = 0.0_dp
+         angular_velo = 0.0_dp
          IF( HasAngularVelocity ) THEN
+           angular_velo(1) = SUM(basis(1:n)*omega_velo(1,1:n))
+           angular_velo(2) = SUM(basis(1:n)*omega_velo(2,1:n))
+           angular_velo(3) = SUM(basis(1:n)*omega_velo(3,1:n))
            DO k=1,n
              rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
                  basis(k) * Nodes % x(k), &
@@ -1156,15 +1161,45 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END SELECT
 
          CASE DEFAULT
-           ! -Grad(V)
-           IF(dim==3) THEN
+           SELECT CASE(dim)
+           CASE(2)
+             IF (HasLorenzVelocity) THEN
+               ! Add v x curl A:
+               IF (CSymmetry) THEN
+                 E(1,3) = E(1,3) - rot_velo(1) * B(1,2) + rot_velo(2) * B(1,1)
+                 E(2,3) = E(2,3) - rot_velo(1) * B(2,2) + rot_velo(2) * B(2,1)
+               ELSE
+                 E(1,3) = E(1,3) + rot_velo(1) * B(1,2) - rot_velo(2) * B(1,1)
+                 E(2,3) = E(2,3) + rot_velo(1) * B(2,2) - rot_velo(2) * B(2,1)
+               END IF
+             END IF
+             !
+             ! To make this perfect, the electric field corresponding to the source
+             ! should be returned on the source region
+             !
+           CASE(3)
+             ! -Grad(V)
              E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
-           END IF
 
-           IF( ImposeBodyForcePotential ) THEN
-             E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-           END IF             
+             IF (HasVelocity) THEN
+               !
+               ! Add v x curl A so as to handle the steady amplitude solution of
+               ! the time harmonic equations. Multiplication with the electric 
+               ! conductivity will give the current density with respect to 
+               ! the fixed frame:
+               !
+               E(1,:) = E(1,:) + CrossProduct(rot_velo, &
+                   MATMUL(SOL(1,np+1:nd), RotWBasis(1:nd-np,:)))
+               E(2,:) = E(2,:) + CrossProduct(rot_velo, &
+                   MATMUL(SOL(2,np+1:nd), RotWBasis(1:nd-np,:)))
+             END IF
+
+             IF( ImposeBodyForcePotential ) THEN
+               E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             END IF
+           END SELECT
+
          END SELECT
          
        ELSE   ! Real case
@@ -1219,19 +1254,58 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END SELECT
 
          CASE DEFAULT
-           IF(dim==3 .AND. Transient) THEN
-             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-           END IF
+           SELECT CASE(dim)
+           CASE(2)
+             IF (HasLorenzVelocity) THEN
+               ! Add v x curl A
+               IF (CSymmetry) THEN
+                 E(1,3) = E(1,3) - rot_velo(1) * B(1,2) + rot_velo(2) * B(1,1)
+               ELSE
+                 E(1,3) = E(1,3) + rot_velo(1) * B(1,2) - rot_velo(2) * B(1,1)
+               END IF
+             END IF
+             !
+             ! To make this perfect, the electric field corresponding to the source
+             ! should be returned on the source region
+             !
+           CASE(3)
+             IF (Transient) THEN
+               E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
 
-           IF (np > 0 .AND. dim==3 .AND. .NOT. Transient) THEN
-             E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-           ELSE IF ( PrecomputedElectricPot ) THEN
-             E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-           END IF
+               IF (HasAngularVelocity) THEN
+                 !
+                 ! Add w x A so as to create E-field that conforms with the 
+                 ! assumption of force and charge being invariant. Multiplication
+                 ! with the electric conductivity then gives the current density 
+                 ! with respect to the fixed frame:
+                 !
+                 E(1,:) = E(1,:) + CrossProduct(angular_velo, &
+                     MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)))
+               END IF
+             END IF
 
-           IF( ImposeBodyForcePotential ) THEN
-             E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-           END IF
+             IF (np > 0 .AND. .NOT. Transient) THEN
+               E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+               
+               IF (HasVelocity) THEN
+                 !
+                 ! Add v x curl A so as to handle the steady state solution of
+                 ! the evolutionary equations. Multiplication with the electric 
+                 ! conductivity will give the current density with respect to 
+                 ! the fixed frame:
+                 !
+                 E(1,:) = E(1,:) + CrossProduct(rot_velo, &
+                     MATMUL(SOL(1,np+1:nd), RotWBasis(1:nd-np,:)))
+               END IF
+             ELSE IF ( PrecomputedElectricPot ) THEN
+               E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             END IF
+
+             IF ( ImposeBodyForcePotential ) THEN
+               E(1,:) = E(1,:) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+             END IF
+           END SELECT
+
 
          END SELECT
        END IF
@@ -1297,8 +1371,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
        END IF
 
-       s = IP % s(j) * detJ
-
        IF(ASSOCIATED(HB) .AND. RealField) THEN 
          Energy = Energy + s*(0.5*PR_ip*SUM(E**2) + w_dens)
        ELSE
@@ -1356,9 +1428,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            IF (Vdofs == 1) THEN
               DO l=1,3
                 JatIP(1,l) =  SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l)) 
-                IF( HasVelocity ) THEN
-                  JatIP(1,l) = JatIP(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)))
-                END IF
+                !
+                ! No need for a "HasVelocity" check: the effect of v x B is already inbuilt into 
+                ! the definition of the E-field
+                ! IF( HasVelocity ) THEN
+                !   JatIP(1,l) = JatIP(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)))
+                ! END IF
+                !
                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
@@ -1366,20 +1442,28 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               DO l=1,3
                 JatIp(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) - &
                              SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) + REAL(BodyForceCurrDens_ip(l))
-                IF( HasVelocity ) THEN
-                  JatIp(1,l) = JatIp(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)) ) - &
-                               SUM( AIMAG(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(2,1:3)) )
-                END IF
+                !
+                ! No need for a "HasVelocity" check: the effect of v x B is already inbuilt into 
+                ! the definition of the E-field
+                ! IF( HasVelocity ) THEN
+                !   JatIp(1,l) = JatIp(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)) ) - &
+                !                SUM( AIMAG(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(2,1:3)) )
+                ! END IF
+                !
                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
               DO l=1,3
                 JatIp(2,l) = SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) ) + &
                              SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) + AIMAG(BodyForceCurrDens_ip(l))
-                IF( HasVelocity ) THEN
-                  JatIp(2,l) = JatIp(2,l) + SUM( AIMAG(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)) ) + &
-                               SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(2,1:3)) )
-                END IF
+                !
+                ! No need for a "HasVelocity" check: the effect of v x B is already inbuilt into 
+                ! the definition of the E-field                
+                ! IF( HasVelocity ) THEN
+                !   JatIp(2,l) = JatIp(2,l) + SUM( AIMAG(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)) ) + &
+                !                SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(2,1:3)) )
+                ! END IF
+                !
                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(2,l)*Basis(p)
               END DO
               k = k+3
@@ -1457,10 +1541,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
                  TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
            END IF
-           IF (HasVelocity) THEN
-             Coeff = Coeff + SUM(MATMUL(REAL(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
-                 CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
-           END IF
+           !
+           !
+           ! No need for a "HasVelocity" check: the effect of v x B is already inbuilt into 
+           ! the definition of the J-field via J's dependence on the E-field
+           !
+           ! IF (HasVelocity) THEN
+           !   Coeff = Coeff + SUM(MATMUL(REAL(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
+           !       CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
+           ! END IF
+           !
          ELSE
            ! Now Power = J.conjugate(E), with the possible imaginary component neglected.         
            Coeff = HarmPowerCoeff * (SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
@@ -1471,16 +1561,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
                SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
                TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s)
-           IF (HasVelocity) THEN
-             Coeff = Coeff + HarmPowerCoeff * (SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(1,:)) ) * &
-               CrossProduct(rot_velo, B(1,:)) ) * Basis(p) * s - &
-               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(2,:)) ) * &
-               CrossProduct(rot_velo, B(1,:)) ) * Basis(p) * s + &
-               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(1,:)) ) * &
-               CrossProduct(rot_velo, B(2,:)) ) * Basis(p) * s + &
-               SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(2,:)) ) * &
-               CrossProduct(rot_velo, B(2,:)) ) * Basis(p) * s)
-           END IF
+           !
+           ! Again, no need for a "HasVelocity" check
+           ! IF (HasVelocity) THEN
+           !   Coeff = Coeff + HarmPowerCoeff * (SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(1,:)) ) * &
+           !     CrossProduct(rot_velo, B(1,:)) ) * Basis(p) * s - &
+           !     SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(2,:)) ) * &
+           !     CrossProduct(rot_velo, B(1,:)) ) * Basis(p) * s + &
+           !     SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(1,:)) ) * &
+           !     CrossProduct(rot_velo, B(2,:)) ) * Basis(p) * s + &
+           !     SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), CrossProduct(rot_velo, B(2,:)) ) * &
+           !     CrossProduct(rot_velo, B(2,:)) ) * Basis(p) * s)
+           ! END IF
+           !
          END IF
 
          IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
@@ -2017,11 +2110,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
         E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
         E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+
+        s = IP % s(j) * detJ
+        IF( CSymmetry ) THEN
+          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) ) 
+          s = s * xcoord 
+        END IF
         
         ! Compute the (real) power to maintain the surface current j_S in terms of 
         ! the surface impedance from the power density P_S = 1/2 Real(1/Zs) E.conjugate(E)
         Power = Power + HarmPowerCoeff * REAL(1.0_dp/Zs) * &
-            (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * detJ * IP % s(j)
+            (SUM(E(1,:)**2) + SUM(E(2,:)**2)) * s 
 
         ! The total power required to maintain the current in the layer when the current density is
         ! assumed to be constant through the layer thickness:
@@ -2121,7 +2220,7 @@ CONTAINS
     LOGICAL :: FirstTime = .TRUE.
     REAL(KIND=dp) :: B2, GapLength_ip, LeftCenter(3), &
       RightCenter(3), BndCenter(3), LeftNormal(3), RightNormal(3), &
-      NF_ip_l(27,3), NF_ip_r(27,3)
+      NF_ip_l(27,3), NF_ip_r(27,3), xcoord
     TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
     TYPE(Nodes_t), SAVE :: LPNodes, RPNodes
     REAL(KIND=dp) :: F(3,3)
@@ -2229,8 +2328,6 @@ CONTAINS
 
       
       DO j = 1,IP % n
-        s = IP % s(j)
-
         IF ( PiolaVersion ) THEN
           stat = EdgeElementInfo( BElement, Nodes, IP % U(j), IP % V(j), IP % W(j), &
             F = F, DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
@@ -2245,8 +2342,12 @@ CONTAINS
         R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
         GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
 
-        s = s * detJ
-
+        s = detJ * IP % s(j)        
+        IF ( CSymmetry ) THEN
+          xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
+          s = s * xcoord 
+        END IF
+          
         Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
         IF(HasLeft)  THEN
           IF( SUM(normal*(LeftCenter - bndcenter)) >= 0 ) THEN

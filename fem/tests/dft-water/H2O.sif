@@ -6,7 +6,7 @@ Simulation
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Output Binary = Logical True
-  Post File   = "H20.ep"
+  Post File   = "H20.vtu"
   Output File = "H20.dat"
   Steady State Max Iterations = 50
 End

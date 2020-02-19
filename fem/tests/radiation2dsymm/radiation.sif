@@ -1,0 +1,106 @@
+Check Keywords Warn
+
+Header
+  Mesh DB "." "radiation"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+! Output File = "radiation.result"
+  Post File = "radiation.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 250.0
+End
+
+Body Force 1
+  Heat Source = 10000
+End
+
+Material 1
+   Density = 1.0
+   Heat Conductivity = 1.0
+   Heat Capacity = 1.0
+End
+
+Material 2
+   Density = 1.0
+   Heat Conductivity = 1.0
+   Heat Capacity = 1.0
+End
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Stabilize = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Newton After Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 50
+  NonLinear System Convergence Tolerance = 1.0e-8
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Relaxation Factor = 0.7
+
+  Viewfactor symmetry x max = Real 0.5
+  Viewfactor symmetry y max = Real 0.5
+
+  Viewfactor area tolerance   = 1
+  Viewfactor factor tolerance = 1
+  Viewfactor number Of Rays = 12
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+Boundary Condition 1
+   Target Boundaries(1) = 1
+   Heat Flux BC = True
+   Radiation = Diffuse Gray
+   Emissivity = 0.6;
+   Radiation Target Body = -1
+End
+
+Boundary Condition 2
+   Target Boundaries(1) = 2
+   Heat Flux BC = True
+   Radiation = Diffuse Gray
+   Emissivity = 0.6;
+   Radiation Target Body = -1
+End
+
+Boundary Condition 3
+   Target Boundaries = 3
+   Temperature = 100
+End
+
+
+Solver 1 :: Reference Norm = Real 3.29253109E+02
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-4

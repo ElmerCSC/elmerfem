@@ -133,7 +133,8 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
       WRITE(Message,*) 'Element no. ', t,' not associated'
       CALL FATAL(SolverName,Message)
     END IF
-    
+    Model % CurrentElement => Element
+
     IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
     n = GetElementNOFNodes( Element )
 

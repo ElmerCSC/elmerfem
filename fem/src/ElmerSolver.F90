@@ -447,7 +447,6 @@ END INTERFACE
            ELSE
              CALL Fatal( ' ', 'Keyword [Timestep Sizes] MUST be ' //  &
                  'defined for time dependent simulations' )
-             STOP
            END IF
          END IF 
 
@@ -1834,7 +1833,7 @@ END INTERFACE
            CALL SetCurrentMesh( CurrentModel, Mesh )
 
            k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
-           CALL LoadRestartFile( OutputName, k, Mesh, RestartList = RestartList )
+           CALL LoadRestartFile( OutputName, k, Mesh, SolverId = i )
            
            StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
            IF( GotIt ) THEN
