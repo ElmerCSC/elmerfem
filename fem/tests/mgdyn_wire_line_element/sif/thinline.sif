@@ -148,7 +148,7 @@ End
 Boundary Condition 5 !---- cable
    Name = cable
    Target Boundaries(1) = $ cable
-   Thin Line Conductivity = Real 1e6
+   Thin Line Conductivity = Real 1e2
    Thin Line Crossection Area = Real 1e-6
 End
  

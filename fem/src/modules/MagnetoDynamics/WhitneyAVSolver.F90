@@ -2634,7 +2634,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3),Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: C, Area
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -2653,9 +2653,13 @@ END SUBROUTINE LocalConstraintMatrix
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx )
-
+!        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+!               IP % W(t), detJ, Basis, dBasisdx )
+       stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            dBasisdx = dBasisdx, BasisDegree = 1, &
+            ApplyPiolaTransform = .TRUE.)
+ 
        C  = SUM(Basis(1:n) * Conductivity(1:n))
        Area= SUM(Basis(1:n) * CrossectArea(1:n))
 
@@ -2676,12 +2680,17 @@ END SUBROUTINE LocalConstraintMatrix
                ! Compute the conductivity term <C A,grad v> for 
                ! mass matrix (anisotropy taken into account)
                ! -------------------------------------------
-               MASS(p,q) = MASS(p,q) + Area * C * SUM(Basis(j)*dBasisdx(p,:))*detJ*IP % s(t)
+               MASS(p,q) = MASS(p,q) + Area * C * SUM(WBasis(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
+
+               ! Compute the conductivity term <C A, eta> for 
+               ! mass matrix (anisotropy taken into account)
+               ! -------------------------------------------
+               MASS(q,p) = MASS(q,p) + Area * C * SUM(WBasis(p,:)*Wbasis(j,:))*detJ*IP % s(t)
 
                ! Compute the conductivity term <C grad V, eta> for 
                ! stiffness matrix (anisotropy taken into account)
                ! ------------------------------------------------
-               STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*Basis(j))*detJ*IP % s(t)
+               STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*WBasis(j,:))*detJ*IP % s(t)
              END DO
          END DO
        END IF CONDUCTOR
