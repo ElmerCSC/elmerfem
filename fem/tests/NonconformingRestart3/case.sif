@@ -82,6 +82,8 @@ Solver 1
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-02
   Nonlinear System Relaxation Factor = 1.0
+
+  Exported Variable 1 = TempA
 End
 
 
@@ -107,8 +109,8 @@ Solver 2
   Target Mesh Solver Index = Integer 1
 
 ! The variables to be interpolated. Note the dimension reduction related to TempA.
-  Variable 1 = TempA 
-  var1: Interpolation Passive Coordinate = Integer 3
+!  Variable 1 = TempA 
+  Interpolation Passive Coordinate = Integer 3
 End
 
 

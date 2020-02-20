@@ -5635,6 +5635,192 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Adds paramters used in the simulation.
+!> The idea is to make parametrisied simulations more simple to perform. 
+!------------------------------------------------------------------------------
+  SUBROUTINE SetSimulationParameters(piter,FinishEarly)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: piter
+    LOGICAL :: FinishEarly
+    
+    TYPE(ValueList_t), POINTER :: Params
+    LOGICAL :: Found, HaveFile, HaveArray
+    INTEGER :: NoParam
+    REAL(KIND=dp), POINTER :: PArray(:,:), PValues(:)
+    TYPE(Variable_t), POINTER :: PVar
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: LineCounter = 0
+
+    SAVE NoParam
+
+    FinishEarly = .FALSE.
+    Params => CurrentModel % Simulation
+    
+    Parray => ListGetConstRealArray( Params,'Parameter Array',HaveArray)
+    HaveFile = ListCheckPresent( Params,'Parameter Filename')
+    
+    IF(.NOT. (HaveFile .OR. HaveArray) ) RETURN 
+    
+    CALL Info('SetSimulationParameters','Trying to set simulation parameters')
+    NULLIFY(PValues)
+
+    Mesh => CurrentModel % Meshes 
+    Pvar => VariableGet( Mesh % Variables, 'Rparam' )
+    IF( ASSOCIATED( PVar ) ) THEN
+      PValues => PVar % Values      
+    ELSE
+      NULLIFY( PValues )
+    END IF
+        
+    ! a) use given vector of simulation parameters
+    IF( HaveArray ) THEN      
+      CALL Info('SetSimulationParameters','Setting parameters using constant array!',Level=6)
+      IF( piter > SIZE(Parray,1) ) THEN
+        FinishEarly = .TRUE.
+      ELSE        
+        NoParam = SIZE(Parray,2)
+        IF(.NOT. ASSOCIATED( PValues ) ) THEN
+          ALLOCATE( PValues(NoParam) )
+        END IF
+        PValues = Parray(piter,1:NoParam)
+      END IF
+    END IF
+      
+    ! b) read a row from file
+    IF( HaveFile ) THEN
+      CALL Info('SetSimulationParameters','Setting parameters using external file!',Level=6)
+      CALL ReadSimulationParameters()
+    END IF
+
+    IF( FinishEarly ) THEN
+      CALL Warn('SetSimulationParameters','Parameters exhausted already: '//TRIM(I2S(piter)))  
+      RETURN
+    END IF
+        
+    IF( NoParam == 0 ) THEN
+      CALL Fatal('SetSimulationParameters','Could not determine parameter size!')
+    END IF
+    
+    ! Add the parameters as a field
+    IF( .NOT. ASSOCIATED( PVar ) ) THEN
+      CALL Info('SetSimulationParameters','Adding variable "Rparam" of size: '&
+          //TRIM(I2S(NoParam)),Level=6)
+      Mesh => CurrentModel % Meshes 
+      DO WHILE( ASSOCIATED( Mesh ) )
+        CALL VariableAddVector( Mesh % Variables, Mesh, CurrentModel % Solvers(1), &
+            Name='Rparam',DOFs=NoParam, Values=PValues,Global=.TRUE.)
+        Mesh => Mesh % Next      
+      END DO
+    END IF
+
+    IF( InfoActive(20) ) THEN
+      PRINT *,'Parameters:',PValues
+    END IF      
+    
+    ! We could also add variables to LUA and/or MATC workspace!
+    IF( ListGetLogical( Params,'Simulation Paramaters MATC',Found ) ) THEN
+      CALL Fatal('SetSimulationParameters','Exporting simulation parameters to MATC not supported!')
+    END IF
+    IF( ListGetLogical( Params,'Simulation Paramaters LUA',Found ) ) THEN
+      CALL Fatal('SetSimulationParameters','Exporting simulation parameters to LUA not supported!')
+    END IF
+
+  CONTAINS
+
+    SUBROUTINE ReadSimulationParameters()
+
+      INTEGER :: FileUnit, Line, NOffset, FileTypeInd, FileRow, iostat, i, j
+      CHARACTER(LEN=MAX_NAME_LEN) :: FileName, FileType
+      CHARACTER(LEN=MAX_NAME_LEN) :: readstr 
+      REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
+    
+      Filename = ListGetString( Params,'Parameter Filename',Found )
+      
+      FileType = ListGetString( Params,'Parameter Filetype',Found )
+      FileTypeInd = 0
+      IF( Found ) THEN
+        SELECT CASE( FileType )
+        CASE('table')
+          FileTypeInd = 0
+        CASE('dakota')
+          FileTypeInd = 1
+        CASE DEFAULT
+          CALL Fatal('SetSimulationParameters','Unkonown filetype: '//TRIM(FileType))
+        END SELECT
+      END IF
+
+      FileRow = ListGetInteger( Params,'Parameter Row Offset',Found ) 
+      FileRow = FileRow + piter
+      
+      OPEN(NEWUNIT=FileUnit,FILE=FileName)
+      
+      IF( FileTypeInd == 1 ) THEN
+        Noffset = 2
+        DO WHILE(.TRUE.) 
+          READ( FileUnit,'(A)',IOSTAT=iostat) readstr
+          IF( iostat /= 0 ) THEN
+            CALL Fatal('SetSimulationParameters','Could not read dummy line: '//TRIM(I2S(Line)))
+          END IF
+          i = INDEX( readstr,'RUN NO.') 
+          IF( i > 0 ) THEN
+            CALL Info('SetSimulationParameters','Paramater lines start after line: '//TRIM(readstr),Level=6)
+            EXIT
+          END IF
+          i = INDEX( readstr,'Number of Variables =' )
+          IF( i > 0 ) THEN
+            j = MAX_NAME_LEN
+            READ( readstr(i+21:j),*,IOSTAT=iostat) NoParam
+            IF( iostat /= 0 ) THEN
+              CALL Fatal('SetSimulationParameters','Could not read parameters from line: '//TRIM(readstr))
+            END IF
+            CALL Info('ReadSimulationParameters','Number of parameters in DAKOTA file: '&
+                //TRIM(I2S(NoParam)),Level=6)
+          END IF
+        END DO
+      ELSE
+        NoParam = ListGetInteger( Params,'Parameter Count', UnFoundFatal = .TRUE. )  
+        Noffset = ListGetInteger( Params,'Parameter Column Offset',Found ) 
+      END IF
+
+      IF(.NOT. ASSOCIATED( PValues ) ) THEN
+        ALLOCATE( PValues(NoParam) )
+      END IF
+      
+      Line = 0
+      DO WHILE(.TRUE.)
+        Line = Line + 1
+        READ( FileUnit,'(A)',IOSTAT=iostat) readstr
+        IF( iostat /= 0 ) THEN
+          CALL Warn('SetSimulationParameters','Could not read parameter line: '//TRIM(I2S(Line)))
+          CLOSE(FileUnit)
+          FinishEarly = .TRUE.
+          RETURN
+        END IF
+        IF( Line == FileRow ) EXIT
+      END DO
+      CLOSE(FileUnit)
+      
+      ALLOCATE( TmpValues(Noffset+NoParam) )
+      READ(readstr,*,IOSTAT=iostat) TmpValues(1:Noffset+NoParam)
+      IF( iostat /= 0 ) THEN
+        CALL Warn('SetSimulationParameters','Could not read parameters from: '//TRIM(readstr))
+        FinishEarly = .TRUE.
+        RETURN
+      END IF
+            
+      PValues(1:NoParam) = TmpValues(NOffset+1:Noffset+NoParam)
+
+      CALL Info('SetSimulationParameters','Parameters read from file',Level=8)
+      
+    END SUBROUTINE ReadSimulationParameters
+        
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetSimulationParameters
+!------------------------------------------------------------------------------
+
+
 END MODULE ModelDescription
 
 !> \}
