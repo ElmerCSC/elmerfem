@@ -2670,19 +2670,19 @@ END SUBROUTINE LocalConstraintMatrix
              STIFF(p,q) = STIFF(p,q) + Area * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
 
            END DO
-!             DO j=1,nd-np
-!               q = j+np
-!
-!               ! Compute the conductivity term <C A,grad v> for 
-!               ! mass matrix (anisotropy taken into account)
-!               ! -------------------------------------------
-!               MASS(p,q) = MASS(p,q) + Area * C * SUM(RotWBasis(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
-!
-!               ! Compute the conductivity term <C grad V, eta> for 
-!               ! stiffness matrix (anisotropy taken into account)
-!               ! ------------------------------------------------
-!               STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*RotWBasis(j,:))*detJ*IP % s(t)
-!             END DO
+             DO j=1,nd-np
+               q = j+np
+
+               ! Compute the conductivity term <C A,grad v> for 
+               ! mass matrix (anisotropy taken into account)
+               ! -------------------------------------------
+               MASS(p,q) = MASS(p,q) + Area * C * SUM(Basis(j)*dBasisdx(p,:))*detJ*IP % s(t)
+
+               ! Compute the conductivity term <C grad V, eta> for 
+               ! stiffness matrix (anisotropy taken into account)
+               ! ------------------------------------------------
+               STIFF(q,p) = STIFF(q,p) + Area * C * SUM(dBasisdx(p,:)*Basis(j))*detJ*IP % s(t)
+             END DO
          END DO
        END IF CONDUCTOR
     END DO
