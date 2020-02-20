@@ -787,6 +787,8 @@ CONTAINS
        ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
        IF (.NOT. Found) CALL Fatal('DoSolve','Thin Line Conductivity not found!')
        CALL LocalMatrixThinLine(STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd )
+       CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+       CYCLE
      END IF
  
      !If air gap length keyword is detected, use air gap boundary condition
