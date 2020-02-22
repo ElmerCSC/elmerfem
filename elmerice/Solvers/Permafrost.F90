@@ -2265,6 +2265,8 @@ CONTAINS
       ! heat conductivity at IP
       ksthAtIP = GetKalphath(GlobalRockMaterial % ks0th(RockMaterialID),&
            GlobalRockMaterial % bs(RockMaterialID),T0,TemperatureAtIP)
+      !IF (ksthAtIP > 3.01_dp) &
+!     PRINT *,GlobalRockMaterial % ks0th(RockMaterialID), RockMaterialID, ElementID
       kwthAtIP = GetKalphath(CurrentSolventMaterial % kw0th,CurrentSolventMaterial % bw,T0,TemperatureAtIP)
       kithAtIP = GetKalphath(CurrentSolventMaterial % ki0th,CurrentSolventMaterial % bi,T0,TemperatureAtIP)
       kcthAtIP = GetKalphath(CurrentSoluteMaterial % kc0th,CurrentSoluteMaterial % bc,T0,TemperatureAtIP)
@@ -2332,6 +2334,9 @@ CONTAINS
 
       Weight = IP % s(t) * DetJ
       !PRINT *, "Weight=", Weight
+      !KGTTAtIP = 0
+      !KGTTAtIP(1,1) = 3.0_dp
+      !KGTTAtIP(2,2) = 3.0_dp
       DO p=1,nd
         DO q=1,nd          
           ! diffusion term (KGTTAtIP.grad(u),grad(v)):
@@ -3531,13 +3536,13 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams,Material
   INTEGER, POINTER :: PorosityPerm(:), NodeIndexes(:)
   REAL(KIND=dp), POINTER :: PorosityValues(:)
-  REAL(KIND=dp), ALLOCATABLE :: NodalHits(:)
+  INTEGER(KIND=dp), ALLOCATABLE :: NodalHits(:)
   INTEGER :: DIM, i, j, k, N, NumberOfRockRecords,RockMaterialID,CurrentNode,Active,totalunset,totalset
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName="PorosityInit"
   CHARACTER(LEN=MAX_NAME_LEN) :: PorosityName,ElementRockMaterialName
-  LOGICAL :: Visited = .False., Found, GotIt,ElementWiseRockMaterial
+  LOGICAL :: Visited = .FALSE., Found, GotIt,ElementWiseRockMaterial,IsNodalVariable=.FALSE.
 
-  SAVE Visited,ElementWiseRockMaterial,NodalHits
+  SAVE Visited,ElementWiseRockMaterial,NodalHits,IsNodalVariable
   !,DIM,NumberOfRockRecords
 
   !------------------------------------------------------------------------------
@@ -3569,6 +3574,17 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
     PorosityValues  => PorosityVariable % Values
   ELSE
     CALL FATAL(SolverName, 'Could not find "Porosity Variable"')
+  END IF
+
+  IsNodalVariable = GetLogical(SolverParams, &
+       'Nodal Porosity', GotIt)
+  IF (.NOT.GotIt) THEN
+    CALL WARN(SolverName,'Keyword "Nodal Porosity" not found. Assuming element-wise porosity variable')
+  ELSE IF (IsNodalVariable) THEN
+    CALL INFO(SolverName,'Assigning porosity to nodal variable',Level=1)
+    ALLOCATE(NodalHits(Model % Mesh % NumberOfNodes))
+    NodalHits = 0
+    CALL INFO(SolverName,'Assigning porosity to elemen-wise variable',Level=1)
   END IF
   !==============================================================================
   ! Loop over elements
@@ -3618,12 +3634,27 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
       IF (.NOT.GotIt) CALL FATAL(SolverName,"Rock Material ID not found")
     END IF
 
-    DO j=1,N
-      CurrentNode = PorosityPerm(NodeIndexes(j))
-      !PRINT *,CurrentNode, i
-      PorosityValues(CurrentNode) = GlobalRockMaterial % eta0(RockMaterialID)
-    END DO
+    IF (IsNodalVariable) THEN
+      DO j=1,N
+        CurrentNode = PorosityPerm(NodeIndexes(j))
+        IF (CurrentNode <= 0) CYCLE
+        !  !PRINT *,CurrentNode, i
+        PorosityValues(CurrentNode) = PorosityValues(CurrentNode) + GlobalRockMaterial % eta0(RockMaterialID)
+        NodalHits(CurrentNode) = NodalHits(CurrentNode) + 1
+      END DO
+    ELSE
+      PorosityValues(PorosityPerm(i)) = GlobalRockMaterial % eta0(RockMaterialID)
+    END IF
   END DO
+
+  IF (IsNodalVariable) THEN
+    DO j = 1,Model % Mesh % NumberOfNodes
+      CurrentNode = PorosityPerm(NodeIndexes(j))
+      IF (CurrentNode > 0)  PorosityValues(CurrentNode) = PorosityValues(CurrentNode)/NodalHits(CurrentNode)
+    END DO
+    DEALLOCATE(NodalHits)
+  END IF
+  
   CALL Info(SolverName, '-----------------------------------', Level=1)
   CALL Info(SolverName, 'Initializing porosity to reference ', Level=1)
   CALL Info(SolverName, 'done                               ', Level=1)
