@@ -624,10 +624,10 @@ def create_mesh(mesh_object, directory=False, gmsh_log_file=None):
     gmsh_mesh.get_gmsh_command()
     gmsh_mesh.write_gmsh_input_files()
     error = run_gmsh(gmsh_mesh, gmsh_log_file)
-    gmsh_mesh.read_and_set_new_mesh()
     if error:
         FreeCAD.Console.PrintError('{}\n'.format(error))
         return error
+    gmsh_mesh.read_and_set_new_mesh()
 
 def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc, separate_boundaries=False):
     """
