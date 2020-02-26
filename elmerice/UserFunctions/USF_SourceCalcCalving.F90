@@ -84,14 +84,12 @@
     IF (FirstTime) THEN
       Calving = GetLogical(Model % Simulation, 'Calving', Found)
       IF(.NOT. Found) Calving = .FALSE.
-      IF(Calving) THEN
-        DO i=1, Model % NumberOfSolvers
-          IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN
-            HPSolver = i
-            EXIT
-          END IF
-        END DO
-      END IF
+      DO i=1, Model % NumberOfSolvers
+        IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN
+          HPSolver = i
+          EXIT
+        END IF
+      END DO
 
       !Calculate nodal weights for scaling purposes
       CALL CalculateNodalWeights(Model % Solvers(HPSolver), .FALSE., VarName='Weights')
