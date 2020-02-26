@@ -9495,6 +9495,7 @@ END FUNCTION SearchNodeL
       DEALLOCATE(r)      
 
     CASE('norm')
+
       Change = ABS( Norm-PrevNorm )
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
         Change = Change * 2.0_dp/ (Norm+PrevNorm)
@@ -10529,7 +10530,311 @@ END FUNCTION SearchNodeL
   END FUNCTION CheckStepSize
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Apply Anderson acceleration to the solution of nonlinear system.
+!> Also may apply acceleration to the linear system. 
+!------------------------------------------------------------------------------
+  SUBROUTINE NonlinearAcceleration(A,x,b,Solver,PreSolve,NoSolve)    
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) CONTIG :: b(:),x(:)
+    TYPE(Solver_t) :: Solver
+    LOGICAL :: PreSolve
+    LOGICAL, OPTIONAL :: NoSolve
+    !------------------------------------------------------------------------------
+    ! We have a special stucture for the iterates and residuals so that we can
+    ! cycle over the pointers instead of the values. 
+    TYPE AndersonVect_t
+      LOGICAL :: Additive
+      REAL(KIND=dp), POINTER :: Iterate(:), Residual(:), Ax(:)
+      INTEGER :: tag
+    END TYPE AndersonVect_t
+    TYPE(AndersonVect_t), ALLOCATABLE :: AndersonBasis(:), AndersonTmp
+    INTEGER :: AndersonInterval, ItersCnt, AndersonVecs, VecsCnt, iter, n,i,j,k
+    TYPE(Variable_t), POINTER :: iterV, Svar
+    REAL(KIND=dp), ALLOCATABLE :: Alphas(:),AxTable(:,:),TmpVec(:) 
+    REAL(KIND=dp) :: Nrm, AndersonRelax
+    LOGICAL :: Found, DoRelax, KeepBasis, Visited = .FALSE., Parallel    
+    INTEGER :: LinInterval
+    INTEGER :: PrevSolverId = -1
     
+    SAVE AndersonBasis, TmpVec, Alphas, ItersCnt, AndersonInterval, VecsCnt, AndersonVecs, &
+        PrevSolverId, AxTable, AndersonRelax, DoRelax, Visited, KeepBasis, LinInterval
+        
+    IF( PreSolve ) THEN
+      CALL Info('NonlinearAcceleration','Performing pre-solution steps',Level=8)
+    ELSE
+      CALL Info('NonlinearAcceleration','Performing post-solution steps',Level=8)
+    END IF
+
+    Parallel = ( ParEnv % PEs > 1 ) 
+        
+    iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+    iter = NINT(iterV % Values(1))
+
+    IF(PRESENT(NoSolve)) NoSolve = .FALSE.
+    
+    n = A % NumberOfRows
+          
+    IF(.NOT. Visited ) THEN
+      PrevSolverId = Solver % SolverId
+      CALL Info('NonlinearAcceleration','Allocating structures for solution history',Level=6)
+
+      AndersonInterval = ListGetInteger( Solver % Values,&
+          'Nonlinear System Acceleration Interval',Found)      
+      LinInterval = ListGetInteger( Solver % Values,&
+          'Linear System Acceleration Interval',Found)      
+
+      AndersonVecs = MAX( AndersonInterval, LinInterval )
+      IF( AndersonVecs == 0 ) THEN
+        CALL Fatal('NonlinearAcceleration','Both acceleration intervals are zero!')
+      END IF
+            
+      AndersonRelax = ListGetCReal( Solver % Values,&
+          'Nonlinear System Acceleration Relaxation',DoRelax)
+      KeepBasis = ListGetLogical( Solver % Values,&
+          'Nonlinear System Acceleration Keep Vectors',Found)            
+
+      ItersCnt = 0    ! relates to "AndersonInterval"
+      VecsCnt = 0     ! relates to "AndersonVecs"
+      
+      IF(.NOT. ALLOCATED( AndersonBasis ) ) THEN
+        ALLOCATE( AndersonBasis(AndersonVecs) )
+        DO i=1,AndersonVecs
+          ALLOCATE( AndersonBasis(i) % Residual(n), &
+              AndersonBasis(i) % Iterate(n) )
+          AndersonBasis(i) % Residual = 0.0_dp
+          AndersonBasis(i) % Iterate = 0.0_dp          
+        END DO
+        ALLOCATE( TmpVec(n), Alphas(AndersonVecs) )
+      END IF
+      Visited = .TRUE.
+    END IF
+    
+    IF( PrevSolverId /= Solver % SolverId ) THEN
+      CALL Fatal('NonlinearAcceleration','Current implementation only supports one solver!')
+    END IF
+      
+    
+    IF( PreSolve ) THEN           
+      IF( iter == 1 ) THEN
+        ItersCnt = 0
+        IF( .NOT. KeepBasis ) VecsCnt = 0
+      END IF
+
+      ItersCnt = ItersCnt + 1
+      VecsCnt = VecsCnt + 1
+
+      ! Calculate the residual of the matrix equation
+      ! Here 'x' comes before being modified hence A(x) is consistent. 
+      CALL MatrixVectorMultiply( A, x, TmpVec )
+      TmpVec = TmpVec - b
+
+      ! Add the iterate and residual to the basis vectors.
+      ! This is fast as we operate with pointers mainly.
+      AndersonTmp = AndersonBasis(AndersonVecs)        
+      DO i=AndersonVecs,2,-1
+        AndersonBasis(i) = AndersonBasis(i-1)
+      END DO
+      AndersonBasis(1) = AndersonTmp
+      AndersonBasis(1) % Residual = TmpVec
+      AndersonBasis(1) % Iterate = x 
+
+      ! Pure Anderson sweep is done every AndersonInterval iterations if we have full basis.
+      IF(.NOT. DoRelax .AND. AndersonInterval > 0 ) THEN
+        IF( VecsCnt >= AndersonVecs .AND. ItersCnt >= AndersonInterval ) THEN
+          CALL AndersonMinimize( )
+          ItersCnt = 0
+          IF(PRESENT(NoSolve)) NoSolve = .TRUE.
+          RETURN
+        END IF
+      END IF
+      
+      IF( LinInterval > 0 ) THEN
+        CALL AndersonGuess()
+      END IF
+    ELSE
+      ! Relaxation strategy is done after each linear solve.
+      IF( DoRelax ) THEN
+        CALL Info('NonlinearAcceleration','Minimizing residual using history data',Level=6)
+        CALL AndersonMinimize( )
+      END IF
+    END IF
+
+  CONTAINS 
+
+
+    !------------------------------------------------------------------------------
+    FUNCTION Mydot( n, x, y ) RESULT(s)
+      !------------------------------------------------------------------------------
+      INTEGER :: n
+      REAL(KIND=dp)  :: s
+      REAL(KIND=dp) CONTIG :: x(:)
+      REAL(KIND=dp) CONTIG, OPTIONAL :: y(:)
+      !------------------------------------------------------------------------------
+      IF ( .NOT. Parallel ) THEN
+        IF( PRESENT( y ) ) THEN
+          s = DOT_PRODUCT( x(1:n), y(1:n) )
+        ELSE
+          s = DOT_PRODUCT( x(1:n), x(1:n) )
+        END IF
+      ELSE
+        IF( PRESENT( y ) ) THEN
+          s = ParallelDot( n, x, y )
+        ELSE
+          s = ParallelDot( n, x, x )
+        END IF
+      END IF
+      !------------------------------------------------------------------------------
+    END FUNCTION Mydot
+    !------------------------------------------------------------------------------
+
+
+    !------------------------------------------------------------------------------
+    SUBROUTINE Mymv( A, x, b, Update )
+      !------------------------------------------------------------------------------
+      REAL(KIND=dp) CONTIG :: x(:), b(:)
+      TYPE(Matrix_t), POINTER :: A
+      LOGICAL, OPTIONAL :: Update
+      !------------------------------------------------------------------------------
+      IF ( .NOT. Parallel ) THEN
+        CALL CRS_MatrixVectorMultiply( A, x, b )
+      ELSE
+        IF ( PRESENT( Update ) ) THEN
+          CALL ParallelMatrixVector( A,x,b,Update,ZeroNotOwned=.TRUE. )
+        ELSE
+          CALL ParallelMatrixVector( A,x,b,ZeroNotOwned=.TRUE. )
+        END IF
+      END IF
+      !------------------------------------------------------------------------------
+    END SUBROUTINE Mymv
+    !------------------------------------------------------------------------------
+
+    
+    ! Given set of basis vectors and residuals find a new suggestion for solution.
+    ! Either use as such or combine it to solution when relaxation is used.
+    ! This is applied to boost nonlinear iteration. 
+    !------------------------------------------------------------------------------
+    SUBROUTINE AndersonMinimize()
+      INTEGER ::m, n, AndersonMinn
+      REAL(KIND=dp) :: rr, rb
+      
+      m = MIN( ItersCnt, AndersonInterval )      
+      
+      AndersonMinN = ListGetInteger( Solver % Values,&
+          'Nonlinear System Acceleration First Iteration',Found )
+      IF(.NOT. (Found .OR. DoRelax)) AndersonMinN = AndersonInterval
+            
+      ! Nothing to do 
+      IF( m < AndersonMinN ) RETURN
+      
+      ! If size of our basis is just one, there is not much to do...
+      ! We can only perform classical relaxation. 
+      IF( m == 1 ) THEN
+        x = AndersonRelax * x + (1-AndersonRelax) * AndersonBasis(1) % Iterate
+        RETURN
+      END IF
+      
+      ! If we are converged then the solution should already be the 1st component.
+      ! Hence use that as the basis. 
+      Alphas(1) = 1.0_dp     
+      TmpVec = AndersonBasis(1) % Residual
+      
+      ! Minimize the residual
+      n = SIZE( AndersonBasis(1) % Residual ) 
+      DO k=2,m
+        rr = MyDot( n, AndersonBasis(k) % Residual ) 
+        rb = MyDot( n, AndersonBasis(k) % Residual, TmpVec )         
+        Alphas(k) = -rb / rr 
+        TmpVec = TmpVec + Alphas(k) * AndersonBasis(k) % Residual
+      END DO
+
+      ! Normalize the coefficients such that the sum equals unity
+      ! This way for example, Dirichlet BCs will be honored.
+      Alphas = Alphas / SUM( Alphas(1:m) )
+
+      IF( InfoActive(10) ) THEN
+        DO i=1,m
+          WRITE(Message,'(A,I0,A,ES12.3)') 'Alpha(',i,') = ',Alphas(i)
+          CALL Info('NonlinearAcceleration',Message)
+        END DO
+      END IF
+              
+      ! Create the new suggestion for the solution vector
+      ! We take part of the suggested new solution vector 'x' and
+      ! part of minimized residual that was used in anderson acceleration.
+      IF( DoRelax ) THEN
+        Alphas = Alphas * (1-AndersonRelax)
+        x = AndersonRelax * x
+        DO k=1,m
+          x = x + Alphas(k) * AndersonBasis(k) % Iterate
+        END DO
+      ELSE
+        x = Alphas(1) * AndersonBasis(1) % Iterate
+        DO k=2,m
+          x = x + Alphas(k) * AndersonBasis(k) % Iterate
+        END DO
+      END IF
+        
+    END SUBROUTINE AndersonMinimize
+
+    
+    ! Given set of basis vectors and a linear system
+    ! find a combincation of the vectors that minimizes the norm of the linear
+    ! system. This may be used to provide a better initial guess for a linear system.
+    !--------------------------------------------------------------------------------
+    SUBROUTINE AndersonGuess()
+      INTEGER :: AndersonMinN
+
+      REAL(KIND=dp), POINTER, SAVE ::Betas(:), Ymat(:,:)
+      LOGICAL, SAVE :: AllocationsDone = .FALSE.
+      INTEGER :: i,j,m
+      
+      IF(.NOT. AllocationsDone ) THEN
+        m = LinInterval
+        DO i=1,LinInterval
+          ALLOCATE( AndersonBasis(i) % Ax(n) )
+          AndersonBasis(i) % Ax = 0.0_dp
+        END DO
+        ALLOCATE(Betas(m),Ymat(m,m))
+        AllocationsDone = .TRUE.
+      END IF
+      
+      m = MIN( VecsCnt, LinInterval )      
+
+      ! Calculate the residual of the matrix equation
+      DO i=1,m
+        CALL Mymv( A, AndersonBasis(i) % Iterate, AndersonBasis(i) % Ax )
+      END DO
+
+      DO i=1,m
+        DO j=i,m
+          Ymat(i,j) = SUM( AxTable(:,i) * AxTable(:,j) )
+          Ymat(j,i) = Ymat(i,j)
+        END DO
+        Betas(i) = SUM( AxTable(:,i) * b )
+      END DO
+      
+      CALL LUSolve(m, YMat(1:m,1:m), Betas(1:m) )
+
+      IF( InfoActive(10) ) THEN
+        DO i=1,m
+          WRITE(Message,'(A,I0,A,ES12.3)') 'Beta(',i,') = ',Betas(i)
+          CALL Info('LinearAcceleration',Message)
+        END DO
+      END IF
+                                
+      x = Betas(m) * AndersonBasis(m) % Iterate
+      DO i=1,m-1
+        x = x + Betas(i) * AndersonBasis(i) % Iterate
+      END DO
+
+    END SUBROUTINE AndersonGuess
+    
+  END SUBROUTINE NonlinearAcceleration
+!------------------------------------------------------------------------------
+
+  
 
 !------------------------------------------------------------------------------
 !> Computing nodal weight may be good when one needs to transform nodal 
@@ -12197,7 +12502,7 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
-    LOGICAL :: NormalizeToUnity
+    LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve
     
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
@@ -12441,10 +12746,16 @@ END FUNCTION SearchNodeL
       RETURN
     END IF
 
-! 
+    AndersonAcc = ListGetLogical( Params,'Nonlinear System Acceleration',GotIt ) 
+    AndersonScaled = ListgetLogical( Params,'Nonlinear System Acceleration Scaled',GotIt ) 
+    
+    IF( AndersonAcc .AND. .NOT. AndersonScaled ) THEN
+      CALL NonlinearAcceleration( A, x, b, Solver, .TRUE., NoSolve )
+      IF(NoSolve) GOTO 120
+    END IF
+    
 !   Convert rhs & initial value to the scaled system:
 !   -------------------------------------------------
-
     IF ( ScaleSystem ) THEN
       ApplyRowEquilibration = ListGetLogical(Params,'Linear System Row Equilibration',GotIt)
       IF ( ApplyRowEquilibration ) THEN
@@ -12456,7 +12767,8 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-    ComputeChangeScaled = ListGetLogical(Params,'Nonlinear System Compute Change in Scaled System',GotIt)
+    ComputeChangeScaled = ListGetLogical(Params,&
+        'Nonlinear System Compute Change in Scaled System',GotIt)
     IF(.NOT.GotIt) ComputeChangeScaled = .FALSE.
 
     IF(ComputeChangeScaled) THEN
@@ -12465,6 +12777,11 @@ END FUNCTION SearchNodeL
        CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
     END IF
 
+    IF( AndersonAcc .AND. AndersonScaled ) THEN
+      CALL NonlinearAcceleration( A, x, b, Solver, .TRUE., NoSolve )
+      IF( NoSolve ) GOTO 110
+    END IF
+    
     ! Sometimes the r.h.s. may abruptly diminish in value resulting to significant 
     ! convergence issues or it may be that the system scales linearly with the source. 
     ! This flag tries to improve on the initial guess of the linear solvers, and may 
@@ -12556,6 +12873,10 @@ END FUNCTION SearchNodeL
       END SELECT
     END IF
 
+110 IF( AndersonAcc .AND. AndersonScaled )  THEN
+      CALL NonlinearAcceleration( A, x, b, Solver, .FALSE.)
+    END IF
+    
     IF(ComputeChangeScaled) THEN
       CALL ComputeChange(Solver,.FALSE.,n, x, NonlinVals, Matrix=A, RHS=b )
       DEALLOCATE(NonlinVals)
@@ -12569,6 +12890,10 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
+120 IF( AndersonAcc .AND. .NOT. AndersonScaled )  THEN
+      CALL NonlinearAcceleration( A, x, b, Solver, .FALSE.)
+    END IF
+    
     Aaid => A
     IF (PRESENT(BulkMatrix)) THEN
       IF (ASSOCIATED(BulkMatrix) ) Aaid=>BulkMatrix
