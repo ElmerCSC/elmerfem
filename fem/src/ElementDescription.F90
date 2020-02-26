@@ -5886,7 +5886,7 @@ END SUBROUTINE PickActiveFace
            ! the parent element:
            !
            pElement => Element 
-           CALL PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
+           CALL PickActiveFace(Mesh, Parent, pElement, Face, ActiveFaceId)
            IF (ActiveFaceId == 0) RETURN
            !
            ! Use the parent element to check whether sign reversions are needed:
