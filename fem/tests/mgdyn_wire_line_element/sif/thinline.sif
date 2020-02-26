@@ -16,29 +16,16 @@ Simulation 1
    Max Output Level = 33
    Coordinate System = Cartesian 3D
    Coordinate Mapping(3) = 1 2 3
-   Coordinate Scaling = 0.001
+   Coordinate Scaling = 1
    Simulation Type = Transient
    Timestepping Method = BDF
    BDF Order = 1
    Timestep intervals = 3
-   Timestep Sizes = 0.0015
+   Timestep Sizes = 1
    Steady State Max Iterations = 1
    Output Intervals = 1
 End
-Solver 1  !---- WPotentialSolver, Wsolve
-   Exec Solver = Before All
-   Exec Solver = Never
-   Procedure = "WPotentialSolver" "Wsolve"
-   Equation = "Wire direction"
-   Variable = W
-   Linear System Solver = Iterative
-   Linear System Iterative Method = CG
-   Linear System Max Iterations = 5000
-   Linear System Convergence Tolerance = 1.0e-10
-   Linear System Abort Not Converged = True
-   Linear System Residual Output = 1000
-End
-Solver 2  !---- MagnetoDynamics, WhitneyAVSolver
+Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
    Exec Solver = Always
    Equation = "MGDynamics"
    Variable = "A"
@@ -55,7 +42,7 @@ Solver 2  !---- MagnetoDynamics, WhitneyAVSolver
    BicgstabL polynomial degree = 6
    Steady State Convergence Tolerance = 1e-08
 End
-Solver 3  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
+Solver 2  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Exec Solver = Always
    Equation = "MGDynamicsCalc"
    Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
@@ -71,7 +58,7 @@ Solver 3  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Steady State Convergence Tolerance = 1e-6
    Linear System Convergence Tolerance = 1.0e-8
 End
-Solver 4  !---- ResultOutputSolve, ResultOutputSolver
+Solver 3  !---- ResultOutputSolve, ResultOutputSolver
    Exec Solver = After timestep
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
@@ -79,7 +66,7 @@ Solver 4  !---- ResultOutputSolve, ResultOutputSolver
    Vtu format = Logical True
    Save Geometry Ids = Logical True
 End
-Solver 5  !---- SaveData, SaveScalars
+Solver 4  !---- SaveData, SaveScalars
    Exec Solver = After timestep
    Exec Solver = Never
    Equation = "sv"
@@ -87,39 +74,20 @@ Solver 5  !---- SaveData, SaveScalars
    Filename = cable/dat/cable.dat
 End
 Equation 1
-   Active Solvers(4) = 1 2 3 4
+   Active Solvers(3) = 1 2 3
 End
-Material 1  !---- iron: generic
-   Name = iron
-   Electric Conductivity = 0
-   Relative Permeability = 2000
-End
-Material 2  !---- air: generic
+Material 1  !---- air: generic
    Name = air
    Electric Conductivity = 1
    Relative Permeability = 1
-End
-Material 3  !---- aluminium: generic
-   Name = aluminium
-   Relative Permeability = 1
-   Electric Conductivity = 36e6
 End
 Body 1  !---- Air
    Name = air
    Target Bodies(1) = $ air
    Equation = 1
-   Material = 2
+   Material = 1
    Initial Condition = 1
    Body Force = 1
-End
-Body Force 1  !---- Circuit
-   Name = "Circuit"
-   S1: Frequency = Real 50.0
-   S1: Phase = Real 0.0
-   S1: Harmonic Content (1,2) = Real
-   INCLUDE sif/S1Harmonic.dat
-   S1 = Variable time
-     Real Procedure "HarmonicSignals" "Source"
 End
 Boundary Condition 1  !---- BCn Flux Parallel
    Name = BCn Flux Parallel
@@ -148,13 +116,11 @@ End
 Boundary Condition 5 !---- cable
    Name = cable
    Target Boundaries(1) = $ cable
-   Thin Line Conductivity = Real 1e2
+   Thin Line Conductivity = Real 1e20
    Thin Line Crossection Area = Real 1e-6
 End
  
-Solver 3 :: Reference Norm = Real 2.63574035E-04
-Solver 3 :: Reference Norm Tolerance = Real 1E-03
-Solver 4 :: Reference Norm = Real 1.47320559E+04
-Solver 4 :: Reference Norm Tolerance = Real 1E-03
+Solver 2 :: Reference Norm = Real 2.63574035E-04
+Solver 2 :: Reference Norm Tolerance = Real 1E-03
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
