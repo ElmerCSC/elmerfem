@@ -570,6 +570,16 @@ def set_mesh_group_elements(gmsh_mesh):
     if gmsh_mesh.group_elements:
         FreeCAD.Console.PrintMessage('  {}\n'.format(gmsh_mesh.group_elements))
 
+def _remove_ansi_color_escape_codes(message):
+    """
+    Replace color code escape codes from message with empty string.
+
+    :param message: A string.
+
+    :return: A string.
+    """
+    return message.replace('\x1b[1m', '').replace('\x1b[31m', '').replace('\x1b[35m', '').replace('\x1b[0m', '')
+
 def run_gmsh(gmsh_mesh, gmsh_log_file=None):
     """
     Runs gmsh. Writes gmsh output to gmsh_log_file if given.
@@ -585,10 +595,11 @@ def run_gmsh(gmsh_mesh, gmsh_log_file=None):
         try:
             with open(gmsh_log_file, 'w') as f:
                 p = subprocess.Popen([gmsh_mesh.gmsh_bin, '-', gmsh_mesh.temp_file_geo],
-                                     stdout=f, stderr=subprocess.PIPE)
+                                     stdout=f, stderr=subprocess.PIPE, universal_newlines=True)
                 no_value, error = p.communicate()
                 if error:
-                    f.write(str(error) + '\n')
+                    error = _remove_ansi_color_escape_codes(error)
+                    f.write(error)
                     f.flush()
         except Exception:
             error = 'Error executing gmsh'
