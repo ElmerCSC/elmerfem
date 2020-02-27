@@ -1535,7 +1535,7 @@ CONTAINS
       PRINT *, acwtilde(0), Temperature, LOG(Temperature/T0)
       PRINT *, ((Pressure - p0)*(1.0_dp + 0.5_dp*(CurrentSolventMaterial % kw0)*(Pressure - p0))/rhow)
       PRINT *,rhow, Pressure
-      STOP
+      CALL FATAL("PermafrostMaterials(gwa)","Error in gwa")
     END IF
   END FUNCTION gwa
   !---------------------------------------------------------------------------------------------
@@ -1596,7 +1596,7 @@ CONTAINS
 
     IF (gwaT .NE. gwaT) THEN
       PRINT *, "gwaT"
-      STOP
+      CALL FATAL("PermafrostMaterials(gwaT)","Error in gwaT")
     END IF
   END FUNCTION gwaT
   !---------------------------------------------------------------------------------------------
@@ -1627,7 +1627,7 @@ CONTAINS
     giaT = -(CurrentSolventMaterial % hi0)/T0 - aux
     IF (giaT .NE. giaT) THEN
       PRINT *, "giaT"
-      STOP
+      CALL FATAL("PermafrostMaterials(gwa)","Error in giaT")
     END IF
     FirstTime = .FALSE.
   END FUNCTION giaT
@@ -1693,7 +1693,7 @@ CONTAINS
         
     IF (B .NE. B) THEN
       PRINT *, "B:", Mw, deltaG,Temperature,bi(1),e1,delta,bi(2),bi(4)
-      STOP
+      CALL FATAL("PermafrostMaterials(getB)","Error in getB")
     END IF
   END FUNCTION GetB
   !---------------------------------------------------------------------------------------------
@@ -1703,10 +1703,10 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: delta,bi(4)
     ! local
     D = delta/(delta + bi(2) + bi(4))
-    IF (D .NE. D) THEN
-      PRINT *, "D"
-      STOP
-    END IF
+    !IF (D .NE. D) THEN
+    !  PRINT *, "D"
+    !  CALL FATAL("PermafrostMaterials(getD)","Error in getD")
+    !END IF
   END FUNCTION D
   !---------------------------------------------------------------------------------------------
   FUNCTION GetXi0Tilde(RockMaterialID,Porosity) RESULT(Xi0tilde)
@@ -1820,11 +1820,11 @@ CONTAINS
          + biYc(2)/(SQRT(aux_sqrt))
     aux3 = 2.0_dp*D*biYc(2)/(SQRT(aux_sqrt))
     XiYc = 0.5_dp*aux1*(aux2 + aux3)*Xi*Xi      
-    IF (XiYc .NE. XiYc) THEN
-      PRINT *, "XiYc:", aux1, aux2
-      PRINT *, B, D, biYc(1), biYc(2),delta
-      STOP
-    END IF
+    !IF (XiYc .NE. XiYc) THEN
+    !  PRINT *, "XiYc:", aux1, aux2
+    !  PRINT *, B, D, biYc(1), biYc(2),delta
+    !  STOP
+    !END IF
   END FUNCTION XiYc
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION XiEta(RockMaterialID,&
@@ -2002,7 +2002,7 @@ CONTAINS
       END IF
       IF (rhow .NE. rhow) THEN
         PRINT *, "rhow:", rhow,CurrentSolventMaterial % rhow0,aux1, aux2,Pressure,Temperature
-        STOP
+        CALL FATAL("PermafrostMaterials(rhow)","Error in rhow")
       END IF
     END IF
   END FUNCTION rhow
@@ -2032,10 +2032,10 @@ CONTAINS
       ! PRINT *, "zw0",CurrentSolventMaterial % zw0, "bzw",CurrentSolventMaterial % bzw(0:CurrentSolventMaterial % bzwl)
       ! PRINT *, CurrentSolventMaterial % bzwl, CurrentSolventMaterial % zw0, "---", CurrentSolventMaterial % bzw(0:5)
       !END IF
-      IF (rhowupdate .NE. rhowupdate) THEN
-        PRINT *, "rhowupdate:"
-        STOP
-      END IF
+      !IF (rhowupdate .NE. rhowupdate) THEN
+      !  PRINT *, "rhowupdate:"
+      !  STOP
+      !END IF
     END IF
   END FUNCTION rhowupdate
   !---------------------------------------------------------------------------------------------
