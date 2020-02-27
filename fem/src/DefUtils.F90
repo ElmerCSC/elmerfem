@@ -655,7 +655,7 @@ CONTAINS
      ELSE
        n = GetElementDOFs( Indexes, Element, Solver )
      END IF
-     n = MIN( n, SIZE(x) )
+     n = MIN( n, SIZE(x,2) )
 
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
