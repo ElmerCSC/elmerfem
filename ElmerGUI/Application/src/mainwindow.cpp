@@ -1172,35 +1172,38 @@ void MainWindow::newProjectSlot()
   if(dlg.exec() == QDialog::Accepted){
 
     // re-initialize
-    modelClearSlot();
     delete elmerDefs; elmerDefs = new QDomDocument;
     delete edfEditor; edfEditor = new EdfEditor; 
     loadDefinitions();
     geometryInputFileName = "";
     currentProjectDirName = "";
-    
-    // widgets and utilities:
     sifWindow->getTextEdit()->clear();
     solverLogWindow->getTextEdit()->clear();
     delete generalSetup; generalSetup = new GeneralSetup(this);
-    summaryEditor->ui.summaryEdit->clear();
+    summaryEditor->ui.summaryEdit->clear();  
     delete twodView; twodView = new TwodView;
+    meshControl->defaultControls();
+    delete parallel; parallel = new Parallel(this);
 
 #ifdef EG_QWT
     convergenceView->removeData();
 #endif
 
 #ifdef EG_VTK
+    settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
     delete vtkPost; vtkPost = new VtkPost(this);
-    vtkPostMeshUnifierRunning = false;    
+    vtkPostMeshUnifierRunning = false;
+    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());    
 #endif
 
 #ifdef EG_OCC
+    settings_setValue("cadView/geometry", cadView->saveGeometry());
     delete cadView; cadView = new CadView();
     if(egIni->isPresent("deflection"))
       cadView->setDeflection(egIni->value("deflection").toDouble());
+    cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());      
 #endif
-    
+
     //delete operations
     operation_t *p = operation.next;
     operation_t *q = NULL;
@@ -1213,6 +1216,18 @@ void MainWindow::newProjectSlot()
     operations = 0;
     operation.next = NULL;    
     
+    // reset mesh
+    if(glWidget->hasMesh()) {
+      glWidget->getMesh()->clear();
+      glWidget->deleteMesh();
+    }
+    glWidget->newMesh();
+    meshutils->findSurfaceElementEdges(glWidget->getMesh());
+    meshutils->findSurfaceElementNormals(glWidget->getMesh());
+    glWidget->rebuildLists();
+    
+    modelClearSlot();
+
     // load extra solvers
     QString message;
     for(int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++){
@@ -1226,17 +1241,8 @@ void MainWindow::newProjectSlot()
       cout << " done" << endl;
     }
     
-    // reset mesh
-    if(glWidget->hasMesh()) {
-      glWidget->getMesh()->clear();
-      glWidget->deleteMesh();
-    }
-    glWidget->newMesh();
-    meshutils->findSurfaceElementEdges(glWidget->getMesh());
-    meshutils->findSurfaceElementNormals(glWidget->getMesh());
-    glWidget->rebuildLists();
-      
     // load Elmer mesh/open geometry file
+    bool bStartMeshing = false;
     if(dlg.ui.radioButton_elmerMesh->isChecked() && !dlg.ui.label_meshDir->text().isEmpty()){
        loadElmerMesh(dlg.ui.label_meshDir->text());
     }else if(dlg.ui.radioButton_geometryFile->isChecked() && !dlg.ui.label_geometryFile->text().isEmpty()){
@@ -1244,11 +1250,14 @@ void MainWindow::newProjectSlot()
       geometryInputFileName = fileName;
       saveDirName = "";
       readInputFile(fileName);
-      if(egIni->isSet("automesh")) remeshSlot();
+      if(egIni->isSet("automesh")) bStartMeshing = true;
     }
     
-    // save project
-    saveProject(dlg.ui.label_projectDir->text());
+    // save and load project
+    saveProject(dlg.ui.label_projectDir->text());       
+    loadProject(dlg.ui.label_projectDir->text());       
+
+    if(bStartMeshing) remeshSlot();
   }
   
 }
@@ -7618,7 +7627,6 @@ void MainWindow::loadSettings()
   convergenceView->restoreGeometry(settings_value("convergenceView/geometry").toByteArray());
 #endif
 
-/*
 #ifdef EG_OCC
   cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());
 #endif
@@ -7626,7 +7634,6 @@ void MainWindow::loadSettings()
 #ifdef EG_VTK
   vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
 #endif
-*/
 
   int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
@@ -7658,7 +7665,6 @@ void MainWindow::saveSettings()
   settings_setValue("convergenceView/geometry", convergenceView->saveGeometry());
 #endif
 
-/*
 #ifdef EG_OCC
   settings_setValue("cadView/geometry", cadView->saveGeometry());
 #endif
@@ -7666,7 +7672,6 @@ void MainWindow::saveSettings()
 #ifdef EG_VTK
   settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
 #endif
-*/
   
   if(showObjectBrowserAct->isChecked() && objectBrowser != NULL){
     settings_setValue("objectBrowser/show", true); 
@@ -7893,14 +7898,14 @@ void MainWindow::checkAndLoadExtraSolvers(QFile* file)
 
 QVariant MainWindow::settings_value(const QString & key, const QVariant &defaultValue) const
 {
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QString iniFileName = QDir::homePath() + "/ElmerGUI.ini";
   QSettings settings(iniFileName, QSettings::IniFormat);
   return settings.value(key, defaultValue);
 }
 
 void MainWindow::settings_setValue(const QString & key, const QVariant & value)
 {
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QString iniFileName = QDir::homePath() + "/ElmerGUI.ini";
   QSettings settings(iniFileName, QSettings::IniFormat);
   settings.setValue(key, value);
 }

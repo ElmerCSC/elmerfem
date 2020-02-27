@@ -80,6 +80,7 @@ private slots:
   void loadSlot();
   void loadProjectSlot();
   void saveProjectSlot();
+  void newProjectSlot();
   void modelClearSlot();
 
   void viewFullScreenSlot();

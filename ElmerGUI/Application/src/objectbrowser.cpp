@@ -132,8 +132,9 @@ ObjectBrowser::ObjectBrowser(QMainWindow *parent, Qt::WindowFlags flags) : QDock
   connect(mainwindow->recentProject3Act, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));  
   connect(mainwindow->recentProject4Act, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));
   connect(mainwindow->saveProjectAct, SIGNAL(triggered()), this, SLOT(saveProjectSlot()));
+  connect(mainwindow->newProjectAct, SIGNAL(triggered()), this, SLOT(newProjectSlot()));
   connect(mainwindow->modelClearAct, SIGNAL(triggered()), this, SLOT(modelClearSlot()));
-  
+    
   connect(mainwindow->viewFullScreenAct, SIGNAL(triggered()), this, SLOT(viewFullScreenSlot()));
   connect(mainwindow->glWidget, SIGNAL(escPressed()), this, SLOT(viewNormalModeSlot()));  
  
@@ -819,6 +820,10 @@ void ObjectBrowser::saveProjectSlot()
 	}
 }
 
+void ObjectBrowser::newProjectSlot(){
+  modelClearSlot();
+}
+
 void ObjectBrowser::modelClearSlot(){
   geometryParentTreeItem->setText(1,"");
   QTreeWidgetItem* treeItem = 0;
@@ -854,8 +859,6 @@ void ObjectBrowser::updateBoundaryProperties(BoundaryPropertyEditor* selectThis 
 	QTreeWidgetItem* treeItem = 0;
 	while(treeItem = boundaryPropertyParentTreeItem->takeChild(0)) delete treeItem;
 
-	BoundaryPropertyEditor* pe;
-	
   for( int i=0; i< mainwindow->glWidget->boundaryMap.count(); i++ )
   {
     int n = mainwindow->glWidget->boundaryMap.key(i);
@@ -902,7 +905,9 @@ void ObjectBrowser::boundaryUnifiedSlot(){
 }
 void ObjectBrowser::boundaryDividedSlot(double d){
 	bodyPropertyParentTreeItem->setExpanded(false);
+	bodyPropertyParentTreeItem->addChild(new QTreeWidgetItem()); //dummy
 	boundaryPropertyParentTreeItem->setExpanded(false);
+	boundaryPropertyParentTreeItem->addChild(new QTreeWidgetItem()); //dummy
 }
 
 void ObjectBrowser::boundarySelectedSlot(list_t* l){
@@ -1242,7 +1247,6 @@ void ObjectBrowser::updateBodyProperties(BodyPropertyEditor* selectThis /*=NULL*
 	QTreeWidgetItem* treeItem = 0;
 	while(treeItem = bodyPropertyParentTreeItem->takeChild(0)) delete treeItem;
 
-	BodyPropertyEditor* pe;
 	int count = 1;
 	
   for( int i=0; i< mainwindow->glWidget->bodyMap.count(); i++ )
@@ -1403,7 +1407,6 @@ void ObjectBrowser::updateBoundaryCondition(){
 }
 void ObjectBrowser::boundaryComboChanged(BoundaryPropertyEditor *pe,QString text){
 	QTreeWidgetItem* treeItem;
-	QTreeWidgetItem* child;
 	
 	int n = boundaryPropertyParentTreeItem->childCount();
 	for(int i= 0; i < n; i++){
@@ -1686,9 +1689,11 @@ void ObjectBrowser::meshingStartedSlot()
 }
 void ObjectBrowser::meshingTerminatedSlot()
 {
+	updateBodyProperties();
+	updateBoundaryProperties();
 }
 void ObjectBrowser::meshingFinishedSlot()
 {
-	bodyPropertyParentTreeItem->setExpanded(false);
-	boundaryPropertyParentTreeItem->setExpanded(false);
+	updateBodyProperties();
+	updateBoundaryProperties();
 }

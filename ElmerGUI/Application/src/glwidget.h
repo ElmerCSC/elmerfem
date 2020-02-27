@@ -63,6 +63,14 @@ enum ListTypes {
 #include <GL/glu.h>
 #endif
 
+#ifdef WIN32
+#ifndef __MINGW32__
+#ifdef _CONSOLE
+#include <GL/glut.h> // when compiling with MSVC
+#endif
+#endif
+#endif
+
 #include <QGLWidget>
 #include <QHash>
 #include <QVector>
