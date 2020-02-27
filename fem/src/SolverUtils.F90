@@ -9163,7 +9163,6 @@ END FUNCTION SearchNodeL
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
         SkipConstraints, ResidualMode, RelativeP
-
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
@@ -9221,7 +9220,7 @@ END FUNCTION SearchNodeL
       Solver % Variable % NonlinIter = IterNo
 
       Skip = ListGetLogical( SolverParams,'Skip Advance Nonlinear iter',Stat)
-      IF( .not. Skip )  iterVar % Values(1) = IterNo + 1 
+      IF( .NOT. Skip )  iterVar % Values(1) = IterNo + 1 
 
       IF( .NOT. Solver % NewtonActive ) THEN
         i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
@@ -9520,6 +9519,7 @@ END FUNCTION SearchNodeL
           Solver % Variable % SteadyConverged = 0
         END IF          
       END IF
+      
       Tolerance = ListGetCReal( SolverParams,'Steady State Divergence Limit',Stat)
       IF( Stat .AND. Change > Tolerance ) THEN
         IF( IterNo > 1 .AND. Change > PrevChange ) THEN
@@ -9527,9 +9527,10 @@ END FUNCTION SearchNodeL
           Solver % Variable % SteadyConverged = 2
         END IF
       END IF
+      
       Tolerance = ListGetCReal( SolverParams,'Steady State Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
-        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition')
+        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition',Level=6)
         Solver % Variable % SteadyConverged = 3
       END IF
 
@@ -9537,30 +9538,38 @@ END FUNCTION SearchNodeL
       PrevChange = Solver % Variable % NonlinChange 
       Solver % Variable % NonlinChange = Change
       Solver % Variable % NonlinConverged = 0
+
+      MaxIter = ListGetInteger( SolverParams,'Nonlinear System Max Iterations',Stat)            
+      
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Convergence Tolerance',Stat)
       IF( Stat ) THEN
         IF( Change <= Tolerance ) THEN
           Solver % Variable % NonlinConverged = 1
-        END IF          
+        ELSE IF( IterNo >= MaxIter ) THEN
+          IF( ListGetLogical( SolverParams,'Nonlinear System Abort Not Converged',Stat ) ) THEN
+            CALL Fatal(Caller,'Nonlinear iteration did not converge to tolerance')
+          ELSE
+            CALL Info(Caller,'Nonlinear iteration did not converge to tolerance',Level=6)
+            ! Solver % Variable % NonlinConverged = 2            
+          END IF
+        END IF
       END IF
 
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Divergence Limit',Stat)
-      IF( Stat .AND. Change > Tolerance ) THEN
-        IF( IterNo > 1 .AND. Change > PrevChange ) THEN
-          CALL Info(Caller,'Nonlinear iteration diverged over tolerance')
-          Solver % Variable % NonlinConverged = 2
-        ELSE 
-          MaxIter = ListGetInteger( SolverParams,'Nonlinear System Max Iterations',Stat)
-          IF( IterNo >= MaxIter ) THEN
+      IF( Stat .AND. Change > Tolerance ) THEN        
+        IF( ( IterNo > 1 .AND. Change > PrevChange ) .OR. ( IterNo >= MaxIter ) ) THEN
+          IF( ListGetLogical( SolverParams,'Nonlinear System Abort Diverged',Stat ) ) THEN
+            CALL Fatal(Caller,'Nonlinear iteration diverged over limit')
+          ELSE
+            CALL Info(Caller,'Nonlinear iteration diverged over limit',Level=6)
             Solver % Variable % NonlinConverged = 2
-            CALL Info(Caller,'Nonlinear iteration did not converge to tolerance')
           END IF
         END IF
       END IF
 
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
-        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition')
+        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition',Level=6)
         Solver % Variable % NonlinConverged = 3
       END IF
       
