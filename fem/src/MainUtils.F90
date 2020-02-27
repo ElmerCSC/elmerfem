@@ -5200,12 +5200,9 @@ CONTAINS
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
          UpdateExported, GotCoordTransform, NamespaceFound
-     INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId
+     INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
-#ifndef USE_ISO_C_BINDINGS
-     CPUTime,RealTime
-#endif
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
@@ -5255,6 +5252,7 @@ CONTAINS
 !---------------------------------------------------------------------------------   
 ! There may also be predefined discrete intervals for the execution of the solver.
 !---------------------------------------------------------------------------------   
+     execi = 1
      ExecIntervals => ListGetIntegerArray( Params,'Exec Intervals', Found )
      IF( .NOT. Found ) THEN
        ExecIntervals =>  ListGetIntegerArray( Params,'Exec Interval', Found )
@@ -5275,8 +5273,9 @@ CONTAINS
        ELSE
          timei0 = 0
        END IF
-
-       IF( MOD( timestep-1-timei0, ExecIntervals(timei)) /= 0 ) RETURN
+       
+       execi = ExecIntervals(timei)
+       IF( MOD( timestep-1-timei0, execi) /= 0 ) RETURN              
      END IF
 
 !-------------------------------------------------------------------------------
@@ -5322,6 +5321,11 @@ CONTAINS
      IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
        DTScal = ListGetConstReal( Params, 'Timestep Scale', Found )
        IF ( .NOT. Found ) DTScal = 1.0_dp
+
+       IF( ListGetLogical( Params,'Timestep Over Intervals',Found) ) THEN
+         DTScal = 1.0_dp * Execi
+       END IF
+
        Solver % dt = DtScal * dt 
 
        IF ( TransientSimulation ) THEN
