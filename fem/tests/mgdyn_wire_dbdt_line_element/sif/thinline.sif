@@ -2,7 +2,7 @@
 ! eelis.takala@gmail.com
 
 $ B0 = 0.50
-$ freq = 0.001
+$ freq = 0.0005
 $ omega = 2 * pi * freq
 $ nstep = 1
 $ periodnstep = 1
@@ -10,7 +10,7 @@ $ periodnstep = 1
 Check Keywords "Warn"
 INCLUDE wire_pair/mesh.names
 Header 1
-   Mesh DB "." "wire_pair_tet"
+   Mesh DB "." "wire_pair"
 End
 Constants 1
    Permittivity of Vacuum = 8.8542e-12
@@ -74,11 +74,11 @@ Solver 3  !---- ResultOutputSolve, ResultOutputSolver
    Save Geometry Ids = Logical True
 End
 Solver 4  !---- SaveData, SaveScalars
-   Exec Solver = After timestep
-!   Exec Solver = Never
+!   Exec Solver = After timestep
+   Exec Solver = Never
    Equation = "sv"
    Procedure = "SaveData" "SaveScalars"
-   Filename = wire_pair_tet/dat/wire_pair_tet.dat
+   Filename = wire_pair/dat/wire_pair.dat
 End
 Equation 1
    Active Solvers(3) = 1 2 3
@@ -99,7 +99,7 @@ Boundary Condition 1  !---- BCn Flux Parallel
    Name = BCn Flux Parallel
    Target Boundaries(4) = $ xplus xminus yplus yminus
    A {e} = Real 0
-   A = Real 0
+!   A = Real 0
 End
 Boundary Condition 2 !---- wire1
    Name = wire1
@@ -116,20 +116,30 @@ End
 Boundary Condition 4 !---- rc1
    Name = rc1
    Target Boundaries(1) = $ rc1
-   Thin Line Conductivity = Real 1e7
+   Thin Line Conductivity = Real 1e0
    Thin Line Crossection Area = Real 1e-6
 End
 Boundary Condition 5 !---- rc2
    Name = rc2
    Target Boundaries(1) = $ rc2
-   Thin Line Conductivity = Real 1e7
+   Thin Line Conductivity = Real 1e0
    Thin Line Crossection Area = Real 1e-6
 End
-Boundary Condition 6  !---- dbdt
-   Name = dbdt
-   Target Boundaries(1) = $ zplus
-   Magnetic Flux Density 3 = Real 1
-   !Magnetic Field Strength 3 = Real 1
+Boundary Condition 6 !---- coil
+   Name = coil
+   Target Boundaries(1) = $ coil
+   Thin Line Conductivity = Real 1e8
+   Thin Line Crossection Area = Real 1e-6
+End
+Boundary Condition 7 !---- coil_t1
+   Name = coil_t1
+   Target Boundaries(1) = $ coil_t1
+   A = Real 0
+End
+Boundary Condition 8 !---- coil_t2
+   Name = coil_t2
+   Target Boundaries(1) = $ coil_t2
+   A = Real 100
 End
 Solver 2 :: Reference Norm = Real 2.63574035E-04
 Solver 2 :: Reference Norm Tolerance = Real 1E-03
