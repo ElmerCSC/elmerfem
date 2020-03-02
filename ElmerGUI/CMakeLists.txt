@@ -13,7 +13,7 @@ SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "ElmerGUI: Include ElmerGUIlogger")
 
 IF(WITH_QT5)
   MESSAGE(STATUS "------------------------------------------------")
-  SET(QT5_PKG_LIST Qt5OpenGL Qt5Xml Qt5Script Qt5Gui Qt5Core Qt5PrintSupport)
+  SET(QT5_PKG_LIST Qt5OpenGL Qt5Xml Qt5Script Qt5Gui Qt5Core Qt5Svg Qt5Widgets Qt5PrintSupport)
   FOREACH(_pkg ${QT5_PKG_LIST})
     FIND_PACKAGE(${_pkg} PATHS ${QT5_PATH})
   ENDFOREACH()
