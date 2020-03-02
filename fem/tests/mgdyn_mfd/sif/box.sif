@@ -1,4 +1,4 @@
-! Simple case for testing the line element in 3D simulation.
+! Simple case for magnetic flux density boundary condition
 ! eelis.takala@gmail.com
 
 $ B0 = 0.50
