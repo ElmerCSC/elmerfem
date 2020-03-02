@@ -1,0 +1,10 @@
+Elmer version: 8.4
+Elmer revision: ba0345f4
+Elmer compilation date: 2020-02-28
+Solver input file: sif/thinline.sif
+File started at: 2020/03/02 07:37:07
+ 
+Variables in columns of matrix: wire_pair/dat/wire_pair.dat
+   1: res: eddy current power
+   2: res: magnetic field energy
+   3: res: thin line power

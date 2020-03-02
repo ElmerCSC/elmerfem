@@ -1,0 +1,8 @@
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+CONFIGURE_FILE(sif/thinline.sif COPYONLY) 
+file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY wire_pair/mesh.boundary wire_pair/mesh.header wire_pair/mesh.nodes wire_pair/mesh.elements wire_pair/mesh.names DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/wire_pair")
+ADD_ELMER_TEST(mgdyn_wire_dbdt_line_element)
+ADD_ELMER_LABEL(mgdyn_wire_dbdt_line_element 3D)
+ADD_ELMER_LABEL(mgdyn_wire_dbdt_line_element thin_region)
+ADD_ELMER_LABEL(mgdyn_wire_dbdt_line_element mgdyn)
