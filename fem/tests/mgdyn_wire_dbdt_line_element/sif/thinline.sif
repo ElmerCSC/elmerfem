@@ -98,8 +98,11 @@ End
 Boundary Condition 1  !---- BCn Flux Parallel
    Name = BCn Flux Parallel
    Target Boundaries(4) = $ xplus xminus yplus yminus
-   A {e} = Real 0
-!   A = Real 0
+   A {e} 1 = Variable Coordinate 2
+     Real MATC "-tx/2"
+   A {e} 2 = Variable Coordinate 1
+     Real MATC "tx/2"
+End
 End
 Boundary Condition 2 !---- wire1
    Name = wire1
@@ -125,21 +128,13 @@ Boundary Condition 5 !---- rc2
    Thin Line Conductivity = Real 1e0
    Thin Line Crossection Area = Real 1e-6
 End
-Boundary Condition 6 !---- coil
-   Name = coil
-   Target Boundaries(1) = $ coil
-   Thin Line Conductivity = Real 1e8
-   Thin Line Crossection Area = Real 1e-6
-End
-Boundary Condition 7 !---- coil_t1
-   Name = coil_t1
-   Target Boundaries(1) = $ coil_t1
-   A = Real 0
-End
-Boundary Condition 8 !---- coil_t2
-   Name = coil_t2
-   Target Boundaries(1) = $ coil_t2
-   A = Real 100
+Boundary Condition 6 !---- B
+   Name = B
+   Target Boundaries(2) = $ zminus zplus
+   A {e} 1 = Variable Coordinate 2
+     Real MATC "-tx/2"
+   A {e} 2 = Variable Coordinate 1
+     Real MATC "tx/2"
 End
 Solver 2 :: Reference Norm = Real 2.63574035E-04
 Solver 2 :: Reference Norm Tolerance = Real 1E-03
