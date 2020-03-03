@@ -1,11 +1,13 @@
 ! Simple case for testing the line element in 3D simulation.
 ! eelis.takala@gmail.com
 
-$ B0 = 0.50
-$ freq = 0.0005
+$ B0 = 1
+$ freq = 50
 $ omega = 2 * pi * freq
-$ nstep = 1
-$ periodnstep = 1
+$ nstep = 20
+$ periodnstep = 2
+$ sc_conductivity = 1e40
+$ rc_conductivity = 1e10
 
 Check Keywords "Warn"
 INCLUDE wire_pair/mesh.names
@@ -20,7 +22,7 @@ Initial Condition 1
    A  = Real 0
 End
 Simulation 1
-   Max Output Level = 5
+   Max Output Level = 12
    Coordinate System = Cartesian 3D
    Coordinate Mapping(3) = 1 2 3
    Coordinate Scaling = 0.001
@@ -40,12 +42,12 @@ Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
    NonLinear System Relaxation Factor=1
    Export Lagrange Multiplier = Logical True
    Linear System Solver = Iterative
-   Linear System Iterative Method = Bicgstab
+   Linear System Iterative Method = BicgstabL
    Linear System preconditioning = none
-   Linear System Convergence Tolerance = 1.e-8
+   Linear System Convergence Tolerance = 1.e-5
    Linear System Max Iterations = 3000
    Linear System Residual Output = 1000
-   Linear System ILUT Tolerance=1e-8
+   Linear System ILUT Tolerance=1e-5
    BicgstabL polynomial degree = 6
    Steady State Convergence Tolerance = 1e-08
 End
@@ -74,8 +76,8 @@ Solver 3  !---- ResultOutputSolve, ResultOutputSolver
    Save Geometry Ids = Logical True
 End
 Solver 4  !---- SaveData, SaveScalars
-!   Exec Solver = After timestep
-   Exec Solver = Never
+   Exec Solver = After timestep
+!   Exec Solver = Never
    Equation = "sv"
    Procedure = "SaveData" "SaveScalars"
    Filename = wire_pair/dat/wire_pair.dat
@@ -98,44 +100,57 @@ End
 Boundary Condition 1  !---- BCn Flux Parallel
    Name = BCn Flux Parallel
    Target Boundaries(4) = $ xplus xminus yplus yminus
-   A {e} 1 = Variable Coordinate 2
-     Real MATC "-tx/2"
-   A {e} 2 = Variable Coordinate 1
-     Real MATC "tx/2"
-End
+   A {e} = Real 0
+   A {e} 1 = Variable coordinate 2, time
+      Real MATC "-tx(0)*sin(omega*tx(1))"
 End
 Boundary Condition 2 !---- wire1
    Name = wire1
    Target Boundaries(1) = $ wire1
-   Thin Line Conductivity = Real 1e0
+   Thin Line Conductivity = Real $ sc_conductivity
    Thin Line Crossection Area = Real 1e-6
 End
 Boundary Condition 3 !---- wire2
    Name = wire2
    Target Boundaries(1) = $ wire2
-   Thin Line Conductivity = Real 1e0
+   Thin Line Conductivity = Real $ sc_conductivity
    Thin Line Crossection Area = Real 1e-6
 End
 Boundary Condition 4 !---- rc1
    Name = rc1
    Target Boundaries(1) = $ rc1
-   Thin Line Conductivity = Real 1e0
+   Thin Line Conductivity = Real $ rc_conductivity
    Thin Line Crossection Area = Real 1e-6
 End
 Boundary Condition 5 !---- rc2
    Name = rc2
    Target Boundaries(1) = $ rc2
-   Thin Line Conductivity = Real 1e0
+   Thin Line Conductivity = Real $ rc_conductivity
    Thin Line Crossection Area = Real 1e-6
 End
 Boundary Condition 6 !---- B
    Name = B
    Target Boundaries(2) = $ zminus zplus
-   A {e} 1 = Variable Coordinate 2
-     Real MATC "-tx/2"
-   A {e} 2 = Variable Coordinate 1
-     Real MATC "tx/2"
+   !A {e} 1 = Variable Coordinate 2
+   !  Real MATC "-tx/2"
+   !A {e} 2 = Variable Coordinate 1
+   !  Real MATC "tx/2"
+
+   A {e} = Real 0
+   A {e} 1 = Variable coordinate 2, time
+      Real MATC "-tx(0)*sin(omega*tx(1))"
 End
+Boundary Condition 7 ! ---- wire12_t1
+   Name = wire12_t1
+   Target Boundaries(2) = $ wire1_t1 wire2_t1 
+   A = Real 0
+End
+Boundary Condition 8 ! ---- wire12_t2
+   Name = wire12_t2
+   Target Boundaries(2) = $ wire1_t2 wire2_t2
+   A = Real 0
+End
+
 Solver 2 :: Reference Norm = Real 2.63574035E-04
 Solver 2 :: Reference Norm Tolerance = Real 1E-03
 $fprintf( stderr, "TEST CASE 1\n");

@@ -786,8 +786,9 @@ CONTAINS
        CALL Info("WhitneyAVSolver", "Found a Thin Line Element", level=10)
        ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
        IF (.NOT. Found) CALL Fatal('DoSolve','Thin Line Conductivity not found!')
-       CALL LocalMatrixThinLine(STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd )
+       CALL LocalMatrixThinLine(MASS, STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd )
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
+       IF (Transient) CALL DefaultUpdateMass(MASS)
        CYCLE
      END IF
  
@@ -2626,11 +2627,11 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixThinLine(  STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, n, nd )
+  SUBROUTINE LocalMatrixThinLine(  MASS, STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: LOAD(:,:), CrossectArea(:), Conductivity(:)
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
@@ -2644,6 +2645,7 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
+    MASS = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
