@@ -7,7 +7,7 @@ $ omega = 2 * pi * freq
 $ nstep = 20
 $ periodnstep = 2
 $ sc_conductivity = 1e40
-$ rc_conductivity = 1e10
+$ rc_conductivity = 1e20
 
 Check Keywords "Warn"
 INCLUDE wire_pair/mesh.names
@@ -100,9 +100,12 @@ End
 Boundary Condition 1  !---- BCn Flux Parallel
    Name = BCn Flux Parallel
    Target Boundaries(4) = $ xplus xminus yplus yminus
-   A {e} = Real 0
-   A {e} 1 = Variable coordinate 2, time
-      Real MATC "-tx(0)*sin(omega*tx(1))"
+!   A {e} = Real 0
+!   A {e} 1 = Variable coordinate 2, time
+!      Real MATC "-tx(0)*sin(omega*tx(1))"
+!
+   Magnetic Flux Density 3 = Variable time
+      Real MATC "B0*sin(omega*tx)"
 End
 Boundary Condition 2 !---- wire1
    Name = wire1
@@ -136,9 +139,12 @@ Boundary Condition 6 !---- B
    !A {e} 2 = Variable Coordinate 1
    !  Real MATC "tx/2"
 
-   A {e} = Real 0
-   A {e} 1 = Variable coordinate 2, time
-      Real MATC "-tx(0)*sin(omega*tx(1))"
+!   A {e} = Real 0
+!   A {e} 1 = Variable coordinate 2, time
+!      Real MATC "-tx(0)*sin(omega*tx(1))"
+
+   Magnetic Flux Density 3 = Variable time
+      Real MATC "B0*sin(omega*tx)"
 End
 Boundary Condition 7 ! ---- wire12_t1
    Name = wire12_t1
