@@ -786,7 +786,7 @@ CONTAINS
        CALL Info("WhitneyAVSolver", "Found a Thin Line Element", level=10)
        ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
        IF (.NOT. Found) CALL Fatal('DoSolve','Thin Line Conductivity not found!')
-       CALL LocalMatrixThinLine(MASS, STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd )
+       CALL LocalMatrixThinLine(MASS,STIFF,FORCE,LOAD,ThinLineCrossect,ThinLineCond,Element,n,nd )
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
        IF (Transient) CALL DefaultUpdateMass(MASS)
        CYCLE
@@ -877,7 +877,8 @@ CONTAINS
 
  
   IF (TG) THEN
-    IF ( .NOT.ALLOCATED(TreeEdges) ) CALL GaugeTree()
+    IF ( .NOT.ALLOCATED(TreeEdges) ) &
+        CALL GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
 
     WRITE(Message,*) 'Volume tree edges: ', &
            TRIM(i2s(COUNT(TreeEdges))),     &
@@ -1442,410 +1443,6 @@ CONTAINS
   END SUBROUTINE Potential
 !------------------------------------------------------------------------------
 
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE GaugeTree()
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry
-    TYPE(ListMatrix_t), POINTER :: Alist(:)
-    INTEGER :: i,j,k,l,n,Start
-    LOGICAL, ALLOCATABLE :: Done(:), CondReg(:)
-    TYPE(ValueList_t), POINTER :: BC
-    REAL(KIND=dp) :: Cond1
-    TYPE(Element_t), POINTER :: Edge, Boundary, Element
-
-    INTEGER, ALLOCATABLE :: r_e(:), s_e(:,:), iperm(:)
-    INTEGER :: ssz, status(MPI_STATUS_SIZE), ierr, ii(ParEnv % PEs)
-!------------------------------------------------------------------------------
-
-    IF( ALLOCATED( TreeEdges ) ) THEN
-      CALL Info('WhitneyAVSolver','Gauge tree already created',Level=15)
-      RETURN
-    END IF
-      
-    ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
-    TreeEdges = .FALSE.
-
-    n = Mesh % NumberOfNodes
-    ALLOCATE(Done(n)); Done=.FALSE.
-
-    ! Skip Dirichlet BCs in terms of A:
-    ! ---------------------------------
-    DO i=1,Mesh % NumberOfBoundaryElements
-      Boundary => GetBoundaryElement(i)
-
-      SELECT CASE(GetElementFamily())
-      CASE(1)
-        CYCLE
-      CASE(2)
-        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
-      CASE(3,4)
-        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
-      END SELECT
-      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
-
-      BC => GetBC()
-      IF (.NOT.ASSOCIATED(BC)) CYCLE
-      IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
-                 TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
- 
-      Done(Element % NodeIndexes) = .TRUE.
-    END DO
-
-    IF( Transient ) THEN
-      IF ( GetLogical( GetSolverParams(), 'Gauge Tree Skip Conducting Regions', Found) ) THEN
-        ! Skip conducting regions:
-        ! -------------------------
-        ALLOCATE(CondReg(Mesh % NumberOfNodes))
-        condReg = .TRUE.
-        DO i=1,GetNOFActive()
-          Element => GetActiveElement(i)
-          Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
-          IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
-        END DO
-
-        CALL CommunicateCondReg(Solver,Mesh,CondReg)
-
-        Done = Done.OR.CondReg
-        DEALLOCATE(CondReg)
-      END IF
-    END IF
-
-    ! 
-    ! Skip Dirichlet BCs in terms of B:
-    ! ---------------------------------
-    DO i=1,FluxCount
-      j = FluxMap(i)
-      IF ( Perm(j+n)<=0 ) CYCLE
-      Edge => Mesh % Edges(j)
-      Done(Edge % NodeIndexes)=.TRUE.
-    END DO
-
-    ! 
-    ! already set:
-    ! ------------
-
-    CALL RecvDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
-
-    ! node -> edge list
-    ! -----------------
-    Alist => NULL()
-    n = Mesh % NumberOfNodes
-    DO i=1,Mesh % NumberOfEdges
-      Edge => Mesh % Edges(i)
-      IF ( Perm(i+n)<=0 ) CYCLE
-      DO j=1,Edge % TYPE % NumberOfNodes
-        k=Edge % NodeIndexes(j)
-        Aentry=>List_GetMatrixIndex(Alist,k,i)
-      END DO
-    END DO
-
-    !
-    ! generate the tree for all (perhaps disconnected) parts:
-    ! -------------------------------------------------------
-    DO WHILE(.NOT.ALL(Done))
-      DO Start=1,n
-        IF (.NOT. Done(Start)) EXIT
-      END DO
-      CALL DepthFirstSearch(Alist,Done,Start)
-    END DO
-    CALL List_FreeMatrix(SIZE(Alist),Alist)
-
-    CALL SendDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
-    DEALLOCATE(Done)
-!------------------------------------------------------------------------------
-  END SUBROUTINE GaugeTree
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE GaugeTreeFluxBC()
-!------------------------------------------------------------------------------
-!   TYPE(Mesh_t) :: Mesh
-!   LOGICAL, ALLOCATABLE :: TreeEdges(:)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp
-    TYPE(ListMatrix_t), POINTER :: Alist(:)
-    INTEGER :: i,j,k,l,n,Start,nCount,fixedge
-    LOGICAL, ALLOCATABLE :: Done(:)
-    INTEGER, ALLOCATABLE :: NodeList(:)
-    TYPE(Element_t), POINTER :: Edge, Boundary, Element
-!------------------------------------------------------------------------------
-
-    IF( ALLOCATED( TreeEdges ) ) THEN
-      CALL Info('WhitneyAVSolver','Boundary Gauge tree already created',Level=15)
-      RETURN
-    END IF
-
-    ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
-    TreeEdges = .FALSE.
-
-    n = Mesh % NumberOfNodes
-    ALLOCATE(Done(n)); Done=.FALSE.
-
-    !
-    ! list the candidate nodes:
-    ! -------------------------
-    DO i=1,FluxCount
-      j = FluxMap(i)
-      Edge => Mesh % Edges(j)
-      Done(Edge % NodeIndexes)=.TRUE.
-    END DO
-
-    ALLOCATE(NodeList(COUNT(Done)))
-    nCount = 0
-    DO i=1,n
-      IF ( Done(i) ) THEN
-        nCount = nCount+1
-        NodeList(nCount)=i
-      END IF
-    END DO
-
-    Done=.FALSE.
-    DO i=1,FluxCount
-      IF ( TreeEdges(FluxMap(i)) ) THEN
-        Edge => Mesh % Edges(FluxMap(i))
-        Done(Edge % NodeIndexes)=.TRUE.
-      END IF
-    END DO
-
-    ! 
-    ! Skip Dirichlet BCs in terms of A:
-    ! ---------------------------------
-    DO i=1,Mesh % NumberOfBoundaryElements
-      Boundary => GetBoundaryElement(i)
-      SELECT CASE(GetElementFamily())
-      CASE(1)
-        CYCLE
-      CASE(2)
-        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
-      CASE(3,4)
-        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
-      END SELECT
-      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
-      BC => GetBC()
-      IF (.NOT.ASSOCIATED(BC)) CYCLE
-      IF (.NOT.ListCheckPresent( BC, &
-           TRIM(Solver % Variable % Name)//' {e}')) CYCLE
- 
-      j=1; k=GetBoundaryEdgeIndex(Boundary,j)
-      DO WHILE(k>0)
-        Edge => Mesh % Edges(k)
-        TreeEdges(k) = .TRUE.
-        Done(Edge % NodeIndexes) = .TRUE.
-        j=j+1; k=GetBoundaryEdgeIndex(Boundary,j)
-      END DO
-    END DO
-
-    ! node -> edge list
-    ! -----------------
-    Alist => NULL()
-    DO i=1,FluxCount
-      j = FluxMap(i)
-      IF ( Perm(j+n)<=0 ) CYCLE
-
-      Edge => Mesh % Edges(j)
-      DO k=1,Edge % TYPE % NumberOfNodes
-        l=Edge % NodeIndexes(k)
-        Aentry=>List_GetMatrixIndex(Alist,l,j)
-      END DO
-    END DO
-    
-    ! generate the tree for all (perhaps disconnected) parts:
-    ! -------------------------------------------------------
-    DO WHILE(.NOT.ALL(Done(NodeList)))
-      DO i=1,nCount
-        Start = NodeList(i)
-        IF ( .NOT. Done(Start) ) EXIT
-      END DO
-      CALL BreadthFirstSearch(Alist,Done,start,nCount,NodeList)
-    END DO
-    DEALLOCATE(Done,NodeList)
-    CALL List_FreeMatrix(SIZE(Alist),Alist)
-!------------------------------------------------------------------------------
-  END SUBROUTINE GaugeTreeFluxBC
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE BreadthFirstSearch(Alist,done,start,nCount,NodeList)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    INTEGER :: start,nCount,NodeList(:)
-    LOGICAL :: Done(:)
-    TYPE(ListMatrix_t) :: Alist(:)
-!------------------------------------------------------------------------------
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp, Btmp
-    INTEGER :: i,j,k,l,n,m,ll,IF,bcycle
-    TYPE(Element_t), POINTER :: Edge,Edge1,Boundary
-    LOGICAL, ALLOCATABLE :: DoneL(:)
-    INTEGER, ALLOCATABLE :: Fifo(:), Previous(:), FiFo1(:)
-!------------------------------------------------------------------------------
-
-   ALLOCATE(DoneL(Mesh % NumberOfEdges)); DoneL=.FALSE.
-   ALLOCATE(Fifo(FluxCount),FiFo1(FluxCount))
-   ALLOCATE(Previous(Mesh % NumberOfNodes)); Previous=0;
-
-   IF = 0; m=0
-   DO i=1,nCount
-     j = NodeList(i)
-     IF ( Done(j) ) THEN
-       m=m+1; fifo1(m)=j
-       IF=IF+1; fifo(IF)=j
-     END IF
-   END DO
-
-   IF ( IF>0 ) THEN
-     DO WHILE(m>0)
-       j = Fifo1(m); m=m-1
-
-       Aentry => Alist(j) % Head
-       DO WHILE(ASSOCIATED(Aentry))
-         k = Aentry % Index
-         Aentry => Aentry % Next
-
-         Edge => Mesh % Edges(k)
-         IF (.NOT. TreeEdges(k) .OR. DoneL(k) ) CYCLE
-         DoneL(k)=.TRUE.
-
-         l = Edge % NodeIndexes(1)
-         IF (l==j) l=Edge % NodeIndexes(2)
-
-         IF=IF+1; Fifo(IF)=l
-         m=m+1; Fifo1(m)=l
-         Previous(l)=j
-       END DO
-     END DO
-     Start = l
-   END IF
-   
-   IF ( IF==0 ) THEN
-     Done(Start)=.TRUE.
-     IF=1; fifo(IF)=start;
-   END IF
-
-   Bcycle=0;
-   ALLOCATE(BasicCycles(FluxCount))
-   
-   BasicCycles(:) % Degree = 0
-   DO i=1,FluxCount
-     BasicCycles(i) % Head => NULL()
-   END DO
-
-   DO WHILE(IF>0)
-     j = Fifo(IF); IF=IF-1
-
-     Aentry => Alist(j) % Head
-     DO WHILE(ASSOCIATED(Aentry))
-       k = Aentry % Index
-       Aentry => Aentry % Next
-
-       Edge => Mesh % Edges(k)
-       IF ( DoneL(k) ) CYCLE
-       DoneL(k)=.TRUE.
-
-       l = Edge % NodeIndexes(1)
-       IF (l==j) l=Edge % NodeIndexes(2)
-
-       IF ( Done(l) ) THEN
-         ! Generate fundamental cycle
-         bcycle = bcycle+1
-         CALL AddToCycle(bcycle,k)
-
-         m = j
-         DO WHILE(m/=Previous(l))
-           Ltmp => Alist(m) % Head
-           DO WHILE(ASSOCIATED(Ltmp))
-             Edge1 => Mesh % Edges(Ltmp % Index)
-             IF ( ANY(Edge1 % NodeIndexes(1:2)==Previous(m)) ) THEN
-               CALL AddToCycle(bcycle,Ltmp % Index); EXIT
-             END IF
-             Ltmp=>Ltmp % Next
-           END DO
-           IF ( ANY(Edge1 % NodeIndexes(1:2) == l) ) EXIT
-           m = Previous(m)
-         END DO
-
-         IF ( ALL(Edge1 % NodeIndexes(1:2) /= l) ) THEN
-           ltmp => Alist(l) % Head
-           DO WHILE(ASSOCIATED(ltmp))
-             edge1 => Mesh % Edges(Ltmp % Index)
-             IF ( ANY(Edge1 % NodeIndexes(1:2)==Previous(l)) ) THEN
-               CALL AddToCycle(bcycle,Ltmp % Index); EXIT
-             END IF
-             ltmp=>ltmp % Next
-           END DO
-         END IF
-       ELSE
-         IF (.NOT.TreeEdges(k)) CALL SetDOFToValue(Solver,k,0._dp)
-         IF=IF+1; Fifo(IF)=l
-         Previous(l)=j
-         Done(l)=.TRUE.
-         TreeEdges(k) = .TRUE.
-       END IF
-     END DO
-   END DO
-   DEALLOCATE(Fifo, Fifo1, DoneL)
-!------------------------------------------------------------------------------
-  END SUBROUTINE BreadthFirstSearch
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE AddToCycle(bcycle,index)
-    IMPLICIT NONE
-    INTEGER :: bcycle,index
-!------------------------------------------------------------------------------
-    TYPE(ListMatrixEntry_t), POINTER :: Btmp
-
-    ALLOCATE(Btmp); Btmp % Next => BasicCycles(bcycle) % Head;
-    Btmp % Index = index; BasicCycles(bcycle) % Head => Btmp
-    BasicCycles(bcycle) % Degree=BasicCycles(bcycle) % Degree+1
-!------------------------------------------------------------------------------
-  END SUBROUTINE AddToCycle
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE DepthFirstSearch(Alist,done,i)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ListMatrix_t) :: Alist(:)
-    INTEGER :: i
-    LOGICAL :: Done(:)
-!------------------------------------------------------------------------------
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry
-    INTEGER :: j,k,l,n
-    TYPE(Element_t), POINTER :: Edge
-!------------------------------------------------------------------------------
-
-    ! To give better matrix conditioning some directional heuristics
-    ! could be added,e.g. select the order of going through the nodes
-    ! edge list here:
-
-    Done(i) = .TRUE.
-
-    Aentry => Alist(i) % Head
-    DO WHILE(ASSOCIATED(Aentry))
-      k = Aentry % Index
-      Aentry => Aentry % Next
-
-      Edge => Mesh % Edges(k)
-      IF (ALL(Done(Edge % NodeIndexes))) CYCLE
-
-      IF ( .NOT. TreeEdges(k)) CALL SetDOFToValue(Solver,k,0._dp)
-      TreeEdges(k)=.TRUE.
-      DO l=1,2
-        n = Edge % NodeIndexes(l)
-        IF (.NOT. Done(n)) CALL DepthFirstSearch(Alist,done,n)
-      END DO
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE DepthFirstSearch
-!------------------------------------------------------------------------------
 
 SUBROUTINE LocalConstraintMatrix( Dconstr, Element, n, nd, PiolaVersion, SecondOrder )
 
@@ -2627,11 +2224,11 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixThinLine(  MASS, STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, n, nd )
+  SUBROUTINE LocalMatrixThinLine( MASS,STIFF, FORCE, LOAD, CrossectArea, Conductivity, Element, n, nd )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: LOAD(:,:), CrossectArea(:), Conductivity(:)
-    REAL(KIND=dp) :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: MASS(:,:),STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
@@ -2645,7 +2242,7 @@ END SUBROUTINE LocalConstraintMatrix
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
 
-    MASS = 0.0_dp
+    MASS  = 0.0_dp
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
@@ -2808,7 +2405,7 @@ END SUBROUTINE LocalConstraintMatrix
 
     ! Make gauge tree for the boundary:
     ! ---------------------------------
-    CALL GaugeTreeFluxBC()
+    CALL GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
 
     WRITE(Message,*) 'Boundary tree edges: ', &
       TRIM(i2s(COUNT(TreeEdges(FluxMap)))),   &
@@ -2889,6 +2486,7 @@ END SUBROUTINE LocalConstraintMatrix
       ! ----------------------------------
       Edge => Mesh % Edges(dMap(j))
       Element => Edge % BoundaryInfo % Left
+
       IF ( j==3 ) THEN
         m = 0
         DO k=1,3
@@ -2968,9 +2566,8 @@ END SUBROUTINE LocalConstraintMatrix
         ! -----------------------------------------------
         CycleEdges(dMap(1:j))=.TRUE.
         DO m=1,2
-          S=0; UsedFaces=.FALSE.;
-          IF( FloodFill(Element,CycleEdges, &
-                       FaceMap,UsedFaces,Bn,S) )EXIT
+          S=0; UsedFaces = .FALSE.;
+          IF( FloodFill(Element,CycleEdges,FaceMap,UsedFaces,Bn,S,0) )EXIT
 
           ! the in/out guess was wrong, try the other way:
           ! ----------------------------------------------
@@ -2979,7 +2576,10 @@ END SUBROUTINE LocalConstraintMatrix
           ELSE
             Element => Edge % BoundaryInfo % Right
           END IF
+
+          IF(.NOT.ASSOCIATED(Element)) CALL Fatal('DirichletAfromB', 'Floodfill failing.')
         END DO
+
         CycleEdges(dMap(1:j))=.FALSE.
       END IF
 
@@ -3034,13 +2634,13 @@ END SUBROUTINE LocalConstraintMatrix
 
 !------------------------------------------------------------------------------
   RECURSIVE FUNCTION FloodFill(Element,CycleEdges, &
-          FaceMap,UsedFaces,Bn,CycleSum) RESULT(Found)
+          FaceMap,UsedFaces,Bn,CycleSum, level) RESULT(Found)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: e, Element
     REAL(KIND=dp) :: CycleSum, Bn(:)
-    INTEGER :: i,j,n, FaceMap(:)
-    LOGICAL :: CycleEdges(:), UsedFaces(:), Found
+    INTEGER :: i,j,n, FaceMap(:), level
+    LOGICAL :: CycleEdges(:), UsedFaces(:), Found, L
 
     Found=.FALSE.
     IF (.NOT.ASSOCIATED(Element)) RETURN
@@ -3054,13 +2654,16 @@ END SUBROUTINE LocalConstraintMatrix
 
     DO i=1,Element % TYPE % NumberOfEdges
       j = Element % EdgeIndexes(i)
+
       IF ( CycleEdges(j) ) CYCLE
 
       e => Mesh % Edges(j) % BoundaryInfo % Right
-      IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum)) RETURN
+      IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)) RETURN
+!     L=FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)
 
       e => Mesh % Edges(j) % BoundaryInfo % Left
-      IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum)) RETURN
+      IF(.NOT.FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)) RETURN
+!     L=FloodFill(e,CycleEdges,FaceMap,UsedFaces,Bn,CycleSum,level+1)
     END DO
     Found=.TRUE.; RETURN
 !------------------------------------------------------------------------------
