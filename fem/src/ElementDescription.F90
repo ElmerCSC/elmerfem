@@ -1072,43 +1072,18 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInU2D( element,x,u,v ) RESULT(y)
 !------------------------------------------------------------------------------
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: x(:)
-!     INPUT: Nodal values of the quantity whose partial derivative we want to know
-!
-!    REAL(KIND=dp) :: u,v
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = @x(u,v)/@u
-!    
-!******************************************************************************
-   !
-   ! Return first partial derivative in u of a quantity x at point u,v
-   !
-   !
-   !
-
-      TYPE(Element_t) :: element
-
-      REAL(KIND=dp) :: u,v
-      REAL(KIND=dp), DIMENSION(:) :: x
-
+      TYPE(Element_t) :: element        !< element structure
+      REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
+      REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+      REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
-      REAL(KIND=dp) :: y,s,t
-
+      REAL(KIND=dp) :: s,t
       TYPE(ElementType_t),POINTER :: elt
       REAL(KIND=dp), POINTER :: Coeff(:)
       INTEGER, POINTER :: p(:),q(:)
       TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
-
       INTEGER :: i,j,k,m,n
 
       elt => element % TYPE
@@ -1144,37 +1119,14 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInV2D( element,x,u,v ) RESULT(y)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: x(:)
-!     INPUT: Nodal values of the quantity whose partial derivative we want to know
-!
-!    REAL(KIND=dp) :: u,v
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = @x(u,v)/@v
-!    
-!------------------------------------------------------------------------------
-    !
-    ! Return first partial derivative in v of a quantity x at point u,v
-    !
-    !
-    !
-      TYPE(Element_t) :: element
-
-      REAL(KIND=dp), DIMENSION(:) :: x
-      REAL(KIND=dp) :: u,v
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp) :: y                !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: y,s,t
-
+      REAL(KIND=dp) :: s,t
       TYPE(ElementType_t),POINTER :: elt
       REAL(KIND=dp), POINTER :: Coeff(:)
       INTEGER, POINTER :: p(:),q(:)
@@ -1209,36 +1161,13 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE NodalFirstDerivatives2D( y,element,u,v )
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: 
-!
-!    REAL(KIND=dp) :: u,v
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = @x(u,v)/@u
-!    
-!------------------------------------------------------------------------------
-   !
-   ! Return first partial derivative in u of a quantity x at point u,v
-   !
-   !
-   !
-
-      TYPE(Element_t) :: element
-      REAL(KIND=dp) :: u,v,y(:,:)
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp) :: y(:,:)           !< value of the quantity y = @x(u,v)/@u
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
       REAL(KIND=dp) :: s,t
-
       TYPE(ElementType_t),POINTER :: elt
       REAL(KIND=dp), POINTER :: Coeff(:)
       INTEGER, POINTER :: p(:),q(:)
@@ -1291,39 +1220,18 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION SecondDerivatives2D( element,x,u,v ) RESULT(ddx)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: x(:)
-!     INPUT: Nodal values of the quantity whose partial derivatives we want to know
-!
-!    REAL(KIND=dp) :: u,v
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: s
-!      value of the quantity s = @^2x(u,v)/@v^2
-!    
-!------------------------------------------------------------------------------
-
-      TYPE(Element_t) :: element
-
-      REAL(KIND=dp), DIMENSION(:) :: x
-      REAL(KIND=dp) :: u,v
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v              !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp), DIMENSION (2,2) :: ddx !< value of the quantity ddx = @^2x(u,v)/@v^2
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
       TYPE(ElementType_t),POINTER :: elt
-      REAL(KIND=dp), DIMENSION (2,2) :: ddx
       TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
-
       REAL(KIND=dp) :: s,t
       INTEGER, POINTER :: p(:),q(:)
       REAL(KIND=dp), POINTER :: Coeff(:)
-
       INTEGER :: i,j,k,n,m
 
 !------------------------------------------------------------------------------
@@ -1389,38 +1297,15 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION InterpolateInElement3D( element,x,u,v,w ) RESULT(y)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: x(:)
-!     INPUT: Nodal values of the quantity whose value we want to know
-!
-!    REAL(KIND=dp) :: u,v,w
-!     INPUT: Point at which to evaluate the value
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = x(u,v,w)
-!    
-!------------------------------------------------------------------------------
-   !
-   ! Return value of a quantity x at point u,v,w
-   !
-      TYPE(Element_t) :: element
-
-      REAL(KIND=dp) :: u,v,w
-      REAL(KIND=dp), DIMENSION(:) :: x
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to derivate
+     REAL(KIND=dp) :: y                !< value of the quantity y = x(u,v,w)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: y
-
       TYPE(ElementType_t),POINTER :: elt
-
       INTEGER :: i,j,k,l,n,m
-
       REAL(KIND=dp) :: s,t
       INTEGER, POINTER :: p(:),q(:), r(:)
       REAL(KIND=dp), POINTER :: Coeff(:)
@@ -1487,23 +1372,9 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE NodalBasisFunctions3D( y,element,u,v,w )
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: u
-!     INPUT: Point at which to evaluate the value
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = x(u)
-!    
-!------------------------------------------------------------------------------
-
-     TYPE(Element_t) :: element
-     REAL(KIND=dp) :: u,v,w,y(:)
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp) :: y(:)             !< value of the quantity y = x(u,v,w)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1561,41 +1432,16 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInU3D( element,x,u,v,w ) RESULT(y)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: x(:)
-!     INPUT: Nodal values of the quantity whose partial derivative we want to know
-!
-!    REAL(KIND=dp) :: u,v,w
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = @x(u,v,w)/@u
-!    
-!------------------------------------------------------------------------------
-   !
-   ! Return first partial derivative in u of a quantity x at point u,v,w
-   !
-
-      TYPE(Element_t) :: element
-
-      REAL(KIND=dp) :: u,v,w
-      REAL(KIND=dp), DIMENSION(:) :: x
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to be derivated
+     REAL(KIND=dp) :: y                !< value of the quantity y =  @x(u,v,w)/@u
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: y
-
       TYPE(ElementType_t),POINTER :: elt
       INTEGER :: i,j,k,l,n,m
-
       REAL(KIND=dp) :: s,t
-
       INTEGER, POINTER :: p(:),q(:), r(:)
       REAL(KIND=dp), POINTER :: Coeff(:)
       TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
@@ -1604,47 +1450,47 @@ CONTAINS
       l = elt % BasisFunctionDegree
       BasisFunctions => elt % BasisFunctions
 
-IF ( Elt % ElementCode == 605 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+      IF ( Elt % ElementCode == 605 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1) * ( -(1-v) + v*w * s ) / 4
-  y = y + x(2) * (  (1-v) - v*w * s ) / 4
-  y = y + x(3) * (  (1+v) + v*w * s ) / 4
-  y = y + x(4) * ( -(1+v) - v*w * s ) / 4
-  RETURN
-ELSE IF ( Elt % ElementCode == 613 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+        y = 0.0d0
+        y = y + x(1) * ( -(1-v) + v*w * s ) / 4
+        y = y + x(2) * (  (1-v) - v*w * s ) / 4
+        y = y + x(3) * (  (1+v) + v*w * s ) / 4
+        y = y + x(4) * ( -(1+v) - v*w * s ) / 4
+        RETURN
+      ELSE IF ( Elt % ElementCode == 613 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) + &
+        y = 0.0d0
+        y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) + &
             (-u-v-1) * ( -(1-v) + v*w * s ) ) / 4
 
-  y = y + x(2)  * (  ( (1+u) * (1-v) - w - u*v*w * s ) + &
+        y = y + x(2)  * (  ( (1+u) * (1-v) - w - u*v*w * s ) + &
             ( u-v-1) * (  (1-v) - v*w * s ) ) / 4
 
-  y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
+        y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
             ( u+v-1) * (  (1+v) + v*w * s ) ) / 4
 
-  y = y + x(4)  * ( -( (1-u) * (1+v) - w - u*v*w * s ) + &
+        y = y + x(4)  * ( -( (1-u) * (1+v) - w - u*v*w * s ) + &
             (-u+v-1) * ( -(1+v) - v*w * s ) ) / 4
 
-  y = y + x(5)  * 0.0d0
+        y = y + x(5)  * 0.0d0
 
-  y = y + x(6)  * (  (1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) ) * s / 2
-  y = y + x(7)  * (  (1+v-w)*(1-v-w) ) * s / 2
-  y = y + x(8)  * (  (1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) ) * s / 2
-  y = y + x(9)  * ( -(1+v-w)*(1-v-w) ) * s / 2
+        y = y + x(6)  * (  (1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) ) * s / 2
+        y = y + x(7)  * (  (1+v-w)*(1-v-w) ) * s / 2
+        y = y + x(8)  * (  (1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) ) * s / 2
+        y = y + x(9)  * ( -(1+v-w)*(1-v-w) ) * s / 2
 
-  y = y - x(10) * w * (1-v-w) * s
-  y = y + x(11) * w * (1-v-w) * s
-  y = y + x(12) * w * (1+v-w) * s
-  y = y - x(13) * w * (1+v-w) * s
+        y = y - x(10) * w * (1-v-w) * s
+        y = y + x(11) * w * (1-v-w) * s
+        y = y + x(12) * w * (1+v-w) * s
+        y = y - x(13) * w * (1+v-w) * s
 
-  RETURN
-END IF
+        RETURN
+      END IF
 
       y = 0.0d0
       DO n = 1,elt % NumberOfNodes
@@ -1677,44 +1523,16 @@ END IF
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInV3D( element,x,u,v,w ) RESULT(y)
 !------------------------------------------------------------------------------
-!
-!  DESCRIPTION:
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: x(:)
-!     INPUT: Nodal values of the quantity whose partial derivative we want to know
-!
-!    REAL(KIND=dp) :: u,v,w
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = @x(u,v,w)/@v
-!    
-!------------------------------------------------------------------------------
-   !
-   ! Return first partial derivative in v of a quantity x at point u,v,w
-   !
-
-      TYPE(Element_t) :: element
-
-      REAL(KIND=dp) :: u,v,w
-      REAL(KIND=dp), DIMENSION(:) :: x
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to be derivated
+     REAL(KIND=dp) :: y                !< value of the quantity y =  @x(u,v,w)/@v
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: y
-
       TYPE(ElementType_t),POINTER :: elt
-
       INTEGER :: i,j,k,l,n,m
-
       REAL(KIND=dp) :: s,t
-
       INTEGER, POINTER :: p(:),q(:), r(:)
       REAL(KIND=dp), POINTER :: Coeff(:)
       TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
@@ -1795,44 +1613,16 @@ END IF
 !------------------------------------------------------------------------------
    FUNCTION FirstDerivativeInW3D( element,x,u,v,w ) RESULT(y)
 !------------------------------------------------------------------------------
-!
-!  DESCRIPTION:
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: x(:)
-!     INPUT: Nodal values of the quantity whose partial derivative we want to know
-!
-!    REAL(KIND=dp) :: u,v,w
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = @x(u,v,w)/@w
-!    
-!------------------------------------------------------------------------------
-   !
-   ! Return first partial derivative in u of a quantity x at point u,v,w
-   !
-   !
-
-      TYPE(Element_t) :: element
-
-      REAL(KIND=dp) :: u,v,w
-      REAL(KIND=dp), DIMENSION(:) :: x
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp), DIMENSION(:) :: x  !< Nodal values of the quantity to be derivated
+     REAL(KIND=dp) :: y                !< value of the quantity y =  @x(u,v,w)/@w
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: y
-
       TYPE(ElementType_t),POINTER :: elt
       INTEGER :: i,j,k,l,n,m
-
       REAL(KIND=dp) :: s,t
-
       INTEGER, POINTER :: p(:),q(:), r(:)
       REAL(KIND=dp), POINTER :: Coeff(:)
       TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
@@ -1841,54 +1631,54 @@ END IF
       l = elt % BasisFunctionDegree
       BasisFunctions => elt % BasisFunctions
 
-IF ( Elt % ElementCode == 605 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+      IF ( Elt % ElementCode == 605 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1) * ( -1 + u*v*s**2 ) / 4
-  y = y + x(2) * ( -1 - u*v*s**2 ) / 4
-  y = y + x(3) * ( -1 + u*v*s**2 ) / 4
-  y = y + x(4) * ( -1 - u*v*s**2 ) / 4
-  y = y + x(5)
-  RETURN
-ELSE IF ( Elt % ElementCode == 613 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+        y = 0.0d0
+        y = y + x(1) * ( -1 + u*v*s**2 ) / 4
+        y = y + x(2) * ( -1 - u*v*s**2 ) / 4
+        y = y + x(3) * ( -1 + u*v*s**2 ) / 4
+        y = y + x(4) * ( -1 - u*v*s**2 ) / 4
+        y = y + x(5)
+        RETURN
+      ELSE IF ( Elt % ElementCode == 613 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1)  * (-u-v-1) * ( -1 + u*v*s**2 ) / 4
-  y = y + x(2)  * ( u-v-1) * ( -1 - u*v*s**2 ) / 4
-  y = y + x(3)  * ( u+v-1) * ( -1 + u*v*s**2 ) / 4
-  y = y + x(4)  * (-u+v-1) * ( -1 - u*v*s**2 ) / 4
+        y = 0.0d0
+        y = y + x(1)  * (-u-v-1) * ( -1 + u*v*s**2 ) / 4
+        y = y + x(2)  * ( u-v-1) * ( -1 - u*v*s**2 ) / 4
+        y = y + x(3)  * ( u+v-1) * ( -1 + u*v*s**2 ) / 4
+        y = y + x(4)  * (-u+v-1) * ( -1 - u*v*s**2 ) / 4
 
-  y = y + x(5)  * (4*w-1)
+        y = y + x(5)  * (4*w-1)
 
-  y = y + x(6)  * ( ( -(1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) - (1+u-w)*(1-u-w) ) * s + &
-                    ( 1+u-w)*(1-u-w)*(1-v-w) * s**2 ) / 2
+        y = y + x(6)  * ( ( -(1-u-w)*(1-v-w) - (1+u-w)*(1-v-w) - (1+u-w)*(1-u-w) ) * s + &
+            ( 1+u-w)*(1-u-w)*(1-v-w) * s**2 ) / 2
 
-  y = y + x(7)  * ( ( -(1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) - (1+v-w)*(1-v-w) ) * s + &
-                    ( 1+v-w)*(1-v-w)*(1+u-w) * s**2 ) / 2
+        y = y + x(7)  * ( ( -(1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) - (1+v-w)*(1-v-w) ) * s + &
+            ( 1+v-w)*(1-v-w)*(1+u-w) * s**2 ) / 2
 
-  y = y + x(8)  * ( ( -(1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) - (1+u-w)*(1-u-w) ) * s + &
-                    ( 1+u-w)*(1-u-w)*(1+v-w) * s**2 ) / 2
+        y = y + x(8)  * ( ( -(1-u-w)*(1+v-w) - (1+u-w)*(1+v-w) - (1+u-w)*(1-u-w) ) * s + &
+            ( 1+u-w)*(1-u-w)*(1+v-w) * s**2 ) / 2
 
-  y = y + x(9)  * ( ( -(1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) - (1+v-w)*(1-v-w) ) * s + &
-                    ( 1+v-w)*(1-v-w)*(1-u-w) * s**2 ) / 2
-                    
-  y = y + x(10) * ( ( (1-u-w) * (1-v-w) - w * (1-v-w) - w * (1-u-w) ) * s  + &
-                   w * (1-u-w) * (1-v-w) * s**2 )
+        y = y + x(9)  * ( ( -(1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) - (1+v-w)*(1-v-w) ) * s + &
+            ( 1+v-w)*(1-v-w)*(1-u-w) * s**2 ) / 2
 
-  y = y + x(11) * ( ( (1+u-w) * (1-v-w) - w * (1-v-w) - w * (1+u-w) ) * s  + &
-                   w * (1+u-w) * (1-v-w) * s**2 )
+        y = y + x(10) * ( ( (1-u-w) * (1-v-w) - w * (1-v-w) - w * (1-u-w) ) * s  + &
+            w * (1-u-w) * (1-v-w) * s**2 )
 
-  y = y + x(12) * ( ( (1+u-w) * (1+v-w) - w * (1+v-w) - w * (1+u-w) ) * s  + &
-                   w * (1+u-w) * (1+v-w) * s**2 )
+        y = y + x(11) * ( ( (1+u-w) * (1-v-w) - w * (1-v-w) - w * (1+u-w) ) * s  + &
+            w * (1+u-w) * (1-v-w) * s**2 )
 
-  y = y + x(13) * ( ( (1-u-w) * (1+v-w) - w * (1+v-w) - w * (1-u-w) ) * s  + &
-                   w * (1-u-w) * (1+v-w) * s**2 )
- RETURN
-END IF
+        y = y + x(12) * ( ( (1+u-w) * (1+v-w) - w * (1+v-w) - w * (1+u-w) ) * s  + &
+            w * (1+u-w) * (1+v-w) * s**2 )
+
+        y = y + x(13) * ( ( (1-u-w) * (1+v-w) - w * (1+v-w) - w * (1-u-w) ) * s  + &
+            w * (1-u-w) * (1+v-w) * s**2 )
+        RETURN
+      END IF
 
       y = 0.0d0
       DO n = 1,elt % NumberOfNodes
@@ -1913,43 +1703,22 @@ END IF
 
 
 !------------------------------------------------------------------------------
+! Return first partial derivative in u of a quantity x at point (u,v,w)
+!------------------------------------------------------------------------------
    SUBROUTINE NodalFirstDerivatives3D( y,element,u,v,w )
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    REAL(KIND=dp) :: 
-!
-!    REAL(KIND=dp) :: u,v
-!     INPUT: Point at which to evaluate the partial derivative
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: y
-!      value of the quantity y = @x(u,v)/@u
-!    
-!------------------------------------------------------------------------------
-   !
-   ! Return first partial derivative in u of a quantity x at point u,v
-   !
-
-      TYPE(Element_t) :: element
-      REAL(KIND=dp) :: u,v,w,y(:,:)
-
+     TYPE(Element_t) :: element        !< element structure
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
+     REAL(KIND=dp) :: y(:,:)           !< value of the quantity y =  @x(u,v,w)/@u
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
       REAL(KIND=dp) :: s,t,z
-
       TYPE(ElementType_t),POINTER :: elt
       REAL(KIND=dp), POINTER :: Coeff(:)
       INTEGER, POINTER :: p(:),q(:),r(:)
       TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
-
       INTEGER :: i,n
-
       REAL(KIND=dp) :: ult(0:6), vlt(0:6), wlt(0:6)
  
       elt => element % TYPE
@@ -2286,8 +2055,8 @@ END IF
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
-     TYPE(Element_t), TARGET :: Element             !< Element structure
-     INTEGER :: BasisDegree(:)!< Degree of each basis function in Basis(:) vector. 
+     TYPE(Element_t), TARGET :: Element   !< Element structure
+     INTEGER :: BasisDegree(:)            !< Degree of each basis function in Basis(:) vector. 
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -5687,7 +5456,7 @@ END SUBROUTINE PickActiveFace
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
        TYPE(Mesh_t), POINTER :: Mesh
-       TYPE(Element_t), POINTER :: Parent, Face
+       TYPE(Element_t), POINTER :: Parent, Face, pElement
        INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndices(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(4,3), WorkCurlBasis(4,3)
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
@@ -6116,7 +5885,8 @@ END SUBROUTINE PickActiveFace
            ! Identify the edge representing the element among the edges of 
            ! the parent element:
            !
-           CALL PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
+           pElement => Element 
+           CALL PickActiveFace(Mesh, Parent, pElement, Face, ActiveFaceId)
            IF (ActiveFaceId == 0) RETURN
            !
            ! Use the parent element to check whether sign reversions are needed:
@@ -11307,28 +11077,17 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
    FUNCTION ElementDiameter( elm, nodes, UseLongEdge ) RESULT(hK)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!   Type(Element_t) :: element
-!     INPUT: element structure
-!     
-!    Type(Nodes_t) :: nodes
-!     INPUT: Nodal coordinate arrays of the element
-!
-!  FUNCTION VALUE:
-!     REAL(KIND=dp) :: hK
-!    
-!------------------------------------------------------------------------------
-     TYPE(Element_t) :: elm
-     TYPE(Nodes_t) :: nodes
-     LOGICAL, OPTIONAL :: UseLongEdge
+     TYPE(Element_t) :: elm  !< element structure
+     TYPE(Nodes_t) :: nodes  !< Nodal coordinate arrays of the element
+     LOGICAL, OPTIONAL :: UseLongEdge  !< Use the longest edge to determine the diameter.
+     REAL(KIND=dp) :: hK     !< hK
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
      REAL(KIND=dp), DIMENSION(:), POINTER :: X,Y,Z
      INTEGER :: i,j,k,Family
      INTEGER, POINTER :: EdgeMap(:,:)
-     REAL(KIND=dp) :: x0,y0,z0,hK,A,S,CX,CY,CZ
+     REAL(KIND=dp) :: x0,y0,z0,A,S,CX,CY,CZ
      REAL(KIND=dp) :: J11,J12,J13,J21,J22,J23,G11,G12,G21,G22
      LOGICAL :: LongEdge=.FALSE.
 !------------------------------------------------------------------------------
@@ -11415,27 +11174,12 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
   FUNCTION TriangleInside( nx,ny,nz,x,y,z ) RESULT(inside)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    REAL(KIND=dp) :: nx(:),ny(:),nz(:)
-!      INPUT:  Node coordinate arrays
-!
-!    REAL(KIND=dp) :: x,y,z
-!      INPUT: point which to consider
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: inside
-!       result of the in/out test
-!    
-!------------------------------------------------------------------------------
-
-    REAL(KIND=dp) :: nx(:),ny(:),nz(:),x,y,z
-
+    REAL(KIND=dp) :: nx(:),ny(:),nz(:) !< Node coordinate arrays
+    REAL(KIND=dp) :: x,y,z             !< point which to consider
+    LOGICAL :: inside                  !< result of the in/out test
 !------------------------------------------------------------------------------
 !   Local variables
 !------------------------------------------------------------------------------
-    LOGICAL :: inside
-
     REAL(KIND=dp) :: a00,a01,a10,a11,b00,b01,b10,b11,detA,px,py,u,v
 !------------------------------------------------------------------------------
 
@@ -11484,25 +11228,12 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
    FUNCTION QuadInside( nx,ny,nz,x,y,z ) RESULT(inside)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    REAL(KIND=dp) :: nx(:),ny(:),nz(:)
-!      INPUT:  Node coordinate arrays
-!
-!    REAL(KIND=dp) :: x,y,z
-!      INPUT: point which to consider
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: inside
-!       result of the in/out test
-!    
-!------------------------------------------------------------------------------
-    REAL(KIND=dp) :: nx(:),ny(:),nz(:),x,y,z
+    REAL(KIND=dp) :: nx(:),ny(:),nz(:) !< Node coordinate arrays
+    REAL(KIND=dp) :: x,y,z             !< point which to consider
+    LOGICAL :: inside                  !< result of the in/out test
 !------------------------------------------------------------------------------
 !   Local variables
 !------------------------------------------------------------------------------
-    LOGICAL :: inside
-
     REAL(KIND=dp) :: r,a,b,c,d,ax,bx,cx,dx,ay,by,cy,dy,px,py,u,v
 !------------------------------------------------------------------------------
     inside = .FALSE.
@@ -11583,30 +11314,14 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
   FUNCTION TetraInside( nx,ny,nz,x,y,z ) RESULT(inside)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    REAL(KIND=dp) :: nx(:),ny(:),nz(:)
-!      INPUT:  Node coordinate arrays
-!
-!    REAL(KIND=dp) :: x,y,z
-!      INPUT: point which to consider
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: inside
-!       result of the in/out test
-!    
-!------------------------------------------------------------------------------
-
-    REAL(KIND=dp) :: nx(:),ny(:),nz(:),x,y,z
-
+    REAL(KIND=dp) :: nx(:),ny(:),nz(:) !< Node coordinate arrays
+    REAL(KIND=dp) :: x,y,z             !< point which to consider
+    LOGICAL :: inside                  !< result of the in/out test
 !------------------------------------------------------------------------------
 !   Local variables
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: A00,A01,A02,A10,A11,A12,A20,A21,A22,detA
     REAL(KIND=dp) :: B00,B01,B02,B10,B11,B12,B20,B21,B22
-
-    LOGICAL :: inside
-
     REAL(KIND=dp) :: px,py,pz,u,v,w
 !------------------------------------------------------------------------------
     inside = .FALSE.
@@ -11673,29 +11388,14 @@ END SUBROUTINE PickActiveFace
 !------------------------------------------------------------------------------
   FUNCTION BrickInside( nx,ny,nz,x,y,z ) RESULT(inside)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    REAL(KIND=dp) :: nx(:),ny(:),nz(:)
-!      INPUT:  Node coordinate arrays
-!
-!    REAL(KIND=dp) :: x,y,z
-!      INPUT: point which to consider
-!
-!  FUNCTION VALUE:
-!    LOGICAL :: inside
-!       result of the in/out test
-!    
-!------------------------------------------------------------------------------
-    REAL(KIND=dp) :: nx(:),ny(:),nz(:),x,y,z
-
+    REAL(KIND=dp) :: nx(:),ny(:),nz(:) !< Node coordinate arrays
+    REAL(KIND=dp) :: x,y,z             !< point which to consider
+    LOGICAL :: inside                  !< result of the in/out test
 !------------------------------------------------------------------------------
 !   Local variables
 !------------------------------------------------------------------------------
-    LOGICAL :: inside
-
     INTEGER :: i,j
     REAL(KIND=dp) :: px(4),py(4),pz(4),r,s,t,maxx,minx,maxy,miny,maxz,minz
-
     INTEGER :: map(3,12)
 !------------------------------------------------------------------------------
     map = RESHAPE( [ 0,1,2,   0,2,3,   4,5,6,   4,6,7,   3,2,6,   3,6,7,  &
@@ -12612,24 +12312,13 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
   FUNCTION getTriangleFaceDirection( Element, FaceMap ) RESULT(globalDir)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to get direction to
-!
-!    INTEGER :: FaceMap(3)
-!      INPUT: Element triangular face map
-!
-!  FUNCTION VALUE:
-!    INTEGER :: globalDir(3)
-!       Global direction of triangular face as local node numbers.
-!    
-!------------------------------------------------------------------------------
     IMPLICIT NONE
 
-    TYPE(Element_t) :: Element
-    INTEGER :: i, FaceMap(3), globalDir(3), nodes(3)
-
+    TYPE(Element_t) :: Element   !< Element to get direction to
+    INTEGER :: FaceMap(3)        !< Element triangular face map
+    INTEGER :: globalDir(3)      !< Global direction of triangular face as local node numbers.
+!------------------------------------------------------------------------------
+    INTEGER :: i, nodes(3)  
     nodes = 0
     
     ! Put global nodes of face into sorted order
@@ -12658,23 +12347,12 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
   FUNCTION getSquareFaceDirection( Element, FaceMap ) RESULT(globalDir)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!    Type(Element_t) :: Element
-!      INPUT: Element to get direction to
-!
-!    INTEGER :: FaceMap(4)
-!      INPUT: Element square face map
-!
-!  FUNCTION VALUE:
-!    INTEGER :: globalDir(3)
-!       Global direction of square face as local node numbers.
-!    
-!------------------------------------------------------------------------------
     IMPLICIT NONE
-
-    TYPE(Element_t) :: Element
-    INTEGER :: i, A,B,C,D, FaceMap(4), globalDir(4), nodes(4), minGlobal
+    TYPE(Element_t) :: Element   !< Element to get direction to
+    INTEGER :: FaceMap(4)        !< Element square face map
+    INTEGER :: globalDir(4)      !< Global direction of square face as local node numbers.
+!------------------------------------------------------------------------------
+    INTEGER :: i, A,B,C,D, nodes(4), minGlobal
 
     ! Get global nodes 
     nodes(1:4) = Element % NodeIndexes( FaceMap )
@@ -12724,22 +12402,10 @@ END FUNCTION PointFaceDistance
 !------------------------------------------------------------------------------
   FUNCTION wedgeOrdering( ordering ) RESULT(retVal)
 !------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!
-!    INTEGER :: ordering(4)
-!      INPUT: Local ordering of a wedge square face
-!
-!  FUNCTION VALUE:
-!    INTEGER :: retVal
-!       .TRUE. if given ordering is legal for wedge square face,
-!       .FALSE. otherwise
-!    
-!------------------------------------------------------------------------------
     IMPLICIT NONE
     
-    INTEGER, DIMENSION(4), INTENT(IN) :: ordering
-    LOGICAL :: retVal
+    INTEGER, DIMENSION(4), INTENT(IN) :: ordering  !< Local ordering of a wedge square face
+    LOGICAL :: retVal                              !< .TRUE. iff given ordering is legal for wedge square face.
 
     retVal = .FALSE.
     IF ((ordering(1) >= 1 .AND. ordering(1) <= 3 .AND.&

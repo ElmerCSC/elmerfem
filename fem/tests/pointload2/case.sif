@@ -12,7 +12,7 @@ Simulation
   Simulation Type = Steady state
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = case.ep
+!  Post File = case.vtu
 End
 
 Constants

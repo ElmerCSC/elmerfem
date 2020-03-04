@@ -16,7 +16,7 @@ Simulation
   Output Intervals = 1
   
   Output Intervals = 0
-  Post File = ref.ep
+!  Post File = ref.vtu
 
   Simulation Timing = Logical True
 End 
@@ -102,14 +102,6 @@ Solver 2
   Parallel Operator 1 = String sum
 End 
 
-Solver 3
-  Exec Solver = never
-  Equation = VtuOutput
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
-  Vtu Format = Logical True
-  Single Precision = Logical True
-End 
 
 Equation 1
   Name = "Heat"

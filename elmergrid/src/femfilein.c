@@ -3767,7 +3767,7 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
   int tagmat,verno;
-  int physvolexist, physsurfexist,**tagmap,tagsize;
+  int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
@@ -3855,7 +3855,7 @@ omstart:
 
     else if(strstr(line,"$Entities")) {
       int numPoints, numCurves, numSurfaces, numVolumes, numEnt;
-      int tag,tagdim,nophys,phystag,maxtag[4];
+      int tag,tagdim,nophys,phystag;
       int nobound, idum;
       Real rdum;
       

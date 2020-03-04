@@ -22,7 +22,7 @@ Simulation
   Timestep Sizes(2) = 0.1 0.2
   Timestep Intervals(2) = 5 3
   Output Intervals(2) = 1 1
-  Post File = "data.ep"
+!  Post File = "data.vtu"
 End
 
 Constants

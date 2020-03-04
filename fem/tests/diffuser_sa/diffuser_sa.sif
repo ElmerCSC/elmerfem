@@ -10,7 +10,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations  = 500
 
-!  Post File = "diffuser.ep"
+!  Post File = "diffuser.vtu"
 ! Output File = "diffuser.dat"
   Restart File = "channel.dat"
   Restart Position = 0

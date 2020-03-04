@@ -16,7 +16,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals = 1
-!  Post File = "reynolds_cylplate.ep"
+!  Post File = "reynolds_cylplate.vtu"
 End
 
 

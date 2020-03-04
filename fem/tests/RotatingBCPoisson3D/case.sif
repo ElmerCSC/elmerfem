@@ -19,10 +19,9 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Timestep Sizes = 0.1
-  Timestep Intervals = 20
-!80
+  Timestep Intervals = 20 !80
   Output Intervals = 0
-  Post File = mortar.ep
+!  Post File = mortar.vtu
 !  Output File = case.result
 
   Simulation Timing = Logical True
@@ -139,14 +138,6 @@ Solver 3
   Parallel Operator 1 = String sum
 End 
 
-Solver 4
-  Exec Solver = never
-  Equation = VtuOutput
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
-  Vtu Format = Logical True
-  Single Precision = Logical True
-End 
 
 Equation 1
   Name = "Heat"

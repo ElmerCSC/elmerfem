@@ -19,7 +19,7 @@ Simulation
 
   Simulation Type = Steady State
   Output Intervals = Integer 0
-  Post File = "case.ep"
+!  Post File = "case.vtu"
 End
 
 Constants

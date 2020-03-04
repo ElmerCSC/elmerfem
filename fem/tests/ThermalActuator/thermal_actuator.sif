@@ -13,7 +13,7 @@ Simulation
   Steady State Max Iterations = 50
   Output Intervals = 1
 !  Output File = "actuator.result"
-!  Post File = "actuator.ep"
+!  Post File = "actuator.vtu"
   
 ! from um:s to m:s
   Coordinate Scaling = 1.0e-6

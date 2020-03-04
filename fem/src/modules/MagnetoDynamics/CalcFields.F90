@@ -1900,7 +1900,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END DO
 
      DO k=1,3
-       IF( TotalLoss(k) > TINY( TotalLoss(k) ) ) CYCLE
+       IF( TotalLoss(k) < TINY( TotalLoss(k) ) ) CYCLE
        IF( k == 1 ) THEN
          CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Linear by bodies',Level=6)
        ELSE IF( k == 2 ) THEN

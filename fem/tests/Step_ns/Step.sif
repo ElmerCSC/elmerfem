@@ -14,7 +14,7 @@ Simulation
   Steady State Max Iterations = 20
 
   Output Intervals = 1
- Post File = "Step.ep"
+ Post File = "Step.vtu"
 ! Output File = "Step.dat"
 End
 

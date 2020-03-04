@@ -15,7 +15,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 ! Output File = "radiation2.result"
-! Post File = "radiation2.ep"
+! Post File = "radiation2.vtu"
 End
 
 Body 1

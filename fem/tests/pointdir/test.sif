@@ -12,7 +12,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
 ! Output File = "elstat.result"
-! Post File = "elstat.ep"
+! Post File = "elstat.vtu"
 End
 
 Constants
