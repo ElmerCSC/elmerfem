@@ -255,7 +255,11 @@ Solver 6
   Optimized Variable Name = String "Beta"
   Gradient Variable Name = String "DJDBeta"
   gradient Norm File = String "GradientNormAdjoint_$name$.dat"
-  
+
+  !Note: it may be beneficial to set this to True, which scales
+  !the gradient by 1/boundary_weights. With this set to false,
+  !larger elements produce larger gradients.
+  Mesh Independent = Logical False
 
 ! M1QN3 Parameters
   M1QN3 dxmin = Real 1.0e-10
