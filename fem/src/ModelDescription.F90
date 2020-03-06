@@ -312,8 +312,10 @@ CONTAINS
            CASE('abort')
              CheckAbort = 3
            END SELECT
+        ELSE IF ( Name == 'echo on master' ) THEN
+          IF( ParEnv % MyPe == 0 ) Echo = .TRUE.
         ELSE IF ( Name == 'echo on' ) THEN
-           Echo = .TRUE.
+          Echo = .TRUE.
         ELSE IF ( Name == 'echo off' ) THEN
            Echo = .FALSE.
         ELSE IF ( Name == 'numbering on' ) THEN
@@ -2719,8 +2721,8 @@ ELMER_SOLVER_HOME &
 
     Mesh => Model % Meshes
     DO WHILE( ASSOCIATED( Mesh ) )
-       CALL MeshStabParams( Mesh )
-       Mesh => Mesh % Next
+      CALL MeshStabParams( Mesh )
+      Mesh => Mesh % Next
     END DO
 
 !------------------------------------------------------------------------------
@@ -4080,7 +4082,8 @@ ELMER_SOLVER_HOME &
           END DO
 
           IF( InfoActive( 20 ) ) THEN
-            PRINT *,'LoadRestartFile range:',ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
+            PRINT *,'LoadRestartFile range:',TRIM(VarName), &
+                ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
           END IF
 
           CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )

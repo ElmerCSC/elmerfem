@@ -13917,7 +13917,7 @@ END SUBROUTINE UpdateExportedVariables
 
   Mesh => Solver % Mesh
   Params => Solver % Values
-  
+
   VarNo = 0
   DO WHILE( .TRUE. )
     VarNo = VarNo + 1
@@ -13968,8 +13968,6 @@ END SUBROUTINE UpdateExportedVariables
     END IF
 
   END DO
-    
-  CALL Info('UpdateExportedVariables','Finished computing numerical derivaties',Level=20)
     
 END SUBROUTINE DerivateExportedVariables
 
