@@ -2049,9 +2049,11 @@ CONTAINS
      ! Optionally save the limiters as a field variable so that 
      ! lower limit is given value -1.0 and upper limit value +1.0.
      IF( ListGetLogical( Params,'Save Limiter',Found ) ) THEN
+       
        LimitVar => VariableGet( Model % Variables, &
            GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
        IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
+         CALL Info('DetermineSoftLimiter','Creating field for contact: '//TRIM(GetVarName(Var)),Level=7)
          CALL VariableAddVector( Model % Variables, Solver % Mesh, Solver,&
              GetVarName(Var) //' Contact Active', Perm = FieldPerm )
          LimitVar => VariableGet( Model % Variables, &
@@ -17746,7 +17748,7 @@ CONTAINS
      LOGICAL :: AnyPriority
      INTEGER :: Priority, PrevPriority
      INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
-     LOGICAL :: NeedToGenerate 
+     LOGICAL :: NeedToGenerate, ComplexSumRow 
 
      LOGICAL :: HaveMortarDiag, LumpedDiag, PerFlipActive
      REAL(KIND=dp) :: MortarDiag, val, valsum, EpsVal
@@ -17883,6 +17885,8 @@ CONTAINS
      END IF
      
      ComplexMatrix = Solver % Matrix % Complex
+     ComplexSumRow = .FALSE.
+     
      IF( ComplexMatrix ) THEN
        IF( MODULO( Dofs,2 ) /= 0 ) CALL Fatal('GenerateConstraintMatrix',&
            'Complex matrix should have even number of components!')
@@ -18025,7 +18029,12 @@ CONTAINS
        ! and existing ConstraintMatrix to already ordered entities. 
        Reorder = ThisIsMortar
        
-       
+       ComplexSumRow = ListGetLogical( Solver % Values,'Complex Sum Row ', Found )
+       IF(.NOT. Found ) THEN       
+         ComplexSumRow = ( dofs == 2 .AND. ComplexMatrix .AND. .NOT. CreateSelf .AND. &
+             SumThis .AND. .NOT. (ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) )
+       END IF
+         
        IF( Dofs == 1 ) THEN         
 
          IF( .NOT. ActiveComponents(1) ) THEN
@@ -18253,7 +18262,7 @@ CONTAINS
                  END IF
                ELSE
                  IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
-                   CALL Fatal('GenerateConstraintMarix','MortarBC % Perm required, try lumped')
+                   CALL Fatal('GenerateConstraintMatrix','MortarBC % Perm required, try lumped')
                  END IF
                  
                  DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
@@ -18307,7 +18316,164 @@ CONTAINS
              END IF
            END IF
          END DO
-       ELSE ! dofs > 1
+         
+       ELSE IF( ComplexSumRow ) THEN
+
+         CALL Info('GenerateConstraintMatrix','Using simplified complex summing!',Level=6)
+         ComplexSumRow = .TRUE.
+         
+         ! In case of a vector valued problem create a projector that acts on all 
+         ! components of the vector. Otherwise follow the same logic.
+         IF( SumThis ) THEN
+           DO i=1,Atmp % NumberOfRows                        
+             
+             IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+               k = Atmp % InvPerm(i)
+               IF( k == 0 ) CYCLE
+             ELSE
+               k = i
+             END IF
+             
+             kk = k
+             IF( Reorder ) THEN
+               kk = Perm(k)
+               IF( kk == 0 ) CYCLE
+             END IF
+             
+             NewRow = ( SumPerm(kk) == 0 )
+             IF( NewRow ) THEN
+               sumrow = sumrow + 1                
+               SumPerm(kk) = sumrow 
+             ELSE IF(.NOT. AllocationsDone ) THEN
+               EliminatedRows = EliminatedRows + 1
+             END IF
+           END DO
+         END IF
+           
+         
+         DO i=1,Atmp % NumberOfRows           
+           
+           IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+             k = Atmp % InvPerm(i)
+             IF( k == 0 ) CYCLE
+           ELSE
+             k = i
+           END IF
+            
+           kk = k
+           IF( Reorder ) THEN
+             kk = Perm(k) 
+             IF( kk == 0 ) CYCLE
+           END IF
+             
+           IF( SumThis ) THEN             
+             row = SumPerm(kk)
+           ELSE
+             sumrow = sumrow + 1
+             row = sumrow
+           END IF
+
+           ! For complex matrices 
+           IF( AllocationsDone ) THEN
+             Btmp % InvPerm(2*row-1) = rowoffset + 2*(kk-1)+1
+             Btmp % InvPerm(2*row) = rowoffset + 2*kk
+           END IF
+
+           wsum = 0.0_dp
+                        
+
+           DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1
+             
+             col = Atmp % Cols(l) 
+             val = Atmp % Values(l)
+             
+             IF( Reorder ) THEN
+               col2 = Perm(col)
+               IF( col2 == 0 ) CYCLE
+             ELSE
+               col2 = col
+             END IF
+               
+             IF( AllocationsDone ) THEN
+               ! By Default there is no scaling
+               Scale = 1.0_dp
+               IF( ThisIsMortar ) THEN
+                 IF( ASSOCIATED( MortarBC % Perm ) ) THEN
+                   ! Look if the component refers to the slave
+                   IF( MortarBC % Perm( col ) > 0 ) THEN
+                     Scale = MortarBC % SlaveScale 
+                     wsum = wsum + val
+                   ELSE
+                     Scale = MortarBC % MasterScale
+                   END IF
+                 ELSE
+                   wsum = wsum + val
+                 END IF
+                 
+                 ! If we sum up to anti-periodic dof then use different sign
+                 ! - except if the target is also antiperiodic.
+                 IF( PerFlipActive ) THEN
+                   IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                 END IF
+                 
+               END IF
+
+               ! Add a new column index to the summed up row               
+               ! At the first sweep we need to find the first unset position
+               ! Real part
+               IF( SumThis ) THEN
+                 k2 = Btmp % Rows(2*row-1)
+                 DO WHILE( Btmp % Cols(k2) > 0 )
+                   k2 = k2 + 1
+                 END DO
+               ELSE
+                 k2 = k2 + 1
+               END IF
+                                            
+               Btmp % Cols(k2) = 2 * col2 - 1
+               Btmp % Values(k2) = Scale * val
+
+               k2 = k2 + 1
+               Btmp % Cols(k2) = 2 * col2
+               Btmp % Values(k2) = 0.0
+
+               ! Complex part
+               IF( SumThis ) THEN
+                 k2 = Btmp % Rows(2*row)
+                 DO WHILE( Btmp % Cols(k2) > 0 )
+                   k2 = k2 + 1
+                 END DO
+               ELSE
+                 k2 = k2 + 1
+               END IF
+
+               Btmp % Cols(k2) = 2 * col2 - 1 
+               Btmp % Values(k2) = 0.0
+             
+               k2 = k2 + 1
+               Btmp % Cols(k2) = 2 * col2 
+               Btmp % Values(k2) = Scale * val
+             ELSE
+               k2 = k2 + 4
+               IF( SumThis ) THEN
+                 SumCount(2*row-1) = SumCount(2*row-1) + 2
+                 SumCount(2*row) = SumCount(2*row) + 2
+               END IF
+             END IF
+           END DO
+           
+           IF( AllocationsDone ) THEN
+             IF( ThisIsMortar ) THEN
+               IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
+                 Btmp % Rhs(2*row-1) = Btmp % Rhs(2*row-1) + wsum * MortarBC % rhs(i)
+               END IF
+             END IF
+           END IF
+         END DO
+         
+       ELSE
+         
+         ! dofs > 1
          ! In case of a vector valued problem create a projector that acts on all 
          ! components of the vector. Otherwise follow the same logic.
          DO i=1,Atmp % NumberOfRows           
@@ -18351,7 +18517,7 @@ CONTAINS
 
              IF( SumThis ) THEN
                IF( Dofs*(k-1)+j > SIZE(SumPerm) ) THEN
-                 PRINT *,'bad1'
+                 CALL Fatal('GenerateConstraintMatrix','Index out of range')
                END IF
                NewRow = ( SumPerm(Dofs*(kk-1)+j) == 0 )
                IF( NewRow ) THEN
@@ -18418,6 +18584,13 @@ CONTAINS
                        Scale = MortarBC % MasterScale
                      END IF
                    END IF
+
+                   ! If we sum up to anti-periodic dof then use different sign
+                   ! - except if the target is also antiperiodic.
+                   IF( PerFlipActive ) THEN
+                     IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                   END IF
+
                  END IF
                  
                  Btmp % Cols(k2) = Dofs * ( col2 - 1) + j
@@ -18547,7 +18720,7 @@ CONTAINS
        END IF
          
        PrevPriority = Priority 
-     END DO
+     END DO ! constrain_ind
 
      IF( k2 == 0 ) THEN
        CALL Info('GenerateConstraintMatrix','No entries in constraint matrix!',Level=6)
@@ -18562,6 +18735,10 @@ CONTAINS
            TRIM(I2S(sumrow))//' rows and '//TRIM(I2S(k2))//' nonzeros',&
            Level=6)
 
+       IF( ComplexSumRow ) THEN
+         sumrow = 2 * sumrow
+       END IF
+       
        Btmp => AllocateMatrix()
        ALLOCATE( Btmp % RHS(sumrow), Btmp % Rows(sumrow+1), &
            Btmp % Cols(k2), Btmp % Values(k2), &
