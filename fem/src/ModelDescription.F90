@@ -3901,6 +3901,8 @@ ELMER_SOLVER_HOME &
          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
                 'Flow Solution',NSDOFs,Var % Values,Var % Perm )
         ELSE IF( PermSize == 0 ) THEN
+          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
+              FullName,DOFs,Var % Values) 
           IF ( DOFs > 1 ) THEN
             DO i=1,DOFs
               Component => Var % Values(i:FieldSize:DOFs)
@@ -3909,9 +3911,9 @@ ELMER_SOLVER_HOME &
                   1, Component )
             END DO
           END IF
-          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-              FullName,DOFs,Var % Values) 
         ELSE
+          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
+              FullName,DOFs,Var % Values,Var % Perm )
           IF ( DOFs > 1 ) THEN
             DO i=1,DOFs
               Component => Var % Values(i:FieldSize:DOFs)
@@ -3920,8 +3922,6 @@ ELMER_SOLVER_HOME &
                            1, Component, Var % Perm )
             END DO
           END IF
-          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-              FullName,DOFs,Var % Values,Var % Perm )
         END IF
       END IF
     END DO
