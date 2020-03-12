@@ -3426,20 +3426,30 @@ CONTAINS
                 END IF
              END IF
 
+             !Check for duplicate solvers with same var
+             !Nullify/deallocate and repoint the matrix
+             !Note: previously this DO loop was after the FreeMatrix
+             !and pointing below, but this caused double free errors
+             DO j=1,Model % NumberOfSolvers
+               IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
+               IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
+               IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
+
+               !If the other solver's matrix is the same as WorkSolver matrix, we just
+               !nullify, otherwise we deallocate. After the first timestep, solvers
+               !with the same variable will have the same matrix
+               IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkSolver % Matrix)) THEN
+                 Model % Solvers(j) % Matrix => NULL()
+               ELSE
+                 CALL FreeMatrix(Model % Solvers(j) % Matrix)
+               END IF
+               !Point this other solver % matrix to the matrix we just created
+               Model % Solvers(j) % Matrix => WorkMatrix
+             END DO
+
+             !Deallocate the old matrix & repoint
              IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
              WorkSolver % Matrix => WorkMatrix
-
-             !Check for duplicate solvers with same var
-             DO j=1,Model % NumberOfSolvers
-                IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
-                IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
-                IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
-                !Ideally, the solver's old matrix would be freed here, but apart from the 
-                !first timestep, it'll be a duplicate
-                IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkMatrix)) CYCLE
-                CALL FreeMatrix(Model % Solvers(j) % Matrix)
-                Model % Solvers(j) % Matrix => WorkMatrix
-             END DO
 
              NULLIFY(WorkMatrix)
 
