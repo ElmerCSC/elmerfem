@@ -1271,17 +1271,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            CASE(3)
              IF (Transient) THEN
                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-
-               IF (HasAngularVelocity) THEN
-                 !
-                 ! Add w x A so as to create E-field that conforms with the 
-                 ! assumption of force and charge being invariant. Multiplication
-                 ! with the electric conductivity then gives the current density 
-                 ! with respect to the fixed frame:
-                 !
-                 E(1,:) = E(1,:) + CrossProduct(angular_velo, &
-                     MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)))
-               END IF
              END IF
 
              IF (np > 0 .AND. .NOT. Transient) THEN
