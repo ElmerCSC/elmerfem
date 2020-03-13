@@ -1036,12 +1036,10 @@ CONTAINS
       CALL Info('GridDataReader', 'Keyword > Y Epsilon < not given, setting equal to > X Epsilon <',Level=6)
       Eps(2) = Eps(1)
     END IF
-    IF( NetDim == 3 ) THEN
-      Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
-      IF ( .NOT. Found ) THEN
-        CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
-        Eps(3) = Eps(1)
-      END IF
+    Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
+    IF ( .NOT. Found ) THEN
+      CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
+      Eps(3) = Eps(1)
     END IF
 
     EpsTime = GetConstReal(Params, "Time Epsilon", Found )
