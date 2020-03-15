@@ -1178,7 +1178,9 @@ void MainWindow::newProjectSlot()
     geometryInputFileName = "";
     currentProjectDirName = "";
     sifWindow->getTextEdit()->clear();
+    sifWindow->hide();
     solverLogWindow->getTextEdit()->clear();
+    solverLogWindow->hide();
     delete generalSetup; generalSetup = new GeneralSetup(this);
     summaryEditor->ui.summaryEdit->clear();  
     delete twodView; twodView = new TwodView;
@@ -1227,19 +1229,6 @@ void MainWindow::newProjectSlot()
     glWidget->rebuildLists();
     
     modelClearSlot();
-
-    // load extra solvers
-    QString message;
-    for(int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++){
-      message = "Load " + extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
-      #if WITH_QT5
-        cout << string(message.toLatin1()); cout.flush();
-      #else
-        cout << string(message.toAscii()); cout.flush();
-      #endif    
-      edfEditor->appendFrom(extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text());
-      cout << " done" << endl;
-    }
     
     // load Elmer mesh/open geometry file
     bool bStartMeshing = false;
@@ -1255,7 +1244,20 @@ void MainWindow::newProjectSlot()
     
     // save and load project
     saveProject(dlg.ui.label_projectDir->text());       
-    loadProject(dlg.ui.label_projectDir->text());       
+    loadProject(dlg.ui.label_projectDir->text());
+    
+    // load extra solvers
+    QString message;
+    for(int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++){
+      message = "Load " + extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
+      #if WITH_QT5
+        cout << string(message.toLatin1()); cout.flush();
+      #else
+        cout << string(message.toAscii()); cout.flush();
+      #endif    
+      edfEditor->appendFrom(extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text());
+      cout << " done" << endl;
+    }
 
     if(bStartMeshing) remeshSlot();
   }
@@ -7898,15 +7900,20 @@ void MainWindow::checkAndLoadExtraSolvers(QFile* file)
 
 QVariant MainWindow::settings_value(const QString & key, const QVariant &defaultValue) const
 {
-  QString iniFileName = QDir::homePath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
+  QString oldElmerGuiIniFilePath = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";
+  if(!QFile::exists(elmerGuiIniFilePath) && QFile::exists(oldElmerGuiIniFilePath))
+  {
+    elmerGuiIniFilePath = oldElmerGuiIniFilePath;
+  }
+  QSettings settings(elmerGuiIniFilePath, QSettings::IniFormat);
   return settings.value(key, defaultValue);
 }
 
 void MainWindow::settings_setValue(const QString & key, const QVariant & value)
 {
-  QString iniFileName = QDir::homePath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
+  QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";
+  QSettings settings(elmerGuiIniFilePath, QSettings::IniFormat);
   settings.setValue(key, value);
 }
 
