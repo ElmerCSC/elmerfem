@@ -73,6 +73,7 @@ enum ListTypes {
 
 #include <QGLWidget>
 #include <QHash>
+#include <QMap>
 #include <QVector>
 #include "helpers.h"
 #include "meshutils.h"
@@ -174,8 +175,8 @@ public:
   QColor sharpEdgeColor;
   
   // public hash tables:
-  QHash<int, int> boundaryMap;
-  QHash<int, int> bodyMap;
+  QMap<int, int> boundaryMap; // QHash<int, int> boundaryMap;
+  QMap<int, int> bodyMap; // QHash<int, int> bodyMap;
 
 public slots:
 

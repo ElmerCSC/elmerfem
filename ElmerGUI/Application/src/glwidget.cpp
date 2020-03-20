@@ -1120,7 +1120,7 @@ GLuint GLWidget::makeLists()
 
   // Scan volume elements to determine the number of material indices:
   //-------------------------------------------------------------------
-  QHash<int, int> bodyNatures;
+  QMap<int, int> bodyNatures;
 
   for(i = 0; i < mesh->getElements(); i++) {
     element_t *element = mesh->getElement(i);
@@ -1134,9 +1134,11 @@ GLuint GLWidget::makeLists()
     }
   }    
 
-  for(i = 0; i < bodyNatures.keys().count(); i++) {
-    int index = bodyNatures.keys().at(i);
-    int nature = bodyNatures.value(index);
+  QMapIterator<int, int> itrBody(bodyNatures);
+  while (itrBody.hasNext()) {
+    itrBody.next();
+    int index = itrBody.key();
+    int nature = itrBody.value();
 
     if(nature == PDE_BULK) 
       bodyMap.insert(index, bodyCount++);
@@ -1146,7 +1148,7 @@ GLuint GLWidget::makeLists()
   //-----------------------------------------------------------------------
   int surface_bcs = 0;
 
-  QHash<int, int> surfaceNatures;
+  QMap<int, int> surfaceNatures;
 
   for(i = 0; i < mesh->getSurfaces(); i++) {
     surface_t *surface = mesh->getSurface(i);
@@ -1160,9 +1162,11 @@ GLuint GLWidget::makeLists()
     }
   }    
 
-  for(i = 0; i < surfaceNatures.keys().count(); i++) {
-    int index = surfaceNatures.keys().at(i);
-    int nature = surfaceNatures.value(index);
+  QMapIterator<int, int> itrSurface(surfaceNatures);
+  while (itrSurface.hasNext()) {
+    itrSurface.next();
+    int index = itrSurface.key();
+    int nature = itrSurface.value();
 
     if(nature > 0) {
       surface_bcs++;
@@ -1182,7 +1186,7 @@ GLuint GLWidget::makeLists()
   //--------------------------------------------------------------------
   int edge_bcs = 0;
   
-  QHash<int, int> edgeNatures;
+  QMap<int, int> edgeNatures;
   
   for(i = 0; i < mesh->getEdges(); i++) {
     edge_t *edge = mesh->getEdge(i);
@@ -1196,9 +1200,11 @@ GLuint GLWidget::makeLists()
     }
   }    
 
-  for(i = 0; i < edgeNatures.keys().count(); i++) {
-    int index = edgeNatures.keys().at(i);
-    int nature = edgeNatures.value(index);
+  QMapIterator<int, int> itrEdge(edgeNatures);
+  while (itrEdge.hasNext()) {
+    itrEdge.next();
+    int index = itrEdge.key();
+    int nature = itrEdge.value();
 
     if(nature > 0) {
       edge_bcs++;
@@ -1238,9 +1244,11 @@ GLuint GLWidget::makeLists()
   for(i = 0; i < mesh->getSurfaces(); i++)
     mesh->getSurface(i)->setSelected(false);
 
-  for(i = 0; i < surfaceNatures.keys().count(); i++) {
-    int index = surfaceNatures.keys().at(i);
-    int nature = surfaceNatures.value(index);
+  itrSurface.toFront();
+  while (itrSurface.hasNext()) {
+    itrSurface.next();
+    int index = itrSurface.key();
+    int nature = itrSurface.value();
 
     if(nature > 0) {
       l = new list_t;
@@ -1275,9 +1283,11 @@ GLuint GLWidget::makeLists()
   for(i = 0; i < mesh->getEdges(); i++)
     mesh->getEdge(i)->setSelected(false);
   
-  for(i = 0; i < edgeNatures.keys().count(); i++) {
-    int index = edgeNatures.keys().at(i);
-    int nature = edgeNatures.value(index);
+  itrEdge.toFront();
+  while (itrEdge.hasNext()) {
+    itrEdge.next();
+    int index = itrEdge.key();
+    int nature = itrEdge.value();
     
     if(nature > 0) {
       l = new list_t;

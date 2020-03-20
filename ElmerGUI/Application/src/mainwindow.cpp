@@ -2743,11 +2743,12 @@ void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe)
   slayout->addWidget(l,count,0);
   count++;
 
-  for( int i=0; i < glWidget->bodyMap.count(); i++ )
-  {
-     int n=glWidget->bodyMap.key(i);
-     if ( n >= 0 ) {
-        int m = glWidget->bodyMap.value(n);
+  QMapIterator<int, int> itr(glWidget->bodyMap);
+  while (itr.hasNext()) {
+    itr.next();
+     int n = itr.key(); 
+    if ( n >= 0 ) {
+       int m = itr.value();
 
 	if(m >= bodyPropertyEditor.size())
 	  bodyPropertyEditor.resize(m + 1);
@@ -3513,12 +3514,12 @@ void MainWindow::createBoundaryCheckBoxes(DynamicEditor *pe)
   slayout->addWidget(l,count,0);
   count++;
 
-
-  for( int i=0; i<glWidget->boundaryMap.count(); i++ )
-  {
-     int n=glWidget->boundaryMap.key(i);
-     if ( n >= 0 ) {
-       int m = glWidget->boundaryMap.value(n);
+  QMapIterator<int, int> itr(glWidget->boundaryMap);
+  while (itr.hasNext()) {
+    itr.next();
+    int n = itr.key(); 
+    if ( n >= 0 ) {
+       int m = itr.value();
 
        if(m >= boundaryPropertyEditor.size())
 	 boundaryPropertyEditor.resize(m + 1);

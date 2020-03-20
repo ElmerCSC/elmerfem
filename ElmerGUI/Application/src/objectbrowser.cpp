@@ -859,11 +859,12 @@ void ObjectBrowser::updateBoundaryProperties(BoundaryPropertyEditor* selectThis 
 	QTreeWidgetItem* treeItem = 0;
 	while(treeItem = boundaryPropertyParentTreeItem->takeChild(0)) delete treeItem;
 
-  for( int i=0; i< mainwindow->glWidget->boundaryMap.count(); i++ )
-  {
-    int n = mainwindow->glWidget->boundaryMap.key(i);
+  QMapIterator<int, int> itr(mainwindow->glWidget->boundaryMap);
+  while (itr.hasNext()) {
+    itr.next();
+    int n = itr.key(); 
     if ( n >= 0 ) {
-      int m = mainwindow->glWidget->boundaryMap.value(n);
+      int m = itr.value();
 
       if(m >= mainwindow->boundaryPropertyEditor.size()) mainwindow->boundaryPropertyEditor.resize(m + 1);
 
@@ -1249,11 +1250,12 @@ void ObjectBrowser::updateBodyProperties(BodyPropertyEditor* selectThis /*=NULL*
 
 	int count = 1;
 	
-  for( int i=0; i< mainwindow->glWidget->bodyMap.count(); i++ )
-  {
-    int n = mainwindow->glWidget->bodyMap.key(i);
+  QMapIterator<int, int> itr(mainwindow->glWidget->bodyMap);
+  while (itr.hasNext()) {
+    itr.next();
+    int n = itr.key(); 
     if ( n >= 0 ) {
-      int m = mainwindow->glWidget->bodyMap.value(n);
+      int m = itr.value();
 
       if(m >= mainwindow->bodyPropertyEditor.size()) mainwindow->bodyPropertyEditor.resize(m + 1);
 
