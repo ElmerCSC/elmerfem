@@ -2133,6 +2133,8 @@ CONTAINS
      
      SAVE FirstTime
 
+     CALL Info('DetermineContact','Setting up contact conditions',Level=8)
+     
      Model => CurrentModel
      Var => Solver % Variable
      VarName = GetVarName( Var ) 
@@ -2222,7 +2224,7 @@ CONTAINS
      ! Loop over each contact pair
      !--------------------------------------------------------------
      DO bc_ind = 1, Model % NumberOfBCs
- 
+       
        MortarBC => Model % Solver % MortarBCs(bc_ind)  
        IF( .NOT. ASSOCIATED( MortarBC ) ) CYCLE
 
@@ -2810,10 +2812,10 @@ CONTAINS
      !----------------------------------------------------------------------------------------
      SUBROUTINE CalculateMortarDistance()
 
-       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3), &
-           LocalNormal0(3), SlipCoord(3)
+       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactVec(3), ContactVelo(3), &
+           LocalNormal0(3), SlipCoord(3), CartVec(3), ContactDist
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
-       REAL(KIND=dp) :: MinDist, MaxDist
+       REAL(KIND=dp) :: MinDist, MaxDist, wsum, wsumM, mult
        TYPE(Matrix_t), POINTER :: ActiveProjector
        LOGICAL :: IsSlave, IsMaster, DistanceSet
        LOGICAL, ALLOCATABLE :: SlaveNode(:), MasterNode(:), NodeDone(:)
@@ -2882,6 +2884,11 @@ CONTAINS
 
        DebugNormals = ListGetLogical( Params,'Debug Normals',Found ) 
 
+       IF( DebugNormals ) THEN
+         PRINT *,'Flags:',TieContact,ResidualMode,ThisRotatedContact,NodalNormal,StickContact,RotationalProjector
+       END IF
+
+       
 100    CONTINUE
 
        DO i = 1,ActiveProjector % NumberOfRows
@@ -2891,18 +2898,21 @@ CONTAINS
          IF( j == 0 ) CYCLE
 
          wsum = 0.0_dp
+         wsumM = 0.0_dp
          Dist = 0.0_dp
          DistN = 0.0_dp
          DistT1 = 0.0_dp
          DistT2 = 0.0_dp
          ContactVelo = 0.0_dp
-         ContactDist = 0.0_dp
+         ContactVec = 0.0_dp
          DistanceSet = .FALSE.
-
+         ContactDist = 0.0_dp
+         CartVec = 0.0_dp
+         
          ! This is the most simple contact condition. We just want no slip on the contact.
          IF( TieContact .AND. .NOT. ResidualMode ) GOTO 200
 
-
+         ! Get the normal of the slave surface.
          IF( ThisRotatedContact ) THEN
            Rotated = GetSolutionRotation(NTT, j )
            LocalNormal = NTT(:,1)
@@ -2915,7 +2925,7 @@ CONTAINS
            IF( Dofs == 3 ) LocalT2 = ContactT2 
          END IF
 
-         ! Compute normal direction from the average sum of normals
+         ! Compute normal of the master surface from the average sum of normals
          IF( NodalNormal ) THEN
            LocalNormal = 0.0_dp
            LocalT1 = 0.0_dp
@@ -2972,7 +2982,34 @@ CONTAINS
            END DO
          END IF
 
+         ! Compute the weigted distance in the normal direction.
+         DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
+           k = ActiveProjector % Cols(j)
 
+           l = FieldPerm( k ) 
+           IF( l == 0 ) CYCLE
+
+           coeff = ActiveProjector % Values(j)
+                  
+           ! Only compute the sum related to the active projector
+           IF( SlaveNode(k) ) THEN
+             wsum = wsum + coeff
+           ELSE
+             wsumM = wsumM + coeff
+           END IF           
+         END DO
+
+         IF( ABS( wsum ) <= TINY( wsum ) ) THEN
+           CALL Fatal('CalculateMortarDistance','wsum seems to be almost zero!')
+         END IF
+         IF( ABS( wsumM ) <= TINY( wsumM ) ) THEN
+           CALL Fatal('CalculateMortarDistance','wsumM seems to be almost zero!')
+         END IF
+
+         ! Slave and master multipliers should sum up to same value
+         mult = ABS( wsum / wsumM ) 
+
+         ! Compute the weigted distance in the normal direction.
          DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
            k = ActiveProjector % Cols(j)
 
@@ -2982,13 +3019,13 @@ CONTAINS
            ! This includes only the coordinate since the displacement
            ! is added to the coordinate!
            coeff = ActiveProjector % Values(j)
-           CoeffSign = 1
 
+           CoeffSign = 1
+           
            ! Only compute the sum related to the active projector
-           IF( SlaveNode(k) ) THEN
-             wsum = wsum + coeff
-           ELSE IF( ThisRotatedContact ) THEN
-             CoeffSign = -1
+           IF( .NOT. SlaveNode(k) ) THEN
+             coeff = mult * coeff
+             IF( ThisRotatedContact ) CoeffSign = -1
            END IF
              
            IF( dofs == 2 ) THEN
@@ -3001,16 +3038,16 @@ CONTAINS
              disp(3) = DispVals( 3 * l )
            END IF
 
-           ! If nonliear analysis is used we may need to cancel the introduced gap due to numerical errors 
+           ! If nonlinear analysis is used we may need to cancel the introduced gap due to numerical errors 
            IF( TieContact .AND. ResidualMode ) THEN
              IF( ThisRotatedContact ) THEN
-               ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Disp )
-               ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Disp )
-               IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * Disp )
+               ContactVec(1) = ContactVec(1) + coeff * SUM( LocalNormal * Disp )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( LocalT1 * Disp )
+               IF( Dofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * Disp )
              ELSE
-               ContactDist(1) = ContactDist(1) + coeff * SUM( ContactNormal * Disp )
-               ContactDist(2) = ContactDist(2) + coeff * SUM( ContactT1 * Disp )
-               IF( Dofs == 3 ) ContactDist(3) = ContactDist(3) + coeff * SUM( ContactT2 * Disp ) 
+               ContactVec(1) = ContactVec(1) + coeff * SUM( ContactNormal * Disp )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( ContactT1 * Disp )
+               IF( Dofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * Disp ) 
              END IF
              CYCLE
            END IF
@@ -3031,15 +3068,18 @@ CONTAINS
              END IF
            END IF
 
-           ! If the linear system is in residual mode also set the ContactDist in residual mode too!
-           IF( ResidualMode ) Coord = Coord + Disp
+           ! If the linear system is in residual mode also set the current coordinate in residual mode too!
+           ! Note that displacement field is given always in cartesian coordinates!
+           IF( ResidualMode ) THEN
+             Coord = Coord + Disp
+           END IF
 
            ! DistN is used to give the distance that we need to move the original coordinates
            ! in the wanted direction in order to have contact.
            IF( ThisRotatedContact ) THEN
-             ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Coord )
+             ContactVec(1) = ContactVec(1) + coeff * SUM( LocalNormal * Coord )
            ELSE
-             ContactDist(1) = ContactDist(1) + coeff * SUM( ContactNormal * Coord )
+             ContactVec(1) = ContactVec(1) + coeff * SUM( ContactNormal * Coord )
            END IF
 
            ! Tangential distances needed to move the original coordinates to the contact position
@@ -3049,11 +3089,11 @@ CONTAINS
              IF( ResidualMode ) SlipCoord = SlipCoord + Disp 
 
              IF( ThisRotatedContact ) THEN
-               ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * SlipCoord )
-               IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * SlipCoord )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( LocalT1 * SlipCoord )
+               IF( Dofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * SlipCoord )
              ELSE
-               ContactDist(2) = ContactDist(2) + coeff * SUM( ContactT1 * SlipCoord )
-               IF( Dofs == 3 ) ContactDist(3) = ContactDist(3) + coeff * SUM( ContactT2 * SlipCoord )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( ContactT1 * SlipCoord )
+               IF( Dofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * SlipCoord )
              END IF
            END IF
 
@@ -3064,10 +3104,14 @@ CONTAINS
            ! whether we have contact or not. 
            IF( RotationalProjector ) THEN
              Dist = Dist + coeff * SQRT( SUM( Coord**2 ) )
-           ELSE
+           ELSE IF( NormalProjector ) THEN
+             Dist = Dist + coeff * SUM( LocalNormal * Coord )
+           ELSE             
              Dist = Dist + coeff * SUM( ContactNormal * Coord )
            END IF
 
+           CartVec = CartVec + coeff * Coord
+           
            IF( CalculateVelocity ) THEN
              Velo = ( Disp - PrevDisp ) !/ dt
              ContactVelo(1) = ContactVelo(1) + coeff * SUM( Velo * LocalNormal ) 
@@ -3078,26 +3122,19 @@ CONTAINS
          END DO
 
          ! Divide by weight to get back to real distance in the direction of the normal
-         IF( ABS( wsum ) > EPSILON( wsum )  ) THEN
-           ContactDist = ContactDist / wsum 
-           Dist = DistSign * Dist / wsum
-           IF( CalculateVelocity ) THEN
-             ContactVelo = ContactVelo / wsum
-           END IF
-         ELSE
-           ContactDist = 0.0_dp
-           Dist = 1.0_dp
-           ContactVelo = 0.0_dp
+         ContactVec = ContactVec / wsum 
+         Dist = DistSign * Dist / wsum
+         IF( CalculateVelocity ) THEN
+           ContactVelo = ContactVelo / wsum
          END IF
-
-         ! PRINT *,'ContactVelo:',i, ContactVelo(1:Dofs), wsum, IsSlave
-
+         CartVec = CartVec / wsum
+         
 200      IF( IsSlave ) THEN
-           MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactDist(1)
+           MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactVec(1)
            IF( StickContact .OR. TieContact ) THEN
-             MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactDist(2) 
+             MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactVec(2) 
              IF( Dofs == 3 ) THEN
-               MortarBC % Rhs(Dofs*(i-1)+DofT2) = -ContactDist(3)
+               MortarBC % Rhs(Dofs*(i-1)+DofT2) = -ContactVec(3)
              END IF
            END IF
 
@@ -3116,7 +3153,7 @@ CONTAINS
 
          DistVar % Values( j ) = Dist
 
-         GapVar % Values( j ) = ContactDist(1)
+         GapVar % Values( j ) = ContactVec(1)
 
          IF( CalculateVelocity ) THEN
            DO k=1,Dofs             
@@ -3178,17 +3215,15 @@ CONTAINS
            END SELECT
          END DO
        END IF
-       
-       IF( CalculateVelocity ) THEN
-         !PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
-       END IF
-
+     
        DEALLOCATE( SlaveNode )
        IF( CreateDual ) DEALLOCATE( MasterNode )
 
-       !PRINT *,'Distance Range:',MinDist, MaxDist
-       !PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
-       
+       IF( InfoActive(20 ) ) THEN
+         PRINT *,'Distance Range:',MinDist, MaxDist
+         PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
+       END IF
+         
      END SUBROUTINE CalculateMortarDistance
 
 
@@ -3263,7 +3298,7 @@ CONTAINS
            Normal = NormalVector( Element,Nodes,u,v,.TRUE. )
 
            ! Check the consistency of sign in the projector
-           IF( IsSlave .AND. ( FlatProjector .OR. PlaneProjector ) ) THEN
+           IF( IsSlave .AND. ( FlatProjector .OR. PlaneProjector .OR. NormalProjector ) ) THEN
              DotProd = SUM( Normal * ContactNormal ) 
              IF( DotProd < 0.0 ) THEN
                NormalSign = 1
@@ -3355,7 +3390,7 @@ CONTAINS
          END DO
        END IF
        
-       IF( FlatProjector .OR. PlaneProjector ) THEN
+       IF( FlatProjector .OR. PlaneProjector .OR. NormalProjector ) THEN
          IF( NormalCount == 0 ) THEN
            CALL Info('DetermineContact','All normals are consistently signed',Level=10)
          ELSE
@@ -3950,7 +3985,7 @@ CONTAINS
      !----------------------------------------------------------------------------------------
      SUBROUTINE ProjectFromSlaveToMaster()
 
-       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3), &
+       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactVelo(3), &
            LocalNormal0(3), SlipCoord(3)
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
        REAL(KIND=dp) :: MinDist, MaxDist, CoeffEps
