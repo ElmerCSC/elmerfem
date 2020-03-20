@@ -3507,15 +3507,17 @@ CONTAINS
          END IF
        END DO
 
-       IF ( -HUGE(MaxDist) /= MaxDist ) THEN
-          IF( MaxDist - MinDist >= 0.0_dp ) THEN
+       IF( InfoActive(20) ) THEN
+         IF ( -HUGE(MaxDist) /= MaxDist ) THEN
+           IF( MaxDist - MinDist >= 0.0_dp ) THEN
              PRINT *,'NormalContactSet Dist:',MinDist,MaxDist
-          END IF
-       END IF
-       IF ( -HUGE(MaxLoad) /= MaxLoad) THEN
-          IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
+           END IF
+         END IF
+         IF ( -HUGE(MaxLoad) /= MaxLoad) THEN
+           IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
              PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
-          END IF
+           END IF
+         END IF
        END IF
 
        IF(added > 0) THEN

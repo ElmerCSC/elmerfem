@@ -10,7 +10,7 @@
  
 $dy = 0.3
 $mu = 0.3
-$fileid = "nt"
+$fileid = "ntb"
 
 Header
   CHECK KEYWORDS Warn
@@ -135,7 +135,9 @@ Boundary Condition 1
 
   Mortar BC = 2
 
-  Slip Contact = Logical True
+  Contact Type = string "slide"
+!  Slip Contact = Logical True
+!  Stick Contact = Logical True
 
   Mortar BC Nonlinear = Logical True
   Mortar BC Initial Contact Depth = Real $ mu/2

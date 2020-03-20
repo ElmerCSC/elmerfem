@@ -135,6 +135,7 @@ Boundary Condition 1
 
   Mortar BC = 2
 
+!  Stick Contact = Logical True
   Slip Contact = Logical True
 
   Mortar BC Nonlinear = Logical True
