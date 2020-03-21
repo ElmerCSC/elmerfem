@@ -1590,7 +1590,7 @@ void MainWindow::loadSlot()
 {
   QString defaultDirName = getDefaultDirName();
 
-  QString dirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  QString dirName = QFileDialog::getExistingDirectory(this, tr("Open mesh directory"), defaultDirName);
 
   if (!dirName.isEmpty()) {
 
@@ -1679,7 +1679,7 @@ void MainWindow::saveAsSlot()
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save"), defaultDirName);
+  saveDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save mesh"), defaultDirName);
 
   if (!saveDirName.isEmpty()) {
     logMessage("Output directory " + saveDirName);
@@ -1725,7 +1725,7 @@ void MainWindow::saveProjectAsSlot()
 
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
+  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save project"), defaultDirName);
 
   if (!projectDirName.isEmpty()) {
     logMessage("Project directory " + projectDirName);
@@ -2046,7 +2046,7 @@ void MainWindow::loadProjectSlot()
 {
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open project directory"), defaultDirName);
   
   loadProject(projectDirName);
 }
@@ -7931,7 +7931,7 @@ void MainWindow::saveAndRun(bool generateSif)
   if(projectDirName.isEmpty())
   {
     QString defaultDirName = getDefaultDirName();
-    projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
+    projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save project"), defaultDirName);
 
     if (!projectDirName.isEmpty()) {
       logMessage("Project directory " + projectDirName);
