@@ -73,6 +73,24 @@ CONTAINS
   END FUNCTION GetCircuitModelDepth
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentVoltageFactor(CompInd) RESULT (VoltageFactor)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: CompInd
+    REAL(KIND=dp) :: VoltageFactor
+    TYPE(Valuelist_t), POINTER :: CompParams
+    LOGICAL :: Found
+     
+    CompParams => CurrentModel % Components(CompInd) % Values
+    IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('GetComponentVoltageFactor',&
+                                                        'Component parameters not found')
+    VoltageFactor = GetConstReal(CompParams, 'Circuit Equation Voltage Factor', Found)
+    IF (.NOT. Found) VoltageFactor = 1._dp
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentVoltageFactor
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
@@ -97,6 +115,25 @@ CONTAINS
    
 !------------------------------------------------------------------------------
   END FUNCTION GetComponentParams
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentId(Element) RESULT (ComponentId)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ComponentId
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Valuelist_t), POINTER :: BodyParams
+    LOGICAL :: Found
+    
+    BodyParams => GetBodyParams( Element )
+    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
+   
+    ComponentId = GetInteger(BodyParams, 'Component', Found)
+    
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentId
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -528,6 +565,9 @@ CONTAINS
       IF (.NOT. Found) Comp % i_multiplier_re = 0._dp
       Comp % i_multiplier_im = GetConstReal(CompParams, 'Current Multiplier im', Found)
       IF (.NOT. Found) Comp % i_multiplier_im = 0._dp
+
+      Comp % VoltageFactor = GetConstReal(CompParams, 'Circuit Equation Voltage Factor', Found)
+      IF (.NOT. Found) Comp % VoltageFactor = 1._dp
 
       Comp % ElBoundaries => ListGetIntegerArray(CompParams, 'Electrode Boundaries', Found)
       

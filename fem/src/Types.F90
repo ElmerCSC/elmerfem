@@ -909,7 +909,8 @@ END INTERFACE
   
   TYPE Component_t
     REAL(KIND=dp) :: Inductance=0._dp, Resistance=0._dp, Conductance = 0._dp, ElArea, &
-                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
+                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns, &
+                     VoltageFactor=1._dp
     INTEGER :: polord, nofcnts, BodyId, ComponentId
     INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()

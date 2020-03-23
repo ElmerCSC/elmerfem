@@ -128,7 +128,6 @@ Solver 8
 End
 Solver 9
    Exec Solver = Always
-   Exec Solver = Always
    Equation = Circuits Output
    Procedure = "CircuitsAndDynamics" "CircuitsOutput"
 End
@@ -197,6 +196,7 @@ Component 1
 !   Electrode Area = Real 0.000185614878383
    Electrode Boundaries(2) = Integer 4 5 
    Number of Turns = Real 144
+   Circuit Equation Voltage Factor = Real 1 ! symmetry (half of the problem is solved)
 End
 Body Force 1
    Name = "Circuit"
@@ -248,5 +248,7 @@ Solver 4 :: Reference Norm = Real 5.88944303E-01
 Solver 4 :: Reference Norm Tolerance = Real 1E-3
 Solver 6 :: Reference Norm = Real 4.11924917E-07
 Solver 6 :: Reference Norm Tolerance = Real 1E-3
+!Solver 7 :: Reference Norm = Real 3.09010812E-11 // This is too small to be tested, How to test the other components?
+!Solver 7 :: Reference Norm Tolerance = Real 1E-3
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
