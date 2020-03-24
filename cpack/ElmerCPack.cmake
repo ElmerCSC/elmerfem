@@ -105,34 +105,65 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
     ENDIF()
 
     # mingw runtime dynamic link libraries
-    FIND_FILE(MINGW_GFORT_LIB libgfortran-3.dll)
     FIND_FILE(QUADMATH_LIB libquadmath-0.dll)
     FIND_FILE(WINPTHREAD_LIB libwinpthread-1.dll)
-    FIND_FILE(GCC_LIB libgcc_s_sjlj-1.dll)
     FIND_FILE(STDCPP_LIB libstdc++-6.dll)
-
+#if 1
+    FIND_FILE(MINGW_GFORT_LIB libgfortran-5.dll)
+    FIND_FILE(GCC_LIB libgcc_s_seh-1.dll)
+    FIND_FILE(DBL_LIB libdouble-conversion.dll)
+    FIND_FILE(GMP_LIB libgmp-10.dll)
+    FIND_FILE(Z1_LIB zlib1.dll)
+    INSTALL(FILES ${MINGW_GFORT_LIB} ${QUADMATH_LIB} ${WINPTHREAD_LIB} ${GCC_LIB} ${STDCPP_LIB} ${BLAS_LIB} ${LAPACK_LIB} ${DBL_LIB} ${GMP_LIB} ${Z1_LIB} DESTINATION "bin")
+#else
+    FIND_FILE(MINGW_GFORT_LIB libgfortran-3.dll)
+    FIND_FILE(GCC_LIB libgcc_s_sjlj-1.dll)
     INSTALL(FILES ${MINGW_GFORT_LIB} ${QUADMATH_LIB} ${WINPTHREAD_LIB} ${GCC_LIB} ${STDCPP_LIB} ${BLAS_LIB} ${LAPACK_LIB} DESTINATION "bin")
+#endif
+
+# Here we augment the installation by some needed dll's that should be included with QT5. 
+# This is a quick and dirty remedy. I'm sure there is a prettier way too. 
+    IF(WITH_QT5)
+	  FIND_FILE(QTF0 tbb.dll)
+	  FIND_FILE(QTF1 libbz2-1.dll)
+      FIND_FILE(QTF2 libfreetype-6.dll)
+	  FIND_FILE(QTF3 libglib-2.0-0.dll)
+	  FIND_FILE(QTF4 libgraphite2.dll)
+	  FIND_FILE(QTF5 libharfbuzz-0.dll)
+	  FIND_FILE(QTF6 libiconv-2.dll)
+	  FIND_FILE(QTF7 libicudt65.dll)
+	  FIND_FILE(QTF8 libicuin65.dll)
+	  FIND_FILE(QTF9 libicuuc65.dll)
+	  FIND_FILE(QTF10 libintl-8.dll)
+	  FIND_FILE(QTF11 libpcre-1.dll)
+	  FIND_FILE(QTF12 libpcre2-16-0.dll)
+	  FIND_FILE(QTF13 libpng16-16.dll)
+	  FIND_FILE(QTF14 libzstd.dll)
+      INSTALL(FILES ${QTF0} ${QTF1} ${QTF2} ${QTF3} ${QTF4} ${QTF5} ${QTF6} ${QTF7} ${QTF8} ${QTF9} ${QTF10} ${QTF11} ${QTF12} ${QTF13} ${QTF14} DESTINATION "bin")
+      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../platforms" DESTINATION "bin")
+	ENDIF()
 
     IF(BUNDLE_STRIPPED_GFORTRAN)
       # TODO: This will make the windows package to be GPL3
       INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran" DESTINATION "." COMPONENT "stripped_gfortran")
-      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 4.8.3 (sjlj) compiler for compiling Elmer modules.")
-      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 4.8.3")
+      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 9.2.0 compiler for compiling Elmer modules.")
+      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 9.2.0")
     ENDIF()
 
     IF(WITH_MPI)
       IF(BUNDLE_MSMPI_REDIST)
-        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/MSMpiSetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x64.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x86.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-        SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION "Install HPC Pack 2012 R2 MS-MPI Redistributable Package")
+        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/msmpisetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+# these are for Microsoft C++ (not needed for gcc/gfortan)
+#        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x64.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+#        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x86.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+        SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION "Install MS-MPI 10.1.1. Redistributable Package")
         SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DISPLAY_NAME "MS-MPI")
         LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-        IfFileExists '$INSTDIR\\\\redist\\\\MSMpiSetup.exe' MSMpiSetupExists MsMpiSetupNotExist
+        IfFileExists '$INSTDIR\\\\redist\\\\msmpisetup.exe' MSMpiSetupExists MsMpiSetupNotExist
         MsMpiSetupExists:
-        ExecWait '$INSTDIR\\\\redist\\\\vcredist_x64.exe'
-        ExecWait '$INSTDIR\\\\redist\\\\vcredist_x86.exe'
-        ExecWait '$INSTDIR\\\\redist\\\\MSMpiSetup.exe'
+#        ExecWait '$INSTDIR\\\\redist\\\\vcredist_x64.exe'
+#        ExecWait '$INSTDIR\\\\redist\\\\vcredist_x86.exe'
+        ExecWait '$INSTDIR\\\\redist\\\\msmpisetup.exe'
         MsMpiSetupNotExist:
         ")
       ENDIF()

@@ -2049,9 +2049,11 @@ CONTAINS
      ! Optionally save the limiters as a field variable so that 
      ! lower limit is given value -1.0 and upper limit value +1.0.
      IF( ListGetLogical( Params,'Save Limiter',Found ) ) THEN
+       
        LimitVar => VariableGet( Model % Variables, &
            GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
        IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
+         CALL Info('DetermineSoftLimiter','Creating field for contact: '//TRIM(GetVarName(Var)),Level=7)
          CALL VariableAddVector( Model % Variables, Solver % Mesh, Solver,&
              GetVarName(Var) //' Contact Active', Perm = FieldPerm )
          LimitVar => VariableGet( Model % Variables, &
@@ -2131,6 +2133,8 @@ CONTAINS
      
      SAVE FirstTime
 
+     CALL Info('DetermineContact','Setting up contact conditions',Level=8)
+     
      Model => CurrentModel
      Var => Solver % Variable
      VarName = GetVarName( Var ) 
@@ -2220,7 +2224,7 @@ CONTAINS
      ! Loop over each contact pair
      !--------------------------------------------------------------
      DO bc_ind = 1, Model % NumberOfBCs
- 
+       
        MortarBC => Model % Solver % MortarBCs(bc_ind)  
        IF( .NOT. ASSOCIATED( MortarBC ) ) CYCLE
 
@@ -2808,10 +2812,10 @@ CONTAINS
      !----------------------------------------------------------------------------------------
      SUBROUTINE CalculateMortarDistance()
 
-       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3), &
-           LocalNormal0(3), SlipCoord(3)
+       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactVec(3), ContactVelo(3), &
+           LocalNormal0(3), SlipCoord(3), CartVec(3), ContactDist
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
-       REAL(KIND=dp) :: MinDist, MaxDist
+       REAL(KIND=dp) :: MinDist, MaxDist, wsum, wsumM, mult
        TYPE(Matrix_t), POINTER :: ActiveProjector
        LOGICAL :: IsSlave, IsMaster, DistanceSet
        LOGICAL, ALLOCATABLE :: SlaveNode(:), MasterNode(:), NodeDone(:)
@@ -2880,6 +2884,11 @@ CONTAINS
 
        DebugNormals = ListGetLogical( Params,'Debug Normals',Found ) 
 
+       IF( DebugNormals ) THEN
+         PRINT *,'Flags:',TieContact,ResidualMode,ThisRotatedContact,NodalNormal,StickContact,RotationalProjector
+       END IF
+
+       
 100    CONTINUE
 
        DO i = 1,ActiveProjector % NumberOfRows
@@ -2889,18 +2898,21 @@ CONTAINS
          IF( j == 0 ) CYCLE
 
          wsum = 0.0_dp
+         wsumM = 0.0_dp
          Dist = 0.0_dp
          DistN = 0.0_dp
          DistT1 = 0.0_dp
          DistT2 = 0.0_dp
          ContactVelo = 0.0_dp
-         ContactDist = 0.0_dp
+         ContactVec = 0.0_dp
          DistanceSet = .FALSE.
-
+         ContactDist = 0.0_dp
+         CartVec = 0.0_dp
+         
          ! This is the most simple contact condition. We just want no slip on the contact.
          IF( TieContact .AND. .NOT. ResidualMode ) GOTO 200
 
-
+         ! Get the normal of the slave surface.
          IF( ThisRotatedContact ) THEN
            Rotated = GetSolutionRotation(NTT, j )
            LocalNormal = NTT(:,1)
@@ -2913,7 +2925,7 @@ CONTAINS
            IF( Dofs == 3 ) LocalT2 = ContactT2 
          END IF
 
-         ! Compute normal direction from the average sum of normals
+         ! Compute normal of the master surface from the average sum of normals
          IF( NodalNormal ) THEN
            LocalNormal = 0.0_dp
            LocalT1 = 0.0_dp
@@ -2970,7 +2982,34 @@ CONTAINS
            END DO
          END IF
 
+         ! Compute the weigted distance in the normal direction.
+         DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
+           k = ActiveProjector % Cols(j)
 
+           l = FieldPerm( k ) 
+           IF( l == 0 ) CYCLE
+
+           coeff = ActiveProjector % Values(j)
+                  
+           ! Only compute the sum related to the active projector
+           IF( SlaveNode(k) ) THEN
+             wsum = wsum + coeff
+           ELSE
+             wsumM = wsumM + coeff
+           END IF           
+         END DO
+
+         IF( ABS( wsum ) <= TINY( wsum ) ) THEN
+           CALL Fatal('CalculateMortarDistance','wsum seems to be almost zero!')
+         END IF
+         IF( ABS( wsumM ) <= TINY( wsumM ) ) THEN
+           CALL Fatal('CalculateMortarDistance','wsumM seems to be almost zero!')
+         END IF
+
+         ! Slave and master multipliers should sum up to same value
+         mult = ABS( wsum / wsumM ) 
+
+         ! Compute the weigted distance in the normal direction.
          DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
            k = ActiveProjector % Cols(j)
 
@@ -2980,13 +3019,13 @@ CONTAINS
            ! This includes only the coordinate since the displacement
            ! is added to the coordinate!
            coeff = ActiveProjector % Values(j)
-           CoeffSign = 1
 
+           CoeffSign = 1
+           
            ! Only compute the sum related to the active projector
-           IF( SlaveNode(k) ) THEN
-             wsum = wsum + coeff
-           ELSE IF( ThisRotatedContact ) THEN
-             CoeffSign = -1
+           IF( .NOT. SlaveNode(k) ) THEN
+             coeff = mult * coeff
+             IF( ThisRotatedContact ) CoeffSign = -1
            END IF
              
            IF( dofs == 2 ) THEN
@@ -2999,16 +3038,16 @@ CONTAINS
              disp(3) = DispVals( 3 * l )
            END IF
 
-           ! If nonliear analysis is used we may need to cancel the introduced gap due to numerical errors 
+           ! If nonlinear analysis is used we may need to cancel the introduced gap due to numerical errors 
            IF( TieContact .AND. ResidualMode ) THEN
              IF( ThisRotatedContact ) THEN
-               ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Disp )
-               ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Disp )
-               IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * Disp )
+               ContactVec(1) = ContactVec(1) + coeff * SUM( LocalNormal * Disp )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( LocalT1 * Disp )
+               IF( Dofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * Disp )
              ELSE
-               ContactDist(1) = ContactDist(1) + coeff * SUM( ContactNormal * Disp )
-               ContactDist(2) = ContactDist(2) + coeff * SUM( ContactT1 * Disp )
-               IF( Dofs == 3 ) ContactDist(3) = ContactDist(3) + coeff * SUM( ContactT2 * Disp ) 
+               ContactVec(1) = ContactVec(1) + coeff * SUM( ContactNormal * Disp )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( ContactT1 * Disp )
+               IF( Dofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * Disp ) 
              END IF
              CYCLE
            END IF
@@ -3029,15 +3068,18 @@ CONTAINS
              END IF
            END IF
 
-           ! If the linear system is in residual mode also set the ContactDist in residual mode too!
-           IF( ResidualMode ) Coord = Coord + Disp
+           ! If the linear system is in residual mode also set the current coordinate in residual mode too!
+           ! Note that displacement field is given always in cartesian coordinates!
+           IF( ResidualMode ) THEN
+             Coord = Coord + Disp
+           END IF
 
            ! DistN is used to give the distance that we need to move the original coordinates
            ! in the wanted direction in order to have contact.
            IF( ThisRotatedContact ) THEN
-             ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Coord )
+             ContactVec(1) = ContactVec(1) + coeff * SUM( LocalNormal * Coord )
            ELSE
-             ContactDist(1) = ContactDist(1) + coeff * SUM( ContactNormal * Coord )
+             ContactVec(1) = ContactVec(1) + coeff * SUM( ContactNormal * Coord )
            END IF
 
            ! Tangential distances needed to move the original coordinates to the contact position
@@ -3047,11 +3089,11 @@ CONTAINS
              IF( ResidualMode ) SlipCoord = SlipCoord + Disp 
 
              IF( ThisRotatedContact ) THEN
-               ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * SlipCoord )
-               IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * SlipCoord )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( LocalT1 * SlipCoord )
+               IF( Dofs == 3) ContactVec(3) = ContactVec(3) + coeff * SUM( LocalT2 * SlipCoord )
              ELSE
-               ContactDist(2) = ContactDist(2) + coeff * SUM( ContactT1 * SlipCoord )
-               IF( Dofs == 3 ) ContactDist(3) = ContactDist(3) + coeff * SUM( ContactT2 * SlipCoord )
+               ContactVec(2) = ContactVec(2) + coeff * SUM( ContactT1 * SlipCoord )
+               IF( Dofs == 3 ) ContactVec(3) = ContactVec(3) + coeff * SUM( ContactT2 * SlipCoord )
              END IF
            END IF
 
@@ -3062,10 +3104,14 @@ CONTAINS
            ! whether we have contact or not. 
            IF( RotationalProjector ) THEN
              Dist = Dist + coeff * SQRT( SUM( Coord**2 ) )
-           ELSE
+           ELSE IF( NormalProjector ) THEN
+             Dist = Dist + coeff * SUM( LocalNormal * Coord )
+           ELSE             
              Dist = Dist + coeff * SUM( ContactNormal * Coord )
            END IF
 
+           CartVec = CartVec + coeff * Coord
+           
            IF( CalculateVelocity ) THEN
              Velo = ( Disp - PrevDisp ) !/ dt
              ContactVelo(1) = ContactVelo(1) + coeff * SUM( Velo * LocalNormal ) 
@@ -3076,26 +3122,19 @@ CONTAINS
          END DO
 
          ! Divide by weight to get back to real distance in the direction of the normal
-         IF( ABS( wsum ) > EPSILON( wsum )  ) THEN
-           ContactDist = ContactDist / wsum 
-           Dist = DistSign * Dist / wsum
-           IF( CalculateVelocity ) THEN
-             ContactVelo = ContactVelo / wsum
-           END IF
-         ELSE
-           ContactDist = 0.0_dp
-           Dist = 1.0_dp
-           ContactVelo = 0.0_dp
+         ContactVec = ContactVec / wsum 
+         Dist = DistSign * Dist / wsum
+         IF( CalculateVelocity ) THEN
+           ContactVelo = ContactVelo / wsum
          END IF
-
-         ! PRINT *,'ContactVelo:',i, ContactVelo(1:Dofs), wsum, IsSlave
-
+         CartVec = CartVec / wsum
+         
 200      IF( IsSlave ) THEN
-           MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactDist(1)
+           MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactVec(1)
            IF( StickContact .OR. TieContact ) THEN
-             MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactDist(2) 
+             MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactVec(2) 
              IF( Dofs == 3 ) THEN
-               MortarBC % Rhs(Dofs*(i-1)+DofT2) = -ContactDist(3)
+               MortarBC % Rhs(Dofs*(i-1)+DofT2) = -ContactVec(3)
              END IF
            END IF
 
@@ -3114,7 +3153,7 @@ CONTAINS
 
          DistVar % Values( j ) = Dist
 
-         GapVar % Values( j ) = ContactDist(1)
+         GapVar % Values( j ) = ContactVec(1)
 
          IF( CalculateVelocity ) THEN
            DO k=1,Dofs             
@@ -3176,17 +3215,15 @@ CONTAINS
            END SELECT
          END DO
        END IF
-       
-       IF( CalculateVelocity ) THEN
-         !PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
-       END IF
-
+     
        DEALLOCATE( SlaveNode )
        IF( CreateDual ) DEALLOCATE( MasterNode )
 
-       !PRINT *,'Distance Range:',MinDist, MaxDist
-       !PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
-       
+       IF( InfoActive(20 ) ) THEN
+         PRINT *,'Distance Range:',MinDist, MaxDist
+         PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
+       END IF
+         
      END SUBROUTINE CalculateMortarDistance
 
 
@@ -3261,7 +3298,7 @@ CONTAINS
            Normal = NormalVector( Element,Nodes,u,v,.TRUE. )
 
            ! Check the consistency of sign in the projector
-           IF( IsSlave .AND. ( FlatProjector .OR. PlaneProjector ) ) THEN
+           IF( IsSlave .AND. ( FlatProjector .OR. PlaneProjector .OR. NormalProjector ) ) THEN
              DotProd = SUM( Normal * ContactNormal ) 
              IF( DotProd < 0.0 ) THEN
                NormalSign = 1
@@ -3353,7 +3390,7 @@ CONTAINS
          END DO
        END IF
        
-       IF( FlatProjector .OR. PlaneProjector ) THEN
+       IF( FlatProjector .OR. PlaneProjector .OR. NormalProjector ) THEN
          IF( NormalCount == 0 ) THEN
            CALL Info('DetermineContact','All normals are consistently signed',Level=10)
          ELSE
@@ -3470,15 +3507,17 @@ CONTAINS
          END IF
        END DO
 
-       IF ( -HUGE(MaxDist) /= MaxDist ) THEN
-          IF( MaxDist - MinDist >= 0.0_dp ) THEN
+       IF( InfoActive(20) ) THEN
+         IF ( -HUGE(MaxDist) /= MaxDist ) THEN
+           IF( MaxDist - MinDist >= 0.0_dp ) THEN
              PRINT *,'NormalContactSet Dist:',MinDist,MaxDist
-          END IF
-       END IF
-       IF ( -HUGE(MaxLoad) /= MaxLoad) THEN
-          IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
+           END IF
+         END IF
+         IF ( -HUGE(MaxLoad) /= MaxLoad) THEN
+           IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
              PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
-          END IF
+           END IF
+         END IF
        END IF
 
        IF(added > 0) THEN
@@ -3948,7 +3987,7 @@ CONTAINS
      !----------------------------------------------------------------------------------------
      SUBROUTINE ProjectFromSlaveToMaster()
 
-       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3), &
+       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactVelo(3), &
            LocalNormal0(3), SlipCoord(3)
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
        REAL(KIND=dp) :: MinDist, MaxDist, CoeffEps
@@ -9163,7 +9202,6 @@ END FUNCTION SearchNodeL
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
         SkipConstraints, ResidualMode, RelativeP
-
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
@@ -9221,7 +9259,7 @@ END FUNCTION SearchNodeL
       Solver % Variable % NonlinIter = IterNo
 
       Skip = ListGetLogical( SolverParams,'Skip Advance Nonlinear iter',Stat)
-      IF( .not. Skip )  iterVar % Values(1) = IterNo + 1 
+      IF( .NOT. Skip )  iterVar % Values(1) = IterNo + 1 
 
       IF( .NOT. Solver % NewtonActive ) THEN
         i = ListGetInteger( SolverParams, 'Nonlinear System Newton After Iterations',Stat )
@@ -9520,6 +9558,7 @@ END FUNCTION SearchNodeL
           Solver % Variable % SteadyConverged = 0
         END IF          
       END IF
+      
       Tolerance = ListGetCReal( SolverParams,'Steady State Divergence Limit',Stat)
       IF( Stat .AND. Change > Tolerance ) THEN
         IF( IterNo > 1 .AND. Change > PrevChange ) THEN
@@ -9527,9 +9566,10 @@ END FUNCTION SearchNodeL
           Solver % Variable % SteadyConverged = 2
         END IF
       END IF
+      
       Tolerance = ListGetCReal( SolverParams,'Steady State Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
-        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition')
+        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition',Level=6)
         Solver % Variable % SteadyConverged = 3
       END IF
 
@@ -9537,30 +9577,38 @@ END FUNCTION SearchNodeL
       PrevChange = Solver % Variable % NonlinChange 
       Solver % Variable % NonlinChange = Change
       Solver % Variable % NonlinConverged = 0
+
+      MaxIter = ListGetInteger( SolverParams,'Nonlinear System Max Iterations',Stat)            
+      
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Convergence Tolerance',Stat)
       IF( Stat ) THEN
         IF( Change <= Tolerance ) THEN
           Solver % Variable % NonlinConverged = 1
-        END IF          
+        ELSE IF( IterNo >= MaxIter ) THEN
+          IF( ListGetLogical( SolverParams,'Nonlinear System Abort Not Converged',Stat ) ) THEN
+            CALL Fatal(Caller,'Nonlinear iteration did not converge to tolerance')
+          ELSE
+            CALL Info(Caller,'Nonlinear iteration did not converge to tolerance',Level=6)
+            ! Solver % Variable % NonlinConverged = 2            
+          END IF
+        END IF
       END IF
 
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Divergence Limit',Stat)
-      IF( Stat .AND. Change > Tolerance ) THEN
-        IF( IterNo > 1 .AND. Change > PrevChange ) THEN
-          CALL Info(Caller,'Nonlinear iteration diverged over tolerance')
-          Solver % Variable % NonlinConverged = 2
-        ELSE 
-          MaxIter = ListGetInteger( SolverParams,'Nonlinear System Max Iterations',Stat)
-          IF( IterNo >= MaxIter ) THEN
+      IF( Stat .AND. Change > Tolerance ) THEN        
+        IF( ( IterNo > 1 .AND. Change > PrevChange ) .OR. ( IterNo >= MaxIter ) ) THEN
+          IF( ListGetLogical( SolverParams,'Nonlinear System Abort Diverged',Stat ) ) THEN
+            CALL Fatal(Caller,'Nonlinear iteration diverged over limit')
+          ELSE
+            CALL Info(Caller,'Nonlinear iteration diverged over limit',Level=6)
             Solver % Variable % NonlinConverged = 2
-            CALL Info(Caller,'Nonlinear iteration did not converge to tolerance')
           END IF
         END IF
       END IF
 
       Tolerance = ListGetCReal( SolverParams,'Nonlinear System Exit Condition',Stat)
       IF( Stat .AND. Tolerance > 0.0 ) THEN
-        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition')
+        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition',Level=6)
         Solver % Variable % NonlinConverged = 3
       END IF
       
@@ -13908,7 +13956,7 @@ END SUBROUTINE UpdateExportedVariables
 
   Mesh => Solver % Mesh
   Params => Solver % Values
-  
+
   VarNo = 0
   DO WHILE( .TRUE. )
     VarNo = VarNo + 1
@@ -13959,8 +14007,6 @@ END SUBROUTINE UpdateExportedVariables
     END IF
 
   END DO
-    
-  CALL Info('UpdateExportedVariables','Finished computing numerical derivaties',Level=20)
     
 END SUBROUTINE DerivateExportedVariables
 
@@ -17739,7 +17785,7 @@ CONTAINS
      LOGICAL :: AnyPriority
      INTEGER :: Priority, PrevPriority
      INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
-     LOGICAL :: NeedToGenerate 
+     LOGICAL :: NeedToGenerate, ComplexSumRow 
 
      LOGICAL :: HaveMortarDiag, LumpedDiag, PerFlipActive
      REAL(KIND=dp) :: MortarDiag, val, valsum, EpsVal
@@ -17876,6 +17922,8 @@ CONTAINS
      END IF
      
      ComplexMatrix = Solver % Matrix % Complex
+     ComplexSumRow = .FALSE.
+     
      IF( ComplexMatrix ) THEN
        IF( MODULO( Dofs,2 ) /= 0 ) CALL Fatal('GenerateConstraintMatrix',&
            'Complex matrix should have even number of components!')
@@ -18018,7 +18066,12 @@ CONTAINS
        ! and existing ConstraintMatrix to already ordered entities. 
        Reorder = ThisIsMortar
        
-       
+       ComplexSumRow = ListGetLogical( Solver % Values,'Complex Sum Row ', Found )
+       IF(.NOT. Found ) THEN       
+         ComplexSumRow = ( dofs == 2 .AND. ComplexMatrix .AND. .NOT. CreateSelf .AND. &
+             SumThis .AND. .NOT. (ASSOCIATED( MortarBC % Diag ) .OR. HaveMortarDiag ) )
+       END IF
+         
        IF( Dofs == 1 ) THEN         
 
          IF( .NOT. ActiveComponents(1) ) THEN
@@ -18246,7 +18299,7 @@ CONTAINS
                  END IF
                ELSE
                  IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN                   
-                   CALL Fatal('GenerateConstraintMarix','MortarBC % Perm required, try lumped')
+                   CALL Fatal('GenerateConstraintMatrix','MortarBC % Perm required, try lumped')
                  END IF
                  
                  DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
@@ -18300,7 +18353,164 @@ CONTAINS
              END IF
            END IF
          END DO
-       ELSE ! dofs > 1
+         
+       ELSE IF( ComplexSumRow ) THEN
+
+         CALL Info('GenerateConstraintMatrix','Using simplified complex summing!',Level=6)
+         ComplexSumRow = .TRUE.
+         
+         ! In case of a vector valued problem create a projector that acts on all 
+         ! components of the vector. Otherwise follow the same logic.
+         IF( SumThis ) THEN
+           DO i=1,Atmp % NumberOfRows                        
+             
+             IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+               k = Atmp % InvPerm(i)
+               IF( k == 0 ) CYCLE
+             ELSE
+               k = i
+             END IF
+             
+             kk = k
+             IF( Reorder ) THEN
+               kk = Perm(k)
+               IF( kk == 0 ) CYCLE
+             END IF
+             
+             NewRow = ( SumPerm(kk) == 0 )
+             IF( NewRow ) THEN
+               sumrow = sumrow + 1                
+               SumPerm(kk) = sumrow 
+             ELSE IF(.NOT. AllocationsDone ) THEN
+               EliminatedRows = EliminatedRows + 1
+             END IF
+           END DO
+         END IF
+           
+         
+         DO i=1,Atmp % NumberOfRows           
+           
+           IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+             k = Atmp % InvPerm(i)
+             IF( k == 0 ) CYCLE
+           ELSE
+             k = i
+           END IF
+            
+           kk = k
+           IF( Reorder ) THEN
+             kk = Perm(k) 
+             IF( kk == 0 ) CYCLE
+           END IF
+             
+           IF( SumThis ) THEN             
+             row = SumPerm(kk)
+           ELSE
+             sumrow = sumrow + 1
+             row = sumrow
+           END IF
+
+           ! For complex matrices 
+           IF( AllocationsDone ) THEN
+             Btmp % InvPerm(2*row-1) = rowoffset + 2*(kk-1)+1
+             Btmp % InvPerm(2*row) = rowoffset + 2*kk
+           END IF
+
+           wsum = 0.0_dp
+                        
+
+           DO l=Atmp % Rows(i),Atmp % Rows(i+1)-1
+             
+             col = Atmp % Cols(l) 
+             val = Atmp % Values(l)
+             
+             IF( Reorder ) THEN
+               col2 = Perm(col)
+               IF( col2 == 0 ) CYCLE
+             ELSE
+               col2 = col
+             END IF
+               
+             IF( AllocationsDone ) THEN
+               ! By Default there is no scaling
+               Scale = 1.0_dp
+               IF( ThisIsMortar ) THEN
+                 IF( ASSOCIATED( MortarBC % Perm ) ) THEN
+                   ! Look if the component refers to the slave
+                   IF( MortarBC % Perm( col ) > 0 ) THEN
+                     Scale = MortarBC % SlaveScale 
+                     wsum = wsum + val
+                   ELSE
+                     Scale = MortarBC % MasterScale
+                   END IF
+                 ELSE
+                   wsum = wsum + val
+                 END IF
+                 
+                 ! If we sum up to anti-periodic dof then use different sign
+                 ! - except if the target is also antiperiodic.
+                 IF( PerFlipActive ) THEN
+                   IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                 END IF
+                 
+               END IF
+
+               ! Add a new column index to the summed up row               
+               ! At the first sweep we need to find the first unset position
+               ! Real part
+               IF( SumThis ) THEN
+                 k2 = Btmp % Rows(2*row-1)
+                 DO WHILE( Btmp % Cols(k2) > 0 )
+                   k2 = k2 + 1
+                 END DO
+               ELSE
+                 k2 = k2 + 1
+               END IF
+                                            
+               Btmp % Cols(k2) = 2 * col2 - 1
+               Btmp % Values(k2) = Scale * val
+
+               k2 = k2 + 1
+               Btmp % Cols(k2) = 2 * col2
+               Btmp % Values(k2) = 0.0
+
+               ! Complex part
+               IF( SumThis ) THEN
+                 k2 = Btmp % Rows(2*row)
+                 DO WHILE( Btmp % Cols(k2) > 0 )
+                   k2 = k2 + 1
+                 END DO
+               ELSE
+                 k2 = k2 + 1
+               END IF
+
+               Btmp % Cols(k2) = 2 * col2 - 1 
+               Btmp % Values(k2) = 0.0
+             
+               k2 = k2 + 1
+               Btmp % Cols(k2) = 2 * col2 
+               Btmp % Values(k2) = Scale * val
+             ELSE
+               k2 = k2 + 4
+               IF( SumThis ) THEN
+                 SumCount(2*row-1) = SumCount(2*row-1) + 2
+                 SumCount(2*row) = SumCount(2*row) + 2
+               END IF
+             END IF
+           END DO
+           
+           IF( AllocationsDone ) THEN
+             IF( ThisIsMortar ) THEN
+               IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
+                 Btmp % Rhs(2*row-1) = Btmp % Rhs(2*row-1) + wsum * MortarBC % rhs(i)
+               END IF
+             END IF
+           END IF
+         END DO
+         
+       ELSE
+         
+         ! dofs > 1
          ! In case of a vector valued problem create a projector that acts on all 
          ! components of the vector. Otherwise follow the same logic.
          DO i=1,Atmp % NumberOfRows           
@@ -18344,7 +18554,7 @@ CONTAINS
 
              IF( SumThis ) THEN
                IF( Dofs*(k-1)+j > SIZE(SumPerm) ) THEN
-                 PRINT *,'bad1'
+                 CALL Fatal('GenerateConstraintMatrix','Index out of range')
                END IF
                NewRow = ( SumPerm(Dofs*(kk-1)+j) == 0 )
                IF( NewRow ) THEN
@@ -18411,6 +18621,13 @@ CONTAINS
                        Scale = MortarBC % MasterScale
                      END IF
                    END IF
+
+                   ! If we sum up to anti-periodic dof then use different sign
+                   ! - except if the target is also antiperiodic.
+                   IF( PerFlipActive ) THEN
+                     IF( XOR( PerFlip(col),PerFlip(k) ) ) Scale = -Scale
+                   END IF
+
                  END IF
                  
                  Btmp % Cols(k2) = Dofs * ( col2 - 1) + j
@@ -18540,7 +18757,7 @@ CONTAINS
        END IF
          
        PrevPriority = Priority 
-     END DO
+     END DO ! constrain_ind
 
      IF( k2 == 0 ) THEN
        CALL Info('GenerateConstraintMatrix','No entries in constraint matrix!',Level=6)
@@ -18555,6 +18772,10 @@ CONTAINS
            TRIM(I2S(sumrow))//' rows and '//TRIM(I2S(k2))//' nonzeros',&
            Level=6)
 
+       IF( ComplexSumRow ) THEN
+         sumrow = 2 * sumrow
+       END IF
+       
        Btmp => AllocateMatrix()
        ALLOCATE( Btmp % RHS(sumrow), Btmp % Rows(sumrow+1), &
            Btmp % Cols(k2), Btmp % Values(k2), &

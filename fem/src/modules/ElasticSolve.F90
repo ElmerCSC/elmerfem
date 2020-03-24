@@ -953,7 +953,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      !------------------------------------------------------------------------------
      DO t = 1,GetNOFBoundaryElements()
         CurrentElement =>  GetBoundaryElement(t)
-        IF ( CurrentElement % TYPE % ElementCode == 101 ) CYCLE
         IF (.NOT. ActiveBoundaryElement()) CYCLE
 
         n  = GetElementNOFNodes()

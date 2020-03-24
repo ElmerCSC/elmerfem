@@ -312,8 +312,10 @@ CONTAINS
            CASE('abort')
              CheckAbort = 3
            END SELECT
+        ELSE IF ( Name == 'echo on master' ) THEN
+          IF( ParEnv % MyPe == 0 ) Echo = .TRUE.
         ELSE IF ( Name == 'echo on' ) THEN
-           Echo = .TRUE.
+          Echo = .TRUE.
         ELSE IF ( Name == 'echo off' ) THEN
            Echo = .FALSE.
         ELSE IF ( Name == 'numbering on' ) THEN
@@ -2719,8 +2721,8 @@ ELMER_SOLVER_HOME &
 
     Mesh => Model % Meshes
     DO WHILE( ASSOCIATED( Mesh ) )
-       CALL MeshStabParams( Mesh )
-       Mesh => Mesh % Next
+      CALL MeshStabParams( Mesh )
+      Mesh => Mesh % Next
     END DO
 
 !------------------------------------------------------------------------------
@@ -3899,6 +3901,8 @@ ELMER_SOLVER_HOME &
          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
                 'Flow Solution',NSDOFs,Var % Values,Var % Perm )
         ELSE IF( PermSize == 0 ) THEN
+          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
+              FullName,DOFs,Var % Values) 
           IF ( DOFs > 1 ) THEN
             DO i=1,DOFs
               Component => Var % Values(i:FieldSize:DOFs)
@@ -3907,9 +3911,9 @@ ELMER_SOLVER_HOME &
                   1, Component )
             END DO
           END IF
-          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-              FullName,DOFs,Var % Values) 
         ELSE
+          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
+              FullName,DOFs,Var % Values,Var % Perm )
           IF ( DOFs > 1 ) THEN
             DO i=1,DOFs
               Component => Var % Values(i:FieldSize:DOFs)
@@ -3918,8 +3922,6 @@ ELMER_SOLVER_HOME &
                            1, Component, Var % Perm )
             END DO
           END IF
-          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-              FullName,DOFs,Var % Values,Var % Perm )
         END IF
       END IF
     END DO
@@ -4080,7 +4082,8 @@ ELMER_SOLVER_HOME &
           END DO
 
           IF( InfoActive( 20 ) ) THEN
-            PRINT *,'LoadRestartFile range:',ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
+            PRINT *,'LoadRestartFile range:',TRIM(VarName), &
+                ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
           END IF
 
           CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )

@@ -5447,6 +5447,7 @@ CONTAINS
       TotSumArea = 0.0_dp
       Point = 0.0_dp
       MaxSubTriangles = 0
+      MaxSubElem = 0
 
       ! Save center of elements for master mesh for fast rough test
       n = BMesh2 % NumberOfBulkElements

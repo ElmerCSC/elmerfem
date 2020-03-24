@@ -3064,13 +3064,13 @@ omstart:
       if(debug) printf("dim=%d\n",dim);
     }
 
-    else if(strstr(line,"# number of mesh points")) {
+    else if(strstr(line,"# number of mesh points") || strstr(line, "# number of mesh vertices")) {
       cp = line;
       noknots = next_int(&cp);
       if(debug) printf("noknots=%d\n",noknots);
     }
 
-    else if(strstr(line,"# lowest mesh point index")) {
+    else if(strstr(line,"# lowest mesh point index") || strstr(line, "# lowest mesh vertex index")) {
       cp = line;
       offset = 1 - next_int(&cp);
       if(debug) printf("offset=%d\n",offset);
@@ -3091,14 +3091,14 @@ omstart:
       }
     }
 
-    else if(strstr(line,"# number of nodes per element")) {
+    else if(strstr(line,"# number of nodes per element") || strstr(line, "# number of vertices per element")) {
       cp = line;
       elemnodes = next_int(&cp);
       if(elemnodes > maxnodes) maxnodes = elemnodes;      
       if(debug) printf("elemnodes=%d\n",elemnodes);           
     }
 
-    else if(strstr(line,"# Mesh point coordinates")) {
+    else if(strstr(line,"# Mesh point coordinates") || strstr(line, "# Mesh vertex coordinates" )) {
       printf("Loading %d coordinates\n",noknots);
 
       for(i=1;i<=noknots;i++) {
