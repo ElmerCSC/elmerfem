@@ -986,6 +986,15 @@ CONTAINS
           WRITE( Message,'(A,I0)') 'Entry missing for: Body ',i
           CALL Fatal('LoadInputFile',Message)
         END IF
+        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Equation' ) ) THEN
+          CALL Fatal('LoadInputFile','Keyword "Equation" in body '//TRIM(I2S(i))//' must have single value')
+        END IF
+        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Body Force' ) ) THEN
+          CALL Fatal('LoadInputFile','Keyword "Body Force" in body '//TRIM(I2S(i))//' must have single value')
+        END IF
+        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Material' ) ) THEN
+          CALL Fatal('LoadInputFile','Keyword "Material" in body '//TRIM(I2S(i))//' must have single value')
+        END IF
       END DO
 
       ! Check that the same name is not used twice,
