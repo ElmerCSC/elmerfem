@@ -167,6 +167,12 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
+  !
+  ! In connection with the prime application of the solver, the RHS
+  ! tends to zero, so zero values may be a better initial guess than
+  ! the previous solution:
+  !
+  Solver % Variable % Values = 0.0d0
 
   Norm = DefaultSolve()  
 
@@ -408,6 +414,13 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
+
+  !
+  ! In connection with the prime application of the solver, the RHS
+  ! tends to zero, so zero values may be a better initial guess than
+  ! the previous solution:
+  !
+  Solver % Variable % Values = 0.0d0
 
   Norm = DefaultSolve()  
 
