@@ -1,3 +1,13 @@
+!
+! This sif file gives an alternate for the original test as defined in the file
+! case.sif. This alternative makes the vector potential variable unique in an 
+! iterated manner (in connection with the nonlinear iteration) by performing the
+! Helmholtz projection after solving the A-V solution candidate. Here the 
+! nonlinear iteration thus combines two tasks. It resolves the nonlinearity due 
+! to the B-H law and makes the vector potential unique.
+!
+
+
 $fileprefix  = "tet"
 
 Header
@@ -58,6 +68,8 @@ Solver 2
    Linear System Iterative Method = BiCGStabl
    Steady State Convergence Tolerance = 1e-6
 
+   Nonlinear Post Solvers(2) = Integer 6 7
+
 !Generic Source Fixing = Logical True
 !  Jfix Hybrid = Logical True
 !  Jfix All = Logical True
@@ -88,6 +100,10 @@ Solver 4
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Save Geometry IDs = Logical True
   Vtu format = Logical True
+  Output File Name = with_projection
+!  Vector Field 1 = String "Volume Current"
+!  Vector Field 2 = String "Magnetic Flux Density E"
+!  Vector Field 3 = String "Magnetic Field Strength E"
 End
 
 Solver 5
@@ -98,19 +114,55 @@ Solver 5
 End
 
 
+Solver 6
+  equation = "Helmholtz projection"
+  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
+  Procedure = "HelmholtzProjection" "HelmholtzProjector"
+  Potential variable = "P"
+  Variable = "phi"
+  Variable DOFs = 1
+  linear system solver = iterative
+  linear system iterative method = CG
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-8
+  linear system preconditioning = ILU0
+  linear system abort not converged = True
+  linear system residual output = 1
+End
+
+Solver 7
+  equation = "Remove kernel component"
+  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
+  Procedure = "HelmholtzProjection" "RemoveKernelComponent"
+  Kernel Variable = String "phi"
+  Potential variable = "P"
+  Variable = "Kernel Component"
+  Variable DOFs = 1
+  Element = "n:0 e:1 -brick b:3 -quad_face b:2"
+
+  linear system solver = iterative
+  linear system iterative method = CG
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-8
+  linear system preconditioning = ILU0
+  linear system abort not converged = True
+  linear system residual output = 1
+End
+
+
 Equation 1
   Name = "Coupled Equations"
-  Active Solvers(2) = 2 3
+  Active Solvers(4) = 2 3 6 7
 End
 
 Equation 2
   Name = "Coupled Equations"
-  Active Solvers(3) = 1 2 3
+  Active Solvers(5) = 1 2 3 6 7
 End
 
 Equation 3
   Name = "Coupled Equations"
-  Active Solvers(2) = 2 3
+  Active Solvers(4) = 2 3 6 7
 End
 
 Material 1
