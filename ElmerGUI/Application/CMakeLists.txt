@@ -31,6 +31,7 @@ SET(HEADERS src/bodypropertyeditor.h
   src/summaryeditor.h 
   src/objectbrowser.h 
   src/solverlogwindow.h 
+  src/newprojectdialog.h 
   plugins/egconvert.h 
   plugins/egdef.h 
   plugins/egmain.h 
@@ -56,7 +57,8 @@ SET(FORMS forms/bodypropertyeditor.ui
   forms/meshcontrol.ui 
   forms/parallel.ui 
   forms/solverparameters.ui 
-  forms/summaryeditor.ui)
+  forms/summaryeditor.ui
+  forms/newproject.ui)
 
 
 SET(SOURCES src/bodypropertyeditor.cpp 
@@ -87,6 +89,7 @@ SET(SOURCES src/bodypropertyeditor.cpp
   src/summaryeditor.cpp 
   src/solverlogwindow.cpp 
   src/objectbrowser.cpp 
+  src/newprojectdialog.cpp
   plugins/egconvert.cpp 
   plugins/egmain.cpp 
   plugins/egmesh.cpp 

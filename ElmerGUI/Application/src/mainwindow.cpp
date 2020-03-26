@@ -2,7 +2,7 @@
  *                                                                           *
  *  Elmer, A Finite Element Software for Multiphysical Problems              *
  *                                                                           *
- *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland    *
+ *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland   *
  *                                                                           *
  *  This program is free software; you can redistribute it and/or            *
  *  modify it under the terms of the GNU General Public License              *
@@ -30,7 +30,7 @@
  *  Authors: Mikko Lyly, Juha Ruokolainen and Peter R�back                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
- *  Address: CSC - IT Center for Science Ltd.                                 *
+ *  Address: CSC - IT Center for Science Ltd.                                *
  *           Keilaranta 14                                                   *
  *           02101 Espoo, Finland                                            *
  *                                                                           *
@@ -56,6 +56,7 @@
 #include <QDebug>
 
 #include "mainwindow.h"
+#include "newprojectdialog.h"
 
 #ifdef EG_VTK
 #include "vtkpost/vtkpost.h"
@@ -377,6 +378,11 @@ void MainWindow::createActions()
   loadProjectAct->setStatusTip(tr("Load previously saved project"));
   connect(loadProjectAct, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));
 
+  // File -> New project...
+  newProjectAct = new QAction(QIcon(":/icons/document-new.png"), tr("&New project..."), this);
+  newProjectAct->setStatusTip(tr("Create a new project"));
+  connect(newProjectAct, SIGNAL(triggered()), this, SLOT(newProjectSlot()));
+
   // File -> Recent Projects
   recentProject0Act = new QAction("", this);
   connect(recentProject0Act, SIGNAL(triggered()), this, SLOT(loadRecentProject0Slot()));
@@ -405,11 +411,16 @@ void MainWindow::createActions()
   saveAsAct->setStatusTip(tr("Save Elmer mesh and sif-files"));
   connect(saveAsAct, SIGNAL(triggered()), this, SLOT(saveAsSlot()));
 
-  // File -> Save project...
-  saveProjectAct = new QAction(QIcon(":/icons/document-export.png"), tr("&Save project..."), this);
+  // File -> Save project
+  saveProjectAct = new QAction(QIcon(":/icons/document-export.png"), tr("&Save project"), this);
   saveProjectAct->setStatusTip(tr("Save current project"));
   connect(saveProjectAct, SIGNAL(triggered()), this, SLOT(saveProjectSlot()));
 
+  // File -> Save project as...
+  saveProjectAsAct = new QAction(QIcon(":/icons/edit-copy.png"), tr("&Save project as..."), this);
+  saveProjectAsAct->setStatusTip(tr("Save current project by specifing directory"));
+  connect(saveProjectAsAct, SIGNAL(triggered()), this, SLOT(saveProjectAsSlot()));
+  
   // File -> Save picture as...
   savePictureAct = new QAction(QIcon(":/icons/view-preview.png"), tr("&Save picture as..."), this);
   savePictureAct->setStatusTip(tr("Save picture in file"));
@@ -797,17 +808,20 @@ void MainWindow::createMenus()
 {
   // File menu
   fileMenu = menuBar()->addMenu(tr("&File"));
-  fileMenu->addAction(openAct);
-  fileMenu->addAction(loadAct);
+  fileMenu->addAction(newProjectAct);
   fileMenu->addAction(loadProjectAct);
   recentProjectsMenu = fileMenu->addMenu(tr("&Recent projects"));
   recentProjectsMenu->setEnabled(false);
+  fileMenu->addAction(saveProjectAct);
+  fileMenu->addAction(saveProjectAct);
+  fileMenu->addAction(saveProjectAsAct);    
   fileMenu->addSeparator();
-  fileMenu->addAction(editDefinitionsAct);
-  fileMenu->addSeparator();
+  fileMenu->addAction(openAct);
+  fileMenu->addAction(loadAct);
   fileMenu->addAction(saveAct);
   fileMenu->addAction(saveAsAct);
-  fileMenu->addAction(saveProjectAct);
+  fileMenu->addSeparator();
+  fileMenu->addAction(editDefinitionsAct); 
   fileMenu->addSeparator();
   fileMenu->addAction(savePictureAct);
   fileMenu->addSeparator();
@@ -1059,13 +1073,16 @@ void MainWindow::createToolBars()
 {
   // File toolbar
   fileToolBar = addToolBar(tr("&File"));
+  fileToolBar->addAction(newProjectAct);
+  fileToolBar->addAction(loadProjectAct);
+  fileToolBar->addAction(saveProjectAct);
+  fileToolBar->addAction(saveProjectAsAct);
+  fileToolBar->addSeparator();  
   fileToolBar->addAction(openAct);
   fileToolBar->addAction(loadAct);
-  fileToolBar->addAction(loadProjectAct);
-  fileToolBar->addSeparator();
   fileToolBar->addAction(saveAct);
   fileToolBar->addAction(saveAsAct);
-  fileToolBar->addAction(saveProjectAct);
+
   fileToolBar->addSeparator();
   fileToolBar->addAction(savePictureAct);
 
@@ -1129,6 +1146,124 @@ void MainWindow::createStatusBar()
 //                                File MENU
 //
 //*****************************************************************************
+
+// File -> Open...
+//-----------------------------------------------------------------------------
+void MainWindow::newProjectSlot()
+{
+  NewProjectDialog dlg;
+  
+#ifdef __APPLE__DONTGO_HERE_TODO
+  QString extraDirpath = this->homePath +  "/edf-extra";            
+#else
+  QString extraDirPath = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf-extra";
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if(!elmerGuiHome.isEmpty())
+    extraDirPath = elmerGuiHome + "/edf-extra";  
+
+  extraDirPath.replace('\\', '/');
+#endif
+
+  QString defaultDir = getDefaultDirName();
+  dlg.setDirectories( defaultDir,extraDirPath);
+  
+  if(dlg.exec() == QDialog::Accepted){
+
+    // re-initialize
+    delete elmerDefs; elmerDefs = new QDomDocument;
+    delete edfEditor; edfEditor = new EdfEditor; 
+    loadDefinitions();
+    geometryInputFileName = "";
+    currentProjectDirName = "";
+    sifWindow->getTextEdit()->clear();
+    sifWindow->hide();
+    solverLogWindow->getTextEdit()->clear();
+    solverLogWindow->hide();
+    delete generalSetup; generalSetup = new GeneralSetup(this);
+    summaryEditor->ui.summaryEdit->clear();  
+    delete twodView; twodView = new TwodView;
+    meshControl->defaultControls();
+    delete parallel; parallel = new Parallel(this);
+
+#ifdef EG_QWT
+    convergenceView->removeData();
+#endif
+
+#ifdef EG_VTK
+    settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
+    delete vtkPost; vtkPost = new VtkPost(this);
+    vtkPostMeshUnifierRunning = false;
+    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());    
+#endif
+
+#ifdef EG_OCC
+    settings_setValue("cadView/geometry", cadView->saveGeometry());
+    delete cadView; cadView = new CadView();
+    if(egIni->isPresent("deflection"))
+      cadView->setDeflection(egIni->value("deflection").toDouble());
+    cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());      
+#endif
+
+    //delete operations
+    operation_t *p = operation.next;
+    operation_t *q = NULL;
+    while(p != NULL) {
+      if(p->select_set != NULL) delete [] p->select_set;
+      q = p->next;
+      if(p != NULL) delete p;
+      p = q;
+    }
+    operations = 0;
+    operation.next = NULL;    
+    
+    // reset mesh
+    if(glWidget->hasMesh()) {
+      glWidget->getMesh()->clear();
+      glWidget->deleteMesh();
+    }
+    glWidget->newMesh();
+    meshutils->findSurfaceElementEdges(glWidget->getMesh());
+    meshutils->findSurfaceElementNormals(glWidget->getMesh());
+    glWidget->rebuildLists();
+    
+    modelClearSlot();
+    
+    // load Elmer mesh/open geometry file
+    bool bStartMeshing = false;
+    if(dlg.ui.radioButton_elmerMesh->isChecked() && !dlg.ui.label_meshDir->text().isEmpty()){
+       loadElmerMesh(dlg.ui.label_meshDir->text());
+    }else if(dlg.ui.radioButton_geometryFile->isChecked() && !dlg.ui.label_geometryFile->text().isEmpty()){
+      QString fileName = dlg.ui.label_geometryFile->text();
+      geometryInputFileName = fileName;
+      saveDirName = "";
+      readInputFile(fileName);
+      if(egIni->isSet("automesh")) bStartMeshing = true;
+    }
+    
+    // save and load project
+    saveProject(dlg.ui.label_projectDir->text());       
+    loadProject(dlg.ui.label_projectDir->text());
+    
+    // load extra solvers
+    QString message;
+    for(int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++){
+      message = "Load " + extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
+      #if WITH_QT5
+        cout << string(message.toLatin1()); cout.flush();
+      #else
+        cout << string(message.toAscii()); cout.flush();
+      #endif    
+      edfEditor->appendFrom(extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text());
+      cout << " done" << endl;
+    }
+
+    if(bStartMeshing) remeshSlot();
+  }
+  
+}
+
 
 void MainWindow::parseCmdLine()
 {
@@ -1455,7 +1590,7 @@ void MainWindow::loadSlot()
 {
   QString defaultDirName = getDefaultDirName();
 
-  QString dirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  QString dirName = QFileDialog::getExistingDirectory(this, tr("Open mesh directory"), defaultDirName);
 
   if (!dirName.isEmpty()) {
 
@@ -1544,7 +1679,7 @@ void MainWindow::saveAsSlot()
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save"), defaultDirName);
+  saveDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save mesh"), defaultDirName);
 
   if (!saveDirName.isEmpty()) {
     logMessage("Output directory " + saveDirName);
@@ -1560,7 +1695,7 @@ void MainWindow::saveAsSlot()
 }
 
 
-// File -> Save project...
+// File -> Save project
 //-----------------------------------------------------------------------------
 void MainWindow::saveProjectSlot()
 {
@@ -1569,9 +1704,28 @@ void MainWindow::saveProjectSlot()
     return;
   }
 
+  QString projectDirName = currentProjectDirName;
+  if (!projectDirName.isEmpty()) {
+    logMessage("Project directory " + projectDirName);
+    saveProject(projectDirName);
+  } else {
+    saveProjectAsSlot();
+  }
+  
+}
+
+// File -> Save project as...
+//-----------------------------------------------------------------------------
+void MainWindow::saveProjectAsSlot()
+{
+  if(!glWidget->hasMesh()) {
+    logMessage("Unable to save project: no mesh");
+    return;
+  }
+
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
+  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save project"), defaultDirName);
 
   if (!projectDirName.isEmpty()) {
     logMessage("Project directory " + projectDirName);
@@ -1892,7 +2046,7 @@ void MainWindow::loadProjectSlot()
 {
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory"), defaultDirName);
+  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open project directory"), defaultDirName);
   
   loadProject(projectDirName);
 }
@@ -2006,6 +2160,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                               LOAD OPERATIONS
   //===========================================================================
+  logMessage("Loading operations...");  
   progressBar->setValue(5);
   QDomElement ops = contents.firstChildElement("operations");
   operations = operation.readFromProject(&projectDoc, &ops);
@@ -2013,6 +2168,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                            LOAD GENERAL SETUP
   //===========================================================================
+  logMessage("Loading general setup...");  
   progressBar->setValue(6);
   QDomElement gsBlock = contents.firstChildElement("generalsetup");
   generalSetup->readFromProject(&projectDoc, &gsBlock);
@@ -2020,6 +2176,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD PARALLEL SETTINGS
   //===========================================================================
+  logMessage("Loading parallel settings...");  
   progressBar->setValue(7);
   QDomElement paraBlock = contents.firstChildElement("parallelsettings");
   parallel->readFromProject(&projectDoc, &paraBlock);
@@ -2027,6 +2184,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                            LOAD MESH PARAMETERS
   //===========================================================================
+  logMessage("Loading mesh parameters...");  
   progressBar->setValue(8);
   QDomElement meshParams = contents.firstChildElement("meshparameters");
   meshControl->readFromProject(&projectDoc, &meshParams);
@@ -2034,6 +2192,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD SOLVER PARAMETERS
   //===========================================================================
+  logMessage("Loading solver parameters...");
   progressBar->setValue(9);
   QDomElement speBlock = contents.firstChildElement("solverparameters");
 
@@ -2135,6 +2294,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                        LOAD DYNAMIC EDITOR CONTENTS
   //===========================================================================
+  logMessage("Loading dynamic editor contents...");   
   progressBar->setValue(11);
   QDomElement element = projectDoc.documentElement().firstChildElement("equation");
   loadProjectContents(element, equationEditor, "Equation");
@@ -2151,6 +2311,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD SOLVER SPECIFIC OPTIONS
   //===========================================================================
+  logMessage("Loading solver specific options...");   
   progressBar->setValue(12);
   QDomElement solverOptionsBlock = contents.firstChildElement("solverspecificoptions");
 
@@ -2216,6 +2377,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                           LOAD BODY PROPERTIES
   //===========================================================================
+  logMessage("Loading body properties...");    
   progressBar->setValue(13);
   QDomElement bodyBlock = contents.firstChildElement("bodyproperties");
 
@@ -2245,6 +2407,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD BOUNDARY PROPERTIES
   //===========================================================================
+  logMessage("Loading boundary properties...");    
   progressBar->setValue(13);
   QDomElement boundaryBlock = contents.firstChildElement("boundaryproperties");
 
@@ -2580,11 +2743,12 @@ void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe)
   slayout->addWidget(l,count,0);
   count++;
 
-  for( int i=0; i < glWidget->bodyMap.count(); i++ )
-  {
-     int n=glWidget->bodyMap.key(i);
-     if ( n >= 0 ) {
-        int m = glWidget->bodyMap.value(n);
+  QMapIterator<int, int> itr(glWidget->bodyMap);
+  while (itr.hasNext()) {
+    itr.next();
+     int n = itr.key(); 
+    if ( n >= 0 ) {
+       int m = itr.value();
 
 	if(m >= bodyPropertyEditor.size())
 	  bodyPropertyEditor.resize(m + 1);
@@ -3350,12 +3514,12 @@ void MainWindow::createBoundaryCheckBoxes(DynamicEditor *pe)
   slayout->addWidget(l,count,0);
   count++;
 
-
-  for( int i=0; i<glWidget->boundaryMap.count(); i++ )
-  {
-     int n=glWidget->boundaryMap.key(i);
-     if ( n >= 0 ) {
-       int m = glWidget->boundaryMap.value(n);
+  QMapIterator<int, int> itr(glWidget->boundaryMap);
+  while (itr.hasNext()) {
+    itr.next();
+    int n = itr.key(); 
+    if ( n >= 0 ) {
+       int m = itr.value();
 
        if(m >= boundaryPropertyEditor.size())
 	 boundaryPropertyEditor.resize(m + 1);
@@ -7466,7 +7630,6 @@ void MainWindow::loadSettings()
   convergenceView->restoreGeometry(settings_value("convergenceView/geometry").toByteArray());
 #endif
 
-/*
 #ifdef EG_OCC
   cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());
 #endif
@@ -7474,7 +7637,6 @@ void MainWindow::loadSettings()
 #ifdef EG_VTK
   vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
 #endif
-*/
 
   int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
@@ -7506,7 +7668,6 @@ void MainWindow::saveSettings()
   settings_setValue("convergenceView/geometry", convergenceView->saveGeometry());
 #endif
 
-/*
 #ifdef EG_OCC
   settings_setValue("cadView/geometry", cadView->saveGeometry());
 #endif
@@ -7514,7 +7675,6 @@ void MainWindow::saveSettings()
 #ifdef EG_VTK
   settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
 #endif
-*/
   
   if(showObjectBrowserAct->isChecked() && objectBrowser != NULL){
     settings_setValue("objectBrowser/show", true); 
@@ -7741,15 +7901,20 @@ void MainWindow::checkAndLoadExtraSolvers(QFile* file)
 
 QVariant MainWindow::settings_value(const QString & key, const QVariant &defaultValue) const
 {
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
+  QString oldElmerGuiIniFilePath = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+  QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";
+  if(!QFile::exists(elmerGuiIniFilePath) && QFile::exists(oldElmerGuiIniFilePath))
+  {
+    elmerGuiIniFilePath = oldElmerGuiIniFilePath;
+  }
+  QSettings settings(elmerGuiIniFilePath, QSettings::IniFormat);
   return settings.value(key, defaultValue);
 }
 
 void MainWindow::settings_setValue(const QString & key, const QVariant & value)
 {
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
-  QSettings settings(iniFileName, QSettings::IniFormat);
+  QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";
+  QSettings settings(elmerGuiIniFilePath, QSettings::IniFormat);
   settings.setValue(key, value);
 }
 
@@ -7766,7 +7931,7 @@ void MainWindow::saveAndRun(bool generateSif)
   if(projectDirName.isEmpty())
   {
     QString defaultDirName = getDefaultDirName();
-    projectDirName = QFileDialog::getExistingDirectory(this, tr("Choose directory to save project"), defaultDirName);
+    projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save project"), defaultDirName);
 
     if (!projectDirName.isEmpty()) {
       logMessage("Project directory " + projectDirName);
