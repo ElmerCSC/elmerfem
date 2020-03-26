@@ -313,7 +313,7 @@ CONTAINS
              CheckAbort = 3
            END SELECT
         ELSE IF ( Name == 'echo on master' ) THEN
-          IF( ParEnv % MyPe == 0 ) Echo = .TRUE.
+          IF( ParEnv % MyPe == 0 ) Echo = ScanOnly
         ELSE IF ( Name == 'echo on' ) THEN
           Echo = .TRUE.
         ELSE IF ( Name == 'echo off' ) THEN
