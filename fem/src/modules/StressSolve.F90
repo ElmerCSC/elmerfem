@@ -54,7 +54,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     INTEGER :: dim,i
     TYPE(ValueList_t), POINTER :: SolverParams
     LOGICAL :: Found, CalculateStrains, CalcPrincipalAngle, CalcPrincipalAll, &
-         CalcStressAll, CalcVelocities, MaxwellMaterial
+         CalcStressAll, CalcPrincipalStrain, CalcVelocities, MaxwellMaterial
     CHARACTER :: DimensionString
 
 !------------------------------------------------------------------------------
@@ -104,7 +104,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     CalcStressAll = GetLogical( SolverParams, 'Calculate Stresses',Found )
     IF(CalcPrincipalAngle) CalcPrincipalAll = .TRUE. ! can't calculate angle without principal
     IF(CalcPrincipalAll)   CalcStressAll = .TRUE. ! can't calculate principal without components
-    IF(CalculateStrains)   CalcStressAll = .TRUE. ! can't calculate principal without components
+    CalcPrincipalStrain = CalculateStrains .AND. CalcPrincipalAll
+    IF (CalculateStrains) CalcStressAll = .TRUE. ! TO DO: Strain computation shouldn't trigger stress 
 
     IF (Transient) THEN
       CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
@@ -143,11 +144,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       END IF !CalcPrincipalAll      
     END IF ! CalcStressAll
     
-    IF(CalculateStrains) THEN
+    IF (CalculateStrains) THEN
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), &
           'Strain[Strain_xx:1 Strain_yy:1 Strain_zz:1 Strain_xy:1 Strain_yz:1 Strain_xz:1]' )
-      IF(CalcPrincipalAll) THEN
+      IF (CalcPrincipalStrain) THEN
         CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
             'Principal Strain[Principal Strain:3]' )
@@ -233,7 +234,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
      LOGICAL :: GotForceBC,Found,RayleighDamping, NormalSpring
      LOGICAL :: PlaneStress, CalcStress, CalcStressAll, &
-        CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, CalcVelocities, Isotropic(2) = .TRUE.
+        CalcPrincipalAll, CalcPrincipalAngle, CalculateStrains, &
+        CalcPrincipalStrain, CalcVelocities, Isotropic(2) = .TRUE.
      LOGICAL :: Contact = .FALSE.
      LOGICAL :: stat, stat2, stat3, RotateC, MeshDisplacementActive, &
                 ConstantBulkSystem, ConstantBulkMatrix, ConstantBulkMatrixInUse, ConstantSystem, &
@@ -265,7 +267,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        RayleighAlpha, RayleighBeta, RayleighDamping, &
        NodalStrain, PrincipalStress, PrincipalStrain, Tresca, &
        PrincipalAngle, PrincipalAngleComp, CalcPrincipalAngle, &
-       CalcPrincipalAll, CalculateStrains, TemperatureName,&
+       CalcPrincipalAll, CalculateStrains, CalcPrincipalStrain, TemperatureName,&
        DisplacementVel, DisplacementVelPerm, DisplacementVelVar,&
        DisplacementVelDOFs
 !------------------------------------------------------------------------------
@@ -427,7 +429,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        CalcStressAll = GetLogical( SolverParams, 'Calculate Stresses',Found )
        IF(CalcPrincipalAngle) CalcPrincipalAll = .TRUE. ! can't calculate angle without principal
        IF(CalcPrincipalAll)   CalcStressAll = .TRUE. ! can't calculate principal without components
-       IF(CalculateStrains)   CalcStressAll = .TRUE. ! can't calculate principal without components
+       CalcPrincipalStrain = CalculateStrains .AND. CalcPrincipalAll
+       IF (CalculateStrains) CalcStressAll = .TRUE. ! TO DO: Strain computation shouldn't trigger stress
 
        IF (Transient) THEN
          CalcVelocities = GetLogical(SolverParams, 'Calculate Velocities', Found)
@@ -523,14 +526,14 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        END IF !CalcPrincipalAll             
      END IF ! CalcStress or CalcStressAll
      
-     IF(CalculateStrains) THEN
+     IF (CalculateStrains) THEN
        Var => VariableGet( Mesh % Variables, 'Strain' )
        IF ( ASSOCIATED( Var ) ) THEN
          NodalStrain => Var % Values
        ELSE
          CALL Fatal('StressSolver','Variable > Strain < does not exits!')
        END IF
-       IF(CalcPrincipalAll) THEN
+       IF (CalcPrincipalStrain) THEN
          Var => VariableGet( Mesh % Variables, 'Principal Strain' )
          IF ( ASSOCIATED( Var ) ) THEN
            PrincipalStrain => Var % Values
@@ -1634,7 +1637,7 @@ CONTAINS
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      CHARACTER(LEN=MAX_NAME_LEN) :: eqname
 
-     SAVE Nodes, StSolver, ForceG, Permutation, SForceG, Eqname, UseMask
+     SAVE FirstTime, Nodes, StSolver, ForceG, Permutation, SForceG, Eqname, UseMask
 
      ! These variables are needed for Principal stress calculation
      ! they are quite small and allocated even if principal stress calculation
@@ -1749,12 +1752,12 @@ CONTAINS
 
      !CALL DefaultInitialize()
      
-     CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
-     IF( ALLOCATED(Solver % Matrix % ConstrainedDOF) ) THEN
-       Solver % Matrix % ConstrainedDOF = .FALSE.
+     CALL InitializeToZero( StSolver % Matrix, StSolver % Matrix % RHS )
+     IF( ALLOCATED(StSolver % Matrix % ConstrainedDOF) ) THEN
+       StSolver % Matrix % ConstrainedDOF = .FALSE.
      END IF       
-     IF( ALLOCATED(Solver % Matrix % Dvalues) ) THEN
-       Solver % Matrix % Dvalues = 0._dp
+     IF( ALLOCATED(StSolver % Matrix % Dvalues) ) THEN
+       StSolver % Matrix % Dvalues = 0._dp
      END IF
      
      DO elem = 1,Solver % NumberOfActiveElements
@@ -1902,7 +1905,7 @@ CONTAINS
           CALL Info('StressSolver',Message,Level=5)
 
           st = DefaultSolve()
-           
+
           DO l=1,SIZE( Permutation )
             IF ( Permutation(l) <= 0 ) CYCLE
             NodalStress(6*(StressPerm(l)-1)+k) = StSolver % Variable % Values(Permutation(l))
@@ -2059,7 +2062,7 @@ CONTAINS
           IF (PriTmp > Tresca(StressPerm(i)) ) Tresca(StressPerm(i)) = PriTmp
           
           !Strain:
-          IF(CalculateStrains)THEN
+          IF (CalcPrincipalStrain) THEN
             p=0
             DO j=1,3
               DO k=1,3 ! TODO only upper triangle should be filled, this is is wasteful
@@ -2078,7 +2081,7 @@ CONTAINS
               ! eigenvalues are returned in opposite order 
               PrincipalStrain(3 * (StressPerm(i)-1 )+l) = PriW(sdim+1-l)
             END DO
-          END IF ! CalculateStrains
+          END IF ! CalculatePrincipalStrain
         END DO
       END IF ! Calculate Principal
 
