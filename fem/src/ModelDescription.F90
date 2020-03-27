@@ -986,13 +986,13 @@ CONTAINS
           WRITE( Message,'(A,I0)') 'Entry missing for: Body ',i
           CALL Fatal('LoadInputFile',Message)
         END IF
-        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Equation' ) ) THEN
+        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Equation', Found) ) THEN
           CALL Fatal('LoadInputFile','Keyword "Equation" in body '//TRIM(I2S(i))//' must have single value')
         END IF
-        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Body Force' ) ) THEN
+        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Body Force', Found) ) THEN
           CALL Fatal('LoadInputFile','Keyword "Body Force" in body '//TRIM(I2S(i))//' must have single value')
         END IF
-        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Material' ) ) THEN
+        IF( ListCheckIsArray( Model % Bodies(i) % Values,'Material', Found) ) THEN
           CALL Fatal('LoadInputFile','Keyword "Material" in body '//TRIM(I2S(i))//' must have single value')
         END IF
       END DO
@@ -1099,7 +1099,7 @@ CONTAINS
                
         END DO ! number of bodies
       END IF
-      
+
 
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices.
