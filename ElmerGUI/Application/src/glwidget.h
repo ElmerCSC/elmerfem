@@ -63,8 +63,17 @@ enum ListTypes {
 #include <GL/glu.h>
 #endif
 
+#ifdef WIN32
+#ifndef __MINGW32__
+#ifdef _CONSOLE
+#include <GL/glut.h> // when compiling with MSVC
+#endif
+#endif
+#endif
+
 #include <QGLWidget>
 #include <QHash>
+#include <QMap>
 #include <QVector>
 #include "helpers.h"
 #include "meshutils.h"
@@ -166,8 +175,8 @@ public:
   QColor sharpEdgeColor;
   
   // public hash tables:
-  QHash<int, int> boundaryMap;
-  QHash<int, int> bodyMap;
+  QMap<int, int> boundaryMap; // QHash<int, int> boundaryMap;
+  QMap<int, int> bodyMap; // QHash<int, int> bodyMap;
 
 public slots:
 

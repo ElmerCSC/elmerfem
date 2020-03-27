@@ -4,20 +4,16 @@
 Check Keywords "Warn"
 INCLUDE sif/6479-circuits.definitions
 INCLUDE 6479/mesh.names
-
 Header 1
    Mesh DB "." "6479"
 End
-
 Constants 1
    Permittivity of Vacuum = 8.8542e-12
 End
-
 Initial Condition 1
    A {e} = Real 0
    A  = Real 0
 End
-
 Simulation 1
    Max Output Level = 3
    Coordinate System = Cartesian 3D
@@ -30,7 +26,6 @@ Simulation 1
    Timestep Sizes = 0.0015
    Steady State Max Iterations = 1
 End
-
 Solver 1  !---- DirectionSolver, DirectionSolver
    Exec Solver = Before all
    Procedure = "DirectionSolver" "DirectionSolver"
@@ -43,7 +38,6 @@ Solver 1  !---- DirectionSolver, DirectionSolver
    Equation = Direction Alpha
    Variable =  Alpha
 End
-
 Solver 2  !---- DirectionSolver, DirectionSolver
    Exec Solver = Before all
    Procedure = "DirectionSolver" "DirectionSolver"
@@ -56,7 +50,6 @@ Solver 2  !---- DirectionSolver, DirectionSolver
    Equation = Direction Beta
    Variable =  Beta
 End
-
 Solver 3  !---- CoordinateTransform, RotMSolver
    Exec Solver = Before All
    Equation = Transformation matrix
@@ -71,7 +64,6 @@ Solver 3  !---- CoordinateTransform, RotMSolver
    Exported Variable 4 = -nooutput Gamma Vector E[Gamma Vector E:3]
    Discontinuous Galerkin = True
 End
-
 Solver 4  !---- WPotentialSolver, Wsolve
    Exec Solver = Before All
    Procedure = "WPotentialSolver" "Wsolve"
@@ -84,7 +76,6 @@ Solver 4  !---- WPotentialSolver, Wsolve
    Linear System Abort Not Converged = True
    Linear System Residual Output = 1000
 End
-
 Solver 5  !---- CircuitsAndDynamics, CircuitsAndDynamics
    Exec Solver = Always
    Equation = Circuits
@@ -92,7 +83,6 @@ Solver 5  !---- CircuitsAndDynamics, CircuitsAndDynamics
    No Matrix = Logical True
    Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
 End
-
 Solver 6  !---- MagnetoDynamics, WhitneyAVSolver
    Exec Solver = Always
    Equation = "MGDynamics"
@@ -110,7 +100,6 @@ Solver 6  !---- MagnetoDynamics, WhitneyAVSolver
    BicgstabL polynomial degree = 6
    Steady State Convergence Tolerance = 1e-08
 End
-
 Solver 7  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Exec Solver = Always
    Equation = "MGDynamicsCalc"
@@ -128,13 +117,11 @@ Solver 7  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Steady State Convergence Tolerance = 1e-6
    Linear System Convergence Tolerance = 1.0e-10
 End
-
 Solver 8  !---- CircuitsAndDynamics, CircuitsOutput
    Exec Solver = Always
    Equation = Circuits Output
    Procedure = "CircuitsAndDynamics" "CircuitsOutput"
 End
-
 Solver 9  !---- ResultOutputSolve, ResultOutputSolver
    Exec Solver = After timestep
    Equation = "ResultOutput"
@@ -143,42 +130,35 @@ Solver 9  !---- ResultOutputSolve, ResultOutputSolver
    Vtu format = Logical True
    Save Geometry Ids = Logical True
 End
-
 Solver 10  !---- SaveData, SaveScalars
    Exec Solver = After timestep
    Equation = "sv"
    Procedure = "SaveData" "SaveScalars"
    Filename = 6479/dat/6479.dat
 End
-
 Equation 1
    Active Solvers(2) = 6 7
 End
-
 Equation 2
    Active Solvers(7) = 1 2 3 4 5 6 \
                        7
 End
-
 Material 1  !---- iron: generic
    Name = iron
    Electric Conductivity = 0
    Relative Permeability = 2000
 End
-
 Material 2  !---- air: generic
    Name = air
    Electric Conductivity = 0
    Relative Permeability = 1
    Relative Permittivity = 1
 End
-
 Material 3  !---- aluminium: generic
    Name = aluminium
    Relative Permeability = 1
    Electric Conductivity = 36e6 
 End
-
 Body 1  !---- core
    Name = core
    Target Bodies(1) = $ core
@@ -186,7 +166,6 @@ Body 1  !---- core
    Material = 1
    Initial Condition = 1
 End
-
 Body 2  !---- air
    Name = air
    Target Bodies(1) = $ air
@@ -194,7 +173,6 @@ Body 2  !---- air
    Material = 2
    Initial Condition = 1
 End
-
 Body 3  !---- A1
    Name = A1
    Target Bodies(1) = $ A1
@@ -205,7 +183,6 @@ Body 3  !---- A1
    Alpha reference (3) = Real 1 0 0
    Beta reference (3) = Real 0 1 0
 End
-
 Component 1  !---- A1
    Name = String A1
    Master Bodies = Integer 3
@@ -215,8 +192,8 @@ Component 1  !---- A1
    Electrode Boundaries(2) = Integer 4 5
    Foil Winding Voltage Polynomial Order = Integer 1
    Coil Thickness = Real 0.1
+   Circuit Equation Voltage Factor = Real 0.5 !symmetry (half of the problem is solved)
 End
-
 Body Force 1  !---- Circuit
    Name = "Circuit"
    S1: Frequency = Real 50.0
@@ -226,55 +203,46 @@ Body Force 1  !---- Circuit
    S1 = Variable time
      Real Procedure "HarmonicSignals" "Source"
 End
-
 Boundary Condition 1  !---- BCn Flux Parallel
    Name = BCn Flux Parallel
    Target Boundaries(2) = $ coreface_xy xy0
    A {e} = Real 0
 End
-
 Boundary Condition 2  !---- Alpha0
    Name = Alpha0
    Target Boundaries = $ A1_alpha0
    Body 3: Alpha = Real 0
 End
-
 Boundary Condition 3  !---- Alpha1
    Name = Alpha1
    Target Boundaries = $ A1_alpha1
    Body 3: Alpha = Real 1
 End
-
 Boundary Condition 4  !---- ground
    Name = ground
    Target Boundaries = $ A1_gamma1
    W = Real 0
    A {e} = Real 0
 End
-
 Boundary Condition 5  !---- current in foil winding
    Name = current in foil winding
    Target Boundaries = $ A1_gamma0
    W = Real 1
    A {e} = Real 0
 End
-
 Boundary Condition 6  !---- Beta1
    Name = Beta1
    Target Boundaries = $ A1_beta1
    Body 3: Beta = Real 1
 End
-
 Boundary Condition 7  !---- Beta0
    Name = Beta0
    Target Boundaries = $ A1_beta0
    Body 3: Beta = Real 0
 End
-
 Solver 6 :: Reference Norm = Real 2.11721151E-04
 Solver 6 :: Reference Norm Tolerance = Real 1E-03
 Solver 7 :: Reference Norm = Real 8.58440170E+03
 Solver 7 :: Reference Norm Tolerance = Real 1E-03
-
 $fprintf( stderr, "TEST CASE 1\n");
 RUN

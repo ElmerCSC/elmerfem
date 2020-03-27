@@ -56,13 +56,8 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation ) ! {{{
 
   Params => GetSolverParams()
   CALL ListAddInteger( Params, 'Variable Dofs',1 )
-  IF( .NOT. ListCheckPresent(  Params,'Variable') ) THEN
-    CALL ListAddString( Params,'Variable','Potential')
-  END IF
-
-  IF(.NOT. ListCheckPresent( Params,'Apply Mortar BCs') ) THEN
-    CALL ListAddLogical( Params,'Apply Mortar BCs',.TRUE.)
-  END IF
+  CALL ListAddNewString( Params,'Variable','Potential')
+  CALL ListAddNewLogical( Params,'Apply Mortar BCs',.TRUE.)
   
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2D_Init ! }}}

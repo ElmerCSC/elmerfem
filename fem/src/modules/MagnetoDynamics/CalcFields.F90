@@ -547,7 +547,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), POINTER :: R_t(:,:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
-   REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
+   REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent, CircEqVoltageFactor
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
@@ -878,6 +878,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      IF (ASSOCIATED(CompParams)) THEN
        CoilType = GetString(CompParams, 'Coil Type', Found)
        IF (Found) CoilBody = .TRUE.
+       CircEqVoltageFactor = GetConstReal(CompParams, 'Circuit Equation Voltage Factor', Found)
+       IF (.NOT. Found) CircEqVoltageFactor = 1._dp
      END IF 
  
      !------------------------------------------------------------------------------
@@ -1132,8 +1134,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
 
          CASE ('massive')
-           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-           localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId) * CircEqVoltageFactor
+           localV(2) = localV(2) + LagrangeVar % Values(VvarId+1) * CircEqVoltageFactor
            SELECT CASE(dim)
            CASE(2)
              E(1,3) = E(1,3)-localV(1) * grads_coeff
@@ -1148,8 +1150,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            DO k = 1, VvarDofs-1
              Reindex = 2*k
              Imindex = Reindex+1
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
-             localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1) * CircEqVoltageFactor
+             localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1) * CircEqVoltageFactor
            END DO
            SELECT CASE(dim)
            CASE(2)
@@ -1233,7 +1235,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END SELECT
 
          CASE ('massive')
-           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId) * CircEqVoltageFactor
            SELECT CASE(dim)
            CASE(2)
              E(1,3) = E(1,3)-localV(1) * grads_coeff
@@ -1244,7 +1246,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CASE ('foil winding')
            localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
            DO k = 1, VvarDofs-1
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1) * CircEqVoltageFactor
            END DO
            SELECT CASE(dim)
            CASE(2)
@@ -1271,17 +1273,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            CASE(3)
              IF (Transient) THEN
                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-
-               IF (HasAngularVelocity) THEN
-                 !
-                 ! Add w x A so as to create E-field that conforms with the 
-                 ! assumption of force and charge being invariant. Multiplication
-                 ! with the electric conductivity then gives the current density 
-                 ! with respect to the fixed frame:
-                 !
-                 E(1,:) = E(1,:) + CrossProduct(angular_velo, &
-                     MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)))
-               END IF
              END IF
 
              IF (np > 0 .AND. .NOT. Transient) THEN

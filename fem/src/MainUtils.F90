@@ -5039,33 +5039,11 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
-       ! Check that the solver is active in some of the active output solvers
-       IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
-         IF( ParEnv % MyPe >= MinOutputPE .AND. &
-             ParEnv % MyPe <= MaxOutputPE ) THEN 
-           OutputPE = ParEnv % MyPE
-         ELSE
-           OutputPE = -1
-         END IF
-       ELSE         
-        ! Otherwise get the first active partition for this solver
-        DO i=1,ParEnv % PEs
-           IF ( ParEnv % Active(i) ) THEN
-             EXIT
-           END IF
-         END DO
-
-         OutputPE = -1
-         IF ( i-1 == ParEnv % MyPE ) THEN
-           OutputPE = i-1 
-         ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
-           OutputPE = 0
-         END IF
-       END IF
-
-
+     IF ( ParEnv % PEs > 1 .AND. .NOT. SlaveNotParallel ) THEN
+       ! Set the communicator and active info partitions.
+       
        n = COUNT(ParEnv % Active)
+       
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
            IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
@@ -5091,18 +5069,48 @@ CONTAINS
            M % Comm = comm_active
            M => M % Parent
          END DO
+
+         IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
+           ! If any of the active output partitions in active just use it.
+           ! Typically the 1st one. Others are passive. 
+           IF( ParEnv % MyPe >= MinOutputPE .AND. &
+               ParEnv % MyPe <= MaxOutputPE ) THEN 
+             OutputPE = ParEnv % MyPE
+           ELSE
+             OutputPE = -1
+           END IF
+         ELSE         
+           ! Otherwise find the 1st active partition and if found use it.
+           ! Otherwise use the 0:th partition. 
+           DO i=1,ParEnv % PEs
+             IF ( ParEnv % Active(i) ) EXIT
+           END DO
+
+           OutputPE = -1
+           IF ( i-1 == ParEnv % MyPE ) THEN
+             OutputPE = i-1 
+           ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+             OutputPE = 0
+           END IF
+         END IF
        ELSE
          M => Solver % Matrix
          DO WHILE( ASSOCIATED(M) )
            M % Comm = ELMER_COMM_WORLD
            M => M % Parent
          END DO
+
+         ! Here set the the default partitions active. 
+         IF( ParEnv % MyPe >= MinOutputPE .AND. &
+             ParEnv % MyPe <= MaxOutputPE ) THEN 
+           OutputPE = ParEnv % MyPE
+         ELSE
+           OutputPE = -1
+         END IF
        END IF
-     ELSE
-       OutputPE = -1
-       IF(ParEnv % myPE == 0 ) OutputPE=0
      END IF
 
+       
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( ParEnv % PEs>1 .AND. MeActive ) THEN
@@ -5137,11 +5145,7 @@ CONTAINS
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
-
-
-
-
-     
+    
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )

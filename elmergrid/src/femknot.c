@@ -6285,7 +6285,9 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 
   data->dim = 3;
 
-  origtype = dataxy->elementtypes[1];
+  origtype = 0;
+  for(i=1;i<=dataxy->noelements;i++) 
+    origtype = MAX( origtype, dataxy->elementtypes[i]);
 
   if(origtype == 303)  
     elemtype = 706;
@@ -6299,7 +6301,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     printf("CreateKnotsExtruded: not implemented for elementtypes %d!\n",origtype);
     return;
   }
-  printf("Elementtype %d extruded to type %d.\n",origtype,elemtype);
+  printf("Maxium elementtype %d extruded to type %d.\n",origtype,elemtype);
 
   nonodes2d = origtype%100;
   data->maxnodes = nonodes3d = elemtype%100;
@@ -6405,6 +6407,19 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
       level++;
       
       for(element=1;element <= dataxy->noelements;element++)  {
+
+	origtype = dataxy->elementtypes[element];
+	nonodes2d = origtype % 100;
+	
+	if(origtype == 303)  
+	  elemtype = 706;
+	else if(origtype == 404)  
+	  elemtype = 808;
+	else if(origtype == 408)
+	  elemtype = 820;
+	else if(origtype == 409)
+	  elemtype = 827;
+
 	if( grid->zmaterialmapexists ) {
 	  material = dataxy->material[element];
 	  if(material > grid->maxmaterial ) {
@@ -6704,7 +6719,18 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  minsidetype = INT_MAX;
 	  
 	  for(i=1;i<=dataxy->noelements;i++){
-
+	    origtype = dataxy->elementtypes[i];
+	    nonodes2d = origtype % 100;
+	
+	    if(origtype == 303)  
+	      elemtype = 706;
+	    else if(origtype == 404)  
+	      elemtype = 808;
+	    else if(origtype == 408)
+	      elemtype = 820;
+	    else if(origtype == 409)
+	      elemtype = 827;
+	    
 	    /* Check the parent elements of the layers. Only create a BC if the parents are 
 	       different. */
 	    ind1 = (level-2)*dataxy->noelements + i;

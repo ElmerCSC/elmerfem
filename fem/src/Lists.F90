@@ -3155,6 +3155,41 @@ use spariterglobals
    END FUNCTION ListGetIntegerArray
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Check whether the keyword is associated to an integer or real array.
+!------------------------------------------------------------------------------
+   RECURSIVE FUNCTION ListCheckIsArray( List,Name,Found ) RESULT( IsArray )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*)  :: Name
+     LOGICAL, OPTIONAL :: Found
+     LOGICAL :: IsArray
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     INTEGER :: n
+!------------------------------------------------------------------------------
+
+     ptr => ListFind(List,Name,Found)
+     IsArray = .FALSE.
+     IF(.NOT. ASSOCIATED( ptr ) ) RETURN
+     
+     n = 0
+     IF ( ASSOCIATED(ptr % IValues) ) THEN
+       n = SIZE(ptr % IValues)
+     END IF
+     IF( ASSOCIATED( ptr % FValues ) ) THEN
+       n = SIZE(ptr % FValues)
+     END IF
+
+     IsArray = ( n > 1 )
+     
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckIsArray
+!------------------------------------------------------------------------------
+
+
+   
 !------------------------------------------------------------------------------
 !> Gets a logical value from the list, if not found return False.
 !------------------------------------------------------------------------------
