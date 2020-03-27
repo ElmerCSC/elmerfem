@@ -2361,7 +2361,7 @@ CONTAINS
        IF(ListGetLogical( Model % BCs(id) % Values, &
            'Default Target', GotIt)) DefaultTargetBC = id       
        BList => ListGetIntegerArray( Model % BCs(id) % Values, &
-           'Target Boundaries', GotIt ) 
+           'Target Boundaries', GotIt )
        IF ( Gotit ) THEN
          DO k=1,SIZE(BList)
            bndry = Blist(k)
@@ -2379,12 +2379,20 @@ CONTAINS
            END IF
          END DO
        ELSE
-         IF( IndexMap( id ) /= 0 .AND. id /= DefaultTargetBC ) THEN
-           CALL Warn('LoadMesh','Unset BC already set by > Target Boundaries < : '&
-               //TRIM(I2S(id)) )
-         ELSE 
-           ! IndexMap( id ) = id
+         IF (ListCheckPresent(Model % BCs(id) % Values, 'Target Nodes') .OR. &
+             ListCheckPresent(Model % BCs(id) % Values, 'Target Coordinates')) &
+             CYCLE
+         IF (IndexMap( id ) /= 0 .AND. id == DefaultTargetBC ) THEN ! DefaultTarget has been given
+           CALL Warn('LoadMesh','Default Target is a Target Boundaries entry in > Boundary Condition < : '&
+               //TRIM(I2S(IndexMap(id))) )
          END IF
+         !
+         !IF( IndexMap( id ) /= 0 .AND. id /= DefaultTargetBC ) THEN
+         !  CALL Warn('LoadMesh','Unset BC already set by > Target Boundaries < : '&
+         !      //TRIM(I2S(id)) )
+         !ELSE 
+         !  ! IndexMap( id ) = id
+         !END IF
        END IF
      END DO
 
