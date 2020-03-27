@@ -251,7 +251,7 @@ MODULE NetCDFInterface
               UniformCoords = .FALSE.
            END IF
 
-           IF (UniformCoords) THEN
+           !IF (UniformCoords) THEN
               WRITE(Message,'(A,ES12.3)') 'Grid parameter of dimension > '&
                    //TRIM(CoordName)//' < is ',dx0
               CALL Info('GridDataReader',Message, Level=6 )
@@ -259,7 +259,7 @@ MODULE NetCDFInterface
               WRITE(Message,'(A,2ES12.3,A)') 'Range of dimension > '&
                    //TRIM(CoordName)//' < is [',FirstTwo(1),LastTwo(2),']'
               CALL Info('GridDataReader',Message, Level=6 )
-           END IF
+           !END IF
         END IF
 
         IF( i <= 3 ) THEN
@@ -1036,12 +1036,10 @@ CONTAINS
       CALL Info('GridDataReader', 'Keyword > Y Epsilon < not given, setting equal to > X Epsilon <',Level=6)
       Eps(2) = Eps(1)
     END IF
-    IF( NetDim == 3 ) THEN
-      Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
-      IF ( .NOT. Found ) THEN
-        CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
-        Eps(3) = Eps(1)
-      END IF
+    Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
+    IF ( .NOT. Found ) THEN
+      CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
+      Eps(3) = Eps(1)
     END IF
 
     EpsTime = GetConstReal(Params, "Time Epsilon", Found )
@@ -1163,10 +1161,11 @@ CONTAINS
        ! all coord variable dimensions are 1D so search each separately
        DO i = 1,NetDim
           success = findCell1D(coordVar(i),x(i),Ind(i),weights(i))
-          WRITE(Message, '(A)') 'Not yet tested this combination of netcdf &
-               &coordinate variable dimensions &
-               &(non-uniform, all single), pls remove this comment if it works...'
-          CALL Warn('GridDataReader',Message)
+          !WRITE(Message, '(A)') 'Not yet tested this combination of netcdf &
+          !     &coordinate variable dimensions &
+          !     &(non-uniform, all single), pls remove this comment if it works...'
+          ! F. Gillet - March 2020 - seems ok now
+          !CALL Warn('GridDataReader',Message)
        END DO
 
     ELSEIF ((CoordVarNDims(1) == 2) .AND. (CoordVarNDims(2) == 2)) THEN
@@ -1290,11 +1289,12 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: Weights
 
     LOGICAL :: success
+    
 
-    ind     = 0
-    Weights = 0.0_dp
+    ind     = SearchInterval(coordVar%Values(:,1,1),xe)
+    Weights = (xe-coordVar%Values(ind,1,1)) / (coordVar%Values(ind+1,1,1)-coordVar%Values(ind,1,1))
 
-    success = .FALSE.
+    success = .TRUE.
 
   END FUNCTION findCell1D
 
