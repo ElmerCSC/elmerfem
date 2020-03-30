@@ -37,6 +37,9 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
+#if WITH_QT5
+  #include <QtWidgets>
+#endif
 
 #include <QtGui>
 #include <QScriptEngine>
@@ -209,6 +212,7 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
 VtkPost::VtkPost(QWidget *parent)
   : QMainWindow(parent)
 {
+  vtkObject::GlobalWarningDisplayOff();
   // Initialize:
   //------------
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
@@ -436,6 +440,7 @@ VtkPost::VtkPost(QWidget *parent)
   ecmaConsole->addNames("text", text->metaObject());
 
   ecmaConsole->initCompleter();
+
 }
 
 VtkPost::~VtkPost()
@@ -1039,7 +1044,13 @@ bool VtkPost::ReadPostFile(QString postFileName)
   for(int i = 0; i < scalarFields; i++ ) {
      ScalarField *sf = &scalarField[i];
 #ifdef EG_MATC
+
+#ifdef WITH_QT5
+     QByteArray nm = sf->name.trimmed().toLatin1();
+#else
      QByteArray nm = sf->name.trimmed().toAscii();
+#endif
+
      var_delete( nm.data() );
 #else
      if(sf->value) free(sf->value);
@@ -1065,8 +1076,13 @@ bool VtkPost::ReadPostFile(QString postFileName)
     fieldType = fieldType.trimmed();
     fieldName = fieldName.trimmed();
 
+#if WITH_QT5
+    cout << fieldType.toLatin1().data() << ": ";
+    cout << fieldName.toLatin1().data() << endl;
+#else
     cout << fieldType.toAscii().data() << ": ";
-    cout << fieldName.toAscii().data() << endl;
+    cout << fieldName.toAscii().data() << endl;    
+#endif
 
     if(fieldType == "scalar")
       addScalarField(fieldName, nodes*timesteps, NULL);
@@ -1184,8 +1200,16 @@ bool VtkPost::ReadPostFile(QString postFileName)
         name = sf->name.mid(0,n);
 
         QString cmd = name+"="+name+"(0:2,0:"+QString::number(sf->values-1)+")";
+
+#if WITH_QT5
+        mtc_domath(cmd.toLatin1().data());
+
+        VARIABLE *var = var_check(name.totoLatin1().data());
+#else
         mtc_domath(cmd.toAscii().data());
+
         VARIABLE *var = var_check(name.toAscii().data());
+#endif
 
         sf = &scalarField[ifield];
         sf->value = &M(var,0,0);
@@ -1205,7 +1229,11 @@ bool VtkPost::ReadPostFile(QString postFileName)
       } else {
         size=sf->values*sizeof(double);
 
+#if WITH_QT5
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
         VARIABLE *var = var_check(name.toAscii().data());
+#endif       
         sf->value = (double *)ALLOC_PTR(realloc(
               ALLOC_LST(sf->value), ALLOC_SIZE(size)) );
         MATR(var) = sf->value;
@@ -1288,8 +1316,12 @@ void VtkPost::addVectorField(QString fieldName, int values)
 {
    
 #ifdef EG_MATC
-    QByteArray nm=fieldName.trimmed().toAscii();
 
+#if WITH_QT5
+    QByteArray nm=fieldName.trimmed().toLatin1();
+#else
+    QByteArray nm=fieldName.trimmed().toAscii();
+#endif
     char *name = (char *)malloc( nm.count()+1 );
     strcpy(name,nm.data());
 
@@ -1324,8 +1356,12 @@ ScalarField* VtkPost::addScalarField(QString fieldName, int values, double *valu
  
   if ( !sf->value ) {
 #ifdef EG_MATC
-    QByteArray nm=fieldName.trimmed().toAscii();
 
+#if WITH_QT5
+    QByteArray nm=fieldName.trimmed().toLatin1();
+#else
+    QByteArray nm=fieldName.trimmed().toAscii();
+#endif
     char *name = (char *)malloc( nm.count()+1 );
     strcpy(name,nm.data());
     VARIABLE *var = var_check(name);
@@ -2713,8 +2749,12 @@ bool VtkPost::SavePngFile(QString fileName)
   vtkPNGWriter* writer = vtkPNGWriter::New();
 
   writer->SetInputConnection(image->GetOutputPort());
+  
+#if WITH_QT5
+  writer->SetFileName(fileName.toLatin1().data());
+#else
   writer->SetFileName(fileName.toAscii().data());
-
+#endif
   qvtkWidget->GetRenderWindow()->Render();
   writer->Write();
 
