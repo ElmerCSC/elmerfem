@@ -1,11 +1,11 @@
 !
-! This is a special model of the Faraday wheel to test the mortar FE 
+! This is a special transient model of the Faraday wheel to test the mortar FE 
 ! approximation. To this end the wheel is artificially broken into an inner part
 ! and outer part which are meshed independently. Moreover, the vector potential
 ! variable is made unique in an iterated manner (the nonlinear iteration is 
 ! employed for this purpose) by performing the Helmholtz projection after 
 ! solving the A-V solution candidate. For a similar verification case see the 
-! test ../mgdyn_faraday_disc/.
+! test ../mgdyn_faraday_disc_transient/.
 !
 ! Here a metallic disc rotates and is subject to a uniform magnetic field 
 ! parallel to the disc axis. When the disc is put to rotate, the mobile charges
@@ -19,10 +19,21 @@
 !               E'(x) = E(x) + v(x) x B(x) = 0, 
 !
 ! with E'(x) being the spatial field that describes the force experienced by 
-! a charge (see Elmer Models Manual for Maxwell's equations in terms of E'). 
-! Note that the solution is expressed in the spatial coordinates and attention 
+! a charge (see Elmer Models Manual for Maxwell's equations in terms of E').
+! 
+! Here the rotation is modelled by mapping the mesh at the previous time into
+! the current configuration, so the (mesh) velocity corresponds to the velocity
+! field as recorded by an observer at rest (the frame with respect to which the
+! node coordinates are calculated). The spatial discretization is thus done over
+! an instantaneous configuration. It should be noted that the scalar potential 
+! variable V of the model is related to the standard E field via
+!
+!              E = -grad(psi),   with psi = V + v.A,
+!
+! where A is the vector potential and v is the velocity, respectively. Note also
+! that the solution is expressed in the spatial coordinates and attention 
 ! is not fixed on particular material points (this is known as the Euler 
-! description in the continuum mechanics).  
+! description in the continuum mechanics).
 !
 ! The continuity of the A-V solution is enforced weakly over the artificial 
 ! contact surface of the inner and outer part.
@@ -33,6 +44,11 @@
 
 
 $ omega_z = 1
+$ T_cycle = 2*pi/omega_z
+$ n_cycle = 180
+$ dt = T_cycle/n_cycle
+$ dangle = 360/n_cycle
+
 
 Header
   CHECK KEYWORDS Warn
@@ -44,9 +60,13 @@ End
 Simulation
   Max Output Level = 5
   Coordinate System = "Cartesian 3D"
-  Simulation Type = "Steady State"
+  Simulation Type = "Transient"
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = $ dt
+  Timestep Intervals = 50
   Output Intervals = 1
 End
 
@@ -72,16 +92,25 @@ Body 2
 End
 
 Equation 1
-  Active Solvers(5) = 1 2 3 4 5
+  Active Solvers(6) = 1 2 3 4 5 6
 End
 
 Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical True
+  Translate Before Rotate = Logical True
+  Calculate Mesh Velocity = True
+End
+
+Solver 2
   Equation = "MGDynamics"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
-  Nonlinear Post Solvers(2) = Integer 4 5
-  Nonlinear System Max Iterations = 10
-  Nonlinear System Convergence Tolerance = 1e-5
+  Nonlinear Post Solvers(2) = Integer 5 6
+  Nonlinear System Max Iterations = 15
+  Nonlinear System Convergence Tolerance = 1e-3
 
   Fix Input Current Density = Logical False
   Use Piola Transform = Logical True
@@ -101,9 +130,9 @@ Solver 1
   Projector Skip Nodes = False
 End
 
-Solver 2
-!  Exec Solver = never
-  Equation = "MGDynamicsCalc"
+Solver 3
+  Exec Solver = After timestep
+  Equation = "CalcFields"
 
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
 
@@ -122,18 +151,17 @@ Solver 2
   Linear System Convergence Tolerance = 1.0e-8
 End
 
-Solver 3
-!  Exec Solver = after timestep
+Solver 4
+  Exec Solver = after timestep
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = with_projection
+  Output File Name = transient_with_projection
   Vtu Format = Logical True
   Discontinuous Bodies = true
   Save Geometry IDs = Logical True
 End
 
-
-Solver 4
+Solver 5
   Equation = "Helmholtz projection"
   Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
   Procedure = "HelmholtzProjection" "HelmholtzProjector"
@@ -152,7 +180,7 @@ Solver 4
   Projector Skip Edges = True
 End
 
-Solver 5
+Solver 6
   Equation = "Remove kernel component"
   Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
   Procedure = "HelmholtzProjection" "RemoveKernelComponent"
@@ -178,11 +206,13 @@ Material 1
 End
 
 Body Force 1
-  Angular Velocity 3 = Real $ omega_z
+  Mesh Rotate 3 = Variable time
+     Real MATC "dangle"
 End
 
 Body Force 2
-  Angular Velocity 3 = Real $ omega_z
+  Mesh Rotate 3 = Variable time
+     Real MATC "dangle"
 End
 
 ! The outer face of the inner ring:
@@ -226,15 +256,13 @@ Boundary Condition 4
 End
 
 !
-! Fix potential at one node on the inner face
-! (this seems to make linear solver convergence harder):
-!-------------------------------------------------------
-!Boundary Condition 5
-!  Target Nodes(1) = 5
-!  AV = 0
-!End
+! Fix potential at one node on the inner face:
+!---------------------------------------------
+Boundary Condition 5
+  Target Nodes(1) = 5
+  AV = 0
+End
 
-
-Solver 1 :: Reference Norm = Real 2.24400020E-02
-Solver 1 :: Reference Norm Tolerance = Real 1e-4
+!Solver 1 :: Reference Norm = Real 0.22433913E-01
+!Solver 1 :: Reference Norm Tolerance = Real 1e-4
 
