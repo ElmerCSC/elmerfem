@@ -644,6 +644,18 @@ int next_int(char **start)
   return(i);
 }
 
+int next_int_n(char **start, int n)
+{
+  int i;
+  char *end = *start+n;
+  char saved = *end;
+
+  *end = '\0';
+  i = strtol(*start,NULL,10);
+  *end = saved;
+  *start = end;
+  return(i);
+}
 
 Real next_real(char **start)
 {

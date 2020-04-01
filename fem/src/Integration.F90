@@ -2743,9 +2743,9 @@ CONTAINS
 
      SELECT CASE(ElementFamily)
      CASE (1)
-        IntegStuff = GaussPoints0D(1)
+        IP = GaussPoints0D(1)
      CASE (2)
-        IntegStuff = GaussPoints1D(2)
+        IP = GaussPoints1D(2)
      CASE(3)
         IF (SecondOrder) THEN
            IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)

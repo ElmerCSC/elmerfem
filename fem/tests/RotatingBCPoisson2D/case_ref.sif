@@ -18,7 +18,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Output Intervals = 0
-  Post File = mortar.ep
+  Post File = mortar.vtu
 !  Output File = case.result
 
   Simulation Timing = Logical True
@@ -122,15 +122,6 @@ Solver 2
   Parallel Reduce = Logical True
   Default Parallel Operator = String max
   Parallel Operator 1 = String sum
-End 
-
-Solver 3
-  Exec Solver = never
-  Equation = VtuOutput
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
-  Vtu Format = Logical True
-  Single Precision = Logical True
 End 
 
 Equation 1

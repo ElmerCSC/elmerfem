@@ -655,7 +655,7 @@ CONTAINS
      ELSE
        n = GetElementDOFs( Indexes, Element, Solver )
      END IF
-     n = MIN( n, SIZE(x) )
+     n = MIN( n, SIZE(x,2) )
 
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
@@ -2636,19 +2636,6 @@ CONTAINS
    Order = MAX( MIN( Solver % DoneTime, Solver % Order ), 1)   
    HasMass = ASSOCIATED( Solver % Matrix % MassValues )
 
-   Method = ListGetString( Solver % Values, 'Timestepping Method', Found )
-   IF ( Method == 'bdf' ) THEN
-     Dts(1) = Solver % Dt
-     ConstantDt = .TRUE.
-     IF(Order > 1) THEN
-       DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
-       DO i=2,Order
-         Dts(i) = DtVar % PrevValues(1,i-1)
-         IF(ABS(Dts(i)-Dts(1)) > 1.0d-6 * Dts(1)) ConstantDt = .FALSE.
-       END DO
-     END IF
-   END IF
-   
    HasFCT = ListGetLogical( Solver % Values,'Linear System FCT', Found )
 
    IF( HasFCT ) THEN
@@ -2686,7 +2673,19 @@ CONTAINS
    MASS = 0.0_dp
    X = 0.0_dp
 
-
+   Method = ListGetString( Solver % Values, 'Timestepping Method', Found )
+   IF ( Method == 'bdf' ) THEN
+     Dts(1) = Solver % Dt
+     ConstantDt = .TRUE.
+     IF(Order > 1) THEN
+       DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
+       DO i=2,Order
+         Dts(i) = DtVar % PrevValues(1,i-1)
+         IF(ABS(Dts(i)-Dts(1)) > 1.0d-6 * Dts(1)) ConstantDt = .FALSE.
+       END DO
+     END IF
+   END IF
+   
    DO i=1,Solver % Matrix % NumberOFRows
      n = 0
      k = 0
@@ -2718,7 +2717,7 @@ CONTAINS
        CALL FractionalStep( n, Solver % dt, MASS, STIFF, FORCE, &
            X(:,1), Solver % Beta, Solver )
        
-     CASE('bdf')
+     CASE('bdf')       
        IF(ConstantDt) THEN
          CALL BDFLocal( n, Solver % dt, MASS, STIFF, FORCE, X, Order )
        ELSE
@@ -5379,70 +5378,6 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Here the given element can be supposed to be some face of its parent element.
-!> The index of the face in reference to the parent element and pointer
-!> to the face are returned. The given element and the face returned are thus
-!> representations of the same entity but they may still be indexed differently.
-!------------------------------------------------------------------------------
-SUBROUTINE PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
-!------------------------------------------------------------------------------
-  IMPLICIT NONE
-  TYPE(Mesh_t), POINTER, INTENT(IN) :: Mesh  
-  TYPE(Element_t), POINTER, INTENT(IN) :: Parent, Element
-  TYPE(Element_t), POINTER, INTENT(OUT) :: Face
-  INTEGER, INTENT(OUT) :: ActiveFaceId
-!------------------------------------------------------------------------------
-  INTEGER :: matches, k, l
-!------------------------------------------------------------------------------
-  SELECT CASE( GetElementFamily(Element) )
-  CASE(2)
-    IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
-      DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
-        Face => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
-        matches = 0
-        DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Face % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
-                matches=matches+1
-          END DO
-        END DO
-        IF (matches==Element % TYPE % NumberOfNodes) EXIT
-      END DO
-    ELSE
-      matches = 0
-    END IF
-  CASE(3,4)
-    IF ( ASSOCIATED(Parent % FaceIndexes) ) THEN
-      DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
-        Face => Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
-        IF (GetElementFamily(Element) /= GetElementFamily(Face)) CYCLE
-        matches = 0
-        DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Face % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
-                matches=matches+1
-          END DO
-        END DO
-        IF (matches == Element % TYPE % NumberOfNodes ) EXIT
-      END DO
-    ELSE
-      matches = 0
-    END IF
-  CASE DEFAULT
-    CALL Fatal('PickActiveFace', 'Element variable is of a wrong dimension')
-  END SELECT
-
-  IF (matches /= Element % TYPE % NumberOfNodes) THEN
-    Face => NULL()
-    ActiveFaceId = 0
-    CALL Warn('PickActiveFace', 'The element is not a face of given parent')
-  END IF
-!------------------------------------------------------------------------------
-END SUBROUTINE PickActiveFace
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
 !> This subroutine computes the values of DOFs that are associated with 
 !> mesh edges in the case of vector-valued (edge or face) finite elements, so that
 !> the vector-valued interpolant of the BC data can be constructed. 
@@ -6243,8 +6178,7 @@ END SUBROUTINE PickActiveFace
              DetJ, Basis )
 
         IF (.NOT. stat) THEN
-           WRITE (*,*) 'DefUtils::MapGaussPoints: Element to map degenerate'
-           STOP
+           CALL Fatal( 'DefUtils::MapGaussPoints', 'Element to map degenerate')
         END IF
 
         ! Get mapped points
@@ -6566,7 +6500,7 @@ END SUBROUTINE PickActiveFace
      CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
      LOGICAL :: Condition
 !-----------------------------------------------------------------------
-     IF ( .NOT. OutputLevelMask(0) ) STOP
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      IF(Condition) RETURN !Assertion passed
 
@@ -6587,9 +6521,7 @@ END SUBROUTINE PickActiveFace
      IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
 #endif
 
-     STOP
-
-     CALL FLUSH(6)
+     STOP EXIT_ERROR
 !-----------------------------------------------------------------------
    END SUBROUTINE Assert
 !-----------------------------------------------------------------------

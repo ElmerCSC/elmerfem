@@ -1216,7 +1216,7 @@ CONTAINS
         
         IF( Dperm(i) < 1 .OR. DPerm(k) < 1 ) THEN
           PRINT *,'ik',Dperm(i),Dperm(k)
-          STOP
+          STOP EXIT_ERROR
         END IF
         CALL AddToMatrixElement(B,Dperm(i),DPerm(k),A % Values(j))
       END DO

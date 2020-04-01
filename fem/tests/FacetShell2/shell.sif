@@ -14,7 +14,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Output Intervals = 1
-!  Post File = "shell.ep"
+!  Post File = "shell.vtu"
 ! Output File = "shell.dat"
 End
 

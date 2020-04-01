@@ -1,4 +1,4 @@
-/*****************************************************************************/
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -39,12 +39,10 @@
 SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -53,13 +51,10 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   TYPE(ValueListEntry_t), POINTER :: VariablePtr
   INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
        b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16
-
-  integer :: Paramlist
+  INTEGER :: Paramlist
   Paramlist = 0
 
   SolverParams => GetSolverParams()
-
-  LagrangeGauge = .FALSE.
 
   StaticConductivity = ListGetLogical( SolverParams,'Static Conductivity',Found )
   IF( .NOT. Found ) THEN
@@ -75,10 +70,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       StaticConductivity = .TRUE.
     END IF
   END IF
-  IF( StaticConductivity ) THEN
+  IF (.NOT. Transient .AND. StaticConductivity) THEN
     CALL Info("WhitneyAVSolver_Init0",'Including scalar potential in AV equation!',Level=6)
-  ELSE
-    CALL Info("WhitneyAVSolver_Init0",'Ignoring scalar potential in AV equation!',Level=6)    
   END IF
 
   LagrangeGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
@@ -102,18 +95,16 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     SELECT CASE (Paramlist)
     CASE (b_Piola + b_Transient + b_Secondorder, &
-         b_Piola + b_Transient + b_Secondorder + b_StaticCond )
-      CALL ListAddString( SolverParams, &
-           "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
+         b_Piola + b_Gauge + b_Secondorder, &
+         b_Piola + b_Transient + b_Secondorder + b_StaticCond, &
+         b_Piola + b_Secondorder + b_StaticCond)
+      CALL ListAddString( SolverParams, "Element", &
+         "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola + b_Transient, &
          b_Piola + b_Transient + b_StaticCond, &
          b_Piola + b_Transient + b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
-
-    CASE (b_Piola + b_Gauge + b_Secondorder)
-      CALL ListAddString( SolverParams, &
-           "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
 
     CASE (b_Piola + b_Gauge)
       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
@@ -153,7 +144,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF(.NOT. ( StaticConductivity .OR. LagrangeGauge ) ) THEN
+  IF (.NOT. Transient .AND. .NOT. ( StaticConductivity .OR. LagrangeGauge ) ) THEN
     CALL ListAddNewLogical( SolverParams,'Variable Output',.FALSE.)
   END IF
     
@@ -167,15 +158,42 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   IF (LagrangeGauge .AND. Transient .AND. &
       ListCheckPrefixAnyBC( Model, "Mortar BC" ) ) THEN
     CALL Info("WhitneyAVSolver_Init0", "Gauge field is not projected across mortar boundaries.") 
-  END IF
-
-
+  END IF  
+  
   ! THIS ENFORCES THE NEW STRATEGY !!!!
   CALL ListAddLogical( SolverParams,'Generic Source Fixing',.TRUE.)
   
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE WhitneyAVSolver_Init(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE MagnetoDynamicsUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+
+  Mesh => GetMesh()
+  IF( Mesh % MeshDim /= 3 ) THEN
+    CALL Fatal('WhitneyAVSolver_Init','Solver requires 3D mesh!')
+  END IF
+  
+  IF( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric ) THEN
+    CALL Fatal('WhitneyAVSolver_Init','Solver not applicable to axially axisymmetric cases!')
+  END IF
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE WhitneyAVSolver_Init
+!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -270,9 +288,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
-    IF (SecondOrder) &
-        CALL Info('WhitneyAVSolver', &
-        'Using quadratic approximation, pyramidical elements are not yet available',Level=4)
   END IF
 
   SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
@@ -434,7 +449,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL ListAddInteger(SolverParams,'Norm Permutation',nNodes+1)
 
 
-  ! Resolve internal non.linearities, if requeted:
+  ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, 'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
@@ -2158,79 +2173,48 @@ END SUBROUTINE LocalConstraintMatrix
          END IF CONDUCTOR
        END IF ! (.NOT. CoilBody)
 
-       LORENTZ_EFFECT: IF ( HasVelocity ) THEN
+       LORENTZ_EFFECT: IF ( HasVelocity .AND. .NOT. Transient) THEN
          !
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          !
          A_CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
-           IF (Transient) THEN
-             IF (HasAngularVelocity) THEN
-               !
-               ! In a transient case where the mesh is transformed via a rigid motion the angular velocity 
-               ! can be used to add a correction term -(omega x A) in order to replace the substantial 
-               ! time derivative which the time stepping machinery of Elmer generates by
-               ! the upper convected (Lie) time derivative. Otherwise the definition of the velocity should 
-               ! be in-built into the transformation of the mesh and doesn't need to be specified explicitly. 
-               !
-               DO p=1,np          
-                 DO j=1,nd-np
-                   q = j+np
+           !
+           ! In the case of steady state model add the effect of v x curl A to 
+           ! the electromagnetic field: 
+           !
+           DO p=1,np
+             DO j=1,nd-np
+               q = j+np
 #ifndef __INTEL_COMPILER
-                   STIFF(p,q) = STIFF(p,q) - &
-                       SUM(MATMUL(C,CrossProduct(omega, WBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
-#endif
-                   ! TO DO: Add a workaround for the compiler?
-                 END DO
-               END DO
-
-               DO i = 1,nd-np
-                 p = i+np
-                 DO j = 1,nd-np
-                   q = j+np          
-                   STIFF(p,q) = STIFF(p,q) - &
-                       SUM(WBasis(i,:)*MATMUL(C,CrossProduct(omega, WBasis(j,:))))*detJ*IP % s(t)
-                 END DO
-               END DO
-             END IF
-           ELSE
-             !
-             ! In the case of steady state model add the effect of v x curl A to 
-             ! the electromagnetic field: 
-             !
-             DO p=1,np
-               DO j=1,nd-np
-                 q = j+np
-#ifndef __INTEL_COMPILER
-                 STIFF(p,q) = STIFF(p,q) - &
-                     SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
+               STIFF(p,q) = STIFF(p,q) - &
+                   SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
 #else
-                 ! Ifort workaround
-                 RotWJ(1:3) = RotWBasis(j,1:3)
-                 ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
-                 ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
-                 CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
-                 CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
-                 CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
-                 CVeloSum = REAL(0,dp)
-                 DO k=1,3
-                   CVeloSum = CVeloSum + CVelo(k)*dBasisdx(p,k)
-                 END DO
-                 STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
+               ! Ifort workaround
+               RotWJ(1:3) = RotWBasis(j,1:3)
+               ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
+               ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
+               CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
+               CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
+               CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
+               CVeloSum = REAL(0,dp)
+               DO k=1,3
+                 CVeloSum = CVeloSum + CVelo(k)*dBasisdx(p,k)
+               END DO
+               STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
 #endif
-               END DO
              END DO
+           END DO
 
-             DO i = 1,nd-np
-               p = i+np
-               DO j = 1,nd-np
-                 q = j+np          
-                 STIFF(p,q) = STIFF(p,q) - &
-                     SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
-               END DO
+           DO i = 1,nd-np
+             p = i+np
+             DO j = 1,nd-np
+               q = j+np          
+               STIFF(p,q) = STIFF(p,q) - &
+                   SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
              END DO
+           END DO
 
-           END IF
          END IF A_CONDUCTOR
        END IF LORENTZ_EFFECT
 

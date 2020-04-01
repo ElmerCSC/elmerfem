@@ -1260,6 +1260,7 @@ CONTAINS
     IF(.NOT. Found ) THEN
       ! Variable does not exist
       !------------------------------------------------------
+      CALL Info('AddEquationBasics','Creating null variable with no name',Level=15)
 
       ALLOCATE( Solver % Variable )
       Solver % Variable % Name = ''
@@ -1278,6 +1279,8 @@ CONTAINS
       !-----------------------------------------------------------------
       
     ELSE
+      CALL Info('AddEquationBasics','Treating variable string: '//TRIM(var_name),Level=15)
+
       ! It may be a normal field variable or a global (0D) variable
       !------------------------------------------------------------------------
       VariableGlobal = ListGetLogical( SolverParams, 'Variable Global', Found )
@@ -1305,24 +1308,20 @@ CONTAINS
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
-        END IF
         
-        IF ( SEQL(var_name, '-global ') ) THEN
+        ELSE IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
-        END IF
         
-        IF ( SEQL(var_name, '-ip ') ) THEN
+        ELSE IF ( SEQL(var_name, '-ip ') ) THEN
           VariableIp = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
-        END IF
 
-         IF ( SEQL(var_name, '-elem ') ) THEN
+        ELSE IF ( SEQL(var_name, '-elem ') ) THEN
           VariableElem = .TRUE.
           var_name(1:LEN(var_name)-6) = var_name(7:)
-        END IF
                
-        IF ( SEQL(var_name, '-dofs ') ) THEN
+        ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs
           i = 7
           j = LEN_TRIM( var_name )
@@ -1331,6 +1330,8 @@ CONTAINS
             IF ( i > j ) EXIT
           END DO
           var_name(1:LEN(var_name)-i) = var_name(i+1:)
+        ELSE
+          CALL Fatal('AddEquationBasics','Do not know how to parse: '//TRIM(var_name))
         END IF
       END DO
       IF ( DOFs == 0 ) DOFs = 1
@@ -1644,13 +1645,15 @@ CONTAINS
       InheritVarType = .FALSE.
       
       DO WHILE( var_name(1:1) == '-' )
+
+        ! PRINT *,'analyzing: ',l,TRIM(var_name)
+
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
-        END IF
-
+          
         ! Different types of variables: global, ip, elem, dg
-        IF ( SEQL(var_name, '-global ') ) THEN
+        ELSE IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
           
@@ -1669,10 +1672,8 @@ CONTAINS
         ELSE IF ( SEQL(var_name, '-dg ') ) THEN
           VariableDG = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
-
-        END IF
-            
-        IF ( SEQL(var_name, '-dofs ') ) THEN
+                  
+        ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs 
           j = LEN_TRIM( var_name )
           k = 7
@@ -1681,7 +1682,10 @@ CONTAINS
             IF ( k > j ) EXIT
           END DO
           var_name(1:LEN(var_name)-(k+2)) = var_name(k+1:)
+        ELSE
+          CALL Fatal('AddEquationBasics','Do not know how to parse: '//TRIM(var_name))          
         END IF
+        
       END DO
       IF ( DOFs == 0 ) DOFs = 1
 
@@ -5035,33 +5039,11 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
-       ! Check that the solver is active in some of the active output solvers
-       IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
-         IF( ParEnv % MyPe >= MinOutputPE .AND. &
-             ParEnv % MyPe <= MaxOutputPE ) THEN 
-           OutputPE = ParEnv % MyPE
-         ELSE
-           OutputPE = -1
-         END IF
-       ELSE         
-        ! Otherwise get the first active partition for this solver
-        DO i=1,ParEnv % PEs
-           IF ( ParEnv % Active(i) ) THEN
-             EXIT
-           END IF
-         END DO
-
-         OutputPE = -1
-         IF ( i-1 == ParEnv % MyPE ) THEN
-           OutputPE = i-1 
-         ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
-           OutputPE = 0
-         END IF
-       END IF
-
-
+     IF ( ParEnv % PEs > 1 .AND. .NOT. SlaveNotParallel ) THEN
+       ! Set the communicator and active info partitions.
+       
        n = COUNT(ParEnv % Active)
+       
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
            IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
@@ -5087,18 +5069,48 @@ CONTAINS
            M % Comm = comm_active
            M => M % Parent
          END DO
+
+         IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
+           ! If any of the active output partitions in active just use it.
+           ! Typically the 1st one. Others are passive. 
+           IF( ParEnv % MyPe >= MinOutputPE .AND. &
+               ParEnv % MyPe <= MaxOutputPE ) THEN 
+             OutputPE = ParEnv % MyPE
+           ELSE
+             OutputPE = -1
+           END IF
+         ELSE         
+           ! Otherwise find the 1st active partition and if found use it.
+           ! Otherwise use the 0:th partition. 
+           DO i=1,ParEnv % PEs
+             IF ( ParEnv % Active(i) ) EXIT
+           END DO
+
+           OutputPE = -1
+           IF ( i-1 == ParEnv % MyPE ) THEN
+             OutputPE = i-1 
+           ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+             OutputPE = 0
+           END IF
+         END IF
        ELSE
          M => Solver % Matrix
          DO WHILE( ASSOCIATED(M) )
            M % Comm = ELMER_COMM_WORLD
            M => M % Parent
          END DO
+
+         ! Here set the the default partitions active. 
+         IF( ParEnv % MyPe >= MinOutputPE .AND. &
+             ParEnv % MyPe <= MaxOutputPE ) THEN 
+           OutputPE = ParEnv % MyPE
+         ELSE
+           OutputPE = -1
+         END IF
        END IF
-     ELSE
-       OutputPE = -1
-       IF(ParEnv % myPE == 0 ) OutputPE=0
      END IF
 
+       
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( ParEnv % PEs>1 .AND. MeActive ) THEN
@@ -5133,11 +5145,7 @@ CONTAINS
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
-
-
-
-
-     
+    
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
@@ -5196,12 +5204,9 @@ CONTAINS
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
          UpdateExported, GotCoordTransform, NamespaceFound
-     INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId
+     INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
-#ifndef USE_ISO_C_BINDINGS
-     CPUTime,RealTime
-#endif
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
@@ -5251,6 +5256,7 @@ CONTAINS
 !---------------------------------------------------------------------------------   
 ! There may also be predefined discrete intervals for the execution of the solver.
 !---------------------------------------------------------------------------------   
+     execi = 1
      ExecIntervals => ListGetIntegerArray( Params,'Exec Intervals', Found )
      IF( .NOT. Found ) THEN
        ExecIntervals =>  ListGetIntegerArray( Params,'Exec Interval', Found )
@@ -5271,8 +5277,9 @@ CONTAINS
        ELSE
          timei0 = 0
        END IF
-
-       IF( MOD( timestep-1-timei0, ExecIntervals(timei)) /= 0 ) RETURN
+       
+       execi = ExecIntervals(timei)
+       IF( MOD( timestep-1-timei0, execi) /= 0 ) RETURN              
      END IF
 
 !-------------------------------------------------------------------------------
@@ -5318,6 +5325,11 @@ CONTAINS
      IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
        DTScal = ListGetConstReal( Params, 'Timestep Scale', Found )
        IF ( .NOT. Found ) DTScal = 1.0_dp
+
+       IF( ListGetLogical( Params,'Timestep Over Intervals',Found) ) THEN
+         DTScal = 1.0_dp * Execi
+       END IF
+
        Solver % dt = DtScal * dt 
 
        IF ( TransientSimulation ) THEN

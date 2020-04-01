@@ -209,15 +209,20 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      END DO
      
      IF (MSum + ZSum < n) THEN
-        DO i = 1, n
-           Nn = Permutation(Element % NodeIndexes(i))
-           IF (Nn==0) CYCLE
-           IF (VariableValues(Nn) == 1.0_dp) THEN
-              VariableValues(Nn) = 0.0_dp
-              IF (DIM==2) PRINT *, 'Grounding Line, x', Nodes % x( i )
-              IF (DIM==3) PRINT *, 'Grounding Line, (x,y)', Nodes % x( i ), Nodes % y( i )
+       DO i = 1, n
+         Nn = Permutation(Element % NodeIndexes(i))
+         IF (Nn==0) CYCLE
+         IF (VariableValues(Nn) == 1.0_dp) THEN
+           VariableValues(Nn) = 0.0_dp
+           IF (DIM==2) THEN
+             WRITE (Message,'(A,e8.4)') "Grounding Line, x ",Nodes % x( i )
+             CALL Info(SolverName, Message, level = 9)
+           ELSE IF (DIM==3) THEN
+             WRITE (Message,'(A,e8.4,e8.4)') "Grounding Line, (x,y) ",Nodes % x( i ), Nodes % y( i )
+             CALL Info(SolverName, Message, level = 9)
            END IF
-        END DO
+         END IF
+       END DO
      END IF
   END DO
   

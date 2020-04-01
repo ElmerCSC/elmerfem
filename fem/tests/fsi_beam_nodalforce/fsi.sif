@@ -1,0 +1,148 @@
+Header
+  Mesh DB "." "fsi"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 50
+  Steady State Min Iterations = 2
+  Output Intervals = 0
+
+! Output File = "fsi.result"
+  Post File = "fsi.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 2
+End
+
+Material 1
+  Density = 1.0
+  Viscosity = 0.5
+  Poisson Ratio = 0.3
+
+  Youngs Modulus = Variable time
+    Real Procedure "FsiStuff" "Youngs"
+End
+
+Material 2
+  Density = 1000
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+End
+
+Solver 1
+  Equation = Navier-Stokes
+  Stabilize = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-6
+
+! Calculate reaction loads to be applied to the structure
+  Calculate Loads = True
+End
+
+Solver 2
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct
+  Linear System Direct Method = Banded
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+Solver 3
+  Equation = Mesh Update
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+Equation 1
+  Active Solvers(2) = 1 3
+End
+
+Equation 2
+  Active Solvers = 2
+  Plane Stress = True
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Time
+    Real Procedure "FsiStuff" "Inflow"
+  Velocity 2 = 0.0
+  Mesh Update 1 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Velocity 2 = 0.0
+  Pressure = 0.0
+  Mesh Update 1 = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+
+! This does the same thing as "Fsi BC" except on
+! a discrete level.
+  Displacement 1 Load = Opposes "Flow Solution Loads 1"
+  Displacement 2 Load = Opposes "Flow Solution Loads 2"
+
+  Fsi Bc = Logical False
+
+  Mesh Update 1 = Equals Displacement 1
+  Mesh Update 2 = Equals Displacement 2
+End
+
+Boundary Condition 4
+  Target Boundaries(2) = 4 5
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Mesh Update 2 = 0.0
+End
+
+Boundary Condition 5
+  Target Boundaries = 6 
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Solver 1 :: Reference Norm = 5.63258981E-01
+Solver 2 :: Reference Norm = 4.87290215E-01
+Solver 3 :: Reference Norm = 5.10276397E-01
+
+!End
+

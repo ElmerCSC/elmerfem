@@ -69,6 +69,8 @@ Solver 3
    Linear System Symmetric = True
    Potential Variable = String "P"
 
+   Calculate Magnetic Vector Potential = False
+   Calculate Magnetic Flux Density = True
    Calculate Magnetic Field Strength = Logical True
    Steady State Convergence Tolerance = 0
    Linear System Solver = "Iterative"
@@ -84,11 +86,8 @@ Solver 4
   Exec Solver = after all
   Equation = "ResultOutput"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-
+  Save Geometry IDs = Logical True
   Vtu format = Logical True
-  Vector Field 1 = String "Volume Current"
-  Vector Field 2 = String "Magnetic Flux Density E"
-  Vector Field 3 = String "Magnetic Field Strength E"
 End
 
 Solver 5

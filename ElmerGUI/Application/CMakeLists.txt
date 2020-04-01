@@ -29,6 +29,9 @@ SET(HEADERS src/bodypropertyeditor.h
   src/sifwindow.h 
   src/solverparameters.h 
   src/summaryeditor.h 
+  src/objectbrowser.h 
+  src/solverlogwindow.h 
+  src/newprojectdialog.h 
   plugins/egconvert.h 
   plugins/egdef.h 
   plugins/egmain.h 
@@ -54,7 +57,8 @@ SET(FORMS forms/bodypropertyeditor.ui
   forms/meshcontrol.ui 
   forms/parallel.ui 
   forms/solverparameters.ui 
-  forms/summaryeditor.ui)
+  forms/summaryeditor.ui
+  forms/newproject.ui)
 
 
 SET(SOURCES src/bodypropertyeditor.cpp 
@@ -83,6 +87,9 @@ SET(SOURCES src/bodypropertyeditor.cpp
   src/sifwindow.cpp 
   src/solverparameters.cpp 
   src/summaryeditor.cpp 
+  src/solverlogwindow.cpp 
+  src/objectbrowser.cpp 
+  src/newprojectdialog.cpp
   plugins/egconvert.cpp 
   plugins/egmain.cpp 
   plugins/egmesh.cpp 
@@ -195,7 +202,7 @@ ADD_EXECUTABLE(ElmerGUI WIN32 ${SOURCES} ${UI_HEADERS} ${UI_RESOURCES})
 SET(CPACK_PACKAGE_EXECUTABLES ElmerGUI "ElmerGUI")
 
 IF(WITH_QT5)
-  QT5_USE_MODULES(ElmerGUI OpenGL Xml Script Gui Core PrintSupport)
+  QT5_USE_MODULES(ElmerGUI OpenGL Xml Script Gui Core Svg Widgets PrintSupport)
 ENDIF()
 
 TARGET_LINK_LIBRARIES(ElmerGUI ng ${QT_LIBRARIES})
@@ -251,7 +258,7 @@ IF(WITH_PYTHONQT)
 ENDIF()
 
 IF(NOT(WIN32) AND ELMERSOLVER_RPATH_STRING)
-  SET_TARGET_PROPERTIES(ElmerGUI PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
+  SET_TARGET_PROPERTIES(ElmerGUI PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 INSTALL(TARGETS ElmerGUI RUNTIME DESTINATION "bin" COMPONENT "elmergui")
 INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/edf DESTINATION "share/ElmerGUI" COMPONENT "elmergui")

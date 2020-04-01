@@ -19,9 +19,6 @@ Simulation
 
   Max Output Level = 7
 
-! For debugging
-! Max Output Partition = 10
-
   Simulation Type = Steady
   Steady State Max Iterations = 1
 
@@ -56,9 +53,9 @@ End
 Initial Condition 1
 ! This will effectively do the same as VariableGet() in InterpSolver since the system
 ! knows that coarse pressure is invalidated while fine pressure is not.  
-  Pressure = Equals "Pressure"
-  Velocity 1 = Equals "Velocity 1"
-  Velocity 2 = Equals "Velocity 2"
+!  Pressure = Equals "Pressure"
+!  Velocity 1 = Equals "Velocity 1"
+!  Velocity 2 = Equals "Velocity 2"
 End
  
 
@@ -84,7 +81,9 @@ Solver 1
   Nonlinear System Relaxation Factor = 1.0
 
 ! For the testing use "never"
-!  Exec Solver = never
+  Exec Solver = never
+  Exported Variable 1 = Trigo
+!  Exported Variable 2 = Height
 End
 
 
@@ -98,26 +97,24 @@ Solver 2
 ! The leading variable + exported variables that follow that
 ! The variables that we want to restart should be in this list,
 ! or they can be allocated by some other solver associated to the "coarse" mesh.
-  Variable = Flow Solution[Pressure Velocity:2]
-  Exported Variable 1 = Trigo
-  Exported Variable 2 = Height
+  Variable = Flow Solution[Pressure:1 Velocity:2]
 
   Mesh = -part 2 "mesh_coarse"  ! in parallel when initial computation in several partitions
+!  Mesh = "mesh_coarse"  ! in parallel when initial computation in several partitions
 
   Restart File = File "coarse.dat"
   Restart Error Continue = Logical True  ! continues even if mismatch in number of partitions
 
+! Upon request we might only restart with some of the variables
+!  Restart Variable 1 = String "Trigo"
+!  Restart Variable 2 = String "Pressure"
+
 ! If there are several meshes to choose from
-! Target Mesh Solver Index = Integer 1
+!  Target Mesh Solver Index = Integer 1
 
 ! The variables to be interpolated
   Variable 1 = Trigo
-  Variable 2 = Height 
-
-! These are treated by the initial guess automatically
-!  Variable 1 = Pressure 
-!  Variable 2 = Velocity 1
-!  Variable 3 = Velocity 2
+  Variable 2 = Pressure 
 End
 
 
@@ -128,7 +125,7 @@ Solver 3
   Parallel Reduce = Logical True
   Filename = f.dat
 
-  Variable 1 = Trigo
+  Variable 1 = Pressure
   Operator 1 = int 
 
   Show Norm Index = 1
@@ -169,4 +166,4 @@ Boundary Condition 3
   Velocity 2 = 0
 End
 
-Solver 3 :: Reference Norm = 2.93908778E-01
+Solver 3 :: Reference Norm = 2.83131321

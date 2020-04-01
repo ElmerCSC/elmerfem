@@ -6285,7 +6285,9 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 
   data->dim = 3;
 
-  origtype = dataxy->elementtypes[1];
+  origtype = 0;
+  for(i=1;i<=dataxy->noelements;i++) 
+    origtype = MAX( origtype, dataxy->elementtypes[i]);
 
   if(origtype == 303)  
     elemtype = 706;
@@ -6299,7 +6301,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     printf("CreateKnotsExtruded: not implemented for elementtypes %d!\n",origtype);
     return;
   }
-  printf("Elementtype %d extruded to type %d.\n",origtype,elemtype);
+  printf("Maxium elementtype %d extruded to type %d.\n",origtype,elemtype);
 
   nonodes2d = origtype%100;
   data->maxnodes = nonodes3d = elemtype%100;
@@ -6405,6 +6407,19 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
       level++;
       
       for(element=1;element <= dataxy->noelements;element++)  {
+
+	origtype = dataxy->elementtypes[element];
+	nonodes2d = origtype % 100;
+	
+	if(origtype == 303)  
+	  elemtype = 706;
+	else if(origtype == 404)  
+	  elemtype = 808;
+	else if(origtype == 408)
+	  elemtype = 820;
+	else if(origtype == 409)
+	  elemtype = 827;
+
 	if( grid->zmaterialmapexists ) {
 	  material = dataxy->material[element];
 	  if(material > grid->maxmaterial ) {
@@ -6704,7 +6719,18 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  minsidetype = INT_MAX;
 	  
 	  for(i=1;i<=dataxy->noelements;i++){
-
+	    origtype = dataxy->elementtypes[i];
+	    nonodes2d = origtype % 100;
+	
+	    if(origtype == 303)  
+	      elemtype = 706;
+	    else if(origtype == 404)  
+	      elemtype = 808;
+	    else if(origtype == 408)
+	      elemtype = 820;
+	    else if(origtype == 409)
+	      elemtype = 827;
+	    
 	    /* Check the parent elements of the layers. Only create a BC if the parents are 
 	       different. */
 	    ind1 = (level-2)*dataxy->noelements + i;
@@ -7693,6 +7719,168 @@ void ElementsToBoundaryConditions(struct FemType *data,
   if(notfound) free_Ivector(notfounds,1,noelements);
 
   if(0) printf("All done\n");
+
+  return;
+}
+
+
+
+void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
+			  int *bcinds,int *bctags,int nbc,int bccount,
+			  int info)
+{
+  int i,j,k,l,sideelemtype,sideelemtype2,elemind,elemind2,sideelem,sameelem;
+  int sideind[MAXNODESD1],sideind2[MAXNODESD1],elemsides,side,hit,same,minelemtype;
+  int sidenodes,sidenodes2,elemtype,elemdim,sideelements,material;
+  int *possible=NULL,**invtopo=NULL;
+  int noelements,maxpossible,noknots,twiceelem,sideelemdim;
+  int elemhits,bci;
+
+
+  if(info) printf("Creating boundary elements from boundary nodes\n");
+
+  for(j=0;j < MAXBOUNDARIES;j++) 
+    bound[j].created = FALSE;
+  for(j=0;j < MAXBOUNDARIES;j++) 
+    bound[j].nosides = 0;
+  
+  noelements = data->noelements;
+  noknots = data->noknots;
+  
+  sideelements = nbc - bccount;
+  printf("Expected number of BC elements: %d\n",sideelements);
+
+  AllocateBoundary(bound,sideelements);
+  
+  /* Calculate how may times a node apppears */
+  possible = Ivector(1,noknots);
+  for(i=1;i<=noknots;i++) possible[i] = 0; 
+  for(elemind=1;elemind <= data->noelements;elemind++) { 
+    for(i=0;i<data->elementtypes[elemind]%100;i++) {
+      j = data->topology[elemind][i];
+      possible[j] += 1;
+    }
+  }
+  
+  j = 1;
+  maxpossible = possible[1];
+  for(i=1;i<=noknots;i++) {
+    if(maxpossible < possible[i]) {
+      maxpossible = possible[i]; 
+      j = i;
+    }  
+  }
+  if(info) printf("Node %d belongs to maximum of %d elements\n",j,maxpossible);
+  
+  /* Make a table showing to which elements a node belongs to 
+     Include only the potential parents which are not to be moved to BCs. */
+  invtopo = Imatrix(1,noknots,1,maxpossible);
+
+  for(i=1;i<=noknots;i++)
+    for(j=1;j<=maxpossible;j++) 
+      invtopo[i][j] = 0;
+  
+  for(elemind=1;elemind <= data->noelements;elemind++) { 
+    elemtype = data->elementtypes[elemind];
+    for(i=0;i<elemtype%100;i++) {
+      k = data->topology[elemind][i];
+      for(l=1;invtopo[k][l];l++); /* Yes, this is really ok. We look for unset entry. */
+      invtopo[k][l] = elemind;
+    }
+  }
+    
+  sideelem = 0;
+  sameelem = 0;
+  twiceelem = 0;
+
+  /* These are here by construction because we are looking for a chain of nodes
+     and trying to create 202 elements of them! */
+  sidenodes = 2;
+  sideelemtype = 202;
+  
+  for(bci=1;bci<nbc;bci++) {
+
+    same = FALSE;
+
+    if( bctags[bci] != bctags[bci+1] ) continue; 
+
+    sideind[0] = bcinds[bci];
+    sideind[1] = bcinds[bci+1];
+    material = bctags[bci];
+    
+    elemhits = 0;    
+    
+    /* Go through potential parents elements using the inverse topology */
+    for(l=1;l<=maxpossible;l++) {
+      elemind2 = invtopo[sideind[0]][l];
+    
+      if(!elemind2) continue;      
+
+      elemtype = data->elementtypes[elemind2];
+      hit = 0;
+      for(i=0;i<sidenodes;i++)
+	for(j=0;j<elemtype%100;j++)
+	  if(sideind[i] == data->topology[elemind2][j]) hit++;
+
+      /* We must have all hits to have a chance of finding bc */
+      if(hit < sidenodes) continue;
+
+      elemhits++;
+
+      /* Now find on which side the bc is */
+      for(side=0;side<3;side++) {
+	GetElementSide(elemind2,side,1,data,&sideind2[0],&sideelemtype2);
+	if( sideelemtype2 != sideelemtype ) printf("This should not happen!\n");
+
+	hit = 0;
+	for(i=0;i<sidenodes;i++) 
+	  for(j=0;j<sidenodes;j++) 
+	    if(sideind[i] == sideind2[j]) hit++;
+	
+	if(hit < sidenodes) continue;
+
+	if(same) {
+	  /* Ok, we found the other parent for this already */
+	  sameelem += 1;
+	  bound->parent2[sideelem] = elemind2;
+	  bound->side2[sideelem] = side;		  
+	  goto foundtwo;
+	}
+	else {
+	  /* We haven't found parents for this bc elements yet */
+	  sideelem += 1;
+	  same = TRUE;
+	  bound->parent[sideelem] = elemind2;
+	  bound->side[sideelem] = side;
+	  bound->parent2[sideelem] = 0;
+	  bound->side2[sideelem] = 0;
+	  bound->types[sideelem] = material;
+	  if(sidenodes == 2) {
+	    if((sideind[0]-sideind[1])*(sideind2[0]-sideind2[1])<0) 	      
+	      bound->normal[sideelem] = -1;
+	  }		
+	}
+      }
+    }
+  foundtwo:
+    continue;
+  }
+  
+  if(twiceelem) printf("Found %d sides that were multiply given\n",twiceelem);
+  if(sameelem) printf("Found %d side elements that have two parents.\n",sameelem);
+  
+  
+  if(sideelem == sideelements) {
+    printf("Found correctly %d side elements.\n",sideelem);
+  }
+  else {
+    printf("Found %d side elements, could have found %d\n",sideelem,sideelements);
+  }
+        
+  bound->nosides = sideelem;
+
+  free_Ivector(possible,1,noknots);
+  free_Imatrix(invtopo,1,noknots,1,maxpossible);
 
   return;
 }

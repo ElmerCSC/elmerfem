@@ -150,6 +150,9 @@ HEADERS += src/bodypropertyeditor.h \
            src/sifwindow.h \
            src/solverparameters.h \
            src/summaryeditor.h \
+           src/solverlogwindow.h \
+           src/objectbrowser.h \
+           src/newprojectdialog.h \
            plugins/egconvert.h \
            plugins/egdef.h \
            plugins/egmain.h \
@@ -174,7 +177,8 @@ FORMS += forms/bodypropertyeditor.ui \
          forms/meshcontrol.ui \
          forms/parallel.ui \
          forms/solverparameters.ui \
-         forms/summaryeditor.ui
+         forms/summaryeditor.ui \
+         forms/newproject.ui
 
 SOURCES += src/bodypropertyeditor.cpp \
            src/boundarydivision.cpp \
@@ -202,6 +206,9 @@ SOURCES += src/bodypropertyeditor.cpp \
            src/sifwindow.cpp \
            src/solverparameters.cpp \
            src/summaryeditor.cpp \
+           src/solverlogwindow.cpp \
+           src/objectbrowser.cpp \
+           src/newprojectdialog.cpp \
            plugins/egconvert.cpp \
            plugins/egmain.cpp \
            plugins/egmesh.cpp \

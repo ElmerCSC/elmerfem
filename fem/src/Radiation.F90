@@ -53,7 +53,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    FUNCTION ComputeRadiationLoad( Model, Mesh, Element, Temperature, &
-                 Reorder, Emissivity, Areas, Emiss, AngleFraction) RESULT(T)
+                 Reorder, Emissivity, AngleFraction, Areas, Emiss ) RESULT(T)
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Model_t) :: Model
@@ -75,33 +75,31 @@ CONTAINS
      IF(PRESENT(Areas) .AND. PRESENT(Emiss) ) THEN
 
        bindex = Element % ElementIndex - Mesh % NumberOfBulkElements
-       A1  = Emiss(bIndex) * Areas(bindex)
+       A1  = Emiss(bIndex)**2
 
        Cols => Element % BoundaryInfo % GebhardtFactors % Elements
        Vals => Element % BoundaryInfo % GebhardtFactors % Factors
 
-       T = 0.0_dp
+       T = 0._dp
        Asum = 0._dp
        DO i=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
          RadElement => Mesh % Elements(Cols(i))
          n = RadElement % TYPE % NumberOfNodes
   
          bindex = Cols(i) - Mesh % NumberOfBulkElements
-         A2 = Areas(bindex) * Emiss(bindex)
+         A2 = Emiss(bindex)
 
-         T = T + A2 * ABS(Vals(i)) * &
-           SUM(Temperature(Reorder(RadElement % NodeIndexes))/n)**4
-
-         Asum = Asum + A2 * ABS(Vals(i))
+         T=T+A2*Vals(i)*SUM(Temperature(Reorder(RadElement % NodeIndexes))/n)**4
+         Asum = Asum + A2*Vals(i)
        END DO
      ELSE
-       A1 = Emissivity * ElementArea(Mesh,Element,Element % TYPE % NumberOfNodes)
+       A1 = Emissivity**2
 
        Cols => Element % BoundaryInfo % GebhardtFactors % Elements
        Vals => Element % BoundaryInfo % GebhardtFactors % Factors
 
-       T = 0.0D0
-       Asum = 0.0d0
+       T = 0.0_dp
+       Asum = 0.0_dp
        DO i=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
          RadElement => Mesh % Elements(Cols(i))
          n = RadElement % TYPE % NumberOfNodes
@@ -113,20 +111,17 @@ CONTAINS
             Emissivity1 = SUM(GetParentMatProp('Emissivity',RadElement)) / n
          END IF
 
-         A2 = Emissivity1 * ElementArea( Mesh,RadElement, &
-                RadElement % TYPE % NumberOfNodes )
+         A2 = Emissivity1
+         T = T + A2 * Vals(i) * &
+           SUM(Temperature(Reorder(RadElement % NodeIndexes))/n)**4
 
-         T = T + A2 * ABS(Vals(i)) * &
-           SUM(Temperature(Reorder(RAdElement % NodeIndexes))/N)**4
-
-         Asum = Asum + A2 * ABS(Vals(i))
+         Asum = Asum + A2 * Vals(i)
        END DO
      END IF
 
-     T = (T/A1)**(1.0D0/4.0D0)
-     IF(PRESENT(AngleFraction)) THEN
-       AngleFraction = Asum / A1
-     END IF
+     T = (T/A1)**(1._dp/4._dp)
+
+     IF(PRESENT(AngleFraction)) AngleFraction = Asum
 !------------------------------------------------------------------------------
    END FUNCTION ComputeRadiationLoad
 !------------------------------------------------------------------------------

@@ -1,0 +1,142 @@
+! Run a case over 4 parameter configurations.
+!
+! P.R. 19.2.2020
+
+Check Keywords warn
+
+Header
+  Mesh DB "." "spots"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = String Cartesian
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Steady State 
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+
+! When we fetch the parameters we will automatically have variable "Rparam"
+! with the given number of parameters. You can refer to these as "Rparam i", i=1,2,3,...
+
+! a) give parameters in sif
+! Parameter Array(4,4) = Real 1 0 0 0 0 2 0 0 0 0 3 0 0 0 0 4
+! Parameter Max Sweeps = Integer 10  ! terminated early as max size is 4
+
+! b) give parameters as an ascii matrix:
+  Parameter Filename = File "par.dat"
+  Parameter Count = Integer 4  ! columns in matrix
+  Parameter Row Offset = Integer 2 ! starts from line 3
+  Parameter Max Sweeps = Integer 4 ! doing lines 3-6
+
+! c) give parameters as an Dakota file:
+!  Parameter Filename = File "LHS_distributions.out"
+!  Parameter Filetype = String "dakota"
+!  Parameter Count = Integer 4  ! columns in matrix
+!  Parameter Row Offset = Integer 2 ! starts from line 3
+!  Parameter Column Offset = Integer 2 ! start from column 3
+!  Parameter Max Sweeps = Integer 4 ! lines 3-6
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Stefan Boltzmann = 1.0
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Body Force = 3
+  Equation = 1
+  Material = 1
+End
+
+Body 5
+  Name = "Body5"
+  Body Force = 4
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation"
+  Active Solvers = 1
+End
+
+Material 1
+  Name = "Unity"
+  Density = Real 1
+  Heat Conductivity = Real 1
+End
+
+Body Force 1
+  Name = "Heater1"
+  Heat Source = Equals "Rparam 1"
+End
+
+Body Force 2
+  Name = "Heater2"
+  Heat Source = Equals "Rparam 2"
+End
+
+Body Force 3
+  Name = "Heater3"
+  Heat Source = Equals "Rparam 3"
+End
+
+Body Force 4
+  Name = "Heater4"
+  Heat Source = Equals "Rparam 4"
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 20
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = False
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Temperature = Real 0
+End
+
+Solver 1 :: Reference Norm = 0.94747143
+
+

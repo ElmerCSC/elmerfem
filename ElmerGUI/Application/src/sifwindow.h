@@ -41,10 +41,46 @@
 #ifndef SIFWINDOW_H
 #define SIFWINDOW_H
 
+#define SIF_HIGHLIGHTING_NONE	0
+#define SIF_HIGHLIGHTING_LIGHT	1
+#define SIF_HIGHLIGHTING_DARK	2
+
 #include <QMainWindow>
+#include <QSyntaxHighlighter>
 
 class QTextEdit;
 class QLineEdit;
+
+class SifHighlighter : public QSyntaxHighlighter
+{
+    Q_OBJECT
+
+public:
+    SifHighlighter(int type, QTextDocument *parent = 0);
+
+protected:
+    void highlightBlock(const QString &text);
+
+private:
+    struct HighlightingRule
+    {
+        QRegExp pattern;
+        QTextCharFormat format;
+    };
+    QVector<HighlightingRule> highlightingRules;
+
+    QRegExp commentStartExpression;
+    QRegExp commentEndExpression;
+
+    QTextCharFormat blockFormat;
+    QTextCharFormat classFormat;
+    QTextCharFormat commentFormat;
+    QTextCharFormat quotationFormat;
+    QTextCharFormat keywordFormat;
+    QTextCharFormat simulationTypeFormat;
+    QTextCharFormat valueFormat;  
+		QTextCharFormat suffixFormat;
+};
 
 class SifWindow : public QMainWindow
 {
@@ -58,6 +94,7 @@ public:
   QSize sizeHint() const;
 
   QTextEdit* getTextEdit(void);
+  SifHighlighter *highlighter; 
   void setFirstTime(bool);
   void setFound(bool);
 
@@ -67,6 +104,11 @@ private slots:
   void saveSlot();
   void printSlot();
   void findSlot();
+	void fontSlot();
+	void highlightingNoneSlot();
+	void highlightingLightSlot();
+	void highlightingDarkSlot();
+	void saveAndRunSlot();
 
 private:
   QTextEdit *textEdit;
@@ -84,9 +126,16 @@ private:
   QAction *copyAct;
   QAction *pasteAct;
   QAction *findAct;
+	QAction *fontAct;
+	QAction *highlightingNoneAct;
+	QAction *highlightingLightAct;
+	QAction *highlightingDarkAct;
+	QAction *saveAndRunAct;
 
   QMenu *fileMenu;
   QMenu *editMenu;
+	QMenu *preferenceMenu;
+	QMenu *highlightingMenu;
 
   QToolBar *fileToolBar;
   QToolBar *editToolBar;

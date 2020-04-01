@@ -15,7 +15,7 @@ Simulation
   Output Intervals = 1
 
   Solver Input File = "TempDist.sif"
-  Post File = "TempDist.ep"
+  Post File = "TempDist.vtu"
 End
 
 Constants

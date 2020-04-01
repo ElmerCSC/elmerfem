@@ -184,7 +184,7 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-    LOGICAL :: ComplexSystem, PseudoComplexSystem
+    LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal
     
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -955,6 +955,7 @@ CONTAINS
       DEALLOCATE(bC,xC)
     ELSE
       CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+
       CALL IterCall( iterProc, x, b, ipar, dpar, work, &
           mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     ENDIF
@@ -979,8 +980,14 @@ CONTAINS
       CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
-      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
-        CALL NumericalError( 'IterSolve', 'Too many iterations were needed.')        
+      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN                
+        DoFatal = ListGetLogical( Params,'Linear System Abort Not Converged',Found )
+        IF(.NOT. Found ) DoFatal = .TRUE.
+        IF( DoFatal ) THEN
+          CALL NumericalError('IterSolve','Too many iterations were needed.')
+        ELSE
+          CALL Info('IterSolve','Linear iteration did not converge to tolerance',Level=6)
+        END IF
       ELSE IF( HUTI_INFO == HUTI_HALTED ) THEN
         CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
       END IF
@@ -1013,7 +1020,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Caller, String
      LOGICAL, OPTIONAL :: IsFatal
 !-----------------------------------------------------------------------
-     LOGICAL :: GlobalNumFatal, SolverNumFatal, DoFatal, Found
+     LOGICAL :: DoFatal, Found
 !-----------------------------------------------------------------------
 
      !Fatality logic:
@@ -1025,19 +1032,9 @@ CONTAINS
      IF(PRESENT(IsFatal)) THEN
        DoFatal = IsFatal
      ELSE
-       SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
-            'Linear System Abort Not Converged', Found)
-       IF(Found) THEN
-         DoFatal = SolverNumFatal
-       ELSE
-         GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
-            'Global Abort Not Converged',Found)
-         IF(Found) THEN
-           DoFatal = GlobalNumFatal
-         ELSE
-           DoFatal = .TRUE.
-         END IF
-       END IF
+       DoFatal = ListGetLogical(CurrentModel % Simulation,&
+           'Global Abort Not Converged',Found)
+       IF(.NOT. Found ) DoFatal = .TRUE.
      END IF
 
      IF(DoFatal) THEN

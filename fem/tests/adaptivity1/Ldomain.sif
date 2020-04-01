@@ -40,6 +40,8 @@ End
 
 Solver 1
   Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
   Linear System Solver = Direct
   Optimize Bandwidth = TRUE
   Steady State Convergence Tolerance = 1.0e-8
@@ -51,4 +53,4 @@ End
 
 Solver 1 :: Reference Norm = Real 336.513062641
 Solver 1 :: Reference Norm Tolerance = Real 0.01
-RUN
+

@@ -67,6 +67,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   USE CoordinateSystems
   USE MeshUtils
+  USE ParallelUtils
   USE DefUtils
 
   IMPLICIT NONE
@@ -83,14 +84,14 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TYPE(Solver_t), POINTER :: PSolver
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TangledMaskVarName, MappedMeshName
   INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,imid,ii,jj,Rounds,BotMode,TopMode,nsize, nnodes, &
-       ActiveDirection,elem, istat, TangledCount
+       ActiveDirection,elem, istat, TangledCount, LimitedCount
   INTEGER, POINTER :: MaskPerm(:),TopPerm(:),BotPerm(:),TangledMaskPerm(:),TopPointer(:),&
        BotPointer(:),MidPointer(:),NodeIndexes(:),TmpPerm(:)
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
        MidLayerExists, WriteMappedMeshToDisk = .FALSE., GotBaseVar, &
-       BaseDisplaceFirst, RecompStab, MapHeight
+       BaseDisplaceFirst, RecompStab, MapHeight, BotProj
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, RefVal, ElemVector(3),DotPro,Eps,Length, MinHeight
   REAL(KIND=dp) :: at0,at1,at2,dx
@@ -136,6 +137,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   FixedLayers => ListGetIntegerArray( SolverParams,'Fixed Layer Indexes',MultiLayer)
   NumberOfFixedLayers = SIZE( FixedLayers )
 
+  BotProj = ListGetLogical(SolverParams,'Project To Bottom',Found ) 
+
+  
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
     IF(ASSOCIATED(TopPointer)) DEALLOCATE(TopPointer)
@@ -148,6 +152,18 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
           UpNodePointer = UpPointer, DownNodePointer = DownPointer, &
           NumberOfLayers = NumberOfLayers, NodeLayer = NodeLayer )
       NumberOfLayers = NumberOfLayers + 1
+      
+      i = FixedLayers(1) 
+      IF( i /= 1 ) THEN
+        CALL Warn(Caller,'Enforcing first fixed layer to: 1 (was '//TRIM(I2S(i))//')')
+        FixedLayers(1) = 1
+      END IF
+      i = FixedLayers(NumberOfFixedLayers)
+      IF( i /= NumberOfLayers ) THEN
+        CALL Warn(Caller,'Enforcing last fixed layer to: '&
+            //TRIM(I2S(NumberOfLayers))//' (was '//TRIM(I2S(i))//')')
+        FixedLayers(NumberOfFixedLayers) = NumberOfLayers
+      END IF
     ELSE
       CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = Var, &
           TopNodePointer = TopPointer, BotNodePointer = BotPointer, &
@@ -238,6 +254,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   CALL Info(Caller,Message,Level=6)
 
   TangledCount = 0
+  LimitedCount = 0
   
   IF( GotBaseVar .AND. BaseDisplaceFirst ) THEN
     CALL BaseVarDisplace() 
@@ -249,13 +266,19 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     CALL BinaryLayerMapper()
   END IF
 
-  IF( TangledCount > 0 ) THEN
-    CALL Warn(Caller,'There seems to be '&
-        //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
-        ') tangled nodes!')
+  LimitedCount = NINT( ParallelReduction(1.0_dp * LimitedCount) )
+  TangledCount = NINT( ParallelReduction(1.0_dp * TangledCount) )
+  
+  IF( LimitedCount > 0 ) THEN
+    CALL Info(Caller,'There seems to be '&
+        //TRIM(I2S(LimitedCount))//' (out of '//TRIM(I2S(nsize))//&
+        ') limited heights!',Level=6)
   END IF
-  
-  
+  IF( TangledCount > 0 ) THEN
+    CALL Info(Caller,'There seems to be '&
+        //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
+        ') tangled nodes!',Level=5)
+  END IF    
   
   ! If there is a mask then the coordinate is not directly linked to the real coordinate.
   ! Hence we need to do it here for the real coordinate. 
@@ -566,7 +589,7 @@ CONTAINS
         dx = TopVal - MidVal 
       END IF
       Tangled = ( dx < MinHeight ) 
-
+      
       IF( MaskExists .AND. Tangled ) THEN
         IF( DeTangle ) CALL Warn(Caller,'Cancelling tanglement when mask exists!')
         Tangled = .FALSE.
@@ -575,8 +598,11 @@ CONTAINS
       ! If the mesh is tangled then take some action.
       ! Here the lower surface stays intact. This is due to the main application field, 
       ! computational glaciology, where the lower surface of ice is usually nicely constrained. 
-      IF( Tangled ) THEN
-        TangledCount = TangledCount + 1
+      IF( Tangled ) THEN        
+        IF( dx < TINY( MinHeight ) ) THEN
+          TangledCount = TangledCount + 1
+        END IF
+        LimitedCount = LimitedCount + 1
 
         IF( DeTangle ) THEN
           IF( MapHeight ) THEN
@@ -644,10 +670,12 @@ CONTAINS
   SUBROUTINE MultiLayerMapper()
     REAL(KIND=dp), ALLOCATABLE :: Proj(:,:), StrideCoord(:),FixedCoord(:)
     INTEGER, ALLOCATABLE :: StrideInd(:),StridePerm(:)
-    LOGICAL :: Hit, Debug 
+    INTEGER :: ierr, PEs
+    LOGICAL :: Hit
     REAL(KIND=dp) :: q
-    TYPE(Variable_t), POINTER :: FixedVar
-
+    TYPE(Variable_t), POINTER :: FixedVar    
+    INTEGER :: status(MPI_STATUS_SIZE)
+        
     ! Get the new mapping using linear interpolation from bottom and top
     !-------------------------------------------------------------------
     CALL Info(Caller,'Mapping using '//TRIM(I2S(NumberOfFixedLayers))//' fixed layers',Level=6)
@@ -656,15 +684,8 @@ CONTAINS
       CALL Fatal(Caller,'Mask not available yet for multiple layers!')
     END IF
     
-    i = FixedLayers(1)
-    IF( i /= 1 ) THEN
-      CALL Fatal(Caller,'First layer should be one, not: '//TRIM(I2S(i)))
-    END IF
-    i = FixedLayers(NumberOfFixedLayers)
-    IF( i /= NumberOfLayers ) THEN
-      CALL Fatal(Caller,'Last layer should be '//TRIM(I2S(NumberOfLayers))//', not: '//TRIM(I2S(i)))
-    END IF
-
+    DeTangle = GetLogical(SolverParams,'Correct Surface',GotIt )
+    
     VarName = ListGetString( SolverParams,'Fixed Layer Variable',UnfoundFatal = .TRUE. )
     FixedVar => VariableGet( Mesh % Variables, VarName ) 
     IF(.NOT. ASSOCIATED( FixedVar ) ) THEN
@@ -674,47 +695,20 @@ CONTAINS
       CALL Fatal(Caller,'Invalid number of components in fixed layer variable:'&
           //TRIM(I2S(FixedVar % Dofs)))
     END IF
-    
+
     ALLOCATE( Proj(NumberOfLayers,NumberOfFixedLayers),StrideInd(NumberOfLayers),&
-        StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),FixedCoord(NumberOfFixedLayers))
+        StridePerm(NumberOfLayers),StrideCoord(NumberOfLayers),&
+        FixedCoord(NumberOfFixedLayers))
     Proj = 0.0_dp
-
-    Debug = .FALSE.
-
-    ! Create the projection matrix used for all strides!
-    j = 1    
-    DO i = 1, NumberOfLayers
-      Hit = .FALSE.
-      DO j = 1, NumberOfFixedLayers+1
-        IF( FixedLayers(j) == i ) THEN
-          Proj(i,j) = 1.0_dp
-          IF( Debug ) PRINT *,'Proj('//TRIM(I2S(i))//','//TRIM(I2S(j))//')=',Proj(i,j)
-          Hit = .TRUE.
-        ELSE IF( FixedLayers(j) < i .AND. FixedLayers(j+1) > i ) THEN
-          q = 1.0_dp*(i-FixedLayers(j)) / (FixedLayers(j+1)-FixedLayers(j))
-          Proj(i,j+1) = q
-          Proj(i,j) = 1-q
-          IF( Debug ) THEN
-            PRINT *,'Proj('//TRIM(I2S(i))//','//TRIM(I2S(j))//')=',Proj(i,j)
-            PRINT *,'Proj('//TRIM(I2S(i))//','//TRIM(I2S(j+1))//')=',Proj(i,j+1)
-          END IF
-          Hit = .TRUE.
-        END IF
-        IF( Hit ) EXIT
-      END DO
-      IF(.NOT. Hit ) THEN
-        CALL Fatal(Caller,'Could not find mapping for layer: '//TRIM(I2S(i)))
-      END IF
-    END DO
     
-
-    ! Go through all 1D strides
+    ! Go through all 1D strides and perform mapping for mesh
     DO i=1,nnodes
       ibot = BotPointer(i)
 
       ! Start mapping from bottom
       IF( ibot /= i ) CYCLE
 
+      ! Create stride for this column
       j = ibot
       StrideCoord(1) = OrigCoord(j)
       StrideInd(1) = j
@@ -725,10 +719,27 @@ CONTAINS
         itop = j
       END DO
 
-      IF( Debug ) THEN
-        PRINT *,'StrideCoord0:',StrideCoord
-        PRINT *,'StrideInd:',StrideInd
-      END IF
+      ! Create a new projection matrix for this column
+      j = 1    
+      DO k = 1, NumberOfLayers
+        Hit = .FALSE.
+        DO j = 1, NumberOfFixedLayers+1
+          IF( FixedLayers(j) == k ) THEN
+            Proj(k,j) = 1.0_dp
+            Hit = .TRUE.
+          ELSE IF( FixedLayers(j) < k .AND. FixedLayers(j+1) > k ) THEN
+            q = 1.0_dp*(StrideCoord(k)-StrideCoord(FixedLayers(j))) / &
+                (StrideCoord(FixedLayers(j+1))-StrideCoord(FixedLayers(j)))
+            Proj(k,j+1) = q
+            Proj(k,j) = 1-q
+            Hit = .TRUE.
+          END IF
+          IF( Hit ) EXIT
+        END DO
+        IF(.NOT. Hit ) THEN
+          CALL Fatal(Caller,'Could not find mapping for layer: '//TRIM(I2S(k)))
+        END IF
+      END DO
       
       ! We can either have the fixed layer variable at top or bottom, not elsewhere!
       k = FixedVar % Perm(ibot)
@@ -745,18 +756,30 @@ CONTAINS
       END IF
 
       ! Fix mesh if it becomes tangled
-      IF( ANY( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < MinHeight ) ) THEN
-        TangledCount = TangledCount + 1
-        DO k = 2,NumberOfLayers
-          StrideCoord(k) = MAX( StrideCoord(k), StrideCoord(k-1)+MinHeight )
-        END DO
+      IF( DeTangle ) THEN
+        IF( BotProj ) THEN
+          k = COUNT( StrideCoord(1:NumberOfLayers-1)-StrideCoord(2:NumberOfLayers) < MinHeight )
+          IF( k > 0 ) THEN
+            LimitedCount = LimitedCount + k
+            TangledCount = TangledCount + &
+                COUNT( StrideCoord(1:NumberOfLayers-1)-StrideCoord(2:NumberOfLayers) < TINY(MinHeight) )  
+            DO k = 2,NumberOfLayers
+              StrideCoord(k) = MIN( StrideCoord(k), StrideCoord(k-1)-MinHeight )
+            END DO
+          END IF
+        ELSE
+          k = COUNT( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < MinHeight )
+          IF( k > 0 ) THEN
+            LimitedCount = LimitedCount + k    
+            TangledCount = TangledCount + &
+                COUNT( StrideCoord(2:NumberOfLayers)-StrideCoord(1:NumberOfLayers-1) < TINY(MinHeight) )
+            DO k = 2,NumberOfLayers
+              StrideCoord(k) = MAX( StrideCoord(k), StrideCoord(k-1)+MinHeight )
+            END DO
+          END IF
+        END IF
       END IF
-      
-      IF( Debug ) THEN
-        PRINT *,'FixedCoord:',FixedCoord
-        PRINT *,'StrideCoord:',StrideCoord
-      END IF
-      
+              
       Coord(StrideInd) = StrideCoord
 
       IF( GotVeloVar ) THEN
@@ -772,9 +795,6 @@ CONTAINS
           UpdateVar % Values( StridePerm ) = Coord(StrideInd) - OrigCoord(StrideInd)
         END WHERE
       END IF
-      
-      Debug = .FALSE.
-      
     END DO
 
     CALL Info('StructureMeshMapper','Finished multilayer mapping',Level=8)

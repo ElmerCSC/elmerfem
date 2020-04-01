@@ -16,7 +16,7 @@ Simulation
   Output Intervals = 1
 
 !  Output File = "TempDist.dat"
-  Post File = "TempDist.ep"
+!  Post File = "TempDist.vtu"
 End
 
 Constants

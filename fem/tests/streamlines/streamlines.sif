@@ -13,7 +13,7 @@ Simulation
   Set Dirichlet BCs by BC Numbering = True
 
   Output Intervals = 1
-! Post File = "streamlines.ep"
+! Post File = "streamlines.vtu"
 ! Output File = "streamlines.result"
 End
 

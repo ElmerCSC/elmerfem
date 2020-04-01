@@ -11,9 +11,10 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 50
   Steady State Min Iterations = 2
-  Output Intervals = 1
+  Output Intervals = 0
+
 ! Output File = "fsi.result"
-! Post File = "fsi.ep"
+  Post File = "fsi.vtu"
 End
 
 Body 1
@@ -27,18 +28,18 @@ Body 2
 End
 
 Material 1
-   Density = 1.0
-   Viscosity = 0.5
-   Poisson Ratio = 0.3
+  Density = 1.0
+  Viscosity = 0.5
+  Poisson Ratio = 0.3
 
-   Youngs Modulus = Variable time
-       Real Procedure "FsiStuff" "YOUNGS"
+  Youngs Modulus = Variable time
+    Real Procedure "FsiStuff" "Youngs"
 End
 
 Material 2
-   Density = 1000
-   Youngs Modulus = 1.0e3
-   Poisson Ratio = 0.3
+  Density = 1000
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
 End
 
 Solver 1
@@ -95,7 +96,7 @@ Boundary Condition 1
   Target Boundaries = 1
 
   Velocity 1 = Variable Time
-      Real Procedure "FsiStuff" "INFLOW"
+    Real Procedure "FsiStuff" "Inflow"
   Velocity 2 = 0.0
   Mesh Update 1 = 0.0
 End
@@ -112,7 +113,6 @@ Boundary Condition 3
   Velocity 1 = 0.0
   Velocity 2 = 0.0
   FSI BC = True
-  Normal Target Body = 1
   Mesh Update 1 = Equals Displacement 1
   Mesh Update 2 = Equals Displacement 2
 End
@@ -130,8 +130,9 @@ Boundary Condition 5
   Displacement 2 = 0.0
 End
 
-Solver 3 :: Reference Norm = Real 0.45290832
-RUN
+Solver 1 :: Reference Norm = 5.64320950E-01
+Solver 2 :: Reference Norm = 4.33280914E-01
+Solver 3 :: Reference Norm = 4.52908250E-01
 
 !End
 

@@ -51,6 +51,8 @@ MODULE Messages
    INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
 
+   INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
+
 CONTAINS
 
 !-----------------------------------------------------------------------
@@ -236,7 +238,7 @@ CONTAINS
      SAVE nadv1
 
 !-----------------------------------------------------------------------
-     IF ( .NOT. OutputLevelMask(0) ) STOP
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
@@ -251,7 +253,7 @@ CONTAINS
         ELSE
            WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
-        STOP
+        STOP EXIT_ERROR
      END IF
      nadv1 = nadv
      CALL FLUSH(6)

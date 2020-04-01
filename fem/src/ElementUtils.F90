@@ -353,7 +353,6 @@ CONTAINS
       FDOFS = 0
     END IF
 
-
     IndexSize = 128
     ALLOCATE( Indexes(IndexSize), STAT=istat )
     IF( istat /= 0 ) THEN
@@ -600,6 +599,66 @@ CONTAINS
       END IF
     END IF ! DGSolver
 
+    
+    !     Diffuse gray radiation condition:
+    !     ---------------------------------
+    Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
+    IF ( .NOT. Found .AND. PRESENT(Equation) ) &
+        Radiation = Radiation .OR. (Equation == 'heat equation')
+    
+    IF ( Radiation ) THEN
+      BLOCK
+        INTEGER, ALLOCATABLE :: Inds(:)
+        INTEGER :: cnt
+
+        CALL Info('MakeListMatrix','Adding radiation matrix',Level=14)      
+        DO i = Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          
+          Element => Mesh % Elements(i)
+          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+
+          DO j=1,Element % TYPE % NumberOfNodes
+            IF( DGSolver ) THEN
+              k1 = Reorder(Element % DGIndexes(j))
+            ELSE
+              k1 = Reorder(Element % NodeIndexes(j))
+            END IF
+
+            NumberOfFactors = Element % BoundaryInfo % &
+                GebhardtFactors % NumberOfImplicitFactors
+
+            IF (.NOT.ALLOCATED(inds)) THEN
+              ALLOCATE(inds(4*NumberOfFactors))
+            ELSE IF(SIZE(inds)<4*NumberOfFactors) THEN
+              DEALLOCATE(inds)
+              ALLOCATE(inds(4*NumberOfFactors))
+            END IF
+
+            cnt = 0
+            DO n=1,NumberOfFactors
+
+              Elm => Mesh % Elements( Element % BoundaryInfo % &
+                  GebhardtFactors % Elements(n) )
+
+              DO k=1,Elm % TYPE % NumberOfNodes
+                cnt = cnt + 1
+                IF( DGSolver ) THEN
+                  inds(cnt) = Reorder(Elm % DGIndexes(k))
+               ELSE
+                  inds(cnt) = Reorder(Elm % NodeIndexes(k))
+                END IF
+              END DO
+            END DO
+            CALL Sort(cnt,inds)
+            CALL List_AddMatrixIndexes(List,k1,cnt,inds)
+          END DO
+        END DO
+      END BLOCK
+      CALL Info('MakeListMatrix','Done Adding radiation matrix',Level=14)
+    END IF
+
+    
     ! If this is not a GD solver then create permutation considering 
     ! nodal, edge, face and bubble dofs. 
     !-------------------------------------------------------------------
@@ -683,58 +742,8 @@ CONTAINS
       END DO
 
       IF ( ALLOCATED( Indexes ) ) DEALLOCATE( Indexes )
-!
-!     Diffuse gray radiation condition:
-!     ---------------------------------
-      Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-      IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-        Radiation = Radiation .OR. (Equation == 'heat equation')
 
-      IF ( Radiation ) THEN
-        CALL Info('MakeListMatrix','Adding radiation matrix',Level=14)
-
-        BLOCK
-         INTEGER, ALLOCATABLE :: Inds(:)
-         INTEGER :: cnt
-
-          DO i = Mesh % NumberOfBulkElements+1, &
-            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-
-            Element => Mesh % Elements(i)
-            IF ( ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) THEN
-               DO j=1,Element % TYPE % NumberOfNodes
-                 k1 = Reorder(Element % NodeIndexes(j))
-
-                 NumberOfFactors = Element % BoundaryInfo % &
-                               GebhardtFactors % NumberOfImplicitFactors
-
-                 IF (.NOT.ALLOCATED(inds)) THEN
-                   ALLOCATE(inds(4*NumberOfFactors))
-                 ELSE IF(SIZE(inds)<4*NumberOfFactors) THEN
-                   DEALLOCATE(inds)
-                   ALLOCATE(inds(4*NumberOfFactors))
-                 END IF
-
-                 cnt = 0
-                 DO n=1,NumberOfFactors
-
-                   Elm => Mesh % Elements( Element % BoundaryInfo % &
-                           GebhardtFactors % Elements(n) )
-
-                   DO k=1,Elm % Type % NumberOfNodes
-                     cnt = cnt + 1
-                     inds(cnt) = Reorder(Elm % NodeIndexes(k))
-                   END DO
-                 END DO
-                 CALL Sort(cnt,inds)
-                 CALL List_AddMatrixIndexes(List,k1,cnt,inds)
-               END DO
-            END IF
-          END DO
-        END BLOCK
-        CALL Info('MakeListMatrix','Done Adding radiation matrix',Level=14)
-      END IF
-
+      
       DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements+ &
                      Mesh % NumberOfBoundaryElements
         IF ( Mesh % Elements(i) % TYPE % ElementCode <  102 .OR. &
@@ -1625,7 +1634,7 @@ CONTAINS
        CALL ListMatrixArray_Free( ListMatrixArray )       
      ELSE
        NULLIFY( ListMatrix )
-       CALL Info('CreateMatrix','Creating list matrix for equation',Level=14)
+       CALL Info('CreateMatrix','Creating list matrix for equation: '//TRIM(Eq),Level=14)
        IF ( PRESENT(Equation) ) THEN
          CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE.)
@@ -1823,6 +1832,61 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    END FUNCTION CreateOdeMatrix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   FUNCTION CreateDiagMatrix( Model, Solver, Dofs, TimeOrder ) RESULT(Matrix)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t), TARGET :: Solver
+     INTEGER :: DOFs
+     TYPE(Matrix_t), POINTER :: Matrix
+     INTEGER, OPTIONAL :: TimeOrder
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     INTEGER i,j,k
+!------------------------------------------------------------------------------
+
+     Matrix => NULL()
+
+     !IF ( ListGetLogical( Solver % Values, 'No matrix',Found)) RETURN
+     
+     ! Create a list matrix that allows for unspecified entries in the matrix 
+     ! structure to be introduced.
+     Matrix => AllocateMatrix()
+     Matrix % FORMAT = MATRIX_LIST
+     
+     ! Initialize matrix indices
+     DO i = 1, Dofs
+       CALL List_AddMatrixIndex(Matrix % ListMatrix, i, i) 
+     END DO
+
+     CALL List_ToCRSMatrix(Matrix)
+     CALL CRS_SortMatrix(Matrix,.TRUE.)
+     
+     CALL Info('CreateOdeMatrix','Number of rows in diag matrix: '//&
+         TRIM(I2S(Matrix % NumberOfRows)), Level=9)
+
+     IF( PRESENT( TimeOrder ) ) THEN
+       IF( TimeOrder >= 1 ) THEN
+         ALLOCATE( Matrix % MassValues( SIZE( Matrix % Values ) ) )
+         Matrix % MassValues = 0.0_dp
+       END IF
+       IF( TimeOrder >= 2 ) THEN
+         ALLOCATE( Matrix % DampValues( SIZE( Matrix % Values ) ) )
+         Matrix % DampValues = 0.0_dp
+       END IF
+     END IF
+     
+     Matrix % Solver => Solver
+     Matrix % DGMatrix = .FALSE.
+     Matrix % Subband = 1
+     Matrix % COMPLEX = .FALSE.
+     ! Matrix % FORMAT  = MatrixFormat
+
+!------------------------------------------------------------------------------
+   END FUNCTION CreateDiagMatrix
 !------------------------------------------------------------------------------
 
 
