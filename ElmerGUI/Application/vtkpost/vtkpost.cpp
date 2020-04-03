@@ -67,7 +67,12 @@
 #include "matc.h"
 #endif
 
+#if VTK_MAJOR_VERSION >= 8
+#include <QVTKOpenGLNativeWidget.h>
+#else
 #include <QVTKWidget.h>
+#endif
+
 #include <vtkLookupTable.h>
 #include <vtkActor.h>
 #include <vtkTextActor.h>
@@ -148,7 +153,13 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
   VtkPost* vtkPost = reinterpret_cast<VtkPost*>(clientdata);
   vtkRenderer* renderer = vtkPost->GetRenderer();
   vtkActor* pickedPointActor = vtkPost->GetPickedPointActor();
+
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* qvtkWidget = vtkPost->GetQVTKWidget();
+#else
   QVTKWidget* qvtkWidget = vtkPost->GetQVTKWidget();
+#endif
+
   vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
   vtkPropPicker* propPicker = vtkPropPicker::SafeDownCast(picker);
 
@@ -212,7 +223,6 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
 VtkPost::VtkPost(QWidget *parent)
   : QMainWindow(parent)
 {
-  vtkObject::GlobalWarningDisplayOff();
   // Initialize:
   //------------
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
@@ -316,7 +326,12 @@ VtkPost::VtkPost(QWidget *parent)
 
   // Central widget:
   //----------------
-  qvtkWidget = new QVTKWidget(this);
+  #if VTK_MAJOR_VERSION >= 8
+    qvtkWidget = new QVTKOpenGLNativeWidget(this);  
+    qvtkWidget->setFormat(QVTKOpenGLNativeWidget::defaultFormat());
+  #else
+    qvtkWidget = new QVTKWidget(this);
+  #endif
   setCentralWidget(qvtkWidget);
 
   // VTK interaction:
@@ -1940,7 +1955,11 @@ void VtkPost::clipAllToggledSlot(bool)
 
 // Other public methods:
 //----------------------------------------------------------------------
+#if VTK_MAJOR_VERSION >= 8
+QVTKOpenGLNativeWidget* VtkPost::GetQVTKWidget()
+#else
 QVTKWidget* VtkPost::GetQVTKWidget()
+#endif
 {
   return qvtkWidget;
 }

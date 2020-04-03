@@ -79,7 +79,7 @@ StreamLine::StreamLine(QWidget *parent)
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
   
-#if VTK_MAJOR_VERSION > 7
+#if VTK_MAJOR_VERSION >= 8
   ui.propagLabel->setText(QString("Max propagation:"));
   ui.stepLabel->setText(QString("Max integ. step:"));
   ui.integStepLabel->setText(QString("Initial integ. step:"));
