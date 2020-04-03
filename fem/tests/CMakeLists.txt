@@ -14,7 +14,7 @@ SET(MESH2D_BIN "${CMAKE_BINARY_DIR}/meshgen2d/src/Mesh2D")
 
 MACRO(SUBDIRLIST result curdir depth)
   set(glob_pattern "*")
-  FOREACH(D RANGE 1 depth)
+  FOREACH(D RANGE 1 ${depth})
     FILE(GLOB children RELATIVE ${curdir} ${glob_pattern}) 
     FOREACH(child ${children})
       IF(IS_DIRECTORY ${curdir}/${child})
