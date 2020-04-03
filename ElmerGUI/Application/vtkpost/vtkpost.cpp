@@ -1219,7 +1219,7 @@ bool VtkPost::ReadPostFile(QString postFileName)
 #if WITH_QT5
         mtc_domath(cmd.toLatin1().data());
 
-        VARIABLE *var = var_check(name.totoLatin1().data());
+        VARIABLE *var = var_check(name.toLatin1().data());
 #else
         mtc_domath(cmd.toAscii().data());
 
