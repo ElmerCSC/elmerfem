@@ -134,7 +134,6 @@ Solver 7
   Potential variable = "P"
   Variable = "Kernel Component"
   Variable DOFs = 1
-  Element = "n:0 e:1 -brick b:3 -quad_face b:2"
 
   linear system solver = iterative
   linear system iterative method = CG

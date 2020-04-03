@@ -188,8 +188,7 @@ Solver 6
   Kernel Variable = String "phi"
   Variable = "Kernel Component"
   Variable DOFs = 1
-  Element = "n:0 e:1 -brick b:3 -quad_face b:2"
-
+  Use Piola Transform = Logical True
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
