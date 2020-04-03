@@ -12,6 +12,9 @@ Elmer consists of several parts. The most important ones are ElmerSolver, the fi
 
 === Compiling:
 
+==== Linux
+ * See instructions in https://github.com/ElmerCSC/elmerfem/wiki/Compilation
+
 ==== macOS:
 
  * Install HomeBrew
