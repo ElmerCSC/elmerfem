@@ -228,24 +228,24 @@ $ A_CABLE_TOP = 52
 Boundary Condition 1
    Name = "BC Potential"
    Target Boundaries(1) = 52
-   P {e}= real 0
-   P = Real 0
+   P {e} = real 0
    Potential = 0.001
+   Phi = Real 0.0
 End
 
 Boundary Condition 2
    Name = "BC Voltage Ground"
    Target Boundaries(1) = 42
    P {e} = Real 0
-   P = Real 0
    Potential = 0.0
+   Phi = Real 0.0
 End
 
 Boundary Condition 3
    Name = "BCn Flux Parallel"
    Target Boundaries(3) = 4 28 29
-
    P {e} = Real 0
+   Phi = Real 0.0
 End
 
 Body Force 1

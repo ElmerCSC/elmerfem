@@ -107,6 +107,7 @@ Solver 2
   Linear System Abort Not Converged = False
 
   Nonlinear System Max Iterations = 5
+  Nonlinear System Min Iterations = 2
   Nonlinear System Convergence Tolerance = 1e-6
   Nonlinear Post Solvers(2) = Integer 5 6
 
@@ -213,6 +214,7 @@ Boundary Condition 1
   AV {e} 2 = Variable Coordinate 1
     REAL MATC "0.5*tx"
   AV {e} 3 = 0.0
+  Phi = Real 0.0
 End
 
 Boundary Condition 2

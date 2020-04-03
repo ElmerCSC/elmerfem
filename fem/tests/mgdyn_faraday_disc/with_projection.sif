@@ -184,6 +184,7 @@ Boundary Condition 1
   AV {e} 2 = Variable Coordinate 1
     REAL MATC "0.5*tx"
   AV {e} 3 = 0.0
+  Phi = Real 0.0
 End
 
 Solver 4 :: Reference Norm = Real 3.119982493397E+001
