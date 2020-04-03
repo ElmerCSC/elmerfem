@@ -1,23 +1,59 @@
-elmerfem
-========
+== ElmerGrid
+:author: Foad Sojoodi Farimani
+:email: f.s.farimani@gmail.com
 
-This is the official source code repository for the Elmer FEM software suite. 
+ElmerGrid a mesh generation utility for the Elmer project
+Copyright (C) 1995- , CSC - IT Center for Science Ltd.
 
-Elmer is a finite element software for numerical solution of partial
-differential equations. Elmer is capable of handling any number of equations
-and is therefore ideally suited for the simulation of multiphysical problems.
-It includes models, for example, of structural mechanics, fluid dynamics, heat
-transfer and electromagnetics. Users can also write their own equations that
-can be dynamically linked with the main program.
+ * Author: Peter Råback
+ * Email: Peter.Raback@csc.fi
+ * Address: CSC - IT Center for Science Ltd. Keilaranta 14, 02101 Espoo, Finland
+ * Maintainer: Foad Sojoodi Farimani
 
-Elmer consists of several parts. The most important ones are ElmerSolver, the
-finite element solver, ElmerGUI, the graphical user interface, and ElmerGrid,
-the mesh creation and manipulation tool. Also a visualization tool, ElmerPost,
-is included in the package but it is no longer developed.  
+=== Abstract:
 
-Elmer software is licensed under GPL except for the ElmerSolver library which
-is licensed under LGPL license. 
+[.text-justify]
+This repository includes files for ElmerGrid which is a mesh generation utility for the Elmer project. ElmerGrid can create simple structured 2D meshes consisting
+of quadrilaterals or triangles. Also limited 3D functionality is provided in terms of extruded 2D meshes resulting to hexahedrons or prisms. The program may also be used as a mesh import and export utility. It is able to read several different formats (Gmsh, UNIVERSAL file format, COMSOL `mphtxt` files,..) and writes mainly Elmer input and output formats, and also VTK format. The meshes may also be given some simple operations such as scaling, rotation, cloning, extrusion ect. ElmerGrid includes also partitioning capabilities of Elmer meshes. The partitioning may be done using internal geometric division or Metis library. `ElmerGridManual.pdf` can be downloaded from https://sourceforge.net/projects/elmerfem/files/ElmerDocumentation/[here]. 
 
-Elmer is mainly developed at CSC - IT Center for Science, Finland. However,
-there have been numerous contributions from other organizations and developers
-as well, and the project is open for new contributions.
+
+=== Compiling:
+
+==== macOS:
+
+ * Install HomeBrew
+ * Install GNU GCC `brew install gcc`
+ * Install CMake `brew install cmake`
+ * Install OpenMPI `brew install open-mpi`
+
+=== Licencing:
+
+[.text-justify]
+This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2 of the License, or (at your option) any later version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with this program; if not, write to the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+==== License lic_metis
+
+[.text-justify]
+Elmergrid contains the METIS library, Copyright 1997, Regents of the University of Minnesota. 
+
+* Non-commercial applications - METIS can be freely distributed provided that:
+
+    o Proper references are included.
+    o The original documentation and copyright notice is included.
+          
+* Commercial applications - METIS can be freely distributed provided that:
+
+    o Proper references are included.
+    o The original documentation and copyright notice is included.
+    o METIS is a relatively small portion of the overall application.
+
+
+==== ElmerGrid GPL Exception v. 1.0
+
+[.text-justify]
+Additional rights granted by the copyright holder, beyond GPL version 2. As an exception to the conditions of Gnu General Public Licence version 2 (GPL-2), CSC - IT Center for Science Ltd., the copyright holder of elmergrid, hereby grants you the right to link the source code within this directory against the libraries of
+
+* "METIS" v. 4.0.1 by Regents of the University of Minnesota
+* "Scotch" v. 5.0 by Francois Pellegrini
+
+You may also link ElmerGUI against any later versions of METIS or Scotch, provided that the license permits such usage. The license terms for the METIS library are above, and the CeCILL-C license terms for the Scotch library can be found from http://www.labri.fr/perso/pelegrin/scotch/[here].

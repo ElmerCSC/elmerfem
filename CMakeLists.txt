@@ -10,6 +10,17 @@
 # First public beta release 11th of October, 2013
 #
 
+if(APPLE)
+  # message("you need to have gcc-gfrotran installed using HomeBrew")
+  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-9")
+  set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
+  # set(BLA_VENDOR "OpenBLAS")
+  # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
+  set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
+  # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
+endif()
+
+
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
@@ -155,38 +166,58 @@ IF(WITH_MPI)
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
 
-IF(WITH_MKL)
-  # Find MKL
-  FIND_PACKAGE(MKL REQUIRED)
-  SET(HAVE_MKL TRUE)
-  MARK_AS_ADVANCED(HAVE_MKL)
-  # Set BLAS and LAPACK to point to MKL
-  SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-  SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-  IF(MKL_SCALAPACK_LIBRARIES_FOUND)
-    SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
-    # Versions >11.1 of MKL include Cluster PARDISO direct solver
-    IF(MKL_CPARDISO_FOUND)
-      SET(HAVE_CPARDISO TRUE)
-      MARK_AS_ADVANCED(HAVE_CPARDISO)
+if(APPLE)
+  # message(STATUS "Trying to find Accelerate library")
+  # find_library(BLAS_LIBRARIES Accelerate HINTS /System/Library/Frameworks/Accelerate.framework)
+  # MARK_AS_ADVANCED(BLAS_LIBRARIES)
+  # set(BLAS_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -framework accelerate")
+  # find_path(LAPACK_INCLUDE_DIRS
+  #   NAMES clapack.h
+  #   PATHS ${BLAS_INCLUDE_DIRS}
+  #   NO_DEFAULT_PATH
+  # )
+  # set(LAPACK_HEADER ${LAPACK_INCLUDE_DIRS}/clapack.h)
+  # set(LAPACK_SUFFIX "_")
+  # set(LAPACK_PREFIX)
+
+  # message(STATUS "Using Accelerate framework on macOS")
+  message("using the local blas library")
+  # option(BLAS_VERBOSE "Print some additional information during BLAS libraries detection" ON)
+  set(BLAS_DIR "./mathlibs/src/blas/")
+else()
+  IF(WITH_MKL)
+    # Find MKL
+    FIND_PACKAGE(MKL REQUIRED)
+    SET(HAVE_MKL TRUE)
+    MARK_AS_ADVANCED(HAVE_MKL)
+    # Set BLAS and LAPACK to point to MKL
+    SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+    SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+    IF(MKL_SCALAPACK_LIBRARIES_FOUND)
+      SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
+      # Versions >11.1 of MKL include Cluster PARDISO direct solver
+      IF(MKL_CPARDISO_FOUND)
+        SET(HAVE_CPARDISO TRUE)
+        MARK_AS_ADVANCED(HAVE_CPARDISO)
+      ENDIF()
+    ENDIF()
+    INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+  ELSE()
+    IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+      # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
+      FIND_PACKAGE(MKL QUIET)
+      IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
+        # Set BLAS and LAPACK to point to MKL, in order to work around
+        # CMake FindBLAS finding wrong core library for GNU Fortran
+        SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+        SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+        INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+        SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+      ENDIF()
     ENDIF()
   ENDIF()
-  INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-ELSE()
-  IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
-    # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
-    FIND_PACKAGE(MKL QUIET)
-    IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
-      # Set BLAS and LAPACK to point to MKL, in order to work around
-      # CMake FindBLAS finding wrong core library for GNU Fortran
-      SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-      SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-      INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-      SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-    ENDIF()
-  ENDIF()
-ENDIF()
+endif(APPLE)
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
