@@ -13,12 +13,14 @@
 if(APPLE)
   # message("you need to have gcc-gfrotran installed using HomeBrew")
   set(CMAKE_C_COMPILER "/usr/local/bin/gcc-9")
+  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-9")
   set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
   # set(BLA_VENDOR "OpenBLAS")
   # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
-  set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
+  # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
   # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 endif()
+
 
 
 IF(NOT CMAKE_BUILD_TYPE)
@@ -166,25 +168,31 @@ IF(WITH_MPI)
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
 
-if(APPLE)
-  # message(STATUS "Trying to find Accelerate library")
-  # find_library(BLAS_LIBRARIES Accelerate HINTS /System/Library/Frameworks/Accelerate.framework)
-  # MARK_AS_ADVANCED(BLAS_LIBRARIES)
-  # set(BLAS_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -framework accelerate")
-  # find_path(LAPACK_INCLUDE_DIRS
-  #   NAMES clapack.h
-  #   PATHS ${BLAS_INCLUDE_DIRS}
-  #   NO_DEFAULT_PATH
-  # )
-  # set(LAPACK_HEADER ${LAPACK_INCLUDE_DIRS}/clapack.h)
-  # set(LAPACK_SUFFIX "_")
-  # set(LAPACK_PREFIX)
+# if(APPLE)
+#   # message(STATUS "Trying to find Accelerate library")
+#   # find_library(BLAS_LIBRARIES Accelerate HINTS /System/Library/Frameworks/Accelerate.framework)
+#   # MARK_AS_ADVANCED(BLAS_LIBRARIES)
+#   # set(BLAS_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -framework accelerate")
+#   # find_path(LAPACK_INCLUDE_DIRS
+#   #   NAMES clapack.h
+#   #   PATHS ${BLAS_INCLUDE_DIRS}
+#   #   NO_DEFAULT_PATH
+#   # )
+#   # set(LAPACK_HEADER ${LAPACK_INCLUDE_DIRS}/clapack.h)
+#   # set(LAPACK_SUFFIX "_")
+#   # set(LAPACK_PREFIX)
 
-  # message(STATUS "Using Accelerate framework on macOS")
-  message("using the local blas library")
-  # option(BLAS_VERBOSE "Print some additional information during BLAS libraries detection" ON)
-  set(BLAS_DIR "./mathlibs/src/blas/")
-else()
+#   # message(STATUS "Using Accelerate framework on macOS")
+#   message("using the local blas library")
+#   # option(BLAS_VERBOSE "Print some additional information during BLAS libraries detection" ON)
+#   set(BLAS_DIR "./mathlibs/src/blas/")
+# set(BLA_VENDOR "Generic")
+
+  # set(ACCELERATE_LIBS "-framework Accelerate")
+  # BLAS_Accelerate_LIBRARY:FILEPATH=/System/Library/Frameworks/Accelerate.framework
+
+
+# else()
   IF(WITH_MKL)
     # Find MKL
     FIND_PACKAGE(MKL REQUIRED)
@@ -217,7 +225,7 @@ else()
       ENDIF()
     ENDIF()
   ENDIF()
-endif(APPLE)
+# endif(APPLE)
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)

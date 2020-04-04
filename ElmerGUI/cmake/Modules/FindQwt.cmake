@@ -25,11 +25,15 @@ ELSE(Qwt_INCLUDE_DIRS)
     /usr/include/qwt
     /usr/local/include/qwt
     /sw/include/qwt
+    HINTS /usr/local/opt/qwt-qt4/lib/
+    HINTS /usr/local/Cellar/qwt-qt4/6.1.3_1/lib
     )
   FIND_LIBRARY(QWT_LIBRARY qwt 
     /usr/lib
     /usr/local/lib
     /sw/lib
+    HINTS /usr/local/opt/qwt-qt4/lib/
+    HINTS /usr/local/Cellar/qwt-qt4/6.1.3_1/lib
     )
 
 ENDIF(Qwt_INCLUDE_DIRS)
