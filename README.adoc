@@ -18,17 +18,17 @@ Elmer consists of several parts. The most important ones are ElmerSolver, the fi
  * Install GNU GCC `brew install gcc`
  * Install CMake `brew install cmake`
  * Without: 
-    * `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE`
+    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE`
  * With MPI:
-    * Install OpenMPI `brew install open-mpi`
-    * `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE`
+    ** Install OpenMPI `brew install open-mpi`
+    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE`
  * With ElmerGUI:
-    * install qt4 with `brew install cartr/qt4/qt@4` 
-    * install qwt with `brew install cartr/qt4/qwt-qt4`
-    * `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE -D WITH_ELMERGUI:BOOLEAN=TRUE`
+    ** install qt4 with `brew install cartr/qt4/qt@4` 
+    ** install qwt with `brew install cartr/qt4/qwt-qt4`
+    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE -D WITH_ELMERGUI:BOOLEAN=TRUE`
  * With ElmerPost:
-    * `brew cask install xquartz`
-    * ....
+    ** `brew cask install xquartz`
+    ** ....
  * go to the build directory `cd build`
  * `make`
 
