@@ -21,13 +21,13 @@
 ! *
 ! *****************************************************************************/
 ! *
-! * Add node-wise specified springs to structural models. This solver can be
-! * called as an additional assembly solver by using the keyword "Assembly 
-! * Solvers" in the solver section associated with the model which is modified
-! * to have the springs. Element-wise spring constraints over higher-
-! * dimensional entities are handled in the primary solver code. This solver
-! * assumes that the places of the springs are listed using the keyword
-! * "Target Nodes".
+! * Add node-wise specified springs and mass values to structural models. This 
+! * solver can be called as an additional assembly solver by using the keyword 
+! * "Assembly Solvers" in the solver section associated with the model which is 
+! * modified to have the springs or masses. Element-wise spring constraints over 
+! * higher-dimensional entities are handled in the primary solver code. This 
+! * solver assumes that the places of the springs and masses are listed using 
+! * the keyword "Target Nodes".
 ! *
 ! *
 ! *  Authors: Mika Malinen
@@ -58,13 +58,14 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
   TYPE(Solver_t), POINTER :: SolverPtr
   TYPE(Element_t), TARGET :: Element
 
-  LOGICAL, ALLOCATABLE :: Assemble(:) 
-  LOGICAL :: Found, NodesFound
+  LOGICAL, ALLOCATABLE :: Assemble(:), AssembleMass(:)
+  LOGICAL :: Found, NodesFound, SpringAssembly, MassAssembly, HarmonicAssembly
 
   INTEGER, POINTER :: NodeIndexes(:)
   INTEGER :: BC, DOFs, i, istat, j, n
 
-  REAL(KIND=dp), ALLOCATABLE :: K(:,:), f(:), Work(:,:)
+  REAL(KIND=dp), ALLOCATABLE :: K(:,:), M(:,:), D(:,:), f(:), Work(:,:), &
+      MassVals(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: UName
 !------------------------------------------------------------------------------
@@ -88,8 +89,13 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
         //TRIM(UName)//' < not found!')
   END IF
 
+  ValueList => GetSolverParams(SolverPtr)
+  HarmonicAssembly = EigenOrHarmonicAnalysis(SolverPtr) .OR. GetLogical(ValueList, &
+      'Harmonic Mode', Found) .OR. GetLogical(ValueList, 'Harmonic Analysis', Found)
+
   DOFs = SolverPtr % Variable % DOFs
-  ALLOCATE(K(DOFs,DOFs), F(DOFs), Assemble(DOFs))
+  ALLOCATE(K(DOFs,DOFs), M(DOFs,DOFs), D(DOFs,DOFs), f(DOFs), Assemble(DOFs), &
+      AssembleMass(DOFs))
   !
   ! Create a point element to serve calling a standard assembly routine:
   !
@@ -97,9 +103,11 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
   Element % NDOFs = 1
 
   !
-  ! Loop over all BCs and seek for spring constraints DEFINED NODEWISE
-  ! (elementwise conditions are still handled in the solver code):
+  ! Loop over all BCs and seek for spring constraints and mass values DEFINED 
+  ! NODEWISE (elementwise conditions are still handled in the solver code):
   !
+  f = 0.0_dp
+  D = 0.0_dp
   DO BC=1,Model % NumberOfBCs
     ValueList => Model % BCs(BC) % Values
     NodesFound = ListCheckPresent(ValueList, 'Target Nodes')
@@ -110,11 +118,11 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
     n = SIZE(NodeIndexes)
 
     IF (.NOT. ALLOCATED(Work)) THEN 
-      ALLOCATE(Work(DOFs,n), STAT=istat)
+      ALLOCATE(Work(DOFs,n), MassVals(DOFs,n), STAT=istat)
     ELSE
       IF (SIZE(Work,2) < n) THEN
-        DEALLOCATE(Work)
-        ALLOCATE(Work(DOFs,n), STAT=istat)
+        DEALLOCATE(Work, MassVals)
+        ALLOCATE(Work(DOFs,n), MassVals(DOFs,n), STAT=istat)
       END IF
     END IF
 
@@ -125,29 +133,56 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
     END IF
     
     Work = 0.0_dp
+    MassVals = 0.0_dp
     DO i=1,DOFs
       Work(i,1:n) = ListGetReal(ValueList, ComponentName('Spring',i), n, &
           NodeIndexes, Assemble(i))
+      MassVals(i,1:n) = ListGetReal(ValueList, ComponentName('Mass',i), n, &
+          NodeIndexes, AssembleMass(i))
     END DO
-    IF (ALL(.NOT. Assemble(:))) CYCLE
 
-    f = 0.0_dp
+    IF (ALL(.NOT. Assemble(:))) THEN
+      SpringAssembly = .FALSE.
+    ELSE
+      SpringAssembly = .TRUE.
+    END IF
+    IF (ALL(.NOT. AssembleMass(:))) THEN
+      MassAssembly = .FALSE.
+    ELSE
+      MassAssembly = .TRUE.
+    END IF
+    IF (.NOT. SpringAssembly .AND. .NOT. MassAssembly) CYCLE
 
     DO i=1,n
       Element % NodeIndexes => NodeIndexes(i:i)
       IF (SolverPtr % Variable % Perm(Element % NodeIndexes(1)) <= 0) CYCLE
       K = 0.0_dp
-      DO j=1,DOFs
-        IF (.NOT. Assemble(j)) CYCLE
-        K(j,j) = Work(j,i)
-      END DO
+      IF (SpringAssembly) THEN
+        DO j=1,DOFs
+          IF (.NOT. Assemble(j)) CYCLE
+          K(j,j) = Work(j,i)
+        END DO
+      END IF
+
+      M = 0.0_dp
+      IF ((TransientSimulation .OR. HarmonicAssembly) .AND. MassAssembly) THEN
+        DO j=1,DOFs
+          IF (.NOT. AssembleMass(j)) CYCLE
+          M(j,j) = MassVals(j,i)
+        END DO
+        IF (TransientSimulation) THEN
+          CALL Default2ndOrderTime(M, D, K, f)
+        ELSE
+          CALL DefaultUpdateMass(M, Element, SolverPtr)
+        END IF
+      END IF
+
       CALL DefaultUpdateEquations(K, f, Element, SolverPtr)
     END DO
-
   END DO
 
-  IF (ALLOCATED(Work)) DEALLOCATE(Work)
-  DEALLOCATE(K, f, Assemble)
+  IF (ALLOCATED(Work)) DEALLOCATE(Work, MassVals)
+  DEALLOCATE(K, M, D, f, Assemble, AssembleMass)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE SpringAssembler

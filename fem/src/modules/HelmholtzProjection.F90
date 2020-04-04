@@ -256,9 +256,52 @@ END SUBROUTINE HelmholtzProjector
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+  LOGICAL :: Found, PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+  IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
+    !
+    ! Automatization is not perfect due to the early phase when this 
+    ! routine is called; 'Use Piola Transform' and 'Quadratic Approximation'
+    ! must be repeated in two solver sections.
+    !
+    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found)   
+    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
+    IF (.NOT. PiolaVersion .AND. SecondOrder) THEN
+      CALL Warn("RemoveKernelComponent_Init0", &
+           "Quadratic Approximation requested without Use Piola Transform " &
+           //"Setting Use Piola Transform = True.")
+      PiolaVersion = .TRUE.
+      CALL ListAddLogical(SolverParams, 'Use Piola Transform', .TRUE.)
+    END IF
 
-! TO DO: Write an initialization routine to automate the element definition 
-!        for RemoveKernelComponent
+    IF (SecondOrder) THEN
+      CALL ListAddString(SolverParams, "Element", &
+          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2")
+    ELSE
+      IF (PiolaVersion) THEN
+        CALL ListAddString(SolverParams, "Element", &
+            "n:0 e:1 -brick b:3 -quad_face b:2")
+      ELSE
+        CALL ListAddString( SolverParams, "Element", "n:0 e:1")
+      END IF
+    END IF
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE RemoveKernelComponent_Init0
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !>  Apply the Helmholtz projection on a curl-conforming vector field A

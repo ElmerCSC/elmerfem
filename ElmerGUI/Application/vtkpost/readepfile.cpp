@@ -37,7 +37,9 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
-
+#if WITH_QT5
+  #include <QtWidgets>
+#endif
 #include <QtGui>
 #include <iostream>
 #include "readepfile.h"

@@ -189,7 +189,11 @@ void ColorBar::draw(VtkPost* vtkPost)
   colorBarActor->GetTitleTextProperty()->SetColor(0, 0, 1);
   
   if(annotate) {
+#if WITH_QT5  
+    colorBarActor->SetTitle(fieldName.toLatin1().data());
+#else
     colorBarActor->SetTitle(fieldName.toAscii().data());
+#endif   
   } else {
     colorBarActor->SetTitle("");
   }
