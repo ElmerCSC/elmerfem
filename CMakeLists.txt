@@ -32,6 +32,17 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
+    # on OSX FindOpenGL uses framework version of OpenGL, but we need X11 version
+    FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
+      PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
+    find_library(X11_GL_LIB GL
+      PATH /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# FIND_LIBRARY(OPENGL_gl_LIBRARY GL
+#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# FIND_LIBRARY(OPENGL_glu_LIBRARY GLU
+#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
+INCLUDE_DIRECTORIES(${GLX_INCLUDE_DIR})
 ENDIF()
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
