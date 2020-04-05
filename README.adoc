@@ -6,6 +6,20 @@ This is the official source code repository for the Elmer FEM software suite.
 [.text-center]
 image::Elmerlogo.png[align="center"]
 
+
+[.text-center]
+image:https://img.shields.io/github/stars/ElmerCSC/elmerfem.svg?style=social&label=Stars&style=plastic["GitHub stars"] image:https://img.shields.io/github/watchers/ElmerCSC/elmerfem.svg?style=social&label=Watch&style=plastic["GitHub watchers"] image:https://img.shields.io/github/forks/ElmerCSC/elmerfem.svg?style=social&label=Fork&style=plastic[]
+
+ 
+[.text-center]
+image:https://img.shields.io/github/contributors/ElmerCSC/elmerfem.svg?style=flat["GitHub contributors"]
+ image:https://img.shields.io/github/issues-pr/ElmerCSC/elmerfem.svg?style=flat["GitHub pull requests", link=https://github.com/ElmerCSC/elmerfem/pulls] image:https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat[]
+
+[.text-center]
+image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat["GitHub last commit"] image:https://img.shields.io/github/issues-raw/ElmerCSC/elmerfem.svg?maxAge=25000["Issues", link=https://github.com/ElmerCSC/elmerfem/issues] 
+
+
+
 === Abstract:
 
 [.text-justify]
@@ -43,19 +57,45 @@ image::Elmer-pump-heatequation.png[align="center", width=400]
  * go to the build directory `cd build`
  * `make`
 
-=== Licencing:
+=== Licencing: image:https://img.shields.io/badge/License-GPLv3-blue.svg["License: GPL v3", link=https://www.gnu.org/licenses/gpl-3.0]  image:https://img.shields.io/badge/License-LGPL%20v3-blue.svg["License: LGPL v3", link=https://www.gnu.org/licenses/lgpl-3.0]
 
 [.text-justify]
 Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers
 as well, and the project is open for new contributions.
 
 
+=== Package managers:
 
 [.text-center]
 image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging status", link=https://repology.org/project/elmerfem/versions]
 
+==== Chocolatey:
 
+[.text-center]
+image:https://img.shields.io/chocolatey/dt/elmer-mpi[Chocolatey]
+
+=== Social:
+
+[.text-justify]
+Here on https://discordapp.com/invite/NeZEBZn[this Discord channel] you may ask for help or dicuss different Elmer related matters:
 
 [.text-center]
 image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", link=https://discordapp.com/invite/NeZEBZn]
+
+Follow ElmerFEM on Twitter:
+
+[.text-center]
+image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1] image:https://img.shields.io/twitter/follow/CSCfi.svg?style=social["Twitter Follow", link=https://twitter.com/CSCfi] image:https://img.shields.io/twitter/follow/praback.svg?style=social["Twitter Follow", link=https://twitter.com/praback]
+
+Ask your questions on Reddit:
+
+[.text-center]
+image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM[Subreddit subscribers]
+
+
+
+
+
+
+
 
