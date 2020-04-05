@@ -8,7 +8,7 @@ image::Elmerlogo.png[align="center"]
 
 
 [.text-center]
-image:https://img.shields.io/github/stars/ElmerCSC/elmerfem.svg?style=social&label=Stars&style=plastic["GitHub stars"] image:https://img.shields.io/github/watchers/ElmerCSC/elmerfem.svg?style=social&label=Watch&style=plastic["GitHub watchers"] image:https://img.shields.io/github/forks/ElmerCSC/elmerfem.svg?style=social&label=Fork&style=plastic[]
+image:https://img.shields.io/github/stars/ElmerCSC/elmerfem.svg?style=social&label=Stars&style=plastic["GitHub stars"] image:https://img.shields.io/github/watchers/ElmerCSC/elmerfem.svg?style=social&label=Watch&style=plastic["GitHub watchers"] image:https://img.shields.io/github/forks/ElmerCSC/elmerfem.svg?style=social&label=Fork&style=plastic["GitHub forks"]
 
  
 [.text-center]
@@ -33,12 +33,19 @@ Elmer consists of several parts. The most important ones are ElmerSolver the fin
 .One of the simpler examples provided with Elmer, a thermal model of a pump casing, as visualised using the ElmerPost tool
 image::Elmer-pump-heatequation.png[align="center", width=400]
 
+=== Download Biraies:
 
+You may download binaries and virtual machines from http://www.elmerfem.org/blog/binaries/[here]
+
+=== Documentation
+
+You may find the PDFs for the documentation http://www.elmerfem.org/blog/documentation/[here]
 
 === Compiling:
 
 ==== macOS:
 
+ * download this repository either az a zip file via GitHub or using `git clone https://github.com/ElmerCSC/elmerfem.git`
  * go to the downloaded directory `mkdir build` and `cd build`
  * Install HomeBrew
  * Install GNU GCC `brew install gcc`
@@ -60,8 +67,7 @@ image::Elmer-pump-heatequation.png[align="center", width=400]
 === Licencing: image:https://img.shields.io/badge/License-GPLv3-blue.svg["License: GPL v3", link=https://www.gnu.org/licenses/gpl-3.0]  image:https://img.shields.io/badge/License-LGPL%20v3-blue.svg["License: LGPL v3", link=https://www.gnu.org/licenses/lgpl-3.0]
 
 [.text-justify]
-Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers
-as well, and the project is open for new contributions.
+Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers as well, and the project is open for new contributions. More information about Elmer's licensing http://www.elmerfem.org/blog/license/[here].
 
 
 === Package managers:
@@ -72,7 +78,7 @@ image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging stat
 ==== Chocolatey:
 
 [.text-center]
-image:https://img.shields.io/chocolatey/dt/elmer-mpi[Chocolatey]
+image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
 
 === Social:
 
@@ -93,9 +99,20 @@ Ask your questions on Reddit:
 image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
 
 
+=== Other links:
 
 
-
-
+* http://www.elmerfem.org/[Elmer Blog]
+* https://www.csc.fi/web/elmer[official CSC homepage]
+* http://www.elmerfem.org/forum/[Elmer forum] (prefered place for asking questions)
+* https://postit.csc.fi/sympa/info/elmerupdates[Updates maling list]
+* https://sourceforge.net/projects/elmerfem/[Elmer at sourceforge (deprecated)] image:https://img.shields.io/sourceforge/dt/elmerfem.svg["Download Elmer", link=https://sourceforge.net/projects/elmerfem/files/latest/download]
+* image:https://i.stack.imgur.com/gVE0j.png["LinkedIn badge", link=https://www.linkedin.com/groups/3682354/] https://www.linkedin.com/groups/3682354/[LinkedIn]
+* https://www.youtube.com/user/elmerfem[YouTube]
+* https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
+* http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
+* http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
+* http://elmerice.elmerfem.org[Elmer/ICE community]
+* 
 
 
