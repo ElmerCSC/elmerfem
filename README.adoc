@@ -17,7 +17,7 @@ Elmer consists of several parts. The most important ones are ElmerSolver the fin
 
 [.text-center]
 .One of the simpler examples provided with Elmer, a thermal model of a pump casing, as visualised using the ElmerPost tool
-image::Elmer-pump-heatequation.png[align="center"]
+image::Elmer-pump-heatequation.png[align="center", width=400]
 
 
 
@@ -51,6 +51,11 @@ as well, and the project is open for new contributions.
 
 
 
-
+[.text-center]
 image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging status", link=https://repology.org/project/elmerfem/versions]
+
+
+
+[.text-center]
+image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", link=https://discordapp.com/invite/NeZEBZn]
 

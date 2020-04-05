@@ -1,0 +1,3 @@
+[submodule "mmg"]
+	path = include/mmg
+	url = https://github.com/MmgTools/mmg

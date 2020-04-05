@@ -291,6 +291,10 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
 
 FIND_PACKAGE(MMG)
+# INCLUDE("cmake/Modules/FindMMG.cmake")
+# INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+# TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+
 
 IF(MMG_FOUND)
 
