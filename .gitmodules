@@ -3,6 +3,6 @@
 	url = https://github.com/ElmerCSC/Zoltan
 
 
-[submodule "mmg"]
+[submodule "elmeric/include/mmg"]
 	path = elmeric/include/mmg
 	url = https://github.com/MmgTools/mmg
