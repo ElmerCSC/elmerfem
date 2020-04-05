@@ -39,6 +39,7 @@ image::Elmer-pump-heatequation.png[align="center", width=400]
 
 ==== macOS:
 
+ * go to the downloaded directory `mkdir build` and `cd build`
  * Install HomeBrew
  * Install GNU GCC `brew install gcc`
  * Install CMake `brew install cmake`
@@ -54,7 +55,6 @@ image::Elmer-pump-heatequation.png[align="center", width=400]
  * With ElmerPost:
     ** `brew cask install xquartz`
     ** ....
- * go to the build directory `cd build`
  * `make`
 
 === Licencing: image:https://img.shields.io/badge/License-GPLv3-blue.svg["License: GPL v3", link=https://www.gnu.org/licenses/gpl-3.0]  image:https://img.shields.io/badge/License-LGPL%20v3-blue.svg["License: LGPL v3", link=https://www.gnu.org/licenses/lgpl-3.0]
@@ -90,7 +90,7 @@ image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter F
 Ask your questions on Reddit:
 
 [.text-center]
-image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM[Subreddit subscribers]
+image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
 
 
 
