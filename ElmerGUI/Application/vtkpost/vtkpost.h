@@ -43,6 +43,9 @@
 
 #define MAX_SCALARS 100
 
+
+
+
 #include <QMainWindow>
 #include <QHash>
 #include <QTextStream>
@@ -52,9 +55,14 @@
 #include <gui/PythonQtScriptingConsole.h>
 #endif
 
+#include "vtkVersionMacros.h"
 class EpMesh;
 class ScalarField;
+#if VTK_MAJOR_VERSION >= 8
+class QVTKOpenGLNativeWidget;
+#else
 class QVTKWidget;
+#endif
 class vtkRenderer;
 class vtkRenderWindow;
 class vtkActor;
@@ -97,7 +105,11 @@ public:
   QSize minimumSizeHint() const;
   QSize sizeHint() const;
 
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* GetQVTKWidget();
+#else
   QVTKWidget* GetQVTKWidget();
+#endif
   vtkRenderer* GetRenderer();
   vtkActor* GetSurfaceActor();
   vtkActor* GetVectorActor();
@@ -357,7 +369,12 @@ private:
 
   QHash<QString, QAction*> groupActionHash;
 
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* qvtkWidget;
+#else
   QVTKWidget* qvtkWidget;
+#endif
+
 
   vtkRenderer* renderer;
   vtkUnstructuredGrid* volumeGrid;

@@ -48,7 +48,16 @@
 
 #include "cadview.h"
 
-#include <QVTKWidget.h>
+#include <vtkVersionMacros.h>
+#if VTK_MAJOR_VERSION >= 8
+  #include <QVTKOpenGLNativeWidget.h>
+#else
+  #include <QVTKWidget.h>
+#endif
+
+#include <vtkRenderer.h>
+#include <vtkRenderWindow.h>
+>>>>>>> devel
 #include <vtkActor.h>
 #include <vtkAppendPolyData.h>
 #include <vtkCallbackCommand.h>
@@ -87,14 +96,21 @@
 #include <TopoDS_Shape.hxx>
 
 using namespace std;
+static void pickEventHandler(vtkObject* caller, unsigned long eid, 
+			     void* clientdata, void* calldata)
+{
+  CadView* cadView = reinterpret_cast<CadView*>(clientdata);
+  
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* qvtkWidget = cadView->GetQVTKWidget();
+#else
+  QVTKWidget* qvtkWidget = cadView->GetQVTKWidget();
+#endif
 
-static void pickEventHandler(vtkObject *caller, unsigned long eid,
-                             void *clientdata, void *calldata) {
-  CadView *cadView = reinterpret_cast<CadView *>(clientdata);
-  QVTKWidget *qvtkWidget = cadView->GetQVTKWidget();
-  vtkAbstractPicker *picker = qvtkWidget->GetInteractor()->GetPicker();
-  vtkPropPicker *propPicker = vtkPropPicker::SafeDownCast(picker);
-  vtkActor *actor = propPicker->GetActor();
+  vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
+  vtkPropPicker* propPicker = vtkPropPicker::SafeDownCast(picker);
+  vtkActor* actor = propPicker->GetActor();
+
   int faceNumber = cadView->getFaceNumber(actor);
 
   if (faceNumber > 0) {
@@ -123,7 +139,12 @@ CadView::CadView(QWidget *parent) : QMainWindow(parent) {
   createActions();
   createMenus();
 
+#if VTK_MAJOR_VERSION >= 8
+  qVTKWidget = new QVTKOpenGLNativeWidget(this);
+  qVTKWidget->setFormat(QVTKOpenGLNativeWidget::defaultFormat());
+#else
   qVTKWidget = new QVTKWidget(this);
+#endif
   setCentralWidget(qVTKWidget);
 
   renderer = vtkRenderer::New();
@@ -471,8 +492,8 @@ bool CadView::readFile(QString fileName) {
 
   // Draw:
   //------
+  renderer->ResetCamera();  
   qVTKWidget->GetRenderWindow()->Render();
-  renderer->ResetCamera();
 
   QCoreApplication::processEvents();
 
@@ -578,7 +599,14 @@ void CadView::generateSTLSlot() {
                           meshMinSize);
 }
 
-QVTKWidget *CadView::GetQVTKWidget() { return this->qVTKWidget; }
+#if VTK_MAJOR_VERSION >= 8
+QVTKOpenGLNativeWidget* CadView::GetQVTKWidget()
+#else
+QVTKWidget* CadView::GetQVTKWidget()
+#endif
+{
+  return this->qVTKWidget;
+}
 
 void CadView::clearScreen() {
   cout << "Clear screen" << endl;

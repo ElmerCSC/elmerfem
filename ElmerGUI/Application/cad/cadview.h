@@ -59,9 +59,15 @@ namespace nglib {
 #include <BRepMesh_IncrementalMesh.hxx>
 #endif
 
+#include <vtkVersionMacros.h>
+
 class QMenu;
 class QAction;
+#if VTK_MAJOR_VERSION >= 8
+class QVTKOpenGLNativeWidget;
+#else
 class QVTKWidget;
+#endif
 class vtkRenderer;
 class vtkActor;
 class vtkPolyData;
@@ -91,7 +97,11 @@ public:
   QSize minimumSizeHint() const;
   QSize sizeHint() const;
 
-  QVTKWidget *GetQVTKWidget();
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* GetQVTKWidget();
+#else
+  QVTKWidget* GetQVTKWidget();
+#endif
 
   bool readFile(QString);
   void generateSTL();
@@ -128,8 +138,12 @@ private:
   QAction *reloadAct;
   QAction *cadPreferencesAct;
 
-  QVTKWidget *qVTKWidget;
-  vtkRenderer *renderer;
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* qVTKWidget;
+#else
+  QVTKWidget* qVTKWidget;
+#endif
+  vtkRenderer* renderer;
 
   vtkAppendPolyData *stlSurfaceData;
   vtkAppendPolyData *stlEdgeData;
