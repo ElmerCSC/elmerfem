@@ -23,6 +23,43 @@
 ! ******************************************************************************
 ! *****************************************************************************
 SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
+! *****************************************************************************
+!------------------------------------------------------------------------------
+!
+!  Compute a cost function that penalises 1rst derivative of the basal shear stress
+!     J=int_{Pb dimension} 0.5 * ( dTau_b/dx )**2
+!
+!     The basal friction is computed at the nodes following:
+!       Tau_b=beta Velocity_nom**fm
+!          with fm the friction exponent
+!
+!   and provides the derivatives with respect to beta en velocity
+!
+!   Be Careful, by default, this solver 
+!      - reset derivatives wrt beta to 0 (Set Reset DJDBeta = Logical False,
+!                   if values have been computed in a previous cost function)
+!      - do not reset Cost and derivatives wrt velocity to 0 (Set Reset Cost value = Logical True,
+!                    if values have been computed in a previous cost function)
+!
+!     OUTPUT are : J ; DJDBeta ; Velocityb
+!
+!     INPUT PARAMETERS are:
+!
+!      In solver section:
+!               Reset Cost Value = Logical (default = .FALSE.)
+!               Reset DJDBeta = Logical (default = .True.)
+!               Cost Filename = File (default = 'CostTaub.dat')
+!               Cost Variable Name = String (default= 'CostValue')
+!               DJDBeta Name = String (default= 'DJDBeta')
+!               Lambda = Real (default = 1.0)
+!
+!
+!      Variables
+!                SSAVelocity (solution of the SSA pb)
+!                Velocityb (forcing for the adjoint pb)
+!
+!     In Material:
+!       Keywords related to SSA Friction law (only linear and Weertman)
 !------------------------------------------------------------------------------
 !******************************************************************************
   USE DefUtils
@@ -57,7 +94,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: coeff,coeffb,s,Lambda
   REAL(KIND=dp) :: fm
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName="CostValue"
+  CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CostSolName
   CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CostFile
   CHARACTER(LEN=MAX_NAME_LEN) :: DefaultCostFile="CostTaub.dat"
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName="CostTaub"
@@ -113,6 +150,14 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
           CALL ListAddString(  SolverParams, 'DJDBeta Name', TRIM(SName))
     END IF
     !!
+    CostSolName =  GetString( SolverParams,'Cost Variable Name', Found)
+    IF(.NOT.Found) THEN
+       CALL WARN(SolverName,'Keyword >Cost Variable Name< not found  in section >Solver<')
+       CALL WARN(SolverName,'Taking default value >CostValue<')
+       WRITE(CostSolName,'(A)') 'CostValue'
+    END IF
+
+
     CostFile = ListGetString(Solver % Values,'Cost Filename',Found )
     IF (.NOT. Found) CostFile = DefaultCostFile
     CALL DATE_AND_TIME(date,temps)
