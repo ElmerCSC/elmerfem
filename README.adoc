@@ -133,6 +133,7 @@ image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit su
 * https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
+* http://www.nic.funet.fi/index/elmer/doc/ElmerTutorials_nonGUI.pdf[Elmer nonGUI tutorials]
 * http://elmerice.elmerfem.org[Elmer/ICE community]
 
 
