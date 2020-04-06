@@ -71,6 +71,20 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
  * `make`
  * `make install`
 
+==== Ubuntu
+
+ * install the dependencies `sudo apt install git cmake build-essential fortran libopenmpi-dev libblas-dev liblapack-dev`
+ * Without:
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE`
+ * With MPI:
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE`
+ * With ElmerGUI:
+    ** `sudo apt install libqt4-dev libqwt-dev`
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ELMERGUI:BOOLEAN=TRUE`
+ * `make`
+ * `sudo make install`
+ * the executable are in `/usr/local/bin` folder, you may add this to your PATH if you will.
+
 === Licencing: image:https://img.shields.io/badge/License-GPLv3-blue.svg["License: GPL v3", link=https://www.gnu.org/licenses/gpl-3.0]  image:https://img.shields.io/badge/License-LGPL%20v3-blue.svg["License: LGPL v3", link=https://www.gnu.org/licenses/lgpl-3.0]
 
 [.text-justify]

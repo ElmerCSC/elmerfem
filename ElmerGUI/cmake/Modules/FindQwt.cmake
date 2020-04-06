@@ -22,6 +22,7 @@ IF(Qwt_INCLUDE_DIRS)
 ELSE(Qwt_INCLUDE_DIRS)
 
   FIND_PATH(QWT_INCLUDE_DIR qwt.h 
+    PATHS
     /usr/include/qwt
     /usr/local/include/qwt
     /sw/include/qwt
