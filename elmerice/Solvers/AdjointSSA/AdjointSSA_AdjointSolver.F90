@@ -72,7 +72,7 @@
 !------------------------------------------------------------------------------
    TYPE(Solver_t),Pointer :: NSSolver
    TYPE(Matrix_t),POINTER :: InitMat,TransMat,StiffMatrix
-   TYPE(ValueList_t),POINTER ::  BC,SolverParams
+   TYPE(ValueList_t),POINTER ::  BC,BF,SolverParams
    TYPE(ValueListEntry_t),POINTER :: NormalTangential,NormalTangentialC
    character(LEN=MAX_NAME_LEN),SAVE :: NormalTangentialName,NormalTangentialNameb
    LOGICAL :: AnyNT
@@ -254,12 +254,11 @@
    Unorm = DefaultSolve()
 
   ! Go through BC to check if dirichlet was applied to direct solver
+  ! Go to the boundary elements
    Do t=1,GetNOFBoundaryElements()
       Element => GetBoundaryElement(t)
       BC => GetBC(Element)
       IF (.NOT.ASSOCIATED( BC ) ) CYCLE
-!      NT=ListGetLogical(BC,'normal-tangential' // ' ' // NSVarName,Gotit)
-!      IF (.NOT.NT) CYCLE
 
       NodeIndexes => Element % NodeIndexes
       n = Element % TYPE % NumberOfNodes
@@ -329,6 +328,46 @@
         END DO
       ENDIF
    END DO
+
+   ! Go through the Body forces
+   Do t=1,Solver % NumberOfActiveElements
+      Element => GetActiveElement(t)
+
+      BF => GetBodyForce(Element)
+      IF (.NOT.ASSOCIATED( BF ) ) CYCLE
+
+      NodeIndexes => Element % NodeIndexes
+      n = Element % TYPE % NumberOfNodes
+
+      ! set BC for NSDOFs=1 or applied to the whole vector
+      IF( ListCheckPresent( BF, NSVarName ) ) THEN
+         Condition(1:n) = ListGetReal( BC, &
+               TRIM(NSVarName) // ' Condition', n, NodeIndexes, Conditional )
+         DO j=1,n
+            IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
+            DO i=1,NSDOFS
+              Sol%Values(NSDOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
+            END DO
+         END DO
+      ENDIF
+
+      ! Do the same for each component
+      IF (NSDOFs>1) THEN
+        DO i=1,NSDOFS
+           IF( ListCheckPresent( BF,  ComponentName(NSVarName,i)) ) THEN
+             Condition(1:n) = ListGetReal( BC, &
+               ComponentName(NSVarName,i) // ' Condition', n, NodeIndexes, Conditional )
+
+             DO j=1,n
+               IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
+               Sol%Values(NSDOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
+             END DO
+           END IF
+        END DO
+      END IF
+
+   END DO
+
    ! Back Rotate to model coordinate system
    CALL BackRotateNTSystem(Sol%Values,Perm,NSDOFs)
 
