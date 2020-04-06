@@ -389,7 +389,9 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
 ! Compute the cost
     Cost=0._dp
-    ElementIndex=1
+
+    Element => GetActiveElement(1)
+    ElementIndex = Element % ElementIndex
 
     CALL StartAdvanceOutput(SolverName,'Compute cost')
     Do s=1,nobs
@@ -416,6 +418,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
               ElementNodes % z(1:n) = 0.0_dp
         ENDIF
         IF (PointInElement(Element,ElementNodes,xobs(s,1:3),UVW)) THEN
+          IF (.NOT.CheckPassiveElement(Element)) &
                InElement(s)=ElementIndex
 
         ELSE
