@@ -174,6 +174,13 @@ IF(WITH_VTK AND NOT WITHOUT_VTKPOST)
 ENDIF()
 
 IF(WITH_OCC)
+
+  set(ELMER_USE_OCC_VARIANT "Official Version"  CACHE STRING  "Official OpenCASCADE version or community edition")
+  set_property(CACHE ELMER_USE_OCC_VARIANT PROPERTY STRINGS
+              "Official Version"
+              "Community Edition"
+  )
+
   SET(HEADERS ${HEADERS} cad/cadview.h  cad/cadpreferences.h)
   SET(FORMS ${FORMS} cad/cadpreferences.ui)
   SET(SOURCES ${SOURCES} cad/cadview.cpp cad/cadpreferences.cpp)

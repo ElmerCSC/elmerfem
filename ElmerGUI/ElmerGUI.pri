@@ -11,7 +11,7 @@ DEFINES += EG_QWT      # Use QWT for convergence monitor?
 #DEFINES += EG_VTK      # Use VTK for postprocessing?
 DEFINES += EG_PARAVIEW # Use ParaView for postprocessing?
 DEFINES += EG_MATC     # Use MATC for internal operations in postprocessing?
-#DEFINES += EG_OCC      # Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.
+DEFINES += EG_OCC      # Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.
 DEFINES -= EG_PYTHONQT # Use PythonQt for scripting in post processor?
 CONFIG += static
 
@@ -141,7 +141,7 @@ macx {
 #------------------------------------------------------------------------------
 # OpenCASCADE library:
 #------------------------------------------------------------------------------
-unix {
+unix:!macx {
    OCC_INCLUDEPATH = /usr/include/opencascade
    OCC_LIBPATH = /usr/lib
    OCC_LIBS = -lTKSTL \
@@ -208,7 +208,24 @@ win32 {
 }
 
 macx {
-   OCC_INCLUDEPATH = 
-   OCC_LIBPATH = 
-   OCC_LIBS = 
+   message ("Building for OSX") 
+   OCC_INCLUDEPATH = /usr/local/Cellar/opencascade/7.4.0_1/include/opencascade/
+   OCC_LIBPATH = /usr/local/Cellar/opencascade/7.4.0_1/lib/
+   OCC_LIBS = -lTKSTL \
+              -lTKBRep \
+              -lTKernel \
+              -lTKG2d \
+              -lTKG3d \
+              -lTKGeomAlgo \
+              -lTKGeomBase \
+              -lTKMath \
+              -lTKMesh \
+              -lTKShHealing \
+              -lTKSTEP \
+              -lTKSTEP209 \
+              -lTKSTEPAttr \
+              -lTKSTEPBase \
+              -lTKIGES \
+              -lTKTopAlgo \
+              -lTKXSBase
 }

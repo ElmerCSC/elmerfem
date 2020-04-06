@@ -41,8 +41,9 @@
 #ifndef CADVIEW_H
 #define CADVIEW_H
 
-#include <QMainWindow>
 #include <QHash>
+#include <QMainWindow>
+
 
 #include "cadpreferences.h"
 
@@ -50,8 +51,9 @@ namespace nglib {
 #include "nglib.h"
 }
 
-#include <TopoDS_Shape.hxx>
 #include <Standard_Version.hxx>
+#include <TopoDS_Shape.hxx>
+
 
 #if OCC_VERSION_HEX >= 0x060800
 #include <BRepMesh_IncrementalMesh.hxx>
@@ -65,24 +67,21 @@ class vtkActor;
 class vtkPolyData;
 class vtkAppendPolyData;
 
-class pt
-{
- public:
+class pt {
+public:
   int n;
   double x;
   double y;
 };
 
-class seg
-{
- public:
+class seg {
+public:
   int p0;
   int p1;
   int bc;
 };
 
-class CadView : public QMainWindow
-{
+class CadView : public QMainWindow {
   Q_OBJECT
 
 public:
@@ -92,61 +91,61 @@ public:
   QSize minimumSizeHint() const;
   QSize sizeHint() const;
 
-  QVTKWidget* GetQVTKWidget();
+  QVTKWidget *GetQVTKWidget();
 
   bool readFile(QString);
   void generateSTL();
 
-  void setMesh(nglib::Ng_Mesh*);
-  void setGeom(nglib::Ng_STL_Geometry*);
-  void setMp(nglib::Ng_Meshing_Parameters*);
+  void setMesh(nglib::Ng_Mesh *);
+  void setGeom(nglib::Ng_STL_Geometry *);
+  void setMp(nglib::Ng_Meshing_Parameters *);
   void setDeflection(double);
-  double lengthOf(double*);
-  void differenceOf(double*, double*, double*);
-  int getFaceNumber(vtkActor*);
+  double lengthOf(double *);
+  void differenceOf(double *, double *, double *);
+  int getFaceNumber(vtkActor *);
   int getDim();
   void generateIn2dFile();
 
- private slots:
+private slots:
   void closeSlot();
   void generateSTLSlot();
   void cadPreferencesSlot();
   void reloadSlot();
 
- private:
+private:
   void createActions();
   void createMenus();
   void clearScreen();
   TopoDS_Shape readBrep(QString);
   TopoDS_Shape readStep(QString);
   TopoDS_Shape readIges(QString);
-  void restrictMeshSizeLocal(nglib::Ng_Mesh*, vtkPolyData*, double, double);
+  void restrictMeshSizeLocal(nglib::Ng_Mesh *, vtkPolyData *, double, double);
 
-  QMenu* fileMenu;
-  QMenu* modelMenu;
+  QMenu *fileMenu;
+  QMenu *modelMenu;
 
-  QAction* exitAct;
-  QAction* reloadAct;
-  QAction* cadPreferencesAct;
+  QAction *exitAct;
+  QAction *reloadAct;
+  QAction *cadPreferencesAct;
 
-  QVTKWidget* qVTKWidget;
-  vtkRenderer* renderer;
+  QVTKWidget *qVTKWidget;
+  vtkRenderer *renderer;
 
-  vtkAppendPolyData* stlSurfaceData;
-  vtkAppendPolyData* stlEdgeData;
+  vtkAppendPolyData *stlSurfaceData;
+  vtkAppendPolyData *stlEdgeData;
 
   int numberOfFaces;
   double modelLength;
 
-  nglib::Ng_Mesh* mesh;
-  nglib::Ng_STL_Geometry* geom;
-  nglib::Ng_Meshing_Parameters* mp;
+  nglib::Ng_Mesh *mesh;
+  nglib::Ng_STL_Geometry *geom;
+  nglib::Ng_Meshing_Parameters *mp;
 
-  CadPreferences* cadPreferences;
+  CadPreferences *cadPreferences;
 
   QString fileName;
 
-  QHash<vtkActor*, int> actorToFace;
+  QHash<vtkActor *, int> actorToFace;
 
   int modelDim;
 

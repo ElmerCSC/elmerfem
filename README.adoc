@@ -13,10 +13,10 @@ image:https://img.shields.io/github/stars/ElmerCSC/elmerfem.svg?style=social&lab
  
 [.text-center]
 image:https://img.shields.io/github/contributors/ElmerCSC/elmerfem.svg?style=flat["GitHub contributors"]
- image:https://img.shields.io/github/issues-pr/ElmerCSC/elmerfem.svg?style=flat["GitHub pull requests", link=https://github.com/ElmerCSC/elmerfem/pulls] image:https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat[]
+ image:https://img.shields.io/github/issues-pr/ElmerCSC/elmerfem.svg?style=flat["GitHub pull requests", link=https://github.com/ElmerCSC/elmerfem/pulls] image:https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat[] 
 
 [.text-center]
-image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat["GitHub last commit"] image:https://img.shields.io/github/issues-raw/ElmerCSC/elmerfem.svg?maxAge=25000["Issues", link=https://github.com/ElmerCSC/elmerfem/issues] 
+image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat["GitHub last commit"] image:https://img.shields.io/github/issues-raw/ElmerCSC/elmerfem.svg?maxAge=25000["Issues", link=https://github.com/ElmerCSC/elmerfem/issues] image:https://img.shields.io/github/languages/count/ElmerCSC/elmerfem[GitHub language count]
 
 
 
@@ -33,9 +33,15 @@ Elmer consists of several parts. The most important ones are ElmerSolver the fin
 .One of the simpler examples provided with Elmer, a thermal model of a pump casing, as visualised using the ElmerPost tool
 image::Elmer-pump-heatequation.png[align="center", width=400]
 
-=== Download Biraies:
+=== Download Binraies:
 
 You may download binaries and virtual machines from http://www.elmerfem.org/blog/binaries/[here]
+
+=== Docker:
+
+ * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub], More info https://raw.githubusercontent.com/ElmerCSC/elmerfem/release/ReleaseNotes/release_8.4.txt[here]
+ * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
+ * CoSci-LLC/docker-elmerice https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
 
 === Documentation
 
@@ -63,6 +69,7 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
     ** `brew cask install xquartz`
     ** ....
  * `make`
+ * `make install`
 
 === Licencing: image:https://img.shields.io/badge/License-GPLv3-blue.svg["License: GPL v3", link=https://www.gnu.org/licenses/gpl-3.0]  image:https://img.shields.io/badge/License-LGPL%20v3-blue.svg["License: LGPL v3", link=https://www.gnu.org/licenses/lgpl-3.0]
 
@@ -104,7 +111,7 @@ image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit su
 
 * http://www.elmerfem.org/[Elmer Blog]
 * https://www.csc.fi/web/elmer[official CSC homepage]
-* http://www.elmerfem.org/forum/[Elmer forum] (prefered place for asking questions)
+* http://www.elmerfem.org/forum/[Elmer forum] (preferred place for asking questions)
 * https://postit.csc.fi/sympa/info/elmerupdates[Updates maling list]
 * https://sourceforge.net/projects/elmerfem/[Elmer at sourceforge (deprecated)] image:https://img.shields.io/sourceforge/dt/elmerfem.svg["Download Elmer", link=https://sourceforge.net/projects/elmerfem/files/latest/download]
 * image:https://i.stack.imgur.com/gVE0j.png["LinkedIn badge", link=https://www.linkedin.com/groups/3682354/] https://www.linkedin.com/groups/3682354/[LinkedIn]
@@ -113,6 +120,5 @@ image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit su
 * http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
 * http://elmerice.elmerfem.org[Elmer/ICE community]
-* 
 
 

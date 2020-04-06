@@ -45,6 +45,43 @@ IF(APPLE)
 INCLUDE_DIRECTORIES(${GLX_INCLUDE_DIR})
 ENDIF()
 
+#shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
+# For building on OS X
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+  # If the user doesn't tell us which package manager they're using
+  if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+    # Try to find MacPorts path
+    find_program(MACPORTS_EXECUTABLE port)
+    if(EXISTS ${MACPORTS_EXECUTABLE})
+      string(REPLACE "/bin/port" ""
+      MACPORTS_PREFIX ${MACPORTS_EXECUTABLE})
+      message(STATUS "Detected MacPorts install at ${MACPORTS_PREFIX}")
+    endif(EXISTS ${MACPORTS_EXECUTABLE})
+
+    # Try to find Homebrew path
+    find_program(HOMEBREW_EXECUTABLE brew)
+    if(EXISTS ${HOMEBREW_EXECUTABLE})
+      string(REPLACE "/bin/brew" ""
+      HOMEBREW_PREFIX ${HOMEBREW_EXECUTABLE})
+      message(STATUS "Detected Homebrew install at ${HOMEBREW_PREFIX}")
+    endif()
+
+  endif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+  # In case someone tries to shoot themselves in the foot
+  if(DEFINED MACPORTS_PREFIX AND DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "Multiple package management systems detected - ")
+    message(SEND_ERROR "define either MACPORTS_PREFIX or HOMEBREW_PREFIX")
+
+  # No package manager
+  elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
+  endif()
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
 
 SET(CMAKE_Fortran_MODULE_DIRECTORY
