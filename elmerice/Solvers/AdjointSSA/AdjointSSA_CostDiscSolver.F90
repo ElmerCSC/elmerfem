@@ -77,6 +77,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: DefaultCostFile = 'CostOfT.dat'
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName,CostFile,UsedDataFile
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VariableName,ObsFileName
+  TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Element_t),POINTER ::  Element
   TYPE(Variable_t), POINTER :: TimeVar,CostVar
   TYPE(Variable_t), POINTER :: VelocitybSol,Variable
@@ -89,10 +90,10 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   integer :: i,j,k,l,s,t,n,NMAX,DIM,ierr,c,ok
   real(kind=dp) :: Cost,Cost_S,Lambda
   real(kind=dp) :: Coord(3),UVW(3),coeff,SqrtElementMetric,x
-  REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
+  REAL(KIND=dp),ALLOCATABLE,SAVE :: Basis(:), dBasisdx(:,:)
   REAL(KIND=dp) :: xmin,ymin,xmax,ymax
   INTEGER,SAVE :: VDOFs
-  REAL(KIND=dp),ALLOCATABLE,SAVE :: V(:)
+  REAL(KIND=dp) :: V(3)
   REAL(KIND=dp),ALLOCATABLE,SAVE :: xobs(:,:),Vobs(:,:)
   REAL(KIND=dp),ALLOCATABLE :: xx(:),yy(:),ux(:,:),uy(:,:)
   INTEGER,ALLOCATABLE,SAVE :: InElement(:)
@@ -142,6 +143,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   If (Firsttime) then
     N = model % MaxElementNodes
     allocate(ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N))
+    allocate(Basis(N), dBasisdx(N,3))
 
 !!!!!!! Check for parallel run 
     Parallel = .FALSE.
@@ -184,7 +186,6 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
    VariableName =  ListGetString( SolverParams,'Observed Variable Name', UnFoundFatal=.TRUE.)
    Variable => VariableGet( Solver % Mesh % Variables, Trim(VariableName) ,UnFoundFatal=.TRUE. )
    VDOFs=Variable%DOFs
-   ALLOCATE(V(VDOFs))
 
 !! Get the obs
    ObsFileName =  ListGetString( SolverParams,'Observation File Name', UnFoundFatal=.TRUE.)
@@ -197,7 +198,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
 #ifdef HAVE_NETCDF
 
-      IF (VDOFs.NE.2) CALL FATAL(Trim(SolverName),'Netcdf only supported for 2D')
+      IF (DIM.NE.2) CALL FATAL(Trim(SolverName),'Netcdf only supported for 2D')
 
       CALL INFO(Trim(SolverName),'Data File is in netcdf format', Level=5)
 
@@ -299,7 +300,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
       NetCDFstatus = nf90_close(ncid)
 
       !!
-      ALLOCATE(xobs(nx*ny,3),Vobs(nx*ny,VDOFs))
+      ALLOCATE(xobs(nx*ny,3),Vobs(nx*ny,DIM))
       xobs=0._dp
       Vobs=0._dp
 
@@ -344,13 +345,13 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      end do
      close(IO)
 
-     ALLOCATE(xobs(nobs,3),Vobs(nobs,VDOFs))
+     ALLOCATE(xobs(nobs,3),Vobs(nobs,DIM))
 
      Vobs=0.0_dp
      xobs=0.0_dp
      open(IO,file=trim(ObsFileName))
      do i=1,nobs
-       read(IO,*) (xobs(i,j),j=1,DIM),(Vobs(i,j),j=1,VDOFs)
+       read(IO,*) (xobs(i,j),j=1,DIM),(Vobs(i,j),j=1,DIM)
      end do
      close(IO)
    ENDIF
@@ -376,7 +377,9 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
   IF (VelocitybSol%DOFs.NE.Variable%DOFs) & 
         CALL FATAL(Trim(SolverName),'DOFs do not correspond')
-
+!
+ Mesh => GetMesh()
+  
 ! Temporary trick to disable Warnings as LocateParticleInMeshOctree
 ! will send a lot of warning for data points not found in the emsh
   IF (FirstRound) THEN
@@ -386,36 +389,85 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
 ! Compute the cost
     Cost=0._dp
+    ElementIndex=1
 
     CALL StartAdvanceOutput(SolverName,'Compute cost')
     Do s=1,nobs
-
+     
      CALL AdvanceOutput(s,nobs)
      
      IF (FirstRound) then
-      !Need to find in which Element the data point resides
-      ElementIndex=-1  ! don't know why but if i don't reset ElmentIndex it fails
-      Coord=0._dp
-      Coord(1:DIM)=xobs(s,1:DIM)
-      IF ((Coord(1).GT.xmax).OR.(Coord(1).LT.xmin)) CYCLE
-      IF (DIM.EQ.2) THEN
+       !Need to find in which Element the data point resides
+
+       IF (DIM.LT.CoordinateSystemDimension()) THEN
+       ! we are in a lower dimension than the mesh
+       ! => use brute force search
+
+       ! first check in the current elmement
+        Element => Mesh % Elements(ElementIndex)
+        n = GetElementNOFNodes(Element)
+        NodeIndexes => Element % NodeIndexes
+        ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+        IF (DIM == 1) THEN
+              ElementNodes % y(1:n) = 0.0_dp
+              ElementNodes % z(1:n) = 0.0_dp
+        ELSE IF (DIM == 2) THEN
+              ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+              ElementNodes % z(1:n) = 0.0_dp
+        ENDIF
+        IF (PointInElement(Element,ElementNodes,xobs(s,1:3),UVW)) THEN
+               InElement(s)=ElementIndex
+
+        ELSE
+         ! go through all elements
+          Do i=1,Solver%NumberOfActiveElements
+           Element => GetActiveElement(i)
+           n = GetElementNOFNodes(Element)
+           NodeIndexes => Element % NodeIndexes
+           ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+           IF (DIM == 1) THEN
+              ElementNodes % y(1:n) = 0.0_dp
+              ElementNodes % z(1:n) = 0.0_dp
+           ELSE IF (DIM == 2) THEN
+              ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+              ElementNodes % z(1:n) = 0.0_dp
+           ENDIF
+           IF (PointInElement(Element,ElementNodes,xobs(s,1:3),UVW)) THEN
+               IF (CheckPassiveElement(Element)) Exit
+               ElementIndex= Element % ElementIndex
+               InElement(s)=ElementIndex
+               Exit
+           END IF
+          End Do
+        END IF
+
+      ELSE
+      !> use particles meshoctree
+       ElementIndex=-1  ! don't know why but if i don't reset ElmentIndex it fails
+       Coord=0._dp
+       Coord(1:DIM)=xobs(s,1:DIM)
+       IF ((Coord(1).GT.xmax).OR.(Coord(1).LT.xmin)) CYCLE
+       IF (DIM.EQ.2) THEN
         IF ((Coord(2).GT.ymax).OR.(Coord(2).LT.ymin)) CYCLE
-      END IF
-      CALL LocateParticleInMeshOctree( ElementIndex,Coord)
-      If (ElementIndex.NE.0) THEN
-         InElement(s)=ElementIndex
-         Element => GetActiveElement(InElement(s))
-         IF (CheckPassiveElement(Element)) THEN
+       END IF
+       CALL LocateParticleInMeshOctree( ElementIndex,Coord)
+       If (ElementIndex.NE.0) THEN
+         InElement(s)=ElementIndex  
+         Element => Mesh % Elements(ElementIndex)
+         IF (CheckPassiveElement(Element).OR. &
+             (Element % PartIndex /= ParEnv % myPE)) THEN  
             InElement(s)=-1
          END IF
+       END IF
+
       END IF
      ENDIF !End if FirstRound
       
 
     ! Data Point has been found in one element
       IF (InElement(s)>0) THEN
-         Element => GetActiveElement(InElement(s))
-         n = GetElementNOFNodes()
+         Element => Mesh % Elements(InElement(s))
+         n = GetElementNOFNodes(Element)
          NodeIndexes => Element % NodeIndexes
     ! set coords of highest occurring dimension to zero (to get correct path element)
           !-------------------------------------------------------------------------------
@@ -446,19 +498,19 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
                               Basis,dBasisdx )
 
             ! Variable at obs point
-            Do i=1,VDOFs
+            Do i=1,DIM
               V(i)=SUM(Values(VDOFs*(Perm(NodeIndexes(1:n))-1)+i)*basis(1:n))
             End do
 
             ! Update cost
-            Do i=1,VDOFs
+            Do i=1,DIM
               Cost=Cost+0.5*Lambda*(V(i)-Vobs(s,i))*(V(i)-Vobs(s,i))
             End do
             !PRINT *,V,Vobs
 
             !Derivative of Cost at nodal Point
             Do j=1,n
-              Do i=1,VDOFs
+              Do i=1,DIM
                k=VDOFS*(VbPerm(NodeIndexes(j))-1)+i
                Vb(k)=Vb(k)+Lambda*(V(i)-Vobs(s,i))*basis(j)
               End do
@@ -520,10 +572,10 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
        open(IO,File=UsedDataFile)
        Do s=1,nobs
          If (InElement(s)>0) then
-            if ((DIM.eq.1).AND.(VDOFS.EQ.1)) Then
-               write(IO,'(e13.5,2x,e15.8)') (xobs(s,i),i=1,DIM),(Vobs(s,i),i=1,VDOFs)
-            Else if ((DIM.eq.2).AND.(VDOFS.EQ.2)) Then
-               write(IO,'(e15.8,2x,e15.8,2x,e15.8,2x,e15.8)') (xobs(s,i),i=1,DIM),(Vobs(s,i),i=1,VDOFs)
+            if (DIM.eq.1) Then
+               write(IO,'(e13.5,2x,e15.8)') (xobs(s,i),i=1,DIM),(Vobs(s,i),i=1,DIM)
+            Else if (DIM.eq.2) Then
+               write(IO,'(e15.8,2x,e15.8,2x,e15.8,2x,e15.8)') (xobs(s,i),i=1,DIM),(Vobs(s,i),i=1,DIM)
             End if
          End if
        End do
