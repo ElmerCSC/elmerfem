@@ -21,7 +21,6 @@ image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat
 
 
 
-=== Abstract:
 
 [.text-justify]
 Elmer is a finite element software for numerical solution of partial differential equations. Elmer is capable of handling any number of equations and is therefore ideally suited for the simulation of multiphysical problems. It includes models, for example, of structural mechanics, fluid dynamics, heat transfer and electromagnetics. Users can also write their own equations that can be dynamically linked with the main program.
@@ -29,12 +28,7 @@ Elmer is a finite element software for numerical solution of partial differentia
 Elmer consists of several parts. The most important ones are ElmerSolver the finite element solver, ElmerGUI the graphical user interface, and ElmerGrid the mesh creation and manipulation tool. Also a visualization tool, ElmerPost, is included in the package but it is no longer developed.  
 
 
-
-[.text-center]
-.One of the simpler examples provided with Elmer, a thermal model of a pump casing, as visualised using the ElmerPost tool
-image::Elmer-pump-heatequation.png[align="center", width=400]
-
-=== Download Binraies:
+=== Download Binaries:
 
 You may download binaries and virtual machines from http://www.elmerfem.org/blog/binaries/[here]
 
@@ -87,7 +81,7 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
  * `sudo make install`
  * the executable are in `/usr/local/bin` folder, you may add this to your PATH if you will.
 
-=== Licencing: image:https://img.shields.io/badge/License-GPLv3-blue.svg["License: GPL v3", link=https://www.gnu.org/licenses/gpl-3.0]  image:https://img.shields.io/badge/License-LGPL%20v3-blue.svg["License: LGPL v3", link=https://www.gnu.org/licenses/lgpl-3.0]
+=== Licencing: image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
 
 [.text-justify]
 Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers as well, and the project is open for new contributions. More information about Elmer's licensing http://www.elmerfem.org/blog/license/[here].
@@ -135,7 +129,6 @@ image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit su
 * https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
-* http://www.nic.funet.fi/index/elmer/doc/ElmerTutorials_nonGUI.pdf[Elmer nonGUI tutorials]
 * http://elmerice.elmerfem.org[Elmer/ICE community]
 
 
