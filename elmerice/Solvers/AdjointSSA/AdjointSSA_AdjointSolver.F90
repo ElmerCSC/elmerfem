@@ -290,7 +290,7 @@
         DO i=1,NSDOFS
            IF( ListCheckPresent( BC,  ComponentName(NSVarName,i)) ) THEN
              Condition(1:n) = ListGetReal( BC, &
-               ComponentName(NSVarName,i) // ' Condition', n, NodeIndexes, Conditional )
+               TRIM(ComponentName(NSVarName,i)) // ' Condition', n, NodeIndexes, Conditional )
 
              DO j=1,n
                IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
@@ -356,7 +356,7 @@
         DO i=1,NSDOFS
            IF( ListCheckPresent( BF,  ComponentName(NSVarName,i)) ) THEN
              Condition(1:n) = ListGetReal( BF, &
-               ComponentName(NSVarName,i) // ' Condition', n, NodeIndexes, Conditional )
+               TRIM(ComponentName(NSVarName,i)) // ' Condition', n, NodeIndexes, Conditional )
 
              DO j=1,n
                IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
