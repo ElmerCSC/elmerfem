@@ -1,10 +1,11 @@
-== Elmer FEM
 :imagesdir: pics
+[.text-center]
+image::ElmerLogoPlain64x64.png[float="right"]
+== Elmer FEM
+
 
 This is the official source code repository for the Elmer FEM software suite.
 
-[.text-center]
-image::Elmerlogo.png[align="center"]
 
 
 [.text-center]
@@ -49,8 +50,6 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
 
 === Compiling:
 
-==== Linux
- * See instructions in https://github.com/ElmerCSC/elmerfem/wiki/Compilation
 
 ==== macOS:
 
