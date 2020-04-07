@@ -242,7 +242,11 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
            Vnode(i,j)=VValues(VVar%DOFs*(VPerm(NodeIndexes(i))-1)+j)
            Vn(i)=Vn(i)+Vnode(i,j)*Vnode(i,j)
          END DO
-         Taub(i)=Beta(i)*Vn(i)**(fm/2)
+         IF (Vn(i).GT.AEPS) THEN
+           Taub(i)=Beta(i)*Vn(i)**(fm/2)
+         ELSE
+           Taub(i)=0._dp
+         END IF
        END DO
 
 !------------------------------------------------------------------------------
@@ -280,8 +284,13 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
         End do !IP
 
         DO i=1,n
-          Vnb(i)=Taubb(i)*Beta(i)*0.5*fm*Vn(i)**(fm/2-1._dp)
-          Betab(i)=Taubb(i)*Vn(i)**(fm/2)
+          IF (Vn(i).GT.AEPS) THEN
+            Vnb(i)=Taubb(i)*Beta(i)*0.5*fm*Vn(i)**(fm/2-1._dp)
+            Betab(i)=Taubb(i)*Vn(i)**(fm/2)
+          ELSE
+            Vnb(i)=0._dp
+            Betab(i)=0._dp
+          END IF
 
           DO j=1,DOFs
             Vnodeb(i,j)=Vnb(i)*2*Vnode(i,j)
