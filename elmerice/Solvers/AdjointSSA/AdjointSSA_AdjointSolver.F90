@@ -341,7 +341,7 @@
 
       ! set BC for NSDOFs=1 or applied to the whole vector
       IF( ListCheckPresent( BF, NSVarName ) ) THEN
-         Condition(1:n) = ListGetReal( BC, &
+         Condition(1:n) = ListGetReal( BF, &
                TRIM(NSVarName) // ' Condition', n, NodeIndexes, Conditional )
          DO j=1,n
             IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
@@ -355,7 +355,7 @@
       IF (NSDOFs>1) THEN
         DO i=1,NSDOFS
            IF( ListCheckPresent( BF,  ComponentName(NSVarName,i)) ) THEN
-             Condition(1:n) = ListGetReal( BC, &
+             Condition(1:n) = ListGetReal( BF, &
                ComponentName(NSVarName,i) // ' Condition', n, NodeIndexes, Conditional )
 
              DO j=1,n
