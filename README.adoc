@@ -112,7 +112,7 @@ image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", lin
 Follow ElmerFEM on Twitter:
 
 [.text-center]
-image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1] image:https://img.shields.io/twitter/follow/CSCfi.svg?style=social["Twitter Follow", link=https://twitter.com/CSCfi] image:https://img.shields.io/twitter/follow/praback.svg?style=social["Twitter Follow", link=https://twitter.com/praback]
+image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1] image:https://img.shields.io/twitter/follow/CSCfi.svg?style=social["Twitter Follow", link=https://twitter.com/CSCfi] 
 
 Ask your questions on Reddit:
 
