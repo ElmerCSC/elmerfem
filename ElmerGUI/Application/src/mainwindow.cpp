@@ -65,9 +65,9 @@ VtkPost *vtkp;
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
-#ifndef EG_OCC
-#define EG_OCC
-#endif
+// #ifndef EG_OCC
+// #define EG_OCC
+// #endif
 #endif
 
 using namespace std;

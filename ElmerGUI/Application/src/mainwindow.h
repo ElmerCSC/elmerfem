@@ -77,9 +77,9 @@
 #endif
 
 #if __APPLE__
-#ifndef EG_OCC
-#define EG_OCC
-#endif
+// #ifndef EG_OCC
+// #define EG_OCC
+// #endif
 #endif
 
 #ifdef EG_OCC
