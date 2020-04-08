@@ -10,6 +10,8 @@
 # First public beta release 11th of October, 2013
 #
 
+
+
 if(APPLE)
   # message("you need to have gcc-gfrotran installed using HomeBrew")
   set(CMAKE_C_COMPILER "/usr/local/bin/gcc-9")
@@ -20,6 +22,18 @@ if(APPLE)
   # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
   # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 endif()
+
+set(CMAKE_LEGACY_CYGWIN_WIN32 0)
+# if(MSYS)
+#   set(CMAKE_C_COMPILER "/mingw64/bin/gcc")
+#   set(CMAKE_CXX_COMPILER "/mingw64/bin/g++")
+#   set(CMAKE_Fortran_COMPILER "/mingw64/bin/gfortran")
+#   # set (CMAKE_GENERATOR "MSYS Makefiles" CACHE INTERNAL "" FORCE)
+#   # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE INTERNAL "")
+#   # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE FILEPATH "" FORCE)
+# endif(MSYS)
+
+
 
 
 
@@ -239,6 +253,7 @@ ENDIF(WITH_MPI)
   # set(ACCELERATE_LIBS "-framework Accelerate")
   # BLAS_Accelerate_LIBRARY:FILEPATH=/System/Library/Frameworks/Accelerate.framework
 
+cmake_policy(SET CMP0075 NEW)
 
 # else()
   IF(WITH_MKL)
@@ -261,19 +276,23 @@ ENDIF(WITH_MPI)
     SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
   ELSE()
     IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+      find_package(BLAS REQUIRED)
       # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
-      FIND_PACKAGE(MKL QUIET)
-      IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
-        # Set BLAS and LAPACK to point to MKL, in order to work around
-        # CMake FindBLAS finding wrong core library for GNU Fortran
-        SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-        SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-        INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-        SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-      ENDIF()
+      # FIND_PACKAGE(MKL QUIET)
+      # IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
+      #   # Set BLAS and LAPACK to point to MKL, in order to work around
+      #   # CMake FindBLAS finding wrong core library for GNU Fortran
+      #   SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+      #   SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+      #   INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+      #   SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+      # ENDIF()
     ENDIF()
   ENDIF()
 # endif(APPLE)
+
+
+
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
