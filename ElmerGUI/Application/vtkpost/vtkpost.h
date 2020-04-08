@@ -55,7 +55,12 @@
 #include <gui/PythonQtScriptingConsole.h>
 #endif
 
+#if 1
+#include "vtkConfigure.h"
+#else
 #include "vtkVersionMacros.h"
+#endif
+
 class EpMesh;
 class ScalarField;
 #if VTK_MAJOR_VERSION >= 8
