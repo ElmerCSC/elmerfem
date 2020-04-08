@@ -51,15 +51,16 @@ namespace nglib {
 #include "nglib.h"
 }
 
-#include <Standard_Version.hxx>
 #include <TopoDS_Shape.hxx>
-
+#include <Standard_Version.hxx>
 
 #if OCC_VERSION_HEX >= 0x060800
 #include <BRepMesh_IncrementalMesh.hxx>
 #endif
 
+#if VTK_MAJOR_VERSION >= 8
 #include <vtkVersionMacros.h>
+#endif
 
 class QMenu;
 class QAction;

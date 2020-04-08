@@ -11,7 +11,7 @@ DEFINES += EG_QWT      # Use QWT for convergence monitor?
 #DEFINES += EG_VTK      # Use VTK for postprocessing?
 DEFINES += EG_PARAVIEW # Use ParaView for postprocessing?
 DEFINES += EG_MATC     # Use MATC for internal operations in postprocessing?
-DEFINES += EG_OCC      # Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.
+#DEFINES += EG_OCC      # Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.
 DEFINES -= EG_PYTHONQT # Use PythonQt for scripting in post processor?
 CONFIG += static
 

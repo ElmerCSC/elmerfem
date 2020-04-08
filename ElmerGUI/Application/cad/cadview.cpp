@@ -48,16 +48,13 @@
 
 #include "cadview.h"
 
-#include <vtkVersionMacros.h>
 #if VTK_MAJOR_VERSION >= 8
+  #include <vtkVersionMacros.h>
   #include <QVTKOpenGLNativeWidget.h>
 #else
   #include <QVTKWidget.h>
 #endif
 
-#include <vtkRenderer.h>
-#include <vtkRenderWindow.h>
->>>>>>> devel
 #include <vtkActor.h>
 #include <vtkAppendPolyData.h>
 #include <vtkCallbackCommand.h>

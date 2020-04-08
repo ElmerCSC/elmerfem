@@ -42,7 +42,7 @@
 #define CADPREFERENCES_H
 
 #include <QDialog>
-// #include "ui_cadpreferences.h"
+#include "ui_cadpreferences.h"
 
 class CadPreferences : public QDialog {
   Q_OBJECT
