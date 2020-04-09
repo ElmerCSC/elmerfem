@@ -277,6 +277,7 @@ cmake_policy(SET CMP0075 NEW)
   ELSE()
     IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
       find_package(BLAS REQUIRED)
+      find_package(LAPACK QUIET)
       # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
       # FIND_PACKAGE(MKL QUIET)
       # IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)

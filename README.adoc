@@ -81,6 +81,11 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
  * `sudo make install`
  * the executable are in `/usr/local/bin` folder, you may add this to your PATH if you will.
 
+==== Windows
+
+ * You need to have MSYS2 installed
+ * install METIS and BLAS `pacman -S ...`
+
 === Licencing: image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
 
 [.text-justify]
