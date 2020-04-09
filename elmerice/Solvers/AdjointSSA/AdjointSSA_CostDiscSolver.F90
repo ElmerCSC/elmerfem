@@ -400,6 +400,13 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      
      IF (FirstRound) then
        !Need to find in which Element the data point resides
+       ! First check that it is within the computation domain
+       Coord=0._dp
+       Coord(1:DIM)=xobs(s,1:DIM)
+       IF ((Coord(1).GT.xmax).OR.(Coord(1).LT.xmin)) CYCLE
+       IF (DIM.EQ.2) THEN
+        IF ((Coord(2).GT.ymax).OR.(Coord(2).LT.ymin)) CYCLE
+       END IF
 
        IF (DIM.LT.CoordinateSystemDimension()) THEN
        ! we are in a lower dimension than the mesh
@@ -417,7 +424,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
               ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
               ElementNodes % z(1:n) = 0.0_dp
         ENDIF
-        IF (PointInElement(Element,ElementNodes,xobs(s,1:3),UVW)) THEN
+        IF (PointInElement(Element,ElementNodes,Coord(:),UVW)) THEN
           IF (.NOT.CheckPassiveElement(Element)) &
                InElement(s)=ElementIndex
 
@@ -435,7 +442,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
               ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
               ElementNodes % z(1:n) = 0.0_dp
            ENDIF
-           IF (PointInElement(Element,ElementNodes,xobs(s,1:3),UVW)) THEN
+           IF (PointInElement(Element,ElementNodes,Coord(:),UVW)) THEN
                IF (CheckPassiveElement(Element)) Exit
                ElementIndex= Element % ElementIndex
                InElement(s)=ElementIndex
@@ -447,12 +454,6 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
       ELSE
       !> use particles meshoctree
        ElementIndex=-1  ! don't know why but if i don't reset ElmentIndex it fails
-       Coord=0._dp
-       Coord(1:DIM)=xobs(s,1:DIM)
-       IF ((Coord(1).GT.xmax).OR.(Coord(1).LT.xmin)) CYCLE
-       IF (DIM.EQ.2) THEN
-        IF ((Coord(2).GT.ymax).OR.(Coord(2).LT.ymin)) CYCLE
-       END IF
        CALL LocateParticleInMeshOctree( ElementIndex,Coord)
        If (ElementIndex.NE.0) THEN
          InElement(s)=ElementIndex  
