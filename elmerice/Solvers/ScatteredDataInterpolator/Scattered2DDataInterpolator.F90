@@ -224,7 +224,7 @@
                end do 
 
                IF (nin.eq.0) then
-                   write(message,'(A,A)') 'No Data found in',TRIM(DataF)
+                   write(message,'(A,A)') 'No Data within BBox found in',TRIM(DataF)
                    CALL Fatal(Trim(SolverName),Trim(message))
                ENDIF
                                         
@@ -323,34 +323,16 @@
                         'Unable to get netcdf y-variable')
                ENDIF
 
+               !! Check that there is data within the domain
+               IF ((MAXVAL(xx).LT.xmin).OR.(MINVAL(xx).GT.xmax)&
+                .OR.(MAXVAL(yy).LT.ymin).OR.(MINVAL(yy).GT.ymax)) &
+                 CALL Fatal(Trim(SolverName), &
+                        'No data within model domain')
+
                !! only get Vars within BBox
                IF (CheckBBox) THEN
-                 XMinIndex = MINLOC(xx, DIM=1,MASK=(xx >= xmin))
-                 IF (XMinIndex.EQ.0) CALL FATAL(Trim(SolverName),&
-                   'All data outside bounding box xmin')
-                 XMaxIndex = MAXLOC(xx, DIM=1,MASK=(xx <= xmax))
-                 IF (XMaxIndex.EQ.0) CALL FATAL(Trim(SolverName),&
-                   'All data outside bounding box xmax')
-                 IF (XMinIndex.GT.XMaxIndex) THEN
-                  CALL WARN(Trim(SolverName),&
-                   'x values in decreasing order -- not supported with BBox --')
-                  CALL FATAL(Trim(SolverName),&
-                   ' You can flip your dimensions using, e.g., ncpdq')
-                 ENDIF
-                 YMinIndex = MINLOC(yy, DIM=1,MASK=(yy >= ymin))
-                 IF (YMinIndex.EQ.0) CALL FATAL(Trim(SolverName),&
-                   'All data outside bounding box ymin')
-                 YMaxIndex = MAXLOC(yy, DIM=1,MASK=(yy <= ymax))
-                 IF (XMaxIndex.EQ.0) CALL FATAL(Trim(SolverName),&
-                   'All data outside bounding box xmax')
-
-                 IF (YMinIndex.GT.YMaxIndex) THEN
-                   CALL WARN(Trim(SolverName),&
-                   'y values in decreasing order -- not supported with BBox--')
-                   CALL FATAL(Trim(SolverName),&
-                    ' You can flip your dimensions using, e.g., ncpdq')
-                 END IF
-
+                 CALL MinMaxIndex(xx,nx,xmin,xmax,XMinIndex,XMaxIndex)
+                 CALL MinMaxIndex(yy,ny,ymin,ymax,YMinIndex,YMaxIndex)
                ELSE
                  XMinIndex = 1
                  XMaxIndex = nx
@@ -360,6 +342,16 @@
                nx=XMaxIndex-XMinIndex+1
                ny=YMaxIndex-YMinIndex+1
 
+               write(message,'(A,I0,A,I0,A)') 'NETCDF: reading nx=',nx,&
+                     ' and ny=',ny,' data points'
+              CALL INFO(Trim(SolverName),Trim(message),Level=5)
+               write(message,*) 'X Indexes: ',&
+                XMinIndex,XMaxIndex,xx(XMinIndex),xx(XMaxIndex)
+              CALL INFO(Trim(SolverName),Trim(message),Level=10)
+               write(message,*) 'Y Indexes: ', &
+                YMinIndex,YMaxIndex,yy(YMinIndex),yy(YMaxIndex)
+              CALL INFO(Trim(SolverName),Trim(message),Level=10)
+
                allocate(DEM(nx,ny),mask(nx,ny))
 
                !! Get the variable
@@ -368,7 +360,6 @@
                    CALL Fatal(Trim(SolverName), &
                         'Unable to get netcdf variable id')
                ENDIF
-               PRINT *,XMinIndex,YMinIndex,nx,ny
                NetCDFstatus = nf90_get_var(ncid, varid,DEM(:,:),&
                        start = (/ XMinIndex, YMinIndex /),     &
                        count = (/ nx,ny/))
@@ -379,10 +370,13 @@
                HaveFillV=.True.
                NetCDFstatus = nf90_get_att(ncid, varid,"_FillValue",fillv)
                IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   WRITE (FillName,'(A,I0,A)') 'Variable ',&
-                           NoVar,' Fill Value'
-                   fillv=ListGetConstReal(Params, TRIM(FillName) , Found)
-                   if (.NOT.Found) HaveFillV=.False.
+                   HaveFillV=.False.
+               ENDIF
+               WRITE (FillName,'(A,I0,A)') 'Variable ',NoVar,' Fill Value'
+               Val=ListGetConstReal(Params, TRIM(FillName) , Found)
+               IF (Found) THEN
+                HaveFillV=.TRUE.
+                fillv=Val
                ENDIF
 
 
@@ -553,4 +547,27 @@
        CALL INFO(Trim(SolverName), &
            '-----ALL DONE----------',Level=5)
 
-        END SUBROUTINE Scattered2DDataInterpolator
+       CONTAINS
+
+       ! Find the min and max indexes of values within bBox
+       SUBROUTINE MinMaxIndex(x,n,minx,maxx,MinIndex,MaxIndex)
+       IMPLICIT NONE
+       REAL(KIND=dp),INTENT(IN) :: x(:),minx,maxx
+       INTEGER,INTENT(IN) :: n
+       INTEGER,INTENT(OUT) :: MinIndex,MaxIndex
+       INTEGER :: tmp
+
+       ! coordinates should be  monotonically increasing or
+       ! decreasing 
+       MinIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
+       MaxIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
+       ! decreasing case
+       IF (MinIndex.GT.MaxIndex) THEN
+        tmp=MinIndex
+        MinIndex=MaxIndex
+        MaxIndex=tmp
+       ENDIF
+
+       END SUBROUTINE MinMaxIndex
+             
+       END SUBROUTINE Scattered2DDataInterpolator

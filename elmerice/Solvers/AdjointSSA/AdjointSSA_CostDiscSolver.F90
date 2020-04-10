@@ -251,17 +251,14 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
       IF ( NetCDFstatus /= NF90_NOERR ) &
            CALL FATAL(Trim(SolverName), 'Unable to get netcdf x-variable ')
 
-
-      !! get the index of values that are within the mesh bounding box
-      XMinIndex = MINLOC(xx, DIM=1,MASK=(xx >= xmin))  
-      XMaxIndex = MAXLOC(xx, DIM=1,MASK=(xx <= xmax))
-      IF (XMinIndex.GT.XMaxIndex) &
-         CALL FATAL(Trim(SolverName),'x values in decreasing order -- not supported --')
-      YMinIndex = MINLOC(yy, DIM=1,MASK=(yy >= ymin))  
-      YMaxIndex = MAXLOC(yy, DIM=1,MASK=(yy <= ymax))
-      IF (YMinIndex.GT.YMaxIndex) &
-         CALL FATAL(Trim(SolverName),'y values in decreasing order -- not supported --')
- 
+      !! Check that there is data within the domain
+      IF ((MAXVAL(xx).LT.xmin).OR.(MINVAL(xx).GT.xmax)&
+            .OR.(MAXVAL(yy).LT.ymin).OR.(MINVAL(yy).GT.ymax)) &
+             CALL Fatal(Trim(SolverName), &
+                        'No data within model domain')
+      !!! get the index of values that are within the mesh bounding box
+      CALL MinMaxIndex(xx,nx,xmin,xmax,XMinIndex,XMaxIndex)
+      CALL MinMaxIndex(yy,ny,ymin,ymax,YMinIndex,YMaxIndex)
 
      !! get ux and uy
       nx=XMaxIndex-XMinIndex+1
@@ -597,6 +594,28 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
  1000  format('#date,time,',a1,'/',a1,'/',a4,',',a2,':',a2,':',a2)
  1001  format('#lambda,',e15.8)
+
+ CONTAINS
+ ! Find the min and max indexes of values within bBox
+ SUBROUTINE MinMaxIndex(x,n,minx,maxx,MinIndex,MaxIndex)
+ IMPLICIT NONE
+ REAL(KIND=dp),INTENT(IN) :: x(:),minx,maxx
+ INTEGER,INTENT(IN) :: n
+ INTEGER,INTENT(OUT) :: MinIndex,MaxIndex
+ INTEGER :: tmp
+
+ ! coordinates should be  monotonically increasing or
+ ! decreasing 
+   MinIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
+   MaxIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
+ ! decreasing case
+   IF (MinIndex.GT.MaxIndex) THEN
+     tmp=MinIndex
+     MinIndex=MaxIndex
+     MaxIndex=tmp
+   ENDIF
+
+ END SUBROUTINE MinMaxIndex
 
 !------------------------------------------------------------------------------
 END SUBROUTINE AdjointSSA_CostDiscSolver
