@@ -555,17 +555,23 @@
        REAL(KIND=dp),INTENT(IN) :: x(:),minx,maxx
        INTEGER,INTENT(IN) :: n
        INTEGER,INTENT(OUT) :: MinIndex,MaxIndex
-       INTEGER :: tmp
 
        ! coordinates should be  monotonically increasing or
        ! decreasing 
-       MinIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
-       MaxIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
-       ! decreasing case
-       IF (MinIndex.GT.MaxIndex) THEN
-        tmp=MinIndex
-        MinIndex=MaxIndex
-        MaxIndex=tmp
+       IF ((x(2)>x(1)).AND.(x(n)>x(n-1))) THEN
+        MinIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
+        MinIndex=MAX(MinIndex,1)
+
+        MaxIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
+        IF (MaxIndex.EQ.0) MaxIndex=n
+       ELSE IF ((x(2)<x(1)).AND.(x(n)<x(n-1))) THEN
+        MaxIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
+        IF (MaxIndex.EQ.0) MaxIndex=n
+
+        MinIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
+        MinIndex=MAX(MinIndex,1)
+       ELSE
+        CALL FATAL(SolverName,'coordinate is neither monotonically increasing or decreasing')
        ENDIF
 
        END SUBROUTINE MinMaxIndex
