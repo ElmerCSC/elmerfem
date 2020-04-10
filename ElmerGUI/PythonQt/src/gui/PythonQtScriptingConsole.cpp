@@ -1,34 +1,34 @@
 /*
-*
-*  Copyright (C) 2006 MeVis Research GmbH All Rights Reserved.
-*
-*  This library is free software; you can redistribute it and/or
-*  modify it under the terms of the GNU Lesser General Public
-*  License as published by the Free Software Foundation; either
-*  version 2.1 of the License, or (at your option) any later version.
-*
-*  This library is distributed in the hope that it will be useful,
-*  but WITHOUT ANY WARRANTY; without even the implied warranty of
-*  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-*  Lesser General Public License for more details.
-*
-*  Further, this software is distributed without any warranty that it is
-*  free of the rightful claim of any third person regarding infringement
-*  or the like.  Any license provided herein, whether implied or
-*  otherwise, applies only to this software file.  Patent licenses, if
-*  any, provided herein do not apply to combinations of this program with
-*  other software, or any other product whatsoever.
-*
-*  You should have received a copy of the GNU Lesser General Public
-*  License along with this library; if not, write to the Free Software
-*  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-*
-*  Contact information: MeVis Research GmbH, Universitaetsallee 29,
-*  28359 Bremen, Germany or:
-*
-*  http://www.mevis.de
-*
-*/
+ *
+ *  Copyright (C) 2006 MeVis Research GmbH All Rights Reserved.
+ *
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Lesser General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2.1 of the License, or (at your option) any later version.
+ *
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Lesser General Public License for more details.
+ *
+ *  Further, this software is distributed without any warranty that it is
+ *  free of the rightful claim of any third person regarding infringement
+ *  or the like.  Any license provided herein, whether implied or
+ *  otherwise, applies only to this software file.  Patent licenses, if
+ *  any, provided herein do not apply to combinations of this program with
+ *  other software, or any other product whatsoever.
+ *
+ *  You should have received a copy of the GNU Lesser General Public
+ *  License along with this library; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *
+ *  Contact information: MeVis Research GmbH, Universitaetsallee 29,
+ *  28359 Bremen, Germany or:
+ *
+ *  http://www.mevis.de
+ *
+ */
 
 //----------------------------------------------------------------------------------
 /*!
@@ -41,66 +41,68 @@
 
 #include "PythonQtScriptingConsole.h"
 
+#include <QApplication>
+#include <QCompleter>
+#include <QDebug>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
-#include <QKeyEvent>
-#include <QApplication>
-#include <QTextDocumentFragment>
+#include <QScrollBar>
+#include <QStringListModel>
 #include <QTextBlock>
 #include <QTextCursor>
-#include <QDebug>
-#include <QCompleter>
-#include <QStringListModel>
-#include <QScrollBar>
+#include <QTextDocumentFragment>
+
 
 //-----------------------------------------------------------------------------
 
-PythonQtScriptingConsole::PythonQtScriptingConsole(QWidget* parent, const PythonQtObjectPtr& context, Qt::WindowFlags windowFlags)
-: QTextEdit(parent) {
+PythonQtScriptingConsole::PythonQtScriptingConsole(
+    QWidget *parent, const PythonQtObjectPtr &context,
+    Qt::WindowFlags windowFlags)
+    : QTextEdit(parent) {
 
   setWindowFlags(windowFlags);
 
   _defaultTextCharacterFormat = currentCharFormat();
-  _context                    = context;
-  _historyPosition            = 0;
+  _context = context;
+  _historyPosition = 0;
 
   _completer = new QCompleter(this);
   _completer->setWidget(this);
-  QObject::connect(_completer, SIGNAL(activated(const QString&)),
-    this, SLOT(insertCompletion(const QString&)));
+  QObject::connect(_completer, SIGNAL(activated(const QString &)), this,
+                   SLOT(insertCompletion(const QString &)));
 
   clear();
 
-  connect(PythonQt::self(), SIGNAL(pythonStdOut(const QString&)), this, SLOT(stdOut(const QString&)));
-  connect(PythonQt::self(), SIGNAL(pythonStdErr(const QString&)), this, SLOT(stdErr(const QString&)));
+  connect(PythonQt::self(), SIGNAL(pythonStdOut(const QString &)), this,
+          SLOT(stdOut(const QString &)));
+  connect(PythonQt::self(), SIGNAL(pythonStdErr(const QString &)), this,
+          SLOT(stdErr(const QString &)));
 }
 
 //-----------------------------------------------------------------------------
 
-void PythonQtScriptingConsole::stdOut(const QString& s)
-{
+void PythonQtScriptingConsole::stdOut(const QString &s) {
   _stdOut += s;
   int idx;
-  while ((idx = _stdOut.indexOf('\n'))!=-1) {
+  while ((idx = _stdOut.indexOf('\n')) != -1) {
     consoleMessage(_stdOut.left(idx));
     std::cout << _stdOut.left(idx).toLatin1().data() << std::endl;
-    _stdOut = _stdOut.mid(idx+1);
+    _stdOut = _stdOut.mid(idx + 1);
   }
 }
 
-void PythonQtScriptingConsole::stdErr(const QString& s)
-{
+void PythonQtScriptingConsole::stdErr(const QString &s) {
   _stdErr += s;
   int idx;
-  while ((idx = _stdErr.indexOf('\n'))!=-1) {
+  while ((idx = _stdErr.indexOf('\n')) != -1) {
     consoleMessage(_stdErr.left(idx));
     std::cout << _stdErr.left(idx).toLatin1().data() << std::endl;
-    _stdErr = _stdErr.mid(idx+1);
+    _stdErr = _stdErr.mid(idx + 1);
   }
 }
 
-void PythonQtScriptingConsole::flushStdOut()
-{
+void PythonQtScriptingConsole::flushStdOut() {
   if (!_stdOut.isEmpty()) {
     stdOut("\n");
   }
@@ -111,10 +113,7 @@ void PythonQtScriptingConsole::flushStdOut()
 
 //-----------------------------------------------------------------------------
 
-PythonQtScriptingConsole::~PythonQtScriptingConsole() {
-}
-
-
+PythonQtScriptingConsole::~PythonQtScriptingConsole() {}
 
 //-----------------------------------------------------------------------------
 
@@ -126,8 +125,7 @@ void PythonQtScriptingConsole::clear() {
 
 //-----------------------------------------------------------------------------
 
-void PythonQtScriptingConsole::executeLine(bool storeOnly)
-{
+void PythonQtScriptingConsole::executeLine(bool storeOnly) {
   QTextCursor textCursor = this->textCursor();
   textCursor.movePosition(QTextCursor::End);
 
@@ -139,7 +137,7 @@ void PythonQtScriptingConsole::executeLine(bool storeOnly)
 
   // i don't know where this trailing space is coming from, blast it!
   if (code.endsWith(" ")) {
-    code.truncate(code.length()-1);
+    code.truncate(code.length() - 1);
   }
 
   if (!code.isEmpty()) {
@@ -155,11 +153,9 @@ void PythonQtScriptingConsole::executeLine(bool storeOnly)
   }
   // Insert a new command prompt
   appendCommandPrompt(storeOnly);
-
 }
 
-void PythonQtScriptingConsole::executeCode(const QString& code)
-{
+void PythonQtScriptingConsole::executeCode(const QString &code) {
   // put visible cursor to the end of the line
   QTextCursor cursor = QTextEdit::textCursor();
   cursor.movePosition(QTextCursor::End);
@@ -171,7 +167,9 @@ void PythonQtScriptingConsole::executeCode(const QString& code)
   _stdOut = "";
   _stdErr = "";
   PythonQtObjectPtr p;
-  p.setNewRef(PyRun_String(code.toLatin1().data(), Py_single_input, PyModule_GetDict(_context), PyModule_GetDict(_context)));
+  p.setNewRef(PyRun_String(code.toLatin1().data(), Py_single_input,
+                           PyModule_GetDict(_context),
+                           PyModule_GetDict(_context)));
   if (!p) {
     PythonQt::self()->handleError();
   }
@@ -180,13 +178,12 @@ void PythonQtScriptingConsole::executeCode(const QString& code)
 
   bool messageInserted = (this->textCursor().position() != cursorPosition);
 
-  // If a message was inserted, then put another empty line before the command prompt
-  // to improve readability.
+  // If a message was inserted, then put another empty line before the command
+  // prompt to improve readability.
   if (messageInserted) {
     append(QString());
   }
 }
-
 
 //-----------------------------------------------------------------------------
 
@@ -203,11 +200,9 @@ void PythonQtScriptingConsole::appendCommandPrompt(bool storeOnly) {
   setTextCursor(cursor);
 }
 
-
-
 //-----------------------------------------------------------------------------
 
-void PythonQtScriptingConsole::setCurrentFont(const QColor& color, bool bold) {
+void PythonQtScriptingConsole::setCurrentFont(const QColor &color, bool bold) {
 
   QTextCharFormat charFormat(_defaultTextCharacterFormat);
 
@@ -222,8 +217,6 @@ void PythonQtScriptingConsole::setCurrentFont(const QColor& color, bool bold) {
   setCurrentCharFormat(charFormat);
 }
 
-
-
 //-----------------------------------------------------------------------------
 
 int PythonQtScriptingConsole::commandPromptPosition() {
@@ -234,15 +227,12 @@ int PythonQtScriptingConsole::commandPromptPosition() {
   return textCursor.block().position() + _commandPrompt.length();
 }
 
-
-
 //-----------------------------------------------------------------------------
 
-void PythonQtScriptingConsole::insertCompletion(const QString& completion)
-{
+void PythonQtScriptingConsole::insertCompletion(const QString &completion) {
   QTextCursor tc = textCursor();
   tc.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor);
-  if (tc.selectedText()==".") {
+  if (tc.selectedText() == ".") {
     tc.insertText(QString(".") + completion);
   } else {
     tc = textCursor();
@@ -254,15 +244,14 @@ void PythonQtScriptingConsole::insertCompletion(const QString& completion)
 }
 
 //-----------------------------------------------------------------------------
-void PythonQtScriptingConsole::handleTabCompletion()
-{
+void PythonQtScriptingConsole::handleTabCompletion() {
   QTextCursor textCursor = this->textCursor();
   int pos = textCursor.position();
   textCursor.setPosition(commandPromptPosition());
   textCursor.movePosition(QTextCursor::End, QTextCursor::KeepAnchor);
   int startPos = textCursor.selectionStart();
 
-  int offset = pos-startPos;
+  int offset = pos - startPos;
   QString text = textCursor.selectedText();
 
   QString textToComplete;
@@ -276,24 +265,24 @@ void PythonQtScriptingConsole::handleTabCompletion()
     }
   }
 
-
   QString lookup;
   QString compareText = textToComplete;
   int dot = compareText.lastIndexOf('.');
-  if (dot!=-1) {
+  if (dot != -1) {
     lookup = compareText.mid(0, dot);
-    compareText = compareText.mid(dot+1, offset);
+    compareText = compareText.mid(dot + 1, offset);
   }
   if (!lookup.isEmpty() || !compareText.isEmpty()) {
     compareText = compareText.toLower();
     QStringList found;
-    QStringList l = PythonQt::self()->introspection(_context, lookup, PythonQt::Anything);
+    QStringList l =
+        PythonQt::self()->introspection(_context, lookup, PythonQt::Anything);
     foreach (QString n, l) {
       if (n.toLower().startsWith(compareText)) {
         found << n;
       }
     }
-    
+
     if (!found.isEmpty()) {
       _completer->setCompletionPrefix(compareText);
       _completer->setCompletionMode(QCompleter::PopupCompletion);
@@ -302,9 +291,9 @@ void PythonQtScriptingConsole::handleTabCompletion()
       QTextCursor c = this->textCursor();
       c.movePosition(QTextCursor::StartOfWord);
       QRect cr = cursorRect(c);
-      cr.setWidth(_completer->popup()->sizeHintForColumn(0)
-        + _completer->popup()->verticalScrollBar()->sizeHint().width());
-      cr.translate(0,8);
+      cr.setWidth(_completer->popup()->sizeHintForColumn(0) +
+                  _completer->popup()->verticalScrollBar()->sizeHint().width());
+      cr.translate(0, 8);
       _completer->complete(cr);
     } else {
       _completer->popup()->hide();
@@ -314,7 +303,7 @@ void PythonQtScriptingConsole::handleTabCompletion()
   }
 }
 
-void PythonQtScriptingConsole::keyPressEvent(QKeyEvent* event) {
+void PythonQtScriptingConsole::keyPressEvent(QKeyEvent *event) {
 
   if (_completer && _completer->popup()->isVisible()) {
     // The following keys are forwarded by the completer to the widget
@@ -332,15 +321,15 @@ void PythonQtScriptingConsole::keyPressEvent(QKeyEvent* event) {
     case Qt::Key_Escape:
     case Qt::Key_Tab:
     case Qt::Key_Backtab:
-    
+
       event->ignore();
       return; // let the completer do default behavior
     default:
       break;
     }
   }
-  bool        eventHandled = false;
-  QTextCursor textCursor   = this->textCursor();
+  bool eventHandled = false;
+  QTextCursor textCursor = this->textCursor();
 
   int key = event->key();
   switch (key) {
@@ -360,7 +349,7 @@ void PythonQtScriptingConsole::keyPressEvent(QKeyEvent* event) {
   case Qt::Key_Up:
 
     // Display the previous command in the history
-    if (_historyPosition>0) {
+    if (_historyPosition > 0) {
       _historyPosition--;
       changeHistory();
     }
@@ -371,7 +360,7 @@ void PythonQtScriptingConsole::keyPressEvent(QKeyEvent* event) {
   case Qt::Key_Down:
 
     // Display the next command in the history
-    if (_historyPosition+1<_history.count()) {
+    if (_historyPosition + 1 < _history.count()) {
       _historyPosition++;
       changeHistory();
     }
@@ -456,8 +445,6 @@ void PythonQtScriptingConsole::keyPressEvent(QKeyEvent* event) {
   }
 }
 
-
-
 //-----------------------------------------------------------------------------
 
 void PythonQtScriptingConsole::cut() {
@@ -468,20 +455,17 @@ void PythonQtScriptingConsole::cut() {
   }
 }
 
-
-
 //-----------------------------------------------------------------------------
 
 bool PythonQtScriptingConsole::verifySelectionBeforeDeletion() {
 
   bool deletionAllowed = true;
 
-  
   QTextCursor textCursor = this->textCursor();
 
   int commandPromptPosition = this->commandPromptPosition();
-  int selectionStart        = textCursor.selectionStart();
-  int selectionEnd          = textCursor.selectionEnd();
+  int selectionStart = textCursor.selectionStart();
+  int selectionEnd = textCursor.selectionEnd();
 
   if (textCursor.hasSelection()) {
 
@@ -491,13 +475,13 @@ bool PythonQtScriptingConsole::verifySelectionBeforeDeletion() {
     // last command prompt, then deletion is not allowed.
 
     if (selectionStart < commandPromptPosition ||
-      selectionEnd < commandPromptPosition) {
+        selectionEnd < commandPromptPosition) {
 
       // Assure selectionEnd is bigger than selection start
       if (selectionStart > selectionEnd) {
-        int tmp         = selectionEnd;
-        selectionEnd    = selectionStart;
-        selectionStart  = tmp;
+        int tmp = selectionEnd;
+        selectionEnd = selectionStart;
+        selectionStart = tmp;
       }
 
       if (selectionEnd < commandPromptPosition) {
@@ -532,8 +516,6 @@ bool PythonQtScriptingConsole::verifySelectionBeforeDeletion() {
   return deletionAllowed;
 }
 
-
-
 //-----------------------------------------------------------------------------
 
 void PythonQtScriptingConsole::changeHistory() {
@@ -550,11 +532,9 @@ void PythonQtScriptingConsole::changeHistory() {
   setTextCursor(textCursor);
 }
 
-
-
 //-----------------------------------------------------------------------------
 
-void PythonQtScriptingConsole::consoleMessage(const QString & message) {
+void PythonQtScriptingConsole::consoleMessage(const QString &message) {
 
   append(QString());
   insertPlainText(message);

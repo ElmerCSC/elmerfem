@@ -129,10 +129,12 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   dim = Mesh % MeshDim
   
   Reinitialize = ListGetLogical(SolverParams, "Always Detect Structure", Found)
-  IF(.NOT. Found) Reinitialize = .FALSE.
-
+  IF( Reinitialize ) THEN
+    IF( ALLOCATED(Field)) DEALLOCATE(Field)
+    IF( ALLOCATED(Surface)) DEALLOCATE(Surface)
+  END IF
+  
   RecompStab = ListGetLogical(SolverParams, "Recompute Stabilization", Found)
-  IF(.NOT. Found) RecompStab = .FALSE.
 
   FixedLayers => ListGetIntegerArray( SolverParams,'Fixed Layer Indexes',MultiLayer)
   NumberOfFixedLayers = SIZE( FixedLayers )
@@ -388,6 +390,9 @@ CONTAINS
             TopPerm => Var % Perm
             TopMode = 2
           END IF
+          IF( InfoActive( 20 ) ) THEN
+            PRINT *,'TopField range:',MINVAL( TopField ), MAXVAL( TopField ), SUM( TopField ) / SIZE( TopField )
+          END IF
         ELSE
           CALL Fatal(Caller,'Top surface variable is missing: '//TRIM(VarName))
         END IF
@@ -397,14 +402,11 @@ CONTAINS
     IF(TopMode == 0) THEN
       IF( ListCheckPresentAnyBC( Model,'Top Surface') ) THEN
         TopMode = 3
-        IF( Reinitialize ) THEN
-          IF( ALLOCATED(Field)) DEALLOCATE(Field)
-          IF( ALLOCATED(Surface)) DEALLOCATE(Surface)
-        END IF
         IF(.NOT. ALLOCATED(Field)) THEN
           N = Mesh % MaxElementNodes
           ALLOCATE(Field(nsize),Surface(n))
           Field = 0.0_dp
+          Surface = 0.0_dp
         END IF
         DO elem = 1, Mesh % NumberOfBoundaryElements
           Element => GetBoundaryElement(elem)
@@ -446,6 +448,9 @@ CONTAINS
             BotPerm => Var % Perm
             BotMode = 2
           END IF
+          IF( InfoActive( 20 ) ) THEN
+            PRINT *,'BotField range:',MINVAL( BotField ), MAXVAL( BotField ), SUM( BotField ) / SIZE( BotField )
+          END IF
         ELSE
           CALL Fatal(Caller,'Bottom surface variable is missing: '//TRIM(VarName))
         END IF
@@ -460,6 +465,7 @@ CONTAINS
           N = Mesh % MaxElementNodes
           ALLOCATE(Field(nsize),Surface(n))
           Field = 0.0_dp
+          Surface = 0.0_dp
         END IF
         DO elem = 1, Mesh % NumberOfBoundaryElements
           Element => GetBoundaryElement(elem)
@@ -490,6 +496,7 @@ CONTAINS
         N = Mesh % MaxElementNodes
         ALLOCATE(Field(nsize),Surface(n))
         Field = 0.0_dp
+        Surface = 0.0_dp
       END IF
       DO elem = 1, Mesh % NumberOfBoundaryElements
         Element => GetBoundaryElement(elem)

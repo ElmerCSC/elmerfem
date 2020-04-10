@@ -38,20 +38,20 @@
  *                                                                           *
  *****************************************************************************/
 
-#include <QtGui>
+#include <QAction>
+#include <QContextMenuEvent>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QFont>
 #include <QProgressBar>
-#include <QAction>
-#include <QSystemTrayIcon>
-#include <QContextMenuEvent>
-#include <QTimeLine>
-#include <QFileInfo>
 #include <QStringList>
-#include <QDir>
+#include <QSystemTrayIcon>
+#include <QTimeLine>
+#include <QtGui>
 
-#include <iostream>
 #include <fstream>
+#include <iostream>
 
 #include <QDebug>
 
@@ -65,6 +65,9 @@ VtkPost *vtkp;
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
+// #ifndef EG_OCC
+// #define EG_OCC
+// #endif
 #endif
 
 using namespace std;
@@ -73,22 +76,21 @@ using namespace std;
 
 // Construct main window...
 //-----------------------------------------------------------------------------
-MainWindow::MainWindow()
-{
+MainWindow::MainWindow() {
 #ifdef __APPLE__
   // find "Home directory":
   char executablePath[MAXPATHLENGTH] = {0};
   uint32_t len = MAXPATHLENGTH;
   this->homePath = "";
-  if(! _NSGetExecutablePath( (char*) executablePath, &len)){
+  if (!_NSGetExecutablePath((char *)executablePath, &len)) {
     // remove executable name from path:
-    *(strrchr(executablePath,'/'))='\0';
+    *(strrchr(executablePath, '/')) = '\0';
     // remove last path component name from path:
-    *(strrchr(executablePath,'/'))='\0';
+    *(strrchr(executablePath, '/')) = '\0';
     this->homePath = executablePath;
   }
 #else
-  homePath="";
+  homePath = "";
 #endif
 
   // load ini file:
@@ -99,14 +101,14 @@ MainWindow::MainWindow()
 
   // load splash screen:
   updateSplash("Loading images...");
-  
+
   // load tetlib:
   updateSplash("Loading tetlib...");
   tetlibAPI = new TetlibAPI;
   tetlibPresent = tetlibAPI->loadTetlib();
   this->in = tetlibAPI->in;
   this->out = tetlibAPI->out;
-  
+
   // load nglib:
   updateSplash("Loading nglib...");
   nglibAPI = new NglibAPI;
@@ -119,13 +121,13 @@ MainWindow::MainWindow()
   // set dynamic limits:
   limit = new Limit;
   setDynamicLimits();
-  
+
   // widgets and utilities:
   updateSplash("ElmerGUI loading...");
   glWidget = new GLWidget(this);
-  #ifdef WIN32
-    glWidget->stateDrawSharpEdges = false;
-  #endif  
+#ifdef WIN32
+  glWidget->stateDrawSharpEdges = false;
+#endif
   setCentralWidget(glWidget);
   sifWindow = new SifWindow(this);
   meshControl = new MeshControl(this);
@@ -150,7 +152,7 @@ MainWindow::MainWindow()
   materialLibrary = new MaterialLibrary(this);
   twodView = new TwodView;
   grabTimeLine = new QTimeLine(1000, this);
-  
+
 #ifdef EG_QWT
   convergenceView = new ConvergenceView(limit, this);
 #endif
@@ -162,7 +164,7 @@ MainWindow::MainWindow()
 
 #ifdef EG_OCC
   cadView = new CadView();
-  if(egIni->isPresent("deflection"))
+  if (egIni->isPresent("deflection"))
     cadView->setDeflection(egIni->value("deflection").toDouble());
 #endif
 
@@ -170,76 +172,98 @@ MainWindow::MainWindow()
   createMenus();
   createToolBars();
   createStatusBar();
-      
-  // Always, when an action from the menu bar has been selected, synchronize menu to state:
-  connect(menuBar(), SIGNAL(triggered(QAction*)), this, SLOT(menuBarTriggeredSlot(QAction*)));
-  connect(contextMenu, SIGNAL(triggered(QAction*)), this, SLOT(menuBarTriggeredSlot(QAction*)));
+
+  // Always, when an action from the menu bar has been selected, synchronize
+  // menu to state:
+  connect(menuBar(), SIGNAL(triggered(QAction *)), this,
+          SLOT(menuBarTriggeredSlot(QAction *)));
+  connect(contextMenu, SIGNAL(triggered(QAction *)), this,
+          SLOT(menuBarTriggeredSlot(QAction *)));
 
   // glWidget emits (list_t*) when a boundary is selected by double clicking:
-  connect(glWidget, SIGNAL(signalBoundarySelected(list_t*)), this, SLOT(boundarySelectedSlot(list_t*)));
+  connect(glWidget, SIGNAL(signalBoundarySelected(list_t *)), this,
+          SLOT(boundarySelectedSlot(list_t *)));
 
   // glWidget emits (void) when esc has been pressed:
   connect(glWidget, SIGNAL(escPressed()), this, SLOT(viewNormalModeSlot()));
 
-  // meshingThread emits (void) when the mesh generation has finished or terminated:
+  // meshingThread emits (void) when the mesh generation has finished or
+  // terminated:
   connect(meshingThread, SIGNAL(started()), this, SLOT(meshingStartedSlot()));
   connect(meshingThread, SIGNAL(finished()), this, SLOT(meshingFinishedSlot()));
-  connect(meshingThread, SIGNAL(terminated()), this, SLOT(meshingTerminatedSlot()));
+  connect(meshingThread, SIGNAL(terminated()), this,
+          SLOT(meshingTerminatedSlot()));
 
   // boundaryDivide emits (double) when "divide button" has been clicked:
-  connect(boundaryDivide, SIGNAL(signalDoDivideSurface(double)), this, SLOT(doDivideSurfaceSlot(double)));
+  connect(boundaryDivide, SIGNAL(signalDoDivideSurface(double)), this,
+          SLOT(doDivideSurfaceSlot(double)));
 
   // boundaryDivide emits (double) when "divide button" has been clicked:
-  connect(boundaryDivide, SIGNAL(signalDoDivideEdge(double)), this, SLOT(doDivideEdgeSlot(double)));
+  connect(boundaryDivide, SIGNAL(signalDoDivideEdge(double)), this,
+          SLOT(doDivideEdgeSlot(double)));
 
   // solver emits (int) when finished:
-  connect(solver, SIGNAL(finished(int)), this, SLOT(solverFinishedSlot(int))) ;
+  connect(solver, SIGNAL(finished(int)), this, SLOT(solverFinishedSlot(int)));
 
   // solver emits (void) when there is something to read from stdout:
-  connect(solver, SIGNAL(readyReadStandardOutput()), this, SLOT(solverStdoutSlot()));
+  connect(solver, SIGNAL(readyReadStandardOutput()), this,
+          SLOT(solverStdoutSlot()));
 
   // solver emits (void) when there is something to read from stderr:
-  connect(solver, SIGNAL(readyReadStandardError()), this, SLOT(solverStderrSlot()));
+  connect(solver, SIGNAL(readyReadStandardError()), this,
+          SLOT(solverStderrSlot()));
 
   // solver emits (QProcess::ProcessError) when error occurs:
-  connect(solver, SIGNAL(error(QProcess::ProcessError)), this, SLOT(solverErrorSlot(QProcess::ProcessError)));
+  connect(solver, SIGNAL(error(QProcess::ProcessError)), this,
+          SLOT(solverErrorSlot(QProcess::ProcessError)));
 
   // solver emits (QProcess::ProcessState) when state changed:
-  connect(solver, SIGNAL(stateChanged(QProcess::ProcessState)), this, SLOT(solverStateChangedSlot(QProcess::ProcessState)));
+  connect(solver, SIGNAL(stateChanged(QProcess::ProcessState)), this,
+          SLOT(solverStateChangedSlot(QProcess::ProcessState)));
 
   // compiler emits (int) when finished:
-  connect(compiler, SIGNAL(finished(int)), this, SLOT(compilerFinishedSlot(int))) ;
+  connect(compiler, SIGNAL(finished(int)), this,
+          SLOT(compilerFinishedSlot(int)));
 
   // compiler emits (void) when there is something to read from stdout:
-  connect(compiler, SIGNAL(readyReadStandardOutput()), this, SLOT(compilerStdoutSlot()));
+  connect(compiler, SIGNAL(readyReadStandardOutput()), this,
+          SLOT(compilerStdoutSlot()));
 
   // compiler emits (void) when there is something to read from stderr:
-  connect(compiler, SIGNAL(readyReadStandardError()), this, SLOT(compilerStderrSlot()));
+  connect(compiler, SIGNAL(readyReadStandardError()), this,
+          SLOT(compilerStderrSlot()));
 
   // post emits (int) when finished:
-  connect(post, SIGNAL(finished(int)), this, SLOT(postProcessFinishedSlot(int))) ;
+  connect(post, SIGNAL(finished(int)), this,
+          SLOT(postProcessFinishedSlot(int)));
 
   // meshSplitter emits (int) when finished:
-  connect(meshSplitter, SIGNAL(finished(int)), this, SLOT(meshSplitterFinishedSlot(int)));
+  connect(meshSplitter, SIGNAL(finished(int)), this,
+          SLOT(meshSplitterFinishedSlot(int)));
 
   // meshSplitter emits(void) when there is something to read from stdout:
-  connect(meshSplitter, SIGNAL(readyReadStandardOutput()), this, SLOT(meshSplitterStdoutSlot()));
-  
+  connect(meshSplitter, SIGNAL(readyReadStandardOutput()), this,
+          SLOT(meshSplitterStdoutSlot()));
+
   // meshSplitter emits(void) when there is something to read from stderr:
-  connect(meshSplitter, SIGNAL(readyReadStandardError()), this, SLOT(meshSplitterStderrSlot()));
-  
+  connect(meshSplitter, SIGNAL(readyReadStandardError()), this,
+          SLOT(meshSplitterStderrSlot()));
+
   // meshUnifier emits (int) when finished:
-  connect(meshUnifier, SIGNAL(finished(int)), this, SLOT(meshUnifierFinishedSlot(int)));
+  connect(meshUnifier, SIGNAL(finished(int)), this,
+          SLOT(meshUnifierFinishedSlot(int)));
 
   // meshUnifier emits(void) when there is something to read from stdout:
-  connect(meshUnifier, SIGNAL(readyReadStandardOutput()), this, SLOT(meshUnifierStdoutSlot()));
-  
+  connect(meshUnifier, SIGNAL(readyReadStandardOutput()), this,
+          SLOT(meshUnifierStdoutSlot()));
+
   // meshUnifier emits(void) when there is something to read from stderr:
-  connect(meshUnifier, SIGNAL(readyReadStandardError()), this, SLOT(meshUnifierStderrSlot()));
+  connect(meshUnifier, SIGNAL(readyReadStandardError()), this,
+          SLOT(meshUnifierStderrSlot()));
 
   // grabTimeLine emits finished() when done:
   connect(grabTimeLine, SIGNAL(finished()), this, SLOT(grabFrameSlot()));
-  
+
   // set initial state:
   operations = 0;
   meshControl->nglibPresent = nglibPresent;
@@ -279,155 +303,173 @@ MainWindow::MainWindow()
   // default size:
   int defW = egIni->value("width").toInt();
   int defH = egIni->value("height").toInt();
-  if(defW <= 200) defW = 200;
-  if(defH <= 200) defH = 200;
+  if (defW <= 200)
+    defW = 200;
+  if (defH <= 200)
+    defH = 200;
   this->resize(defW, defH);
-  
+
   loadSettings();
 }
 
 // dtor...
 //-----------------------------------------------------------------------------
-MainWindow::~MainWindow()
-{
+MainWindow::~MainWindow() {
   saveSettings();
   qApp->closeAllWindows();
 }
 
 // Set limits for dynamic editors, materials, bcs, etc...
 //-----------------------------------------------------------------------------
-void MainWindow::setDynamicLimits()
-{
+void MainWindow::setDynamicLimits() {
   // Values defined in "edf/egini.xml" that override default limits:
 
   // Deprecated ** 23/04/09 **
-  if(egIni->isPresent("max_boundaries")) {
+  if (egIni->isPresent("max_boundaries")) {
     limit->setMaxBoundaries(egIni->value("max_boundaries").toInt());
     // cout << "Max boundaries: " << limit->maxBoundaries() << endl;
   }
 
   // Deprecated ** 23/04/09 **
-  if(egIni->isPresent("max_solvers")) {
+  if (egIni->isPresent("max_solvers")) {
     limit->setMaxSolvers(egIni->value("max_solvers").toInt());
     // cout << "Max solvers: " << limit->maxSolvers() << endl;
   }
 
   // Deprecated ** 23/04/09 **
-  if(egIni->isPresent("max_bodies")) {
+  if (egIni->isPresent("max_bodies")) {
     limit->setMaxBodies(egIni->value("max_bodies").toInt());
     // cout << "Max bodies: " << limit->maxBodies() << endl;
   }
 
   // Deprecated ** 21/04/09 **
-  if(egIni->isPresent("max_equations")) {
+  if (egIni->isPresent("max_equations")) {
     limit->setMaxEquations(egIni->value("max_equations").toInt());
     // cout << "Max equations: " << limit->maxEquations() << endl;
   }
 
   // Deprecated ** 21/04/09 **
-  if(egIni->isPresent("max_materials")) {
+  if (egIni->isPresent("max_materials")) {
     limit->setMaxMaterials(egIni->value("max_materials").toInt());
     // cout << "Max materials: " << limit->maxMaterials() << endl;
   }
 
   // Deprecated ** 21/04/09 **
-  if(egIni->isPresent("max_bodyforces")) {
+  if (egIni->isPresent("max_bodyforces")) {
     limit->setMaxBodyforces(egIni->value("max_bodyforces").toInt());
     // cout << "Max bodyforces: " << limit->maxBodyforces() << endl;
   }
 
   // Deprecated ** 21/04/09 **
-  if(egIni->isPresent("max_initialconditions")) {
-    limit->setMaxInitialconditions(egIni->value("max_initialconditions").toInt());
-    // cout << "Max initialconditions: " << limit->maxInitialconditions() << endl;
+  if (egIni->isPresent("max_initialconditions")) {
+    limit->setMaxInitialconditions(
+        egIni->value("max_initialconditions").toInt());
+    // cout << "Max initialconditions: " << limit->maxInitialconditions() <<
+    // endl;
   }
 
-  // Deprecated ** 21/04/09 **  
-  if(egIni->isPresent("max_bcs")) {
+  // Deprecated ** 21/04/09 **
+  if (egIni->isPresent("max_bcs")) {
     limit->setMaxBcs(egIni->value("max_bcs").toInt());
     // cout << "Max bcs: " << limit->maxBcs() << endl;
   }
 }
 
-
 // Always synchronize menu to state when the menubar has been triggered...
 //-----------------------------------------------------------------------------
-void MainWindow::menuBarTriggeredSlot(QAction *act)
-{
+void MainWindow::menuBarTriggeredSlot(QAction *act) {
   synchronizeMenuToState();
 }
 
-
 // Create actions...
 //-----------------------------------------------------------------------------
-void MainWindow::createActions()
-{
+void MainWindow::createActions() {
   // File -> Open file
-  openAct = new QAction(QIcon(":/icons/document-open.png"), tr("&Open..."), this);
+  openAct =
+      new QAction(QIcon(":/icons/document-open.png"), tr("&Open..."), this);
   openAct->setShortcut(tr("Ctrl+O"));
   openAct->setStatusTip(tr("Open geometry input file"));
   connect(openAct, SIGNAL(triggered()), this, SLOT(openSlot()));
-  
+
   // File -> Load mesh...
-  loadAct = new QAction(QIcon(":/icons/document-open-folder.png"), tr("&Load mesh..."), this);
+  loadAct = new QAction(QIcon(":/icons/document-open-folder.png"),
+                        tr("&Load mesh..."), this);
   loadAct->setStatusTip(tr("Load Elmer mesh files"));
   connect(loadAct, SIGNAL(triggered()), this, SLOT(loadSlot()));
-  
+
   // File -> Load project...
-  loadProjectAct = new QAction(QIcon(":/icons/document-import.png"), tr("Load &project..."), this);
+  loadProjectAct = new QAction(QIcon(":/icons/document-import.png"),
+                               tr("Load &project..."), this);
   loadProjectAct->setStatusTip(tr("Load previously saved project"));
   connect(loadProjectAct, SIGNAL(triggered()), this, SLOT(loadProjectSlot()));
 
   // File -> New project...
-  newProjectAct = new QAction(QIcon(":/icons/document-new.png"), tr("&New project..."), this);
+  newProjectAct = new QAction(QIcon(":/icons/document-new.png"),
+                              tr("&New project..."), this);
   newProjectAct->setStatusTip(tr("Create a new project"));
   connect(newProjectAct, SIGNAL(triggered()), this, SLOT(newProjectSlot()));
 
   // File -> Recent Projects
   recentProject0Act = new QAction("", this);
-  connect(recentProject0Act, SIGNAL(triggered()), this, SLOT(loadRecentProject0Slot()));
+  connect(recentProject0Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject0Slot()));
   recentProject1Act = new QAction("", this);
-  connect(recentProject1Act, SIGNAL(triggered()), this, SLOT(loadRecentProject1Slot()));
+  connect(recentProject1Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject1Slot()));
   recentProject2Act = new QAction("", this);
-  connect(recentProject2Act, SIGNAL(triggered()), this, SLOT(loadRecentProject2Slot()));
+  connect(recentProject2Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject2Slot()));
   recentProject3Act = new QAction("", this);
-  connect(recentProject3Act, SIGNAL(triggered()), this, SLOT(loadRecentProject3Slot()));
+  connect(recentProject3Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject3Slot()));
   recentProject4Act = new QAction("", this);
-  connect(recentProject4Act, SIGNAL(triggered()), this, SLOT(loadRecentProject4Slot()));
-  
+  connect(recentProject4Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject4Slot()));
+
   // File -> Definitions...
-  editDefinitionsAct = new QAction(QIcon(":/icons/games-config-custom.png"), tr("&Definitions..."), this);
-  editDefinitionsAct->setStatusTip(tr("Load and edit Elmer sif definitions file"));
-  connect(editDefinitionsAct, SIGNAL(triggered()), this, SLOT(editDefinitionsSlot()));
+  editDefinitionsAct = new QAction(QIcon(":/icons/games-config-custom.png"),
+                                   tr("&Definitions..."), this);
+  editDefinitionsAct->setStatusTip(
+      tr("Load and edit Elmer sif definitions file"));
+  connect(editDefinitionsAct, SIGNAL(triggered()), this,
+          SLOT(editDefinitionsSlot()));
 
   // File -> Save...
-  saveAct = new QAction(QIcon(":/icons/document-save.png"), tr("&Save..."), this);
+  saveAct =
+      new QAction(QIcon(":/icons/document-save.png"), tr("&Save..."), this);
   saveAct->setShortcut(tr("Ctrl+S"));
   saveAct->setStatusTip(tr("Save Elmer mesh and sif-files"));
   connect(saveAct, SIGNAL(triggered()), this, SLOT(saveSlot()));
 
   // File -> Save as...
-  saveAsAct = new QAction(QIcon(":/icons/document-save-as.png"), tr("&Save as..."), this);
+  saveAsAct = new QAction(QIcon(":/icons/document-save-as.png"),
+                          tr("&Save as..."), this);
   saveAsAct->setStatusTip(tr("Save Elmer mesh and sif-files"));
   connect(saveAsAct, SIGNAL(triggered()), this, SLOT(saveAsSlot()));
 
   // File -> Save project
-  saveProjectAct = new QAction(QIcon(":/icons/document-export.png"), tr("&Save project"), this);
+  saveProjectAct = new QAction(QIcon(":/icons/document-export.png"),
+                               tr("&Save project"), this);
   saveProjectAct->setStatusTip(tr("Save current project"));
   connect(saveProjectAct, SIGNAL(triggered()), this, SLOT(saveProjectSlot()));
 
   // File -> Save project as...
-  saveProjectAsAct = new QAction(QIcon(":/icons/edit-copy.png"), tr("&Save project as..."), this);
-  saveProjectAsAct->setStatusTip(tr("Save current project by specifing directory"));
-  connect(saveProjectAsAct, SIGNAL(triggered()), this, SLOT(saveProjectAsSlot()));
-  
+  saveProjectAsAct = new QAction(QIcon(":/icons/edit-copy.png"),
+                                 tr("&Save project as..."), this);
+  saveProjectAsAct->setStatusTip(
+      tr("Save current project by specifing directory"));
+  connect(saveProjectAsAct, SIGNAL(triggered()), this,
+          SLOT(saveProjectAsSlot()));
+
   // File -> Save picture as...
-  savePictureAct = new QAction(QIcon(":/icons/view-preview.png"), tr("&Save picture as..."), this);
+  savePictureAct = new QAction(QIcon(":/icons/view-preview.png"),
+                               tr("&Save picture as..."), this);
   savePictureAct->setStatusTip(tr("Save picture in file"));
   connect(savePictureAct, SIGNAL(triggered()), this, SLOT(savePictureSlot()));
 
   // File -> Exit
-  exitAct = new QAction(QIcon(":/icons/application-exit.png"), tr("E&xit"), this);
+  exitAct =
+      new QAction(QIcon(":/icons/application-exit.png"), tr("E&xit"), this);
   exitAct->setShortcut(tr("Ctrl+Q"));
   exitAct->setStatusTip(tr("Exit"));
   connect(exitAct, SIGNAL(triggered()), this, SLOT(closeMainWindowSlot()));
@@ -455,22 +497,28 @@ void MainWindow::createActions()
   // Model -> Initial condition...
   addInitialConditionAct = new QAction(QIcon(), tr("Add..."), this);
   addInitialConditionAct->setStatusTip(tr("Add initial conditions..."));
-  connect(addInitialConditionAct, SIGNAL(triggered()), this, SLOT(addInitialConditionSlot()));
+  connect(addInitialConditionAct, SIGNAL(triggered()), this,
+          SLOT(addInitialConditionSlot()));
 
   // Model -> Boundary condition...
   addBoundaryConditionAct = new QAction(QIcon(), tr("Add..."), this);
   addBoundaryConditionAct->setStatusTip(tr("Add boundary conditions..."));
-  connect(addBoundaryConditionAct, SIGNAL(triggered()), this, SLOT(addBoundaryConditionSlot()));
+  connect(addBoundaryConditionAct, SIGNAL(triggered()), this,
+          SLOT(addBoundaryConditionSlot()));
 
   // Model -> Set body properties
-  bodyEditAct = new QAction(QIcon(":/icons/set-body-property.png"), tr("Set body properties"), this);
-  bodyEditAct->setStatusTip(tr("Set body properties (equivalent to holding down the SHIFT key)"));
+  bodyEditAct = new QAction(QIcon(":/icons/set-body-property.png"),
+                            tr("Set body properties"), this);
+  bodyEditAct->setStatusTip(
+      tr("Set body properties (equivalent to holding down the SHIFT key)"));
   connect(bodyEditAct, SIGNAL(triggered()), this, SLOT(bodyEditSlot()));
   bodyEditAct->setCheckable(true);
 
   // Model -> Set boundary conditions
-  bcEditAct = new QAction(QIcon(":/icons/set-boundary-property.png"), tr("Set boundary properties"), this);
-  bcEditAct->setStatusTip(tr("Set boundary properties (equivalent to holding down the ALT key)"));
+  bcEditAct = new QAction(QIcon(":/icons/set-boundary-property.png"),
+                          tr("Set boundary properties"), this);
+  bcEditAct->setStatusTip(
+      tr("Set boundary properties (equivalent to holding down the ALT key)"));
   connect(bcEditAct, SIGNAL(triggered()), this, SLOT(bcEditSlot()));
   bcEditAct->setCheckable(true);
 
@@ -491,21 +539,28 @@ void MainWindow::createActions()
   connect(generateSifAct, SIGNAL(triggered()), this, SLOT(generateSifSlot()));
 
   // Edit -> Solver input file...
-  showsifAct = new QAction(QIcon(":/icons/document-properties.png"), tr("&Edit..."), this);
+  showsifAct = new QAction(QIcon(":/icons/document-properties.png"),
+                           tr("&Edit..."), this);
   showsifAct->setShortcut(tr("Ctrl+S"));
   showsifAct->setStatusTip(tr("Edit solver input file"));
   connect(showsifAct, SIGNAL(triggered()), this, SLOT(showsifSlot()));
 
   // Sif -> Auto sif generation
-  suppressAutoSifGenerationAct = new QAction(QIcon(""), tr("&Suppress auto generation"), this);
-  suppressAutoSifGenerationAct->setStatusTip(tr("Suppress auto sif file generation in saving/loading to protect manually edited sif contents in sif editor"));
-  connect(suppressAutoSifGenerationAct , SIGNAL(triggered()), this, SLOT(suppressAutoSifGenerationSlot()));
+  suppressAutoSifGenerationAct =
+      new QAction(QIcon(""), tr("&Suppress auto generation"), this);
+  suppressAutoSifGenerationAct->setStatusTip(
+      tr("Suppress auto sif file generation in saving/loading to protect "
+         "manually edited sif contents in sif editor"));
+  connect(suppressAutoSifGenerationAct, SIGNAL(triggered()), this,
+          SLOT(suppressAutoSifGenerationSlot()));
   suppressAutoSifGenerationAct->setCheckable(true);
-  suppressAutoSifGeneration = settings_value("sif/suppressAutoSifGeneration", false).toBool();
+  suppressAutoSifGeneration =
+      settings_value("sif/suppressAutoSifGeneration", false).toBool();
   suppressAutoSifGenerationAct->setChecked(suppressAutoSifGeneration);
-    
+
   // Mesh -> Control
-  meshcontrolAct = new QAction(QIcon(":/icons/configure.png"), tr("&Configure..."), this);
+  meshcontrolAct =
+      new QAction(QIcon(":/icons/configure.png"), tr("&Configure..."), this);
   meshcontrolAct->setShortcut(tr("Ctrl+C"));
   meshcontrolAct->setStatusTip(tr("Configure mesh generators"));
   connect(meshcontrolAct, SIGNAL(triggered()), this, SLOT(meshcontrolSlot()));
@@ -517,91 +572,108 @@ void MainWindow::createActions()
   connect(remeshAct, SIGNAL(triggered()), this, SLOT(remeshSlot()));
 
   // Mesh -> Kill generator
-  stopMeshingAct = new QAction(QIcon(":/icons/window-close.png"), 
-			       tr("&Terminate meshing"), this);
+  stopMeshingAct = new QAction(QIcon(":/icons/window-close.png"),
+                               tr("&Terminate meshing"), this);
   stopMeshingAct->setStatusTip(tr("Terminate mesh generator"));
   connect(stopMeshingAct, SIGNAL(triggered()), this, SLOT(stopMeshingSlot()));
   stopMeshingAct->setEnabled(false);
 
   // Mesh -> Divide surface
-  surfaceDivideAct = new QAction(QIcon(":/icons/divide.png"), 
-				 tr("&Divide surface..."), this);
+  surfaceDivideAct =
+      new QAction(QIcon(":/icons/divide.png"), tr("&Divide surface..."), this);
   surfaceDivideAct->setStatusTip(tr("Divide surface by sharp edges"));
-  connect(surfaceDivideAct, SIGNAL(triggered()), this, SLOT(surfaceDivideSlot()));
+  connect(surfaceDivideAct, SIGNAL(triggered()), this,
+          SLOT(surfaceDivideSlot()));
 
   // Mesh -> Unify surface
-  surfaceUnifyAct = new QAction(QIcon(":/icons/unify.png"), tr("&Unify surface"), this);
+  surfaceUnifyAct =
+      new QAction(QIcon(":/icons/unify.png"), tr("&Unify surface"), this);
   surfaceUnifyAct->setStatusTip(tr("Unify surface (merge selected)"));
   connect(surfaceUnifyAct, SIGNAL(triggered()), this, SLOT(surfaceUnifySlot()));
 
   // Mesh -> Divide edge
-  edgeDivideAct = new QAction(QIcon(":/icons/divide-edge.png"), tr("&Divide edge..."), this);
+  edgeDivideAct = new QAction(QIcon(":/icons/divide-edge.png"),
+                              tr("&Divide edge..."), this);
   edgeDivideAct->setStatusTip(tr("Divide edge by sharp points"));
   connect(edgeDivideAct, SIGNAL(triggered()), this, SLOT(edgeDivideSlot()));
 
   // Mesh -> Unify edges
-  edgeUnifyAct = new QAction(QIcon(":/icons/unify-edge.png"), tr("&Unify edge"), this);
+  edgeUnifyAct =
+      new QAction(QIcon(":/icons/unify-edge.png"), tr("&Unify edge"), this);
   edgeUnifyAct->setStatusTip(tr("Unify edge (merge selected)"));
   connect(edgeUnifyAct, SIGNAL(triggered()), this, SLOT(edgeUnifySlot()));
 
   // Mesh -> Clean up
   cleanHangingSharpEdgesAct = new QAction(QIcon(""), tr("Clean up"), this);
-  cleanHangingSharpEdgesAct->setStatusTip(tr("Removes hanging/orphan sharp edges (for visualization)"));
-  connect(cleanHangingSharpEdgesAct, SIGNAL(triggered()), this, SLOT(cleanHangingSharpEdgesSlot()));
+  cleanHangingSharpEdgesAct->setStatusTip(
+      tr("Removes hanging/orphan sharp edges (for visualization)"));
+  connect(cleanHangingSharpEdgesAct, SIGNAL(triggered()), this,
+          SLOT(cleanHangingSharpEdgesSlot()));
 
   // View -> Full screen
   viewFullScreenAct = new QAction(QIcon(), tr("Full screen"), this);
   viewFullScreenAct->setShortcut(tr("Ctrl+L"));
   viewFullScreenAct->setStatusTip(tr("Full screen mode"));
-  connect(viewFullScreenAct, SIGNAL(triggered()), this, SLOT(viewFullScreenSlot()));
+  connect(viewFullScreenAct, SIGNAL(triggered()), this,
+          SLOT(viewFullScreenSlot()));
   viewFullScreenAct->setCheckable(true);
 
   // View -> Show surface mesh
   hidesurfacemeshAct = new QAction(QIcon(), tr("Surface mesh"), this);
   hidesurfacemeshAct->setStatusTip(tr("Show/hide surface mesh "
-				      "(do/do not outline surface elements)"));
-  connect(hidesurfacemeshAct, SIGNAL(triggered()), this, SLOT(hidesurfacemeshSlot()));
+                                      "(do/do not outline surface elements)"));
+  connect(hidesurfacemeshAct, SIGNAL(triggered()), this,
+          SLOT(hidesurfacemeshSlot()));
   hidesurfacemeshAct->setCheckable(true);
 
   // View -> Show volume mesh
   hidevolumemeshAct = new QAction(QIcon(), tr("Volume mesh"), this);
   hidevolumemeshAct->setStatusTip(tr("Show/hide volume mesh "
-				      "(do/do not outline volume mesh edges)"));
-  connect(hidevolumemeshAct, SIGNAL(triggered()), this, SLOT(hidevolumemeshSlot()));
+                                     "(do/do not outline volume mesh edges)"));
+  connect(hidevolumemeshAct, SIGNAL(triggered()), this,
+          SLOT(hidevolumemeshSlot()));
   hidevolumemeshAct->setCheckable(true);
 
   // View -> Show sharp edges
   hidesharpedgesAct = new QAction(QIcon(), tr("Sharp edges"), this);
   hidesharpedgesAct->setStatusTip(tr("Show/hide sharp edges"));
-  connect(hidesharpedgesAct, SIGNAL(triggered()), this, SLOT(hidesharpedgesSlot()));
+  connect(hidesharpedgesAct, SIGNAL(triggered()), this,
+          SLOT(hidesharpedgesSlot()));
   hidesharpedgesAct->setCheckable(true);
 
   // View -> Compass
   viewCoordinatesAct = new QAction(QIcon(), tr("Compass"), this);
   viewCoordinatesAct->setStatusTip(tr("View coordinates "
-				      "(RGB=XYZ modulo translation)"));
-  connect(viewCoordinatesAct, SIGNAL(triggered()), this, SLOT(viewCoordinatesSlot()));
+                                      "(RGB=XYZ modulo translation)"));
+  connect(viewCoordinatesAct, SIGNAL(triggered()), this,
+          SLOT(viewCoordinatesSlot()));
   viewCoordinatesAct->setCheckable(true);
 
   // View -> Select all surfaces
   selectAllSurfacesAct = new QAction(QIcon(), tr("Select all surfaces"), this);
   selectAllSurfacesAct->setStatusTip(tr("Select all surfaces"));
-  connect(selectAllSurfacesAct, SIGNAL(triggered()), this, SLOT(selectAllSurfacesSlot()));
+  connect(selectAllSurfacesAct, SIGNAL(triggered()), this,
+          SLOT(selectAllSurfacesSlot()));
 
   // View -> Select all edges
   selectAllEdgesAct = new QAction(QIcon(), tr("Select all edges"), this);
   selectAllEdgesAct->setStatusTip(tr("Select all edges"));
-  connect(selectAllEdgesAct, SIGNAL(triggered()), this, SLOT(selectAllEdgesSlot()));
+  connect(selectAllEdgesAct, SIGNAL(triggered()), this,
+          SLOT(selectAllEdgesSlot()));
 
   // View -> Select defined edges
-  selectDefinedEdgesAct = new QAction(QIcon(), tr("Select defined edges"), this);
+  selectDefinedEdgesAct =
+      new QAction(QIcon(), tr("Select defined edges"), this);
   selectDefinedEdgesAct->setStatusTip(tr("Select defined edges"));
-  connect(selectDefinedEdgesAct, SIGNAL(triggered()), this, SLOT(selectDefinedEdgesSlot()));
+  connect(selectDefinedEdgesAct, SIGNAL(triggered()), this,
+          SLOT(selectDefinedEdgesSlot()));
 
   // View -> Select defined surfaces
-  selectDefinedSurfacesAct = new QAction(QIcon(), tr("Select defined surfaces"), this);
+  selectDefinedSurfacesAct =
+      new QAction(QIcon(), tr("Select defined surfaces"), this);
   selectDefinedSurfacesAct->setStatusTip(tr("Select defined surfaces"));
-  connect(selectDefinedSurfacesAct, SIGNAL(triggered()), this, SLOT(selectDefinedSurfacesSlot()));
+  connect(selectDefinedSurfacesAct, SIGNAL(triggered()), this,
+          SLOT(selectDefinedSurfacesSlot()));
 
   // View -> Hide/show selected
   hideselectedAct = new QAction(QIcon(), tr("&Hide/show selected"), this);
@@ -610,80 +682,96 @@ void MainWindow::createActions()
   connect(hideselectedAct, SIGNAL(triggered()), this, SLOT(hideselectedSlot()));
 
   // View -> Show surface numbers
-  showSurfaceNumbersAct = new QAction(QIcon(), tr("Surface element numbers"), this);
-  showSurfaceNumbersAct->setStatusTip(tr("Show surface element numbers "
-				      "(Show the surface element numbering)"));
-  connect(showSurfaceNumbersAct, SIGNAL(triggered()), this, SLOT(showSurfaceNumbersSlot()));
+  showSurfaceNumbersAct =
+      new QAction(QIcon(), tr("Surface element numbers"), this);
+  showSurfaceNumbersAct->setStatusTip(
+      tr("Show surface element numbers "
+         "(Show the surface element numbering)"));
+  connect(showSurfaceNumbersAct, SIGNAL(triggered()), this,
+          SLOT(showSurfaceNumbersSlot()));
   showSurfaceNumbersAct->setCheckable(true);
 
   // View -> Show edge numbers
   showEdgeNumbersAct = new QAction(QIcon(), tr("Edge element numbers"), this);
   showEdgeNumbersAct->setStatusTip(tr("Show edge element numbers "
-				      "(Show the node element numbering)"));
-  connect(showEdgeNumbersAct, SIGNAL(triggered()), this, SLOT(showEdgeNumbersSlot()));
+                                      "(Show the node element numbering)"));
+  connect(showEdgeNumbersAct, SIGNAL(triggered()), this,
+          SLOT(showEdgeNumbersSlot()));
   showEdgeNumbersAct->setCheckable(true);
 
   // View -> Show node numbers
   showNodeNumbersAct = new QAction(QIcon(), tr("Node numbers"), this);
   showNodeNumbersAct->setStatusTip(tr("Show node numbers "
-				      "(Show the node numbers)"));
-  connect(showNodeNumbersAct, SIGNAL(triggered()), this, SLOT(showNodeNumbersSlot()));
+                                      "(Show the node numbers)"));
+  connect(showNodeNumbersAct, SIGNAL(triggered()), this,
+          SLOT(showNodeNumbersSlot()));
   showNodeNumbersAct->setCheckable(true);
-  
+
   // View -> Show boundray index
   showBoundaryIndexAct = new QAction(QIcon(), tr("Boundary index"), this);
   showBoundaryIndexAct->setStatusTip(tr("Show boundary index"));
-  connect(showBoundaryIndexAct, SIGNAL(triggered()), this, SLOT(showBoundaryIndexSlot()));
+  connect(showBoundaryIndexAct, SIGNAL(triggered()), this,
+          SLOT(showBoundaryIndexSlot()));
   showBoundaryIndexAct->setCheckable(true);
-  
+
   // View -> Show body index
   showBodyIndexAct = new QAction(QIcon(), tr("Body index"), this);
   showBodyIndexAct->setStatusTip(tr("Show body index"));
-  connect(showBodyIndexAct, SIGNAL(triggered()), this, SLOT(showBodyIndexSlot()));
+  connect(showBodyIndexAct, SIGNAL(triggered()), this,
+          SLOT(showBodyIndexSlot()));
   showBodyIndexAct->setCheckable(true);
 
   // View -> Colors -> GL controls
   glControlAct = new QAction(QIcon(), tr("GL controls..."), this);
-  glControlAct->setStatusTip(tr("Control GL parameters for lights and materials"));
+  glControlAct->setStatusTip(
+      tr("Control GL parameters for lights and materials"));
   connect(glControlAct, SIGNAL(triggered()), this, SLOT(glControlSlot()));
-  
+
   // View -> Colors -> Background
   chooseBGColorAct = new QAction(QIcon(), tr("Background..."), this);
   chooseBGColorAct->setStatusTip(tr("Set background color"));
-  connect(chooseBGColorAct, SIGNAL(triggered()), this, SLOT(backgroundColorSlot()));
-  
+  connect(chooseBGColorAct, SIGNAL(triggered()), this,
+          SLOT(backgroundColorSlot()));
+
   // View -> Colors -> Surface elements
   chooseSurfaceColorAct = new QAction(QIcon(), tr("Surface elements..."), this);
   chooseSurfaceColorAct->setStatusTip(tr("Set surface color"));
-  connect(chooseSurfaceColorAct, SIGNAL(triggered()), this, SLOT(surfaceColorSlot()));
-  
+  connect(chooseSurfaceColorAct, SIGNAL(triggered()), this,
+          SLOT(surfaceColorSlot()));
+
   // View -> Colors -> Edge elements
   chooseEdgeColorAct = new QAction(QIcon(), tr("Edge elements..."), this);
   chooseEdgeColorAct->setStatusTip(tr("Set edge color"));
   connect(chooseEdgeColorAct, SIGNAL(triggered()), this, SLOT(edgeColorSlot()));
-  
+
   // View -> Colors -> Surface mesh
   chooseSurfaceMeshColorAct = new QAction(QIcon(), tr("Surface mesh..."), this);
   chooseSurfaceMeshColorAct->setStatusTip(tr("Set surface mesh color"));
-  connect(chooseSurfaceMeshColorAct, SIGNAL(triggered()), this, SLOT(surfaceMeshColorSlot()));
-  
+  connect(chooseSurfaceMeshColorAct, SIGNAL(triggered()), this,
+          SLOT(surfaceMeshColorSlot()));
+
   // View -> Colors -> Sharp edges
   chooseSharpEdgeColorAct = new QAction(QIcon(), tr("Sharp edges..."), this);
   chooseSharpEdgeColorAct->setStatusTip(tr("Set sharp edge color"));
-  connect(chooseSharpEdgeColorAct, SIGNAL(triggered()), this, SLOT(sharpEdgeColorSlot()));
-  
+  connect(chooseSharpEdgeColorAct, SIGNAL(triggered()), this,
+          SLOT(sharpEdgeColorSlot()));
+
   // View -> Colors -> Boundaries
   showBoundaryColorAct = new QAction(QIcon(), tr("Boundaries"), this);
-  showBoundaryColorAct->setStatusTip(tr("Visualize different boundary parts with color patches"));
-  connect(showBoundaryColorAct, SIGNAL(triggered()), this, SLOT(colorizeBoundarySlot()));
+  showBoundaryColorAct->setStatusTip(
+      tr("Visualize different boundary parts with color patches"));
+  connect(showBoundaryColorAct, SIGNAL(triggered()), this,
+          SLOT(colorizeBoundarySlot()));
   showBoundaryColorAct->setCheckable(true);
-  
+
   // View -> Colors -> Bodies
   showBodyColorAct = new QAction(QIcon(), tr("Bodies"), this);
-  showBodyColorAct->setStatusTip(tr("Visualize different body with color patches"));
-  connect(showBodyColorAct, SIGNAL(triggered()), this, SLOT(colorizeBodySlot()));
+  showBodyColorAct->setStatusTip(
+      tr("Visualize different body with color patches"));
+  connect(showBodyColorAct, SIGNAL(triggered()), this,
+          SLOT(colorizeBodySlot()));
   showBodyColorAct->setCheckable(true);
-  
+
   // View -> Shade model -> Smooth
   smoothShadeAct = new QAction(QIcon(), tr("Smooth"), this);
   smoothShadeAct->setStatusTip(tr("Set shade model to smooth"));
@@ -720,32 +808,39 @@ void MainWindow::createActions()
 
   // View -> Show cad model
   showCadModelAct = new QAction(QIcon(), tr("Cad model..."), this);
-  showCadModelAct->setStatusTip(tr("Displays the cad model in a separate window"));
+  showCadModelAct->setStatusTip(
+      tr("Displays the cad model in a separate window"));
   connect(showCadModelAct, SIGNAL(triggered()), this, SLOT(showCadModelSlot()));
 
   // View -> Show 2d view
   showTwodViewAct = new QAction(QIcon(), tr("2D modeler..."), this);
-  showTwodViewAct->setStatusTip(tr("Displays the 2d geometry in a separate window"));
+  showTwodViewAct->setStatusTip(
+      tr("Displays the 2d geometry in a separate window"));
   connect(showTwodViewAct, SIGNAL(triggered()), this, SLOT(showTwodViewSlot()));
 
   // View -> Show Object Browser
   showObjectBrowserAct = new QAction(QIcon(), tr("Show Object Browser"), this);
   showObjectBrowserAct->setStatusTip(tr("Show Object Browser"));
-  connect(showObjectBrowserAct, SIGNAL(triggered()), this, SLOT(showObjectBrowserSlot()));
+  connect(showObjectBrowserAct, SIGNAL(triggered()), this,
+          SLOT(showObjectBrowserSlot()));
   showObjectBrowserAct->setCheckable(true);
-  
+
   // Solver -> Parallel settings
   parallelSettingsAct = new QAction(QIcon(), tr("Parallel settings..."), this);
-  parallelSettingsAct->setStatusTip(tr("Choose parameters and methods for parallel solution"));
-  connect(parallelSettingsAct, SIGNAL(triggered()), this, SLOT(parallelSettingsSlot()));
+  parallelSettingsAct->setStatusTip(
+      tr("Choose parameters and methods for parallel solution"));
+  connect(parallelSettingsAct, SIGNAL(triggered()), this,
+          SLOT(parallelSettingsSlot()));
 
   // Solver -> Run solver
-  runsolverAct = new QAction(QIcon(":/icons/Solver.png"), tr("Start solver"), this);
+  runsolverAct =
+      new QAction(QIcon(":/icons/Solver.png"), tr("Start solver"), this);
   runsolverAct->setStatusTip(tr("Run ElmerSolver"));
   connect(runsolverAct, SIGNAL(triggered()), this, SLOT(runsolverSlot()));
 
   // Solver -> Kill solver
-  killsolverAct = new QAction(QIcon(":/icons/window-close.png"), tr("Kill solver"), this);
+  killsolverAct =
+      new QAction(QIcon(":/icons/window-close.png"), tr("Kill solver"), this);
   killsolverAct->setStatusTip(tr("Kill ElmerSolver"));
   connect(killsolverAct, SIGNAL(triggered()), this, SLOT(killsolverSlot()));
   killsolverAct->setEnabled(false);
@@ -753,16 +848,19 @@ void MainWindow::createActions()
   // Solver -> Show convergence
   showConvergenceAct = new QAction(QIcon(), tr("Show convergence"), this);
   showConvergenceAct->setStatusTip(tr("Show/hide convergence plot"));
-  connect(showConvergenceAct, SIGNAL(triggered()), this, SLOT(showConvergenceSlot()));
+  connect(showConvergenceAct, SIGNAL(triggered()), this,
+          SLOT(showConvergenceSlot()));
   showConvergenceAct->setCheckable(true);
 
   // Solver -> Post process
-  resultsAct = new QAction(QIcon(":/icons/Post.png"), tr("Start ElmerPost"), this);
+  resultsAct =
+      new QAction(QIcon(":/icons/Post.png"), tr("Start ElmerPost"), this);
   resultsAct->setStatusTip(tr("Run ElmerPost for visualization"));
   connect(resultsAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
 
   // Solver -> Kill post process
-  killresultsAct = new QAction(QIcon(":/icons/window-close.png"), tr("Kill ElmerPost"), this);
+  killresultsAct = new QAction(QIcon(":/icons/window-close.png"),
+                               tr("Kill ElmerPost"), this);
   killresultsAct->setStatusTip(tr("Kill ElmerPost"));
   connect(killresultsAct, SIGNAL(triggered()), this, SLOT(killresultsSlot()));
   killresultsAct->setEnabled(false);
@@ -773,39 +871,44 @@ void MainWindow::createActions()
   connect(showVtkPostAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
 
   // Solver -> Show ParaView postprocessor
-  paraviewAct = new QAction(QIcon(":/icons/Paraview.png"), tr("Start ParaView"), this);
+  paraviewAct =
+      new QAction(QIcon(":/icons/Paraview.png"), tr("Start ParaView"), this);
   paraviewAct->setStatusTip(tr("Invokes ParaView for visualization"));
   connect(paraviewAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));
 
   // Solver -> Compiler...
   compileSolverAct = new QAction(QIcon(""), tr("Compiler..."), this);
-  compileSolverAct->setStatusTip(tr("Compile Elmer specific source code (f90) into a shared library (dll)"));
-  connect(compileSolverAct, SIGNAL(triggered()), 
-	  this, SLOT(compileSolverSlot()));
+  compileSolverAct->setStatusTip(tr(
+      "Compile Elmer specific source code (f90) into a shared library (dll)"));
+  connect(compileSolverAct, SIGNAL(triggered()), this,
+          SLOT(compileSolverSlot()));
 
   // Help -> About
   aboutAct = new QAction(QIcon(":/icons/help-about.png"), tr("About..."), this);
   aboutAct->setStatusTip(tr("Information about the program"));
   connect(aboutAct, SIGNAL(triggered()), this, SLOT(showaboutSlot()));
-  
-  generateAndSaveAndRunAct = new QAction(QIcon(":/icons/arrow-right-double.png"), tr("&Generate, save and run"), this);
-  generateAndSaveAndRunAct->setStatusTip(tr("Generate and save sif, save project, then run solver"));
-  connect(generateAndSaveAndRunAct, SIGNAL(triggered()), this, SLOT(generateAndSaveAndRunSlot()));  ;
+
+  generateAndSaveAndRunAct =
+      new QAction(QIcon(":/icons/arrow-right-double.png"),
+                  tr("&Generate, save and run"), this);
+  generateAndSaveAndRunAct->setStatusTip(
+      tr("Generate and save sif, save project, then run solver"));
+  connect(generateAndSaveAndRunAct, SIGNAL(triggered()), this,
+          SLOT(generateAndSaveAndRunSlot()));
+  ;
 
 #if WIN32
 #else
   compileSolverAct->setEnabled(false);
 #endif
 
-  if(egIni->isSet("bgimage"))
+  if (egIni->isSet("bgimage"))
     chooseBGColorAct->setEnabled(false);
 }
 
-
 // Create menus...
 //-----------------------------------------------------------------------------
-void MainWindow::createMenus()
-{
+void MainWindow::createMenus() {
   // File menu
   fileMenu = menuBar()->addMenu(tr("&File"));
   fileMenu->addAction(newProjectAct);
@@ -814,14 +917,14 @@ void MainWindow::createMenus()
   recentProjectsMenu->setEnabled(false);
   fileMenu->addAction(saveProjectAct);
   fileMenu->addAction(saveProjectAct);
-  fileMenu->addAction(saveProjectAsAct);    
+  fileMenu->addAction(saveProjectAsAct);
   fileMenu->addSeparator();
   fileMenu->addAction(openAct);
   fileMenu->addAction(loadAct);
   fileMenu->addAction(saveAct);
   fileMenu->addAction(saveAsAct);
   fileMenu->addSeparator();
-  fileMenu->addAction(editDefinitionsAct); 
+  fileMenu->addAction(editDefinitionsAct);
   fileMenu->addSeparator();
   fileMenu->addAction(savePictureAct);
   fileMenu->addSeparator();
@@ -850,37 +953,37 @@ void MainWindow::createMenus()
   equationMenu = modelMenu->addMenu(tr("Equation"));
   equationMenu->addAction(addEquationAct);
   equationMenu->addSeparator();
-  connect(equationMenu, SIGNAL(triggered(QAction*)), 
-	  this, SLOT(equationSelectedSlot(QAction*)));
+  connect(equationMenu, SIGNAL(triggered(QAction *)), this,
+          SLOT(equationSelectedSlot(QAction *)));
 
   modelMenu->addSeparator();
   materialMenu = modelMenu->addMenu(tr("Material"));
   materialMenu->addAction(addMaterialAct);
   materialMenu->addSeparator();
-  connect(materialMenu, SIGNAL(triggered(QAction*)), 
-	  this, SLOT(materialSelectedSlot(QAction*)));
+  connect(materialMenu, SIGNAL(triggered(QAction *)), this,
+          SLOT(materialSelectedSlot(QAction *)));
 
   modelMenu->addSeparator();
   bodyForceMenu = modelMenu->addMenu(tr("Body force"));
   bodyForceMenu->addAction(addBodyForceAct);
   bodyForceMenu->addSeparator();
-  connect(bodyForceMenu, SIGNAL(triggered(QAction*)), 
-	  this, SLOT(bodyForceSelectedSlot(QAction*)));
-  
+  connect(bodyForceMenu, SIGNAL(triggered(QAction *)), this,
+          SLOT(bodyForceSelectedSlot(QAction *)));
+
   modelMenu->addSeparator();
   initialConditionMenu = modelMenu->addMenu(tr("Initial condition"));
   initialConditionMenu->addAction(addInitialConditionAct);
   initialConditionMenu->addSeparator();
-  connect(initialConditionMenu, SIGNAL(triggered(QAction*)), 
-	  this, SLOT(initialConditionSelectedSlot(QAction*)));
-  
+  connect(initialConditionMenu, SIGNAL(triggered(QAction *)), this,
+          SLOT(initialConditionSelectedSlot(QAction *)));
+
   modelMenu->addSeparator();
   boundaryConditionMenu = modelMenu->addMenu(tr("Boundary condition"));
   boundaryConditionMenu->addAction(addBoundaryConditionAct);
   boundaryConditionMenu->addSeparator();
-  connect(boundaryConditionMenu, SIGNAL(triggered(QAction*)), 
-	  this, SLOT(boundaryConditionSelectedSlot(QAction*)));
-  
+  connect(boundaryConditionMenu, SIGNAL(triggered(QAction *)), this,
+          SLOT(boundaryConditionSelectedSlot(QAction *)));
+
   modelMenu->addSeparator();
   modelMenu->addAction(bodyEditAct);
   modelMenu->addAction(bcEditAct);
@@ -945,8 +1048,8 @@ void MainWindow::createMenus()
   viewMenu->addAction(showCadModelAct);
 #endif
   viewMenu->addAction(showTwodViewAct);
-  viewMenu->addSeparator();  
-  viewMenu->addAction(showObjectBrowserAct);  
+  viewMenu->addSeparator();
+  viewMenu->addAction(showObjectBrowserAct);
 
   // Edit menu
   editMenu = menuBar()->addMenu(tr("&Sif"));
@@ -955,7 +1058,7 @@ void MainWindow::createMenus()
   editMenu->addAction(showsifAct);
   editMenu->addSeparator();
   editMenu->addAction(suppressAutoSifGenerationAct);
-  
+
   //  SolverMenu
   solverMenu = menuBar()->addMenu(tr("&Run"));
   solverMenu->addAction(parallelSettingsAct);
@@ -1008,8 +1111,8 @@ void MainWindow::createMenus()
 
   // Disable unavailable external components:
   //------------------------------------------
-  if(!egIni->isSet("checkexternalcomponents"))
-     return;
+  if (!egIni->isSet("checkexternalcomponents"))
+    return;
 
   QProcess testProcess;
   QStringList args;
@@ -1018,7 +1121,7 @@ void MainWindow::createMenus()
   updateSplash("Checking for ElmerSolver...");
   args << "-v";
   testProcess.start("ElmerSolver", args);
-  if(!testProcess.waitForStarted()) {
+  if (!testProcess.waitForStarted()) {
     logMessage("no - disabling solver features");
     runsolverAct->setEnabled(false);
     showConvergenceAct->setEnabled(false);
@@ -1032,7 +1135,7 @@ void MainWindow::createMenus()
   updateSplash("Checking for ElmerPost...");
   args << "-v";
   testProcess.start("ElmerPost", args);
-  if(!testProcess.waitForStarted()) {
+  if (!testProcess.waitForStarted()) {
     logMessage("no - disabling ElmerPost postprocessing features");
     resultsAct->setEnabled(false);
     killresultsAct->setEnabled(false);
@@ -1044,7 +1147,7 @@ void MainWindow::createMenus()
   cout << "Checking for ElmerGrid... ";
   updateSplash("Checking for ElmerGrid...");
   testProcess.start("ElmerGrid");
-  if(!testProcess.waitForStarted()) {
+  if (!testProcess.waitForStarted()) {
     logMessage("no - disabling parallel features");
     parallelSettingsAct->setEnabled(false);
   } else {
@@ -1056,28 +1159,25 @@ void MainWindow::createMenus()
   updateSplash("Checking for ElmerSolver_mpi...");
   args << "-v";
   testProcess.start("ElmerSolver_mpi", args);
-  if(!testProcess.waitForStarted()) {
+  if (!testProcess.waitForStarted()) {
     logMessage("no - disabling parallel features");
     parallelSettingsAct->setEnabled(false);
   } else {
     cout << "yes" << endl;
   }
   testProcess.waitForFinished(2000);
-
 }
-
 
 // Create tool bars...
 //-----------------------------------------------------------------------------
-void MainWindow::createToolBars()
-{
+void MainWindow::createToolBars() {
   // File toolbar
   fileToolBar = addToolBar(tr("&File"));
   fileToolBar->addAction(newProjectAct);
   fileToolBar->addAction(loadProjectAct);
   fileToolBar->addAction(saveProjectAct);
   fileToolBar->addAction(saveProjectAsAct);
-  fileToolBar->addSeparator();  
+  fileToolBar->addSeparator();
   fileToolBar->addAction(openAct);
   fileToolBar->addAction(loadAct);
   fileToolBar->addAction(saveAct);
@@ -1102,7 +1202,7 @@ void MainWindow::createToolBars()
   meshToolBar->addAction(edgeUnifyAct);
   meshToolBar->addSeparator();
   meshToolBar->addAction(bodyEditAct);
-  meshToolBar->addAction(bcEditAct);  
+  meshToolBar->addAction(bcEditAct);
 
   // Solver toolbar
   solverToolBar = addToolBar(tr("&Solver"));
@@ -1110,7 +1210,7 @@ void MainWindow::createToolBars()
   solverToolBar->addAction(resultsAct);
   solverToolBar->addAction(generateAndSaveAndRunAct);
 
-  if(egIni->isSet("hidetoolbars")) {
+  if (egIni->isSet("hidetoolbars")) {
     fileToolBar->hide();
     editToolBar->hide();
     meshToolBar->hide();
@@ -1118,11 +1218,9 @@ void MainWindow::createToolBars()
   }
 }
 
-
 // Create status bar...
 //-----------------------------------------------------------------------------
-void MainWindow::createStatusBar()
-{
+void MainWindow::createStatusBar() {
   progressBar = new QProgressBar;
   progressBar->setMaximumHeight(12);
   progressBar->setMaximumWidth(120);
@@ -1137,9 +1235,9 @@ void MainWindow::createStatusBar()
 
   statusBar()->showMessage(tr("Ready"));
 
-  connect(grabTimeLine, SIGNAL(frameChanged(int)), progressBar, SLOT(setValue(int)));
+  connect(grabTimeLine, SIGNAL(frameChanged(int)), progressBar,
+          SLOT(setValue(int)));
 }
-
 
 //*****************************************************************************
 //
@@ -1149,31 +1247,33 @@ void MainWindow::createStatusBar()
 
 // File -> Open...
 //-----------------------------------------------------------------------------
-void MainWindow::newProjectSlot()
-{
+void MainWindow::newProjectSlot() {
   NewProjectDialog dlg;
-  
+
 #ifdef __APPLE__DONTGO_HERE_TODO
-  QString extraDirpath = this->homePath +  "/edf-extra";            
+  QString extraDirpath = this->homePath + "/edf-extra";
 #else
-  QString extraDirPath = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf-extra";
+  QString extraDirPath =
+      QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf-extra";
 
   QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
 
-  if(!elmerGuiHome.isEmpty())
-    extraDirPath = elmerGuiHome + "/edf-extra";  
+  if (!elmerGuiHome.isEmpty())
+    extraDirPath = elmerGuiHome + "/edf-extra";
 
   extraDirPath.replace('\\', '/');
 #endif
 
   QString defaultDir = getDefaultDirName();
-  dlg.setDirectories( defaultDir,extraDirPath);
-  
-  if(dlg.exec() == QDialog::Accepted){
+  dlg.setDirectories(defaultDir, extraDirPath);
+
+  if (dlg.exec() == QDialog::Accepted) {
 
     // re-initialize
-    delete elmerDefs; elmerDefs = new QDomDocument;
-    delete edfEditor; edfEditor = new EdfEditor; 
+    delete elmerDefs;
+    elmerDefs = new QDomDocument;
+    delete edfEditor;
+    edfEditor = new EdfEditor;
     loadDefinitions();
     geometryInputFileName = "";
     currentProjectDirName = "";
@@ -1181,11 +1281,14 @@ void MainWindow::newProjectSlot()
     sifWindow->hide();
     solverLogWindow->getTextEdit()->clear();
     solverLogWindow->hide();
-    delete generalSetup; generalSetup = new GeneralSetup(this);
-    summaryEditor->ui.summaryEdit->clear();  
-    delete twodView; twodView = new TwodView;
+    delete generalSetup;
+    generalSetup = new GeneralSetup(this);
+    summaryEditor->ui.summaryEdit->clear();
+    delete twodView;
+    twodView = new TwodView;
     meshControl->defaultControls();
-    delete parallel; parallel = new Parallel(this);
+    delete parallel;
+    parallel = new Parallel(this);
 
 #ifdef EG_QWT
     convergenceView->removeData();
@@ -1193,33 +1296,37 @@ void MainWindow::newProjectSlot()
 
 #ifdef EG_VTK
     settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
-    delete vtkPost; vtkPost = new VtkPost(this);
+    delete vtkPost;
+    vtkPost = new VtkPost(this);
     vtkPostMeshUnifierRunning = false;
-    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());    
+    vtkPost->restoreGeometry(settings_value("vtkPost/geometry").toByteArray());
 #endif
 
 #ifdef EG_OCC
     settings_setValue("cadView/geometry", cadView->saveGeometry());
-    delete cadView; cadView = new CadView();
-    if(egIni->isPresent("deflection"))
+    delete cadView;
+    cadView = new CadView();
+    if (egIni->isPresent("deflection"))
       cadView->setDeflection(egIni->value("deflection").toDouble());
-    cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());      
+    cadView->restoreGeometry(settings_value("cadView/geometry").toByteArray());
 #endif
 
-    //delete operations
+    // delete operations
     operation_t *p = operation.next;
     operation_t *q = NULL;
-    while(p != NULL) {
-      if(p->select_set != NULL) delete [] p->select_set;
+    while (p != NULL) {
+      if (p->select_set != NULL)
+        delete[] p->select_set;
       q = p->next;
-      if(p != NULL) delete p;
+      if (p != NULL)
+        delete p;
       p = q;
     }
     operations = 0;
-    operation.next = NULL;    
-    
+    operation.next = NULL;
+
     // reset mesh
-    if(glWidget->hasMesh()) {
+    if (glWidget->hasMesh()) {
       glWidget->getMesh()->clear();
       glWidget->deleteMesh();
     }
@@ -1227,69 +1334,76 @@ void MainWindow::newProjectSlot()
     meshutils->findSurfaceElementEdges(glWidget->getMesh());
     meshutils->findSurfaceElementNormals(glWidget->getMesh());
     glWidget->rebuildLists();
-    
+
     modelClearSlot();
-    
+
     // load Elmer mesh/open geometry file
     bool bStartMeshing = false;
-    if(dlg.ui.radioButton_elmerMesh->isChecked() && !dlg.ui.label_meshDir->text().isEmpty()){
-       loadElmerMesh(dlg.ui.label_meshDir->text());
-    }else if(dlg.ui.radioButton_geometryFile->isChecked() && !dlg.ui.label_geometryFile->text().isEmpty()){
+    if (dlg.ui.radioButton_elmerMesh->isChecked() &&
+        !dlg.ui.label_meshDir->text().isEmpty()) {
+      loadElmerMesh(dlg.ui.label_meshDir->text());
+    } else if (dlg.ui.radioButton_geometryFile->isChecked() &&
+               !dlg.ui.label_geometryFile->text().isEmpty()) {
       QString fileName = dlg.ui.label_geometryFile->text();
       geometryInputFileName = fileName;
       saveDirName = "";
       readInputFile(fileName);
-      if(egIni->isSet("automesh")) bStartMeshing = true;
+      if (egIni->isSet("automesh"))
+        bStartMeshing = true;
     }
-    
+
     // save and load project
-    saveProject(dlg.ui.label_projectDir->text());       
+    saveProject(dlg.ui.label_projectDir->text());
     loadProject(dlg.ui.label_projectDir->text());
-    
+
     // load extra solvers
     QString message;
-    for(int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++){
-      message = "Load " + extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
-      #if WITH_QT5
-        cout << string(message.toLatin1()); cout.flush();
-      #else
-        cout << string(message.toAscii()); cout.flush();
-      #endif    
-      edfEditor->appendFrom(extraDirPath + "/" + dlg.ui.listWidget_selectedSolvers->item(i)->text());
+    for (int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++) {
+      message = "Load " + extraDirPath + "/" +
+                dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
+#if WITH_QT5
+      cout << string(message.toLatin1());
+      cout.flush();
+#else
+      cout << string(message.toAscii());
+      cout.flush();
+#endif
+      edfEditor->appendFrom(extraDirPath + "/" +
+                            dlg.ui.listWidget_selectedSolvers->item(i)->text());
       cout << " done" << endl;
     }
 
-    if(bStartMeshing) remeshSlot();
+    if (bStartMeshing)
+      remeshSlot();
   }
-  
 }
 
-
-void MainWindow::parseCmdLine()
-{
+void MainWindow::parseCmdLine() {
   QStringList args = QCoreApplication::arguments();
-  
-  if(!args.contains("-nogui"))
+
+  if (!args.contains("-nogui"))
     this->show();
 
   int input = args.indexOf("-i");
 
-  if(input > 0) {
+  if (input > 0) {
     QString fileName = args.at(input + 1);
 
     QFileInfo fileInfo(fileName);
-    
-    if(!fileInfo.exists()) {
+
+    if (!fileInfo.exists()) {
 #if WITH_QT5
-      cout << "Input file \"" << fileName.toLatin1().data() << "\" does not exist" << endl;
+      cout << "Input file \"" << fileName.toLatin1().data()
+           << "\" does not exist" << endl;
 #else
-      cout << "Input file \"" << fileName.toAscii().data() << "\" does not exist" << endl;
+      cout << "Input file \"" << fileName.toAscii().data()
+           << "\" does not exist" << endl;
 #endif
       QApplication::closeAllWindows();
       exit(0);
     }
 
-    if(fileName.left(1) != "-") {
+    if (fileName.left(1) != "-") {
 #if WITH_QT5
       cout << "Reading input file " << fileName.toLatin1().data() << endl;
 #else
@@ -1303,23 +1417,22 @@ void MainWindow::parseCmdLine()
 
 // File -> Open...
 //-----------------------------------------------------------------------------
-void MainWindow::openSlot()
-{
+void MainWindow::openSlot() {
   QString defaultDirName = getDefaultDirName();
 
-  QString fileName = QFileDialog::getOpenFileName(this, tr("Open geometry input file"), defaultDirName);
+  QString fileName = QFileDialog::getOpenFileName(
+      this, tr("Open geometry input file"), defaultDirName);
 
   if (!fileName.isEmpty()) {
-    
+
     QFileInfo fi(fileName);
     QString absolutePath = fi.absolutePath();
     QDir::setCurrent(absolutePath);
-    
+
   } else {
-    
+
     logMessage("Unable to open file: file name is empty");
     return;
-
   }
 
   geometryInputFileName = fileName;
@@ -1327,13 +1440,13 @@ void MainWindow::openSlot()
   operation_t *p = operation.next;
   operation_t *q = NULL;
 
-  while(p != NULL) {
-    if(p->select_set != NULL)
-      delete [] p->select_set;
+  while (p != NULL) {
+    if (p->select_set != NULL)
+      delete[] p->select_set;
 
     q = p->next;
 
-    if(p != NULL)
+    if (p != NULL)
       delete p;
 
     p = q;
@@ -1345,15 +1458,13 @@ void MainWindow::openSlot()
   saveDirName = "";
   readInputFile(fileName);
 
-  if(egIni->isSet("automesh"))
+  if (egIni->isSet("automesh"))
     remeshSlot();
 }
 
-
 // Read input file and populate mesh generator's input structures:
 //-----------------------------------------------------------------------------
-void MainWindow::readInputFile(QString fileName)
-{
+void MainWindow::readInputFile(QString fileName) {
   occInputOk = false;
 
   char cs[1024];
@@ -1376,10 +1487,9 @@ void MainWindow::readInputFile(QString fileName)
 
   // Choose generator according to fileSuffix:
   //------------------------------------------
-  if((fileSuffix == "smesh") || 
-     (fileSuffix == "poly")) {
-    
-    if(!tetlibPresent) {
+  if ((fileSuffix == "smesh") || (fileSuffix == "poly")) {
+
+    if (!tetlibPresent) {
       logMessage("unable to mesh - tetlib unavailable");
       return;
     }
@@ -1393,9 +1503,9 @@ void MainWindow::readInputFile(QString fileName)
 
     tetlibInputOk = true;
 
-  } else if(fileSuffix == "off") {
+  } else if (fileSuffix == "off") {
 
-    if(!tetlibPresent) {
+    if (!tetlibPresent) {
       logMessage("unable to mesh - tetlib unavailable");
       return;
     }
@@ -1409,9 +1519,9 @@ void MainWindow::readInputFile(QString fileName)
 
     tetlibInputOk = true;
 
-  } else if(fileSuffix == "ply") {
+  } else if (fileSuffix == "ply") {
 
-    if(!tetlibPresent) {
+    if (!tetlibPresent) {
       logMessage("unable to mesh - tetlib unavailable");
       return;
     }
@@ -1425,9 +1535,9 @@ void MainWindow::readInputFile(QString fileName)
 
     tetlibInputOk = true;
 
-  } else if(fileSuffix == "mesh") {
+  } else if (fileSuffix == "mesh") {
 
-    if(!tetlibPresent) {
+    if (!tetlibPresent) {
       logMessage("unable to mesh - tetlib unavailable");
       return;
     }
@@ -1437,62 +1547,60 @@ void MainWindow::readInputFile(QString fileName)
 
     in->deinitialize();
     in->initialize();
-    in->load_medit(cs,1);
-    
+    in->load_medit(cs, 1);
+
     tetlibInputOk = true;
-    
-  } else if(fileSuffix == "stl") {
+
+  } else if (fileSuffix == "stl") {
 
     // for stl there are two alternative generators:
-    if(meshControl->generatorType == GEN_NGLIB) {
-      
-      if(!nglibPresent) {
-	logMessage("unable to mesh - nglib unavailable");
-	return;
+    if (meshControl->generatorType == GEN_NGLIB) {
+
+      if (!nglibPresent) {
+        logMessage("unable to mesh - nglib unavailable");
+        return;
       }
-      
+
       activeGenerator = GEN_NGLIB;
       cout << "Selected nglib for stl-format" << endl;
 
       stlFileName = fileName;
-      
+
       nglibInputOk = true;
-      
+
     } else {
 
-      if(!tetlibPresent) {
-	logMessage("unable to mesh - tetlib unavailable");
-	return;
+      if (!tetlibPresent) {
+        logMessage("unable to mesh - tetlib unavailable");
+        return;
       }
-      
+
       activeGenerator = GEN_TETLIB;
       cout << "Selected tetlib for stl-format" << endl;
-      
+
       in->deinitialize();
       in->initialize();
       in->load_stl(cs);
-      
+
       tetlibInputOk = true;
-      
     }
 
-  } else if((fileSuffix == "grd") ||
-	    (fileSuffix == "FDNEUT") ||
-	    (fileSuffix == "msh") ||
-	    (fileSuffix == "mphtxt") ||
-	    (fileSuffix == "inp") ||    
-	    (fileSuffix == "unv") ||
-            (fileSuffix == "plt")) {
+  } else if ((fileSuffix == "grd") || (fileSuffix == "FDNEUT") ||
+             (fileSuffix == "msh") || (fileSuffix == "mphtxt") ||
+             (fileSuffix == "inp") || (fileSuffix == "unv") ||
+             (fileSuffix == "plt")) {
 
     activeGenerator = GEN_ELMERGRID;
     cout << "Selected elmergrid" << endl;
 
 #if WITH_QT5
-    int errstat = elmergridAPI->loadElmerMeshStructure((const char*)(fileName.toLatin1()));
+    int errstat = elmergridAPI->loadElmerMeshStructure(
+        (const char *)(fileName.toLatin1()));
 #else
-    int errstat = elmergridAPI->loadElmerMeshStructure((const char*)(fileName.toAscii()));
+    int errstat = elmergridAPI->loadElmerMeshStructure(
+        (const char *)(fileName.toAscii()));
 #endif
-    
+
     if (errstat)
       logMessage("loadElmerMeshStructure failed!");
 
@@ -1500,24 +1608,24 @@ void MainWindow::readInputFile(QString fileName)
 
 #ifdef EG_OCC
 
-  } else if( (fileSuffix.toLower() == "brep") ||
-	     (fileSuffix.toLower() == "step") ||
-	     (fileSuffix.toLower() == "stp")  || 
-	     (fileSuffix.toLower() == "iges")  || 
-	     (fileSuffix.toLower() == "igs") ) {
+  } else if ((fileSuffix.toLower() == "brep") ||
+             (fileSuffix.toLower() == "step") ||
+             (fileSuffix.toLower() == "stp") ||
+             (fileSuffix.toLower() == "iges") ||
+             (fileSuffix.toLower() == "igs")) {
 
     meshControl->ui.nglibRadioButton->setChecked(true);
     meshControl->generatorType = GEN_NGLIB;
     activeGenerator = meshControl->generatorType;
 
-    if(egIni->isSet("autoview"))
-       cadView->show();
+    if (egIni->isSet("autoview"))
+      cadView->show();
 
     occInputOk = cadView->readFile(fileName);
 
     ngDim = cadView->getDim();
 
-    if(!occInputOk) {
+    if (!occInputOk) {
       logMessage("Cad import: error: Unable to proceed with input file");
       cadView->close();
       return;
@@ -1527,18 +1635,18 @@ void MainWindow::readInputFile(QString fileName)
 
 #endif
 
-  } else if( (fileSuffix.toLower() == "in2d") ) {
-    
-    if(!nglibPresent) {
+  } else if ((fileSuffix.toLower() == "in2d")) {
+
+    if (!nglibPresent) {
       logMessage("unable to mesh - nglib unavailable");
       return;
     }
-    
+
     activeGenerator = GEN_NGLIB;
     cout << "Selected nglib for in2d-format" << endl;
-    
+
     in2dFileName = fileName;
-    
+
     nglibInputOk = true;
 
     ngDim = 2;
@@ -1551,13 +1659,10 @@ void MainWindow::readInputFile(QString fileName)
     return;
   }
 }
-  
-
 
 // Populate elmer's mesh structure and make GL-lists (tetlib):
 //-----------------------------------------------------------------------------
-void MainWindow::makeElmerMeshFromTetlib()
-{
+void MainWindow::makeElmerMeshFromTetlib() {
   meshutils->clearMesh(glWidget->getMesh());
 
   glWidget->setMesh(tetlibAPI->createElmerMeshStructure());
@@ -1567,12 +1672,9 @@ void MainWindow::makeElmerMeshFromTetlib()
   logMessage("Input file processed");
 }
 
-
-
 // Populate elmer's mesh structure and make GL-lists (nglib):
 //-----------------------------------------------------------------------------
-void MainWindow::makeElmerMeshFromNglib()
-{
+void MainWindow::makeElmerMeshFromNglib() {
   meshutils->clearMesh(glWidget->getMesh());
   nglibAPI->setDim(this->ngDim);
   nglibAPI->setNgmesh(ngmesh);
@@ -1583,14 +1685,13 @@ void MainWindow::makeElmerMeshFromNglib()
   logMessage("Input file processed");
 }
 
-
 // File -> Load mesh...
 //-----------------------------------------------------------------------------
-void MainWindow::loadSlot()
-{
+void MainWindow::loadSlot() {
   QString defaultDirName = getDefaultDirName();
 
-  QString dirName = QFileDialog::getExistingDirectory(this, tr("Open mesh directory"), defaultDirName);
+  QString dirName = QFileDialog::getExistingDirectory(
+      this, tr("Open mesh directory"), defaultDirName);
 
   if (!dirName.isEmpty()) {
 
@@ -1600,21 +1701,17 @@ void MainWindow::loadSlot()
 
     logMessage("Unable to load mesh: directory undefined");
     return;
-
   }
-  
+
   loadElmerMesh(dirName);
 }
 
-
-
 // Import mesh files in elmer-format:
 //-----------------------------------------------------------------------------
-void MainWindow::loadElmerMesh(QString dirName)
-{
+void MainWindow::loadElmerMesh(QString dirName) {
   logMessage("Loading elmer mesh files");
 
-  if(glWidget->hasMesh()) {
+  if (glWidget->hasMesh()) {
     glWidget->getMesh()->clear();
     glWidget->deleteMesh();
   }
@@ -1627,7 +1724,7 @@ void MainWindow::loadElmerMesh(QString dirName)
   bool success = glWidget->getMesh()->load(dirName.toAscii().data());
 #endif
 
-  if(!success) {
+  if (!success) {
     glWidget->getMesh()->clear();
     glWidget->deleteMesh();
     logMessage("Failed loading mesh files");
@@ -1636,33 +1733,31 @@ void MainWindow::loadElmerMesh(QString dirName)
 
   meshutils->findSurfaceElementEdges(glWidget->getMesh());
   meshutils->findSurfaceElementNormals(glWidget->getMesh());
-  
+
   glWidget->rebuildLists();
 
   QDir::setCurrent(dirName);
   saveDirName = dirName;
-  
+
   logMessage("Ready");
 }
 
-
 // File -> Save...
 //-----------------------------------------------------------------------------
-void MainWindow::saveSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::saveSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to save mesh: no data");
     return;
   }
 
-  if(!saveDirName.isEmpty()) {
+  if (!saveDirName.isEmpty()) {
     logMessage("Output directory " + saveDirName);
   } else {
     saveAsSlot();
     return;
   }
 
-  if( !suppressAutoSifGeneration ){
+  if (!suppressAutoSifGeneration) {
     generateSifSlot();
   }
   saveElmerMesh(saveDirName);
@@ -1670,16 +1765,16 @@ void MainWindow::saveSlot()
 
 // File -> Save as...
 //-----------------------------------------------------------------------------
-void MainWindow::saveAsSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::saveAsSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to save mesh: no data");
     return;
   }
 
   QString defaultDirName = getDefaultDirName();
 
-  saveDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save mesh"), defaultDirName);
+  saveDirName = QFileDialog::getExistingDirectory(
+      this, tr("Open directory to save mesh"), defaultDirName);
 
   if (!saveDirName.isEmpty()) {
     logMessage("Output directory " + saveDirName);
@@ -1688,18 +1783,16 @@ void MainWindow::saveAsSlot()
     return;
   }
 
-  if( !suppressAutoSifGeneration){
+  if (!suppressAutoSifGeneration) {
     generateSifSlot();
   }
   saveElmerMesh(saveDirName);
 }
 
-
 // File -> Save project
 //-----------------------------------------------------------------------------
-void MainWindow::saveProjectSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::saveProjectSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to save project: no mesh");
     return;
   }
@@ -1711,21 +1804,20 @@ void MainWindow::saveProjectSlot()
   } else {
     saveProjectAsSlot();
   }
-  
 }
 
 // File -> Save project as...
 //-----------------------------------------------------------------------------
-void MainWindow::saveProjectAsSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::saveProjectAsSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to save project: no mesh");
     return;
   }
 
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save project"), defaultDirName);
+  QString projectDirName = QFileDialog::getExistingDirectory(
+      this, tr("Open directory to save project"), defaultDirName);
 
   if (!projectDirName.isEmpty()) {
     logMessage("Project directory " + projectDirName);
@@ -1733,21 +1825,20 @@ void MainWindow::saveProjectAsSlot()
     logMessage("Unable to save project: directory undefined");
     return;
   }
-  
+
   saveProject(projectDirName);
 }
 
-bool MainWindow::saveProject(QString projectDirName)
-{  
-  if(!glWidget->hasMesh()) {
+bool MainWindow::saveProject(QString projectDirName) {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to save project: no mesh");
     return false;
   }
-  
-  if( !suppressAutoSifGeneration){
+
+  if (!suppressAutoSifGeneration) {
     generateSifSlot();
   }
-  
+
   progressBar->show();
   progressBar->setRange(0, 13);
 
@@ -1780,9 +1871,9 @@ bool MainWindow::saveProject(QString projectDirName)
   QString baseName(fileInfo.baseName());
 
   // System copy command:
-  QString cmd("cp -f " + pathName + "/" + baseName + ".* "+ projectDirName);
+  QString cmd("cp -f " + pathName + "/" + baseName + ".* " + projectDirName);
 
-  if(system(cmd.toLatin1().data()))
+  if (system(cmd.toLatin1().data()))
     logMessage("Geometry input file(s) not copied");
 
   QDomElement geomInput(projectDoc.createElement("geometryinputfile"));
@@ -1799,37 +1890,37 @@ bool MainWindow::saveProject(QString projectDirName)
 
   // Avoid copying file(s) into it self:
 
-  if( srcPathName  != dstPathName ) {
+  if (srcPathName != dstPathName) {
     QDirIterator srcDirIterator(srcPathName);
 
-    while(srcDirIterator.hasNext()) {
+    while (srcDirIterator.hasNext()) {
       QString srcFileName(srcDirIterator.next());
       QFileInfo srcFileInfo(srcDirIterator.fileInfo());
 
-      if(srcFileInfo.baseName() == baseName) {
-	logMessage("Copying: " + srcFileName);
+      if (srcFileInfo.baseName() == baseName) {
+        logMessage("Copying: " + srcFileName);
 
-	QFile src(srcFileName);
+        QFile src(srcFileName);
 
-	if(!src.open(QFile::ReadOnly)) {
-	  logMessage("Unable to read: " + src.fileName());
-	  continue;
-	}
+        if (!src.open(QFile::ReadOnly)) {
+          logMessage("Unable to read: " + src.fileName());
+          continue;
+        }
 
-	QFile dst(dstPathName + "/" + srcFileInfo.fileName());
+        QFile dst(dstPathName + "/" + srcFileInfo.fileName());
 
-	if(!dst.open(QFile::WriteOnly)) {
-	  logMessage("Unable to write: " + dst.fileName());
-	  src.close();
-	  continue;
-	}
+        if (!dst.open(QFile::WriteOnly)) {
+          logMessage("Unable to write: " + dst.fileName());
+          src.close();
+          continue;
+        }
 
-	QTextStream srcStream(&src);
-	QTextStream dstStream(&dst);
-	dstStream << srcStream.readAll();
-	
-	dst.close();
-	src.close();
+        QTextStream srcStream(&src);
+        QTextStream dstStream(&dst);
+        dstStream << srcStream.readAll();
+
+        dst.close();
+        src.close();
       }
     }
 
@@ -1838,7 +1929,8 @@ bool MainWindow::saveProject(QString projectDirName)
   }
 
   QDomElement geomInput = projectDoc.createElement("geometryinputfile");
-  QDomText geomInputValue = projectDoc.createTextNode(geometryInputFileInfo.fileName());
+  QDomText geomInputValue =
+      projectDoc.createTextNode(geometryInputFileInfo.fileName());
   geomInput.appendChild(geomInputValue);
   contents.appendChild(geomInput);
 #endif
@@ -1850,7 +1942,7 @@ bool MainWindow::saveProject(QString projectDirName)
   QDomElement ops = projectDoc.createElement("operations");
   contents.appendChild(ops);
   operation.appendToProject(&projectDoc, &ops);
-  
+
   //===========================================================================
   //                              SAVE GENERAL SETUP
   //===========================================================================
@@ -1883,10 +1975,10 @@ bool MainWindow::saveProject(QString projectDirName)
   QDomElement speBlock = projectDoc.createElement("solverparameters");
   projectDoc.documentElement().appendChild(speBlock);
 
-  for(int index = 0; index < solverParameterEditor.size(); index++) {
+  for (int index = 0; index < solverParameterEditor.size(); index++) {
     SolverParameterEditor *spe = solverParameterEditor[index];
 
-    if(!spe)
+    if (!spe)
       continue;
 
     QDomElement item = projectDoc.createElement("item");
@@ -1910,18 +2002,19 @@ bool MainWindow::saveProject(QString projectDirName)
   //                          SAVE SOLVER SPECIFIC OPTIONS
   //===========================================================================
   progressBar->setValue(10);
-  QDomElement solverOptionsBlock = projectDoc.createElement("solverspecificoptions");
+  QDomElement solverOptionsBlock =
+      projectDoc.createElement("solverspecificoptions");
   projectDoc.documentElement().appendChild(solverOptionsBlock);
 
-  for(int index = 0; index < solverParameterEditor.size(); index++) {
+  for (int index = 0; index < solverParameterEditor.size(); index++) {
     SolverParameterEditor *spe = solverParameterEditor[index];
 
-    if(!spe)
+    if (!spe)
       continue;
 
     DynamicEditor *dynEdit = spe->generalOptions;
-    
-    if(!dynEdit)
+
+    if (!dynEdit)
       continue;
 
     QDomElement item = projectDoc.createElement("item");
@@ -1940,10 +2033,10 @@ bool MainWindow::saveProject(QString projectDirName)
   QDomElement bodyBlock = projectDoc.createElement("bodyproperties");
   projectDoc.documentElement().appendChild(bodyBlock);
 
-  for(int index = 0; index < bodyPropertyEditor.size(); index++) {
+  for (int index = 0; index < bodyPropertyEditor.size(); index++) {
     BodyPropertyEditor *bpe = bodyPropertyEditor[index];
 
-    if(!bpe)
+    if (!bpe)
       continue;
 
     QDomElement item = projectDoc.createElement("item");
@@ -1959,10 +2052,10 @@ bool MainWindow::saveProject(QString projectDirName)
   QDomElement boundaryBlock = projectDoc.createElement("boundaryproperties");
   projectDoc.documentElement().appendChild(boundaryBlock);
 
-  for(int index = 0; index < boundaryPropertyEditor.size(); index++) {
+  for (int index = 0; index < boundaryPropertyEditor.size(); index++) {
     BoundaryPropertyEditor *bpe = boundaryPropertyEditor[index];
 
-    if(!bpe)
+    if (!bpe)
       continue;
 
     QDomElement item = projectDoc.createElement("item");
@@ -1986,33 +2079,28 @@ bool MainWindow::saveProject(QString projectDirName)
 
   progressBar->hide();
   progressLabel->hide();
-  
-  setWindowTitle( QString("ElmerGUI - ") + projectDirName);
-  addRecentProject(projectDirName, true);  
-  currentProjectDirName = projectDirName;  
 
-  
+  setWindowTitle(QString("ElmerGUI - ") + projectDirName);
+  addRecentProject(projectDirName, true);
+  currentProjectDirName = projectDirName;
+
   return true;
 }
 
-
-
 // Helper function for saveProject
 //-----------------------------------------------------------------------------
-void MainWindow::saveProjectContents(QDomDocument projectDoc,
-				     QString blockName, 
-				     QVector<DynamicEditor*>& editor)
-{
+void MainWindow::saveProjectContents(QDomDocument projectDoc, QString blockName,
+                                     QVector<DynamicEditor *> &editor) {
   int Nmax = editor.size();
 
   QDomElement editorBlock = projectDoc.createElement(blockName);
   projectDoc.documentElement().appendChild(editorBlock);
   int index = 0; // index excluding removed DynamicEditor instances
 
-  for(int i = 0; i < Nmax; i++) {
+  for (int i = 0; i < Nmax; i++) {
     DynamicEditor *de = editor[i];
-    
-    if(de->menuAction == NULL)
+
+    if (de->menuAction == NULL)
       continue;
 
     // Menu item number:
@@ -2022,14 +2110,16 @@ void MainWindow::saveProjectContents(QDomDocument projectDoc,
 
     // Is active?
     QDomElement itemActive = projectDoc.createElement("active");
-    QDomText itemActiveValue = projectDoc.createTextNode(QString::number(de->menuAction != NULL));
+    QDomText itemActiveValue =
+        projectDoc.createTextNode(QString::number(de->menuAction != NULL));
     itemActive.appendChild(itemActiveValue);
     item.appendChild(itemActive);
-    
+
     // Name:
-    if(de->menuAction != NULL) {
+    if (de->menuAction != NULL) {
       QDomElement itemName = projectDoc.createElement("name");
-      QDomText itemNameValue = projectDoc.createTextNode(de->nameEdit->text().trimmed());
+      QDomText itemNameValue =
+          projectDoc.createTextNode(de->nameEdit->text().trimmed());
       itemName.appendChild(itemNameValue);
       item.appendChild(itemName);
     }
@@ -2038,21 +2128,18 @@ void MainWindow::saveProjectContents(QDomDocument projectDoc,
   }
 }
 
-
-
 // File -> Load project...
 //-----------------------------------------------------------------------------
-void MainWindow::loadProjectSlot()
-{
+void MainWindow::loadProjectSlot() {
   QString defaultDirName = getDefaultDirName();
 
-  QString projectDirName = QFileDialog::getExistingDirectory(this, tr("Open project directory"), defaultDirName);
-  
+  QString projectDirName = QFileDialog::getExistingDirectory(
+      this, tr("Open project directory"), defaultDirName);
+
   loadProject(projectDirName);
 }
 
-void MainWindow::loadProject(QString projectDirName)
-{
+void MainWindow::loadProject(QString projectDirName) {
   if (!projectDirName.isEmpty()) {
     logMessage("Project directory: " + projectDirName);
   } else {
@@ -2075,13 +2162,13 @@ void MainWindow::loadProject(QString projectDirName)
 
   logMessage("Clearing model data");
   modelClearSlot();
- 
-  //Re-initialize definitions and edfEditor
+
+  // Re-initialize definitions and edfEditor
   delete elmerDefs;
   delete edfEditor;
   elmerDefs = new QDomDocument;
   edfEditor = new EdfEditor;
-  loadDefinitions(); 
+  loadDefinitions();
 
   // Load project doc:
   //-------------------
@@ -2094,21 +2181,23 @@ void MainWindow::loadProject(QString projectDirName)
   int errCol;
   QFile projectFile("egproject.xml");
 
-  if(!projectFile.exists()) {
+  if (!projectFile.exists()) {
     QMessageBox::information(window(), tr("Project loader"),
-			     tr("Project file does not exist"));
+                             tr("Project file does not exist"));
 
     progressBar->hide();
     progressLabel->hide();
 
     return;
 
-  } else {  
+  } else {
 
-    if(!projectDoc.setContent(&projectFile, true, &errStr, &errRow, &errCol)) {
+    if (!projectDoc.setContent(&projectFile, true, &errStr, &errRow, &errCol)) {
       QMessageBox::information(window(), tr("Project loader"),
-			       tr("Parse error at line %1, col %2:\n%3")
-			       .arg(errRow).arg(errCol).arg(errStr));
+                               tr("Parse error at line %1, col %2:\n%3")
+                                   .arg(errRow)
+                                   .arg(errCol)
+                                   .arg(errStr));
       projectFile.close();
 
       progressBar->hide();
@@ -2118,24 +2207,24 @@ void MainWindow::loadProject(QString projectDirName)
     }
   }
 
-  projectFile.close();	
-  
-  if(projectDoc.documentElement().tagName() != "contents") {
+  projectFile.close();
+
+  if (projectDoc.documentElement().tagName() != "contents") {
     QMessageBox::information(window(), tr("Project loader"),
-			     tr("This is not a project file"));
+                             tr("This is not a project file"));
 
     progressBar->hide();
     progressLabel->hide();
 
     return;
   }
-  
+
   // load extra solvers from /edf-extra
   checkAndLoadExtraSolvers(&projectFile);
-    
-  setWindowTitle( QString("ElmerGUI - ") + projectDirName);
+
+  setWindowTitle(QString("ElmerGUI - ") + projectDirName);
   addRecentProject(projectDirName, true);
-  currentProjectDirName = projectDirName;  
+  currentProjectDirName = projectDirName;
 
   QDomElement contents = projectDoc.documentElement();
 
@@ -2160,7 +2249,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                               LOAD OPERATIONS
   //===========================================================================
-  logMessage("Loading operations...");  
+  logMessage("Loading operations...");
   progressBar->setValue(5);
   QDomElement ops = contents.firstChildElement("operations");
   operations = operation.readFromProject(&projectDoc, &ops);
@@ -2168,7 +2257,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                            LOAD GENERAL SETUP
   //===========================================================================
-  logMessage("Loading general setup...");  
+  logMessage("Loading general setup...");
   progressBar->setValue(6);
   QDomElement gsBlock = contents.firstChildElement("generalsetup");
   generalSetup->readFromProject(&projectDoc, &gsBlock);
@@ -2176,7 +2265,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD PARALLEL SETTINGS
   //===========================================================================
-  logMessage("Loading parallel settings...");  
+  logMessage("Loading parallel settings...");
   progressBar->setValue(7);
   QDomElement paraBlock = contents.firstChildElement("parallelsettings");
   parallel->readFromProject(&projectDoc, &paraBlock);
@@ -2184,7 +2273,7 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                            LOAD MESH PARAMETERS
   //===========================================================================
-  logMessage("Loading mesh parameters...");  
+  logMessage("Loading mesh parameters...");
   progressBar->setValue(8);
   QDomElement meshParams = contents.firstChildElement("meshparameters");
   meshControl->readFromProject(&projectDoc, &meshParams);
@@ -2197,25 +2286,29 @@ void MainWindow::loadProject(QString projectDirName)
   QDomElement speBlock = contents.firstChildElement("solverparameters");
 
   QDomElement item = speBlock.firstChildElement("item");
-  for( ; !item.isNull(); item = item.nextSiblingElement()) {
+  for (; !item.isNull(); item = item.nextSiblingElement()) {
     int index = item.attribute("index").toInt();
     QString name = item.attribute("name");
 
-    if(name.trimmed().isEmpty()) continue;
+    if (name.trimmed().isEmpty())
+      continue;
 
     // Find the real index for the current edf setup:
     int count = 0, realIndex = -1;
     QDomElement root = elmerDefs->documentElement();
     QDomElement elem = root.firstChildElement("PDE");
-    while(!elem.isNull()) {
+    while (!elem.isNull()) {
       QDomElement pdeName = elem.firstChildElement("Name");
-      if(pdeName.text().trimmed() == name.trimmed()) realIndex = count;
+      if (pdeName.text().trimmed() == name.trimmed())
+        realIndex = count;
       elem = elem.nextSiblingElement();
       count++;
     }
 
-    if(realIndex < 0) {
-      cout << "ERROR: The current edf setup conflicts with the project. Aborting." << endl;
+    if (realIndex < 0) {
+      cout << "ERROR: The current edf setup conflicts with the project. "
+              "Aborting."
+           << endl;
 
       progressBar->hide();
       progressLabel->hide();
@@ -2225,7 +2318,7 @@ void MainWindow::loadProject(QString projectDirName)
 
     index = realIndex - 1;
 
-    if(index < 0) {
+    if (index < 0) {
       logMessage("Load project: solver parameters: index out of bounds");
 
       progressBar->hide();
@@ -2234,10 +2327,10 @@ void MainWindow::loadProject(QString projectDirName)
       return;
     }
 
-    if(index >= solverParameterEditor.size())
+    if (index >= solverParameterEditor.size())
       solverParameterEditor.resize(index + 1);
 
-    if(!solverParameterEditor[index])
+    if (!solverParameterEditor[index])
       solverParameterEditor[index] = new SolverParameterEditor;
 
     SolverParameterEditor *spe = solverParameterEditor[index];
@@ -2294,9 +2387,10 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                        LOAD DYNAMIC EDITOR CONTENTS
   //===========================================================================
-  logMessage("Loading dynamic editor contents...");   
+  logMessage("Loading dynamic editor contents...");
   progressBar->setValue(11);
-  QDomElement element = projectDoc.documentElement().firstChildElement("equation");
+  QDomElement element =
+      projectDoc.documentElement().firstChildElement("equation");
   loadProjectContents(element, equationEditor, "Equation");
   element = projectDoc.documentElement().firstChildElement("material");
   loadProjectContents(element, materialEditor, "Material");
@@ -2307,46 +2401,50 @@ void MainWindow::loadProject(QString projectDirName)
   element = projectDoc.documentElement().firstChildElement("boundarycondition");
   loadProjectContents(element, boundaryConditionEditor, "BoundaryCondition");
 
-
   //===========================================================================
   //                          LOAD SOLVER SPECIFIC OPTIONS
   //===========================================================================
-  logMessage("Loading solver specific options...");   
+  logMessage("Loading solver specific options...");
   progressBar->setValue(12);
-  QDomElement solverOptionsBlock = contents.firstChildElement("solverspecificoptions");
+  QDomElement solverOptionsBlock =
+      contents.firstChildElement("solverspecificoptions");
 
-  for(item = solverOptionsBlock.firstChildElement("item"); 
-      !item.isNull(); item = item.nextSiblingElement()) {
-    
+  for (item = solverOptionsBlock.firstChildElement("item"); !item.isNull();
+       item = item.nextSiblingElement()) {
+
     int index = item.attribute("index").toInt();
     QString name = item.attribute("name");
     int id = item.attribute("id").toInt();
 
-    if(name.trimmed().isEmpty()) continue;
+    if (name.trimmed().isEmpty())
+      continue;
 
     // Find the real index for the current edf setup:
     int count = 0, realIndex = -1;
     QDomElement root = elmerDefs->documentElement();
     QDomElement elem = root.firstChildElement("PDE");
-    while(!elem.isNull()) {
+    while (!elem.isNull()) {
       QDomElement pdeName = elem.firstChildElement("Name");
-      if(pdeName.text().trimmed() == name.trimmed()) realIndex = count;
+      if (pdeName.text().trimmed() == name.trimmed())
+        realIndex = count;
       elem = elem.nextSiblingElement();
       count++;
     }
 
-    if(realIndex < 0) {
-      cout << "ERROR: The current edf setup conflicts with the project. Aborting." << endl;
+    if (realIndex < 0) {
+      cout << "ERROR: The current edf setup conflicts with the project. "
+              "Aborting."
+           << endl;
 
       progressBar->hide();
       progressLabel->hide();
-      
+
       return;
     }
 
     index = realIndex - 1;
 
-    if(index < 0) {
+    if (index < 0) {
       logMessage("Load project: solver specific options: index out of bounds");
 
       progressBar->hide();
@@ -2355,37 +2453,40 @@ void MainWindow::loadProject(QString projectDirName)
       return;
     }
 
-    if(index >= solverParameterEditor.size())
+    if (index >= solverParameterEditor.size())
       solverParameterEditor.resize(index + 1);
 
-    if(!solverParameterEditor[index])
+    if (!solverParameterEditor[index])
       solverParameterEditor[index] = new SolverParameterEditor;
 
     SolverParameterEditor *spe = solverParameterEditor[index];
     spe->solverName = name;
 
-    if(spe->generalOptions == NULL) {
+    if (spe->generalOptions == NULL) {
       spe->generalOptions = new DynamicEditor;
 
-      // following 3 lines were moved into if() block to avoid doubled "Solver specific options" tabs (Nov 2019 by TS) 
+      // following 3 lines were moved into if() block to avoid doubled "Solver
+      // specific options" tabs (Nov 2019 by TS)
       spe->generalOptions->setupTabs(elmerDefs, "Solver", id);
       spe->generalOptions->populateHash(&item);
-      spe->ui.solverControlTabs->insertTab(0, spe->generalOptions->tabWidget->widget(id), "Solver specific options");	
+      spe->ui.solverControlTabs->insertTab(
+          0, spe->generalOptions->tabWidget->widget(id),
+          "Solver specific options");
     }
   }
 
   //===========================================================================
   //                           LOAD BODY PROPERTIES
   //===========================================================================
-  logMessage("Loading body properties...");    
+  logMessage("Loading body properties...");
   progressBar->setValue(13);
   QDomElement bodyBlock = contents.firstChildElement("bodyproperties");
 
   item = bodyBlock.firstChildElement("item");
-  for(; !item.isNull(); item = item.nextSiblingElement()) {
+  for (; !item.isNull(); item = item.nextSiblingElement()) {
     int index = item.attribute("index").toInt();
 
-    if(index < 0) {
+    if (index < 0) {
       logMessage("Load project: body properties: index out of bounds");
 
       progressBar->hide();
@@ -2394,10 +2495,10 @@ void MainWindow::loadProject(QString projectDirName)
       return;
     }
 
-    if(index >= bodyPropertyEditor.size())
+    if (index >= bodyPropertyEditor.size())
       bodyPropertyEditor.resize(index + 1);
 
-    if(!bodyPropertyEditor[index])
+    if (!bodyPropertyEditor[index])
       bodyPropertyEditor[index] = new BodyPropertyEditor;
 
     BodyPropertyEditor *bpe = bodyPropertyEditor[index];
@@ -2407,27 +2508,27 @@ void MainWindow::loadProject(QString projectDirName)
   //===========================================================================
   //                          LOAD BOUNDARY PROPERTIES
   //===========================================================================
-  logMessage("Loading boundary properties...");    
+  logMessage("Loading boundary properties...");
   progressBar->setValue(13);
   QDomElement boundaryBlock = contents.firstChildElement("boundaryproperties");
 
   item = boundaryBlock.firstChildElement("item");
-  for( ; !item.isNull(); item = item.nextSiblingElement()) {
+  for (; !item.isNull(); item = item.nextSiblingElement()) {
     int index = item.attribute("index").toInt();
 
-    if(index < 0) {
+    if (index < 0) {
       logMessage("Load project: boundary properties: index out of bounds");
-      
+
       progressBar->hide();
       progressLabel->hide();
-      
+
       return;
     }
 
-    if(index >= boundaryPropertyEditor.size())
+    if (index >= boundaryPropertyEditor.size())
       boundaryPropertyEditor.resize(index + 1);
 
-    if(!boundaryPropertyEditor[index])
+    if (!boundaryPropertyEditor[index])
       boundaryPropertyEditor[index] = new BoundaryPropertyEditor;
 
     BoundaryPropertyEditor *bpe = boundaryPropertyEditor[index];
@@ -2438,9 +2539,9 @@ void MainWindow::loadProject(QString projectDirName)
   //                              REGENERATE SIF
   //===========================================================================
   progressBar->setValue(14);
-  if(glWidget->hasMesh()) {
+  if (glWidget->hasMesh()) {
 
-    if( !suppressAutoSifGeneration){
+    if (!suppressAutoSifGeneration) {
       logMessage("Regenerating and saving the solver input file...");
       generateSifSlot();
 
@@ -2448,26 +2549,26 @@ void MainWindow::loadProject(QString projectDirName)
       QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
       file.setFileName(sifName);
       file.open(QIODevice::WriteOnly);
-      QTextStream sif(&file);    
+      QTextStream sif(&file);
       QApplication::setOverrideCursor(Qt::WaitCursor);
       sif << sifWindow->getTextEdit()->toPlainText();
       QApplication::restoreOverrideCursor();
       file.close();
-      
+
       file.setFileName("ELMERSOLVER_STARTINFO");
       file.open(QIODevice::WriteOnly);
       QTextStream startinfo(&file);
-  #if WITH_QT5
-      startinfo << sifName.toLatin1() << "\n1\n";    
-  #else
-      startinfo << sifName.toAscii() << "\n1\n";    
-  #endif
+#if WITH_QT5
+      startinfo << sifName.toLatin1() << "\n1\n";
+#else
+      startinfo << sifName.toAscii() << "\n1\n";
+#endif
       file.close();
-    }else{
+    } else {
       QFile file;
       QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
       file.setFileName(sifName);
-      if(file.open(QIODevice::ReadOnly)){      
+      if (file.open(QIODevice::ReadOnly)) {
         QTextStream inputStream(&file);
         QString line = inputStream.readAll();
         file.close();
@@ -2475,9 +2576,9 @@ void MainWindow::loadProject(QString projectDirName)
         sifWindow->getTextEdit()->append(line);
         sifWindow->setFirstTime(true);
         sifWindow->setFound(false);
-        logMessage( sifName + " loaded.");        
-      }else{
-        logMessage( " failed to open " + sifName); 
+        logMessage(sifName + " loaded.");
+      } else {
+        logMessage(" failed to open " + sifName);
       }
     }
   }
@@ -2488,36 +2589,34 @@ void MainWindow::loadProject(QString projectDirName)
   progressLabel->hide();
 }
 
-
 // Helper function for load project
 //--------------------------------------------------------------------------------------------
-void MainWindow::loadProjectContents(QDomElement projectElement, 
-				     QVector<DynamicEditor*>& editor,
-				     QString Mname)
-{
+void MainWindow::loadProjectContents(QDomElement projectElement,
+                                     QVector<DynamicEditor *> &editor,
+                                     QString Mname) {
   int Nmax = editor.size();
 
   QDomElement item = projectElement.firstChildElement("item");
 
-  for(; !item.isNull(); item = item.nextSiblingElement()) {  
+  for (; !item.isNull(); item = item.nextSiblingElement()) {
     int index = item.attribute("index").toInt();
 
-    if(index < 0) {
+    if (index < 0) {
       logMessage("Project loader: index out of bounds (dynamic editor)");
       return;
     }
 
-    if(index >= editor.size())
-      editor.resize(index+1);
+    if (index >= editor.size())
+      editor.resize(index + 1);
 
-    if(!editor[index])
+    if (!editor[index])
       editor[index] = new DynamicEditor;
-    
+
     DynamicEditor *de = editor[index];
 
     bool active = (item.firstChildElement("active").text().toInt() > 0);
 
-    if(!active)
+    if (!active)
       continue;
 
     // Set up dynamic editor and connect:
@@ -2530,74 +2629,79 @@ void MainWindow::loadProjectContents(QDomElement projectElement,
     de->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
     de->discardButton->setText("Remove");
     de->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
-      
+
     const QString &tmpName = itemName;
     QAction *act = new QAction(tmpName, this);
 
-    if(Mname == "Equation") {
-      connect(de, SIGNAL(dynamicEditorReady(int,int)), this, SLOT(pdeEditorFinishedSlot(int,int)));
+    if (Mname == "Equation") {
+      connect(de, SIGNAL(dynamicEditorReady(int, int)), this,
+              SLOT(pdeEditorFinishedSlot(int, int)));
       de->spareButton->setText("Edit Solver Settings");
       de->spareButton->show();
-      de->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));      
-      connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int,int)), this, SLOT(editNumericalMethods(int,int)));
+      de->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
+      connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
+              SLOT(editNumericalMethods(int, int)));
       equationMenu->addAction(act);
     }
 
-    if(Mname == "Material") {
-      connect(de, SIGNAL(dynamicEditorReady(int,int)), this, SLOT(matEditorFinishedSlot(int,int)));
+    if (Mname == "Material") {
+      connect(de, SIGNAL(dynamicEditorReady(int, int)), this,
+              SLOT(matEditorFinishedSlot(int, int)));
       de->spareButton->setText("Material library");
       de->spareButton->show();
-      de->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));      
-      connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int,int)), this, SLOT(showMaterialLibrary(int,int)));
+      de->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
+      connect(de, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
+              SLOT(showMaterialLibrary(int, int)));
       materialMenu->addAction(act);
     }
 
-    if(Mname == "BodyForce") {
-      connect(de, SIGNAL(dynamicEditorReady(int,int)), this, SLOT(bodyForceEditorFinishedSlot(int,int)));
+    if (Mname == "BodyForce") {
+      connect(de, SIGNAL(dynamicEditorReady(int, int)), this,
+              SLOT(bodyForceEditorFinishedSlot(int, int)));
       bodyForceMenu->addAction(act);
     }
-    
-    if(Mname == "InitialCondition") {
-      connect(de, SIGNAL(dynamicEditorReady(int,int)), this, SLOT(initialConditionEditorFinishedSlot(int,int)));
+
+    if (Mname == "InitialCondition") {
+      connect(de, SIGNAL(dynamicEditorReady(int, int)), this,
+              SLOT(initialConditionEditorFinishedSlot(int, int)));
       initialConditionMenu->addAction(act);
     }
-    
-    if(Mname == "BoundaryCondition") {
-      connect(de, SIGNAL(dynamicEditorReady(int,int)), this, SLOT(boundaryConditionEditorFinishedSlot(int,int)));
+
+    if (Mname == "BoundaryCondition") {
+      connect(de, SIGNAL(dynamicEditorReady(int, int)), this,
+              SLOT(boundaryConditionEditorFinishedSlot(int, int)));
       boundaryConditionMenu->addAction(act);
     }
-    
+
     de->menuAction = act;
-    
-    if(Mname == "Equation") 
+
+    if (Mname == "Equation")
       createBodyCheckBoxes(BODY_EQUATION, de);
-    
-    if(Mname == "Material") 
+
+    if (Mname == "Material")
       createBodyCheckBoxes(BODY_MATERIAL, de);
-    
-    if(Mname == "BodyForce") 
+
+    if (Mname == "BodyForce")
       createBodyCheckBoxes(BODY_FORCE, de);
-    
-    if(Mname == "InitialCondition") 
+
+    if (Mname == "InitialCondition")
       createBodyCheckBoxes(BODY_INITIAL, de);
-    
-    if(Mname == "BoundaryCondition") 
+
+    if (Mname == "BoundaryCondition")
       createBoundaryCheckBoxes(de);
-    
+
     de->populateHash(&item);
   }
 }
 
-
 // Export mesh files in elmer-format:
 //-----------------------------------------------------------------------------
-void MainWindow::saveElmerMesh(QString dirName)
-{
+void MainWindow::saveElmerMesh(QString dirName) {
   logMessage("Saving elmer mesh files");
 
   QDir dir(dirName);
 
-  if(!dir.exists())
+  if (!dir.exists())
     dir.mkdir(dirName);
 
   dir.setCurrent(dirName);
@@ -2641,26 +2745,24 @@ void MainWindow::saveElmerMesh(QString dirName)
   logMessage("Ready");
 }
 
-
 // File -> Exit
 //-----------------------------------------------------------------------------
-void MainWindow::closeMainWindowSlot()
-{
-    saveSlot();
-    QApplication::closeAllWindows();
+void MainWindow::closeMainWindowSlot() {
+  saveSlot();
+  QApplication::closeAllWindows();
   // close();
 }
 
-
 // File -> Save picture as...
 //-----------------------------------------------------------------------------
-void MainWindow::savePictureSlot()
-{
+void MainWindow::savePictureSlot() {
   QString defaultDirName(getDefaultDirName());
 
-  pictureFileName = QFileDialog::getSaveFileName(this,	tr("Save picture"), defaultDirName, tr("Picture files (*.bmp *.jpg *.png *.pbm *.pgm *.ppm)"));
-  
-  if(pictureFileName.isEmpty()) {
+  pictureFileName = QFileDialog::getSaveFileName(
+      this, tr("Save picture"), defaultDirName,
+      tr("Picture files (*.bmp *.jpg *.png *.pbm *.pgm *.ppm)"));
+
+  if (pictureFileName.isEmpty()) {
     logMessage("File name is empty");
     return;
   }
@@ -2679,12 +2781,11 @@ void MainWindow::savePictureSlot()
   grabTimeLine->start();
 }
 
-void MainWindow::grabFrameSlot()
-{
+void MainWindow::grabFrameSlot() {
   progressLabel->hide();
   progressBar->hide();
 
-  if(pictureFileName.isEmpty()) {
+  if (pictureFileName.isEmpty()) {
     logMessage("Unable to take screen shot - file name is empty");
     return;
   }
@@ -2692,7 +2793,7 @@ void MainWindow::grabFrameSlot()
   QFileInfo fi(pictureFileName);
   QString suffix(fi.suffix());
   suffix.toUpper();
-  
+
   int imageQuality(egIni->value("defaultimagequality").toInt());
 
   bool withAlpha(false);
@@ -2707,11 +2808,10 @@ void MainWindow::grabFrameSlot()
 #else
   bool success(image.save(pictureFileName, suffix.toAscii(), imageQuality));
 #endif
-  
-  if(!success)
+
+  if (!success)
     logMessage("Failed writing picture file");
 }
-
 
 //*****************************************************************************
 //
@@ -2719,20 +2819,16 @@ void MainWindow::grabFrameSlot()
 //
 //*****************************************************************************
 
-
 // Model -> Setup...
 //-----------------------------------------------------------------------------
-void MainWindow::modelSetupSlot()
-{
-  generalSetup->show();
-}
+void MainWindow::modelSetupSlot() { generalSetup->show(); }
 
 //-----------------------------------------------------------------------------
-void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe)
-{
-  if(!glWidget->hasMesh()) return;
+void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe) {
+  if (!glWidget->hasMesh())
+    return;
 
-  if ( pe->spareScroll->widget() )
+  if (pe->spareScroll->widget())
     delete pe->spareScroll->widget();
 
   QGridLayout *slayout = new QGridLayout;
@@ -2740,124 +2836,133 @@ void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe)
 
   int count = 0, even = 0;
 
-  slayout->addWidget(l,count,0);
+  slayout->addWidget(l, count, 0);
   count++;
 
   QMapIterator<int, int> itr(glWidget->bodyMap);
   while (itr.hasNext()) {
     itr.next();
-     int n = itr.key(); 
-    if ( n >= 0 ) {
-       int m = itr.value();
+    int n = itr.key();
+    if (n >= 0) {
+      int m = itr.value();
 
-	if(m >= bodyPropertyEditor.size())
-	  bodyPropertyEditor.resize(m + 1);
+      if (m >= bodyPropertyEditor.size())
+        bodyPropertyEditor.resize(m + 1);
 
-	if(!bodyPropertyEditor[m])
-	  bodyPropertyEditor[m] = new BodyPropertyEditor;
+      if (!bodyPropertyEditor[m])
+        bodyPropertyEditor[m] = new BodyPropertyEditor;
 
-	BodyPropertyEditor *body = bodyPropertyEditor[m];
-	
-        populateBodyComboBoxes(body);
+      BodyPropertyEditor *body = bodyPropertyEditor[m];
 
-        QString title = body->ui.nameEdit->text().trimmed();
-        QCheckBox *a;
+      populateBodyComboBoxes(body);
 
-        if ( title.isEmpty() )
-          //a = new QCheckBox("Body " + QString::number(n));
-          a = new QCheckBox("Body Property " + QString::number(n));
-        else
-          a = new QCheckBox(title);
+      QString title = body->ui.nameEdit->text().trimmed();
+      QCheckBox *a;
 
-        DynamicEditor *p = NULL;
+      if (title.isEmpty())
+        // a = new QCheckBox("Body " + QString::number(n));
+        a = new QCheckBox("Body Property " + QString::number(n));
+      else
+        a = new QCheckBox(title);
 
-        switch(which) {
-          case BODY_MATERIAL:
-            p=body->material;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(materialBodyChanged(int)));
-          break;
-          case BODY_INITIAL:
-            p=body->initial;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(initialBodyChanged(int)));
-          break;
-          case BODY_FORCE:
-            p=body->force;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(forceBodyChanged(int)));
-          break;
-          case BODY_EQUATION:
-            p=body->equation;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(equationBodyChanged(int)));
-          break;
-        }
+      DynamicEditor *p = NULL;
 
-        a->setProperty( "body", (qulonglong)body );
-        a->setProperty( "editor", (qulonglong)pe );
+      switch (which) {
+      case BODY_MATERIAL:
+        p = body->material;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(materialBodyChanged(int)));
+        break;
+      case BODY_INITIAL:
+        p = body->initial;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(initialBodyChanged(int)));
+        break;
+      case BODY_FORCE:
+        p = body->force;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(forceBodyChanged(int)));
+        break;
+      case BODY_EQUATION:
+        p = body->equation;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(equationBodyChanged(int)));
+        break;
+      }
 
-        if ( p==pe )
-          a->setChecked(true);
-        else if ( p != NULL )
-          a->setEnabled(false);
-        else
-          a->setChecked(false);
+      a->setProperty("body", (qulonglong)body);
+      a->setProperty("editor", (qulonglong)pe);
 
-        slayout->addWidget(a,count,even);
-        even = 1 - even;
-        if (!even) count++;
-     }
+      if (p == pe)
+        a->setChecked(true);
+      else if (p != NULL)
+        a->setEnabled(false);
+      else
+        a->setChecked(false);
+
+      slayout->addWidget(a, count, even);
+      even = 1 - even;
+      if (!even)
+        count++;
+    }
   }
 
-  for( int i = 0; i < boundaryPropertyEditor.size(); i++ )
-  {
+  for (int i = 0; i < boundaryPropertyEditor.size(); i++) {
     BoundaryPropertyEditor *boundary = boundaryPropertyEditor[i];
 
-    if(!boundary)
+    if (!boundary)
       continue;
 
-     if ( boundary->bodyProperties ) {
-       BodyPropertyEditor *body = boundary->bodyProperties;
-        populateBodyComboBoxes(body);
+    if (boundary->bodyProperties) {
+      BodyPropertyEditor *body = boundary->bodyProperties;
+      populateBodyComboBoxes(body);
 
-        QString title = body->ui.nameEdit->text().trimmed();
-        QCheckBox *a;
+      QString title = body->ui.nameEdit->text().trimmed();
+      QCheckBox *a;
 
-        if ( title.isEmpty() )
-          a = new QCheckBox("Body{Boundary " + QString::number(i)+ "}");
-        else
-          a = new QCheckBox(title);
+      if (title.isEmpty())
+        a = new QCheckBox("Body{Boundary " + QString::number(i) + "}");
+      else
+        a = new QCheckBox(title);
 
-        DynamicEditor *p = NULL;
+      DynamicEditor *p = NULL;
 
-        switch(which) {
-          case BODY_MATERIAL:
-            p=body->material;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(materialBodyChanged(int)));
-          break;
-          case BODY_INITIAL:
-            p=body->initial;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(initialBodyChanged(int)));
-          break;
-          case BODY_FORCE:
-            p=body->force;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(forceBodyChanged(int)));
-          break;
-          case BODY_EQUATION:
-            p=body->equation;
-            connect(a, SIGNAL(stateChanged(int)), this, SLOT(equationBodyChanged(int)));
-          break;
-        }
+      switch (which) {
+      case BODY_MATERIAL:
+        p = body->material;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(materialBodyChanged(int)));
+        break;
+      case BODY_INITIAL:
+        p = body->initial;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(initialBodyChanged(int)));
+        break;
+      case BODY_FORCE:
+        p = body->force;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(forceBodyChanged(int)));
+        break;
+      case BODY_EQUATION:
+        p = body->equation;
+        connect(a, SIGNAL(stateChanged(int)), this,
+                SLOT(equationBodyChanged(int)));
+        break;
+      }
 
-        a->setProperty( "body", (qulonglong)body );
-        a->setProperty( "editor", (qulonglong)pe );
+      a->setProperty("body", (qulonglong)body);
+      a->setProperty("editor", (qulonglong)pe);
 
-        if ( p==pe )
-          a->setChecked(true);
-        else if ( p != NULL )
-          a->setEnabled(false);
+      if (p == pe)
+        a->setChecked(true);
+      else if (p != NULL)
+        a->setEnabled(false);
 
-        slayout->addWidget(a,count,even);
-        even = 1-even;
-        if (!even) count++;
-     }
+      slayout->addWidget(a, count, even);
+      even = 1 - even;
+      if (!even)
+        count++;
+    }
   }
 
   QGroupBox *box = new QGroupBox;
@@ -2868,15 +2973,13 @@ void MainWindow::createBodyCheckBoxes(int which, DynamicEditor *pe)
   pe->spareScroll->show();
 }
 
-
 //-----------------------------------------------------------------------------
 
 //*****************************************************************************
 
 // Model -> Equation -> Add...
 //-----------------------------------------------------------------------------
-void MainWindow::addEquationSlot()
-{
+void MainWindow::addEquationSlot() {
   DynamicEditor *pe = new DynamicEditor;
   equationEditor.append(pe);
   int current = equationEditor.size() - 1;
@@ -2888,14 +2991,16 @@ void MainWindow::addEquationSlot()
   pe->discardButton->setText("Cancel");
   pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
   pe->show();
-  
-  connect(pe, SIGNAL(dynamicEditorReady(int,int)),this, SLOT(pdeEditorFinishedSlot(int,int)));
+
+  connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
+          SLOT(pdeEditorFinishedSlot(int, int)));
 
   // Use "spareButton" to invoke solver parameter editor:
   pe->spareButton->setText("Edit Solver Settings");
   pe->spareButton->show();
   pe->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
-  connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this, SLOT(editNumericalMethods(int, int)));
+  connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
+          SLOT(editNumericalMethods(int, int)));
 
   // Equation is new - add to menu:
   const QString &equationName = pe->nameEdit->text().trimmed();
@@ -2903,36 +3008,34 @@ void MainWindow::addEquationSlot()
   equationMenu->addAction(act);
   pe->menuAction = act;
 
-  connect( pe->nameEdit, SIGNAL(textChanged(QString)), this,
-        SLOT(dynamicEditorNameChange(QString)) );
+  connect(pe->nameEdit, SIGNAL(textChanged(QString)), this,
+          SLOT(dynamicEditorNameChange(QString)));
 
-  createBodyCheckBoxes(BODY_EQUATION,pe);
+  createBodyCheckBoxes(BODY_EQUATION, pe);
 }
-
 
 // signal (int, int) emitted by dynamic editor when "spare button" clicked:
 //-----------------------------------------------------------------------------
-void MainWindow::editNumericalMethods(int current, int id)
-{
-  QString title="";
+void MainWindow::editNumericalMethods(int current, int id) {
+  QString title = "";
 
-  for(int i = 0; i < equationEditor.size(); i++) {
+  for (int i = 0; i < equationEditor.size(); i++) {
     // ** 23/04/09 **
-    if(equationEditor[i]->ID == id) {
+    if (equationEditor[i]->ID == id) {
       title = equationEditor[i]->tabWidget->tabText(current);
       break;
     }
   }
 
-  if(title == "General") {
+  if (title == "General") {
     logMessage("No solver controls for 'General' equation options");
     return;
   }
 
-  if(current >= solverParameterEditor.size())
+  if (current >= solverParameterEditor.size())
     solverParameterEditor.resize(current + 1);
 
-  if(!solverParameterEditor[current])
+  if (!solverParameterEditor[current])
     solverParameterEditor[current] = new SolverParameterEditor;
 
   SolverParameterEditor *spe = solverParameterEditor[current];
@@ -2941,11 +3044,13 @@ void MainWindow::editNumericalMethods(int current, int id)
 
   spe->solverName = title;
 
-  if(spe->generalOptions == NULL) {
+  if (spe->generalOptions == NULL) {
     spe->generalOptions = new DynamicEditor(spe);
-    spe->generalOptions->setupTabs(elmerDefs, "Solver", current );
-    spe->ui.solverControlTabs->insertTab(0, spe->generalOptions->tabWidget->widget(current), "Solver specific options");
-    
+    spe->generalOptions->setupTabs(elmerDefs, "Solver", current);
+    spe->ui.solverControlTabs->insertTab(
+        0, spe->generalOptions->tabWidget->widget(current),
+        "Solver specific options");
+
 #if 0
     for( int i=0; i < spe->generalOptions->tabWidget->count(); i++ )
       {
@@ -2958,74 +3063,70 @@ void MainWindow::editNumericalMethods(int current, int id)
       }
 #endif
   }
-  
+
   spe->show();
   spe->raise();
 }
 
+void MainWindow::dynamicEditorNameChange(QString t) {
+  for (int i = 0; i < bodyPropertyEditor.size(); i++) {
+    if (!bodyPropertyEditor[i])
+      continue;
 
-void MainWindow::dynamicEditorNameChange(QString t)
-{
-  for( int i = 0; i < bodyPropertyEditor.size(); i++ )
-    {
-      if(!bodyPropertyEditor[i])
-	continue;
-      
-      if ( bodyPropertyEditor[i]->touched )
-	populateBodyComboBoxes( bodyPropertyEditor[i] );
-    }
-  
-   for( int i = 0; i < boundaryPropertyEditor.size(); i++ )
-     {
-       if(!boundaryPropertyEditor[i])
-	 continue;
-       
-       if ( boundaryPropertyEditor[i]->touched )
-	 populateBoundaryComboBoxes( boundaryPropertyEditor[i] );
-     }
+    if (bodyPropertyEditor[i]->touched)
+      populateBodyComboBoxes(bodyPropertyEditor[i]);
+  }
+
+  for (int i = 0; i < boundaryPropertyEditor.size(); i++) {
+    if (!boundaryPropertyEditor[i])
+      continue;
+
+    if (boundaryPropertyEditor[i]->touched)
+      populateBoundaryComboBoxes(boundaryPropertyEditor[i]);
+  }
 }
 
 // signal (int,int) emitted by equation editor when ready:
 //-----------------------------------------------------------------------------
-void MainWindow::pdeEditorFinishedSlot(int signal, int id)
-{  
+void MainWindow::pdeEditorFinishedSlot(int signal, int id) {
   DynamicEditor *pe = equationEditor[id];
-  
+
   const QString &equationName = pe->nameEdit->text().trimmed();
 
-  bool signalOK = signal==MAT_OK || signal==MAT_APPLY;
+  bool signalOK = signal == MAT_OK || signal == MAT_APPLY;
 
-  if((equationName.isEmpty()) && signalOK ) {
+  if ((equationName.isEmpty()) && signalOK) {
     logMessage("Refusing to add/update equation without name");
     return;
   }
-  
-  if( signalOK ) {
-    if(pe->menuAction != NULL) {
+
+  if (signalOK) {
+    if (pe->menuAction != NULL) {
       pe->menuAction->setText(equationName);
       logMessage("Equation updated");
-      if ( signal==MAT_OK ) pe->close();
+      if (signal == MAT_OK)
+        pe->close();
     }
-  } else if (signal==MAT_NEW) {
+  } else if (signal == MAT_NEW) {
     addEquationSlot();
 
-  } else if(signal == MAT_DELETE) {
+  } else if (signal == MAT_DELETE) {
 
-    for( int i = 0; i < bodyPropertyEditor.size(); i++ ) {
-       BodyPropertyEditor *body = bodyPropertyEditor[i];
+    for (int i = 0; i < bodyPropertyEditor.size(); i++) {
+      BodyPropertyEditor *body = bodyPropertyEditor[i];
 
-       if(!body)
-	 continue;
-       
-       if ( body->equation == pe ){
-         body->equation = NULL;
-         body->ui.equationCombo->setCurrentIndex(0);
-         body->touched = true;
-       }
+      if (!body)
+        continue;
+
+      if (body->equation == pe) {
+        body->equation = NULL;
+        body->ui.equationCombo->setCurrentIndex(0);
+        body->touched = true;
+      }
     }
 
     // Equation is not in menu:
-    if(pe->menuAction == NULL) {
+    if (pe->menuAction == NULL) {
       logMessage("Ready");
       pe->close();
       return;
@@ -3045,70 +3146,70 @@ void MainWindow::pdeEditorFinishedSlot(int signal, int id)
 
 // signal (QAction*) emitted by equationMenu when an item has been selected:
 //-----------------------------------------------------------------------------
-void MainWindow::equationSelectedSlot(QAction* act)
-{
+void MainWindow::equationSelectedSlot(QAction *act) {
   // Edit the selected material:
-  for(int i = 0; i < equationEditor.size(); i++) {
+  for (int i = 0; i < equationEditor.size(); i++) {
     DynamicEditor *pe = equationEditor[i];
-    if(pe->menuAction == act) {
+    if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
       pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
       pe->discardButton->setText("Remove");
       pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
-      createBodyCheckBoxes(BODY_EQUATION,pe);
-      pe->show(); pe->raise();
+      createBodyCheckBoxes(BODY_EQUATION, pe);
+      pe->show();
+      pe->raise();
     }
   }
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::equationBodyChanged(int state)
-{
+void MainWindow::equationBodyChanged(int state) {
   QWidget *a = (QWidget *)QObject::sender();
-  if(glWidget->getMesh()) {
-     BodyPropertyEditor *body = (BodyPropertyEditor *)a->property("body").toULongLong();
-     populateBodyComboBoxes(body);
-     if ( state ) {
-       DynamicEditor *mat  = (DynamicEditor *)a->property("editor").toULongLong();
-       QString mat_name = mat->nameEdit->text().trimmed();
-       int ind = body->ui.equationCombo->findText(mat_name);
-       body->touched = true;
-       body->equation = mat;
-       body->ui.equationCombo->setCurrentIndex(ind);
-     } else {
-       body->equation = NULL;
-       body->ui.equationCombo->setCurrentIndex(-1);
-     }
+  if (glWidget->getMesh()) {
+    BodyPropertyEditor *body =
+        (BodyPropertyEditor *)a->property("body").toULongLong();
+    populateBodyComboBoxes(body);
+    if (state) {
+      DynamicEditor *mat = (DynamicEditor *)a->property("editor").toULongLong();
+      QString mat_name = mat->nameEdit->text().trimmed();
+      int ind = body->ui.equationCombo->findText(mat_name);
+      body->touched = true;
+      body->equation = mat;
+      body->ui.equationCombo->setCurrentIndex(ind);
+    } else {
+      body->equation = NULL;
+      body->ui.equationCombo->setCurrentIndex(-1);
+    }
   }
 }
-
 
 //*****************************************************************************
 
 // Model -> Material -> Add...
 //-----------------------------------------------------------------------------
-void MainWindow::addMaterialSlot()
-{
+void MainWindow::addMaterialSlot() {
   DynamicEditor *pe = new DynamicEditor;
   materialEditor.append(pe);
   int current = materialEditor.size() - 1;
 
-  pe->setupTabs(elmerDefs, "Material", current );
+  pe->setupTabs(elmerDefs, "Material", current);
   pe->applyButton->setText("Add");
   pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
   pe->discardButton->setText("Cancel");
   pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
 
-  connect(pe, SIGNAL(dynamicEditorReady(int,int)), this, SLOT(matEditorFinishedSlot(int,int)));
+  connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
+          SLOT(matEditorFinishedSlot(int, int)));
 
   // Use "spareButton" to invoke material library:
   pe->spareButton->setText("Material library");
   pe->spareButton->show();
   pe->spareButton->setIcon(QIcon(":/icons/tools-wizard.png"));
-  connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int,int)), this, SLOT(showMaterialLibrary(int,int)));
+  connect(pe, SIGNAL(dynamicEditorSpareButtonClicked(int, int)), this,
+          SLOT(showMaterialLibrary(int, int)));
 
-  connect( pe->nameEdit, SIGNAL(textChanged(QString)), this,
-        SLOT(dynamicEditorNameChange(QString)) );
+  connect(pe->nameEdit, SIGNAL(textChanged(QString)), this,
+          SLOT(dynamicEditorNameChange(QString)));
 
   // Material is new - add to menu:
   const QString &materialName = pe->nameEdit->text().trimmed();
@@ -3116,14 +3217,12 @@ void MainWindow::addMaterialSlot()
   materialMenu->addAction(act);
   pe->menuAction = act;
 
-  createBodyCheckBoxes(BODY_MATERIAL,pe);
-  pe->show(); pe->raise();
-
+  createBodyCheckBoxes(BODY_MATERIAL, pe);
+  pe->show();
+  pe->raise();
 }
 
-
-void MainWindow::showMaterialLibrary(int tab, int ID)
-{
+void MainWindow::showMaterialLibrary(int tab, int ID) {
   materialLibrary->editor = materialEditor[ID];
   materialLibrary->elmerDefs = this->elmerDefs;
   materialLibrary->show();
@@ -3131,38 +3230,38 @@ void MainWindow::showMaterialLibrary(int tab, int ID)
 
 // signal (int,int) emitted by material editor when ready:
 //-----------------------------------------------------------------------------
-void MainWindow::matEditorFinishedSlot(int signal, int id)
-{
+void MainWindow::matEditorFinishedSlot(int signal, int id) {
   DynamicEditor *pe = materialEditor[id];
-  
+
   const QString &materialName = pe->nameEdit->text().trimmed();
 
-  bool signalOK = signal==MAT_OK || signal==MAT_APPLY;
-  if( materialName.isEmpty() && signalOK ) {
+  bool signalOK = signal == MAT_OK || signal == MAT_APPLY;
+  if (materialName.isEmpty() && signalOK) {
     logMessage("Refusing to add/update material with no name");
     return;
   }
-  
-  if( signalOK ) {
-    if(pe->menuAction != NULL) {
+
+  if (signalOK) {
+    if (pe->menuAction != NULL) {
       pe->menuAction->setText(materialName);
       logMessage("Material updated");
-      if ( signal == MAT_OK ) pe->close();
+      if (signal == MAT_OK)
+        pe->close();
       return;
     }
-  } else if ( signal==MAT_NEW ) {
-    
+  } else if (signal == MAT_NEW) {
+
     addMaterialSlot();
 
-  } else if(signal == MAT_DELETE) {
+  } else if (signal == MAT_DELETE) {
 
-    for( int i = 0; i < bodyPropertyEditor.size(); i++ ) {
+    for (int i = 0; i < bodyPropertyEditor.size(); i++) {
       BodyPropertyEditor *body = bodyPropertyEditor[i];
-      
-      if(!body)
-	continue;
 
-      if ( body->material == pe ){
+      if (!body)
+        continue;
+
+      if (body->material == pe) {
         body->material = NULL;
         body->ui.materialCombo->setCurrentIndex(0);
         body->touched = true;
@@ -3170,7 +3269,7 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
     }
 
     // Material is not in menu:
-    if(pe->menuAction == NULL) {
+    if (pe->menuAction == NULL) {
       logMessage("Ready");
       pe->close();
       return;
@@ -3193,66 +3292,63 @@ void MainWindow::matEditorFinishedSlot(int signal, int id)
 
 // signal (QAction*) emitted by materialMenu when an item has been selected:
 //-----------------------------------------------------------------------------
-void MainWindow::materialSelectedSlot(QAction* act)
-{
+void MainWindow::materialSelectedSlot(QAction *act) {
   // Edit the selected material:
-  for(int i = 0; i < materialEditor.size(); i++) {
+  for (int i = 0; i < materialEditor.size(); i++) {
     DynamicEditor *pe = materialEditor[i];
 
-    if(pe->menuAction == act) {
+    if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
       pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
       pe->discardButton->setText("Remove");
       pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
       createBodyCheckBoxes(BODY_MATERIAL, pe);
-      pe->show(); pe->raise();
+      pe->show();
+      pe->raise();
     }
   }
 }
 
-
-void MainWindow::materialBodyChanged(int state)
-{
+void MainWindow::materialBodyChanged(int state) {
   QWidget *a = (QWidget *)QObject::sender();
-  if(glWidget->hasMesh()) {
-     BodyPropertyEditor *body = (BodyPropertyEditor *)a->property("body").toULongLong();
-     populateBodyComboBoxes( body);
- 
-     if ( state > 0 ) {
-       DynamicEditor *mat = (DynamicEditor *)a->property("editor").toULongLong();
-       QString mat_name = mat->nameEdit->text().trimmed();
-       int ind = body->ui.materialCombo->findText(mat_name);
+  if (glWidget->hasMesh()) {
+    BodyPropertyEditor *body =
+        (BodyPropertyEditor *)a->property("body").toULongLong();
+    populateBodyComboBoxes(body);
 
-       body->touched = true;
-       body->material = mat;
-       body->ui.materialCombo->setCurrentIndex(ind);
-     } else {
-       body->material = NULL;
-       body->ui.materialCombo->setCurrentIndex(-1);
-     }
+    if (state > 0) {
+      DynamicEditor *mat = (DynamicEditor *)a->property("editor").toULongLong();
+      QString mat_name = mat->nameEdit->text().trimmed();
+      int ind = body->ui.materialCombo->findText(mat_name);
+
+      body->touched = true;
+      body->material = mat;
+      body->ui.materialCombo->setCurrentIndex(ind);
+    } else {
+      body->material = NULL;
+      body->ui.materialCombo->setCurrentIndex(-1);
+    }
   }
 }
-
 
 //*****************************************************************************
 
 // Model -> Body force -> Add...
 //-----------------------------------------------------------------------------
-void MainWindow::addBodyForceSlot()
-{
+void MainWindow::addBodyForceSlot() {
   DynamicEditor *pe = new DynamicEditor;
   bodyForceEditor.append(pe);
   int current = bodyForceEditor.size() - 1;
 
-  pe->setupTabs(elmerDefs, "BodyForce", current );
+  pe->setupTabs(elmerDefs, "BodyForce", current);
 
   pe->applyButton->setText("Add");
   pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
   pe->discardButton->setText("Cancel");
   pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
 
-  connect(pe, SIGNAL(dynamicEditorReady(int,int)),
-	  this, SLOT(bodyForceEditorFinishedSlot(int,int)));
+  connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
+          SLOT(bodyForceEditorFinishedSlot(int, int)));
 
   // Body force is new - add to menu:
   const QString &bodyForceName = pe->nameEdit->text().trimmed();
@@ -3260,58 +3356,59 @@ void MainWindow::addBodyForceSlot()
   bodyForceMenu->addAction(act);
   pe->menuAction = act;
 
-  connect( pe->nameEdit, SIGNAL(textChanged(QString)), this,
-        SLOT(dynamicEditorNameChange(QString)) );
+  connect(pe->nameEdit, SIGNAL(textChanged(QString)), this,
+          SLOT(dynamicEditorNameChange(QString)));
 
-  createBodyCheckBoxes( BODY_FORCE, pe );
-  pe->show(); pe->raise();
+  createBodyCheckBoxes(BODY_FORCE, pe);
+  pe->show();
+  pe->raise();
 }
 
 // signal (int,int) emitted by body force editor when ready:
 //-----------------------------------------------------------------------------
-void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
-{
+void MainWindow::bodyForceEditorFinishedSlot(int signal, int id) {
   DynamicEditor *pe = bodyForceEditor[id];
-  
+
   const QString &bodyForceName = pe->nameEdit->text().trimmed();
 
-  bool signalOK = signal==MAT_OK || signal==MAT_APPLY;
-  
-  if((bodyForceName.isEmpty()) && signalOK ) {
+  bool signalOK = signal == MAT_OK || signal == MAT_APPLY;
+
+  if ((bodyForceName.isEmpty()) && signalOK) {
     logMessage("Refusing to add/update body force with no name");
     return;
   }
-  
-  if( signalOK ) {
-    if(pe->menuAction != NULL) {
+
+  if (signalOK) {
+    if (pe->menuAction != NULL) {
       pe->menuAction->setText(bodyForceName);
       logMessage("Body force updated");
-      if ( signal==MAT_OK ) pe->close();
+      if (signal == MAT_OK)
+        pe->close();
     }
 
-  } else if (signal==MAT_NEW) {
-     addBodyForceSlot(); 
+  } else if (signal == MAT_NEW) {
+    addBodyForceSlot();
 
-  } else if(signal == MAT_DELETE) {
-    for( int i = 0; i < bodyPropertyEditor.size(); i++ ) {
+  } else if (signal == MAT_DELETE) {
+    for (int i = 0; i < bodyPropertyEditor.size(); i++) {
       BodyPropertyEditor *body = bodyPropertyEditor[i];
 
-      if(!body)
-	continue;
+      if (!body)
+        continue;
 
-      if ( body->force == pe ){
+      if (body->force == pe) {
         body->force = NULL;
         body->ui.bodyForceCombo->setCurrentIndex(0);
         body->touched = true;
       }
     }
 
-    if(pe->menuAction == NULL) {
+    if (pe->menuAction == NULL) {
       logMessage("Ready");
       pe->close();
       return;
     }
-    
+
     // Delete from menu:
     delete pe->menuAction;
     pe->menuAction = NULL;
@@ -3326,111 +3423,110 @@ void MainWindow::bodyForceEditorFinishedSlot(int signal, int id)
 
 // signal (QAction*) emitted by bodyForceMenu when an item has been selected:
 //-----------------------------------------------------------------------------
-void MainWindow::bodyForceSelectedSlot(QAction* act)
-{
+void MainWindow::bodyForceSelectedSlot(QAction *act) {
   // Edit the selected body force:
-  for(int i = 0; i < bodyForceEditor.size(); i++) {
+  for (int i = 0; i < bodyForceEditor.size(); i++) {
     DynamicEditor *pe = bodyForceEditor[i];
-    if(pe->menuAction == act) {
+    if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
       pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
       pe->discardButton->setText("Remove");
       pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
-      createBodyCheckBoxes( BODY_FORCE, pe );
-      pe->show(); pe->raise();
+      createBodyCheckBoxes(BODY_FORCE, pe);
+      pe->show();
+      pe->raise();
     }
   }
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::forceBodyChanged(int state)
-{
+void MainWindow::forceBodyChanged(int state) {
   QWidget *a = (QWidget *)QObject::sender();
-  if(glWidget->hasMesh()) {
-     BodyPropertyEditor *body = (BodyPropertyEditor *)a->property("body").toULongLong();
-     populateBodyComboBoxes(body);
- 
-     if ( state ) {
-       DynamicEditor *mat  = (DynamicEditor *)a->property("editor").toULongLong();
-       QString mat_name = mat->nameEdit->text().trimmed();
-       int ind = body->ui.bodyForceCombo->findText(mat_name);
+  if (glWidget->hasMesh()) {
+    BodyPropertyEditor *body =
+        (BodyPropertyEditor *)a->property("body").toULongLong();
+    populateBodyComboBoxes(body);
 
-       body->touched = true;
-       body->force = mat;
-       body->ui.bodyForceCombo->setCurrentIndex(ind);
-     } else {
-       body->force = NULL;
-       body->ui.bodyForceCombo->setCurrentIndex(-1);
-     }
+    if (state) {
+      DynamicEditor *mat = (DynamicEditor *)a->property("editor").toULongLong();
+      QString mat_name = mat->nameEdit->text().trimmed();
+      int ind = body->ui.bodyForceCombo->findText(mat_name);
+
+      body->touched = true;
+      body->force = mat;
+      body->ui.bodyForceCombo->setCurrentIndex(ind);
+    } else {
+      body->force = NULL;
+      body->ui.bodyForceCombo->setCurrentIndex(-1);
+    }
   }
 }
-
 
 //*****************************************************************************
 
 // Model -> Initial condition -> Add...
 //-----------------------------------------------------------------------------
-void MainWindow::addInitialConditionSlot()
-{
+void MainWindow::addInitialConditionSlot() {
   DynamicEditor *pe = new DynamicEditor;
   initialConditionEditor.append(pe);
   int current = initialConditionEditor.size() - 1;
-  
-  pe->setupTabs(elmerDefs, "InitialCondition", current );
+
+  pe->setupTabs(elmerDefs, "InitialCondition", current);
 
   pe->applyButton->setText("Add");
   pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
   pe->discardButton->setText("Cancel");
   pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
-  
-  connect(pe, SIGNAL(dynamicEditorReady(int,int)),
-	  this, SLOT(initialConditionEditorFinishedSlot(int,int)));
 
-    // Initial condition is new - add to menu:
+  connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
+          SLOT(initialConditionEditorFinishedSlot(int, int)));
+
+  // Initial condition is new - add to menu:
   const QString &initialConditionName = pe->nameEdit->text().trimmed();
   QAction *act = new QAction(initialConditionName, this);
   initialConditionMenu->addAction(act);
   pe->menuAction = act;
 
-  connect( pe->nameEdit, SIGNAL(textChanged(QString)), this,
-        SLOT(dynamicEditorNameChange(QString)) );
+  connect(pe->nameEdit, SIGNAL(textChanged(QString)), this,
+          SLOT(dynamicEditorNameChange(QString)));
 
-  createBodyCheckBoxes( BODY_INITIAL, pe );
-  pe->show(); pe->raise();
+  createBodyCheckBoxes(BODY_INITIAL, pe);
+  pe->show();
+  pe->raise();
 }
 
 // signal (int,int) emitted by initial condition editor when ready:
 //-----------------------------------------------------------------------------
-void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
-{
+void MainWindow::initialConditionEditorFinishedSlot(int signal, int id) {
   DynamicEditor *pe = initialConditionEditor[id];
-  
+
   const QString &initialConditionName = pe->nameEdit->text().trimmed();
-  
-  bool signalOK = signal==MAT_OK || signal==MAT_APPLY;
-  if((initialConditionName.isEmpty()) && signalOK ) {
+
+  bool signalOK = signal == MAT_OK || signal == MAT_APPLY;
+  if ((initialConditionName.isEmpty()) && signalOK) {
     logMessage("Refusing to add/update initial condition with no name");
     return;
   }
-  
-  if( signalOK ) {
-    if(pe->menuAction != NULL) {
+
+  if (signalOK) {
+    if (pe->menuAction != NULL) {
       pe->menuAction->setText(initialConditionName);
       logMessage("Initial condition updated");
-      if ( signal==MAT_OK ) pe->close();
+      if (signal == MAT_OK)
+        pe->close();
     }
-  } else if (signal==MAT_NEW ) {
-     addInitialConditionSlot();
+  } else if (signal == MAT_NEW) {
+    addInitialConditionSlot();
 
-  } else if(signal == MAT_DELETE) {
+  } else if (signal == MAT_DELETE) {
 
-    for( int i = 0; i < bodyPropertyEditor.size(); i++ ) {
+    for (int i = 0; i < bodyPropertyEditor.size(); i++) {
       BodyPropertyEditor *body = bodyPropertyEditor[i];
 
-      if(!body)
-	continue;
+      if (!body)
+        continue;
 
-      if ( body->initial == pe ){
+      if (body->initial == pe) {
         body->initial = NULL;
         body->ui.initialConditionCombo->setCurrentIndex(0);
         body->touched = true;
@@ -3438,17 +3534,17 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
     }
 
     // Initial condition is not in menu:
-    if(pe->menuAction == NULL) {
+    if (pe->menuAction == NULL) {
       logMessage("Ready");
       pe->close();
       return;
     }
-    
+
     // Delete from menu:
     delete pe->menuAction;
     pe->menuAction = NULL;
     pe->close();
-    
+
     pe->ID = -100;
     pe->nameEdit->setText("");
 
@@ -3458,114 +3554,114 @@ void MainWindow::initialConditionEditorFinishedSlot(int signal, int id)
 
 // signal (QAction*) emitted by initialConditionMenu when item selected:
 //-----------------------------------------------------------------------------
-void MainWindow::initialConditionSelectedSlot(QAction* act)
-{
+void MainWindow::initialConditionSelectedSlot(QAction *act) {
   // Edit the selected initial condition:
-  for(int i = 0; i < initialConditionEditor.size(); i++) {
+  for (int i = 0; i < initialConditionEditor.size(); i++) {
     DynamicEditor *pe = initialConditionEditor[i];
-    if(pe->menuAction == act) {
+    if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
       pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
       pe->discardButton->setText("Remove");
       pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
-      createBodyCheckBoxes( BODY_INITIAL, pe );
-      pe->show(); pe->raise();
+      createBodyCheckBoxes(BODY_INITIAL, pe);
+      pe->show();
+      pe->raise();
     }
   }
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::initialBodyChanged(int state)
-{
+void MainWindow::initialBodyChanged(int state) {
   QWidget *a = (QWidget *)QObject::sender();
-  if(glWidget->hasMesh()) {
-     BodyPropertyEditor *body = (BodyPropertyEditor *)a->property("body").toULongLong();
-     populateBodyComboBoxes( body);
- 
-     if ( state ) {
-       DynamicEditor *mat  = (DynamicEditor *)a->property("editor").toULongLong();
-       QString mat_name = mat->nameEdit->text().trimmed();
-       int ind = body->ui.initialConditionCombo->findText(mat_name);
-       body->touched = true;
-       body->initial = mat;
-       body->ui.initialConditionCombo->setCurrentIndex(ind);
-     } else {
-       body->initial = NULL;
-       body->ui.initialConditionCombo->setCurrentIndex(-1);
-     }
+  if (glWidget->hasMesh()) {
+    BodyPropertyEditor *body =
+        (BodyPropertyEditor *)a->property("body").toULongLong();
+    populateBodyComboBoxes(body);
+
+    if (state) {
+      DynamicEditor *mat = (DynamicEditor *)a->property("editor").toULongLong();
+      QString mat_name = mat->nameEdit->text().trimmed();
+      int ind = body->ui.initialConditionCombo->findText(mat_name);
+      body->touched = true;
+      body->initial = mat;
+      body->ui.initialConditionCombo->setCurrentIndex(ind);
+    } else {
+      body->initial = NULL;
+      body->ui.initialConditionCombo->setCurrentIndex(-1);
+    }
   }
 }
 
-
 //*****************************************************************************
 //-----------------------------------------------------------------------------
-void MainWindow::createBoundaryCheckBoxes(DynamicEditor *pe)
-{
-  if(!glWidget->hasMesh()) return;
+void MainWindow::createBoundaryCheckBoxes(DynamicEditor *pe) {
+  if (!glWidget->hasMesh())
+    return;
 
-  if ( pe->spareScroll->widget() ) {
+  if (pe->spareScroll->widget()) {
     delete pe->spareScroll->widget();
   }
 
   QGridLayout *slayout = new QGridLayout;
   QLabel *l = new QLabel(tr("Apply to boundaries:"));
-  int count=0,even=0;
+  int count = 0, even = 0;
 
-  slayout->addWidget(l,count,0);
+  slayout->addWidget(l, count, 0);
   count++;
 
   QMapIterator<int, int> itr(glWidget->boundaryMap);
   while (itr.hasNext()) {
     itr.next();
-    int n = itr.key(); 
-    if ( n >= 0 ) {
-       int m = itr.value();
+    int n = itr.key();
+    if (n >= 0) {
+      int m = itr.value();
 
-       if(m >= boundaryPropertyEditor.size())
-	 boundaryPropertyEditor.resize(m + 1);
+      if (m >= boundaryPropertyEditor.size())
+        boundaryPropertyEditor.resize(m + 1);
 
-       if(!boundaryPropertyEditor[m])
-	 boundaryPropertyEditor[m] = new BoundaryPropertyEditor;
+      if (!boundaryPropertyEditor[m])
+        boundaryPropertyEditor[m] = new BoundaryPropertyEditor;
 
-	BoundaryPropertyEditor *boundary = boundaryPropertyEditor[m];
-	
-        populateBoundaryComboBoxes(boundary);
+      BoundaryPropertyEditor *boundary = boundaryPropertyEditor[m];
 
-	// TODO: check this
-        QString title =  ""; // boundary->ui.nameEdit->text().trimmed();
-        QCheckBox *a;
+      populateBoundaryComboBoxes(boundary);
 
-        if ( title.isEmpty() )
-          a = new QCheckBox("Boundary " + QString::number(n));
-        else
-          a = new QCheckBox(title);
+      // TODO: check this
+      QString title = ""; // boundary->ui.nameEdit->text().trimmed();
+      QCheckBox *a;
 
-        if (glWidget->stateBcColors) {
-          int c[3];
-          QPixmap pm(16,16);
+      if (title.isEmpty())
+        a = new QCheckBox("Boundary " + QString::number(n));
+      else
+        a = new QCheckBox(title);
 
-          GLWidget::indexColors(c, n);
-          pm.fill(qRgb(c[0], c[1], c[2]));
-          a->setIcon(QIcon(pm));
-        }
+      if (glWidget->stateBcColors) {
+        int c[3];
+        QPixmap pm(16, 16);
 
-        DynamicEditor *p = NULL;
+        GLWidget::indexColors(c, n);
+        pm.fill(qRgb(c[0], c[1], c[2]));
+        a->setIcon(QIcon(pm));
+      }
 
-        p=boundary->condition;
-        connect(a, SIGNAL(stateChanged(int)), this, SLOT(bcBoundaryChanged(int)));
+      DynamicEditor *p = NULL;
 
-        a->setProperty( "boundary", (qulonglong)boundary );
-        a->setProperty( "condition", (qulonglong)pe );
+      p = boundary->condition;
+      connect(a, SIGNAL(stateChanged(int)), this, SLOT(bcBoundaryChanged(int)));
 
-        if ( p==pe )
-          a->setChecked(true);
-        else if ( p != NULL )
-          a->setEnabled(false);
+      a->setProperty("boundary", (qulonglong)boundary);
+      a->setProperty("condition", (qulonglong)pe);
 
-        slayout->addWidget(a,count,even);
-        even = 1-even;
-        if (!even) count++;
-     }
+      if (p == pe)
+        a->setChecked(true);
+      else if (p != NULL)
+        a->setEnabled(false);
+
+      slayout->addWidget(a, count, even);
+      even = 1 - even;
+      if (!even)
+        count++;
+    }
   }
 
   QGroupBox *box = new QGroupBox;
@@ -3576,27 +3672,25 @@ void MainWindow::createBoundaryCheckBoxes(DynamicEditor *pe)
   pe->spareScroll->show();
 }
 
-
 //-----------------------------------------------------------------------------
 
 // Model -> Boundary condition -> Add...
 //-----------------------------------------------------------------------------
-void MainWindow::addBoundaryConditionSlot()
-{
+void MainWindow::addBoundaryConditionSlot() {
   DynamicEditor *pe = new DynamicEditor;
   boundaryConditionEditor.append(pe);
   int current = boundaryConditionEditor.size() - 1;
 
-  pe->setupTabs(elmerDefs, "BoundaryCondition", current );
-  
+  pe->setupTabs(elmerDefs, "BoundaryCondition", current);
+
   pe->applyButton->setText("Add");
   pe->applyButton->setIcon(QIcon(":/icons/list-add.png"));
   pe->discardButton->setText("Cancel");
   pe->discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
   pe->show();
-  
-  connect(pe, SIGNAL(dynamicEditorReady(int,int)),
-	  this, SLOT(boundaryConditionEditorFinishedSlot(int,int)));
+
+  connect(pe, SIGNAL(dynamicEditorReady(int, int)), this,
+          SLOT(boundaryConditionEditorFinishedSlot(int, int)));
 
   // Boundary condition is new - add to menu:
   const QString &boundaryConditionName = pe->nameEdit->text().trimmed();
@@ -3604,60 +3698,60 @@ void MainWindow::addBoundaryConditionSlot()
   boundaryConditionMenu->addAction(act);
   pe->menuAction = act;
 
-  connect( pe->nameEdit, SIGNAL(textChanged(QString)), this,
-        SLOT(dynamicEditorNameChange(QString)) );
+  connect(pe->nameEdit, SIGNAL(textChanged(QString)), this,
+          SLOT(dynamicEditorNameChange(QString)));
 
   createBoundaryCheckBoxes(pe);
 }
 
 // signal (int,int) emitted by boundary condition editor when ready:
 //-----------------------------------------------------------------------------
-void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
-{
+void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id) {
   DynamicEditor *pe = boundaryConditionEditor[id];
-  
-  const QString &boundaryConditionName = pe->nameEdit->text().trimmed();
-  
-  bool signalOK = signal==MAT_OK || signal==MAT_APPLY;
 
-  if((boundaryConditionName.isEmpty()) && signalOK ) {
+  const QString &boundaryConditionName = pe->nameEdit->text().trimmed();
+
+  bool signalOK = signal == MAT_OK || signal == MAT_APPLY;
+
+  if ((boundaryConditionName.isEmpty()) && signalOK) {
     logMessage("Refusing to add/update boundary condition with no name");
     return;
   }
-  
-  if( signalOK ) {
-    if(pe->menuAction != NULL) {
+
+  if (signalOK) {
+    if (pe->menuAction != NULL) {
       pe->menuAction->setText(boundaryConditionName);
       logMessage("Boundary condition updated");
-      if ( signal==MAT_OK ) pe->close();
+      if (signal == MAT_OK)
+        pe->close();
     }
-  } else if ( signal==MAT_NEW ) {
+  } else if (signal == MAT_NEW) {
     addBoundaryConditionSlot();
 
-  } else if(signal == MAT_DELETE) {
+  } else if (signal == MAT_DELETE) {
 
     pe->nameEdit->setText(QString());
 
-    for( int i=0; i < boundaryPropertyEditor.size(); i++ ) {
+    for (int i = 0; i < boundaryPropertyEditor.size(); i++) {
       BoundaryPropertyEditor *bndry = boundaryPropertyEditor[i];
-      
-      if(!bndry)
-	continue;
 
-       if ( bndry->condition == pe ) {
-           bndry->condition=NULL;
-           bndry->ui.boundaryConditionCombo->setCurrentIndex(0);
-           bndry->touched = true;
-       }
+      if (!bndry)
+        continue;
+
+      if (bndry->condition == pe) {
+        bndry->condition = NULL;
+        bndry->ui.boundaryConditionCombo->setCurrentIndex(0);
+        bndry->touched = true;
+      }
     }
 
     // Boundary condition is not in menu:
-    if(pe->menuAction == NULL) {
+    if (pe->menuAction == NULL) {
       logMessage("Ready");
       pe->close();
       return;
     }
-    
+
     // Delete from menu:
     delete pe->menuAction;
     pe->menuAction = NULL;
@@ -3672,51 +3766,49 @@ void MainWindow::boundaryConditionEditorFinishedSlot(int signal, int id)
 
 // signal (QAction*) emitted by boundaryConditionMenu when item selected:
 //-----------------------------------------------------------------------------
-void MainWindow::boundaryConditionSelectedSlot(QAction* act)
-{
+void MainWindow::boundaryConditionSelectedSlot(QAction *act) {
   // Edit the selected boundary condition:
-  for(int i = 0; i < boundaryConditionEditor.size(); i++) {
+  for (int i = 0; i < boundaryConditionEditor.size(); i++) {
     DynamicEditor *pe = boundaryConditionEditor[i];
-    if(pe->menuAction == act) {
+    if (pe->menuAction == act) {
       pe->applyButton->setText("Update");
       pe->applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
       pe->discardButton->setText("Remove");
       pe->discardButton->setIcon(QIcon(":/icons/list-remove.png"));
       createBoundaryCheckBoxes(pe);
-      pe->show(); pe->raise();
+      pe->show();
+      pe->raise();
     }
   }
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::bcBoundaryChanged(int state)
-{
+void MainWindow::bcBoundaryChanged(int state) {
   QWidget *a = (QWidget *)QObject::sender();
-  if(glWidget->hasMesh()) {
-     BoundaryPropertyEditor *boundary = 
-           (BoundaryPropertyEditor *)a->property("boundary").toULongLong();
-     populateBoundaryComboBoxes(boundary);
- 
-     if ( state ) {
-       DynamicEditor *mat  = (DynamicEditor *)a->property("condition").toULongLong();
-       QString mat_name = mat->nameEdit->text().trimmed();
-       int ind = boundary->ui.boundaryConditionCombo->findText(mat_name);
-       boundary->touched = true;
-       boundary->condition = mat;
-       boundary->ui.boundaryConditionCombo->setCurrentIndex(ind);
-     } else {
-       boundary->condition = NULL;
-       boundary->ui.boundaryConditionCombo->setCurrentIndex(-1);
-     }
+  if (glWidget->hasMesh()) {
+    BoundaryPropertyEditor *boundary =
+        (BoundaryPropertyEditor *)a->property("boundary").toULongLong();
+    populateBoundaryComboBoxes(boundary);
+
+    if (state) {
+      DynamicEditor *mat =
+          (DynamicEditor *)a->property("condition").toULongLong();
+      QString mat_name = mat->nameEdit->text().trimmed();
+      int ind = boundary->ui.boundaryConditionCombo->findText(mat_name);
+      boundary->touched = true;
+      boundary->condition = mat;
+      boundary->ui.boundaryConditionCombo->setCurrentIndex(ind);
+    } else {
+      boundary->condition = NULL;
+      boundary->ui.boundaryConditionCombo->setCurrentIndex(-1);
+    }
   }
 }
 
-
 // Model -> Set body properties
 //-----------------------------------------------------------------------------
-void MainWindow::bodyEditSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::bodyEditSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to open body editor - no mesh");
     bodyEditActive = false;
     synchronizeMenuToState();
@@ -3726,22 +3818,19 @@ void MainWindow::bodyEditSlot()
   bodyEditActive = !bodyEditActive;
   glWidget->bodyEditActive = bodyEditActive;
 
-  if(bodyEditActive)
+  if (bodyEditActive)
     bcEditActive = false;
 
   synchronizeMenuToState();
 
-  if(bodyEditActive)
+  if (bodyEditActive)
     logMessage("Double click a boundary to edit body properties");
 }
 
-
-
 // Model -> Set boundary conditions
 //-----------------------------------------------------------------------------
-void MainWindow::bcEditSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::bcEditSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to open BC editor - no mesh");
     bcEditActive = false;
     synchronizeMenuToState();
@@ -3750,31 +3839,28 @@ void MainWindow::bcEditSlot()
 
   bcEditActive = !bcEditActive;
 
-  if(bcEditActive)
+  if (bcEditActive)
     bodyEditActive = false;
 
   synchronizeMenuToState();
 
-  if(bcEditActive)
+  if (bcEditActive)
     logMessage("Double click a boundary to edit BCs");
 }
 
-
-
 // Model -> Summary...
 //-----------------------------------------------------------------------------
-void MainWindow::modelSummarySlot()
-{
+void MainWindow::modelSummarySlot() {
   mesh_t *mesh = glWidget->getMesh();
   QTextEdit *te = summaryEditor->ui.summaryEdit;
   te->clear();
   summaryEditor->show();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     te->append("No mesh");
     return;
   }
-  
+
   te->append("FINITE ELEMENT MESH");
   te->append("Mesh dimension: " + QString::number(mesh->getCdim()));
   te->append("Leading element dimension: " + QString::number(mesh->getDim()));
@@ -3785,43 +3871,47 @@ void MainWindow::modelSummarySlot()
   te->append("Point elements: " + QString::number(mesh->getPoints()));
   te->append("");
 
-  // This is almost duplicate info with the above, they might be fused in some way...
+  // This is almost duplicate info with the above, they might be fused in some
+  // way...
   te->append("ELEMENT TYPES");
   int *elementtypes = new int[828];
-  for(int i=0;i<=827;i++)
+  for (int i = 0; i <= 827; i++)
     elementtypes[i] = 0;
-  for(int i = 0; i < mesh->getElements(); i++)
+  for (int i = 0; i < mesh->getElements(); i++)
     elementtypes[mesh->getElement(i)->getCode()] += 1;
-  for(int i = 0; i < mesh->getSurfaces(); i++)
+  for (int i = 0; i < mesh->getSurfaces(); i++)
     elementtypes[mesh->getSurface(i)->getCode()] += 1;
-  for(int i = 0; i < mesh->getEdges(); i++)
+  for (int i = 0; i < mesh->getEdges(); i++)
     elementtypes[mesh->getEdge(i)->getCode()] += 1;
-  for(int i = 0; i < mesh->getPoints(); i++)
+  for (int i = 0; i < mesh->getPoints(); i++)
     elementtypes[mesh->getPoint(i)->getCode()] += 1;
-  for(int i=827;i>0;i--)
-    if(elementtypes[i])  te->append(QString::number(i) + ": " + QString::number(elementtypes[i]));
+  for (int i = 827; i > 0; i--)
+    if (elementtypes[i])
+      te->append(QString::number(i) + ": " + QString::number(elementtypes[i]));
   te->append("");
-  delete [] elementtypes;
-
+  delete[] elementtypes;
 
   te->append("BOUNDING BOX");
-  QString coordnames="XYZ";
-  for(int j=0;j<3;j++) {
+  QString coordnames = "XYZ";
+  for (int j = 0; j < 3; j++) {
     double mincoord, maxcoord, coord;
     mincoord = maxcoord = mesh->getNode(0)->getX(j);
-    for(int i = 0; i < mesh->getNodes(); i++) {
+    for (int i = 0; i < mesh->getNodes(); i++) {
       coord = mesh->getNode(i)->getX(j);
-      if(mincoord > coord) mincoord = coord;
-      if(maxcoord < coord) maxcoord = coord;
+      if (mincoord > coord)
+        mincoord = coord;
+      if (maxcoord < coord)
+        maxcoord = coord;
     }
-    te->append(coordnames[j]+"-coordinate: [ " + QString::number(mincoord) + " ,  " + QString::number(maxcoord)+" ]");
+    te->append(coordnames[j] + "-coordinate: [ " + QString::number(mincoord) +
+               " ,  " + QString::number(maxcoord) + " ]");
   }
   te->append("");
 
   // Check equations:
   int count = 0;
-  for(int i = 0; i < equationEditor.size(); i++) {
-    if(equationEditor[i]->menuAction != NULL)
+  for (int i = 0; i < equationEditor.size(); i++) {
+    if (equationEditor[i]->menuAction != NULL)
       count++;
   }
   te->append("GENERAL");
@@ -3829,27 +3919,28 @@ void MainWindow::modelSummarySlot()
 
   // Check materials:
   count = 0;
-  for(int i = 0; i < materialEditor.size(); i++) {
-    if(materialEditor[i]->menuAction != NULL)
+  for (int i = 0; i < materialEditor.size(); i++) {
+    if (materialEditor[i]->menuAction != NULL)
       count++;
   }
   te->append("Materials: " + QString::number(count));
 
   // Check boundary conditions:
   count = 0;
-  for(int i = 0; i < boundaryConditionEditor.size(); i++) {
-    if( boundaryConditionEditor[i]->touched) count++;
+  for (int i = 0; i < boundaryConditionEditor.size(); i++) {
+    if (boundaryConditionEditor[i]->touched)
+      count++;
   }
   te->append("Boundary conditions: " + QString::number(count));
 
   // Check body properties:
   count = 0;
-  for(int i = 0; i < bodyPropertyEditor.size(); i++) {
+  for (int i = 0; i < bodyPropertyEditor.size(); i++) {
 
-    if(!bodyPropertyEditor[i])
+    if (!bodyPropertyEditor[i])
       continue;
 
-    if(bodyPropertyEditor[i]->touched)
+    if (bodyPropertyEditor[i]->touched)
       count++;
   }
 
@@ -3860,34 +3951,34 @@ void MainWindow::modelSummarySlot()
   //---------------------
   int undetermined = 0;
   int *tmp = new int[mesh->getElements()];
-  for(int i = 0; i < mesh->getElements(); i++)
+  for (int i = 0; i < mesh->getElements(); i++)
     tmp[i] = 0;
 
-  for(int i = 0; i < mesh->getElements(); i++) {
+  for (int i = 0; i < mesh->getElements(); i++) {
     element_t *e = mesh->getElement(i);
-    if(e->getNature() == PDE_BULK) {
-      if(e->getIndex() >= 0)
-	tmp[e->getIndex()]++;
+    if (e->getNature() == PDE_BULK) {
+      if (e->getIndex() >= 0)
+        tmp[e->getIndex()]++;
       else
-	undetermined++;
+        undetermined++;
     }
   }
 
   te->append("VOLUME BODIES");
   count = 0;
-  for(int i = 0; i < mesh->getElements(); i++) {
-    if( tmp[i]>0 ) {
+  for (int i = 0; i < mesh->getElements(); i++) {
+    if (tmp[i] > 0) {
       count++;
-      QString qs = "Body " + QString::number(i) + ": " 
-	+ QString::number(tmp[i]) + " volume elements";
+      QString qs = "Body " + QString::number(i) + ": " +
+                   QString::number(tmp[i]) + " volume elements";
 
       element_t *e = mesh->getElement(i);
       int j = e->getIndex();
 
-      if((j >= 0) && (j < bodyPropertyEditor.size()))
-	if(bodyPropertyEditor[j] && bodyPropertyEditor[j]->touched) 
-	  qs.append(" (Body property set)");
-      
+      if ((j >= 0) && (j < bodyPropertyEditor.size()))
+        if (bodyPropertyEditor[j] && bodyPropertyEditor[j]->touched)
+          qs.append(" (Body property set)");
+
       te->append(qs);
     }
   }
@@ -3895,39 +3986,39 @@ void MainWindow::modelSummarySlot()
   te->append("Total: " + QString::number(count) + " volume bodies");
   te->append("");
 
-  delete [] tmp;
+  delete[] tmp;
 
   // Count surface bodies:
   //---------------------
   undetermined = 0;
   tmp = new int[mesh->getSurfaces()];
-  for(int i = 0; i < mesh->getSurfaces(); i++)
+  for (int i = 0; i < mesh->getSurfaces(); i++)
     tmp[i] = 0;
 
-  for(int i = 0; i < mesh->getSurfaces(); i++) {
+  for (int i = 0; i < mesh->getSurfaces(); i++) {
     surface_t *s = mesh->getSurface(i);
-    if(s->getNature() == PDE_BULK) {
-      if(s->getIndex() >= 0)
-	tmp[s->getIndex()]++;
+    if (s->getNature() == PDE_BULK) {
+      if (s->getIndex() >= 0)
+        tmp[s->getIndex()]++;
       else
-	undetermined++;
+        undetermined++;
     }
   }
 
   te->append("SURFACE BODIES");
   count = 0;
-  for(int i = 0; i < mesh->getSurfaces(); i++) {
-    if( tmp[i]>0 ) {
+  for (int i = 0; i < mesh->getSurfaces(); i++) {
+    if (tmp[i] > 0) {
       count++;
-      QString qs = "Body " + QString::number(i) + ": " 
-	+ QString::number(tmp[i]) + " surface elements";
+      QString qs = "Body " + QString::number(i) + ": " +
+                   QString::number(tmp[i]) + " surface elements";
 
       surface_t *s = mesh->getSurface(i);
       int j = s->getIndex();
 
-      if((j >= 0) && (j < bodyPropertyEditor.size()))
-	if(bodyPropertyEditor[j] && bodyPropertyEditor[j]->touched)
-	  qs.append(" (Body property set)");
+      if ((j >= 0) && (j < bodyPropertyEditor.size()))
+        if (bodyPropertyEditor[j] && bodyPropertyEditor[j]->touched)
+          qs.append(" (Body property set)");
 
       te->append(qs);
     }
@@ -3936,39 +4027,39 @@ void MainWindow::modelSummarySlot()
   te->append("Total: " + QString::number(count) + " surface bodies");
   te->append("");
 
-  delete [] tmp;
+  delete[] tmp;
 
   // Count edge bodies:
   //---------------------
   undetermined = 0;
   tmp = new int[mesh->getEdges()];
-  for(int i = 0; i < mesh->getEdges(); i++)
+  for (int i = 0; i < mesh->getEdges(); i++)
     tmp[i] = 0;
 
-  for(int i = 0; i < mesh->getEdges(); i++) {
+  for (int i = 0; i < mesh->getEdges(); i++) {
     edge_t *e = mesh->getEdge(i);
-    if(e->getNature() == PDE_BULK) {
-      if(e->getIndex() >= 0)
-	tmp[e->getIndex()]++;
+    if (e->getNature() == PDE_BULK) {
+      if (e->getIndex() >= 0)
+        tmp[e->getIndex()]++;
       else
-	undetermined++;
+        undetermined++;
     }
   }
 
   te->append("EDGE BODIES");
   count = 0;
-  for(int i = 0; i < mesh->getEdges(); i++) {
-    if( tmp[i]>0 ) {
+  for (int i = 0; i < mesh->getEdges(); i++) {
+    if (tmp[i] > 0) {
       count++;
-      QString qs = "Body " + QString::number(i) + ": " 
-	+ QString::number(tmp[i]) + " edge elements";
+      QString qs = "Body " + QString::number(i) + ": " +
+                   QString::number(tmp[i]) + " edge elements";
 
       edge_t *e = mesh->getEdge(i);
       int j = e->getIndex();
 
-      if((j >= 0) && (j < bodyPropertyEditor.size()))
-	if(bodyPropertyEditor[j] && bodyPropertyEditor[j]->touched) 
-	  qs.append(" (Body property set)");
+      if ((j >= 0) && (j < bodyPropertyEditor.size()))
+        if (bodyPropertyEditor[j] && bodyPropertyEditor[j]->touched)
+          qs.append(" (Body property set)");
 
       te->append(qs);
     }
@@ -3977,38 +4068,38 @@ void MainWindow::modelSummarySlot()
   te->append("Total: " + QString::number(count) + " edge bodies");
   te->append("");
 
-  delete [] tmp;
+  delete[] tmp;
 
   // Count surface boundaries:
   //--------------------------
   undetermined = 0;
   tmp = new int[mesh->getSurfaces()];
-  for(int i = 0; i < mesh->getSurfaces(); i++)
+  for (int i = 0; i < mesh->getSurfaces(); i++)
     tmp[i] = 0;
-  
-  for(int i = 0; i < mesh->getSurfaces(); i++) {
+
+  for (int i = 0; i < mesh->getSurfaces(); i++) {
     surface_t *s = mesh->getSurface(i);
-    if(s->getNature() == PDE_BOUNDARY) {
-      if(s->getIndex() >= 0)
-	tmp[s->getIndex()]++;
+    if (s->getNature() == PDE_BOUNDARY) {
+      if (s->getIndex() >= 0)
+        tmp[s->getIndex()]++;
       else
-	undetermined++;
+        undetermined++;
     }
   }
 
   te->append("SURFACE BOUNDARIES");
   count = 0;
-  for(int i = 0; i < mesh->getSurfaces(); i++) {
-    if( tmp[i]>0 ) {
+  for (int i = 0; i < mesh->getSurfaces(); i++) {
+    if (tmp[i] > 0) {
       count++;
-      QString qs = "Boundary " + QString::number(i) + ": " 
-	+ QString::number(tmp[i]) + " surface elements";
-      
-      surface_t *s = mesh->getSurface(i);     
+      QString qs = "Boundary " + QString::number(i) + ": " +
+                   QString::number(tmp[i]) + " surface elements";
+
+      surface_t *s = mesh->getSurface(i);
       int j = s->getIndex();
-      if((j >= 0) &&(j < boundaryConditionEditor.size()))
-	if(boundaryConditionEditor[j]->touched)
-	  qs.append(" (BC set)");
+      if ((j >= 0) && (j < boundaryConditionEditor.size()))
+        if (boundaryConditionEditor[j]->touched)
+          qs.append(" (BC set)");
 
       te->append(qs);
     }
@@ -4017,38 +4108,38 @@ void MainWindow::modelSummarySlot()
   te->append("Total: " + QString::number(count) + " surface boundaries");
   te->append("");
 
-  delete [] tmp;
+  delete[] tmp;
 
   // Count edge boundaries:
   //--------------------------
   undetermined = 0;
   tmp = new int[mesh->getEdges()];
-  for(int i = 0; i < mesh->getEdges(); i++)
+  for (int i = 0; i < mesh->getEdges(); i++)
     tmp[i] = 0;
-  
-  for(int i = 0; i < mesh->getEdges(); i++) {
+
+  for (int i = 0; i < mesh->getEdges(); i++) {
     edge_t *e = mesh->getEdge(i);
-    if(e->getNature() == PDE_BOUNDARY) {
-      if(e->getIndex() >= 0)
-	tmp[e->getIndex()]++;
+    if (e->getNature() == PDE_BOUNDARY) {
+      if (e->getIndex() >= 0)
+        tmp[e->getIndex()]++;
       else
-	undetermined++;
+        undetermined++;
     }
   }
 
   te->append("EDGE BOUNDARIES");
   count = 0;
-  for(int i = 0; i < mesh->getEdges(); i++) {
-    if( tmp[i]>0 ) {
+  for (int i = 0; i < mesh->getEdges(); i++) {
+    if (tmp[i] > 0) {
       count++;
-      QString qs = "Boundary " + QString::number(i) + ": " 
-	+ QString::number(tmp[i]) + " edge elements";
+      QString qs = "Boundary " + QString::number(i) + ": " +
+                   QString::number(tmp[i]) + " edge elements";
 
       edge_t *e = mesh->getEdge(i);
       int j = e->getIndex();
-      if((j >= 0) && (j < boundaryConditionEditor.size()))
-	if( boundaryConditionEditor[j]->touched)
-	  qs.append(" (BC set)");
+      if ((j >= 0) && (j < boundaryConditionEditor.size()))
+        if (boundaryConditionEditor[j]->touched)
+          qs.append(" (BC set)");
 
       te->append(qs);
     }
@@ -4057,97 +4148,94 @@ void MainWindow::modelSummarySlot()
   te->append("Total: " + QString::number(count) + " edge boundaries");
   te->append("");
 
-  delete [] tmp;
+  delete[] tmp;
 }
-
 
 // Model -> Clear
 //-----------------------------------------------------------------------------
-void MainWindow::modelClearSlot()
-{
+void MainWindow::modelClearSlot() {
   // clear equations:
-  for(int i = 0; i < equationEditor.size(); i++) {
+  for (int i = 0; i < equationEditor.size(); i++) {
     DynamicEditor *pe = equationEditor[i];
-    if(pe->menuAction != NULL)
+    if (pe->menuAction != NULL)
       delete pe->menuAction;
   }
 
-  for(int i = 0; i < equationEditor.size(); i++)
+  for (int i = 0; i < equationEditor.size(); i++)
     delete equationEditor[i];
 
   equationEditor.clear();
 
   // clear materials:
-  for(int i = 0; i < materialEditor.size(); i++) {
+  for (int i = 0; i < materialEditor.size(); i++) {
     DynamicEditor *de = materialEditor[i];
-    if(de->menuAction != NULL)
+    if (de->menuAction != NULL)
       delete de->menuAction;
   }
 
-  for(int i = 0; i < materialEditor.size(); i++)
+  for (int i = 0; i < materialEditor.size(); i++)
     delete materialEditor[i];
 
   materialEditor.clear();
 
   // clear body forces:
-  for(int i = 0; i < bodyForceEditor.size(); i++) {
+  for (int i = 0; i < bodyForceEditor.size(); i++) {
     DynamicEditor *de = bodyForceEditor[i];
-    if(de->menuAction != NULL)
+    if (de->menuAction != NULL)
       delete de->menuAction;
   }
-  
-  for(int i = 0; i < bodyForceEditor.size(); i++)
+
+  for (int i = 0; i < bodyForceEditor.size(); i++)
     delete bodyForceEditor[i];
 
   bodyForceEditor.clear();
 
   // clear initial conditions:
-  for(int i = 0; i < initialConditionEditor.size(); i++) {
+  for (int i = 0; i < initialConditionEditor.size(); i++) {
     DynamicEditor *de = initialConditionEditor[i];
-    if(de->menuAction != NULL)
+    if (de->menuAction != NULL)
       delete de->menuAction;
   }
-  
-  for(int i = 0; i < initialConditionEditor.size(); i++)
+
+  for (int i = 0; i < initialConditionEditor.size(); i++)
     delete initialConditionEditor[i];
 
   initialConditionEditor.clear();
 
   // clear boundary conditions:
-  for(int i = 0; i < boundaryConditionEditor.size(); i++) {
+  for (int i = 0; i < boundaryConditionEditor.size(); i++) {
     DynamicEditor *de = boundaryConditionEditor[i];
-    if(de->menuAction != NULL)
+    if (de->menuAction != NULL)
       delete de->menuAction;
   }
 
-  for(int i = 0; i < boundaryConditionEditor.size(); i++)
-    if(boundaryConditionEditor[i])
+  for (int i = 0; i < boundaryConditionEditor.size(); i++)
+    if (boundaryConditionEditor[i])
       delete boundaryConditionEditor[i];
 
   boundaryConditionEditor.clear();
 
   // clear boundary setting:
-  for(int i = 0; i < boundaryPropertyEditor.size(); i++)
-    if(boundaryPropertyEditor[i])
+  for (int i = 0; i < boundaryPropertyEditor.size(); i++)
+    if (boundaryPropertyEditor[i])
       delete boundaryPropertyEditor[i];
-  
+
   boundaryPropertyEditor.clear();
 
   // clear body settings:
-  for(int i = 0; i < bodyPropertyEditor.size(); i++)
-    if(bodyPropertyEditor[i])
+  for (int i = 0; i < bodyPropertyEditor.size(); i++)
+    if (bodyPropertyEditor[i])
       delete bodyPropertyEditor[i];
-  
-  bodyPropertyEditor.clear();
- 
-  // clear solver specific settings:
-  for(int i = 0; i < solverParameterEditor.size(); i++)
-    if(solverParameterEditor[i])
-      delete solverParameterEditor[i];
-      
-  solverParameterEditor.clear(); 
-}
 
+  bodyPropertyEditor.clear();
+
+  // clear solver specific settings:
+  for (int i = 0; i < solverParameterEditor.size(); i++)
+    if (solverParameterEditor[i])
+      delete solverParameterEditor[i];
+
+  solverParameterEditor.clear();
+}
 
 //*****************************************************************************
 //
@@ -4155,12 +4243,10 @@ void MainWindow::modelClearSlot()
 //
 //*****************************************************************************
 
-
 // View -> Full screen
 //-----------------------------------------------------------------------------
-void MainWindow::viewFullScreenSlot()
-{
-  if(!isFullScreen()) {
+void MainWindow::viewFullScreenSlot() {
+  if (!isFullScreen()) {
     cout << "Switching to full screen mode" << endl;
     menuBar()->hide();
     statusBar()->hide();
@@ -4177,14 +4263,13 @@ void MainWindow::viewFullScreenSlot()
 
 // Return to normal mode (GLWidget emits (void) when esc is pressed)...
 //-----------------------------------------------------------------------------
-void MainWindow::viewNormalModeSlot()
-{
-  if(isFullScreen()) {
+void MainWindow::viewNormalModeSlot() {
+  if (isFullScreen()) {
     cout << "Switching to normal window mode" << endl;
     this->showNormal();
     menuBar()->show();
     statusBar()->show();
-    if(!egIni->isSet("hidetoolbars")) {
+    if (!egIni->isSet("hidetoolbars")) {
       fileToolBar->show();
       editToolBar->show();
       meshToolBar->show();
@@ -4195,290 +4280,276 @@ void MainWindow::viewNormalModeSlot()
   statusBar()->showMessage(tr("Ready"));
 }
 
-
 // Context menu event (usually mouse has been right clicked)...
 //-----------------------------------------------------------------------------
-void MainWindow::contextMenuEvent(QContextMenuEvent *event)
-{
+void MainWindow::contextMenuEvent(QContextMenuEvent *event) {
   // if(isFullScreen())
   contextMenu->popup(event->globalPos());
 }
 
-
 // View -> Surface mesh
 //-----------------------------------------------------------------------------
-void MainWindow::hidesurfacemeshSlot()
-{
+void MainWindow::hidesurfacemeshSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There is no surface mesh to hide/show");
     return;
   }
-  
+
   glWidget->stateDrawSurfaceMesh = !glWidget->stateDrawSurfaceMesh;
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->getType() == SURFACEMESHLIST) 
-    {
+    if (l->getType() == SURFACEMESHLIST) {
       l->setVisible(glWidget->stateDrawSurfaceMesh);
 
       // do not set visible if the parent surface list is hidden
       int p = l->getParent();
-      if(p >= 0) {
-	list_t *lp = glWidget->getList(p);
-	if(!lp->isVisible())
-	  l->setVisible(false);
+      if (p >= 0) {
+        list_t *lp = glWidget->getList(p);
+        if (!lp->isVisible())
+          l->setVisible(false);
       }
     }
   }
 
-  synchronizeMenuToState();  
+  synchronizeMenuToState();
 
-  if(!glWidget->stateDrawSurfaceMesh) 
+  if (!glWidget->stateDrawSurfaceMesh)
     logMessage("Surface mesh hidden");
   else
     logMessage("Surface mesh shown");
 }
 
-
 // View -> Volume mesh
 //-----------------------------------------------------------------------------
-void MainWindow::hidevolumemeshSlot()
-{
+void MainWindow::hidevolumemeshSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There is no volume mesh to hide/show");
     return;
   }
 
   glWidget->stateDrawVolumeMesh = !glWidget->stateDrawVolumeMesh;
 
-
-  for(int i = 0; i < lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->getType() == VOLUMEMESHLIST)
+    if (l->getType() == VOLUMEMESHLIST)
       l->setVisible(glWidget->stateDrawVolumeMesh);
   }
 
+  synchronizeMenuToState();
 
-  synchronizeMenuToState();  
-
-  if(!glWidget->stateDrawVolumeMesh) 
+  if (!glWidget->stateDrawVolumeMesh)
     logMessage("Volume mesh hidden");
   else
     logMessage("Volume mesh shown");
-
 }
-
 
 // View -> Sharp edges
 //-----------------------------------------------------------------------------
-void MainWindow::hidesharpedgesSlot()
-{
+void MainWindow::hidesharpedgesSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There are no sharp edges to hide/show");
     return;
   }
 
   glWidget->stateDrawSharpEdges = !glWidget->stateDrawSharpEdges;
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->getType() == SHARPEDGELIST)  
+    if (l->getType() == SHARPEDGELIST)
       l->setVisible(glWidget->stateDrawSharpEdges);
   }
 
-  
   synchronizeMenuToState();
 
-  if ( !glWidget->stateDrawSharpEdges ) 
+  if (!glWidget->stateDrawSharpEdges)
     logMessage("Sharp edges hidden");
-  else 
+  else
     logMessage("Sharp edges shown");
 }
 
-
 // View -> Coordinates
 //-----------------------------------------------------------------------------
-void MainWindow::viewCoordinatesSlot()
-{
-  if( glWidget->toggleCoordinates() )
+void MainWindow::viewCoordinatesSlot() {
+  if (glWidget->toggleCoordinates())
     logMessage("Coordinates shown");
-  else 
+  else
     logMessage("Coordinates hidden");
 
   synchronizeMenuToState();
 }
 
-
-
 // View -> Select defined edges
 //-----------------------------------------------------------------------------
-void MainWindow::selectDefinedEdgesSlot()
-{
+void MainWindow::selectDefinedEdgesSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There are no entities from which to select");
     return;
   }
 
   // At the moment only edges are included in search:
   int nmax = 0;
-  for( int i=0; i<glWidget->boundaryMap.count(); i++ ) {
+  for (int i = 0; i < glWidget->boundaryMap.count(); i++) {
     int n = glWidget->boundaryMap.key(i);
-    if(n > nmax) nmax = n;
+    if (n > nmax)
+      nmax = n;
   }
 
-  bool *activeboundary = new bool[nmax+1];
-  for (int i=0;i<=nmax;i++)
+  bool *activeboundary = new bool[nmax + 1];
+  for (int i = 0; i <= nmax; i++)
     activeboundary[i] = false;
 
-  for( int i=0; i<glWidget->boundaryMap.count(); i++ ) {
-    int n=glWidget->boundaryMap.key(i);
-    if ( n >= 0 ) {
+  for (int i = 0; i < glWidget->boundaryMap.count(); i++) {
+    int n = glWidget->boundaryMap.key(i);
+    if (n >= 0) {
       int m = glWidget->boundaryMap.value(n);
-      
-      if(m >= boundaryPropertyEditor.size())
-	boundaryPropertyEditor.resize(m + 1);
 
-      if(!boundaryPropertyEditor[m])
-	boundaryPropertyEditor[m] = new BoundaryPropertyEditor;
+      if (m >= boundaryPropertyEditor.size())
+        boundaryPropertyEditor.resize(m + 1);
+
+      if (!boundaryPropertyEditor[m])
+        boundaryPropertyEditor[m] = new BoundaryPropertyEditor;
 
       BoundaryPropertyEditor *boundary = boundaryPropertyEditor[m];
       activeboundary[n] = boundary->condition;
     }
   }
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->getType() == EDGELIST) {
+    if (l->getType() == EDGELIST) {
       int j = l->getIndex();
-      if( j < 0 ) continue;
-      
+      if (j < 0)
+        continue;
+
       // *** TODO ***
       //
       // This is wrong: Comparing body indices with boundary indices
-      if( activeboundary[j] ) l->setSelected(true);
+      if (activeboundary[j])
+        l->setSelected(true);
     }
   }
 
-  for( int i = 0; i < mesh->getEdges(); i++ ) {
+  for (int i = 0; i < mesh->getEdges(); i++) {
     edge_t *edge = mesh->getEdge(i);
-    if( edge->getNature() == PDE_BOUNDARY ) { 
+    if (edge->getNature() == PDE_BOUNDARY) {
       int j = edge->getIndex();
-      if( j < 0) continue;
-      if( activeboundary[j] ) edge->setSelected(true);
+      if (j < 0)
+        continue;
+      if (activeboundary[j])
+        edge->setSelected(true);
     }
   }
-  delete [] activeboundary;
+  delete[] activeboundary;
 
   glWidget->rebuildEdgeLists();
   glWidget->updateGL();
-  
+
   logMessage("Defined edges selected");
 }
 
-
 // View -> Select defined surfaces
 //-----------------------------------------------------------------------------
-void MainWindow::selectDefinedSurfacesSlot()
-{
+void MainWindow::selectDefinedSurfacesSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There are no entities from which to select");
     return;
   }
 
   // At the moment only surfaces are included in search:
   int nmax = 0;
-  for( int i=0; i<glWidget->bodyMap.count(); i++ ) {
+  for (int i = 0; i < glWidget->bodyMap.count(); i++) {
     int n = glWidget->bodyMap.key(i);
-    if(n > nmax) nmax = n;
+    if (n > nmax)
+      nmax = n;
   }
 
-  bool *activebody = new bool[nmax+1];
-  for (int i=0;i<=nmax;i++)
+  bool *activebody = new bool[nmax + 1];
+  for (int i = 0; i <= nmax; i++)
     activebody[i] = false;
 
-  for( int i=0; i<glWidget->bodyMap.count(); i++ ) {
-    int n=glWidget->bodyMap.key(i);
-    if ( n >= 0 ) {
+  for (int i = 0; i < glWidget->bodyMap.count(); i++) {
+    int n = glWidget->bodyMap.key(i);
+    if (n >= 0) {
       int m = glWidget->bodyMap.value(n);
 
       BodyPropertyEditor *body = bodyPropertyEditor[m];
 
-      if(!body) {
-	cout << "MainWindow: Body index out of bounds" << endl;
-	continue;
+      if (!body) {
+        cout << "MainWindow: Body index out of bounds" << endl;
+        continue;
       }
 
       activebody[n] = body->material && body->equation;
     }
   }
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->getType() == SURFACELIST) {
+    if (l->getType() == SURFACELIST) {
       int j = l->getIndex();
-      if( j < 0 ) continue;
+      if (j < 0)
+        continue;
 
       // *** TODO ***
       //
       // This is wrong: Comparing body indices with boundary indexes
-      if( activebody[j] ) l->setSelected(true);
+      if (activebody[j])
+        l->setSelected(true);
     }
   }
 
-  for( int i = 0; i < mesh->getSurfaces(); i++ ) {
+  for (int i = 0; i < mesh->getSurfaces(); i++) {
     surface_t *surface = mesh->getSurface(i);
-    if( surface->getNature() == PDE_BULK ) { 
+    if (surface->getNature() == PDE_BULK) {
       int j = surface->getIndex();
-      if( j < 0) continue;
-      if( activebody[j] ) surface->setSelected(true);
+      if (j < 0)
+        continue;
+      if (activebody[j])
+        surface->setSelected(true);
     }
   }
-  delete [] activebody;
+  delete[] activebody;
 
   glWidget->rebuildSurfaceLists();
   glWidget->updateGL();
-  
+
   logMessage("Defined surfaces selected");
 }
 
-
-
 // View -> Select all surfaces
 //-----------------------------------------------------------------------------
-void MainWindow::selectAllSurfacesSlot()
-{
+void MainWindow::selectAllSurfacesSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There are no surfaces to select");
     return;
   }
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->getType() == SURFACELIST)
-    {
+    if (l->getType() == SURFACELIST) {
       l->setSelected(true);
-      for( int j=0; j < mesh->getSurfaces(); j++ ) {
+      for (int j = 0; j < mesh->getSurfaces(); j++) {
         surface_t *surf = mesh->getSurface(j);
-        if( l->getIndex() == surf->getIndex() )
+        if (l->getIndex() == surf->getIndex())
           surf->setSelected(l->isSelected());
       }
     }
@@ -4486,112 +4557,103 @@ void MainWindow::selectAllSurfacesSlot()
 
   glWidget->rebuildSurfaceLists();
   glWidget->updateGL();
-  
+
   logMessage("All surfaces selected");
 }
 
-
-
 // View -> Select all edges
 //-----------------------------------------------------------------------------
-void MainWindow::selectAllEdgesSlot()
-{
+void MainWindow::selectAllEdgesSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There are no edges to select");
     return;
   }
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
 
-    if(l->getType() == EDGELIST)
+    if (l->getType() == EDGELIST)
       l->setSelected(true);
 
-    for(int j = 0; j < mesh->getEdges(); j++ ) {
+    for (int j = 0; j < mesh->getEdges(); j++) {
       edge_t *edge = mesh->getEdge(j);
-      if( l->getIndex() == edge->getIndex() )
-	edge->setSelected(l->isSelected());
+      if (l->getIndex() == edge->getIndex())
+        edge->setSelected(l->isSelected());
     }
   }
 
   glWidget->rebuildEdgeLists();
   glWidget->updateGL();
-  
+
   logMessage("All edges selected");
 }
 
-
-
 // View -> Hide/Show selected
 //-----------------------------------------------------------------------------
-void MainWindow::hideselectedSlot()
-{
+void MainWindow::hideselectedSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("There is nothing to hide/show");
     return;
   }
 
   bool something_selected = false;
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
     something_selected |= l->isSelected();
   }
 
-  if(!something_selected) {
+  if (!something_selected) {
     logMessage("Nothing selected");
     return;
   }
 
   bool vis = false;
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected()) {
+    if (l->isSelected()) {
       l->setVisible(!l->isVisible());
-      if(l->isVisible())
-	vis = true;
+      if (l->isVisible())
+        vis = true;
 
       // hide the child surface edge list if parent is hidden
       int c = l->getChild();
-      if(c >= 0) {
-	list_t *lc = glWidget->getList(c);
-	lc->setVisible(l->isVisible());
-	if(!glWidget->stateDrawSurfaceMesh)
-	  lc->setVisible(false);
+      if (c >= 0) {
+        list_t *lc = glWidget->getList(c);
+        lc->setVisible(l->isVisible());
+        if (!glWidget->stateDrawSurfaceMesh)
+          lc->setVisible(false);
       }
     }
   }
   glWidget->updateGL();
-  
-  if( !vis )
+
+  if (!vis)
     logMessage("Selected objects hidden");
-  else 
+  else
     logMessage("Selected objects shown");
 }
 
-
-
 // View -> Show all
 //-----------------------------------------------------------------------------
-void MainWindow::showallSlot()
-{
+void MainWindow::showallSlot() {
   int lists = glWidget->getLists();
-  
+
   glWidget->stateDrawSurfaceMesh = true;
-  #ifndef WIN32
+#ifndef WIN32
   glWidget->stateDrawSharpEdges = true;
-  #endif   
+#endif
   glWidget->stateDrawSurfaceElements = true;
   glWidget->stateDrawEdgeElements = true;
 
   synchronizeMenuToState();
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
     l->setVisible(true);
   }
@@ -4599,44 +4661,41 @@ void MainWindow::showallSlot()
   logMessage("All objects visible");
 }
 
-
-
 // View -> Reset model view
 //-----------------------------------------------------------------------------
-void MainWindow::resetSlot()
-{
+void MainWindow::resetSlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
-  
-  if(mesh == NULL) {
+
+  if (mesh == NULL) {
     logMessage("There is nothing to reset");
     return;
   }
 
   glWidget->stateFlatShade = true;
   glWidget->stateDrawSurfaceMesh = true;
-  #ifndef WIN32
+#ifndef WIN32
   glWidget->stateDrawSharpEdges = true;
-  #endif
+#endif
   glWidget->stateDrawSurfaceElements = true;
   glWidget->stateDrawEdgeElements = true;
   glWidget->stateDrawSurfaceNumbers = false;
   glWidget->stateDrawEdgeNumbers = false;
   glWidget->stateDrawNodeNumbers = false;
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
     l->setVisible(true);
     l->setSelected(false);
 
-    for( int j=0; j < mesh->getSurfaces(); j++ ) {
+    for (int j = 0; j < mesh->getSurfaces(); j++) {
       surface_t *surf = mesh->getSurface(j);
-      if( l->getIndex() == surf->getIndex() )
+      if (l->getIndex() == surf->getIndex())
         surf->setSelected(l->isSelected());
     }
-    for( int j=0; j<mesh->getEdges(); j++ ) {
+    for (int j = 0; j < mesh->getEdges(); j++) {
       edge_t *edge = mesh->getEdge(j);
-      if( l->getIndex() == edge->getIndex() )
+      if (l->getIndex() == edge->getIndex())
         edge->setSelected(l->isSelected());
     }
   }
@@ -4652,13 +4711,10 @@ void MainWindow::resetSlot()
   logMessage("Reset model view");
 }
 
-
-
 // View -> Shade model -> Flat
 //-----------------------------------------------------------------------------
-void MainWindow::flatShadeSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::flatShadeSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to change shade model when mesh is empty");
     return;
   }
@@ -4671,12 +4727,10 @@ void MainWindow::flatShadeSlot()
   logMessage("Shade model: flat");
 }
 
-
 // View -> Shade model -> Smooth
 //-----------------------------------------------------------------------------
-void MainWindow::smoothShadeSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::smoothShadeSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to change shade model when mesh is empty");
     return;
   }
@@ -4691,9 +4745,8 @@ void MainWindow::smoothShadeSlot()
 
 // View -> Projection -> Orthogonal
 //-----------------------------------------------------------------------------
-void MainWindow::orthoSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::orthoSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to change projection when mesh is empty");
     return;
   }
@@ -4708,9 +4761,8 @@ void MainWindow::orthoSlot()
 
 // View -> Projection -> Perspective
 //-----------------------------------------------------------------------------
-void MainWindow::perspectiveSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::perspectiveSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to change projection when mesh is empty");
     return;
   }
@@ -4723,12 +4775,10 @@ void MainWindow::perspectiveSlot()
   logMessage("Projection: perspective");
 }
 
-
 // View -> Show numbering -> Surface numbering
 //-----------------------------------------------------------------------------
-void MainWindow::showSurfaceNumbersSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::showSurfaceNumbersSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to show surface element numbering when mesh is empty");
     return;
   }
@@ -4736,17 +4786,16 @@ void MainWindow::showSurfaceNumbersSlot()
   glWidget->updateGL();
   synchronizeMenuToState();
 
-  if(glWidget->stateDrawSurfaceNumbers) 
+  if (glWidget->stateDrawSurfaceNumbers)
     logMessage("Surface element numbering turned on");
   else
-    logMessage("Surface element numbering turned off");   
+    logMessage("Surface element numbering turned off");
 }
 
 // View -> Show numbering -> Edge numbering
 //-----------------------------------------------------------------------------
-void MainWindow::showEdgeNumbersSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::showEdgeNumbersSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to show edge element numbering when mesh is empty");
     return;
   }
@@ -4754,54 +4803,50 @@ void MainWindow::showEdgeNumbersSlot()
   glWidget->updateGL();
   synchronizeMenuToState();
 
-  if(glWidget->stateDrawEdgeNumbers) 
+  if (glWidget->stateDrawEdgeNumbers)
     logMessage("Edge element numbering turned on");
   else
-    logMessage("Edge element numbering turned off");   
+    logMessage("Edge element numbering turned off");
 }
 
 // View -> Numbering -> Node numbers
 //-----------------------------------------------------------------------------
-void MainWindow::showNodeNumbersSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::showNodeNumbersSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to show node numbering when mesh is empty");
     return;
   }
   glWidget->stateDrawNodeNumbers = !glWidget->stateDrawNodeNumbers;
   glWidget->updateGL();
   synchronizeMenuToState();
-  
-  if(glWidget->stateDrawNodeNumbers) 
+
+  if (glWidget->stateDrawNodeNumbers)
     logMessage("Node numbering turned on");
-  else 
-    logMessage("Node numbering turned off");    
+  else
+    logMessage("Node numbering turned off");
 }
 
 // View -> Numbering -> Boundary index
 //-----------------------------------------------------------------------------
-void MainWindow::showBoundaryIndexSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::showBoundaryIndexSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to show boundary indices when mesh is empty");
     return;
   }
   glWidget->stateDrawBoundaryIndex = !glWidget->stateDrawBoundaryIndex;
   glWidget->updateGL();
   synchronizeMenuToState();
-  
-  if(glWidget->stateDrawBoundaryIndex) 
-    logMessage("Boundary indices visible");
-  else 
-    logMessage("Boundary indices hidden");    
-}
 
+  if (glWidget->stateDrawBoundaryIndex)
+    logMessage("Boundary indices visible");
+  else
+    logMessage("Boundary indices hidden");
+}
 
 // View -> Numbering -> Body index
 //-----------------------------------------------------------------------------
-void MainWindow::showBodyIndexSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::showBodyIndexSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Refusing to show body indices when mesh is empty");
     return;
   }
@@ -4809,19 +4854,17 @@ void MainWindow::showBodyIndexSlot()
   glWidget->stateDrawBodyIndex = !glWidget->stateDrawBodyIndex;
   glWidget->updateGL();
   synchronizeMenuToState();
-  
-  if(glWidget->stateDrawBodyIndex) 
-    logMessage("Body indices visible");
-  else 
-    logMessage("Body indices hidden");    
-}
 
+  if (glWidget->stateDrawBodyIndex)
+    logMessage("Body indices visible");
+  else
+    logMessage("Body indices hidden");
+}
 
 // View -> Colors -> GL controls
 //-----------------------------------------------------------------------------
-void MainWindow::glControlSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::glControlSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("No mesh - unable to set GL parameters when the mesh is empty");
     return;
   }
@@ -4830,19 +4873,17 @@ void MainWindow::glControlSlot()
   glControl->show();
 }
 
-
 // View -> Colors -> Boundaries
 //-----------------------------------------------------------------------------
-void MainWindow::colorizeBoundarySlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::colorizeBoundarySlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("No mesh - unable to colorize boundaries");
     return;
   }
 
   glWidget->stateBcColors = !glWidget->stateBcColors;
 
-  if(glWidget->stateBcColors)
+  if (glWidget->stateBcColors)
     glWidget->stateBodyColors = false;
 
   glWidget->rebuildLists();
@@ -4851,39 +4892,33 @@ void MainWindow::colorizeBoundarySlot()
 
 // View -> Colors -> Bodies
 //-----------------------------------------------------------------------------
-void MainWindow::colorizeBodySlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::colorizeBodySlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("No mesh - unable to colorize bodies");
     return;
   }
 
   glWidget->stateBodyColors = !glWidget->stateBodyColors;
 
-  if(glWidget->stateBodyColors)
+  if (glWidget->stateBodyColors)
     glWidget->stateBcColors = false;
 
   glWidget->rebuildLists();
   synchronizeMenuToState();
 }
 
-
 // View -> Colors -> Background
 //-----------------------------------------------------------------------------
-void MainWindow::backgroundColorSlot()
-{
+void MainWindow::backgroundColorSlot() {
   QColor newColor = QColorDialog::getColor(glWidget->backgroundColor, this);
   glWidget->qglClearColor(newColor);
   glWidget->backgroundColor = newColor;
 }
 
-
-
 // View -> Colors -> Surface
 //-----------------------------------------------------------------------------
-void MainWindow::surfaceColorSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::surfaceColorSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to change surface color when the mesh is empty");
     return;
   }
@@ -4893,12 +4928,10 @@ void MainWindow::surfaceColorSlot()
   glWidget->rebuildLists();
 }
 
-
 // View -> Colors -> Edge
 //-----------------------------------------------------------------------------
-void MainWindow::edgeColorSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::edgeColorSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to change edge color when the mesh is empty");
     return;
   }
@@ -4908,12 +4941,10 @@ void MainWindow::edgeColorSlot()
   glWidget->rebuildLists();
 }
 
-
 // View -> Colors -> Surface mesh
 //-----------------------------------------------------------------------------
-void MainWindow::surfaceMeshColorSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::surfaceMeshColorSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to change surface mesh color when the mesh is empty");
     return;
   }
@@ -4923,12 +4954,10 @@ void MainWindow::surfaceMeshColorSlot()
   glWidget->rebuildLists();
 }
 
-
 // View -> Colors -> Sharp edges
 //-----------------------------------------------------------------------------
-void MainWindow::sharpEdgeColorSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::sharpEdgeColorSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to change sharp edge colors when the mesh is empty");
     return;
   }
@@ -4938,46 +4967,39 @@ void MainWindow::sharpEdgeColorSlot()
   glWidget->rebuildLists();
 }
 
-
 // View -> Cad model...
 //-----------------------------------------------------------------------------
-void MainWindow::showCadModelSlot()
-{
+void MainWindow::showCadModelSlot() {
 #ifdef EG_OCC
   cadView->show();
 #endif
 }
 
-
 // View -> Twod model...
 //-----------------------------------------------------------------------------
-void MainWindow::showTwodViewSlot()
-{
-  twodView->show();
-}
-
+void MainWindow::showTwodViewSlot() { twodView->show(); }
 
 // View -> VTK post...
 //-----------------------------------------------------------------------------
-void MainWindow::showVtkPostSlot()
-{
+void MainWindow::showVtkPostSlot() {
 #ifdef EG_VTK
-  QString postFileName = saveDirName + "/"  + generalSetup->ui.postFileEdit->text().trimmed();
+  QString postFileName =
+      saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
 
   // Parallel solution:
   //====================
   Ui::parallelDialog ui = parallel->ui;
   bool parallelActive = ui.parallelActiveCheckBox->isChecked();
 
-  if(parallelActive) {
-    
+  if (parallelActive) {
+
     // unify mesh:
-    if(meshUnifier->state() == QProcess::Running) {
+    if (meshUnifier->state() == QProcess::Running) {
       logMessage("Mesh unifier is already running - aborted");
       return;
     }
-    
-    if(saveDirName.isEmpty()) {
+
+    if (saveDirName.isEmpty()) {
       logMessage("saveDirName is empty - unable to locate result files");
       return;
     }
@@ -4995,18 +5017,19 @@ void MainWindow::showVtkPostSlot()
     QString unifyingCommand = ui.mergeLineEdit->text().trimmed();
     unifyingCommand.replace(QString("%ep"), postNameSplitted.at(0).trimmed());
     unifyingCommand.replace(QString("%n"), QString::number(nofProcessors));
-    
+
     logMessage("Executing: " + unifyingCommand);
-    
+
     meshUnifier->start(unifyingCommand);
-    
-    if(!meshUnifier->waitForStarted()) {
-      solverLogWindow->getTextEdit()->append("Unable to start ElmerGrid for mesh unification - aborted");
+
+    if (!meshUnifier->waitForStarted()) {
+      solverLogWindow->getTextEdit()->append(
+          "Unable to start ElmerGrid for mesh unification - aborted");
       logMessage("Unable to start ElmerGrid for mesh unification - aborted");
       vtkPostMeshUnifierRunning = false;
       return;
     }
-    
+
     // The rest is done in meshUnifierFinishedSlot:
     vtkPostMeshUnifierRunning = true;
     return;
@@ -5021,11 +5044,9 @@ void MainWindow::showVtkPostSlot()
 #endif
 }
 
-
 // View -> Paraview
 //-----------------------------------------------------------------------------
-void MainWindow::showParaViewSlot()
-{
+void MainWindow::showParaViewSlot() {
 #ifdef EG_PARAVIEW
   QString postFileName = generalSetup->ui.postFileEdit->text().trimmed();
   QFileInfo pvFile(postFileName);
@@ -5038,38 +5059,36 @@ void MainWindow::showParaViewSlot()
   QString secondName;
 
   currentDir = QDir(saveDirName);
-  
+
   // Paraview can deal with case..vtu kind of arguments which however,
   // fail if there is only one file. Use dirty check to see that there
-  // are more than one file. 
-  if(!parallelActive) {  
-    secondName = pvFile.baseName()+"_t0002.vtu";
+  // are more than one file.
+  if (!parallelActive) {
+    secondName = pvFile.baseName() + "_t0002.vtu";
+  } else {
+    secondName = pvFile.baseName() + "_t0002.pvtu";
   }
-  else {
-    secondName = pvFile.baseName()+"_t0002.pvtu";
-  }
-    
+
   QFile secondFile(secondName);
-  
+
   // Serial solution
   //================
-  if(!parallelActive) {
-    if(secondFile.exists()) 
+  if (!parallelActive) {
+    if (secondFile.exists())
       args << pvFile.baseName() + "..vtu";
     else
       args << pvFile.baseName() + "_t0001.vtu";
   }
 
-      
   // Parallel solution
   //==================
-  if(parallelActive) {
-    if(secondFile.exists())     
+  if (parallelActive) {
+    if (secondFile.exists())
       args << pvFile.baseName() + "..pvtu";
     else
-      args << pvFile.baseName() + "_t0001.pvtu";   
+      args << pvFile.baseName() + "_t0001.pvtu";
   }
-  
+
   // Launch ParaView
   //================
 
@@ -5077,29 +5096,26 @@ void MainWindow::showParaViewSlot()
 #endif
 }
 
-
 //*****************************************************************************
 //
 //                                Mesh MENU
 //
 //*****************************************************************************
 
-
 // Mesh -> Control...
 //-----------------------------------------------------------------------------
-void MainWindow::meshcontrolSlot()
-{
+void MainWindow::meshcontrolSlot() {
   meshControl->tetlibPresent = this->tetlibPresent;
   meshControl->nglibPresent = this->nglibPresent;
 
-  if(!tetlibPresent) {
+  if (!tetlibPresent) {
     meshControl->tetlibPresent = false;
     meshControl->ui.nglibRadioButton->setChecked(true);
     meshControl->ui.tetlibRadioButton->setEnabled(false);
     meshControl->ui.tetlibStringEdit->setEnabled(false);
   }
 
-  if(!nglibPresent) {
+  if (!nglibPresent) {
     meshControl->nglibPresent = false;
     meshControl->ui.tetlibRadioButton->setChecked(true);
     meshControl->ui.nglibRadioButton->setEnabled(false);
@@ -5108,46 +5124,47 @@ void MainWindow::meshcontrolSlot()
     meshControl->ui.nglibBgmeshEdit->setEnabled(false);
   }
 
-  if(!tetlibPresent && !nglibPresent) 
-    meshControl->ui.elmerGridRadioButton->setChecked(true);  
+  if (!tetlibPresent && !nglibPresent)
+    meshControl->ui.elmerGridRadioButton->setChecked(true);
 
   meshControl->show();
 }
 
-
-
 // Mesh -> Remesh
 //-----------------------------------------------------------------------------
-void MainWindow::remeshSlot()
-{
-  if(activeGenerator == GEN_UNKNOWN) {
-    logMessage("Unable to (re)mesh: no input data or mesh generator (please make sure that your input file suffix is in lower case)");
+void MainWindow::remeshSlot() {
+  if (activeGenerator == GEN_UNKNOWN) {
+    logMessage("Unable to (re)mesh: no input data or mesh generator (please "
+               "make sure that your input file suffix is in lower case)");
     return;
-  }  
-    
+  }
+
   // ***** ELMERGRID *****
 
-  if(activeGenerator == GEN_ELMERGRID) {
+  if (activeGenerator == GEN_ELMERGRID) {
 
     meshutils->clearMesh(glWidget->getMesh());
     glWidget->newMesh();
     mesh_t *mesh = glWidget->getMesh();
-    
+
 #if WITH_QT5
-    elmergridAPI->createElmerMeshStructure(mesh, meshControl->elmerGridControlString.toLatin1());
+    elmergridAPI->createElmerMeshStructure(
+        mesh, meshControl->elmerGridControlString.toLatin1());
 #else
-    elmergridAPI->createElmerMeshStructure(mesh, meshControl->elmerGridControlString.toAscii());
+    elmergridAPI->createElmerMeshStructure(
+        mesh, meshControl->elmerGridControlString.toAscii());
 #endif
-    
-    if(mesh->getSurfaces() == 0) meshutils->findSurfaceElements(mesh);
-    
-    for(int i = 0; i < mesh->getSurfaces(); i++ ) {
+
+    if (mesh->getSurfaces() == 0)
+      meshutils->findSurfaceElements(mesh);
+
+    for (int i = 0; i < mesh->getSurfaces(); i++) {
       surface_t *surface = mesh->getSurface(i);
-      
+
       surface->setEdges((int)(surface->getCode() / 100));
       surface->newEdgeIndexes(surface->getEdges());
-      for(int j=0; j<surface->getEdges(); j++)
-	surface->setEdgeIndex(j, -1);
+      for (int j = 0; j < surface->getEdges(); j++)
+        surface->setEdgeIndex(j, -1);
     }
 
     meshutils->findSurfaceElementEdges(mesh);
@@ -5155,54 +5172,56 @@ void MainWindow::remeshSlot()
 
     glWidget->rebuildLists();
     applyOperations();
-    
+
     return;
   }
-  
+
   // ***** Threaded generators *****
 
-  if(!remeshAct->isEnabled()) {
+  if (!remeshAct->isEnabled()) {
     logMessage("Meshing thread is already running - aborting");
     return;
   }
 
-  if(activeGenerator == GEN_TETLIB) {
+  if (activeGenerator == GEN_TETLIB) {
 
-    if(!tetlibPresent) {
+    if (!tetlibPresent) {
       logMessage("tetlib functionality unavailable");
       return;
     }
-    
-    if(!tetlibInputOk) {
+
+    if (!tetlibInputOk) {
       logMessage("Remesh: error: no input data for tetlib");
       return;
     }
 
-    // Usually "J" should be included in the control string: 
+    // Usually "J" should be included in the control string:
     tetlibControlString = meshControl->tetlibControlString;
 
-  } else if(activeGenerator == GEN_NGLIB) {
+  } else if (activeGenerator == GEN_NGLIB) {
 
-    if(!nglibPresent) {
+    if (!nglibPresent) {
       logMessage("nglib functionality unavailable");
       return;
     }
 
-    if(!nglibInputOk) {
+    if (!nglibInputOk) {
       logMessage("Remesh: error: no input data for nglib");
       return;
     }
 
     // Init & set mesh params.:
-    //--------------------------    
+    //--------------------------
     cout << "Initializing nglib" << endl;
     nglib::Ng_Init();
 
     char backgroundmesh[1024];
 #if WITH_QT5
-    sprintf(backgroundmesh, "%s", meshControl->nglibBackgroundmesh.toLatin1().data());
+    sprintf(backgroundmesh, "%s",
+            meshControl->nglibBackgroundmesh.toLatin1().data());
 #else
-    sprintf(backgroundmesh, "%s", meshControl->nglibBackgroundmesh.toAscii().data());
+    sprintf(backgroundmesh, "%s",
+            meshControl->nglibBackgroundmesh.toAscii().data());
 #endif
 
     mp.maxh = meshControl->nglibMaxH.toDouble();
@@ -5210,7 +5229,7 @@ void MainWindow::remeshSlot()
     mp.secondorder = 0;
     mp.meshsize_filename = backgroundmesh;
 
-    if(ngDim == 3) {
+    if (ngDim == 3) {
 
       // STL (3D):
       //-----------
@@ -5219,120 +5238,121 @@ void MainWindow::remeshSlot()
       nggeom = nglib::Ng_STL_NewGeometry();
 
       ngmesh = nglib::Ng_NewMesh();
-      
-      if(!occInputOk) {
-	
-	// STL: regenerate structures for nglib:
-	//--------------------------------------
+
+      if (!occInputOk) {
+
+        // STL: regenerate structures for nglib:
+        //--------------------------------------
 #if WITH_QT5
-	nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), 0);
+        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), 0);
 #else
-	nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), 0);
+        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), 0);
 #endif
-	
-	if(!nggeom) {
-	  logMessage("Ng_STL_LoadGeometry failed");
-	  return;
-	}
-	
-	nglib::Ng_STL_InitSTLGeometry(nggeom);
 
-	nglib::Ng_STL_MakeEdges(nggeom, ngmesh, &mp);
-	
-	double maxMeshSize = mp.maxh;
+        if (!nggeom) {
+          logMessage("Ng_STL_LoadGeometry failed");
+          return;
+        }
 
-	if(maxMeshSize <= 0) maxMeshSize = 10000000;
+        nglib::Ng_STL_InitSTLGeometry(nggeom);
 
-	nglib::Ng_RestrictMeshSizeGlobal(ngmesh, maxMeshSize);      
-	
+        nglib::Ng_STL_MakeEdges(nggeom, ngmesh, &mp);
+
+        double maxMeshSize = mp.maxh;
+
+        if (maxMeshSize <= 0)
+          maxMeshSize = 10000000;
+
+        nglib::Ng_RestrictMeshSizeGlobal(ngmesh, maxMeshSize);
+
 #ifdef EG_OCC
       } else {
-	
-	// OCC: (re)generate STL for nglib:
-	//----------------------------------
-	cadView->setMesh(ngmesh);
-	cadView->setGeom(nggeom);
-	cadView->setMp(&mp);
-	cadView->generateSTL();
+
+        // OCC: (re)generate STL for nglib:
+        //----------------------------------
+        cadView->setMesh(ngmesh);
+        cadView->setGeom(nggeom);
+        cadView->setMp(&mp);
+        cadView->generateSTL();
 #endif
       }
-      
-    } else if(ngDim == 2) {
+
+    } else if (ngDim == 2) {
 
       // IN2D (2D):
       //------------
       cout << "Start 2D meshing..." << endl;
 
-      if(!occInputOk) {
-	
-	// Native 2D geometry input for Ng:
-	//----------------------------------
-	if(in2dFileName.isEmpty()) {
-	  logMessage("File name is empty - aborting");
-	  return;
-	}
-	
-	ngmesh = nglib::Ng_NewMesh();
-	
+      if (!occInputOk) {
+
+        // Native 2D geometry input for Ng:
+        //----------------------------------
+        if (in2dFileName.isEmpty()) {
+          logMessage("File name is empty - aborting");
+          return;
+        }
+
+        ngmesh = nglib::Ng_NewMesh();
+
 #if WITH_QT5
-	nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLatin1().data());
+        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLatin1().data());
 #else
-	nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toAscii().data());
+        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toAscii().data());
 #endif
-	
-	if(!nggeom2d) {
-	  logMessage("Ng_LoadGeometry_2D failed");
-	  return;
-	}
-	
-	nglibAPI->setNggeom2D(nggeom2d);
-	
-	double maxMeshSize = mp.maxh;
-	
-	if(maxMeshSize <= 0) maxMeshSize = 10000000;
-	
-	nglib::Ng_RestrictMeshSizeGlobal(ngmesh, maxMeshSize);
+
+        if (!nggeom2d) {
+          logMessage("Ng_LoadGeometry_2D failed");
+          return;
+        }
+
+        nglibAPI->setNggeom2D(nggeom2d);
+
+        double maxMeshSize = mp.maxh;
+
+        if (maxMeshSize <= 0)
+          maxMeshSize = 10000000;
+
+        nglib::Ng_RestrictMeshSizeGlobal(ngmesh, maxMeshSize);
 
 #ifdef EG_OCC
       } else {
 
-	// Model originates from a 2D cad file:
-	//--------------------------------------
-	cadView->generateIn2dFile();
+        // Model originates from a 2D cad file:
+        //--------------------------------------
+        cadView->generateIn2dFile();
 
-	ngmesh = nglib::Ng_NewMesh();
-	
-	nggeom2d = nglib::Ng_LoadGeometry_2D("iges2ng.in2d");
-	
-	if(!nggeom2d) {
-	  logMessage("Ng_LoadGeometry_2D failed");
-	  return;
-	}
-	
-	nglibAPI->setNggeom2D(nggeom2d);
-	
-	double maxMeshSize = mp.maxh;
-	
-	if(maxMeshSize <= 0) maxMeshSize = 10000000;
-	
-	nglib::Ng_RestrictMeshSizeGlobal(ngmesh, maxMeshSize);
+        ngmesh = nglib::Ng_NewMesh();
+
+        nggeom2d = nglib::Ng_LoadGeometry_2D("iges2ng.in2d");
+
+        if (!nggeom2d) {
+          logMessage("Ng_LoadGeometry_2D failed");
+          return;
+        }
+
+        nglibAPI->setNggeom2D(nggeom2d);
+
+        double maxMeshSize = mp.maxh;
+
+        if (maxMeshSize <= 0)
+          maxMeshSize = 10000000;
+
+        nglib::Ng_RestrictMeshSizeGlobal(ngmesh, maxMeshSize);
 #endif
       }
 
     } else {
-      
+
       // Unknown spatial dimension:
       //----------------------------
       cout << "Unknown spatial dimension" << endl;
       return;
-
     }
-    
+
   } else {
 
     logMessage("Remesh: unknown generator type");
     return;
-
   }
 
   // ***** Start meshing thread *****
@@ -5347,21 +5367,17 @@ void MainWindow::remeshSlot()
   remeshAct->setEnabled(false);
   stopMeshingAct->setEnabled(true);
 
-  if(activeGenerator == GEN_NGLIB) 
+  if (activeGenerator == GEN_NGLIB)
     stopMeshingAct->setEnabled(false);
 
-  meshingThread->generate(activeGenerator, tetlibControlString,
-			  tetlibAPI, ngmesh, nggeom, nggeom2d,
-			  ngDim, &mp);
+  meshingThread->generate(activeGenerator, tetlibControlString, tetlibAPI,
+                          ngmesh, nggeom, nggeom2d, ngDim, &mp);
 }
-
-
 
 // Mesh -> Kill generator
 //-----------------------------------------------------------------------------
-void MainWindow::stopMeshingSlot()
-{
-  if(remeshAct->isEnabled()) {
+void MainWindow::stopMeshingSlot() {
+  if (remeshAct->isEnabled()) {
     logMessage("Mesh generator is not running");
     return;
   }
@@ -5370,19 +5386,16 @@ void MainWindow::stopMeshingSlot()
   meshingThread->stopMeshing();
 }
 
-
-
 // Meshing has started (signaled by meshingThread):
 //-----------------------------------------------------------------------------
-void MainWindow::meshingStartedSlot()
-{
+void MainWindow::meshingStartedSlot() {
   logMessage("Mesh generator started");
 
   updateSysTrayIcon("Mesh generator started",
-		    "Use Mesh->Terminate to stop processing");
+                    "Use Mesh->Terminate to stop processing");
 
   statusBar()->showMessage(tr("Mesh generator started"));
-  
+
   progressBar->show();
   progressBar->setRange(0, 0);
 
@@ -5390,11 +5403,9 @@ void MainWindow::meshingStartedSlot()
   progressLabel->setText("Meshing");
 }
 
-
 // Meshing has been terminated (signaled by meshingThread):
 //-----------------------------------------------------------------------------
-void MainWindow::meshingTerminatedSlot()
-{
+void MainWindow::meshingTerminatedSlot() {
   logMessage("Mesh generator terminated");
 
   progressBar->hide();
@@ -5404,20 +5415,19 @@ void MainWindow::meshingTerminatedSlot()
 
   stopMeshingAct->setEnabled(true);
 
-  updateSysTrayIcon("Mesh generator terminated",
-		    "Use Mesh->Remesh to restart");
+  updateSysTrayIcon("Mesh generator terminated", "Use Mesh->Remesh to restart");
 
   statusBar()->showMessage(tr("Ready"));
-  
+
   // clean up:
-  if(activeGenerator == GEN_TETLIB) {
+  if (activeGenerator == GEN_TETLIB) {
     cout << "Cleaning up...";
     out->deinitialize();
     cout << "done" << endl;
     cout.flush();
   }
 
-  if(activeGenerator == GEN_NGLIB) {
+  if (activeGenerator == GEN_NGLIB) {
     nglib::Ng_DeleteMesh(ngmesh);
     nglib::Ng_Exit();
   }
@@ -5428,8 +5438,7 @@ void MainWindow::meshingTerminatedSlot()
 
 // Mesh is ready (signaled by meshingThread):
 //-----------------------------------------------------------------------------
-void MainWindow::meshingFinishedSlot()
-{
+void MainWindow::meshingFinishedSlot() {
   logMessage("Mesh generation ready");
 
   progressBar->hide();
@@ -5437,11 +5446,11 @@ void MainWindow::meshingFinishedSlot()
 
   progressLabel->hide();
 
-  if(activeGenerator == GEN_TETLIB) {
+  if (activeGenerator == GEN_TETLIB) {
 
     makeElmerMeshFromTetlib();
 
-  } else if(activeGenerator == GEN_NGLIB) {
+  } else if (activeGenerator == GEN_NGLIB) {
 
     this->ngmesh = meshingThread->getNgMesh();
 
@@ -5451,17 +5460,16 @@ void MainWindow::meshingFinishedSlot()
     nglib::Ng_Exit();
 
   } else {
-    
-    logMessage("MeshOk: error: unknown mesh generator");
 
+    logMessage("MeshOk: error: unknown mesh generator");
   }
 
   applyOperations();
 
   statusBar()->showMessage(tr("Ready"));
-  
+
   updateSysTrayIcon("Mesh generator has finished",
-		    "Select Model->Summary for statistics");
+                    "Select Model->Summary for statistics");
 
   remeshAct->setEnabled(true);
   stopMeshingAct->setEnabled(false);
@@ -5472,16 +5480,16 @@ void MainWindow::meshingFinishedSlot()
 
   int output = args.indexOf("-o");
 
-  if(output > 0) {
+  if (output > 0) {
     QString dirName = args.at(output + 1);
-    
-    if(dirName.left(1) != "-") {
+
+    if (dirName.left(1) != "-") {
       cout << "Saving mesh files" << endl;
       saveElmerMesh(dirName);
     }
   }
 
-  if(args.contains("-e") || args.contains("-nogui")) {
+  if (args.contains("-e") || args.contains("-nogui")) {
     cout << "Exiting" << endl;
     QApplication::closeAllWindows();
     exit(0);
@@ -5490,12 +5498,10 @@ void MainWindow::meshingFinishedSlot()
   resetSlot();
 }
 
-
 // Mesh -> Divide surface...
 //-----------------------------------------------------------------------------
-void MainWindow::surfaceDivideSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::surfaceDivideSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("There is nothing to divide - mesh is empty");
     return;
   }
@@ -5504,56 +5510,55 @@ void MainWindow::surfaceDivideSlot()
   boundaryDivide->show();
 }
 
-
-
 // Make surface division by sharp edges (signalled by boundaryDivide)...
 //-----------------------------------------------------------------------------
-void MainWindow::doDivideSurfaceSlot(double angle)
-{
+void MainWindow::doDivideSurfaceSlot(double angle) {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("No mesh to divide");
     return;
   }
-  
+
   operations++;
   operation_t *p = new operation_t;
   operation_t *q = NULL;
 
-  for( q=&operation; q->next; q=q->next );
+  for (q = &operation; q->next; q = q->next)
+    ;
   q->next = p;
   p->next = NULL;
-  
+
   p->type = OP_DIVIDE_SURFACE;
   p->angle = angle;
 
-  int selected=0;
+  int selected = 0;
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
 
-    if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY))
+    if (l->isSelected() && (l->getType() == SURFACELIST) &&
+        (l->getNature() == PDE_BOUNDARY))
       selected++;
   }
   p->selected = selected;
   p->select_set = new int[selected];
   selected = 0;
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY))
+    if (l->isSelected() && (l->getType() == SURFACELIST) &&
+        (l->getNature() == PDE_BOUNDARY))
       p->select_set[selected++] = i;
   }
-  
 
   meshutils->findSharpEdges(mesh, angle);
   int parts = meshutils->divideSurfaceBySharpEdges(mesh);
 
   QString qs = "Surface divided into " + QString::number(parts) + " parts";
   statusBar()->showMessage(qs);
-  
+
   synchronizeMenuToState();
   glWidget->rebuildLists();
   glWidget->updateGL();
@@ -5561,74 +5566,76 @@ void MainWindow::doDivideSurfaceSlot(double angle)
   // Added 05 September 2009
   boundaryPropertyEditor.clear();
   boundaryPropertyEditor.resize(parts);
-  for(int i = 0; i < parts; i++)
+  for (int i = 0; i < parts; i++)
     boundaryPropertyEditor[i] = new BoundaryPropertyEditor;
-  
 }
-
-
 
 // Mesh -> Unify surface
 //-----------------------------------------------------------------------------
-void MainWindow::surfaceUnifySlot()
-{
+void MainWindow::surfaceUnifySlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("No surfaces to unify");
     return;
   }
-  
-  int targetindex = -1, selected=0;
-  QVector<BoundaryPropertyEditor*> unusedBoundary;
-  for(int i=0; i<lists; i++) {
+
+  int targetindex = -1, selected = 0;
+  QVector<BoundaryPropertyEditor *> unusedBoundary;
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY)) {
+    if (l->isSelected() && (l->getType() == SURFACELIST) &&
+        (l->getNature() == PDE_BOUNDARY)) {
       selected++;
-      if(targetindex < 0) targetindex = l->getIndex();
-      else{
+      if (targetindex < 0)
+        targetindex = l->getIndex();
+      else {
         int v = glWidget->boundaryMap.value(l->getIndex());
-        if(v >= 0 && v < boundaryPropertyEditor.size() && boundaryPropertyEditor[v] != NULL){
+        if (v >= 0 && v < boundaryPropertyEditor.size() &&
+            boundaryPropertyEditor[v] != NULL) {
           unusedBoundary.append(boundaryPropertyEditor[v]);
         }
       }
     }
   }
-  
-  if(targetindex < 0) {
+
+  if (targetindex < 0) {
     logMessage("No surfaces selected");
     return;
   }
 
-
   operations++;
   operation_t *p = new operation_t, *q;
-  for( q=&operation; q->next; q=q->next );
+  for (q = &operation; q->next; q = q->next)
+    ;
   q->next = p;
   p->next = NULL;
   p->type = OP_UNIFY_SURFACE;
   p->selected = selected;
-  p->select_set = new int[selected]; 
-  
+  p->select_set = new int[selected];
+
   selected = 0;
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY)) {
+    if (l->isSelected() && (l->getType() == SURFACELIST) &&
+        (l->getNature() == PDE_BOUNDARY)) {
       p->select_set[selected++] = i;
-      for(int j=0; j < mesh->getSurfaces(); j++) {
-	surface_t *s = mesh->getSurface(j);
-	if((s->getIndex() == l->getIndex()) && (s->getNature() == PDE_BOUNDARY)) 
-	  s->setIndex(targetindex);
+      for (int j = 0; j < mesh->getSurfaces(); j++) {
+        surface_t *s = mesh->getSurface(j);
+        if ((s->getIndex() == l->getIndex()) &&
+            (s->getNature() == PDE_BOUNDARY))
+          s->setIndex(targetindex);
       }
     }
   }
 
-  for(int i=0; i<unusedBoundary.size(); i++){
-    boundaryPropertyEditor.remove(boundaryPropertyEditor.indexOf(unusedBoundary[i]));
+  for (int i = 0; i < unusedBoundary.size(); i++) {
+    boundaryPropertyEditor.remove(
+        boundaryPropertyEditor.indexOf(unusedBoundary[i]));
     delete unusedBoundary[i];
   }
-  
+
   cout << "Selected surfaces marked with index " << targetindex << endl;
   cout.flush();
 
@@ -5637,78 +5644,78 @@ void MainWindow::surfaceUnifySlot()
   logMessage("Selected surfaces unified");
 }
 
-
-void MainWindow::applyOperations()
-{
+void MainWindow::applyOperations() {
   mesh_t *mesh = glWidget->getMesh();
 
   cout << "Apply " << operations << " operations" << endl;
   cout.flush();
 
   operation_t *p = operation.next;
-  for( ; p; p=p->next )
-  {
+  for (; p; p = p->next) {
     int lists = glWidget->getLists();
 
-    for( int i=0; i<lists; i++ )
+    for (int i = 0; i < lists; i++)
       glWidget->getList(i)->setSelected(false);
 
-    for( int j=0; j<mesh->getSurfaces(); j++ )
+    for (int j = 0; j < mesh->getSurfaces(); j++)
       mesh->getSurface(j)->setSelected(false);
 
-    for( int j=0; j<mesh->getEdges(); j++ )
+    for (int j = 0; j < mesh->getEdges(); j++)
       mesh->getEdge(j)->setSelected(false);
 
-    for(int i=0; i < p->selected; i++) {
+    for (int i = 0; i < p->selected; i++) {
       list_t *l = glWidget->getList(p->select_set[i]);
 
       l->setSelected(true);
-      if ( p->type < OP_UNIFY_EDGE ) {
-        for( int j=0; j<mesh->getSurfaces(); j++ ) {
+      if (p->type < OP_UNIFY_EDGE) {
+        for (int j = 0; j < mesh->getSurfaces(); j++) {
           surface_t *surf = mesh->getSurface(j);
-          if( l->getIndex() == surf->getIndex() )
+          if (l->getIndex() == surf->getIndex())
             surf->setSelected(l->isSelected());
         }
       } else {
-        for( int j=0; j<mesh->getEdges(); j++ ) {
+        for (int j = 0; j < mesh->getEdges(); j++) {
           edge_t *edge = mesh->getEdge(j);
-          if( l->getIndex() == edge->getIndex() )
+          if (l->getIndex() == edge->getIndex())
             edge->setSelected(l->isSelected());
         }
       }
     }
 
-    if ( p->type == OP_DIVIDE_SURFACE ) {
+    if (p->type == OP_DIVIDE_SURFACE) {
       meshutils->findSharpEdges(mesh, p->angle);
       int parts = meshutils->divideSurfaceBySharpEdges(mesh);
       QString qs = "Surface divided into " + QString::number(parts) + " parts";
       statusBar()->showMessage(qs);
 
-    } else if ( p->type == OP_DIVIDE_EDGE ) {
+    } else if (p->type == OP_DIVIDE_EDGE) {
       meshutils->findEdgeElementPoints(mesh);
       meshutils->findSharpPoints(mesh, p->angle);
       int parts = meshutils->divideEdgeBySharpPoints(mesh);
       QString qs = "Edges divided into " + QString::number(parts) + " parts";
       statusBar()->showMessage(qs);
 
-    } else if (p->type == OP_UNIFY_SURFACE ) {
+    } else if (p->type == OP_UNIFY_SURFACE) {
       int targetindex = -1;
 
-      for(int i=0; i<lists; i++) {
+      for (int i = 0; i < lists; i++) {
         list_t *l = glWidget->getList(i);
-        if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY)) {
-          if(targetindex < 0) {
+        if (l->isSelected() && (l->getType() == SURFACELIST) &&
+            (l->getNature() == PDE_BOUNDARY)) {
+          if (targetindex < 0) {
             targetindex = l->getIndex();
             break;
           }
         }
       }
-      for(int i=0; i<lists; i++) {
+      for (int i = 0; i < lists; i++) {
         list_t *l = glWidget->getList(i);
-        if(l->isSelected() && (l->getType() == SURFACELIST) && (l->getNature() == PDE_BOUNDARY)) {
-          for(int j=0; j < mesh->getSurfaces(); j++) {
+        if (l->isSelected() && (l->getType() == SURFACELIST) &&
+            (l->getNature() == PDE_BOUNDARY)) {
+          for (int j = 0; j < mesh->getSurfaces(); j++) {
             surface_t *s = mesh->getSurface(j);
-            if((s->getIndex() == l->getIndex()) && (s->getNature() == PDE_BOUNDARY)) 
+            if ((s->getIndex() == l->getIndex()) &&
+                (s->getNature() == PDE_BOUNDARY))
               s->setIndex(targetindex);
           }
         }
@@ -5716,23 +5723,26 @@ void MainWindow::applyOperations()
       cout << "Selected surfaces marked with index " << targetindex << endl;
       cout.flush();
 
-    } else if (p->type == OP_UNIFY_EDGE ) {
+    } else if (p->type == OP_UNIFY_EDGE) {
       int targetindex = -1;
-      for(int i=0; i<lists; i++) {
+      for (int i = 0; i < lists; i++) {
         list_t *l = glWidget->getList(i);
-        if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY) {
-          if(targetindex < 0) {
+        if (l->isSelected() && l->getType() == EDGELIST &&
+            l->getNature() == PDE_BOUNDARY) {
+          if (targetindex < 0) {
             targetindex = l->getIndex();
             break;
           }
         }
       }
-      for(int i=0; i<lists; i++) {
+      for (int i = 0; i < lists; i++) {
         list_t *l = glWidget->getList(i);
-        if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY) {
-          for(int j=0; j < mesh->getEdges(); j++) {
+        if (l->isSelected() && l->getType() == EDGELIST &&
+            l->getNature() == PDE_BOUNDARY) {
+          for (int j = 0; j < mesh->getEdges(); j++) {
             edge_t *e = mesh->getEdge(j);
-            if(e->getIndex() == l->getIndex() && e->getNature() == PDE_BOUNDARY)
+            if (e->getIndex() == l->getIndex() &&
+                e->getNature() == PDE_BOUNDARY)
               e->setIndex(targetindex);
           }
         }
@@ -5742,25 +5752,22 @@ void MainWindow::applyOperations()
     }
     glWidget->rebuildLists();
   }
-  
+
   synchronizeMenuToState();
   glWidget->updateGL();
-  
+
   // Added 05 September 2009
   boundaryPropertyEditor.clear();
   int parts = glWidget->getLists();
   boundaryPropertyEditor.resize(parts);
-  for(int i = 0; i < parts; i++)
+  for (int i = 0; i < parts; i++)
     boundaryPropertyEditor[i] = new BoundaryPropertyEditor;
 }
 
-
-
 // Mesh -> Divide edge...
 //-----------------------------------------------------------------------------
-void MainWindow::edgeDivideSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::edgeDivideSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("There is nothing to divide - mesh is empty");
     return;
   }
@@ -5769,50 +5776,49 @@ void MainWindow::edgeDivideSlot()
   boundaryDivide->show();
 }
 
-
-
 // Make edge division by sharp points (signalled by boundaryDivide)...
 //-----------------------------------------------------------------------------
-void MainWindow::doDivideEdgeSlot(double angle)
-{
+void MainWindow::doDivideEdgeSlot(double angle) {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("No mesh to divide");
     return;
   }
 
   operations++;
   operation_t *p = new operation_t, *q;
-  for( q=&operation; q->next; q=q->next );
+  for (q = &operation; q->next; q = q->next)
+    ;
   q->next = p;
   p->next = NULL;
 
   p->type = OP_DIVIDE_EDGE;
   p->angle = angle;
 
-  int selected=0;
-  for(int i=0; i<lists; i++) {
+  int selected = 0;
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY)
+    if (l->isSelected() && l->getType() == EDGELIST &&
+        l->getNature() == PDE_BOUNDARY)
       selected++;
   }
   p->selected = selected;
   p->select_set = new int[selected];
   selected = 0;
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY)
+    if (l->isSelected() && l->getType() == EDGELIST &&
+        l->getNature() == PDE_BOUNDARY)
       p->select_set[selected++] = i;
   }
-  
 
   meshutils->findEdgeElementPoints(mesh);
   meshutils->findSharpPoints(mesh, angle);
   int parts = meshutils->divideEdgeBySharpPoints(mesh);
-  
+
   QString qs = "Edge divided into " + QString::number(parts) + " parts";
   statusBar()->showMessage(qs);
 
@@ -5823,75 +5829,76 @@ void MainWindow::doDivideEdgeSlot(double angle)
   // Added 05 September 2009
   boundaryPropertyEditor.clear();
   boundaryPropertyEditor.resize(parts);
-  for(int i = 0; i < parts; i++)
+  for (int i = 0; i < parts; i++)
     boundaryPropertyEditor[i] = new BoundaryPropertyEditor;
-
 }
-
-
 
 // Mesh -> Unify edge
 //-----------------------------------------------------------------------------
-void MainWindow::edgeUnifySlot()
-{
+void MainWindow::edgeUnifySlot() {
   mesh_t *mesh = glWidget->getMesh();
   int lists = glWidget->getLists();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("No edges to unify");
     return;
   }
-  
-  int targetindex = -1, selected=0;
-  QVector<BoundaryPropertyEditor*> unusedBoundary;
-  for(int i=0; i<lists; i++) {
+
+  int targetindex = -1, selected = 0;
+  QVector<BoundaryPropertyEditor *> unusedBoundary;
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY) {
+    if (l->isSelected() && l->getType() == EDGELIST &&
+        l->getNature() == PDE_BOUNDARY) {
       selected++;
-      if(targetindex < 0) targetindex = l->getIndex();
-      else{
+      if (targetindex < 0)
+        targetindex = l->getIndex();
+      else {
         int v = glWidget->boundaryMap.value(l->getIndex());
-        if(v >= 0 && v < boundaryPropertyEditor.size() && boundaryPropertyEditor[v] != NULL){
+        if (v >= 0 && v < boundaryPropertyEditor.size() &&
+            boundaryPropertyEditor[v] != NULL) {
           unusedBoundary.append(boundaryPropertyEditor[v]);
         }
       }
     }
   }
-  
 
-  if(targetindex < 0) {
+  if (targetindex < 0) {
     logMessage("No edges selected");
     return;
   }
 
   operations++;
   operation_t *p = new operation_t, *q;
-  for( q=&operation; q->next; q=q->next );
+  for (q = &operation; q->next; q = q->next)
+    ;
   q->next = p;
   p->next = NULL;
   p->type = OP_UNIFY_EDGE;
   p->selected = selected;
-  p->select_set = new int[selected]; 
-  
+  p->select_set = new int[selected];
+
   selected = 0;
 
-  for(int i=0; i<lists; i++) {
+  for (int i = 0; i < lists; i++) {
     list_t *l = glWidget->getList(i);
-    if(l->isSelected() && l->getType() == EDGELIST && l->getNature() == PDE_BOUNDARY) {
+    if (l->isSelected() && l->getType() == EDGELIST &&
+        l->getNature() == PDE_BOUNDARY) {
       p->select_set[selected++] = i;
-      for(int j=0; j < mesh->getEdges(); j++) {
-	edge_t *e = mesh->getEdge(j);
-	if(e->getIndex() == l->getIndex() && e->getNature() == PDE_BOUNDARY) 
-	  e->setIndex(targetindex);
+      for (int j = 0; j < mesh->getEdges(); j++) {
+        edge_t *e = mesh->getEdge(j);
+        if (e->getIndex() == l->getIndex() && e->getNature() == PDE_BOUNDARY)
+          e->setIndex(targetindex);
       }
     }
   }
-  
-  for(int i=0; i<unusedBoundary.size(); i++){
-    boundaryPropertyEditor.remove(boundaryPropertyEditor.indexOf(unusedBoundary[i]));
+
+  for (int i = 0; i < unusedBoundary.size(); i++) {
+    boundaryPropertyEditor.remove(
+        boundaryPropertyEditor.indexOf(unusedBoundary[i]));
     delete unusedBoundary[i];
   }
-  
+
   cout << "Selected edges marked with index " << targetindex << endl;
   cout.flush();
 
@@ -5900,14 +5907,12 @@ void MainWindow::edgeUnifySlot()
   logMessage("Selected edges unified");
 }
 
-
 // Mesh -> Clean up
 //-----------------------------------------------------------------------------
-void MainWindow::cleanHangingSharpEdgesSlot()
-{
+void MainWindow::cleanHangingSharpEdgesSlot() {
   mesh_t *mesh = glWidget->getMesh();
 
-  if(mesh == NULL)
+  if (mesh == NULL)
     return;
 
   int count = meshutils->cleanHangingSharpEdges(mesh);
@@ -5918,36 +5923,31 @@ void MainWindow::cleanHangingSharpEdgesSlot()
   glWidget->rebuildLists();
 }
 
-
 //*****************************************************************************
 //
 //                                Edit MENU
 //
 //*****************************************************************************
 
-
 // Edit -> Sif...
 //-----------------------------------------------------------------------------
-void MainWindow::showsifSlot()
-{
+void MainWindow::showsifSlot() {
   // QFont sansFont("Courier", 10);
   // sifWindow->getTextEdit()->setCurrentFont(sansFont);
   sifWindow->show();
 }
 
-
 // Edit -> Generate sif
 //-----------------------------------------------------------------------------
-void MainWindow::generateSifSlot()
-{
+void MainWindow::generateSifSlot() {
   mesh_t *mesh = glWidget->getMesh();
 
-  if(mesh == NULL) {
+  if (mesh == NULL) {
     logMessage("Unable to create SIF: no mesh");
     return;
   }
-  
-  if((mesh->getDim() < 1) || (mesh->getCdim() < 1)) {
+
+  if ((mesh->getDim() < 1) || (mesh->getCdim() < 1)) {
     logMessage("Model dimension inconsistent with SIF syntax");
     return;
   }
@@ -5994,166 +5994,172 @@ void MainWindow::generateSifSlot()
   sifGenerator->makeBoundaryBlocks();
 }
 
-void MainWindow::suppressAutoSifGenerationSlot()
-{
+void MainWindow::suppressAutoSifGenerationSlot() {
   suppressAutoSifGeneration = suppressAutoSifGenerationAct->isChecked();
   settings_setValue("sif/suppressAutoSifGeneration", suppressAutoSifGeneration);
 }
 
 // Boundary selected by double clicking (signaled by glWidget::select):
 //-----------------------------------------------------------------------------
-void MainWindow::boundarySelectedSlot(list_t *l)
-{
+void MainWindow::boundarySelectedSlot(list_t *l) {
   QString qs;
 
-  if(l->getIndex() < 0) {
-    statusBar()->showMessage("Ready");    
+  if (l->getIndex() < 0) {
+    statusBar()->showMessage("Ready");
     return;
   }
 
-  if(l->isSelected()) {
-    if(l->getType() == SURFACELIST) {
+  if (l->isSelected()) {
+    if (l->getType() == SURFACELIST) {
       qs = "Selected surface " + QString::number(l->getIndex());
-    } else if(l->getType() == EDGELIST) {
+    } else if (l->getType() == EDGELIST) {
       qs = "Selected edge " + QString::number(l->getIndex());
     } else {
-      qs = "Selected object " + QString::number(l->getIndex()) + " (type unknown)";
+      qs = "Selected object " + QString::number(l->getIndex()) +
+           " (type unknown)";
     }
   } else {
-    if(l->getType() == SURFACELIST) {
+    if (l->getType() == SURFACELIST) {
       qs = "Unselected surface " + QString::number(l->getIndex());
-    } else if(l->getType() == EDGELIST) {
+    } else if (l->getType() == EDGELIST) {
       qs = "Unselected edge " + QString::number(l->getIndex());
     } else {
-      qs = "Unselected object " + QString::number(l->getIndex()) + " (type unknown)";
+      qs = "Unselected object " + QString::number(l->getIndex()) +
+           " (type unknown)";
     }
   }
 
   logMessage(qs);
-  
 
   // Open bc property sheet for selected boundary:
   //-----------------------------------------------
-  if(l->isSelected() && (glWidget->altPressed || bcEditActive)) {
+  if (l->isSelected() && (glWidget->altPressed || bcEditActive)) {
     glWidget->ctrlPressed = false;
     glWidget->shiftPressed = false;
     glWidget->altPressed = false;
 
-    if(l->getNature() != PDE_BOUNDARY){
-      /*Ignore when double clicking a body of 2D geometry under boundary selection mode*/
+    if (l->getNature() != PDE_BOUNDARY) {
+      /*Ignore when double clicking a body of 2D geometry under boundary
+       * selection mode*/
       raise();
       return;
     }
-    
+
     // renumbering:
     int n = glWidget->boundaryMap.value(l->getIndex());
 
-    if(n >= boundaryPropertyEditor.size()) {
+    if (n >= boundaryPropertyEditor.size()) {
       logMessage("Error: Boundary index mismatch");
       return;
     }
-    
+
     BoundaryPropertyEditor *boundaryEdit = boundaryPropertyEditor[n];
     populateBoundaryComboBoxes(boundaryEdit);
-    
-    connect( boundaryEdit, SIGNAL(BoundaryAsABodyChanged(BoundaryPropertyEditor *,int)),
-	     this, SLOT(boundaryAsABodyChanged(BoundaryPropertyEditor *,int)) );
-    
-    if(boundaryEdit->touched) {
+
+    connect(boundaryEdit,
+            SIGNAL(BoundaryAsABodyChanged(BoundaryPropertyEditor *, int)), this,
+            SLOT(boundaryAsABodyChanged(BoundaryPropertyEditor *, int)));
+
+    if (boundaryEdit->touched) {
       boundaryEdit->ui.applyButton->setText("Update");
       // boundaryEdit->ui.discardButton->setText("Remove");
       boundaryEdit->ui.discardButton->setText("Cancel");
-      boundaryEdit->ui.applyButton->setIcon(QIcon(":/icons/dialog-ok-apply.png"));
+      boundaryEdit->ui.applyButton->setIcon(
+          QIcon(":/icons/dialog-ok-apply.png"));
       // boundaryEdit->ui.discardButton->setIcon(QIcon(":/icons/list-remove.png"));
-      boundaryEdit->ui.discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+      boundaryEdit->ui.discardButton->setIcon(
+          QIcon(":/icons/dialog-close.png"));
     } else {
       boundaryEdit->ui.applyButton->setText("Add");
       boundaryEdit->ui.discardButton->setText("Cancel");
       boundaryEdit->ui.applyButton->setIcon(QIcon(":/icons/list-add.png"));
-      boundaryEdit->ui.discardButton->setIcon(QIcon(":/icons/dialog-close.png"));
+      boundaryEdit->ui.discardButton->setIcon(
+          QIcon(":/icons/dialog-close.png"));
     }
 
-    boundaryEdit->setWindowTitle("Properties for boundary " + QString::number(l->getIndex()));
+    boundaryEdit->setWindowTitle("Properties for boundary " +
+                                 QString::number(l->getIndex()));
     boundaryEdit->show();
-    boundaryEdit->raise();    
+    boundaryEdit->raise();
   }
 
   BodyPropertyEditor *bodyEdit = NULL;
-  int current = -1, n =-1;
+  int current = -1, n = -1;
 
   // boundary as a body treatment
   // ----------------------------
-  if(l->isSelected() && glWidget->ctrlPressed ) {
+  if (l->isSelected() && glWidget->ctrlPressed) {
 
     // renumbering:
     int n = glWidget->boundaryMap.value(l->getIndex());
 
-    if(n >= boundaryPropertyEditor.size()) {
+    if (n >= boundaryPropertyEditor.size()) {
       logMessage("Error: Boundary index mismatch");
       return;
     }
 
     BoundaryPropertyEditor *boundaryEdit = boundaryPropertyEditor[n];
 
-    if(!boundaryEdit) {
+    if (!boundaryEdit) {
       cout << "MainWindow: Boundary index out of bounds" << endl;
       return;
     }
-      
 
     bodyEdit = boundaryEdit->bodyProperties;
 
-    if ( bodyEdit ) {
+    if (bodyEdit) {
       glWidget->ctrlPressed = false;
       glWidget->shiftPressed = false;
       glWidget->altPressed = false;
 
-      bodyEdit->setWindowTitle("Properties for body " + QString::number(current));
+      bodyEdit->setWindowTitle("Properties for body " +
+                               QString::number(current));
 
       // if(bodyEdit->ui.nameEdit->text().trimmed().isEmpty())
-      //bodyEdit->ui.nameEdit->setText("Body Property{Boundary " + QString::number(n+1) +  "}");
-      bodyEdit->ui.nameEdit->setText("Body {Boundary " + QString::number(n+1) +  "}");
+      // bodyEdit->ui.nameEdit->setText("Body Property{Boundary " +
+      // QString::number(n+1) +  "}");
+      bodyEdit->ui.nameEdit->setText("Body {Boundary " +
+                                     QString::number(n + 1) + "}");
     }
   }
 
   // Open body property sheet for selected body:
   //---------------------------------------------
-  if( (glWidget->currentlySelectedBody >= 0) &&
-      (glWidget->shiftPressed || bodyEditActive) ) {
-    
+  if ((glWidget->currentlySelectedBody >= 0) &&
+      (glWidget->shiftPressed || bodyEditActive)) {
+
     glWidget->ctrlPressed = false;
     glWidget->shiftPressed = false;
     glWidget->altPressed = false;
-    
+
     current = glWidget->currentlySelectedBody;
-    
+
     cout << "Current selection uniquely determines body: " << current << endl;
     cout.flush();
- 
+
     // renumbering:
     n = glWidget->bodyMap.value(current);
 
-    if(n >= bodyPropertyEditor.size()) {
+    if (n >= bodyPropertyEditor.size()) {
       logMessage("MainWindow: Body index out of bounds)");
       return;
     }
-     
+
     bodyEdit = bodyPropertyEditor[n];
 
-    if(!bodyEdit)
+    if (!bodyEdit)
       cout << "MainWindow: Undetermined body index" << endl;
 
     bodyEdit->setWindowTitle("Properties for body " + QString::number(current));
 
-    if(bodyEdit->ui.nameEdit->text().trimmed().isEmpty())
-      bodyEdit->ui.nameEdit->setText("Body Property " + QString::number(n+1));
-
+    if (bodyEdit->ui.nameEdit->text().trimmed().isEmpty())
+      bodyEdit->ui.nameEdit->setText("Body Property " + QString::number(n + 1));
   }
 
-  if ( bodyEdit ) {
+  if (bodyEdit) {
     populateBodyComboBoxes(bodyEdit);
-    
-    if(bodyEdit->touched) {
+
+    if (bodyEdit->touched) {
       bodyEdit->ui.applyButton->setText("Update");
       // bodyEdit->ui.discardButton->setText("Remove");
       bodyEdit->ui.discardButton->setText("Cancel");
@@ -6172,69 +6178,69 @@ void MainWindow::boundarySelectedSlot(list_t *l)
   }
 }
 
-
 // Populate boundary editor's comboboxes:
 //---------------------------------------
-void MainWindow::populateBoundaryComboBoxes(BoundaryPropertyEditor *boundary)
-{
-  boundary->disconnect(SIGNAL(BoundaryComboChanged(BoundaryPropertyEditor *,QString)));
-  while(boundary && boundary->ui.boundaryConditionCombo && boundary->ui.boundaryConditionCombo->count() > 0) 
+void MainWindow::populateBoundaryComboBoxes(BoundaryPropertyEditor *boundary) {
+  boundary->disconnect(
+      SIGNAL(BoundaryComboChanged(BoundaryPropertyEditor *, QString)));
+  while (boundary && boundary->ui.boundaryConditionCombo &&
+         boundary->ui.boundaryConditionCombo->count() > 0)
     boundary->ui.boundaryConditionCombo->removeItem(0);
-    
+
   int takethis = 1; //-1;
   int count = 1;
   boundary->ui.boundaryConditionCombo->insertItem(count++, "");
 
-  for(int i = 0; i < boundaryConditionEditor.size(); i++) {
+  for (int i = 0; i < boundaryConditionEditor.size(); i++) {
     DynamicEditor *bcEdit = boundaryConditionEditor[i];
-    if(bcEdit->menuAction != NULL) {
+    if (bcEdit->menuAction != NULL) {
       const QString &name = bcEdit->nameEdit->text().trimmed();
       boundary->ui.boundaryConditionCombo->insertItem(count, name);
-      if ( boundary->condition == bcEdit ) takethis = count;
+      if (boundary->condition == bcEdit)
+        takethis = count;
       count++;
     }
   }
-  connect( boundary,SIGNAL(BoundaryComboChanged(BoundaryPropertyEditor *,QString)), 
-        this, SLOT(boundaryComboChanged(BoundaryPropertyEditor *,QString)) );
+  connect(boundary,
+          SIGNAL(BoundaryComboChanged(BoundaryPropertyEditor *, QString)), this,
+          SLOT(boundaryComboChanged(BoundaryPropertyEditor *, QString)));
 
-  boundary->ui.boundaryConditionCombo->setCurrentIndex(takethis-1);
+  boundary->ui.boundaryConditionCombo->setCurrentIndex(takethis - 1);
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::boundaryComboChanged(BoundaryPropertyEditor *b, QString text)
-{
+void MainWindow::boundaryComboChanged(BoundaryPropertyEditor *b, QString text) {
   b->condition = 0;
   b->touched = false;
 
-  for( int i=0; i < boundaryConditionEditor.size(); i++ )
-  {
+  for (int i = 0; i < boundaryConditionEditor.size(); i++) {
     DynamicEditor *bc = boundaryConditionEditor[i];
-    if ( bc->ID >= 0 ) {
-       if ( bc->nameEdit->text().trimmed() == text ) {
-         b->condition = bc; 
-         b->touched = true;
-         break;
-       }
+    if (bc->ID >= 0) {
+      if (bc->nameEdit->text().trimmed() == text) {
+        b->condition = bc;
+        b->touched = true;
+        break;
+      }
     }
   }
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::boundaryAsABodyChanged(BoundaryPropertyEditor *b, int status)
-{
-  int indx=glWidget->bodyMap.count();
+void MainWindow::boundaryAsABodyChanged(BoundaryPropertyEditor *b, int status) {
+  int indx = glWidget->bodyMap.count();
 
-  if ( status ) {
-    for( int i = 0; i < boundaryPropertyEditor.size(); i++ )
-      if ( boundaryPropertyEditor[i]
-	   && boundaryPropertyEditor[i]->bodyProperties ) indx++;
+  if (status) {
+    for (int i = 0; i < boundaryPropertyEditor.size(); i++)
+      if (boundaryPropertyEditor[i] &&
+          boundaryPropertyEditor[i]->bodyProperties)
+        indx++;
 
-    if(indx >= bodyPropertyEditor.size()) {
+    if (indx >= bodyPropertyEditor.size()) {
       cout << "MainWindow: Body index out of bounds" << endl;
       return;
     }
 
-    if(bodyPropertyEditor[indx])
+    if (bodyPropertyEditor[indx])
       b->bodyProperties = bodyPropertyEditor[indx];
 
   } else {
@@ -6243,36 +6249,38 @@ void MainWindow::boundaryAsABodyChanged(BoundaryPropertyEditor *b, int status)
   }
 }
 
-    
 // Populate body editor's comboboxes:
 //-----------------------------------
-void MainWindow::populateBodyComboBoxes(BodyPropertyEditor *bodyEdit)
-{
+void MainWindow::populateBodyComboBoxes(BodyPropertyEditor *bodyEdit) {
   // Equation:
   // =========
-  bodyEdit->disconnect(SIGNAL(BodyEquationComboChanged(BodyPropertyEditor *,QString)));
+  bodyEdit->disconnect(
+      SIGNAL(BodyEquationComboChanged(BodyPropertyEditor *, QString)));
   bodyEdit->ui.equationCombo->clear();
 
   int count = 1;
   int takethis = 1; // -1
   bodyEdit->ui.equationCombo->insertItem(count++, "");
 
-  for(int i = 0; i < equationEditor.size(); i++) {
+  for (int i = 0; i < equationEditor.size(); i++) {
     DynamicEditor *eqEdit = equationEditor[i];
-    if(eqEdit->menuAction != NULL) {
+    if (eqEdit->menuAction != NULL) {
       const QString &name = eqEdit->nameEdit->text().trimmed();
       bodyEdit->ui.equationCombo->insertItem(count, name);
-      if ( bodyEdit->equation == eqEdit ) takethis = count;
+      if (bodyEdit->equation == eqEdit)
+        takethis = count;
       count++;
     }
   }
-  connect( bodyEdit,SIGNAL(BodyEquationComboChanged(BodyPropertyEditor *,QString)), 
-        this, SLOT(equationComboChanged(BodyPropertyEditor *,QString)) );
-  bodyEdit->ui.equationCombo->setCurrentIndex(takethis-1);
-    
+  connect(bodyEdit,
+          SIGNAL(BodyEquationComboChanged(BodyPropertyEditor *, QString)), this,
+          SLOT(equationComboChanged(BodyPropertyEditor *, QString)));
+  bodyEdit->ui.equationCombo->setCurrentIndex(takethis - 1);
+
   // Material
   // =========
-  bodyEdit->disconnect(SIGNAL(BodyMaterialComboChanged(BodyPropertyEditor *,QString)));
+  bodyEdit->disconnect(
+      SIGNAL(BodyMaterialComboChanged(BodyPropertyEditor *, QString)));
   bodyEdit->ui.materialCombo->clear();
 
   count = 1;
@@ -6280,155 +6288,151 @@ void MainWindow::populateBodyComboBoxes(BodyPropertyEditor *bodyEdit)
   bodyEdit->ui.materialCombo->insertItem(count, "");
   count++;
 
-  for(int i = 0; i < materialEditor.size(); i++) {
+  for (int i = 0; i < materialEditor.size(); i++) {
     DynamicEditor *matEdit = materialEditor[i];
 
-    if(matEdit->menuAction != NULL) {
+    if (matEdit->menuAction != NULL) {
       const QString &name = matEdit->nameEdit->text().trimmed();
       bodyEdit->ui.materialCombo->insertItem(count, name);
-      if ( bodyEdit->material==matEdit ) takethis = count;
+      if (bodyEdit->material == matEdit)
+        takethis = count;
       count++;
     }
   }
 
-  connect( bodyEdit,SIGNAL(BodyMaterialComboChanged(BodyPropertyEditor *,QString)), 
-        this, SLOT(materialComboChanged(BodyPropertyEditor *,QString)) );
+  connect(bodyEdit,
+          SIGNAL(BodyMaterialComboChanged(BodyPropertyEditor *, QString)), this,
+          SLOT(materialComboChanged(BodyPropertyEditor *, QString)));
 
-
-  bodyEdit->ui.materialCombo->setCurrentIndex(takethis-1);
-
+  bodyEdit->ui.materialCombo->setCurrentIndex(takethis - 1);
 
   // Bodyforce:
   //===========
-  bodyEdit->disconnect(SIGNAL(BodyForceComboChanged(BodyPropertyEditor *,QString)));
+  bodyEdit->disconnect(
+      SIGNAL(BodyForceComboChanged(BodyPropertyEditor *, QString)));
   bodyEdit->ui.bodyForceCombo->clear();
 
   count = 1;
   takethis = 1; // -1
   bodyEdit->ui.bodyForceCombo->insertItem(count++, "");
 
-  for(int i = 0; i < bodyForceEditor.size(); i++) {
+  for (int i = 0; i < bodyForceEditor.size(); i++) {
     DynamicEditor *bodyForceEdit = bodyForceEditor[i];
-    if(bodyForceEdit->menuAction != NULL) {
+    if (bodyForceEdit->menuAction != NULL) {
       const QString &name = bodyForceEdit->nameEdit->text().trimmed();
       bodyEdit->ui.bodyForceCombo->insertItem(count, name);
-      if ( bodyEdit->force == bodyForceEdit ) takethis = count;
+      if (bodyEdit->force == bodyForceEdit)
+        takethis = count;
       count++;
     }
   }
-  connect( bodyEdit,SIGNAL(BodyForceComboChanged(BodyPropertyEditor *,QString)), 
-        this, SLOT(forceComboChanged(BodyPropertyEditor *,QString)) );
-  bodyEdit->ui.bodyForceCombo->setCurrentIndex(takethis-1);
-    
+  connect(bodyEdit,
+          SIGNAL(BodyForceComboChanged(BodyPropertyEditor *, QString)), this,
+          SLOT(forceComboChanged(BodyPropertyEditor *, QString)));
+  bodyEdit->ui.bodyForceCombo->setCurrentIndex(takethis - 1);
+
   // Initial Condition:
   //====================
-  bodyEdit->disconnect(SIGNAL(BodyInitialComboChanged(BodyPropertyEditor *,QString)));
+  bodyEdit->disconnect(
+      SIGNAL(BodyInitialComboChanged(BodyPropertyEditor *, QString)));
   bodyEdit->ui.initialConditionCombo->clear();
 
   count = 1;
   takethis = 1; // -1
   bodyEdit->ui.initialConditionCombo->insertItem(count++, "");
 
-  for(int i = 0; i < initialConditionEditor.size(); i++) {
+  for (int i = 0; i < initialConditionEditor.size(); i++) {
     DynamicEditor *initialConditionEdit = initialConditionEditor[i];
-    if(initialConditionEdit->menuAction != NULL) {
+    if (initialConditionEdit->menuAction != NULL) {
       const QString &name = initialConditionEdit->nameEdit->text().trimmed();
       bodyEdit->ui.initialConditionCombo->insertItem(count, name);
-      if ( bodyEdit->initial == initialConditionEdit ) takethis = count;
+      if (bodyEdit->initial == initialConditionEdit)
+        takethis = count;
       count++;
     }
   }
-  connect( bodyEdit,SIGNAL(BodyInitialComboChanged(BodyPropertyEditor *,QString)), 
-        this, SLOT(initialComboChanged(BodyPropertyEditor *,QString)) );
-  bodyEdit->ui.initialConditionCombo->setCurrentIndex(takethis-1);
+  connect(bodyEdit,
+          SIGNAL(BodyInitialComboChanged(BodyPropertyEditor *, QString)), this,
+          SLOT(initialComboChanged(BodyPropertyEditor *, QString)));
+  bodyEdit->ui.initialConditionCombo->setCurrentIndex(takethis - 1);
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::materialComboChanged(BodyPropertyEditor *b, QString text)
-{
+void MainWindow::materialComboChanged(BodyPropertyEditor *b, QString text) {
   b->material = 0;
   b->touched = false;
-  for(int i=0; i < materialEditor.size(); i++)
-  {
+  for (int i = 0; i < materialEditor.size(); i++) {
     DynamicEditor *mat = materialEditor[i];
 
-    if ( mat->ID >= 0 ) {
-       if ( mat->nameEdit->text().trimmed()==text ) {
-         b->material = mat; 
-         b->touched = true;
-         break;
-       }
-    }
-  }
-}
-
-//-----------------------------------------------------------------------------
-void MainWindow::initialComboChanged(BodyPropertyEditor *b, QString text)
-{
-  b->initial = 0;
-  b->touched = false;
-
-  for( int i=0; i < initialConditionEditor.size(); i++ )
-  {
-    DynamicEditor *ic = initialConditionEditor[i];
-    if ( ic->ID >= 0 ) {
-       if ( ic->nameEdit->text().trimmed()==text ) {
-         b->initial = ic; 
-         b->touched = true;
-         break;
+    if (mat->ID >= 0) {
+      if (mat->nameEdit->text().trimmed() == text) {
+        b->material = mat;
+        b->touched = true;
+        break;
       }
     }
   }
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::forceComboChanged(BodyPropertyEditor *b, QString text)
-{
+void MainWindow::initialComboChanged(BodyPropertyEditor *b, QString text) {
+  b->initial = 0;
+  b->touched = false;
+
+  for (int i = 0; i < initialConditionEditor.size(); i++) {
+    DynamicEditor *ic = initialConditionEditor[i];
+    if (ic->ID >= 0) {
+      if (ic->nameEdit->text().trimmed() == text) {
+        b->initial = ic;
+        b->touched = true;
+        break;
+      }
+    }
+  }
+}
+
+//-----------------------------------------------------------------------------
+void MainWindow::forceComboChanged(BodyPropertyEditor *b, QString text) {
   b->force = 0;
   b->touched = false;
 
-  for( int i=0; i < bodyForceEditor.size(); i++ ) {
+  for (int i = 0; i < bodyForceEditor.size(); i++) {
     DynamicEditor *bf = bodyForceEditor[i];
-    if ( bf->ID >= 0 ) {
-       if ( bf->nameEdit->text().trimmed()==text ) {
-         b->force = bf; 
-         b->touched = true;
-         break;
-       }
+    if (bf->ID >= 0) {
+      if (bf->nameEdit->text().trimmed() == text) {
+        b->force = bf;
+        b->touched = true;
+        break;
+      }
     }
   }
 }
 
 //-----------------------------------------------------------------------------
-void MainWindow::equationComboChanged(BodyPropertyEditor *b, QString text)
-{
+void MainWindow::equationComboChanged(BodyPropertyEditor *b, QString text) {
   b->equation = 0;
   b->touched = false;
 
-  for( int i=0; i < equationEditor.size(); i++ )
-  {
+  for (int i = 0; i < equationEditor.size(); i++) {
     DynamicEditor *equ = equationEditor[i];
-    if ( equ->ID >= 0 ) {
-       if ( equ->nameEdit->text().trimmed() == text ) {
-         b->equation = equ; 
-         b->touched = true;
-         break;
-       }
+    if (equ->ID >= 0) {
+      if (equ->nameEdit->text().trimmed() == text) {
+        b->equation = equ;
+        b->touched = true;
+        break;
+      }
     }
   }
 }
 
-
 // Edit -> Definitions...
 //-----------------------------------------------------------------------------
-void MainWindow::editDefinitionsSlot()
-{
-  if(elmerDefs == NULL)
+void MainWindow::editDefinitionsSlot() {
+  if (elmerDefs == NULL)
     return;
 
   edfEditor->show();
 }
-
 
 //*****************************************************************************
 //
@@ -6436,25 +6440,19 @@ void MainWindow::editDefinitionsSlot()
 //
 //*****************************************************************************
 
-
 // Solver -> Parallel settings
 //-----------------------------------------------------------------------------
-void MainWindow::parallelSettingsSlot()
-{
-  parallel->show();
-}
-
+void MainWindow::parallelSettingsSlot() { parallel->show(); }
 
 // Solver -> Run solver
 //-----------------------------------------------------------------------------
-void MainWindow::runsolverSlot()
-{
-  if(!glWidget->hasMesh()) {
+void MainWindow::runsolverSlot() {
+  if (!glWidget->hasMesh()) {
     logMessage("No mesh - unable to start solver");
     return;
   }
-  
-  if(solver->state() == QProcess::Running) {
+
+  if (solver->state() == QProcess::Running) {
     logMessage("Solver is already running - returning");
     return;
   }
@@ -6466,46 +6464,48 @@ void MainWindow::runsolverSlot()
   bool partitioningActive = !ui.skipPartitioningCheckBox->isChecked();
   int nofProcessors = ui.nofProcessorsSpinBox->value();
 
-  if(parallelActive) {
+  if (parallelActive) {
 
     // Set up log window:
     solverLogWindow->setWindowTitle(tr("Solver log"));
     solverLogWindow->getTextEdit()->clear();
     solverLogWindow->setFound(false);
     solverLogWindow->show();
-    
-    if(!partitioningActive) {
-      
+
+    if (!partitioningActive) {
+
       // skip splitting:
       meshSplitterFinishedSlot(0);
 
     } else {
 
       // split mesh:
-      if(meshSplitter->state() == QProcess::Running) {
-	logMessage("Mesh partitioner is already running - aborted");
-	return;
+      if (meshSplitter->state() == QProcess::Running) {
+        logMessage("Mesh partitioner is already running - aborted");
+        return;
       }
-      
+
       if (saveDirName.isEmpty()) {
-	logMessage("Please save the mesh before running the parallel solver - aborted");
-	return;
+        logMessage("Please save the mesh before running the parallel solver - "
+                   "aborted");
+        return;
       }
-      
+
       QString partitioningCommand = ui.divideLineEdit->text().trimmed();
       partitioningCommand.replace(QString("%msh"), saveDirName);
-      partitioningCommand.replace(QString("%n"), QString::number(nofProcessors));
- 
+      partitioningCommand.replace(QString("%n"),
+                                  QString::number(nofProcessors));
+
       logMessage("Executing: " + partitioningCommand);
-      
+
       meshSplitter->start(partitioningCommand);
 
-      if(!meshSplitter->waitForStarted()) {
-	logMessage("Unable to start ElmerGrid for mesh partitioning - aborted");
-	return;
+      if (!meshSplitter->waitForStarted()) {
+        logMessage("Unable to start ElmerGrid for mesh partitioning - aborted");
+        return;
       }
     }
-    
+
     // the rest is done in meshSplitterFinishedSlot:
     return;
   }
@@ -6515,11 +6515,11 @@ void MainWindow::runsolverSlot()
   solver->start("ElmerSolver");
   killsolverAct->setEnabled(true);
 
-  if(!solver->waitForStarted()) {
+  if (!solver->waitForStarted()) {
     logMessage("Unable to start solver");
     return;
   }
-  
+
   solverLogWindow->setWindowTitle(tr("Solver log"));
   solverLogWindow->getTextEdit()->clear();
   solverLogWindow->setFound(false);
@@ -6536,15 +6536,13 @@ void MainWindow::runsolverSlot()
   runsolverAct->setIcon(QIcon(":/icons/Solver-red.png"));
 
   updateSysTrayIcon("ElmerSolver started",
-		    "Use Run->Kill solver to stop processing");
+                    "Use Run->Kill solver to stop processing");
 }
-
 
 // meshSplitter emits (int) when ready...
 //-----------------------------------------------------------------------------
-void MainWindow::meshSplitterFinishedSlot(int exitCode)
-{
-  if(exitCode != 0) {
+void MainWindow::meshSplitterFinishedSlot(int exitCode) {
+  if (exitCode != 0) {
     solverLogWindow->getTextEdit()->append("MeshSplitter failed - aborting");
     logMessage("MeshSplitter failed - aborting");
     return;
@@ -6572,12 +6570,12 @@ void MainWindow::meshSplitterFinishedSlot(int exitCode)
   solver->start(parallelCmd);
   killsolverAct->setEnabled(true);
 
-  if(!solver->waitForStarted()) {
+  if (!solver->waitForStarted()) {
     solverLogWindow->getTextEdit()->append("Unable to start parallel solver");
     logMessage("Unable to start parallel solver");
     return;
   }
-  
+
   // Set up convergence plot:
 #ifdef EG_QWT
   convergenceView->removeData();
@@ -6587,17 +6585,15 @@ void MainWindow::meshSplitterFinishedSlot(int exitCode)
   runsolverAct->setIcon(QIcon(":/icons/Solver-red.png"));
 
   updateSysTrayIcon("ElmerSolver started",
-		    "Use Run->Kill solver to stop processing");
+                    "Use Run->Kill solver to stop processing");
 }
-
 
 // meshSplitter emits (void) when there is something to read from stdout:
 //-----------------------------------------------------------------------------
-void MainWindow::meshSplitterStdoutSlot()
-{
+void MainWindow::meshSplitterStdoutSlot() {
   QString qs = meshSplitter->readAllStandardOutput();
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
   solverLogWindow->getTextEdit()->append(qs);
@@ -6605,11 +6601,10 @@ void MainWindow::meshSplitterStdoutSlot()
 
 // meshSplitter emits (void) when there is something to read from stderr:
 //-----------------------------------------------------------------------------
-void MainWindow::meshSplitterStderrSlot()
-{
+void MainWindow::meshSplitterStderrSlot() {
   QString qs = meshSplitter->readAllStandardError();
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
   solverLogWindow->getTextEdit()->append(qs);
@@ -6617,11 +6612,10 @@ void MainWindow::meshSplitterStderrSlot()
 
 // meshUnifier emits (int) when ready...
 //-----------------------------------------------------------------------------
-void MainWindow::meshUnifierFinishedSlot(int exitCode)
-{
+void MainWindow::meshUnifierFinishedSlot(int exitCode) {
   QStringList args;
 
-  if(exitCode != 0) {
+  if (exitCode != 0) {
     solverLogWindow->getTextEdit()->append("MeshUnifier failed - aborting");
     logMessage("MeshUnifier failed - aborting");
     vtkPostMeshUnifierRunning = false;
@@ -6637,20 +6631,21 @@ void MainWindow::meshUnifierFinishedSlot(int exitCode)
   // VtkPost:
   //---------
 #ifdef EG_VTK
-  if(vtkPostMeshUnifierRunning) {
+  if (vtkPostMeshUnifierRunning) {
     vtkPost->show();
-    
+
     vtkPost->ReadPostFile(postName);
     // if(!vtkPost->ReadPostFile(postName)) vtkPost->readEpFileSlot();
-    
+
     vtkPostMeshUnifierRunning = false;
     return;
   }
 #endif
 
   QFile file(postName);
-  if(!file.exists()) {
-    solverLogWindow->getTextEdit()->append("Elmerpost input file does not exist.");
+  if (!file.exists()) {
+    solverLogWindow->getTextEdit()->append(
+        "Elmerpost input file does not exist.");
     logMessage("Elmerpost input file does not exist.");
     vtkPostMeshUnifierRunning = false;
     return;
@@ -6663,55 +6658,58 @@ void MainWindow::meshUnifierFinishedSlot(int exitCode)
   QString type, name, tstep;
 
   header >> nn >> ne >> nf >> nt >> type >> name;
-  if ( type == "vector:" )
+  if (type == "vector:")
     name = name + "_abs";
 
   file.close();
 
-  QString  simtype=generalSetup->ui.simulationTypeCombo->currentText().trimmed();
-  if ( simtype.toLower() == "transient" ) {
+  QString simtype =
+      generalSetup->ui.simulationTypeCombo->currentText().trimmed();
+  if (simtype.toLower() == "transient") {
     tstep = QString::number(1);
   } else {
     tstep = QString::number(nt);
   }
 
-  args << "readfile " + postName + " " + tstep + 
-      " " + tstep + "1; "
-    "set ColorScaleY -0.85; "
-    "set ColorScaleEntries  4;"
-    "set ColorScaleDecimals 2;"
-    "set ColorScaleColor " + name + ";"
-    "set DisplayStyle(ColorScale) 1; "
-    "set MeshStyle 1; "
-    "set MeshColor " + name + ";"
-    "set DisplayStyle(ColorMesh) 1; "
-    "translate -y 0.2; "
-    "UpdateObject; ";
+  args << "readfile " + postName + " " + tstep + " " + tstep +
+              "1; "
+              "set ColorScaleY -0.85; "
+              "set ColorScaleEntries  4;"
+              "set ColorScaleDecimals 2;"
+              "set ColorScaleColor " +
+              name +
+              ";"
+              "set DisplayStyle(ColorScale) 1; "
+              "set MeshStyle 1; "
+              "set MeshColor " +
+              name +
+              ";"
+              "set DisplayStyle(ColorMesh) 1; "
+              "translate -y 0.2; "
+              "UpdateObject; ";
 
   post->start("ElmerPost", args);
   killresultsAct->setEnabled(true);
-  
-  if(!post->waitForStarted()) {
+
+  if (!post->waitForStarted()) {
     logMessage("Unable to start post processor");
     return;
   }
-  
+
   resultsAct->setIcon(QIcon(":/icons/Post-red.png"));
-  
+
   logMessage("Post processor started");
 
   updateSysTrayIcon("ElmerPost started",
-		    "Use Run->Kill ElmerPost to stop processing");
+                    "Use Run->Kill ElmerPost to stop processing");
 }
-
 
 // meshUnifier emits (void) when there is something to read from stdout:
 //-----------------------------------------------------------------------------
-void MainWindow::meshUnifierStdoutSlot()
-{
+void MainWindow::meshUnifierStdoutSlot() {
   QString qs = meshUnifier->readAllStandardOutput();
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
   solverLogWindow->getTextEdit()->append(qs);
@@ -6719,55 +6717,53 @@ void MainWindow::meshUnifierStdoutSlot()
 
 // meshUnifier emits (void) when there is something to read from stderr:
 //-----------------------------------------------------------------------------
-void MainWindow::meshUnifierStderrSlot()
-{
+void MainWindow::meshUnifierStderrSlot() {
   QString qs = meshUnifier->readAllStandardError();
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
   solverLogWindow->getTextEdit()->append(qs);
 }
 
-
 // solver process emits (void) when there is something to read from stdout:
 //-----------------------------------------------------------------------------
-void MainWindow::solverStdoutSlot()
-{
+void MainWindow::solverStdoutSlot() {
   static QString qs_save = "";
 
   QString qs = qs_save + solver->readAllStandardOutput();
 
   int n = qs.lastIndexOf('\n');
 
-  if((n > 0) && (n < qs.size()-1)) {
-    qs_save = qs.mid(n+1);
+  if ((n > 0) && (n < qs.size() - 1)) {
+    qs_save = qs.mid(n + 1);
     qs = qs.mid(0, n);
 
-  } else if(n == 0) {
-    if(qs.size() == 1) {
+  } else if (n == 0) {
+    if (qs.size() == 1) {
       qs_save = "";
       return;
     }
     qs_save = qs.mid(1);
     return;
 
-  } else if(n < 0) {
-      qs_save = qs;
-      return;
+  } else if (n < 0) {
+    qs_save = qs;
+    return;
 
-  } else qs_save = "";
+  } else
+    qs_save = "";
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
-  if(qs.isEmpty())
+  if (qs.isEmpty())
     return;
 
   solverLogWindow->getTextEdit()->append(qs);
 
 #ifdef EG_QWT
-  if(!showConvergence) {
+  if (!showConvergence) {
 
     // hide convergence plot
     //----------------------
@@ -6777,100 +6773,94 @@ void MainWindow::solverStdoutSlot()
 
     // show convergence plot
     //----------------------
-    if(!convergenceView->isVisible())
+    if (!convergenceView->isVisible())
       convergenceView->show();
   }
 #endif
-    
+
   QStringList qsl = qs.split("\n");
-  for(int i = 0; i < qsl.count(); i++) {
+  for (int i = 0; i < qsl.count(); i++) {
     QString tmp = qsl.at(i).trimmed();
-    
-    if(tmp.contains("Time:")) {
+
+    if (tmp.contains("Time:")) {
       QStringList tmpSplitted = tmp.split(" ");
       int last = tmpSplitted.count() - 1;
       QString timeString = tmpSplitted.at(last);
       double timeDouble = timeString.toDouble();
 #ifdef EG_QWT
-      convergenceView->title = "Convergence history (time="
-	+ QString::number(timeDouble) + ")";
+      convergenceView->title =
+          "Convergence history (time=" + QString::number(timeDouble) + ")";
 #endif
-    }   
-    
-    if(tmp.contains("ComputeChange")) { // && tmp.contains("NS")) {
+    }
+
+    if (tmp.contains("ComputeChange")) { // && tmp.contains("NS")) {
       QString copyOfTmp = tmp;
-      
+
       // check solver name:
       QStringList tmpSplitted = tmp.split(":");
       int last = tmpSplitted.count() - 1;
       QString name = tmpSplitted.at(last).trimmed();
-      
+
       // parse rest of the line:
       double res1 = 0.0;
       double res2 = 0.0;
       int n = tmp.indexOf("NRM,RELC");
       tmp = tmp.mid(n);
       tmpSplitted = tmp.split("(");
-      
-      if(tmpSplitted.count() >= 2) {
-	QString tmp2 = tmpSplitted.at(1).trimmed();
-	QStringList tmp2Splitted = tmp2.split(" ");
-	QString qs1 = tmp2Splitted.at(0).trimmed();
-	res1 = qs1.toDouble();
-	int pos = 1;
-	// while(tmp2Splitted.at(pos).trimmed() == "") {
-	while(tmp2Splitted.at(pos).trimmed().isEmpty()) {
-	  pos++;
-	  if(pos > tmp2Splitted.count())
-	    break;
-	}
-	QString qs2 = tmp2Splitted.at(pos).trimmed();
-	res2 = max( qs2.toDouble(), 1.0e-16 );
+
+      if (tmpSplitted.count() >= 2) {
+        QString tmp2 = tmpSplitted.at(1).trimmed();
+        QStringList tmp2Splitted = tmp2.split(" ");
+        QString qs1 = tmp2Splitted.at(0).trimmed();
+        res1 = qs1.toDouble();
+        int pos = 1;
+        // while(tmp2Splitted.at(pos).trimmed() == "") {
+        while (tmp2Splitted.at(pos).trimmed().isEmpty()) {
+          pos++;
+          if (pos > tmp2Splitted.count())
+            break;
+        }
+        QString qs2 = tmp2Splitted.at(pos).trimmed();
+        res2 = max(qs2.toDouble(), 1.0e-16);
       }
-      
+
       // res1 = norm, res2 = relative change
 #ifdef EG_QWT
-      if(copyOfTmp.contains("NS"))	
-	convergenceView->appendData(res2, "NS/" + name);
-      
-      if(copyOfTmp.contains("SS"))
-	convergenceView->appendData(res2, "SS/" + name);
+      if (copyOfTmp.contains("NS"))
+        convergenceView->appendData(res2, "NS/" + name);
+
+      if (copyOfTmp.contains("SS"))
+        convergenceView->appendData(res2, "SS/" + name);
 #endif
     }
   }
 }
 
-
 // solver process emits (void) when there is something to read from stderr:
 //-----------------------------------------------------------------------------
-void MainWindow::solverStderrSlot()
-{
+void MainWindow::solverStderrSlot() {
   QString qs = solver->readAllStandardError();
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
   solverLogWindow->getTextEdit()->append(qs);
 }
 
-
-
 // solver process emits (int) when ready...
 //-----------------------------------------------------------------------------
-void MainWindow::solverFinishedSlot(int)
-{
+void MainWindow::solverFinishedSlot(int) {
   logMessage("Solver ready");
   runsolverAct->setIcon(QIcon(":/icons/Solver.png"));
-  updateSysTrayIcon("ElmerSolver has finished",
-            "Use Run->Start ElmerPost, ElmerVTK or Paraview to view results");
+  updateSysTrayIcon(
+      "ElmerSolver has finished",
+      "Use Run->Start ElmerPost, ElmerVTK or Paraview to view results");
   killsolverAct->setEnabled(false);
 }
 
-
 // solver process emits (QProcess::ProcessError) when error occurs...
 //-----------------------------------------------------------------------------
-void MainWindow::solverErrorSlot(QProcess::ProcessError error)
-{
+void MainWindow::solverErrorSlot(QProcess::ProcessError error) {
   logMessage("Solver emitted error signal: " + QString::number(error));
   solver->kill();
   runsolverAct->setIcon(QIcon(":/icons/Solver.png"));
@@ -6878,18 +6868,16 @@ void MainWindow::solverErrorSlot(QProcess::ProcessError error)
 
 // solver process emits (QProcess::ProcessState) when state changed...
 //-----------------------------------------------------------------------------
-void MainWindow::solverStateChangedSlot(QProcess::ProcessState state)
-{
-  logMessage("Solver emitted signal: QProcess::ProcessState: " + QString::number(state));
+void MainWindow::solverStateChangedSlot(QProcess::ProcessState state) {
+  logMessage("Solver emitted signal: QProcess::ProcessState: " +
+             QString::number(state));
   // solver->kill();
   // runsolverAct->setIcon(QIcon(":/icons/Solver.png"));
 }
 
-
 // Solver -> Kill solver
 //-----------------------------------------------------------------------------
-void MainWindow::killsolverSlot()
-{
+void MainWindow::killsolverSlot() {
   solver->kill();
 
   logMessage("Solver killed");
@@ -6898,21 +6886,17 @@ void MainWindow::killsolverSlot()
 
 // Solver -> Show convergence
 //-----------------------------------------------------------------------------
-void MainWindow::showConvergenceSlot()
-{
+void MainWindow::showConvergenceSlot() {
   showConvergence = !showConvergence;
   synchronizeMenuToState();
 }
 
-
-
 // Solver -> Run post process
 //-----------------------------------------------------------------------------
-void MainWindow::resultsSlot()
-{
+void MainWindow::resultsSlot() {
   QStringList args;
-  
-  if(post->state() == QProcess::Running) {
+
+  if (post->state() == QProcess::Running) {
     logMessage("Post processor is already running");
     return;
   }
@@ -6922,15 +6906,15 @@ void MainWindow::resultsSlot()
   Ui::parallelDialog ui = parallel->ui;
   bool parallelActive = ui.parallelActiveCheckBox->isChecked();
 
-  if(parallelActive) {
-    
+  if (parallelActive) {
+
     // unify mesh:
-    if(meshUnifier->state() == QProcess::Running) {
+    if (meshUnifier->state() == QProcess::Running) {
       logMessage("Mesh unifier is already running - aborted");
       return;
     }
-    
-    if(saveDirName.isEmpty()) {
+
+    if (saveDirName.isEmpty()) {
       logMessage("saveDirName is empty - unable to locate result files");
       return;
     }
@@ -6948,26 +6932,27 @@ void MainWindow::resultsSlot()
     QString unifyingCommand = ui.mergeLineEdit->text().trimmed();
     unifyingCommand.replace(QString("%ep"), postNameSplitted.at(0).trimmed());
     unifyingCommand.replace(QString("%n"), QString::number(nofProcessors));
-    
+
     logMessage("Executing: " + unifyingCommand);
-    
+
     meshUnifier->start(unifyingCommand);
-    
-    if(!meshUnifier->waitForStarted()) {
-      solverLogWindow->getTextEdit()->append("Unable to start ElmerGrid for mesh unification - aborted");
+
+    if (!meshUnifier->waitForStarted()) {
+      solverLogWindow->getTextEdit()->append(
+          "Unable to start ElmerGrid for mesh unification - aborted");
       logMessage("Unable to start ElmerGrid for mesh unification - aborted");
       return;
     }
-    
+
     // The rest is done in meshUnifierFinishedSlot:
     return;
   }
-   
+
   // Scalar solution:
   //==================
   QString postName = generalSetup->ui.postFileEdit->text().trimmed();
   QFile file(postName);
-  if(!file.exists()) {
+  if (!file.exists()) {
     logMessage("Elmerpost input file does not exist.");
     return;
   }
@@ -6979,64 +6964,65 @@ void MainWindow::resultsSlot()
   QString type, name, tstep;
 
   header >> nn >> ne >> nf >> nt >> type >> name;
-  if ( type == "vector:" )
+  if (type == "vector:")
     name = name + "_abs";
 
   file.close();
 
-  QString  simtype=generalSetup->ui.simulationTypeCombo->currentText().trimmed();
-  if ( simtype.toLower() == "transient" ) {
+  QString simtype =
+      generalSetup->ui.simulationTypeCombo->currentText().trimmed();
+  if (simtype.toLower() == "transient") {
     tstep = QString::number(1);
   } else {
     tstep = QString::number(nt);
   }
 
-  args << "readfile " + postName + " " + tstep + 
-    " " + tstep + " 1; "
-    "set ColorScaleY -0.85; "
-    "set ColorScaleEntries  4;"
-    "set ColorScaleDecimals 2;"
-    "set ColorScaleColor " + name + ";"
-    "set DisplayStyle(ColorScale) 1; "
-    "set MeshStyle 1; "
-    "set MeshColor " + name + ";"
-    "set DisplayStyle(ColorMesh) 1; "
-    "translate -y 0.2; "
-    "UpdateObject; ";
+  args << "readfile " + postName + " " + tstep + " " + tstep +
+              " 1; "
+              "set ColorScaleY -0.85; "
+              "set ColorScaleEntries  4;"
+              "set ColorScaleDecimals 2;"
+              "set ColorScaleColor " +
+              name +
+              ";"
+              "set DisplayStyle(ColorScale) 1; "
+              "set MeshStyle 1; "
+              "set MeshColor " +
+              name +
+              ";"
+              "set DisplayStyle(ColorMesh) 1; "
+              "translate -y 0.2; "
+              "UpdateObject; ";
 
   post->start("ElmerPost", args);
   killresultsAct->setEnabled(true);
-  
-  if(!post->waitForStarted()) {
+
+  if (!post->waitForStarted()) {
     logMessage("Unable to start ElmerPost");
     return;
   }
-  
+
   resultsAct->setIcon(QIcon(":/icons/Post-red.png"));
-  
+
   logMessage("ElmerPost started");
 
   updateSysTrayIcon("ElmerPost started",
-		    "Use Run->Kill ElmerPost to stop processing");
+                    "Use Run->Kill ElmerPost to stop processing");
 }
-
 
 // Signal (int) emitted by postProcess when finished:
 //-----------------------------------------------------------------------------
-void MainWindow::postProcessFinishedSlot(int)
-{
+void MainWindow::postProcessFinishedSlot(int) {
   logMessage("ElmerPost finished");
   resultsAct->setIcon(QIcon(":/icons/Post.png"));
   updateSysTrayIcon("ElmerPost has finished",
-		    "Use Run->Start ElmerPost to restart");
+                    "Use Run->Start ElmerPost to restart");
   killresultsAct->setEnabled(false);
 }
 
-
 // Solver -> Kill post process
 //-----------------------------------------------------------------------------
-void MainWindow::killresultsSlot()
-{
+void MainWindow::killresultsSlot() {
   post->kill();
 
   logMessage("Post process killed");
@@ -7045,12 +7031,11 @@ void MainWindow::killresultsSlot()
 
 // Solver -> Compile...
 //-----------------------------------------------------------------------------
-void MainWindow::compileSolverSlot()
-{
+void MainWindow::compileSolverSlot() {
   QString defaultDirName = getDefaultDirName();
 
-  QString fileName = QFileDialog::getOpenFileName(this,
-       tr("Open source file"), defaultDirName, tr("F90 files (*.f90)"));
+  QString fileName = QFileDialog::getOpenFileName(
+      this, tr("Open source file"), defaultDirName, tr("F90 files (*.f90)"));
 
   if (!fileName.isEmpty()) {
     QFileInfo fi(fileName);
@@ -7061,7 +7046,7 @@ void MainWindow::compileSolverSlot()
     return;
   }
 
-  if(compiler->state() == QProcess::Running) {
+  if (compiler->state() == QProcess::Running) {
     logMessage("Compiler is currently running");
     return;
   }
@@ -7083,8 +7068,8 @@ void MainWindow::compileSolverSlot()
   logMessage("Run->compiler is currently not implemented on this platform");
   return;
 #endif
-  
-  if(!compiler->waitForStarted()) {
+
+  if (!compiler->waitForStarted()) {
     logMessage("Unable to start compiler");
     return;
   }
@@ -7098,27 +7083,23 @@ void MainWindow::compileSolverSlot()
   logMessage("Compiling...");
 }
 
-
 // compiler process emits (void) when there is something to read from stdout:
 //-----------------------------------------------------------------------------
-void MainWindow::compilerStdoutSlot()
-{
+void MainWindow::compilerStdoutSlot() {
   QString qs = compiler->readAllStandardOutput();
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
   solverLogWindow->getTextEdit()->append(qs);
 }
 
-
 // compiler process emits (void) when there is something to read from stderr:
 //-----------------------------------------------------------------------------
-void MainWindow::compilerStderrSlot()
-{
+void MainWindow::compilerStderrSlot() {
   QString qs = compiler->readAllStandardError();
 
-  while(qs.at(qs.size()-1).unicode() == '\n')
+  while (qs.at(qs.size() - 1).unicode() == '\n')
     qs.chop(1);
 
   solverLogWindow->getTextEdit()->append(qs);
@@ -7126,14 +7107,11 @@ void MainWindow::compilerStderrSlot()
 
 // Signal (int) emitted by compiler when finished:
 //-----------------------------------------------------------------------------
-void MainWindow::compilerFinishedSlot(int)
-{
+void MainWindow::compilerFinishedSlot(int) {
   logMessage("Ready");
   solverLogWindow->statusBar()->showMessage("Ready");
   solverLogWindow->getTextEdit()->append("Ready");
 }
-
-
 
 //*****************************************************************************
 //
@@ -7141,60 +7119,57 @@ void MainWindow::compilerFinishedSlot(int)
 //
 //*****************************************************************************
 
-
 // About dialog...
 //-----------------------------------------------------------------------------
-void MainWindow::showaboutSlot()
-{
-  QMessageBox::about(this, tr("Information about ElmerGUI"),
-		     tr("ElmerGUI is a preprocessor for two and "
-			"three dimensional modeling with Elmer "
-			"finite element software. The program "
-			"uses elmergrid, nglib, and optionally tetlib, "
-			"as finite element mesh generators:\n\n"
-			"http://www.csc.fi/elmer/\n"
-                        "https://ngsolve.org/\n"
-			"http://tetgen.berlios.de/\n\n"
-			"ElmerGUI uses the Qt Cross-Platform "
-			"Application Framework by The Qt Company:\n\n"
-			"http://www.qt.io/\n\n"
+void MainWindow::showaboutSlot() {
+  QMessageBox::about(
+      this, tr("Information about ElmerGUI"),
+      tr("ElmerGUI is a preprocessor for two and "
+         "three dimensional modeling with Elmer "
+         "finite element software. The program "
+         "uses elmergrid, nglib, and optionally tetlib, "
+         "as finite element mesh generators:\n\n"
+         "http://www.csc.fi/elmer/\n"
+         "https://ngsolve.org/\n"
+         "http://tetgen.berlios.de/\n\n"
+         "ElmerGUI uses the Qt Cross-Platform "
+         "Application Framework by The Qt Company:\n\n"
+         "http://www.qt.io/\n\n"
 #ifdef EG_VTK
-			"This version of ElmerGUI contains a built-in "
-			"postprocessor based on the Visualization Toolkit "
-			"(VTK):\n\n"
-			"http://www.vtk.org/\n\n"
+         "This version of ElmerGUI contains a built-in "
+         "postprocessor based on the Visualization Toolkit "
+         "(VTK):\n\n"
+         "http://www.vtk.org/\n\n"
 #endif
 
 #ifdef EG_PARAVIEW
-            "This version of ElmerGUI has been linked "
-            "against ParaView visualization software."
-            "\n\n"
-            "http://www.paraview.org\n\n"
+         "This version of ElmerGUI has been linked "
+         "against ParaView visualization software."
+         "\n\n"
+         "http://www.paraview.org\n\n"
 #endif
 
 #ifdef EG_OCC
-			"This version of ElmerGUI has been compiled with "
-			"the OpenCascade solids modeling library:\n\n"
-			"http://www.opencascade.org/\n\n"
+         "This version of ElmerGUI has been compiled with "
+         "the OpenCascade solids modeling library:\n\n"
+         "http://www.opencascade.org/\n\n"
 #endif
 
 #ifdef MPICH2
-			"The parallel solver of this package has been linked "
-			"against the MPICH2 library v. 1.0.7 from Argonne "
-			"national laboratory. In order to use the parallel "
-			"solver, the MPICH2 runtime environment should be "
-			"installed and configured on your system. For more "
-			"details, see:\n\n"
-			"http://www.mcs.anl.gov/research/projects/mpich2/\n\n"
+         "The parallel solver of this package has been linked "
+         "against the MPICH2 library v. 1.0.7 from Argonne "
+         "national laboratory. In order to use the parallel "
+         "solver, the MPICH2 runtime environment should be "
+         "installed and configured on your system. For more "
+         "details, see:\n\n"
+         "http://www.mcs.anl.gov/research/projects/mpich2/\n\n"
 #endif
-			"The GPL-licensed source code of ElmerGUI is available "
-			"from the git repository\n\n"
-			"https://github.com/ElmerCSC/elmerfem/\n\n"
-            "Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki,\n"
-            "Peter Raback and Sampo Sillanpaa 2008-2020"));
+         "The GPL-licensed source code of ElmerGUI is available "
+         "from the git repository\n\n"
+         "https://github.com/ElmerCSC/elmerfem/\n\n"
+         "Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki,\n"
+         "Peter Raback and Sampo Sillanpaa 2008-2020"));
 }
-
-
 
 //*****************************************************************************
 //
@@ -7202,11 +7177,9 @@ void MainWindow::showaboutSlot()
 //
 //*****************************************************************************
 
-
 // Log message...
 //-----------------------------------------------------------------------------
-void MainWindow::logMessage(QString message)
-{
+void MainWindow::logMessage(QString message) {
 #if WITH_QT5
   cout << string(message.toLatin1()) << endl;
 #else
@@ -7216,29 +7189,26 @@ void MainWindow::logMessage(QString message)
   cout.flush();
 }
 
-
-
 // Synchronize menu to GL glwidget state variables:
 //-----------------------------------------------------------------------------
-void MainWindow::synchronizeMenuToState()
-{
+void MainWindow::synchronizeMenuToState() {
   // glwidget state variables:
-  if(glWidget->stateDrawSurfaceMesh)
+  if (glWidget->stateDrawSurfaceMesh)
     hidesurfacemeshAct->setChecked(true);
   else
     hidesurfacemeshAct->setChecked(false);
-  
-  if(glWidget->stateDrawVolumeMesh)
+
+  if (glWidget->stateDrawVolumeMesh)
     hidevolumemeshAct->setChecked(true);
   else
     hidevolumemeshAct->setChecked(false);
-  
-  if(glWidget->stateDrawSharpEdges)
+
+  if (glWidget->stateDrawSharpEdges)
     hidesharpedgesAct->setChecked(true);
   else
     hidesharpedgesAct->setChecked(false);
-  
-  if(glWidget->stateFlatShade) {
+
+  if (glWidget->stateFlatShade) {
     flatShadeAct->setChecked(true);
     smoothShadeAct->setChecked(false);
   } else {
@@ -7246,7 +7216,7 @@ void MainWindow::synchronizeMenuToState()
     smoothShadeAct->setChecked(true);
   }
 
-  if(glWidget->stateOrtho) {
+  if (glWidget->stateOrtho) {
     orthoAct->setChecked(true);
     perspectiveAct->setChecked(false);
   } else {
@@ -7254,85 +7224,85 @@ void MainWindow::synchronizeMenuToState()
     perspectiveAct->setChecked(true);
   }
 
-  if(glWidget->stateDrawSurfaceNumbers) 
+  if (glWidget->stateDrawSurfaceNumbers)
     showSurfaceNumbersAct->setChecked(true);
-  else 
+  else
     showSurfaceNumbersAct->setChecked(false);
 
-  if(glWidget->stateDrawEdgeNumbers) 
+  if (glWidget->stateDrawEdgeNumbers)
     showEdgeNumbersAct->setChecked(true);
-  else 
+  else
     showEdgeNumbersAct->setChecked(false);
 
-  if(glWidget->stateDrawNodeNumbers) 
+  if (glWidget->stateDrawNodeNumbers)
     showNodeNumbersAct->setChecked(true);
-  else 
+  else
     showNodeNumbersAct->setChecked(false);
 
-  if(glWidget->stateDrawBoundaryIndex)
+  if (glWidget->stateDrawBoundaryIndex)
     showBoundaryIndexAct->setChecked(true);
-  else 
+  else
     showBoundaryIndexAct->setChecked(false);
 
-  if(glWidget->stateDrawBodyIndex)
+  if (glWidget->stateDrawBodyIndex)
     showBodyIndexAct->setChecked(true);
-  else 
+  else
     showBodyIndexAct->setChecked(false);
 
-  if(glWidget->stateDrawCoordinates) 
+  if (glWidget->stateDrawCoordinates)
     viewCoordinatesAct->setChecked(true);
-  else 
+  else
     viewCoordinatesAct->setChecked(false);
 
-  if(bodyEditActive)
+  if (bodyEditActive)
     bodyEditAct->setChecked(true);
   else
     bodyEditAct->setChecked(false);
 
-  if(bcEditActive)
+  if (bcEditActive)
     bcEditAct->setChecked(true);
   else
     bcEditAct->setChecked(false);
 
-  if(showConvergence)
+  if (showConvergence)
     showConvergenceAct->setChecked(true);
   else
     showConvergenceAct->setChecked(false);
 
-  if(glWidget->stateBcColors)
+  if (glWidget->stateBcColors)
     showBoundaryColorAct->setChecked(true);
   else
     showBoundaryColorAct->setChecked(false);
 
-  if(glWidget->stateBodyColors)
+  if (glWidget->stateBodyColors)
     showBodyColorAct->setChecked(true);
   else
     showBodyColorAct->setChecked(false);
 
-  if(isFullScreen())
+  if (isFullScreen())
     viewFullScreenAct->setChecked(true);
   else
     viewFullScreenAct->setChecked(false);
 }
 
-
 // Load definitions...
 //-----------------------------------------------------------------------------
-void MainWindow::loadDefinitions()
-{
+void MainWindow::loadDefinitions() {
   // Determine edf-file location and name:
   //--------------------------------------
   QString elmerGuiHome;
 
 #ifdef __APPLE__DONTGO_HERE_TODO
-  QString generalDefs = this->homePath +  "/edf/edf.xml";            
+  QString generalDefs = this->homePath + "/edf/edf.xml";
 #else
-  QString generalDefs = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf/edf.xml";  // @TODO: fix path to share/ElmerGUI/edf
+  QString generalDefs =
+      QCoreApplication::applicationDirPath() +
+      "/../share/ElmerGUI/edf/edf.xml"; // @TODO: fix path to share/ElmerGUI/edf
 
   elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
-  
-  if(!elmerGuiHome.isEmpty())
-    generalDefs = elmerGuiHome + "/edf/edf.xml";  
+
+  if (!elmerGuiHome.isEmpty())
+    generalDefs = elmerGuiHome + "/edf/edf.xml";
 
   // ML 5. August 2010
   generalDefs.replace('\\', '/');
@@ -7349,36 +7319,37 @@ void MainWindow::loadDefinitions()
   updateSplash("Loading general definitions...");
 
   QFile file(generalDefs);
-  
+
   QString errStr;
   int errRow;
   int errCol;
-  
-  if(!file.exists()) {
+
+  if (!file.exists()) {
 
     elmerDefs = NULL;
     QMessageBox::information(window(), tr("Edf loader: ") + generalDefs,
-			     tr("Definitions file does not exist"));
+                             tr("Definitions file does not exist"));
     return;
 
-  } else {  
+  } else {
 
-    if(!elmerDefs->setContent(&file, true, &errStr, &errRow, &errCol)) {
+    if (!elmerDefs->setContent(&file, true, &errStr, &errRow, &errCol)) {
       QMessageBox::information(window(), tr("Edf loader: ") + generalDefs,
-			       tr("Parse error at line %1, col %2:\n%3")
-			       .arg(errRow).arg(errCol).arg(errStr));
+                               tr("Parse error at line %1, col %2:\n%3")
+                                   .arg(errRow)
+                                   .arg(errCol)
+                                   .arg(errStr));
       file.close();
       return;
 
     } else {
 
-      if(elmerDefs->documentElement().tagName() != "edf") {
-	QMessageBox::information(window(), tr("Edf loader: ") + generalDefs,
-				 tr("This is not an edf file"));
-	delete elmerDefs;
-	file.close();	
-	return;
-
+      if (elmerDefs->documentElement().tagName() != "edf") {
+        QMessageBox::information(window(), tr("Edf loader: ") + generalDefs,
+                                 tr("This is not an edf file"));
+        delete elmerDefs;
+        file.close();
+        return;
       }
     }
   }
@@ -7392,12 +7363,14 @@ void MainWindow::loadDefinitions()
   // load additional definitions:
   //-----------------------------
 #ifdef __APPLE__DONTGO_HERE_TODO
-  QDirIterator iterator( homePath+"/edf", QDirIterator::Subdirectories);  
+  QDirIterator iterator(homePath + "/edf", QDirIterator::Subdirectories);
 #else
-  QString additionalEdfs = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf";  // @TODO: fix path to share/ElmerGUI/edf
+  QString additionalEdfs =
+      QCoreApplication::applicationDirPath() +
+      "/../share/ElmerGUI/edf"; // @TODO: fix path to share/ElmerGUI/edf
 
-  if(!elmerGuiHome.isEmpty()) 
-    additionalEdfs = elmerGuiHome + "/edf";  
+  if (!elmerGuiHome.isEmpty())
+    additionalEdfs = elmerGuiHome + "/edf";
 
   QDirIterator iterator(additionalEdfs, QDirIterator::Subdirectories);
 #endif
@@ -7412,13 +7385,13 @@ void MainWindow::loadDefinitions()
     QString fileSuffix = fileInfo.suffix();
 
     // The names "egini" and "egmaterials" are reserved, skip them:
-    if(fileInfo.completeBaseName() == "egini")
+    if (fileInfo.completeBaseName() == "egini")
       continue;
 
-    if(fileInfo.completeBaseName() == "egmaterials")
+    if (fileInfo.completeBaseName() == "egmaterials")
       continue;
 
-    if((fileSuffix == "xml") && (fileName != generalDefs)) {
+    if ((fileSuffix == "xml") && (fileName != generalDefs)) {
 
 #if WITH_QT5
       cout << "Load " << string(fileName.toLatin1()) << "... ";
@@ -7434,33 +7407,35 @@ void MainWindow::loadDefinitions()
       QDomDocument tmpDoc;
       tmpDoc.clear();
 
-      if(!tmpDoc.setContent(&file, true, &errStr, &errRow, &errCol)) {
-	QMessageBox::information(window(), tr("Edf loader: ") + fileName,
-				 tr("Parse error at line %1, col %2:\n%3")
-				 .arg(errRow).arg(errCol).arg(errStr));
-	file.close();
-	return;
+      if (!tmpDoc.setContent(&file, true, &errStr, &errRow, &errCol)) {
+        QMessageBox::information(window(), tr("Edf loader: ") + fileName,
+                                 tr("Parse error at line %1, col %2:\n%3")
+                                     .arg(errRow)
+                                     .arg(errCol)
+                                     .arg(errStr));
+        file.close();
+        return;
 
       } else {
 
-	if(tmpDoc.documentElement().tagName() != "edf") {
-	  QMessageBox::information(window(), tr("Edf loader: ") + fileName,
-				   tr("This is not an edf file"));
-	  file.close();
-	  return;      
-	}
+        if (tmpDoc.documentElement().tagName() != "edf") {
+          QMessageBox::information(window(), tr("Edf loader: ") + fileName,
+                                   tr("This is not an edf file"));
+          file.close();
+          return;
+        }
       }
-      
+
       // add new elements to the document
       QDomElement root = elmerDefs->documentElement();
       QDomElement tmpRoot = tmpDoc.documentElement();
       QDomElement element = tmpRoot.firstChildElement();
 
-      while(!element.isNull()) {
-	root.appendChild(element);
-	element = tmpRoot.firstChildElement();
+      while (!element.isNull()) {
+        root.appendChild(element);
+        element = tmpRoot.firstChildElement();
       }
-      
+
       edfEditor->setupEditor(elmerDefs);
 
       file.close();
@@ -7472,37 +7447,37 @@ void MainWindow::loadDefinitions()
 
   // Load qss:
   //-----------
-  QString qssFileName = QCoreApplication::applicationDirPath() + "/elmergui.qss"; // @TODO: fix path to share/ElmerGUI
+  QString qssFileName = QCoreApplication::applicationDirPath() +
+                        "/elmergui.qss"; // @TODO: fix path to share/ElmerGUI
 
 #ifdef __APPLE__
   qssFileName = homePath + "/elmergui.qss";
 #else
-  if(!elmerGuiHome.isEmpty()) 
+  if (!elmerGuiHome.isEmpty())
     qssFileName = elmerGuiHome + "/elmergui.qss";
 #endif
 
   QFile qssFile(qssFileName);
-  
-  if(qssFile.exists()) {
+
+  if (qssFile.exists()) {
     cout << "Loading QSS style sheet... ";
     qssFile.open(QFile::ReadOnly);
     QString styleSheet = QLatin1String(qssFile.readAll());
     qssFile.close();
-    qApp->setStyleSheet(styleSheet);    
+    qApp->setStyleSheet(styleSheet);
     cout << "done" << endl;
   }
 }
 
 // Setup splash...
 //-----------------------------------------------------------------------------
-void MainWindow::setupSplash()
-{
+void MainWindow::setupSplash() {
   QStringList args = QCoreApplication::arguments();
-  
-  if(args.contains("-nogui"))
+
+  if (args.contains("-nogui"))
     return;
 
-  if(egIni->isSet("splashscreen")) {
+  if (egIni->isSet("splashscreen")) {
     pixmap.load(":/images/splash.png");
     splash.setPixmap(pixmap);
     splash.show();
@@ -7510,20 +7485,18 @@ void MainWindow::setupSplash()
   }
 }
 
-
 // Update splash...
 //-----------------------------------------------------------------------------
-void MainWindow::updateSplash(QString text)
-{
+void MainWindow::updateSplash(QString text) {
   QStringList args = QCoreApplication::arguments();
-  
-  if(args.contains("-nogui"))
+
+  if (args.contains("-nogui"))
     return;
 
-  if(!egIni->isSet("splashscreen"))
+  if (!egIni->isSet("splashscreen"))
     return;
 
-  if(splash.isVisible()) {
+  if (splash.isVisible()) {
     splash.showMessage(text, Qt::AlignBottom);
     qApp->processEvents();
   }
@@ -7531,30 +7504,28 @@ void MainWindow::updateSplash(QString text)
 
 // Finalize splash...
 //-----------------------------------------------------------------------------
-void MainWindow::finalizeSplash()
-{
-  if(!egIni->isSet("splashscreen"))
+void MainWindow::finalizeSplash() {
+  if (!egIni->isSet("splashscreen"))
     return;
 
-  if(splash.isVisible())
+  if (splash.isVisible())
     splash.finish(this);
 }
 
 // Setup system tray icon...
 //-----------------------------------------------------------------------------
-void MainWindow::setupSysTrayIcon()
-{
+void MainWindow::setupSysTrayIcon() {
   sysTrayIcon = NULL;
 
   QStringList args = QCoreApplication::arguments();
-  
-  if(args.contains("-nogui"))
+
+  if (args.contains("-nogui"))
     return;
 
-  if(!egIni->isSet("systrayicon"))
+  if (!egIni->isSet("systrayicon"))
     return;
 
-  if(QSystemTrayIcon::isSystemTrayAvailable()) {
+  if (QSystemTrayIcon::isSystemTrayAvailable()) {
     sysTrayIcon = new QSystemTrayIcon(this);
     sysTrayIcon->setIcon(QIcon(":/icons/Mesh3D.png"));
     sysTrayIcon->setVisible(true);
@@ -7564,42 +7535,38 @@ void MainWindow::setupSysTrayIcon()
 
 // Update system tray icon...
 //-----------------------------------------------------------------------------
-void MainWindow::updateSysTrayIcon(QString label, QString msg)
-{
+void MainWindow::updateSysTrayIcon(QString label, QString msg) {
   int duration = 3000;
 
   QStringList args = QCoreApplication::arguments();
-  
-  if(args.contains("-nogui"))
+
+  if (args.contains("-nogui"))
     return;
 
-  if(!sysTrayIcon)
+  if (!sysTrayIcon)
     return;
 
-  if(!egIni->isSet("systraymessages"))
+  if (!egIni->isSet("systraymessages"))
     return;
 
-  if(isFullScreen())
+  if (isFullScreen())
     return;
-  
-  if(egIni->isPresent("systraymsgduration"))
+
+  if (egIni->isPresent("systraymsgduration"))
     duration = egIni->value("systraymsgduration").toInt();
 
-  if(sysTrayIcon->supportsMessages())
-    sysTrayIcon->showMessage(label, msg, QSystemTrayIcon::Information, duration);
-
+  if (sysTrayIcon->supportsMessages())
+    sysTrayIcon->showMessage(label, msg, QSystemTrayIcon::Information,
+                             duration);
 }
 
 // Finalize system tray icon...
 //-----------------------------------------------------------------------------
-void MainWindow::finalizeSysTrayIcon()
-{
-}
+void MainWindow::finalizeSysTrayIcon() {}
 
 // Get default open/save directory
 //-----------------------------------------------------------------------------
-QString MainWindow::getDefaultDirName()
-{
+QString MainWindow::getDefaultDirName() {
   QString defaultDirName = "";
 
 #ifdef WIN32
@@ -7612,7 +7579,7 @@ QString MainWindow::getDefaultDirName()
 #endif
 #endif
 
-  if(!saveDirName.isEmpty())
+  if (!saveDirName.isEmpty())
     defaultDirName = saveDirName;
 
   return defaultDirName;
@@ -7620,14 +7587,16 @@ QString MainWindow::getDefaultDirName()
 
 // Load settings
 //-----------------------------------------------------------------------------
-void MainWindow::loadSettings()
-{
+void MainWindow::loadSettings() {
   restoreGeometry(settings_value("mainWindow/geometry").toByteArray());
-  sifWindow->restoreGeometry(settings_value("sifWindow/geometry").toByteArray());
-  solverLogWindow->restoreGeometry(settings_value("solverLogWindow/geometry").toByteArray());
+  sifWindow->restoreGeometry(
+      settings_value("sifWindow/geometry").toByteArray());
+  solverLogWindow->restoreGeometry(
+      settings_value("solverLogWindow/geometry").toByteArray());
 
 #ifdef EG_QWT
-  convergenceView->restoreGeometry(settings_value("convergenceView/geometry").toByteArray());
+  convergenceView->restoreGeometry(
+      settings_value("convergenceView/geometry").toByteArray());
 #endif
 
 #ifdef EG_OCC
@@ -7640,32 +7609,33 @@ void MainWindow::loadSettings()
 
   int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
-  char num[]="01234";
+  char num[] = "01234";
   QString path;
-  for(int i = n-1; i >= 0; i--){
-    path = settings_value( key + num[i], "$").toString();
-    if(path != "$")
-    addRecentProject(path, false);    
+  for (int i = n - 1; i >= 0; i--) {
+    path = settings_value(key + num[i], "$").toString();
+    if (path != "$")
+      addRecentProject(path, false);
   }
-  
-  if( settings_value("objectBrowser/show", true).toBool()){
-    objectBrowser = new ObjectBrowser(this);  
+
+  if (settings_value("objectBrowser/show", true).toBool()) {
+    objectBrowser = new ObjectBrowser(this);
     showObjectBrowserAct->setChecked(true);
-  }else{
-    objectBrowser = NULL;    
+  } else {
+    objectBrowser = NULL;
   }
 }
 
 // Save settings
 //-----------------------------------------------------------------------------
-void MainWindow::saveSettings()
-{ 
+void MainWindow::saveSettings() {
   settings_setValue("mainWindow/geometry", saveGeometry());
   settings_setValue("sifWindow/geometry", sifWindow->saveGeometry());
-  settings_setValue("solverLogWindow/geometry", solverLogWindow->saveGeometry());
+  settings_setValue("solverLogWindow/geometry",
+                    solverLogWindow->saveGeometry());
 
 #ifdef EG_QWT
-  settings_setValue("convergenceView/geometry", convergenceView->saveGeometry());
+  settings_setValue("convergenceView/geometry",
+                    convergenceView->saveGeometry());
 #endif
 
 #ifdef EG_OCC
@@ -7675,105 +7645,90 @@ void MainWindow::saveSettings()
 #ifdef EG_VTK
   settings_setValue("vtkPost/geometry", vtkPost->saveGeometry());
 #endif
-  
-  if(showObjectBrowserAct->isChecked() && objectBrowser != NULL){
-    settings_setValue("objectBrowser/show", true); 
-  }else{
-    settings_setValue("objectBrowser/show", false);  
+
+  if (showObjectBrowserAct->isChecked() && objectBrowser != NULL) {
+    settings_setValue("objectBrowser/show", true);
+  } else {
+    settings_setValue("objectBrowser/show", false);
   }
-  
 }
 
-void MainWindow::addRecentProject(QString dir, bool bSaveToIni)
-{
- if( recentProject.indexOf(dir) != -1){
+void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
+  if (recentProject.indexOf(dir) != -1) {
     recentProject.removeAt(recentProject.indexOf(dir));
   }
   recentProject.prepend(dir);
 
   int i = 0;
-  
-  recentProjectsMenu->removeAction(recentProject0Act);  
-  recentProjectsMenu->removeAction(recentProject1Act);  
-  recentProjectsMenu->removeAction(recentProject2Act);  
-  recentProjectsMenu->removeAction(recentProject3Act);  
+
+  recentProjectsMenu->removeAction(recentProject0Act);
+  recentProjectsMenu->removeAction(recentProject1Act);
+  recentProjectsMenu->removeAction(recentProject2Act);
+  recentProjectsMenu->removeAction(recentProject3Act);
   recentProjectsMenu->removeAction(recentProject4Act);
   recentProjectsMenu->clear(); // just in case
 
-  if( i < 5 && i < recentProject.size() ){
+  if (i < 5 && i < recentProject.size()) {
     recentProject0Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject0Act);
   }
   i++;
-  if( i < 5 && i < recentProject.size() ){
+  if (i < 5 && i < recentProject.size()) {
     recentProject1Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject1Act);
   }
   i++;
-  if( i < 5 && i < recentProject.size() ){
+  if (i < 5 && i < recentProject.size()) {
     recentProject2Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject2Act);
   }
   i++;
-  if( i < 5 && i < recentProject.size() ){
+  if (i < 5 && i < recentProject.size()) {
     recentProject3Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject3Act);
   }
-  i++; 
-  if( i < 5 && i < recentProject.size() ){
+  i++;
+  if (i < 5 && i < recentProject.size()) {
     recentProject4Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject4Act);
   }
   recentProjectsMenu->setEnabled(recentProject.size() > 0);
-  
-  if(bSaveToIni){
+
+  if (bSaveToIni) {
     int n = recentProject.size();
-    if(n > 5) n = 5;
+    if (n > 5)
+      n = 5;
     settings_setValue("recentProject/n", n);
     QString key = "recentProject/";
-    char num[]="01234";
-    for(int i = 0; i < n; i++){
-      settings_setValue( key + num[i], recentProject.at(i));    
+    char num[] = "01234";
+    for (int i = 0; i < n; i++) {
+      settings_setValue(key + num[i], recentProject.at(i));
     }
   }
 }
 
-void MainWindow::loadRecentProject0Slot()
-{
-  loadProject(recentProject.at(0));
-}
+void MainWindow::loadRecentProject0Slot() { loadProject(recentProject.at(0)); }
 
-void MainWindow::loadRecentProject1Slot()
-{
-  loadProject(recentProject.at(1));
-}
+void MainWindow::loadRecentProject1Slot() { loadProject(recentProject.at(1)); }
 
-void MainWindow::loadRecentProject2Slot()
-{
-  loadProject(recentProject.at(2));
-}
+void MainWindow::loadRecentProject2Slot() { loadProject(recentProject.at(2)); }
 
-void MainWindow::loadRecentProject3Slot()
-{
-  loadProject(recentProject.at(3));
-}
+void MainWindow::loadRecentProject3Slot() { loadProject(recentProject.at(3)); }
 
-void MainWindow::loadRecentProject4Slot()
-{
-  loadProject(recentProject.at(4));
-}
+void MainWindow::loadRecentProject4Slot() { loadProject(recentProject.at(4)); }
 
-bool MainWindow::loadExtraSolver(QString solverName){
+bool MainWindow::loadExtraSolver(QString solverName) {
 
 #ifdef __APPLE__DONTGO_HERE_TODO
-  QString extraDirpath = this->homePath +  "/edf-extra";            
+  QString extraDirpath = this->homePath + "/edf-extra";
 #else
-  QString extraDirPath = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf-extra";
+  QString extraDirPath =
+      QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf-extra";
 
   QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
 
-  if(!elmerGuiHome.isEmpty())
-    extraDirPath = elmerGuiHome + "/edf-extra";  
+  if (!elmerGuiHome.isEmpty())
+    extraDirPath = elmerGuiHome + "/edf-extra";
 
   extraDirPath.replace('\\', '/');
 #endif
@@ -7783,155 +7738,157 @@ bool MainWindow::loadExtraSolver(QString solverName){
   QStringList nameFilters;
   nameFilters << "*.xml";
   QString message;
-  QStringList fileNameList = extraDir.entryList(nameFilters, QDir::Files | QDir::Readable);
-  for(int i= 0; i < fileNameList.size(); i++){
+  QStringList fileNameList =
+      extraDir.entryList(nameFilters, QDir::Files | QDir::Readable);
+  for (int i = 0; i < fileNameList.size(); i++) {
     QFile file(extraDirPath + "/" + fileNameList.at(i));
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)){
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
       QTextStream in(&file);
       while (!in.atEnd()) {
         QString line = in.readLine();
-        if(line.indexOf("<PDE Name=") > 0){
+        if (line.indexOf("<PDE Name=") > 0) {
+          line = in.readLine();
+          while (line.indexOf("<Name>") == -1 && !in.atEnd())
             line = in.readLine();
-            while( line.indexOf("<Name>") == -1 && !in.atEnd()) line = in.readLine();
-            int i0 = line.indexOf("<Name>");
-            if(i0 >= 0){
-              int i1 = line.indexOf("</Name>", i0+6);
-              if(i1 > 0){
-                name = line.mid(i0+6, i1-i0-6).trimmed();
-                  if(solverName.trimmed() == name){
-                    file.close();
+          int i0 = line.indexOf("<Name>");
+          if (i0 >= 0) {
+            int i1 = line.indexOf("</Name>", i0 + 6);
+            if (i1 > 0) {
+              name = line.mid(i0 + 6, i1 - i0 - 6).trimmed();
+              if (solverName.trimmed() == name) {
+                file.close();
 
-                    message = "Load " + extraDirPath + "/" + fileNameList.at(i) + "... ";
-                    #if WITH_QT5
-                      cout << string(message.toLatin1()); cout.flush();
-                    #else
-                      cout << string(message.toAscii()); cout.flush();
-                    #endif
+                message =
+                    "Load " + extraDirPath + "/" + fileNameList.at(i) + "... ";
+#if WITH_QT5
+                cout << string(message.toLatin1());
+                cout.flush();
+#else
+                cout << string(message.toAscii());
+                cout.flush();
+#endif
 
-                    edfEditor->appendFrom(extraDirPath + "/" + fileNameList.at(i));
+                edfEditor->appendFrom(extraDirPath + "/" + fileNameList.at(i));
 
-                    cout << "done" << endl;
+                cout << "done" << endl;
 
-                    return true;
-                  }
+                return true;
               }
             }
           }
         }
+      }
 
-        file.close();
-    }else{
+      file.close();
+    } else {
       logMessage(" failed to open " + fileNameList.at(i));
       return false;
     }
   }
   logMessage(" Extra solver " + solverName + " not found");
   return false;
-
 }
 
-void MainWindow::checkAndLoadExtraSolvers(QFile* file)
-{
+void MainWindow::checkAndLoadExtraSolvers(QFile *file) {
   QStringList loadedSolverName;
   QStringList unloadedSolverName;
   QDomElement root = elmerDefs->documentElement();
-  QDomElement elem = root.firstChildElement("PDE");         
-  while(!elem.isNull()) {
+  QDomElement elem = root.firstChildElement("PDE");
+  while (!elem.isNull()) {
     QDomElement pdeName = elem.firstChildElement("Name");
     loadedSolverName.append(pdeName.text().trimmed());
     elem = elem.nextSiblingElement();
-  }        
+  }
 
   QString name;
-  if (file->open(QIODevice::ReadOnly | QIODevice::Text)){
+  if (file->open(QIODevice::ReadOnly | QIODevice::Text)) {
     QTextStream in(file);
     while (!in.atEnd()) {
       QString line = in.readLine();
       int i0, i1;
-      i0=line.indexOf("<key>/");
-      if( i0 >= 0){
-        i1 = line.indexOf("/", i0+7);
-        if(i1 > 0){
-          name = line.mid(i0+6, i1-i0-6);
-          if(!loadedSolverName.contains(name) ){
+      i0 = line.indexOf("<key>/");
+      if (i0 >= 0) {
+        i1 = line.indexOf("/", i0 + 7);
+        if (i1 > 0) {
+          name = line.mid(i0 + 6, i1 - i0 - 6);
+          if (!loadedSolverName.contains(name)) {
             loadExtraSolver(name);
-            
-            //update list (to avoid doubled loading - one solver file can generate multiple tabs)
-            loadedSolverName.clear();           
+
+            // update list (to avoid doubled loading - one solver file can
+            // generate multiple tabs)
+            loadedSolverName.clear();
             QDomElement root = elmerDefs->documentElement();
-            QDomElement elem = root.firstChildElement("PDE");         
-            while(!elem.isNull()) {
+            QDomElement elem = root.firstChildElement("PDE");
+            while (!elem.isNull()) {
               QDomElement pdeName = elem.firstChildElement("Name");
               loadedSolverName.append(pdeName.text().trimmed());
               elem = elem.nextSiblingElement();
             }
-                    
           }
         }
       }
     }
-  }else{
+  } else {
     logMessage(" failed to open project file" + name);
   }
-  
-/*
-  QString name;
-  if (file->open(QIODevice::ReadOnly | QIODevice::Text)){
-    QTextStream in(file);
-    while (!in.atEnd()) {
-      QString line = in.readLine();
-      int i0, i1;
-      i0=line.indexOf("<key>/");
-      if( i0 >= 0){
-        i1 = line.indexOf("/", i0+7);
-        if(i1 > 0){
-          name = line.mid(i0+6, i1-i0-6);
-          if(!loadedSolverName.contains(name) && !unloadedSolverName.contains(name) ){
-            unloadedSolverName.append(name);
-            loadExtraSolver(name);
+
+  /*
+    QString name;
+    if (file->open(QIODevice::ReadOnly | QIODevice::Text)){
+      QTextStream in(file);
+      while (!in.atEnd()) {
+        QString line = in.readLine();
+        int i0, i1;
+        i0=line.indexOf("<key>/");
+        if( i0 >= 0){
+          i1 = line.indexOf("/", i0+7);
+          if(i1 > 0){
+            name = line.mid(i0+6, i1-i0-6);
+            if(!loadedSolverName.contains(name) &&
+    !unloadedSolverName.contains(name) ){ unloadedSolverName.append(name);
+              loadExtraSolver(name);
+            }
           }
         }
       }
+    }else{
+      logMessage(" failed to open project file" + name);
     }
-  }else{
-    logMessage(" failed to open project file" + name);
-  }
-  */
+    */
 }
 
-QVariant MainWindow::settings_value(const QString & key, const QVariant &defaultValue) const
-{
-  QString oldElmerGuiIniFilePath = QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
+QVariant MainWindow::settings_value(const QString &key,
+                                    const QVariant &defaultValue) const {
+  QString oldElmerGuiIniFilePath =
+      QCoreApplication::applicationDirPath() + "/ElmerGUI.ini";
   QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";
-  if(!QFile::exists(elmerGuiIniFilePath) && QFile::exists(oldElmerGuiIniFilePath))
-  {
+  if (!QFile::exists(elmerGuiIniFilePath) &&
+      QFile::exists(oldElmerGuiIniFilePath)) {
     elmerGuiIniFilePath = oldElmerGuiIniFilePath;
   }
   QSettings settings(elmerGuiIniFilePath, QSettings::IniFormat);
   return settings.value(key, defaultValue);
 }
 
-void MainWindow::settings_setValue(const QString & key, const QVariant & value)
-{
+void MainWindow::settings_setValue(const QString &key, const QVariant &value) {
   QString elmerGuiIniFilePath = QDir::homePath() + "/.elmergui";
   QSettings settings(elmerGuiIniFilePath, QSettings::IniFormat);
   settings.setValue(key, value);
 }
 
-void MainWindow::saveAndRun(bool generateSif)
-{
-  
+void MainWindow::saveAndRun(bool generateSif) {
+
   //------- Save project -------//
-  if(!glWidget->hasMesh()) {
+  if (!glWidget->hasMesh()) {
     logMessage("Unable to save project: no mesh");
     return;
   }
 
   QString projectDirName = currentProjectDirName;
-  if(projectDirName.isEmpty())
-  {
+  if (projectDirName.isEmpty()) {
     QString defaultDirName = getDefaultDirName();
-    projectDirName = QFileDialog::getExistingDirectory(this, tr("Open directory to save project"), defaultDirName);
+    projectDirName = QFileDialog::getExistingDirectory(
+        this, tr("Open directory to save project"), defaultDirName);
 
     if (!projectDirName.isEmpty()) {
       logMessage("Project directory " + projectDirName);
@@ -7939,39 +7896,32 @@ void MainWindow::saveAndRun(bool generateSif)
       logMessage("Unable to save project: directory undefined");
       return;
     }
-  }  
-  
+  }
+
   bool previousState = suppressAutoSifGeneration;
   suppressAutoSifGeneration = !generateSif;
   bool ret = saveProject(projectDirName);
   suppressAutoSifGeneration = previousState;
 
-  
-   //------- Run solver -------// 
-  if(ret){
+  //------- Run solver -------//
+  if (ret) {
     runsolverSlot();
   }
-  
 }
 
-void MainWindow::generateAndSaveAndRunSlot()
-{
-  saveAndRun(true);
-}
+void MainWindow::generateAndSaveAndRunSlot() { saveAndRun(true); }
 
-void MainWindow::closeEvent(QCloseEvent* event)
-{
+void MainWindow::closeEvent(QCloseEvent *event) {
   saveSettings();
-  delete objectBrowser;  
+  delete objectBrowser;
 }
 
-void MainWindow::showObjectBrowserSlot()
-{
-  if(showObjectBrowserAct->isChecked()){
+void MainWindow::showObjectBrowserSlot() {
+  if (showObjectBrowserAct->isChecked()) {
     delete objectBrowser; // just in case
     objectBrowser = new ObjectBrowser(this);
-  }else{
+  } else {
     delete objectBrowser;
-    objectBrowser = NULL;  
+    objectBrowser = NULL;
   }
 }

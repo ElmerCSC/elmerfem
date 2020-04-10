@@ -97,7 +97,8 @@ contains(DEFINES, EG_OCC) {
 
    unix: DEFINES += HAVE_CONFIG_H HAVE_IOSTREAM HAVE_FSTREAM HAVE_LIMITS_H
    win32: DEFINES += WNT CSFDB
-   macx: DEFINED -= EG_OCC         # not supported at the moment
+   # macx: DEFINED -= EG_OCC         # not supported at the moment
+   macx: DEFINES += OSX
 
    INCLUDEPATH += $${OCC_INCLUDEPATH}
    LIBPATH += $${OCC_LIBPATH}

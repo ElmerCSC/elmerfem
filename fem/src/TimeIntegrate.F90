@@ -790,6 +790,8 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:)
     REAL(KIND=dp) :: su,mu,uj,ui,a(6)
 !------------------------------------------------------------------------------
+
+    IF( Order == 0 ) RETURN
     
     n = Matrix % NumberOfRows
     Rows   => Matrix % Rows
