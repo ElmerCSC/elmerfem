@@ -610,15 +610,25 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
    MinIndex=MAX(MinIndex,1)
 
    MaxIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
-   IF (MaxIndex.EQ.0) MaxIndex=n
+   IF (MaxIndex.LE.1) MaxIndex=n
  ELSE IF ((x(2)<x(1)).AND.(x(n)<x(n-1))) THEN
    MaxIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
-   IF (MaxIndex.EQ.0) MaxIndex=n
+   IF (MaxIndex.LE.1) MaxIndex=n
 
    MinIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
    MinIndex=MAX(MinIndex,1)
  ELSE
    CALL FATAL(SolverName,'coordinate is neither monotonically increasing or decreasing')
+ ENDIF
+
+ IF (MaxIndex.LT.MinIndex) THEN
+    WRITE(message,*) 'Error Min Max Indexes ',MinIndex,MaxIndex
+    CALL WARN(SolverName,message)
+    WRITE(message,*) 'Min values ',MINVAL(x),minx
+    CALL WARN(SolverName,message)
+    WRITE(message,*) 'Max values ',MAXVAL(x),maxx
+    CALL WARN(SolverName,message)
+    CALL FATAL(SolverName,'This is a fatal error')
  ENDIF
 
  END SUBROUTINE MinMaxIndex
