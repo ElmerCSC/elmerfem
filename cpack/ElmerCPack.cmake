@@ -1,13 +1,15 @@
 # Use CPack only if its cmake script exists
-IF(NOT EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
-  MESSAGE(WARNING "${CMAKE_ROOT}/Modules/CPack.cmake does not exist")
-  RETURN()
-ENDIF()
+if(NOT EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
+  message(WARNING "${CMAKE_ROOT}/Modules/CPack.cmake does not exist")
+  return()
+endif()
 
-SET(CPACK_PACKAGE_NAME "Elmer")
-SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Open Source Finite Element Software for Multiphysical Problems")
+set(CPACK_PACKAGE_NAME "Elmer")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Open Source Finite Element Software for Multiphysical Problems")
 
-SET(CPACK_PACKAGE_DESCRIPTION "Elmer is an open source multiphysical
+set(CPACK_PACKAGE_DESCRIPTION
+    "Elmer is an open source multiphysical
 simulation software mainly developed by CSC - IT Center for Science (CSC).
 Elmer development was started 1995 in collaboration with Finnish
 Universities, research institutes and industry. After it's open source
@@ -19,146 +21,221 @@ electromagnetics, heat transfer and acoustics, for example. These are
 described by partial differential equations which Elmer solves by the Finite
 Element Method (FEM).")
 
-SET(CPACK_PACKAGE_VERSION_MAJOR "${ELMER_FEM_MAJOR_VERSION}")
-SET(CPACK_PACKAGE_VERSION_MINOR "${ELMER_FEM_MINOR_VERSION}")
-SET(CPACK_PACKAGE_VERSION_PATCH "${ELMER_FEM_REVISION}")
+set(CPACK_PACKAGE_VERSION_MAJOR "${ELMER_FEM_MAJOR_VERSION}")
+set(CPACK_PACKAGE_VERSION_MINOR "${ELMER_FEM_MINOR_VERSION}")
+set(CPACK_PACKAGE_VERSION_PATCH "${ELMER_FEM_REVISION}")
 
-#SET(CPACK_PACKAGE_FILE_NAME "elmerfem-${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
-IF(${CMAKE_VERSION} VERSION_GREATER 2.8.11)
-  STRING(TIMESTAMP DATE "%Y%m%d")
-ELSE()
-  MESSAGE(WARNING "cmake ${CMAKE_VERSION} does not support STRING(TIMESTAMP ...)")
-ENDIF()
+# SET(CPACK_PACKAGE_FILE_NAME "elmerfem-${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_M
+# INOR_VERSION}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+if(${CMAKE_VERSION} VERSION_GREATER 2.8.11)
+  string(TIMESTAMP DATE "%Y%m%d")
+else()
+  message(
+    WARNING "cmake ${CMAKE_VERSION} does not support STRING(TIMESTAMP ...)")
+endif()
 
-SET(CPACK_PACKAGE_BASE_FILE_NAME "elmerfem" CACHE STRING "")
-MARK_AS_ADVANCED(CPACK_PACKAGE_BASE_FILE_NAME)
-SET(CPACK_PACKAGE_VENDOR "CSC")
-SET(CPACK_PACKAGE_VERSION "${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION}-${CPACK_PACKAGE_VERSION_PATCH}")
-SET(CPACK_PACKAGE_CONTACT "elmeradm@csc.fi")
-IF(CPACK_PACKAGE_FILE_NAME STREQUAL "")
-  SET(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_BASE_FILE_NAME}-${CPACK_PACKAGE_VERSION}-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "" FORCE)
-ELSE()
-  SET(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_BASE_FILE_NAME}-${CPACK_PACKAGE_VERSION}-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "")
-ENDIF(CPACK_PACKAGE_FILE_NAME STREQUAL "")
+set(CPACK_PACKAGE_BASE_FILE_NAME
+    "elmerfem"
+    CACHE STRING "")
+mark_as_advanced(CPACK_PACKAGE_BASE_FILE_NAME)
+set(CPACK_PACKAGE_VENDOR "CSC")
+set(CPACK_PACKAGE_VERSION
+    "${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION}-${CPACK_PACKAGE_VERSION_PATCH}"
+)
+set(CPACK_PACKAGE_CONTACT "elmeradm@csc.fi")
+if(CPACK_PACKAGE_FILE_NAME STREQUAL "")
+  set(CPACK_PACKAGE_FILE_NAME
+      "${CPACK_PACKAGE_BASE_FILE_NAME}-${CPACK_PACKAGE_VERSION}-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}"
+      CACHE STRING "" FORCE)
+else()
+  set(CPACK_PACKAGE_FILE_NAME
+      "${CPACK_PACKAGE_BASE_FILE_NAME}-${CPACK_PACKAGE_VERSION}-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}"
+      CACHE STRING "")
+endif(CPACK_PACKAGE_FILE_NAME STREQUAL "")
 
-SET(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/license_texts/LICENSES_GPL.txt") 
+set(CPACK_RESOURCE_FILE_LICENSE
+    "${CMAKE_CURRENT_SOURCE_DIR}/license_texts/LICENSES_GPL.txt")
 
-MESSAGE(STATUS "------------------------------------------------")
-MESSAGE(STATUS "  Package filename: ${CPACK_PACKAGE_FILE_NAME} ")
-MESSAGE(STATUS "  Patch version: ${CPACK_PACKAGE_VERSION} ")
+message(STATUS "------------------------------------------------")
+message(STATUS "  Package filename: ${CPACK_PACKAGE_FILE_NAME} ")
+message(STATUS "  Patch version: ${CPACK_PACKAGE_VERSION} ")
 
-IF(NOT(BYPASS_DEB_DEPENDENCIES))
-  SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libblas-dev, liblapack-dev")
+if(NOT (BYPASS_DEB_DEPENDENCIES))
+  set(CPACK_DEBIAN_PACKAGE_DEPENDS "libblas-dev, liblapack-dev")
 
-  MACRO(ADD_DEBIAN_DEPENDENCY WITH_RULE DEPS)
-    IF(${WITH_RULE})
-      LIST(APPEND DEP_LIST ${DEPS})
-    ENDIF(${WITH_RULE})
-  ENDMACRO()
+  macro(ADD_DEBIAN_DEPENDENCY WITH_RULE DEPS)
+    if(${WITH_RULE})
+      list(APPEND DEP_LIST ${DEPS})
+    endif(${WITH_RULE})
+  endmacro()
 
-  ADD_DEBIAN_DEPENDENCY(WITH_MPI "openmpi-bin")
-  ADD_DEBIAN_DEPENDENCY(WITH_Mumps "libmumps-4.10.0")
-  ADD_DEBIAN_DEPENDENCY(WITH_Hypre "libhypre-2.8.0b")
-  ADD_DEBIAN_DEPENDENCY(WITH_ELMERGUI "libqt4-opengl")
-  ADD_DEBIAN_DEPENDENCY(WITH_ELMERGUILOGGER "libqt4-core")
-  ADD_DEBIAN_DEPENDENCY(WITH_ELMERGUITESTER "libqt4-core")
-  ADD_DEBIAN_DEPENDENCY(WITH_OCC "liboce-foundation" "liboce-modeling8")
-  ADD_DEBIAN_DEPENDENCY(WITH_PARAVIEW "paraview")
-  ADD_DEBIAN_DEPENDENCY(WITH_VTK "libvtk5.8-qt4" "libvtk5.8")
-  ADD_DEBIAN_DEPENDENCY(WITH_QWT "libqwt6")
-  
-  FOREACH(arg ${DEP_LIST})
-    SET(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}, ${arg}")
-  ENDFOREACH()
-ENDIF()
+  add_debian_dependency(WITH_MPI "openmpi-bin")
+  add_debian_dependency(WITH_Mumps "libmumps-4.10.0")
+  add_debian_dependency(WITH_Hypre "libhypre-2.8.0b")
+  add_debian_dependency(WITH_ELMERGUI "libqt4-opengl")
+  add_debian_dependency(WITH_ELMERGUILOGGER "libqt4-core")
+  add_debian_dependency(WITH_ELMERGUITESTER "libqt4-core")
+  add_debian_dependency(WITH_OCC "liboce-foundation" "liboce-modeling8")
+  add_debian_dependency(WITH_PARAVIEW "paraview")
+  add_debian_dependency(WITH_VTK "libvtk5.8-qt4" "libvtk5.8")
+  add_debian_dependency(WITH_QWT "libqwt6")
 
-IF(CMAKE_SYSTEM_NAME MATCHES "Linux")
-  MARK_AS_ADVANCED(MAKE_DEB_PACKAGE MAKE_RPM_PACKAGE MAKE_TGZ_PACKAGE)
-  #MESSAGE(STATUS "DEB package dependencies ${CPACK_DEBIAN_PACKAGE_DEPENDS}")
-  SET(MAKE_DEB_PACKAGE TRUE CACHE BOOL "Create DEB package with cpack")
-  SET(MAKE_RPM_PACKAGE TRUE CACHE BOOL "Create RPM package with cpack")
-  SET(MAKE_TGZ_PACKAGE TRUE CACHE BOOL "Create TGZ package with cpack")
-  IF(MAKE_TGZ_PACKAGE)
-    LIST(APPEND CPACK_GENERATOR TGZ)
-  ENDIF()
-  IF(MAKE_DEB_PACKAGE)
-    LIST(APPEND CPACK_GENERATOR DEB)
-  ENDIF()
-  IF(MAKE_RPM_PACKAGE)  # @TODO: untested
-    SET(CPACK_GENERATOR "${CPACK_GENERATOR};RPM")
-  ENDIF()
-ENDIF()
+  foreach(arg ${DEP_LIST})
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS}, ${arg}")
+  endforeach()
+endif()
 
-IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
-  MARK_AS_ADVANCED(MAKE_NSIS_PACKAGE MAKE_ZIP_PACKAGE CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
-  SET(MAKE_ZIP_PACKAGE TRUE CACHE BOOL "Create windows .zip file")
-  SET(MAKE_NSIS_PACKAGE TRUE CACHE BOOL "Create windows installer executable")
-  SET(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS TRUE CACHE BOOL "Bundle dlls in windows install.")
+if(CMAKE_SYSTEM_NAME MATCHES "Linux")
+  mark_as_advanced(MAKE_DEB_PACKAGE MAKE_RPM_PACKAGE MAKE_TGZ_PACKAGE)
+  # MESSAGE(STATUS "DEB package dependencies ${CPACK_DEBIAN_PACKAGE_DEPENDS}")
+  set(MAKE_DEB_PACKAGE
+      TRUE
+      CACHE BOOL "Create DEB package with cpack")
+  set(MAKE_RPM_PACKAGE
+      TRUE
+      CACHE BOOL "Create RPM package with cpack")
+  set(MAKE_TGZ_PACKAGE
+      TRUE
+      CACHE BOOL "Create TGZ package with cpack")
+  if(MAKE_TGZ_PACKAGE)
+    list(APPEND CPACK_GENERATOR TGZ)
+  endif()
+  if(MAKE_DEB_PACKAGE)
+    list(APPEND CPACK_GENERATOR DEB)
+  endif()
+  if(MAKE_RPM_PACKAGE) # @TODO: untested
+    set(CPACK_GENERATOR "${CPACK_GENERATOR};RPM")
+  endif()
+endif()
 
-  IF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
-    INSTALL(FILES ${LAPACK_LIBRARIES} DESTINATION "bin")
-    IF(NOT(LAPACK_LIB))
-      FIND_FILE(LAPACK_LIB liblapack.dll PATH_SUFFIXES "bin")
-    ENDIF()
-    IF(NOT(BLAS_LIB))
-      FIND_FILE(BLAS_LIB libblas.dll PATH_SUFFIXES "bin")
-    ENDIF()
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
+  mark_as_advanced(MAKE_NSIS_PACKAGE MAKE_ZIP_PACKAGE
+                   CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
+  set(MAKE_ZIP_PACKAGE
+      TRUE
+      CACHE BOOL "Create windows .zip file")
+  set(MAKE_NSIS_PACKAGE
+      TRUE
+      CACHE BOOL "Create windows installer executable")
+  set(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS
+      TRUE
+      CACHE BOOL "Bundle dlls in windows install.")
+
+  if(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
+    install(FILES ${LAPACK_LIBRARIES} DESTINATION "bin")
+    if(NOT (LAPACK_LIB))
+      find_file(LAPACK_LIB liblapack.dll PATH_SUFFIXES "bin")
+    endif()
+    if(NOT (BLAS_LIB))
+      find_file(BLAS_LIB libblas.dll PATH_SUFFIXES "bin")
+    endif()
 
     # mingw runtime dynamic link libraries
-    FIND_FILE(QUADMATH_LIB libquadmath-0.dll)
-    FIND_FILE(WINPTHREAD_LIB libwinpthread-1.dll)
-    FIND_FILE(STDCPP_LIB libstdc++-6.dll)
-#if 1
-    FIND_FILE(MINGW_GFORT_LIB libgfortran-5.dll)
-    FIND_FILE(GCC_LIB libgcc_s_seh-1.dll)
-    FIND_FILE(DBL_LIB libdouble-conversion.dll)
-    FIND_FILE(GMP_LIB libgmp-10.dll)
-    FIND_FILE(Z1_LIB zlib1.dll)
-    INSTALL(FILES ${MINGW_GFORT_LIB} ${QUADMATH_LIB} ${WINPTHREAD_LIB} ${GCC_LIB} ${STDCPP_LIB} ${BLAS_LIB} ${LAPACK_LIB} ${DBL_LIB} ${GMP_LIB} ${Z1_LIB} DESTINATION "bin")
-#else
-    FIND_FILE(MINGW_GFORT_LIB libgfortran-3.dll)
-    FIND_FILE(GCC_LIB libgcc_s_sjlj-1.dll)
-    INSTALL(FILES ${MINGW_GFORT_LIB} ${QUADMATH_LIB} ${WINPTHREAD_LIB} ${GCC_LIB} ${STDCPP_LIB} ${BLAS_LIB} ${LAPACK_LIB} DESTINATION "bin")
-#endif
+    find_file(QUADMATH_LIB libquadmath-0.dll)
+    find_file(WINPTHREAD_LIB libwinpthread-1.dll)
+    find_file(STDCPP_LIB libstdc++-6.dll)
+    # if 1
+    find_file(MINGW_GFORT_LIB libgfortran-5.dll)
+    find_file(GCC_LIB libgcc_s_seh-1.dll)
+    find_file(DBL_LIB libdouble-conversion.dll)
+    find_file(GMP_LIB libgmp-10.dll)
+    find_file(Z1_LIB zlib1.dll)
+    install(
+      FILES ${MINGW_GFORT_LIB}
+            ${QUADMATH_LIB}
+            ${WINPTHREAD_LIB}
+            ${GCC_LIB}
+            ${STDCPP_LIB}
+            ${BLAS_LIB}
+            ${LAPACK_LIB}
+            ${DBL_LIB}
+            ${GMP_LIB}
+            ${Z1_LIB}
+      DESTINATION "bin")
+    # else
+    find_file(MINGW_GFORT_LIB libgfortran-3.dll)
+    find_file(GCC_LIB libgcc_s_sjlj-1.dll)
+    install(
+      FILES ${MINGW_GFORT_LIB}
+            ${QUADMATH_LIB}
+            ${WINPTHREAD_LIB}
+            ${GCC_LIB}
+            ${STDCPP_LIB}
+            ${BLAS_LIB}
+            ${LAPACK_LIB}
+      DESTINATION "bin")
+    # endif
 
-# Here we augment the installation by some needed dll's that should be included with QT5. 
-# This is a quick and dirty remedy. I'm sure there is a prettier way too. 
-    IF(WITH_QT5)
-	  FIND_FILE(QTF0 tbb.dll)
-	  FIND_FILE(QTF1 libbz2-1.dll)
-      FIND_FILE(QTF2 libfreetype-6.dll)
-	  FIND_FILE(QTF3 libglib-2.0-0.dll)
-	  FIND_FILE(QTF4 libgraphite2.dll)
-	  FIND_FILE(QTF5 libharfbuzz-0.dll)
-	  FIND_FILE(QTF6 libiconv-2.dll)
-	  FIND_FILE(QTF7 libicudt65.dll)
-	  FIND_FILE(QTF8 libicuin65.dll)
-	  FIND_FILE(QTF9 libicuuc65.dll)
-	  FIND_FILE(QTF10 libintl-8.dll)
-	  FIND_FILE(QTF11 libpcre-1.dll)
-	  FIND_FILE(QTF12 libpcre2-16-0.dll)
-	  FIND_FILE(QTF13 libpng16-16.dll)
-	  FIND_FILE(QTF14 libzstd.dll)
-      INSTALL(FILES ${QTF0} ${QTF1} ${QTF2} ${QTF3} ${QTF4} ${QTF5} ${QTF6} ${QTF7} ${QTF8} ${QTF9} ${QTF10} ${QTF11} ${QTF12} ${QTF13} ${QTF14} DESTINATION "bin")
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../platforms" DESTINATION "bin")
-	ENDIF()
+    # Here we augment the installation by some needed dll's that should be
+    # included with QT5. This is a quick and dirty remedy. I'm sure there is a
+    # prettier way too.
+    if(WITH_QT5)
+      find_file(QTF0 tbb.dll)
+      find_file(QTF1 libbz2-1.dll)
+      find_file(QTF2 libfreetype-6.dll)
+      find_file(QTF3 libglib-2.0-0.dll)
+      find_file(QTF4 libgraphite2.dll)
+      find_file(QTF5 libharfbuzz-0.dll)
+      find_file(QTF6 libiconv-2.dll)
+      find_file(QTF7 libicudt65.dll)
+      find_file(QTF8 libicuin65.dll)
+      find_file(QTF9 libicuuc65.dll)
+      find_file(QTF10 libintl-8.dll)
+      find_file(QTF11 libpcre-1.dll)
+      find_file(QTF12 libpcre2-16-0.dll)
+      find_file(QTF13 libpng16-16.dll)
+      find_file(QTF14 libzstd.dll)
+      install(
+        FILES ${QTF0}
+              ${QTF1}
+              ${QTF2}
+              ${QTF3}
+              ${QTF4}
+              ${QTF5}
+              ${QTF6}
+              ${QTF7}
+              ${QTF8}
+              ${QTF9}
+              ${QTF10}
+              ${QTF11}
+              ${QTF12}
+              ${QTF13}
+              ${QTF14}
+        DESTINATION "bin")
+      install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../platforms"
+              DESTINATION "bin")
+    endif()
 
-    IF(BUNDLE_STRIPPED_GFORTRAN)
+    if(BUNDLE_STRIPPED_GFORTRAN)
       # TODO: This will make the windows package to be GPL3
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran" DESTINATION "." COMPONENT "stripped_gfortran")
-      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 9.2.0 compiler for compiling Elmer modules.")
-      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 9.2.0")
-    ENDIF()
+      install(
+        DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran"
+        DESTINATION "."
+        COMPONENT "stripped_gfortran")
+      set(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION
+          "A stripped version of x86_64-w64-mingw32-gfortran 9.2.0 compiler for compiling Elmer modules."
+      )
+      set(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 9.2.0")
+    endif()
 
-    IF(WITH_MPI)
-      IF(BUNDLE_MSMPI_REDIST)
-        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/msmpisetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-# these are for Microsoft C++ (not needed for gcc/gfortan)
-#        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x64.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-#        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x86.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-        SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION "Install MS-MPI 10.1.1. Redistributable Package")
-        SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DISPLAY_NAME "MS-MPI")
-        LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+    if(WITH_MPI)
+      if(BUNDLE_MSMPI_REDIST)
+        install(
+          FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/msmpisetup.exe"
+          DESTINATION "redist"
+          COMPONENT "MS_MPI_Redistributable")
+        # these are for Microsoft C++ (not needed for gcc/gfortan) INSTALL(FILES
+        # "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x64.exe"
+        # DESTINATION "redist" COMPONENT "MS_MPI_Redistributable") INSTALL(FILES
+        # "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x86.exe"
+        # DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+        set(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION
+            "Install MS-MPI 10.1.1. Redistributable Package")
+        set(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DISPLAY_NAME "MS-MPI")
+        list(
+          APPEND
+          CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+          "
         IfFileExists '$INSTDIR\\\\redist\\\\msmpisetup.exe' MSMpiSetupExists MsMpiSetupNotExist
         MsMpiSetupExists:
 #        ExecWait '$INSTDIR\\\\redist\\\\vcredist_x64.exe'
@@ -166,40 +243,42 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
         ExecWait '$INSTDIR\\\\redist\\\\msmpisetup.exe'
         MsMpiSetupNotExist:
         ")
-      ENDIF()
-    ENDIF()
-  ENDIF()
+      endif()
+    endif()
+  endif()
 
-  IF(MAKE_NSIS_PACKAGE)
-    SET(CPACK_GENERATOR "NSIS")
-  ENDIF()
-  IF(MAKE_ZIP_PACKAGE)
-    SET(CPACK_GENERATOR "${CPACK_GENERATOR};ZIP")
-  ENDIF()
+  if(MAKE_NSIS_PACKAGE)
+    set(CPACK_GENERATOR "NSIS")
+  endif()
+  if(MAKE_ZIP_PACKAGE)
+    set(CPACK_GENERATOR "${CPACK_GENERATOR};ZIP")
+  endif()
 
-  IF(MAKE_NSIS_PACKAGE)
-    INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cpack/NSISCPack.cmake)
-  ENDIF()
-ENDIF()
+  if(MAKE_NSIS_PACKAGE)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cpack/NSISCPack.cmake)
+  endif()
+endif()
 
+set(CPACK_INSTALL_CMAKE_PROJECTS "${CMAKE_BINARY_DIR}" "Elmer" "ALL" "/")
 
-SET(CPACK_INSTALL_CMAKE_PROJECTS "${CMAKE_BINARY_DIR}" "Elmer" "ALL" "/")
+if(WITH_ELMERGUI)
+  set(CPACK_PACKAGE_EXECUTABLES "ElmerGUI" "ElmerGUI")
+  set(CPACK_CREATE_DESKTOP_LINKS "ElmerGUI")
+endif(WITH_ELMERGUI)
 
-IF(WITH_ELMERGUI)
-  SET(CPACK_PACKAGE_EXECUTABLES "ElmerGUI" "ElmerGUI")
-  SET(CPACK_CREATE_DESKTOP_LINKS "ElmerGUI")
-ENDIF(WITH_ELMERGUI)
+if(WITH_ELMERPOST)
+  set(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} "ElmerPost"
+                                "ElmerPost")
+endif()
 
-IF(WITH_ELMERPOST)
-  SET(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} "ElmerPost" "ElmerPost")
-ENDIF()
+if(WITH_ELMERGUITESTER)
+  set(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} "ElmerGUItester"
+                                "ElmerGUItester")
+endif(WITH_ELMERGUITESTER)
 
-IF(WITH_ELMERGUITESTER)
-  SET(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} "ElmerGUItester" "ElmerGUItester")
-ENDIF(WITH_ELMERGUITESTER)
+if(WITH_ELMERGUILOGGER)
+  set(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} "ElmerGUIlogger"
+                                "ElmerGUIlogger")
+endif(WITH_ELMERGUILOGGER)
 
-IF(WITH_ELMERGUILOGGER)
-  SET(CPACK_PACKAGE_EXECUTABLES ${CPACK_PACKAGE_EXECUTABLES} "ElmerGUIlogger" "ElmerGUIlogger")
-ENDIF(WITH_ELMERGUILOGGER)
-
-INCLUDE(CPack)
+include(CPack)
