@@ -7,8 +7,8 @@ tags
 *.so
 
 # build stuff
-build/*
-fhutiter/build/*
+build/
+fhutiter/build/
 CMakeFiles
 CTestTestfile.cmake
 Elmer-linux-ubuntu12.cmake

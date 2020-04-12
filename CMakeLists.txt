@@ -21,8 +21,8 @@ endif()
 set(CMAKE_LEGACY_CYGWIN_WIN32 0)
 
 # if(MSYS) set(CMAKE_C_COMPILER "/mingw64/bin/gcc") set(CMAKE_CXX_COMPILER
-# "/mingw64/bin/g++") set(CMAKE_Fortran_COMPILER "/mingw64/bin/gfortran") # set
-# (CMAKE_GENERATOR "MSYS Makefiles" CACHE INTERNAL "" FORCE) #
+# "/mingw64/bin/g++") set(CMAKE_Fortran_COMPILER "/mingw64/bin/gfortran")
+# set (CMAKE_GENERATOR "MSYS Makefiles" CACHE INTERNAL "" FORCE) #
 # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE INTERNAL "") #
 # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE FILEPATH "" FORCE)
 # endif(MSYS)
@@ -558,9 +558,12 @@ find_package(METIS REQUIRED)
 
 add_subdirectory(matc)
 add_subdirectory(umfpack)
-# add_subdirectory(fhutiter) add_subdirectory(meshgen2d) add_subdirectory(fem)
-# add_subdirectory(mathlibs) add_subdirectory(elmergrid)
-# add_subdirectory(license_texts)
+add_subdirectory(fhutiter)
+add_subdirectory(meshgen2d)
+add_subdirectory(fem)
+add_subdirectory(mathlibs)
+add_subdirectory(elmergrid)
+add_subdirectory(license_texts)
 
 if(WITH_ELMERGUI)
   message(STATUS "  Building ElmerGUI")
