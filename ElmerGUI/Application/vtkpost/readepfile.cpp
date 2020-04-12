@@ -42,6 +42,11 @@
 #endif
 #include <QtGui>
 #include <iostream>
+#include <vtkXMLUnstructuredGridReader.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkDataSet.h>
+#include <vtkPointData.h>
+#include <vtkCellData.h>
 #include "readepfile.h"
 
 using namespace std;
@@ -72,7 +77,7 @@ ReadEpFile::~ReadEpFile()
 
 void ReadEpFile::browseButtonClickedSlot()
 {
-  QString fileName = QFileDialog::getOpenFileName(this, tr("Select input file"), "", tr("Ep files (*.ep)"));
+  QString fileName = QFileDialog::getOpenFileName(this, tr("Select input file"), "", tr("Postprocessor files (*.vtu *.ep);;Paraview files (*.vtu);;ElmerPost files (*.ep)"));
 
   ui.fileName->setText(fileName.trimmed());
 
@@ -126,18 +131,56 @@ void ReadEpFile::readHeader()
     return;
   }
 
-  QTextStream post(&postFile);
-
-  QTextStream txtStream;
-  QString tmpLine = post.readLine().trimmed();
-  while(tmpLine.isEmpty() || (tmpLine.at(0) == '#'))
-    tmpLine = post.readLine().trimmed();
-  txtStream.setString(&tmpLine);
-
   int nodes, elements, timesteps, components;
-  txtStream >> nodes >> elements >> components >> timesteps;
 
-  postFile.close();
+  if(ui.fileName->text().endsWith(".vtu", Qt::CaseInsensitive)){
+  
+    vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
+    reader->SetFileName(ui.fileName->text().toLatin1().data());
+    reader->Update();
+
+//potential = output->GetPointData().GetArray("Magnetization")
+    //vtkInformation* outInfo = reader()->GetExecutive()->GetOutputInformation(0);
+    
+	nodes = reader->GetNumberOfPoints();
+    elements = reader->GetNumberOfCells();
+	components = 1;
+    timesteps = reader->GetNumberOfTimeSteps();
+	if(timesteps == 0) timesteps = 1;
+	components = 0;
+    vtkUnstructuredGrid *output = reader->GetOutput();
+	vtkPointData *pointData = output->GetPointData();
+	vtkCellData *cellData = output->GetCellData();
+    
+//    cout << "VTU: NumberOfPieces: " << reader->GetNumberOfPieces();
+//    cout << "VTU: NumberOfPoints: " << reader->GetNumberOfPoints();
+//    cout << "VTU: NumberOfCells: " << reader->GetNumberOfCells();
+//    cout << "VTU: NumberOfTimeSteps: " << reader->GetNumberOfTimeSteps();
+//    cout << "VTU: NumberOfPointArrays: " << reader->GetNumberOfPointArrays() << endl;
+      for(int i = 0; i < reader->GetNumberOfPointArrays(); i++){
+//        cout << "VTU: PointArray [" << i << "] " << reader->GetPointArrayName(i) << ", "<< pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents()<< endl; 
+		  components += pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents();
+      }
+//      cout << "VTU: NumberOfCellArrays: " <<  reader->GetNumberOfCellArrays() << endl;
+//      for(int i = 0; i < reader->GetNumberOfCellArrays(); i++){
+//        cout << "VTU: CellArray [" << i << "] " << reader->GetCellArrayName(i) << ", "<< cellData->GetArray(reader->GetCellArrayName(i))->GetNumberOfComponents()<< endl; 
+//      }        	
+    
+  
+  }else if(ui.fileName->text().endsWith(".ep", Qt::CaseInsensitive)){
+
+    QTextStream post(&postFile);
+
+    QTextStream txtStream;
+    QString tmpLine = post.readLine().trimmed();
+    while(tmpLine.isEmpty() || (tmpLine.at(0) == '#'))
+      tmpLine = post.readLine().trimmed();
+    txtStream.setString(&tmpLine);
+
+    txtStream >> nodes >> elements >> components >> timesteps;
+
+    postFile.close();
+  }
 
   ui.nodesEdit->setText(QString::number(nodes));
   ui.elementsEdit->setText(QString::number(elements));

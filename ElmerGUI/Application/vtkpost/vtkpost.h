@@ -187,6 +187,8 @@ public slots:
   void SetPostFileStart(int);                       // first time step
   void SetPostFileEnd(int);                         // last time step
   bool ReadPostFile(QString);                       // read result file
+  bool ReadVtuFile(QString);                       // read result file
+  bool ReadElmerPostFile(QString);                       // read result file    
 
   void Render();                                    // render
   void ResetCamera();                               // reset camera
@@ -358,6 +360,7 @@ private:
   QAction *clipAllAct;
   QAction *showHelpAct;
 
+  int vtk2ElmerElement(int);
   void createActions();
   void createMenus();
   void createToolbars();

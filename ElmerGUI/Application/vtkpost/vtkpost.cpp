@@ -44,6 +44,11 @@
 #include <QtGui>
 #include <QScriptEngine>
 #include <iostream>
+#include <vtkXMLUnstructuredGridReader.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkDataSet.h>
+#include <vtkPointData.h>
+#include <vtkCellData.h>
 
 #include "epmesh.h"
 #include "vtkpost.h"
@@ -1015,6 +1020,375 @@ void VtkPost::getPostLineStream(QTextStream* postStream)
 // Read in data (public slot):
 //----------------------------------------------------------------------
 bool VtkPost::ReadPostFile(QString postFileName)
+{
+  if(postFileName.endsWith(".ep", Qt::CaseInsensitive)) return ReadElmerPostFile(postFileName);
+  if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)) return ReadVtuFile(postFileName);
+  return false;
+}
+
+int VtkPost::vtk2ElmerElement(int vtkCode){
+	int elmerCode;
+	switch(vtkCode){
+		case 1:  elmerCode = 101; break;
+		case 10:  elmerCode = 504; break;
+		case 12:  elmerCode = 808; break;
+		case 13:  elmerCode = 706; break;
+		case 14:  elmerCode = 605; break;
+		case 21:  elmerCode = 203; break;
+		case 22:  elmerCode = 306; break;
+		case 23:  elmerCode = 408; break;
+		case 24:  elmerCode = 510; break;
+		case 25:  elmerCode = 820; break;
+		case 26:  elmerCode = 715; break;
+		case 27:  elmerCode = 613; break;
+		case 28:  elmerCode = 409; break;
+		case 29:  elmerCode = 827; break;
+		case 3:  elmerCode = 202; break;
+		case 5:  elmerCode = 303; break;
+		case 9:  elmerCode = 404; break;
+		default:   cout << " Not implemented for vtktype: " << vtkCode<< endl;
+	}
+	return elmerCode;
+}
+
+// Read ParaView format file
+//----------------------------------------------------------------------
+bool VtkPost::ReadVtuFile(QString postFileName)
+{
+  // Open the post file:
+  //=====================
+  this->postFileName = postFileName;
+  this->postFileRead = false;
+
+  QFile postFile(postFileName);
+
+  if(!postFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    return false;
+  postFile.close();
+    
+  cout << "Loading vtu-file " << endl;
+
+  readEpFile->ui.applyButton->setEnabled(false);
+  readEpFile->ui.cancelButton->setEnabled(false);
+  readEpFile->ui.okButton->setEnabled(false);
+  readEpFile->setWindowTitle("Reading...");
+  readEpFile->repaint();
+  
+  // Read in nodes, elements, timesteps, and scalar components:
+  //-----------------------------------------------------------
+  int nodes, elements, timesteps, components;
+
+
+	vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
+	reader->SetFileName(postFileName.toLatin1().data());
+	reader->Update();
+
+	//potential = output->GetPointData().GetArray("Magnetization")
+	//vtkInformation* outInfo = reader()->GetExecutive()->GetOutputInformation(0);
+
+	nodes = reader->GetNumberOfPoints();
+	elements = reader->GetNumberOfCells();
+	timesteps = reader->GetNumberOfTimeSteps();
+	if(timesteps == 0) timesteps = 1;
+
+  cout << "vtu file header says:" << endl;
+  cout << "Nodes: " << nodes << endl;
+  cout << "Elements: " << elements << endl;
+  cout << "Timesteps: " << timesteps << endl;
+
+  // Read field names & set up menu actions:
+  //=========================================
+  if(epMesh->epNode) delete [] epMesh->epNode;
+  if(epMesh->epElement) delete [] epMesh->epElement;
+
+  for(int i = 0; i < scalarFields; i++ ) {
+     ScalarField *sf = &scalarField[i];
+#ifdef EG_MATC
+
+#ifdef WITH_QT5
+     QByteArray nm = sf->name.trimmed().toLatin1();
+#else
+     QByteArray nm = sf->name.trimmed().toAscii();
+#endif
+
+     var_delete( nm.data() );
+#else
+     if(sf->value) free(sf->value);
+#endif
+  }
+
+  scalarFields = 0;
+
+  // Add the null field:
+  //--------------------
+  QString fieldName = "Null";
+  ScalarField* nullField = addScalarField(fieldName, nodes*timesteps, NULL);
+  nullField->minVal = 0.0;
+  nullField->maxVal = 0.0;
+
+  // Add the scalar fields:
+  //-----------------------
+    QString fieldType;
+  	components = 0;
+	vtkUnstructuredGrid *output = reader->GetOutput();
+	vtkPointData *pointData = output->GetPointData();
+	vtkCellData *cellData = output->GetCellData();
+
+	for(int i = 0; i < reader->GetNumberOfPointArrays(); i++){
+		components += pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents();
+		fieldName = reader->GetPointArrayName(i);
+		if( pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents() > 1) fieldType = "vector";
+		else fieldType = "scalar";
+
+#if WITH_QT5
+    cout << fieldType.toLatin1().data() << ": ";
+    cout << fieldName.toLatin1().data() << endl;
+#else
+    cout << fieldType.toAscii().data() << ": ";
+    cout << fieldName.toAscii().data() << endl;    
+#endif
+
+		if(fieldType == "scalar")
+			addScalarField(fieldName, nodes*timesteps, NULL);
+
+		if(fieldType == "vector") {
+			addVectorField(fieldName, nodes*timesteps);
+		}
+	}
+
+  // Nodes:
+  //========
+  epMesh->epNodes = nodes;
+  epMesh->epNode = new EpNode[nodes];
+
+  for(int i = 0; i < nodes; i++) {
+    EpNode *epn = &epMesh->epNode[i];
+    output->GetPoint(i, epn->x);
+  }
+cout << "[VTU] Nodes loaded." << endl;
+
+  // Add nodes to field variables:
+  //-------------------------------
+  addVectorField("nodes", nodes);
+  int index = -1;
+  for(int i = 0; i < scalarFields; i++) {
+    ScalarField *sf = &scalarField[i];
+    if(sf->name == "nodes_x") {
+      index = i;
+      break;
+    }
+  }
+  ScalarField *sfx = &scalarField[index+0];
+  ScalarField *sfy = &scalarField[index+1];
+  ScalarField *sfz = &scalarField[index+2];
+
+  for( int i=0; i < nodes; i++ )
+  {
+    sfx->value[i] = epMesh->epNode[i].x[0];
+    sfy->value[i] = epMesh->epNode[i].x[1];
+    sfz->value[i] = epMesh->epNode[i].x[2];
+  }
+
+cout << "[VTU] Nodes added as ScalarField." << endl;
+
+  // Elements:
+  //==========
+  epMesh->epElements = elements;
+  epMesh->epElement = new EpElement[elements];
+  vtkIntArray* geometryIds = (vtkIntArray*) cellData->GetArray("GeometryIds");
+  for(int i = 0; i < elements; i++) {
+    EpElement *epe = &epMesh->epElement[i];
+	vtkCell* cell = output->GetCell(i);
+	epe->code = cell->GetCellType();
+	epe->code = vtk2ElmerElement(epe->code);
+	epe->groupName = QString::number(geometryIds->GetValue(i));
+
+//    epe->indexes = epe->code % 100;
+    epe->indexes = cell->GetNumberOfPoints();
+	epe->index = new int[epe->indexes];
+    for(int j = 0; j < epe->indexes; j++) {
+      epe->index[j] = cell->GetPointId(j);
+    }
+  }
+
+cout << "[VTU] Elements loaded." << endl;
+
+  // Data:
+  //=======
+  int start = readEpFile->ui.start->value();// - 1;
+  int end = readEpFile->ui.end->value();// - 1;
+  vtkFloatArray* floatArray;
+	for(int j=0; j < reader->GetNumberOfPointArrays(); j++){
+cout << "[VTU] Loading " << reader->GetPointArrayName(j) << flush;
+		floatArray = (vtkFloatArray*) pointData->GetArray(reader->GetPointArrayName(j));
+		for(int i=0; i < nodes; i++){
+			scalarField[j+1].value[i] = floatArray->GetValue(i);
+		 }
+cout << " done." << endl;
+	}
+  int real_timesteps = nodes * (end - start + 1)/nodes;
+  cout << real_timesteps << " timesteps read in." << endl;
+  
+/*
+  // Data:
+  //=======
+  int start = readEpFile->ui.start->value() - 1;
+  int end = readEpFile->ui.end->value() - 1;
+
+  // skip values before start:
+  for(int i = 0; i < nodes * start; i++) {
+    if(postStream.atEnd()) break;
+    getPostLineStream(&postStream);
+  }
+
+  ScalarField *sf;
+  int i;
+  for(i = 0; i < nodes * (end - start + 1); i++) {
+    if(postStream.atEnd()) break;
+    getPostLineStream(&postStream);
+
+    for(int j = 0; j < scalarFields-4; j++) { // - 4 = no nodes, no null field
+      sf = &scalarField[j+1];                 // + 1 = skip null field
+      postLineStream >> sf->value[i];
+    }
+  }
+
+  int real_timesteps = i/nodes;
+  cout << real_timesteps << " timesteps read in." << endl;
+  */
+
+  // Initial min & max values:
+  //============================
+  int ifield=0, size;
+  while( ifield<scalarFields )
+  {
+    ScalarField *sf = &scalarField[ifield];
+
+    int sf_timesteps = sf->values/nodes;
+    if ( real_timesteps < sf_timesteps )
+    {
+      sf->values = real_timesteps*nodes;
+#ifdef EG_MATC
+      QString name=sf->name;
+      int n = sf->name.indexOf("_x");
+      if ( n>0 ) 
+      {
+        name = sf->name.mid(0,n);
+
+        QString cmd = name+"="+name+"(0:2,0:"+QString::number(sf->values-1)+")";
+
+#if WITH_QT5
+        mtc_domath(cmd.toLatin1().data());
+
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
+        mtc_domath(cmd.toAscii().data());
+
+        VARIABLE *var = var_check(name.toAscii().data());
+#endif
+
+        sf = &scalarField[ifield];
+        sf->value = &M(var,0,0);
+        minMax(sf);
+
+        ifield++;
+        sf = &scalarField[ifield];
+        sf->value = &M(var,1,0);
+        sf->values = real_timesteps*nodes;
+        minMax(sf);
+
+        ifield++;
+        sf = &scalarField[ifield];
+        sf->value = &M(var,2,0);
+        sf->values = real_timesteps*nodes;
+        minMax(sf);
+      } else {
+        size=sf->values*sizeof(double);
+
+#if WITH_QT5
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
+        VARIABLE *var = var_check(name.toAscii().data());
+#endif       
+        sf->value = (double *)ALLOC_PTR(realloc(
+              ALLOC_LST(sf->value), ALLOC_SIZE(size)) );
+        MATR(var) = sf->value;
+        NCOL(var) = sf->values;
+        minMax(sf);
+      }
+#else
+      size = sf->values*sizeof(double);
+      sf->value = (double *)realloc(sf->value,size);
+      minMax(sf);
+#endif
+    } else {
+      minMax(sf);
+    }
+    ifield++;
+  }
+
+  timesteps = real_timesteps;
+  timeStep->maxSteps = timesteps;
+  timeStep->ui.start->setValue(1);
+  timeStep->ui.stop->setValue(timesteps);
+
+  // Set up the group edit menu:
+  //=============================
+  groupActionHash.clear();
+  editGroupsMenu->clear();
+
+  for(int i = 0; i < elements; i++) {
+    EpElement* epe = &epMesh->epElement[i];
+
+    QString groupName = epe->groupName;
+    
+    if(groupActionHash.contains(groupName))
+      continue;
+
+    QAction* groupAction = new QAction(groupName, this);
+    groupAction->setCheckable(true);
+    groupAction->setChecked(true);
+    editGroupsMenu->addAction(groupAction);
+    groupActionHash.insert(groupName, groupAction);
+  }
+
+  // Populate the widgets in user interface dialogs:
+  //-------------------------------------------------
+  populateWidgetsSlot();
+
+  this->postFileRead = true;
+
+  groupChangedSlot(NULL);
+  connect(editGroupsMenu, SIGNAL(triggered(QAction*)), this, SLOT(groupChangedSlot(QAction*)));
+  
+  editGroupsMenu->addSeparator();
+  editGroupsMenu->addAction(regenerateGridsAct);
+
+  // Set the null field active:
+  //---------------------------
+  drawSurfaceAct->setChecked(true);
+
+  renderer->ResetCamera();
+  
+  readEpFile->ui.fileName->setText(postFileName);
+  readEpFile->readHeader();
+  readEpFile->ui.applyButton->setEnabled(true);
+  readEpFile->ui.cancelButton->setEnabled(true);
+  readEpFile->ui.okButton->setEnabled(true);
+  readEpFile->setWindowTitle("Read input file");
+  readEpFile->repaint();
+
+  redrawSlot();
+
+  renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
+  initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
+
+  return true;
+}
+
+// Read ElmerPost format file
+//----------------------------------------------------------------------
+bool VtkPost::ReadElmerPostFile(QString postFileName)
 {
   // Open the post file:
   //=====================
