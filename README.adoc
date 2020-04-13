@@ -69,10 +69,11 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
 
 ==== Ubuntu
 
- * install the dependencies `sudo apt install git cmake build-essential fortran libopenmpi-dev libblas-dev liblapack-dev`
+ * install the dependencies `sudo apt install git cmake build-essential gfortran libblas-dev liblapack-dev`
  * Without:
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE`
  * With MPI:
+    ** `sudo apt install libopenmpi-dev`
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE`
  * With ElmerGUI:
     ** `sudo apt install libqt4-dev libqwt-dev`

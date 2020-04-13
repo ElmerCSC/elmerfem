@@ -21,8 +21,8 @@ endif()
 set(CMAKE_LEGACY_CYGWIN_WIN32 0)
 
 # if(MSYS) set(CMAKE_C_COMPILER "/mingw64/bin/gcc") set(CMAKE_CXX_COMPILER
-# "/mingw64/bin/g++") set(CMAKE_Fortran_COMPILER "/mingw64/bin/gfortran")
-# set (CMAKE_GENERATOR "MSYS Makefiles" CACHE INTERNAL "" FORCE) #
+# "/mingw64/bin/g++") set(CMAKE_Fortran_COMPILER "/mingw64/bin/gfortran") set
+# (CMAKE_GENERATOR "MSYS Makefiles" CACHE INTERNAL "" FORCE) #
 # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE INTERNAL "") #
 # set(CMAKE_MAKE_PROGRAM /mingw64/bin/mingw32-make CACHE FILEPATH "" FORCE)
 # endif(MSYS)
@@ -92,10 +92,10 @@ set(CMAKE_Fortran_MODULE_DIRECTORY
 
 # Defaults to cache variables
 set(WITH_MPI
-    TRUE
+    FALSE
     CACHE BOOL "Use MPI parallelization")
 set(WITH_OpenMP
-    TRUE
+    FALSE
     CACHE BOOL "Use OpenMP thread and SIMD (if available) parallelization")
 set(WITH_MKL
     FALSE
