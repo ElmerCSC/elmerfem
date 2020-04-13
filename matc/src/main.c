@@ -21,68 +21,68 @@
  *
  *****************************************************************************/
 
-
 #include <stdio.h>
 #include <signal.h>
 #include "../config.h"
 
-#ifdef USE_READLINE
-# ifdef HAVE_READLINE_READLINE_H
-#  include <readline/readline.h>
-#  include <readline/history.h>
-# else
-#  ifdef HAVE_READLINE_H
-#   include <readline.h>
-#   include <history.h>
-#  endif
-# endif
-#endif 
+// #ifdef USE_READLINE
+// #ifdef HAVE_READLINE_READLINE_H
+// #include <readline/readline.h>
+// #include <readline/history.h>
+// #else
+// #ifdef HAVE_READLINE_H
+// #include <readline.h>
+// #include <history.h>
+// #endif
+// #endif
+// #endif
 
 /* prototype */
 char *mtc_domath(char *);
 
-int main( int argc, char **argv )
+int main(int argc, char **argv)
 {
-  char strt[2000];
-  char *str;
+      char strt[2000];
+      char *str;
 
 #ifdef _OPENMP
-  /* Set number of threads to 1, computations are single threaded anyway */
-  omp_set_num_threads(1);
+      /* Set number of threads to 1, computations are single threaded anyway */
+      omp_set_num_threads(1);
 #endif
 
-  (void)mtc_init( stdin, stdout, stderr );
-  str = mtc_domath( "source(\"mc.ini\")" );
+      (void)mtc_init(stdin, stdout, stderr);
+      str = mtc_domath("source(\"mc.ini\")");
 
-  signal( SIGINT, SIG_IGN );
+      signal(SIGINT, SIG_IGN);
 
-  while( 1 )
-  {
-#ifdef USE_READLINE
-      str = readline ("MATC> ");
-      /* add to history */
-      if (str && *str)
-	add_history (str);
+      while (1)
+      {
+            // #ifdef USE_READLINE
+            //             str = readline("MATC> ");
+            //             /* add to history */
+            //             if (str && *str)
+            //                   add_history(str);
 
-#else
-      fgets( strt,  2000 , stdin);
-      str = strt;      
-#endif
-      
+            // #else
+            fgets(strt, 2000, stdin);
+            str = strt;
+// #endif
+
 /* kludge to enable exit. */
 #if defined(WIN32) || defined(MINGW32)
-      if( stricmp(str,"exit") == 0  || stricmp(str,"quit") == 0 )
+            if (stricmp(str, "exit") == 0 || stricmp(str, "quit") == 0)
 #else
-      if( strcasecmp(str,"exit") == 0  || strcasecmp(str,"quit") == 0 )
+            if (strcasecmp(str, "exit") == 0 || strcasecmp(str, "quit") == 0)
 #endif
-      {
-	return 0;
+            {
+                  return 0;
+            }
+            if (*str)
+                  fprintf(stdout, "%s\n", mtc_domath(str));
+
+            // #ifdef USE_READLINE
+            //             free(str);
+            // #endif
       }
-      if ( *str ) fprintf( stdout, "%s\n", mtc_domath( str ) );
-      
-#ifdef USE_READLINE
-      free(str);
-#endif
-    }  
-    return 0;
+      return 0;
 }

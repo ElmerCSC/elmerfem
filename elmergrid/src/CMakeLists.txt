@@ -13,8 +13,13 @@ IF(CMAKE_CROSSCOMPILING)
 ENDIF()
 
 # Don't install metis
-SET(METIS_INSTALL FALSE CACHE BOOL "")
-ADD_SUBDIRECTORY(metis-5.1.0)
+# SET(METIS_INSTALL FALSE CACHE BOOL "")
+# ADD_SUBDIRECTORY(metis-5.1.0)
+
+find_package(Metis)
+if(METIS_FOUND)
+  include_directories(${METIS_INCLUDES})
+endif(METIS_FOUND)
 
 SET(elmergrid_SRCS common.h femdef.h femelmer.h femfilein.h
   femfileout.h feminfo.h femknot.h femmesh.h 
@@ -22,9 +27,9 @@ SET(elmergrid_SRCS common.h femdef.h femelmer.h femfilein.h
   feminfo.c femknot.c femmesh.c fempre.c 
   nrutil.c)
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/metis)
+# INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/metis)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
-INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/elmergrid/src/metis)
+# INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/elmergrid/src/metis)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/elmergrid/src)
 
 ADD_DEFINITIONS(-DDISABLE_MATC)

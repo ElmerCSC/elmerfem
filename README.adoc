@@ -69,10 +69,11 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
 
 ==== Ubuntu
 
- * install the dependencies `sudo apt install git cmake build-essential fortran libopenmpi-dev libblas-dev liblapack-dev`
+ * install the dependencies `sudo apt install git cmake build-essential gfortran libblas-dev liblapack-dev`
  * Without:
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE`
  * With MPI:
+    ** `sudo apt install libopenmpi-dev`
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE`
  * With ElmerGUI:
     ** `sudo apt install libqt4-dev libqwt-dev`
@@ -80,6 +81,14 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
  * `make`
  * `sudo make install`
  * the executable are in `/usr/local/bin` folder, you may add this to your PATH if you will.
+
+==== Windows
+
+ * You need to have MSYS2 installed
+ * install METIS, OpenBLAS, CMake, GNU Make, and Fortran Compiler `pacman -S make mingw-w64-x86_64-openblas mingw-w64-x86_64-cmake mingw-w64-x86_64-metis`
+ * Without:
+    ** `cmake .. -G "MSYS Makefiles"`
+ * `make` or `cmake --build .`
 
 === Licencing: image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
 
