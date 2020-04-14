@@ -144,8 +144,7 @@ CONTAINS
      CHARACTER(LEN=*) :: MeshDir,MeshName
 !------------------------------------------------------------------------------
      CHARACTER(LEN=MAX_STRING_LEN) :: FName
- 
-     INTEGER :: k,k0,k1,l
+     INTEGER :: k,k0,k1,l,iostat
 !------------------------------------------------------------------------------
 
      CALL Info('LoadIncludeFile','Loading include file: '//TRIM(FileName),Level=8)
@@ -187,13 +186,20 @@ CONTAINS
 
 20     CONTINUE
 
-       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD' )
+       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD',IOSTAT=iostat )
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadIncludeFile','Cannot find include file: '//TRIM(FileName))
+       END IF
+
        CALL LoadInputFile( Model, InFileUnit, FileName, &
               MeshDir, MeshName, .FALSE., ScanOnly )
        CLOSE( InFileUnit )
-
      ELSE
-       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD' )
+       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD',IOSTAT=iostat )
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadIncludeFile','Cannot find include file: '//TRIM(FileName))
+       END IF
+       
        CALL LoadInputFile( Model, InFileUnit, FileName, &
             MeshDir, MeshName, .FALSE., ScanOnly )
        CLOSE( InFileUnit )
@@ -1480,16 +1486,14 @@ CONTAINS
         END IF
 
         IF ( SEQL(Name,'include') ) THEN
-          OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',ERR=10 )
+          OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',IOSTAT=iostat)
+          IF( iostat /= 0 ) THEN
+            CALL Fatal( 'Model Input','Cannot find include file: '//TRIM(Name(9:)))
+          END IF
+            
           CALL SectionContents( Model,List,CheckAbort,FreeNames, &
                   Section,InFileUnit-1,ScanOnly, Echo )
           CLOSE( InFileUnit-1 )
-          CYCLE
-
-10        CONTINUE
-
-          WRITE( Message, * ) 'Cannot find include file: ', Name(9:)
-          CALL Warn( 'Model Input', Message )
           CYCLE
         END IF
 
@@ -1630,7 +1634,7 @@ CONTAINS
 
                SELECT CASE( TYPE )
                CASE( LIST_TYPE_CONSTANT_SCALAR )
-
+                 
                   k = 0
                   DO i=1,N1
                      DO j=1,N2
@@ -1740,8 +1744,13 @@ CONTAINS
                      END DO
                    END DO
                  END DO
- 
-                 IF (.NOT. ScanOnly ) THEN
+
+
+                 IF( .NOT. ScanOnly ) THEN
+                   IF( n == 0 ) THEN
+                     CALL Fatal('SectionContents','Table dependence has zero size: '//TRIM(Name))
+                   END IF
+                   
                    IF ( SizeGiven ) THEN
                      CALL ListAddDepRealArray( List,Name,Depname,n,ATt(1:n), &
                               N1,N2,ATx(1:N1,1:N2,1:n) )
@@ -4276,20 +4285,20 @@ CONTAINS
       REAL(dp), INTENT(OUT) :: Val
 
       IF ( UsePerm ) THEN
-         iPerm = Perm(iNode)
+        iPerm = Perm(iNode)
       ELSE
-         iPerm = iNode
+        iPerm = iNode
       END IF
 
       IF ( iPerm > 0 ) THEN
-         IF ( Binary ) THEN
-            CALL BinReadDouble( RestartUnit, Val )
-         ELSE
-            READ( RestartUnit, * , IOSTAT=iostat ) Val
-            IF( iostat /= 0 ) THEN
-              CALL Fatal(Caller,'Error in GetValue for: '//TRIM(Var % Name) ) 
-            END IF
-         END IF
+        IF ( Binary ) THEN
+          CALL BinReadDouble( RestartUnit, Val )
+        ELSE
+          READ( RestartUnit, * , IOSTAT=iostat ) Val
+          IF( iostat /= 0 ) THEN
+            CALL Fatal(Caller,'Error in GetValue for: '//TRIM(Var % Name) ) 
+          END IF
+        END IF
       END IF
    END SUBROUTINE GetValue
 
