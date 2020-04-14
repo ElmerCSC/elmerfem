@@ -1439,6 +1439,7 @@ void CreateKnots(struct GridType *grid,struct CellType *cell,
 	  case -8:
 	    MovePointAngle(&maplim[3*k],grid->mappingpoints[k],grid->mappingparams[k],
 			   y,x,&dy,&dz);
+	    break;
 	  case -9:
 	    MovePointNACAairfoil(&maplim[3*k],grid->mappingpoints[k],grid->mappingparams[k],
 			   y,x,&dy,&dx);
