@@ -557,8 +557,10 @@ CONTAINS
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
-         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
-           Values => Variable % PrevValues(:,-tStep)
+         IF ( ASSOCIATED(Variable % PrevValues) ) THEN
+           IF( -tStep<=SIZE(Variable % PrevValues,2)) &
+              Values => Variable % PrevValues(:,-tStep)
+         END IF
        END IF
      END IF
 
@@ -660,8 +662,10 @@ CONTAINS
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
-         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
+         IF ( ASSOCIATED(Variable % PrevValues) ) THEN
+           IF ( -tStep<=SIZE(Variable % PrevValues,2)) &
              Values => Variable % PrevValues(:,-tStep)
+         END IF
        END IF
      END IF
 
