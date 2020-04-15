@@ -2132,20 +2132,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 CONTAINS
 
 !-------------------------------------------------------------------
-  SUBROUTINE SumElementalVariable(Var, Values, BodyId, Additive)
+  SUBROUTINE SumElementalVariable(Var, Values, BodyId, uAdditive)
 !-------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Variable_t), POINTER :: Var
     REAL(KIND=dp), OPTIONAL, TARGET :: Values(:)
     INTEGER, OPTIONAL :: BodyId
-    LOGICAL, OPTIONAL :: Additive
+    LOGICAL, OPTIONAL :: uAdditive
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: NodeSum(:)
     INTEGER :: n, j, k, l, nodeind, dgind, bias
     LOGICAL, ALLOCATABLE :: AirGapNode(:)
+    LOGICAL :: Additive
     REAL(KIND=dp), POINTER :: ValuesSource(:)
 
+
+    Additive = .FALSE.
+    IF(PRESENT(uAdditive)) Additive = uAdditive
 
     IF(PRESENT(Values)) THEN
       ValuesSource => Values
@@ -2165,7 +2169,9 @@ CONTAINS
       ! Collect DG data to nodal vector
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
-        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
+        IF(PRESENT(BodyID)) THEN
+          IF(Element % BodyID /= BodyID) CYCLE
+        END IF
         DO l = 1, Element % TYPE % NumberOfNodes
           nodeind = Element % NodeIndexes(l)
           dgind = Var % Perm(Element % DGIndexes(l))
@@ -2179,12 +2185,14 @@ CONTAINS
       ! Sum nodal data to elements
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
-        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
+        IF(PRESENT(BodyID)) THEN
+          IF(Element % BodyID /= BodyID) CYCLE
+        END IF
         DO l=1,Element%TYPE%NumberofNodes
           nodeind = Element % NodeIndexes(l)
           dgind = Var % Perm(Element % DGIndexes(l))
           IF( dgind > 0 ) THEN
-            IF (PRESENT(Additive) .AND. Additive) THEN
+            IF( Additive) THEN
               Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind) + &
                 Var % Values( var % DOFs*(dgind-1)+k)
             ELSE
