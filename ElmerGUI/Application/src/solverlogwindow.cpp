@@ -185,35 +185,6 @@ SolverLogWindow::SolverLogWindow(QWidget *parent) : QMainWindow(parent) {
   } else if (syntaxHighlighting == SOLVERLOG_HIGHLIGHTING_DARK) {
     highlightingDarkSlot();
   }
-
-  int x, y, w, h;
-  x = ((MainWindow *)parent)
-          ->settings_value("solverLogWindow/x", -10000)
-          .toInt();
-  y = ((MainWindow *)parent)
-          ->settings_value("solverLogWindow/y", -10000)
-          .toInt();
-  w = ((MainWindow *)parent)
-          ->settings_value("solverLogWindow/width", -10000)
-          .toInt();
-  h = ((MainWindow *)parent)
-          ->settings_value("solverLogWindow/height", -10000)
-          .toInt();
-  if (x != -10000 && y != -10000 && w != -10000 && h != -10000 &&
-      x < QApplication::desktop()->width() - 100 &&
-      y < QApplication::desktop()->height() - 100) {
-    move(x, y);
-    if (w > QApplication::desktop()->width())
-      w = QApplication::desktop()->width();
-    if (h > QApplication::desktop()->height())
-      h = QApplication::desktop()->height();
-    resize(w, h);
-  }
-  if (((MainWindow *)parent)
-          ->settings_value("solverLogWindow/maximized", false)
-          .toBool()) {
-    setWindowState(windowState() ^ Qt::WindowMaximized);
-  }
 }
 
 SolverLogWindow::~SolverLogWindow() {}

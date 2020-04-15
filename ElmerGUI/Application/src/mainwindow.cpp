@@ -545,19 +545,6 @@ void MainWindow::createActions() {
   showsifAct->setStatusTip(tr("Edit solver input file"));
   connect(showsifAct, SIGNAL(triggered()), this, SLOT(showsifSlot()));
 
-  // Sif -> Auto sif generation
-  suppressAutoSifGenerationAct =
-      new QAction(QIcon(""), tr("&Suppress auto generation"), this);
-  suppressAutoSifGenerationAct->setStatusTip(
-      tr("Suppress auto sif file generation in saving/loading to protect "
-         "manually edited sif contents in sif editor"));
-  connect(suppressAutoSifGenerationAct, SIGNAL(triggered()), this,
-          SLOT(suppressAutoSifGenerationSlot()));
-  suppressAutoSifGenerationAct->setCheckable(true);
-  suppressAutoSifGeneration =
-      settings_value("sif/suppressAutoSifGeneration", false).toBool();
-  suppressAutoSifGenerationAct->setChecked(suppressAutoSifGeneration);
-
   // Mesh -> Control
   meshcontrolAct =
       new QAction(QIcon(":/icons/configure.png"), tr("&Configure..."), this);
@@ -1056,8 +1043,6 @@ void MainWindow::createMenus() {
   editMenu->addAction(generateSifAct);
   editMenu->addSeparator();
   editMenu->addAction(showsifAct);
-  editMenu->addSeparator();
-  editMenu->addAction(suppressAutoSifGenerationAct);
 
   //  SolverMenu
   solverMenu = menuBar()->addMenu(tr("&Run"));
@@ -1757,9 +1742,6 @@ void MainWindow::saveSlot() {
     return;
   }
 
-  if (!suppressAutoSifGeneration) {
-    generateSifSlot();
-  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1783,9 +1765,6 @@ void MainWindow::saveAsSlot() {
     return;
   }
 
-  if (!suppressAutoSifGeneration) {
-    generateSifSlot();
-  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1833,10 +1812,6 @@ bool MainWindow::saveProject(QString projectDirName) {
   if (!glWidget->hasMesh()) {
     logMessage("Unable to save project: no mesh");
     return false;
-  }
-
-  if (!suppressAutoSifGeneration) {
-    generateSifSlot();
   }
 
   progressBar->show();
@@ -2536,35 +2511,10 @@ void MainWindow::loadProject(QString projectDirName) {
   }
 
   //===========================================================================
-  //                              REGENERATE SIF
+  //                              LOAD SIF
   //===========================================================================
   progressBar->setValue(14);
   if (glWidget->hasMesh()) {
-
-    if (!suppressAutoSifGeneration) {
-      logMessage("Regenerating and saving the solver input file...");
-      generateSifSlot();
-
-      QFile file;
-      QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
-      file.setFileName(sifName);
-      file.open(QIODevice::WriteOnly);
-      QTextStream sif(&file);
-      QApplication::setOverrideCursor(Qt::WaitCursor);
-      sif << sifWindow->getTextEdit()->toPlainText();
-      QApplication::restoreOverrideCursor();
-      file.close();
-
-      file.setFileName("ELMERSOLVER_STARTINFO");
-      file.open(QIODevice::WriteOnly);
-      QTextStream startinfo(&file);
-#if WITH_QT5
-      startinfo << sifName.toLatin1() << "\n1\n";
-#else
-      startinfo << sifName.toAscii() << "\n1\n";
-#endif
-      file.close();
-    } else {
       QFile file;
       QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
       file.setFileName(sifName);
@@ -2580,7 +2530,6 @@ void MainWindow::loadProject(QString projectDirName) {
       } else {
         logMessage(" failed to open " + sifName);
       }
-    }
   }
 
   logMessage("Ready");
@@ -5934,7 +5883,10 @@ void MainWindow::cleanHangingSharpEdgesSlot() {
 void MainWindow::showsifSlot() {
   // QFont sansFont("Courier", 10);
   // sifWindow->getTextEdit()->setCurrentFont(sansFont);
-  sifWindow->show();
+  if(sifWindow->windowState() & Qt::WindowMinimized){
+    sifWindow->showNormal();
+  }
+  else sifWindow->show();
 }
 
 // Edit -> Generate sif
@@ -5992,11 +5944,6 @@ void MainWindow::generateSifSlot() {
   sifGenerator->makeBodyForceBlocks();
   sifGenerator->makeInitialConditionBlocks();
   sifGenerator->makeBoundaryBlocks();
-}
-
-void MainWindow::suppressAutoSifGenerationSlot() {
-  suppressAutoSifGeneration = suppressAutoSifGenerationAct->isChecked();
-  settings_setValue("sif/suppressAutoSifGeneration", suppressAutoSifGeneration);
 }
 
 // Boundary selected by double clicking (signaled by glWidget::select):
@@ -7898,10 +7845,9 @@ void MainWindow::saveAndRun(bool generateSif) {
     }
   }
 
-  bool previousState = suppressAutoSifGeneration;
-  suppressAutoSifGeneration = !generateSif;
+  if(generateSif){ generateSifSlot();}
+
   bool ret = saveProject(projectDirName);
-  suppressAutoSifGeneration = previousState;
 
   //------- Run solver -------//
   if (ret) {
