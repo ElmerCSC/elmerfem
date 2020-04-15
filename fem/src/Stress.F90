@@ -1230,7 +1230,7 @@ CONTAINS
  SUBROUTINE LocalStress( Stress, Strain, PoissonRatio, ElasticModulus, &
       Heatexpansion, NodalTemp, Isotropic, CSymmetry, PlaneStress,     &
       NodalDisp, Basis, dBasisdx, Nodes, dim, n, nBasis, ApplyPressure,&
-      EvaluateAtIP, EvaluateLoadAtIP, GaussPoint)
+      argEvaluateAtIP, argEvaluateLoadAtIP, GaussPoint)
 !------------------------------------------------------------------------------
      LOGICAL :: Isotropic(2), CSymmetry, PlaneStress  
      LOGICAL, OPTIONAL :: ApplyPressure
@@ -1240,7 +1240,7 @@ CONTAINS
      REAL(KIND=dp) :: Stress(:,:), Strain(:,:), ElasticModulus(:,:,:), &
                       HeatExpansion(:,:,:), NodalTemp(:), Temperature
      REAL(KIND=dp) :: Basis(:), dBasisdx(:,:), PoissonRatio(:), NodalDisp(:,:)
-     LOGICAL, OPTIONAL :: EvaluateAtIP(3), EvaluateLoadAtIP     
+     LOGICAL, OPTIONAL :: argEvaluateAtIP(3), argEvaluateLoadAtIP     
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,p,q,IND(9),ic
      LOGICAL :: Found, Incompressible, FirstTime=.TRUE.
@@ -1249,16 +1249,29 @@ CONTAINS
      TYPE(ValueHandle_t), SAVE :: BetaIP_h, EIP_h, nuIP_h, Load_h(4), Load_h_im(4)
      TYPE(Element_t), POINTER :: Element
      CHARACTER :: DimensionString
+     LOGICAL :: EvaluateAtIP(3), EvaluateLoadAtIP     
 !------------------------------------------------------------------------------
 
      SAVE FirstTime
+
+     IF(PRESENT(argEvaluateAtIP)) THEN
+       EvaluateAtIp = argEvaluateAtIp
+     ELSE
+       EvaluateAtIp = .FALSE.
+     END IF
+
+     IF(PRESENT(argEvaluateLoadAtIP)) THEN
+       EvaluateLoadAtIp = argEvaluateLoadAtIp
+     ELSE
+       EvaluateLoadAtIp = .FALSE.
+     END IF
      
      Incompressible = GetLogical( GetSolverParams(), 'Incompressible', Found )
 
      Element => CurrentModel % CurrentElement
      IF (FirstTime) THEN
        dim = CoordinateSystemDimension()
-       IF (PRESENT(EvaluateAtIP)) THEN
+       IF (PRESENT(argEvaluateAtIP)) THEN
          IF(EvaluateAtIP(1)) &
               CALL ListInitElementKeyword( EIP_h,'Material','Youngs Modulus')
          IF(EvaluateAtIP(2)) &
@@ -1266,14 +1279,16 @@ CONTAINS
          IF(EvaluateAtIP(3)) &
               CALL ListInitElementKeyword( nuIP_h,'Material','Poisson Ratio')
        END IF
-       IF(PRESENT(EvaluateLoadAtIP) .AND. EvaluateLoadAtIP) THEN
-         DO I=1,DIM
-           WRITE(DimensionString,'(I1)') I
-           CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))          
-           CALL ListInitElementKeyword( Load_h_im(I),'Body Force','Stress BodyForce '//TRIM(DimensionString)//' im')
-         END DO
-         CALL ListInitElementKeyword( Load_h(4),'Body Force','Stress Pressure')
-         CALL ListInitElementKeyword( Load_h_im(4),'Body Force','Stress Pressure im')
+       IF(PRESENT(argEvaluateLoadAtIP) ) THEN
+         IF(EvaluateLoadAtIP) THEN
+           DO I=1,DIM
+             WRITE(DimensionString,'(I1)') I
+             CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))          
+             CALL ListInitElementKeyword( Load_h_im(I),'Body Force','Stress BodyForce '//TRIM(DimensionString)//' im')
+           END DO
+           CALL ListInitElementKeyword( Load_h(4),'Body Force','Stress Pressure')
+           CALL ListInitElementKeyword( Load_h_im(4),'Body Force','Stress Pressure im')
+         END IF
        END IF
        FirstTime = .FALSE.
      END IF
@@ -1290,7 +1305,7 @@ CONTAINS
 !    Material parameters:
 !    --------------------
      IF ( Isotropic(1) ) THEN
-       IF (PRESENT(EvaluateAtIP) .AND. EvaluateAtIP(3)) THEN
+       IF (EvaluateAtIP(3)) THEN
          Poisson =  ListGetElementReal(nuIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
        ELSE
          Poisson = SUM( Basis(1:n) * PoissonRatio(1:n) )
@@ -1299,7 +1314,7 @@ CONTAINS
 
      C = 0
      IF ( Isotropic(1) ) THEN
-       IF (PRESENT(EvaluateAtIP) .AND. EvaluateAtIP(1)) THEN
+       IF (EvaluateAtIP(1)) THEN
          Young = ListGetElementReal( EIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
        ELSE
          Young = SUM( Basis(1:n) * ElasticModulus(1,1,1:n) )
@@ -1315,7 +1330,7 @@ CONTAINS
      HEXP = 0.0_dp
      IF ( Isotropic(2) ) THEN
        DO i=1,ic
-         IF (PRESENT(EvaluateAtIP) .AND. EvaluateAtIP(2)) THEN
+         IF (EvaluateAtIP(2)) THEN
            HEXP(i,i)= ListGetElementReal( BetaIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
          ELSE
            HEXP(i,i) = SUM( Basis(1:n) * HeatExpansion(1,1,1:n) )
