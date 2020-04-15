@@ -1095,6 +1095,19 @@ CONTAINS
     END IF
 
 
+#if 0
+    ! Here we can for testing purposes change all solver named xxx to yyy
+    ! and then rerun all the tests, for example. Don't activate unless for this kind
+    ! of development work.
+    i = INDEX( proc_name,'HeatSolver')
+    IF( i /= 0 ) THEN
+      proc_name = 'HeatSolveVec HeatSolver'
+      CALL ListAddString(SolverParams, 'Procedure', proc_name,.FALSE.)
+      CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=6)
+    END IF
+#endif
+
+
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
     !----------------------------------------------------------------------------------
