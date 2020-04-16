@@ -144,7 +144,6 @@ private slots:
   void modelClearSlot();                // Model -> Clear
   void generateSifSlot();               // Edit -> Generate sif
   void showsifSlot();                   // Edit -> Solver input file...
-  void suppressAutoSifGenerationSlot(); // Sif -> Auto sif generation
   void editDefinitionsSlot();           // Edit -> Definitions...
   void meshcontrolSlot();               // Mesh -> Control...
   void remeshSlot();                    // Mesh -> Remesh
@@ -351,7 +350,6 @@ private:
   QAction *modelClearAct;                // Model -> Clear
   QAction *generateSifAct;               // Edit -> Generate sif
   QAction *showsifAct;                   // Edit -> Edit SIF...
-  QAction *suppressAutoSifGenerationAct; // Sif -> Auto sif generation
   QAction *editDefinitionsAct;           // Edit -> Edit SIF...
   QAction *viewFullScreenAct;            // View -> Full screen
   QAction *hidesurfacemeshAct;           // View -> Show surface mesh
@@ -537,7 +535,6 @@ private:
   // String to store current project dir for "generate, save and run" button
   QString currentProjectDirName;
 
-  bool suppressAutoSifGeneration;
 
   ObjectBrowser *objectBrowser;
 };
