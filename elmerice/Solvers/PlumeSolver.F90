@@ -296,7 +296,7 @@
              YArray(ParEnv % PEs), ZArray(ParEnv % PEs), &
              BMRDistArray(ParEnv % PEs))
      WorkVar => VariableGet(HydroMesh % Variables, 'zb', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-     BMRVar => VariableGet(Model % Mesh % Variables, 'basalmeltrate', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+     BMRVar => VariableGet(Model % Mesh % Variables, 'gmcheck', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
      XArray = 0.0_dp
      YArray = 0.0_dp
      ZArray = 0.0_dp
@@ -351,6 +351,7 @@
              CYCLE
            END IF
            IF(BMRVar % Perm(k)<=0) CYCLE
+           IF(BMRVar % Values(BMRVar % Perm(k)) < 1.0) CYCLE
            Dist = (Solver % Mesh % Nodes % x(k) - TargetNode(1))**2
            Dist = Dist + (Solver % Mesh % Nodes % y(k) - TargetNode(2))**2
            Dist = SQRT(Dist)
