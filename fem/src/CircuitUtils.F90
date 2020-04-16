@@ -381,7 +381,7 @@ FUNCTION isComponentName(name, len) RESULT(L)
    IF(len<12) RETURN
    IF(name(1:12)=='i_component(' .OR. name(1:12)=='v_component(') L=.TRUE.
 !------------------------------------------------------------------------------
-END FUNTION isComponentName
+END FUNCTION isComponentName
 !------------------------------------------------------------------------------
 
 
