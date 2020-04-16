@@ -86,7 +86,7 @@
 #include <vtkRenderWindowInteractor.h>
 #include <vtkCamera.h>
 #include <vtkCellArray.h>
-#include <vtkFloatArray.h>
+#include <vtkDoubleArray.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
@@ -460,7 +460,6 @@ VtkPost::VtkPost(QWidget *parent)
   ecmaConsole->addNames("text", text->metaObject());
 
   ecmaConsole->initCompleter();
-
 }
 
 VtkPost::~VtkPost()
@@ -1202,13 +1201,25 @@ cout << "[VTU] Nodes added as ScalarField." << endl;
 	epe->code = cell->GetCellType();
 	epe->code = vtk2ElmerElement(epe->code);
 	epe->groupName = QString::number(geometryIds->GetValue(i));
+	int index820[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16};
+	int index827[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16,23,22,24,21,25,26,27};
 
 //    epe->indexes = epe->code % 100;
     epe->indexes = cell->GetNumberOfPoints();
 	epe->index = new int[epe->indexes];
-    for(int j = 0; j < epe->indexes; j++) {
-      epe->index[j] = cell->GetPointId(j);
-    }
+	if(epe->code == 820){
+		for(int j = 0; j < epe->indexes; j++) {
+			epe->index[j] = cell->GetPointId(index820[j]-1);
+		}
+	}else if(epe->code == 827){
+		for(int j = 0; j < epe->indexes; j++) {
+			epe->index[j] = cell->GetPointId(index827[j]-1);
+		}
+	}else{
+		for(int j = 0; j < epe->indexes; j++) {
+			epe->index[j] = cell->GetPointId(j);
+		}
+	}
   }
 
 cout << "[VTU] Elements loaded." << endl;
@@ -1217,14 +1228,18 @@ cout << "[VTU] Elements loaded." << endl;
   //=======
   int start = readEpFile->ui.start->value();// - 1;
   int end = readEpFile->ui.end->value();// - 1;
-  vtkFloatArray* floatArray;
+  vtkDoubleArray* doubleArray;
+	int sfcount = 1; // to skip node field
 	for(int j=0; j < reader->GetNumberOfPointArrays(); j++){
-cout << "[VTU] Loading " << reader->GetPointArrayName(j) << flush;
-		floatArray = (vtkFloatArray*) pointData->GetArray(reader->GetPointArrayName(j));
+		doubleArray = (vtkDoubleArray*) pointData->GetArray(j); //ElmerSolver stores data as Float64
+		int nComponents = doubleArray->GetNumberOfComponents();
 		for(int i=0; i < nodes; i++){
-			scalarField[j+1].value[i] = floatArray->GetValue(i);
-		 }
-cout << " done." << endl;
+			for(int k=0; k < nComponents; k++){
+				scalarField[sfcount+k].value[i] = doubleArray->GetValue(nComponents*i+k);
+			}
+		}
+		sfcount += nComponents;
+		cout << "[VTU] " << reader->GetPointArrayName(j) << " loaded." << endl;
 	}
   int real_timesteps = nodes * (end - start + 1)/nodes;
   cout << real_timesteps << " timesteps read in." << endl;
@@ -1835,7 +1850,7 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
-    if(epe->code == 504) {
+    if(epe->code == 504 || epe->code == 510) {
       QString groupName = epe->groupName;
       if(groupName.isEmpty()) continue;
 
@@ -1849,7 +1864,7 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
 	volumeGrid->InsertNextCell(tetra->GetCellType(), tetra->GetPointIds());
     }
     
-    if(epe->code == 808) {
+    if(epe->code == 808 || epe->code == 820 || epe->code == 827) {
       QString groupName = epe->groupName;
       if(groupName.isEmpty()) continue;
       
@@ -1873,7 +1888,7 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
-    if(epe->code == 303) {
+    if(epe->code == 303 || epe->code == 306) {
       QString groupName = epe->groupName;
       if(groupName.isEmpty()) continue;
 
@@ -1887,7 +1902,7 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
 	surfaceGrid->InsertNextCell(tria->GetCellType(), tria->GetPointIds());
     }
 
-    if(epe->code == 404) {
+    if(epe->code == 404 || epe->code == 408) {
       QString groupName = epe->groupName;
       if(groupName.isEmpty()) continue;
 
@@ -1911,7 +1926,7 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
-    if(epe->code == 202) {
+    if(epe->code == 202 || epe->code == 203) {
       QString groupName = epe->groupName;
       if(groupName.isEmpty()) continue;
 
