@@ -354,8 +354,8 @@ CONTAINS
       cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
-      
-      IF(name(1:12) == 'i_component(' .OR. name(1:12) == 'v_component(') THEN
+
+      IF(isComponentName(name,slen)) THEN
         DO j=13,slen
           IF(name(j:j)==')') EXIT 
         END DO
@@ -369,6 +369,21 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION CountNofCircComponents
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+FUNCTION isComponentName(name, len) RESULT(L)
+!------------------------------------------------------------------------------
+   CHARACTER(LEN=*) :: name
+   INTEGER :: len
+   LOGICAL :: L
+   
+   L = .FALSE.
+   IF(len<12) RETURN
+   IF(name(1:12)=='i_component(' .OR. name(1:12)=='v_component(') L=.TRUE.
+!------------------------------------------------------------------------------
+END FUNTION isComponentName
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCircuitVariables(CId)
@@ -393,7 +408,7 @@ CONTAINS
       CVar % isVvar = .FALSE.
       CVar % Component => Null()
 
-      IF(name(1:12) == 'i_component(' .OR. name(1:12) == 'v_component(') THEN
+      IF(isComponentName(name,slen)) THEN
         DO j=13,slen
           IF(name(j:j)==')') EXIT 
         END DO
@@ -864,7 +879,7 @@ variable % owner = ParEnv % PEs-1
 
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.A'//CHAR(0),Circuit % A,n,n)
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.B'//CHAR(0),Circuit % B,n,n)
-    
+
     IF (Circuit % Harmonic) THEN
       ! Complex multiplier matrix is used for:
       ! B = times(M,B), where B times is the element-wise product

@@ -3160,7 +3160,9 @@ RETURN
     END SELECT
 
 
-    IF( GotMask .AND. ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    IF( GotMask ) THEN
+      IF ( ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    END IF
 
     !------------------------------------------------------------------------
     ! Velocities may be initialized using a given list, or obtaining them

@@ -512,7 +512,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE BoundaryConditionArray_t
-     INTEGER :: TYPE,Tag
+     INTEGER :: Type=0,Tag=0
      TYPE(Matrix_t), POINTER :: PMatrix => NULL()
      LOGICAL :: PMatrixGalerkin = .FALSE.
      TYPE(ValueList_t), POINTER :: Values => Null()
@@ -521,7 +521,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE InitialConditionArray_t
-     INTEGER :: TYPE,Tag
+     INTEGER :: TYPE=0,Tag=0
      TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE InitialConditionArray_t
 

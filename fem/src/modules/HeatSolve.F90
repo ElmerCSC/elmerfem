@@ -211,6 +211,7 @@
   
      LocalNodes = COUNT( TempPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
+     IF(SIZE(Temperature) < LocalNodes) LocalNodes = SIZE(Temperature)
 
      SolverParams => GetSolverParams()
 

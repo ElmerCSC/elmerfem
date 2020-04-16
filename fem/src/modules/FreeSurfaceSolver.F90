@@ -294,7 +294,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        UseBodyForce, LimitedSolution, LowerLimit, &
        UpperLimit, ActiveNode, ResetLimiters, OldValues, OldRHS, &
        ResidualVector, StiffVector, MeshVelocity, &
-       ComputeLocalMaxDisp, LocalMaxDisp
+       ComputeLocalMaxDisp, LocalMaxDisp, VariableName
   !------------------------------------------------------------------------------
   !    Get variables for the solution
   !------------------------------------------------------------------------------
@@ -305,7 +305,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !    Get variable/solver name
   !------------------------------------------------------------------------------
-  IF (VariableName .NE. TRIM(Solver % Variable % Name)) THEN
+  IF (VariableName /= TRIM(Solver % Variable % Name)) THEN
     VariableName = TRIM(Solver % Variable % Name)
     ReAllocate = .TRUE.
   ELSE
