@@ -1026,6 +1026,13 @@ void VtkPost::getPostLineStream(QTextStream* postStream)
 //----------------------------------------------------------------------
 bool VtkPost::ReadPostFile(QString postFileName)
 {
+  if(drawSurfaceAct->isChecked()) hideSurfaceSlot();
+  if(drawVectorAct->isChecked()) hideVectorSlot();
+  if(drawIsoContourAct->isChecked()) hideIsoContourSlot();
+  if(drawIsoSurfaceAct->isChecked()) hideIsoSurfaceSlot();
+  if(drawColorBarAct->isChecked()) hideColorBarSlot();
+  if(drawStreamLineAct->isChecked()) hideStreamLineSlot();
+
   if(postFileName.endsWith(".ep", Qt::CaseInsensitive)) return ReadElmerPostFile(postFileName);
   if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)) return ReadVtuFile(postFileName);
   return false;
@@ -1060,12 +1067,15 @@ int VtkPost::vtk2ElmerElement(int vtkCode){
 //----------------------------------------------------------------------
 bool VtkPost::ReadVtuFile(QString postFileName)
 {
+
   // Open the post file:
   //=====================
   this->postFileName = postFileName;
   this->postFileRead = false;
 
   QFile postFile(postFileName);
+  QFileInfo info(postFileName);
+  QDir dir = info.dir();
 
   if(!postFile.open(QIODevice::ReadOnly | QIODevice::Text))
     return false;
@@ -1082,16 +1092,17 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   // Read in nodes, elements, timesteps, and scalar components:
   //-----------------------------------------------------------
   int nodes, elements, timesteps, components;
-
-
+  int start = readEpFile->ui.start->value() - 1;
+  int end = readEpFile->ui.end->value() - 1;
+ 
+  QString postFilePath = dir.filePath(readEpFile->vtuFileNameList.at(start));
 	vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
-	reader->SetFileName(postFileName.toLatin1().data());
+	reader->SetFileName(postFilePath.toLatin1().data());
 	reader->Update();
 
 	nodes = reader->GetNumberOfPoints();
 	elements = reader->GetNumberOfCells();
-	timesteps = reader->GetNumberOfTimeSteps();
-	if(timesteps == 0) timesteps = 1;
+	timesteps = readEpFile->vtuFileNameList.length();
 
   cout << "vtu file header says:" << endl;
   cout << "Nodes: " << nodes << endl;
@@ -1217,23 +1228,37 @@ cout << "[VTU] Elements loaded." << endl;
 
   // Data:
   //=======
-  int start = readEpFile->ui.start->value();// - 1;
-  int end = readEpFile->ui.end->value();// - 1;
   vtkDoubleArray* doubleArray;
-	int sfcount = 1; // to skip node field
+  //end = start; //debug	
+  for(int l = start; l <= end; l++){
+	if(l != start){
+		reader->Delete();
+		reader =  vtkXMLUnstructuredGridReader::New();
+		postFilePath = dir.filePath(readEpFile->vtuFileNameList.at(l));
+		reader->SetFileName(postFilePath.toLatin1().data());
+		reader->Update();
+		output = reader->GetOutput();
+		pointData = output->GetPointData();
+		cellData = output->GetCellData();
+		cout << "<VTU> "<<  postFilePath.toLatin1().data() << endl;
+	}		
+	int sfcount = 1; // 1 to skip node field
 	for(int j=0; j < reader->GetNumberOfPointArrays(); j++){
 		doubleArray = (vtkDoubleArray*) pointData->GetArray(j); //ElmerSolver stores data as Float64
 		int nComponents = doubleArray->GetNumberOfComponents();
 		for(int i=0; i < nodes; i++){
 			for(int k=0; k < nComponents; k++){
-				scalarField[sfcount+k].value[i] = doubleArray->GetValue(nComponents*i+k);
+				scalarField[sfcount+k].value[nodes*(l-start)+i] = doubleArray->GetValue(nComponents*i+k);
 			}
 		}
 		sfcount += nComponents;
 		cout << "[VTU] " << reader->GetPointArrayName(j) << " loaded." << endl;
 	}
+  }
   int real_timesteps = nodes * (end - start + 1)/nodes;
   cout << real_timesteps << " timesteps read in." << endl;
+  reader->Delete();
+  reader = NULL;
   
 /*
   // Data:

@@ -138,9 +138,6 @@ void ReadEpFile::readHeader()
     vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
     reader->SetFileName(ui.fileName->text().toLatin1().data());
     reader->Update();
-
-//potential = output->GetPointData().GetArray("Magnetization")
-    //vtkInformation* outInfo = reader()->GetExecutive()->GetOutputInformation(0);
     
 	nodes = reader->GetNumberOfPoints();
     elements = reader->GetNumberOfCells();
@@ -152,20 +149,28 @@ void ReadEpFile::readHeader()
 	vtkPointData *pointData = output->GetPointData();
 	vtkCellData *cellData = output->GetCellData();
     
-//    cout << "VTU: NumberOfPieces: " << reader->GetNumberOfPieces();
-//    cout << "VTU: NumberOfPoints: " << reader->GetNumberOfPoints();
-//    cout << "VTU: NumberOfCells: " << reader->GetNumberOfCells();
-//    cout << "VTU: NumberOfTimeSteps: " << reader->GetNumberOfTimeSteps();
-//    cout << "VTU: NumberOfPointArrays: " << reader->GetNumberOfPointArrays() << endl;
-      for(int i = 0; i < reader->GetNumberOfPointArrays(); i++){
-//        cout << "VTU: PointArray [" << i << "] " << reader->GetPointArrayName(i) << ", "<< pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents()<< endl; 
-		  components += pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents();
-      }
-//      cout << "VTU: NumberOfCellArrays: " <<  reader->GetNumberOfCellArrays() << endl;
-//      for(int i = 0; i < reader->GetNumberOfCellArrays(); i++){
-//        cout << "VTU: CellArray [" << i << "] " << reader->GetCellArrayName(i) << ", "<< cellData->GetArray(reader->GetCellArrayName(i))->GetNumberOfComponents()<< endl; 
-//      }        	
-    
+    for(int i = 0; i < reader->GetNumberOfPointArrays(); i++){
+	  components += pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents();
+    }
+	reader->Delete();
+
+
+	QFileInfo info(fileName);
+	QDir dir = info.dir();
+	QString name = info.fileName();
+	int l = name.length();
+	int i = 4;
+	while(name.at(l-i-1).isNumber() && i>0) i++;
+	QString filter = name.left(l-i) + "*.vtu";
+	cout << ".vtu file: " <<  filter.toLatin1().data() << endl;
+
+	QStringList filterList;
+	filterList << "*.vtu";
+	vtuFileNameList = dir.entryList(filterList,  QDir::Readable|QDir::Files|QDir::NoSymLinks, QDir::SortFlags(QDir::Name | QDir::IgnoreCase));
+	for(int i=0; i < vtuFileNameList.length(); i++){
+		cout <<  vtuFileNameList.at(i).toLatin1().data() << endl;
+	}
+	timesteps = vtuFileNameList.length();
   
   }else if(ui.fileName->text().endsWith(".ep", Qt::CaseInsensitive)){
 
