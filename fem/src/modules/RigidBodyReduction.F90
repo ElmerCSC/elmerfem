@@ -546,7 +546,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !  Find out the mass center points of rigid blocks
 !------------------------------------------------------------------------------
 
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      
      CALL ComputeMassCenter( CenterOfRigidBody, Model, Solver, &
           RigidIndex, NbrRigids )
@@ -634,7 +634,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !  And finally the Cols and Values for rigid blocks
 !------------------------------------------------------------------------------
 
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
 
      DO j = 1, NbrRigids
 

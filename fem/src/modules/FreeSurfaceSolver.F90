@@ -432,7 +432,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !    Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
 
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed .OR. ReAllocate) THEN
+  IF ( (.NOT. AllocationsDone) .OR. Solver % MeshChanged .OR. ReAllocate) THEN
     NMAX = Model % MaxElementNodes
     MMAX = Model % Mesh % NumberOfNodes 
     K = SIZE( SystemMatrix % Values )

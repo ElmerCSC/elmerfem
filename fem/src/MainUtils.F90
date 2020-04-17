@@ -5158,17 +5158,25 @@ CONTAINS
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
-    
+
+     ! This is more featured version than the original one with just one flag.
+     ! This way different solvers can detect when their mesh has been updated. 
+     Solver % MeshChanged = Solver % Mesh % Changed
+     IF( Solver % MeshTag /= Solver % Mesh % MeshTag ) THEN
+       Solver % MeshChanged = .TRUE.
+       Solver % MeshTag = Solver % Mesh % MeshTag
+     END IF       
+     
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL INFO("SingleSolver", "Attempting to call solver", level=5)
+     CALL Info("SingleSolver", "Attempting to call solver", level=5)
      SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
-        CALL INFO("SingleSolver", Message, level=5)
+        CALL Info("SingleSolver", Message, level=5)
      END IF
 
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
@@ -5194,7 +5202,6 @@ CONTAINS
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
-
      
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver

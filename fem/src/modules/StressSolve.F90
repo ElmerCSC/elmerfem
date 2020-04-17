@@ -356,7 +356,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Mesh % Changed) THEN
+     IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged) THEN
        N = Mesh % MaxElementDOFs
 
        IF ( AllocationsDone ) THEN
@@ -1672,7 +1672,7 @@ CONTAINS
          SFORCE(6*n), &
          Basis(n), dBasisdx(n,3) )
 
-     IF ( FirstTime .OR. Mesh % Changed ) THEN
+     IF ( FirstTime .OR. Solver % MeshChanged ) THEN
        IF ( FirstTime ) THEN
          ALLOCATE( StSolver )
        ELSE

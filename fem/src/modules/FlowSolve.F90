@@ -287,7 +287,7 @@
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
 
-     IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     IF ( .NOT.AllocationsDone .OR. Solver % MeshChanged ) THEN
 
        N = Solver % Mesh % MaxElementDOFs
        

@@ -782,7 +782,7 @@ END INTERFACE
      TYPE(Quadrant_t), POINTER  :: RootQuadrant
 
      LOGICAL :: Changed, OutputActive, Stabilize
-     INTEGER :: SavesDone, AdaptiveDepth
+     INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
 
      TYPE(Factors_t), POINTER :: ViewFactors(:)
 
@@ -869,7 +869,9 @@ END INTERFACE
       INTEGER :: MultiGridLevel,  MultiGridTotal, MultiGridSweep
       LOGICAL :: MultiGridSolver, MultiGridEqualSplit
       TYPE(Mesh_t), POINTER :: Mesh => NULL()
-
+      INTEGER :: MeshTag = 1
+      LOGICAL :: MeshChanged = .FALSE.
+      
       INTEGER, POINTER :: ActiveElements(:) => NULL()
       INTEGER, POINTER :: InvActiveElements(:) => NULL()
       INTEGER :: NumberOfActiveElements
