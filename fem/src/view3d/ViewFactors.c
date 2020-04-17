@@ -450,21 +450,12 @@ void InitGeometryTypes()
     ViewFactorCompute[GEOMETRY_BIQUADRATIC]   = BiQuadraticComputeViewFactors;
 }
 
-#ifdef USE_ISO_C_BINDINGS
 void viewfactors3d
   ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
     int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
     double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr,
     int *NInteg,int *NInteg3, int  *Combine )
 {
-#else
-void STDCALLBULL FC_FUNC(viewfactors3d,VIEWFACTORS3D)
-  ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
-    int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
-    double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, 
-    int *NInteg,int *NInteg3, int  *Combine )
-{
-#endif
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
 

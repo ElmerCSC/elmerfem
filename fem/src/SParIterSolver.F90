@@ -157,12 +157,7 @@ REAL(kind=dp) :: tt,realtime
 
     LOGICAL, ALLOCATABLE :: isNeighbour(:)
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, GotNewCol, Found
-
-#ifdef USE_ISO_C_BINDINGS
     REAL(kind=dp) :: st
-#else
-    REAL(kind=dp) :: realtime,st
-#endif
   !******************************************************************
 st = realtime()
     ALLOCATE( SplittedMatrix )
@@ -2126,12 +2121,8 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
   REAL(KIND=dp), DIMENSION(:,:), POINTER :: Work
   REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRHSVec, r
-#ifndef USE_ISO_C_BINDINGS
-  INTEGER(KIND=AddrInt) :: AddrFunc
-#else
   INTEGER(KIND=AddrInt) :: AddrFunc
   EXTERNAL :: AddrFunc
-#endif
   REAL(KIND=dp) :: ILUT_TOL
   INTEGER :: ILUn
   CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner
@@ -2139,12 +2130,7 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
   INTEGER, POINTER :: SPerm(:)
   INTEGER, POINTER CONTIG :: SCols(:)
-
-#ifdef USE_ISO_C_BINDINGS
   REAL(kind=dp)::tt,rt
-#else
-  REAL(kind=dp)::cputime,realtime,tt,rt
-#endif
 
   !*******************************************************************
 
@@ -2361,24 +2347,12 @@ END SUBROUTINE Solve
   TYPE (Matrix_t), POINTER :: InsideMatrix
 
   INTEGER :: nneigh
-
   TYPE(Buff_t), POINTER ::  buffer(:)
-
   REAL(KIND=dp) :: rsum
-
   REAL(KIND=dp), POINTER CONTIG :: Vals(:)
-! REAL(KIND=dp), POINTER :: Vals(:)
-
   INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
-! INTEGER, POINTER :: Cols(:),Rows(:)
-
   INTEGER, ALLOCATABLE :: neigh(:), recv_size(:), requests(:)
-
-#ifdef USE_ISO_C_BINDINGS
   REAL(kind=dp) :: s
-#else
-  REAL(kind=dp) :: s, RealTime
-#endif
   !*******************************************************************
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
@@ -2583,16 +2557,11 @@ REAL(kind=dp) :: s, RealTime
   Vals => InsideMatrix % Values
 
   IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
-  ALLOCATE(Abs_Vals(size(InsideMatrix % Values)))
-  Abs_Vals = ABS(Vals)
+    ALLOCATE(Abs_Vals(SIZE(InsideMatrix % Values)))
+    Abs_Vals = ABS(Vals)
     CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
-  DEALLOCATE(Abs_Vals)
-#else
-    CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,ABS(Vals),u,v,0)
-#endif
+        GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
+    DEALLOCATE(Abs_Vals)
   ELSE
 !$omp parallel do private(j,rsum)
     DO i = 1, n

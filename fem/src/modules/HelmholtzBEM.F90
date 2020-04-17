@@ -706,23 +706,12 @@
        COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: dpar(50)
-
        INTEGER :: ipar(50),wsize
-       ! REAL(KIND=dp), ALLOCATABLE :: Work(:,:)
        COMPLEX(KIND=dp), ALLOCATABLE :: Work(:,:)
-
        COMPLEX :: s
-
        LOGICAL :: AbortNotConverged
-
-#ifndef USE_ISO_C_BINDINGS
-       INTEGER  :: HUTI_Z_BICGSTAB
-       EXTERNAL :: HUTI_Z_BICGSTAB
-       INTEGER(KIND=addrInt) :: AddrFunc
-#else
        INTEGER(KIND=AddrInt) :: AddrFunc
        EXTERNAL :: AddrFunc
-#endif 
        INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
 !------------------------------------------------------------------------------
        ipar = 0; dpar = 0

@@ -455,11 +455,7 @@ CONTAINS
 
       ! then the rest of them....
       !--------------------------
-#ifdef USE_ISO_C_BINDINGS
       tstr = 'ELMER_LIB'
-#else
-      tstr = 'ELMER_LIB'//CHAR(0)
-#endif
       CALL envir( tstr,elmer_home,k ) 
       
       fexist = .FALSE.
@@ -468,11 +464,7 @@ CONTAINS
 	 INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
       END IF
       IF (.NOT. fexist) THEN
-#ifdef USE_ISO_C_BINDINGS
         tstr = 'ELMER_HOME'
-#else
-        tstr = 'ELMER_HOME'//CHAR(0)
-#endif
         CALL envir( tstr,elmer_home,k ) 
         IF ( k > 0 ) THEN
            WRITE( tstr, '(a,a)' ) elmer_home(1:k),&

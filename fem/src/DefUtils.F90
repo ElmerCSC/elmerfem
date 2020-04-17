@@ -3455,20 +3455,6 @@ CONTAINS
      INTEGER(KIND=AddrInt) :: Proc
      INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
 
-#ifndef USE_ISO_C_BINDINGS
-     INTERFACE 
-       SUBROUTINE ExecLocalProc( Proc, Model, Solver, G, F, Element, n, nd )
-         USE Types
-         INTEGER(KIND=AddrInt) :: Proc
-         TYPE(Model_t)   :: Model
-         TYPE(Solver_t)  :: Solver
-         TYPE(Element_t) :: Element
-         INTEGER :: n, nd
-         REAL(KIND=dp) :: G(:,:), F(:)
-       END SUBROUTINE ExecLocalProc
-     END INTERFACE
-#endif
-
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE

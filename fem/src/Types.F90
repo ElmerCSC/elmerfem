@@ -109,34 +109,6 @@ MODULE Types
 !------------------------------------------------------------------------------
 
 
-
-  
-#ifndef USE_ISO_C_BINDINGS
-INTERFACE
-  SUBROUTINE Envir(a,b,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: a(*), b(*)
-  END SUBROUTINE Envir
-
-  SUBROUTINE SystemC(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE SystemC
-
-  SUBROUTINE MakeDirectory(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE MakeDirectory
-
-  SUBROUTINE Matc(cmd,VALUE,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: cmd(*), VALUE(*)
-  END SUBROUTINE Matc
-END INTERFACE
-#endif
-
 #ifdef HAVE_MUMPS
   INCLUDE 'dmumps_struc.h'
 #endif
@@ -890,9 +862,7 @@ END INTERFACE
       INTEGER :: CurrentColour = 0, CurrentBoundaryColour = 0
       INTEGER :: DirectMethod = DIRECT_NORMAL
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
-#ifdef USE_ISO_C_BINDINGS
       TYPE(C_PTR) :: CWrap = C_NULL_PTR
-#endif
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
     END TYPE Solver_t
 
