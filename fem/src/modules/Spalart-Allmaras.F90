@@ -53,35 +53,20 @@
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER  :: StiffMatrix
      INTEGER :: i,j,k,n,iter,t,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
-
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
-
      REAL(KIND=dp) :: RelativeChange,Norm
      LOGICAL :: Stabilize = .TRUE.,gotIt
-
      LOGICAL :: AllocationsDone = .FALSE.
-
      TYPE(Variable_t), POINTER :: FlowSol, KE
-
      INTEGER, POINTER :: KinPerm(:)
-
      INTEGER :: NonlinearIter
-
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:)
-
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
-
-     SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce
-
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0, KMax, EMax, KVal, EVal
-#else
-     REAL(KIND=dp) :: at,at0,CPUTime,RealTime, KMax, EMax, KVal, EVal
-#endif
-!------------------------------------------------------------------------------
-
+     
+     SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution

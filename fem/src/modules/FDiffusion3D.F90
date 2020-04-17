@@ -99,12 +99,7 @@ SUBROUTINE FourierDiffusion3DSolver( Model,Solver,dt,TransientSimulation )
        Impedance, AllocationsDone, Conductivity, Permeability, &
        LrF, LocalNodes
 
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
-
   TYPE(Solver_t), POINTER :: SolverPointer
 
 !------------------------------------------------------------------------------

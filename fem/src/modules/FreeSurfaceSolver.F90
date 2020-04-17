@@ -255,19 +255,11 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER ::&
        FreeSurfPerm(:), FlowPerm(:), NodeIndexes(:), EdgeMap(:,:)
 
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: &
        at,st,totat,totst,Norm,PrevNorm,LocalBottom, cv, &
        Relax, LRelax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
        NodeHolder(3)
-#else
-  REAL(KIND=dp) :: &
-       at,st,totat,totst,CPUTime,Norm,PrevNorm,LocalBottom, cv, &
-       Relax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
-       smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
-       NodeHolder(3)
-#endif
 
   REAL(KIND=dp), POINTER :: ForceVector(:), FreeSurf(:), PreFreeSurf(:,:), &
        FlowSolution(:), PrevFlowSol(:,:), PointerToResidualVector(:)

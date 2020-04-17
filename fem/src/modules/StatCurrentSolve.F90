@@ -112,9 +112,6 @@ END SUBROUTINE StatCurrentSolver_Init
      REAL (KIND=DP) :: Norm, HeatingTot, VolTot, CurrentTot, ControlTarget, ControlScaling = 1.0
      REAL (KIND=DP) :: Resistance, PotDiff
      REAL (KIND=DP) :: at, st, at0
-#ifndef USE_ISO_C_BINDINGS
-     REAL (KIND=DP) :: CPUTime, RealTime
-#endif
 
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER, POINTER :: PotentialPerm(:)

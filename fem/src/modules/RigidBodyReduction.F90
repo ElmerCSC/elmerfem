@@ -92,11 +92,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
   REAL(KIND=dp), POINTER :: FVector(:), XVector(:)
   REAL(KIND=dp), POINTER :: u(:), u2(:)
   REAL(KIND=dp), POINTER CONTIG :: f(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: TotTime, at, s, val
-#else
-  REAL(KIND=dp) :: CPUtime, TotTime, at, s, val
-#endif
   LOGICAL, ALLOCATABLE :: Visited(:)
   LOGICAL :: GotIt, Rigid, EigAnal, Verbose
   INTEGER, ALLOCATABLE :: RealNodeTypes(:), RigidIndex(:), FixedIndex(:)

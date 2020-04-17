@@ -272,11 +272,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        DisplacementVelDOFs
 !------------------------------------------------------------------------------
      INTEGER :: dim
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0
-#else
-     REAL(KIND=dp) :: at,at0,CPUTime,RealTime
-#endif
      REAL(KIND=dp) :: LumpedArea, LumpedCenter(3), LumpedMoments(3,3)
 
      INTERFACE

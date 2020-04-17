@@ -154,11 +154,7 @@
        PseudoPressureExists, Drag, PotentialField, PotentialCoefficient, &
        ComputeFree, Indexes
 
-#ifdef USE_ISO_C_BINDINGS
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
-#else
-      REAL(KIND=dp) :: at,at0,at1,totat,st,totst,CPUTime,RealTime
-#endif
 !------------------------------------------------------------------------------
 
      INTERFACE

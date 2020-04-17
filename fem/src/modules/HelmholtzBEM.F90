@@ -60,7 +60,6 @@
  
      TYPE(Model_t) :: Model
      TYPE(Solver_t):: Solver
- 
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
  
@@ -68,32 +67,18 @@
 !    Local variables
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,t,istat,bf_id,BoundaryNodes
- 
      TYPE(Matrix_t),POINTER  :: STIFF
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: CurrentElement
- 
      REAL(KIND=dp) :: Norm, PrevNorm
      INTEGER, POINTER :: NodeIndexes(:)
-
      LOGICAL :: AllocationsDone = .FALSE., GotIt
- 
-     COMPLEX(KIND=dp), POINTER CONTIG :: Potential(:),ForceVector(:), &
-               Diagonal(:)
+     COMPLEX(KIND=dp), POINTER CONTIG :: Potential(:),ForceVector(:), Diagonal(:)
      INTEGER, POINTER :: PotentialPerm(:), BoundaryPerm(:)
-
      LOGICAL, ALLOCATABLE :: PotentialKnown(:)
- 
-     COMPLEX(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), &
-                       Load(:)
-
-     REAL(KIND=dp), ALLOCATABLE :: P1(:), P2(:)
- 
-#ifdef USE_ISO_C_BINDINGS
+     COMPLEX(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), Load(:)
+     REAL(KIND=dp), ALLOCATABLE :: P1(:), P2(:) 
      REAL(KIND=dp) :: at,st,s, AngularFrequency, Work(1)
-#else
-     REAL(KIND=dp) :: at,st,CPUTime,s, AngularFrequency, Work(1)
-#endif
      TYPE(Variable_t), POINTER :: Var
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
@@ -713,9 +698,7 @@
 !------------------------------------------------------------------------------
      SUBROUTINE FullIterSolver( N,x,b,SolverParam )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
-    USE huti_sfe
-#endif
+       USE huti_sfe
        IMPLICIT NONE
 !------------------------------------------------------------------------------
        TYPE(Solver_t) :: SolverParam

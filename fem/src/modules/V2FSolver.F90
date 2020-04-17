@@ -86,11 +86,7 @@
            KinDis,KinEne,KESigmaK,KESigmaE,KECmu, &
              TimeForce, KEC1, KEC2, &
                V2, F, V2FCnu, V2FC1, V2FC2, V2FCL, V2FCT, V2FSigma
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
-#else
-     REAL(KIND=dp) :: at,at0,CPUTime,RealTime, KMax, EMax, KVal, EVal
-#endif
 !------------------------------------------------------------------------------
 
 
@@ -626,11 +622,7 @@ CONTAINS
            KinDis,KinEne,KESigmaK,KESigmaE,KECmu, &
              TimeForce, KEC1, KEC2, &
                V2, F, V2FCnu, V2FC1, V2FC2, V2FCL, V2FCT, V2FSigma
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0, KMax, EMax, KVal, EVal
-#else
-     REAL(KIND=dp) :: at,at0,CPUTime,RealTime, KMax, EMax, KVal, EVal
-#endif
 !------------------------------------------------------------------------------
      CHARACTER(LEN=MAX_NAME_LEN) :: VersionID = "$Id$"
 

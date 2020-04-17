@@ -115,21 +115,12 @@ END SUBROUTINE MeshSolver_Init
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
-
   INTEGER :: dim
+  REAL(KIND=dp) :: at,at0
   
   SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
        ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
        SkipFirstMeshVelocity, FirstTime
-
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: at,at0
-#else
-  REAL(KIND=dp) :: at,at0,CPUTime,RealTime
-#endif
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 ! Get variables needed for solution

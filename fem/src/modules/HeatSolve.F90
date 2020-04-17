@@ -176,9 +176,6 @@
      END INTERFACE
 
      REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: CPUTime,RealTime
-#endif
 
 
      CALL Info('HeatSolver','-------------------------------------------',Level=6)

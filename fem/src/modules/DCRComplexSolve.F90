@@ -87,11 +87,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
        AllocationsDone, &
        Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
        Bvector, BscalarReal, BscalarImag
-#ifdef USE_ISO_C_BINDINGS
    REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-   REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
 !------------------------------------------------------------------------------
      INTERFACE
         FUNCTION DCRBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
