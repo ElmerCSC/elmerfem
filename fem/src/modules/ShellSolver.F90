@@ -4368,7 +4368,7 @@ CONTAINS
               Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
                   Basis(i) * Basis(j) * Weight
               Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
-                  h**3/12.0d0 * Basis(i) * Basis(j) * Weight
+                  h**2/12.0d0 * Basis(i) * Basis(j) * Weight
             END DO
           END DO
         END DO

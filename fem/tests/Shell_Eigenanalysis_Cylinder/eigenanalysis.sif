@@ -14,12 +14,12 @@
 !
 ! Mode  FE model    Experimental  
 ! 1     95.3        86.6
-! 2     145.4       135.5
-! 3     251.7       258.9
+! 2     145.3       135.5
+! 3     251.6       258.9
 ! 4     362.5       350.6
-! 5     404.7       395.2
-! 6     535.6       531.1
-! 7     752.6       743.2
+! 5     404.6       395.2
+! 6     535.3       531.1
+! 7     748.0       743.2
 !
 ! The author of this test: Mika Malinen
 !
@@ -129,4 +129,4 @@ Boundary Condition 1
   U 6 = Real 0
 End
 
-Solver 3 :: Reference Norm = Real 3.58493992E+05
+Solver 3 :: Reference Norm = Real 3.58448737E+05
