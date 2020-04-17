@@ -49,6 +49,12 @@
 #include <vtkDataSet.h>
 #include <vtkPointData.h>
 #include <vtkCellData.h>
+#include <vtkQuadraticTetra.h>
+#include <vtkQuadraticHexahedron.h>
+#include <vtkTriQuadraticHexahedron.h>
+#include <vtkQuadraticTriangle.h>
+#include <vtkQuadraticQuad.h>
+#include <vtkQuadraticEdge.h>
 
 #include "epmesh.h"
 #include "vtkpost.h"
@@ -1082,9 +1088,6 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 	reader->SetFileName(postFileName.toLatin1().data());
 	reader->Update();
 
-	//potential = output->GetPointData().GetArray("Magnetization")
-	//vtkInformation* outInfo = reader()->GetExecutive()->GetOutputInformation(0);
-
 	nodes = reader->GetNumberOfPoints();
 	elements = reader->GetNumberOfCells();
 	timesteps = reader->GetNumberOfTimeSteps();
@@ -1201,24 +1204,12 @@ cout << "[VTU] Nodes added as ScalarField." << endl;
 	epe->code = cell->GetCellType();
 	epe->code = vtk2ElmerElement(epe->code);
 	epe->groupName = QString::number(geometryIds->GetValue(i));
-	int index820[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16};
-	int index827[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16,23,22,24,21,25,26,27};
 
 //    epe->indexes = epe->code % 100;
     epe->indexes = cell->GetNumberOfPoints();
 	epe->index = new int[epe->indexes];
-	if(epe->code == 820){
-		for(int j = 0; j < epe->indexes; j++) {
-			epe->index[j] = cell->GetPointId(index820[j]-1);
-		}
-	}else if(epe->code == 827){
-		for(int j = 0; j < epe->indexes; j++) {
-			epe->index[j] = cell->GetPointId(index827[j]-1);
-		}
-	}else{
-		for(int j = 0; j < epe->indexes; j++) {
-			epe->index[j] = cell->GetPointId(j);
-		}
+	for(int j = 0; j < epe->indexes; j++) {
+		epe->index[j] = cell->GetPointId(j);
 	}
   }
 
@@ -1538,6 +1529,11 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   epMesh->epElements = elements;
   epMesh->epElement = new EpElement[elements];
 
+  
+  // indexes for VTK
+	int order820[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16};
+	int order827[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16,24,22,21,23,25,26,27};
+
   for(int i = 0; i < elements; i++) {
     EpElement *epe = &epMesh->epElement[i];
 
@@ -1548,15 +1544,37 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
     epe->indexes = epe->code % 100;
     epe->index = new int[epe->indexes];
     
-    for(int j = 0; j < epe->indexes; j++) {
-      QString tmpString = "";
-      postLineStream >> tmpString;
-      if(tmpString.isEmpty()) {
-	getPostLineStream(&postStream);
-        postLineStream >> tmpString;
-      }
-      epe->index[j] = tmpString.toInt();
-    }
+	if(epe->code == 820){
+		for(int j = 0; j < epe->indexes; j++) {
+		  QString tmpString = "";
+		  postLineStream >> tmpString;
+		  if(tmpString.isEmpty()) {
+		getPostLineStream(&postStream);
+			postLineStream >> tmpString;
+		  }
+		  epe->index[order820[j]-1] = tmpString.toInt();
+		}
+	}else if(epe->code == 827){
+		for(int j = 0; j < epe->indexes; j++) {
+		  QString tmpString = "";
+		  postLineStream >> tmpString;
+		  if(tmpString.isEmpty()) {
+		getPostLineStream(&postStream);
+			postLineStream >> tmpString;
+		  }
+		  epe->index[order827[j]-1] = tmpString.toInt();
+		}
+	}else{
+		for(int j = 0; j < epe->indexes; j++) {
+		  QString tmpString = "";
+		  postLineStream >> tmpString;
+		  if(tmpString.isEmpty()) {
+		getPostLineStream(&postStream);
+			postLineStream >> tmpString;
+		  }
+		  epe->index[j] = tmpString.toInt();
+		}
+	}
   }
 
   // Data:
@@ -1842,105 +1860,66 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
   lineGrid->SetPoints(points);
   points->Delete();
 
-  // Volume grid:
-  //---------------
+  /// Elements:
+  ///-----------
+  vtkCell* cell = NULL;
   vtkTetra* tetra = vtkTetra::New();
+  vtkQuadraticTetra* qtetra =vtkQuadraticTetra::New();
   vtkHexahedron* hexa = vtkHexahedron::New();
-
-  for(int i = 0; i < epMesh->epElements; i++) {
-    EpElement* epe = &epMesh->epElement[i];
-
-    if(epe->code == 504 || epe->code == 510) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 4; j++)
-	tetra->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	volumeGrid->InsertNextCell(tetra->GetCellType(), tetra->GetPointIds());
-    }
-    
-    if(epe->code == 808 || epe->code == 820 || epe->code == 827) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-      
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 8; j++)
-	hexa->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	volumeGrid->InsertNextCell(hexa->GetCellType(), hexa->GetPointIds());
-    }
-  }
-  tetra->Delete();
-  hexa->Delete();
-
-  // Surface grid:
-  //---------------
+  vtkQuadraticHexahedron* qhexa = vtkQuadraticHexahedron::New();
+  vtkTriQuadraticHexahedron* tqhexa = vtkTriQuadraticHexahedron::New();
   vtkTriangle* tria = vtkTriangle::New();
+  vtkQuadraticTriangle* qtria = vtkQuadraticTriangle::New();
   vtkQuad* quad = vtkQuad::New();
-  for(int i = 0; i < epMesh->epElements; i++) {
-    EpElement* epe = &epMesh->epElement[i];
-
-    if(epe->code == 303 || epe->code == 306) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 3; j++)
-	tria->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	surfaceGrid->InsertNextCell(tria->GetCellType(), tria->GetPointIds());
-    }
-
-    if(epe->code == 404 || epe->code == 408) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 4; j++)
-	quad->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	surfaceGrid->InsertNextCell(quad->GetCellType(), quad->GetPointIds());
-    }
-
-  }
-  tria->Delete();
-  quad->Delete();
-
-  // Line grid:
-  //---------------
+  vtkQuadraticQuad* qquad = vtkQuadraticQuad::New();
   vtkLine* line = vtkLine::New();
+  vtkQuadraticEdge* qedge = vtkQuadraticEdge::New();
+  vtkUnstructuredGrid* grid = NULL;
+
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
-    if(epe->code == 202 || epe->code == 203) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
+	switch(epe->code){
+		case 504: cell = tetra; grid = volumeGrid; break;
+		case 510: cell = qtetra; grid = volumeGrid; break;
+		case 808: cell = hexa; grid = volumeGrid; break;
+		case 820: cell = qhexa;  grid = volumeGrid; break;
+		case 827: cell = tqhexa;  grid = volumeGrid; break;
+		case 303: cell = tria; grid = surfaceGrid; break;
+		case 306: cell = qtria; grid = surfaceGrid; break;
+		case 404: cell = quad; grid = surfaceGrid; break;
+		case 408: cell = qquad; grid = surfaceGrid; break;
+		case 202: cell = line; grid = lineGrid; break;
+		case 203: cell = qedge; grid = lineGrid; break;
+		default: cell = NULL; grid = NULL; break;
+	}
 
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 3; j++)
-	line->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	lineGrid->InsertNextCell(line->GetCellType(), line->GetPointIds());
-    }
+	if(cell != NULL){
+		QString groupName = epe->groupName;
+		if(groupName.isEmpty()) continue;
+
+		QAction* groupAction = groupActionHash.value(groupName);
+		if(groupAction == NULL) continue;
+	      
+		for(int j = 0; j < epe->code % 100; j++)
+		cell->GetPointIds()->SetId(j, epe->index[j]);
+	      
+		if(groupAction->isChecked())
+		grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+	}
   }
+
+  tetra->Delete();
+  qtetra->Delete();
+  hexa->Delete();
+  qhexa->Delete();
+  tqhexa->Delete();
+  tria->Delete();
+  qtria->Delete();
+  quad->Delete();
+  qquad->Delete();
   line->Delete();
+  qedge->Delete();
 
   if(timeStep->ui.regenerateBeforeDrawing->isChecked()) return;
 
