@@ -273,6 +273,31 @@ VtkPost::VtkPost(QWidget *parent)
   currentLut->SetNumberOfColors(128);
   currentLut->Build();
 
+  surfaceLut = vtkLookupTable::New();
+  surfaceLut->SetHueRange(0.6667, 0);
+  surfaceLut->SetNumberOfColors(128);
+  surfaceLut->Build();
+
+  vectorLut = vtkLookupTable::New();
+  vectorLut->SetHueRange(0.6667, 0);
+  vectorLut->SetNumberOfColors(128);
+  vectorLut->Build();
+
+  isocontourLut = vtkLookupTable::New();
+  isocontourLut->SetHueRange(0.6667, 0);
+  isocontourLut->SetNumberOfColors(128);
+  isocontourLut->Build();
+
+  isosurfaceLut = vtkLookupTable::New();
+  isosurfaceLut->SetHueRange(0.6667, 0);
+  isosurfaceLut->SetNumberOfColors(128);
+  isosurfaceLut->Build();
+
+  streamlineLut = vtkLookupTable::New();
+  streamlineLut->SetHueRange(0.6667, 0);
+  streamlineLut->SetNumberOfColors(128);
+  streamlineLut->Build();
+
   // User interfaces, widgets, and draw routines:
   //---------------------------------------------
   surface = new Surface(this);
@@ -2568,10 +2593,10 @@ int VtkPost::NofNodes()
    return epMesh->epNodes;
 }
 
-vtkLookupTable* VtkPost::GetCurrentLut()
+/*vtkLookupTable* VtkPost::GetCurrentLut()
 {
   return currentLut;
-}
+}*/
 
 QString VtkPost::GetCurrentSurfaceName()
 {
@@ -3317,3 +3342,22 @@ void VtkPost::displacementScaleFactorSpinBoxValueChanged(double)
 {
 	if(displaceAct->isChecked()){ groupChangedSlot(NULL);}
 }
+
+vtkLookupTable* VtkPost::GetLut(QString actorName)
+{
+	if(actorName == "Surface"){
+		return surfaceLut;
+	}else if(actorName == "Vector"){
+		return vectorLut;
+	}else if(actorName == "Isocontour"){
+		return isocontourLut;
+	}else if(actorName == "Isosurface"){
+		return isosurfaceLut;
+	}else  if(actorName == "Streamline"){
+		return streamlineLut;
+	}
+
+	cout << "VtkPost::GetLut(QString actorName) - not matching actorName" << endl;
+	return NULL;
+}
+

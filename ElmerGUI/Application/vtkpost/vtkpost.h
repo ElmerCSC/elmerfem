@@ -135,7 +135,8 @@ public:
   vtkUnstructuredGrid* GetVolumeGrid();
   vtkPlane* GetClipPlane();
   vtkImplicitPlaneWidget* GetPlaneWidget();
-  vtkLookupTable* GetCurrentLut();
+//  vtkLookupTable* GetCurrentLut();
+  vtkLookupTable* GetLut(QString);
   ScalarField* GetScalarField();
   EpMesh* GetEpMesh();
   Preferences* GetPreferences();
@@ -393,6 +394,12 @@ private:
   vtkUnstructuredGrid* surfaceGrid;
   vtkUnstructuredGrid* lineGrid;
   vtkLookupTable *currentLut;
+  vtkLookupTable *surfaceLut;
+  vtkLookupTable *vectorLut;
+  vtkLookupTable *isocontourLut;
+  vtkLookupTable *isosurfaceLut;
+  vtkLookupTable *streamlineLut;
+
   vtkPlane* clipPlane;
   vtkActor* meshPointActor;
   vtkActor* meshEdgeActor;

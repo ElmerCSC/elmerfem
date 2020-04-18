@@ -354,7 +354,8 @@ void Vector::draw(VtkPost* vtkPost, TimeStep* timeStep)
   mapper->ScalarVisibilityOn();
   mapper->SetScalarRange(minVal, maxVal);
   mapper->SelectColorArray("VectorColor");
-  mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  //mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  mapper->SetLookupTable(vtkPost->GetLut("Vector"));
   // mapper->ImmediateModeRenderingOn();
 
   vtkPost->GetVectorActor()->SetMapper(mapper);
