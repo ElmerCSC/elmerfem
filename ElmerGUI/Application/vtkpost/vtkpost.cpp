@@ -631,6 +631,14 @@ void VtkPost::createActions()
   showHelpAct = new QAction(QIcon(":/icons/help-about.png"), tr("Help..."), this);
   showHelpAct->setStatusTip("Show help dialog");
   connect(showHelpAct, SIGNAL(triggered()), this, SLOT(showHelpSlot()));
+
+  // Displace geometry by displacement field:
+  //-----------------------------------------
+  displaceAct = new QAction(QIcon(""), tr("Displace"), this);
+  displaceAct->setStatusTip("Displace geometry by displacement field");
+  displaceAct->setCheckable(true);
+  displaceAct->setChecked(false);
+  connect(displaceAct, SIGNAL(toggled(bool)), this, SLOT(displaceSlot(bool)));
 }
 
 void VtkPost::createMenus()
@@ -695,6 +703,8 @@ void VtkPost::createMenus()
   viewMenu->addAction(fitToWindowAct);
   viewMenu->addAction(resetModelViewAct);
   viewMenu->addAction(redrawAct);
+  viewMenu->addSeparator();
+  viewMenu->addAction(displaceAct);
 
   // Help menu:
   //-----------
@@ -718,6 +728,15 @@ void VtkPost::createToolbars()
   viewToolBar->addAction(preferencesAct);
   viewToolBar->addSeparator();
   viewToolBar->addAction(redrawAct);
+
+  viewToolBar->addSeparator();
+  viewToolBar->addAction(displaceAct);
+  displacementScaleFactorSpinBox.setDecimals(10);
+  displacementScaleFactorSpinBox.setValue(1);
+  connect(&displacementScaleFactorSpinBox, SIGNAL(valueChanged(double)), this, SLOT(displacementScaleFactorSpinBoxValueChanged(double)));
+  viewToolBar->insertWidget(displaceAct,&displacementScaleFactorSpinBox);
+  displacementScaleFactorSpinBox.setEnabled(false);
+  displaceAct->setEnabled(false);
 }
 
 void VtkPost::createStatusBar()
@@ -1035,6 +1054,7 @@ bool VtkPost::ReadPostFile(QString postFileName)
 
   if(postFileName.endsWith(".ep", Qt::CaseInsensitive)) return ReadElmerPostFile(postFileName);
   if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)) return ReadVtuFile(postFileName);
+
   return false;
 }
 
@@ -1166,6 +1186,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 
 		if(fieldType == "vector") {
 			addVectorField(fieldName, nodes*timesteps);
+			addScalarField(fieldName + "_abs", nodes*timesteps, NULL);
 		}
 	}
 
@@ -1224,6 +1245,16 @@ cout << "[VTU] Nodes added as ScalarField." << endl;
 	}
   }
 
+  // Add complementary information to group name
+  // This logic is inaccurate, but good for most cases where the number of bodies < 100. 
+  //--------------------------------------------
+  for(int i = 0; i < elements; i++) {
+	EpElement *epe = &epMesh->epElement[i];
+	if(geometryIds->GetValue(i) <= 99){	epe->groupName += " (body)";} 
+	else{epe->groupName += " (boundary)";}
+  }
+
+
 cout << "[VTU] Elements loaded." << endl;
 
   // Data:
@@ -1252,6 +1283,16 @@ cout << "[VTU] Elements loaded." << endl;
 			}
 		}
 		sfcount += nComponents;
+		if(nComponents > 1){ // add abs value of vector
+			for(int i=0; i < nodes; i++){
+				double absValue = 0;
+				for(int k=0; k < nComponents; k++){
+					absValue += doubleArray->GetValue(nComponents*i+k)*doubleArray->GetValue(nComponents*i+k);
+				}
+				scalarField[sfcount].value[nodes*(l-start)+i] = sqrt(absValue);
+			}
+			sfcount++;
+		}
 		cout << "[VTU] " << reader->GetPointArrayName(j) << " loaded." << endl;
 	}
   }
@@ -1264,7 +1305,7 @@ cout << "[VTU] Elements loaded." << endl;
   // Subtract displacement from nodes:
   // ---------------------------------
   for(int j = 0; j < scalarFields; j++){
-	  if(scalarField[j].name == "displacement_x"){
+	  if(scalarField[j].name == "displacement_x" || scalarField[j].name == "Displacement_x"){
 		  for(int i = 0; i < nodes; i++) {
 			EpNode *epn = &epMesh->epNode[i];
 			epn->x[0] -= scalarField[j+0].value[i];
@@ -1292,33 +1333,6 @@ cout << "[VTU] Elements loaded." << endl;
 	  }
   }
 
-  /*
-  // Data:
-  //=======
-  int start = readEpFile->ui.start->value() - 1;
-  int end = readEpFile->ui.end->value() - 1;
-
-  // skip values before start:
-  for(int i = 0; i < nodes * start; i++) {
-    if(postStream.atEnd()) break;
-    getPostLineStream(&postStream);
-  }
-
-  ScalarField *sf;
-  int i;
-  for(i = 0; i < nodes * (end - start + 1); i++) {
-    if(postStream.atEnd()) break;
-    getPostLineStream(&postStream);
-
-    for(int j = 0; j < scalarFields-4; j++) { // - 4 = no nodes, no null field
-      sf = &scalarField[j+1];                 // + 1 = skip null field
-      postLineStream >> sf->value[i];
-    }
-  }
-
-  int real_timesteps = i/nodes;
-  cout << real_timesteps << " timesteps read in." << endl;
-  */
 
   // Initial min & max values:
   //============================
@@ -1912,6 +1926,30 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
     x[2] = sfz->value[i];
     points->InsertPoint(i, x);
   }
+
+  // Displace geometry by displacement field
+  bool hasDisplacement = false;
+  for(int j = 0; j < scalarFields; j++){
+    if(scalarField[j].name == "displacement_x" || scalarField[j].name == "Displacement_x"){
+	  hasDisplacement = true;
+	}
+  }
+  displacementScaleFactorSpinBox.setEnabled(hasDisplacement);
+  displaceAct->setEnabled(hasDisplacement);
+  if(hasDisplacement && displaceAct->isChecked()){
+	  double scale = displacementScaleFactorSpinBox.value();
+	  for(int j = 0; j < scalarFields; j++){
+		if(scalarField[j].name == "displacement_x" || scalarField[j].name == "Displacement_x"){
+			for(int i = 0; i < epMesh->epNodes; i++) {
+				x[0] = sfx->value[i] + scalarField[j+0].value[i] * scale;
+				x[1] = sfy->value[i] + scalarField[j+1].value[i] * scale;
+				x[2] = sfz->value[i] + scalarField[j+2].value[i] * scale;
+				points->InsertPoint(i, x);
+			}
+		}
+	  }
+  }
+
   volumeGrid->SetPoints(points);
   surfaceGrid->SetPoints(points);
   lineGrid->SetPoints(points);
@@ -3269,4 +3307,13 @@ bool VtkPost::Execute(QString fileName)
   return true;
 }
 
+//--------------------------------
+void VtkPost::displaceSlot(bool b)
+{
+	groupChangedSlot(NULL);
+}
 
+void VtkPost::displacementScaleFactorSpinBoxValueChanged(double)
+{
+	if(displaceAct->isChecked()){ groupChangedSlot(NULL);}
+}

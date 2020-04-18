@@ -176,7 +176,7 @@ signals:
 
 public slots:
   void redrawSlot();                                // redraw all actors
-
+  void displaceSlot(bool);                              // displace geometry by displacement field
 #ifdef EG_MATC
   QString MatcCmd(QString);                         // evaluate matc cmd
   QString domatcSlot();                             // flush matc console
@@ -325,6 +325,8 @@ private slots:
   void showECMAScriptConsoleSlot();
   void evaluateECMAScriptSlot(QString);
 
+  void displacementScaleFactorSpinBoxValueChanged(double);
+
 private:
   QMenu *fileMenu;
   QMenu *editMenu;
@@ -333,6 +335,7 @@ private:
   QMenu *helpMenu;
 
   QToolBar *viewToolBar;
+  QDoubleSpinBox displacementScaleFactorSpinBox;
 
   QAction *regenerateGridsAct;
   QAction *matcAct;
@@ -359,6 +362,7 @@ private:
   QAction *readEpFileAct;
   QAction *clipAllAct;
   QAction *showHelpAct;
+  QAction *displaceAct;
 
   int vtk2ElmerElement(int);
   void createActions();
