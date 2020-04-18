@@ -1260,7 +1260,39 @@ cout << "[VTU] Elements loaded." << endl;
   reader->Delete();
   reader = NULL;
   
-/*
+
+  // Subtract displacement from nodes:
+  // ---------------------------------
+  for(int j = 0; j < scalarFields; j++){
+	  if(scalarField[j].name == "displacement_x"){
+		  for(int i = 0; i < nodes; i++) {
+			EpNode *epn = &epMesh->epNode[i];
+			epn->x[0] -= scalarField[j+0].value[i];
+			epn->x[1] -= scalarField[j+1].value[i];
+			epn->x[2] -= scalarField[j+2].value[i];
+		  }
+		  int index = -1;
+		  for(int i = 0; i < scalarFields; i++) {
+			ScalarField *sf = &scalarField[i];
+			if(sf->name == "nodes_x") {
+			  index = i;
+			  break;
+			}
+		  }
+		  ScalarField *sfx = &scalarField[index+0];
+		  ScalarField *sfy = &scalarField[index+1];
+		  ScalarField *sfz = &scalarField[index+2];
+
+		  for( int i=0; i < nodes; i++ )
+		  {
+			sfx->value[i] = epMesh->epNode[i].x[0];
+			sfy->value[i] = epMesh->epNode[i].x[1];
+			sfz->value[i] = epMesh->epNode[i].x[2];
+		  }
+	  }
+  }
+
+  /*
   // Data:
   //=======
   int start = readEpFile->ui.start->value() - 1;
