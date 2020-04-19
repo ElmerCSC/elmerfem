@@ -49,6 +49,8 @@
 #include <QMainWindow>
 #include <QHash>
 #include <QTextStream>
+#include <QDoubleSpinBox>
+#include <QSlider>
 
 #ifdef EG_PYTHONQT
 #include <PythonQt.h>
@@ -178,6 +180,7 @@ signals:
 public slots:
   void redrawSlot();                                // redraw all actors
   void displaceSlot(bool);                              // displace geometry by displacement field
+  void playSlot();                              // 
 #ifdef EG_MATC
   QString MatcCmd(QString);                         // evaluate matc cmd
   QString domatcSlot();                             // flush matc console
@@ -327,6 +330,7 @@ private slots:
   void evaluateECMAScriptSlot(QString);
 
   void displacementScaleFactorSpinBoxValueChanged(double);
+  void timestepSliderValueChanged(int);
 
 private:
   QMenu *fileMenu;
@@ -336,7 +340,12 @@ private:
   QMenu *helpMenu;
 
   QToolBar *viewToolBar;
+  QToolBar *displacementToolBar;
+  QToolBar *timestepToolBar;
   QDoubleSpinBox displacementScaleFactorSpinBox;
+  QLabel *timestepLabel;
+  QSlider *timestepSlider;
+  int iEndStep;
 
   QAction *regenerateGridsAct;
   QAction *matcAct;
@@ -364,6 +373,7 @@ private:
   QAction *clipAllAct;
   QAction *showHelpAct;
   QAction *displaceAct;
+  QAction *playAct;
 
   int vtk2ElmerElement(int);
   void createActions();

@@ -167,9 +167,9 @@ void ReadEpFile::readHeader()
 	QStringList filterList;
 	filterList << "*.vtu";
 	vtuFileNameList = dir.entryList(filterList,  QDir::Readable|QDir::Files|QDir::NoSymLinks, QDir::SortFlags(QDir::Name | QDir::IgnoreCase));
-	for(int i=0; i < vtuFileNameList.length(); i++){
-		cout <<  vtuFileNameList.at(i).toLatin1().data() << endl;
-	}
+	//for(int i=0; i < vtuFileNameList.length(); i++){
+	//	cout <<  vtuFileNameList.at(i).toLatin1().data() << endl;
+	//}
 	timesteps = vtuFileNameList.length();
   
   }else if(ui.fileName->text().endsWith(".ep", Qt::CaseInsensitive)){

@@ -625,6 +625,10 @@ void VtkPost::createActions()
   preferencesAct->setStatusTip("Show preferences");
   connect(preferencesAct, SIGNAL(triggered()), this, SLOT(showPreferencesDialogSlot()));
 
+  playAct = new QAction(QIcon(""), tr("Play"), this);
+  playAct->setStatusTip("Play");
+  connect(playAct, SIGNAL(triggered()), this, SLOT(playSlot()));
+
   // Edit menu:
   //------------
 #ifdef EG_MATC
@@ -753,7 +757,7 @@ void VtkPost::createToolbars()
   viewToolBar->addAction(preferencesAct);
   viewToolBar->addSeparator();
   viewToolBar->addAction(redrawAct);
-
+  /*
   viewToolBar->addSeparator();
   viewToolBar->addAction(displaceAct);
   displacementScaleFactorSpinBox.setDecimals(10);
@@ -762,6 +766,30 @@ void VtkPost::createToolbars()
   viewToolBar->insertWidget(displaceAct,&displacementScaleFactorSpinBox);
   displacementScaleFactorSpinBox.setEnabled(false);
   displaceAct->setEnabled(false);
+  */
+
+  displacementToolBar = new QToolBar(tr("Displacement"));
+  addToolBar(Qt::BottomToolBarArea, displacementToolBar);
+  displacementToolBar->addAction(displaceAct);
+  displacementScaleFactorSpinBox.setDecimals(10);
+  displacementScaleFactorSpinBox.setValue(1);
+  connect(&displacementScaleFactorSpinBox, SIGNAL(valueChanged(double)), this, SLOT(displacementScaleFactorSpinBoxValueChanged(double)));
+  displacementToolBar->insertWidget(displaceAct,&displacementScaleFactorSpinBox);
+  displacementScaleFactorSpinBox.setEnabled(false);
+  displaceAct->setEnabled(false);
+
+  timestepToolBar = new QToolBar(tr("Timestep"));
+  addToolBar(Qt::BottomToolBarArea, timestepToolBar);
+  timestepToolBar->addAction(playAct);
+  timestepLabel = new QLabel("Time step ");
+  timestepToolBar->insertWidget(playAct,timestepLabel);
+  timestepSlider = new QSlider(Qt::Horizontal);
+  connect(timestepSlider, SIGNAL(valueChanged(int)), this, SLOT(timestepSliderValueChanged(int)));
+  timestepToolBar->insertWidget(playAct,timestepSlider);
+
+  timestepSlider->setEnabled(false);
+  playAct->setEnabled(false);  
+  iEndStep = -1;
 }
 
 void VtkPost::createStatusBar()
@@ -1224,7 +1252,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
     EpNode *epn = &epMesh->epNode[i];
     output->GetPoint(i, epn->x);
   }
-cout << "[VTU] Nodes loaded." << endl;
+//cout << "[VTU] Nodes loaded." << endl;
 
   // Add nodes to field variables:
   //-------------------------------
@@ -1248,7 +1276,7 @@ cout << "[VTU] Nodes loaded." << endl;
     sfz->value[i] = epMesh->epNode[i].x[2];
   }
 
-cout << "[VTU] Nodes added as ScalarField." << endl;
+//cout << "[VTU] Nodes added as ScalarField." << endl;
 
   // Elements:
   //==========
@@ -1280,7 +1308,7 @@ cout << "[VTU] Nodes added as ScalarField." << endl;
   }
 
 
-cout << "[VTU] Elements loaded." << endl;
+//cout << "[VTU] Elements loaded." << endl;
 
   // Data:
   //=======
@@ -1296,7 +1324,7 @@ cout << "[VTU] Elements loaded." << endl;
 		output = reader->GetOutput();
 		pointData = output->GetPointData();
 		cellData = output->GetCellData();
-		cout << "<VTU> "<<  postFilePath.toLatin1().data() << endl;
+		//cout << "<VTU> "<<  postFilePath.toLatin1().data() << endl;
 	}		
 	int sfcount = 1; // 1 to skip node field
 	for(int j=0; j < reader->GetNumberOfPointArrays(); j++){
@@ -1318,7 +1346,7 @@ cout << "[VTU] Elements loaded." << endl;
 			}
 			sfcount++;
 		}
-		cout << "[VTU] " << reader->GetPointArrayName(j) << " loaded." << endl;
+		//cout << "[VTU] " << reader->GetPointArrayName(j) << " loaded." << endl;
 	}
   }
   int real_timesteps = nodes * (end - start + 1)/nodes;
@@ -1481,6 +1509,12 @@ cout << "[VTU] Elements loaded." << endl;
   readEpFile->repaint();
 
   redrawSlot();
+  timestepSlider->setEnabled(timesteps > 1);
+  playAct->setEnabled(timesteps > 1);
+  timestepLabel->setEnabled(timesteps > 1);
+  timestepSlider->setRange(1,timesteps);
+  timestepSlider->setValue(1);
+  timestepLabel->setText( "1/" + QString::number(timesteps) + " ");
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
@@ -1823,6 +1857,12 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   readEpFile->repaint();
 
   redrawSlot();
+  timestepSlider->setEnabled(timesteps > 1);
+  playAct->setEnabled(timesteps > 1);
+  timestepLabel->setEnabled(timesteps > 1);
+  timestepSlider->setRange(1,timesteps);
+  timestepSlider->setValue(1);
+  timestepLabel->setText( "1/" + QString::number(timesteps) + " ");
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
@@ -3361,3 +3401,27 @@ vtkLookupTable* VtkPost::GetLut(QString actorName)
 	return NULL;
 }
 
+void VtkPost::timestepSliderValueChanged(int step){
+	timestepLabel->setText(QString::number(step) + "/" + QString::number(timestepSlider->maximum()) + " ");
+	timeStep->ui.timeStep->setValue(step);
+	redrawSlot();
+}
+
+void VtkPost::playSlot(){
+	if(iEndStep < 0){
+		int iStartStep = timestepSlider->value();
+		if( iStartStep == timestepSlider->maximum()){
+			iStartStep = 1; 
+		}
+		iEndStep = timestepSlider->maximum();
+		playAct->setText("Stop");
+		for(int i = iStartStep; i <= iEndStep; i++){
+			timestepSlider->setValue(i);
+		}
+		iEndStep = -1;
+		playAct->setText("Play");
+	}else{
+		iEndStep = -1;
+		playAct->setText("Play");
+	}
+}
