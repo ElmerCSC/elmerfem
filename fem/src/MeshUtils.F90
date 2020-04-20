@@ -43,9 +43,7 @@
 
 MODULE MeshUtils
 
-#ifdef USE_ISO_C_BINDINGS
     USE LoadMod
-#endif
     USE ElementUtils
     USE ElementDescription
     USE Interpolation

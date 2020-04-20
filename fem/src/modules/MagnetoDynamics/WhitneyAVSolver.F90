@@ -365,7 +365,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   Perm => Solver % Variable % Perm
   Vecpot => Solver % Variable % Values
 
-  IF ( .NOT. AllocationsDone .OR. Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
 
      IF(ALLOCATED(FORCE)) THEN

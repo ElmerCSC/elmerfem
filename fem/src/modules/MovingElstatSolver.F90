@@ -75,20 +75,11 @@
          xnew(:), ynew(:), znew(:), MatrixValues(:), &
          Basis(:),dBasisdx(:,:),ddBasisddx(:,:,:), AplacResults(:,:), &
          ParentBasis(:),ParentdBasisdx(:,:),xelem(:),yelem(:),zelem(:)
-
-#ifdef USE_ISO_C_BINDINGS
      REAL (KIND=DP) :: Norm, at, st, val, Normal(3), MinMaxEdge(3,2), Eps, aid, &
          da, ds, Dx(6), Dx0(6), Rotate(3,3), Point(3), Displace(3), Translate(3), Center(3), &
          TotCapac, ElemCapac, PermittivityOfVacuum, Base(6,6), Limits(6,2), Amplitude(6), &
          TotForce(3), TotMoment(3), TotArea, TotCharge, TotTime, MinMaxMoving(3,2), &
          SectionCapac(3,2), Dist, LengthScale
-#else
-     REAL (KIND=DP) :: Norm, at, st, CPUTime, val, Normal(3), MinMaxEdge(3,2), Eps, aid, &
-         da, ds, Dx(6), Dx0(6), Rotate(3,3), Point(3), Displace(3), Translate(3), Center(3), &
-         TotCapac, ElemCapac, PermittivityOfVacuum, Base(6,6), Limits(6,2), Amplitude(6), &
-         TotForce(3), TotMoment(3), TotArea, TotCharge, TotTime, MinMaxMoving(3,2), &
-         SectionCapac(3,2), Dist, LengthScale
-#endif
      INTEGER, POINTER :: NodeIndexes(:), CoordinatePerm(:)
      INTEGER, ALLOCATABLE :: ElementNormals(:)
      INTEGER :: i, j, k, n, t, istat, bf_id, MeshNodes, DIM, coord, Visited = 0, &

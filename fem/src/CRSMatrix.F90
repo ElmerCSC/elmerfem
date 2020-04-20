@@ -47,9 +47,7 @@
 MODULE CRSMatrix
 
   USE Lists
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
 
   IMPLICIT NONE
 
@@ -1368,11 +1366,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Values => A % Values
 
     IF  ( A % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
-#else
-      CALL MatVecSubr(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
-#endif
       RETURN
    END IF
 
@@ -1507,14 +1501,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => A % Values
 
     IF  ( A % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
       ALLOCATE(Abs_Values(SIZE(A % Values)))
       Abs_Values = ABS(Values)
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0) ! TODO: (bug) must be ABS(Values)
       DEALLOCATE(Abs_Values)
-#else
-      CALL MatVecSubr(A % MatVecSubr,A % SpMV, n,Rows,Cols,ABS(Values),u,v,0)
-#endif
       RETURN
     END IF
 
@@ -4436,13 +4426,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => GlobalMatrix % Values
 
     IF  ( GlobalMatrix % MatVecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
       CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
                   GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
-#else
-      CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
-                  GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
-#endif
       RETURN
    END IF
 !--------------------------------------------------------------------

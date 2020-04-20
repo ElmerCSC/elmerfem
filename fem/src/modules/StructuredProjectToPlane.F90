@@ -111,11 +111,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       Debug, MaskExist, GotVar, GotOldVar, GotOper, BottomTarget, ReducedDimensional, &
       MidLayerExists, UpperOper, LowerOper
   REAL(KIND=dp) :: dx,UnitVector(3),ElemVector(3),DotPro,Eps,Length,Level,val,q,depth,height
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   REAL(KIND=dp), POINTER :: FieldOut(:), FieldIn(:), Levelset(:), Coord(:),TopField(:)
   TYPE(Variable_t), POINTER :: Var, OldVar
   TYPE(Element_t), POINTER :: Element

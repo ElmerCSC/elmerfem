@@ -47,9 +47,7 @@
 MODULE SParIterComm
 
   USE Types
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
   USE SParIterGlobals
 
   IMPLICIT NONE
@@ -256,11 +254,7 @@ CONTAINS
     INTEGER :: i, j, k, m, ii, n, sz, ierr, proc, MinActive
     INTEGER, ALLOCATABLE :: Active(:), buf(:)
     LOGICAL :: L, Interf
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: tstart, tend,s
-#else
-    REAL(KIND=dp) :: RealTime, tstart, tend,s
-#endif
     LOGICAL(KIND=1), ALLOCATABLE :: NeighAll(:,:)
     !******************************************************************
 
@@ -633,12 +627,7 @@ CONTAINS
      LOGICAL :: AllM, Intf, Found
      LOGICAL, POINTER :: IsNeighbour(:)
      TYPE(Element_t), POINTER :: Element
-
-#ifdef USE_ISO_C_BINDINGS
      real(kind=dp) :: tt
-#else
-     real(kind=dp) :: realtime,tt
-#endif
 !-------------------------------------------------------------------------------
 
     IF ( .NOT. ASSOCIATED(Mesh % Edges) ) RETURN
@@ -1305,12 +1294,7 @@ CONTAINS
      LOGICAL :: AllM, Intf
      LOGICAL, POINTER :: IsNeighbour(:)
      TYPE(Element_t), POINTER :: Element, Edge
-
-#ifdef USE_ISO_C_BINDINGS
      real(kind=dp) :: tt
-#else
-     real(kind=dp) :: realtime,tt
-#endif
 !-------------------------------------------------------------------------------
 
     IF ( .NOT. ASSOCIATED(Mesh % Faces) ) RETURN
@@ -1852,11 +1836,7 @@ CONTAINS
      INTEGER :: LIndex(100), IntN, Gindex, k1, k2, Iterate, p, q
      INTEGER :: DataSize, TmpArray(3),ddd
      INTEGER, POINTER :: IntArray(:),IntCnts(:),GIndices(:),Gorder(:)
-#ifdef USE_ISO_C_BINDINGS
      real(kind=dp) :: tstart
-#else
-     real(kind=dp) :: realtime, tstart
-#endif
 !-----------------------------------------------------------------------
      CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 tstart = realtime()
@@ -4179,12 +4159,7 @@ SUBROUTINE BuildRevVecIndices( SplittedMatrix )
   INTEGER, DIMENSION(:), ALLOCATABLE :: GIndices,RowOwner,neigh,L
 
   TYPE(iBuff_t), ALLOCATABLE :: sbuf(:)
-
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: tt
-#else
-  REAL(KIND=dp) :: tt,CPUTime
-#endif
 
   !*********************************************************************
 tt = realTime()

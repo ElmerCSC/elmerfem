@@ -89,11 +89,7 @@
  
      REAL(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), &
        LocalMassMatrix(:,:),LocalStiffMatrix(:,:),Load(:),LocalForce(:)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,st,s
-#else
-     REAL(KIND=dp) :: at,st,CPUTime,s
-#endif
      TYPE(Variable_t), POINTER :: Var
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
@@ -662,9 +658,7 @@ at = CPUTime()
 !------------------------------------------------------------------------------
      SUBROUTINE FullIterSolver( N,x,b,SolverParam )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
        USE huti_sfe
-#endif
        IMPLICIT NONE
 !------------------------------------------------------------------------------
        TYPE(Solver_t) :: SolverParam
@@ -672,20 +666,11 @@ at = CPUTime()
        REAL(KIND=dp), DIMENSION(:) CONTIG :: x,b
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: dpar(50)
-
        INTEGER :: ipar(50),wsize
        REAL(KIND=dp), ALLOCATABLE :: work(:,:)
-
        LOGICAL :: AbortNotConverged
-
-#ifndef USE_ISO_C_BINDINGS
-       INTEGER  :: HUTI_D_CGS
-       EXTERNAL :: HUTI_D_CGS
-       INTEGER(KIND=addrInt) :: AddrFunc
-#else
        INTEGER(KIND=AddrInt) :: AddrFunc
        EXTERNAL :: AddrFunc
-#endif
        INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
 !------------------------------------------------------------------------------
        ipar = 0; dpar = 0

@@ -216,44 +216,13 @@ this ise not in USE
      TYPE(Variable_t), POINTER :: TempSol 
      REAL(KIND=dp), POINTER :: Temperature(:)
      INTEGER, POINTER :: TempPerm(:)
-
      INTEGER(KIND=AddrInt) :: Fnc
-
      TYPE(Variable_t), POINTER :: Var
-
      REAL(KIND=dp) :: dist,F2,F3
      REAL(KIND=dp) :: KE_K, KE_E, KE_Z, CT, TimeScale,Clip, Cmu, Vals(n)
-
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-
      LOGICAL :: SetArrheniusFactor=.FALSE.
 
-#ifndef USE_ISO_C_BINDINGS
-     INTERFACE
-        FUNCTION MaterialUserFunction( Proc,Model,Element,Nodes,n,nd, &
-             Basis,dBasisdx,Viscosity,Velo, dVelodx ) RESULT(s)
-          USE Types
-          INTEGER(KIND=AddrInt) :: Proc
-          TYPE(Model_t) :: Model
-          TYPE(Nodes_t) :: Nodes
-          TYPE(Element_t), POINTER :: Element
-          INTEGER :: n,nd
-          REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
-               Velo(:), dVelodx(:,:), s
-        END FUNCTION MaterialUserFunction
-        FUNCTION EnhancementFactorUserFunction( Proc,Model,Element,Nodes,n,nd, &
-             Basis,dBasisdx,Viscosity,Velo,dVelodx,SecondInvariantSqr,LocalIP ) RESULT(Ehf)
-          USE Types
-          INTEGER(KIND=AddrInt) :: Proc
-          TYPE(Model_t) :: Model
-          TYPE(Nodes_t) :: Nodes
-          TYPE(Element_t), POINTER :: Element
-          INTEGER :: n,nd,LocalIP 
-          REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
-               Velo(:), dVelodx(:,:), SecondInvariantSqr, Ehf
-        END FUNCTION EnhancementFactorUserFunction
-     END INTERFACE     
-#endif
      !------------------------------------------------------------------------------
      mu = Viscosity
      IF ( PRESENT(muder) ) muder=0
@@ -663,27 +632,10 @@ this ise not in USE
      INTEGER :: n,nd
      TYPE(Element_t),POINTER :: Element
 
-#ifndef USE_ISO_C_BINDINGS
-     INTERFACE
-       FUNCTION MaterialUserFunction( Proc,Model,Element,Nodes,n,nd, &
-          Basis,dBasisdx,Conductivity,Temp, dTempdx ) RESULT(s)
-       USE Types
-       INTEGER(KIND=AddrInt) :: Proc
-       TYPE(Model_t) :: Model
-       TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
-       INTEGER :: n,nd
-       REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Conductivity, &
-                    Temp(:), dTempdx(:,:), s
-       END FUNCTION MaterialUserFunction
-     END INTERFACE
-#endif
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
      LOGICAL :: stat,GotIt
-
      INTEGER :: i
-
      CHARACTER(LEN=MAX_NAME_LEN) :: ConductivityFlag
      TYPE(ValueList_t), POINTER :: Material
      REAL(KIND=dp) :: x, y, z, c1n(n), Temp(1), dTempdx(3,1), Pr_t, c_p,&

@@ -34,9 +34,7 @@
 ! *
 ! *****************************************************************************/
 
-! #ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
-! #endif
 
 !> \ingroup ElmerLib
 !> \}
@@ -47,9 +45,7 @@
 MODULE GeneralUtils
 
 USE Types
-#ifdef USE_ISO_C_BINDINGS
 USE LoadMod
-#endif
 
 #ifdef HAVE_LUA
 USE, INTRINSIC :: ISO_C_BINDING
@@ -81,9 +77,6 @@ CONTAINS
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: SolverName, OutputType
 !------------------------------------------------------------------------------
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: RealTime
-#endif
      AdvanceTime1 = RealTime()
      AdvanceTime2 = RealTime()
      CALL Info( SolverName, OutputType, Level=5 )
@@ -100,11 +93,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: dot_t,percent_t
 !------------------------------------------------------------------------------
      INTEGER :: i
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: d_t, p_t
-#else
-     REAL(KIND=dp) :: RealTime, d_t, p_t
-#endif
 !------------------------------------------------------------------------------
      d_t = 1._dp
      p_t = 20._dp

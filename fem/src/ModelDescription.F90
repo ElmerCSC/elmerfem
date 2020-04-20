@@ -44,26 +44,14 @@
 
 MODULE ModelDescription
 
-#ifdef USE_ISO_C_BINDINGS
     USE LoadMod
-#endif
     USE MeshUtils
     USE ElementDescription
     USE BinIO
     USE Messages
  
     IMPLICIT NONE
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE
-      FUNCTION LoadFunction( Quiet,Abort_not_found,Libname,Procname ) RESULT(Proc)
-        USE, INTRINSIC :: ISO_C_BINDING
-        USE Types
-        CHARACTER(C_CHAR) :: Libname(*),Procname(*)
-        INTEGER(KIND=AddrInt) :: Proc
-        INTEGER(C_INT) :: Quiet, Abort_not_found
-      END FUNCTION LoadFunction
-    END INTERFACE
-#endif
+
 
     CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId = ' '
 
@@ -1245,11 +1233,7 @@ CONTAINS
 !         use the compilation time prefix.
 !         ------------------------------------------------------
 
-#ifdef USE_ISO_C_BINDINGS
           str = 'ELMER_LIB'
-#else
-          str = 'ELMER_LIB'//CHAR(0)
-#endif
           CALL envir( str,str1,k ) 
 
 	  fexist = .FALSE.
@@ -1258,11 +1242,7 @@ CONTAINS
              INQUIRE(FILE=TRIM(str1), EXIST=fexist)
           END IF
           IF (.NOT. fexist) THEN
-#ifdef USE_ISO_C_BINDINGS
              str = 'ELMER_HOME'
-#else
-             str = 'ELMER_HOME'//CHAR(0)
-#endif
              CALL envir( str,str1,k ) 
              IF ( k > 0 ) THEN
                 str1 = str1(1:k) // '/share/elmersolver/lib/' // 'SOLVER.KEYWORDS'
@@ -2209,10 +2189,8 @@ CONTAINS
       INTEGER :: lstat, ompthread
       CHARACTER(LEN=256) :: txcmd
 
-#if USE_ISO_C_BINDINGS
       character(len=256) :: elmer_home_env
       CALL getenv("ELMER_HOME", elmer_home_env)
-#endif
 
       !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
@@ -2233,23 +2211,18 @@ CONTAINS
       
       WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
 
-      ! TODO: (2018-09-17) Nowadays ISO_C_BINDINGS are pretty much mandatory to compile elmer
-#if USE_ISO_C_BINDINGS
       ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
       ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
 
       if (trim(elmer_home_env) == "") then
         lstat = lua_dostring(LuaState, &
             'loadfile("' // &
-ELMER_SOLVER_HOME &
-                    // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
+            ELMER_SOLVER_HOME &
+            // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
       else
-#endif
         lstat = lua_dostring(LuaState, &
             'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
-#if USE_ISO_C_BINDINGS
       end if
-#endif
 
       ! Execute lua parts 
       lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)

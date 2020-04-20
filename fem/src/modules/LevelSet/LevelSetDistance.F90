@@ -74,9 +74,6 @@
      REAL(KIND=dp) :: Relax, dt, r, NarrowBand, DsMax
      REAL(KIND=dp), ALLOCATABLE :: ElemVelo(:,:), SurfaceFlux(:)
      REAL(KIND=dp) :: at,totat,st,totst
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: CPUTime
-#endif
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
      
      SAVE ElementNodes, ElemVelo, Direction, ZeroNodes, TimesVisited, &

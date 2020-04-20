@@ -64,11 +64,7 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Unorm, Totnorm
   REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
   REAL(KIND=dp), POINTER CONTIG :: ForceVectors(:,:), ForceVector(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: VorticitySol
   
   SAVE Visited

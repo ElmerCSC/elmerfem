@@ -46,9 +46,7 @@ MODULE MainUtils
 !------------------------------------------------------------------------------
   Use BlockSolve
   USE IterSolve, ONLY : NumericalError
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
 
 !------------------------------------------------------------------------------
   IMPLICIT NONE
@@ -446,12 +444,8 @@ CONTAINS
     EXTERNAL :: PROCEDURE
     INTEGER  :: PROCEDURE
 !------------------------------------------------------------------------------
-#ifndef USE_ISO_C_BINDINGS
-   INTEGER(KIND=AddrInt) :: AddrFunc
-#else
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
-#endif
 !------------------------------------------------------------------------------
     Solver % PROCEDURE = AddrFunc( PROCEDURE )
 !------------------------------------------------------------------------------
@@ -3256,23 +3250,6 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: SolverParams
 
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE 
-      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
-          M, D, S, F, Element, Nrow, Ncol )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t)   :: Model
-        TYPE(Solver_t)  :: Solver
-        REAL(KIND=dp)   :: dt
-        LOGICAL :: Transient
-        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
-        TYPE(Element_t) :: Element
-        INTEGER :: Nrow, Ncol
-      END SUBROUTINE ExecLocalAssembly
-    END INTERFACE
-#endif
-
     SolverParams => ListGetSolverParams(Solver)
 
     IsCoupledSolver = .FALSE.
@@ -4584,22 +4561,6 @@ CONTAINS
     LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
     LOGICAL :: AllocationsDone = .FALSE., Diagonal
 
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE 
-      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
-          M, D, S, F, Element, Nrow, Ncol )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t)   :: Model
-        TYPE(Solver_t)  :: Solver
-        REAL(KIND=dp)   :: dt
-        LOGICAL :: Transient
-        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
-        TYPE(Element_t) :: Element
-        INTEGER :: Nrow, Ncol
-      END SUBROUTINE ExecLocalAssembly
-    END INTERFACE
-#endif
     SAVE :: AllocationsDone, AllocCols, AllocRows, &
         FORCE, STIFF, DAMP, MASS, ColInds, RowInds, indexes
 
@@ -5160,17 +5121,25 @@ CONTAINS
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
-    
+
+     ! This is more featured version than the original one with just one flag.
+     ! This way different solvers can detect when their mesh has been updated. 
+     Solver % MeshChanged = Solver % Mesh % Changed
+     IF( Solver % MeshTag /= Solver % Mesh % MeshTag ) THEN
+       Solver % MeshChanged = .TRUE.
+       Solver % MeshTag = Solver % Mesh % MeshTag
+     END IF       
+     
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL INFO("SingleSolver", "Attempting to call solver", level=5)
+     CALL Info("SingleSolver", "Attempting to call solver", level=5)
      SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
-        CALL INFO("SingleSolver", Message, level=5)
+        CALL Info("SingleSolver", Message, level=5)
      END IF
 
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
@@ -5196,7 +5165,6 @@ CONTAINS
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
-
      
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver

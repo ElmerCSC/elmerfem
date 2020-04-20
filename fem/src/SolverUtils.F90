@@ -49,9 +49,7 @@ MODULE SolverUtils
 
 #include "../config.h"
 
-#ifdef USE_ISO_C_BINDINGS
    USE LoadMod
-#endif
    USE DirectSolve
    USE Multigrid
    USE IterSolve
@@ -13149,20 +13147,6 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: bb(:),Res(:)
     REAL(KIND=dp) :: t0,rt0,rst,st,ct
     TYPE(ValueList_t), POINTER :: Params
-
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE ExecLinSolveProcs
-      INTEGER FUNCTION ExecLinSolveProcs( Proc,Model,Solver,A,b,x,n,DOFs,Norm )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t) :: Model
-        TYPE(Solver_t) :: Solver
-        TYPE(Matrix_t), POINTER :: A
-        INTEGER :: n, DOFs
-        REAL(KIND=dp) :: x(n),b(n), Norm
-      END FUNCTION ExecLinSolveProcs
-    END INTERFACE   
-#endif
 
     INTERFACE
       SUBROUTINE BlockSolveExt(A,x,b,Solver)

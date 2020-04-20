@@ -115,21 +115,12 @@ END SUBROUTINE MeshSolver_Init
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
-
   INTEGER :: dim
+  REAL(KIND=dp) :: at,at0
   
   SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
        ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
        SkipFirstMeshVelocity, FirstTime
-
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: at,at0
-#else
-  REAL(KIND=dp) :: at,at0,CPUTime,RealTime
-#endif
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
@@ -179,7 +170,7 @@ END SUBROUTINE MeshSolver_Init
      STDOFs       =  StressSol % DOFs
      Displacement => StressSol % Values
 
-     IF( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     IF( .NOT.AllocationsDone .OR. Solver % MeshChanged ) THEN
         IF ( AllocationsDone ) DEALLOCATE( TPerm )
 
         ALLOCATE( TPerm( SIZE(MeshPerm) ), STAT=istat )
@@ -209,7 +200,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Solver % Mesh % MaxElementDOFs
 
      IF ( AllocationsDone ) THEN
