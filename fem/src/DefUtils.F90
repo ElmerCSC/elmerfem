@@ -709,7 +709,7 @@ CONTAINS
              k = Indexes(j)
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
                l = Variable % Perm(k)
-               IF (k>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
+               IF (l>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
              END IF
            END DO
          END IF

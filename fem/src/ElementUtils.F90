@@ -1515,6 +1515,7 @@ CONTAINS
      
      Mesh % MaxBDOFs = BDOFs
      
+     Eq = ''
      IF ( PRESENT( Equation ) ) n = StringToLowerCase( Eq,Equation )
 
      Perm = 0

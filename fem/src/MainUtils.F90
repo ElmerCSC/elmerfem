@@ -2678,7 +2678,7 @@ CONTAINS
     REAL(KIND=dp) :: RelativeChange, Tolerance, PrevDT = 0.0d0, Relaxation, SSCond
     INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
-        NeedSol, CalculateDerivative, TestConvergence, TestDivergence, DivergenceExit, &
+        NeedSol, CalculateDerivative, TestConvergence=.FALSE., TestDivergence, DivergenceExit, &
         ExecSlot, CoupledAbort
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
@@ -2720,7 +2720,9 @@ CONTAINS
     IF ( TransientSimulation ) THEN
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+        IF ( Solver % PROCEDURE /= 0 ) THEN
+          CALL InitializeTimestep(Solver)
+         END IF
       END DO
     END IF
 
