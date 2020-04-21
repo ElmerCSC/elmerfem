@@ -535,6 +535,39 @@ void var_reset_status(char *name)
    if ( ptr ) ptr->changed = 0;
 }
 
+VARIABLE *var_com_free()
+{
+  VARIABLE *ptr;
+
+fprintf( stderr, "here here 1\n" );
+  var_free();
+
+fprintf( stderr, "here here 2\n" );
+  /*
+   *    these constants will always be there for you.
+   */
+  ptr = const_new("true", TYPE_DOUBLE, 1, 1);
+  M(ptr,0,0) = 1.0;
+
+  ptr = const_new("false", TYPE_DOUBLE, 1, 1);
+  M(ptr,0,0) = 0.0;
+
+  ptr = const_new("stdin", TYPE_DOUBLE, 1, 1);
+  M(ptr,0,0) = 0;
+
+  ptr = const_new("stdout", TYPE_DOUBLE, 1, 1);
+  M(ptr,0,0) = 1;
+
+  ptr = const_new("stderr", TYPE_DOUBLE, 1, 1);
+  M(ptr,0,0) = 2;
+
+  ptr = const_new("pi", TYPE_DOUBLE, 1, 1);
+  M(ptr,0,0) = 2*acos(0.0);
+
+fprintf( stderr, "here here 3\n" );
+  return NULL;
+}
+
 
 int var_get_status(char *name)
 {
@@ -572,8 +605,15 @@ void var_com_init()
       "Delete a variable with given name.\n"
    };
 
+   static char *clearHelp =
+   {
+      "clear()\n"
+      "Clear all variables.\n"
+   };
+
    com_init( "exists",  FALSE, FALSE, var_ccheck , 1, 1000, existsHelp );
    com_init( "who"   ,  FALSE, FALSE, var_varlist, 0, 0,    whoHelp    );
    com_init( "format" , FALSE, FALSE, var_format, 1, 2,     formatHelp );
    com_init( "delete",  FALSE, FALSE, var_vdelete, 1, 1,    deleteHelp );
+   com_init( "clear",   FALSE, FALSE, var_com_free, 0, 0,    clearHelp );
 }
