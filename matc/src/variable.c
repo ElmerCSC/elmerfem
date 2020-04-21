@@ -539,10 +539,8 @@ VARIABLE *var_com_free()
 {
   VARIABLE *ptr;
 
-fprintf( stderr, "here here 1\n" );
   var_free();
 
-fprintf( stderr, "here here 2\n" );
   /*
    *    these constants will always be there for you.
    */
@@ -564,7 +562,6 @@ fprintf( stderr, "here here 2\n" );
   ptr = const_new("pi", TYPE_DOUBLE, 1, 1);
   M(ptr,0,0) = 2*acos(0.0);
 
-fprintf( stderr, "here here 3\n" );
   return NULL;
 }
 
