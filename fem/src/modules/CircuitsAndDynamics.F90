@@ -655,7 +655,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: nn, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value, dt
     TYPE(Component_t) :: Comp
 
@@ -1523,7 +1523,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: nn, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value
     TYPE(Component_t) :: Comp
 

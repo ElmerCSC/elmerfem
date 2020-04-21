@@ -302,15 +302,23 @@
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
+   USE CircuitUtils
    IMPLICIT NONE
    TYPE(Mesh_t), POINTER, SAVE :: Mesh
-   TYPE(Element_t) :: Element
+   TYPE(Element_t), POINTER :: Element
+   TYPE(Valuelist_t), POINTER :: CompParams
    INTEGER :: k, l, m, j, n
    REAL(KIND=dp) :: RotM(3,3,n)
    INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
    INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
    TYPE(Variable_t), POINTER, SAVE :: RotMvar
+   REAL(KIND=dp), POINTER, SAVE :: ConstArray(:,:)
+   REAL(KIND=dp) :: Origin(3), alpha_ref(3), beta_ref(3)
+   REAL(KIND=dp) :: x(3), r(3), xref(3)
+   REAL(KIND=dp) :: C, S, t
    LOGICAL, SAVE :: visited = .FALSE.
+   TYPE(Nodes_t), SAVE :: Nodes
+   LOGICAL :: GotIt
 
    IF(.NOT. visited) THEN
      visited = .TRUE.
@@ -322,12 +330,62 @@
    END IF
 
    RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
+
+   CompParams => GetComponentParams(Element)
+   CALL GetConstRealArray( CompParams, ConstArray, 'Rotation Matrix Origin', GotIt )
+   IF (GotIt) THEN
+     IF (SIZE(Origin) /= 3) CALL Fatal('GetElementRotM', 'Rotation Matrix Origin needs three components!')
+     Origin = ConstArray(1:3,1)
+     CALL GetConstRealArray( CompParams, ConstArray, 'Rotation Matrix Alpha Reference', GotIt )
+     IF (.NOT. GotIt) CALL Fatal('GetElementRotM', 'Rotation Matrix Origin set but Rotation Matrix Alpha Reference not found!')
+     IF (SIZE(alpha_ref) /= 3) CALL Fatal('GetElementRotM', 'Rotation Matrix Alpha Reference needs three components!')
+     alpha_ref = ConstArray(1:3,1)
+
+     CALL GetConstRealArray( CompParams, ConstArray, 'Rotation Matrix Beta Reference', GotIt )
+     IF (.NOT. GotIt) CALL Fatal('GetElementRotM', 'Rotation Matrix Origin set but Rotation Matrix Beta Reference not found!')
+     IF (SIZE(beta_ref) /= 3) CALL Fatal('GetElementRotM', 'Rotation Matrix Beta Reference needs three components!')
+     beta_ref = ConstArray(1:3,1)
+
+     CALL GetElementNodes( Nodes )
+     DO j = 1, n
+       x(1) = Nodes % x(j)
+       x(2) = Nodes % y(j)
+       x(3) = Nodes % z(j)
+
+       r = beta_ref/SQRT(SUM(beta_ref**2.)) ! Normalize the rotation axis
+
+       xref = x - Origin ! take reference according to the origin of rotation
+       xref = xref - xref * beta_ref ! project xref to the rotation plane (beta_ref is the normal)
+       C = SUM(xref * alpha_ref)/SQRT(SUM(xref**2.))/SQRT(SUM(alpha_ref**2.)) ! cosine of the angle of rotation
+       S = SQRT(1-C**2) ! sine of the angle of rotation
+       t = 1+C
+
+       RotM(1,1,j) = t*r(1)**2+C
+       RotM(1,2,j) = t*r(1)*r(2)-S*r(3)
+       RotM(1,3,j) = t*r(1)*r(3)+S*r(2)
+
+       RotM(2,1,j) = t*r(1)*r(2)+S*r(3)
+       RotM(2,2,j) = t*r(2)**2+C
+       RotM(2,1,j) = t*r(2)*r(3)-S*r(1)
+
+       RotM(3,1,j) = t*r(1)*r(3)-S*r(2)
+       RotM(3,2,j) = t*r(2)*r(3)+S*r(1)
+       RotM(2,2,j) = t*r(3)**2+C
      END DO
-   END DO
+     DO j = 1, n
+       DO k=1,RotMvar % DOFs
+         RotMvar % Values(RotMvar % DOFs*(&
+           RotMvar % Perm(Element % DGIndexes(j))-1)+k) = RotM(ind1(k),ind2(k),j) 
+       END DO
+     END DO
+   ELSE
+     DO j = 1, n
+       DO k=1,RotMvar % DOFs
+         RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
+               RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
+       END DO
+     END DO
+   END IF
 
 !------------------------------------------------------------------------------
  END SUBROUTINE GetElementRotM
