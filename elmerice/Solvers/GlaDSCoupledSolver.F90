@@ -85,14 +85,14 @@
 
      INTEGER, POINTER :: NodeIndexes(:), HydPotPerm(:), PwPerm(:), ZbPerm(:), &
              ThickPerm(:), VPerm(:), WPerm(:), NPerm(:), AreaPerm(:), & 
-             qPerm(:), hstorePerm(:), QcPerm(:), QmPerm(:), PermPointer(:)
-     INTEGER, ALLOCATABLE, TARGET :: CAPerm(:), CFPerm(:), SHPerm(:)
+             qPerm(:), hstorePerm(:), QcPerm(:), QmPerm(:),&
+             CAPerm(:), CFPerm(:), SHPerm(:)
 
      REAL(KIND=dp), POINTER :: HydPot(:), HydPotPrev(:,:), ForceVector(:)
      REAL(KIND=dp), POINTER :: ThickSolution(:), ThickPrev(:,:), VSolution(:), WSolution(:), &
             NSolution(:), PwSolution(:), AreaSolution(:), AreaPrev(:,:), ZbSolution(:), &
             qSolution(:), hstoreSolution(:), QcSolution(:), QmSolution(:),&
-            ValuesPointer(:)
+            CAValues(:), CFValues(:), SHValues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, SolverName
      CHARACTER(LEN=MAX_NAME_LEN) :: SheetThicknessName, ChannelAreaName, ZbName
@@ -119,7 +119,6 @@
 
      REAL(KIND=dp), ALLOCATABLE :: IceDensity(:), Ac(:), alphac(:), CCt(:), &
          CCw(:), lc(:)
-     REAL(KIND=dp), ALLOCATABLE, TARGET :: CAValues(:), CFValues(:), SHValues(:)
      REAL(KIND=dp) :: ChannelArea, WaterDensity, gravity, Lw, EdgeTangent(3), &
                  ALPHA, BETA, CoupledTol, CoupledNorm, PrevCoupledNorm, &
                  Discharge(3)
@@ -153,7 +152,7 @@
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
           Vvar, ublr, hr2, Refq, Nel,&
-          CAValues, CAPerm, CFValues, CFPerm, SHValues, SHPerm, Calving
+          Calving
 
       
      totst = 0.0_dp
@@ -341,10 +340,8 @@
           ALLOCATE(CAPerm(SIZE(WorkVar % Perm)), CAValues(SIZE(WorkVar % Values)))
           CAPerm = WorkVar % Perm
           CAValues = WorkVar % Values
-          PermPointer => CAPerm
-          ValuesPointer => CAValues
           CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Channel Area', 1, ValuesPointer, PermPointer)
+               'Channel Area', 1, CAValues, CAPerm)
           WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',&
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
@@ -356,10 +353,8 @@
           ALLOCATE(CFPerm(SIZE(WorkVar % Perm)), CFValues(SIZE(WorkVar % Values)))
           CFPerm = WorkVar % Perm
           CFValues = WorkVar % Values
-          PermPointer => CFPerm
-          ValuesPointer => CFValues
           CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Channel Flux', 1, ValuesPointer, PermPointer) 
+               'Channel Flux', 1, CFValues, CFPerm) 
           WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Flux',&
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
@@ -378,10 +373,8 @@
           ALLOCATE(SHPerm(SIZE(WorkVar % Perm)), SHValues(SIZE(WorkVar % Values)))
           SHPerm = WorkVar % Perm
           SHValues = WorkVar % Values !Needed to reflect initial condition
-          PermPointer => SHPerm
-          ValuesPointer => SHValues
           CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Sheet Thickness', 1, ValuesPointer, PermPointer)
+               'Sheet Thickness', 1, SHValues, SHPerm)
           WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
@@ -389,7 +382,7 @@
           WorkVar % PrevValues(:,1) = WorkVar % Values
           !Necessary to ensure initial condition value reflected in PrevValues
           WorkVar % PrevValues(1:Solver % Mesh % NumberOfNodes,1) = WorkVar % Values(1:Solver % Mesh % NumberOfNodes)
-          NULLIFY(WorkVar, ValuesPointer, PermPointer)
+          NULLIFY(WorkVar)
         END IF
 
         ! TODO : implement higher order BDF method
@@ -983,6 +976,7 @@
            !------------------------------------------------------------------------------
            at = CPUTime() - at
            st = CPUTime()
+           Norm = 0.0_dp
 
            PrevNorm = Solver % Variable % Norm
            Norm = DefaultSolve()
@@ -1050,12 +1044,12 @@
               !hydrology variables
               IF(Calving) THEN
                 CycleElement = .FALSE.
-                WorkVar => VariableGet(Solver % Mesh % Variables, "basalmeltrate", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                 WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                 IF(ASSOCIATED(WorkVar)) THEN
                   DO i=1, N
                     IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                      IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
+                      !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
                         CycleElement = .TRUE.
 
                         WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
@@ -1063,7 +1057,7 @@
                         NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
                         !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
                         hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
-                      END IF
+                      !END IF
                     END IF
                   END DO
                 END IF
@@ -1141,10 +1135,10 @@
               !hydrology variables
               IF(Calving) THEN
                 CycleElement = .FALSE.
-                WorkVar => VariableGet(Solver % Mesh % Variables, "basalmeltrate", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                 WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                 IF(ASSOCIATED(WorkVar)) THEN
-                  IF(WorkVar % Values(k)>0.0 .AND. WorkVar2 % Values(k)<0.0) THEN
+                  IF(WorkVar % Values(k)>0.0) THEN !.AND. WorkVar2 % Values(k)<0.0) THEN
                       CycleElement = .TRUE.
                       ThickSolution(k) = 0.0
                       ThickPrev(k,1) = 0.0
@@ -1228,16 +1222,16 @@
                  !hydrology variables
                  IF(Calving) THEN
                    CycleElement = .FALSE.
-                   WorkVar => VariableGet(Solver % Mesh % Variables, "basalmeltrate", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                   WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                    WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                    IF(ASSOCIATED(WorkVar)) THEN
                      DO i=1, n
                        IF(WorkVar % Values(WorkVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
-                         IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN
+                         !IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN
                            CycleElement = .TRUE.
                            AreaSolution(AreaPerm(M+t)) = 0.0
                            QcSolution(QcPerm(M+t)) = 0.0
-                         END IF
+                         !END IF
                        END IF
                      END DO
                    END IF
@@ -1471,12 +1465,12 @@
          !hydrology variables
          IF(Calving) THEN
            CycleElement = .FALSE.
-           WorkVar => VariableGet(Solver % Mesh % Variables, "basalmeltrate", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+           WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
            WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
            IF(ASSOCIATED(WorkVar)) THEN
              DO i=1, n
                IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                 IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
+                 !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
                    CycleElement = .TRUE.
                    DO j=1,dimSheet
                      k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
@@ -1484,7 +1478,7 @@
                      Refq(k) = 0.0
                    END DO
                    EXIT
-                 END IF
+                 !END IF
                END IF
              END DO
            END IF

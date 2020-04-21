@@ -81,14 +81,24 @@
      LOGICAL :: Found=.FALSE., FirstTime=.TRUE., LoadReaders, Hit=.FALSE.
      LOGICAL, POINTER :: BasalLogical(:)
      INTEGER, POINTER :: InterpDim(:), IceMeshBasePerm(:)=>NULL(),&
-                         NPP(:)=>NULL(), RefNode(:)=>NULL(), NewPerm1(:)
+                         NPP(:)=>NULL(), RefNode(:)=>NULL(), NewPerm1(:),&
+                         ReaderPerm1(:), NewPerm2(:), NewPerm3(:),&
+                         NewPerm4(:), NewPerm5(:), ReaderPerm2(:),&
+                         ReaderPerm3(:), ReaderPerm4(:), ReaderPerm5(:),&
+                         ReaderPerm6(:), ReaderPerm7(:), ReaderPerm8(:),&
+                         ReaderPerm9(:), ReaderPerm10(:)
      INTEGER, ALLOCATABLE, TARGET :: DefaultPerm(:), ZeroNodes(:)
      INTEGER :: i, j, k, HPSolver, Reader1, Reader2, Reader3,&
                 Reader4, Reader5, Reader, NumVar, DummyInt, ierr,&
                 ElementBC, BasalBC, n, NearestNode, SideBC1, SideBC2, HitCount,&
                 ZeroCounter, TSolver
      REAL(KIND=dp), POINTER :: NVP(:)=>NULL(), NewValues1(:), NewValues2(:),&
-                               NewValues3(:), NewValues4(:), NewValues5(:)
+                               NewValues3(:), NewValues4(:), NewValues5(:),&
+                               ReaderValues1(:), ReaderValues2(:),&
+                               ReaderValues3(:), ReaderValues4(:),&
+                               ReaderValues5(:), ReaderValues6(:),&
+                               ReaderValues7(:), ReaderValues8(:),&
+                               ReaderValues9(:), ReaderValues10(:)  
      REAL(KIND=dp) :: IceTempResSum, HydroTempResSum, ScaleFactor,&
                       ElementTempResSum, Dist, Threshold, MinDist, x, y,&
                       NewNS, MeanNS
@@ -125,6 +135,8 @@
         NumVar = GetInteger(Params, 'Number Of Variables To Read',Found)
         IF(.NOT. Found) CALL Fatal('Ice2Hydro', 'Number of variables to read &
         not specified')
+        IF(NumVar > 10) CALL Info('Ice2Hydro', 'Not set up for more than 10&
+        reader variables - increase maximum limit in source code', Level=1)
 
         !A default perm in case the variables to be loaded don't have a perm
         !associated. Assumes node 1 = value 1
@@ -153,10 +165,82 @@
               ALLOCATE(WorkVar % Perm(HydroSolver % Mesh % NumberOfNodes))
               WorkVar % Perm(1:SIZE(WorkVar % Perm)) = DefaultPerm(1:SIZE(WorkVar % Perm))
             END IF
+           
+            !There has to be a better way to do this, but you can't use indices
+            !in variable names, so I can't see a way of allocating the arrays in
+            !the loop, such that each variable gets its own perm and values
+            IF(i==1) ALLOCATE(ReaderPerm1(SIZE(WorkVar % Perm)), ReaderValues1(SIZE(WorkVar % Values)))
+            IF(i==2) ALLOCATE(ReaderPerm2(SIZE(WorkVar % Perm)), ReaderValues2(SIZE(WorkVar % Values)))
+            IF(i==3) ALLOCATE(ReaderPerm3(SIZE(WorkVar % Perm)), ReaderValues3(SIZE(WorkVar % Values)))
+            IF(i==4) ALLOCATE(ReaderPerm4(SIZE(WorkVar % Perm)), ReaderValues4(SIZE(WorkVar % Values)))
+            IF(i==5) ALLOCATE(ReaderPerm5(SIZE(WorkVar % Perm)), ReaderValues5(SIZE(WorkVar % Values)))
+            IF(i==6) ALLOCATE(ReaderPerm6(SIZE(WorkVar % Perm)), ReaderValues6(SIZE(WorkVar % Values)))
+            IF(i==7) ALLOCATE(ReaderPerm7(SIZE(WorkVar % Perm)), ReaderValues7(SIZE(WorkVar % Values)))
+            IF(i==8) ALLOCATE(ReaderPerm8(SIZE(WorkVar % Perm)), ReaderValues8(SIZE(WorkVar % Values)))
+            IF(i==9) ALLOCATE(ReaderPerm9(SIZE(WorkVar % Perm)), ReaderValues9(SIZE(WorkVar % Values)))
+            IF(i==10) ALLOCATE(ReaderPerm10(SIZE(WorkVar % Perm)), ReaderValues10(SIZE(WorkVar % Values)))
+            IF(i==1) THEN
+              ReaderPerm1 = WorkVar % Perm
+              ReaderValues1 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues1, &
+                ReaderPerm1)
+            ELSEIF(i==2) THEN
+              ReaderPerm2 = WorkVar % Perm
+              ReaderValues2 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues2, &
+                ReaderPerm2)
+            ELSEIF(i==3) THEN
+              ReaderPerm3 = WorkVar % Perm
+              ReaderValues3 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues3, &
+                ReaderPerm3)
+            ELSEIF(i==4) THEN
+              ReaderPerm4 = WorkVar % Perm
+              ReaderValues4 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues4, &
+                ReaderPerm4)
+            ELSEIF(i==5) THEN
+              ReaderPerm5 = WorkVar % Perm
+              ReaderValues5 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues5, &
+                ReaderPerm5)
+            ELSEIF(i==6) THEN
+              ReaderPerm6 = WorkVar % Perm
+              ReaderValues6 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues6, &
+                ReaderPerm6)
+            ELSEIF(i==7) THEN
+              ReaderPerm7 = WorkVar % Perm
+              ReaderValues7 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues7, &
+                ReaderPerm7)
+            ELSEIF(i==8) THEN
+              ReaderPerm8 = WorkVar % Perm
+              ReaderValues8 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues8, &
+                ReaderPerm8)
+            ELSEIF(i==9) THEN
+              ReaderPerm9 = WorkVar % Perm
+              ReaderValues9 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues9, &
+                ReaderPerm9)
+            ELSEIF(i==10) THEN
+              ReaderPerm10 = WorkVar % Perm
+              ReaderValues10 = WorkVar % Values
+              CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
+                Mesh, Model % Solvers(HPSolver), VarName, 1, ReaderValues10, &
+                ReaderPerm10)
+            END IF
 
-            CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
-              Mesh, Model % Solvers(HPSolver), VarName, 1, WorkVar % Values, &
-              WorkVar % Perm)
           END IF
         END DO
         
@@ -241,11 +325,15 @@
       WorkVar => VariableGet(HydroSolver % Mesh % Variables,&
                  'hydraulic potential', ThisOnly=.TRUE.)
       ALLOCATE(NewPerm1(SIZE(WorkVar % Perm)),NewValues1(SIZE(WorkVar % Values)))
-      ALLOCATE(NewValues2(SIZE(WorkVar % Values)))
-      ALLOCATE(NewValues3(SIZE(WorkVar % Values)))
-      ALLOCATE(NewValues4(SIZE(WorkVar % Values)))
-      ALLOCATE(NewValues5(SIZE(WorkVar % Values)))
+      ALLOCATE(NewPerm2(SIZE(WorkVar % Perm)),NewValues2(SIZE(WorkVar % Values)))
+      ALLOCATE(NewPerm3(SIZE(WorkVar % Perm)),NewValues3(SIZE(WorkVar % Values)))
+      ALLOCATE(NewPerm4(SIZE(WorkVar % Perm)),NewValues4(SIZE(WorkVar % Values)))
+      ALLOCATE(NewPerm5(SIZE(WorkVar % Perm)),NewValues5(SIZE(WorkVar % Values)))
       NewPerm1 = WorkVar % Perm
+      NewPerm2 = WorkVar % Perm
+      NewPerm3 = WorkVar % Perm
+      NewPerm4 = WorkVar % Perm
+      NewPerm5 = WorkVar % Perm
       !NPP => NewPerm1
       NewValues1 = 0.0_dp
       NewValues2 = 0.0_dp
@@ -259,22 +347,22 @@
       !NVP => NewValues2
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar2 % Name, 1,&
-           NewValues2, NewPerm1)
+           NewValues2, NewPerm2)
       !NVP => NewValues3
       CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
            Mesh, HydroSolver, InterpVar3 % Name, 1,&
-           NewValues3, NewPerm1)
+           NewValues3, NewPerm3)
       IF(ASSOCIATED(InterpVar4)) THEN
         !NVP => NewValues4
         CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
              Mesh, HydroSolver, InterpVar4 % Name, 1,&
-             NewValues4, NewPerm1)
+             NewValues4, NewPerm4)
       END IF
       IF(ASSOCIATED(InterpVar5)) THEN
         !NVP => NewValues5
         CALL VariableAdd(HydroSolver % Mesh % Variables, HydroSolver % & 
              Mesh, HydroSolver, InterpVar5 % Name, 1,&
-             NewValues5, NewPerm1)
+             NewValues5, NewPerm5)
       END IF
     END IF
 
