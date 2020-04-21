@@ -540,28 +540,6 @@ VARIABLE *var_com_free()
   VARIABLE *ptr;
 
   var_free();
-
-  /*
-   *    these constants will always be there for you.
-   */
-  ptr = const_new("true", TYPE_DOUBLE, 1, 1);
-  M(ptr,0,0) = 1.0;
-
-  ptr = const_new("false", TYPE_DOUBLE, 1, 1);
-  M(ptr,0,0) = 0.0;
-
-  ptr = const_new("stdin", TYPE_DOUBLE, 1, 1);
-  M(ptr,0,0) = 0;
-
-  ptr = const_new("stdout", TYPE_DOUBLE, 1, 1);
-  M(ptr,0,0) = 1;
-
-  ptr = const_new("stderr", TYPE_DOUBLE, 1, 1);
-  M(ptr,0,0) = 2;
-
-  ptr = const_new("pi", TYPE_DOUBLE, 1, 1);
-  M(ptr,0,0) = 2*acos(0.0);
-
   return NULL;
 }
 
