@@ -2650,28 +2650,64 @@ CONTAINS
     ! -----------------------------------------------------------
     MeshDeps = .FALSE.; FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
 
+    !
+    ! As a preliminary step, check if an element definition is given 
+    ! an equation section. The more common way is give the element
+    ! definition in a solver section.
+    !
     DO eq_id=1,Model % NumberOFEquations
       Vlist => Model % Equations(eq_id) % Values
-      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
       FoundEqDefs = FoundEqDefs .OR. FoundDef0
-      j = INDEX(ElementDef0,'p:')
-      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+
+      IF (FoundDef0) THEN
+        !
+        ! Check if the order of p-basis is defined by calling a special
+        ! MATC function:
+        !
+        j = INDEX(ElementDef0,'p:')
+        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+      ELSE
+        !
+        ! Check if element definitions are given for each solver separately
+        ! by using a special keyword construct and tag the corresponding
+        ! entries in the list of the solvers. This was thought to serve
+        ! the definition of bodywise p-orders, but it seems this doesn't
+        ! work really. TO DO: REPAIR OR REMOVE
+        ! 
+        DO Solver_id=1,Model % NumberOfSolvers
+          IF (PRESENT(mySolver)) THEN
+            IF ( Solver_id /= mySolver ) CYCLE
+          ELSE
+            IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
+          END IF
+
+          ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
+          FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef
+
+          j = INDEX(ElementDef,'p:')
+          IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+        END DO
+      END IF
     END DO
 
+    !
+    ! Tag solvers for which the element definition has been given in
+    ! a solver section:
+    !
     DO solver_id=1,Model % NumberOFSolvers
       Vlist => Model % Solvers(solver_id) % Values
 
       ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
       FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-      ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
-      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
-
       j = INDEX(ElementDef0,'p:')
       IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
     END DO
 
-    IF(.NOT.MeshDeps) THEN
+    ! The basic case without the order of p-basis being defined by a MATC function:
+    !
+    IF (.NOT.MeshDeps) THEN
       ElementDef = ' '
       FoundDef0 = .FALSE.
       DO body_id=1,Model % NumberOfBodies
@@ -2693,7 +2729,7 @@ CONTAINS
             FoundDef = .FALSE.
             IF(FoundSolverDefs(solver_id)) &
                 ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
- 
+
             IF ( FoundDef ) THEN
               CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef, solver_id, body_id, Indofs )
             ELSE
@@ -2730,6 +2766,7 @@ CONTAINS
          ElementDef0 = ' '
          IF( FoundEq ) THEN
            Vlist => Model % Equations(eq_id) % Values
+           FoundDef0 = .FALSE.
            IF( FoundEqDefs.AND.body_id/=body_id0 ) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
            DO solver_id=1,Model % NumberOfSolvers
@@ -2756,7 +2793,7 @@ CONTAINS
            END DO
          END IF
          body_id0 = body_id
-      END IF
+       END IF
 
 
        el_id = Element % TYPE % ElementCode / 100
