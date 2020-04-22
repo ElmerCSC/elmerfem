@@ -339,7 +339,7 @@ CONTAINS
      INTEGER :: SolverId, BodyId, Def_Dofs(:,:)
 
      TYPE(ValueList_t), POINTER :: Params
-     INTEGER :: i, j,k,l, n, slen
+     INTEGER :: i, j,k,l, n, slen, Family
      INTEGER, POINTER :: Body_Dofs(:,:)
      LOGICAL  :: stat, Found
      REAL(KIND=dp) :: x,y,z
@@ -420,13 +420,17 @@ CONTAINS
           x = SUM(Mesh % Nodes % x(Element % NodeIndexes))/n
           y = SUM(Mesh % Nodes % y(Element % NodeIndexes))/n
           z = SUM(Mesh % Nodes % z(Element % NodeIndexes))/n
-          WRITE( str, * ) 'cx= ',TRIM(i2s(Element % ElementIndex)),x,y,z
+!          WRITE( str, * ) 'cx= ',TRIM(i2s(Element % ElementIndex)),x,y,z
+          WRITE( str, * ) 'cx= ',TRIM(i2s(Element % BodyId)),x,y,z
           str = TRIM(str) // '; ' // TRIM(ElementDef(j+3:))//'(cx)'
           slen = LEN_TRIM(str)
           CALL matc(str,RESULT,slen)
           READ(RESULT,*) x
           Body_Dofs(:,6) = 0
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
+          Family = Element % TYPE % ElementCode / 100
+          Solver % Def_Dofs(Family, BodyId, 6) = &
+              MAX(Solver % Def_Dofs(Family, BodyId, 6), NINT(x))
         ELSE
           READ( ElementDef(j+2:), * ) l
           Body_Dofs(:,6) = l
