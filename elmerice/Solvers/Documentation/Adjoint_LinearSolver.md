@@ -18,7 +18,7 @@
 
 ### 1. Introduction
 
-This solver is the adjoint code of a solver that solve a linear system and apply dirichlet conditions,i.e. it is the adjoint of the following part in a solver:
+This solver is the adjoint code of a solver that solves a linear system and apply dirichlet conditions,i.e. it is the adjoint of the following part in a solver:
 ```fortran
   CALL DefaultDirichletBCs()
   UNorm = DefaultSolve()
@@ -37,7 +37,7 @@ the adjoint writes:
 > A^T b = xb  
 
 where **x** is the solution of the direct problem, **A^T** is the transpose of the stiffness matrix **A**,
-**b** is the *adjoint variable* and **xb** is the *sensitivity* of the cost function with respect to the solution of the direct problem **x**. **xb** should be computed within a cost solver and should be named *velocityb* if the variable of the direct problem is *Flow Solution* (i.e. solving Stokes) or *ssavelocity* (i.e. solving SSA), of *Varb* for other direct equations (where *Var* is the name of the direct solver variable).
+**b** is the *adjoint variable* and **xb** is the *sensitivity* of the cost function with respect to the solution of the direct problem **x**. **xb** should be computed within a cost solver and should be named *velocityb* if the variable of the direct problem is *Flow Solution* (i.e. solving Stokes) or *ssavelocity* (i.e. solving SSA), of *Varb* for other direct equations (where *Var* is the name of the direct solver variable). **xb** has to be computed in the model coordinate system and it will be rotated in Normal-Tangential if needed.
 
 Further the adjoint variables for the stiffness matrix **Ab**, and force vector **Fb** are given by:
 
@@ -49,7 +49,7 @@ This will results for the adjoint code to set to 0 the corresping lines in **Ab*
 
 The solver will look in the *Body Forces* and *Boundary Conditions* for the keywords associated to Dirichlet conditions for the direct variable **x** and set **b=0** accordingly.
 
-Getting the derivative of the cost function with respect to the direct solver input parameters usually requires to write the adjoint code of the direct solver that fills **A** and **F** and tus depends on the solution **x** and the adjoint variable **b**. This will be solver specific.
+Getting the derivative of the cost function with respect to the direct solver input parameters usually requires to write the adjoint code of the direct solver that fills **A** and **F** and thus depends on the solution **x** and the adjoint variable **b**. This will be solver specific.
 
 ### 3. Keywords
 
