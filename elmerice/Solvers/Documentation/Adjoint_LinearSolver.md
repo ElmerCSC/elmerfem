@@ -37,7 +37,7 @@ the adjoint writes:
 > A^T b = xb  
 
 where **x** is the solution of the direct problem, **A^T** is the transpose of the stiffness matrix **A**,
-**b** is the *adjoint variable* and **xb** is the *sensitivity* of the cost function with respect to the solution of the direct problem **x**. **xb** should be computed within a cost solver and should be named *velocityb* if the variable of the direct problem is *Flow Solution* (i.e. solving Stokes) or *ssavelocity* (i.e. solving SSA), of *Varb* for other direct equations (where *Var* is the name of the direct solver variable). **xb** has to be computed in the model coordinate system and it will be rotated in Normal-Tangential if needed.
+**b** is the *adjoint variable* and **xb** is the *sensitivity* of the cost function with respect to the solution of the direct problem **x**. **xb** should be computed within a cost solver and should be named *velocityb* if the variable of the direct problem is *Flow Solution* (i.e. solving Stokes) or *ssavelocity* (i.e. solving SSA), or *Varb* for other direct equations (where *Var* is the name of the direct solver variable). **xb** has to be computed in the model coordinate system and it will be rotated in Normal-Tangential if needed.
 
 Further the adjoint variables for the stiffness matrix **Ab**, and force vector **Fb** are given by:
 
