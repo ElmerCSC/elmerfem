@@ -311,13 +311,14 @@
    REAL(KIND=dp) :: RotM(3,3,n)
    INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
    INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
+   TYPE(Variable_t), POINTER, SAVE :: RotMvar !, alphavecvar 
    REAL(KIND=dp), POINTER, SAVE :: ConstArray(:,:)
    REAL(KIND=dp) :: Origin(3), alpha_ref(3), beta_ref(3)
    REAL(KIND=dp) :: x(3), r(3), xref(3)
    REAL(KIND=dp) :: C, S, t
    LOGICAL, SAVE :: visited = .FALSE.
    TYPE(Nodes_t), SAVE :: Nodes
+
    LOGICAL :: GotIt
 
    IF(.NOT. visited) THEN
@@ -327,6 +328,11 @@
      IF(.NOT. ASSOCIATED(RotMVar)) THEN
        CALL Fatal('GetElementRotM','RotM E variable not found')
      END IF
+
+!     alphavecvar => VariableGet( Mesh % Variables, 'Alpha Vector E')
+!     IF(.NOT. ASSOCIATED(alphavecvar)) THEN
+!       CALL Fatal('RotMSolver()','Alpha Vector E variable not found')
+!     END IF
    END IF
 
    RotM = 0._dp
@@ -355,10 +361,10 @@
        r = beta_ref/SQRT(SUM(beta_ref**2.)) ! Normalize the rotation axis
 
        xref = x - Origin ! take reference according to the origin of rotation
-       xref = xref - xref * beta_ref ! project xref to the rotation plane (beta_ref is the normal)
+       xref = xref - SUM(xref * r) * r ! project xref to the rotation plane (beta_ref is the normal)
        C = SUM(xref * alpha_ref)/SQRT(SUM(xref**2.))/SQRT(SUM(alpha_ref**2.)) ! cosine of the angle of rotation
        S = SQRT(1-C**2) ! sine of the angle of rotation
-       t = 1+C
+       t = 1-C
 
        RotM(1,1,j) = t*r(1)**2+C
        RotM(1,2,j) = t*r(1)*r(2)-S*r(3)
@@ -366,18 +372,28 @@
 
        RotM(2,1,j) = t*r(1)*r(2)+S*r(3)
        RotM(2,2,j) = t*r(2)**2+C
-       RotM(2,1,j) = t*r(2)*r(3)-S*r(1)
+       RotM(2,3,j) = t*r(2)*r(3)-S*r(1)
 
        RotM(3,1,j) = t*r(1)*r(3)-S*r(2)
        RotM(3,2,j) = t*r(2)*r(3)+S*r(1)
-       RotM(2,2,j) = t*r(3)**2+C
+       RotM(3,3,j) = t*r(3)**2+C
      END DO
-     DO j = 1, n
-       DO k=1,RotMvar % DOFs
-         RotMvar % Values(RotMvar % DOFs*(&
-           RotMvar % Perm(Element % DGIndexes(j))-1)+k) = RotM(ind1(k),ind2(k),j) 
-       END DO
-     END DO
+     ! This is debug stuff (remove later if necessary)
+!     DO j = 1, n
+!       DO k=1,RotMvar % DOFs
+!         RotMvar % Values(RotMvar % DOFs*(&
+!           RotMvar % Perm(Element % DGIndexes(j))-1)+k) = RotM(ind1(k),ind2(k),j) 
+!       END DO
+!
+!       IF (ASSOCIATED(alphavecvar)) THEN
+!         x=(/1,1,1/)
+!         x=MATMUL(RotM(:,:,j),x)
+!         DO k=1,alphavecvar % DOFs
+!           alphavecvar % Values( alphavecvar % DOFs*(alphavecvar % Perm( &
+!                 Element % DGIndexes(j))-1)+k) = x(k)
+!         END DO
+!       END IF
+!     END DO
    ELSE
      DO j = 1, n
        DO k=1,RotMvar % DOFs
@@ -387,109 +403,41 @@
      END DO
    END IF
 
+!       IF (SUM(Origin) == 0) THEN
+!         x(1) = 0
+!         x(2) = 1
+!         x(3) = 0
+!
+!         r = beta_ref/SQRT(SUM(beta_ref**2.)) ! Normalize the rotation axis
+!
+!         xref = x - Origin ! take reference according to the origin of rotation
+!         xref = xref - xref * beta_ref ! project xref to the rotation plane (beta_ref is the normal)
+!         C = SUM(xref * alpha_ref)/SQRT(SUM(xref**2.))/SQRT(SUM(alpha_ref**2.)) ! cosine of the angle of rotation
+!         S = SQRT(1-C**2) ! sine of the angle of rotation
+!         t = 1+C
+!
+!         RotM(1,1,1) = t*r(1)**2+C
+!         RotM(1,2,1) = t*r(1)*r(2)-S*r(3)
+!         RotM(1,3,1) = t*r(1)*r(3)+S*r(2)
+!
+!         RotM(2,1,1) = t*r(1)*r(2)+S*r(3)
+!         RotM(2,2,1) = t*r(2)**2+C
+!         RotM(2,3,1) = t*r(2)*r(3)-S*r(1)
+!
+!         RotM(3,1,1) = t*r(1)*r(3)-S*r(2)
+!         RotM(3,2,1) = t*r(2)*r(3)+S*r(1)
+!         RotM(3,3,1) = t*r(3)**2+C
+!
+!         x = MATMUL(RotM(:,:,1),x)
+!         print *, "RotM", RotM
+!         print *, "x", x
+!      END IF
+!   END IF
+
+       
 !------------------------------------------------------------------------------
  END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
-
-
-!!------------------------------------------------------------------------------
-! SUBROUTINE GetElementRotM(Element,RotM,n)
-!!------------------------------------------------------------------------------
-!   IMPLICIT NONE
-!   TYPE(Element_t) :: Element
-!   INTEGER :: k, l, m, j, n
-!   REAL(KIND=dp) :: RotM(3,3,n)
-!   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-!   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-!   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-!   LOGICAL, SAVE :: visited = .FALSE.
-! 
-!
-!   IF(.NOT. visited) THEN
-!     visited = .TRUE.
-!     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
-!     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-!       CALL Fatal('GetElementRotM','RotM E variable not found')
-!     END IF
-!   END IF
-!
-!   RotM = 0._dp
-!   DO j = 1, n
-!     DO k=1,RotMvar % DOFs
-!       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-!             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-!     END DO
-!   END DO
-!
-!!------------------------------------------------------------------------------
-! END SUBROUTINE GetElementRotM
-!!------------------------------------------------------------------------------
-
-!!------------------------------------------------------------------------------
-! SUBROUTINE GetElementRotM(Element,RotM,n)
-!!------------------------------------------------------------------------------
-!   IMPLICIT NONE
-!   TYPE(Element_t) :: Element
-!   INTEGER :: k, l, m, j, n
-!   REAL(KIND=dp) :: RotM(3,3,n)
-!   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-!   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-!   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-!   LOGICAL, SAVE :: visited = .FALSE.
-! 
-!
-!   IF(.NOT. visited) THEN
-!     visited = .TRUE.
-!     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
-!     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-!       CALL Fatal('GetElementRotM','RotM E variable not found')
-!     END IF
-!   END IF
-!
-!   RotM = 0._dp
-!   DO j = 1, n
-!     DO k=1,RotMvar % DOFs
-!       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-!             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-!     END DO
-!   END DO
-!
-!!------------------------------------------------------------------------------
-! END SUBROUTINE GetElementRotM
-!!------------------------------------------------------------------------------
-
-!!------------------------------------------------------------------------------
-! SUBROUTINE GetElementRotM(Element,RotM,n)
-!!------------------------------------------------------------------------------
-!   IMPLICIT NONE
-!   TYPE(Element_t) :: Element
-!   INTEGER :: k, l, m, j, n
-!   REAL(KIND=dp) :: RotM(3,3,n)
-!   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-!   LOGICAL, SAVE :: visited = .FALSE.
-!   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-!   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-!  
-!   IF(.NOT. visited) THEN
-!     visited = .TRUE.
-!     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
-!     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-!       CALL Fatal('GetElementRotM','RotM E variable not found')
-!     END IF
-!   END IF
-!
-!   RotM = 0._dp
-!   DO j = 1, n
-!     DO k=1,RotMvar % DOFs
-!       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-!             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-!     END DO
-!   END DO
-!
-!!------------------------------------------------------------------------------
-! END SUBROUTINE GetElementRotM
-!!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
  END MODULE MGDynMaterialUtils
