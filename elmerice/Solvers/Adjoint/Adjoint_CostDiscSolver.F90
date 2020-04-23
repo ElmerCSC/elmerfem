@@ -29,6 +29,30 @@
 ! *  Original Date: 
 ! * 
 ! *****************************************************************************
+SUBROUTINE Adjoint_CostDiscSolver_init0(Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+  
+  Name = ListGetString( Solver % Values, 'Equation',UnFoundFatal=.TRUE.)
+  CALL ListAddNewString( Solver % Values,'Variable',&
+          '-nooutput '//TRIM(Name)//'_var')
+  CALL ListAddLogical(Solver % Values, 'Optimize Bandwidth',.FALSE.)
+
+  CALL ListAddInteger(Solver % Values, 'Nonlinear System Norm Degree',0)
+
+END SUBROUTINE Adjoint_CostDiscSolver_init0
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
@@ -614,7 +638,10 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
             close(IO)
             write(Message,'(A,A,I0)') trim(SolverName),'total number of data points:',NTOT
             call INFO(SolverName,Message,level=3)
+            Cost_S=Cost
    END IF
+
+   Solver % Variable % Values(1)=Cost_S
    
    If (FirstRound.AND.SAVE_USED_DATA) THEN
 

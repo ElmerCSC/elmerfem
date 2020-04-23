@@ -1,4 +1,4 @@
-## Adjoint_LinearSolver
+## Adjoint_CostDiscSolver
 
 **Module name**: Adjoint_CostDiscSolver  
 **Module subroutines**: Adjoint_CostDiscSolver 
@@ -45,12 +45,7 @@ Solver *solver id*
   
     Equation = String "Cost"  
     procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
-     # The solver must have a variable so that all the structures for the solver exist
-     #  however it is a dummy variable that does not need to be visualised
-    Variable = -nooutput "CostV" 
-    Variable DOFs = 1
-     # no need for Bandwidth optimisation
-    Optimize Bandwidth = logical false
+    ## No need to declare a variable, this is done internally to insure that Solver structures exist
      
      # Name of an ascii file that will contain the cost value as
      ## Time, J, RMS=sqrt(2J/Nobs)
@@ -117,7 +112,9 @@ It is possible to use a passive condition in the body force, if we want to skip 
 
 ```
 Body Force i
- CostV Passive = ...
+ # the name of the  solver variable is NameOfEquation_var
+ # keywords relative with passive elements can be used
+ Cost_var Passive = ...
 End
 ```
 
