@@ -1212,10 +1212,21 @@ CONTAINS
            END IF
          END IF
 
-         CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
-         IF ( Found ) THEN
-            k = SIZE(Work,1)
-            StressLoad(1:k,1:n) = Work(1:k,1,1:n)
+
+         IF( ListCheckPrefix( BodyForce,'Stress Load' ) ) THEN         
+           CALL ListGetRealArray( BodyForce, 'Stress Load', Work, n, NodeIndexes, Found )
+           IF ( Found ) THEN
+             k = SIZE(Work,1)
+             StressLoad(1:k,1:n) = Work(1:k,1,1:n)
+           END IF
+           IF(.NOT. Found ) THEN
+             StressLoad(1,1:n) = GetReal( BodyForce,'Stress Load 1', Found ) 
+             StressLoad(2,1:n) = GetReal( BodyForce,'Stress Load 2', Found ) 
+             StressLoad(3,1:n) = GetReal( BodyForce,'Stress Load 3', Found ) 
+             StressLoad(4,1:n) = GetReal( BodyForce,'Stress Load 4', Found ) 
+             StressLoad(5,1:n) = GetReal( BodyForce,'Stress Load 5', Found ) 
+             StressLoad(6,1:n) = GetReal( BodyForce,'Stress Load 6', Found ) 
+           END IF
          END IF
 
          CALL ListGetRealArray( BodyForce, 'Strain Load', Work, n, NodeIndexes, Found )
@@ -1380,12 +1391,21 @@ CONTAINS
             Beta_im(1:n) =  GetReal( BC, 'Normal Force im',Found )
           END IF
 
-          CALL ListGetRealArray( BC, 'Stress Load', Work, &
-                  n, NodeIndexes, Found )
           StressLoad = 0.0d0
-          IF ( Found ) THEN
-             k = SIZE(Work,1)
-             StressLoad(1:k,1:n) = Work(1:k,1,1:n)
+          IF( ListCheckPrefix( BC,'Stress Load' ) ) THEN         
+            CALL ListGetRealArray( BC, 'Stress Load', Work, n, NodeIndexes, Found )
+            IF ( Found ) THEN
+              k = SIZE(Work,1)
+              StressLoad(1:k,1:n) = Work(1:k,1,1:n)
+            END IF
+            IF(.NOT. Found ) THEN
+              StressLoad(1,1:n) = GetReal( BC,'Stress Load 1', Found ) 
+              StressLoad(2,1:n) = GetReal( BC,'Stress Load 2', Found ) 
+              StressLoad(3,1:n) = GetReal( BC,'Stress Load 3', Found ) 
+              StressLoad(4,1:n) = GetReal( BC,'Stress Load 4', Found ) 
+              StressLoad(5,1:n) = GetReal( BC,'Stress Load 5', Found ) 
+              StressLoad(6,1:n) = GetReal( BC,'Stress Load 6', Found ) 
+            END IF
           END IF
 
           DampCoeff(1:n) =  GetReal( BC, 'Damping', Found )
