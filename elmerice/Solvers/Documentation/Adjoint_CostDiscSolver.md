@@ -1,7 +1,7 @@
 ## Adjoint_CostDiscSolver
 
 **Module name**: Adjoint_CostDiscSolver  
-**Module subroutines**: Adjoint_CostDiscSolver 
+**Module subroutines**: Adjoint_CostDiscSolver  
 **Module authors**: Fabien Gillet-Chaulet (IGE-Grenoble)  
 **Document authors**: Fabien Gillet-Chaulet  
 **Document edited**: 23.04.2020  
@@ -85,6 +85,7 @@ Solver *solver id*
      ## Keywords related to Observations in ASCII:
       Parallel Observation Files = Logical  ! if True each partition will read her own file; partition number precede the suffix
      Pre-Processed File = Logical ! if true expect to find the Active element number in last column (i.e. we re-read an ascii file saved by the same solver)
+     Element Number is Active Number = Logical ! Set to True if The element number shoudl be interpreted as the the active elemen number
    
      ## Keywords related to Observations in NETCDF:
      X Dim Name = File "" [default "x"] ! name of the dimension for x
@@ -117,7 +118,10 @@ End
 
 ### 3. Limitations and possible improvments
 
-The search algorithm to locate the observations in the mesh is very efficient if the solver is executed on the whole mesh (e.g. for vertcially integrated models); however it is not efficient if the solver is executed on a boundary. In this case, if working with Elmer internal extrusion, it can be advantageus to first execute this solver alone on the 2D footprint using *save used data = Logical TRUE*, and then re-read the saved files using *Pre-Processed File = Logical TRUE*. In this case, if running parallell, the same number of partitions must be used and set *Parallel Observation Files = Logical True*
+The search algorithm to locate the observations in the mesh is very efficient if the solver is executed on the whole mesh (e.g. for vertcially integrated models); however it is not efficient if the solver is executed on a boundary. 
+In this case, if working with Elmer internal extrusion, it can be advantageus to :
+- first execute this solver alone on the 2D footprint using *save used data = Logical TRUE*, 
+- then re-read the saved files using *Pre-Processed File = Logical TRUE* and *Element Number is Active Number = Logical TRUE*. In this case, if running parallell, the same number of partitions must be used and set *Parallel Observation Files = Logical True*
 
 Bellow is a list of features that are not currently possible in this solver but that could be implemented:
 - We could take into account statistics on the observation errors in the definition of the cost function. This could be simple informations on the variance of a full error-covariance matrix.

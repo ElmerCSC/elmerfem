@@ -131,7 +131,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL,SAVE :: FirstRound=.True.
   LOGICAL,SAVE :: SAVE_USED_DATA=.False.
   LOGICAL :: Found
-  LOGICAL :: ParallelFile,ProcessedFile
+  LOGICAL :: ParallelFile,ProcessedFile,ActiveNumbering
 
   INTEGER :: CoordDIM ! Coordinate sytem dimension for the observations points
   INTEGER,SAVE :: VarDIM   ! Dimension of the observed Variable
@@ -391,6 +391,9 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      ENDIF
 
      ProcessedFile = ListGetLogical(SolverParams,'Pre-Processed File')
+     IF (ProcessedFile) THEN
+        ActiveNumbering=ListGetLogical(SolverParams,"Element Number is Active Number")
+     ENDIF
                
      open(IO,file=trim(SideParFile),status = 'old',iostat = ok)
      if(ok /= 0) then
@@ -414,10 +417,15 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      do i=1,nobs
        IF (ProcessedFile) THEN
          read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM),AI
-         Element => GetActiveElement(AI)
-         IF (.NOT.ASSOCIATED(Element)) &
+
+         IF (ActiveNumbering) THEN
+           Element => GetActiveElement(AI)
+           IF (.NOT.ASSOCIATED(Element)) &
                CALL FATAL(SolverName,'No Active Element')
-         InElement(i) = Element % ElementIndex
+           InElement(i) = Element % ElementIndex
+         ELSE
+           InElement(i) = AI
+         ENDIF
        ELSE
          read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM)
        ENDIF

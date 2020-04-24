@@ -1,7 +1,7 @@
 ## Adjoint_CostContSolver
 
 **Module name**: Adjoint_CostContSolver  
-**Module subroutines**: Adjoint_CostContSolver 
+**Module subroutines**: Adjoint_CostContSolver  
 **Module authors**: Fabien Gillet-Chaulet (IGE-Grenoble)  
 **Document authors**: Fabien Gillet-Chaulet  
 **Document edited**: 23.04.2020  
