@@ -463,7 +463,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
   IF (VbSol%DOFs.NE.Variable%DOFs) & 
         CALL FATAL(Trim(SolverName),'DOFs do not correspond')
-  IF (VarDIM.LT.Variable%DOFs) & 
+  IF (VarDIM.GT.Variable%DOFs) & 
           CALL FATAL(Trim(SolverName),'Observed Variable DIM too large')
 !
  Mesh => GetMesh()
