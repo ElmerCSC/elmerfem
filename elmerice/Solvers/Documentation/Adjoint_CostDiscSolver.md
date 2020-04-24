@@ -48,7 +48,7 @@ Solver *solver id*
     ## No need to declare a variable, this is done internally to insure that Solver structures exist
      
      # Name of an ascii file that will contain the cost value as
-     ## Time, J, RMS=sqrt(2J/Nobs)
+     ## Time, Lambda*J, RMS=sqrt(2J/(Nobs*Lambda))
      Cost Filename = File ""
      
      # Name of the variable that contain the cost value
@@ -63,20 +63,17 @@ Solver *solver id*
      
      # Name of the file that contains the observations
      ## can be netcdf (with .nc extension) or ascii (any other extension)
-     ## redaing netcdf is only possible for observation in a 2D plane
+     ## reading netcdf is only possible for observations in a 2D plane
+     ## Coordinates dimension of the Obs. must be consistent with Pb dimension;
+     ##  i.e. CoordsystemDim if solver is on the bulk or (CoordsystemDim-1) if solver is on a boundary
      Observation File Name = File "" 
-     
-     # dimension of the coordinates system in the observation file?
-     ## Can be 1 for 1D simulations, 2 if observations are given at (x,y) locations
-     ## or 3 if observations are given at (x,y,z) locations
-     Coordinates Dimension = Integer ....
      
      # If the variable is a vector, how many component do we observe?
      ## it will be the first *n* components
      Observed Variable dimension = Integer ...
    
      # If true data that have been found in the mesh at the first visit will be saved in an ascii file
-     ## will save coordiantes, observation, element number
+     ## will save coordinates, observation, element number
      ## there will be one file per partition
      Save used data = Logical 
      ## if yes name of the output file
@@ -87,7 +84,7 @@ Solver *solver id*
      
      ## Keywords related to Observations in ASCII:
       Parallel Observation Files = Logical  ! if True each partition will read her own file; partition number precede the suffix
-     Pre-Processed File = Logical ! if true expect to find the element number in last column (i.e. we re-read an ascii file saved by the same solver)
+     Pre-Processed File = Logical ! if true expect to find the Active element number in last column (i.e. we re-read an ascii file saved by the same solver)
    
      ## Keywords related to Observations in NETCDF:
      X Dim Name = File "" [default "x"] ! name of the dimension for x

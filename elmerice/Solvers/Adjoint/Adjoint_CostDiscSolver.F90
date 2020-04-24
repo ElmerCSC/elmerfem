@@ -148,6 +148,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   INTEGER,PARAMETER :: IO=12
   INTEGER :: ok
   LOGICAL :: WarnActive
+  LOGICAL :: BoundarySolver
 
   ! Variables with obs.
   REAL(KIND=dp),ALLOCATABLE,SAVE :: xobs(:,:),Vobs(:,:)
@@ -164,14 +165,15 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: xmin,ymin,xmax,ymax
 
 
-
-
   SolverParams => GetSolverParams()
-  CoordDIM=GetInteger(SolverParams ,'Coordinates Dimension',Found)
-  If (.NOT.Found) then
-     CALL WARN(SolverName,'Keyword >Coordinates Dimension< not found, assume DIM = CoordinateSystemDimension()')
-     CoordDIM = CoordinateSystemDimension()
-  Endif
+
+  !! check if we are on a boundary or in the bulk
+  BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+  IF (BoundarySolver) THEN
+    CoordDIM = CoordinateSystemDimension() - 1
+  ELSE
+    CoordDIM = CoordinateSystemDimension()
+  ENDIF
 
 ! Get min/max coordinates of current mesh
   xmin=MINVAL(Solver%Mesh%Nodes%x(:))
