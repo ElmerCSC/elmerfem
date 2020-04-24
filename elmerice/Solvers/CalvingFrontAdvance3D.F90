@@ -60,11 +60,12 @@
         MeltRate, Displace(3), NodeHolder(3), DangerGrad, ShiftTo, direction, &
         ShiftDist, y_coord(2), epsShift, ShiftToY, LongRangeLimit, MaxDisplacement, LimitZ, &
         p1(2),p2(2),q1(2),q2(2),intersect(2), LeftY, RightY, EpsTangle,thisEps,Shift, thisY
-   REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), Advance(:)
+   REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), ColumnNormals(:,:), &
         TangledShiftTo(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
-        Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting
+        Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
+        IgnoreVelo
    LOGICAL, ALLOCATABLE :: DangerZone(:), WorkLogical(:), UpdatedColumn(:),&
         Tangled(:), DontMove(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VeloVarName, MeltVarName, &
@@ -91,13 +92,22 @@
    DOFs = Var % DOFs
    IF(Var % DOFs /= 3) CALL Fatal(SolverName, "Variable should have 3 DOFs...")
 
-   !Get the flow solution
-   VeloVarName = ListGetString(Params, "Flow Solution Variable Name", Found)
+   IgnoreVelo = ListGetLogical(Params, "Ignore Velocity", Found)
    IF(.NOT. Found) THEN
-     CALL Info(SolverName, "Flow Solution Variable Name not found, assuming 'Flow Solution'")
-     VeloVarName = "Flow Solution"
+     IgnoreVelo = .FALSE.
+   ELSE
+     CALL Info(SolverName, "Ignoring velocity (melt undercutting only)")
    END IF
-   VeloVar => VariableGet(Mesh % Variables, VeloVarName, .TRUE., UnfoundFatal=.TRUE.)
+
+   IF(.NOT. IgnoreVelo) THEN
+     !Get the flow solution
+     VeloVarName = ListGetString(Params, "Flow Solution Variable Name", Found)
+     IF(.NOT. Found) THEN
+       CALL Info(SolverName, "Flow Solution Variable Name not found, assuming 'Flow Solution'")
+       VeloVarName = "Flow Solution"
+     END IF
+     VeloVar => VariableGet(Mesh % Variables, VeloVarName, .TRUE., UnfoundFatal=.TRUE.)
+   END IF
 
    !Get melt rate
    MeltVarName = ListGetString(Params, "Melt Variable Name", Found)
@@ -119,10 +129,7 @@
 
    !Get the orientation of the calving front, compute rotation matrix
    !TODO: generalize and link
-   PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', Found, UnfoundFatal=.TRUE.)
-   DO i=1,3
-      FrontOrientation(i) = PArray(i,1)
-   END DO
+   FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
 
    DangerGrad = ListGetConstReal(Params, "Front Gradient Threshold", Found)
@@ -183,8 +190,8 @@
    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
         .FALSE., FrontPerm, FaceNodeCount)
 
-   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontMaskName, &
-        FrontNodes, FrontNodeNums, Parallel, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontNodes, &
+        FrontNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
 
    !Pass FrontNodeNums to all CPUs
    IF(Boss) FrontLineCount = SIZE(FrontNodeNums)
@@ -268,11 +275,14 @@
        NodeMelt = 0.0_dp
      END IF
 
-     !Compute front normal component of velocity
-     NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
-     NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
-     NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
-
+     IF(IgnoreVelo) THEN
+       NodeVelo = 0.0
+     ELSE
+       !Compute front normal component of velocity
+       NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
+       NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
+       NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
+     END IF
 
      Displace = 0.0
 
@@ -300,8 +310,6 @@
        Advance((Perm(i)-1)*DOFs + 3) = 0.0_dp
      END IF
    END DO
-
-
    !----------------------------------------------------------
    ! Now we need to look for and limit  regions on the
    ! where high gradient + 'straightness' makes
@@ -317,7 +325,6 @@
    !    causes unprojectability the other way.
    !  - Prevent Unprojectability - requires knowledge of neighbouring columns
    !----------------------------------------------------------
-
    !-------------------------------------------
    ! Cycle columns, looking at average normal for the column
    !-------------------------------------------
@@ -328,15 +335,11 @@
    ! will only have a few columns (if any)
    ! So, mark troublesome columns where present, then communicate
    !-------------------------------------------
-
    DO i=1,FrontLineCount
      col = FrontColumnList(i)
-
      hits = COUNT(FNColumns == col)
      IF(hits == 0) CYCLE
-
      ColumnNormal = 0.0_dp
-
      !Gather normal vector
      DO j=1,Mesh % NumberOfNodes
        IF(FNColumns(j) == col) THEN
@@ -348,14 +351,12 @@
               NormalVar % Values(((NormalVar % Perm(j)-1)*NormalVar % DOFs) + 3)
        END IF
      END DO
-
      !unit vector
      ColumnNormal = ColumnNormal / hits
      !Convert to front coordinate system
      ColumnNormal = MATMUL( RotationMatrix, ColumnNormal )
      !Save for later
      ColumnNormals(i,1:3) = ColumnNormal(1:3)
-
      !We're concerned with the lateral (rather than vertical) component
      IF( ABS(ColumnNormal(2) / ColumnNormal(3)) > DangerGrad ) THEN
        DangerZone(i) = .TRUE.
@@ -400,27 +401,21 @@
    Rot_y_coords(:,2) = -HUGE(0.0_dp)
    Rot_z_coords(:,1) = HUGE(0.0_dp)
    Rot_z_coords(:,2) = -HUGE(0.0_dp)
-
    DO i=1,FrontLineCount
      col = FrontColumnList(i)
      IF(COUNT(FNColumns == col) == 0) CYCLE
-
      DO j=1,Mesh % NumberOfNodes
        IF(FNColumns(j) /= col) CYCLE
-
        NodeHolder(1) = Mesh % Nodes % x(j) + Advance((Perm(j)-1)*DOFs + 1)
        NodeHolder(2) = Mesh % Nodes % y(j) + Advance((Perm(j)-1)*DOFs + 2)
        NodeHolder(3) = Mesh % Nodes % z(j) + Advance((Perm(j)-1)*DOFs + 3)
        NodeHolder = MATMUL(RotationMatrix, NodeHolder)
-
        Rot_y_coords(i,1) = MIN(Rot_y_coords(i,1), NodeHolder(2))
        Rot_y_coords(i,2) = MAX(Rot_y_coords(i,2), NodeHolder(2))
-
        Rot_z_coords(i,1) = MIN(Rot_z_coords(i,1), NodeHolder(3))
        Rot_z_coords(i,2) = MAX(Rot_z_coords(i,2), NodeHolder(3))
      END DO
    END DO
-
    !-----------------------------------
    ! Limit lateral range (to 0) in DangerZone
    !-----------------------------------
@@ -428,34 +423,26 @@
    ! in a region of high gradient, the unmelted parts of that column also shift
    ! with the melt.
    ! This is a minor limitation, but better than Free Surface Equation!
-
    DO i=1,FrontLineCount
      IF(.NOT. DangerZone(i)) CYCLE
-
      col = FrontColumnList(i)
      hits = COUNT(FNColumns == col)
-
      IF(hits == 0) CYCLE
-
      ALLOCATE(NodeNumbers(hits), &
           ColumnNodes % x(hits),&
           ColumnNodes % y(hits),&
           ColumnNodes % z(hits))
-
      ColumnNodes % NumberOfNodes = hits
-
      !Gather nodenumbers in column
      county = 0
      DO j=1,Mesh % NumberOfNodes
        IF(FNColumns(j) /= col) CYCLE
        county = county + 1
-
        NodeNumbers(county) = j
        ColumnNodes % x(county) = Mesh % Nodes % x(j) + Advance((Perm(j)-1)*DOFs + 1)
        ColumnNodes % y(county) = Mesh % Nodes % y(j) + Advance((Perm(j)-1)*DOFs + 2)
        ColumnNodes % z(county) = Mesh % Nodes % z(j) + Advance((Perm(j)-1)*DOFs + 3)
      END DO
-
      !direction - which way is this part of the front pointing?
      ShiftLeft = ColumnNormals(i,2) > 0
      IF(ShiftLeft) THEN
@@ -463,51 +450,41 @@
      ELSE
        ShiftTo = -HUGE(ShiftTo)
      END IF
-
      !Rotate points and find furthest left (or right)
      DO j=1,ColumnNodes % NumberOfNodes
        NodeHolder(1) = ColumnNodes % x(j)
        NodeHolder(2) = ColumnNodes % y(j)
        NodeHolder(3) = ColumnNodes % z(j)
        NodeHolder = MATMUL(RotationMatrix, NodeHolder)
-
        IF(ShiftLeft) THEN
          IF(NodeHolder(2) < ShiftTo) ShiftTo = NodeHolder(2)
        ELSE
          IF(NodeHolder(2) > ShiftTo) ShiftTo = NodeHolder(2)
        END IF
      END DO
-
      !Now, for each node in column, compute the displacement (in rotated y coordinate)
      DO j=1,ColumnNodes % NumberOfNodes
        NodeHolder(1) = ColumnNodes % x(j)
        NodeHolder(2) = ColumnNodes % y(j)
        NodeHolder(3) = ColumnNodes % z(j)
        NodeHolder = MATMUL(RotationMatrix, NodeHolder)
-
        ShiftDist = ShiftTo - NodeHolder(2)
-
        Displace = 0.0_dp
        Displace(2) = ShiftDist
-
        Displace = MATMUL(TRANSPOSE(RotationMatrix), Displace)
-
        !Adjust the variable values to shift nodes in line.
        Advance((Perm(NodeNumbers(j))-1)*DOFs + 1) = &
             Advance((Perm(NodeNumbers(j))-1)*DOFs + 1) + Displace(1)
        Advance((Perm(NodeNumbers(j))-1)*DOFs + 2) = &
             Advance((Perm(NodeNumbers(j))-1)*DOFs + 2) + Displace(2)
-
        IF(Debug) PRINT *,'node: ',NodeNumbers(j),' shifting: ',ShiftDist,' to ',ShiftTo,' point: ', &
             ColumnNodes % x(j),ColumnNodes % y(j),ColumnNodes % z(j)
      END DO
-
      DEALLOCATE(NodeNumbers, &
           ColumnNodes % x, &
           ColumnNodes % y, &
           ColumnNodes % z)
    END DO
-
    !-----------------------------------
    ! Limit longitudinal range everywhere
    !-----------------------------------
@@ -718,11 +695,11 @@
          IF(DontMove(i)) THEN
            ShiftSecond = .FALSE.
            DontMove(i-1) = .TRUE.
-           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, dont move second: ',i
+           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, do not move second: ',i
          ELSE IF(DontMove(i-1)) THEN
            ShiftSecond = .TRUE.
            DontMove(i) = .TRUE.
-           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, dont move first: ',i-1
+           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, do not move first: ',i-1
          ELSE
            IF(SUM(Rot_z_coords(i,:)) > SUM(Rot_z_coords(i-1,:))) THEN
              ShiftSecond = .TRUE.
@@ -834,84 +811,63 @@
    ! 3 : Long straight sides which also happen to tangle with the end of their headlands
    !     are not well handled. All the nodes along these sides are shifted out the way
    !     in the new mesh
-
-
    NoTangledGroups = 0
    DO i=1,FrontLineCount-2
      IF(Tangled(i)) CYCLE
      j = i+2
-
      !If the column two columns away is less than 2*epsShift away, and there
      !is a change of direction, problems...
      IF((Rot_y_coords(j,1) - Rot_y_coords(i,2)) < 2*epsShift) THEN
-
        IF(((Rot_z_coords(i,1) < Rot_z_coords(i+1,1)) .NEQV. &
             (Rot_z_coords(i+1,1) < Rot_z_coords(j,1))) .OR. &
             ((Rot_z_coords(i,2) < Rot_z_coords(i+1,2)) .NEQV. &
             (Rot_z_coords(i+1,2) < Rot_z_coords(j,2)))) THEN
-
          !Either a pinnacle or a slit (i.e protrusion or rift)
          Protrusion = SUM(Rot_z_coords(i+1,:)) > SUM(Rot_z_coords(i,:))
          IF(Debug) PRINT *,'Debug, protrusion: ',Protrusion
-
          NoTangledGroups = NoTangledGroups + 1
          PivotIdx = i+1
-
          DO k=2,PivotIdx
            p1(1) = Rot_y_coords(k,2)
            p1(2) = Rot_z_coords(k,2)
-
            p2(1) = Rot_y_coords(k-1,2)
            p2(2) = Rot_z_coords(k-1,2)
-
            DO m=FrontLineCount-1,PivotIdx,-1
              IF(k==m) CYCLE !first two will always intersect by definition, not what we want
              q1(1) = Rot_y_coords(m,1)
              q1(2) = Rot_z_coords(m,1)
-
              q2(1) = Rot_y_coords(m+1,1)
              q2(2) = Rot_z_coords(m+1,1)
-
              CALL LineSegmentsIntersect ( p1, p2, q1, q2, intersect, intersect_flag )
-
              IF(intersect_flag) EXIT
            END DO
            IF(intersect_flag) EXIT
          END DO
-
          IF(intersect_flag) THEN
-
            !Found an intersection point (intersect)
            PRINT *,'Debug, found tangle intersection ',intersect,' leaving last tangled nodes: ',k,m
-
            Tangled(k:m) = .TRUE.
            TangledPivotIdx(k:m) = PivotIdx
            TangledShiftTo(k:m) = intersect(1)
-
            IF(Protrusion) THEN
              TangledGroup(k:m) = NoTangledGroups
            ELSE
              TangledGroup(k:m) = -NoTangledGroups
            END IF
-
          ELSE
-           PRINT *,'Debug, found no intersection, so nodes arent QUITE tangled: ',i,j
-
+           PRINT *,'Debug, found no intersection, so nodes are not QUITE tangled: ',i,j
            Tangled(i:j) = .TRUE.
            TangledPivotIdx(i:j) = PivotIdx
            TangledShiftTo(i:j) = (SUM(rot_y_coords(i,:)) + SUM(rot_y_coords(j,:))) / 4.0_dp
-
            IF(Protrusion) THEN
              TangledGroup(i:j) = NoTangledGroups
            ELSE
              TangledGroup(i:j) = -NoTangledGroups
            END IF
-
          END IF
        END IF
      END IF
    END DO
-
    !Check for a tangled group 'swallowing' another
    county = 0
    DO i=1,NoTangledGroups
@@ -923,7 +879,6 @@
      END DO
    END DO
    NoTangledGroups = NoTangledGroups - county
-
    !Strategy:
    ! Shift all nodes to near (offset) the y-coordinate
    ! of the tangle pivot (i+1, above)
@@ -936,7 +891,6 @@
        Protrusion = .TRUE.
      END IF
      IF(n==0) CALL Fatal(SolverName, "Programming error: tangled group has 0 nodes?")
-
      !Get the pivot node index, ShiftToY, and tangled node range
      FirstTangleIdx = 0
      LastTangleIdx = 0
@@ -949,18 +903,14 @@
          !EXIT
        END IF
      END DO
-
      IF(LastTangleIdx - FirstTangleIdx /= n-1) CALL Fatal(SolverName, &
           "Programming error: wrong number of nodes in TangledGroup")
      IF(Debug) PRINT *,'Debug, tangled pivot index, ShiftToY: ', PivotIdx, ShiftToY
-
      LeftY =  ShiftToY - (epsTangle * ((n-1) / 2.0_dp))
      RightY = ShiftToY + (epsTangle * ((n-1) / 2.0_dp))
-
      !Potentially 'squeezed' on either side by neighbour columns
      SqueezeLeft = .FALSE.
      SqueezeRight = .FALSE.
-
      IF(LeftY < Rot_y_coords(FirstTangleIdx-1,2) + epsTangle) THEN
        SqueezeLeft = .TRUE.
        IF( ( (Rot_y_coords(LastTangleIdx+1,1) - epsTangle) - (epsTangle * (n-1)) ) < &
@@ -975,11 +925,9 @@
          SqueezeLeft = .TRUE.
        END IF
      END IF
-
      IF(Debug) PRINT *,'Debug, LeftY: ',LeftY,' RightY: ',RightY,' SqueezeL: ',&
           SqueezeLeft,' SqueezeR: ',SqueezeRight,' prev: ',Rot_y_coords(FirstTangleIdx-1,2),&
           ' next: ',Rot_y_coords(LastTangleIdx+1,1)
-
      !If squeezed, adjust the new y coord of the tangled nodes
      IF(SqueezeLeft .AND. SqueezeRight) THEN
        thisEps = (Rot_y_coords(LastTangleIdx+1,1) - Rot_y_coords(FirstTangleIdx-1,2)) / (n+1)
@@ -997,34 +945,25 @@
        RightY = RightY + Shift
        ShiftToY = ShiftToY + Shift
      END IF
-
      !Where tangling occurs, we shift the tangled columns to be
      !1m apart in a series. Then Remesh gets rid of them
      DO j=FirstTangleIdx,LastTangleIdx
        IF(.NOT. (TangledGroup(j) == i .OR. TangledGroup(j) == -i)) &
             CALL Fatal(SolverName, "Programming error: node in specified idx range not tangled?")
-
        thisY = LeftY + ((REAL(j - FirstTangleIdx)/(n-1)) * (RightY - LeftY))
        IF(Debug) PRINT *,'Debug, thisY: ',thisY, j
-
        DO k=1,Mesh % NumberOfNodes
          IF(FNColumns(k) /= FrontColumnList(j)) CYCLE
-
          NodeHolder(1) = Mesh % Nodes % x(k) + Advance((Perm(k)-1)*DOFs + 1)
          NodeHolder(2) = Mesh % Nodes % y(k) + Advance((Perm(k)-1)*DOFs + 2)
          NodeHolder(3) = Mesh % Nodes % z(k) + Advance((Perm(k)-1)*DOFs + 3)
          IF(Debug) PRINT *, ParEnv % MyPE, ' Debug, pre shift tangled node ',k,': ',NodeHolder
-
          NodeHolder = MATMUL(RotationMatrix, NodeHolder)
-
          Displace = 0.0_dp
          Displace(2) = thisY - NodeHolder(2)
-
          Displace = MATMUL(TRANSPOSE(RotationMatrix), Displace)
-
          IF(Debug) PRINT *,ParEnv % MyPE, ' Debug, shifting node ',k, ' col ',j,&
               ' by ',Displace,' to detangle.'
-
          !Adjust the variable values to shift nodes in line.
          Advance((Perm(k)-1)*DOFs + 1) = Advance((Perm(k)-1)*DOFs + 1) + Displace(1)
          Advance((Perm(k)-1)*DOFs + 2) = Advance((Perm(k)-1)*DOFs + 2) + Displace(2)
@@ -1033,13 +972,9 @@
        END DO
      END DO
    END DO
-
-
    !---------------------------------------
    !Done, just deallocations
-
    FirstTime = .FALSE.
-
    DEALLOCATE(FrontPerm, &
         TopPerm, &
         FrontNodeNums, &
@@ -1052,5 +987,4 @@
         TangledShiftTo, &
         FrontColumnList, &
         FrontLocalNodeNumbers)
-
  END SUBROUTINE FrontAdvance3D

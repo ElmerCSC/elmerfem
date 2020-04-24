@@ -83,8 +83,7 @@
         rt0, rt, RealTime
 #endif
 
-   REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), &
-        DistValues(:), CIndexValues(:), WorkReal(:), &
+   REAL(KIND=dp), POINTER :: DistValues(:), CIndexValues(:), WorkReal(:), &
         CalvingValues(:), ForceVector(:)
    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), HeightDirich(:), &
         Rot_y_coords(:,:), Rot_z_coords(:,:)
@@ -169,21 +168,17 @@
       CALL Fatal(SolverName, "Can't find exported variable 'Calving'.")
    IF(CalvingVar % DOFs /= 3) &
         CALL Fatal(SolverName,"Solver variable has wrong number of DOFs")
-
    CalvingValues => CalvingVar % Values
    CalvingPerm => CalvingVar % Perm
    DOFs = CalvingVar % DOFs
-
    NoNodes = Mesh % NumberOfNodes
    ALLOCATE( TopPerm(NoNodes), BotPerm(NoNodes), LeftPerm(NoNodes),&
         RightPerm(NoNodes), FrontPerm(NoNodes))
-
    TopMaskName = "Top Surface Mask"
    BotMaskName = "Bottom Surface Mask"
    LeftMaskName = "Left Sidewall Mask"
    RightMaskName = "Right Sidewall Mask"
    FrontMaskName = "Calving Front Mask"
-
    !Generate perms to quickly get nodes on each boundary
    CALL MakePermUsingMask( Model, Solver, Mesh, TopMaskName, &
         .FALSE., TopPerm, dummyint)
@@ -195,34 +190,24 @@
         .FALSE., RightPerm, dummyint)
    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
         .FALSE., FrontPerm, FaceNodeCount)
-
    !Get the orientation of the calving front, compute rotation matrix
-   PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', &
-        Found, UnfoundFatal=.TRUE.)
-   DO i=1,3
-      FrontOrientation(i) = PArray(i,1)
-   END DO
+   FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
    UnRotationMatrix = TRANSPOSE(RotationMatrix)
-
    NameSuffix = ListGetString(Params, "Calving Append Name", Found, UnfoundFatal=.TRUE.)
    MoveMeshDir = ListGetString(Params, "Calving Move Mesh Dir", Found)
    IF(Found) THEN
      CALL Info(SolverName, "Moving temporary mesh files after done")
      MoveMesh = .TRUE.
    END IF
-
    WRITE(filename_root,'(A,A)') "Calving_temp",TRIM(NameSuffix)
-
    rt = RealTime() - rt0
    IF(ParEnv % MyPE == 0) &
         PRINT *, 'Time taken for variable loading, making perms etc: ', rt
    rt0 = RealTime()
-
    !-----------------------------------------------------------
    !                  Action!
    !-----------------------------------------------------------
-
    !-----------------------------------------------------------
    !
    ! The CIndex "calving criterion":
@@ -232,37 +217,30 @@
    !
    ! 3D extension: If any ( planar principal stress + water_pressure) > 0, crevasse exists
    !-----------------------------------------------------------
-
 !--------------Generate 2D plane mesh-------------------
-
    !Use GetDomainEdge for Front, Left and Right
    !Returns full domain edge to Boss partition only
-   CALL GetDomainEdge(Model, Mesh, TopPerm, LeftMaskName, &
-        LeftNodes, LeftNodeNums, Parallel, Simplify=.FALSE.)
-   CALL GetDomainEdge(Model, Mesh, TopPerm, RightMaskName, &
-        RightNodes, RightNodeNums, Parallel, Simplify=.FALSE.)
-   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontMaskName, &
-        FrontNodes, FrontNodeNums, Parallel, Simplify=.FALSE.)
-
+   CALL GetDomainEdge(Model, Mesh, TopPerm, LeftNodes, &
+        LeftNodeNums, Parallel,  LeftMaskName, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, RightNodes, &
+        RightNodeNums, Parallel, RightMaskName, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontNodes, &
+        FrontNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
    !Determine whether front columns are arranged
    !left to right, and reorder if not. useful later...
    IF(Boss) THEN
      FrontLineCount = SIZE(FrontNodeNums)
-
      NodeHolder(1) = FrontNodes % x(1)
      NodeHolder(2) = FrontNodes % y(1)
      NodeHolder(3) = FrontNodes % z(1)
      NodeHolder = MATMUL(RotationMatrix, NodeHolder)
      y_coord(1) = NodeHolder(2)
-
      NodeHolder(1) = FrontNodes % x(FrontLineCount)
      NodeHolder(2) = FrontNodes % y(FrontLineCount)
      NodeHolder(3) = FrontNodes % z(FrontLineCount)
      NodeHolder = MATMUL(RotationMatrix, NodeHolder)
      y_coord(2) = NodeHolder(2)
-
      LeftToRight = y_coord(2) > y_coord(1)
-
      IF(.NOT. LeftToRight) THEN
        IF(Debug) PRINT *,'Debug, switching to LeftToRight'
        FrontNodeNums = FrontNodeNums(FrontLineCount:1:-1)
@@ -271,27 +249,22 @@
        FrontNodes % z = FrontNodes % z(FrontLineCount:1:-1)
      END IF
    END IF
-
    IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
    IF(Boss) THEN
       !Remove Left and Right nodes beyond the calving search distance
       !NOTE: technically this doesn't guarantee that resulting nodes
       !will be a contiguous subsection of the original, but it almost
       !certainly will be the case
-
       IF(ANY(FrontNodeNums == LeftNodeNums(1))) THEN
          LeftTgt = 1
       ELSE
          LeftTgt = LeftNodes % NumberOfNodes
       END IF
-
       IF(ANY(FrontNodeNums == RightNodeNums(1))) THEN
          RightTgt = 1
       ELSE
          RightTgt = RightNodes % NumberOfNodes
       END IF
-
       ALLOCATE(RemoveNode(LeftNodes % NumberOfNodes))
       RemoveNode = .FALSE.
       DO i=1,LeftNodes % NumberOfNodes
@@ -300,7 +273,6 @@
       END DO
       CALL RemoveNodes(LeftNodes, RemoveNode, LeftNodeNums)
       DEALLOCATE(RemoveNode)
-
       ALLOCATE(RemoveNode(RightNodes % NumberOfNodes))
       RemoveNode = .FALSE.
       DO i=1,RightNodes % NumberOfNodes
@@ -309,15 +281,12 @@
       END DO
       CALL RemoveNodes(RightNodes, RemoveNode, RightNodeNums)
       DEALLOCATE(RemoveNode)
-
    END IF
-
    !---------------------------------------------
    !
    ! Get maximum coverage of calving front (i.e. vertical shadow of front)
    !
    !---------------------------------------------
-
     !Cycle all boundary elements in current partition, get calving face nodes
     ALLOCATE(MyFaceNodeNums(FaceNodeCount))
     j = 0
@@ -327,20 +296,15 @@
        MyFaceNodeNums(j) = i
     END DO
     !Now MyFaceNodeNums is a list of all nodes on the calving boundary.
-
     !Send calving front nodes to boss partition
     IF(Parallel) THEN
-
        Me = ParEnv % MyPe
        PEs = ParEnv % PEs
        comm = ELMER_COMM_WORLD
-
        !Send node COUNT
        IF(Boss) ALLOCATE(PFaceNodeCount(PEs))
-
        CALL MPI_GATHER(FaceNodeCount,1,MPI_INTEGER,PFaceNodeCount,&
             1,MPI_INTEGER, 0, comm, ierr)
-
        IF(Boss) THEN
           FaceNodesT % NumberOfNodes = SUM(PFaceNodeCount)
           n = FaceNodesT % NumberOfNodes
@@ -356,7 +320,6 @@
              disps(i) = disps(i-1) + PFaceNodeCount(i-1)
           END DO
        END IF
-
        !Global NodeNumbers
        CALL MPI_GATHERV(Mesh % ParallelInfo % GlobalDOFs(MyFaceNodeNums),&
             FaceNodeCount,MPI_INTEGER,&
@@ -377,7 +340,6 @@
             FaceNodeCount,MPI_DOUBLE_PRECISION,&
             FaceNodesT % z,PFaceNodeCount,&
             disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
-
        IF(Boss) THEN
           IF(Debug) THEN
              PRINT *, 'Debug Remesh, pre removal nodes: '
@@ -385,7 +347,6 @@
                 PRINT *, FaceNodesT % x(i),FaceNodesT % y(i),FaceNodesT % z(i)
              END DO
           END IF
-
           !Remove duplicates!!!
           ALLOCATE(RemoveNode(FaceNodesT % NumberOfNodes))
           RemoveNode = .FALSE.
@@ -394,9 +355,7 @@
                 RemoveNode(i) = .TRUE.
              END IF
           END DO
-
           CALL RemoveNodes(FaceNodesT, RemoveNode, FaceNodeNums)
-
           IF(Debug) THEN
              PRINT *, 'Size of FaceNodeNums: ', SIZE(FaceNodeNums)
              PRINT *, 'Debug Calving3D, post removal nodes: '
@@ -405,14 +364,12 @@
              END DO
           END IF
        END IF
-
     ELSE !Serial
        n = FaceNodeCount
        ALLOCATE(FaceNodeNums(n),&
             FaceNodesT % x(n),&
             FaceNodesT % y(n),&
             FaceNodesT % z(n))
-
        !This seems a little redundant but it saves
        !some lines of code later on...
        FaceNodeNums = MyFaceNodeNums
@@ -420,9 +377,7 @@
        FaceNodesT % y = Mesh % Nodes % y(MyFaceNodeNums)
        FaceNodesT % z = Mesh % Nodes % z(MyFaceNodeNums)
     END IF
-
     !--------------------------------------------------------------------
-
     !Need global mesh structure info
     IF(Parallel) THEN
        !Rather than summing NoNodes from each part, we simply find
@@ -430,11 +385,9 @@
        CALL MPI_AllReduce(MAXVAL(Mesh % ParallelInfo % GlobalDOFs), TotalNodes, &
             1, MPI_INTEGER, MPI_MAX, comm,ierr)
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
     ELSE
        TotalNodes = NoNodes
     END IF
-
     ExtrudedLevels = GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
     IF(.NOT. Found) ExtrudedLevels = &
          GetInteger(CurrentModel % Simulation,'Remesh Extruded Mesh Levels',Found)
@@ -444,14 +397,11 @@
          CALL Fatal("Remesh","Total number of nodes isn't divisible by number&
          &of mesh levels. WHY?")
     NodesPerLevel = TotalNodes / ExtrudedLevels
-
     IF(Boss) THEN !Master/Slave problem (or serial)
-
        IF(Debug) THEN
           PRINT *, 'Debug remesh, Total nodes: ', TotalNodes
           PRINT *, 'Debug Calving3D, NodesPerLevel: ', NodesPerLevel
        END IF
-
        !note, if ExtrudedLevels is messed with in remeshing, it'll need to be
        !pushed back to simulation
 
@@ -594,7 +544,6 @@
           END DO
           WRITE(GeoUnit,'(A)') ''
        END DO
-
        !---------------Write lines------------------
        DO i=1,WriteNodeCount-1
           WRITE( GeoUnit,'(A,i0,A,i0,A,i0,A)') 'Line(',WritePoints(i),') = {'&
@@ -602,7 +551,6 @@
        END DO
        WRITE( GeoUnit,'(A,i0,A,i0,A,i0,A)') 'Line(',WritePoints(WriteNodeCount),') = {',&
             WritePoints(WriteNodeCount),',',WritePoints(1),'};'
-
        !------------Write physical lines-------------
        counter = 1
        DO i=1,3 !cycle boundaries
@@ -617,8 +565,6 @@
              NodeNums => RightNodeNums
              MaskName = RightMaskName
           END SELECT
-
-
           !Find BC number for physical line
           DO j=1,Model % NumberOfBCs
              Found = ListCheckPresent(Model % BCs(j) % Values,MaskName)
@@ -635,7 +581,6 @@
           IF(Debug) THEN
              PRINT *, 'Debug Calving3D, BC number for ',TRIM(MaskName),' is: ',MeshBC
           END IF
-
           WRITE(GeoUnit,'(A,i0,A)') 'Physical Line(',MeshBC,') = {'
           DO j=1,SIZE(NodeNums)-2
              WRITE(GeoUnit,'(i0,A)') WritePoints(counter),','
@@ -645,18 +590,15 @@
           WRITE(GeoUnit,'(i0,A)') WritePoints(counter),'};'
           counter = counter + 1
        END DO
-
        !--------------Write Line Loop-----------------
        WRITE(GeoUnit, '(A)') 'Line Loop(1) = {'
        DO i=1,WriteNodeCount-1
           WRITE(GeoUnit,'(i0,A)') WritePoints(i),','
        END DO
        WRITE(GeoUnit,'(i0,A)') WritePoints(WriteNodeCount),'};'
-
        WRITE(GeoUnit,'(A)') 'Plane Surface(1)={1};'
        WRITE(GeoUnit,'(A)') 'Physical Surface(3)={1};'
        !TODO, check existing number of bodies, write next, instead of '3'
-
        !-------------Write attractor etc--------------
        WRITE(GeoUnit,'(A)') 'Field[1] = Attractor;'
        WRITE(GeoUnit,'(A)') 'Field[1].NNodesByEdge = 100.0;'
@@ -665,22 +607,18 @@
           WRITE(GeoUnit,'(I0,A)') FrontNodeNums(i),','
        END DO
        WRITE(GeoUnit,'(I0,A)') FrontNodeNums(SIZE(FrontNodeNums)),'};'
-
        WRITE(GeoUnit, '(A)') 'Field[2] = Threshold;'
        WRITE(GeoUnit, '(A)') 'Field[2].IField = 1;'
        WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].LcMin = ',MeshEdgeMinLC,';'
        WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].LcMax = ',MeshEdgeMaxLC,';'
        WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].DistMin = ',MeshLCMinDist,';'
        WRITE(GeoUnit, '(A,F9.1,A)') 'Field[2].DistMax = ',MeshLCMaxDist,';'
-
        WRITE(GeoUnit, '(A)') 'Background Field = 2;'
        WRITE(GeoUnit, '(A)') 'Mesh.CharacteristicLengthExtendFromBoundary = 0;'
-
        rt = RealTime() - rt0
        IF(ParEnv % MyPE == 0) &
             PRINT *, 'Time taken to write mesh file: ', rt
        rt0 = RealTime()
-
        !-----------system call gmsh------------------
        !'env -i' obscures all environment variables, so gmsh doesn't see any
        !MPI stuff and break down.
@@ -721,9 +659,11 @@
     MeshDir = ""
 
     CurrentModel % DIMENSION = 2
-    PlaneMesh => LoadMesh2( Model, MeshDir, filename_root, .FALSE., 1, 0 )
+    PlaneMesh => LoadMesh2( Model, MeshDir, filename_root, .FALSE., 1, 0, LoadOnly=.FALSE.)
     CurrentModel % DIMENSION = 3
-    !NOTE: checked that planemesh exists on every PE, seems fine
+
+    !Isomesh does dodgy things with edgetables, so best to release it here.
+    CALL ReleaseMeshEdgeTables(PlaneMesh)
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -797,57 +737,44 @@
     IF(ASSOCIATED(PCSolver % Matrix)) CALL FreeMatrix(PCSolver % Matrix) !shouldn't be required...
     PCSolver % Matrix => CreateMatrix(Model, PCSolver, PlaneMesh, &
          WorkPerm, 1, MATRIX_CRS, .TRUE.)
-
     !NOTE: ave_cindex is a misnomer. It actually contains the proprtion (0-1) of intact ice...
     CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "ave_cindex", &
          1, WorkReal, WorkPerm)
     NULLIFY(WorkReal)
-
     !Surf cindex (surface crevasses reaching waterline)
     ALLOCATE(WorkReal(n))
     WorkReal = 0.0_dp
     CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "surf_cindex", &
          1, WorkReal, WorkPerm)
     NULLIFY(WorkReal)
-
     !Basal cindex (surface and basal crevasses meeting)
     ALLOCATE(WorkReal(n))
     WorkReal = 0.0_dp
     CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "basal_cindex", &
          1, WorkReal, WorkPerm)
     NULLIFY(WorkReal, WorkPerm)
-
     CrevVar => VariableGet(PlaneMesh % Variables, "ave_cindex", .TRUE.)
     PCSolver % Variable => CrevVar
     PCSolver % Matrix % Perm => CrevVar % Perm
-
-
     !----------------------------------------------------
     ! Run Project Calving solver
     !----------------------------------------------------
     SaveParallelActive = ParEnv % Active(ParEnv % MyPE+1)
     CALL ParallelActive(.TRUE.)
-
     Model % Solver => PCSolver
     CALL SingleSolver( Model, PCSolver, PCSolver % dt, .FALSE. )
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
          PRINT *, 'Time taken up to project cindex into plane: ', rt
     rt0 = RealTime()
-
     PlaneMesh % OutputActive = .TRUE.
-
     Model % Solver => Solver
     Mesh % Next => WorkMesh !Probably null...
-
     !--------------------------------------------------------------
     ! Isosurface solver to find cindex 0 contour
     !--------------------------------------------------------------
-
     IF(Boss) THEN
-
        !Generate PlaneMesh perms to quickly get nodes on each boundary
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, FrontMaskName, &
             .FALSE., PlaneFrontPerm, dummyint)
@@ -855,15 +782,12 @@
             .FALSE., PlaneLeftPerm, dummyint)
        CALL MakePermUsingMask( Model, Solver, PlaneMesh, RightMaskName, &
             .FALSE., PlaneRightPerm, dummyint)
-
        ! Set ave_cindex values to 0.0 on front
        ! In fact, right at the very front, ave_cindex is undefined,
        ! but it ensures that isolines will contact the front
        DO i=1, PlaneMesh % NumberOfNodes
           IF(PlaneFrontPerm(i) > 0) CrevVar % Values(CrevVar % Perm(i)) = 0.0_dp
        END DO
-
-
        ! Locate Isosurface Solver
        DO i=1,Model % NumberOfSolvers
           IF(GetString(Model % Solvers(i) % Values, 'Equation') == Iso_EqName) THEN
@@ -873,20 +797,15 @@
        END DO
        IF(.NOT. ASSOCIATED(IsoSolver)) &
             CALL Fatal("Calving Remesh","Couldn't find Isosurface Solver")
-
        IsoSolver % Mesh => PlaneMesh
        IsoSolver % dt = dt
        IsoSolver % NumberOfActiveElements = 0 !forces recomputation of matrix, is this necessary?
-
        PEs = ParEnv % PEs
        ParEnv % PEs = 1
-
        Model % Solver => IsoSolver
        CALL SingleSolver( Model, IsoSolver, IsoSolver % dt, .FALSE. )
-
        Model % Solver => Solver
        ParEnv % PEs = PEs
-
        !Immediately following call to Isosurface solver, the resulting
        !isoline mesh is the last the list. We want to remove it from the
        !Model % Mesh linked list and attach it to PlaneMesh
@@ -898,19 +817,16 @@
        IsoMesh => WorkMesh
        WorkMesh2 % Next => NULL() !break the list
        PlaneMesh % Next => IsoMesh !add to planemesh
-
        !-------------------------------------------------
        !
        ! Compare rotated isomesh to current calving front
        ! position to see if and where calving occurs
        !
        !-------------------------------------------------
-
        ALLOCATE(IMOnFront(IsoMesh % NumberOfNodes), &
             IMOnSide(IsoMesh % NumberOfNodes))
        IMOnFront = .FALSE.; IMOnSide = .FALSE.
        search_eps = EPSILON(PlaneMesh % Nodes % x(1))
-
        DO i=1, IsoMesh % NumberOfNodes
           Found = .FALSE.
           DO j=1, PlaneMesh % NumberOfNodes
@@ -927,12 +843,10 @@
              WRITE(Message,'(A,i0,A)') "Unable to locate isomesh node ",i," in PlaneMesh."
              CALL Fatal(SolverName, Message)
           END IF
-
           IF(PlaneFrontPerm(j) > 0) IMOnFront(i) = .TRUE.
           IF((PlaneLeftPerm(j) > 0) .OR. &
                (PlaneRightPerm(j) > 0)) IMOnSide(i) = .TRUE.
        END DO
-
        IF(Debug) THEN
           PRINT *, 'debug, count IMOnFront: ', COUNT(IMOnFront)
           PRINT *, 'debug, count IMOnSide: ', COUNT(IMOnSide)
@@ -940,11 +854,9 @@
           PRINT *, 'debug, isomesh boundaryelements,', IsoMesh % NumberOfBoundaryElements
           PRINT *, 'debug, size isomesh elements: ', SIZE(IsoMesh % Elements)
        END IF
-
        !-----------------------------------------------------------------
        ! Cycle elements, deleting any which lie wholly on the front (or side)
        !-----------------------------------------------------------------
-
        ALLOCATE(DeleteMe( IsoMesh % NumberOfBulkElements ))
        DeleteMe = .FALSE.
        DO i=1, IsoMesh % NumberOfBulkElements
@@ -956,31 +868,24 @@
              DeleteMe(i) = .TRUE.
           END IF
        END DO
-
        PRINT *, 'debug, ', COUNT(DeleteMe), ' elements marked for deletion from IsoMesh.'
-
        ALLOCATE(WorkElements(COUNT(.NOT. DeleteMe)))
        WorkElements = PACK(IsoMesh % Elements, (.NOT. DeleteMe))
-
        PRINT *, 'debug, size of workelements: ', SIZE(WorkElements)
-
        IF(Debug) THEN
          DO i=1, SIZE(WorkElements)
            PRINT *, 'Workelements', i, ' nodeindexes: ', &
                 WorkElements(i) % NodeIndexes
          END DO
        END IF
-
        DO i=1, IsoMesh % NumberOfBulkElements
           IF(DeleteMe(i)) CALL DeallocateElement(IsoMesh % Elements(i))
        END DO
-
        DEALLOCATE(DeleteMe)
        IF(ASSOCIATED(IsoMesh % Elements)) DEALLOCATE(IsoMesh % Elements)
        IsoMesh % Elements => WorkElements
        IsoMesh % NumberOfBulkElements = SIZE(WorkElements)
        NULLIFY(WorkElements)
-
        !Find chains which make contact with front twice
        !===============================================
        ! NOTES:
@@ -990,11 +895,9 @@
        ! Also, we have deleted unnecessary elements, but their nodes
        ! remain, but this also isn't a problem as InterpVarToVar
        ! cycles elements, not nodes.
-
        CALL FindCrevassePaths(IsoMesh, IMOnFront, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount, ValidPathCount)
-
+       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount)
        !Debugging statements
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
@@ -1008,37 +911,32 @@
                      ' x: ',IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),&
                      ' y: ',IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i))
              END DO
+             PRINT *,'ID, left, right, extent', CurrentPath % ID, CurrentPath % Left, &
+                  CurrentPath % Right, CurrentPath % Extent
              PRINT *, ''
              CurrentPath => CurrentPath % Next
           END DO
        END IF
-
        ALLOCATE(DeleteMe(IsoMesh % NumberOfBulkElements))
        DeleteMe = .FALSE.
-
        DO i=1, IsoMesh % NumberOfBulkElements
-          IF(ElementPathID(CrevassePaths, i) == 0) DeleteMe(i) = .TRUE.
+         IF(ElementPathID(CrevassePaths, i) == 0) DeleteMe(i) = .TRUE.
        END DO
-
        IF(Debug) THEN
           WRITE (Message,'(A,i0,A)') "Deleting ",COUNT(DeleteMe)," elements which &
                &don't lie on valid crevasse paths."
           CALL Info(SolverName, Message)
        END IF
-
        ALLOCATE(WorkElements(COUNT(.NOT. DeleteMe)))
        WorkElements = PACK(IsoMesh % Elements, (.NOT. DeleteMe))
-
        DO i=1, IsoMesh % NumberOfBulkElements
           IF(DeleteMe(i)) CALL DeallocateElement(IsoMesh % Elements(i))
        END DO
-
        DEALLOCATE(DeleteMe)
        DEALLOCATE(IsoMesh % Elements)
        IsoMesh % Elements => WorkElements
        IsoMesh % NumberOfBulkElements = SIZE(WorkElements)
        NULLIFY(WorkElements)
-
        !InterpVarToVar only looks at boundary elements. In reality, the
        !two are equivalent here because all are 202 elements.
        IsoMesh % NumberOfBoundaryElements = IsoMesh % NumberOfBulkElements
@@ -1052,59 +950,44 @@
             IsoMesh % Nodes % y(0),&
             IsoMesh % Nodes % z(0))
     END IF !Boss
-
     CALL RotateMesh(IsoMesh, RotationMatrix)
     CALL RotateMesh(Mesh, RotationMatrix)
-
     !----------------------------------------------------
     !
     ! Interpolate rotated height (calving front position)
     ! from IsoMesh ONTO main mesh
     !
     !----------------------------------------------------
-
     !First create height var on both IsoMesh and Mesh
     ALLOCATE(WorkReal(IsoMesh % NumberOfNodes),&
          WorkPerm(IsoMesh % NumberOfNodes))
     IF(Boss) WorkReal = IsoMesh % Nodes % z
     DO i=1,SIZE(WorkPerm); WorkPerm(i) = i;
     END DO
-
     CALL VariableAdd(IsoMesh % Variables, IsoMesh, Solver, &
          "CalvingHeight", 1, WorkReal, WorkPerm)
-
     NULLIFY(WorkReal, WorkPerm)
-
     ALLOCATE(WorkReal(COUNT(FrontPerm>0)), WorkPerm(Mesh % NumberOfNodes))
     WorkReal = 0.0_dp
     WorkPerm = FrontPerm
-
     CALL VariableAdd(Mesh % Variables, Mesh, Solver, &
          "CalvingHeight", 1, WorkReal, WorkPerm)
-
     ALLOCATE(InterpDim(2)); InterpDim = (/1,3/);
     CALL ParallelActive(.TRUE.)
     CALL InterpolateVarToVarReduced(IsoMesh, Mesh, "CalvingHeight", InterpDim, UnfoundNodes)
     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
     HeightVar => VariableGet(Mesh % Variables, "CalvingHeight", .TRUE.)
-
     ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
     IsCalvingNode = .FALSE.
     CalvingValues = 0.0_dp !initialize
-
     !Account for slight lateral shift in nodes due to fully lagrangian mesh update
     !Do columns here, if any column nodes hit calving, set others.
-
     ALLOCATE(FNColumns(Mesh % NumberOfNodes))
     FNColumns = MOD(Mesh % ParallelInfo % GlobalDOFs, NodesPerLevel)
-
     DO i=1,Mesh % NumberOfNodes
       IF(FrontPerm(i) <= 0) CYCLE
       IF(HeightVar % Values(HeightVar % Perm(i)) == 0.0_dp) CYCLE
-
       col = FNColumns(i)
-
       DO j=1,Mesh % NumberOfNodes
         IF(FNColumns(j) == col) THEN
           IF(HeightVar % Values(HeightVar % Perm(j)) == 0.0_dp .AND. Debug) &
@@ -1115,14 +998,11 @@
         END IF
       END DO
     END DO
-
     !---------------------------------------------------
     ! Back-rotate interpolated calving Z to calving X,Y
     ! and set calving variable values
     !---------------------------------------------------
-
     CalvingOccurs = .FALSE.
-
     DO i=1, Mesh % NumberOfNodes
        IF(FrontPerm(i) == 0) CYCLE
        IF((LeftPerm(i) > 0) .OR. (RightPerm(i) > 0)) CYCLE !Lateral margins don't move
@@ -1169,13 +1049,10 @@
     !don't need these anymore
     CALL VariableRemove(IsoMesh % Variables, "CalvingHeight")
     CALL VariableRemove(Mesh % Variables, "CalvingHeight")
-
     !Revert element counts
     IsoMesh % NumberOfBulkElements = IsoMesh % NumberOfBoundaryElements
     IsoMesh % NumberOfBoundaryElements = 0
-
     IF(CalvingOccurs) THEN
-
       !==========================================
       ! Look at front element angles relative to front normal to identify
       ! high gradient regions where calving var needs to be adjusted to prevent
@@ -1326,32 +1203,22 @@
                ELSE
                  MovedOne = .TRUE.
                END IF
-
                !Rotate the displaced calving value and set
                NodeHolder = MATMUL(TRANSPOSE(RotationMatrix), NodeHolder)
-
                CalvingValues((CalvingPerm(j)-1)*DOFs + 1) = NodeHolder(1)
                CalvingValues((CalvingPerm(j)-1)*DOFs + 2) = NodeHolder(2)
-
                PRINT *,TRIM(SolverName), ParEnv % MyPE, 'Debug, shifting node ',j,&
                     ' col ',ShiftIdx,'xyz: ',&
                     Mesh % Nodes % x(j)+CalvingValues((CalvingPerm(j)-1)*DOFs + 1),&
                     Mesh % Nodes % y(j)+CalvingValues((CalvingPerm(j)-1)*DOFs + 2),&
                     Mesh % Nodes % z(j)+CalvingValues((CalvingPerm(j)-1)*DOFs + 3),&
                     ' by ',Displace,' to ensure projectability.'
-
              END DO
-
              IF(Parallel) CALL SParIterAllReduceOR(MovedOne)
-
            END IF
          END DO
-
        END DO
-
        DEALLOCATE(FNColumns)
-
-
        !=============================================================
        ! Solve d2height/dz=0 equation to get change in height after calving
        ! retreat.
@@ -1365,13 +1232,10 @@
        ! corresponding dirichlet points
        !
        !--------------------------------------------------------------
-
        ALLOCATE(PWorkLogical(Mesh % NumberOfNodes))
        ALLOCATE(HeightDirich(Mesh % NumberOfNodes))
        HeightDirich = 0.0_dp
-
        DO j=1,2 !Top, then bottom interp
-
           !logical mask for top and bottom front nodes
           ALLOCATE(WorkLogical(Mesh % NumberOfNodes))
           IF(j==1) THEN
@@ -1379,13 +1243,11 @@
           ELSE
              WorkLogical = (FrontPerm > 0) .AND. (BotPerm > 0)
           END IF
-
           WorkMesh => AllocateMesh()
           WorkMesh % NumberOfNodes = COUNT(WorkLogical)
           ALLOCATE(WorkMesh % Nodes % x(WorkMesh % NumberOfNodes),&
                WorkMesh % Nodes % y(WorkMesh % NumberOfNodes),&
                WorkMesh % Nodes % z(WorkMesh % NumberOfNodes))
-
           county = 1
           DO i=1, Mesh % NumberOfNodes
              IF(WorkLogical(i)) THEN
@@ -1395,35 +1257,28 @@
                 county = county + 1
              END IF
           END DO
-
           !Add CalvingHeight variable to both meshes
           ! - this time its the actual Z height, rather than the rotated front height
-
           ! Add to WorkMesh
           ALLOCATE(WorkReal(WorkMesh % NumberOfNodes), WorkPerm(WorkMesh % NumberOfNodes))
           WorkPerm = [(i,i=1,SIZE(WorkPerm))]
           WorkReal = 0.0_dp
-
           CALL VariableAdd(WorkMesh % Variables, Mesh, Solver, &
                "CalvingHeight", 1, WorkReal, WorkPerm)
           NULLIFY(WorkPerm, WorkReal)
-
           ! Add to main Mesh
           ALLOCATE(WorkReal(Mesh % NumberOfNodes), WorkPerm(Mesh % NumberOfNodes))
           WorkPerm = [(i,i=1,SIZE(WorkPerm))]
           WorkReal = Mesh % Nodes % z
-
           CALL VariableAdd(Mesh % Variables, Mesh, Solver, &
                "CalvingHeight", 1, WorkReal, WorkPerm)
           NULLIFY(WorkPerm, WorkReal)
-
           !The logical mask to InterpolateVarToVarReduced is inverse, so any TRUE nodes are ignored
           IF(j==1) THEN
              PWorkLogical = (TopPerm <= 0)
           ELSE
              PWorkLogical = (BotPerm <= 0)
           END IF
-
           !Interpolate from main mesh to temporary workmesh
           DEALLOCATE(InterpDim); ALLOCATE(InterpDim(1)); InterpDim = (/3/);
           CALL InterpolateVarToVarReduced(Mesh, WorkMesh, "CalvingHeight", InterpDim, &
@@ -1431,17 +1286,15 @@
           IF(ANY(UnfoundNodes)) THEN
              DO i=1, SIZE(UnfoundNodes)
                 IF(UnfoundNodes(i)) THEN
-                   PRINT *,'Didnt find point: ', i, ' x:', WorkMesh % Nodes % x(i),&
+                   PRINT *,'Did not find point: ', i, ' x:', WorkMesh % Nodes % x(i),&
                         ' y:', WorkMesh % Nodes % y(i),&
                         ' z:', WorkMesh % Nodes % z(i)
                 END IF
              END DO
              CALL Fatal(SolverName,"Failed to find all nodes interpolating onto temporary front workmesh.")
           END IF
-
           !Copy interpolated height to CalvingVar
           HeightVar => VariableGet(WorkMesh % Variables, "CalvingHeight", .TRUE.)
-
           county=1
           DO i=1, Mesh % NumberOfNodes
              IF(WorkLogical(i)) THEN
@@ -1450,32 +1303,24 @@
                 county = county + 1
              END IF
           END DO
-
           DEALLOCATE(WorkLogical)
           CALL ReleaseMesh(WorkMesh)
           CALL VariableRemove(Mesh % Variables, "CalvingHeight")
        END DO !top and bottom interp
-
        DEALLOCATE(PWorkLogical)
        CALL ParallelActive(SaveParallelActive)
-
        !Now, for any uncalved nodes, set heightdirich from current height
        DO i=1, Mesh % NumberOfNodes
           IF(IsCalvingNode(i)) CYCLE
           IF(FrontPerm(i) <= 0) CYCLE
           HeightDirich(i) = Mesh % Nodes % z(i)
        END DO
-
        !---------------------------------------------------------
        ! Cycle columns, analytically finding calving 3
        !---------------------------------------------------------
-
        ALLOCATE(FNColumns(Mesh % NumberOfNodes))
-
        FNColumns = MOD(Mesh % ParallelInfo % GlobalDOFs, NodesPerLevel)
-
        DO WHILE(.TRUE.) !cycle columns
-
           !Find a new column
           col = -1
           DO j=1, Mesh % NumberOfNodes
@@ -1486,12 +1331,10 @@
              END IF
           END DO
           IF(col == -1) EXIT !All done
-
           !Gather front nodes in specified column
           WorkNodes % NumberOfNodes = COUNT((FrontPerm > 0) .AND. (FNColumns == col))
           n = WorkNodes % NumberOfNodes
           ALLOCATE(WorkNodes % z(n), ColumnPerm(n))
-
           counter = 1
           DO j=1, Mesh % NumberOfNodes
              IF(FrontPerm(j) <= 0) CYCLE
@@ -1501,14 +1344,12 @@
                 counter = counter + 1
              END IF
           END DO
-
           !Order by ascending WorkNodes % z
           !In fact, OrderPerm here is unnecessary, because we no longer order
           !by height, but rather by nodenumber, assuming MeshExtrude used, which
           !orders nodes by layer.
           ALLOCATE(OrderPerm(n))
           OrderPerm = [(i,i=1,n)]
-
           IF(.FALSE.) THEN
             CALL SortD( n, WorkNodes % z, OrderPerm )
           ELSE
@@ -1527,25 +1368,18 @@
                    &MeshExtrude operates.")
             END IF
           END IF
-
           start = 2
-
           DO WHILE(.TRUE.)
-
              InGroup = .FALSE.
              GroupCount = 0
              GroupEnd = 0
              BotZ = HeightDirich(ColumnPerm(OrderPerm(start-1)))
-
              !Need to be careful with BotZ, TopZ, whether or not these are also calving nodes
              ! affects count
              DO k=start,n
-
                 IF(IsCalvingNode(ColumnPerm(OrderPerm(k)))) THEN
-
                    IF(.NOT. InGroup) GroupStart = k
                    InGroup = .TRUE.
-
                    IF(k /= n) THEN
                       GroupEnd = k
                       GroupCount = GroupCount + 1
@@ -1553,9 +1387,7 @@
                       TopZ = HeightDirich(ColumnPerm(OrderPerm(k)))
                       start = k + 1 !Forces empty DO loop next time, InGroup = .FALSE.
                    END IF
-
                 ELSE
-
                    IF(InGroup) THEN
                       TopZ = HeightDirich(ColumnPerm(OrderPerm(k)))
                       start = k + 1
@@ -1564,16 +1396,14 @@
                       BotZ = HeightDirich(ColumnPerm(OrderPerm(k)))
                    END IF
                 END IF
-
              END DO
-
              IF(.NOT. InGroup) EXIT !didn't find any more calving nodes this round, done
 
              !now: groupcount = number of internal nodes to be spaced between TopZ and BotZ
              !NOTE: This produces evenly spaced nodes (vertically). Not an issue because 
              ! will be remeshed anyway...
              DO k=GroupStart, GroupEnd
-                prop = (REAL(k) - (GroupStart - 1)) / (GroupCount + 1) !REAL to force real arithmatic
+                prop = (REAL(k) - (GroupStart - 1)) / (GroupCount + 1) !REAL to force real arithmetic
                 HeightDirich(ColumnPerm(OrderPerm(k))) = BotZ + ( (TopZ - BotZ) * prop)
                 IF(Debug) THEN
                    PRINT *,'debug node: ',ColumnPerm(OrderPerm(k)),' has prop: ',prop,&
@@ -1697,9 +1527,9 @@
        IF(Parallel) DEALLOCATE(disps, PFaceNodeCount)
 
     END IF
+
     !CHANGE
     CALL ListAddConstReal( Model % Simulation, 'CalvingTime', Time )
-
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
 CONTAINS
@@ -1740,11 +1570,8 @@ CONTAINS
 
    !BUT, doesn't have info about neighbours...
    !although this could be ascertained from FrontNodeNums, which are in order
-
    IF(Boss) THEN
-
       FileName = TRIM(NameSuffix)//"_IcebergStats.txt"
-
       ALLOCATE(WorkReal(SUM(PFaceNodeCount)*DOFs),&
            AllCalvingValues(FaceNodesT % NumberOfNodes * DOFs),&
            FNRows(FaceNodesT % NumberOfNodes),&
@@ -1755,25 +1582,19 @@ CONTAINS
            WorkInt(SIZE(FrontNodeNums)),&
            IDvector(FaceNodesT % NumberOfNodes),&
            disps(ParEnv % PEs), STAT=ierr)
-
       IDvector = [(i,i=1,FaceNodesT % NumberOfNodes)]
-
       disps(1) = 0
       DO i=2,ParEnv % PEs
          disps(i) = disps(i-1) + (PFaceNodeCount(i-1)*DOFs)
       END DO
-
-
       !FrontNodeNums (from GetDomainEdge) are ordered, and thus so are the columns
       WorkInt = MOD(FrontNodeNums, NodesPerLevel)
       DO i=1, SIZE(WorkInt)
          FNColumnOrder(WorkInt(i)) = i
       END DO
-
       FNRows = (FaceNodeNums - 1) / NodesPerLevel
       FNColumns = MOD(FaceNodeNums, NodesPerLevel)
       NodesAreNeighbours = .FALSE.
-
       DO i=1,FaceNodesT % NumberOfNodes
          DO j=1,FaceNodesT % NumberOfNodes
             IF(i==j) CYCLE
@@ -1785,52 +1606,40 @@ CONTAINS
             NodesAreNeighbours(i,j) = .TRUE.
          END DO
       END DO
-
       IF(Debug) PRINT *,'Debug CalvingStats, FaceNodes: ',FaceNodesT % NumberOfNodes,&
            ' neighbourships: ', COUNT(NodesAreNeighbours)
    END IF
-
    ALLOCATE(MyOrderedCalvingValues(COUNT(CalvingPerm>0)*DOFs), STAT=ierr)
    MyOrderedCalvingValues = 0.0_dp
-
    !Order the calving values to match front node numbers
    county = 0
    DO i=1,NoNodes
       IF(CalvingPerm(i) <= 0) CYCLE
-
       county = county + 1
-
       MyOrderedCalvingValues((county*DOFs)-2) = CalvingValues((CalvingPerm(i)*DOFs)-2)
       MyOrderedCalvingValues((county*DOFs)-1) = CalvingValues((CalvingPerm(i)*DOFs)-1)
       MyOrderedCalvingValues(county*DOFs) = CalvingValues(CalvingPerm(i)*DOFs)
    END DO
-
    !Gather calving var values
    sendcount = COUNT(CalvingPerm>0)*DOFs
    IF(Debug) PRINT *,ParEnv % MyPE,'send count: ',sendcount
-
    IF(sendcount > 0) THEN
       CALL MPI_BSEND(MyOrderedCalvingValues,sendcount, MPI_DOUBLE_PRECISION,0,&
            1000+ParEnv % MyPE, ELMER_COMM_WORLD, ierr)
    END IF
-
    IF(BOSS) THEN
       IF(Debug) PRINT *,'Debug, size workreal:',SIZE(WorkReal)
       DO i=1,ParEnv % PEs
          IF(PFaceNodeCount(i) <= 0) CYCLE
-
          start = 1+disps(i)
          fin = (disps(i)+PFaceNodeCount(i)*DOFs)
          IF(Debug) PRINT *,'Debug, ',i,' start, end',start, fin
-
          CALL MPI_RECV(WorkReal(start:fin), &
               PFaceNodeCount(i)*DOFs, MPI_DOUBLE_PRECISION, i-1, &
               1000+i-1, ELMER_COMM_WORLD, status, ierr)
       END DO
    END IF
-
    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-
    IF(Boss) THEN
       !Remove duplicates, using previously computed duplicate positions
       county = 0
@@ -1841,7 +1650,6 @@ CONTAINS
          AllCalvingValues((county*DOFs)-1) = WorkReal((i*DOFs)-1)
          AllCalvingValues((county*DOFs)) = WorkReal((i*DOFs))
       END DO
-
       IF(Debug) THEN
          PRINT *,'Debug, AllCalvingValues: '
          DO i=1,FaceNodesT % NumberOfNodes
@@ -1849,7 +1657,6 @@ CONTAINS
                  AllCalvingValues((i*3)-1), AllCalvingValues(i*3)
          END DO
       END IF
-
       CalvingNeighbours = NodesAreNeighbours
       DO i=1,SIZE(CalvingNeighbours,1)
          k = i * DOFs
@@ -1858,52 +1665,42 @@ CONTAINS
             CalvingNeighbours(:,i) = .FALSE.
          END IF
       END DO
-
       !Mark connected calving neighbours with a unique iceberg ID
       ALLOCATE(IcebergID(FaceNodesT % NumberOfNodes))
       IcebergID = 0
-
       NoIcebergs = 0
       DO i=1,FaceNodesT % NumberOfNodes
          k = i * DOFs
          !pretty sure no perm between CalvingValues and NodesAreNeighbours
          IF(ALL(AllCalvingValues(k-2:k) == 0.0_dp)) CYCLE
          IF(IcebergID(i) > 0) CYCLE !Got already
-
          !new group
          NoIcebergs = NoIcebergs + 1
          IcebergID(i) = NoIcebergs
          CALL MarkNeighbours(i, CalvingNeighbours, IcebergID, NoIcebergs)
-
       END DO
-
       !Now cycle icebergs
       DEALLOCATE(WorkInt)
       ALLOCATE(BergBoundaryNode(NoIcebergs, FaceNodesT % NumberOfNodes))
       BergBoundaryNode = .FALSE.
-
       !Cycle icebergs, cycle nodes in iceberg, mark all neighbours (edges of iceberg)
       DO i=1,NoIcebergs
          ALLOCATE(WorkInt(COUNT(IcebergID == i)))
          WorkInt = PACK(IDVector, (IcebergID == i))
-
          DO j=1,SIZE(WorkInt)
             DO k=1,SIZE(NodesAreNeighbours,1)
                IF(.NOT. NodesAreNeighbours(WorkInt(j),k)) CYCLE
-
                !Not a boundary node
                IF(IcebergID(k) /= 0) THEN
                   IF(IcebergID(k) /= i) CALL Fatal("CalvingStats",&
                        "This shouldn't happen - two adjacent nodes in different icebergs...")
                   CYCLE
                END IF
-
                BergBoundaryNode(i,k) = .TRUE.
             END DO
          END DO
          DEALLOCATE(WorkInt)
       END DO
-
       !------------------------------------------
       ! Scan along/down front, constructing calving elements
       !
@@ -1915,14 +1712,12 @@ CONTAINS
       !------------------------------------------
       ALLOCATE(CalvingElements(FaceNodesT % NumberOfNodes)) !<- excessive, but meh
       county = 0
-
       DO i=1,FaceNodesT % NumberOfNodes
          !NB use NodesAreNeighbours instead of CalvingNeighbours, check both
          elemcorners = 0
          elemcorners(1) = i
          col = FNColumnOrder(FNColumns(i)) !<-- pay attention
          row = FNRows(i)
-
          !gather 3 other nodes
          DO j=1,FaceNodesT % NumberOfNodes
             !note, this doesn't guarantee left, or right,
@@ -1942,7 +1737,6 @@ CONTAINS
                   CYCLE
                END SELECT
             CASE(0)
-
                !Same column
                SELECT CASE(row - FNRows(j))
                CASE(1)
@@ -1959,25 +1753,17 @@ CONTAINS
                CYCLE
             END SELECT
          END DO
-
          IF(ANY(ElemCorners == 0)) CYCLE !edge of domain
-
          ElemBergID = MAXVAL(IcebergID(elemcorners))
-
          IF(ElemBergID == 0) CYCLE
-
          IcebergCondition = (IcebergID(elemcorners) == ElemBergID) &
               .OR. BergBoundaryNode(ElemBergID,elemcorners)
-
          countcalve = COUNT(IcebergCondition)
-
          IF( countcalve < 3) CYCLE
-
          county = county + 1
          ALLOCATE(CalvingElements(county) % NodeIndexes(countcalve))
          CalvingElements(county) % TYPE => GetElementType(countcalve*100+countcalve, .FALSE.)
          CalvingElements(county) % BodyID = ElemBergID
-
          countcalve = 0
          DO j=1,4
             IF(IcebergCondition(j)) THEN
@@ -1985,75 +1771,60 @@ CONTAINS
                CalvingElements(county) % NodeIndexes(countcalve) = elemcorners(j)
             END IF
          END DO
-
       END DO
-
       !------------------------------------------
       ! Write info to file
       !------------------------------------------
-
       !Find left and rightmost nodes for info
       LeftMost = HUGE(0.0_dp)
       RightMost = -HUGE(0.0_dp) !??
-
       DO i=1,FaceNodesT % NumberOfNodes
          Nodeholder(1) = FaceNodesT % x(i)
          Nodeholder(2) = FaceNodesT % y(i)
          Nodeholder(3) = FaceNodesT % z(i)
          Nodeholder = MATMUL(RotationMatrix, NodeHolder)
-
          IF(Nodeholder(2) < LeftMost) THEN
             LeftIndex = i
             LeftMost = NodeHolder(2)
          END IF
-
          IF(Nodeholder(2) > RightMost) THEN
             RightIndex = i
             RightMost = NodeHolder(2)
          END IF
       END DO
-
       IF(Visited) THEN
          OPEN( UNIT=FileUnit, FILE=filename, STATUS='UNKNOWN', ACCESS='APPEND')
       ELSE
          OPEN( UNIT=FileUnit, FILE=filename, STATUS='UNKNOWN')
          WRITE(FileUnit, '(A,ES20.11,ES20.11,ES20.11)') "FrontOrientation: ",FrontOrientation
       END IF
-
       !Write out the left and rightmost points
       WRITE(FileUnit, '(A,i0,ES30.21)') 'Time: ',GetTimestep(),GetTime()
       WRITE(FileUnit, '(A,ES20.11,ES20.11)') 'Left (xy): ',&
            FaceNodesT % x(LeftIndex),&
            FaceNodesT % y(LeftIndex)
-
       WRITE(FileUnit, '(A,ES20.11,ES20.11)') 'Right (xy): ',&
            FaceNodesT % x(RightIndex),&
            FaceNodesT % y(RightIndex)
-
       !Write the iceberg count
       WRITE(FileUnit, '(A,i0)') 'Icebergs: ',NoIcebergs
-
       !TODO, write element count
       !  would need to modify Icebergs.py too
       DO i=1,NoIcebergs
          county = 0
          !count elements
-
          WRITE(FileUnit, '(A,i0)') 'Iceberg ',i
          WRITE(FileUnit, '(i0,A,i0)') COUNT(BergBoundaryNode(i,:))," ", COUNT(IceBergID == i)
          WRITE(FileUnit, '(A)') "Boundary nodes"
          DO j=1,FaceNodesT % NumberOfNodes
             IF(BergBoundaryNode(i,j)) THEN
-
                county = county + 1
                WRITE(FileUnit,'(i0,A,i0,ES20.11,ES20.11,ES20.11,ES20.11,ES20.11,ES20.11)') &
                     county," ",j,&
                     FaceNodesT % x(j), FaceNodesT % y(j), FaceNodesT % z(j),&
                     0.0_dp, 0.0_dp, 0.0_dp
-
             END IF
          END DO
-
          WRITE(FileUnit, '(A)') "Calving nodes"
          DO j=1,FaceNodesT % NumberOfNodes
             IF(IcebergID(j) == i) THEN
@@ -2069,7 +1840,6 @@ CONTAINS
                AllCalvingValues(k)
             END IF
          END DO
-
          WRITE(FileUnit, '(A)') "Elements"
          DO j=1,SIZE(CalvingElements)
             IF(CalvingElements(j) % BodyID /= i) CYCLE
@@ -2078,11 +1848,8 @@ CONTAINS
             END DO
             WRITE(FileUnit,'(A)') ''
          END DO
-
       END DO
-
       CLOSE(FileUnit)
-
       !------------------------------------------
       ! Compute berg volumes. Largest berg size determines
       ! whether the pause the timestep.
@@ -2092,48 +1859,35 @@ CONTAINS
            ElementNodes % y(n),&
            ElementNodes % z(n),&
            CalvingMagnitude(FaceNodesT % NumberOfNodes))
-
       DO i=1,SIZE(CalvingMagnitude)
         k = i*DOFs
         CalvingMagnitude(i) = ((AllCalvingValues(k-2) ** 2) + &
              (AllCalvingValues(k-1) ** 2) + &
              (AllCalvingValues(k) ** 2)) ** 0.5
       END DO
-
       MaxBergVol = 0.0_dp
       DO i=1,NoIcebergs
         BergVolume = 0.0_dp
-
         DO j=1,SIZE(CalvingElements)
           Element => CalvingElements(j)
-
           IF(Element % BodyID /= i) CYCLE
-
           n = Element % TYPE % NumberOfNodes
           NodeIndexes => Element % NodeIndexes
-
           ElementNodes % x(1:n) = FaceNodesT % x(NodeIndexes(1:n))
           ElementNodes % y(1:n) = FaceNodesT % y(NodeIndexes(1:n))
           ElementNodes % z(1:n) = FaceNodesT % z(NodeIndexes(1:n))
-
           IntegStuff = GaussPoints( Element )
-
           ElemVolume = 0.0_dp
           DO k=1,IntegStuff % n
-
             U = IntegStuff % u(k)
             V = IntegStuff % v(k)
             W = IntegStuff % w(k)
-
             stat = ElementInfo( Element,ElementNodes,U,V,W,SqrtElementMetric, &
                  Basis )
-
             !assume cartesian here
             s = SqrtElementMetric * IntegStuff % s(k)
-
             ElemVolume = ElemVolume + s * SUM(CalvingMagnitude(NodeIndexes(1:n)) * Basis(1:n))
           END DO
-
           BergVolume = BergVolume + ElemVolume
         END DO
         IF(Debug) PRINT *,'Berg ',i,' volume: ', BergVolume
@@ -2141,8 +1895,6 @@ CONTAINS
       END DO
       IF(Debug) PRINT *,'Max berg volume: ',MaxBergVol
     END IF
-
-
     Visited = .TRUE.
     DEALLOCATE(MyOrderedCalvingValues)
     IF(Boss) THEN
@@ -2162,7 +1914,6 @@ CONTAINS
            ElementNodes % z,&
            CalvingMagnitude&
            )
-
       !Cycle and deallocate element % Nodeindexes, and elements
       DO i=1,SIZE(CalvingElements)
         IF(ASSOCIATED(CalvingElements(i) % NodeIndexes)) &
@@ -2170,6 +1921,5 @@ CONTAINS
       END DO
       DEALLOCATE(CalvingElements)
     END IF
-
   END SUBROUTINE CalvingStats
 END SUBROUTINE Find_Calving3D

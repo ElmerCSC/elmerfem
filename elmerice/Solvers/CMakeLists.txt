@@ -37,7 +37,7 @@ ENDIF()
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
-SET(ElmerIce_SRC AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90 
+SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90 
     CaffeSolver.F90 ComputeDevStressNS.F90 ComputeEigenValues.F90 
     ComputeNormal.F90 ComputeStrainRate.F90 DeformationalHeat.F90 
     EPLSolver.F90 fAandfB_in.F90 FabricSolve.F90 Flowdepth.F90 
