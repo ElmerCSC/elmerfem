@@ -125,6 +125,7 @@ CONTAINS
        IF(ASSOCIATED(UnfoundNodes)) DEALLOCATE(UnfoundNodes)
        ALLOCATE(UnfoundNodes(NewMesh % NumberOfNodes))
     END IF
+    !PRINT *, 'IVTV 1'
 
     IF ( ParEnv % PEs<=1 ) THEN
        CALL InterpolateVarToVarReducedQ( OldMesh, NewMesh, HeightName, HeightDimensions, &
@@ -135,7 +136,7 @@ CONTAINS
        IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
        RETURN
     END IF
-
+    !PRINT *, 'IVTV 2'
     CALL InterpolateVarToVarReducedQ( OldMesh, NewMesh, HeightName, HeightDimensions, &
          FoundNodes, PointLocalDistance, OldNodeMask, NewNodeMask, &
          OldElemMask, Variables, GlobalEps, LocalEps, NumericalEps )
@@ -186,6 +187,7 @@ CONTAINS
     myBB(1:3) = myBB(1:3) - epsBB
     myBB(4:6) = myBB(4:6) + epsBB
 
+    !PRINT *, 'IVTV 3'
     ALLOCATE(BB(6,ParEnv % PEs))
     DO i=1,ParEnv % PEs
        IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
@@ -301,6 +303,7 @@ CONTAINS
        CALL MPI_RECV( ProcRecv(proc+1) % nodes_z, n, MPI_DOUBLE_PRECISION, proc, &
             1104, ELMER_COMM_WORLD, status, ierr )
     END DO
+    !PRINT *, 'IVTV 4'
 
     DO i=1,ParEnv % PEs
        IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
@@ -480,6 +483,7 @@ CONTAINS
        DEALLOCATE(foundnodes, SendLocalDistance, nMesh)
     END DO
     DEALLOCATE(ProcRecv)
+    !PRINT *, 'IVTV 5'
 
     ! Receive interpolated values:
     ! ----------------------------
@@ -602,6 +606,7 @@ CONTAINS
        DEALLOCATE(astore,vperm,RecvLocalDistance, BetterFound, ProcSend(proc+1) % perm)
 
     END DO
+    !PRINT *, 'IVTV 6'
 
     DEALLOCATE(PointLocalDistance)
     IF ( ALLOCATED(Perm) ) DEALLOCATE(Perm,ProcSend)
@@ -627,7 +632,7 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: GlobalEps, LocalEps, NumericalEps
     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: LocalDistances(:)
     !------------------------------------------------------------------------------
-    TYPE(Variable_t), POINTER :: Var, VarOld, OldVar, NewVar
+    TYPE(Variable_t), POINTER :: Var, VarOld, OldVar, NewVar, PermVar, WorkVar
     TYPE(Element_t),POINTER :: Element
     TYPE(Nodes_t) :: ElementNodes
     REAL(KIND=dp), POINTER :: OldHeight(:), NewHeight(:)
@@ -639,7 +644,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
     REAL(KIND=dp), POINTER :: ElementValues(:)
     REAL(KIND=dp) :: detJ, u,v,w,s, LocalDist
-    LOGICAL :: Found, Debug, FirstTime=.TRUE., GMUnfound=.FALSE.
+    LOGICAL :: Found, Debug, FirstTime=.TRUE.,GMUnfound=.FALSE.
     REAL(KIND=dp) :: eps_global_limit, eps_local_limit,&
          eps_global_init, eps_local_init, eps_global, eps_local, eps_numeric
     SAVE DefaultPerm
@@ -657,6 +662,7 @@ CONTAINS
     ELSE
       GMUnfound = .FALSE.
     END IF
+    !PRINT *, 'IVTV 7'
 
     IF(Debug) THEN
        PRINT *, 'Debug, present(OldNodeMask)', PRESENT(OldNodeMask)
@@ -681,12 +687,16 @@ CONTAINS
        !Only actually for if new mesh has bigger perm than old mesh
        !Which crashes on result output
        !If inequality other way round, standard routine works fine
-       IF(NewMesh % NumberOfNodes > OldMesh % NumberOfNodes) THEN
+       IF(NewMesh % NumberOfNodes .NE. OldMesh % NumberOfNodes .OR. NewMesh % MeshDim .NE. OldMesh % MeshDim) THEN
          ALLOCATE( NewHeight(NewMesh % NumberOfNodes ) )
          NewHeight = 0.0_dp
          ALLOCATE( NewPerm(NewMesh % NumberOfNodes ) )
+         !Special case for my calvinghydrointerp stuff
+         PermVar => VariableGet( NewMesh % Variables, 'hydroweights', ThisOnly = .TRUE. )
          !On the assumption you'll have some velocity
-         PermVar => VariableGet( NewMesh % Variables, 'velocity 1', ThisOnly = .TRUE. )
+         IF(.NOT. ASSOCIATED(PermVar)) THEN
+           PermVar => VariableGet( NewMesh % Variables, 'velocity 1', ThisOnly = .TRUE. )
+         END IF
          !And if you don't, you'll probably have this one
          IF(.NOT. ASSOCIATED(PermVar)) THEN
            PermVar => VariableGet( NewMesh % Variables, 'hydraulic potential', ThisOnly = .TRUE. )
@@ -708,6 +718,7 @@ CONTAINS
     END IF
     NewHeight => Var % Values
     NewPerm => Var % Perm
+    !PRINT *, 'IVTV 8'
 
 
     ! Get epsilon values if specified
@@ -747,6 +758,7 @@ CONTAINS
     ElementNodes % x = 0.0_dp
     ElementNodes % y = 0.0_dp
     ElementNodes % z = 0.0_dp
+    !PRINT *, 'IVTV 9'
 
     !========================================
     !             Action
@@ -823,6 +835,7 @@ CONTAINS
                   LocalDistance=LocalDist)
              IF( Found ) EXIT
           END DO
+
           IF( Found ) EXIT
 
           eps_global = eps_global * 10.0_dp
@@ -831,6 +844,7 @@ CONTAINS
           IF(eps_local > eps_local_limit) EXIT
 
        END DO
+       !PRINT *, 'IVTV 9.1'
 
        IF (.NOT.Found) THEN
           !CHANGE
@@ -841,15 +855,17 @@ CONTAINS
             IF(ASSOCIATED(WorkVar)) THEN
               WorkVar % Values(WorkVar % Perm(i)) = -1.0
             END IF
+            NULLIFY(WorkVar)
             WorkVar => VariableGet(NewMesh % Variables, "basalmeltrate", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
             IF(ASSOCIATED(WorkVar)) THEN
               WorkVar % Values(WorkVar % Perm(i)) = 0.0
             END IF
           END IF
-          NULLIFY(Element)
+          NULLIFY(Element, WorkVar)
           IF(PRESENT(FoundNodes)) FoundNodes(i) = .FALSE.
           CYCLE
        END IF
+       !PRINT *, 'IVTV 9.2'
 
        IF(PRESENT(FoundNodes)) FoundNodes(i) = .TRUE.
 
@@ -860,7 +876,7 @@ CONTAINS
 
        !Return element distances if requested.
        IF(PRESENT(LocalDistances)) LocalDistances(i) = LocalDist
-
+       
 
        !-------------------------------------------------------
        ! Interpolate full variable list if requested
@@ -902,7 +918,7 @@ CONTAINS
              END IF
 
              IF((NewVar % Perm(i) == 0) .OR. ANY(OldVar % Perm(NodeIndexes)==0)) THEN
-                ! PRINT *, 'Debug interpvartovar, skipping ',OldVar % Name,' because of zero perm'
+                !PRINT *, 'Debug interpvartovar, skipping ',OldVar % Name,' because of zero perm'
                 OldVar => OldVar % Next
                 CYCLE
              END IF
@@ -928,6 +944,7 @@ CONTAINS
        END IF
 
     END DO
+    !PRINT *, 'IVTV 10'
 
     DEALLOCATE( ElementNodes % x, ElementNodes % y, &
          ElementNodes % z, ElementValues )
