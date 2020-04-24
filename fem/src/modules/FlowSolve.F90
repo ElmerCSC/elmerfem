@@ -71,7 +71,7 @@
     USE Adaptive
     USE DefUtils
     USE FreeSurface
-    USE ElementDescription, ONLY: GetEdgeMap
+    USE ElementDescription, ONLY: LGetEdgeMap
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -1385,7 +1385,7 @@
 
         nd = GetElementDOFs( Indexes )
         k = GetElementFamily()
-        EdgeMap => GetEdgeMap(k)
+        EdgeMap => LGetEdgeMap(k)
         SELECT CASE(k)
         CASE (3)
           MidEdgeNodes(1:3) = (/ 4, 5, 6 /)
