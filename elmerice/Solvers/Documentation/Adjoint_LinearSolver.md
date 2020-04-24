@@ -1,4 +1,4 @@
-## Adjoint_LinearSolver
+# Adjoint_LinearSolver
 
 **Module name**: Adjoint_LinearSolver  
 **Module subroutines**: Adjoint_LinearSolver  
@@ -7,30 +7,23 @@
 **Document edited**: 22.04.2020  
 
 
-<!-- vim-markdown-toc GFM -->
+## Introduction
 
-* [1. Introduction](#1-introduction)
-* [2. Theory](#2-theory)
-* [3. Keywords](#3-keywords)
-* [4. Tests and Examples](#4-tests-and-examples)
-
-<!-- vim-markdown-toc -->
-
-### 1. Introduction
-
-This solver is the adjoint code of a solver that solves a linear system and apply dirichlet conditions,i.e. it is the adjoint of the following part in a solver:
+This solver is the adjoint code of a solver that solves a linear system and apply dirichlet conditions, 
+i.e. it is the adjoint of the following part in a solver:
 ```fortran
   CALL DefaultDirichletBCs()
   UNorm = DefaultSolve()
 ```
 
-If the direct problem is non-linear the adjoint should revert the non-linear iterations, which is not the case here; However, if the non-linear direct equation is solved using a Newton method, it should be sufficient to solve only the adjoint corresponding to the last linear system solution.
+If the direct problem is non-linear the adjoint should revert the non-linear iterations, which is not the case here;  
+However, if the non-linear direct equation is solved using a Newton method, it should be sufficient to solve only the adjoint corresponding to the last linear system solution.
 
-### 2. Theory
+## Theory
 
 When solving a linear system of equation : 
 
-> Ax=F  
+$$ \boldsymbol{A} x = F $$ 
 
 the adjoint writes: 
 
@@ -51,7 +44,7 @@ The solver will look in the *Body Forces* and *Boundary Conditions* for the keyw
 
 Getting the derivative of the cost function with respect to the direct solver input parameters usually requires to write the adjoint code of the direct solver that fills **A** and **F** and thus depends on the solution **x** and the adjoint variable **b**. This will be solver specific.
 
-### 3. Keywords
+## Keywords
 
 Bellow is the sequence and related keywords in the *.sif* file:  
 
@@ -112,5 +105,5 @@ Bellow is the sequence and related keywords in the *.sif* file:
   End
 ```
 
-### 4. Tests and Examples
+## Tests and Examples
 

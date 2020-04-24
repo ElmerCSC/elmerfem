@@ -1,4 +1,4 @@
-## Adjoint_CostDiscSolver
+# Adjoint_CostDiscSolver
 
 **Module name**: Adjoint_CostDiscSolver  
 **Module subroutines**: Adjoint_CostDiscSolver  
@@ -7,17 +7,7 @@
 **Document edited**: 23.04.2020  
 
 
-<!-- vim-markdown-toc GFM -->
-
-* [1. Introduction](#1-introduction)
-* [2. Keywords](#2-keywords)
-* [3. Limitations and possible improvments](#3-limitations-and-possible-improvments)
-* [4. Tests and Examples](#4-tests-and-examples)
-
-<!-- vim-markdown-toc -->
-
-
-### 1. Introduction
+## Introduction
 This solver computes a cost function which measures the mismatch between the model and some observations as  
 
 $J = \sum_{1}^{Nobs} 0.5 (u-u^{obs})^{2}$
@@ -35,7 +25,7 @@ Be carefull, this solver will reset the values of the cost and sensitivity to 0;
 In general this solver will be executed on the whole mesh for vertically integrated models or on the upper free surface
 for a 3D model and 2D surface observations.
 
-### 2. Keywords
+##  Keywords
 
 Bellow are the related keywords in the *.sif* file:  
 
@@ -116,7 +106,7 @@ Body Force i
 End
 ```
 
-### 3. Limitations and possible improvments
+## Limitations and possible improvments
 
 The search algorithm to locate the observations in the mesh is very efficient if the solver is executed on the whole mesh (e.g. for vertcially integrated models); however it is not efficient if the solver is executed on a boundary. 
 In this case, if working with Elmer internal extrusion, it can be advantageus to :
@@ -128,5 +118,5 @@ Bellow is a list of features that are not currently possible in this solver but 
 - We could allow for the possibility that only the norm of a vector is oberved or only the components in a given direction.
 
 
-### 4. Tests and Examples
+## Tests and Examples
 

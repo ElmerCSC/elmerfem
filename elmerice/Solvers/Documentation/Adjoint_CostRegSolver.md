@@ -1,14 +1,13 @@
-## Adjoint_CostRegSolver
+# Adjoint_CostRegSolver
 
-**Module name**: Adjoint_CostDiscSolver  
+**Module name**: Adjoint_CostRegSolver  
 **Module subroutines**: Adjoint_CostRegSolver  
 **Module authors**: Fabien Gillet-Chaulet (IGE-Grenoble)  
 **Document authors**: Fabien Gillet-Chaulet  
 **Document edited**: 24.04.2020  
 
 
-
-### 1. Introduction
+## Introduction
 This solver computes a cost function classically used for regularisation of the inverse problems 
 and it's derivative with respect to the input nodal variable **V**.
 
@@ -16,19 +15,20 @@ Two regularisations are possible:
 
 - First option penalises 1st spatial derivatives *[default]*:
 
-> J_{reg} = \int_{\Omega} 0.5 * (|dV/dx|)**2 d\Omega
+> $$ J_{reg} = \int_{\Omega} 0.5 * (|dV/dx|)^2 d\Omega $$
 
 The dimension of the spatial derivatives is *CoordinateSystemDimension()* or *CoordinateSystemDimension()-1*
 depending if the solver is executed on the bulk on a boundary.
 
 - Second option penalises difference from a *prior*:
 
-> J_{reg} = \int_{\Omega} 0.5 * ((V-V^{prior})/s^2)**2 d\Omega
-
-where $V^{prior}$ is the *prior* estimate and *s^2* the variance 
+> $$ J_{reg} = \int_{\Omega} 0.5 * ((V-V^{prior})/s^2)^2 d\Omega $$
 
 
-### 2. Keywords
+where $V^{prior}$ is the *prior* estimate and $s^2$ the variance 
+
+
+## Keywords
 
 Bellow are the related keywords in the *.sif* file:  
 
@@ -94,11 +94,12 @@ Body Force i
 End
 ```
 
-### 3. Limitations and possible improvments
+## Limitations and possible improvments
 
-Bellow is a list of features that are not currently possible in this solver but that could be implemented:
+Bellow is a list of features that are not currently possible in this solver but that could be implemented:  
+
 - If Regularisation with respect to the *prior* is used, for the moment we assume no spatial error in the statitics and use only a standard deviation; The cost function could easily be improved if a full background error covariance matrix is known
 
 
-### 4. Tests and Examples
+## Tests and Examples
 
