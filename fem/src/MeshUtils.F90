@@ -158,6 +158,8 @@ CONTAINS
      Mesh % AdaptiveDepth = 0
      Mesh % Changed   = .FALSE. !  TODO: Change this sometime
      Mesh % Stabilize = .FALSE.
+     !CHANGE
+     Mesh % MeshTag = 0
 
      Mesh % Variables => NULL()
      Mesh % Parent => NULL()
@@ -230,6 +232,7 @@ CONTAINS
        IF( i < 3 ) CALL Fatal(Caller,'Either give all or no optional parameters!')
        CALL InitializeMesh( Mesh, InitParallel )         
      END IF       
+     !PRINT *, 'M%C set to FALSE MU'
      
 !------------------------------------------------------------------------------
    END FUNCTION AllocateMesh
@@ -2053,7 +2056,7 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------------    
    INTEGER :: i,j,k,n
    INTEGER :: BaseNameLen, Save_Dim
-   LOGICAL :: GotIt, Found
+   LOGICAL :: GotIt, Found, ForcePrep=.FALSE.
    CHARACTER(MAX_NAME_LEN) :: FileName
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
@@ -2159,11 +2162,21 @@ END SUBROUTINE GetMaxDefs
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
    IF( PRESENT( LoadOnly ) ) THEN
-     IF( LoadOnly ) RETURN
+     IF( LoadOnly ) THEN
+       RETURN
+     !ELSE
+       !ForcePrep = .TRUE.
+     END IF
    END IF
 
    ! Prepare the mesh for next steps.
-   ! For example, create non-nodal mesh structures, periodic projectors etc. 
+   ! For example, create non-nodal mesh structures, periodic projectors etc.
+   !IF( (ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') .OR. &
+   !    ListCheckPresent( Model % Simulation,'Extruded Mesh Layers')) .AND. (.NOT. ForcePrep) ) THEN
+     !CALL Info('LoadMesh','This mesh will be extruded, skipping finalization',Level=12)
+     !RETURN
+   !END IF
+
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)
       
    CALL Info('LoadMesh','Preparing mesh done',Level=8)
@@ -6134,7 +6147,7 @@ END SUBROUTINE GetMaxDefs
       DO ind=1,BMesh1 % NumberOfBulkElements
         
         Element => BMesh1 % Elements(ind)        
-        EdgeMap => LGetEdgeMap( Element % TYPE % ElementCode / 100)
+        EdgeMap => GetEdgeMap( Element % TYPE % ElementCode / 100)
 
         Indexes => Element % NodeIndexes
 
@@ -6339,7 +6352,7 @@ END SUBROUTINE GetMaxDefs
             ymaxm = MAXVAL( NodesM % y(1:n) ) 
             
             ! Ok, we have found a candicate face that will probably have some hits       
-            EdgeMapM => LGetEdgeMap( ElementM % TYPE % ElementCode / 100)        
+            EdgeMapM => GetEdgeMap( ElementM % TYPE % ElementCode / 100)        
             
             ! Go through combinations of edges and find the edges for which the 
             ! indexes are the same. 
@@ -8835,7 +8848,7 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
 
-        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100)
+        OldMap => GetEdgeMap( OldFace % TYPE % ElementCode / 100)
 
         DO i = 1,OldFace % TYPE % NumberOfEdges          
           e1 = OldFace % EdgeIndexes(i)
@@ -9068,8 +9081,8 @@ END SUBROUTINE GetMaxDefs
  
         ParentFound = ParentFound + 1
 
-        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100 )
-        NewMap => LGetEdgeMap( NewFace % TYPE % ElementCode / 100 )
+        OldMap => GetEdgeMap( OldFace % TYPE % ElementCode / 100 )
+        NewMap => GetEdgeMap( NewFace % TYPE % ElementCode / 100 )
 
         IntegStuff = GaussPoints( oldface )
         DO it = 1,IntegStuff % n
@@ -13252,6 +13265,7 @@ END SUBROUTINE FindNeighbourNodes
 
      Solver % Matrix => Matrix
      Solver % Mesh % Changed = .TRUE.
+     !PRINT *, 'M%C set to TRUE MU',Solver % Mesh % Name,Solver % Variable % Name
 
 !------------------------------------------------------------------------------
   END SUBROUTINE UpdateSolverMesh
@@ -15212,7 +15226,7 @@ CONTAINS
      TYPE(Projector_t), POINTER :: Projector
      TYPE(Projector_t), POINTER :: Projector1
      TYPE(Variable_t), POINTER  :: Var, Var1
-     INTEGER :: i,j,k
+     INTEGER :: i,j,k,ierr
      LOGICAL :: GotIt
      REAL(KIND=dp), POINTER :: ptr(:)
 !------------------------------------------------------------------------------
@@ -15220,11 +15234,10 @@ CONTAINS
 !    Deallocate mesh variables:
 !    --------------------------
 
-
      CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
      CALL ReleaseVariableList( Mesh % Variables )
      Mesh % Variables => NULL()
-
+     
 !    Deallocate mesh geometry (nodes,elements and edges):
 !    ----------------------------------------------------
      IF ( ASSOCIATED( Mesh % Nodes ) ) THEN
@@ -15801,7 +15814,7 @@ CONTAINS
 !> to normal Lagrangian elements.
 !------------------------------------------------------------------------------
   SUBROUTINE MakePermUsingMask( Model,Solver,Mesh,MaskName, &
-       OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical )
+       OptimizeBW, Perm, LocalNodes, MaskOnBulk, RequireLogical)
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Mesh_t)   :: Mesh
@@ -15904,7 +15917,7 @@ CONTAINS
             EXIT
           END DO
        END IF       
-       IF( .NOT. Hit ) CYCLE       
+       IF( .NOT. Hit ) CYCLE   
        
        n = CurrentElement % NDOFs               
        Indexes(1:n) = CurrentElement % NodeIndexes(1:n)
