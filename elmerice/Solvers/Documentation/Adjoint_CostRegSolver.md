@@ -15,14 +15,14 @@ Two regularisations are possible:
 
 - First option penalises 1st spatial derivatives *[default]*:
 
-> $$ J_{reg} = \int_{\Omega} 0.5 * (|dV/dx|)^2 d\Omega $$
+> $$ J_{reg} = \int_{\Omega} 0.5  (|dV/dx|)^2 d\Omega $$
 
 The dimension of the spatial derivatives is *CoordinateSystemDimension()* or *CoordinateSystemDimension()-1*
 depending if the solver is executed on the bulk on a boundary.
 
 - Second option penalises difference from a *prior*:
 
-> $$ J_{reg} = \int_{\Omega} 0.5 * ((V-V^{prior})/s^2)^2 d\Omega $$
+> $$ J_{reg} = \int_{\Omega} 0.5  ((V-V^{prior})/s^2)^2 d\Omega $$
 
 
 where $V^{prior}$ is the *prior* estimate and $s^2$ the variance 
@@ -38,9 +38,11 @@ Solver *solver id*
   
     Equation = String "CostReg"  
     procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
-    !## No need to declare a variable, this is done internally to insure that Solver structures exist
+    !## No need to declare a variable, this is done internally to insure
+    !    that Solver structures exist
  
-     !# True if cost function and gradient must be initialised to 0 in this solver
+     !# True if cost function and gradient must be initialised 
+     !   to 0 in this solver
      Reset Cost Value = Logical [Default: True]
 
      !# Name of an ascii file that will contain the cost value as
@@ -54,11 +56,13 @@ Solver *solver id*
      !# a multiplicatif factor can be used to scale the cost function
      Lambda=Real [default 1.0]
      
-     !# The name of the model variable that will contain the derivative of J w.r.t. the input variable
+     !# The name of the model variable that will contain the derivative
+     !  of J w.r.t. the input variable
      Gradient Variable Name = String ""
 
      !# The name of the model variable V
-     !## if not found will look for the keyword "CostReg Nodal Variable" in the body force.
+     !## if not found will look for the keyword "CostReg Nodal Variable" 
+     !    in the body force.
      Optimized Variable Name = String ""
 
      !# Switch to regularisation from *prior*
@@ -72,7 +76,8 @@ Solver *solver id*
 Values for the nodal variable **V** can be given in the body force if  *Optimized Variable Name* was
 not provided in the solver parameters. 
 This can be usefull if we want to apply some change of variable compared to the variable that is optimised,
-However it will be to the user responsability to provide the exact derivative of his change of variable as the solver computes the derivative with respect to the nodal value.
+However it will be to the user responsability to provide the exact derivative of his change of variable 
+as the solver computes the derivative with respect to the nodal value *[see examples]*.
 
 If using *a priori* regularisation, nodal values for the *prior* and *standard deviation* are given in the body force too.
 
@@ -101,9 +106,21 @@ End
 
 Bellow is a list of features that are not currently possible in this solver but that could be implemented:  
 
+- If running on a boundary, we use only the first spatial derivatives, so this solver is intended to be used on a bottom or top surface.
+
 - If Regularisation with respect to the *prior* is used, for the moment we assume no spatial error in the statitics and use only a standard deviation; The cost function could easily be improved if a full background error covariance matrix is known
 
 
 ### Tests and Examples
-Validation examples available under:
+Validation examples available under:  
 ELMER_SRC/elmerice/examples/Adjoint_CostRegSolver
+
+Tested:
+
+- Regularisation penalising first spatial derivatives on a 2D mesh and on the bottom boundary of a 3D mesh 
+
+- Regularisation from  *prior*
+
+- Optimisation  
+
+- Prescribing nodal value from the body forces using a change of variable
