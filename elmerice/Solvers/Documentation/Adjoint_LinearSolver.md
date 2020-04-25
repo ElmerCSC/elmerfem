@@ -1,4 +1,4 @@
-# Adjoint_LinearSolver
+## Adjoint of Linear Systems
 
 **Module name**: Adjoint_LinearSolver  
 **Module subroutines**: Adjoint_LinearSolver  
@@ -7,7 +7,7 @@
 **Document edited**: 22.04.2020  
 
 
-## Introduction
+### Introduction
 
 This solver is the adjoint code of a solver that solves a linear system and apply dirichlet conditions, 
 i.e. it is the adjoint of the following part in a solver:
@@ -19,11 +19,11 @@ i.e. it is the adjoint of the following part in a solver:
 If the direct problem is non-linear the adjoint should revert the non-linear iterations, which is not the case here;  
 However, if the non-linear direct equation is solved using a Newton method, it should be sufficient to solve only the adjoint corresponding to the last linear system solution.
 
-## Theory
+### Theory
 
 When solving a linear system of equation : 
 
-$$ \boldsymbol{A} x = F $$ 
+$$ \boldsymbol{A} x = F $$
 
 the adjoint writes: 
 
@@ -44,66 +44,72 @@ The solver will look in the *Body Forces* and *Boundary Conditions* for the keyw
 
 Getting the derivative of the cost function with respect to the direct solver input parameters usually requires to write the adjoint code of the direct solver that fills **A** and **F** and thus depends on the solution **x** and the adjoint variable **b**. This will be solver specific.
 
-## Keywords
+### Keywords
 
 Bellow is the sequence and related keywords in the *.sif* file:  
 
 ```
- ## Direct solver
-   ##  compute e.g. the velocity field
-    Solver i
-     Equation = String "NameOfEquation"
-     Variable = String "x" 
-     Variable DOFs =  Integer "DOFs"
-     ...
-    End
+!## Direct solver
+ !##  compute e.g. the velocity field
+  Solver i
+   Equation = String "NameOfEquation"
+   Variable = String "x" 
+   Variable DOFs =  Integer "DOFs"
+   ...
+  End
   
- ## Cost Solver
-   ##  compute a cost function, e.g. the mismatch between the model velocity and some observations
-   ##  compute the sensitivity xb of the cost function w.r.t. the solution of the direct solver
-    Solver j
-     ...
-     Should compute the sensitivity "xb" 
-     in a variable named:
-        "velocityb" (Stokes or SSA) 
-        or "Varb" (with Var the name of the solver variable for other solvers)
-    End
+!## Cost Solver
+ !##  compute a cost function, 
+ !  e.g. the mismatch between the model velocity and some observations
+ !##  compute the sensitivity xb of the cost function 
+ !  w.r.t. the solution of the direct solver
+ Solver j
+   ...
+   Should compute the sensitivity "xb" 
+   in a variable named:
+      "velocityb" (Stokes or SSA) 
+      or "Varb" (with Var the name of the solver variable for other solvers)
+ End
     
- ## Dirichlet conditions for "x" in the Boundary Conditions or Body Forces
-   Boundary Condition i
-    x_k = ...
-    x_k Condition = ....
+!## Dirichlet conditions for "x" in the Boundary Conditions or Body Forces
+ Boundary Condition i
+   x_k = ...
+   x_k Condition = ....
     
-    Normal-Tangential x = Logical True
-    Normal-Tangential x condition = ...
-   End
+   Normal-Tangential x = Logical True
+   Normal-Tangential x condition = ...
+ End
    
-   Body Force i
-    x_k = ...
-    x_k Condition = ....
-   End 
+ Body Force i
+   x_k = ...
+   x_k Condition = ....
+ End 
 
 ```
  The solution for the adjoint variable **b** is computed by:
 
 ```
-  Solver *solver id* 
+ Solver *solver id* 
   
     Equation = String "Adjoint"  
     procedure = "ElmerIceSolvers" "Adjoint_LinearSolver"
+ !# The adjoint variable. Can any name as far as it is consistent everywhere 
     Variable = String "Adjoint"  
-      The adjoint variable. Can any name as far as it is consistent everywhere 
+ !# Degrees of freedom for the adjoint variable, 
+ !   needs to be consistent with the DOFs of the Direct solver
     Variable DOFs =  Integer "DOFs"
-      Degrees of freedom for the adjoint variable, needs to be consistent with the DOFs of the Direct solver
     
+ !# The name of the Equation for the direct Solver; cf above
     Direct Solver Equation Name = String "NameOfEquation"
-      The name of the Equation for the direct Solver; cf above
       
+ !# Keywords to solve the linear system
     Linear Sytem Solver = 
-      Keywords to solve the linear system
       
-  End
+ End
 ```
+### Limitations and possible improvments
+ 
+- No support for periodic boundary conditions.
 
-## Tests and Examples
+### Tests and Examples
 

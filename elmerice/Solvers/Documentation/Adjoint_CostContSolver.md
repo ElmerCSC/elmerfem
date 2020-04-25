@@ -1,4 +1,4 @@
-# Adjoint_CostContSolver
+##  Continuous Cost Function
 
 **Module name**: Adjoint_CostContSolver  
 **Module subroutines**: Adjoint_CostContSolver  
@@ -7,7 +7,7 @@
 **Document edited**: 23.04.2020  
 
 
-## Introduction
+### Introduction
 
 This solver computes a cost function as a continuous integral over the model domain
 
@@ -28,7 +28,7 @@ In general this solver will be executed on the whole mesh for vertically integra
 for a 3D model and 2D surface observations.
 
 
-## Keywords
+### Keywords
 
 Bellow are the related keywords in the *.sif* file.
 The solver will usually be executed on the bulk for vertically integrated models or on a boundary for 3D models.
@@ -74,5 +74,5 @@ Body Force i
 End
 ```
 
-## Tests and Examples
+### Tests and Examples
 

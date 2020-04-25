@@ -1,4 +1,4 @@
-# Adjoint_CostRegSolver
+## Regularisation solver
 
 **Module name**: Adjoint_CostRegSolver  
 **Module subroutines**: Adjoint_CostRegSolver  
@@ -7,7 +7,7 @@
 **Document edited**: 24.04.2020  
 
 
-## Introduction
+### Introduction
 This solver computes a cost function classically used for regularisation of the inverse problems 
 and it's derivative with respect to the input nodal variable **V**.
 
@@ -28,7 +28,7 @@ depending if the solver is executed on the bulk on a boundary.
 where $V^{prior}$ is the *prior* estimate and $s^2$ the variance 
 
 
-## Keywords
+### Keywords
 
 Bellow are the related keywords in the *.sif* file:  
 
@@ -38,27 +38,30 @@ Solver *solver id*
   
     Equation = String "CostReg"  
     procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
-    ## No need to declare a variable, this is done internally to insure that Solver structures exist
-     
-     # Name of an ascii file that will contain the cost value as
-     ## Time, J_{reg}, RMS=sqrt(2J_{reg}/Area)
+    !## No need to declare a variable, this is done internally to insure that Solver structures exist
+ 
+     !# True if cost function and gradient must be initialised to 0 in this solver
+     Reset Cost Value = Logical [Default: True]
+
+     !# Name of an ascii file that will contain the cost value as
+     !## Time, J_{reg}, RMS=sqrt(2J_{reg}/Area)
      Cost Filename = File ""
      
-     # Name of the variable that contain the cost value
-     #  must exist and can be a global variable
+     !# Name of the variable that contain the cost value
+     !#  must exist and can be a global variable
      Cost Variable Name = String ""
      
-     # a multiplicatif factor can be used to scale the cost function
+     !# a multiplicatif factor can be used to scale the cost function
      Lambda=Real [default 1.0]
      
-     # The name of the model variable that will contain the derivative of J w.r.t. the input variable
+     !# The name of the model variable that will contain the derivative of J w.r.t. the input variable
      Gradient Variable Name = String ""
 
-     # The name of the model variable V
-     ## if not found will look for the keyword "CostReg Nodal Variable" in the body force.
+     !# The name of the model variable V
+     !## if not found will look for the keyword "CostReg Nodal Variable" in the body force.
      Optimized Variable Name = String ""
 
-     # Switch to regularisation from *prior*
+     !# Switch to regularisation from *prior*
      A priori Regularisation = Logical [default:False]
      
       
@@ -94,12 +97,13 @@ Body Force i
 End
 ```
 
-## Limitations and possible improvments
+### Limitations and possible improvments
 
 Bellow is a list of features that are not currently possible in this solver but that could be implemented:  
 
 - If Regularisation with respect to the *prior* is used, for the moment we assume no spatial error in the statitics and use only a standard deviation; The cost function could easily be improved if a full background error covariance matrix is known
 
 
-## Tests and Examples
-
+### Tests and Examples
+Validation examples available under:
+ELMER_SRC/elmerice/examples/Adjoint_CostRegSolver

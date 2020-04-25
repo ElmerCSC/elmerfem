@@ -1,0 +1,124 @@
+!################################################
+!# Validation test case for Adjoint_CostRegSolver
+!#  Test regularisation penalising 
+!#  first spatial derivatives
+!#   Same as 1 but testing nodal value prescribed in body forces and change of variable
+!################################################
+! PARAMETERS:
+$name="CostReg2"
+!###############################################
+Header
+  Mesh DB "." "mesh2D"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady State
+
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 20
+  Steady State Min Iterations = 20
+
+  !Post File = "case.vtu"
+
+  max output level = 4
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+ ! initial value for var
+ ! Cost function is int 0.5 [ (dV/dx)^2 + (dV/dy)^2]
+ Var = Variable Coordinate 1, Coordinate 2
+  Real  MATC "log(sqrt(2.0)*tx(0)^2+sqrt(2)*tx(1)*tx(1)/2+1)"
+ !=> V = a x^2 + b y^2
+ !=> J = (a^2 * 2/3 + b^2 * 2/3)
+
+ ! perturbation variable
+ VarP = REAL MATC "log(rand(1,1)+1)"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  ! Nodal Value prescribed here
+  ! can be usefull if we want to make a change of variable
+  CostReg Nodal Variable = Variable Var
+   Real procedure "ElmerIceUSF" "TenPowerA"
+
+ ! Derivative of the expression above
+ DJDV = Variable DJDp, Var
+  Real procedure  "ElmerIceUSF" "Derivative_TenPowerA"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! dumy just here to declare variables
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+ Exec Solver  = never
+ Equation = String "UpdateExport"
+ procedure = "ElmerIceSolvers" "UpdateExport"
+
+ Exported Variable 1 = -global "CostValue"  
+ Exported Variable 2 = Var
+ Exported Variable 3 = DJDp
+ Exported Variable 4 = VarP
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Compute regularisation cost
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = String "CostReg"
+  procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+  !# True if cost function and gradient must be initialised to 0 in this solver
+  Reset Cost Value = Logical True
+
+  Cost Filename = File "CostFile_$name$.dat"
+
+  Lambda=Real 1.0
+
+  Cost Variable Name = String "CostValue" 
+
+  Gradient Variable Name = String "DJDp"
+
+  !Optimized Variable Name = String "Var"
+
+  A priori Regularisation = Logical FALSE
+end
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The solver above provide the derivative w.r.t. the Nodal Variable=10^Var
+!  here we want the derivative w.r.t. Var
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+ Equation = String "UpdateExport2"
+ procedure = "ElmerIceSolvers" "UpdateExport"
+ 
+ ! see expression in body forces
+ Exported Variable 1 = DJDV
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Validation
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Equation = "GradientValidation"
+  procedure = "ElmerIceSolvers" "Adjoint_GradientValidation"
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "Var"
+  Perturbed Variable Name = String "VarP"
+  ! the derivative w.r.t. Var
+  Gradient Variable Name = String "DJDV"
+
+  Result File = File "Validation_$name$.dat"
+ 
+end
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (4)= 1 2 3 4
+End
+

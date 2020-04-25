@@ -1,4 +1,4 @@
-# Adjoint_CostDiscSolver
+## Discrete Cost function
 
 **Module name**: Adjoint_CostDiscSolver  
 **Module subroutines**: Adjoint_CostDiscSolver  
@@ -7,7 +7,7 @@
 **Document edited**: 23.04.2020  
 
 
-## Introduction
+### Introduction
 This solver computes a cost function which measures the mismatch between the model and some observations as  
 
 $J = \sum_{1}^{Nobs} 0.5 (u-u^{obs})^{2}$
@@ -25,7 +25,7 @@ Be carefull, this solver will reset the values of the cost and sensitivity to 0;
 In general this solver will be executed on the whole mesh for vertically integrated models or on the upper free surface
 for a 3D model and 2D surface observations.
 
-##  Keywords
+###  Keywords
 
 Bellow are the related keywords in the *.sif* file:  
 
@@ -106,17 +106,28 @@ Body Force i
 End
 ```
 
-## Limitations and possible improvments
+### Limitations and possible improvments
 
 The search algorithm to locate the observations in the mesh is very efficient if the solver is executed on the whole mesh (e.g. for vertcially integrated models); however it is not efficient if the solver is executed on a boundary. 
-In this case, if working with Elmer internal extrusion, it can be advantageus to :
-- first execute this solver alone on the 2D footprint using *save used data = Logical TRUE*, 
-- then re-read the saved files using *Pre-Processed File = Logical TRUE* and *Element Number is Active Number = Logical TRUE*. In this case, if running parallell, the same number of partitions must be used and set *Parallel Observation Files = Logical True*
+In this case, if working with Elmer internal extrusion, it can be advantageus to :  
+
+- first execute this solver alone on the 2D footprint using 
+  - *save used data = Logical TRUE*, 
+
+- then re-read the saved files using  
+  - *Pre-Processed File = Logical TRUE* and  
+  - *Element Number is Active Number = Logical TRUE*. 
+
+- If running parallel, the same number of partitions must be used and set
+  - *Parallel Observation Files = Logical True*
 
 Bellow is a list of features that are not currently possible in this solver but that could be implemented:
+
 - We could take into account statistics on the observation errors in the definition of the cost function. This could be simple informations on the variance of a full error-covariance matrix.
+
 - We could allow for the possibility that only the norm of a vector is oberved or only the components in a given direction.
 
 
-## Tests and Examples
+
+### Tests and Examples
 
