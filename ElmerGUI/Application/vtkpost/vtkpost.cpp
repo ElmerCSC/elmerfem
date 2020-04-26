@@ -268,34 +268,36 @@ VtkPost::VtkPost(QWidget *parent)
 
   // Default color map (from blue to red):
   //--------------------------------------
+  double hueRange[2] = {0.6667, 0};
+  int nColor =128;
   currentLut = vtkLookupTable::New();
-  currentLut->SetHueRange(0.6667, 0);
-  currentLut->SetNumberOfColors(128);
+  currentLut->SetHueRange(hueRange);
+  currentLut->SetNumberOfColors(nColor);
   currentLut->Build();
 
   surfaceLut = vtkLookupTable::New();
-  surfaceLut->SetHueRange(0.6667, 0);
-  surfaceLut->SetNumberOfColors(128);
+  currentLut->SetHueRange(hueRange);
+  currentLut->SetNumberOfColors(nColor);
   surfaceLut->Build();
 
   vectorLut = vtkLookupTable::New();
-  vectorLut->SetHueRange(0.6667, 0);
-  vectorLut->SetNumberOfColors(128);
+  currentLut->SetHueRange(hueRange);
+  currentLut->SetNumberOfColors(nColor);
   vectorLut->Build();
 
   isocontourLut = vtkLookupTable::New();
-  isocontourLut->SetHueRange(0.6667, 0);
-  isocontourLut->SetNumberOfColors(128);
+  currentLut->SetHueRange(hueRange);
+  currentLut->SetNumberOfColors(nColor);
   isocontourLut->Build();
 
   isosurfaceLut = vtkLookupTable::New();
-  isosurfaceLut->SetHueRange(0.6667, 0);
-  isosurfaceLut->SetNumberOfColors(128);
+  currentLut->SetHueRange(hueRange);
+  currentLut->SetNumberOfColors(nColor);
   isosurfaceLut->Build();
 
   streamlineLut = vtkLookupTable::New();
-  streamlineLut->SetHueRange(0.6667, 0);
-  streamlineLut->SetNumberOfColors(128);
+  currentLut->SetHueRange(hueRange);
+  currentLut->SetNumberOfColors(nColor);
   streamlineLut->Build();
 
   // User interfaces, widgets, and draw routines:
@@ -757,16 +759,6 @@ void VtkPost::createToolbars()
   viewToolBar->addAction(preferencesAct);
   viewToolBar->addSeparator();
   viewToolBar->addAction(redrawAct);
-  /*
-  viewToolBar->addSeparator();
-  viewToolBar->addAction(displaceAct);
-  displacementScaleFactorSpinBox.setDecimals(10);
-  displacementScaleFactorSpinBox.setValue(1);
-  connect(&displacementScaleFactorSpinBox, SIGNAL(valueChanged(double)), this, SLOT(displacementScaleFactorSpinBoxValueChanged(double)));
-  viewToolBar->insertWidget(displaceAct,&displacementScaleFactorSpinBox);
-  displacementScaleFactorSpinBox.setEnabled(false);
-  displaceAct->setEnabled(false);
-  */
 
   displacementToolBar = new QToolBar(tr("Displacement"));
   addToolBar(Qt::BottomToolBarArea, displacementToolBar);
@@ -787,6 +779,7 @@ void VtkPost::createToolbars()
   connect(timestepSlider, SIGNAL(valueChanged(int)), this, SLOT(timestepSliderValueChanged(int)));
   timestepToolBar->insertWidget(playAct,timestepSlider);
 
+  timestepLabel->setEnabled(false);
   timestepSlider->setEnabled(false);
   playAct->setEnabled(false);  
   iEndStep = -1;
@@ -1509,6 +1502,7 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   readEpFile->repaint();
 
   redrawSlot();
+  timestepLabel->setEnabled(timesteps > 1);
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepLabel->setEnabled(timesteps > 1);
@@ -1857,6 +1851,7 @@ bool VtkPost::ReadElmerPostFile(QString postFileName)
   readEpFile->repaint();
 
   redrawSlot();
+  timestepLabel->setEnabled(timesteps > 1);
   timestepSlider->setEnabled(timesteps > 1);
   playAct->setEnabled(timesteps > 1);
   timestepLabel->setEnabled(timesteps > 1);
@@ -2464,6 +2459,7 @@ void VtkPost::fitToWindowSlot()
 {
   if(!postFileRead) return;
   renderer->ResetCamera();  
+  redrawSlot();
 }
 
 // Reset model view:
@@ -2472,6 +2468,7 @@ void VtkPost::resetModelViewSlot()
 {
   if(!postFileRead) return;
   SetInitialCameraPosition();
+  redrawSlot();
 }
 
 // Clip all -action toggled:
@@ -2821,6 +2818,7 @@ void VtkPost::ResetAll()
   SetOrientation(0, 0, 0);
   SetOrigin(0, 0, 0);
   SetScale(1, 1, 1);
+  redrawSlot();
 }
 
 //------------------------------------------------------------

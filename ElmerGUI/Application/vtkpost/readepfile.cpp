@@ -80,6 +80,8 @@ void ReadEpFile::browseButtonClickedSlot()
   QString fileName = QFileDialog::getOpenFileName(this, tr("Select input file"), "", tr("Postprocessor files (*.vtu *.ep);;Paraview files (*.vtu);;ElmerPost files (*.ep)"));
 
   ui.fileName->setText(fileName.trimmed());
+  ui.start->setValue(1);
+  ui.end->setValue(1);
 
   readHeader();
 }
@@ -170,6 +172,7 @@ void ReadEpFile::readHeader()
 	//for(int i=0; i < vtuFileNameList.length(); i++){
 	//	cout <<  vtuFileNameList.at(i).toLatin1().data() << endl;
 	//}
+	vtuFileNameList = vtuFileNameList.mid(vtuFileNameList.indexOf(info.fileName()));
 	timesteps = vtuFileNameList.length();
   
   }else if(ui.fileName->text().endsWith(".ep", Qt::CaseInsensitive)){
