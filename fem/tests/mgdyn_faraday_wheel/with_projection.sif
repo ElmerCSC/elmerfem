@@ -1,0 +1,241 @@
+!
+! This is a special model of the Faraday wheel to test the mortar FE 
+! approximation. To this end the wheel is artificially broken into an inner part
+! and outer part which are meshed independently. Moreover, the vector potential
+! variable is made unique in an iterated manner (the nonlinear iteration is 
+! employed for this purpose) by performing the Helmholtz projection after 
+! solving the A-V solution candidate. For a similar verification case see the 
+! test ../mgdyn_faraday_disc/.
+!
+! Here a metallic disc rotates and is subject to a uniform magnetic field 
+! parallel to the disc axis. When the disc is put to rotate, the mobile charges
+! of the conductor start to feel a radial force due to the Lorentz term v x B
+! and hence accumulate on the insulated rim surface. As a consequence of charge
+! separation a radial electric field E is produced. The process of charge 
+! separation continues as long as steady state is reached such that the force on
+! the charges which is produced by the Lorentz term v x B balances the force 
+! which is produced by E. That is, in the steady state we have 
+! 
+!               E'(x) = E(x) + v(x) x B(x) = 0, 
+!
+! with E'(x) being the spatial field that describes the force experienced by 
+! a charge (see Elmer Models Manual for Maxwell's equations in terms of E'). 
+! Note that the solution is expressed in the spatial coordinates and attention 
+! is not fixed on particular material points (this is known as the Euler 
+! description in the continuum mechanics).  
+!
+! The continuity of the A-V solution is enforced weakly over the artificial 
+! contact surface of the inner and outer part.
+!
+! The author of this setup: Mika Malinen
+!
+
+
+
+$ omega_z = 1
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = "Steady State"
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Inner Ring"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Outer Ring"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Equation 1
+  Active Solvers(5) = 1 2 3 4 5
+End
+
+Solver 1
+  Equation = "MGDynamics"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Nonlinear Post Solvers(2) = Integer 4 5
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1e-5
+
+  Fix Input Current Density = Logical False
+  Use Piola Transform = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Row Equilibration = True
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 400
+  Linear System Convergence Tolerance = 1e-6
+  Linear System Abort Not Converged = False
+
+  Edge Basis = Logical True
+  Apply Mortar BCs = Logical True
+  Projector Skip Nodes = False
+End
+
+Solver 2
+!  Exec Solver = never
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+!  Calculate Current Density = Logical True
+!  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Magnetic Vector Potential = Logical True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Symmetric = True
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 3
+!  Exec Solver = after timestep
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = with_projection
+  Vtu Format = Logical True
+  Discontinuous Bodies = true
+  Save Geometry IDs = Logical True
+End
+
+
+Solver 4
+  Equation = "Helmholtz projection"
+  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
+  Procedure = "HelmholtzProjection" "HelmholtzProjector"
+!  Potential variable = "av"
+  Variable = "phi"
+  Variable DOFs = 1
+  linear system solver = iterative
+  linear system iterative method = CG
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-8
+  linear system preconditioning = ILU0
+  linear system abort not converged = True
+  linear system residual output = 20
+
+  Apply Mortar BCs = True
+  Projector Skip Edges = True
+End
+
+Solver 5
+  Equation = "Remove kernel component"
+  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
+  Procedure = "HelmholtzProjection" "RemoveKernelComponent"
+  Kernel Variable = String "phi"
+  Variable = "Kernel Component"
+  Variable DOFs = 1
+  Use Piola Transform = True
+  linear system solver = iterative
+  linear system iterative method = CG
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-8
+  linear system preconditioning = ILU0
+  linear system abort not converged = True
+  linear system residual output = 1
+End
+
+Material 1
+  Name = "Material1"
+  Relative Permeability = 1.0 
+  Relative Permittivity = 0
+  Electric Conductivity = 1e7
+End
+
+Body Force 1
+  Angular Velocity 3 = Real $ omega_z
+End
+
+Body Force 2
+  Angular Velocity 3 = Real $ omega_z
+End
+
+! The outer face of the inner ring:
+!-----------------------------------
+Boundary Condition 1
+  Target Boundaries(1) = 1
+
+  Mortar BC = Integer 4
+
+  Rotational Projector = Logical True
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+End
+
+! The inner face of the inner ring:
+!-----------------------------------
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  AV {e} 1 = Variable Coordinate 2
+    REAL MATC "-0.5*tx"
+  AV {e} 2 = Variable Coordinate 1
+    REAL MATC "0.5*tx"
+  AV {e} 3 = 0.0
+  Phi = Real 0.0
+End
+
+! The outer face of the outer ring:
+!-----------------------------------
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  AV {e} 1 = Variable Coordinate 2
+    REAL MATC "-0.5*tx"
+  AV {e} 2 = Variable Coordinate 1
+    REAL MATC "0.5*tx"
+  AV {e} 3 = 0.0
+  Phi = Real 0.0
+End
+
+! The inner face of the outer ring:
+!-----------------------------------
+Boundary Condition 4
+  Target Boundaries(1) = 4
+End
+
+!
+! Fix potential at one node on the inner face
+! (this seems to make linear solver convergence harder):
+!-------------------------------------------------------
+!Boundary Condition 5
+!  Target Nodes(1) = 5
+!  AV = 0
+!End
+
+
+Solver 1 :: Reference Norm = Real 4.39413963E-02
+Solver 1 :: Reference Norm Tolerance = Real 1e-4
+

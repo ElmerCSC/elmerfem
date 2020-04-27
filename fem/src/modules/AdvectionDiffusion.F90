@@ -133,11 +133,7 @@
          LocalPotential(:), Density(:), HeatCapacity(:), Pressure(:),GasConstant(:), &
          SpeciesTransferCoeff(:), SExt(:), MU(:), MV(:), MW(:)
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,totat,st,totst,at0
-#else
-     REAL(KIND=dp) :: at,totat,st,totst,CPUTime,at0,RealTime
-#endif
      REAL(KIND=dp) :: Nrm(3), Nrm2(3)
      REAL(KIND=dp), ALLOCATABLE :: BackupForceVector(:)
 

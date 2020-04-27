@@ -102,7 +102,12 @@ void Text::draw(VtkPost* vtkPost)
   if(textActor == NULL) return;
 
   textActor->SetDisplayPosition(posX, posY);
+
+#if WITH_QT5  
+  textActor->SetInput(message.toLatin1().data());
+#else
   textActor->SetInput(message.toAscii().data());
+#endif  
 
   vtkTextProperty* tprop = textActor->GetTextProperty();
   if(tprop == NULL) return;

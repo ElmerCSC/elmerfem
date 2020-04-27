@@ -557,8 +557,10 @@ CONTAINS
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
-         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
-           Values => Variable % PrevValues(:,-tStep)
+         IF ( ASSOCIATED(Variable % PrevValues) ) THEN
+           IF( -tStep<=SIZE(Variable % PrevValues,2)) &
+              Values => Variable % PrevValues(:,-tStep)
+         END IF
        END IF
      END IF
 
@@ -660,8 +662,10 @@ CONTAINS
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
-         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
+         IF ( ASSOCIATED(Variable % PrevValues) ) THEN
+           IF ( -tStep<=SIZE(Variable % PrevValues,2)) &
              Values => Variable % PrevValues(:,-tStep)
+         END IF
        END IF
      END IF
 
@@ -705,7 +709,7 @@ CONTAINS
              k = Indexes(j)
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
                l = Variable % Perm(k)
-               IF (k>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
+               IF (l>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
              END IF
            END DO
          END IF
@@ -3450,20 +3454,6 @@ CONTAINS
      INTEGER :: i, j, n, nd
      INTEGER(KIND=AddrInt) :: Proc
      INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
-
-#ifndef USE_ISO_C_BINDINGS
-     INTERFACE 
-       SUBROUTINE ExecLocalProc( Proc, Model, Solver, G, F, Element, n, nd )
-         USE Types
-         INTEGER(KIND=AddrInt) :: Proc
-         TYPE(Model_t)   :: Model
-         TYPE(Solver_t)  :: Solver
-         TYPE(Element_t) :: Element
-         INTEGER :: n, nd
-         REAL(KIND=dp) :: G(:,:), F(:)
-       END SUBROUTINE ExecLocalProc
-     END INTERFACE
-#endif
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver

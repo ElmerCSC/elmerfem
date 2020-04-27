@@ -76,15 +76,9 @@
         LocalMassMatrix(:,:),LocalStiffMatrix(:,:),LocalForce(:), &
         Ap(:),Permeability(:), Conductivity(:), Ae(:),VecLoadVector(:,:)
 
-#ifdef USE_ISO_C_BINDINGS
     REAL (KIND=DP) :: UNorm,RelativeChange, &
         at,at0,AngularFrequency, jc, jre, jim, &
         TotalHeating, DesiredHeating, TotalVolume, PermeabilityOfVacuum
-#else
-    REAL (KIND=DP) :: UNorm,RelativeChange, &
-        at,at0,RealTime,CPUTime, AngularFrequency, jc, jre, jim, &
-        TotalHeating, DesiredHeating, TotalVolume, PermeabilityOfVacuum
-#endif
 
     INTEGER :: body_id, eq_id, bf_id, LocalNodes, NonlinearIter
     INTEGER :: t,n,k,istat,i,iter,q,j,dofs,dim

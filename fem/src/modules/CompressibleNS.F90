@@ -73,9 +73,6 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: Norm = 0, PrevNorm, Tolerance, ToleranceRatio, &
        atime, stime, at0, SlipCoefficient, &
        gamma, cv, kcoeff, rho0, T0, lambda, bulkvisc
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: CPUTime, RealTime
-#endif
 
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), Mass(:,:), &

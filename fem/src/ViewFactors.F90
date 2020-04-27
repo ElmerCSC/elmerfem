@@ -91,7 +91,6 @@
 
      INTEGER :: divide, nprob
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at0, rt0
 
      INTERFACE
@@ -124,9 +123,6 @@
             INTEGER :: idiv, fast 
         END SUBROUTINE viewfactorsaxis
      END INTERFACE
-#else
-     REAL(KIND=dp) :: at0, rt0, CPUTime, RealTime
-#endif
 
      INTEGER, POINTER :: Timesteps(:)
      INTEGER :: TimeIntervals,interval,timestep,combineInt
@@ -751,20 +747,13 @@
       SUBROUTINE NormalizeFactors( Model )
         IMPLICIT NONE
         TYPE(Model_t), POINTER :: Model
-
+!------------------------------------------------------------------------------
         INTEGER :: itmax,it,i,j,k
-
         LOGICAL :: li,lj
-
         REAL(KIND=dp), ALLOCATABLE :: RHS(:),SOL(:),Areas(:),PSOL(:)
-
         REAL(KIND=dp) :: cum,s,si,sj
         REAL(KIND=dp), PARAMETER :: eps=1.0D-20
-#ifdef USE_ISO_C_BINDINGS
         REAL(KIND=dp) :: at1
-#else
-        REAL(KIND=dp) :: at1, CPUTime
-#endif
 
         itmax = 20
         it = 0
@@ -885,22 +874,15 @@
     SUBROUTINE IterSolv( N,x,b )
       IMPLICIT NONE
 
+      INTEGER :: N
       REAL(KIND=dp), DIMENSION(n) :: x,b
 
       REAL(KIND=dp) :: dpar(50)
-
-      INTEGER :: N,ipar(50),wsize
+      INTEGER :: ipar(50),wsize
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
-
       INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
-#ifndef USE_ISO_C_BINDINGS
-      INTEGER  :: HUTI_D_CG
-      EXTERNAL :: HUTI_D_CG
-      INTEGER(KIND=AddrInt) :: AddrFunc
-#else
       INTEGER(KIND=AddrInt) :: AddrFunc
       EXTERNAL :: AddrFunc
-#endif
 !------------------------------------------------------------------------------
       HUTI_NDIM = N
       dProc = 0

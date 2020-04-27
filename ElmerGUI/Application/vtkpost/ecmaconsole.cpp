@@ -42,6 +42,9 @@
 
 #include "ecmaconsole.h"
 
+#if WITH_QT5
+  #include <QtWidgets>
+#endif
 #include <QWidget>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -210,7 +213,12 @@ void EcmaConsole::addNames(QString className, const QMetaObject* metaObject)
     QMetaMethod::Access access = method.access();
     QMetaMethod::MethodType methodType = method.methodType();
     if((access == QMetaMethod::Public) && (methodType == QMetaMethod::Slot)) {
+
+#if WITH_QT5
+      QString signature = method.methodSignature();
+#else
       QString signature = method.signature();
+#endif      
       int j = signature.indexOf("(");
       QString slotName = signature.left(j);
       publicSlots << slotName;

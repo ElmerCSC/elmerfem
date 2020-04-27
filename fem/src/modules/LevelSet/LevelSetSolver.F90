@@ -77,11 +77,7 @@
          TimeForce, LocalForce, ElementNodes,AllocationsDone, &
          ElemVelo, Surf, SurfaceFlux
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,totat,st,totst
-#else
-     REAL(KIND=dp) :: at,totat,st,totst,CPUTime
-#endif
 
 
 !------------------------------------------------------------------------------

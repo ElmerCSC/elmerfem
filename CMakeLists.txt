@@ -10,6 +10,19 @@
 # First public beta release 11th of October, 2013
 #
 
+if(APPLE)
+  # message("you need to have gcc-gfrotran installed using HomeBrew")
+  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-9")
+  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-9")
+  set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
+  # set(BLA_VENDOR "OpenBLAS")
+  # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
+  # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
+  # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
+endif()
+
+
+
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
@@ -19,7 +32,55 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
+    # on OSX FindOpenGL uses framework version of OpenGL, but we need X11 version
+    FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
+      PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
+    find_library(X11_GL_LIB GL
+      PATH /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# FIND_LIBRARY(OPENGL_gl_LIBRARY GL
+#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# FIND_LIBRARY(OPENGL_glu_LIBRARY GLU
+#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
+INCLUDE_DIRECTORIES(${GLX_INCLUDE_DIR})
 ENDIF()
+
+#shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
+# For building on OS X
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+  # If the user doesn't tell us which package manager they're using
+  if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+    # Try to find MacPorts path
+    find_program(MACPORTS_EXECUTABLE port)
+    if(EXISTS ${MACPORTS_EXECUTABLE})
+      string(REPLACE "/bin/port" ""
+      MACPORTS_PREFIX ${MACPORTS_EXECUTABLE})
+      message(STATUS "Detected MacPorts install at ${MACPORTS_PREFIX}")
+    endif(EXISTS ${MACPORTS_EXECUTABLE})
+
+    # Try to find Homebrew path
+    find_program(HOMEBREW_EXECUTABLE brew)
+    if(EXISTS ${HOMEBREW_EXECUTABLE})
+      string(REPLACE "/bin/brew" ""
+      HOMEBREW_PREFIX ${HOMEBREW_EXECUTABLE})
+      message(STATUS "Detected Homebrew install at ${HOMEBREW_PREFIX}")
+    endif()
+
+  endif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+  # In case someone tries to shoot themselves in the foot
+  if(DEFINED MACPORTS_PREFIX AND DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "Multiple package management systems detected - ")
+    message(SEND_ERROR "define either MACPORTS_PREFIX or HOMEBREW_PREFIX")
+
+  # No package manager
+  elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
+  endif()
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
 
@@ -53,9 +114,9 @@ SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
-if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
-  CMAKE_POLICY(SET CMP0022 OLD)
-ENDIF()
+# if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
+#   CMAKE_POLICY(SET CMP0022 OLD)
+# ENDIF()
 
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
@@ -155,38 +216,64 @@ IF(WITH_MPI)
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
 
-IF(WITH_MKL)
-  # Find MKL
-  FIND_PACKAGE(MKL REQUIRED)
-  SET(HAVE_MKL TRUE)
-  MARK_AS_ADVANCED(HAVE_MKL)
-  # Set BLAS and LAPACK to point to MKL
-  SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-  SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-  IF(MKL_SCALAPACK_LIBRARIES_FOUND)
-    SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
-    # Versions >11.1 of MKL include Cluster PARDISO direct solver
-    IF(MKL_CPARDISO_FOUND)
-      SET(HAVE_CPARDISO TRUE)
-      MARK_AS_ADVANCED(HAVE_CPARDISO)
+# if(APPLE)
+#   # message(STATUS "Trying to find Accelerate library")
+#   # find_library(BLAS_LIBRARIES Accelerate HINTS /System/Library/Frameworks/Accelerate.framework)
+#   # MARK_AS_ADVANCED(BLAS_LIBRARIES)
+#   # set(BLAS_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -framework accelerate")
+#   # find_path(LAPACK_INCLUDE_DIRS
+#   #   NAMES clapack.h
+#   #   PATHS ${BLAS_INCLUDE_DIRS}
+#   #   NO_DEFAULT_PATH
+#   # )
+#   # set(LAPACK_HEADER ${LAPACK_INCLUDE_DIRS}/clapack.h)
+#   # set(LAPACK_SUFFIX "_")
+#   # set(LAPACK_PREFIX)
+
+#   # message(STATUS "Using Accelerate framework on macOS")
+#   message("using the local blas library")
+#   # option(BLAS_VERBOSE "Print some additional information during BLAS libraries detection" ON)
+#   set(BLAS_DIR "./mathlibs/src/blas/")
+# set(BLA_VENDOR "Generic")
+
+  # set(ACCELERATE_LIBS "-framework Accelerate")
+  # BLAS_Accelerate_LIBRARY:FILEPATH=/System/Library/Frameworks/Accelerate.framework
+
+
+# else()
+  IF(WITH_MKL)
+    # Find MKL
+    FIND_PACKAGE(MKL REQUIRED)
+    SET(HAVE_MKL TRUE)
+    MARK_AS_ADVANCED(HAVE_MKL)
+    # Set BLAS and LAPACK to point to MKL
+    SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+    SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+    IF(MKL_SCALAPACK_LIBRARIES_FOUND)
+      SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
+      # Versions >11.1 of MKL include Cluster PARDISO direct solver
+      IF(MKL_CPARDISO_FOUND)
+        SET(HAVE_CPARDISO TRUE)
+        MARK_AS_ADVANCED(HAVE_CPARDISO)
+      ENDIF()
+    ENDIF()
+    INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+  ELSE()
+    IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+      # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
+      FIND_PACKAGE(MKL QUIET)
+      IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
+        # Set BLAS and LAPACK to point to MKL, in order to work around
+        # CMake FindBLAS finding wrong core library for GNU Fortran
+        SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+        SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+        INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+        SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+      ENDIF()
     ENDIF()
   ENDIF()
-  INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-ELSE()
-  IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
-    # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
-    FIND_PACKAGE(MKL QUIET)
-    IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
-      # Set BLAS and LAPACK to point to MKL, in order to work around
-      # CMake FindBLAS finding wrong core library for GNU Fortran
-      SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-      SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-      INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-      SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-    ENDIF()
-  ENDIF()
-ENDIF()
+# endif(APPLE)
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
@@ -241,6 +328,10 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
 
 FIND_PACKAGE(MMG)
+# INCLUDE("cmake/Modules/FindMMG.cmake")
+# INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+# TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+
 
 IF(MMG_FOUND)
 

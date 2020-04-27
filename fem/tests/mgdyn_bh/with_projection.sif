@@ -69,10 +69,6 @@ Solver 2
    Steady State Convergence Tolerance = 1e-6
 
    Nonlinear Post Solvers(2) = Integer 6 7
-
-!Generic Source Fixing = Logical True
-!  Jfix Hybrid = Logical True
-!  Jfix All = Logical True
 End
 
 Solver 3
@@ -138,7 +134,6 @@ Solver 7
   Potential variable = "P"
   Variable = "Kernel Component"
   Variable DOFs = 1
-  Element = "n:0 e:1 -brick b:3 -quad_face b:2"
 
   linear system solver = iterative
   linear system iterative method = CG
@@ -232,24 +227,24 @@ $ A_CABLE_TOP = 52
 Boundary Condition 1
    Name = "BC Potential"
    Target Boundaries(1) = 52
-   P {e}= real 0
-   P = Real 0
+   P {e} = real 0
    Potential = 0.001
+   Phi = Real 0.0
 End
 
 Boundary Condition 2
    Name = "BC Voltage Ground"
    Target Boundaries(1) = 42
    P {e} = Real 0
-   P = Real 0
    Potential = 0.0
+   Phi = Real 0.0
 End
 
 Boundary Condition 3
    Name = "BCn Flux Parallel"
    Target Boundaries(3) = 4 28 29
-
    P {e} = Real 0
+   Phi = Real 0.0
 End
 
 Body Force 1

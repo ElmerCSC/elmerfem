@@ -545,10 +545,18 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       BGElement => GetBoundaryElement(k)
       Family = GetElementFamily(BGElement)
 
-      IF (ActiveBoundaryElement() .AND. Family == 2) THEN
+      IF (ActiveBoundaryElement() .AND. Family <= 2) THEN
         n  = GetElementNOFNodes(BGElement)
         nd = GetElementNOFDOFs(BGElement)
-        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar)
+
+        IF (LargeDeflection) THEN
+          CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+        ELSE
+          LocalSol = 0.0d0
+        END IF
+
+        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar, LargeDeflection, &
+            MassAssembly, HarmonicAssembly, LocalSol)
       END IF     
     END DO BOUNDARY_ASSEMBLY
 
@@ -4360,7 +4368,7 @@ CONTAINS
               Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
                   Basis(i) * Basis(j) * Weight
               Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
-                  h**3/12.0d0 * Basis(i) * Basis(j) * Weight
+                  h**2/12.0d0 * Basis(i) * Basis(j) * Weight
             END DO
           END DO
         END DO
@@ -4432,12 +4440,12 @@ CONTAINS
 
     IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
-    IF( MassAssembly ) THEN
+    IF ( MassAssembly ) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
 
-      IF( TransientSimulation ) THEN
+      IF ( TransientSimulation ) THEN
         CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
-      ELSE IF( HarmonicAssembly ) THEN
+      ELSE IF ( HarmonicAssembly ) THEN
         CALL DefaultUpdateMass( MASS )
         ! update damping if present!
       END IF
@@ -4454,24 +4462,33 @@ CONTAINS
 ! from given resultant force and resultant couple vectors over the 1-D
 ! boundary.
 !------------------------------------------------------------------------------
-  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m)
+  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m, LargeDeflection, &
+      MassAssembly, HarmonicAssembly, LocalSol)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component 
     INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
+    LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
+    LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
+    LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
+    REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Found, AssemblyNeeded, Stat
+    LOGICAL :: Found, AssemblyNeeded, AssembleSprings, AssembleMass, Stat
 
-    INTEGER :: i, i0, t
-    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Force(m*nd), Basis(nd)
-    REAL(KIND=dp) :: NodalForce(3,1:n), NodalCouple(3,1:n)
+    INTEGER :: i, i0, j, k, t
+    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Damp(m*nd,m*nd)
+    REAL(KIND=dp) :: Force(m*nd), Basis(nd)
+    REAL(KIND=dp) :: PrevSolVec(m*nd)
+    REAL(KIND=dp) :: NodalForce(3,n), NodalCouple(3,n)
+    REAL(KIND=dp) :: NodalSprings(6,n), NodalMass(6,n)
     REAL(KIND=dp) :: ResultantForce(3), ResultantCouple(3)
+    REAL(KIND=dp) :: Spring(6), MassVals(6)
     REAL(KIND=dp) :: detJ, Weight
 
     SAVE Nodes
@@ -4482,11 +4499,30 @@ CONTAINS
     CALL GetRealVector(BC, NodalForce(1:3,1:n), 'Resultant Force', AssemblyNeeded)
     CALL GetRealVector(BC, NodalCouple(1:3,1:n), 'Resultant Couple', Found)
     AssemblyNeeded = AssemblyNeeded .OR. Found
+    CALL GetRealVector(BC, NodalSprings(1:6,1:n), 'Spring', AssembleSprings)
+    AssemblyNeeded = AssemblyNeeded .OR. AssembleSprings
+    IF (MassAssembly) THEN
+      CALL GetRealVector(BC, NodalMass(1:6,1:n), 'Mass', AssembleMass)
+      AssemblyNeeded = AssemblyNeeded .OR. AssembleMass
+    ELSE
+      AssembleMass = .FALSE.
+    END IF
     IF (.NOT. AssemblyNeeded) RETURN
 
     CALL GetElementNodes(Nodes)
     Force = 0.0d0
     Stiff = 0.0d0
+    Mass = 0.0d0
+    Damp = 0.0d0
+
+    ! ------------------------------------------------------------------------
+    ! Vectorize the previous solution 
+    ! ------------------------------------------------------------------------
+    IF (LargeDeflection .AND. AssembleSprings) THEN
+      DO k=1,m
+        PrevSolVec(k:m*nd:m) = LocalSol(k,1:nd)
+      END DO
+    END IF
 
     ! Note that in the following the integration is not done accurately as
     ! the effect of the improved surface reconstruction is not taken into
@@ -4504,9 +4540,50 @@ CONTAINS
         Force(i0+1:i0+3) = Force(i0+1:i0+3) + Weight * ResultantForce(1:3) * Basis(i)
         Force(i0+4:i0+6) = Force(i0+4:i0+6) + Weight * ResultantCouple(1:3) * Basis(i)
       END DO
+
+      IF (AssembleSprings) THEN
+        Spring(1:6) = MATMUL(NodalSprings(1:6,1:n), Basis(1:n))
+        DO k=1,3
+          DO i=1,nd
+            DO j=1,nd
+              Stiff((i-1)*m+k,(j-1)*m+k) = Stiff((i-1)*m+k,(j-1)*m+k) + &
+                  Spring(k) * Basis(i) * Basis(j) * Weight
+              Stiff((i-1)*m+3+k,(j-1)*m+3+k) = Stiff((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  Spring(k+3) * Basis(i) * Basis(j) * Weight
+            END DO
+          END DO
+        END DO
+      END IF
+
+      IF (MassAssembly .AND. AssembleMass) THEN
+        MassVals(1:6) = MATMUL(NodalMass(1:6,1:n), Basis(1:n))
+        DO k=1,3
+          DO i=1,nd
+            DO j=1,nd
+              Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
+                  MassVals(k) * Basis(i) * Basis(j) * Weight
+              Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  MassVals(k+3) * Basis(i) * Basis(j) * Weight
+            END DO
+          END DO
+        END DO
+      END IF
+
     END DO
 
-    CALL DefaultUpdateEquations(Stiff,Force)
+    IF (LargeDeflection .AND. AssembleSprings) THEN
+      Force(1:m*nd) = Force(1:m*nd) - MATMUL(Stiff(1:m*nd,1:m*nd), PrevSolVec(1:m*nd)) 
+    END IF
+
+    IF (MassAssembly .AND. AssembleMass) THEN
+      IF (HarmonicAssembly) THEN
+        CALL DefaultUpdateMass(Mass)
+      ELSE
+        CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+      END IF
+    END IF
+
+    CALL DefaultUpdateEquations(Stiff, Force)
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellBoundaryMatrix
 !------------------------------------------------------------------------------

@@ -81,7 +81,6 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: iter, i, j, k, l, n, nd, t, istat, eq, LocalNodes
   REAL(KIND=dp) :: Norm, AngularFrequency, s
 
-
   TYPE(ValueList_t), POINTER :: Equation, Material, BodyForce, &
              BC, SolverParams, Simulation
 
@@ -91,15 +90,10 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
        SoundSpeed(:), Density(:), Damping(:), Impedance(:,:), ConvVelo(:,:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
+  REAL(KIND=dp) :: at,at0,totat,st,totst,t1
 
   SAVE STIFF, Work, Load, FORCE, &
        SoundSpeed, Density, Damping, Impedance, AllocationsDone, ConvVelo
-
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
 
 !-----------------------------------------------------------------------------
 ! Local variables for performing analyses with harmonic interfaces
@@ -124,7 +118,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Solver % Mesh % MaxElementDOFs
 
      IF ( AllocationsDone ) THEN

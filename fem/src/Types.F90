@@ -109,34 +109,6 @@ MODULE Types
 !------------------------------------------------------------------------------
 
 
-
-  
-#ifndef USE_ISO_C_BINDINGS
-INTERFACE
-  SUBROUTINE Envir(a,b,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: a(*), b(*)
-  END SUBROUTINE Envir
-
-  SUBROUTINE SystemC(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE SystemC
-
-  SUBROUTINE MakeDirectory(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE MakeDirectory
-
-  SUBROUTINE Matc(cmd,VALUE,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: cmd(*), VALUE(*)
-  END SUBROUTINE Matc
-END INTERFACE
-#endif
-
 #ifdef HAVE_MUMPS
   INCLUDE 'dmumps_struc.h'
 #endif
@@ -512,7 +484,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE BoundaryConditionArray_t
-     INTEGER :: TYPE,Tag
+     INTEGER :: Type=0,Tag=0
      TYPE(Matrix_t), POINTER :: PMatrix => NULL()
      LOGICAL :: PMatrixGalerkin = .FALSE.
      TYPE(ValueList_t), POINTER :: Values => Null()
@@ -521,7 +493,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE InitialConditionArray_t
-     INTEGER :: TYPE,Tag
+     INTEGER :: TYPE=0,Tag=0
      TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE InitialConditionArray_t
 
@@ -782,7 +754,7 @@ END INTERFACE
      TYPE(Quadrant_t), POINTER  :: RootQuadrant
 
      LOGICAL :: Changed, OutputActive, Stabilize
-     INTEGER :: SavesDone, AdaptiveDepth
+     INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
 
      TYPE(Factors_t), POINTER :: ViewFactors(:)
 
@@ -869,7 +841,9 @@ END INTERFACE
       INTEGER :: MultiGridLevel,  MultiGridTotal, MultiGridSweep
       LOGICAL :: MultiGridSolver, MultiGridEqualSplit
       TYPE(Mesh_t), POINTER :: Mesh => NULL()
-
+      INTEGER :: MeshTag = 1
+      LOGICAL :: MeshChanged = .FALSE.
+      
       INTEGER, POINTER :: ActiveElements(:) => NULL()
       INTEGER, POINTER :: InvActiveElements(:) => NULL()
       INTEGER :: NumberOfActiveElements
@@ -888,9 +862,7 @@ END INTERFACE
       INTEGER :: CurrentColour = 0, CurrentBoundaryColour = 0
       INTEGER :: DirectMethod = DIRECT_NORMAL
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
-#ifdef USE_ISO_C_BINDINGS
       TYPE(C_PTR) :: CWrap = C_NULL_PTR
-#endif
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
     END TYPE Solver_t
 
