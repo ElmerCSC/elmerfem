@@ -94,7 +94,7 @@ Solver 3
 
   Cost Variable Name = String "CostValue"
   Optimized Variable Name = String "Var"
-  Perturbed Variable Name = String "VarP"
+  Perturbation Variable Name = String "VarP"
   Gradient Variable Name = String "DJDp"
 
   Result File = File "Validation_$name$.dat"

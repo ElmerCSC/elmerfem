@@ -41,7 +41,7 @@ Initial Condition 1
  !=> J = (a^2 * 2/3 + b^2 * 2/3)
 
  ! perturbation variable
- VarP = REAL MATC "log(rand(1,1)+1)"
+ VarP = REAL MATC "0.01*log(rand(1,1)+1)"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Body Force 1
@@ -49,10 +49,11 @@ Body Force 1
   ! can be usefull if we want to make a change of variable
   CostReg Nodal Variable = Variable Var
    Real procedure "ElmerIceUSF" "TenPowerA"
-
- ! Derivative of the expression above
- DJDV = Variable DJDp, Var
-  Real procedure  "ElmerIceUSF" "Derivative_TenPowerA"
+  ! Provide a function that give teh derivative
+  ! of the function above with respect to your variable
+  ! if you want the derivative of your function with respect to this variable
+  CostReg Nodal Variable der = Variable Var
+   Real procedure "ElmerIceUSF" "TenPowerA_d"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! dumy just here to declare variables
@@ -89,29 +90,18 @@ Solver 2
 
   A priori Regularisation = Logical FALSE
 end
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! The solver above provide the derivative w.r.t. the Nodal Variable=10^Var
-!  here we want the derivative w.r.t. Var
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-Solver 3
- Equation = String "UpdateExport2"
- procedure = "ElmerIceSolvers" "UpdateExport"
- 
- ! see expression in body forces
- Exported Variable 1 = DJDV
-End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Validation
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-Solver 4
+Solver 3
   Equation = "GradientValidation"
   procedure = "ElmerIceSolvers" "Adjoint_GradientValidation"
 
   Cost Variable Name = String "CostValue"
   Optimized Variable Name = String "Var"
-  Perturbed Variable Name = String "VarP"
+  Perturbation Variable Name = String "VarP"
   ! the derivative w.r.t. Var
-  Gradient Variable Name = String "DJDV"
+  Gradient Variable Name = String "DJDp"
 
   Result File = File "Validation_$name$.dat"
  
@@ -119,6 +109,6 @@ end
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Equation 1
-  Active Solvers (4)= 1 2 3 4
+  Active Solvers (3)= 1 2 3
 End
 

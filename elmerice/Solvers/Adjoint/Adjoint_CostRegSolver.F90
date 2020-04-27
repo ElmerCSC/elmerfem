@@ -123,11 +123,13 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
   real(kind=dp) :: Area,Area_S
   real(kind=dp) :: u,v,w,s,coeff_reg,SqrtElementMetric,x
 
-  REAL(KIND=dp),dimension(:),allocatable,SAVE :: NodeAp,NodeRMS,NodeValues,NodalRegb
+  REAL(KIND=dp),dimension(:),allocatable,SAVE :: NodeAp,NodeRMS,NodalRegb
+  REAL(KIND=dp),dimension(:),allocatable,SAVE :: NodeValues,NodalDer,NodalGrad
   REAL(KIND=dp) :: IPerr,IPvar
 
   LOGICAL :: Apriori,Reset
-  LOGICAL ::HaveNodalVariable
+  LOGICAL :: HaveNodalVariable
+  LOGICAL :: HaveDer
 
   CHARACTER*10 :: date,temps
 
@@ -181,7 +183,7 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
     N = model % MaxElementNodes
     allocate(ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N))
     allocate(Basis(N),dBasisdx(N,3))
-    allocate(NodeAp(N),NodeRMS(N),NodeValues(N),NodalRegb(N))
+    allocate(NodeAp(N),NodeRMS(N),NodeValues(N),NodalRegb(N),NodalDer(N),NodalGrad(N))
 
 !!!!!!! Check for parallel run 
     Parallel = .FALSE.
@@ -275,8 +277,10 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
  ! Nodal values of the variable        
      IF (HaveNodalVariable) THEN
        NodeValues(1:n)=Values(Perm(NodeIndexes(1:n)))
+       HaveDer=.FALSE.
      ELSE
        NodeValues(1:n)=ListGetReal( BodyForce,'CostReg Nodal Variable',n, NodeIndexes, UnFoundFatal=.TRUE.)
+       NodalDer(1:n) = ListGetReal( BodyForce,'CostReg Nodal Variable der',n,NodeIndexes,Found=HaveDer)
      END IF
 
 !------------------------------------------------------------------------------
@@ -304,15 +308,23 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
           END IF
           s = s * SqrtElementMetric * IntegStuff % s(i)
           
+
+
           IF (Apriori) then
              IPerr = SUM((NodeValues(1:n)-NodeAp(1:n))*Basis(1:n))
              IPvar = SUM(NodeRMS(1:n)*Basis(1:n))
              coeff_reg=IPerr/IPvar
              coeff_reg =  0.5*coeff_reg*coeff_reg 
 
+             IF (HaveDer) THEN
+              NodalGrad(1:n)=Basis(1:n)*NodalDer(1:n)
+             ELSE
+              NodalGrad(1:n)=Basis(1:n)
+             ENDIF
+
              !Now compute the derivative
                NodalRegb(1:n)=NodalRegb(1:n)+&
-                    s*Lambda*IPerr*Basis(1:n)/(IPVar**2.0)
+                    s*Lambda*IPerr*NodalGrad(1:n)/(IPVar**2.0)
           Else
              coeff_reg=0._dp
              DO k=1,DIM
@@ -321,8 +333,15 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
        
              !Now compute the derivative
              DO k=1,DIM
+
+               IF (HaveDer) THEN
+                NodalGrad(1:n)=dBasisdx(1:n,k)*NodalDer(1:n)
+               ELSE
+                NodalGrad(1:n)=dBasisdx(1:n,k)
+               ENDIF
+               
                NodalRegb(1:n)=NodalRegb(1:n)+&
-                    s*Lambda*(SUM(dBasisdx(1:n,k)*NodeValues(1:n))*dBasisdx(1:n,k))
+                    s*Lambda*(SUM(dBasisdx(1:n,k)*NodeValues(1:n))*NodalGrad(1:n))
              END DO
           Endif
 

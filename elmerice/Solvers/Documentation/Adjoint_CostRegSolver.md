@@ -77,7 +77,9 @@ Values for the nodal variable **V** can be given in the body force if  *Optimize
 not provided in the solver parameters. 
 This can be usefull if we want to apply some change of variable compared to the variable that is optimised,
 However it will be to the user responsability to provide the exact derivative of his change of variable 
-as the solver computes the derivative with respect to the nodal value *[see examples]*.
+as, by default, the solver computes the derivative with respect to the nodal value.
+In this cas ethe user can directly provide the derivative with the keyword *CostReg Nodal Variable der = Real ...*
+see below and *[examples]*
 
 If using *a priori* regularisation, nodal values for the *prior* and *standard deviation* are given in the body force too.
 
@@ -85,6 +87,11 @@ If using *a priori* regularisation, nodal values for the *prior* and *standard d
 Body Force i
  # value for the nodal *V*
   CostReg Nodal Variable = Real ...
+ # If the definition above implies a change of variable
+ #  the derivative of the function above can be performed using 
+ #  the following keyword
+  CostReg Nodal Variable der = Real ...
+
  # value for the nodal *V^{prior}*
   CostReg Nodal Prior = Real ...
  # value for the nodal std *s*

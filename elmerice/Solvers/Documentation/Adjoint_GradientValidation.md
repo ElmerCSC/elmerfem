@@ -81,7 +81,7 @@ Solver id
   Gradient Variable Name = String ""
  !# Name of the perturbation variable $xp$
  !# we use $-g$ if not provided.
-  Perturbed Variable Name = String ""
+  Perturbation Variable Name = String ""
  !# Name for the output file
  ! # provide h, relative error, dJ_1, dJ_2
   Result File = File "Validation.dat"
