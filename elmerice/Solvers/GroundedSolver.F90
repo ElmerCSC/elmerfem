@@ -106,7 +106,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   !--------------------------------------------------------------
   ! Allocate some permanent storage:
   !--------------------------------------------------------------
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed ) THEN
+  IF ( (.NOT. AllocationsDone) .OR. Solver % MeshChanged ) THEN
      DIM = CoordinateSystemDimension()
      mn = Solver % Mesh % MaxElementNodes
      IF (AllocationsDone) DEALLOCATE(zb)     
