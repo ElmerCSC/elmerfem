@@ -22,19 +22,39 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: f. Gillet-Chaulet (LGGE, Grenoble,France)
-! *  Email:   gillet-chaulet@lgge.obs.ujf-grenoble.fr
+! *  Authors: f. Gillet-Chaulet (IGE, Grenoble,France)
+! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
-! *  Original Date: 
+! *  Original Date: April 2020; Adapted from AdjointSSA_CostRegSolver
 ! * 
 ! *****************************************************************************
+SUBROUTINE Adjoint_CostRegSolver_init0(Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+
+  Name = ListGetString( Solver % Values, 'Equation',UnFoundFatal=.TRUE.)
+  CALL ListAddNewString( Solver % Values,'Variable',&
+          '-nooutput '//TRIM(Name)//'_var')
+  CALL ListAddLogical(Solver % Values, 'Optimize Bandwidth',.FALSE.)
+  CALL ListAddInteger(Solver % Values, 'Nonlinear System Norm Degree',0)
+END SUBROUTINE Adjoint_CostRegSolver_init0
 ! *****************************************************************************
-SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
-!  Compute a regularisation term for SSA inverse problems and update the
+!  Compute a regularisation term and update the
 !  gradient of the cost function with respect to the regularized variable.
 !
 !   Regularisation by default is: int_{Pb dimension} 0.5 * (d(var)/dx)**2 
@@ -52,7 +72,6 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 !       Required Sif parameters are:
 !
 !          In the solver section:
-!               Problem Dimension=Integer (default:coordinate system dimension),
 !               Cost Filename=File (default: CostOfT.dat),
 !               Optimized Variable Name= String (default='Beta'),
 !               Gradient Variable Name= String (default = 'DJDBeta'),
@@ -76,10 +95,11 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !  
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='Adjoint_CostRegSolver'
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: DefaultCostFile = 'CostOfT.dat'
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName,CostFile
+  CHARACTER(LEN=MAX_NAME_LEN) :: CostFile
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,varname
-  TYPE(Element_t),POINTER ::  Element
+
   TYPE(Variable_t), POINTER :: TimeVar,CostVar
 
   TYPE(Variable_t), POINTER :: Variable,DJDVariable
@@ -87,80 +107,72 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: Perm(:),DJDPerm(:)
 
   TYPE(ValueList_t), POINTER :: SolverParams,BodyForce
-  TYPE(Nodes_t) :: ElementNodes
+
+  TYPE(Element_t),POINTER ::  Element
+  TYPE(Nodes_t),SAVE :: ElementNodes
   TYPE(GaussIntegrationPoints_t) :: IntegStuff
+  REAL(KIND=dp),ALLOCATABLE,SAVE :: Basis(:), dBasisdx(:,:)
   INTEGER, POINTER :: NodeIndexes(:)
 
-  Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit
+  LOGICAL, SAVE :: Firsttime=.true.,Parallel
+  LOGICAL :: Found,stat,Gotit
+  LOGICAL :: BoundarySolver
   integer :: i,j,k,l,t,n,NMAX,DIM,ierr,c
 
   real(kind=dp) :: Cost,Cost_S,Lambda
+  real(kind=dp) :: Area,Area_S
   real(kind=dp) :: u,v,w,s,coeff_reg,SqrtElementMetric,x
 
-  REAL(KIND=dp),dimension(:),allocatable,SAVE :: NodeAp,NodeRMS,NodeValues,NodalRegb
-  REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
+  REAL(KIND=dp),dimension(:),allocatable,SAVE :: NodeAp,NodeRMS,NodalRegb
+  REAL(KIND=dp),dimension(:),allocatable,SAVE :: NodeValues,NodalDer,NodalGrad
   REAL(KIND=dp) :: IPerr,IPvar
 
   LOGICAL :: Apriori,Reset
+  LOGICAL :: HaveNodalVariable
+  LOGICAL :: HaveDer
 
   CHARACTER*10 :: date,temps
 
-  save Firsttime,Parallel 
-  save SolverName,CostSolName,VarSolName,Lambda,CostFile
-  save ElementNodes
-
-   WRITE(SolverName, '(A)') 'CostSolver_Regular'
 
   SolverParams => GetSolverParams()
 
-!! Dimension of the pb; ie with SSA we can be 1D or 2D on a 2D mesh, or 2D on a 3D mesh
-  DIM=GetInteger(SolverParams ,'Problem Dimension',Found)
-  If (.NOT.Found) then
-     CALL WARN(SolverName,'Keyword >Problem Dimension< not found, assume DIM = CoordinateSystemDimension()')
+  !! check if we are on a boundary or in the bulk
+  BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+  IF (BoundarySolver) THEN
+     DIM = CoordinateSystemDimension() - 1
+  ELSE
      DIM = CoordinateSystemDimension()
-  Endif
+  ENDIF
 
 ! get some needed solver parameters
 !! Cost File for Output
-  CostFile = ListGetString(Solver % Values,'Cost Filename',Found )
-    IF (.NOT. Found) CostFile = DefaultCostFile
+   CostFile = ListGetString(Solver % Values,'Cost Filename',Found )
+   IF (.NOT. Found) CostFile = DefaultCostFile
 
 !! Name of the variable to regularise
-  VarSolName =  GetString( SolverParams,'Optimized Variable Name', Found)
-      IF(.NOT.Found) THEN
-              CALL WARN(SolverName,'Keyword >Optimized Variable Name< not found in section >Solver<')
-              CALL WARN(SolverName,'Taking default value >Beta<')
-              WRITE(VarSolName,'(A)') 'Beta'
-      END IF
+  VarSolName =  ListGetString( SolverParams,'Optimized Variable Name', Found=HaveNodalVariable)
 
 !! Name of the variable to regularise
-  GradSolName =  GetString( SolverParams,'Gradient Variable Name', Found)
-      IF(.NOT.Found) THEN
-              CALL WARN(SolverName,'Keyword >Optimized Variable Name< not found in section >Solver<')
-              CALL WARN(SolverName,'Taking default value >DJDBeta<')
-              WRITE(GradSolName,'(A)') 'DJDBeta'
-      END IF
-
-
+   GradSolName =  ListGetString( SolverParams,'Gradient Variable Name', UnFoundFatal=.TRUE.)
 !! Name of the variable with the cost function
-   CostSolName =  GetString( SolverParams,'Cost Variable Name', Found)
-          IF(.NOT.Found) THEN
-                    CALL WARN(SolverName,'Keyword >Cost Variable Name< not found  in section >Solver<')
-                    CALL WARN(SolverName,'Taking default value >CostValue<')
-                    WRITE(CostSolName,'(A)') 'CostValue'
-          END IF
+   CostSolName =  ListGetString( SolverParams,'Cost Variable Name', Found )
+   IF(.NOT.Found) THEN
+       CALL WARN(SolverName,'Keyword >CostSolName< not found  in section >Solver<')
+       CALL WARN(SolverName,'Taking default value CostValue')
+       CostSolName='CostValue'
+   End if
 
 !! Optional weighting term
    Lambda =  GetConstReal( SolverParams,'Lambda', Found)
    IF(.NOT.Found) THEN
-           CALL WARN(SolverName,'Keyword >Lambda< not found  in section >Solver<')
-           CALL WARN(SolverName,'Taking default value Lambda=1.0')
-           Lambda = 1.0
+       CALL WARN(SolverName,'Keyword >Lambda< not found  in section >Solver<')
+       CALL WARN(SolverName,'Taking default value Lambda=1.0')
+       Lambda = 1.0
    End if
 
 !! Do we need to reset cost and DJDVar to 0? Default YES
    Reset =  GetLogical( SolverParams,'Reset Cost Value', Found)
-            IF(.NOT.Found) Reset=.True.
+   IF(.NOT.Found) Reset=.True.
 
 !! What type of regularistaion ? Default penalise 1st derivative
    Apriori =  GetLogical( SolverParams,'A priori Regularisation', Found)
@@ -170,7 +182,8 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
   If (Firsttime) then
     N = model % MaxElementNodes
     allocate(ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N))
-    allocate(NodeAp(N),NodeRMS(N),NodeValues(N),NodalRegb(N))
+    allocate(Basis(N),dBasisdx(N,3))
+    allocate(NodeAp(N),NodeRMS(N),NodeValues(N),NodalRegb(N),NodalDer(N),NodalGrad(N))
 
 !!!!!!! Check for parallel run 
     Parallel = .FALSE.
@@ -203,37 +216,31 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
     Firsttime=.false.
   Endif
 !!!! INITIALISATION DONE
+    IF (HaveNodalVariable) THEN
+      Variable => VariableGet( Solver % Mesh % Variables, VarSolName  , UnFoundFatal=.TRUE.)
+      Values => Variable % Values
+      Perm => Variable % Perm
+    END IF
 
-    Variable => VariableGet( Solver % Mesh % Variables, VarSolName  )
-    IF ( ASSOCIATED( Variable ) ) THEN
-            Values => Variable % Values
-            Perm => Variable % Perm
-    ELSE
-            WRITE(Message,'(A,A,A)') &
-                               'No variable >',VarSolName,' < found'
-            CALL FATAL(SolverName,Message)
-    END IF  
-    DJDVariable => VariableGet( Solver % Mesh % Variables, GradSolName  )
-    IF ( ASSOCIATED( DJDVariable ) ) THEN
-            DJDValues => DJDVariable % Values
-            DJDPerm => DJDVariable % Perm
-    ELSE
-            WRITE(Message,'(A,A,A)') &
-                               'No variable >',VarSolName,' < found'
-            CALL FATAL(SolverName,Message)
-    END IF  
+    DJDVariable => VariableGet( Solver % Mesh % Variables, GradSolName , UnFoundFatal=.TRUE. )
+    DJDValues => DJDVariable % Values
+    DJDPerm => DJDVariable % Perm
     IF (Reset) DJDValues=0.0_dp
 
-
     Cost=0._dp
+    Area=0._dp
 
     DO t=1,Solver % NumberOfActiveElements
        Element => GetActiveElement(t)
        IF (CheckPassiveElement(Element)) THEN
-          !PRINT *,ParEnv%myPe,'REG: PASSIVE ELEEMNT'
           CYCLE
        END IF
-       IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+       BodyForce => GetBodyForce(Element)
+       IF (.NOT.ASSOCIATED(BodyForce)) THEN
+          IF (Apriori.OR.(.NOT.HaveNodalVariable)) &
+             CALL FATAL(SolverName,'Body force should be associated for this regularisation')
+       ENDIF
+
        n = GetElementNOFNodes()
 
        NodeIndexes => Element % NodeIndexes
@@ -241,50 +248,44 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
  ! set coords of highest occurring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
-        IF (DIM == 1) THEN !1D SSA
+        SELECT CASE (DIM)
+         CASE (1) 
            ElementNodes % y(1:n) = 0.0_dp
            ElementNodes % z(1:n) = 0.0_dp
-        ELSE IF (DIM == 2) THEN !2D SSA
+         CASE (2)
            ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
            ElementNodes % z(1:n) = 0.0_dp
-        ELSE
-           WRITE(Message,'(a,i1,a)')&
-                'It is not possible to compute SSA problems with DOFs=',&
-                DIM, ' . Aborting'
-           CALL Fatal( SolverName, Message)
-           STOP
-        END IF
+         CASE (3)
+           ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+           ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
+         END SELECT
 
- ! Compute inetgrated cost
-
-
+ ! Compute integrated cost
       IF (Apriori) then
-         BodyForce => GetBodyForce()
-         write(varname,'(A,A)') trim(VarSolName),' a priori value'
-         NodeAp(1:n) = 0._dp
-         NodeAp(1:n) = ListGetReal( BodyForce, trim(varname), n, NodeIndexes, GotIt)
+         NodeAp(1:n) = ListGetReal( BodyForce, 'CostReg Nodal Prior', n, NodeIndexes, GotIt)
           IF (.NOT.GotIt) Then
-                  WRITE(Message,'(A,A,A)') &
-                     'No variable >',trim(varname),'< found in "Body Forces" default is 0'
-                  CALL Info(SolverName,Message,level=6)
+            CALL WARN(SolverName,'No value for the prior found in <Body Force>, default is 0')
+            NodeAp(1:n) = 0._dp
           END IF 
-          write(varname,'(A,A)') trim(VarSolName),' variance'
-          NodeRMS(1:n)=ListGetReal( BodyForce, trim(varname), n, NodeIndexes, GotIt)
+          NodeRMS(1:n)=ListGetReal( BodyForce,'CostReg Nodal std', n, NodeIndexes, GotIt)
           IF (.NOT.GotIt) Then
-                  WRITE(Message,'(A,A,A)') &
-                     'No variable >',trim(varname),'< found in "Body Forces" default is 1'
-                  CALL Info(SolverName,Message,level=6)
-                  NodeRMS=1.0_dp
+            CALL WARN(SolverName,'No value for the standard deviation found in <Body Force>, default is 1')
+            NodeRMS=1.0_dp
           END IF 
      END IF
 
  ! Nodal values of the variable        
-      NodeValues(1:n)=Values(Perm(NodeIndexes(1:n)))
+     IF (HaveNodalVariable) THEN
+       NodeValues(1:n)=Values(Perm(NodeIndexes(1:n)))
+       HaveDer=.FALSE.
+     ELSE
+       NodeValues(1:n)=ListGetReal( BodyForce,'CostReg Nodal Variable',n, NodeIndexes, UnFoundFatal=.TRUE.)
+       NodalDer(1:n) = ListGetReal( BodyForce,'CostReg Nodal Variable derivative',n,NodeIndexes,Found=HaveDer)
+     END IF
 
 !------------------------------------------------------------------------------
 !    Numerical integration
 !------------------------------------------------------------------------------
-
         NodalRegb = 0.0_dp
 
         IntegStuff = GaussPoints( Element )
@@ -307,34 +308,45 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
           END IF
           s = s * SqrtElementMetric * IntegStuff % s(i)
           
+
+
           IF (Apriori) then
              IPerr = SUM((NodeValues(1:n)-NodeAp(1:n))*Basis(1:n))
              IPvar = SUM(NodeRMS(1:n)*Basis(1:n))
              coeff_reg=IPerr/IPvar
-             coeff_reg =  coeff_reg*coeff_reg 
+             coeff_reg =  0.5*coeff_reg*coeff_reg 
+
+             IF (HaveDer) THEN
+              NodalGrad(1:n)=Basis(1:n)*NodalDer(1:n)
+             ELSE
+              NodalGrad(1:n)=Basis(1:n)
+             ENDIF
 
              !Now compute the derivative
                NodalRegb(1:n)=NodalRegb(1:n)+&
-                    s*Lambda*IPerr*Basis(1:n)/(IPVar**2.0)
+                    s*Lambda*IPerr*NodalGrad(1:n)/(IPVar**2.0)
           Else
-             coeff_reg = SUM(NodeValues(1:n) * dBasisdx(1:n,1))
-             coeff_reg =  coeff_reg*coeff_reg 
-             IF (DIM.eq.2) then
-                  coeff_reg=coeff_reg+ & 
-                  SUM(NodeValues(1:n)*dBasisdx(1:n,2))*SUM(NodeValues(1:n) * dBasisdx(1:n,2))
-             END IF
+             coeff_reg=0._dp
+             DO k=1,DIM
+               coeff_reg = coeff_reg + 0.5*SUM(NodeValues(1:n) * dBasisdx(1:n,k))**2
+             END DO
        
              !Now compute the derivative
+             DO k=1,DIM
+
+               IF (HaveDer) THEN
+                NodalGrad(1:n)=dBasisdx(1:n,k)*NodalDer(1:n)
+               ELSE
+                NodalGrad(1:n)=dBasisdx(1:n,k)
+               ENDIF
+               
                NodalRegb(1:n)=NodalRegb(1:n)+&
-                    s*Lambda*(SUM(dBasisdx(1:n,1)*NodeValues(1:n))*dBasisdx(1:n,1))
-               IF (DIM.eq.2) then
-                  NodalRegb(1:n)=NodalRegb(1:n)+&
-                          s*Lambda*(SUM(dBasisdx(1:n,2)*NodeValues(1:n))*dBasisdx(1:n,2))
-               End if
+                    s*Lambda*(SUM(dBasisdx(1:n,k)*NodeValues(1:n))*NodalGrad(1:n))
+             END DO
           Endif
 
-
-          Cost=Cost+0.5*coeff_reg*s
+          Cost=Cost+coeff_reg*s
+          Area=Area+s
 
         End do !IP
 
@@ -347,6 +359,8 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
     IF (Parallel) THEN
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
                   MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+           CALL MPI_ALLREDUCE(Area,Area_S,1,&
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
           CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
           IF (ASSOCIATED(CostVar)) THEN
                IF (Reset) then
@@ -357,28 +371,31 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
           END IF
          IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
                  OPEN (12, FILE=CostFile,POSITION='APPEND')
-                 write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost_S
+                 write(12,'(3(ES20.11E3))') TimeVar % Values(1),Cost_S,sqrt(2*Cost_S/Area_S)
                  CLOSE(12)
          End if
    ELSE
-            CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
-            IF (ASSOCIATED(CostVar)) THEN
-                 IF (Reset) then
-                    CostVar % Values(1)=Lambda*Cost
-                 Else
-                    CostVar % Values(1)=CostVar % Values(1)+Lambda*Cost
-                 Endif
-            END IF
-                    OPEN (12, FILE=CostFile,POSITION='APPEND')
-                       write(12,'(e13.5,2x,e15.8)') TimeVar % Values(1),Cost
-                    close(12)
+         CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
+         IF (ASSOCIATED(CostVar)) THEN
+            IF (Reset) then
+                CostVar % Values(1)=Lambda*Cost
+            Else
+                CostVar % Values(1)=CostVar % Values(1)+Lambda*Cost
+            Endif
+         END IF
+         OPEN (12, FILE=CostFile,POSITION='APPEND')
+           write(12,'(3(ES20.11E3))') TimeVar % Values(1),Cost,sqrt(2*Cost/Area)
+         close(12)
+         Cost_S=Cost
    END IF
-   
+ 
+   Solver % Variable % Values(1)=Cost_S
+
    Return
 
  1000  format('#date,time,',a2,'/',a2,'/',a4,',',a2,':',a2,':',a2)
  1001  format('#lambda,',e15.8)
 !------------------------------------------------------------------------------
-END SUBROUTINE AdjointSSA_CostRegSolver
+END SUBROUTINE Adjoint_CostRegSolver
 !------------------------------------------------------------------------------
 ! *****************************************************************************

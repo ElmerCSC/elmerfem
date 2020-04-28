@@ -22,7 +22,7 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: 
+! *  Authors: f. Gillet-Chaulet (IGE-Grenoble/France)
 ! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
@@ -30,19 +30,19 @@
 ! * 
 ! *****************************************************************************
 !------------------------------------------------------------------------------
-   SUBROUTINE AdjointSSA_AdjointSolver( Model,Solver,dt,TransientSimulation )
+   SUBROUTINE Adjoint_LinearSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-!> Compute the adjoint state of the SSA equations.
+!> Compute the adjoint of the linear Solver and dirichlet conditions.
 !
-!     OUTPUT is : Solver % Variable the adjoint state of the SSA problem
+!     OUTPUT is : Solver % Variable the adjoint variable
 !
 !     INPUT PARAMETERS are:
 !
 !      In solver section:
-!               Flow Solution Equation Name = String (default 'SSA')
+!               Direct Equation Name = String 
 !
-!      Variables
-!                Velocityb (forcing for the adjoint pb)
+!      Variables:
+!                VarName_b
 !
 !******************************************************************************
 !  ARGUMENTS:
@@ -70,53 +70,61 @@
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-   TYPE(Solver_t),Pointer :: NSSolver
+   TYPE(Solver_t),Pointer :: DSolver  ! Pointer to the Direct Solver
+   TYPE(Variable_t), POINTER :: Sol   ! Solution Variable
+   INTEGER :: DOFs
+
    TYPE(Matrix_t),POINTER :: InitMat,TransMat,StiffMatrix
+   REAL(KIND=dp),POINTER :: ForceVector(:)
+   INTEGER, POINTER :: Perm(:)
+
    TYPE(ValueList_t),POINTER ::  BC,BF,SolverParams
-   TYPE(ValueListEntry_t),POINTER :: NormalTangential,NormalTangentialC
-   character(LEN=MAX_NAME_LEN),SAVE :: NormalTangentialName,NormalTangentialNameb
-   LOGICAL :: AnyNT
    TYPE(Element_t),POINTER :: Element
-   TYPE(Variable_t), POINTER :: Sol
-   TYPE(Variable_t), POINTER :: VelocitybSol
+   INTEGER, POINTER :: NodeIndexes(:)
+
+   ! Variables related to the frocing
+   TYPE(Variable_t), POINTER :: VbSol
    REAL(KIND=dp), POINTER :: Vb(:)
    INTEGER, POINTER :: VbPerm(:)
-   REAL(KIND=dp),POINTER :: ForceVector(:)
-   integer :: i,j,k,t,n,NSDOFs
+
+   integer :: i,j,k,t,n
    INTEGER :: kmax
    Logical :: Gotit
-   INTEGER, POINTER :: NodeIndexes(:),Perm(:)
    integer :: p,q,dim,c,m
    Real(KIND=dp) :: Unorm
    Real(KIND=dp) :: RotVec(3)
-   character(LEN=MAX_NAME_LEN) :: SolName,NSVarName
-   LOGICAL :: Conditional,CheckNT
-   REAL(KIND=dp),ALLOCATABLE,SAVE :: Condition(:)
 
-   INTEGER, POINTER,SAVE :: BoundaryReorder(:)=> NULL()
-   INTEGER,SAVE :: NormalTangentialNOFNodes
+   ! Var related to Normal-Tangential stuff and Dirchlet BCs
+   TYPE(ValueListEntry_t),POINTER :: NormalTangential,NormalTangentialC
    REAL(KIND=dp), POINTER :: BoundaryNormals(:,:)=> NULL(), &
                        BoundaryTangent1(:,:)=> NULL(), &
                        BoundaryTangent2(:,:)=> NULL()
+   REAL(KIND=dp),ALLOCATABLE,SAVE :: Condition(:)
+   INTEGER, POINTER,SAVE :: BoundaryReorder(:)=> NULL()
+   INTEGER,SAVE :: NormalTangentialNOFNodes
+   CHARACTER(LEN=MAX_NAME_LEN),SAVE :: NormalTangentialName,NormalTangentialNameb
+   LOGICAL :: AnyNT
+   LOGICAL :: Conditional,CheckNT
 
-   CHARACTER(LEN=MAX_NAME_LEN),SAVE :: SolverName="Adjoint Solver"
-   INTEGER, SAVE :: SolverInd
+   CHARACTER(LEN=MAX_NAME_LEN),SAVE :: SolverName="Adjoint Solver" ! SolverName for messages
+   CHARACTER(LEN=MAX_NAME_LEN) :: DEqName  ! Equation Name of Direct Solver
+   CHARACTER(LEN=MAX_NAME_LEN) :: DVarName ! Var Name of The Direct Solver
+   CHARACTER(LEN=MAX_NAME_LEN) :: FVarName ! Sensitivity Var Name (velocityb or DVarNameb)
+   INTEGER, SAVE :: SolverInd ! Indice of the direct solver in the solver list
    LOGICAL, SAVE :: Firsttime=.TRUE.
 
-
-   DIM = CoordinateSystemDimension()
 
    StiffMatrix => Solver % Matrix
    ForceVector => StiffMatrix % RHS
 
    Sol => Solver % Variable
-   NSDOFs   =  Sol % DOFs
+   DOFs   =  Sol % DOFs
    Perm => Sol % Perm
 
-  ! IF DIM = 3 and NSDOFs=2; Normal-Tangential can not be used => trick temporary set
-  ! Model Dimension to 2
-   IF (DIM.eq.(NSDOFs+1)) CurrentModel % Dimension = NSDOFs
-
+   DIM = CoordinateSystemDimension()
+  ! IF DIM = 3 and DOFs=2; e.g. solving SSA on a 3D mesh
+  !Normal-Tangential can not be used => trick temporary set Model Dimension to 2
+   IF (DIM.eq.(DOFs+1)) CurrentModel % Dimension = DOFs
 
    IF (Firsttime) then
       Firsttime=.False.
@@ -124,94 +132,90 @@
       N = Model % MaxElementNodes
       ALLOCATE(Condition(N))
 
+      ! Get solver associated to the direct problem
       SolverParams => GetSolverParams(Solver)
-      SolName = ListGetString( SolverParams,'Flow Solution Equation Name',GotIt)
-      IF (.NOT.Gotit) Then
-        CALL WARN(SolverName,'Keyword >Flow Solution Equation Name< not found in SolverParams')
-        CALL WARN(SolverName,'Taking default value >SSA<')
-        WRITE(SolName,'(A)') 'SSA'
-      Endif
+      DEqName = ListGetString( SolverParams,'Direct Solver Equation Name',UnFoundFatal=.TRUE.)
       DO i=1,Model % NumberOfSolvers
-          if (TRIM(SolName) == ListGetString(Model % Solvers(i) % Values, 'Equation')) exit
+          if (TRIM(DEqName) == ListGetString(Model % Solvers(i) % Values, 'Equation')) exit
       End do
       if (i.eq.(Model % NumberOfSolvers+1)) &
-          CALL FATAL(SolverName,'Could not find Equation Name ' // TRIM(SolName))
-
+          CALL FATAL(SolverName,'Could not find Equation Name ' // TRIM(DEqName))
       SolverInd=i
-      NSSolver => Model % Solvers(SolverInd)
- 
+      DSolver => Model % Solvers(SolverInd)
+
       !# Check For NT boundaries
-      NormalTangentialName = 'normal-tangential'
-      IF ( SEQL(NSSolver % Variable % Name, 'flow solution') ) THEN
-       NormalTangentialName = TRIM(NormalTangentialName) // ' velocity'
-      ELSE
-       NormalTangentialName = TRIM(NormalTangentialName) // ' ' // &
-                   GetVarName(NSSolver % Variable)
-      END IF
+      IF (DOFs>1) THEN
+        NormalTangentialName = 'normal-tangential'
+        IF ( SEQL(DSolver % Variable % Name, 'flow solution') ) THEN
+         NormalTangentialName = TRIM(NormalTangentialName) // ' velocity'
+        ELSE
+         NormalTangentialName = TRIM(NormalTangentialName) // ' ' // &
+                   GetVarName(DSolver % Variable)
+        END IF
 
-      AnyNT = ListGetLogicalAnyBC( Model, TRIM(NormalTangentialName) )
-      IF (AnyNT) THEN
+        AnyNT = ListGetLogicalAnyBC( Model, TRIM(NormalTangentialName) )
+        IF (AnyNT) THEN
 
-        !# We will stay in NT to impose dirichlet conditions
-        CALL ListAddLogical(SolverParams,'Back Rotate N-T Solution',.FALSE.)
+         !# We will stay in NT to impose dirichlet conditions
+         CALL ListAddLogical(SolverParams,'Back Rotate N-T Solution',.FALSE.)
 
-        !# !!! Has to be in lower case to copy item
-        NormalTangentialNameb='normal-tangential' // ' ' // GetVarName(Solver % Variable)
+         !# !!! Has to be in lower case to copy item
+         NormalTangentialNameb='normal-tangential' // ' ' // GetVarName(Solver % Variable)
 
-        DO i=1,Model % NumberOfBCs
-          BC => Model % BCs(i) % Values
-          NormalTangential => ListFind( BC ,  NormalTangentialName , GotIt )
-          IF (.NOT.Gotit) CYCLE
+         DO i=1,Model % NumberOfBCs
+           BC => Model % BCs(i) % Values
+           NormalTangential => ListFind( BC ,  NormalTangentialName , GotIt )
+           IF (.NOT.Gotit) CYCLE
 
-          WRITE(Message,'(A,I0)') 'Copy Normal-Tangential keyword in BC ',i
-          CALL Info(SolverName,Message,level=4)
-          CALL ListCopyItem( NormalTangential, BC, NormalTangentialNameb)
+           WRITE(Message,'(A,I0)') 'Copy Normal-Tangential keyword in BC ',i
+           CALL Info(SolverName,Message,level=4)
+           CALL ListCopyItem( NormalTangential, BC, NormalTangentialNameb)
         
-          NormalTangentialC => ListFind( BC ,  TRIM(NormalTangentialName) // ' condition' , GotIt )
-          IF (.NOT.Gotit) CYCLE
+           NormalTangentialC => ListFind( BC ,  TRIM(NormalTangentialName) // ' condition' , GotIt )
+           IF (.NOT.Gotit) CYCLE
 
-          WRITE(Message,'(A,I0)') 'Copy Normal-Tangential Condition keyword in BC ',i
-          CALL Info(SolverName,Message,level=4)
-          CALL ListCopyItem( NormalTangentialC, BC, TRIM(NormalTangentialNameb) // ' condition' ) 
-        END DO
+           WRITE(Message,'(A,I0)') 'Copy Normal-Tangential Condition keyword in BC ',i
+           CALL Info(SolverName,Message,level=4)
+           CALL ListCopyItem( NormalTangentialC, BC, TRIM(NormalTangentialNameb) // ' condition' ) 
+         END DO
 
-        CALL CheckNormalTangentialBoundary( Model, TRIM(NormalTangentialNameb), &
-           NormalTangentialNOFNodes, BoundaryReorder, &
-           BoundaryNormals, BoundaryTangent1, BoundaryTangent2, dim )
+         CALL CheckNormalTangentialBoundary( Model, TRIM(NormalTangentialNameb), &
+            NormalTangentialNOFNodes, BoundaryReorder, &
+            BoundaryNormals, BoundaryTangent1, BoundaryTangent2, dim )
 
-      END IF
+        END IF
+     END IF
    END IF
 
+   ! Get Matrix from the Direct Solver
+   DSolver => Model % Solvers(SolverInd)
 
-   NSSolver => Model % Solvers(SolverInd)
-
-   IF ( SEQL(NSSolver % Variable % Name, 'flow solution') ) THEN
-        NSVarName = 'Velocity'
+   IF ( SEQL(DSolver % Variable % Name, 'flow solution') ) THEN
+        DVarName = 'Velocity'
    ELSE
-        NSVarName = GetVarName(NSSolver % Variable)
+        DVarName = GetVarName(DSolver % Variable)
    END IF
 
    CALL DefaultInitialize()
 
    InitMat => AllocateMatrix()
-   InitMat % NumberOfRows =   NSSolver % Matrix % NumberOfRows
-   InitMat % Values => NSSolver % Matrix % Values
-   InitMat % Rows => NSSolver % Matrix % Rows 
-   InitMat % Cols => NSSolver % Matrix % Cols
-   InitMat % Diag => NSSolver % Matrix % Diag
+   InitMat % NumberOfRows =   DSolver % Matrix % NumberOfRows
+   InitMat % Values => DSolver % Matrix % Values
+   InitMat % Rows => DSolver % Matrix % Rows 
+   InitMat % Cols => DSolver % Matrix % Cols
+   InitMat % Diag => DSolver % Matrix % Diag
 
-
-   VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb'  )
-   IF ( ASSOCIATED( VelocitybSol ) ) THEN
-     Vb => VelocitybSol % Values
-     VbPerm => VelocitybSol % Perm
+   IF ( SEQL(DVarName,'velocity').OR.SEQL(DVarName,'ssavelocity')) THEN
+    FVarName = 'Velocityb'
    ELSE
-     WRITE(Message,'(A)') 'No variable > Velocityb < found'
-     CALL FATAL(SolverName,Message)
-   END IF  
-   IF (VelocitybSol % DOFs.NE.NSDOFs) then
+    FVarName = TRIM(DVarName) // 'b'
+   ENDIF
+   VbSol => VariableGet( Solver % Mesh % Variables, TRIM(FVarName),UnFoundFatal=.TRUE. )
+   Vb => VbSol % Values
+   VbPerm => VbSol % Perm
+   IF (VbSol % DOFs.NE.DOFs) then
        WRITE(Message,'(A,I1,A,I1)') &
-            'Variable Velocityb has ',VelocitybSol % DOFs,' DOFs, should be',NSDOFs
+            'Variable Vb has ',VbSol % DOFs,' DOFs, should be',DOFs
        CALL FATAL(SolverName,Message)
    END IF
 
@@ -228,19 +232,19 @@
    StiffMatrix % Cols = TransMat % Cols
    IF(ASSOCIATED(TransMat % Diag)) StiffMatrix % Diag = TransMat % Diag
    ForceVector = 0.0
-   Perm = NSSolver % Variable % Perm
+   Perm = DSolver % Variable % Perm
 
    deallocate( TransMat % Rows, TransMat % Cols , TransMat % Values)
    IF(ASSOCIATED(TransMat % Diag)) DEALLOCATE(TransMat % Diag)
    nullify(TransMat)
       
-   !forcing of the adjoint system comes from the Velocityb variable computed
+   !forcing of the adjoint system comes from the Vb variable computed
    !with the cost function
 
    !! Vb is expressed in the model coodinate system => Rotate to NT
-   CALL RotateNTSystemAll( Vb, VbPerm, NSDOFs )
+   CALL RotateNTSystemAll( Vb, VbPerm, DOFs )
 
-   c = NSDOFs
+   c = DOFs
    Do t=1,Solver%Mesh%NumberOfNodes
       Do i=1,c
          p=(Perm(t)-1)*c+i
@@ -267,30 +271,30 @@
       ! Check for nodes belonging to n-t boundary getting set by other bcs.
       ! -------------------------------------------------------------------
       CheckNT = .FALSE.
-      IF ( NormalTangentialNOFNodes>0 .AND. NSDOFs>0 ) THEN
+      IF ( NormalTangentialNOFNodes>0 .AND. DOFs>0 ) THEN
           CheckNT = .TRUE.
           IF ( ALL(BoundaryReorder(NodeIndexes(1:n))<1) ) CheckNT = .FALSE.
-          IF ( ListGetLogical(BC,'normal-tangential' // ' ' // NSVarName,Gotit)) CheckNT=.FALSE.
+          IF ( ListGetLogical(BC,'normal-tangential' // ' ' // DVarName,Gotit)) CheckNT=.FALSE.
       END IF
 
-      ! set BC for NSDOFs=1 or applied to the whole vector
-      IF( ListCheckPresent( BC, NSVarName ) ) THEN
+      ! set BC for DOFs=1 or applied to the whole vector
+      IF( ListCheckPresent( BC, DVarName ) ) THEN
          Condition(1:n) = ListGetReal( BC, &
-               TRIM(NSVarName) // ' Condition', n, NodeIndexes, Conditional )
+               TRIM(DVarName) // ' Condition', n, NodeIndexes, Conditional )
          DO j=1,n
             IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
-            DO i=1,NSDOFS
-              Sol%Values(NSDOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
+            DO i=1,DOFS
+              Sol%Values(DOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
             END DO
          END DO
       ENDIF
 
       ! Do the same for each component
-      IF (NSDOFs>1) THEN 
-        DO i=1,NSDOFS
-           IF( ListCheckPresent( BC,  ComponentName(NSVarName,i)) ) THEN
+      IF (DOFs>1) THEN 
+        DO i=1,DOFS
+           IF( ListCheckPresent( BC,  ComponentName(DVarName,i)) ) THEN
              Condition(1:n) = ListGetReal( BC, &
-               TRIM(ComponentName(NSVarName,i)) // ' Condition', n, NodeIndexes, Conditional )
+               TRIM(ComponentName(DVarName,i)) // ' Condition', n, NodeIndexes, Conditional )
 
              DO j=1,n
                IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
@@ -314,10 +318,10 @@
                      kmax = k
                    END IF
                  END DO
-                 Sol%Values(NSDOFs*(Perm(NodeIndexes(j))-1) + kmax)=0._dp
+                 Sol%Values(DOFs*(Perm(NodeIndexes(j))-1) + kmax)=0._dp
                  !else set the given DOF
                 ELSE
-                  Sol%Values(NSDOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
+                  Sol%Values(DOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
                 END IF
 
                ENDIF
@@ -339,28 +343,28 @@
       NodeIndexes => Element % NodeIndexes
       n = Element % TYPE % NumberOfNodes
 
-      ! set BC for NSDOFs=1 or applied to the whole vector
-      IF( ListCheckPresent( BF, NSVarName ) ) THEN
+      ! set BC for DOFs=1 or applied to the whole vector
+      IF( ListCheckPresent( BF, DVarName ) ) THEN
          Condition(1:n) = ListGetReal( BF, &
-               TRIM(NSVarName) // ' Condition', n, NodeIndexes, Conditional )
+               TRIM(DVarName) // ' Condition', n, NodeIndexes, Conditional )
          DO j=1,n
             IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
-            DO i=1,NSDOFS
-              Sol%Values(NSDOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
+            DO i=1,DOFS
+              Sol%Values(DOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
             END DO
          END DO
       ENDIF
 
       ! Do the same for each component
-      IF (NSDOFs>1) THEN
-        DO i=1,NSDOFS
-           IF( ListCheckPresent( BF,  ComponentName(NSVarName,i)) ) THEN
+      IF (DOFs>1) THEN
+        DO i=1,DOFS
+           IF( ListCheckPresent( BF,  ComponentName(DVarName,i)) ) THEN
              Condition(1:n) = ListGetReal( BF, &
-               TRIM(ComponentName(NSVarName,i)) // ' Condition', n, NodeIndexes, Conditional )
+               TRIM(ComponentName(DVarName,i)) // ' Condition', n, NodeIndexes, Conditional )
 
              DO j=1,n
                IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
-               Sol%Values(NSDOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
+               Sol%Values(DOFs*(Perm(NodeIndexes(j))-1)+i)=0._dp
              END DO
            END IF
         END DO
@@ -369,13 +373,13 @@
    END DO
 
    ! Back Rotate to model coordinate system
-   CALL BackRotateNTSystem(Sol%Values,Perm,NSDOFs)
+   CALL BackRotateNTSystem(Sol%Values,Perm,DOFs)
 
    ! reset Dimension to DIM
-   IF (DIM.eq.(NSDOFs+1)) CurrentModel % Dimension = DIM
+   IF (DIM.eq.(DOFs+1)) CurrentModel % Dimension = DIM
 
    RETURN
 !------------------------------------------------------------------------------
-   END SUBROUTINE AdjointSSA_AdjointSolver
+   END SUBROUTINE Adjoint_LinearSolver
 !------------------------------------------------------------------------------
 

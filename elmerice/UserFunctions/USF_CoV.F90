@@ -49,6 +49,19 @@
        VarOut = 10._dp**(VarIn)
 
        End FUNCTION TenPowerA
+!# Compute DTenPowerA/D1=ln(10)*10^A
+!# VarIn=A
+       FUNCTION TenPowerA_d(Model,nodenumber,VarIn) RESULT(VarOut)
+       USE DefUtils
+       implicit none
+       !-----------------
+       TYPE(Model_t) :: Model
+       INTEGER :: nodenumber
+       REAL(kind=dp) :: VarIn,VarOut
+
+       VarOut = (10.0**(VarIn))*log(10.0)
+
+       End FUNCTION TenPowerA_d
 !# Compute DJDA from DJDB if B=10^A: DJDA=DJDB*ln(10)*10^A
 !# DJDB=VarIn(1)
 !# A=VarIn(2)
@@ -86,6 +99,18 @@
 
        VarOut = VarIn*VarIn
        END FUNCTION Asquare
+!# Compute Compute dA^2/dA=2*A
+!# VarIn=A
+       FUNCTION Asquare_d(Model,nodenumber,VarIn) RESULT(VarOut)
+       USE DefUtils
+       implicit none
+       !-----------------
+       TYPE(Model_t) :: Model
+       INTEGER :: nodenumber
+       REAL(kind=dp) :: VarIn,VarOut
+
+       VarOut = 2*VarIn
+       END FUNCTION Asquare_d
 !# Compute DJDA from DJDB if B=A^2: DJDA=DJDB*2A
 !# DJDB=VarIn(1)
 !# A=VarIn(2)
@@ -100,4 +125,14 @@
        VarOut = 2.0*VarIn(1)*VarIn(2)
 
        End FUNCTION Derivative_Asquare
-!#
+!# Compute VarOut=sqrt(VarIn)
+       FUNCTION SQRTA(Model,nodenumber,VarIn) RESULT(VarOut)
+       USE DefUtils
+       implicit none
+       !-----------------
+       TYPE(Model_t) :: Model
+       INTEGER :: nodenumber
+       REAL(kind=dp) :: VarIn,VarOut
+
+       VarOut = sqrt(VarIn)
+       END FUNCTION SQRTA

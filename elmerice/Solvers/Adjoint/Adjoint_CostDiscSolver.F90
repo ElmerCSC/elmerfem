@@ -22,31 +22,55 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: f. Gillet-Chaulet (LGGE, Grenoble,France)
-! *  Email:   gillet-chaulet@lgge.obs.ujf-grenoble.fr
+! *  Authors: f. Gillet-Chaulet (IGE, Grenoble,France)
+! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
 ! *  Original Date: 
 ! * 
 ! *****************************************************************************
-SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE Adjoint_CostDiscSolver_init0(Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+  
+  Name = ListGetString( Solver % Values, 'Equation',UnFoundFatal=.TRUE.)
+  CALL ListAddNewString( Solver % Values,'Variable',&
+          '-nooutput '//TRIM(Name)//'_var')
+  CALL ListAddLogical(Solver % Values, 'Optimize Bandwidth',.FALSE.)
+
+  CALL ListAddInteger(Solver % Values, 'Nonlinear System Norm Degree',0)
+
+END SUBROUTINE Adjoint_CostDiscSolver_init0
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
-!Compute the Cost function of the SSA Adjoint inverse Problem  as: SUM_1^Nobs (u-u^obs)2
+SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!Compute a cost function as: J=SUM_1^Nobs 0.5*(u-u^obs)2
 !            where u is evaluated at observation location
 !   Serial/Parallel    2D/3D
 !
-!     OUTPUT are : J and DJDu (==Velocityb variable used as forcing of the SSA adjoint problem)
+!     OUTPUT are : J and xb (sensitivity of J w.r.t. u)
 !
-!    !! Be careful this solver will reset the cost and DJDu to 0; so it has to
-!    be used as the first cost solver if regularistaion of flux divergence cost
-!    solvers are used in the simulation!!
+!    !! Be careful this solver will reset the cost and DJDu to 0;
+!     so it has to be used as the first cost solver in an inverse problem sequence
 !
 !
 !     INPUT PARAMETERS are:
 !
 !      In solver section:
-!               Problem Dimension = Integer (default = Coordinate system dimension)
+!               Coordinates Dimension = Integer (default = Coordinate system dimension)
+!               
 !               Cost Filename = File (default = 'CostOfT.dat')
 !               Cost Variable Name = String (default= 'CostValue')
 !               Lambda = Real (default= '1.0')
@@ -70,75 +94,95 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !  
-  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: DefaultCostFile = 'CostOfT.dat'
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName,CostFile,UsedDataFile
-  CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VariableName,ObsFileName
   TYPE(Mesh_t),POINTER :: Mesh
-  TYPE(Element_t),POINTER ::  Element
-  TYPE(Variable_t), POINTER :: TimeVar,CostVar
-  TYPE(Variable_t), POINTER :: VelocitybSol,Variable
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Nodes_t) :: ElementNodes
+
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName="Adjoint_CostDiscSolver"
+  CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CostSolName,VariableName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FVarName
+  CHARACTER(LEN=MAX_NAME_LEN):: ObsFileName
+  CHARACTER(LEN=MAX_NAME_LEN):: SideFile,SideParFile
+  CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CostFile
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: DefaultCostFile = 'CostOfT.dat'
+  CHARACTER(LEN=MAX_NAME_LEN) :: OutPutDirectory
+
+  TYPE(Variable_t), POINTER :: TimeVar ! Time
+  TYPE(Variable_t), POINTER :: CostVar ! Cost Value
+  TYPE(Variable_t), POINTER :: Variable ! Active variable
+  TYPE(Variable_t), POINTER :: VbSol   ! The sensitivity
   REAL(KIND=dp), POINTER :: Vb(:),Values(:)
-  INTEGER, POINTER :: NodeIndexes(:)
   INTEGER, POINTER :: VbPerm(:),Perm(:)
-  Logical :: Firsttime=.true.,Found,Parallel,ParallelFile,stat,Gotit
-  integer :: i,j,k,l,s,t,n,NMAX,DIM,ierr,c,ok
-  real(kind=dp) :: Cost,Cost_S,Lambda
-  real(kind=dp) :: Coord(3),UVW(3),coeff,SqrtElementMetric,x
-  REAL(KIND=dp),ALLOCATABLE,SAVE :: Basis(:), dBasisdx(:,:)
-  REAL(KIND=dp) :: xmin,ymin,xmax,ymax
   INTEGER,SAVE :: VDOFs
-  REAL(KIND=dp) :: V(3)
-  REAL(KIND=dp),ALLOCATABLE,SAVE :: xobs(:,:),Vobs(:,:)
-  REAL(KIND=dp),ALLOCATABLE :: xx(:),yy(:),ux(:,:),uy(:,:)
-  INTEGER,ALLOCATABLE,SAVE :: InElement(:)
+
+  ! Variable related to elements
+  TYPE(Element_t),POINTER ::  Element
+  TYPE(Nodes_t),SAVE :: ElementNodes
   INTEGER :: ElementIndex
-  INTEGER :: XMinIndex,XMaxIndex,YMinIndex,YMaxIndex,nx,ny
+  INTEGER, POINTER :: NodeIndexes(:)
+  REAL(KIND=dp),ALLOCATABLE,SAVE :: Basis(:), dBasisdx(:,:)
+  REAL(KIND=dp) :: SqrtElementMetric
+  INTEGER :: n
+  LOGICAL :: stat
+
+  LOGICAL,SAVE :: Firsttime=.true.,Parallel
+  LOGICAL,SAVE :: FirstRound=.True.
+  LOGICAL,SAVE :: SAVE_USED_DATA=.False.
+  LOGICAL :: Found
+  LOGICAL :: ParallelFile,ProcessedFile,ActiveNumbering
+
+  INTEGER :: CoordDIM ! Coordinate sytem dimension for the observations points
+  INTEGER,SAVE :: VarDIM   ! Dimension of the observed Variable
+  REAL(KIND=dp),SAVE :: Lambda
+
+  integer :: i,j,s
+  INTEGER :: k
+  real(kind=dp) :: Cost,Cost_S
+  real(kind=dp) :: Coord(3),UVW(3)
+  REAL(KIND=dp) :: V(3)
   INTEGER,SAVE :: NTOT=-1,NTOT_S
-  integer,SAVE :: nobs
-  LOGICAL,SAVE :: FirstRound=.True.,SAVE_USED_DATA=.False.
+  INTEGER :: AI
   CHARACTER*10 :: date,temps
   INTEGER,PARAMETER :: IO=12
+  INTEGER :: ok
   LOGICAL :: WarnActive
+  LOGICAL :: BoundarySolver
 
-  LOGICAL :: NETCDFFormat
-  INTEGER :: NetcdfStatus,varid,ncid
+  ! Variables with obs.
+  REAL(KIND=dp),ALLOCATABLE,SAVE :: xobs(:,:),Vobs(:,:)
+  INTEGER,ALLOCATABLE,SAVE :: InElement(:)
+  INTEGER,SAVE :: nobs
+
+  ! Variables related to netcdf
   CHARACTER(LEN=MAX_NAME_LEN) :: Xdim,Ydim,VarName
-  REAL(KIND=dp):: UxFillv,UyFillv
-  REAL(KIND=dp):: NodalU,NodalV
-
-  save Firsttime,Parallel 
-  save SolverName,CostSolName,CostFile,VariableName
-  save ElementNodes
+  REAL(KIND=dp),ALLOCATABLE :: Fillv(:)
+  REAL(KIND=dp),ALLOCATABLE :: xx(:),yy(:),ObsArray(:,:,:)
+  INTEGER :: XMinIndex,XMaxIndex,YMinIndex,YMaxIndex,nx,ny
+  INTEGER :: NetcdfStatus,varid,ncid,ierr
+  LOGICAL :: NETCDFFormat
+  REAL(KIND=dp) :: xmin,ymin,xmax,ymax
 
 
   SolverParams => GetSolverParams()
-  DIM=GetInteger(SolverParams ,'Problem Dimension',Found)
-  If (.NOT.Found) then
-     CALL WARN(SolverName,'Keyword >Problem Dimension< not found, assume DIM = CoordinateSystemDimension()')
-     DIM = CoordinateSystemDimension()
-  Endif
+
+  !! check if we are on a boundary or in the bulk
+  BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+  IF (BoundarySolver) THEN
+    CoordDIM = CoordinateSystemDimension() - 1
+  ELSE
+    CoordDIM = CoordinateSystemDimension()
+  ENDIF
 
 ! Get min/max coordinates of current mesh
   xmin=MINVAL(Solver%Mesh%Nodes%x(:))
   xmax=MAXVAL(Solver%Mesh%Nodes%x(:))
-  IF (DIM.EQ.2) THEN
+  IF (CoordDIM.GE.2) THEN
     ymin=MINVAL(Solver%Mesh%Nodes%y(:))
     ymax=MAXVAL(Solver%Mesh%Nodes%y(:))
   ENDIF
 
-  Lambda =  GetConstReal( SolverParams,'Lambda', Found)
-  IF(.NOT.Found) THEN
-      CALL WARN(SolverName,'Keyword >Lambda< not found  in section >Solver<')
-      CALL WARN(SolverName,'Taking default value Lambda=1.0')
-      Lambda = 1.0_dp
-      CALL ListAddConstReal( SolverParams,'Lambda',Lambda)
-  End if
 
   If (Firsttime) then
     N = model % MaxElementNodes
@@ -153,8 +197,13 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
             END IF
     END IF
 
-     WRITE(SolverName, '(A)') 'CostSolver_Adjoint'
-
+   Lambda =  GetConstReal( SolverParams,'Lambda', Found)
+   IF(.NOT.Found) THEN
+      CALL WARN(SolverName,'Keyword >Lambda< not found  in section >Solver<')
+      CALL WARN(SolverName,'Taking default value Lambda=1.0')
+      Lambda = 1.0_dp
+      CALL ListAddConstReal( SolverParams,'Lambda',Lambda)
+   End if
 !!!!!!!!!!! get Solver Variables
 
   CostFile = ListGetString(Solver % Values,'Cost Filename',Found )
@@ -187,6 +236,13 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
    Variable => VariableGet( Solver % Mesh % Variables, Trim(VariableName) ,UnFoundFatal=.TRUE. )
    VDOFs=Variable%DOFs
 
+   VarDIM=GetInteger(SolverParams ,'Observed Variable Dimension',Found)
+   IF (.NOT.Found) THEN
+    VarDIM=MIN(VDOFs,CoordDIM)
+    WRITE(message,*) 'Keyword >Observed Variable Dimension< not found, assume VarDIM = ',VarDIM
+    CALL WARN(SolverName,message)
+   ENDIF
+
 !! Get the obs
    ObsFileName =  ListGetString( SolverParams,'Observation File Name', UnFoundFatal=.TRUE.)
 
@@ -198,7 +254,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
 #ifdef HAVE_NETCDF
 
-      IF (DIM.NE.2) CALL FATAL(Trim(SolverName),'Netcdf only supported for 2D')
+      IF (CoordDIM.NE.2) CALL FATAL(Trim(SolverName),'Netcdf only supported for 2D')
 
       CALL INFO(Trim(SolverName),'Data File is in netcdf format', Level=5)
 
@@ -263,59 +319,60 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      !! get ux and uy
       nx=XMaxIndex-XMinIndex+1
       ny=YMaxIndex-YMinIndex+1
-      ALLOCATE(ux(nx,ny),uy(nx,ny))
+      ALLOCATE(ObsArray(nx,ny,VarDIM),fillv(VarDIM))
 
-      VarName=ListGetString( SolverParams, "Ux Var Name", Found )
-      if (.NOT.Found) VarName='vx'
-      NetCDFstatus = nf90_inq_varid(ncid,trim(VarName),varid)
-      IF ( NetCDFstatus /= NF90_NOERR ) &
-           CALL Fatal(Trim(SolverName),'Unable to get netcdf ux variable id')
-      NetCDFstatus = nf90_get_var(ncid, Varid, ux(:, :), &
+      DO k=1,VarDIM
+        IF (VarDIM==1) THEN
+          VarName=ListGetString( SolverParams, "Netcdf Var Name", Found )
+          IF (.NOT.Found) VarName=TRIM(VariableName)
+        ELSE
+          VarName=ListGetString( SolverParams, ComponentName("Netcdf Var",k) // " Name", Found )
+          IF (.NOT.Found) THEN
+              select case (k)
+                case (1)
+                  VarName='vx'
+                case (2)
+                  VarName='vy'
+              end select
+          ENDIF
+        ENDIF
+        NetCDFstatus = nf90_inq_varid(ncid,trim(VarName),varid)
+        IF ( NetCDFstatus /= NF90_NOERR ) &
+           CALL Fatal(Trim(SolverName),'Unable to get netcdf variable id for ' // TRIM(VarName))
+        NetCDFstatus = nf90_get_var(ncid, Varid, ObsArray(:, :,k), &
                             start = (/ XMinIndex, YMinIndex /),     &
                             count = (/ nx,ny/))
-      IF ( NetCDFstatus /= NF90_NOERR ) &
-           CALL Fatal(Trim(SolverName),'Unable to get netcdf ux variable')
-      NetCDFstatus = nf90_get_att(ncid, varid,"_FillValue",Uxfillv)
-      IF ( NetCDFstatus /= NF90_NOERR ) &
-           CALL FATAL(Trim(SolverName),'Ux has no attribute _FillValue')
-
-      VarName=ListGetString( SolverParams, "Uy Var Name", Found )
-      if (.NOT.Found) VarName='vy'
-      NetCDFstatus = nf90_inq_varid(ncid,trim(VarName),varid)
-      IF ( NetCDFstatus /= NF90_NOERR ) &
-           CALL Fatal(Trim(SolverName),'Unable to get netcdf uy variable id')
-      NetCDFstatus = nf90_get_var(ncid, Varid, uy(:, :), &
-                            start = (/ XMinIndex, YMinIndex /),     &
-                            count = (/ nx,ny /))
-      IF ( NetCDFstatus /= NF90_NOERR ) &
-           CALL Fatal(Trim(SolverName),'Unable to get netcdf uy variable')
-      NetCDFstatus = nf90_get_att(ncid, varid,"_FillValue",Uyfillv)
-      IF ( NetCDFstatus /= NF90_NOERR ) &
-           CALL FATAL(Trim(SolverName),'Uy has no attribute _FillValue')
+        IF ( NetCDFstatus /= NF90_NOERR ) &
+            CALL Fatal(Trim(SolverName),'Unable to get netcdf variable' // TRIM(VarName))
+        NetCDFstatus = nf90_get_att(ncid, varid,"_FillValue",fillv(k))
+        IF ( NetCDFstatus /= NF90_NOERR ) &
+           CALL FATAL(Trim(SolverName),TRIM(VarName) // 'has no attribute _FillValue')
+      END DO
 
       !! close netcdf
       NetCDFstatus = nf90_close(ncid)
 
       !!
-      ALLOCATE(xobs(nx*ny,3),Vobs(nx*ny,DIM))
+      ALLOCATE(xobs(nx*ny,3),Vobs(nx*ny,VarDIM))
+      ALLOCATE(InElement(nx*ny))
+      InElement(:)=-1
       xobs=0._dp
       Vobs=0._dp
 
       nobs=0
       Do i=1,nx
         Do j=1,ny
-          NodalU=ux(i,j)
-          NodalV=uy(i,j)
-          IF ((NodalU.EQ.Uxfillv).OR.(NodalV.EQ.Uyfillv)) CYCLE
-          nobs=nobs+1
-          xobs(nobs,1)=xx(XMinIndex+i-1)
-          xobs(nobs,2)=yy(YMinIndex+j-1)
-          Vobs(nobs,1)=NodalU
-          Vobs(nobs,2)=NodalV
+         IF (ANY(abs(ObsArray(i,j,:)-fillv(:)).LT.AEPS)) CYCLE
+         nobs=nobs+1
+         xobs(nobs,1)=xx(XMinIndex+i-1)
+         xobs(nobs,2)=yy(YMinIndex+j-1)
+         Do k=1,VarDIM
+          Vobs(nobs,k)=ObsArray(i,j,k)
+         END DO
         End do
       End do
 
-      DEALLOCATE(xx,yy,ux,uy)
+      DEALLOCATE(xx,yy,ObsArray,fillv)
 
 #else
 
@@ -327,10 +384,18 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
      ParallelFile = .False.
      ParallelFile = GetLogical(SolverParams,'Parallel Observation Files', Found)
-     if (Parallel.AND.ParallelFile) &
-       write(ObsFileName,'(A,A,I0)') trim(ObsFileName),'.',ParEnv % MyPE  
+     if (Parallel.AND.ParallelFile) THEN
+       SideParFile = AddFilenameParSuffix(ObsFileName,'dat',Parallel,ParEnv % MyPe)
+     ELSE
+       SideParFile = trim(ObsFileName)
+     ENDIF
+
+     ProcessedFile = ListGetLogical(SolverParams,'Pre-Processed File')
+     IF (ProcessedFile) THEN
+        ActiveNumbering=ListGetLogical(SolverParams,"Element Number is Active Number")
+     ENDIF
                
-     open(IO,file=trim(ObsFileName),status = 'old',iostat = ok)
+     open(IO,file=trim(SideParFile),status = 'old',iostat = ok)
      if(ok /= 0) then
        write(message,'(A,A)') 'Unable to open file ',TRIM(ObsFileName)
        CALL Fatal(Trim(SolverName),Trim(message))
@@ -342,21 +407,40 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      end do
      close(IO)
 
-     ALLOCATE(xobs(nobs,3),Vobs(nobs,DIM))
+     ALLOCATE(xobs(nobs,3),Vobs(nobs,VarDIM))
+     ALLOCATE(InElement(nobs))
+     InElement(:)=-1
 
      Vobs=0.0_dp
      xobs=0.0_dp
-     open(IO,file=trim(ObsFileName))
+     open(IO,file=trim(SideParFile))
      do i=1,nobs
-       read(IO,*) (xobs(i,j),j=1,DIM),(Vobs(i,j),j=1,DIM)
+       IF (ProcessedFile) THEN
+         read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM),AI
+
+         IF (ActiveNumbering) THEN
+           Element => GetActiveElement(AI)
+           IF (.NOT.ASSOCIATED(Element)) &
+               CALL FATAL(SolverName,'No Active Element')
+           InElement(i) = Element % ElementIndex
+         ELSE
+           InElement(i) = AI
+         ENDIF
+       ELSE
+         read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM)
+       ENDIF
      end do
      close(IO)
    ENDIF
 
-  ALLOCATE(InElement(nobs))
-  InElement(:)=-1
-
    SAVE_USED_DATA = GetLogical(SolverParams,'Save used data', Found)
+   IF (SAVE_USED_DATA) THEN
+     SideFile =ListGetString(SolverParams,"output data file name",UnfoundFatal=.TRUE.)
+     CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
+     SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
+     SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe)
+   END IF
+
   !!! End of First visit
     Firsttime=.false.
   Endif
@@ -366,14 +450,21 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   Values => Variable % Values
   Perm => Variable % Perm
 
-! Get the adjoint
-  VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb', UnFoundFatal=.TRUE.  )
-  Vb => VelocitybSol % Values
-  VbPerm => VelocitybSol % Perm
+! Get the sensitivity variable
+  IF ( SEQL(TRIM(VariableName),'flow solution').OR.SEQL(TRIM(VariableName),'ssavelocity')) THEN
+    FVarName = 'Velocityb'
+  ELSE
+    FVarName = TRIM(VariableName) // 'b'
+  ENDIF
+  VbSol => VariableGet( Solver % Mesh % Variables,TRIM(FVarName), UnFoundFatal=.TRUE.  )
+  Vb => VbSol % Values
+  VbPerm => VbSol % Perm
   Vb=0.0_dp
 
-  IF (VelocitybSol%DOFs.NE.Variable%DOFs) & 
+  IF (VbSol%DOFs.NE.Variable%DOFs) & 
         CALL FATAL(Trim(SolverName),'DOFs do not correspond')
+  IF (VarDIM.GT.Variable%DOFs) & 
+          CALL FATAL(Trim(SolverName),'Observed Variable DIM too large')
 !
  Mesh => GetMesh()
   
@@ -395,17 +486,17 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      
      CALL AdvanceOutput(s,nobs)
      
-     IF (FirstRound) then
+     IF (FirstRound.AND.(InElement(s)<0)) then
        !Need to find in which Element the data point resides
        ! First check that it is within the computation domain
        Coord=0._dp
-       Coord(1:DIM)=xobs(s,1:DIM)
+       Coord(1:CoordDIM)=xobs(s,1:CoordDIM)
        IF ((Coord(1).GT.xmax).OR.(Coord(1).LT.xmin)) CYCLE
-       IF (DIM.EQ.2) THEN
+       IF (CoordDIM.GE.2) THEN
         IF ((Coord(2).GT.ymax).OR.(Coord(2).LT.ymin)) CYCLE
        END IF
 
-       IF (DIM.LT.CoordinateSystemDimension()) THEN
+       IF (CoordDIM.LT.CoordinateSystemDimension()) THEN
        ! we are in a lower dimension than the mesh
        ! => use brute force search
 
@@ -414,10 +505,10 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
         n = GetElementNOFNodes(Element)
         NodeIndexes => Element % NodeIndexes
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
-        IF (DIM == 1) THEN
+        IF (CoordDIM == 1) THEN
               ElementNodes % y(1:n) = 0.0_dp
               ElementNodes % z(1:n) = 0.0_dp
-        ELSE IF (DIM == 2) THEN
+        ELSE IF (CoordDIM == 2) THEN
               ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
               ElementNodes % z(1:n) = 0.0_dp
         ENDIF
@@ -432,10 +523,10 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
            n = GetElementNOFNodes(Element)
            NodeIndexes => Element % NodeIndexes
            ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
-           IF (DIM == 1) THEN
+           IF (CoordDIM == 1) THEN
               ElementNodes % y(1:n) = 0.0_dp
               ElementNodes % z(1:n) = 0.0_dp
-           ELSE IF (DIM == 2) THEN
+           ELSE IF (CoordDIM == 2) THEN
               ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
               ElementNodes % z(1:n) = 0.0_dp
            ENDIF
@@ -473,17 +564,15 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
     ! set coords of highest occurring dimension to zero (to get correct path element)
           !-------------------------------------------------------------------------------
          ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
-         IF (DIM == 1) THEN !1D SSA
+         IF (CoordDIM == 1) THEN 
             ElementNodes % y(1:n) = 0.0_dp
             ElementNodes % z(1:n) = 0.0_dp
-         ELSE IF (DIM == 2) THEN !2D SSA
+         ELSE IF (CoordDIM == 2) THEN 
             ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
             ElementNodes % z(1:n) = 0.0_dp
-         ELSE
-            WRITE(Message,'(a,i1,a)')&
-                'It is not possible to compute SSA problems with DOFs=',&
-                DIM, ' . Aborting'
-            CALL Fatal( SolverName, Message)
+         ELSE IF (CoordDIM == 3) THEN
+            ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+            ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
          END IF
 
          IF (.NOT.PointInElement(Element,ElementNodes,xobs(s,1:3),UVW))  THEN
@@ -499,19 +588,18 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
                               Basis,dBasisdx )
 
             ! Variable at obs point
-            Do i=1,DIM
+            Do i=1,VarDIM
               V(i)=SUM(Values(VDOFs*(Perm(NodeIndexes(1:n))-1)+i)*basis(1:n))
             End do
 
             ! Update cost
-            Do i=1,DIM
+            Do i=1,VarDIM
               Cost=Cost+0.5*Lambda*(V(i)-Vobs(s,i))*(V(i)-Vobs(s,i))
             End do
-            !PRINT *,V,Vobs
 
             !Derivative of Cost at nodal Point
             Do j=1,n
-              Do i=1,DIM
+              Do i=1,VarDIM
                k=VDOFS*(VbPerm(NodeIndexes(j))-1)+i
                Vb(k)=Vb(k)+Lambda*(V(i)-Vobs(s,i))*basis(j)
               End do
@@ -521,8 +609,8 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
          ELSE
 
-            WRITE(Message,'(a,I0,a)')&
-                'Data Point',s,'found in no element'
+            WRITE(Message,'(a,I0,ES20.11E3,ES20.11E3,ES20.11E3,a)')&
+                'Data Point ',s,xobs(s,1:3),' found in no element'
             CALL Info( SolverName, Message,level=15)
          END IF
 
@@ -560,29 +648,29 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
             close(IO)
             write(Message,'(A,A,I0)') trim(SolverName),'total number of data points:',NTOT
             call INFO(SolverName,Message,level=3)
+            Cost_S=Cost
    END IF
-   
-   If (FirstRound) THEN
-     IF (SAVE_USED_DATA) THEN
-      If (Parallel) then
-       write(UsedDataFile,'(A,A,I0)') trim(SolverName),'.useddata.',ParEnv % MyPE
-      Else
-       write(UsedDataFile,'(A,A)') trim(SolverName),'.useddata'
-      End if
 
-       open(IO,File=UsedDataFile)
-       Do s=1,nobs
-         If (InElement(s)>0) then
-            if (DIM.eq.1) Then
-               write(IO,'(e13.5,2x,e15.8)') (xobs(s,i),i=1,DIM),(Vobs(s,i),i=1,DIM)
-            Else if (DIM.eq.2) Then
-               write(IO,'(e15.8,2x,e15.8,2x,e15.8,2x,e15.8)') (xobs(s,i),i=1,DIM),(Vobs(s,i),i=1,DIM)
-            End if
-         End if
-       End do
-       close(IO)
-     END IF
-   End if
+   Solver % Variable % Values(1)=Cost_S
+   
+   If (FirstRound.AND.SAVE_USED_DATA) THEN
+
+
+     open(IO,File=SideParFile)
+     Do s=1,nobs
+        If (InElement(s)>0) then
+           DO i=1,CoordDIM
+             write(IO,'(ES20.11E3)',ADVANCE='NO') xobs(s,i)
+           END DO
+           DO i=1,VarDIM
+             write(IO,'(ES20.11E3)',ADVANCE='NO') Vobs(s,i)
+           END DO
+           write(IO,'(x,I0)') InElement(s)
+        End if
+      End do
+     close(IO)
+
+    END IF
 
 ! Reset Warning level to previous value
   IF (FirstRound) THEN
@@ -592,7 +680,7 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
    FirstRound=.False.
    Return
 
- 1000  format('#date,time,',a1,'/',a1,'/',a4,',',a2,':',a2,':',a2)
+ 1000  format('#date,time,',a2,'/',a2,'/',a4,',',a2,':',a2,':',a2)
  1001  format('#lambda,',e15.8)
 
  CONTAINS
@@ -634,6 +722,6 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
  END SUBROUTINE MinMaxIndex
 
 !------------------------------------------------------------------------------
-END SUBROUTINE AdjointSSA_CostDiscSolver
+END SUBROUTINE Adjoint_CostDiscSolver
 !------------------------------------------------------------------------------
 ! *****************************************************************************

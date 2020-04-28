@@ -1,0 +1,87 @@
+!################################################
+!# Validation test case for Adjoint_CostRegSolver
+!#  Test regularisation from a prior 
+!################################################
+! PARAMETERS:
+$name="CostReg4"
+!###############################################
+Header
+  Mesh DB "." "mesh2D"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady State
+
+  Steady State Max Iterations = 20
+  Steady State Min Iterations = 20
+
+  max output level = 4
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+ Var = Variable Coordinate 1, Coordinate 2
+  Real  MATC "sqrt(2.0)*tx(0)^2+sqrt(2)*tx(1)*tx(1)/2"
+
+ VarP = REAL MATC "0.1*rand(1,1)"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+ ! kw related to prior value and std.
+  CostReg Nodal Prior = Real 1.0
+  CostReg Nodal std = Real 0.5
+End
+!!!!!!!!   !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+ Exec Solver  = never
+ Equation = String "UpdateExport"
+ procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+ Exported Variable 1 = -global "CostValue"  
+ Exported Variable 2 = Var
+ Exported Variable 3 = DJDp
+
+ Exported Variable 4 = VarP
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = String "CostReg"
+  procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+  !# True if cost function and gradient must be initialised to 0 in this solver
+  Reset Cost Value = Logical True
+
+  Cost Filename = File "CostFile_$name$.dat"
+
+  Lambda=Real 1.0
+
+  Cost Variable Name = String "CostValue" 
+
+  Gradient Variable Name = String "DJDp"
+
+  Optimized Variable Name = String "Var"
+
+  A priori Regularisation = Logical TRUE
+end
+!!!!! Validation
+Solver 3
+  Equation = "GradientValidation"
+  procedure = "ElmerIceSolvers" "Adjoint_GradientValidation"
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "Var"
+  Perturbation Variable Name = String "VarP"
+  Gradient Variable Name = String "DJDp"
+  Result File = File "Validation_$name$.dat"
+ 
+end
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (3)= 1 2 3
+End
