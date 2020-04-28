@@ -156,6 +156,7 @@ CONTAINS
      Mesh % AdaptiveDepth = 0
      Mesh % Changed   = .FALSE. !  TODO: Change this sometime
      Mesh % Stabilize = .FALSE.
+     Mesh % MeshTag = 1
 
      Mesh % Variables => NULL()
      Mesh % Parent => NULL()
