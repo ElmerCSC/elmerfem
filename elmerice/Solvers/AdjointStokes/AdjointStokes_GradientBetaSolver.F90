@@ -196,7 +196,7 @@ SUBROUTINE AdjointStokes_GradientBetaSolver( Model,Solver,dt,TransientSimulation
         CALL FATAL(SolverName,Message)
      ENDIF
 
-     NodalDer(1:n) = ListGetReal(BC,'Slip Coefficient der',n,NodeIndexes,Found=HaveDer)
+     NodalDer(1:n) = ListGetReal(BC,'Slip Coefficient dervative',n,NodeIndexes,Found=HaveDer)
      
      ! Compute Integrated Nodal Value of DJDBeta
      IntegStuff = GaussPoints( Element )
