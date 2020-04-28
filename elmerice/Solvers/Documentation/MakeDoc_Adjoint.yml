@@ -12,6 +12,9 @@ input-files:
 - Generic_part.md
 -  Adjoint_GradientValidation.md
 -  Adjoint_LinearSolver.md 
+- SSASolvers_part.md
+-  AdjointSSA_SSASolver.md
+-  AdjointSSA_GradientSolver.md
 - CostSolvers_part.md
 -  Adjoint_CostDiscSolver.md
 -  Adjoint_CostContSolver.md
@@ -26,4 +29,5 @@ number-sections: true
 
 variables:
   documentclass: scrreprt
+  urlcolor: cyan
   #documentclass: report 
