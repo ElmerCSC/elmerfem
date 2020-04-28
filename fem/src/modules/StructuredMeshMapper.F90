@@ -304,7 +304,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   END IF
 
   IF( GotBaseVar ) THEN
-    IF (NOT. BaseDisplaceFirst ) CALL BaseVarDisplace() 
+    IF (.NOT. BaseDisplaceFirst ) CALL BaseVarDisplace() 
   END IF
     
   IF( GotVeloVar .AND. .NOT. Visited ) THEN
