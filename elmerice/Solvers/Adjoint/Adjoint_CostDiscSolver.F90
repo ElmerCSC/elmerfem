@@ -609,8 +609,8 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
          ELSE
 
-            WRITE(Message,'(a,I0,a)')&
-                'Data Point',s,'found in no element'
+            WRITE(Message,'(a,I0,ES20.11E3,ES20.11E3,ES20.11E3,a)')&
+                'Data Point ',s,xobs(s,1:3),' found in no element'
             CALL Info( SolverName, Message,level=15)
          END IF
 

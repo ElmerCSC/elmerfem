@@ -52,7 +52,7 @@ Body Force 1
   ! Provide a function that give teh derivative
   ! of the function above with respect to your variable
   ! if you want the derivative of your function with respect to this variable
-  CostReg Nodal Variable der = Variable Var
+  CostReg Nodal Variable derivative = Variable Var
    Real procedure "ElmerIceUSF" "TenPowerA_d"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
