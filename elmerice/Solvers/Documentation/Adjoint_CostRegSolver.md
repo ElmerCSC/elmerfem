@@ -1,4 +1,4 @@
-## Regularisation solver
+## Regularisation solver {#adjoint_CostReg}
 
 **Module name**: Adjoint_CostRegSolver  
 **Module subroutines**: Adjoint_CostRegSolver  

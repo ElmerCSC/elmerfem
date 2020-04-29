@@ -18,8 +18,10 @@ input-files:
 - CostSolvers_part.md
 -  Adjoint_CostDiscSolver.md
 -  Adjoint_CostContSolver.md
+-  AdjointSSA_CostFluxDivSolver.md
 - RegSolvers_part.md
 -  Adjoint_CostRegSolver.md
+-  AdjointSSA_CostTaubSolver.md
 
 standalone: true
 
