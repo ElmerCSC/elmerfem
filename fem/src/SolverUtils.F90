@@ -16687,6 +16687,7 @@ CONTAINS
     Mesh => Solver % Mesh
     dim = Mesh % MeshDim
 
+    ! S refers to "solid" and F to "shell" (was fluid)
     FPerm => FVar % Perm
     SPerm => SVar % Perm
     
@@ -16757,7 +16758,102 @@ CONTAINS
       END DO
 
       IF( IsShell ) THEN
-        CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')
+        BLOCK
+          INTEGER :: p,lf,ls,ii,n,t
+          REAL(KIND=dp) :: u,v,w,weight,detJ,val
+          TYPE(Element_t), POINTER :: Element
+          INTEGER, POINTER :: Indexes(:)
+          TYPE(GaussIntegrationPoints_t) :: IP
+          REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+          TYPE(Nodes_t) :: Nodes
+          LOGICAL :: Stat, FixRot
+          
+          FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
+
+          IF(.NOT. FixRot ) THEN
+            CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')                  
+          ELSE
+            CALL Warn('StructureCouplingAssembly','Experimental fixing of shell rotations')
+            n = Mesh % MaxElementNodes 
+            ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+                   
+            ! First, zero the rows related to rotational dofs i.e. components 4 & 5
+            DO i=1,Mesh % NumberOfNodes
+              jf = FPerm(i)      
+              js = SPerm(i)
+              IF( jf == 0 .OR. js == 0 ) CYCLE
+
+              !PRINT *,'Zero shell row:',i,jf,fdofs
+
+              DO j = 4, 5
+                kf = fdofs*(jf-1)+j
+
+                IF( ConstrainedF(kf) ) CYCLE
+                ! We could use ZeroRow as well
+                DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                  A_f % Values(k) = 0.0_dp
+                END DO
+                A_s % rhs(kf) = 0.0_dp
+              END DO
+            END DO
+
+            ! Then go through each element associated with the interface        
+            DO t=1,Mesh % NumberOfBulkElements
+              Element => Mesh % Elements(t)
+              Indexes => Element % NodeIndexes 
+
+              ! We must have solid equation present everywhere and shell at least at one node.
+              IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
+              IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
+
+              n = Element % TYPE % NumberOfNodes
+              Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
+              Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
+              Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+
+              ! Integration at the center point. We could perhaps use the actual corner nodes as well. 
+              IP = GaussPoints( Element )            
+              u = SUM( IP % u) / IP % n
+              v = SUM( IP % v) / IP % n
+              w = SUM( IP % w) / IP % n
+
+              stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
+              Weight = detJ * SUM( IP % s ) 
+
+              !PRINT *,'ip point:',t,u,v,w,detJ, Weight,dim
+
+              DO ii = 1, n
+                i = Indexes(ii)           
+                jf = FPerm(i)      
+                IF( jf == 0 ) CYCLE
+
+                !PRINT *,'set shell node:',i,jf
+
+                ! Rotational dofs of the shell equation
+                DO lf = 4, 5                            
+                  kf = fdofs*(jf-1)+lf
+
+                  ! Displacement dofs
+                  DO ls = 1, dim
+                    ks = sdofs*(js-1)+ls
+
+                    ! Mika may do the non-ortho stuff.
+                    ! Now we assume that that du_x/dx set 4th components, and du_y/dy the 5th
+                    IF( lf - ls /= 3 ) CYCLE
+
+                    ! Implicit derivative
+                    DO p=1,n
+                      val = dBasisdx(p,ls)
+                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
+                    END DO
+                    CALL AddToMatrixElement(A_f,kf,kf,weight)
+                  END DO
+                END DO
+              END DO
+            END DO
+            DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
+          END IF
+        END BLOCK
       END IF
     ELSE
       CALL Fatal('StructureCouplingAssembly','Coupling type not implemented yet!')
