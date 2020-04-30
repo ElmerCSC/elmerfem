@@ -625,8 +625,8 @@ CONTAINS
           cm_int(j) = PointStore(lnode) % NoInt
           DO k=1,cm_int(j)
             totcount=totcount+1
-            int=DOFs_3D*(totcount-1)
-            cm_values(int+1:int+DOFs_3D) = &
+            NoInt = DOFs_3D*(totcount-1)
+            cm_values(NoInt+1:NoInt+DOFs_3D) = &
                PointStore(lnode) % IntValues(1:DOFs_3D,k)
             cm_extent(totcount) = PointStore(lnode) % IntExtent(k)
            END DO
@@ -683,9 +683,9 @@ CONTAINS
           DO k=1,cm_int(j)
             totcount=totcount+1
             curr=curr+1
-            int = DOFs_3D*(totcount-1)
+            NoInt = DOFs_3D*(totcount-1)
             PointStore(lnode) % IntExtent(curr) = cm_extent(totcount)
-            PointStore(lnode) % IntValues(:,curr) = cm_values(int+1:int+DOFs_3D)
+            PointStore(lnode) % IntValues(:,curr) = cm_values(NoInt+1:NoInt+DOFs_3D)
           END DO
           PointStore(lnode) % NoInt=curr
         END DO
