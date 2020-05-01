@@ -107,3 +107,5 @@ cost function for some elements. By default the name of the solver varaible is *
 End
 ```
 
+### Tests and Examples
+

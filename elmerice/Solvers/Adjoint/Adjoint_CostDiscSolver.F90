@@ -326,8 +326,10 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
           VarName=ListGetString( SolverParams, "Netcdf Var Name", Found )
           IF (.NOT.Found) VarName=TRIM(VariableName)
         ELSE
-          VarName=ListGetString( SolverParams, ComponentName("Netcdf Var",k) // " Name", Found )
+          VarName=ListGetString( SolverParams, TRIM(ComponentName("Netcdf Var",k)) // " Name", Found )
           IF (.NOT.Found) THEN
+              CALL WARN(SolverName,'keyword <' // &
+                      TRIM(ComponentName("Netcdf Var",k)) // " Name" // ' not found, taking default')
               select case (k)
                 case (1)
                   VarName='vx'

@@ -131,3 +131,6 @@ Or using ElmerIce build-in user functions:
 
 ```
 
+### Tests and Examples
+
+- See examples for the [SSA inverse methods](../../examples/SSA_Inverse_Methods)
