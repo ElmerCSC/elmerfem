@@ -3,6 +3,10 @@
 This directory contains meshing tools designed to facilitate the mesh generation of real system 
 and the interaction with GIS sofwares.
 
+An example demonstrating the use of *Contour2geo.py* and *MeshToShp.py* can be found 
+[here](https://cloud.univ-grenoble-alpes.fr/index.php/s/nFZEEKDDcTg8DD3)
+
+
 ## Contour2geo.py
 
 **USAGE :**
@@ -30,7 +34,8 @@ one boundary condition type. Otherwise (in case of several polylines) each featu
 a *physical* identification.
 
 If there is several polylines they must form an ordered closed countour. 
-If the attribute *BC* (integer) is present, the program will use this attribute *BC* to order the lines.
+If the attribute *BC* (integer) is present, the program will use this attribute *BC* to order the lines as shown in the picture:  
+![](images/Example.png "See line orientation and order of the BC attribute")
 
 In general, the workflow in a GIS sofware will be as follow:
 
