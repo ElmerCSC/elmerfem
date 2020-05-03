@@ -90,6 +90,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: BetaVar,CostVar,GradVar,MaskVar,TimeVar,BWeightVar
   REAL(KIND=dp), POINTER :: BetaValues(:),CostValues(:),GradValues(:),MaskValues(:)
   INTEGER, POINTER :: BetaPerm(:),GradPerm(:),NodeIndexes(:),MaskPerm(:),BWeightPerm(:)
+  INTEGER, SAVE :: VarDOFs
 
   REAL(KIND=dp),allocatable :: x(:),g(:),b(:),xx(:),gg(:),bb(:),xtot(:),gtot(:),btot(:)
   REAL(KIND=dp) :: f,Normg,Change
@@ -341,10 +342,14 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
      BetaVar => VariableGet( Model % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal) 
      BetaValues => BetaVar % Values 
      BetaPerm => BetaVar % Perm 
+     VarDOFs = BetaVar % DOFs
 
      GradVar => VariableGet( Model % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal) 
      GradValues   => GradVar % Values 
      GradPerm => GradVar % Perm 
+     IF (GradVar % DOFs.NE.VarDOFs) THEN
+         CALL FATAL(SolverName,'Optimisation and gradient variables have different DOFs')
+     END IF
 
      IF(MeshIndep) THEN
        IF(FirstTime) THEN
@@ -393,8 +398,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
             CALL FATAL(SolverName,Message)
      End if
   
-    allocate(ActiveNodes(NActiveNodes),LocalToGlobalPerm(NActiveNodes),x(NActiveNodes),g(NActiveNodes))
-    IF(MeshIndep) ALLOCATE(b(NActiveNodes))
+    allocate(ActiveNodes(NActiveNodes),LocalToGlobalPerm(NActiveNodes),x(VarDOFs*NActiveNodes),g(VarDOFs*NActiveNodes))
+    IF(MeshIndep) ALLOCATE(b(VarDOFs*NActiveNodes))
     ActiveNodes(1:NActiveNodes)=NewNode(1:NActiveNodes)
 
     deallocate(VisitedNode,NewNode)
@@ -415,8 +420,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
           Do i=1,Npes
                ntot=ntot+NodePerPe(i)
           End do
-          allocate(xtot(ntot),gtot(ntot))
-          IF(MeshIndep) ALLOCATE(btot(ntot))
+          allocate(xtot(VarDOFs*ntot),gtot(VarDOFs*ntot))
+          IF(MeshIndep) ALLOCATE(btot(VarDOFs*ntot))
           allocate(NodePerm(ntot))
     End if
 
@@ -456,65 +461,76 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
            End do
 
            NPoints=ind
-           allocate(xx(Npoints),gg(Npoints),bb(NPoints))
+           allocate(xx(VarDOFs*Npoints),gg(VarDOFs*Npoints),bb(VarDOFs*NPoints))
            deallocate(NodePerm,LocalToGlobalPerm)
 
  ! M1QN3 allocation of dz function of Npoints nd requested number of updates
            IF (DISbool) then
-                   ndz=4*NPoints+ndz*(2*NPoints+1)+10
+                   ndz=4*VarDOFs*NPoints+ndz*(2*VarDOFs*NPoints+1)+10
            else
-                   ndz=3*NPoints+ndz*(2*NPoints+1)+10
+                   ndz=3*VarDOFs*NPoints+ndz*(2*VarDOFs*NPoints+1)+10
            end if
            allocate(dz(ndz))
 
            IF(MeshIndep) THEN
-             ALLOCATE(dzs(Npoints))
+             ALLOCATE(dzs(VarDOFs*Npoints))
              dzs=0.0
            END IF
     End if
    
   END IF
 
-     x(1:NActiveNodes)=BetaValues(BetaPerm(ActiveNodes(1:NActiveNodes)))
-     g(1:NActiveNodes)=GradValues(GradPerm(ActiveNodes(1:NActiveNodes)))
-     IF(MeshIndep) b(1:NActiveNodes)=BWeightVar % Values(&
-          BWeightVar % Perm(ActiveNodes(1:NActiveNodes)))
+  Do i=1,NActiveNodes
+     Do j=1,VarDOFs
+          x(VarDOFs*(i-1)+j)=BetaValues(VarDOFs*(BetaPerm(ActiveNodes(i))-1)+j)
+          g(VarDOFs*(i-1)+j)=GradValues(VarDOFs*(GradPerm(ActiveNodes(i))-1)+j)
+          IF(MeshIndep) b(VarDOFs*(i-1)+j)=BWeightVar % Values(&
+             BWeightVar % Perm(ActiveNodes(i)))
+     End DO
+  End Do
 
     ! Send variables to partition 0
     ! and receive results from partition 0
 
      if (ParEnv % MyPE .ne.0) then
 
-                     call MPI_SEND(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8003,ELMER_COMM_WORLD,ierr)
-                     call MPI_SEND(g(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8004,ELMER_COMM_WORLD,ierr)
-                     IF(MeshIndep) call MPI_SEND(b(1),NActiveNodes,&
+                     call MPI_SEND(x(1),VarDOFs*NActiveNodes,MPI_DOUBLE_PRECISION,0,8003,ELMER_COMM_WORLD,ierr)
+                     call MPI_SEND(g(1),VarDOFs*NActiveNodes,MPI_DOUBLE_PRECISION,0,8004,ELMER_COMM_WORLD,ierr)
+                     IF(MeshIndep) call MPI_SEND(b(1),VarDOFs*NActiveNodes,&
                           MPI_DOUBLE_PRECISION,0,8006,ELMER_COMM_WORLD,ierr)
 
-                     call MPI_RECV(x(1),NActiveNodes,MPI_DOUBLE_PRECISION,0,8005,ELMER_COMM_WORLD,status, ierr )
+                     call MPI_RECV(x(1),VarDOFs*NActiveNodes,MPI_DOUBLE_PRECISION,0,8005,ELMER_COMM_WORLD,status, ierr )
                      call MPI_RECV(omode,1,MPI_Integer,0,8006,ELMER_COMM_WORLD,status,ierr )
 
                      ! Update Beta Values 
-                     BetaValues(BetaPerm(ActiveNodes(1:NActiveNodes)))=x(1:NActiveNodes)
+                     Do i=1,NActiveNodes
+                        Do j=1,VarDOFs
+                            BetaValues(VarDOFs*(BetaPerm(ActiveNodes(i))-1)+j)=x(VarDOFs*(i-1)+j)
+                        End DO
+                     End Do
      else
-                     xtot(1:NActiveNodes)=x(1:NActiveNodes)
-                     gtot(1:NActiveNodes)=g(1:NActiveNodes)
-                     IF(MeshIndep) btot(1:NActiveNodes)=b(1:NActiveNodes)
-                     ni=1+NActiveNodes
+                     xtot(1:VarDOFs*NActiveNodes)=x(1:VarDOFs*NActiveNodes)
+                     gtot(1:VarDOFs*NActiveNodes)=g(1:VarDOFs*NActiveNodes)
+                     IF(MeshIndep) btot(1:VarDOFs*NActiveNodes)=b(1:VarDOFs*NActiveNodes)
+                     ni=1+VarDOFs*NActiveNodes
                      Do i=2,Npes
-                       call MPI_RECV(xtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8003,ELMER_COMM_WORLD, status, ierr )
-                       call MPI_RECV(gtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8004,ELMER_COMM_WORLD, status, ierr )
-                       IF(MeshIndep) call MPI_RECV(btot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,&
+                       call MPI_RECV(xtot(ni),VarDOFs*NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8003,ELMER_COMM_WORLD, status, ierr )
+                       call MPI_RECV(gtot(ni),VarDOFs*NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8004,ELMER_COMM_WORLD, status, ierr )
+                       IF(MeshIndep) call MPI_RECV(btot(ni),VarDOFs*NodePerPe(i),MPI_DOUBLE_PRECISION,&
                             i-1,8006,ELMER_COMM_WORLD, status, ierr )
-                       ni=ni+NodePerPe(i)
+                       ni=ni+VarDOFs*NodePerPe(i)
                      End do
-                     
+
                      xx=0.0
                      gg=0.0
                      IF(MeshIndep) bb=0.0
                      Do i=1,ntot
-                         xx(TestPerm(i))=xtot(i)  ! same Beta Value for same node
-                         gg(TestPerm(i))=gg(TestPerm(i))+gtot(i)  ! gather the contribution to DJDB 
-                         IF(MeshIndep) bb(TestPerm(i))=bb(TestPerm(i))+btot(i)! gather boundary weights
+                       Do j=1,VarDOFs
+                         xx(VarDOFs*(TestPerm(i)-1)+j)=xtot(VarDOFs*(i-1)+j)  ! same Beta Value for same node
+                         gg(VarDOFs*(TestPerm(i)-1)+j)=gg(VarDOFs*(TestPerm(i)-1)+j)+gtot(VarDOFs*(i-1)+j)  ! gather the contribution to DJDB 
+                         IF(MeshIndep) &
+                          bb(VarDOFs*(TestPerm(i)-1)+j)=bb(VarDOFs*(TestPerm(i)-1)+j)+btot(VarDOFs*(i-1)+j)! gather boundary weights
+                        End Do
                      End do 
 
                      IF(MeshIndep) THEN
@@ -526,7 +542,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
                              TimeVar => VariableGet( Model % Mesh % Variables, 'Time' )
                              Normg=0.0_dp
 
-                             Do i=1,NPoints
+                             Do i=1,VarDOFs*NPoints
                                 Normg=Normg+gg(i)*gg(i)
                              End do
                              open(io,file=trim(NormFile),position='append')
@@ -547,7 +563,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
             Oldf=sqrt(SUM(xx(:)*xx(:))/(1.0d0*NPoints))
             ! go to minimization
             open(io,file=trim(IOM1QN3),position='append')
-            call m1qn3 (simul_rc,prosca,ctonb,ctcab,NPoints,xx,f,gg,dxmin,df1, &
+            call m1qn3 (simul_rc,prosca,ctonb,ctcab,VarDOFs*NPoints,xx,f,gg,dxmin,df1, &
                         epsrel,normtype,imp,io,imode,omode,niter,nsim,iz, &
                         dz,ndz,reverse,indic,izs,rzs,dzs)
 
@@ -572,18 +588,25 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
             ! Put new Beta Value in xtot and send to each partition
             xtot=0.0
             Do i=1,ntot
-               xtot(i)=xx(TestPerm(i))
-            End do 
+              Do j=1,VarDOFs
+               xtot(VarDOFs*(i-1)+j)=xx(VarDOFs*(TestPerm(i)-1)+j)
+              End Do
+            End do
 
             ! Update Beta Values 
-            BetaValues(BetaPerm(ActiveNodes(1:NActiveNodes)))=xtot(1:NActiveNodes)
+            Do i=1,NActiveNodes
+                 Do j=1,VarDOFs
+                      BetaValues(VarDOFs*(BetaPerm(ActiveNodes(i))-1)+j)=xtot(VarDOFs*(i-1)+j)
+                 End DO
+            End Do
                       
-            ni=1+NActiveNodes
+            ni=1+VarDOFs*NActiveNodes
             Do i=2,Npes
-                  call MPI_SEND(xtot(ni),NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8005,ELMER_COMM_WORLD,ierr)
+                  call MPI_SEND(xtot(ni),VarDOFs*NodePerPe(i),MPI_DOUBLE_PRECISION,i-1,8005,ELMER_COMM_WORLD,ierr)
                   call MPI_SEND(omode,1,MPI_Integer,i-1,8006,ELMER_COMM_WORLD,ierr)
-                  ni=ni+NodePerPe(i)
-           End do
+                  ni=ni+VarDOFs*NodePerPe(i)
+            End do
+
   endif
 
    Return
