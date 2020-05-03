@@ -1,6 +1,6 @@
 #!/bin/bash
 # make mesh
-ElmerGrid 1 2 mesh2D -metis 2
+ElmerGrid 1 2 mesh2D 
 # compile required USFs
 make
 
@@ -14,7 +14,7 @@ sed  "s/<Lambda>/"$lambda"/g;s/<NAME>/$NAME/g;s/<OBS_FILE>/$DATAFILE/g" SIF/OPTI
 
 # run 
 echo OPTIM_$NAME.sif > ELMERSOLVER_STARTINFO
-mpirun -np 2 ElmerSolver_mpi
+ElmerSolver
 
 # post process
 python ../SCRIPTS/MakeReport.py $NAME

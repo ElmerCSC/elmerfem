@@ -33,7 +33,7 @@
 !    using quasi-Newton M1QN3 Routine in Reverse Communication
 !    Using Euclidean inner product
 !
-!  Parallel Only   2D/3D
+!   2D/3D
 !
 !  Need:
 !  - Value of the Cost function
@@ -104,6 +104,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
   logical :: FirstVisit=.TRUE.,Firsttime=.TRUE.,Found,UseMask,ComputeNormG=.FALSE.,&
        UnFoundFatal=.TRUE.,MeshIndep, BoundarySolver
+  logical,SAVE :: Parallel
   logical,allocatable :: VisitedNode(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,&
@@ -167,10 +168,8 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
             WRITE(SolverName, '(A)') 'Optimize_m1qn3Parallel'
 
        ! Check we have a parallel run
-          !IF(.NOT.ASSOCIATED(Solver %  Matrix % ParMatrix)) Then
-          IF(.NOT.(ParEnv % PEs > 1)) THEN
-             CALL FATAL(SolverName,'This solver works in parallel only!!')
-          End if
+          Parallel=(ParEnv % PEs > 1)
+       !!!!!
 
             SolverParams => GetSolverParams()
 
@@ -405,7 +404,11 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
     Npes=ParEnv % PEs
     allocate(NodePerPe(Npes))
 
-    call MPI_Gather(NActiveNodes,1,MPI_Integer,NodePerPe,1,MPI_Integer,0,ELMER_COMM_WORLD,ierr)
+    IF (Parallel) THEN
+      call MPI_Gather(NActiveNodes,1,MPI_Integer,NodePerPe,1,MPI_Integer,0,ELMER_COMM_WORLD,ierr)
+    ELSE
+      NodePerPe(1)=NActiveNodes
+    END IF
 
     if (ParEnv % MyPE.eq.0) then
           ntot=0
@@ -418,8 +421,13 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
     End if
 
 ! Send global node  numbering to partition 0
+    IF (Parallel) THEN
+      LocalToGlobalPerm(1:NActiveNodes)=Model % Mesh % ParallelInfo % GlobalDOFs(ActiveNodes(1:NActiveNodes))
+    Else
+      LocalToGlobalPerm(1:NActiveNodes)=ActiveNodes(1:NActiveNodes)
+    End if
 
-    LocalToGlobalPerm(1:NActiveNodes)=Model % Mesh % ParallelInfo % GlobalDOFs(ActiveNodes(1:NActiveNodes))
+
 
    if (ParEnv % MyPE .ne.0) then
              call MPI_BSEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,ELMER_COMM_WORLD,ierr)
@@ -466,7 +474,6 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
     End if
    
   END IF
-
 
      x(1:NActiveNodes)=BetaValues(BetaPerm(ActiveNodes(1:NActiveNodes)))
      g(1:NActiveNodes)=GradValues(GradPerm(ActiveNodes(1:NActiveNodes)))

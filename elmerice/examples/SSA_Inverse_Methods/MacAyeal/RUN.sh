@@ -1,7 +1,17 @@
 #!/bin/bash
 
+# you can choose to run serial or parallel:
+## here is the number of partitions
+NP=1
+
 # make mesh
-ElmerGrid 1 2 mesh2D -metis 2
+ElmerGrid 1 2 mesh2D
+##
+if [ $NP -gt 1 ]
+then
+  ElmerGrid 2 2 mesh2D -metis $NP
+fi
+
 # compile required USFs
 make
 
@@ -24,7 +34,12 @@ do
 
   # run 
   echo OPTIM_$c.sif > ELMERSOLVER_STARTINFO
-  mpirun -np 2 ElmerSolver_mpi
+  if [ $NP -gt 1 ]
+  then
+    mpirun -np 2 ElmerSolver_mpi
+  else
+    ElmerSolver
+  fi
 
   # psot process
   python ../SCRIPTS/MakeReport.py $NAME

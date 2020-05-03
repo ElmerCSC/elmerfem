@@ -19,6 +19,7 @@ do
   sed  "s/<Lambda>/"$i"/g;s/<NAME>/$NAME/g;s/<OBS_FILE>/$DATAFILE/g" SIF/OPTIM_ETA.sif > OPTIM_$c.sif
 
   echo OPTIM_$c.sif > ELMERSOLVER_STARTINFO
+  # Has to be parallel on 2 partition to restart initial file
   mpirun -np 2 ElmerSolver_mpi
 
   python ../SCRIPTS/MakeReport.py $NAME

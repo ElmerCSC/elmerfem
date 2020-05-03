@@ -1,7 +1,7 @@
 # Ronne-Filchner these case
 
 Optimisation of the viscosity for the Ronne-Filchner ice shelf.
-To run this experiment you first need to downlaod observations of the surface velocities, see instructions in the DATA directory.
+To run this experiment you first need to download observations of the surface velocities, see instructions in the DATA directory.
 
 - RUN.sh: run a suite of optimisations with different values
 of the regularisation parameter and plot the L-Curve.

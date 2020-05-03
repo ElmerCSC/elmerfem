@@ -92,8 +92,12 @@ Solver 1
 
   Procedure = "ElmerIceSolvers" "AdjointSSA_SSASolver"
 
-  Linear System Solver = Direct
-  Linear System Direct Method = mumps
+   Linear System Solver = Iterative
+   Linear System Iterative Method = GCR
+   Linear System GMRES Restart = 100
+   Linear System Preconditioning= ILU0
+   Linear System Convergence Tolerance= 1.0e-12
+   Linear System Max Iterations = 1000
 
   Nonlinear System Max Iterations = 50
   Nonlinear System Convergence Tolerance  = 1.0e-10
@@ -144,8 +148,12 @@ Solver 3
 !Name of the flow solution solver
    Direct Solver Equation Name = string "SSA"
 
-   Linear System Solver = Direct
-   Linear System Direct Method = mumps
+   Linear System Solver = Iterative
+   Linear System Iterative Method = GCR
+   Linear System GMRES Restart = 100
+   Linear System Preconditioning= ILU0
+   Linear System Convergence Tolerance= 1.0e-12
+   Linear System Max Iterations = 1000
 End
 !!!!!  Compute Derivative of Cost function / Beta
 Solver 4
