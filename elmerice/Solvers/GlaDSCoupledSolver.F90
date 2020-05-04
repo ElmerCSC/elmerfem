@@ -105,7 +105,7 @@
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
-          Norm, PrevNorm, S, C, Qc
+          Norm, PrevNorm, S, C, Qc, MaxArea, MaxH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:), SheetConductivity(:), ChannelConductivity(:),&
        FORCE(:),  C1(:), CT(:), OldValues(:), Refq(:)
@@ -412,6 +412,18 @@
 
      Channels = GetLogical( SolverParams,'Activate Channels', Found )
      IF (.NOT. Found) Channels = .FALSE.
+
+     !CHANGE
+     !To pick up channel and sheet size limiters, if specified
+     MaxArea  = GetConstReal( SolverParams, &
+          'Max Channel Area',    Found )
+     IF ((.Not.Found)) CALL WARN(SolverName,'No max channel area specified. &
+          Channels may grow very large')
+
+     MaxH  = GetConstReal( SolverParams, &
+          'Max Sheet Thickness',    Found )
+     IF ((.Not.Found)) CALL WARN(SolverName,'No max sheet thickness specified.&
+          Sheet may grow very large')
 
      IF (Channels) THEN
         meltChannels = GetLogical( SolverParams,'Activate Melt From Channels', Found )
@@ -822,7 +834,7 @@
               M = Solver % Mesh % NumberOfNodes
               !CHANGE
               !To stabilise channels
-              IF(AreaSolution(AreaPerm(M+t)) > 9999.0) AreaSolution(AreaPerm(M+t)) = 9999.0
+              IF(AreaSolution(AreaPerm(M+t)) > MaxArea) AreaSolution(AreaPerm(M+t)) = MaxArea
               ChannelArea = AreaSolution(AreaPerm(M+t))
 
               !------------------------------------------------------------------------------
@@ -852,7 +864,7 @@
               !shouldn't do much, so resetting to 0 seems safest
               !TODO Come up with a better way of fixing this
               k = AreaPerm(M+t)
-              IF(AreaSolution(k) > 9999.0) AreaSolution(k) = 9999.0
+              IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
               ! This should be not needed as MASS = 0 here
               IF ( TransientSimulation ) THEN
                  CALL Default1stOrderTime( MASS, STIFF, FORCE, Edge )
@@ -1157,7 +1169,7 @@
                   ThickPrev(k,1) = 0.0
                   CycleElement = .TRUE.
                 END IF
-                IF (ThickSolution(k)>100.0) THEN
+                IF (ThickSolution(k)>MaxH) THEN
                   ThickSolution(k) = 0.0
                   ThickPrev(k,1) = 0.0
                 END IF
@@ -1356,7 +1368,7 @@
                      AreaSolution(k) = AreaPrev(k,1)
                    END IF
                  END IF
-                 IF(AreaSolution(k) > 9999.0) AreaSolution(k) = 9999.0
+                 IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
                  IF(ISNAN(AreaSolution(k))) AreaSolution(k) = 0.0
 
                  ! Save Qc if variable exists
@@ -1397,7 +1409,7 @@
         AreaSolution(AreaPerm(M+1:M+t)) = MAX(AreaSolution(AreaPerm(M+1:M+t)),0.0_dp)
         !CHANGE
         !Stop channels from expanding to eleventy-stupid
-        AreaSolution(AreaPerm(M+1:M+t)) = MIN(AreaSolution(AreaPerm(M+1:M+t)),9999.0_dp)
+        AreaSolution(AreaPerm(M+1:M+t)) = MIN(AreaSolution(AreaPerm(M+1:M+t)),MaxArea)
 
 
      END IF  ! If Channels
