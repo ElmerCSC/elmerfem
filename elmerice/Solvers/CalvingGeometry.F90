@@ -3098,7 +3098,8 @@ CONTAINS
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
     !CHANGE - need to delete UnfoundNodes from this statement, or front
-    !variables not copied across
+    !variables not copied across. If you get some odd interpolation artefacts
+    !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Calving Front Mask",globaleps=globaleps,localeps=localeps)
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to

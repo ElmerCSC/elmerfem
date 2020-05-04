@@ -130,8 +130,8 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   !This to enforce all nodes grounded when doing non-calving hydrology to
   !restart a calving simulation from
   AllGrounded = GetLogical(SolverParams, 'All Grounded', GotIt)
-  IF(.NOT. GotIt) THEN
-    AllGrounded = .FALSE.
+  IF(.NOT. GotIt) AllGrounded = .FALSE.
+  IF(.NOT. AllGrounded) THEN
 
     bedrockName = GetString(SolverParams, 'Bedrock Variable', GotIt)
     IF (GotIt) THEN

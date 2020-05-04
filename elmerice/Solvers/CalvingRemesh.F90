@@ -504,8 +504,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
      NewMesh % OutputActive = .TRUE.
      NewMesh % Changed = .TRUE. 
      !CHANGE
-     NewMesh % MeshTag = Mesh % MeshTag
-     NewMesh % MeshTag = NewMesh % MeshTag + 1
+     NewMesh % MeshTag = Mesh % MeshTag +1
 
      CALL SwitchMesh(Model, Solver, Mesh, NewMesh)
      CALL MeshStabParams( Model % Mesh )
@@ -625,11 +624,8 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   FirstTime = .FALSE.
 
   !CHANGE
-  IF(time == CalvingTime) THEN
-    CalvingLastTime = CalvingOccurs
-  ELSE
-    CalvingLastTime = CalvingLastTime
-  END IF
+  IF(time == CalvingTime) CalvingLastTime = CalvingOccurs
+ 
   IF(ASSOCIATED(NewBasalNode)) DEALLOCATE(NewBasalNode)
 CONTAINS
   !--------------------------------------------------------------
