@@ -565,7 +565,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
           LocalSol = 0.0d0
         END IF
 
-        CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation)
+        CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
+            HarmonicAssembly)
 
         IF (.FALSE.) THEN
           !IF (LargeDeflection .AND. NonlinIter == 1) THEN
@@ -6625,12 +6626,15 @@ END FUNCTION EdgeMidNode
 ! TO DO: Avoid having two versions of the same routine by moving this to a single
 ! place.  
 !------------------------------------------------------------------------------
-  SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation)
+  SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation, &
+      MassAssembly, HarmonicAssembly)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     INTEGER, INTENT(IN) :: n, nd, nb
     LOGICAL, INTENT(IN) :: TransientSimulation
+    LOGICAL, OPTIONAL, INTENT(IN) :: MassAssembly     ! To activate mass matrix integration
+    LOGICAL, OPTIONAL, INTENT(IN) :: HarmonicAssembly ! To activate the global mass matrix updates
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes, LocalNodes
@@ -6697,7 +6701,8 @@ END FUNCTION EdgeMidNode
     Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area 2', Found)
     Area_Moment_3(1:n) = GetReal(Material, 'Second Moment of Area 3', Found)
 
-    IF (TransientSimulation) THEN
+!***    IF (TransientSimulation) THEN
+    IF (MassAssembly) THEN
       Density(1:n) = GetReal(Material, 'Density', Found)
     END IF
 
@@ -6802,7 +6807,8 @@ END FUNCTION EdgeMidNode
       E_diag(2) = E * SUM(Basis(1:n) * Area_Moment_2(1:n))
       E_diag(3) = E * SUM(Basis(1:n) * Area_Moment_3(1:n)) 
 
-      IF (TransientSimulation) THEN
+!***      IF (TransientSimulation) THEN
+      IF (MassAssembly) THEN
         rho = SUM(Basis(1:n) * Density(1:n))
         MOI = rho/E * sqrt(E_diag(2)**2 + E_diag(3)**2)
         Mass_per_Length = rho * A
@@ -6831,7 +6837,8 @@ END FUNCTION EdgeMidNode
           StiffBlock(3,3) = StiffBlock(3,3) + &
               GA * dBasis(q,1) * dBasis(p,1) * Weight
   
-          IF (TransientSimulation) THEN
+!***          IF (TransientSimulation) THEN
+          IF (MassAssembly) THEN
             MassBlock(1,1) = MassBlock(1,1) + &
                 Mass_per_Length * Basis(q) * Basis(p) * Weight
             MassBlock(2,2) = MassBlock(2,2) + &
@@ -6882,7 +6889,8 @@ END FUNCTION EdgeMidNode
               E_diag(3) * dBasis(q,1) * dBasis(p,1) * Weight + &
               GA * Basis(p) * Basis(q) * Weight
 
-          IF (TransientSimulation) THEN
+!***          IF (TransientSimulation) THEN
+          IF (MassAssembly) THEN
             MassBlock(4,4) = MassBlock(4,4) + MOI * Basis(q) * Basis(p) * Weight
             MassBlock(5,5) = MassBlock(5,5) + rho/E * E_diag(2) * &
                 Basis(q) * Basis(p) * Weight
@@ -6915,7 +6923,7 @@ END FUNCTION EdgeMidNode
         MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
     Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-    IF (TransientSimulation) &
+    IF (MassAssembly) &
         Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
         MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))    
 
@@ -6955,10 +6963,14 @@ END FUNCTION EdgeMidNode
         MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
     Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-    IF (TransientSimulation) THEN
+    IF (MassAssembly) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
-          MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))    
-      CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+          MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+      IF (TransientSimulation) THEN
+        CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+      ELSE IF (HarmonicAssembly) THEN
+        CALL DefaultUpdateMass(Mass)
+      END IF
     END IF
 
     CALL DefaultUpdateEquations(Stiff, Force)
