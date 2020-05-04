@@ -66,16 +66,16 @@
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,UNorm,PrevUNorm,Gravity(3), &
-                      Tdiff,Normal(3),s,r,NewtonTol,NonlinearTol
+         Tdiff,Normal(3),s,r,NewtonTol,NonlinearTol
 
      TYPE(Variable_t), POINTER :: ElectricSol, ForceSol, ElecFieldSol
      INTEGER :: NSDOFs,NewtonIter,NonlinearIter, dim
 
      REAL(KIND=dp), POINTER :: MagneticField(:),ElectricCurrent(:), &
-      Work(:,:), M1(:),M2(:),M3(:),E1(:),E2(:),E3(:), &
-      ForceVector(:), divB(:),ExB(:), LrF(:), LrF1(:), LrF2(:), LrF3(:), &
-      ElecField(:), Field1(:), Field2(:), Field3(:)
-
+         Work(:,:), M1(:),M2(:),M3(:),E1(:),E2(:),E3(:), &
+         ForceVector(:), divB(:),ExB(:), LrF(:), LrF1(:), LrF2(:), LrF3(:), &
+         ElecField(:), Field1(:), Field2(:), Field3(:)
+     
      LOGICAL :: Stabilize,NewtonLinearization = .FALSE.,GotForceBC,GotIt
 
      INTEGER :: body_id,bf_id,eq_id
@@ -89,22 +89,19 @@
      LOGICAL :: CalculateMagneticForce = .FALSE.
 
      REAL(KIND=dp),ALLOCATABLE:: MASS(:,:),STIFF(:,:), LoadVector(:,:),FORCE(:), &
-      Conductivity(:),Mx(:),My(:),Mz(:),U(:),V(:),W(:),Alpha(:),Beta(:), &
+         Conductivity(:),Mx(:),My(:),Mz(:),U(:),V(:),W(:),Alpha(:),Beta(:), &
          Permeability(:),ExBx(:),ExBy(:),ExBz(:),B1(:),B2(:),B3(:),MU(:),MV(:),MW(:)
 
-     SAVE Mx,My,Mz,U,V,W,MASS,STIFF,LoadVector, &
-       FORCE,ElementNodes,Alpha,Beta, &
-         Conductivity, AllocationsDone,LocalNodes, &
-           Permeability, divB, ExBx,ExBy,ExBz,B1,B2,B3,MU,MV,MW, &
-            VelocityVarOne, VelocityVarTwo, VelocityVarDre
-
-
-!------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-     REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
+
+     SAVE Mx,My,Mz,U,V,W,MASS,STIFF,LoadVector, &
+         FORCE,ElementNodes,Alpha,Beta, &
+         Conductivity, AllocationsDone,LocalNodes, &
+         Permeability, divB, ExBx,ExBy,ExBz,B1,B2,B3,MU,MV,MW, &
+         VelocityVarOne, VelocityVarTwo, VelocityVarDre
+     
+
+
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solving the system

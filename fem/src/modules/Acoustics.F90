@@ -144,19 +144,11 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   COMPLEX(KIND=dp) :: A, AverVel, ZAppr, ZAppr2, C1, C2, C3, C4
 
   REAL(KIND=dp), POINTER :: Flow(:), ForceVector(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: Norm, PrevNorm = 0.0d0, RelativeChange, AngularFrequency, &
       SlipCoefficient1, SlipCoefficient2, SlipCoefficient3, &
       Rea, Ima, Reb, Imb, Rec, Imc, ReP, ImP, &
       NonlinearTol, at, at0, totat, st, totst, &
       MomentAbout(3), Moment(6), Traction(6), Area
-#else
-  REAL(KIND=dp) :: Norm, PrevNorm = 0.0d0, RelativeChange, AngularFrequency, &
-      SlipCoefficient1, SlipCoefficient2, SlipCoefficient3, &
-      Rea, Ima, Reb, Imb, Rec, Imc, ReP, ImP, &
-      NonlinearTol, at, at0, totat, st, totst, CPUTime, RealTime, &
-      MomentAbout(3), Moment(6), Traction(6), Area
-#endif
   REAL(KIND=dp), ALLOCATABLE :: LocalStiffMatrix(:,:), Load(:,:), &
       HeatSource(:,:), temp(:), &
       LocalForce(:), SpecificHeat(:), HeatRatio(:), &
@@ -434,8 +426,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
-    !N = Solver % Mesh % MaxElementNodes
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
     N = Solver % Mesh % MaxElementDOFs
     
     IF ( AllocationsDone ) THEN

@@ -75,11 +75,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
       ElemVector(3),DotPro,Eps,Length,sumds
   REAL(KIND=dp) :: r1(3),r2(3),v1(3),v2(3),dr(3),vave(3),drproj(3),VelCor(3),&
       CoordMax,CoordMin,sumdr(3),Relax,Alpha,Norm
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),Field(:),Surface(:),Flow(:), &
       HardDisp(:), HitField(:)
   REAL(KIND=dp) :: VeloAtPoint(3), GradVeloAtPoint(3,3),GlobalCoords(3)

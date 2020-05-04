@@ -235,9 +235,6 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm, Omega
   REAL(KIND=dp), POINTER :: FourierField(:)
   REAL(KIND=dp) :: at0,at1,at2,at3
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: CPUTime,RealTime
-#endif
   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), SeriesLoss(:,:), CompLoss(:)
   TYPE(Variable_t), POINTER :: TargetVar, LossVar, NodalLossVar
   REAL(KIND=dp), POINTER :: TargetField(:), PrevTargetField(:,:)

@@ -113,11 +113,7 @@
           EpsxxElement(:), EpsyyElement(:), EpszzElement(:), &
           EpsxyElement(:), EpsxzElement(:), EpsyzElement(:)
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,st,at0
-#else
-     REAL(KIND=dp) :: at,st,CPUTime,at0,RealTime
-#endif
 
      REAL(KIND=dp) :: StabParam1, StabParam2, S(3,3), PlyThick, &
           Tx(3), Ty(3), Tz(3), l, Weight3(3), Weight4(4), &

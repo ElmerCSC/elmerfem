@@ -70,9 +70,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, dCoord(3), Norm, dx(3)
   REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: CPUTime,RealTime
-#endif
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
       RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)

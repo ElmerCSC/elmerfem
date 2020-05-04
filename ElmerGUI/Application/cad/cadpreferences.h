@@ -44,8 +44,7 @@
 #include <QDialog>
 #include "ui_cadpreferences.h"
 
-class CadPreferences : public QDialog
-{
+class CadPreferences : public QDialog {
   Q_OBJECT
 
 public:
@@ -57,7 +56,6 @@ public:
 private slots:
 
 private:
-
 };
 
 #endif // CADPREFERENCES_H

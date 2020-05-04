@@ -2348,12 +2348,8 @@ CONTAINS
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
         IsComplex, BlockScaling, DiagScaling, ThisScaling, UsePrecMat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
-#ifndef USE_ISO_C_BINDINGS
-    INTEGER(KIND=AddrInt) :: AddrFunc
-#else
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
-#endif
 
     CALL Info('BlockMatrixPrec','Starting block matrix preconditioning',Level=6)
 
@@ -2880,9 +2876,7 @@ CONTAINS
     REAL(KIND=dp) :: MaxChange
 
     INTEGER(KIND=AddrInt) :: AddrFunc
-#ifdef USE_ISO_C_BINDINGS
     EXTERNAL :: AddrFunc
-#endif
     INTEGER(KIND=AddrInt) :: iterProc,precProc, mvProc,dotProc,nmrProc, zero=0
     REAL(KIND=dp) :: dpar(20), xnorm,prevxnorm
     REAL(KIND=dp), ALLOCATABLE :: x(:),b(:),r(:)

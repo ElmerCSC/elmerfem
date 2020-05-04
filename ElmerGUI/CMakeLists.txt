@@ -3,6 +3,11 @@ SET(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake/Mo
 PROJECT(ElmerGUI CXX C)
 SET(APPLICATION_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/netgen/libsrc/interface")
 
+IF(APPLE)
+include(cmake/Modules/FindOpenCasCade.cmake)
+# add_subdirectory(cmake/Modules)
+ENDIF()
+
 SET(WITH_PYTHONQT FALSE CACHE BOOL "ElmerGUI: Use PythonQt for scripting in post processor?")
 SET(WITH_OCC FALSE CACHE BOOL "ElmerGUI: Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.")
 SET(WITH_MATC FALSE CACHE BOOL "ElmerGUI: Use MATC for internal operations in postprocessing?")
@@ -59,6 +64,11 @@ IF(WITH_QWT)
 ENDIf()
 
 IF(WITH_OCC)
+
+  if(APPLE)
+    include_directories(/usr/local/Cellar/opencascade/7.4.0_1/include/opencascade/)
+  endif()
+
   IF(NOT WITH_VTK)
     SET(WITHOUT_VTKPOST TRUE)
   ENDIF()

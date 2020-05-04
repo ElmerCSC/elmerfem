@@ -159,8 +159,7 @@ Solver 5
   Kernel Variable = String "phi"
   Variable = "Kernel Component"
   Variable DOFs = 1
-  Element = "n:0 e:1 -brick b:3 -quad_face b:2"
-
+  Use Piola Transform = True
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
@@ -206,6 +205,7 @@ Boundary Condition 2
   AV {e} 2 = Variable Coordinate 1
     REAL MATC "0.5*tx"
   AV {e} 3 = 0.0
+  Phi = Real 0.0
 End
 
 ! The outer face of the outer ring:
@@ -217,6 +217,7 @@ Boundary Condition 3
   AV {e} 2 = Variable Coordinate 1
     REAL MATC "0.5*tx"
   AV {e} 3 = 0.0
+  Phi = Real 0.0
 End
 
 ! The inner face of the outer ring:
@@ -235,6 +236,6 @@ End
 !End
 
 
-Solver 1 :: Reference Norm = Real 2.24400020E-02
+Solver 1 :: Reference Norm = Real 4.39413963E-02
 Solver 1 :: Reference Norm Tolerance = Real 1e-4
 

@@ -69,6 +69,7 @@ SUBROUTINE HeatSolver_init( Model,Solver,dt,Transient )
   CALL ListWarnUnsupportedKeyword('material','Heat Transfer Multiplier',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('equation','Phase Change Model',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('solver','Adaptive Mesh Refinement',FatalFound=.TRUE.)
+  CALL ListWarnUnsupportedKeyword('solver','Current Control',FatalFound=.TRUE.)
   CALL ListWarnUnsupportedKeyword('boundary condition','Phase Change',FatalFound=.TRUE.)
 
   CALL ListWarnUnsupportedKeyword('boundary condition','Heat Gap',Found )

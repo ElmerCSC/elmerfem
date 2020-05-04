@@ -37,6 +37,9 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
+#if WITH_QT5
+  #include <QtWidgets>
+#endif
 
 #include <QtGui>
 #include <QScriptEngine>
@@ -64,7 +67,12 @@
 #include "matc.h"
 #endif
 
+#if VTK_MAJOR_VERSION >= 8
+#include <QVTKOpenGLNativeWidget.h>
+#else
 #include <QVTKWidget.h>
+#endif
+
 #include <vtkLookupTable.h>
 #include <vtkActor.h>
 #include <vtkTextActor.h>
@@ -145,7 +153,13 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
   VtkPost* vtkPost = reinterpret_cast<VtkPost*>(clientdata);
   vtkRenderer* renderer = vtkPost->GetRenderer();
   vtkActor* pickedPointActor = vtkPost->GetPickedPointActor();
+
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* qvtkWidget = vtkPost->GetQVTKWidget();
+#else
   QVTKWidget* qvtkWidget = vtkPost->GetQVTKWidget();
+#endif
+
   vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
   vtkPropPicker* propPicker = vtkPropPicker::SafeDownCast(picker);
 
@@ -312,7 +326,12 @@ VtkPost::VtkPost(QWidget *parent)
 
   // Central widget:
   //----------------
-  qvtkWidget = new QVTKWidget(this);
+  #if VTK_MAJOR_VERSION >= 8
+    qvtkWidget = new QVTKOpenGLNativeWidget(this);  
+    qvtkWidget->setFormat(QVTKOpenGLNativeWidget::defaultFormat());
+  #else
+    qvtkWidget = new QVTKWidget(this);
+  #endif
   setCentralWidget(qvtkWidget);
 
   // VTK interaction:
@@ -436,6 +455,7 @@ VtkPost::VtkPost(QWidget *parent)
   ecmaConsole->addNames("text", text->metaObject());
 
   ecmaConsole->initCompleter();
+
 }
 
 VtkPost::~VtkPost()
@@ -1039,7 +1059,13 @@ bool VtkPost::ReadPostFile(QString postFileName)
   for(int i = 0; i < scalarFields; i++ ) {
      ScalarField *sf = &scalarField[i];
 #ifdef EG_MATC
+
+#ifdef WITH_QT5
+     QByteArray nm = sf->name.trimmed().toLatin1();
+#else
      QByteArray nm = sf->name.trimmed().toAscii();
+#endif
+
      var_delete( nm.data() );
 #else
      if(sf->value) free(sf->value);
@@ -1065,8 +1091,13 @@ bool VtkPost::ReadPostFile(QString postFileName)
     fieldType = fieldType.trimmed();
     fieldName = fieldName.trimmed();
 
+#if WITH_QT5
+    cout << fieldType.toLatin1().data() << ": ";
+    cout << fieldName.toLatin1().data() << endl;
+#else
     cout << fieldType.toAscii().data() << ": ";
-    cout << fieldName.toAscii().data() << endl;
+    cout << fieldName.toAscii().data() << endl;    
+#endif
 
     if(fieldType == "scalar")
       addScalarField(fieldName, nodes*timesteps, NULL);
@@ -1184,8 +1215,16 @@ bool VtkPost::ReadPostFile(QString postFileName)
         name = sf->name.mid(0,n);
 
         QString cmd = name+"="+name+"(0:2,0:"+QString::number(sf->values-1)+")";
+
+#if WITH_QT5
+        mtc_domath(cmd.toLatin1().data());
+
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
         mtc_domath(cmd.toAscii().data());
+
         VARIABLE *var = var_check(name.toAscii().data());
+#endif
 
         sf = &scalarField[ifield];
         sf->value = &M(var,0,0);
@@ -1205,7 +1244,11 @@ bool VtkPost::ReadPostFile(QString postFileName)
       } else {
         size=sf->values*sizeof(double);
 
+#if WITH_QT5
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
         VARIABLE *var = var_check(name.toAscii().data());
+#endif       
         sf->value = (double *)ALLOC_PTR(realloc(
               ALLOC_LST(sf->value), ALLOC_SIZE(size)) );
         MATR(var) = sf->value;
@@ -1288,8 +1331,12 @@ void VtkPost::addVectorField(QString fieldName, int values)
 {
    
 #ifdef EG_MATC
-    QByteArray nm=fieldName.trimmed().toAscii();
 
+#if WITH_QT5
+    QByteArray nm=fieldName.trimmed().toLatin1();
+#else
+    QByteArray nm=fieldName.trimmed().toAscii();
+#endif
     char *name = (char *)malloc( nm.count()+1 );
     strcpy(name,nm.data());
 
@@ -1324,8 +1371,12 @@ ScalarField* VtkPost::addScalarField(QString fieldName, int values, double *valu
  
   if ( !sf->value ) {
 #ifdef EG_MATC
-    QByteArray nm=fieldName.trimmed().toAscii();
 
+#if WITH_QT5
+    QByteArray nm=fieldName.trimmed().toLatin1();
+#else
+    QByteArray nm=fieldName.trimmed().toAscii();
+#endif
     char *name = (char *)malloc( nm.count()+1 );
     strcpy(name,nm.data());
     VARIABLE *var = var_check(name);
@@ -1904,7 +1955,11 @@ void VtkPost::clipAllToggledSlot(bool)
 
 // Other public methods:
 //----------------------------------------------------------------------
+#if VTK_MAJOR_VERSION >= 8
+QVTKOpenGLNativeWidget* VtkPost::GetQVTKWidget()
+#else
 QVTKWidget* VtkPost::GetQVTKWidget()
+#endif
 {
   return qvtkWidget;
 }
@@ -2713,8 +2768,12 @@ bool VtkPost::SavePngFile(QString fileName)
   vtkPNGWriter* writer = vtkPNGWriter::New();
 
   writer->SetInputConnection(image->GetOutputPort());
+  
+#if WITH_QT5
+  writer->SetFileName(fileName.toLatin1().data());
+#else
   writer->SetFileName(fileName.toAscii().data());
-
+#endif
   qvtkWidget->GetRenderWindow()->Render();
   writer->Write();
 

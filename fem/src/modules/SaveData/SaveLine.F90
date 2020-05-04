@@ -1107,7 +1107,7 @@ CONTAINS
 
     IF( Solver % TimesVisited > 0 ) THEN
       InitializePerm = ( MaskName /= PrevMaskName ) 
-      InitializePerm = InitializePerm .OR. Solver % Mesh % Changed
+      InitializePerm = InitializePerm .OR. Solver % MeshChanged
     ELSE
       InitializePerm = .TRUE.
     END IF

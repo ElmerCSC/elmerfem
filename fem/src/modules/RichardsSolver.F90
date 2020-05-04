@@ -312,11 +312,7 @@ END MODULE PorousMaterials
     LOGICAL :: SubroutineVisited = .FALSE.,InitSolution, ResetRelax
     INTEGER :: i,j,n, nd, t, istat, iter, dim, Active, NonlinearIterMax, &
         ActiveCoordinate
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: at,st,totst,totat
-#else
-    REAL(KIND=dp) :: at,st,totst,totat,CPUTime
-#endif
     REAL(KIND=dp) :: Norm, Relax
     TYPE(Variable_t), POINTER :: Var
     
@@ -818,11 +814,7 @@ SUBROUTINE RichardsPostprocess( Model,Solver,dt,Transient )
   LOGICAL :: Found, ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   REAL(KIND=dp) :: Unorm, Totnorm, FluxMultiplier
   REAL(KIND=dp), POINTER CONTIG :: ForceVector(:,:), SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: FluxSol
   
  
