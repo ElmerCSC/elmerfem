@@ -2016,7 +2016,7 @@ CONTAINS
 
 
 
- !> An interface over potential mesh loading strateties. 
+ !> An interface over potential mesh loading strategies. 
  !----------------------------------------------------------------- 
  SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs,IsParallel ) 
    
