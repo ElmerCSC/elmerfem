@@ -180,6 +180,12 @@ signals:
 public slots:
   void redrawSlot();                                // redraw all actors
   void displaceSlot(bool);                              // displace geometry by displacement field
+  void viewXYpPlaneSlot();
+  void viewXYmPlaneSlot();
+  void viewYZpPlaneSlot();
+  void viewYZmPlaneSlot();
+  void viewZXpPlaneSlot();
+  void viewZXmPlaneSlot();
   void playSlot();                              // 
 #ifdef EG_MATC
   QString MatcCmd(QString);                         // evaluate matc cmd
@@ -341,6 +347,7 @@ private:
 
   QToolBar *viewToolBar;
   QToolBar *displacementToolBar;
+  QToolBar *planeViewToolBar;
   QToolBar *timestepToolBar;
   QDoubleSpinBox displacementScaleFactorSpinBox;
   QLabel *timestepLabel;
@@ -372,6 +379,12 @@ private:
   QAction *readEpFileAct;
   QAction *clipAllAct;
   QAction *showHelpAct;
+  QAction *viewXYpPlaneAct;
+  QAction *viewXYmPlaneAct;
+  QAction *viewYZpPlaneAct;
+  QAction *viewYZmPlaneAct;
+  QAction *viewZXpPlaneAct;
+  QAction *viewZXmPlaneAct;
   QAction *displaceAct;
   QAction *playAct;
 

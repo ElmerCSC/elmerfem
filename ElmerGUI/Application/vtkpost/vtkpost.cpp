@@ -276,28 +276,28 @@ VtkPost::VtkPost(QWidget *parent)
   currentLut->Build();
 
   surfaceLut = vtkLookupTable::New();
-  currentLut->SetHueRange(hueRange);
-  currentLut->SetNumberOfColors(nColor);
+  surfaceLut->SetHueRange(hueRange);
+  surfaceLut->SetNumberOfColors(nColor);
   surfaceLut->Build();
 
   vectorLut = vtkLookupTable::New();
-  currentLut->SetHueRange(hueRange);
-  currentLut->SetNumberOfColors(nColor);
+  vectorLut->SetHueRange(hueRange);
+  vectorLut->SetNumberOfColors(nColor);
   vectorLut->Build();
 
   isocontourLut = vtkLookupTable::New();
-  currentLut->SetHueRange(hueRange);
-  currentLut->SetNumberOfColors(nColor);
+  isocontourLut->SetHueRange(hueRange);
+  isocontourLut->SetNumberOfColors(nColor);
   isocontourLut->Build();
 
   isosurfaceLut = vtkLookupTable::New();
-  currentLut->SetHueRange(hueRange);
-  currentLut->SetNumberOfColors(nColor);
+  isosurfaceLut->SetHueRange(hueRange);
+  isosurfaceLut->SetNumberOfColors(nColor);
   isosurfaceLut->Build();
 
   streamlineLut = vtkLookupTable::New();
-  currentLut->SetHueRange(hueRange);
-  currentLut->SetNumberOfColors(nColor);
+  streamlineLut->SetHueRange(hueRange);
+  streamlineLut->SetNumberOfColors(nColor);
   streamlineLut->Build();
 
   // User interfaces, widgets, and draw routines:
@@ -670,6 +670,33 @@ void VtkPost::createActions()
   displaceAct->setCheckable(true);
   displaceAct->setChecked(false);
   connect(displaceAct, SIGNAL(toggled(bool)), this, SLOT(displaceSlot(bool)));
+
+
+  // View normal plane:
+  //------------------------------------------
+  viewXYpPlaneAct = new QAction(QIcon(""), tr("z+"), this);
+  viewXYpPlaneAct->setStatusTip("View XY plane");
+  connect(viewXYpPlaneAct, SIGNAL(triggered()), this, SLOT(viewXYpPlaneSlot()));
+
+  viewXYmPlaneAct = new QAction(QIcon(""), tr("z-"), this);
+  viewXYmPlaneAct->setStatusTip("View XY plane");
+  connect(viewXYmPlaneAct, SIGNAL(triggered()), this, SLOT(viewXYmPlaneSlot()));
+
+  viewYZpPlaneAct = new QAction(QIcon(""), tr("x+"), this);
+  viewYZpPlaneAct->setStatusTip("View YZ plane");
+  connect(viewYZpPlaneAct, SIGNAL(triggered()), this, SLOT(viewYZpPlaneSlot()));
+
+  viewYZmPlaneAct = new QAction(QIcon(""), tr("x-"), this);
+  viewYZmPlaneAct->setStatusTip("View YZ plane");
+  connect(viewYZmPlaneAct, SIGNAL(triggered()), this, SLOT(viewYZmPlaneSlot()));
+
+  viewZXpPlaneAct = new QAction(QIcon(""), tr("y+"), this);
+  viewZXpPlaneAct->setStatusTip("View ZX plane");
+  connect(viewZXpPlaneAct, SIGNAL(triggered()), this, SLOT(viewZXpPlaneSlot()));
+
+  viewZXmPlaneAct = new QAction(QIcon(""), tr("y-"), this);
+  viewZXmPlaneAct->setStatusTip("View ZX plane");
+  connect(viewZXmPlaneAct, SIGNAL(triggered()), this, SLOT(viewZXmPlaneSlot()));
 }
 
 void VtkPost::createMenus()
@@ -760,6 +787,15 @@ void VtkPost::createToolbars()
   viewToolBar->addSeparator();
   viewToolBar->addAction(redrawAct);
 
+  planeViewToolBar = new QToolBar(tr("PlaneView"));
+  addToolBar(Qt::BottomToolBarArea, planeViewToolBar);
+  planeViewToolBar->addAction(viewXYpPlaneAct);
+  planeViewToolBar->addAction(viewXYmPlaneAct);
+  planeViewToolBar->addAction(viewYZpPlaneAct);
+  planeViewToolBar->addAction(viewYZmPlaneAct);
+  planeViewToolBar->addAction(viewZXpPlaneAct);
+  planeViewToolBar->addAction(viewZXmPlaneAct);
+ 
   displacementToolBar = new QToolBar(tr("Displacement"));
   addToolBar(Qt::BottomToolBarArea, displacementToolBar);
   displacementToolBar->addAction(displaceAct);
@@ -3422,4 +3458,47 @@ void VtkPost::playSlot(){
 		iEndStep = -1;
 		playAct->setText("Play");
 	}
+}
+
+void VtkPost::viewXYpPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,0,1);
+  renderer->GetActiveCamera()->SetViewUp(0,1,0);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewXYmPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,0,-1);
+  renderer->GetActiveCamera()->SetViewUp(0,1,0);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewYZpPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(1,0,0);
+  renderer->GetActiveCamera()->SetViewUp(0,0,1);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewYZmPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(-1,0,0);
+  renderer->GetActiveCamera()->SetViewUp(0,0,1);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewZXpPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,1,0);
+  renderer->GetActiveCamera()->SetViewUp(1,0,0);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewZXmPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,-1,0);
+  renderer->GetActiveCamera()->SetViewUp(1,0,0);
+  renderer->ResetCamera();
+  redrawSlot();
 }

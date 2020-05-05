@@ -77,7 +77,7 @@ ReadEpFile::~ReadEpFile()
 
 void ReadEpFile::browseButtonClickedSlot()
 {
-  QString fileName = QFileDialog::getOpenFileName(this, tr("Select input file"), "", tr("Postprocessor files (*.vtu *.ep);;Paraview files (*.vtu);;ElmerPost files (*.ep)"));
+  QString fileName = QFileDialog::getOpenFileName(this, tr("Select input file"), "", tr("Postprocessor files (*.ep *.vtu);;ElmerPost files (*.ep);;Paraview files (*.vtu)"));
 
   ui.fileName->setText(fileName.trimmed());
   ui.start->setValue(1);

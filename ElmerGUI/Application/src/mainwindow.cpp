@@ -5039,8 +5039,20 @@ void MainWindow::showVtkPostSlot() {
   //-----------------
   vtkPost->show();
 
-  vtkPost->ReadPostFile(postFileName);
-  // if(!vtkPost->ReadPostFile(postFileName)) vtkPost->readEpFileSlot();
+  QFileInfo info(postFileName);
+  QDir dir = info.dir();
+  if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)){
+    QStringList filterList, vtuFileNameList;
+    filterList << postFileName.insert(postFileName.length()-4, '*');
+
+    vtuFileNameList = dir.entryList(filterList,  QDir::Readable|QDir::Files|QDir::NoSymLinks, QDir::SortFlags(QDir::Name | QDir::IgnoreCase));
+    if(vtuFileNameList.length() > 0){
+	  cout << "reading" << dir.filePath(vtuFileNameList.at(0)).toLatin1().data() << endl;
+      vtkPost->ReadPostFile(dir.filePath(vtuFileNameList.at(0)));
+    }
+  }else{
+    vtkPost->ReadPostFile(postFileName);
+  }
 #endif
 }
 
