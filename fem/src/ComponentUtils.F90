@@ -49,6 +49,7 @@ MODULE ComponentUtils
 
    USE ElementUtils
    USE ModelDescription
+   IMPLICIT NONE
 
  CONTAINS
 
@@ -77,7 +78,7 @@ MODULE ComponentUtils
      LOGICAL, ALLOCATABLE :: VisitedNode(:)
      REAL(KIND=dp) :: Origin(3), Axis(3), P(3), F(3), v1(3), v2(3)
      REAL(KIND=dp), POINTER :: Pwrk(:,:)
-     INTEGER :: t, i, j, k, dofs, globalnode
+     INTEGER :: t, i, j, k, n, dofs, globalnode
      LOGICAL :: ElementalVar, Found, NeedLocation
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
@@ -275,7 +276,7 @@ MODULE ComponentUtils
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      LOGICAL, ALLOCATABLE :: VisitedNode(:)
-     INTEGER :: t, i, j, k, NoDofs, globalnode, sumi
+     INTEGER :: t, i, j, k, l, n, NoDofs, globalnode, sumi
      REAL(KIND=dp) :: X, Minimum, Maximum, AbsMinimum, AbsMaximum, SumX, SumXX, SumAbsX
      LOGICAL :: ElementalVar, Found
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
@@ -481,9 +482,9 @@ MODULE ComponentUtils
 ! Local variables
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: t, i, j, k, NoDofs
+     INTEGER :: t, i, j, k, n, NoDofs
      INTEGER, POINTER :: NodeIndexes(:), DofIndexes(:)
-     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Grad(3)
+     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,x,Grad(3)
      REAL(KIND=dp) :: func, CoeffAtIp, integral, vol
      LOGICAL :: ElementalVar, Found, Stat
      INTEGER :: PermIndexes(Model % MaxElementNodes)
