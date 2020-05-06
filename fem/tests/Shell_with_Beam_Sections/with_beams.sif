@@ -1,4 +1,7 @@
-! A simple case of combined analysis of 2-D shells and 1-D beams
+! A simple case of combined analysis of 2-D shells and 1-D beams.
+! The problem is solved as nonlinear although the beam sections can add only 
+! linearly behaving stiffness.
+
 
 Check Keywords "Warn"
 
@@ -72,9 +75,9 @@ Solver 1
   Equation = "Shell equations"
   Procedure = "ShellSolver" "ShellSolver"
 
-  Large Deflection = False
+  Large Deflection = True
   Displace Mesh = True
-  Nonlinear System Max Iterations = 1 !40
+  Nonlinear System Max Iterations = 40
   Nonlinear System Convergence Tolerance = 1e-7
 
   Linear System Solver = "Iterative"
@@ -131,5 +134,5 @@ Boundary Condition 3
 End
 
 
-Solver 1 :: Reference Norm = Real 2.08686777E-04
+Solver 1 :: Reference Norm = Real 2.08683177E-04
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

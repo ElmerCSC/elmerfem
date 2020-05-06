@@ -538,50 +538,45 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     !----------------------------------------------------------------------
     ! Add linearly elastic beams.
-    ! TO DO: allow large deflection.
     !----------------------------------------------------------------------    
-    IF (.NOT. LargeDeflection) THEN
-      ASSEMBLE_BEAMS: DO k=1,Active
-        BGElement => GetActiveElement(k)
+    ASSEMBLE_BEAMS: DO k=1,Active
+      BGElement => GetActiveElement(k)
 
-        Family = GetElementFamily(BGElement)
-        IF (Family /= 2) CYCLE
+      Family = GetElementFamily(BGElement)
+      IF (Family /= 2) CYCLE
 
-        n  = GetElementNOFNodes()
-        nd = GetElementDOFs(Indices)
-        nb = GetElementNOFBDOFs()
+      n  = GetElementNOFNodes()
+      nd = GetElementDOFs(Indices)
+      nb = GetElementNOFBDOFs()
 
-        !----------------------------------------------------------------------
-        ! We assume that p-element definitions are not empoyed and hard-code
-        ! the bubble count:
-        !----------------------------------------------------------------------
-        nb = 1
-        IF (.NOT.(n == 2 .AND. nd == 2)) CALL Fatal('ShellSolver', &
-            'An unsupported 1-D element type or definition')
+      !----------------------------------------------------------------------
+      ! We assume that p-element definitions are not empoyed and hard-code
+      ! the bubble count:
+      !----------------------------------------------------------------------
+      nb = 1
+      IF (.NOT.(n == 2 .AND. nd == 2)) CALL Fatal('ShellSolver', &
+          'An unsupported 1-D element type or definition')
 
-        IF (LargeDeflection) THEN
-          CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
-        ELSE
-          LocalSol = 0.0d0
-        END IF
+      IF (LargeDeflection) THEN
+        CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+      ELSE
+        LocalSol = 0.0d0
+      END IF
 
-        CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
-            HarmonicAssembly)
+      CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
+          HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce)
 
-        IF (.FALSE.) THEN
-          !IF (LargeDeflection .AND. NonlinIter == 1) THEN
-          ! ---------------------------------------------------------------------------
-          ! Create a RHS vector which contains just the contribution of external loads
-          ! for the purpose of nonlinear error estimation:
-          ! ---------------------------------------------------------------------------
-          ValuesSaved => Solver % Matrix % RHS
-          Solver % Matrix % RHS => Solver % Matrix % BulkRHS
-          CALL DefaultUpdateForce(LocalRHSForce)
-          Solver % Matrix % RHS => ValuesSaved
-        END IF
-
-      END DO ASSEMBLE_BEAMS
-    END IF
+      IF (LargeDeflection .AND. NonlinIter == 1) THEN
+        ! ---------------------------------------------------------------------------
+        ! Create a RHS vector which contains just the contribution of external loads
+        ! for the purpose of nonlinear error estimation:
+        ! ---------------------------------------------------------------------------
+        ValuesSaved => Solver % Matrix % RHS
+        Solver % Matrix % RHS => Solver % Matrix % BulkRHS
+        CALL DefaultUpdateForce(LocalRHSForce)
+        Solver % Matrix % RHS => ValuesSaved
+      END IF
+    END DO ASSEMBLE_BEAMS
     
     CALL DefaultFinishBulkAssembly() 
 
@@ -6543,74 +6538,74 @@ CONTAINS
 ! Return the global coordinates at the mid-node of the edge by evaluating
 ! the value of the space curve. This function is just for testing purposes.
 !-------------------------------------------------------------------------------------
-FUNCTION EdgeMidNode(Element, e) RESULT(X)
+  FUNCTION EdgeMidNode(Element, e) RESULT(X)
 !-----------------------------------------------------------------------
-  TYPE(Element_t), POINTER, INTENT(IN) :: Element
-  INTEGER, INTENT(IN) :: e     ! Edge identifier 
-  REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: e     ! Edge identifier 
+    REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
 !-----------------------------------------------------------------------
-  TYPE(Nodes_t) :: Nodes
-  INTEGER :: CurveDataSize, i0, cn
-  REAL(KIND=dp), POINTER :: EdgeParams(:)
-  REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
-  REAL(KIND=dp) :: d(CurveDataSize2), h, xe
-  REAL(KIND=dp) :: r1(3), r2(3)
-  REAL(KIND=dp) :: u, v, f
+    TYPE(Nodes_t) :: Nodes
+    INTEGER :: CurveDataSize, i0, cn
+    REAL(KIND=dp), POINTER :: EdgeParams(:)
+    REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
+    REAL(KIND=dp) :: d(CurveDataSize2), h, xe
+    REAL(KIND=dp) :: r1(3), r2(3)
+    REAL(KIND=dp) :: u, v, f
 !-----------------------------------------------------------------------
-  IF (Element % Type % NumberOfNodes > 4) &
-      CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
+    IF (Element % Type % NumberOfNodes > 4) &
+        CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
 
-  !-----------------------------------------------------------------------
-  ! Retrieve parametrizations of curved edges:
-  !------------------------------------------------------------------------
-  EdgeParams => GetElementProperty('edge parameters', Element)
+    !-----------------------------------------------------------------------
+    ! Retrieve parametrizations of curved edges:
+    !------------------------------------------------------------------------
+    EdgeParams => GetElementProperty('edge parameters', Element)
 
-  h = 2.0d0
-  CurveDataSize = CurveDataSize1
+    h = 2.0d0
+    CurveDataSize = CurveDataSize1
 
-  i0 = (e-1)*CurveDataSize
-  d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
+    i0 = (e-1)*CurveDataSize
+    d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
 
-  cn = 2
-  CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
+    cn = 2
+    CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
 
-  CALL GetElementNodes(Nodes, Element) 
+    CALL GetElementNodes(Nodes, Element) 
 
-  Family = GetElementFamily(Element)
-  SELECT CASE(Family)
-  CASE(3)
-    SELECT CASE(e)
-    CASE(1)
-      r1(1) = Nodes % x(1)
-      r1(2) = Nodes % y(1)
-      r1(3) = Nodes % z(1)
-      r2(1) = Nodes % x(2)
-      r2(2) = Nodes % y(2)
-      r2(3) = Nodes % z(2)
-    CASE(2)
-      r1(1) = Nodes % x(2)
-      r1(2) = Nodes % y(2)
-      r1(3) = Nodes % z(2)
-      r2(1) = Nodes % x(3)
-      r2(2) = Nodes % y(3)
-      r2(3) = Nodes % z(3)
+    Family = GetElementFamily(Element)
+    SELECT CASE(Family)
     CASE(3)
-      r1(1) = Nodes % x(3)
-      r1(2) = Nodes % y(3)
-      r1(3) = Nodes % z(3)
-      r2(1) = Nodes % x(1)
-      r2(2) = Nodes % y(1)
-      r2(3) = Nodes % z(1)
+      SELECT CASE(e)
+      CASE(1)
+        r1(1) = Nodes % x(1)
+        r1(2) = Nodes % y(1)
+        r1(3) = Nodes % z(1)
+        r2(1) = Nodes % x(2)
+        r2(2) = Nodes % y(2)
+        r2(3) = Nodes % z(2)
+      CASE(2)
+        r1(1) = Nodes % x(2)
+        r1(2) = Nodes % y(2)
+        r1(3) = Nodes % z(2)
+        r2(1) = Nodes % x(3)
+        r2(2) = Nodes % y(3)
+        r2(3) = Nodes % z(3)
+      CASE(3)
+        r1(1) = Nodes % x(3)
+        r1(2) = Nodes % y(3)
+        r1(3) = Nodes % z(3)
+        r2(1) = Nodes % x(1)
+        r2(2) = Nodes % y(1)
+        r2(3) = Nodes % z(1)
+      END SELECT
+    CASE(4)
+      CALL Fatal('EdgeMidNode', '4-node implementation missing')
     END SELECT
-  CASE(4)
-    CALL Fatal('EdgeMidNode', '4-node implementation missing')
-  END SELECT
 
-  X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
-      d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+    X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+        d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
 
 !-----------------------------------------------------------------------
-END FUNCTION EdgeMidNode
+  END FUNCTION EdgeMidNode
 !-----------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -6627,7 +6622,7 @@ END FUNCTION EdgeMidNode
 ! place.  
 !------------------------------------------------------------------------------
   SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation, &
-      MassAssembly, HarmonicAssembly)
+      MassAssembly, HarmonicAssembly, LargeDeflection, LocalSol, RHSForce)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -6635,12 +6630,16 @@ END FUNCTION EdgeMidNode
     LOGICAL, INTENT(IN) :: TransientSimulation
     LOGICAL, OPTIONAL, INTENT(IN) :: MassAssembly     ! To activate mass matrix integration
     LOGICAL, OPTIONAL, INTENT(IN) :: HarmonicAssembly ! To activate the global mass matrix updates
+    LOGICAL, OPTIONAL, INTENT(IN) :: LargeDeflection  ! To activate nonlinear terms
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: LocalSol(:,:) ! The previous solution iterate
+    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)         ! Local RHS vector corresponding to external loads
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes, LocalNodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Found, Stat
+    LOGICAL :: NonlinAssembly
 
     INTEGER :: DOFs
     INTEGER :: i, t, p, q
@@ -6659,10 +6658,11 @@ END FUNCTION EdgeMidNode
     REAL(KIND=dp) :: Area_Moment_2(n), Area_Moment_3(n)
     REAL(KIND=dp) :: Mass_Inertia_Moment(n) 
     REAL(KIND=dp) :: Load(3,n), f(3)
+    REAL(KIND=dp) :: PrevSolVec(6*nd)
     REAL(KIND=dp) :: E, A, G, rho
     REAL(KIND=dp) :: EA, GA, MOI, Mass_per_Length 
     REAL(KIND=dp) :: E_diag(3)
-    
+
     REAL(KIND=dp) :: p1(3), p2(3), e1(3), e2(3), e3(3)
     REAL(KIND=dp) :: L, Norm
 
@@ -6680,6 +6680,21 @@ END FUNCTION EdgeMidNode
     Stiff = 0.0_dp
     Damp = 0.0_dp
     Force = 0.0_dp
+!***
+    RHSForce = 0.0d0
+    IF (PRESENT(LargeDeflection)) THEN
+      NonlinAssembly = LargeDeflection
+    ELSE
+      NonlinAssembly = .FALSE.
+    END IF
+    IF (NonlinAssembly) THEN
+      IF (.NOT. PRESENT(LocalSol)) CALL Fatal('BeamStiffnessMatrix', &
+          'Previous solution iterate needed')
+      DO i=1,DOFs
+        PrevSolVec(i:DOFs*(nd-nb):DOFs) = LocalSol(i,1:(nd-nb))
+      END DO  
+    END IF
+!***
 
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) THEN
@@ -6963,6 +6978,12 @@ END FUNCTION EdgeMidNode
         MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
     Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
 
+!***
+    RHSForce(1:DOFs) = Force(1:DOFs)
+    IF (NonlinAssembly) Force(1:DOFs) = Force(1:DOFs) - &
+        MATMUL(Stiff(1:DOFs,1:DOFs), PrevSolVec(1:DOFs))
+!***
+
     IF (MassAssembly) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
           MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
@@ -6979,7 +7000,7 @@ END FUNCTION EdgeMidNode
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-SUBROUTINE BeamCondensate(n, nb, dofs, dim, K, F, F1 )
+  SUBROUTINE BeamCondensate(n, nb, dofs, dim, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra
     IMPLICIT NONE
@@ -6993,10 +7014,10 @@ SUBROUTINE BeamCondensate(n, nb, dofs, dim, K, F, F1 )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Kbl(nb*dim,n*dofs), Kbb(nb*dim,nb*dim), Fb(nb*dim)
     REAL(KIND=dp) :: Klb(n*dofs,nb*dim)
-
+    
     INTEGER :: i, m, p, Cdofs(dofs*n), Bdofs(dim*nb)
 !------------------------------------------------------------------------------
-
+    
     Cdofs(1:n*dofs) = (/ (i, i=1,n*dofs) /)
 
     m = 0
