@@ -627,7 +627,7 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: GlobalEps, LocalEps, NumericalEps
     REAL(KIND=dp), ALLOCATABLE, OPTIONAL :: LocalDistances(:)
     !------------------------------------------------------------------------------
-    TYPE(Variable_t), POINTER :: Var, VarOld, OldVar, NewVar
+    TYPE(Variable_t), POINTER :: Var, VarOld, OldVar, NewVar, PermVar, WorkVar
     TYPE(Element_t),POINTER :: Element
     TYPE(Nodes_t) :: ElementNodes
     REAL(KIND=dp), POINTER :: OldHeight(:), NewHeight(:)
@@ -635,12 +635,15 @@ CONTAINS
     INTEGER :: i, j, k, l, n, ierr
     REAL(KIND=dp), DIMENSION(3) :: Point
     INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER, ALLOCATABLE :: DefaultPerm(:)
     REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
     REAL(KIND=dp), POINTER :: ElementValues(:)
     REAL(KIND=dp) :: detJ, u,v,w,s, LocalDist
-    LOGICAL :: Found, Debug
+    LOGICAL :: Found, Debug, FirstTime=.TRUE.,GMUnfound=.FALSE.
     REAL(KIND=dp) :: eps_global_limit, eps_local_limit,&
          eps_global_init, eps_local_init, eps_global, eps_local, eps_numeric
+
+    SAVE DefaultPerm, FirstTime
     !------------------------------------------------------------------------------
 
     !========================================
@@ -648,6 +651,13 @@ CONTAINS
     !========================================
 
     Debug = .FALSE.
+
+    !For hydromesh calving purposes
+    IF(HeightName == 'temp residual') THEN
+      GMUnfound = .TRUE.
+    ELSE
+      GMUnfound = .FALSE.
+    END IF
 
     IF(Debug) THEN
        PRINT *, 'Debug, present(OldNodeMask)', PRESENT(OldNodeMask)
@@ -667,11 +677,33 @@ CONTAINS
     !----------------------------------------------------------
     Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
     IF( .NOT. ASSOCIATED(Var) ) THEN
+       ! This for when mesh connectivity isn't the same...
+       ! Only actually for if new mesh has bigger perm than old mesh
+       ! Which crashes on result output
+       ! If inequality other way round, standard routine works fine
+       IF(NewMesh % NumberOfNodes .NE. OldMesh % NumberOfNodes .OR. NewMesh % MeshDim .NE. OldMesh % MeshDim) THEN
+         ALLOCATE( NewHeight(NewMesh % NumberOfNodes ) )
+         NewHeight = 0.0_dp
+         ALLOCATE( NewPerm(NewMesh % NumberOfNodes ) )
+         !Special case for my calvinghydrointerp stuff
+         PermVar => VariableGet( NewMesh % Variables, 'hydroweights', ThisOnly = .TRUE. )
+         !On the assumption you'll have some velocity
+         IF(.NOT. ASSOCIATED(PermVar)) THEN
+           PermVar => VariableGet( NewMesh % Variables, 'velocity 1', ThisOnly = .TRUE. )
+         END IF
+         !And if you don't, you'll probably have this one
+         IF(.NOT. ASSOCIATED(PermVar)) THEN
+           PermVar => VariableGet( NewMesh % Variables, 'hydraulic potential', ThisOnly = .TRUE. )
+         END IF
+         NewPerm = PermVar % Perm
+         NULLIFY(PermVar)
        ! This assumes that the mesh connectivity is the same...
-       ALLOCATE( NewHeight(SIZE(OldHeight) ) )
-       NewHeight = 0.0_dp
-       ALLOCATE( NewPerm(SIZE(OldPerm) ) )
-       NewPerm = OldPerm
+       ELSE
+         ALLOCATE( NewHeight(SIZE(OldHeight) ) )
+         NewHeight = 0.0_dp
+         ALLOCATE( NewPerm(SIZE(OldPerm) ) )
+         NewPerm = OldPerm
+       END IF
        CALL VariableAdd( NewMesh % Variables, NewMesh, CurrentModel % Solver, &
             HeightName, 1, NewHeight, NewPerm )
        Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
@@ -750,13 +782,13 @@ CONTAINS
        eps_local = eps_local_init
 
        DO WHILE(.TRUE.)
-
-          DO k=OldMesh % NumberOfBulkElements+1,&
-               OldMesh % NumberOfBulkElements + OldMesh % NumberOfBoundaryElements
+          DO k=1, OldMesh % NumberOfBulkElements + OldMesh % NumberOfBoundaryElements
 
              Element => OldMesh % Elements(k)
              n = Element % TYPE % NumberOfNodes
              NodeIndexes => Element % NodeIndexes
+
+             IF(Element % TYPE % DIMENSION > (3-SIZE(HeightDimensions))) CYCLE
 
              IF( ANY( OldPerm( NodeIndexes ) == 0 ) ) CYCLE
 
@@ -802,7 +834,21 @@ CONTAINS
        END DO
 
        IF (.NOT.Found) THEN
-          NULLIFY(Element)
+          !CHANGE
+          !Need to define value for groundedmask on unfound nodes if
+          !interpolating between ice mesh and larger footprint hydrological mesh
+          IF(GMUnfound) THEN
+            WorkVar => VariableGet(NewMesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+            IF(ASSOCIATED(WorkVar)) THEN
+              WorkVar % Values(WorkVar % Perm(i)) = -1.0
+            END IF
+            NULLIFY(WorkVar)
+            WorkVar => VariableGet(NewMesh % Variables, "basalmeltrate", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+            IF(ASSOCIATED(WorkVar)) THEN
+              WorkVar % Values(WorkVar % Perm(i)) = 0.0
+            END IF
+          END IF
+          NULLIFY(Element, WorkVar)
           IF(PRESENT(FoundNodes)) FoundNodes(i) = .FALSE.
           CYCLE
        END IF
@@ -821,6 +867,15 @@ CONTAINS
        !-------------------------------------------------------
        ! Interpolate full variable list if requested
        !-------------------------------------------------------
+       !For variables without perm (see change below)
+       IF(FirstTime) THEN
+         FirstTime = .FALSE.
+         ALLOCATE(DefaultPerm(OldMesh % NumberOfNodes))
+         DO j=1,OldMesh % NumberOfNodes
+           DefaultPerm(j) = j
+         END DO
+       END IF
+
        IF(PRESENT(Variables)) THEN
           OldVar => Variables
           DO WHILE(ASSOCIATED(OldVar))
@@ -833,6 +888,12 @@ CONTAINS
 
                 OldVar => OldVar % Next
                 CYCLE
+             END IF
+
+             !For variables which don't have a perm for some reason
+             IF(.NOT.(ASSOCIATED(OldVar % Perm))) THEN
+               ALLOCATE(OldVar % Perm(OldMesh % NumberOfNodes))
+               OldVar % Perm(1:SIZE(OldVar % Perm)) = DefaultPerm(1:SIZE(OldVar % Perm))
              END IF
 
              NewVar => VariableGet(NewMesh % Variables, OldVar % Name, .TRUE.)
