@@ -22,7 +22,7 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Mauro Werder, Mondher Chekki 
+! *  Authors: Olivier Gagliardini, Mauro Werder 
 ! *  Email:   olivier.gagliardini@ujf-grenoble.fr, m_werder@sfu.ca 
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - Scientific Computing Ltd.
@@ -74,7 +74,7 @@
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge
 
-     TYPE(Variable_t), POINTER :: TimeVar 
+     TYPE(Variable_t), POINTER :: TimeVar
      TYPE(Variable_t), POINTER :: HydPotSol, AreaSol, QcSol, QmSol 
      INTEGER, POINTER :: NodeIndexes(:), HydPotPerm(:),  &
               AreaPerm(:), QcPerm(:), QmPerm(:)
@@ -84,7 +84,7 @@
 
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
           istat, LocalNodes, bc_id, DIM, NodeSheet, EdgeSheet, NbMoulin, NbMoulinAll, &
-          GhostNodes, it, itOut, ierr
+          GhostNodes, it, itOut, ierr, ChannelSolver
      INTEGER, ALLOCATABLE :: TableNodeSheet(:), TableMoulin(:)     
 
      CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, HydPotName, &
@@ -97,11 +97,11 @@
      INTEGER :: VtuUnit, offset, Cpt, kk
      INTEGER, ALLOCATABLE :: EdgePointArray(:), EdgeOffsetArray(:), EdgeTypeArray(:)
 
-     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE., OutPutQm = .FALSE. 
+     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE., OutPutQm = .FALSE., Calving = .FALSE.
 
      CHARACTER :: lf
      CHARACTER(LEN=1024) :: OutStr
-     CHARACTER(MAX_NAME_LEN) :: proc_number, number_procs,  VtuFile, PVtuFile, VtuFormat, VtuFileFormat, OutPutDirectoryName
+     CHARACTER(MAX_NAME_LEN) :: proc_number, VtuFile, PVtuFile, VtuFormat, VtuFileFormat, OutPutDirectoryName
      CHARACTER(MAX_NAME_LEN) :: ChFluxVarName, ChAreaVarName, QmVarName 
 
      REAL(KIND=dp) , ALLOCATABLE ::  tmparray(:,:), Flux(:) 
@@ -116,28 +116,59 @@
           IsGhostNode,  OutPutFileName, OutPutDirectoryName, FileVTU, VtuBinary, it, itOut,  &
           AllocationsDone, FirstTime, FirstVisit, SolverName, HydPotName, M, &
           NodeSheet, TableNodeSheet, EdgeSheet, NbMoulin, TableMoulin, OutPutQm, Flux, &
-          ChFluxVarName, ChAreaVarName, QmVarName 
+          ChFluxVarName, ChAreaVarName, QmVarName, ChannelSolver
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
      SolverName = 'GlaDSchannelOut ('// TRIM(Solver % Variable % Name) // ')'
-
-     AreaSol => Solver % Variable
-     AreaPerm  => AreaSol % Perm
-     AreaSolution => AreaSol % Values
+     !CHANGE - to get Channel variables added to this solver mesh if
+     !doing calving and hydrology and consequently having many meshes
+     Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
+     IF(.NOT. Found) Calving = .FALSE.
+     IF(Calving) THEN
+       IF(FirstVisit) THEN
+         DO i=1,Model % NumberOfSolvers
+           IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN 
+             ChannelSolver = i
+             EXIT
+           END IF
+         END DO
+         AreaSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                    % Variables, 'Channel Area', ThisOnly=.TRUE.)
+         IF (ASSOCIATED(AreaSol)) THEN
+            AreaPerm     => AreaSol % Perm
+            AreaSolution => AreaSol % Values
+         END IF
+         LocalNodes = COUNT( AreaPerm > 0 )
+         IF ( LocalNodes <= 0 ) RETURN
+       ELSE
+         AreaSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                    % Variables, 'Channel Area', ThisOnly=.TRUE.)
+         IF (ASSOCIATED(AreaSol)) THEN
+            AreaPerm     => AreaSol % Perm
+            AreaSolution => AreaSol % Values
+         END IF
+         LocalNodes = COUNT( AreaPerm > 0 )
+         IF ( LocalNodes <= 0 ) RETURN
+       END IF
+     ELSE
+       AreaSol => Solver % Variable
+       AreaPerm  => AreaSol % Perm
+       AreaSolution => AreaSol % Values
      
-     LocalNodes = COUNT( AreaPerm > 0 )
-     IF ( LocalNodes <= 0 ) RETURN
+       LocalNodes = COUNT( AreaPerm > 0 )
+       IF ( LocalNodes <= 0 ) RETURN
+     END IF
 
      DIM = CoordinateSystemDimension()
 
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
+     IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
         N = Solver % Mesh % MaxElementNodes
-        M = Model % Mesh % NumberOfNodes
+        M = Solver % Mesh % NumberOfNodes
 
         IF ( AllocationsDone ) THEN
            DEALLOCATE(                    &
@@ -207,20 +238,41 @@
      END IF
 
      ! Point on the needed variables
-     HydPotSol => VariableGet( Solver % Mesh % Variables, HydPotName, UnfoundFatal = .TRUE. )
-     HydPotPerm     => HydPotSol % Perm
-     HydPot => HydPotSol % Values
+     !CHANGE - to avoid interpolation of variables between solvers when calving
+     IF(Calving) THEN
+       HydPotSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                    % Variables, HydPotName, ThisOnly=.TRUE.)
+       HydPotPerm     => HydPotSol % Perm
+       HydPot => HydPotSol % Values
+       QcSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                % Variables, ChFluxVarName)
+       IF (ASSOCIATED(QcSol)) THEN
+         QcPerm     => QcSol % Perm
+         QcSolution => QcSol % Values
+       END IF
+       QmSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                % Variables, QmVarName)
+       IF (ASSOCIATED(QmSol)) THEN
+         QmPerm     => QmSol % Perm
+         QmSolution => QmSol % Values
+       END IF
+     ELSE
+       QcSol => VariableGet( Solver % Mesh % Variables, ChFluxVarName )
+       IF (ASSOCIATED(QcSol)) THEN
+          QcPerm     => QcSol % Perm
+          QcSolution => QcSol % Values
+       END IF
 
-     QcSol => VariableGet( Solver % Mesh % Variables, ChFluxVarName )
-     IF (ASSOCIATED(QcSol)) THEN
-        QcPerm     => QcSol % Perm
-        QcSolution => QcSol % Values
-     END IF
+       QmSol => VariableGet( Solver % Mesh % Variables, QmVarName )
+       IF (ASSOCIATED(QmSol)) THEN
+          QmPerm     => QmSol % Perm
+          QmSolution => QmSol % Values
+       END IF
 
-     QmSol => VariableGet( Solver % Mesh % Variables, QmVarName )
-     IF (ASSOCIATED(QmSol)) THEN
-        QmPerm     => QmSol % Perm
-        QmSolution => QmSol % Values
+       HydPotSol => VariableGet(Solver % Mesh % Variables, HydPotName,&
+                    UnfoundFatal=.TRUE.)
+       HydPotPerm     => HydPotSol % Perm
+       HydPot => HydPotSol % Values
      END IF
 
      TimeVar => VariableGet( Solver % Mesh % Variables, 'Time' )
@@ -263,11 +315,10 @@
                 Edge => Solver % Mesh % Edges(t)
                 n = Edge % TYPE % NumberOfNodes
                 IF (.NOT.ASSOCIATED(Edge)) CYCLE
-                IF (ParEnv % PEs > 1) THEN
-                  IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-                END IF
+                IF ((ParEnv % PEs > 1) .AND. &
+                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
                 IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
-                EdgeSheet = EdgeSheet + 1
+                  EdgeSheet = EdgeSheet + 1
              END DO 
              WRITE(Message,'(a,i0)')'Number of Channels (edges): ', EdgeSheet
              CALL INFO(SolverName, Message, level=3 )
@@ -280,11 +331,10 @@
              DO t=1, Solver % Mesh % NumberOfBoundaryElements
                 Element => GetBoundaryElement(t)
                 ! IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-                IF (ParEnv % PEs > 1) THEN 
-                  IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-                END IF
+                IF ((ParEnv % PEs > 1) .AND. &
+                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
                 n = GetElementNOFNodes()
-                
+
                 IF ( GetElementFamily() > 1 ) CYCLE
                 NbMoulin = NbMoulin + 1
                 j = Element % NodeIndexes(1)
@@ -322,7 +372,7 @@
      CALL Info( SolverName, ' Channels Output will be saved ', Level=4 )
 
      WRITE(Message,'(A,D15.7)')' Maximum Channel Area: ', &
-        MAXVAL(AreaSolution(AreaPerm(M+1:M+Solver%Mesh%NumberOfEdges))) 
+        MAXVAL(AreaSolution(AreaPerm(M:M+Solver%Mesh%NumberOfEdges))) 
      CALL INFO(SolverName, Message, level=4 )
 
      ! Save results in VTU Format
@@ -333,12 +383,9 @@
 
         IF ( ParEnv%PEs >1 ) THEN
            WRITE(proc_number,'(i4.4)') ParEnv%myPe+1
-           WRITE(number_procs,'(i4.4)') ParEnv%PEs 
            proc_number = ADJUSTL(proc_number)
-     ! Add the number of procs as a suffix in case of multiple runs with different partitions
-           PVtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'//TRIM(number_procs)//'procs_'//TRIM(nit)//'.pvtu'
-           VtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'&
-                //TRIM(number_procs)//'procs_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu'
+           PVtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'//TRIM(nit)//'.pvtu'
+           VtuFile=TRIM(OutPutDirectoryName)//'/'//TRIM(OutPutFileName)//'_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu'
            VtuUnit = 1500 +ParEnv%myPe
         ELSE
            VtuUnit = 1500 
@@ -383,8 +430,7 @@
               WRITE(proc_number,'(i4.4)') i
               proc_number = ADJUSTL(proc_number)
               WRITE( PVtuUnit,'(A)') &
-                   '    <Piece Source="'//TRIM(OutPutFileName)//'_'&
-                   //TRIM(number_procs)//'procs_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu" />'
+              '    <Piece Source="'//TRIM(OutPutFileName)//'_'//TRIM(proc_number)//'par'//TRIM(nit)//'.vtu" />'
            ENDDO
            WRITE( PVtuUnit,'(A)') '  </PUnstructuredGrid>'
            WRITE( PVtuUnit,'(A)') '</VTKFile>'
@@ -432,9 +478,8 @@
         DO t=1, Solver % Mesh % NumberOfEdges 
            Edge => Solver % Mesh % Edges(t)
            IF (.NOT.ASSOCIATED(Edge)) CYCLE
-           IF (ParEnv % PEs > 1) THEN
-             IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-           END IF
+           IF ((ParEnv % PEs > 1) .AND. &
+              (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
            n = Edge % TYPE % NumberOfNodes
            IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             
@@ -464,13 +509,12 @@
         DO t=1, Solver % Mesh % NumberOfEdges 
            Edge => Solver % Mesh % Edges(t)
            IF (.NOT.ASSOCIATED(Edge)) CYCLE
-           IF (ParEnv % PEs > 1) THEN
-             IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-           END IF
+           IF ((ParEnv % PEs > 1) .AND. &
+              (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
            n = Edge % TYPE % NumberOfNodes
            IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             
-           M = Model % Mesh % NumberOfNodes
+           M = Solver % Mesh % NumberOfNodes
            Cpt = Cpt+1
            ChannelAreaArray(Cpt) = AreaSolution(AreaPerm(M+t))
         END DO
@@ -484,13 +528,12 @@
            DO t=1, Solver % Mesh % NumberOfEdges 
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
-              IF (ParEnv % PEs > 1) THEN
-                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-              END IF
+              IF ((ParEnv % PEs > 1) .AND. &
+                 (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
               n = Edge % TYPE % NumberOfNodes
               IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             
-              M = Model % Mesh % NumberOfNodes
+              M = Solver % Mesh % NumberOfNodes
               Cpt = Cpt+1
               ChannelFluxArray(Cpt) = QcSolution(QcPerm(M+t))
            END DO
@@ -511,7 +554,6 @@
               CALL GetElementNodes( ElementNodes )
               IF ( ASSOCIATED( BC ) ) THEN            
                  j = Element % NodeIndexes(1)
-                 IF (QmPerm(j) <= 0 ) CYCLE
                  Flux(j) = QmSolution(QmPerm(j)) 
               END IF
            END DO
