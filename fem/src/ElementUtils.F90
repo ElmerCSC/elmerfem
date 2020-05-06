@@ -1025,11 +1025,11 @@ CONTAINS
     IF (.NOT. FoundDG) THEN
       
       !$OMP PARALLEL &
-      !$OMP SHARED(LocalNodes, List, ListNew, Equation, EDOFS, FDOFS, GB, &
+      !$OMP SHARED(LocalNodes, List, Equation, EDOFS, FDOFS, GB, &
       !$OMP        Reorder, Model, Mesh, NumberOfMeshColours, CurrentColourStart, NeedLocking, &
       !$OMP        CurrentColourEnd, CurrentColourList, ElementsList, Solver, BoundaryColour) &
       !$OMP PRIVATE(Element, Indexes, istat, IndexSize, IndexReord, &
-      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, LptrNew, Errors, &
+      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, &
       !$OMP         CurrentColour) &
       !$OMP DEFAULT(NONE)
 
