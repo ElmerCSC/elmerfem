@@ -2199,6 +2199,8 @@ CONTAINS
 
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
+   ForcePrep = ListGetLogical( Model % Simulation,'Finalize Meshes Before Extrusion',Found)
+   
    IF( PRESENT( LoadOnly ) ) THEN
      IF( LoadOnly ) THEN
        RETURN
