@@ -2831,6 +2831,16 @@ CONTAINS
        END IF
        Element % DGDOFs = MAX(0,inDOFs(el_id,4))
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
+
+       IF(PRESENT(mySolver)) THEN
+         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'NeedEdges', Found) ) THEN
+           CALL Fatal('NonNodalElements','Use "Need Edges" instead of "NeedEdges"') 
+         END IF
+         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges', Found) ) THEN
+           NeedEdges=.TRUE.
+         END IF
+       END IF
+
        
        ! Check if given element is a p element
        IF (FirstOrderElements .AND. inDOFs(el_id,6) > 0) THEN
