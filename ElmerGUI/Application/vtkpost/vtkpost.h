@@ -51,6 +51,7 @@
 #include <QTextStream>
 #include <QDoubleSpinBox>
 #include <QSlider>
+#include <QLabel>
 
 #ifdef EG_PYTHONQT
 #include <PythonQt.h>
@@ -198,6 +199,7 @@ public slots:
   void SetPostFileEnd(int);                         // last time step
   bool ReadPostFile(QString);                       // read result file
   bool ReadVtuFile(QString);                       // read result file
+  bool ReadSingleVtuFile(QString);                       // read result file (called from mainwindow)
   bool ReadElmerPostFile(QString);                       // read result file    
 
   void Render();                                    // render

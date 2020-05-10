@@ -1342,7 +1342,6 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   // Data:
   //=======
   vtkDoubleArray* doubleArray;
-  //end = start; //debug	
   for(int l = start; l <= end; l++){
 	if(l != start){
 		reader->Delete();
@@ -1552,6 +1551,14 @@ bool VtkPost::ReadVtuFile(QString postFileName)
   return true;
 }
 
+//----------------------------------------------------------------------
+bool VtkPost::ReadSingleVtuFile(QString postFileName)
+{
+  cout << "ReadSingleVtuFile(postFileName) called" << endl; 
+  readEpFile->vtuFileNameList.clear();
+  readEpFile->vtuFileNameList.append(postFileName);  
+  return ReadVtuFile(postFileName);
+}
 // Read ElmerPost format file
 //----------------------------------------------------------------------
 bool VtkPost::ReadElmerPostFile(QString postFileName)

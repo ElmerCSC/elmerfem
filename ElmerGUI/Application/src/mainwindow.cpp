@@ -4985,7 +4985,6 @@ void MainWindow::showVtkPostSlot() {
 #ifdef EG_VTK
   QString postFileName =
       saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
-
   // Parallel solution:
   //====================
   Ui::parallelDialog ui = parallel->ui;
@@ -5042,14 +5041,11 @@ void MainWindow::showVtkPostSlot() {
   QFileInfo info(postFileName);
   QDir dir = info.dir();
   if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)){
-    QStringList filterList, vtuFileNameList;
-    filterList << postFileName.insert(postFileName.length()-4, '*');
-
-    vtuFileNameList = dir.entryList(filterList,  QDir::Readable|QDir::Files|QDir::NoSymLinks, QDir::SortFlags(QDir::Name | QDir::IgnoreCase));
-    if(vtuFileNameList.length() > 0){
-	  cout << "reading" << dir.filePath(vtuFileNameList.at(0)).toLatin1().data() << endl;
-      vtkPost->ReadPostFile(dir.filePath(vtuFileNameList.at(0)));
-    }
+    if(!parallelActive){
+		postFileName.insert(postFileName.length()-4, "0001");
+		cout << "calling ReadSingleVtuFile(postFileName) :" << postFileName.toLatin1().data()<< endl; 
+      vtkPost->ReadSingleVtuFile(postFileName);
+	}
   }else{
     vtkPost->ReadPostFile(postFileName);
   }
