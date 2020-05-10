@@ -104,11 +104,7 @@
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Solver_t), POINTER :: Solver
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: CT0,RT0,tt
-#else
-     REAL(KIND=dp) :: RealTime,CPUTime,CT0,RT0,tt
-#endif
 
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
      LOGICAL :: Silent, Version, GotModelName, FinishEarly
@@ -146,11 +142,7 @@ END INTERFACE
        !
        ! Print banner to output:
        ! -----------------------
-#ifdef USE_ISO_C_BINDINGS
        NoArgs = COMMAND_ARGUMENT_COUNT()
-#else
-       NoArgs = IARGC()
-#endif
        ! Info Level is always true until the model has been read!
        ! This makes it possible to cast something 
        Silent = .FALSE.
@@ -170,11 +162,8 @@ END INTERFACE
        !$ nthreads = omp_get_max_threads()
        IF (nthreads > 1 ) THEN
          ! Check if OMP_NUM_THREADS environment variable is set
-#if USE_ISO_C_BINDINGS
          CALL envir( 'OMP_NUM_THREADS', threads, tlen )
-#else
-         CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
-#endif
+
          IF (tlen==0) THEN
            CALL Info('MAIN','OMP_NUM_THREADS not set. Using only 1 thread per task.',Level=6)
            nthreads = 1

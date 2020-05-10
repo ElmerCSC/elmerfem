@@ -66,13 +66,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: OuterIterationMethod, NonlinearIterationMethod, eq
   INTEGER :: i, j, k, n, nb, nd, t, istat, dim, m, p, q, &
        MaxIterations, NumberOfNormalTractionNodes
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, Tolerance, ToleranceRatio, &
        atime, stime, at0, NonLinError
-#else
-  REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, Tolerance, ToleranceRatio, &
-       atime, stime, CPUTime, RealTime, at0, NonLinError
-#endif
 
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), Mass(:,:), &

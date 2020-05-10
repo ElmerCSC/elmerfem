@@ -570,6 +570,16 @@ def set_mesh_group_elements(gmsh_mesh):
     if gmsh_mesh.group_elements:
         FreeCAD.Console.PrintMessage('  {}\n'.format(gmsh_mesh.group_elements))
 
+def _remove_ansi_color_escape_codes(message):
+    """
+    Replace color code escape codes from message with empty string.
+
+    :param message: A string.
+
+    :return: A string.
+    """
+    return message.replace('\x1b[1m', '').replace('\x1b[31m', '').replace('\x1b[35m', '').replace('\x1b[0m', '')
+
 def run_gmsh(gmsh_mesh, gmsh_log_file=None):
     """
     Runs gmsh. Writes gmsh output to gmsh_log_file if given.
@@ -585,10 +595,11 @@ def run_gmsh(gmsh_mesh, gmsh_log_file=None):
         try:
             with open(gmsh_log_file, 'w') as f:
                 p = subprocess.Popen([gmsh_mesh.gmsh_bin, '-', gmsh_mesh.temp_file_geo],
-                                     stdout=f, stderr=subprocess.PIPE)
+                                     stdout=f, stderr=subprocess.PIPE, universal_newlines=True)
                 no_value, error = p.communicate()
                 if error:
-                    f.write(str(error))
+                    error = _remove_ansi_color_escape_codes(error)
+                    f.write(error)
                     f.flush()
         except Exception:
             error = 'Error executing gmsh'
@@ -624,7 +635,6 @@ def create_mesh(mesh_object, directory=False, gmsh_log_file=None):
     gmsh_mesh.get_gmsh_command()
     gmsh_mesh.write_gmsh_input_files()
     error = run_gmsh(gmsh_mesh, gmsh_log_file)
-    gmsh_mesh.read_and_set_new_mesh()
     if error:
         FreeCAD.Console.PrintError('{}\n'.format(error))
         return error
@@ -648,13 +658,14 @@ def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, 
     mesh_object = create_mesh_object(compound_filter, CharacteristicLength, doc)
     return mesh_object, compound_filter
 
-def run_elmergrid(export_path, mesh_object, out_dir=None):
+def run_elmergrid(export_path, mesh_object, out_dir=None, log_file=None):
     """
     Run ElmerGrid as an external process if it found in the operating system.
 
     :param export_path: path where the result is written
     :param mesh_object: FreeCAD mesh object that is to be exported
     :param out_dir: directory where to write mesh files (if not given unv file name is used)
+    :param log_file: None or a string.
     """
     # Export to UNV file for Elmer
     export_objects = [mesh_object]
@@ -663,15 +674,21 @@ def run_elmergrid(export_path, mesh_object, out_dir=None):
     if out_dir is not None:
         elmerGrid_command += ' -out ' + out_dir
 
-    from PySide import QtCore, QtGui
-    try:
+    FreeCAD.Console.PrintMessage('Running ' + elmerGrid_command + '\n')
+    if log_file is not None:
+        with open(log_file, 'w') as f:
+            p = subprocess.Popen(elmerGrid_command.split(), stdout=f, stderr=subprocess.STDOUT)
+            p.communicate()
+    else:
+        from PySide import QtCore, QtGui
+        try:
             process = QtCore.QProcess()
             process.startDetached(elmerGrid_command)
-            FreeCAD.Console.PrintMessage('Running ' + elmerGrid_command + '\n')
-            FreeCAD.Console.PrintMessage('Finished ' + elmerGrid_command + '\n')
-    except:
+        except:
             FreeCAD.Console.PrintError('Error')
             QtGui.QMessageBox.critical(None, 'Error', 'Error!!', QtGui.QMessageBox.Abort)
+    FreeCAD.Console.PrintMessage('Finished ElmerGrid\n')
+
 
 def export_unv(export_path, mesh_object):
     """

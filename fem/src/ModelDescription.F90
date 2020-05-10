@@ -44,26 +44,14 @@
 
 MODULE ModelDescription
 
-#ifdef USE_ISO_C_BINDINGS
     USE LoadMod
-#endif
     USE MeshUtils
     USE ElementDescription
     USE BinIO
     USE Messages
  
     IMPLICIT NONE
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE
-      FUNCTION LoadFunction( Quiet,Abort_not_found,Libname,Procname ) RESULT(Proc)
-        USE, INTRINSIC :: ISO_C_BINDING
-        USE Types
-        CHARACTER(C_CHAR) :: Libname(*),Procname(*)
-        INTEGER(KIND=AddrInt) :: Proc
-        INTEGER(C_INT) :: Quiet, Abort_not_found
-      END FUNCTION LoadFunction
-    END INTERFACE
-#endif
+
 
     CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId = ' '
 
@@ -144,8 +132,7 @@ CONTAINS
      CHARACTER(LEN=*) :: MeshDir,MeshName
 !------------------------------------------------------------------------------
      CHARACTER(LEN=MAX_STRING_LEN) :: FName
- 
-     INTEGER :: k,k0,k1,l
+     INTEGER :: k,k0,k1,l,iostat
 !------------------------------------------------------------------------------
 
      CALL Info('LoadIncludeFile','Loading include file: '//TRIM(FileName),Level=8)
@@ -187,13 +174,20 @@ CONTAINS
 
 20     CONTINUE
 
-       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD' )
+       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD',IOSTAT=iostat )
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadIncludeFile','Cannot find include file: '//TRIM(FileName))
+       END IF
+
        CALL LoadInputFile( Model, InFileUnit, FileName, &
               MeshDir, MeshName, .FALSE., ScanOnly )
        CLOSE( InFileUnit )
-
      ELSE
-       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD' )
+       OPEN( InFileUnit, FILE=TRIM(FileName), STATUS='OLD',IOSTAT=iostat )
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadIncludeFile','Cannot find include file: '//TRIM(FileName))
+       END IF
+       
        CALL LoadInputFile( Model, InFileUnit, FileName, &
             MeshDir, MeshName, .FALSE., ScanOnly )
        CLOSE( InFileUnit )
@@ -1239,11 +1233,7 @@ CONTAINS
 !         use the compilation time prefix.
 !         ------------------------------------------------------
 
-#ifdef USE_ISO_C_BINDINGS
           str = 'ELMER_LIB'
-#else
-          str = 'ELMER_LIB'//CHAR(0)
-#endif
           CALL envir( str,str1,k ) 
 
 	  fexist = .FALSE.
@@ -1252,11 +1242,7 @@ CONTAINS
              INQUIRE(FILE=TRIM(str1), EXIST=fexist)
           END IF
           IF (.NOT. fexist) THEN
-#ifdef USE_ISO_C_BINDINGS
              str = 'ELMER_HOME'
-#else
-             str = 'ELMER_HOME'//CHAR(0)
-#endif
              CALL envir( str,str1,k ) 
              IF ( k > 0 ) THEN
                 str1 = str1(1:k) // '/share/elmersolver/lib/' // 'SOLVER.KEYWORDS'
@@ -1480,16 +1466,14 @@ CONTAINS
         END IF
 
         IF ( SEQL(Name,'include') ) THEN
-          OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',ERR=10 )
+          OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',IOSTAT=iostat)
+          IF( iostat /= 0 ) THEN
+            CALL Fatal( 'Model Input','Cannot find include file: '//TRIM(Name(9:)))
+          END IF
+            
           CALL SectionContents( Model,List,CheckAbort,FreeNames, &
                   Section,InFileUnit-1,ScanOnly, Echo )
           CLOSE( InFileUnit-1 )
-          CYCLE
-
-10        CONTINUE
-
-          WRITE( Message, * ) 'Cannot find include file: ', Name(9:)
-          CALL Warn( 'Model Input', Message )
           CYCLE
         END IF
 
@@ -1630,7 +1614,7 @@ CONTAINS
 
                SELECT CASE( TYPE )
                CASE( LIST_TYPE_CONSTANT_SCALAR )
-
+                 
                   k = 0
                   DO i=1,N1
                      DO j=1,N2
@@ -1740,8 +1724,13 @@ CONTAINS
                      END DO
                    END DO
                  END DO
- 
-                 IF (.NOT. ScanOnly ) THEN
+
+
+                 IF( .NOT. ScanOnly ) THEN
+                   IF( n == 0 ) THEN
+                     CALL Fatal('SectionContents','Table dependence has zero size: '//TRIM(Name))
+                   END IF
+                   
                    IF ( SizeGiven ) THEN
                      CALL ListAddDepRealArray( List,Name,Depname,n,ATt(1:n), &
                               N1,N2,ATx(1:N1,1:N2,1:n) )
@@ -2164,7 +2153,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
-    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
+    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2200,10 +2189,8 @@ CONTAINS
       INTEGER :: lstat, ompthread
       CHARACTER(LEN=256) :: txcmd
 
-#if USE_ISO_C_BINDINGS
       character(len=256) :: elmer_home_env
       CALL getenv("ELMER_HOME", elmer_home_env)
-#endif
 
       !$OMP PARALLEL Shared(parenv, ModelName, elmer_home_env) Private(txcmd, ompthread, lstat) Default(none)
       !$OMP CRITICAL
@@ -2224,23 +2211,18 @@ CONTAINS
       
       WRITE(txcmd,'(A,I0, A)') 'tx = array.new(', MAX_FNC, ')'
 
-      ! TODO: (2018-09-17) Nowadays ISO_C_BINDINGS are pretty much mandatory to compile elmer
-#if USE_ISO_C_BINDINGS
       ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
       ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
 
       if (trim(elmer_home_env) == "") then
         lstat = lua_dostring(LuaState, &
             'loadfile("' // &
-ELMER_SOLVER_HOME &
-                    // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
+            ELMER_SOLVER_HOME &
+            // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
       else
-#endif
         lstat = lua_dostring(LuaState, &
             'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
-#if USE_ISO_C_BINDINGS
       end if
-#endif
 
       ! Execute lua parts 
       lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
@@ -2404,7 +2386,7 @@ ELMER_SOLVER_HOME &
           END IF
           Model % Meshes => SerialMesh
         END IF
-          
+
         CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
@@ -2743,8 +2725,7 @@ ELMER_SOLVER_HOME &
 !------------------------------------------------------------------------------
       CHARACTER(LEN=*) :: ElementDef
 !------------------------------------------------------------------------------
-      INTEGER  :: ind(8),i,j,n
-      INTEGER, POINTER :: gdofs(:,:), sdofs(:,:,:)
+      INTEGER  :: ind(8),i,j,l,n
 
       ind = [1,2,3,4,5,6,7,8]
 
@@ -4276,20 +4257,20 @@ CONTAINS
       REAL(dp), INTENT(OUT) :: Val
 
       IF ( UsePerm ) THEN
-         iPerm = Perm(iNode)
+        iPerm = Perm(iNode)
       ELSE
-         iPerm = iNode
+        iPerm = iNode
       END IF
 
       IF ( iPerm > 0 ) THEN
-         IF ( Binary ) THEN
-            CALL BinReadDouble( RestartUnit, Val )
-         ELSE
-            READ( RestartUnit, * , IOSTAT=iostat ) Val
-            IF( iostat /= 0 ) THEN
-              CALL Fatal(Caller,'Error in GetValue for: '//TRIM(Var % Name) ) 
-            END IF
-         END IF
+        IF ( Binary ) THEN
+          CALL BinReadDouble( RestartUnit, Val )
+        ELSE
+          READ( RestartUnit, * , IOSTAT=iostat ) Val
+          IF( iostat /= 0 ) THEN
+            CALL Fatal(Caller,'Error in GetValue for: '//TRIM(Var % Name) ) 
+          END IF
+        END IF
       END IF
    END SUBROUTINE GetValue
 

@@ -51,6 +51,7 @@ MODULE ElementUtils
     USE CRSMatrix
     USE Interpolation
     USE BandwidthOptimize
+    IMPLICIT NONE
 
 CONTAINS
 
@@ -63,6 +64,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver
      REAL(KIND=dp) :: x(1), b(1)
+     INTEGER :: i
 
      TYPE(SplittedMatrixT), POINTER :: s
      TYPE(BasicMatrix_t), POINTER :: m
@@ -281,21 +283,23 @@ CONTAINS
 !> in the list matrix topology.
 !------------------------------------------------------------------------------
   SUBROUTINE MakeListMatrix( Model,Solver,Mesh,List,Reorder, &
-        LocalNodes,Equation, DGSolver, GlobalBubbles, &
+        LocalNodes, Equation, DGSolver, GlobalBubbles, &
         NodalDofsOnly, ProjectorDofs, CalcNonZeros )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
+    TYPE(Solver_t) :: Solver
     TYPE(Mesh_t)   :: Mesh
-    TYPE(Matrix_t) :: Matrix
-    TYPE(SOlver_t) :: Solver
     TYPE(ListMatrix_t), POINTER :: List(:)
-    INTEGER, OPTIONAL ::Reorder(:)
+    INTEGER, OPTIONAL :: Reorder(:)
+    INTEGER :: LocalNodes
+    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: DGSolver
     LOGICAL, OPTIONAL :: GlobalBubbles
     LOGICAL, OPTIONAL :: NodalDofsOnly
     LOGICAL, OPTIONAL :: ProjectorDofs
-    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: CalcNonZeros
+
+!    TYPE(Matrix_t) :: Matrix
 !------------------------------------------------------------------------------
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat
     INTEGER, ALLOCATABLE :: InvPerm(:), IndirectPairs(:)
@@ -853,19 +857,20 @@ CONTAINS
         NodalDofsOnly, ProjectorDofs, CalcNonZeros )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
+    TYPE(Solver_t) :: Solver
     TYPE(Mesh_t)   :: Mesh
-    TYPE(Matrix_t) :: Matrix
-    TYPE(SOlver_t) :: Solver
     TYPE(ListMatrixArray_t) :: List
     INTEGER, OPTIONAL :: Reorder(:)
+    INTEGER :: LocalNodes
+    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: DGSolver
     LOGICAL, OPTIONAL :: GlobalBubbles
     LOGICAL, OPTIONAL :: NodalDofsOnly
     LOGICAL, OPTIONAL :: ProjectorDofs
-    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: CalcNonZeros
+!    TYPE(Matrix_t) :: Matrix
 !------------------------------------------------------------------------------
-    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat, nthr
+    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, nReord, EDOFs, FDOFs, BDOFs, This, istat, nthr
 
     LOGICAL :: Flag, FoundDG, GB, Found, Radiation, DoProjectors, DoNonZeros
     INTEGER, ALLOCATABLE :: InvPerm(:)
@@ -1020,11 +1025,11 @@ CONTAINS
     IF (.NOT. FoundDG) THEN
       
       !$OMP PARALLEL &
-      !$OMP SHARED(LocalNodes, List, ListNew, Equation, EDOFS, FDOFS, GB, &
+      !$OMP SHARED(LocalNodes, List, Equation, EDOFS, FDOFS, GB, &
       !$OMP        Reorder, Model, Mesh, NumberOfMeshColours, CurrentColourStart, NeedLocking, &
       !$OMP        CurrentColourEnd, CurrentColourList, ElementsList, Solver, BoundaryColour) &
       !$OMP PRIVATE(Element, Indexes, istat, IndexSize, IndexReord, &
-      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, LptrNew, Errors, &
+      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, &
       !$OMP         CurrentColour) &
       !$OMP DEFAULT(NONE)
 
@@ -1515,6 +1520,7 @@ CONTAINS
      
      Mesh % MaxBDOFs = BDOFs
      
+     Eq = ''
      IF ( PRESENT( Equation ) ) n = StringToLowerCase( Eq,Equation )
 
      Perm = 0

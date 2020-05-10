@@ -176,9 +176,6 @@
      END INTERFACE
 
      REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: CPUTime,RealTime
-#endif
 
 
      CALL Info('HeatSolver','-------------------------------------------',Level=6)
@@ -211,6 +208,7 @@
   
      LocalNodes = COUNT( TempPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
+     IF(SIZE(Temperature) < LocalNodes) LocalNodes = SIZE(Temperature)
 
      SolverParams => GetSolverParams()
 
@@ -250,7 +248,7 @@
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
         N = Solver % Mesh % MaxElementDOFs
 
         IF ( AllocationsDone ) THEN

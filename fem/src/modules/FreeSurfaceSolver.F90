@@ -255,19 +255,11 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER ::&
        FreeSurfPerm(:), FlowPerm(:), NodeIndexes(:), EdgeMap(:,:)
 
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: &
        at,st,totat,totst,Norm,PrevNorm,LocalBottom, cv, &
        Relax, LRelax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
        NodeHolder(3)
-#else
-  REAL(KIND=dp) :: &
-       at,st,totat,totst,CPUTime,Norm,PrevNorm,LocalBottom, cv, &
-       Relax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
-       smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
-       NodeHolder(3)
-#endif
 
   REAL(KIND=dp), POINTER :: ForceVector(:), FreeSurf(:), PreFreeSurf(:,:), &
        FlowSolution(:), PrevFlowSol(:,:), PointerToResidualVector(:)
@@ -294,7 +286,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        UseBodyForce, LimitedSolution, LowerLimit, &
        UpperLimit, ActiveNode, ResetLimiters, OldValues, OldRHS, &
        ResidualVector, StiffVector, MeshVelocity, &
-       ComputeLocalMaxDisp, LocalMaxDisp
+       ComputeLocalMaxDisp, LocalMaxDisp, VariableName
   !------------------------------------------------------------------------------
   !    Get variables for the solution
   !------------------------------------------------------------------------------
@@ -305,7 +297,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !    Get variable/solver name
   !------------------------------------------------------------------------------
-  IF (VariableName .NE. TRIM(Solver % Variable % Name)) THEN
+  IF (VariableName /= TRIM(Solver % Variable % Name)) THEN
     VariableName = TRIM(Solver % Variable % Name)
     ReAllocate = .TRUE.
   ELSE
@@ -432,7 +424,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !    Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
 
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed .OR. ReAllocate) THEN
+  IF ( (.NOT. AllocationsDone) .OR. Solver % MeshChanged .OR. ReAllocate) THEN
     NMAX = Model % MaxElementNodes
     MMAX = Model % Mesh % NumberOfNodes 
     K = SIZE( SystemMatrix % Values )

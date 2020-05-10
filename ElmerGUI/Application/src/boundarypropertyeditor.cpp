@@ -48,6 +48,8 @@ BoundaryPropertyEditor::BoundaryPropertyEditor(QWidget *parent)
   : QDialog(parent)
 {
   ui.setupUi(this);
+  ui.boundaryAsABody->setEnabled(false);
+  ui.boundaryAsABody->setVisible(false);
 
   touched = false;
   condition = NULL;

@@ -4,20 +4,20 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
@@ -49,9 +49,7 @@ MODULE SolverUtils
 
 #include "../config.h"
 
-#ifdef USE_ISO_C_BINDINGS
    USE LoadMod
-#endif
    USE DirectSolve
    USE Multigrid
    USE IterSolve
@@ -9648,7 +9646,13 @@ END FUNCTION SearchNodeL
     END IF
     CALL Info( Caller, Message, Level=3 )
 
-
+    ! This provides a way to directly save the convergence data into an external
+    ! file making it easier to follow the progress of Elmer simulation in other software.
+    !------------------------------------------------------------------------------------    
+    IF( ListGetLogical( CurrentModel % Simulation,'Convergence Monitor',Stat ) ) THEN
+      CALL WriteConvergenceInfo()  
+    END IF
+    
     ! Optional a posteriori scaling for the computed fields
     ! May be useful for some floating systems where one want to impose some intergral 
     ! constraints without actually using them. Then first use just one Dirichlet point
@@ -9730,7 +9734,49 @@ END FUNCTION SearchNodeL
     IF(.NOT. SteadyState ) THEN    
       CALL UpdateDependentObjects( Solver, .FALSE. )        
     END IF
+
+
+  CONTAINS
+
+    SUBROUTINE WriteConvergenceInfo()
+
+      INTEGER :: ConvInds(5),ConvUnit
+      CHARACTER(LEN=MAX_NAME_LEN) :: ConvFile
+      LOGICAL, SAVE :: ConvVisited = .FALSE.
+
+      IF( ParEnv % MyPe /= 0 ) RETURN
+
+      ConvFile = ListGetString(CurrentModel % Simulation,&
+          'Convergence Monitor File',Stat)
+      IF(.NOT. Stat) ConvFile = 'convergence.dat'
+
+      IF( ConvVisited ) THEN
+        OPEN(NEWUNIT=ConvUnit, FILE=ConvFile,STATUS='old',POSITION='append')
+      ELSE
+        OPEN(NEWUNIT=ConvUnit, File=ConvFile)
+        WRITE(ConvUnit,'(A)') '! solver  ss/ns  timestep  coupled  nonlin  norm  change'
+        ConvVisited = .TRUE.
+      END IF
+
+      ConvInds = 0
+      ConvInds(1) = Solver % SolverId
+
+      IF( SteadyState ) ConvInds(2) = 1 
+
+      iterVar => VariableGet( Solver % Mesh % Variables, 'timestep' )
+      ConvInds(3) = NINT( iterVar % Values(1) )
+
+      iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
+      ConvInds(4) = NINT( iterVar % Values(1) )
+
+      iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+      ConvInds(5) = NINT( iterVar % Values(1) )
+
+      WRITE(ConvUnit,'(5I8,2G16.8)') ConvInds,Norm,Change
+      CLOSE(ConvUnit)
       
+    END SUBROUTINE WriteConvergenceInfo
+        
 !------------------------------------------------------------------------------
   END SUBROUTINE ComputeChange
 !------------------------------------------------------------------------------
@@ -13149,20 +13195,6 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: bb(:),Res(:)
     REAL(KIND=dp) :: t0,rt0,rst,st,ct
     TYPE(ValueList_t), POINTER :: Params
-
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE ExecLinSolveProcs
-      INTEGER FUNCTION ExecLinSolveProcs( Proc,Model,Solver,A,b,x,n,DOFs,Norm )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t) :: Model
-        TYPE(Solver_t) :: Solver
-        TYPE(Matrix_t), POINTER :: A
-        INTEGER :: n, DOFs
-        REAL(KIND=dp) :: x(n),b(n), Norm
-      END FUNCTION ExecLinSolveProcs
-    END INTERFACE   
-#endif
 
     INTERFACE
       SUBROUTINE BlockSolveExt(A,x,b,Solver)
@@ -16703,6 +16735,7 @@ CONTAINS
     Mesh => Solver % Mesh
     dim = Mesh % MeshDim
 
+    ! S refers to "solid" and F to "shell" (was fluid)
     FPerm => FVar % Perm
     SPerm => SVar % Perm
     
@@ -16773,7 +16806,102 @@ CONTAINS
       END DO
 
       IF( IsShell ) THEN
-        CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')
+        BLOCK
+          INTEGER :: p,lf,ls,ii,n,t
+          REAL(KIND=dp) :: u,v,w,weight,detJ,val
+          TYPE(Element_t), POINTER :: Element
+          INTEGER, POINTER :: Indexes(:)
+          TYPE(GaussIntegrationPoints_t) :: IP
+          REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+          TYPE(Nodes_t) :: Nodes
+          LOGICAL :: Stat, FixRot
+          
+          FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
+
+          IF(.NOT. FixRot ) THEN
+            CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')                  
+          ELSE
+            CALL Warn('StructureCouplingAssembly','Experimental fixing of shell rotations')
+            n = Mesh % MaxElementNodes 
+            ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+                   
+            ! First, zero the rows related to rotational dofs i.e. components 4 & 5
+            DO i=1,Mesh % NumberOfNodes
+              jf = FPerm(i)      
+              js = SPerm(i)
+              IF( jf == 0 .OR. js == 0 ) CYCLE
+
+              !PRINT *,'Zero shell row:',i,jf,fdofs
+
+              DO j = 4, 5
+                kf = fdofs*(jf-1)+j
+
+                IF( ConstrainedF(kf) ) CYCLE
+                ! We could use ZeroRow as well
+                DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                  A_f % Values(k) = 0.0_dp
+                END DO
+                A_s % rhs(kf) = 0.0_dp
+              END DO
+            END DO
+
+            ! Then go through each element associated with the interface        
+            DO t=1,Mesh % NumberOfBulkElements
+              Element => Mesh % Elements(t)
+              Indexes => Element % NodeIndexes 
+
+              ! We must have solid equation present everywhere and shell at least at one node.
+              IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
+              IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
+
+              n = Element % TYPE % NumberOfNodes
+              Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
+              Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
+              Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+
+              ! Integration at the center point. We could perhaps use the actual corner nodes as well. 
+              IP = GaussPoints( Element )            
+              u = SUM( IP % u) / IP % n
+              v = SUM( IP % v) / IP % n
+              w = SUM( IP % w) / IP % n
+
+              stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
+              Weight = detJ * SUM( IP % s ) 
+
+              !PRINT *,'ip point:',t,u,v,w,detJ, Weight,dim
+
+              DO ii = 1, n
+                i = Indexes(ii)           
+                jf = FPerm(i)      
+                IF( jf == 0 ) CYCLE
+
+                !PRINT *,'set shell node:',i,jf
+
+                ! Rotational dofs of the shell equation
+                DO lf = 4, 5                            
+                  kf = fdofs*(jf-1)+lf
+
+                  ! Displacement dofs
+                  DO ls = 1, dim
+                    ks = sdofs*(js-1)+ls
+
+                    ! Mika may do the non-ortho stuff.
+                    ! Now we assume that that du_x/dx set 4th components, and du_y/dy the 5th
+                    IF( lf - ls /= 3 ) CYCLE
+
+                    ! Implicit derivative
+                    DO p=1,n
+                      val = dBasisdx(p,ls)
+                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
+                    END DO
+                    CALL AddToMatrixElement(A_f,kf,kf,weight)
+                  END DO
+                END DO
+              END DO
+            END DO
+            DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
+          END IF
+        END BLOCK
       END IF
     ELSE
       CALL Fatal('StructureCouplingAssembly','Coupling type not implemented yet!')

@@ -103,7 +103,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   integer, allocatable :: LocalToGlobalPerm(:),nodePerm(:),TestPerm(:)
 
   logical :: FirstVisit=.TRUE.,Firsttime=.TRUE.,Found,UseMask,ComputeNormG=.FALSE.,&
-       UnFoundFatal=.TRUE.,MeshIndep
+       UnFoundFatal=.TRUE.,MeshIndep, BoundarySolver
   logical,allocatable :: VisitedNode(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,&
@@ -131,7 +131,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
   save normtype,dxmin,df1,epsrel,dz,dzs,rzs,imp,io,imode,omode,niter,nsim,iz,ndz,reverse,indic,izs
   save SolverName, SolverParams
-  save FirstVisit,Firsttime,MeshIndep
+  SAVE FirstVisit,Firsttime,MeshIndep,BoundarySolver
   save ComputeNormG,NormFile
   save CostSolName,VarSolName,GradSolName,IOM1QN3
 
@@ -205,6 +205,13 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
               CALL WARN(SolverName,'Keyword >Mesh Independent< not found in solver params')
               CALL WARN(SolverName,'Taking default value >FALSE<')
               MeshIndep=.FALSE.
+            END IF
+
+            BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+            IF(BoundarySolver) THEN
+              CALL Info(SolverName, "Solver defined on boundary", Level=10)
+            ELSE
+              CALL Info(SolverName, "Solver defined on body", Level=10)
             END IF
 
            If (ParEnv % MyPe.EQ.0) then
@@ -348,7 +355,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
        !Compute the boundary weights of basal nodes
        !This could be done just once, assuming the mesh never changes.
-       CALL CalculateNodalWeights(Solver, .TRUE., BWeightPerm, Var=BWeightVar)
+       CALL CalculateNodalWeights(Solver, BoundarySolver, BWeightPerm, Var=BWeightVar)
      END IF
 
 ! Do some allocation etc if first iteration

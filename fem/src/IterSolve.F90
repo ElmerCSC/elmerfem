@@ -52,10 +52,7 @@ MODULE IterSolve
    USE CRSMatrix
    USE BandMatrix
    USE IterativeMethods
-
-#ifdef USE_ISO_C_BINDINGS
    USE huti_sfe
-#endif
 
    IMPLICIT NONE
 
@@ -161,9 +158,7 @@ CONTAINS
   RECURSIVE SUBROUTINE IterSolver( A,x,b,Solver,ndim,DotF, &
               NormF,MatvecF,PrecF,StopcF )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     USE huti_sfe
-#endif
     USE ListMatrix
     USE SParIterGlobals
     IMPLICIT NONE
@@ -195,33 +190,14 @@ CONTAINS
     EXTERNAL MultigridPrec
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
     EXTERNAL NormwiseBackwardErrorGeneralized
-#ifndef USE_ISO_C_BINDINGS
-    INTEGER  :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
-        HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
-    EXTERNAL :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
-        HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
-    
-    INTEGER  :: HUTI_Z_BICGSTAB, HUTI_Z_BICGSTAB_2, HUTI_Z_TFQMR, &
-        HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
-    EXTERNAL :: HUTI_Z_BICGSTAB, HUTI_Z_BICGSTAB_2, HUTI_Z_TFQMR, &
-        HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
-
-    REAL(KIND=dp) :: ddot, dnrm2, dznrm2
-    EXTERNAL :: ddot, dnrm2, dznrm2   
-    
-    COMPLEX(KIND=dp) :: zdotc
-    EXTERNAL :: zdotc
-#endif
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pcondrProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
-#ifdef USE_ISO_C_BINDINGS
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
     EXTERNAL :: AddrFunc    
-#endif
 
     INTERFACE
       SUBROUTINE VankaCreate(A,Solver)
@@ -426,35 +402,27 @@ CONTAINS
     HUTI_MINIT = ListGetInteger( Params, &
         'Linear System Min Iterations', GotIt )
     
-#ifdef USE_ISO_C_BINDINGS
     IF( ComplexSystem ) THEN
-        ALLOCATE(workC(N/2,wsize), stat=istat)
-        IF ( istat /= 0 ) THEN
-            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-        END IF
-        workC = cmplx(0,0,dp)
+      ALLOCATE(workC(N/2,wsize), stat=istat)
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+      END IF
+      workC = cmplx(0,0,dp)
     ELSE
-        ALLOCATE(work(N,wsize), stat=istat)
-        IF ( istat /= 0 ) THEN
-            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-        END IF
-        !$OMP PARALLEL PRIVATE(j)
-        DO j=1,wsize
-           !$OMP DO
-           DO i=1,N
-              work(i,j) = real(0,dp)
-           END DO
-           !$OMP END DO
+      ALLOCATE(work(N,wsize), stat=istat)
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+      END IF
+      !$OMP PARALLEL PRIVATE(j)
+      DO j=1,wsize
+        !$OMP DO
+        DO i=1,N
+          work(i,j) = real(0,dp)
         END DO
-        !$OMP END PARALLEL
+        !$OMP END DO
+      END DO
+      !$OMP END PARALLEL
     END IF
-#else
-    ALLOCATE( work(N,wsize),stat=istat )
-    IF ( istat /= 0 ) THEN
-      CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-    END IF
-    work=0._dp
-#endif
 
     IF ( (IterType == ITER_BiCGStab2 .OR. IterType == ITER_BiCGStabL .OR. &
          IterType == ITER_BiCGStab ) .AND. ALL(x == 0.0) ) x = 1.0d-8
@@ -928,7 +896,6 @@ CONTAINS
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
     
-#ifdef USE_ISO_C_BINDINGS
     IF ( ComplexSystem ) THEN
       ! Associate xC and bC with complex variables
       ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
@@ -959,13 +926,8 @@ CONTAINS
       CALL IterCall( iterProc, x, b, ipar, dpar, work, &
           mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     ENDIF
-#else
-    CALL Info('IterSolver','Calling iterative solver',Level=32)   
-    CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
-#endif
-    GlobalMatrix => SaveGlobalM
 
+    GlobalMatrix => SaveGlobalM
     
     stack_pos=stack_pos-1
     
@@ -996,15 +958,11 @@ CONTAINS
       END IF
     END IF
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     IF ( ComplexSystem ) THEN
-        DEALLOCATE( workC )
+      DEALLOCATE( workC )
     ELSE
-        DEALLOCATE( work )
+      DEALLOCATE( work )
     END IF
-#else 
-    DEALLOCATE( work )
-#endif
 
 !------------------------------------------------------------------------------
   END SUBROUTINE IterSolver

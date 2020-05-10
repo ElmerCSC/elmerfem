@@ -88,11 +88,7 @@
  
      REAL(KIND=dp), POINTER :: U(:), Udot0(:), ForceVector(:), Flow(:), &
          Velocity(:)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,st,Norm, PrevNorm
-#else
-     REAL(KIND=dp) :: at,st,CPUTime, Norm, PrevNorm
-#endif
 
      REAL(KIND=dp), ALLOCATABLE :: &
           LocalStiffMatrix(:,:),LocalForce(:), &
