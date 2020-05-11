@@ -2977,19 +2977,19 @@ CONTAINS
        Stat = ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges', Found)
        IF(Found) NeedEdges = Stat
 
-       IF( Mesh % MeshDim == 2 ) THEN
-         Stat = ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 2D', Found)
-         IF(Found) NeedEdges = Stat
-       END IF
-
-       IF( Mesh % MeshDim == 3 ) THEN
-         Stat = ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 3D', Found)
-         IF(Found) NeedEdges = Stat
-       END IF
-
        IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'NeedEdges', Found) ) THEN
          IF(.NOT. NeedEdges) CALL Fatal('NonNodalElements','Use "Need Edges" instead of "NeedEdges"') 
        END IF
+     END IF
+
+     IF( Mesh % MeshDim == 2 ) THEN
+       Stat = ListGetLogical(Model % Simulation, 'Need Edges 2D', Found)
+       IF(Found) NeedEdges = Stat
+     END IF
+
+     IF( Mesh % MeshDim == 3 ) THEN
+       Stat = ListGetLogical(Model % Simulation, 'Need Edges 3D', Found)
+       IF(Found) NeedEdges = Stat
      END IF
      
      IF ( NeedEdges ) THEN
