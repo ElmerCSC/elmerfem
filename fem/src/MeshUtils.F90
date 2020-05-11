@@ -2833,11 +2833,17 @@ CONTAINS
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
 
        IF(PRESENT(mySolver)) THEN
-         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'NeedEdges', Found) ) THEN
-           CALL Fatal('NonNodalElements','Use "Need Edges" instead of "NeedEdges"') 
-         END IF
          IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges', Found) ) THEN
-           NeedEdges=.TRUE.
+           NeedEdges=.TRUE.           
+         END IF
+         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 2D', Found) ) THEN
+           IF( Mesh % MeshDim == 2 ) NeedEdges=.TRUE.           
+         END IF
+         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 3D', Found) ) THEN
+           IF( Mesh % MeshDim == 3 ) NeedEdges=.TRUE.           
+         END IF
+         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'NeedEdges', Found) ) THEN
+           IF(.NOT. NeedEdges) CALL Fatal('NonNodalElements','Use "Need Edges" instead of "NeedEdges"') 
          END IF
        END IF
 
