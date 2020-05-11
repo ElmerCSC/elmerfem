@@ -326,7 +326,7 @@ CONTAINS
 
     ! We may have different size of block matrix than the number of actual components.
     ! For example, when we have a projector of a scalar field our block size is (2,2)
-    ! but we can only crate the (1,1) from the initial matrix system. 
+    ! but we can only create the (1,1) from the initial matrix system. 
     IF( PRESENT( FieldDofs ) ) THEN
       CALL Info('BlockInitMatrix','Number of field components: '//TRIM(I2S(FieldDofs)))
       IF( Novar /= FieldDofs ) CALL Info('BlockInitMatrix','Number of fields and blocks ('&
@@ -1776,10 +1776,10 @@ CONTAINS
       A_f => TotMatrix % Submatrix(j,j) % Mat
       
       IF(.NOT. ASSOCIATED( SVar ) ) THEN
-        CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
+        CALL Fatal('StructureCouplingBlocks','Master structure variable not present!')
       END IF
       IF(.NOT. ASSOCIATED( FVar ) ) THEN
-        CALL Fatal('StructureCouplingBlocks','Master structure variable not present!')
+        CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
       END IF
       
       CALL StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &

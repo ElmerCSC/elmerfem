@@ -16705,9 +16705,9 @@ CONTAINS
     nf = SIZE( FVar % Values ) 
     ns = SIZE( SVar % Values ) 
     
-    CALL Info('StructureCouplingAssembly','Master structure dofs '//TRIM(I2S(nf))//&
+    CALL Info('StructureCouplingAssembly','Slave structure dofs '//TRIM(I2S(nf))//&
         ' with '//TRIM(I2S(fdofs))//' components',Level=10)
-    CALL Info('StructureCouplingAssembly','Slave structure dofs '//TRIM(I2S(ns))//&
+    CALL Info('StructureCouplingAssembly','Master structure dofs '//TRIM(I2S(ns))//&
         ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
     CALL Info('StructureCouplingAssembly','Assuming '//TRIM(I2S(dim))//&
         ' active dimensions',Level=10)   
@@ -16870,9 +16870,9 @@ CONTAINS
 
     CALL Info('StructureCouplingAssembly','Number of nodes on interface: '&
         //TRIM(I2S(ncount)),Level=10)    
-    CALL Info('StructureCouplingAssembly','Number of entries in master-slave coupling matrix: '&
-        //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
     CALL Info('StructureCouplingAssembly','Number of entries in slave-master coupling matrix: '&
+        //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
+    CALL Info('StructureCouplingAssembly','Number of entries in master-slave coupling matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
     
     CALL Info('StructureCouplingAssembly','All done',Level=20)
