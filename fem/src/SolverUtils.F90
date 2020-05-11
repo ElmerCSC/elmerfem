@@ -9646,7 +9646,13 @@ END FUNCTION SearchNodeL
     END IF
     CALL Info( Caller, Message, Level=3 )
 
-
+    ! This provides a way to directly save the convergence data into an external
+    ! file making it easier to follow the progress of Elmer simulation in other software.
+    !------------------------------------------------------------------------------------    
+    IF( ListGetLogical( CurrentModel % Simulation,'Convergence Monitor',Stat ) ) THEN
+      CALL WriteConvergenceInfo()  
+    END IF
+    
     ! Optional a posteriori scaling for the computed fields
     ! May be useful for some floating systems where one want to impose some intergral 
     ! constraints without actually using them. Then first use just one Dirichlet point
@@ -9728,7 +9734,49 @@ END FUNCTION SearchNodeL
     IF(.NOT. SteadyState ) THEN    
       CALL UpdateDependentObjects( Solver, .FALSE. )        
     END IF
+
+
+  CONTAINS
+
+    SUBROUTINE WriteConvergenceInfo()
+
+      INTEGER :: ConvInds(5),ConvUnit
+      CHARACTER(LEN=MAX_NAME_LEN) :: ConvFile
+      LOGICAL, SAVE :: ConvVisited = .FALSE.
+
+      IF( ParEnv % MyPe /= 0 ) RETURN
+
+      ConvFile = ListGetString(CurrentModel % Simulation,&
+          'Convergence Monitor File',Stat)
+      IF(.NOT. Stat) ConvFile = 'convergence.dat'
+
+      IF( ConvVisited ) THEN
+        OPEN(NEWUNIT=ConvUnit, FILE=ConvFile,STATUS='old',POSITION='append')
+      ELSE
+        OPEN(NEWUNIT=ConvUnit, File=ConvFile)
+        WRITE(ConvUnit,'(A)') '! solver  ss/ns  timestep  coupled  nonlin  norm  change'
+        ConvVisited = .TRUE.
+      END IF
+
+      ConvInds = 0
+      ConvInds(1) = Solver % SolverId
+
+      IF( SteadyState ) ConvInds(2) = 1 
+
+      iterVar => VariableGet( Solver % Mesh % Variables, 'timestep' )
+      ConvInds(3) = NINT( iterVar % Values(1) )
+
+      iterVar => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
+      ConvInds(4) = NINT( iterVar % Values(1) )
+
+      iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+      ConvInds(5) = NINT( iterVar % Values(1) )
+
+      WRITE(ConvUnit,'(5I8,2G16.8)') ConvInds,Norm,Change
+      CLOSE(ConvUnit)
       
+    END SUBROUTINE WriteConvergenceInfo
+        
 !------------------------------------------------------------------------------
   END SUBROUTINE ComputeChange
 !------------------------------------------------------------------------------
