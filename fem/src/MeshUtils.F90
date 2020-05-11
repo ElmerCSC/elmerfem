@@ -2613,7 +2613,7 @@ CONTAINS
          mat_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
-         FirstOrderElements, InheritDG, Hit
+         FirstOrderElements, InheritDG, Hit, Stat
      TYPE(Element_t), POINTER :: Element, Parent, pParent
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
@@ -2831,22 +2831,6 @@ CONTAINS
        END IF
        Element % DGDOFs = MAX(0,inDOFs(el_id,4))
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
-
-       IF(PRESENT(mySolver)) THEN
-         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges', Found) ) THEN
-           NeedEdges=.TRUE.           
-         END IF
-         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 2D', Found) ) THEN
-           IF( Mesh % MeshDim == 2 ) NeedEdges=.TRUE.           
-         END IF
-         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 3D', Found) ) THEN
-           IF( Mesh % MeshDim == 3 ) NeedEdges=.TRUE.           
-         END IF
-         IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'NeedEdges', Found) ) THEN
-           IF(.NOT. NeedEdges) CALL Fatal('NonNodalElements','Use "Need Edges" instead of "NeedEdges"') 
-         END IF
-       END IF
-
        
        ! Check if given element is a p element
        IF (FirstOrderElements .AND. inDOFs(el_id,6) > 0) THEN
@@ -2885,7 +2869,6 @@ CONTAINS
      IF( dgindex > 0 ) THEN
        InheritDG = ListCheckPresentAnyMaterial( CurrentModel,'DG Parent Material')
      END IF
-
      
      ! non-nodal elements in boundary elements
      !------------------------------------------------------------    
@@ -2988,6 +2971,27 @@ CONTAINS
 
      IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
 
+     ! Override automated "NeedEdges" if requested by the user.
+     !------------------------------------------------------------------------------------
+     IF(PRESENT(mySolver)) THEN
+       Stat = ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges', Found)
+       IF(Found) NeedEdges = Stat
+
+       IF( Mesh % MeshDim == 2 ) THEN
+         Stat = ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 2D', Found)
+         IF(Found) NeedEdges = Stat
+       END IF
+
+       IF( Mesh % MeshDim == 3 ) THEN
+         Stat = ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges 3D', Found)
+         IF(Found) NeedEdges = Stat
+       END IF
+
+       IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'NeedEdges', Found) ) THEN
+         IF(.NOT. NeedEdges) CALL Fatal('NonNodalElements','Use "Need Edges" instead of "NeedEdges"') 
+       END IF
+     END IF
+     
      IF ( NeedEdges ) THEN
        CALL Info('NonNodalElements','Requested elements require creation of edges',Level=8)
        CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
