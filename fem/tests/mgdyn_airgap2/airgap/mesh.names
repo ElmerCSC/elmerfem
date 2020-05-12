@@ -1,0 +1,11 @@
+! ----- names for bodies -----
+$ M5 = 1
+$ Ilma = 2
+$ alumiini = 3
+! ----- names for boundaries -----
+$ FluxParallel = 1
+$ Flux = 2
+$ CurrentIn = 3
+$ CurrentOut = 4
+$ airgap = 5
+$ bnry9 = 6

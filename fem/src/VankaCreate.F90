@@ -48,7 +48,7 @@
       TYPE(SplittedMatrixT), POINTER :: SP
       TYPE(Matrix_t), POINTER :: A
       INTEGER :: i
-      REAL(KIND=dp), POINTER :: SaveValues(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
       TYPE(BasicMatrix_t), POINTER :: SaveIF(:)
 !-------------------------------------------------------------------------------
       A => GlobalMatrix
@@ -97,7 +97,7 @@
      TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
      INTEGER, POINTER :: Diag(:), Rows(:), Cols(:), Perm(:), Indexes(:), Ind(:)
-     REAL(KIND=dp), POINTER :: ILUValues(:), SValues(:), TotValues(:)
+     REAL(KIND=dp), POINTER CONTIG :: ILUValues(:), SValues(:), TotValues(:)
      REAL(KIND=dp), ALLOCATABLE :: al(:,:)
      LOGICAL ::  found
      TYPE(Element_t), POINTER :: Element
@@ -214,9 +214,9 @@
               proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
-             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
+             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % ParallelInfo % Gorder )
              IF ( l>0 ) THEN
-               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % Perm)
+               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % ParallelInfo % Gorder )
                IF ( k>0 ) THEN
                  IF ( l>=k ) THEN
                    DO m=Diag(k),Rows(k+1)-1
@@ -505,9 +505,9 @@
               proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
-             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
+             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % ParallelInfo % Gorder )
              IF ( l>0 ) THEN
-               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % Perm)
+               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % ParallelInfo % Gorder )
                IF ( k>0 ) THEN
                  IF ( l>=k ) THEN
                    DO m=Diag(k),Rows(k+1)-1

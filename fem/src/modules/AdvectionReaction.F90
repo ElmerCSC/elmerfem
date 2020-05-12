@@ -34,8 +34,9 @@
 ! *
 ! ****************************************************************************
 
+
 !------------------------------------------------------------------------------
-!>  Advection-reaction equation solver for scalar fields with discontinous Galerkin method.
+!>  Advection-reaction equation solver for scalar fields with discontinuous Galerkin method.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
   SUBROUTINE AdvectionReactionSolver( Model,Solver,dt,Transient )
@@ -62,13 +63,8 @@
      INTEGER :: Active, DIM,NonLinearIterMin,NonlinearIterMax,iter,&
           CorrectedLowerLimit,CorrectedUpperLimit
      INTEGER :: n1,n2, k, n, t, istat, i, j, dummyInt, NumberOfFAces, Indexes(128)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: Norm,RelativeChange,at,at0,totat,st,totst,&
           OriginalValue
-#else
-     REAL(KIND=dp) :: Norm,RelativeChange,at,at0,totat,st,totst,CPUTime,RealTime,&
-          OriginalValue
-#endif
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), LOAD(:), &
               FORCE(:), Velo(:,:), MeshVelo(:,:), Gamma(:), Ref(:), &
               UpperLimit(:), LowerLimit(:)
@@ -146,10 +142,6 @@
         NonlinearIterMin = NonlinearIterMax
      END IF
 
-     ExpVariableName = GetString(SolverParams , 'Exported Variable 1', Found )
-     IF (.NOT.Found) &
-        CALL FATAL(SolverName,'No value > Exported Variable 1 < found in Solver')
-
      LimitSolution = GetLogical( SolverParams, &
           'Limit Solution', Found )
      IF ( .NOT.Found ) &
@@ -178,7 +170,7 @@
         CALL Info( SolverName, ' ', Level=4 )
         CALL Info( SolverName, '-------------------------------------',Level=4 )
         WRITE( Message,'(A,I3,A,I3)') &
-             'Nonlinear iteration no.', iter,' of max',NonlinearIterMax
+            'Nonlinear iteration no.', iter,' of max',NonlinearIterMax
         CALL Info( SolverName, Message, Level=4 )
         CALL Info( SolverName, '-------------------------------------',Level=4 )
         CALL Info( SolverName, ' ', Level=4 )
@@ -187,7 +179,7 @@
 
         CALL DefaultInitialize()
         Active = GetNOFActive()
-        DO t = 1, Active  
+        DO t = 1, Active
            !------------------------------------------------------------------------------
            ! write some info on status of assembly
            !------------------------------------------------------------------------------
@@ -234,21 +226,25 @@
               WRITE(Message,'(A,A,A)') 'Body Force >',TRIM(VariableName) // ' Source','< not found'
               CALL INFO(SolverName, Message, Level=42)
               LOAD(1:n)  = 0.0d0
-           END IF
+            END IF
+
            !------------------------------------------------------------------------------
            ! Get convection and mesh velocity
            CALL GetLocalALEVelocity(Velo,MeshVelo,SolverName,Material,&
                 Equation,Solver,Model,Element)
+
            !-----------------------
            ! get reaction constant
            !-----------------------
            Gamma(1:n)  = GetReal( Material, TRIM(VariableName) // ' Gamma', Found )
            IF (.NOT.Found) THEN
-              WRITE(Message,'(A,A,A)') 'Material Property >',TRIM(VariableName) // ' Gamma','< not found'
+
+             WRITE(Message,'(A,A,A)') 'Material Property >',TRIM(VariableName) // ' Gamma','< not found'
               CALL INFO(SolverName, Message, Level=42)
               Gamma(1:n)  = 0.0d0
            END IF
 
+           
            CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, Velo, MeshVelo, Gamma, Element, n ) 
            IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
            CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -395,8 +391,17 @@
 
      ! Average the elemental results to nodal values:
      !-----------------------------------------------
-     Var => VariableGet( Mesh % Variables,TRIM(ExpVariableName))
-     IF ( ASSOCIATED( Var ) ) THEN
+     ExpVariableName = GetString(SolverParams , 'Exported Variable 1', Found )
+     IF( Found ) THEN
+       CALL Info(SolverName,'Using >Exported Variable 1< for the nodal output field',Level=7)
+
+       Var => VariableGet( Mesh % Variables,TRIM(ExpVariableName))
+       IF( .NOT. ASSOCIATED( Var ) ) THEN
+         WRITE(Message,'(A,A,A)') 'Exported Variable >',TRIM(VariableName) //   ' Nodal Result','< not found'
+         CALL Fatal(SolverName,Message)
+       END IF
+         
+       
        n1 = Mesh % NumberOfNodes
        ALLOCATE( Ref(n1) )
        Ref = 0
@@ -406,32 +411,30 @@
          ALLOCATE( Var % Perm(SIZE(Solver % Variable % Perm))  )
          Var % Perm = 0
          DO i = 1,n1
-            Var % Perm(i) = i
+           Var % Perm(i) = i
          END DO
        END IF
 
        Var % Values = 0.0d0
        DO t=1,Active
-          Element => GetActiveElement(t) 
-          n = GetElementDOFs( Indexes )
-          n = GetElementNOFNodes()
-          DO i=1,n
-             k = Element % NodeIndexes(i)
-             Var % Values(k) = Var % Values(k) + &
+         Element => GetActiveElement(t) 
+         n = GetElementDOFs( Indexes )
+         n = GetElementNOFNodes()
+         DO i=1,n
+           k = Element % NodeIndexes(i)
+           Var % Values(k) = Var % Values(k) + &
                Solver % Variable % Values( Solver % Variable % Perm(Indexes(i)) )
-             Ref(k) = Ref(k) + 1
-          END DO
+           Ref(k) = Ref(k) + 1
+         END DO
        END DO
 
        WHERE( Ref > 0 )
          Var % Values(1:n1) = Var % Values(1:n1) / Ref
        END WHERE
        DEALLOCATE( Ref )
-    ELSE
-       WRITE(Message,'(A,A,A)') 'Exported Variable >',TRIM(VariableName) //   ' Nodal Result','< not found'
-       CALL FATAL(SolverName,Message)
-    END IF
+     END IF
 
+     
    CONTAINS
 
 !------------------------------------------------------------------------------      
@@ -783,7 +786,7 @@
         WRITE(Message,'(A,A,A)') 'Convection flag >', ConvectionFlag ,'< not recognised'
         CALL FATAL(SolverName,Message) 
      END IF
-     CALL INFO(SolverName,Message,Level=10)
+
      !-------------------------------------------------
      ! Add mesh velocity (if any) for ALE formulation
      !-------------------------------------------------

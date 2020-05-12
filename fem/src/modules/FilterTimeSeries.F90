@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -65,9 +65,6 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
       freq, fcoeff, dt, q, prevval
   REAL(KIND=dp) :: CumWeight(99)
   REAL(KIND=dp), POINTER :: MeanField(:), InstField(:), Component(:), PrevField(:,:)
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: RealTime
-#endif
 
   SAVE SubroutineVisited, TimesVisited, CumWeight
 

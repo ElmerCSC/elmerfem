@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back, Juha Ruokolainen
+! *  Authors: Peter Råback, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -106,11 +106,7 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Visited = .FALSE., DirMask(3)
   REAL(KIND=dp) :: Unorm, Totnorm
   REAL(KIND=dp), POINTER :: ForceVector(:,:), SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: ScalarPotentialSol
   
   SAVE Visited

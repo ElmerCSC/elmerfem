@@ -122,7 +122,7 @@ Solver 2
   Outer: Linear System Convergence Tolerance = real 1e-8
   Outer: Linear System Iterative Method = string GCR
   Outer: Linear System Residual Output = integer 1
-  Outer: Linear System Max Iterations = integer 50
+  Outer: Linear System Max Iterations = integer 100
   Outer: Linear System GCR Restart = Integer 50
 
   Apply Mortar BCs = Logical True

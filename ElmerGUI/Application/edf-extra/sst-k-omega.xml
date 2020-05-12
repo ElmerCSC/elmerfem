@@ -76,7 +76,7 @@
            <Name> Turbulent Prandtl Number  </Name>
          </Parameter>
          <Parameter Widget="Edit" >
-           <Name> Dissipation Buoancy Coefficient  </Name>
+           <Name> Dissipation Buoyancy Coefficient  </Name>
          </Parameter>
 
          <Parameter Widget="Edit" >
@@ -134,13 +134,13 @@
 
          <Parameter  Widget="Edit" Enabled="False">
            <Name> Kinetic Energy Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
            <StatusTip> Give kinetic energy condition value for this boundary. </StatusTip>
          </Parameter>
 
          <Parameter  Widget="Edit" Enabled="False">
            <Name> Kinetic Dissipation Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
            <StatusTip> Give kinetic energy dissipation condition value for this boundary. </StatusTip>
          </Parameter>
 

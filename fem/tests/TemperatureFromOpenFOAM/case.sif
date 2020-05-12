@@ -1,0 +1,90 @@
+! Test case for OpenFOAM2Elmer coupling via file I/O.
+!
+! OpenFOAM is assumed to write cell centers into a file "C" for each
+! multi or single block mesh directory and the corresponding temperature
+! to file "T".
+!
+! Elmer uses the cell centers as data points and heat conductivity as
+! regularization to fit the data.
+!
+! P.R. 26.2.2018
+
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "rect"
+End
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = Cartesian 
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+
+Body 1
+  Name = "Cube"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1
+  Name = "Interp"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = ElmerToOpenFOAM
+  Procedure = "OpenFoam2ElmerIO" "OpenFoam2ElmerFit"
+
+! The variable to be mapped
+  Variable = OFtemp
+
+! The OpenFOAM project directory containing the mesh etc. 
+!  OpenFOAM Directory = FILE "ofdir"
+  OpenFOAM Directory = FILE "ofdir"
+  OpenFOAM Timestep = Integer 15000
+
+! You can also test with "p" which has only one proper field
+  OpenFOAM Field = FILE "T"
+  Passive OpenFOAM Coordinate = Integer 3 
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = cg
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 10
+
+! default name for conductivity
+  Diffusivity Name = String "Heat Conductivity" 
+
+! With this one can tune the effetc of regularization 
+! Large value => relative effect of diffusion smaller
+  Fit Coefficient = Real 1.0e6
+End 
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+End
+
+
+Boundary Condition 1
+  Name = "BCs"
+  Target Boundaries(4) = 1 2 3 4 
+End
+
+
+Solver 1 :: Reference Norm = 3.22169855E+02

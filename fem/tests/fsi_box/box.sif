@@ -26,7 +26,7 @@ Simulation
   Steady State Max Iterations = Integer 100
   Output Intervals(1) = 0
 !  Output File = File "box.result"
-  Post File = File "box.ep"
+!  Post File = File "box.vtu"
 End
 
 Initial Condition 1

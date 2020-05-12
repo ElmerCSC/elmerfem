@@ -73,7 +73,7 @@ int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info)
   
   AddExtension(prefix,filename,"ep");
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadSolutionElmer: The opening of the Elmer-file %s wasn't succesfull!\n",
+    printf("LoadSolutionElmer: The opening of the Elmer-file %s wasn't successful!\n",
 	   filename);
     return(1);
   }
@@ -216,7 +216,7 @@ int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int par
   nofiles = i;
 
   if(nofiles < 2) {
-    printf("Opening of partitioned data from file %s wasn't succesfull!\n",
+    printf("Opening of partitioned data from file %s wasn't successful!\n",
 	   filename);
     return(2);
   } else {
@@ -868,7 +868,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     nameproblem = FALSE;
 
     if( nonames ) {
-      printf("Ignoring > mesh.names < because it was explicitely requested!\n");
+      printf("Ignoring > mesh.names < because it was explicitly requested!\n");
       goto namesend;
     }
 
@@ -909,7 +909,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	if( ptr1[0] == '=' ) {
 	  /* remove possible trailing white space */
 	  if(line2[k-1] == ' ') k--;	    
-	  line2[k] = NULL;
+	  line2[k] = '\0';
 	  break;
 	}
 	if(started || ptr1[0] != ' ') {
@@ -955,7 +955,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   if(!cdstat) cdstat = chdir("..");
 
-  if(info) printf("Elmer mesh loaded succesfully\n");
+  if(info) printf("Elmer mesh loaded successfully\n");
 
   return(0);
 }
@@ -1163,7 +1163,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 #ifdef MINGW32
     fail = mkdir(directoryname);
 #else
-    fail = mkdir(directoryname,0700);
+    fail = mkdir(directoryname,0750);
 #endif
     if(fail) {
       printf("Could not create a result directory!\n");
@@ -1405,7 +1405,7 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals,int info)
 /* Saves the mesh in a form that may be used as input 
-   in Elmer calculations. Taylored to work with FEM/BEM coupling,
+   in Elmer calculations. Tailored to work with FEM/BEM coupling,
    or other problems with mixed dimension of bulk elements.
    */
 {
@@ -1442,7 +1442,7 @@ int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 #ifdef MINGW32
     fail = mkdir(directoryname);
 #else
-    fail = mkdir(directoryname,0700);
+    fail = mkdir(directoryname,0750);
 #endif
     if(fail) {
       printf("Could not create a result directory!\n");
@@ -1919,7 +1919,7 @@ static int PartitionNodesByElements(struct FemType *data,int info)
     for(j=1;j<=nopartitions;j++) 
       nodesinpart[j] = 0;
 
-    /* Tag the number of ownder partitions */
+    /* Tag the number of owner partitions */
     for(j=invrow[i-1];j<invrow[i];j++) {
       k = invcol[j]+1;
       part = elempart[k];
@@ -1965,7 +1965,7 @@ static int PartitionNodesByElements(struct FemType *data,int info)
 	  cuminpart[maxpart] += 1;
       }
 
-    /* Otherwise make a half and half split betwen the major owners */
+    /* Otherwise make a half and half split between the major owners */
       else {
 	if(set) {
 	  cumknows[maxpart][maxpart2] += 1;
@@ -2687,7 +2687,7 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
   minpart = noelements;
   j = 0;
 
-  /* Check whether some partion was not used */
+  /* Check whether some partition was not used */
   hit = FALSE;
   for(i=1;i<=partitions;i++) 
     if(!nopart[i]) hit = TRUE;
@@ -2833,9 +2833,9 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 
   if(info) {
     if( partz )
-      printf("Making a simple 1D partitioing in z for the connected elements only\n");
+      printf("Making a simple 1D partitioning in z for the connected elements only\n");
     else
-      printf("Making a simple 1D partitioing in r for the connected elements only\n");     
+      printf("Making a simple 1D partitioning in r for the connected elements only\n");     
   }
 
   if(!data->nodeconnectexist) {
@@ -3031,7 +3031,7 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   
 
   if(info) {
-    printf("Making a Metis partitioing for the connected BC elements only\n");
+    printf("Making a Metis partitioning for the connected BC elements only\n");
   }
 
   if(!data->nodeconnectexist) {
@@ -3193,7 +3193,8 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
   options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;
   if(metisopt == 4 ) options[METIS_OPTION_MINCONN] = 1;
   options[METIS_OPTION_DBGLVL] = 3;
-
+  /* if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed; */
+  
   /* Optional weights */
   vwgt = NULL;
   adjwgt = NULL;
@@ -3691,8 +3692,8 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   options[METIS_OPTION_NUMBERING] = 0;
   options[METIS_OPTION_CONTIG] = eg->metiscontig;
   options[METIS_OPTION_DBGLVL] = 3;
-
-    
+  if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed;
+      
   if(info) printf("Making a Metis partitioning for %d elements in %d-dimensions.\n",
 		  data->noelements,data->dim);
 
@@ -3747,7 +3748,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
   /* Are there periodic boundaries. This information is used to join the boundaries. */
   periodic = data->periodicexist;
   if(periodic) {
-    if(info) printf("There seems to be peridic boundaries\n");
+    if(info) printf("There seems to be periodic boundaries\n");
     indxper = data->periodic;
   }
   
@@ -3896,7 +3897,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 			int dual,int info)
 /* Perform partitioning using Metis. One may use either the direct or the dual
    graph. The direct graph means that the nodes are first partitioned and the 
-   elements follow. The dual graph means that the elemenets are partitioned and 
+   elements follow. The dual graph means that the elements are partitioned and 
    the ownership of the nodes will follow. The latter is optimal for Elmer. */
 {
   int i,j,k,noelements,noknots,errstat;
@@ -3995,7 +3996,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
     xadj[nn] = totcon;
   }
 
-  if(info) printf("There are %d connections alltogether in the graph.\n",totcon);
+  if(info) printf("There are %d connections altogether in the graph.\n",totcon);
 
   /* Parameters for Metis */
   numflag = 0;
@@ -4006,8 +4007,9 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
   METIS_SetDefaultOptions(options);
 
   options[METIS_OPTION_NUMBERING] = 0; 
-  options[METIS_OPTION_CONTIG] = eg->metiscontig;
-  
+  options[METIS_OPTION_CONTIG] = eg->metiscontig;  
+  if( eg->metisseed ) options[METIS_OPTION_SEED] = eg->metisseed;
+
   options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM;
   options[METIS_OPTION_IPTYPE] = METIS_IPTYPE_GROW;
   options[METIS_OPTION_RTYPE] = METIS_RTYPE_GREEDY;    
@@ -4500,7 +4502,7 @@ int OptimizePartitioningAtBoundary(struct FemType *data,struct BoundaryType *bou
       bound[j].parent2[i] = MAX(0, bound[j].parent2[i]);
   }
 
-  if(0) printf("The partitioning at discontinous gaps was optimized.\n"); 
+  if(0) printf("The partitioning at discontinuous gaps was optimized.\n");
   return(0);
 }
 
@@ -4631,7 +4633,7 @@ static int RenumberCuthillMckee( int nrows, int *rows, int *cols, int *iperm )
 
 static void RenumberPartitions(struct FemType *data,int info)
 /* Minimize bandwidth of partition indexing. This could be favourable if the
-   communication between neigbouring partitions is faster than between 
+   communication between neighbouring partitions is faster than between 
    partitions with larger partition index. Probably there is not much 
    difference for normal hardware configurations. */
 {
@@ -4692,7 +4694,7 @@ static void RenumberPartitions(struct FemType *data,int info)
   }
 
   if(info) {
-    printf("There are %d connections alltogether\n",totcon);
+    printf("There are %d connections altogether\n",totcon);
     printf("There are %.3f connections between partitions in average\n",1.0*totcon/partitions);
   }
 
@@ -4720,7 +4722,7 @@ static void RenumberPartitions(struct FemType *data,int info)
 
   /* Print the new order of partitions */
   if(0 && info) {
-    printf( "Partition order afer Cuthill-McKee bandwidth optimization: \n" );
+    printf( "Partition order after Cuthill-McKee bandwidth optimization: \n" );
     for(i=0;i<partitions;i++)
       printf("old=%d new=%d\n",i,perm[i] );
   }
@@ -4825,7 +4827,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
   CreatePartitionTable(data,info);
   maxneededtimes = data->maxpartitiontable;
 
-  /* Renumber the bandwith of partition-partition connections */
+  /* Renumber the bandwidth of partition-partition connections */
   if(partbw) RenumberPartitions(data,info);
 
   /* Check partitioning after table is created for the first time */
@@ -5100,7 +5102,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 
 
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
-			      char *prefix,int decimals,int halomode,int indirect,
+			      char *prefix,int decimals,int *parthalo,int indirect,
 			      int parthypre,int subparts,int nooverwrite, int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations in parallel platforms. 
@@ -5116,17 +5118,17 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int *neededtimes,*elempart,*elementsinpart,*indirectinpart,*sidesinpart;
   int maxneededtimes,indirecttype,bcneeded,trueparent,trueparent2,*ownerpart;
   int *sharednodes,*ownnodes,reorder,*order=NULL,*invorder=NULL;
-  int *bcnodesaved[MAXBCS],maxbcnodesaved,*bcelemsaved,*bcnode;
-  int *bcnodedummy,*elementhalo,*neededtimes2;
-  int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes;
-  int halobulkelems,halobcs,savethis,fail=0,cdstat;
+  int *bcnode,*bcnodedummy,*elementhalo,*neededtimes2;
+  int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes,hasbcnodes,halomode;
+  int halobulkelems,halobcs,savethis,fail=0,cdstat,immersed,halocopies,anyparthalo;
 
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumindirect;
 
+
+  
   if(info) {
     printf("Saving Elmer mesh in partitioned format\n");
-    if( halomode ) printf("Saving halo elements in mode: %d\n",halomode);
     if( subparts ) printf("There are %d subpartitions\n",subparts);
   }
 
@@ -5141,7 +5143,15 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     bigerror("No Elmer mesh files saved!");
   }
 
-  if( subparts < 1 && halomode == 3) {
+  anyparthalo = FALSE; 
+  for(i=0;i<MAXHALOMODES;i++) {
+    if( parthalo[i] ) {
+      printf("Saving halo elements mode active: %d\n",i);
+      anyparthalo = TRUE;
+    }
+  }    
+  
+  if( subparts < 1 && parthalo[3] ) {
     printf("There can be no layer halo since there are no layers!\n");
     bigerror("No Elmer mesh files saved!");
   }
@@ -5193,19 +5203,40 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
       nodesd1 = sideelemtype%100;
       for(l=0;l<nodesd1;l++) 
-	bcnode[sideind[l]] = TRUE;
+	bcnode[sideind[l]] = 1;
     }
   }
   nobcnodes = 0;
   for(i=1;i<=noknots;i++) {
-    if( bcnode[i] ) {
-      nobcnodes += 1;
-      bcnode[i] = nobcnodes;
-    }
+    if( bcnode[i] == 1) nobcnodes += 1;
   }
   if(info) printf("Number of boundary nodes at the boundary: %d\n",nobcnodes);
+  
+  
+  for(i=1;i<=noknots;i++)
+    bcnodedummy[i] = 0;
+  for(i=1;i<=noelements;i++) {
+    k = data->material[i];
+    elemtype = data->elementtypes[i];
+    nodesd2 = elemtype%100;
 
+    for(j=0;j < nodesd2;j++) {
+      ind = data->topology[i][j];
+      if( bcnode[ind] == 1) continue;
+      if( bcnodedummy[ind] ) {
+	if( bcnodedummy[ind] != k ) bcnode[ind] = 2;
+      } else {
+	bcnodedummy[ind] = k;
+      }
+    }
+  }
+  nobcnodes = 0;
+  for(i=1;i<=noknots;i++) {
+    if( bcnode[i] == 2) nobcnodes += 1;
+  }
+  if(info) printf("Number of additional interface nodes: %d\n",nobcnodes);
 
+  
   sprintf(directoryname,"%s",prefix);
   sprintf(subdirectoryname,"%s.%d","partitioning",partitions);
 
@@ -5213,14 +5244,14 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 #ifdef MINGW32
   mkdir(directoryname);
 #else
-  fail = mkdir(directoryname,0700);
+  fail = mkdir(directoryname,0750);
 #endif
   if(info && !fail) printf("Created mesh directory: %s\n",directoryname);
   fail = chdir(directoryname);
 #ifdef MINGW32
   fail = mkdir(subdirectoryname);
 #else
-  fail = mkdir(subdirectoryname,0700);
+  fail = mkdir(subdirectoryname,0750);
 #endif
   if(fail) {
     if(info) printf("Reusing existing subdirectory: %s\n",subdirectoryname);
@@ -5301,28 +5332,177 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       fprintf(outfiles[nofile],"\n");    
     }
 
-    /* This creates a simple halo when the elements have been partitioned such
-       that they are in number of "subparts" intervals of z coordinate. */
-    if( halomode == 3 && part <= subparts ) {
-      int leftright;
-      for(leftright=-1;leftright <=1;leftright += 2) {
-	part2 = part+leftright;
-	nofile2 = nofile+leftright;
+    
+    if(!anyparthalo) continue;
+    halocopies = 0;
 
-	if( part2 < 1 || part2 > subparts ) continue;	
-	halobulkelems += 1;
 
+
+    for( halomode = 1; halomode <= 4; halomode++) {
+      
+      if(!parthalo[halomode]) continue;
+      
+      
+      /* This creates a simple halo when the elements have been partitioned such
+	 that they are in number of "subparts" intervals of z coordinate. */
+      if( halomode == 3 ) {
+	if( part <= subparts ) {
+	  int leftright;
+	  for(leftright=-1;leftright <=1;leftright += 2) {
+	    part2 = part+leftright;	  
+	    if( part2 < 1 || part2 > subparts ) continue;		
+	    elementhalo[part2] = i;
+	    halocopies += 1;
+	  }
+	}
+      }
+      
+      /* For the following halos we study the shared and boundary nodes. */
+      otherpart = 0;
+      hasbcnodes = FALSE;
+      for(j=0;j < nodesd2;j++) {
+	ind = data->topology[i][j];
+	if(neededtimes[ind] > 1) otherpart++;
+	if(bcnode[ind]) hasbcnodes = TRUE;
+      }
+            
+      /* Classical halo needed by discontinuous Galerkin.
+	 Elements that are attached by joined face element are added to halo */
+      if( halomode == 1 && otherpart ) {
+	/* If the saving of halo is requested check it for elements which have at least 
+	   two nodes in shared partitions. First make this quick test. */
+      
+	elemsides = elemtype / 100;
+	if(elemsides == 8) {
+	  immersed = (otherpart >= 4);
+	  elemsides = 6;
+	}
+	else if(elemsides == 7) {
+	  immersed = (otherpart >= 3);
+	  elemsides = 5;
+	}
+	else if(elemsides == 6) {
+	  immersed = (otherpart >= 3);
+	  elemsides = 5;
+	}
+	else if(elemsides == 5) {
+	  immersed = (otherpart >= 3);
+	  elemsides = 4;
+	}      
+	else {
+	  immersed = (otherpart >= 2);
+	}
+	
+	if( immersed ) {
+      
+	  /* In order for the halo to be present the element should have a boundary 
+	     fully immersed in the other partition. This test takes more time. */
+	
+	  for(side=0;side<elemsides;side++) {
+
+	    GetElementSide(i,side,1,data,&sideind[0],&sideelemtype);
+
+	    /* Because every node must be on the boundary use the 1st index as the 
+	       first test */
+	    for(l=1;l<=neededtimes[sideind[0]];l++) {
+	      part2 = data->partitiontable[l][sideind[0]];
+	    
+	      /* We did already save this in partition part */
+	      if(part2 == part) continue;
+	      if(elementhalo[part2] == i) continue;	    
+	      if(part2 < partstart || part2 > partfin) continue;
+
+	      /* Now check that also the other nodes on the face are at the interface */
+	      sidehits = 1;	 	  
+	      for(k=1;k<sideelemtype%100;k++) {
+		for(l2=1;l2<=neededtimes[sideind[k]];l2++) {
+		  part3 = data->partitiontable[l2][sideind[k]];
+		  if(part2 == part3) sidehits++;
+		}
+	      }
+	      if( sidehits <  sideelemtype % 100 ) continue;
+	      
+	      if(0) printf("Adding halo for partition %d and element %d\n",part2,i);
+	      
+	      /* Remember that this element is saved for this partition */
+	      elementhalo[part2] = i;
+	      halocopies += 1;
+	    }
+	  }
+	}            
+      }
+      
+      /* This creates a halo that includes all elements attached to boundary or interface nodes */
+      if( halomode == 2 && hasbcnodes ) {
+	for(j=0;j < nodesd2;j++) {
+	  ind = data->topology[i][j];
+	    
+	  /* If the node is not on the boundary then cycle */
+	  if( !bcnode[ind] ) continue;
+	    
+	  /* Check to which partitions this element is associated with */
+	  for(k=1;k<=neededtimes[ind];k++) {
+	    part2 = data->partitiontable[k][ind]; 
+	      
+	    /* This element is already saved to its primary partition */
+	    if( part == part2 ) continue;
+	    if( elementhalo[part2] == i) continue;
+	    if( part2 < partstart || part2 > partfin ) continue;  	  
+	      
+	    if(0) printf("Adding bc halo for partition %d and element %d\n",part2,i);
+	      
+	    /* Remember that this element is saved for this partition */
+	    elementhalo[part2] = i;
+	    halocopies += 1;
+	  }
+	}
+      }
+      
+      /* This greedy routine makes the halo even if there is just one node in the shared boundary. 
+	 Currently not active. */
+      if( halomode == 4 && otherpart ) {	
+	for(j=0;j < nodesd2;j++) {
+	  ind = data->topology[i][j];
+	  if(neededtimes[ind] == 1) continue;
+	  
+	  for(l=1;l<=neededtimes[ind];l++) {
+	    part2 = data->partitiontable[l][ind];
+	    
+	    /* We did already save this in partition part */
+	    if(part2 == part) continue;	    
+	    if( elementhalo[part2] == i) continue;
+	    if(part2 < partstart || part2 > partfin) continue;
+	    
+	    /* Remember that this element is saved for this partition */
+	    elementhalo[part2] = i;
+	    halocopies += 1;
+	  }
+	}
+      }
+    }
+
+      
+    if( halocopies ) {
+      halobulkelems += halocopies;
+      
+      for(part2=partstart; part2 <= partfin; part2++) {
+	if( part == part2) continue;
+	if( elementhalo[part2] != i ) continue;
+
+	nofile2 = part2 - partstart + 1;
 	fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
+	      
 	for(j=0;j < nodesd2;j++) {
 	  ind = data->topology[i][j];
 	  if(reorder) ind = order[ind];
 	  fprintf(outfiles[nofile2],"%d ",ind);
 	}
-	fprintf(outfiles[nofile2],"\n");    
-
+	fprintf(outfiles[nofile2],"\n");    	    
+	
 	bulktypes[part2][elemtype] += 1;
 	elementsinpart[part2] += 1;	
 	
+	/* Add the halo on-the-fly to the partitiontable of the nodes */	    
 	for(j=0;j < nodesd2;j++) {
 	  ind = data->topology[i][j];
 	  hit = FALSE;
@@ -5337,192 +5517,22 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    } 
 	    else {
 	      maxneededtimes++;
-	      if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
-	      data->partitiontable[maxneededtimes] = Ivector(1,noknots);
+	      if(0) printf("Allocating new column %d in partitiontable\n",k);
+	      data->partitiontable[k] = Ivector(1,noknots);
 	      for(m=1;m<=noknots;m++)
-		data->partitiontable[maxneededtimes][m] = 0;
-	      data->partitiontable[maxneededtimes][ind] = part2;
+		data->partitiontable[k][m] = 0;
+	      data->partitiontable[k][ind] = part2;
 	    }
 	  }
 	}
       }
-    }
-	
-    /* If there is no halo we are done */
-    if(halomode != 1 && halomode != 2 ) continue;
-
-    /* The face can be shared only if there are enough shared nodes among different partitions */
-    otherpart = 0;
-    for(j=0;j < nodesd2;j++) {
-      ind = data->topology[i][j];
-      if(neededtimes[ind] > 1) otherpart++;
-    }
-    if(!otherpart) continue;
+    } /* halocopies */
     
-    
-    if( halomode == 1) {
-      /* If the saving of halo is requested check it for elements which have at least 
-	 two nodes in shared partitions. First make this quick test. */
-      elemsides = elemtype / 100;
-      if(elemsides == 8) {
-	if(otherpart < 4) continue;
-	elemsides = 6;
-      }
-      else if(elemsides == 7) {
-	if(otherpart < 3) continue;
-	elemsides = 5;
-      }
-      else if(elemsides == 6) {
-	if(otherpart < 3) continue;
-	elemsides = 5;
-      }
-      else if(elemsides == 5) {
-	if(otherpart < 3) continue;
-	elemsides = 4;
-      }      
-      else 
-	if(otherpart < 2) continue;
+  } /* noelements */
 
-      
-      /* In order for the halo to be present the element should have a boundary 
-	 fully immersed in the other partition. This test takes more time. */
-	
-      for(side=0;side<elemsides;side++) {
-
-	GetElementSide(i,side,1,data,&sideind[0],&sideelemtype);
-
-	/* Because every node must be on the boundary use the 1st index as the 
-	   first test */
-	for(l=1;l<=neededtimes[sideind[0]];l++) {
-	  part2 = data->partitiontable[l][sideind[0]];
-
-	  /* We did already save this in partition part */
-	  if(part2 == part) continue;
-	    
-	  sidehits = 1;
-	  for(k=1;k<sideelemtype%100;k++) {
-	    for(l2=1;l2<=neededtimes[sideind[k]];l2++) {
-	      part3 = data->partitiontable[l2][sideind[k]];
-	      if(part2 == part3) sidehits++;
-	    }
-	  }
-
-	  if(part2 < partstart || part2 > partfin) continue;
-	  nofile2 = part2 - partstart + 1;
-
-	  if(sidehits == sideelemtype % 100 && elementhalo[part2] != i) {
-	    if(0) printf("Adding halo for partition %d and element %d\n",part2,i);
-	    halobulkelems += 1;
-
-	    /* Remember that this element is saved for this partition */
-	    elementhalo[part2] = i;
-	      	   
-	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
-	      
-	    for(j=0;j < nodesd2;j++) {
-	      ind = data->topology[i][j];
-	      if(reorder) ind = order[ind];
-	      fprintf(outfiles[nofile2],"%d ",ind);
-	    }
-	    fprintf(outfiles[nofile2],"\n");    	    
-	    bulktypes[part2][elemtype] += 1;
-	    elementsinpart[part2] += 1;	
-
-	    /* Add the halo on-the-fly to the partitiontable of the nodes */	    
-	    for(j=0;j < nodesd2;j++) {
-	      ind = data->topology[i][j];
-	      hit = FALSE;
-	      for(k=1;k<=maxneededtimes;k++) {
-		part3 = data->partitiontable[k][ind];
-		if(part3 == part2) hit = TRUE;
-		if(!part3) break;
-	      }
-	      if(!hit) {
-		if(k <= maxneededtimes) {
-		  data->partitiontable[k][ind] = part2;
-		} 
-		else {
-		  maxneededtimes++;
-		  if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
-		  data->partitiontable[maxneededtimes] = Ivector(1,noknots);
-		  for(m=1;m<=noknots;m++)
-		    data->partitiontable[maxneededtimes][m] = 0;
-		  data->partitiontable[maxneededtimes][ind] = part2;
-		}
-	      }
-	    }
-
-	  }
-	}
-      }  
-    }
-    else if( halomode == 2) {
-
-      for(j=0;j < nodesd2;j++) {
-	ind = data->topology[i][j];
-
-	/* If the node is not on the boundary then cycle */
-	if( !bcnode[ind] ) continue;
-
-	/* Check to which partitions this element is associated with */
-	for(k=1;k<=neededtimes[ind];k++) {
-	  part2 = data->partitiontable[k][ind]; 
-
-	  /* This element is already saved to its primary partition */
-	  if( part == part2 ) continue;
-	  /* if( part2 < partstart || part2 > partfin ) continue;  */
-	  
-	  if( elementhalo[part2] != i ) {
-	    halobulkelems += 1;
-	    
-	    if(0) printf("saving element %d in partition %d / %d\n",i,part,part2);
-	    /* Save this element as a halo element for part2 as well */
-	    elementhalo[part2] = i;
-
-	    nofile2 = part2 - partstart + 1; 
-	    bulktypes[part2][elemtype] += 1;
-	    elementsinpart[part2] += 1; 
-	
-	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);	
-	    for(l=0;l < nodesd2;l++) {
-	      l2 = data->topology[i][l];
-
-	      /* Add the nodes to the list of nodes to be saved if it is not already there */
-	      hit = FALSE;
-	      for(l3=1;l3<=maxneededtimes;l3++) {
-		part3 = data->partitiontable[l3][l2];
-		if( part2 == part3 ) {
-		  hit = TRUE;
-		  break;
-		}
-		if(!part3) break;
-	      }
-	      if(!hit) {
-		if( l3 > maxneededtimes ) {
-		  maxneededtimes++;
-		  if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
-		  data->partitiontable[maxneededtimes] = Ivector(1,noknots);
-		  for(m=1;m<=noknots;m++)
-		    data->partitiontable[maxneededtimes][m] = 0;
-		}
-		if(0) printf("Adding halo node = %d %d %d %d %d\n",
-			     l3,maxneededtimes,part2,part3,data->partitiontable[l3][l2]);
-		data->partitiontable[l3][l2] = part2;
-	      }
-
-	      if(reorder) l2 = order[l2];
-	      fprintf(outfiles[nofile2],"%d ",l2);
-	    }
-	    fprintf(outfiles[nofile2],"\n");    
-	  }
-	}
-      }
-    } /* if( halomode == ... ) */
-  }  
-
-  if( halomode ) {
+  if( anyparthalo ) {
     if(info) printf("There are %d bulk elements in the halo.\n",halobulkelems);
-  }	  
+  }
 	  
 
   for(part=partstart;part<=partfin;part++) {
@@ -5540,7 +5550,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   /* The partitiontable has been changed to include the halo elements. The need for saving the 
      halo nodes may be checked by looking whether the number of how many partitions needs 
      the element has changed. */
-  if(halomode) {
+  if(anyparthalo) {
     int halonodes;
     neededtimes2 = Ivector(1,noknots);
     halonodes = 0;
@@ -5670,7 +5680,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     for(j=1;j<=neededtimes2[i];j++) {
       k = data->partitiontable[j][i];
 
-      if( halomode == 2 && neededtimes[i] == 1 && ownerpart[i] == k ) continue; 
+      /* if( parthalo[2] && neededtimes[i] == 1 && ownerpart[i] == k ) continue;  */
       
       if(k < partstart || k > partfin) continue;
       nofile = k - partstart + 1;
@@ -5679,18 +5689,18 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       if(reorder) ind = order[i];
       neededtwice[k] += 1; 
 
-      if( halomode == 2 ) {
+      /* if( parthalo[2] ) {
 	fprintf(outfiles[nofile],"%d %d %d",ind,MAX(1,neededtimes[i]),ownerpart[i]);      
 	for(m=1;m<=neededtimes[i];m++) 
 	  if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
 	fprintf(outfiles[nofile],"\n");
       }
-      else {
-	fprintf(outfiles[nofile],"%d %d %d",ind,neededtimes2[i],ownerpart[i]);      
-	for(m=1;m<=neededtimes2[i];m++) 
-	  if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
-	fprintf(outfiles[nofile],"\n");
-      }
+      else { */
+      fprintf(outfiles[nofile],"%d %d %d",ind,neededtimes2[i],ownerpart[i]);      
+      for(m=1;m<=neededtimes2[i];m++) 
+	if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
+      fprintf(outfiles[nofile],"\n");
+      /* } */
     }
   }
 
@@ -5711,131 +5721,114 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
    
   /*********** part.n.boundary *********************/
   /* This is still done in partition loop as the subroutines are quite complicated */
-
-  maxbcnodesaved = 1;
-  bcnodesaved[1] = Ivector(1,nobcnodes);
-
   discont = FALSE;
   splitsides = 0;
 
   maxnosides = 0;
   for(j=0;j < MAXBOUNDARIES;j++) 
     maxnosides = MAX( maxnosides, bound[j].nosides );
-  bcelemsaved = Ivector(1,maxnosides);
 
   halobcs = 0;
   for(part=1;part<=partitions;part++) { 
-    int bcneeded2,closeparent,closeparent2,haloelem;
+    int bcneeded2,closeparent,closeparent2,haloelem,saveelem;
 
     sprintf(filename,"%s.%d.%s","part",part,"boundary");
     out = fopen(filename,"w");
-
-    for(j=1;j<=maxbcnodesaved;j++)
-      for(i=1;i<=nobcnodes;i++)
-	bcnodesaved[j][i] = FALSE;
    
     for(i=minelemtype;i<=maxelemtype;i++)
       sidetypes[i] = 0;
     
     sumsides = 0;
 
-    /* First loop the standard elements, 2nd time the orphan nodes */
+    /* Loop over boundaries and boundary elements therein. */
     for(j=0;j < MAXBOUNDARIES;j++) {
 
       if(bound[j].nosides == 0 ) continue;
-
-      for(i=1;i<=maxnosides;i++)
-	bcelemsaved[i] = FALSE;
-
 
       /* Normal boundary conditions */
       for(i=1; i <= bound[j].nosides; i++) {
 	  
 	GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
-	/* GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
-	   data,sideind,&sideelemtype); */
 
 	bctype = bound[j].types[i];
 	nodesd1 = sideelemtype%100;
 	  
 	parent = bound[j].parent[i];
 	parent2 = bound[j].parent2[i];
-	  
-	bcneeded = 0;
-	for(l=0;l<nodesd1;l++) {
-	  ind = sideind[l];
-	  for(k=1;k<=neededtimes[ind];k++)
-	    if(part == data->partitiontable[k][ind]) bcneeded++;	   
-	}
-	if(!bcneeded) continue;
 
-	bcneeded2 = bcneeded;
-	if( halomode ) {
-	  for(l=0;l<nodesd1;l++) {
-	    ind = sideind[l];
-	    for(k=neededtimes[ind]+1;k<=neededtimes2[ind];k++)	      
-	      if(part == data->partitiontable[k][ind]) bcneeded2++;
-	  }
-	}
-
-	haloelem = FALSE;
-
-	/* Check whether the side is such that it belongs to the domain */
+	
+	/* Check whether the side is such that it belongs to the domain.
+	   Then it will be always saved - no matter of the halos. */
 	trueparent = trueparent2 = FALSE;
 	if( parent ) trueparent = (elempart[parent] == part);
-	if( parent2 ) trueparent2 = (elempart[parent2] == part);
-	      
+	if( parent2 ) trueparent2 = (elempart[parent2] == part);	   
+	
+	saveelem = FALSE;
+	part2 = 0;
+
 	if(trueparent || trueparent2) {
 	  /* Either parent must be associated with this partition, otherwise do not save this (except for halo nodes) */
 	  if( parent && !trueparent ) {	  
 	    splitsides++;
-	    if(halomode != 1 && halomode != 2) parent = 0;
+	    /* For halo elements also the 2nd true parent exists by construction. */
+	    if(!parthalo[1] && !parthalo[2] && !parthalo[4]) parent = 0;
 	  }
 	  else if( parent2 && !trueparent2 ) {
 	    splitsides++;
-	    if(!halomode != 1 && halomode != 2) parent2 = 0;
+	    if(!parthalo[1] && !parthalo[2] && !parthalo[4]) parent2 = 0;
 	  }
-	}
-	else if( halomode == 1 || halomode == 2 ) {
-	  /* Halo elements ensure that both parents exist even if they are not trueparents */
-	  if( bcneeded2 < nodesd1 ) continue;
-	  haloelem = TRUE;
-	  halobcs += 1;
-	}
-	else if( halomode == 3 ) {
-	  closeparent = closeparent2 = FALSE;
-	  if( part <= subparts ) {
-	    if( parent ) 
-	      if( elempart[parent] <= subparts) 
-		closeparent = ( ABS( elempart[parent]-part) == 1 );
-	    if( parent2 ) 
-	      if( elempart[parent2] <= subparts ) 
-		closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
-	  }
-	  if(!closeparent && !closeparent2) continue;
-	  haloelem = TRUE;
-	  halobcs += 1;
-	}
-	else {
-	  continue;
+	  saveelem = TRUE;
 	}
 
+	/* If boundary element is not saved by default then study different halos.
+	   First look for the extruded halo and offset +/-1 in partition index. */
+	if(!saveelem && parthalo[3] && part <= subparts ) {
+	  int leftright;
+	  for(leftright=-1;leftright <=1;leftright += 2) {	    
+	    part2 = part+leftright;
+	    if( part2 < 1 || part2 > subparts ) continue;		
+	    if( parent ) trueparent = (elempart[parent] == part2);
+	    if( parent2 ) trueparent2 = (elempart[parent2] == part2);
+
+	    /* If other parent is not true parent then set the parent to zero because it is not 
+	       in this partition. */
+	    if(trueparent || trueparent2) {
+	      if( parent && !trueparent )
+		parent = 0;
+	      else if( parent2 && !trueparent2 )
+		parent2 = 0;
+	      saveelem = TRUE;
+	      break;
+	    }
+	  }
+	  if(saveelem) halobcs += 1;
+	}
+	  
+	/* These halo strategies save elements even with just one hit on the original partition 
+	   since the aggressive halos ensure that all necessary bulk elements are saved. */ 
+	if(!saveelem && (parthalo[2] || parthalo[4]) ) {
+	  bcneeded = 0;
+	  for(l=0;l<nodesd1;l++) {
+	    ind = sideind[l];
+	    for(k=1;k<=neededtimes[ind];k++)
+	      if(part == data->partitiontable[k][ind]) bcneeded++;	   
+	  }
+	  saveelem = bcneeded;
+	  if(saveelem) halobcs +=1;
+	}
+
+	/* If we have nothing to save then just continue to next boundary element. */
+	if(!saveelem) continue;
 	   
-	if(bound[j].ediscont) 
-	  discont = bound[j].discont[i];
-
 	sumsides++;	
 	sidetypes[sideelemtype] += 1;
 	    
-	if( haloelem ) 
+	if( part2 ) 
 	  fprintf(out,"%d/%d %d %d %d %d",
-		  sumsides,elempart[parent],bctype,parent,parent2,sideelemtype);	    
-	else if(trueparent)
+		  sumsides,part2,bctype,parent,parent2,sideelemtype);	    
+	else 
 	  fprintf(out,"%d %d %d %d %d",
 		  sumsides,bctype,parent,parent2,sideelemtype);	  
-	else
-	  fprintf(out,"%d %d %d %d %d",
-		  sumsides,bctype,parent2,parent,sideelemtype);	  
 	    
 	if(reorder) {
 	  for(l=0;l<nodesd1;l++)
@@ -5845,40 +5838,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    fprintf(out," %d",sideind[l]);	  
 	}
 	fprintf(out,"\n");
-	    
-	bcelemsaved[i] = TRUE;
-
-	/* Memorize that the node has already been saved as a regular BC. */
-	for(l=0;l<nodesd1;l++) {
-	  k = sideind[l];
-	  found = FALSE;
-	  for(l2=1;l2<=maxbcnodesaved;l2++) {
-	    if(bcnodesaved[l2][bcnode[k]] == bctype ) {
-	      found = TRUE;
-	      break;
-	    }
-	    if(bcnodesaved[l2][bcnode[k]] == 0 ) {
-	      bcnodesaved[l2][bcnode[k]] = bctype;
-	      found = TRUE;
-	      break;
-	    }
-	  }
-	  if( !found ) {
-	    maxbcnodesaved += 1;
-	    if(0) printf("Increasing size of bc owners to %d\n",maxbcnodesaved);
-	    bcnodesaved[maxbcnodesaved] = Ivector(1,nobcnodes);
-	    for(l3=1;l3<=nobcnodes;l3++)
-	      bcnodesaved[maxbcnodesaved][l3] = 0;
-	    bcnodesaved[maxbcnodesaved][bcnode[k]] = bctype;
-	    if(0) for(l3=1;l3<=maxbcnodesaved;l3++)
-		    printf("bc index: %d %d %d %d\n",l3,k,bcnode[k],bcnodesaved[l3][bcnode[k]]);
-	  }
-
-	}
       }
     }
 
-    /* The discontinuous stuff is more or less obsolite as these things can now be made also 
+    /* The discontinuous stuff is more or less obsolete as these things can now be made also
        within ElmerSolver. */
     /* The second side for discontinuous boundary conditions.
        Note that this has not been treated for orphan control. */
@@ -6034,7 +5997,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	}
       }
 
-      /* Remove dublicate connections */
+      /* Remove duplicate connections */
       l = 0;
       for(i=1;i<=connectednodes;i++) {
 	for(j=1;j<=maxnodeconnections;j++)
@@ -6139,18 +6102,26 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     fclose(out);
 
     if(info) {
-      if(part == 1) {
-	printf("   %-5s %-10s %-10s %-8s %-8s %-8s\n",
-	       "part","elements","nodes","shared","bc elems","indirect");
+      if( indirect ) {
+	if(part == 1) {
+	  printf("   %-5s %-10s %-10s %-8s %-8s %-8s\n",
+		 "part","elements","nodes","shared","bc elems","indirect");
+	}
+	printf("   %-5d %-10d %-10d %-8d %-8d %-8d\n",
+	       part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part],
+	       indirectinpart[part]);
       }
-      printf("   %-5d %-10d %-10d %-8d %-8d %-8d\n",
-	     part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part],
-	     indirectinpart[part]);
+      else {
+	if( part == 1 ) {
+	  printf("   %-5s %-10s %-10s %-8s %-8s\n",
+		 "part","elements","nodes","shared","bc elems");
+	}
+	printf("   %-5d %-10d %-10d %-8d %-8d\n",
+	       part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part]);	
+      }
     }
   }
   /*********** end of part.n.header *********************/
-
-  if(info) printf("Nodes needed in maximum %d boundary elements\n",maxbcnodesaved);
 
   
   sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumindirect = 0;
@@ -6171,7 +6142,46 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     printf("Number of boundary elements associated with halo: %d\n",halobcs);
   }
  
-  if(splitsides && !halomode) {
+
+#if 0
+  {
+    int noparents[2][100];
+
+    for(j=0;j<2;j++)
+      for(i=0;i<100;i++)
+	noparents[j][i] = 0;
+
+    for(j=0;j < MAXBOUNDARIES;j++) {    
+      if(bound[j].nosides == 0 ) continue;   
+      for(i=1; i <= bound[j].nosides; i++) {      
+	GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype);       	  
+	parent = bound[j].parent[i];
+	parent2 = bound[j].parent2[i];
+	bctype = bound[j].types[i];
+
+	k = 0;
+	if(parent) k++;
+	if(parent2) k++;
+
+	noparents[k][bctype] += 1;
+      }
+    }
+
+    printf("Number of BC parents\n");
+    for(i=0;i<100;i++) {
+      k = 0;
+      for(j=0;j<2;j++)
+	k = k + noparents[j][i];
+      if( k ) {
+	printf("BC %d: %d %d %d\n",i,noparents[0][i],noparents[1][i],noparents[2][i]); 
+      }
+    }
+  }
+#endif
+  
+	
+
+  if(splitsides && !anyparthalo) {
     printf("************************* Warning ****************************\n");
     printf("Number or boundary elements split at between parents: %d\n",splitsides);
     printf("This could be a problem for internal jump conditions\n");
@@ -6179,12 +6189,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     printf("**************************************************************\n");
   }
 
-
-  for(i=1;i<=maxbcnodesaved;i++)
-    free_Ivector(bcnodesaved[i],1,nobcnodes);
-  if(halomode) free_Ivector(neededtimes2,1,noknots);
-  
-  
+  if(anyparthalo) free_Ivector(neededtimes2,1,noknots);
+    
   cdstat = chdir("..");
   cdstat = chdir("..");
 
@@ -6231,7 +6237,7 @@ int ReorderElementsMetis(struct FemType *data,int info)
       if(con) totcon++;
     }
   }
-  if(info) printf("There are %d connections alltogether\n",totcon);
+  if(info) printf("There are %d connections altogether\n",totcon);
 
   xadj = Ivector(0,noknots);
   adjncy = Ivector(0,totcon-1);

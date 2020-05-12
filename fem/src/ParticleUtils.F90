@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback & Juha Ruokolainen
+! *  Authors: Peter RÃ¥back & Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -615,7 +615,7 @@ CONTAINS
     ! Create list of faces / edges 
     !-------------------------------------------------------------------------
     Mesh => GetMesh()
-    CALL FindMeshEdges( Mesh, .FALSE.)
+    CALL FindMeshEdges( Mesh )
     IF ( ParEnv % PEs > 1 ) THEN
       CALL SParEdgeNumbering(Mesh,Allmesh=.TRUE.)
       CALL SParFaceNumbering(Mesh,Allmesh=.TRUE.)
@@ -640,22 +640,30 @@ CONTAINS
         Coordinate(:,:), PrevCoordinate(:,:), PrevVelocity(:,:)
     INTEGER, POINTER :: Status(:), ElementIndex(:), FaceIndex(:), NodeIndex(:), &
 	Closest(:),Partition(:),Group(:)
-    INTEGER :: PrevNoParticles, dofs, No, n, dim, TimeOrder, n1, n2
+    INTEGER :: PrevNoParticles, dofs, No, n, dim, TimeOrder, n1, n2, AllocParticles
     INTEGER, ALLOCATABLE :: Perm(:)
     
     IF( NoParticles <= Particles % MaxNumberOfParticles ) THEN
-      CALL Info('AllocateParticles','There are already enough particles')
+      CALL Info('AllocateParticles','There are already enough particles',Level=20)
       RETURN
-    ELSE
-      WRITE(Message,'(A,I0)') 'Allocating number of particles: ',NoParticles
-      CALL Info('AllocateParticles',Message)    
     END IF
+
+    PrevNoParticles = Particles % NumberOfParticles
+
+    AllocParticles = NoParticles
+    IF( PrevNoParticles > 0 ) THEN
+      ! In parallel have a small buffer so that we are not next step here again!
+      IF( ParEnv % PEs > 0 ) THEN
+        AllocParticles = 1.02 * AllocParticles
+      END IF
+    END IF
+          
+    WRITE(Message,'(A,I0)') 'Allocating number of particles: ',AllocParticles
+    CALL Info('AllocateParticles',Message,Level=12)    
     
     TimeOrder = Particles % TimeOrder
     dim = Particles % dim 
     dofs = dim
-
-    PrevNoParticles = Particles % NumberOfParticles
 
     ! Set pointers to the old stuff, these are needed
     ! if growing an already existing list of particles. 
@@ -670,36 +678,36 @@ CONTAINS
     NodeIndex => Particles % NodeIndex
     Partition => Particles % Partition
     Group => Particles % Group
-    
+
     ! Allocate the desired number of particles
-    ALLOCATE( Particles % Coordinate(NoParticles,dofs))
-    ALLOCATE( Particles % Velocity(NoParticles,dofs))
-    ALLOCATE( Particles % Force(NoParticles,dofs) )
-    ALLOCATE( Particles % PrevCoordinate(NoParticles,dofs) )
+    ALLOCATE( Particles % Coordinate(AllocParticles,dofs))
+    ALLOCATE( Particles % Velocity(AllocParticles,dofs))
+    ALLOCATE( Particles % Force(AllocParticles,dofs) )
+    ALLOCATE( Particles % PrevCoordinate(AllocParticles,dofs) )
     
-    ALLOCATE( Particles % Status(NoParticles))
-    ALLOCATE( Particles % ElementIndex(NoParticles))
-    ALLOCATE( Particles % FaceIndex(NoParticles))
+    ALLOCATE( Particles % Status(AllocParticles))
+    ALLOCATE( Particles % ElementIndex(AllocParticles))
+    ALLOCATE( Particles % FaceIndex(AllocParticles))
 
     IF( ASSOCIATED( PrevVelocity ) ) THEN
-      ALLOCATE( Particles % PrevVelocity(NoParticles,dofs) )
+      ALLOCATE( Particles % PrevVelocity(AllocParticles,dofs) )
     END IF
 
     IF( Particles % NeighbourTable ) THEN
       Closest => Particles % ClosestNode        
-      ALLOCATE( Particles % ClosestNode(NoParticles) )
+      ALLOCATE( Particles % ClosestNode(AllocParticles) )
     END IF
     
     IF( Particles % NumberOfGroups > 0 ) THEN
-      ALLOCATE( Particles % Group( NoParticles ) )
+      ALLOCATE( Particles % Group( AllocParticles ) )
     END IF
     
     IF( ASSOCIATED( NodeIndex ) ) THEN
-      ALLOCATE( Particles % NodeIndex(NoParticles) )
+      ALLOCATE( Particles % NodeIndex(AllocParticles) )
     END IF
 
     IF( ASSOCIATED( Partition ) ) THEN
-      ALLOCATE( Particles % Partition(NoParticles) )
+      ALLOCATE( Particles % Partition(AllocParticles) )
       Particles % Partition = -1
     END IF
       
@@ -767,7 +775,7 @@ CONTAINS
     ! Initialize the newly allocated particles with default values
     !-------------------------------------------------------------
     n1 = PrevNoParticles+1
-    n2 = NoParticles 
+    n2 = AllocParticles 
 
     Particles % Coordinate(n1:n2,:) = 0.0_dp
     Particles % Velocity(n1:n2,:) = 0.0_dp    
@@ -794,14 +802,14 @@ CONTAINS
         Particles % Group(n1:n2) = 0
 
     
-    Particles % MaxNumberOfParticles = NoParticles
+    Particles % MaxNumberOfParticles = AllocParticles
 
     ! Finally resize the generic variables related to the particles
     !--------------------------------------------------------------
-    CALL ParticleVariablesResize( Particles, PrevNoParticles, NoParticles, Perm )
+    CALL ParticleVariablesResize( Particles, PrevNoParticles, AllocParticles, Perm )
 
     IF( PrevNoParticles > 0 ) THEN
-      CALL Info('AllocateParticles','Deallocating particle permutation',Level=12)
+      CALL Info('AllocateParticles','Deallocating particle permutation',Level=20)
       DEALLOCATE( Perm )
     END IF
 
@@ -1071,7 +1079,7 @@ RETURN
       END IF
     END IF
     CALL Info('ReleaseWaitingParticles','Releasing number of particles: '&
-        //TRIM(I2S(ReleaseCount)),Level=8)
+        //TRIM(I2S(ReleaseCount)),Level=10)
     
     IF( ReleaseSet <= 0 ) RETURN
     
@@ -1113,6 +1121,9 @@ RETURN
     
     INTEGER, POINTER :: Neighbours(:)
     LOGICAL, POINTER :: FaceInterface(:), IsNeighbour(:)
+
+    INTEGER :: q
+    LOGICAL, ALLOCATABLE :: Failed(:)
     
     TYPE ExchgInfo_t
       INTEGER :: n=0
@@ -1149,7 +1160,7 @@ RETURN
       END IF
     END DO
     DEALLOCATE(IsNeighbour)
-    
+
     CALL Info('ChangeParticlePartition','Number of active partitions: '&
         //TRIM(I2S(NoPartitions)),Level=12)
     
@@ -1224,11 +1235,11 @@ RETURN
           1000, ELMER_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
-    
+
     n = SUM(Recv_Parts)
-    CALL Info('ChangeParticlePartition','Number of particles to recieve: '&
+    CALL Info('ChangeParticlePartition','Number of particles to receive: '&
         //TRIM(I2S(n)),Level=10)
-   
+
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, ELMER_COMM_WORLD, ierr )
     IF ( nReceived==0 ) THEN
@@ -1236,10 +1247,10 @@ RETURN
       DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
       RETURN
     ELSE
-      CALL Info('ChangeParticlePartition','Global number of particles to recieve: '&
-          //TRIM(I2S(nReceived)),Level=10)      
+      CALL Info('ChangeParticlePartition','Global number of particles to receive: '&
+          //TRIM(I2S(nReceived)),Level=10)
     END IF
-   
+
     n = SUM( ExcInfo(1:NoPartitions) % n )
     CALL Info('ChangeParticlePartition','Total number of particles to sent: '&
         //TRIM(I2S(n)),Level=10)
@@ -1309,7 +1320,6 @@ RETURN
       IF( Var % Dofs /= 1 ) CALL Warn('ChangeParticlePartition','Implement for vectors!')
       Var => Var % Next 
     END DO
-
 
     ncompInt = 0
     IF ( ASSOCIATED(Particles % NodeIndex) ) ncompInt = ncompInt + 1
@@ -1415,10 +1425,6 @@ RETURN
           DO l=1,n
             m = m + 1
             BufInt(m) = Particles % Partition(ExcInfo(j) % Particles(l))
-!If(Particles % Partition(ExcInfo(j) % Particles(l)) == 2 .AND. &
-!   Particles % NodeIndex(ExcInfo(j) % Particles(l)) == 325 ) then
-!  print*,parenv % mype, 'sending 325 to', neigh(j); flush(6)
-!endif
          END DO
         END IF
         CALL MPI_BSEND( BufInt, m, MPI_INTEGER, Neigh(j), 1003, ELMER_COMM_WORLD, ierr )
@@ -1436,10 +1442,9 @@ RETURN
 
     ! Recv particles:
     ! ---------------
-    CALL Info('ChangeParticlePartition','Now recieving particle data',Level=14)
-    
-    n = SUM(Recv_Parts)
+    CALL Info('ChangeParticlePartition','Now receiving particle data',Level=14)
 
+    n = SUM(Recv_Parts)
 
     CALL DeleteLostParticles(Particles)
     IF ( Particles % NumberOfParticles+n > Particles % MaxNumberOfParticles ) THEN
@@ -1455,8 +1460,7 @@ RETURN
       Faces => Mesh % Faces
       nFaces = Mesh % NumberOfFaces
     END IF
-    
-    
+
     DO i=1,NoPartitions
       n = Recv_Parts(i)
       IF ( n<=0 ) CYCLE
@@ -1466,12 +1470,15 @@ RETURN
       
       CALL MPI_RECV( Indexes, n, MPI_INTEGER, proc, &
           1001, ELMER_COMM_WORLD, status, ierr )
+
+      ALLOCATE(Failed(n))
+      Failed = .FALSE.
       
       n_part=Particles % NumberOfParticles
       DO j=1,n
         k=SearchElement( nFaces, Faces, Indexes(j) )
         IF ( k <= 0 ) THEN
-          PRINT*,ParEnv % myPE, 'failed'
+          Failed(j) = .TRUE.
           CYCLE
         END IF
         
@@ -1494,44 +1501,59 @@ RETURN
       n_part=Particles % NumberOfParticles
       m = 0
       DO k=1,dim
+        q = 0
         DO l=1,n
           m = m + 1
-          Particles % Coordinate(n_part+l,k) = Buf(m)
+          IF(Failed(l)) CYCLE
+          q = q + 1
+          Particles % Coordinate(n_part+q,k) = Buf(m)
         END DO
       END DO
       
       IF ( ASSOCIATED(Particles % Velocity) ) THEN
         DO k=1,dim
+          q = 0
           DO l=1,n
             m = m + 1
-            Particles % Velocity(n_part+l,k) = Buf(m)
+            IF(Failed(l)) CYCLE
+            q = q + 1
+            Particles % Velocity(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
 
       IF ( ASSOCIATED(Particles % Force) ) THEN
         DO k=1,dim
+          q = 0
           DO l=1,n
             m = m + 1
-            Particles % Force(n_part+l,k) = Buf(m)
+            IF(Failed(l)) CYCLE
+            q = q + 1
+            Particles % Force(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
 
       IF ( ASSOCIATED(Particles % PrevCoordinate) ) THEN
         DO k=1,dim
+          q = 0
           DO l=1,n
             m = m + 1
-            Particles % PrevCoordinate(n_part+l,k) = Buf(m)
+            IF (Failed(l)) CYCLE
+            q = q + 1
+            Particles % PrevCoordinate(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
 
       IF ( ASSOCIATED(Particles % PrevVelocity) ) THEN
         DO k=1,dim
+          q  = 0
           DO l=1,n
             m = m + 1
-            Particles % PrevVelocity(n_part+l,k) = Buf(m)
+            IF (Failed(l)) CYCLE
+            q = q + 1
+            Particles % PrevVelocity(n_part+q,k) = Buf(m)
           END DO
         END DO
       END IF
@@ -1539,9 +1561,12 @@ RETURN
       Var => Particles % Variables
       DO WHILE( ASSOCIATED(Var) )
         IF( Var % Dofs == 1 ) THEN
+          q = 0
           DO l=1,n
             m = m + 1
-            Var % Values(n_part+l) = Buf(m)
+            IF(Failed(l)) CYCLE
+            q = q + 1
+            Var % Values(n_part+q) = Buf(m)
           END DO
         END IF
         Var => Var % Next 
@@ -1556,28 +1581,32 @@ RETURN
         
        CALL MPI_RECV( BufInt, m, MPI_INTEGER, proc, 1003, ELMER_COMM_WORLD, status, ierr )
         
-        n_part=Particles % NumberOfParticles
-        m = 0
-        IF( ASSOCIATED( Particles % NodeIndex ) ) THEN
-          DO l=1,n
-            m = m + 1
-            Particles % NodeIndex(n_part+l) = BufInt(m)
-          END DO
-        END IF
-        IF( ASSOCIATED( Particles % Partition ) ) THEN
-          DO l=1,n
-            m = m + 1
-            Particles % Partition(n_part+l) = BufInt(m)
-!if ( particles % partition(n_part+l)==2 .and. particles % nodeindex(n_part+l) == 325 ) then
-!  print*,'yyyy: ', particles % coordinate(n_part+l,:); flush(6)
-!endif
-          END DO
-        END IF
-        DEALLOCATE(BufInt)
+       m = 0
+       IF( ASSOCIATED( Particles % NodeIndex ) ) THEN
+         q = 0
+         DO l=1,n
+           m = m + 1
+           IF(Failed(l)) CYCLE
+           q = q + 1
+           Particles % NodeIndex(n_part+q) = BufInt(m)
+         END DO
+       END IF
+
+       IF( ASSOCIATED( Particles % Partition ) ) THEN
+         q = 0
+         DO l=1,n
+           m = m + 1
+           IF(Failed(l)) CYCLE
+           q = q + 1
+           Particles % Partition(n_part+q) = BufInt(m)
+         END DO
+       END IF
+
+       DEALLOCATE(BufInt)
       END IF
       
-      Particles % NumberOfParticles = Particles % NumberOfParticles + n
-      DEALLOCATE(Indexes)
+      Particles % NumberOfParticles = Particles % NumberOfParticles + COUNT(.NOT.Failed)
+      DEALLOCATE(Indexes, Failed)
     END DO
     
     DEALLOCATE(Recv_Parts, Neigh, Requests)
@@ -1655,14 +1684,16 @@ RETURN
     INTEGER, ALLOCATABLE :: SentInt(:),RecvInt(:)
     !---------------------------------------------------------
     
-    CALL Info('ParticleAdvectParallel','Returning particle info to their initiating partition',Level=15)
+    CALL Info('ParticleAdvectParallel',&
+        'Returning particle info to their initiating partition',Level=15)
 
     nReceived = 0
     IF( ParEnv% PEs == 1 ) RETURN
     
     Mesh => GetMesh()
     dim = Particles % dim
-    
+
+!debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
     NoPartitions = ParEnv % PEs
     NoParticles = Particles % NumberOfParticles
 
@@ -1682,6 +1713,7 @@ RETURN
       Part = Particles % Partition(i)
       IF( Part-1 == ParEnv % MyPe ) THEN
         j = Particles % NodeIndex(i)
+        IF ( j==0 ) CYCLE
         RecvField(j) = SentField(i)
       END IF
     END DO
@@ -1718,8 +1750,8 @@ RETURN
       CALL Info('ParticleAdvectParallel','Global particles to be sent: '&
           //TRIM(I2S(nSent)),Level=12)
     ELSE
-      ! If nobody is sending any particles then there can be no need to reveive particles either
-      ! Thus we can make an early exit. 
+      ! If nobody is sending any particles then there can be no need to receive particles either
+      ! Thus we can make an early exit.
       DEALLOCATE(SentParts, RecvParts, Requests )
       CALL Info('ParticleAdvectParallel','Nothing to do in parallel!',Level=15)
       RETURN
@@ -1729,20 +1761,18 @@ RETURN
     !--------------------------
     DO i=1,NoPartitions
       IF( i-1 == ParEnv % MyPe ) CYCLE
-      CALL MPI_iRECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
-          1000, ELMER_COMM_WORLD, requests(i), ierr )
-    END DO
-    
-    DO i=1,NoPartitions
-      IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_BSEND( SentParts(i), 1, MPI_INTEGER, i-1, &
           1000, ELMER_COMM_WORLD, ierr )
     END DO
-    CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
 
-    
+    DO i=1,NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
+      CALL MPI_RECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
+          1000, ELMER_COMM_WORLD, Status, ierr )
+    END DO
+
     n = SUM(RecvParts)
-    CALL Info('ParticleAdvectParallel','Particles to be recieved: '//TRIM(I2S(n)),Level=12)
+    CALL Info('ParticleAdvectParallel','Particles to be received: '//TRIM(I2S(n)),Level=12)
 
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, ELMER_COMM_WORLD, ierr )
@@ -1752,28 +1782,28 @@ RETURN
       RETURN
     END IF
 
-    CALL Info('ParticleAdvectParallel','Total number of particles to be recieved: '&
-        //TRIM(I2S(nReceived)),Level=12)    
+    CALL Info('ParticleAdvectParallel','Total number of particles to be received: '&
+        //TRIM(I2S(nReceived)),Level=12)
 
     n = 2*(n + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
 
-    CALL Info('ParticleAdvectParallel','Buffer size for sending and recieving: ' &
-        //TRIM(I2S(n)),Level=14)    
+    CALL Info('ParticleAdvectParallel','Buffer size for sending and receiving: ' &
+        //TRIM(I2S(n)),Level=14)
 
 
-    ! Allocate sent and recieve buffers based on the maximum needed size.
+    ! Allocate sent and receive buffers based on the maximum needed size.
     !--------------------------------------------------------------------
     n = MAXVAL( SentParts )
     ALLOCATE( SentReal(n), SentInt(n) )
     CALL Info('ParticleAdvectParallel','Allocating sent buffer of size: '&
         //TRIM(I2S(n)),Level=18)
 
-    n = MAXVAL( RecvParts ) 
+    n = MAXVAL( RecvParts )
     ALLOCATE( RecvReal(n), RecvInt(n) )
-    CALL Info('ParticleAdvectParallel','Allocating recieve buffer of size: '&
+    CALL Info('ParticleAdvectParallel','Allocating receive buffer of size: '&
         //TRIM(I2S(n)),Level=18)
-   
+
     ! Send particles:
     ! ---------------
     CALL Info('ParticleAdvectParallel','Now sending field',Level=14)
@@ -1781,7 +1811,6 @@ RETURN
     DO j=1,NoPartitions
 
       IF( j-1 == ParEnv % MyPe ) CYCLE
-
       IF( SentParts(j) == 0 ) CYCLE
 
       m = 0
@@ -1802,10 +1831,10 @@ RETURN
 
 
     ! Recv particles:
-    ! ---------------   
-    CALL Info('ParticleAdvectParallel','Now recieving field',Level=14)
+    ! ---------------
+    CALL Info('ParticleAdvectParallel','Now receiving field',Level=14)
 
-    nerr = 0 
+    nerr = 0
     DO j=1,NoPartitions
 
       IF( j-1 == ParEnv % MyPe ) CYCLE
@@ -1828,11 +1857,10 @@ RETURN
         RecvField(k) = RecvReal(l)
       END DO
     END DO
-        
-    IF( nerr > 0 ) THEN
-      CALL Info('ParticleAdvectParallel','Invalid recieved index in particles: '//TRIM(I2S(nerr)))
-    END IF
 
+    IF( nerr > 0 ) THEN
+      CALL Info('ParticleAdvectParallel','Invalid received index in particles: '//TRIM(I2S(nerr)))
+    END IF
 
     CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
@@ -1978,16 +2006,15 @@ RETURN
       TotParticleStepsTaken =  ParticleStepsTaken
     END IF
     
-    IF ( ParEnv % mype==0 ) THEN
-      WRITE (Message,'(A,T22,I12)') 'Active particles:',TotNoParticles
-      CALL Info('ParticleInformation',Message)
-      WRITE (Message,'(A,T22,ES12.2)') 'Elapsed time:',tottime
-      CALL Info('ParticleInformation',Message)
-      WRITE (Message,'(A,T22,I12)') 'Time steps taken:',TimeStepsTaken
-      CALL Info('ParticleInformation',Message)
-      WRITE (Message,'(A,T22,I12)') 'Particle steps taken:',TotParticleStepsTaken
-      CALL Info('ParticleInformation',Message)
-    END IF
+    WRITE (Message,'(A,T22,I12)') 'Active particles:',TotNoParticles
+    CALL Info('ParticleInformation',Message,Level=6)
+    WRITE (Message,'(A,T22,ES12.2)') 'Elapsed time:',tottime
+    CALL Info('ParticleInformation',Message,Level=6)
+    WRITE (Message,'(A,T22,I12)') 'Time steps taken:',TimeStepsTaken
+    CALL Info('ParticleInformation',Message,Level=8)
+    WRITE (Message,'(A,T22,I12)') 'Particle steps taken:',TotParticleStepsTaken
+    CALL Info('ParticleInformation',Message,Level=8)
+
   END SUBROUTINE ParticleInformation
 
 
@@ -2059,14 +2086,183 @@ RETURN
     CharSpeed = SQRT( CharSpeed ) 
     CharSpeed = MAX( Charspeed, TINY( CharSpeed ) )
     
-    IF(.FALSE.) THEN
-      WRITE( Message,'(A,E13.6)') 'Speed for timestep control:',CharSpeed
-      CALL Info('CharacteristicSpeed',Message )
-    END IF
+    WRITE( Message,'(A,E13.6)') 'Speed for timestep control:',CharSpeed
+    CALL Info('CharacteristicSpeed',Message,Level=12)
     
   END FUNCTION CharacteristicSpeed
 
 
+
+  !---------------------------------------------------------
+  !> Computes the characterestic time spent in an element
+  !> Currently computed just for one element as computing the 
+  !> size of element is a timeconsuming operation.
+  !---------------------------------------------------------
+  FUNCTION CharacteristicElementSize( Particles, No ) RESULT ( ElementSize )
+    
+    TYPE(Particle_t), POINTER :: Particles
+    REAL(KIND=dp) :: CharTime
+    INTEGER, OPTIONAL :: No
+    
+    REAL(KIND=dp) :: ElementSize, u, v, w, DetJ, h0, h
+    REAL(KIND=dp) :: ElementSizeMin, ElementSizeMax, ElementSizeAve
+    REAL(KIND=dp), POINTER :: Basis(:), SizeValues(:)
+    LOGICAL :: Stat, ConstantDt, UseMinSize, Found, Visited = .FALSE.
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: i, t, n, NoElems, dim
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Variable_t), POINTER :: ElementSizeVar
+    TYPE(ValueList_t), POINTER :: Params
+    
+    SAVE Visited, Mesh, dim, Nodes, Basis, h0, SizeValues
+
+    ConstantDt = .NOT. PRESENT( No ) 
+    
+    
+    IF( Visited ) THEN
+      IF( ConstantDt ) THEN
+        ElementSize = h0       
+      ELSE
+        i = Particles % ElementIndex(No)        
+        IF( i > 0 ) THEN
+          ElementSize = SizeValues(i)
+        END IF
+      END IF
+      RETURN
+    END IF
+    
+    Mesh => GetMesh()
+    n = Mesh % MaxElementNodes
+    dim = Mesh % MeshDim
+    ALLOCATE( Basis(n) )
+    NoElems = Mesh % NumberOfBulkElements    
+ 
+    IF( .NOT. ConstantDt ) THEN
+      ! Use existing variable only if it is of correct size!
+      ElementSizeVar => VariableGet( Mesh % Variables,'Element Size' )
+      NULLIFY( SizeValues ) 
+      IF( ASSOCIATED( ElementSizeVar ) ) THEN
+        SizeValues => ElementSizeVar % Values
+        IF( ASSOCIATED( SizeValues ) ) THEN
+          IF( SIZE( SizeValues ) /= NoElems ) NULLIFY( SizeValues )
+        END IF
+      END IF
+      IF( .NOT. ASSOCIATED( SizeValues ) ) THEN
+        ALLOCATE( SizeValues( NoElems ) )
+      END IF
+      SizeValues = 0.0_dp
+    END IF
+      
+    ElementSizeMin = HUGE( ElementSizeMin ) 
+    ElementSizeMax = 0.0_dp
+    ElementSizeAve = 0.0_dp
+    NoElems = Mesh % NumberOfBulkElements    
+    
+    DO t=1,NoElems
+      Element => Mesh % Elements(t)      
+      CALL GetElementNodes( Nodes, Element ) 
+      n = Element % TYPE % NumberOfNodes
+
+      IP = GaussPoints( Element )
+      u = SUM( IP % u ) / IP % n 
+      v = SUM( IP % v ) / IP % n 
+      w = SUM( IP % w ) / IP % n 
+
+      stat = ElementInfo( Element, Nodes, U, V, W, detJ, Basis )
+      h = detJ ** (1.0_dp / dim ) 
+      ElementSizeMin  = MIN( ElementSizeMin, h )
+      ElementSizeMax  = MAX( ElementSizeMax, h )
+      ElementSizeAve  = ElementSizeAve + h 
+
+      IF( .NOT. ConstantDt ) SizeValues(t) = h     
+    END DO
+
+    ElementSizeMin = ParallelReduction( ElementSizeMin, 1 ) 
+    ElementSizeMax = ParallelReduction( ElementSizeMax, 2 ) 
+    ElementSizeAve = ParallelReduction( ElementSizeAve ) 
+    NoElems = NINT( ParallelReduction( 1.0_dp * NoElems ) )
+    
+    ElementSizeAve = ElementSizeAve / NoElems 
+
+    WRITE(Message,'(A,ES12.3)') 'Minimum element size:',ElementSizeMin
+    CALL Info('CharacteristicElementSize', Message,Level=12)
+
+    WRITE(Message,'(A,ES12.3)') 'Maximum element size:',ElementSizeMax
+    CALL Info('CharacteristicElementSize', Message,Level=12)
+
+    WRITE(Message,'(A,ES12.3)') 'Average element size:',ElementSizeAve
+    CALL Info('CharacteristicElementSize', Message,Level=12)
+
+    Params => ListGetSolverParams()
+    UseMinSize = GetLogical( Params,'Characteristic Minimum Size',Found)
+    IF( UseMinSize ) THEN
+      h0 = ElementSizeMin
+    ELSE
+      h0 = ElementSizeAve
+    END IF
+          
+    Visited = .TRUE.
+    
+  END FUNCTION CharacteristicElementSize
+
+
+
+  !-----------------------------------------------------------------------
+  !> Computes the characterestic time spent for each direction separately.
+  !> Currently can only be computed for one particle at a time. 
+  !-----------------------------------------------------------------------
+  FUNCTION CharacteristicUnisoTime( Particles, No ) RESULT ( CharTime )
+    
+    TYPE(Particle_t), POINTER :: Particles
+    REAL(KIND=dp) :: CharTime
+    INTEGER, OPTIONAL :: No
+    
+    REAL(KIND=dp) :: Center(3),CartSize(3),Velo(3)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: i, t, n, dim
+    LOGICAL :: Visited = .FALSE.
+    
+    SAVE Visited, Mesh, dim, Nodes
+
+    IF(.NOT. Visited ) THEN
+      Mesh => GetMesh()
+      dim = Mesh % MeshDim
+      Visited = .TRUE.
+    END IF
+
+    ! Absolute of velocity in each direction
+    Velo(1:dim) = ABS( Particles % Velocity(No,1:dim) )
+
+    t = Particles % ElementIndex(No)               
+    Element => Mesh % Elements(t)      
+    CALL GetElementNodes( Nodes, Element ) 
+    n = Element % TYPE % NumberOfNodes
+
+    ! Center point of element
+    Center(1) = SUM( Nodes % x(1:n) ) / n
+    Center(2) = SUM( Nodes % y(1:n) ) / n
+    Center(3) = SUM( Nodes % z(1:n) ) / n
+
+    ! Average distance from center multiplied by two in eadh direction
+    CartSize(1) = 2 * SUM( ABS( Nodes % x(1:n) - Center(1) ) ) / n
+    CartSize(2) = 2 * SUM( ABS( Nodes % y(1:n) - Center(2) ) ) / n
+    CartSize(3) = 2 * SUM( ABS( Nodes % z(1:n) - Center(3) ) ) / n
+
+    CharTime = HUGE( CharTime )
+    DO i=1,dim
+      IF( CharTime * Velo(i) > CartSize(i) ) THEN
+        CharTime = CartSize(i) / Velo(i)
+      END IF      
+    END DO
+    
+  END FUNCTION CharacteristicUnisoTime
+
+
+  
   !---------------------------------------------------------
   !> Computes the characterestic time spent in an element
   !> Currently computed just for one element as computing the 
@@ -2077,65 +2273,18 @@ RETURN
     TYPE(Particle_t), POINTER :: Particles
     REAL(KIND=dp) :: CharTime
     INTEGER, OPTIONAL :: No
-    
-    REAL(KIND=dp) :: CharSpeed, ElementSize, u, v, w, DetJ
-    REAL(KIND=dp), POINTER :: Basis(:)
-    LOGICAL :: Stat, Visited = .FALSE.
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Nodes_t) :: Nodes
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: t, n, dim, ElementFamily
-    
-    SAVE Visited, Mesh, dim, Nodes, Basis
 
-    
-    IF( .NOT. Visited ) THEN
-      Visited = .TRUE.      
-      Mesh => GetMesh()
-      n = Mesh % MaxElementNodes
-      dim = Mesh % MeshDim
-      ALLOCATE( Basis(n) )
-   END IF	
+    REAL(KIND=dp) :: CharSpeed, CharSize
 
-   IF( PRESENT( No ) ) THEN
-     t = Particles % ElementIndex(No)
-     IF( t == 0 ) THEN
-       CALL Warn('CharacteristicElementTime','ElementIndex not defined!')
-       CharTime = 1.0_dp 
-       RETURN
-     END IF
-   ELSE 
-     ! Note: the elements are assumed to be of equal size!!!
-     t = 1
-   END IF
- 
+    CharSpeed = CharacteristicSpeed( Particles, No ) 
+    CharSize = CharacteristicElementSize( Particles, No ) 
+    CharTime = CharSize / CharSpeed
 
-   Element => Mesh % Elements(t)      
-   CALL GetElementNodes( Nodes, Element ) 
-   n = Element % TYPE % NumberOfNodes
-   ElementFamily  = GetElementFamily( Element )
+    IF( .NOT. PRESENT( No ) ) THEN
+      WRITE(Message,'(A,ES12.3)') 'Characteristic time of particle:',CharTime
+      CALL Info('CharacteristicElementTime', Message,Level=10)
+    END IF
       
-      
-   IF( ElementFamily == 3 ) THEN
-     u = 1.0/3.0_dp
-     v = 1.0/3.0_dp
-     w = 0.0_dp
-   ELSE IF( ElementFamily == 5 ) THEN
-     u = 0.25_dp
-     v = 0.25_dp
-     w = 0.25_dp
-   ELSE
-     u = 0.0_dp
-     v = 0.0_dp
-     w = 0.0_dp
-   END IF
-      
-   stat = ElementInfo( Element, Nodes, U, V, W, detJ, Basis )
-   ElementSize = detJ ** ( 1.0_dp / dim )
-        
-   CharSpeed = CharacteristicSpeed( Particles, No ) 
-   CharTime = ElementSize / CharSpeed
-    
   END FUNCTION CharacteristicElementTime
   
   
@@ -2202,34 +2351,35 @@ RETURN
   !> Initialize particle positions and velocities with a number of different
   !> methods, both random and uniform.
   !-------------------------------------------------------------------------
-  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, Group ) 
+  SUBROUTINE InitializeParticles( Particles, InitParticles, AppendParticles, Group, SaveOrigin ) 
     
     TYPE(Particle_t), POINTER :: Particles
     INTEGER, OPTIONAL :: InitParticles
     LOGICAL, OPTIONAL :: AppendParticles
     INTEGER, OPTIONAL :: Group
+    LOGICAL, OPTIONAL :: SaveOrigin
     
     TYPE(ValueList_t), POINTER :: Params, BodyForce 
-    TYPE(Variable_t), POINTER :: Var
+    TYPE(Variable_t), POINTER :: Var, AdvVar
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Nodes_t) :: Nodes
     INTEGER :: Offset, NewParticles,LastParticle,NoElements
     INTEGER :: dim, ElementIndex, body_id, bf_id
     REAL(KIND=dp), POINTER :: rWork(:,:),Coordinate(:,:), Velocity(:,:)
-    REAL(KIND=dp) :: Velo(3), Coord(3), Center(3), time0, dist
+    REAL(KIND=dp) :: Velo(3), Coord(3), Center(3), CenterVelo(3), time0, dist
     CHARACTER(LEN=MAX_NAME_LEN) :: InitMethod
-    INTEGER :: i,j,k,l,n,vdofs,nonodes, InitStatus, TotParticles
+    INTEGER :: i,j,k,l,n,vdofs,nonodes, InitStatus, TotParticles, No
     INTEGER, POINTER :: MaskPerm(:), InvPerm(:), NodeIndexes(:)
-    LOGICAL :: Found, GotIt, GotMask, RequirePositivity, ContinuousNumbering, GotWeight
+    LOGICAL :: Found, GotIt, GotMask, RequirePositivity, GotWeight
     REAL(KIND=dp), POINTER :: InitialValues(:,:)
     REAL(KIND=dp) :: mass,boltz,temp,coeff,eps,frac,meanval 
     REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), Diam, DetJ, MinDetJ, MaxDetJ, &
-        MinWeight, MaxWeight, MeanWeight
+        MinWeight, MaxWeight, MeanWeight, Phi
     REAL(KIND=dp), POINTER :: MaskVal(:)
     REAL(KIND=dp), ALLOCATABLE :: Weight(:)
     INTEGER :: nx,ny,nz,nmax,ix,iy,iz,ind
-    LOGICAL :: CheckForSize, Parallel    
+    LOGICAL :: CheckForSize, Parallel, SaveParticleOrigin
     LOGICAL, POINTER :: DoneParticle(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, str
     
@@ -2240,6 +2390,12 @@ RETURN
     Params => ListGetSolverParams()
     dim = Particles % Dim
     Parallel = ( ParEnv % PEs > 1 )
+
+    IF( PRESENT( SaveOrigin ) ) THEN
+      SaveParticleOrigin = SaveOrigin
+    ELSE
+      SaveParticleOrigin = .FALSE.
+    END IF
     
     !------------------------------------------------------------------------
     ! Initialize the timestepping strategy stuff
@@ -2328,7 +2484,7 @@ RETURN
               IF( meanval < 0.0_dp ) CYCLE
             END IF
 
-            ! If some of bulk elements have been found avtive
+            ! If some of bulk elements have been found active
             j = j + 1
             InvPerm(j) = i
 
@@ -2400,7 +2556,8 @@ RETURN
         nz = 1
       END IF
     END IF
-    
+
+    AdvVar => VariableGet( Mesh % Variables,'AdvectorData')
     
     !------------------------------------------------------------------------
     ! Now decide on the number of particles.
@@ -2411,8 +2568,12 @@ RETURN
       Offset = 0
     END IF
     
+    
     IF( PRESENT( InitParticles ) ) THEN
       NewParticles = InitParticles
+    ELSE IF( ASSOCIATED( AdvVar ) ) THEN
+      NewParticles = SIZE( AdvVar % Values )
+      CALL Info('InitializeParticles','Using pre-existing ParticleData variable to define particles!')
     ELSE
       IF( InitMethod == 'box uniform cubic') THEN
         NewParticles = nx * ny * nz
@@ -2474,6 +2635,21 @@ RETURN
     !-------------------------------------------------------------------------    
     CALL AllocateParticles( Particles, LastParticle )
 
+    IF( SaveParticleOrigin ) THEN   
+      IF(.NOT. ASSOCIATED( Particles % NodeIndex ) ) THEN
+        ALLOCATE( Particles % NodeIndex( NewParticles ) )
+        Particles % NodeIndex = 0
+      END IF
+       
+      IF( Parallel ) THEN
+        IF(.NOT. ASSOCIATED( Particles % Partition ) ) THEN
+          ALLOCATE( Particles % Partition( NewParticles ) )
+        END IF
+        Particles % Partition = ParEnv % MyPe + 1
+      END IF
+    END IF
+        
+    
     IF( Particles % NumberOfGroups > 0 ) THEN
       IF( .NOT. PRESENT( Group ) ) THEN
         CALL Fatal('InitializeParticles','Group used inconsistently!')
@@ -2503,19 +2679,8 @@ RETURN
         IF( dim == 3 ) Coordinate(k,3) = Mesh % Nodes % z(j)
       END DO
 
-      ContinuousNumbering = .FALSE.
-      IF( GotMask ) THEN
-        IF( NewParticles == MAXVAL( MaskPerm ) ) ContinuousNumbering = .TRUE.
-      ELSE IF( NewParticles == Mesh % NumberOfNodes ) THEN
-        ContinuousNumbering = .TRUE.
-      END IF
 
-      IF( ContinuousNumbering ) THEN
-        IF(.NOT. ASSOCIATED( Particles % NodeIndex ) ) THEN
-          ALLOCATE( Particles % NodeIndex( NewParticles ) )
-          Particles % NodeIndex = 0
-        END IF
-        
+      IF( SaveParticleOrigin ) THEN
         DO i=1,Mesh % NumberOfBulkElements
           CurrentElement => Mesh % Elements(i)
           NodeIndexes =>  CurrentElement % NodeIndexes
@@ -2530,14 +2695,6 @@ RETURN
             Particles % NodeIndex(k) = NodeIndexes(j)
           END DO
         END DO
-
-        IF( Parallel ) THEN
-          IF(.NOT. ASSOCIATED( Particles % Partition ) ) THEN
-            ALLOCATE( Particles % Partition( NewParticles ) )
-            Particles % Partition = ParEnv % MyPe + 1
-          END IF
-        END IF
-
       END IF
 
 
@@ -2690,9 +2847,11 @@ RETURN
         CurrentElement => Mesh % Elements(j)
         NodeIndexes =>  CurrentElement % NodeIndexes
         n = CurrentElement % TYPE % NumberOfNodes
-        Coordinate(k,1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
-        Coordinate(k,2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
-        IF( dim == 3 ) Coordinate(k,3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
+        Coord(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
+        Coord(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
+        IF( dim == 3 ) Coord(3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
+
+        Coordinate(k,1:dim) = Coord(1:dim)
         
         ! Only a bulk element may own a particle
         IF( j <= Mesh % NumberOfBulkElements ) THEN
@@ -2700,6 +2859,158 @@ RETURN
         END IF
       END DO
 
+      IF( SaveParticleOrigin ) THEN
+        ! For now the initial index is confusingly named always "NodeIndex"
+        Particles % NodeIndex = Particles % ElementIndex
+      END IF
+
+    CASE ('advector')
+      CALL Info('InitializeParticles',&
+          'Initializing particles evenly on scaled dg points',Level=10)
+
+      AdvVar => VariableGet( Mesh % Variables,'AdvectorData' )
+      IF( .NOT. ASSOCIATED( AdvVar ) ) THEN
+        CALL Fatal('InitializeParticles','Variable >AdvectorData< should exist!')
+      END IF
+
+      VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
+      IF(.NOT. GotIt) VariableName = 'Flow Solution'
+      Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
+      IF( .NOT. ASSOCIATED( Var ) ) THEN
+        CALL Fatal('InitializeParticles','Velocity variable needed to initialize advector')
+      END IF
+      vdofs = Var % Dofs
+      
+      NewParticles = SIZE( AdvVar % Values )
+      
+      DO i=1,NoElements                       
+        CurrentElement => Mesh % Elements(i)
+        NodeIndexes =>  CurrentElement % NodeIndexes
+        n = CurrentElement % TYPE % NumberOfNodes
+
+        IF( AdvVar % TYPE /= Variable_on_gauss_points ) THEN        
+          Center(1) = SUM( Mesh % Nodes % x(NodeIndexes ) ) / n
+          Center(2) = SUM( Mesh % Nodes % y(NodeIndexes ) ) / n
+          IF( dim == 3 ) Center(3) = SUM( Mesh % Nodes % z(NodeIndexes ) ) / n
+          DO j=1,dim
+            CenterVelo(j) = SUM( Var % Values(vdofs*(Var % Perm(NodeIndexes)-1)+j) ) / n
+          END DO
+        END IF
+
+        IF( AdvVar % TYPE == Variable_on_elements ) THEN
+          No = AdvVar % Perm( i )
+          IF( No == 0 ) CYCLE
+          Coordinate(No,1:dim) = Center(1:dim)
+
+          Velocity(No,1:dim) = CenterVelo(1:dim) 
+
+          Particles % ElementIndex(No) = i
+          IF( SaveParticleOrigin ) THEN
+            Particles % NodeIndex(No) = No
+          END IF
+
+
+        ELSE IF( AdvVar % Type == Variable_on_nodes_on_elements ) THEN
+
+          BLOCK
+            REAL(KIND=dp) :: DgScale
+            LOGICAL :: GotScale
+          
+            DGScale = ListGetCReal( Params,'DG Nodes Scale',GotScale )
+            IF(.NOT. GotScale ) DgScale = 1.0 / SQRT( 3.0_dp ) 
+            GotScale = ( ABS( DGScale - 1.0_dp ) > TINY( DgScale ) )
+            
+            DO j = 1, n
+              No = AdvVar % Perm( CurrentElement % DgIndexes(j) )
+              IF( No == 0 ) CYCLE
+              k = NodeIndexes(j)
+              Coord(1) = Mesh % Nodes % x(k)
+              Coord(2) = Mesh % Nodes % y(k)
+              IF( dim == 3 ) Coord(3) = Mesh % Nodes % z(k)            
+
+              DO l=1,dim
+                Velo(l) = Var % Values(vdofs*(Var % Perm(k)-1)+l) 
+              END DO
+
+              IF( GotScale ) THEN
+                Coord(1:dim) = Center(1:dim) + ( Coord(1:dim) - Center(1:dim) ) * DgScale 
+                Velo(1:dim) = CenterVelo(1:dim) + (Velo(1:dim) - CenterVelo(1:dim)) * DgScale
+              END IF
+
+              Coordinate(No,1:dim) = Coord(1:dim) 
+              Velocity(No,1:dim) = Velo(1:dim) 
+
+              Particles % ElementIndex(No) = i
+
+              IF( SaveParticleOrigin ) THEN
+                Particles % NodeIndex(No) = No                       
+              END IF
+            END DO
+          END BLOCK
+
+            
+        ELSE IF( AdvVar % TYPE == Variable_on_gauss_points ) THEN
+
+          BLOCK
+            TYPE(GaussIntegrationPoints_t) :: IP
+            REAL(KIND=dp) :: detJ, Basis(27)
+            LOGICAL :: stat
+            TYPE(Nodes_t), SAVE :: Nodes
+            INTEGER :: m
+            LOGICAL :: Debug
+
+            Debug = ( i == 0 )
+            
+            IF( i == 1 ) THEN
+              m = 27
+              ALLOCATE( Nodes % x(m), Nodes % y(m), Nodes % z(m))
+            END IF
+
+            Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+            Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+            Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+
+            IF( debug ) THEN
+              PRINT *,'x:',nodes % x(1:n) 
+              PRINT *,'y:',nodes % y(1:n) 
+              PRINT *,'z:',nodes % z(1:n) 
+            END IF
+            
+            m = AdvVar % Perm(i+1) - AdvVar % Perm(i) 
+            IF( m == 0 ) CYCLE
+
+            IP = GaussPoints(CurrentElement, m )
+            
+            DO j = 1, IP % n 
+              stat = ElementInfo( CurrentElement, Nodes, IP % v(j), IP % u(j), IP % w(j), detJ, Basis ) 
+              No = AdvVar % Perm(i) + j
+              
+              Coord(1) = SUM( Basis(1:n) * Nodes % x(1:n) )
+              Coord(2) = SUM( Basis(1:n) * Nodes % y(1:n) )
+              IF( dim == 3 ) Coord(3) = SUM( Basis(1:n) * Nodes % z(1:n) )
+
+              DO l=1,dim
+                Velo(l) = SUM( Basis(1:n) * Var % Values(vdofs*(Var % Perm(NodeIndexes)-1)+l ) )
+              END DO
+
+              IF( Debug ) THEN
+                PRINT *,'j:',j,m,No,Coord(1:dim),Velo(1:dim)
+              END IF
+                
+              Coordinate(No,1:dim) = Coord(1:dim)
+              Velocity(No,1:dim) = Velo(1:dim)
+              
+              Particles % ElementIndex(No) = i
+              IF( SaveParticleOrigin ) THEN
+                Particles % NodeIndex(No) = No                       
+              END IF
+            END DO            
+          END BLOCK
+
+        END IF
+      END DO
+      
       
     CASE ('sphere random')
       CALL Info('InitializeParticles',&
@@ -2849,7 +3160,9 @@ RETURN
     END SELECT
 
 
-    IF( GotMask .AND. ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    IF( GotMask ) THEN
+      IF ( ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    END IF
 
     !------------------------------------------------------------------------
     ! Velocities may be initialized using a given list, or obtaining them
@@ -2891,19 +3204,44 @@ RETURN
       IF(.NOT. GotIt) VariableName = 'Flow Solution'
       Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
       IF( .NOT. ASSOCIATED( Var ) ) THEN
-        CALL Warn('InitializeParticles','Velocity variable needed for method >nodal velocity<')
-      ELSE        
-        vdofs = Var % Dofs
-        DO i=1,NewParticles
-          k = Offset + i
-          l = Particles % NodeIndex(i)
-          l = Var % Perm(l)
-          DO j=1,dim
-            Velocity(k,j) = Var % Values(vdofs*(l-1)+j)
-          END DO
-        END DO
+        CALL Fatal('InitializeParticles','Velocity variable needed for method >nodal velocity<')
       END IF
 
+      vdofs = Var % Dofs
+      DO i=1,NewParticles
+        k = Offset + i
+        l = Particles % NodeIndex(i)
+        l = Var % Perm(l)
+        DO j=1,dim
+          Velocity(k,j) = Var % Values(vdofs*(l-1)+j)
+        END DO
+      END DO
+
+    CASE ('elemental velocity') 
+      CALL Info('InitializeParticles',&
+          'Initializing velocities from the corresponding elemental velocity',Level=10)
+      
+      VariableName = ListGetString( Params,'Velocity Variable Name',GotIt )
+      IF(.NOT. GotIt) VariableName = 'Flow Solution'
+      Var => VariableGet( Mesh % Variables, TRIM(VariableName) )
+      IF( .NOT. ASSOCIATED( Var ) ) THEN
+        CALL Fatal('InitializeParticles','Velocity variable needed for method >elemental velocity<')
+      END IF
+      vdofs = Var % Dofs
+
+      DO i=1,NewParticles
+        k = Offset + i
+        l = Particles % NodeIndex(i) ! now an elemental index
+        NodeIndexes => Mesh % Elements(l) % NodeIndexes
+        DO j=1,dim
+          Velocity(k,j) = SUM( Var % Values(vdofs*(Var % Perm(NodeIndexes)-1)+j) ) / SIZE( NodeIndexes )
+        END DO
+      END DO
+
+    CASE ('advector') 
+      CALL Info('InitializeParticles',&
+          'Velocities have been initialized together with the position',Level=10)
+      
     CASE ('thermal random')  
        CALL Info('InitializeParticles',&
           'Initializing velocities from a thermal distribution',Level=10)
@@ -2918,9 +3256,9 @@ RETURN
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
-          Velo(j) = coeff * NormalRandom()
+          Velo(j) = NormalRandom()
         END DO
-        Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
+        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
       END DO
 
     CASE ('even random')
@@ -2930,9 +3268,9 @@ RETURN
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
-          Velo(j) = coeff * (2*EvenRandom()-1)
+          Velo(j) = (2*EvenRandom()-1)
         END DO
-        Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
+        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
       END DO
 
     CASE ('constant random')
@@ -2942,9 +3280,21 @@ RETURN
       DO i=1,NewParticles
         k = Offset + i
         DO j=1,dim
-          Velo(j) =  coeff * (2*EvenRandom()-1)
+          Velo(j) =  (2*EvenRandom()-1)
         END DO
         Velo(1:dim) = Velo(1:dim) / SQRT(SUM(Velo(1:dim)**2))
+        Velocity(k,:) = Velocity(k,:) + coeff * Velo(1:dim)
+      END DO
+
+    CASE ('constant 2d')
+      CALL Info('InitializeParticles',&
+          'Initializing constant velocities evenly to space',Level=10)
+      
+      DO i=1,NewParticles
+        k = Offset + i
+        Phi = 2.0_dp * PI * i / NewParticles
+        Velo(1) = coeff * COS( Phi )
+        Velo(2) = coeff * SIN( Phi )
         Velocity(k,:) = Velocity(k,:) + Velo(1:dim)
       END DO
 
@@ -3174,10 +3524,10 @@ RETURN
     
   END SUBROUTINE SegmentElementIntersection2
   
-  
+
   !---------------------------------------------------------------------------
-  !> This subroutine tests whether a particle is within element using the 
-  !> consistant strategy with the above algorithm.
+  !> This subroutine tests whether a particle is within element using the
+  !> consistent strategy with the above algorithm.
   !---------------------------------------------------------------------------
   FUNCTION SegmentElementInside(Mesh,BulkElement,Rfin,Debug) RESULT ( Inside )
     !---------------------------------------------------------------------------
@@ -3727,7 +4077,7 @@ RETURN
 
         Problems(3) = Problems(3) + 1
         WRITE(Message,'(A,3ES10.3)') 'Losing particle '//TRIM(I2S(No))//' in: ',Rfin(1:3)
-        CALL Info('LocateParticlesInMesh',Message,Level=8)
+        CALL Info('LocateParticlesInMesh',Message,Level=15)
         
         ParticleStatus = PARTICLE_LOST
         EXIT
@@ -3786,13 +4136,14 @@ RETURN
     LOGICAL :: PartitionChangesOnly 
     INTEGER :: PartitionChanges, Status, ElementIndex, No, &
                NoParticles, dim, ElementIndex0
-    REAL(KIND=dp) :: Rinit(3), Rfin(3),Rfin0(3),Velo(3), Velo0(3)
+    REAL(KIND=dp) :: Rinit(3), Rfin(3),Rfin0(3),Velo(3), Velo0(3), dtime
     LOGICAL :: Stat, InitLocation, AccurateAtFace, AccurateAlways, AccurateNow, debug
     INTEGER :: FaceIndex, FaceIndex0, Status0, InitStatus
     REAL(KIND=dp) :: Lambda
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
-
+    TYPE(Variable_t), POINTER :: DtVar
+    
     CALL Info('LocateParticles','Locating particles in mesh',Level=10)
 
     Params => ListGetSolverParams()
@@ -3809,11 +4160,18 @@ RETURN
     AccurateAlways = ListGetLogical( Params,'Particle Accurate Always',Stat)
     AccurateAtFace = ListGetLogical( Params,'Particle Accurate At Face',Stat)
 
+    
+    IF( .NOT. Particles % DtConstant ) THEN
+      DtVar => ParticleVariableGet( Particles,'particle dt')
+      IF(.NOT. ASSOCIATED( DtVar ) ) THEN
+        CALL Fatal('ParticleAdvanceTimesteo','Variable timestep, > particle dt < should exist!')
+      END IF
+    END IF
+
 
 100 NoParticles = Particles % NumberOfParticles
 
     DO No = 1, NoParticles
-!debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
       
       Status = Particles % Status( No )
       InitStatus = Status
@@ -3822,7 +4180,11 @@ RETURN
       IF( Status < PARTICLE_INITIATED ) CYCLE
       IF( Status == PARTICLE_WALLBOUNDARY ) CYCLE
       IF( Status == PARTICLE_FIXEDCOORD ) CYCLE
-      
+
+      IF( .NOT. Particles % DtConstant ) THEN
+        IF( ABS( DtVar % Values(No) ) < TINY( dtime ) ) CYCLE
+      END IF
+              
       IF ( PartitionChangesOnly .AND. Status /= PARTICLE_PARTBOUNDARY ) CYCLE
       
       InitLocation = ( Status < PARTICLE_LOCATED ) 
@@ -3905,10 +4267,10 @@ RETURN
       CALL SetParticleCoord( Particles, No, Rfin  )                
       IF( ElementIndex == 0 ) Velo = 0.0_dp
 
-      CALL SetParticleVelo( Particles, No, Velo  )                
+      CALL SetParticleVelo( Particles, No, Velo  )
     END DO
 
-    ! Change the partion in where the particles are located
+    ! Change the partition in where the particles are located
     ! Only applies to parallel cases.
     !------------------------------------------------------------------------
     PartitionChanges = ChangeParticlePartition( Particles )
@@ -4274,7 +4636,7 @@ RETURN
 
   !-------------------------------------------------------------
   !> This subroutine may be used to enquire position dependent material data.
-  !> Also if the particle is splitted between two elements then this 
+  !> Also if the particle is split between two elements then this 
   !> routine can assess the data on the secondary mesh.
   !-------------------------------------------------------------
   FUNCTION GetMaterialPropertyInMesh(PropertyName, BulkElement, Basis, &
@@ -4437,8 +4799,8 @@ RETURN
       Particles % CumClosestParticle(i+1) = Particles % CumClosestParticle(i)+j
     END DO
     Particles % MaxClosestParticles = MaxClosest
-    
-    ! And finally, add the closest neigbours to the table 
+
+    ! And finally, add the closest neighbors to the table
     !----------------------------------------------------------------
     IF ( ASSOCIATED(Particles % ClosestParticle) ) &
         DEALLOCATE(Particles % ClosestParticle )
@@ -4871,9 +5233,9 @@ RETURN
   !> Advance the particles with a time step. The timestep may
   !> also be an intermediate Runge-Kutta step.
   !---------------------------------------------------------
-  SUBROUTINE ParticleAdvanceTimestep( Particles, RKstep )
+  SUBROUTINE ParticleAdvanceTimestep( Particles, RKstepInput )
     TYPE(Particle_t), POINTER :: Particles
-    INTEGER, OPTIONAL :: RKstep
+    INTEGER, OPTIONAL :: RKStepInput
 
     REAL(KIND=dp) :: dtime
     TYPE(Variable_t), POINTER :: Var, TimeVar, DistVar, DtVar
@@ -4881,7 +5243,7 @@ RETURN
     REAL(KIND=dp) :: ds, dCoord(3),Coord(3),Velo(3),Speed0,Speed
     INTEGER :: dim, Status, TimeOrder, No, NoMoving
     TYPE(ValueList_t), POINTER :: Params
-    INTEGER :: NoParticles
+    INTEGER :: NoParticles, RKStep
     LOGICAL :: Found, Visited = .FALSE.,RK2,HaveSpeed0
 
     REAL(KIND=dp) :: mass, drag
@@ -4925,6 +5287,8 @@ RETURN
     NoGroups = Particles % NumberOfGroups     
     NoMoving = 0
     RK2 = Particles % RK2
+    RKStep = 0
+    IF(PRESENT(RKStepInput)) RKStep=RKStepInput
 
     IF( RK2 .AND. .NOT. ASSOCIATED( Particles % PrevVelocity ) ) THEN
       ALLOCATE( Particles % PrevVelocity( &
@@ -4976,6 +5340,7 @@ RETURN
       IF( .NOT. Particles % DtConstant ) THEN
         dtime = Particles % DtSign * DtVar % Values(No)
         TimeVar % Values(No) = TimeVar % Values(No) + DtVar % Values(No)
+        IF( ABS( dtime ) < TINY( dtime ) ) CYCLE
       ELSE IF( GotTimeVar ) THEN
         TimeVar % Values(No) = TimeVar % Values(No) + Particles % dTime         
       END IF
@@ -5007,11 +5372,12 @@ RETURN
       ELSE
         CALL Fatal('ParticleAdvanceTimestep','Unknown time order')
       END IF
-
+       
+         
       IF( RK2 .AND. RKStep == 2 ) THEN
-        Velo(1:dim) = &
-          ( 2 * Particles % Velocity(No,:) - Particles % PrevVelocity(No,:) )
-      ELSE
+         Velo(1:dim) = &
+           ( 2 * Particles % Velocity(No,:) - Particles % PrevVelocity(No,:) )
+       ELSE
         Velo(1:dim) = Particles % Velocity(No,:) 	
       END IF
 
@@ -5055,15 +5421,15 @@ RETURN
   !---------------------------------------------------------
   !> Advance some tracer quantities related to the particles.
   !---------------------------------------------------------
-  SUBROUTINE ParticlePathIntegral( Particles, RKstep )
+  SUBROUTINE ParticlePathIntegral( Particles, RKstepInput )
     TYPE(Particle_t), POINTER :: Particles
-    INTEGER, OPTIONAL :: RKstep
+    INTEGER, OPTIONAL :: RKstepInput
 
     TYPE(Variable_t), POINTER :: TimeIntegVar, DistIntegVar, DtVar
     LOGICAL :: GotVar, RK2
     REAL(KIND=dp) :: ds,dtime,Coord(3),PrevCoord(3),LocalCoord(3),Velo(3),u,v,w,&
         SourceAtPath,detJ,RKCoeff
-    INTEGER :: dim, Status
+    INTEGER :: dim, Status, RKStep
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles, No, n, NoVar, i, j, bf_id
     LOGICAL :: Found, Stat, Visited = .FALSE.
@@ -5084,6 +5450,9 @@ RETURN
 
 
     ! If Runge-Kutta is used take the mid-point rule.
+    RKSTep = 0
+    IF( PRESENT( RKStepInput ) ) RKStep = RKStepInput
+
     IF( RKStep > 1 ) RETURN
     
     IF(.NOT. Visited ) THEN
@@ -5489,17 +5858,17 @@ RETURN
 
     INTEGER :: No, Status    
     REAL(KIND=dp) :: dt,dt0,tfin,tprev,dsgoal,hgoal,dtmax,dtmin,dtup,dtlow, &
-        CharSpeed, CharTime
-    LOGICAL :: GotIt,TfinIs,NStepIs,DsGoalIs,HgoalIs,DtIs,DtConstant
-    INTEGER :: nstep, TimeStep, PrevTimeStep = -1, flag
+        CharSpeed, CharTime, dtave
+    LOGICAL :: GotIt,TfinIs,NStepIs,DsGoalIs,HgoalIs,HgoalIsUniso,DtIs
+    INTEGER :: nstep, TimeStep, PrevTimeStep = -1
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: TimeVar, DtVar
     
     SAVE dt0,dsgoal,hgoal,dtmax,dtmin,DtIs,Nstep,&
-        tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,PrevTimeStep, &
-	DtConstant,DtVar,TimeVar
+        tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,HgoalIsUniso,PrevTimeStep, &
+	DtVar,TimeVar
     
-    dtout = 0.0_dp
+    dtout = 0.0_dp; dtave = 0._dp
 
     IF( InitInterval ) THEN
       Params => ListGetSolverParams()
@@ -5512,6 +5881,12 @@ RETURN
       
       ! Constraint by relative step size taken (1 means size of the element)
       hgoal = GetCReal( Params,'Timestep Courant Number',HGoalIs)
+
+      ! Constraint by relative step size taken (each cartesian direction of element)
+      HGoalIsUniso = .FALSE.
+      IF(.NOT. HGoalIs ) THEN
+        hgoal = GetCReal( Params,'Timestep Unisotropic Courant Number',HGoalIsUniso)
+      END IF
       
       Nstep = GetInteger( Params,'Max Timestep Intervals',GotIt)
       IF(.NOT. GotIt) Nstep = 1
@@ -5554,15 +5929,18 @@ RETURN
       IF( DtIs ) THEN
         dt = dt0 
       ELSE IF( DsGoalIs ) THEN
-        CharSpeed = CharacteristicSpeed( Particles, No )     
+        CharSpeed = CharacteristicSpeed( Particles )
         dt = dsgoal / CharSpeed
       ELSE IF( HgoalIs ) THEN
-        CharTime = CharacteristicElementTime( Particles, No )     
+        CharTime = CharacteristicElementTime( Particles )
         dt = Hgoal * CharTime ! ElementH / Speed
+        !PRINT *,'ratio of timesteps:',tfin/dt
       ELSE IF( tfinIs ) THEN
         dt = tfin / Nstep
+      ELSE IF( HgoalIsUniso ) THEN
+        CALL Fatal('GetParticleTimesStep','Cannot use unisotropic courant number with constant dt!')
       ELSE
-        CALL Fatal('GetParticlesTimeStep','Cannot determine timestep size!')
+        CALL Fatal('GetParticleTimeStep','Cannot determine timestep size!')
       END IF
 
       ! Constrain the timestep
@@ -5580,7 +5958,8 @@ RETURN
       dtout = dt
     ELSE 
       DtVar % Values = 0.0_dp
-
+      dtave = 0.0_dp
+      
       DO No = 1, Particles % NumberOfParticles
 
         Status = Particles % Status( No )
@@ -5591,22 +5970,19 @@ RETURN
 
 	tprev = TimeVar % Values(No)        
 
-	flag = 1
-
         IF( DtIs ) THEN
           dt = dt0 
-	  flag = 2
         ELSE IF( DsGoalIs ) THEN
           CharSpeed = CharacteristicSpeed( Particles, No )     
           dt = dsgoal / CharSpeed
-	  flag = 3
         ELSE IF( HgoalIs ) THEN
           CharTime = CharacteristicElementTime( Particles, No )     
           dt = Hgoal * CharTime ! ElementH / Speed
-	  flag = 4
         ELSE IF( tfinIs ) THEN
           dt = tfin / Nstep
-	  flag = 5
+        ELSE IF( HgoalIsUniso ) THEN
+          CharTime = CharacteristicUnisoTime( Particles, No )     
+          dt = Hgoal * CharTime ! ElementH / Speed
         ELSE
           CALL Fatal('GetParticlesTimeStep','Cannot determine timestep size!')
         END IF
@@ -5625,16 +6001,28 @@ RETURN
         DtVar % Values(No) = dt
 
         dtout = MAX( dtout, dt )
-      END DO 	
-    END IF    
+        dtave = dtave + dt
+      END DO
 
+      dtave = dtave / Particles % NumberOfParticles
+
+      WRITE(Message,'(A,ES12.3)') 'Average particle timestep:',dtave
+      CALL Info('GetParticleTimestep', Message,Level=12)           
+    END IF
+    
+    dtout = ParallelReduction( dtout, 2 )       
+      
+    WRITE(Message,'(A,ES12.3)') 'Maximum particle timestep:',dtout
+    CALL Info('GetParticleTimestep', Message,Level=12)           
+  
+    
     IF( Particles % Rk2 ) THEN
       IF( Particles % DtConstant ) THEN
         Particles % Dtime = 0.5_dp * Particles % Dtime
       ELSE
         DtVar % Values = 0.5_dp * DtVar % Values
       END IF
-    END IF    
+    END IF
 
   END FUNCTION GetParticleTimeStep
 
@@ -5760,13 +6148,13 @@ RETURN
       DO WHILE( ASSOCIATED(Var) )
         k = Var % NameLen
         IF( k > 0 ) THEN
-          CALL Info('ParticleVariableResize','Increasing size of variable: '// &
-              Var % name(1:k),Level=12)
           IF( Var % Dofs > 1 ) THEN
             CALL Fatal('ParticleVariableResize','Implement size increase for vectors!')
           END IF
           Values => Var % Values
           IF( SIZE( Var % Values ) < newsize ) THEN            
+            CALL Info('ParticleVariableResize','Increasing size of variable: '// &
+                Var % name(1:k),Level=12)
             ALLOCATE( Var % Values(newsize) )
             IF( PRESENT( Perm ) ) THEN
               Var % Values(1:oldsize) = Values(Perm(1:oldsize))
@@ -5777,6 +6165,8 @@ RETURN
             Var % Values(oldsize+1:newsize) = 0.0_dp
             DEALLOCATE( Values ) 
           ELSE IF( PRESENT( Perm ) ) THEN
+            CALL Info('ParticleVariableResize','Reorder dofs in variable: '// &
+                Var % name(1:k),Level=15)
             Var % Values(1:oldsize) = Values(Perm(1:oldsize))
             Var % Values(oldsize+1:newsize) = 0.0_dp
           END IF
@@ -6510,7 +6900,7 @@ RETURN
       CHARACTER :: lf
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat
-      LOGICAL :: WriteData, WriteXML, Buffered   
+      LOGICAL :: WriteData, WriteXML, Buffered, IsDG   
       INTEGER, POINTER :: Perm(:), Perm2(:), Indexes(:)
       INTEGER, ALLOCATABLE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: Values(:),Values2(:),&
@@ -6787,7 +7177,12 @@ RETURN
 
                   stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
 
-                  IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+                  IsDG = .FALSE.
+                  IF( ASSOCIATED( Solution ) ) THEN
+                    IsDG = ( Solution % TYPE == Variable_on_nodes_on_elements )
+                  END IF
+                  
+                  IF( IsDG ) THEN
                     ElemInd(1:n) = Perm( Element % DGIndexes(1:n) )
                     IF( ComplementExists ) THEN
                       ElemInd2(1:n) = Perm2( Element % DGIndexes(1:n) )

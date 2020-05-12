@@ -8,7 +8,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Timestep Intervals = 1
@@ -160,6 +160,6 @@ Boundary Condition 3
   Velocity 2 = 0.0
 End
 
-Solver 2 :: Reference Norm = Real 0.85444677
-RUN
+Solver 2 :: Reference Norm = 8.54664441E-01
+
 

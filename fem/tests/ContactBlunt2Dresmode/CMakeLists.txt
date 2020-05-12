@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO blunt.msh base.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ContactBlunt2Dresmode)
+ADD_ELMER_TEST(ContactBlunt2Dresmode LABELS elasticsolve)

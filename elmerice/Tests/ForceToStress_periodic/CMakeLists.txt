@@ -1,0 +1,8 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+CONFIGURE_FILE(test.sif test.sif COPYONLY)
+
+FILE(COPY ELMERSOLVER_STARTINFO cube.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICE_TEST(ForceToStress_periodic)
+ADD_ELMERICE_LABEL(ForceToStress_periodic elmerice-fast)

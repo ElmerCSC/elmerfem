@@ -63,7 +63,7 @@ Equation 1
   Active Solvers(5) = 1 2 3 4 5
 End
 
-!Ouside is (negative ls)
+!Outside is (negative ls)
 Material 1
   name = "material1"
   Density = Variable Surface

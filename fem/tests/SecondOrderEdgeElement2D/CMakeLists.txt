@@ -6,5 +6,4 @@ ADD_ELMERTEST_MODULE(SecondOrderEdgeElement2D EdgeElementTest EdgeElementTest.F9
 
 file(COPY ELMERSOLVER_STARTINFO square.grd EdgeElementTest.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(SecondOrderEdgeElement2D)
-ADD_ELMER_LABEL(SecondOrderEdgeElement2D quick)
+ADD_ELMER_TEST(SecondOrderEdgeElement2D LABELS quick vector_element)

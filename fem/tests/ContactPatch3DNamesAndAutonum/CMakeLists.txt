@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cubes DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ContactPatch3DNamesAndAutonum NPROCS 1 4 LABELS contact) 
+ADD_ELMER_TEST(ContactPatch3DNamesAndAutonum NPROCS 1 4 LABELS contact elasticsolve) 

@@ -34,17 +34,28 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   SParIterPrecond.F90 SParIterSolver.F90 Messages.F90 Multigrid.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
-  DefUtils.F90 LUDecomposition.F90 RadiationFactors.F90 f_stubs.c
+  DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 LUDecomposition.F90 
+  RadiationFactors.F90 f_stubs.c
   ExchangeCorrelations.F90 SolveHypre.c SolverActivate_x.F90
   SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
   LinearForms.F90 H1Basis.F90 CircuitUtils.F90 BackwardError.F90
-  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90)
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90 
+  ZirkaHysteresis.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
 
+
+IF(WITH_LUA)
+  INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
+  LIST(APPEND solverlib_SOURCES Lua.F90 elmer_lua_iface.c)
+  INSTALL(DIRECTORY lua-scripts DESTINATION share/elmersolver/
+    PATTERN lua-scripts/*.lua)
+  FILE(GLOB DEFAULT_LUA_SCRIPTS "lua-scripts/*.lua")
+  FILE(COPY ${DEFAULT_LUA_SCRIPTS} DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/share/elmersolver/lua-scripts/)
+ENDIF()
 
 IF(HAVE_FETI4I)
   LIST(APPEND solverlib_SOURCES ${FETI4I_INTERFACE_SOURCE})
@@ -86,6 +97,10 @@ IF(CMAKE_BUILD_TYPE)
 ENDIF(CMAKE_BUILD_TYPE)
 
 # Output elmerf90 and elmerld
+SET(HAVE_ELMERICE "FALSE")
+IF(WITH_ElmerIce)
+  SET(HAVE_ELMERICE "TRUE")
+ENDIF()
 
 IF(WIN32)
   CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.bat.in.cmake
@@ -100,6 +115,16 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerf90)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
+
+# Create pkg-config file if requested and place it under ${PKGCONFIG_PC_PATH}
+# Defaults: PKGCONFIG_PC_PATH = ${CMAKE_INSTALL_PREFIX}/share/pkgconfig
+IF(CREATE_PKGCONFIG_FILE)
+  SET(PKGCONFIG_PC_PATH "${CMAKE_INSTALL_PREFIX}/share/pkgconfig" 
+    CACHE PATH "Path where to install elmer pkg-config file")
+  CONFIGURE_FILE(elmer.pc.cmake elmer.pc @ONLY)
+  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/elmer.pc 
+    DESTINATION ${PKGCONFIG_PC_PATH})
+ENDIF(CREATE_PKGCONFIG_FILE)
 
 # Copy elements.def and SOLVER.KEYWORDS (to enable testing)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elements.def 
@@ -121,19 +146,44 @@ SET_TARGET_PROPERTIES(mpi_stubs
 SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
 
+#We want MMG & Zoltan in the RPATH (if found), but given how many other 
+#components use ELMERSOLVER_RPATH_STRING, it seemed best to make
+#a local copy just for ElmerSolver and libelmersolver
+SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING}")
+IF(HAVE_MMG)
+  TARGET_LINK_LIBRARIES(elmersolver ${MMG_LIBRARY})
+  SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING_MOD}:${MMG_LIBDIR}")
+  SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}:${MMG_LIBDIR}")
+  #TODO - add to RPath
+ENDIF()
+
+IF(HAVE_ZOLTAN)
+  TARGET_LINK_LIBRARIES(elmersolver ${ZOLTAN_LIBRARY})
+  ADD_DEPENDENCIES(elmersolver ${ZOLTAN_LIBRARY})
+  # SET(ELMERSOLVER_RPATH_STRING_MOD "${ELMERSOLVER_RPATH_STRING_MOD}/:${ZOLTAN_LIBDIR}")
+  # SET(ELMERLIB_RPATH_STRING "${ELMERLIB_RPATH_STRING}/:${ZOLTAN_LIBDIR}")
+ENDIF()
+
 # ElmerSolver libraries 
 SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
                           ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
+IF(WITH_LUA)
+  LIST(APPEND ELMERSOLVER_LIBRARIES ${LUA_LIBRARIES})
+ENDIF()
+
 
 ADD_EXECUTABLE(Solver_TGT Solver.F90)
-SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES OUTPUT_NAME ${ELMERSOLVER_OUTPUT_NAME})
+SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES OUTPUT_NAME "${ELMERSOLVER_OUTPUT_NAME}")
 
 IF(NOT(WIN32))
-   SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
-   SET_TARGET_PROPERTIES(elmersolver PROPERTIES INSTALL_RPATH ${ELMERLIB_RPATH_STRING})
+  MESSAGE(STATUS " ELMERSOLVER_RPATH_STRING_MOD " ${ELMERSOLVER_RPATH_STRING_MOD})
+  MESSAGE(STATUS " ELMERLIB_RPATH_STRING " ${ELMERLIB_RPATH_STRING})
+
+   SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING_MOD}")
+   SET_TARGET_PROPERTIES(elmersolver PROPERTIES INSTALL_RPATH "${ELMERLIB_RPATH_STRING}")
 ENDIF()
 
 IF(NOT(WITH_MPI))
@@ -238,7 +288,7 @@ TARGET_LINK_LIBRARIES(ViewFactors ${ELMERSOLVER_LIBRARIES}
 INSTALL(TARGETS ViewFactors RUNTIME DESTINATION "bin")
 
 IF(NOT(WIN32))
-  SET_TARGET_PROPERTIES(ViewFactors PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
+  SET_TARGET_PROPERTIES(ViewFactors PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 
 # GebhardFactors
@@ -247,7 +297,7 @@ TARGET_LINK_LIBRARIES(GebhardtFactors ${ELMERSOLVER_LIBRARIES}
                                       mpi_stubs elmersolver)
 
 IF(NOT(WIN32))
-  SET_TARGET_PROPERTIES(GebhardtFactors PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
+  SET_TARGET_PROPERTIES(GebhardtFactors PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 
 IF(WITH_Trilinos)
@@ -295,6 +345,7 @@ IF(WITH_MPI)
     # EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver
     # WORKING_DIRECTORY \${CMAKE_INSTALL_PREFIX}/bin)")
     ADD_CUSTOM_TARGET(elmersolver_link ALL COMMAND ${CMAKE_COMMAND} -E create_symlink ElmerSolver_mpi ElmerSolver)
+    ADD_DEPENDENCIES(elmersolver_link Solver_TGT)
     INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/ElmerSolver DESTINATION "bin")
   ELSE()
     INSTALL(CODE "EXECUTE_PROCESS(COMMAND \${CMAKE_COMMAND} -E copy

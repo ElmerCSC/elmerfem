@@ -1,0 +1,105 @@
+! Reference case for the primary test.
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = "Cartesian"
+  Simulation Type = transient
+  Steady State Max Iterations = 1
+
+  Output Intervals(1) = 1
+  Timestep Intervals(1) = 3
+  Timestep Sizes(1) = 1.0
+  Timestepping Method = bdf
+
+!  Post File = ref_anti.vtu
+!  Mesh Levels = 4 
+End
+
+Body 1
+  Name = "Rest"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Heat"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+  Heat Capacity = 1.0
+End
+
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+
+Solver 1
+  Equation = "HeatEq"
+
+  Variable = "Temperature"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = none
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCgStabl 
+  Linear System Convergence Tolerance = 1.0e-10
+  BicgStabl Polynomial Degree = 4
+
+  Optimize Bandwidth = False
+End
+
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1.0
+End
+
+Boundary Condition 1
+  Name = "MinY"
+  Target Boundaries(1) = 1
+
+  Periodic BC = 2
+  Periodic BC Temperature = Logical True
+  Antisymmetric BC = Logical True
+End
+ 
+Boundary Condition 2
+  Name = "MaxY"
+  Target Boundaries(1) = 3
+End
+
+
+Boundary Condition 3
+  Name = "MaxX"
+  Target Boundaries(1) = 2
+
+  Periodic BC = Integer 4
+  Periodic BC Temperature = Logical True
+  Antisymmetric BC = Logical True
+End
+
+Boundary Condition 4
+  Name = "MinX"
+  Target Boundaries(1) = 4
+End
+
+
+Solver 1 :: Reference Norm = 8.40541871E-02
+
+

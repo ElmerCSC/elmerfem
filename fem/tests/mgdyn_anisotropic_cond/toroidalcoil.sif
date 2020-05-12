@@ -11,7 +11,7 @@ $ intervals = 2
 $ tsize = 1/(f*intervals)
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
 
   Coordinate System = "Cartesian"
   Simulation Type = Transient
@@ -21,7 +21,6 @@ Simulation
   Timestep Intervals = $ intervals
   Steady State Max Iterations = 1
   Output Intervals(1) = 0
-
 End
 
 Initial Condition 1
@@ -31,7 +30,6 @@ End
 
 Solver 1
    Equation = "MGDynamics"
-
    Variable = "P"
 
    Procedure = "MagnetoDynamics" "WhitneyAVSolver"
@@ -40,15 +38,14 @@ Solver 1
    Linear System Symmetric = Logical false
    Linear System Solver = "Iterative"
    Linear System Preconditioning = None
-   Linear System Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1e-8
    Linear System Residual Output = 100
-   Linear System Max Iterations = 500
+   Linear System Max Iterations = 1000
    Linear System Iterative Method = BiCGStab
    BiCGstabl polynomial degree = 4
 
    Steady State Convergence Tolerance = 1e-6
-   Linear System Abort Not Converged = False
-
+   Linear System Abort Not Converged = True
 End
 
 
@@ -152,10 +149,18 @@ Boundary Condition 3
 End
 
 Boundary Condition 4
+  Target Boundaries(1) = $ shell
+
+! If we have free conditions for A we should have those also for Jfix
+! Hence, the automated method should not apply any Jfix BCs here. 
+End
+
+
+Boundary Condition 5
   Target Boundaries(1) = $ Flux
   Magnetic Flux Average = Logical True
 End
 
-Solver 2 :: Reference Norm = Real 0.1081
-Solver 2 :: Reference Norm Tolerance = Real 1e-3
-RUN
+Solver 2 :: Reference Norm = 1.08082578E-01
+Solver 2 :: Reference Norm Tolerance = 1e-4
+

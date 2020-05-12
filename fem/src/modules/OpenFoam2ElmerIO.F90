@@ -60,7 +60,7 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh, OFMesh
   CHARACTER(LEN=MAX_NAME_LEN) :: FileName, DirName, BaseDir, OFfile
   INTEGER :: i, NoDir, IOStatus, PassiveCoord
-  LOGICAL :: Found, Visited = .FALSE.
+  LOGICAL :: Found, Visited = .FALSE., GotData
   REAL(KIND=dp) :: MinF, MaxF, MeanF, Coeff, Norm
   REAL(KIND=dp), POINTER :: RhsVector(:), WeightVector(:), OfField(:)
   TYPE(Matrix_t), POINTER :: Amat
@@ -134,21 +134,23 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
     CALL CreateFOAMMesh(FileName,OFMesh)
     ALLOCATE( OFField(OFMesh % NumberOfNodes)  ) 
     
-    CALL ReadFOAMField(Filename)
+    CALL ReadFOAMField(Filename, GotData)
     
-    MinF = MINVAL( OFField )
-    MaxF = MAXVAL( OFField )
-    MeanF = SUM( OFField ) / SIZE( OFField )    
+    IF( GotData ) THEN
+      MinF = MINVAL( OFField )
+      MaxF = MAXVAL( OFField )
+      MeanF = SUM( OFField ) / SIZE( OFField )    
       
-    WRITE( Message,'(A,ES12.5)') 'Minimum field value: ',MinF
-    CALL Info('OpenFoam2ElmerFit',Message,Level=6)
-    WRITE( Message,'(A,ES12.5)') 'Maximum field value: ',MaxF
-    CALL Info('OpenFoam2ElmerFit',Message,Level=6)
-    WRITE( Message,'(A,ES12.5)') 'Average field value: ',MeanF
-    CALL Info('OpenFoam2ElmerFit',Message,Level=6)      
+      WRITE( Message,'(A,ES12.5)') 'Minimum field value: ',MinF
+      CALL Info('OpenFoam2ElmerFit',Message,Level=6)
+      WRITE( Message,'(A,ES12.5)') 'Maximum field value: ',MaxF
+      CALL Info('OpenFoam2ElmerFit',Message,Level=6)
+      WRITE( Message,'(A,ES12.5)') 'Average field value: ',MeanF
+      CALL Info('OpenFoam2ElmerFit',Message,Level=6)      
 
-    CALL DataAssembly()
-
+      CALL DataAssembly()
+    END IF
+      
     ! We can only have one OpenFOAM mesh at a time, hence release the structures if we have a second mesh.
     IF( i < NoDir ) CALL ReleaseMesh( OFMesh )
     DEALLOCATE( OFField ) 
@@ -157,9 +159,9 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   Coeff = ListGetCReal( Params,'Fit Coefficient',Found )
   IF( .NOT. Found ) Coeff = 1.0_dp
 
-  PRINT *,'rhs sum:',SUM( RhsVector )
-  PRINT *,'weight sum:',SUM( WeightVector )
-  PRINT *,'diag sum:',SUM( Amat % Values( Amat % Diag ) )
+  !PRINT *,'rhs sum:',SUM( RhsVector )
+  !PRINT *,'weight sum:',SUM( WeightVector )
+  !PRINT *,'diag sum:',SUM( Amat % Values( Amat % Diag ) )
 
   RhsVector = Coeff * RhsVector 
   Amat % Values( Amat % Diag ) = Coeff * WeightVector 
@@ -269,14 +271,14 @@ CONTAINS
     INTEGER :: NumberOfNodes, IOStatus
     INTEGER, PARAMETER :: InFileUnit = 28
     CHARACTER(LEN=:), ALLOCATABLE :: ReadStr
-
+    
     ALLOCATE( Mesh % Nodes )
     Mesh % NumberOfBulkElements = 0
     Mesh % NumberOfBoundaryElements = 0
     
     
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)
-                
+    ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)                   
+    
     OPEN(InFileUnit,FILE = Filename, STATUS='old', IOSTAT=IOstatus)
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not open file for reading: '//TRIM(FileName))
@@ -297,11 +299,18 @@ CONTAINS
     END DO
 
     IF( j == 0 ) THEN
-      CALL Fatal('OpenFoam2ElmerFit','Could not find > internalField < in header!')
+      CALL Warn('OpenFoam2ElmerFit','Could not find > internalField < in header!')
     ELSE
       CALL Info('OpenFoam2ElmerFit','internalField found at line: '//TRIM(I2S(Line)),Level=7)    
     END IF
-      
+
+    j = INDEX( ReadStr,'nonuniform',.TRUE.)
+    IF( j == 0 ) THEN
+      CALL Warn('OpenFoam2ElmerFit','This routine only knows how to read nonuniform lists!')
+      RETURN
+    END IF
+
+    
     READ(InFileUnit,*,IOSTAT=IOStatus) NumberOfNodes    
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not read number of nodes!')
@@ -360,10 +369,10 @@ CONTAINS
 
     CALL Info('OpenFoam2ElmerFit','Created temporal OpenFOAM mesh just for nodes',Level=8)
 
-    PRINT *,'range x:',MINVAL( Mesh % Nodes % x ), MAXVAL( Mesh % Nodes % x ) 
-    PRINT *,'range y:',MINVAL( Mesh % Nodes % y ), MAXVAL( Mesh % Nodes % y ) 
-    PRINT *,'range z:',MINVAL( Mesh % Nodes % z ), MAXVAL( Mesh % Nodes % z ) 
-
+    !PRINT *,'range x:',MINVAL( Mesh % Nodes % x ), MAXVAL( Mesh % Nodes % x ) 
+    !PRINT *,'range y:',MINVAL( Mesh % Nodes % y ), MAXVAL( Mesh % Nodes % y ) 
+    !PRINT *,'range z:',MINVAL( Mesh % Nodes % z ), MAXVAL( Mesh % Nodes % z ) 
+   
     IF( PassiveCoord == 1 ) THEN
       Mesh % Nodes % x = 0.0_dp
     ELSE IF( PassiveCoord == 2 ) THEN
@@ -379,9 +388,10 @@ CONTAINS
   !------------------------------------------------------------------------
   !> Open file in OpenFOAM format result file and read the data from there.
   !-------------------------------------------------------------------------
-  SUBROUTINE ReadFOAMField( Filename )
+  SUBROUTINE ReadFOAMField( Filename, GotData )
     
     CHARACTER(LEN=MAX_NAME_LEN) :: FileName
+    LOGICAL :: GotData
 
     CHARACTER(LEN=MAX_NAME_LEN) :: TFileName, TSuffix   
     INTEGER :: line,i,j,k,n,nstep
@@ -390,7 +400,8 @@ CONTAINS
     INTEGER, PARAMETER :: InFileUnit = 28
     CHARACTER(LEN=:), ALLOCATABLE :: ReadStr
     LOGICAL :: IsScalar
-    
+
+    GotData = .FALSE.
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)
     
     TSuffix = ListGetString( Params,'OpenFOAM field',Found ) 
@@ -408,7 +419,8 @@ CONTAINS
     
     OPEN(InFileUnit,FILE = TFilename, STATUS='old', IOSTAT=IOstatus)
     IF( IOStatus /= 0 ) THEN
-      CALL Fatal('OpenFoam2ElmerFit','Could not open file for reading: '//TRIM(TFileName))
+      CALL Warn('OpenFoam2ElmerFit','Could not open file for reading: '//TRIM(TFileName))
+      RETURN
     END IF
     
     CALL Info('OpenFoam2ElmerFit','Reading data field from file: '//TRIM(TFileName),Level=6)
@@ -418,7 +430,7 @@ CONTAINS
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
         CALL Warn('OpenFoam2ElmerFit','End of file after '//TRIM(I2S(Line))//' lines')
-        EXIT
+        GOTO 10
       END IF
 
       j =  INDEX( ReadStr,'internalField',.TRUE.) 
@@ -432,10 +444,18 @@ CONTAINS
     END DO
     
     IF( j == 0 ) THEN
-      CALL Fatal('OpenFoam2ElmerFit','Could not find > internalField < in header!')
+      CALL Warn('OpenFoam2ElmerFit','Could not find > internalField < in header!')
+      GOTO 10
     ELSE
       CALL Info('OpenFoam2ElmerFit','internalField found at line: '//TRIM(I2S(Line)),Level=7)    
     END IF
+
+    j = INDEX( ReadStr,'nonuniform',.TRUE.)
+    IF( j == 0 ) THEN
+      CALL Warn('OpenFoam2ElmerFit','This routine only knows how to read nonuniform lists!')
+      GOTO 10
+    END IF
+    
       
     READ(InFileUnit,*,IOSTAT=IOStatus) n
     IF( IOStatus /= 0 ) THEN
@@ -460,11 +480,14 @@ CONTAINS
         CALL Fatal('OpenFoam2ElmerFit','Could not read field values: '//TRIM(I2S(i)))
       END IF
     END DO
-    CLOSE( InFileUnit ) 
+
     
     CALL Info('OpenFoam2ElmerFit','Read data from OpenFOAM mesh region',Level=7)
+    GotData = .TRUE.
+    
+    ! PRINT *,'range f:',MINVAL( OFField ), MAXVAL( OFField )
 
-    PRINT *,'range f:',MINVAL( OFField ), MAXVAL( OFField )
+10  CLOSE( InFileUnit )
     
   END SUBROUTINE ReadFOAMField
 
@@ -484,7 +507,7 @@ CONTAINS
     N = Mesh % MaxElementNodes 
     ALLOCATE( Basis(n) )
 
-    
+    ElementIndex = 0 
     DO t = 1, OFMesh % NumberOfNodes
       GlobalCoords(1) = OFMesh % Nodes % x(t)
       GlobalCoords(2) = OFMesh % Nodes % y(t)

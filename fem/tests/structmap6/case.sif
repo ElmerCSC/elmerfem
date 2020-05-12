@@ -1,0 +1,183 @@
+!--------------------------------------------------------------------
+! A test case for Stuctured mesh mapper with a mask.
+! The extruded structure and related operations are only covered where
+! the mask is. 
+!
+! Peter Råback / 10.8.2018
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "layers"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 2
+  Material = 2
+  Body Force = 1
+End
+
+
+Equation 1
+  Name = "LowerHeat"
+  Active Solvers(1) = 2
+End
+
+Equation 2
+  Name = "UpperHeat"
+  Active Solvers(1) = 3
+End
+
+Body Force 1 
+  Name = "Heating"
+  Heat Source = 0.0
+End 
+
+
+Solver 1 
+!  Exec Solver = before all 
+  Equation = "MapCoordinates"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+  Mapping Mask Variable = String "TempB"  
+End 
+
+
+
+Solver 2
+  Equation = "HeatA"
+  Variable = "TempA"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+
+Solver 3
+  Equation = "HeatB"
+  Variable = "TempB"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+
+Solver 4
+  Equation = "HeightDepth"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+ 
+  Operator 1 = depth
+  Operator 2 = height
+  Operator 3 = distance
+  Operator 4 = index
+  Operator 5 = thickness
+
+  Operator 6 = int 
+  Variable 6 = TempB
+  Operator 7 = sum
+  Operator 8 = min
+  Operator 9 = max
+
+
+  Show Norm Index = 6
+
+  Mapping Mask Variable = String "TempB"  
+
+!  Exec Solver = never
+End 
+
+
+Material 1
+  Name = "LowerMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Material 2
+  Name = "UpperMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries = 5
+
+  TempA = Real 1.0
+  TempB = Real 1.0
+End
+
+Boundary Condition 2
+  Name = "Middle"
+  Target Boundaries = 6
+
+  TempA = Real 2.0
+  TempB = Real 2.0
+
+  Bottom Surface = Real 1.0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries = 7
+ 
+  TempA = Real 3.0
+  TempB = Real 3.0
+
+  Top Surface = Variable "Coordinate"
+     Real MATC "2+0.1*cos(pi*tx(1))*sin(pi*tx(0))"
+End
+
+
+Solver 2 :: Reference Norm = 1.53055303E+00
+Solver 3 :: Reference Norm = 2.52140024E+00  
+

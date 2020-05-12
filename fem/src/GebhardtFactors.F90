@@ -119,14 +119,14 @@
      PRINT*,'Reading Model ...       '
 
 !------------------------------------------------------------------------------
-                                                                                                              
+
      OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', ERR=10 )
      GOTO 20
-                                                                                                              
+
 10   CONTINUE
-                                                                                                              
-     CALL Fatal( 'GebhardtFactors', 'Unable to find ELMERSOLVER_STARTINFO, cant execute.' )
-                                                                                                              
+
+     CALL Fatal( 'GebhardtFactors', 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
+
 20   CONTINUE
        READ(1,'(a)') ModelName
      CLOSE(1)
@@ -459,27 +459,16 @@
 #include "huti_fdefs.h"
       SUBROUTINE FIterSolver( N,x,b,SolverParam )
 
-#ifdef USE_ISO_C_BINDINGS
         USE huti_sfe
-#endif
         IMPLICIT NONE
 
         TYPE(Solver_t) :: SolverParam
-
         DOUBLE PRECISION, DIMENSION(:) CONTIG :: x,b
-
         DOUBLE PRECISION :: dpar(50)
-
         INTEGER :: ipar(50),wsize,N
         DOUBLE PRECISION, ALLOCATABLE :: work(:,:)
-#ifndef USE_ISO_C_BINDINGS
-        INTEGER  :: HUTI_D_CGS
-        EXTERNAL :: HUTI_D_CGS
-        INTEGER(KIND=AddrInt) :: AddrFunc
-#else
         INTEGER(KIND=AddrInt) :: AddrFunc
         EXTERNAL :: AddrFunc
-#endif
         INTEGER(KIND=addrInt) :: iterProc, mvProc, dProc=0
 
         ipar = 0

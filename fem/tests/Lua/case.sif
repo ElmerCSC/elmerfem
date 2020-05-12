@@ -1,0 +1,107 @@
+Check Keywords "Warn"
+$refnorm = 3.35439380E+00
+
+!---LUA BEGIN
+! loadfile('defaults.lua')()
+! eqnum = 1
+! bodyforcenum = 1
+! bodyforce = "body force"
+!---LUA END
+
+# materialnum = 1
+
+
+Header :: Mesh DB "." "square"
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+  Post File   = "case.vtu"
+  mesh levels = 3
+End
+
+Body 1
+  target bodies(2) = 1 2
+  Equation = # eqnum
+  Material = # materialnum
+  #bodyforce# = # bodyforcenum
+End
+
+Material 1
+  Convection Velocity 1 = 0
+  Convection Velocity 2 = 1
+  Convection Velocity 3 = 0
+
+  diffusion coefficient = 1.0
+  convection coefficient = 1.0
+  time derivative coefficient = 0.0
+End
+
+Body Force 1 
+  Field Source = variable coordinate
+    real lua "sin(tx[0] + tx[1] + 1)"
+  field source matc = variable coordinate
+    real matc "sin(tx(0) + tx(1) + 1)"
+end 
+
+Equation 1 
+  Active Solvers(2) = 1 2
+end
+
+Solver 1
+  Equation = "ModelPDEhandle"
+  Variable = "Field_a"
+  Procedure = "ModelPDEthreaded" "AdvDiffSolver"
+  ! Procedure = "ModelPDEhandle" "AdvDiffSolver"
+  Linear System Solver = iterative
+  linear system preconditioning = ilu0
+  linear system iterative method = bicgstabl
+  linear system max iterations = 400
+  linear system convergence tolerance = 1e-9
+  Steady State Convergence Tolerance = 1e-9
+  linear system residual output = 50
+End
+
+Solver 2
+  Equation = "ModelPDEevol"
+  Variable = "Field_b"
+  Procedure = "ModelPDEevol" "AdvDiffSolver_evol"
+  Linear System Solver = iterative
+  linear system preconditioning = ilu0
+  linear system iterative method = bicgstabl
+  linear system max iterations = 400
+  linear system convergence tolerance = 1e-9
+  Steady State Convergence Tolerance = 1e-9
+  linear system residual output = 50
+  Multithreaded Startup = Logical true
+  Multicolour Solver = Logical True
+  Multicolour Consistent = Logical false
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Field_a = real 0.0
+  Field_b = real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Robin Coefficient = 10.0
+  External Field = 5.0
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 3 4
+  Field Flux = 1.0
+  robin coefficient = 0.0
+  external field = 0.0
+End
+
+Solver 1 :: Reference Norm = Real $refnorm$
+Solver 2 :: Reference Norm = Real $refnorm$
+Solver 1 :: Reference Norm Tolerance = Real 1e-5
+Solver 2 :: Reference Norm Tolerance = Real 1e-5
+RUN

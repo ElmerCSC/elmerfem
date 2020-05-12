@@ -118,8 +118,8 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse
   LOGICAL :: CalculateViscosity, GotIt
   REAL(KIND=dp) :: Unorm
-  REAL(KIND=dp), POINTER :: ForceVector(:), ViscVector(:), SaveRHS(:), &
-      ShearrateField(:), ViscField(:)
+  REAL(KIND=dp), POINTER CONTIG :: ForceVector(:), ViscVector(:), SaveRHS(:)
+  REAL(KIND=dp), POINTER :: ShearrateField(:), ViscField(:)
   TYPE(Variable_t), POINTER :: ShearrateSol, ViscSol
   LOGICAL :: AllocationsDone = .FALSE. 
 

@@ -560,7 +560,7 @@ proc HMset_image {win handle src} {
 # if we have a clickable image, arrange for a callback
 
 proc HMgot_image {win image_error} {
-	# if we're in a frame turn on geometry propogation
+	# if we're in a frame turn on geometry propagation
 	if {[winfo name $win] == "label"} {
 		pack propagate [winfo parent $win] 1
 	}
@@ -620,7 +620,7 @@ proc HMlink_callback {win href} {
 
 # extract a value from parameter list (this needs a re-do)
 # returns "1" if the keyword is found, "0" otherwise
-#   param:  A parameter list.  It should alredy have been processed to
+#   param:  A parameter list.  It should already have been processed to
 #           remove any entity references
 #   key:    The parameter name
 #   val:    The variable to put the value into (use key as default)
@@ -634,7 +634,7 @@ proc HMextract_param {param key {val ""}} {
 	}
     set ws "    \n\r"
  
-    # look for name=value combinations.  Either (') or (") are valid delimeters
+    # look for name=value combinations.  Either (') or (") are valid delimiters
     if {
       [regsub -nocase [format {.*%s[%s]*=[%s]*"([^"]*).*} $key $ws $ws] $param {\1} value] ||
       [regsub -nocase [format {.*%s[%s]*=[%s]*'([^']*).*} $key $ws $ws] $param {\1} value] ||
@@ -818,7 +818,7 @@ array set HMesc_map {
 # HM$win structure.  We don't need to check for the existance of required
 # parameters, we just "fail" and get caught in HMrender
 
-# This causes line breaks to be preserved in the inital values
+# This causes line breaks to be preserved in the initial values
 # of text areas
 array set HMtag_map {
 	textarea    {fill 0}

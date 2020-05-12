@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back
+! *  Authors: Juha Ruokolainen, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -74,21 +74,16 @@
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:),PoissonRatio(:), &
 		Alpha(:,:), Beta(:), Gamma(:), RefSurface(:)
-  REAL(KIND=dp), POINTER :: OrigX(:), OrigY(:), OrigZ(:), &
+  REAL(KIND=dp), POINTER CONTIG :: OrigX(:), OrigY(:), OrigZ(:), &
       TrueX(:), TrueY(:), TrueZ(:)
+
+  REAL(KIND=dp) :: at,at0
 
   SAVE STIFF, LOAD, FORCE, AllocationsDone, &
        ElasticModulus, PoissonRatio, &
        OrigX, OrigY, OrigZ, TrueX, TrueY, TrueZ, PrevMeshUpdate, &
        VisitedTimes,dim,Alpha,Beta,Gamma,RefSurface
 
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: at,at0
-#else
-  REAL(KIND=dp) :: at,at0,CPUTime,RealTime
-#endif
 !------------------------------------------------------------------------------
 
  CALL Info( 'MeshSolve', '-------------------------------------', Level=4 )

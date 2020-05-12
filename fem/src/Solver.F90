@@ -35,25 +35,13 @@ PROGRAM Solver
    USE GeneralUtils
    USE ParallelUtils
 
-#ifdef USE_ISO_C_BINDINGS
    REAL(KIND=dp) :: CT, RT
-#else
-   REAL(KIND=dp) :: CT, RT, CPUTime, RealTime
-#endif
    INTEGER, PARAMETER :: Initialize=0
    INTEGER :: tlen
    LOGICAL :: Silent
    CHARACTER(LEN=MAX_NAME_LEN) :: DateStr, toutput
 
-!#if defined(MINGW32)
-!   CALL SET_STDIO_BUFS()
-!#endif
-
-#ifdef USE_ISO_C_BINDINGS
    CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
-#else
-   CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL'//CHAR(0), toutput, tlen )
-#endif
    Silent = toutput(1:1)=='0' .OR. toutput(1:5)=='false'
 
    CT = CPUtime()

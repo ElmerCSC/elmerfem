@@ -42,7 +42,7 @@
 !!!  
 !!!   - replace current mesh by NewMesh to have remeshing during the simulation:
 !!!     
-!!!    TODO: Varaible RELEASE_MESH (default false) allow to release prev
+!!!    TODO: Variable RELEASE_MESH (default false) allow to release prev
 !mesh if true (seems that not everything is deallocated); 
 !!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -653,7 +653,7 @@
       NoSurf=GetLogical(SolverParams,'No surf',Found)
       IF (Found .AND. NoSurf) THEN
         CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_nosurf,&
-                0,ier)
+                1,ier)
         IF ( ier == 0 ) CALL FATAL('M/MGSolver',&
                        'CALL TO MMG2D_SET_IPARAMETER <No surf> Failed')
       END IF

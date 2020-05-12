@@ -42,7 +42,7 @@ Solver 1
   Equation = Plate Solver
   Procedure = "Smitc" "SmitcSolver"
   Linear System Solver = Iterative
-  Linear System Max Iterations = 200 ! 163 iterations needed 
+  Linear System Max Iterations = 300 ! 163 iterations needed 
   Linear System Residual Output = 1
   Linear System Iterative Method = BiCGStab
   Linear System Preconditioning = none

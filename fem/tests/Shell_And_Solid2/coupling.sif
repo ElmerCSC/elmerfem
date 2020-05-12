@@ -1,0 +1,165 @@
+!
+! A simple example of one-directional solid-shell coupling
+!
+! Here the mesh contains both 2-D shell and 3-D solid elements. The 3-D 
+! elasticity equations are first solved over the 3-D body and then the shell 
+! equations are solved over the shell body by constraining the shell deformation
+! to obey the 3-D displacement in the common boundary. The rotation-like 
+! variables (directional derivatives) of the shell model are calculated from 
+! the solution at the solid nodes found in the positive and negative direction 
+! of the shell normal (director).
+!
+  
+Header
+  Mesh DB "." "shell_and_solid"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+  Post File = "coupling.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Target Bodies = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 2
+  Target Bodies = 2
+End
+
+Material 1
+  Density = 1.0
+  Youngs Modulus = 70e9
+  Poisson Ratio = 0.0
+End
+
+Material 2
+  Density = 1.0
+  Youngs Modulus = 70e9
+  Poisson Ratio = 0.0
+  Shell Thickness = Real 1.0e-1
+End
+
+Solver 1
+  Equation = "3D Elasticity Equations"
+
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Elasticity Solver Linear = True
+  Variable = Displacement
+  Variable DOFs = 3
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning = Diagonal !ILU0
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 1
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Convergence Measure = Residual
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Displace Mesh = False
+
+  Calculate Strains = False
+  Calculate Stresses = False
+  Calculate Loads = Logical False
+End
+
+Solver 2
+  !  Exec Solver = Never
+  Equation = "Shell equations"
+  Procedure = "ShellSolver" "ShellSolver"
+  Variable = "U"
+
+  Large Deflection = False
+  Displace Mesh = False
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1e-7
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Diagonal
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 100
+  Linear System Abort Not Converged = True
+  Steady State Convergence Tolerance = 1e-09
+
+  Calculate Loads = False
+End
+
+Solver 3
+  Equation = "Save Scalars"
+  Exec Solver = After Timestep
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = coupling.dat
+  Variable 1 = U
+  Save Points(2) = 6 8
+End
+
+Equation 1 :: Active Solvers(1) = 1
+Equation 2 :: Active Solvers(1) = 2
+
+Boundary Condition 1
+  Target Boundaries = 4
+  Displacement 1 = 0
+  Displacement 2 = 0
+  Displacement 3 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 6
+  Normal Surface Traction = 5.0e+6
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 5
+  Normal Surface Traction = -5.0e+6
+End
+
+Boundary Condition 4
+  !Target Nodes(2) = 6 8
+  Target Boundaries(1) = 10
+  !
+  ! The keyword "Structure Interface" is used to specify that the shell
+  ! constraints are computed from the 3-D solution "Displacement":
+  !
+  Structure Interface = True
+  !
+  ! The following (redundant) director specification would be needed if 
+  ! the constraint was activated by listing nodes with the keyword Target Nodes:
+  !
+  !Director 1 = Real 0.0
+  !Director 2 = Real 0.0
+  !Director 3 = Real 1.0
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 8
+  U 1 = Real 0
+  U 2 = Real 0
+  U 3 = Real 0
+  U 4 = Real 0
+  U 5 = Real 0
+  U 6 = Real 0
+End
+
+
+Solver 2 :: Reference Norm = Real 4.82358396E-04
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5

@@ -251,7 +251,7 @@ MODULE NetCDFInterface
               UniformCoords = .FALSE.
            END IF
 
-           IF (UniformCoords) THEN
+           !IF (UniformCoords) THEN
               WRITE(Message,'(A,ES12.3)') 'Grid parameter of dimension > '&
                    //TRIM(CoordName)//' < is ',dx0
               CALL Info('GridDataReader',Message, Level=6 )
@@ -259,7 +259,7 @@ MODULE NetCDFInterface
               WRITE(Message,'(A,2ES12.3,A)') 'Range of dimension > '&
                    //TRIM(CoordName)//' < is [',FirstTwo(1),LastTwo(2),']'
               CALL Info('GridDataReader',Message, Level=6 )
-           END IF
+           !END IF
         END IF
 
         IF( i <= 3 ) THEN
@@ -498,7 +498,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
                    Eps(3),Time,x0e(3),x1e(3),pTime,EpsTime,q,r
   INTEGER :: DimSize(3), CoordVarNDims(3), i
   INTEGER :: TimeSize, IntTimeIndex,tnmax, NoVar, InterpStatus
-  INTEGER :: status, time_begin,time_end,MaskNodes
+  INTEGER :: status, time_begin,time_end,MaskNodes,fdofs,maxfdofs,idof
   INTEGER :: StatusCount(6)
   CHARACTER (len = MAX_NAME_LEN) :: str, VarName, TargetName, MaskName, &
       CoordSystem, TimeInterpolationMethod
@@ -695,8 +695,11 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     END IF
   END IF
 
-
-
+  maxfdofs = 1
+  idof = 1
+  ! If we read in vectors we jump here to continue
+100 CONTINUE
+  
   !--------------------------------------------------------------------------------------
   ! Get the timestep at which interpolation is desired
   ! If the time does not coincide with a timestep in the file, two timesteps are needed.
@@ -706,7 +709,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     IntTimeIndex = 0
     nTime = 1
     pTime = 1.0_dp
- ELSE
+  ELSE
     CALL GetTimePoint(Params, t0, dt, TimeIndex )
 
     IntTimeIndex = NINT( TimeIndex )
@@ -758,12 +761,17 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     IF( .NOT. Found ) TargetName = VarName
     FieldVar => VariableGet( Mesh % Variables,TargetName )
     IF( .NOT. ASSOCIATED( FieldVar ) ) THEN
+      WRITE( str,'(A,I0,A)') 'Target Variable ',NoVar,' Dofs'
+      fdofs = GetInteger( Params, str, Found ) 
+      IF(.NOT. Found ) fdofs = 1 
+      maxfdofs = MAX( fdofs, maxfdofs )
+
       WRITE( str,'(A,I0)') 'Mask Name ',NoVar
       MaskName = GetString( Params,str, Found )
 
       NULLIFY(FieldPerm)
-      ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )
-
+      ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )            
+      
       IF( Found ) THEN
         CALL MakePermUsingMask( Model, Solver, Mesh, MaskName,.FALSE.,FieldPerm,&
             MaskNodes,RequireLogical=.TRUE.)
@@ -776,16 +784,25 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
             ,MaskNodes,' nodes out of ',Mesh % NumberOfNodes
         CALL Info('GridDataReader',Message,Level=6)
 
-        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1,Perm=FieldPerm)
+        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,fdofs,Perm=FieldPerm)
         FieldVar => VariableGet( Mesh % Variables,TargetName )
         NULLIFY(FieldPerm)
       ELSE
-         FieldPerm = [(i,i=1,Mesh % NumberOfNodes)]
-         CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1, Perm=FieldPerm)
+        FieldPerm = [(i,i=1,Mesh % NumberOfNodes)]
+        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,fdofs,Perm=FieldPerm)
         FieldVar => VariableGet( Mesh % Variables,TargetName )
       END IF
     END IF
-    Field => FieldVar % Values
+
+    fdofs = FieldVar % Dofs
+    ! Don't read variables which have constant target in vain again
+    IF( fdofs < idof ) CYCLE
+        
+    IF( fdofs > 1 ) THEN
+      Field => FieldVar % Values(idof::fdofs)
+    ELSE
+      Field => FieldVar % Values
+    END IF
     FieldPerm => FieldVar % Perm
 
     !In case the user wants unfound values to retain their previous values
@@ -935,7 +952,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
         ELSE
           CALL Fatal('GridDataReader','Unknown InterpStatus!')
         END IF
-
+        
         Field(k) = Field(k) + Coeff * val
 
         IF(KeepOld .AND. (InterpStatus == 2)) Field(k) = FieldOldValues(k)
@@ -973,6 +990,13 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     END IF
   END DO
 
+  IF( maxfdofs > idof ) THEN
+    idof = idof + 1
+    CALL Info('GridDataReader','Continuing to read timestep: '//TRIM(I2S(idof)))
+    GOTO 100
+  END IF
+
+  
   CALL NetCDFClose()
 
   DO i = 1,3
@@ -1012,12 +1036,10 @@ CONTAINS
       CALL Info('GridDataReader', 'Keyword > Y Epsilon < not given, setting equal to > X Epsilon <',Level=6)
       Eps(2) = Eps(1)
     END IF
-    IF( NetDim == 3 ) THEN
-      Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
-      IF ( .NOT. Found ) THEN
-        CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
-        Eps(3) = Eps(1)
-      END IF
+    Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
+    IF ( .NOT. Found ) THEN
+      CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
+      Eps(3) = Eps(1)
     END IF
 
     EpsTime = GetConstReal(Params, "Time Epsilon", Found )
@@ -1139,10 +1161,11 @@ CONTAINS
        ! all coord variable dimensions are 1D so search each separately
        DO i = 1,NetDim
           success = findCell1D(coordVar(i),x(i),Ind(i),weights(i))
-          WRITE(Message, '(A)') 'Not yet tested this combination of netcdf &
-               &coordinate variable dimensions &
-               &(non-uniform, all single), pls remove this comment if it works...'
-          CALL Warn('GridDataReader',Message)
+          !WRITE(Message, '(A)') 'Not yet tested this combination of netcdf &
+          !     &coordinate variable dimensions &
+          !     &(non-uniform, all single), pls remove this comment if it works...'
+          ! F. Gillet - March 2020 - seems ok now
+          !CALL Warn('GridDataReader',Message)
        END DO
 
     ELSEIF ((CoordVarNDims(1) == 2) .AND. (CoordVarNDims(2) == 2)) THEN
@@ -1266,11 +1289,12 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: Weights
 
     LOGICAL :: success
+    
 
-    ind     = 0
-    Weights = 0.0_dp
+    ind     = SearchInterval(coordVar%Values(:,1,1),xe)
+    Weights = (xe-coordVar%Values(ind,1,1)) / (coordVar%Values(ind+1,1,1)-coordVar%Values(ind,1,1))
 
-    success = .FALSE.
+    success = .TRUE.
 
   END FUNCTION findCell1D
 

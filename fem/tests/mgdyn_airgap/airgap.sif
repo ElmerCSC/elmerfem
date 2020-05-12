@@ -6,17 +6,19 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
 
   Coordinate System = "Cartesian"
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals(1) = 0
+
+!  Post File = case.vtu
 End
 
 Initial Condition 1
- P = Real 0
- P {e} = Real 0
+  P = Real 0
+  P {e} = Real 0
 End
 
 Solver 1
@@ -28,63 +30,32 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Newton-Raphson Iteration = Logical True
 
-! These choose the overall block strategies
+! Linear system solver 
 !-----------------------------------------
-  Linear System Solver = Block
-!  Linear System Symmetric = True
-
-  Block Gauss-Seidel = Logical True
-  Block A-V System = Logical True
-  Block Matrix Reuse = Logical True
-  Block Preconditioner = Logical True
-
-
-! Linear system solver for outer loop
-!-----------------------------------------
-  Outer: Linear System Solver = "Iterative"
-  Outer: Linear System Convergence Tolerance = 1e-8
-  Outer: Linear System Iterative Method = GCR
-  Outer: Linear System GCR Restart =  50
-  Outer: Linear System Residual Output =  1
-  Outer: Linear System Max Iterations =  200
-
-! Linear system solver for blocks
-!-----------------------------------------
-  Linear System Max Iterations = 1250
-  Linear System Residual Output = integer 20
-  Linear System Convergence Tolerance = 1e-2
-
-  Block 11: Linear System Solver = Iterative
-
-!  Block 11: Linear System Preconditioning = BoomerAMG
-!  Block 11: Linear System Use Hypre = True
-  Block 11: Linear System Iterative Method = BiCGStab
-! Block 11: Linear System Use Backward Error Estimate = Logical True
-
-  Block 22: Linear system Solver = Iterative
-!  Block 22: Linear System Preconditioning = AMS
-  Block 22: Linear System Use Hypre = True
-  Block 22: Linear System Iterative Method = BiCGStabL
-! Block 22: Linear System Use Backward Error Estimate = Logical True
-
-  Steady State Convergence Tolerance = 1e-6
+  Linear System Solver = "Iterative"
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabl
+  Linear System Preconditioning = none
+  Linear System Scaling = True
+  Linear System GCR Restart =  50
+  Linear System Residual Output =  10
+  Linear System Max Iterations =  1000
 End
 
 Solver 2
-   Equation = "MGDynamicsCalc"
-   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
-   Linear System Symmetric = True
-   Potential Variable = String "P"
+  Equation = "MGDynamicsCalc"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+  Potential Variable = String "P"
 
-   Calculate Magnetic Field Strength = Logical True
-   Steady State Convergence Tolerance = 0
-   Linear System Solver = "Iterative"
-   Linear System Preconditioning = None
-   Linear System Residual Output = 0
-   Linear System Max Iterations = 5000
-   Linear System Iterative Method = CG
-   Steady State Convergence Tolerance = 1e-6
-   Linear System Convergence Tolerance = 1.0e-8
+  Calculate Magnetic Field Strength = Logical True
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
 End
 
 Solver 3
@@ -92,20 +63,6 @@ Solver 3
   procedure = "SaveData" "SaveScalars"
   show norm index = 2
 End
-
-!Solver 4
-!  Exec Solver = after all
-!  Equation = "ResultOutput"
-!  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-!  Output File Name = airgap
-!  Vtu format = Logical True
-!  Scalar Field 1 = String "P"
-!  Scalar Field 1 = String "Jfix"
-!  Vector Field 1 = String "Volume Current"
-!  Vector Field 2 = String "Magnetic Flux Density E"
-!  Vector Field 3 = String "Magnetic Field Strength E"
-!End
-
 
 Equation 1
   Name = "Coupled Equations"
@@ -131,26 +88,25 @@ Material 3
 End
 
 Body 1
-   Name = "Air"
-   Target Bodies(1) = $ Ilma
-   Equation = 1
-   Material = 1
+  Name = "Air"
+  Target Bodies(1) = $ Ilma
+  Equation = 1
+  Material = 1
 End
 
 Body 2
-   Name = "Ring"
-   Target Bodies(1) = $ M5
-   Equation = 1
-   Material = 2
+  Name = "Ring"
+  Target Bodies(1) = $ M5
+  Equation = 1
+  Material = 2
 End
 
 Body 3
-   Name = "Cable"
-   Target Bodies(1) = $ alumiini
-   Equation = 1
-   Material = 3
+  Name = "Cable"
+  Target Bodies(1) = $ alumiini
+  Equation = 1
+  Material = 3
 End
-
 
 Boundary Condition 1
   Target Boundaries(1) = $ FluxParallel
@@ -182,9 +138,9 @@ Boundary Condition 5
   Air Gap Relative Permeability = Real 0.1
 End
 
-Solver 2 :: Reference Norm = Real 3063.3440
-Solver 3 :: Reference Norm = Real 9.922767E-02
-RUN
+Solver 1 :: Reference Norm = 7.08538965E-05
+Solver 2 :: Reference Norm = 3063.3440
+Solver 3 :: Reference Norm = 9.922767E-02
 
 
 

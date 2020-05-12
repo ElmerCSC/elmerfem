@@ -77,6 +77,7 @@
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
           NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin, Ne, BDForder, &
           CoupledIter
+     INTEGER :: tpack, Mpack
 
      TYPE(Variable_t), POINTER :: HydPotSol
      TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
@@ -262,11 +263,7 @@
         ! Default is False - We allow Channel to growth everywhere
         NoChannel = .False. 
         DO t=1, Solver % Mesh % NumberOfBoundaryElements
-           ! get element information
            Element => GetBoundaryElement(t)
-           !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-            (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
 
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
@@ -458,10 +455,13 @@
 !------------------------------------------------------------------------------
     ! check on the coupled Convergence is done on the potential solution only
     M = Model % Mesh % NumberOfNodes
+    Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
+
     IF (ParEnv % PEs > 1) THEN
-       PrevCoupledNorm = ParallelNorm(M,HydPot(HydPotPerm(1:M))) 
-    ELSE            
-       PrevCoupledNorm = SQRT(SUM(HydPot(HydPotPerm(1:M))*HydPot(HydPotPerm(1:M))))/M
+       PrevCoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M)
+    ELSE
+       PrevCoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) &
+                               & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
     END IF
 
     DO iterC = 1, CoupledIter
@@ -653,8 +653,9 @@
               
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
-              IF ((ParEnv % PEs > 1) .AND. &
-                (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+              IF (ParEnv % PEs > 1) THEN
+                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+              END IF
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
@@ -752,6 +753,8 @@
 
 ! The variable Channel Area is defined on the edges only
               M = Model % Mesh % NumberOfNodes
+
+              IF (AreaPerm(M+t) <=   0)  CYCLE 
               ChannelArea = AreaSolution(AreaPerm(M+t))
 
               !------------------------------------------------------------------------------
@@ -828,6 +831,7 @@
                   ! If variable exist, update the Flux from Moulins variable 
                   IF (ASSOCIATED( QmSol )) THEN
                      j = Element % NodeIndexes(1)
+                     IF ( HydPotPerm(j) <=  0 ) CYCLE 
                      QmSolution(QmPerm(j)) = MoulinFlux(1)-MASS(1,1)*(HydPot(HydPotPerm(j))-HydPotPrev(HydPotPerm(j),1))/dt 
                   END IF
 
@@ -1038,19 +1042,22 @@
      IF (Channels) THEN 
         t = Solver % Mesh % NumberOfEdges 
         M = Model % Mesh % NumberOfNodes
+        tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
 
         IF (ParEnv % PEs > 1) THEN
-           PrevNorm = ParallelNorm(t,AreaSolution(AreaPerm(M+1:M+t))) 
-        ELSE            
-           PrevNorm = SQRT(SUM(AreaSolution(AreaPerm(M+1:M+t))*AreaSolution(AreaPerm(M+1:M+t))))/t  
+            PrevNorm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
+        ELSE
+           PrevNorm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
+                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
         END IF
 
         DO iter = 1, NonlinearIter
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
-                 IF ((ParEnv % PEs > 1) .AND. &
-                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
+                 IF (ParEnv % PEs > 1) THEN
+                   IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                 END IF
                  n = Edge % TYPE % NumberOfNodes
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
@@ -1126,6 +1133,8 @@
                  END DO
 
                  M = Model % Mesh % NumberOfNodes
+
+                 IF (AreaPerm(M+t) <= 0 ) CYCLE
                  ChannelArea = AreaSolution(AreaPerm(M+t))
 
 ! Compute the force term to evolve the channels area
@@ -1143,7 +1152,8 @@
                  END IF
 
                  k = AreaPerm(M+t)
-                 SELECT CASE(methodSheet)
+                 IF ( k <=  0 ) CYCLE  
+                 SELECT CASE(methodChannels)
                  CASE('implicit') 
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
                  CASE('explicit')
@@ -1154,15 +1164,18 @@
 
                  ! Save Qc if variable exists
                  IF (ASSOCIATED(QcSol)) THEN
+                    IF ( QcPerm(M+t) <= 0 ) CYCLE
                     QcSolution(QcPerm(M+t)) = Qc
                  END IF
               END DO
 
            t = Solver % Mesh % NumberOfEdges 
+           tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
            IF (ParEnv % PEs > 1) THEN
-              Norm = ParallelNorm(t,AreaSolution(AreaPerm(M+1:M+t))) 
-           ELSE            
-              Norm = SQRT(SUM(AreaSolution(AreaPerm(M+1:M+t))*AreaSolution(AreaPerm(M+1:M+t))))/t  
+               Norm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
+           ELSE
+               Norm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
+                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
            END IF
 
            IF ( PrevNorm + Norm /= 0.0d0 ) THEN
@@ -1175,9 +1188,11 @@
 
            WRITE( Message, * ) 'S (NRM,RELC) : ',iter, Norm, RelativeChange
            CALL Info( SolverName, Message, Level=3 )
-           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(AreaPerm(M+1:M+t))),MAXLOC(AreaSolution)  
+           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) ,&
+                AreaPerm(M+1:M+t) /=0))),MAXLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
            CALL Info( SolverName, Message, Level=3 )
-           WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(AreaPerm(M+1:M+t))),MINLOC(AreaSolution)   
+           WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),&
+                MINLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
 
 
     !      !----------------------
@@ -1187,16 +1202,21 @@
         END DO ! of the nonlinear iteration
 
         ! Make sure Area > 0
-        AreaSolution(AreaPerm(M+1:M+t)) = MAX(AreaSolution(AreaPerm(M+1:M+t)),0.0_dp)
+        DO i=1,t
+           IF( AreaPerm(M+i) <= 0 ) CYCLE 
+           AreaSolution(AreaPerm(M+i)) = MAX(AreaSolution(AreaPerm(M+i)), 0.0_dp)
+        END DO
 
 
      END IF  ! If Channels
 
       !   Check for convergence                           
+      Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
       IF (ParEnv % PEs > 1) THEN
-         CoupledNorm = ParallelNorm(M,HydPot(HydPotPerm(1:M))) 
-      ELSE            
-         CoupledNorm = SQRT(SUM(HydPot(HydPotPerm(1:M))*HydPot(HydPotPerm(1:M))))/M
+         CoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M) 
+      ELSE
+         CoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) & 
+                             & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
       END IF
       
       IF ( PrevCoupledNorm + CoupledNorm /= 0.0d0 ) THEN
@@ -1217,7 +1237,13 @@
 !--------------------------------------------------------------------------------------------
 ! Already computed variables
    M = Model % Mesh % NumberOfNodes
-   IF (ASSOCIATED(VSol)) VSolution(VPerm(1:M)) = Vvar(1:M)
+
+   IF (ASSOCIATED(VSol)) THEN 
+      DO i=1, M
+        IF ( VPerm(i) <=  0 ) CYCLE
+        VSolution(VPerm(i)) = Vvar(i)
+      ENDDO
+   ENDIF 
 
 ! Output the sheet discharge (dimension = dimSheet)
    IF (ASSOCIATED(qSol)) THEN
@@ -1270,9 +1296,14 @@
       END DO
 
       ! Mean nodal value
-      WHERE(Refq > 0.0_dp)
-         qSolution = qSolution / Refq
-      END WHERE
+      DO i=1,n
+         DO j=1,dimSheet
+            k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
+            IF ( Refq(k) > 0.0_dp ) THEN 
+              qSolution(k) = qSolution(k)/Refq(k) 
+            END IF
+         END DO  
+      END DO
 
    END IF
 
@@ -1779,7 +1810,8 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        Ks = Ks * Ngrad**(nbs-2.0_dp) 
 
        Kc = SUM( NodalKc(1:n) * Basis(1:n))
-       Kc = Kc * MAX(CArea,0.0)**(nac - 1.0_dp) 
+! OG 17/06/2019 - CArea in factor of ALPHA 
+       Kc = Kc * MAX(CArea,0.0)**(nac-1.0_dp)
        Kc = Kc * Ngrad**(nbc-2.0_dp)  
 
        PhiG = SUM(NodalHydPot(1:n)*Basis(1:n))
@@ -1817,7 +1849,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        BETA = Bfactor*(Xi - Pii) 
 
        ! Channel flux for output
-       Qcc = ABS(Kc*GradPhi)
+       Qcc = ABS(MAX(CArea,0.0)*Kc*GradPhi)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE GetEvolveChannel

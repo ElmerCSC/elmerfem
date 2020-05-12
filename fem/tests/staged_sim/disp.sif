@@ -15,7 +15,7 @@ Simulation
 
   Output Version Numbers = Logical True
   Output File = disp.res
-  Post File = disp.ep
+  Post File = disp.vtu
 End
 
 Body 1
@@ -37,7 +37,9 @@ End
 
 Solver 1
   Equation = heat equation
-
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
   Linear System Preconditioning = ILU1
@@ -196,6 +198,5 @@ End
 
 Solver 2 :: Reference Norm = Real 0.672410258E-02
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
-RUN
 
 ! End of File

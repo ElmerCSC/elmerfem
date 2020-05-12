@@ -153,7 +153,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! Create CRS matrix strucures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
-    ALLOCATE(ip(Model%Circuit_tot_n))
+    ALLOCATE(ip(Model % Circuit_tot_n))
   END IF
   
   IF (Tstep /= GetTimestep()) THEN
@@ -172,7 +172,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   n_Circuits => Model%n_Circuits
   CM=>Model%CircuitMatrix
   
-  ! Initialialize Circuit matrix:
+  ! Initialize Circuit matrix:
   ! -----------------------------
   IF(.NOT.ASSOCIATED(CM)) RETURN
 
@@ -362,7 +362,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     END IF
     
     DO CompInd = 1, Circuit % n_comp
-    
       Comp => Circuit % Components(CompInd)
 
       Comp % Resistance = 0._dp 
@@ -380,7 +379,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         CvarOwner = Cvar % Owner
       END IF
 
-      CompParams => CurrentModel % Components(CompInd) % Values
+      CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
         Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
@@ -571,7 +570,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor
         Comp % Resistance = Comp % Resistance + localR
       
         CALL AddToMatrixElement(CM, VvarId, IvarId, localR)
@@ -586,8 +585,10 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
           IF ( TransientSimulation ) THEN 
             IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt*w(3)
             IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
- !          localL = value
-!          Comp % Inductance = Comp % Inductance + localL
+            value = value / Comp % VoltageFactor
+
+!           localL = value
+!           Comp % Inductance = Comp % Inductance + localL
 
             CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
             CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
@@ -700,6 +701,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
       ! ------------------------------------------------
       IF(dim==2) value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
       IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
+      value = value * Comp % VoltageFactor
 
       localConductance = ABS(value)
       Comp % Conductance = Comp % Conductance + localConductance
@@ -723,6 +725,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
 
         IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
         IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
+        value = value * Comp % VoltageFactor
         CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, value)
       END DO
     END DO
@@ -734,9 +737,10 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
 !------------------------------------------------------------------------------
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt,VvarId)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: nn, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value, dt
     TYPE(Component_t) :: Comp
 
@@ -819,6 +823,10 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff/Comp % VoltageFactor
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -830,6 +838,11 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3)/Comp % VoltageFactor
         ! Transform the conductivity tensor:
         ! ----------------------------------
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
@@ -843,11 +856,6 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
       ! ------------------------------------------------------
       localAlpha = localAlpha * Comp % coilthickness
 
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(gradv*MATMUL(C,gradv))
       Comp % Resistance = Comp % Resistance + localR
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
@@ -862,6 +870,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+          value = value * Comp % VoltageFactor
           CALL AddToMatrixElement(CM, dofIdtest, dofId, value)
         END DO
 
@@ -892,6 +901,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
             IF (dim == 3) q=q+nn
             IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
             IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
+            value = value * Comp % VoltageFactor
             CALL AddToMatrixElement(CM, PS(indexes(q)), dofId, value)
         END DO
       END DO
@@ -945,38 +955,6 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE GetConductivity
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-  
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
 
 
@@ -1104,7 +1082,7 @@ print*,'circ enter', parenv % mype; flush(6)
   n_Circuits => Model%n_Circuits
   CM=>Model%CircuitMatrix
   
-  ! Initialialize Circuit matrix:
+  ! Initialize Circuit matrix:
   ! -----------------------------
 !  print *, ParEnv % MyPe, "CommSave1", CommSave
 !  IF (ASSOCIATED(SaveActive)) THEN
@@ -1350,7 +1328,7 @@ print*,'circ enter', parenv % mype; flush(6)
         CvarOwner = Cvar % Owner
       END IF
 
-      CompParams => CurrentModel % Components(CompInd) % Values
+      CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
         Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
@@ -1567,13 +1545,14 @@ print*,'circ enter', parenv % mype; flush(6)
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor
+
         Comp % Resistance = Comp % Resistance + localR
         
 
         CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
-              REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
-             AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff))
+              REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor), &
+             AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor))
       END IF
       
       DO j=1,ncdofs
@@ -1586,6 +1565,7 @@ print*,'circ enter', parenv % mype; flush(6)
           IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
                   * IP % s(t)*detJ*SUM(WBasis(j,:)*w)
 
+          cmplx_value = cmplx_value / Comp % VoltageFactor
 !          localL = ABS(cmplx_value)
 !          Comp % Inductance = Comp % Inductance + localL
 
@@ -1690,8 +1670,10 @@ print*,'circ enter', parenv % mype; flush(6)
 
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
-      IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
-      IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
+      IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff * Comp % VoltageFactor
+
+      IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv) * Comp % VoltageFactor
+
       localConductance = ABS(cmplx_value)
       Comp % Conductance = Comp % Conductance + localConductance
       CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
@@ -1703,15 +1685,17 @@ print*,'circ enter', parenv % mype; flush(6)
         ! computing the mass term (sigma * im * Omega * a, grad si):
         ! ---------------------------------------------------------
         IF(dim==2) cmplx_value = im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff
+
         IF(dim==3) cmplx_value = im * Omega * IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)
+
         CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
                REAL(cmplx_value), AIMAG(cmplx_value))
 
 !        localL = ABS(1._dp/cmplx_value)
 !        Comp % Inductance = Comp % Inductance + localL
         
-        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
-        IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
+        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)*grads_coeff * Comp % VoltageFactor
+        IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
         CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
                 REAL(cmplx_value), AIMAG(cmplx_value))
       END DO
@@ -1724,9 +1708,10 @@ print*,'circ enter', parenv % mype; flush(6)
 !------------------------------------------------------------------------------
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,VvarId)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: nn, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value
     TYPE(Component_t) :: Comp
 
@@ -1802,6 +1787,10 @@ print*,'circ enter', parenv % mype; flush(6)
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff / Comp % VoltageFactor
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -1813,6 +1802,12 @@ print*,'circ enter', parenv % mype; flush(6)
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+
         ! Transform the conductivity tensor:
         ! ----------------------------------
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
@@ -1826,11 +1821,6 @@ print*,'circ enter', parenv % mype; flush(6)
       ! ------------------------------------------------------
       localAlpha = localAlpha * Comp % coilthickness
 
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(gradv*MATMUL(C,gradv))
       Comp % Resistance = Comp % Resistance + localR
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
@@ -1845,6 +1835,7 @@ print*,'circ enter', parenv % mype; flush(6)
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+          value = value * Comp % VoltageFactor
 
           CALL AddToCmplxMatrixElement(CM, dofIdtest, dofId, REAL(value), AIMAG(value))
         END DO
@@ -1870,6 +1861,7 @@ print*,'circ enter', parenv % mype; flush(6)
             IF (dim == 3) q=q+nn
             IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
             IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
+            value = value * Comp % VoltageFactor
             CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId, REAL(value), AIMAG(value))
         END DO
       END DO
@@ -1946,39 +1938,6 @@ print*,'circ enter', parenv % mype; flush(6)
 !------------------------------------------------------------------------------
   END SUBROUTINE GetConductivity
 !------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-  
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamicsHarmonic

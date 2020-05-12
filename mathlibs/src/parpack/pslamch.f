@@ -1,4 +1,4 @@
-      REAL               FUNCTION PSLAMCH( ICTXT, CMACH )
+      REAL               FUNCTION PSLAMCH10( ICTXT, CMACH )
 *
       include "mpif.h"
 *  -- ScaLAPACK auxilliary routine (version 1.0) --
@@ -82,7 +82,7 @@
           TEMP = TEMP1
       END IF
 *
-      PSLAMCH = TEMP
+      PSLAMCH10 = TEMP
 *
 *     End of PSLAMCH
 *

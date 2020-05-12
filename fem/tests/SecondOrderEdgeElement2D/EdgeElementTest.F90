@@ -62,9 +62,9 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: stat, PiolaVersion, ErrorEstimation, UseTabulatedBasis
   LOGICAL :: UseEnergyNorm
 
-  INTEGER, ALLOCATABLE :: Indeces(:)
+  INTEGER, ALLOCATABLE :: Indices(:)
 
-  SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indeces
+  SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indices
 !------------------------------------------------------------------------------
   PiolaVersion = .TRUE.
   dim = CoordinateSystemDimension()
@@ -76,7 +76,7 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. AllocationsDone ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(6,N), STIFF(N,N), &
-          Acoef(N), Indeces(N), STAT=istat )
+          Acoef(N), Indices(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'EdgeElementSolver', 'Memory allocation error.' )
      END IF
@@ -125,19 +125,19 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
      !-------------------------------------------------------------------
      IF (GetElementFamily() == 5 .AND. nd /= 6) THEN
         WRITE(Message,'(I2,A)') nd, 'DOFs Found'
-        CALL Fatal('EdgeElementSolver','Indeces for a tetrahedron erratic') 
+        CALL Fatal('EdgeElementSolver','Indices for a tetrahedron erratic') 
      END IF
      IF (GetElementFamily() == 6 .AND. nd /= 10) THEN
         WRITE(Message,'(I2,A)') nd, 'DOFs Found'
-        CALL Fatal('EdgeElementSolver','Indeces for a pyramid erratic')
+        CALL Fatal('EdgeElementSolver','Indices for a pyramid erratic')
      END IF
      IF (GetElementFamily() == 7 .AND. nd /= 15) THEN
         WRITE(Message,'(I2,A)') nd, 'DOFs Found'
-        CALL Fatal('EdgeElementSolver','Indeces for a prism erratic')
+        CALL Fatal('EdgeElementSolver','Indices for a prism erratic')
      END IF
      IF (GetElementFamily() == 8 .AND. nd /= 27) THEN
        WRITE(Message,'(I2,A)') nd, 'DOFs Found'
-       CALL Fatal('EdgeElementSolver','Indeces for a brick erratic')
+       CALL Fatal('EdgeElementSolver','Indices for a brick erratic')
      END IF
 
 
@@ -169,10 +169,10 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
      DO t=1,Solver % NumberOfActiveElements
         Element => GetActiveElement(t)
         n  = GetElementNOFNodes()
-        nd = GetElementDOFs( Indeces )
+        nd = GetElementDOFs( Indices )
 
         Load(1,1:nd) = Solver % Variable % Values( Solver % Variable % &
-             Perm(Indeces(1:nd)) )
+             Perm(Indices(1:nd)) )
 
         CALL MyComputeError(Load, Element, n, nd, dim, Err, SolNorm, UseEnergyNorm)
      END DO

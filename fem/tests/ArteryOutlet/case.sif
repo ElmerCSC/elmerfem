@@ -9,7 +9,7 @@
 !
 ! References for the methods used:
 !
-! 1) A method for partitioned fluid–structure interaction computation of flow in arteries 
+! 1) A method for partitioned fluid-structure interaction computation of flow in arteries 
 ! Medical Engineering & Physics, Volume 30, Issue 7, September 2008, Pages 917-923
 ! Esko Jarvinen, Peter Raback, Mikko Lyly, Juha-Pekka Salenius
 !
@@ -17,7 +17,8 @@
 ! CFD Eccomas 2001, Swansea
 ! Peter Raback, Juha Ruokolainen, Mikko Lyly, and Esko Jarvinen
 !
-! 13.8.2013 / P.R.
+! 13.8.2013 / P.R. - case included as test
+! 27.1.2020 / P.R. - minor modifcation to simplify geometry
 
  Check Keywords Warn
 
@@ -39,6 +40,7 @@ Simulation
   Timestep Sizes = 0.001 
   TimeStep Intervals = 2 !300 
   Output Intervals = 1
+  Max Output Level = 5
 
   Simulation Timing = Logical True
 End
@@ -81,25 +83,25 @@ End
 
 Material 1
   Name = "Blood"
-  Density = 1000
+  Density = 1000.0
   Viscosity = 3.5e-3
-  Youngs Modulus = 1
-  Poisson Ratio = 0.3
+  Mesh Youngs Modulus = 1.0
+  Mesh Poisson Ratio = 0.3
 End
 
 Material 2
   Name = "Blood with FSI"
-  Density = 1000
+  Density = 1000.0
   Viscosity = 3.5e-3
-  Youngs Modulus = 1
-  Poisson Ratio = 0.3
+  Mesh Youngs Modulus = 1.0
+  Mesh Poisson Ratio = 0.3
   Compressibility Model = Artificial Compressible
-  Artificial Compressibility  = 2.4E-5 
+  Artificial Compressibility = 2.4E-5 
 End
 
 Material 3
   Name = "Elastic Wall"
-  Density = 1010
+  Density = 1010.0
   Youngs Modulus = 3.0e5
   Poisson Ratio = 0.45
 End
@@ -116,16 +118,10 @@ End
 Solver 1
   Equation = Artery Outlet Solver
   Time Derivative Order = 1
-  Stabilize = Logical False
   Variable = Wnodal
-  Variable DOFs = 1
   Procedure = "ArteryOutlet" "OutletCompute"
   Linear System Solver = Direct
   Linear System Direct Method = Banded
-  Linear System Iterative Method = CG
-  Linear System Convergence Tolerance = 1.0e-6
-  Linear System Max Iterations = 1000
-  Linear System Preconditioning = ILU0
   Nonlinear System Max Iterations = Integer 1000
   Nonlinear System Convergence Tolerance = Real 1.0e-8
   Optimize Bandwidth = False
@@ -150,7 +146,7 @@ Solver 2
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-3
   Nonlinear System Newton After Tolerance = 5.0e-2   
-  Nonlinear System Newton After IterationS = 0     
+  Nonlinear System Newton After Iterations = 0     
   Steady State Convergence Tolerance = 1.0e-4
   Nonlinear System Relaxation Factor = $Relax
   Calculate Viscous Force = Logical True
@@ -161,7 +157,6 @@ Solver 3
   Variable = Displacement
   Variable DOFs = 2
   Procedure = "ElasticSolve" "ElasticSolver"
-  Time Derivative Order = 2
   Linear System Solver = Direct
   Linear System Direct Method = umfpack
   Nonlinear System Newton After Tolerance = 5.0e-2
@@ -215,109 +210,92 @@ Equation 3
   Artery Outlet Solver = Logical True
 End
 
+! Inlet where motion is defined
 Boundary Condition 1
   Name = "PumpingBC"
-  Target Boundaries = 1
+  Target Boundaries(1) = 1
   Velocity 1 = 0
   Velocity 2 = Equals Mesh Velocity 2
-  Mesh Update 1 = Real 0
+  Mesh Update 1 = 0.0
   Mesh Update 2 = Variable Time
-       Real Procedure "./Motion" "Motion"
+    Real Procedure "./Motion" "Motion"
 End
 
+! Outlet coupled weakly to the characteristic solver 1)
+! using special user-defined routine.
 Boundary Condition 2
   Name = "OutletBC"
-  Target Boundaries = 2
+  Target Boundaries(1) = 2
   Flux Integrate = Logical True
   Flow Force BC = True
   Pressure 2 = Variable Time
     Real Procedure "ArteryOutlet" "OutletPres"
   Mesh Update 2 = Real 0
 
+! This tag needed for coupled. 
   1D Fluid Coupling = Logical True
 End
 
 
+! Conditions at the r=0 axis. 
 Boundary Condition 3
-  Name = "Symmetry3"
-  Target Boundaries = 3
+  Name = "SymmetryBC"
+  Target Boundaries(1) = 3 
   Velocity 1 = 0
   Mesh Update 1 = Real 0
 End
 
+! Start of artery wall. 
 Boundary Condition 4
-  Name = "BC4"
-  Target Boundaries = 4
-  Velocity 1 = 0
-  Mesh Update 1 = Real 0
-  Mesh Update 2 = Real 0
+  Name = "StructureStart"
+  Target Boundaries(1) = 4
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
 End
 
+! End of artery wall. 
 Boundary Condition 5
-  Name = "BC5"
-  Target Boundaries = 5
-  Velocity 1 = 0
-  Mesh Update 1 = Real 0
-End
-
-Boundary Condition 6
-  Name = "BC6"
-  Target Boundaries(2) = 6 7 
-  Mesh Update 1 = Real 0
-  Mesh Update 2 = Real 0
-End
-
-Boundary Condition 7
-  Name = "Wall"
-  Target Boundaries = 8
-  Displacement 1 = 0
-  Displacement 2 = 0
-End
-
-Boundary Condition 8
   Name = "StructureEnd"
-  Target Boundaries = 9
+  Target Boundaries(1) = 5
   Displacement 1 = Variable Time
     Real Procedure "ArteryOutlet" "OutletdX"
-  Displacement 2 = 0 
-
+  Displacement 2 = 0.0
   1D Structure Coupling = Logical True
 End
 
-Boundary Condition 9
-  Name = "OuterWall"
-  Target Boundaries = 10
-End
-
-Boundary Condition 10
+! Fluid-structure interaction BCs. 
+Boundary Condition 6
   Name = "FSI"
-  Target Boundaries = 11
-  Velocity 1 = Equals Mesh Velocity 1
-  Velocity 2 = Equals Mesh Velocity 2
-  Mesh Update 1 = Equals Displacement 1
-  Mesh Update 2 = Equals Displacement 2
-  Force BC = Logical True
+  Target Boundaries(1) = 6
+  Velocity 1 = Equals "Mesh Velocity 1"
+  Velocity 2 = Equals "Mesh Velocity 2"
+  Mesh Update 1 = Equals "Displacement 1"
+  Mesh Update 2 = Equals "Displacement 2"
+  FSI BC = Logical True
 End
 
-Boundary Condition 11
-  Name = "Wall"
-  Target Boundaries(3) = 12 13 14
-  Mesh Update 1 = Real 0
-  Mesh Update 2 = Real 0
-  Velocity 1 = 0
-  Velocity 2 = 0
+! Fluid wall starying fixed
+Boundary Condition 7
+  Name = "FluidWall"
+  Target Boundaries(1) = 7
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
 End
 
-Boundary Condition 12
-  Name = "BC12"
-  Target Boundaries = 15
-  Mesh Update 1 = Real 0
-  Velocity 1 = 0
-  Velocity 2 = 0
+! Fluid wall stretching with the pumping motion
+Boundary Condition 8
+  Name = "StretchingWall"
+  Target Boundaries(1) = 8
+  Mesh Update 1 = Real 0.0
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
 End
 
-Solver 4 :: Reference Norm = Real 0.14981507E-05
-Solver 4 :: Reference Norm Tolerance = Real 1.0e-4
+Solver 2 :: Reference Norm = 4.32436552E-03
+Solver 3 :: Reference Norm = 1.55732880E-06
+Solver 4 :: Reference Norm = 1.33737099E-06
 
-RUN
+
 

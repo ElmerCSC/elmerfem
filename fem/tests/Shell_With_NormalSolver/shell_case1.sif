@@ -124,5 +124,5 @@ Boundary Condition 4
   DNU 1 = Real 0
 End
 
-Solver 2 :: Reference Norm = Real 5.77620248E-03   ! Default quads for nonlinear model
+Solver 2 :: Reference Norm = Real 5.77617628E-03   ! Default quads for nonlinear model
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-5

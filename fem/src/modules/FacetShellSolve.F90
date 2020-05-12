@@ -113,11 +113,7 @@
           EpsxxElement(:), EpsyyElement(:), EpszzElement(:), &
           EpsxyElement(:), EpsxzElement(:), EpsyzElement(:)
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,st,at0
-#else
-     REAL(KIND=dp) :: at,st,CPUTime,at0,RealTime
-#endif
 
      REAL(KIND=dp) :: StabParam1, StabParam2, S(3,3), PlyThick, &
           Tx(3), Ty(3), Tz(3), l, Weight3(3), Weight4(4), &
@@ -2161,8 +2157,8 @@
           Sdofs(11) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))/2.0d0
 
           DO j = 1,18
-             ShearRef(1,j) = ShearRef(1,j) + (1+V)*Sdofs(j)
-             ShearRef(2,j) = ShearRef(2,j) + ( -U)*Sdofs(j)
+             ShearRef(1,j) = ShearRef(1,j) + (1.0d0-V)*Sdofs(j)
+             ShearRef(2,j) = ShearRef(2,j) + (U)*Sdofs(j)
           END DO
 
 !         Compute the shear-dofs for edge 23:
@@ -2177,8 +2173,8 @@
           Sdofs(17) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))/SQRT(2.0d0)
 
           DO j = 1,18
-             ShearRef(1,j) = ShearRef(1,j) + ( V)*Sdofs(j)
-             ShearRef(2,j) = ShearRef(2,j) + (-U)*Sdofs(j)
+             ShearRef(1,j) = ShearRef(1,j) + (-V)*Sdofs(j)
+             ShearRef(2,j) = ShearRef(2,j) + (U)*Sdofs(j)
           END DO
 
 !         Compute the shear-dofs for edge 31:
@@ -2193,8 +2189,8 @@
           Sdofs(17) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))/2.0d0
 
           DO j = 1,18
-             ShearRef(1,j) = ShearRef(1,j) + (  V )*Sdofs(j)
-             ShearRef(2,j) = ShearRef(2,j) + (-1-U)*Sdofs(j)
+             ShearRef(1,j) = ShearRef(1,j) + ( -V )*Sdofs(j)
+             ShearRef(2,j) = ShearRef(2,j) + (-1.0d0+U)*Sdofs(j)
           END DO
 
 !         Compute the final reduced shear strain

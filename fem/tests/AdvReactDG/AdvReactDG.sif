@@ -16,13 +16,15 @@ $ function dx(c)  { x=c(0); y=c(1); _dx = pi*y^2*cos(pi*x*y^2) }
 $ function dy(c)  { x=c(0); y=c(1); _dy = pi*x*2*y*cos(pi*x*y^2) }
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 20
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals = 1
-! Post File = "DGsolution.ep"
+
+  Post File = "DGsolution.vtu"
+  vtu: Discontinuous Galerkin = Logical True
 End
 
 Constants
@@ -53,9 +55,14 @@ End
 Solver 1
   Equation = "AdvReact"
   Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
-  Variable = -nooutput "Potential"
+  Variable = "Potential"
   Exported Variable 1 = "Nodal Result"
-  Discontinuous Galerkin = Logical TRUE
+  Discontinuous Galerkin = True
+
+!  Discontinuous bodies = True
+  Optimize Bandwidth = False
+  
+  Linear System Save = True
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
@@ -63,6 +70,7 @@ Solver 1
   Linear System Preconditioning = ILU0
   Linear System Convergence Tolerance = 1.0e-6
 
+  Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = True
 End
 

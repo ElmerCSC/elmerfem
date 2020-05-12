@@ -1,0 +1,94 @@
+Header
+  Mesh DB "." "square"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = String Cartesian 2D
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Simulation Type = Transient
+  Timestep size = 1
+  Timestep Intervals = 20
+  Timestepping Method = BDF
+
+! Post File = File "esim1.ep"
+End
+
+Body 1
+  Equation  = 1
+  Material = 1
+End
+
+Material 1
+  Density = Real 0
+  Damping = Real 0
+  Viscosity = 1
+  Youngs Modulus = Real 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+  Plane Stress = True
+End
+
+Solver 1
+  Equation = "Elasticity Analysis"
+  Procedure = "StressSolve" "StressSolver"
+
+  Displace Mesh = Logical FALSE
+! Calculate Stresses = Logical True
+
+  Variable = String "t[d:2 p:1]"
+  Element = p:1 b:3
+  Incompressible = Logical True
+
+  Maxwell Material = Logical True
+ 
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+  Linear System Symmetric = Logical True
+
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1
+
+  Steady State Convergence Tolerance= 1.0e-6
+End
+
+Solver 2
+  Procedure = "ResultOutputSolve" "ResultOutputSOlver"
+  Exec Solver = Never
+  Output Format = vtu
+  Discontinuous Galerkin = True
+End
+
+!----------
+Boundary Condition 1 
+  Target Boundaries(1) = 1
+  d 1 = Real 0
+  d 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+
+  Normal Force = Variable Timestep, Coordinate 1
+     Real MATC "if ( tx < 10 ) { -10*(tx(1)<0.5) } else { 0 }
+End
+
+!------------
+Boundary Condition 3
+  Target Boundaries(2) = 2 4
+  d 1 = Real 0
+  d 2 = Real 0
+End
+
+
+Solver 1 :: Reference Norm = Real 0.50650144
+RUN
+

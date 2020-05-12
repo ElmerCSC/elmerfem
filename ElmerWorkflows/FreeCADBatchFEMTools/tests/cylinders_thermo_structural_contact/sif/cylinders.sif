@@ -1,0 +1,134 @@
+! A test case for FreeCAD automatic scripting with thermo-structural (Elmer test is a modified fem/tests/ThermalBiMetal2)
+! original date: November 2019
+! Author: Eelis Takala
+! email: eelis.takala@gmail.com
+Check Keywords Warn
+INCLUDE "cylinders/mesh.names"
+Header
+  Mesh DB "." "cylinders"
+End
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+!  Post File = "case.ep"
+  Post File = cylinders.vtu
+End
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+Body 1
+  Name = cyl1
+  Target Bodies(1) = $ cyl1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+Body 2
+  Name = cyl2
+  Target Bodies(1) = $ cyl2
+  Equation = 1
+  Material = 2
+  Body Force = 2
+End
+Body Force 1
+  Heat Source = 1.0e1
+End
+Body Force 2
+  Heat Source = 1.0e2
+End
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = FALSE
+End
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End
+Solver 2
+  Equation = "LinearDisp"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = "Displacement"
+  Variable DOFs = Integer 3
+  Linear System Solver = Direct
+  Linear System Symmetric = Logical True
+  Linear System Scaling = Logical False
+  Linear System Iterative Method = BiCGStab
+  Linear System Direct Method = UMFPACK
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 200
+  Linear System Preconditioning = ILU2
+  Nonlinear System Convergence Tolerance = Real 1.0e-7
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Relaxation Factor = Real 1
+  Steady State Convergence Tolerance= 1.0e-6
+  Optimize Bandwidth = True
+End
+Material 1
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 1.0e-4
+  Heat Conductivity = 1.0
+End
+Material 2
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 2.0e-4
+  Heat Conductivity = 10.0
+End
+Boundary Condition 1
+  Name = cyl_xy
+  Target Boundaries(2) = $ cyl1_xy001 cyl2_xy001
+  Displacement 3 = 0.0
+  Temperature = 300.0
+End
+Boundary Condition 2
+  Name = cyl_yz
+  Target Boundaries(2) = $ cyl1_yz cyl2_yz
+  Displacement 1 = 0.0
+  Temperature = 350.0
+End
+Boundary Condition 3
+  Name = cyl_zx
+  Target Boundaries(2) = $ cyl1_zx cyl2_zx
+  Displacement 2 = 0.0
+  Temperature = 400.0
+End
+Boundary Condition 4
+  Name = cyl1_outer
+  Target Boundaries(1) = $ cyl1_outer
+  Displacement 2 = 0.0
+  Temperature = 400.0
+End
+Boundary Condition 5
+  Name = cyl1_outer
+  Target Boundaries(1) = $ cyl2_inner
+  Displacement 2 = 0.0
+  Temperature = 500.0
+End
+
+Solver 1 :: Reference Norm = 5.38E+02
+Solver 1 :: Reference Norm Tolerance = 1.0E-3

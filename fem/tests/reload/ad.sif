@@ -16,8 +16,8 @@ Simulation
   Timestep Intervals = 10 
   Timestep Sizes = 2.5
   Output Intervals = 1
- Post File = "ad-trans.ep"
- Output File = "ad-trans.dat"
+! Post File = "ad-trans.vtu"
+  Output File = "ad-trans.dat"
 End
 
 

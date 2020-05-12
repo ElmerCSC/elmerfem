@@ -1,0 +1,43 @@
+! ******************************************************************************
+! *
+! *  Authors: F. Gillet-Chaulet (IGE-France)
+! *  Web:     http://elmerice.elmerfem.org
+! *  Original Date: 04/2019
+! * 
+! *****************************************************************************
+! Use .sif file to write the mesh description file in a CDO unstructured format
+!
+Header
+  Mesh DB "." "MESH"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = Steady
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+
+  max output level = 3
+End
+
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Body 1
+  Equation = 1
+End
+
+!#####
+Solver 1
+  Equation = Eq1
+    Procedure = "MakeCDOGridDesc" "MakeCDOGridDesc"
+    !Variable = dumy
+
+  Projection = File "+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+End
+
+!#####
+Equation 1
+  Active Solvers(1)= 1 
+End
+

@@ -85,9 +85,9 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: stat, PiolaVersion, SecondFamily, ErrorEstimation
   LOGICAL :: UseCurlNorm
 
-  INTEGER, ALLOCATABLE :: Indeces(:)
+  INTEGER, ALLOCATABLE :: Indices(:)
 
-  SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indeces
+  SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indices
 !------------------------------------------------------------------------------
   PiolaVersion = GetLogical( GetSolverParams(), 'Optimal Family', Found)
   ElementOrder = 1
@@ -114,7 +114,7 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
   IF ( .NOT. AllocationsDone ) THEN
     N = Mesh % MaxElementDOFs  ! just big enough
     ALLOCATE( FORCE(N), LOAD(6,N), STIFF(N,N), &
-        Indeces(N), Acoef(N), STAT=istat )
+        Indices(N), Acoef(N), STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'BestApproximationSolver', 'Memory allocation error.' )
     END IF
@@ -169,10 +169,10 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
     DO t=1,Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()
-      nd = GetElementDOFs( Indeces )
+      nd = GetElementDOFs( Indices )
 
       Load(1,1:nd) = Solver % Variable % Values( Solver % Variable % &
-          Perm(Indeces(1:nd)) )
+          Perm(Indices(1:nd)) )
 
       CALL ComputeApproximationError(Load, Element, n, nd, dim, Err, SolNorm, UseCurlNorm)
     END DO

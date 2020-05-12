@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -62,12 +62,9 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   LOGICAL :: GotIt, GotCoeff, Visited = .FALSE., DirMask(3)
   REAL(KIND=dp) :: Unorm, Totnorm
-  REAL(KIND=dp), POINTER :: ForceVectors(:,:), ForceVector(:), SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
+  REAL(KIND=dp), POINTER CONTIG :: ForceVectors(:,:), ForceVector(:)
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: VorticitySol
   
   SAVE Visited

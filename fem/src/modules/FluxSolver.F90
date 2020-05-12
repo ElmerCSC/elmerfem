@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back, Juha Ruokolainen
+! *  Authors: Peter Råback, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -65,12 +65,8 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
       EnforcePositiveMagnitude, UsePot
   REAL(KIND=dp) :: Unorm, Totnorm, val
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
-  REAL(KIND=dp), POINTER :: SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: FluxSol
   TYPE FieldTable_t
     REAL(KIND=dp), POINTER :: Values(:) 
@@ -403,7 +399,7 @@ CONTAINS
 !      Update global matrices from local matrices 
 !------------------------------------------------------------------------------
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
-        Solver % Matrix % Rhs => SaveRhs
+        Solver % Matrix % Rhs => SaveRHS
         CALL DefaultUpdateEquations( STIFF, FORCE(1,1:nd) )
       END IF
 

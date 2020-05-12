@@ -1,0 +1,5 @@
+include(test_macros)
+execute_process(COMMAND ${ELMERGRID_BIN} 1 2 angle -relh 1.0 -out angle0)
+execute_process(COMMAND ${ELMERGRID_BIN} 1 2 angle -relh 0.9 -out angle1)
+execute_process(COMMAND ${ELMERGRID_BIN} 1 2 angle -relh 0.8 -out angle2)
+RUN_ELMER_TEST()

@@ -75,10 +75,12 @@ Boundary Condition 3
 
   Infinity BC Temp = Logical True
   Infinity BC Temp Offset = Real 5.0
+
+!  Farfield Temperature = Real 5.0
 End
 
 Solver 1 :: Reference Norm = Real 7.2516458862548916
-RUN
+
 
 
 !End Of File

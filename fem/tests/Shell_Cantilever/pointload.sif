@@ -91,9 +91,14 @@ Boundary Condition 1
 End
 
 Boundary Condition 2
-  Target Nodes(2) = 17 34
-  U 3 Load = Variable Time
-    Real MATC "2*0.05*tx"
+!  Target Nodes(2) = 17 34
+!  U 3 Load = Variable Time
+!    Real MATC "2*0.05*tx"
+  Target Boundaries(1) = 2
+  Resultant Force 1 = Real 0.0
+  Resultant Force 2 = Real 0.0
+  Resultant Force 3 = Variable Time
+    Real MATC "0.2*tx"
 End
 
 Solver 1 :: Reference Norm = Real 1.39593665E-01

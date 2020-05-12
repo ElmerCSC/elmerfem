@@ -311,7 +311,6 @@ CONTAINS
 
 #include "../config.h"
 #ifdef HAVE_UMFPACK
-#ifdef USE_ISO_C_BINDINGS
 
 #ifdef ARCH_32_BITS
 #define CAddrInt c_int32_t
@@ -411,61 +410,6 @@ CONTAINS
         INTEGER(CAddrInt) :: symbolic
     END SUBROUTINE umf4_l_fsym
   END INTERFACE
-#else
-    INTERFACE
-    SUBROUTINE umf4def( control )
-       USE Types
-       REAL(KIND=dp) :: control(*) 
-    END SUBROUTINE umf4def
-
-    SUBROUTINE umf4sym( m,n,rows,cols,values,symbolic,control,iinfo )
-       USE Types
-       INTEGER :: m,n,rows(*),cols(*)
-       INTEGER(KIND=AddrInt) ::  symbolic
-       REAL(KIND=dp) :: Values(*), control(*),iinfo(*)
-    END SUBROUTINE umf4sym
-
-    SUBROUTINE umf4num( rows,cols,values,symbolic,numeric, control,iinfo )
-       USE Types
-       INTEGER :: rows(*),cols(*)
-       INTEGER(KIND=AddrInt) ::  numeric, symbolic
-       REAL(KIND=dp) :: Values(*), control(*),iinfo(*)
-    END SUBROUTINE umf4num
-
-    SUBROUTINE umf4sol( sys, x, b, numeric, control, iinfo )
-       USE Types
-       INTEGER :: sys
-       INTEGER(KIND=AddrInt) :: numeric
-       REAL(KIND=dp) :: x(*), b(*), control(*), iinfo(*)
-    END SUBROUTINE umf4sol
-
-    SUBROUTINE umf4_l_def( control )
-       USE Types
-       REAL(KIND=dp) :: control(*) 
-    END SUBROUTINE umf4_l_def
-
-    SUBROUTINE umf4_l_sym( m,n,rows,cols,values,symbolic,control,iinfo )
-       USE Types
-       INTEGER(KIND=AddrInt) :: m,n,rows(*),cols(*)
-       INTEGER(KIND=AddrInt) ::  symbolic
-       REAL(KIND=dp) :: Values(*), control(*),iinfo(*)
-    END SUBROUTINE umf4_l_sym
-
-    SUBROUTINE umf4_l_num( rows,cols,values,symbolic,numeric, control,iinfo )
-       USE Types
-       INTEGER(KIND=AddrInt) :: rows(*),cols(*)
-       INTEGER(KIND=AddrInt) ::  numeric, symbolic
-       REAL(KIND=dp) :: Values(*), control(*),iinfo(*)
-    END SUBROUTINE umf4_l_num
-
-    SUBROUTINE umf4_l_sol( sys, x, b, numeric, control, iinfo )
-       USE Types
-       INTEGER(KIND=AddrInt) :: sys
-       INTEGER(KIND=AddrInt) :: numeric
-       REAL(KIND=dp) :: x(*), b(*), control(*), iinfo(*)
-    END SUBROUTINE umf4_l_sol
-  END INTERFACE
-#endif
 
   INTEGER :: i, n, status, sys
   REAL(KIND=dp) :: iInfo(90), Control(20)
@@ -528,7 +472,7 @@ CONTAINS
 
     IF (iinfo(1)<0) THEN
       PRINT *, 'Error occurred in umf4sym: ', iinfo(1)
-      STOP
+      STOP EXIT_ERROR
     END IF
 
     IF ( BigMode ) THEN
@@ -539,7 +483,7 @@ CONTAINS
 
     IF (iinfo(1)<0) THEN
       PRINT*, 'Error occurred in umf4num: ', iinfo(1)
-      STOP
+      STOP EXIT_ERROR
     ENDIF
 
     IF ( BigMode ) THEN
@@ -562,7 +506,7 @@ CONTAINS
 
   IF (iinfo(1)<0) THEN
     PRINT*, 'Error occurred in umf4sol: ', iinfo(1)
-    STOP
+    STOP EXIT_ERROR
   END IF
  
   FreeFactorize = ListGetLogical( Solver % Values, &
@@ -596,7 +540,26 @@ CONTAINS
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: x(*), b(*)
 
-  INTEGER(KIND=AddrInt) :: cholmod_ffactorize
+  INTERFACE
+     SUBROUTINE cholmod_ffree(chol) BIND(c,NAME="cholmod_ffree")
+       USE Types
+       INTEGER(KIND=AddrInt) :: chol
+     END SUBROUTINE cholmod_ffree
+
+     FUNCTION cholmod_ffactorize(n,rows,cols,vals) RESULT(chol) BIND(c,NAME="cholmod_ffactorize")
+        USE Types
+        INTEGER :: n, Rows(*), Cols(*)
+        REAL(KIND=dp) :: Vals(*)
+        INTEGER(KIND=dp) :: chol
+     END FUNCTION cholmod_ffactorize
+
+     SUBROUTINE cholmod_fsolve(chol, n, x,b) BIND(c,NAME="cholmod_fsolve")
+        USE Types
+        REAL(KIND=dp) :: x(*), b(*)
+        INTEGER :: n
+        INTEGER(KIND=dp) :: chol
+     END SUBROUTINE cholmod_fsolve
+  END INTERFACE
 
   LOGICAL :: Factorize, FreeFactorize, Found
 
@@ -662,13 +625,33 @@ CONTAINS
   TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: x(*), b(*)
 
-  INTEGER(KIND=AddrInt) :: spqr_ffactorize
-
-  INTEGER :: i,spqr_ffree
+  INTEGER :: i
   LOGICAL :: Factorize, FreeFactorize, Found
 
   REAL(KIND=dp), POINTER CONTIG :: Vals(:)
   INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:)
+
+  INTERFACE
+     FUNCTION spqr_ffree(chol) RESULT(stat) BIND(c,NAME="spqr_ffree")
+       USE Types
+       INTEGER :: stat
+       INTEGER(KIND=AddrInt) :: chol
+     END FUNCTION spqr_ffree
+
+     FUNCTION spqr_ffactorize(n,rows,cols,vals) RESULT(chol) BIND(c,NAME="spqr_ffactorize")
+       USE Types
+       INTEGER :: n, rows(*), cols(*)
+       REAL(KIND=dp) :: vals(*)
+       INTEGER(KIND=AddrInt) :: chol
+     END FUNCTION spqr_ffactorize
+
+     SUBROUTINE spqr_fsolve(chol, n, x,b) BIND(c,NAME="spqr_fsolve")
+       USE Types
+       REAL(KIND=dp) :: x(*), b(*)
+       INTEGER :: n
+       INTEGER(KIND=AddrInt) :: chol
+     END SUBROUTINE spqr_fsolve
+  END INTERFACE
 
 #ifdef HAVE_CHOLMOD
   IF ( PRESENT(Free_Fact) ) THEN
@@ -1910,11 +1893,8 @@ CONTAINS
         nrhs      = 1
 
 !  ..   Numbers of Processors ( value of OMP_NUM_THREADS )
-#ifdef USE_ISO_C_BINDINGS
         CALL envir( 'OMP_NUM_THREADS', threads, tlen )
-#else
-        CALL envir( 'OMP_NUM_THREADS'//char(0), threads, tlen )
-#endif
+
         iparm(3) = 1
         IF ( tlen>0 ) &
           READ(threads(1:tlen),*) iparm(3)
@@ -1925,7 +1905,7 @@ CONTAINS
 
         IF (ierror .NE. 0) THEN
           WRITE(*,*) 'The following ERROR was detected: ', ierror
-          STOP
+          STOP EXIT_ERROR
         END IF
 
 !..     Factorization.
@@ -1935,7 +1915,7 @@ CONTAINS
 
         IF (ierror .NE. 0) THEN
            WRITE(*,*) 'The following ERROR was detected: ', ierror
-          STOP
+          STOP EXIT_ERROR
         ENDIF
       END IF
 
@@ -2491,6 +2471,12 @@ CONTAINS
         CALL Fatal( 'DirectSolver', 'Unknown direct solver method.' )
     END SELECT
 
+    ! We should be able to trust that a direct strategy will return a converged
+    ! linear system.
+    IF( ASSOCIATED( Solver % Variable ) ) THEN
+      Solver % Variable % LinConverged = 1
+    END IF
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE DirectSolver
 !------------------------------------------------------------------------------

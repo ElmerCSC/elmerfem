@@ -57,7 +57,7 @@ output_interval=5 # output intervals
 imin=0
 imax=0
 ##   2- REMESHING LOOP
-jmax=1 # maxium number of remeshing loops
+jmax=1 # maximum number of remeshing loops
 
 ### III- CONVERGENCE TEST (Here compute the relative node number difference between 2 remeshing loops) 
 converged (){

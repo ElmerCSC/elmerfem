@@ -9,7 +9,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 10
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -49,6 +49,7 @@ Solver 1
   Boundary Partitioning Maximum Fraction = Real $1.0/6
 
   Partition Mesh Extend Layers = Integer 10
+  Partition Mesh Merge Boundaries = Logical True
 
 !  Partitioning Method = String "Directional"
   Partitioning Method = String "Uniform"
@@ -96,4 +97,4 @@ Boundary Condition 2
 End
 
 
-Solver 1 :: Reference Norm = 4.18155220
+Solver 1 :: Reference Norm = 3.41161600E+00

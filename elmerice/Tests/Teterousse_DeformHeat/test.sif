@@ -6,8 +6,8 @@
 !!                                       !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Updated January 2014: comment Solver 5 (top freesurface)
-!    because of implementation problems when using 2 same solvers 
-!    whithout recompiling on of them
+!    because of implementation problems when using 2 of
+!    the same solvers without recompiling one of them
 
 check keywords warn
 echo on
@@ -383,6 +383,3 @@ End
 
 Solver 5 :: Reference Norm = Real 0.11262090E-01
 Solver 5 :: Reference Norm Tolerance = Real 1E-06
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.11262090E-01,EPS=1E-06\n" );

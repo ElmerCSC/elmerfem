@@ -1,0 +1,171 @@
+!---------------------------------------------------------
+! Case for solving two displacement equations as coupled.
+!
+! P.R. 2.9.2019
+!------------------------------------------------------------
+
+Header
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End 
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Post File = case.vtu
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1 
+  Body Force = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 2
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Name = "ElasticityA"
+  Active Solvers = 1 
+End
+
+Equation 2
+  Name = "ElasticityB"
+  Active Solvers = 2 
+End
+
+
+Material 1
+  Name = "Ideal"
+  Youngs Modulus = 1.0e9
+  Density = 1.0e3
+  Poisson Ratio = 0.3
+  Shell Thickness = 0.001
+End
+
+Body Force 1
+  Name = "Load"
+  Stress BodyForce 2 = -1.0e7
+End 
+
+
+Solver 1
+  Equation = LinElastA
+  Variable = -dofs 3 DispA
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+! The index of master structure is assumed to "1" and the
+! other solver is defined here.
+  Structure-Structure Coupling = Logical True
+  Solid Solver Index = Integer 2
+
+! The logic could be in the future that we define the other solvers like this...
+! Shell Solver Index = Integer 2
+! Plate Solver Index = Integer 2
+! Beam Solver Index = Integer 2
+
+! Enforces the block mode when solving the system
+  Linear System Block Mode = Logical True
+
+! Define the solvers that build the block system
+! Block system can also be created from components of one solver but not in this case.
+  Block Solvers(2) = Integer 1 2
+
+! Call the assembly for the 2nd solver using the slave solver slot.
+! Could probably be called also otherwise as far as before. 
+  Pre Solvers(1) = 2
+  
+  Linear System Block Method = String "other"
+  Block Preconditioner = Logical True ! default
+  Block Gauss-Seidel = Logical True   ! if false, jacobi
+
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-6
+  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System GCR Restart = Integer 50
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 50
+  Outer: Linear System Min Iterations = integer 3
+
+! We don't want to displace mesh in this test since only "A" would
+! be displaced, not "B". 
+  Displace Mesh = False
+End
+
+
+Solver 2
+  Equation = LinElastB
+  Variable = -dofs 3 DispB
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+! This is slave solver to the primary solver
+! It is called internally only for the assembly. 
+  Exec Solver = never
+  Linear System Solver Disabled = Logical True  
+  Displace Mesh = Logical False
+End
+
+Solver 3
+  Exec Solver = never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  
+  Filename = f.dat
+  File Append = Logical True
+  Parallel Reduce = Logical True
+
+  Variable 1 = DispA
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = max abs 
+  Operator 4 = norm
+  Operator 5 = min
+  Operator 6 = max
+End 
+
+
+Boundary Condition 1
+  Name = "LeftWall"
+  Target Boundaries(1) = 1
+  DispA 1 = Real 0.0
+  DispA 2 = Real 0.0
+  DispA 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "RightWall"
+  Target Boundaries(1) = 2
+  DispB 1 = Real 0.0
+  DispB 2 = Real 0.0
+  DispB 3 = Real 0.0
+End
+
+
+Solver 1:: Reference Norm = 1.34162047E-02
+
+
+

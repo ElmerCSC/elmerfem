@@ -36,7 +36,7 @@
 !>   end f is the shape factor
 !>   work only in 2D (no sense in 3D)
 !>   work for non-structured mesh
-!>   f can be given or calculated as a function of H(x,t) (heigth)
+!>   f can be given or calculated as a function of H(x,t) (height)
 !>   for different shape (rectangle, parabola, shelf)
 FUNCTION ShapeFactorGravity_x ( Model, nodenumber, x) RESULT(gx)
    USE Types

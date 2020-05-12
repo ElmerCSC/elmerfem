@@ -620,7 +620,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
         MeshVelocity = 0.0d0
         CALL GetVectorLocalSolution( MeshVelocity, 'Mesh Velocity')
         !------------------------------------------------------------------------------         
-        ! asuming convection or ALE mesh contribution by default
+        ! assuming convection or ALE mesh contribution by default
         !------------------------------------------------------------------------------         
         DO i=1,N
            C1(i) = Density(i) * HeatCapacity(i)

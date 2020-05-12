@@ -1,3 +1,15 @@
+!
+! The solution of a magnetostatic problem by using the consistently stabilized 
+! formulation (to ensure a unique vector potential solution). See also the 
+! alternate test mgdyn_bh_gauge2 for using a more effective linear solver.  
+!
+! The consistently stabilized formulation employs the scalar variable as 
+! a Lagrange multiplier to impose the divergence-free constraint on A. 
+! The uniqueness of the vector potential can also be enforced in an iterated
+! manner without introducing a coupled system to solve A and the Lagrange 
+! multiplier. For this alternative see the file with_projection.sif.
+!
+
 $ fileprefix = "tet"
 
 Header
@@ -54,7 +66,7 @@ solver 2
   linear system direct method = mumps
   use lagrange gauge = logical true
   use tree gauge = logical false
-  lagrange gauge penalization coefficient = real 1e8
+  lagrange gauge penalization coefficient = real 1e0
   linear system refactorize = logical true
   mumps percentage increase working space = integer 300
 end
@@ -64,6 +76,8 @@ solver 3
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
   linear system symmetric = True
   Potential variable = string "P"
+  Calculate Magnetic Vector Potential = True
+  Calculate Magnetic Flux Density = True
   calculate magnetic field strength = True
   steady state convergence tolerance = 1e-6
   linear system solver = iterative
@@ -75,28 +89,30 @@ solver 3
 end
 
 solver 4
-  exec solver = never
+!  exec solver = never
   equation = resultoutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   vtu format = True
+  Output File Name = stabilized
   discontinuous bodies = logical true
-  vector field 1 = String "Volume Current"
-  vector field 2 = String "Magnetic Flux Density E"
-  vector field 3 = String "Magnetic Field Strength E"
+!  vector field 1 = String "Volume Current"
+!  vector field 2 = String "Magnetic Flux Density E"
+!  vector field 3 = String "Magnetic Field Strength E"
 end
 
 solver 5
   equation = scalars
   Procedure = "SaveData" "SaveScalars"
   show norm index = 2
-  parallel append = logical true
+  parallel Reduce = true
+  filename = f.dat
 end
 
 solver 6
   equation = scalars2
   Procedure = "SaveData" "SaveScalars"
   show norm index = 3
-  parallel append = logical true
+  parallel reduce = true
 end
 
 equation 1

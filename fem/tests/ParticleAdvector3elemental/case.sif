@@ -1,0 +1,185 @@
+! Test case for the ParticleAdvector 
+! Uses particle-specific timestep that strives to constant Courant number.
+! This should optimize the accuracy in a FE mesh. As advected field is 
+! "Srides" which demonstrates well how advection takes place without 
+! any diffusion. 
+!
+! This cases uses elemental fields which is more robust because no particle will
+! start from the boundary. 
+!
+! P.R. 11.10.2018
+
+$slipcoeff = 1.0
+$visc = 0.1
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 12
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady State 
+  Steady State Max Iterations = 1
+  Output Intervals = 5
+
+  Post File = case.vtu
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1 
+  Name = "InitCond"
+
+  Strides = Real 0.0
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End 
+
+
+Solver 1
+  ! This could in principle be called each time as transient 
+  Flow Model = stokes
+  Exec Solver = before all
+
+  Equation = Navier-Stokes
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+!  Optimize bandwidth = False
+  Exported Variable 1 = Strides
+End
+
+
+Solver 2
+  Equation = ParticleAdvector
+  Procedure = "ParticleAdvector" "ParticleAdvector"
+
+  Reinitialize Particles = Logical True
+
+  Particle Accurate At Face = Logical False
+
+  Max Timestep Intervals = Integer 500
+  Particle Dt Constant = Logical False
+
+!!!! timestepping strategy
+  Simulation Timestep Sizes = Logical False
+  Max Timestep Intervals = Integer 1000
+
+! Time in average 5 steps in each element 
+  Max Timestep Size = Real 1.0
+  Timestep Courant Number = Real 0.25
+  
+!!!! time integration 
+!  Runge Kutta = Logical True
+  Velocity Gradient Correction = Logical True
+  Velocity Variable Name = String Flow Solution 
+
+! The variable to compute the norm for
+  Norm Variable Index = Integer 3
+
+! Show some info in the end
+!  Particle Info = Logical True
+  Particle Time = Logical True
+
+! The internal variables for this solver
+  Variable 1 = String "Particle Distance"
+
+  Variable 2 = String "Particle time"
+  Operator 2 = "cumulative"
+
+! The field variables being advected
+  Variable 3 = String "Strides"
+  Result Variable 3 = String "Advected Strides"  
+
+  Advect Elemental = Logical True
+End 
+
+
+Equation 1
+  Name = "Flow and Advect"
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Name = "Ideal"
+  Viscosity = $ visc
+  Density = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(8) = 1 2 3 5 6 8 9 10
+  Name = "Tangential slip"
+  Slip Coefficient 2 = $ slipcoeff
+  Velocity 1 = 0.0
+  Normal-Tangential Velocity = True
+
+  Particle Reflect = Logical True
+End
+
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Inlet"
+
+! Note: not quite zero anywhere
+  Velocity 2 = Variable Coordinate 1;  Real MATC "-4*tx*(1-tx)-0.01"
+  Velocity 1 = 0.0
+
+! Have a nonlinear inlet profile for the strides
+  Strides = Variable Coordinate 1 
+    Real MATC "sin(pi*tx)"
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 7
+  Name = "Outlet"
+  Velocity 2 = 0.0
+End
+
+! Note that the target norm depends on how long we integrate as it is the 
+! L2 norm of particle age.
+
+Solver 2 :: Reference Norm = 7.25341739E-01
+Solver 2 :: Reference Norm Tolerance = 1.0e-3
+
+
+
+

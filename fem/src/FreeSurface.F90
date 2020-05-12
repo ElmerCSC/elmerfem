@@ -239,7 +239,7 @@ dydu(j) = dydu(j) + SUM( dBasisdx(1:n,1) * ny(1:n) )
         n = Boundary % Type % NumberOfNodes
         NodeIndexes(1:n) = Boundary % NodeIndexes
 !-------------------------------------------------------------------------------
-!       Go trough element nodal points
+!       Go through element nodal points
 !-------------------------------------------------------------------------------
 #if 1
 nx(1:n) = Model % Nodes % x(NodeIndexes(1:n))
@@ -478,7 +478,7 @@ print*,'----------------------'
       n = GetElementNOFNodes()
       CALL GetElementNodes( BoundaryNodes )
 !-------------------------------------------------------------------------------
-!     Go trough boundary element nodes
+!     Go through boundary element nodes
 !-------------------------------------------------------------------------------
       DO i=1,n
         k = Boundary % NodeIndexes(i)

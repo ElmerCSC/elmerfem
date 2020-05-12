@@ -14,7 +14,7 @@ Simulation
   Output Intervals = 1
   Timestepping Method = BDF
   BDF Order = 1
-!  Post File = skeleton.ep
+!  Post File = skeleton.vtu
 End
 
 Constants

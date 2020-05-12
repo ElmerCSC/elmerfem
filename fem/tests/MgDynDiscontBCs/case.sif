@@ -63,7 +63,6 @@ Solver 2
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Vector Potential = Logical True
   Calculate Magnetic Flux Density = Logical True
-  Calculate Field Energy = Logical True
   Calculate Elemental Fields = Logical True
   Calculate Joule Heating = Logical True
   Calculate Nodal Forces = Logical True

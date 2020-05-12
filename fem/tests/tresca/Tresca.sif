@@ -12,7 +12,7 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 !  Output File = File "esim1.result"
-!  Post File = File "esim1.ep"
+!  Post File = File "esim1.vtu"
 End
 
 Body 1

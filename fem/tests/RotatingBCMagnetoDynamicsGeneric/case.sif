@@ -199,7 +199,7 @@ End
 
 Equation 1
   Name = "MagFields"
-  Active Solvers(3) = 2 3 7
+  Active Solvers(3) = 2 3 6
 End
 
 Material 1
@@ -231,7 +231,6 @@ Body Force 2
   Name = "Hot Move"
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*(t0+tx(0))+skew*tx(1)"
-
 !  Electric Potential = Equals "Coordinate 3"
 End 
 
@@ -358,6 +357,6 @@ Boundary Condition 14
 End 
  
 
-Solver 2 :: Reference Norm = 4.12188764E-03
+Solver 2 :: Reference Norm = 4.12190519E-03
 Solver 2 :: Reference Norm Tolerance = 1E-04
 

@@ -1,0 +1,210 @@
+! A test case for computing diffusive and convective fluxes.
+! Until now the "convective flux" was not suitable for computing fluxes of
+! scalar field. Here "flow solution" is assumed to be the field
+! carrying the consentration.
+!
+! One may play with the parameters and mesh density to see their effect on
+! conservation of the species. 
+!
+! P.R. 20.6.2018 
+
+Header
+  Mesh DB "." "angle_long"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 7
+  Coordinate System =  Cartesian
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation"
+  Active Solvers(2) = 1 2 
+
+! This is used by the diffusion equation
+  Convection = computed
+
+! Enforce Stokes for the test case
+  Ns Convect = Logical False 
+End
+
+
+Solver 1
+  Equation = "Navier-Stokes"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+
+  Stabilization Method = String Stabilized
+
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2
+  Equation = "AdvDiff"
+  Variable = Cons
+  Procedure = "AdvectionDiffusion" "AdvectionDiffusionSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Bubbles = True
+End
+
+
+Solver 3
+  Equation = "saverange"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+ 
+  Variable 1 = Cons 
+
+  Operator 1 = rms  
+
+  Operator 2 = convective flux
+  Mask Name 2 = is upper
+  Mask Name 3 = is lower
+  Mask Name 4 = is left 
+  Mask Name 5 = is right
+
+  Operator 6 = diffusive flux
+  Mask Name 6 = is upper
+  Mask Name 7 = is lower
+  Mask Name 8 = is left 
+  Mask Name 9 = is right
+
+  Save Flux Range = Logical False  
+End
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 0.01
+  Cons Diffusivity = Real 1.0e-2
+End
+
+
+Boundary Condition 1
+  Name = "Top"
+  Target Boundaries = 1
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Cons = Real 1.0
+
+  Is Upper = Logical True
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries = 2
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Cons = Real 0.0
+
+  Is Lower = Logical True
+End
+
+Boundary Condition 3
+  Name = "Left"
+  Target Boundaries = 3
+
+  Velocity 1 = Variable "Coordinate 2"
+    Real MATC "4*(2-tx)*(tx-1)"
+  Velocity 2 = 0
+
+  Is Left = Logical True
+
+! This step profile is in conflict with the steady state
+! diffusion distribution. Hence the size of the diffusion coefficient
+! will determine how the profile looks like. 
+  Cons = Variable "Coordinate 2"
+    Real
+      1.0 0.0
+      1.45 0.0
+      1.55 1.0
+      2.0  1.0
+    End 
+End
+
+Boundary Condition 4
+  Name = "Right"
+  Target Boundaries = 4
+
+  Velocity 2 = 0
+
+  Is Right = Logical True
+End
+
+
+
+
+Solver 1 :: Reference Norm = 3.66374994E-01
+Solver 2 :: Reference Norm = 5.85454247E-01
+
+Solver 3 :: Show Norm Index = 4
+Solver 3 :: Reference Norm = 3.300000000000E-001
+RUN
+
+Solver 3 :: Show Norm Index = 5
+Solver 3 :: Reference Norm = 3.302559052805E-001
+RUN
+
+Solver 3 :: Show Norm Index = 6
+Solver 3 :: Reference Norm = 1.065534223489E+000
+RUN
+
+Solver 3 :: Show Norm Index = 7
+Solver 3 :: Reference Norm = 9.640602603265E-001
+RUN
+
+
+

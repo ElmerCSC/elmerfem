@@ -1,0 +1,210 @@
+! This test case computes the magnetic field induced by a cylindrical wire
+!
+! This one with extruded wedge mesh & periodic BCs. 
+!
+! P.R. 29.4.2019
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "wire3d"
+End
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 1
+
+  Coordinate Scaling = 1.0e-3
+End
+
+Body 1
+  Name = "Wire"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Air"
+  Equation = 1
+  Material = 2
+End
+
+Material 1
+  Name = "Cu"
+  Relative Permittivity = 1
+  Relative Permeability = 1
+  Electric Conductivity = 58e6
+End
+
+Material 2
+  Name = "Air"
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+  Electric Conductivity = 0.0
+End 
+
+Equation 1
+  Active Solvers(2) = 1 2 
+End
+
+
+Solver 1
+  Equation = "MGDynamics"
+
+  Variable = "AV"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Fix Input Current Density = True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCgStabl 
+  Linear System Convergence Tolerance = 1.0e-7
+  BicgStabl Polynomial Degree = 6
+
+  Apply Mortar BCs = True
+  Edge Basis = Logical True
+
+  Mortar BCs Additive = Logical True
+  Optimize Bandwidth = False
+End
+
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "AV"
+
+  Calculate Current Density = False 
+  Calculate Electric Field = False 
+  Calculate Magnetic Field Strength = True
+  Calculate Joule Heating = False
+  Calculate Magnetic Vector Potential = True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Calculate Nodal Fields = Logical True
+  Impose Body Force Potential = Logical True
+  Impose Body Force Current = Logical True
+
+  Discontinuous Bodies = True
+End
+
+
+Solver 3
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = wire
+  Vtu format = Logical True
+  Discontinuous Bodies = True
+  Save Geometry Ids = True
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  FileName = f.dat
+
+  Polyline Coordinates(2,3) = -5.0e-3 0.0 5.0e-3 5.0e-3 0.0 5.0e-3
+  Polyline Divisions(1) = 100
+End
+
+
+Body Force 1
+! a) Give current density
+  Current Density 1 = 0.0
+  Current Density 2 = 0.0
+  Current Density 3 = $ 1.0e6/(1.0e-6*pi)
+End
+
+Boundary Condition 1
+  Name = "WireSurface"
+  Target Boundaries(4) = 1 2 3 4
+End
+
+
+Boundary Condition 2
+  Name = "WireStart"
+  Target Boundaries(1) = 9 
+
+  AV {e} = Real 0.0
+End
+
+Boundary Condition 3
+  Name = "AirStart"
+  Target Boundaries(1) = 10
+
+  AV {e} = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "WireEnd"
+  Target Boundaries(1) = 11
+
+  AV {e} = Real 0.0
+End
+
+
+Boundary Condition 5
+  Name = "AirEnd"
+  Target Boundaries(1) = 12
+
+  AV {e} = Real 0.0
+End
+
+
+! Currently the system seems to converge only when having periodic BCs
+! only in either X or Y direction, not both.
+
+Boundary Condition 6
+  Name = "MaxX"
+  Target Boundaries(1) = 5
+
+  Mortar BC = Integer 7
+  Plane Projector = Logical True
+  Level Projector Conforming Edges Strong = Logical True
+  Projector Skip Nodes = True
+End
+
+Boundary Condition 7
+  Name = "MinX"
+  Target Boundaries(1) = 7
+End
+ 
+Boundary Condition 8
+  Name = "MaxY"
+  Target Boundaries(1) = 6
+
+  Mortar BC = Integer 9
+
+! It is strange that if we change this to periodic this does not converge
+  Anti Plane Projector = Logical True
+  Level Projector Conforming Edges Strong = Logical True
+  Projector Skip Nodes = True
+End
+
+ 
+Boundary Condition 9
+  Name = "MinY"
+  Target Boundaries(1) = 8
+End
+
+Solver 1 :: Reference Norm = 1.22793647E-04
+
+! not periodic: 9.83777801E-5

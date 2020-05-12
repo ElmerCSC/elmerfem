@@ -1,0 +1,150 @@
+! This is a test case for the reduced dg basis in the case
+! when Master and Slave groups are used.
+!
+! P.R. 8.11.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+End
+
+! equation coefficients (g*r+ux*dx+uy*dy=f)
+! -----------------------------------------
+$ function g(c)   { _g  = 1+8*c(0)*c(1)^2 }
+$ function ux(c)  { _ux = 2-(2*c(1)-1)^2  }
+$ function uy(c)  { _uy = 3-2*c(0) }
+
+! analytical result and its spatial derivatives:
+! ----------------------------------------------
+$ function r(c)   { _r  = 1+sin(pi*c(0)*c(1)^2) }
+$ function dx(c)  { x=c(0); y=c(1); _dx = pi*y^2*cos(pi*x*y^2) }
+$ function dy(c)  { x=c(0); y=c(1); _dy = pi*x*2*y*cos(pi*x*y^2) }
+
+Simulation
+  Max Output Level = 20
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "DBsolution.vtu"
+!  vtu: Discontinuous Galerkin = Logical True
+
+  Coordinate Scaling = $1.0/3.0
+End
+
+Constants
+End
+
+Body 1
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 2
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 3
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 4
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 5
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 6
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 7
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 8
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Body 9
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+
+Equation 1
+  Active Solvers(1) = 1
+  Convection = constant
+End
+
+Material 1
+  Convection Velocity 1 = Variable Coordinate
+    Real MATC "ux(tx)"
+
+  Convection Velocity 2 = Variable Coordinate
+    Real MATC "uy(tx)"
+
+  Potential Gamma = Variable Coordinate
+     Real MATC "g(tx)"
+End
+
+Solver 1
+  Equation = "AdvReact"
+  Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
+  Variable = "Potential"
+  Exported Variable 1 = "Nodal Result"
+
+  Discontinuous Galerkin = Logical TRUE
+  DG Reduced Basis = Logical True
+
+  DG Reduced Basis Mapping(9) = Integer 1 1 1 1 2 3 3 2 3
+
+  Optimize Bandwidth = False
+  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR 
+  Linear System Max Iterations  = 500
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Residual Output = 10
+  BiCGStabl Polynomial Degree = 6
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = True
+End
+
+Body Force 1
+  Potential Source = Variable Coordinate
+    Real MATC "r(tx)*g(tx)+ux(tx)*dx(tx)+uy(tx)*dy(tx)"
+End
+
+Boundary Condition 1
+  Target Boundaries(8) = 1 2 3 4 5 6 7 8
+  Potential = Variable Coordinate
+    Real MATC "r(tx)"
+End
+
+
+Solver 1 :: Reference Norm = Real 1.41202622E+00
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
+

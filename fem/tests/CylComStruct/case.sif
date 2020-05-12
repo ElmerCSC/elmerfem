@@ -3,15 +3,15 @@
 ! Structured 3D mesh.
 !
 !
-! Reference results, mesh and the problem setting all benchmark from 
+! Reference results, mesh and the problem setting all benchmark from
 ! Code_Aster documentation. For complete original documentation see
 ! http://www.code-aster.org/V2/doc/v10/en/man_v/v3/v3.06.100.pdf
 !
-! The results between Elmer and Aster differ very little here. 
-! Aster seems to suffer a bit less from locking, propably due to
-! beneficial approximations. Using higher p- elements counters 
+! The results between Elmer and Aster differ very little here.
+! Aster seems to suffer a bit less from locking, probably due to
+! beneficial approximations. Using higher p- elements counters
 ! this problem effectively.
-! 
+!
 ! As in _Aster, axisymmetric presentation allows more accuracy
 ! at a significantly lower computational expense.
 !

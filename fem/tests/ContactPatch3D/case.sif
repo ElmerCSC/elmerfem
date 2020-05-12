@@ -152,7 +152,7 @@ Boundary Condition 2
 ! a) Use weak projector or not
   Galerkin Projector = Logical True
   Normal-Tangential Displacement = Logical True
-  Mass Consistant Normals = Logical True
+  Mass Consistent Normals = Logical True
 
   Tie Contact = Logical True
 

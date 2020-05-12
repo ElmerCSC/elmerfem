@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Peter R�back & Juha Ruokolainen
+! *  Authors: Peter Råback & Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -475,11 +475,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
        TimeOrder, TimeStepsTaken=0,estindexes(6),&
        ParticleStepsTaken=0, Group, NoGroups = 0
   REAL(KIND=dp) :: dtime, tottime = 0.0
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: cput1,cput2,dcput
-#else
-  REAL(KIND=dp) :: cput1,cput2,dcput,CPUTime
-#endif
   REAL(KIND=dp), POINTER :: TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
 
@@ -504,7 +500,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   Mesh => Solver % Mesh
   DIM = CoordinateSystemDimension()
 
-  ! Do some initalialization: allocate space, check fields  
+  ! Do some initialization: allocate space, check fields  
   !------------------------------------------------------------------------
   IF( VisitedTimes == 1 ) THEN
     TimeOrder = GetInteger( Params,'Time Order',Found)
@@ -593,7 +589,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
 
   CALL ReleaseWaitingParticles(Particles)   
 
-  IF(.FALSE. .AND. StatInfo) THEN
+  IF( StatInfo ) THEN
     CALL ParticleStatistics( Particles, 0 )
     CALL ParticleStatistics( Particles, 1 )
   END IF
@@ -716,8 +712,8 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     !---------------------------------------------------------------
     CALL DeleteLostParticles( Particles )
 
-    IF( OutputInterval > 0 .AND. MOD(i,OutputInterval) == 0) THEN
-      CALL SaveParticleData( Model,Solver,dt,TransientSimulation )
+    IF( OutputInterval > 0 ) THEN
+      IF ( MOD(i,OutputInterval) == 0) CALL SaveParticleData( Model,Solver,dt,TransientSimulation )
     END IF
 
     ! Write estimates of remaining time in log scale
@@ -828,7 +824,7 @@ CONTAINS
         Particles % Velocity(No,2) = COS( Angle ) * Velo(2) + SIN( Angle ) * Velo(1)
 
         ! For higher order scheme enforce the previous velocity also to zero since
-        ! otheriwse there is a funny velocity correction added.
+        ! otherwise there is a funny velocity correction added.
         IF( Particles % TimeOrder > 1 ) THEN
           Particles % PrevVelocity(No,:) = Particles % Velocity(No,:)
         END IF
@@ -979,9 +975,9 @@ CONTAINS
 
          FieldMode = GetString( Params,'Particle To Field Mode',GotFieldMode)
          IF( GotFieldMode ) THEN
-           CALL Fatal('ParticleFieldInteraction','> Particle to Field Mode < is obsolite. Use > Field 1 < instaed!')
+           CALL Fatal('ParticleFieldInteraction','> Particle to Field Mode < is obsolete. Use > Field 1 < instead!')
          END IF
-           
+
          ActiveOpers = 0
          ActiveGroups = 0
          NormalizedVars = .FALSE.
@@ -1192,7 +1188,7 @@ CONTAINS
          Force = Force + Gravity * Mass
        END IF
 
-       ! For 1st order models the velocity is solved implicitely, when drag is known
+       ! For 1st order models the velocity is solved implicitly, when drag is known
        ! Therefore it is a explicit force only for 2nd order models.
        !----------------------------------------------------------------------------
        IF( GotDamping .AND. TimeOrder == 2 ) THEN
@@ -1226,10 +1222,10 @@ CONTAINS
            CALL GetScalarFieldInMesh(CoordCondVar, BulkElement, Basis, val ) 
            IF( val > TINY( val ) ) Status = PARTICLE_FIXEDCOORD
          END IF
-         
+
          !-------------------------------------------------------------------------
          ! Add interaction with fields i.e. fluidic, electrostatic forces etc.
-         ! If acceleration is not needed solve implicitely for the velocity
+         ! If acceleration is not needed, solve implicitly for the velocity
          ! when drag coefficient is known. Hence do not set that as force here.
          !-------------------------------------------------------------------------
          IF( GotVelo ) THEN
@@ -1374,10 +1370,10 @@ CONTAINS
              ForcePerm => Var % Perm 
            ELSE
              ForcePerm => NULL()
-           END IF                          
+           END IF
 
            DO i = 1,n
-             ! As the weight should be proporpotional to the particle amount rather than
+             ! As the weight should be proportional to the particle amount rather than
              ! element volume this is not to be multiplied with local element size!
              !--------------------------------------------------------------------------
              weight = Basis(i)
@@ -1478,10 +1474,10 @@ CONTAINS
        n = Mesh % MaxElementNodes
        
        ALLOCATE( Basis(n), dBasisdx(n,3) )
-       
-       ! Currently, one may need a different radius if the mesh leaks i.e. is 
-       ! include triangles or tetrahedrans with nodes, but no faces on the surface
-       !---------------------------------------------------------------    
+
+       ! Currently, one may need a different radius if the mesh leaks i.e. is
+       ! include triangles or tetrahedrons with nodes, but no faces on the surface
+       !---------------------------------------------------------------
        Rad = GetCReal( Params,'Wall Particle Radius',Found)
        IF(.NOT. Found) Rad = GetCReal( Params,'Particle Radius',Found)
        IF(.NOT. Found) THEN

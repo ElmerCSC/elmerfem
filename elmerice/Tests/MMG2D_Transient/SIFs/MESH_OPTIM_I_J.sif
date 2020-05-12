@@ -2,7 +2,7 @@
 !!#################################################
 !!  Mesh Adaptation simulation
 !!      Here:
-!!       Update mesh using informations on h
+!!       Update mesh using information on h
 !!#################################################
 !!#################################################
 !!PARAMETERS:

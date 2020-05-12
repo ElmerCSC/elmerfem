@@ -241,7 +241,7 @@ Solver 6
     Procedure = File "ElmerIceSolvers" "UpdateExport"
     Optimize Bandwidth = logical false
 
-!used here to update DJDalpha from DJDbeta (see correponding line in Body Force section)
+!used here to update DJDalpha from DJDbeta (see corresponding line in Body Force section)
   Exported Variable 1 =  alpha
   Exported Variable 2 =  -nooutput DJDalpha
 End

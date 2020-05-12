@@ -108,7 +108,7 @@ CONTAINS
 
       COMPLEX(KIND=dp) :: s
 !
-      REAL(KIND=dp), POINTER :: SaveValues(:), SaveRhs(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
       TYPE(ValueList_t), POINTER :: Params
 
 !     %--------------------------------------%
@@ -502,7 +502,7 @@ CONTAINS
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          ALLOCATE( Perm(NEIG) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
             EigValues(i) = CMPLX( D(i,1), D(i,2),KIND=dp )
          END DO
@@ -760,7 +760,7 @@ END SUBROUTINE CheckResiduals
 
       COMPLEX(KIND=dp) :: s
 !
-      REAL(KIND=dp), POINTER :: SaveValues(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
 !     %-----------------------%
 !     | Executable Statements |
@@ -1000,7 +1000,7 @@ END SUBROUTINE CheckResiduals
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          ALLOCATE( Perm(NEIG) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
             EigValues(i) = CMPLX( 1.0d0 / D(i,1), D(i,2),KIND=dp )
          END DO
@@ -1111,7 +1111,7 @@ END SUBROUTINE CheckResiduals
       REAL(KIND=dp), TARGET :: x(2*n), b(2*n)
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, RWORK(N)
 !
-      REAL(KIND=dp), POINTER :: SaveValues(:), SaveRhs(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
 
       TYPE(ValueList_t), POINTER :: Params
 !
@@ -1447,7 +1447,7 @@ END SUBROUTINE CheckResiduals
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          ALLOCATE( Perm(NEIG) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          DO i=1,NEIG
             EigValues(i) = D(i)
          END DO
@@ -1513,7 +1513,7 @@ END SUBROUTINE CheckResiduals
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
 
       REAL(KIND=dp), ALLOCATABLE, TARGET :: vals(:)
-      REAL(KIND=dp), POINTER :: svals(:)
+      REAL(KIND=dp), POINTER CONTIG :: svals(:)
       COMPLEX(KIND=dp) :: c,m
       COMPLEX(KIND=dp), ALLOCATABLE :: x(:), y(:)
 
@@ -1924,7 +1924,7 @@ END SUBROUTINE CheckResidualsComplex
          END DO
 
          ALLOCATE( Perm( NEIG ) )
-         Perm = (/ (i, i=1,NEIG) /)
+         Perm = [ (i, i=1,NEIG) ]
          CALL SortC( NEIG, EigTemp, Perm )
          
 !        Extract the values to ELMER structures:

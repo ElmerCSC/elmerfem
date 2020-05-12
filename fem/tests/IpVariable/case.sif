@@ -1,5 +1,5 @@
 ! Just creates a variable on IP points and computes some values to it
-! using the "update exported variables" and body force defintions. 
+! using the "update exported variables" and body force definitions. 
 ! The SaveScalars is used to ensure that the max value is correct:
 !
 ! max(testvar a)=2*(0.95+0.05/sqrt(3))

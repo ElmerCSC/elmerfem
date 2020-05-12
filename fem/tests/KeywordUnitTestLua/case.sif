@@ -1,0 +1,95 @@
+! Test case for handles that make code simpler
+! Here testing for arrays.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Steady State 
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Simulation Timing = Logical True
+  Timer Results = Logical True
+End
+
+Body 1
+  target bodies(3) = 1 2 3 
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+
+Solver 1
+!  Exec Solver = never
+
+  Equation = KeywordTimer
+  Variable = ConsB
+  Variable DOFs = 1
+  Procedure = "./KeywordCompareTensor" "KeywordCompare"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+! Stabilize = False  ! this is default
+
+  Solver Timing = True
+End
+
+
+Material 1
+  Name = "Material1"
+
+  Float Value a(3) = Variable "time"
+    Real lua "sin(tx[0]), cos(tx[0]), 0"
+
+  Float Value b(2,2) = Variable "time"
+    Real lua "sin(tx[0]), 1, 0, cos(tx[0])"
+
+  Float Value c(3) = Variable "coordinate 2"
+    Real lua "sin(tx[0]), cos(tx[0]), 0"
+
+  Float Value d(2,2) = Variable "coordinate 2"
+    Real lua "sin(tx[0]), 1, 0, cos(tx[0])"
+
+  Float Value e(3) = Variable "time"
+    Real MATC "sin(tx) cos(tx) 0"
+
+  Float Value f(2,2) = Variable "time"
+    Real MATC "sin(tx) 1 0 cos(tx)"
+
+  Float Value g(3) = Variable "coordinate 2"
+    Real MATC "sin(tx) cos(tx) 0"
+
+  Float Value h(2,2) = Variable "coordinate 2"
+    Real MATC "sin(tx) 1 0 cos(tx)"
+End
+
+Boundary Condition 1
+  Name = "BCs" 
+  Target Boundaries = 1
+End
+
+Solver 1 :: Reference Norm = 0
+
+!End Of File
+

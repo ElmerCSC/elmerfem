@@ -22,11 +22,12 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Ga¨el Durand
+! *  Authors: Olivier Gagliardini, Ga¨el Durand, Mondher Chekki
 ! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
 ! *  Original Date: 
+! *  Modify on 15/12/2018: Add support to Parallel Solver  
 
 ! ****************************************************************************/
 ! -----------------------------------------------------------------------
@@ -35,6 +36,7 @@
 !------------------------------------------------------------------------------
 
     USE DefUtils
+    USE ElmerIceUtils
 
     IMPLICIT NONE
 
@@ -103,6 +105,9 @@
 #else
      REAL(KIND=dp) :: at, at0, CPUTime, RealTime
 #endif
+     INTEGER          :: nlen
+     CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+     REAL(KIND=dp) , ALLOCATABLE :: ForceValues_tmp(:)
 
 !------------------------------------------------------------------------------
      SAVE LocalMassMatrix, LocalStiffMatrix, LocalForce, &
@@ -123,7 +128,14 @@
      ForceSol => VariableGet( Solver % Mesh % Variables, InputVariableName,UnFoundFatal=UnFoundFatal)
      ForcePerm    => ForceSol % Perm
      ForceValues  => ForceSol % Values
-!              
+
+!------------------------------------------------------------------------------
+!     Allocate  temporary storage
+!------------------------------------------------------------------------------
+     ALLOCATE( ForceValues_tmp(SIZE(ForceValues)),  STAT=istat )
+     IF ( istat /= 0 ) THEN
+        CALL Fatal( SolverName, 'Memory allocation error.' )
+     END IF
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
@@ -174,7 +186,12 @@
        AllocationsDone = .TRUE.
       END IF
 
+!------------------------------------------------------------------------------
+!     Update Force solution on Parallel Partitions
+!------------------------------------------------------------------------------
+      VarName=GetVarName(Solver % Variable)
 
+      CALL UpdatePartitionWeight(Model, Solver, VarName, ForceSol, ForceValues_tmp)
 !------------------------------------------------------------------------------
       NonlinearIter = 1
       DO iter=1,NonlinearIter
@@ -207,14 +224,12 @@
 
          Material => GetMaterial()
 
-
 !------------------------------------------------------------------------------
 !        Get element local stiffness & mass matrices
 !------------------------------------------------------------------------------
 
           CALL LocalMatrix( LocalMassMatrix, LocalStiffMatrix, &
               CurrentElement, n, ElementNodes )
-              
 
 !------------------------------------------------------------------------------
 !        Update global matrices from local matrices 
@@ -225,34 +240,18 @@
       
       DO i=1, Model % Mesh % NumberOfNodes
          IF (StressPerm(i)>0) THEN 
-            ForceVector(StressPerm(i)) = ForceValues(ForcePerm(i))
+            ForceVector(StressPerm(i)) = ForceValues_tmp(ForcePerm(i))
          END IF
       END DO
 
-
+!------------------------------------------------------------------------------
+!     Deallocate  temporary storage
+!------------------------------------------------------------------------------
+      DEALLOCATE(ForceValues_tmp) 
 !------------------------------------------------------------------------------
 !        Special traitment for nodes belonging in periodic boundary (F = 0)
 !------------------------------------------------------------------------------
-      DO t=1, Solver % Mesh % NumberOfBoundaryElements
-          ! get element information
-          Element => GetBoundaryElement(t)
-          n = GetElementNOFNodes()
-          IF ( GetElementFamily() == 1 ) CYCLE
-          BC => GetBC( Element )
-          bc_id = GetBCId()
-          CALL GetElementNodes( ElementNodes )
-
-          IF ( ASSOCIATED( BC ) ) THEN    
-             IsPeriodicBC = GetLogical(BC,'Periodic BC ' // TRIM(Solver % Variable % Name),Found)
-             IF (.NOT.Found) IsPeriodicBC = .FALSE.
-             IF (IsPeriodicBC) THEN 
-                DO i=1,N
-                   j = Element % NodeIndexes(i)
-                   IF (ForcePerm(j)>0) ForceVector(StressPerm(j)) = 0.0_dp
-                END DO
-             END IF
-          END IF
-      END DO        
+      CALL SetZeroAtPeriodicNodes(Model, Solver, VarName, ForceVector, ForcePerm, StressPerm)
 
       CALL Info( SolverName, 'Assembly done', Level=4 )
 
@@ -281,7 +280,9 @@
       DO i=1,n-1
         unorm = unorm + SUM( solver % variable % values(i::n)**2 )
       END DO
+
       unorm = SQRT( unorm )
+     
       solver % variable % norm = unorm
 
       IF ( PrevUNorm + UNorm /= 0.0d0 ) THEN
@@ -369,12 +370,12 @@ CONTAINS
        IF ( CSymmetry ) s = s * Radius
 
 
-          DO p=1,n         
-            DO q=1,n        
-            StiffMatrix(p,q) =  &
-               StiffMatrix(p,q) + s*Basis(q)*Basis(p)
-            END DO
-          END DO
+       DO p=1,n         
+         DO q=1,n        
+         StiffMatrix(p,q) =  &
+            StiffMatrix(p,q) + s*Basis(q)*Basis(p)
+         END DO
+       END DO
       END DO 
 
 !------------------------------------------------------------------------------

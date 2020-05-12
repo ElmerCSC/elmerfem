@@ -5,4 +5,4 @@ CONFIGURE_FILE( kiskot.sif kiskot.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO kiskot.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_3phase LABALS whitney)
+ADD_ELMER_TEST(mgdyn_3phase LABELS whitney)

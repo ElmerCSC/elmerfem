@@ -54,7 +54,7 @@ MODULE LinearForms
   END INTERFACE LinearForms_ProjectToU
 
   PUBLIC LinearForms_GradUdotGradU, LinearForms_UdotU, LinearForms_GradUdotU, &
-        LinearForms_UdotF, LinearForms_ProjectToU
+        LinearForms_UdotF, LinearForms_ProjectToU, LinearForms_UdotV
 CONTAINS
 
   ! Compute bilinear form G=G+(alpha grad u, grad u) = grad u .dot. (alpha grad u) 
@@ -259,6 +259,79 @@ CONTAINS
     END DO ! Vector blocks
   END SUBROUTINE LinearForms_GradUdotU
   
+
+  ! Compute bilinear form G=G+(alpha u, v), where u and v can be different basis functions
+  SUBROUTINE LinearForms_UdotV(m, n, dim, U, V, weight, G, alpha)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: m, n, dim
+    REAL(KIND=dp) CONTIG, INTENT(IN) :: U(:,:), V(:,:), weight(:)
+    REAL(KIND=dp) CONTIG, INTENT(INOUT) :: G(:,:)
+    REAL(KIND=dp) CONTIG, INTENT(IN), OPTIONAL :: alpha(:)
+
+    REAL(KIND=dp) :: wrk(VECTOR_BLOCK_LENGTH,n)
+    INTEGER :: i, ii, iin, j, l, ldbasis, ldwrk, ldk, blklen
+    LOGICAL :: noAlphaWeight
+!DIR$ ATTRIBUTES ALIGN:64::wrk
+
+    ldbasis = SIZE(U,1)
+    ldwrk = SIZE(wrk,1)
+    ldk = SIZE(G,1)
+
+    noAlphaWeight = .TRUE.
+    IF (PRESENT(alpha)) noAlphaWeight = .FALSE.
+
+    DO ii=1,m,VECTOR_BLOCK_LENGTH
+       iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
+       blklen=iin-ii+1
+
+       IF (blklen < VECTOR_SMALL_THRESH) THEN
+          ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
+          IF (noAlphaWeight) THEN
+             DO j=1,n
+                !PRIVATE(l)
+                DO i=1,n
+                   !DIR$ LOOP COUNT MAX=3
+                   DO l=ii,iin
+                      G(i,j) = G(i,j) + U(l,i)*V(l,j)*weight(l)
+                   END DO
+                END DO
+             END DO
+          ELSE
+             DO j=1,n
+                !_ELMER_OMP_SIMD PRIVATE(l)
+                DO i=1,n
+                   !DIR$ LOOP COUNT MAX=3
+                   DO l=ii,iin
+                      G(i,j) = G(i,j) + U(l,i)*V(l,j)*weight(l)*alpha(l)
+                   END DO
+                END DO
+             END DO
+          END IF
+       ELSE
+          IF (noAlphaWeight) THEN
+             DO j=1,n
+                !_ELMER_OMP_SIMD
+                DO i=ii,iin
+                   wrk(i-ii+1,j)=weight(i)*V(i,j)
+                END DO
+             END DO
+          ELSE
+             DO j=1,n
+                !_ELMER_OMP_SIMD
+                DO i=ii,iin
+                   wrk(i-ii+1,j)=weight(i)*alpha(i)*V(i,j)
+                END DO
+             END DO
+          END IF
+          ! Compute matrix u \dot u
+          CALL DGEMM('T', 'N', n, n, blklen, &
+               1D0, U(ii,1), ldbasis, &
+               wrk, ldwrk, 1D0, G, ldk)
+       END IF
+    END DO ! Vector blocks
+  END SUBROUTINE LinearForms_UdotV
+
   ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
   SUBROUTINE LinearForms_UdotU(m, n, dim, U, weight, G, alpha)
     IMPLICIT NONE

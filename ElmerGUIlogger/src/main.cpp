@@ -37,10 +37,10 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
-#include <QApplication>
 #include "mainwindow.h"
+#include <QApplication>
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
   MainWindow mainWindow;
   mainWindow.show();

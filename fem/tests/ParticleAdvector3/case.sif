@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
 
@@ -28,7 +28,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 5
 
-!  Post File = case_c.vtu
+!  Post File = case.vtu
 End
 
 Constants
@@ -105,7 +105,7 @@ Solver 2
 
 ! Time in average 5 steps in each element 
   Timestep Courant Number = Real 0.25
- 
+  
 !!!! time integration 
 !  Runge Kutta = Logical True
   Velocity Gradient Correction = Logical True
@@ -135,12 +135,10 @@ End
 
 
 Solver 3
-!  Exec Solver = after saving
-
   Exec Solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
+  Output File Name = case_a
 
   Vtu Format = Logical True
   Binary Output = Logical True
@@ -193,8 +191,8 @@ End
 ! Note that the target norm depends on how long we integrate as it is the 
 ! L2 norm of particle age.
 
-Solver 2 :: Reference Norm = Real 0.48789314
-RUN
+Solver 2 :: Reference Norm = 4.34768834E-01
+
 
 
 

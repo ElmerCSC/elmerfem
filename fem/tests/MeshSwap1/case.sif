@@ -1,0 +1,109 @@
+! Test case for changing mesh on-the-fly
+! Not applicable to transient cases.
+!
+! P.R. 31.1.2019
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle0"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Simulation Type = scanning
+  Timestep Intervals = 3
+  Output Intervals = 1 
+
+  Mesh Name Index = Variable "time"
+    Real
+      1 0
+      2 1
+      3 2
+    End 
+
+  Mesh Name 1 = File "angle1"    
+  Mesh Name 2 = File "angle2"    
+
+  Post File = "case.vtu"
+  vtu: Output Directory = File "results"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers = 1 
+End
+
+Solver 1
+  Equation = "heat"
+  Variable = "Temp"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = False
+  Bubbles = False
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+
+  Optimize Bandwidth = FALSE
+End
+
+
+Solver 2 
+  Exec Solver = never
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Temp
+  Operator 1 = int mean
+  Variable 2 = Temp
+  Operator 2 = max
+  Variable 3 = Time
+  Filename = f.dat
+End 
+
+
+Material 1
+  Name = "Material1"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 10.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1.0
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries = 1 
+  Temp = Real 0
+End
+
+Solver 1 :: Reference Norm = 7.88144861e-2

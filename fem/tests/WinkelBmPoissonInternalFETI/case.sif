@@ -1,0 +1,103 @@
+! Computation of the case winkel with various linear solvers
+! This case with Internal FETI of Elmer. There is also external FETI
+! API for Permon, not tested by this test. 
+!
+! P.R. 28.8.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "winkel"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Simulation Timing = Logical True
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+! Rest of the solver definitions exlucing the linear solver
+Solver 1
+  Exec Solver = "Always"
+  Equation = "PotSolver"
+
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+  Variable = "Potential"
+  
+  Nonlinear System Consistent Norm = True
+  Steady State Convergence Tolerance = 1.0e-05
+
+! Add some timing info
+  Linear System Timing = True
+  Solver Timing = True
+
+! Have the linear system definitions here since only they change
+! You can always move them to the solver section below
+  include linsys.sif 
+End
+
+
+Solver 2
+!  Exec Solver = after simulation
+
+  Equation = SaveTimings
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = f.dat
+  Variable 1 = Potential
+  Operator 1 = dofs
+  Operator 2 = elements
+  Operator 3 = partitions
+  Operator 4 = cpu time
+
+  Operator 5 = min
+  Operator 6 = max
+
+!  File Append = True
+  Parallel Reduce = True
+End
+
+Material 1
+  Name = "Material"
+  Electric Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Current Source = 1.0
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1 
+  Potential = 0.0
+End
+
+Solver 1 :: Reference Norm = 1.03281284
+
+!End Of File

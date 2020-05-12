@@ -1,6 +1,6 @@
 A few introductory runs to the double porous equivalent layer hydrological model
 launching the ElmerGrid command allow the build up of the mesh and the compilation of the code
-It is running as tha basal boundary condition of a small cube.
+It is running as the basal boundary condition of a small cube.
 
 The runs are : 
 

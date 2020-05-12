@@ -11,6 +11,7 @@ End
 Simulation
   Simulation Type = Steady State
   mesh levels = 1
+!  Post File = cylinder.vtu
 End
 
 Solver 1
@@ -50,14 +51,12 @@ Solver 2
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
   Linear System Symmetric = True
   Potential Variable = String "AV"
-  Use Piola Transform = Logical false
 
   Calculate Current Density = Logical True
   Calculate Electric Field = Logical True
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Vector Potential = Logical True
   Calculate Magnetic Flux Density = Logical True
-  Calculate Field Energy = Logical True
   Calculate Elemental Fields = Logical True
   Calculate Joule Heating = Logical True
   Calculate Nodal Forces = Logical True
@@ -99,7 +98,7 @@ End
 Material 2
   Relative Permeability = Real $ mur_2
   Relative Permittivity = Real 1
-  Electric Conductivity = Real 1e-3
+  Electric Conductivity = Real 1e5
 End
 
 Body Force 1
@@ -140,5 +139,5 @@ Equation 1
   Active Solvers(2) = 1 2
 End
 
-Solver 3 :: Reference Norm = Real 2.4096E+002
+Solver 3 :: Reference Norm = Real 4.25680046E+01
 Solver 3 :: Reference Norm Tolerance = Real 1e-3

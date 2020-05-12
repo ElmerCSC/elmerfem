@@ -76,5 +76,5 @@ RUN
 
 ! check the neighbours
 Solver 1:: Show Norm Index = 3 
-Solver 1:: Reference Norm = 193905.00
+Solver 1:: Reference Norm = 2.01857000E+05
 RUN 

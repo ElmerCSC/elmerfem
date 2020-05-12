@@ -27,7 +27,7 @@
 ! *
 ! *****************************************************************************
 ! *
-! *  Authors: Peter R�back, Serge-�tienne Parent
+! *  Authors: Peter Råback, Serge-�tienne Parent
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -312,11 +312,7 @@ END MODULE PorousMaterials
     LOGICAL :: SubroutineVisited = .FALSE.,InitSolution, ResetRelax
     INTEGER :: i,j,n, nd, t, istat, iter, dim, Active, NonlinearIterMax, &
         ActiveCoordinate
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: at,st,totst,totat
-#else
-    REAL(KIND=dp) :: at,st,totst,totat,CPUTime
-#endif
     REAL(KIND=dp) :: Norm, Relax
     TYPE(Variable_t), POINTER :: Var
     
@@ -817,12 +813,8 @@ SUBROUTINE RichardsPostprocess( Model,Solver,dt,Transient )
   INTEGER :: i,j,dim,DOFs,ActiveCoordinate
   LOGICAL :: Found, ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   REAL(KIND=dp) :: Unorm, Totnorm, FluxMultiplier
-  REAL(KIND=dp), POINTER :: ForceVector(:,:), SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp), POINTER CONTIG :: ForceVector(:,:), SaveRHS(:)
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: FluxSol
   
  

@@ -36,12 +36,12 @@
 !   OUTPUT Variables:
 !     Zb
 !     Zs
-!     DZbDt (optionnal, if variable found and transient simulation)
-!     DZsDt (optionnal, if variable found and transient simulation)
+!     DZbDt (optional, if variable found and transient simulation)
+!     DZsDt (optional, if variable found and transient simulation)
 !   
 !   INPUT Variable:
 !     H
-!     bedrock (optionnal)
+!     bedrock (optional)
 !
 ! PARAMETERS:
 !   Constants: 
@@ -126,6 +126,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   INTEGER :: ActiveDirection
   INTEGER :: t,i,n
   INTEGER :: topnode
+  INTEGER :: Active
 
   LOGICAL,SAVE :: Initialized = .FALSE.
   LOGICAL,SAVE :: ExtrudedMesh=.False.
@@ -207,9 +208,10 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
  IF (ASSOCIATED(DZsDt)) ZsPrev=ZsVar%Values
 
  IF (ASSOCIATED(GLMask)) GLMask%Values = -1.0
- Do t=1,Solver % Mesh % NumberOfBulkElements
-    Element => Solver % Mesh % Elements(t)
-    Model % CurrentElement => Solver % Mesh % Elements(t)
+
+ Active = GetNOFActive()
+ Do t=1,Active
+    Element => GetActiveElement(t)
     n = GetElementNOFNodes(Element)
     NodeIndexes => Element % NodeIndexes
 

@@ -1,8 +1,8 @@
 /* femknot.h */
 /* This module includes utilities that operate on single knots. It builds
-   structures where the knots can be saved, it finds boundaries, 
+   structures where the knots can be saved, it finds boundaries,
    copies knots from structures to others and destroys structures that
-   become obsolite. The routines mostly operate on structures 
+   become obsolete. The routines mostly operate on structures
    FemType and BoundaryType. */
 
 int GetElementDimension(int elementtype);
@@ -61,7 +61,7 @@ int PolarCoordinates(struct FemType *data,Real rad,int info);
 int CylinderCoordinates(struct FemType *data,int info);
 int UniteMeshes(struct FemType *data1,struct FemType *data2,
 		struct BoundaryType *bound1,struct BoundaryType *bound2,
-		int info);
+		int nooverlap, int info);
 int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 		int *ncopies,Real *meshsize,int diffmats,int info);
 int MirrorMeshes(struct FemType *data,struct BoundaryType *bound,
@@ -87,6 +87,9 @@ void MergeBoundaries(struct FemType *data,struct BoundaryType *bound,int *double
 void SeparateCartesianBoundaries(struct FemType *data,struct BoundaryType *bound,int info);
 void ElementsToBoundaryConditions(struct FemType *data,
 				  struct BoundaryType *bound,int retainorphans, int info);
+void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
+			  int *bcinds,int *bctags,int nbc,int bccount,
+			  int info);
 int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info);
 int FindPeriodicParents(struct FemType *data,struct BoundaryType *bound,int info);
 int FindNewBoundaries(struct FemType *data,struct BoundaryType *bound,

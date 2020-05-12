@@ -5,4 +5,4 @@ CONFIGURE_FILE( inject.sif inject.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO Tcross.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(Electrokinetics)
+ADD_ELMER_TEST(Electrokinetics LABELS transient)

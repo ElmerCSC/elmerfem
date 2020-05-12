@@ -52,10 +52,7 @@ MODULE IterSolve
    USE CRSMatrix
    USE BandMatrix
    USE IterativeMethods
-
-#ifdef USE_ISO_C_BINDINGS
    USE huti_sfe
-#endif
 
    IMPLICIT NONE
 
@@ -99,6 +96,9 @@ CONTAINS
 #endif
 #ifndef HUTI_SGSPARAM
 #define HUTI_SGSPARAM dpar(3)
+#endif
+#ifndef HUTI_PSEUDOCOMPLEX
+#define HUTI_PSEUDOCOMPLEX ipar(7)
 #endif
 #ifndef HUTI_BICGSTABL_L
 #define HUTI_BICGSTABL_L ipar(16)
@@ -158,9 +158,7 @@ CONTAINS
   RECURSIVE SUBROUTINE IterSolver( A,x,b,Solver,ndim,DotF, &
               NormF,MatvecF,PrecF,StopcF )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     USE huti_sfe
-#endif
     USE ListMatrix
     USE SParIterGlobals
     IMPLICIT NONE
@@ -181,7 +179,7 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-    LOGICAL :: ComplexSystem
+    LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal
     
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -192,33 +190,14 @@ CONTAINS
     EXTERNAL MultigridPrec
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
     EXTERNAL NormwiseBackwardErrorGeneralized
-#ifndef USE_ISO_C_BINDINGS
-    INTEGER  :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
-        HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
-    EXTERNAL :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
-        HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
-    
-    INTEGER  :: HUTI_Z_BICGSTAB, HUTI_Z_BICGSTAB_2, HUTI_Z_TFQMR, &
-        HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
-    EXTERNAL :: HUTI_Z_BICGSTAB, HUTI_Z_BICGSTAB_2, HUTI_Z_TFQMR, &
-        HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
-
-    REAL(KIND=dp) :: ddot, dnrm2, dznrm2
-    EXTERNAL :: ddot, dnrm2, dznrm2
-    
-    COMPLEX(KIND=dp) :: zdotc
-    EXTERNAL :: zdotc
-#endif
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pcondrProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
-#ifdef USE_ISO_C_BINDINGS
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
     EXTERNAL :: AddrFunc    
-#endif
 
     INTERFACE
       SUBROUTINE VankaCreate(A,Solver)
@@ -264,19 +243,24 @@ CONTAINS
     
     ComplexSystem = ListGetLogical( Params,'Linear System Complex',Found ) 
     IF( .NOT. Found ) ComplexSystem = A % COMPLEX 
-
+    
     IF( ListGetLogical( Params,'Linear System Skip Complex',GotIt ) ) THEN
       CALL Info('IterSolver','This time skipping complex treatment',Level=20)
       A % COMPLEX = .FALSE.
       ComplexSystem = .FALSE.
     END IF
-            
+    
+    PseudoComplexSystem = ListGetLogical( Params,'Linear System Pseudo Complex',Found ) 
+
     IF( ComplexSystem ) THEN
       CALL Info('IterSolver','Matrix is complex valued',Level=10)
-    ELSE
+    ELSE IF( PseudoComplexSystem ) THEN
+      CALL Info('IterSolver','Matrix is pseudo complex valued',Level=10)
+    ELSE    
       CALL Info('IterSolver','Matrix is real valued',Level=12)
     END IF
-   
+
+    
     SELECT CASE(str)
     CASE('bicgstab2')
       IterType = ITER_BiCGStab2
@@ -309,6 +293,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     HUTI_WRKDIM = 0
+    HUTI_PSEUDOCOMPLEX = 0
+    IF( PseudoComplexSystem ) THEN
+      HUTI_PSEUDOCOMPLEX = 1     
+      IF ( ListGetLogical( Params,'Block Split Complex',Found ) ) HUTI_PSEUDOCOMPLEX = 2
+    END IF
     Internal = .FALSE.
     
     SELECT CASE ( IterType )
@@ -413,37 +402,31 @@ CONTAINS
     HUTI_MINIT = ListGetInteger( Params, &
         'Linear System Min Iterations', GotIt )
     
-#ifdef USE_ISO_C_BINDINGS
     IF( ComplexSystem ) THEN
-        ALLOCATE(workC(N/2,wsize), stat=istat)
-        IF ( istat /= 0 ) THEN
-            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-        END IF
-        workC = cmplx(0,0,dp)
+      ALLOCATE(workC(N/2,wsize), stat=istat)
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+      END IF
+      workC = cmplx(0,0,dp)
     ELSE
-        ALLOCATE(work(N,wsize), stat=istat)
-        IF ( istat /= 0 ) THEN
-            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-        END IF
-        !$OMP PARALLEL PRIVATE(j)
-        DO j=1,wsize
-           !$OMP DO
-           DO i=1,N
-              work(i,j) = real(0,dp)
-           END DO
-           !$OMP END DO
+      ALLOCATE(work(N,wsize), stat=istat)
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+      END IF
+      !$OMP PARALLEL PRIVATE(j)
+      DO j=1,wsize
+        !$OMP DO
+        DO i=1,N
+          work(i,j) = real(0,dp)
         END DO
-        !$OMP END PARALLEL
+        !$OMP END DO
+      END DO
+      !$OMP END PARALLEL
     END IF
-#else
-    ALLOCATE( work(N,wsize),stat=istat )
-    IF ( istat /= 0 ) THEN
-      CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-    END IF
-    work=0._dp
-#endif
 
-    IF ( ALL(x == 0.0) ) x = 1.0d-8
+    IF ( (IterType == ITER_BiCGStab2 .OR. IterType == ITER_BiCGStabL .OR. &
+         IterType == ITER_BiCGStab ) .AND. ALL(x == 0.0) ) x = 1.0d-8
+
     HUTI_INITIALX = HUTI_USERSUPPLIEDX
     
     HUTI_TOLERANCE = ListGetCReal( Params, &
@@ -836,7 +819,7 @@ CONTAINS
         iterProc = AddrFunc( itermethod_jacobi )
       CASE (ITER_RICHARDSON)
         iterProc = AddrFunc( itermethod_richardson )
-      CASE (ITER_GCR)
+      CASE (ITER_GCR)        
         iterProc = AddrFunc( itermethod_gcr )
       CASE (ITER_BICGSTABL)
         iterProc = AddrFunc( itermethod_bicgstabl )
@@ -846,7 +829,18 @@ CONTAINS
       END SELECT
       
       IF( Internal ) THEN
-        IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+        
+        IF( PseudoComplexSystem ) THEN
+          IF( HUTI_PSEUDOCOMPLEX == 1 ) THEN
+            CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd',Level=15)
+            dotProc = AddrFunc( PseudoZDotProd )
+          ELSE
+            CALL Info('IterSolver','Setting dot product function to: PseudoZDotProd2',Level=15)
+            dotProc = AddrFunc( PseudoZDotProd2 )             
+          END IF
+        ELSE        
+          IF ( dotProc  == 0 ) dotProc = AddrFunc(ddot)
+        END IF
         IF ( normProc == 0 ) normproc = AddrFunc(dnrm2)
         IF( HUTI_DBUGLVL == 0) HUTI_DBUGLVL = HUGE( HUTI_DBUGLVL )        
       END IF
@@ -902,7 +896,6 @@ CONTAINS
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
     
-#ifdef USE_ISO_C_BINDINGS
     IF ( ComplexSystem ) THEN
       ! Associate xC and bC with complex variables
       ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
@@ -929,39 +922,47 @@ CONTAINS
       DEALLOCATE(bC,xC)
     ELSE
       CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+
       CALL IterCall( iterProc, x, b, ipar, dpar, work, &
           mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     ENDIF
-#else
-    CALL Info('IterSolver','Calling iterative solver',Level=32)   
-    CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
-#endif
-    GlobalMatrix => SaveGlobalM
 
+    GlobalMatrix => SaveGlobalM
     
     stack_pos=stack_pos-1
     
     IF ( ComplexSystem ) HUTI_NDIM = HUTI_NDIM * 2
-!------------------------------------------------------------------------------
-    IF ( HUTI_INFO /= HUTI_CONVERGENCE .AND. ParEnv % myPE==0 ) THEN
+
+    !------------------------------------------------------------------------------
+    IF ( HUTI_INFO == HUTI_CONVERGENCE ) THEN
+      IF( ASSOCIATED( Solver % Variable ) ) THEN
+        Solver % Variable % LinConverged = 1
+      END IF
+    ELSE
       CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
-      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
-        CALL NumericalError( 'IterSolve', 'Too many iterations was needed.')
+      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN                
+        DoFatal = ListGetLogical( Params,'Linear System Abort Not Converged',Found )
+        IF(.NOT. Found ) DoFatal = .TRUE.
+        IF( DoFatal ) THEN
+          CALL NumericalError('IterSolve','Too many iterations were needed.')
+        ELSE
+          CALL Info('IterSolve','Linear iteration did not converge to tolerance',Level=6)
+        END IF
+      ELSE IF( HUTI_INFO == HUTI_HALTED ) THEN
+        CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
+      END IF
+      IF( ASSOCIATED( Solver % Variable ) ) THEN
+        Solver % Variable % LinConverged = 0
       END IF
     END IF
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     IF ( ComplexSystem ) THEN
-        DEALLOCATE( workC )
+      DEALLOCATE( workC )
     ELSE
-        DEALLOCATE( work )
+      DEALLOCATE( work )
     END IF
-#else 
-    DEALLOCATE( work )
-#endif
 
 !------------------------------------------------------------------------------
   END SUBROUTINE IterSolver
@@ -972,12 +973,12 @@ CONTAINS
 !> convergence/numerical issues, based on a flag in the SIF. Default
 !> behaviour terminates execution.
 !-----------------------------------------------------------------------
-   SUBROUTINE NumericalError( Caller, String, Fatal )
+   SUBROUTINE NumericalError( Caller, String, IsFatal )
 !-----------------------------------------------------------------------
      CHARACTER(LEN=*) :: Caller, String
-     LOGICAL, OPTIONAL :: Fatal
+     LOGICAL, OPTIONAL :: IsFatal
 !-----------------------------------------------------------------------
-     LOGICAL :: GlobalNumFatal, SolverNumFatal, IsFatal, Found
+     LOGICAL :: DoFatal, Found
 !-----------------------------------------------------------------------
 
      !Fatality logic:
@@ -986,36 +987,19 @@ CONTAINS
      ! 3) Respect global abort flag if present
      ! 4) Otherwise fatal (backwards compatibility)
 
-     IF(PRESENT(Fatal)) THEN
-       IsFatal = Fatal
+     IF(PRESENT(IsFatal)) THEN
+       DoFatal = IsFatal
      ELSE
-       SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
-            'Linear System Abort Not Converged', Found)
-       IF(Found) THEN
-         IsFatal = SolverNumFatal
-       ELSE
-         GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
-            'Global Abort Not Converged',Found)
-         IF(Found) THEN
-           IsFatal = GlobalNumFatal
-         ELSE
-           IsFatal = .TRUE.
-         END IF
-       END IF
+       DoFatal = ListGetLogical(CurrentModel % Simulation,&
+           'Global Abort Not Converged',Found)
+       IF(.NOT. Found ) DoFatal = .TRUE.
      END IF
 
-     IF ( OutputLevelMask(0) ) THEN
-       IF(IsFatal) THEN
-         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-              'NUMERICAL ERROR:: ', TRIM(Caller), ': ', TRIM(String)
-       ELSE
-         WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
-              'NUMERICAL WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-       END IF
-       CALL FLUSH(6)
+     IF(DoFatal) THEN
+       CALL Fatal(Caller,'Numerical Error: '//TRIM(String))
+     ELSE
+       CALL Warn(Caller,'Numerical Error: '//TRIM(String))
      END IF
-
-     IF(IsFatal) STOP
 
 !-----------------------------------------------------------------------
    END SUBROUTINE NumericalError

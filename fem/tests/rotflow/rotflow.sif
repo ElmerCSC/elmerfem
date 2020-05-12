@@ -26,7 +26,7 @@ Simulation
   Timestep Sizes = 1
   Timestep Intervals = 100
 !  Output File = "Bullenmeltflow.dat"
-!  Post File = "Bullenmeltflow.ep"
+!  Post File = "Bullenmeltflow.vtu"
 
   Output Version Numbers = Logical True
 End

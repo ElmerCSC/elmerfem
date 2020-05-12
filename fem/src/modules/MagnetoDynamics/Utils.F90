@@ -45,6 +45,13 @@ MODULE MagnetoDynamicsUtils
    USE MGDynMaterialUtils
    IMPLICIT NONE
 
+   INTEGER :: JfixPhase
+   REAL(KIND=dp), POINTER :: Jfixrhs(:)
+   COMPLEX(KIND=dp), POINTER :: JfixRhsC(:)
+   INTEGER, POINTER :: JfixSurfacePerm(:) 
+   REAL(KIND=dp), ALLOCATABLE, TARGET :: JfixSurfaceVec(:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: JfixSurfaceVecC(:)
+   
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
    INTERFACE SetDOFtoValue
@@ -91,7 +98,7 @@ CONTAINS
       DO n1 = 1,SIZE(M % diag)
         M % Diag(n1) = A % Diag(n1) 
         IF (M % diag(n1) == 0) THEN
-          write (*,*), 'diag', n1, 'is zero'
+          WRITE (*,*) 'diag', n1, 'is zero'
         end if
       END DO
 
@@ -269,7 +276,7 @@ CONTAINS
     END IF
     IF( .NOT. Found .AND. .NOT. Warned .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
-      CALL Warn('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
+      CALL Fatal('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
       Warned = .TRUE.
     END IF
 
@@ -314,7 +321,7 @@ CONTAINS
     END IF
     IF( .NOT. Found .AND. .NOT. Warned .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
-      CALL Warn('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
+      CALL Fatal('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
       Warned = .TRUE.
     END IF
 !------------------------------------------------------------------------------
@@ -337,7 +344,13 @@ CONTAINS
 
     SAVE Avacuum
 
-    CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
+    CALL GetRealArray( Material, Acoef, 'Reluctivity', Found )
+    !
+    ! Earlier versions used 'Relative Reluctivity' although 'Relative' appears
+    ! to lack a physical meaning. For backward compatibility seek for
+    ! the old keyword command if needed:
+    !
+    IF (.NOT. Found) CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
 !-------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityTensorR
 !-------------------------------------------------------------------------------
@@ -459,7 +472,7 @@ CONTAINS
     numempty = 0
     ROW_LOOP: DO i = 1, CM % NumberOfRows
       ! If CM % ConstrainedDOF(i) is true, then this must be a row corresponding to
-      ! edge dof so it must tbe zero. 
+      ! edge dof so it must be zero. 
       IF ( CM % ConstrainedDOF(i) ) THEN
         Emptyrow(i) = .TRUE.
       ELSE ! Otherwise the row might correspond with dirichlet scalar dof
@@ -663,7 +676,7 @@ CONTAINS
           END DO
         END IF
       END DO
-
+ 
       DO i=Parenv % mype+1,Parenv % PEs-1
         k = i+1
         CALL MPI_BSEND( ii(k),1,MPI_INTEGER,i,112,Solver % matrix % comm,ierr )
@@ -700,4 +713,124 @@ CONTAINS
   END SUBROUTINE SendDoneNodesAndEdges
   !-------------------------------------------------------------------------------
 
+  
+  !-------------------------------------------------------------------------------
+  ! Mark nodes that are on outher boundary using face elements and node parmutation.
+  !-------------------------------------------------------------------------------
+  SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm,EnsureBC) 
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Perm(:),SurfacePerm(:)
+    INTEGER :: SurfaceNodes
+    LOGICAL :: EnsureBC
+    
+    INTEGER :: snodes0, snodes, i,t,n,ActParents,ParParents
+    TYPE(Element_t), POINTER :: Element, P1, P2, P
+    LOGICAL, ALLOCATABLE :: BcNode(:)
+    
+    CALL Info('MarkOuterNodes','Marking outer nodes on outer boundary',Level=8)
+    
+    SurfaceNodes = 0
+
+    IF( Mesh % NumberOfFaces == 0 ) THEN
+      CALL Fatal('MarkOuterNodes','The faces are not created!')
+    END IF
+    
+    n = Mesh % NumberOfNodes
+    IF(.NOT. ASSOCIATED( SurfacePerm ) ) THEN
+      ALLOCATE( SurfacePerm( n ) )
+    END IF
+    SurfacePerm = 0
+    
+       
+    DO t=1, Mesh % NumberOfFaces 
+      
+      Element => Mesh % Faces(t)         
+      
+      IF( ParEnv % PEs > 1 ) THEN
+        ! Don't set BCs on partition interfaces
+        IF( Mesh % ParallelInfo % FaceInterface(t) ) CYCLE
+      END IF
+      
+      P1 => Element % BoundaryInfo % Left
+      P2 => Element % BoundaryInfo % Right
+      
+      ActParents = 0
+      ParParents = 0
+
+      IF( ASSOCIATED( P1 ) ) THEN
+        IF (ALL(Perm(P1 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P1 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1
+        ELSE
+          NULLIFY( P1 )
+        END IF
+      END IF
+      IF( ASSOCIATED( P2 ) ) THEN
+        IF (ALL(Perm(P2 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1         
+        ELSE
+          NULLIFY( P2 )
+        END IF
+      END IF
+
+      ! We have either none or both parents as actice.
+      ! The BCs will be set only to outer boundaries of the domain. 
+      IF( ActParents /= 1 ) CYCLE
+      
+      ! The one parent is not a true one!
+      ! This can happen when we have halo elements. 
+      IF( ParEnv % PEs > 0 .AND. ParParents == 0 ) CYCLE
+      
+      SurfacePerm(Element % NodeIndexes) = 1
+    END DO
+
+    IF( EnsureBC ) THEN
+      ALLOCATE( BcNode(n) )
+      BcNode = .FALSE.
+
+      DO t=Mesh % NumberOfBulkElements +1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements      
+        Element => Mesh % Elements(t)         
+        BcNode(Element % NodeIndexes) = .TRUE.
+      END DO
+
+      snodes0 = COUNT( SurfacePerm > 0 )
+      snodes0 = NINT( ParallelReduction(1.0_dp * snodes0) ) 
+
+      !DO i=1,n
+      !  IF( SurfacePerm(i) > 0 .AND. .NOT. BcNode(i) ) THEN
+      !    PRINT *,'node:',ParEnv % MyPe, i, Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
+      !  END IF
+      !END DO
+
+      WHERE( .NOT. BcNode ) SurfacePerm = 0
+      DEALLOCATE( BcNode ) 
+    END IF
+      
+    ! Create numbering for the surface nodes
+    snodes = 0
+    DO i=1,n
+      IF( SurfacePerm(i) > 0 ) THEN
+        snodes = snodes + 1
+        SurfacePerm(i) = snodes
+      END IF
+    END DO     
+    
+    snodes = NINT( ParallelReduction(1.0_dp * snodes) ) 
+    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(snodes)),Level=6)
+
+    IF( EnsureBC ) THEN
+      IF( snodes0 > snodes ) THEN
+        CALL Info('MarkOuterNodes','Removed number of surface nodes not at BCs: '&
+            //TRIM(I2S(snodes0-snodes)),Level=6)
+      END IF
+    END IF
+
+    SurfaceNodes = snodes
+    
+  END SUBROUTINE MarkOuterNodes
+
+    
 END MODULE MagnetoDynamicsUtils

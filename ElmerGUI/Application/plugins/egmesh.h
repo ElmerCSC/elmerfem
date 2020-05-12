@@ -1,8 +1,8 @@
 /* femknot.h */
 /* This module includes utilities that operate on single knots. It builds
-   structures where the knots can be saved, it finds boundaries, 
+   structures where the knots can be saved, it finds boundaries,
    copies knots from structures to others and destroys structures that
-   become obsolite. The routines mostly operate on structures 
+   become obsolete. The routines mostly operate on structures 
    FemType and BoundaryType. */
 
 int GetElementDimension(int elementtype);

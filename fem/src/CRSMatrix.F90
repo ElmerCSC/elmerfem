@@ -47,9 +47,7 @@
 MODULE CRSMatrix
 
   USE Lists
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
 
   IMPLICIT NONE
 
@@ -179,7 +177,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>    Sort columns to ascending order for rows of a CRS format matrix-
-!>    Optionally also sort the corresponging values of the matrix.
+!>    Optionally also sort the corresponding values of the matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_SortMatrix( A, ValuesToo )
 !------------------------------------------------------------------------------
@@ -244,8 +242,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>    Sort columns to ascending order for rows of a CRS format matrix-
-!>    Optionally also sort the corresponging values of the matrix.
-!>    This operates just on a basic matrix type. 
+!>    Optionally also sort the corresponding values of the matrix.
+!>    This operates just on a basic matrix type.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_SortBasicMatrix( A, ValuesToo )
 !------------------------------------------------------------------------------
@@ -499,30 +497,66 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Add a row together with another row of a CRS matrix, and thereafter zero it.
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_MoveRow( A,n1,n2,coeff )
+  SUBROUTINE CRS_MoveRow( A,n1,n2,coeff,staycoeff,movecoeff )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A    !< Structure holding the matrix
     INTEGER, INTENT(IN) :: n1         !< Row number to be copied and zerod
     INTEGER, INTENT(IN) :: n2         !< Row number to be added
     REAL(KIND=dp),OPTIONAL :: coeff   !< Optional coefficient to multiply the row to be copied with
+    REAL(KIND=dp),OPTIONAL :: staycoeff   !< Optional coefficient to multiply the staying row
+    REAL(KIND=dp),OPTIONAL :: movecoeff   !< Optional coefficient to multiply the row copied to other direction
 !------------------------------------------------------------------------------
+    REAL(KIND=dp) :: val, c, d
+    INTEGER :: i,j,i2
+    REAL(KIND=dp), ALLOCATABLE :: Row2(:)
+    
+    
+    ! memorize the row that will be written over
+    IF( PRESENT( movecoeff ) ) THEN      
+      i = A % Rows(n2+1)-A % Rows(n2)
+      ALLOCATE( Row2(i) )
+      DO i = A % Rows(n2), A % Rows(n2+1)-1
+        i2 = i - A % Rows(n2) + 1 
+        j = A % Cols(i)
+        val = A % Values(i) 
+        Row2(i2) = val
+      END DO
+    END IF
 
-    REAL(KIND=dp) :: VALUE, c
-    INTEGER :: i,j
-
+    
     IF( PRESENT(Coeff)) THEN
       c = coeff
     ELSE
       c = 1.0_dp
     END IF
 
+    IF( PRESENT(StayCoeff)) THEN
+      d = StayCoeff
+    ELSE
+      d = 0.0_dp
+    END IF
+    
     DO i=A % Rows(n1),A % Rows(n1+1)-1
       j = A % Cols(i)
-      VALUE = c * A % Values(i) 
-      A % Values(i) = 0.0_dp
-      CALL CRS_AddToMatrixElement( A,n2,j,VALUE )      
+      val = A % Values(i) 
+      IF( ABS( val ) > TINY( val ) ) THEN
+        A % Values(i) = d * val 
+        CALL CRS_AddToMatrixElement( A,n2,j,c*val )      
+      END IF
     END DO
 
+    IF( PRESENT( movecoeff ) ) THEN      
+      DO i = A % Rows(n2), A % Rows(n2)-1
+        i2 = i - A % Rows(n2) + 1 
+        j = A % Cols(i)
+        val = Row2(i2)
+        IF( ABS( val ) > TINY( val ) ) THEN
+          CALL CRS_AddToMatrixElement( A,n1,j,movecoeff*val )      
+        END IF
+      END DO
+    END IF
+
+    
   END SUBROUTINE CRS_MoveRow
 !------------------------------------------------------------------------------
   
@@ -532,15 +566,15 @@ CONTAINS
 !>    Add a set of values (.i.e. element stiffness matrix) to a CRS format
 !>    matrix. 
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_GlueLocalMatrix( A,N,Dofs,Indeces,LocalMatrix )
+  SUBROUTINE CRS_GlueLocalMatrix( A,N,Dofs,Indeces,LocalMatrix,GlobalValues )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A  !< Structure holding matrix
      REAL(KIND=dp), INTENT(IN) :: LocalMatrix(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added to the CRS format matrix
      INTEGER, INTENT(IN) :: N             !< Number of nodes in element
      INTEGER, INTENT(IN) :: Dofs          !< Number of degrees of freedom for one node
      INTEGER, INTENT(IN) :: Indeces(:)    !< Maps element node numbers to global (or partition) node numbers 
-     INTEGER::jc,ic
-	                                      !! (to matrix rows and columns, if Dofs = 1)
+                                          !! (to matrix rows and columns, if Dofs = 1)
+     REAL(KIND=dp), OPTIONAL, TARGET :: GlobalValues(:)
 !------------------------------------------------------------------------------ 
      INTEGER :: i,j,k,l,c,Row,Col
      INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
@@ -550,7 +584,11 @@ CONTAINS
      Diag   => A % Diag
      Rows   => A % Rows
      Cols   => A % Cols
-     Values => A % Values
+     IF(PRESENT(GlobalValues)) THEN
+       Values => GlobalValues
+     ELSE
+       Values => A % Values
+     END IF
 
      IF ( Dofs == 1 ) THEN
        DO i=1,N
@@ -702,8 +740,9 @@ CONTAINS
                     ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                     nidx=GetNextIndex(gja, ci, rli, rti)
-                    Lind(nzind+cdof)=nidx
-                    Lvals(nzind+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
+                    nzind = nzind + 1
+                    Lind(nzind)=nidx
+                    Lvals(nzind)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
                                            NDOFs*(pind(j)-1)+cdof)
 #ifdef __INTEL_COMPILER
                     ! Issue prefetch for every new cache line of gval(nidx)
@@ -713,7 +752,6 @@ CONTAINS
                     END IF
 #endif
                   END DO
-                  nzind = nzind + cdof
                 END IF
               END DO
             END DO
@@ -754,6 +792,7 @@ CONTAINS
         ! More than 1 DOF per node
 
         ! Construct index array
+        nzind = 0
         DO i=1,N
           DO rdof=1,NDOFs
             ! Row index
@@ -768,9 +807,9 @@ CONTAINS
                 ! Get global matrix index for entry (ri,ci).
 !DIR$ INLINE
                 nidx = GetNextIndex(gja, ci, rli, rti)
-                Lind((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=nidx
-                Lvals((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=Lmtr(NDOFs*(pind(i)-1)+rdof,&
-                                                             NDOFs*(pind(j)-1)+cdof)
+                nzind = nzind + 1
+                Lind(nzind) = nidx
+                Lvals(nzind) = Lmtr(NDOFs*(pind(i)-1)+rdof, NDOFs*(pind(j)-1)+cdof)
 #ifdef __INTEL_COMPILER
                 ! Issue prefetch for every new cache line of gval(nidx)
                 IF (nidx > pnidx+8) THEN
@@ -781,8 +820,6 @@ CONTAINS
               END DO
             END DO
           END DO
-
-          nzind = (NDOFs*N)*(NDOFs*N)
         END DO
       END IF ! NDOFs==1 check
     END IF ! Masking check
@@ -1173,21 +1210,26 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
 !>    Create the structures required for a CRS format matrix.
 !------------------------------------------------------------------------------
-  FUNCTION CRS_CreateMatrix( N,Total,RowNonzeros,Ndeg,Reorder,AllocValues ) RESULT(A)
+  FUNCTION CRS_CreateMatrix( N,Total,RowNonzeros,Ndeg,Reorder,AllocValues,SetRows ) RESULT(A)
 !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: N    !< Number of rows in the matrix
     INTEGER, INTENT(IN) :: Total  !< Total number of nonzero entries in the matrix
     INTEGER, INTENT(IN) :: Ndeg   !< Negrees of freedom
-    INTEGER, INTENT(IN) :: RowNonzeros(:)  !< Number of nonzero entries in rows of the matrix
-    INTEGER, INTENT(IN) :: Reorder(:)      !< Permutation index for bandwidth reduction
+    INTEGER, INTENT(IN), OPTIONAL :: RowNonzeros(:)  !< Number of nonzero entries in rows of the matrix
+    INTEGER, INTENT(IN) :: Reorder(:)      !< Permutation index for bandwidth reduction    
     LOGICAL, INTENT(IN) :: AllocValues     !< Should the values arrays be allocated ?
+    LOGICAL, INTENT(IN), OPTIONAL :: SetRows
     TYPE(Matrix_t), POINTER :: A  !>  Pointer to the created Matrix_t structure.
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,istat
     INTEGER, POINTER CONTIG :: InvPerm(:)
+    LOGICAL :: SetRowSizes
 !------------------------------------------------------------------------------
 
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix of size: '//TRIM(I2S(n)),Level=12)
+
+    SetRowSizes = .TRUE.
+    IF( PRESENT( SetRows ) ) SetRowSizes = SetRows
 
     A => AllocateMatrix()
 
@@ -1215,7 +1257,20 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     NULLIFY( A % ILUValues )
     NULLIFY( A % CILUValues )
+    
+    A % NumberOfRows = n
+    A % Rows(1) = 1
+    A % Ordered = .FALSE.
 
+    ! We don't always want to set the rows as it is more easily done elsewhere
+    ! but for backward compatibility the default way is maintained.
+    IF(.NOT. SetRowSizes ) THEN
+      A % Cols = 0
+      A % Diag = 0
+      RETURN
+    END IF
+
+    
     InvPerm => A % Diag ! just available memory space...
     j = 0
     DO i=1,SIZE(Reorder)
@@ -1240,14 +1295,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 #endif
 
     !$OMP SINGLE
-    A % NumberOfRows = N
     A % Rows(1) = 1
     DO i=2,N
        j = InvPerm((i-2)/Ndeg+1)
        A % Rows(i) = A % Rows(i-1) + Ndeg*RowNonzeros(j)
     END DO
-    j = InvPerm((N-1)/ndeg+1)
-    A % Rows(N+1) = A % Rows(N)  +  Ndeg*RowNonzeros(j)
+    j = InvPerm((n-1)/ndeg+1)
+    A % Rows(n+1) = A % Rows(N)  +  Ndeg*RowNonzeros(j)
     !$OMP END SINGLE
     
 #ifdef _OPENMP
@@ -1270,7 +1324,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 #endif
     !$OMP END PARALLEL
     
-    A % Ordered = .FALSE.
 
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix finished',Level=14)
 
@@ -1313,11 +1366,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Values => A % Values
 
     IF  ( A % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
-#else
-      CALL MatVecSubr(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
-#endif
       RETURN
    END IF
 
@@ -1452,14 +1501,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => A % Values
 
     IF  ( A % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
       ALLOCATE(Abs_Values(SIZE(A % Values)))
       Abs_Values = ABS(Values)
       CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0) ! TODO: (bug) must be ABS(Values)
       DEALLOCATE(Abs_Values)
-#else
-      CALL MatVecSubr(A % MatVecSubr,A % SpMV, n,Rows,Cols,ABS(Values),u,v,0)
-#endif
       RETURN
     END IF
 
@@ -1871,8 +1916,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 !------------------------------------------------------------------------------
 !>    Diagonal preconditioning of a CRS format matrix. Matrix is accessed
-!>    from a global variable GlobalMatrix. Note that if the matrix has been 
-!> scaled so that the diagonal entries are already ones, this subroutine is obsolite.
+!>    from a global variable GlobalMatrix. Note that if the matrix has been
+!> scaled so that the diagonal entries are already ones, this subroutine is obsolete.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_DiagPrecondition( u,v,ipar )
 !------------------------------------------------------------------------------
@@ -2032,9 +2077,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp), OPTIONAL :: RemoveEps
     !-------------------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,iml,kb,kb0,n,rowkb
-    INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
+    INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:)
     REAL(KIND=DP) :: val, imval, reps
-    REAL(KIND=DP), POINTER :: Values(:)
+    REAL(KIND=DP), POINTER CONTIG :: Values(:)
     LOGICAL :: IsComplex, Hit, ImHit, CheckDiag
     
     N = A % NumberOfRows
@@ -2369,6 +2414,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       RETURN
     END IF
 
+    CALL Info('CRS_BlockMatrixPick','Picking block ('//TRIM(I2S(Nrow))//&
+        ','//TRIM(I2S(Ncol))//') from matrix',Level=10)
+
+    
     N = A % NumberOfRows
     Nsub = N / Blocks
     modNcol = MOD( Ncol,Blocks)
@@ -2377,6 +2426,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Diagonal = ( Nrow == Ncol ) 
 
     IF( NewMatrix ) THEN
+      CALL Info('CRS_BlockMatrixPick','Allocating new matrix',Level=12)
       B % ListMatrix => NULL()
       B % FORMAT = MATRIX_CRS
 
@@ -2399,17 +2449,19 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END IF
 
       ALLOCATE(B % Rows(nsub+1),B % Cols(kb), B % Values(kb),STAT=istat )
-      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 1')
+      IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error for matrix')
+    ELSE
+      CALL Info('CRS_BlockMatrixPick','Using existing matrix structure',Level=12)
     END IF
 
     IF( Diagonal ) THEN
       IF( .NOT. ASSOCIATED( B % Diag ) ) THEN
         ALLOCATE( B % Diag(nsub), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 2')      
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error for diag')      
       END IF
       IF( .NOT. ASSOCIATED( B % Rhs ) ) THEN
         ALLOCATE( B % rhs(nsub), STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error 3')      
+        IF( istat /= 0 ) CALL Fatal('CRS_BlockMatrixPick','memory allocation error rhs')      
       END IF
     END IF
 
@@ -2978,21 +3030,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     LOGICAL :: Warned
     INTEGER :: i,j,k,l,m,n,istat
-
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER :: ILUValues(:), Values(:)
-
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: st, tx
-#else
-    REAL(KIND=dp) :: CPUTime, st, tx
-#endif
-
     LOGICAL, ALLOCATABLE :: C(:), D(:)
     REAL(KIND=dp), ALLOCATABLE ::  S(:), T(:)
-
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
-
     TYPE(Matrix_t), POINTER :: A1
 !------------------------------------------------------------------------------
     WRITE(Message,'(a,i1,a)')  &
@@ -3173,6 +3216,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
          END DO
        END DO
 
+       
 !
 !      Convert the row back to  CRS format:
 !      ------------------------------------
@@ -3185,7 +3229,6 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        END DO
      END DO
 
-     !
      ! Prescale the diagonal for the LU solve:
      ! ---------------------------------------
      DO i=1,N
@@ -3199,6 +3242,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
+    IF( InfoActive(20) ) THEN
+      PRINT *,'ILU range:',MINVAL(ILUValues),MAXVAL(ILUValues),&
+          SUM(ILUValues)/SIZE(ILUValues),SUM(ABS(ILUValues))/SIZE(ILUValues)
+    END IF
+
     WRITE(Message,'(a,i1,a,i9)') 'ILU(', ILUn, &
         ') (Real), NOF nonzeros: ',ILURows(n+1)
     CALL Info( 'CRS_IncompleteLU', Message, Level=5 )
@@ -3341,21 +3389,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status  !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,istat
-
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER ::  Values(:)
     COMPLEX(KIND=dp), POINTER :: ILUValues(:)
-
     INTEGER, POINTER :: ILUCols(:),ILURows(:),ILUDiag(:)
-
     TYPE(Matrix_t), POINTER :: A1
-
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: st
-#else
-    REAL(KIND=dp) :: st, CPUTime
-#endif
-
     LOGICAL, ALLOCATABLE :: C(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: S(:), T(:)
 !------------------------------------------------------------------------------
@@ -3687,11 +3726,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status    !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: n
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: t
-#else
-    REAL(KIND=dp) :: CPUTime, t
-#endif
 !------------------------------------------------------------------------------
 
     CALL Info( 'CRS_ILUT', 'Starting factorization:', Level=5 )
@@ -3728,21 +3763,13 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       TYPE(Matrix_t) :: A
 !------------------------------------------------------------------------------
       INTEGER, PARAMETER :: WORKN = 128
-
       INTEGER :: i,j,k,l,istat, RowMin, RowMax
       REAL(KIND=dp) :: NORMA
-
-      REAL(KIND=dp), POINTER :: Values(:), ILUValues(:), CWork(:)
-
-      INTEGER, POINTER :: Cols(:), Rows(:), Diag(:), &
+      REAL(KIND=dp), POINTER CONTIG :: Values(:), ILUValues(:), CWork(:)
+      INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:), &
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
-
       LOGICAL :: C(n)
-#ifdef USE_ISO_C_BINDINGS
       REAL(KIND=dp) :: S(n), cptime, ttime, t
-#else
-      REAL(KIND=dp) :: S(n), CPUTime, cptime, ttime, t
-#endif
 !------------------------------------------------------------------------------
 
       ttime  = CPUTime()
@@ -3899,11 +3926,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status    !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: n
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: t
-#else
-    REAL(KIND=dp) :: CPUTime, t
-#endif
 !------------------------------------------------------------------------------
 
     CALL Info( 'CRS_ComplexILUT', 'ILU(T) (Complex), Starting factorization: ', Level=5 )
@@ -3946,10 +3969,10 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       INTEGER :: i,j,k,l,istat,RowMin,RowMax
       REAL(KIND=dp) :: NORMA
 
-      REAL(KIND=dp), POINTER :: Values(:)
-      COMPLEX(KIND=dp), POINTER :: ILUValues(:), CWork(:)
+      REAL(KIND=dp), POINTER CONTIG :: Values(:)
+      COMPLEX(KIND=dp), POINTER CONTIG :: ILUValues(:), CWork(:)
 
-      INTEGER, POINTER :: Cols(:), Rows(:), Diag(:), &
+      INTEGER, POINTER CONTIG :: Cols(:), Rows(:), Diag(:), &
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
 
       LOGICAL :: C(n)
@@ -4170,9 +4193,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     END IF
 
 !--------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !--------------------------------------------------------------------
 #ifndef SGI
@@ -4283,9 +4306,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     IF ( .NOT. ASSOCIATED( Values ) ) RETURN
 
 !---------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !--------------------------------------------------------------------
 #ifndef SGI
@@ -4403,19 +4426,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => GlobalMatrix % Values
 
     IF  ( GlobalMatrix % MatVecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
       CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
                   GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
-#else
-      CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
-                  GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
-#endif
       RETURN
    END IF
 !--------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !--------------------------------------------------------------------
 #ifndef SGI
@@ -4527,9 +4545,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => GlobalMatrix % Values
 
 !----------------------------------------------------------------------
-! The following #ifdefs  seem really necessery, if speed is an issue:
+! The following #ifdefs  seem really necessary, if speed is an issue:
 ! SGI compiler optimizer  wants to know the sizes of the arrays very
-! explicitely, while DEC compiler seems to make a copy of some of the
+! explicitly, while DEC compiler seems to make a copy of some of the
 ! arrays on the subroutine call (destroying performance).
 !----------------------------------------------------------------------
 #ifndef SGI
@@ -4691,7 +4709,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END IF
     END DO
     IF( j > 0 ) THEN
-      PRINT *,'Number of errornous diag entries:',j
+      PRINT *,'Number of erroneous diag entries:',j
     ELSE
       DiagSum = SUM( Values(Diag) )
       PRINT *,'diagonal sum:',DiagSum

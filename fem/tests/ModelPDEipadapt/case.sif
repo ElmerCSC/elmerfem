@@ -1,0 +1,110 @@
+! This is a test case for IP-dependent material parameter with adaptive
+! gauss integration scheme. Visualization may be activated in DG style to
+! better present the IP fields. 
+!
+! P.R. 30.10.2018
+
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "square"
+
+Simulation
+  Max Output Level = 7
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Timestep Sizes = 0.005
+  Timestep Intervals = 60
+  Timestepping Method = Implicit Euler
+
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  $width = 0.03
+  Bandwidth Parameter = Real $width
+
+!  Post File = "case.vtu"
+!  vtu: discontinuous galerkin = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Field = Real -1.0
+End 
+
+Material 1
+  Diffusion coefficient = 1.0
+  time derivative coefficient = Variable "field"
+    Real Procedure "Capacity" "Capacity"
+  time derivative coefficient at ip = Logical True
+End
+
+Body Force 1
+  Field Source = Real 24.0 ! gives steady-state maximum of 3.0
+  MyCapacity =  Variable "field"
+    Real Procedure "Capacity" "Capacity"
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End 
+
+Solver 1
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDEhandle" "AdvDiffSolver"
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  BiCGstabl polynomial degree = 2
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+
+  Adaptive Integration Variable = String "field"
+  Adaptive Integration Lower Limit = Real $-width
+  Adaptive Integration Upper Limit = Real $width
+  Adaptive Integration Order = Integer 1
+
+  Nonlinear Update Exported Variables = True
+  Exported Variable 1 = -ip MyCapacity
+End
+
+Boundary Condition 1
+  Name = "Bot"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "Right"
+  Target Boundaries(1) = 2
+  Field = -1.0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 4
+  Name = "Left"
+  Target Boundaries(1) = 4
+  Field = -1.0
+End
+
+Solver 1 :: Reference Norm = 1.10652021

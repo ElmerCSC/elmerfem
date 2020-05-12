@@ -66,7 +66,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t), TARGET :: TriangleElement
   TYPE(Nodes_t) :: Nodes, LineNodes, FaceNodes, ElementNodes
   TYPE(Variable_t), POINTER :: Variable2D, Var, StressVar, PwVar, FlowVar, &
-       SurfCrevVar, BasalCrevVar
+       SurfCrevVar, BasalCrevVar, HitCountVar
   TYPE(ValueList_t), POINTER :: Params, Material
   TYPE(Mesh_t), POINTER :: Mesh2D, Mesh3D, Mesh
   REAL(KIND=dp), POINTER :: StressValues(:), PwValues(:)
@@ -97,7 +97,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: ConvertFromName, ConvertFromVar, Name, Str, &
        SolverName, StressVarName, PwVarName, FlowVarName
   LOGICAL :: AllocationsDone = .FALSE., stat, GotIt, Found, &
-       PwFromVar, Cauchy, SurfModel, BasalModel
+       PwFromVar, Cauchy, SurfModel, BasalModel, CountHits
 
   INTEGER :: pe, myNodes, myStart, peNodes, peNodesn, peStart, peEnd, &
           totcount, curr, ierr, status(MPI_STATUS_SIZE), nn
@@ -106,7 +106,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: Perm(:)
   END TYPE ValueTable_t
-  TYPE(ValueTable_t) :: ValueTable3D(2), ValueTable2D(2)
+  TYPE(ValueTable_t) :: ValueTable3D(2), ValueTable2D(3)
 
   TYPE PointStore_t
     INTEGER :: Int
@@ -304,15 +304,19 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
 
   SurfCrevVar => VariableGet( Mesh2D % Variables, "surf_cindex", .TRUE., UnfoundFatal=.TRUE.)
   BasalCrevVar => VariableGet( Mesh2D % Variables, "basal_cindex", .TRUE., UnfoundFatal=.TRUE.)
+  HitCountVar =>  VariableGet( Mesh2D % Variables, "hitcount", .TRUE., UnfoundFatal=.FALSE.)
+  CountHits = ASSOCIATED(HitCountVar)
 
   Variable2D => Solver % Variable
 
   ValueTable2D(1) % Values => SurfCrevVar % Values
   ValueTable2D(2) % Values => BasalCrevVar % Values
+  IF(CountHits) ValueTable2D(3) % Values => HitCountVar % Values
 
   DOFs_3D = 1
   IF(PwFromVar) DOFs_3D = 2
-  DOFs_2D = SIZE(ValueTable2D)
+  DOFs_2D = 2
+  IF(CountHits) DOFs_2D = 3
 
   !------------------------------------------------------------------------------
   ! The permutation are assumed to be constant
@@ -328,7 +332,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   CALL Info( SolverName, Message, LEVEL=16 )
 
   !------------------------------------------------------------------------------
-  ! Possible permutation of coorinate directions
+  ! Possible permutation of coordinate directions
   !------------------------------------------------------------------------------
   VolumeX => Mesh3D % Nodes % x
   VolumeY => Mesh3D % Nodes % y
@@ -914,6 +918,8 @@ CONTAINS
         ValueTable2D(1) % Values(lnode) = 1.0_dp - &
              ((IntExtent(1) - SContour) / (IntExtent(1) - SeaLevel))
       END IF
+
+      IF(CountHits) ValueTable2D(3) % Values(lnode) = REAL(Int)
 
       DEALLOCATE(IntOrder)
 

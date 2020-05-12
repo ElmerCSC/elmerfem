@@ -3,8 +3,6 @@
 #include <stdlib.h>
 
 #include "csa.h"
-#include "nan.h"
-#include "svd.h"
 
 void csa_interpolate_points(int nin, point pin[], int nout, point pout[], int nppc, int k)
 {

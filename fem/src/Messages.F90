@@ -47,9 +47,11 @@ MODULE Messages
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
-   LOGICAL :: OutputLevelMask(0:31) = (/ (.TRUE.,i=1,32) /)
-   INTEGER :: MaxOutputLevel=32, MinOutputLevel=0, OutputPE = 0
+   LOGICAL :: OutputLevelMask(0:31) = .TRUE.
+   INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
+
+   INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
 
 CONTAINS
 
@@ -74,6 +76,7 @@ CONTAINS
      IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
+       if (Level > MaxOutputLevel) RETURN
        IF ( .NOT. OutputLevelMask(Level) ) RETURN
      ELSE
        ! The default level of info
@@ -92,18 +95,22 @@ CONTAINS
        IF ( OutputCaller ) THEN
          WRITE( *,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
        END IF
-
-       ! If there are several partitions to be saved than plot the partition too
-       IF ( MaxOutputPE > 0 ) THEN
-         WRITE( *,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '
-       END IF
      END IF
 
 
      IF ( nadv ) THEN
-        WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)
+       ! If there are several partitions to be saved than plot the partition too
+       IF( MaxOutputPE > 0 ) THEN
+         WRITE( *,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
+       ELSE         
+         WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)
+       END IF
      ELSE
-        WRITE( *,'(A)', ADVANCE = 'YES' ) TRIM(String)
+       IF( MaxOutputPE > 0 ) THEN
+         WRITE( *,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
+       ELSE
+         WRITE( *,'(A)', ADVANCE = 'YES' ) TRIM(String)
+       END IF
      END IF
      nadv1 = nadv
 
@@ -155,15 +162,25 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
-          'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-     ELSE
-        IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+       IF ( MaxOutputPE > 0 ) THEN
+         WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='NO' ) &
+             'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
+       ELSE
+         WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
              'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-        ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
-        END IF
+       END IF
+     ELSE
+       IF ( .NOT. nadv1 ) THEN
+         IF( MaxOutputPE > 0 ) THEN
+           WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='YES' ) &
+               'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
+         ELSE
+           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+               'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
+         END IF
+       ELSE
+         WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+       END IF
      END IF
      nadv1 = nadv
      CALL FLUSH(6)
@@ -221,7 +238,7 @@ CONTAINS
      SAVE nadv1
 
 !-----------------------------------------------------------------------
-     IF ( .NOT. OutputLevelMask(0) ) STOP
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
@@ -236,7 +253,7 @@ CONTAINS
         ELSE
            WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
-        STOP
+        STOP EXIT_ERROR
      END IF
      nadv1 = nadv
      CALL FLUSH(6)

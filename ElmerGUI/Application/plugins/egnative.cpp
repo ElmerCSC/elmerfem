@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -127,7 +127,7 @@ void InitGrid(struct GridType *grid)
     grid->zmaterial[i] = 0; 
   }
 
-  /* Initilizes the numbering of the cells. */
+  /* Initializes the numbering of the cells. */
   for(j=0;j<=MAXCELLS+1;j++)
     for(i=0;i<=MAXCELLS+1;i++) 
       grid->structure[j][i] = MAT_NOTHING; 
@@ -157,7 +157,7 @@ void InitGrid(struct GridType *grid)
 
 static void ExampleGrid1D(struct GridType **grids,int *nogrids,int info) 
 /* Creates an example grid that might be used to analyze 
-   flow trough a step. */
+   flow through a step. */
 {
   int j;
   struct GridType *grid;
@@ -213,7 +213,7 @@ static void ExampleGrid1D(struct GridType **grids,int *nogrids,int info)
 
 static void ExampleGrid2D(struct GridType **grids,int *nogrids,int info) 
 /* Creates an example grid that might be used to analyze 
-   flow trough a step. */
+   flow through a step. */
 {
   int j;
   struct GridType *grid;
@@ -305,7 +305,7 @@ static void ExampleGrid2D(struct GridType **grids,int *nogrids,int info)
   
 static void ExampleGrid3D(struct GridType **grids,int *nogrids,int info) 
 /* Creates an example grid that might be used to analyze 
-   a simple accelaration sensor. */
+   a simple acceleration sensor. */
 {
   int i,j;
   struct GridType *grid;
@@ -425,7 +425,7 @@ void CreateExampleGrid(int dim,struct GridType **grids,int *nogrids,int info)
 
 void SetElementDivision(struct GridType *grid,Real relh,int info)
 /* Given the densities and ratios in each cell finds the 
-   optimum way to devide the mesh into elements. 
+   optimum way to divide the mesh into elements. 
    The procedure is the following:
    For each subcell set the minimum number of elements 
    then add one element at a time till the number of 
@@ -458,7 +458,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
 	  grid->structure[j][i] <= grid->lastmaterial)   
         grid->numbered[j][i] = ++grid->nocells; 
     }
-  if(0) printf("The mesh is devided into %d separate subcells.\n",grid->nocells);
+  if(0) printf("The mesh is divided into %d separate subcells.\n",grid->nocells);
   
   /* Put the linearity flags. */
   for(i=1; i<= nx ;i++) {
@@ -481,7 +481,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
 
 
  /* If there are no materials no elements either.
-     Otherwise at least grid->minelems elments 
+     Otherwise at least grid->minelems elements 
      If you want to number elements even if they are 
      not there change this initialization to minelems. */
   if(grid->autoratio) {
@@ -2282,7 +2282,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 
   AddExtension(prefix,filename,"grd");
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadElmergrid: opening of the file '%s' wasn't succesfull !\n",filename);
+    printf("LoadElmergrid: opening of the file '%s' wasn't successful !\n",filename);
     return(1);
   }
 
@@ -2374,7 +2374,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	       grid[k]->xcells,grid[k]->ycells,grid[k]->zcells,MAXCELLS);
       }
 
-      /* Initialize the default stucture with ones */
+      /* Initialize the default structure with ones */
       for(j=grid[k]->ycells;j>=1;j--) 
 	for(i=1;i<=grid[k]->xcells;i++) 
 	  grid[k]->structure[j][i] = 1;
@@ -2480,7 +2480,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
     else if(strstr(command,"MATERIAL STRUCTURE")) {
       if(0) printf("Loading material structure\n");
 
-      /* Initialize the default stucture with zeros */
+      /* Initialize the default structure with zeros */
       for(j=grid[k]->ycells;j>=1;j--) 
 	for(i=1;i<=grid[k]->xcells;i++) 
 	  grid[k]->structure[j][i] = 0;
@@ -2834,7 +2834,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       fclose(in);
       printf("Using the file %s defined in ELMERGRID_STARTINFO\n",filename);
       if ((in = fopen(filename,"r")) == NULL) {
-	printf("LoadCommands: opening of the file '%s' wasn't succesfull!\n",filename);
+	printf("LoadCommands: opening of the file '%s' wasn't successful!\n",filename);
 	return(1);
       }    
       else printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -2845,7 +2845,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't succesfull!\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful!\n",filename);
       return(3);
     }    
     if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -2853,7 +2853,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   else if(mode == 2) {
     AddExtension(prefix,filename,"grd");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't succesfull!\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful!\n",filename);
       return(4);
     }    
     if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);

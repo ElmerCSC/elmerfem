@@ -218,7 +218,7 @@
 
          <Parameter  Widget="Edit" Enabled="False">
            <Name> FilmPressure Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
            <StatusTip> Give FilmPressure condition value for this boundary. </StatusTip>
          </Parameter>
 

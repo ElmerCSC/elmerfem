@@ -40,9 +40,9 @@ Solver 1
   Y Var Name = String "y1"
 
   !--- Interpolation variables
-  Epsilon X = Real 1.0e-2 
-  Epsilon Y = Real 1.0e-2 
-  Epsilon Time = Real 0.01
+  X Epsilon  = Real 1.0e-2 
+  Y Epsilon  = Real 1.0e-2 
+  Time Epsilon  = Real 0.01
 
   Interpolation Bias = Real 0.0 
   Interpolation Multiplier = Real 1.0 

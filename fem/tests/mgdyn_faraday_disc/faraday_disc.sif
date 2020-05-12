@@ -1,0 +1,146 @@
+!
+! This is a simple verification case to check that a Faraday disc creates
+! the expected potential difference between the rim and and the axis.
+! As explained in the following, this case is also instructive to understand 
+! how Elmer treats Maxwell's equations in the case of a moving body.
+!
+! Here a metallic disc rotates and is subject to a uniform magnetic field 
+! parallel to the disc axis. When the disc is put to rotate, the mobile charges
+! of the conductor start to feel a radial force due to the Lorentz term v x B
+! and hence accumulate on the insulated rim surface. As a consequence of charge
+! separation a radial electric field E is produced. The process of charge 
+! separation continues as long as steady state is reached such that the force on
+! the charges which is produced by the Lorentz term v x B balances the force 
+! which is produced by E. That is, in the steady state we have 
+! 
+!               E'(x) = E(x) + v(x) x B(x) = 0, 
+!
+! with E'(x) being the spatial field that describes the force experienced by 
+! a charge (see Elmer Models Manual for Maxwell's equations in terms of E'). 
+! Note that the solution is expressed in the spatial coordinates and attention 
+! is not fixed on particular material points (this is known as the Euler 
+! description in the continuum mechanics).  
+!
+! The potential difference between the centre and the rim is known to be 
+! 1/2 w a^2 |B|, where a is the radius of the disc and w is the angular 
+! velocity. Elmer generates E'(x) as the electric field variable and we expect 
+! to obtain E' = 0 up to the discretization error.
+!
+! The author of this setup: Mika Malinen
+!
+
+
+$ omega_z = 50
+$ mu0 = 4*pi*10^-7
+$ mur_1 = 1
+
+Header
+  Mesh DB "." "disc"
+End
+
+Simulation
+  Max Output Level = 6
+  Simulation Type = Steady State
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+  Exec Solver = Always
+  Equation = "mgdyn"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+  Fix Input Current Density = False
+  Use Piola Transform = True
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning = Diagonal
+  Linear System Iterative Method = bicgstabl
+  Bicgstabl Polynomial Degree = 4
+
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 800
+!  Linear System GCR Restart = 200
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1e-9
+!  Edge Basis = Logical True
+End 
+
+Solver 2
+  Exec Solver = Always
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Calculate Elemental Fields = True
+  Calculate Nodal Fields = False
+
+  Calculate Magnetic Vector Potential = True
+  Calculate Magnetic Flux Density = True
+  Calculate Magnetic Field Strength = False
+  Calculate Electric Field = True
+  Calculate Current Density = False
+  Calculate Joule Heating = False
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+!  Edge basis = Logical True
+End
+
+Solver 3
+!  exec solver = always
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Save Geometry IDs = Logical True
+  Output File Name = faraday_disc
+  Vtu Format = Logical True
+  Discontinuous Bodies = true
+End
+
+Solver 4
+!  Exec Solver = never
+  Procedure = "SaveData" "SaveScalars"
+  Filename = scalars.dat
+  show norm index = integer 2
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Relative Permeability = Real $ mur_1 
+  Relative Permittivity = Real 0
+  Electric Conductivity = Real 1e7
+End
+
+Body Force 1
+  Angular Velocity 3 = Real $ omega_z
+End
+
+Boundary Condition 1
+  !
+  ! The rim:
+  !
+  Target Boundaries(1) = 2
+  AV {e} 1 = Variable Coordinate 2
+    REAL MATC "-0.5*tx"
+  AV {e} 2 = Variable Coordinate 1
+    REAL MATC "0.5*tx"
+  AV {e} 3 = 0.0
+End
+
+Solver 4 :: Reference Norm = Real 3.119982493397E+001
+Solver 4 :: Reference Norm Tolerance = Real 1e-3

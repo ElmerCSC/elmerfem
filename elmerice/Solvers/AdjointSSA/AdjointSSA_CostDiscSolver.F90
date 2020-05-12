@@ -193,8 +193,10 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
    k = INDEX(ObsFileName ,'.nc' )
    NETCDFFormat = ( k /= 0 )
 
-#ifdef HAVE_NETCDF
    IF (NETCDFFormat) then
+
+#ifdef HAVE_NETCDF
+
       IF (VDOFs.NE.2) CALL FATAL(Trim(SolverName),'Netcdf only supported for 2D')
 
       CALL INFO(Trim(SolverName),'Data File is in netcdf format', Level=5)
@@ -316,39 +318,42 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
       End do
 
       DEALLOCATE(xx,yy,ux,uy)
-   Endif
-#else
-   IF (NETCDFFormat) &
-      CALL FATAL(Trim(SolverName),'Elmer/Ice has not been installed with netcdf -convert your file to ASCII table--')
 
-   ParallelFile = .False.
-   ParallelFile = GetLogical(SolverParams,'Parallel Observation Files', Found)
-   if (Parallel.AND.ParallelFile) &
-    write(ObsFileName,'(A,A,I0)') trim(ObsFileName),'.',ParEnv % MyPE  
+#else
+
+    CALL FATAL(Trim(SolverName),'Elmer/Ice has not been installed with netcdf -convert your file to ASCII table--')
+
+#endif
+
+   Else !.not.NETCDFFormat
+
+     ParallelFile = .False.
+     ParallelFile = GetLogical(SolverParams,'Parallel Observation Files', Found)
+     if (Parallel.AND.ParallelFile) &
+       write(ObsFileName,'(A,A,I0)') trim(ObsFileName),'.',ParEnv % MyPE  
                
-   open(IO,file=trim(ObsFileName),status = 'old',iostat = ok)
-   if(ok /= 0) then
+     open(IO,file=trim(ObsFileName),status = 'old',iostat = ok)
+     if(ok /= 0) then
        write(message,'(A,A)') 'Unable to open file ',TRIM(ObsFileName)
        CALL Fatal(Trim(SolverName),Trim(message))
-   end if
-   nobs=0
-   do while(ok == 0)
-     read(io,*,iostat = ok)
-     if (ok == 0) nobs = nobs + 1
-   end do
-   close(IO)
+     end if
+     nobs=0
+     do while(ok == 0)
+       read(io,*,iostat = ok)
+       if (ok == 0) nobs = nobs + 1
+     end do
+     close(IO)
 
+     ALLOCATE(xobs(nobs,3),Vobs(nobs,VDOFs))
 
-   ALLOCATE(xobs(nobs,3),Vobs(nobs,VDOFs))
-
-   Vobs=0.0_dp
-   xobs=0.0_dp
-   open(IO,file=trim(ObsFileName))
-   do i=1,nobs
-     read(IO,*) (xobs(i,j),j=1,DIM),(Vobs(i,j),j=1,VDOFs)
-   end do
-   close(IO)
-#endif
+     Vobs=0.0_dp
+     xobs=0.0_dp
+     open(IO,file=trim(ObsFileName))
+     do i=1,nobs
+       read(IO,*) (xobs(i,j),j=1,DIM),(Vobs(i,j),j=1,VDOFs)
+     end do
+     close(IO)
+   ENDIF
 
   ALLOCATE(InElement(nobs))
   InElement(:)=-1

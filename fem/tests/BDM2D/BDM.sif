@@ -19,40 +19,31 @@ Body 1
   Body Force = 1
 End
 
-!------------------------------------------------------------
-! This solver uses an in-built source term to obtain a case
-! for which the solution is known in the closed form.
-! The following source term definition will have no effect on
-! the solution:
-!------------------------------------------------------------
 Body Force 1
-  Body Source 1 = Real 0
-  Body Source 2 = Real 0
-!  Body Source 3 = Real 0  
+  Source Field = Variable Time
+     Real Procedure "Source" "SourceFun"
 End
 
-!----------------------------------------------------------
-! No material parameters needed to define the solution:
-!----------------------------------------------------------
-! Material 1
-!   Conductivity = Real 1.0
-! End
+Material 1
+  Material Parameter = Real 1.0
+End
 
 Equation 1
-  Active Solvers(1) = 1
+  Active Solvers(2) = 1 2
 End
 
 Solver 1
   Equation = "Mixed Poisson"
   Variable = "MixedSol"
   Variable DOFs = 1
-  Procedure = "BDMSolve" "BDMSolver"
+  Procedure = "ModelMixedPoisson" "MixedPoisson"
   !-------------------------------------------------------
   ! Here the bubble dof is used for constructing
   ! the piecewise constant approximation of the
   ! variable of the Poisson equation in the standard form.
   !-------------------------------------------------------
   Element = "n:0 e:2 b:1"
+  Second Kind Basis = Logical True
   Optimize Bandwidth = False
   Bubbles in Global System = Logical True
   Linear System Solver = Iterative
@@ -61,9 +52,12 @@ Solver 1
   Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 200
   Linear System Convergence Tolerance = 1e-6
+End
 
-  Linear System Min Iterations = Integer 150
-
+Solver 2
+  Equation = "Compute Error"
+  Procedure = "ComputeError" "IntegrateError"
+  Target Equation = String "Mixed Poisson"
 End
 
 !---------------------------------------------------------------
@@ -71,6 +65,5 @@ End
 ! Dirichlet constraint.
 !--------------------------------------------------------------
 
-Solver 1 :: Reference Norm = Real 0.26619939
+Solver 1 :: Reference Norm = Real 2.65649704E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
-RUN

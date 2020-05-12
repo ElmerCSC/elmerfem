@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
+   Author: Peter Rï¿½back
    Email: Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -95,6 +95,7 @@ static void Instructions()
   printf("13) .msh      : GID mesh format\n");
   printf("14) .msh      : Gmsh mesh format\n");
   printf("15) .ep.i     : Partitioned ElmerPost format\n");
+  printf("16) .2dm      : 2D triangular FVCOM format\n");
 #if 0
   printf("16)  .d       : Easymesh input format\n");
   printf("17) .msh      : Nastran format\n");
@@ -138,8 +139,9 @@ static void Instructions()
   printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
   printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
   printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
-  printf("-cloneinds           : when performing cloning should cloned entitities be given new indexes\n");
+  printf("-cloneinds           : when performing cloning should cloned entities be given new indexes\n");
   printf("-unite               : the meshes will be united\n");
+  printf("-unitenooverlap      : the meshes will be united without overlap in entity numbering\n");
   printf("-polar real          : map 2D mesh to a cylindrical shell with given radius\n");
   printf("-cylinder            : map 2D/3D cylindrical mesh to a cartesian mesh\n");
   printf("-reduce int[2]       : reduce element order at material interval [int1 int2]\n");
@@ -163,8 +165,8 @@ static void Instructions()
   printf("-3d / -2d / -1d      : mesh is 3, 2 or 1-dimensional (applies to examples)\n");
   printf("-isoparam            : ensure that higher order elements are convex\n");
   printf("-nonames             : disable use of mesh.names even if it would be supported by the format\n");
-  printf("-nosave              : disable saving part alltogether\n");
-  printf("-nooverwrite         : if mesh already exists don't overwite it\n");
+  printf("-nosave              : disable saving part altogether\n");
+  printf("-nooverwrite         : if mesh already exists don't overwrite it\n");
   printf("-vtuone              : start real node indexes in vtu file from one\n");
   printf("-timer               : show timer information\n");
   printf("-infofile str        : file for saving the timer and size information\n");
@@ -179,11 +181,13 @@ static void Instructions()
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
+  printf("-metisseed           : random number generator seed for Metis algorithms\n");
 #endif
   printf("-partdual            : use the dual graph in partition method (when available)\n");
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
   printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
+  printf("-halogreedy          : create halo being greedy over the partition interfaces\n");
   printf("-indirect            : create indirect connections (102 elements) in the partitioning\n");
   printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
   printf("-partoptim           : apply aggressive optimization to node sharing\n");
@@ -196,8 +200,8 @@ static void Instructions()
   printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
 #endif
   printf("-partlayers int      : extend boundary partitioning by element layers\n");
-  
-  printf("\nKeywords are related to (nearly obsolite) ElmerPost format:\n");
+
+  printf("\nKeywords are related to (nearly obsolete) ElmerPost format:\n");
   printf("-partjoin int        : number of ElmerPost partitions in the data to be joined\n");
   printf("-saveinterval int[3] : the first, last and step for fusing parallel data\n");
   printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
@@ -466,6 +470,21 @@ int main(int argc, char *argv[])
     Goodbye();
     break;
 
+  case 16:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFvcomMesh(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
+
+
+    
 #if 0
   case 16: 
     InitializeKnots(&(data[nofile]));
@@ -611,11 +630,11 @@ int main(int argc, char *argv[])
     data->dim = GetCoordinateDimension(data,info);
   }
 
- 
-  /* Make the discontinous boundary needed, for example, in poor thermal conduction */
+
+  /* Make the discontinuous boundary needed, for example, in poor thermal conduction */
   for(k=0;k<nomeshes;k++) {
     if(!eg.discont) {
-      for(j=0;j<grids[k].noboundaries;j++) 
+      for(j=0;j<grids[k].noboundaries;j++)
 	if(grids[k].boundsolid[j] == 2) {
 	  eg.discontbounds[eg.discont] = grids[k].boundtype[j];
 	  eg.discont++;	  
@@ -742,7 +761,7 @@ int main(int argc, char *argv[])
   /* Unite meshes if there are several of them */
   if(eg.unitemeshes) {
     for(k=1;k<nomeshes;k++)
-      UniteMeshes(&data[0],&data[k],boundaries[0],boundaries[k],info);
+      UniteMeshes(&data[0],&data[k],boundaries[0],boundaries[k],eg.unitenooverlap,info);
     nomeshes = nogrids = 1;
   }
   
@@ -1020,7 +1039,7 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++) {
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
-				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,
+				  eg.parthalo,eg.partitionindirect,eg.parthypre,
 				  MAX(eg.partbcz,eg.partbcr),eg.nooverwrite,info);
       else
 	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.nooverwrite,info);
@@ -1078,11 +1097,11 @@ int main(int argc, char *argv[])
     break;
 #endif
 
-    
-    /* Some obsolite special formats related to mapping, view factors etc. */
-    
+
+    /* Some obsolete special formats related to mapping, view factors etc. */
+
   case 101:
-    for(k=0;k<nogrids;k++) {   
+    for(k=0;k<nogrids;k++) {
       for(i=0;i<grids[k].noboundaries;i++)
 	if(boundaries[k][i].created == TRUE) {
 	  sprintf(prefix,"%s%d",eg.filesout[k],i+1);
@@ -1101,8 +1120,3 @@ int main(int argc, char *argv[])
   Goodbye();
   return(0);
 }
-
-
-
-
-

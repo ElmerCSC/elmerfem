@@ -1,0 +1,121 @@
+! Test case for deriving exported variables.
+! These could be handy if we have a functional dependence on speed of
+! a exported variable, or want to just show the velocity in postprocessing.
+!
+! P.R. 29.11.2018
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Transient"
+  Timestepping Method = bdf
+  bdf order = 2
+  Timestep Intervals = 100
+  Timestep Sizes = 0.01
+  Steady State Max Iterations = 1
+  Output Intervals = 10
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+End
+
+
+Solver 2
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+
+  Calculate Flux = Logical True
+  Target Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "cg"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = Integer 500
+  Linear System Convergence Tolerance = 1.0e-10
+
+! Enforces
+! 1) PrevValues being saved for "Temperature Flux"
+! 2) Numerical derivative "Temperature Flux Velocity" be computed.
+  Temperature Flux Calculate Velocity = Logical True
+
+! If 2) is given then 1) is automatically set internally. 
+! Temperature Flux Transient = Logical True
+End
+
+
+Solver 3
+  Equation = MaxFluxVelo
+  Procedure = "SaveData" "SaveScalars"
+
+  Variable 1 = Temperature Flux Velocity
+  Operator 1 = "max"
+  Show Norm index = 1
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+  Heat Capacity = 10
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1 
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = 2.88007470E-02
+Solver 2 :: Reference Norm = 1.24626755E-01
+Solver 3 :: Reference Norm = 7.16063911E-02
+
+!End Of File

@@ -6,11 +6,10 @@ End
 Simulation
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
-
   Angular Frequency = 1
-
   Simulation Type = Steady
   Steady State Max Iterations = 1
+  Max Output Level = 7
 End
 
 Constants
@@ -43,7 +42,7 @@ Solver 1
   Variable =  P[P re:1 P im:1]
 
   Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Max Iterations = 20
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-3
@@ -53,7 +52,7 @@ Solver 1
   Linear System Symmetric = True
   Linear System Iterative Method = CG
   Linear System Max Iterations = 3000
-  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = Ilu
   Linear System Residual Output = 10
   Linear System Abort Not Converged = False
@@ -65,7 +64,7 @@ Solver 2
   Potential Variable = String "P"
 
   Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-5
   Nonlinear System Max Iterations = 20
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-3
@@ -118,4 +117,4 @@ Boundary Condition 1
 End
 
 Solver 2 :: Reference Norm = Real 2.5874020
-RUN
+

@@ -1,0 +1,363 @@
+!----------------------------------------- 14 2 mortar_quarter.msh -autoclean---------------------------
+! Test case for 3D nonconforming mortar elements using the AV solver.
+! 
+! This case includes 4-fold symmetry in the rotations and 
+! an optional skew of 20 degrees in the rotor. 
+! Increse number of extruded layers for better accuracy. 
+!
+! This test case uses a generic projector which does not make 
+! any assumptions on the characteristics of the 2D mesh.
+!
+! This uses elimination for the periodic.
+!
+! P.R. / 13.5.2019 
+!---------------------------------------------------------------------
+
+$skew=3.0 
+$omega=20.0 
+$t0=1.0
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mortar3d"
+  Include Path ""
+  Results Directory ""
+End
+   
+Simulation
+  Max Output Level = 8
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.1
+  Output Intervals = 1
+  Timestep Intervals = 1
+
+  Simulation Timing = Logical True
+End  
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 3
+  Name = "Stator"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Target Bodies(1) = 1
+  Name = "Rotor-Hot"
+  Equation = 1
+  Material = 2
+  Body Force = 2
+  Initial Condition = 1
+End
+
+Body 3
+  Target Bodies(1) = 2
+  Name = "Rotor-Cold"
+  Equation = 1
+  Material = 3
+  Body Force = 3
+  Initial Condition = 1
+End
+
+
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Translate Before Rotate = Logical True
+  Cumulative Displacements = Logical False
+End
+
+
+Solver 2
+  Equation = "MGDynamics"
+  Variable = "P"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+! Fix Input Current Density = Logical True
+!  Use Piola Transform = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = BiCGstabl !GCR
+  BicGStabL Polynomial Degree = 6
+  Linear System GCR Restart = 600
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Abort Not Converged = False
+  Linear System Robust = Logical True
+
+  Steady State Convergence Tolerance = 1e-10
+
+!  Linear System Normwise Backward Error = Logical True
+!  Linear System Row Equilibration = True
+
+  Edge Basis = Logical True
+  Apply Mortar BCs = Logical True
+  Optimize Bandwidth = False
+End
+
+Solver 3
+!  Exec Solver = never
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+  Potential Variable = String "P"
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Calculate Nodal Fields = False
+  Discontinuous Bodies = True
+End
+
+
+Solver 4
+! Settings mainly for timing and verification
+  Exec Solver = never
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = scalars.dat
+
+  Variable 1 = P
+  Operator 1 = dofs
+  Operator 2 = min
+  Operator 3 = max
+  Operator 4 = norm
+  Operator 5 = cpu time
+  Operator 6 = wall time
+
+!  File Append = Logical True
+
+! Reduce just to one file when parallel
+  Parallel Reduce = Logical True
+  Default Parallel Operator = String max
+  Parallel Operator 1 = String sum
+End 
+ 
+
+Solver 5
+  Exec Solver = never
+
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = line.dat
+
+! Put all data in the same file
+!  File Append = True
+
+! Number the files [1,2,...] starting from 1st free number
+  Filename Numbering = True
+
+  Coordinate Transformation = String "cartesian to cylindrical"
+  Coordinate Transformation Use Degrees = Logical True
+  Polyline Coordinates(2,3) = 0.99 -360.0 0.5 0.99 360.0 0.99
+End
+
+
+Solver 6
+!  Exec Solver = never
+  Equation = VtuOutput
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = ref
+  Vtu Format = True
+  Single Precision = True
+  Save Geometry Ids = True
+
+  Discontinuous Bodies = True
+End 
+
+Equation 1
+  Name = "MagFields"
+  Active Solvers(3) = 2 3 7
+End
+
+Material 1
+  Reluctivity  = Real 1.0
+  Electric Conductivity = Real 1.0e-6
+End
+
+Material 2
+  Reluctivity  = Real 1.0
+  Electric Conductivity = Real 1.0
+End
+
+Material 3
+  Reluctivity  = Real 1.0
+  Electric Conductivity = Real 1.0e-6
+End
+
+Body Force 1
+  Name = "MoveToLeft"
+!  Mesh Translate 1 = -4.0
+!  Mesh Scale 3 = Real 1.1
+!  Mesh Translate 3 = -0.05
+
+  Mesh Rotate 3 = Variable Coordinate 3 
+    Real MATC "-skew*tx"
+End
+
+Body Force 2 
+  Name = "Hot Move"
+  Mesh Rotate 3 = Variable time, Coordinate 3 
+    Real MATC "omega*(t0+tx(0))+skew*tx(1)"
+
+!  Electric Potential = Equals "Coordinate 3"
+End 
+
+Body Force 3
+  Name = "Cold Move"
+  Mesh Rotate 3 = Variable time, Coordinate 3 
+    Real MATC "omega*(t0+tx(0))+skew*tx(1)"
+End 
+
+Boundary Condition 1
+  Target Boundaries(2) = 8 9
+  Name = "Ambient"
+  P {e} = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 6
+  Name = "Mortar Outside"
+End
+
+$pcoeff = 1.0
+Boundary Condition 3
+  Target Boundaries(2) = 1 2
+  Name = "Mortar Inside"
+
+  Mortar BC =  Integer 2
+  Rotational Projector = Logical True
+  Rotational Projector Periods = Integer 4
+
+  Level Projector = Logical True
+  Level Projector Generic = Logical True
+! electric conductivity zero so we can skip this
+  Projector Skip Nodes = Logical True
+
+!  Save Projector = Logical True
+End
+
+Boundary Condition 4
+  Name = "Periodic Rotor Master"
+  Target Boundaries(1) = 4
+
+  Mortar BC = 5
+  Radial Projector = Logical True
+
+  Level Projector = Logical True
+  Level Projector Generic = Logical True
+  Level Projector Nodes Strong = Logical True
+
+!  Save Projector = Logical True
+End
+
+Boundary Condition 5
+  Name = "Periodic Rotor Target"
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 6
+  Name = "Periodic Stator Master"
+  Target Boundaries(1) = 10
+
+  Mortar BC = 7
+  Radial Projector = Logical True
+
+  Level Projector = Logical True 
+  Level Projector Generic = Logical True
+
+  Projector Skip Nodes = Logical True
+!  Save Projector = Logical True
+!  Projector Set Rowsum = Logical True
+End
+
+Boundary Condition 7
+  Name = "Periodic Stator Target"
+  Target Boundaries(1) = 7
+End
+
+Boundary Condition 8
+  Target Boundaries(1) = 5
+  Name = "DummyBC"
+End 
+
+Boundary Condition 9
+  Name = "Start-Stator"
+  Target Boundaries(1) = 13
+  P {e} = Real 0
+!  P = Real 0.0
+End 
+
+Boundary Condition 10
+  Name = "Start-Hot"
+  Target Boundaries(1) = 12
+  P {e} = Real 0
+  P = Real 0.0
+End 
+
+Boundary Condition 11
+  Name = "Start-Cold"
+  Target Boundaries(1) = 11 
+  P {e} = Real 0
+  P = Real 0.0
+End 
+
+Boundary Condition 12
+  Name = "EndZS-Stator"
+  Target Boundaries(1) = 16
+  P {e} = real 0
+!  P = Real 1.0
+End 
+
+Boundary Condition 13
+  Name = "EndZ-Hot"
+  Target Boundaries(1) = 15
+  P {e} = real 0
+  P = Real 1.0
+!  Electric Current Density = 1.0
+End 
+
+Boundary Condition 14
+  Name = "EndZ-Cold"
+  Target Boundaries(1) = 14
+  P {e} = real 0
+  P = Real 1.0
+!  Electric Current Density = 1.0
+End 
+ 
+
+Solver 2 :: Reference Norm = 4.16868320E-03
+
+

@@ -2,7 +2,7 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author:  Peter Råback
+   Author:  Peter Rï¿½back
    Email:   Peter.Raback@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
@@ -181,7 +181,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   gotlinefeed = FALSE;
   j = 0;
   for(i=0;i<MAXLINESIZE;i++) {
-    if(line0[i] == '\n' ) {
+    if(line0[i] == '\n' || line0[i] == '\0' ) {
       gotlinefeed = TRUE;
       break;
     }
@@ -199,7 +199,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   if(j) { /* Arguments are actually on the same line after '=' */
     for(i=j+1;i<MAXLINESIZE;i++) {
       line2[i-j-1] = line0[i];    
-      if( line0[i] == '\n' ) {
+      if( line0[i] == '\n' || line0[i] == '\0' ) {
 	gotlinefeed = TRUE;
 	break;
       }
@@ -220,7 +220,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
 
     gotlinefeed = FALSE;
     for(i=0;i<MAXLINESIZE;i++) {
-      if(line2[i] == '\n' ) {
+      if(line2[i] == '\n' || line2[i] == '\0' ) {
 	gotlinefeed = TRUE;
 	break;
       }
@@ -267,6 +267,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->outmethod = 0;
   eg->nofilesin = 1;
   eg->unitemeshes = FALSE;
+  eg->unitenooverlap = FALSE;
   eg->triangles = FALSE;
   eg->triangleangle = 0.0;
   eg->rotate = FALSE;
@@ -281,11 +282,12 @@ void InitParameters(struct ElmergridType *eg)
   eg->nodes3d = 0;
   eg->metis = 0;
   eg->metiscontig = FALSE;
+  eg->metisseed = 0;
   eg->partopt = 0;
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
   eg->partjoin = 0;
-  eg->partitionhalo = 0;
+  for(i=0;i<MAXHALOMODES;i++) eg->parthalo[i] = FALSE;
   eg->partitionindirect = FALSE;
   eg->reduce = FALSE;
   eg->increase = FALSE;
@@ -468,23 +470,30 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
 
     if(strcmp(argv[arg],"-halo") == 0) {
-      eg->partitionhalo = 1;
+      eg->parthalo[1] = TRUE;
     }
     if(strcmp(argv[arg],"-halobc") == 0) {
-      eg->partitionhalo = 2;
+      eg->parthalo[2] = TRUE;
     }
+    if(strcmp(argv[arg],"-halodb") == 0) {
+      eg->parthalo[1] = TRUE;
+      eg->parthalo[2] = TRUE;            
+    }   
     if(strcmp(argv[arg],"-haloz") == 0) {
-      eg->partitionhalo = 3;
+      eg->parthalo[3] = TRUE;
     }
     if(strcmp(argv[arg],"-halor") == 0) {
-      eg->partitionhalo = 3;
+      eg->parthalo[3] = TRUE;
     }
+    if(strcmp(argv[arg],"-halogreedy") == 0) {
+      eg->parthalo[4] = TRUE;
+    }    
     if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
     }
     if(strcmp(argv[arg],"-metisorder") == 0) {
       eg->order = 3;
-    }
+    }    
     if(strcmp(argv[arg],"-centralize") == 0) {
       eg->center = TRUE;
     }
@@ -587,6 +596,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-unite") == 0) {
       eg->unitemeshes = TRUE;
       printf("The meshes will be united.\n");
+    }   
+    if(strcmp(argv[arg],"-unitenooverlap") == 0) {
+      eg->unitemeshes = TRUE;
+      eg->unitenooverlap = TRUE;
+      printf("The meshes will be united without overlap in BCs or bodies.\n");
     }   
 
     if(strcmp(argv[arg],"-nonames") == 0) {
@@ -714,7 +728,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
     if(strcmp(argv[arg],"-parthypre") == 0) {
       eg->parthypre = TRUE;
-      printf("Numbering of partitions will be made continous.\n");
+      printf("Numbering of partitions will be made continuous.\n");
     }
     if(strcmp(argv[arg],"-partdual") == 0) {
       eg->partdual = TRUE;
@@ -744,7 +758,18 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif     
     }
-
+    
+    if(strcmp(argv[arg],"-metisseed") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The random number seed is required as parameter for -metisseed!\n");
+	return(15);
+      }
+      else {
+	eg->metisseed = atoi(argv[arg+1]);
+	printf("Seed for Metis partitioning routines: %d\n",eg->metisseed);
+      }
+    }
+    
     if(strcmp(argv[arg],"-partjoin") == 0) {
       if(arg+1 >= argc) {
 	printf("The number of partitions is required as a parameter!\n");
@@ -1052,7 +1077,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       fclose(in);
       printf("Using the file %s defined in ELMERGRID_STARTINFO\n",filename);
       if ((in = fopen(filename,"r")) == NULL) {
-	printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
+	printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
 	return(1);
       }    
       else printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -1063,7 +1088,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   else if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
       return(3);
     }    
     if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -1071,7 +1096,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   else if(mode == 2) {
     AddExtension(prefix,filename,"grd");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
       return(4);
     }    
     if(info) printf("\nLoading ElmerGrid commands from file '%s'.\n",filename);
@@ -1146,6 +1171,14 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->unitemeshes = TRUE;      
     }
+    else if(strstr(command,"UNITENOOVERLAP")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) {
+	eg->unitemeshes = TRUE;      
+	eg->unitenooverlap = TRUE;      
+      }
+    }
+    
     else if(strstr(command,"ORDER NODES")) {
       eg->order = TRUE;
       if(eg->dim == 1) 
@@ -1287,16 +1320,20 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     }
     else if(strstr(command,"HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = 1;      
+      if(strstr(params,"TRUE")) eg->parthalo[1] = TRUE;      
     }
     else if(strstr(command,"BOUNDARY HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = 2;
+      if(strstr(params,"TRUE")) eg->parthalo[2] = TRUE;
     }
     else if(strstr(command,"EXTRUDED HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = 3;
+      if(strstr(params,"TRUE")) eg->parthalo[3] = TRUE;
     }
+    else if(strstr(command,"GREEDY HALO")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->parthalo[4] = TRUE;
+    }    
     else if(strstr(command,"PARTBW")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->partbw = TRUE;      
@@ -1694,7 +1731,7 @@ int SaveBoundaryForm(struct FemType *data,struct CellType *cell,
   char filename[MAXFILESIZE];
 
   if(data->created == FALSE) {
-    printf("SaveBoundaryForm: stucture FemType not created\n");
+    printf("SaveBoundaryForm: structure FemType not created\n");
     return(1);
   }
 
@@ -1741,7 +1778,7 @@ int SaveBoundaryLine(struct FemType *data,int direction,
   Real c,c1,eps;
 
   if(data->created == FALSE) {
-    printf("SaveBoundaryLine: stucture FemType not created\n");
+    printf("SaveBoundaryLine: structure FemType not created\n");
     return(1);
   }
 
@@ -1807,7 +1844,7 @@ int SaveSubcellForm(struct FemType *data,struct CellType *cell,
   more = FALSE;
 
   if(data->created == FALSE) {
-    printf("SaveSubcellForm: stucture FemType not created\n");
+    printf("SaveSubcellForm: structure FemType not created\n");
     return(1);
   }
 
@@ -2071,7 +2108,7 @@ int LoadElmergridOld(struct GridType **grid,int *nogrids,char *prefix,int info)
 
   AddExtension(prefix,filename,"grd");
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadElmergrid: opening of the file '%s' wasn't succesfull !\n",filename);
+    printf("LoadElmergrid: opening of the file '%s' wasn't successful !\n",filename);
     return(1);
   }
 
@@ -2229,7 +2266,7 @@ int LoadElmergridOld(struct GridType **grid,int *nogrids,char *prefix,int info)
     case 31:
     case 32:
 
-      /* I dont know how to set this, luckily this piece of code should be obsolite */
+      /* I don't know how to set this, luckily this piece of code should be obsolete */
       l = 1;
       for(i=grid[k]->mappings;i<grid[k]->mappings+l;i++) {
 	Getline(line,in);
@@ -2528,7 +2565,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
 
   AddExtension(prefix,filename,"grd");
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadElmergrid: opening of the file '%s' wasn't succesfull !\n",filename);
+    printf("LoadElmergrid: opening of the file '%s' wasn't successful !\n",filename);
     return(1);
   }
 
@@ -2639,7 +2676,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
 	       grid[k]->xcells,grid[k]->ycells,grid[k]->zcells,MAXCELLS);
      }
 
-      /* Initialize the default stucture with ones */
+      /* Initialize the default structure with ones */
       for(j=grid[k]->ycells;j>=1;j--) 
 	for(i=1;i<=grid[k]->xcells;i++) 
 	  grid[k]->structure[j][i] = 1;
@@ -2767,7 +2804,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     else if(strstr(command,"MATERIAL STRUCTURE")) {
       printf("Loading material structure\n");
 
-      /* Initialize the default stucture with zeros */
+      /* Initialize the default structure with zeros */
       for(j=grid[k]->ycells;j>=1;j--) 
 	for(i=1;i<=grid[k]->xcells;i++) 
 	  grid[k]->structure[j][i] = 0;
@@ -3072,8 +3109,3 @@ int ShowCorners(struct FemType *data,int variable,Real offset)
   }
   return(0);
 }
-
-
-
-
-

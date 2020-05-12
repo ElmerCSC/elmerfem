@@ -179,7 +179,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
           
       ALLOCATE(xb(Nb), yb(Nb), zb(Nb), xbaux(Nb), ybaux(Nb), zbaux(Nb))
 
-      ! read datas
+      ! read data
       DO i = 1, Nb 
          READ(io,*,iostat = ok, end=100) xbaux(i), ybaux(i), zbaux(i)
       END DO

@@ -87,7 +87,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
         Load(1:n,3) = GetReal( BodyForce, 'Source z', Found )
      END IF
 
-     ! Get material paremeters:
+     ! Get material parameters:
      !-------------------------
      Material => GetMaterial()
      rho(1:n) = GetReal( Material, 'Density' )

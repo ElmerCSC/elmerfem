@@ -9,11 +9,13 @@ include modeldata.sif
 Header
   Mesh DB "." "umagnet"
 End
+
 Simulation
   Max Output Level = 5
   Simulation type = steady state
   mesh levels = 1
 End
+
 Solver 1 ! avsolver
   Equation = "mgdyn"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
@@ -35,6 +37,7 @@ Solver 1 ! avsolver
   Edge Basis = Logical True
   Nonlinear System Consistent Norm = True
 End
+
 Solver 2 ! postprocess
   Exec Solver = always
   Equation = "MGDynamicsCalc"
@@ -62,80 +65,95 @@ Solver 2 ! postprocess
   
   Nonlinear System Consistent Norm = True
 End
+
 Solver 3 ! resultoutput
-    Equation = "Result Output"
-    Procedure = "ResultOutputSolve" "ResultOutputSolver"
-    Save Geometry IDs = Logical True
-    discontinuous bodies = logical true
-    Output File Name = "case"
-    output directory = "umagnet"
-    Output Format = vtu
+  Equation = "Result Output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Save Geometry IDs = Logical True
+  discontinuous bodies = logical true
+  Output File Name = "case"
+  output directory = "umagnet"
+  Output Format = vtu
+
+  Exec Solver = never
 End
+
 Solver 4 ! savescalars
   Equation = "Savedata"
   Procedure = "SaveData" "SaveScalars"
-  filename = "case.dat"
+!  filename = "case.dat"
   save component results = logical true
-
-!  Parallel Reduce = True
+  Parallel Reduce = True
 End
+
 Equation 1
-  !Active Solvers(4) = 1 2 3 4
   Active Solvers(3) = 1 2 4
 End
+
 Body 1 ! magnet
   Target bodies(2) = $ uparm downarm
   Material = 1
   Equation = 1
 End
+
 Body 2 ! coil
   Target bodies(1) = $ coilbrick
   Body Force = 1
   Material = 1
   Equation = 1
 End
+
 Body 3 ! air
   Target bodies(1) = $ air
   Material = 2
   Equation = 1
 End
+
 Body 4 ! gap_up
   Target Bodies(1) = $ gap_up
   Material = 1
   Equation = 1
   gap up mask = logical true
 End
+
 Body 5 ! gap_down
   Target Bodies(1) = $ gap_down
   Material = 1
   Equation = 1
   gap down mask = logical true
 End
+
 Material 1 ! mu_pm
   Relative Permeability = $ mu_pm
   Relative Permittivity = 1
 End
+
 Material 2 ! vacuum
   Relative Permeability = 1
   Relative Permittivity = 1
 End
+
 Body Force 1 ! magnetization
   Magnetization 2 = $ B0 / (mu_pm*mu0)
 End
+
 Boundary Condition 1 ! exterior
   Target Boundaries(1) = 2
   AV {e} = real 0
 End
+
 Boundary Condition 2 ! airgap
   Target Boundaries(1) = 1
   Air Gap Length = Real $ airgap
   Air Gap Relative Permeability = Real 1.0
 End
+
 Component 1 ! gap_down component
   Name = string "gap_down"
   Master Bodies(1) = integer 5
   calculate magnetic force = logical true
 End
+
 Component 2 ! gap_up component
   Name = string "gap_up"
   Master Bodies(1) = integer 4

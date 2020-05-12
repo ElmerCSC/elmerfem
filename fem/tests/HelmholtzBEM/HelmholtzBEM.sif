@@ -23,7 +23,7 @@ Simulation
   Output Intervals = 1
 
 ! Output File = "CircleInBox.dat"
-! Post File = "CircleInBox.ep"
+! Post File = "CircleInBox.vtu"
 End
 
 Constants

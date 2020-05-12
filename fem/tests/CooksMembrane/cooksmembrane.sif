@@ -1,0 +1,103 @@
+! ---------------------------------------------------------------------------- 
+! Here Cook's membrane problem (state of plane strain) is solved by using 
+! the neo-Hookean material model subject to large deformation.
+! The mixed finite element formulation is employed. With E=200, v=0.35, 
+! traction=4.0, the Y-displacement at the corner point (48,60) is found to
+! be UY=6.1468 (the value UY=6.1469 has been reported in a thesis work [1]).
+!
+! [1] Muller, B. Mixed Least Squares Finite Element Methods Based on Inverse 
+! Stress-Strain Relations in Hyperelasticity. Thesis, 2015 (Universitat 
+! Duisburg-Essen)
+! ---------------------------------------------------------------------------- 
+
+Header
+  Mesh DB "." "body"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 6
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+! Output File = "elasticity.result"
+ Post File = "elasticity.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = 1.0
+  Youngs Modulus = 200.0
+  Poisson Ratio = 0.35
+End
+
+Solver 1
+  Equation = Elasticity Solver
+  Procedure = "ElasticSolve" "ElasticSolver"
+
+  Neo-Hookean Material = True
+  Mixed Formulation = Logical True
+
+  ! ----------------------------------------------------------------
+  ! With "Mixed Formulation = True" & "Neo-Hookean Material = True"
+  ! the following three keyword commands are used automatically in
+  ! 2-D simulations (thus, use the components of "Disp" to specify
+  ! the diplacement on a boundary):
+  ! ----------------------------------------------------------------
+  !  Variable = MixedSol[Disp:2 Pres:1]
+  !  Variable DOFs = 3
+  !  Element = "p:2"
+
+  Displace Mesh = False
+
+  Linear System Solver = Direct
+!  Linear System Direct Method = UMFPack
+
+!  Linear System Solver = Iterative
+!  Linear System Iterative Method = BiCGStab
+!  Linear System Preconditioning = ILU0
+!  Linear System Max Iterations = 500
+!  Linear System Convergence Tolerance = 1.0e-8
+!  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Measure = Residual
+  Nonlinear System Relaxation Factor = 1.0
+
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+Solver 2 
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = f.dat
+  Save Coordinates(1,3) = 48.0 60.0 0.0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Disp 1 = Real 0
+  Disp 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Pseudo-Traction = True
+  Surface Traction 2 = Real 4.0
+End
+
+Solver 1 :: Reference Norm = Real 1.4800473
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5

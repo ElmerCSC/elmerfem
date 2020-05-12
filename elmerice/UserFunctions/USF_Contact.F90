@@ -54,7 +54,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
   REAL(KIND=dp), POINTER :: NormalValues(:), ResidValues(:), GroundedMask(:), Hydro(:), &
        Distance(:), FrictionValues(:)
-  REAL(KIND=dp) :: Bdrag, t, told, thresh
+  REAL(KIND=dp) :: Bdrag, t, told, thresh, FrictionValue
   REAL(KIND=dp), ALLOCATABLE :: Normal(:), Fwater(:), Fbase(:)
 
   INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:), &
@@ -71,7 +71,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
   SAVE FirstTime, yeschange, told, GLmoves, thresh, GLtype, TestContact
   SAVE DIM, USF_Name, Normal, Fwater, Fbase, relChangeOld, Sl_Law
-  SAVE FrictionVar, FrictionValues, FrictionPerm, BC, FlowLoadsName
+  SAVE FrictionVar, FrictionValues, FrictionValue, FrictionPerm, BC, FlowLoadsName
   SAVE FlowSolutionName
 
 !----------------------------------------------------------------------------
@@ -165,17 +165,21 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   ENDIF
   
   IF(Sl_Law(1:10) == 'prescribed') THEN
-     FrictionVarName = GetString( BC, 'Friction Variable Name', GotIt )
-     IF(.NOT. GotIt) CALL Fatal(USF_Name, 'Prescribed friction requested but no &
-          "Friction Variable Name" found!')
-     FrictionVar => VariableGet(Model % Mesh % Variables, FrictionVarName)
-     IF(ASSOCIATED(FrictionVar)) THEN
+    IF(Sl_Law(1:16) == 'prescribed value') THEN
+      FrictionValue = ListGetConstReal(BC, 'Friction Value', UnfoundFatal=.TRUE.)
+    ELSE
+      FrictionVarName = GetString( BC, 'Friction Variable Name', GotIt )
+      IF(.NOT. GotIt) CALL Fatal(USF_Name, 'Prescribed friction requested but no &
+           "Friction Variable Name" found!')
+      FrictionVar => VariableGet(Model % Mesh % Variables, FrictionVarName)
+      IF(ASSOCIATED(FrictionVar)) THEN
         FrictionValues => FrictionVar % Values
         FrictionPerm => FrictionVar % Perm
-     ELSE
+      ELSE
         WRITE(Message, '(A,A)') 'Unable to find variable: ',FrictionVarName
         CALL Fatal(USF_Name, Message)
-     END IF
+      END IF
+    END IF
   END IF
 
 
@@ -364,6 +368,10 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
            Bdrag = FrictionValues(FrictionPerm(nodenumber))**2.0_dp
         CASE('prescribed power')
            Bdrag = 10.0_dp**FrictionValues(FrictionPerm(nodenumber))
+        CASE('prescribed variable')
+           Bdrag = FrictionValues(FrictionPerm(nodenumber))
+        CASE('prescribed value')
+           Bdrag = FrictionValue
         CASE DEFAULT
            WRITE(Message, '(A,A)') 'Sliding law not recognised ',Sl_law
            CALL FATAL( USF_Name, Message)

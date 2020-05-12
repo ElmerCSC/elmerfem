@@ -250,7 +250,7 @@ float **submatrix(float **a,int oldrl,int oldrh,int oldcl,int oldch,int newrl,in
   return(m);
 }
 
-/* Tensor initilization */
+/* Tensor initialization */
 
 double ***f3tensor(int nrl,int nrh,int ncl,int nch,int ndl,int ndh)
 /* allocate a double 3tensor with range t[nrl..nrh][ncl..nch][ndl..ndh] */

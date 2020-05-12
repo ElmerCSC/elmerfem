@@ -148,6 +148,7 @@ CONTAINS
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
       IMPLICIT NONE
+      CHARACTER(LEN=MAX_NAME_LEN) :: msg
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, localNode
@@ -159,8 +160,8 @@ CONTAINS
       localEdge = BrickFaceEdgeMap(face,localNode)
 
       IF (localEdge == 0) THEN
-         WRITE (*,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
-         STOP
+         WRITE (msg,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
+         CALL Fatal('getBrickFaceEdgeMap', msg)
       END IF
     END FUNCTION getBrickFaceEdgeMap
 
@@ -774,8 +775,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>     Based on element bubble polynomial degree p, return degrees of freedom for
-!>     given elements bubbles. 
+!> Based on the polynomial degree p of the element, return the number of
+!> bubble functions (the count of bubble DOFs). 
+!> NOTE: The returned value is not the bubble count for an approximation
+!> based on the space Q_p of polynomials of degree at most p in each variable 
+!> separately.
 !------------------------------------------------------------------------------
   FUNCTION getBubbleDOFs( Element, p) RESULT(bubbleDOFs)
 !------------------------------------------------------------------------------
@@ -834,8 +838,9 @@ CONTAINS
     END SELECT
 
     bubbleDOFs = MAX(0, bubbleDOFs)
+!------------------------------------------------------------------------------
   END FUNCTION getBubbleDOFs
-
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -855,6 +860,7 @@ CONTAINS
         retVal = retVal.AND.ANY(CurrentModel % Solver % Def_Dofs(c,:,6)>0)
       END IF
     END IF
+
 !------------------------------------------------------------------------------
   END FUNCTION isActivePElement
 !------------------------------------------------------------------------------
@@ -879,6 +885,7 @@ CONTAINS
 
       TYPE(Element_t), INTENT(IN) :: Element
       LOGICAL :: retVal
+
       retVal = ASSOCIATED(Element % PDefs)
 !------------------------------------------------------------------------------
     END FUNCTION isPElement
@@ -1042,7 +1049,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Get the number of gauss points for P-elements.
+!> Get the number of Gauss points for P-elements.
 !------------------------------------------------------------------------------
     FUNCTION getNumberOfGaussPoints( Element, Mesh ) RESULT(ngp)
 !------------------------------------------------------------------------------
@@ -1051,7 +1058,7 @@ CONTAINS
       TYPE(Element_t) :: Element
       INTEGER :: ngp
 !------------------------------------------------------------------------------
-      INTEGER :: edgeP, faceP, bubbleP, nb, maxp
+      INTEGER :: edgeP, faceP, bubbleP, TrueBubbleP, nb, maxp
 
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
          CALL Warn('PElementBase::getNumberOfGaussPoints','Element not p element')
@@ -1074,42 +1081,80 @@ CONTAINS
       
       ! Element bubble p
       bubbleP = 0
+      TrueBubbleP = 0
       IF (Element % BDOFs > 0) THEN
          bubbleP = Element % PDefs % P
          
          SELECT CASE( Element % TYPE % ElementCode / 100 )
          CASE(3)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+             bubbleP = CEILING( ( 3.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS)
 
          CASE(4)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 )
+             TrueBubbleP = CEILING( ( 5.0d0+SQRT(1.0d0+8.0d0*nb) ) / 2.0d0 - AEPS )
+             bubbleP = TrueBubbleP - 2
 
          CASE(5)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS)
 
          CASE(6)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+2 - AEPS) - 1
 
          CASE(7)
              nb = MAX( GetBubbleDOFs( Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+3 - AEPS) - 2
 
          CASE(8)
              nb = MAX( GetBubbleDOFs(Element, bubbleP ), Element % BDOFs )
-             bubbleP=CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
-                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+             bubbleP = CEILING(1/3d0*(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+1d0 / &
+                    (81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4 - AEPS) - 4
          END SELECT
       END IF
 
-      ! Get number of Gauss points. Number needed is 2*max(p)=2*(max(p)+1)/2
+      ! Special quadrature may be available: 
+      IF (Element % TYPE % ElementCode / 100 == 4) THEN
+        ! The true polynomial degree is as follows
+        maxp = MAX(1, edgeP, faceP, TrueBubbleP)
+        ! but this would replace the true bubble degree by a tampered value:
+        !maxp = MAX(1, edgeP, faceP, BubbleP)
+
+        ! Economic quadratures cannot be used if an explicit bubble augmentation is used
+        ! with lower-order finite elements:
+        IF ( .NOT.(Element % PDefs % P < 4 .AND. Element % BDOFs>0) ) THEN
+          IF (maxp > 1 .AND. maxp <= 8) THEN
+            !PRINT *, 'SETTING SPECIAL NGP'
+            !PRINT *, 'MAXP=',MAXP
+            SELECT CASE(maxp)
+            CASE(2)
+              ngp = 8
+            CASE(3)
+              ngp = 12
+            CASE(4)
+              ngp = 20
+            CASE(5)
+              ngp = 25
+            CASE(6)
+              ngp = 36
+            CASE(7)
+              ngp = 45
+            CASE(8)
+              ngp = 60
+            END SELECT
+            RETURN
+          END IF
+        END IF
+      END IF
+      ! Get the number r of Gauss points for the product of two basis functions: 
+      ! r = (2*max(p)+1)/2
       maxp = MAX(1, edgeP, faceP, bubbleP) + 1
+      ! The number of Gauss points based on the Cartesian product (more efficient
+      ! rules could be defined):
       ngp = maxp ** Element % TYPE % DIMENSION
 !------------------------------------------------------------------------------
     END FUNCTION getNumberOfGaussPoints
@@ -1177,34 +1222,62 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Get the number of Gauss points for the faces of p-elements
+!------------------------------------------------------------------------------
     FUNCTION getNumberOfGaussPointsFace( Face, Mesh ) RESULT(ngp)
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
-      TYPE(Element_t), POINTER :: Face, Edge
-      INTEGER :: ngp
+      TYPE(Element_t), POINTER :: Face
       TYPE(Mesh_t) :: Mesh
+      INTEGER :: ngp
 !------------------------------------------------------------------------------
-      INTEGER :: edgeP, i, maxp
-
-      ! Get max p of edges contained in face
+      TYPE(Element_t), POINTER :: Edge
+      INTEGER :: edgeP, faceP, i, maxp
+!------------------------------------------------------------------------------
+      ! Get the max p of edges contained in the face
       edgeP = 0
       DO i=1, Face % TYPE % NumberOfEdges
          Edge => Mesh % Edges ( Face % EdgeIndexes(i) )
          edgeP = MAX(edgeP, Edge % PDefs % P)
       END DO
 
-      ! If no face dofs use max edge dofs as number of points
       IF (Face % BDOFs <= 0) THEN
-         ngp = (edgeP + 1) ** 2 
-         RETURN
+        ! If no face dofs, the max p is defined by the edges
+        maxp = edgeP
+      ELSE
+        maxp = MAX(edgeP, Face % PDefs % P)  
       END IF
 
-      ! Get number of Gauss points
-      maxp = MAX(edgeP, Face % PDefs % P) + 1
-      ngp = maxp ** 2
+      ! An economic quadrature may be available: 
+      IF (Face % TYPE % ElementCode / 100 == 4) THEN
+        !IF ( .NOT.(maxp < 4 .AND. Face % BDOFs>0) ) THEN
+        IF (maxp > 1 .AND. maxp <= 8) THEN
+          SELECT CASE(maxp)
+          CASE(2)
+            ngp = 8
+          CASE(3)
+            ngp = 12
+          CASE(4)
+            ngp = 20
+          CASE(5)
+            ngp = 25
+          CASE(6)
+            ngp = 36
+          CASE(7)
+            ngp = 45
+          CASE(8)
+            ngp = 60
+          END SELECT
+          RETURN
+        END IF
+      END IF
+
+      ! Get the standard number of Gauss points:
+      i = maxp + 1
+      ngp = i ** 2
 !------------------------------------------------------------------------------
-    END FUNCTION
+    END FUNCTION getNumberOfGaussPointsFace
 !------------------------------------------------------------------------------
  
   
@@ -1212,32 +1285,26 @@ CONTAINS
 !>     Subroutine for getting reference p element nodes (because these are NOT
 !>     yet defined in element description files)
 !------------------------------------------------------------------------------
-  SUBROUTINE GetRefPElementNodes(Element, U, V, W, PerformCheck)
+  SUBROUTINE GetRefPElementNodes(Element, U, V, W)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
-    REAL(KIND=dp), POINTER CONTIG :: U(:), V(:), W(:)
-    LOGICAL, OPTIONAL :: PerformCheck
+    TYPE(ElementType_t) :: Element
+    REAL(KIND=dp) :: U(:), V(:), W(:)
 !--------------------------------------------------------------------------------
     INTEGER :: n
-!--------------------------------------------------------------------------------
-    LOGICAL :: PElementRequired
 !--------------------------------------------------------------------------------    
-    PElementRequired = .TRUE.
-    IF ( PRESENT(PerformCheck) ) PElementRequired = PerformCheck
-    IF (PElementRequired) THEN
-       ! If element is not p element return
-       IF ( .NOT. isPElement(Element) ) THEN 
-          CALL Warn('PElementMaps::GetRefPElementNodes','Element given not a p element')
-          RETURN
-       END IF
+    ! Reserve space for element nodes
+    n = Element % NumberOfNodes
+
+    IF(.NOT.ALLOCATED(element % N_NodeU).AND.ALLOCATED(Element % NodeU) ) THEN
+      ALLOCATE(Element % N_NodeU(n), Element % N_NodeV(n), Element % N_NodeW(n))
+      element % N_NodeU = element % NodeU
+      element % N_NodeV = element % NodeV
+      element % N_NodeW = element % NOdeW
     END IF
 
-    ! Reserve space for element nodes
-    n = Element % TYPE % NumberOfNodes
-
     ! Select by element type given
-    SELECT CASE(Element % TYPE % ElementCode / 100)
+    SELECT CASE(Element % ElementCode / 100)
     ! Line
     CASE(2)
        U(1:n) = (/ -1d0,1d0 /)
@@ -1270,7 +1337,8 @@ CONTAINS
        V(1:n) = (/ -1d0,-1d0,1d0,1d0,-1d0,-1d0,1d0,1d0 /)
        W(1:n) = (/ -1d0,-1d0,-1d0,-1d0,1d0,1d0,1d0,1d0 /)
     CASE DEFAULT
-       CALL Warn('PElementMaps::GetRefPElementNodes','Unknown element type')
+      WRITE(Message,'(A,I0)') 'Unknown element type: ',Element % ElementCode
+      CALL Warn('PElementMaps::GetRefPElementNodes',Message)
     END SELECT
 !------------------------------------------------------------------------------
     END SUBROUTINE GetRefPElementNodes

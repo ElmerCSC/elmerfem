@@ -510,6 +510,7 @@ MODULE LoadMod
                            Basis, dBasisdx, Viscosity,Velo, dVelodx,sinvsq,localip)
         END FUNCTION enhancementfactoruserfunction  
 
+        
         FUNCTION materialuserfunction( fptr, model, element, nodes, n, nd, &
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx ) &
                                        RESULT(realval)
@@ -861,4 +862,104 @@ MODULE LoadMod
                          mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun)
         END SUBROUTINE itercallFTNC
 
+
+        SUBROUTINE UMATusersubrtn( fptr, &            
+            STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+            rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
+            predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
+            coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
+            kstep, kinc)
+          
+          USE Types
+          IMPLICIT NONE
+          
+          INTEGER(KIND=AddrInt) :: fptr
+          REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
+          REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
+          REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
+          REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
+          REAL(KIND=dp), INTENT(OUT) :: rpl
+          REAL(KIND=dp), INTENT(OUT) :: ddsddt(NTENS), drplde(NTENS), drpldt
+          REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS)
+          REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
+          REAL(KIND=dp), INTENT(IN) :: TIME(2)
+          REAL(KIND=dp), INTENT(IN) :: DTIME
+          REAL(KIND=dp), INTENT(IN) :: TEMP
+          REAL(KIND=dp), INTENT(IN) :: dtemp
+          REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1)
+          CHARACTER(len=80), INTENT(IN) :: CMNAME
+          INTEGER, INTENT(IN) :: NDI
+          INTEGER, INTENT(IN) :: NSHR
+          INTEGER, INTENT(IN) :: NTENS 
+          INTEGER, INTENT(IN) :: NSTATEV
+          REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
+          INTEGER, INTENT(IN) :: NPROPS
+          REAL(KIND=dp), INTENT(IN) :: coords(3)
+          REAL(KIND=dp), INTENT(IN) :: drot(3,3)
+          REAL(KIND=dp), INTENT(INOUT) :: pnewdt
+          REAL(KIND=dp), INTENT(IN) :: celent
+          REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
+          REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
+          INTEGER, INTENT(IN) :: NOEL
+          INTEGER, INTENT(IN) :: NPT
+          INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
+
+          INTERFACE
+            SUBROUTINE UMATsubrtn( STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+                rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
+                predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
+                coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
+                kstep, kinc)
+              
+              USE Types
+              IMPLICIT NONE
+              
+              REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
+              REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
+              REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
+              REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
+              REAL(KIND=dp), INTENT(OUT) :: rpl
+              REAL(KIND=dp), INTENT(OUT) :: ddsddt(NTENS), drplde(NTENS), drpldt
+              REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS)
+              REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
+              REAL(KIND=dp), INTENT(IN) :: TIME(2)
+              REAL(KIND=dp), INTENT(IN) :: DTIME
+              REAL(KIND=dp), INTENT(IN) :: TEMP
+              REAL(KIND=dp), INTENT(IN) :: dtemp
+              REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1)
+              CHARACTER(len=80), INTENT(IN) :: CMNAME
+              INTEGER, INTENT(IN) :: NDI
+              INTEGER, INTENT(IN) :: NSHR
+              INTEGER, INTENT(IN) :: NTENS 
+              INTEGER, INTENT(IN) :: NSTATEV
+              REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
+              INTEGER, INTENT(IN) :: NPROPS
+              REAL(KIND=dp), INTENT(IN) :: coords(3)
+              REAL(KIND=dp), INTENT(IN) :: drot(3,3)
+              REAL(KIND=dp), INTENT(INOUT) :: pnewdt
+              REAL(KIND=dp), INTENT(IN) :: celent
+              REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
+              REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
+              INTEGER, INTENT(IN) :: NOEL
+              INTEGER, INTENT(IN) :: NPT
+              INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
+            END SUBROUTINE UMATsubrtn
+          END INTERFACE
+
+          
+          TYPE(C_FUNPTR) :: cfptr
+          PROCEDURE(UMATsubrtn), POINTER :: pptr
+          
+          ! Ugly hack, fptr should be stored as C function pointer
+          cfptr = TRANSFER(fptr, cfptr)
+          CALL C_F_PROCPOINTER(cfptr, pptr)
+          
+          CALL pptr( STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+              rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
+              predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
+              coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
+              kstep, kinc )
+        END SUBROUTINE UMATusersubrtn
+    
+        
 END MODULE LoadMod

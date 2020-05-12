@@ -97,7 +97,7 @@ c
 c --- local variables
 c
 c     The variable 'reentry' is used to know where to jump when entering
-c     the subroutine in reverse commnunication (it is better than using
+c     the subroutine in reverse communication (it is better than using
 c     'reverse', which is known outside m1qn3 and could be changed by
 c     the user):
 c     = 0: no jump, start at the beginning of the subroutine
@@ -1576,7 +1576,7 @@ c
 c
 c----
 c
-c     Commputes the infinty-norm of the vector v(n)
+c     Computes the infinty-norm of the vector v(n)
 c
 c----
 c

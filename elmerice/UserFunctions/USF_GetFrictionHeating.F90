@@ -65,7 +65,7 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   REAL(KIND=dp) :: normal(3), velo(3), un, ut, Sig(3,3), Sn(3), snn, snt
   INTEGER, POINTER :: FlowPerm(:),StressPerm(:), NormalPerm(:)
   LOGICAL :: FirstTime=.TRUE.,UnFoundFatal=.TRUE.
-  TYPE(Variable_t), POINTER :: FlowSol,StressVariable, NormalVar
+  TYPE(Variable_t), POINTER :: FlowVar,StressVariable, NormalVar
   CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName
   
   SAVE FirstTime, DIM, FunctionName,Ind
@@ -87,9 +87,9 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   
   ! Get the variable velocity
   !---------------------------
-  FlowSol => VariableGet( Model % Variables, 'Flow Solution',UnFoundFatal=UnFoundFatal)
-  FlowPerm    => FlowSol % Perm
-  FlowValues  => FlowSol % Values
+  FlowVar => VariableGet( Model % Variables, 'Flow Solution',UnFoundFatal=UnFoundFatal)
+  FlowPerm    => FlowVar % Perm
+  FlowValues  => FlowVar % Values
   
   ! Get the stress variable
   !------------------------
@@ -162,64 +162,92 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
   !----------------------------------------------------------------------------
 
   INTEGER :: DIM, i
-  REAL(KIND=dp), POINTER :: FlowValues(:),FlowLoadValues(:),NormalValues(:)
+  REAL(KIND=dp), POINTER :: FlowValues(:),FlowLoadValues(:),NormalValues(:),MaskValues(:)
   REAL(KIND=dp) :: normal(3), velo(3), normalvelocity, flowload(3), tangvelocity(3)  
-  INTEGER, POINTER :: FlowPerm(:),FlowLoadPerm(:), NormalPerm(:)
-  LOGICAL :: FirstTime=.TRUE., GotIt,UnFoundFatal
-  TYPE(Variable_t), POINTER :: FlowSol,FlowLoadSol, NormalVar
-  CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName, FlowSolutionName, FlowLoadsName
-
-  SAVE FirstTime, FunctionName, DIM
+  INTEGER, POINTER :: FlowPerm(:),FlowLoadPerm(:), NormalPerm(:), MaskPerm(:)
+  LOGICAL :: FirstTime=.TRUE., GotIt,UnFoundFatal,UseMask = .FALSE.
+  TYPE(Variable_t), POINTER :: FlowVar,FlowLoadVar, NormalVar, MaskVar
+  TYPE(ValueList_t), POINTER :: Equation
+  CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolutionName, FlowLoadsName, MaskName
+  CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='USF_GetFrictionHeating(getFrictionLoads)'
+  
+  SAVE FirstTime, DIM
 
   IF (FirstTime) THEN
-     WRITE(FunctionName,'(A)') 'USF_GetFrictionHeating(getFrictionLoads)'
-     FirstTime = .FALSE.    
-     DIM = CoordinateSystemDimension()
+    !WRITE(FunctionName,'(A)') 'USF_GetFrictionHeating(getFrictionLoads)'
+    FirstTime = .FALSE.    
+    DIM = CoordinateSystemDimension()
   END IF
+   
+  ! Get variable names from Equation section
+  !-----------------------------------------
+  Equation => GetEquation()
+  IF (.NOT.ASSOCIATED(Equation)) THEN
+    WRITE (Message,'(A,I3)') 'No "Equation" found. Using default values for variables'
+    CALL WARN(FunctionName,Message)
+    WRITE(FlowSolutionName,'(A)') 'Flow Solution'
+    WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
+    UseMask = .FALSE.
+  ELSE
+    FlowSolutionName = GetString( Equation , 'Flow Solution Name', GotIt ) 
+    IF (.NOT. GotIt) THEN
+      WRITE(FlowSolutionName,'(A)') 'Flow Solution'
+      WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
+           FlowSolutionName
+      CALL WARN(FunctionName,Message)
+    END IF
+    FlowLoadsName = GetString( Equation , 'Flow Loads Name', GotIt )  
+    IF (.NOT. GotIt) THEN
+      WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
+      WRITE(Message,'(A,A)') 'Using default name for flow solution loads: ', &
+           FlowLoadsName
+      CALL WARN(FunctionName,Message)
+    END IF
+    MaskName = GetString( Equation , 'Friction Load Mask', UseMask )    
+  END IF
+
   ! Get the variable velocity
   !---------------------------
-  FlowSolutionName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt ) 
-  IF (.NOT. GotIt) THEN
-     WRITE(FlowSolutionName,'(A)') 'Flow Solution'
-     WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
-          FlowSolutionName
-     CALL WARN(FunctionName,Message)
-  END IF
-  FlowSol => VariableGet( Model % Variables, TRIM(FlowSolutionName),UnFoundFatal=UnFoundFatal)
-  FlowPerm    => FlowSol % Perm
-  FlowValues  => FlowSol % Values
+  FlowVar => VariableGet( Model % Variables, TRIM(FlowSolutionName),UnFoundFatal=UnFoundFatal)
+  FlowPerm    => FlowVar % Perm
+  FlowValues  => FlowVar % Values
+
+  
   ! Get the Stokes loads
   !---------------------------
-  FlowLoadsName = GetString( Model % Solver % Values , 'Flow Loads Name', GotIt )  
-  IF (.NOT. GotIt) THEN
-     WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
-     WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
-         FlowLoadsName
-     CALL WARN(FunctionName,Message)
-  END IF
- FlowLoadSol => VariableGet( Model % Variables, TRIM(FlowLoadsName),UnFoundFatal=UnFoundFatal)
- FlowLoadPerm    => FlowLoadSol % Perm
- FlowLoadValues  => FlowLoadSol % Values
+  FlowLoadVar => VariableGet( Model % Variables, TRIM(FlowLoadsName),UnFoundFatal=UnFoundFatal)
+  FlowLoadPerm    => FlowLoadVar % Perm
+  FlowLoadValues  => FlowLoadVar % Values
+  
 
   ! Get the variable for normal vector
   !-----------------------------------
   NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
   NormalPerm => NormalVar % Perm
   NormalValues => NormalVar % Values
-  
 
-  DO i=1, DIM
-     normal(i) = NormalValues(DIM*(NormalPerm(Node)-1) + i)      
-     velo(i) = FlowValues( (DIM+1)*(FlowPerm(Node)-1) + i )
-     flowload(i) = FlowLoadValues( (DIM+1)*(FlowLoadPerm(Node)-1) + i )
-  END DO
+  IF (UseMask) THEN
+    MaskVar => VariableGet( Model % Variables, TRIM(MaskName),UnFoundFatal=UnFoundFatal)
+    MaskPerm    => MaskVar % Perm
+    MaskValues  => MaskVar % Values
+  END IF
+
+  IF (UseMask .AND. (MaskValues(MaskPerm(Node))  .LE. 0.0_dp)) THEN
+    frictionLoad = 0.0_dp
+  ELSE
+    DO i=1, DIM
+      normal(i) = NormalValues(DIM*(NormalPerm(Node)-1) + i)      
+      velo(i) = FlowValues( (DIM+1)*(FlowPerm(Node)-1) + i )
+      flowload(i) = FlowLoadValues( (DIM+1)*(FlowLoadPerm(Node)-1) + i )
+    END DO
  
-  normalvelocity    = SUM( velo(1:DIM) * normal(1:DIM) )
+    normalvelocity    = SUM( velo(1:DIM) * normal(1:DIM) )
 
-  DO i=1, DIM
-     tangvelocity(i) = velo(i) - normalvelocity * normal(i)
-  END DO
-
-  frictionLoad = &
-       MAX( (-1.0_dp * (SUM(tangvelocity(1:DIM) * flowLoad(1:DIM)))), 0.0_dp)
+    DO i=1, DIM
+      tangvelocity(i) = velo(i) - normalvelocity * normal(i)
+    END DO
+    
+    frictionLoad = &
+         MAX( (-1.0_dp * (SUM(tangvelocity(1:DIM) * flowLoad(1:DIM)))), 0.0_dp)
+  END IF
 END FUNCTION getFrictionLoads

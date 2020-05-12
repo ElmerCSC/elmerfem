@@ -34,12 +34,12 @@ SUBROUTINE AdjointSSA_AdjointSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !> Compute the adjoint state of the SSA equations.
 !
-!     OUTPUT is : Solver % Variable the adjoint sate of the SSA problem
+!     OUTPUT is : Solver % Variable the adjoint state of the SSA problem
 !
 !     INPUT PARAMETERS are:
 !
 !      In solver section:
-!               Flow Solution Equation Name = String (defualt 'SSA')
+!               Flow Solution Equation Name = String (default 'SSA')
 !
 !      Variables
 !                Velocityb (forcing for the adjoint pb)

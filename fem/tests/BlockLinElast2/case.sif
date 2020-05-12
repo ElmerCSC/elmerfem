@@ -19,7 +19,7 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 
-  Post File = "case.ep"
+  Post File = "case.vtu"
 End
 
 Constants
@@ -56,9 +56,7 @@ Solver 1
   Calculate Stresses = False
   Displace Mesh = Logical False
 
-!  Dump system matrix = String a1.dat
-!  Dump system rhs = String f1.dat
-
+! Linear System Save = Logical True
 
   Steady State Convergence Tolerance = 1.0e-05
 

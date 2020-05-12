@@ -37,18 +37,18 @@
  *  Original Date: 14 Nov 2010                                               *
  *                                                                           *
  *****************************************************************************/
-#include <QtGui>
 #include "preview.h"
+#include <QtGui>
 
-int main(int argc, char *argv[])
-{
+
+int main(int argc, char *argv[]) {
   QApplication app(argc, argv);
 
   QStringList arguments = qApp->arguments();
 
-  if(arguments.contains("-h") || arguments.contains("--help")) {
+  if (arguments.contains("-h") || arguments.contains("--help")) {
     printf("ElmerClips\n\n");
-    printf("Generates video clips from imgage files\n\n");
+    printf("Generates video clips from image files\n\n");
     printf("Usage: ElmerClips [image files and/or folders]\n");
     return 0;
   }

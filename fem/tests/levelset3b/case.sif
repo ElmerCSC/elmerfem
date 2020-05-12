@@ -1,4 +1,4 @@
-! A 2D test case for Rayleigh–Taylor instability caused by an interface of two fluids with different densities.
+! A 2D test case for Rayleighï¿½Taylor instability caused by an interface of two fluids with different densities.
 ! The case has been adopted from one created by Prof. Emilie Marchandise, Universite catholique de Louvain.
 !
 ! The are two choices how to advect the levelset function: either differential equation based (Solver 1)
@@ -63,7 +63,7 @@ Equation 1
   Active Solvers(5) = 1 2 3 4 5
 End
 
-!Ouside is (negative ls)
+!Outside is (negative ls)
 Material 1
   name = "material1"
   Density = Variable Surface

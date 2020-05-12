@@ -34,9 +34,7 @@
 ! *
 ! *****************************************************************************/
 
-#ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
-#endif
 
 !> \ingroup ElmerLib
 !> \}
@@ -47,8 +45,10 @@
 MODULE GeneralUtils
 
 USE Types
-#ifdef USE_ISO_C_BINDINGS
 USE LoadMod
+
+#ifdef HAVE_LUA
+USE, INTRINSIC :: ISO_C_BINDING
 #endif
 
 IMPLICIT NONE
@@ -77,9 +77,6 @@ CONTAINS
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: SolverName, OutputType
 !------------------------------------------------------------------------------
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: RealTime
-#endif
      AdvanceTime1 = RealTime()
      AdvanceTime2 = RealTime()
      CALL Info( SolverName, OutputType, Level=5 )
@@ -96,11 +93,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: dot_t,percent_t
 !------------------------------------------------------------------------------
      INTEGER :: i
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: d_t, p_t
-#else
-     REAL(KIND=dp) :: RealTime, d_t, p_t
-#endif
 !------------------------------------------------------------------------------
      d_t = 1._dp
      p_t = 20._dp
@@ -779,10 +772,10 @@ CONTAINS
     INTEGER :: Unit
     CHARACTER(LEN=*) :: FileName, IncludePath
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,k0,k1,l
+    INTEGER :: i,j,k,k0,k1,l,iostat
     CHARACTER(LEN=1024) :: name, TmpName
 !------------------------------------------------------------------------------
-
+    
     i = 1
     name = FileName
     DO WHILE( name(i:i) == ' ' .OR. name(i:i)=='"')
@@ -791,9 +784,9 @@ CONTAINS
     j = LEN_TRIM(name)
     IF ( name(j:j) == '"' ) j=j-1
     name = TRIM(name(i:j))
-
+    
     IF ( INDEX(name,':') == 0 .AND. name(1:1) /= '/' .AND. &
-              name(1:1) /= Backslash ) THEN
+        name(1:1) /= Backslash ) THEN
        k0 = 1
        DO WHILE( IncludePath(k0:k0) == '"' )
          k0 = k0+1
@@ -824,10 +817,16 @@ CONTAINS
        END IF
 
 20     CONTINUE
-       OPEN( Unit, FILE=TRIM(name), STATUS='OLD' )
+       OPEN( Unit, FILE=TRIM(name), STATUS='OLD',IOSTAT=iostat )
     ELSE
-       OPEN( Unit, FILE=TRIM(name), STATUS='OLD' )
+      OPEN( Unit, FILE=TRIM(name), STATUS='OLD',IOSTAT=iostat )      
     END IF
+
+    IF( iostat /= 0 ) THEN
+      CALL Fatal('OpenIncludeFile','Cannot open include file: '//TRIM(Name))
+    END IF
+
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE OpenIncludeFile
 !------------------------------------------------------------------------------
@@ -930,7 +929,31 @@ CONTAINS
 
         IF ( SEQL(tmpstr, 'include ') ) THEN
           IncludeUnit = IncludeUnit-1
+          
+          CALL Info('OpenIncludeFile','Trying to include file: '//TRIM(readstr(9:)),Level=10)
+          
+          inlen = LEN_TRIM(readstr)
+
+          i = INDEX( readstr(1:inlen), '$' )
+          IF ( i>0 .AND. i<inlen ) THEN
+            CALL TrimMatcExpression() 
+            CALL Info('ReadAndTrim','Include file after MATC trimming: '&
+                //TRIM(readstr(9:)),Level=6)
+          END IF
+
+          i = INDEX( readstr(1:inlen),'#')
+          IF( i>0 .AND. i<inlen ) THEN
+#ifdef HAVE_LUA
+            CALL TrimLuaExpression()
+            CALL Info('ReadAndTrim','Include file after LUA trimming: '&
+                //TRIM(readstr(9:)),Level=6)
+#else
+            CALL Fatal('ReadAndTrim','LUA not included, cannot continue')
+#endif
+          END IF
+          
           CALL OpenIncludeFile( IncludeUnit, TRIM(readstr(9:)), IncludePath )
+          
           READ( IncludeUnit,'(A)',END=3,ERR=3 ) readstr
           GO TO 4
 3         CLOSE(IncludeUnit)
@@ -987,50 +1010,20 @@ CONTAINS
        i = i + 1
      END DO
 
+     i = INDEX( readstr(1:inlen), '#' )     
+     IF ( i>0 .AND. i<inlen ) THEN
+#ifdef HAVE_LUA
+       CALL TrimLuaExpression()
+#else
+       CALL Fatal('ReadAndTrim','LUA not included, cannot continue')
+#endif
+     END IF
+    
      i = INDEX( readstr(1:inlen), '$' )
      IF ( i>0 .AND. i<inlen ) THEN
-       m = i
-       copystr(i:inlen) = readstr(i:inlen)
-       DO WHILE(i<=inlen)
-         IF ( copystr(i:i) == '$' ) THEN
-            DO j=i+1,inlen-1
-              IF ( copystr(j:j) == '$' ) EXIT
-            END DO
-            ninlen = j - i
-
-            ! Initialize variables for each copy of MATC separately
-
-            !$OMP PARALLEL DEFAULT(NONE) &
-            !$OMP SHARED(copystr, i, matcstr, ninlen, inlen) &
-            !$OMP PRIVATE(tcmdstr, tmatcstr, tninlen)
-
-            tninlen = ninlen
-            tcmdstr = copystr(i+1:inlen)
-            CALL MATC( tcmdstr, tmatcstr, tninlen )
-            !$OMP BARRIER
-
-            !$OMP SINGLE
-            matcstr(1:tninlen) = tmatcstr(1:tninlen)
-            ninlen = tninlen
-            !$OMP END SINGLE
-
-            !$OMP END PARALLEL
-
-            DO k=1,ninlen
-              readstr(m:m) = matcstr(k:k)
-              m = m + 1
-            END DO
-            i = j+1
-         ELSE
-            readstr(m:m) = copystr(i:i)
-            i = i + 1
-            m = m + 1
-         END IF
-       END DO
-       IF ( m <= inlen ) readstr(m:inlen) = ' '
-       inlen = m-1
+       CALL TrimMatcExpression() 
      END IF
-
+     
      IF ( PRESENT( Echo ) ) THEN
         IF ( Echo ) WRITE( 6, '(a)' ) readstr(1:inlen)
      END IF
@@ -1097,7 +1090,7 @@ CONTAINS
           i = i + 1
           k = k + 1
         END DO
- 
+
         IF ( k <= outlen ) str(k:k) = ' '
         k = k + 1
 
@@ -1132,6 +1125,128 @@ CONTAINS
 10   CONTINUE
      l = .FALSE.
 !------------------------------------------------------------------------------
+     
+   CONTAINS
+
+     SUBROUTINE TrimMatcExpression() 
+
+       i = INDEX( readstr(1:inlen), '$' )
+       IF ( i>0 .AND. i<inlen ) THEN
+         m = i
+         copystr(i:inlen) = readstr(i:inlen)
+         DO WHILE(i<=inlen)
+           IF ( copystr(i:i) == '$' ) THEN
+             DO j=i+1,inlen-1
+               IF ( copystr(j:j) == '$' ) EXIT
+             END DO
+             ninlen = j - i
+
+             ! Initialize variables for each copy of MATC separately
+
+             !$OMP PARALLEL DEFAULT(NONE) &
+             !$OMP SHARED(copystr, i, matcstr, ninlen, inlen) &
+             !$OMP PRIVATE(tcmdstr, tmatcstr, tninlen)
+
+             tninlen = ninlen
+             tcmdstr = copystr(i+1:inlen)
+             CALL MATC( tcmdstr, tmatcstr, tninlen )
+             !$OMP BARRIER
+
+             !$OMP SINGLE
+             matcstr(1:tninlen) = tmatcstr(1:tninlen)
+             ninlen = tninlen
+             !$OMP END SINGLE
+
+             !$OMP END PARALLEL
+
+             DO k=1,ninlen
+               readstr(m:m) = matcstr(k:k)
+               m = m + 1
+             END DO
+             i = j+1
+           ELSE
+             readstr(m:m) = copystr(i:i)
+             i = i + 1
+             m = m + 1
+           END IF
+         END DO
+         IF ( m <= inlen ) readstr(m:inlen) = ' '
+         inlen = m-1
+       END IF
+       
+     END SUBROUTINE TrimMatcExpression
+       
+#ifdef HAVE_LUA
+     SUBROUTINE TrimLuaExpression()
+
+       INTEGER :: lstat
+       character(kind=c_char, len=:), pointer :: lua_result
+       integer :: result_len
+       logical :: closed_region, first_bang
+       closed_region = .false.
+       first_bang = .true.
+       m = i
+       copystr(i:inlen) = readstr(i:inlen)
+       DO WHILE(i<=inlen)
+         IF ( copystr(i:i) == '#' ) THEN
+           DO j=i+1,inlen-1
+             IF ( copystr(j:j) == '#' ) EXIT
+           END DO
+           ninlen = j - i
+
+           ! Initialize variables for each copy of Lua interpreter separately
+
+           !$OMP PARALLEL DEFAULT(NONE) &
+           !$OMP SHARED(copystr, i, matcstr, ninlen, inlen, closed_region, first_bang, j) &
+           !$OMP PRIVATE(tcmdstr, tninlen, lstat, result_len, lua_result) 
+
+           tninlen = ninlen
+           tcmdstr = copystr(i+1:inlen)
+
+           IF(tcmdstr(tninlen:tninlen) == '#') then 
+             closed_region = .TRUE.
+           ELSE
+             closed_region = .FALSE.
+           END IF
+
+           IF(closed_region) THEN
+             lstat = lua_dostring( LuaState, &
+                 'return tostring('// tcmdstr(1:tninlen-1) // ')'//c_null_char, 1)
+           ELSE
+             IF (i == 1 .and. first_bang .and. j == inlen) THEN  ! ' # <luacode>' case, do not do 'return tostring(..)'.
+               ! Instead, just execute the line in the lua interpreter
+               lstat = lua_dostring( LuaState, tcmdstr(1:tninlen) // c_null_char, 1)
+             ELSE ! 'abc = # <luacode>' case, oneliners only
+               lstat = lua_dostring( LuaState, &
+                   'return tostring('// tcmdstr(1:tninlen) // ')'//c_null_char, 1)
+             END IF
+           END IF
+           lua_result => lua_popstring(LuaState, result_len)
+
+           !$OMP SINGLE 
+           matcstr(1:result_len) = lua_result(1:result_len)
+           ninlen = result_len
+           !$OMP END SINGLE
+
+           !$OMP END PARALLEL
+
+           DO k=1,ninlen
+             readstr(m:m) = matcstr(k:k)
+             m = m + 1
+           END DO
+           i = j+1
+         ELSE
+           readstr(m:m) = copystr(i:i)
+           i = i + 1
+           m = m + 1
+         END IF
+         first_bang = .false.
+       END DO
+       IF ( m <= inlen ) readstr(m:inlen) = ' '
+       inlen = m-1
+     END SUBROUTINE TrimLuaExpression
+#endif
+
    END FUNCTION ReadAndTrim
 !------------------------------------------------------------------------------
 
@@ -1192,6 +1307,8 @@ END FUNCTION ComponentNameVar
       IF ( Component > 0 ) THEN
         str = TRIM(str) // ' ' // TRIM(i2s(Component) )
       END IF
+    ELSE IF( Component == 0 ) THEN
+      str = BaseName(1:ind-1)
     ELSE
       DOFsTot = 0
       DO WHILE( .TRUE. )
@@ -1407,6 +1524,44 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
    END FUNCTION SearchInterval
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> As SearchInterval, but doesn't assume we'll find the value in the interval
+   !------------------------------------------------------------------------------
+   PURE FUNCTION SearchIntPosition( tval, t ) RESULT(i)
+     !------------------------------------------------------------------------------
+     INTEGER :: i
+     INTEGER, INTENT(in) :: tval(:), t
+     !------------------------------------------------------------------------------
+     INTEGER :: n,n0,n1
+     !------------------------------------------------------------------------------
+
+     n = SIZE(tval)
+
+     IF (t < tval(1)) THEN
+       i = 0
+     ELSE IF (t>=tval(n)) THEN
+       i = n
+     ELSE
+       n0 = 1
+       n1 = n
+       i = (n0+n1)/2
+       DO WHILE(.TRUE.)
+         IF  ( tval(i) <= t .AND. tval(i+1)>t ) EXIT
+
+         IF ( tval(i) >  t ) THEN
+           n1 = i-1 
+         ELSE
+           n0 = i+1
+         END IF
+         i = (n0+n1)/2
+       END DO
+     END IF
+     IF(i>n) i=n
+
+   !------------------------------------------------------------------------------
+   END FUNCTION SearchIntPosition
+   !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -1969,9 +2124,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( F(n), STAT=istat )
-    END IF
+    ALLOCATE( F(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
@@ -2001,9 +2154,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element real array.'
@@ -2033,9 +2184,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
@@ -2065,9 +2214,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
        IF ( PRESENT( FailureMessage  ) ) THEN
           WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
@@ -2097,9 +2244,7 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n > 0 ) THEN
-       ALLOCATE( f(n), STAT=istat )
-    END IF
+    ALLOCATE( f(n), STAT=istat )
     IF ( istat /=  0 ) THEN
       WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
       CALL Error( 'AllocateElementVector', Message )
@@ -2127,10 +2272,8 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n1 > 0 .AND. n2 > 0 ) THEN
-       ALLOCATE( f(n1,n2), STAT=istat )
-    END IF
-    IF ( istat /=  0 ) THEN
+    ALLOCATE( f(n1,n2), STAT=istat )
+    if ( istat /=  0 ) THEN
       WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
       CALL Error( 'AllocateRealArray', Message )
       IF ( PRESENT( From ) ) THEN
@@ -2156,10 +2299,8 @@ INCLUDE "mpif.h"
 !------------------------------------------------------------------------------
 
     istat = -1
-    IF ( n1 > 0 .AND. n2 > 0 ) THEN
-       ALLOCATE( f(n1,n2), STAT=istat )
-    END IF
-    IF ( istat /=  0 ) THEN
+    ALLOCATE( f(n1,n2), STAT=istat )
+    if ( istat /=  0 ) THEN
       WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
       CALL Error( 'AllocateComplexArray', Message )
       IF ( PRESENT( From ) ) THEN
@@ -2335,7 +2476,9 @@ INCLUDE "mpif.h"
 
     ind = INDEX( FileName0,'.',.TRUE. )
     len = LEN_TRIM(Filename0)
-    IF(ind > 0) THEN
+
+    ! If the only dot is the first one it only related to the current working directory.
+    IF(ind > 1) THEN
       Prefix = Filename0(1:ind-1)
       Suffix = Filename0(ind:len)
     ELSE
@@ -2346,7 +2489,7 @@ INCLUDE "mpif.h"
         Suffix = '.dat'
       END IF
     END IF
-
+    
     IF( Parallel ) THEN
       No = MyPe + 1
       IF( No < 10000 ) THEN
@@ -2491,7 +2634,7 @@ CONTAINS
   !---------------------------------------------------------------
   SUBROUTINE AscBinWriteFree()
 
-    CALL Info('AscBinWriteInit','Terminating buffered ascii/binary writing',Level=10)
+    CALL Info('AscBinWriteFree','Terminating buffered ascii/binary writing',Level=10)
 
     IF( AsciiOutput ) RETURN
 
@@ -2504,7 +2647,7 @@ CONTAINS
 
     BufferSize = 0
     VtuUnit = 0
-
+    
   END SUBROUTINE AscBinWriteFree
 
 
@@ -2561,11 +2704,9 @@ CONTAINS
       IF( NoVals == 0 ) THEN
         RETURN
       ELSE IF( SinglePrec ) THEN
-!        PRINT *,'writing floats:',NoVals
         WRITE( VtuUnit ) Fvals(1:NoVals)
       ELSE
         WRITE( VtuUnit ) DVals(1:NoVals) 
-!        PRINT *,'writing doubles:',NoVals
       END IF
       NoVals = 0
       IF( Empty ) RETURN 
@@ -2578,8 +2719,6 @@ CONTAINS
     ELSE
       DVals(NoVals) = val
     END IF
-
-!    PRINT *,'val:',NoVals,val
 
 
   END SUBROUTINE AscBinRealWrite
@@ -2617,7 +2756,6 @@ CONTAINS
         RETURN
       ELSE 
         WRITE( VtuUnit ) Ivals(1:INoVals)
-!        PRINT *,'writing integers:',INoVals
       END IF
       INoVals = 0
       IF( Empty ) RETURN 
@@ -2625,8 +2763,6 @@ CONTAINS
 
     INoVals = INoVals + 1
     Ivals(INoVals) = ival
-
- !   PRINT *,'ival:',iNoVals,ival
         
   END SUBROUTINE AscBinIntegerWrite
   

@@ -159,7 +159,7 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
      IDSPerm    => IDSHead % Perm
      IDSValues  => IDSHead % Values
 
-     !Get Parameters needed to compute the storing coeficient
+     !Get Parameters needed to compute the storing coefficient
      !-------------------------------------------------------
      Element => Model % CurrentElement
      Material => GetMaterial(Element)
@@ -227,13 +227,13 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
           UnfoundFatal=UnFoundFatal)
         !Previous default value: IDSThick(1:N) = 10.0D00
 
-     !Computing the Storing coeficient of the EPL
+     !Computing the Storing coefficient of the EPL
      !-------------------------------------------
      EPLStoring(1:N) = EPLThick(1:N) * &
           Gravity(1:N) * EPLPorosity(1:N) * Density(1:N) * &
           (WatComp + EPLComp(1:N)/EPLPorosity(1:N))
 
-     !Computing the Storing coeficient of the Inefficient Drainage System 
+     !Computing the Storing coefficient of the Inefficient Drainage System 
      !-------------------------------------------------------------------
      IDSStoring(1:N) = IDSThick(1:N) * &
           Gravity(1:N) * IDSPorosity(1:N) * Density(1:N) * &

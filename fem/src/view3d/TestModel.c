@@ -251,7 +251,7 @@ fprintf( stderr, "%d\n", 2 );
 
 fprintf( stderr, "%d\n", 3 );
 #if 1
-   fprintf( stderr, "SIZE: %d\n", NElements*sizeof(Geometry_t) );
+   fprintf( stderr, "SIZE: %ld\n", NElements*sizeof(Geometry_t) );
    Geometry = malloc( NElements*sizeof(Geometry_t) );
    memcpy( Geometry,Elements,NElements*sizeof(Geometry_t) );
 
