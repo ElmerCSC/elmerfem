@@ -43,6 +43,7 @@
 MODULE VectorHelmholtzUtils
 
    USE DefUtils
+   IMPLICIT NONE
 
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
   

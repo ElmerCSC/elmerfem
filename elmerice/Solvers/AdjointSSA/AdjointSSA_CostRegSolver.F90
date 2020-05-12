@@ -376,7 +376,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
    
    Return
 
- 1000  format('#date,time,',a1,'/',a1,'/',a4,',',a2,':',a2,':',a2)
+ 1000  format('#date,time,',a2,'/',a2,'/',a4,',',a2,':',a2,':',a2)
  1001  format('#lambda,',e15.8)
 !------------------------------------------------------------------------------
 END SUBROUTINE AdjointSSA_CostRegSolver
