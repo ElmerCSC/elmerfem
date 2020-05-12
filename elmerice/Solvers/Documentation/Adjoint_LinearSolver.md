@@ -1,4 +1,4 @@
-## Adjoint of Linear Systems
+## Adjoint of Linear Systems {#adjoint_linearsolver}
 
 **Module name**: Adjoint_LinearSolver  
 **Module subroutines**: Adjoint_LinearSolver  

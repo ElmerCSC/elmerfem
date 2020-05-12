@@ -1,0 +1,196 @@
+! Simple 2d linear elasticity bending problem.
+! Here the monolithic matrix is split into a block matrix
+! and then the block matrix strategy is used to solve it.
+! 
+! different between test case *2 and *2b is that here
+! the 'block' is used directly as a linear system method.
+!
+! This case includes both StressSolver and ElasticSolver to make sure
+! that the block technique can be used many times. 
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beams"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+! We enforce to cycles to provide more stringent test
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 2
+  Steady State Min Iterations = 2
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+
+! required currently by the block solver strategy
+  Additive Namespaces = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+End
+
+
+Equation 1
+  Name = "Stress"
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Name = "Elast"
+  Active Solvers(1) = 2
+End
+
+
+Solver 1
+  Equation = "lin.elast"
+
+  Optimize Bandwidth = False
+  Linear System Scaling = False
+
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "DispA"
+  Variable DOFs = Integer 2
+  Calculate Stresses = False
+  Displace Mesh = Logical False
+
+! Linear System Save = Logical True
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Max Stepsize Tests = Integer 5
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+  Nonlinear System Convergence Measure = String solution
+
+! This doesn't really work for coupled systems most often
+!  Nonlinear System Linesearch = Logical True
+!  Nonlinear System Linesearch Linear = Logical True
+
+  Linear System Solver = string "block"
+
+  Block: Linear System Solver = string "iterative"
+  Block: Linear System Refactorize = Logical False
+  Block: Linear System Convergence Tolerance = real 0.1e-2
+  Block: Linear System Iterative Method = string bicgstab
+  Block: Linear System Max Iterations = integer 500
+  Block: Linear System Symmetric = Logical True 
+  Block: Linear System Residual Output = integer 0
+  Block: Linear System Preconditioning = String ILU0
+
+  Linear System Block Method = String "other"
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-7
+  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System Symmetric = Logical True
+  Outer: Linear System GCR Restart = Integer 25
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 500
+End
+
+Solver 2
+  Equation = "nonlin.elast"
+
+  Optimize Bandwidth = False
+  Linear System Scaling = False
+
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "DispB"
+  Variable DOFs = Integer 2
+  Calculate Stresses = False
+  Displace Mesh = Logical False
+
+! Linear System Save = Logical True
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Max Stepsize Tests = Integer 5
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+  Nonlinear System Convergence Measure = String solution
+
+! This doesn't really work for coupled systems most often
+!  Nonlinear System Linesearch = Logical True
+!  Nonlinear System Linesearch Linear = Logical True
+
+  Linear System Solver = string "block"
+
+  Block: Linear System Solver = string "iterative"
+  Block: Linear System Refactorize = Logical False
+  Block: Linear System Convergence Tolerance = real 0.1e-2
+  Block: Linear System Iterative Method = string bicgstab
+  Block: Linear System Max Iterations = integer 500
+  Block: Linear System Symmetric = Logical True 
+  Block: Linear System Residual Output = integer 0
+  Block: Linear System Preconditioning = String ILU0
+
+  Linear System Block Method = String "other"
+  Outer: Linear System Solver = string "Iterative"
+  Outer: Linear System Convergence Tolerance = real 1e-7
+  Outer: Linear System Iterative Method = string GCR
+  Outer: Linear System Symmetric = Logical True
+  Outer: Linear System GCR Restart = Integer 25
+  Outer: Linear System Residual Output = integer 1
+  Outer: Linear System Max Iterations = integer 500
+End
+
+
+Material 1
+  Name = "Ideal"
+
+  Youngs modulus = 1
+  Poisson Ratio  = 0.35
+  Density = 1.0
+End 
+
+Body Force 1 
+  Name = "bodyforce1"
+  Stress BodyForce 1 = Real 1.0
+  Stress BodyForce 2 = Real -1.0
+End
+
+Body Force 2 
+  Name = "bodyforce2"
+  Stress BodyForce 1 = Real 0.5
+  Stress BodyForce 2 = Real -0.5
+End
+
+
+Boundary Condition 1
+  Target Boundaries(2) = 2 4
+  DispA 1 = Real 0
+  DispA 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(2) = 6 8
+  DispB 1 = Real 0
+  DispB 2 = Real 0
+End
+
+
+Solver 1 :: Reference Norm = 6.1501817
+Solver 2 :: Reference Norm = 3.0750909
