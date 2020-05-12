@@ -2217,12 +2217,14 @@ CONTAINS
     LOGICAL :: StrandedHomogenization, FoundIm
 
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
+    REAL(KIND=dp), ALLOCATABLE :: CoreLossUDF(:)
+    REAL(KIND=dp) :: CoreLossUDFatIp
 
     LOGICAL :: LaminateModelPowerCompute=.FALSE., InPlaneProximity=.FALSE.
     REAL(KIND=dp) :: LaminatePowerDensity, BMagnAtIP, Fsk, Lambda, LaminateThickness, &
                      mu0=4d-7*PI, skindepth
     
-    LOGICAL :: BertottiCompute = .FALSE.
+    LOGICAL :: BertottiCompute = .FALSE., LossUDF = .FALSE.
     REAL(KIND=dp) :: BertottiLoss, BRTc1, BRTc2, BRTc3, BRTc4, BRTc5
 
     SAVE Nodes
@@ -2230,7 +2232,7 @@ CONTAINS
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
     ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
-    ALLOCATE( Cond(n), mu(n), sigma_33(n), sigmaim_33(n) ) 
+    ALLOCATE( Cond(n), mu(n), sigma_33(n), sigmaim_33(n), CoreLossUDF(n)) 
     LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
     ModelDepth = GetCircuitModelDepth()
 
@@ -2468,6 +2470,9 @@ CONTAINS
         BRTc5 = GetCReal( Material,'Extended Bertotti Coefficient 5',Found ) 
         IF (.NOT. Found) BRTc5 = 1.5_dp
       END IF
+
+      LossUDF = .FALSE.
+      CoreLossUDF = GetReal( Material,'Core Loss User Function', LossUDF ) 
       
       IF (BodyVolumesCompute) THEN
         BodyId = GetBody()
@@ -2623,6 +2628,12 @@ CONTAINS
           BertottiLoss = BRTc1*Freq*BMagnAtIP**2.+ BRTc2*(Freq*BMagnAtIP)**2.+BRTc3*Freq**BRTc4*BMagnAtIP**BRTc5
           TotalHeating = TotalHeating + BertottiLoss
           BAtIp(6) = BAtIp(6) + BertottiLoss ! unorthodox
+        END IF
+
+        IF (LossUDF) THEN
+          CoreLossUDFatIp = SUM(Basis(1:n) * CoreLossUDF(1:n))
+          TotalHeating = TotalHeating + CoreLossUDFatIp
+          BAtIp(6) = BAtIp(6) + CoreLossUDFatIp! unorthodox
         END IF
 
         IF( LossEstimation ) THEN
@@ -3043,7 +3054,7 @@ CONTAINS
       
 
 
-    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33 )
+    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33, CoreLossUDF)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
