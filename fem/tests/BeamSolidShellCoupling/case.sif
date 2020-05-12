@@ -108,6 +108,8 @@ Solver 1
 ! We don't want to displace mesh in this test since only "A" would
 ! be displaced, not "B". 
   Displace Mesh = False
+
+!  Fix Rotation = Logical True
 End
 
 

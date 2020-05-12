@@ -1,0 +1,107 @@
+!################################################
+!# Validation test case for Adjoint_CostRegSolver
+!#  Test regularisation from a prior 
+!#   running optimisation Var should converge to prior 
+!################################################
+! PARAMETERS:
+$name="CostReg5"
+$niter = 20
+!###############################################
+Header
+  Mesh DB "." "mesh2D"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady State
+
+  Steady State Max Iterations = $niter
+  Steady State Min Iterations = $niter
+  
+  Post File = "case_$name$.vtu"
+  Output intervals = 1
+
+  max output level = 4
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+ Var = Variable Coordinate 1, Coordinate 2
+  Real  MATC "sqrt(2.0)*tx(0)^2+sqrt(2)*tx(1)*tx(1)/2"
+ ! Target value for the variable
+ Ap = Variable Coordinate 1, Coordinate 2
+    REAL MATC "exp( -( (tx(0)-0.5)^2 + (tx(1)-0.5)^2 ) )" 
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+ ! kw related to prior value and std.
+  CostReg Nodal Prior =  Equals Ap
+  CostReg Nodal std = Real 0.5
+End
+!!!!!!!!   !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+ Exec Solver  = never
+ Equation = String "UpdateExport"
+ procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+ Exported Variable 1 = -global "CostValue"  
+ Exported Variable 2 = Var
+ Exported Variable 3 = DJDp
+ Exported Variable 4 = Ap
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = String "CostReg"
+  procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+  !# True if cost function and gradient must be initialised to 0 in this solver
+  Reset Cost Value = Logical True
+
+  Cost Filename = File "CostFile_$name$.dat"
+
+  Lambda=Real 1.0
+
+  Cost Variable Name = String "CostValue" 
+
+  Gradient Variable Name = String "DJDp"
+
+  Optimized Variable Name = String "Var"
+
+  A priori Regularisation = Logical TRUE
+end
+!!!!! Validation
+Solver 3
+  Equation = "Optimize_m1qn3"
+  procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "Var"
+  Gradient Variable Name = String "DJDp"
+  gradient Norm File = String "GradientNormAdjoint.dat"
+
+  !Note: it may be beneficial to set this to True, which scales
+  !the gradient by 1/boundary_weights. With this set to false,
+  !larger elements produce larger gradients.
+  Mesh Independent = Logical False
+
+! M1QN3 Parameters
+  M1QN3 dxmin = Real 1.0e-10
+  M1QN3 epsg = Real  1.e-12
+  M1QN3 niter = Integer $niter
+  M1QN3 nsim = Integer $niter
+  M1QN3 impres = Integer 5
+  M1QN3 DIS Mode = Logical False
+  M1QN3 df1 = Real 0.5
+  M1QN3 normtype = String "dfn"
+  M1QN3 OutputFile = File  "M1QN3_$name$.out"
+  M1QN3 ndz = Integer 20
+end
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (3)= 1 2 3
+End

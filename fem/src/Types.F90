@@ -55,6 +55,7 @@ MODULE Types
 #ifdef HAVE_LUA
    USE Lua
 #endif
+   IMPLICIT NONE
 
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
    ! Parameter for internal blocking

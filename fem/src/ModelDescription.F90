@@ -2153,7 +2153,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
-    INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
+    INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
     LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
@@ -2386,7 +2386,7 @@ CONTAINS
           END IF
           Model % Meshes => SerialMesh
         END IF
-          
+
         CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
@@ -2725,8 +2725,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       CHARACTER(LEN=*) :: ElementDef
 !------------------------------------------------------------------------------
-      INTEGER  :: ind(8),i,j,n
-      INTEGER, POINTER :: gdofs(:,:), sdofs(:,:,:)
+      INTEGER  :: ind(8),i,j,l,n
 
       ind = [1,2,3,4,5,6,7,8]
 

@@ -156,6 +156,9 @@ CONTAINS
     END IF
 
     IF (Newton) THEN
+      IF (ALLOCATED(muDerVec0)) THEN
+        DEALLOCATE(muDerVec0, g, StrainRateVec)
+      END IF
       ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
       muDerVec0 = 0._dp
     END IF
