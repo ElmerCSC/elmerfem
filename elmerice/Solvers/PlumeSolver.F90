@@ -652,8 +652,10 @@
 
        IF(ParEnv % myPE == 0) THEN
          j=1
+         PRINT *, 'Debug0: ',TempPlCoordArray
          DO i=1,SIZE(TempPlCoordArray)
-           IF(TempPlCoordArray(i)<1E-16 .AND. TempPlCoordArray(i)>-1E-16) CYCLE
+           IF(TempPlCoordArray(i)==0.0) CYCLE
+           !IF(TempPlCoordArray(i)<1E-16 .AND. TempPlCoordArray(i)>-1E-16) CYCLE
            PlCoordArray(j,1) = TempPlCoordArray(i)
            PlCoordArray(j,2) = j
            j=j+1
@@ -683,7 +685,7 @@
          END DO
          DEALLOCATE(Row)
        END IF
-       !PRINT *, 'P6',ParEnv % myPE
+       IF(ParEnv % myPE == 0) PRINT *, 'Debug00: ',PlCoordArray
        !CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
        !MPI call to send full final plume arrays to every partition
@@ -1274,6 +1276,7 @@
          END IF
          EXIT
        END DO
+       PRINT *, 'Debug1: ',SearchIndex,PlCoordArray(1,2)
        
        IF(ALL(SearchIndex == 0.0)) THEN
          !If cycles through whole array without finding plumes to be between;
@@ -1286,7 +1289,8 @@
        END IF
 
        Node = ABS(Mesh % Nodes % z(i))
-       
+      
+       PRINT *, 'Debug2: ',SearchIndex,PlCoordArray !(TotalPlCount,2) 
        FPOLZ(:) = ABS(PlZArray(:,SearchIndex(1)))
        FPOLMR(:) = PlMRArray(:,SearchIndex(1))
        ZPointer => FPOLZ

@@ -62,6 +62,7 @@ MODULE CalvingGeometry
      LOGICAL :: FrontConnected !Does the group touch the terminus?
      TYPE(CrevasseGroup3D_t), POINTER :: Next => NULL(), Prev => NULL()
   END TYPE CrevasseGroup3D_t
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Derived type for a calving path defined by
   ! the IsoSurface/Line solver.
@@ -75,8 +76,10 @@ MODULE CalvingGeometry
      TYPE(CrevassePath_t), POINTER :: Next => NULL(), Prev => NULL()
      LOGICAL :: Valid = .TRUE.
   END TYPE  CrevassePath_t
+
 CONTAINS
   
+
   !Returns the neighbours of a specified node using the matrix 
   !provided.
   !Note the current definition of neighbours:
@@ -91,33 +94,45 @@ CONTAINS
     INTEGER, POINTER, OPTIONAL, INTENT(IN) :: InvPerm_in(:)
     LOGICAL :: Debug
     Debug = .FALSE.
+
     IF(PRESENT(InvPerm_in)) THEN
        InvPerm => InvPerm_in
     ELSE
        IF(Debug) PRINT *, 'Debug FindNodeNeighbours, creating InvPerm'
        InvPerm => CreateInvPerm(Perm)
     END IF
+
     NoNeighbours = Matrix % Rows((Perm(NodeNumber)*DOFs)+1) &
          - Matrix % Rows(Perm(NodeNumber)*DOFs)
+
     IF(MOD(NoNeighbours, DOFs).NE. 0) &
          CALL FATAL("Geometry","This shouldn't have happened...")
+
     !Each neighbour appears once per DOF, and there's also the current node thus: (x/DOFS) - 1...
     NoNeighbours = (NoNeighbours / DOFs) - 1
+
     ALLOCATE(Neighbours(NoNeighbours))
     Neighbours = 0
+
     count = 0
+
     DO i=Matrix % Rows(Perm(NodeNumber)*DOFs),&
          (Matrix % Rows((Perm(NodeNumber)*DOFs)+1)-1) !move along the row
        IF(MOD(i,DOFs) /= 0) CYCLE !Stored DOF1, DOF2, DOF3, only need every DOFth
        IF(MOD(Matrix % Cols(i), DOFs) /= 0) CALL Fatal("Geometry:FindNodeNeighbours", &
             "This is a programming error, Matrix structure is not what was expected.")
+
        IF(InvPerm(Matrix % Cols(i)/DOFs) == NodeNumber) CYCLE !Not our own neighbour
        count = count + 1
        Neighbours(count) = &
             InvPerm(Matrix % Cols(i)/DOFs)
     END DO
+
     IF(.NOT. PRESENT(InvPerm_in)) DEALLOCATE(InvPerm)
+
   END FUNCTION FindNodeNeighbours
+
+
   !-----------------------------------------------------------------------------
   !Returns the 2D (x,y) Cartesian distance between two nodes
   !NOTE: This isn't well programmed, should probably pass nodes...
@@ -133,6 +148,7 @@ CONTAINS
     !TODO: Can this be simplified?  See Interpolation.f90
     dist = ((xdist**2) + (ydist**2))**0.5
   END FUNCTION NodeDist2D
+
   !-----------------------------------------------------------------------------
   !Returns the 3D Cartesian distance between two nodes
   !NOTE: This isn't well programmed, should probably pass nodes...
@@ -151,6 +167,7 @@ CONTAINS
     xydist = ((xdist**2) + (ydist**2))**0.5
     dist = ((xydist**2) + (zdist**2))**0.5
   END FUNCTION NodeDist3D
+
   !-----------------------------------------------------------------------------
   !Returns the inverse permutation table for a given perm and DOFs
   !NOTE, differs from the definition of InvPerm currently used in
@@ -158,24 +175,30 @@ CONTAINS
   FUNCTION CreateInvPerm(Perm) RESULT(InvPerm)
     INTEGER, POINTER :: Perm(:), InvPerm(:)
     INTEGER :: i, j
+
     ALLOCATE(InvPerm(MAXVAL(Perm)))
+
     j = 0
     DO i=1,SIZE(Perm)
        IF(Perm(i) == 0) CYCLE
        j = j + 1
        InvPerm( Perm(i) ) = j
     END DO
+
   END FUNCTION CreateInvPerm
+
   !-----------------------------------------------------------------------------
   !Returns dx/dy for two given nodes
   FUNCTION NodesGradXY(Nodes, Node1, Node2)RESULT(dxdy)
     INTEGER :: Node1, Node2
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp) :: dx,dy,dxdy
+
     dx = Nodes % x(Node1) - Nodes % x(Node2)
     dy = Nodes % y(Node1) - Nodes % y(Node2)
     dxdy = dx/dy
   END FUNCTION NodesGradXY
+
   !-----------------------------------------------------------------------------
   !Returns the number of decimal places of a real number
   !which has been read from a text file (.e.g mesh.nodes)
@@ -184,12 +207,15 @@ CONTAINS
   FUNCTION RealAeps(in)RESULT(myaeps)
     REAL(KIND=dp) :: in, toler, x, myaeps
     INTEGER :: sigs, mag, decs
+
     !Find how many decimal places
     mag = FLOOR(LOG10(ABS(in))) + 1 !Order of magnitude of number
     decs = PRECISION(in) - mag  !total digits - magnitude = decimal places
+
     toler = 10.0_dp**(-decs)
     sigs = 0
     x = in
+
     DO WHILE (.TRUE.)
        IF(ABS(x - NINT(x)) < toler) THEN !found the precision limit
           EXIT
@@ -202,6 +228,7 @@ CONTAINS
     END DO
     myaeps = 10.0**(-sigs)
   END FUNCTION RealAeps
+
   !-----------------------------------------------------------------------------
   ! Constructs paths of connected isoline (202) elements which intersect the 
   ! front. Each path will begin and end with a node where OnFront=.TRUE.
@@ -217,32 +244,45 @@ CONTAINS
     LOGICAL :: Found, Debug
     INTEGER :: i,j,NodeCount,ElemCount, NextElem
     INTEGER, ALLOCATABLE :: WorkElems(:), WorkNodes(:)
+
     Debug = .FALSE.
     PathCount = 1
+
     !TODO assert all 202 elements
+
     ALLOCATE(CrevassePaths)
     CurrentPath => CrevassePaths
+
     ALLOCATE(WorkElems(100), WorkNodes(100))
     WorkElems = 0; WorkNodes = 0
+
     DO i=1, IsoMesh % NumberOfBulkElements
+
        IF(ANY(OnFront(Isomesh % Elements(i) % NodeIndexes))) THEN
           !Found an element with one node on calving front
+
           IF(ElementPathID(CrevassePaths, i) /= 0) CYCLE !already in a path
+
           !Starting a new group...
           CurrentPath % ID = PathCount
           IF(Debug) PRINT *, 'Potential calving isomesh element: ',i
+
           ElemCount = 1
           NextElem = i
+
           !Identify which of the two nodes are on the front...
           DO j=1,2
              IF(OnFront(IsoMesh % Elements(i) % NodeIndexes(j))) EXIT
           END DO
           IF(j==3) CALL Fatal("FindCrevassePaths", "Couldn't find node on boundary")
+
           !... and put it first in the list
           WorkNodes(1) = IsoMesh % Elements(i) % NodeIndexes(j)
           NodeCount = 2
+
           !Follow the chain
           DO WHILE(.TRUE.) 
+
              WorkElems(ElemCount) = NextElem
              ElemCount = ElemCount + 1
              !Put the other node into the list
@@ -252,6 +292,7 @@ CONTAINS
                 NodeCount = NodeCount + 1
                 EXIT
              END DO
+
              !Look for element which contains previous element's node
              Found = .FALSE.
              DO j=1,IsoMesh % NumberOfBulkElements
@@ -460,10 +501,12 @@ CONTAINS
            IF(PathRemoveElement(i)) CYCLE
            IF(RemoveElement(CurrentPath % ElementNumbers(i))) CYCLE
            ElementNumbers(1) = CurrentPath % ElementNumbers(i)
+
            DO j=CurrentPath % NumberOfElements,i+1,-1 !cycle backwards from end to i+1
              IF(PathRemoveElement(j)) CYCLE
              IF(RemoveElement(CurrentPath % ElementNumbers(j))) CYCLE
              ElementNumbers(2) = CurrentPath % ElementNumbers(j)
+
              IF( ANY(Mesh % Elements(ElementNumbers(1)) % NodeIndexes == &
                   Mesh % Elements(ElementNumbers(2)) % NodeIndexes(1)) .OR. &
                   ANY(Mesh % Elements(ElementNumbers(1)) % NodeIndexes == &
@@ -472,9 +515,12 @@ CONTAINS
                IF(Debug) PRINT *,'CheckCrevasseNodes, &
                     &Removing a closed loop from ',i+1,' to ',j-1
              END IF
+
            END DO
+
          END DO
        END IF
+
        !Replace CrevassePath % ElementNumbers based on previous removals
        DO i=1,CurrentPath % NumberOfElements
           IF(.NOT.RemoveElement(CurrentPath % ElementNumbers(i)) .AND. &
@@ -497,14 +543,18 @@ CONTAINS
        IF(counter < CurrentPath % NumberOfElements) THEN
           IF(Debug) PRINT *,'debug, path loses ',CurrentPath % NumberOfElements - counter,&
                ' of ',CurrentPath % NumberOfElements,' elements.'
+
           CurrentPath % NumberOfElements = counter
           DEALLOCATE(CurrentPath % ElementNumbers)
           ALLOCATE(CurrentPath % ElementNumbers(counter))
+
           CurrentPath % ElementNumbers = WorkInt(1:counter)
        END IF
        DEALLOCATE(WorkInt,PathRemoveElement)
+
        IF (CurrentPath % NumberOfElements <= 0) THEN
           WorkPath => CurrentPath % Next
+
           IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
           CALL RemoveCrevassePath(CurrentPath)
           IF(Debug) CALL Info("CheckCrevasseNodes",&
@@ -512,11 +562,13 @@ CONTAINS
           CurrentPath => WorkPath
           CYCLE
        END IF
+
        !Now reconstruct node list for path:
        DEALLOCATE(CurrentPath % NodeNumbers)
        CurrentPath % NumberOfNodes = CurrentPath % NumberOfElements + 1
        ALLOCATE(CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes))
        CurrentPath % NodeNumbers = 0
+
        !First node
        IF(CurrentPath % NumberOfElements >= 2) THEN
           DO i=1,2
@@ -524,6 +576,7 @@ CONTAINS
                   Mesh % Elements(CurrentPath % ElementNumbers(1)) % NodeIndexes(i))) CYCLE
              CurrentPath % NodeNumbers(1) = &
                   Mesh % Elements(CurrentPath % ElementNumbers(1)) % NodeIndexes(i)
+
              IF(i==2) THEN !Reorder so that nodeindexes(1) and (2) are in chain order
                Mesh % Elements(CurrentPath % ElementNumbers(1)) % NodeIndexes(2) = &
                     Mesh % Elements(CurrentPath % ElementNumbers(1)) % NodeIndexes(1)
@@ -536,27 +589,34 @@ CONTAINS
              CurrentPath % NodeNumbers(1) = &
                   Mesh % Elements(CurrentPath % ElementNumbers(1)) % NodeIndexes(1)
        END IF
+
        IF(Debug) PRINT *,'Path ',CurrentPath % ID,' has first node: ',CurrentPath % NodeNumbers(1)
+
        !Follow the chain...
        DO i=1,CurrentPath % NumberOfElements
           ElNo = CurrentPath % ElementNumbers(i)
           DO j=1,2
              IF(ANY(CurrentPath % NodeNumbers == Mesh % Elements(ElNo) % NodeIndexes(j))) CYCLE
              CurrentPath % NodeNumbers(i+1) = Mesh % Elements(ElNo) % NodeIndexes(j)
+
              IF(j==1) THEN !Reorder so that nodeindexes(1) and (2) are in chain order
                Mesh % Elements(CurrentPath % ElementNumbers(i)) % NodeIndexes(1) = &
                     Mesh % Elements(CurrentPath % ElementNumbers(i)) % NodeIndexes(2)
                Mesh % Elements(CurrentPath % ElementNumbers(i)) % NodeIndexes(2) = &
                     CurrentPath % NodeNumbers(i+1)
              END IF
+
              EXIT
           END DO
        END DO
+
        IF(Debug) PRINT *,'Debug, path ',CurrentPath % ID,' has nodes: ',CurrentPath % NodeNumbers
        IF(ANY(CurrentPath % NodeNumbers == 0)) CALL Fatal("CheckCrevasseNodes","Failed to fill node indexes")
        CurrentPath => CurrentPath % Next
     END DO
+
   END SUBROUTINE CheckCrevasseNodes
+
   !----------------------------------------------------
   ! Checks paths for projectability and overlap
   ! In case of overlap, smaller enclosed path is deleted
@@ -604,16 +664,21 @@ CONTAINS
       !further away than the two edge nodes.
       !Instead, must ensure that no nodes are further away than any
       !surrounding nodes.
+
       !First need to determine path orientation
       !with respect to front....
+
       CurrentPath => CrevassePaths
       DO WHILE(ASSOCIATED(CurrentPath))
+
         !First and last node on path
         First = CurrentPath % NodeNumbers(1)
         Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+
         !if ToLeft, the crevasse path goes from right to left, from the
         !perspective of someone sitting in the fjord, looking at the front
         ToLeft = Mesh % Nodes % y(Last) > Mesh % Nodes % y(First)
+
         IF(Debug) THEN
           FrontDist = NodeDist3D(Mesh % Nodes,First, Last)
           PRINT *,'PATH: ', CurrentPath % ID, ' FrontDist: ',FrontDist
@@ -621,6 +686,7 @@ CONTAINS
                ' nonodes: ',CurrentPath % NumberOfNodes,&
                ' noelems: ',CurrentPath % NumberOfElements
         END IF
+
         !Cycle path nodes, finding those which are too far away
         ALLOCATE(FarNode(CurrentPath % NumberOfNodes), &
              Constriction(CurrentPath % NumberOfNodes),&
@@ -628,6 +694,7 @@ CONTAINS
         FarNode = .FALSE.
         Constriction = .FALSE.
         ConstrictDirection = 0.0_dp
+
         !Determine which nodes have the potential to be constriction (based on angle)
         !and compute constriction direction (i.e. which way the 'pointy bit' points...')
         DO i=2,CurrentPath % NumberOfNodes-1
@@ -674,6 +741,7 @@ CONTAINS
         Dir1(1) = Mesh % Nodes % y(n) - Mesh % Nodes % y(Last)
         Dir1(2) = Mesh % Nodes % z(n) - Mesh % Nodes % z(Last)
         Dir1 = Dir1 / ((Dir1(1)**2.0 + Dir1(2)**2.0) ** 0.5)
+
         !Depending on which end of the chain we are,
         !we take either the right or left orthogonal vector
         IF(ToLeft) THEN
@@ -684,11 +752,14 @@ CONTAINS
           ConstrictDirection(1,2) = Dir1(1)
         END IF
         IF(Debug) PRINT *, 'Debug, node 1 constriction direction: ',ConstrictDirection(1,:)
+
         Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes - 1)
         n = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+
         Dir1(1) = Mesh % Nodes % y(n) - Mesh % Nodes % y(Last)
         Dir1(2) = Mesh % Nodes % z(n) - Mesh % Nodes % z(Last)
         Dir1 = Dir1 / ((Dir1(1)**2.0 + Dir1(2)**2.0) ** 0.5)
+
         IF(.NOT. ToLeft) THEN
           ConstrictDirection(CurrentPath % NumberOfNodes,1) = Dir1(2)
           ConstrictDirection(CurrentPath % NumberOfNodes,2) = -1.0 * Dir1(1)
@@ -698,19 +769,26 @@ CONTAINS
         END IF
         IF(Debug) PRINT *, 'Debug, node last constriction direction: ',&
              ConstrictDirection(CurrentPath % NumberOfNodes,:)
+
         !---------------------------------------
         ! Now that we have constrictions marked and directions computed, cycle nodes
+
         DO i=1,CurrentPath % NumberOfNodes
           IF(.NOT. Constriction(i)) CYCLE
+
           DO j=CurrentPath % NumberOfNodes,i+1,-1
             IF(.NOT. Constriction(j)) CYCLE
+
+
             First = CurrentPath % NodeNumbers(i)
             Last = CurrentPath % NodeNumbers(j)
+
             !Check that these constrictions 'face' each other via dot product
             Dir1(1) = Mesh % Nodes % y(Last) - Mesh % Nodes % y(First)
             Dir1(2) = Mesh % Nodes % z(Last) - Mesh % Nodes % z(First)
             Dir2(1) = -Dir1(1)
             Dir2(2) = -Dir1(2)
+
             !If the two constrictions aren't roughly facing each other:
             ! <  > rather than    > <
             ! then skip this combo
@@ -859,10 +937,13 @@ CONTAINS
     !  Go through CrevassePath nodes, marking those
     !  which are 'shadowed' by further away elements.
     !-----------------------------------------------------
+
     CurrentPath => CrevassePaths
     DO WHILE(ASSOCIATED(CurrentPath))
+
       ALLOCATE(PathMoveNode(CurrentPath % NumberOfNodes))
       PathMoveNode = .FALSE.
+
       DO i=1,CurrentPath % NumberOfNodes
         n = CurrentPath % NodeNumbers(i)
         DO j=1,CurrentPath % NumberOfElements
@@ -873,37 +954,46 @@ CONTAINS
           IF( (Mesh % Nodes % y(NodeNums(1)) > Mesh % Nodes % y(n)) .NEQV. &
                (Mesh % Nodes % y(NodeNums(2)) > Mesh % Nodes % y(n)) ) THEN
             !Check the node is in front of the element
+
             A = MINLOC(Mesh % Nodes % z(NodeNums),1)
             B = MAXLOC(Mesh % Nodes % z(NodeNums),1)
             CCW = ((Mesh % Nodes % y(n) - Mesh % Nodes % y(NodeNums(A))) * &
                  (Mesh % Nodes % z(NodeNums(B)) - Mesh % Nodes % z(NodeNums(A)))) > &
                  ((Mesh % Nodes % z(n) - Mesh % Nodes % z(NodeNums(A))) * &
                  (Mesh % Nodes % y(NodeNums(B)) - Mesh % Nodes % y(NodeNums(A))))
+
             ToLeft = Mesh % Nodes % y(NodeNums(A)) > Mesh % Nodes % y(NodeNums(B))
+
             IF(CCW .EQV. ToLeft) THEN
               !Node should be removed
               PathMoveNode(i) = .TRUE.
               EXIT
             END IF
+
           END IF
         END DO
       END DO
+
       IF(Debug) THEN
         PRINT *,'Path ',CurrentPath % ID,' has ',&
              COUNT(PathMoveNode),' nodes which need to be shifted.'
+
         DO i=1,CurrentPath % NumberOfNodes
           IF(.NOT. PathMoveNode(i)) CYCLE
           PRINT *,'Need to move node: ',i,' y: ',&
                Mesh % Nodes % y(CurrentPath % NodeNumbers(i)),&
                ' z: ',Mesh % Nodes % z(CurrentPath % NodeNumbers(i))
+
         END DO
       END IF
+
       !Now that nodes have been marked as shadowed, identify chains
       !and the location of the node to which these groups of nodes should be moved.
       Shifted = .TRUE.
       Start = 1
       DO WHILE(Shifted)
         Shifted = .FALSE.
+
         DO i=Start,CurrentPath % NumberOfNodes
           IF(PathMoveNode(i)) THEN
             IF(.NOT. Shifted) THEN
@@ -916,6 +1006,7 @@ CONTAINS
           END IF
         END DO
         IF(.NOT. Shifted) EXIT
+
         !We have identified a chain from FirstIndex to LastIndex which need to be moved.
         !They should be moved to either FirstIndex-1 or LastIndex+1
         !(Whichever is further back)
@@ -930,15 +1021,19 @@ CONTAINS
         ELSE
           ShiftToMe = CurrentPath % NodeNumbers(LastIndex+1)
         END IF
+
         Mesh % Nodes % y(CurrentPath % NodeNumbers(FirstIndex:LastIndex)) = &
              Mesh % Nodes % y(ShiftToMe)
+
         IF(Debug) PRINT *,'Shifting nodes ',FirstIndex,' to ',LastIndex,&
              ' to point: ',Mesh % Nodes % y(ShiftToMe)
         Start = LastIndex + 1
       END DO
+
       DEALLOCATE(PathMoveNode)
       CurrentPath => CurrentPath % Next
     END DO
+
     !NOTE: probably not really necessary here, Shifted nodes don't extend
     !the extent
     !Update Left, Right & Extent
@@ -954,14 +1049,17 @@ CONTAINS
     !  another single crevasse path, we remove it, because
     !  it must be contained by the larger one.
     !--------------------------------------------------------
+
     CurrentPath => CrevassePaths
     DO WHILE(ASSOCIATED(CurrentPath))
+
        OtherPath => CrevassePaths
        DO WHILE(ASSOCIATED(OtherPath))
           IF(ASSOCIATED(OtherPath, CurrentPath)) THEN
              OtherPath => OtherPath % Next
              CYCLE
           END IF
+
           IF((CurrentPath % Left >= OtherPath % Left) .AND. &
                (CurrentPath % Right <= OtherPath % Right)) THEN!contained within
              CurrentPath % Valid = .FALSE.
@@ -970,12 +1068,15 @@ CONTAINS
           END IF
           OtherPath => OtherPath % Next
        END DO
+
        CurrentPath => CurrentPath % Next
     END DO
+
     !Actually remove previous marked
     CurrentPath => CrevassePaths
     DO WHILE(ASSOCIATED(CurrentPath))
        WorkPath => CurrentPath % Next
+
        IF(.NOT. CurrentPath % Valid) THEN
           IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
           CALL RemoveCrevassePath(CurrentPath)
@@ -983,6 +1084,7 @@ CONTAINS
        END IF
        CurrentPath => WorkPath
     END DO
+
     !-------------------------------------------------
     ! Check for paths partly obscuring each other
     !  (fully obscured are dealt with above)
@@ -991,19 +1093,25 @@ CONTAINS
     ! of whichever path is seaward are moved.
     ! i.e. the larger calving event takes precedent
     !-------------------------------------------------
+
     CurrentPath => CrevassePaths
     DO WHILE(ASSOCIATED(CurrentPath))
+
       OtherPath => CrevassePaths
       DO WHILE(ASSOCIATED(OtherPath))
         IF(ASSOCIATED(OtherPath, CurrentPath)) THEN
           OtherPath => OtherPath % Next
           CYCLE
         END IF
+
         IF((CurrentPath % Left < OtherPath % Right) .EQV. &
              (OtherPath % Left < CurrentPath % Right)) THEN !overlap
+
           IF(Debug) PRINT *,'Debug, paths: ',CurrentPath % ID, OtherPath % ID,' partially overlap'
+
           !Is the other path to the right or left?
           OtherRight = CurrentPath % Right < OtherPath % Right
+
           !Check not fully contained - should have been dealt with above
           IF((CurrentPath % Right > OtherPath % Right) .NEQV. &
                (CurrentPath % Left > OtherPath % Left)) THEN
@@ -1011,6 +1119,7 @@ CONTAINS
                  &should already have been taken care of! OK if this is rare, &
                  &otherwise maybe programming error")
           END IF
+
           IF(OtherRight) THEN
             RightPath => OtherPath
             LeftPath => CurrentPath
@@ -1018,20 +1127,26 @@ CONTAINS
             RightPath => CurrentPath
             LeftPath => OtherPath
           END IF
+
           !Find the left and rightmost nodes of the two paths
           DO i=1,LeftPath % NumberOfNodes
             IF(Debug) PRINT *,'Debug, node ',i,' of leftpath: ',&
                  Mesh % Nodes % y(LeftPath % NodeNumbers(i)), LeftPath % Right
+
             IF(Mesh % Nodes % y(LeftPath % NodeNumbers(i)) >= LeftPath % Right) LeftIdx = i
           END DO
+
           DO i=1,RightPath % NumberOfNodes
             IF(Debug) PRINT *,'Debug, node ',i,' of rightpath: ',&
                  Mesh % Nodes % y(RightPath % NodeNumbers(i)), RightPath % Left
+
             IF(Mesh % Nodes % y(RightPath % NodeNumbers(i)) <= RightPath % Left) RightIdx = i
           END DO
+
           !See which is further forward.
           ShiftRightPath = Mesh % Nodes % z(LeftPath % NodeNumbers(LeftIdx)) < &
                Mesh % Nodes % z(RightPath % NodeNumbers(RightIdx))
+
           IF(ShiftRightPath) THEN
             ShiftTo = Mesh % Nodes % y(LeftPath % NodeNumbers(LeftIdx))
             DO i=1,RightPath % NumberOfNodes
@@ -1043,6 +1158,7 @@ CONTAINS
               END IF
             END DO
             CALL ComputePathExtent(RightPath, Mesh % Nodes, .FALSE.)
+
           ELSE
             ShiftTo = Mesh % Nodes % y(RightPath % NodeNumbers(RightIdx))
             DO i=1,LeftPath % NumberOfNodes
@@ -1054,12 +1170,16 @@ CONTAINS
               END IF
             END DO
             CALL ComputePathExtent(LeftPath, Mesh % Nodes, .FALSE.)
+
           END IF
         END IF
+
         OtherPath => OtherPath % Next
       END DO
+
       CurrentPath => CurrentPath % Next
     END DO
+
     !-----------------------------------------------------------------------
     ! Remove elements whose nodes are in a vertical line
     !     (to prevent potential issues in interp)
@@ -1356,9 +1476,12 @@ CONTAINS
 
        !Switch it off so it doesn't get readded
        Condition(neighbourindex) = .FALSE.
+
        CALL SearchNeighbours(neighbourindex, Neighbours, Group, Condition)
     END DO
+
   END SUBROUTINE SearchNeighbours
+
   !Marks recursive neighbours with same int
   RECURSIVE SUBROUTINE MarkNeighbours(nodenum, Neighbours, Array, Mark)
     INTEGER :: nodenum
@@ -1366,13 +1489,17 @@ CONTAINS
     LOGICAL, POINTER :: Neighbours(:,:)
     !------------------------------------------------
     INTEGER :: i, Mark
+
     DO i = 1,SIZE(Neighbours,1)
        IF(.NOT. Neighbours(nodenum,i)) CYCLE
        IF(Array(i)==Mark) CYCLE !already got
+
        Array(i) = Mark
        CALL MarkNeighbours(i, Neighbours, Array, Mark)
     END DO
+
   END SUBROUTINE MarkNeighbours
+
   !-------------------------------------------------------------
   ! Given a CrevasseGroup3D object, finds and stores boundary nodes
   ! BoundaryMask is a logical array TRUE where node sits on a 
@@ -1387,14 +1514,18 @@ CONTAINS
     INTEGER :: i, j, node, BNodes, NoNeighbours, neighbour
     INTEGER, ALLOCATABLE :: WorkInt(:)
     LOGICAL :: IsBoundaryNode
+
     IF(ASSOCIATED(Group % BoundaryNodes)) &
          DEALLOCATE(Group % BoundaryNodes)
+
     ALLOCATE(Group % BoundaryNodes(100))
     Group % BoundaryNodes = 0
     BNodes = 0
+
     DO i=1, Group % NumberOfNodes
        IsBoundaryNode = .FALSE.
        node = Group % NodeNumbers(i)
+
        IF(BoundaryMask(node)) THEN
           IsBoundaryNode = .TRUE.
        ELSE
@@ -1402,6 +1533,7 @@ CONTAINS
           DO j=1,NoNeighbours
              neighbour = Neighbours(node, j)
              IF(ANY(Group % NodeNumbers == neighbour)) CYCLE
+
              !Only get here if there's a node NOT in the group
              IsBoundaryNode = .TRUE.
              EXIT
@@ -1714,19 +1846,23 @@ CONTAINS
     ELSE
        Boss = .TRUE. !only one part in serial, so it's in charge of computation
     END IF
+
     IF(Boss .AND. Debug) THEN
       PRINT *, '================================================='
       PRINT *, ' Locating domain edge for ',TRIM(EdgeMaskName)
       PRINT *, '================================================='
     END IF
+
     IF(PRESENT(Simplify)) THEN
        Simpl = Simplify
     ELSE 
        Simpl = .FALSE.
     END IF
+
     ALLOCATE(OnEdge(NoNodes), NodeNeighbours(NoNodes,2))
     OnEdge = .FALSE.
     NodeNeighbours = -1
+
     FullBoundary = .NOT.(PRESENT(EdgeMaskName))
     IF(.NOT. FullBoundary) THEN
       !Find correct BC from logical
@@ -1737,21 +1873,27 @@ CONTAINS
         EXIT
       END DO
     END IF
+
     !Cycle boundary elements, marking nodes on edge and finding neighbours
     DO i=Mesh % NumberOfBulkElements+1, &
          Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
        Element => Mesh % Elements(i)
+
        IF((.NOT. FullBoundary) .AND. Element % BoundaryInfo % Constraint /= EdgeBCtag) &
             CYCLE !elem not on lateral boundary
+
        IF(ALL(TopPerm(Element % NodeIndexes) > 0)) CYCLE !not a lateral element
        IF(.NOT. ANY(TopPerm(Element % NodeIndexes) > 0)) CYCLE !elem contains no nodes on top
        !Logic gates above should leave only lateral elements with some nodes on top.
+
        IF(GetElementFamily(Element) == 1) &
             CALL Fatal(FuncName, "101 Elements are supposed to be a thing of the past!")
+
        !Cycle nodes in element
        DO j=1,Element % TYPE % NumberOfNodes
           IF(.NOT. TopPerm(Element % NodeIndexes(j)) > 0) CYCLE
           OnEdge(Element % NodeIndexes(j)) = .TRUE.
+
           !Cycle nodes in element
           DO k=1,Element % TYPE % NumberOfNodes
              IF(j==k) CYCLE
@@ -1765,50 +1907,64 @@ CONTAINS
                   CALL Fatal(FuncName,'Identified more than two neighbours')
           END DO
        END DO
+
     END DO
+
     NoNodesOnEdge = COUNT(OnEdge)
     IF(NoNodesOnEdge == 1) THEN
       CALL Fatal(FuncName, "A single node identified on boundary, should not be possible. &
            &Someone is messing around with 101 elements.")
     END IF
+
     ALLOCATE(UnorderedNodeNums(NoNodesOnEdge),&
          OrderedNodeNums(NoNodesOnEdge))
     OrderedNodeNums = -1 !initialize to invalid value
+
     j = 0
     DO i=1,NoNodes
        IF(.NOT. OnEdge(i)) CYCLE
        j = j + 1
        UnorderedNodeNums(j) = i
     END DO
+
     !Cycle nodes on edge, looking for one with only one neighbour (a corner)
     !Edge case = serial fullboundary run, no corner exists, choose arbitrarily
     !Rare case (not dealt with!! TODO) = parallel fullboundary, no corners 
     !            (whole mesh edge in one partition)
     IF(NoNodesOnEdge > 1) THEN
+
        ALLOCATE(IsCornerNode(NoNodesOnEdge))
        IsCornerNode = .FALSE.
+
        DO i=1,NoNodesOnEdge
           IsCornerNode(i) = COUNT(NodeNeighbours(UnOrderedNodeNums(i),:) == -1) == 1
           IF(COUNT(NodeNeighbours(UnOrderedNodeNums(i),:) == -1) == 2) &
                CALL Fatal(FuncName, "Found an isolated node on edge")
        END DO
+
        IF(MOD(COUNT(IsCornerNode),2) /= 0) THEN
           WRITE(Message,'(A,i0)') "Found an odd number of&
                & corner nodes in partition: ",ParEnv % MyPE
           CALL Fatal(FuncName, Message)
        END IF
+
        IF(FullBoundary .AND. .NOT. Parallel) THEN
+
          !If serial FullBoundary request, no corner exists so just choose the first
          !unordered node in the list and loop from there
          Segments = 1
          ALLOCATE(MyCornerNodes(2))
          MyCornerNodes(1) = 1
+
        ELSE 
+
          Segments = COUNT(IsCornerNode) / 2
          IF(Debug .AND. Segments > 1) PRINT *, &
               'Partition ',ParEnv % MyPE, ' has ',Segments,' line segments on boundary.'
+
          ALLOCATE(NewSegStart(Segments-1))
          ALLOCATE(MyCornerNodes(COUNT(IsCornerNode)))
+
          counter = 1
          DO i=1,NoNodesOnEdge 
            IF(IsCornerNode(i)) THEN
@@ -1816,7 +1972,9 @@ CONTAINS
              counter = counter + 1
            END IF
          END DO
+
        END IF
+
        counter = 1
        DO k=1,Segments
           
@@ -1833,25 +1991,32 @@ CONTAINS
              END DO
           END IF
           counter = counter + 1
+
           !----------------------------------------------------
           !   Move along from corner, filling in order
           !----------------------------------------------------
           DO i=counter,NoNodesOnEdge
              Found = .FALSE.
              IF(OrderedNodeNums(i-1) == -1) CALL Abort()
+
              DO j=1,2
                 IF(NodeNeighbours(OrderedNodeNums(i-1),j) == -1) CYCLE !First and last nodes, corner
                 IF(ANY(OrderedNodeNums(1:i-1) == NodeNeighbours(OrderedNodeNums(i-1),j))) &
                      CYCLE !already in list
+
                 OrderedNodeNums(i) = NodeNeighbours(OrderedNodeNums(i-1),j)
                 Found = .TRUE.
              END DO
+
              IF(.NOT. Found) EXIT
           END DO
+
           counter = i
+
           IF(counter >= NoNodesOnEdge) EXIT !this should be redundant...
           NewSegStart(k) = counter
        END DO
+
     ELSE !Either 1 or 0 nodes found, not an active boundary partition
        !0 node case, obvious
        !1 node case, if THIS partition only has one node on the boundary,
@@ -1867,20 +2032,26 @@ CONTAINS
 
     !Remember that, in parallel, we're using local rather than global node numbers
     IF(Parallel) THEN
+
        !gather corner count - replaces 101 element detection
        ALLOCATE(PCornerCounts(ParEnv % PEs),disps(ParEnv % PEs))
+
        CALL MPI_AllGather(SIZE(MyCornerNodes), 1, MPI_INTEGER, PCornerCounts, &
             1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
        disps(1) = 0
        DO i=2, ParEnv % PEs
           disps(i) = disps(i-1) + PCornerCounts(i-1)
        END DO
+
        ALLOCATE(GlobalCorners(SUM(PCornerCounts)),&
             CornerParts(SUM(PCornerCounts)))
+
        !gather corner nodenums
        CALL MPI_AllGatherV(Mesh % ParallelInfo % GlobalDOFs(UnorderedNodeNums(MyCornerNodes)), &
             SIZE(MyCornerNodes), MPI_INTEGER, GlobalCorners, PCornerCounts, disps, &
             MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
        !note which partition sent each corner node
        counter = 1
        DO i=1,ParEnv % PEs
@@ -1888,6 +2059,7 @@ CONTAINS
           CornerParts(counter:counter+PCornerCounts(i)-1) = i-1
           counter = counter + PCornerCounts(i)
        END DO
+
        !Quick check:
        DO i=1,SIZE(GlobalCorners)
          counter = COUNT(GlobalCorners == GlobalCorners(i))
@@ -1896,9 +2068,12 @@ CONTAINS
        END DO
        !Now GlobalCorners and CornerParts tell us which partitions found corner nodes
        !(i.e. nodes which will join other segments)
+
        IF(ActivePart) THEN
           ALLOCATE(MyNeighbourParts(Segments*2))
+
           DO i=1,Segments*2 !Find neighbour partition numbers
+
              IF(i==1) THEN
                 n = OrderedNodeNums(1)
              ELSE IF(i==Segments*2) THEN
@@ -1923,32 +2098,42 @@ CONTAINS
        ELSE
           ALLOCATE(MyNeighbourParts(0))
        END IF
+
        IF(Boss) ALLOCATE(PartSegments(ParEnv % PEs))
+
        CALL MPI_GATHER(Segments, 1, MPI_INTEGER, PartSegments, &
             1, MPI_INTEGER,  0, comm, ierr)
+
        IF(Boss) THEN
+
           TotSegSplits = 0
           DO i=1,SIZE(PartSegments)
              TotSegSplits = TotSegSplits + MAX(PartSegments(i)-1,0)
           END DO
+
           ALLOCATE(nodenum_disps(ParEnv % PEs), &
                PartNodesOnEdge(ParEnv % PEs), &
                NeighbourPartsList(SUM(PartSegments)*2), &
                PartNeighbourList(ParEnv % PEs), &
                SegStarts_Gather(TotSegSplits))
+
           DO i=1,ParEnv % PEs
              ALLOCATE(PartNeighbourList(i) % Neighbours(PartSegments(i)*2))
           END DO
+
           disps(1) = 0
           DO i=2, ParEnv % PEs
              disps(i) = disps(i-1) + MAX(PartSegments(i-1)-1,0)
           END DO
+
        END IF
+
        !Get found count from each part to boss
        CALL MPI_GATHER(NoNodesOnEdge, 1, MPI_INTEGER, PartNodesOnEdge, &
             1, MPI_INTEGER, 0, comm ,ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
        IF(Debug .AND. Boss) THEN
           PRINT *, 'boss size(SegStarts_Gather): ', SIZE(SegStarts_Gather)
           PRINT *, 'boss PartSegments: ', PartSegments
@@ -1963,10 +2148,12 @@ CONTAINS
           ALLOCATE(WorkInt(ParEnv % PEs))
           WorkInt = MAX(PartSegments-1,0)
        END IF
+
        CALL MPI_GATHERV(NewSegStart, MAX(Segments-1,0), MPI_INTEGER, SegStarts_Gather, &
             WorkInt, disps, MPI_INTEGER, 0, comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
        IF(Boss) THEN
           ALLOCATE(PartSegStarts(ParEnv % PEs))
           DO i=1,ParEnv % PEs
@@ -1978,24 +2165,31 @@ CONTAINS
              END IF
              IF(Debug) PRINT *, i,' partsegstarts: ', PartSegStarts(i) % Indices
           END DO
+
           disps(1) = 0
           DO i=2, ParEnv % PEs
              disps(i) = disps(i-1) + PartSegments(i-1)*2
           END DO
+
           WorkInt = PartSegments*2
        END IF
+
        !Get neighbour part numbers from each part to boss
        CALL MPI_GATHERV(MyNeighbourParts, Segments*2, MPI_INTEGER, NeighbourPartsList, &
             WorkInt, disps, MPI_INTEGER, 0, comm ,ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
        IF(Debug .AND. Boss) PRINT *, 'DEBUG, NewSegStart: ', NewSegStart
+
        IF(Boss) THEN
           ActivePartList = (PartNodesOnEdge > 0)
+
           !Here we account for shared nodes on partition boundaries
           OrderedNodes % NumberOfNodes = SUM(PartNodesOnEdge) - (SIZE(NeighbourPartsList)/2 - 1)
           !but they are still present when gathered...
           UnorderedNodes % NumberOfNodes = SUM(PartNodesOnEdge) 
+
           ALLOCATE(PartOrder(SIZE(NeighbourPartsList)/2,2),&
                OrderedNodes % x(OrderedNodes % NumberOfNodes),&
                OrderedNodes % y(OrderedNodes % NumberOfNodes),&
@@ -2005,10 +2199,12 @@ CONTAINS
                UnorderedNodes % z(UnorderedNodes % NumberOfNodes),&
                UOGlobalNodeNums(UnorderedNodes % NumberOfNodes),&
                OrderedGlobalNodeNums(OrderedNodes % NumberOfNodes))
+
           nodenum_disps(1) = 0
           DO i=2, ParEnv % PEs
              nodenum_disps(i) = nodenum_disps(i-1) + PartNodesOnEdge(i-1)
           END DO
+
           IF(Debug) THEN
              PRINT *, 'debug disps: ', disps
              PRINT *, 'debug nodenum_disps: ', nodenum_disps
@@ -2016,11 +2212,13 @@ CONTAINS
              PRINT *, 'Partition Segments: ',PartSegments
           END IF
        END IF
+
        !-----------------------------------------------------------
        ! Gather node coords from all partitions
        ! Note, they're going into 'UnorderedNodes': though they are ordered
        ! within their partition, the partitions aren't ordered...
        !-----------------------------------------------------------
+
        !Global Node Numbers
        CALL MPI_GATHERV(Mesh % ParallelInfo % GlobalDOFs(OrderedNodeNums),&
             NoNodesOnEdge,MPI_INTEGER,&
@@ -2028,6 +2226,7 @@ CONTAINS
             nodenum_disps,MPI_INTEGER,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
        !X coords
        CALL MPI_GATHERV(Mesh % Nodes % x(OrderedNodeNums),&
             NoNodesOnEdge,MPI_DOUBLE_PRECISION,&
@@ -2035,6 +2234,7 @@ CONTAINS
             nodenum_disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
        !Y coords
        CALL MPI_GATHERV(Mesh % Nodes % y(OrderedNodeNums),&
             NoNodesOnEdge,MPI_DOUBLE_PRECISION,&
@@ -2042,6 +2242,7 @@ CONTAINS
             nodenum_disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
        !Z coords
        CALL MPI_GATHERV(Mesh % Nodes % z(OrderedNodeNums),&
             NoNodesOnEdge,MPI_DOUBLE_PRECISION,&
@@ -2049,18 +2250,22 @@ CONTAINS
             nodenum_disps,MPI_DOUBLE_PRECISION,0,comm, ierr)
        IF(ierr /= MPI_SUCCESS) CALL Fatal(FuncName,"MPI Error!")
        CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+
        !-----------------------------------------------------------
        ! Determine order of partitions by linking neighbours and
        ! checking globalnodenumbers where appropriate
        !-----------------------------------------------------------
+
        IF(Boss) THEN
           !Notes: NeighbourPartsList is zero indexed, like PEs
           !PartOrder is 1 indexed
           !disps is 1 indexed. So disps(NeighbourPartsList+1)
+
           PartOrder = 0 !init
           direction = 0
           prev = -1
           next = 0
+
           !First fill in PartNeighbourList % Neighbours
           DO i=1,ParEnv % PEs
              IF(PartSegments(i)==0) CYCLE
@@ -2076,6 +2281,7 @@ CONTAINS
                    PartNeighbourList(i) % Neighbours(j) = -1
                 END IF
              END DO
+
              IF(Debug) PRINT *, i-1, ': Neighbours: ', PartNeighbourList(i) % Neighbours
              !find a corner partition
              IF(ANY(PartNeighbourList(i) % Neighbours == prev)) next = i
@@ -2098,17 +2304,22 @@ CONTAINS
             CALL Fatal(FuncName,"Error - found corner but requested FullBoundary&
                  &- programming mistake.")
           END IF
+
           IF(Debug) THEN
              PRINT *, 'Debug GetDomainEdge, globalno, unorderednodes % x: '
              DO i=1,SIZE(UOGlobalNodeNums)
                 PRINT *, i, UOGlobalNodeNums(i), UnorderedNodes % x(i)
              END DO
+
              PRINT *, 'debug nodenum_disps: '
              DO i=1, SIZE(nodenum_disps)
                 PRINT *, i,'  ',nodenum_disps(i)
              END DO
           END IF
+
+
           counter = 1
+
           DO WHILE(.TRUE.)
             IF(Debug) PRINT *,'Next Partition is: ',next
              IF((COUNT(PartNeighbourList(next) % Neighbours == prev) == 1) .OR. &
@@ -2123,6 +2334,7 @@ CONTAINS
                 IF(Debug) PRINT *, 'debug, two matches'
                 DO j=1,SIZE(PartNeighbourList(next) % Neighbours)
                    IF(PartNeighbourList(next) % Neighbours(j) == prev) THEN
+
                       segnum = ((j-1)/2) + 1
                       direction = (2 * MOD(j, 2)) - 1
                       
@@ -2136,6 +2348,7 @@ CONTAINS
                       ELSE
                          foff = -1 * (PartNodesOnEdge(next) - PartSegStarts(next) % Indices(segnum) + 1)
                       END IF
+
                       IF(direction > 0) THEN
                          next_nodenum = UOGlobalNodeNums(1 + nodenum_disps(next) + soff)
                       ELSE
@@ -2158,11 +2371,13 @@ CONTAINS
                    END IF
                 END DO
              END IF
+
              segnum = ((index-1)/2) + 1 !1,2 -> 1, 3,4 -> 2
              direction = (2 * MOD(index, 2)) - 1
              PartOrder(counter,1) = next - 1
              PartOrder(counter,2) = direction * segnum
              counter = counter + 1
+
              IF(Debug) THEN
                 PRINT *, 'index: ', index
                 PRINT *, 'segnum: ', segnum
@@ -2170,9 +2385,11 @@ CONTAINS
                 PRINT *, 'next: ', next
                 PRINT *, 'prev: ', prev
              END IF
+
              prev = next - 1
              j = next
              next = PartNeighbourList(next) % Neighbours(index + direction)
+
              !In case of two matches, need a target node to find
              IF(segnum == 1) THEN
                 soff = 0
@@ -2184,6 +2401,7 @@ CONTAINS
              ELSE
                 foff = -1 * (PartNodesOnEdge(j) - PartSegStarts(j) % Indices(segnum) + 1)
              END IF
+
              IF(direction < 0) THEN
                 target_nodenum = UOGlobalNodeNums(1 + nodenum_disps(prev+1) + soff)
              ELSE
@@ -2195,8 +2413,10 @@ CONTAINS
                 !one node before (-1) the next partition's (+1) nodes
                 target_nodenum = UOGlobalNodeNums(k + foff)
              END IF
+
              !wipe them out so we don't accidentally come back this way
              PartNeighbourList(j) % Neighbours(index:index+direction:direction) = -2
+
              IF(FullBoundary) THEN
                IF(Debug) THEN
                   PRINT *, 'new index: ', index
@@ -2206,6 +2426,7 @@ CONTAINS
                   PRINT *, 'new prev: ', prev
                   PRINT *, 'new neighbours: ', PartNeighbourList(next+1) % Neighbours
                END IF
+
                IF(ALL(PartNeighbourList(next+1) % Neighbours == -2)) THEN
                  IF(Debug) PRINT *,'Finished cycling neighbours in FullBoundary'
                  EXIT
@@ -2213,19 +2434,27 @@ CONTAINS
              ELSE IF(next == -1) THEN
                EXIT
              END IF
+
              next = next + 1
           END DO
+
           IF(Debug) PRINT *, 'Debug GetDomainEdge, part order:', PartOrder
+
        END IF
+
        !-----------------------------------------------------------
        ! Put nodes collected from partitions into order 
        !-----------------------------------------------------------
+
        IF(Boss) THEN
           put_start = 1
+
           DO i=1,SIZE(PartOrder,1)
              j = PartOrder(i,1) + 1
              segnum = PartOrder(i,2)
+
              IF(j==0) CALL Abort()
+
              foff = 0
              soff = 0
              IF(PartSegments(j) > 1) THEN
@@ -2237,7 +2466,9 @@ CONTAINS
                         PartSegStarts(j) % Indices
                    PRINT *, 'Debug GetDomainEdge, nodenum_disps(j): ',nodenum_disps(j)
                 END IF
+
                 IF(ABS(segnum) == 1) THEN
+
                    soff = 0
                 ELSE
                    soff = PartSegStarts(j) % Indices(ABS(segnum) - 1) - 1
@@ -2248,6 +2479,7 @@ CONTAINS
                    foff = -1 * (PartNodesOnEdge(j) - PartSegStarts(j) % Indices(ABS(segnum)) + 1)
                 END IF
              END IF
+
              part_start = 1 + nodenum_disps(j) !where are this partitions nodes?
              IF(segnum > 0) THEN
                 find_start = part_start + soff
@@ -2258,12 +2490,14 @@ CONTAINS
                 find_start = part_start + PartNodesOnEdge(j) - 1 + foff
                 find_stride = -1
              END IF
+
              put_fin = put_start + ABS(find_start - find_fin)
              IF(Debug) THEN
                 PRINT *, 'Debug, find start, end: ',find_start, find_fin, find_stride
                 PRINT *, 'Debug, put start, end: ',put_start, put_fin
                 PRINT *, 'Total slots: ',SIZE(OrderedNodes % x)
              END IF
+
              OrderedNodes % x(put_start:put_fin) = &
                   UnorderedNodes % x(find_start:find_fin:find_stride)
              OrderedNodes % y(put_start:put_fin) = &
@@ -2272,13 +2506,16 @@ CONTAINS
                   UnorderedNodes % z(find_start:find_fin:find_stride)
              OrderedGlobalNodeNums(put_start:put_fin) = &
                   UOGlobalNodeNums(find_start:find_fin:find_stride)
+
              put_start = put_fin !1 node overlap
           END DO
+
           IF(FullBoundary) THEN
             !In the full boundary case, we've inadvertently saved the first node twice
             ! (once at the end too) - this sorts that out
             n = OrderedNodes % NumberOfNodes - 1
             OrderedNodes % NumberOfNodes = n
+
             ALLOCATE(WorkReal(n,3))
             WorkReal(:,1) = OrderedNodes % x(1:n)
             WorkReal(:,2) = OrderedNodes % y(1:n)
@@ -2290,9 +2527,11 @@ CONTAINS
             OrderedNodes % z(1:n) = WorkReal(:,3)
             DEALLOCATE(WorkReal)
           END IF
+
           DEALLOCATE(OrderedNodeNums)
           ALLOCATE(OrderedNodeNums(OrderedNodes % NumberOfNodes))
           OrderedNodeNums = OrderedGlobalNodeNums(1:OrderedNodes % NumberOfNodes)
+
           IF(Debug) THEN
              PRINT *, 'Debug GetDomainEdge, globalno, orderednodes % x: '
              DO i=1,SIZE(OrderedNodes % x)
@@ -2300,16 +2539,20 @@ CONTAINS
              END DO
           END IF
        END IF
+
     ELSE !serial
        OrderedNodes % NumberOfNodes = NoNodesOnEdge
        ALLOCATE(OrderedNodes % x(OrderedNodes % NumberOfNodes),&
             OrderedNodes % y(OrderedNodes % NumberOfNodes),&
             OrderedNodes % z(OrderedNodes % NumberOfNodes))
+
        OrderedNodes % x = Mesh % Nodes % x(OrderedNodeNums)
        OrderedNodes % y = Mesh % Nodes % y(OrderedNodeNums)
        OrderedNodes % z = Mesh % Nodes % z(OrderedNodeNums)
+
        !No action required on OrderedNodeNums...
     END IF
+
     !-------------------------------------------------------------
     ! Simplify geometry by removing interior nodes on any straight
     ! lines if requested
@@ -2317,6 +2560,7 @@ CONTAINS
     IF(Simpl .AND. Boss) THEN
        ALLOCATE(RemoveNode(OrderedNodes % NumberOfNodes))
        RemoveNode = .FALSE.
+
        DO i=2,OrderedNodes % NumberOfNodes-1 !Test all interior nodes
           IF(Debug) THEN
              PRINT *, (NodesGradXY(OrderedNodes,i,i-1))
@@ -2325,16 +2569,21 @@ CONTAINS
                   NodesGradXY(OrderedNodes,i+1,i))
              PRINT *, ''
           END IF
+
           !Need to determine numerical precision of input datapoints
           !i.e. after how many decimal places are values constant
           !e.g. 0.23000000... or 99999...
           prec = MAX(RealAeps(OrderedNodes % x(i)),RealAeps(OrderedNodes % y(i)))
+
           IF(ABS(NodesGradXY(OrderedNodes,i,i-1) - NodesGradXY(OrderedNodes,i+1,i)) < prec) THEN
              RemoveNode(i) = .TRUE.
           END IF
        END DO
+
        IF(COUNT(RemoveNode) > 0) THEN
+
           CALL RemoveNodes(OrderedNodes, RemoveNode, OrderedNodeNums)
+
           IF(Debug) THEN
              PRINT *, 'Debug GetDomainEdge, Simplify removing: ', COUNT(RemoveNode), ' nodes'
              DO i=1,OrderedNodes % NumberOfNodes
@@ -2342,9 +2591,11 @@ CONTAINS
                 PRINT *, 'x: ',OrderedNodes % x(i),'y: ',OrderedNodes % y(i)
              END DO
           END IF !debug
+
        END IF !removing any nodes
        DEALLOCATE(RemoveNode)
     END IF !simplify       
+
     !-------------------------------------------------------------
     ! Remove any nodes which are closer together than MinDist, if
     ! this is specified.
@@ -2360,6 +2611,7 @@ CONTAINS
           DO WHILE(RemoveNode(j))
              j = j-1
           END DO
+
           IF(NodeDist2D(OrderedNodes, i, j) < MinDist) THEN
              RemoveNode(i) = .TRUE.
              IF(Debug) THEN
@@ -2368,8 +2620,11 @@ CONTAINS
              END IF
           END IF
        END DO
+
        IF(COUNT(RemoveNode) > 0) THEN
+
           CALL RemoveNodes(OrderedNodes, RemoveNode, OrderedNodeNums)
+
           IF(Debug) THEN
              PRINT *, 'Debug GetDomainEdge, MinDist removing: ', COUNT(RemoveNode), ' nodes'
              DO i=1,OrderedNodes % NumberOfNodes
@@ -2377,11 +2632,15 @@ CONTAINS
                 PRINT *, 'x: ',OrderedNodes % x(i),'y: ',OrderedNodes % y(i)
              END DO
           END IF !debug
+
        END IF !removing any nodes
        DEALLOCATE(RemoveNode)
     END IF !MinDist
+
     !------------ DEALLOCATIONS ------------------
+
     DEALLOCATE(OnEdge, UnorderedNodeNums, GlobalCorners, CornerParts, PCornerCounts)
+
     IF(Boss .AND. Parallel) THEN !Deallocations
        DEALLOCATE(UnorderedNodes % x, &
             UnorderedNodes % y, &
@@ -2392,7 +2651,9 @@ CONTAINS
             UOGlobalNodeNums, &
             OrderedGlobalNodeNums)
     END IF
+
   END SUBROUTINE GetDomainEdge
+
   ! Copies over time variables and creates coordinate vars. Basically pinched
   ! from AddMeshCoordinatesAndTime() and Multigrid
   SUBROUTINE CopyIntrinsicVars(OldMesh, NewMesh)
@@ -2403,70 +2664,95 @@ CONTAINS
     TYPE(Variable_t), POINTER :: WorkVar
     !----------------------------------------------------------
     NULLIFY( Solver )
+
     CALL VariableAdd( NewMesh % Variables, NewMesh,Solver, &
          'Coordinate 1',1,NewMesh % Nodes % x )
+
     CALL VariableAdd(NewMesh % Variables,NewMesh,Solver, &
          'Coordinate 2',1,NewMesh % Nodes % y )
+
     CALL VariableAdd(NewMesh % Variables,NewMesh,Solver, &
          'Coordinate 3',1,NewMesh % Nodes % z )
     
     WorkVar => VariableGet( OldMesh % Variables, 'Time', ThisOnly=.TRUE.)
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, 'Time', 1, WorkVar % Values )
+
     WorkVar => VariableGet( OldMesh % Variables, 'Periodic Time', ThisOnly=.TRUE.)
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, 'Periodic Time', 1, WorkVar % Values )
+
     WorkVar => VariableGet( OldMesh % Variables, 'Timestep', ThisOnly=.TRUE.)
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, 'Timestep', 1, WorkVar % Values )
+
     WorkVar => VariableGet( OldMesh % Variables, 'Timestep size', ThisOnly=.TRUE.)
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, 'Timestep size', 1, WorkVar % Values )
+
     WorkVar => VariableGet( OldMesh % Variables, 'Timestep interval', ThisOnly=.TRUE.)
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, 'Timestep interval', 1, WorkVar % Values )
+
     WorkVar => VariableGet( OldMesh % Variables, 'Coupled iter', ThisOnly=.TRUE.)
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, 'Coupled iter', 1, WorkVar % Values )
+
     WorkVar => VariableGet( OldMesh % Variables, 'Nonlin iter', ThisOnly=.TRUE.)
     CALL VariableAdd( NewMesh % Variables, NewMesh, Solver, 'Nonlin iter', 1, WorkVar % Values )
+
   END SUBROUTINE CopyIntrinsicVars
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !Function to rotate a mesh by rotationmatrix
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   SUBROUTINE RotateMesh(Mesh, RotationMatrix)
+
     IMPLICIT NONE
+
     TYPE(Mesh_t) :: Mesh
     REAL(KIND=dp) :: RotationMatrix(3,3), NodeHolder(3)
     INTEGER :: i
+
     DO i=1,Mesh % NumberOfNodes
        NodeHolder(1) = Mesh % Nodes % x(i)
        NodeHolder(2) = Mesh % Nodes % y(i)
        NodeHolder(3) = Mesh % Nodes % z(i)
+
        NodeHolder = MATMUL(RotationMatrix,NodeHolder)
+
        Mesh % Nodes % x(i) = NodeHolder(1)
        Mesh % Nodes % y(i) = NodeHolder(2)
        Mesh % Nodes % z(i) = NodeHolder(3)
     END DO
+
   END SUBROUTINE RotateMesh
   
   SUBROUTINE DeallocateElement(Element)
    
     IMPLICIT NONE
     TYPE(Element_t) :: Element
+
     IF ( ASSOCIATED( Element % NodeIndexes ) ) &
          DEALLOCATE( Element % NodeIndexes )
     Element % NodeIndexes => NULL()
+
     IF ( ASSOCIATED( Element % EdgeIndexes ) ) &
          DEALLOCATE( Element % EdgeIndexes )
     Element % EdgeIndexes => NULL()
+
     IF ( ASSOCIATED( Element % FaceIndexes ) ) &
          DEALLOCATE( Element % FaceIndexes )
     Element % FaceIndexes => NULL()
+
     IF ( ASSOCIATED( Element % DGIndexes ) ) &
          DEALLOCATE( Element % DGIndexes )
     Element % DGIndexes => NULL()
+
     IF ( ASSOCIATED( Element % BubbleIndexes ) ) &
          DEALLOCATE( Element % BubbleIndexes )
     Element % BubbleIndexes => NULL()
+
     IF ( ASSOCIATED( Element % PDefs ) ) &
          DEALLOCATE( Element % PDefs )
     Element % PDefs => NULL()
+
   END SUBROUTINE DeallocateElement
+
   !Identify front elements connected to the bed, which are sufficiently horizontal
   !to warrant reclassification as basal elements.
   !Note, only does elements currently connected to the bed. i.e. one row per dt
@@ -2477,8 +2763,10 @@ CONTAINS
   !
   ! NOTE, if an error in this subroutine, could be element
   ! which sits between 2 NewBasalElems
+
   SUBROUTINE ConvertFrontalToBasal(Model, Mesh, FrontMaskName, BotMaskName, &
        ZThresh, NewBasalNode, FoundSome)
+
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: ZThresh
@@ -2497,9 +2785,11 @@ CONTAINS
     REAL(KIND=dp) :: Normal(3)
     LOGICAL :: ThisBC, Found, Debug
     CHARACTER(MAX_NAME_LEN) :: FuncName
+
     FoundSome = .FALSE.
     FuncName = "ConvertFrontalToBasal"
     Debug = .FALSE.
+
     n = Mesh % NumberOfNodes
     ALLOCATE(NewBasalNode(n),&
          ExFrontalNode(n),&
@@ -2507,13 +2797,16 @@ CONTAINS
          BotPerm(n),&
          NewBasalElem(Mesh % NumberOfBulkElements+1: &
          Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements))
+
     NewBasalNode = .FALSE.
     ExFrontalNode = .FALSE.
     NewBasalElem = .FALSE.
+
     CALL MakePermUsingMask( Model, NullSolver, Mesh, BotMaskName, &
          .FALSE., BotPerm, dummyint)
     CALL MakePermUsingMask( Model, NullSolver, Mesh, FrontMaskName, &
          .FALSE., FrontPerm, dummyint)
+
     !Find frontal BC from logical
     DO i=1,Model % NumberOfBCs
        ThisBC = ListGetLogical(Model % BCs(i) % Values,FrontMaskName,Found)
@@ -2521,6 +2814,7 @@ CONTAINS
        FrontBCtag =  Model % BCs(i) % Tag
        EXIT
     END DO
+
     !Find basal BC from logical
     DO i=1,Model % NumberOfBCs
        ThisBC = ListGetLogical(Model % BCs(i) % Values,BotMaskName,Found)
@@ -2528,74 +2822,101 @@ CONTAINS
        BasalBCtag =  Model % BCs(i) % Tag
        EXIT
     END DO
+
     CountSharedExFrontal = 0
     CountSharedNewBasal = 0
     SharedExGlobal = 0
     SharedNewGlobal = 0
+
     !---------------------------------------------------
     ! Find elements for conversion, and set node switches
     !---------------------------------------------------
     DO i=Mesh % NumberOfBulkElements + 1, &
          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
        Element => Mesh % Elements(i)
        IF(Element % BoundaryInfo % Constraint /= FrontBCtag) CYCLE !not on front
        IF(Element % TYPE % ElementCode == 101) CYCLE
+
        NodeIndexes => Element % NodeIndexes
+
        IF(.NOT. (ANY(BotPerm(NodeIndexes) > 0) )) CYCLE !not connected to bed
+
        n = Element % TYPE % NumberOfNodes
+
        ALLOCATE(Nodes % x(n), Nodes % y(n), Nodes % z(n))
+
        Nodes % x = Mesh % Nodes % x(NodeIndexes)
        Nodes % y = Mesh % Nodes % y(NodeIndexes)
        Nodes % z = Mesh % Nodes % z(NodeIndexes)
+
        Normal = NormalVector(Element, Nodes)
+
        !compare element normal to threshold
        IF(Normal(3) < ZThresh) THEN
           FoundSome = .TRUE.
+
           !Nodes currently on bed become 'ex frontal nodes'
           !Nodes not currently on bed become 'new basal nodes'
           DO j=1,SIZE(NodeIndexes)
+
              IF(BotPerm(NodeIndexes(j)) > 0) THEN
                 IF(.NOT. ExFrontalNode(NodeIndexes(j))) THEN !maybe already got in another elem
+
                    ExFrontalNode(NodeIndexes(j)) = .TRUE.
+
                    !If node is in another partition, need to pass this info
                    IF(SIZE(Mesh % ParallelInfo % NeighbourList(NodeIndexes(j)) % Neighbours)>1) THEN
                       CountSharedExFrontal = CountSharedExFrontal + 1
                       IF(CountSharedExFrontal > 2) CALL Fatal(FuncName, &
                            "Found more than 2 ExFrontalNodes on partition boundary...")
+
                       SharedExGlobal(CountSharedExFrontal) = Mesh % ParallelInfo % GlobalDofs(NodeIndexes(j))
                    END IF
                 END IF
              ELSE
                 IF(.NOT. NewBasalNode(NodeIndexes(j))) THEN !maybe already got in another elem
+
                    NewBasalNode(NodeIndexes(j)) = .TRUE.
+
                    !If node is in another partition, need to pass this info
                    IF(SIZE(Mesh % ParallelInfo % NeighbourList(NodeIndexes(j)) % Neighbours)>1) THEN
                       CountSharedNewBasal = CountSharedNewBasal + 1
                       IF(CountSharedNewBasal > 2) CALL Fatal(FuncName, &
                            "Found more than 2 NewBasalNodes on partition boundary...")
+
                       SharedNewGlobal(CountSharedNewBasal) = &
                            Mesh % ParallelInfo % GlobalDofs(NodeIndexes(j))
                    END IF
                 END IF
+
+
              END IF
+
           END DO
+
           NewBasalElem(i) = .TRUE.
           IF(Debug) PRINT *, ParEnv % MyPE, 'Debug, converting element: ',i,&
                ' with nodes: ', NodeIndexes
        END IF
+
        DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
     END DO
+
     !Distribute information about shared frontal nodes
     !which are no longer on the front.
     !NOTE: we may also need to pass NewBasalNodes...
     IF(Debug) PRINT *,ParEnv % MyPE, ' Debug, shared ex frontal nodes: ',SharedExGlobal
     IF(Debug) PRINT *,ParEnv % MyPE, ' Debug, shared new basal nodes: ',SharedNewGlobal
+
     ALLOCATE(AllSharedExGlobal(2*ParEnv % PEs),&
          AllSharedNewGlobal(2*ParEnv % PEs))
+
     CALL MPI_ALLGATHER(SharedExGlobal,2,MPI_INTEGER,&
          AllSharedExGlobal,2,MPI_INTEGER, ELMER_COMM_WORLD, ierr)
     CALL MPI_ALLGATHER(SharedNewGlobal,2,MPI_INTEGER,&
          AllSharedNewGlobal,2,MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
     DO i=1,Mesh % NumberOfNodes
        IF(FrontPerm(i) <= 0) CYCLE
        IF(ANY(AllSharedExGlobal == Mesh % ParallelInfo % GlobalDOFs(i))) THEN
@@ -2609,28 +2930,37 @@ CONTAINS
           IF(Debug) PRINT *, ParEnv % MyPE, ' Debug, received shared newbasalnode: ',i
        END IF
     END DO
+
     !------------------------------------------------------------------------------
     ! Cycle front elements, looking for those to convert 404 -> 303 for front interp
     ! And, also, a rare case where one element is sandwiched between shared ExFrontalNodes
     ! In this case, cycle
     !------------------------------------------------------------------------------
     DO j=1,2
+
        count303 = 0
        DO i=Mesh % NumberOfBulkElements + 1, &
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
           Element => Mesh % Elements(i)
           IF(Element % BoundaryInfo % Constraint /= FrontBCtag) CYCLE !not on front
           IF(Element % TYPE % ElementCode == 101) CYCLE
           IF(NewBasalElem(i)) CYCLE !element disappears from front entirely
+
           NodeIndexes => Element % NodeIndexes
+
           IF(.NOT. (ANY(BotPerm(NodeIndexes) > 0) )) CYCLE
           IF(.NOT. ANY(ExFrontalNode(NodeIndexes))) CYCLE !Not affected
+
           IF(j==2 .AND. Debug) PRINT *, ParEnv % MyPE, ' Debug, switching element: ',&
                i,' with nodeindexes ', NodeIndexes
+
           IF(COUNT(ExFrontalNode(NodeIndexes)) /= 1) CYCLE
+
           !iff only change one row of elements at at time, we only get here
           !through elements to the side which become 303
           count303 = count303 + 1
+
           !First time we just count and allocate...
           IF(j==2) THEN
              DO k=1,2
@@ -2638,69 +2968,93 @@ CONTAINS
                 New303Elements(count303,k) % NDOFs = 3
                 New303Elements(count303,k) % ElementIndex = i
                 New303Elements(count303,k) % BodyID = Element % BodyID
+
                 ALLOCATE(New303Elements(count303,k) % NodeIndexes(3))
              END DO
+
              !The temporary frontal element
              New303Elements(count303,1) % NodeIndexes = &
                   PACK(NodeIndexes, (.NOT. ExFrontalNode(NodeIndexes)))
+
              !The temporary basal element
              New303Elements(count303,2) % NodeIndexes = &
                   PACK(NodeIndexes, ( (BotPerm(NodeIndexes)>0) .OR. NewBasalNode(NodeIndexes) ) )
+
              DO k=1,2
                 ALLOCATE(New303Elements(count303,k) % BoundaryInfo)
                 New303Elements(count303,k) % BoundaryInfo % Left  => Element % BoundaryInfo % Left
                 New303Elements(count303,k) % BoundaryInfo % Right => Element % BoundaryInfo % Right
+
                 IF(k==1) THEN
                    n = FrontBCtag
                 ELSE
                    n = BasalBCtag
                 END IF
+
                 New303Elements(count303,k) % BoundaryInfo % Constraint = n
              END DO
+
              IF(Debug) PRINT *, ParEnv % MyPE, ' debug, new frontal element ',i,' has nodes: ', &
                   New303Elements(count303,1) % NodeIndexes
+
              IF(Debug) PRINT *, ParEnv % MyPE, ' debug, new basal element ',i,' has nodes: ', &
                   New303Elements(count303,2) % NodeIndexes
           END IF
        END DO
+
        IF(j==1) THEN
           ALLOCATE(New303Elements(count303,2))
        END IF
+
     END DO
+
     !-------------------------------------------------------
     ! Now modify mesh % elements accordingly
     !-------------------------------------------------------
     IF(FoundSome) THEN
+
        OldElemCount = Mesh % NumberOfBulkElements + &
             Mesh % NumberOfBoundaryElements
        NewElemCount = OldElemCount + count303
+
        ALLOCATE(WorkElements(NewElemCount))
        WorkElements(1:OldElemCount) = Mesh % Elements(1:OldElemCount)
+
        DO i=1,count303
           n = New303Elements(i,1) % ElementIndex
+
           Element => WorkElements(n)
+
           CALL FreeElementStuff(Element)
  
           Element = New303Elements(i,1)
           Element => WorkElements(OldElemCount + i)
+
           Element = New303Elements(i,2)
           Element % ElementIndex = OldElemCount + i
        END DO
+
        ! Change constraint on NewBasalElem
        DO i=LBOUND(NewBasalElem,1),UBOUND(NewBasalElem,1)
           IF(.NOT. NewBasalElem(i)) CYCLE
           WorkElements(i) % BoundaryInfo % Constraint = BasalBCtag
        END DO
+
        DEALLOCATE(Mesh % Elements)
        Mesh % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements + count303
        Mesh % Elements => WorkElements
     END IF
+
     CALL SParIterAllReduceOR(FoundSome)
+
     NULLIFY(WorkElements)
+
     !TODO: Free New303Elements
     DEALLOCATE(AllSharedExGlobal, AllSharedNewGlobal, &
          NewBasalElem, FrontPerm, BotPerm, ExFrontalNode)
+
   END SUBROUTINE ConvertFrontalToBasal
+
   SUBROUTINE FreeElementStuff(Element)
     TYPE(Element_t), POINTER :: Element
     IF(ASSOCIATED(Element % NodeIndexes)) DEALLOCATE(Element % NodeIndexes)    
@@ -2710,27 +3064,37 @@ CONTAINS
     IF(ASSOCIATED(Element % DGIndexes)) DEALLOCATE(Element % DGIndexes)
     IF(ASSOCIATED(Element % PDefs)) DEALLOCATE(Element % PDefs)
   END SUBROUTINE FreeElementStuff
+
+
   !Turns off (or back on) a specified solver, and adds a string "Save Exec When"
   ! to solver % values to allow it to be switched back on to the correct setting.
   SUBROUTINE SwitchSolverExec(Solver, Off)
+
     IMPLICIT NONE
+
     TYPE(Solver_t) :: Solver
     LOGICAL :: Off
     !-----------------------------------------
     CHARACTER(MAX_NAME_LEN) :: SaveExecWhen
     LOGICAL :: Found
+
     SaveExecWhen = ListGetString(Solver % Values, "Save Exec When", Found)
     IF(.NOT. Found) THEN
       SaveExecWhen = ListGetString(Solver % Values, 'Exec Solver', Found)
       IF(.NOT. Found) SaveExecWhen = 'always'
       CALL ListAddString(Solver % Values, 'Save Exec When', SaveExecWhen)
     END IF
+
     IF(Off) THEN
+
       !Turning the solver off
       Solver % SolverExecWhen = SOLVER_EXEC_NEVER
       CALL ListAddString(Solver % Values, 'Exec Solver', 'Never')
+
     ELSE
+
       CALL ListAddString(Solver % Values, 'Exec Solver', SaveExecWhen)
+
       SELECT CASE( SaveExecWhen )
       CASE( 'never' )
         Solver % SolverExecWhen = SOLVER_EXEC_NEVER
@@ -2751,83 +3115,124 @@ CONTAINS
       CASE DEFAULT
         CALL Fatal("SwitchSolverExec","Programming error here...")
       END SELECT
+
     END IF
+
   END SUBROUTINE SwitchSolverExec
+
   SUBROUTINE PlanePointIntersection ( pp, pnorm, p1, p2, p_intersect, found_intersection )
     !Get the intersection point between a line and plane in 3D
     ! Plane defined by point "pp" and norm "pnorm", line defined by points "p1" and "p2"
     ! Intersection returned in p_intersect
     !found_intersection = .FALSE. if they happen to be parallel
+
     REAL(KIND=dp) :: pp(3), pnorm(3), p1(3), p2(3), p_intersect(3)
     LOGICAL :: found_intersection
     !----------------------------
     REAL(KIND=dp) :: pl(3), dist
+
     pl = p2 - p1
+
     IF(ABS(DOT_PRODUCT(pl,pnorm)) < EPSILON(1.0_dp)) THEN
       !Line and plane are parallel...
       found_intersection = .FALSE.
       RETURN
     END IF
+
     dist = DOT_PRODUCT((pp - p1), pnorm) / DOT_PRODUCT(pl,pnorm)
+
     p_intersect = p1 + dist*pl
     found_intersection = .TRUE.
+
   END SUBROUTINE PlanePointIntersection
+
   SUBROUTINE LineSegmentsIntersect ( a1, a2, b1, b2, intersect_point, does_intersect )
     ! Find if two 2D line segments intersect
     ! Line segment 'a' runs from point a1 => a2, same for b
+
     IMPLICIT NONE
+
     REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
     LOGICAL :: does_intersect
     !-----------------------
     REAL(KIND=dp) :: r(2), s(2), rxs, bma(2), t, u
+
+
     does_intersect = .FALSE.
     intersect_point = 0.0_dp
+
     r = a2 - a1
     s = b2 - b1
+
     rxs = VecCross2D(r,s)
+
     IF(rxs == 0.0_dp) RETURN
+
     bma = b1 - a1
+
     t = VecCross2D(bma,s) / rxs
     u = VecCross2D(bma,r) / rxs
+
     IF(t < 0.0_dp .OR. t > 1.0_dp .OR. u < 0.0_dp .OR. u > 1.0_dp) RETURN
+
     intersect_point = a1 + (t * r)
     does_intersect = .TRUE.
+
   END SUBROUTINE LineSegmentsIntersect
+
   SUBROUTINE LinesIntersect ( a1, a2, b1, b2, intersect_point, does_intersect )
     ! Find where two 2D lines intersect
     ! Line 'a' explicitly defined by points a1, a2 which lie on line, same for b
     ! based on LineSegmentsIntersect above
+
     IMPLICIT NONE
+
     REAL(KIND=dp) :: a1(2), a2(2), b1(2), b2(2), intersect_point(2)
     LOGICAL :: does_intersect
     !-----------------------
     REAL(KIND=dp) :: r(2), s(2), rxs, bma(2), t, u
+
+
     does_intersect = .TRUE.
+
     intersect_point = 0.0_dp
+
     r = a2 - a1
     s = b2 - b1
+
     rxs = VecCross2D(r,s)
+
     IF(rxs == 0.0_dp) THEN
       does_intersect = .FALSE.
       RETURN
     ENDIF
+
     bma = b1 - a1
+
     t = VecCross2D(bma,s) / rxs
     u = VecCross2D(bma,r) / rxs
+
     intersect_point = a1 + (t * r)
+
   END SUBROUTINE LinesIntersect
+
   FUNCTION VecCross2D(a, b) RESULT (c)
     REAL(KIND=dp) :: a(2), b(2), c
+
     c = a(1)*b(2) - a(2)*b(1)
+
   END FUNCTION VecCross2D
+
   !This subroutine should identify discrete calving events for the
   !purposes of local remeshing. For now it returns 1
   SUBROUTINE CountCalvingEvents(Model, Mesh,CCount)
     TYPE(Model_t) :: Model
     TYPE(Mesh_t),POINTER :: Mesh
     INTEGER :: CCount
+
     Ccount = 1
   END SUBROUTINE CountCalvingEvents
+
  ! shortest distance of c to segment ab, a b and c are in 2D
   FUNCTION  PointLineSegmDist2D(a, b, c)  RESULT (pdis)
     REAL(KIND=dp) :: a(2), b(2), c(2), n(2), v(2), dd, t, pdis
@@ -2846,7 +3251,9 @@ CONTAINS
   ! up missing boundary nodes using reduced dim
   ! (InterpolateVarToVarReduced)
   SUBROUTINE SwitchMesh(Model, Solver, OldMesh, NewMesh)
+
     IMPLICIT NONE
+
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
     TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
@@ -2865,6 +3272,7 @@ CONTAINS
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, WorkName
+
     INTERFACE
        SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
             NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
@@ -2882,6 +3290,7 @@ CONTAINS
          CHARACTER(LEN=*),OPTIONAL :: MaskName
        END SUBROUTINE InterpolateMeshToMesh
     END INTERFACE
+
     SolverName = "SwitchMesh"
     Debug = .FALSE.
     Params => Solver % Values
@@ -2890,11 +3299,14 @@ CONTAINS
     CALL Info( 'Remesher', ' Switching from old to new mesh...',Level=4 )
     CALL Info( 'Remesher', '-------------------------------------',Level=4 )
     CALL Info( 'Remesher', ' ',Level=4 )
+
     IF(ASSOCIATED(NewMesh % Variables)) CALL Fatal(SolverName,&
          "New mesh already has variables associated!")
+
     !interpolation epsilons
     globaleps = 1.0E-2_dp
     localeps = 1.0E-2_dp
+
     !----------------------------------------------
     ! Get the orientation of the calving front
     ! & compute rotation matrix
@@ -2906,18 +3318,24 @@ CONTAINS
     END DO
     RotationMatrix = ComputeRotationMatrix(FrontOrientation)
     UnRotationMatrix = TRANSPOSE(RotationMatrix)
+
     !----------------------------------------------
     !               Action
     !----------------------------------------------
+
     CALL CopyIntrinsicVars(OldMesh, NewMesh)
+
     !----------------------------------------------
     ! Add Variables to NewMesh
     !----------------------------------------------
+
     Var => OldMesh % Variables
     DO WHILE( ASSOCIATED(Var) )
+
        DoPrevValues = ASSOCIATED(Var % PrevValues)
        WorkSolver => Var % Solver
        HasValuesInPartition = .TRUE.
+
        !Do nothing if it already exists
        !e.g. it's a DOF component added previously
        NewVar => VariableGet( NewMesh % Variables, Var % Name, ThisOnly = .TRUE.)
@@ -2926,46 +3344,62 @@ CONTAINS
           Var => Var % Next
           CYCLE
        END IF
+
        DOFs = Var % DOFs
        Global = (SIZE(Var % Values) .EQ. DOFs)
+
        !Allocate storage for values and perm
        IF(Global) THEN 
           ALLOCATE(WorkReal(DOFs))
           WorkReal = Var % Values
+
           CALL VariableAdd( NewMesh % Variables, NewMesh, &
                Var % Solver, TRIM(Var % Name), &
                Var % DOFs, WorkReal)
+
        ELSE !Regular field variable
           ALLOCATE(WorkPerm(NewMesh % NumberOfNodes))
+
           IF(.NOT. ASSOCIATED(WorkSolver)) THEN
              WRITE(Message, '(a,a,a)') "Variable ",Var % Name," has no solver, unexpected."
              CALL Fatal(SolverName, Message)
           END IF
+
           PrimaryVar = ASSOCIATED(WorkSolver % Variable, Var)
+
           IF(PrimaryVar) THEN !Take care of the matrix
              NoMatrix = ListGetLogical( WorkSolver % Values, 'No matrix',Found)
              !Issue here, this will recreate matrix for every variable associated w/ solver.
+
              IF(.NOT. NoMatrix) THEN
                 IF(ParEnv % MyPE == 0) PRINT *, 'Computing matrix for variable: ',TRIM(Var % Name)
+
                 DoOptimizeBandwidth = ListGetLogical( WorkSolver % Values, &
                      'Optimize Bandwidth', Found )
                 IF ( .NOT. Found ) DoOptimizeBandwidth = .TRUE.
+
                 GlobalBubbles = ListGetLogical( WorkSolver % Values, &
                      'Bubbles in Global System', Found )
                 IF ( .NOT. Found ) GlobalBubbles = .TRUE.
+
                 WorkMatrix => CreateMatrix(Model, WorkSolver, &
                      NewMesh, WorkPerm, DOFs, MATRIX_CRS, DoOptimizeBandwidth, &
                      ListGetString( WorkSolver % Values, 'Equation' ), &
                      GlobalBubbles = GlobalBubbles )
+
                 IF(ASSOCIATED(WorkMatrix)) THEN
                    WorkMatrix % Comm = ELMER_COMM_WORLD
+
                    WorkMatrix % Symmetric = ListGetLogical( WorkSolver % Values, &
                         'Linear System Symmetric', Found )
+
                    WorkMatrix % Lumped = ListGetLogical( WorkSolver % Values, &
                         'Lumped Mass Matrix', Found )
+
                    CALL AllocateVector( WorkMatrix % RHS, WorkMatrix % NumberOfRows )
                    WorkMatrix % RHS = 0.0_dp
                    WorkMatrix % RHS_im => NULL()
+
                    ALLOCATE(WorkMatrix % Force(WorkMatrix % NumberOfRows, WorkSolver % TimeOrder+1))
                    WorkMatrix % Force = 0.0_dp
                 ELSE
@@ -2973,13 +3407,16 @@ CONTAINS
                    NoMatrix = .TRUE.
                 END IF
              END IF
+
              IF ( ASSOCIATED(Var % EigenValues) ) THEN
                 n = SIZE(Var % EigenValues)
+
                 IF ( n > 0 ) THEN
                    WorkSolver % NOFEigenValues = n
                    CALL AllocateVector( NewVar % EigenValues,n )
                    CALL AllocateArray( NewVar % EigenVectors, n, &
                         SIZE(NewVar % Values) ) 
+
                    NewVar % EigenValues  = 0.0d0
                    NewVar % EigenVectors = 0.0d0
                    IF(.NOT.NoMatrix) THEN
@@ -2988,20 +3425,34 @@ CONTAINS
                    END IF
                 END IF
              END IF
+
+             !Check for duplicate solvers with same var
+             !Nullify/deallocate and repoint the matrix
+             !Note: previously this DO loop was after the FreeMatrix
+             !and pointing below, but this caused double free errors
+             DO j=1,Model % NumberOfSolvers
+               IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
+               IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
+               IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
+
+               !If the other solver's matrix is the same as WorkSolver matrix, we just
+               !nullify, otherwise we deallocate. After the first timestep, solvers
+               !with the same variable will have the same matrix
+               IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkSolver % Matrix)) THEN
+                 Model % Solvers(j) % Matrix => NULL()
+               ELSE
+                 CALL FreeMatrix(Model % Solvers(j) % Matrix)
+               END IF
+               !Point this other solver % matrix to the matrix we just created
+               Model % Solvers(j) % Matrix => WorkMatrix
+             END DO
+
+             !Deallocate the old matrix & repoint
              IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
              WorkSolver % Matrix => WorkMatrix
-             !Check for duplicate solvers with same var
-             DO j=1,Model % NumberOfSolvers
-                IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
-                IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
-                IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
-                !Ideally, the solver's old matrix would be freed here, but apart from the 
-                !first timestep, it'll be a duplicate
-                IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkMatrix)) CYCLE
-                CALL FreeMatrix(Model % Solvers(j) % Matrix)
-                Model % Solvers(j) % Matrix => WorkMatrix
-             END DO
+
              NULLIFY(WorkMatrix)
+
              !NOTE: We don't switch Solver % Variable here, because
              !Var % Solver % Var doesn't necessarily point to self
              !if solver has more than one variable. We do this below.
@@ -3009,6 +3460,7 @@ CONTAINS
              k = InitialPermutation(WorkPerm, Model, WorkSolver, &
                   NewMesh, ListGetString(WorkSolver % Values,'Equation'))
           END IF !Primary var
+
           HasValuesInPartition = COUNT(WorkPerm>0) > 0
           IF(HasValuesInPartition) THEN
              ALLOCATE(WorkReal(COUNT(WorkPerm>0)*DOFs))
@@ -3016,18 +3468,23 @@ CONTAINS
              !this is silly but it matches AddEquationBasics
              ALLOCATE(WorkReal(NewMesh % NumberOfNodes * DOFs))
           END IF
+
           WorkReal = 0.0_dp
           CALL VariableAdd( NewMesh % Variables, NewMesh, &
                Var % Solver, TRIM(Var % Name), &
                Var % DOFs, WorkReal, WorkPerm, &
                Var % Output, Var % Secondary, Var % TYPE )
+
        END IF !Not global
+
        NewVar => VariableGet( NewMesh % Variables, Var % Name, ThisOnly = .TRUE. )
        IF(.NOT.ASSOCIATED(NewVar)) CALL Fatal(SolverName,&
             "Problem creating variable on new mesh.")
+
        IF(DoPrevValues) THEN 
           ALLOCATE(NewVar % PrevValues( SIZE(NewVar % Values), SIZE(Var % PrevValues,2) ))
        END IF
+
        !Add the components of variables with more than one DOF
        !NOTE, this implementation assumes the vector variable
        !comes before the scalar components in the list.
@@ -3037,30 +3494,37 @@ CONTAINS
        IF((DOFs > 1) .AND. (.NOT.Global)) THEN
           nrows = SIZE(WorkReal)
           DO i=1,DOFs
+
              WorkReal2 => WorkReal( i:nrows-DOFs+i:DOFs )
              WorkName = ComponentName(TRIM(Var % Name),i)
              CALL VariableAdd( NewMesh % Variables, NewMesh, &
                   Var % Solver, WorkName, &
                   1, WorkReal2, WorkPerm, &
                   Var % Output, Var % Secondary, Var % TYPE )
+
              IF(DoPrevValues) THEN
                 WorkVar => VariableGet( NewMesh % Variables, WorkName, .TRUE. )
                 IF(.NOT. ASSOCIATED(WorkVar)) CALL Fatal(SolverName, &
                      "Error allocating Remesh Update PrevValues.")
+
                 NULLIFY(WorkVar % PrevValues)
                 WorkVar % PrevValues => NewVar % PrevValues(i:nrows-DOFs+i:DOFs,:)
              END IF
+
              NULLIFY(WorkReal2)
           END DO
        END IF
+
        NULLIFY(WorkReal, WorkPerm)
        Var => Var % Next
     END DO
+
     !Go back through and set non-primary variables to have same % perm as the primary var.
     !Bit of a hack - would be nice to somehow do this in one loop...
     !Set perms equal if: variable has solver, solver has variable, both variables have perm
     Var => NewMesh % Variables
     DO WHILE (ASSOCIATED(Var))
+
       WorkSolver => Var % Solver
       IF(ASSOCIATED(WorkSolver)) THEN
         IF(ASSOCIATED(WorkSolver % Variable % Perm)) THEN
@@ -3077,6 +3541,7 @@ CONTAINS
  
       Var => Var % Next
     END DO
+
     !set partitions to active, so variable can be -global -nooutput
     CALL ParallelActive(.TRUE.) 
     !MPI_BSend buffer issue in this call to InterpolateMeshToMesh
@@ -3087,21 +3552,26 @@ CONTAINS
        PRINT *, ParEnv % MyPE, ' missing ', COUNT(UnfoundNodes),' out of ',SIZE(UnfoundNodes),&
             ' nodes in SwitchMesh.'
     END IF
+
     !---------------------------------------------------------
     ! For top, bottom and calving front BC, do reduced dim 
     ! interpolation to avoid epsilon problems
     !---------------------------------------------------------
+
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Top Surface Mask",globaleps=globaleps,localeps=localeps)
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Bottom Surface Mask",globaleps=globaleps,localeps=localeps)
+
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
-    !CHANGE - need to delete UnfoundNodes from this statement, or front
-    !variables not copied across. If you get some odd interpolation artefacts
+
+    !CHANGE - need to delete UnfoundNOtes from this statement, or front
+    !variables not copied across. If you get some odd interpolation artefact,
     !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Calving Front Mask",globaleps=globaleps,localeps=localeps)
+
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
     ! Briefly, the 'DoGL' sections of CalvingRemesh adjust the Z coordinate of
@@ -3112,11 +3582,14 @@ CONTAINS
     ! InterpMaskedBC... on the bed should get them. Thus the only thing that may
     ! be missed would be variables defined solely on the front. Currently, none
     ! of these are important for the next timestep, so this should be fine.
+
     CALL RotateMesh(NewMesh, UnrotationMatrix)
     CALL RotateMesh(OldMesh, UnrotationMatrix)
+
     !-----------------------------------------------
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
+
     !CHANGE
     !Needs to be told to ignore certain solvers if using multiple meshes
     SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
@@ -3130,12 +3603,15 @@ CONTAINS
        END IF
 
        WorkSolver % Mesh => NewMesh !note, assumption here that there's only one active mesh
+
        !hack to get SingleSolver to recompute
        !should be taken care of by Mesh % Changed, but
        !this is reset by CoupledSolver for some reason
        WorkSolver % NumberOfActiveElements = -1 
+
        IF(.NOT. ASSOCIATED(WorkSolver % Variable)) CYCLE
        IF(WorkSolver % Variable % NameLen == 0) CYCLE !dummy  !invalid read
+
        !Check for multiple solvers with same var:
        !If one of the duplicate solvers is only executed before the simulation (or never),
        !then we don't point the variable at this solver. (e.g. initial groundedmask).
@@ -3147,6 +3623,7 @@ CONTAINS
           IF(j==i) CYCLE
           IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
           IF(TRIM(Model % Solvers(j) % Variable % Name) == WorkSolver % Variable % Name) THEN
+
              IF( (WorkSolver % SolverExecWhen == SOLVER_EXEC_NEVER) .OR. &
                   (WorkSolver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL) ) THEN
                 IF((Model % Solvers(j) % SolverExecWhen == SOLVER_EXEC_NEVER) .OR. &
@@ -3168,10 +3645,13 @@ CONTAINS
                    CALL Fatal(SolverName, Message)
                 END IF
              END IF
+
           END IF
        END DO
+
        WorkVar => VariableGet(NewMesh % Variables, &
             WorkSolver % Variable % Name, .TRUE.) !invalid read
+
        IF(ASSOCIATED(WorkVar)) THEN
           WorkSolver % Variable => WorkVar
           IF(PrimarySolver) WorkVar % Solver => WorkSolver
@@ -3181,21 +3661,31 @@ CONTAINS
           PRINT *, i,' debug, solver equation: ', ListGetString(WorkSolver % Values, "Equation")
           CALL Fatal(SolverName, Message)
        END IF
+
     END DO
+
+
     NewMesh % Next => OldMesh % Next
     Model % Meshes => NewMesh
     Model % Mesh => NewMesh
     Model % Variables => NewMesh % Variables
+
     !Free old mesh and associated variables
     CALL ReleaseMesh(OldMesh)
     DEALLOCATE(OldMesh)
     DEALLOCATE(UnfoundNodes)
+
     OldMesh => Model % Meshes
+
   END SUBROUTINE SwitchMesh
+
   SUBROUTINE InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, Variables, MaskName, &
        SeekNodes, globaleps, localeps)
+
     USE InterpVarToVar
+
     IMPLICIT NONE
+
     TYPE(Model_t) :: Model
     TYPE(Solver_t) :: Solver
     TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
@@ -3209,56 +3699,72 @@ CONTAINS
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
     LOGICAL, POINTER, OPTIONAL :: SeekNodes(:)
     CHARACTER(LEN=*) :: MaskName
+
     CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
          .FALSE., NewMaskPerm, dummyint)
+
     CALL MakePermUsingMask( Model, Solver, OldMesh, MaskName, &
          .FALSE., OldMaskPerm, dummyint)
+
     ALLOCATE(OldMaskLogical(SIZE(OldMaskPerm)),&
          NewMaskLogical(SIZE(NewMaskPerm)))
+
     OldMaskLogical = (OldMaskPerm <= 0)
     NewMaskLogical = (NewMaskPerm <= 0)
     IF(PRESENT(SeekNodes)) NewMaskLogical = &
          NewMaskLogical .OR. .NOT. SeekNodes
+
     IF(PRESENT(globaleps)) THEN
       geps = globaleps
     ELSE
       geps = 1.0E-4
     END IF
+
     IF(PRESENT(localeps)) THEN
       leps = localeps
     ELSE
       leps = 1.0E-4
     END IF
+
     IF(Debug) PRINT *, ParEnv % MyPE,'Debug, on boundary: ',TRIM(MaskName),' seeking ',&
          COUNT(.NOT. NewMaskLogical),' of ',SIZE(NewMaskLogical),' nodes.'
+
     ALLOCATE(InterpDim(1))
     InterpDim(1) = 3
+
     CALL ParallelActive(.TRUE.)
     CALL InterpolateVarToVarReduced(OldMesh, NewMesh, "remesh update 1", InterpDim, &
          UnfoundNodes, OldMaskLogical, NewMaskLogical, Variables=OldMesh % Variables, &
          GlobalEps=geps, LocalEps=leps)
+
     IF(ANY(UnfoundNodes)) THEN
       !NewMaskLogical changes purpose, now it masks supporting nodes
       NewMaskLogical = (NewMaskPerm <= 0)
+
       DO i=1, SIZE(UnfoundNodes)
           IF(UnfoundNodes(i)) THEN
              PRINT *,ParEnv % MyPE,'Didnt find point: ', i, &
                   ' x:', NewMesh % Nodes % x(i),&
                   ' y:', NewMesh % Nodes % y(i),&
                   ' z:', NewMesh % Nodes % z(i)
+
              CALL InterpolateUnfoundPoint( i, NewMesh, "remesh update 1", InterpDim, &
                   NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
           END IF
        END DO
+
        WRITE(Message, '(i0,a,a,a,i0,a,i0,a)') ParEnv % MyPE,&
             ' Failed to find all points on face: ',MaskName, ', ',&
             COUNT(UnfoundNodes),' of ',COUNT(.NOT. NewMaskLogical),' missing points.'
        CALL Warn("InterpMaskedBCReduced", Message)
     END IF
+
     DEALLOCATE(OldMaskLogical, &
          NewMaskLogical, NewMaskPerm, &
          OldMaskPerm, UnfoundNodes)
+
   END SUBROUTINE InterpMaskedBCReduced
+
   !Function to return the orientation of a calving front
   !If specified in SIF, returns this, otherwise computes it
   FUNCTION GetFrontOrientation(Model) RESULT (Orientation)
@@ -3267,8 +3773,11 @@ CONTAINS
     INTEGER :: i
     REAL(KIND=dp) :: Orientation(3),OrientSaved(3)
     REAL(KIND=dp), POINTER :: PArray(:,:) => NULL()
+
     LOGICAL :: FirstTime=.TRUE.,Constant
+
     SAVE :: FirstTime,Constant,PArray,OrientSaved
+
     IF(FirstTime) THEN
       FirstTime = .FALSE.
       !TODO - this will need to be defined on individual boundary conditions
@@ -3284,12 +3793,15 @@ CONTAINS
         CALL Info("GetFrontOrientation","No predefined Front Orientation, computing instead.", Level=6)
       END IF
     END IF
+
     IF(Constant) THEN
       Orientation = OrientSaved
       RETURN
     ELSE
       !Not implemented yet
     END IF
+
   END FUNCTION GetFrontOrientation
+
 END MODULE CalvingGeometry
 

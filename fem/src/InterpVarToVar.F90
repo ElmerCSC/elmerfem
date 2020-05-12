@@ -681,10 +681,7 @@ CONTAINS
        ! Only actually for if new mesh has bigger perm than old mesh
        ! Which crashes on result output
        ! If inequality other way round, standard routine works fine
-       IF(NewMesh % NumberOfNodes .NE. OldMesh % NumberOfNodes .OR. NewMesh % MeshDim .NE. OldMesh % MeshDim) THEN
-         ALLOCATE( NewHeight(NewMesh % NumberOfNodes ) )
-         NewHeight = 0.0_dp
-         ALLOCATE( NewPerm(NewMesh % NumberOfNodes ) )
+       IF(NewMesh % NumberOfNodes .NE.  OldMesh % NumberOfNodes .OR. NewMesh % MeshDim .NE. OldMesh % MeshDim) THEN
          !Special case for my calvinghydrointerp stuff
          PermVar => VariableGet( NewMesh % Variables, 'hydroweights', ThisOnly = .TRUE. )
          !On the assumption you'll have some velocity
@@ -695,6 +692,9 @@ CONTAINS
          IF(.NOT. ASSOCIATED(PermVar)) THEN
            PermVar => VariableGet( NewMesh % Variables, 'hydraulic potential', ThisOnly = .TRUE. )
          END IF
+         ALLOCATE( NewHeight(SIZE(PermVar % Values)))
+         NewHeight = 0.0_dp
+         ALLOCATE( NewPerm(SIZE(PermVar % Perm)) )
          NewPerm = PermVar % Perm
          NULLIFY(PermVar)
        ! This assumes that the mesh connectivity is the same...
