@@ -20,6 +20,26 @@
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
+SUBROUTINE AdjointSSA_CostTaubSolver_init0(Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+
+  Name = ListGetString( Solver % Values, 'Equation',UnFoundFatal=.TRUE.)
+  CALL ListAddNewString( Solver % Values,'Variable',&
+          '-nooutput '//TRIM(Name)//'_var')
+  CALL ListAddLogical(Solver % Values, 'Optimize Bandwidth',.FALSE.)
+
+END SUBROUTINE AdjointSSA_CostTaubSolver_init0
 ! ******************************************************************************
 ! *****************************************************************************
 SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
@@ -88,7 +108,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
   TYPE(GaussIntegrationPoints_t) :: IntegStuff
   REAL(KIND=dp) :: U,V,W,SqrtElementMetric
   REAL(KIND=dp),ALLOCATABLE,SAVE :: Basis(:), dBasisdx(:,:)
-  REAL(KIND=dp),ALLOCATABLE,SAVE :: Beta(:),Vnode(:,:),Vn(:),Taub(:)
+  REAL(KIND=dp),ALLOCATABLE,SAVE :: Beta(:),Vnode(:,:),Vn(:),Taub(:),NodalBetaDer(:)
   REAL(KIND=dp),ALLOCATABLE,SAVE :: Betab(:),Vnodeb(:,:),Vnb(:),Taubb(:)
   REAL(KIND=dp) :: Cost,Cost_S
   REAL(KIND=dp) :: coeff,coeffb,s,Lambda
@@ -106,6 +126,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: ResetCost
   LOGICAL :: Found
   LOGICAL :: stat
+  LOGICAL :: HaveBetaDer
   LOGICAL, SAVE :: Parallel
   LOGICAL, SAVE :: Firsttime=.TRUE.
 
@@ -130,7 +151,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
     N = model % MaxElementNodes
     allocate(ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N))
     allocate( Basis(N),dBasisdx(N,3))
-    allocate( Beta(N),Vnode(N,3),Vn(N),Taub(N))
+    allocate( Beta(N),Vnode(N,3),Vn(N),Taub(N),NodalBetaDer(N))
     allocate( Betab(N),Vnodeb(N,3),Vnb(N),Taubb(N))
 
 !!!!!!! Check for parallel run 
@@ -236,6 +257,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
       END SELECT
       
        Beta(1:n) = ListGetReal( Material, 'SSA Friction Parameter', n, NodeIndexes,UnFoundFatal=.TRUE.)
+       NodalBetaDer(1:n) = ListGetReal( Material, 'SSA Friction Parameter Derivative',n, NodeIndexes,Found=HaveBetaDer)
        DO i=1,n
          Vn(i)=0._dp
          Do j=1,DOFs
@@ -287,6 +309,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
           IF (Vn(i).GT.AEPS) THEN
             Vnb(i)=Taubb(i)*Beta(i)*0.5*fm*Vn(i)**(fm/2-1._dp)
             Betab(i)=Taubb(i)*Vn(i)**(fm/2)
+            IF (HaveBetaDer) Betab(i)=Betab(i)*NodalBetaDer(i)
           ELSE
             Vnb(i)=0._dp
             Betab(i)=0._dp
@@ -299,7 +322,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
           END DO
 
           DJDValues(DJDPerm(NodeIndexes(i)))=&
-            DJDValues(DJDPerm(NodeIndexes(i)))+Betab(i)
+              DJDValues(DJDPerm(NodeIndexes(i)))+Betab(i)
         END DO
 
     End do !Elements
@@ -333,7 +356,7 @@ SUBROUTINE AdjointSSA_CostTaubSolver( Model,Solver,dt,TransientSimulation )
    
    RETURN
 
- 1000  format('#date,time,',a1,'/',a1,'/',a4,',',a2,':',a2,':',a2)
+ 1000  format('#date,time,',a2,'/',a2,'/',a4,',',a2,':',a2,':',a2)
  1001  format('#lambda,',e15.8)
 !------------------------------------------------------------------------------
 END SUBROUTINE AdjointSSA_CostTaubSolver

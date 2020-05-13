@@ -1,4 +1,4 @@
-## Regularisation solver
+## Regularisation solver {#adjoint_CostReg}
 
 **Module name**: Adjoint_CostRegSolver  
 **Module subroutines**: Adjoint_CostRegSolver  
@@ -119,15 +119,20 @@ Bellow is a list of features that are not currently possible in this solver but 
 
 
 ### Tests and Examples
+
 Validation examples available under:  
-ELMER_SRC/elmerice/examples/Adjoint_CostRegSolver
 
-Tested:
+- ELMER_SRC/elmerice/examples/Adjoint_CostRegSolver
 
-- Regularisation penalising first spatial derivatives on a 2D mesh and on the bottom boundary of a 3D mesh 
+   Tested:
 
-- Regularisation from  *prior*
+   - Regularisation penalising first spatial derivatives on a 2D mesh and on the bottom boundary of a 3D mesh 
 
-- Optimisation  
+   - Regularisation from  *prior*
 
-- Prescribing nodal value from the body forces using a change of variable
+   - Optimisation  
+
+   - Prescribing nodal value from the body forces using a change of variable
+
+
+- See examples for the [SSA inverse methods](../../examples/SSA_Inverse_Methods)

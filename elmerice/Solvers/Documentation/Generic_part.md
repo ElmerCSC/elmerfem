@@ -1,1 +1,1 @@
-# Generic Solvers
+# Generic Solvers {#generic_solvers}

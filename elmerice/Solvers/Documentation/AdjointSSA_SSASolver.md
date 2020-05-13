@@ -122,3 +122,6 @@ Boundary Condition 1
 End
 ```
 
+### Tests and Examples
+
+- See examples for the [SSA inverse methods](../../examples/SSA_Inverse_Methods)

@@ -1,1 +1,1 @@
-# Comparing with observations
+# Comparing with observations {#cost_solvers}
