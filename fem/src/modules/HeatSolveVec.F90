@@ -983,7 +983,8 @@ CONTAINS
         ! Gebhardt factors are given elementwise at the center
         ! of the element, so take average of nodal temperatures
         !-------------------------------------------------------------
-        Text = Temps4(j)
+        bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
+        Text = Temps4(bindex)
         
         IF( j <= nf_imp ) THEN        
           ! Linearization of the G_jiT^4_j term

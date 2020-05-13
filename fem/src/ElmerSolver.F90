@@ -1448,7 +1448,6 @@ END INTERFACE
            Var => Var % Next
          END DO
        END IF
-
        
        m = Mesh % MaxElementDofs
        n = Mesh % MaxElementNodes      
@@ -1573,12 +1572,18 @@ END INTERFACE
                ! We do this elsewhere in a more efficient manner
                CONTINUE
                
-             ELSE IF ( Var % DOFs <= 1 ) THEN
-
+             ELSE IF ( Var % DOFs == 1 ) THEN
                 
                Work(1:n) = ListGetReal( IC, Var % Name, n, CurrentElement % NodeIndexes, GotIt )
                IF ( GotIt ) THEN
-                 DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
+                 ! Sometimes you may have both DG and bubbles,
+                 ! this way DG always has priority. 
+                 IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN 
+                   Indexes(1:n) = CurrentElement % DgIndexes(1:n)
+                 ELSE
+                   DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
+                 END IF
+
                  DO k=1,n
                    k1 = Indexes(k)
                    IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
@@ -1589,7 +1594,12 @@ END INTERFACE
                IF ( Transient .AND. Solver % TimeOrder==2 ) THEN
                  Work(1:n) = GetReal( IC, TRIM(Var % Name) // ' Velocity', GotIt )
                  IF ( GotIt ) THEN
-                   DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
+                   IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN 
+                     Indexes(1:n) = CurrentElement % DgIndexes(1:n)
+                   ELSE
+                     DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
+                   END IF
+
                    DO k=1,n
                      k1 = Indexes(k)
                      IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
@@ -1598,7 +1608,12 @@ END INTERFACE
                  END IF
                  Work(1:n) = GetReal( IC, TRIM(Var % Name) // ' Acceleration', GotIt )
                  IF ( GotIt ) THEN
-                   DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
+                   IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN 
+                     Indexes(1:n) = CurrentElement % DgIndexes(1:n)
+                   ELSE
+                     DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
+                   END IF
+
                    DO k=1,n
                      k1 = Indexes(k)
                      IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
@@ -1646,7 +1661,6 @@ END INTERFACE
            END DO
            CSolver => CurrentModel % Solver
          END DO
-
          
          ! Here we do just the gauss point values for now.
          ! It would really make sense to do the ICs in this order since probably
@@ -1776,7 +1790,8 @@ END INTERFACE
          Var => Mesh % Variables
          DO WHILE( ASSOCIATED(Var) ) 
            IF( ListCheckPresentAnyIC( CurrentModel, Var % Name ) ) THEN
-             PRINT *,'InitCond post range:',TRIM(Var % Name),MINVAL(Var % Values),MAXVAL( Var % Values)
+             PRINT *,'InitCond post range:',TRIM(Var % Name),&
+                 MINVAL(Var % Values),MAXVAL( Var % Values),SUM(Var % Values)/SIZE(Var % Values)
            END IF
            Var => Var % Next
          END DO

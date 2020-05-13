@@ -45,6 +45,7 @@
 MODULE LinearAlgebra
 
   USE Types
+  IMPLICIT NONE
 
  CONTAINS
 

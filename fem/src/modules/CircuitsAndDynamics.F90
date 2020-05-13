@@ -739,6 +739,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff/Comp % VoltageFactor
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -750,6 +754,11 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3)/Comp % VoltageFactor
         ! Transform the conductivity tensor:
         ! ----------------------------------
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
@@ -763,11 +772,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! ------------------------------------------------------
       localAlpha = localAlpha * Comp % coilthickness
 
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff/Comp % VoltageFactor
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3)/Comp % VoltageFactor
       Comp % Resistance = Comp % Resistance + localR
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
@@ -1600,6 +1604,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff / Comp % VoltageFactor
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -1611,6 +1619,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+
         ! Transform the conductivity tensor:
         ! ----------------------------------
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
@@ -1623,12 +1637,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! to get the real alpha:
       ! ------------------------------------------------------
       localAlpha = localAlpha * Comp % coilthickness
-
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff / Comp % VoltageFactor
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
 
       Comp % Resistance = Comp % Resistance + localR
 

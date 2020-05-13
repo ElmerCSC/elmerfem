@@ -258,8 +258,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TangledCount = 0
   LimitedCount = 0
   
-  IF( GotBaseVar .AND. BaseDisplaceFirst ) THEN
-    CALL BaseVarDisplace() 
+  IF( GotBaseVar ) THEN
+    IF( BaseDisplaceFirst ) CALL BaseVarDisplace() 
   END IF
 
   IF( MultiLayer ) THEN
@@ -303,8 +303,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     END DO
   END IF
 
-  IF( GotBaseVar .AND. .NOT. BaseDisplaceFirst ) THEN
-    CALL BaseVarDisplace() 
+  IF( GotBaseVar ) THEN
+    IF (.NOT. BaseDisplaceFirst ) CALL BaseVarDisplace() 
   END IF
     
   IF( GotVeloVar .AND. .NOT. Visited ) THEN

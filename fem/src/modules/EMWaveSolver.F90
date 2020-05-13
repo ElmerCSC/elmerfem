@@ -43,6 +43,7 @@
 MODULE EMWaveSolverUtils
 
    USE DefUtils
+   IMPLICIT NONE
 
 CONTAINS
 
