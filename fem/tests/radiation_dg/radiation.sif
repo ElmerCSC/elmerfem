@@ -117,4 +117,4 @@ Boundary Condition 3
   Temperature = 100.0
 End
 
-Solver 1 :: Reference Norm = 1.65339204E+02
+Solver 1 :: Reference Norm = 1.92523232E+02
