@@ -73,7 +73,7 @@ Solver 2
   Bubbles = Logical True
 
   Linear System Convergence Tolerance = 1.0e-8
-  Linear System Preconditioning = ILU0
+  Linear System Preconditioning = ILU1
   Linear System Residual Output = 1
 
   Nonlinear System Max Iterations = 1
@@ -85,7 +85,7 @@ Material 1
   Density = 1
   Viscosity = 0.01
   Heat Conductivity = 1.0
-  Heat Capacity = 100.0
+  Heat Capacity = 1000.0 ! ensure convection dominated
 End
 
 Boundary Condition 1
@@ -119,5 +119,5 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = 0.30861526
-Solver 2 :: Reference Norm = 0.37635839
+Solver 2 :: Reference Norm = 6.32597086E-01
 
