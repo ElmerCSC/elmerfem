@@ -81,7 +81,7 @@ CONTAINS
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
         VeloVec(:,:), PresVec(:), GradVec(:,:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
+    REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
 
     REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1), muder, jacord(ntot,ntot,dim+1,dim+1), &
                        JAC(ntot*(dim+1),ntot*(dim+1) ), jsum
@@ -156,9 +156,6 @@ CONTAINS
     END IF
 
     IF (Newton) THEN
-      IF (ALLOCATED(muDerVec0)) THEN
-        DEALLOCATE(muDerVec0, g, StrainRateVec)
-      END IF
       ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
       muDerVec0 = 0._dp
     END IF
