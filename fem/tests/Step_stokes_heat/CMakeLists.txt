@@ -5,4 +5,4 @@ CONFIGURE_FILE( Step.sif Step.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO Step.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(Step_stokes_heat LABELS heatsolve)
+ADD_ELMER_TEST(Step_stokes_heat LABELS heateq)
