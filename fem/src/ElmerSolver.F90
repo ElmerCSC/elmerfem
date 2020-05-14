@@ -1579,6 +1579,7 @@ END INTERFACE
                  ! Sometimes you may have both DG and bubbles,
                  ! this way DG always has priority. 
                  IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN 
+                   IF(.NOT.ASSOCIATED(CurrentElement % DGIndexes)) GOTO 1
                    Indexes(1:n) = CurrentElement % DgIndexes(1:n)
                  ELSE
                    DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
@@ -1589,6 +1590,9 @@ END INTERFACE
                    IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
                    IF ( k1>0 ) Var % Values(k1) = Work(k)
                  END DO
+ 
+1                CONTINUE
+
                END IF
 
                IF ( Transient .AND. Solver % TimeOrder==2 ) THEN
