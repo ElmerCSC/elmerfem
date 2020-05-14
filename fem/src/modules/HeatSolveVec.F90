@@ -652,7 +652,57 @@ CONTAINS
     
   END FUNCTION BCAssemblyFraction
  !------------------------------------------------------------------------------
- 
+
+
+  SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
+
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n
+    INTEGER :: ElemInds(:)
+
+    TYPE(Element_t), POINTER :: Left, Right, Parent
+    INTEGER :: i,i1,n1,mat_id
+    LOGICAL :: Found
+
+    Left => Element % BoundaryInfo % Left
+    Right => Element % BoundaryInfo % Right
+
+    IF(ASSOCIATED(Left) .AND. ASSOCIATED(Right)) THEN
+      DO i=1,2
+        IF(i==1) THEN
+          Parent => Left
+        ELSE
+          Parent => Right
+        END IF
+
+        mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
+            'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
+        IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
+
+        IF( i==2) THEN
+          CALL Fatal('MakeListMatrix','DG boundary parents should have emissivity!')
+        END IF
+      END DO
+    ELSE IF(ASSOCIATED(Left)) THEN
+      Parent => Left
+    ELSE IF(ASSOCIATED(Right)) THEN
+      Parent => Right
+    ELSE
+      CALL Fatal('MakeListMatrix','DG boundary should have parents!')
+    END IF
+
+    n1 = Parent % TYPE % NumberOfNodes
+    DO i=1,n
+      DO i1 = 1, n1
+        IF( Parent % NodeIndexes( i1 ) == Element % NodeIndexes(i) ) THEN
+          ElemInds(i) = Parent % DGIndexes( i1 )
+          EXIT
+        END IF
+      END DO
+    END DO
+
+  END SUBROUTINE DgRadiationIndexes
+
 
 !------------------------------------------------------------------------------
 ! Assembly of the matrix entries arising from the Neumann and Robin conditions.
@@ -769,7 +819,7 @@ CONTAINS
           Emis = ListGetElementReal( EmisBC_h, Basis, Element = Element, Found = Found ) 
         END IF
 
-       IF( DG ) THEN
+        IF( DG ) THEN
           T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % DGIndexes(1:n))))
         ELSE
           T0 = SUM( Basis(1:n) * Temperature(TempPerm(Element % NodeIndexes)))
@@ -802,9 +852,9 @@ CONTAINS
     END IF
 
     IF( DG ) THEN
-      Indexes(1:n) = TempPerm( Element % DGIndexes(1:n) )
+      CALL DgRadiationIndexes(Element,n,Indexes)
       CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
-          Solver % Matrix % Rhs, FORCE, n, 1, Indexes(1:n), UElement=Element)      
+          Solver % Matrix % Rhs, FORCE, n, 1, TempPerm(Indexes(1:n)), UElement=Element)      
     ELSE    
       CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
     END IF
@@ -812,6 +862,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -827,6 +878,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
      INTEGER :: bindex, nb, n, j, noactive
      REAL :: NodalEmissivity(12), NodalTemp(12)
+     INTEGER :: ElemInds(12)
      
      nb = Mesh % NumberOfBoundaryElements
      NoActive = 0
@@ -850,7 +902,8 @@ CONTAINS
        n = GetElementNOFNodes(Element)
 
        IF( DG ) THEN
-         NodalTemp(1:n) = Temperature( TempPerm(Element % DGIndexes) )
+         CALL DgRadiationIndexes(Element,n,ElemInds)
+         NodalTemp(1:n) = Temperature( TempPerm(ElemInds(1:n) ) )
        ELSE
          NodalTemp(1:n) = Temperature( TempPerm(Element % NodeIndexes) )
        END IF
@@ -894,9 +947,9 @@ CONTAINS
     INTEGER, POINTER :: ElementList(:),pIndexes(:)
     REAL(KIND=dp), POINTER :: ForceVector(:)
     
-    REAL(KIND=dp) :: x,NodalTemp(12),&
-        RadCoeff(12),RadLoad(12)
-   
+    REAL(KIND=dp) :: x,NodalTemp(12),RadCoeff(12),RadLoad(12)
+    INTEGER, TARGET :: ElemInds(12),ElemInds2(12)
+    
     SAVE Nodes
 !------------------------------------------------------------------------------
     
@@ -939,7 +992,8 @@ CONTAINS
     FORCE(1:n) = 0.0_dp      
 
     IF( DG ) THEN
-      NodalTemp(1:n) = Temperature( TempPerm( Element % DGIndexes ) )
+      CALL DgRadiationIndexes(Element,n,ElemInds)
+      NodalTemp(1:n) = Temperature( TempPerm( ElemInds(1:n) ) )
     ELSE
       NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
     END IF
@@ -995,10 +1049,12 @@ CONTAINS
           ! Integrate the contribution of surface j over surface j and add to global matrix
           !------------------------------------------------------------------------------                    
           IF( Dg ) THEN
+            CALL DgRadiationIndexes(RadElement,k,ElemInds2)                              
+
             DO p=1,n
-              k1 = TempPerm( Element % DGIndexes(p) )            
+              k1 = TempPerm( ElemInds(p))
               DO q=1,k
-                k2 = TempPerm( RadElement % DGIndexes(q) )
+                k2 = TempPerm( ElemInds2(q) )
                 CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
               END DO
               ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
@@ -1090,7 +1146,7 @@ CONTAINS
     !-----------------------------------------------------------------
     
     IF( DG ) THEN
-      pIndexes => Element % DGIndexes
+      pIndexes => ElemInds
     ELSE
       pIndexes => Element % NodeIndexes
     END IF
