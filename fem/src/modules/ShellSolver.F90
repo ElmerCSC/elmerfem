@@ -4677,7 +4677,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: res_z, maxres_z, minres_z
     REAL(KIND=dp) :: U_mid(3), U_upper(3), U_lower(3), h_eff
-    REAL(KIND=dp) :: d(3), d_h(3), v(3), DNU(3)
+    REAL(KIND=dp) :: d(3), e3(3), d_h(3), v(3), DNU(3)
 ! ---------------------------------------------------------------------------------
     IF (.NOT. ListGetLogicalAnyBC(Model, 'Structure Interface')) RETURN
     IF (.NOT. Displacement % DOFs == 3) THEN
@@ -4866,6 +4866,11 @@ CONTAINS
             END IF
           END IF
         END DO
+
+        IF (jz == 0) jz = TargetNode
+        IF (lz == 0) lz = TargetNode
+        IF (jz == lz) CALL Fatal('SetSolidCouplingBCs', &
+            'No solid nodes to span the director')
 
         ! PRINT *, 'HANDLING NODE = ', TargetNode
         ! PRINT *, 'UPPER NODE = ', JZ
