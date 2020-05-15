@@ -1798,6 +1798,10 @@ CONTAINS
       
       CALL StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
           IsSolid, IsPlate, IsShell, IsBeam )
+      !IF (IsShell) THEN
+      !  CALL StructureCouplingAssembly_defutils( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+      !      IsSolid, IsPlate, IsShell, IsBeam)
+      !END IF
     END DO
       
   END SUBROUTINE StructureCouplingBlocks
