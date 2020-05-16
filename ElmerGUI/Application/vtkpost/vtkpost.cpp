@@ -1554,7 +1554,6 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 //----------------------------------------------------------------------
 bool VtkPost::ReadSingleVtuFile(QString postFileName)
 {
-  cout << "ReadSingleVtuFile(postFileName) called" << endl; 
   readEpFile->vtuFileNameList.clear();
   readEpFile->vtuFileNameList.append(postFileName);  
   return ReadVtuFile(postFileName);

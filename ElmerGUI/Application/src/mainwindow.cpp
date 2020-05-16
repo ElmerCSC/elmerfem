@@ -4991,10 +4991,14 @@ void MainWindow::showVtkPostSlot() {
   QDir dir = info.dir();
   if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)){
     if(!parallelActive){
-		postFileName.insert(postFileName.length()-4, "0001");
-		cout << "calling ReadSingleVtuFile(postFileName) :" << postFileName.toLatin1().data()<< endl; 
-      vtkPost->ReadSingleVtuFile(postFileName);
-	}
+      QString vtuFileName = postFileName;
+		  vtuFileName.insert(vtuFileName.length()-4, "_t0001");
+      if(!vtkPost->ReadSingleVtuFile(vtuFileName)){
+        vtuFileName = postFileName;
+		    vtuFileName.insert(vtuFileName.length()-4, "0001");
+		    vtkPost->ReadSingleVtuFile(vtuFileName);
+      }
+    }
   }else{
     vtkPost->ReadPostFile(postFileName);
   }
