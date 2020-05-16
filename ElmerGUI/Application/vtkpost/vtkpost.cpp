@@ -674,27 +674,27 @@ void VtkPost::createActions()
 
   // View normal plane:
   //------------------------------------------
-  viewXYpPlaneAct = new QAction(QIcon(""), tr("z+"), this);
+  viewXYpPlaneAct = new QAction(QIcon(""), tr("xy+"), this);
   viewXYpPlaneAct->setStatusTip("View XY plane");
   connect(viewXYpPlaneAct, SIGNAL(triggered()), this, SLOT(viewXYpPlaneSlot()));
 
-  viewXYmPlaneAct = new QAction(QIcon(""), tr("z-"), this);
+  viewXYmPlaneAct = new QAction(QIcon(""), tr("xy-"), this);
   viewXYmPlaneAct->setStatusTip("View XY plane");
   connect(viewXYmPlaneAct, SIGNAL(triggered()), this, SLOT(viewXYmPlaneSlot()));
 
-  viewYZpPlaneAct = new QAction(QIcon(""), tr("x+"), this);
+  viewYZpPlaneAct = new QAction(QIcon(""), tr("yz+"), this);
   viewYZpPlaneAct->setStatusTip("View YZ plane");
   connect(viewYZpPlaneAct, SIGNAL(triggered()), this, SLOT(viewYZpPlaneSlot()));
 
-  viewYZmPlaneAct = new QAction(QIcon(""), tr("x-"), this);
+  viewYZmPlaneAct = new QAction(QIcon(""), tr("yz-"), this);
   viewYZmPlaneAct->setStatusTip("View YZ plane");
   connect(viewYZmPlaneAct, SIGNAL(triggered()), this, SLOT(viewYZmPlaneSlot()));
 
-  viewZXpPlaneAct = new QAction(QIcon(""), tr("y+"), this);
+  viewZXpPlaneAct = new QAction(QIcon(""), tr("zx+"), this);
   viewZXpPlaneAct->setStatusTip("View ZX plane");
   connect(viewZXpPlaneAct, SIGNAL(triggered()), this, SLOT(viewZXpPlaneSlot()));
 
-  viewZXmPlaneAct = new QAction(QIcon(""), tr("y-"), this);
+  viewZXmPlaneAct = new QAction(QIcon(""), tr("zx-"), this);
   viewZXmPlaneAct->setStatusTip("View ZX plane");
   connect(viewZXmPlaneAct, SIGNAL(triggered()), this, SLOT(viewZXmPlaneSlot()));
 }
