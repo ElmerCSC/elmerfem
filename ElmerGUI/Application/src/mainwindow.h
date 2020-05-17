@@ -265,6 +265,10 @@ private slots:
   void loadRecentProject3Slot();
   void loadRecentProject4Slot();
 
+  void selectElmerPostSlot();
+  void selectVtkPostSlot();  
+  void selectParaViewSlot();
+  
 private:
   // widgets and helpers:
   GLWidget *glWidget;               // central gl widget
@@ -317,6 +321,7 @@ private:
   QMenu *helpMenu;              // Help menu
   QMenu *sysTrayMenu;           // System tray menu
   QMenu *contextMenu;           // Context menu
+  QMenu *selectPostMenu;
 
   QToolBar *fileToolBar;   // File toolbar
   QToolBar *editToolBar;   // Edit toolbar
@@ -402,6 +407,10 @@ private:
   QAction *compileSolverAct;          // Solver -> Compile...
   QAction *aboutAct;                  // Help -> About...
   QAction *generateAndSaveAndRunAct;
+  QAction *runPostProcessorAct;  
+  QAction *selectElmerPostAct;
+  QAction *selectVtkPostAct;
+  QAction *selectParaViewAct;  
 
   // property editors etc:
   GeneralSetup *generalSetup;

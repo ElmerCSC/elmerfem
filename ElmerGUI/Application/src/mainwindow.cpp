@@ -172,6 +172,7 @@ MainWindow::MainWindow() {
   createMenus();
   createToolBars();
   createStatusBar();
+  runPostProcessorAct->setMenu(selectPostMenu);
 
   // Always, when an action from the menu bar has been selected, synchronize
   // menu to state:
@@ -891,6 +892,25 @@ void MainWindow::createActions() {
 
   if (egIni->isSet("bgimage"))
     chooseBGColorAct->setEnabled(false);
+  
+  runPostProcessorAct = new QAction(QIcon(":/icons/Post.png"), tr("ElmerPost"), this);
+  runPostProcessorAct->setStatusTip(tr("Select ElmerPost as post-processor"));
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
+  
+  selectElmerPostAct = new QAction(QIcon(":/icons/Post.png"), tr("ElmerPost"), this);
+  selectElmerPostAct->setStatusTip(tr("Select ElmerPost as post-processor"));
+  connect(selectElmerPostAct, SIGNAL(triggered()), this, SLOT(selectElmerPostSlot()));
+  selectElmerPostAct->setCheckable(true);
+
+  selectVtkPostAct = new QAction(QIcon(":/icons/Mesh3D.png"), tr("ElmerVTK"), this);
+  selectVtkPostAct->setStatusTip(tr("Select ElmerVTK as post-processor"));
+  connect(selectVtkPostAct, SIGNAL(triggered()), this, SLOT(selectVtkPostSlot()));
+  selectVtkPostAct->setCheckable(true);
+
+  selectParaViewAct = new QAction(QIcon(":/icons/Paraview.png"), tr("ParaView"), this);
+  selectParaViewAct->setStatusTip(tr("Select ParaView as post-processor"));
+  connect(selectParaViewAct, SIGNAL(triggered()), this, SLOT(selectParaViewSlot()));
+  selectParaViewAct->setCheckable(true);
 }
 
 // Create menus...
@@ -1093,7 +1113,17 @@ void MainWindow::createMenus() {
   contextMenu->addMenu(editMenu);
   contextMenu->addMenu(solverMenu);
   contextMenu->addMenu(helpMenu);
-
+  
+  selectPostMenu = new QMenu;
+  selectPostMenu->addAction(selectElmerPostAct);
+  selectPostMenu->addAction(selectVtkPostAct);
+  selectPostMenu->addAction(selectParaViewAct);
+#ifndef EG_VTK
+  selectVtkPostAct->setEnabled(false);
+#endif
+#ifndef EG_PARAVIEW
+  selectParaViewAct->setEnabled(false);
+#endif
   // Disable unavailable external components:
   //------------------------------------------
   if (!egIni->isSet("checkexternalcomponents"))
@@ -1192,7 +1222,7 @@ void MainWindow::createToolBars() {
   // Solver toolbar
   solverToolBar = addToolBar(tr("&Solver"));
   solverToolBar->addAction(runsolverAct);
-  solverToolBar->addAction(resultsAct);
+  solverToolBar->addAction(runPostProcessorAct);
   solverToolBar->addAction(generateAndSaveAndRunAct);
 
   if (egIni->isSet("hidetoolbars")) {
@@ -7582,6 +7612,12 @@ void MainWindow::loadSettings() {
   } else {
     objectBrowser = NULL;
   }
+  
+  switch (settings_value("postProcessor/i", 0).toInt()){
+    case 0: selectElmerPostSlot(); break; 
+    case 1: selectVtkPostSlot(); break;
+    case 2: selectParaViewSlot(); break;
+  }
 }
 
 // Save settings
@@ -7609,6 +7645,14 @@ void MainWindow::saveSettings() {
     settings_setValue("objectBrowser/show", true);
   } else {
     settings_setValue("objectBrowser/show", false);
+  }
+  
+  if(selectElmerPostAct->isChecked()){
+    settings_setValue("postProcessor/i", 0);
+  }else if(selectVtkPostAct->isChecked()){
+    settings_setValue("postProcessor/i", 1);
+  }else if(selectParaViewAct->isChecked()){
+    settings_setValue("postProcessor/i", 2);
   }
 }
 
@@ -7882,4 +7926,35 @@ void MainWindow::showObjectBrowserSlot() {
     delete objectBrowser;
     objectBrowser = NULL;
   }
+}
+
+void MainWindow::selectElmerPostSlot(){
+  runPostProcessorAct->setText(tr("Start ElmerPost"));
+  runPostProcessorAct->setIcon(QIcon(":/icons/Post.png"));  
+  runPostProcessorAct->setStatusTip(tr("Run ElmerPost for visualization"));
+  runPostProcessorAct->disconnect();
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
+  selectElmerPostAct->setChecked(true);
+  selectVtkPostAct->setChecked(false);
+  selectParaViewAct->setChecked(false);
+}
+void MainWindow::selectVtkPostSlot(){
+  runPostProcessorAct->setText(tr("Start ElmerVTK"));
+  runPostProcessorAct->setIcon(QIcon(":/icons/Mesh3D.png"));  
+  runPostProcessorAct->setStatusTip(tr("Invokes VTK based ElmerGUI postprocessor"));
+  runPostProcessorAct->disconnect();
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
+  selectElmerPostAct->setChecked(false);
+  selectVtkPostAct->setChecked(true);
+  selectParaViewAct->setChecked(false);
+}
+void MainWindow::selectParaViewSlot(){
+  runPostProcessorAct->setText(tr("Start ParaView"));
+  runPostProcessorAct->setIcon(QIcon(":/icons/Paraview.png"));  
+  runPostProcessorAct->setStatusTip(tr("Invokes ParaView for visualization"));
+  runPostProcessorAct->disconnect();
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));
+  selectElmerPostAct->setChecked(false);
+  selectVtkPostAct->setChecked(false);
+  selectParaViewAct->setChecked(true);
 }

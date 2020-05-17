@@ -51,7 +51,6 @@
 #include <QTextStream>
 #include <QDoubleSpinBox>
 #include <QSlider>
-#include <QLabel>
 
 #ifdef EG_PYTHONQT
 #include <PythonQt.h>
@@ -187,7 +186,8 @@ public slots:
   void viewYZmPlaneSlot();
   void viewZXpPlaneSlot();
   void viewZXmPlaneSlot();
-  void playSlot();                              // 
+  void timestepSlot();
+  void playSlot(); 
 #ifdef EG_MATC
   QString MatcCmd(QString);                         // evaluate matc cmd
   QString domatcSlot();                             // flush matc console
@@ -352,7 +352,6 @@ private:
   QToolBar *planeViewToolBar;
   QToolBar *timestepToolBar;
   QDoubleSpinBox displacementScaleFactorSpinBox;
-  QLabel *timestepLabel;
   QSlider *timestepSlider;
   int iEndStep;
 
@@ -388,6 +387,7 @@ private:
   QAction *viewZXpPlaneAct;
   QAction *viewZXmPlaneAct;
   QAction *displaceAct;
+  QAction *timestepAct;
   QAction *playAct;
 
   int vtk2ElmerElement(int);
