@@ -32,7 +32,6 @@
 ! *  Original Date: May 2020
 ! *
 ! *****************************************************************************/
-
 SUBROUTINE SurfEnthBoundarySolver( Model,Solver,dt,TransientSimulation )
   
   USE DefUtils
@@ -44,8 +43,8 @@ TYPE(Model_t) :: Model
 TYPE(Variable_t), POINTER :: Accumulation,Rad_fact_var,SurfGrad1,Surfgrad2
 TYPE(Variable_t), POINTER :: MB,Dens,Firn,SE,Depth,Melting,Refreeze,Raining,PotRad
 TYPE(Solver_t), POINTER :: Solver
-TYPE(ValueList_t), POINTER :: SolverParams
 TYPE(Element_t),POINTER :: Element
+TYPE(ValueList_t), POINTER :: SolverParams
 INTEGER, POINTER :: NodeIndexes(:)
 
 INTEGER :: n,i,j,cont,nb_surf,nb_vert,io,nb_year,nb_day,it
@@ -56,16 +55,18 @@ REAL(KIND=dp) :: Pfact,temp_correc,surimposed_ice_fact,firn_param,deg1,deg2,prec
 REAL(KIND=dp) :: Sr,rho_w,rho_ice,L_heat,rho_surf,T0,g1,g2,g3,Mean_Temp_Air,x_output,y_output
 
 REAL(KIND=dp) :: fx,fy,slop,asp,S0,dr,lat,L,term1,term2,term3,tau_r,tau_d,tau_b,srad,sinAlpha,R,M,Is
-REAL(KIND=dp) :: Ir,Iday,I0,hsr,hs,cos_i,dS,Idiff,reflec
+REAL(KIND=dp) :: Ir,Iday,I0,hsr,hs,cos_i,dS,Idiff,reflec,Norm
 
-real (KIND=dp), dimension(:),allocatable :: zprof_1D,TempAir,Precip
+real (KIND=dp), dimension(:),allocatable :: zprof_1D,TempAir,Precip,PotRadNodes,DensNodes,FirnNodes
 real (KIND=dp),dimension(365) :: TempAirMean, PrecipMean,TempAirMeanTry
 
 character(LEN=MAX_NAME_LEN) :: filename,filename2
 
 logical :: first_time=.true.,TransientSimulation, GotIt, PrecipData, node_output=.false.,GotNode=.false.,Output1D,SigmaOK
+logical :: OutputFirn,OutputDens,OutputMB,OutputMelting,OutputAccumulation
+logical :: OutputRefreeze,OutputRad_Fact_var,OutputRaining,OutputPotRad
 
-save first_time,nb_surf,nb_vert,TempAir,TempAirMean,nb_day,nb_year,PrecipData,Precip,PrecipMean
+save first_time,nb_surf,nb_vert,TempAir,TempAirMean,nb_day,nb_year,PrecipData,Precip,PrecipMean,PotRadNodes,DensNodes,FirnNodes
 
 
 !===============================================================================
@@ -245,6 +246,11 @@ ENDDO
 
 	nb_surf=cont
 	nb_vert=model % NumberOfNodes/cont
+	
+	
+	allocate(FirnNodes(model % NumberOfNodes))
+	allocate(PotRadNodes(model % NumberOfNodes))
+	allocate(DensNodes(model % NumberOfNodes))
 
 !end first_time
 endif
@@ -270,18 +276,69 @@ SurfGrad2 => VariableGet( Model % Variables, 'SurfGrad2')
 	ENDIF
 
 
+SE => VariableGet( Model % Variables, 'Surf Enth')
 
 Firn => VariableGet( Model % Variables, 'Firn')
-SE => VariableGet( Model % Variables, 'Surf Enth')
-MB => VariableGet( Model % Variables, 'Mass Balance')
-Melting => VariableGet( Model % Variables, 'Melting')
-Accumulation => VariableGet( Model % Variables, 'Accu')
-Refreeze => VariableGet( Model % Variables, 'Refreeze')
-Rad_Fact_var => VariableGet( Model % Variables, 'Rad_Fact')
+	IF ( .not. ASSOCIATED( Firn ) ) THEN
+		OutputFirn=.false.
+		ELSE
+		OutputFirn=.true.
+	ENDIF
+	
 Dens => VariableGet(Model % Mesh % Variables, 'Densi' )
-Raining => VariableGet( Model % Variables, 'Rain')
-PotRad => VariableGet( Model % Variables, 'PotRad')
+	IF ( .not. ASSOCIATED( Dens ) ) THEN
+		OutputDens=.false.
+		ELSE
+		OutputDens=.true.
+	ENDIF
 
+MB => VariableGet( Model % Variables, 'Mass Balance')
+	IF ( .not. ASSOCIATED( MB ) ) THEN
+		OutputMB=.false.
+		ELSE
+		OutputMB=.true.
+	ENDIF
+	
+Melting => VariableGet( Model % Variables, 'Melting')
+	IF ( .not. ASSOCIATED( Melting ) ) THEN
+		OutputMelting=.false.
+		ELSE
+		OutputMelting=.true.
+	ENDIF
+
+Accumulation => VariableGet( Model % Variables, 'Accu')
+	IF ( .not. ASSOCIATED( Accumulation ) ) THEN
+		OutputAccumulation=.false.
+		ELSE
+		OutputAccumulation=.true.
+	ENDIF
+Refreeze => VariableGet( Model % Variables, 'Refreeze')
+	IF ( .not. ASSOCIATED( Refreeze ) ) THEN
+		OutputRefreeze=.false.
+		ELSE
+		OutputRefreeze=.true.
+	ENDIF
+	
+Rad_Fact_var => VariableGet( Model % Variables, 'Rad_Fact')
+	IF ( .not. ASSOCIATED( Rad_Fact_var ) ) THEN
+		OutputRad_Fact_var=.false.
+		ELSE
+		OutputRad_Fact_var=.true.
+	ENDIF
+	
+Raining => VariableGet( Model % Variables, 'Rain')
+	IF ( .not. ASSOCIATED( Raining ) ) THEN
+		OutputRaining=.false.
+		ELSE
+		OutputRaining=.true.
+	ENDIF
+	
+PotRad => VariableGet( Model % Variables, 'PotRad')
+	IF ( .not. ASSOCIATED( PotRad ) ) THEN
+		OutputPotRad=.false.
+		ELSE
+		OutputPotRad=.true.
+	ENDIF
 
 
 z_temp=GetConstReal(Model % Constants, "z_temp")
@@ -323,8 +380,6 @@ rho_ice=GetConstReal(Model % Constants, "rho_ice")
 Sr=GetConstReal(Model % Constants, "Sr")
 L_heat=GetConstReal(Model % Constants, "L_heat")
 T0=GetConstReal(Model % Constants, "T_ref_enthalpy")
-
-
 
 
 
@@ -382,8 +437,12 @@ Iday=0
       enddo
 srad = srad + Iday/365.0/24.0
 enddo  
-	
+
+PotRadNodes(n)=srad
+
+IF (OutputPotRad) THEN	
 PotRad % Values (PotRad % perm (n)) = srad
+ENDIF
 
 ENDIF
 ENDDO
@@ -416,7 +475,7 @@ ENDDO
 			T=TempAir(i)+grad*(z_temp-z)+temp_correc
 			Mean_Temp_Air=Mean_Temp_Air+T/nb_day
     
-			melt=(T-seuil_fonte)*deg_jour+rad_fact_snow*PotRad % Values (PotRad % perm (n))
+			melt=(T-seuil_fonte)*deg_jour+rad_fact_snow*PotRadNodes(n)
 			if (melt>0) then
 				melt_local=melt_local+melt
 			endif
@@ -455,7 +514,7 @@ melt_local=0.0
 		
 DO i=1,nb_day
 	T=TempAir(i)+grad*(z_temp-z)+temp_correc
-	melt=(T-seuil_fonte)*deg_jour+rad_fact*PotRad % Values (PotRad % perm (n))
+	melt=(T-seuil_fonte)*deg_jour+rad_fact*PotRadNodes(n)
 	if (melt>0) then
 			melt_local=melt_local+melt
 	endif
@@ -463,19 +522,33 @@ ENDDO
 
 melt_local=melt_local/nb_year
 
+if (OutputMB) then
 MB % values (MB % perm(n)) = (accu_ice+accu-melt_local)/(rho_ice/rho_w)
+endif
+if (OutputMelting) then
 Melting % values (Melting % perm(n)) = melt_local
+endif
+if (OutputRaining) then
 Raining % values (Raining % perm(n)) = rain
+endif
+if (OutputAccumulation) then
 Accumulation % values (Accumulation % perm(n)) = accu
+endif
+if (OutputRad_Fact_var) then
 Rad_fact_var % values (Rad_fact_var % perm(n)) = Rad_fact
+endif
 
 !===============================================================================
 !Compute Firn Thickness=========================================================
 
-Firn % values (Firn % perm(n)) = a*firn_param !Firn % values (Firn % perm(n)) + a*dt - Firn % values (Firn % perm(n))*dt/firn_param
+FirnNodes(n) = a*firn_param !Firn % values (Firn % perm(n)) + a*dt - Firn % values (Firn % perm(n))*dt/firn_param
 
-if (Firn % values (Firn % perm(n))<0.0) then
-	Firn % values (Firn % perm(n)) = 0.0
+if (FirnNodes(n)<0.0) then
+	FirnNodes(n)= 0.0
+endif
+
+if (OutputFirn) then
+Firn % values (Firn % perm(n)) = FirnNodes(n)
 endif
 
 !===============================================================================
@@ -484,19 +557,24 @@ endif
 do i=1,nb_vert
 	cont=n-(i-1)*nb_surf
 
-	if (Firn % values (Firn % perm(n))>1.0) then
-		Dens % values (Dens % perm(cont))=rho_surf+Depth % values (Depth % perm(cont))&
-		&/(Firn % values (Firn % perm(n))*2.0*rho_w)*(rho_ice**2-rho_surf**2)
+	if (FirnNodes(n)>1.0) then
+		DensNodes(cont)=rho_surf+Depth % values (Depth % perm(cont))&
+		&/(FirnNodes(n)*2.0*rho_w)*(rho_ice**2-rho_surf**2)
 	else
-		Dens % values (Dens % perm(cont))=rho_ice
+		DensNodes(cont)=rho_ice
 	endif
 
-	if (Dens % values (Dens % perm(cont))>rho_ice) then
-		Dens % values (Dens % perm(cont))=rho_ice
+	if (DensNodes(cont)>rho_ice) then
+		DensNodes(cont)=rho_ice
 	endif
 
 	zprof_1D(i)= model % nodes % z(cont)
+	
+	if (OutputDens) then
+		Dens % Values(Dens % Perm(cont)) = DensNodes(cont)
+	endif
 enddo
+
 
 
 !Check if export 1D output for this node ---------------------------------
@@ -521,7 +599,7 @@ endif
 !Get temperature bellow active layer for diricklet surface boundary of enthalpy
    
 
- call SolveTemp_1D(Model,Solver,Element,zprof_1D,Firn % values (Firn % perm(n)),TempAirMean,temp_10m,n)
+ call SolveTemp_1D(Model,Solver,Element,zprof_1D,FirnNodes(n),TempAirMean,temp_10m,n)
 
  SE % values (SE % perm(n)) = 3.626*temp_10m**2+146.3*temp_10m-T0*(146.3+3.626*T0)
 
@@ -529,7 +607,8 @@ endif
 endif ! If surface node
 ENDDO ! On nodes
 
-
+  CALL DefaultInitialize()
+  
 CONTAINS
 
 !===============================================================================
@@ -636,7 +715,7 @@ do day=1,365
 		T=TempSurf(day)+grad*(z_temp-z_prof_elmer(1))+temp_correc
         Tair_mean=Tair_mean+T/365.0
 		
-		melt=(T-seuil_fonte)*deg_jour+rad_fact_snow*PotRad % Values (PotRad % perm (surf_node_nb))
+		melt=(T-seuil_fonte)*deg_jour+rad_fact_snow*PotRadNodes(surf_node_nb)
 		if (melt<0) then
 			melt=0.0
 		endif
@@ -687,7 +766,7 @@ converge=.false.
 	Pfact=PrecipMean(day)*365.25*precip_correc
 	endif
 	
-    melt=(T-seuil_fonte)*deg_jour+rad_fact_snow*PotRad % Values (PotRad % perm (n))
+    melt=(T-seuil_fonte)*deg_jour+rad_fact_snow*PotRadNodes(surf_node_nb)
 	
 	if (melt<0) then
 		melt=0.0
@@ -972,9 +1051,9 @@ endif
 
 enddo
 
-
+if (OutPutRefreeze) then
 Refreeze % values (Refreeze % perm(n)) = total_refreeze
-
+endif
   
  end subroutine SolveTemp_1D
  
