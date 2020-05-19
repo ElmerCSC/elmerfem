@@ -115,6 +115,11 @@
      INTEGER :: MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
+     TYPE(Model_t), POINTER, SAVE :: ControlModel
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
+     LOGICAL :: DoControl, GotParams
+     
+     
 #ifdef HAVE_TRILINOS
 INTERFACE
       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
@@ -138,7 +143,6 @@ END INTERFACE
      END IF
      
      IF ( FirstTime ) THEN
-
        !
        ! Print banner to output:
        ! -----------------------
@@ -250,7 +254,7 @@ END INTERFACE
          IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
        END IF
      END IF
-         
+
      IF( .NOT. GotModelName ) THEN
        OPEN( 1, File='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )       
        IF( iostat /= 0 ) THEN
@@ -260,6 +264,32 @@ END INTERFACE
        CLOSE(1)
      END IF
 
+     ! This sets optionally some internal parameters for doing scanning
+     ! over a parameter space / optimization. 
+     !-----------------------------------------------------------------
+     IF( FirstTime ) THEN
+       OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)         
+       IF( iostat /= 0 ) THEN
+         CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
+             TRIM(Modelname) // '], can not execute.' )
+       END IF
+       ALLOCATE( ControlModel )          
+       ! Read only the "Control" section of the sif file.
+       CALL LoadInputFile( ControlModel,InFileUnit,ModelName,MeshDir,MeshName, &
+           .FALSE., .TRUE., ControlOnly = .TRUE.)
+       DoControl =  ASSOCIATED( ControlModel % Control )
+       IF( DoControl ) THEN
+         CALL Info('ElmerSolver','Control section active!')
+         ParamSweeps = ListGetInteger( ControlModel % Control,'Parameter Max Sweeps', Found )
+         IF(.NOT. Found) ParamSweeps = 1              
+         ! If there are no parameters this does nothing         
+         CALL SetSimulationParameters(ControlModel % Control, &
+             1,GotParams,FinishEarly)           
+       ELSE
+         ParamSweeps = 1 
+       END IF
+     END IF
+                
 !------------------------------------------------------------------------------
 !    Read element definition file, and initialize element types
 !------------------------------------------------------------------------------
@@ -442,17 +472,16 @@ END INTERFACE
        ! This sets optionally some internal parameters for doing scanning
        ! over a parameter space / optimization. 
        !-----------------------------------------------------------------
-       ParamSweeps = ListGetInteger( CurrentModel % Simulation,&
-           'Parameter Max Sweeps', GotIt )
-       IF(.NOT. GotIt) ParamSweeps = 1
-       
        DO iSweep = 1, ParamSweeps
          sSweep = 1.0_dp * iSweep
-         
-         ! If there are no parameters this does nothing         
-         CALL SetSimulationParameters(iSweep,FinishEarly)
-         IF( FinishEarly ) EXIT
-         
+         ! If there are no parameters this does nothing                  
+         IF( DoControl .AND. iSweep > 1 ) THEN
+           CALL SetSimulationParameters(ControlModel % Control, &
+               iSweep,GotParams,FinishEarly)           
+           Found = ReloadInputFile(CurrentModel)
+           IF( FinishEarly ) EXIT
+         END IF
+
          !------------------------------------------------------------------------------
          ! Here we actually perform the simulation: ExecSimulation does it all ....
          !------------------------------------------------------------------------------
@@ -474,7 +503,7 @@ END INTERFACE
        IF ( Initialize >= 2 ) EXIT
      END DO
 
-     
+ 
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
 
 

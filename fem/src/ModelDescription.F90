@@ -226,7 +226,7 @@ CONTAINS
 !> Performs also some simple sanity tests for the lists. 
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE LoadInputFile( Model, InFileUnit, FileName, &
-         MeshDir, MeshName, BaseLoad, ScanOnly, Runc )
+         MeshDir, MeshName, BaseLoad, ScanOnly, Runc, ControlOnly )
 !------------------------------------------------------------------------------
 
     CHARACTER(LEN=*) :: FileName
@@ -235,6 +235,7 @@ CONTAINS
     LOGICAL :: BaseLoad
     LOGICAL :: ScanOnly
     LOGICAL, OPTIONAL :: runc
+    LOGICAL, OPTIONAL :: ControlOnly
     CHARACTER(LEN=*) :: MeshDir,MeshName
 !------------------------------------------------------------------------------
 
@@ -273,12 +274,41 @@ CONTAINS
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::name)
 
+    
+    ! We may only read the "Control" section that is then used to
+    ! define how the system is run. This may be loaded to a different
+    ! Model_t structure than the other stuff. 
+    !---------------------------------------------------------------------
+    IF( PRESENT( ControlOnly ) ) THEN
+      IF( ControlOnly ) THEN
+        CALL Info('LoadInputFile','Reading only control section',Level=12)    
+        DO WHILE(ReadAndTrim(InFileUnit,Section,Echo,NoEval=.TRUE.))
+          IF( SEQL(Section,'control') ) THEN                        
+            IF(.NOT.ASSOCIATED(Model % Control)) &
+                Model % Control => ListAllocate()
+            List => Model % Control
+            ! The control section is different and is read on a separate call!
+            CALL SectionContents( Model, List, CheckAbort, FreeNames, &
+                Section, InFileUnit, .FALSE., Echo )
+            RETURN
+          ELSE IF( SEQL(Section,'simulation') ) THEN                        
+            RETURN
+          END IF
+        END DO
+        RETURN
+      END IF
+    END IF
+    
     IF( ScanOnly ) THEN
       CALL Info('LoadInputFile','Scanning input file: '//TRIM(FileName),Level=7)
     ELSE
       CALL Info('LoadInputFile','Loading input file: '//TRIM(FileName),Level=7)
     END IF
-      
+
+    IF( ScanOnly ) CALL Info('LoadInputFile','Scanning only size info',Level=12)
+    IF( FirstTime ) CALL Info('LoadInputFile','First time visiting',Level=20)
+    IF( BaseLoad ) CALL Info('LoadInputFile','Reading base load of sif file',Level=20)   
+
 !------------------------------------------------------------------------------
 !   Read model header first
 !------------------------------------------------------------------------------
@@ -429,7 +459,13 @@ CONTAINS
       ArrayN = 0
       LineCount = LineCount + 1
       
-      IF ( SEQL(Section, 'constants') ) THEN
+      IF( SEQL(Section,'control') ) THEN
+        ! Control section has already been read, just cycle it.
+        PRINT *,'control section found'
+        CALL SectionContents( Model, Model % Control, CheckAbort, FreeNames, &
+            Section, InFileUnit, .TRUE., Echo )
+        CYCLE
+      ELSE IF ( SEQL(Section, 'constants') ) THEN
         IF ( .NOT. ScanOnly ) THEN
           ArrayN = 1
           IF(.NOT.ASSOCIATED(Model % Constants)) &
@@ -890,10 +926,11 @@ CONTAINS
         CALL Fatal( 'Model Input', Message )
       END IF
 !------------------------------------------------------------------------------
+      
       IF ( .NOT. ScanOnly .AND. ArrayN == 0 ) CYCLE
 
       CALL SectionContents( Model, List, CheckAbort, FreeNames, &
-                Section, InFileUnit, ScanOnly, Echo )
+          Section, InFileUnit, ScanOnly, Echo )
 !------------------------------------------------------------------------------
     END DO
 !------------------------------------------------------------------------------
@@ -1331,12 +1368,14 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-        IF ( SEQL(Section, 'constants') ) THEN
-           str =  'constants: '
+        IF ( SEQL(Section, 'control') ) THEN
+          str =  'control: '
+        ELSE IF ( SEQL(Section, 'constants') ) THEN
+          str =  'constants: '
         ELSE IF ( SEQL(Section, 'simulation') ) THEN
-           str =  'simulation: '
+          str =  'simulation: '
         ELSE IF ( SEQL(Section,  'boundary condition') ) THEN
-           str =  'bc: '
+          str =  'bc: '
         ELSE IF ( SEQL(Section, 'boundary') ) THEN
           str =  'boundary: '
         ELSE IF ( SEQL(Section, 'initial condition') ) THEN
@@ -2146,11 +2185,8 @@ CONTAINS
 
     CHARACTER(LEN=*) :: ModelName
     LOGICAL :: BoundariesOnly
-
     INTEGER, OPTIONAL :: numprocs,mype, MeshIndex
- 
     TYPE(Model_t), POINTER :: Model
-
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh,SerialMesh
     INTEGER :: i,j,k,s,nlen,eqn,MeshKeep,MeshLevels,nprocs
@@ -2169,7 +2205,19 @@ CONTAINS
 
     ALLOCATE( Model )
     CurrentModel => Model
-    NULLIFY( Model % Variables )
+
+    Model % Variables => NULL()
+    Model % BCs => NULL()
+    Model % ICs => NULL()
+    Model % Bodies => NULL()
+    Model % Solvers => NULL()
+    Model % Components => NULL()
+    Model % Equations => NULL()
+    Model % Materials => NULL()
+    Model % BodyForces => NULL()
+    Model % Boundaries => NULL()
+    Model % Constants => NULL()
+    Model % Simulation => NULL()
 
     MeshDir  = ' '
     MeshName = ' '
@@ -2214,15 +2262,15 @@ CONTAINS
       ! Call defaults.lua using 1) ELMER_HOME environment variable or 2) ELMER_SOLVER_HOME preprocessor macro
       ! TODO: (2018-09-18) ELMER_SOLVER_HOME might be too long
 
-      if (trim(elmer_home_env) == "") then
+      IF (TRIM(elmer_home_env) == "") THEN
         lstat = lua_dostring(LuaState, &
             'loadfile("' // &
             ELMER_SOLVER_HOME &
             // '" .. "/lua-scripts/defaults.lua")()'//c_null_char)
-      else
+      ELSE
         lstat = lua_dostring(LuaState, &
             'loadfile(os.getenv("ELMER_HOME") .. "/share/elmersolver/lua-scripts/defaults.lua")()'//c_null_char)
-      end if
+      END IF
 
       ! Execute lua parts 
       lstat = lua_dostring(LuaState, 'loadstring(readsif("'//trim(ModelName)//'"))()' // c_null_char)
@@ -2241,10 +2289,7 @@ CONTAINS
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
 
 
-    IF( .NOT. ListCheckPresent( Model % Simulation,'Solver Input File') ) THEN
-      CALL ListAddString( Model % Simulation,'Solver Input File',ModelName ) 
-    END IF
-      
+    CALL ListAddNewString( Model % Simulation,'Solver Input File',ModelName ) 
     
     CALL InitializeOutputLevel()
 
@@ -5629,27 +5674,27 @@ END SUBROUTINE GetNodalElementSize
 
 
 !------------------------------------------------------------------------------
-!> Adds paramters used in the simulation.
+!> Adds parameters used in the simulation.
 !> The idea is to make parametrisied simulations more simple to perform. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SetSimulationParameters(piter,FinishEarly)
+  SUBROUTINE SetSimulationParameters(Params,piter,GotParams,FinishEarly)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: piter
-    LOGICAL :: FinishEarly
-    
     TYPE(ValueList_t), POINTER :: Params
+    INTEGER :: piter
+    LOGICAL :: GotParams,FinishEarly
+    
     LOGICAL :: Found, HaveFile, HaveArray
     INTEGER :: NoParam
-    REAL(KIND=dp), POINTER :: PArray(:,:), PValues(:)
+    REAL(KIND=dp), POINTER :: PArray(:,:), PValues(:)=>NULL()
     TYPE(Variable_t), POINTER :: PVar
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: LineCounter = 0
-
+    
     SAVE NoParam
-
+    
+    GotParams = .TRUE.
     FinishEarly = .FALSE.
-    Params => CurrentModel % Simulation
     
     Parray => ListGetConstRealArray( Params,'Parameter Array',HaveArray)
     HaveFile = ListCheckPresent( Params,'Parameter Filename')
@@ -5657,16 +5702,7 @@ END SUBROUTINE GetNodalElementSize
     IF(.NOT. (HaveFile .OR. HaveArray) ) RETURN 
     
     CALL Info('SetSimulationParameters','Trying to set simulation parameters')
-    NULLIFY(PValues)
 
-    Mesh => CurrentModel % Meshes 
-    Pvar => VariableGet( Mesh % Variables, 'Rparam' )
-    IF( ASSOCIATED( PVar ) ) THEN
-      PValues => PVar % Values      
-    ELSE
-      NULLIFY( PValues )
-    END IF
-        
     ! a) use given vector of simulation parameters
     IF( HaveArray ) THEN      
       CALL Info('SetSimulationParameters','Setting parameters using constant array!',Level=6)
@@ -5686,51 +5722,62 @@ END SUBROUTINE GetNodalElementSize
       CALL Info('SetSimulationParameters','Setting parameters using external file!',Level=6)
       CALL ReadSimulationParameters()
     END IF
-
+    
     IF( FinishEarly ) THEN
       CALL Warn('SetSimulationParameters','Parameters exhausted already: '//TRIM(I2S(piter)))  
       RETURN
     END IF
-        
+    
     IF( NoParam == 0 ) THEN
-      CALL Fatal('SetSimulationParameters','Could not determine parameter size!')
+      CALL Warn('SetSimulationParameters','Could not determine parameter size!')
+      RETURN
     END IF
     
-    ! Add the parameters as a field
-    IF( .NOT. ASSOCIATED( PVar ) ) THEN
-      CALL Info('SetSimulationParameters','Adding variable "Rparam" of size: '&
-          //TRIM(I2S(NoParam)),Level=6)
-      Mesh => CurrentModel % Meshes 
-      DO WHILE( ASSOCIATED( Mesh ) )
-        CALL VariableAddVector( Mesh % Variables, Mesh, CurrentModel % Solvers(1), &
-            Name='Rparam',DOFs=NoParam, Values=PValues,Global=.TRUE.)
-        Mesh => Mesh % Next      
-      END DO
-    END IF
-
+    GotParams = .TRUE.
     IF( InfoActive(20) ) THEN
-      PRINT *,'Parameters:',PValues
-    END IF      
+      PRINT *,'Parameters:',NoParam,PValues
+    END IF
     
-    ! We could also add variables to LUA and/or MATC workspace!
-    IF( ListGetLogical( Params,'Simulation Paramaters MATC',Found ) ) THEN
-      CALL Fatal('SetSimulationParameters','Exporting simulation parameters to MATC not supported!')
-    END IF
-    IF( ListGetLogical( Params,'Simulation Paramaters LUA',Found ) ) THEN
-      CALL Fatal('SetSimulationParameters','Exporting simulation parameters to LUA not supported!')
-    END IF
+    CALL SetParametersMATC()
+    
+    CALL Info('SetSimulationParameters','Parameters set!')
 
+    
   CONTAINS
 
+
+    SUBROUTINE SetParametersMATC()
+      
+      INTEGER :: i,j,tj
+
+      DO i=1,NoParam
+        BLOCK
+          CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
+          INTEGER :: tj 
+
+          WRITE( cmd, * ) 'rpar('//TRIM(i2s(i-1))//')=', PValues(i)
+          j = LEN_TRIM(cmd)
+          !$OMP PARALLEL DEFAULT(NONE) &
+          !$OMP SHARED(cmd, tmp_str, j ) &
+          !$OMP PRIVATE(tcmd, ttmp_str, tj)
+          tj = j
+          tcmd = cmd               
+          CALL matc( tcmd, ttmp_str, tj )
+          !$OMP BARRIER
+          !$OMP END PARALLEL
+       END BLOCK
+      END DO
+              
+    END SUBROUTINE SetParametersMATC
+
+    
     SUBROUTINE ReadSimulationParameters()
 
       INTEGER :: FileUnit, Line, NOffset, FileTypeInd, FileRow, iostat, i, j
       CHARACTER(LEN=MAX_NAME_LEN) :: FileName, FileType
       CHARACTER(LEN=MAX_NAME_LEN) :: readstr 
       REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
-    
-      Filename = ListGetString( Params,'Parameter Filename',Found )
-      
+          
       FileType = ListGetString( Params,'Parameter Filetype',Found )
       FileTypeInd = 0
       IF( Found ) THEN
@@ -5747,8 +5794,11 @@ END SUBROUTINE GetNodalElementSize
       FileRow = ListGetInteger( Params,'Parameter Row Offset',Found ) 
       FileRow = FileRow + piter
       
-      OPEN(NEWUNIT=FileUnit,FILE=FileName)
-      
+      OPEN(NEWUNIT=FileUnit,FILE=FileName,IOSTAT=iostat)
+      IF( iostat /= 0 ) THEN
+        CALL Fatal('SetSimulationParamaters','Could not open file: '//TRIM(FileName))
+      END IF
+        
       IF( FileTypeInd == 1 ) THEN
         Noffset = 2
         DO WHILE(.TRUE.) 
@@ -5791,7 +5841,10 @@ END SUBROUTINE GetNodalElementSize
           FinishEarly = .TRUE.
           RETURN
         END IF
-        IF( Line == FileRow ) EXIT
+        IF( Line == FileRow ) THEN
+          CALL Info('SetSimulationParameters','Read paramater line: '//TRIM(I2S(Line)),Level=7)
+          EXIT
+        END IF
       END DO
       CLOSE(FileUnit)
       
