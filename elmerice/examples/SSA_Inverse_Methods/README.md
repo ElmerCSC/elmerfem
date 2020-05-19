@@ -17,3 +17,4 @@ for the inverse methods (see documentation [here](https://github.com/ElmerCSC/el
 
    - MacAyeal: Optimisation of the basal friction coefficient based on a synthetic test case.
    - RonneFilchner: Optimisation of the viscosity on the Ronne-Filchner ice-shelf. You will need data-sets to run this experiment, see in the DATA directory.
+   - RonneFilchner2: Optimisation of both the viscosity and fiction on the Ronne-Filchner ice-shelf (including ice rises). External data sets are required to run this experiment, see in the DATA directory.
