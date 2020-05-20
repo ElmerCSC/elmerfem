@@ -5719,6 +5719,15 @@ END SUBROUTINE GetNodalElementSize
    
    CALL Info(Caller, '-----------------------------------------', Level=5 )
    CALL Info(Caller, 'Setting sweeping parameters for simulation',Level=4 )
+
+   NoParam = ListGetInteger( Params,'Parameter Count',Found )
+   IF(.NOT. Found ) THEN
+     NoParam = ListGetInteger( Params,'Number of Parameters',Found)
+   END IF
+   IF(NoParam == 0 ) THEN
+     CALL Info(Caller,'No parameters to set in control loop!',Level=4)
+     RETURN
+   END IF
    
    DoOptim = ListCheckPresent( Params,'Optimization Method')
 
@@ -5727,15 +5736,9 @@ END SUBROUTINE GetNodalElementSize
    OptimalFinish = ListGetLogical( Params,'Parameter Optimal Finish',Found ) 
    NoValues = ListGetInteger( Params,'Parameter Max Iterations')
 
-   NoParam = ListGetInteger( Params,'Parameter Count',Found )
-   IF(.NOT. Found ) THEN
-     NoParam = ListGetInteger( Params,'Number of Parameters')
-   END IF
-
    IF( .NOT. ALLOCATED( Param ) ) THEN
      ALLOCATE( Param(NoParam), BestParam(NoParam) )
    END IF
-
    
    ! Visit this after simulation and register the parameters
    ! and cost function if present. We use same subroutine so
@@ -5750,6 +5753,9 @@ END SUBROUTINE GetNodalElementSize
      END IF
    END IF
       
+   ! Here we set the parameters in different ways.
+   ! They may be predefined or set by some optimization method. 
+   !-------------------------------------------------------------------
    IF( OptimalStart .AND. piter == 1 ) THEN
      CALL GetSavedOptimum()  
    ELSE IF( OptimalFinish .AND. piter == NoValues ) THEN
@@ -5767,6 +5773,7 @@ END SUBROUTINE GetNodalElementSize
      PRINT *,'Parameters:',NoParam,Param
    END IF
 
+   ! Set parametes to be accessible to the MATC preprocessor when reading sif file. 
    CALL SetParametersMATC(NoParam,Param)
 
    CALL Info(Caller, '-----------------------------------------', Level=5 )

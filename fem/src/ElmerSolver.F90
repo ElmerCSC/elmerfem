@@ -1190,10 +1190,10 @@ END INTERFACE
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
 
-       IF( ListCheckPresent( CurrentModel % Simulation,'Parameter Max Iterations') ) THEN
+       IF( DoOptimization ) THEN
          CALL VariableAdd( Mesh % Variables, Mesh, Name='param', DOFs=1, Values=sSweep )
        END IF
-       
+              
        sPar(1) = 1.0_dp * ParEnv % MyPe 
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Partition', DOFs=1, Values=sPar ) 
 
