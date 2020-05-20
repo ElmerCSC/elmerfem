@@ -4990,6 +4990,7 @@ static int UnvToElmerType(int unvtype)
 
   case 22:
   case 23:
+  case 24:
     elmertype = 203;
     break;
 
@@ -5045,18 +5046,22 @@ static int UnvToElmerType(int unvtype)
     elmertype = 510;
     break;
 
+  case 101:
   case 112:
     elmertype = 706;
     break;
 
+  case 102:
   case 113:
     elmertype = 715;
     break;
 
+  case 104:
   case 115:
     elmertype = 808;
     break;
 
+  case 105:
   case 116:
     elmertype = 820;
     break;
@@ -5162,7 +5167,7 @@ int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound,
   int reordernodes,reorderelements,nogroups,maxnodeind,maxelem,elid,unvtype,elmertype;
   int nonodes,group,grouptype,mode,nopoints,nodeind,matind,physind,colorind;
   int minelemtype,maxelemtype,physoffset=0,doscaling=FALSE;
-  int debug,mingroup,maxgroup,minphys,maxphys,nogroup,noentities,dummy;
+  int debug,mingroup,maxgroup,minphys,maxphys,nogroup,noentities,dummy,isbeam;
   int *u2eind=NULL,*u2eelem=NULL;
   int *elementtypes;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
@@ -5311,18 +5316,6 @@ omstart:
 	  if(0) printf("elem = %d %d %d %d\n",noelements,unvtype,physind,matind);
 	}	
 
-	if (!allocated) {
-	  minphys = MIN( minphys, physind );
-	  maxphys = MAX( maxphys, physind );	 
-	  maxnodes = MAX(maxnodes, nonodes);
-	  if(elid != noelements) reorderelements = TRUE;
-	  maxelem = MAX(maxelem, elid);
-	}
-	
-	if(unvtype == 11 || unvtype == 21 || unvtype == 22 ) Getrow(line,in,FALSE);
-	Getrow(line,in,FALSE);
-	cp = line;
-
 	elmertype = UnvToElmerType(unvtype); 
 	if(!elmertype) {
 	  printf("Unknown elementtype %d %d %d %d %d %d %d\n",
@@ -5330,6 +5323,21 @@ omstart:
 	  printf("line %d: %s\n",linenumber,line);
 	  bigerror("done");
 	}
+
+	if (!allocated) {
+	  minphys = MIN( minphys, physind );
+	  maxphys = MAX( maxphys, physind );	 
+	  maxnodes = MAX(maxnodes, nonodes);
+	  if(elid != noelements) reorderelements = TRUE;
+	  maxelem = MAX(maxelem, elid);
+	}
+
+	/* For beam elements there is a stupid additional row filled with zeros? */
+	isbeam = ( elmertype / 100 == 2);
+	if(isbeam)Getrow(line,in,FALSE);
+	
+	Getrow(line,in,FALSE);
+	cp = line;
 
 	if(elmertype == 510 ) 	   
 	  lines = 1;
