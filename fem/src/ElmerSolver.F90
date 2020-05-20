@@ -110,14 +110,14 @@
      LOGICAL :: Silent, Version, GotModelName, FinishEarly
 
      INTEGER :: iargc, NoArgs
-     INTEGER :: iostat, iSweep, ParamSweeps
+     INTEGER :: iostat, iSweep, OptimIters
      
      INTEGER :: MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
-     TYPE(Model_t), POINTER, SAVE :: ControlModel
+     TYPE(Model_t), POINTER, SAVE :: Optimization
      CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
-     LOGICAL :: DoControl, GotParams
+     LOGICAL :: DoOptimization, GotParams
      
      
 #ifdef HAVE_TRILINOS
@@ -273,20 +273,20 @@ END INTERFACE
          CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
              TRIM(Modelname) // '], can not execute.' )
        END IF
-       ALLOCATE( ControlModel )          
-       ! Read only the "Control" section of the sif file.
-       CALL LoadInputFile( ControlModel,InFileUnit,ModelName,MeshDir,MeshName, &
-           .FALSE., .TRUE., ControlOnly = .TRUE.)
-       DoControl =  ASSOCIATED( ControlModel % Control )
-       IF( DoControl ) THEN
-         CALL Info('ElmerSolver','Control section active!')
-         ParamSweeps = ListGetInteger( ControlModel % Control,'Parameter Max Sweeps', Found )
-         IF(.NOT. Found) ParamSweeps = 1              
-         ! If there are no parameters this does nothing         
-         CALL SetSimulationParameters(ControlModel % Control, &
-             1,GotParams,FinishEarly)           
+       ALLOCATE( Optimization )          
+       ! Read only the "Optimization" section of the sif file.
+       CALL LoadInputFile( Optimization,InFileUnit,ModelName,MeshDir,MeshName, &
+           .FALSE., .TRUE., OptimizationOnly = .TRUE.)
+       DoOptimization =  ASSOCIATED( Optimization % Optimization )
+       IF( DoOptimization ) THEN
+         CALL Info('ElmerSolver','Optimization section active!')
+         OptimIters = ListGetInteger( Optimization % Optimization,'Parameter Max Iterations', Found )
+         IF(.NOT. Found) OptimIters = 1              
+         ! If there are no parameters this does nothing
+         CALL SetParameters(Optimization % Optimization, &
+             1,GotParams,FinishEarly)
        ELSE
-         ParamSweeps = 1 
+         OptimIters = 1 
        END IF
      END IF
                 
@@ -472,14 +472,14 @@ END INTERFACE
        ! This sets optionally some internal parameters for doing scanning
        ! over a parameter space / optimization. 
        !-----------------------------------------------------------------
-       DO iSweep = 1, ParamSweeps
+       DO iSweep = 1, OptimIters
          sSweep = 1.0_dp * iSweep
          ! If there are no parameters this does nothing                  
-         IF( DoControl .AND. iSweep > 1 ) THEN
-           CALL SetSimulationParameters(ControlModel % Control, &
+         IF( DoOptimization .AND. iSweep > 1 ) THEN
+           CALL SetParameters(Optimization % Optimization, &
                iSweep,GotParams,FinishEarly)           
-           Found = ReloadInputFile(CurrentModel)
            IF( FinishEarly ) EXIT
+           Found = ReloadInputFile(CurrentModel,RewindFile=.TRUE.)
          END IF
 
          !------------------------------------------------------------------------------
@@ -493,6 +493,12 @@ END INTERFACE
          ELSE
            CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
                CoupledMaxIter, OutputIntervals, Transient, Scanning)
+         END IF
+
+         ! This evaluates the cost function and saves the results of optimization
+         IF( DoOptimization ) THEN
+           CALL SetParameters(Optimization % Optimization, &
+               iSweep,GotParams,FinishEarly,.TRUE.)
          END IF
        END DO
        
@@ -1184,8 +1190,8 @@ END INTERFACE
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
 
-       IF( ListCheckPresent( CurrentModel % Simulation,'Parameter Max Sweeps') ) THEN
-         CALL VariableAdd( Mesh % Variables, Mesh, Name='sweep', DOFs=1, Values=sSweep )
+       IF( ListCheckPresent( CurrentModel % Simulation,'Parameter Max Iterations') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='param', DOFs=1, Values=sSweep )
        END IF
        
        sPar(1) = 1.0_dp * ParEnv % MyPe 
