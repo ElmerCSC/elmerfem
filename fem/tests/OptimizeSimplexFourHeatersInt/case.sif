@@ -1,6 +1,11 @@
-! Run a case over 4 parameter configurations.
+! optimize the heat distribution of an object with four heaters
+! so that the temperature at the center of each heater is as 
+! desired. 
 !
-! P.R. 19.2.2020
+! This is a remake of the old test case to utilize internal
+! optimization routines.
+!
+! P.R. 20.5.2020
 
 Check Keywords warn
 
@@ -11,41 +16,46 @@ Header
 End
 
 Optimization
-! When we fetch the parameters we will automatically have variable "Rparam"
-! with the given number of parameters. You can refer to these as "Rparam i", i=1,2,3,...
+  Cost Function = Variable Time
+    Real Procedure "CostFunction" "CostFunction"   
 
-! a) give parameters in sif
-! Parameter Array(4,4) = Real 1 0 0 0 0 2 0 0 0 0 3 0 0 0 0 4
-! Parameter Max Sweeps = Integer 10  ! terminated early as max size is 4
+  Parameter Count = Integer 4
+  Parameter Max Iterations = Integer 100
+  Parameter Optimal Finish = Logical True
+  Parameter Best File = File "optimize-best.dat"
+  Parameter History File = File "optimize-history.dat"
+  !Parameter History Append = Logical True
+  !Parameter Guess File = "optimize-best0.dat"
 
-  Parameter Max Iterations = Integer 4
+  !Parameter Filetype = String 'table' ! 'dakota'
+  !Parameter Row Offset = Integer 
+  !Parameter Column Offset = Integer
 
-  Max Output Level = Integer 7
+  Cost Function = Variable Time
+    Real Procedure "CostFunction" "CostFunction"   
+  !Cost Function Target = Real 
+  !Cost Function Absolute = Logical
+  !Cost Function Maximize = Logical 
 
-! b) give parameters as an ascii matrix:
-  Parameter Filename = File "par.dat"
-  Parameter Count = Integer 4  ! columns in matrix
-  Parameter Row Offset = Integer 2 ! starts from line 3
-  Parameter Max Sweeps = Integer 4 ! doing lines 3-6
+  Optimization Method = String "simplex"
+  Simplex Relative Length Scale = Real 1.0 
+  !Simplex Restart Interval = Integer 20
+  !Simplex Restart Convergence Ratio = Real 1.0
 
-! c) give parameters as an Dakota file:
-!  Parameter Filename = File "LHS_distributions.out"
-!  Parameter Filetype = String "dakota"
-!  Parameter Count = Integer 4  ! columns in matrix
-!  Parameter Row Offset = Integer 2 ! starts from line 3
-!  Parameter Column Offset = Integer 2 ! start from column 3
-!  Parameter Max Sweeps = Integer 4 ! lines 3-6
-End
+  !Initial Step Size = Real
+  !Max Step Size = Real
+  !Step Size Relaxation Factor = Real
 
+  Max Output Level = Integer 20 
+End 
 
 Simulation
-  Max Output Level = 7
   Coordinate System = String Cartesian
   Coordinate Mapping(3) = Integer 1 2 3
-  Simulation Type = Steady State 
+  Simulation Type = Steay State 
   Steady State Max Iterations = 1
-  Output Intervals = 0
-
+  Output Intervals = 1
+  Max Output Level = 20 
   Post File = "case.vtu"
 End
 
@@ -126,16 +136,19 @@ Solver 1
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations = 500
+  Linear System Max Iterations = 300
   Linear System Convergence Tolerance = 1.0e-08
   Linear System Preconditioning = ILU0
   Linear System Residual Output = 20
   Linear System Abort Not Converged = False
 
   Steady State Convergence Tolerance = 1.0e-05
-  Stabilize = False
+  Stabilize = True
   Nonlinear System Convergence Tolerance = 1.0e-05
   Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
 End
 
 Boundary Condition 1
@@ -144,6 +157,6 @@ Boundary Condition 1
   Temperature = Real 0
 End
 
-Solver 1 :: Reference Norm = 0.94747143
+Solver 1 :: Reference Norm = 2.15705666E+01
 
 
