@@ -207,7 +207,8 @@ private slots:
   void doDivideEdgeSlot(double);       // signal emitted by boundaryDivide
 
   void postProcessFinishedSlot(int); // signal emitted by postProcess
-
+  void paraviewProcessFinishedSlot(int); // signal emitted by paraview
+  
   void solverStdoutSlot();      // solver's stdout redirection
   void solverStderrSlot();      // solver's stderr redirection
   void solverFinishedSlot(int); // signal emitted by solver process
@@ -475,6 +476,7 @@ private:
   // solver, post processor, and other processes:
   QProcess *solver;
   QProcess *post;
+  QProcess *paraview;
   QProcess *compiler;
   QProcess *meshSplitter;
   QProcess *meshUnifier;

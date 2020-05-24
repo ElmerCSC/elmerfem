@@ -137,6 +137,7 @@ MainWindow::MainWindow() {
   solverLogWindow = new SolverLogWindow(this);
   solver = new QProcess(this);
   post = new QProcess(this);
+  paraview = new QProcess(this);
   compiler = new QProcess(this);
   meshSplitter = new QProcess(this);
   meshUnifier = new QProcess(this);
@@ -237,6 +238,10 @@ MainWindow::MainWindow() {
   // post emits (int) when finished:
   connect(post, SIGNAL(finished(int)), this,
           SLOT(postProcessFinishedSlot(int)));
+
+  // paraview emits (int) when finished:
+  connect(paraview, SIGNAL(finished(int)), this,
+          SLOT(paraviewProcessFinishedSlot(int)));
 
   // meshSplitter emits (int) when finished:
   connect(meshSplitter, SIGNAL(finished(int)), this,
@@ -5039,6 +5044,12 @@ void MainWindow::showVtkPostSlot() {
 //-----------------------------------------------------------------------------
 void MainWindow::showParaViewSlot() {
 #ifdef EG_PARAVIEW
+
+  if (paraview->state() == QProcess::Running) {
+    logMessage("ParaView is already running");
+    return;
+  }
+
   QString postFileName = generalSetup->ui.postFileEdit->text().trimmed();
   QFileInfo pvFile(postFileName);
 
@@ -5054,6 +5065,7 @@ void MainWindow::showParaViewSlot() {
   // Paraview can deal with case..vtu kind of arguments which however,
   // fail if there is only one file. Use dirty check to see that there
   // are more than one file.
+  
   if (!parallelActive) {
     secondName = pvFile.baseName() + "_t0002.vtu";
   } else {
@@ -5082,8 +5094,18 @@ void MainWindow::showParaViewSlot() {
 
   // Launch ParaView
   //================
+  paraview->start("\"paraview\"", args);
+  
+  if (!paraview->waitForStarted()) {
+    logMessage("Unable to start ParaView");
+    return;
+  }
 
-  post->start("paraview", args);
+  logMessage("ParaView started");
+
+  updateSysTrayIcon("ParaView started",
+                    "");
+  
 #endif
 }
 
@@ -6943,6 +6965,19 @@ void MainWindow::resultsSlot() {
   QFile file(postName);
   if (!file.exists()) {
     logMessage("Elmerpost input file does not exist.");
+    /*Even though input file does not exist, lauch ElmerPost*/
+    post->start("ElmerPost");
+    killresultsAct->setEnabled(true);
+    if (!post->waitForStarted()) {
+      logMessage("Unable to start ElmerPost");
+      return;
+    }
+    resultsAct->setIcon(QIcon(":/icons/Post-red.png"));
+
+    logMessage("ElmerPost started");
+
+    updateSysTrayIcon("ElmerPost started",
+                      "Elmerpost input file does not exist.");
     return;
   }
 
@@ -7007,6 +7042,14 @@ void MainWindow::postProcessFinishedSlot(int) {
   updateSysTrayIcon("ElmerPost has finished",
                     "Use Run->Start ElmerPost to restart");
   killresultsAct->setEnabled(false);
+}
+
+// Signal (int) emitted by paraview when finished:
+//-----------------------------------------------------------------------------
+void MainWindow::paraviewProcessFinishedSlot(int) {
+  logMessage("ParaView finished");
+  updateSysTrayIcon("ParaView has finished",
+                    "Use Run->Start ParaView to restart");
 }
 
 // Solver -> Kill post process
