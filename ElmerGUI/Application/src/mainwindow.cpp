@@ -5078,7 +5078,7 @@ void MainWindow::showParaViewSlot() {
   //================
   if (!parallelActive) {
     if (secondFile.exists())
-      args << pvFile.baseName() + "..vtu";
+      args << pvFile.baseName() + "_t..vtu";
     else
       args << pvFile.baseName() + "_t0001.vtu";
   }
@@ -5087,14 +5087,14 @@ void MainWindow::showParaViewSlot() {
   //==================
   if (parallelActive) {
     if (secondFile.exists())
-      args << pvFile.baseName() + "..pvtu";
+      args << pvFile.baseName() + "_t..pvtu";
     else
       args << pvFile.baseName() + "_t0001.pvtu";
   }
 
   // Launch ParaView
   //================
-  paraview->start("\"paraview\"", args);
+  paraview->start("paraview", args);
   
   if (!paraview->waitForStarted()) {
     logMessage("Unable to start ParaView");
