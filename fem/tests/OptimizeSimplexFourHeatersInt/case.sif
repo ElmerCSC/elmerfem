@@ -15,12 +15,13 @@ Header
   Results Directory ""
 End
 
-Optimization
+Run Control 
+  Run Control Iterations = Integer 100
+
   Cost Function = Variable Time
     Real Procedure "CostFunction" "CostFunction"   
 
   Parameter Count = Integer 4
-  Parameter Max Iterations = Integer 100
   Parameter Optimal Finish = Logical True
   Parameter Best File = File "optimize-best.dat"
   Parameter History File = File "optimize-history.dat"

@@ -10,31 +10,28 @@ Header
   Results Directory ""
 End
 
-Optimization
-! When we fetch the parameters we will automatically have variable "Rparam"
-! with the given number of parameters. You can refer to these as "Rparam i", i=1,2,3,...
+Run Control
+! When we fetch the parameters we will automatically have variable a MATC vector "rpar"
+! with the given number of parameters. You can refer to these as "$rpar(i)", i=0,1,2...
+
+  Run Control Iterations = 4 !Integer 4 
 
 ! a) give parameters in sif
 ! Parameter Array(4,4) = Real 1 0 0 0 0 2 0 0 0 0 3 0 0 0 0 4
-! Parameter Max Sweeps = Integer 10  ! terminated early as max size is 4
-
-  Parameter Max Iterations = Integer 4
 
   Max Output Level = Integer 7
 
 ! b) give parameters as an ascii matrix:
-  Parameter Filename = File "par.dat"
+  Parameter File = File "par.dat"
   Parameter Count = Integer 4  ! columns in matrix
-  Parameter Row Offset = Integer 2 ! starts from line 3
-  Parameter Max Sweeps = Integer 4 ! doing lines 3-6
+  Parameter Row Offset = Integer 2 ! starts from line 3, doing lines 3-6
 
 ! c) give parameters as an Dakota file:
-!  Parameter Filename = File "LHS_distributions.out"
+!  Parameter File = File "LHS_distributions.out"
 !  Parameter Filetype = String "dakota"
 !  Parameter Count = Integer 4  ! columns in matrix
 !  Parameter Row Offset = Integer 2 ! starts from line 3
 !  Parameter Column Offset = Integer 2 ! start from column 3
-!  Parameter Max Sweeps = Integer 4 ! lines 3-6
 End
 
 

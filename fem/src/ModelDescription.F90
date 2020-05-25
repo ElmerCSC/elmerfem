@@ -297,7 +297,7 @@ CONTAINS
 !> Performs also some simple sanity tests for the lists. 
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE LoadInputFile( Model, InFileUnit, FileName, &
-         MeshDir, MeshName, BaseLoad, ScanOnly, Runc, OptimizationOnly )
+         MeshDir, MeshName, BaseLoad, ScanOnly, Runc, ControlOnly )
 !------------------------------------------------------------------------------
 
     CHARACTER(LEN=*) :: FileName
@@ -306,7 +306,7 @@ CONTAINS
     LOGICAL :: BaseLoad
     LOGICAL :: ScanOnly
     LOGICAL, OPTIONAL :: runc
-    LOGICAL, OPTIONAL :: OptimizationOnly
+    LOGICAL, OPTIONAL :: ControlOnly
     CHARACTER(LEN=*) :: MeshDir,MeshName
 !------------------------------------------------------------------------------
 
@@ -334,7 +334,8 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: EntryUsed(:)
 
     LOGICAL :: FirstTime = .TRUE.
-
+    LOGICAL :: KeywordsLoaded = .FALSE.
+    
     INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
         IcCount, SolverCount, LineCount, ComponentCount
     REAL(KIND=dp) :: Val
@@ -346,27 +347,34 @@ CONTAINS
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::name)
 
+    CheckAbort = 1
+    IF ( .NOT. KeywordsLoaded ) THEN
+       CALL CheckKeyword( 'coordinate system', 'string', &
+           CheckAbort,FreeNames,'simulation' )
+       KeywordsLoaded = .TRUE.
+    END IF
     
-    ! We may only read the "Optimization" section that is then used to
+    
+    ! We may only read the "Run Control" section that is then used to
     ! define how the system is run. This may be loaded to a different
     ! Model_t structure than the other stuff. For convenience, and confusion,
     ! we still read it using the same routine and same file. 
-    ! Note that here we assume that "Optimization" is always before "Simulation".
+    ! Note that here we assume that "Run Control" is always before "Simulation".
     !-----------------------------------------------------------------------
-    IF( PRESENT( OptimizationOnly ) ) THEN
-      IF( OptimizationOnly ) THEN
-        CALL Info(Caller,'Reading only optimization section',Level=12)    
+    IF( PRESENT( ControlOnly ) ) THEN
+      IF( ControlOnly ) THEN
+        CALL Info(Caller,'Reading only "Run Control" section',Level=12)    
         DO WHILE(ReadAndTrim(InFileUnit,Section,Echo,NoEval=.TRUE.))
-          IF( SEQL(Section,'optimization') ) THEN                        
-            IF(.NOT.ASSOCIATED(Model % Optimization)) &
-                Model % Optimization => ListAllocate()
-            List => Model % Optimization
-            ! The optimization section is different and is read on a separate call!
+          IF( SEQL(Section,'run control') ) THEN                        
+            IF(.NOT.ASSOCIATED(Model % Control)) &
+                Model % Control => ListAllocate()
+            List => Model % Control
+            ! The control section is different and is read on a separate call!
             CALL SectionContents( Model, List, CheckAbort, FreeNames, &
                 Section, InFileUnit, .FALSE., Echo )
             ! Let's initialize the output level here as well, if we would like
-            ! to debug the optimization stuff, for example. 
-            CALL InitializeOutputLevel( Model % Optimization ) 
+            ! to debug the "Run Control" stuff, for example. 
+            CALL InitializeOutputLevel( Model % Control ) 
             RETURN
           ELSE IF( SEQL(Section,'simulation') ) THEN                        
             RETURN
@@ -389,12 +397,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Read model header first
 !------------------------------------------------------------------------------
-    CheckAbort = 1
-    IF ( FirstTime ) THEN
-       CALL CheckKeyword( 'coordinate system', 'string', &
-           CheckAbort,FreeNames,'simulation' )
-    END IF
-    
     IF ( BaseLoad ) THEN
       DO WHILE( ReadAndTrim( InFileUnit, Name, Echo ) )
 
@@ -538,9 +540,9 @@ CONTAINS
       ArrayN = 0
       LineCount = LineCount + 1
       
-      IF( SEQL(Section,'optimization') ) THEN
-        ! Optimization section has already been read, just cycle it.
-        CALL SectionContents( Model, Model % Optimization, CheckAbort, FreeNames, &
+      IF( SEQL(Section,'run control') ) THEN
+        ! "Run Control" section has already been read, just cycle it.
+        CALL SectionContents( Model, Model % Control, CheckAbort, FreeNames, &
             Section, InFileUnit, .TRUE., Echo )
         CYCLE
       ELSE IF ( SEQL(Section, 'constants') ) THEN
@@ -1446,8 +1448,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-        IF ( SEQL(Section, 'optimization') ) THEN
-          str =  'optimization: '
+        IF ( SEQL(Section, 'run control') ) THEN
+          str =  'run control: '
         ELSE IF ( SEQL(Section, 'constants') ) THEN
           str =  'constants: '
         ELSE IF ( SEQL(Section, 'simulation') ) THEN
@@ -5695,7 +5697,7 @@ END SUBROUTINE GetNodalElementSize
 
  
 !------------------------------------------------------------------------------
-!> Adds parameters used in the simulation either predefined or from optimization.
+!> Adds parameters used in the simulation either predefined or from run control.
 !> The idea is to make parametrized simulations more simple to perform. 
 !------------------------------------------------------------------------------
  SUBROUTINE SetParameters(Params,piter,GotParams,FinishEarly,PostSimulation)
@@ -5725,7 +5727,7 @@ END SUBROUTINE GetNodalElementSize
      NoParam = ListGetInteger( Params,'Number of Parameters',Found)
    END IF
    IF(NoParam == 0 ) THEN
-     CALL Info(Caller,'No parameters to set in control loop!',Level=4)
+     CALL Info(Caller,'No parameters to set in "Run Control" loop!',Level=4)
      RETURN
    END IF
    
@@ -5734,7 +5736,7 @@ END SUBROUTINE GetNodalElementSize
    OptimalStart = ListGetLogical(Params,'Optimal Restart',Found )
 
    OptimalFinish = ListGetLogical( Params,'Parameter Optimal Finish',Found ) 
-   NoValues = ListGetInteger( Params,'Parameter Max Iterations')
+   NoValues = ListGetInteger( Params,'Run Control Iterations')
 
    IF( .NOT. ALLOCATED( Param ) ) THEN
      ALLOCATE( Param(NoParam), BestParam(NoParam) )
@@ -5915,7 +5917,7 @@ END SUBROUTINE GetNodalElementSize
      LOGICAL :: fileis, GotIt
      INTEGER :: IOUnit
 
-     Name = ListGetString(Params,'Parameter Guess File',GotIt )
+     Name = ListGetString(Params,'Parameter Restart File',GotIt )
      IF(.NOT. GotIt) RETURN
      
      INQUIRE (FILE=Name, EXIST=fileis)
@@ -5997,7 +5999,7 @@ END SUBROUTINE GetNodalElementSize
     FinishEarly = .FALSE.
     
     Parray => ListGetConstRealArray( Params,'Parameter Array',HaveArray)
-    FileName = ListGetString( Params,'Parameter Filename',HaveFile)
+    FileName = ListGetString( Params,'Parameter File',HaveFile)
     
     IF(.NOT. (HaveFile .OR. HaveArray) ) RETURN 
     
@@ -6135,13 +6137,6 @@ END SUBROUTINE GetNodalElementSize
     
     IMPLICIT NONE
     
-    !USE Types
-    !USE Lists
-    !USE MeshUtils
-    !USE Integration
-    !USE ElementDescription
-    !USE SolverUtils
-
     TYPE(ValueList_t), POINTER :: OptList
     INTEGER :: piter
     LOGICAL :: GotParams, FinishEarly
@@ -6178,7 +6173,7 @@ END SUBROUTINE GetNodalElementSize
     IF(.NOT. Visited ) THEN
       CALL Info(Caller,'Initializing solver for optimization')
 
-      NoValues = ListGetInteger( OptList,'Parameter Max Sweeps')
+      NoValues = ListGetInteger( OptList,'Run Control Iterations')
 
       OptTol = ListGetConstReal( OptList,'Optimization Tolerance',GotIt)
 

@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY rect.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(HelmholtzPlaneWavesParam LABELS helmholtz)
+ADD_ELMER_TEST(HelmholtzPlaneWavesParam LABELS helmholtz control)

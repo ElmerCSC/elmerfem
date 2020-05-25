@@ -16,8 +16,8 @@ Header
   Results Directory ""
 End
 
-Optimization
-  Parameter Max Iterations = Integer 5
+Run Control
+  Run Control Iterations = Integer 5
 End 
 
 
@@ -85,8 +85,8 @@ Solver 1
   Nonlinear Update Exported Variables = Logical True
   Exported Variable 1 = Ptot
 
-! Scan over frequency
-  Frequency = Variable "param"
+! Scan over frequency, run = {1,2,3,4,5}
+  Frequency = Variable "run"
     Real MATC "1000*tx"
 End
 
