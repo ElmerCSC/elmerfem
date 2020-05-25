@@ -404,7 +404,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         IF( VariableName == 'timestep' ) IsInteger = .TRUE.
         IF( VariableName == 'nonlin iter' ) IsInteger = .TRUE.
         IF( VariableName == 'coupled iter' ) IsInteger = .TRUE.
-
+        IF( VariableName == 'run' ) IsInteger = .TRUE.
+        
         IF( Var % Dofs == 1 ) THEN
           CALL AddToSaveList('value: '//TRIM(VariableName)//' scalar variable', &
                               Var % Values(1), IsInteger )
