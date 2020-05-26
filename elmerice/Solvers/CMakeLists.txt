@@ -87,7 +87,8 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     CalvingGeometry.F90 Calving3D.F90 Calving3D_lset.F90 CalvingGlacierAdvance3D.F90 CalvingRemesh.F90
     CalvingFrontAdvance3D.F90 Emergence.F90 SSAmask.F90 
     GlaDSCoupledSolver.F90 GlaDSchannelSolver.F90 Flotation.F90
-    BasalMelt3D.F90 CalvingHydroInterp.F90 HydroRestart.F90 )
+    BasalMelt3D.F90 CalvingHydroInterp.F90 HydroRestart.F90 
+    GMValid.F90 )
 IF(HAVE_ODEPack)
   SET(ElmerIce_SRC ${ElmerIce_SRC} PlumeSolver.F90 )
 ENDIF()
