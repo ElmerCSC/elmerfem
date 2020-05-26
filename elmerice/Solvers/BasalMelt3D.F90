@@ -46,7 +46,7 @@
    USE CoordinateSystems
    USE DefUtils
    USE ElementDescription
-   USE Geometry
+   USE CalvingGeometry
 
    IMPLICIT NONE
 
