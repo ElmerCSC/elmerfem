@@ -62,9 +62,8 @@
 !------------------------------------------------------------------------------
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Solver_t), POINTER :: HydroSolver, ChannelSolver, ThicknessSolver
-     TYPE(ValueList_t), POINTER :: Params
      LOGICAL :: Gotit
-     INTEGER :: k, i, HPSolver, ChanSolver, ThickSolver
+     INTEGER :: k, i, HPSolver, ChanSolver, ThickSolver, SolverID
      CHARACTER(LEN=MAX_STRING_LEN) :: OutputName, RestartFile
 !------------------------------------------------------------------------------
 
@@ -93,11 +92,12 @@
        END IF
      END DO
 
+     SolverID = Solver % SolverId
+
      IF ( GotIt ) THEN
        !Because all the actual variable output will be on this solver mesh, not
        !on the identical NO meshes defined in the other solvers for
        !initialisation and result output purposes
-       Params => ListGetSolverParams()
        OutputName = TRIM(HydroSolver % Mesh % Name) // '/' // TRIM(RestartFile)
        k = ListGetInteger( CurrentModel % Simulation,'Restart Position',GotIt, &
                          minv=0 )
@@ -107,21 +107,21 @@
 
        CALL ListPushNameSpace('hp:')
        Mesh => HydroSolver % Mesh
-       CALL LoadRestartFile( OutputName,k,Mesh, RestartList = Params )
+       CALL LoadRestartFile( OutputName,k,Mesh, SolverId = SolverID )
        CALL ListPopNameSpace()
 
        CALL ListPushNameSpace('channel:')
        Mesh => ChannelSolver % Mesh
-       CALL LoadRestartFile( OutputName,k,Mesh, RestartList = Params )
+       CALL LoadRestartFile( OutputName,k,Mesh, SolverId = SolverID )
        CALL ListPopNameSpace()
 
        CALL ListPushNameSpace('sheet:')
        Mesh => ThicknessSolver % Mesh
-       CALL LoadRestartFile( OutputName,k,Mesh, RestartList = Params )
+       CALL LoadRestartFile( OutputName,k,Mesh, SolverId = SolverID )
        CALL ListPopNameSpace()
   
      END IF
-     NULLIFY(HydroSolver, ChannelSolver, ThicknessSolver, Mesh, Params)
+     NULLIFY(HydroSolver, ChannelSolver, ThicknessSolver, Mesh)
 !------------------------------------------------------------------------------
    END SUBROUTINE HydroRestart
 !------------------------------------------------------------------------------
