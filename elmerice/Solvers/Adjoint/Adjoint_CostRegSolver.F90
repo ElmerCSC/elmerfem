@@ -280,7 +280,7 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
        HaveDer=.FALSE.
      ELSE
        NodeValues(1:n)=ListGetReal( BodyForce,'CostReg Nodal Variable',n, NodeIndexes, UnFoundFatal=.TRUE.)
-       NodalDer(1:n) = ListGetReal( BodyForce,'CostReg Nodal Variable der',n,NodeIndexes,Found=HaveDer)
+       NodalDer(1:n) = ListGetReal( BodyForce,'CostReg Nodal Variable derivative',n,NodeIndexes,Found=HaveDer)
      END IF
 
 !------------------------------------------------------------------------------

@@ -1009,6 +1009,7 @@
 
   SUBROUTINE DiagPrecViewFact( u,v,ipar )
     USE ViewFactorGlobals
+    IMPLICIT NONE
 
     REAL(KIND=dp) :: u(*),v(*)
     INTEGER :: ipar(*)
@@ -1022,6 +1023,7 @@
 
   SUBROUTINE MatvecViewFact( u,v,ipar )
     USE ViewFactorGlobals
+    IMPLICIT NONE
 
     INTEGER :: ipar(*)
     REAL(KIND=dp) :: u(*),v(*)

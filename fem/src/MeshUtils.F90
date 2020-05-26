@@ -426,7 +426,7 @@ CONTAINS
           str = TRIM(str) // '; ' // TRIM(ElementDef(j+3:))//'(cx)'
           slen = LEN_TRIM(str)
           CALL matc(str,RESULT,slen)
-          READ(RESULT,*) x
+          READ(RESULT(1:slen),*) x
           Body_Dofs(:,6) = 0
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
           Family = Element % TYPE % ElementCode / 100
@@ -2017,7 +2017,7 @@ CONTAINS
 
 
 
- !> An interface over potential mesh loading strateties. 
+ !> An interface over potential mesh loading strategies. 
  !----------------------------------------------------------------- 
  SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs,IsParallel ) 
    

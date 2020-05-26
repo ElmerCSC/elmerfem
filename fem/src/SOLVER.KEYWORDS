@@ -1722,5 +1722,7 @@ material:real:       'relative temperature'
 solver:logical:      'viewfactor symmetry x'
 solver:logical:      'viewfactor symmetry y'
 solver:logical:      'viewfactor symmetry z'
+simulation:logical:  'convergence monitor'
+simulation:file:     'convergence monitor file'
 
 

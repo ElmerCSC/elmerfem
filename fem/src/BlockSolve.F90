@@ -326,7 +326,7 @@ CONTAINS
 
     ! We may have different size of block matrix than the number of actual components.
     ! For example, when we have a projector of a scalar field our block size is (2,2)
-    ! but we can only crate the (1,1) from the initial matrix system. 
+    ! but we can only create the (1,1) from the initial matrix system. 
     IF( PRESENT( FieldDofs ) ) THEN
       CALL Info('BlockInitMatrix','Number of field components: '//TRIM(I2S(FieldDofs)))
       IF( Novar /= FieldDofs ) CALL Info('BlockInitMatrix','Number of fields and blocks ('&
@@ -456,7 +456,7 @@ CONTAINS
       VarName = ComponentName("Block variable",i)            
       Var => VariableGet( Mesh % Variables, VarName )
       IF(.NOT. ASSOCIATED( Var ) ) THEN
-        CALL Info('BlockInitMatrix','Variable > '//TRIM(VarName)//' < does not exist, creating')
+        CALL Info('BlockInitVar','Variable > '//TRIM(VarName)//' < does not exist, creating')
         PSolver => Solver
         NULLIFY( Vals )
         ALLOCATE( Vals(n) )
@@ -1736,18 +1736,20 @@ CONTAINS
 
     TYPE(Solver_t) :: Solver
     
-    INTEGER :: i,j,k,Novar
+    INTEGER :: i,j,k,ind1,ind2,Novar
+    INTEGER, POINTER :: ConstituentSolvers(:)
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
     TYPE(Variable_t), POINTER :: FVar, SVar
-    LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid
+    LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid, GotBlockSolvers
 
     
     Params => Solver % Values
+    ConstituentSolvers => ListGetIntegerArray(Params, 'Block Solvers', GotBlockSolvers)
 
-    ! Currently we simply assume master solver to be "1"
-    ! Note that the indexes refer to the block structure, not original solver indexes!
+    ! Currently we simply assume the master solver to be listed as the first entry in
+    ! the 'Block Solvers' array.
     i = 1
     
     DO k = 1, 4
@@ -1763,9 +1765,21 @@ CONTAINS
 
       IF(j==0) CYCLE
       
-      CALL Info('SolidCouplingBlocks','Generating coupling between solvers '&
-          //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
-      
+      IF (GotBlockSolvers) THEN
+        IF (j > size(ConstituentSolvers)) CALL Fatal('StructureCouplingBlocks', &
+            'Solid/Plate/Shell/Beam Solver Index larger than Block Solvers array')
+        ind1 = ConstituentSolvers(i)
+        ind2 = ConstituentSolvers(j)
+        CALL Info('StructureCouplingBlocks','Generating coupling between solvers '&
+            //TRIM(I2S(ind1))//' and '//TRIM(I2S(ind2)))
+      ELSE
+        IF (j > Solver % BlockMatrix % NoVar) CALL Fatal('StructureCouplingBlocks', &
+            'Solid/Plate/Shell/Beam Solver Index exceeds block matrix dimensions')
+            
+        CALL Info('StructureCouplingBlocks','Generating coupling between solvers '&
+            //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
+      END IF
+
       A_fs => TotMatrix % Submatrix(j,i) % Mat
       A_sf => TotMatrix % Submatrix(i,j) % Mat
       
@@ -1776,10 +1790,10 @@ CONTAINS
       A_f => TotMatrix % Submatrix(j,j) % Mat
       
       IF(.NOT. ASSOCIATED( SVar ) ) THEN
-        CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
+        CALL Fatal('StructureCouplingBlocks','Master structure variable not present!')
       END IF
       IF(.NOT. ASSOCIATED( FVar ) ) THEN
-        CALL Fatal('StructureCouplingBlocks','Master structure variable not present!')
+        CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
       END IF
       
       CALL StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
