@@ -5700,7 +5700,7 @@ END SUBROUTINE GetNodalElementSize
 !> Adds parameters used in the simulation either predefined or from run control.
 !> The idea is to make parametrized simulations more simple to perform. 
 !------------------------------------------------------------------------------
- SUBROUTINE SetParameters(Params,piter,GotParams,FinishEarly,PostSimulation)
+ SUBROUTINE ControlParameters(Params,piter,GotParams,FinishEarly,PostSimulation)
 
    IMPLICIT NONE
    
@@ -5715,7 +5715,7 @@ END SUBROUTINE GetNodalElementSize
    REAL(KIND=dp), ALLOCATABLE :: Param(:), BestParam(:)
    REAL(KIND=dp) :: Cost = HUGE( Cost ) 
    LOGICAL :: Found, GotCost, MinCost
-   CHARACTER(*), PARAMETER :: Caller = 'SetParameters'
+   CHARACTER(*), PARAMETER :: Caller = 'ControlParameters'
 
    SAVE Cost, Param, BestParam
    
@@ -5970,7 +5970,7 @@ END SUBROUTINE GetNodalElementSize
 
    END SUBROUTINE SetParametersMATC   
    
- END SUBROUTINE SetParameters
+ END SUBROUTINE ControlParameters
 
  !--------------------------------------------------------------------------------
  !> This subroutine sets tabulated parameters given in space separated ascii file
@@ -6804,7 +6804,41 @@ END SUBROUTINE GetNodalElementSize
     
   END SUBROUTINE SetOptimizationParameters
 
-  
+!------------------------------------------------------------------------------
+!> Optionally we may revert to initial coordinates when using "Run Control".
+!------------------------------------------------------------------------------
+ SUBROUTINE ControlResetMesh(Params,piter)
+
+   IMPLICIT NONE
+   
+   TYPE(ValueList_t), POINTER :: Params
+   INTEGER :: piter
+
+   LOGICAL :: Found
+   TYPE(Nodes_t) :: Nodes0
+   TYPE(Nodes_t), POINTER :: Nodes
+   INTEGER :: n
+
+   SAVE Nodes0
+   
+   IF( ListGetLogical( Params,'Reset Mesh Coordinates',Found ) ) THEN
+     Nodes => CurrentModel % Mesh % Nodes
+     n = SIZE( Nodes % x )
+     IF( piter == 1 ) THEN
+       ALLOCATE( Nodes0 % x(n), Nodes0 % y(n), Nodes0 % z(n) )
+       Nodes0 % x = Nodes % x
+       Nodes0 % y = Nodes % y
+       Nodes0 % z = Nodes % z
+     ELSE
+       Nodes % x = Nodes0 % x
+       Nodes % y = Nodes0 % y
+       Nodes % z = Nodes0 % z
+     END IF
+   END IF
+
+   
+ END SUBROUTINE ControlResetMesh
+   
 
 END MODULE ModelDescription
 

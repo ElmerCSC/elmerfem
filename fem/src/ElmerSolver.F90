@@ -110,7 +110,7 @@
      LOGICAL :: Silent, Version, GotModelName, FinishEarly
 
      INTEGER :: iargc, NoArgs
-     INTEGER :: iostat, iSweep, OptimIters
+     INTEGER :: iostat, iSweep = 1, OptimIters
      
      INTEGER :: MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
@@ -282,9 +282,9 @@ END INTERFACE
          CALL Info('ElmerSolver','Run Control section active!')
          OptimIters = ListGetInteger( Control % Control,'Run Control Iterations', Found )
          IF(.NOT. Found) OptimIters = 1              
+
          ! If there are no parameters this does nothing
-         CALL SetParameters(Control % Control, &
-             1,GotParams,FinishEarly)
+         CALL ControlParameters(Control % Control,1,GotParams,FinishEarly)
        ELSE
          OptimIters = 1 
        END IF
@@ -475,13 +475,20 @@ END INTERFACE
        DO iSweep = 1, OptimIters
          sSweep = 1.0_dp * iSweep
          ! If there are no parameters this does nothing                  
-         IF( DoControl .AND. iSweep > 1 ) THEN
-           CALL SetParameters(Control % Control, &
-               iSweep,GotParams,FinishEarly)           
-           IF( FinishEarly ) EXIT
-           Found = ReloadInputFile(CurrentModel,RewindFile=.TRUE.)
+         IF( DoControl ) THEN
+           CALL ControlResetMesh(Control % Control, iSweep )            
+           IF( iSweep > 1 ) THEN
+             CALL ControlParameters(Control % Control, &
+                 iSweep,GotParams,FinishEarly)           
+             IF( FinishEarly ) EXIT
+             Found = ReloadInputFile(CurrentModel,RewindFile=.TRUE.)
+             CALL InitializeIntervals()
+             IF( ListGetLogical( Control % Control,'Reset Initial Conditions',Found ) ) THEN
+               CALL SetInitialConditions()
+             END IF
+           END IF
          END IF
-
+           
          !------------------------------------------------------------------------------
          ! Here we actually perform the simulation: ExecSimulation does it all ....
          !------------------------------------------------------------------------------
@@ -497,7 +504,7 @@ END INTERFACE
 
          ! This evaluates the cost function and saves the results of control
          IF( DoControl ) THEN
-           CALL SetParameters(Control % Control, &
+           CALL ControlParameters(Control % Control, &
                iSweep,GotParams,FinishEarly,.TRUE.)
          END IF
        END DO
@@ -645,7 +652,7 @@ END INTERFACE
          IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
            CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
          END IF
-       ELSE
+       ELSE IF( FirstLoad ) THEN         
          ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
          OutputIntervals = 1
        END IF 
@@ -662,7 +669,6 @@ END INTERFACE
        sStep = 0
        sPeriodic = 0._dp
        sScan = 0._dp
-       sSweep = 0._dp
        
        sSize = dt
        sPrevSizes = 0_dp
@@ -1191,6 +1197,7 @@ END INTERFACE
        END IF
 
        IF( DoControl ) THEN
+         sSweep = 1.0_dp * iSweep
          CALL VariableAdd( Mesh % Variables, Mesh, Name='run', DOFs=1, Values=sSweep )
        END IF
               

@@ -4743,13 +4743,6 @@ CONTAINS
        CALL DetermineSoftLimiter( Solver )	
      END IF
 
-
-     ! Create contact BCs using mortar conditions.
-     !---------------------------------------------------------------------
-     !IF( ListGetLogical( Solver % Values,'Apply Contact BCs',Found) ) THEN
-     !  CALL DetermineContact( Solver )	
-     !END IF
-
      IF(.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
        A % ConstrainedDOF = .FALSE.
