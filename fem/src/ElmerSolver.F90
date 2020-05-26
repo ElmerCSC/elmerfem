@@ -85,7 +85,7 @@
      INTEGER :: TimeIntervals,interval,timestep, &
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter
 
-     INTEGER, POINTER, SAVE :: Timesteps(:),OutputIntervals(:), ActiveSolvers(:)
+     INTEGER, POINTER, SAVE :: Timesteps(:),OutputIntervals(:) => NULL(), ActiveSolvers(:)
      REAL(KIND=dp), POINTER, SAVE :: TimestepSizes(:,:)
 
      INTEGER(KIND=AddrInt) :: ControlProcedure
@@ -652,9 +652,11 @@ END INTERFACE
          IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
            CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
          END IF
-       ELSE IF( FirstLoad ) THEN         
-         ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
-         OutputIntervals = 1
+       ELSE 
+         IF( .NOT. ASSOCIATED( OutputIntervals ) ) THEN
+           ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
+           OutputIntervals = 1
+         END IF
        END IF 
 
 
