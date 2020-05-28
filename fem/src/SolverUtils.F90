@@ -16789,8 +16789,16 @@ CONTAINS
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
         TYPE(Nodes_t) :: Nodes
         LOGICAL :: Stat, FixRot
+        REAL(KIND=dp) :: FixRotC 
+        REAL(KIND=dp) :: Director(3)
 
+        ! This is just for testing!
+        Director = 0.0_dp
+        Director(2) = 1.0_dp
+        
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
+        FixRotC = ListGetCReal( Solver % Values,'Fix Rotation Coeff',Stat)
+        IF(.NOT. Stat) FixRotC = 1.0_dp        
 
         IF(.NOT. FixRot ) THEN
           CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')                  
@@ -16800,22 +16808,25 @@ CONTAINS
           ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
           ! First, zero the rows related to rotational dofs i.e. components 4 & 5
+          ! "s" refers to solid and "f" to shell.
           DO i=1,Mesh % NumberOfNodes
             jf = FPerm(i)      
             js = SPerm(i)
             IF( jf == 0 .OR. js == 0 ) CYCLE
 
-            !PRINT *,'Zero shell row:',i,jf,fdofs
-
-            DO j = 4, 5
-              kf = fdofs*(jf-1)+j
+            DO lf = 4, 6
+              kf = fdofs*(jf-1)+lf
 
               IF( ConstrainedF(kf) ) CYCLE
+
+              !PRINT *,'Zero shell row:',i,jf,kf
+              
               ! We could use ZeroRow as well
               DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                !PRINT *,'k zero:',k,A_f % Values(k)
                 A_f % Values(k) = 0.0_dp
               END DO
-              A_s % rhs(kf) = 0.0_dp
+              A_f % rhs(kf) = 0.0_dp
             END DO
           END DO
 
@@ -16842,34 +16853,34 @@ CONTAINS
             stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
             Weight = detJ * SUM( IP % s ) 
 
-            !PRINT *,'ip point:',t,u,v,w,detJ, Weight,dim
-
             DO ii = 1, n
               i = Indexes(ii)           
+
+              ! Set for all shell nodes a Dirichlet condition for rotation
               jf = FPerm(i)      
               IF( jf == 0 ) CYCLE
 
-              !PRINT *,'set shell node:',i,jf
-
               ! Rotational dofs of the shell equation
-              DO lf = 4, 5                            
+              DO lf = 4, 6                            
                 kf = fdofs*(jf-1)+lf
+                
+                IF( ConstrainedF(kf) ) CYCLE
+                
+                !PRINT *,'Add shell row:',i,jf,kf
 
                 ! Displacement dofs
                 DO ls = 1, dim
-                  ks = sdofs*(js-1)+ls
-
-                  ! Mika may do the non-ortho stuff.
-                  ! Now we assume that that du_x/dx set 4th components, and du_y/dy the 5th
-                  IF( lf - ls /= 3 ) CYCLE
-
-                  ! Implicit derivative
+                  
+                  ! Implicit derivative goes through all nodes of solid solution
                   DO p=1,n
-                    val = dBasisdx(p,ls)
+                    js = SPerm(Indexes(p))
+                    ks = sdofs*(js-1)+ls
+                    val = -FixRotC * Director(ls) * dBasisdx(p,lf-3)
                     CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
                   END DO
-                  CALL AddToMatrixElement(A_f,kf,kf,weight)
                 END DO
+                
+                CALL AddToMatrixElement(A_f,kf,kf,weight)
               END DO
             END DO
           END DO
@@ -16893,18 +16904,21 @@ CONTAINS
           ks = sdofs*(js-1)+j
 
           vdiag = A_s % Values( A_s % Diag(ks) ) 
+
+          ! Copy the force from rhs from "S" to "F" and zero it
+          A_f % rhs(kf) = A_f % rhs(kf) + A_s % rhs(ks)
+          A_s % rhs(ks) = 0.0_dp
+
           ! Copy the force in implicit form from "S" to "F", and zero it
           DO k=A_s % Rows(ks),A_s % Rows(ks+1)-1
             IF( .NOT. ConstrainedF(kf) ) THEN        
               CALL AddToMatrixElement(A_fs,kf,A_s % Cols(k), A_s % Values(k) )
-              A_f % rhs(kf) = A_f % rhs(kf) + A_s % rhs(ks)
             END IF
             A_s % Values(k) = 0.0_dp
-            A_s % rhs(ks) = 0.0_dp
           END DO
 
           ! Set Dirichlet Condition to "S" such that it is equal to "F"
-          A_s % Values( A_s % Diag(ks)) = vdiag
+          A_s % Values( A_s % Diag(ks)) = vdiag          
           CALL AddToMatrixElement(A_sf,ks,kf, -vdiag )
         END DO
       END DO
