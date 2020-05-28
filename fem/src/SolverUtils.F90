@@ -16913,6 +16913,7 @@ CONTAINS
 
           ! This is the original diagonal entry for stiffness matrix.
           ! Let's keep that so that Dirichlet conditions are ideally set. 
+#if 0
           vdiag = A_s % Values( A_s % Diag(ks) ) 
 
           ! Copy the force from rhs from "S" to "F" and zero it
@@ -16933,6 +16934,29 @@ CONTAINS
           ! but this is much more economical. 
           A_s % Values( A_s % Diag(ks)) = vdiag          
           CALL AddToMatrixElement(A_sf,ks,kf, -vdiag )
+#else
+          vdiag = A_f % Values( A_f % Diag(kf) ) 
+
+          ! Copy the force from rhs from "S" to "F" and zero it
+          A_s % rhs(ks) = A_s % rhs(ks) + A_f % rhs(kf)
+          A_f % rhs(kf) = 0.0_dp
+
+          ! Copy the force in implicit form from "S" to "FS" coupling matrix, and zero it
+          ! Now the shell equation includes forces of both equations. 
+          DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+            IF( .NOT. ConstrainedS(ks) ) THEN        
+              CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k), A_f % Values(k) )
+            END IF
+            A_f % Values(k) = 0.0_dp
+          END DO
+
+          ! Set Dirichlet Condition to "S" such that it is equal to "F".
+          ! Basically we could eliminate displacement condition and do this afterwords
+          ! but this is much more economical. 
+          A_f % Values( A_f % Diag(kf)) = vdiag          
+          CALL AddToMatrixElement(A_fs,kf,ks, -vdiag )
+#endif
+          
         END DO
       END DO
     ELSE
