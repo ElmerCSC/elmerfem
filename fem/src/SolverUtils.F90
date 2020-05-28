@@ -16875,7 +16875,7 @@ CONTAINS
                   DO p=1,n
                     js = SPerm(Indexes(p))
                     ks = sdofs*(js-1)+ls
-                    val = -FixRotC * Director(ls) * dBasisdx(p,lf-3)
+                    val = FixRotC * Director(ls) * dBasisdx(p,lf-3)
                     CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
                   END DO
                 END DO
