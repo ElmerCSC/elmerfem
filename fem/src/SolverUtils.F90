@@ -16793,7 +16793,8 @@ CONTAINS
         LOGICAL :: Stat, FixRot
         REAL(KIND=dp) :: FixRotC 
         REAL(KIND=dp) :: Director(3)
-
+        REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
+        
         ! This is just for testing!
         Director = 0.0_dp
         Director(2) = 1.0_dp
@@ -16811,6 +16812,10 @@ CONTAINS
           n = Mesh % MaxElementNodes 
           ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
+          ! Memorize the original values
+          ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
+          A_f0 = A_f % Values
+          
           ! First, zero the rows related to rotational dofs i.e. components 4,5,6.
           ! "s" refers to solid and "f" to shell.
           ! Open question is whether the moments should be applied also to the solid, or
@@ -16879,6 +16884,14 @@ CONTAINS
                     ks = sdofs*(js-1)+ls
                     val = FixRotC * Director(ls) * dBasisdx(p,lf-3)
                     CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
+
+                    ! Here the idea is to distribute the implicit moments of the shell solver
+                    ! to forces for the solid solver. So even though the stiffness matrix related to the
+                    ! rotations is nullified the forces are not forgotten. 
+                    DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k))                  
+                    END DO
+
                   END DO
                 END DO
                 
@@ -16937,11 +16950,11 @@ CONTAINS
 #else
           vdiag = A_f % Values( A_f % Diag(kf) ) 
 
-          ! Copy the force from rhs from "S" to "F" and zero it
+          ! Copy the force from rhs from "F" to "S" and zero it
           A_s % rhs(ks) = A_s % rhs(ks) + A_f % rhs(kf)
           A_f % rhs(kf) = 0.0_dp
 
-          ! Copy the force in implicit form from "S" to "FS" coupling matrix, and zero it
+          ! Copy the force in implicit form from "F" to "SF" coupling matrix, and zero it
           ! Now the shell equation includes forces of both equations. 
           DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
             IF( .NOT. ConstrainedS(ks) ) THEN        
