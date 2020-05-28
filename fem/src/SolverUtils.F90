@@ -16777,8 +16777,10 @@ CONTAINS
     END IF
 
     ! This is still under development and not used for anything
+    ! Probably this will not be needed at all but rather we need the director.
     IF( IsShell ) CALL DetermineCouplingNormals()
 
+    ! For the shell equation enforce the rotation in implicit manner from solid displacements.
     IF (IsShell) THEN
       BLOCK
         INTEGER :: p,lf,ls,ii,n,t
@@ -16797,6 +16799,8 @@ CONTAINS
         Director(2) = 1.0_dp
         
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
+
+        ! For experimentation
         FixRotC = ListGetCReal( Solver % Values,'Fix Rotation Coeff',Stat)
         IF(.NOT. Stat) FixRotC = 1.0_dp        
 
@@ -16807,8 +16811,10 @@ CONTAINS
           n = Mesh % MaxElementNodes 
           ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
-          ! First, zero the rows related to rotational dofs i.e. components 4 & 5
+          ! First, zero the rows related to rotational dofs i.e. components 4,5,6.
           ! "s" refers to solid and "f" to shell.
+          ! Open question is whether the moments should be applied also to the solid, or
+          ! does it suffice to applied rotations to shell. I fear that they have...
           DO i=1,Mesh % NumberOfNodes
             jf = FPerm(i)      
             js = SPerm(i)
@@ -16818,12 +16824,8 @@ CONTAINS
               kf = fdofs*(jf-1)+lf
 
               IF( ConstrainedF(kf) ) CYCLE
-
-              !PRINT *,'Zero shell row:',i,jf,kf
               
-              ! We could use ZeroRow as well
               DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                !PRINT *,'k zero:',k,A_f % Values(k)
                 A_f % Values(k) = 0.0_dp
               END DO
               A_f % rhs(kf) = 0.0_dp
@@ -16866,12 +16868,12 @@ CONTAINS
                 
                 IF( ConstrainedF(kf) ) CYCLE
                 
-                !PRINT *,'Add shell row:',i,jf,kf
-
                 ! Displacement dofs
                 DO ls = 1, dim
-                  
-                  ! Implicit derivative goes through all nodes of solid solution
+                                    ! 
+                  ! We try to weakly enforce the condition:
+                  ! d_{i+3}=<(grad u)n,e_i> where i=1,2,3.
+                  ! i+3:=lf, n:=director, and u is the implicit displacement field. 
                   DO p=1,n
                     js = SPerm(Indexes(p))
                     ks = sdofs*(js-1)+ls
@@ -16890,26 +16892,35 @@ CONTAINS
     END IF
     
     ! Note: we may have to rethink this coupling if visiting for 2nd time!
+    ! The three components for shells and solids are both the real cartesian
+    ! displacements. Hence we can deal with solid-soid and solid-shell coupling
+    ! common parts in same subroutine. 
     IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
       DO i=1,Mesh % NumberOfNodes
         jf = FPerm(i)      
         js = SPerm(i)
+
+        ! We set coupling at nodes that belong to both equations.
         IF( jf == 0 .OR. js == 0 ) CYCLE
         ncount = ncount + 1
 
+        ! For the given node go throug all displacement components. 
         DO j = 1, dim
           ! Indeces for matrix rows
           kf = fdofs*(jf-1)+j
           ks = sdofs*(js-1)+j
 
+          ! This is the original diagonal entry for stiffness matrix.
+          ! Let's keep that so that Dirichlet conditions are ideally set. 
           vdiag = A_s % Values( A_s % Diag(ks) ) 
 
           ! Copy the force from rhs from "S" to "F" and zero it
           A_f % rhs(kf) = A_f % rhs(kf) + A_s % rhs(ks)
           A_s % rhs(ks) = 0.0_dp
 
-          ! Copy the force in implicit form from "S" to "F", and zero it
+          ! Copy the force in implicit form from "S" to "FS" coupling matrix, and zero it
+          ! Now the shell equation includes forces of both equations. 
           DO k=A_s % Rows(ks),A_s % Rows(ks+1)-1
             IF( .NOT. ConstrainedF(kf) ) THEN        
               CALL AddToMatrixElement(A_fs,kf,A_s % Cols(k), A_s % Values(k) )
@@ -16917,7 +16928,9 @@ CONTAINS
             A_s % Values(k) = 0.0_dp
           END DO
 
-          ! Set Dirichlet Condition to "S" such that it is equal to "F"
+          ! Set Dirichlet Condition to "S" such that it is equal to "F".
+          ! Basically we could eliminate displacement condition and do this afterwords
+          ! but this is much more economical. 
           A_s % Values( A_s % Diag(ks)) = vdiag          
           CALL AddToMatrixElement(A_sf,ks,kf, -vdiag )
         END DO
