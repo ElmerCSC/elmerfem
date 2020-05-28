@@ -1,5 +1,5 @@
 ! 
-! A modified sif file to test a surface impedance BC
+! A sif file to test a surface impedance BC
 ! 
 
 Check Keywords "Warn"
