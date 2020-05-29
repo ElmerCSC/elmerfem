@@ -16791,9 +16791,11 @@ CONTAINS
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
         TYPE(Nodes_t) :: Nodes
         LOGICAL :: Stat, FixRot
-        REAL(KIND=dp) :: FixRotC 
+        REAL(KIND=dp) :: FixRotC, x, y, z 
         REAL(KIND=dp) :: Director(3)
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
+        INTEGER, ALLOCATABLE :: NodeHits(:)
+
         
         ! This is just for testing!
         Director = 0.0_dp
@@ -16815,6 +16817,9 @@ CONTAINS
           ! Memorize the original values
           ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
           A_f0 = A_f % Values
+
+          ALLOCATE( NodeHits( Mesh % NumberOfNodes ) )
+          NodeHits = 0
           
           ! First, zero the rows related to rotational dofs i.e. components 4,5,6.
           ! "s" refers to solid and "f" to shell.
@@ -16837,6 +16842,7 @@ CONTAINS
             END DO
           END DO
 
+
           ! Then go through each element associated with the interface        
           DO t=1,Mesh % NumberOfBulkElements
             Element => Mesh % Elements(t)
@@ -16846,19 +16852,48 @@ CONTAINS
             IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
             IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
 
+            n = COUNT( FPerm(Indexes) > 0 )
+            IF( n /= 2 ) THEN
+              CALL Fatal('StructureCouplingAssembly','Currently we can only deal with two hits!')
+            END IF
+
+            DO i=1,SIZE(Indexes)
+              j = FPerm(Indexes(i))
+              IF( j == 0 ) CYCLE
+              NodeHits(j) = NodeHits(j) + 1              
+            END DO
+          END DO
+
+          PRINT *,'Maximum node hits:',MAXVAL(NodeHits)
+          
+
+          ! Then go through each element associated with the interface        
+          DO t=1,Mesh % NumberOfBulkElements
+            Element => Mesh % Elements(t)
+            Indexes => Element % NodeIndexes 
+
+            ! We must have solid equation present everywhere and shell at least at one node.
+            IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
+            IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
+            
             n = Element % TYPE % NumberOfNodes
             Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
             Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
             Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
 
-            ! Integration at the center point. We could perhaps use the actual corner nodes as well. 
-            IP = GaussPoints( Element )            
-            u = SUM( IP % u) / IP % n
-            v = SUM( IP % v) / IP % n
-            w = SUM( IP % w) / IP % n
+            x = 0.0_dp; y = 0.0_dp; z = 0.0_dp
+            DO i=1,n
+              IF( FPerm(Indexes(i)) == 0 ) CYCLE
+              x = x + Nodes % x(i)
+              y = y + Nodes % y(i)
+              z = z + Nodes % z(i)
+            END DO
+            x = x/2; y = y/2; z = z/2;
 
+            CALL GlobalToLocal( u, v, w, x, y, z, Element, Nodes )
+
+            ! Integration at the center of the edge
             stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
-            Weight = detJ * SUM( IP % s ) 
 
             DO ii = 1, n
               i = Indexes(ii)           
@@ -16867,6 +16902,8 @@ CONTAINS
               jf = FPerm(i)      
               IF( jf == 0 ) CYCLE
 
+              Weight = 1.0_dp / NodeHits(jf)
+              
               ! Rotational dofs of the shell equation
               DO lf = 4, 6                            
                 kf = fdofs*(jf-1)+lf
@@ -16889,7 +16926,7 @@ CONTAINS
                     ! to forces for the solid solver. So even though the stiffness matrix related to the
                     ! rotations is nullified the forces are not forgotten. 
                     DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k))                  
+                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),FixRotC*weight*val*A_f0(k))                  
                     END DO
 
                   END DO
