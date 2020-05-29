@@ -16734,9 +16734,10 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
-    
-    
-    CALL Info('StructureCouplingAssembly','Creating coupling matrix for structures',Level=6)
+    CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
+
+
+    CALL Info(Caller,'Creating coupling matrix for structures',Level=6)
     
     Mesh => Solver % Mesh
     dim = Mesh % MeshDim
@@ -16748,10 +16749,10 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
-    IF( IsSolid ) CALL Info('StructureCouplingAssembly','Assuming coupling with solid solver',Level=8)
-    IF( IsBeam )  CALL Info('StructureCouplingAssembly','Assuming coupling with beam solver',Level=8)
-    IF( IsPlate ) CALL Info('StructureCouplingAssembly','Assuming coupling with plate solver',Level=8)
-    IF( IsShell ) CALL Info('StructureCouplingAssembly','Assuming coupling with shell solver',Level=8)
+    IF( IsSolid ) CALL Info(Caller,'Assuming coupling with solid solver',Level=8)
+    IF( IsBeam )  CALL Info(Caller,'Assuming coupling with beam solver',Level=8)
+    IF( IsPlate ) CALL Info(Caller,'Assuming coupling with plate solver',Level=8)
+    IF( IsShell ) CALL Info(Caller,'Assuming coupling with shell solver',Level=8)
     
     ConstrainedF => A_f % ConstrainedDof
     ConstrainedS => A_s % ConstrainedDof
@@ -16759,11 +16760,11 @@ CONTAINS
     nf = SIZE( FVar % Values ) 
     ns = SIZE( SVar % Values ) 
     
-    CALL Info('StructureCouplingAssembly','Slave structure dofs '//TRIM(I2S(nf))//&
+    CALL Info(Caller,'Slave structure dofs '//TRIM(I2S(nf))//&
         ' with '//TRIM(I2S(fdofs))//' components',Level=10)
-    CALL Info('StructureCouplingAssembly','Master structure dofs '//TRIM(I2S(ns))//&
+    CALL Info(Caller,'Master structure dofs '//TRIM(I2S(ns))//&
         ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
-    CALL Info('StructureCouplingAssembly','Assuming '//TRIM(I2S(dim))//&
+    CALL Info(Caller,'Assuming '//TRIM(I2S(dim))//&
         ' active dimensions',Level=10)   
 
     IF( A_fs % FORMAT == MATRIX_LIST ) THEN
@@ -16778,7 +16779,7 @@ CONTAINS
 
     ! This is still under development and not used for anything
     ! Probably this will not be needed at all but rather we need the director.
-    IF( IsShell ) CALL DetermineCouplingNormals()
+    !IF( IsShell ) CALL DetermineCouplingNormals()
 
     ! For the shell equation enforce the rotation in implicit manner from solid displacements.
     IF (IsShell) THEN
@@ -16791,7 +16792,7 @@ CONTAINS
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
         TYPE(Nodes_t) :: Nodes
         LOGICAL :: Stat, FixRot
-        REAL(KIND=dp) :: FixRotC, x, y, z 
+        REAL(KIND=dp) :: x, y, z 
         REAL(KIND=dp) :: Director(3)
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
         INTEGER, ALLOCATABLE :: NodeHits(:)
@@ -16803,14 +16804,10 @@ CONTAINS
         
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
 
-        ! For experimentation
-        FixRotC = ListGetCReal( Solver % Values,'Fix Rotation Coeff',Stat)
-        IF(.NOT. Stat) FixRotC = 1.0_dp        
-
         IF(.NOT. FixRot ) THEN
-          CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')                  
+          CALL Warn(Caller,'Coupling for rotational shell dofs is missing!')                  
         ELSE
-          CALL Warn('StructureCouplingAssembly','Experimental fixing of shell rotations')
+          CALL Warn(Caller,'Experimental fixing of shell rotations')
           n = Mesh % MaxElementNodes 
           ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
@@ -16854,7 +16851,7 @@ CONTAINS
 
             n = COUNT( FPerm(Indexes) > 0 )
             IF( n /= 2 ) THEN
-              CALL Fatal('StructureCouplingAssembly','Currently we can only deal with two hits!')
+              CALL Fatal(Caller,'Currently we can only deal with two hits!')
             END IF
 
             DO i=1,SIZE(Indexes)
@@ -16863,10 +16860,9 @@ CONTAINS
               NodeHits(j) = NodeHits(j) + 1              
             END DO
           END DO
-
-          PRINT *,'Maximum node hits:',MAXVAL(NodeHits)
           
-
+          !PRINT *,'Maximum node hits:',MAXVAL(NodeHits)
+          
           ! Then go through each element associated with the interface        
           DO t=1,Mesh % NumberOfBulkElements
             Element => Mesh % Elements(t)
@@ -16903,6 +16899,8 @@ CONTAINS
               IF( jf == 0 ) CYCLE
 
               Weight = 1.0_dp / NodeHits(jf)
+
+              !PRINT *,'Weight:',Weight
               
               ! Rotational dofs of the shell equation
               DO lf = 4, 6                            
@@ -16915,23 +16913,24 @@ CONTAINS
                                     ! 
                   ! We try to weakly enforce the condition:
                   ! d_{i+3}=<(grad u)n,e_i> where i=1,2,3.
-                  ! i+3:=lf, n:=director, and u is the implicit displacement field. 
+                  ! i+3:=lf, n:=director, e_i is unit vector, and u is the implicit displacement field. 
                   DO p=1,n
                     js = SPerm(Indexes(p))
                     ks = sdofs*(js-1)+ls
-                    val = FixRotC * Director(ls) * dBasisdx(p,lf-3)
+                    val = -Director(ls) * dBasisdx(p,lf-3)
                     CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
 
                     ! Here the idea is to distribute the implicit moments of the shell solver
                     ! to forces for the solid solver. So even though the stiffness matrix related to the
                     ! rotations is nullified the forces are not forgotten. 
                     DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),FixRotC*weight*val*A_f0(k))                  
+                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k))                  
                     END DO
 
                   END DO
                 END DO
-                
+
+                ! This should sum up to unity!
                 CALL AddToMatrixElement(A_f,kf,kf,weight)
               END DO
             END DO
@@ -17010,7 +17009,7 @@ CONTAINS
         END DO
       END DO
     ELSE
-      CALL Fatal('StructureCouplingAssembly','Coupling type not implemented yet!')
+      CALL Fatal(Caller,'Coupling type not implemented yet!')
     END IF
 
       
@@ -17022,14 +17021,14 @@ CONTAINS
     !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
     !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
-    CALL Info('StructureCouplingAssembly','Number of nodes on interface: '&
+    CALL Info(Caller,'Number of nodes on interface: '&
         //TRIM(I2S(ncount)),Level=10)    
-    CALL Info('StructureCouplingAssembly','Number of entries in slave-master coupling matrix: '&
+    CALL Info(Caller,'Number of entries in slave-master coupling matrix: '&
         //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
-    CALL Info('StructureCouplingAssembly','Number of entries in master-slave coupling matrix: '&
+    CALL Info(Caller,'Number of entries in master-slave coupling matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
     
-    CALL Info('StructureCouplingAssembly','All done',Level=20)
+    CALL Info(Caller,'All done',Level=20)
     
   CONTAINS
 
