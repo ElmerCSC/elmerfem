@@ -1554,11 +1554,19 @@ bool VtkPost::ReadVtuFile(QString postFileName)
 //----------------------------------------------------------------------
 bool VtkPost::ReadSingleVtuFile(QString postFileName)
 {
+/*
   readEpFile->vtuFileNameList.clear();
   readEpFile->vtuFileNameList.append(postFileName);
   readEpFile->ui.start->setValue(1);
   readEpFile->ui.end->setValue(1);    
   return ReadVtuFile(postFileName);
+*/
+  readEpFile->ui.fileName->setText(postFileName);
+  readEpFile->readHeader();
+  readEpFile->ui.allButton->click();
+  readEpFile->ui.okButton->click();
+  return true;
+//  return ReadVtuFile(postFileName);  
 }
 // Read ElmerPost format file
 //----------------------------------------------------------------------
