@@ -16710,6 +16710,86 @@ CONTAINS
   END SUBROUTINE FsiCouplingAssembly
 
 
+
+
+
+  
+  ! The following function is a copy from ShellSolver.F90.
+  ! The suffix Int is added for unique naming.
+  !-------------------------------------------------------------------------------
+  FUNCTION GetElementalDirectorInt(Mesh, Element, ElementNodes) RESULT(DirectorValues) 
+    !-------------------------------------------------------------------------------    
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    !-------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
+    REAL(KIND=dp), POINTER :: NodalNormals(:)
+    REAL(KIND=dp) :: Normal(3)
+    INTEGER :: n
+
+    SAVE Visited, UseElementProperty, NodalNormals, Nodes
+    !-------------------------------------------------------------------------------
+        
+    IF (.NOT. Visited) THEN
+      DirectorValues => GetElementPropertyInt('director', Element)
+      UseElementProperty = ASSOCIATED( DirectorValues ) 
+
+      IF (.NOT. UseElementProperty) THEN
+        n = CurrentModel % MaxElementNodes
+        ALLOCATE( NodalNormals(3*n), Nodes % x(n), Nodes % y(n), Nodes % z(n) ) 
+      END IF
+      Visited = .TRUE.
+    END IF
+
+    IF ( UseElementProperty ) THEN    
+      DirectorValues => GetElementPropertyInt('director', Element)
+    ELSE
+      IF( PRESENT( ElementNodes ) ) THEN
+        Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
+      ELSE
+        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+        Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+        Normal = NormalVector( Element, Nodes, Check = .TRUE. ) 
+      END IF
+
+      n = Element % TYPE % NumberOfNodes
+      NodalNormals(1:3*n:3) = Normal(1)
+      NodalNormals(2:3*n:3) = Normal(2)
+      NodalNormals(3:3*n:3) = Normal(3)      
+      DirectorValues => NodalNormals
+    END IF
+
+  CONTAINS
+        
+    FUNCTION GetElementPropertyInt( Name, Element ) RESULT(Values)
+      CHARACTER(LEN=*) :: Name
+      TYPE(Element_t), POINTER :: Element
+      REAL(KIND=dp), POINTER :: Values(:)
+
+      TYPE(ElementData_t), POINTER :: p
+
+      Values => NULL()
+      p=> Element % PropertyData
+
+      DO WHILE( ASSOCIATED(p) )
+        IF ( Name==p % Name ) THEN
+          Values => p % Values
+          RETURN
+        END IF
+        p => p % Next
+      END DO
+    END FUNCTION GetElementPropertyInt
+    
+    !-------------------------------------------------------------------------------    
+  END FUNCTION GetElementalDirectorInt
+  !-------------------------------------------------------------------------------
+
+
+  
 !------------------------------------------------------------------------------
 !> Assemble coupling matrices related to structure-structure interaction.
 !> A possible scenario is that the diagonal blocks are the matrices of the 
@@ -16784,9 +16864,9 @@ CONTAINS
     ! For the shell equation enforce the rotation in implicit manner from solid displacements.
     IF (IsShell) THEN
       BLOCK
-        INTEGER :: p,lf,ls,ii,n,t
+        INTEGER :: p,lf,ls,ii,jj,n,m,t
         REAL(KIND=dp) :: u,v,w,weight,detJ,val
-        TYPE(Element_t), POINTER :: Element
+        TYPE(Element_t), POINTER :: Element,ShellElement
         INTEGER, POINTER :: Indexes(:)
         TYPE(GaussIntegrationPoints_t) :: IP
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
@@ -16794,14 +16874,11 @@ CONTAINS
         LOGICAL :: Stat, FixRot
         REAL(KIND=dp) :: x, y, z 
         REAL(KIND=dp) :: Director(3)
+        REAL(KIND=dp), POINTER :: DirectorValues(:)
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
-        INTEGER, ALLOCATABLE :: NodeHits(:)
-
-        
-        ! This is just for testing!
-        Director = 0.0_dp
-        Director(2) = 1.0_dp
-        
+        INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
+        INTEGER :: InterfaceN, hits
+               
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
 
         IF(.NOT. FixRot ) THEN
@@ -16815,18 +16892,24 @@ CONTAINS
           ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
           A_f0 = A_f % Values
 
-          ALLOCATE( NodeHits( Mesh % NumberOfNodes ) )
+          ALLOCATE( NodeHits( Mesh % NumberOfNodes ), InterfacePerm( Mesh % NumberOfNodes ) )
           NodeHits = 0
+          InterfacePerm = 0
           
           ! First, zero the rows related to rotational dofs i.e. components 4,5,6.
           ! "s" refers to solid and "f" to shell.
           ! Open question is whether the moments should be applied also to the solid, or
           ! does it suffice to applied rotations to shell. I fear that they have...
+          InterfaceN = 0
           DO i=1,Mesh % NumberOfNodes
             jf = FPerm(i)      
             js = SPerm(i)
             IF( jf == 0 .OR. js == 0 ) CYCLE
-
+            
+            ! also number the interface
+            InterfaceN = InterfaceN + 1
+            InterfacePerm(i) = InterfaceN
+            
             DO lf = 4, 6
               kf = fdofs*(jf-1)+lf
 
@@ -16839,8 +16922,45 @@ CONTAINS
             END DO
           END DO
 
+          CALL Info(Caller,'Number of nodes at interface: '//TRIM(I2S(InterfaceN)),Level=12)
 
-          ! Then go through each element associated with the interface        
+          ALLOCATE( InterfaceElems(InterfaceN,2) )
+          InterfaceElems = 0
+          
+          ! Then go through shell elements associated with the interface        
+          ! and calculate the average director to the nodes. 
+          DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+            Element => Mesh % Elements(t)
+            Indexes => Element % NodeIndexes 
+            
+            n = Element % TYPE % ElementCode
+            IF( n > 500 .OR. n < 300 ) CYCLE
+            
+            ! We must have shell equation present everywhere and solid equation at least in two nodes
+            IF(ANY( FPerm(Indexes) == 0 ) ) CYCLE 
+            k = COUNT( SPerm(Indexes) > 0 )
+            IF( k < 2 ) CYCLE
+            
+            n = Element % Type % NumberOfNodes            
+            DO i=1,n
+              j = Indexes(i)
+              k = InterfacePerm(j)
+              IF( k == 0) CYCLE
+
+              ! Assuming just two shell parerents currently
+              IF( InterfaceElems(k,1) == 0 ) THEN
+                InterfaceElems(k,1) = t
+              ELSE IF( InterfaceElems(k,2) == 0 ) THEN
+                InterfaceElems(k,2) = t
+              ELSE
+                CALL Fatal('','Tree interface elems?')
+              END IF
+            END DO
+          END DO
+
+          
+          ! Then go through solid elements associated with the interface        
+          NodeHits = 0
           DO t=1,Mesh % NumberOfBulkElements
             Element => Mesh % Elements(t)
             Indexes => Element % NodeIndexes 
@@ -16876,7 +16996,7 @@ CONTAINS
             Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
             Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
             Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
-
+            
             x = 0.0_dp; y = 0.0_dp; z = 0.0_dp
             DO i=1,n
               IF( FPerm(Indexes(i)) == 0 ) CYCLE
@@ -16901,6 +17021,24 @@ CONTAINS
               Weight = 1.0_dp / NodeHits(jf)
 
               !PRINT *,'Weight:',Weight
+
+              DO j=1,2
+                ShellElement => Mesh % Elements(InterfaceElems(InterfacePerm(i),j))
+                hits = 0
+                DO k=1,ShellElement % TYPE % NumberOfNodes
+                  IF( ANY( Indexes == ShellElement % NodeIndexes(k) ) ) hits = hits + 1
+                END DO
+                IF( hits >= 2 ) EXIT
+              END DO
+
+              m = ShellElement % TYPE % NumberOfNodes
+              DO jj=1,m
+                IF(Element % NodeIndexes(ii) == ShellElement % NodeIndexes(jj) ) EXIT
+              END DO
+              DirectorValues => GetElementalDirectorInt(Mesh,ShellElement)
+              Director = DirectorValues(3*(jj-1)+1:3*jj)
+
+              !PRINT *,'Director:',ShellElement % ElementIndex,jj,Director            
               
               ! Rotational dofs of the shell equation
               DO lf = 4, 6                            

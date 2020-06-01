@@ -6816,7 +6816,7 @@ CONTAINS
           IF (ANY(FPerm(NodeIndices(1:n)) == 0)) CYCLE
           
           DirectorValues => NULL()
-          DirectorValues => GetElementalDirector(Element)
+          DirectorValues => GetElementalDirectorInt(Mesh,Element)
 
           IF (.NOT. ASSOCIATED(DirectorValues)) THEN
             CALL Fatal('StructureCouplingAssembly', &
@@ -7038,58 +7038,7 @@ CONTAINS
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
     
     CALL Info('StructureCouplingAssembly','All done',Level=20)
-
-
-  CONTAINS
   
-    ! The following function is a copy from ShellSolver.F90.
-    ! TO DO: Remove a redundant version
-    !-------------------------------------------------------------------------------
-    FUNCTION GetElementalDirector(Element, ElementNodes) RESULT(DirectorValues) 
-    !-------------------------------------------------------------------------------    
-      TYPE(Element_t), POINTER, INTENT(IN) :: Element
-      TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
-      REAL(KIND=dp), POINTER :: DirectorValues(:)
-      !-------------------------------------------------------------------------------
-      TYPE(Nodes_t) :: Nodes
-      LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
-      REAL(KIND=dp), POINTER :: NodalNormals(:)
-      REAL(KIND=dp) :: Normal(3)
-      INTEGER :: n
-
-      SAVE Visited, UseElementProperty, NodalNormals, Nodes
-      !-------------------------------------------------------------------------------
-
-      IF (.NOT. Visited) THEN
-        DirectorValues => GetElementProperty('director', Element)
-        UseElementProperty = ASSOCIATED( DirectorValues ) 
-
-        IF (.NOT. UseElementProperty) THEN
-          n = CurrentModel % MaxElementNodes
-          ALLOCATE( NodalNormals(3*n) ) 
-        END IF
-        Visited = .TRUE.
-      END IF
-
-      IF ( UseElementProperty ) THEN    
-        DirectorValues => GetElementProperty('director', Element)
-      ELSE
-        IF( PRESENT( ElementNodes ) ) THEN
-          Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
-        ELSE
-          CALL GetElementNodes( Nodes, Element ) 
-          Normal = NormalVector( Element, Nodes, Check = .TRUE. ) 
-        END IF
-
-        n = Element % TYPE % NumberOfNodes
-        NodalNormals(1:3*n:3) = Normal(1)
-        NodalNormals(2:3*n:3) = Normal(2)
-        NodalNormals(3:3*n:3) = Normal(3)      
-        DirectorValues => NodalNormals
-      END IF
-    !-------------------------------------------------------------------------------    
-    END FUNCTION GetElementalDirector
-    !-------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------- 
   END SUBROUTINE StructureCouplingAssembly_defutils
