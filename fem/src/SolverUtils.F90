@@ -16721,7 +16721,7 @@ CONTAINS
   !-------------------------------------------------------------------------------
   FUNCTION GetElementalDirectorInt(Mesh, Element, &
       ElementNodes, node) RESULT(DirectorValues) 
-    !-------------------------------------------------------------------------------    
+  !-------------------------------------------------------------------------------    
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
     TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
@@ -16804,7 +16804,7 @@ CONTAINS
       END DO
     END FUNCTION GetElementPropertyInt
     
-    !-------------------------------------------------------------------------------    
+  !-------------------------------------------------------------------------------    
   END FUNCTION GetElementalDirectorInt
   !-------------------------------------------------------------------------------
 
@@ -16966,7 +16966,7 @@ CONTAINS
               k = InterfacePerm(j)
               IF( k == 0) CYCLE
 
-              ! Assuming just two shell parerents currently
+              ! Assuming just two shell parents currently
               IF( InterfaceElems(k,1) == 0 ) THEN
                 InterfaceElems(k,1) = t
               ELSE IF( InterfaceElems(k,2) == 0 ) THEN
@@ -17092,6 +17092,7 @@ CONTAINS
             END DO
           END DO
           DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
+          DEALLOCATE(A_f0, NodeHits, InterfacePerm)
         END IF
       END BLOCK
     END IF
@@ -17147,7 +17148,7 @@ CONTAINS
           A_f % rhs(kf) = 0.0_dp
 
           ! Copy the force in implicit form from "F" to "SF" coupling matrix, and zero it
-          ! Now the shell equation includes forces of both equations. 
+          ! Now the solid equation includes forces of both equations. 
           DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
             IF( .NOT. ConstrainedS(ks) ) THEN        
               CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k), A_f % Values(k) )
@@ -17156,7 +17157,7 @@ CONTAINS
           END DO
 
           ! Set Dirichlet Condition to "S" such that it is equal to "F".
-          ! Basically we could eliminate displacement condition and do this afterwords
+          ! Basically we could eliminate displacement condition and do this afterwards
           ! but this is much more economical. 
           A_f % Values( A_f % Diag(kf)) = vdiag          
           CALL AddToMatrixElement(A_fs,kf,ks, -vdiag )
