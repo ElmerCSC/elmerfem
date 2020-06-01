@@ -221,7 +221,8 @@ void Surface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   mapper->ScalarVisibilityOn();
   mapper->SetScalarRange(minVal, maxVal);
   mapper->SetResolveCoincidentTopologyToPolygonOffset();
-  mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  //mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  mapper->SetLookupTable(vtkPost->GetLut("Surface"));
   // mapper->ImmediateModeRenderingOn();
 
   // Actor:

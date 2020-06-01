@@ -282,7 +282,8 @@ void IsoSurface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   mapper->SelectColorArray("IsoSurfaceColor");
   mapper->SetScalarModeToUsePointFieldData();
   mapper->SetScalarRange(colorMinVal, colorMaxVal);
-  mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  //mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  mapper->SetLookupTable(vtkPost->GetLut("Isosurface"));
   // mapper->ImmediateModeRenderingOn();
 
   // Actor:
