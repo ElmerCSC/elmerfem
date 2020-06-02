@@ -81,8 +81,6 @@ double cputime ()
   return (double) usage.ru_utime.tv_sec + usage.ru_utime.tv_usec*1.0e-6;
 }
 
-void amd_aat() {}
-
 double realtime()
 {
   gettimeofday( &tp,&tzp );
