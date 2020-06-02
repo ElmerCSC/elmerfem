@@ -1117,7 +1117,6 @@ CONTAINS
     
     IF( DoIt ) THEN
       CALL Info('AddEquationBasics','Enforcing use of global mass matrix needed by other features!')
-      CALL ListAddLogical( SolverParams,'Allocate Bulk Matrix',.TRUE.)
       CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
     END IF
 
@@ -1845,9 +1844,6 @@ CONTAINS
     END DO
 
     IF(Doit) THEN
-      ALLOCATE(Solver % Matrix % BulkValues(SIZE(Solver % Matrix % Values)));
-      Solver % Matrix % BulkValues=0._dp
-
       ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
       Solver % Matrix % MassValues=0._dp
     END IF
