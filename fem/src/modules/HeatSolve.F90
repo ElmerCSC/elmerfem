@@ -1603,7 +1603,6 @@ CONTAINS
             
             S = (SUM( Temperature( TempPerm( RadiationElement % &
                 NodeIndexes))**4 )/k )**(1._dp/4._dp)
-print*,bindex, j, text,s
 !------------------------------------------------------------------------------
 !          Linearization of the G_jiT^4_j term
 !------------------------------------------------------------------------------
@@ -1615,7 +1614,7 @@ print*,bindex, j, text,s
 !------------------------------------------------------------------------------
 !           CALL IntegOverA( STIFF, FORCE, LOAD, &
 !                TransCoeff, Element, n, k, ElementNodes ) 
-!
+
 !           IF ( TransientAssembly ) THEN
 !             MASS = 0.0_dp
 !             CALL Add1stOrderTime( MASS, STIFF, &
