@@ -53,11 +53,11 @@ Solver 1
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
   Fix Input Current Density = False
-  Use Piola Transform = False
+  Use Piola Transform = True
 
   Linear System Solver = Iterative
   Linear System Preconditioning = Diagonal
-  Linear System Iterative Method = cgs
+  Linear System Iterative Method = BiCGStabL
   Bicgstabl Polynomial Degree = 4
 
   Linear System Residual Output = 20
