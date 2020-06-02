@@ -1107,9 +1107,9 @@ CONTAINS
     !----------------------------------------------------------------------------------
     DoIt = .FALSE.
     IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) THEN
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
-      END IF
+!     IF( ParEnv % PEs > 1 ) THEN
+!       CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
+!     END IF
       DoIt = .TRUE.
     END IF
     IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) DoIt = .TRUE.
@@ -1842,6 +1842,11 @@ CONTAINS
 
       END IF
     END DO
+
+    IF(Doit) THEN
+      ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
+      Solver % Matrix % MassValues=0._dp
+    END IF
 
 
     !------------------------------------------------------------------
@@ -4887,7 +4892,7 @@ CONTAINS
     INTEGER :: i, n, Sweep, MeshDim 
     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Found
+    LOGICAL :: Found, HasFCT
     TYPE(Mesh_t), POINTER :: Mesh
     
     IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
@@ -4904,6 +4909,7 @@ CONTAINS
     CALL Info('SetActiveElementsTable',&
         'Creating active element table for: '//TRIM(EquationName),Level=12)
 
+    HasFCT = ListGetLogical( Solver % Values, 'Linear System FCT', Found )
 
     Mesh => Solver % Mesh
     
@@ -4913,7 +4919,7 @@ CONTAINS
       n = 0
       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
         Element => Solver % Mesh % Elements(i)
-        IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
+        IF( .NOT.HasFCT .AND. Element % PartIndex/=ParEnv % myPE ) CYCLE
         IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
           n = n + 1
           IF( Sweep == 0 ) THEN

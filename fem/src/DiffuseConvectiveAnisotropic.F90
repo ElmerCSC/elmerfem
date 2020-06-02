@@ -179,10 +179,10 @@ MODULE DiffuseConvective
      dim = CoordinateSystemDimension()
      c = dim + 1
 
-     ForceVector = 0.0D0
-     StiffMatrix = 0.0D0
-     MassMatrix  = 0.0D0
-     Load = 0.0D0
+     ForceVector = 0.0_dp
+     StiffMatrix = 0.0_dp
+     MassMatrix  = 0.0_dp
+     Load = 0.0_dp
 
      CL = 0
 

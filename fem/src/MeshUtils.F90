@@ -2950,7 +2950,7 @@ CONTAINS
          IF( k == 0 ) THEN
            CALL Fatal('NonnodalElements','Cannot define DG indexes for BC!')
          ELSE IF( k == 1 ) THEN
-           Parent = pParent        
+           Parent => pParent        
          ELSE IF(.NOT. Hit ) THEN
            CALL Fatal('NonnodalElements','Cannot define DG indexes for internal BC!')       
          END IF
