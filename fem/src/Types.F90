@@ -892,6 +892,7 @@ MODULE Types
     LOGICAL :: UseCoilResistance = .FALSE.
   END TYPE Component_t
 
+!-------------------Circuit stuff----------------------------------------------
   TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
@@ -924,7 +925,10 @@ MODULE Types
 !     Variables
 !
       TYPE(Variable_t), POINTER  :: Variables => NULL()
-!
+
+!     External control of the simulation to sweep over parameter space.
+      TYPE(ValueList_t), POINTER :: Control => Null()
+      
 !     Some physical constants, that will be read from the database or set by
 !     other means: gravity direction/intensity and Stefan-Boltzmann constant)
 !

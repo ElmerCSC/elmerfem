@@ -613,12 +613,25 @@ CONTAINS
     IF ( Radiation ) THEN
       BLOCK
         INTEGER, ALLOCATABLE :: Inds(:),ElemInds(:),ElemInds2(:)
-        INTEGER :: cnt
+        INTEGER :: cnt, maxnodes
 
         n = Mesh % MaxElementNodes
         ALLOCATE( ElemInds(n), ElemInds2(n) )
         ElemInds = 0
         ElemInds2 = 0
+
+        ! Check the maximum number of nodes in boundary element
+        maxnodes = 0
+        DO i = Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          
+          Element => Mesh % Elements(i)
+          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+          
+          n = Element % Type % NumberOfNodes
+          maxnodes = MAX( n, maxnodes )
+        END DO
+        
         
         CALL Info('MakeListMatrix','Adding radiation matrix',Level=14)      
         DO i = Mesh % NumberOfBulkElements+1, &
@@ -643,12 +656,12 @@ CONTAINS
             
             NumberOfFactors = Element % BoundaryInfo % &
                 GebhardtFactors % NumberOfImplicitFactors
-
+            
             IF (.NOT.ALLOCATED(inds)) THEN
-              ALLOCATE(inds(4*NumberOfFactors))
-            ELSE IF(SIZE(inds)<4*NumberOfFactors) THEN
+              ALLOCATE(inds(maxnodes*NumberOfFactors))
+            ELSE IF(SIZE(inds)<maxnodes*NumberOfFactors) THEN
               DEALLOCATE(inds)
-              ALLOCATE(inds(4*NumberOfFactors))
+              ALLOCATE(inds(maxnodes*NumberOfFactors))
             END IF
 
             cnt = 0
@@ -671,7 +684,9 @@ CONTAINS
                 END IF
               END DO
             END DO
+            
             CALL Sort(cnt,inds)
+
             CALL List_AddMatrixIndexes(List,k1,cnt,inds)
           END DO
         END DO

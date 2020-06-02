@@ -207,7 +207,8 @@ private slots:
   void doDivideEdgeSlot(double);       // signal emitted by boundaryDivide
 
   void postProcessFinishedSlot(int); // signal emitted by postProcess
-
+  void paraviewProcessFinishedSlot(int); // signal emitted by paraview
+  
   void solverStdoutSlot();      // solver's stdout redirection
   void solverStderrSlot();      // solver's stderr redirection
   void solverFinishedSlot(int); // signal emitted by solver process
@@ -265,6 +266,10 @@ private slots:
   void loadRecentProject3Slot();
   void loadRecentProject4Slot();
 
+  void selectElmerPostSlot();
+  void selectVtkPostSlot();  
+  void selectParaViewSlot();
+  
 private:
   // widgets and helpers:
   GLWidget *glWidget;               // central gl widget
@@ -317,6 +322,7 @@ private:
   QMenu *helpMenu;              // Help menu
   QMenu *sysTrayMenu;           // System tray menu
   QMenu *contextMenu;           // Context menu
+  QMenu *selectPostMenu;
 
   QToolBar *fileToolBar;   // File toolbar
   QToolBar *editToolBar;   // Edit toolbar
@@ -402,6 +408,10 @@ private:
   QAction *compileSolverAct;          // Solver -> Compile...
   QAction *aboutAct;                  // Help -> About...
   QAction *generateAndSaveAndRunAct;
+  QAction *runPostProcessorAct;  
+  QAction *selectElmerPostAct;
+  QAction *selectVtkPostAct;
+  QAction *selectParaViewAct;  
 
   // property editors etc:
   GeneralSetup *generalSetup;
@@ -466,6 +476,7 @@ private:
   // solver, post processor, and other processes:
   QProcess *solver;
   QProcess *post;
+  QProcess *paraview;
   QProcess *compiler;
   QProcess *meshSplitter;
   QProcess *meshUnifier;

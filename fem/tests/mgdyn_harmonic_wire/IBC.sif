@@ -63,7 +63,7 @@ Solver 1
   Variable = "AV[AV re:1 AV im:1]"
   Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
 
-  Use Piola Transform = True
+  Use Piola Transform = true
 
   Linear System Symmetric = True
   Linear System Solver = "Iterative"
@@ -84,6 +84,7 @@ Solver 2
 
   Potential Variable = String "AV"
 
+  Calculate Magnetic Vector Potential = True
   Calculate Current Density = Logical True
   Calculate Electric Field = Logical True
   Calculate Magnetic Field Strength = Logical True
@@ -102,7 +103,7 @@ Solver 2
   Impose Body Force Current = Logical True
 
   Discontinuous Bodies = True
-  calculate harmonic peak power = logical false
+  calculate harmonic peak power = logical False
 End
 
 
@@ -131,21 +132,20 @@ End
 
 
 Boundary Condition 1
+  !
+  ! No surface currents, given scalar potential
+  !
   Name = "WireStart"
   Target Boundaries(1) = 1 
 
-  Coil Start = Logical True
-
-  AV re {e} 1 = Real 0.0
-  AV re {e} 2 = Real 0.0
   AV re = Real 0.0
-
-  AV im {e} 1 = Real 0.0
-  AV im {e} 2 = Real 0.0
   AV im = Real 0.0
 End
 
 Boundary Condition 2
+  !
+  ! Impedance BC
+  !
   Name = "WireSurface"
   Target Boundaries(1) = 2
   Layer Electric Conductivity = Real 58e6
@@ -153,17 +153,13 @@ Boundary Condition 2
 End
 
 Boundary Condition 3
+  !
+  ! No surface currents, given scalar potential
+  !
   Name = "WireEnd"
   Target Boundaries(1) = 3
 
-  Coil End = Logical True
-
-  AV re {e} 1 = Real 0.0
-  AV re {e} 2 = Real 0.0
   AV re = Real 0.01
-
-  AV im {e} 1 = Real 0.0
-  AV im {e} 2 = Real 0.0
   AV im = Real 0.0
 End
 
@@ -173,9 +169,12 @@ Boundary Condition 4
 
   AV re {e} 1 = Real 0.0
   AV re {e} 2 = Real 0.0
+  AV re {e} 3 = Real 0.0
 
   AV im {e} 1 = Real 0.0
   AV im {e} 2 = Real 0.0
+  AV im {e} 3 = Real 0.0
+
 End
 
 
@@ -185,9 +184,12 @@ Boundary Condition 5
 
   AV re {e} 1 = Real 0.0
   AV re {e} 2 = Real 0.0
+  AV re {e} 3 = Real 0.0
 
   AV im {e} 1 = Real 0.0
   AV im {e} 2 = Real 0.0
+  AV im {e} 3 = Real 0.0
+
 End
 
 Boundary Condition 6
@@ -196,11 +198,14 @@ Boundary Condition 6
 
   AV re {e} 1 = Real 0.0
   AV re {e} 2 = Real 0.0
+  AV re {e} 3 = Real 0.0
 
   AV im {e} 1 = Real 0.0
   AV im {e} 2 = Real 0.0
+  AV im {e} 3 = Real 0.0
+
 End
 
 
-!Solver 4 :: Reference Norm = 1.42296361E+03
-!Solver 4 :: Reference Norm Tolerance = 1e-4
+Solver 1 :: Reference Norm = 4.76856984E-04
+Solver 1 :: Reference Norm Tolerance = 1e-4

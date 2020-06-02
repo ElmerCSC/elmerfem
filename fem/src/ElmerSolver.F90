@@ -85,7 +85,7 @@
      INTEGER :: TimeIntervals,interval,timestep, &
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter
 
-     INTEGER, POINTER, SAVE :: Timesteps(:),OutputIntervals(:), ActiveSolvers(:)
+     INTEGER, POINTER, SAVE :: Timesteps(:),OutputIntervals(:) => NULL(), ActiveSolvers(:)
      REAL(KIND=dp), POINTER, SAVE :: TimestepSizes(:,:)
 
      INTEGER(KIND=AddrInt) :: ControlProcedure
@@ -110,11 +110,16 @@
      LOGICAL :: Silent, Version, GotModelName, FinishEarly
 
      INTEGER :: iargc, NoArgs
-     INTEGER :: iostat, iSweep, ParamSweeps
+     INTEGER :: iostat, iSweep = 1, OptimIters
      
      INTEGER :: MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
+     TYPE(Model_t), POINTER, SAVE :: Control
+     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
+     LOGICAL :: DoControl, GotParams
+     
+     
 #ifdef HAVE_TRILINOS
 INTERFACE
       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
@@ -138,7 +143,6 @@ END INTERFACE
      END IF
      
      IF ( FirstTime ) THEN
-
        !
        ! Print banner to output:
        ! -----------------------
@@ -250,7 +254,7 @@ END INTERFACE
          IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
        END IF
      END IF
-         
+
      IF( .NOT. GotModelName ) THEN
        OPEN( 1, File='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )       
        IF( iostat /= 0 ) THEN
@@ -260,6 +264,32 @@ END INTERFACE
        CLOSE(1)
      END IF
 
+     ! This sets optionally some internal parameters for doing scanning
+     ! over a parameter space / optimization. 
+     !-----------------------------------------------------------------
+     IF( FirstTime ) THEN
+       OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',IOSTAT=iostat)         
+       IF( iostat /= 0 ) THEN
+         CALL Fatal( 'ElmerSolver', 'Unable to find input file [' // &
+             TRIM(Modelname) // '], can not execute.' )
+       END IF
+       ALLOCATE( Control )          
+       ! Read only the "Run Control" section of the sif file.
+       CALL LoadInputFile( Control,InFileUnit,ModelName,MeshDir,MeshName, &
+           .FALSE., .TRUE., ControlOnly = .TRUE.)
+       DoControl =  ASSOCIATED( Control % Control )
+       IF( DoControl ) THEN
+         CALL Info('ElmerSolver','Run Control section active!')
+         OptimIters = ListGetInteger( Control % Control,'Run Control Iterations', Found )
+         IF(.NOT. Found) OptimIters = 1              
+
+         ! If there are no parameters this does nothing
+         CALL ControlParameters(Control % Control,1,GotParams,FinishEarly)
+       ELSE
+         OptimIters = 1 
+       END IF
+     END IF
+                
 !------------------------------------------------------------------------------
 !    Read element definition file, and initialize element types
 !------------------------------------------------------------------------------
@@ -442,17 +472,23 @@ END INTERFACE
        ! This sets optionally some internal parameters for doing scanning
        ! over a parameter space / optimization. 
        !-----------------------------------------------------------------
-       ParamSweeps = ListGetInteger( CurrentModel % Simulation,&
-           'Parameter Max Sweeps', GotIt )
-       IF(.NOT. GotIt) ParamSweeps = 1
-       
-       DO iSweep = 1, ParamSweeps
+       DO iSweep = 1, OptimIters
          sSweep = 1.0_dp * iSweep
-         
-         ! If there are no parameters this does nothing         
-         CALL SetSimulationParameters(iSweep,FinishEarly)
-         IF( FinishEarly ) EXIT
-         
+         ! If there are no parameters this does nothing                  
+         IF( DoControl ) THEN
+           CALL ControlResetMesh(Control % Control, iSweep )            
+           IF( iSweep > 1 ) THEN
+             CALL ControlParameters(Control % Control, &
+                 iSweep,GotParams,FinishEarly)           
+             IF( FinishEarly ) EXIT
+             Found = ReloadInputFile(CurrentModel,RewindFile=.TRUE.)
+             CALL InitializeIntervals()
+             IF( ListGetLogical( Control % Control,'Reset Initial Conditions',Found ) ) THEN
+               CALL SetInitialConditions()
+             END IF
+           END IF
+         END IF
+           
          !------------------------------------------------------------------------------
          ! Here we actually perform the simulation: ExecSimulation does it all ....
          !------------------------------------------------------------------------------
@@ -465,6 +501,12 @@ END INTERFACE
            CALL ExecSimulation( TimeIntervals, CoupledMinIter, &
                CoupledMaxIter, OutputIntervals, Transient, Scanning)
          END IF
+
+         ! This evaluates the cost function and saves the results of control
+         IF( DoControl ) THEN
+           CALL ControlParameters(Control % Control, &
+               iSweep,GotParams,FinishEarly,.TRUE.)
+         END IF
        END DO
        
        ! Comparison to reference is done to enable consistency test underc ctest.
@@ -474,7 +516,7 @@ END INTERFACE
        IF ( Initialize >= 2 ) EXIT
      END DO
 
-     
+ 
      CALL CompareToReferenceSolution( Finalize = .TRUE. )
 
 
@@ -610,9 +652,11 @@ END INTERFACE
          IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
            CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
          END IF
-       ELSE
-         ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
-         OutputIntervals = 1
+       ELSE 
+         IF( .NOT. ASSOCIATED( OutputIntervals ) ) THEN
+           ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
+           OutputIntervals = 1
+         END IF
        END IF 
 
 
@@ -627,7 +671,6 @@ END INTERFACE
        sStep = 0
        sPeriodic = 0._dp
        sScan = 0._dp
-       sSweep = 0._dp
        
        sSize = dt
        sPrevSizes = 0_dp
@@ -1155,10 +1198,11 @@ END INTERFACE
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
 
-       IF( ListCheckPresent( CurrentModel % Simulation,'Parameter Max Sweeps') ) THEN
-         CALL VariableAdd( Mesh % Variables, Mesh, Name='sweep', DOFs=1, Values=sSweep )
+       IF( DoControl ) THEN
+         sSweep = 1.0_dp * iSweep
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='run', DOFs=1, Values=sSweep )
        END IF
-       
+              
        sPar(1) = 1.0_dp * ParEnv % MyPe 
        CALL VariableAdd( Mesh % Variables, Mesh, Name='Partition', DOFs=1, Values=sPar ) 
 

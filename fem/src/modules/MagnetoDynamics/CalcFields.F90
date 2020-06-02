@@ -2063,6 +2063,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       BC => GetBC()
       IF (.NOT. ASSOCIATED(BC)) CYCLE
 
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Element,1)
+        Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Element)
+        Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
+
       C = GetConstReal(BC, 'Layer Electric Conductivity', Found)
       IF (ANY(ABS(C(1:n)) > AEPS)) THEN
         R = GetConstReal(BC, 'Layer Relative Permeability', Found)

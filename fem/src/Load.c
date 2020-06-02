@@ -47,6 +47,8 @@
 
 #include "../config.h"
 
+system_() {}
+
 #if defined(WIN32) | defined(MINGW32)
 #  include <direct.h>
 #  include <windows.h>

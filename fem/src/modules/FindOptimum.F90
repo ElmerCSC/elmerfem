@@ -75,12 +75,13 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: BestFile, HistoryFile
   TYPE(Variable_t),POINTER :: Var
   INTEGER :: IOUnit
+  TYPE(ValueList_t), POINTER :: OptList
   
   SAVE Param, MinParam, MaxParam, PrevParam, NoParam, &
       OptimizationsDone, Method, Direction, x, c, PrevCost, &
       FixedParam, NoFreeParam, MinCost, BestParam, NoValues, &
       OptimalFinish, OptimalStart, InternalHistory, dParam, &
-      NoImprovements, FoundBetter, OptTol
+      NoImprovements, FoundBetter, OptTol, OptList
 
   !------------------------------------------------------------------------------
   ! In the 1st round perform initializations 
@@ -103,10 +104,12 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       CALL Fatal('FindOptimum','The variable vector is of wrong size')
     END IF
 
-    OptimalFinish = ListGetLogical( Solver % Values,'Optimal Finish',GotIt)
+    OptList => Solver % Values
+    
+    OptimalFinish = ListGetLogical( OptList,'Optimal Finish',GotIt)
     NoValues = ListGetInteger(Model % Simulation,'Timestep Intervals')
 
-    OptTol = ListGetConstReal( Solver % Values,'Optimization Tolerance',GotIt)
+    OptTol = ListGetConstReal( OptList,'Optimization Tolerance',GotIt)
 
     ALLOCATE( MinParam(NoParam), BestParam(NoParam), MaxParam(NoParam), &
         dParam(NoParam), FixedParam(NoParam))
@@ -122,12 +125,12 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     DO i=1,NoParam
       WRITE( ParamStr,'(A,I0)') 'Parameter ',i
 
-      FixedParam(i) = ListGetLogical(Solver % Values,'Fixed '//TRIM(ParamStr),GotIt)
-      Param(i) = ListGetConstReal(Solver % Values,'Initial '//TRIM(ParamStr),GotInit)
+      FixedParam(i) = ListGetLogical(OptList,'Fixed '//TRIM(ParamStr),GotIt)
+      Param(i) = ListGetConstReal(OptList,'Initial '//TRIM(ParamStr),GotInit)
 
       IF(.NOT. ( FixedParam(i) ) ) THEN
-        minv = ListGetConstReal(Solver % Values,'Min '//TRIM(ParamStr),GotIt)
-        maxv = ListGetConstReal(Solver % Values,'Max '//TRIM(ParamStr),GotIt2)
+        minv = ListGetConstReal(OptList,'Min '//TRIM(ParamStr),GotIt)
+        maxv = ListGetConstReal(OptList,'Max '//TRIM(ParamStr),GotIt2)
 
         IF( GotIt ) MinParam(i) = minv
         IF( GotIt2 ) MaxParam(i) = maxv
@@ -142,7 +145,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
           END IF
         END IF
       END IF
-      dParam(i) = ListGetConstReal(Solver % Values,'Scale '//TRIM(ParamStr),GotIt)
+      dParam(i) = ListGetConstReal(OptList,'Scale '//TRIM(ParamStr),GotIt)
       IF(.NOT. GotIt) dParam(i) = 1.0_dp
     END DO
     
@@ -152,17 +155,17 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       RETURN
     END IF
 
-    Method = ListGetString(Solver % Values,'Optimization Method')
+    Method = ListGetString(OptList,'Optimization Method')
 
     ! Internal history could be used in more complicated optimization routines
     !--------------------------------------------------------------------------
-    InternalHistory = ListGetLogical( Solver % Values,'Internal History',GotIt)    
+    InternalHistory = ListGetLogical( OptList,'Internal History',GotIt)    
     IF( Method == 'bisect') InternalHistory = .TRUE.
     IF( InternalHistory ) THEN
       ALLOCATE( PrevParam(NoValues,NoParam), PrevCost(NoValues))
     END IF
 
-    OptimalStart = ListGetLogical(Solver % Values,'Optimal Restart',GotIt)
+    OptimalStart = ListGetLogical(OptList,'Optimal Restart',GotIt)
     IF( OptimalStart ) THEN
       CALL GuessOptimum()
       GOTO 100
@@ -178,10 +181,10 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     FoundBetter = -1.0_dp
     Cost = GetCReal(Model % Simulation,'Cost Function',GotIt)
 
-    IF(.NOT. GotIt) Cost = GetCReal(Solver % Values,'Cost Function',GotIt)
+    IF(.NOT. GotIt) Cost = GetCReal(OptList,'Cost Function',GotIt)
 
     IF(.NOT. GotIt) THEN
-      Name = ListGetString(Solver % Values,'Cost Function Name',GotIt)
+      Name = ListGetString(OptList,'Cost Function Name',GotIt)
       IF(.NOT. GotIt) CALL Fatal('FindOptimum','Give Cost Function or its name')
       Cost = ListGetConstReal(Model % Simulation,Name,GotIt)     
       IF(.NOT. GotIt) CALL Fatal('FindOptimum','Cost with the given name was not found')
@@ -190,15 +193,15 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     ! Whether to perform search rather than optimization. 
     ! In this case reduce the goal so that the target will always be zero.
     !----------------------------------------------------------------------
-    CostTarget = ListGetConstReal( Solver % Values,'Cost Function Target',GotIt)    
+    CostTarget = ListGetConstReal( OptList,'Cost Function Target',GotIt)    
     IF( GotIt ) Cost = Cost - CostTarget 
 
     ! The cost function could be the absolute value
     ! or we could transfer a maximization problem into minimization.
     !----------------------------------------------------------------
-    IF( ListGetLogical( Solver % Values,'Cost Function Absolute',GotIt)) THEN
+    IF( ListGetLogical( OptList,'Cost Function Absolute',GotIt)) THEN
       Cost = ABS( Cost )
-    ELSE IF( ListGetLogical( Solver % Values,'Cost Function Maximize',GotIt)) THEN
+    ELSE IF( ListGetLogical( OptList,'Cost Function Maximize',GotIt)) THEN
       Cost = -Cost
     END IF
 
@@ -214,7 +217,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       WRITE(Message,'(A,ES15.6E3)') 'Found New Minimum Cost:',MinCost
       CALL Info('FindOptimum',Message,Level=4)
 
-      BestFile = ListGetString(Solver % Values,'Best File',GotIt )
+      BestFile = ListGetString(OptList,'Best File',GotIt )
       IF( GotIt ) THEN
         OPEN( NEWUNIT=IOUnit, FILE=BestFile, STATUS='UNKNOWN')
         WRITE (IOUnit,'(I0)') NoParam
@@ -235,7 +238,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
 
     ! Save the results to a file
     !---------------------------
-    HistoryFile = ListGetString(Solver % Values,'History File',GotIt )
+    HistoryFile = ListGetString(OptList,'History File',GotIt )
     IF( GotIt ) THEN
       IF(OptimizationsDone == 1) THEN
         OPEN (NEWUNIT=IOUnit, FILE=HistoryFile)
@@ -354,11 +357,11 @@ CONTAINS
     no = no + 1
 
     IF(no == 1) THEN
-      popsize = ListGetInteger(Solver % Values,'Population Size',GotIt)
+      popsize = ListGetInteger(OptList,'Population Size',GotIt)
       IF(.NOT. GotIt) popsize = 5 * parsize
-      popcoeff = ListGetConstReal(Solver % Values,'Population Coefficient',GotIt)
+      popcoeff = ListGetConstReal(OptList,'Population Coefficient',GotIt)
       IF(.NOT. GotIt) popcoeff = 0.7
-      popcross = ListGetConstReal(Solver % Values,'Population Crossover',GotIt)
+      popcross = ListGetConstReal(OptList,'Population Crossover',GotIt)
       IF(.NOT. GotIt) popcross = 0.1
       ALLOCATE(pars(parsize,popsize),vals(popsize),mask(parsize),rnds(parsize))
       IF(.FALSE.) THEN
@@ -489,7 +492,7 @@ CONTAINS
     no = no + 1
 
     IF(no == 1) THEN
-      step = ListGetConstReal(Solver % Values,'Step Size',GotIt)
+      step = ListGetConstReal(OptList,'Step Size',GotIt)
       IF(.NOT. GotIt) step = (MaxParam(j)-Param(j))/2.0
       step = MIN((MaxParam(j)-Param(j))/2.0,step)
     END IF
@@ -573,10 +576,10 @@ CONTAINS
     no = no + 1
 
     IF(no == 1) THEN
-      maxstep = ListGetConstReal(Solver % Values,'Max Step Size',GotIt)
-      step = ListGetConstReal(Solver % Values,'Step Size',GotIt)
+      maxstep = ListGetConstReal(OptList,'Max Step Size',GotIt)
+      step = ListGetConstReal(OptList,'Step Size',GotIt)
       IF(.NOT. GotIt) step = 1.0d-3*(MaxParam(j)-MinParam(j))
-      relax = ListGetConstReal(Solver % Values,'Relaxation Factor',GotIt)
+      relax = ListGetConstReal(OptList,'Relaxation Factor',GotIt)
       IF(.NOT. GotIt) Relax = 1.0_dp
     END IF
 
@@ -631,7 +634,7 @@ CONTAINS
     IF(.NOT. AllocationsDone ) THEN
       ALLOCATE(eig(nx,nx),ls(nx),xall(nx+1,nx),f(nx+1),x0(nx),xr(nx),xc(nx))
 
-      lambda = ListGetConstReal(Solver % Values,'Simplex Relative Length Scale',Found)
+      lambda = ListGetConstReal(OptList,'Simplex Relative Length Scale',Found)
       IF(.NOT. Found ) lambda = 0.01_dp
       DO i=1,nx
         IF( ABS( diffx(i) ) > TINY(diffx(i)) ) THEN
@@ -650,8 +653,8 @@ CONTAINS
         eig(i,i) = 1.0_dp
       END DO
 
-      nomax = ListGetInteger(Solver % Values,'Simplex Restart Interval',Found)
-      maxratio = ListGetConstReal(Solver % Values,'Simplex Restart Convergence Ratio',Found)      
+      nomax = ListGetInteger(OptList,'Simplex Restart Interval',Found)
+      maxratio = ListGetConstReal(OptList,'Simplex Restart Convergence Ratio',Found)      
       IF(.NOT. Found) maxratio = 1.0_dp
       AllocationsDone = .TRUE.
     END IF
@@ -855,7 +858,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: GuessFile
     INTEGER :: IOUnit
     
-    GuessFile = ListGetString(Solver % Values,'Guess File',GotIt )
+    GuessFile = ListGetString(OptList,'Guess File',GotIt )
     IF(.NOT. GotIt) GuessFile = 'best.dat'
 
     INQUIRE (FILE=GuessFile, EXIST=fileis)

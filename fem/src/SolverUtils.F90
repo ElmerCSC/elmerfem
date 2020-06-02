@@ -2127,11 +2127,12 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: BC, MasterBC
      REAL(KIND=dp), POINTER :: nWrk(:,:)
      LOGICAL :: CreateDual
+    CHARACTER(*), PARAMETER :: Caller = 'DetermineContact'
 
      
      SAVE FirstTime
 
-     CALL Info('DetermineContact','Setting up contact conditions',Level=8)
+     CALL Info(Caller,'Setting up contact conditions',Level=8)
      
      Model => CurrentModel
      Var => Solver % Variable
@@ -2172,7 +2173,7 @@ CONTAINS
      IF( ConservativeAdd ) THEN
        IF( CoupledIter == 1 ) ConservativeAdd = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeAdd ) THEN
-         CALL Info('DetermineContact','Adding dofs in conservative fashion',Level=8)
+         CALL Info(Caller,'Adding dofs in conservative fashion',Level=8)
        END IF
      END IF
 
@@ -2181,7 +2182,7 @@ CONTAINS
      IF( ConservativeRemove ) THEN
        IF( CoupledIter == 1 ) ConservativeRemove = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeRemove ) THEN
-         CALL Info('DetermineContact','Removing dofs in conservative fashion',Level=8)
+         CALL Info(Caller,'Removing dofs in conservative fashion',Level=8)
        END IF
      END IF
          
@@ -2205,7 +2206,7 @@ CONTAINS
      IF(.NOT. Found ) ValEps = EPSILON( ValEps )
 
      IF( .NOT. ASSOCIATED( Model % Solver % MortarBCs ) ) THEN
-       CALL Fatal('DetermineContact','Cannot apply contact without projectors!')
+       CALL Fatal(Caller,'Cannot apply contact without projectors!')
      END IF
 
      ! a) Create rotateted contact if needed
@@ -2231,7 +2232,7 @@ CONTAINS
 
        BC => Model % BCs(bc_ind) % Values
 
-       CALL Info('DetermineContact','Set contact for boundary: '&
+       CALL Info(Caller,'Set contact for boundary: '&
            //TRIM(I2S(bc_ind)),Level=8)
        Model % Solver % MortarBCsChanged = .TRUE.
        
@@ -2258,15 +2259,15 @@ CONTAINS
                ActiveDirection = i
              END IF
            END DO
-           CALL Info('DetermineContact','Active direction set to: '//TRIM(I2S(ActiveDirection)))
+           CALL Info(Caller,'Active direction set to: '//TRIM(I2S(ActiveDirection)))
          END IF
        ELSE IF( RotationalProjector .OR. NormalProjector ) THEN
          ActiveDirection = 1
          IF( .NOT. ThisRotatedContact ) THEN
-           CALL Warn('DetermineContact','Rotational and normal projectors should only work with N-T coordinates!')
+           CALL Warn(Caller,'Rotational and normal projectors should only work with N-T coordinates!')
          END IF
        ELSE
-         CALL Fatal('DetermineContact','Projector must be current either flat, plane, cylinder or rotational!')
+         CALL Fatal(Caller,'Projector must be current either flat, plane, cylinder or rotational!')
        END IF
       
 
@@ -2279,7 +2280,7 @@ CONTAINS
        DualProjector => Projector % Ematrix
        CreateDual = ASSOCIATED( DualProjector )
        IF( CreateDual ) THEN
-         CALL Info('DetermineContact','Using also the dual projector',Level=8)
+         CALL Info(Caller,'Using also the dual projector',Level=8)
        END IF
       
        ! If we have N-T system then the mortar condition for the master side
@@ -2288,12 +2289,12 @@ CONTAINS
          IF( master_ind > 0 ) THEN
            IF( .NOT. ListGetLogical( MasterBC, &
                'Normal-Tangential '//TRIM(VarName),Found) ) THEN
-             CALL Fatal('DetermineContact','Master boundary '//TRIM(I2S(master_ind))//&
+             CALL Fatal(Caller,'Master boundary '//TRIM(I2S(master_ind))//&
                  ' should also have N-T coordinates!')
            END IF
          END IF
 
-         CALL Info('DetermineContact','We have a normal-tangential system',Level=6)
+         CALL Info(Caller,'We have a normal-tangential system',Level=6)
          MortarBC % MasterScale = -1.0_dp
          DofN = 1
        ELSE                 
@@ -2344,7 +2345,7 @@ CONTAINS
          CASE('slide')
            SlipContact = .TRUE.
          CASE Default
-           CALL Fatal('DetermineContact','Unknown contact type: '//TRIM(ContactType))
+           CALL Fatal(Caller,'Unknown contact type: '//TRIM(ContactType))
          END SELECT
        ELSE
          StickContact = ListGetLogical( BC,'Stick Contact',Found )
@@ -2353,15 +2354,15 @@ CONTAINS
          IF(.NOT. Found ) SlipContact = ListGetLogical( BC,'Slip Contact',Found )
          IF(.NOT. Found ) SlipContact = ListGetLogical( BC,'Slide Contact',Found )
          IF(.NOT. Found ) THEN 
-           CALL Warn('DetermineContact','No contact type given, assuming > Slip Contact <')
+           CALL Warn(Caller,'No contact type given, assuming > Slip Contact <')
            SlipContact = .TRUE.
          END IF
        END IF
 
-       IF( StickContact ) CALL Info('DetermineContact','Using stick contact for displacement',Level=10)
-       IF( TieContact ) CALL Info('DetermineContact','Using tie contact for displacement',Level=10)
-       IF( FrictionContact ) CALL Info('DetermineContact','Using friction contact for displacement',Level=10)
-       IF( SlipContact ) CALL Info('DetermineContact','Using slip contact for displacement',Level=10)
+       IF( StickContact ) CALL Info(Caller,'Using stick contact for displacement',Level=10)
+       IF( TieContact ) CALL Info(Caller,'Using tie contact for displacement',Level=10)
+       IF( FrictionContact ) CALL Info(Caller,'Using friction contact for displacement',Level=10)
+       IF( SlipContact ) CALL Info(Caller,'Using slip contact for displacement',Level=10)
        
 
        ! At the start it may be beneficial to assume initial tie contact
@@ -2371,7 +2372,7 @@ CONTAINS
          IF( DoIt ) THEN
            FrictionContact = .FALSE.; StickContact = .FALSE.; SlipContact = .FALSE.
            TieContact = .TRUE.
-           CALL Info('DetermineContact','Assuming initial tie contact',Level=10)
+           CALL Info(Caller,'Assuming initial tie contact',Level=10)
          END IF
        END IF
          
@@ -2383,7 +2384,7 @@ CONTAINS
            FrictionContact = .FALSE.; StickContact = .FALSE.
            SlipContact = .TRUE.
            SkipFriction = .TRUE.
-           CALL Info('DetermineContact','Assuming frictionless initial contact',Level=10)
+           CALL Info(Caller,'Assuming frictionless initial contact',Level=10)
          END IF
        ELSE IF( ( FrictionContact .OR. SlipContact) .AND. NonlinIter == 1 ) THEN
          DoIt = ListGetLogical(BC,'Nonlinear System Initial Stick',Found )
@@ -2397,7 +2398,7 @@ CONTAINS
            FrictionContact = .FALSE.
            SlipContact = .FALSE.
            StickContact = .TRUE.
-           CALL Info('DetermineContact','Assuming sticking in first iteration initial contact',Level=10)
+           CALL Info(Caller,'Assuming sticking in first iteration initial contact',Level=10)
          END IF        
        END IF
 
@@ -2471,7 +2472,7 @@ CONTAINS
      
 
      FirstTime = .FALSE.
-     CALL Info('DetermineContact','All done',Level=10)
+     CALL Info(Caller,'All done',Level=10)
 
    CONTAINS
 
@@ -2485,7 +2486,7 @@ CONTAINS
 
        IF( .NOT. AnyRotatedContact ) RETURN
 
-       CALL Info('DetermineContact','Rotating displacement field',Level=8)
+       CALL Info(Caller,'Rotating displacement field',Level=8)
        ALLOCATE( RotatedField(Solver % Matrix % NumberOfRows ) )
        RotatedField = Var % Values
        
@@ -2521,12 +2522,12 @@ CONTAINS
        INTEGER :: i,j,k,m
 
 
-       CALL Info('DetermineContact','Determining contact load for contact problems',Level=10)
+       CALL Info(Caller,'Determining contact load for contact problems',Level=10)
 
        LoadVar => VariableGet( Model % Variables, &
            TRIM(VarName) // ' Contact Load',ThisOnly = .TRUE. )
        IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
-         CALL Fatal('DetermineContact', &
+         CALL Fatal(Caller, &
              'No Loads associated with variable: '//GetVarName(Var) )
        END IF
 
@@ -2555,7 +2556,7 @@ CONTAINS
 
 
        IF( DoAllocate ) THEN
-         CALL Info('DetermineContact','Creating contact fields',Level=8)
+         CALL Info(Caller,'Creating contact fields',Level=8)
         
          ALLOCATE( BoundaryPerm(Mesh % NumberOfNodes) )
          BoundaryPerm = 0
@@ -2675,7 +2676,7 @@ CONTAINS
 
        ! First time nothing is allocated
        IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN
-         CALL Info('DetermineContact','Allocating projector mortar vectors',Level=10)
+         CALL Info(Caller,'Allocating projector mortar vectors',Level=10)
          ALLOCATE( MortarBC % Active( totsize ), MortarBC % Rhs( totsize) )
          MortarBC % Active = .FALSE.
          MortarBC % Rhs = 0.0_dp
@@ -2741,7 +2742,7 @@ CONTAINS
          MortarBC % Diag => Diag 
        END IF
 
-       CALL Info('DetermineContact','Copied > Active < flag to changed projector',Level=8)
+       CALL Info(Caller,'Copied > Active < flag to changed projector',Level=8)
 
      END SUBROUTINE InitializeMortarVectors
 
@@ -2756,7 +2757,7 @@ CONTAINS
        INTEGER, POINTER :: Indexes(:)
        TYPE(Element_t), POINTER :: Element
        
-       CALL Info('DetermineContact','Marking interface dofs for conservative adding/removal',Level=8)
+       CALL Info(Caller,'Marking interface dofs for conservative adding/removal',Level=8)
 
        IF(.NOT. ALLOCATED( InterfaceDof ) ) THEN
          ALLOCATE( InterfaceDof( SIZE(MortarBC % Active) ) )
@@ -2797,7 +2798,7 @@ CONTAINS
        END DO
 
        n = COUNT(InterfaceDof)
-       CALL Info('DetermineContact',&
+       CALL Info(Caller,&
            'Number of interface dofs: '//TRIM(I2S(n)),Level=8)
      END SUBROUTINE MarkInterfaceDofs
      
@@ -2824,7 +2825,7 @@ CONTAINS
        LOGICAL :: LinearContactGap, DebugNormals
        
        
-       CALL Info('DetermineContact','Computing distance between mortar boundaries',Level=14)
+       CALL Info(Caller,'Computing distance between mortar boundaries',Level=14)
 
        DispVals => Solver % Variable % Values
        IF( .NOT. ASSOCIATED( DispVals ) ) THEN
@@ -2840,7 +2841,7 @@ CONTAINS
          ELSE
            PrevDispVals => Solver % Variable % PrevValues(:,3)
          END IF
-         IF(.NOT. ASSOCIATED( PrevDispVals ) ) CALL Fatal('DetermineContact',&
+         IF(.NOT. ASSOCIATED( PrevDispVals ) ) CALL Fatal(Caller,&
              'Previous displacement field required!')
        END IF
 
@@ -3209,7 +3210,7 @@ CONTAINS
              END DO
              
            CASE DEFAULT
-             CALL Fatal('DetermineContact','Implement linear gaps for: '//TRIM(I2S(ElemCode)))
+             CALL Fatal(Caller,'Implement linear gaps for: '//TRIM(I2S(ElemCode)))
            END SELECT
          END DO
        END IF
@@ -3383,20 +3384,20 @@ CONTAINS
              END DO
                
            CASE DEFAULT
-             CALL Fatal('DetermineContact','Implement linear loads for: '//TRIM(I2S(ElemCode)))
+             CALL Fatal(Caller,'Implement linear loads for: '//TRIM(I2S(ElemCode)))
            END SELECT
          END DO
        END IF
        
        IF( FlatProjector .OR. PlaneProjector .OR. NormalProjector ) THEN
          IF( NormalCount == 0 ) THEN
-           CALL Info('DetermineContact','All normals are consistently signed',Level=10)
+           CALL Info(Caller,'All normals are consistently signed',Level=10)
          ELSE
-           CALL Warn('DetermineContact','There are normals with conflicting signs: '&
+           CALL Warn(Caller,'There are normals with conflicting signs: '&
                //TRIM(I2S(NormalCount) ) )
            NormalSign = 1
          END IF
-         CALL Info('DetermineContact','Normal direction for distance measure: '&
+         CALL Info(Caller,'Normal direction for distance measure: '&
              //TRIM(I2S(NormalSign)),Level=8)
          DistSign = NormalSign 
        END IF
@@ -3520,12 +3521,12 @@ CONTAINS
 
        IF(added > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Added ',added,' nodes to the set'
-         CALL Info('DetermineContactSet',Message,Level=5)
+         CALL Info(Caller,Message,Level=5)
        END IF
        
        IF(removed > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Removed ',removed,' nodes from the set'
-         CALL Info('DetermineContactSet',Message,Level=5)
+         CALL Info(Caller,Message,Level=5)
        END IF
 
      END SUBROUTINE NormalContactSet
@@ -3553,9 +3554,9 @@ CONTAINS
 
        WRITE(Message,'(A,I0)') 'Initial number of contact nodes for '&
            //TRIM(VarName)//': ',LimitedNow 
-       CALL Info('DetermineContactSet',Message,Level=5)
+       CALL Info(Caller,Message,Level=5)
 
-       CALL Info('DetermineContact',&
+       CALL Info(Caller,&
            'Setting '//TRIM(I2S(NewNodes))//' additional contact nodes',Level=5)
 
        ALLOCATE( DistArray( NewNodes ), IndArray( NewNodes ) ) 
@@ -3591,11 +3592,11 @@ CONTAINS
        END DO
 
        IF( ANY( IndArray == 0 ) ) THEN
-         CALL Fatal('DetermineContact','Could not define sufficient number of new nodes!')
+         CALL Fatal(Caller,'Could not define sufficient number of new nodes!')
        END IF
 
        WRITE(Message,'(A,ES12.4)') 'Maximum distance needed for new nodes:',DistArray(NewNodes)
-       CALL Info('DetermineContact',Message,Level=8)
+       CALL Info(Caller,Message,Level=8)
 
        MortarBC % Active( Dofs*(IndArray-1)+DofN ) = .TRUE.
 
@@ -3758,21 +3759,21 @@ CONTAINS
 
        IF(added > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Added ',added,' nodes to the stick set'
-         CALL Info('DetermineContactSet',Message,Level=5)
+         CALL Info(Caller,Message,Level=5)
        END IF
        
        IF(removed0 > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Removed ',removed0,' non-contact nodes from the stick set'
-         CALL Info('DetermineContactSet',Message,Level=5)
+         CALL Info(Caller,Message,Level=5)
        END IF
 
        IF(removed > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Removed ',removed,' sliding nodes from the stick set'
-         CALL Info('DetermineContactSet',Message,Level=5)
+         CALL Info(Caller,Message,Level=5)
        END IF
 
 
-100    CALL Info('DetermineContactSet','Creating fields out of normal and stick contact sets',Level=10)
+100    CALL Info(Caller,'Creating fields out of normal and stick contact sets',Level=10)
 
        DO i = 1, Projector % NumberOfRows
          j = Projector % InvPerm(i)
@@ -3970,12 +3971,12 @@ CONTAINS
 
        IF(added > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Added ',added,' quadratic nodes to contact set'
-         CALL Info('DetermineContactSet',Message,Level=5)
+         CALL Info(Caller,Message,Level=5)
        END IF
 
        IF(removed > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Removed ',removed,' quadratic nodes from contact set'
-         CALL Info('DetermineContactSet',Message,Level=5)
+         CALL Info(Caller,Message,Level=5)
        END IF
          
      END SUBROUTINE QuadraticContactSet
@@ -3993,7 +3994,7 @@ CONTAINS
        REAL(KIND=dp), ALLOCATABLE :: CoeffTable(:), RealActive(:)
        INTEGER :: i,j,k,l,l2
 
-       CALL Info('DetermineContact','Mapping entities from slave to master',Level=10)
+       CALL Info(Caller,'Mapping entities from slave to master',Level=10)
 
        ALLOCATE( SlaveNode( Mesh % NumberOfNodes ) ) 
        SlaveNode = .FALSE.
@@ -4130,12 +4131,12 @@ CONTAINS
 
        IF(.NOT. ListCheckPresent( BC, 'Dynamic Friction Coefficient') ) RETURN
       
-       CALL Info('DetermineContact','Setting contact friction for boundary',Level=10)
+       CALL Info(Caller,'Setting contact friction for boundary',Level=10)
 
        GivenDirection = ListCheckPresent( BC,'Contact Velocity')
        IF(.NOT. GivenDirection ) THEN
          IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
-           CALL Fatal('DetermineContact','Contact velocity must be given in some way')
+           CALL Fatal(Caller,'Contact velocity must be given in some way')
          END IF
        END IF
 
@@ -16139,9 +16140,10 @@ CONTAINS
     LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, UseDensity, Found
     LOGICAL, ALLOCATABLE :: NodeDone(:)
     REAL(KIND=dp) :: MultSF, MultFS
+    CHARACTER(*), PARAMETER :: Caller = 'FsiCouplingAssembly'
+   
     
-    
-    CALL Info('FsiCouplingAssembly','Creating coupling matrix for harmonic FSI',Level=6)
+    CALL Info(Caller,'Creating coupling matrix for harmonic FSI',Level=6)
 
     
     IF( A_fs % FORMAT /= MATRIX_LIST ) THEN
@@ -16157,11 +16159,11 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
-    IF( IsPlate ) CALL Info('FsiCouplingAssembly','Assuming structure to be plate',Level=8)
+    IF( IsPlate ) CALL Info(Caller,'Assuming structure to be plate',Level=8)
 
-    IF( IsShell ) CALL Info('FsiCouplingAssembly','Assuming structure to be shell',Level=8)
+    IF( IsShell ) CALL Info(Caller,'Assuming structure to be shell',Level=8)
 
-    IF( IsNS ) CALL Info('FsiCouplingAssembly','Assuming fluid to have velocities',Level=8)
+    IF( IsNS ) CALL Info(Caller,'Assuming fluid to have velocities',Level=8)
 
 
     UseDensity = .FALSE.
@@ -16173,7 +16175,7 @@ CONTAINS
       END IF
     END DO
     IF( UseDensity ) THEN
-      CALL Info('FsiCouplingAssembly','The Helmholtz equation is multiplied by density',Level=10)
+      CALL Info(Caller,'The Helmholtz equation is multiplied by density',Level=10)
     END IF
     
     
@@ -16188,28 +16190,28 @@ CONTAINS
       IF( sdofs == 6 ) THEN
         IsHarmonic = .TRUE.
       ELSE IF( sdofs /= 3 ) THEN
-        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in plate solver: '//TRIM(I2S(sdofs)))
+        CALL Fatal(Caller,'Invalid number of dofs in plate solver: '//TRIM(I2S(sdofs)))
       END IF
     ELSE IF( IsShell ) THEN
       IF( sdofs == 12 ) THEN
         IsHarmonic = .TRUE.
       ELSE IF( sdofs /= 6 ) THEN
-        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in shell solver: '//TRIM(I2S(sdofs)))
+        CALL Fatal(Caller,'Invalid number of dofs in shell solver: '//TRIM(I2S(sdofs)))
       END IF
     ELSE
       IF( sdofs == 4 .OR. sdofs == 6 ) THEN
         IsHarmonic = .TRUE.
       ELSE IF( sdofs /= 2 .AND. sdofs /= 3 ) THEN
-        CALL Fatal('FsiCouplingAssembly','Invalid number of dofs in elasticity solver: '//TRIM(I2S(sdofs)))
+        CALL Fatal(Caller,'Invalid number of dofs in elasticity solver: '//TRIM(I2S(sdofs)))
       END IF
       IF( sdofs == 4 .OR. sdofs == 2 ) dim = 2
     END IF
 
     ! The elasticity solver defines whether the system is real or harmonic
     IF( IsHarmonic ) THEN
-      CALL Info('FsiCouplingAssembly','Assuming harmonic coupling matrix',Level=10)
+      CALL Info(Caller,'Assuming harmonic coupling matrix',Level=10)
     ELSE
-      CALL Info('FsiCouplingAssembly','Assuming real valued coupling matrix',Level=10)
+      CALL Info(Caller,'Assuming real valued coupling matrix',Level=10)
     END IF
 
     
@@ -16217,14 +16219,14 @@ CONTAINS
     IF( IsNS ) THEN
       IF( IsHarmonic ) THEN
         IF( fdofs /= 2*(dim+2) .AND. fdofs /= 2*(dim+1) ) THEN
-          CALL Fatal('FsiCouplingAssembly',&
+          CALL Fatal(Caller,&
               'Inconsistent number of harmonic dofs in NS solver: '//TRIM(I2S(fdofs)))
         END IF
         ! pressure component
         pcomp = fdofs / 2
       ELSE
         IF( fdofs /= (dim+2) .AND. fdofs /= (dim+1) ) THEN
-          CALL Fatal('FsiCouplingAssembly',&
+          CALL Fatal(Caller,&
               'Inconsistent number of real dofs in NS solver: '//TRIM(I2S(fdofs)))
         END IF
         pcomp = fdofs
@@ -16233,10 +16235,10 @@ CONTAINS
       NodeDone = .FALSE.
     ELSE
       IF( IsHarmonic ) THEN
-        IF( fdofs /= 2 ) CALL Fatal('FsiCouplingAssembly',&
+        IF( fdofs /= 2 ) CALL Fatal(Caller,&
             'Inconsistent number of harmonic dofs in pressure solver: '//TRIM(I2S(fdofs)))
       ELSE
-        IF( fdofs /= 1 ) CALL Fatal('FsiCouplingAssembly',&
+        IF( fdofs /= 1 ) CALL Fatal(Caller,&
             'Inconsistent number of real dofs in pressure solver: '//TRIM(I2S(fdofs)))
       END IF
       pcomp = 1
@@ -16246,7 +16248,7 @@ CONTAINS
     IF( IsHarmonic ) THEN
       Omega = 2 * PI * ListGetCReal( CurrentModel % Simulation,'Frequency',Stat ) 
       IF( .NOT. Stat) THEN
-        CALL Fatal('FsiCouplingAssembly','Frequency in Simulation list not found!')
+        CALL Fatal(Caller,'Frequency in Simulation list not found!')
       END IF
     ELSE
       Omega = 0.0_dp
@@ -16255,11 +16257,11 @@ CONTAINS
     i = SIZE( FVar % Values ) 
     j = SIZE( SVar % Values ) 
     
-    CALL Info('FsiCouplingAssembly','Fluid dofs '//TRIM(I2S(i))//&
+    CALL Info(Caller,'Fluid dofs '//TRIM(I2S(i))//&
         ' with '//TRIM(I2S(fdofs))//' components',Level=10)
-    CALL Info('FsiCouplingAssembly','Structure dofs '//TRIM(I2S(j))//&
+    CALL Info(Caller,'Structure dofs '//TRIM(I2S(j))//&
         ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
-    CALL Info('FsiCouplingAssembly','Assuming '//TRIM(I2S(dim))//&
+    CALL Info(Caller,'Assuming '//TRIM(I2S(dim))//&
         ' active dimensions',Level=10)   
 
     ! Add the lasrgest entry that allocates the whole list matrix structure
@@ -16345,7 +16347,7 @@ CONTAINS
           'Equilibrium Density',Stat)
 
       IF( .NOT. Stat) THEN
-        CALL Fatal('FsiCouplingAssembly','Fluid density not found in material :'//TRIM(I2S(mat_id)))
+        CALL Fatal(Caller,'Fluid density not found in material :'//TRIM(I2S(mat_id)))
       END IF
       
       ! The sign depends on the convection of the normal direction
@@ -16416,7 +16418,7 @@ CONTAINS
                 val = omega
                 jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
               ELSE
-                CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
+                CALL Fatal(Caller,'NS coupling only done for harmonic system!')               
               END IF
 
                 
@@ -16430,7 +16432,7 @@ CONTAINS
 
                 jstruct = sdofs*(SPerm(jj)-1)+1
               ELSE
-                CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')               
+                CALL Fatal(Caller,'NS coupling only done for harmonic system!')               
               END IF
             END IF
 
@@ -16455,7 +16457,7 @@ CONTAINS
               CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
               CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp)
             ELSE
-              CALL Fatal('FsiCouplingAssembly','NS coupling only done for harmonic system!')
+              CALL Fatal(Caller,'NS coupling only done for harmonic system!')
             END IF
           END DO
         END DO
@@ -16701,19 +16703,117 @@ CONTAINS
     !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
     !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
-    CALL Info('FsiCouplingAssembly','Number of elements on interface: '&
+    CALL Info(Caller,'Number of elements on interface: '&
         //TRIM(I2S(tcount)),Level=10)    
-    CALL Info('FsiCouplingAssembly','Number of entries in fluid-structure matrix: '&
+    CALL Info(Caller,'Number of entries in fluid-structure matrix: '&
         //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
-    CALL Info('FsiCouplingAssembly','Number of entries in structure-fluid matrix: '&
+    CALL Info(Caller,'Number of entries in structure-fluid matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
     
-    CALL Info('FsiCouplingAssembly','All done',Level=20)
+    CALL Info(Caller,'All done',Level=20)
 
     
   END SUBROUTINE FsiCouplingAssembly
 
 
+
+
+
+  
+  ! The following function is a copy from ShellSolver.F90.
+  ! The suffix Int is added for unique naming.
+  !-------------------------------------------------------------------------------
+  FUNCTION GetElementalDirectorInt(Mesh, Element, &
+      ElementNodes, node) RESULT(DirectorValues) 
+  !-------------------------------------------------------------------------------    
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    TYPE(Nodes_t), OPTIONAL, INTENT(IN) :: ElementNodes
+    INTEGER, OPTIONAL :: node
+    REAL(KIND=dp), POINTER :: DirectorValues(:)
+    !-------------------------------------------------------------------------------
+    TYPE(Nodes_t) :: Nodes
+    LOGICAL :: Visited = .FALSE., UseElementProperty = .FALSE., UseNormalSolver = .FALSE.
+    REAL(KIND=dp) :: Normal(3)
+    REAL(KIND=dp), POINTER :: NodalNormals(:)
+    REAL(KIND=dp), POINTER :: DirectorAtNode(:)
+    REAL(KIND=dp), POINTER :: PropertyValues(:)
+    INTEGER :: n    
+
+    SAVE Visited, UseElementProperty, NodalNormals, DirectorAtNode, Nodes
+    !-------------------------------------------------------------------------------
+        
+    IF (.NOT. Visited) THEN
+      DirectorValues => GetElementPropertyInt('director', Element)
+      UseElementProperty = ASSOCIATED( DirectorValues ) 
+
+      IF (.NOT. UseElementProperty) THEN
+        n = CurrentModel % MaxElementNodes
+        ALLOCATE( NodalNormals(3*n), Nodes % x(n), Nodes % y(n), Nodes % z(n) ) 
+      END IF
+      ALLOCATE( DirectorAtNode(3) )
+      Visited = .TRUE.
+    END IF
+
+    IF ( UseElementProperty ) THEN    
+      PropertyValues => GetElementPropertyInt('director', Element)
+      IF( PRESENT( node ) ) THEN        
+        DirectorAtNode(1:3) = PropertyValues(3*(node-1)+1:3*node)
+        DirectorValues => DirectorAtNode
+      ELSE
+        DirectorValues => PropertyValues
+      END IF
+      
+    ELSE
+      IF( PRESENT( ElementNodes ) ) THEN
+        Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
+      ELSE
+        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+        Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+        Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+        Normal = NormalVector( Element, Nodes, Check = .TRUE. ) 
+      END IF
+
+      IF( PRESENT( node ) ) THEN
+        !PRINT *,'Normal:',Normal
+        DirectorAtNode(1:3) = Normal(1:3)
+        DirectorValues => DirectorAtNode
+      ELSE              
+        n = Element % TYPE % NumberOfNodes
+        NodalNormals(1:3*n:3) = Normal(1)
+        NodalNormals(2:3*n:3) = Normal(2)
+        NodalNormals(3:3*n:3) = Normal(3)      
+        DirectorValues => NodalNormals
+      END IF
+    END IF
+
+  CONTAINS
+        
+    FUNCTION GetElementPropertyInt( Name, Element ) RESULT(Values)
+      CHARACTER(LEN=*) :: Name
+      TYPE(Element_t), POINTER :: Element
+      REAL(KIND=dp), POINTER :: Values(:)
+
+      TYPE(ElementData_t), POINTER :: p
+
+      Values => NULL()
+      p=> Element % PropertyData
+
+      DO WHILE( ASSOCIATED(p) )
+        IF ( Name==p % Name ) THEN
+          Values => p % Values
+          RETURN
+        END IF
+        p => p % Next
+      END DO
+    END FUNCTION GetElementPropertyInt
+    
+  !-------------------------------------------------------------------------------    
+  END FUNCTION GetElementalDirectorInt
+  !-------------------------------------------------------------------------------
+
+
+  
 !------------------------------------------------------------------------------
 !> Assemble coupling matrices related to structure-structure interaction.
 !> A possible scenario is that the diagonal blocks are the matrices of the 
@@ -16738,9 +16838,10 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
-    
-    
-    CALL Info('StructureCouplingAssembly','Creating coupling matrix for structures',Level=6)
+    CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
+
+
+    CALL Info(Caller,'Creating coupling matrix for structures',Level=6)
     
     Mesh => Solver % Mesh
     dim = Mesh % MeshDim
@@ -16752,10 +16853,10 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
-    IF( IsSolid ) CALL Info('StructureCouplingAssembly','Assuming coupling with solid solver',Level=8)
-    IF( IsBeam )  CALL Info('StructureCouplingAssembly','Assuming coupling with beam solver',Level=8)
-    IF( IsPlate ) CALL Info('StructureCouplingAssembly','Assuming coupling with plate solver',Level=8)
-    IF( IsShell ) CALL Info('StructureCouplingAssembly','Assuming coupling with shell solver',Level=8)
+    IF( IsSolid ) CALL Info(Caller,'Assuming coupling with solid solver',Level=8)
+    IF( IsBeam )  CALL Info(Caller,'Assuming coupling with beam solver',Level=8)
+    IF( IsPlate ) CALL Info(Caller,'Assuming coupling with plate solver',Level=8)
+    IF( IsShell ) CALL Info(Caller,'Assuming coupling with shell solver',Level=8)
     
     ConstrainedF => A_f % ConstrainedDof
     ConstrainedS => A_s % ConstrainedDof
@@ -16763,11 +16864,11 @@ CONTAINS
     nf = SIZE( FVar % Values ) 
     ns = SIZE( SVar % Values ) 
     
-    CALL Info('StructureCouplingAssembly','Slave structure dofs '//TRIM(I2S(nf))//&
+    CALL Info(Caller,'Slave structure dofs '//TRIM(I2S(nf))//&
         ' with '//TRIM(I2S(fdofs))//' components',Level=10)
-    CALL Info('StructureCouplingAssembly','Master structure dofs '//TRIM(I2S(ns))//&
+    CALL Info(Caller,'Master structure dofs '//TRIM(I2S(ns))//&
         ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
-    CALL Info('StructureCouplingAssembly','Assuming '//TRIM(I2S(dim))//&
+    CALL Info(Caller,'Assuming '//TRIM(I2S(dim))//&
         ' active dimensions',Level=10)   
 
     IF( A_fs % FORMAT == MATRIX_LIST ) THEN
@@ -16781,49 +16882,108 @@ CONTAINS
     END IF
 
     ! This is still under development and not used for anything
-    IF( IsShell ) CALL DetermineCouplingNormals()
+    ! Probably this will not be needed at all but rather we need the director.
+    !IF( IsShell ) CALL DetermineCouplingNormals()
 
+    ! For the shell equation enforce the rotation in implicit manner from solid displacements.
     IF (IsShell) THEN
       BLOCK
-        INTEGER :: p,lf,ls,ii,n,t
+        INTEGER :: p,lf,ls,ii,jj,n,m,t
         REAL(KIND=dp) :: u,v,w,weight,detJ,val
-        TYPE(Element_t), POINTER :: Element
+        TYPE(Element_t), POINTER :: Element,ShellElement
         INTEGER, POINTER :: Indexes(:)
         TYPE(GaussIntegrationPoints_t) :: IP
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
         TYPE(Nodes_t) :: Nodes
         LOGICAL :: Stat, FixRot
-
+        REAL(KIND=dp) :: x, y, z 
+        REAL(KIND=dp), POINTER :: Director(:)
+        REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
+        INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
+        INTEGER :: InterfaceN, hits
+               
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
 
         IF(.NOT. FixRot ) THEN
-          CALL Warn('StructureCouplingAssembly','Coupling for rotational shell dofs is missing!')                  
+          CALL Warn(Caller,'Coupling for rotational shell dofs is missing!')                  
         ELSE
-          CALL Warn('StructureCouplingAssembly','Experimental fixing of shell rotations')
+          CALL Warn(Caller,'Experimental fixing of shell rotations')
           n = Mesh % MaxElementNodes 
           ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
-          ! First, zero the rows related to rotational dofs i.e. components 4 & 5
+          ! Memorize the original values
+          ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
+          A_f0 = A_f % Values
+
+          ALLOCATE( NodeHits( Mesh % NumberOfNodes ), InterfacePerm( Mesh % NumberOfNodes ) )
+          NodeHits = 0
+          InterfacePerm = 0
+          
+          ! First, zero the rows related to rotational dofs i.e. components 4,5,6.
+          ! "s" refers to solid and "f" to shell.
+          ! Open question is whether the moments should be applied also to the solid, or
+          ! does it suffice to applied rotations to shell. I fear that they have...
+          InterfaceN = 0
           DO i=1,Mesh % NumberOfNodes
             jf = FPerm(i)      
             js = SPerm(i)
             IF( jf == 0 .OR. js == 0 ) CYCLE
-
-            !PRINT *,'Zero shell row:',i,jf,fdofs
-
-            DO j = 4, 5
-              kf = fdofs*(jf-1)+j
+            
+            ! also number the interface
+            InterfaceN = InterfaceN + 1
+            InterfacePerm(i) = InterfaceN
+            
+            DO lf = 4, 6
+              kf = fdofs*(jf-1)+lf
 
               IF( ConstrainedF(kf) ) CYCLE
-              ! We could use ZeroRow as well
+              
               DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                 A_f % Values(k) = 0.0_dp
               END DO
-              A_s % rhs(kf) = 0.0_dp
+              A_f % rhs(kf) = 0.0_dp
             END DO
           END DO
 
-          ! Then go through each element associated with the interface        
+          CALL Info(Caller,'Number of nodes at interface: '//TRIM(I2S(InterfaceN)),Level=12)
+
+          ALLOCATE( InterfaceElems(InterfaceN,2) )
+          InterfaceElems = 0
+          
+          ! Then go through shell elements associated with the interface        
+          ! and calculate the average director to the nodes. 
+          DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+            Element => Mesh % Elements(t)
+            Indexes => Element % NodeIndexes 
+            
+            n = Element % TYPE % ElementCode
+            IF( n > 500 .OR. n < 300 ) CYCLE
+            
+            ! We must have shell equation present everywhere and solid equation at least in two nodes
+            IF(ANY( FPerm(Indexes) == 0 ) ) CYCLE 
+            k = COUNT( SPerm(Indexes) > 0 )
+            IF( k < 2 ) CYCLE
+            
+            n = Element % Type % NumberOfNodes            
+            DO i=1,n
+              j = Indexes(i)
+              k = InterfacePerm(j)
+              IF( k == 0) CYCLE
+
+              ! Assuming just two shell parents currently
+              IF( InterfaceElems(k,1) == 0 ) THEN
+                InterfaceElems(k,1) = t
+              ELSE IF( InterfaceElems(k,2) == 0 ) THEN
+                InterfaceElems(k,2) = t
+              ELSE
+                CALL Fatal('','Tree interface elems?')
+              END IF
+            END DO
+          END DO
+
+          
+          ! Then go through solid elements associated with the interface        
+          NodeHits = 0
           DO t=1,Mesh % NumberOfBulkElements
             Element => Mesh % Elements(t)
             Indexes => Element % NodeIndexes 
@@ -16832,88 +16992,185 @@ CONTAINS
             IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
             IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
 
+            n = COUNT( FPerm(Indexes) > 0 )
+            IF( n /= 2 ) THEN
+              CALL Fatal(Caller,'Currently we can only deal with two hits!')
+            END IF
+
+            DO i=1,SIZE(Indexes)
+              j = FPerm(Indexes(i))
+              IF( j == 0 ) CYCLE
+              NodeHits(j) = NodeHits(j) + 1              
+            END DO
+          END DO
+          
+          !PRINT *,'Maximum node hits:',MAXVAL(NodeHits)
+          
+          ! Then go through each element associated with the interface        
+          DO t=1,Mesh % NumberOfBulkElements
+            Element => Mesh % Elements(t)
+            Indexes => Element % NodeIndexes 
+
+            ! We must have solid equation present everywhere and shell at least at one node.
+            IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
+            IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
+            
             n = Element % TYPE % NumberOfNodes
             Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
             Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
             Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+            
+            x = 0.0_dp; y = 0.0_dp; z = 0.0_dp
+            DO i=1,n
+              IF( FPerm(Indexes(i)) == 0 ) CYCLE
+              x = x + Nodes % x(i)
+              y = y + Nodes % y(i)
+              z = z + Nodes % z(i)
+            END DO
+            x = x/2; y = y/2; z = z/2;
 
-            ! Integration at the center point. We could perhaps use the actual corner nodes as well. 
-            IP = GaussPoints( Element )            
-            u = SUM( IP % u) / IP % n
-            v = SUM( IP % v) / IP % n
-            w = SUM( IP % w) / IP % n
+            CALL GlobalToLocal( u, v, w, x, y, z, Element, Nodes )
 
+            ! Integration at the center of the edge
             stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
-            Weight = detJ * SUM( IP % s ) 
-
-            !PRINT *,'ip point:',t,u,v,w,detJ, Weight,dim
 
             DO ii = 1, n
               i = Indexes(ii)           
+
+              ! Set for all shell nodes a Dirichlet condition for rotation
               jf = FPerm(i)      
               IF( jf == 0 ) CYCLE
 
-              !PRINT *,'set shell node:',i,jf
+              Weight = 1.0_dp / NodeHits(jf)
 
+              !PRINT *,'Weight:',Weight
+
+              DO j=1,2
+                ShellElement => Mesh % Elements(InterfaceElems(InterfacePerm(i),j))
+                hits = 0
+                DO k=1,ShellElement % TYPE % NumberOfNodes
+                  IF( ANY( Indexes == ShellElement % NodeIndexes(k) ) ) hits = hits + 1
+                END DO
+                IF( hits >= 2 ) EXIT
+              END DO
+
+              m = ShellElement % TYPE % NumberOfNodes
+              DO jj=1,m
+                IF(Element % NodeIndexes(ii) == ShellElement % NodeIndexes(jj) ) EXIT
+              END DO
+              Director => GetElementalDirectorInt(Mesh,ShellElement,node=jj)
+
+              !PRINT *,'Director:',ShellElement % ElementIndex,jj,Director            
+              
               ! Rotational dofs of the shell equation
-              DO lf = 4, 5                            
+              DO lf = 4, 6                            
                 kf = fdofs*(jf-1)+lf
-
+                
+                IF( ConstrainedF(kf) ) CYCLE
+                
                 ! Displacement dofs
                 DO ls = 1, dim
-                  ks = sdofs*(js-1)+ls
-
-                  ! Mika may do the non-ortho stuff.
-                  ! Now we assume that that du_x/dx set 4th components, and du_y/dy the 5th
-                  IF( lf - ls /= 3 ) CYCLE
-
-                  ! Implicit derivative
+                                    ! 
+                  ! We try to weakly enforce the condition:
+                  ! d_{i+3}=<(grad u)n,e_i> where i=1,2,3.
+                  ! i+3:=lf, n:=director, e_i is unit vector, and u is the implicit displacement field. 
                   DO p=1,n
-                    val = dBasisdx(p,ls)
+                    js = SPerm(Indexes(p))
+                    ks = sdofs*(js-1)+ls
+                    val = -Director(ls) * dBasisdx(p,lf-3)
                     CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
+
+                    ! Here the idea is to distribute the implicit moments of the shell solver
+                    ! to forces for the solid solver. So even though the stiffness matrix related to the
+                    ! rotations is nullified the forces are not forgotten. 
+                    DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k))                  
+                    END DO
+
                   END DO
-                  CALL AddToMatrixElement(A_f,kf,kf,weight)
                 END DO
+
+                ! This should sum up to unity!
+                CALL AddToMatrixElement(A_f,kf,kf,weight)
               END DO
             END DO
           END DO
           DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
+          DEALLOCATE(A_f0, NodeHits, InterfacePerm)
         END IF
       END BLOCK
     END IF
     
     ! Note: we may have to rethink this coupling if visiting for 2nd time!
+    ! The three components for shells and solids are both the real cartesian
+    ! displacements. Hence we can deal with solid-soid and solid-shell coupling
+    ! common parts in same subroutine. 
     IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
       DO i=1,Mesh % NumberOfNodes
         jf = FPerm(i)      
         js = SPerm(i)
+
+        ! We set coupling at nodes that belong to both equations.
         IF( jf == 0 .OR. js == 0 ) CYCLE
         ncount = ncount + 1
 
+        ! For the given node go throug all displacement components. 
         DO j = 1, dim
           ! Indeces for matrix rows
           kf = fdofs*(jf-1)+j
           ks = sdofs*(js-1)+j
 
+          ! This is the original diagonal entry for stiffness matrix.
+          ! Let's keep that so that Dirichlet conditions are ideally set. 
+#if 0
           vdiag = A_s % Values( A_s % Diag(ks) ) 
-          ! Copy the force in implicit form from "S" to "F", and zero it
+
+          ! Copy the force from rhs from "S" to "F" and zero it
+          A_f % rhs(kf) = A_f % rhs(kf) + A_s % rhs(ks)
+          A_s % rhs(ks) = 0.0_dp
+
+          ! Copy the force in implicit form from "S" to "FS" coupling matrix, and zero it
+          ! Now the shell equation includes forces of both equations. 
           DO k=A_s % Rows(ks),A_s % Rows(ks+1)-1
             IF( .NOT. ConstrainedF(kf) ) THEN        
               CALL AddToMatrixElement(A_fs,kf,A_s % Cols(k), A_s % Values(k) )
-              A_f % rhs(kf) = A_f % rhs(kf) + A_s % rhs(ks)
             END IF
             A_s % Values(k) = 0.0_dp
-            A_s % rhs(ks) = 0.0_dp
           END DO
 
-          ! Set Dirichlet Condition to "S" such that it is equal to "F"
-          A_s % Values( A_s % Diag(ks)) = vdiag
+          ! Set Dirichlet Condition to "S" such that it is equal to "F".
+          ! Basically we could eliminate displacement condition and do this afterwords
+          ! but this is much more economical. 
+          A_s % Values( A_s % Diag(ks)) = vdiag          
           CALL AddToMatrixElement(A_sf,ks,kf, -vdiag )
+#else
+          vdiag = A_f % Values( A_f % Diag(kf) ) 
+
+          ! Copy the force from rhs from "F" to "S" and zero it
+          A_s % rhs(ks) = A_s % rhs(ks) + A_f % rhs(kf)
+          A_f % rhs(kf) = 0.0_dp
+
+          ! Copy the force in implicit form from "F" to "SF" coupling matrix, and zero it
+          ! Now the solid equation includes forces of both equations. 
+          DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+            IF( .NOT. ConstrainedS(ks) ) THEN        
+              CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k), A_f % Values(k) )
+            END IF
+            A_f % Values(k) = 0.0_dp
+          END DO
+
+          ! Set Dirichlet Condition to "S" such that it is equal to "F".
+          ! Basically we could eliminate displacement condition and do this afterwards
+          ! but this is much more economical. 
+          A_f % Values( A_f % Diag(kf)) = vdiag          
+          CALL AddToMatrixElement(A_fs,kf,ks, -vdiag )
+#endif
+          
         END DO
       END DO
     ELSE
-      CALL Fatal('StructureCouplingAssembly','Coupling type not implemented yet!')
+      CALL Fatal(Caller,'Coupling type not implemented yet!')
     END IF
 
       
@@ -16925,14 +17182,14 @@ CONTAINS
     !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
     !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
-    CALL Info('StructureCouplingAssembly','Number of nodes on interface: '&
+    CALL Info(Caller,'Number of nodes on interface: '&
         //TRIM(I2S(ncount)),Level=10)    
-    CALL Info('StructureCouplingAssembly','Number of entries in slave-master coupling matrix: '&
+    CALL Info(Caller,'Number of entries in slave-master coupling matrix: '&
         //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
-    CALL Info('StructureCouplingAssembly','Number of entries in master-slave coupling matrix: '&
+    CALL Info(Caller,'Number of entries in master-slave coupling matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
     
-    CALL Info('StructureCouplingAssembly','All done',Level=20)
+    CALL Info(Caller,'All done',Level=20)
     
   CONTAINS
 
@@ -17687,9 +17944,6 @@ CONTAINS
     A % Values => SaveValues
   END BLOCK
 #endif
-
-print*,parenv % mype, parallelreduction(MINVAL(u),1), parallelreduction(MAXVAL(u),2), &
-                      parallelreduction(MINVAL(Udot),1), parallelreduction(MAXVAL(udot),2)
 
     ! Computation of correction factors (Zalesak's limiter)
     ! Code derived initially from Kuzmin's subroutine   

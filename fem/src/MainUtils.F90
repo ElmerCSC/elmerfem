@@ -1107,9 +1107,9 @@ CONTAINS
     !----------------------------------------------------------------------------------
     DoIt = .FALSE.
     IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) THEN
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
-      END IF
+!     IF( ParEnv % PEs > 1 ) THEN
+!       CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
+!     END IF
       DoIt = .TRUE.
     END IF
     IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) DoIt = .TRUE.
@@ -1117,6 +1117,7 @@ CONTAINS
     
     IF( DoIt ) THEN
       CALL Info('AddEquationBasics','Enforcing use of global mass matrix needed by other features!')
+      CALL ListAddLogical( SolverParams,'Allocate Bulk Matrix',.TRUE.)
       CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
     END IF
 
@@ -1842,6 +1843,14 @@ CONTAINS
 
       END IF
     END DO
+
+    IF(Doit) THEN
+      ALLOCATE(Solver % Matrix % BulkValues(SIZE(Solver % Matrix % Values)));
+      Solver % Matrix % BulkValues=0._dp
+
+      ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
+      Solver % Matrix % MassValues=0._dp
+    END IF
 
 
     !------------------------------------------------------------------
@@ -4913,7 +4922,7 @@ CONTAINS
       n = 0
       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
         Element => Solver % Mesh % Elements(i)
-        IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
+!       IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
         IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
           n = n + 1
           IF( Sweep == 0 ) THEN

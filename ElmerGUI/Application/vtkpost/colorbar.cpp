@@ -104,10 +104,11 @@ void ColorBar::populateWidgets(VtkPost* vtkPost)
 void ColorBar::draw(VtkPost* vtkPost)
 {
   vtkScalarBarActor* colorBarActor = vtkPost->GetColorBarActor();
-
+/*
   vtkTextMapper* tMapper = vtkTextMapper::New();
   colorBarActor->SetMapper(tMapper);
   tMapper->Delete();
+  */
 
   QString actorName = ui.colorCombo->currentText().trimmed();
 
@@ -149,7 +150,8 @@ void ColorBar::draw(VtkPost* vtkPost)
 
   if(!lut) return;
 
-  colorBarActor->SetLookupTable(lut);
+  //colorBarActor->SetLookupTable(lut);
+  colorBarActor->SetLookupTable((vtkScalarsToColors*)vtkPost->GetLut(actorName));
 
   bool horizontal = ui.horizontalRButton->isChecked();
   bool annotate = ui.annotateBox->isChecked();

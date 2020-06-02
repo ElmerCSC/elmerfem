@@ -3098,13 +3098,13 @@ END SUBROUTINE ExchangeInterfaces
 !> communication...
 !--------------------------------------------------------------------------
   SUBROUTINE ExchangeIfvalues( NbsIfMatrix, RecvdIfMatrix, &
-             NeedMass, NeedDamp, NeedPrec, NeedILU )
+             NeedMass, NeedDamp, NeedPrec, NeedBulk, NeedILU )
     USE Types
     IMPLICIT NONE
 
     ! Parameters
 
-    LOGICAL :: NeedMass, NeedDamp,NeedPrec,NeedILU
+    LOGICAL :: NeedMass, NeedDamp,NeedPrec,NeedBulk,NeedILU
     TYPE (BasicMatrix_t), DIMENSION(:) :: NbsIfMatrix, RecvdIfMatrix
 
     ! Local variables
@@ -3216,6 +3216,10 @@ END SUBROUTINE ExchangeInterfaces
 !      RecvdIfMatrix(sproc+1) % PrecValues => NULL()
        IF ( NeedPrec ) &
          ALLOCATE( RecvdIfMatrix(sproc+1) % PrecValues(Cols) )
+
+!      RecvdIfMatrix(sproc+1) % BulkValues => NULL()
+       IF ( NeedBulk ) &
+         ALLOCATE( RecvdIfMatrix(sproc+1) % BulkValues(Cols) )
 
 !      RecvdIfMatrix(sproc+1) % ILUValues => NULL()
        IF ( NeedILU ) &
@@ -3435,6 +3439,34 @@ END SUBROUTINE ExchangeInterfaces
   END IF
 
 !----------------------------------------------------------------------
+  IF ( NeedBulk ) THEN
+    req_cnt = 0
+    DO i = 1, n
+       rows = recv_rows(i)
+       sproc = neigh(i)
+       RecvdIfMatrix(sproc+1) % NumberOfRows = rows
+
+       IF ( rows>0 ) THEN
+         cols = recv_cols(i)
+         req_cnt = req_cnt+1
+         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % BulkValues, cols, &
+           MPI_DOUBLE_PRECISION, sproc, 2006, ELMER_COMM_WORLD, requests(req_cnt), ierr )
+       END IF
+    END DO
+
+    DO i = 1, n
+      destproc = neigh(i)
+      rows = NbsIfMatrix(destproc+1) % NumberOfRows
+      IF ( rows>0 ) THEN
+         cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
+         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % BulkValues, &
+              cols, MPI_DOUBLE_PRECISION, destproc, 2006, ELMER_COMM_WORLD, ierr )
+      END IF
+    END DO
+    CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
+  END IF
+!----------------------------------------------------------------------
+
 
   DEALLOCATE( requests, neigh, recv_rows, recv_cols )
 !*********************************************************************

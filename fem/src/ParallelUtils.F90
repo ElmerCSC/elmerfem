@@ -113,6 +113,8 @@ CONTAINS
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
 
+print*,'here: ',  dofs, trim(solver % variable % name), associated(matrix % massvalues)
+
 
        Perm => Solver % Variable % Perm
        IF(PRESENT(inPerm)) Perm=>InPerm

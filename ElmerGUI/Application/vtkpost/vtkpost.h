@@ -49,6 +49,8 @@
 #include <QMainWindow>
 #include <QHash>
 #include <QTextStream>
+#include <QDoubleSpinBox>
+#include <QSlider>
 
 #ifdef EG_PYTHONQT
 #include <PythonQt.h>
@@ -135,7 +137,8 @@ public:
   vtkUnstructuredGrid* GetVolumeGrid();
   vtkPlane* GetClipPlane();
   vtkImplicitPlaneWidget* GetPlaneWidget();
-  vtkLookupTable* GetCurrentLut();
+//  vtkLookupTable* GetCurrentLut();
+  vtkLookupTable* GetLut(QString);
   ScalarField* GetScalarField();
   EpMesh* GetEpMesh();
   Preferences* GetPreferences();
@@ -176,7 +179,15 @@ signals:
 
 public slots:
   void redrawSlot();                                // redraw all actors
-
+  void displaceSlot(bool);                              // displace geometry by displacement field
+  void viewXYpPlaneSlot();
+  void viewXYmPlaneSlot();
+  void viewYZpPlaneSlot();
+  void viewYZmPlaneSlot();
+  void viewZXpPlaneSlot();
+  void viewZXmPlaneSlot();
+  void timestepSlot();
+  void playSlot(); 
 #ifdef EG_MATC
   QString MatcCmd(QString);                         // evaluate matc cmd
   QString domatcSlot();                             // flush matc console
@@ -187,6 +198,9 @@ public slots:
   void SetPostFileStart(int);                       // first time step
   void SetPostFileEnd(int);                         // last time step
   bool ReadPostFile(QString);                       // read result file
+  bool ReadVtuFile(QString);                       // read result file
+  bool ReadSingleVtuFile(QString);                       // read result file (called from mainwindow)
+  bool ReadElmerPostFile(QString);                       // read result file    
 
   void Render();                                    // render
   void ResetCamera();                               // reset camera
@@ -323,6 +337,9 @@ private slots:
   void showECMAScriptConsoleSlot();
   void evaluateECMAScriptSlot(QString);
 
+  void displacementScaleFactorSpinBoxValueChanged(double);
+  void timestepSliderValueChanged(int);
+
 private:
   QMenu *fileMenu;
   QMenu *editMenu;
@@ -331,6 +348,12 @@ private:
   QMenu *helpMenu;
 
   QToolBar *viewToolBar;
+  QToolBar *displacementToolBar;
+  QToolBar *planeViewToolBar;
+  QToolBar *timestepToolBar;
+  QDoubleSpinBox displacementScaleFactorSpinBox;
+  QSlider *timestepSlider;
+  int iEndStep;
 
   QAction *regenerateGridsAct;
   QAction *matcAct;
@@ -357,7 +380,17 @@ private:
   QAction *readEpFileAct;
   QAction *clipAllAct;
   QAction *showHelpAct;
+  QAction *viewXYpPlaneAct;
+  QAction *viewXYmPlaneAct;
+  QAction *viewYZpPlaneAct;
+  QAction *viewYZmPlaneAct;
+  QAction *viewZXpPlaneAct;
+  QAction *viewZXmPlaneAct;
+  QAction *displaceAct;
+  QAction *timestepAct;
+  QAction *playAct;
 
+  int vtk2ElmerElement(int);
   void createActions();
   void createMenus();
   void createToolbars();
@@ -386,6 +419,12 @@ private:
   vtkUnstructuredGrid* surfaceGrid;
   vtkUnstructuredGrid* lineGrid;
   vtkLookupTable *currentLut;
+  vtkLookupTable *surfaceLut;
+  vtkLookupTable *vectorLut;
+  vtkLookupTable *isocontourLut;
+  vtkLookupTable *isosurfaceLut;
+  vtkLookupTable *streamlineLut;
+
   vtkPlane* clipPlane;
   vtkActor* meshPointActor;
   vtkActor* meshEdgeActor;
