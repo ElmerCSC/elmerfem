@@ -11577,6 +11577,7 @@ END FUNCTION SearchNodeL
     !$OMP END DO NOWAIT
 
     
+#if 0
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
         CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
@@ -11590,6 +11591,7 @@ END FUNCTION SearchNodeL
         !$OMP END DO NOWAIT
       END IF
     END IF
+#endif
 
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
@@ -11879,6 +11881,7 @@ END FUNCTION SearchNodeL
     END DO
     !$OMP END DO NOWAIT
     
+#if 0
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
         !$OMP DO
@@ -11891,6 +11894,7 @@ END FUNCTION SearchNodeL
         !$OMP END DO NOWAIT
       END IF
     END IF
+#endif
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
         !$OMP DO
@@ -17471,12 +17475,17 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
     REAL(KIND=dp), POINTER :: BulkValues(:),u(:),M_L(:),udot(:), &
         pp(:),pm(:),qp(:),qm(:),corr(:),ku(:),ulow(:)
+    REAL(KIND=dp), ALLOCATABLE :: mc_udot(:), fct_u(:)
     REAL(KIND=dp), POINTER CONTIG :: M_C(:), SaveValues(:)
     REAL(KIND=dp) :: rsum, Norm,m_ij,k_ij,du,d_ij,f_ij,c_ij,Ceps,CorrCoeff,&
         rmi,rmj,rpi,rpj,dt
     TYPE(Variable_t), POINTER :: Var, Variables
     LOGICAL :: Found, Symmetric, SaveFields, SkipCorrection
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TmpVarName
+
+    REAL(KIND=dp), POINTER :: mmc(:), mmc_h(:), fct_d(:)
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, ALLOCATABLE :: ActiveNodes(:)
 
     Params => Solver % Values
 
@@ -17500,17 +17509,20 @@ CONTAINS
     n = A % NumberOfRows
     Rows => A % Rows
     Cols => A % Cols
+
     BulkValues => A % BulkValues
     M_C => A % MassValues
-    M_L => A % MassValuesLumped 
     Perm => Solver % Variable % Perm
+
+    M_L => A % MassValuesLumped 
+    IF (ParEnv % PEs>1) CALL ParallelSumVector(A,M_L)
 
     Var => VariableGet( Variables,'timestep size')
     dt = Var % Values(1) 
 
     ! low order solution at the start, high order in the end
     u => Solver % Variable % Values
-    VarName = GetVarName( Solver % Variable ) 
+    VarName = GetVarName(Solver % Variable)
 
     ! Here a bunch of vectors are stored for visualization and debugging purposes
     !----------------------------------------------------------------------------
@@ -17590,6 +17602,15 @@ CONTAINS
     END IF
     qm => Var % Values
 
+    TmpVarName = TRIM( VarName )//' fctmm'    
+    Var => VariableGet( Variables, TmpVarName )
+    IF( .NOT. ASSOCIATED(Var) ) THEN
+      CALL VariableAddVector( Variables, Mesh, Solver,&
+          TmpVarName, Perm = Perm, Output = SaveFields )
+      Var => VariableGet( Variables, TmpVarName )
+    END IF
+    Var % Values = M_L
+
     ! higher order correction 
     TmpVarName = TRIM( VarName )//' fctcorr'    
     Var => VariableGet( Variables, TmpVarName )
@@ -17606,6 +17627,7 @@ CONTAINS
     !----------------------------------------------------------------------
     CALL Info('FCT_Correction','Compute nodal time derivatives',Level=10)
     ! Compute: ku = K*ulow
+#if 0
     DO i=1,n
       rsum = 0.0_dp
       DO k=Rows(i),Rows(i+1)-1
@@ -17625,6 +17647,49 @@ CONTAINS
     CALL SolveLinearSystem( A, ku, udot, Norm, 1, Solver )
     A % Values => SaveValues
     CALL ListPopNamespace()
+#else
+
+  BLOCK
+    REAL(KIND=dp), ALLOCATABLE :: TmpRhsVec(:), TmpXVec(:)
+
+    SaveValues => A % Values
+
+    IF (Parenv % PEs>1) THEN
+      ALLOCATE(TmpRHSVec(n), TmpXVec(n))
+      TmpxVec = 0._dp; tmpRHSVec = 0._dp
+
+      A % Values => BulkValues
+      CALL ParallelInitSolve(A,TmpXVec,TmpRhsVec,u)
+      CALL ParallelVector(A,TmpRhsvec,u)
+
+      CALL ParallelMatrixVector(A,TmpRhsvec,TmpXVec)
+
+      CALL PartitionVector(A,Ku,TmpXVec)
+      DEALLOCATE(TmpRhsVec, TmpXVec)
+    ELSE
+      DO i=1,n
+        rsum = 0._dp
+        DO k=Rows(i),Rows(i+1)-1
+          j = Cols(k)
+          K_ij = BulkValues(k)
+          rsum = rsum + K_ij * u(j) 
+        END DO
+        ku(i) = rsum
+      END DO
+    END IF
+
+    CALL ListPushNameSpace('fct:')
+    A % Values => M_C
+    udot = 0._dp
+    CALL SolveLinearSystem(A,Ku,Udot,Norm,1,Solver)
+    CALL ListPopNamespace()
+
+    A % Values => SaveValues
+  END BLOCK
+#endif
+
+print*,parenv % mype, parallelreduction(MINVAL(u),1), parallelreduction(MAXVAL(u),2), &
+                      parallelreduction(MINVAL(Udot),1), parallelreduction(MAXVAL(udot),2)
 
     ! Computation of correction factors (Zalesak's limiter)
     ! Code derived initially from Kuzmin's subroutine   
@@ -17635,20 +17700,41 @@ CONTAINS
     qp = 0 
     qm = 0
 
+    IF(ParEnv % PEs>1) THEN
+      fct_d => A % FCT_D
+      mmc    => A % MassValues
+      mmc_h  => A % HaloMassValues
+
+      ALLOCATE(ActiveNodes(n)); activeNodes=.FALSE.
+      DO i=1,Solver % NumberOfActiveElements
+        Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
+        IF ( Element % PartIndex /= ParEnv % MyPE ) CYCLE
+        Activenodes(Solver % Variable % Perm(Element % NodeIndexes)) = .TRUE.
+      END DO
+    ELSE
+      fct_d => A % FCT_D
+      mmc => A % MassValues
+    END IF
     DO i=1,n
+      IF (ParEnv % PEs > 1 ) THEN
+        IF ( .NOT. ActiveNodes(i) ) CYCLE
+      end if
+
       DO k=Rows(i),Rows(i+1)-1
         j = Cols(k)
 
-        ! This is symmetric so lower section will do
-        IF( i >= j .AND. Symmetric ) CYCLE
-         
+        IF (ParEnv % PEs>1) THEN
+          IF ( .NOT.ActiveNodes(j) ) CYCLE
+        END IF
+
         ! Compute the raw antidiffusive fluxes
         ! f_ij=m_ij*[udot(i)-udot(j)]+d_ij*[ulow(i)-ulow(j)]
         !-----------------------------------------------------
         ! d_ij and m_ij are both symmetric
         ! Hence F_ji = -F_ij
-        f_ij = M_C(k)*(udot(i)-udot(j)) + A % FCT_D(k) *(u(i)-u(j))
-  
+           
+        f_ij = mmc(k)*(udot(i)-udot(j)) + fct_d(k)*(u(i)-u(j))
+        IF ( ParEnv % PEs>1 ) f_ij=f_ij+mmc_h(k)*(udot(i)-udot(j))
         ! Compared to Kuzmin's paper F_ij=-F_ij since d_ij and 
         ! udot have different signs. 
         f_ij = -f_ij
@@ -17658,26 +17744,16 @@ CONTAINS
 
         ! Prelimiting of antidiffusive fluxes i.e. du and the flux have different signs
         IF (f_ij*du >= TINY(du)) THEN
-          f_ij = 0
+          f_ij = 0._dp
         ELSE        
           ! Positive/negative edge contributions
-          pp(i) = pp(i)+MAX(0d0,f_ij)
-          pm(i) = pm(i)+MIN(0d0,f_ij)
-          ! symmetric part
-          IF( Symmetric ) THEN
-            pp(j) = pp(j)+MAX(0d0,-f_ij)
-            pm(j) = pm(j)+MIN(0d0,-f_ij)
-          END IF
+          pp(i) = pp(i) + MAX(0._dp,f_ij)
+          pm(i) = pm(i) + MIN(0._dp,f_ij)
         END IF
 
         ! Maximum/minimum solution increments
         qp(i) = MAX(qp(i),du)
         qm(i) = MIN(qm(i),du)
-        ! symmetric part
-        IF( Symmetric ) THEN
-          qp(j) = MAX(qp(j),-du)
-          qm(j) = MIN(qm(j),-du)
-        END IF
       END DO
     END DO
 
@@ -17696,70 +17772,83 @@ CONTAINS
     ! Correct the low-order solution
     ! (M_L*ufct)_i=(M_L*ulow)_i+dt*sum(alpha_ij*f_ij)
     !-------------------------------------------------
-    ! Correction of the right-hand side
     ! Symmetric flux limiting
+    ! Correction of the right-hand side
 
+
+!   IF (ParEnv % PEs>1) THEN
+!     CALL ParallelSumVector(A,pm)
+!     CALL ParallelSumVector(A,pp)
+!     CALL ParallelSumVector(A,qm)
+!     CALL ParallelSumVector(A,qp)
+!   END IF
+
+    CorrCoeff = ListGetCReal( Params,'FCT Correction Coefficient',Found )
+    IF( .NOT. Found ) CorrCoeff = 1._dp
 
     Ceps = TINY( Ceps )
-    corr = 0.0_dp
+    corr = 0._dp
     DO i=1,n
+      IF (ParEnv % PEs>1) THEN
+        IF( .NOT. ActiveNodes(i)) CYCLE
+      END IF
 
       IF( pp(i) > Ceps ) THEN
-        rpi = MIN( 1.0_dp, M_L(i)*qp(i)/pp(i) )
+        rpi = MIN( 1._dp, M_L(i)*qp(i)/pp(i) )
       ELSE
-        rpi = 0.0_dp
+        rpi = 0._dp
       END IF
 
       IF( pm(i) < -Ceps ) THEN
-        rmi = MIN( 1.0_dp, M_L(i)*qm(i)/pm(i) )
+        rmi = MIN( 1._dp, M_L(i)*qm(i)/pm(i) )
       ELSE
-        rmi = 0.0_dp
+        rmi = 0._dp
       END IF
 
       DO k=Rows(i),Rows(i+1)-1
         j = Cols(k)
-        IF( i >= j .AND. Symmetric ) CYCLE
-               
-        f_ij = M_C(k)*(udot(i)-udot(j)) + A % FCT_D(k) *(u(i)-u(j))
+        IF(ParEnv % PEs>1) THEN
+          IF(.NOT.ActiveNodes(j)) CYCLE
+        END IF
+
+        f_ij = mmc(k)*(udot(i)-udot(j))  + fct_d(k)*(u(i)-u(j))
+        IF (ParEnv % PEs>1) f_ij = f_ij + mmc_h(k)*(udot(i)-udot(j))
         f_ij = -f_ij
 
         IF (f_ij > 0) THEN 
           IF( pm(j) < -Ceps ) THEN
             rmj = MIN( 1.0_dp, M_L(j)*qm(j)/pm(j) )
           ELSE
-            rmj = 0.0_dp
+            rmj = 0._dp
           END IF
           c_ij = MIN(rpi,rmj)
         ELSE 
           IF( pp(j) > Ceps ) THEN
-            rpj = MIN( 1.0_dp, M_L(j)*qp(j)/pp(j) )
+            rpj = MIN( 1._dp, M_L(j)*qp(j)/pp(j) )
           ELSE
-            rpj = 0.0_dp
+            rpj = 0._dp
           END IF
           c_ij = MIN(rmi,rpj)
         END IF
-
         corr(i) = corr(i) + c_ij * f_ij
-        IF( Symmetric ) THEN
-          corr(j) = corr(j) - c_ij * f_ij
-        END IF
       END DO
+      corr(i) = CorrCoeff * corr(i) / M_L(i)
     END DO
 
-    CorrCoeff = ListGetCReal( Params,'FCT Correction Coefficient',Found )
-    IF( .NOT. Found ) CorrCoeff = 1.0_dp
-
-    ! This was suggestd in some code but results to invalida units, and poor results
-    ! CorrCoeff = CorrCoeff * dt
-
-    corr = CorrCoeff * corr / M_L
+    IF (ParEnv % PEs>1) THEN
+!     CALL ParallelSumVector(A,corr)
+      DEALLOCATE(A % HaloValues, A % HaloMassValues)
+      A % HaloValues => Null(); A % HaloMassValues => Null()
+    END IF
 
     ! Optionally skip applying the correction, just for debugging purposes
     IF( SkipCorrection ) THEN
       CALL Info('FCT_Correction','Skipping Applying corrector',Level=4)
     ELSE
       CALL Info('FCT_Correction','Applying corrector for the low order solution',Level=10)
+
       u = u + corr
+
       ! PRINT *,'FCT Norm After Correction:',SQRT( SUM( Solver % Variable % Values**2) )
     END IF
 

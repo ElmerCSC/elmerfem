@@ -2661,6 +2661,7 @@ CONTAINS
      RETURN
    END IF
 
+
    ! The rest of the code in this subroutine is obsolete
    IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
      IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF,MASS,X )
@@ -2695,7 +2696,7 @@ CONTAINS
      k = 0
 
      DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
-       n=n+1
+       n = n+1
        STIFF(1,n) = Solver % Matrix % Values(j)
        IF( HasMass ) THEN
          MASS(1,n) = Solver % Matrix % MassValues(j)
@@ -2713,6 +2714,7 @@ CONTAINS
          MASS(1,k) = Solver % Matrix % MassValuesLumped(i)
        END IF
      END IF
+
      FORCE(1) = Solver % Matrix % RHS(i)
      Solver % Matrix % Force(i,1) = FORCE(1)
 
@@ -2733,9 +2735,7 @@ CONTAINS
            X(:,1), Solver % Beta )
      END SELECT
 
-     IF( HasFCT ) THEN
-       MASS(1,k) = 0.0_dp
-     END IF
+     IF( HasFCT ) MASS(1,k) = 0.0_dp
 
      n = 0
      DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
@@ -3445,7 +3445,7 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-     REAL(KIND=dp), POINTER CONTIG   :: b(:)
+     REAL(KIND=dp), POINTER CONTIG   :: b(:), svalues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
@@ -3484,15 +3484,16 @@ CONTAINS
      END IF
 
      IF ( ParEnv % PEs > 1 ) THEN
+
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
           P1 => Element % BoundaryInfo % Left
           P2 => Element % BoundaryInfo % Right
           IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
-            IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
-                 P2 % PartIndex/=ParEnv % myPE )RETURN
+            IF ( P1 % PartIndex /= ParEnv % myPE .AND. &
+                 P2 % PartIndex /= ParEnv % myPE )RETURN
 
-            IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
-                 P2 % PartIndex/=ParEnv % myPE ) THEN
+            IF ( P1 % PartIndex /= ParEnv % myPE .OR. &
+                 P2 % PartIndex /= ParEnv % myPE ) THEN
               G=G/2; F=F/2; 
             END IF
           ELSE IF ( ASSOCIATED(P1) ) THEN
@@ -3501,7 +3502,16 @@ CONTAINS
             IF ( P2 % PartIndex /= ParEnv % myPE ) RETURN
           END IF
        ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
-          RETURN
+          IF(GetLogical(Solver % Values,'Linear System FCT',Found)) THEN
+            Indexes => GetIndexStore()
+            n = GetElementDOFs( Indexes, Element, Solver )
+            IF(.NOT.ASSOCIATED(A % HaloValues)) THEN
+              ALLOCATE(A % HaloValues(SIZE(A % Values))); A % HaloValues=0._dp
+            END IF
+            CALL UpdateGlobalEquations( A,G,b,0._dp*f,n,x % DOFs, &
+              x % Perm(Indexes(1:n)),UElement=Element,GlobalValues=A % HaloValues )
+            END IF
+            RETURN
        END IF
      END IF
 
@@ -3547,7 +3557,7 @@ CONTAINS
          CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
        ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-                              x % Perm(Indexes(1:n)), UElement=Element )
+          x % Perm(Indexes(1:n)), UElement=Element )
        END IF
 
        ! backflip, in case G is needed again
@@ -4145,6 +4155,8 @@ CONTAINS
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
 
+     LOGICAL :: Found
+
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
 
@@ -4179,6 +4191,15 @@ CONTAINS
             IF ( P2 % PartIndex /= ParEnv % myPE ) RETURN
           END IF
        ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
+          IF (ListGetLogical(Solver % Values, 'Linear System FCT', Found)) THEN
+            Indexes => GetIndexStore()
+            n = GetElementDOFs( Indexes, Element, Solver )
+            IF(.NOT.ASSOCIATED(A % HaloMassValues)) THEN
+              ALLOCATE(A % HaloMassValues(SIZE(A % Values))); A % HaloMassValues=0._dp
+            END IF
+            CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
+                               A % HaloMassValues ) 
+          END IF
           RETURN
        END IF
      END IF
@@ -4186,9 +4207,10 @@ CONTAINS
 !$OMP CRITICAL
      IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
        ALLOCATE( A % MassValues(SIZE(A % Values)) )
-       A % MassValues = 0.0d0
+       A % MassValues = 0.0_dp
      END IF
 !$OMP END CRITICAL
+
 
      ! flip mass matrix for periodic elimination
      IF( Solver % PeriodicFlipActive ) THEN

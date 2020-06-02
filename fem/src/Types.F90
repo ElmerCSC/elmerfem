@@ -200,7 +200,7 @@ MODULE Types
     REAL(KIND=dp) :: RhsScaling
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
-        PrecValues(:)=>NULL()
+        PrecValues(:)=>NULL(), HaloValues(:)=>Null(), HaloMassValues(:)=>Null()
 
 #ifdef HAVE_FETI4I
     TYPE(C_PTR) :: PermonMatrix = C_NULL_PTR, PermonSolverInstance = C_NULL_PTR
