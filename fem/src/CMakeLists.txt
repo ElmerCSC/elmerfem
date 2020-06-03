@@ -36,7 +36,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
   DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 LUDecomposition.F90 
   RadiationFactors.F90 f_stubs.c
-  ExchangeCorrelations.F90 SolveHypre.c SolverActivate_x.F90
+  ExchangeCorrelations.F90 SolveHypre.c amgx.c SolverActivate_x.F90
   SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 InterpVarToVar.F90
@@ -255,6 +255,10 @@ IF(WITH_MPI)
   SET(SERIAL_SOLVER_FILEPATH "${CMAKE_INSTALL_PREFIX}/bin/ElmerSolver")
   SET(MPI_SOLVER_FILEPATH "${CMAKE_INSTALL_PREFIX}/bin/${ELMERSOLVER_OUTPUT_NAME}")
 ENDIF()
+
+IF(WITH_AMGX)
+  TARGET_LINK_LIBRARIES(elmersolver "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
+ENDIF()  
 
 IF(WITH_Trilinos)
   TARGET_LINK_LIBRARIES(elmersolver "${Trilinos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")

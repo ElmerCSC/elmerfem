@@ -45,6 +45,7 @@ SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
+SET(WITH_AMGX FALSE CACHE BOOL "Include NVIDIA AMGX library")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
@@ -154,6 +155,10 @@ IF(WITH_MPI)
   SET(CMAKE_CXX_REQUIRED_LIBRARIES ${MPI_CXX_LIBRARIES})
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
+
+IF(WITH_AMGX)
+  FIND_PACKAGE(AMGX)
+ENDIF()
 
 IF(WITH_MKL)
   # Find MKL
@@ -308,6 +313,14 @@ IF(FETI4I_FOUND)
   ADD_DEFINITIONS(-DHAVE_FETI4I)
 ENDIF()
 
+IF (AMGX_FOUND)
+  SET(HAVE_AMGX TRUE)
+  MARK_AS_ADVANCED(HAVE_AMGX)
+  INCLUDE_DIRECTORIES(${AMGX_INCLUDE_DIR})
+  LINK_DIRECTORIES(${CUDA_LIBDIR})
+ENDIF()
+
+  
 # Check if Fortran compiler supports procedure pointer
 INCLUDE(testProcedurePointer)
 IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)
@@ -451,6 +464,15 @@ IF(WITH_MPI)
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF(WITH_Hypre)
 ENDIF(WITH_MPI)
+
+IF(WITH_AMGX)
+    MESSAGE(STATUS "  AMGX:            " "${AMGX_FOUND}")
+    MESSAGE(STATUS "  AMGX include:    " "${AMGX_INCLUDE_DIR}")
+    MESSAGE(STATUS "  AMGX libraries:  " "${AMGX_LIBRARY}")
+    MESSAGE(STATUS "  CUDA libraries:  " "${CUDA_LIBRARIES}")
+    MESSAGE(STATUS "  CUDA libdir:     " "${CUDA_LIBDIR}")
+    MESSAGE(STATUS "------------------------------------------------")
+ENDIF(WITH_AMGX)  
 
 IF(WITH_Trilinos)
   MESSAGE(STATUS "  Trilinos:           " "${Trilinos_FOUND}")
