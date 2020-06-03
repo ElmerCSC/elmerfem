@@ -118,7 +118,8 @@
      TYPE(Model_t), POINTER, SAVE :: Control
      CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
      LOGICAL :: DoControl, GotParams
-     
+     INTEGER :: nr
+     REAL(KIND=dp), ALLOCATABLE :: rpar(:)
      
 #ifdef HAVE_TRILINOS
 INTERFACE
@@ -151,9 +152,26 @@ END INTERFACE
        ! This makes it possible to cast something 
        Silent = .FALSE.
        Version = .FALSE.
+
        IF( NoArgs > 0 ) THEN 
-         DO i = 1, NoArgs 
+         i = 0
+         DO WHILE( i < NoArgs )
+           i = i + 1 
            CALL GET_COMMAND_ARGUMENT(i, OptionString)
+           IF( OptionString=='-rpar' ) THEN
+             ! Followed by number of paramters + the parameter values
+             i = i + 1
+             CALL GET_COMMAND_ARGUMENT(i, OptionString)
+             READ( OptionString,*) nr             
+             ALLOCATE( rpar(nr) )
+             DO j=1,nr
+               i = i + 1
+               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               READ( OptionString,*) rpar(j)
+             END DO
+             CALL Info('MAIN','Read '//TRIM(I2S(nr))//' parameters from command line!')
+             CALL SetParametersMATC(nr,rpar)
+           END IF
            Silent = Silent .OR. &
                ( OptionString=='-s' .OR. OptionString=='--silent' ) 
            Version = Version .OR. &

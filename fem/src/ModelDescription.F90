@@ -5695,6 +5695,32 @@ END SUBROUTINE GetNodalElementSize
  END SUBROUTINE FreeModel
 !------------------------------------------------------------------------------
 
+ !------------------------------------------------------------------------------
+ !> This routine makes it possible to refer to the parameters
+ !> in the .sif file by rpar(0), rpar(1),...
+ !-----------------------------------------------------------------------------
+ SUBROUTINE SetParametersMATC(NoParam,Param)
+
+   INTEGER :: NoParam
+   REAL(KIND=dp), ALLOCATABLE :: Param(:)
+
+   INTEGER :: i,j,tj
+   CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
+
+   DO i=1,NoParam
+     WRITE( cmd, * ) 'rpar('//TRIM(i2s(i-1))//')=', Param(i)
+     j = LEN_TRIM(cmd)
+     !$OMP PARALLEL DEFAULT(NONE) &
+     !$OMP SHARED(cmd, tmp_str, j ) &
+     !$OMP PRIVATE(tcmd, ttmp_str, tj)
+     tj = j
+     tcmd = cmd               
+     CALL matc( tcmd, ttmp_str, tj )
+     !$OMP END PARALLEL
+   END DO
+
+ END SUBROUTINE SetParametersMATC
+
  
 !------------------------------------------------------------------------------
 !> Adds parameters used in the simulation either predefined or from run control.
@@ -5939,37 +5965,7 @@ END SUBROUTINE GetNodalElementSize
      param(1:n) = guessparam(1:n)
 
    END SUBROUTINE GetSavedOptimum
-   
-
-   ! This routine makes it possible to refer to the parameters
-   ! in the .sif file by rpar(0), rpar(1),...
-   !-----------------------------------------------------------------------------
-   SUBROUTINE SetParametersMATC(NoParam,Param)
-
-     INTEGER :: NoParam
-     REAL(KIND=dp), ALLOCATABLE :: Param(:)
-
-     INTEGER :: i,j,tj
-
-     DO i=1,NoParam
-       BLOCK
-         CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
-         INTEGER :: tj 
-
-         WRITE( cmd, * ) 'rpar('//TRIM(i2s(i-1))//')=', Param(i)
-         j = LEN_TRIM(cmd)
-         !$OMP PARALLEL DEFAULT(NONE) &
-         !$OMP SHARED(cmd, tmp_str, j ) &
-         !$OMP PRIVATE(tcmd, ttmp_str, tj)
-         tj = j
-         tcmd = cmd               
-         CALL matc( tcmd, ttmp_str, tj )
-         !$OMP END PARALLEL
-       END BLOCK
-     END DO
-
-   END SUBROUTINE SetParametersMATC   
-   
+      
  END SUBROUTINE ControlParameters
 
  !--------------------------------------------------------------------------------
