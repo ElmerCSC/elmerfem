@@ -2252,14 +2252,16 @@ CONTAINS
     CALL Info('BlockMatrixScaling','Starting block matrix row equilibriation',Level=10)
            
     IF( PRESENT( Reverse ) ) THEN
-      CALL Info('BlockMatrixScaling','Performing reverse scaling',Level=20)
       BackScale = Reverse
     ELSE
-      CALL Info('BlockMatrixScaling','Performing forward scaling',Level=20)
       BackScale = .FALSE.
     END IF
+    IF (BackScale) THEN
+      CALL Info('BlockMatrixScaling','Performing reverse scaling',Level=20)
+    ELSE
+      CALL Info('BlockMatrixScaling','Performing forward scaling',Level=20)
+    END IF
 
-    
     NoVar = TotMatrix % NoVar   
     DO k=1,NoVar
       
@@ -2403,7 +2405,7 @@ CONTAINS
     IF( DiagScaling .AND. BlockScaling ) THEN
       CALL Warn('BlockMatrixPrec','It is not recommended to use two different scalings at same time')
     END IF
-    
+    print *, solver % Variable % name,BlockScaling,DiagScaling
     
 #define SOLSYS
 #ifdef SOLSYS

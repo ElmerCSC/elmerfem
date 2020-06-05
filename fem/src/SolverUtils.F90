@@ -16816,12 +16816,12 @@ CONTAINS
 !> solvers listed using the keyword "Block Solvers". The (1,1)-block is then
 !> tied up with the value of the first entry in the "Block Solvers" array. 
 !------------------------------------------------------------------------------
-  SUBROUTINE StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
+  SUBROUTINE StructureCouplingAssembly(Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
       IsSolid, IsPlate, IsShell, IsBeam )
-    
+!------------------------------------------------------------------------------    
     TYPE(Solver_t) :: Solver          !< The leading solver defining block structure 
-    TYPE(Variable_t), POINTER :: FVar !< Slave structure variable
-    TYPE(Variable_t), POINTER :: SVar !< Master structure variable
+    TYPE(Variable_t), POINTER :: FVar !< "Slave" structure variable
+    TYPE(Variable_t), POINTER :: SVar !< "Master" structure variable
     TYPE(Matrix_t), POINTER :: A_f    !< (2,2)-block for the "slave" variable
     TYPE(Matrix_t), POINTER :: A_s    !< (1,1)-block for the "master" variable
     TYPE(Matrix_t), POINTER :: A_fs   !< (2,1)-block for interaction
@@ -16835,7 +16835,7 @@ CONTAINS
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
     CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
-
+   !------------------------------------------------------------------------------
 
     CALL Info(Caller,'Creating coupling matrix for structures',Level=6)
     
@@ -16881,24 +16881,28 @@ CONTAINS
     ! Probably this will not be needed at all but rather we need the director.
     !IF( IsShell ) CALL DetermineCouplingNormals()
 
-    ! For the shell equation enforce the rotation in implicit manner from solid displacements.
+    ! For the shell equation enforce the directional derivative of the displacement
+    ! field in implicit manner from solid displacements. The interaction conditions
+    ! for the corresponding forces are also created.
     IF (IsShell) THEN
       BLOCK
         INTEGER :: p,lf,ls,ii,jj,n,m,t
         REAL(KIND=dp) :: u,v,w,weight,detJ,val
         TYPE(Element_t), POINTER :: Element,ShellElement
         INTEGER, POINTER :: Indexes(:)
-        TYPE(GaussIntegrationPoints_t) :: IP
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
         TYPE(Nodes_t) :: Nodes
-        LOGICAL :: Stat, FixRot
+        LOGICAL :: Stat, FixRot, DiscreteKirchhoff
         REAL(KIND=dp) :: x, y, z 
         REAL(KIND=dp), POINTER :: Director(:)
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
         INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
         INTEGER :: InterfaceN, hits
                
-        FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat ) 
+        FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat )
+
+        ! The following is used to choose the tying procedure for "rotations".
+        DiscreteKirchhoff = .TRUE.
 
         IF(.NOT. FixRot ) THEN
           CALL Warn(Caller,'Coupling for rotational shell dofs is missing!')                  
@@ -16915,10 +16919,8 @@ CONTAINS
           NodeHits = 0
           InterfacePerm = 0
           
-          ! First, zero the rows related to rotational dofs i.e. components 4,5,6.
-          ! "s" refers to solid and "f" to shell.
-          ! Open question is whether the moments should be applied also to the solid, or
-          ! does it suffice to applied rotations to shell. I fear that they have...
+          ! First, zero the rows related to directional derivative dofs, 
+          ! i.e. the components 4,5,6. "s" refers to solid and "f" to shell.
           InterfaceN = 0
           DO i=1,Mesh % NumberOfNodes
             jf = FPerm(i)      
@@ -16946,8 +16948,8 @@ CONTAINS
           ALLOCATE( InterfaceElems(InterfaceN,2) )
           InterfaceElems = 0
           
-          ! Then go through shell elements associated with the interface        
-          ! and calculate the average director to the nodes. 
+          ! Then go through shell elements and associate each interface node with a list of
+          ! shell elements defined in terms of the interface node
           DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
             Element => Mesh % Elements(t)
             Indexes => Element % NodeIndexes 
@@ -16972,13 +16974,14 @@ CONTAINS
               ELSE IF( InterfaceElems(k,2) == 0 ) THEN
                 InterfaceElems(k,2) = t
               ELSE
-                CALL Fatal('','Tree interface elems?')
+                CALL Fatal(Caller,'Tree interface elems?')
               END IF
             END DO
           END DO
 
           
-          ! Then go through solid elements associated with the interface        
+          ! Then go through solid elements associated with the interface and count
+          ! how many solid elements share each interface node.
           NodeHits = 0
           DO t=1,Mesh % NumberOfBulkElements
             Element => Mesh % Elements(t)
@@ -17002,7 +17005,9 @@ CONTAINS
           
           !PRINT *,'Maximum node hits:',MAXVAL(NodeHits)
           
-          ! Then go through each element associated with the interface        
+          ! Then go through each solid element associated with the interface and
+          ! create matrix entries defining the interaction conditions for the
+          ! directional derivatives and corresponding forces. 
           DO t=1,Mesh % NumberOfBulkElements
             Element => Mesh % Elements(t)
             Indexes => Element % NodeIndexes 
@@ -17025,6 +17030,7 @@ CONTAINS
             END DO
             x = x/2; y = y/2; z = z/2;
 
+            ! TO DO: The following call may not work for p-elements!
             CALL GlobalToLocal( u, v, w, x, y, z, Element, Nodes )
 
             ! Integration at the center of the edge
@@ -17032,8 +17038,6 @@ CONTAINS
 
             DO ii = 1, n
               i = Indexes(ii)           
-
-              ! Set for all shell nodes a Dirichlet condition for rotation
               jf = FPerm(i)      
               IF( jf == 0 ) CYCLE
 
@@ -17050,6 +17054,7 @@ CONTAINS
                 IF( hits >= 2 ) EXIT
               END DO
 
+              ! Retrieve the director of the shell element: 
               m = ShellElement % TYPE % NumberOfNodes
               DO jj=1,m
                 IF(Element % NodeIndexes(ii) == ShellElement % NodeIndexes(jj) ) EXIT
@@ -17058,32 +17063,57 @@ CONTAINS
 
               !PRINT *,'Director:',ShellElement % ElementIndex,jj,Director            
               
-              ! Rotational dofs of the shell equation
               DO lf = 4, 6                            
                 kf = fdofs*(jf-1)+lf
                 
                 IF( ConstrainedF(kf) ) CYCLE
-                
-                ! Displacement dofs
+
                 DO ls = 1, dim
-                                    ! 
-                  ! We try to weakly enforce the condition:
-                  ! d_{i+3}=<(grad u)n,e_i> where i=1,2,3.
-                  ! i+3:=lf, n:=director, e_i is unit vector, and u is the implicit displacement field. 
-                  DO p=1,n
-                    js = SPerm(Indexes(p))
-                    ks = sdofs*(js-1)+ls
-                    val = -Director(ls) * dBasisdx(p,lf-3)
-                    CALL AddToMatrixElement(A_fs,kf,ks,weight*val)                  
+                  
+                  IF (DiscreteKirchhoff) THEN
+                    ! 
+                    ! Try to enforce two discrete Kirchhoff conditions and
+                    ! a condition for the stretch of the director. This is
+                    ! not fully correct: A plate case is assumed by neglecting 
+                    ! terms depending on the mid-surface curvature.
+                    DO p=1,n
+                      js = SPerm(Indexes(p))
+                      ks = sdofs*(js-1)+ls
+                      val = -Director(ls) * dBasisdx(p,lf-3)
+                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
 
-                    ! Here the idea is to distribute the implicit moments of the shell solver
-                    ! to forces for the solid solver. So even though the stiffness matrix related to the
-                    ! rotations is nullified the forces are not forgotten. 
-                    DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k))                  
+                      ! The following may be thought of as being based on two (Råback's) conjectures: 
+                      ! in the first place the Lagrange variable formulation should bring us to a symmetric 
+                      ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
+                      ! reactions obtained by performing a matrix-vector product.
+                      DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k))
+                      END DO
                     END DO
+                  ELSE
+                    !
+                    ! Directional derivative dofs of the shell equations: 
+                    ! We try to enforce the condition d_{i+3}=-<(grad u)n,e_i> 
+                    ! where i=1,2,3; i+3:=lf, n is director, e_i is unit vector, and 
+                    ! u is the displacement field of the solid. 
+                    DO p=1,n
+                      js = SPerm(Indexes(p))
+                      ks = sdofs*(js-1)+lf-3
+                      val = -Director(ls) * dBasisdx(p,ls)
+                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
 
-                  END DO
+                      ! Here the idea is to distribute the implicit moments of the shell solver
+                      ! to forces for the solid solver. So even though the stiffness matrix related to the
+                      ! directional derivatives is nullified, the forces are not forgotten.
+                      ! This part may be thought of as being based on two (Råback's) conjectures: 
+                      ! in the first place the Lagrange variable formulation should bring us to a symmetric 
+                      ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
+                      ! reactions obtained by performing a matrix-vector product.
+                      DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
+                      END DO
+                    END DO
+                  END IF
                 END DO
 
                 ! This should sum up to unity!
@@ -17098,9 +17128,11 @@ CONTAINS
     END IF
     
     ! Note: we may have to rethink this coupling if visiting for 2nd time!
-    ! The three components for shells and solids are both the real cartesian
-    ! displacements. Hence we can deal with solid-soid and solid-shell coupling
-    ! common parts in same subroutine. 
+    !
+    ! Three DOFs for both shells and solids are the real Cartesian components of
+    ! the displacement. Hence we can deal with the common parts of solid-solid and 
+    ! solid-shell coupling in same subroutine.
+    !
     IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
       DO i=1,Mesh % NumberOfNodes
@@ -17111,14 +17143,14 @@ CONTAINS
         IF( jf == 0 .OR. js == 0 ) CYCLE
         ncount = ncount + 1
 
-        ! For the given node go throug all displacement components. 
+        ! For the given node go through all displacement components. 
         DO j = 1, dim
-          ! Indeces for matrix rows
+          ! Indices for matrix rows
           kf = fdofs*(jf-1)+j
           ks = sdofs*(js-1)+j
 
-          ! This is the original diagonal entry for stiffness matrix.
-          ! Let's keep that so that Dirichlet conditions are ideally set. 
+          ! This is the original diagonal entry of the stiffness matrix.
+          ! Let's keep it so that Dirichlet conditions are ideally set. 
 #if 0
           vdiag = A_s % Values( A_s % Diag(ks) ) 
 
@@ -17147,7 +17179,7 @@ CONTAINS
           A_s % rhs(ks) = A_s % rhs(ks) + A_f % rhs(kf)
           A_f % rhs(kf) = 0.0_dp
 
-          ! Copy the force in implicit form from "F" to "SF" coupling matrix, and zero it
+          ! Copy the force in implicit form from "F" to "SF" coupling matrix, and zero it.
           ! Now the solid equation includes forces of both equations. 
           DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
             IF( .NOT. ConstrainedS(ks) ) THEN        
@@ -17156,7 +17188,7 @@ CONTAINS
             A_f % Values(k) = 0.0_dp
           END DO
 
-          ! Set Dirichlet Condition to "S" such that it is equal to "F".
+          ! Set Dirichlet Condition to "F" such that it is equal to "S".
           ! Basically we could eliminate displacement condition and do this afterwards
           ! but this is much more economical. 
           A_f % Values( A_f % Diag(kf)) = vdiag          
