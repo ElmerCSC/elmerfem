@@ -2405,7 +2405,7 @@ CONTAINS
     IF( DiagScaling .AND. BlockScaling ) THEN
       CALL Warn('BlockMatrixPrec','It is not recommended to use two different scalings at same time')
     END IF
-    print *, solver % Variable % name,BlockScaling,DiagScaling
+
     
 #define SOLSYS
 #ifdef SOLSYS
