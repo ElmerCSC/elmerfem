@@ -16902,7 +16902,7 @@ CONTAINS
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat )
 
         ! The following is used to choose the tying procedure for "rotations".
-        DiscreteKirchhoff = .TRUE.
+        DiscreteKirchhoff = ListGetLogical(Solver % Values, 'Discrete Kirchhoff Tying', Stat)
 
         IF(.NOT. FixRot ) THEN
           CALL Warn(Caller,'Coupling for rotational shell dofs is missing!')                  
@@ -17071,6 +17071,7 @@ CONTAINS
                 DO ls = 1, dim
                   
                   IF (DiscreteKirchhoff) THEN
+print *, 'right place';stop
                     ! 
                     ! Try to enforce two discrete Kirchhoff conditions and
                     ! a condition for the stretch of the director. This is
@@ -17099,7 +17100,7 @@ CONTAINS
                     DO p=1,n
                       js = SPerm(Indexes(p))
                       ks = sdofs*(js-1)+lf-3
-                      val = -Director(ls) * dBasisdx(p,ls)
+                      val = Director(ls) * dBasisdx(p,ls)
                       CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
 
                       ! Here the idea is to distribute the implicit moments of the shell solver
