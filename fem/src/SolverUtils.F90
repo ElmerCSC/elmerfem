@@ -17071,7 +17071,6 @@ CONTAINS
                 DO ls = 1, dim
                   
                   IF (DiscreteKirchhoff) THEN
-print *, 'right place';stop
                     ! 
                     ! Try to enforce two discrete Kirchhoff conditions and
                     ! a condition for the stretch of the director. This is
