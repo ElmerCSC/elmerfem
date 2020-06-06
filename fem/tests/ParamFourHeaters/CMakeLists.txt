@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO spots.grd par.dat DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ParamFourHeaters LABELS param)
+ADD_ELMER_TEST(ParamFourHeaters LABELS control)

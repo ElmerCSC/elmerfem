@@ -1990,13 +1990,19 @@ CONTAINS
                 m = CurrentElement % ElementIndex
                 
                 IF( ASSOCIATED( Perm ) ) THEN                  
-                  IF( m > SIZE( Perm ) ) THEN
+                  IF( m>SIZE( Perm ) ) THEN
                     IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
                       m = CurrentElement % BoundaryInfo % Left % ElementIndex
+                    ELSE
+                      PRINT*,m,size(perm)
+                      STOP 'VtuOutputSolver: Should not happen ?'
                     END IF
                   END IF
                   m = Perm( m ) 
                 END IF
+
+
+                IF(m==0) CYCLE
                                   
                 IF( sdofs == 1 ) THEN
                   ElemVectVal(1) = Values(m) 

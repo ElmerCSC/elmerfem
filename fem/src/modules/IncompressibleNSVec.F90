@@ -157,6 +157,7 @@ CONTAINS
 
     IF (Newton) THEN
       ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
+      muDerVec0 = 0._dp
     END IF
 
     IF( InitHandles ) THEN
@@ -533,7 +534,7 @@ END BLOCK
       INTEGER :: ngp
       REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp) :: NodalSol(:,:) , ViscDerVec(:)
+      REAL(KIND=dp) :: NodalSol(:,:), ViscDerVec(:)
       LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
 

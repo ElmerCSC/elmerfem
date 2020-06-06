@@ -1,5 +1,7 @@
 Test Case for the inverse methods
 
+** Old material - please refer to [new documentation](../../Solvers/Documentation/README.md)**
+
 I)  the control inverse method: Adjoint_Beta.sif  Adjoint_Mu.sif
 (cf Morlighem et al., Spatial patterns of basal drag inferred using control methods
 	from a full‐Stokes and simpler models for Pine Island Glacier, West Antarctica, Geophys. Res. Lett., 37, 2010

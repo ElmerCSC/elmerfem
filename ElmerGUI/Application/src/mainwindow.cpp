@@ -137,6 +137,7 @@ MainWindow::MainWindow() {
   solverLogWindow = new SolverLogWindow(this);
   solver = new QProcess(this);
   post = new QProcess(this);
+  paraview = new QProcess(this);
   compiler = new QProcess(this);
   meshSplitter = new QProcess(this);
   meshUnifier = new QProcess(this);
@@ -172,6 +173,7 @@ MainWindow::MainWindow() {
   createMenus();
   createToolBars();
   createStatusBar();
+  runPostProcessorAct->setMenu(selectPostMenu);
 
   // Always, when an action from the menu bar has been selected, synchronize
   // menu to state:
@@ -236,6 +238,10 @@ MainWindow::MainWindow() {
   // post emits (int) when finished:
   connect(post, SIGNAL(finished(int)), this,
           SLOT(postProcessFinishedSlot(int)));
+
+  // paraview emits (int) when finished:
+  connect(paraview, SIGNAL(finished(int)), this,
+          SLOT(paraviewProcessFinishedSlot(int)));
 
   // meshSplitter emits (int) when finished:
   connect(meshSplitter, SIGNAL(finished(int)), this,
@@ -544,19 +550,6 @@ void MainWindow::createActions() {
   showsifAct->setShortcut(tr("Ctrl+S"));
   showsifAct->setStatusTip(tr("Edit solver input file"));
   connect(showsifAct, SIGNAL(triggered()), this, SLOT(showsifSlot()));
-
-  // Sif -> Auto sif generation
-  suppressAutoSifGenerationAct =
-      new QAction(QIcon(""), tr("&Suppress auto generation"), this);
-  suppressAutoSifGenerationAct->setStatusTip(
-      tr("Suppress auto sif file generation in saving/loading to protect "
-         "manually edited sif contents in sif editor"));
-  connect(suppressAutoSifGenerationAct, SIGNAL(triggered()), this,
-          SLOT(suppressAutoSifGenerationSlot()));
-  suppressAutoSifGenerationAct->setCheckable(true);
-  suppressAutoSifGeneration =
-      settings_value("sif/suppressAutoSifGeneration", false).toBool();
-  suppressAutoSifGenerationAct->setChecked(suppressAutoSifGeneration);
 
   // Mesh -> Control
   meshcontrolAct =
@@ -904,6 +897,25 @@ void MainWindow::createActions() {
 
   if (egIni->isSet("bgimage"))
     chooseBGColorAct->setEnabled(false);
+  
+  runPostProcessorAct = new QAction(QIcon(":/icons/Post.png"), tr("ElmerPost"), this);
+  runPostProcessorAct->setStatusTip(tr("Select ElmerPost as post-processor"));
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
+  
+  selectElmerPostAct = new QAction(QIcon(":/icons/Post.png"), tr("ElmerPost"), this);
+  selectElmerPostAct->setStatusTip(tr("Select ElmerPost as post-processor"));
+  connect(selectElmerPostAct, SIGNAL(triggered()), this, SLOT(selectElmerPostSlot()));
+  selectElmerPostAct->setCheckable(true);
+
+  selectVtkPostAct = new QAction(QIcon(":/icons/Mesh3D.png"), tr("ElmerVTK"), this);
+  selectVtkPostAct->setStatusTip(tr("Select ElmerVTK as post-processor"));
+  connect(selectVtkPostAct, SIGNAL(triggered()), this, SLOT(selectVtkPostSlot()));
+  selectVtkPostAct->setCheckable(true);
+
+  selectParaViewAct = new QAction(QIcon(":/icons/Paraview.png"), tr("ParaView"), this);
+  selectParaViewAct->setStatusTip(tr("Select ParaView as post-processor"));
+  connect(selectParaViewAct, SIGNAL(triggered()), this, SLOT(selectParaViewSlot()));
+  selectParaViewAct->setCheckable(true);
 }
 
 // Create menus...
@@ -1056,8 +1068,6 @@ void MainWindow::createMenus() {
   editMenu->addAction(generateSifAct);
   editMenu->addSeparator();
   editMenu->addAction(showsifAct);
-  editMenu->addSeparator();
-  editMenu->addAction(suppressAutoSifGenerationAct);
 
   //  SolverMenu
   solverMenu = menuBar()->addMenu(tr("&Run"));
@@ -1108,7 +1118,17 @@ void MainWindow::createMenus() {
   contextMenu->addMenu(editMenu);
   contextMenu->addMenu(solverMenu);
   contextMenu->addMenu(helpMenu);
-
+  
+  selectPostMenu = new QMenu;
+  selectPostMenu->addAction(selectElmerPostAct);
+  selectPostMenu->addAction(selectVtkPostAct);
+  selectPostMenu->addAction(selectParaViewAct);
+#ifndef EG_VTK
+  selectVtkPostAct->setEnabled(false);
+#endif
+#ifndef EG_PARAVIEW
+  selectParaViewAct->setEnabled(false);
+#endif
   // Disable unavailable external components:
   //------------------------------------------
   if (!egIni->isSet("checkexternalcomponents"))
@@ -1207,7 +1227,7 @@ void MainWindow::createToolBars() {
   // Solver toolbar
   solverToolBar = addToolBar(tr("&Solver"));
   solverToolBar->addAction(runsolverAct);
-  solverToolBar->addAction(resultsAct);
+  solverToolBar->addAction(runPostProcessorAct);
   solverToolBar->addAction(generateAndSaveAndRunAct);
 
   if (egIni->isSet("hidetoolbars")) {
@@ -1757,9 +1777,6 @@ void MainWindow::saveSlot() {
     return;
   }
 
-  if (!suppressAutoSifGeneration) {
-    generateSifSlot();
-  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1783,9 +1800,6 @@ void MainWindow::saveAsSlot() {
     return;
   }
 
-  if (!suppressAutoSifGeneration) {
-    generateSifSlot();
-  }
   saveElmerMesh(saveDirName);
 }
 
@@ -1833,10 +1847,6 @@ bool MainWindow::saveProject(QString projectDirName) {
   if (!glWidget->hasMesh()) {
     logMessage("Unable to save project: no mesh");
     return false;
-  }
-
-  if (!suppressAutoSifGeneration) {
-    generateSifSlot();
   }
 
   progressBar->show();
@@ -2536,35 +2546,10 @@ void MainWindow::loadProject(QString projectDirName) {
   }
 
   //===========================================================================
-  //                              REGENERATE SIF
+  //                              LOAD SIF
   //===========================================================================
   progressBar->setValue(14);
   if (glWidget->hasMesh()) {
-
-    if (!suppressAutoSifGeneration) {
-      logMessage("Regenerating and saving the solver input file...");
-      generateSifSlot();
-
-      QFile file;
-      QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
-      file.setFileName(sifName);
-      file.open(QIODevice::WriteOnly);
-      QTextStream sif(&file);
-      QApplication::setOverrideCursor(Qt::WaitCursor);
-      sif << sifWindow->getTextEdit()->toPlainText();
-      QApplication::restoreOverrideCursor();
-      file.close();
-
-      file.setFileName("ELMERSOLVER_STARTINFO");
-      file.open(QIODevice::WriteOnly);
-      QTextStream startinfo(&file);
-#if WITH_QT5
-      startinfo << sifName.toLatin1() << "\n1\n";
-#else
-      startinfo << sifName.toAscii() << "\n1\n";
-#endif
-      file.close();
-    } else {
       QFile file;
       QString sifName = generalSetup->ui.solverInputFileEdit->text().trimmed();
       file.setFileName(sifName);
@@ -2580,7 +2565,6 @@ void MainWindow::loadProject(QString projectDirName) {
       } else {
         logMessage(" failed to open " + sifName);
       }
-    }
   }
 
   logMessage("Ready");
@@ -4985,7 +4969,6 @@ void MainWindow::showVtkPostSlot() {
 #ifdef EG_VTK
   QString postFileName =
       saveDirName + "/" + generalSetup->ui.postFileEdit->text().trimmed();
-
   // Parallel solution:
   //====================
   Ui::parallelDialog ui = parallel->ui;
@@ -5039,8 +5022,21 @@ void MainWindow::showVtkPostSlot() {
   //-----------------
   vtkPost->show();
 
-  vtkPost->ReadPostFile(postFileName);
-  // if(!vtkPost->ReadPostFile(postFileName)) vtkPost->readEpFileSlot();
+  QFileInfo info(postFileName);
+  QDir dir = info.dir();
+  if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)){
+    if(!parallelActive){
+      QString vtuFileName = postFileName;
+		  vtuFileName.insert(vtuFileName.length()-4, "_t0001");
+      if(!vtkPost->ReadSingleVtuFile(vtuFileName)){
+        vtuFileName = postFileName;
+		    vtuFileName.insert(vtuFileName.length()-4, "0001");
+		    vtkPost->ReadSingleVtuFile(vtuFileName);
+      }
+    }
+  }else{
+    vtkPost->ReadPostFile(postFileName);
+  }
 #endif
 }
 
@@ -5048,6 +5044,12 @@ void MainWindow::showVtkPostSlot() {
 //-----------------------------------------------------------------------------
 void MainWindow::showParaViewSlot() {
 #ifdef EG_PARAVIEW
+
+  if (paraview->state() == QProcess::Running) {
+    logMessage("ParaView is already running");
+    return;
+  }
+
   QString postFileName = generalSetup->ui.postFileEdit->text().trimmed();
   QFileInfo pvFile(postFileName);
 
@@ -5063,6 +5065,7 @@ void MainWindow::showParaViewSlot() {
   // Paraview can deal with case..vtu kind of arguments which however,
   // fail if there is only one file. Use dirty check to see that there
   // are more than one file.
+  
   if (!parallelActive) {
     secondName = pvFile.baseName() + "_t0002.vtu";
   } else {
@@ -5075,7 +5078,7 @@ void MainWindow::showParaViewSlot() {
   //================
   if (!parallelActive) {
     if (secondFile.exists())
-      args << pvFile.baseName() + "..vtu";
+      args << pvFile.baseName() + "_t..vtu";
     else
       args << pvFile.baseName() + "_t0001.vtu";
   }
@@ -5084,15 +5087,25 @@ void MainWindow::showParaViewSlot() {
   //==================
   if (parallelActive) {
     if (secondFile.exists())
-      args << pvFile.baseName() + "..pvtu";
+      args << pvFile.baseName() + "_t..pvtu";
     else
       args << pvFile.baseName() + "_t0001.pvtu";
   }
 
   // Launch ParaView
   //================
+  paraview->start("paraview", args);
+  
+  if (!paraview->waitForStarted()) {
+    logMessage("Unable to start ParaView");
+    return;
+  }
 
-  post->start("paraview", args);
+  logMessage("ParaView started");
+
+  updateSysTrayIcon("ParaView started",
+                    "");
+  
 #endif
 }
 
@@ -5934,7 +5947,10 @@ void MainWindow::cleanHangingSharpEdgesSlot() {
 void MainWindow::showsifSlot() {
   // QFont sansFont("Courier", 10);
   // sifWindow->getTextEdit()->setCurrentFont(sansFont);
-  sifWindow->show();
+  if(sifWindow->windowState() & Qt::WindowMinimized){
+    sifWindow->showNormal();
+  }
+  else sifWindow->show();
 }
 
 // Edit -> Generate sif
@@ -5992,11 +6008,6 @@ void MainWindow::generateSifSlot() {
   sifGenerator->makeBodyForceBlocks();
   sifGenerator->makeInitialConditionBlocks();
   sifGenerator->makeBoundaryBlocks();
-}
-
-void MainWindow::suppressAutoSifGenerationSlot() {
-  suppressAutoSifGeneration = suppressAutoSifGenerationAct->isChecked();
-  settings_setValue("sif/suppressAutoSifGeneration", suppressAutoSifGeneration);
 }
 
 // Boundary selected by double clicking (signaled by glWidget::select):
@@ -6954,6 +6965,19 @@ void MainWindow::resultsSlot() {
   QFile file(postName);
   if (!file.exists()) {
     logMessage("Elmerpost input file does not exist.");
+    /*Even though input file does not exist, lauch ElmerPost*/
+    post->start("ElmerPost");
+    killresultsAct->setEnabled(true);
+    if (!post->waitForStarted()) {
+      logMessage("Unable to start ElmerPost");
+      return;
+    }
+    resultsAct->setIcon(QIcon(":/icons/Post-red.png"));
+
+    logMessage("ElmerPost started");
+
+    updateSysTrayIcon("ElmerPost started",
+                      "Elmerpost input file does not exist.");
     return;
   }
 
@@ -7018,6 +7042,14 @@ void MainWindow::postProcessFinishedSlot(int) {
   updateSysTrayIcon("ElmerPost has finished",
                     "Use Run->Start ElmerPost to restart");
   killresultsAct->setEnabled(false);
+}
+
+// Signal (int) emitted by paraview when finished:
+//-----------------------------------------------------------------------------
+void MainWindow::paraviewProcessFinishedSlot(int) {
+  logMessage("ParaView finished");
+  updateSysTrayIcon("ParaView has finished",
+                    "Use Run->Start ParaView to restart");
 }
 
 // Solver -> Kill post process
@@ -7623,6 +7655,12 @@ void MainWindow::loadSettings() {
   } else {
     objectBrowser = NULL;
   }
+  
+  switch (settings_value("postProcessor/i", 0).toInt()){
+    case 0: selectElmerPostSlot(); break; 
+    case 1: selectVtkPostSlot(); break;
+    case 2: selectParaViewSlot(); break;
+  }
 }
 
 // Save settings
@@ -7650,6 +7688,14 @@ void MainWindow::saveSettings() {
     settings_setValue("objectBrowser/show", true);
   } else {
     settings_setValue("objectBrowser/show", false);
+  }
+  
+  if(selectElmerPostAct->isChecked()){
+    settings_setValue("postProcessor/i", 0);
+  }else if(selectVtkPostAct->isChecked()){
+    settings_setValue("postProcessor/i", 1);
+  }else if(selectParaViewAct->isChecked()){
+    settings_setValue("postProcessor/i", 2);
   }
 }
 
@@ -7898,10 +7944,9 @@ void MainWindow::saveAndRun(bool generateSif) {
     }
   }
 
-  bool previousState = suppressAutoSifGeneration;
-  suppressAutoSifGeneration = !generateSif;
+  if(generateSif){ generateSifSlot();}
+
   bool ret = saveProject(projectDirName);
-  suppressAutoSifGeneration = previousState;
 
   //------- Run solver -------//
   if (ret) {
@@ -7924,4 +7969,35 @@ void MainWindow::showObjectBrowserSlot() {
     delete objectBrowser;
     objectBrowser = NULL;
   }
+}
+
+void MainWindow::selectElmerPostSlot(){
+  runPostProcessorAct->setText(tr("Start ElmerPost"));
+  runPostProcessorAct->setIcon(QIcon(":/icons/Post.png"));  
+  runPostProcessorAct->setStatusTip(tr("Run ElmerPost for visualization"));
+  runPostProcessorAct->disconnect();
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
+  selectElmerPostAct->setChecked(true);
+  selectVtkPostAct->setChecked(false);
+  selectParaViewAct->setChecked(false);
+}
+void MainWindow::selectVtkPostSlot(){
+  runPostProcessorAct->setText(tr("Start ElmerVTK"));
+  runPostProcessorAct->setIcon(QIcon(":/icons/Mesh3D.png"));  
+  runPostProcessorAct->setStatusTip(tr("Invokes VTK based ElmerGUI postprocessor"));
+  runPostProcessorAct->disconnect();
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
+  selectElmerPostAct->setChecked(false);
+  selectVtkPostAct->setChecked(true);
+  selectParaViewAct->setChecked(false);
+}
+void MainWindow::selectParaViewSlot(){
+  runPostProcessorAct->setText(tr("Start ParaView"));
+  runPostProcessorAct->setIcon(QIcon(":/icons/Paraview.png"));  
+  runPostProcessorAct->setStatusTip(tr("Invokes ParaView for visualization"));
+  runPostProcessorAct->disconnect();
+  connect(runPostProcessorAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));
+  selectElmerPostAct->setChecked(false);
+  selectVtkPostAct->setChecked(false);
+  selectParaViewAct->setChecked(true);
 }

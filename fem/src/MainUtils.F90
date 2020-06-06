@@ -46,9 +46,7 @@ MODULE MainUtils
 !------------------------------------------------------------------------------
   Use BlockSolve
   USE IterSolve, ONLY : NumericalError
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
 
 !------------------------------------------------------------------------------
   IMPLICIT NONE
@@ -446,12 +444,8 @@ CONTAINS
     EXTERNAL :: PROCEDURE
     INTEGER  :: PROCEDURE
 !------------------------------------------------------------------------------
-#ifndef USE_ISO_C_BINDINGS
-   INTEGER(KIND=AddrInt) :: AddrFunc
-#else
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
-#endif
 !------------------------------------------------------------------------------
     Solver % PROCEDURE = AddrFunc( PROCEDURE )
 !------------------------------------------------------------------------------
@@ -1093,6 +1087,19 @@ CONTAINS
     IF( IsProcedure ) THEN
       CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=10)
     END IF
+
+
+#if 0
+    ! Here we can for testing purposes change all solver named xxx to yyy
+    ! and then rerun all the tests, for example. Don't activate unless for this kind
+    ! of development work.
+    i = INDEX( proc_name,'HeatSolver')
+    IF( i /= 0 ) THEN
+      proc_name = 'HeatSolveVec HeatSolver'
+      CALL ListAddString(SolverParams, 'Procedure', proc_name,.FALSE.)
+      CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=6)
+    END IF
+#endif
 
 
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
@@ -2665,7 +2672,7 @@ CONTAINS
     REAL(KIND=dp) :: RelativeChange, Tolerance, PrevDT = 0.0d0, Relaxation, SSCond
     INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
-        NeedSol, CalculateDerivative, TestConvergence, TestDivergence, DivergenceExit, &
+        NeedSol, CalculateDerivative, TestConvergence=.FALSE., TestDivergence, DivergenceExit, &
         ExecSlot, CoupledAbort
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
@@ -2707,7 +2714,9 @@ CONTAINS
     IF ( TransientSimulation ) THEN
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+        IF ( Solver % PROCEDURE /= 0 ) THEN
+          CALL InitializeTimestep(Solver)
+         END IF
       END DO
     END IF
 
@@ -3240,23 +3249,6 @@ CONTAINS
     INTEGER, POINTER :: VarInds(:)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: SolverParams
-
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE 
-      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
-          M, D, S, F, Element, Nrow, Ncol )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t)   :: Model
-        TYPE(Solver_t)  :: Solver
-        REAL(KIND=dp)   :: dt
-        LOGICAL :: Transient
-        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
-        TYPE(Element_t) :: Element
-        INTEGER :: Nrow, Ncol
-      END SUBROUTINE ExecLocalAssembly
-    END INTERFACE
-#endif
 
     SolverParams => ListGetSolverParams(Solver)
 
@@ -4569,22 +4561,6 @@ CONTAINS
     LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
     LOGICAL :: AllocationsDone = .FALSE., Diagonal
 
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE 
-      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
-          M, D, S, F, Element, Nrow, Ncol )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t)   :: Model
-        TYPE(Solver_t)  :: Solver
-        REAL(KIND=dp)   :: dt
-        LOGICAL :: Transient
-        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
-        TYPE(Element_t) :: Element
-        INTEGER :: Nrow, Ncol
-      END SUBROUTINE ExecLocalAssembly
-    END INTERFACE
-#endif
     SAVE :: AllocationsDone, AllocCols, AllocRows, &
         FORCE, STIFF, DAMP, MASS, ColInds, RowInds, indexes
 
@@ -5145,17 +5121,25 @@ CONTAINS
      ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
-    
+
+     ! This is more featured version than the original one with just one flag.
+     ! This way different solvers can detect when their mesh has been updated. 
+     Solver % MeshChanged = Solver % Mesh % Changed
+     IF( Solver % MeshTag /= Solver % Mesh % MeshTag ) THEN
+       Solver % MeshChanged = .TRUE.
+       Solver % MeshTag = Solver % Mesh % MeshTag
+     END IF       
+     
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL INFO("SingleSolver", "Attempting to call solver", level=5)
+     CALL Info("SingleSolver", "Attempting to call solver", level=5)
      SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
-        CALL INFO("SingleSolver", Message, level=5)
+        CALL Info("SingleSolver", Message, level=5)
      END IF
 
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
@@ -5181,7 +5165,6 @@ CONTAINS
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
-
      
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver

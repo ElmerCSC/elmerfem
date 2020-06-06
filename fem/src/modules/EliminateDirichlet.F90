@@ -63,11 +63,7 @@
 
   TYPE(Matrix_t), POINTER :: Bmatrix, Cmatrix, SaveMatrix
   REAL(KIND=dp), POINTER :: F(:), U(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) ::  TotTime, LinTime, at,s,r, br, bi
-#else
-  REAL(KIND=dp) ::  CPUtime, TotTime, LinTime, at,s,r, br, bi
-#endif
 
   LOGICAL :: stat, GotIt, EigAnal, DoChange
 

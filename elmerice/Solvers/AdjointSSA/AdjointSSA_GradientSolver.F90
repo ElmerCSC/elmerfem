@@ -29,6 +29,27 @@
 ! *  Original Date: 30. April 2010
 ! * 
 ! *****************************************************************************
+SUBROUTINE AdjointSSA_GradientSolver_init0(Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+
+  Name = ListGetString( Solver % Values, 'Equation',UnFoundFatal=.TRUE.)
+  CALL ListAddNewString( Solver % Values,'Variable',&
+          '-nooutput '//TRIM(Name)//'_var')
+  CALL ListAddLogical(Solver % Values, 'Optimize Bandwidth',.FALSE.)
+
+END SUBROUTINE AdjointSSA_GradientSolver_init0
+! *****************************************************************************
 SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !   Compute the Gradient of user defined cost functions with respect to various
@@ -130,12 +151,13 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
            NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
            NodalZs(:), NodalZb(:), NodalGM(:),NodalBed(:),  &
            NodalU(:), NodalV(:), NodalBeta(:),LocalLinVelo(:),&
-           Nodalbetab(:),Nodalzsb(:),Nodalzbb(:),NodalRhob(:),NodalEtab(:)
+           Nodalbetab(:),Nodalzsb(:),Nodalzbb(:),NodalRhob(:),NodalEtab(:),&
+           NodalEtaDer(:),NodalBetaDer(:)
 
   INTEGER :: iFriction
   REAL(KIND=dp) :: fm
   CHARACTER(LEN=MAX_NAME_LEN) :: Friction
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='DJDp_Adjoint_SSA'
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='AdjointSSA_GradientSolver'
 #ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: at, at0
 #else
@@ -146,6 +168,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: GMSol,BedrockSol
 
   LOGICAL , SAVE :: ComputeDJDBeta,ComputeDJDZs,ComputeDJDZb,ComputeDJDRho,ComputeDJDEta,Reset
+  LOGICAL :: HaveBetaDer,HaveEtaDer
   CHARACTER(LEN=MAX_NAME_LEN), SAVE :: NeumannSolName,AdjointSolName,SName
   INTEGER,SAVE :: SolverInd
 
@@ -154,7 +177,8 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
            NodalZs, NodalZb, NodalGM,NodalBed,  &
            NodalU, NodalV, NodeIndexes, NodalBeta,LocalLinVelo, &
-           Nodalbetab,Nodalzsb,NodalZbb,NodalRhob,NodalEtab
+           Nodalbetab,Nodalzsb,NodalZbb,NodalRhob,NodalEtab,&
+           NodalEtaDer,NodalBetaDer
   SAVE STDOFs
 
 !------------------------------------------------------------------------------
@@ -220,6 +244,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
                        NodalZb, NodalZs, NodalGM,NodalBed, NodalU, NodalV, &
                        NodalBeta,LocalLinVelo, Nodalbetab,Nodalzsb,NodalRhob,&
                        NodalEtab,NodalZbb,&
+                       NodalBetaDer,NodalEtaDer,&
                        ElementNodes % x, &
                        ElementNodes % y, ElementNodes % z )
 
@@ -229,6 +254,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
           NodalU(N), NodalV(N), NodalBeta(N), LocalLinVelo(N),&
           Nodalbetab(N),NodalZsb(N), NodalRhob(N),NodalEtab(N),&
           NodalZbb(N),&
+          NodalBetaDer(N),NodalEtaDer(N),&
           ElementNodes % x(N), ElementNodes % y(N), ElementNodes % z(N), &
            STAT=istat )
      IF ( istat /= 0 ) THEN
@@ -279,7 +305,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
             WRITE(SName,'(A)') 'DJDBeta'
             CALL ListAddString(  SolverParams, 'DJDBeta Name', TRIM(SName))
       END IF
-      DJDBetaSol => VariableGet( Solver % Mesh % Variables, SName ,UnFoundFatal=.TRUE. )
+      DJDBetaSol => VariableGet( Solver % Mesh % Variables, TRIM(SName) ,UnFoundFatal=.TRUE. )
       DJDBeta => DJDBetaSol % Values
       DJDBetaPerm => DJDBetaSol % Perm
 
@@ -321,12 +347,11 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
         if (Reset.OR.(.NOT.Found)) DJDEta = 0.0
   END IF
 
-
   ! bulk assembly
   DO t=1,Solver % NumberOfActiveElements
      Element => GetActiveElement(t)
      IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
-     n = GetElementNOFNodes()
+     n = GetElementNOFNodes(Element)
 
      NodeIndexes => Element % NodeIndexes
 
@@ -371,6 +396,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 
      NodalViscosity=0.0_dp
      NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,UnFoundFatal=.TRUE.)
+     NodalEtaDer(1:n) = ListGetReal( Material, 'SSA Mean Viscosity Derivative',n, NodeIndexes,Found=HaveEtaDer)
 
      Friction = ListGetString(Material, 'SSA Friction Law', UnFoundFatal=.TRUE.)
 
@@ -386,6 +412,7 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 
 
    NodalBeta(1:n) = ListGetReal( Material, 'SSA Friction Parameter',n, NodeIndexes,UnFoundFatal=.TRUE.)
+   NodalBetaDer(1:n) = ListGetReal( Material, 'SSA Friction Parameter Derivative',n, NodeIndexes,Found=HaveBetaDer)
    IF (iFriction > 1) THEN
         fm = ListGetConstReal( Material, 'SSA Friction Exponent', UnFoundFatal=.TRUE. )
 
@@ -407,10 +434,9 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
    NodalV = 0.0
    IF (STDOFs.EQ.2) NodalV(1:n) = VelocityN(STDOFs*(VeloNPerm(NodeIndexes(1:n))-1)+2)
       
-
    CALL LocalMatrixUVSSA (  STIFF, FORCE, Element, n, ElementNodes, NodalGravity, &
-        NodalDensity, NodalViscosity, NodalZb, NodalZs, &
-        NodalU, NodalV, NodalBeta,iFriction,fm,LocalLinVelo, cn, &
+        NodalDensity, NodalViscosity, NodalEtaDer,HaveEtaDer,NodalZb, NodalZs, &
+        NodalU, NodalV, NodalBeta,NodalBetaDer,HaveBetaDer,iFriction,fm,LocalLinVelo, cn, &
         NodalGM,NodalBed,SEP,GLnIP,sealevel,rhow,&
         MinSRInv , STDOFs,&
         Nodalbetab,nodalzsb,nodalzbb,nodalrhob,nodaletab)
@@ -433,13 +459,16 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
 !
   DO t=1,GetNOFBoundaryElements()
      BoundaryElement => GetBoundaryElement(t)
-     IF ( .NOT. ActiveBoundaryElement() ) CYCLE
+
+
+     IF ( .NOT. ActiveBoundaryElement(BoundaryElement,Solver) ) CYCLE
      IF ( GetElementFamily() == 1 ) CYCLE
 
      NodeIndexes => BoundaryElement % NodeIndexes
-     IF (ParEnv % myPe .NE. BoundaryElement % partIndex) CYCLE
+     !IF (ParEnv % myPe .NE. BoundaryElement % partIndex) CYCLE
 
-     n = GetElementNOFNodes()
+
+     n = GetElementNOFNodes(BoundaryElement)
      FORCE = 0.0e0
      STIFF = 0.0e0
 
@@ -459,7 +488,6 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
            CALL Fatal( SolverName, Message)
            STOP
         END IF
-
 
      BC => GetBC()
      IF (.NOT.ASSOCIATED( BC ) ) CYCLE
@@ -513,13 +541,13 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
      END IF
   END DO
 
-
+  RETURN
 CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixUVSSA(  STIFF, FORCE, Element, n, Nodes, gravity, &
-           Density, Viscosity, LocalZb, LocalZs, LocalU, &
-           LocalV, LocalBeta,iFriction,fm,LocalLinVelo, cm,&
+           Density, Viscosity,NodalEtaDer,HaveEtaDer, LocalZb, LocalZs, LocalU, &
+           LocalV, LocalBeta,NodalBetaDer,HaveBetaDer,iFriction,fm,LocalLinVelo, cm,&
            NodalGM,NodalBed,SEP,GLnIP,sealevel,rhow,&
            MinSRInv, STDOFs , &
             nodalbetab,nodalzsb,nodalzbb,nodalrhob,nodaletab )
@@ -527,7 +555,9 @@ CONTAINS
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), gravity(:), Density(:), &
                      Viscosity(:), LocalZb(:), LocalZs(:), &
                      LocalU(:), LocalV(:) , LocalBeta(:),LocalLinVelo(:), &
-                     nodalbetab(:),nodalzbb(:),nodalzsb(:),nodalrhob(:),nodaletab(:)
+                     nodalbetab(:),nodalzbb(:),nodalzsb(:),nodalrhob(:),nodaletab(:),&
+                     NodalEtaDer(:),NodalBetaDer(:)
+    LOGICAL :: HaveEtaDer,HaveBetaDer
     INTEGER :: n, cp , STDOFs
     INTEGER :: iFriction
     REAL(KIND=dp) :: cm,fm
@@ -551,6 +581,7 @@ CONTAINS
 
     TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
+
 
     nodalbetab = 0.0_dp
     nodalzsb = 0.0_dp
@@ -681,14 +712,24 @@ CONTAINS
         END IF
        END IF
 
-       nodalbetab(1:n)=nodalbetab(1:n)+betab*Basis(1:n)
+       IF (HaveBetaDer) THEN
+         nodalbetab(1:n)=nodalbetab(1:n)+betab*Basis(1:n)*NodalBetaDer(1:n)
+       ELSE
+         nodalbetab(1:n)=nodalbetab(1:n)+betab*Basis(1:n)
+       ENDIF
+
        nodalzbb(1:n)=nodalzbb(1:n)-hb*Basis(1:n)
        nodalzsb(1:n)=nodalzsb(1:n)+hb*Basis(1:n)
        Do i=1,STDOFS
         nodalzsb(1:n)=nodalzsb(1:n)+gradsb(i)*dBasisdx(1:n,i)
        End do
        nodalrhob(1:n)=nodalrhob(1:n)+rhob*Basis(1:n)
-       nodaletab(1:n)=nodaletab(1:n)+etab*Basis(1:n)
+
+       IF (HaveEtaDer) THEN
+         nodaletab(1:n)=nodaletab(1:n)+etab*Basis(1:n)*NodalEtaDer(1:n)
+       ELSE
+         nodaletab(1:n)=nodaletab(1:n)+etab*Basis(1:n)
+       ENDIF
 
     END DO !IP
 

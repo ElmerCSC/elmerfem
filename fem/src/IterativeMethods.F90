@@ -168,7 +168,7 @@ CONTAINS
   SUBROUTINE itermethod_sgs( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
-#ifdef USE_ISO_C_BINDINGS
+
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
@@ -182,20 +182,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    REAL(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp) :: &
-      xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
-#endif
+
     INTEGER :: ndim
     INTEGER :: Rounds, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual, Omega
@@ -298,7 +285,7 @@ CONTAINS
  SUBROUTINE itermethod_jacobi( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
-#ifdef USE_ISO_C_BINDINGS
+
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
@@ -312,21 +299,7 @@ CONTAINS
     REAL(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
 
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    REAL(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp) :: &
-       xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
-#endif
     INTEGER :: ndim
     INTEGER :: Rounds, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
@@ -419,7 +392,7 @@ CONTAINS
  SUBROUTINE itermethod_richardson( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
-#ifdef USE_ISO_C_BINDINGS
+
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
@@ -433,21 +406,6 @@ CONTAINS
     REAL(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    REAL(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp) :: &
-       xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
-#endif
 
     INTEGER :: ndim
     INTEGER :: Rounds, OutputInterval
@@ -553,14 +511,9 @@ CONTAINS
 !-----------------------------------------------------------------------------------
     SUBROUTINE C_matvec(u,v,ipar,matvecsubr)
 !-----------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
       USE huti_interfaces
       IMPLICIT NONE
       PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
-#else
-      IMPLICIT NONE
-      EXTERNAL matvecsubr
-#endif
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
 !-----------------------------------------------------------------------------------
@@ -587,14 +540,9 @@ CONTAINS
 !-----------------------------------------------------------------------------------
     RECURSIVE SUBROUTINE C_lpcond(u,v,ipar,pcondlsubr)
 !-----------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
       USE huti_interfaces
       IMPLICIT NONE
       PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
-#else
-      IMPLICIT NONE
-      EXTERNAL pcondlsubr
-#endif
       INTEGER :: ipar(*)
       REAL(KIND=dp) :: u(*),v(*)
 
@@ -616,7 +564,7 @@ CONTAINS
   SUBROUTINE itermethod_bicgstabl( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
-#ifdef USE_ISO_C_BINDINGS
+
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
@@ -632,20 +580,7 @@ CONTAINS
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
     ! DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    REAL(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp), TARGET :: &
-      xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
-#endif
+
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
@@ -1225,7 +1160,7 @@ CONTAINS
  SUBROUTINE itermethod_gcr( xvec, rhsvec, &
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
-#ifdef USE_ISO_C_BINDINGS
+
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
@@ -1239,21 +1174,7 @@ CONTAINS
     REAL(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
 
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    REAL(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp), TARGET :: &
-       xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
-#endif
     INTEGER :: ndim, RestartN
     INTEGER :: Rounds, MinIter, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
@@ -1518,7 +1439,6 @@ CONTAINS
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
@@ -1534,20 +1454,6 @@ CONTAINS
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     REAL(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
     ! DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    REAL(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp), TARGET :: &
-      xvec(HUTI_NDIM),rhsvec(HUTI_NDIM),work(HUTI_WRKDIM,HUTI_NDIM)
-#endif
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, s
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
@@ -1955,7 +1861,6 @@ CONTAINS
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
@@ -1969,21 +1874,6 @@ CONTAINS
     COMPLEX(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     COMPLEX(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    COMPLEX(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-    
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp) :: &
-       xvec(2*HUTI_NDIM),rhsvec(2*HUTI_NDIM),work(HUTI_WRKDIM,2*HUTI_NDIM)
-#endif
 
     COMPLEX(KIND=dp) :: y(HUTI_NDIM),f(HUTI_NDIM)
     INTEGER :: ndim, RestartN, i
@@ -2005,17 +1895,10 @@ CONTAINS
     ! Transform the solution vector and the right-hand side vector to 
     ! complex-valued vectors y and f
     !---------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     DO i=1,ndim
-        y(i)=xvec(i)
-        f(i)=rhsvec(i)
+      y(i)=xvec(i)
+      f(i)=rhsvec(i)
     END DO
-#else
-    DO i=1,ndim
-      y(i) = CMPLX( xvec(2*i-1), xvec(2*i), kind=dp )
-      f(i) = CMPLX( rhsvec(2*i-1), rhsvec(2*i), kind=dp )
-    END DO
-#endif
        
     CALL GCR_Z(ndim, GlobalMatrix, y, f, Rounds, MinTol, MaxTol, Residual, &
         Converged, Diverged, OutputInterval, RestartN )
@@ -2024,20 +1907,9 @@ CONTAINS
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
    
-#ifdef USE_ISO_C_BINDINGS
     DO i=1,ndim
       xvec(i) = y(i)
     END DO
-#else
-    !----------------------------------------------
-    ! Return the solution as a real vector...
-    !----------------------------------------------
-    DO i=1,ndim
-      xvec( 2*i-1 ) = REAL( y(i) )
-      xvec( 2*i ) = AIMAG( y(i) )
-    END DO
-#endif
-
 
   CONTAINS 
     
@@ -2179,7 +2051,6 @@ CONTAINS
        ipar, dpar, work, matvecsubr, pcondlsubr, &
        pcondrsubr, dotprodfun, normfun, stopcfun )
  !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
@@ -2193,21 +2064,6 @@ CONTAINS
     COMPLEX(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     COMPLEX(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    COMPLEX(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp) :: &
-         xvec(2*HUTI_NDIM),rhsvec(2*HUTI_NDIM),work(HUTI_WRKDIM,2*HUTI_NDIM)
-#endif
 
     COMPLEX(KIND=dp) :: y(HUTI_NDIM),f(HUTI_NDIM)
     INTEGER :: ndim, i, PolynomialDegree
@@ -2226,17 +2082,11 @@ CONTAINS
     ! Transform the solution vector and the right-hand side vector to 
     ! complex-valued vectors y and f
     !---------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     DO i=1,ndim
-        y(i)=xvec(i)
-        f(i)=rhsvec(i)
+      y(i)=xvec(i)
+      f(i)=rhsvec(i)
     END DO
-#else
-    DO i=1,ndim
-       y(i) = CMPLX( xvec(2*i-1), xvec(2*i), kind=dp )
-       f(i) = CMPLX( rhsvec(2*i-1), rhsvec(2*i), kind=dp )
-    END DO
-#endif
+
     CALL ComplexBiCGStabl(ndim, GlobalMatrix, y, f, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, PolynomialDegree)
 
@@ -2244,19 +2094,9 @@ CONTAINS
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
 
-#ifdef USE_ISO_C_BINDINGS
     DO i=1,ndim
       xvec(i) = y(i)
     END DO
-#else
-    !----------------------------------------------
-    ! Return the solution as a real vector...
-    !----------------------------------------------
-    DO i=1,ndim
-      xvec( 2*i-1 ) = REAL( y(i) )
-      xvec( 2*i ) = AIMAG( y(i) )
-    END DO
-#endif
 
   CONTAINS 
 
@@ -2521,7 +2361,6 @@ CONTAINS
       ipar, dpar, work, matvecsubr, pcondlsubr, &
       pcondrsubr, dotprodfun, normfun, stopcfun )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     USE huti_interfaces
     IMPLICIT NONE
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
@@ -2535,21 +2374,6 @@ CONTAINS
     COMPLEX(KIND=dp), TARGET, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     COMPLEX(KIND=dp), DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-#else
-    IMPLICIT NONE
-
-    EXTERNAL matvecsubr, pcondlsubr, pcondrsubr
-    EXTERNAL dotprodfun, normfun, stopcfun
-    COMPLEX(KIND=dp) :: dotprodfun
-    REAL(KIND=dp) :: normfun
-    REAL(KIND=dp) :: stopcfun
-
-    ! Parameters
-    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
-    REAL(KIND=dp), DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL(KIND=dp) :: &
-         xvec(2*HUTI_NDIM),rhsvec(2*HUTI_NDIM),work(HUTI_WRKDIM,2*HUTI_NDIM)
-#endif
 
     COMPLEX(KIND=dp) :: y(HUTI_NDIM),f(HUTI_NDIM)
     INTEGER :: ndim, i, s
@@ -2568,17 +2392,10 @@ CONTAINS
     ! Transform the solution vector and the right-hand side vector to 
     ! complex-valued vectors y and f
     !---------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     DO i=1,ndim
-        y(i)=xvec(i)
-        f(i)=rhsvec(i)
+      y(i)=xvec(i)
+      f(i)=rhsvec(i)
     END DO
-#else
-    DO i=1,ndim
-       y(i) = CMPLX( xvec(2*i-1), xvec(2*i), kind=dp )
-       f(i) = CMPLX( rhsvec(2*i-1), rhsvec(2*i), kind=dp )
-    END DO
-#endif
     CALL ComplexIDRS(ndim, GlobalMatrix, y, f, Rounds, MinTol, MaxTol, &
          Converged, Diverged, OutputInterval, s )
 
@@ -2586,19 +2403,9 @@ CONTAINS
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
 
-#ifdef USE_ISO_C_BINDINGS
     DO i=1,ndim
       xvec(i) = y(i)
     END DO
-#else
-    !----------------------------------------------
-    ! Return the solution as a real vector...
-    !----------------------------------------------
-    DO i=1,ndim
-      xvec( 2*i-1 ) = REAL( y(i) )
-      xvec( 2*i ) = AIMAG( y(i) )
-    END DO
-#endif
 
   CONTAINS 
 

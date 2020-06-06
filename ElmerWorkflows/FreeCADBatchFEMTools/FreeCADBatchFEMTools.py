@@ -39,6 +39,8 @@ import math
 import itertools
 import subprocess
 
+import meshutils
+
 
 def fit_view():
     """
@@ -278,6 +280,40 @@ def is_point_inside_solid_with_round(solid, vector, tolerance=0.0001, round_digi
         vector.y = coordinates[1]
         vector.z = coordinates[2]
         if is_point_inside_solid(solid, vector, tolerance):
+            return True
+    return False
+
+def is_same_vertices(vertex1, vertex2, tolerance=0.0001):
+    """
+    Checks if given vertices are same.
+
+    :param vertex1: FreeCAD vertex
+    :param vertex2: FreeCAD vertex
+    :param tolerance: float
+
+    :return: bool
+    """
+    if abs(vertex1.X - vertex2.X) < tolerance:
+        if abs(vertex1.Y - vertex2.Y) < tolerance:
+            if abs(vertex1.Z - vertex2.Z) < tolerance:
+                return True
+    return False
+
+def is_same_edge(edge1, edge2, tolerance=0.0001):
+    """
+    Checks if given edges are in same place by comparing end points.
+
+    :param edge1: FreeCAD edge
+    :param edge2: FreeCAD edge
+    :param tolerance: float
+
+    :return: bool
+    """
+    if is_same_vertices(edge1.Vertexes[0], edge2.Vertexes[0], tolerance):
+        if is_same_vertices(edge1.Vertexes[1], edge2.Vertexes[1], tolerance):
+            return True
+    elif is_same_vertices(edge1.Vertexes[0], edge2.Vertexes[1], tolerance):
+        if is_same_vertices(edge1.Vertexes[1], edge2.Vertexes[0], tolerance):
             return True
     return False
 
@@ -541,20 +577,24 @@ def create_compound_filter(compsolid):
     compound_filter.Proxy.execute(compound_filter) #???
     return compound_filter
 
-def create_mesh_object(compound_filter, CharacteristicLength, doc):
+def create_mesh_object(compound_filter, CharacteristicLength, doc, algorithm2d='Automatic', algorithm3d='New Delaunay'):
     """
     Creates a mesh object that controls the mesh definitions.
 
     :param compound_filter: FreeCAD compound filter object
     :param CharacteristicLength: Default mesh size characteristic length
     :param doc: FreeCAD document.
+    :param algorithm2d: String 'MeshAdapt', 'Automatic', 'Delaunay', 'Frontal', 'BAMG', 'DelQuad'.
+    :param algorithm3d: String 'Delaunay', 'New Delaunay', 'Frontal', 'Frontal Delaunay', 'Frontal Hex',
+                        'MMG3D', 'R-tree'.
     :return: FreeCAD mesh object
     """
     # Make a FEM mesh and mesh groups for material bodies and boundary conditions
     mesh_object = ObjectsFem.makeMeshGmsh(doc, 'GMSHMeshObject')
     mesh_object.Part = compound_filter
     mesh_object.CharacteristicLengthMax = CharacteristicLength
-    mesh_object.Algorithm3D = 'New Delaunay'
+    mesh_object.Algorithm2D = algorithm2d
+    mesh_object.Algorithm3D = algorithm3d
     mesh_object.ElementOrder = u"1st"
     return mesh_object
 
@@ -569,6 +609,16 @@ def set_mesh_group_elements(gmsh_mesh):
         gmsh_mesh.group_elements[mg.Label] = list(mg.References[0][1])  # tuple to list
     if gmsh_mesh.group_elements:
         FreeCAD.Console.PrintMessage('  {}\n'.format(gmsh_mesh.group_elements))
+
+def _remove_ansi_color_escape_codes(message):
+    """
+    Replace color code escape codes from message with empty string.
+
+    :param message: A string.
+
+    :return: A string.
+    """
+    return message.replace('\x1b[1m', '').replace('\x1b[31m', '').replace('\x1b[35m', '').replace('\x1b[0m', '')
 
 def run_gmsh(gmsh_mesh, gmsh_log_file=None):
     """
@@ -585,16 +635,17 @@ def run_gmsh(gmsh_mesh, gmsh_log_file=None):
         try:
             with open(gmsh_log_file, 'w') as f:
                 p = subprocess.Popen([gmsh_mesh.gmsh_bin, '-', gmsh_mesh.temp_file_geo],
-                                     stdout=f, stderr=subprocess.PIPE)
+                                     stdout=f, stderr=subprocess.PIPE, universal_newlines=True)
                 no_value, error = p.communicate()
                 if error:
-                    f.write(str(error))
+                    error = _remove_ansi_color_escape_codes(error)
+                    f.write(error)
                     f.flush()
         except Exception:
             error = 'Error executing gmsh'
     return error
 
-def create_mesh(mesh_object, directory=False, gmsh_log_file=None):
+def create_mesh(mesh_object, directory=False, gmsh_log_file=None, transfinite_param_list=None):
     """
     Create mesh mesh with Gmsh.
     Value of directory determines location gmsh temporary files::
@@ -606,6 +657,8 @@ def create_mesh(mesh_object, directory=False, gmsh_log_file=None):
     :param mesh_object: FreeCAD mesh object
     :param directory: Gmsh temp file location.
     :param gmsh_log_file: None or path to gmsh_log.
+    :param transfinite_param_list: None or a list containing dictionaries {'volume': 'name',
+                                                                           'surface_list': [s_name, sname2]}.
 
     :return: None or gmsh error text.
     """
@@ -623,14 +676,16 @@ def create_mesh(mesh_object, directory=False, gmsh_log_file=None):
     gmsh_mesh.get_tmp_file_paths(param_working_dir=directory)
     gmsh_mesh.get_gmsh_command()
     gmsh_mesh.write_gmsh_input_files()
+    if transfinite_param_list:
+        meshutils.add_transfinite_lines_to_geo_file(directory, transfinite_param_list)
     error = run_gmsh(gmsh_mesh, gmsh_log_file)
-    gmsh_mesh.read_and_set_new_mesh()
     if error:
         FreeCAD.Console.PrintError('{}\n'.format(error))
         return error
     gmsh_mesh.read_and_set_new_mesh()
 
-def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc, separate_boundaries=False):
+def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, doc, separate_boundaries=False,
+                                           algorithm2d='Automatic', algorithm3d='New Delaunay'):
     """
     Creates FreeCAD mesh and compound filter objects. Uses create_boolean_compound/create_compound and
     create_compound_filter, create_mesh_object methods.
@@ -639,22 +694,26 @@ def create_mesh_object_and_compound_filter(solid_objects, CharacteristicLength, 
     :param CharacteristicLength: Default mesh size characteristic length
     :param doc: FreeCAD document.
     :param separate_boundaries: Boolean (create compound instead of boolean fragment).
+    :param algorithm2d: String 'MeshAdapt', 'Automatic', 'Delaunay', 'Frontal', 'BAMG', 'DelQuad'.
+    :param algorithm3d: String 'Delaunay', 'New Delaunay', 'Frontal', 'Frontal Delaunay', 'Frontal Hex',
+                        'MMG3D', 'R-tree'.
     """
     if len(solid_objects) == 1 or separate_boundaries:  # boolean compound can not be created with only one solid
         boolean_compound = create_compound(solid_objects, doc)
     else:
         boolean_compound = create_boolean_compound(solid_objects, doc)
     compound_filter = create_compound_filter(boolean_compound)
-    mesh_object = create_mesh_object(compound_filter, CharacteristicLength, doc)
+    mesh_object = create_mesh_object(compound_filter, CharacteristicLength, doc, algorithm2d, algorithm3d)
     return mesh_object, compound_filter
 
-def run_elmergrid(export_path, mesh_object, out_dir=None):
+def run_elmergrid(export_path, mesh_object, out_dir=None, log_file=None):
     """
     Run ElmerGrid as an external process if it found in the operating system.
 
     :param export_path: path where the result is written
     :param mesh_object: FreeCAD mesh object that is to be exported
     :param out_dir: directory where to write mesh files (if not given unv file name is used)
+    :param log_file: None or a string.
     """
     # Export to UNV file for Elmer
     export_objects = [mesh_object]
@@ -663,15 +722,20 @@ def run_elmergrid(export_path, mesh_object, out_dir=None):
     if out_dir is not None:
         elmerGrid_command += ' -out ' + out_dir
 
-    from PySide import QtCore, QtGui
-    try:
+    FreeCAD.Console.PrintMessage('Running ' + elmerGrid_command + '\n')
+    if log_file is not None:
+        with open(log_file, 'w') as f:
+            p = subprocess.Popen(elmerGrid_command.split(), stdout=f, stderr=subprocess.STDOUT)
+            p.communicate()
+    else:
+        from PySide import QtCore, QtGui
+        try:
             process = QtCore.QProcess()
             process.startDetached(elmerGrid_command)
-            FreeCAD.Console.PrintMessage('Running ' + elmerGrid_command + '\n')
-            FreeCAD.Console.PrintMessage('Finished ' + elmerGrid_command + '\n')
-    except:
+        except:
             FreeCAD.Console.PrintError('Error')
             QtGui.QMessageBox.critical(None, 'Error', 'Error!!', QtGui.QMessageBox.Abort)
+    FreeCAD.Console.PrintMessage('Finished ElmerGrid\n')
 
 def export_unv(export_path, mesh_object):
     """
@@ -682,9 +746,24 @@ def export_unv(export_path, mesh_object):
     """
     Fem.export([mesh_object], export_path)
 
+def find_compound_filter_edge(compound_filter, edge):
+    """
+    Find which edge in the compound filter object is the edge as the one given in second argument.
+    Returns the name of the edge in compound filter.
+
+    :param compound_filter: FreeCAD compound filter.
+    :param edge: FreeCAD edge.
+
+    :return: A string.
+    """
+    for num, c_edge in enumerate(compound_filter.Shape.Edges):
+        if is_same_edge(c_edge, edge):
+            return str(num+1)
+    raise ValueError('Edge not found')
+
 def find_compound_filter_boundary(compound_filter, face):
     """
-    Find which face in the compound filter object is the face as the one given in second argument
+    Find which face in the compound filter object is the face as the one given in second argument.
     Returns the name of the face in compound filter.
 
     :param compound_filter: FreeCAD compound filter
@@ -702,7 +781,7 @@ def find_compound_filter_boundary(compound_filter, face):
 
 def find_compound_filter_solid(compound_filter, solid):
     """
-    Find which solid in the compound filter object is the solid as the one given in second argument
+    Find which solid in the compound filter object is the solid as the one given in second argument.
     Returns the name of the solid in compound filter.
 
     :param compound_filter: FreeCAD compound filter
@@ -851,12 +930,19 @@ def add_symmetry_plane_faces_in_entity_list(entity_list, geom_object, plane, mes
     add_geom_obj_list_in_entitylist(entity_list, plane, faces_in_symmetry_plane)
 
 def get_entitylist_faces(entity_list):
+    """
+    Collects geometric objects from dictionaries in entity_list.
+
+    :param entity_list: list
+
+    :return: list
+    """
     faces = []
     for entity in entity_list:
         faces.append(entity['geometric object'])
     return faces
 
-def create_entities_dict(name, face_entity_list, solid_entity_list, main_object=None):
+def create_entities_dict(name, face_entity_list, solid_entity_list, main_object=None, params=None):
     """
     Helper method for creating an entities dictionary.
 
@@ -864,6 +950,8 @@ def create_entities_dict(name, face_entity_list, solid_entity_list, main_object=
     :param face_entity_list: [face_entity_1, ..., face_entity_n]
     :param solid_entity_list: [solid_entity_1, ..., solid_entity_n]
     :param main_object: main object (usually a solid when the entity only has one)
+    :param params: None or a dictionary added to entities_dict:
+
     :return: entities_dict
     """
     entities_dict = {
@@ -872,23 +960,27 @@ def create_entities_dict(name, face_entity_list, solid_entity_list, main_object=
             'solids': solid_entity_list,
             'main object': main_object
             }
+    if params:
+        entities_dict.update(params)
     return entities_dict
 
 def pick_faces_from_geometry(geom_object, face_picks, mesh_sizes=None):
     """
     Helper function for picking faces from a geometry object.
-    The mesh sizes can be defined by providing the following dictionary:
-    mesh_sizes={
-                entity_name_1:mesh_size_for_entity_name_1,
-                ...
-                entity_name_n:mesh_size_for_entity_name_n,
-                mesh size:mesh size if name is not in the dict
-               }
+    The mesh sizes can be defined by providing the following dictionary::
+
+        mesh_sizes={
+                    entity_name_1:mesh_size_for_entity_name_1,
+                    ...
+                    entity_name_n:mesh_size_for_entity_name_n,
+                    mesh size:mesh size if name is not in the dict
+                     }
 
     :param geom_object: FreeCAD geometric object where the faces are picked
-    :face_picks: tuple('name of the face', int(face_number))
-    :mesh_sizes: dict
-    :return:
+    :param face_picks: tuple('name of the face', int(face_number))
+    :param mesh_sizes: dict
+
+    :return: list
     """
     faces = []
     face_objects = geom_object.Shape.Faces
@@ -898,21 +990,58 @@ def pick_faces_from_geometry(geom_object, face_picks, mesh_sizes=None):
         add_entity_in_list(faces, face_name, face_objects[face_number], mesh_sizes)
     return faces
 
+def create_transfinite_mesh_param_dict(volume_name, surface_name_list, direction_dict=None, line_params=None):
+    """
+    Creates transfinite mesh parameter dictionary e.g.::
+
+        {'transfinite_mesh_params': {'volume': 'A1',
+                                     'surface_list': ['A1_alpha0', 'A1_alpha1']}
+        }
+
+    :param volume_name: List containing volume names.
+    :param surface_name_list: List containing surface names.
+    :param direction_dict: None or a dictionary e.g. {'A1_alpha0': 'Left'} (added to geo file).
+    :param line_params: None or a list containing dictionaries (see function create_transfinite_line_param_dict).
+
+    :return: Dictionary.
+    """
+    mesh_params = {'volume': volume_name,
+                   'surface_list': surface_name_list}
+    if direction_dict:
+        mesh_params.update(direction_dict)
+    if line_params:
+        mesh_params['line_params'] = line_params
+    return {'transfinite_mesh_params': mesh_params}
+
+def create_transfinite_line_param_dict(edge_list, nof_points, progression=1, comment=''):
+    """
+    Creates dictionary containing transfinite line parameters.
+
+    :param edge_list: List containing FreeCAD edge objects.
+    :param nof_points: Integer.
+    :param progression: Number.
+    :param comment: String (commented in geo file).
+
+    :return: Dictionary.
+    """
+    return {'edges': edge_list, 'points': str(nof_points), 'progression': str(progression), 'comment': comment}
+
 def merge_entities_dicts(entities_dicts, name, default_mesh_size=None, add_prefixes=None):
     """ 
     This method merges all the entities_dicts and optionally prefixes the entity names with the 
     name of the entity. As default the solids are not prefixed but the faces are.
 
     :param entities_dicts: [entities_dict_1, ..., entities_dict_n]
-    :name: string
-    :default_mesh_size: float
-    :add_prefixes: {'solids':bool, 'faces':bool}
+    :param name: string
+    :param default_mesh_size: float
+    :param add_prefixes: {'solids':bool, 'faces':bool}
     """
     if add_prefixes is None:
         add_prefixes = {'solids': False, 'faces': True}
     entities_out = {'name': name}
     faces = []
     solids = []
+    transfinite_mesh_params = []
     for d in entities_dicts:
         for face in d['faces']:
             if face['mesh size'] is None: face['mesh size'] = default_mesh_size
@@ -924,8 +1053,11 @@ def merge_entities_dicts(entities_dicts, name, default_mesh_size=None, add_prefi
             else: solid_name = solid['name']
             if solid['mesh size'] is None: solid['mesh size'] = default_mesh_size
             add_entity_in_list(solids, solid_name, solid['geometric object'], {'mesh size':solid['mesh size']})
+        if d.get('transfinite_mesh_params', {}):
+            transfinite_mesh_params.append(d['transfinite_mesh_params'])
     entities_out['faces'] = faces
     entities_out['solids'] = solids
+    entities_out['transfinite_mesh_params'] = transfinite_mesh_params
     return entities_out
 
 def get_solids_from_entities_dict(entities_dict):
@@ -959,6 +1091,31 @@ def create_mesh_group_and_set_mesh_size(mesh_object, doc, name, mesh_size):
     obj.addProperty('App::PropertyFloat', 'mesh_size')
     obj.mesh_size = mesh_size
     return obj
+
+def find_lines_to_transfinite_mesh_params(compound_filter, entities_dict):
+    """
+    Find edge names from compound_filter and adds them to transfinite mesh parameters.
+
+    Example of list entities_dict['transfinite_mesh_params'] after this function::
+
+        [{'volume': 'A1',
+          'surface_list': ['A1_alpha0', 'A1_alpha1']
+          'line_params': [{'edges': [edgeObject1, edgeObject2],
+                           'lines': ['1', '2'],                  # this function adds these
+                           'points': '11',
+                           'progression': '1',
+                           'comment': ''}]
+        }]
+
+    :param compound_filter: FreeCAD compound filter.
+    :param entities_dict: A dictionary containing transfinite_mesh_params.
+    """
+    for mesh_param_dict in entities_dict['transfinite_mesh_params']:
+        for line_param_dict in mesh_param_dict.get('line_params', []):
+            line_ids = []
+            for edge in line_param_dict['edges']:
+                line_ids.append(find_compound_filter_edge(compound_filter, edge))
+            line_param_dict['lines'] = line_ids
 
 def merge_boundaries(mesh_object, compound_filter, doc, face_entity_dict, compound_face_names, face_name_list,
                      surface_objs, surface_objs_by_compound_face_names, surface_object=None):

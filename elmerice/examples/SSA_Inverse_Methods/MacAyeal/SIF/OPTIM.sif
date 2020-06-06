@@ -1,0 +1,242 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! PARAMETERS
+!! Name of the RUN 
+$name="<NAME>"
+!! Regularisation parameter
+$Lambda=<Lambda>
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$OBSERVATION_FILE="<OBS_FILE>"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$yearinsec = 365.25*24*60*60
+$rhoi = 917.0/(1.0e6*yearinsec^2)  ! MPa - a - m
+$rhow = 1028.0/(1.0e6*yearinsec^2)
+$gravity = -9.81*yearinsec^2
+$mu=1.8e8*1.0e-6*(2.0*yearinsec)^(-1.0/3.0)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh2D"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  Water Density = Real $rhow
+  sea level = Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 200
+
+  Post File = "OPTIM_$name$_.vtu"
+  OutPut Intervals = 25
+
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+! True value
+ BetaS = Variable coordinate 1, Coordinate 2
+     REAL procedure "MacAyeal_USFs" "betaSquare"
+
+! Initial guess
+ alpha = Real 1.0e-3
+
+! Topography
+ Zb = Variable coordinate 1, Coordinate 2
+     REAL procedure "MacAyeal_USFs" "Zb"
+
+ Zs = Variable coordinate 1, Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Zs"
+
+ SSAVelocity 1 = Real 0.0
+ SSAVelocity 2 = Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0            
+  Flow BodyForce 2 = Real 0.0              
+  Flow BodyForce 3 = Real $gravity
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Viscosity Exponent = Real $1.0e00/3.0e00
+  Critical Shear Rate = Real 1.0e-10
+
+  SSA Mean Density = Real $rhoi
+  SSA Mean Viscosity = Real $ mu
+
+  SSA Friction Law = String "linear"
+  ! The friction parameter is the square of the optimised variable to insure > 0
+  SSA Friction Parameter = Variable alpha
+      REAL procedure "ElmerIceUSF" "Asquare"
+
+  SSA Friction Parameter Derivative = Variable alpha
+     REAL procedure "ElmerIceUSF" "Asquare_d"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "SSA"
+  Variable = -dofs 2 "SSAVelocity"
+
+  Procedure = "ElmerIceSolvers" "AdjointSSA_SSASolver"
+
+   Linear System Solver = Iterative
+   Linear System Iterative Method = GCR
+   Linear System GMRES Restart = 100
+   Linear System Preconditioning= ILU0
+   Linear System Convergence Tolerance= 1.0e-12
+   Linear System Max Iterations = 1000
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-10
+  Nonlinear System Newton After Iterations = 40
+  Nonlinear System Newton After Tolerance = 1.0e-06
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-12
+
+! Create variables required for the optimisation
+  Exported Variable 1 = Zb
+  Exported Variable 2 = Zs
+  Exported Variable 3 = BetaS
+  Exported Variable 4 = -global CostValue
+  Exported Variable 5 = alpha
+  Exported Variable 6 = DJDalpha
+
+  Exported Variable 7 = -nooutput "Velocityb"
+  Exported Variable 7 DOFs = 2
+End
+!!! Compute Cost function
+!!!!!!!!   Has to be run before the Adjoint Solver as adjoint forcing is computed here !!!!!
+!! Here the cost is the discrete sum_1^Ndata 1/2 ||u-u^obs|| evaluated at the data location (which may not correspond to mesh nodes)
+Solver 2
+  Equation = "Cost"
+    procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
+
+   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
+   Lambda = Real 1.0
+ ! save the cost as a function of iterations (iterations,Cost,rms=sqrt(2*Cost/Ndata)
+   Cost Filename = File "Cost_$name$.dat"
+
+   Observed Variable Name = String "SSAVelocity"
+   Observed Variable dimension = Integer 2
+
+ ! ASCII File with data: x,y,u,v
+   Observation File Name = File "$OBSERVATION_FILE$"
+
+end
+!!!!  Adjoint Solution
+Solver 3
+  Equation = "Adjoint"
+  Variable = -nooutput Adjoint
+  Variable Dofs = 2
+
+  procedure = "ElmerIceSolvers" "Adjoint_LinearSolver"
+
+!Name of the flow solution solver
+   Direct Solver Equation Name = string "SSA"
+
+   Linear System Solver = Iterative
+   Linear System Iterative Method = GCR
+   Linear System GMRES Restart = 100
+   Linear System Preconditioning= ILU0
+   Linear System Convergence Tolerance= 1.0e-12
+   Linear System Max Iterations = 1000
+End
+!!!!!  Compute Derivative of Cost function / Beta
+Solver 4
+  Equation = "DJDBeta"
+    procedure = "ElmerIceSolvers" "AdjointSSA_GradientSolver"
+
+    Flow Solution Name = String "SSAVelocity"
+    Adjoint Solution Name = String "Adjoint"
+    ! Derivative with respect to the Friction parameter
+    ! here will be with respect to alpha (see Material)
+    Compute DJDBeta = Logical True   
+    DJDBeta Name = String "DJDalpha"
+end
+!!!!!  Compute Regularistaion term
+!   Regularisation by default is: Lambda * int_{Pb dimension} 0.5 * (d(var)/dx)**2
+!   A priori regularisation can also be used ( A priori Regularisation=True) :
+!                                 Lambda * int_{Pb dimension} 0.5 *(1/sigma**2)*(var-var{a_priori})**2
+!
+!     OUTPUT are : J and DJDvar
+Solver 5
+  Equation = "DJDBeta_Reg"
+    procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+    Cost Filename=File "CostReg_$name$.dat"
+    Optimized Variable Name= String "alpha"
+    Gradient Variable Name= String "DJDalpha"
+    Cost Variable Name= String "CostValue"
+    Lambda= Real $Lambda
+    Reset Cost Value= Logical False  !=> DJDapha already initialized in solver DJDBeta; switch off initialisation to 0 at the beginning of this solver
+    A priori Regularisation= Logical False
+end
+!!!!! Optimization procedure : Parallel only
+Solver 6
+  Equation = "Optimize_m1qn3"
+  procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "alpha"
+  Gradient Variable Name = String "DJDalpha"
+  gradient Norm File = File "GradientNormAdjoint_$name$.dat"
+
+  !!
+  Mesh Independent = Logical FALSE
+
+ ! M1QN3 Parameters
+  M1QN3 dxmin = Real 1.0e-10
+  M1QN3 epsg = Real  1.e-6
+  M1QN3 niter = Integer 200
+  M1QN3 nsim = Integer 200
+  M1QN3 impres = Integer 5
+  M1QN3 DIS Mode = Logical False
+  M1QN3 df1 = Real 0.5
+  M1QN3 normtype = String "dfn"
+  M1QN3 OutputFile = File  "M1QN3_$name$.out"
+  M1QN3 ndz = Integer 20
+
+end
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers(6) = 1 2 3 4 5 6
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Name = "Side Walls"
+  Target Boundaries(2) = 1 3
+  
+  SSAVelocity 1 = Real 0.0
+  SSAVelocity 2 = Real 0.0
+End
+Boundary Condition 2
+  Name = "Inflow"
+  Target Boundaries = 4 
+
+   SSAVelocity 1 = Variable Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Inflow"
+   SSAVelocity 2 = Real 0.0
+
+End
+Boundary Condition 3
+  Name = "OutFlow"
+  Target Boundaries = 2
+
+   SSAVelocity 1 = Variable Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Outflow"
+   SSAVelocity 2 = Real 0.0
+End

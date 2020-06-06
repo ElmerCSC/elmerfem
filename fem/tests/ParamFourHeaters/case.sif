@@ -10,6 +10,31 @@ Header
   Results Directory ""
 End
 
+Run Control
+! When we fetch the parameters we will automatically have variable a MATC vector "rpar"
+! with the given number of parameters. You can refer to these as "$rpar(i)", i=0,1,2...
+
+  Run Control Iterations = 4 !Integer 4 
+
+! a) give parameters in sif
+! Parameter Array(4,4) = Real 1 0 0 0 0 2 0 0 0 0 3 0 0 0 0 4
+
+  Max Output Level = Integer 7
+
+! b) give parameters as an ascii matrix:
+  Parameter File = File "par.dat"
+  Parameter Count = Integer 4  ! columns in matrix
+  Parameter Row Offset = Integer 2 ! starts from line 3, doing lines 3-6
+
+! c) give parameters as an Dakota file:
+!  Parameter File = File "LHS_distributions.out"
+!  Parameter Filetype = String "dakota"
+!  Parameter Count = Integer 4  ! columns in matrix
+!  Parameter Row Offset = Integer 2 ! starts from line 3
+!  Parameter Column Offset = Integer 2 ! start from column 3
+End
+
+
 Simulation
   Max Output Level = 7
   Coordinate System = String Cartesian
@@ -17,27 +42,6 @@ Simulation
   Simulation Type = Steady State 
   Steady State Max Iterations = 1
   Output Intervals = 0
-
-! When we fetch the parameters we will automatically have variable "Rparam"
-! with the given number of parameters. You can refer to these as "Rparam i", i=1,2,3,...
-
-! a) give parameters in sif
-! Parameter Array(4,4) = Real 1 0 0 0 0 2 0 0 0 0 3 0 0 0 0 4
-! Parameter Max Sweeps = Integer 10  ! terminated early as max size is 4
-
-! b) give parameters as an ascii matrix:
-  Parameter Filename = File "par.dat"
-  Parameter Count = Integer 4  ! columns in matrix
-  Parameter Row Offset = Integer 2 ! starts from line 3
-  Parameter Max Sweeps = Integer 4 ! doing lines 3-6
-
-! c) give parameters as an Dakota file:
-!  Parameter Filename = File "LHS_distributions.out"
-!  Parameter Filetype = String "dakota"
-!  Parameter Count = Integer 4  ! columns in matrix
-!  Parameter Row Offset = Integer 2 ! starts from line 3
-!  Parameter Column Offset = Integer 2 ! start from column 3
-!  Parameter Max Sweeps = Integer 4 ! lines 3-6
 
   Post File = "case.vtu"
 End
@@ -93,22 +97,22 @@ End
 
 Body Force 1
   Name = "Heater1"
-  Heat Source = Equals "Rparam 1"
+  Heat Source = $rpar(0)
 End
 
 Body Force 2
   Name = "Heater2"
-  Heat Source = Equals "Rparam 2"
+  Heat Source = $rpar(1)
 End
 
 Body Force 3
   Name = "Heater3"
-  Heat Source = Equals "Rparam 3"
+  Heat Source = $rpar(2)
 End
 
 Body Force 4
   Name = "Heater4"
-  Heat Source = Equals "Rparam 4"
+  Heat Source = $rpar(3)
 End
 
 
