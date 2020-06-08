@@ -16900,6 +16900,7 @@ CONTAINS
         INTEGER :: InterfaceN, hits
                
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat )
+        IF (.NOT. Stat) FixRot = .TRUE.
 
         ! The following is used to choose the tying procedure for "rotations".
         DiscreteKirchhoff = ListGetLogical(Solver % Values, 'Discrete Kirchhoff Tying', Stat)

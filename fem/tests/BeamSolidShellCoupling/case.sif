@@ -123,8 +123,6 @@ Solver 1
 ! be displaced, not the shell. 
   Displace Mesh = False
 
-  Fix Rotation = Logical True
-  Discrete Kirchhoff Tying = Logical False
 End
 
 
