@@ -2,9 +2,9 @@
 Version = 210903
 Coordinate System = Cartesian 3D
 Subcell Divisions in 2D = 2 1 1
-Subcell Sizes 1 = 1 1 
+Subcell Sizes 1 = 1.5 1.5 
 Subcell Sizes 2 = 0.05 
-Subcell Sizes 3 = 0.5
+Subcell Sizes 3 = 0.2
 Material Structure in 2D
  1 2
 End
@@ -20,10 +20,10 @@ End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = False
-Reference Density = 0.1
+Reference Density = 0.025
 Element Ratios 1 = 1 1 
 Element Ratios 2 = 1
 Element Ratios 3 = 1 
 Element Densities 1 = 1 1 
-Element Densities 2 = 10
+Element Densities 2 = 2
 Element Densities 3 = 1 

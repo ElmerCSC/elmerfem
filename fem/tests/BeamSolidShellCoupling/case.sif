@@ -1,8 +1,18 @@
 !---------------------------------------------------------
-! Case for solving solid and shell equations as coupled.
-! Note: equality of moments still missing!
+! A verification case for assembling solid and shell equations
+! into a single linear system so that the coupled equations can 
+! be solved simultaneously.
 !
-! P.R. 3.9.2019
+! As a reference, the case can be simplified to a beam model where the beam
+! is clamped at both ends. The Euler-Bernoulli beam theory predicts
+! the maximum deflection to be p b L^4/(384 EI) = 0.2025, with
+! p, b and L being the surface traction, the beam width and
+! the beam length. The solution of the simple beam theory is seen to be
+! fairly closed to that of the more complicated coupled model.
+!
+! The original version P.R. 3.9.2019, 
+! modified to allow a comparison with the simple beam theory 
+! by M.M. June, 2020.
 !------------------------------------------------------------
 
 Header
@@ -12,38 +22,31 @@ Header
 End 
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 8
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
   Steady State Max Iterations = 1
-
-  Post File = case.vtu
+  Post File = coupled.vtu
 End
 
 Body 1
-  Name = "Body1"
+  Name = "Solid"
   Equation = 1
   Material = 1 
 End
 
 Body 2
-  Name = "Body2"
-End
-
-Body 3
-  Name = "Body3"
+  Name = "Shell Body"
   Equation = 2
   Material = 1
   Body Force = 1 
 End
 
-
 Body Force 1
-  Name = "ShellBF"
+  Name = "Transverse load"
   Normal Pressure = 1e4
 End 
-
 
 Equation 1
   Name = "Elasticity"
@@ -66,31 +69,40 @@ End
 
 
 Solver 1
-  Equation = LinElast
+  Equation = "Navier Equations"
   Variable = -dofs 3 Displacement
   Procedure = "StressSolve" "StressSolver"
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = Logical True
-  Linear System Solver = direct
-  Linear System Direct Method = MUMPS
-  Linear System Scaling = False
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 400
+  Linear System Preconditioning = Ilu2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-6
+!  Linear System Solver = direct
+!  Linear System Direct Method = MUMPS
+  Linear System Scaling = True
   Optimize Bandwidth = False
 
-! The index of master structure is assumed to "1" and the
-! other solver is defined here.
+! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
+
+! The index of master structure is assumed to "1" and the
+! other solver is defined here:
   Shell Solver Index = Integer 2
 
-! Enforces the block mode when solving the system
+! Enforce the block mode when solving the system:
   Linear System Block Mode = Logical True
 
-! Define the solvers that build the block system
-! Block system can also be created from components of one solver but not in this case.
+! Use linear system scalings in the solution of block system: 
+  Block Scaling = true
+
+! Define the solvers that build the block system:
   Block Solvers(2) = Integer 1 2
 
-! Call the assembly for the 2nd solver using the slave solver slot.
-! Could probably be called also otherwise as far as before. 
+! Call the assembly for the 2nd solver using the slave solver slot:
   Pre Solvers(1) = 2
   
   Linear System Block Method = String "other"
@@ -98,18 +110,21 @@ Solver 1
   Block Gauss-Seidel = Logical True   ! if false, jacobi
 
   Outer: Linear System Solver = string "Iterative"
-  Outer: Linear System Convergence Tolerance = real 1e-6
+  Outer: Linear System Convergence Tolerance = real 1e-5
   Outer: Linear System Iterative Method = string GCR
-  Outer: Linear System GCR Restart = Integer 50
+  Outer: Linear System GCR Restart = Integer 100
   Outer: Linear System Residual Output = integer 1
   Outer: Linear System Max Iterations = integer 50
   Outer: Linear System Min Iterations = integer 3
+  Outer: Linear System Abort Not Converged = false
+  Outer: Linear System Scaling = true
 
-! We don't want to displace mesh in this test since only "A" would
-! be displaced, not "B". 
+! We don't want to displace the mesh in this test since only the solid would
+! be displaced, not the shell. 
   Displace Mesh = False
 
-!  Fix Rotation = Logical True
+  Fix Rotation = Logical True
+  Discrete Kirchhoff Tying = Logical False
 End
 
 
@@ -117,15 +132,22 @@ Solver 2
   Equation = "Shell equations"
   Procedure = "ShellSolver" "ShellSolver"
 
-  Linear System Solver = "Direct"
-  Linear System Direct Method = MUMPS
+!  Linear System Solver = "Direct"
+!  Linear System Direct Method = MUMPS
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 400
+  Linear System Preconditioning = Ilu2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-6
 
   Steady State Convergence Tolerance = 1e-09
   Nonlinear System Convergence Tolerance = 1e-8
   Nonlinear System Max Iterations = 1
 
 ! The defaults are True for the following 2 keywords:
-  Linear System Scaling = False
+  Linear System Scaling = True
   Optimize Bandwidth = False
 
   Exec Solver = never
@@ -154,7 +176,7 @@ End
 
 Boundary Condition 1
   Name = "LeftWall"
-  Target Boundaries(1) = 1
+  Target Boundaries(1) = 4
   Displacement 1 = 0.0
   Displacement 2 = 0.0
   Displacement 3 = 0.0
@@ -162,7 +184,7 @@ End
 
 Boundary Condition 2
   Name = "RightWall"
-  Target Boundaries(1) = 2
+  Target Boundaries(1) = 8
   U 1 = Real 0.0
   U 2 = Real 0.0
   U 3 = Real 0.0
@@ -173,19 +195,18 @@ End
 
 Boundary Condition 3
   Name = "LeftTop"
-  Target Boundaries(1) = 3 
-  Normal Force = 1.0e4
+  Target Boundaries(1) = 6 
+  Normal Force = 5.0e3
 End
 
 Boundary Condition 4
-  Name = "RightTop"
-  Target Boundaries(1) = 4
-  Body Id = 3
+  Name = "LeftBottom"
+  Target Boundaries(1) = 5
+  Normal Force = -5.0e3
 End
 
 
-
-Solver 1:: Reference Norm = 1.63284532E-02 
+Solver 1:: Reference Norm = 1.66363424E-02
 
 
 
