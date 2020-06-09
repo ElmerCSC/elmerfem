@@ -15252,7 +15252,8 @@ END SUBROUTINE FindNeighbourNodes
      TYPE(Matrix_t), POINTER   :: Matrix
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
-     TYPE(Variable_t), POINTER :: TimeVar, SaveVar
+     TYPE(Variable_t), POINTER :: TimeVar, SaveVar, Var
+     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
      SaveVar => Solver % Variable
      DOFs = SaveVar % DOFs
@@ -15322,6 +15323,18 @@ END SUBROUTINE FindNeighbourNodes
            CALL AllocateArray( Solver % Variable % EigenVectors, n, &
                     SIZE(Solver % Variable % Values) ) 
 
+           IF( Solver % Variable % Dofs > 1 ) THEN
+             DO k=1,Solver % Variable % DOFs
+               str = ComponentName( Solver % Variable % Name, k )
+               Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+               IF ( ASSOCIATED( Var ) ) THEN
+                 Var % EigenValues => Solver % Variable % EigenValues
+                 Var % EigenVectors =>  & 
+                     Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+               END IF
+             END DO
+           END IF
+           
            Solver % Variable % EigenValues  = 0.0d0
            Solver % Variable % EigenVectors = 0.0d0
 
