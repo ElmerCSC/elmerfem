@@ -3122,6 +3122,143 @@ CONTAINS
   END SUBROUTINE blockKrylovIter
 
 
+  !> This makes the system monolithic. If it was initially monolithic
+  !> and then made block, it does not make any sense. However, for
+  !> multiphysics coupled cases it may be a good strategy. 
+  !-----------------------------------------------------------------
+  SUBROUTINE BlockMonolithicSolve( Solver, MaxChange )
+
+    TYPE(Solver_t) :: Solver
+    REAL(KIND=dp) :: MaxChange
+
+    INTEGER :: i,j,k,m,n,NoVar,NoCol,NoRow
+    INTEGER, POINTER :: BlockOrder(:)
+    LOGICAL :: GotIt
+    REAL(KIND=dp), POINTER CONTIG :: rhs_save(:), b(:)
+    REAL(KIND=dp), POINTER :: CollX(:), rhs(:)
+    TYPE(Matrix_t), POINTER :: A, mat_save
+    TYPE(Variable_t), POINTER :: Var, SolverVar
+    REAL(KIND=dp) :: TotNorm
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Matrix_t), POINTER :: CollMat
+    LOGICAL :: Found, Visited = .FALSE.
+    CHARACTER(*), PARAMETER :: Caller = 'BlockMonolithicSolve'
+
+    SAVE Visited, CollMat, CollX
+    
+    CALL Info(Caller,'Solving block matrix as monolithic!',Level=6)
+    
+    NoVar = TotMatrix % NoVar
+    Params => Solver % Values
+    SolverVar => Solver % Variable
+    
+    IF(.NOT. Visited ) THEN
+      Visited = .TRUE.
+      n = 0
+      m = 0
+
+      CollMat => AllocateMatrix()
+      
+      DO NoRow = 1,NoVar 
+        rhs => TotMatrix % SubVector(NoRow) % rhs      
+        A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
+        n = n + A % NumberOfRows
+
+        DO NoCol = 1,NoVar
+          A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
+          IF( ASSOCIATED( A ) ) THEN
+            m = m + SIZE( A % Values )
+          END IF
+        END DO                
+      END DO
+
+      CollMat % NumberOfRows = n 
+      CALL Info(Caller,'Size of monolithic matrix: '//TRIM(I2S(n)),Level=7)
+      CALL Info(Caller,'Number of nonzeros in monolithic matrix: '//TRIM(I2S(m)),Level=7)
+      
+      ALLOCATE( CollMat % rhs(n), CollMat % Diag(n), CollMat % Rows(n+1), CollX(n) )
+      CollMat % rhs = 0.0_dp
+      CollMat % Diag = 0
+      CollMat % Rows = 0
+      CollX = 0.0_dp
+      
+      ALLOCATE( CollMat % Values(m), CollMat % Cols(m+1) )
+      CollMat % Values = 0.0_dp
+      CollMat % Cols = 0
+      
+      k = 0
+      CollMat % Rows(1) = 1
+      
+      DO NoRow = 1,NoVar
+        n = TotMatrix % Offset(NoRow)
+        
+        A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
+        m = A % NumberOfRows
+        
+        DO i=1,m
+          DO NoCol = 1,NoVar
+            A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
+            IF( ASSOCIATED( A ) ) THEN
+              IF( SIZE(A % Rows) < i+1 ) CYCLE 
+              DO j=A % Rows(i),A % Rows(i+1)-1
+                k = k + 1
+                CollMat % Values(k) = A % Values(j)
+                CollMat % Cols(k) = TotMatrix % Offset(NoCol) + A % Cols(j) 
+              END DO
+              IF( ASSOCIATED( A % rhs ) ) THEN
+                CollMat % rhs(n+i) = A % rhs(i)
+              END IF
+            END IF
+          END DO
+          CollMat % Rows(n+i+1) = k+1
+        END DO
+      END DO
+    ELSE
+     DO NoRow = 1,NoVar
+        n = TotMatrix % Offset(NoRow) 
+
+        A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
+        m = A % NumberOfRows
+        
+        DO i=1,m
+          DO NoCol = 1,NoVar
+            A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
+            IF( ASSOCIATED( A ) ) THEN
+              IF( SIZE(A % Rows) < i+1 ) CYCLE 
+              DO j=A % Rows(i),A % Rows(i+1)-1
+                k = k + 1
+                CollMat % Values(k) = A % Values(j)
+              END DO
+              IF( ASSOCIATED( A % rhs ) ) THEN
+                CollMat % rhs(n+i) = A % rhs(i)
+              END IF
+            END IF
+          END DO
+        END DO
+      END DO      
+    END IF
+
+    CALL Info(Caller,'Copying block solution to monolithic vector',Level=12)
+    DO i=1,NoVar
+      Var => TotMatrix % SubVector(i) % Var 
+      n = SIZE( Var % Values )       
+      m = TotMatrix % Offset(i)
+      CollX(m+1:m+n) = Var % Values(1:n) 
+    END DO
+    
+    ! Solve monolithic matrix equation. 
+    CALL SolveLinearSystem( CollMat, CollMat % rhs, CollX, TotNorm, 1, Solver )
+
+    CALL Info(Caller,'Copying monolithic vector to block solutions',Level=12)
+    DO i=1,NoVar
+      Var => TotMatrix % SubVector(i) % Var 
+      n = SIZE( Var % Values ) 
+      m = TotMatrix % Offset(i)
+      Var % Values(1:n) = CollX(m+1:m+n) 
+    END DO
+    
+  END SUBROUTINE BlockMonolithicSolve
+
 
 !------------------------------------------------------------------------------
 !> An alternative handle for the block solvers to be used by the legacy matrix
@@ -3148,7 +3285,7 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
     CHARACTER(LEN=max_name_len) :: str, VarName, ColName, RowName
     LOGICAL :: Robust, LinearSearch, ErrorReduced, IsProcedure, ScaleSystem,&
-        ReuseMatrix, LS, BlockScaling, Found
+        ReuseMatrix, LS, BlockScaling, BlockMonolithic, Found
     INTEGER :: HaveConstraint, HaveAdd
     INTEGER, POINTER :: VarPerm(:)
     INTEGER, POINTER :: SlaveSolvers(:)
@@ -3179,6 +3316,8 @@ CONTAINS
       BlockPrec = .TRUE.
     END IF
 
+    BlockMonolithic = ListGetLogical( Params,'Block Monolithic',GotIt)
+    
     BlockScaling = ListGetLogical( Params,'Block Scaling',GotIt)
 
     ! Block iteration style: jacobi vs. gauss-seidel
@@ -3343,7 +3482,9 @@ CONTAINS
       
       TotNorm = DefaultSolve()
       MaxChange = Solver % Variable % NonlinChange 
-      
+    ELSE IF( BlockMonolithic ) THEN
+      CALL Info('BlockSolverInt','Using monolithic strategy for the block',Level=6)        
+      CALL BlockMonolithicSolve( Solver, MaxChange )      
     ELSE IF( BlockPrec ) THEN
       CALL Info('BlockSolverInt','Using block preconditioning strategy',Level=6)        
       CALL BlockKrylovIter( Solver, MaxChange )
