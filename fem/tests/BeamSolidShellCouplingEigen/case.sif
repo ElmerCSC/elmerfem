@@ -13,6 +13,8 @@
 ! The original version P.R. 3.9.2019, 
 ! modified to allow a comparison with the simple beam theory 
 ! by M.M. June, 2020.
+!
+! Added eigensolution to the coupled block case. P.R. 9.6.2020
 !------------------------------------------------------------
 
 Header
