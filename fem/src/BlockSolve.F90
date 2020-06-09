@@ -3301,8 +3301,12 @@ CONTAINS
 
     CALL Info(Caller,'Copying monolithic vector to block solutions',Level=12)
 
+    ! Copy the 1st eigenmode because this will be used for norms etc. 
     NoEigen = Solver % NOFEigenValues
-
+    IF( NoEigen > 0 ) THEN
+      MonolithicVar % Values = REAL( MonolithicVar % EigenVectors(1,:) ) 
+    END IF
+    
     DO i=1,NoVar
       Var => TotMatrix % SubVector(i) % Var 
       n = SIZE( Var % Values ) 
@@ -3337,7 +3341,7 @@ CONTAINS
       END IF
     END DO
 
-    SolverVar => Solver % Variable
+    Solver % Variable => SolverVar
     
   END SUBROUTINE BlockMonolithicSolve
 
