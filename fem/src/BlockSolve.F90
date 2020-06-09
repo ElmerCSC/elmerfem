@@ -3131,26 +3131,28 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: MaxChange
 
-    INTEGER :: i,j,k,m,n,NoVar,NoCol,NoRow
+    INTEGER :: i,j,k,m,n,NoVar,NoCol,NoRow,NoEigen
     INTEGER, POINTER :: BlockOrder(:)
     LOGICAL :: GotIt
     REAL(KIND=dp), POINTER CONTIG :: rhs_save(:), b(:)
     REAL(KIND=dp), POINTER :: CollX(:), rhs(:)
     TYPE(Matrix_t), POINTER :: A, mat_save
     TYPE(Variable_t), POINTER :: Var, SolverVar
+    TYPE(Variable_t), TARGET :: MonolithicVar
     REAL(KIND=dp) :: TotNorm
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: CollMat
-    LOGICAL :: Found, Visited = .FALSE.
+    LOGICAL :: Found, HaveMass, HaveDamp, Visited = .FALSE.
     CHARACTER(*), PARAMETER :: Caller = 'BlockMonolithicSolve'
 
-    SAVE Visited, CollMat, CollX
+    SAVE Visited, CollMat, CollX, HaveMass, HaveDamp
     
     CALL Info(Caller,'Solving block matrix as monolithic!',Level=6)
     
     NoVar = TotMatrix % NoVar
     Params => Solver % Values
     SolverVar => Solver % Variable
+    Solver % Variable => MonolithicVar
     
     IF(.NOT. Visited ) THEN
       Visited = .TRUE.
@@ -3158,6 +3160,8 @@ CONTAINS
       m = 0
 
       CollMat => AllocateMatrix()
+      HaveMass = .FALSE.
+      HaveDamp = .FALSE.
       
       DO NoRow = 1,NoVar 
         rhs => TotMatrix % SubVector(NoRow) % rhs      
@@ -3168,7 +3172,9 @@ CONTAINS
           A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
           IF( ASSOCIATED( A ) ) THEN
             m = m + SIZE( A % Values )
-          END IF
+            IF( ASSOCIATED( A % MassValues ) ) HaveMass = .TRUE.
+            IF( ASSOCIATED( A % DampValues ) ) HaveDamp = .TRUE.
+         END IF
         END DO                
       END DO
 
@@ -3185,6 +3191,15 @@ CONTAINS
       ALLOCATE( CollMat % Values(m), CollMat % Cols(m+1) )
       CollMat % Values = 0.0_dp
       CollMat % Cols = 0
+
+      IF( HaveMass ) THEN
+        ALLOCATE( CollMat % MassValues(m) )
+        CollMat % MassValues = 0.0_dp
+      END IF
+      IF( HaveDamp ) THEN
+        ALLOCATE( CollMat % DampValues(m) )
+        CollMat % DampValues = 0.0_dp
+      END IF
       
       k = 0
       CollMat % Rows(1) = 1
@@ -3204,6 +3219,16 @@ CONTAINS
                 k = k + 1
                 CollMat % Values(k) = A % Values(j)
                 CollMat % Cols(k) = TotMatrix % Offset(NoCol) + A % Cols(j) 
+                IF( HaveMass ) THEN
+                  IF( ASSOCIATED( A % MassValues ) ) THEN
+                    CollMat % MassValues(k) = A % MassValues(j)
+                  END IF
+                END IF
+                IF( HaveDamp ) THEN
+                  IF( ASSOCIATED( A % DampValues ) ) THEN
+                    CollMat % DampValues(k) = A % DampValues(j)
+                  END IF
+                END IF
               END DO
               IF( ASSOCIATED( A % rhs ) ) THEN
                 CollMat % rhs(n+i) = A % rhs(i)
@@ -3213,8 +3238,22 @@ CONTAINS
           CollMat % Rows(n+i+1) = k+1
         END DO
       END DO
+
+      MonolithicVar % Values => CollX
+      MonolithicVar % Dofs = 1
+      MonolithicVar % Perm => NULL()
+
+      NoEigen = Solver %  NOFEigenValues
+      IF( NoEigen > 0 ) THEN
+        n = CollMat % NumberOfRows
+        ALLOCATE( MonolithicVar % EigenValues(NoEigen), MonolithicVar % EigenVectors(NoEigen,n) )
+        MonolithicVar % EigenValues = 0.0_dp
+        MonolithicVar % EigenVectors = 0.0_dp
+      END IF 
     ELSE
-     DO NoRow = 1,NoVar
+      k = 0
+      
+      DO NoRow = 1,NoVar
         n = TotMatrix % Offset(NoRow) 
 
         A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
@@ -3228,10 +3267,20 @@ CONTAINS
               DO j=A % Rows(i),A % Rows(i+1)-1
                 k = k + 1
                 CollMat % Values(k) = A % Values(j)
+                IF( HaveMass ) THEN
+                  IF( ASSOCIATED( A % MassValues ) ) THEN
+                    CollMat % MassValues(k) = A % MassValues(j)
+                  END IF
+                END IF
+                IF( HaveDamp ) THEN
+                  IF( ASSOCIATED( A % DampValues ) ) THEN
+                    CollMat % DampValues(k) = A % DampValues(j)
+                  END IF
+                END IF                
               END DO
               IF( ASSOCIATED( A % rhs ) ) THEN
                 CollMat % rhs(n+i) = A % rhs(i)
-              END IF
+              END IF              
             END IF
           END DO
         END DO
@@ -3250,12 +3299,29 @@ CONTAINS
     CALL SolveLinearSystem( CollMat, CollMat % rhs, CollX, TotNorm, 1, Solver )
 
     CALL Info(Caller,'Copying monolithic vector to block solutions',Level=12)
+
+    NoEigen = Solver % NOFEigenValues
+
     DO i=1,NoVar
       Var => TotMatrix % SubVector(i) % Var 
       n = SIZE( Var % Values ) 
       m = TotMatrix % Offset(i)
       Var % Values(1:n) = CollX(m+1:m+n) 
+
+      IF( NoEigen > 0 ) THEN
+        IF(.NOT. ASSOCIATED( Var % EigenValues ) ) THEN
+          ALLOCATE( Var % EigenValues(NoEigen), Var % EigenVectors(NoEigen,n) )
+          Var % EigenValues = 0.0_dp
+          Var % EigenVectors = 0.0_dp
+        END IF
+        DO k=1,NoEigen
+          Var % EigenValues(k) = MonolithicVar % EigenValues(k)
+          Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,m+1:m+n)
+        END DO
+      END IF
     END DO
+
+    SolverVar => Solver % Variable
     
   END SUBROUTINE BlockMonolithicSolve
 
