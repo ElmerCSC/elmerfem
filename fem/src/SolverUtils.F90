@@ -16906,9 +16906,9 @@ CONTAINS
         DiscreteKirchhoff = ListGetLogical(Solver % Values, 'Discrete Kirchhoff Tying', Stat)
 
         IF(.NOT. FixRot ) THEN
-          CALL Warn(Caller,'Coupling for rotational shell dofs is missing!')                  
+          CALL Info(Caller,'Coupling for rotational shell dofs is missing!')                  
         ELSE
-          CALL Warn(Caller,'Experimental fixing of shell rotations')
+          CALL Info(Caller,'Using experimenal fixing of shell rotations')
           n = Mesh % MaxElementNodes 
           ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
