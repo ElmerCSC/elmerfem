@@ -1343,7 +1343,8 @@ CONTAINS
     INTEGER :: TmpIndexes(27), VarType
     INTEGER :: NamingMode 
     
-    COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)    
+    COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:), EigenVectors2(:,:), EigenVectors3(:,:)
+    COMPLEX(KIND=dp) :: zval
     REAL(KIND=dp), POINTER :: ConstraintModes(:,:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement, Parent
@@ -1569,10 +1570,10 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            IF( NoModes + NoModes2 > 0 ) THEN
-              CALL Warn('WriteVtuXMLFile','Modes cannot currently be given componentwise!')
-              CYCLE
-            END IF
+            !IF( NoModes + NoModes2 > 0 ) THEN
+            !  CALL Warn('WriteVtuXMLFile','Modes cannot currently be given componentwise!')
+            !  CYCLE
+            !END IF
             IF( VarType == Variable_on_gauss_points ) THEN
               CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
               CYCLE
@@ -1580,11 +1581,13 @@ CONTAINS
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values2 => Solution % Values
+              EigenVectors2 => Solution % EigenVectors
               dofs = 2
             END IF
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values3 => Solution % Values
+              EigenVectors3 => Solution % EigenVectors
               dofs = 3
             END IF
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
@@ -1720,22 +1723,30 @@ CONTAINS
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
                     val = 0.0_dp
+                  ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
+                    IF( ComponentVector ) THEN
+                      IF( k == 1 ) zval = EigenVectors(IndField,j)
+                      IF( k == 2 ) zval = EigenVectors2(IndField,j)
+                      IF( k == 3 ) zval = EigenVectors3(IndField,j)
+                    ELSE
+                      zval = EigenVectors(IndField,dofs*(j-1)+k) 
+                    END IF
+
+                    IF( EigenVectorMode == 0 ) THEN
+                      val = REAL( zval )
+                    ELSE IF( EigenVectorMode == 1 ) THEN
+                      val = AIMAG( zval ) 
+                    ELSE
+                      val = ABS( zval ) 
+                    END IF                    
+                  ELSE IF( NoModes2 > 0 ) THEN
+                    val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE IF( ComponentVector ) THEN
                     IF( k == 1 ) val = Values(j)
                     IF( k == 2 ) val = Values2(j)
                     IF( k == 3 ) val = Values3(j)
                   ELSE IF( Use2 ) THEN
                     val = Values2(dofs*(j-1)+k)              
-                  ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
-                    IF( EigenVectorMode == 0 ) THEN
-                      val = REAL( EigenVectors(IndField,dofs*(j-1)+k) )
-                    ELSE IF( EigenVectorMode == 1 ) THEN
-                      val = AIMAG( EigenVectors(IndField,dofs*(j-1)+k) )
-                    ELSE
-                      val = ABS( EigenVectors(IndField,dofs*(j-1)+k) )
-                    END IF
-                  ELSE IF( NoModes2 > 0 ) THEN
-                    val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE
                     val = Values(dofs*(j-1)+k)              
                   END IF
@@ -2577,10 +2588,11 @@ CONTAINS
 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )
-            IF( ComponentVector ) THEN
-              CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
-              CYCLE
-            ELSE IF( EigenAnalysis ) THEN
+            !IF( ComponentVector ) THEN
+            !  CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
+            !  CYCLE
+            !ELSE
+            IF( EigenAnalysis ) THEN
               IF( GotActiveModes ) THEN
                 IndField = ActiveModes( FileIndex ) 
               ELSE
@@ -2700,10 +2712,11 @@ CONTAINS
 
             IF( ASSOCIATED(Solution % EigenVectors)) THEN
               NoModes = SIZE( Solution % EigenValues )
-              IF( ComponentVector ) THEN
-                CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
-                CYCLE
-              ELSE IF( EigenAnalysis ) THEN
+              !IF( ComponentVector ) THEN
+              !  CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
+              !  CYCLE
+              !ELSE
+              IF( EigenAnalysis ) THEN
                 IF( GotActiveModes ) THEN
                   IndField = ActiveModes( FileIndex ) 
                 ELSE

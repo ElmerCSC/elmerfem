@@ -3131,18 +3131,19 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: MaxChange
 
-    INTEGER :: i,j,k,m,n,NoVar,NoCol,NoRow,NoEigen
+    INTEGER :: i,j,k,m,n,NoVar,NoCol,NoRow,NoEigen,vdofs,comp
     INTEGER, POINTER :: BlockOrder(:)
     LOGICAL :: GotIt
     REAL(KIND=dp), POINTER CONTIG :: rhs_save(:), b(:)
     REAL(KIND=dp), POINTER :: CollX(:), rhs(:)
     TYPE(Matrix_t), POINTER :: A, mat_save
-    TYPE(Variable_t), POINTER :: Var, SolverVar
+    TYPE(Variable_t), POINTER :: Var, CompVar, SolverVar
     TYPE(Variable_t), TARGET :: MonolithicVar
     REAL(KIND=dp) :: TotNorm
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: CollMat
     LOGICAL :: Found, HaveMass, HaveDamp, Visited = .FALSE.
+    CHARACTER(LEN=max_name_len) :: CompName
     CHARACTER(*), PARAMETER :: Caller = 'BlockMonolithicSolve'
 
     SAVE Visited, CollMat, CollX, HaveMass, HaveDamp
@@ -3310,14 +3311,29 @@ CONTAINS
 
       IF( NoEigen > 0 ) THEN
         IF(.NOT. ASSOCIATED( Var % EigenValues ) ) THEN
+          IF( ASSOCIATED( Var % Solver ) ) THEN
+            Var % Solver % NOFEigenValues = NoEigen
+          END IF
           ALLOCATE( Var % EigenValues(NoEigen), Var % EigenVectors(NoEigen,n) )
           Var % EigenValues = 0.0_dp
           Var % EigenVectors = 0.0_dp
+
+          vdofs = Var % Dofs
+          IF( vdofs > 1 ) THEN
+            DO comp=1,vdofs
+              Compname = ComponentName(Var % Name,comp)
+              CompVar => VariableGet( Solver % Mesh % Variables, Compname )
+              CompVar % EigenValues => Var % EigenValues
+              CompVar % EigenVectors => Var % EigenVectors(:,comp::vdofs)
+            END DO
+          END IF
         END IF
+ 
         DO k=1,NoEigen
           Var % EigenValues(k) = MonolithicVar % EigenValues(k)
           Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,m+1:m+n)
         END DO
+        
       END IF
     END DO
 
