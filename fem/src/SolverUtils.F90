@@ -16817,6 +16817,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
+    LOGICAL :: DoDamp, DoMass
     CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
    !------------------------------------------------------------------------------
 
@@ -17111,12 +17112,26 @@ CONTAINS
       END BLOCK
     END IF
     
-    ! Note: we may have to rethink this coupling if visiting for 2nd time!
+    ! Note: we may have to recheck this coupling if visiting for 2nd time!
     !
     ! Three DOFs for both shells and solids are the real Cartesian components of
     ! the displacement. Hence we can deal with the common parts of solid-solid and 
     ! solid-shell coupling in same subroutine.
     !
+    DoMass = .FALSE.
+    IF( ASSOCIATED( A_f % MassValues ) ) THEN
+      IF( ASSOCIATED( A_s % MassValues ) ) THEN
+        DoMass = .TRUE.        
+      ELSE
+        CALL Warn(Caller,'Both solid and shell should have MassValues!')
+      END IF
+    END IF
+
+    DoDamp = ASSOCIATED( A_f % DampValues )
+    IF( DoDamp ) THEN
+      CALL Warn(Caller,'Damping matrix values at shell interface will be dropped!')
+    END IF
+     
     IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
       DO i=1,Mesh % NumberOfNodes
@@ -17149,11 +17164,14 @@ CONTAINS
             END IF
             A_f % Values(k) = 0.0_dp
 
-            ! Note: we should not just zero these but also sum them to A_s as well!!
-            IF( ASSOCIATED( A_f % MassValues ) ) THEN
+            ! We zero the mass associated to the Dirichlet conditions since
+            ! otherwise the inertia will affect the condition.
+            ! We use mass lumping since not all dofs of shell are present in the solid. 
+            IF( DoMass ) THEN
+              A_s % MassValues(A_s % Diag(ks)) = A_s % MassValues(A_s % Diag(ks)) + A_f % MassValues(k)
               A_f % MassValues(k) = 0.0_dp
             END IF
-            IF( ASSOCIATED( A_f % DampValues ) ) THEN
+            IF( DoDamp) THEN
               A_f % DampValues(k) = 0.0_dp
             END IF            
           END DO
