@@ -13,6 +13,8 @@
 ! The original version P.R. 3.9.2019, 
 ! modified to allow a comparison with the simple beam theory 
 ! by M.M. June, 2020.
+!
+! This is a monolithic version (not tested for), P.R. 9.6.2020.
 !------------------------------------------------------------
 
 Header
@@ -27,11 +29,7 @@ Simulation
   Simulation Type = Steady State
   Output Intervals = 1
   Steady State Max Iterations = 1
-  Post File = coupled.vtu
-
-  vtu: Vector Field 1 = String "displacement"
-  vtu: Vector Field 1 Complement = String "u"
-  vtu: Vector Field 2 = String "dnu"
+  Post File = mono.vtu
 End
 
 Body 1
@@ -79,16 +77,8 @@ Solver 1
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = Logical True
-  Linear System Solver = Iterative
-  Linear System Iterative Method = GCR
-  Linear System GCR Restart = 400
-  Linear System Preconditioning = Ilu2
-  Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1e-6
-!  Linear System Solver = direct
-!  Linear System Direct Method = MUMPS
-  Linear System Scaling = True
-  Optimize Bandwidth = True
+  Linear System Solver = Direct
+  Linear System Direct Method = MUMPS
 
 ! Request for a linear system that couples two structural models:
   Structure-Structure Coupling = Logical True
@@ -100,9 +90,6 @@ Solver 1
 ! Enforce the block mode when solving the system:
   Linear System Block Mode = Logical True
 
-! Use linear system scalings in the solution of block system: 
-  Block Scaling = true
-
 ! Define the solvers that build the block system:
   Block Solvers(2) = Integer 1 2
 
@@ -110,23 +97,11 @@ Solver 1
   Pre Solvers(1) = 2
   
   Linear System Block Method = String "other"
-  Block Preconditioner = Logical True ! default
-  Block Gauss-Seidel = Logical True   ! if false, jacobi
-
-  Outer: Linear System Solver = string "Iterative"
-  Outer: Linear System Convergence Tolerance = real 1e-6
-  Outer: Linear System Iterative Method = string GCR
-  Outer: Linear System GCR Restart = Integer 100
-  Outer: Linear System Residual Output = integer 1
-  Outer: Linear System Max Iterations = integer 50
-  Outer: Linear System Min Iterations = integer 3
-  Outer: Linear System Abort Not Converged = false
-  Outer: Linear System Scaling = true
+  Block Monolithic = Logical True
 
 ! We don't want to displace the mesh in this test since only the solid would
 ! be displaced, not the shell. 
   Displace Mesh = False
-
 End
 
 
@@ -134,23 +109,7 @@ Solver 2
   Equation = "Shell equations"
   Procedure = "ShellSolver" "ShellSolver"
 
-!  Linear System Solver = "Direct"
-!  Linear System Direct Method = MUMPS
-
-  Linear System Solver = Iterative
-  Linear System Iterative Method = GCR
-  Linear System GCR Restart = 400
-  Linear System Preconditioning = Ilu2
-  Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1e-6
-
-  Steady State Convergence Tolerance = 1e-09
-  Nonlinear System Convergence Tolerance = 1e-8
   Nonlinear System Max Iterations = 1
-
-! The defaults are True for the following 2 keywords:
-  Linear System Scaling = True
-  Optimize Bandwidth = True
 
   Exec Solver = never
   Linear System Solver Disabled = Logical True  

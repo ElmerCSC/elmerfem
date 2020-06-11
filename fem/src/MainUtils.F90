@@ -5193,7 +5193,7 @@ CONTAINS
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
          UpdateExported, GotCoordTransform, NamespaceFound
-     INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
+     INTEGER :: i, j, k, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
      TYPE(Variable_t), POINTER :: TimeVar, IterV
@@ -5203,7 +5203,7 @@ CONTAINS
 
      INTEGER :: ScanningLoops, scan, sOutputPE
      LOGICAL :: GotLoops
-     TYPE(Variable_t), POINTER :: ScanVar
+     TYPE(Variable_t), POINTER :: ScanVar, Var
         
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -5402,11 +5402,23 @@ CONTAINS
            IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
              CALL Info('MainUtils','Creating modes over scanned fields',Level=8)
              ALLOCATE( Solver % Variable % EigenValues(ScanningLoops) )
-             ALLOCATE( Solver % Variable % EigenVectors(ScanningLoops,n) )
+             ALLOCATE( Solver % Variable % EigenVectors(ScanningLoops,n) )             
+
+             IF( Solver % Variable % Dofs > 1 ) THEN
+               DO k=1,Solver % Variable % DOFs
+                 str = ComponentName( Solver % Variable % Name, k )
+                 Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+                 IF ( ASSOCIATED( Var ) ) THEN
+                   Var % EigenValues => Solver % Variable % EigenValues
+                   Var % EigenVectors =>  & 
+                       Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+                 END IF
+               END DO
+             END IF
            END IF
            Solver % Variable % EigenValues(scan) = 1.0_dp * scan
            Solver % Variable % EigenVectors(scan,:) = Solver % Variable % Values
-         END IF         
+         END IF
        END IF
 
        
