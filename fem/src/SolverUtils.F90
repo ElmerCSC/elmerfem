@@ -335,7 +335,7 @@ CONTAINS
    END SUBROUTINE ZeroRow
 !------------------------------------------------------------------------------
 
-!> Moves a row and and sumes it with the values of a second one, optionally 
+!> Moves a row and and sums it with the values of a second one, optionally 
 !> multiplying with a constant.
 !------------------------------------------------------------------------------
    SUBROUTINE MoveRow( A, n1, n2, Coeff, StayCoeff, MoveCoeff )
@@ -4501,6 +4501,8 @@ CONTAINS
     REAL(KIND=dp), POINTER :: BulkValues0(:)
     INTEGER :: DirCount
     CHARACTER(*), PARAMETER :: Caller = 'SetDirichletBoundaries'
+    LOGICAL, ALLOCATABLE :: CandNodes(:)
+    INTEGER, POINTER :: PlaneInds(:)
     
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -5321,6 +5323,139 @@ CONTAINS
       END IF
     END IF
 
+
+
+    ! Check the boundaries and body forces for possible single nodes BCs that must have a constant
+    ! value on that boundary / body force.
+    !--------------------------------------------------------------------------------------------
+    DirName = TRIM(Name)//' Plane'
+    AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
+    
+    IF( AnySingleBC ) THEN
+      dim = CoordinateSystemDimension()
+      
+      ALLOCATE( LumpedNodeSet( SIZE( Perm ) ) )
+
+      CALL Info(Caller,'Found BC constraint: '//TRIM(DirName))
+
+      ! Improve the logic in future
+      ! Now we assume that if the "supernode" has been found then also the matrix has the correct topology. 
+      NeedListMatrix = .NOT. ListCheckPresentAnyBC( Model, TRIM(Name)//' Plane Node Indices')
+      
+      ! Move the list matrix because of its flexibility
+      IF( NeedListMatrix ) THEN
+        CALL Info(Caller,'Using List maxtrix to set constant constraints',Level=8)
+        CALL Info('SetDircihletBoundaries','Original matrix non-zeros: '&
+            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+        IF( ASSOCIATED( A % BulkValues ) ) THEN
+          ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
+          Cols0 = A % Cols
+          Rows0 = A % Rows
+        END IF
+        CALL List_toListMatrix(A)
+      END IF
+
+      ElemFirst =  Model % NumberOfBulkElements + 1 
+      ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+
+      DO bc = 1,Model % NumberOfBCs 
+
+        ValueList => Model % BCs(BC) % Values
+        IF( .NOT. ListGetLogical( ValueList,DirName, GotIt) ) CYCLE
+
+        PlaneInds => ListGetIntegerArray( ValueList,TRIM(Name)//' Plane Node Indices',GotIt )     
+
+        IF(.NOT. GotIt ) THEN
+          IF(.NOT. ALLOCATED(CandNodes) ) THEN
+            ALLOCATE( CandNodes( Mesh % NumberOfNodes ) )        
+          END IF
+          CandNodes = .FALSE.
+
+          ! Add nodes to the set that are associated with this BC only.
+          DO t = ElemFirst, ElemLast
+            Element => Model % Elements(t)            
+            IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+              NodeIndexes => Element % NodeIndexes
+              CandNodes(NodeIndexes) = .TRUE.
+            END IF
+          END DO
+
+          ! Remove nodes from the set that may be set by other BCs also. 
+          DO t = ElemFirst, ElemLast
+            Element => Model % Elements(t)            
+            IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) THEN
+              NodeIndexes => Element % NodeIndexes
+              CandNodes(NodeIndexes) = .FALSE.
+            END IF
+          END DO
+
+          ALLOCATE(PlaneInds(3))
+          CALL FindExtremumNodes(Mesh,CandNodes,dim,PlaneInds) 
+          
+          CALL ListAddIntegerArray( ValueList,TRIM(Name)//' Plane Node Indices',dim, PlaneInds )
+          NeedListMatrix = .TRUE.
+        END IF
+
+        IF( ParEnv % PEs > 1 ) CALL Warn(Caller,'Node index perhaps not set properly in parallel')
+        IF( ind == 0 ) CYCLE
+
+        ! Ok, now sum up the rows to the corresponding nodal index
+        LumpedNodeSet = .FALSE.
+
+        ! Don't lump the "supernodes" and therefore mark it set already
+        LumpedNodeSet(PlaneInds) = .TRUE.
+
+        DO t = ElemFirst, ElemLast
+          Element => Model % Elements(t)
+
+          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+            n = Element % TYPE % NumberOfNodes
+            Indexes(1:n) = Element % NodeIndexes
+            CALL SetRigidRows(PlaneInds,bc,n)
+          END IF
+        END DO
+
+        n = COUNT( LumpedNodeSet ) 
+        CALL Info(Caller,'Number of lumped nodes set: '//TRIM(I2S(n)),Level=10)
+      END DO
+
+      IF( NeedListMatrix ) THEN
+        DEALLOCATE( LumpedNodeSet )
+
+        ! Revert back to CRS matrix
+        CALL List_ToCRSMatrix(A)
+
+        ! This is needed in order to copy the old BulkValues to a vector that 
+        ! has the same size as the new matrix. Otherwise the matrix vector multiplication
+        ! with the new Rows and Cols will fail. 
+        IF( ASSOCIATED( A % BulkValues ) ) THEN
+          BulkValues0 => A % BulkValues
+          NULLIFY( A % BulkValues ) 
+          ALLOCATE( A % BulkValues( SIZE( A % Values ) ) )
+          A % BulkValues = 0.0_dp
+
+          DO i=1,A % NumberOfRows
+            DO j = Rows0(i), Rows0(i+1)-1
+              k = Cols0(j) 
+              DO j2 = A % Rows(i), A % Rows(i+1)-1
+                k2 = A % Cols(j2)
+                IF( k == k2 ) THEN
+                  A % BulkValues(j2) = BulkValues0(j)
+                  EXIT
+                END IF
+              END DO
+            END DO
+          END DO
+
+          DEALLOCATE( Cols0, Rows0, BulkValues0 ) 
+        END IF
+        
+        CALL Info('SetDircihletBoundaries','Modified matrix non-zeros: '&
+            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+      END IF
+    END IF
+
+    
     IF( InfoActive(12) )  THEN
       DirCount = NINT( ParallelReduction( 1.0_dp * DirCount ) )
       CALL Info(Caller,'Number of dofs set for '//TRIM(Name)//': '&
@@ -5510,7 +5645,6 @@ CONTAINS
           k0 = Offset + NDOFs * (Perm(ind0)-1) + DOF
           k = OffSet + NDOFs * (Perm(ind)-1) + DOF
 
-          !Coeff = DiagScaling(k0) / DiagScaling(k)
           Coeff = 1.0_dp
           
           CALL MoveRow( A, k, k0, Coeff )
@@ -5524,7 +5658,6 @@ CONTAINS
             k0 = Offset + NDOFs + (Perm(ind0)-1) * DOF
             k = OffSet + NDOFs * (Perm(ind)-1) + l
 
-            !Coeff = DiagScaling(k0) / DiagScaling(k)
             Coeff = 1.0_dp
             
             CALL MoveRow( A, k, k0, Coeff )
@@ -5541,7 +5674,112 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Set values related to a rigid plane boundary such that any node on the boundary
+!> is expressed as linear combinination of the selected three (or two if on line)
+!> nodes.
+!------------------------------------------------------------------------------
+    SUBROUTINE SetRigidRows(inds0,bcind,n)
+!------------------------------------------------------------------------------
+      INTEGER :: inds0(:)
+      INTEGER :: bcind
+      INTEGER :: n
 
+      INTEGER :: bcind0 =  0
+      INTEGER :: ind,i,j,k,k0
+      REAL(KIND=dp) :: Coeff, Weights(3)
+      REAL(KIND=dp) :: BaseCoord(3,3),r1(3),r2(3),Coord(3),dCoord(3),Amat(2,2),A0mat(2,2),bvec(2)
+      
+      SAVE bcind0, BaseCoord, A0mat, r1, r2
+!-------------------------------------------------------------------        
+
+      IF(bcind /= bcind0 ) THEN
+        BaseCoord = 0.0_dp
+        DO i=1,dim
+          j = inds0(i)
+          BaseCoord(i,1) = Mesh % Nodes % x(j)
+          BaseCoord(i,2) = Mesh % Nodes % y(j)
+          BaseCoord(i,3) = Mesh % Nodes % z(j)
+        END DO
+        bcind0 = bcind
+
+        r1 = BaseCoord(2,:) - BaseCoord(1,:)
+        Amat(1,1) = SUM(r1*r1)
+        
+        IF( dim == 3 ) THEN
+          r2 = BaseCoord(3,:) - BaseCoord(1,:)
+          Amat(1,2) = SUM(r1*r2)
+          Amat(2,1) = Amat(1,2)
+          Amat(2,2) = SUM(r2*r2)
+        END IF
+
+        A0mat = Amat
+        bcind0 = bcind
+      END IF
+                   
+      DO j=1,n
+        ind = Indexes(j)
+
+        IF( LumpedNodeSet(ind) ) CYCLE
+        LumpedNodeSet(ind) = .TRUE.
+        
+        Coord(1) = Mesh % Nodes % x(ind)
+        Coord(2) = Mesh % Nodes % y(ind)
+        Coord(3) = Mesh % Nodes % z(ind)
+
+        dCoord = Coord - BaseCoord(1,:)
+        
+        bvec(1) = SUM( dCoord * r1 )
+        IF( dim == 3 ) THEN
+          bvec(2) = SUM( dCoord * r2 )
+        END IF
+
+        IF( dim == 2 ) THEN
+          bvec(1) = bvec(1) / A0mat(1,1)
+          Weights(2) = bvec(1)
+          Weights(1) = 1.0_dp - Weights(2)
+        ELSE
+          Amat = A0mat          
+          CALL LUSolve(2,Amat,bvec)          
+          Weights(2:3) = bvec(1:2)
+          Weights(1) = 1.0_dp - SUM(bvec(1:2))
+        END IF
+
+        DO l = 1, dim
+          k = OffSet + NDOFs * (Perm(ind)-1) + l    
+
+          ! Distribute row in accordance with the weights
+          DO m = 1, dim
+            k0 = Offset + NDOFs * (Perm(inds0(m))-1) + l          
+            Coeff = Weights(m)
+
+            b(k0) = b(k0) + Coeff * b(k)
+            IF( m < dim ) THEN
+              ! This does not nullify the row
+              CALL MoveRow( A, k, k0, Coeff, 1.0_dp )
+            ELSE
+              ! Now also nullify the row
+              CALL MoveRow( A, k, k0, Coeff )
+              b(k) = 0.0_dp
+            END IF
+          END DO
+
+          ! Express the node as linear combination of the base nodes
+          DO m = 1,dim
+            k0 = Offset + NDOFs * (Perm(inds0(m))-1) + l          
+            Coeff = Weights(m)            
+            CALL AddToMatrixElement( A, k, k0, -Coeff )
+          END DO
+          CALL AddToMatrixElement( A, k, k, 1.0_dp )
+        END DO
+
+      END DO
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE SetRigidRows
+!------------------------------------------------------------------------------
+
+    
 !------------------------------------------------------------------------------
 !> Set values related to individual points.
 !------------------------------------------------------------------------------
@@ -16818,6 +17056,7 @@ CONTAINS
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
     LOGICAL :: DoDamp, DoMass
+    REAL(KIND=dp) :: cc1,cc2
     CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
    !------------------------------------------------------------------------------
 
@@ -16882,7 +17121,12 @@ CONTAINS
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
         INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
         INTEGER :: InterfaceN, hits
-               
+
+        cc1 = ListGetCReal( Solver % Values,'cc1',Stat)
+        IF(.NOT. Stat) cc1 = 1.0_dp
+        cc2 = ListGetCReal( Solver % Values,'cc2',Stat)
+        IF(.NOT. Stat) cc2 = cc1
+        
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat )
         IF (.NOT. Stat) FixRot = .TRUE.
 
@@ -17085,7 +17329,9 @@ CONTAINS
                       js = SPerm(Indexes(p))
                       ks = sdofs*(js-1)+lf-3
                       val = Director(ls) * dBasisdx(p,ls)
-                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
+
+                      
+                      CALL AddToMatrixElement(A_fs,kf,ks,cc1*weight*val)
 
                       ! Here the idea is to distribute the implicit moments of the shell solver
                       ! to forces for the solid solver. So even though the stiffness matrix related to the
@@ -17095,7 +17341,7 @@ CONTAINS
                       ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
                       ! reactions obtained by performing a matrix-vector product.
                       DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
+                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-cc2*weight*val*A_f0(k)) 
                       END DO
                     END DO
                   END IF
