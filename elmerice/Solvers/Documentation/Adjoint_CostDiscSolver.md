@@ -132,5 +132,5 @@ Bellow is a list of features that are not currently possible in this solver but 
 
 ### Tests and Examples
 
-- See examples for the [SSA inverse methods](../../examples/SSA_Inverse_Methods)
+- See examples for the [inverse methods](../../examples/Inverse_Methods)
 

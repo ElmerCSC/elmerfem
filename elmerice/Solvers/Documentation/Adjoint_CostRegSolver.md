@@ -135,4 +135,4 @@ Validation examples available under:
    - Prescribing nodal value from the body forces using a change of variable
 
 
-- See examples for the [SSA inverse methods](../../examples/SSA_Inverse_Methods)
+- See examples for the [inverse methods](../../examples/Inverse_Methods)
