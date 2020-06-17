@@ -36,7 +36,7 @@ The sequence in the .sif is usually as follow:
 4. **Compute the gradient of your cost function with respect to your input parameters**
 
 
-If a change of variable is used for the input friction coefficient of viscosity, the derivative of
+If a change of variable is used for the input friction coefficient or viscosity, the derivative of
 the friction coefficient or viscosity with respect to your input variable can directly be provided
 in the Material section. 
 
