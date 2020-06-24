@@ -538,8 +538,8 @@ END BLOCK
       LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
 
-      LOGICAL :: Found     
-      CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
+      LOGICAL :: Found, GotViscModel, GotTurbModel     
+      CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel, TurbModel
       TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
           ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
           ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
@@ -549,6 +549,10 @@ END BLOCK
       LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE.
       REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
       REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
+
+      TYPE(ValueHandle_t), SAVE :: TurbModel_h, SmagC_h, KEModel_h     
+      TYPE(VariableHandle_t), SAVE :: KE_K_v, KE_E_v, KE_Z_v
+
       
 !$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec)
      
@@ -557,6 +561,7 @@ END BLOCK
 
         CALL ListInitElementKeyword( Visc_h,'Material','Viscosity')      
         CALL ListInitElementKeyword( ViscModel_h,'Material','Viscosity Model')      
+        CALL ListInitElementKeyword( TurbModel_h,'Material','Turbulence Model')      
 
         IF( ListGetElementSomewhere( ViscModel_h) ) THEN
           ViscCond = ListGetCReal( CurrentModel % Solver % Values,&
@@ -600,13 +605,52 @@ END BLOCK
           END IF
         END IF
 
+        IF( ListGetElementSomewhere( TurbModel_h) ) THEN
+          ViscCond = ListGetCReal( CurrentModel % Solver % Values,&
+              'Laminar Viscosity Condition',Found )      
+          ConstantVisc = ( Found .AND. ViscCond > 0.0_dp ) 
+          
+          IF( ListGetLogical( CurrentModel % Solver % Values,&
+              'Constant-Viscosity Start', Found) ) ConstantVisc = (.NOT. Visited ) 
+
+          CALL ListInitElementKeyword( Density_h,'Material','Density')          
+
+          IF ( ListCompareElementAnyString( TurbModel_h,'smagorinsky') ) THEN
+            CALL ListInitElementKeyword( SmagC_h,'Material','Smagorinsky Constant')
+
+          ELSE IF ( ListCompareElementAnyString( TurbModel_h,'ke') .OR. &
+              ListCompareElementAnyString( TurbModel_h,'k-epsilon') ) THEN
+            CALL ListInitElementVariable( KE_K_v,'Kinetic Energy')
+            CALL ListInitElementVariable( KE_E_v,'Kinetic Dissipation')    
+            CALL ListInitElementVariable( KE_Z_v,'v2')
+            CALL ListInitElementKeyword( KECmu_h,'Material','KE Cmu',DefRValue=0.09_dp)
+            CALL ListInitElementKeyword( KECmu_h,'Material','KE Model')
+
+          ELSE IF ( ListCompareElementAnyString( TurbModel_h,'k-omega') ) THEN
+            CALL ListInitElementVariable( KE_K_v,'Kinetic Energy')
+            CALL ListInitElementVariable( KE_E_v,'Kinetic Dissipation')    
+
+          ELSE IF ( ListCompareElementAnyString( TurbModel_h,'sst k-omega') ) THEN
+            CALL ListInitElementVariable( KE_K_v,'Kinetic Energy')
+            CALL ListInitElementVariable( KE_E_v,'Kinetic Dissipation')    
+            CALL ListInitElementVariable( WallDist_v,'Wall Distance')
+
+          ELSE IF ( ListCompareElementAnyString( TurbModel_h,'spalart-allmaras') ) THEN
+            CALL ListInitElementVariable( SA_v,'Turbulent Viscosity')
+          ELSE
+            CALL Fatal('','Unknown turbulence model')
+          END IF
+        END IF
+
+        
         Visited = .TRUE.
       END IF
 
       ViscVec0 => ListGetElementRealVec( Visc_h, ngp, BasisVec, Element )
 
-      ViscModel = ListGetElementString( ViscModel_h, Element, Found ) 
-      IF( .NOT. Found ) THEN
+      ViscModel = ListGetElementString( ViscModel_h, Element, GotViscModel )
+      TurbModel = ListGetElementString( TurbModel_h, Element, GotTurbModel ) 
+      IF( .NOT. (GotTurbModel .OR. GotViscModel ) ) THEN
         ! Return the plain viscosity
         EffViscVec => ViscVec0
         RETURN
@@ -625,12 +669,12 @@ END BLOCK
         
       ! Deallocate too small storage if needed 
       IF (ALLOCATED(ss)) THEN
-        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ArrheniusFactorVec )
+        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec )
       END IF
 
       ! Allocate storage if needed
       IF (.NOT. ALLOCATED(ss)) THEN
-        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
+        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),STAT=allocstat)
         IF (allocstat /= 0) THEN
           CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
         END IF
@@ -651,186 +695,289 @@ END BLOCK
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
 
-
-      
-      SELECT CASE( ViscModel )       
-
-      CASE('glen')
-        c2 = ListGetElementReal( ViscGlenExp_h,Element=Element,Found=Found)
-
-        ! the second invariant is not taken from the strain rate tensor,
-        ! but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
-        s(1:ngp) = ss(1:ngp)/4.0_dp
-
-        c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
-        IF( Found ) THEN
-          c3 = c3**2
-          WHERE( s(1:ngp) < c3 ) s(1:ngp) = c3
+      IF( GotViscModel ) THEN
+        IF( GotTurbModel ) THEN
+          CALL Fatal('IncompressibleNSSolver','Viscosity and turbulence models cannot be combined!')
         END IF
 
-        IF( ListGetElementLogical( ViscArrSet_h,Element,Found=Found) ) THEN
-          ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
-          ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);                    
-          
-          IF( ViscNewton ) THEN
-            WHERE( s(1:ngp) > c3 ) ViscDerVec(1:ngp) = 0.5_dp * ArrheniusFactor**(-1.0_dp/c2) &
-                * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+        IF (ALLOCATED(ArrheniusFactorVec)) THEN
+          IF (SIZE(ArrheniusFactorVec) < ngp ) DEALLOCATE(ArrheniusFactorVec )
+        END IF        
+        IF (.NOT. ALLOCATED(ArrheniusFactorVec)) THEN
+          ALLOCATE(ArrheniusFactorVec(ngp),STAT=allocstat)
+          IF (allocstat /= 0) THEN
+            CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
           END IF
-        ELSE         
-          ! lets for the time being have this hardcoded
-          Tlimit = ListGetElementReal( ViscTlimit_h,Element=Element)
-          A1 = ListGetElementReal( ViscRate1_h,Element=Element)
-          A2 = ListGetElementReal( ViscRate2_h,Element=Element)
-          Q1 = ListGetElementReal( ViscEne1_h,Element=Element)
-          Q2 = ListGetElementReal( ViscEne2_h,Element=Element)
-#if 1
-          ! WHERE is faster than DO + IF
-          TempVec => ListGetElementRealVec( ViscTemp_h, ngp, BasisVec, Element )
-          
-          WHERE( TempVec(1:ngp ) < Tlimit )
-            ArrheniusFactorVec(1:ngp) = A1 * EXP( -Q1/(R * (273.15_dp + TempVec(1:ngp))))
-          ELSE WHERE( TempVec(1:ngp) > 0.0_dp ) 
-            ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp)))
-          ELSE WHERE
-            ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp + TempVec(1:ngp))))
-          END WHERE
-          
-          EhfVec => ListGetElementRealVec( ViscGlenFactor_h, ngp, BasisVec,Element=Element )
-          ViscVec(1:ngp) = 0.5_dp * (EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) * &
-              s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
-          
-          IF( ViscNewton ) THEN
-            WHERE( s(1:ngp) > c3 ) 
-              ViscDerVec(1:ngp) = 0.5_dp * (  EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) &
-                    * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
-            END WHERE
-          END IF                      
-#else 
-          DO i=1,ngp
-            Temp = ListGetElementReal( ViscTemp_h,BasisVec(i,:),Element=Element,&
-                Found=Found,GaussPoint=i)
+        END IF
+        
+        SELECT CASE( ViscModel )       
 
-            IF( Temp <= Tlimit ) THEN
-              ArrheniusFactor = A1 * EXP( -Q1/(R * (273.15_dp + Temp)))
-            ELSE IF((Tlimit < Temp ) .AND. (Temp <= 0.0_dp)) THEN
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp + Temp)))
-            ELSE
-              ArrheniusFactor = A2 * EXP( -Q2/(R * (273.15_dp)))
-              CALL Info('EffectiveViscosityVec',&
-                  'Positive Temperature detected in Glen - limiting to zero!', Level = 12)
-            END IF
+        CASE('glen')
+          c2 = ListGetElementReal( ViscGlenExp_h,Element=Element,Found=Found)
 
-            Ehf = ListGetElementReal( ViscGlenFactor_h,BasisVec(i,:),Element=Element,&
-                Found=Found,GaussPoint=i)
+          ! the second invariant is not taken from the strain rate tensor,
+          ! but rather 2*strain rate tensor (that's why we divide by 4 = 2**2)        
+          s(1:ngp) = ss(1:ngp)/4.0_dp
 
-            ! compute the effective viscosity
-            ViscVec(i) = 0.5_dp * (EhF * ArrheniusFactor)**(-1.0_dp/c2) * s(i)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
-            
+          c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)
+          IF( Found ) THEN
+            c3 = c3**2
+            WHERE( s(1:ngp) < c3 ) s(1:ngp) = c3
+          END IF
+
+          IF( ListGetElementLogical( ViscArrSet_h,Element,Found=Found) ) THEN
+            ArrheniusFactor = ListGetElementReal( ViscArr_h,Element=Element)
+            ViscVec(1:ngp) = 0.5_dp * (ArrheniusFactor)**(-1.0_dp/c2) * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);                    
+
             IF( ViscNewton ) THEN
-              IF( s(i) > c3 ) THEN
-                ViscDerVec(i) = 0.5_dp * (  EhF * ArrheniusFactor)**(-1.0_dp/c2) &
-                    * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(i)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
-              END IF
+              WHERE( s(1:ngp) > c3 ) ViscDerVec(1:ngp) = 0.5_dp * ArrheniusFactor**(-1.0_dp/c2) &
+                  * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
             END IF
-            
-          END DO
-#endif 
-          
-        END IF
-        
+          ELSE         
+            ! lets for the time being have this hardcoded
+            Tlimit = ListGetElementReal( ViscTlimit_h,Element=Element)
+            A1 = ListGetElementReal( ViscRate1_h,Element=Element)
+            A2 = ListGetElementReal( ViscRate2_h,Element=Element)
+            Q1 = ListGetElementReal( ViscEne1_h,Element=Element)
+            Q2 = ListGetElementReal( ViscEne2_h,Element=Element)
 
-      CASE('power law')
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)
+            ! WHERE is faster than DO + IF
+            TempVec => ListGetElementRealVec( ViscTemp_h, ngp, BasisVec, Element )
 
-        c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)       
-        IF( Found ) THEN
-          c3 = c3**2
-          WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
-        END IF
-        
-        ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
-       
-        IF (ViscNewton ) THEN
-          WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
-              ViscVec0(1:ngp) * (c2-1)/2 * ss(1:ngp)**((c2-1)/2-1)
-        END IF
-        
-        c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
-        IF( Found ) THEN
-          ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
+            WHERE( TempVec(1:ngp ) < Tlimit )
+              ArrheniusFactorVec(1:ngp) = A1 * EXP( -Q1/(R * (273.15_dp + TempVec(1:ngp))))
+            ELSE WHERE( TempVec(1:ngp) > 0.0_dp ) 
+              ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp)))
+            ELSE WHERE
+              ArrheniusFactorVec(1:ngp) = A2 * EXP( -Q2/(R * (273.15_dp + TempVec(1:ngp))))
+            END WHERE
+
+            EhfVec => ListGetElementRealVec( ViscGlenFactor_h, ngp, BasisVec,Element=Element )
+            ViscVec(1:ngp) = 0.5_dp * (EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) * &
+                s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp);
+
+            IF( ViscNewton ) THEN
+              WHERE( s(1:ngp) > c3 ) 
+                ViscDerVec(1:ngp) = 0.5_dp * (  EhFVec(1:ngp) * ArrheniusFactorVec(1:ngp))**(-1.0_dp/c2) &
+                    * ((1.0_dp/c2)-1.0_dp)/2.0_dp * s(1:ngp)**(((1.0_dp/c2)-1.0_dp)/2.0_dp - 1.0_dp)/4.0_dp
+              END WHERE
+            END IF
+          END IF
+
+
+        CASE('power law')
+          c2 = ListGetElementReal( ViscExp_h,Element=Element)
+
+          c3 = ListGetElementReal( ViscCritical_h,Element=Element,Found=Found)       
+          IF( Found ) THEN
+            c3 = c3**2
+            WHERE( ss(1:ngp) < c3 ) ss(1:ngp) = c3
+          END IF
+
+          ViscVec(1:ngp) = ViscVec0(1:ngp) * ss(1:ngp)**((c2-1)/2)
+
           IF (ViscNewton ) THEN
-            ViscDerVec(1:ngp) = ViscDerVec(1:ngp) / c4**(c2-1)
+            WHERE(ss(1:ngp) /= 0) ViscDerVec(1:ngp) = &
+                ViscVec0(1:ngp) * (c2-1)/2 * ss(1:ngp)**((c2-1)/2-1)
           END IF
-        END IF
 
-      CASE('power law too')
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)           
-        ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
+          c4 = ListGetElementReal( ViscNominal_h,Element=Element,Found=Found)
+          IF( Found ) THEN
+            ViscVec(1:ngp) = ViscVec(1:ngp) / c4**(c2-1)
+            IF (ViscNewton ) THEN
+              ViscDerVec(1:ngp) = ViscDerVec(1:ngp) / c4**(c2-1)
+            END IF
+          END IF
 
-        IF (ViscNewton ) THEN
-          ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
-        END IF
-                
-      CASE ('carreau')      
-        c1 = ListGetElementReal( ViscDiff_h,Element=Element)
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)
-        c3 = ListGetElementReal( ViscTrans_h,Element=Element)
-        c4 = ListGetElementReal( ViscYasuda_h,Element=Element,Found=Found)
-        IF( Found ) THEN
-          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
-          
+        CASE('power law too')
+          c2 = ListGetElementReal( ViscExp_h,Element=Element)           
+          ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
+
+          IF (ViscNewton ) THEN
+            ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
+          END IF
+
+        CASE ('carreau')      
+          c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+          c2 = ListGetElementReal( ViscExp_h,Element=Element)
+          c3 = ListGetElementReal( ViscTrans_h,Element=Element)
+          c4 = ListGetElementReal( ViscYasuda_h,Element=Element,Found=Found)
+          IF( Found ) THEN
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4) 
+
+            IF( ViscNewton ) THEN
+              ViscDerVec(1:ngp) = c1*(1+c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*&
+                  ss(1:ngp)**(c4/2-1)
+            END IF
+          ELSE
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
+
+            IF( ViscNewton ) THEN
+              ViscDerVec(1:ngp) = c1*(c2-1)/2*c3**2*(1+c3**2*ss(1:ngp))**((c2-1)/2-1)
+            END IF
+          END IF
+
+        CASE ('cross')
+          c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+          c2 = ListGetElementReal( ViscExp_h,Element=Element)
+          c3 = ListGetElementReal( ViscTrans_h,Element=Element)
+
+          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 / (1 + c3*ss(1:ngp)**(c2/2))
+
           IF( ViscNewton ) THEN
-            ViscDerVec(1:ngp) = c1*(1+c3**c4*ss(1:ngp)**(c4/2))**((c2-1)/c4-1)*(c2-1)/2*c3**c4*&
-                ss(1:ngp)**(c4/2-1)
+            ViscDerVec(1:ngp) = -c1*c3*ss(1:ngp)**(c2/2)*c2 / (2*(1+c3*ss(1:ngp)**(c2/2))**2*ss(1:ngp))
           END IF
-        ELSE
-          ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * (1 + c3*c3*ss(1:ngp))**((c2-1)/2) 
 
-          IF( ViscNewton ) THEN
-            ViscDerVec(1:ngp) = c1*(c2-1)/2*c3**2*(1+c3**2*ss(1:ngp))**((c2-1)/2-1)
+        CASE ('powell eyring')
+          c1 = ListGetElementReal( ViscDiff_h,Element=Element)
+          c2 = ListGetElementReal( ViscTrans_h,Element=Element)
+
+          s(1:ngp) = SQRT(ss(1:ngp))
+
+          IF( ViscNewton ) THEN          
+            WHERE( c2*s(1:ngp) < 1.0d-5 )
+              ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
+              ViscDerVec(1:ngp) = 0.0_dp
+            ELSE WHERE
+              ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+              ViscDerVec(1:ngp) = c1*(c2/(2*s(1:ngp))+c2**2/(2*SQRT(c2**2*ss(1:ngp)+1)))/ &
+                  ((c2*s(1:ngp)+SQRT(c2*ss(1:ngp)+1))*c2*s(1:ngp)) - &
+                  c1*LOG(c2*s(1:ngp)+SQRT(c2**2*ss(1:ngp)+1))/(c2*s(1:ngp)**3)/2
+            END WHERE
+          ELSE
+            WHERE( c2*s(1:ngp) < 1.0d-5 )
+              ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
+            ELSE WHERE
+              ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
+            END WHERE
           END IF
-        END IF
 
-      CASE ('cross')
-        c1 = ListGetElementReal( ViscDiff_h,Element=Element)
-        c2 = ListGetElementReal( ViscExp_h,Element=Element)
-        c3 = ListGetElementReal( ViscTrans_h,Element=Element)
+        CASE DEFAULT 
+          CALL Fatal('EffectiveViscosityVec','Unknown material model')
 
-        ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 / (1 + c3*ss(1:ngp)**(c2/2))
+        END SELECT
 
-        IF( ViscNewton ) THEN
-          ViscDerVec(1:ngp) = -c1*c3*ss(1:ngp)**(c2/2)*c2 / (2*(1+c3*ss(1:ngp)**(c2/2))**2*ss(1:ngp))
-        END IF
-          
-      CASE ('powell eyring')
-        c1 = ListGetElementReal( ViscDiff_h,Element=Element)
-        c2 = ListGetElementReal( ViscTrans_h,Element=Element)
+      ELSE 
 
-        s(1:ngp) = SQRT(ss(1:ngp))
+       SELECT CASE( TurbModel )       
+        
+       CASE( 'smagorinsky' )
+         c2 = ListGetElementReal( SMagC_h, Element = Element )
+         Density = ListGetElementReal( Density_h, Element = Element ) 
+         h  = ElementDiameter( Element, Nodes )
+         ViscVec(1:ngp) = ViscVec0(1:ngp) + Density * c2 * h**2 * SQRT(2*ss(1:ngp)) / 2
 
-        IF( ViscNewton ) THEN          
-          WHERE( c2*s(1:ngp) < 1.0d-5 )
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
-            ViscDerVec(1:ngp) = 0.0_dp
-          ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
-            ViscDerVec(1:ngp) = c1*(c2/(2*s(1:ngp))+c2**2/(2*SQRT(c2**2*ss(1:ngp)+1)))/ &
-                ((c2*s(1:ngp)+SQRT(c2*ss(1:ngp)+1))*c2*s(1:ngp)) - &
-                c1*LOG(c2*s(1:ngp)+SQRT(c2**2*ss(1:ngp)+1))/(c2*s(1:ngp)**3)/2
-          END WHERE
+         Viscosity = Viscosity + Density * c2 * h**2 * SQRT(2*ss) / 2
+         IF( ViscNewton ) THEN
+           ViscDerVec(1:ngp) = Density * c2 * h**2 * /(2*SQRT(2*ss(1:ngp)))
+         END IF
+         
+       CASE( 'ke','k-epsilon' )
+         KE_K = ListGetElementVectorSolution( KE_K_h, Basis, Element )
+         KE_E = ListGetElementVectorSolution( KE_E_h, Basis, Element )
+         IF (ListGetElementStringCompare(KEModel_h,'v2-f') )
+
+           Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
+           IF ( .NOT. ASSOCIATED( Var ) ) &
+                CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
+           KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+           Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
+           IF ( .NOT. ASSOCIATED( Var ) ) &
+                CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
+           KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+           Vals(1:n) = ListGetReal( Material, 'KE Cmu',n,Element % NodeIndexes,gotIt )
+           IF ( .NOT. GotIt ) THEN
+              Cmu = SUM( Basis(1:n) * Vals(1:n) )
+           ELSE
+              Cmu = 0.09_dp 
+           END IF
+           mu = Viscosity + Cmu*Density*KE_K**2 / KE_E
         ELSE
-          WHERE( c2*s(1:ngp) < 1.0d-5 )
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
-          ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))            
-          END WHERE
+           Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
+           IF ( .NOT. ASSOCIATED( Var ) ) &
+                CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
+           KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+           Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
+           IF ( .NOT. ASSOCIATED( Var ) ) &
+                CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
+           KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+           Var => VariableGet( CurrentModel % Variables, 'V2' )
+           IF ( .NOT. ASSOCIATED( Var ) ) &
+                CALL Fatal( 'Viscosity Model', 'The V2 variable not defined?' )
+           KE_Z = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+           Vals(1:n) = ListGetReal( Material, 'V2-F CT',n,Element % NodeIndexes )
+           CT = SUM( Basis(1:n) * Vals(1:n) )
+           TimeScale = MAX( KE_K/KE_E, CT*SQRT(Viscosity/Density/KE_E) )
+
+           Vals(1:n) = ListGetReal( Material, 'KE Cmu',n,Element % NodeIndexes )
+           Cmu = SUM( Basis(1:n) * Vals(1:n) )
+
+           mu = Viscosity + Cmu*Density*KE_Z*TimeScale
         END IF
 
-      CASE DEFAULT 
-        CALL Fatal('EffectiveViscosityVec','Unknown material model')
+     CASE( 'rng k-epsilon' )
+        Var => VariableGet( CurrentModel % Variables, 'Effective Viscosity')
+        mu = SUM( Basis(1:n) * Var % Values( Var % Perm( Element % NodeIndexes )))
 
-      END SELECT
+     CASE( 'spalart-allmaras' )
+        Var => VariableGet( CurrentModel % Variables, 'Turbulent Viscosity')
+        IF ( .NOT. ASSOCIATED( Var ) ) &
+             CALL Fatal( 'Viscosity Model', 'The turbulent viscosity variable not defined?' )
+        mu = SUM( Basis(1:n) * Var % Values( Var % Perm( Element % NodeIndexes )))
+        c1 = mu/(Viscosity/Density)
+        c1 = c1**3 / (c1**3 + 7.1_dp**3) 
+        mu = Viscosity + mu*Density*c1
 
+     CASE( 'k-omega' )
+        Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
+        IF ( .NOT. ASSOCIATED( Var ) ) &
+             CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
+        KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+        Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
+        IF ( .NOT. ASSOCIATED( Var ) ) &
+             CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
+        KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+        mu = Viscosity + Density * KE_K / KE_E
+
+     CASE( 'sst k-omega' )
+        Var => VariableGet( CurrentModel % Variables, 'Kinetic Energy' )
+        IF ( .NOT. ASSOCIATED( Var ) ) &
+             CALL Fatal( 'Viscosity Model', 'The kinetic energy variable not defined?' )
+        KE_K = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+        Var => VariableGet( CurrentModel % Variables, 'Kinetic Dissipation' )
+        IF ( .NOT. ASSOCIATED( Var ) ) &
+             CALL Fatal( 'Viscosity Model', 'The kinetic dissipation rate variable not defined?' )
+        KE_E = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+        Var => VariableGet( CurrentModel % Variables, 'Wall distance' )
+        IF ( .NOT. ASSOCIATED( Var ) ) &
+             CALL Fatal( 'Viscosity Model', 'The wall distance variable not defined?' )
+        Dist = SUM(Basis(1:n) * Var % Values(Var % Perm(Element % NodeIndexes)))
+
+        F2 = TANH( MAX(2*SQRT(KE_K)/(0.09_dp*KE_E*Dist), &
+             500._dp*Viscosity/(Density*KE_E*Dist**2))**2)
+
+        !        F3 = 1-TANH((150*Viscosity/Density/KE_E/Dist**2)**4)
+        F3 = 1
+
+        mu = Viscosity+0.31_dp*Density*KE_K/MAX(0.31_dp*KE_E,SQRT(ss)*F2*F3)
+
+        
+        
+        
+
+        
+      END IF
+      
+        
 
     END FUNCTION EffectiveViscosityVec
       
