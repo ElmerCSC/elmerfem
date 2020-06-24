@@ -1348,8 +1348,9 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
+    REAL(KIND=dp), POINTER :: TmpArray(:,:)
+    REAL(KIND=dp) :: CoordScale(3)
     
-
     ! Initialize the auxiliary module for buffered writing
     !--------------------------------------------------------------
     CALL AscBinWriteInit( AsciiOutput, SinglePrec, VtuUnit, BufferSize )
@@ -1438,6 +1439,17 @@ CONTAINS
       END IF
     END IF
 
+    CoordScale = 1.0_dp
+    IF( ListGetLogical( Params,'Coordinate Scaling Revert', Found ) ) THEN
+      TmpArray => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )    
+      IF( Found ) THEN            
+        DO i=1,Model % Mesh % MaxDim 
+          j = MIN( i, SIZE(TmpArray,1) )
+          CoordScale(i) = 1.0_dp / TmpArray(j,1)
+        END DO
+      END IF
+    END IF
+      
 
     ! When the data is 'appended' two loops will be taken and the data will be written
     ! on the second loop. Offset is the position in the appended data after the '_' mark.
@@ -2190,7 +2202,6 @@ CONTAINS
         y = Model % Mesh % Nodes % y( i )
         z = Model % Mesh % Nodes % z( i )
 
-
         ! If displacement field is active remove the displacement from the coordinates
         IF( dispdofs > 0 .OR. dispBdofs > 0) THEN
           j = 0
@@ -2212,6 +2223,10 @@ CONTAINS
           END IF
         END IF
 
+        x = CoordScale(1) * x
+        y = CoordScale(2) * y
+        z = CoordScale(3) * z
+        
         CALL AscBinRealWrite( x )
         CALL AscBinRealWrite( y )
         CALL AscBinRealWrite( z )

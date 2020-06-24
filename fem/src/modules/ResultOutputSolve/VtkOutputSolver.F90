@@ -243,13 +243,25 @@ CONTAINS
         TYPE(Model_t), INTENT(IN) :: Model
         LOGICAL, INTENT(IN) :: SubtractDisp ! Subtract Displacement from Coords.
         TYPE(Variable_t), POINTER :: Displacement, MeshUpdate, Var1, Var2
-        INTEGER :: i, k, l, nVtkCells, nVtkCellNum, dim, BCOffset
+        INTEGER :: i, j, k, l, nVtkCells, nVtkCellNum, dim, BCOffset
         ! FIXME: POINTER -> ALLOCATABLE when more compilers support it
         REAL(KIND=dp) :: Coord(3)
         LOGICAL :: Found
         TYPE(VtkCell_t), POINTER :: VtkCells(:)
-
-
+        REAL(KIND=dp), POINTER :: TmpArray(:,:)
+        REAL(KIND=dp) :: CoordScale(3)
+               
+        CoordScale = 1.0_dp
+        IF( ListGetLogical( Model % Solver % Values,'Coordinate Scaling Revert', Found ) ) THEN
+          TmpArray => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )    
+          IF( Found ) THEN            
+            DO i=1,Model % Mesh % MaxDim 
+              j = MIN( i, SIZE(TmpArray,1) )
+              CoordScale(i) = 1.0_dp / TmpArray(j,1)
+            END DO
+          END IF
+        END IF
+    
         WRITE ( IOUnit, '("# vtk DataFile Version 3.0")' ) 
         WRITE ( IOUnit, '("ElmerSolver output; started at ", A)' ) TRIM( FormatDate() )
         WRITE ( IOUnit, '("ASCII")' ) 
@@ -324,6 +336,8 @@ CONTAINS
             END IF
           END IF
 
+          Coord = CoordScale * Coord
+          
           IF( dim <= 2 ) THEN
             WRITE( IOUnit,'(2ES16.7E3,A)' ) Coord(1:2),' 0.0' 
           ELSE
