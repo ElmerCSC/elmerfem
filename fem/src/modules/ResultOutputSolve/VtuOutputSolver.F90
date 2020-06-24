@@ -517,13 +517,13 @@ CONTAINS
             WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile//' '),"_",Part,"par"            
           ELSE
             IF ( PEs < 10) THEN                    
-              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM(VtuFile)//' ',"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM(VtuFile//' '),"_",PEs,"np",Part
             ELSE IF ( PEs < 100) THEN                    
-              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM(VtuFile)//' ',"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM(VtuFile//' '),"_",PEs,"np",Part
             ELSE IF ( PEs < 1000) THEN                    
-              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM(VtuFile)//' ',"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM(VtuFile//' '),"_",PEs,"np",Part
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM(VtuFile)//' ',"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM(VtuFile//' '),"_",PEs,"np",Part
             END IF
           END IF
         ELSE
@@ -537,7 +537,7 @@ CONTAINS
             ELSE IF ( PEs < 1000) THEN                    
               WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile//' '),"_",PEs,"np"
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile)//' ',"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile//' '),"_",PEs,"np"
             END IF
           END IF
         END IF
