@@ -514,16 +514,16 @@ CONTAINS
           ! In parallel the mesh consists of pieces called partitions.
           ! Give each partition a name that includes the partition. 
           IF( LegacyMode ) THEN
-            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile//' '),"_",Part,"par"            
+            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM((VtuFile)),"_",Part,"par"            
           ELSE
             IF ( PEs < 10) THEN                    
-              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE IF ( PEs < 100) THEN                    
-              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE IF ( PEs < 1000) THEN                    
-              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM((VtuFile)),"_",PEs,"np",Part
             END IF
           END IF
         ELSE
@@ -531,13 +531,13 @@ CONTAINS
           ! quickly see on which partitioning they were computed. 
           IF( ParallelBaseName ) THEN
             IF ( PEs < 10) THEN                    
-              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE IF ( PEs < 100) THEN                    
-              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE IF ( PEs < 1000) THEN                    
-              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM((VtuFile)),"_",PEs,"np"
             END IF
           END IF
         END IF
@@ -546,9 +546,9 @@ CONTAINS
         ! This is for adding time (or nonlinear iteration/scanning) to the filename.
         IF( FileIndex > 0 ) THEN
           IF( FileIndex < 10000 ) THEN        
-            WRITE(VtuFile,'(A,A,I4.4)') TRIM(VtuFile//' '),"_t",FileIndex
+            WRITE(VtuFile,'(A,A,I4.4)') TRIM((VtuFile)),"_t",FileIndex
           ELSE
-            WRITE(VtuFile,'(A,A,I0)' ) TRIM(VtuFile//' '),"_t",FileIndex
+            WRITE(VtuFile,'(A,A,I0)' ) TRIM((VtuFile)),"_t",FileIndex
           END IF
         END IF     
         
