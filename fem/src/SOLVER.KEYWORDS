@@ -1748,6 +1748,6 @@ run control:integer: 'simplex restart interval'
 run control:real:    'initial step size'
 run control:real:    'max step size'
 run control:real:    'step size relaxation factor'
-
+solver:logical:      'coordinate scaling revert'
 
 

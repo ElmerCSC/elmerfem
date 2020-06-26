@@ -514,16 +514,16 @@ CONTAINS
           ! In parallel the mesh consists of pieces called partitions.
           ! Give each partition a name that includes the partition. 
           IF( LegacyMode ) THEN
-            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile//' '),"_",Part,"par"            
+            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM((VtuFile)),"_",Part,"par"            
           ELSE
             IF ( PEs < 10) THEN                    
-              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE IF ( PEs < 100) THEN                    
-              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE IF ( PEs < 1000) THEN                    
-              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM(VtuFile//' '),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM((VtuFile)),"_",PEs,"np",Part
             END IF
           END IF
         ELSE
@@ -531,13 +531,13 @@ CONTAINS
           ! quickly see on which partitioning they were computed. 
           IF( ParallelBaseName ) THEN
             IF ( PEs < 10) THEN                    
-              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE IF ( PEs < 100) THEN                    
-              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE IF ( PEs < 1000) THEN                    
-              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile//' '),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM((VtuFile)),"_",PEs,"np"
             END IF
           END IF
         END IF
@@ -546,9 +546,9 @@ CONTAINS
         ! This is for adding time (or nonlinear iteration/scanning) to the filename.
         IF( FileIndex > 0 ) THEN
           IF( FileIndex < 10000 ) THEN        
-            WRITE(VtuFile,'(A,A,I4.4)') TRIM(VtuFile//' '),"_t",FileIndex
+            WRITE(VtuFile,'(A,A,I4.4)') TRIM((VtuFile)),"_t",FileIndex
           ELSE
-            WRITE(VtuFile,'(A,A,I0)' ) TRIM(VtuFile//' '),"_t",FileIndex
+            WRITE(VtuFile,'(A,A,I0)' ) TRIM((VtuFile)),"_t",FileIndex
           END IF
         END IF     
         
@@ -1348,8 +1348,9 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
+    REAL(KIND=dp), POINTER :: TmpArray(:,:)
+    REAL(KIND=dp) :: CoordScale(3)
     
-
     ! Initialize the auxiliary module for buffered writing
     !--------------------------------------------------------------
     CALL AscBinWriteInit( AsciiOutput, SinglePrec, VtuUnit, BufferSize )
@@ -1438,6 +1439,17 @@ CONTAINS
       END IF
     END IF
 
+    CoordScale = 1.0_dp
+    IF( ListGetLogical( Params,'Coordinate Scaling Revert', Found ) ) THEN
+      TmpArray => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )    
+      IF( Found ) THEN            
+        DO i=1,Model % Mesh % MaxDim 
+          j = MIN( i, SIZE(TmpArray,1) )
+          CoordScale(i) = 1.0_dp / TmpArray(j,1)
+        END DO
+      END IF
+    END IF
+      
 
     ! When the data is 'appended' two loops will be taken and the data will be written
     ! on the second loop. Offset is the position in the appended data after the '_' mark.
@@ -2190,7 +2202,6 @@ CONTAINS
         y = Model % Mesh % Nodes % y( i )
         z = Model % Mesh % Nodes % z( i )
 
-
         ! If displacement field is active remove the displacement from the coordinates
         IF( dispdofs > 0 .OR. dispBdofs > 0) THEN
           j = 0
@@ -2212,6 +2223,10 @@ CONTAINS
           END IF
         END IF
 
+        x = CoordScale(1) * x
+        y = CoordScale(2) * y
+        z = CoordScale(3) * z
+        
         CALL AscBinRealWrite( x )
         CALL AscBinRealWrite( y )
         CALL AscBinRealWrite( z )
