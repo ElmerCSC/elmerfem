@@ -59,7 +59,7 @@
      REAL(KIND=dp) :: RelativeChange,Norm,PrevNorm
 
      INTEGER, POINTER :: NodeIndexes(:)
-     LOGICAL :: NewtonLinearization = .FALSE.,gotIt
+     LOGICAL :: gotIt
 
      LOGICAL :: AllocationsDone = .FALSE., Bubbles
 
@@ -69,8 +69,8 @@
 
      INTEGER, POINTER :: FlowPerm(:),KinPerm(:)
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter,NoActive
-     REAL(KIND=dp) :: NewtonTol, Clip, V2FCp
+     INTEGER :: NSDOFs,NonlinearIter,NoActive
+     REAL(KIND=dp) :: Clip, V2FCp
 
      REAL(KIND=dp), POINTER :: KEpsilon(:),&
          FlowSolution(:), ForceVector(:)
@@ -171,12 +171,6 @@
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
-     NewtonTol = ListGetConstReal( SolverParams, &
-         'Nonlinear System Newton After Tolerance',gotIt )
-     
-     NewtonIter = ListGetInteger( SolverParams, &
-         'Nonlinear System Newton After Iterations',gotIt )
-     
      NonlinearIter = ListGetInteger( SolverParams, &
          'Nonlinear System Max Iterations',GotIt )
      IF ( .NOT.GotIt ) NonlinearIter = 1
@@ -200,11 +194,15 @@
        at0 = RealTime()
 
        CALL Info( Caller, ' ', Level=5 )
-       CALL Info( Caller, &
-          '-------------------------------------', Level=4 )
-       CALL Info( Caller,'KEpsilon iteration:'//TRIM(I2S(iter)), Level=4 )
-       CALL Info( Caller, &
-          '-------------------------------------', Level=5 )
+       CALL Info( Caller,'-------------------------------------', Level=4 )
+       IF( KEComp == 0 ) THEN
+         CALL Info( Caller,'KEpsilon iteration: '//TRIM(I2S(iter)), Level=4 )
+       ELSE IF( KEComp == 1 ) THEN
+         CALL Info( Caller,'Kinetic energy iteration: '//TRIM(I2S(iter)), Level=4 )
+       ELSE
+         CALL Info( Caller,'Dissipation iteration: '//TRIM(I2S(iter)), Level=4 )
+       END IF
+       CALL Info( Caller,'-------------------------------------', Level=5 )
        CALL Info( Caller, ' ', Level=5 )
        CALL Info( Caller, 'Starting Assembly...', Level=5 )
 
@@ -489,9 +487,6 @@
       END DO
 !------------------------------------------------------------------------------
       RelativeChange = Solver % Variable % NonlinChange
-
-      IF ( RelativeChange < NewtonTol .OR. &
-          iter > NewtonIter ) NewtonLinearization = .TRUE.
 
       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
 !------------------------------------------------------------------------------
@@ -980,17 +975,31 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: SolverParams
      LOGICAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: str
+     INTEGER :: KEcomp 
 !------------------------------------------------------------------------------
      SolverParams => GetSolverParams()
 
-     CALL ListAddNewLogical( SolverParams,'Global Mass Matrix',.TRUE.) 
+     KEComp = ListGetInteger( SolverParams,'KE component',Found ) 
+     
+     !CALL ListAddNewLogical( SolverParams,'Global Mass Matrix',.TRUE.) 
      
      str = GetString( SolverParams,'Variable', Found )
-     IF ( .NOT. Found ) str = 'K-eps'
-     IF ( INDEX( str, '[' ) <= 0 ) THEN
-       CALL ListAddString( SolverParams, 'Variable', &
+
+     IF( KEComp ==  0 ) THEN
+       IF ( .NOT. Found ) str = 'K-eps'
+       IF ( INDEX( str, '[' ) <= 0 ) THEN
+         CALL ListAddString( SolverParams, 'Variable', &
              TRIM(str) // '[Kinetic Energy:1 Kinetic Dissipation:1]' )
+       END IF
+     ELSE IF( KEcomp == 1 ) THEN
+       CALL ListAddString( SolverParams, 'Variable','Kinetic Energy' )
+     ELSE IF( KEcomp == 2 ) THEN
+       CALL ListAddString( SolverParams, 'Variable','Kinetic Dissipation' )
+     ELSE
+       CALL Fatal('KESolver_init','Invalid VALUE for "KE Component": '//TRIM(I2S(KEcomp)))
      END IF
+
+       
 !------------------------------------------------------------------------------
    END SUBROUTINE KESolver_Init
 !------------------------------------------------------------------------------
