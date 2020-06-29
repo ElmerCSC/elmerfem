@@ -82,7 +82,7 @@
          TurbulentViscosity(:),LocalDissipation(:), &
          LocalKinEnergy(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
          KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:)
-
+     
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
 
      SAVE U,V,W,MASS,STIFF,LOAD,FORCE, &
@@ -163,7 +163,7 @@
        IF ( istat /= 0 ) THEN
          CALL Fatal( Caller, 'Memory allocation error.' )
        END IF
-       
+                
        NULLIFY(SecInv)
        AllocationsDone = .TRUE.
      END IF
@@ -182,7 +182,7 @@
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
      Bubbles = GetString( SolverParams, &
-               'Stabilization method', GotIt ) == 'bubbles'
+         'Stabilization method', GotIt ) == 'bubbles'
      IF ( .NOT. GotIt ) Bubbles = .TRUE.
 
 !------------------------------------------------------------------------------
@@ -353,6 +353,7 @@
          ELSE IF ( nb > 0 ) THEN
            CALL CondensateP( DOFs*nd, DOFs*nb, STIFF, FORCE, TimeForce )
          END IF
+
          CALL DefaultUpdateEquations( STIFF, FORCE )
 !------------------------------------------------------------------------------
       END DO     !  Bulk elements
@@ -366,13 +367,14 @@
           n = GetElementNOFNodes()
 
           BC => GetBC()
+          IF( KEComp == 1 ) CYCLE
           IF ( ASSOCIATED( BC ) ) THEN
             IF ( GetLogical( BC, 'Epsilon Wall BC', gotIt ) .OR. &
                  GetLogical( BC, 'Noslip Wall BC',  gotIt ) ) THEN
               DO i=1,n
                 j = KinPerm(Element % NodeIndexes(i))
-                CALL ZeroRow( Solver % Matrix, 2*j )
-                Solver % Matrix % RHS(2*j) = 0.0_dp
+                CALL ZeroRow( Solver % Matrix, Dofs*j )
+                Solver % Matrix % RHS(Dofs*j) = 0.0_dp
               END DO
              END IF
           END IF
@@ -425,10 +427,13 @@
                   LayerThickness(j), SurfaceRoughness(j), Viscosity(j), &
                   Density(j) )
 
-              k = DOFs*(KinPerm(NodeIndexes(j))-1)
-
-              CALL UpdateDirichletDof( StiffMatrix, k+1, Work(1) )
-              CALL UpdateDirichletDof( StiffMatrix, k+2, Work(2) )
+              k = KinPerm(NodeIndexes(j))
+              IF( KEcomp == 0 ) THEN             
+                CALL UpdateDirichletDof( StiffMatrix, 2*k-1, Work(1) )
+                CALL UpdateDirichletDof( StiffMatrix, 2*k, Work(2) )
+              ELSE 
+                CALL UpdateDirichletDof( StiffMatrix, k, Work(KEcomp) )
+              END IF
             END DO
           END IF
 
@@ -475,8 +480,12 @@
           Eval = MAX(Density(1)*KECmu(1)*KVal**2/Viscosity(1),Clip*EMax)
         END IF
 
-        KEkin % Values(k) = MAX( KVal, 1.0d-10 )
-        KEdis % Values(k) = MAX( EVal, 1.0d-10 )
+        IF( KEcomp /= 2 ) THEN
+          KEkin % Values(k) = MAX( KVal, 1.0d-10 )
+        END IF
+        IF( KEcomp /= 1 ) THEN
+          KEdis % Values(k) = MAX( EVal, 1.0d-10 )
+        END IF
       END DO
 !------------------------------------------------------------------------------
       RelativeChange = Solver % Variable % NonlinChange
@@ -488,8 +497,6 @@
 !------------------------------------------------------------------------------
     END DO
 !------------------------------------------------------------------------------
-
-    n = SIZE( Solver % Variable % Values )
 
 CONTAINS
 
@@ -529,15 +536,15 @@ CONTAINS
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IP
 
-     REAL(KIND=dp) :: SpecificHeatRatio, Pressure(n), ReferencePressure, &
+     REAL(KIND=dp) :: Pressure(n), ReferencePressure, &
           Sound_speed_sq, Mach_number_sq
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3), &
               SqrtMetric,Gravity(3),Pr_rho(n),Pr,rho_g, c3(n)
-     REAL(KIND=dp) :: C0(2),C1,CT,C2(2),SecInv,X,Y,Z,LV2,LCT,SigmaK,SigmaE
+     REAL(KIND=dp) :: C0(2),C1,CT,C2(2),SecInv,X,Y,Z,LV2,LCT,SigmaK,SigmaE,CvRat
 
      REAL(KIND=dp), POINTER :: gWork(:,:)
 
-     LOGICAL :: stat,UseRNGModel
+     LOGICAL :: stat,UseRNGModel,GotCvRat,GotGrav
 
 !     REAL(KIND=dp) :: div,ProdTensor(3,3),nu
 
@@ -555,13 +562,16 @@ CONTAINS
 
      UseRNGModel = KEModel == 'rng'
 
-     gWork => ListGetConstRealArray( Model % Constants,'Gravity',GotIt)
-     IF ( GotIt ) THEN
+     gWork => ListGetConstRealArray( Model % Constants,'Gravity',GotGrav)
+     IF ( GotGrav ) THEN
        Gravity = gWork(1:3,1)*gWork(4,1)
      ELSE
        Gravity    =  0.00_dp
        Gravity(2) = -9.81_dp
      END IF
+
+     ! Even historically gravity has not been used!
+     GotGrav = .FALSE.     
 
      Pr_rho(1:n) = GetReal( Material, 'Turbulent Prandtl Number', stat )
      IF ( .NOT. stat ) Pr_rho(1:n) = 0.85_dp
@@ -571,7 +581,8 @@ CONTAINS
 
 
      CALL ElementDensity( Density, n )
-     SpecificheatRatio = GetCReal( Material, 'Specific Heat Ratio', stat )
+     cvRat = GetCReal( Material, 'Specific Heat Ratio', GotCvRat )
+
      CALL getScalarLocalSolution( Pressure, 'Pressure' )
      ReferencePressure = GetCReal( Material, 'Reference Pressure', stat )
 
@@ -638,13 +649,14 @@ CONTAINS
        E = SUM( LocalDissipation(1:n) * Basis(1:n) )
        Eta =  SQRT(SecInv) * K / E
 
-       Pr = SUM(Pr_rho(1:n) * Basis(1:n) )
-       rho_g = 0._dp
-       DO i=1,dim
-         rho_g = rho_g + SUM(Density(1:n) * dBasisdx(1:n,i)) * Gravity(i)
-       END DO
-       rho_g = 0._dp
-
+       IF( GotGrav ) THEN       
+         Pr = SUM(Pr_rho(1:n) * Basis(1:n) )
+         rho_g = 0._dp
+         DO i=1,dim
+           rho_g = rho_g + SUM(Density(1:n) * dBasisdx(1:n,i)) * Gravity(i)
+         END DO
+       END IF
+         
        mu  = SUM( Viscosity(1:n) * Basis(1:n) )
        rho = SUM( Density(1:n) * Basis(1:n) )
 
@@ -657,11 +669,12 @@ CONTAINS
        LC2 = SUM( KEC2(1:n) * Basis(1:n) )
        LC3 = SUM( c3(1:n) * Basis(1:n) )
 
-       Sound_speed_sq = (SUM(Basis(1:n)*Pressure(1:n))+ReferencePressure) * &
-                     SpecificHeatRatio / rho
        Mach_number_sq = 0._dp
-       IF ( Sound_speed_sq > 0._dp ) Mach_number_sq = K/Sound_speed_sq
-
+       IF( GotCvRat ) THEN
+         Sound_speed_sq = (SUM(Basis(1:n)*Pressure(1:n))+ReferencePressure) * CvRat / rho
+         IF ( Sound_speed_sq > 0.0_dp) Mach_number_sq = K/Sound_speed_sq
+       END IF
+         
        IF ( KEModel=='v2-f' ) THEN
          LV2 = SUM( LocalV2(1:n) * Basis(1:n) )
          LCT = SUM( V2FCT(1:n) * Basis(1:n) )
@@ -679,9 +692,15 @@ CONTAINS
        ELSE
          Tmu  = Rho * Cmu*K**2  / E
        END IF
-       ProdK = Tmu * (SecInv-rho_g/(rho*Pr)) / rho
-       ProdE = Tmu * (SecInv-LC3*rho_g/(rho*Pr)) / rho
 
+       IF( GotGrav ) THEN              
+         ProdK = Tmu * (SecInv-rho_g/(rho*Pr)) / rho
+         ProdE = Tmu * (SecInv-LC3*rho_g/(rho*Pr)) / rho
+       ELSE
+         ProdK = Tmu * SecInv / rho
+         ProdE = Tmu * SecInv / rho
+       END IF
+         
        Effmu(1) = mu + Tmu / SigmaK
        Effmu(2) = mu + Tmu / SigmaE
 
@@ -704,105 +723,124 @@ CONTAINS
        Alpha = 1.0d0
 
        IF ( UseRNGModel ) THEN
-          ww = mu / Effmu(1)
-          alpha = 1.3929d0
-          oldalpha = 1
+         ww = mu / Effmu(1)
+         alpha = 1.3929d0
+         oldalpha = 1
 
-          olderr = ABS((oldalpha-1.3929d0)/(1.0d0-1.3929d0))**0.6321d0
-          olderr = olderr * ABS((oldalpha+2.3929d0)/(1.0d0+2.3929d0))**0.3679d0
-          olderr = olderr - ww
+         olderr = ABS((oldalpha-1.3929d0)/(1.0d0-1.3929d0))**0.6321d0
+         olderr = olderr * ABS((oldalpha+2.3929d0)/(1.0d0+2.3929d0))**0.3679d0
+         olderr = olderr - ww
 
-          DO i=1,100
-             err = ABS((alpha-1.3929d0)/(1.0d0-1.3929d0))**0.6321d0
-             err = err * ABS((alpha+2.3929d0)/(1.0d0+2.3929d0))**0.3679d0
-             err = err - ww
-             derr = olderr - err
-             olderr = err
-             dalpha = oldalpha - alpha
-             oldalpha = alpha
-             alpha = alpha - 0.5 * err * dalpha / derr
-             IF ( ABS(err) < 1.0d-8 ) EXIT
-          END DO
+         DO i=1,100
+           err = ABS((alpha-1.3929d0)/(1.0d0-1.3929d0))**0.6321d0
+           err = err * ABS((alpha+2.3929d0)/(1.0d0+2.3929d0))**0.3679d0
+           err = err - ww
+           derr = olderr - err
+           olderr = err
+           dalpha = oldalpha - alpha
+           oldalpha = alpha
+           alpha = alpha - 0.5 * err * dalpha / derr
+           IF ( ABS(err) < 1.0d-8 ) EXIT
+         END DO
 
-          IF ( ABS(err) > 1.0d-8 ) THEN
-             PRINT*,'huh: ', alpha
-             alpha = 1.3929d0
-          END IF
+         IF ( ABS(err) > 1.0d-8 ) THEN
+           PRINT*,'huh: ', alpha
+           alpha = 1.3929d0
+         END IF
        END IF
 
        C2(1) = Alpha * Effmu(1)
        C2(2) = Alpha * Effmu(2)
+
+
+       ! Load at the integration point:
+       !-------------------------------
+       IF( GotCvRat ) THEN
+         LoadAtIP(1) = rho*(ProdK-2*E*Mach_number_sq)
+       ELSE
+         LoadAtIp(1) = rho*ProdK
+       END IF
+       IF ( KEModel=='v2-f' ) THEN
+         LoadAtIP(2) = Rho*LC1*ProdE/TimeScale
+       ELSE
+         LoadAtIP(2) = Rho*LC1*ProdE*E/K
+       END IF
+       
+       IF ( UseRNGModel ) &
+           LoadatIP(2) = LoadatIP(2) - Cmu*Rho*Eta**3*(1-Eta/4.38d0) / &
+           (1.0d0 + 0.012d0*Eta**3) * E**2 / K
+       
 !------------------------------------------------------------------------------
 !       Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
        DO p=1,NBasis
-       DO q=1,NBasis
+
+         IF( KEcomp == 0 ) THEN
+           FORCE(2*(p-1)+1) = FORCE(2*(p-1)+1)+s*LoadAtIp(1)*Basis(p)
+           FORCE(2*(p-1)+2) = FORCE(2*(p-1)+2)+s*LoadAtIp(2)*Basis(p)
+         ELSE 
+           FORCE(p) = FORCE(p)+s*LoadAtIp(KEComp)*Basis(p)
+         END IF
+         
+         DO q=1,NBasis
 !------------------------------------------------------------------------------
 !         The diffusive-convective equation without stabilization
 !------------------------------------------------------------------------------
-          M = 0.0d0
-          A = 0.0d0
+           M = 0.0d0
+           A = 0.0d0
+                      
+           M(1,1) = CT * Basis(q) * Basis(p)
+           M(2,2) = CT * Basis(q) * Basis(p)
 
-          M(1,1) = CT * Basis(q) * Basis(p)
-          M(2,2) = CT * Basis(q) * Basis(p)
-
-          A(1,2) = C0(1) * Basis(q) * Basis(p)
-          A(2,2) = C0(2) * Basis(q) * Basis(p)
-!------------------------------------------------------------------------------
-!         The diffusion term
-!------------------------------------------------------------------------------
-          IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+           A(1,2) = C0(1) * Basis(q) * Basis(p)
+           A(2,2) = C0(2) * Basis(q) * Basis(p)
+           !------------------------------------------------------------------------------
+           !         The diffusion term
+           !------------------------------------------------------------------------------
+           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
              DO i=1,dim
                A(1,1) = A(1,1) + C2(1) * dBasisdx(q,i) * dBasisdx(p,i)
                A(2,2) = A(2,2) + C2(2) * dBasisdx(q,i) * dBasisdx(p,i)
              END DO
-          ELSE
+           ELSE
              DO i=1,dim
                DO j=1,dim
-                  A(1,1) = A(1,1) + Metric(i,j) * C2(1) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
-
-                  A(2,2) = A(2,2) + Metric(i,j) * C2(2) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                 A(1,1) = A(1,1) + Metric(i,j) * C2(1) * &
+                     dBasisdx(q,i) * dBasisdx(p,i)                   
+                 A(2,2) = A(2,2) + Metric(i,j) * C2(2) * &
+                     dBasisdx(q,i) * dBasisdx(p,i)
                END DO
              END DO
-          END IF
+           END IF
 
-!------------------------------------------------------------------------------
-!           The convection term
-!------------------------------------------------------------------------------
-          DO i=1,dim
-            A(1,1) = A(1,1) + C1 * Velo(i) * dBasisdx(q,i) * Basis(p)
-            A(2,2) = A(2,2) + C1 * Velo(i) * dBasisdx(q,i) * Basis(p)
-          END DO
-
-          DO i=1,2
-             DO j=1,2
-               STIFF(2*(p-1)+i,2*(q-1)+j) = STIFF(2*(p-1)+i,2*(q-1)+j)+s*A(i,j)
-               MASS(2*(p-1)+i,2*(q-1)+j)  = MASS(2*(p-1)+i,2*(q-1)+j) +s*M(i,j)
+           !------------------------------------------------------------------------------
+           !           The convection term
+           !------------------------------------------------------------------------------
+           DO i=1,dim
+             A(1,1) = A(1,1) + C1 * Velo(i) * dBasisdx(q,i) * Basis(p)
+             A(2,2) = A(2,2) + C1 * Velo(i) * dBasisdx(q,i) * Basis(p)
+           END DO
+           
+           IF( KEComp == 0 ) THEN          
+             DO i=1,2
+               DO j=1,2
+                 STIFF(2*(p-1)+i,2*(q-1)+j) = STIFF(2*(p-1)+i,2*(q-1)+j) + s*A(i,j)
+                 MASS(2*(p-1)+i,2*(q-1)+j)  = MASS(2*(p-1)+i,2*(q-1)+j)  + s*M(i,j)
+               END DO
              END DO
-          END DO
-        END DO
-        END DO
-
-        ! Load at the integration point:
-        !-------------------------------
-        LoadAtIP(1) = rho*(ProdK-2*E*Mach_number_sq)
-        IF ( KEModel=='v2-f' ) THEN
-          LoadAtIP(2) = Rho*LC1*ProdE/TimeScale
-        ELSE
-          LoadAtIP(2) = Rho*LC1*ProdE*E/K
-        END IF
-
-        IF ( UseRNGModel ) &
-            LoadatIP(2) = LoadatIP(2) - Cmu*Rho*Eta**3*(1-Eta/4.38d0) / &
-                       (1.0d0 + 0.012d0*Eta**3) * E**2 / K
-!------------------------------------------------------------------------------
-        DO p=1,NBasis
-          FORCE(2*(p-1)+1) = FORCE(2*(p-1)+1)+s*LoadAtIp(1)*Basis(p)
-          FORCE(2*(p-1)+2) = FORCE(2*(p-1)+2)+s*LoadAtIp(2)*Basis(p)
-        END DO
-      END DO
+           ELSE
+             STIFF(p,q) = STIFF(p,q) + s * A(KEComp,KEComp)
+             MASS(p,q) = MASS(p,q) + s * M(KeComp,KEComp)
+             IF( KEComp == 1 ) THEN
+               FORCE(p) = FORCE(p) - s * A(1,2) * LocalDissipation(q)
+             ELSE
+               FORCE(p) = FORCE(p) - s * A(2,1) * LocalKinEnergy(q)
+             END IF
+           END IF
+         END DO
+       END DO
+     END DO
+     
 !------------------------------------------------------------------------------
    END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -945,6 +983,8 @@ CONTAINS
 !------------------------------------------------------------------------------
      SolverParams => GetSolverParams()
 
+     CALL ListAddNewLogical( SolverParams,'Global Mass Matrix',.TRUE.) 
+     
      str = GetString( SolverParams,'Variable', Found )
      IF ( .NOT. Found ) str = 'K-eps'
      IF ( INDEX( str, '[' ) <= 0 ) THEN
