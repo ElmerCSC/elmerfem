@@ -76,21 +76,21 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Material, SolverParams
-  TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar, FrontVar
+  TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar, FrontVar, LSvar
   TYPE(Nodes_t), SAVE :: Nodes
 
   LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
-             AllGrounded = .FALSE.
+             AllGrounded = .FALSE., useLSvar = .FALSE.
 
   INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
-  INTEGER, POINTER :: Permutation(:), bedrockPerm(:)
+  INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
   REAL(KIND=dp) :: z, toler
   REAL(KIND=dp), ALLOCATABLE :: zb(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolver', bedrockName,&
-                                 FrontVarName
+                                 FrontVarName, LSvarName
 
   INTEGER,PARAMETER :: MATERIAL_DEFAULT = 1, MATERIAL_NAMED = 2, VARIABLE = 3
        
@@ -133,6 +133,16 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   IF(.NOT. GotIt) AllGrounded = .FALSE.
   IF(.NOT. AllGrounded) THEN
 
+    ! If the user gives a lower surface variable name then use this instead of
+    ! node coords for the lower ice surface.
+    LSvarName = GetString(SolverParams, 'lower surface variable', GotIt)
+    IF (GotIt) THEN
+      CALL info(SolverName, 'lower surface variable name found', level=8)
+      useLSvar = .TRUE.
+    ELSE
+      useLSvar = .FALSE.
+    END IF
+    
     bedrockName = GetString(SolverParams, 'Bedrock Variable', GotIt)
     IF (GotIt) THEN
        bedrockSource = VARIABLE
@@ -167,6 +177,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      n = GetElementNOFNodes()
      
      IF(.NOT. AllGrounded) THEN
+
        SELECT CASE(bedrockSource)
        CASE (VARIABLE)
           bedrockVar => VariableGet(Model % Mesh % Variables, bedrockName,UnFoundFatal=UnFoundFatal)
@@ -196,18 +207,26 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
           VariableValues(Nn) = 1.0_dp
           CYCLE
         END IF
-        IF (DIM == 2) THEN
-           z = Nodes % y( i )
-        ELSE IF (DIM == 3) THEN
-           z = Nodes % z( i )
+
+        IF (useLSvar) THEN
+          LSvar => VariableGet(Model % Mesh % Variables, LSvarName, UnFoundFatal=UnFoundFatal)
+          LSvarPerm => LSvar % Perm
+          z = LSvar % values( LSvarPerm(Element % NodeIndexes(i)) )
+        ELSE
+          IF (DIM == 2) THEN
+            z = Nodes % y( i )
+          ELSE IF (DIM == 3) THEN
+            z = Nodes % z( i )
+          END IF
+
         END IF
         
         ! Geometrical condition. Is the node is above the bedrock 
         ! (plus the tolerance)?  Note: zb includes tolerance.
         IF (z > zb(i)) THEN
-           VariableValues(Nn) = -1.0_dp
+          VariableValues(Nn) = -1.0_dp
         ELSE
-           VariableValues(Nn) = 1.0_dp
+          VariableValues(Nn) = 1.0_dp
         END IF
      END DO
   END DO
