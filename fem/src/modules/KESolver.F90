@@ -41,7 +41,6 @@
    SUBROUTINE KESolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-
      IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
@@ -49,33 +48,32 @@
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER  :: StiffMatrix
-     INTEGER :: i,j,k,l,n,nd,nb,t,iter,k1,k2,body_id,eq_id,istat,LocalNodes,bf_id,DOFs
+     INTEGER :: i,j,k,l,n,nd,nb,t,iter,body_id,istat,LocalNodes,DOFs
 
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
 
-     REAL(KIND=dp) :: RelativeChange,Norm,PrevNorm,S,C
+     REAL(KIND=dp) :: RelativeChange,Norm,PrevNorm
 
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: NewtonLinearization = .FALSE.,gotIt
-!
+
      LOGICAL :: AllocationsDone = .FALSE., Bubbles
 
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
-     TYPE(Variable_t), POINTER :: FlowSol, KE
+     TYPE(Variable_t), POINTER :: FlowSol, KE, KEkin, KEdis
 
      INTEGER, POINTER :: FlowPerm(:),KinPerm(:)
 
      INTEGER :: NSDOFs,NewtonIter,NonlinearIter,NoActive
      REAL(KIND=dp) :: NewtonTol, Clip, V2FCp
 
-     REAL(KIND=dp), POINTER :: KEpsilon(:),KineticDissipation(:), &
-         FlowSolution(:), ElectricCurrent(:), ForceVector(:)
+     REAL(KIND=dp), POINTER :: KEpsilon(:),&
+         FlowSolution(:), ForceVector(:)
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
          STIFF(:,:),LayerThickness(:), &
@@ -98,11 +96,25 @@
 
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 
+     TYPE(ValueList_t), POINTER :: SolverParams
+     CHARACTER(*), PARAMETER :: Caller = 'KESolver'
+
+     INTEGER :: KEComp, Ncomp
+     
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
+     SolverParams => GetSolverParams()
+     
+     KEComp = ListGetInteger( SolverParams,'KE component',GotIt)
+     IF( KEComp == 0 ) THEN
+       Ncomp = 2
+     ELSE
+       Ncomp = 1
+     END IF
+     
      KE => Solver % Variable
      IF ( ASSOCIATED( KE ) ) THEN
        DOFs     =  KE % DOFs
@@ -110,6 +122,9 @@
        KEpsilon => KE % Values
      END IF
 
+     KEkin => VariableGet( Solver % Mesh % Variables, 'Kinetic Energy' )
+     KEdis => VariableGet( Solver % Mesh % Variables, 'Kinetic Dissipation' )
+     
      LocalNodes = COUNT( KinPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
 
@@ -130,25 +145,25 @@
        N = Model % MaxElementNodes
 
        ALLOCATE( U( N ), V( N ), W( N ),  &
-                 Density( N ),Work( N ),  &
-                 Viscosity(N), &
-                 EffectiveVisc(2,N), &
-                 TurbulentViscosity(N), C0(DOFs,N), &
-                 LayerThickness(N), &
-                 SurfaceRoughness(N), &
-                 KEC1(N), KEC2(N),      &
-                 KESigmaK(N), KESigmaE(N),KECmu(N), &
-                 LocalKinEnergy( N ),     &
-                 LocalDissipation( N ),&
-                 LocalV2(N), V2FCT(N), &
-                 MASS( 2*DOFs*N,2*DOFs*N ), &
-                 STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
-                 FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), STAT=istat )
+           Density( N ),Work( N ),  &
+           Viscosity(N), &
+           EffectiveVisc(2,N), &
+           TurbulentViscosity(N), C0(DOFs,N), &
+           LayerThickness(N), &
+           SurfaceRoughness(N), &
+           KEC1(N), KEC2(N),      &
+           KESigmaK(N), KESigmaE(N),KECmu(N), &
+           LocalKinEnergy( N ),     &
+           LocalDissipation( N ),&
+           LocalV2(N), V2FCT(N), &
+           MASS( 2*DOFs*N,2*DOFs*N ), &
+           STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
+           FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), STAT=istat )
 
        IF ( istat /= 0 ) THEN
-         CALL Fatal( 'KESolver', 'Memory allocation error.' )
+         CALL Fatal( Caller, 'Memory allocation error.' )
        END IF
-
+       
        NULLIFY(SecInv)
        AllocationsDone = .TRUE.
      END IF
@@ -156,18 +171,17 @@
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
-     NewtonTol = ListGetConstReal( Solver % Values, &
-        'Nonlinear System Newton After Tolerance',gotIt )
-
-     NewtonIter = ListGetInteger( Solver % Values, &
-        'Nonlinear System Newton After Iterations',gotIt )
-
-     NonlinearIter = ListGetInteger( Solver % Values, &
+     NewtonTol = ListGetConstReal( SolverParams, &
+         'Nonlinear System Newton After Tolerance',gotIt )
+     
+     NewtonIter = ListGetInteger( SolverParams, &
+         'Nonlinear System Newton After Iterations',gotIt )
+     
+     NonlinearIter = ListGetInteger( SolverParams, &
          'Nonlinear System Max Iterations',GotIt )
-
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
-     Bubbles = GetString(GetSolverParams(), &
+     Bubbles = GetString( SolverParams, &
                'Stabilization method', GotIt ) == 'bubbles'
      IF ( .NOT. GotIt ) Bubbles = .TRUE.
 
@@ -185,16 +199,14 @@
        at  = CPUTime()
        at0 = RealTime()
 
-       CALL Info( 'KESolver', ' ', Level=4 )
-       CALL Info( 'KESolver', ' ', Level=4 )
-       CALL Info( 'KESolver', &
+       CALL Info( Caller, ' ', Level=5 )
+       CALL Info( Caller, &
           '-------------------------------------', Level=4 )
-       WRITE( Message, * ) 'KEpsilon iteration: ', iter
-       CALL Info( 'KESolver', Message, Level=4 )
-       CALL Info( 'KESolver', &
-          '-------------------------------------', Level=4 )
-       CALL Info( 'KESolver', ' ', Level=4 )
-       CALL Info( 'KESolver', 'Starting Assembly...', Level=4 )
+       CALL Info( Caller,'KEpsilon iteration:'//TRIM(I2S(iter)), Level=4 )
+       CALL Info( Caller, &
+          '-------------------------------------', Level=5 )
+       CALL Info( Caller, ' ', Level=5 )
+       CALL Info( Caller, 'Starting Assembly...', Level=5 )
 
        CALL DefaultInitialize()
 
@@ -202,7 +214,7 @@
 !      Bulk elements
 !------------------------------------------------------------------------------
        body_id = -1
-       CALL StartAdvanceOutput('KESolver','Assembly' )
+       CALL StartAdvanceOutput(Caller,'Assembly' )
        
        NoActive = GetNOFActive()
        
@@ -245,7 +257,6 @@
          CALL GetScalarLocalSolution( V, 'Velocity 2' )
          CALL GetScalarLocalSolution( W, 'Velocity 3' )
 
-
          KESigmaK(1:n) = GetReal( Material, 'KE SigmaK', GotIt )
          IF ( .NOT. GotIt ) THEN
             KESigmaK = 1.0d0
@@ -260,7 +271,7 @@
             CASE( 'rng' )
               KESigmaE = 1.0_dp
             CASE DEFAULT
-               CALL Fatal( 'KESolver', 'Unknown K-Epsilon model' )
+               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
             END SELECT
             CALL ListAddConstReal( Material, 'KE SigmaE', KESigmaE(1) )
          END IF
@@ -275,7 +286,7 @@
             CASE( 'rng' )
               KECmu = 0.0845_dp
             CASE DEFAULT
-               CALL Fatal( 'KESolver', 'Unknown K-Epsilon model' )
+               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
             END SELECT
             CALL ListAddConstReal( Material, 'KE Cmu', KECmu(1) )
          END IF
@@ -290,7 +301,7 @@
             CASE( 'rng' )
               KEC1 = 1.42_dp
             CASE DEFAULT
-               CALL Fatal( 'KESolver', 'Unknown K-Epsilon model' )
+               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
             END SELECT
             CALL ListAddConstReal( Material, 'KE C1', KEC1(1) )
          END IF
@@ -305,7 +316,7 @@
             CASE( 'rng' )
               KEC2 = 1.68_dp
             CASE DEFAULT
-               CALL Fatal( 'KESolver', 'Unknown K-Epsilon model' )
+               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
             END SELECT
             CALL ListAddConstReal( Material, 'KE C2', KEC2(1) )
          END IF
@@ -346,9 +357,8 @@
 !------------------------------------------------------------------------------
       END DO     !  Bulk elements
       CALL DefaultFinishBulkAssembly()      
-      CALL Info( 'KESolver', 'Assembly done', Level=4 )
+      CALL Info( Caller, 'Assembly done', Level=5 )
 
-    
       IF(ListGetLogicalAnyBC(Model,'Epsilon Wall BC') .OR. &
           ListGetLogicalAnyBC(Model,'Noslip Wall BC') ) THEN
         DO t = 1, Solver % Mesh % NumberOfBoundaryElements
@@ -393,15 +403,15 @@
               k = FlowPerm(NodeIndexes(j))
               IF ( k > 0 ) THEN
                 SELECT CASE( NSDOFs )
-                  CASE(3)
-                    U(j) = FlowSolution( NSDOFs*k-2 )
-                    V(j) = FlowSolution( NSDOFs*k-1 )
-                    W(j) = 0.0D0
+                CASE(3)
+                  U(j) = FlowSolution( NSDOFs*k-2 )
+                  V(j) = FlowSolution( NSDOFs*k-1 )
+                  W(j) = 0.0D0
 
-                  CASE(4)
-                    U(j) = FlowSolution( NSDOFs*k-3 )
-                    V(j) = FlowSolution( NSDOFs*k-2 )
-                    W(j) = FlowSolution( NSDOFs*k-1 )
+                CASE(4)
+                  U(j) = FlowSolution( NSDOFs*k-3 )
+                  V(j) = FlowSolution( NSDOFs*k-2 )
+                  W(j) = FlowSolution( NSDOFs*k-1 )
                 END SELECT
               ELSE
                 U(j) = 0.0d0
@@ -412,39 +422,33 @@
 
             DO j=1,n
               CALL KEWall( Work(1), Work(2), Work(3), SQRT(U(j)**2+V(j)**2+W(j)**2), &
-               LayerThickness(j), SurfaceRoughness(j), Viscosity(j), &
-                 Density(j) )
+                  LayerThickness(j), SurfaceRoughness(j), Viscosity(j), &
+                  Density(j) )
 
               k = DOFs*(KinPerm(NodeIndexes(j))-1)
 
-              !ForceVector(k+1) = Work(1)
-              !CALL ZeroRow( StiffMatrix,k+1 )
-              !CALL SetMatrixElement( StiffMatrix,k+1,k+1,1.0d0 )
-
-               CALL UpdateDirichletDof( StiffMatrix, k+1, Work(1) )
-               CALL UpdateDirichletDof( StiffMatrix, k+2, Work(2) )
-
-              !ForceVector(k+2) = Work(2)
-              !CALL ZeroRow( StiffMatrix,k+2 )
-              !CALL SetMatrixElement( StiffMatrix,k+2,k+2,1.0d0 )
+              CALL UpdateDirichletDof( StiffMatrix, k+1, Work(1) )
+              CALL UpdateDirichletDof( StiffMatrix, k+2, Work(2) )
             END DO
           END IF
 
           IF ( GetLogical( BC, 'Epsilon Wall BC', gotIt ) .OR. &
-               GetLogical( BC, 'Noslip Wall BC',  gotIt ) ) THEN
+              GetLogical( BC, 'Noslip Wall BC',  gotIt ) ) THEN
             CALL EpsilonWall( Element, n, STIFF, FORCE )
           END IF
         END IF
       END DO
 !------------------------------------------------------------------------------
 
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
+      
 !------------------------------------------------------------------------------
 !     Dirichlet boundary conditions
 !------------------------------------------------------------------------------
       CALL DefaultDirichletBCs()
 !------------------------------------------------------------------------------
-      CALL Info( 'KESolver', 'Set boundaries done', Level=4 )
+      CALL Info( Caller, 'Set boundaries done', Level=5 )
 !------------------------------------------------------------------------------
 !     Solve the system and check for convergence
 !------------------------------------------------------------------------------
@@ -455,35 +459,30 @@
 !      Kinetic Energy Solution should be positive
 !------------------------------------------------------------------------------
       n = Solver % Mesh % NumberOfNodes
-      Kmax = MAXVAL( Solver % Variable % Values(1:n:2) )
-      Emax = MAXVAL( Solver % Variable % Values(2:n:2) )
+      Kmax = MAXVAL( KEkin % Values )
+      Emax = MAXVAL( KEdis % Values ) 
       DO i=1,n
-         k = Solver % Variable % Perm(i)
-         IF ( k <= 0 ) CYCLE
+        k = Solver % Variable % Perm(i)
+        IF ( k <= 0 ) CYCLE
 
-         Kval = Solver % Variable % Values(2*k-1)
-         Eval = Solver % Variable % Values(2*k-0)
+        Kval = KEkin % Values(k)
+        Eval = KEdis % Values(k)
 
-         IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
+        IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
 
-         IF ( Eval < Clip*EMax ) THEN
-            KVal = Clip*EMax
-            Eval = MAX(Density(1)*KECmu(1)*KVal**2/Viscosity(1),Clip*EMax)
-         END IF
+        IF ( Eval < Clip*EMax ) THEN
+          KVal = Clip*EMax
+          Eval = MAX(Density(1)*KECmu(1)*KVal**2/Viscosity(1),Clip*EMax)
+        END IF
 
-         Solver % Variable % Values(2*k-1) = MAX( KVal, 1.0d-10 )
-         Solver % Variable % Values(2*k-0) = MAX( EVal, 1.0d-10 )
+        KEkin % Values(k) = MAX( KVal, 1.0d-10 )
+        KEdis % Values(k) = MAX( EVal, 1.0d-10 )
       END DO
 !------------------------------------------------------------------------------
       RelativeChange = Solver % Variable % NonlinChange
 
-      WRITE( Message,* ) 'Result Norm   : ',Norm
-      CALL Info( 'KESolver', Message, Level = 4 )
-      WRITE( Message,* ) 'Relative Change : ',RelativeChange
-      CALL Info( 'KESolver', Message, Level = 4 )
-
       IF ( RelativeChange < NewtonTol .OR. &
-              iter > NewtonIter ) NewtonLinearization = .TRUE.
+          iter > NewtonIter ) NewtonLinearization = .TRUE.
 
       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
 !------------------------------------------------------------------------------
@@ -491,93 +490,58 @@
 !------------------------------------------------------------------------------
 
     n = SIZE( Solver % Variable % Values )
-    KE => VariableGet( Solver % Mesh % Variables, 'Kinetic Energy' )
-    IF (ASSOCIATED(KE)) KE % Values = Solver % Variable % Values(1:n:2)
-
-    KE => VariableGet( Solver % Mesh % Variables, 'Kinetic Dissipation' )
-    IF (ASSOCIATED(KE)) KE % Values = Solver % Variable % Values(2:n:2)
 
 CONTAINS
 
+
+!------------------------------------------------------------------------------
+!>  Return element local matrices and RSH vector for KE model.
 !------------------------------------------------------------------------------
    SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, &
          LOAD, UX,UY,UZ,Element,n,nd,Nodes )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  Return element local matrices and RSH vector for diffusion-convection
-!  equation: 
-!
-!  ARGUMENTS:
-!
-!  REAL(KIND=dp) :: MASS(:,:)
-!     OUTPUT: time derivative coefficient matrix
-!
-!  REAL(KIND=dp) :: STIFF(:,:)
-!     OUTPUT: rest of the equation coefficients
-!
-!  REAL(KIND=dp) :: FORCE(:)
-!     OUTPUT: RHS vector
-!
-!  REAL(KIND=dp) :: LOAD(:)
-!     INPUT:
-!
-!  REAL(KIND=dp) :: UX(:),UY(:),UZ(:)
-!     INPUT: Nodal values of velocity components from previous iteration
-!           used only if coefficient of the convection term (C1) is nonzero
-!
-!  TYPE(Element_t) :: Element
-!       INPUT: Structure describing the element (dimension,nof nodes,
-!               interpolation degree, etc...)
-!
-!  INTEGER :: n
-!       INPUT: Number of element nodes
-!
-!  TYPE(Nodes_t) :: Nodes
-!       INPUT: Element node coordinates
-!
-!******************************************************************************
      USE MaterialModels
 
      IMPLICIT NONE
 
-     REAL(KIND=dp), DIMENSION(:)   :: FORCE,UX,UY,UZ
-     REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
-
-     INTEGER :: n,nd
-
-     TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t) :: Element
+     REAL(KIND=dp), DIMENSION(:,:) :: MASS  !< time derivative coefficient matrix
+     REAL(KIND=dp), DIMENSION(:,:) :: STIFF !< rest of the equation coefficients
+     REAL(KIND=dp), DIMENSION(:)   :: FORCE !< RHS vector
+     REAL(KIND=dp), DIMENSION(:)   :: UX,UY,UZ !< Nodal values of velocity components from previous iteration.
+     REAL(KIND=dp), DIMENSION(:,:) :: LOAD
+     INTEGER :: n               !< Number of element nodes
+     INTEGER :: nd              !< Number of dofs 
+     TYPE(Nodes_t) :: Nodes     !< Element node coordinates
+     TYPE(Element_t) :: Element !< Structure describing the element
 
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
 !
-     REAL(KIND=dp) :: ddBasisddx(nd,3,3)
-     REAL(KIND=dp) :: Basis(nd)
-     REAL(KIND=dp) :: dBasisdx(nd,3),detJ
-
+     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),detJ
      REAL(KIND=dp) :: Velo(3),dVelodx(3,3)
+     REAL(KIND=dp) :: A(2,2),M(2,2),ProdK,ProdE
+     
+     INTEGER :: i,j,p,q,t,dim,NBasis
+     REAL(KIND=dp) :: LoadatIp(2),Cmu,Rho,mu,Tmu,Effmu(2),TimeScale,LC1,LC2,LC3
+     REAL(KIND=dp) :: s,u,v,w, K,E,Eta,Strain(3,3),&
+         alpha,oldalpha,dalpha,err,ww,olderr,derr
 
-     REAL(KIND=dp) :: A(2,2),M(2,2),ProdK,ProdE,div,ProdTensor(3,3)
-     INTEGER :: i,j,c,p,q,t,dim,NBasis
-     REAL(KIND=dp) :: LoadatIp(2),Cmu,Rho,mu,Tmu,Effmu(2),TimeScale,Re_T,LC1,LC2,LC3
-
-     REAL(KIND=dp) :: s,u,v,w, K,E,Eta,Strain(3,3), GradAsymm(3,3), nu, Cv,&
-             alpha,oldalpha,dalpha,err,ww,olderr,derr
-
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+     TYPE(GaussIntegrationPoints_t), TARGET :: IP
 
      REAL(KIND=dp) :: SpecificHeatRatio, Pressure(n), ReferencePressure, &
           Sound_speed_sq, Mach_number_sq
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3), &
               SqrtMetric,Gravity(3),Pr_rho(n),Pr,rho_g, c3(n)
-     REAL(KIND=dp) :: C0(2),C1,CT,C2(2),dC2dx(3),SecInv,X,Y,Z,LV2,LCT,SigmaK,SigmaE
+     REAL(KIND=dp) :: C0(2),C1,CT,C2(2),SecInv,X,Y,Z,LV2,LCT,SigmaK,SigmaE
 
      REAL(KIND=dp), POINTER :: gWork(:,:)
 
-     LOGICAL :: stat,Convection, UseRNGModel
+     LOGICAL :: stat,UseRNGModel
 
+!     REAL(KIND=dp) :: div,ProdTensor(3,3),nu
+
+     
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
@@ -615,18 +579,18 @@ CONTAINS
 !    Integration stuff
 !------------------------------------------------------------------------------
      IF ( Bubbles ) THEN
-        IntegStuff = GaussPoints( element, element % TYPE % GaussPoints2 )
+        IP = GaussPoints( element, element % TYPE % GaussPoints2 )
      ELSE
-        IntegStuff = GaussPoints( element )
+        IP = GaussPoints( element )
      END IF
 
 !------------------------------------------------------------------------------
 !    Now we start integrating
 !------------------------------------------------------------------------------
-     DO t=1,IntegStuff % n
-       u = IntegStuff % u(t)
-       v = IntegStuff % v(t)
-       w = IntegStuff % w(t)
+     DO t=1,IP % n
+       u = IP % u(t)
+       v = IP % v(t)
+       w = IP % w(t)
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
@@ -635,7 +599,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Coordinatesystem dependent info
 !------------------------------------------------------------------------------
-       s = detJ * IntegStuff % s(t)
+       s = detJ * IP % s(t)
        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
          X = SUM( Nodes % x(1:n)*Basis(1:n) )
          Y = SUM( Nodes % y(1:n)*Basis(1:n) )
@@ -854,19 +818,17 @@ CONTAINS
      REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: BasisB(32), Basis(32), BasisK(32), dBasisdx(32,3), &
-                 EVals(32), KVals(32), detJ
+         EVals(32), KVals(32), detJ
 
-     INTEGER :: i,j,c,p,q,t,np, dim,N_Integ,NBasis
-
-     REAL(KIND=dp) :: s,u,v,w,E,K,Kder,X,Y,Z,Normal(3),mu,rho,Relax
-
-     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+     INTEGER :: i,j,p,q,t,np, dim     
+     REAL(KIND=dp) :: s,u,v,w,E,K,Kder,X,Y,Z,Normal(3),mu,rho,Relax     
+     TYPE(GaussIntegrationPoints_t), TARGET :: IP
      LOGICAL :: stat
      TYPE(Element_t), POINTER :: Parent
-
+     
      TYPE(Nodes_t) :: Nodes, ParentNodes
      SAVE Nodes, ParentNodes
-
+     
 !------------------------------------------------------------------------------
      dim = CoordinateSystemDimension()
 
@@ -875,7 +837,7 @@ CONTAINS
 
      ! Integration stuff:
      !-------------------
-     IntegStuff = GaussPoints( Element )
+     IP = GaussPoints( Element )
 
      Relax = GetCReal( BC, 'Epsilon Relax', stat )
      IF (.NOT. stat ) Relax = 1
@@ -895,16 +857,16 @@ CONTAINS
      CALL GetScalarLocalSolution( KVals, 'Kinetic Energy', Parent )
      CALL GetScalarLocalSolution( EVals, 'Kinetic dissipation', Parent )
 
-     DO t=1,IntegStuff % n
-       u = IntegStuff % u(t)
-       v = IntegStuff % v(t)
-       w = IntegStuff % w(t)
+     DO t=1,IP % n
+       u = IP % u(t)
+       v = IP % v(t)
+       w = IP % w(t)
 
        ! Basis function values & derivatives at the integration point:
        !--------------------------------------------------------------
        stat = ElementInfo( Element,Nodes,u,v,w,detJ, BasisB )
 
-       s = detJ * IntegStuff % s(t)
+       s = detJ * IP % s(t)
        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
          x = SUM( Nodes % x(1:n)*Basis(1:n) )
          y = SUM( Nodes % y(1:n)*Basis(1:n) )
