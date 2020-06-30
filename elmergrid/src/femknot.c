@@ -4427,9 +4427,9 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	j++;
 	if(i == j) {
 	  printf("boundary index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim); 
-	  isordered = FALSE;
 	}
 	else {
+	  isordered = FALSE;
 	  printf("boundary index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim); 
 	}
 	mapbc[i][elemdim] = j;
