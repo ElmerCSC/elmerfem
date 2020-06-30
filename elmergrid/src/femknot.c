@@ -175,10 +175,10 @@ void GetElementSide(int element,int side,int normal,
 {
   int i,j,elemtype,*elemind=NULL,sides,ind2[MAXNODESD2];
 
-  if(element < 1 || element > data->noelements ) {
+  /* if(element < 1 || element > data->noelements ) {
     printf("Invalid index for element: %d\n",element);
     bigerror("Cannot continue");
-  }
+    } */
   
   elemtype = data->elementtypes[element];
   elemind = data->topology[element];
