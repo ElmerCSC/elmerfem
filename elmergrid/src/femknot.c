@@ -175,10 +175,10 @@ void GetElementSide(int element,int side,int normal,
 {
   int i,j,elemtype,*elemind=NULL,sides,ind2[MAXNODESD2];
 
-  if(element < 1 || element > data->noelements ) {
+  /* if(element < 1 || element > data->noelements ) {
     printf("Invalid index for element: %d\n",element);
     bigerror("Cannot continue");
-  }
+    } */
   
   elemtype = data->elementtypes[element];
   elemind = data->topology[element];
@@ -4371,10 +4371,11 @@ int RemoveUnusedNodes(struct FemType *data,int info)
 void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 			   int renumber, int bcoffset, int info)
 {
-  int i,j,doinit,isordered;
-  int minbc=0,maxbc=0,*mapbc;
-  int elemdim=0,elemtype=0,*mapdim,sideind[MAXNODESD1];
-
+  int i,j,k,doinit,isordered;
+  int minbc=0,maxbc=0,**mapbc;
+  int elemdim=0,elemtype=0,sideind[MAXNODESD1];
+  int bctype;
+  
   if(renumber) {
     if(0) printf("Renumbering boundary types\n");
     
@@ -4395,47 +4396,54 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     
     if(info) printf("Initial boundary interval [%d,%d]\n",minbc,maxbc);
 
-    mapbc = Ivector(minbc,maxbc);
-    mapdim = Ivector(minbc,maxbc);
-    for(i=minbc;i<=maxbc;i++) {
-      mapbc[i] = 0;
-      mapdim[i] = 0;
-    }
+    mapbc = Imatrix(minbc,maxbc,0,2);
+    for(i=minbc;i<=maxbc;i++) 
+      for(j=0;j<=2;j++)
+	mapbc[i][j] = 0;
       
     for(j=0;j < MAXBOUNDARIES;j++) {
       if(!bound[j].created) continue;
       for(i=1;i<=bound[j].nosides;i++) {
 	GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],data,sideind,&elemtype);
+	if(!elemtype) printf("could not find boundary element: %d %d %d\n",i,j,bound[j].parent[i]);
 	elemdim = GetElementDimension(elemtype);
-	mapbc[bound[j].types[i]] += 1;
-	mapdim[bound[j].types[i]] = elemdim;
+	bctype = bound[j].types[i];
+	
+	if(0) printf("type and dim: %d %d %d\n",elemtype,elemdim,bctype);
+       	
+	mapbc[bctype][elemdim] += 1;
       }
     }
 
-    if(0) for(i=minbc;i<=maxbc;i++) 
-      printf("bc map1: %d %d %d\n",i,mapdim[i],mapbc[i]);
- 
+    if(0) {
+      for(i=minbc;i<=maxbc;i++) 
+	for(j=0;j<=2;j++)
+	  if(mapbc[i][j]) printf("bc map1: %d %d\n",i,mapbc[i][j]);
+    }
+      
     j = 0;
     /* Give the larger dimension always a smaller BC type */
     isordered = TRUE;
     for(elemdim=2;elemdim>=0;elemdim--) {
       for(i=minbc;i<=maxbc;i++) {
-	if(mapdim[i] != elemdim) continue;
-	if(mapbc[i]) {
-	  j++;
-	  if(i == j) {
-	    printf("boundary index unaltered %d in %d %dD elements\n",i,mapbc[i],elemdim); 
-	    isordered = FALSE;
-	  }
-	  else {
-	    printf("boundary index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i],elemdim); 
-	  }
-	  mapbc[i] = j;
-	}    
+	if(!mapbc[i][elemdim]) continue;
+	j++;
+	if(i == j) {
+	  printf("boundary index unaltered %d in %d %dD elements\n",i,mapbc[i][elemdim],elemdim); 
+	}
+	else {
+	  isordered = FALSE;
+	  printf("boundary index changed %d -> %d in %d %dD elements\n",i,j,mapbc[i][elemdim],elemdim); 
+	}
+	mapbc[i][elemdim] = j;
       }
     }
-    if(0) for(i=minbc;i<=maxbc;i++) 
-      printf("bc map2: %d %d %d\n",i,mapdim[i],mapbc[i]);
+
+    if(0) {
+      for(i=minbc;i<=maxbc;i++) 
+	for(j=0;j<=2;j++)
+	  if(mapbc[i][j]) printf("bc map2: %d %d\n",i,mapbc[i][j]);
+    }
 
     if(isordered) {
       if(info) printf("Numbering of boundary types is already ok\n");
@@ -4446,17 +4454,27 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
       for(j=0;j < MAXBOUNDARIES;j++) {
 	if(!bound[j].created) continue;
 	for(i=1;i<=bound[j].nosides;i++) {
-	  bound[j].types[i] = mapbc[bound[j].types[i]];
+	  GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],data,sideind,&elemtype);
+	  elemdim = GetElementDimension(elemtype);
+	  bound[j].types[i] = mapbc[bound[j].types[i]][elemdim];
 	}
       }
       if(data->boundarynamesexist) {
+	char boundaryname0[MAXBCS][MAXNAMESIZE];
+
+	/* We need some temporal place is name mapping might not be unique */
+	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) 
+	  strcpy(boundaryname0[j],data->boundaryname[j]);
+	
 	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
-	  if(mapbc[j]) 
-	    strcpy(data->boundaryname[mapbc[j]],data->boundaryname[j]);
+	  for(elemdim=2;elemdim>=0;elemdim--) {	    
+	    k = mapbc[j][elemdim];
+	    if(k) strcpy(data->boundaryname[k],boundaryname0[j]);
+	  }
 	}
       }
     }
-    free_Ivector(mapbc,minbc,maxbc);
+    free_Imatrix(mapbc,minbc,maxbc,0,2);
   }
 
   if(bcoffset) {

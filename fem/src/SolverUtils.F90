@@ -11817,8 +11817,8 @@ END FUNCTION SearchNodeL
     END DO
     !$OMP END DO NOWAIT
 
-    
-#if 0
+    ! Dont know why this was temporarily commented off....
+#if 1
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN 
         CALL Info('ScaleLinearSystem','Scaling PrecValues',Level=20)
