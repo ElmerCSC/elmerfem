@@ -4406,7 +4406,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
       for(i=1;i<=bound[j].nosides;i++) {
 	GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],data,sideind,&elemtype);
 	elemdim = GetElementDimension(elemtype);
-	printf("type and dim: %d %d %d\n",elemtype,elemdim,bound[j].types[i]);
+	if(0) printf("type and dim: %d %d %d\n",elemtype,elemdim,bound[j].types[i]);
 	
 	mapbc[bound[j].types[i]][elemdim] += 1;
       }
