@@ -51,7 +51,7 @@
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER  :: StiffMatrix
-     INTEGER :: i,j,k,l,n,nd,nb,t,iter,body_id,istat,LocalNodes,DOFs
+     INTEGER :: i,j,k,l,n,nd,nb,t,iter,istat,LocalNodes,DOFs
 
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
@@ -63,15 +63,13 @@
 
      LOGICAL :: AllocationsDone = .FALSE., Bubbles
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
      TYPE(Variable_t), POINTER :: FlowSol, KE, KEkin, KEdis
 
      INTEGER, POINTER :: FlowPerm(:),KinPerm(:)
 
      INTEGER :: NSDOFs,NonlinearIter,NoActive
-     REAL(KIND=dp) :: Clip, V2FCp
-
+ 
      REAL(KIND=dp), POINTER :: KEpsilon(:),&
          FlowSolution(:), ForceVector(:)
 
@@ -80,16 +78,16 @@
          LOAD(:,:),FORCE(:),U(:),V(:),W(:), &
          Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
          TurbulentViscosity(:),LocalDissipation(:), &
-         LocalKinEnergy(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
-         KEC2(:),C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:),V2FCT(:)
+         LocalKinEnergy(:),LocalKEratio(:), &
+         C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:)
      
-     TYPE(ValueList_t), POINTER :: BC, Equation, Material
+     TYPE(ValueList_t), POINTER :: BC
 
      SAVE U,V,W,MASS,STIFF,LOAD,FORCE, &
          ElementNodes,LayerThickness,Density,&
          AllocationsDone,Viscosity,LocalNodes,Work,TurbulentViscosity, &
-         LocalDissipation,LocalKinEnergy,KESigmaK,KESigmaE,KECmu,C0, &
-         SurfaceRoughness, TimeForce, KEC1, KEC2, EffectiveVisc, LocalV2, V2FCT
+         LocalDissipation,LocalKinEnergy,LocalKEratio, C0, &
+         SurfaceRoughness, TimeForce, EffectiveVisc, LocalV2
 
      REAL(KIND=dp), POINTER :: SecInv(:)
      SAVE SecInv
@@ -100,6 +98,8 @@
      CHARACTER(*), PARAMETER :: Caller = 'KESolver'
 
      INTEGER :: KEComp, Ncomp
+     TYPE(Variable_t), POINTER :: KEratio
+     LOGICAL :: UseKEratio
      
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -124,6 +124,9 @@
 
      KEkin => VariableGet( Solver % Mesh % Variables, 'Kinetic Energy' )
      KEdis => VariableGet( Solver % Mesh % Variables, 'Kinetic Dissipation' )
+     KEratio => VariableGet( Solver % Mesh % Variables, 'KE ratio' )
+     UseKEratio = ASSOCIATED( KEratio ) 
+     
      
      LocalNodes = COUNT( KinPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
@@ -151,11 +154,10 @@
            TurbulentViscosity(N), C0(DOFs,N), &
            LayerThickness(N), &
            SurfaceRoughness(N), &
-           KEC1(N), KEC2(N),      &
-           KESigmaK(N), KESigmaE(N),KECmu(N), &
+           LocalKEratio( N ), &
            LocalKinEnergy( N ),     &
            LocalDissipation( N ),&
-           LocalV2(N), V2FCT(N), &
+           LocalV2(N), &
            MASS( 2*DOFs*N,2*DOFs*N ), &
            STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
            FORCE( 2*DOFs*N ), TimeForce( 2*DOFs*N ), STAT=istat )
@@ -208,10 +210,17 @@
 
        CALL DefaultInitialize()
 
+
+       IF( UseKEratio ) THEN
+         DO t=1,SIZE(KEratio % values)
+           
+           
+         END DO
+       END IF
+       
 !------------------------------------------------------------------------------
 !      Bulk elements
 !------------------------------------------------------------------------------
-       body_id = -1
        CALL StartAdvanceOutput(Caller,'Assembly' )
        
        NoActive = GetNOFActive()
@@ -227,18 +236,7 @@
 !        should be calculated
 !------------------------------------------------------------------------------
          Element => GetActiveElement(t)
-         IF ( Element % BodyId /= body_id ) THEN
-            Material => GetMaterial()
-            Equation => GetEquation()
-
-            Clip = GetConstReal( Material, 'KE Clip', GotIt )
-            IF ( .NOT.GotIt ) Clip = 1.0d-6
-
-            KEModel = GetString( Material, 'KE Model', GotIt )
-            IF ( .NOT. GotIt ) KEModel = 'standard'
-
-            V2FModel = GetString( Material, 'V2-F Model', GotIt )
-         END IF
+         
 !------------------------------------------------------------------------------
          CALL GetElementNodes( ElementNodes )
          n  = GetElementNOFNodes()
@@ -246,92 +244,6 @@
          IF ( Bubbles ) nd=2*n
          nb = GetElementNOFBDOFs()
          NodeIndexes => Element % NodeIndexes
-!------------------------------------------------------------------------------
-         CALL GetScalarLocalSolution( LocalV2, 'V2' )
-         CALL GetScalarLocalSolution( LocalKinEnergy, 'Kinetic Energy' )
-         CALL GetScalarLocalSolution( LocalDissipation, 'Kinetic Dissipation' )
-
-         CALL GetScalarLocalSolution( U, 'Velocity 1' )
-         CALL GetScalarLocalSolution( V, 'Velocity 2' )
-         CALL GetScalarLocalSolution( W, 'Velocity 3' )
-
-         KESigmaK(1:n) = GetReal( Material, 'KE SigmaK', GotIt )
-         IF ( .NOT. GotIt ) THEN
-            KESigmaK = 1.0d0
-            CALL ListAddConstReal( Material, 'KE SigmaK', KESigmaK(1) )
-          END IF
-
-         KESigmaE(1:n) = GetReal( Material, 'KE SigmaE', GotIt )
-         IF ( .NOT. GotIt ) THEN
-            SELECT CASE( KEModel )
-            CASE( 'standard','v2-f' )
-              KESigmaE = 1.3_dp
-            CASE( 'rng' )
-              KESigmaE = 1.0_dp
-            CASE DEFAULT
-               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
-            END SELECT
-            CALL ListAddConstReal( Material, 'KE SigmaE', KESigmaE(1) )
-         END IF
-
-         KECmu(1:n) = ListGetConstReal( Material, 'KE Cmu', GotIt )
-         IF ( .NOT. GotIt ) THEN
-            SELECT CASE( KEModel )
-            CASE( 'standard' )
-              KECmu = 0.09_dp
-            CASE( 'v2-f')
-              KECmu = 0.22_dp
-            CASE( 'rng' )
-              KECmu = 0.0845_dp
-            CASE DEFAULT
-               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
-            END SELECT
-            CALL ListAddConstReal( Material, 'KE Cmu', KECmu(1) )
-         END IF
-
-         KEC1(1:n) = GetReal( Material, 'KE C1', GotIt )
-         IF ( .NOT. GotIt ) THEN
-            SELECT CASE( KEModel )
-            CASE( 'standard' )
-              KEC1 = 1.44_dp
-            CASE( 'v2-f' )
-              KEC1(1:n) = 1.4_dp
-            CASE( 'rng' )
-              KEC1 = 1.42_dp
-            CASE DEFAULT
-               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
-            END SELECT
-            CALL ListAddConstReal( Material, 'KE C1', KEC1(1) )
-         END IF
-
-         KEC2(1:n) = GetReal( Material, 'KE C2', GotIt )
-         IF ( .NOT. GotIt ) THEN
-            SELECT CASE( KEModel )
-            CASE( 'standard' )
-              KEC2 = 1.92_dp
-            CASE( 'v2-f' )
-              KEC2 = 1.9_dp
-            CASE( 'rng' )
-              KEC2 = 1.68_dp
-            CASE DEFAULT
-               CALL Fatal( Caller, 'Unknown K-Epsilon model' )
-            END SELECT
-            CALL ListAddConstReal( Material, 'KE C2', KEC2(1) )
-         END IF
-
-         IF ( KEModel == 'v2-f' ) THEN
-           V2FCT(1:n) = GetReal( Material, 'V2-F CT', GotIt )
-           IF ( .NOT. GotIt ) THEN
-             V2FCT(1:n) = 6.0_dp
-             CALL ListAddConstReal( Material, 'V2-F CT', V2FCT(1) )
-           END IF
-
-           V2FCp = GetCReal( Material, 'V2-F Cp', GotIt )
-           IF ( .NOT. GotIt ) V2FCp = 0.05_dp
-         END IF
-!------------------------------------------------------------------------------
-         Density(1:n)   = GetReal( Material,'Density' )
-         Viscosity(1:n) = GetReal( Material,'Viscosity' )
 
 !------------------------------------------------------------------------------
 !        Get element local matrices, and RHS vectors
@@ -461,30 +373,41 @@
 !------------------------------------------------------------------------------
 !      Kinetic Energy Solution should be positive
 !------------------------------------------------------------------------------
-      n = Solver % Mesh % NumberOfNodes
-      Kmax = MAXVAL( KEkin % Values )
-      Emax = MAXVAL( KEdis % Values ) 
-      DO i=1,n
-        k = Solver % Variable % Perm(i)
-        IF ( k <= 0 ) CYCLE
+      BLOCK
+        REAL(KIND=dp) :: Clip, Cmu        
+        TYPE(ValueList_t), POINTER :: Material
 
-        Kval = KEkin % Values(k)
-        Eval = KEdis % Values(k)
+        Material => GetMaterial(GetActiveElement(1))
 
-        IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
+        Clip = GetConstReal( Material, 'KE Clip', GotIt )
+        Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
+  
+        n = Solver % Mesh % NumberOfNodes
+        Kmax = MAXVAL( KEkin % Values )
+        Emax = MAXVAL( KEdis % Values ) 
+        DO i=1,n
+          k = Solver % Variable % Perm(i)
+          IF ( k <= 0 ) CYCLE
 
-        IF ( Eval < Clip*EMax ) THEN
-          KVal = Clip*EMax
-          Eval = MAX(Density(1)*KECmu(1)*KVal**2/Viscosity(1),Clip*EMax)
-        END IF
+          Kval = KEkin % Values(k)
+          Eval = KEdis % Values(k)
 
-        IF( KEcomp /= 2 ) THEN
-          KEkin % Values(k) = MAX( KVal, 1.0d-10 )
-        END IF
-        IF( KEcomp /= 1 ) THEN
-          KEdis % Values(k) = MAX( EVal, 1.0d-10 )
-        END IF
-      END DO
+          IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
+
+          IF ( Eval < Clip*EMax ) THEN
+            KVal = Clip*EMax
+            Eval = MAX(Density(1)*Cmu*KVal**2/Viscosity(1),Clip*EMax)
+          END IF
+
+          IF( KEcomp /= 2 ) THEN
+            KEkin % Values(k) = MAX( KVal, 1.0d-10 )
+          END IF
+          IF( KEcomp /= 1 ) THEN
+            KEdis % Values(k) = MAX( EVal, 1.0d-10 )
+          END IF
+        END DO
+      END BLOCK
+        
 !------------------------------------------------------------------------------
       RelativeChange = Solver % Variable % NonlinChange
 
@@ -531,18 +454,27 @@ CONTAINS
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IP
 
-     REAL(KIND=dp) :: Pressure(n), ReferencePressure, &
-          Sound_speed_sq, Mach_number_sq
+     REAL(KIND=dp) :: Pressure(n), Pref, Sound_speed_sq, Mach_number_sq
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3), &
-              SqrtMetric,Gravity(3),Pr_rho(n),Pr,rho_g, c3(n)
+              SqrtMetric,Gravity(3),Pr,rho_g
      REAL(KIND=dp) :: C0(2),C1,CT,C2(2),SecInv,X,Y,Z,LV2,LCT,SigmaK,SigmaE,CvRat
 
      REAL(KIND=dp), POINTER :: gWork(:,:)
 
      LOGICAL :: stat,UseRNGModel,GotCvRat,GotGrav
 
+     TYPE(ValueList_t), POINTER :: Material
+     INTEGER :: body_id = -1
+     CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
+     REAL(KIND=dp) :: Clip, V2FCp, EperK
+
+     
 !     REAL(KIND=dp) :: div,ProdTensor(3,3),nu
 
+     SAVE Material, body_id, Clip, V2FCp, KEModel, V2FModel, UseRNGModel, &
+         Gravity, GotGrav, Pr, LC3, LCT, Cmu, LC1, LC2, SigmaE, &
+         SigmaK, cvRat, GotCvRat, Pref
+     
      
 !------------------------------------------------------------------------------
 
@@ -555,39 +487,147 @@ CONTAINS
      NBasis = nd
      IF ( Bubbles ) NBasis = 2*n
 
-     UseRNGModel = KEModel == 'rng'
+     IF ( Element % BodyId /= body_id ) THEN
+       body_id = Element % BodyId
 
-     gWork => ListGetConstRealArray( Model % Constants,'Gravity',GotGrav)
-     IF ( GotGrav ) THEN
-       Gravity = gWork(1:3,1)*gWork(4,1)
-     ELSE
-       Gravity    =  0.00_dp
-       Gravity(2) = -9.81_dp
+       Material => GetMaterial()
+       
+       Clip = GetConstReal( Material, 'KE Clip', GotIt )
+       IF ( .NOT.GotIt ) Clip = 1.0d-6
+       
+       KEModel = GetString( Material, 'KE Model', GotIt )
+       IF ( .NOT. GotIt ) KEModel = 'standard'
+       
+       V2FModel = GetString( Material, 'V2-F Model', GotIt )
+     
+       UseRNGModel = ( KEModel == 'rng' )
+       
+       gWork => ListGetConstRealArray( Model % Constants,'Gravity',GotGrav)
+       IF ( GotGrav ) THEN
+         Gravity = gWork(1:3,1)*gWork(4,1)
+       ELSE
+         Gravity    =  0.00_dp
+         Gravity(2) = -9.81_dp
+       END IF       
+       ! Even historically gravity has not been used!
+       GotGrav = .FALSE.     
+       
+       Pr = ListGetCReal( Material, 'Turbulent Prandtl Number', stat )
+       IF ( .NOT. stat ) Pr = 0.85_dp
+       
+       LC3 = ListGetCReal( Material, 'Dissipation buoyancy coefficient', stat )
+       
+       IF ( KEModel == 'v2-f' ) THEN
+         LCT = ListGetCReal( Material, 'V2-F CT', GotIt )
+         IF ( .NOT. GotIt ) THEN
+           LCT = 6.0_dp
+           CALL ListAddConstReal( Material, 'V2-F CT', LCT )
+         END IF
+
+         V2FCp = ListGetCReal( Material, 'V2-F Cp', GotIt )
+         IF ( .NOT. GotIt ) THEN
+           V2FCp = 0.05_dp
+           CALL ListAddConstReal( Material, 'V2-F Cp', V2FCp )
+         END IF
+       END IF
+
+       Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
+       IF ( .NOT. GotIt ) THEN
+         SELECT CASE( KEModel )
+         CASE( 'standard' )
+           Cmu = 0.09_dp
+         CASE( 'v2-f')
+           Cmu = 0.22_dp
+         CASE( 'rng' )
+           Cmu = 0.0845_dp
+         CASE DEFAULT
+           CALL Fatal( Caller, 'Unknown K-Epsilon model' )
+         END SELECT
+         CALL ListAddConstReal( Material, 'KE Cmu', Cmu )
+       END IF
+
+       LC1 = ListGetCReal( Material, 'KE C1', GotIt )
+       IF ( .NOT. GotIt ) THEN
+         SELECT CASE( KEModel )
+         CASE( 'standard' )
+           LC1 = 1.44_dp
+         CASE( 'v2-f' )
+           LC1 = 1.4_dp
+         CASE( 'rng' )
+           LC1 = 1.42_dp
+         CASE DEFAULT
+           CALL Fatal( Caller, 'Unknown K-Epsilon model' )
+         END SELECT
+         CALL ListAddConstReal( Material, 'KE C1', LC1 )
+       END IF
+
+       LC2 = ListGetCReal( Material, 'KE C2', GotIt )
+       IF ( .NOT. GotIt ) THEN
+         SELECT CASE( KEModel )
+         CASE( 'standard' )
+           LC2 = 1.92_dp
+         CASE( 'v2-f' )
+           LC2 = 1.9_dp
+         CASE( 'rng' )
+           LC2 = 1.68_dp
+         CASE DEFAULT
+           CALL Fatal( Caller, 'Unknown K-Epsilon model' )
+         END SELECT
+         CALL ListAddConstReal( Material, 'KE C2', LC2 )
+       END IF
+
+       SigmaE = ListGetCReal( Material, 'KE SigmaE', GotIt )
+       IF ( .NOT. GotIt ) THEN
+         SELECT CASE( KEModel )
+         CASE( 'standard','v2-f' )
+           SigmaE = 1.3_dp
+         CASE( 'rng' )
+           SigmaE = 1.0_dp
+         CASE DEFAULT
+           CALL Fatal( Caller, 'Unknown K-Epsilon model' )
+         END SELECT
+         CALL ListAddConstReal( Material, 'KE SigmaE', SigmaE )
+       END IF
+
+       SigmaK = ListGetCReal( Material, 'KE SigmaK', GotIt )
+       IF ( .NOT. GotIt ) THEN
+         SigmaK = 1.0d0
+         CALL ListAddConstReal( Material, 'KE SigmaK', SigmaK )
+       END IF
+
+       cvRat = GetCReal( Material, 'Specific Heat Ratio', GotCvRat )       
+       Pref = GetCReal( Material, 'Reference Pressure', stat )
+     END IF
+            
+     Viscosity(1:n) = GetReal( Material,'Viscosity' )
+     IF( GotCvRat ) THEN
+       CALL getScalarLocalSolution( Pressure, 'Pressure' )
      END IF
 
-     ! Even historically gravity has not been used!
-     GotGrav = .FALSE.     
-
-     Pr_rho(1:n) = GetReal( Material, 'Turbulent Prandtl Number', stat )
-     IF ( .NOT. stat ) Pr_rho(1:n) = 0.85_dp
-
-     c3(1:n) = GetReal( Material, 'Dissipation buoyancy coefficient', stat )
-     IF ( .NOT. stat ) c3(1:n) = 0.0_dp
-
-
+     ! This may include compressibility models etc. 
+     !Density(1:n)   = GetReal( Material,'Density' )
      CALL ElementDensity( Density, n )
-     cvRat = GetCReal( Material, 'Specific Heat Ratio', GotCvRat )
 
-     CALL getScalarLocalSolution( Pressure, 'Pressure' )
-     ReferencePressure = GetCReal( Material, 'Reference Pressure', stat )
+     CALL GetScalarLocalSolution( LocalV2, 'V2' )
+     CALL GetScalarLocalSolution( LocalKinEnergy, 'Kinetic Energy' )
+     CALL GetScalarLocalSolution( LocalDissipation, 'Kinetic Dissipation' )
 
+     IF( UseKEratio ) THEN
+       CALL GetScalarLocalSolution( LocalKEratio, 'KE ratio' )
+     END IF
+     
+     CALL GetScalarLocalSolution( Ux, 'Velocity 1' )
+     CALL GetScalarLocalSolution( Uy, 'Velocity 2' )
+     CALL GetScalarLocalSolution( Uz, 'Velocity 3' )
+       
+   
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
      IF ( Bubbles ) THEN
-        IP = GaussPoints( element, element % TYPE % GaussPoints2 )
+       IP = GaussPoints( element, element % TYPE % GaussPoints2 )
      ELSE
-        IP = GaussPoints( element )
+       IP = GaussPoints( element )
      END IF
 
 !------------------------------------------------------------------------------
@@ -644,8 +684,11 @@ CONTAINS
        E = SUM( LocalDissipation(1:n) * Basis(1:n) )
        Eta =  SQRT(SecInv) * K / E
 
+       IF( UseKEratio ) THEN
+         EperK = SUM( LocalKEratio(1:n) * Basis(1:n) )
+       END IF
+       
        IF( GotGrav ) THEN       
-         Pr = SUM(Pr_rho(1:n) * Basis(1:n) )
          rho_g = 0._dp
          DO i=1,dim
            rho_g = rho_g + SUM(Density(1:n) * dBasisdx(1:n,i)) * Gravity(i)
@@ -655,24 +698,14 @@ CONTAINS
        mu  = SUM( Viscosity(1:n) * Basis(1:n) )
        rho = SUM( Density(1:n) * Basis(1:n) )
 
-       SigmaK = SUM( KESigmaK(1:n) * Basis(1:n) )
-       SigmaE = SUM( KESigmaE(1:n) * Basis(1:n) )
-
-       Cmu = SUM( KECMu(1:n) * Basis(1:n) )
-
-       LC1 = SUM( KEC1(1:n) * Basis(1:n) )
-       LC2 = SUM( KEC2(1:n) * Basis(1:n) )
-       LC3 = SUM( c3(1:n) * Basis(1:n) )
-
        Mach_number_sq = 0._dp
        IF( GotCvRat ) THEN
-         Sound_speed_sq = (SUM(Basis(1:n)*Pressure(1:n))+ReferencePressure) * CvRat / rho
+         Sound_speed_sq = (SUM(Basis(1:n)*Pressure(1:n))+Pref) * CvRat / rho
          IF ( Sound_speed_sq > 0.0_dp) Mach_number_sq = K/Sound_speed_sq
        END IF
          
        IF ( KEModel=='v2-f' ) THEN
          LV2 = SUM( LocalV2(1:n) * Basis(1:n) )
-         LCT = SUM( V2FCT(1:n) * Basis(1:n) )
          LC1 = 1.4_dp * (1+V2FCp*SQRT(K/LV2))
 
          Timescale = MAX(K/E,LCT*SQRT(mu/rho/E))
@@ -715,8 +748,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Coefficient of the diffusion term &
 !------------------------------------------------------------------------------
-       Alpha = 1.0d0
-
        IF ( UseRNGModel ) THEN
          ww = mu / Effmu(1)
          alpha = 1.3929d0
@@ -742,12 +773,14 @@ CONTAINS
            PRINT*,'huh: ', alpha
            alpha = 1.3929d0
          END IF
+
+         C2(1) = Alpha * Effmu(1)
+         C2(2) = Alpha * Effmu(2)
+       ELSE
+         C2(1) = Effmu(1)
+         C2(2) = Effmu(2)        
        END IF
-
-       C2(1) = Alpha * Effmu(1)
-       C2(2) = Alpha * Effmu(2)
-
-
+         
        ! Load at the integration point:
        !-------------------------------
        IF( GotCvRat ) THEN
@@ -996,9 +1029,9 @@ CONTAINS
      ELSE IF( KEcomp == 2 ) THEN
        CALL ListAddString( SolverParams, 'Variable','Kinetic Dissipation' )
      ELSE
-       CALL Fatal('KESolver_init','Invalid VALUE for "KE Component": '//TRIM(I2S(KEcomp)))
+       CALL Fatal('KESolver_init','Invalid value for "KE Component": '//TRIM(I2S(KEcomp)))
      END IF
-
+     
        
 !------------------------------------------------------------------------------
    END SUBROUTINE KESolver_Init
