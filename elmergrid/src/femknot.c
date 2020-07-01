@@ -4371,10 +4371,11 @@ int RemoveUnusedNodes(struct FemType *data,int info)
 void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 			   int renumber, int bcoffset, int info)
 {
-  int i,j,doinit,isordered;
+  int i,j,k,doinit,isordered;
   int minbc=0,maxbc=0,**mapbc;
-  int elemdim=0,elemtype=0,*mapdim,sideind[MAXNODESD1];
-
+  int elemdim=0,elemtype=0,sideind[MAXNODESD1];
+  int bctype;
+  
   if(renumber) {
     if(0) printf("Renumbering boundary types\n");
     
@@ -4396,7 +4397,6 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
     if(info) printf("Initial boundary interval [%d,%d]\n",minbc,maxbc);
 
     mapbc = Imatrix(minbc,maxbc,0,2);
-    /* mapdim = Ivector(minbc,maxbc); */
     for(i=minbc;i<=maxbc;i++) 
       for(j=0;j<=2;j++)
 	mapbc[i][j] = 0;
@@ -4405,10 +4405,13 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
       if(!bound[j].created) continue;
       for(i=1;i<=bound[j].nosides;i++) {
 	GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],data,sideind,&elemtype);
+	if(!elemtype) printf("could not find boundary element: %d %d %d\n",i,j,bound[j].parent[i]);
 	elemdim = GetElementDimension(elemtype);
-	if(0) printf("type and dim: %d %d %d\n",elemtype,elemdim,bound[j].types[i]);
+	bctype = bound[j].types[i];
 	
-	mapbc[bound[j].types[i]][elemdim] += 1;
+	if(0) printf("type and dim: %d %d %d\n",elemtype,elemdim,bctype);
+       	
+	mapbc[bctype][elemdim] += 1;
       }
     }
 
@@ -4457,10 +4460,17 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	}
       }
       if(data->boundarynamesexist) {
+	char boundaryname0[MAXBCS][MAXNAMESIZE];
+
+	/* We need some temporal place is name mapping might not be unique */
+	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) 
+	  strcpy(boundaryname0[j],data->boundaryname[j]);
+	
 	for(j=minbc;j<=MIN(maxbc,MAXBODIES-1);j++) {
-	  for(elemdim=2;elemdim>=0;elemdim--)	    
-	    if(mapbc[j][elemdim] != j) 
-	    strcpy(data->boundaryname[mapbc[j][elemdim]],data->boundaryname[j]);
+	  for(elemdim=2;elemdim>=0;elemdim--) {	    
+	    k = mapbc[j][elemdim];
+	    if(k) strcpy(data->boundaryname[k],boundaryname0[j]);
+	  }
 	}
       }
     }
