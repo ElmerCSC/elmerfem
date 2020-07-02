@@ -1,11 +1,8 @@
-:imagesdir: pics
-[.text-center]
-image::ElmerLogoPlain64x64.png[float="right"]
 
 
 == Elmer/Ice
 
-This directory contains glaciological extensions to the elmerfem code.  Further information can be found at the http://elmerice.elmerfem.org[Elmer/Ice community web site].
+This directory contains glaciological extensions to the elmerfem code.  Further information can be found at the http://elmerice.elmerfem.org[Elmer/Ice community web site] (this site also contains instructions for signing up for the Elmer/Ice email list).
 
 
 === Documentation:
