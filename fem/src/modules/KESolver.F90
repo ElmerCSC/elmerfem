@@ -99,7 +99,7 @@
 
      INTEGER :: KEComp, Ncomp
      TYPE(Variable_t), POINTER :: KEratio
-     LOGICAL :: UseKEratio
+     LOGICAL :: UseKEratio, LimitKE
      
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -125,8 +125,8 @@
      KEkin => VariableGet( Solver % Mesh % Variables, 'Kinetic Energy' )
      KEdis => VariableGet( Solver % Mesh % Variables, 'Kinetic Dissipation' )
      KEratio => VariableGet( Solver % Mesh % Variables, 'KE ratio' )
-     UseKEratio = ASSOCIATED( KEratio ) 
-     
+     UseKEratio = ASSOCIATED( KEratio )      
+     LimitKE = .NOT. UseKEratio
      
      LocalNodes = COUNT( KinPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
@@ -210,12 +210,8 @@
 
        CALL DefaultInitialize()
 
-
        IF( UseKEratio ) THEN
-         DO t=1,SIZE(KEratio % values)
-           
-           
-         END DO
+         CALL ComputeKEratio()
        END IF
        
 !------------------------------------------------------------------------------
@@ -373,40 +369,10 @@
 !------------------------------------------------------------------------------
 !      Kinetic Energy Solution should be positive
 !------------------------------------------------------------------------------
-      BLOCK
-        REAL(KIND=dp) :: Clip, Cmu        
-        TYPE(ValueList_t), POINTER :: Material
 
-        Material => GetMaterial(GetActiveElement(1))
-
-        Clip = GetConstReal( Material, 'KE Clip', GotIt )
-        Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
-  
-        n = Solver % Mesh % NumberOfNodes
-        Kmax = MAXVAL( KEkin % Values )
-        Emax = MAXVAL( KEdis % Values ) 
-        DO i=1,n
-          k = Solver % Variable % Perm(i)
-          IF ( k <= 0 ) CYCLE
-
-          Kval = KEkin % Values(k)
-          Eval = KEdis % Values(k)
-
-          IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
-
-          IF ( Eval < Clip*EMax ) THEN
-            KVal = Clip*EMax
-            Eval = MAX(Density(1)*Cmu*KVal**2/Viscosity(1),Clip*EMax)
-          END IF
-
-          IF( KEcomp /= 2 ) THEN
-            KEkin % Values(k) = MAX( KVal, 1.0d-10 )
-          END IF
-          IF( KEcomp /= 1 ) THEN
-            KEdis % Values(k) = MAX( EVal, 1.0d-10 )
-          END IF
-        END DO
-      END BLOCK
+      IF( LimitKE ) THEN
+        CALL LimitKEfields()
+      END IF
         
 !------------------------------------------------------------------------------
       RelativeChange = Solver % Variable % NonlinChange
@@ -418,7 +384,70 @@
 
 CONTAINS
 
+  SUBROUTINE ComputeKEratio()
+    REAL(KIND=dp) :: Cmu, TmuMin, Tmu, Lmax, Lstar        
+    TYPE(ValueList_t), POINTER :: Material
 
+    Material => GetMaterial(GetActiveElement(1))
+
+    Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
+    TmuMin = GetCReal( Material, 'Minimum Turbulent Viscosity')
+    Lmax = GetCReal( Material, 'Maximum Turbulent Mixing Length')
+
+    n = Solver % Mesh % NumberOfNodes
+
+    DO k=1,SIZE( KEkin % Values )
+      Kval = MAX( KEkin % Values(k), 0.0_dp ) 
+      Eval = MAX( KEdis % Values(k), 0.0_dp )
+
+      Lstar = Lmax
+      IF( Cmu * Kval**1.5 < Eval * Lmax ) THEN
+        Lstar = Cmu * Kval**1.5 / Eval
+      END IF
+      
+      Tmu  = MAX( Lstar * SQRT(Kval), TmuMin )
+           
+      KEratio % Values(k) = Cmu * Kval / Tmu
+    END DO
+
+  END SUBROUTINE ComputeKEratio
+
+  
+  SUBROUTINE LimitKEfields()
+    REAL(KIND=dp) :: Clip, Cmu        
+    TYPE(ValueList_t), POINTER :: Material
+
+    Material => GetMaterial(GetActiveElement(1))
+
+    Clip = GetConstReal( Material, 'KE Clip', GotIt )
+    Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
+
+    n = Solver % Mesh % NumberOfNodes
+    Kmax = MAXVAL( KEkin % Values )
+    Emax = MAXVAL( KEdis % Values ) 
+    DO k=1,SIZE(KEkin % Values)
+      Kval = KEkin % Values(k)
+      Eval = KEdis % Values(k)
+      
+      IF ( KVal < Clip*Kmax ) Kval = Clip*KMax
+
+      IF ( Eval < Clip*EMax ) THEN
+        KVal = Clip*EMax
+        Eval = MAX(Density(1)*Cmu*KVal**2/Viscosity(1),Clip*EMax)
+      END IF
+
+      IF( KEcomp /= 2 ) THEN
+        KEkin % Values(k) = MAX( KVal, 1.0d-10 )
+      END IF
+      IF( KEcomp /= 1 ) THEN
+        KEdis % Values(k) = MAX( EVal, 1.0d-10 )
+      END IF
+    END DO
+    
+  END SUBROUTINE LimitKEfields
+    
+   
+  
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for KE model.
 !------------------------------------------------------------------------------
@@ -466,14 +495,14 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Material
      INTEGER :: body_id = -1
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
-     REAL(KIND=dp) :: Clip, V2FCp, EperK
+     REAL(KIND=dp) :: V2FCp, EperK, TmuMin
 
      
 !     REAL(KIND=dp) :: div,ProdTensor(3,3),nu
 
-     SAVE Material, body_id, Clip, V2FCp, KEModel, V2FModel, UseRNGModel, &
+     SAVE Material, body_id, V2FCp, KEModel, V2FModel, UseRNGModel, &
          Gravity, GotGrav, Pr, LC3, LCT, Cmu, LC1, LC2, SigmaE, &
-         SigmaK, cvRat, GotCvRat, Pref
+         SigmaK, cvRat, GotCvRat, Pref, TmuMin
      
      
 !------------------------------------------------------------------------------
@@ -491,10 +520,7 @@ CONTAINS
        body_id = Element % BodyId
 
        Material => GetMaterial()
-       
-       Clip = GetConstReal( Material, 'KE Clip', GotIt )
-       IF ( .NOT.GotIt ) Clip = 1.0d-6
-       
+              
        KEModel = GetString( Material, 'KE Model', GotIt )
        IF ( .NOT. GotIt ) KEModel = 'standard'
        
@@ -597,6 +623,8 @@ CONTAINS
 
        cvRat = GetCReal( Material, 'Specific Heat Ratio', GotCvRat )       
        Pref = GetCReal( Material, 'Reference Pressure', stat )
+
+       TmuMin = GetCReal( Material, 'Minimum Turbulent Viscosity',GotIt)          
      END IF
             
      Viscosity(1:n) = GetReal( Material,'Viscosity' )
@@ -718,7 +746,11 @@ CONTAINS
 !        END DO
 !        Prod = SUM(ProdTensor * dVelodx) / Rho
        ELSE
-         Tmu  = Rho * Cmu*K**2  / E
+         IF( E > 0.0_dp ) THEN
+           Tmu  = MAX( Rho * Cmu*K**2  / E, TmuMin )
+         ELSE
+           Tmu = TmuMin
+         END IF
        END IF
 
        IF( GotGrav ) THEN              
@@ -736,7 +768,11 @@ CONTAINS
        IF ( KEModel == 'v2-f' ) THEN
          C0(2) = Rho * LC2 / TimeScale
        ELSE
-         C0(2) = Rho * LC2 * E / K
+         IF( UseKEratio ) THEN
+           C0(2) = Rho * LC2 * EperK
+         ELSE
+           C0(2) = Rho * LC2 * E / K
+         END IF
        END IF
 
 ! moved to ---> rhs
@@ -788,16 +824,28 @@ CONTAINS
        ELSE
          LoadAtIp(1) = rho*ProdK
        END IF
+       
        IF ( KEModel=='v2-f' ) THEN
          LoadAtIP(2) = Rho*LC1*ProdE/TimeScale
        ELSE
-         LoadAtIP(2) = Rho*LC1*ProdE*E/K
+         IF( UseKEratio ) THEN
+           LoadAtIP(2) = Rho*LC1*ProdE*EperK
+         ELSE
+           LoadAtIP(2) = Rho*LC1*ProdE*E/K
+         END IF
        END IF
        
-       IF ( UseRNGModel ) &
+       IF ( UseRNGModel ) THEN
+         IF( UseKEratio ) THEN
            LoadatIP(2) = LoadatIP(2) - Cmu*Rho*Eta**3*(1-Eta/4.38d0) / &
-           (1.0d0 + 0.012d0*Eta**3) * E**2 / K
-       
+               (1.0d0 + 0.012d0*Eta**3) * E*EperK
+         ELSE
+           LoadatIP(2) = LoadatIP(2) - Cmu*Rho*Eta**3*(1-Eta/4.38d0) / &
+               (1.0d0 + 0.012d0*Eta**3) * E**2 / K
+         END IF
+       END IF
+         
+         
 !------------------------------------------------------------------------------
 !       Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -820,7 +868,12 @@ CONTAINS
            M(1,1) = CT * Basis(q) * Basis(p)
            M(2,2) = CT * Basis(q) * Basis(p)
 
-           A(1,2) = C0(1) * Basis(q) * Basis(p)
+           IF( UseKEratio ) THEN
+             A(1,1) = C0(1) * EperK * Basis(q) * Basis(p) 
+           ELSE
+             A(1,2) = C0(1) * Basis(q) * Basis(p)
+           END IF
+             
            A(2,2) = C0(2) * Basis(q) * Basis(p)
            !------------------------------------------------------------------------------
            !         The diffusion term
@@ -1032,7 +1085,11 @@ CONTAINS
        CALL Fatal('KESolver_init','Invalid value for "KE Component": '//TRIM(I2S(KEcomp)))
      END IF
      
-       
+     IF( GetLogical( SolverParams,'USE KE ratio',Found) ) THEN
+       CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),'KE ratio')
+     END IF
+ 
 !------------------------------------------------------------------------------
    END SUBROUTINE KESolver_Init
 !------------------------------------------------------------------------------

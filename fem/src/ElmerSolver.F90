@@ -2586,7 +2586,8 @@ END INTERFACE
 	 
 !------------------------------------------------------------------------------
 
-         IF ( SteadyStateReached .AND. .NOT. (Transient .OR. Scanning) ) THEN
+         IF ( SteadyStateReached ) THEN
+           !.AND. .NOT. (Transient .OR. Scanning) ) THEN
             IF ( Timestep >= CoupledMinIter ) EXIT
          END IF
 

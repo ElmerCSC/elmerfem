@@ -9420,10 +9420,11 @@ END FUNCTION SearchNodeL
 !> Different convergence measures may be used. 
 !> Also performs relaxation if a non-unity relaxation factor is given.
 !------------------------------------------------------------------------------
-  SUBROUTINE ComputeChange(Solver,SteadyState,nsize,values,values0,Matrix,RHS)
+  SUBROUTINE ComputeChange(Solver,SteadyState,Transient,nsize,values,values0,Matrix,RHS)
 !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
     LOGICAL :: SteadyState
+    LOGICAL, OPTIONAL :: Transient
     TYPE(Matrix_t), OPTIONAL, TARGET :: Matrix
     INTEGER, OPTIONAL :: nsize
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:), RHS(:)
@@ -9447,12 +9448,45 @@ END FUNCTION SearchNodeL
     INTEGER :: ipar(1)
     TYPE(ValueList_t), POINTER :: SolverParams
     CHARACTER(*), PARAMETER :: Caller = 'ComputeChange'
-
+    LOGICAL :: TransientState, NonlinearState 
+    
     
     SolverParams => Solver % Values
     RelativeP = .FALSE.
+
+    TransientState = .FALSE.
+    IF( PRESENT( Transient ) ) TransientState = Transient
+    NonlinearState = .NOT. ( SteadyState .OR. TransientState ) 
     
-    IF(SteadyState) THEN	
+    IF(TransientState) THEN	
+      Skip = ListGetLogical( SolverParams,'Skip Compute Transient Change',Stat)
+      IF( Skip ) THEN
+        CALL Info(Caller,'Skipping the computation of transient change',Level=15)
+        RETURN
+      END IF
+        
+      ! No residual mode for transient analysis
+      ResidualMode = .FALSE.
+
+      ConvergenceType = ListGetString(SolverParams,&
+          'Transient Convergence Measure',Stat)
+      IF(.NOT. Stat) ConvergenceType = 'norm' 
+
+      ConvergenceAbsolute = &
+          ListGetLogical(SolverParams,'Transient Convergence Absolute',Stat)
+      IF(.NOT. Stat) ConvergenceAbsolute = &
+          ListGetLogical(SolverParams,'Use Absolute Norm for Convergence',Stat)
+
+      ! Transient systems are not relaxed, time is the natural relaxation...
+      Relax = .FALSE.
+
+      iterVar => VariableGet( Solver % Mesh % Variables, 'timestep' )
+      IterNo = NINT( iterVar % Values(1) )
+      
+      ! Transient system has never any constraints
+      SkipConstraints = .FALSE.
+    
+    ELSE IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) THEN
         CALL Info(Caller,'Skipping the computation of steady state change',Level=15)
@@ -9492,7 +9526,7 @@ END FUNCTION SearchNodeL
       ! Steady state system has never any constraints
       SkipConstraints = .FALSE.
       
-    ELSE
+    ELSE ! Nonlinear 
       iterVar => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       IterNo = NINT( iterVar % Values(1) )
       Solver % Variable % NonlinIter = IterNo
@@ -9553,8 +9587,10 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( .NOT. ASSOCIATED(x) ) THEN
-      Solver % Variable % Norm = 0.0d0 
-      IF(SteadyState) THEN
+      Solver % Variable % Norm = 0.0d0
+      IF( TransientState ) THEN
+        Solver % Variable % TransientChange = 0.0d0
+      ELSE IF(SteadyState) THEN
         Solver % Variable % SteadyChange = 0.0d0
       ELSE
         Solver % Variable % NonlinChange = 0.0d0
@@ -9576,6 +9612,11 @@ END FUNCTION SearchNodeL
     IF(PRESENT(values0)) THEN
       x0 => values0
       Stat = .TRUE.
+    ELSE IF( TransientState ) THEN
+      IF( ASSOCIATED(Solver % Variable % PrevValues) ) THEN
+        x0 => Solver % Variable % PrevValues(:,1)
+        Stat = .TRUE.
+      END IF      
     ELSE IF(SteadyState) THEN
       IF( ASSOCIATED(Solver % Variable % SteadyValues) ) THEN
         x0 => Solver % Variable % SteadyValues
@@ -9622,7 +9663,9 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-    IF(SteadyState) THEN
+    IF(TransientState) THEN
+      PrevNorm = Solver % Variable % TransientNorm      
+    ELSE IF(SteadyState) THEN
       PrevNorm = Solver % Variable % PrevNorm
     ELSE
       PrevNorm = Solver % Variable % Norm
@@ -9630,6 +9673,12 @@ END FUNCTION SearchNodeL
 
     Norm = ComputeNorm(Solver, n, x)
     Solver % Variable % Norm = Norm
+
+    ! At first timestep we cannot have convergence of pseudo-time system
+    IF( TransientState .AND. IterNo == 1 ) THEN      
+      Solver % Variable % TransientChange = 1.0_dp
+      Solver % Variable % TransientConverged = 0
+    END IF
     
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
@@ -9638,7 +9687,10 @@ END FUNCTION SearchNodeL
       CALL NumericalError(Caller,'Norm of solution appears to be NaN')
     END IF
 
-    IF( SteadyState ) THEN
+    IF( TransientState ) THEN
+      MaxNorm = ListGetCReal( SolverParams, &
+          'Transient Max Norm', Stat )
+    ELSE IF( SteadyState ) THEN
       MaxNorm = ListGetCReal( SolverParams, &
           'Steady State Max Norm', Stat )
     ELSE
@@ -9786,7 +9838,32 @@ END FUNCTION SearchNodeL
     !--------------------------------------------------------------------------
     ! Check for convergence: 0/1
     !--------------------------------------------------------------------------
-    IF(SteadyState) THEN
+    IF(TransientState) THEN
+      PrevChange = Solver % Variable % TransientChange
+      Solver % Variable % TransientChange = Change
+      Tolerance = ListGetCReal( SolverParams,'Transient Convergence Tolerance',Stat)
+      IF( Stat ) THEN
+        IF( Change <= Tolerance ) THEN
+          Solver % Variable % TransientConverged = 1
+        ELSE
+          Solver % Variable % TransientConverged = 0
+        END IF          
+      END IF
+      
+      Tolerance = ListGetCReal( SolverParams,'Transient Divergence Limit',Stat)
+      IF( Stat .AND. Change > Tolerance ) THEN
+        IF( IterNo > 1 .AND. Change > PrevChange ) THEN
+          CALL Info(Caller,'Transient iteration diverged over tolerance')
+          Solver % Variable % TransientConverged = 2
+        END IF
+      END IF
+      
+      Tolerance = ListGetCReal( SolverParams,'Transient Exit Condition',Stat)
+      IF( Stat .AND. Tolerance > 0.0 ) THEN
+        CALL Info(Caller,'Nonlinear iteration condition enforced by exit condition',Level=6)
+        Solver % Variable % TransientConverged = 3
+      END IF
+    ELSE IF(SteadyState) THEN
       PrevChange = Solver % Variable % SteadyChange
       Solver % Variable % SteadyChange = Change
       Tolerance = ListGetCReal( SolverParams,'Steady State Convergence Tolerance',Stat)
@@ -9876,13 +9953,17 @@ END FUNCTION SearchNodeL
     SolverName = ListGetString( SolverParams, 'Equation',Stat)
     IF(.NOT. Stat) SolverName = Solver % Variable % Name
  
-    IF(SteadyState) THEN        
+    IF(TransientState) THEN        
       WRITE( Message, '(a,g15.8,g15.8,a)') &
-         'SS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
+          'TS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
+          ' ) :: '// TRIM(SolverName)
+    ELSE IF( SteadyState ) THEN
+      WRITE( Message, '(a,g15.8,g15.8,a)') &
+          'SS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
           ' ) :: '// TRIM(SolverName)
     ELSE
       WRITE( Message, '(a,g15.8,g15.8,a)') &
-         'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
+          'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, Change,&
           ' ) :: '// TRIM(SolverName)
     END IF
     CALL Info( Caller, Message, Level=3 )
@@ -9900,7 +9981,9 @@ END FUNCTION SearchNodeL
     ! and then fix the level a posteriori using this condition. 
     !----------------------------------------------------------------------------------
     DoIt = .FALSE.
-    IF( SteadyState ) THEN 
+    IF( TransientState ) THEN
+      CONTINUE
+    ELSE IF( SteadyState ) THEN 
       DoIt = ListGetLogical( SolverParams,&
           'Nonlinear System Set Average Solution',Stat)
     ELSE 
@@ -9931,7 +10014,9 @@ END FUNCTION SearchNodeL
 
     ! Calculate derivative a.k.a. sensitivity
     DoIt = .FALSE.
-    IF( SteadyState ) THEN
+    IF( TransientState ) THEN
+      CONTINUE
+    ELSE IF( SteadyState ) THEN
       DoIt = ListGetLogical( SolverParams,'Calculate Derivative',Stat )
     ELSE
       DoIt = ListGetLogical( SolverParams,'Nonlinear Calculate Derivative',Stat )
@@ -9972,7 +10057,7 @@ END FUNCTION SearchNodeL
 
     END IF
     
-    IF(.NOT. SteadyState ) THEN    
+    IF( NonlinearState ) THEN    
       CALL UpdateDependentObjects( Solver, .FALSE. )        
     END IF
 
@@ -13217,7 +13302,7 @@ END FUNCTION SearchNodeL
     END IF
     
     IF(ComputeChangeScaled) THEN
-      CALL ComputeChange(Solver,.FALSE.,n, x, NonlinVals, Matrix=A, RHS=b )
+      CALL ComputeChange(Solver,.FALSE.,.FALSE.,n, x, NonlinVals, Matrix=A, RHS=b )
       DEALLOCATE(NonlinVals)
     END IF
 
@@ -13264,7 +13349,7 @@ END FUNCTION SearchNodeL
 ! Compute the change of the solution with different methods 
 !------------------------------------------------------------------------------
     IF(.NOT.ComputeChangeScaled) THEN
-      CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )
+      CALL ComputeChange(Solver,.FALSE.,.FALSE.,n, x, Matrix=A, RHS=b )
     END IF
     Norm = Solver % Variable % Norm
 

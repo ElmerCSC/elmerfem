@@ -2664,14 +2664,14 @@ CONTAINS
 !> Solve the equations one-by-one. 
 !------------------------------------------------------------------------------
   SUBROUTINE SolveEquations( Model, dt, TransientSimulation, &
-      CoupledMinIter, CoupledMaxIter, SteadyStateReached, &
+      CoupledMinIter, CoupledMaxIter, OuterIterReached, &
       RealTimestep, BeforeTime, AtTime, AfterTime )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
     REAL(KIND=dp) :: dt
     INTEGER, OPTIONAL :: RealTimestep
     INTEGER :: CoupledMinIter, CoupledMaxIter
-    LOGICAL :: TransientSimulation, SteadyStateReached, TransientSolver
+    LOGICAL :: TransientSimulation, OuterIterReached, TransientSolver
     LOGICAL, OPTIONAL :: BeforeTime, AtTime, AfterTime
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: RelativeChange, Tolerance, PrevDT = 0.0d0, Relaxation, SSCond
@@ -2694,7 +2694,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: k1(:),k2(:),k3(:),k4(:)
     END TYPE RungeKutta_t
     TYPE(RungeKutta_t), ALLOCATABLE, TARGET :: RKCoeff(:)
-!------------------------------------------------------------------------------
+    CHARACTER(*), PARAMETER :: Caller = 'SolveEquations'
 
 !------------------------------------------------------------------------------
 !   Initialize equation solvers for new timestep
@@ -2715,6 +2715,7 @@ CONTAINS
 
     TestDivergence = .FALSE.
     DivergenceExit = .FALSE.
+    OuterIterReached = .FALSE.
     
     IF ( TransientSimulation ) THEN
       DO k=1,nSolvers
@@ -2738,7 +2739,7 @@ CONTAINS
     END IF
 
     IF( ExecSlot ) THEN
-      CALL Info('SolveEquations','Solvers before timestep',Level=12)
+      CALL Info(Caller,'Solvers before timestep',Level=12)
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
         IF ( Solver % PROCEDURE==0 ) CYCLE
@@ -2753,11 +2754,11 @@ CONTAINS
 
           ! Use predictor method
           IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-            CALL Info('SolveEquations','Switching time-stepping method to predictor method',Level=7)
+            CALL Info(Caller,'Switching time-stepping method to predictor method',Level=7)
             CALL ListAddString( Solver % Values, 'Timestepping Method', &
                 ListGetString( Solver % Values, 'Predictor Method',Found) )
             IF(.NOT. Found ) THEN
-              CALL Fatal('SolveEquations','Predictor-corrector schemes require > Predictor Method <')
+              CALL Fatal(Caller,'Predictor-corrector schemes require > Predictor Method <')
             END IF
             CALL ListAddLogical( Solver % Values,'Predictor Phase',.TRUE.)
           END IF
@@ -2767,11 +2768,11 @@ CONTAINS
           
           ! Use Corrector method
           IF( Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) THEN
-            CALL Info('SolveEquations','Switching time-stepping method to corrector method',Level=7)
+            CALL Info(Caller,'Switching time-stepping method to corrector method',Level=7)
             CALL ListAddString( Solver % Values, 'Timestepping Method', &
                 ListGetString( Solver % Values, 'Corrector Method',Found) )
             IF(.NOT. Found ) THEN
-              CALL Fatal('SolveEquations','Predictor-corrector schemes require > Corrector Method <')
+              CALL Fatal(Caller,'Predictor-corrector schemes require > Corrector Method <')
             END IF
           END IF
         END IF
@@ -2799,7 +2800,7 @@ CONTAINS
       END DO
 
 !------------------------------------------------------------------------------
-      CALL Info('SolveEquations','Solvers in main iteration loop',Level=12)
+      CALL Info(Caller,'Solvers in main iteration loop',Level=12)
 
       TimeVar => VariableGet( Model % Variables, 'Time')
       sTime => TimeVar % Values(1)
@@ -2811,9 +2812,9 @@ CONTAINS
         ! Without Runge-Kutta the cycling over equations is pretty easy
         CALL SolveCoupled()
       ELSE
-        CALL Info('SolveEquations','Using Runge-Kutta time-stepping',Level=12)
+        CALL Info(Caller,'Using Runge-Kutta time-stepping',Level=12)
 
-        CALL Info('SolveEquations','Runge-Kutta predictor step',Level=12)
+        CALL Info(Caller,'Runge-Kutta predictor step',Level=12)
         sTime = sTime - dt
         CALL SolveCoupled()
 
@@ -2834,7 +2835,7 @@ CONTAINS
 
           IF ( .NOT. RungeKutta ) CYCLE
 
-          CALL Info('SolveEquations','Solver '//TRIM(I2S(i))//' is Runge-Kutta Solver',Level=12)
+          CALL Info(Caller,'Solver '//TRIM(I2S(i))//' is Runge-Kutta Solver',Level=12)
           IF ( .NOT. ALLOCATED(RKCoeff) ) THEN
             ALLOCATE(RKCoeff(nSolvers), RK2_ErrorEstimate(nSolvers))
           END IF
@@ -2850,11 +2851,11 @@ CONTAINS
         END DO
 
         IF ( .NOT. ALLOCATED(RKCoeff) ) THEN        
-          CALL Fatal('SolveEquations','No Runge-Kutta after all in any Solver?')
+          CALL Fatal(Caller,'No Runge-Kutta after all in any Solver?')
         END IF
 
 
-        CALL Info('SolveEquations','Using Runge-Kutta Order: '//TRIM(I2S(RKOrder)),Level=12)
+        CALL Info(Caller,'Using Runge-Kutta Order: '//TRIM(I2S(RKOrder)),Level=12)
 
         IF(RKorder==4) THEN
           dt = dt / 2
@@ -2941,7 +2942,7 @@ CONTAINS
         DEALLOCATE(RKCoeff)
       END IF
 
-      IF ( .NOT.TransientSimulation ) SteadyStateReached = ALL(DoneThis)
+      IF ( .NOT.TransientSimulation ) OuterIterReached = ALL(DoneThis)
       DEALLOCATE( DoneThis, AfterConverged )
     END IF
 !------------------------------------------------------------------------------      
@@ -2955,7 +2956,7 @@ CONTAINS
     END IF
 
     IF( ExecSlot ) THEN
-      CALL Info('SolveEquations','Solvers after timestep',Level=12)
+      CALL Info(Caller,'Solvers after timestep',Level=12)
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
         IF ( Solver % PROCEDURE==0 ) CYCLE
@@ -2977,8 +2978,45 @@ CONTAINS
           CALL ParallelBarrier
         END IF
       END DO
+
+      ! We may use time to iterate a nonlinear system to convergence.
+      ! This is best done at the "after timestep" slot.
+      !---------------------------------------------------------------
+      IF( ListCheckPresentAnySolver( Model,'Transient Convergence Tolerance') ) THEN
+        CALL Info(Caller,'Testing for transient system convergence',Level=7)
+        
+        ALLOCATE( DoneThis(nSolvers) )
+        DO k=1,Model % NumberOfSolvers
+          Solver => Model % Solvers(k)
+          IF( ListCheckPresent( Solver % Values,'Transient Convergence Tolerance') ) THEN
+            IF ( ParEnv % PEs > 1 ) THEN
+              IF ( ParEnv % Active(ParEnv % MyPE+1) ) THEN
+                CALL ComputeChange(Solver,.FALSE.,.TRUE., n)
+                Solver % Variable % TransientNorm = Solver % Variable % Norm
+             ELSE
+                IF(.NOT.ASSOCIATED(Solver % Variable)) ALLOCATE(Solver % Variable)
+                Solver % Variable % TransientConverged = 1
+              END IF
+              DoneThis(k) = ( Solver % Variable % TransientConverged /= 0 ) 
+              CALL ParallelAllReduceAnd( DoneThis(k) )
+            ELSE
+              CALL ComputeChange(Solver,.FALSE.,.TRUE.)
+              Solver % Variable % TransientNorm = Solver % Variable % Norm
+              DoneThis(k) = ( Solver % Variable % TransientConverged /= 0 )       
+            END IF
+          ELSE
+            DoneThis(k) = .TRUE.
+          END IF
+        END DO
+        
+        OuterIterReached = ALL(DoneThis)
+        IF( OuterIterReached ) THEN
+          CALL Info(Caller,'Reached transient system tolerances!',Level=5)                  
+        END IF
+        DEALLOCATE( DoneThis ) 
+      END IF
     END IF
-      
+    
 
 CONTAINS
 
@@ -2996,15 +3034,15 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-    CALL Info('SolveEquations','Performing set of solvers in sequence',Level=12)
+    CALL Info(Caller,'Performing set of solvers in sequence',Level=12)
     
      DO i=1,CoupledMaxIter
        IF ( TransientSimulation .OR. Scanning ) THEN
          IF( CoupledMaxIter > 1 ) THEN
-           CALL Info( 'SolveEquations', '-------------------------------------', Level=3 )
+           CALL Info( Caller, '-------------------------------------', Level=3 )
            WRITE( Message, * ) 'Coupled system iteration: ', i
-           CALL Info( 'SolveEquations', Message, Level=3 )
-           CALL Info( 'SolveEquations', '-------------------------------------', Level=3 )         
+           CALL Info( Caller, Message, Level=3 )
+           CALL Info( Caller, '-------------------------------------', Level=3 )         
          END IF
          steadyIt = i
        END IF
@@ -3034,7 +3072,7 @@ CONTAINS
               Solver % SolverMode == SOLVER_MODE_ASSEMBLY .OR. &
               Solver % SolverMode == SOLVER_MODE_BLOCK ) ) THEN
 
-              CALL Warn('SolveEquations','No routine related to solver!')
+              CALL Warn(Caller,'No routine related to solver!')
               DoneThis(k) = .TRUE.
               CYCLE
             END IF
@@ -3070,7 +3108,7 @@ CONTAINS
           CalculateDerivative = ListGetLogical( Solver % Values, &
                 'Calculate Derivative', Stat )
           IF( CalculateDerivative .AND. .NOT. Scanning ) THEN
-            CALL Fatal('SolveEquations','> Calculate Derivative < should be active only for scanning!')
+            CALL Fatal(Caller,'> Calculate Derivative < should be active only for scanning!')
           END IF
 
           NeedSol = CalculateDerivative
@@ -3092,7 +3130,7 @@ CONTAINS
             END IF
             IF(.NOT. Stat) THEN
               ALLOCATE( Solver % Variable % SteadyValues(n), STAT=istat ) 
-              IF ( istat /= 0 ) CALL Fatal( 'SolveEquations', 'Memory allocation error.' )
+              IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
             END IF
             Solver % Variable % SteadyValues(1:n) = Solver % Variable % Values(1:n)
           END IF
@@ -3105,7 +3143,7 @@ CONTAINS
             SSCond = ListGetCReal( Solver % Values,'Steady State Condition',Found )
             IF( Found .AND. SSCond > 0.0_dp ) THEN
               TransientSolver = .FALSE.
-              CALL Info('SolveEquations','Running solver in steady state',Level=6)
+              CALL Info(Caller,'Running solver in steady state',Level=6)
             END IF
           END IF
 
@@ -3141,13 +3179,13 @@ CONTAINS
            IF( TestConvergence .OR. CalculateDerivative ) THEN
              IF ( ParEnv % PEs > 1 ) THEN
                IF ( ParEnv % Active(ParEnv % MyPE+1) ) THEN
-                 CALL ComputeChange(Solver,.TRUE., n)
+                 CALL ComputeChange(Solver,.TRUE.,.FALSE., n)
                ELSE
                  IF(.NOT.ASSOCIATED(Solver % Variable)) ALLOCATE(Solver % Variable)
                  Solver % Variable % SteadyConverged = 1
                END IF
              ELSE
-               CALL ComputeChange(Solver,.TRUE.)
+               CALL ComputeChange(Solver,.TRUE.,.FALSE.)
              END IF
            END IF
            
@@ -3182,13 +3220,13 @@ CONTAINS
 
       IF( TestConvergence ) THEN
         IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
-          CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(i)),Level=4)
+          CALL Info( Caller,'Coupled system iteration: '//TRIM(I2S(i)),Level=4)
           CoupledAbort = ListGetLogical( Model % Simulation,  &
               'Coupled System Abort Not Converged', Found )
-          CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)
+          CALL NumericalError(Caller,'Coupled system did not converge',CoupledAbort)
         END IF
       END IF
-        
+      
     END SUBROUTINE SolveCoupled
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveEquations

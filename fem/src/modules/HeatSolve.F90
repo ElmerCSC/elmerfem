@@ -1180,7 +1180,7 @@ END BLOCK
 
           ! The change is computed separately for the controlled temperature field
           !-----------------------------------------------------------------------
-          CALL ComputeChange(Solver,.FALSE.,LocalNodes,Temperature)
+          CALL ComputeChange(Solver,.FALSE.,.FALSE.,LocalNodes,Temperature)
           Norm = Solver % Variable % Norm
 
         END IF
