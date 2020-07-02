@@ -118,9 +118,8 @@ image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit su
 
 === Computational Glaciology "Elmer/Ice":
 
-* http://elmerice.elmerfem.org[Elmer/Ice community]
-* http://elmerfem.org/elmerice/wiki/doku.php[Elmer/Ice Wiki]
-* https://github.com/ElmerCSC/elmerfem/tree/devel/elmerice/Solvers/Documentation[Elmer/Ice Documentation]
+* http://elmerice.elmerfem.org[Elmer/Ice community web site]
+* https://github.com/ElmerCSC/elmerfem/tree/elmerice/elmerice/[Elmer/Ice README]
 
 
 === Other links:
