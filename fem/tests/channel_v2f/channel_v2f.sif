@@ -10,7 +10,7 @@ Simulation
   Steady State Max Iterations  = 100
 
   Initialize Dirichlet Conditions = False
-!  Post File = "channel.vtu"
+  Post File = "channel_v2f.vtu"
 End
 
 
@@ -153,6 +153,10 @@ Boundary Condition 4
   Noslip Wall BC = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 8.32632
-Solver 3 :: Reference Norm Tolerance = Real 1e-3
-RUN
+Solver 1 :: Reference Norm = 2.69703647
+Solver 1 :: Reference Norm Tolerance = 1e-4
+Solver 2 :: Reference Norm = 4.34596705E+01
+Solver 2 :: Reference Norm Tolerance = 1e-4
+Solver 3 :: Reference Norm = 8.32587170
+Solver 3 :: Reference Norm Tolerance = 1e-4
+
