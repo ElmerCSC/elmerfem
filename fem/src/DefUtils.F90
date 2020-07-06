@@ -5340,6 +5340,9 @@ CONTAINS
      END IF
 #endif
 
+     ! This could be used sometimes to resolve corner conflicts
+     CALL ReleaseConflictingDirichletBCs( Solver, A )
+
      ! This is set outside so that it can be called more flexibilly
      CALL EnforceDirichletConditions( Solver, A, b )
      

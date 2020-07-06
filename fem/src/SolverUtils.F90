@@ -7690,7 +7690,91 @@ CONTAINS
    END SUBROUTINE CommunicateLinearSystemTag
   !-------------------------------------------------------------------------------
 
+   
+!-------------------------------------------------------------------------------
+!> This routine checks through BCs where "No Corners" is set + 2 or more BCs are
+!> set. The idea is to identify corners and release Dirichlet BCs there. This is
+!> currently mainly for testing. Fully features subroutine should be more sophisticated. 
+!-------------------------------------------------------------------------------
+  SUBROUTINE ReleaseConflictingDirichletBCs( Solver, A )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t), POINTER :: A
+    
+    TYPE(ValueList_t), POINTER :: Params, BC
+    INTEGER :: i,j,k,n,dofs,dim,DirCount,t0,t,bc_id
+    LOGICAL :: Found
+    CHARACTER(*), PARAMETER :: Caller = 'ReleaseConflictingDirichletBCs'
+    LOGICAL, ALLOCATABLE :: CandNodes(:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+    
+    
+    Params => Solver % Values
 
+    IF( .NOT. ListGetLogical( Params,'Release Conflicting Dirichlet BCs',Found )  ) RETURN
+    
+    IF(.NOT. ALLOCATED( A % ConstrainedDOF ) ) THEN
+      CALL Info(Caller,'ConstrainedDOF not associated, returning...',Level=8)
+      RETURN
+    END IF
+
+    dofs = Solver % Variable % Dofs
+    IF( Dofs == 1 ) RETURN
+    
+    Mesh => Solver % Mesh
+    
+    n = Mesh % NumberOfNodes
+    ALLOCATE( CandNodes(n) )
+    CandNodes = .FALSE.
+    
+    t0 = Mesh % NumberOfBulkElements
+    DO t = 1, Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t0+t)
+      IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+
+      Found = .FALSE.
+      DO bc_id=1,CurrentModel % NumberOfBCs
+        Found = ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag )
+        IF( Found ) EXIT
+      END DO
+      IF(.NOT. Found ) CYCLE
+      BC => CurrentModel % BCs(bc_id) % Values
+      
+      IF (.NOT. ListGetLogical( BC, 'No Corners',Found ) ) CYCLE
+      CandNodes( Solver % Variable % Perm( Element % NodeIndexes ) ) = .TRUE.
+    END DO
+    n = COUNT( CandNodes )
+    CALL Info(Caller,'Number of candidate nodes with corners not allowed: '//TRIM(I2S(n)))
+    IF(n == 0) RETURN
+       
+    dim = CoordinateSystemDimension() 
+    
+    n = 0 
+    DO k=1,A % NumberOfRows / dofs
+
+      IF( .NOT. CandNodes(k) ) CYCLE
+      
+      DirCount = 0
+      DO j=1,dim      
+        IF ( A % ConstrainedDOF(dofs*(k-1)+j) ) DirCount = DirCount + 1
+      END DO
+
+      IF( DirCount > 1 ) THEN
+        n = n + 1
+        DO j=1,dim      
+          A % ConstrainedDOF(dofs*(k-1)+j) = .FALSE.
+        END DO        
+      END IF
+    END DO
+
+    CALL Info(Caller,'Removed number of conflicting BCs: '//TRIM(I2S(n)))
+    
+  END SUBROUTINE ReleaseConflictingDirichletBCs
+!-------------------------------------------------------------------------------
+
+    
   
 !-------------------------------------------------------------------------------
   SUBROUTINE EnforceDirichletConditions( Solver, A, b, OffDiagonal ) 
