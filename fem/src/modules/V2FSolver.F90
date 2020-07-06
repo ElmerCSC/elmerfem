@@ -63,23 +63,22 @@
 
      REAL(KIND=dp) :: RelativeChange,Norm,S,C
 
-     LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
-!
+     LOGICAL :: Stabilize = .TRUE.,gotIt
      LOGICAL :: AllocationsDone = .FALSE.
 
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter
-     REAL(KIND=dp) :: NewtonTol, Clip, V2FCp
+     INTEGER :: NSDOFs,NonlinearIter
+     REAL(KIND=dp) :: Clip, V2FCp
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
-       STIFF(:,:), LOAD(:,:),FORCE(:),U(:),V(:),W(:), &
-           Density(:),Viscosity(:),KinDis(:), &
-                 KinEne(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
-                   KEC2(:), TimeForce(:), V2(:), f(:), &
-                    V2FCnu(:), V2FC1(:), V2FC2(:), V2FCL(:), V2FCT(:), V2FSigma(:)
+         STIFF(:,:), LOAD(:,:),FORCE(:),U(:),V(:),W(:), &
+         Density(:),Viscosity(:),KinDis(:), &
+         KinEne(:),KESigmaK(:),KESigmaE(:),KECmu(:),KEC1(:),&
+         KEC2(:), TimeForce(:), V2(:), f(:), &
+         V2FCnu(:), V2FC1(:), V2FC2(:), V2FCL(:), V2FCT(:), V2FSigma(:)
 
-     TYPE(ValueList_t), POINTER :: BC, Equation, Material
+     TYPE(ValueList_t), POINTER :: BC, Material
 
      SAVE U,V,W,MASS,STIFF,LOAD,FORCE, ElementNodes,Density,&
          AllocationsDone,Viscosity,LocalNodes, &
@@ -140,15 +139,8 @@
 !    Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
      Stabilize = .FALSE.
 
-     NewtonTol = ListGetConstReal( Solver % Values, &
-        'Nonlinear System Newton After Tolerance',gotIt )
-
-     NewtonIter = ListGetInteger( Solver % Values, &
-        'Nonlinear System Newton After Iterations',gotIt )
-
      NonlinearIter = ListGetInteger( Solver % Values, &
          'Nonlinear System Max Iterations',GotIt )
-
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
 !------------------------------------------------------------------------------
@@ -189,7 +181,6 @@
          Element => GetActiveElement(t)
          IF ( Element % BodyId /= body_id ) THEN
             Material => GetMaterial()
-            Equation => GetEquation()
 
             Clip = GetConstReal( Material, 'KE Clip', GotIt )
             IF ( .NOT.GotIt ) Clip = 1.0d-6
@@ -312,9 +303,6 @@
       WRITE( Message,* ) 'Relative Change : ',RelativeChange
       CALL Info( 'V2-F-Solver', Message, Level = 4 )
 
-      IF ( RelativeChange < NewtonTol .OR. &
-              iter > NewtonIter ) NewtonLinearization = .TRUE.
-
       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
 !------------------------------------------------------------------------------
     END DO
@@ -375,7 +363,6 @@ CONTAINS
 !    Local variables
 !------------------------------------------------------------------------------
 !
-     REAL(KIND=dp) :: ddBasisddx(nd,3,3)
      REAL(KIND=dp) :: Basis(nd)
      REAL(KIND=dp) :: dBasisdx(nd,3),detJ
 
@@ -383,14 +370,14 @@ CONTAINS
 
      REAL(KIND=dp) :: A(2,2),M(2,2)
      REAL(KIND=dp) :: LoadatIp(2),Rho,mu,Tmu,EffVisc
-     INTEGER :: i,j,c,p,q,t,dim,N_Integ,NBasis
+     INTEGER :: i,j,c,p,q,t,dim,N_Integ
 
-     REAL(KIND=dp) :: s,u,v,w, K,E,Eta,LV2,Lf,Strain(3,3),ProdTensor(3,3), &
+     REAL(KIND=dp) :: s,u,v,w, K,E,Eta,LV2,Lf,Strain(3,3),&
                      Vorticity(3,3), nu, Cv, Prod,div
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     REAL(KIND=dp) :: C1,C2,CT,CL,Cnu,Cmu,TimeScale,LengthScale2,aparm(nd)
+     REAL(KIND=dp) :: C1,C2,CT,CL,Cnu,Cmu,TimeScale,LengthScale2
      REAL(KIND=dp) :: SecInv,X,Y,Z,Re_T
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
@@ -599,14 +586,14 @@ CONTAINS
 
      REAL(KIND=dp) :: RelativeChange,Norm,S,C
 
-     LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
+     LOGICAL :: Stabilize = .TRUE.,gotIt
 !
      LOGICAL :: AllocationsDone = .FALSE.
 
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
 
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter
-     REAL(KIND=dp) :: NewtonTol, Clip, V2FCp
+     INTEGER :: NSDOFs,NonlinearIter
+     REAL(KIND=dp) :: Clip, V2FCp
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:,:),FORCE(:),U(:),V(:),W(:), &
@@ -615,7 +602,7 @@ CONTAINS
                    KEC2(:), TimeForce(:), V2(:), f(:), &
                     V2FCnu(:), V2FC1(:), V2FC2(:), V2FCL(:), V2FCT(:), V2FSigma(:)
 
-     TYPE(ValueList_t), POINTER :: BC, Equation, Material
+     TYPE(ValueList_t), POINTER :: BC, Material
 
      SAVE U,V,W,MASS,STIFF,LOAD,FORCE, ElementNodes,Density,&
          AllocationsDone,Viscosity,LocalNodes, &
@@ -687,12 +674,6 @@ CONTAINS
 !    Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
      Stabilize = .FALSE.
 
-     NewtonTol = ListGetConstReal( Solver % Values, &
-        'Nonlinear System Newton After Tolerance',gotIt )
-
-     NewtonIter = ListGetInteger( Solver % Values, &
-        'Nonlinear System Newton After Iterations',gotIt )
-
      NonlinearIter = ListGetInteger( Solver % Values, &
          'Nonlinear System Max Iterations',GotIt )
 
@@ -739,7 +720,6 @@ CONTAINS
          Element => GetActiveElement(t)
          IF ( Element % BodyId /= body_id ) THEN
             Material => GetMaterial()
-            Equation => GetEquation()
 
             Clip = GetConstReal( Material, 'KE Clip', GotIt )
             IF ( .NOT.GotIt ) Clip = 1.0d-6
@@ -855,9 +835,6 @@ CONTAINS
       WRITE( Message,* ) 'Relative Change : ',RelativeChange
       CALL Info( 'V2-F-Solver', Message, Level = 4 )
 
-      IF ( RelativeChange < NewtonTol .OR. &
-              iter > NewtonIter ) NewtonLinearization = .TRUE.
-
       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
 !------------------------------------------------------------------------------
     END DO
@@ -919,7 +896,6 @@ CONTAINS
 !    Local variables
 !------------------------------------------------------------------------------
 !
-     REAL(KIND=dp) :: ddBasisddx(nd,3,3)
      REAL(KIND=dp) :: Basis(nd)
      REAL(KIND=dp) :: dBasisdx(nd,3),detJ
 
@@ -927,7 +903,7 @@ CONTAINS
 
      REAL(KIND=dp) :: A(3,3),M(3,3)
      REAL(KIND=dp) :: LoadatIp(2),Rho,mu,Tmu,EffVisc
-     INTEGER :: i,j,c,p,q,t,dim,N_Integ,NBasis
+     INTEGER :: i,j,c,p,q,t,dim,N_Integ
 
      REAL(KIND=dp) :: s,u,v,w, K,E,Eta,LV2,Lf,Strain(3,3),ProdTensor(3,3), &
                      Vorticity(3,3), nu, Cv, Prod,div
@@ -940,7 +916,7 @@ CONTAINS
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
-     LOGICAL :: stat,Convection, Bubbles
+     LOGICAL :: stat,Bubbles
 
 !------------------------------------------------------------------------------
 

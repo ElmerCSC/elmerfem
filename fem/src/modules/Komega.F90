@@ -57,7 +57,7 @@
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,Norm
-     LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
+     LOGICAL :: Stabilize = .TRUE.,gotIt
 
      LOGICAL :: AllocationsDone = .FALSE.
 
@@ -65,13 +65,12 @@
 
      INTEGER, POINTER :: KinPerm(:)
 
-     INTEGER :: NewtonIter,NonlinearIter,NoActive
-     REAL(KIND=dp) :: NewtonTol
+     INTEGER :: NonlinearIter,NoActive
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:)
 
-     TYPE(ValueList_t), POINTER :: BC, Equation, Material
+     TYPE(ValueList_t), POINTER :: BC, Material
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 
      SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce
@@ -112,15 +111,8 @@
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
 
-     NewtonTol = ListGetConstReal( Solver % Values, &
-        'Nonlinear System Newton After Tolerance',gotIt )
-
-     NewtonIter = ListGetInteger( Solver % Values, &
-        'Nonlinear System Newton After Iterations',gotIt )
-
      NonlinearIter = ListGetInteger( Solver % Values, &
          'Nonlinear System Max Iterations',GotIt )
-
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
 !------------------------------------------------------------------------------
@@ -291,7 +283,6 @@ CONTAINS
 !    Local variables
 !------------------------------------------------------------------------------
 !
-     REAL(KIND=dp) :: ddBasisddx(2*n,3,3)
      REAL(KIND=dp) :: Basis(2*n)
      REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
 
@@ -305,7 +296,7 @@ CONTAINS
      REAL(KIND=dp) :: s,u,v,w, K,Omega,Strain(3,3), Vorticity(3,3), dist
 
      REAL(KIND=dp) :: StrainMeasure,VorticityMeasure,X,Y,Z,SigmaK, &
-             SigmaO,Beta,CD,F1,F2,F3,F4,rGamma, GradK(3), GradO(3)
+             SigmaO,Beta,F1,F2,F3,F4,rGamma, GradK(3), GradO(3)
 
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
@@ -413,63 +404,63 @@ CONTAINS
 !      Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
        DO p=1,NBasis
-       DO q=1,NBasis
-          M = 0.0d0
-          A = 0.0d0
+         DO q=1,NBasis
+           M = 0.0d0
+           A = 0.0d0
 
-          M(1,1) = rho * Basis(q) * Basis(p)
-          M(2,2) = rho * Basis(q) * Basis(p)
+           M(1,1) = rho * Basis(q) * Basis(p)
+           M(2,2) = rho * Basis(q) * Basis(p)
 
-          A(1,1) = A(1,1) + rho * 0.09_dp * Omega * Basis(q) * Basis(p)
-          A(2,2) = A(2,2) + rho * Beta * Omega * Basis(q) * Basis(p)
+           A(1,1) = A(1,1) + rho * 0.09_dp * Omega * Basis(q) * Basis(p)
+           A(2,2) = A(2,2) + rho * Beta * Omega * Basis(q) * Basis(p)
 !------------------------------------------------------------------------------
 !         The diffusion term
 !------------------------------------------------------------------------------
-          IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
              DO i=1,dim
                A(1,1) = A(1,1) + Effmu(1) * dBasisdx(q,i) * dBasisdx(p,i)
                A(2,2) = A(2,2) + Effmu(2) * dBasisdx(q,i) * dBasisdx(p,i)
              END DO
-          ELSE
+           ELSE
              DO i=1,dim
                DO j=1,dim
-                  A(1,1) = A(1,1) + Metric(i,j) * Effmu(1) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                 A(1,1) = A(1,1) + Metric(i,j) * Effmu(1) * &
+                     dBasisdx(q,i) * dBasisdx(p,i)
 
-                  A(2,2) = A(2,2) + Metric(i,j) * Effmu(2) * &
-                       dBasisdx(q,i) * dBasisdx(p,i)
+                 A(2,2) = A(2,2) + Metric(i,j) * Effmu(2) * &
+                     dBasisdx(q,i) * dBasisdx(p,i)
                END DO
              END DO
-          END IF
+           END IF
 
 !------------------------------------------------------------------------------
 !           The convection term
 !------------------------------------------------------------------------------
-          DO i=1,dim
-            A(1,1) = A(1,1) + rho * Velo(i) * dBasisdx(q,i) * Basis(p)
-            A(2,2) = A(2,2) + rho * Velo(i) * dBasisdx(q,i) * Basis(p)
-          END DO
+           DO i=1,dim
+             A(1,1) = A(1,1) + rho * Velo(i) * dBasisdx(q,i) * Basis(p)
+             A(2,2) = A(2,2) + rho * Velo(i) * dBasisdx(q,i) * Basis(p)
+           END DO
 
-          DO i=1,2
+           DO i=1,2
              DO j=1,2
                STIFF(2*(p-1)+i,2*(q-1)+j) = STIFF(2*(p-1)+i,2*(q-1)+j)+s*A(i,j)
                MASS(2*(p-1)+i,2*(q-1)+j)  = MASS(2*(p-1)+i,2*(q-1)+j) +s*M(i,j)
              END DO
-          END DO
-        END DO
-        END DO
+           END DO
+         END DO
+       END DO
 
-        ! Load at the integration point:
-        !-------------------------------
-        LoadAtIP(1) = Prod
-        LoadAtIP(2) = rGamma * Prod * Omega / K
+       ! Load at the integration point:
+       !-------------------------------
+       LoadAtIP(1) = Prod
+       LoadAtIP(2) = rGamma * Prod * Omega / K
 
 !------------------------------------------------------------------------------
-        DO p=1,NBasis
-          FORCE(2*(p-1)+1) = FORCE(2*(p-1)+1)+s*LoadAtIp(1)*Basis(p)
-          FORCE(2*(p-1)+2) = FORCE(2*(p-1)+2)+s*LoadAtIp(2)*Basis(p)
-        END DO
-      END DO
+       DO p=1,NBasis
+         FORCE(2*(p-1)+1) = FORCE(2*(p-1)+1)+s*LoadAtIp(1)*Basis(p)
+         FORCE(2*(p-1)+2) = FORCE(2*(p-1)+2)+s*LoadAtIp(2)*Basis(p)
+       END DO
+     END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -515,9 +506,6 @@ CONTAINS
        omega_wall = 6*mu(i)/rho(i)/0.075_dp/dist
 
        j = 2*Solver % Variable % Perm(j)
-       !Solver % Matrix % RHS(j) = omega_wall
-       !CALL ZeroRow( Solver % Matrix, j )
-       !CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
 
        CALL UpdateDirichletDof( Solver % Matrix, j, omega_wall )
      END DO

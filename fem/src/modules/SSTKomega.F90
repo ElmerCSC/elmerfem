@@ -58,7 +58,7 @@
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,Norm,PrevNorm
-     LOGICAL :: Stabilize = .TRUE.,NewtonLinearization = .FALSE.,gotIt
+     LOGICAL :: Stabilize = .TRUE.,gotIt
 
      LOGICAL :: AllocationsDone = .FALSE.
 
@@ -66,8 +66,7 @@
 
      INTEGER, POINTER :: KinPerm(:)
 
-     INTEGER :: NewtonIter,NonlinearIter
-     REAL(KIND=dp) :: NewtonTol
+     INTEGER :: NonlinearIter
 
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:)
@@ -116,15 +115,8 @@
 !    Do some additional initialization, and go for it
 !------------------------------------------------------------------------------
 
-     NewtonTol = ListGetConstReal( Solver % Values, &
-        'Nonlinear System Newton After Tolerance',gotIt )
-
-     NewtonIter = ListGetInteger( Solver % Values, &
-        'Nonlinear System Newton After Iterations',gotIt )
-
      NonlinearIter = ListGetInteger( Solver % Values, &
          'Nonlinear System Max Iterations',GotIt )
-
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
 !------------------------------------------------------------------------------
@@ -635,9 +627,6 @@ CONTAINS
        omega_wall = 6*mu(i)/rho(i)/0.075_dp/Distance(i)**2
 
        j = 2*Solver % Variable % Perm(j)
-       !Solver % Matrix % RHS(j) = omega_wall
-       !CALL ZeroRow( Solver % Matrix, j )
-       !CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
 
        CALL UpdateDirichletDof( Solver % Matrix, j, omega_wall )
      END DO
