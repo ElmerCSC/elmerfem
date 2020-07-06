@@ -113,7 +113,7 @@
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
                   Transient, Rotating, AnyRotating, OutOfPlaneFlow=.FALSE.,&
-                  RecheckNewton=.FALSE.
+                  RecheckNewton=.FALSE.,ConstantStart=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
@@ -152,7 +152,7 @@
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
        PseudoPressureExists, Drag, PotentialField, PotentialCoefficient, &
-       ComputeFree, Indexes
+       ComputeFree, Indexes, ConstantStart
 
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
 !------------------------------------------------------------------------------
@@ -279,6 +279,19 @@
      ForceVector => StiffMatrix % RHS
      UNorm = Solver % Variable % Norm
 
+     ! We use this kind of hack to enable constant viscosity start also in this solver
+     ! as has been done with the block preconditioned versions. 
+     IF( .NOT. AllocationsDone ) THEN
+       ConstantStart = ListGetLogical( Solver % Values,'Constant-Viscosity Start',GotIt )
+       IF( ConstantStart ) THEN
+         CALL ListAddConstReal( Solver % Values,'Newtonian Viscosity Condition',1.0_dp ) 
+       END IF
+     ELSE IF( ConstantStart ) THEN
+       CALL ListRemove( Solver % Values,'Newtonian Viscosity Condition' )
+       ConstantStart = .FALSE.       
+     END IF
+
+     
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------

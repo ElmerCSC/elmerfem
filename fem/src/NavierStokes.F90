@@ -268,7 +268,11 @@ MODULE NavierStokes
 
      IF( ViscNonnewtonian ) THEN
        ViscConstantCondition = GetCReal( Params, 'Newtonian Viscosity Condition',Found)
-       IF( Found .AND. ViscConstantCondition > 0.0_dp ) ViscNonnewtonian = .FALSE.
+       IF( Found .AND. ViscConstantCondition > 0.0_dp ) THEN
+         ViscNonnewtonian = .FALSE.
+         C1 = ListGetCReal( Params,'Constant-Viscosity Multiplier',Found )
+         IF( Found ) NodalMu(1:n) = C1 * NodalMu(1:n)
+       END IF
      END IF
 
      LaplaceDiscretization = GetLogical( Params,'Laplace Discretization', Found)
