@@ -44,55 +44,6 @@
 ! *
 ! *****************************************************************************/
 
-!------------------------------------------------------------------------------
-!> Solve the friction velocity of the previous iteration based 
-!> on the wall law. 
-!
-!         Input:
-!             DENSIT - Density
-!             VISCOS - Viscosity 
-!             DIST   - Distance from the wall
-!             UT     - Tangential velocity of the previous iteration
-!
-!         Output:
-!             UFRIC  - Friction velocity
-!             DFX    - Derivative of the wall law
-!
-!------------------------------------------------------------------------------
-      SUBROUTINE SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX)
-
-      IMPLICIT NONE
-      DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,TAUW,  &
-      YPLUS, FX, WALL_LAW, D_WALL_LAW
-
-      INTEGER :: ITER 
-      INTEGER :: MAXITER=100
-      DOUBLE PRECISION ::  TOL=1.0D-14
- 
-! Default value:
-      TAUW = UT / DIST
-      UFRIC = DSQRT( TAUW / DENSIT )
-
-      DO ITER=1,MAXITER
-         FX  = WALL_LAW( UFRIC,UT,DENSIT,VISCOS,DIST,ROUGH )
-         DFX = D_WALL_LAW( UFRIC,UT,DENSIT,VISCOS,DIST,ROUGH )
-
-! Newton step:
-         IF (DFX.EQ.0.0d0) THEN
-            PRINT*,'Walls:: SOLVE_UFRIC: dfx = 0'
-            STOP 1
-         END IF
-         UFRIC = UFRIC - FX/DFX
-         YPLUS = DENSIT * UFRIC * DIST / VISCOS
-         IF ( DABS(FX) <= TOL ) EXIT
-      END DO
-
-      IF ( DABS(FX) > 1.0d-9 ) WRITE(*,*)'Problems in SOLVE_UFRIC, FX=',FX
-
-      RETURN
-      END
-      
-
 
 !----------------------------------------------------------------------------
 !> Give difference between the tangential velocity given by 
@@ -109,36 +60,32 @@
 !         Output:
 !
 !----------------------------------------------------------------------------
-      DOUBLE PRECISION FUNCTION WALL_LAW(UFRIC,UT,DENSIT, &
-                 VISCOS,DIST,ROUGH)
+DOUBLE PRECISION FUNCTION Wall_Law(UFRIC,UT,DENSIT, &
+    VISCOS,DIST,ROUGH)
 
-      IMPLICIT NONE
-      DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX, &
+  IMPLICIT NONE
+  DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX, &
       YPLUS
 
-      DOUBLE PRECISION :: DKAPPA = 0.41D0, RAJA
+  DOUBLE PRECISION :: DKAPPA = 0.41D0, RAJA
 
 
-      YPLUS = DENSIT*UFRIC*DIST / VISCOS
+  YPLUS = DENSIT*UFRIC*DIST / VISCOS
 
-! Log-law:
-!      RAJA=11.2658567D0 
-!      IF(YPLUS.GE.RAJA) THEN
-!         WALL_LAW=(UFRIC/DKAPPA)*DLOG(ROUGH*YPLUS)-UT
-!      ELSE
-!         WALL_LAW=UFRIC*YPLUS-UT
-!      ENDIF
+  ! Log-law:
+  !      RAJA=11.2658567D0 
+  !      IF(YPLUS.GE.RAJA) THEN
+  !         WALL_LAW=(UFRIC/DKAPPA)*DLOG(ROUGH*YPLUS)-UT
+  !      ELSE
+  !         WALL_LAW=UFRIC*YPLUS-UT
+  !      ENDIF
 
-! Reichardts law:
-      WALL_LAW=(UFRIC/DKAPPA)*DLOG(1.0D0+0.4D0*YPLUS)  &
-            + UFRIC*7.8D0  &
-              *(           &
-                 1.0D0-DEXP(-YPLUS/11.0D0) &
-                 -(YPLUS/11.0D0)*DEXP(-0.33D0*YPLUS) &
-               ) - UT
+  ! Reichardts law:
+  WALL_LAW=(UFRIC/DKAPPA)*DLOG(1.0D0+0.4D0*YPLUS)  &
+      + UFRIC*7.8D0 * ( 1.0D0-DEXP(-YPLUS/11.0D0) &
+      -(YPLUS/11.0D0)*DEXP(-0.33D0*YPLUS) ) - UT
 
-      RETURN
-      END
+END FUNCTION Wall_Law
 
 
 !----------------------------------------------------------------------------
@@ -154,40 +101,90 @@
 !         Output:
 !
 !----------------------------------------------------------------------------
-      DOUBLE PRECISION FUNCTION D_WALL_LAW( UFRIC,UT, DENSIT,  &
-                    VISCOS,DIST,ROUGH )
+DOUBLE PRECISION FUNCTION D_Wall_Law( UFRIC,UT, DENSIT,  &
+    VISCOS,DIST,ROUGH )
 
-      IMPLICIT NONE
+  IMPLICIT NONE
 
-      DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,  &
+  DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,  &
       YPLUS
 
-      DOUBLE PRECISION :: DKAPPA = 0.41D0, RAJA
-      
-      YPLUS=DENSIT*UFRIC*DIST/VISCOS
+  DOUBLE PRECISION :: DKAPPA = 0.41D0, RAJA
 
-! Log-law:
-!      RAJA=11.2658567D0 
-!      IF(YPLUS.GE.RAJA) THEN
-!         D_WALL_LAW=(1.0D0/DKAPPA)* &
-!             ( DLOG(ROUGH*DENSIT*UFRIC*DIST/VISCOS) + 1.0D0 ) 
-!      ELSE
-!         D_WALL_LAW=DENSIT*DIST*2.0D0*UFRIC/VISCOS
-!      ENDIF
- 
-! Reichardts law:
-      D_WALL_LAW=DLOG(1.0D0 + 0.4D0*YPLUS)/DKAPPA  &
-          + (0.4D0/DKAPPA)*YPLUS/(1.0D0 + 0.4D0*YPLUS) &
-          + 7.8D0*( 1.0D0 - DEXP(-YPLUS/11.0D0) -   &
-          (YPLUS/11.0D0)*DEXP(-0.33*YPLUS) )  &
-          + 7.8D0*(YPLUS/11.0D0)  &
-          *(  &
-          DEXP(-YPLUS/11.0D0)-DEXP(-0.33*YPLUS)  &
-          +0.33D0*YPLUS*DEXP(-0.33*YPLUS) &
-          )
+  YPLUS=DENSIT*UFRIC*DIST/VISCOS
 
-      RETURN
-      END
+  ! Log-law:
+  !      RAJA=11.2658567D0 
+  !      IF(YPLUS.GE.RAJA) THEN
+  !         D_WALL_LAW=(1.0D0/DKAPPA)* &
+  !             ( DLOG(ROUGH*DENSIT*UFRIC*DIST/VISCOS) + 1.0D0 ) 
+  !      ELSE
+  !         D_WALL_LAW=DENSIT*DIST*2.0D0*UFRIC/VISCOS
+  !      ENDIF
+
+  ! Reichardts law:
+  D_WALL_LAW=DLOG(1.0D0 + 0.4D0*YPLUS)/DKAPPA  &
+      + (0.4D0/DKAPPA)*YPLUS/(1.0D0 + 0.4D0*YPLUS) &
+      + 7.8D0*( 1.0D0 - DEXP(-YPLUS/11.0D0) -   &
+      (YPLUS/11.0D0)*DEXP(-0.33*YPLUS) )  &
+      + 7.8D0*(YPLUS/11.0D0)  &
+      *(  &
+      DEXP(-YPLUS/11.0D0)-DEXP(-0.33*YPLUS)  &
+      +0.33D0*YPLUS*DEXP(-0.33*YPLUS) &
+      )
+
+
+END FUNCTION D_Wall_Law
+
+
+!------------------------------------------------------------------------------
+!> Solve the friction velocity of the previous iteration based 
+!> on the wall law. 
+!
+!         Input:
+!             DENSIT - Density
+!             VISCOS - Viscosity 
+!             DIST   - Distance from the wall
+!             UT     - Tangential velocity of the previous iteration
+!
+!         Output:
+!             UFRIC  - Friction velocity
+!             DFX    - Derivative of the wall law
+!
+!------------------------------------------------------------------------------
+SUBROUTINE Solve_UFric(DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX)
+
+  IMPLICIT NONE
+  DOUBLE PRECISION DENSIT,VISCOS,DIST,ROUGH,UT,UFRIC,DFX,TAUW,  &
+      YPLUS, FX, WALL_LAW, D_WALL_LAW
+
+  INTEGER :: ITER 
+  INTEGER :: MAXITER=100
+  DOUBLE PRECISION ::  TOL=1.0D-14
+
+  ! Default value:
+  TAUW = UT / DIST
+  UFRIC = DSQRT( TAUW / DENSIT )
+
+  DO ITER=1,MAXITER
+    FX  = WALL_LAW( UFRIC,UT,DENSIT,VISCOS,DIST,ROUGH )
+    DFX = D_WALL_LAW( UFRIC,UT,DENSIT,VISCOS,DIST,ROUGH )
+
+    ! Newton step:
+    IF (DFX == 0.0d0) THEN
+      PRINT*,'Walls:: SOLVE_UFRIC: dfx = 0'
+      STOP 1
+    END IF
+    UFRIC = UFRIC - FX/DFX
+    YPLUS = DENSIT * UFRIC * DIST / VISCOS
+    IF ( DABS(FX) <= TOL ) EXIT
+  END DO
+
+  IF ( DABS(FX) > 1.0d-9 ) WRITE(*,*)'Problems in SOLVE_UFRIC, FX=',FX
+
+END SUBROUTINE Solve_UFric
+
+
 
 !-----------------------------------------------------------------------------
 !> Calculate the boundary values of turbulent kinetic energy
@@ -204,40 +201,39 @@
 !             TEPS   - Turbulent kinetic energy dissipation
 !
 !----------------------------------------------------------------------------
-      SUBROUTINE KEWALL (TK, TEPS, TOMG, UT, DIST, ROUGH, VISCOS, DENSIT )
+SUBROUTINE KEWall (TK, TEPS, TOMG, UT, DIST, ROUGH, VISCOS, DENSIT )
 
-      IMPLICIT NONE
+  IMPLICIT NONE
 
-      DOUBLE PRECISION TK, TEPS, TOMG, UT, DIST, VISCOS, DENSIT, ROUGH
-      DOUBLE PRECISION UFRIC, DFX, UTLOCAL
-      DOUBLE PRECISION :: CMYY   = 0.09D0
-      DOUBLE PRECISION :: KARMAN = 0.41D0
-      DOUBLE PRECISION :: SMALL  = 1.0D-10
-      DOUBLE PRECISION :: OmegaWallPlus,Yplus, KsPlus, OmegaPlus, TomgL,TomgT,t,Alpha
+  DOUBLE PRECISION TK, TEPS, TOMG, UT, DIST, VISCOS, DENSIT, ROUGH
+  DOUBLE PRECISION UFRIC, DFX, UTLOCAL
+  DOUBLE PRECISION :: CMYY   = 0.09D0
+  DOUBLE PRECISION :: KARMAN = 0.41D0
+  DOUBLE PRECISION :: SMALL  = 1.0D-10
+  DOUBLE PRECISION :: OmegaWallPlus,Yplus, KsPlus, OmegaPlus, TomgL,TomgT,t,Alpha
 
-      UTLOCAL = DMAX1( UT,SMALL )
-      CALL SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UTLOCAL,UFRIC,DFX)
+  UTLOCAL = DMAX1( UT,SMALL )
+  CALL SOLVE_UFRIC(DENSIT,VISCOS,DIST,ROUGH,UTLOCAL,UFRIC,DFX)
 
-      yplus = densit*ufric*dist/viscos
-      alpha = MIN(1.0d0, yplus/10)
+  yplus = densit*ufric*dist/viscos
+  alpha = MIN(1.0d0, yplus/10)
 
-      TK   = ( UFRIC**2 ) /  DSQRT( CMYY ) * alpha
-      TEPS = ( UFRIC**3 ) / ( KARMAN * DIST ) * &
-            MIN(1d0,alpha+0.2d0*Karman*(1-alpha**2)/SQRT(CMYY))
+  TK   = ( UFRIC**2 ) /  DSQRT( CMYY ) * alpha
+  TEPS = ( UFRIC**3 ) / ( KARMAN * DIST ) * &
+      MIN(1d0,alpha+0.2d0*Karman*(1-alpha**2)/SQRT(CMYY))
 
-      OmegaPlus = 6/(0.072d0*yplus**2)
-      TOMGL = Densit*Ufric**2*OmegaPlus/Viscos
-      TOMGT = UFRIC / ( SQRT(CMYY) * KARMAN * DIST )
+  OmegaPlus = 6/(0.072d0*yplus**2)
+  TOMGL = Densit*Ufric**2*OmegaPlus/Viscos
+  TOMGT = UFRIC / ( SQRT(CMYY) * KARMAN * DIST )
 
-      IF (yplus<4 ) THEN
-        TOMG = TOMGL
-      ELSE IF ( yplus<32 ) THEN
-        TOMG = SQRT(tomgL**2+tomgT**2)
-      ELSE
-        TOMG = TOMGT
-      END IF
-
-      RETURN
-      END
+  IF (yplus<4 ) THEN
+    TOMG = TOMGL
+  ELSE IF ( yplus<32 ) THEN
+    TOMG = SQRT(tomgL**2+tomgT**2)
+  ELSE
+    TOMG = TOMGT
+  END IF
+  
+END SUBROUTINE KEWall
 
 !-----------------------------------------------------------------------------

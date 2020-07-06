@@ -1318,60 +1318,31 @@ MODULE NavierStokes
 !>  boundary conditions in cartesian coordinates.
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundary( BoundaryMatrix,BoundaryVector,LoadVector,   &
-    NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, n, Nodes )
-             
-!------------------------------------------------------------------------------
-!
-!  REAL(KIND=dp) :: BoundaryMatrix(:,:)
-!     OUTPUT: time derivative coefficient matrix
-!
-!  REAL(KIND=dp) :: BoundaryVector(:)
-!     OUTPUT: RHS vector
-!
-!  REAL(KIND=dp) :: LoadVector(:,:)
-!     INPUT: Nodal values force in coordinate directions
-!
-!  REAL(KIND=dp) :: NodalAlpha(:,:)
-!     INPUT: Nodal values of force in normal direction
-!
-!  REAL(KIND=dp) :: NodalBeta(:,:)
-!     INPUT: Nodal values of something which will be taken derivative in
-!            tangential direction and added to force...
-!
-!
-!  TYPE(Element_t) :: Element
-!       INPUT: Structure describing the element (dimension,nof nodes,
-!               interpolation degree, etc...)
-!
-!  INTEGER :: n
-!       INPUT: Number of boundary element nodes
-!
-!  TYPE(Nodes_t) :: Nodes
-!       INPUT: Element node coordinates
-!
+     NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, &
+     Element, n, Nodes )
 !------------------------------------------------------------------------------
    USE ElementUtils
 
    IMPLICIT NONE
 
-   REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:),LoadVector(:,:), &
-     NodalAlpha(:),NodalBeta(:), NodalSlipCoeff(:,:), NodalExtPressure(:)
-
-   INTEGER :: n,pn
-
-   TYPE(Element_t),POINTER  :: Element, Parent
-   TYPE(Nodes_t)    :: Nodes, ParentNodes
-
-   LOGICAL :: NormalTangential
-
+   REAL(KIND=dp) :: BoundaryMatrix(:,:)  !< Time derivative coefficient matrix
+   REAL(KIND=dp) :: BoundaryVector(:)    !< RHS vector
+   REAL(KIND=dp) :: LoadVector(:,:)      !< Nodal values force in coordinate directions
+   REAL(KIND=dp) :: NodalAlpha(:)        !< Nodal values of force in normal direction
+   REAL(KIND=dp) :: NodalBeta(:)         !< Nodal values of implicit force involving derivative in tangential direction 
+   REAL(KIND=dp) :: NodalSlipCoeff(:,:)  !< Slip coefficient on nodes in coordinate directions  
+   REAL(KIND=dp) :: NodalExtPressure(:)  !< External pressure on nodes
+   LOGICAL :: NormalTangential           !< Whether the coordinate system is normal-tangential
+   INTEGER :: n                          !< Number of boundary element nodes
+   TYPE(Element_t),POINTER  :: Element   !< Structure describing the element
+   TYPE(Nodes_t) :: Nodes                !< Element node coordinates
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
+   TYPE(Element_t),POINTER  :: Parent
+   TYPE(Nodes_t) :: ParentNodes
    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3)
    REAL(KIND=dp) :: detJ,FlowStress(3,3),SlipCoeff
-#if 0
-   REAL(KIND=dp) :: PBasis(pn),PdBasisdx(pn,3)
-#endif
 
    REAL(KIND=dp) :: u,v,w,ParentU,ParentV,ParentW,s,x(n),y(n),z(n)
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
@@ -1527,63 +1498,25 @@ MODULE NavierStokes
  END SUBROUTINE NavierStokesBoundary
 !------------------------------------------------------------------------------
 
+ 
+!------------------------------------------------------------------------------
+!>  Return element local matrices and RSH vector for Navier-Stokes-equations
+!>  boundary conditions for Variational Multiscale Method, VMS.
 !------------------------------------------------------------------------------
  SUBROUTINE VMSWalls( BoundaryMatrix,BoundaryVector,LayerThickness,&
     SurfaceRoughness,Nodalmu,Nodalrho,Ux,Uy,Uz,Element,n,Nodes )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  Return element local matrices and RSH vector for Navier-Stokes-equations
-!  boundary conditions.
-!
-!  ARGUMENTS:
-!
-!  REAL(KIND=dp) :: BoundaryMatrix(:,:)
-!     OUTPUT: time derivative coefficient matrix
-!
-!  REAL(KIND=dp) :: BoundaryVector(:)
-!     OUTPUT: RHS vector
-!
-!  REAL(KIND=dp) :: LayerThickness
-!     INPUT: Boundary layer thickness
-!
-!  REAL(KIND=dp) :: SurfaceRoughness
-!     INPUT: Measure of surface roughness (f.ex. 9)
-!
-!  REAL(KIND=dp) :: Nodalmu(:)
-!     INPUT: Nodal values of viscosity
-!
-!  REAL(KIND=dp) :: Nodalrho(:,:)
-!     INPUT: Nodal values of density
-!
-!  REAL(KIND=dp) :: Ux(:),Uy(:),Uz(:)
-!     INPUT: Nodal values of velocity from previous iteration
-!
-!  TYPE(Element_t) :: Element
-!       INPUT: Structure describing the element (dimension,nof nodes,
-!               interpolation degree, etc...)
-!
-!  INTEGER :: n
-!       INPUT: Number of boundary element nodes
-!
-!  TYPE(Nodes_t) :: Nodes
-!       INPUT: Element node coordinates
-!
-!******************************************************************************
-!------------------------------------------------------------------------------
-
    IMPLICIT NONE
-
-   REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:), &
-     Nodalmu(:),Nodalrho(:),Ux(:),Uy(:),Uz(:)
-
-   REAL(KIND=dp) :: LayerThickness(:),SurfaceRoughness(:)
-
-   INTEGER :: n
-
-   TYPE(Element_t),POINTER  :: Element
-   TYPE(Nodes_t)    :: Nodes
-
+   REAL(KIND=dp) :: BoundaryMatrix(:,:)   !< Time derivative coefficient matrix
+   REAL(KIND=dp) :: BoundaryVector(:)     !< RHS vector
+   REAL(KIND=dp) :: Nodalmu(:)            !< Nodal values of viscosity
+   REAL(KIND=dp) :: Nodalrho(:)           !< Nodal values of density
+   REAL(KIND=dp) :: Ux(:),Uy(:),Uz(:)     !< Nodal values of velocity from previous iteration
+   REAL(KIND=dp) :: LayerThickness(:)     !< Boundary layer thickness
+   REAL(KIND=dp) :: SurfaceRoughness(:)   !< Measure of surface roughness (f.ex. 9)
+   INTEGER :: n                           !< Number of boundary element nodes
+   TYPE(Element_t),POINTER  :: Element    !< Element structure 
+   TYPE(Nodes_t)    :: Nodes              !< Element node coordinates
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
@@ -1745,59 +1678,23 @@ MODULE NavierStokes
  SUBROUTINE NavierStokesWallLaw( BoundaryMatrix,BoundaryVector,LayerThickness,&
     SurfaceRoughness,Nodalmu,Nodalrho,Ux,Uy,Uz,Element,n,Nodes )
 !------------------------------------------------------------------------------
-!
-!  REAL(KIND=dp) :: BoundaryMatrix(:,:)
-!     OUTPUT: time derivative coefficient matrix
-!
-!  REAL(KIND=dp) :: BoundaryVector(:)
-!     OUTPUT: RHS vector
-!
-!  REAL(KIND=dp) :: LayerThickness
-!     INPUT: Boundary layer thickness
-!
-!  REAL(KIND=dp) :: SurfaceRoughness
-!     INPUT: Measure of surface roughness (f.ex. 9)
-!
-!  REAL(KIND=dp) :: Nodalmu(:)
-!     INPUT: Nodal values of viscosity
-!
-!  REAL(KIND=dp) :: Nodalrho(:,:)
-!     INPUT: Nodal values of density
-!
-!  REAL(KIND=dp) :: Ux(:),Uy(:),Uz(:)
-!     INPUT: Nodal values of velocity from previous iteration
-!
-!  TYPE(Element_t) :: Element
-!       INPUT: Structure describing the element (dimension,nof nodes,
-!               interpolation degree, etc...)
-!
-!  INTEGER :: n
-!       INPUT: Number of boundary element nodes
-!
-!  TYPE(Nodes_t) :: Nodes
-!       INPUT: Element node coordinates
-!
-!------------------------------------------------------------------------------
-
    IMPLICIT NONE
 
-   REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:), &
-     Nodalmu(:),Nodalrho(:),Ux(:),Uy(:),Uz(:)
-
-   REAL(KIND=dp) :: LayerThickness(:),SurfaceRoughness(:)
-
-   INTEGER :: n
-
-   TYPE(Element_t),POINTER  :: Element
-   TYPE(Nodes_t)    :: Nodes
-
+   REAL(KIND=dp) :: BoundaryMatrix(:,:)   !< Time derivative coefficient matrix
+   REAL(KIND=dp) :: BoundaryVector(:)     !< RHS vector
+   REAL(KIND=dp) :: Nodalmu(:)            !< Nodal values of viscosity
+   REAL(KIND=dp) :: Nodalrho(:)           !< Nodal values of density
+   REAL(KIND=dp) :: Ux(:),Uy(:),Uz(:)     !< Nodal values of velocity from previous iteration
+   REAL(KIND=dp) :: LayerThickness(:)     !< Boundary layer thickness
+   REAL(KIND=dp) :: SurfaceRoughness(:)   !< Measure of surface roughness (f.ex. 9)
+   INTEGER :: n                           !< Number of boundary element nodes
+   TYPE(Element_t),POINTER  :: Element    !< Element structure 
+   TYPE(Nodes_t)    :: Nodes              !< Element node coordinates
 !------------------------------------------------------------------------------
 !  Local variables
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),ddBasisddx(n,3,3)
-   REAL(KIND=dp) :: detJ
-
-   REAL(KIND=dp) :: u,v,w,s,r,rho,mu,Dist,Roughness,SlipCoeff,Vect(3),vabs
+   REAL(KIND=dp) :: detJ,u,v,w,s,r,rho,mu,Dist,Roughness,SlipCoeff,Vect(3),vabs
    REAL(KIND=dp) :: Velo(3),Normal(3),Tangent(3), Tangent2(3)
    REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
    REAL(KIND=dp) :: TangentialVelocity(2), FrictionVelocity(2),DFX(2),DKERR(2)
