@@ -56,7 +56,7 @@
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
 
-     REAL(KIND=dp) :: RelativeChange,Norm,PrevNorm
+     REAL(KIND=dp) :: RelativeChange,Norm
 
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: gotIt
@@ -79,6 +79,7 @@
          Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
          TurbulentViscosity(:),LocalDissipation(:), &
          LocalKinEnergy(:),LocalKEratio(:), &
+         PrevKinEnergy(:),PrevDissipation(:), &
          C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:)
      
      TYPE(ValueList_t), POINTER :: BC
@@ -87,12 +88,13 @@
          ElementNodes,LayerThickness,Density,&
          AllocationsDone,Viscosity,LocalNodes,Work,TurbulentViscosity, &
          LocalDissipation,LocalKinEnergy,LocalKEratio, C0, &
+         PrevDissipation, PrevKinEnergy, &
          SurfaceRoughness, TimeForce, EffectiveVisc, LocalV2
 
      REAL(KIND=dp), POINTER :: SecInv(:)
      SAVE SecInv
 
-     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
+     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal, NodalVelo(3)
 
      TYPE(ValueList_t), POINTER :: SolverParams
      CHARACTER(*), PARAMETER :: Caller = 'KESolver'
@@ -140,7 +142,6 @@
 
      StiffMatrix => Solver % Matrix
      ForceVector => StiffMatrix % RHS
-     Norm = KE % Norm
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -157,6 +158,8 @@
            LocalKEratio( N ), &
            LocalKinEnergy( N ),     &
            LocalDissipation( N ),&
+           PrevDissipation( N ), &
+           PrevKinEnergy( N ), &
            LocalV2(N), &
            MASS( 2*DOFs*N,2*DOFs*N ), &
            STIFF( 2*DOFs*N,2*DOFs*N ),LOAD( DOFs,N ), &
@@ -165,7 +168,8 @@
        IF ( istat /= 0 ) THEN
          CALL Fatal( Caller, 'Memory allocation error.' )
        END IF
-                
+
+       
        NULLIFY(SecInv)
        AllocationsDone = .TRUE.
      END IF
@@ -181,13 +185,6 @@
          'Stabilization method', GotIt ) == 'bubbles'
      IF ( .NOT. GotIt ) Bubbles = .TRUE.
 
-!------------------------------------------------------------------------------
-      DO i=1,Model % NumberOFBCs
-        BC => Model % BCs(i) % Values
-        IF ( GetLogical(  BC, 'Noslip wall BC', gotit ) ) THEN
-          CALL ListAddConstReal( BC, 'Kinetic Energy', 0.0_dp )
-        END IF
-      END DO
 !------------------------------------------------------------------------------
 
      DO iter=1,NonlinearIter
@@ -309,31 +306,23 @@
 
             DO j=1,n
               k = FlowPerm(NodeIndexes(j))
-              IF ( k > 0 ) THEN
-                SELECT CASE( NSDOFs )
-                CASE(3)
-                  U(j) = FlowSolution( NSDOFs*k-2 )
-                  V(j) = FlowSolution( NSDOFs*k-1 )
-                  W(j) = 0.0D0
+              IF( k == 0 ) CYCLE
 
-                CASE(4)
-                  U(j) = FlowSolution( NSDOFs*k-3 )
-                  V(j) = FlowSolution( NSDOFs*k-2 )
-                  W(j) = FlowSolution( NSDOFs*k-1 )
-                END SELECT
-              ELSE
-                U(j) = 0.0d0
-                V(j) = 0.0d0
-                W(j) = 0.0d0
-              END IF
-            END DO
-
-            DO j=1,n
-              CALL KEWall( Work(1), Work(2), Work(3), SQRT(U(j)**2+V(j)**2+W(j)**2), &
+              NodalVelo = 0.0_dp
+              DO i=1,NSDOFs-1
+                NodalVelo(i) = FlowSolution( NSDOFs*(k-1)+i )
+              END DO
+                              
+              CALL KEWall( Work(1), Work(2), Work(3), SQRT(SUM(NodalVelo**2)),&
                   LayerThickness(j), SurfaceRoughness(j), Viscosity(j), &
                   Density(j) )
 
+              Work(1) = MAX( Work(1), 0.0_dp )
+              Work(2) = MAX( Work(2), 0.0_dp ) 
+              
               k = KinPerm(NodeIndexes(j))
+              IF( k == 0 ) CYCLE
+
               IF( KEcomp == 0 ) THEN             
                 CALL UpdateDirichletDof( StiffMatrix, 2*k-1, Work(1) )
                 CALL UpdateDirichletDof( StiffMatrix, 2*k, Work(2) )
@@ -363,7 +352,6 @@
 !------------------------------------------------------------------------------
 !     Solve the system and check for convergence
 !------------------------------------------------------------------------------
-      PrevNorm = Norm
 
       Norm = DefaultSolve()
 !------------------------------------------------------------------------------
@@ -493,22 +481,23 @@ CONTAINS
      LOGICAL :: stat,UseRNGModel,GotCvRat,GotGrav
 
      TYPE(ValueList_t), POINTER :: Material
-     INTEGER :: body_id = -1
+     INTEGER :: body_id = -1, timei
      CHARACTER(LEN=MAX_NAME_LEN) :: KEModel, V2FModel
-     REAL(KIND=dp) :: V2FCp, EperK, TmuMin
+     REAL(KIND=dp) :: V2FCp, EperK, TmuMin, Lmax, Lstar, Epos, Kpos
 
      
 !     REAL(KIND=dp) :: div,ProdTensor(3,3),nu
 
      SAVE Material, body_id, V2FCp, KEModel, V2FModel, UseRNGModel, &
          Gravity, GotGrav, Pr, LC3, LCT, Cmu, LC1, LC2, SigmaE, &
-         SigmaK, cvRat, GotCvRat, Pref, TmuMin
+         SigmaK, cvRat, GotCvRat, Pref, TmuMin, Lmax
      
      
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
-
+     timei = GetTimestep()
+     
      FORCE = 0.0D0
      STIFF = 0.0D0
      MASS  = 0.0D0
@@ -625,6 +614,7 @@ CONTAINS
        Pref = GetCReal( Material, 'Reference Pressure', stat )
 
        TmuMin = GetCReal( Material, 'Minimum Turbulent Viscosity',GotIt)          
+       Lmax = GetCReal( Material, 'Maximum Turbulent Mixing Length')
      END IF
             
      Viscosity(1:n) = GetReal( Material,'Viscosity' )
@@ -640,6 +630,12 @@ CONTAINS
      CALL GetScalarLocalSolution( LocalKinEnergy, 'Kinetic Energy' )
      CALL GetScalarLocalSolution( LocalDissipation, 'Kinetic Dissipation' )
 
+     IF( timei > 0 ) THEN
+       CALL GetScalarLocalSolution( PrevKinEnergy, 'Kinetic Energy',tstep=-1 )
+       CALL GetScalarLocalSolution( PrevDissipation, 'Kinetic Dissipation',tstep=-1 )
+     END IF
+     
+     
      IF( UseKEratio ) THEN
        CALL GetScalarLocalSolution( LocalKEratio, 'KE ratio' )
      END IF
@@ -710,12 +706,33 @@ CONTAINS
 !------------------------------------------------------------------------------
        K = SUM( LocalKinEnergy(1:n) * Basis(1:n) )
        E = SUM( LocalDissipation(1:n) * Basis(1:n) )
-       Eta =  SQRT(SecInv) * K / E
 
-       IF( UseKEratio ) THEN
-         EperK = SUM( LocalKEratio(1:n) * Basis(1:n) )
-       END IF
        
+       IF( UseKEratio ) THEN
+         IF(.TRUE.) THEN
+           Lstar = Lmax
+           Kpos = K
+           Epos = E
+
+!           IF( timei > 0 ) THEN
+!             Kpos = (Kpos + SUM( PrevKinEnergy(1:n) * Basis(1:n) ) ) / 2
+!             Epos = (Epos + SUM( PrevDissipation(1:n) * Basis(1:n) ) ) / 2 
+!           END IF
+           
+           
+           Kpos = MAX( Kpos, 0.0_dp ) 
+           Epos = MAX( Epos, 0.0_dp )
+
+           IF( Cmu * Kpos**1.5 < Epos * Lmax ) THEN
+             Lstar = Cmu * Kpos**1.5 / Epos
+           END IF
+           Tmu  = MAX( Lstar * SQRT(Kpos), TmuMin )           
+           EperK = Cmu * Kpos / Tmu
+         ELSE
+           EperK = SUM( LocalKEratio(1:n) * Basis(1:n) )
+         END IF
+       END IF
+
        IF( GotGrav ) THEN       
          rho_g = 0._dp
          DO i=1,dim
@@ -775,10 +792,6 @@ CONTAINS
          END IF
        END IF
 
-! moved to ---> rhs
-!      C0(2) = C0(2) + Cmu*Rho*Eta**3*(1-Eta/4.38d0) / &
-!                 (1.0d0 + 0.012d0*Eta**3) * E / K
-
        C1 = Rho
        CT = Rho
 !------------------------------------------------------------------------------
@@ -835,11 +848,16 @@ CONTAINS
          END IF
        END IF
        
-       IF ( UseRNGModel ) THEN
+       IF ( UseRNGModel ) THEN                         
          IF( UseKEratio ) THEN
+           Eta = SQRT(SecInv) / EperK
            LoadatIP(2) = LoadatIP(2) - Cmu*Rho*Eta**3*(1-Eta/4.38d0) / &
-               (1.0d0 + 0.012d0*Eta**3) * E*EperK
+               (1.0d0 + 0.012d0*Eta**3) * E * EperK
          ELSE
+           Eta = 0.0_dp
+           IF( E > 0.0_dp ) THEN
+             Eta = MAX(0.0_dp, SQRT(SecInv) * K / E )
+           END IF                          
            LoadatIP(2) = LoadatIP(2) - Cmu*Rho*Eta**3*(1-Eta/4.38d0) / &
                (1.0d0 + 0.012d0*Eta**3) * E**2 / K
          END IF
@@ -912,10 +930,12 @@ CONTAINS
            ELSE
              STIFF(p,q) = STIFF(p,q) + s * A(KEComp,KEComp)
              MASS(p,q) = MASS(p,q) + s * M(KeComp,KEComp)
-             IF( KEComp == 1 ) THEN
-               FORCE(p) = FORCE(p) - s * A(1,2) * LocalDissipation(q)
-             ELSE
-               FORCE(p) = FORCE(p) - s * A(2,1) * LocalKinEnergy(q)
+             IF(.NOT. UseKEratio ) THEN
+               IF( KEComp == 1 ) THEN
+                 FORCE(p) = FORCE(p) - s * A(1,2) * LocalDissipation(q)
+               ELSE
+                 FORCE(p) = FORCE(p) - s * A(2,1) * LocalKinEnergy(q)
+               END IF
              END IF
            END IF
          END DO
@@ -923,7 +943,7 @@ CONTAINS
      END DO
      
 !------------------------------------------------------------------------------
-   END SUBROUTINE LocalMatrix
+   END SUBROUTINE LocalMatrix 
 !------------------------------------------------------------------------------
 
 
@@ -999,6 +1019,7 @@ CONTAINS
        stat = ElementInfo( Parent,ParentNodes,U,V,W,detJ, &
              Basis,dBasisdx )
 
+       ! Here we obviously jump from surface to the other side of the element
        IF ( ABS(u)>0.999_dp ) THEN
          u = -u
        ELSE IF ( ABS(v)>0.999_dp ) THEN
@@ -1012,7 +1033,9 @@ CONTAINS
        mu  = SUM( Basis(1:np) * Viscosity(1:np) )
 
        E = SUM( Basis(1:np) *Evals(1:np) ) 
-       K = SUM( BasisK(1:np)*Kvals(1:np) )
+       K = SUM( BasisK(1:np) * Kvals(1:np) )
+
+       ! Derivative of SQRT(k) in normal direction
        KVals(1:np) = SQRT(KVals(1:np))
        Kder = 0.0_dp
        DO i=1,3
@@ -1021,10 +1044,14 @@ CONTAINS
 
        DO p=1,np
          DO q=1,np
-           STIFF(2*p,2*q)   = STIFF(2*p,2*q) + s*Basis(q)*Basis(p)
-           STIFF(2*p,2*q-1) = STIFF(2*p,2*q-1) - s*Relax*2*mu/rho*Kder**2*BasisK(q)/K*Basis(p)
+           STIFF(2*p,2*q) = STIFF(2*p,2*q) + s*Basis(q)*Basis(p)
+           IF( K > 0.0 ) THEN
+             STIFF(2*p,2*q-1) = STIFF(2*p,2*q-1) - s*Relax*2*mu/rho*Kder**2*BasisK(q)/K*Basis(p)
+           END IF
          END DO
-         FORCE(2*p) = FORCE(2*p) + s*(1-Relax)*E*Basis(p)
+         IF( E > 0 ) THEN
+           FORCE(2*p) = FORCE(2*p) + s*(1-Relax)*E*Basis(p)
+         END IF
        END DO
      END DO
 
@@ -1058,10 +1085,10 @@ CONTAINS
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: SolverParams
+     TYPE(ValueList_t), POINTER :: SolverParams, BC
      LOGICAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-     INTEGER :: KEcomp 
+     INTEGER :: i,KEcomp 
 !------------------------------------------------------------------------------
      SolverParams => GetSolverParams()
 
@@ -1089,7 +1116,16 @@ CONTAINS
        CALL ListAddString( SolverParams,&
            NextFreeKeyword('Exported Variable',SolverParams),'KE ratio')
      END IF
- 
+
+     IF( KEcomp /= 2 ) THEN
+       DO i=1,Model % NumberOFBCs
+         BC => Model % BCs(i) % Values
+         IF ( GetLogical(  BC, 'Noslip wall BC', Found ) ) THEN
+           CALL ListAddConstReal( BC, 'Kinetic Energy', 0.0_dp )
+         END IF
+       END DO
+     END IF
+            
 !------------------------------------------------------------------------------
    END SUBROUTINE KESolver_Init
 !------------------------------------------------------------------------------
