@@ -5,4 +5,4 @@ CONFIGURE_FILE( Step_ke.sif Step_ke.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO Step_ke.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(Step_ke LABELS kepsilon)
+ADD_ELMER_TEST(Step_ke LABELS kepsilon rans)
