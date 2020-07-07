@@ -22,11 +22,12 @@ Here is the list of supported and documented solvers:
  
 Generic Solvers:  
 
+- [Optimize_m1qn3](Optimize_m1qn3.md)   
 - [Adjoint_GradientValidation](Adjoint_GradientValidation.md)
 - [Adjoint_LinearSolver](Adjoint_LinearSolver.md)
 - [Adjoint_CostDiscSolver](Adjoint_CostDiscSolver.md)
-- [Adjoint_CostContSolver.md](Adjoint_CostContSolver.md)
-- [Adjoint_CostRegSolver.md](Adjoint_CostRegSolver.md)
+- [Adjoint_CostContSolver](Adjoint_CostContSolver.md)
+- [Adjoint_CostRegSolver](Adjoint_CostRegSolver.md)
 
 SSA Solvers:
 
@@ -35,4 +36,7 @@ SSA Solvers:
 - [AdjointSSA_CostFluxDivSolver](AdjointSSA_CostFluxDivSolver.md)
 - [AdjointSSA_CostTaubSolver](AdjointSSA_CostTaubSolver.md)
 
+Generic user functions:
+
+- [Utility](Utility.md)   
 

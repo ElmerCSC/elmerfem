@@ -116,6 +116,12 @@ Ask your questions on Reddit:
 image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
 
 
+=== Computational Glaciology "Elmer/Ice":
+
+* http://elmerice.elmerfem.org[Elmer/Ice community web site]
+* https://github.com/ElmerCSC/elmerfem/tree/elmerice/elmerice/[Elmer/Ice README]
+
+
 === Other links:
 
 
@@ -129,6 +135,5 @@ image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit su
 * https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
-* http://elmerice.elmerfem.org[Elmer/ICE community]
 
 

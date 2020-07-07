@@ -3267,7 +3267,7 @@ CONTAINS
          PrimarySolver
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
     INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL()
+    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3566,8 +3566,11 @@ CONTAINS
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
 
+    !CHANGE - need to delete UnfoundNOtes from this statement, or front
+    !variables not copied across. If you get some odd interpolation artefact,
+    !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask", UnfoundNodes,globaleps=globaleps,localeps=localeps)
+         "Calving Front Mask",globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3587,8 +3590,17 @@ CONTAINS
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
 
+    !CHANGE
+    !Needs to be told to ignore certain solvers if using multiple meshes
+    SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
+
     DO i=1,Model % NumberOfSolvers
        WorkSolver => Model % Solvers(i)
+
+       !CHANGE - see above
+       IF (ASSOCIATED(SolversToIgnore)) THEN
+         IF(ANY(SolversToIgnore(1:SIZE(SolversToIgnore))==i)) CYCLE
+       END IF
 
        WorkSolver % Mesh => NewMesh !note, assumption here that there's only one active mesh
 

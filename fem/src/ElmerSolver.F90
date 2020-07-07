@@ -1879,11 +1879,13 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      LOGICAL :: Gotit, DoIt
-     INTEGER :: i, j, k
+     INTEGER :: i, j, k, l
      REAL(KIND=dp) :: StartTime
      TYPE(Mesh_t), POINTER :: Mesh, pMesh
      TYPE(ValueList_t), POINTER :: RestartList
      LOGICAL, ALLOCATABLE :: MeshDone(:)
+     INTEGER, POINTER :: MeshesToRestart(:)
+     LOGICAL :: CheckMesh, DoMesh
 !------------------------------------------------------------------------------
 
      
@@ -1957,7 +1959,14 @@ END INTERFACE
  
      ! Do the standard global restart
      !-----------------------------------------------------------------
-     RestartList => CurrentModel % Simulation    
+     RestartList => CurrentModel % Simulation
+
+     ! We may supress restart from certain meshes.
+     ! This was initially only related to calving, but no need to limit to that. 
+     l = 0
+     MeshesToRestart => ListGetIntegerArray(RestartList,&
+         'Meshes To Restart', CheckMesh )
+     
      RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
      IF ( GotIt ) THEN      
        k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
@@ -1985,16 +1994,24 @@ END INTERFACE
          END IF
          IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
            OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+         
+         l = l+1
 
-         CALL SetCurrentMesh( CurrentModel, Mesh )         
-         CALL LoadRestartFile( OutputName, k, Mesh )
-
-         StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
-         IF( GotIt ) THEN
-	   Var  => VariableGet( Mesh % Variables, 'Time' )
-           IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
+         DoMesh = .TRUE.
+         IF(CheckMesh) THEN
+           DoMesh = (ANY(MeshesToRestart == l))
          END IF
 
+         IF( DoMesh ) THEN
+           CALL SetCurrentMesh( CurrentModel, Mesh )
+           CALL LoadRestartFile( OutputName, k, Mesh )
+           
+           StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
+           IF( GotIt ) THEN
+             Var  => VariableGet( Mesh % Variables, 'Time' )
+             IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
+           END IF
+         END IF           
          Mesh => Mesh % Next
        END DO
      ELSE

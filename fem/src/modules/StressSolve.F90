@@ -1118,7 +1118,7 @@ CONTAINS
        END IF
        
        PoissonRatio = 0.0d0
-       IF ( Isotropic(1) .AND. (.NOT.EvaluateAtIP(3)) )  THEN
+       IF ( Isotropic(1) .AND. (.NOT. Incompr ) .AND. (.NOT.EvaluateAtIP(3)) )  THEN
          PoissonRatio(1:n) = GetReal( Material, 'Poisson Ratio' )
        END IF
 
