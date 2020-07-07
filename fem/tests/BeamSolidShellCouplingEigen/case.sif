@@ -83,7 +83,7 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = Logical True
   Linear System Solver = direct 
-  Linear System Direct Method = MUMPS
+!  Linear System Direct Method = MUMPS
   Linear System Scaling = False
 
 ! Request for a linear system that couples two structural models:
