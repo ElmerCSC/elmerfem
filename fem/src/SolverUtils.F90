@@ -17309,7 +17309,7 @@ CONTAINS
         IF(.NOT. FixRot ) THEN
           CALL Info(Caller,'Coupling for rotational shell dofs is missing!')                  
         ELSE
-          CALL Info(Caller,'Using experimenal fixing of shell rotations')
+          CALL Info(Caller,'Using experimental fixing of shell rotations')
           n = Mesh % MaxElementNodes 
           ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
