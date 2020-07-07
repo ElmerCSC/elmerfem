@@ -139,8 +139,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
   SAVE MomentOutput
 
   CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, VariableName, BoundaryName
-!  CHARACTER(LEN=MAX_NAME_LEN) :: VersionID = "$Id: Acoustics.f90,v 1.4 2006/12/12 10:32:03 mmalinen Exp $"
-
   COMPLEX(KIND=dp) :: A, AverVel, ZAppr, ZAppr2, C1, C2, C3, C4
 
   REAL(KIND=dp), POINTER :: Flow(:), ForceVector(:)
@@ -176,18 +174,6 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL ::  PotentialFlowBC, DDPreconditioning, Found
   TYPE(GaussIntegrationPoints_t) :: IP
-
-
-  !------------------------------------------------------------------------------
-  !    Check if version number output is requested
-  !------------------------------------------------------------------------------
-  !IF ( .NOT. AllocationsDone ) THEN
-  !  IF ( ListGetLogical( GetSimulation(), 'Output Version Numbers', GotIt ) ) THEN
-  !    CALL Info( 'AcousticsSolver', 'Acoustics version:', Level = 0 ) 
-  !    CALL Info( 'AcousticsSolver', VersionID, Level = 0 ) 
-  !    CALL Info( 'AcousticsSolver', ' ', Level = 0 ) 
-  !  END IF
-  !END IF
 
   !------------------------------------------------------------------------------
   ! Get variables needed for solution

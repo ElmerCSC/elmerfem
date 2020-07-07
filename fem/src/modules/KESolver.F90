@@ -372,30 +372,41 @@
 
 CONTAINS
 
+
+  FUNCTION EperKfun(E,K) RESULT ( EperK ) 
+    REAL(KIND=dp) :: E,K,EperK
+    REAL(KIND=dp) :: Cmu,Lmax,TmuMin
+    REAL(KIND=dp) :: Epos,Kpos,Lstar,Tmu
+    TYPE(ValueList_t), POINTER :: Material    
+    LOGICAL :: Visited = .FALSE.
+
+    SAVE Visited, Cmu, TmuMin, Lmax
+ 
+    IF( .NOT. Visited ) THEN
+      Material => GetMaterial(GetActiveElement(1))
+      Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
+      TmuMin = GetCReal( Material, 'Minimum Turbulent Viscosity')
+      Lmax = GetCReal( Material, 'Maximum Turbulent Mixing Length')
+      Visited = .TRUE.
+    END IF
+            
+    Epos = MAX( E, 0.0_dp )
+    Kpos = MAX( K, 0.0_dp )
+
+    Lstar = Lmax
+    IF( Cmu * Kpos**1.5 < Epos * Lmax ) THEN
+      Lstar = Cmu * Kpos**1.5 / Epos
+    END IF
+    Tmu  = MAX( Lstar * SQRT(Kpos), TmuMin )           
+    EperK = Cmu * Kpos / Tmu
+    
+  END FUNCTION EperKfun
+  
+  
   SUBROUTINE ComputeKEratio()
-    REAL(KIND=dp) :: Cmu, TmuMin, Tmu, Lmax, Lstar        
-    TYPE(ValueList_t), POINTER :: Material
-
-    Material => GetMaterial(GetActiveElement(1))
-
-    Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
-    TmuMin = GetCReal( Material, 'Minimum Turbulent Viscosity')
-    Lmax = GetCReal( Material, 'Maximum Turbulent Mixing Length')
-
-    n = Solver % Mesh % NumberOfNodes
 
     DO k=1,SIZE( KEkin % Values )
-      Kval = MAX( KEkin % Values(k), 0.0_dp ) 
-      Eval = MAX( KEdis % Values(k), 0.0_dp )
-
-      Lstar = Lmax
-      IF( Cmu * Kval**1.5 < Eval * Lmax ) THEN
-        Lstar = Cmu * Kval**1.5 / Eval
-      END IF
-      
-      Tmu  = MAX( Lstar * SQRT(Kval), TmuMin )
-           
-      KEratio % Values(k) = Cmu * Kval / Tmu
+      KEratio % Values(k) = EperKfun(KEkin % Values(k),KEdis % Values(k) )
     END DO
 
   END SUBROUTINE ComputeKEratio
@@ -434,8 +445,7 @@ CONTAINS
     
   END SUBROUTINE LimitKEfields
     
-   
-  
+
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for KE model.
 !------------------------------------------------------------------------------
@@ -465,7 +475,7 @@ CONTAINS
      REAL(KIND=dp) :: A(2,2),M(2,2),ProdK,ProdE
      
      INTEGER :: i,j,p,q,t,dim,NBasis
-     REAL(KIND=dp) :: LoadatIp(2),Cmu,Rho,mu,Tmu,Effmu(2),TimeScale,LC1,LC2,LC3
+     REAL(KIND=dp) :: LoadatIp(2),Cmu,Rho,mu,Tmu,Effmu(2),TimeScale,InvTimescale,LC1,LC2,LC3
      REAL(KIND=dp) :: s,u,v,w, K,E,Eta,Strain(3,3),&
          alpha,oldalpha,dalpha,err,ww,olderr,derr
 
@@ -478,7 +488,7 @@ CONTAINS
 
      REAL(KIND=dp), POINTER :: gWork(:,:)
 
-     LOGICAL :: stat,UseRNGModel,GotCvRat,GotGrav
+     LOGICAL :: stat,UseRNGModel,UseV2FModel,GotCvRat,GotGrav
 
      TYPE(ValueList_t), POINTER :: Material
      INTEGER :: body_id = -1, timei
@@ -490,7 +500,7 @@ CONTAINS
 
      SAVE Material, body_id, V2FCp, KEModel, V2FModel, UseRNGModel, &
          Gravity, GotGrav, Pr, LC3, LCT, Cmu, LC1, LC2, SigmaE, &
-         SigmaK, cvRat, GotCvRat, Pref, TmuMin, Lmax
+         SigmaK, cvRat, GotCvRat, Pref, TmuMin, Lmax, UseV2FModel
      
      
 !------------------------------------------------------------------------------
@@ -516,6 +526,7 @@ CONTAINS
        V2FModel = GetString( Material, 'V2-F Model', GotIt )
      
        UseRNGModel = ( KEModel == 'rng' )
+       UseV2FModel = ( KEModel == 'v2-f' ) 
        
        gWork => ListGetConstRealArray( Model % Constants,'Gravity',GotGrav)
        IF ( GotGrav ) THEN
@@ -532,7 +543,7 @@ CONTAINS
        
        LC3 = ListGetCReal( Material, 'Dissipation buoyancy coefficient', stat )
        
-       IF ( KEModel == 'v2-f' ) THEN
+       IF ( UseV2FModel ) THEN
          LCT = ListGetCReal( Material, 'V2-F CT', GotIt )
          IF ( .NOT. GotIt ) THEN
            LCT = 6.0_dp
@@ -626,7 +637,9 @@ CONTAINS
      !Density(1:n)   = GetReal( Material,'Density' )
      CALL ElementDensity( Density, n )
 
-     CALL GetScalarLocalSolution( LocalV2, 'V2' )
+     IF( UseV2FModel ) THEN
+       CALL GetScalarLocalSolution( LocalV2, 'V2' )
+     END IF
      CALL GetScalarLocalSolution( LocalKinEnergy, 'Kinetic Energy' )
      CALL GetScalarLocalSolution( LocalDissipation, 'Kinetic Dissipation' )
 
@@ -723,11 +736,7 @@ CONTAINS
            Kpos = MAX( Kpos, 0.0_dp ) 
            Epos = MAX( Epos, 0.0_dp )
 
-           IF( Cmu * Kpos**1.5 < Epos * Lmax ) THEN
-             Lstar = Cmu * Kpos**1.5 / Epos
-           END IF
-           Tmu  = MAX( Lstar * SQRT(Kpos), TmuMin )           
-           EperK = Cmu * Kpos / Tmu
+           EperK = EperKFun( K, E )
          ELSE
            EperK = SUM( LocalKEratio(1:n) * Basis(1:n) )
          END IF
@@ -749,11 +758,15 @@ CONTAINS
          IF ( Sound_speed_sq > 0.0_dp) Mach_number_sq = K/Sound_speed_sq
        END IF
          
-       IF ( KEModel=='v2-f' ) THEN
+       IF ( UseV2FModel ) THEN
          LV2 = SUM( LocalV2(1:n) * Basis(1:n) )
          LC1 = 1.4_dp * (1+V2FCp*SQRT(K/LV2))
 
-         Timescale = MAX(K/E,LCT*SQRT(mu/rho/E))
+         IF( UseKEratio ) THEN
+           InvTimescale = MIN(EPerK,SQRT(rho*MAX(E,0.0_dp)/mu)/LCT)
+         ELSE
+           Timescale = MAX(K/E,LCT*SQRT(mu/(rho*E)))
+         END IF
          Tmu = Rho * Cmu * LV2 * TimeScale
 
 !        div = Strain(1,1) + Strain(2,2) + Strain(3,3)
@@ -782,8 +795,12 @@ CONTAINS
        Effmu(2) = mu + Tmu / SigmaE
 
        C0(1) = Rho
-       IF ( KEModel == 'v2-f' ) THEN
-         C0(2) = Rho * LC2 / TimeScale
+       IF ( UseV2FModel ) THEN
+         IF( UseKEratio ) THEN
+           C0(2) = Rho * LC2 * InvTimeScale
+         ELSE
+           C0(2) = Rho * LC2 / TimeScale
+         END IF
        ELSE
          IF( UseKEratio ) THEN
            C0(2) = Rho * LC2 * EperK
@@ -839,7 +856,11 @@ CONTAINS
        END IF
        
        IF ( KEModel=='v2-f' ) THEN
-         LoadAtIP(2) = Rho*LC1*ProdE/TimeScale
+         IF( UseKEratio ) THEN
+           LoadAtIP(2) = Rho*LC1*ProdE*InvTimeScale
+         ELSE
+           LoadAtIP(2) = Rho*LC1*ProdE/TimeScale
+         END IF
        ELSE
          IF( UseKEratio ) THEN
            LoadAtIP(2) = Rho*LC1*ProdE*EperK
@@ -1075,13 +1096,10 @@ CONTAINS
    SUBROUTINE KESolver_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      USE DefUtils
-
      IMPLICIT NONE
 !------------------------------------------------------------------------------
-
      TYPE(Model_t)  :: Model
      TYPE(Solver_t) :: Solver
-
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------

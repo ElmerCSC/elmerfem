@@ -57,7 +57,6 @@
 !    Local variables
 !------------------------------------------------------------------------------
      INTEGER :: i,j,t,n,nd,iter,istat,LocalNodes,DOFs,body_id
-
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
 
@@ -86,6 +85,8 @@
              TimeForce, KEC1, KEC2, &
                V2, F, V2FCnu, V2FC1, V2FC2, V2FCL, V2FCT, V2FSigma
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
+     LOGICAL :: UseKEratio
+     
 !------------------------------------------------------------------------------
 
 
@@ -143,6 +144,9 @@
          'Nonlinear System Max Iterations',GotIt )
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
+     UseKEratio = ListGetLogical( Solver % Values, &
+         'Use KE Ratio',GotIt ) 
+     
 !------------------------------------------------------------------------------
 
      DO iter=1,NonlinearIter
@@ -280,6 +284,7 @@
         END IF
       END DO
 
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
 !------------------------------------------------------------------------------
 !     Dirichlet boundary conditions
@@ -310,6 +315,36 @@
 
 CONTAINS
 
+  FUNCTION EperKfun(E,K) RESULT ( EperK ) 
+    REAL(KIND=dp) :: E,K,EperK
+    REAL(KIND=dp) :: Cmu,Lmax,TmuMin
+    REAL(KIND=dp) :: Epos,Kpos,Lstar,Tmu
+    TYPE(ValueList_t), POINTER :: Material    
+    LOGICAL :: Visited = .FALSE.
+
+    SAVE Visited, Cmu, TmuMin, Lmax
+ 
+    IF( .NOT. Visited ) THEN
+      Material => GetMaterial(GetActiveElement(1))
+      Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
+      TmuMin = GetCReal( Material, 'Minimum Turbulent Viscosity')
+      Lmax = GetCReal( Material, 'Maximum Turbulent Mixing Length')
+      Visited = .TRUE.
+    END IF
+            
+    Epos = MAX( E, 0.0_dp )
+    Kpos = MAX( K, 0.0_dp )
+
+    Lstar = Lmax
+    IF( Cmu * Kpos**1.5 < Epos * Lmax ) THEN
+      Lstar = Cmu * Kpos**1.5 / Epos
+    END IF
+    Tmu  = MAX( Lstar * SQRT(Kpos), TmuMin )           
+    EperK = Cmu * Kpos / Tmu
+    
+  END FUNCTION EperKfun
+
+  
 !------------------------------------------------------------------------------
    SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, &
             LOAD,UX,UY,UZ,Element,n,nd,Nodes )
@@ -351,11 +386,8 @@ CONTAINS
 
      REAL(KIND=dp), DIMENSION(:)   :: FORCE,UX,UY,UZ
      REAL(KIND=dp), DIMENSION(:,:) :: MASS,STIFF,LOAD
-
      LOGICAL :: Stabilize
-
      INTEGER :: n,nd
-
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t) :: Element
 
@@ -377,13 +409,14 @@ CONTAINS
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     REAL(KIND=dp) :: C1,C2,CT,CL,Cnu,Cmu,TimeScale,LengthScale2
+     REAL(KIND=dp) :: C1,C2,CT,CL,Cnu,Cmu,TimeScale,InvTimescale,LengthScale2
      REAL(KIND=dp) :: SecInv,X,Y,Z,Re_T
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      LOGICAL :: stat,Convection, Bubbles
+     REAL(KIND=dp) :: EperK 
 
 !------------------------------------------------------------------------------
 
@@ -463,6 +496,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        K   = SUM( KinEne(1:n) * Basis(1:n) )
        E   = SUM( KinDis(1:n) * Basis(1:n) )
+       IF( UseKEratio ) THEN
+         EperK = EperKfun( E, K ) 
+       END IF
+
        LF  = SUM( F(1:n)  * Basis(1:n) )
        LV2 = SUM( V2(1:n) * Basis(1:n) )
 
@@ -476,11 +513,18 @@ CONTAINS
        rho = SUM( Basis(1:n) * Density(1:n) )
        mu  = SUM( Basis(1:n) * Viscosity(1:n) )
 
-       Re_T = K**2 / ((mu/Rho)*E)
-       TimeScale = MAX( K/E, CT*SQRT((mu/rho)/E))
-       Lengthscale2 = CL**2 * MAX(K**3 /E**2, Cnu**2*SQRT((mu/rho)**3/E)) 
+       IF( UseKEratio ) THEN
+         Re_T = K / ((mu/Rho)*EperK)
+         InvTimescale = MIN(EPerK,SQRT(rho*MAX(E,0.0_dp)/mu)/CT)
+         Lengthscale2 = CL**2 * MAX(K /EperK**2, Cnu**2*SQRT((mu/rho)**3/E)) 
+         Tmu = rho*Cmu*LV2 / InvTimeScale
+       ELSE
+         Re_T = K**2 / ((mu/Rho)*E)
+         TimeScale = MAX( K/E, CT*SQRT(mu/(rho*E)) )
+         Lengthscale2 = CL**2 * MAX(K**3 /E**2, Cnu**2*SQRT((mu/rho)**3/E)) 
+         Tmu = rho*Cmu*LV2*TimeScale
+       END IF
 
-       Tmu = rho*Cmu*LV2*TimeScale
        EffVisc = mu + Tmu / SUM(V2FSigma(1:n)*Basis(1:n))
 
 !      div = Strain(1,1) + Strain(2,2) + Strain(3,3)
@@ -515,7 +559,7 @@ CONTAINS
           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
              DO i=1,dim
                A(1,1) = A(1,1) + EffVisc * dBasisdx(q,i) * dBasisdx(p,i)
-               A(2,2) = A(2,2) + LengthScale2*dBasisdx(q,i) * dBasisdx(p,i)
+               A(2,2) = A(2,2) + LengthScale2 * dBasisdx(q,i) * dBasisdx(p,i)
              END DO
           ELSE
              DO i=1,dim
@@ -545,8 +589,12 @@ CONTAINS
 
        ! Load at the integration point:
        !-------------------------------
-       LoadAtIP = 0.0_dp
-       LoadAtIP(2) = ((C1-1)*2/3.0_dp+C2*Prod/E)/TimeScale
+       LoadAtIP(1) = 0.0_dp
+       IF( UseKEratio ) THEN         
+         LoadAtIP(2) = ((C1-1)*2/3.0_dp+C2*Prod/E) * InvTimeScale
+       ELSE
+         LoadAtIP(2) = ((C1-1)*2/3.0_dp+C2*Prod/E) / TimeScale
+       END IF
 !------------------------------------------------------------------------------
         DO p=1,nd
            FORCE(2*(p-1)+1) = FORCE(2*(p-1)+1) + s*LoadAtIp(1)*Basis(p)
@@ -573,7 +621,6 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Model_t)  :: Model
      TYPE(Solver_t) :: Solver
-
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
@@ -610,19 +657,7 @@ CONTAINS
              TimeForce, KEC1, KEC2, &
                V2, F, V2FCnu, V2FC1, V2FC2, V2FCL, V2FCT, V2FSigma
      REAL(KIND=dp) :: at,at0, KMax, EMax, KVal, EVal
-!------------------------------------------------------------------------------
-     CHARACTER(LEN=MAX_NAME_LEN) :: VersionID = "$Id$"
-
-!------------------------------------------------------------------------------
-!    Check if version number output is requested
-!------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone ) THEN
-        IF ( ListGetLogical( GetSimulation(), 'Output Version Numbers', GotIt ) ) THEN
-           CALL Info( 'V2-F-Solver', 'V2-F Solver version:', Level = 0 ) 
-           CALL Info( 'V2-F-Solver', VersionID, Level = 0 ) 
-           CALL Info( 'V2-F-Solver', ' ', Level = 0 ) 
-        END IF
-     END IF
+     LOGICAL :: UseKEratio
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -842,6 +877,38 @@ CONTAINS
 
 CONTAINS
 
+
+
+  FUNCTION EperKfun(E,K) RESULT ( EperK ) 
+    REAL(KIND=dp) :: E,K,EperK
+    REAL(KIND=dp) :: Cmu,Lmax,TmuMin
+    REAL(KIND=dp) :: Epos,Kpos,Lstar,Tmu
+    TYPE(ValueList_t), POINTER :: Material    
+    LOGICAL :: Visited = .FALSE.
+
+    SAVE Visited, Cmu, TmuMin, Lmax
+ 
+    IF( .NOT. Visited ) THEN
+      Material => GetMaterial(GetActiveElement(1))
+      Cmu = ListGetCReal( Material, 'KE Cmu', GotIt )
+      TmuMin = GetCReal( Material, 'Minimum Turbulent Viscosity')
+      Lmax = GetCReal( Material, 'Maximum Turbulent Mixing Length')
+      Visited = .TRUE.
+    END IF
+            
+    Epos = MAX( E, 0.0_dp )
+    Kpos = MAX( K, 0.0_dp )
+
+    Lstar = Lmax
+    IF( Cmu * Kpos**1.5 < Epos * Lmax ) THEN
+      Lstar = Cmu * Kpos**1.5 / Epos
+    END IF
+    Tmu  = MAX( Lstar * SQRT(Kpos), TmuMin )           
+    EperK = Cmu * Kpos / Tmu
+    
+  END FUNCTION EperKfun
+
+  
 !------------------------------------------------------------------------------
    SUBROUTINE LocalMatrix( MASS,STIFF,FORCE, &
             LOAD,UX,UY,UZ,Element,n,nd,Nodes )
@@ -911,13 +978,14 @@ CONTAINS
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
      REAL(KIND=dp) :: C1,C2,CT,CL,Cnu,Cmu,TimeScale,LengthScale2,aparm(nd)
-     REAL(KIND=dp) :: SecInv,X,Y,Z,Re_T
+     REAL(KIND=dp) :: SecInv,X,Y,Z,Re_T,InvTimeScale
      REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3),SqrtMetric
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      LOGICAL :: stat,Bubbles
-
+     REAL(KIND=dp) :: EperK
+     
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
@@ -994,6 +1062,8 @@ CONTAINS
 !------------------------------------------------------------------------------
        K   = SUM( KinEne(1:n) * Basis(1:n) )
        E   = SUM( KinDis(1:n) * Basis(1:n) )
+       IF( UseKEratio ) EperK = EperKfun( E, K ) 
+
        LF  = SUM( F(1:n)  * Basis(1:n) )
        LV2 = SUM( V2(1:n) * Basis(1:n) )
 
@@ -1007,10 +1077,15 @@ CONTAINS
        rho = SUM( Basis(1:n) * Density(1:n) )
        mu  = SUM( Basis(1:n) * Viscosity(1:n) )
 
-       TimeScale = MAX( K/E, CT*SQRT((mu/rho)/E))
+       IF( UseKEratio ) THEN
+         InvTimeScale = MIN( EperK, SQRT(rho*E/mu)/CT )
+         Tmu = rho*Cmu*LV2 / InvTimeScale
+       ELSE
+         TimeScale = MAX( K/E, CT*SQRT(mu/(rho*E)) )
+         Tmu = rho*Cmu*LV2*TimeScale
+       END IF
        Lengthscale2 = CL**2 * MAX(K**3 /E**2, Cnu**2*SQRT((mu/rho)**3/E)) 
-
-       Tmu = rho*Cmu*LV2*TimeScale
+         
        EffVisc = mu + Tmu / SUM(V2FSigma(1:n)*Basis(1:n))
 
 !      div = Strain(1,1) + Strain(2,2) + Strain(3,3)
@@ -1034,15 +1109,25 @@ CONTAINS
 
           M(1,1) = rho * Basis(q) * Basis(p)
 
-          A(1,1) = A(1,1) + 6 * Rho / TimeScale  * Basis(q) * Basis(p)
+          IF( UseKEratio ) THEN
+            A(1,1) = A(1,1) + 6 * Rho * InvTimeScale  * Basis(q) * Basis(p)
+            A(2,1) = A(2,1) + (C1-6) / K * InvTimeScale * Basis(q) * Basis(p)
+          ELSE
+            A(1,1) = A(1,1) + 6 * Rho / TimeScale  * Basis(q) * Basis(p)
+            A(2,1) = A(2,1) + (C1-6) / K / TimeScale * Basis(q) * Basis(p)
+          END IF
+            
           A(1,2) = A(1,2) - Rho * K * Basis(q) * Basis(p)
-
-          A(2,1) = A(2,1) + (C1-6) / K / TimeScale * Basis(q) * Basis(p)
           A(2,2) = A(2,2) + Basis(q) * Basis(p)
 
           A(3,3) = Basis(q) * Basis(p)
-          A(3,1) = A(3,1) - E / K**2  * Basis(q) * Basis(p)
 
+          IF( UseKEratio ) THEN
+            A(3,1) = A(3,1) - EperK / K  * Basis(q) * Basis(p)            
+          ELSE
+            A(3,1) = A(3,1) - E / K**2  * Basis(q) * Basis(p)
+          END IF
+            
           ! The diffusion term:
           !--------------------
           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
@@ -1082,9 +1167,12 @@ CONTAINS
 
        ! Load at the integration point:
        !-------------------------------
-       LoadAtIP = 0.0_dp
-       LoadAtIP(2) = ((C1-1)*2/3.0_dp+C2*Prod/E)/TimeScale
-
+       IF( UseKEratio ) THEN
+         LoadAtIP(2) = ((C1-1)*2/3.0_dp+C2*Prod/E) * InvTimeScale
+       ELSE
+         LoadAtIP(2) = ((C1-1)*2/3.0_dp+C2*Prod/E)/TimeScale
+       END IF
+         
 !------------------------------------------------------------------------------
         DO p=1,nd
            FORCE(3*(p-1)+2) = FORCE(3*(p-1)+2) + s*LoadAtIp(2)*Basis(p)

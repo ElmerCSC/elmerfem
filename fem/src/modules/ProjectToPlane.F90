@@ -126,10 +126,6 @@ SUBROUTINE ProjectToPlane( Model,Solver,dt,TransientSimulation )
   CALL Info( 'ProjectToPlane', ' ' )
 
   IF ( .NOT. AllocationsDone ) THEN
-    IF ( GetLogical( Model % Simulation, 'Output Version Numbers', stat ) ) THEN
-      CALL Info( 'ProjectToPlane', 'Version 1.0 by raback (05-02-2007)', LEVEL=4 )
-    END IF
-    
     ! 3D variables
     !-------------
 
@@ -901,10 +897,6 @@ SUBROUTINE ParallelProjectToPlane( Model,Solver,dt,TransientSimulation )
   
 !------------------------------------------------------------------------------
   IF ( .NOT. AllocationsDone ) THEN
-    IF ( GetLogical( Model % Simulation, 'Output Version Numbers', stat ) ) THEN
-      CALL Info( 'ProjectToPlane', 'Version 1.0 by raback (05-02-2007)', LEVEL=4 )
-    END IF
-    
     !------------------------------------------------------------------------------
     ! Find the 2D and 3D meshes, assume just one of each
     !------------------------------------------------------------------------------
