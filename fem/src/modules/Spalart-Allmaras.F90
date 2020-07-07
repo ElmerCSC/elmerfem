@@ -35,6 +35,34 @@
 ! ****************************************************************************/
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SpalartAllmaras_Init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+     USE DefUtils
+
+     IMPLICIT NONE
+!------------------------------------------------------------------------------
+     TYPE(Model_t)  :: Model
+     TYPE(Solver_t) :: Solver
+     REAL(KIND=dp) :: dt
+     LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+     INTEGER :: i
+     TYPE(ValueList_t), POINTER :: BC
+     LOGICAL :: GotIt
+     
+     CALL Info('SpalarAllmaras_Init',&
+         'Setting "Turbulent Viscosity" to zero at no-slip walls',Level=7)
+     DO i=1,Model % NumberOFBCs
+       BC => Model % BCs(i) % Values
+       IF ( GetLogical( BC, 'Noslip wall BC', gotit ) ) THEN
+         CALL ListAddConstReal( BC, 'Turbulent Viscosity', 0.0_dp )
+       END IF
+     END DO
+     
+   END SUBROUTINE SpalartAllmaras_Init
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Solver for the Spalart-Allmaras-turbulence model.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -96,7 +124,6 @@
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'SpalartAllmaras', 'Memory allocation error.' )
        END IF
-
        AllocationsDone = .TRUE.
      END IF
 
@@ -106,16 +133,8 @@
 
      NonlinearIter = ListGetInteger( Solver % Values, &
          'Nonlinear System Max Iterations',GotIt )
-
      IF ( .NOT.GotIt ) NonlinearIter = 1
 
-!------------------------------------------------------------------------------
-      DO i=1,Model % NumberOFBCs
-        BC => Model % BCs(i) % Values
-        IF ( GetLogical( BC, 'Noslip wall BC', gotit ) ) THEN
-          CALL ListAddConstReal( BC, 'Turbulent Viscosity', 0.0_dp )
-        END IF
-      END DO
 !------------------------------------------------------------------------------
 
      DO iter=1,NonlinearIter
@@ -123,7 +142,6 @@
        at  = CPUTime()
        at0 = RealTime()
 
-       CALL Info( 'SpalartAllmaras', ' ', Level=4 )
        CALL Info( 'SpalartAllmaras', ' ', Level=4 )
        CALL Info( 'SpalartAllmaras', &
           '-------------------------------------', Level=4 )
@@ -186,6 +204,7 @@
 !     Solve the system and check for convergence
 !------------------------------------------------------------------------------
       Norm = DefaultSolve()
+
 !------------------------------------------------------------------------------
 !     Kinetic Energy Solution should be positive
 !------------------------------------------------------------------------------
@@ -198,7 +217,6 @@
       END DO
 
 !------------------------------------------------------------------------------
-
       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
 !------------------------------------------------------------------------------
     END DO
@@ -248,11 +266,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-!
-     REAL(KIND=dp) :: ddBasisddx(2*n,3,3)
      REAL(KIND=dp) :: Basis(2*n)
      REAL(KIND=dp) :: dBasisdx(2*n,3),detJ
-
      REAL(KIND=dp) :: UX(n), UY(n), UZ(n), Velo(3), dVelodx(3,3),Tviscosity(n), &
                       Distance(n), Density(n), Viscosity(n)
 
@@ -367,8 +382,8 @@ CONTAINS
 
        ! Rotation and curvature correction of Schweighofer & Helsten; NOT IN USE
        ! -----------------------------------------------------------------------
-!      r = VorticityMeasure/StrainMeasure*(VorticityMeasure/StrainMeasure-1)
-!      r = 1._dp / (1+3.6_dp*r)
+       ! r = VorticityMeasure/StrainMeasure*(VorticityMeasure/StrainMeasure-1)
+       ! r = 1._dp / (1+3.6_dp*r)
        r = 1._dp
        Cw1 = r*(Cb1/0.41_dp**2 + (1+Cb2)/Sigma)
 
@@ -391,49 +406,49 @@ CONTAINS
 !      Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
        DO p=1,NBasis
-       DO q=1,NBasis
-          M = 0.0d0
-          A = 0.0d0
+         DO q=1,NBasis
+           M = 0.0d0
+           A = 0.0d0
 
-          M = rho * Basis(q) * Basis(p)
-          A = A - rho * Cb1 * St * Basis(q) * Basis(p)/4
-          A = A + rho * Cw1 * fw * Tmu / dist**2 * Basis(q) * Basis(p)
+           M = rho * Basis(q) * Basis(p)
+           A = A - rho * Cb1 * St * Basis(q) * Basis(p)/4
+           A = A + rho * Cw1 * fw * Tmu / dist**2 * Basis(q) * Basis(p)
 !------------------------------------------------------------------------------
 !         The diffusion term
 !------------------------------------------------------------------------------
-          IF ( CurrentCoordinateSystem() == Cartesian ) THEN
+           IF ( CurrentCoordinateSystem() == Cartesian ) THEN
              DO i=1,dim
                A = A + Effmu * dBasisdx(q,i) * dBasisdx(p,i) 
              END DO
-          ELSE
+           ELSE
              DO i=1,dim
                DO j=1,dim
-                  A = A + Metric(i,j) * Effmu * dBasisdx(q,i) * dBasisdx(p,i)
+                 A = A + Metric(i,j) * Effmu * dBasisdx(q,i) * dBasisdx(p,i)
                END DO
              END DO
-          END IF
+           END IF
 
 !------------------------------------------------------------------------------
 !           The convection term
 !------------------------------------------------------------------------------
-          DO i=1,dim
-            A = A + rho * (Velo(i)-Cb2*GradTmu(i)/Sigma) * dBasisdx(q,i) * Basis(p)
-          END DO
+           DO i=1,dim
+             A = A + rho * (Velo(i)-Cb2*GradTmu(i)/Sigma) * dBasisdx(q,i) * Basis(p)
+           END DO
 
-          MASS(p,q)  = MASS(p,q)  + s*M
-          STIFF(p,q) = STIFF(p,q) + s*A
-        END DO
-        END DO
+           MASS(p,q)  = MASS(p,q)  + s*M
+           STIFF(p,q) = STIFF(p,q) + s*A
+         END DO
+       END DO
 
-        ! Load at the integration point:
-        !-------------------------------
-        LoadAtIp = 3._dp*rho * Cb1 * St * Tmu/4
-
+       ! Load at the integration point:
+       !-------------------------------
+       LoadAtIp = 3._dp*rho * Cb1 * St * Tmu/4
+        
 !------------------------------------------------------------------------------
-        DO p=1,NBasis
-          FORCE(p) = FORCE(p)+s*LoadAtIp*Basis(p)
-        END DO
-      END DO
+       DO p=1,NBasis
+         FORCE(p) = FORCE(p)+s*LoadAtIp*Basis(p)
+       END DO
+     END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------

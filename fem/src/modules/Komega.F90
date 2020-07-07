@@ -56,7 +56,7 @@
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: Element
 
-     REAL(KIND=dp) :: RelativeChange,Norm
+     REAL(KIND=dp) :: Norm
      LOGICAL :: Stabilize = .TRUE.,gotIt
 
      LOGICAL :: AllocationsDone = .FALSE.
@@ -130,7 +130,6 @@
        at0 = RealTime()
 
        CALL Info( 'KOmega', ' ', Level=4 )
-       CALL Info( 'KOmega', ' ', Level=4 )
        CALL Info( 'KOmega', &
           '-------------------------------------', Level=4 )
        WRITE( Message, * ) 'Komega iteration: ', iter
@@ -181,6 +180,8 @@
       CALL Info( 'KOmega', 'Assembly done', Level=4 )
 
 !------------------------------------------------------------------------------
+
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------
@@ -195,7 +196,7 @@
         IF (GetLogical(BC, 'Omega Wall BC', gotIt ) .OR. &
             GetLogical(BC, 'Noslip Wall BC',  gotIt)) CALL OmegaWall(Element,n)
       END DO
-
+      
       CALL DefaultDirichletBCs()
 !------------------------------------------------------------------------------
       CALL Info( 'KOmega', 'Set boundaries done', Level=4 )
@@ -220,18 +221,14 @@
       END DO
 
 !------------------------------------------------------------------------------
-      WRITE( Message,* ) 'Result Norm   : ',Norm
-      CALL Info( 'KOmega', Message, Level = 4 )
-
-      RelativeChange = Solver % Variable % NonlinChange
-      WRITE( Message,* ) 'Relative Change : ',RelativeChange
-      CALL Info( 'KOmega', Message, Level = 4 )
-
       IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
 !------------------------------------------------------------------------------
     END DO
 !------------------------------------------------------------------------------
 
+    CALL Info('KOmega','All done for now',Level=7)
+    
+    
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -468,6 +465,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Wall law for the k-Omega turbulence model.
+!> This sets the BCs for nodes that belong to the 1st layer of elements but
+!> are not at the boundary.
 !------------------------------------------------------------------------------
    SUBROUTINE OmegaWall( Element,n )
 !------------------------------------------------------------------------------
@@ -475,7 +474,7 @@ CONTAINS
      INTEGER :: n
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: omega_wall,dist,mu(32),rho(32),x0(n),y0(n),z0(n),x,y,z
-     INTEGER :: i,j,np
+     INTEGER :: i,j,k,np
      TYPE(Element_t), POINTER :: Parent
 !------------------------------------------------------------------------------
      Parent => Element % BoundaryInfo % Left
@@ -505,17 +504,10 @@ CONTAINS
 !      omega_wall = 2*mu(i)/0.09_dp/rho(i)/dist
        omega_wall = 6*mu(i)/rho(i)/0.075_dp/dist
 
-       j = 2*Solver % Variable % Perm(j)
+       k = 2*Solver % Variable % Perm(j)
 
-       CALL UpdateDirichletDof( Solver % Matrix, j, omega_wall )
+       CALL UpdateDirichletDof( Solver % Matrix, k, omega_wall )
      END DO
-
-!    DO i=1,n
-!      j = 2*Solver % Variable % Perm(Element % NodeIndexes(i))
-!      Solver % Matrix % RHS(j) = 10*omega_wall
-!      CALL ZeroRow( Solver % Matrix, j )
-!      CALL SetMatrixElement( Solver % Matrix, j,j, 1.0_dp )
-!    END DO
 
 !------------------------------------------------------------------------------
    END SUBROUTINE OmegaWall

@@ -78,8 +78,7 @@
          LOAD(:,:),FORCE(:),U(:),V(:),W(:), &
          Density(:),Viscosity(:),EffectiveVisc(:,:),Work(:),  &
          TurbulentViscosity(:),LocalDissipation(:), &
-         LocalKinEnergy(:),LocalKEratio(:), &
-         PrevKinEnergy(:),PrevDissipation(:), &
+         LocalKinEnergy(:),PrevKinEnergy(:),PrevDissipation(:), &
          C0(:,:), SurfaceRoughness(:), TimeForce(:),LocalV2(:)
      
      TYPE(ValueList_t), POINTER :: BC
@@ -87,7 +86,7 @@
      SAVE U,V,W,MASS,STIFF,LOAD,FORCE, &
          ElementNodes,LayerThickness,Density,&
          AllocationsDone,Viscosity,LocalNodes,Work,TurbulentViscosity, &
-         LocalDissipation,LocalKinEnergy,LocalKEratio, C0, &
+         LocalDissipation,LocalKinEnergy,C0, &
          PrevDissipation, PrevKinEnergy, &
          SurfaceRoughness, TimeForce, EffectiveVisc, LocalV2
 
@@ -100,7 +99,6 @@
      CHARACTER(*), PARAMETER :: Caller = 'KESolver'
 
      INTEGER :: KEComp, Ncomp
-     TYPE(Variable_t), POINTER :: KEratio
      LOGICAL :: UseKEratio, LimitKE
      
 !------------------------------------------------------------------------------
@@ -126,8 +124,8 @@
 
      KEkin => VariableGet( Solver % Mesh % Variables, 'Kinetic Energy' )
      KEdis => VariableGet( Solver % Mesh % Variables, 'Kinetic Dissipation' )
-     KEratio => VariableGet( Solver % Mesh % Variables, 'KE ratio' )
-     UseKEratio = ASSOCIATED( KEratio )      
+
+     UseKEratio = ListGetLogical( SolverParams,'Use KE ratio',GotIt )
      LimitKE = .NOT. UseKEratio
      
      LocalNodes = COUNT( KinPerm > 0 )
@@ -155,7 +153,6 @@
            TurbulentViscosity(N), C0(DOFs,N), &
            LayerThickness(N), &
            SurfaceRoughness(N), &
-           LocalKEratio( N ), &
            LocalKinEnergy( N ),     &
            LocalDissipation( N ),&
            PrevDissipation( N ), &
@@ -207,9 +204,8 @@
 
        CALL DefaultInitialize()
 
-       IF( UseKEratio ) THEN
-         CALL ComputeKEratio()
-       END IF
+       ! We may save regulated k/eps for visualization purposes
+       CALL ComputeKEratio()
        
 !------------------------------------------------------------------------------
 !      Bulk elements
@@ -404,9 +400,13 @@ CONTAINS
   
   
   SUBROUTINE ComputeKEratio()
+    TYPE(Variable_t), POINTER :: Var
 
-    DO k=1,SIZE( KEkin % Values )
-      KEratio % Values(k) = EperKfun(KEkin % Values(k),KEdis % Values(k) )
+    Var => VariableGet( Solver % Mesh % Variables, 'KE ratio' )
+    IF(.NOT. ASSOCIATED( Var ) ) RETURN
+
+    DO k=1,SIZE( Var % Values )
+      Var % Values(k) = EperKfun(KEkin % Values(k),KEdis % Values(k) )
     END DO
 
   END SUBROUTINE ComputeKEratio
@@ -648,11 +648,7 @@ CONTAINS
        CALL GetScalarLocalSolution( PrevDissipation, 'Kinetic Dissipation',tstep=-1 )
      END IF
      
-     
-     IF( UseKEratio ) THEN
-       CALL GetScalarLocalSolution( LocalKEratio, 'KE ratio' )
-     END IF
-     
+        
      CALL GetScalarLocalSolution( Ux, 'Velocity 1' )
      CALL GetScalarLocalSolution( Uy, 'Velocity 2' )
      CALL GetScalarLocalSolution( Uz, 'Velocity 3' )
@@ -719,28 +715,8 @@ CONTAINS
 !------------------------------------------------------------------------------
        K = SUM( LocalKinEnergy(1:n) * Basis(1:n) )
        E = SUM( LocalDissipation(1:n) * Basis(1:n) )
-
        
-       IF( UseKEratio ) THEN
-         IF(.TRUE.) THEN
-           Lstar = Lmax
-           Kpos = K
-           Epos = E
-
-!           IF( timei > 0 ) THEN
-!             Kpos = (Kpos + SUM( PrevKinEnergy(1:n) * Basis(1:n) ) ) / 2
-!             Epos = (Epos + SUM( PrevDissipation(1:n) * Basis(1:n) ) ) / 2 
-!           END IF
-           
-           
-           Kpos = MAX( Kpos, 0.0_dp ) 
-           Epos = MAX( Epos, 0.0_dp )
-
-           EperK = EperKFun( K, E )
-         ELSE
-           EperK = SUM( LocalKEratio(1:n) * Basis(1:n) )
-         END IF
-       END IF
+       IF( UseKEratio ) EperK = EperKFun( E, K )
 
        IF( GotGrav ) THEN       
          rho_g = 0._dp
@@ -1130,11 +1106,6 @@ CONTAINS
        CALL Fatal('KESolver_init','Invalid value for "KE Component": '//TRIM(I2S(KEcomp)))
      END IF
      
-     IF( GetLogical( SolverParams,'USE KE ratio',Found) ) THEN
-       CALL ListAddString( SolverParams,&
-           NextFreeKeyword('Exported Variable',SolverParams),'KE ratio')
-     END IF
-
      IF( KEcomp /= 2 ) THEN
        DO i=1,Model % NumberOFBCs
          BC => Model % BCs(i) % Values

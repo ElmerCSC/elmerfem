@@ -2982,7 +2982,8 @@ CONTAINS
       ! We may use time to iterate a nonlinear system to convergence.
       ! This is best done at the "after timestep" slot.
       !---------------------------------------------------------------
-      IF( ListCheckPresentAnySolver( Model,'Transient Convergence Tolerance') ) THEN
+      IF( TransientSimulation .AND. &
+          ListCheckPresentAnySolver( Model,'Transient Convergence Tolerance') ) THEN
         CALL Info(Caller,'Testing for transient system convergence',Level=7)
         
         ALLOCATE( DoneThis(nSolvers) )
