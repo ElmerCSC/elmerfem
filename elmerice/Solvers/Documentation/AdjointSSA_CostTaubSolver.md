@@ -133,4 +133,4 @@ By default the name of the solver varaible is *[Equation_name]*_var.
 
 ### Tests and Examples
 
-- See examples for the [SSA inverse methods](../../examples/SSA_Inverse_Methods)
+- See examples for the [SSA inverse methods](../../examples/Inverse_Methods)

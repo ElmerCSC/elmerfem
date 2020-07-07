@@ -124,4 +124,4 @@ End
 
 ### Tests and Examples
 
-- See examples for the [SSA inverse methods](../../examples/SSA_Inverse_Methods)
+- See examples for the [SSA inverse methods](../../examples/Inverse_Methods)

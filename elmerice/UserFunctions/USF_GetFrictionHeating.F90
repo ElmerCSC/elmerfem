@@ -161,51 +161,79 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
   REAL(KIND=dp) :: DummyInput, frictionLoad
   !----------------------------------------------------------------------------
 
-  INTEGER :: DIM, i
+  INTEGER :: DIM, i, other_body_id
   REAL(KIND=dp), POINTER :: FlowValues(:),FlowLoadValues(:),NormalValues(:),MaskValues(:)
-  REAL(KIND=dp) :: normal(3), velo(3), normalvelocity, flowload(3), tangvelocity(3)  
+  REAL(KIND=dp) :: normal(3), velo(3), normalvelocity, flowload(3), tangvelocity(3)
   INTEGER, POINTER :: FlowPerm(:),FlowLoadPerm(:), NormalPerm(:), MaskPerm(:)
-  LOGICAL :: FirstTime=.TRUE., GotIt,UnFoundFatal,UseMask = .FALSE.
+  LOGICAL :: FirstTime=.TRUE., GotIt,UnFoundFatal,UseMask = .FALSE., Warned=.FALSE.
   TYPE(Variable_t), POINTER :: FlowVar,FlowLoadVar, NormalVar, MaskVar
   TYPE(ValueList_t), POINTER :: Equation
   CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolutionName, FlowLoadsName, MaskName
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='USF_GetFrictionHeating(getFrictionLoads)'
+  TYPE(Element_t), POINTER ::  BoundaryElement, ParentElement
   
-  SAVE FirstTime, DIM
+  SAVE FirstTime,  DIM, UseMask
 
+  
   IF (FirstTime) THEN
-    !WRITE(FunctionName,'(A)') 'USF_GetFrictionHeating(getFrictionLoads)'
-    FirstTime = .FALSE.    
+    !WRITE(FunctionName,'(A)') 'USF_GetFrictionHeating(getFrictionLoads)'    
+
     DIM = CoordinateSystemDimension()
   END IF
    
   ! Get variable names from Equation section
   !-----------------------------------------
-  Equation => GetEquation()
-  IF (.NOT.ASSOCIATED(Equation)) THEN
-    WRITE (Message,'(A,I3)') 'No "Equation" found. Using default values for variables'
-    CALL WARN(FunctionName,Message)
+  BoundaryElement => Model % CurrentElement
+  other_body_id = BoundaryElement % BoundaryInfo % outbody
+  IF (other_body_id < 1) THEN ! only one body in calculation
+    ParentElement => BoundaryElement % BoundaryInfo % Right
+    IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => BoundaryElement % BoundaryInfo % Left
+  ELSE ! we are dealing with a body-body boundary and assume that the normal is pointing outwards
+    ParentElement => BoundaryElement % BoundaryInfo % Right
+    IF (ParentElement % BodyId == other_body_id) ParentElement => BoundaryElement % BoundaryInfo % Left
+  END IF
+  Equation => GetEquation(Element=ParentElement,Found=GotIt)
+  IF (.NOT.ASSOCIATED(Equation) .OR. .NOT.GotIt) THEN
+    IF (FirstTime) THEN
+      WRITE (Message,'(A,I3)') 'No "Equation" found. Using default values for variables'
+      CALL WARN(FunctionName,Message)    
+      Warned = .TRUE.
+    END IF
     WRITE(FlowSolutionName,'(A)') 'Flow Solution'
     WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
     UseMask = .FALSE.
   ELSE
-    FlowSolutionName = GetString( Equation , 'Flow Solution Name', GotIt ) 
-    IF (.NOT. GotIt) THEN
+    FlowSolutionName = GetString( Equation , 'Flow Solution Name', GotIt )
+    IF (.NOT.GotIt) THEN
       WRITE(FlowSolutionName,'(A)') 'Flow Solution'
-      WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
-           FlowSolutionName
-      CALL WARN(FunctionName,Message)
+      IF (FirstTime) THEN
+        WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
+             FlowSolutionName
+        CALL WARN(FunctionName,Message)
+        Warned = .TRUE.
+      END IF
     END IF
     FlowLoadsName = GetString( Equation , 'Flow Loads Name', GotIt )  
     IF (.NOT. GotIt) THEN
       WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
-      WRITE(Message,'(A,A)') 'Using default name for flow solution loads: ', &
-           FlowLoadsName
-      CALL WARN(FunctionName,Message)
+      IF (FirstTime) THEN
+        WRITE(Message,'(A,A)') 'Using default name for flow solution loads: ', &
+             FlowLoadsName
+        CALL WARN(FunctionName,Message)
+        Warned = .TRUE.
+      END IF
     END IF
     MaskName = GetString( Equation , 'Friction Load Mask', UseMask )    
+    IF (UseMask) THEN
+      WRITE (Message, '(A,A)') '>Friction Load Mask< found and set to ', &
+           TRIM(MaskName)
+      CALL INFO(FunctionName, Message, Level=1)
+    END IF
   END IF
-
+  IF (Warned .AND. FirstTime) &
+       CALL WARN(FunctionName,"All Warnings will be further omitted")
+  FirstTime = .FALSE.
+  
   ! Get the variable velocity
   !---------------------------
   FlowVar => VariableGet( Model % Variables, TRIM(FlowSolutionName),UnFoundFatal=UnFoundFatal)
