@@ -514,16 +514,16 @@ CONTAINS
           ! In parallel the mesh consists of pieces called partitions.
           ! Give each partition a name that includes the partition. 
           IF( LegacyMode ) THEN
-            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",Part,"par"            
+            WRITE( VtuFile,'(A,A,I4.4,A)') TRIM((VtuFile)),"_",Part,"par"            
           ELSE
             IF ( PEs < 10) THEN                    
-              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM(VtuFile),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I1.1,A,I1.1)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE IF ( PEs < 100) THEN                    
-              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM(VtuFile),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I2.2,A,I2.2)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE IF ( PEs < 1000) THEN                    
-              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM(VtuFile),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I3.3,A,I3.3)') TRIM((VtuFile)),"_",PEs,"np",Part
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM(VtuFile),"_",PEs,"np",Part
+              WRITE( VtuFile,'(A,A,I4.4,A,I4.4)') TRIM((VtuFile)),"_",PEs,"np",Part
             END IF
           END IF
         ELSE
@@ -531,13 +531,13 @@ CONTAINS
           ! quickly see on which partitioning they were computed. 
           IF( ParallelBaseName ) THEN
             IF ( PEs < 10) THEN                    
-              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM(VtuFile),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I1.1,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE IF ( PEs < 100) THEN                    
-              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM(VtuFile),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I2.2,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE IF ( PEs < 1000) THEN                    
-              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM(VtuFile),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I3.3,A)') TRIM((VtuFile)),"_",PEs,"np"
             ELSE
-              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM(VtuFile),"_",PEs,"np"
+              WRITE( VtuFile,'(A,A,I4.4,A)') TRIM((VtuFile)),"_",PEs,"np"
             END IF
           END IF
         END IF
@@ -546,9 +546,9 @@ CONTAINS
         ! This is for adding time (or nonlinear iteration/scanning) to the filename.
         IF( FileIndex > 0 ) THEN
           IF( FileIndex < 10000 ) THEN        
-            WRITE( VtuFile,'(A,A,I4.4)') TRIM(VtuFile),"_t",FileIndex
+            WRITE(VtuFile,'(A,A,I4.4)') TRIM((VtuFile)),"_t",FileIndex
           ELSE
-            WRITE( VtuFile,'(A,A,I0)' ) TRIM(VtuFile),"_t",FileIndex
+            WRITE(VtuFile,'(A,A,I0)' ) TRIM((VtuFile)),"_t",FileIndex
           END IF
         END IF     
         
@@ -563,7 +563,6 @@ CONTAINS
     END IF
           
     VtuFile = TRIM( VtuFile)//TRIM(Suffix) 
-    !PRINT *,'vtufile:',TRIM(VtuFile)
 
   END SUBROUTINE VtuFileNaming
   
@@ -871,7 +870,6 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Geometry Id',GotIt)
       IF( GotIt ) GeometryBodyMap(i) = j
     END DO
-    !PRINT *,'GeometryBodyMap:',GeometryBodyMap
 
     ! Create mapping for bc ids, default is unity mapping with offset
     IF( .NOT. ALLOCATED( GeometryBCMap ) ) THEN
@@ -903,7 +901,6 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       j = ListGetInteger( CurrentModel % BCs(i) % Values,'Geometry Id',GotIt)
       IF( GotIt ) GeometryBCMap(i) = j
     END DO
-    !PRINT *,'GeometryBcMap:',GeometryBcMap
 
   END IF
   
@@ -1326,30 +1323,34 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     TYPE(Variable_t), POINTER :: Var,Var1
     CHARACTER(LEN=512) :: str
-    INTEGER :: i,ii,j,jj,k,dofs,Rank,cumn,n,m,dim,vari,sdofs,dispdofs, disp2dofs, Offset, &
+    INTEGER :: i,ii,j,jj,k,dofs,Rank,cumn,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
         NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
-        FieldName, FieldName2, OutStr
+        FieldName, FieldNameB, OutStr
     CHARACTER :: lf
     LOGICAL :: ScalarsExist, VectorsExist, Found,&
-        ComponentVector, ComplementExists, Use2, IsHarmonic, FlipActive
+        ComponentVector, ComponentVectorB, ComplementExists, Use2, IsHarmonic, FlipActive
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution
-    INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
-    REAL(KIND=dp), POINTER :: Values(:), DispValues(:), Disp2Values(:), Values2(:), Values3(:)
+    INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
+    REAL(KIND=dp), POINTER :: Values(:), Values2(:), Values3(:), DispValues(:)
+    REAL(KIND=dp), POINTER :: ValuesB(:), ValuesB2(:), ValuesB3(:), DispBValues(:)
     REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
     INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: TmpIndexes(27), VarType
     INTEGER :: NamingMode 
     
-    COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)    
+    COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:), EigenVectors2(:,:), EigenVectors3(:,:)
+    COMPLEX(KIND=dp), POINTER :: EigenVectorsB(:,:), EigenVectorsB2(:,:), EigenVectorsB3(:,:)
+    COMPLEX(KIND=dp) :: zval
     REAL(KIND=dp), POINTER :: ConstraintModes(:,:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
+    REAL(KIND=dp), POINTER :: TmpArray(:,:)
+    REAL(KIND=dp) :: CoordScale(3)
     
-
     ! Initialize the auxiliary module for buffered writing
     !--------------------------------------------------------------
     CALL AscBinWriteInit( AsciiOutput, SinglePrec, VtuUnit, BufferSize )
@@ -1415,7 +1416,7 @@ CONTAINS
     CALL AscBinStrWrite( OutStr )
 
     DispDofs = 0
-    Disp2Dofs = 0
+    DispBDofs = 0
     IF(RemoveDisp) THEN
       Solution => VariableGet( Model % Mesh % Variables, 'Displacement',ThisOnly=NoInterp)
       IF( ASSOCIATED( Solution ) ) THEN
@@ -1431,13 +1432,24 @@ CONTAINS
 
       Solution => VariableGet( Model % Mesh % Variables, 'Mesh Update',ThisOnly=NoInterp)
       IF( ASSOCIATED( Solution ) ) THEN
-        Disp2Perm => Solution % Perm
-        Disp2Values => Solution % Values
-        Disp2Dofs = Solution % Dofs
+        DispBPerm => Solution % Perm
+        DispBValues => Solution % Values
+        DispBDofs = Solution % Dofs
         CALL Info('VtuOutputSolver','Automatically complement > Displacement < by > Mesh Update < field',Level=7)
       END IF
     END IF
 
+    CoordScale = 1.0_dp
+    IF( ListGetLogical( Params,'Coordinate Scaling Revert', Found ) ) THEN
+      TmpArray => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',Found )    
+      IF( Found ) THEN            
+        DO i=1,Model % Mesh % MaxDim 
+          j = MIN( i, SIZE(TmpArray,1) )
+          CoordScale(i) = 1.0_dp / TmpArray(j,1)
+        END DO
+      END IF
+    END IF
+      
 
     ! When the data is 'appended' two loops will be taken and the data will be written
     ! on the second loop. Offset is the position in the appended data after the '_' mark.
@@ -1569,10 +1581,10 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            IF( NoModes + NoModes2 > 0 ) THEN
-              CALL Warn('WriteVtuXMLFile','Modes cannot currently be given componentwise!')
-              CYCLE
-            END IF
+            !IF( NoModes + NoModes2 > 0 ) THEN
+            !  CALL Warn('WriteVtuXMLFile','Modes cannot currently be given componentwise!')
+            !  CYCLE
+            !END IF
             IF( VarType == Variable_on_gauss_points ) THEN
               CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
               CYCLE
@@ -1580,11 +1592,13 @@ CONTAINS
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values2 => Solution % Values
+              EigenVectors2 => Solution % EigenVectors
               dofs = 2
             END IF
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly=NoInterp)
             IF( ASSOCIATED(Solution)) THEN
               Values3 => Solution % Values
+              EigenVectors3 => Solution % EigenVectors
               dofs = 3
             END IF
             Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1',ThisOnly=NoInterp)
@@ -1592,27 +1606,46 @@ CONTAINS
           
           !---------------------------------------------------------------------
           ! There may be special complementary variables such as 
-          ! displacement & mesh update. These are not implemented for modal output. 
+          ! displacement & mesh update. 
           !---------------------------------------------------------------------
           ComplementExists = .FALSE.
-          IF( NoModes + NoModes2 == 0 ) THEN
+          IF( .TRUE. ) THEN ! IF( NoModes + NoModes2 == 0 ) THEN
             IF(Rank==0) WRITE(Txt,'(A,I0,A)') 'Scalar Field ',Vari,' Complement'
             IF(Rank==1) WRITE(Txt,'(A,I0,A)') 'Vector Field ',Vari,' Complement'
             IF(Rank==2) WRITE(Txt,'(A,I0,A)') 'Tensor Field ',Vari,' Complement'
 
-            FieldName2 = GetString( Params, TRIM(Txt), Found )
+            FieldNameB = GetString( Params, TRIM(Txt), Found )
             IF( Found ) THEN
-              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName2),ThisOnly=NoInterp)
+              Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB),ThisOnly=NoInterp)
+              ComponentVectorB = .FALSE.
+              IF(.NOT. ASSOCIATED( Solution ) ) THEN
+                Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 1',ThisOnly=NoInterp)
+                ComponentVectorB = ASSOCIATED(Solution)
+                EigenVectorsB => Solution % EigenVectors
+              END IF
+              
               IF( ASSOCIATED(Solution)) THEN 
-                Values2 => Solution % Values
-                Perm2 => Solution % Perm 
+                ValuesB => Solution % Values
+                PermB => Solution % Perm 
+                IF( ComponentVectorB ) THEN                  
+                  Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 2',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution)) THEN
+                    ValuesB2 => Solution % Values
+                    EigenVectorsB2 => Solution % EigenVectors
+                  END IF
+                  Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldNameB)//' 3',ThisOnly=NoInterp)
+                  IF( ASSOCIATED(Solution)) THEN
+                    ValuesB3 => Solution % Values
+                    EigenVectorsB3 => Solution % EigenVectors
+                  END IF
+                END IF
                 ComplementExists = .TRUE.
               ELSE
-                CALL Warn('WriteVTUFile','Complement does not exist:'//TRIM(FieldName2))
+                CALL Warn('WriteVTUFile','Complement does not exist:'//TRIM(FieldNameB))
               END IF
             END IF
           END IF
-
+          
           IF( dofs > 1 ) THEN
             sdofs = MAX(dofs,dim)
           ELSE
@@ -1713,31 +1746,59 @@ CONTAINS
                 IF( ComplementExists ) THEN
                   IF( j == 0 ) THEN
                     Use2 = .TRUE. 
-                    j = Perm2(i)
+                    j = PermB(i)
                   END IF
                 END IF
-
+                
                 DO k=1,sdofs              
                   IF(j==0 .OR. k > dofs) THEN
                     val = 0.0_dp
-                  ELSE IF( ComponentVector ) THEN
-                    IF( k == 1 ) val = Values(j)
-                    IF( k == 2 ) val = Values2(j)
-                    IF( k == 3 ) val = Values3(j)
-                  ELSE IF( Use2 ) THEN
-                    val = Values2(dofs*(j-1)+k)              
                   ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
-                    IF( EigenVectorMode == 0 ) THEN
-                      val = REAL( EigenVectors(IndField,dofs*(j-1)+k) )
-                    ELSE IF( EigenVectorMode == 1 ) THEN
-                      val = AIMAG( EigenVectors(IndField,dofs*(j-1)+k) )
+                    IF( Use2 ) THEN
+                      IF( ComponentVectorB ) THEN
+                        IF( k == 1 ) zval = EigenVectorsB(IndField,j)
+                        IF( k == 2 ) zval = EigenVectorsB2(IndField,j)
+                        IF( k == 3 ) zval = EigenVectorsB3(IndField,j)
+                      ELSE
+                        zval = EigenVectorsB(IndField,dofs*(j-1)+k) 
+                      END IF
                     ELSE
-                      val = ABS( EigenVectors(IndField,dofs*(j-1)+k) )
+                      IF( ComponentVector ) THEN
+                        IF( k == 1 ) zval = EigenVectors(IndField,j)
+                        IF( k == 2 ) zval = EigenVectors2(IndField,j)
+                        IF( k == 3 ) zval = EigenVectors3(IndField,j)
+                      ELSE
+                        zval = EigenVectors(IndField,dofs*(j-1)+k) 
+                      END IF
                     END IF
+                    
+                    IF( EigenVectorMode == 0 ) THEN
+                      val = REAL( zval )
+                    ELSE IF( EigenVectorMode == 1 ) THEN
+                      val = AIMAG( zval ) 
+                    ELSE
+                      val = ABS( zval ) 
+                    END IF                    
                   ELSE IF( NoModes2 > 0 ) THEN
                     val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE
-                    val = Values(dofs*(j-1)+k)              
+                    IF( Use2 ) THEN
+                      IF( ComponentVectorB ) THEN
+                        IF( k == 1 ) val = ValuesB(j)
+                        IF( k == 2 ) val = ValuesB2(j)
+                        IF( k == 3 ) val = ValuesB3(j)
+                      ELSE
+                        val = ValuesB(dofs*(j-1)+k)              
+                      END IF
+                    ELSE
+                      IF( ComponentVector ) THEN
+                        IF( k == 1 ) val = Values(j)
+                        IF( k == 2 ) val = Values2(j)
+                        IF( k == 3 ) val = Values3(j)
+                      ELSE
+                        val = Values(dofs*(j-1)+k)              
+                      END IF
+                    END IF
                   END IF
 
                   IF( FlipActive ) THEN
@@ -1995,7 +2056,7 @@ CONTAINS
                       m = CurrentElement % BoundaryInfo % Left % ElementIndex
                     ELSE
                       PRINT*,m,size(perm)
-                      STOP 'VtuOutputSolver: Should not happen ?'
+                      CALL Fatal('VtuOutputSolver','Should not happen!')
                     END IF
                   END IF
                   m = Perm( m ) 
@@ -2141,9 +2202,8 @@ CONTAINS
         y = Model % Mesh % Nodes % y( i )
         z = Model % Mesh % Nodes % z( i )
 
-
         ! If displacement field is active remove the displacement from the coordinates
-        IF( dispdofs > 0 .OR. disp2dofs > 0) THEN
+        IF( dispdofs > 0 .OR. dispBdofs > 0) THEN
           j = 0
           IF(dispdofs > 0) THEN
             j = DispPerm(i)
@@ -2153,16 +2213,20 @@ CONTAINS
               IF(dispdofs == 3) z = z - DispValues(dispdofs*(j-1)+3)
             END IF
           END IF
-          IF(disp2dofs > 0 .AND. j==0) THEN
-            j = Disp2Perm(i)
+          IF(dispBdofs > 0 .AND. j==0) THEN
+            j = DispBPerm(i)
             IF( j > 0 ) THEN
-              x = x - Disp2Values(disp2dofs*(j-1)+1)
-              y = y - Disp2Values(disp2dofs*(j-1)+2)
-              IF(disp2dofs == 3) z = z - Disp2Values(disp2dofs*(j-1)+3)
+              x = x - DispBValues(dispBdofs*(j-1)+1)
+              y = y - DispBValues(dispBdofs*(j-1)+2)
+              IF(dispBdofs == 3) z = z - DispBValues(dispBdofs*(j-1)+3)
             END IF
           END IF
         END IF
 
+        x = CoordScale(1) * x
+        y = CoordScale(2) * y
+        z = CoordScale(3) * z
+        
         CALL AscBinRealWrite( x )
         CALL AscBinRealWrite( y )
         CALL AscBinRealWrite( z )
@@ -2577,10 +2641,11 @@ CONTAINS
 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )
-            IF( ComponentVector ) THEN
-              CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
-              CYCLE
-            ELSE IF( EigenAnalysis ) THEN
+            !IF( ComponentVector ) THEN
+            !  CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
+            !  CYCLE
+            !ELSE
+            IF( EigenAnalysis ) THEN
               IF( GotActiveModes ) THEN
                 IndField = ActiveModes( FileIndex ) 
               ELSE
@@ -2700,10 +2765,11 @@ CONTAINS
 
             IF( ASSOCIATED(Solution % EigenVectors)) THEN
               NoModes = SIZE( Solution % EigenValues )
-              IF( ComponentVector ) THEN
-                CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
-                CYCLE
-              ELSE IF( EigenAnalysis ) THEN
+              !IF( ComponentVector ) THEN
+              !  CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
+              !  CYCLE
+              !ELSE
+              IF( EigenAnalysis ) THEN
                 IF( GotActiveModes ) THEN
                   IndField = ActiveModes( FileIndex ) 
                 ELSE

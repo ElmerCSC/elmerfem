@@ -17,14 +17,17 @@ End
 
 Simulation
   Max Output Level = 5
+
   Coordinate System = "Cartesian"
   Simulation Type = Steady
-  Steady State Max Iterations = 1
   Output Intervals(1) = 1
+  Steady State Max Iterations = 1
 
   Coordinate Scaling = 1.0e-3
 
-  $w=1.0e5
+  Post File = a.ep
+
+  $ w = 1.0e5
   Angular Frequency = Real $w
 End
 

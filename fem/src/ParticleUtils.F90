@@ -2128,6 +2128,8 @@ RETURN
         i = Particles % ElementIndex(No)        
         IF( i > 0 ) THEN
           ElementSize = SizeValues(i)
+        ELSE
+          ElementSize = 0._dp
         END IF
       END IF
       RETURN
@@ -5945,7 +5947,7 @@ RETURN
 
       ! Constrain the timestep
       !------------------------------------------------------------------
-      dt = MAX( MIN( dt, dtmax ), dtmin )
+!     dt = MAX( MIN( dt, dtmax ), dtmin )
 
       ! Do not exceed the total integration time
       !-------------------------------------------

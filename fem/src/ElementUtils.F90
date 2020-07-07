@@ -612,31 +612,56 @@ CONTAINS
     
     IF ( Radiation ) THEN
       BLOCK
-        INTEGER, ALLOCATABLE :: Inds(:)
-        INTEGER :: cnt
+        INTEGER, ALLOCATABLE :: Inds(:),ElemInds(:),ElemInds2(:)
+        INTEGER :: cnt, maxnodes
 
+        n = Mesh % MaxElementNodes
+        ALLOCATE( ElemInds(n), ElemInds2(n) )
+        ElemInds = 0
+        ElemInds2 = 0
+
+        ! Check the maximum number of nodes in boundary element
+        maxnodes = 0
+        DO i = Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          
+          Element => Mesh % Elements(i)
+          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+          
+          n = Element % Type % NumberOfNodes
+          maxnodes = MAX( n, maxnodes )
+        END DO
+        
+        
         CALL Info('MakeListMatrix','Adding radiation matrix',Level=14)      
         DO i = Mesh % NumberOfBulkElements+1, &
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           
           Element => Mesh % Elements(i)
           IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
-
+          
+          n = Element % Type % NumberOfNodes
+          
+          IF( DgSolver ) THEN
+            CALL DgRadiationIndexes(Element,n,ElemInds)
+          END IF
+            
           DO j=1,Element % TYPE % NumberOfNodes
-            IF( DGSolver ) THEN
-              k1 = Reorder(Element % DGIndexes(j))
+
+            IF( DgSolver ) THEN
+              k1 = Reorder(ElemInds(j))
             ELSE
               k1 = Reorder(Element % NodeIndexes(j))
             END IF
-
+            
             NumberOfFactors = Element % BoundaryInfo % &
                 GebhardtFactors % NumberOfImplicitFactors
-
+            
             IF (.NOT.ALLOCATED(inds)) THEN
-              ALLOCATE(inds(4*NumberOfFactors))
-            ELSE IF(SIZE(inds)<4*NumberOfFactors) THEN
+              ALLOCATE(inds(maxnodes*NumberOfFactors))
+            ELSE IF(SIZE(inds)<maxnodes*NumberOfFactors) THEN
               DEALLOCATE(inds)
-              ALLOCATE(inds(4*NumberOfFactors))
+              ALLOCATE(inds(maxnodes*NumberOfFactors))
             END IF
 
             cnt = 0
@@ -645,16 +670,23 @@ CONTAINS
               Elm => Mesh % Elements( Element % BoundaryInfo % &
                   GebhardtFactors % Elements(n) )
 
+              IF( DgSolver ) THEN
+                CALL DgRadiationIndexes(Elm,Elm % Type % NumberOfNodes,ElemInds2)
+              END IF
+              
               DO k=1,Elm % TYPE % NumberOfNodes
                 cnt = cnt + 1
+
                 IF( DGSolver ) THEN
-                  inds(cnt) = Reorder(Elm % DGIndexes(k))
-               ELSE
+                  inds(cnt) = Reorder(ElemInds2(k))
+                ELSE
                   inds(cnt) = Reorder(Elm % NodeIndexes(k))
                 END IF
               END DO
             END DO
+            
             CALL Sort(cnt,inds)
+
             CALL List_AddMatrixIndexes(List,k1,cnt,inds)
           END DO
         END DO
@@ -840,6 +872,61 @@ CONTAINS
       END DO      
       DEALLOCATE( InvPerm ) 
     END IF
+
+  CONTAINS
+
+
+    ! Pick thet correct indexes for radition when using discontinuous Galerkin.
+    ! In internal BCs we expect to find 'emissivity' given on either side.
+    !--------------------------------------------------------------------------
+    SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
+
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: n
+      INTEGER :: ElemInds(:)
+
+      TYPE(Element_t), POINTER :: Left, Right, Parent
+      INTEGER :: i,i1,n1,mat_id
+      LOGICAL :: Found
+           
+      Left => Element % BoundaryInfo % Left
+      Right => Element % BoundaryInfo % Right
+      
+      IF(ASSOCIATED(Left) .AND. ASSOCIATED(Right)) THEN
+        DO i=1,2
+          IF(i==1) THEN
+            Parent => Left
+          ELSE
+            Parent => Right
+          END IF
+          
+          mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
+              'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
+          IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
+
+          IF( i==2) THEN
+            CALL Fatal('MakeListMatrix','DG boundary parents should have emissivity!')
+          END IF          
+        END DO                
+      ELSE IF(ASSOCIATED(Left)) THEN
+        Parent => Left
+      ELSE IF(ASSOCIATED(Right)) THEN
+        Parent => Right
+      ELSE
+        CALL Fatal('MakeListMatrix','DG boundary should have parents!')
+      END IF
+
+      n1 = Parent % TYPE % NumberOfNodes
+      DO i=1,n
+        DO i1 = 1, n1
+          IF( Parent % NodeIndexes( i1 ) == Element % NodeIndexes(i) ) THEN
+            ElemInds(i) = Parent % DGIndexes( i1 )
+            EXIT
+          END IF
+        END DO
+      END DO
+      
+    END SUBROUTINE DgRadiationIndexes
 
 !------------------------------------------------------------------------------
   END SUBROUTINE MakeListMatrix

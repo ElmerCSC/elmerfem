@@ -844,7 +844,8 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
     for(j=0;j<nobound;j++) {
       if(bound[j].created == FALSE) continue;      
       for(i=1;i<=bound[j].nosides;i++) {
-	GetBoundaryElement(i,&bound[j],data,ind,&elemtype); 
+	/*GetElementSide(elemind2,side,1,data,&sideind2[0],&sideelemtype2); */
+	GetBoundaryElement(i,&bound[j],data,ind,&elemtype);
 	for(k=0;k<elemtype%100;k++)
 	  fprintf(out,"%d ",ind[k]-di);
       }

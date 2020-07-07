@@ -386,7 +386,8 @@ void StreamLine::draw(VtkPost* vtkPost, TimeStep* timeStep)
   }
 
   mapper->SetColorModeToMapScalars();
-  mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  //mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  mapper->SetLookupTable(vtkPost->GetLut("Streamline"));
 
   vtkPost->GetStreamLineActor()->SetMapper(mapper);
 

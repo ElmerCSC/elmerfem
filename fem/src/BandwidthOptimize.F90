@@ -74,31 +74,40 @@ CONTAINS
      TYPE(ListMatrix_t) :: List(:)
      INTEGER :: n
      INTEGER :: HalfBandWidth
-     INTEGER, OPTIONAL :: Reorder(:), InvInitialReorder(:)
+     INTEGER, OPTIONAL, TARGET :: Reorder(:), InvInitialReorder(:)
 !-------------------------------------------------------------------------------
      INTEGER :: i,j,k,istat
      TYPE(ListMatrixEntry_t), POINTER :: CList
+     INTEGER, POINTER :: pReorder(:), pInvInitialReorder(:)
 !-------------------------------------------------------------------------------
      HalfBandWidth = 0
+
+     ! Let's try with pointers as gcc 10 might not like PRESENT within OMP pragmas..
+     pReorder => NULL()
+     pInvInitialReorder => NULL()
+
+     IF( PRESENT(Reorder) ) pReorder => Reorder
+     IF( PRESENT(InvInitialReorder) ) pInvInitialReorder => InvInitialReorder
+     
      !$OMP PARALLEL DO &
-     !$OMP SHARED(List, Reorder, InvInitialReorder, N) & 
+     !$OMP SHARED(List, pReorder, pInvInitialReorder, N) & 
      !$OMP PRIVATE(Clist, j, k) & 
      !$OMP REDUCTION(max:HalfBandWidth) &
      !$OMP DEFAULT(NONE)
      DO i=1,n
-        CList => List(i) % Head
-        j = i
-        IF ( PRESENT( InvInitialReorder ) ) j = InvInitialReorder(j)
-        DO WHILE( ASSOCIATED( CList ) )
-           k = CList % Index
-           IF ( PRESENT(InvInitialReorder) ) k = InvInitialReorder(k)
-           IF ( .NOT. PRESENT( Reorder ) ) THEN
-              HalfBandwidth = MAX( HalfBandWidth, ABS(j-k) )
-           ELSE
-              HalfBandwidth = MAX( HalfBandWidth, ABS(Reorder(j)-Reorder(k)) )
-           END IF
-           Clist => Clist % Next
-        END DO
+       CList => List(i) % Head
+       j = i
+       IF ( ASSOCIATED(pInvInitialReorder ) ) j = pInvInitialReorder(j)
+       DO WHILE( ASSOCIATED( CList ) )
+         k = CList % Index
+         IF ( ASSOCIATED(pInvInitialReorder) ) k = pInvInitialReorder(k)
+         IF ( ASSOCIATED( pReorder ) ) THEN
+           HalfBandwidth = MAX( HalfBandWidth, ABS(pReorder(j)-pReorder(k)) )
+         ELSE
+           HalfBandwidth = MAX( HalfBandWidth, ABS(j-k) )             
+         END IF
+         Clist => Clist % Next
+       END DO
      END DO
      !$OMP END PARALLEL DO
 !-------------------------------------------------------------------------------
