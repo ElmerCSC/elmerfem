@@ -5396,8 +5396,7 @@ CONTAINS
           NeedListMatrix = .TRUE.
         END IF
 
-        IF( ParEnv % PEs > 1 ) CALL Warn(Caller,'Node index perhaps not set properly in parallel')
-        IF( ind == 0 ) CYCLE
+        IF( ParEnv % PEs > 1 ) CALL Warn(Caller,'Plane node indices perhaps not set properly in parallel')
 
         ! Ok, now sum up the rows to the corresponding nodal index
         LumpedNodeSet = .FALSE.
