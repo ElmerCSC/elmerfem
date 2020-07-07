@@ -12915,6 +12915,7 @@ END FUNCTION SearchNodeL
 
     BackRotation = ListGetLogical(Params,'Back Rotate N-T Solution',GotIt)
     IF (.NOT.GotIt) BackRotation=.TRUE.
+    BackRotation = BackRotation .AND. ASSOCIATED(Solver % Variable % Perm)
 
     IF ( Solver % Matrix % Lumped .AND. Solver % TimeOrder == 1 ) THEN
        Method = ListGetString( Params, 'Timestepping Method', GotIt)
@@ -13113,7 +13114,8 @@ END FUNCTION SearchNodeL
     IF(ComputeChangeScaled) THEN
        ALLOCATE(NonlinVals(SIZE(x)))
        NonlinVals = x
-       CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
+       IF (ASSOCIATED(Solver % Variable % Perm)) & 
+           CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
     END IF
 
     IF( AndersonAcc .AND. AndersonScaled ) THEN
@@ -13515,8 +13517,9 @@ END FUNCTION SearchNodeL
       ALLOCATE( Res(n) ) 
 
       ! If needed move the current solution to N-T coordinate system
-      ! before computing the residual.     
-      CALL RotateNTSystemAll(x, Solver % Variable % Perm, DOFs)
+      ! before computing the residual.
+      IF (ASSOCIATED(Solver % Variable % Perm)) &
+          CALL RotateNTSystemAll(x, Solver % Variable % Perm, DOFs)
 
       CALL LinearSystemResidual( A, b, x, res )
       bb => res
