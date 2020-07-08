@@ -3240,6 +3240,7 @@ CONTAINS
         END DO
       END DO
 
+      MonolithicVar % Name = '' ! Some name needed to avoid an uninitialised value error
       MonolithicVar % Values => CollX
       MonolithicVar % Dofs = 1
       MonolithicVar % Perm => NULL()
