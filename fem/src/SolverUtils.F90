@@ -5397,7 +5397,7 @@ CONTAINS
         END IF
 
         IF( ParEnv % PEs > 1 ) CALL Warn(Caller,'Node index perhaps not set properly in parallel')
-        IF( ind == 0 ) CYCLE
+        ! IF( ind == 0 ) CYCLE
 
         ! Ok, now sum up the rows to the corresponding nodal index
         LumpedNodeSet = .FALSE.
