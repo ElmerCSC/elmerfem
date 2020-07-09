@@ -1,20 +1,12 @@
 !---------------------------------------------------------
-! A verification case for assembling solid and shell equations
+! A test case for assembling solid and shell equations
 ! into a single linear system so that the coupled equations can 
 ! be solved simultaneously.
 !
-! As a reference, the case can be simplified to a beam model where the beam
-! is clamped at both ends. The Euler-Bernoulli beam theory predicts
-! the maximum deflection to be p b L^4/(384 EI) = 0.2025, with
-! p, b and L being the surface traction, the beam width and
-! the beam length. The solution of the simple beam theory is seen to be
-! fairly closed to that of the more complicated coupled model.
+! This is an eigenanalysis version derived from the verification
+! case ../tests/BeamSolidSolidCoupling/
 !
-! The original version P.R. 3.9.2019, 
-! modified to allow a comparison with the simple beam theory 
-! by M.M. June, 2020.
-!
-! Added eigensolution to the coupled block case. P.R. 9.6.2020
+! P.R. 9.6.2020
 !------------------------------------------------------------
 
 Header
@@ -47,13 +39,13 @@ Body 2
   Name = "Shell Body"
   Equation = 2
   Material = 1
-  Body Force = 1 
+!  Body Force = 1 
 End
 
-Body Force 1
-  Name = "Transverse load"
-  Normal Pressure = 1e4
-End 
+!Body Force 1
+!  Name = "Transverse load"
+!  Normal Pressure = 1e4
+!End 
 
 Equation 1
   Name = "Elasticity"
@@ -119,7 +111,6 @@ Solver 1
   Eigen System Select = smallest magnitude
 !  Eigen System Shift = Real 1.0e3
 !  Eigen System Normalize To Unity = Logical True
-  Eigen Analysis = True
 !  Save EigenValues = Logical True
 End
  
@@ -196,17 +187,17 @@ End
 Boundary Condition 3
   Name = "LeftTop"
   Target Boundaries(1) = 6 
-  Normal Force = 5.0e3
+!  Normal Force = 5.0e3
 End
 
 Boundary Condition 4
   Name = "LeftBottom"
   Target Boundaries(1) = 5
-  Normal Force = -5.0e3
+!  Normal Force = -5.0e3
 End
 
 
-Solver 1:: Reference Norm = 2.25975368E-02
+Solver 1:: Reference Norm = 2.26383078E-02
 
 
 

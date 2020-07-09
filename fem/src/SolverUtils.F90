@@ -17056,14 +17056,13 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A_sf   !< (1,2)-block for interaction
     LOGICAL :: IsSolid, IsPlate, IsShell, IsBeam !< The type of the slave variable
    !------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
+    LOGICAL :: DoDamp, DoMass
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
-    TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
-    LOGICAL :: DoDamp, DoMass
-    REAL(KIND=dp) :: cc1,cc2
     CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
    !------------------------------------------------------------------------------
 
@@ -17107,6 +17106,20 @@ CONTAINS
       A_sf % Values = 0.0_dp      
     END IF
 
+    DoMass = .FALSE.
+    IF( ASSOCIATED( A_f % MassValues ) ) THEN
+      IF( ASSOCIATED( A_s % MassValues ) ) THEN
+        DoMass = .TRUE.        
+      ELSE
+        CALL Warn(Caller,'Both solid and shell should have MassValues!')
+      END IF
+    END IF
+
+    DoDamp = ASSOCIATED( A_f % DampValues )
+    IF( DoDamp ) THEN
+      CALL Warn(Caller,'Damping matrix values at shell interface will be dropped!')
+    END IF
+
     ! This is still under development and not used for anything
     ! Probably this will not be needed at all but rather we need the director.
     !IF( IsShell ) CALL DetermineCouplingNormals()
@@ -17128,11 +17141,6 @@ CONTAINS
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
         INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
         INTEGER :: InterfaceN, hits
-
-        cc1 = ListGetCReal( Solver % Values,'cc1',Stat)
-        IF(.NOT. Stat) cc1 = 1.0_dp
-        cc2 = ListGetCReal( Solver % Values,'cc2',Stat)
-        IF(.NOT. Stat) cc2 = cc1
         
         FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat )
         IF (.NOT. Stat) FixRot = .TRUE.
@@ -17174,6 +17182,12 @@ CONTAINS
               
               DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                 A_f % Values(k) = 0.0_dp
+                IF (DoMass) THEN
+                  A_f % MassValues(k) = 0.0_dp
+                END IF
+                IF( DoDamp) THEN
+                  A_f % DampValues(k) = 0.0_dp
+                END IF
               END DO
               A_f % rhs(kf) = 0.0_dp
             END DO
@@ -17338,7 +17352,7 @@ CONTAINS
                       val = Director(ls) * dBasisdx(p,ls)
 
                       
-                      CALL AddToMatrixElement(A_fs,kf,ks,cc1*weight*val)
+                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
 
                       ! Here the idea is to distribute the implicit moments of the shell solver
                       ! to forces for the solid solver. So even though the stiffness matrix related to the
@@ -17347,8 +17361,14 @@ CONTAINS
                       ! in the first place the Lagrange variable formulation should bring us to a symmetric 
                       ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
                       ! reactions obtained by performing a matrix-vector product.
+                      !
+                      ! Note that no attempt is currently made to transfer external moment
+                      ! loads of the shell model to loads of the coupled model. Likewise
+                      ! rotational inertia terms of the shell model are not transformed
+                      ! to inertia terms of the coupled model. 
+                      !
                       DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-cc2*weight*val*A_f0(k)) 
+                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
                       END DO
                     END DO
                   END IF
@@ -17371,19 +17391,7 @@ CONTAINS
     ! the displacement. Hence we can deal with the common parts of solid-solid and 
     ! solid-shell coupling in same subroutine.
     !
-    DoMass = .FALSE.
-    IF( ASSOCIATED( A_f % MassValues ) ) THEN
-      IF( ASSOCIATED( A_s % MassValues ) ) THEN
-        DoMass = .TRUE.        
-      ELSE
-        CALL Warn(Caller,'Both solid and shell should have MassValues!')
-      END IF
-    END IF
 
-    DoDamp = ASSOCIATED( A_f % DampValues )
-    IF( DoDamp ) THEN
-      CALL Warn(Caller,'Damping matrix values at shell interface will be dropped!')
-    END IF
      
     IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
