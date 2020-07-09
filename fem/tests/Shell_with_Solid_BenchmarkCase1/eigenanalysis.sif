@@ -2,6 +2,11 @@
 ! WARNING: THIS SIF FILE GIVES STILL ERRONEOUS RESULTS
 !          AND IS USED FOR CODE DEVELOPMENT PURPOSES.
 !
+! The results of this simulation should be compared with
+! those of the 2D shell model
+! 
+!        ../tests/Shell_BenchmarkCase1_Quad/eigenanalysis.sif
+!
 !---------------------------------------------------------
 ! A tentative test case for assembling 3D solid and 2D shell 
 ! equations into a single linear system so that the eigenanalysis 
@@ -15,6 +20,7 @@
 !       ../tests/Shell_with_Solid_BenchmarkCase1/case.sif
 !       ../tests/Shell_with_Solid_BenchmarkCase2/case.sif
 !
+! Note that only symmetric modes are sought here.
 !------------------------------------------------------------
 
 ! Define the thickness of the shell as a MATC variable:
