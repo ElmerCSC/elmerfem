@@ -17129,259 +17129,227 @@ CONTAINS
     ! for the corresponding forces are also created.
     IF (IsShell) THEN
       BLOCK
-        INTEGER :: p,lf,ls,ii,jj,n,m,t
-        REAL(KIND=dp) :: u,v,w,weight,detJ,val
-        TYPE(Element_t), POINTER :: Element,ShellElement
         INTEGER, POINTER :: Indexes(:)
-        REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
-        TYPE(Nodes_t) :: Nodes
-        LOGICAL :: Stat, FixRot, DiscreteKirchhoff
-        REAL(KIND=dp) :: x, y, z 
-        REAL(KIND=dp), POINTER :: Director(:)
-        REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
         INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
         INTEGER :: InterfaceN, hits
-        
-        FixRot = ListGetLogical( Solver % Values,'Fix Rotation',Stat )
-        IF (.NOT. Stat) FixRot = .TRUE.
+        INTEGER :: p,lf,ls,ii,jj,n,m,t
+        REAL(KIND=dp), POINTER :: Director(:)
+        REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+        REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
+        REAL(KIND=dp) :: u,v,w,weight,detJ,val
+        REAL(KIND=dp) :: x, y, z 
 
-        ! The following is used to choose the tying procedure for "rotations".
-        DiscreteKirchhoff = ListGetLogical(Solver % Values, 'Discrete Kirchhoff Tying', Stat)
+        TYPE(Element_t), POINTER :: Element, ShellElement
+        TYPE(Nodes_t) :: Nodes
+        LOGICAL :: Stat
 
-        IF(.NOT. FixRot ) THEN
-          CALL Info(Caller,'Coupling for rotational shell dofs is missing!')                  
-        ELSE
-          CALL Info(Caller,'Using experimental fixing of shell rotations')
-          n = Mesh % MaxElementNodes 
-          ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+        n = Mesh % MaxElementNodes 
+        ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
-          ! Memorize the original values
-          ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
-          A_f0 = A_f % Values
+        ! Memorize the original values
+        ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
+        A_f0 = A_f % Values
 
-          ALLOCATE( NodeHits( Mesh % NumberOfNodes ), InterfacePerm( Mesh % NumberOfNodes ) )
-          NodeHits = 0
-          InterfacePerm = 0
-          
-          ! First, zero the rows related to directional derivative dofs, 
-          ! i.e. the components 4,5,6. "s" refers to solid and "f" to shell.
-          InterfaceN = 0
-          DO i=1,Mesh % NumberOfNodes
+        ALLOCATE( NodeHits( Mesh % NumberOfNodes ), InterfacePerm( Mesh % NumberOfNodes ) )
+        NodeHits = 0
+        InterfacePerm = 0
+
+        ! First, zero the rows related to directional derivative dofs, 
+        ! i.e. the components 4,5,6. "s" refers to solid and "f" to shell.
+        InterfaceN = 0
+        DO i=1,Mesh % NumberOfNodes
+          jf = FPerm(i)      
+          js = SPerm(i)
+          IF( jf == 0 .OR. js == 0 ) CYCLE
+
+          ! also number the interface
+          InterfaceN = InterfaceN + 1
+          InterfacePerm(i) = InterfaceN
+
+          DO lf = 4, 6
+            kf = fdofs*(jf-1)+lf
+
+            IF( ConstrainedF(kf) ) CYCLE
+
+            DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+              A_f % Values(k) = 0.0_dp
+              IF (DoMass) THEN
+                A_f % MassValues(k) = 0.0_dp
+              END IF
+              IF( DoDamp) THEN
+                A_f % DampValues(k) = 0.0_dp
+              END IF
+            END DO
+            A_f % rhs(kf) = 0.0_dp
+          END DO
+        END DO
+
+        CALL Info(Caller,'Number of nodes at interface: '//TRIM(I2S(InterfaceN)),Level=12)
+
+        ALLOCATE( InterfaceElems(InterfaceN,2) )
+        InterfaceElems = 0
+
+        ! Then go through shell elements and associate each interface node with a list of
+        ! shell elements defined in terms of the interface node
+        DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(t)
+          Indexes => Element % NodeIndexes 
+
+          n = Element % TYPE % ElementCode
+          IF( n > 500 .OR. n < 300 ) CYCLE
+
+          ! We must have shell equation present everywhere and solid equation at least in two nodes
+          IF(ANY( FPerm(Indexes) == 0 ) ) CYCLE 
+          k = COUNT( SPerm(Indexes) > 0 )
+          IF( k < 2 ) CYCLE
+
+          n = Element % Type % NumberOfNodes            
+          DO i=1,n
+            j = Indexes(i)
+            k = InterfacePerm(j)
+            IF( k == 0) CYCLE
+
+            ! Assuming just two shell parents currently
+            IF( InterfaceElems(k,1) == 0 ) THEN
+              InterfaceElems(k,1) = t
+            ELSE IF( InterfaceElems(k,2) == 0 ) THEN
+              InterfaceElems(k,2) = t
+            ELSE
+              CALL Fatal(Caller,'Tree interface elems?')
+            END IF
+          END DO
+        END DO
+
+
+        ! Then go through solid elements associated with the interface and count
+        ! how many solid elements share each interface node.
+        NodeHits = 0
+        DO t=1,Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(t)
+          Indexes => Element % NodeIndexes 
+
+          ! We must have solid equation present everywhere and shell at least at one node.
+          IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
+          IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
+
+          n = COUNT( FPerm(Indexes) > 0 )
+          IF( n /= 2 ) THEN
+            CALL Fatal(Caller,'Currently we can only deal with two hits!')
+          END IF
+
+          DO i=1,SIZE(Indexes)
+            j = FPerm(Indexes(i))
+            IF( j == 0 ) CYCLE
+            NodeHits(j) = NodeHits(j) + 1              
+          END DO
+        END DO
+
+        !PRINT *,'Maximum node hits:',MAXVAL(NodeHits)
+
+        ! Then go through each solid element associated with the interface and
+        ! create matrix entries defining the interaction conditions for the
+        ! directional derivatives and corresponding forces. 
+        DO t=1,Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(t)
+          Indexes => Element % NodeIndexes 
+
+          ! We must have solid equation present everywhere and shell at least at one node.
+          IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
+          IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
+
+          n = Element % TYPE % NumberOfNodes
+          Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
+          Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
+          Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+
+          x = 0.0_dp; y = 0.0_dp; z = 0.0_dp
+          DO i=1,n
+            IF( FPerm(Indexes(i)) == 0 ) CYCLE
+            x = x + Nodes % x(i)
+            y = y + Nodes % y(i)
+            z = z + Nodes % z(i)
+          END DO
+          x = x/2; y = y/2; z = z/2;
+
+          ! TO DO: The following call may not work for p-elements!
+          CALL GlobalToLocal( u, v, w, x, y, z, Element, Nodes )
+
+          ! Integration at the center of the edge
+          stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
+
+          DO ii = 1, n
+            i = Indexes(ii)           
             jf = FPerm(i)      
-            js = SPerm(i)
-            IF( jf == 0 .OR. js == 0 ) CYCLE
-            
-            ! also number the interface
-            InterfaceN = InterfaceN + 1
-            InterfacePerm(i) = InterfaceN
-            
-            DO lf = 4, 6
+            IF( jf == 0 ) CYCLE
+
+            Weight = 1.0_dp / NodeHits(jf)
+
+            !PRINT *,'Weight:',Weight
+
+            DO j=1,2
+              ShellElement => Mesh % Elements(InterfaceElems(InterfacePerm(i),j))
+              hits = 0
+              DO k=1,ShellElement % TYPE % NumberOfNodes
+                IF( ANY( Indexes == ShellElement % NodeIndexes(k) ) ) hits = hits + 1
+              END DO
+              IF( hits >= 2 ) EXIT
+            END DO
+
+            ! Retrieve the director of the shell element: 
+            m = ShellElement % TYPE % NumberOfNodes
+            DO jj=1,m
+              IF(Element % NodeIndexes(ii) == ShellElement % NodeIndexes(jj) ) EXIT
+            END DO
+            Director => GetElementalDirectorInt(Mesh,ShellElement,node=jj)
+
+            !PRINT *,'Director:',ShellElement % ElementIndex,jj,Director            
+
+            DO lf = 4, 6                            
               kf = fdofs*(jf-1)+lf
 
               IF( ConstrainedF(kf) ) CYCLE
-              
-              DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                A_f % Values(k) = 0.0_dp
-                IF (DoMass) THEN
-                  A_f % MassValues(k) = 0.0_dp
-                END IF
-                IF( DoDamp) THEN
-                  A_f % DampValues(k) = 0.0_dp
-                END IF
-              END DO
-              A_f % rhs(kf) = 0.0_dp
-            END DO
-          END DO
 
-          CALL Info(Caller,'Number of nodes at interface: '//TRIM(I2S(InterfaceN)),Level=12)
+              DO ls = 1, dim
+                !
+                ! Directional derivative dofs of the shell equations: 
+                ! We try to enforce the condition d_{i+3}=-<(grad u)n,e_i> 
+                ! where i=1,2,3; i+3=lf, n is director, e_i is unit vector, and 
+                ! u is the displacement field of the solid. 
+                DO p=1,n
+                  js = SPerm(Indexes(p))
+                  ks = sdofs*(js-1)+lf-3
+                  val = Director(ls) * dBasisdx(p,ls)
 
-          ALLOCATE( InterfaceElems(InterfaceN,2) )
-          InterfaceElems = 0
-          
-          ! Then go through shell elements and associate each interface node with a list of
-          ! shell elements defined in terms of the interface node
-          DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-            Element => Mesh % Elements(t)
-            Indexes => Element % NodeIndexes 
-            
-            n = Element % TYPE % ElementCode
-            IF( n > 500 .OR. n < 300 ) CYCLE
-            
-            ! We must have shell equation present everywhere and solid equation at least in two nodes
-            IF(ANY( FPerm(Indexes) == 0 ) ) CYCLE 
-            k = COUNT( SPerm(Indexes) > 0 )
-            IF( k < 2 ) CYCLE
-            
-            n = Element % Type % NumberOfNodes            
-            DO i=1,n
-              j = Indexes(i)
-              k = InterfacePerm(j)
-              IF( k == 0) CYCLE
+                  CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
 
-              ! Assuming just two shell parents currently
-              IF( InterfaceElems(k,1) == 0 ) THEN
-                InterfaceElems(k,1) = t
-              ELSE IF( InterfaceElems(k,2) == 0 ) THEN
-                InterfaceElems(k,2) = t
-              ELSE
-                CALL Fatal(Caller,'Tree interface elems?')
-              END IF
-            END DO
-          END DO
-
-          
-          ! Then go through solid elements associated with the interface and count
-          ! how many solid elements share each interface node.
-          NodeHits = 0
-          DO t=1,Mesh % NumberOfBulkElements
-            Element => Mesh % Elements(t)
-            Indexes => Element % NodeIndexes 
-
-            ! We must have solid equation present everywhere and shell at least at one node.
-            IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
-            IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
-
-            n = COUNT( FPerm(Indexes) > 0 )
-            IF( n /= 2 ) THEN
-              CALL Fatal(Caller,'Currently we can only deal with two hits!')
-            END IF
-
-            DO i=1,SIZE(Indexes)
-              j = FPerm(Indexes(i))
-              IF( j == 0 ) CYCLE
-              NodeHits(j) = NodeHits(j) + 1              
-            END DO
-          END DO
-          
-          !PRINT *,'Maximum node hits:',MAXVAL(NodeHits)
-          
-          ! Then go through each solid element associated with the interface and
-          ! create matrix entries defining the interaction conditions for the
-          ! directional derivatives and corresponding forces. 
-          DO t=1,Mesh % NumberOfBulkElements
-            Element => Mesh % Elements(t)
-            Indexes => Element % NodeIndexes 
-
-            ! We must have solid equation present everywhere and shell at least at one node.
-            IF(ANY( SPerm(Indexes) == 0 ) ) CYCLE
-            IF(ALL( FPerm(Indexes) == 0 ) ) CYCLE
-            
-            n = Element % TYPE % NumberOfNodes
-            Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
-            Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
-            Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
-            
-            x = 0.0_dp; y = 0.0_dp; z = 0.0_dp
-            DO i=1,n
-              IF( FPerm(Indexes(i)) == 0 ) CYCLE
-              x = x + Nodes % x(i)
-              y = y + Nodes % y(i)
-              z = z + Nodes % z(i)
-            END DO
-            x = x/2; y = y/2; z = z/2;
-
-            ! TO DO: The following call may not work for p-elements!
-            CALL GlobalToLocal( u, v, w, x, y, z, Element, Nodes )
-
-            ! Integration at the center of the edge
-            stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )          
-
-            DO ii = 1, n
-              i = Indexes(ii)           
-              jf = FPerm(i)      
-              IF( jf == 0 ) CYCLE
-
-              Weight = 1.0_dp / NodeHits(jf)
-
-              !PRINT *,'Weight:',Weight
-
-              DO j=1,2
-                ShellElement => Mesh % Elements(InterfaceElems(InterfacePerm(i),j))
-                hits = 0
-                DO k=1,ShellElement % TYPE % NumberOfNodes
-                  IF( ANY( Indexes == ShellElement % NodeIndexes(k) ) ) hits = hits + 1
+                  ! Here the idea is to distribute the implicit moments of the shell solver
+                  ! to forces for the solid solver. So even though the stiffness matrix related to the
+                  ! directional derivatives is nullified, the forces are not forgotten.
+                  ! This part may be thought of as being based on two (Råback's) conjectures: 
+                  ! in the first place the Lagrange variable formulation should bring us to a symmetric 
+                  ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
+                  ! reactions obtained by performing a matrix-vector product.
+                  !
+                  ! Note that no attempt is currently made to transfer external moment
+                  ! loads of the shell model to loads of the coupled model. Likewise
+                  ! rotational inertia terms of the shell model are not transformed
+                  ! to inertia terms of the coupled model. Neglecting the rotational
+                  ! inertia might be acceptable in many cases.
+                  !
+                  ! Note that the minus sign of the entries is correct here:
+                  DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                    CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
+                  END DO
                 END DO
-                IF( hits >= 2 ) EXIT
               END DO
 
-              ! Retrieve the director of the shell element: 
-              m = ShellElement % TYPE % NumberOfNodes
-              DO jj=1,m
-                IF(Element % NodeIndexes(ii) == ShellElement % NodeIndexes(jj) ) EXIT
-              END DO
-              Director => GetElementalDirectorInt(Mesh,ShellElement,node=jj)
-
-              !PRINT *,'Director:',ShellElement % ElementIndex,jj,Director            
-              
-              DO lf = 4, 6                            
-                kf = fdofs*(jf-1)+lf
-                
-                IF( ConstrainedF(kf) ) CYCLE
-
-                DO ls = 1, dim
-                  
-                  IF (DiscreteKirchhoff) THEN
-                    ! 
-                    ! Try to enforce two discrete Kirchhoff conditions and
-                    ! a condition for the stretch of the director. This is
-                    ! not fully correct: A plate case is assumed by neglecting 
-                    ! terms depending on the mid-surface curvature.
-                    DO p=1,n
-                      js = SPerm(Indexes(p))
-                      ks = sdofs*(js-1)+ls
-                      val = -Director(ls) * dBasisdx(p,lf-3)
-                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
-
-                      ! The following may be thought of as being based on two (Råback's) conjectures: 
-                      ! in the first place the Lagrange variable formulation should bring us to a symmetric 
-                      ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
-                      ! reactions obtained by performing a matrix-vector product.
-                      DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k))
-                      END DO
-                    END DO
-                  ELSE
-                    !
-                    ! Directional derivative dofs of the shell equations: 
-                    ! We try to enforce the condition d_{i+3}=-<(grad u)n,e_i> 
-                    ! where i=1,2,3; i+3:=lf, n is director, e_i is unit vector, and 
-                    ! u is the displacement field of the solid. 
-                    DO p=1,n
-                      js = SPerm(Indexes(p))
-                      ks = sdofs*(js-1)+lf-3
-                      val = Director(ls) * dBasisdx(p,ls)
-
-                      
-                      CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
-
-                      ! Here the idea is to distribute the implicit moments of the shell solver
-                      ! to forces for the solid solver. So even though the stiffness matrix related to the
-                      ! directional derivatives is nullified, the forces are not forgotten.
-                      ! This part may be thought of as being based on two (Råback's) conjectures: 
-                      ! in the first place the Lagrange variable formulation should bring us to a symmetric 
-                      ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
-                      ! reactions obtained by performing a matrix-vector product.
-                      !
-                      ! Note that no attempt is currently made to transfer external moment
-                      ! loads of the shell model to loads of the coupled model. Likewise
-                      ! rotational inertia terms of the shell model are not transformed
-                      ! to inertia terms of the coupled model. 
-                      !
-                      DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                        CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
-                      END DO
-                    END DO
-                  END IF
-                END DO
-
-                ! This should sum up to unity!
-                CALL AddToMatrixElement(A_f,kf,kf,weight)
-              END DO
+              ! This should sum up to unity!
+              CALL AddToMatrixElement(A_f,kf,kf,weight)
             END DO
           END DO
-          DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
-          DEALLOCATE(A_f0, NodeHits, InterfacePerm)
-        END IF
+        END DO
+        DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
+        DEALLOCATE(A_f0, NodeHits, InterfacePerm)
       END BLOCK
     END IF
     
@@ -17391,8 +17359,6 @@ CONTAINS
     ! the displacement. Hence we can deal with the common parts of solid-solid and 
     ! solid-shell coupling in same subroutine.
     !
-
-     
     IF( IsSolid .OR. IsShell ) THEN  
       ncount = 0
       DO i=1,Mesh % NumberOfNodes
