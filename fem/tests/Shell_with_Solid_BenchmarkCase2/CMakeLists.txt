@@ -5,5 +5,5 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cylinder DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(Shell_with_Solid_BenchmarkCase2 LABELS shell)
+ADD_ELMER_TEST(Shell_with_Solid_BenchmarkCase2 LABELS shell block)
 
