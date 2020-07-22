@@ -346,8 +346,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       IF (iFriction > 1) THEN
         fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=UnFoundFatal)
 
-        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=UnFoundFatal)
-        !Previous default value: MinN = 1.0e-6_dp
 
         NodalLinVelo = 0.0_dp
         NodalLinVelo(1:n) = ListGetReal( &
@@ -370,6 +368,9 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
         ELSE
           CALL FATAL(SolverName,'Could not find variable >Effective Pressure<')
         END IF
+
+        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=UnFoundFatal)
+        !Previous default value: MinN = 1.0e-6_dp
       END IF
 
 
