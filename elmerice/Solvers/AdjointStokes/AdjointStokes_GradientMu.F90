@@ -79,6 +79,8 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t) :: ElementNodes
   TYPE(GaussIntegrationPoints_t) :: IntegStuff
   TYPE(ValueList_t), POINTER :: SolverParams,Material
+  TYPE(ValueList_t), POINTER :: BC
+
   real(kind=dp),allocatable :: Basis(:),dBasisdx(:,:)
   real(kind=dp) :: u,v,w,SqrtElementMetric
   INTEGER, POINTER :: NodeIndexes(:)
@@ -98,7 +100,8 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   real(kind=dp) :: mub,Viscosityb
   real(kind=dp),allocatable,dimension(:) :: c2n,c3n
   real(kind=dp),allocatable,dimension(:) :: NodalViscosityb
-
+  REAL(kind=dp),allocatable,SAVE :: NodalDer(:)
+  LOGICAL :: HaveDer
 
   integer :: i,j,t,n,NMAX,NpN,NActiveNodes,DIM,e,p,q
 
@@ -134,6 +137,8 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
                c2n(NpN),c3n(NpN),&
                NodalViscosityb(NpN))
 
+      allocate(NodalDer(NMAX))
+      
 !!!!!!!!!!! get Solver Variables
       SolverParams => GetSolverParams()
 
@@ -167,12 +172,14 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
                    CALL WARN(SolverName,'Taking default value >FALSE<')
                    SquareFormulation=.FALSE.
            END IF
-  
+
+
+           
   !!! End of First visit
     Firsttime=.false.
   Endif
 
- ! Get variables needed by the Solver
+  ! Get variables needed by the Solver
 
         GradVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
         GradValues => GradVariable % Values
@@ -202,6 +209,12 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
           CALL GetElementNodes( ElementNodes )
           n = GetElementNOFNodes()
           NodeIndexes => Element % NodeIndexes
+
+          BC => GetBC(Element)
+          if (.NOT.ASSOCIATED(BC)) &
+               CALL FATAL(SolverName,'This solver is intended to be executed on a BC')
+
+          NodalDer(1:n) = ListGetReal(BC,'Viscosity derivative',n,NodeIndexes,Found=HaveDer)
 
           VisitedNode(NodeIndexes(1:n))=VisitedNode(NodeIndexes(1:n))+1.0_dp
 
@@ -283,10 +296,12 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
               nodalViscosityb(1:n)=nodalViscosityb(1:n)+Viscosityb*Basis(1:n)
           End Do !on IPs
 
-          IF (SquareFormulation) then
-               nodalViscosityb(1:n)=nodalViscosityb(1:n)*2.0_dp*Values(Perm(NodeIndexes(1:n)))
+          IF (HaveDer) THEN
+            nodalViscosityb(1:n)=nodalViscosityb(1:n)*NodalDer(1:n)
+          ELSE IF (SquareFormulation) then
+            nodalViscosityb(1:n)=nodalViscosityb(1:n)*2.0_dp*Values(Perm(NodeIndexes(1:n)))
           END IF
-
+          
           db(NodeIndexes(1:n)) = db(NodeIndexes(1:n)) + nodalViscosityb(1:n)
        End Do ! on elements
 
