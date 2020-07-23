@@ -196,7 +196,8 @@ DO WHILE (.not.SigmaOK)
 	sigma=sigma+0.001
 	It=It+1
 
-	call srand(860000)
+	!call srand(860000)
+	CALL RANDOM_SEED()
 	do i=1,365
 		TempAirMeanTry(i)=TempAirMeanTry(i)+norm_rand(0.0d0,sigma)
 	enddo
@@ -1121,8 +1122,8 @@ function norm_rand(mean, std_dev)
         r = 1.0
         do while ( r >= 1.0 )
             ! generate random number pair between 0 and 1
-            x=rand()
-            y=rand()
+            CALL RANDOM_NUMBER(x) ! x=rand() only works for GNU
+            CALL RANDOM_NUMBER(y) ! y=rand() only works for GNU        
             ! normalise random numbers to be in square of side-length = R
             x = (x * 2.0) - 1.0
             y = (y * 2.0) - 1.0
