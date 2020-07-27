@@ -86,9 +86,9 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
 
 !!!!! variables Elmer
   TYPE(Variable_t), POINTER :: GradVariable, Variable, VeloSolN,VeloSolD
-  REAL(KIND=dp), POINTER ::  GradValues(:),VelocityN(:),VelocityD(:),Values(:)
-  INTEGER, POINTER :: GradPerm(:), VeloNPerm(:),VeloDPerm(:),Perm(:)
-  CHARACTER(LEN=MAX_NAME_LEN) ::GradSolName,NeumannSolName,DirichletSolName,VarSolName
+  REAL(KIND=dp), POINTER ::  GradValues(:),VelocityN(:),VelocityD(:)
+  INTEGER, POINTER :: GradPerm(:), VeloNPerm(:),VeloDPerm(:)
+  CHARACTER(LEN=MAX_NAME_LEN) ::GradSolName,NeumannSolName,DirichletSolName
 
 !! autres variables
   real(kind=dp),allocatable :: VisitedNode(:),db(:)
@@ -111,7 +111,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   save Firsttime,DIM
   save ElementNodes
   save SolverName
-  save NeumannSolName,DirichletSolName,VarSolName,GradSolName
+  save NeumannSolName,DirichletSolName,GradSolName
   save VisitedNode,db,Basis,dBasisdx
   save Ux,Uy,Uz
   save c2n,c3n
@@ -150,12 +150,6 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
       CALL WARN(SolverName,'Taking default value >VeloD<')
       WRITE(DirichletSolName,'(A)') 'VeloD'
     END IF
-    VarSolName =  GetString( SolverParams,'Optimized Variable Name', Found)
-    IF(.NOT.Found) THEN
-      CALL WARN(SolverName,'Keyword >Optimized Variable Name< not found  in section >Solver<')
-      CALL WARN(SolverName,'Taking default value >Mu<')
-      WRITE(VarSolName,'(A)') 'Mu'
-    END IF
     GradSolName =  GetString( SolverParams,'Gradient Variable Name', Found)
     IF(.NOT.Found) THEN
       CALL WARN(SolverName,'Keyword >Gradient Variable Name< not found  in section >Solver<')
@@ -173,11 +167,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   GradValues => GradVariable % Values
   GradPerm => GradVariable % Perm
   GradValues=0._dp
-  
-  Variable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
-  Values => Variable % Values
-  Perm => Variable % Perm
-  
+    
   VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
   VelocityN => VeloSolN % Values
   VeloNPerm => VeloSolN % Perm
