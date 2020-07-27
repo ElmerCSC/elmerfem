@@ -36,7 +36,6 @@
 !
 ! Serial/Parallel   and 2D/3D
 !
-!
 ! .sif parameters:
 !    In the Solver section:
 !     - Flow Solution Name = String ; name of the variable for the direct problem ("Flow Solution" default)
@@ -44,6 +43,15 @@
 !     - Optimized Variable Name = String ;  ("Mu" default)
 !     - Gradient Variable Name = String ; t ("DJDMu" default)
 !
+! Sometimes a modified function of viscosity is used such that viscosity != optvar and instead
+! viscosity = f(optvar) where optvar is the variable to be optimised.  In this case the 'Viscosity
+! derivative' must be set in the boundary condition. The USF_CoV functions can be used for this.
+! For example, for the case viscosity = optvar^2, viscosity can be set like this in the material section:
+!   viscosity = variable optvar
+!     REAL procedure "ElmerIceUSF" "Asquare"
+! And the partial derivative can be set like this in the BC section:
+!   Viscosity derivative = Variable optvar
+!     REAL procedure "ElmerIceUSF" "Asquare_d"
 !
 !  Execute this solver in the main ice body in conjunction with :
 !       -CostSolver_Adjoint.f90: To compute the cost function;
