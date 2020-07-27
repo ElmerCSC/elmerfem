@@ -43,16 +43,6 @@
 !     - Adjoint Solution Name = String ; name of the variable for the Adjoint system ("Adjoint"  default)
 !     - Optimized Variable Name = String ;  ("Mu" default)
 !     - Gradient Variable Name = String ; t ("DJDMu" default)
-!     - SquareFormulation = Logical ; True if the viscosity ios defined as alpha^2
-!                                               and optimisation on alpha to insure Mu> 0
-!
-!
-! In the  Material Section:
-!     if SquareFormulation = False:
-!          Viscosity = Equals mu
-!     If SquareFormulation = True:
-!         Viscosity = Variable mu
-!           Real MATC "tx*tx"
 !
 !
 !  Execute this solver in the main ice body in conjunction with :
@@ -107,7 +97,6 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag
 
-  logical :: SquareFormulation
   Logical ::  Firsttime=.true.,Found,stat,gotit,UnFoundFatal=.TRUE.
 
 
@@ -115,7 +104,6 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   save ElementNodes
   save SolverName
   save NeumannSolName,DirichletSolName,VarSolName,GradSolName
-  save SquareFormulation
   save VisitedNode,db,Basis,dBasisdx
   save Ux,Uy,Uz
   save c2n,c3n
@@ -165,12 +153,6 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
       CALL WARN(SolverName,'Keyword >Gradient Variable Name< not found  in section >Solver<')
       CALL WARN(SolverName,'Taking default value >DJDMu<')
       WRITE(GradSolName,'(A)') 'DJDmu'
-    END IF
-    SquareFormulation=GetLogical( SolverParams, 'SquareFormulation', Found)
-    IF(.NOT.Found) THEN
-      CALL WARN(SolverName,'Logical Keyword >SquareFormulation< not found  in section >Solver<')
-      CALL WARN(SolverName,'Taking default value >FALSE<')
-      SquareFormulation=.FALSE.
     END IF
            
   !!! End of First visit
@@ -295,15 +277,13 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
     
     IF (HaveDer) THEN
       nodalViscosityb(1:n)=nodalViscosityb(1:n)*NodalDer(1:n)
-    ELSE IF (SquareFormulation) then
-      nodalViscosityb(1:n)=nodalViscosityb(1:n)*2.0_dp*Values(Perm(NodeIndexes(1:n)))
     END IF
     
     db(NodeIndexes(1:n)) = db(NodeIndexes(1:n)) + nodalViscosityb(1:n)
   END DO Elements
   
   DO t=1,Solver % Mesh % NumberOfNodes
-    IF (VisitedNode(t).lt.1.0_dp) CYCLE
+    IF (VisitedNode(t).LT.1.0_dp) CYCLE
     GradValues(GradPerm(t))=db(t) 
   END DO
   
