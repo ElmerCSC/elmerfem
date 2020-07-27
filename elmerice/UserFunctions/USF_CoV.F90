@@ -204,7 +204,11 @@ FUNCTION Asquare_Scaled(Model,nodenumber,VarIn) RESULT(VarOut)
   REAL(kind=dp) :: VarIn
   REAL(kind=dp) :: VarScale ! a scaling variable
   
-  VarOut = VarIn*VarIn*VarScale
+  VarIn    = ArgIn(1)
+  VarScale = ArgIn(2)
+
+  VarOut   = VarIn*VarIn*VarScale
+
 END FUNCTION Asquare_Scaled
 
 !# This function can be used, for example, for differentiating
@@ -220,7 +224,11 @@ FUNCTION Asquare_d_Scaled(Model,nodenumber,VarIn) RESULT(VarOut)
 
   REAL(kind=dp) :: VarIn
   REAL(kind=dp) :: VarScale ! a scaling variable
+
+  VarIn    = ArgIn(1)
+  VarScale = ArgIn(2)
   
   VarOut = 2*VarIn*VarScale
+  
 END FUNCTION Asquare_d_Scaled
 
