@@ -93,7 +93,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   REAL(kind=dp),allocatable,SAVE :: NodalDer(:)
   LOGICAL :: HaveDer
 
-  integer :: i,j,t,n,NMAX,NpN,NActiveNodes,DIM,e,p,q
+  integer :: i,j,t,n,NMAX,NpN,DIM,e,p,q
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag
 
