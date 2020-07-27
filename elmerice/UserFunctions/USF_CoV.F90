@@ -169,7 +169,7 @@ END FUNCTION TenPowerA_Masked
 ! Input arguments:
 !  ArgIn(1)  VarIn, the variable upon which to operate
 !  ArgIn(2)  mask, a mask variable, typically GroundedMask
-FUNCTION TenPowerA_d_Masked(Model,nodenumber,VarIn) RESULT(VarOut)
+FUNCTION TenPowerA_d_Masked(Model,nodenumber,ArgIn) RESULT(VarOut)
   USE DefUtils
   implicit none
   !-----------------
@@ -188,5 +188,39 @@ FUNCTION TenPowerA_d_Masked(Model,nodenumber,VarIn) RESULT(VarOut)
     VarOut = (10.0**(VarIn))*log(10.0)
   END IF
   
-End FUNCTION TenPowerA_d_Masked
+END FUNCTION TenPowerA_d_Masked
+
+!# This function can be used, for example, when computing
+!# viscosity as a function of enhancement factor and an
+!# initial guess.
+FUNCTION Asquare_Scaled(Model,nodenumber,VarIn) RESULT(VarOut)
+  USE DefUtils
+  implicit none
+  !-----------------
+  TYPE(Model_t) :: Model
+  INTEGER :: nodenumber
+  REAL(kind=dp) :: ArgIn(2),VarOut
+
+  REAL(kind=dp) :: VarIn
+  REAL(kind=dp) :: VarScale ! a scaling variable
+  
+  VarOut = VarIn*VarIn*VarScale
+END FUNCTION Asquare_Scaled
+
+!# This function can be used, for example, for differentiating
+!# by parts the viscosity, when computing viscosity as a
+!# function of enhancement factor and an initial guess.
+FUNCTION Asquare_d_Scaled(Model,nodenumber,VarIn) RESULT(VarOut)
+  USE DefUtils
+  implicit none
+  !-----------------
+  TYPE(Model_t) :: Model
+  INTEGER :: nodenumber
+  REAL(kind=dp) :: ArgIn(2),VarOut
+
+  REAL(kind=dp) :: VarIn
+  REAL(kind=dp) :: VarScale ! a scaling variable
+  
+  VarOut = 2*VarIn*VarScale
+END FUNCTION Asquare_d_Scaled
 
