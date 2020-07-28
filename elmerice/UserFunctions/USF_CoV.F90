@@ -193,7 +193,7 @@ END FUNCTION TenPowerA_d_Masked
 !# This function can be used, for example, when computing
 !# viscosity as a function of enhancement factor and an
 !# initial guess.
-FUNCTION Asquare_Scaled(Model,nodenumber,VarIn) RESULT(VarOut)
+FUNCTION Asquare_Scaled(Model,nodenumber,ArgIn) RESULT(VarOut)
   USE DefUtils
   implicit none
   !-----------------
@@ -214,7 +214,7 @@ END FUNCTION Asquare_Scaled
 !# This function can be used, for example, for differentiating
 !# by parts the viscosity, when computing viscosity as a
 !# function of enhancement factor and an initial guess.
-FUNCTION Asquare_d_Scaled(Model,nodenumber,VarIn) RESULT(VarOut)
+FUNCTION Asquare_d_Scaled(Model,nodenumber,ArgIn) RESULT(VarOut)
   USE DefUtils
   implicit none
   !-----------------
