@@ -186,12 +186,8 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
     CALL GetElementNodes( ElementNodes )
     n = GetElementNOFNodes()
     NodeIndexes => Element % NodeIndexes
-    
-    BC => GetBC(Element)
-    if (.NOT.ASSOCIATED(BC)) &
-         CALL FATAL(SolverName,'This solver is intended to be executed on a BC')
-    
-    NodalDer(1:n) = ListGetReal(BC,'Viscosity derivative',n,NodeIndexes,Found=HaveDer)
+        
+    NodalDer(1:n) = ListGetReal(Material,'Viscosity derivative',n,NodeIndexes,Found=HaveDer)
     
     VisitedNode(NodeIndexes(1:n))=VisitedNode(NodeIndexes(1:n))+1.0_dp
     
