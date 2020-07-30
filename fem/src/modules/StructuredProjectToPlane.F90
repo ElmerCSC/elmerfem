@@ -507,6 +507,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           IF( i == TmpBotPointer(j) ) THEN
             k = i
             IF(ASSOCIATED(PermIn)) k = PermIn(i)
+            IF(k == 0) CYCLE
             k = Dofs*(k-1)+dof
             TopField(TopPerm(TopPointer(j))) = FieldIn(k)
           END IF
