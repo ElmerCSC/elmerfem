@@ -8136,7 +8136,7 @@ CONTAINS
 !> over curved boundaries. 
 !------------------------------------------------------------------------------
    SUBROUTINE AverageBoundaryNormals( Model, VariableName,    &
-     NumberOfBoundaryNodes, BoundaryReorder, BoundaryNormals, &
+       NumberOfBoundaryNodes, BoundaryReorder, BoundaryNormals, &
        BoundaryTangent1, BoundaryTangent2, dim )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
@@ -8182,8 +8182,14 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
     INTEGER :: LhsConflicts
 
+    TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
-!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Origin(3),Axis(3)
+    REAL(KIND=dp), POINTER :: Pwrk(:,:)
+    LOGICAL :: GotOrigin,GotAxis
+    CHARACTER(*), PARAMETER :: Caller = 'AverageBoundaryNormals'
+
+    !------------------------------------------------------------------------------
 
     ElementNodes % x => x
     ElementNodes % y => y
@@ -8192,9 +8198,7 @@ CONTAINS
     Mesh => Model % Mesh
     NrmVar => VariableGet( Mesh % Variables, 'Normals' )
 
-    !dim = CoordinateSystemDimension() 
-
-
+    
     IF ( ASSOCIATED(NrmVar) ) THEN
 
       IF ( NumberOfBoundaryNodes >0 ) THEN
@@ -8237,16 +8241,34 @@ CONTAINS
 
           DO i=1,Model % NumberOfBCs
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
-              IF ( ListGetLogical( Model % BCs(i) % Values,VariableName, gotIt) ) THEN
-                Found = ListGetLogical( Model % BCs(i) % Values, &
-                    TRIM(VariableName) // ' Rotate',gotIt)
-                IF ( Found .OR. .NOT. Gotit ) THEN
-                  MassConsistent = ListGetLogical(Model % BCs(i) % Values, &
-                          'Mass Consistent Normals',gotIt)
-                  RotationalNormals = ListGetLogical(Model % BCs(i) % Values, &
-                          'Rotational Normals',gotIt)
+              BC => Model % BCs(i) % Values
 
-                  Condition(1:n) = ListGetReal( Model % BCs(i) % Values, &
+              IF ( ListGetLogical( BC, VariableName, gotIt) ) THEN
+                Found = ListGetLogical( BC, TRIM(VariableName) // ' Rotate',gotIt)
+                IF ( Found .OR. .NOT. Gotit ) THEN
+                  MassConsistent = ListGetLogical( BC,'Mass Consistent Normals',gotIt)
+                  RotationalNormals = ListGetLogical(BC,'Rotational Normals',gotIt)
+
+                  IF( RotationalNormals ) THEN
+                    Pwrk => ListGetConstRealArray(BC,'Normals Origin',GotOrigin )
+                    IF( GotOrigin ) THEN
+                      IF( SIZE(Pwrk,1) /= 3 .OR. SIZE(Pwrk,2) /= 1 ) THEN
+                        CALL Fatal(Caller,'Size of > Normals Origin < should be 3!')
+                      END IF
+                      Origin = Pwrk(1:3,1)
+                    END IF
+                    Pwrk => ListGetConstRealArray(BC,'Normals Axis',GotAxis )
+                    IF( GotAxis ) THEN
+                      IF( SIZE(Pwrk,1) /= 3 .OR. SIZE(Pwrk,2) /= 1 ) THEN
+                        CALL Fatal(Caller,'Size of > Normals Axis < should be 3!')
+                      END IF
+                      Axis = Pwrk(1:3,1)
+                      ! Normalize axis is it should just be used for the direction
+                      Axis = Axis / SQRT( SUM( Axis*Axis ) )
+                    END IF
+                  END IF
+                  
+                  Condition(1:n) = ListGetReal( BC,&
                        TRIM(VariableName) // ' Condition', n, NodeIndexes, Conditional )
 
                   DO j=1,n
@@ -8260,7 +8282,15 @@ CONTAINS
                       ELSE IF( RotationalNormals ) THEN
                         nrm(1) = ElementNodes % x(j)
                         nrm(2) = ElementNodes % y(j)
-                        nrm(3) = 0.0_dp
+                        nrm(3) = ElementNodes % z(j)
+
+                        IF( GotOrigin ) nrm = nrm - Origin
+                        IF( GotAxis ) THEN
+                          nrm = nrm - SUM( nrm * Axis ) * Axis
+                        ELSE ! Default axis is (0,0,1)
+                          nrm(3) = 0.0_dp
+                        END IF
+
                         nrm = nrm / SQRT( SUM( nrm * nrm ) )
                       ELSE
                         Bu = Element % TYPE % NodeU(j)
@@ -8285,8 +8315,8 @@ CONTAINS
           !
           ! TODO: consistent normals, if rotations given:
           ! ---------------------------------------------
-          Rot => ListGetConstRealArray(Model % BCs(iBC) % Values, &
-                  'Periodic BC Rotate', Found )
+          BC => Model % BCs(iBC) % Values
+          Rot => ListGetConstRealArray(BC,'Periodic BC Rotate', Found )
           IF ( Found .AND. ASSOCIATED(Rot) ) THEN
             IF ( ANY(Rot/=0) ) THEN
               ALLOCATE( Done(SIZE(BoundaryNormals,1)) )
@@ -8328,8 +8358,8 @@ CONTAINS
            !
            ! TODO: consistent normals, if rotations given:
            ! ---------------------------------------------
-           Rot => ListGetConstRealArray(Model % BCs(iBC) % Values, &
-                   'Periodic BC Rotate', Found )
+           BC => Model % BCs(iBC) % Values
+           Rot => ListGetConstRealArray(BC,'Periodic BC Rotate', Found )
            IF ( Found .AND. ASSOCIATED(Rot) ) THEN
              IF ( ANY(Rot/=0) ) CYCLE
            END IF
