@@ -69,8 +69,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   CHARACTER(*), PARAMETER :: Caller = 'MarchingODESolver'
   LOGICAL :: Found
-  REAL(KIND=dp) :: Norm, Change, dz, dtime, velo, NonLinTol, Beta
-  INTEGER :: i,j,n,iter,MaxIter,TimeOrder,BotNodes,layer
+  REAL(KIND=dp) :: Norm, Change, dz, dtime, velo, NonLinTol, Beta, &
+      Hparam, dth
+  INTEGER :: i,j,n,iter,MaxIter,TimeOrder,BotNodes,layer,dtn,dti
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Solver_t), POINTER :: PSolver
@@ -79,7 +80,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   INTEGER :: NumberOfLayers, NoBCNodes
   TYPE(Variable_t), POINTER :: ExtVar, Var3D
   TYPE(ValueList_t), POINTER :: Material
-  LOGICAL :: MaskExist, ParabolicModel, RequireBC
+  LOGICAL :: MaskExist, ParabolicModel, RequireBC, DoTransient
   REAL(KIND=dp), POINTER :: Coord(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: TimeMethod, VarName
   LOGICAL, ALLOCATABLE :: BCNode(:)
@@ -93,7 +94,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   SAVE :: BotPointer, UpPointer, BotPerm, InvPerm, PrevInvPerm, &
       MaskPerm, MaskExist, NumberOfLayers, ExtVar, BotNodes, &
       TimeMethod, RequireBC, xivec, dxvec, xvec, fvec, rvec, cvec, &
-      x0vec, f0vec, r0vec, c0vec, Coord
+      x0vec, f0vec, r0vec, c0vec, Coord, Hparam
   
   CALL Info(Caller,'-----------------------------------------------------',Level=6)
   CALL Info(Caller,'Solving ODE on moving coordinates in structured mesh',Level=4)
@@ -120,6 +121,11 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     IF( MaskExist ) MaskPerm => ExtVar % Perm
     Coord => ExtVar % Values
 
+    Hparam = ( MAXVAL( Coord ) - MINVAL( Coord ) ) / NumberOfLayers
+
+    PRINT *,'HParam',Hparam
+
+    
     ! We may choose only to apply the ODE to BC nodes
     RequireBC = ListGetLogical( Params,'Apply BCs Only',Found )
     IF( RequireBC ) THEN
@@ -145,7 +151,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
         j = MaskPerm(i)
         IF( j == 0 ) CYCLE
       END IF      
-           
+          
       ! This is not at the bottom
       IF(BotPointer(j) /= i) CYCLE
 
@@ -168,6 +174,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 
     CALL Info(Caller,'Number of bottom nodes: '//TRIM(I2S(n)),Level=7)
 
+    
     ! Allocate some vectors to study convergence 
     ALLOCATE( xvec(n), fvec(n), rvec(n), cvec(n), f0vec(n), r0vec(n), &
         c0vec(n), xivec(n), dxvec(n), x0vec(n) )
@@ -181,29 +188,31 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     
   CALL Info(Caller,'Solving for variable: '//TRIM(VarName))
 
-  ! Default timestepping is impicit euler
-  Beta = 1.0_dp
-  TimeMethod = ListGetString( Params, 'Timestepping Method',Found )
-  IF( Found ) THEN
-    IF( TimeMethod == 'implicit euler' ) THEN
-      CONTINUE
-    ELSE IF( TimeMethod == 'crank-nicolsen' ) THEN
-      Beta = 0.5_dp
-    ELSE IF( TimeMethod == 'newmark' ) THEN
-      Beta = ListGetCReal( Params,'Newmark Beta',UnfoundFatal=.TRUE. )
-    END IF    
-  ELSE
-    Beta = ListGetCReal( Params,'Newmark Beta',Found )
-    IF(.NOT. Found ) Beta = 1.0_dp
+  ! We just use one parameter to define the timestepping.
+  ! This defines how the coeffcients are to be evaluated. 
+  Beta = ListGetCReal( Params,'Newmark Beta',Found )
+  IF(.NOT. Found ) THEN
+    ! Default timestepping is impicit euler
+    Beta = 1.0_dp
+    TimeMethod = ListGetString( Params, 'Timestepping Method',Found )
+    IF( Found ) THEN      
+      IF( TimeMethod == 'implicit euler' ) THEN
+        CONTINUE
+      ELSE IF( TimeMethod == 'crank-nicolsen' ) THEN
+        Beta = 0.5_dp
+      ELSE IF( TimeMethod == 'newmark' ) THEN
+        Beta = ListGetCReal( Params,'Newmark Beta',UnfoundFatal=.TRUE. )
+      END IF
+    END IF
   END IF
-
+  
   ParabolicModel = ListGetLogical( Params,'Parabolic Model',Found )
   IF( ParabolicModel ) THEN
     CALL Info(Caller,'Using parabolic growth model',Level=7)
   END IF
   
   velo = ListGetCReal( Params,'Draw Velocity',UnfoundFatal=.TRUE.)
-  
+    
   MaxIter = GetInteger( Params,'Nonlinear System Max Iterations',Found )
   IF(.NOT. Found) MaxIter = 1
 
@@ -224,9 +233,29 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   ELSE IF( .NOT. HaveC ) THEN
     CALL Info(Caller,'By default "Time Derivative Coefficient" one will be used',Level=7)
   END IF
+
+  dtn = 0  
+  IF( Transient ) THEN
+    ! timestep defined by velocity & mesh parameter
+    dth = Hparam / velo 
+    dtn = NINT(dt / dth ) 
+    IF( dtn >= NumberOfLayers ) THEN
+      CALL Info(Caller,'Timestep so large than we can use steady algo!')
+      dtn = 0
+    ELSE    
+      IF( ABS( dt/dth - dtn ) > 0.01 ) THEN
+        CALL Fatal(Caller,'Timesteps are not matching')        
+      ELSE
+        CALL Info(Caller,'Number of marching steps for each timestep: '//TRIM(I2S(dtn)),Level=5)
+      END IF
+    END IF
+  END IF
+  DoTransient = ( dtn > 0 ) 
     
-  
   !------------------------------------------------------------------------
+  dti = 1
+1 CONTINUE
+  
   DO layer=0,NumberOfLayers
 
     CALL Info(Caller,'Solving for layer: '//TRIM(I2S(layer)),Level=8)
@@ -264,12 +293,12 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ELSE
       xivec(1:n) = Var3D % Values(Var3D % Perm(InvPerm))       
     END IF
-
+      
     ! This sets the timestep assuming that all nodes are extruded equally.
     ! Hence this only applied to cartesian drawing. 
     dz = Coord(InvPerm(1)) - Coord(PrevInvPerm(1))
     dtime = dz / velo
-
+    
     ! We may have iteration if the ODE is nonlinear.
     ! However, more typical could be to iterate over coupled systems. 
     DO iter = 1, MaxIter 
@@ -310,16 +339,40 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     IF( InfoActive(10) ) THEN
       PRINT *,'Layer:',layer,dtime,Norm,Change      
     END IF
-    
-    !PRINT *,'xvec:',xvec(1),fvec(1),dtime
-    
+        
     ! 0-values at values at the previous layer
     IF( layer < NumberOfLayers ) THEN
-      CALL GetCoefficients(Set0=.TRUE.)
-      x0vec = xvec
+      IF( DoTransient ) THEN        
+        ! The only way to have transient simulation is that the timestep is such
+        ! that we take exactly one extruded layer. Then the initial value is the
+        ! next starting value of the next layer. We have to do some back-and-forth
+        ! stuff to have true previous timestep starting values for the coefficients. 
+        IF( ParabolicModel ) THEN
+          Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xivec ) 
+        ELSE      
+          Var3D % Values(Var3D % Perm(InvPerm)) = xivec
+        END IF        
+        CALL GetCoefficients(Set0=.TRUE.)
+        x0vec = xivec
+        IF( ParabolicModel ) THEN
+          Var3D % Values(Var3D % Perm(InvPerm)) = SQRT( 2 * xvec ) 
+        ELSE      
+          Var3D % Values(Var3D % Perm(InvPerm)) = xvec
+        END IF
+      ELSE
+        ! For steady state the initial value is the final value of this layer. 
+        CALL GetCoefficients(Set0=.TRUE.)
+        x0vec = xvec
+      END IF
     END IF
       
   END DO
+
+  IF( dti < dtn ) THEN
+    dti = dti + 1
+    CALL Info(Caller,'Taking marching step: '//TRIM(I2S(dti)))
+    GOTO 1
+  END IF
   
   CALL Info(Caller,'All done',Level=5)
   CALL Info(Caller,'-----------------------------------------------------',Level=6)
@@ -369,7 +422,7 @@ CONTAINS
     END IF
 
     ! When using different integration we may need to access the
-    ! value of cofficients at 0-level.
+    ! value of cofficients at previous mesh layer.
     IF( PRESENT( Set0 ) ) THEN
       IF( Set0 ) THEN
         IF( HaveF ) f0vec = fvec
