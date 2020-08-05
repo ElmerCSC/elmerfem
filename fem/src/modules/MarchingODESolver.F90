@@ -132,7 +132,8 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   VarName = TRIM( Var3D % Name ) 
   
   IF( .NOT. Initialized ) THEN
-    CALL Info(Caller,'Initializing structured mesh and ODE structures',Level=7)
+    CALL Info(Caller,'Initializing structured mesh and ODE structures',Level=6)
+    CALL Info(Caller,'Solving for variable: '//TRIM(VarName),Level=6)
 
     CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = ExtVar, &
         BotNodePointer = BotPointer, UpNodePointer = UpPointer, &
@@ -196,7 +197,6 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     ALLOCATE( InvPerm(n), PrevInvPerm(n) )
 
     CALL Info(Caller,'Number of bottom nodes: '//TRIM(I2S(n)),Level=7)
-
     
     ! Allocate some vectors to study convergence 
     ALLOCATE( xvec(n), fvec(n), rvec(n), cvec(n), f0vec(n), r0vec(n), &
@@ -209,8 +209,6 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   ! The variable on the layer
   n = BotNodes
     
-  CALL Info(Caller,'Solving for variable: '//TRIM(VarName))
-
   ! We just use one parameter to define the timestepping.
   ! This defines how the coeffcients are to be evaluated. 
   Beta = ListGetCReal( Params,'Newmark Beta',Found )
@@ -276,6 +274,8 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   DoTransient = ( dtn > 0 ) 
     
   !------------------------------------------------------------------------
+  ! This is a counter for optional case where externally given timestep is
+  ! a multitude of internally preferred timestep. 
   dti = 1
 1 CONTINUE
   
