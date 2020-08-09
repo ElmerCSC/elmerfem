@@ -359,7 +359,7 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
         ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
-        PerfRefTemp_h
+        PerfRefTemp_h, VolSource_h
     TYPE(VariableHandle_t), SAVE :: ConvField_h
     
     
@@ -367,7 +367,7 @@ CONTAINS
     !$OMP               MASS, STIFF, FORCE, Nodes, &
     !$OMP               Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
     !$OMP               ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
-    !$OMP               PerfRefTemp_h, ConvField_h)
+    !$OMP               PerfRefTemp_h, ConvField_h, VolSource_h)
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
@@ -375,6 +375,7 @@ CONTAINS
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Source_h,'Body Force','Heat Source')
+      CALL ListInitElementKeyword( VolSource_h,'Body Force','Volumetric Heat Source')
       CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
       CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
       CALL ListInitElementKeyword( Rho_h,'Material','Density')
@@ -445,10 +446,15 @@ CONTAINS
     END IF
       
     ! source term: FORCE=FORCE+(u,f)
-    SourceAtIpVec => ListGetElementRealVec( Source_h, ngp, Basis, Element, Found ) 
+    SourceAtIpVec => ListGetElementRealVec( VolSource_h, ngp, Basis, Element, Found ) 
     IF( Found ) THEN
-      TmpVec(1:ngp) = SourceAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)        
-      CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec, FORCE)
+      CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, SourceAtIpVec, FORCE)      
+    ELSE
+      SourceAtIpVec => ListGetElementRealVec( Source_h, ngp, Basis, Element, Found ) 
+      IF( Found ) THEN
+        TmpVec(1:ngp) = SourceAtIpVec(1:ngp) * RhoAtIpVec(1:ngp)        
+        CALL LinearForms_UdotF(ngp, nd, Basis, DetJVec, TmpVec, FORCE)
+      END IF
     END IF
       
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
@@ -481,13 +487,14 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-        ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h
+        ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h
     TYPE(VariableHandle_t), SAVE :: ConvField_h
 !------------------------------------------------------------------------------
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Source_h,'Body Force','Heat Source')
+      CALL ListInitElementKeyword( VolSource_h,'Body Force','Volumetric Heat Source')
       CALL ListInitElementKeyword( Cond_h,'Material','Heat Conductivity')
       CALL ListInitElementKeyword( Cp_h,'Material','Heat Capacity')
       CALL ListInitElementKeyword( Rho_h,'Material','Density')
@@ -621,9 +628,14 @@ CONTAINS
         END DO
       END IF
 
-      SourceAtIP = ListGetElementReal( Source_h, Basis, Element, Found ) 
+      SourceAtIP = ListGetElementReal( VolSource_h, Basis, Element, Found ) 
       IF( Found ) THEN
-        FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * RhoAtIp * Basis(1:nd)
+        FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * Basis(1:nd)
+      ELSE
+        SourceAtIP = ListGetElementReal( Source_h, Basis, Element, Found ) 
+        IF( Found ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + Weight * SourceAtIP * RhoAtIp * Basis(1:nd)
+        END IF
       END IF
     END DO
     
