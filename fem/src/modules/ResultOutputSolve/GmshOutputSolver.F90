@@ -59,12 +59,13 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName
   CHARACTER(MAX_NAME_LEN) :: OutputFile, OutputDirectory
   INTEGER :: GmshUnit
+  CHARACTER(*), PARAMETER :: Caller = 'GmshOutputSolver'
     
   SAVE VisitedTimes
   
 !------------------------------------------------------------------------------
 
-  CALL Info('GmshOutputSolver','Saving results in Gmsh format')
+  CALL Info(Caller,'Saving results in Gmsh format')
 
   ExtCount = ListGetInteger( Solver % Values,'Output Count',Found)
   IF( Found ) THEN
@@ -72,7 +73,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   ELSE
     VisitedTimes = VisitedTimes + 1
   END IF
-
+    
   GmshToElmerType = (/ 202, 303, 404, 504, 808, 706, 605, 203, 306, 409, &
       510, 827, 0, 0, 101, 408, 820, 715, 613, 0, 310 /)
   ElmerToGmshType = 0
@@ -109,14 +110,14 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   IF( VisitedTimes > 1 ) THEN
     IF( AlterTopology ) THEN
       OutputFile = NextFreeFilename( OutputFile )
-      CALL Info('GmshOutputSolver','Writing mesh and data to a new file: '//TRIM(OutputFile))
+      CALL Info(Caller,'Writing mesh and data to a new file: '//TRIM(OutputFile))
     ELSE IF( FileAppend ) THEN      
-      CALL Info('GmshOutputSolver','Appending data to the same file: '//TRIM(OutputFile))
+      CALL Info(Caller,'Appending data to the same file: '//TRIM(OutputFile))
       OPEN(NEWUNIT=GmshUnit, FILE=OutputFile, POSITION='APPEND' )      
       GOTO 10
     ELSE
       OutputFile = NextFreeFilename( OutputFile )          
-      CALL Info('GmshOutputSolver','Writing data to a new file: '//TRIM(OutputFile))
+      CALL Info(Caller,'Writing data to a new file: '//TRIM(OutputFile))
       OPEN(NEWUNIT=GmshUnit, FILE=OutputFile )
       WRITE(GmshUnit,'(A)') '$MeshFormat'
       WRITE(GmshUnit,'(A)') '2.0 0 8'
@@ -138,7 +139,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
 
   ! Save the mesh nodes
   !-------------------------------------------------
-  CALL Info('GmshOutputSolver','Writing the mesh nodes')
+  CALL Info(Caller,'Writing the mesh nodes')
   IF( MaskExists ) THEN
     nsize = MAXVAL( MaskPerm ) 
   ELSE
@@ -166,7 +167,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
 
   ! Save the mesh elements
   !-------------------------------------------------
-  CALL Info('GmshOutputSolver','Writing the mesh elements')
+  CALL Info(Caller,'Writing the mesh elements')
   NumberOfAllElements = Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
   
   IF( MaskExists ) THEN
@@ -199,7 +200,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
 
     GmshCode = ElmerToGmshType(ElmerCode)
     IF( GmshCode == 0 ) THEN
-      CALL Warn('GmshOutputSolver','Gmsh element index not found!')
+      CALL Warn(Caller,'Gmsh element index not found!')
       CYCLE
     END IF
 
@@ -257,7 +258,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   
   ! Loop over different type of variables
   !-------------------------------------------------
-  CALL Info('GmshOutputSolver','Writing the nodal data')
+  CALL Info(Caller,'Writing the nodal data')
   DO Rank = 0,2
     DO Vari = 1, 999
       IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
@@ -267,7 +268,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
       FieldName = GetString( Solver % Values, TRIM(Txt), Found )
       IF(.NOT. Found) EXIT 
       IF( Rank == 2) THEN
-        CALL Warn('GmshOutputSolver','Not implemented yet for tensors!')
+        CALL Warn(Caller,'Not implemented yet for tensors!')
         CYCLE
       END IF
 
@@ -303,8 +304,8 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
         END IF
       END IF
       IF( ASSOCIATED(Solution % EigenVectors) ) THEN
-        CALL Warn('GmshOutputSolver','Eigenvectors related to field: '//TRIM(FieldName))
-        CALL Warn('GmshOutputSolver','Eigenvectors saving yet not supported')
+        CALL Warn(Caller,'Eigenvectors related to field: '//TRIM(FieldName))
+        CALL Warn(Caller,'Eigenvectors saving yet not supported')
       END IF
 
       truedim = MIN(dofs, dim)
@@ -315,7 +316,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
           nsize = nsize + 1
         END DO
         IF( nsize == 0 ) THEN
-          CALL Warn('GmshOutputSolver','No dofs with the current mask for saving: '//TRIM(FieldName))         
+          CALL Warn(Caller,'No dofs with the current mask for saving: '//TRIM(FieldName))         
         END IF
       ELSE
         nsize = SIZE(Values) / Dofs
@@ -391,7 +392,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
   
   CLOSE(GmshUnit)
   
-  CALL Info('GmshOutputSolver','Gmsh output complete')
+  CALL Info(Caller,'Gmsh output complete')
 
 CONTAINS
 

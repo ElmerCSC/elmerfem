@@ -623,7 +623,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: TimeCollection, GroupCollection, ParallelBase
   INTEGER :: GroupId, EigenVectorMode
-
+  CHARACTER(*), PARAMETER :: Caller = 'VtuOutputSolver'
 
   Params => GetSolverParams()
   Mesh => Model % Mesh
@@ -638,7 +638,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   DN = GetLogical( Params,'Discontinuous Bodies',GotIt)
   IF( DG .OR. DN ) THEN    
     IF(.NOT. CheckAnyDGField(Model,Params) ) THEN
-      CALL Info('VtuOutputSolver','No DG or IP fields, omitting discontinuity creation!',Level=6)
+      CALL Info(Caller,'No DG or IP fields, omitting discontinuity creation!',Level=6)
       DG = .FALSE. 
       DN = .FALSE.
     END IF
@@ -684,7 +684,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   SinglePrec = GetLogical( Params,'Single Precision',GotIt) 
   IF( SinglePrec ) THEN
-    CALL Info('VtuOutputSolver','Using single precision arithmetics in output!',Level=7)
+    CALL Info(Caller,'Using single precision arithmetics in output!',Level=7)
   END IF
 
   IF( SinglePrec ) THEN
@@ -721,9 +721,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     
   
   IF ( nTime == 1 ) THEN
-    CALL Info('VtuOutputSolver','Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
-    WRITE( Message,'(A,I0)') 'Saving number of partitions: ',Partitions
-    CALL Info('VtuOutputSolver', Message )
+    CALL Info(Caller,'Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
+    CALL Info(Caller, 'Saving number of partitions: '//TRIM(I2S(Partitions)))
   END IF
 
   BaseFile = FilePrefix
@@ -731,18 +730,18 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   CALL SolverOutputDirectory( Solver, BaseFile, OutputDirectory, UseMeshDir = .TRUE.  )
   BaseFile = TRIM(OutputDirectory)// '/' //TRIM(BaseFile)
   
-  CALL Info('VtuOutputSolver','Full filename base is: '//TRIM(Basefile), Level=10 )
+  CALL Info(Caller,'Full filename base is: '//TRIM(Basefile), Level=10 )
     
   FixedMesh = ListGetLogical(Params,'Fixed Mesh',GotIt)
 
   TimeCollection = GetLogical( Params,'Vtu Time Collection', GotIt ) 
   IF( TimeCollection ) THEN
     IF( NoFileIndex ) THEN
-      CALL Warn('VtuOutputSolver','Vtu time collection cannot work without file indexes')
+      CALL Warn(Caller,'Vtu time collection cannot work without file indexes')
       NoFileIndex = .FALSE.
     END IF
     IF( .NOT. TransientSimulation ) THEN
-      CALL Warn('VtuOutputSolver','Vtu time collection requires a transient simulation!')
+      CALL Warn(Caller,'Vtu time collection requires a transient simulation!')
       TimeCollection = .FALSE.
     END IF
   END IF
@@ -753,7 +752,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 200 CONTINUE
   IF( GroupCollection ) THEN
     GroupId = GroupId + 1
-    CALL Info('VtuOutputSolver','Saving group '//TRIM(I2S(GroupId)),Level=8)
+    CALL Info(Caller,'Saving group '//TRIM(I2S(GroupId)),Level=8)
   END IF
 
   !------------------------------------------------------------------------------
@@ -774,16 +773,16 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   IF( nTime == 1 ) THEN
     ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfGeomNodes ) )
-    WRITE( Message,'(A,I8)') 'Total number of geometry nodes to save:',ParallelNodes
-    CALL Info('VtuOutputSolver',Message,Level=6)
+    CALL Info(Caller, 'Total number of geometry nodes to save: '&
+        //TRIM(I2S(ParallelNodes)),Level=6)
 
     ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfDofNodes ) )
-    WRITE( Message,'(A,I8)') 'Total number of dof nodes to save:',ParallelNodes
-    CALL Info('VtuOutputSolver',Message,Level=6)
+    CALL Info(Caller, 'Total number of dof nodes to save: '&
+        //TRIM(I2S(ParallelNodes)),Level=6)
 
     ParallelElements = NINT( ParallelReduction( 1.0_dp * NumberOfElements ) )
-    WRITE( Message,'(A,I8)') 'Total number of elements to save:',ParallelElements
-    CALL Info('VtuOutputSolver',Message,Level=6)
+    CALL Info(Caller, 'Total number of elements to save: '&
+        //TRIM(I2S(ParallelElements)),Level=6)
   END IF
 
   !------------------------------------------------------------------------------
@@ -810,7 +809,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
   EigenVectorMode = 0
   IF( MaxModes > 0 ) THEN
-    CALL Info('VtuOutputSolver','Maximum number of eigen/harmonic modes: '//TRIM(I2S(MaxModes)),Level=7)
+    CALL Info(Caller,'Maximum number of eigen/harmonic modes: '//TRIM(I2S(MaxModes)),Level=7)
     Str = ListGetString( Params,'Eigen Vector Component', GotIt )
     IF( GotIt ) THEN
       IF( Str == 're') THEN
@@ -820,7 +819,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ELSE IF( Str == 'abs' ) THEN
         EigenVectorMode = 2
       ELSE
-        CALL Fatal('VtuOutputSolver','Invalid value for >Eigen System Mode< :'//TRIM(str))
+        CALL Fatal(Caller,'Invalid value for >Eigen System Mode< :'//TRIM(str))
       END IF
     END IF
   END IF
@@ -838,14 +837,14 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
-    CALL Info('VtuOutputSolver','Maximum number of constraint modes: '//TRIM(I2S(MaxModes2)),Level=7)
+    CALL Info(Caller,'Maximum number of constraint modes: '//TRIM(I2S(MaxModes2)),Level=7)
   END IF
 
   ! This activates the solution of the modes one for each file
   EigenAnalysis = ListGetLogical( Params,'Eigen Analysis',GotIt) .OR. &
       ListGetLogical( Params,'Constraint Modes Analysis',GotIt) 
   IF( EigenAnalysis ) THEN
-    CALL Info('VtuOutputSolver','Saving each mode to different file')
+    CALL Info(Caller,'Saving each mode to different file')
     FileIndex = 1
   END IF
 
@@ -887,7 +886,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
           DO WHILE( BCOffset <= Model % NumberOfBodies ) 
             BCOffset = 10 * BCOffset
           END DO
-          CALL Info('VtuOutputSolver','Setting offset for boundary entities: '&
+          CALL Info(Caller,'Setting offset for boundary entities: '&
               //TRIM(I2S(BCOffset)),Level=6)
         END IF
       END IF
@@ -913,9 +912,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     ! Generate the filename for saving
     !--------------------------------------------------------------------
     CALL VtuFileNaming( BaseFile, PvtuFile,'.pvtu', GroupId, FileIndex, ParallelBase = ParallelBase )
-    CALL Info('VtuOutputSolver','Writing the pvtu file: '//TRIM(PvtuFile), Level=10)
+    CALL Info(Caller,'Writing the pvtu file: '//TRIM(PvtuFile), Level=10)
     CALL WritePvtuFile( PVtuFile, Model )
-    CALL Info('VtuOutputSolver','Finished writing pvtu file',Level=12)
+    CALL Info(Caller,'Finished writing pvtu file',Level=12)
   END IF
 
 
@@ -923,9 +922,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   !--------------------------------------------------------------------------
   IF( NumberOfDofNodes > 0 ) THEN
     CALL VtuFileNaming( BaseFile, VtuFile,'.vtu', GroupId, FileIndex, Part+1 ) 
-    CALL Info('VtuOutputSolver','Writing the vtu file: '//TRIM(VtuFile),Level=7)
+    CALL Info(Caller,'Writing the vtu file: '//TRIM(VtuFile),Level=7)
     CALL WriteVtuFile( VtuFile, Model, FixedMesh )
-    CALL Info('VtuOutputSolver','Finished writing vtu file',Level=12)
+    CALL Info(Caller,'Finished writing vtu file',Level=12)
   END IF
 
   ! For transient simulation or group collections write a holder for indivisual files
@@ -941,11 +940,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF( ParallelDofsNodes == 0 ) THEN
-      CALL Info('VtuOutputSolver','Nothing to write in pvd file: '//TRIM(DataSetFile),Level=10)
+      CALL Info(Caller,'Nothing to write in pvd file: '//TRIM(DataSetFile),Level=10)
     ELSE
-      CALL Info('VtuOutputSolver','Writing the pvd file: '//TRIM(DataSetFile),Level=10)
+      CALL Info(Caller,'Writing the pvd file: '//TRIM(DataSetFile),Level=10)
       CALL WritePvdFile( PvdFile, DataSetFile, FileIndex, Model )
-      CALL Info('VtuOutputSolver','Finished writing pvd file',Level=12)     
+      CALL Info(Caller,'Finished writing pvd file',Level=12)     
     END IF
   END IF
 
@@ -968,7 +967,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   IF( ALLOCATED( GeometryBodyMap ) ) DEALLOCATE( GeometryBodyMap )
   IF( ALLOCATED( GeometryBCMap ) ) DEALLOCATE( GeometryBcMap ) 
   
-  CALL Info('VtuOutputSolver','All done for now',Level=10)     
+  CALL Info(Caller,'All done for now',Level=10)     
 
 
 CONTAINS
@@ -1002,7 +1001,7 @@ CONTAINS
       IF( ASSOCIATED(MaskVar)) MaskPerm => MaskVar % Perm
       MaskExists = ASSOCIATED(MaskPerm)
       IF( MaskExists ) THEN
-        CALL Info('VtuOutputSolver','Using > '// TRIM(Str) // ' < as mask variable')
+        CALL Info(Caller,'Using > '// TRIM(Str) // ' < as mask variable')
       END IF
     ELSE
       ! Check if there is an additional mask name given
@@ -1025,10 +1024,10 @@ CONTAINS
     END IF
 
     SaveBoundariesOnly = GetLogical( Params,'Save Boundaries Only',GotIt ) 
-    IF( SaveBoundariesOnly ) CALL Info('VtuOutputSolver','Saving only boundary elements!',Level=15)
+    IF( SaveBoundariesOnly ) CALL Info(Caller,'Saving only boundary elements!',Level=15)
     
     SaveBulkOnly = GetLogical( Params,'Save Bulk Only',GotIt ) 
-    IF( SaveBulkOnly ) CALL Info('VtuOutputSolver','Saving only bulk elements!',Level=15)
+    IF( SaveBulkOnly ) CALL Info(Caller,'Saving only bulk elements!',Level=15)
     
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
@@ -1181,12 +1180,12 @@ CONTAINS
 
       END DO
 
-      CALL Info('VtuOutputSolver','Number of active elements '//TRIM(I2S(NumberOfElements))//&
+      CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
           ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=10)
 
       NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
 
-      CALL Info('VtuOutputSolver','Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
+      CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
           ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=10)
     END IF
 
@@ -1203,10 +1202,10 @@ CONTAINS
       NoPermutation = .FALSE.
 
       IF( DN ) THEN      
-        CALL Info('VtuOutputSolver','Saving results as discontinuous over bodies',Level=15)
+        CALL Info(Caller,'Saving results as discontinuous over bodies',Level=15)
         ALLOCATE( BodyVisited( Mesh % NumberOfNodes ) )
       ELSE
-        CALL Info('VtuOutputSolver','Saving results as discontinuous DG fields',Level=15)
+        CALL Info(Caller,'Saving results as discontinuous DG fields',Level=15)
       END IF
 
       IF( .NOT. ALLOCATED( DgPerm ) ) THEN
@@ -1215,7 +1214,7 @@ CONTAINS
           CurrentElement => Mesh % Elements(i)
           k = k + CurrentElement % TYPE % NumberOfNodes
         END DO
-        CALL Info('VtuOutputSolver','Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
+        CALL Info(Caller,'Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
         ALLOCATE( DgPerm(k) )
       END IF
       DgPerm = 0
@@ -1278,7 +1277,7 @@ CONTAINS
         END IF
 
         IF( Sweep == 1 ) THEN
-          CALL Info('VtuOutputSolver','Independent dofs in discontinuous mesh: '//TRIM(I2S(l)),Level=10)
+          CALL Info(Caller,'Independent dofs in discontinuous mesh: '//TRIM(I2S(l)),Level=10)
           NumberOfDofNodes = l
           IF(ALLOCATED(InvNodePerm)) DEALLOCATE( InvNodePerm )
           IF(ALLOCATED(InvDgPerm)) DEALLOCATE( InvDgPerm ) 
@@ -1295,7 +1294,7 @@ CONTAINS
       IF( NoPermutation ) THEN
         DEALLOCATE( NodePerm ) 
       ELSE
-        CALL Info('VtuOutputSolver','Not saving all nodes, creating permutation!',Level=12)
+        CALL Info(Caller,'Not saving all nodes, creating permutation!',Level=12)
         IF( ALLOCATED( InvNodePerm ) ) DEALLOCATE( InvNodePerm ) 
         ALLOCATE( InvNodePerm( NumberOfGeomNodes ) ) 
         InvNodePerm = 0
@@ -1435,7 +1434,7 @@ CONTAINS
         DispBPerm => Solution % Perm
         DispBValues => Solution % Values
         DispBDofs = Solution % Dofs
-        CALL Info('VtuOutputSolver','Automatically complement > Displacement < by > Mesh Update < field',Level=7)
+        CALL Info(Caller,'Automatically complement > Displacement < by > Mesh Update < field',Level=7)
       END IF
     END IF
 
@@ -1457,7 +1456,7 @@ CONTAINS
 100 Offset = 0
 
     IF( SaveNodal ) THEN
-      CALL Info('VtuOutputSolver','Writing nodal fields',Level=10)
+      CALL Info(Caller,'Writing nodal fields',Level=10)
       NoFieldsWritten = 0
       DO Rank = 0,2
         DO Vari = 1, 999
@@ -1469,7 +1468,7 @@ CONTAINS
           IF(.NOT. Found) EXIT
 
           IF(Rank == 2) THEN
-            CALL Fatal('VtuOutputSolver','Do the tensors')
+            CALL Fatal(Caller,'Do the tensors')
           END IF
 
           !---------------------------------------------------------------------
@@ -1488,7 +1487,7 @@ CONTAINS
             END IF
           END IF
 
-          CALL Info('VtuOutputSolver','Saving variable: '//TRIM(FieldName),Level=10)
+          CALL Info(Caller,'Saving variable: '//TRIM(FieldName),Level=10)
           
           VarType = Solution % Type
 
@@ -1823,7 +1822,7 @@ CONTAINS
     END IF ! IF( SaveNodal )
 
     IF( WriteXML ) THEN
-      CALL Info('VtuOutputSolver','Number of nodal fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+      CALL Info(Caller,'Number of nodal fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
       WRITE( OutStr,'(A)') '      </PointData>'//lf
       CALL AscBinStrWrite( OutStr ) 
     END IF
@@ -1836,7 +1835,7 @@ CONTAINS
     END IF
 
     IF( SaveElemental ) THEN
-      CALL Info('VtuOutputSolver','Writing elemental fields',Level=10)
+      CALL Info(Caller,'Writing elemental fields',Level=10)
       NoFieldsWritten = 0
       DO Rank = 0,1
         DO Vari = 1, 999
@@ -1879,7 +1878,7 @@ CONTAINS
             ELSE 
               IF( L ) THEN
                 WRITE(Txt, '(A,A)') 'Nonexistent elemental variable: ',TRIM(FieldName)
-                CALL Warn('VtuOutputSolver', Txt)
+                CALL Warn(Caller, Txt)
               END IF
               CYCLE
             END IF
@@ -1901,7 +1900,7 @@ CONTAINS
           Values => Solution % Values
 
           IF( Solution % PeriodicFlipActive ) THEN
-            CALL Warn('VtuOutputSolver','Cannot yet deal with PeriodicFlip in elemental variables!')
+            CALL Warn(Caller,'Cannot yet deal with PeriodicFlip in elemental variables!')
           END IF
           
           !---------------------------------------------------------------------
@@ -2056,7 +2055,7 @@ CONTAINS
                       m = CurrentElement % BoundaryInfo % Left % ElementIndex
                     ELSE
                       PRINT*,m,size(perm)
-                      CALL Fatal('VtuOutputSolver','Should not happen!')
+                      CALL Fatal(Caller,'Should not happen!')
                     END IF
                   END IF
                   m = Perm( m ) 
@@ -2098,7 +2097,7 @@ CONTAINS
         END DO
       END DO
       IF( WriteXML ) THEN
-        CALL Info('VtuOutputSolver','Number of elemental fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
+        CALL Info(Caller,'Number of elemental fields written: '//TRIM(I2S(NoFieldsWritten)),Level=10)
       END IF
     END IF  ! IF( SaveElemental )
 
@@ -2107,7 +2106,7 @@ CONTAINS
     !---------------------------------------------------------------------
     IF( WriteIds ) THEN
       IF( WriteXML ) THEN
-        CALL Info('VtuOutputSolver','Writing entity IDs for bodies and boundaries',Level=10)
+        CALL Info(Caller,'Writing entity IDs for bodies and boundaries',Level=10)
 
         WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="GeometryIds"'
         CALL AscBinStrWrite( OutStr )
@@ -2165,7 +2164,7 @@ CONTAINS
     ! Coordinates of each point
     !-------------------------------------
     IF( WriteXML ) THEN
-      CALL Info('VtuOutputSolver','Writing coordinates for each used node',Level=10)
+      CALL Info(Caller,'Writing coordinates for each used node',Level=10)
       WRITE( OutStr,'(A)') '      <Points>'//lf
       CALL AscBinStrWrite( OutStr ) 
 
@@ -2247,7 +2246,7 @@ CONTAINS
     ! Write out the mesh
     !-------------------------------------
     IF( WriteXML ) THEN
-      CALL Info('VtuOutputSolver','Writing the elemental connectivity data',Level=10)
+      CALL Info(Caller,'Writing the elemental connectivity data',Level=10)
       WRITE( OutStr,'(A)') '      <Cells>'//lf
       CALL AscBinStrWrite( OutStr ) 
 
