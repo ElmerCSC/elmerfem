@@ -87,6 +87,8 @@ IF(HAVE_MMG)
   SET(ElmerIce_SRC ${ElmerIce_SRC} CalvingRemeshMMG.F90 ) #MMG3DSolver.F90 <- defunct?
 ENDIF()
 
+### add ParMMG??
+
 ADD_LIBRARY(ElmerIceSolvers SHARED ${ElmerIce_SRC})
 
 # Library object
