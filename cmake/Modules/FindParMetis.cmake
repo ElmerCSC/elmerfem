@@ -1,6 +1,6 @@
 # CMake script for finding ParMetis
 
-# If libraries are already defined, do nothing 
+# If libraries are already defined, do nothing
 IF(ParMetis_LIBRARIES AND ParMetis_INCLUDE_DIR)
   SET(ParMetis_FOUND TRUE)
   RETURN()
@@ -9,7 +9,7 @@ ENDIF()
 SET(ParMetis_FOUND FALSE)
 MESSAGE(STATUS "Finding ParMetis")
 
-SET(PARMETISINCLUDE 
+SET(PARMETISINCLUDE
   "${PARMETISROOT}/include"
   "$ENV{PARMETISROOT}/include"
   "$ENV{PARMETIS_ROOT}/include"
@@ -20,8 +20,8 @@ SET(PARMETISINCLUDE
 SET(PARMETIS_INCLUDENAME "parmetis.h" INTERNAL)
 FIND_PATH(ParMetis_INCLUDE_DIR
   NAMES
-  ${PARMETIS_INCLUDENAME} 
-  HINTS 
+  ${PARMETIS_INCLUDENAME}
+  HINTS
   ${PARMETISINCLUDE}
   )
 
@@ -33,7 +33,7 @@ SET(PARMETISLIB
   INTERNAL)
 
 # Find library
-FIND_LIBRARY(ParMetis_LIBRARIES 
+FIND_LIBRARY(ParMetis_LIBRARIES
   parmetis
   HINTS
   ${PARMETISLIB}
@@ -43,7 +43,7 @@ IF (ParMetis_LIBRARIES AND ParMetis_INCLUDE_DIR)
   SET(ParMetis_FOUND TRUE)
 ENDIF()
 
-IF (ParMetis_FOUND) 
+IF (ParMetis_FOUND)
   IF (NOT ParMetis_FIND_QUIETLY)
     MESSAGE(STATUS "A library with ParMetis API found.")
     MESSAGE(STATUS "ParMetis include dir: ${ParMetis_INCLUDE_DIR}")
@@ -59,6 +59,6 @@ MARK_AS_ADVANCED(
   PARMETISINCLUDE
   PARMETISLIB
   PARMETIS_INCLUDENAME
-  ParMetis_INCLUDE_DIR 
-  ParMetis_LIBRARIES 
+  ParMetis_INCLUDE_DIR
+  ParMetis_LIBRARIES
   )

@@ -1,6 +1,6 @@
-# 
+#
 # CMake configuration script for Elmer
-# 
+#
 # Authors:
 #  Sami Ilvonen, CSC - IT Center for Science, Ltd.
 #  Phil Weir, NUMA Engineering Services, Ltd.
@@ -31,7 +31,7 @@ PROJECT(Elmer Fortran C CXX)
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
 
 IF(APPLE)
-  SET(CMAKE_MACOSX_RPATH 1) 
+  SET(CMAKE_MACOSX_RPATH 1)
     # on OSX FindOpenGL uses framework version of OpenGL, but we need X11 version
     FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
       PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
@@ -143,7 +143,7 @@ IF(RESET_ELMER_REVISION)
     MARK_AS_ADVANCED(ELMER_FEM_REVISION)
   ENDIF()
 ENDIF()
-    
+
 SET(VERSION ${ELMER_FEM_VERSION})
 SET(REVISION ${ELMER_FEM_REVISION})
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
@@ -177,7 +177,7 @@ IF(WITH_OpenMP)
     OpenMP_Fortran_FLAGS
     OpenMP_CXX_FLAGS
     )
-  
+
   FIND_PACKAGE(OpenMP REQUIRED)
   # Add OpenMP flags to compilation flags
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -253,8 +253,8 @@ ENDIF(WITH_MPI)
       SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
       # Versions >11.1 of MKL include Cluster PARDISO direct solver
       IF(MKL_CPARDISO_FOUND)
-        SET(HAVE_CPARDISO TRUE)
-        MARK_AS_ADVANCED(HAVE_CPARDISO)
+	SET(HAVE_CPARDISO TRUE)
+	MARK_AS_ADVANCED(HAVE_CPARDISO)
       ENDIF()
     ENDIF()
     INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
@@ -264,12 +264,12 @@ ENDIF(WITH_MPI)
       # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
       FIND_PACKAGE(MKL QUIET)
       IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
-        # Set BLAS and LAPACK to point to MKL, in order to work around
-        # CMake FindBLAS finding wrong core library for GNU Fortran
-        SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-        SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-        INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-        SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+	# Set BLAS and LAPACK to point to MKL, in order to work around
+	# CMake FindBLAS finding wrong core library for GNU Fortran
+	SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+	SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+	INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+	SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
       ENDIF()
     ENDIF()
   ENDIF()
@@ -277,7 +277,7 @@ ENDIF(WITH_MPI)
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
-  FIND_PACKAGE(ML REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/ML ${TRILINOS_PATH}) 
+  FIND_PACKAGE(ML REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/ML ${TRILINOS_PATH})
   FIND_PACKAGE(Trilinos REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/Trilinos ${TRILINOS_PATH})
   FIND_PACKAGE(Belos REQUIRED PATHS ${TRILINOS_PATH}/lib/cmake/Belos ${TRILINOS_PATH})
   IF(ML_DIR)
@@ -293,7 +293,7 @@ IF(WITH_Zoltan)
   IF(NOT ${USE_SYSTEM_ZOLTAN})
     MESSAGE(STATUS "Building Zoltan mesh repartitioner")
     ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
-    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" ) 
+    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
     MARK_AS_ADVANCED(HAVE_ZOLTAN)
     MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
     MESSAGE(STATUS "------------------------------------------------")
@@ -389,7 +389,7 @@ MESSAGE(STATUS "------------------------------------------------")
 FIND_PACKAGE(BLAS REQUIRED)
 FIND_PACKAGE(LAPACK REQUIRED)
 # BLAS and LAPACK libraries may be needed for testing
-SET(CMAKE_REQUIRED_LIBRARIES 
+SET(CMAKE_REQUIRED_LIBRARIES
   ${CMAKE_REQUIRED_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
 IF(MPI_FOUND)
@@ -441,7 +441,7 @@ ELSE()
   ADD_DEFINITIONS(-DCONTIG=)
 ENDIF()
 
-# Check if this is mingw toolchain. 
+# Check if this is mingw toolchain.
 IF(MINGW)
   ADD_DEFINITIONS(-DMINGW32)
 ENDIF()
@@ -450,7 +450,7 @@ IF(WIN32)
   ADD_DEFINITIONS(-DWIN32)
 ENDIF()
 
-# Check if Fortran compiler supports execute_command_line 
+# Check if Fortran compiler supports execute_command_line
 INCLUDE(testExecutecommand)
 IF(CMAKE_Fortran_COMPILER_SUPPORTS_EXECUTECOMMANDLINE)
   ADD_DEFINITIONS(-DHAVE_EXECUTECOMMANDLINE)
@@ -461,8 +461,8 @@ SET(FC_STDCALLBULL " ")
 SET(ELMER_LINKTYP 1)
 #SET(FC_FUNC FC_GLOBAL)
 #SET(FC_FUNC_ FC_GLOBAL_)
- 
-# Add support for arpack 
+
+# Add support for arpack
 ADD_DEFINITIONS(-DUSE_ARPACK)
 
 #INCLUDE(FortranCInterface)
@@ -470,16 +470,16 @@ ADD_DEFINITIONS(-DUSE_ARPACK)
 #FortranCInterface_VERIFY(CXX)
 
 # Set up rpaths to point ELMER_INSTALL_LIB_DIR
-IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")   
+IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
   SET(ELMERSOLVER_RPATH_STRING "\$ORIGIN/../${ELMER_INSTALL_LIB_DIR}")
   SET(ELMERLIB_RPATH_STRING "\$ORIGIN/")
-ELSEIF(APPLE)                               
+ELSEIF(APPLE)
   SET(ELMERSOLVER_RPATH_STRING "@loader_path/../${ELMER_INSTALL_LIB_DIR}")
   SET(ELMERLIB_RPATH_STRING "@loader_path/")
 ENDIF()
 
 # Uncomment these to use rpath with linked libraries
-# SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE) 
+# SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 # Remove system directories (from the CMake guide)
 # LIST(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
@@ -523,7 +523,7 @@ ENDIF(WITH_ELMERGUILOGGER)
 #  VAR enabledFeaturesText)
 #MESSAGE(STATUS "${enabledFeaturesText}")
 
-# 
+#
 IF(CMAKE_BUILD_TYPE)
   STRING(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPCASE)
   MARK_AS_ADVANCED(CMAKE_BUILD_TYPE_UPCASE)
