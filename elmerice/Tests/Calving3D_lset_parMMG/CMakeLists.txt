@@ -3,8 +3,8 @@ IF(HAVE_PARMMG AND HAVE_ZOLTAN)
 
   CONFIGURE_FILE(calvingParMMG.sif calvingParMMG.sif COPYONLY)
 
-  ADD_ELMERICETEST_MODULE(Calving3D_lset bedrockfunction_3d ./PROG/bedrockfunction_3D.F90)
-  ADD_ELMERICETEST_MODULE(Calving3D_lset DummySolver ./PROG/DummySolver.F90)
+  ADD_ELMERICETEST_MODULE(Calving3D_lset_parMMG bedrockfunction_3d ./PROG/bedrockfunction_3D.F90)
+  ADD_ELMERICETEST_MODULE(Calving3D_lset_parMMG DummySolver ./PROG/DummySolver.F90)
 
   FILE(COPY ELMERSOLVER_STARTINFO PlanMesh.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
