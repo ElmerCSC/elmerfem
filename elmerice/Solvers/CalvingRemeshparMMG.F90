@@ -52,7 +52,7 @@
 
 ! - Continue simulation
 
-SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
+SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
     USE MeshUtils
     USE CalvingGeometry
@@ -90,7 +90,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
     SolverParams => GetSolverParams()
-    SolverName = "CalvingRemeshMMG"
+    SolverName = "CalvingRemeshParMMG"
 
     Mesh => Model % Mesh
     NNodes = Mesh % NumberOfNodes
@@ -834,4 +834,4 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
     END SUBROUTINE EnforceGroundedMask
 
-  END SUBROUTINE CalvingRemeshMMG
+  END SUBROUTINE CalvingRemeshParMMG
