@@ -1,4 +1,4 @@
-! Test masked VTU output
+! Test VTU output with BCs only.
 !
 ! P.R. 20.8.2020
 
@@ -72,7 +72,7 @@ Solver 2
   Binary Output = True
 
   Vtu format = Logical True
-  Mask Name = String "Save This"
+  Save Boundaries Only = Logical True
 End
 
 Material 1
@@ -82,35 +82,17 @@ Material 1
 End
 
 Boundary Condition 1
-  Name = "Sides"
+  Name = "SidesA"
   Target Boundaries(2) = 1 2 
   Temperature = 0
 End
 
 Boundary Condition 2
-  Name = "Sides"
+  Name = "SidesB"
   Target Boundaries(2) = 3 4  
   Temperature = 0
-
-! Save selected boundaries only
-  Save This = Logical True
 End
 
-Boundary Condition 3
-  Name = "Bot"
-  Target Boundaries(1) = 5
-  Save This = Logical True
-End
-
-Boundary Condition 5
-  Name = "Top"
-  Target Boundaries(1) = 6
-  Save This = Logical False
-End
-
-
-
-
-Solver 1 :: Reference Norm = 3.68642527E-02
-Solver 2 :: Reference Sums(6) = Real 29 3 1324 842 378300 486.13513134593023
+Solver 1 :: Reference Norm = 3.43808025E-02
+Solver 2 :: Reference Sums(6) = 29 3 608 839 91950 248.52858749687977
 Solver 2 :: Reference Norm = 1.0

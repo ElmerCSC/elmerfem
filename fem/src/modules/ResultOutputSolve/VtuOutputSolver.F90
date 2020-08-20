@@ -23,6 +23,7 @@
 MODULE VtuXMLFile
   USE DefUtils 
   USE MeshUtils
+  USE SaveUtils
   USE MainUtils
   USE ElementDescription
   USE AscBinOutputUtils
@@ -113,7 +114,7 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Parent
     INTEGER, POINTER :: UseIndexes(:)
-    INTEGER, TARGET :: NewIndexes(27),BCIndexes(27)
+    INTEGER, TARGET :: BCIndexes(27)
     INTEGER :: ElmerCode, i,j,k,n,hits
     INTEGER, POINTER :: Order(:)
     INTEGER, TARGET, DIMENSION(20) :: &
@@ -360,12 +361,11 @@ CONTAINS
     TYPE( Variable_t), POINTER :: Var
 
     TYPE( Variable_t), TARGET :: TmpVar
-    LOGICAL :: Visited = .FALSE.
     INTEGER :: dgsize,ipsize,varsize,dofs,i,j,k,n,m,e,t,allocstat
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: fip(32),fdg(32)
     
-    SAVE TmpVar, Visited
+    SAVE TmpVar
 
     IF( Var % TYPE /= Variable_on_gauss_points ) RETURN
 
@@ -587,36 +587,31 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
   
   INTEGER, SAVE :: nTime = 0
-  LOGICAL :: GotIt, Hit, Parallel, FixedMesh, DG, DN
+  LOGICAL :: GotIt, Parallel, FixedMesh, DG, DN
   CHARACTER(MAX_NAME_LEN) :: FilePrefix
   CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Variable_t), POINTER :: Var
   INTEGER :: i, j, k, l, n, m, Partitions, Part, ExtCount, FileindexOffSet, MeshDim, PrecBits, &
              PrecSize, IntSize, FileIndex
   CHARACTER(MAX_NAME_LEN) :: OutputDirectory
   LOGICAL :: Visited = .FALSE.
   REAL(KIND=dp) :: DoubleWrk
   REAL :: SingleWrk
-
-  LOGICAL :: MaskExists, BinaryOutput, AsciiOutput, SinglePrec, NoFileindex, &
-      SkipHalo, SaveOnlyHalo, IsHalo, IsBoundaryElement
-  CHARACTER(MAX_NAME_LEN) :: Str, MaskName
-  TYPE(Variable_t), POINTER :: MaskVar
-  INTEGER, POINTER :: MaskPerm(:), InvFieldPerm(:), NodeIndexes(:)
+  LOGICAL :: BinaryOutput, AsciiOutput, SinglePrec, NoFileindex
+  CHARACTER(MAX_NAME_LEN) :: Str
+  INTEGER, POINTER :: InvFieldPerm(:)
   INTEGER, ALLOCATABLE, TARGET :: NodePerm(:), InvNodePerm(:), InvDgPerm(:), DgPerm(:)
-  INTEGER :: NumberOfGeomNodes, NumberOfDofNodes, NumberOfElements, ParallelNodes, ParallelElements, Sweep
-  TYPE(Element_t), POINTER :: CurrentElement, LeftElem, RightElem
+  INTEGER :: NumberOfGeomNodes, NumberOfDofNodes, NumberOfElements, ParallelNodes, ParallelElements
+  TYPE(Element_t), POINTER :: CurrentElement
   TYPE(ValueList_t),POINTER :: Params
-  INTEGER :: MaxModes, MaxModes2, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex, &
-      discontMesh, OutputMeshes, ParallelDofsNodes
-  INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:), Indexes(:)
-  LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, ConstraintAnalysis, &
-      WriteIds, SaveBoundariesOnly, SaveBulkOnly, SaveLinear, &
-      GotMaskName, NoPermutation, SaveElemental, SaveNodal, GotMaskCond, NoInterp
+  INTEGER :: MaxModes, MaxModes2, BCOffset, ElemFirst, ElemLast, &
+      OutputMeshes, ParallelDofsNodes
+  INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:)
+  LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, &
+      WriteIds, SaveLinear, &
+      NoPermutation, SaveElemental, SaveNodal, NoInterp
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
-  INTEGER, ALLOCATABLE :: BodyVisited(:),GeometryBodyMap(:),GeometryBCMap(:)
-  REAL(KIND=dp), ALLOCATABLE :: MaskCond(:)
+  INTEGER, ALLOCATABLE :: GeometryBodyMap(:),GeometryBCMap(:)
 
 ! Parameters for buffered binary output
   INTEGER :: BufferSize
@@ -758,14 +753,16 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Initialize stuff for masked saving
   !------------------------------------------------------------------------------
-  CALL GenerateSaveMask()
-    
+  CALL GenerateSaveMask(Mesh,Params,Parallel,GroupId,SaveLinear,&
+      NodePerm,ActiveElem,NumberOfGeomNodes,NumberOfElements,&
+      ElemFirst,ElemLast)
+  
   !------------------------------------------------------------------------------
   ! If we have a discontinuous mesh then create the permutation vectors to deal
   ! with the discontinuities.
   !------------------------------------------------------------------------------
-  CALL GenerateSavePermutation() 
-    
+  CALL GenerateSavePermutation(Mesh,DG,DN,SaveLinear,ActiveElem,NumberOfGeomNodes,&
+      NoPermutation,NumberOfDofNodes,DgPerm,InvDgPerm,NodePerm,InvNodePerm)
   
   ! The partition is active for saving if there are any nodes 
   ! to write. There can be no elements nor dofs without nodes.
@@ -972,348 +969,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
-
-  ! Given different criteria fos saving create a geometrical mask for elements
-  ! and continuous numbering for the associated nodes.
-  !------------------------------------------------------------------------------  
-  SUBROUTINE GenerateSaveMask()
-
-    IF(.NOT. ALLOCATED( NodePerm ) ) ALLOCATE(NodePerm(Mesh % NumberOfNodes))
-    NodePerm = 0
-    
-    IF(.NOT. ALLOCATED(ActiveElem) ) &
-        ALLOCATE(ActiveElem(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements))
-    ActiveElem = .FALSE.
-    
-    IF( Parallel ) THEN
-      SkipHalo = GetLogical( Params,'Skip Halo Elements', GotIt )
-      IF(.NOT. GotIt) SkipHalo = .TRUE.
-      SaveOnlyHalo = GetLogical( Params,'Save Halo Elements Only', GotIt )
-    ELSE
-      SkipHalo = .FALSE.
-      SaveOnlyHalo = .FALSE.
-    END IF
-
-    GotMaskName = .FALSE.
-    Str = GetString( Params,'Mask Variable',MaskExists)
-    IF( MaskExists ) THEN
-      MaskVar => VariableGet(Model % Variables,TRIM(Str),ThisOnly=NoInterp)
-      IF( ASSOCIATED(MaskVar)) MaskPerm => MaskVar % Perm
-      MaskExists = ASSOCIATED(MaskPerm)
-      IF( MaskExists ) THEN
-        CALL Info(Caller,'Using > '// TRIM(Str) // ' < as mask variable')
-      END IF
-    ELSE
-      ! Check if there is an additional mask name given
-      IF( MeshDim == 2 ) THEN
-        MaskName = GetString( Params,'2D Mask Name',GotIt)    
-      ELSE IF( MeshDim == 3 ) THEN  
-        MaskName = GetString( Params,'3D Mask Name',GotIt)    
-      END IF
-      IF(.NOT. GotIt) MaskName = GetString( Params,'Mask Name',GotIt) 
-      GotMaskName = GotIt
-    END IF
-
-    GotMaskCond = .FALSE.
-    IF( .NOT. GotMaskName ) THEN
-      MaskName = GetString( Params,'Mask Condition',GotMaskCond)
-      IF( GotMaskCond ) THEN
-        CALL Info(Caller,'Using mask condition: '//TRIM(MaskName),Level=8)
-        n = Mesh % MaxElementNodes
-        ALLOCATE( MaskCond(n) )
-      END IF
-    END IF
-
-    SaveBoundariesOnly = GetLogical( Params,'Save Boundaries Only',GotIt ) 
-    IF( SaveBoundariesOnly ) CALL Info(Caller,'Saving only boundary elements!',Level=8)
-    
-    SaveBulkOnly = GetLogical( Params,'Save Bulk Only',GotIt ) 
-    IF( SaveBulkOnly ) CALL Info(Caller,'Saving only bulk elements!',Level=8)
-    
-    NumberOfGeomNodes = Mesh % NumberOfNodes
-    IF( MaskExists ) THEN
-      NumberOfGeomNodes = COUNT( MaskPerm(1:NumberOfGeomNodes) > 0 ) 
-    END IF
-    NumberOfElements = 0
-
-    IF( NumberOfGeomNodes > 0 ) THEN
-      ElemFirst = HUGE( ElemFirst )
-      ElemLast = 0 
-
-      ! Count the true number of elements and mark the 1st and last element
-      !-----------------------------------------------------------------------
-      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-
-        IsBoundaryElement = ( i > Mesh % NumberOfBulkElements )
-
-        IF( IsBoundaryElement ) THEN
-          IF( SaveBulkOnly ) CYCLE
-        ELSE
-          IF( SaveBoundariesOnly ) CYCLE
-        END IF
-
-        CurrentElement => Mesh % Elements(i)
-        Model % CurrentElement => CurrentElement
-
-        IF( GroupCollection ) THEN
-          IF( .NOT. IsBoundaryElement ) THEN
-            IF( CurrentElement % BodyId /= GroupId ) CYCLE
-          ELSE
-            IF( .NOT. ASSOCIATED( CurrentElement % BoundaryInfo ) ) CYCLE
-            IF( CurrentElement % BoundaryInfo % Constraint /= &
-                GroupId - CurrentModel % NumberOfBodies ) CYCLE
-          END IF
-        END IF
-      
-        IF( GetElementFamily( CurrentElement ) == 1 ) CYCLE          
-        IF (.NOT. IsBoundaryElement .AND. CurrentElement % BodyId < 1) CYCLE
-
-        IF( SkipHalo .OR. SaveOnlyHalo ) THEN
-          IF( IsBoundaryElement ) THEN
-            IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
-              LeftElem => CurrentElement % BoundaryInfo % Left
-              IF( ASSOCIATED( LeftElem ) ) THEN
-                LeftIndex = LeftElem % ElementIndex
-                IF( LeftIndex > 0 ) THEN
-                  IF( Mesh % Elements(LeftIndex) % PartIndex /= ParEnv % MyPe ) LeftIndex = 0
-                END IF
-              ELSE
-                LeftIndex = 0
-              END IF
-              RightElem => CurrentElement % BoundaryInfo % Right
-              IF( ASSOCIATED( RightElem ) ) THEN
-                RightIndex = RightElem % ElementIndex
-                IF( RightIndex > 0 ) THEN
-                  IF( Mesh % Elements(RightIndex) % PartIndex /= ParEnv % MyPe ) RightIndex = 0
-                END IF
-              ELSE
-                RightIndex = 0
-              END IF
-              IsHalo = ( LeftIndex == 0 .AND. RightIndex == 0 )
-            ELSE
-              IsHalo = .FALSE.
-            END IF
-          ELSE
-            IsHalo = ( CurrentElement % PartIndex /= ParEnv % MyPe )
-          END IF
-
-          IF( IsHalo ) THEN
-            IF( SkipHalo ) CYCLE
-          ELSE
-            IF( SaveOnlyHalo ) CYCLE
-          END IF
-        END IF
-
-
-        IF( MaskExists ) THEN
-          IF( ANY(MaskPerm(CurrentElement % NodeIndexes) <= 0) ) CYCLE
-        END IF
-
-        IF( GotMaskName ) THEN
-          Hit = .FALSE.
-          IF( i <= Mesh % NumberOfBulkElements ) THEN
-            l = CurrentElement % BodyId
-            k = ListGetInteger( Model % Bodies(l) % Values,'Body Force',GotIt)
-            IF( GotIt ) THEN
-              Hit = ListGetLogical( Model % BodyForces(k) % Values, TRIM(MaskName), GotIt)
-            END  IF
-            IF( .NOT. Hit ) THEN
-              k = ListGetInteger( Model % Bodies(l) % Values,'Equation',GotIt)
-              IF( GotIt ) THEN
-                Hit = ListGetLogical( Model % Equations(k) % Values, TRIM(MaskName), GotIt)
-              END IF
-            END IF
-          ELSE
-            DO l=1, Model % NumberOfBCs
-              IF ( Model % BCs(l) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
-              Hit = ListGetLogical(Model % BCs(l) % Values, MaskName, GotIt ) 
-              EXIT
-            END DO
-          END IF
-          IF(.NOT. Hit ) CYCLE
-        END IF
-
-        IF( GotMaskCond ) THEN
-          n = CurrentElement % TYPE % NumberOfNodes
-          Indexes => CurrentElement % NodeIndexes
-
-          IF( i <= Mesh % NumberOfBulkElements ) THEN
-            l = CurrentElement % BodyId
-            k = ListGetInteger( Model % Bodies(l) % Values,'Body Force',GotIt)
-            IF( GotIt ) THEN
-              MaskCond(1:n) = ListGetReal( Model % BodyForces(k) % Values, TRIM(MaskName), &
-                  n, Indexes, GotIt)
-            END  IF
-
-            IF( .NOT. Hit ) THEN
-              k = ListGetInteger( Model % Bodies(l) % Values,'Equation',GotIt)
-              IF( GotIt ) THEN
-                MaskCond(1:n) = ListGetReal( Model % Equations(k) % Values, TRIM(MaskName), &
-                    n, Indexes, GotIt)
-              END IF
-            END IF
-          ELSE
-            GotIt = .FALSE.
-            IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
-              DO l=1, Model % NumberOfBCs
-                IF ( Model % BCs(l) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
-                MaskCond(1:n) = ListGetReal(Model % BCs(l) % Values, MaskName, &
-                    n, Indexes, GotIt ) 
-                EXIT
-              END DO
-            END IF
-          END IF
-          IF( .NOT. GotIt ) CYCLE
-          IF( .NOT. ALL(MaskCond(1:n) > 0.0_dp ) ) CYCLE
-        END IF
-
-        ActiveElem(i) = .TRUE.
-        NumberOfElements = NumberOfElements + 1
-        ElemFirst = MIN( ElemFirst, i )
-        ElemLast = MAX( ElemLast, i )
-
-        IF( SaveLinear ) THEN
-          m = GetElementCorners( CurrentElement ) 
-          NodePerm( CurrentElement % NodeIndexes(1:m) ) = 1
-        ELSE          
-          NodePerm( CurrentElement % NodeIndexes ) = 1
-        END IF
-
-      END DO
-
-      CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=7)
-
-      NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
-
-      CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
-    END IF
-
-  END SUBROUTINE GenerateSaveMask
-    
-
-  ! Given the geometric permutation, create the dof permutation used in saving
-  ! the different parts.
-  !-----------------------------------------------------------------------------  
-  SUBROUTINE GenerateSavePermutation()
-
-    NumberOfDofNodes = 0
-    IF( DG .OR. DN ) THEN
-      NoPermutation = .FALSE.
-
-      IF( DN ) THEN      
-        CALL Info(Caller,'Saving results as discontinuous over bodies',Level=15)
-        ALLOCATE( BodyVisited( Mesh % NumberOfNodes ) )
-      ELSE
-        CALL Info(Caller,'Saving results as discontinuous DG fields',Level=15)
-      END IF
-
-      IF( .NOT. ALLOCATED( DgPerm ) ) THEN
-        k = 0
-        DO i=1,Mesh % NumberOfBulkElements         
-          CurrentElement => Mesh % Elements(i)
-          k = k + CurrentElement % TYPE % NumberOfNodes
-        END DO
-        CALL Info(Caller,'Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
-        ALLOCATE( DgPerm(k) )
-      END IF
-      DgPerm = 0
-        
-      DO Sweep=1,2
-        l = 0
-        IF( DG ) THEN
-          DO i=1,Mesh % NumberOfBulkElements         
-            IF( .NOT. ActiveElem(i) ) CYCLE
-            CurrentElement => Mesh % Elements(i)
-            NodeIndexes => CurrentElement % NodeIndexes
-
-            IF( SaveLinear ) THEN
-              m = GetElementCorners( CurrentElement )
-            ELSE
-              m = GetElementNOFNodes( CurrentElement )
-            END IF
-
-            DO k=1,m
-              IF( NodePerm( NodeIndexes(k) ) == 0 ) CYCLE
-              l = l + 1
-              IF( Sweep == 2 ) THEN
-                InvNodePerm(l) = NodeIndexes(k)
-                DgPerm( CurrentElement % DGIndexes(k) ) = l
-                InvDgPerm(l) = CurrentElement % DGIndexes(k)
-              END IF
-            END DO
-          END DO
-        ELSE      
-          DO i=1,Model % NumberOfBodies
-            BodyVisited = 0
-            DO j=1,Mesh % NumberOfBulkElements         
-              IF(.NOT. ActiveElem(j) ) CYCLE
-              CurrentElement => Mesh % Elements(j)
-              IF( CurrentElement % BodyId /= i ) CYCLE
-              NodeIndexes => CurrentElement % NodeIndexes
-
-              IF( SaveLinear ) THEN
-                m = GetElementCorners( CurrentElement )
-              ELSE
-                m = GetElementNOFNodes( CurrentElement )
-              END IF
-
-              DO k=1,m
-                IF( NodePerm( NodeIndexes(k) ) == 0 ) CYCLE
-                IF( BodyVisited( NodeIndexes(k) ) > 0 ) THEN
-                  DgPerm( CurrentElement % DGIndexes(k) ) = BodyVisited( NodeIndexes(k) )
-                  CYCLE
-                END IF
-                l = l + 1
-                BodyVisited(NodeIndexes(k)) = l
-                IF( Sweep == 2 ) THEN
-                  InvNodePerm(l) = NodeIndexes(k)
-                  DgPerm( CurrentElement % DGIndexes(k) ) = l
-                  InvDgPerm(l) = CurrentElement % DGIndexes(k)
-                END IF
-              END DO
-            END DO
-          END DO
-        END IF
-
-        IF( Sweep == 1 ) THEN
-          CALL Info(Caller,'Independent dofs in discontinuous mesh: '//TRIM(I2S(l)),Level=10)
-          NumberOfDofNodes = l
-          IF(ALLOCATED(InvNodePerm)) DEALLOCATE( InvNodePerm )
-          IF(ALLOCATED(InvDgPerm)) DEALLOCATE( InvDgPerm ) 
-          ALLOCATE( InvNodePerm(l), InvDgPerm(l) ) 
-          InvNodePerm = 0
-          InvDgPerm = 0
-        END IF
-      END DO
-
-      IF( DN ) DEALLOCATE( BodyVisited ) 
-
-    ELSE
-      NoPermutation = ( NumberOfGeomNodes == Mesh % NumberOfNodes )    
-      IF( NoPermutation ) THEN
-        DEALLOCATE( NodePerm ) 
-      ELSE
-        CALL Info(Caller,'Not saving all nodes, creating permutation!',Level=12)
-        IF( ALLOCATED( InvNodePerm ) ) DEALLOCATE( InvNodePerm ) 
-        ALLOCATE( InvNodePerm( NumberOfGeomNodes ) ) 
-        InvNodePerm = 0
-        j = 0
-        DO i=1,Mesh % NumberOfNodes
-          IF( NodePerm(i) > 0 ) THEN
-            j = j + 1       
-            NodePerm(i) = j
-            InvNodePerm(j) = i
-          END IF
-        END DO
-      END IF
-      NumberOfDofNodes = NumberOfGeomNodes 
-    END IF
-  END SUBROUTINE GenerateSavePermutation
-
   
-
   ! Writes a single VTU file that can be read by Paraview, ViSiT etc.
   !---------------------------------------------------------------------------------------
   SUBROUTINE WriteVtuFile( VtuFile, Model, RemoveDisp )
@@ -1321,10 +977,8 @@ CONTAINS
     TYPE(Model_t) :: Model 
     LOGICAL, INTENT(IN) :: RemoveDisp
     INTEGER, PARAMETER :: VtuUnit = 58
-    TYPE(Variable_t), POINTER :: Var,Var1
-    CHARACTER(LEN=512) :: str
-    INTEGER :: i,ii,j,jj,k,dofs,Rank,cumn,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
-        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten
+    INTEGER :: i,ii,j,jj,k,dofs,Rank,n,m,dim,vari,sdofs,dispdofs, dispBdofs, Offset, &
+        NoFields, NoFields2, IndField, iField, NoModes, NoModes2, NoFieldsWritten, cumn
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldNameB, OutStr
     CHARACTER :: lf
@@ -1337,9 +991,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: ValuesB(:), ValuesB2(:), ValuesB3(:), DispBValues(:)
     REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
     INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
-    INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: TmpIndexes(27), VarType
-    INTEGER :: NamingMode 
     
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:), EigenVectors2(:,:), EigenVectors3(:,:)
     COMPLEX(KIND=dp), POINTER :: EigenVectorsB(:,:), EigenVectorsB2(:,:), EigenVectorsB3(:,:)
@@ -2514,21 +2166,14 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: PVtuFile
     TYPE(Model_t) :: Model 
     INTEGER, PARAMETER :: VtuUnit = 58
-    TYPE(Variable_t), POINTER :: Var,Var1
-    CHARACTER(LEN=512) :: str
-    INTEGER :: i,j,k,dofs,Rank,cumn,n,dim,vari,sdofs
+    INTEGER :: i,j,k,dofs,Rank,n,dim,vari,sdofs
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
-        FieldName, FullName, ShortName
-    LOGICAL :: ScalarsExist, VectorsExist, Found, VeloFlag, ComponentVector, &
+        FieldName, FullName
+    LOGICAL :: ScalarsExist, VectorsExist, Found, ComponentVector, &
                AllActive, ThisActive, L
     LOGICAL, POINTER :: ActivePartition(:)
     TYPE(Variable_t), POINTER :: Solution
-    INTEGER, POINTER :: Perm(:)
     INTEGER :: Active, NoActive, ierr, NoFields, NoModes, IndField, iField, VarType
-    REAL(KIND=dp), POINTER :: Values(:)
-    COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
-    TYPE(Element_t), POINTER :: CurrentElement
-
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
     
 
@@ -2641,10 +2286,6 @@ CONTAINS
 
           IF( ASSOCIATED(Solution % EigenVectors)) THEN
             NoModes = SIZE( Solution % EigenValues )
-            !IF( ComponentVector ) THEN
-            !  CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
-            !  CYCLE
-            !ELSE
             IF( EigenAnalysis ) THEN
               IF( GotActiveModes ) THEN
                 IndField = ActiveModes( FileIndex ) 
@@ -2765,10 +2406,6 @@ CONTAINS
 
             IF( ASSOCIATED(Solution % EigenVectors)) THEN
               NoModes = SIZE( Solution % EigenValues )
-              !IF( ComponentVector ) THEN
-              !  CALL Warn('WritePvtuXMLFile','Eigenmodes cannot be given componentwise!')
-              !  CYCLE
-              !ELSE
               IF( EigenAnalysis ) THEN
                 IF( GotActiveModes ) THEN
                   IndField = ActiveModes( FileIndex ) 
