@@ -1018,16 +1018,17 @@ CONTAINS
     IF( .NOT. GotMaskName ) THEN
       MaskName = GetString( Params,'Mask Condition',GotMaskCond)
       IF( GotMaskCond ) THEN
+        CALL Info(Caller,'Using mask condition: '//TRIM(MaskName),Level=8)
         n = Mesh % MaxElementNodes
         ALLOCATE( MaskCond(n) )
       END IF
     END IF
 
     SaveBoundariesOnly = GetLogical( Params,'Save Boundaries Only',GotIt ) 
-    IF( SaveBoundariesOnly ) CALL Info(Caller,'Saving only boundary elements!',Level=15)
+    IF( SaveBoundariesOnly ) CALL Info(Caller,'Saving only boundary elements!',Level=8)
     
     SaveBulkOnly = GetLogical( Params,'Save Bulk Only',GotIt ) 
-    IF( SaveBulkOnly ) CALL Info(Caller,'Saving only bulk elements!',Level=15)
+    IF( SaveBulkOnly ) CALL Info(Caller,'Saving only bulk elements!',Level=8)
     
     NumberOfGeomNodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
@@ -1181,12 +1182,12 @@ CONTAINS
       END DO
 
       CALL Info(Caller,'Number of active elements '//TRIM(I2S(NumberOfElements))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=10)
+          ' out of '//TRIM(I2S(Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements)),Level=7)
 
       NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
 
       CALL Info(Caller,'Number of geometry nodes '//TRIM(I2S(NumberOfGeomNodes))//&
-          ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=10)
+          ' out of '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
     END IF
 
   END SUBROUTINE GenerateSaveMask
