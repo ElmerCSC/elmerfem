@@ -32,7 +32,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   USE DefUtils
-
+  USE AscBinOutputUtils
+  
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -54,6 +55,10 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: ModelVariables
   CHARACTER(*), PARAMETER :: Caller = 'ResultOutputSolver'
   INTEGER :: SaveSolverMeshIndex
+  LOGICAL :: CalcNrm
+  REAL(KIND=dp) :: Nrm
+  REAL(KIND=dp), POINTER :: RefResults(:,:)
+  
   
   SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMeshName
 
@@ -149,6 +154,9 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   
   MinMeshDim = ListGetInteger( Params,'Minimum Mesh Dimension',Found )
   MaxMeshDim = ListGetInteger( Params,'Maximum Mesh Dimension',Found )
+
+  RefResults => ListGetConstRealArray( Params,'Reference Sums',CalcNrm )
+  CALL AscBinInitNorm(CalcNrm) 
   
   ! Loop over the meshes and save them using the selected format(s).
   ! First iteration just count the meshes. 
@@ -302,4 +310,16 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   SubroutineVisited = .TRUE.
 
+  IF( CalcNrm ) THEN
+    IF( SaveVtu ) THEN
+      Nrm = AscBinCompareNorm(RefResults(:,1))
+      Solver % Variable % Norm = Nrm
+      WRITE( Message,'(A,ES12.3)' ) 'Calculate Pseudonorm:',Nrm
+      CALL Info(Caller, Message)
+    ELSE
+      CALL Warn(Caller,'Reference norm computation implemented only for VTU format!')
+    END IF
+  END IF
+
+  
 END SUBROUTINE ResultOutputSolver
