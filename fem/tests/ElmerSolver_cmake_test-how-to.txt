@@ -3,7 +3,7 @@ ElmerSolver cmake test case how-to
 Juhani Kataja / CSC, 2014/11, 2017/1
 Peter Råback /CSC, 8/2020
 
-The aim of this document is to give some background of testin and describe how
+The aim of this document is to give some background on testing and describe how
 to create a minimalistic test problem using cmake/ctest. 
 
 Background
