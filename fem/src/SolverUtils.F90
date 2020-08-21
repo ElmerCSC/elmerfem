@@ -13009,7 +13009,7 @@ END FUNCTION SearchNodeL
     IF ( .NOT. ( RecursiveAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
-        CALL Info('SolveSystem','Solution trivially zero!')
+        CALL Info('SolveLinearSystem','Solution trivially zero!')
         x = 0.0d0
 
         ! Increase the nonlinear counter since otherwise some stuff may stagnate
@@ -13102,7 +13102,7 @@ END FUNCTION SearchNodeL
 !-----------------------------------------------------------------------------
     bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
     IF ( bnorm <= TINY( bnorm) .AND..NOT.SkipZeroRhs) THEN
-      CALL Info('SolveSystem','Solution trivially zero!')
+      CALL Info('SolveLinearSystem','Solution trivially zero!')
       x = 0.0d0
 
       ! Increase the nonlinear counter since otherwise some stuff may stagnate
@@ -13197,19 +13197,19 @@ END FUNCTION SearchNodeL
     END IF
 
     Method = ListGetString(Params,'Linear System Solver',GotIt)
-    CALL Info('SolveSystem','Linear System Solver: '//TRIM(Method),Level=8)
+    CALL Info('SolveLinearSystem','Linear System Solver: '//TRIM(Method),Level=8)
 
     IF (Method=='multigrid' .OR. Method=='iterative' ) THEN
       Prec = ListGetString(Params,'Linear System Preconditioning',GotIt)
       IF( GotIt ) THEN
-        CALL Info('SolveSystem','Linear System Preconditioning: '//TRIM(Prec),Level=8)
+        CALL Info('SolveLinearSystem','Linear System Preconditioning: '//TRIM(Prec),Level=8)
         IF ( Prec=='vanka' ) CALL VankaCreate(A,Solver)
         IF ( Prec=='circuit' ) CALL CircuitPrecCreate(A,Solver)
       END IF
     END IF
 
     IF ( ParEnv % PEs <= 1 ) THEN
-      CALL Info('SolveSystem','Serial linear System Solver: '//TRIM(Method),Level=8)
+      CALL Info('SolveLinearSystem','Serial linear System Solver: '//TRIM(Method),Level=8)
       
       SELECT CASE(Method)
       CASE('multigrid')
@@ -13226,7 +13226,7 @@ END FUNCTION SearchNodeL
         CALL DirectSolver( A, x, b, Solver )        
       END SELECT
     ELSE
-      CALL Info('SolveSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
+      CALL Info('SolveLinearSystem','Parallel linear System Solver: '//TRIM(Method),Level=8)
 
     SELECT CASE(Method)
       CASE('multigrid')
@@ -13426,7 +13426,7 @@ END FUNCTION SearchNodeL
     INTEGER :: n
 
     IF( .NOT. ASSOCIATED( A ) ) THEN
-      CALL Fatal('EnquireConstraintMatrix','Matrix A not associated!')
+      CALL Fatal('HaveConstraintMatrix','Matrix A not associated!')
     END IF
 
     n = 0
