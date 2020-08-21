@@ -756,10 +756,10 @@ CONTAINS
       END IF
     END DO
 
-    IF( nncount > 0 ) CALL Info('BlockSolver','Number of nodal dofs: '//TRIM(I2S(nncount)),Level=8)
-    IF( necount > 0 ) CALL Info('BlockSolver','Number of edge dofs: '//TRIM(I2S(necount)),Level=8)
-    IF( nfcount > 0 ) CALL Info('BlockSolver','Number of face dofs: '//TRIM(I2S(nfcount)),Level=8)
-    IF( nbcount > 0 ) CALL Info('BlockSolver','Number of elemental dofs: '//TRIM(I2S(nbcount)),Level=8)
+    IF( nncount > 0 ) CALL Info('BlockPickHdiv','Number of nodal dofs: '//TRIM(I2S(nncount)),Level=8)
+    IF( necount > 0 ) CALL Info('BlockPickHdiv','Number of edge dofs: '//TRIM(I2S(necount)),Level=8)
+    IF( nfcount > 0 ) CALL Info('BlockPickHdiv','Number of face dofs: '//TRIM(I2S(nfcount)),Level=8)
+    IF( nbcount > 0 ) CALL Info('BlockPickHdiv','Number of elemental dofs: '//TRIM(I2S(nbcount)),Level=8)
        
     NoVar = nnis + neis + nfis + nbis
 
@@ -1367,7 +1367,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: PSolver
     LOGICAL :: InheritCM, PrecTrue 
     
-    CALL Info('BlockSolver','Picking constraints to block matrix',Level=10)
+    CALL Info('BlockPickConstraint','Picking constraints to block matrix',Level=10)
 
     
     SolverMatrix => Solver % Matrix 
@@ -2766,7 +2766,7 @@ CONTAINS
         WRITE( Message,'(A,I0)') 'Block Jacobi iteration: ',iter
         CALL BlockUpdateRhs(TotMatrix)
       END IF
-      CALL Info('BlockSolver',Message,Level=6)
+      CALL Info('BlockStandardIter',Message,Level=6)
       MaxChange = 0.0_dp
       TotNorm = 0.0_dp
       
@@ -3386,7 +3386,7 @@ CONTAINS
     INTEGER, POINTER :: BlockIndex(:)
     
 
-    CALL Info('BlockSolverInt','---------------------------------------',Level=5)
+    CALL Info('BlockSolveInt','---------------------------------------',Level=5)
 
     Params => Solver % Values
     Mesh => Solver % Mesh
@@ -3399,7 +3399,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     BlockPrec = ListGetLogical( Params,'Block Preconditioner',GotIt)
     IF(.NOT. GotIt) THEN
-      CALL Info('BlockSolverInt','Using block preconditioning mode by default')
+      CALL Info('BlockSolveInt','Using block preconditioning mode by default')
       BlockPrec = .TRUE.
     END IF
 
@@ -3491,7 +3491,7 @@ CONTAINS
         CALL BlockPickMatrix( Solver, NoVar ) !VarDofs )
         VarDofs = NoVar
       ELSE
-        CALL Info('BlockSolverInt','Using the original matrix as the (1,1) block!',Level=10)
+        CALL Info('BlockSolveInt','Using the original matrix as the (1,1) block!',Level=10)
         TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix        
       END IF
 
@@ -3562,7 +3562,7 @@ CONTAINS
     ! related to nonlinearity and assembly.
     !----------------------------------------------------------------------
     IF( NoVar == 1 ) THEN
-      CALL Info('BlockSolverInt','Solving in standard manner',Level=6)
+      CALL Info('BlockSolveInt','Solving in standard manner',Level=6)
       
       Solver % Variable => TotMatrix % SubVector(1) % Var
       Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
@@ -3570,16 +3570,16 @@ CONTAINS
       TotNorm = DefaultSolve()
       MaxChange = Solver % Variable % NonlinChange 
     ELSE IF( BlockMonolithic ) THEN
-      CALL Info('BlockSolverInt','Using monolithic strategy for the block',Level=6)        
+      CALL Info('BlockSolveInt','Using monolithic strategy for the block',Level=6)        
       CALL BlockMonolithicSolve( Solver, MaxChange )      
     ELSE IF( BlockPrec ) THEN
-      CALL Info('BlockSolverInt','Using block preconditioning strategy',Level=6)        
+      CALL Info('BlockSolveInt','Using block preconditioning strategy',Level=6)        
       CALL BlockKrylovIter( Solver, MaxChange )
     ELSE
       Solver % Variable => TotMatrix % SubVector(1) % Var
       Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
       
-      CALL Info('BlockSolverInt','Using block solution strategy',Level=6)
+      CALL Info('BlockSolveInt','Using block solution strategy',Level=6)
       CALL BlockStandardIter( Solver, MaxChange )
     END IF
 
@@ -3606,8 +3606,8 @@ CONTAINS
       CALL BlockBackCopyVar( Solver, TotMatrix )
     END IF
       
-    CALL Info('BlockSolverInt','All done')
-    CALL Info('BlockSolverInt','-------------------------------------------------',Level=5)
+    CALL Info('BlockSolveInt','All done')
+    CALL Info('BlockSolveInt','-------------------------------------------------',Level=5)
 
   END SUBROUTINE BlockSolveInt
 END MODULE BlockSolve
