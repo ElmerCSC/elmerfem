@@ -72,6 +72,7 @@ Solver 2
   Binary Output = True
 
   Vtu format = Logical True
+!  Gmsh format = Logical True
   Mask Name = String "Save This"
 End
 
