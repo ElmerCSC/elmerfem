@@ -1538,20 +1538,30 @@ CONTAINS
                 
                 IF( ASSOCIATED( Perm ) ) THEN                  
                   IF( m>SIZE( Perm ) ) THEN
-                    IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
-                      m = CurrentElement % BoundaryInfo % Left % ElementIndex
-                    ELSE
-                      PRINT*,m,size(perm)
-                      CALL Fatal(Caller,'Should not happen!')
+                    j = 0
+                    IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN                                            
+                      IF( ASSOCIATED( CurrentElement % BoundaryInfo % Left ) ) THEN
+                        j = CurrentElement % BoundaryInfo % Left % ElementIndex
+                      END IF
+                      IF( j <= 0 ) THEN
+                        IF( ASSOCIATED( CurrentElement % BoundaryInfo % Right ) ) THEN
+                          j = CurrentElement % BoundaryInfo % Right % ElementIndex
+                        END IF
+                      END IF
                     END IF
+
+                    IF( j == 0 ) THEN
+                      CALL Fatal(Caller,'Cannot define parent cell index for element: '//TRIM(I2S(m)))
+                    END IF
+                    m = j
                   END IF
+ 
                   m = Perm( m ) 
                 END IF
-
-
-                IF(m==0) CYCLE
-                                  
-                IF( sdofs == 1 ) THEN
+                
+                IF(m==0) THEN
+                  ElemVectVal(1:dofs) = 0.0_dp
+                ELSE IF( sdofs == 1 ) THEN
                   ElemVectVal(1) = Values(m) 
                 ELSE
                   DO k=1,sdofs
