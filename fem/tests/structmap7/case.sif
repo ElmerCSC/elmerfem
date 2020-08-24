@@ -1,9 +1,9 @@
 !--------------------------------------------------------------------
 ! A test case for Stuctured mesh mapper with a mask.
 ! The extruded structure and related operations are only covered where
-! the mask variable has positive permutation. 
+! the mask name is true. 
 !
-! Peter Råback / 10.8.2018
+! Peter Råback / 24.8.2020
 !--------------------------------------------------------------------
 
 Header
@@ -14,7 +14,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 12
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
@@ -41,7 +41,7 @@ Body 2
   Name = "Upper"
   Equation = 2
   Material = 2
-  Body Force = 1
+  Body Force = 2
 End
 
 
@@ -56,8 +56,14 @@ Equation 2
 End
 
 Body Force 1 
-  Name = "Heating"
+  Name = "HeatingA"
   Heat Source = 0.0
+End 
+
+Body Force 2
+  Name = "HeatingB"
+  Heat Source = 0.0
+  Extrude Mask = Logical True
 End 
 
 
@@ -66,7 +72,8 @@ Solver 1
   Equation = "MapCoordinates"
   Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
   Active Coordinate = Integer 3
-  Mapping Mask Variable = String "TempB"  
+  Mapping Mask Name = String "Extrude Mask"  
+!  Mapping Mask Variable = String "TempB"  
 End 
 
 
@@ -130,7 +137,8 @@ Solver 4
 
   Show Norm Index = 6
 
-  Mapping Mask Variable = String "TempB"  
+  Mapping Mask Name = String "Extrude Mask"  
+!  Mapping Mask Variable = String "TempB"  
 
 !  Exec Solver = never
 End 

@@ -18563,6 +18563,9 @@ CONTAINS
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
     IF(.NOT. GotIt) Eps = 1.0d-4
 
+    nnodes = Mesh % NumberOfNodes
+    nsize = nnodes
+
     VarName = ListGetString(Params,'Mapping Mask Variable',GotIt )
     MaskExists = .FALSE.
     IF(GotIt) THEN
@@ -18572,19 +18575,25 @@ CONTAINS
         IF( MaskExists ) THEN
           ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
           MaskPerm = Var % Perm 
-          CALL Info(Caller,&
-              'Using variable as mask: '//TRIM(VarName),Level=8)
+          nsize = MAXVAL( MaskPerm ) 
+          CALL Info(Caller,'Using variable as mask: '//TRIM(VarName),Level=8)
         END IF
       END IF      
+    ELSE
+      VarName = ListGetString(Params,'Mapping Mask Name',MaskExists )
+      IF( MaskExists ) THEN
+        CALL Info(Caller,'Using name as mask: '//TRIM(VarName),Level=8)
+        MaskPerm => NULL() 
+        CALL MakePermUsingMask( CurrentModel, Solver, Mesh, VarName, &
+            .FALSE., MaskPerm, nsize )
+        PRINT *,'nsize:',nsize,SIZE(MaskPerm),MAXVAL(MaskPerm(1:nnodes))
+      END IF         
     END IF
 
-    nnodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
-      nsize = MAXVAL( MaskPerm ) 
       CALL Info(Caller,'Applying mask of size: '//TRIM(I2S(nsize)),Level=10)
     ELSE
-      nsize = nnodes
-      CALL Info(Caller,'Applying mask to the whole mesh',Level=10)
+      CALL Info(Caller,'Applying extrusion on the whole mesh',Level=10)
     END IF 
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )
