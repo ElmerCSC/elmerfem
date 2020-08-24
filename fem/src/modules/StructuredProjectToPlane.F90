@@ -101,12 +101,13 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, OldVarName, Name, Oper, Oper0, OldOper, &
       LevelsetName, TargetName
-  INTEGER :: i,j,k,l,kk,ll,n,dim,Dofs,dof,itop,ibot,idown,iup,jup,lup,ii,jj,Rounds,nsize,layer, &
-      ActiveDirection,elem,TopNodes,MidNodes,NoVar,BotNodes, NormInd, nnodes
+  INTEGER :: t,i,j,k,l,kk,ll,n,dim,Dofs,dof,itop,ibot,idown,iup,jup,lup,ii,jj,Rounds,nsize,layer, &
+      ActiveDirection,elem,TopNodes,MidNodes,NoVar,BotNodes, NormInd, nnodes, TypeIn
   INTEGER, POINTER :: MaskPerm(:),TopPointer(:),BotPointer(:),UpPointer(:),DownPointer(:),&
       MidPointer(:), NodeIndexes(:),TargetPointer(:),BotPerm(:),&
       PermOut(:),PermIn(:),LevelsetPerm(:),TopPerm(:),MidPerm(:),UnitPerm(:)=>NULL(), &
       TmpTopPointer(:), TmpBotPointer(:)
+  INTEGER, ALLOCATABLE, TARGET :: InvDGPerm(:)
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
       Debug, MaskExist, GotVar, GotOldVar, GotOper, BottomTarget, ReducedDimensional, &
       MidLayerExists, UpperOper, LowerOper
@@ -241,6 +242,33 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       END IF
       FieldIn => Var % Values
       PermIn => Var % Perm
+      TypeIn = Var % TYPE
+
+      IF( TypeIn == Variable_on_nodes_on_elements ) THEN
+        IF(.NOT. ALLOCATED( InvDGPerm ) ) THEN
+          ALLOCATE( InvDGPerm( Mesh % NumberOfNodes ) )
+        END IF
+        InvDGPerm = 0
+        DO t=1,Mesh % NumberOfBulkElements
+          Element => Mesh % Elements(t)
+          n = Element % TYPE % NumberOfNodes
+
+          IF( MaskExist ) THEN
+            IF( ANY( MaskPerm( Element % NodeIndexes ) == 0 ) ) CYCLE
+          END IF
+          DO i=1,n
+            k = Element % NodeIndexes(i)
+            j = Element % DGIndexes(i)
+            IF( InvDGPerm(k) == 0 ) THEN
+              InvDGPerm(k) = PermIn(j)
+            ELSE IF( InvDGPerm(k) /= PermIn(j) ) THEN
+              CALL Fatal('StructuredProjectoToPlane','The DG field is not a bijection!')
+            END IF
+          END DO
+        END DO
+        PermIn => InvDGPerm
+      END IF
+      
       Dofs = Var % Dofs
       GotOldVar = .TRUE.
       OldVarName = VarName
@@ -431,7 +459,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
           itop = TopPointer(j)
           k = i
-          IF(ASSOCIATED(PermIn)) k = PermIn(i)
+          IF(ASSOCIATED(PermIn)) k = PermIn(k)
           IF(k == 0) CYCLE
           
           k = Dofs*(k-1)+dof
@@ -456,8 +484,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
          
           itop = TopPointer(j)
           k = i
-          IF(ASSOCIATED(PermIn)) k = PermIn(i)
-
+          IF(ASSOCIATED(PermIn)) k = PermIn(k)
+            
           IF(k == 0) CYCLE
           k = Dofs*(k-1)+dof
           TopField(TopPerm(itop)) = MIN( FieldIn(k),TopField(TopPerm(itop)))
@@ -481,8 +509,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
           itop = TopPointer(j)
           k = i
-          IF(ASSOCIATED(PermIn)) k = PermIn(i)
-
+          IF(ASSOCIATED(PermIn)) k = PermIn(k)
+            
           IF(k == 0) CYCLE
           k = Dofs*(k-1)+dof
           TopField(TopPerm(itop)) = MAX( FieldIn(k),TopField(TopPerm(itop)))
@@ -506,7 +534,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
          
           IF( i == TmpBotPointer(j) ) THEN
             k = i
-            IF(ASSOCIATED(PermIn)) k = PermIn(i)
+            IF(ASSOCIATED(PermIn)) k = PermIn(k)
+
             k = Dofs*(k-1)+dof
             TopField(TopPerm(TopPointer(j))) = FieldIn(k)
           END IF
@@ -524,7 +553,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           
           IF( i == TmpTopPointer(j) ) THEN
             k = i
-            IF(ASSOCIATED(PermIn)) k = PermIn(i)
+            IF(ASSOCIATED(PermIn)) k = PermIn(k)
+
             k = Dofs*(k-1)+dof
             TopField(TopPerm(TopPointer(j))) = FieldIn(k)
           END IF
@@ -543,7 +573,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
              
           IF( i == MidPointer(j) ) THEN
             k = i
-            IF(ASSOCIATED(PermIn)) k = PermIn(i)
+            IF(ASSOCIATED(PermIn)) k = PermIn(k)
+
             k = Dofs*(k-1)+dof
             TopField(TopPerm(TopPointer(j))) = FieldIn(k)
           END IF
@@ -569,6 +600,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
               END IF
             END DO
             IF(ASSOCIATED(PermIn)) l = PermIn(l)
+
             l = Dofs*(l-1)+dof
             TopField(TopPerm(i)) = FieldIn(l)
           END IF
@@ -594,6 +626,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
               END IF
             END DO
             IF(ASSOCIATED(PermIn)) l = PermIn(l)
+
             l = Dofs*(l-1)+dof
             TopField(TopPerm(TopPointer(j))) = FieldIn(l)
           END IF
@@ -664,8 +697,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
             dx = 0.5*(Coord(iup) - Coord(idown))
           END IF
           k = i
-          IF(ASSOCIATED(PermIn)) k = PermIn(i) 
-
+          IF(ASSOCIATED(PermIn)) k = PermIn(k) 
+            
           k = Dofs*(k-1) + dof
           itop = TopPointer(j)
           TopField(TopPerm(itop)) = TopField(TopPerm(itop)) + dx * FieldIn(k)

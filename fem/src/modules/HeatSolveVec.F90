@@ -681,11 +681,12 @@ CONTAINS
  !------------------------------------------------------------------------------
 
 
-  SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
+  SUBROUTINE DgRadiationIndexes(Element,n,ElemInds,DiffuseGray)
 
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n
     INTEGER :: ElemInds(:)
+    LOGICAL :: DiffuseGray
 
     TYPE(Element_t), POINTER :: Left, Right, Parent
     INTEGER :: i,i1,n1,mat_id
@@ -695,27 +696,36 @@ CONTAINS
     Right => Element % BoundaryInfo % Right
 
     IF(ASSOCIATED(Left) .AND. ASSOCIATED(Right)) THEN
-      DO i=1,2
-        IF(i==1) THEN
+
+      IF( DiffuseGray ) THEN
+        DO i=1,2
+          IF(i==1) THEN
+            Parent => Left
+          ELSE
+            Parent => Right
+          END IF
+          
+          mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
+              'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
+          IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
+          
+          IF( i==2) THEN
+            CALL Fatal('HeatSolveVec','DG boundary parents should have emissivity!')
+          END IF
+        END DO
+      ELSE
+        IF( Left % BodyId > Right % BodyId ) THEN
           Parent => Left
         ELSE
           Parent => Right
         END IF
-
-        mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
-            'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
-        IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
-
-        IF( i==2) THEN
-          CALL Fatal('MakeListMatrix','DG boundary parents should have emissivity!')
-        END IF
-      END DO
+      END IF
     ELSE IF(ASSOCIATED(Left)) THEN
       Parent => Left
     ELSE IF(ASSOCIATED(Right)) THEN
       Parent => Right
     ELSE
-      CALL Fatal('MakeListMatrix','DG boundary should have parents!')
+      CALL Fatal('HeatSolveVec','DG boundary should have parents!')
     END IF
 
     n1 = Parent % TYPE % NumberOfNodes
@@ -879,7 +889,7 @@ CONTAINS
     END IF
 
     IF( DG ) THEN
-      CALL DgRadiationIndexes(Element,n,Indexes)
+      CALL DgRadiationIndexes(Element,n,Indexes,.FALSE.)
       CALL UpdateGlobalEquations( Solver % Matrix, STIFF, &
           Solver % Matrix % Rhs, FORCE, n, 1, TempPerm(Indexes(1:n)), UElement=Element)      
     ELSE    
@@ -929,7 +939,7 @@ CONTAINS
        n = GetElementNOFNodes(Element)
 
        IF( DG ) THEN
-         CALL DgRadiationIndexes(Element,n,ElemInds)
+         CALL DgRadiationIndexes(Element,n,ElemInds,.TRUE.)
          NodalTemp(1:n) = Temperature( TempPerm(ElemInds(1:n) ) )
        ELSE
          NodalTemp(1:n) = Temperature( TempPerm(Element % NodeIndexes) )
@@ -1019,7 +1029,7 @@ CONTAINS
     FORCE(1:n) = 0.0_dp      
 
     IF( DG ) THEN
-      CALL DgRadiationIndexes(Element,n,ElemInds)
+      CALL DgRadiationIndexes(Element,n,ElemInds,.TRUE.)
       NodalTemp(1:n) = Temperature( TempPerm( ElemInds(1:n) ) )
     ELSE
       NodalTemp(1:n) = Temperature( TempPerm( Element % NodeIndexes ) )
@@ -1076,7 +1086,7 @@ CONTAINS
           ! Integrate the contribution of surface j over surface j and add to global matrix
           !------------------------------------------------------------------------------                    
           IF( Dg ) THEN
-            CALL DgRadiationIndexes(RadElement,k,ElemInds2)                              
+            CALL DgRadiationIndexes(RadElement,k,ElemInds2,.TRUE.)                              
 
             DO p=1,n
               k1 = TempPerm( ElemInds(p))

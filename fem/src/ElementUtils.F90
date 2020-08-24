@@ -298,27 +298,23 @@ CONTAINS
     LOGICAL, OPTIONAL :: NodalDofsOnly
     LOGICAL, OPTIONAL :: ProjectorDofs
     LOGICAL, OPTIONAL :: CalcNonZeros
-
-!    TYPE(Matrix_t) :: Matrix
 !------------------------------------------------------------------------------
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat
     INTEGER, ALLOCATABLE :: InvPerm(:), IndirectPairs(:)
-
     LOGICAL :: Flag, FoundDG, GB, DB, Found, Radiation, DoProjectors, &
         DoNonZeros, DgIndirect
-
     TYPE(Matrix_t), POINTER :: Projector
-
     INTEGER :: IndexSize, NumberOfFactors
     INTEGER, ALLOCATABLE :: Indexes(:)
-
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
-
     TYPE(Matrix_t),POINTER :: PMatrix
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, Left, Right
+    CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
+    LOGICAL :: GotIt
+    CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrix'
 !------------------------------------------------------------------------------
 
-    CALL Info('MakeListMatrix','Creating list matrix',Level=14)
+    CALL Info(Caller,'Creating list matrix',Level=14)
 
     GB = .FALSE.
     IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
@@ -348,19 +344,19 @@ CONTAINS
     END IF
 
     IF( EDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Edges) ) THEN
-      CALL Warn('MakeListMatrix','Edge dofs requested but not edges exist in mesh!')
+      CALL Warn(Caller,'Edge dofs requested but not edges exist in mesh!')
       EDOFS = 0
     END IF
 
     IF( FDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Faces) ) THEN
-      CALL Warn('MakeListMatrix','Face dofs requested but not faces exist in mesh!')
+      CALL Warn(Caller,'Face dofs requested but not faces exist in mesh!')
       FDOFS = 0
     END IF
 
     IndexSize = 128
     ALLOCATE( Indexes(IndexSize), STAT=istat )
     IF( istat /= 0 ) THEN
-      CALL Fatal('MakeListMatrix','Allocation error for Indexes')
+      CALL Fatal(Caller,'Allocation error for Indexes')
     END IF
 
     ! Create sparse matrix for the Discontinuous Galerkin solver 
@@ -374,7 +370,7 @@ CONTAINS
         DGIndirect = ListGetLogical( Solver % Values,'DG Indirect Connections',Found )
 
         IF( DGIndirect ) THEN
-          CALL Info('MakeListMatrix','Creating also indirect connections!',Level=12)
+          CALL Info(Caller,'Creating also indirect connections!',Level=12)
           ALLOCATE( IndirectPairs( LocalNodes ) )
           IndirectPairs = 0
         END IF
@@ -392,7 +388,7 @@ CONTAINS
           END DO
 
           IF( Elm % DGDofs /= Elm % TYPE % NumberOfNodes ) THEN
-            CALL Fatal('MakeListMatrix','Mismatch in sizes in reduced basis DG!')
+            CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG!')
           END IF
 
           DO i=1,n
@@ -609,6 +605,18 @@ CONTAINS
     Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
     IF ( .NOT. Found .AND. PRESENT(Equation) ) &
         Radiation = Radiation .OR. (Equation == 'heat equation')
+    IF( Radiation ) THEN        
+      Radiation = .FALSE.
+      DO i=1,Model % NumberOfBCs
+        RadiationFlag = ListGetString( Model % BCs(i) % Values, 'Radiation', GotIt )
+        IF (GotIt) THEN
+          IF ( RadiationFlag == 'diffuse gray' ) THEN
+            Radiation = .TRUE.
+            EXIT
+          END IF
+        END IF
+      END DO
+    END IF
     
     IF ( Radiation ) THEN
       BLOCK
@@ -626,6 +634,8 @@ CONTAINS
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           
           Element => Mesh % Elements(i)
+
+          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
           IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
           
           n = Element % Type % NumberOfNodes
@@ -633,12 +643,18 @@ CONTAINS
         END DO
         
         
-        CALL Info('MakeListMatrix','Adding radiation matrix',Level=14)      
+        CALL Info(Caller,'Adding radiation matrix',Level=14)      
         DO i = Mesh % NumberOfBulkElements+1, &
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
           
           Element => Mesh % Elements(i)
+
+          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
           IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+
+          NumberOfFactors = Element % BoundaryInfo % &
+              GebhardtFactors % NumberOfImplicitFactors
+          IF(NumberOfFactors == 0 ) CYCLE
           
           n = Element % Type % NumberOfNodes
           
@@ -653,10 +669,7 @@ CONTAINS
             ELSE
               k1 = Reorder(Element % NodeIndexes(j))
             END IF
-            
-            NumberOfFactors = Element % BoundaryInfo % &
-                GebhardtFactors % NumberOfImplicitFactors
-            
+                        
             IF (.NOT.ALLOCATED(inds)) THEN
               ALLOCATE(inds(maxnodes*NumberOfFactors))
             ELSE IF(SIZE(inds)<maxnodes*NumberOfFactors) THEN
@@ -691,7 +704,7 @@ CONTAINS
           END DO
         END DO
       END BLOCK
-      CALL Info('MakeListMatrix','Done Adding radiation matrix',Level=14)
+      CALL Info(Caller,'Done Adding radiation matrix',Level=14)
     END IF
 
     
@@ -722,7 +735,7 @@ CONTAINS
             IF ( ALLOCATED( Indexes ) ) DEALLOCATE( Indexes )
             ALLOCATE( Indexes(n), STAT=istat )
             IF( istat /= 0 ) THEN
-              CALL Fatal('MakeListMatrix','Allocation error for Indexes of size: '//TRIM(I2S(n)))
+              CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
             END IF
          END IF
 
@@ -818,7 +831,7 @@ CONTAINS
           IF( ListGetLogical( Model % BCs(This) % Values,&
               'Periodic BC Use Lagrange Coefficient',Found)) CYCLE
 
-          CALL Info('MakeListMatrix','Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
+          CALL Info(Caller,'Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
 
           DO i=1,Projector % NumberOfRows
             k = Reorder( Projector % InvPerm(i) )
@@ -905,7 +918,7 @@ CONTAINS
           IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
 
           IF( i==2) THEN
-            CALL Fatal('MakeListMatrix','DG boundary parents should have emissivity!')
+            CALL Fatal(Caller,'DG boundary parents should have emissivity!')
           END IF          
         END DO                
       ELSE IF(ASSOCIATED(Left)) THEN
@@ -913,7 +926,7 @@ CONTAINS
       ELSE IF(ASSOCIATED(Right)) THEN
         Parent => Right
       ELSE
-        CALL Fatal('MakeListMatrix','DG boundary should have parents!')
+        CALL Fatal(Caller,'DG boundary should have parents!')
       END IF
 
       n1 = Parent % TYPE % NumberOfNodes
@@ -955,29 +968,25 @@ CONTAINS
     LOGICAL, OPTIONAL :: NodalDofsOnly
     LOGICAL, OPTIONAL :: ProjectorDofs
     LOGICAL, OPTIONAL :: CalcNonZeros
-!    TYPE(Matrix_t) :: Matrix
 !------------------------------------------------------------------------------
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, nReord, EDOFs, FDOFs, BDOFs, This, istat, nthr
-
     LOGICAL :: Flag, FoundDG, GB, Found, Radiation, DoProjectors, DoNonZeros
-    INTEGER, ALLOCATABLE :: InvPerm(:)
-    
+    INTEGER, ALLOCATABLE :: InvPerm(:)    
     TYPE(Matrix_t), POINTER :: Projector
-
     INTEGER :: IndexSize, NumberOfFactors
     INTEGER, ALLOCATABLE :: Indexes(:), IndexReord(:), IPerm(:)
-
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
-
     TYPE(Matrix_t),POINTER :: PMatrix
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, ElementsList(:)
     TYPE(Graph_t), POINTER :: CurrentColourList
     INTEGER :: CurrentColour, BoundaryColour, CurrentColourStart, &
           CurrentColourEnd, NumberOfMeshColours
-    LOGICAL :: NeedLocking
+    LOGICAL :: NeedLocking, GotIt
+    CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
+    CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrixArray'
 !------------------------------------------------------------------------------
 
-    CALL Info('MakeListMatrixArray','Creating list matrix',Level=14)
+    CALL Info(Caller,'Creating list matrix',Level=14)
 
     GB = .FALSE.
     IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
@@ -1013,12 +1022,12 @@ CONTAINS
     END IF
 
     IF( EDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Edges) ) THEN
-      CALL Warn('MakeListMatrixArray','Edge dofs requested but not edges exist in mesh!')
+      CALL Warn(Caller,'Edge dofs requested but not edges exist in mesh!')
       EDOFS = 0
     END IF
 
     IF( FDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Faces) ) THEN
-      CALL Warn('MakeListMatrixArray','Face dofs requested but not faces exist in mesh!')
+      CALL Warn(Caller,'Face dofs requested but not faces exist in mesh!')
       FDOFS = 0
     END IF
 
@@ -1029,7 +1038,7 @@ CONTAINS
        IndexSize = 128
        ALLOCATE( Indexes(IndexSize), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('MakeListMatrixArray','Allocation error for Indexes')
+         CALL Fatal(Caller,'Allocation error for Indexes')
        END IF
 
        ! TODO: Add multithreading
@@ -1133,14 +1142,14 @@ CONTAINS
            CurrentColourStart = 1
            CurrentColourEnd = Mesh % NumberOfBulkElements+Mesh % NumberOFBoundaryElements
          ELSE IF (CurrentColour <= Solver % ColourIndexList % n) THEN
-           CALL Info('MakeListMatrixArray','ListMatrix add colour: '//TRIM(I2S(CurrentColour)),Level=10)
+           CALL Info(Caller,'ListMatrix add colour: '//TRIM(I2S(CurrentColour)),Level=10)
            CurrentColourList => Solver % ColourIndexList
            ElementsList => Mesh % Elements(1:Mesh % NumberOfBulkElements)
            CurrentColourStart = CurrentColourList % Ptr(CurrentColour)
            CurrentColourEnd = CurrentColourList % Ptr(CurrentColour+1)-1
          ELSE
            BoundaryColour = CurrentColour-Solver % ColourIndexList % n
-           CALL Info('MakeListMatrixArray','ListMatrix add boundary colour: '//TRIM(I2S(BoundaryColour)),Level=10)
+           CALL Info(Caller,'ListMatrix add boundary colour: '//TRIM(I2S(BoundaryColour)),Level=10)
 
            CurrentColourList => Solver % BoundaryColourIndexList
            ! Boundary elements are stored after bulk elements in Mesh
@@ -1178,7 +1187,7 @@ CONTAINS
                     IndexReord(IndexSize), &
                     IPerm(IndexSize), STAT=istat )
                IF( istat /= 0 ) THEN
-                  CALL Fatal('MakeListMatrixArray','Allocation error for Indexes of size: '//TRIM(I2S(n)))
+                  CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
                END IF
             END IF
             
@@ -1248,10 +1257,22 @@ CONTAINS
 !     ---------------------------------
       Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
       IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-        Radiation = Radiation .OR. (Equation == 'heat equation')
-
+          Radiation = Radiation .OR. (Equation == 'heat equation')
+      IF( Radiation ) THEN        
+        Radiation = .FALSE.
+        DO i=1,Model % NumberOfBCs
+          RadiationFlag = ListGetString( Model % BCs(i) % Values, 'Radiation', GotIt )
+          IF (GotIt) THEN
+            IF ( RadiationFlag == 'diffuse gray' ) THEN
+              Radiation = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+      END IF
+      
       IF ( Radiation ) THEN
-        CALL Info('MakeListMatrixArray','Adding radiation matrix',Level=14)
+        CALL Info(Caller,'Adding radiation matrix entries',Level=14)
         DO i = Mesh % NumberOfBulkElements+1, &
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
@@ -1276,7 +1297,7 @@ CONTAINS
              END DO
           END IF
         END DO
-        CALL Info('MakeListMatrixArray','Done Adding radiation matrix',Level=14)
+        CALL Info(Caller,'Done Adding radiation matrix',Level=14)
       END IF
 
       ! TODO: Add multithreading
@@ -1318,7 +1339,7 @@ CONTAINS
           IF( ListGetLogical( Model % BCs(This) % Values,&
               'Periodic BC Use Lagrange Coefficient',Found)) CYCLE
 
-          CALL Info('MakeListMatrixArray','Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
+          CALL Info(Caller,'Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
 
           ! TODO: Add multithreading
           DO i=1,Projector % NumberOfRows
