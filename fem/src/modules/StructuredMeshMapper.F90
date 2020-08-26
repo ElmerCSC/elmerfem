@@ -813,7 +813,7 @@ CONTAINS
       END IF
     END DO
 
-    CALL Info('StructureMeshMapper','Finished multilayer mapping',Level=8)
+    CALL Info(Caller,'Finished multilayer mapping',Level=8)
     
 
   END SUBROUTINE MultiLayerMapper

@@ -84,16 +84,17 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
   TYPE(Nodes_t), SAVE :: Nodes
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(ValueList_t),POINTER :: BC
-  
+  CHARACTER(*), PARAMETER :: Caller = 'StructuredFlowLine'
+
   
   SAVE VisitedTimes,Initialized,UnitVector,Coord,TopPointer,BotPointer,&
       DownPointer,UpPointer,TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,&
       Surface,Dim,HardDisp,DispPerm,MaskPerm,MaskExist,ActiveDirection
   
 
-  CALL Info( 'StructuredFlowLine','---------------------------------------',Level=4 )
-  CALL Info( 'StructuredFlowLine','Setting edges to follow the streamlines ',Level=4 )
-  CALL Info( 'StructuredFlowLine','---------------------------------------',Level=4 )
+  CALL Info( Caller,'---------------------------------------',Level=4 )
+  CALL Info( Caller,'Setting edges to follow the streamlines ',Level=4 )
+  CALL Info( Caller,'---------------------------------------',Level=4 )
 
 !------------------------------------------------------------------------------
 !   Initialize the pointers to top and bottom nodes 
@@ -134,7 +135,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     ELSE IF(ActiveDirection == 3) THEN 
       Coord => Solver % Mesh % Nodes % z
     ELSE 
-      CALL Fatal('StructuredFlowLine','Invalid value for Active Coordinate')
+      CALL Fatal(Caller,'Invalid value for Active Coordinate')
     END IF
     UnitVector = 0.0_dp
     UnitVector(ActiveDirection) = 1.0_dp
@@ -156,7 +157,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     ELSE
       MaskExist = .TRUE.
       WRITE(Message,'(A,I6)') 'Number of nodes on '//TRIM(MaskName),n
-      CALL Info('StructuredFlowLine',Message) 
+      CALL Info(Caller,Message) 
     END IF
 
     ! Allocate pointers to top and bottom, and temporary pointers up and down
@@ -251,9 +252,9 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     at1 = CPUTime()
     
     WRITE(Message,* ) 'Top and bottom pointer init rounds: ',Rounds
-    CALL Info('StructuredFlowLine',Message)
+    CALL Info(Caller,Message)
     WRITE(Message,'(A,F8.3)') 'Top and bottom pointer init time: ',at1-at0
-    CALL Info('StructuredFlowLine',Message)
+    CALL Info(Caller,Message)
     
     Initialized = .TRUE.
   END IF
@@ -273,7 +274,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     FlowPerm => Var % Perm
     FlowDofs = Var % DOFs
   ELSE
-    CALL Fatal('StructuredFlowLine','Velocity variable is missing: '//TRIM(VarName))
+    CALL Fatal(Caller,'Velocity variable is missing: '//TRIM(VarName))
   END IF
   
 
@@ -289,11 +290,11 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
     DispPerm => Var % Perm
     DispDofs = Var % DOFs
   ELSE
-    CALL Fatal('StructuredFlowLine','Flow line displacement variable does not exist!')
+    CALL Fatal(Caller,'Flow line displacement variable does not exist!')
   END IF    
   
   IF( DispDofs /= DIM ) THEN 
-    CALL Fatal('StructuredFlowLine','Displacement variable of wrong size')
+    CALL Fatal(Caller,'Displacement variable of wrong size')
   END IF
   
   ! This is just for testing purposes to mark hits 'inside' and 'outside'
@@ -464,7 +465,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
 
   Norm = SQRT( SUM(HardDisp**2) / MAXVAL( DispPerm  ) )
   WRITE( Message,* ) 'Result Norm: ',Norm
-  CALL Info('StructuredFlowLine', Message ) 
+  CALL Info(Caller, Message ) 
 
 
   Relax = GetCReal( Solver % Values,'Nonlinear System Relaxation Factor',GotIt)
@@ -473,7 +474,7 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
   END IF
   
   IF( DisplacementMode ) THEN
-    CALL Info('StructuredFlowLine','Moving the nodes')
+    CALL Info(Caller,'Moving the nodes')
     DO k=1,nsize
       IF( MaskExist ) THEN
         IF( MaskPerm(i) == 0) CYCLE
@@ -492,13 +493,13 @@ SUBROUTINE StructuredFlowLine( Model,Solver,dt,Transient )
   
   IF( TrueLines ) THEN
     WRITE(Message,*) 'Velocity estimations, total: ',Shots
-    CALL Info('StructuredFlowLine',Message)
+    CALL Info(Caller,Message)
     WRITE(Message,*) 'Velocity estimations, inside: ',Hits
-    CALL Info('StructuredFlowLine',Message)
+    CALL Info(Caller,Message)
   END IF
   
   WRITE(Message,'(A,F8.3)' ) 'Streamline mapping time: ',at1-at0
-  CALL Info('StructuredFlowLine',Message)
+  CALL Info(Caller,Message)
   
   VisitedTimes = VisitedTimes + 1
   

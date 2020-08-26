@@ -3674,10 +3674,15 @@ use spariterglobals
            CYCLE
          ELSE IF( Var % TYPE == Variable_on_elements ) THEN
            Element => CurrentModel % CurrentElement
-           IF( ASSOCIATED( Element ) ) k1 = Element % ElementIndex
+           IF( ASSOCIATED( Element ) ) THEN
+             k1 = Element % ElementIndex
+           ELSE
+             CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
+           END IF
          ELSE IF ( Var % TYPE == Variable_on_nodes_on_elements ) THEN
            Element => CurrentModel % CurrentElement
            IF ( ASSOCIATED(Element) ) THEN
+             k1 = 0
              IF ( ASSOCIATED(Element % DGIndexes) ) THEN
                n = Element % TYPE % NumberOfNodes
                IF ( SIZE(Element % DGIndexes)==n ) THEN
@@ -3689,6 +3694,12 @@ use spariterglobals
                  END DO
                END IF
              END IF
+             IF( k1 == 0 ) THEN
+               CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
+                   ' in element '//TRIM(I2S(Element % ElementIndex)))
+             END IF
+           ELSE
+             CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
            END IF
          END IF
 
@@ -4030,7 +4041,7 @@ use spariterglobals
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
            WRITE(Message, '(A,A)') "Failed to find real: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal("ListGetReal", Message)
          END IF
        END IF
        RETURN

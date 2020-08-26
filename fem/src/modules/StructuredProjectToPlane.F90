@@ -118,6 +118,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t) :: Nodes
   TYPE(ValueList_t),POINTER :: BC
+  CHARACTER(*), PARAMETER :: Caller = 'StructuredProjectToPlane'
 
   
   SAVE Visited,Nodes,Initialized,UnitVector,Coord,MaskExist,MaskPerm,TopPointer,&
@@ -125,9 +126,9 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       TopNodes,MidNodes,TopPerm, MidPerm, TopField, BotNodes, BotPerm, nsize, &
       nnodes, UnitPerm, MidLayerExists
  
-  CALL Info( 'StructuredProjectToPlane','------------------------------------------',Level=4 )
-  CALL Info( 'StructuredProjectToPlane','Performing projection on a structured mesh ',Level=4 )
-  CALL Info( 'StructuredProjectToPlane','------------------------------------------',Level=4 )
+  CALL Info( Caller,'------------------------------------------',Level=4 )
+  CALL Info( Caller,'Performing projection on a structured mesh ',Level=4 )
+  CALL Info( Caller,'------------------------------------------',Level=4 )
 
 !------------------------------------------------------------------------------
 !   Initialize the pointers to top and bottom nodes 
@@ -141,7 +142,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
   IF( .NOT. Initialized ) THEN
 
-    IF(Debug) CALL Info('StructuredProjectToPlane','start init')
+    IF(Debug) CALL Info(Caller,'start init')
     at0 = CPUTime()
 
     ! Choose active direction coordinate and set corresponding unit vector
@@ -176,7 +177,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       ALLOCATE( TopField( TopNodes ) ) 
       TopField = 0.0_dp
     END IF
-    CALL Info('StructuredProjectoToPlane','Number of top nodes: '//TRIM(I2S(TopNodes)),Level=10)
+    CALL Info(Caller,'Number of top nodes: '//TRIM(I2S(TopNodes)),Level=10)
 
     BotNodes = 0
     ALLOCATE( BotPerm( Mesh % NumberOfNodes ) )
@@ -192,7 +193,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         BotPerm(i) = BotNodes
       END IF
     END DO
-    CALL Info('StructuredProjectoToPlane','Number of bot nodes: '//TRIM(I2S(BotNodes)),Level=10)
+    CALL Info(Caller,'Number of bot nodes: '//TRIM(I2S(BotNodes)),Level=10)
 
     IF( MidLayerExists ) THEN
       MidNodes = 0
@@ -209,7 +210,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           MidPerm(i) = MidNodes
         END IF
       END DO
-      CALL Info('StructuredProjectoToPlane','Number of mid nodes: '//TRIM(I2S(MidNodes)),Level=10)
+      CALL Info(Caller,'Number of mid nodes: '//TRIM(I2S(MidNodes)),Level=10)
     END IF
   END IF
   at0 = CPUTime()
@@ -238,7 +239,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     IF(GotVar) THEN
       Var => VariableGet( Model % Variables, TRIM(VarName) )
       IF ( .NOT. ASSOCIATED( Var ) )  THEN
-        CALL Fatal('StructuredProjectToPlane','Variable does not exist: '//TRIM(VarName))
+        CALL Fatal(Caller,'Variable does not exist: '//TRIM(VarName))
       END IF
       FieldIn => Var % Values
       PermIn => Var % Perm
@@ -262,7 +263,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
             IF( InvDGPerm(k) == 0 ) THEN
               InvDGPerm(k) = PermIn(j)
             ELSE IF( InvDGPerm(k) /= PermIn(j) ) THEN
-              CALL Fatal('StructuredProjectoToPlane','The DG field is not a bijection!')
+              CALL Fatal(Caller,'The DG field is not a bijection!')
             END IF
           END DO
         END DO
@@ -293,7 +294,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     !-----------------------------------------------
     IF( .NOT. (GotVar .OR. GotOper ) ) THEN
       IF( NoVar == 1 ) THEN
-        CALL Warn('StructuredProjectToPlane','Not even one field and operator to treat?')
+        CALL Warn(Caller,'Not even one field and operator to treat?')
       END IF
       EXIT
     END IF
@@ -312,20 +313,20 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
     IF( Oper0(1:6) == 'upper ' ) THEN
       IF( .NOT. MidLayerExists ) THEN
-        CALL Fatal('StructuredProjectoToPlane','Upper operator cannot exist without midlayer')
+        CALL Fatal(Caller,'Upper operator cannot exist without midlayer')
       END IF
       UpperOper = .TRUE.
       Oper = TRIM(Oper0(7:))
       TmpBotPointer => MidPointer
-      CALL Info('StructuredProjectToPlane','Operating on the upper part with: '//TRIM(Oper),Level=10)
+      CALL Info(Caller,'Operating on the upper part with: '//TRIM(Oper),Level=10)
     ELSE IF( Oper0(1:6) == 'lower ') THEN
       IF( .NOT. MidLayerExists ) THEN
-        CALL Fatal('StructuredProjectoToPlane','Lower operator cannot exist without midlayer')
+        CALL Fatal(Caller,'Lower operator cannot exist without midlayer')
       END IF
       LowerOper = .TRUE.
       Oper = TRIM(Oper0(7:))
       TmpTopPointer => MidPointer     
-      CALL Info('StructuredProjectToPlane','Operating on the lower part with: '//TRIM(Oper),Level=10)
+      CALL Info(Caller,'Operating on the lower part with: '//TRIM(Oper),Level=10)
     END IF
     
 
@@ -336,7 +337,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       CONTINUE
     ELSE
       IF( .NOT. GotVar ) THEN
-        CALL Fatal('StructuredProjectToPlane','Variable required for this operator: '//TRIM(Oper))
+        CALL Fatal(Caller,'Variable required for this operator: '//TRIM(Oper))
       END IF
     END IF
 
@@ -361,7 +362,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         WRITE (Name,'(A,I0,A)') 'Target Variable ',NoVar,' At Bottom'
         IF( ListGetLogical( Params, TRIM(Name), GotIt ) ) THEN
           PermOut => BotPerm
-          CALL Info('StructuredProjectToPlane','Creating variable '//&
+          CALL Info(Caller,'Creating variable '//&
               TRIM(Name)//' at bottom',Level=8)
           GotIt = .TRUE.
         END IF
@@ -369,14 +370,14 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           WRITE (Name,'(A,I0,A)') 'Target Variable ',NoVar,' At Middle'
           IF( ListGetLogical( Params, TRIM(Name), GotIt ) ) THEN
             PermOut => MidPerm
-            CALL Info('StructuredProjectToPlane','Creating variable '//&
+            CALL Info(Caller,'Creating variable '//&
                 TRIM(Name)//' at middle',Level=8)
             GotIt = .TRUE.
           END IF
         END IF
         IF(.NOT. GotIt ) THEN
           PermOut => TopPerm
-          CALL Info('StructuredProjectToPlane','Creating variable '//&
+          CALL Info(Caller,'Creating variable '//&
               TRIM(Name)//' at top',Level=8)
           GotIt = .TRUE.
         END IF
@@ -398,13 +399,13 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           TargetName, Dofs, Perm = PermOut)           
       Var => VariableGet( Mesh % Variables, TRIM(TargetName) )
       IF( ASSOCIATED( Var ) ) THEN
-        CALL Info('StructuredProjectToPlane','Created variable: '//TRIM(TargetName),Level=9)
+        CALL Info(Caller,'Created variable: '//TRIM(TargetName),Level=9)
       ELSE
-        CALL Warn('StructuredProjectToPlane','Could not create variable: '//TRIM(TargetName))
+        CALL Warn(Caller,'Could not create variable: '//TRIM(TargetName))
       END IF 
     END IF
     IF( Var % Dofs /= Dofs ) THEN
-      CALL Fatal('StructureProjectToPlane','Mismatch in the dofs in fields!')
+      CALL Fatal(Caller,'Mismatch in the dofs in fields!')
     END IF
 
     FieldOut => Var % Values
@@ -429,7 +430,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       WRITE (Name,'(A,I0)') 'Layer Index ',NoVar
       layer = GetInteger( Params, Name, GotIt )
       IF (.NOT.GotIt) THEN
-        CALL FATAL('StructuredProjectToPlane','no > Layer Index < indicated for output')
+        CALL FATAL(Caller,'no > Layer Index < indicated for output')
       END IF
     END IF
 
@@ -955,7 +956,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
         
       CASE default
-        CALL Fatal('StructuredProjectToPlane','Unknown operator: '//TRIM(Oper))
+        CALL Fatal(Caller,'Unknown operator: '//TRIM(Oper))
         
       END SELECT
       
@@ -996,8 +997,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   at1 = CPUTime()
 
   WRITE(Message,* ) 'Projection time: ',at1-at0
-  CALL Info('StructuredProjectToPlane',Message)
-  CALL Info( 'StructuredProjectToPlane','------------------------------------------')
+  CALL Info(Caller,Message)
+  CALL Info(Caller,'------------------------------------------')
 
 !------------------------------------------------------------------------------
 END SUBROUTINE StructuredProjectToPlane
