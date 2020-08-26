@@ -93,7 +93,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
   CHARACTER(*), PARAMETER :: Caller = 'MarchingODESolver'
   LOGICAL :: Found
   REAL(KIND=dp) :: Norm, Change, dz, dtime, velo, NonLinTol, Beta, &
-      Hparam, dth
+      Hparam, dth, time 
   INTEGER :: t,i,j,n,iter,MaxIter,TimeOrder,BotNodes,layer,dtn,dti
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
@@ -162,8 +162,8 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     END IF
     
     Hparam = ( MAXVAL( Coord ) - MINVAL( Coord ) ) / NumberOfLayers
-
-    PRINT *,'HParam',Hparam
+    WRITE(Message,'(A,ES12.3)') 'Constant mesh parameter: ',Hparam
+    CALL Info(Caller,Message,Level=7)
     
     ! We may choose only to apply the ODE to BC nodes
     RequireBC = ListGetLogical( Params,'Apply BCs Only',Found )
@@ -247,7 +247,11 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
     CALL Info(Caller,'Using parabolic growth model',Level=7)
   END IF
   
-  velo = ListGetCReal( Params,'Draw Velocity',UnfoundFatal=.TRUE.)
+  velo = GetCReal( Model % Simulation,'Draw Velocity',Found )
+  IF(.NOT. Found ) velo = GetCReal( Params,'Draw Velocity',Found )
+  IF(.NOT. Found ) THEN
+    CALL Fatal(Caller,'>Draw Velocity< is needed for marching solver!')
+  END IF
     
   MaxIter = GetInteger( Params,'Nonlinear System Max Iterations',Found )
   IF(.NOT. Found) MaxIter = 1
@@ -280,6 +284,9 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       dtn = 0
     ELSE    
       IF( ABS( dt/dth - dtn ) > 0.01 ) THEN
+        PRINT *,'Mesh parameter:',Hparam
+        PRINT *,'Draw Velocity:',velo
+        PRINT *,'Suggested timesteps:',dt,dth
         CALL Fatal(Caller,'Timesteps are not matching')        
       ELSE
         CALL Info(Caller,'Number of marching steps for each timestep: '//TRIM(I2S(dtn)),Level=5)
@@ -383,7 +390,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       IF( Change < NonLinTol ) EXIT
     END DO
 
-    IF( InfoActive(12) ) THEN
+    IF( InfoActive(20) ) THEN
       PRINT *,'Layer:',layer,dtime,Norm,Change      
     END IF
         
