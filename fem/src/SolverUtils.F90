@@ -6737,7 +6737,218 @@ CONTAINS
   END SUBROUTINE SetDirichletPoint
 !------------------------------------------------------------------------------
 
+  
+!------------------------------------------------------------------------------
+!> Set distributed loads to vector b.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetNodalSources( Model, Mesh, SourceName, dofs, Perm, GotSrc, SrcVec )
+!------------------------------------------------------------------------------
+    TYPE(Model_t), POINTER :: Model  !< The current model structure
+    TYPE(Mesh_t), POINTER :: Mesh    !< The current mesh structure
+    CHARACTER(LEN=*) :: SourceName   !< Name of the keyword setting the source term
+    INTEGER :: DOFs                  !< The total number of DOFs for this equation
+    INTEGER :: Perm(:)               !< The node reordering info
+    LOGICAL :: GotSrc                !< Did we get something?
+    REAL(KIND=dp) :: SrcVec(:)       !< The assemblied source vector
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: t,n,bc,bf,FirstElem,LastElem,nlen
+    LOGICAL :: Found,AnyBC,AnyBF,Axisymmetric
+    REAL(KIND=dp) :: Coeff
+    REAL(KIND=dp), ALLOCATABLE :: FORCE(:)
+    LOGICAL, ALLOCATABLE :: ActiveBC(:), ActiveBF(:)
+    TYPE(ValueList_t), POINTER :: ValueList
+    CHARACTER(*), PARAMETER :: Caller = 'SetNodalSources'
+     
+    nlen = LEN_TRIM(SourceName)
+       
+    CALL Info(Caller,'Checking generalized source terms: '&
+        //SourceName(1:nlen),Level=12)
 
+    ALLOCATE( ActiveBC(Model % NumberOfBCs ), &
+        ActiveBF(Model % NumberOfBodyForces) )
+    
+    ! First make a quick test going through the short boundary condition and
+    ! body force lists.
+    ActiveBC = .FALSE.
+    DO BC=1,Model % NumberOfBCs
+      IF(.NOT. ListCheckPresent( Model % BCs(BC) % Values,'Target Boundaries')) CYCLE
+      ActiveBC(BC) = ListCheckPrefix( Model % BCs(BC) % Values, SourceName(1:nlen) )
+    END DO
+
+    ActiveBF = .FALSE.
+    DO bf=1,Model % NumberOFBodyForces
+      ActiveBF(bf) = ListCheckPrefix( Model % BodyForces(bf) % Values, SourceName(1:nlen) ) 
+    END DO
+
+    AnyBC = ANY(ActiveBC)
+    AnyBF = ANY(ActiveBF)
+
+    GotSrc = (AnyBC .OR. AnyBF)
+    IF(.NOT. GotSrc ) RETURN
+
+    AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )
+    
+    ! Only loop over BCs and BFs if needed. Here determine the loop.
+    FirstElem = HUGE( FirstElem )
+    LastElem = 0
+    IF(AnyBC) THEN
+      FirstElem = Mesh % NumberOfBulkElements + 1
+      LastElem = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+    END IF
+    IF(AnyBF) THEN
+      FirstElem = 1
+      LastElem = MAX( LastElem, Mesh % NumberOfBulkElements )
+    END IF
+
+    n = Mesh % MaxElementNodes
+    ALLOCATE( FORCE(dofs*n) )
+    FORCE = 0.0_dp
+    
+    ! Here do the actual assembly loop. 
+    DO t=FirstElem, LastElem 
+      Element => Mesh % Elements(t)
+
+      IF( t > Mesh % NumberOfBulkElements ) THEN
+        Found = .FALSE.
+        DO BC=1,Model % NumberOfBCs
+          IF( .NOT. ActiveBC(BC) ) CYCLE
+          IF ( Element % BoundaryInfo % Constraint == Model % BCs(BC) % Tag ) THEN
+            Found = .TRUE.
+            EXIT
+          END IF
+        END DO
+        IF(.NOT. Found) CYCLE
+        ValueList => Model % BCs(BC) % Values
+      ELSE                
+        bf = ListGetInteger( Model % Bodies(Element % BodyId) % Values,'Body Force',Found)        
+        IF(.NOT. Found) CYCLE
+        IF(.NOT. ActiveBF(bf) ) CYCLE
+        ValueList => Model % BodyForces(bf) % Values
+      END IF
+
+      ! In parallel we may have halos etc. By default scaling is one. 
+      Coeff = ParallelScalingFactor()
+      IF(ABS(Coeff) < TINY(Coeff)) CYCLE
+
+      CALL LocalSourceAssembly(Element, n, dofs, FORCE )
+
+      SrcVec(Perm(Element % NodeIndexes)) = SrcVec(Perm(Element % NodeIndexes)) + &
+          Coeff * FORCE(1:n)       
+    END DO
+      
+  
+  CONTAINS
+
+!------------------------------------------------------------------------------
+    FUNCTION ParallelScalingFactor() RESULT ( Coeff ) 
+!------------------------------------------------------------------------------
+      REAL(KIND=dp) :: Coeff
+      TYPE(Element_t), POINTER :: P1, P2
+      
+      ! Default weight
+      Coeff = 1.0_dp
+      
+      IF ( ParEnv % PEs > 1 ) THEN
+        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+          P1 => Element % BoundaryInfo % Left
+          P2 => Element % BoundaryInfo % Right
+          IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
+            IF ( P1 % PartIndex /= ParEnv % myPE .AND. &
+                P2 % PartIndex /= ParEnv % myPE ) THEN
+              Coeff = 0.0_dp            
+            ELSE IF ( P1 % PartIndex /= ParEnv % myPE .OR. &
+                P2 % PartIndex /= ParEnv % myPE ) THEN
+              Coeff = 0.5_dp
+            END IF
+          ELSE IF ( ASSOCIATED(P1) ) THEN
+            IF ( P1 % PartIndex /= ParEnv % myPE ) Coeff = 0.0_dp
+          ELSE IF ( ASSOCIATED(P2) ) THEN
+            IF ( P2 % PartIndex /= ParEnv % myPE ) Coeff = 0.0_dp
+          END IF
+        ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
+          Coeff = 0.0_dp
+        END IF
+      END IF
+
+    END FUNCTION ParallelScalingFactor
+!------------------------------------------------------------------------------
+
+    
+!------------------------------------------------------------------------------
+    SUBROUTINE LocalSourceAssembly(Element, n, dofs, FORCE)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n, dofs
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: FORCE(:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),ElemSource(:,:)
+    REAL(KIND=dp) :: weight, SourceAtIp(6), DetJ
+    INTEGER, POINTER :: Indexes(:)
+    LOGICAL :: Stat,Found
+    INTEGER :: i,t,m,allocstat
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+
+    SAVE Nodes,Basis
+!------------------------------------------------------------------------------
+        
+    ! Allocate storage if needed
+    IF (.NOT. ALLOCATED(Basis)) THEN
+      m = Mesh % MaxElementNodes
+      ALLOCATE(ElemSource(dofs,m), Basis(m), Nodes % x(m), &
+          Nodes % y(m), Nodes % z(m), STAT=allocstat)      
+      IF (allocstat /= 0) THEN
+        CALL Fatal(Caller,'Local storage allocation failed in LocalMatrix')
+      END IF
+    END IF
+
+    IP = GaussPoints( Element )
+    Indexes => Element % NodeIndexes
+    
+    Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
+    Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
+    Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+      
+    FORCE = 0._dp
+
+    IF( dofs == 1 ) THEN
+      ElemSource(1,1:n) = ListGetReal( ValueList,SourceName(1:nlen), n, Indexes )
+    ELSE
+      DO i=1,dofs
+        ElemSource(i,1:n) = ListGetReal( ValueList,&
+            SourceName(1:nlen)//' '//TRIM(I2S(i)), n, Indexes )
+      END DO
+    END IF
+    
+    
+    DO t=1,IP % n
+      ! Basis function at the integration point:
+      !-----------------------------------------
+      stat = ElementInfo( Element, Nodes, &
+          IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
+      Weight = IP % s(t) * DetJ
+
+      IF ( AxiSymmetric ) THEN
+        Weight = Weight * SUM( Nodes % x(1:n) * Basis(1:n) )
+      END IF
+
+      DO i=1,dofs
+        SourceAtIP = SUM( ElemSource(i,1:n) * Basis(1:n) )
+        FORCE(i:dofs:dofs*n) = FORCE(i:dofs:dofs*n) + &
+            Weight * Basis(1:n) * SourceAtIp
+      END DO
+    END DO
+           
+  END SUBROUTINE LocalSourceAssembly
+  
+!------------------------------------------------------------------------------
+END SUBROUTINE SetNodalSources
+!------------------------------------------------------------------------------
+
+  
 
 !------------------------------------------------------------------------------
 !> Sets nodal loads directly to the matrix structure. 
@@ -6787,12 +6998,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 ! Go through the boundaries
 !------------------------------------------------------------------------------
-
-    !DiagScaling => A % DiagScaling
-    !IF (.NOT.ASSOCIATED(DiagScaling)) THEN
-    !  ALLOCATE(DiagScaling(A % NumberOFRows))
-    !  DiagScaling=1._dp
-    !END IF
 
     ActivePart = .FALSE.
     ActivePartAll = .FALSE.
@@ -6970,7 +7175,6 @@ CONTAINS
     END DO
 
     DEALLOCATE( Indexes )
-    !IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
 
     CALL Info('SetNodalLoads','Finished checking for nodal loads',Level=12)
 
@@ -7006,11 +7210,11 @@ CONTAINS
                IF( ParEnv % Pes > 1 ) THEN
                   IF(  A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) CYCLE
                END IF
-               b(k) = b(k) + Work(j) !* DiagScaling(k)
+               b(k) = b(k) + Work(j) 
              ELSE
                DO l=1,MIN( NDOFs, SIZE(Worka,1) )
                  k1 = NDOFs * (k-1) + l
-                 b(k1) = b(k1) + WorkA(l,1,j) !* DiagScaling(k1)
+                 b(k1) = b(k1) + WorkA(l,1,j) 
                END DO
              END IF
            END IF
@@ -7043,11 +7247,11 @@ CONTAINS
            IF ( k > 0 ) THEN
              IF ( DOF>0 ) THEN
                k = NDOFs * (k-1) + DOF
-               b(k) = b(k) + Work(j) !* DiagScaling(k)
+               b(k) = b(k) + Work(j) 
              ELSE
                DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
                  k1 = NDOFs * (k-1) + l
-                 b(k1) = b(k1) + WorkA(l,1,j) !* DiagScaling(k1)
+                 b(k1) = b(k1) + WorkA(l,1,j) 
                END DO
              END IF
            END IF
@@ -16012,7 +16216,103 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveWithLinearRestriction
 !------------------------------------------------------------------------------
-      
+
+
+  SUBROUTINE ControlLinearSystem(Solver)
+    TYPE(Solver_t), POINTER :: Solver
+
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Matrix_t), POINTER :: A    
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), POINTER :: x0(:),b(:)
+    REAL(KIND=dp), ALLOCATABLE :: dx(:),f(:)
+    INTEGER, POINTER :: Perm(:)
+    INTEGER :: dofs, i, j, nsize, ControlNode
+    REAL(KIND=dp) :: Nrm, c, val, cand
+    LOGICAL :: GotF, Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: SourceName, str
+    CHARACTER(*), PARAMETER :: Caller = 'ControlLinearSystem'
+
+    
+    Params => Solver % Values
+    Mesh => Solver % Mesh 
+
+    A => Solver % Matrix
+    Var => Solver % Variable    
+    b => A % RHS
+    x0 => Var % Values
+    dofs = Var % Dofs
+    Perm => Var % Perm
+    nsize = SIZE(x0)
+
+    SourceName = TRIM(Var % Name)//' Control'
+
+    ALLOCATE(f(nsize))
+    f = 0.0_dp
+
+    CALL ListPushNameSpace('control:')
+    CALL ListAddLogical( Params,'control: Skip Compute Nonlinear Change',.TRUE.)
+    
+    CALL SetNodalSources( CurrentModel,Mesh,SourceName, &
+        dofs, Perm, GotF, f )
+    
+    CALL SolveSystem(A,ParMatrix,f,dx,Nrm,dofs,Solver)
+    CALL ListPopNamespace()
+    
+    val = ListGetCReal( Params,'Control Target Value',UnfoundFatal=.TRUE.)
+    str = ListGetString( Params,'Control Mode',UnfoundFatal=.TRUE.)
+    c = HUGE(c)
+
+    ControlNode = ListGetInteger( Params,'Control Node Index',Found )
+    IF(.NOT. Found ) THEN
+      BLOCK
+        REAL(KIND=dp) :: Coord(3),Coord0(3),mindist,dist
+        REAL(KIND=dp), POINTER :: RealWork(:,:)        
+        RealWork => ListGetConstRealArray( Params,'Control Node Coordinates',Found )
+        IF( Found ) THEN
+          Coord0(1:3) = RealWork(1:3,1)           
+          mindist = HUGE( mindist )
+          DO i=1,Mesh % NumberOfNodes
+            IF( Perm(i) == 0 ) CYCLE             
+            Coord(1) = Mesh % Nodes % x(i)
+            Coord(2) = Mesh % Nodes % y(i)
+            Coord(3) = Mesh % Nodes % z(i)
+            
+            dist = SUM((Coord0-Coord)**2)
+            IF( dist < mindist ) THEN
+              mindist = dist
+              ControlNode = i
+            END IF
+          END DO
+          CALL Info(Caller,'Control Node located to index: '//TRIM(I2S(ControlNode)))
+          CALL ListAddInteger( Params,'Control Node Index',ControlNode )
+        END IF
+      END BLOCK
+    END IF
+    
+    IF( ControlNode > 0 ) THEN      
+      IF( ControlNode > nsize ) CALL Fatal(Caller,&
+          'Invalid "Control Node Index": '//TRIM(I2S(ControlNode)))
+      j = Perm(ControlNode)
+      c = (val-x0(j))/dx(j)
+      WRITE(Message,'(A,ES12.3)') 'Scaling control source for control node:',c      
+    ELSE
+      c = HUGE(c)
+      DO i=1,nsize
+        IF(ABS(dx(i)) < TINY(dx(i))) CYCLE
+        cand = (val-x0(i))/dx(i)
+        IF( ABS(cand) < ABS(c) ) c = cand
+      END DO
+      WRITE(Message,'(A,ES12.3)') 'Scaling control source for extrumum value:',c      
+    END IF
+    CALL Info(Caller,Message)
+    
+    ! Apply control
+    x0(1:nsize) = x0(1:nsize) + c * dx(1:nsize)
+    
+  END SUBROUTINE ControlLinearSystem
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE SaveLinearSystem( Solver, Ain )

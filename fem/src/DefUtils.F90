@@ -3241,9 +3241,7 @@ CONTAINS
     IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
       RETURN
-    END IF
-    
-
+    END IF    
     
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
@@ -3303,7 +3301,10 @@ CONTAINS
       END IF
     END IF
     
-
+    IF ( ListGetLogical( Params,'Apply Source Control',Found ) ) THEN
+      CALL ControlLinearSystem( Solver ) 
+    END IF
+    
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF( Found .AND. TRIM( saveslot ) == 'after') THEN
@@ -3317,6 +3318,7 @@ CONTAINS
       CALL FCT_Correction( Solver )
     END IF
 
+    ! Backchange the linear system 
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver, .TRUE. )
     END IF

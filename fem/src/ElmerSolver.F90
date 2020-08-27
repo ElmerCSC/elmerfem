@@ -2147,17 +2147,18 @@ END INTERFACE
          END IF
 
          IF ( Transient .OR. Scanning ) THEN
-           IF( ListCheckPresent( CurrentModel % Simulation,'Timestep Function') ) THEN
-             CALL Fatal('ExecSimulation','Obsolete keyword > Timestep Function < , use > Timestep Size < instead')
+           dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Function',GotIt )
+           IF(GotIt) THEN
+             CALL Warn('ExecSimulation','Obsolete keyword > Timestep Function < , use > Timestep Size < instead')
+           ELSE           
+             dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Size', gotIt)
            END IF
-           
-           dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Size', gotIt)
            IF( GotIt ) THEN             
              BLOCK                 
                TYPE(Variable_t), POINTER :: tVar
                INTEGER :: dtiter 
                REAL(KIND=dp) :: t0
-               dtiter = ListGetInteger( CurrentModel % Simulation,'Timestep Size Iterations',GotIt)
+               dtiter = ListGetInteger( CurrentModel % Simulation,'Timestep Size Iterations',Found)
 
                ! If timestep size depends on time i.e. dt=dt(t) we may sometimes want to iterate
                ! so that the timestep is consistent with the new time t+dt i.e. dt=dt(t+dt).
@@ -2168,8 +2169,7 @@ END INTERFACE
                    ! Iterate for consistent time + timestep size. 
                    DO i=1,dtiter  
                      tVar % Values(1) = t0 + dtfunc
-                     dtfunc = ListGetCReal( CurrentModel % Simulation, &
-                         'Timestep Size', gotIt)
+                     dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Size' )
                    END DO
                    ! Revert back to original time, this will be added later on again.
                    tVar % Values(1) = t0
