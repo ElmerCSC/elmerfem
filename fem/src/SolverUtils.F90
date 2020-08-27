@@ -6752,14 +6752,15 @@ CONTAINS
     REAL(KIND=dp) :: SrcVec(:)       !< The assemblied source vector
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: t,n,bc,bf,FirstElem,LastElem,nlen
+    INTEGER :: i,t,n,bc,bf,FirstElem,LastElem,nlen
     LOGICAL :: Found,AnyBC,AnyBF,Axisymmetric
     REAL(KIND=dp) :: Coeff
-    REAL(KIND=dp), ALLOCATABLE :: FORCE(:)
+    REAL(KIND=dp), ALLOCATABLE :: FORCE(:,:)
     LOGICAL, ALLOCATABLE :: ActiveBC(:), ActiveBF(:)
     TYPE(ValueList_t), POINTER :: ValueList
-    CHARACTER(*), PARAMETER :: Caller = 'SetNodalSources'
-     
+    INTEGER, POINTER :: Indexes(:)
+    CHARACTER(*), PARAMETER :: Caller = 'SetNodalSources'    
+    
     nlen = LEN_TRIM(SourceName)
        
     CALL Info(Caller,'Checking for generalized source terms: '&
@@ -6806,12 +6807,13 @@ CONTAINS
     END IF
 
     n = Mesh % MaxElementNodes
-    ALLOCATE( FORCE(dofs*n) )
+    ALLOCATE( FORCE(dofs,n) )
     FORCE = 0.0_dp
     
     ! Here do the actual assembly loop. 
     DO t=FirstElem, LastElem 
       Element => Mesh % Elements(t)
+      Indexes => Element % NodeIndexes
 
       IF( t > Mesh % NumberOfBulkElements ) THEN
         Found = .FALSE.
@@ -6837,8 +6839,10 @@ CONTAINS
 
       CALL LocalSourceAssembly(Element, n, dofs, FORCE )
 
-      SrcVec(Perm(Element % NodeIndexes)) = SrcVec(Perm(Element % NodeIndexes)) + &
-          Coeff * FORCE(1:n)       
+      DO i=1,dofs
+        SrcVec(dofs*(Perm(Indexes)-1)+i) = SrcVec(dofs*(Perm(Indexes)-1)+i) + &
+            Coeff * FORCE(i,1:n)
+      END DO
     END DO
       
   
@@ -6885,13 +6889,13 @@ CONTAINS
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, dofs
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: FORCE(:)
+    REAL(KIND=dp) :: FORCE(:,:)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),ElemSource(:,:)
     REAL(KIND=dp) :: weight, SourceAtIp, DetJ
     INTEGER, POINTER :: Indexes(:)
     LOGICAL :: Stat,Found
-    INTEGER :: i,t,m,allocstat
+    INTEGER :: i,j,t,m,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
 
@@ -6920,10 +6924,13 @@ CONTAINS
     IF( dofs == 1 ) THEN
       ElemSource(1,1:n) = ListGetReal( ValueList,SourceName(1:nlen), n, Indexes )
     ELSE
+      j = 0
       DO i=1,dofs
         ElemSource(i,1:n) = ListGetReal( ValueList,&
-            SourceName(1:nlen)//' '//TRIM(I2S(i)), n, Indexes )
+            SourceName(1:nlen)//' '//TRIM(I2S(i)), n, Indexes, Found )
+        IF( Found ) j = j + 1
       END DO
+      IF( j == 0 ) CALL Fatal(Caller,'Could not find for any component: '//SourceName(1:nlen) )
     END IF
     
     DO t=1,IP % n
@@ -6939,8 +6946,7 @@ CONTAINS
 
       DO i=1,dofs
         SourceAtIP = SUM( ElemSource(i,1:n) * Basis(1:n) )
-!        FORCE(i:dofs:dofs*n) = FORCE(i:dofs:dofs*n) + &
-        FORCE(i:n) = FORCE(i:n) + &
+        FORCE(i,1:n) = FORCE(i,1:n) + &
             Weight * Basis(1:n) * SourceAtIp
       END DO     
     END DO
@@ -12472,32 +12478,45 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
 
-  SUBROUTINE CalculateLoads( Solver, Aaid, x, DOFs, UseBulkValues, NodalLoads ) 
+  SUBROUTINE CalculateLoads( Solver, Aaid, x, DOFs, UseBulkValues, NodalLoads, NodalValues ) 
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t), POINTER  :: Aaid
     REAL(KIND=dp) CONTIG :: x(:)
     INTEGER :: DOFs
     LOGICAL :: UseBulkValues
-    TYPE(Variable_t), POINTER :: NodalLoads
-
-    REAL(KIND=dp), POINTER :: LoadValues(:)
+    TYPE(Variable_t), POINTER, OPTIONAL :: NodalLoads
+    REAL(KIND=dp), POINTER, OPTIONAL :: NodalValues(:)
+    
     INTEGER :: i,j,k,l,m,ii,This,DOF
     REAL(KIND=dp), POINTER :: TempRHS(:), TempVector(:), Rhs(:), TempX(:)
     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
     REAL(KIND=dp) :: Energy, Energy_im
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: Found, Rotated
-
-
     REAL(KIND=dp), ALLOCATABLE :: BoundarySum(:), BufReal(:)
     INTEGER, ALLOCATABLE :: BoundaryShared(:),BoundaryActive(:),DofSummed(:),BufInteg(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: bc, ind, NoBoundaryActive, NoBCs, ierr
     LOGICAL :: OnlyGivenBCs
+    LOGICAL :: UseVar
 
-
-    IF( .NOT. ASSOCIATED(NodalLoads) ) RETURN
+    UseVar = .FALSE.
+    IF(PRESENT( NodalLoads ) ) THEN
+      UseVar = ASSOCIATED( NodalLoads )
+      IF(.NOT. UseVar ) THEN
+        CALL Warn('CalculateLoads','Load variable not associated!')
+        RETURN
+      END IF
+    ELSE IF( PRESENT( NodalValues ) ) THEN
+      IF(.NOT. ASSOCIATED( NodalValues ) ) THEN
+        CALL Warn('CalculateLoads','Load values not associated!')
+        RETURN
+      END IF
+    ELSE
+      CALL Fatal('CalculateLoads','Give either loads variable or values as parameter!')
+    END IF
+    
     ALLOCATE( TempVector(Aaid % NumberOfRows) )
 
     IF( UseBulkValues ) THEN
@@ -12604,14 +12623,19 @@ END FUNCTION SearchNodeL
       END IF
     END DO
 
-    DO i=1,SIZE( NodalLoads % Perm )
-      IF ( NodalLoads % Perm(i)>0 .AND. Solver % Variable % Perm(i)>0 ) THEN
-        DO j=1,DOFs
-          NodalLoads % Values(DOFs*(NodalLoads % Perm(i)-1)+j) =  &
-              TempVector(DOFs*(Solver % Variable % Perm(i)-1)+j)
-        END DO
-      END IF
-    END DO
+    IF( UseVar ) THEN
+      DO i=1,SIZE( NodalLoads % Perm )
+        IF ( NodalLoads % Perm(i)>0 .AND. Solver % Variable % Perm(i)>0 ) THEN
+          DO j=1,DOFs
+            NodalLoads % Values(DOFs*(NodalLoads % Perm(i)-1)+j) =  &
+                TempVector(DOFs*(Solver % Variable % Perm(i)-1)+j)
+          END DO
+        END IF
+      END DO
+    ELSE
+      NodalValues = TempVector
+    END IF
+      
     DEALLOCATE( TempVector )
 
 
@@ -12622,6 +12646,10 @@ END FUNCTION SearchNodeL
         CALL Warn('CalculateLoads','Boundary flux computation implemented only for nodes for now!')
       END IF
 
+      IF(.NOT. UseVar ) THEN
+        CALL Fatal('CalculateLoads','Boundary flux computation needs the variable parameter!')        
+      END IF
+      
       ALLOCATE( BoundarySum( NoBCs * DOFs ), &
           BoundaryActive( NoBCs ), &
           BoundaryShared( NoBCs ), &
@@ -16236,17 +16264,22 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A    
     TYPE(Variable_t), POINTER :: Var
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp), POINTER :: x0(:),b(:)
-    REAL(KIND=dp), ALLOCATABLE :: dx(:),f(:)
+    REAL(KIND=dp), POINTER :: x0(:),b(:),BulkRhsSave(:),dr(:),r0(:),dy(:),y0(:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: dx(:),f(:)
     INTEGER, POINTER :: Perm(:)
-    INTEGER :: dofs, i, j, nsize, ControlNode
+    INTEGER :: dofs, i, j, nsize, ControlNode, dof0
     REAL(KIND=dp) :: Nrm, c, dc, val, cand
-    LOGICAL :: GotF, Found
+    LOGICAL :: GotF, Found, UseLoads
     CHARACTER(LEN=MAX_NAME_LEN) :: SourceName
     CHARACTER(*), PARAMETER :: Caller = 'ControlLinearSystem'
 
     SAVE f
-            
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Fatal(Caller,'Controlling of source terms implemented only in serial!')
+    END IF
+
+    
     Params => Solver % Values
     Mesh => Solver % Mesh 
     A => Solver % Matrix
@@ -16256,7 +16289,7 @@ CONTAINS
     dofs = Var % Dofs
     Perm => Var % Perm
     nsize = SIZE(x0)
-
+        
     ! Default name for controlled source term
     SourceName = TRIM(Var % Name)//' Control'
     
@@ -16277,8 +16310,10 @@ CONTAINS
       ! This is inhereted from previous control iterations.
       c = ListGetCReal( Params,'Control Amplitude',Found )
 
-      !PRINT *,'ranges b:',MINVAL(b),MAXVAL(b),SUM(b)
-      !PRINT *,'ranges f:',MINVAL(f),MAXVAL(f),SUM(f)
+!      DO i=1,dofs
+!        PRINT *,'ranges b:',i,MINVAL(b(i::dofs)),MAXVAL(b(i::dofs)),SUM(b(i::dofs))
+!        PRINT *,'ranges f:',i,MINVAL(f(i::dofs)),MAXVAL(f(i::dofs)),SUM(f(i::dofs))
+!      END DO
 
       IF( Found ) THEN
         b(1:nsize) = b(1:nsize) + c * f(1:nsize)
@@ -16293,9 +16328,30 @@ CONTAINS
       dx = 0.0_dp
       CALL SolveSystem(A,ParMatrix,f,dx,Nrm,dofs,Solver)
       CALL ListPopNamespace()
+
+      
+      UseLoads = ListGetLogical( Params,'Control Use Loads', Found )
+      IF( UseLoads ) THEN
+        ALLOCATE(r0(nsize),dr(nsize))      
+        CALL CalculateLoads( Solver, A, x0, dofs, .TRUE., NodalValues = r0 ) 
+        BulkRhsSave => A % BulkRhs
+        A % BulkRhs => f
+        CALL CalculateLoads( Solver, A, dx, dofs, .TRUE., NodalValues = dr ) 
+        A % BulkRhs => BulkRhsSave
+        y0 => r0
+        dy => dr
+      ELSE
+        y0 => x0
+        dy => dx
+      END IF
       
       val = ListGetCReal( Params,'Control Target Value',UnfoundFatal=.TRUE.)
       c = ListGetCReal( Params,'Control Amplitude',Found )
+
+      dof0 = 1
+      IF( dofs > 1) THEN
+        dof0 = ListGetInteger( Params,'Control Target Component',UnfoundFatal=.TRUE.)
+      END IF
       
       ControlNode = ListGetInteger( Params,'Control Node Index',Found )
 
@@ -16327,18 +16383,22 @@ CONTAINS
           END IF
         END BLOCK
       END IF
-      
+
+      ! We use either solution or reaction force for (y0,dy) so that we can
+      ! generalize the control procedures for both. 
       IF( ControlNode > 0 ) THEN      
         IF( ControlNode > nsize ) CALL Fatal(Caller,&
             'Invalid "Control Node Index": '//TRIM(I2S(ControlNode)))
-        j = Perm(ControlNode)
-        dc = (val-x0(j))/dx(j)
+        i = Perm(ControlNode)
+        j = dofs*(i-1)+dof0
+        dc = (val-y0(j))/dy(j)
         WRITE(Message,'(A,ES15.6)') 'Scaling control update for control node:',dc      
       ELSE
         dc = HUGE(dc)
         DO i=1,nsize
-          IF(ABS(dx(i)) < TINY(dx(i))) CYCLE
-          cand = (val-x0(i))/dx(i)
+          j = dofs*(i-1)+dof0          
+          IF(ABS(dy(j)) < TINY(dy(j))) CYCLE
+          cand = (val-y0(j))/dy(j)
           IF( ABS(cand) < ABS(dc) ) dc = cand
         END DO
         WRITE(Message,'(A,ES15.6)') 'Scaling control update for extrumum value:',dc      
@@ -16348,13 +16408,14 @@ CONTAINS
       c = c + dc
       CALL ListAddConstReal( Params,'Control Amplitude', c )
      
-      ! Apply control
+      ! Apply control, this always to the solution - not to load
       x0(1:nsize) = x0(1:nsize) + dc * dx(1:nsize)
 
       WRITE(Message,'(A,ES15.6)') 'Scaling control applied:',c      
       CALL Info(Caller,Message)
 
       DEALLOCATE(f,dx)
+      IF(UseLoads) DEALLOCATE(dr,r0)
     END IF
       
   END SUBROUTINE ControlLinearSystem
@@ -18517,6 +18578,8 @@ CONTAINS
     ! Also the namespace is replaced to 'fct:' so that different strategies may 
     ! be applied to the mass matrix solution.
     CALL ListPushNameSpace('fct:')
+    CALL ListAddLogical( Params,'fct: Skip Compute Nonlinear Change',.TRUE.)
+    CALL ListAddLogical( Params,'fct: Skip Advance Nonlinear iter',.TRUE.)
     SaveValues => A % Values
     A % Values => M_C
     CALL SolveLinearSystem( A, ku, udot, Norm, 1, Solver )
@@ -18554,6 +18617,9 @@ CONTAINS
     END IF
 
     CALL ListPushNameSpace('fct:')
+    CALL ListAddLogical( Params,'fct: Skip Compute Nonlinear Change',.TRUE.)
+    CALL ListAddLogical( Params,'fct: Skip Advance Nonlinear iter',.TRUE.)
+  
     A % Values => M_C
     udot = 0._dp
     CALL SolveLinearSystem(A,Ku,Udot,Norm,1,Solver)

@@ -5872,6 +5872,7 @@ CONTAINS
       BUpd = BUpd .OR. GetLogical( Params,'Save Bulk System', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk Matrix', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constraint Modes Analysis',Found) 
+      BUpd = BUpd .OR. GetLogical( Params,'Control Use Loads',Found )
     END IF
 
     IF( BUpd ) THEN
