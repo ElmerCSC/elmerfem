@@ -80,7 +80,7 @@ static void Instructions()
   printf("B) Inline mode which expects at least three input parameters\n");
   printf("   'ElmerGrid 1 3 test'\n\n");
   printf("The first parameter defines the input file format:\n");
-  printf("1)  .grd      : Elmergrid file format\n");
+  printf("1)  .grd      : ElmerGrid file format\n");
   printf("2)  .mesh.*   : Elmer input format\n");
   printf("3)  .ep       : Elmer output format\n");
   printf("4)  .ansys    : Ansys input format\n");
@@ -178,11 +178,11 @@ static void Instructions()
   printf("-partcell int[3]     : the mesh will be partitioned in cells of fixed sizes\n");
   printf("-partcyl int[3]      : the mesh will be partitioned in cylindrical main directions\n");
 #if PARTMETIS
-  printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
+  if(0) printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
-  printf("-metisseed           : random number generator seed for Metis algorithms\n");
+  printf("-metisseed int       : random number generator seed for Metis algorithms\n");
 #endif
   printf("-partdual            : use the dual graph in partition method (when available)\n");
   printf("-halo                : create halo for the partitioning for DG\n");
