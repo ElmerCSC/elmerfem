@@ -1,0 +1,16 @@
+Date: Fri, 9 Sep 2005 10:08:10 +0300 (EEST)
+
+Elmer is a computational tool for multi-physics problems that has been developed in collaboration with Finnish universities, research laboratories and industry over the last 10 years. The software has been recently released under the GPL license. Source code, binaries, examples and tutorials can be found at: 
+
+http://www.csc.fi/elmer/
+
+Elmer includes physical models of fluid dynamics, structural mechanics, electromagnetics and heat transfer. These are described by partial differential equations, which Elmer solves by the Finite Element Method (FEM). 
+
+Elmer comprises of several different parts: The geometry, boundary conditions and physical models are defined in ElmerFront. The resulting problem definition is solved by ElmerSolver. Finally the results are visualized by ElmerPost. Additionally a utility ElmerGrid may be used for simple mesh manipulation. 
+
+The different parts of Elmer software may also be used independently. The strongest of the components is ElmerSolver which includes many sophisticated features. For pre- and postprosessing the users may find also other alternatives. 
+
+The software compiles on a large range of platforms, amongst others: Windows, Linux, Solaris, AIX and MAC. There is also support for parallel computation via MPI. 
+
+Best regards,
+Elmer team
