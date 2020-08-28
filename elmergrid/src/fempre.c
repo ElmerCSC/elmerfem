@@ -174,6 +174,7 @@ static void Instructions()
   printf("\nKeywords are related to mesh partitioning for parallel ElmerSolver runs:\n");
   printf("-partition int[3]    : the mesh will be partitioned in cartesian main directions\n");
   printf("-partorder real[3]   : in the 'partition' method set the direction of the ordering\n");
+  printf("-parttol real        : in the 'partition' method set the tolerance for ordering\n");
   printf("-partcell int[3]     : the mesh will be partitioned in cells of fixed sizes\n");
   printf("-partcyl int[3]      : the mesh will be partitioned in cylindrical main directions\n");
 #if PARTMETIS
@@ -964,13 +965,15 @@ int main(int argc, char *argv[])
       if(eg.partitions) {
 	if( partopt == -1 ) partopt = partdual;
 	if(partopt == 0) 
-	  PartitionSimpleElements(&data[k],&eg,boundaries[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
+	  PartitionSimpleElements(&data[k],&eg,boundaries[k],eg.partdim,eg.periodicdim,
+				  eg.partorder,eg.partcorder,eg.parttol,info);	
 	else if(partopt == 2) 
 	  PartitionSimpleElementsNonRecursive(&data[k],eg.partdim,eg.periodicdim,info);	
 	else if(partopt == 3) 
 	  PartitionSimpleElementsRotational(&data[k],eg.partdim,eg.periodicdim,info);	
 	else
-	  PartitionSimpleNodes(&data[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
+	  PartitionSimpleNodes(&data[k],eg.partdim,eg.periodicdim,eg.partorder,
+			       eg.partcorder,eg.parttol,info);	
       }
 #if PARTMETIS
       if(eg.metis) {

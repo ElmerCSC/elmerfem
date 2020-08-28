@@ -341,6 +341,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->curverad = 0.5;
   eg->curveangle = 90.0;
   eg->curvezet = 0.0;
+  eg->parttol = 0.0;
   
   for(i=0;i<MAXSIDEBULK;i++) 
     eg->sidebulk[i] = 0;
@@ -462,6 +463,16 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->corder[0] = atof(argv[arg+1]);
 	eg->corder[1] = atof(argv[arg+2]);
 	eg->corder[2] = atof(argv[arg+3]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-parttol") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give a tolerance for gemetric partition algorithms\n");
+	return(3);
+      }
+      else {
+	eg->parttol = atof(argv[arg+1]);
       }
     }
 

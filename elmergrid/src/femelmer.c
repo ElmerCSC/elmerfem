@@ -2011,11 +2011,12 @@ static int PartitionNodesByElements(struct FemType *data,int info)
 
 
 int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct BoundaryType *bound,
-			    int dimpart[],int dimper[],int partorder, Real corder[],int info)
+			    int dimpart[],int dimper[],int partorder, Real corder[],
+			    Real parttol, int info)
 /* Partition elements recursively in major directions. 
    This may be the optimal method of partitioning for simple geometries. */ 
 {
-  int i,j,k,ind,minpart,maxpart;
+  int i,j,k,l,kprev,ind,minpart,maxpart;
   int noknots,noelements,nonodes,elemsinpart,periodic;
   int partitions1,partitions2,partitions3,partitions;
   int vpartitions1,vpartitions2,vpartitions3,vpartitions;
@@ -2024,7 +2025,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   Real *arrange;
   Real x,y,z,cx,cy,cz;
 
-  printf("PartitionSimpleElements\n");
+  if(info) printf("PartitionSimpleElements\n");
 
   noelements = data->noelements;
   noknots = data->noknots;
@@ -2070,7 +2071,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   vpartitions2 = partitions2;
   vpartitions3 = partitions3;
 
-  printf("connect: %d %d\n",data->elemconnectexist,data->nodeconnectexist);
+  if(0) printf("connect: %d %d\n",data->elemconnectexist,data->nodeconnectexist);
 
   noparts0 = 0;
   noelements0 = 0;
@@ -2098,7 +2099,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   }
   vpartitions = vpartitions1 * vpartitions2 * vpartitions3;
   nopart = Ivector(1,vpartitions+noparts0);
-
+  
   if( vpartitions == 1 && data->elemconnectexist ) {
     if(info) printf("Only one regular partitions requested, skipping 2nd part of hybrid partitioning\n");
     for(j=1;j<=noelements;j++) {
@@ -2158,7 +2159,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
     }
 
     SortIndex(noelements,arrange,indx);
-
+    
     for(i=1;i<=noelements1;i++) {
       ind = indx[i];
       k = (i*vpartitions1-1)/noelements1+1;
@@ -2251,6 +2252,63 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
     }
   }
 
+  /* This piece of code may be used to assign "strides" back to same partition.
+     After performing the geometric partitioning we revisit whether elements 
+     are too close to each other and yet in different partition in the chosen measure.
+     For example, if chosen measure has the smallest coefficient in z-direction then
+     a suitable value will revert elements to being on the same stride. */
+  if(parttol > 1.0e-20 )  {
+    if(0) {
+      printf("Original partition counts:\n");
+      for(i=1;i<=partitions;i++)
+	printf("nopart[%d] = %d\n",i,nopart[i]);
+    }
+      
+    for(j=1;j<=noelements;j++) {
+      if( data->elemconnectexist ) {
+	if( elemconnect[j] > 0 ) {
+	  arrange[j] = 1.0e9;
+	  continue;
+	}
+      }
+      nonodes = data->elementtypes[j]%100;
+      x = y = z = 0.0;
+      for(i=0;i<nonodes;i++) {
+	k = data->topology[j][i];
+	x += data->x[k];
+	y += data->y[k];
+	z += data->z[k];
+      }
+      arrange[j] = (cx*x + cy*y + cz*z) / nonodes;
+    }
+    SortIndex(noelements,arrange,indx);
+
+    kprev = inpart[indx[1]];
+    l = 0;
+    for(i=2;i<=noelements1;i++) {
+      ind = indx[i];
+      k = inpart[ind];
+      if(k != kprev ) {
+	if(fabs(arrange[i]-arrange[i-1]) < parttol ) {
+	  nopart[k] -= 1;
+	  nopart[kprev] += 1;
+	  inpart[ind] = kprev;
+	  k = kprev;
+	  if(0) printf("arrange %d %d %d %d %.6lg %.6lg\n",i,ind,k,kprev,arrange[i],arrange[i-1]);
+	  l++;
+	}
+      }
+      kprev = k;
+    }
+    if(0) {
+      printf("Updated partition counts:\n");
+      for(i=1;i<=partitions;i++)
+	printf("nopart[%d] = %d\n",i,nopart[i]);    
+    }      
+    if(info) printf("Number of partition changes due to tolerance: %d\n",l);
+  }
+
+  
   free_Rvector(arrange,1,noelements);
   free_Ivector(indx,1,noelements);
 
@@ -3421,12 +3479,12 @@ int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
 
 
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
-			 int partorder, Real corder[],int info)
+			 int partorder, Real corder[],Real parttol,int info)
 /* Do simple partitioning going for the nodes. Then using the the majority rule
    define the elemental partitioning. This is suboptimal for Elmer because the 
    elemental ordering is primary in Elmer. */
 {
-  int i,j,k,k0,l,ind,minpart,maxpart;
+  int i,j,k,k0,kprev,l,ind,minpart,maxpart;
   int noknots, noelements,elemsinpart,periodic;
   int partitions1,partitions2,partitions3,partitions;
   int vpartitions1,vpartitions2,vpartitions3,vpartitions,hit;
@@ -3598,6 +3656,48 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
   }
   
 
+  /* This piece of code may be used to assign "strides" back to same partition. */
+  if(parttol > 1.0e-20 )  {
+    if(0) {
+      printf("Original partition counts:\n");
+      for(i=1;i<=partitions;i++)
+	printf("nopart[%d] = %d\n",i,nopart[i]);
+    }
+      
+    for(j=1;j<=noknots;j++) {
+      x = data->x[j];
+      y = data->y[j];
+      z = data->z[j];
+      arrange[j] = cx*x + cy*y + cz*z;
+    }
+    SortIndex(noknots,arrange,indx);
+
+    kprev = nodepart[indx[1]];
+    l = 0;
+    for(i=2;i<=noknots;i++) {
+      ind = indx[i];
+      k = nodepart[ind];
+      if(k != kprev ) {
+	if(fabs(arrange[i]-arrange[i-1]) < parttol ) {
+	  nopart[k] -= 1;
+	  nopart[kprev] += 1;
+	  nodepart[ind] = kprev;
+	  k = kprev;
+	  if(0) printf("arrange %d %d %d %d %.6lg %.6lg\n",i,ind,k,kprev,arrange[i],arrange[i-1]);
+	  l++;
+	}
+      }
+      kprev = k;
+    }
+    if(0) {
+      printf("Updated partition counts:\n");
+      for(i=1;i<=partitions;i++)
+	printf("nopart[%d] = %d\n",i,nopart[i]);    
+    }      
+    if(info) printf("Number of partition changes due to tolerance: %d\n",l);
+  }
+
+  
   /* For periodic systems the number of virtual partitions is larger. Now map the mesh so that the 
      1st and last partition for each direction will be joined */
   if(periodic) {
