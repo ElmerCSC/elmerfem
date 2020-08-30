@@ -1,9 +1,9 @@
 Elmer Release Notes for version 8.5
 ===================================
 
-Previous release: ##8.5##
-Period covered: ##18 Dec 2018 - 30 Aug 2020##
-Number of commits: ##~1140## (excluding merges)
+Previous release: **8.5**  
+Period covered: **18 Dec 2018 - 30 Aug 2020**  
+Number of commits: **~1140** (excluding merges)  
 
 These release notes provide information on the most essential changes.
 You can get a complete listing of commit messages, for example, with:  
