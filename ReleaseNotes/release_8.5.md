@@ -51,6 +51,16 @@ Enhanced Solver Modules
 - Gmsh format:
     - Improved use of masking features in output
 
+### StructuredMeshMapper
+- Enable arbitrary number of layers, before limited to three. 
+
+
+### HeatSolver
+- New tentative vectorized version: HeatSolverVec
+- Enable symmetric 3D cases for view factor computation. 
+- Make Gebharadt factors linear system symmetric, if possible "ViewFactor Symmetry".
+
+
 
 ElmerSolver library functionality
 ---------------------------------
@@ -74,13 +84,35 @@ ElmerSolver library functionality
   assembled into one degree of freedom.
 - This decreases the size of the linear system and is numberically favourable.
 - Antiperiodicity may be included. For vector valued problems all components must be treated alike. 
+- Conforming BCs for edge dofs may consider direction of edge.
 - See test cases with "Apply Conforming BCs" and "Conforming BC" defined.
     
+### Improved internal partitioning with Zoltan
+- Enable internal partitioning with Zoltan to honor connected boundaries.
+
+### Enable primary solver to call other solvers
+- Enables calling before and after solving the primary problem.
+- Also possible to call before and after each nonlinear iteration.
+
+### Anderson Acceleration for linear systems
+- Implemented a version of Anderson Acceleration where previous solutions and
+  residuals are used to accelerate the nonlinear convergence.
+- May increase linear convergence to quadratic, quadratic convergence (Newton's method) is not improved.
+
+### Run Control
+- Enable external loop control over the simulation.
+- May be used in optimization and parametric scanning etc.
+- Applicable also to transient system as the variable "time" is not used for the control level. 
+
+
 
 ElmerGrid
 ---------
-- Improved support for Gmsh version 4 import
+- Fixes for UNV, mptxt and Gmsh file format import.
+- Tentative reader for FVCOM format
 - Add possibility to define seed for Metis partitioning (-metisseed).
+- Maintain entity names in extrusion
+
 
 
 ElmerGUI
