@@ -1,0 +1,10 @@
+! ----- names for bodies -----
+$ air = 7
+! ----- names for boundaries -----
+$ yminus = 1
+$ yplus = 2
+$ xminus = 3
+$ xplus = 4
+$ zminus = 5
+$ zplus = 6
+$ bnry8 = 8
