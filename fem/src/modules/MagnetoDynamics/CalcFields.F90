@@ -557,6 +557,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
    REAL(KIND=dp) :: HarmPowerCoeff = 0.5_dp
+   REAL(KIND=dp) :: line_tangent(3)
    INTEGER :: IOUnit
    
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
@@ -2155,23 +2156,31 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END SELECT
      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
-     Model % CurrentElement => Element
-     nd = GetElementNOFDOFs(Element)
-     n  = GetElementNOFNodes(Element)
-     CALL GetElementNodes(Nodes, Element)
-
-     CALL GetVectorLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
-     IF (Transient) THEN 
-       CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
-       PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
-     END IF
-
      ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
 
      IF (Found) THEN
        CALL Info("CalcFields", "Found a Thin Line Element", level=10)
        ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
        IF (.NOT. Found) CALL Fatal('CalcFields','Thin Line Conductivity not found!')
+     ELSE
+       CYCLE
+     END IF
+
+
+     Model % CurrentElement => Element
+     nd = GetElementNOFDOFs(Element)
+     n  = GetElementNOFNodes(Element)
+     CALL GetElementNodes(Nodes, Element)
+!     line_tangent = 0._dp
+!     line_tangent(1) = Nodes % x(2) - Nodes % x(1)
+!     line_tangent(2) = Nodes % y(2) - Nodes % y(1)
+!     line_tangent(3) = Nodes % z(2) - Nodes % z(1)
+!     line_tangent(:) = line_tangent(:) / SQRT(SUM(line_tangent(:)**2._dp))
+
+     CALL GetVectorLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
+     IF (Transient) THEN 
+       CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+       PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
      END IF
 
     ! Numerical integration:
@@ -2200,6 +2209,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
 
          ! The Joule heating power per unit volume: J.E = (sigma * E).E
+!         Coeff = Area * C_ip * SUM(line_tangent(:) * E(1,:)) ** 2._dp * s
          Coeff = Area * C_ip * SUM(E(1,:) ** 2._dp) * s
        ELSE
          !da/dt part
