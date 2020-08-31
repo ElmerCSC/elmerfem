@@ -119,7 +119,7 @@ Boundary Condition 5 !---- cable
    Thin Line Crossection Area = Real 1e-6
 End
  
-Solver 2 :: Reference Norm = Real 2.63574035E-04
+Solver 2 :: Reference Norm = Real 1.848E-01
 Solver 2 :: Reference Norm Tolerance = Real 1E-03
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
