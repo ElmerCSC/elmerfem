@@ -1,0 +1,348 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! PARAMETERS
+!! Name of the RUN 
+$name="<NAME>"
+!! Regularisation parameter
+$Lambda=<Lambda>
+!! max. number of iterations
+$niter=50
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$OBSERVATION_FILE="<OBS_FILE>"
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$yearinsec = 365.25*24*60*60
+$rhoi = 917.0/(1.0e6*yearinsec^2)  ! MPa - a - m
+$rhow = 1028.0/(1.0e6*yearinsec^2)
+$gravity = -9.81*yearinsec^2
+$mu=1.8e8*1.0e-6*(2.0*yearinsec)^(-1.0/3.0)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh2D"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D
+  Simulation Type = Steady State
+
+  ! Internal extrusion
+  Extruded Mesh Levels=5
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = $niter
+
+  Post File = "OPTIM_$name$_.vtu"
+  OutPut Intervals = 25
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Bodies
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+! Top surface
+Body 2
+  Equation = 2
+  Initial Condition = 2
+End
+! Bottom Surface
+Body 3
+  Equation = 3
+  Initial Condition = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Initial Conditions
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Velocity 3 = Real 0.0
+End
+
+! Top surface
+Initial Condition 2
+ Zs = Variable coordinate 1, Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Zs"
+End
+
+! Bottom Surface
+Initial Condition 3
+!! Slip Coefficient
+ ! True value
+ BetaS = Variable coordinate 1, Coordinate 2
+     REAL procedure "MacAyeal_USFs" "betaSquare"
+ ! Initial guess
+ alpha = Real -6.0
+
+! Topography
+ Zb = Variable coordinate 1, Coordinate 2
+     REAL procedure "MacAyeal_USFs" "Zb"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Body Forces
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0            
+  Flow BodyForce 2 = Real 0.0              
+  Flow BodyForce 3 = Real $gravity
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Materials
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi
+  Viscosity Model = String "power law"
+
+  Viscosity = Real $mu
+
+  Viscosity Exponent = Real $1.0e00/3.0e00
+  Critical Shear Rate = Real 1.0e-10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Solvers
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!! Before simulation
+Solver 1
+  Exec Solver = before simulation
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+
+  Top Surface Variable Name = String "Zs"
+  Bottom Surface Variable Name = String "Zb"
+
+  Displacement Mode = Logical False
+  Correct Surface = Logical True
+  Minimum Height = Real 1.0
+End
+
+!! Always
+
+!!!!!!!!!!!!!!!!!!!!!
+!! Velocity solution
+!!  body 1 (bulk)
+!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = "Navier-Stokes"
+
+  Stabilize = logical True
+  flow model = Stokes
+
+! Linear system
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning= ILU0
+  Linear System Convergence Tolerance= 1.0e-10
+  Linear System Max Iterations = 1000
+
+! non linear iterations
+! system self adjoint if Newton is used for the last iterations
+  Nonlinear System Max Iterations = Integer 100
+  Nonlinear System Convergence Tolerance  = Real 1.0e-7
+  Nonlinear System Newton After Iterations = Integer 10
+  Nonlinear System Newton After Tolerance = Real 1.0e-04
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Reset Newton = Logical True
+
+  Steady State Convergence Tolerance = Real 1.0e-12
+
+! Create variables required for the optimisation
+  Exported Variable 1 = -global CostValue 
+  Exported Variable 2 = -nooutput "Velocityb"
+  Exported Variable 2 DOFs = 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!
+!! Cost Function
+!!  body 2 (top)
+!!!!!!!!!!!!!!!!!!!!!
+Solver 3
+  Equation = "Cost"
+    procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
+
+   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
+   Lambda = Real 1.0
+ ! save the cost as a function of iterations (iterations,Cost,rms=sqrt(2*Cost/Ndata)
+   Cost Filename = File "Cost_$name$.dat"
+
+   Observed Variable Name = String "Flow Solution"
+   Observed Variable dimension = Integer 2
+
+ ! ASCII File with data: x,y,u,v
+   Observation File Name = File "$OBSERVATION_FILE$"
+
+
+ !! Exported Variables
+ Exported Variable 1 = Zs
+end
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Adjoint 
+!!  body 1 (bulk)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 4
+  Equation = "Adjoint"
+  Variable = -nooutput Adjoint
+  Variable Dofs = 4
+
+  procedure = "ElmerIceSolvers" "Adjoint_LinearSolver"
+
+!Name of the flow solution solver
+  Direct Solver Equation Name = string "Navier-Stokes"
+
+! linear system
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning= ILU0
+  Linear System Convergence Tolerance= 1.0e-10
+  Linear System Max Iterations = 1000
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Derivative / beta
+!!  body 3 (bottom)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 5
+ Equation = "DJDBeta"
+    procedure = "ElmerIceSolvers" "AdjointStokes_GradientBetaSolver"
+
+    Flow Solution Name = String "Flow Solution"
+    Adjoint Solution Name = String "Adjoint"
+    Gradient Variable Name = String "DJDalpha"
+
+  !! Exported Variables
+    Exported Variable 1 = alpha
+    Exported Variable 2 = DJDalpha
+    Exported Variable 3 = BetaS
+    Exported Variable 4 = Zb
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Regularisation
+!!  body 3 (bottom)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 6
+  Equation = "DJDBeta_Reg"
+    procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
+
+    Cost Filename=File "CostReg_$name$.dat"
+    Optimized Variable Name= String "alpha"
+    Gradient Variable Name= String "DJDalpha"
+    Cost Variable Name= String "CostValue"
+    Lambda= Real $Lambda
+    Reset Cost Value= Logical False  !=> DJDapha already initialized in solver DJDBeta; switch off initialisation to 0 at the beginning of this solver
+    A priori Regularisation= Logical False
+end
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Optimisation
+!!  body 3 (bottom)
+!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 7
+  Equation = "Optimize_m1qn3"
+  procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "alpha"
+  Gradient Variable Name = String "DJDalpha"
+  gradient Norm File = File "GradientNormAdjoint_$name$.dat"
+
+  !!
+  Mesh Independent = Logical FALSE
+
+ ! M1QN3 Parameters
+  M1QN3 dxmin = Real 1.0e-10
+  M1QN3 epsg = Real  1.e-6
+  M1QN3 niter = Integer $niter
+  M1QN3 nsim = Integer $niter
+  M1QN3 impres = Integer 5
+  M1QN3 DIS Mode = Logical True
+  M1QN3 df1 = Real 0.5
+  M1QN3 normtype = String "dfn"
+  M1QN3 OutputFile = File  "M1QN3_$name$.out"
+  M1QN3 ndz = Integer 20
+
+end
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Equations
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! bulk
+Equation 1
+  Active Solvers(3) = 1 2 4
+End
+! Top
+Equation 2
+  Active Solvers(1) = 3
+End
+! bottom
+Equation 3
+  Active Solvers(3) = 5 6 7
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Boundary Conditions
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Boundary Condition 1
+  Name = "Side Walls"
+  Target Boundaries(2) = 1 3
+  
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Inflow"
+  Target Boundaries = 4 
+
+  Velocity 1 = Variable Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Inflow"
+  Velocity 2 = Real 0.0
+
+End
+
+Boundary Condition 3
+  Name = "OutFlow"
+  Target Boundaries = 2
+
+  Velocity 1 = Variable Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Outflow"
+  Velocity 2 = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "bottom"
+  Body Id = 3
+
+  Normal-tangential Velocity = True
+  Velocity 1 = Real 0.0e0
+
+  Slip Coefficient 2 = Variable alpha
+    REAL procedure "ElmerIceUSF" "TenPowerA"
+
+  Slip Coefficient 3 = Variable alpha
+    REAL procedure "ElmerIceUSF" "TenPowerA"
+
+  Slip Coefficient derivative = Variable alpha
+    REAL procedure "ElmerIceUSF" "TenPowerA_d"
+End
+
+Boundary Condition 5
+  Name = "top"
+  Body Id = 2
+End

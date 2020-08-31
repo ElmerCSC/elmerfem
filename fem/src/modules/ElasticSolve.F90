@@ -464,7 +464,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !------------------------------------------------------------------------------
   !     Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Mesh % MaxElementDOFs
 
      IF ( AllocationsDone ) THEN
@@ -953,7 +953,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      !------------------------------------------------------------------------------
      DO t = 1,GetNOFBoundaryElements()
         CurrentElement =>  GetBoundaryElement(t)
-        IF ( CurrentElement % TYPE % ElementCode == 101 ) CYCLE
         IF (.NOT. ActiveBoundaryElement()) CYCLE
 
         n  = GetElementNOFNodes()

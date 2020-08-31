@@ -47,9 +47,7 @@ MODULE Adaptive
   USE GeneralUtils
   USE SolverUtils
   USE ModelDescription
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
 
   IMPLICIT NONE
 
@@ -108,13 +106,9 @@ CONTAINS
     TYPE( Element_t ), POINTER :: RefElement
     INTEGER :: i,j,k,n,nn,MarkedElements
     TYPE( Variable_t ), POINTER :: Var, Var1, NewVar
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
       LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s
-#else
-    REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
-      LocalIndicator,ErrorEstimate,t,TotalTime,CPUTime,RealTime,RemeshTime,s
-#endif
+
     LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles
     INTEGER :: MaxDepth, NLen
     CHARACTER(LEN=1024) :: Path
@@ -1004,12 +998,7 @@ CONTAINS
 
     TYPE( Mesh_t ), POINTER :: RefMesh, NewMesh
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: t
-#else
-    REAL(KIND=dp) :: CPUTime,t
-#endif
-
     INTEGER :: EdgeNumber,LongestEdge,Node1,Node2
     INTEGER :: i,j,k,l,n,NewElCnt,NewNodeCnt,MarkedEdges
 

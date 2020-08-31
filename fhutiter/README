@@ -1,9 +1,0 @@
-HUTIter iterative solver
-
-The build system is a cross-over from a home-brewed preprocessed
-system and a GNU automake system. src/*.src contain the code
-itself. This is then preprocessed into several different precisions:
-(single, double, single complex, and double complex).
-
-Older versions of autoconf don't come with f90 support, so you should
-have atleast >=2.59 

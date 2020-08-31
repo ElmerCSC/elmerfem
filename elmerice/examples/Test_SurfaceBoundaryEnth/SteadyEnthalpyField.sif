@@ -1,0 +1,365 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test Boundary Enthalpy                !!
+!!                                       !!
+!! Adrien Gilbert (UIO, October 2020)    !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo on
+
+$Step = "SteadyEnthalpy_"
+
+!Geothermal heat flux
+$flux_geo = 0.040
+
+Header
+ Mesh DB "." "RikhaSamba"
+End
+
+Constants
+
+! For the enthalpy solver :
+!===============================
+
+ T_ref_enthalpy = real 200.0
+ L_heat = real 334000.0
+! Cp(T) = A*T + B
+ Enthalpy Heat Capacity A = real 7.253 
+ Enthalpy Heat Capacity B = real 146.3
+ P_triple = real 0.061173 !Triple point pressure for water (MPa)
+ P_surf = real 0.1013 ! Surface atmospheric pressure(MPa)
+ beta_clapeyron = real 0.0974 ! clausus clapeyron relationship (K MPa-1)
+ Pressure Variable = String "Pressure"
+ 
+ 
+ ! For the surface Boundary Solver
+ !===============================
+  rho_surf = real 350.0		! Snow surface density
+  rho_ice = real 917.0 		! Ice density
+  rho_w = real 1000.0 		! Water density
+  Sr = real 0.005			! Residual water saturation in Snow/Firn
+
+	!Mean mass balance computation from daily Air Temperature and Precipitation :
+	
+  AirTemperatureFile = File "Data/daily_air_temperature.csv"  !Contain daily temperature
+  !PrecipFile = File "Data/temp_rikha.csv"  !Contain daily precipitation (optional)
+    
+  Precip = real 0.300  		!Mean annual precipitation if PrecipFile not provided
+  TempCorrec= real -0.12	!Possibility of shifting temperature to get steady state mass balance for exemple (optional)
+  PrecipCorrec = real 1.0	!Possibility of adding a correcting factor on precipitation if PrecipFile provided (optional)
+  
+  GradTemp = real 0.0065	!Air temperature Lapse Rate (K m^-1)
+  GradPrecip= real 0.001	!Precipitation Lapse Rate (% m^-1)
+  z_temp = real 5310.0		!Elevation of temperature measurement from AirTemperatureFile
+  z_precip = real 5310.0	!Elevation of Precipitation measurement
+  
+  RadFact_ice = real 0.0000925			! Melting factor for ice from radiation
+  RadFact_snow = real $0.0000925/2.0	! Melting factor for snow from radiation
+  Deg_jour = real 0.0114				! Melting factor from air temperature
+  
+  seuil_precip = real 2.0				!Rain/Snow air temperature threshold (degree C)
+  seuil_fonte = real 0.0				!Melting air temperature threshold (degree C)
+  
+  firn_param = real 30.0				! Firn densification factor (yr)
+  super_ice = real 0.15					! Superimposed ice factor
+  
+  Latitude = real 28.82					!Latitude (degree) to compute Potential Solar Radiation
+  
+  !Possibility to export 1D profile simulation at one node of coordinate (X_output1D,Y_output1D) (optional)
+  !X_output1D = real 7.427915716096325e+05	
+  !Y_output1D = real 3.192930544993663e+06
+  
+  !===============================
+  !===============================
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+
+  Coordinate System  =  Cartesian 3D 
+  Simulation Type = Steady
+  Timestepping Method = BDF
+  BDF order = 2
+  
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 10
+
+  Output Intervals = 1
+ 
+  Output File = "$Step".result"
+  Post File = "$Step".vtu"
+  max output level = 3    
+  
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+  Velocity 3 = Real 0.0 
+  
+  enthalpy_h = real 125656.0
+  Temperature = real -5.0
+
+  Surf Enth = real 135000.0
+  Firn = real 0.0
+  Densi = real 917.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real -9.7562e15  !MPa - a - m
+  
+  Heat Source = Variable W
+	 real MATC "if (tx<0.0) (0.0); else (tx*1e6/917.0)" !Convert to J yr-1 kg-1
+  
+  Enthalpy_h Upper Limit = Variable Phase Change Enthalpy
+	real MATC "tx +0.03*334000.0"
+	
+  Enthalpy_h Lower Limit = real 0.0
+  
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+
+  Density = Real 9.150149e-19  ! MPa - a - m (910kg/m3) 
+
+  Viscosity Model = String "Glen"
+! Viscosity has to be set to a dummy value
+! to avoid warning output from Elmer
+  Viscosity = Real 1.0 
+  Glen Exponent = Real 3.0
+  Critical Shear Rate = Real 1.0e-10
+! Rate factors (Paterson value in MPa^-3a^-1)
+  Rate Factor 1 = Real 9.1254e12  
+  Rate Factor 2 = Real 7.6602e23
+! these are in SI units - no problem, as long as
+! the gas constant also is 
+  Activation Energy 1 = Real 60e3
+  Activation Energy 2 = Real 115e3  
+  Glen Enhancement Factor = Real 1.0
+  Limit Temperature = Real -10.0
+  Temperature Field Variable = String "Temperature"
+
+  Enthalpy Density = real 917.0
+  Enthalpy Heat Diffusivity = real 3.3416e+03
+  Enthalpy Water Diffusivity = real $1.045e-4*3600*24*365.25
+
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 1
+
+exec solver = before simulation
+
+  Equation = "Flowdepth"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = String "Depth"
+   Variable DOFs = 1
+   Linear System Solver = "Direct"
+   ! this sets the direction
+   ! -1 is negative z-direction (upside down)
+   ! +1 is positive (downside up)
+   Gradient = Real -1.0E00
+   Calc Free Surface = Logical True
+   Freesurf Name = String "Surf"
+End
+
+
+Solver 2
+
+exec solver = before simulation
+
+  Equation = SurfBoundary
+  Variable = Mass Balance
+  Variable DOFs = 1
+  procedure =  "ElmerIceSolvers" "SurfEnthBoundarySolver"
+
+  Exported Variable 1 = String "Surf Enth"
+  Exported Variable 1 DOFs = 1
+
+  Exported Variable 2 = String "Densi"
+  Exported Variable 2 DOFs = 1
+
+  Exported Variable 3 = String "Firn"
+  Exported Variable 3 DOFs = 1
+  
+  Exported Variable 4 = String "Melting"
+  Exported Variable 4 DOFs = 1
+
+  Exported Variable 5 = String "Refreeze"
+  Exported Variable 5 DOFs = 1
+
+  Exported Variable 6 = String "Accu"
+  Exported Variable 6 DOFs = 1
+
+  Exported Variable 7 = String "Rad_Fact"
+  Exported Variable 7 DOFs = 1
+  
+  Exported Variable 8 = String "Rain"
+  Exported Variable 8 DOFs = 1
+  
+  Exported Variable 9 = String "PotRad"
+  Exported Variable 9 DOFs = 1
+
+End
+
+Solver 3
+
+  Equation = "Navier-Stokes"
+  Stabilization Method = String Stabilized
+  Flow model = String "Stokes"
+
+  
+   Linear System Solver = Iterative
+   Linear System Iterative Method = GMRES
+   Linear System GMRES Restart = 100
+   Linear System Preconditioning= ILU0
+   Linear System Convergence Tolerance= 1.0e-10
+   Linear System Max Iterations = 1000
+  
+  
+  Linear System Solver = Direct         
+  Linear System Direct Method = MUMPS
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-3
+  Nonlinear System Newton After Iterations = 5 
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  !Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Reset Newton = Logical True
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+
+  
+End
+
+
+Solver 4
+
+  Equation = DeformationalHeat
+  Variable = W
+  Variable DOFs = 1
+  procedure =  "ElmerIceSolvers" "DeformationalHeatSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0E-07
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0E-02
+  Nonlinear System Convergence Tolerance = 1.0E-03
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = Real 1.0
+  
+End
+
+
+
+Solver 5
+
+  Equation = String "Enthalpy Equation"
+  procedure =  "ElmerIceSolvers" "EnthalpySolver"
+  Variable = String "Enthalpy_h"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0E-07
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  
+  !Linear System Solver = Direct         
+  !Linear System Direct Method = MUMPS
+  
+  Steady State Convergence Tolerance = 1.0E-04
+  Nonlinear System Convergence Tolerance = 1.0E-03
+  Nonlinear System Max Iterations = 6
+  Nonlinear System Relaxation Factor = Real 1.0 
+  Apply Limiter = Logical true
+  Apply Dirichlet = Logical True
+  Stabilize = True
+ 
+  Exported Variable 1 = String "Phase Change Enthalpy"
+  Exported Variable 1 DOFs = 1
+  Exported Variable 2 = String "water content"
+  Exported Variable 2 DOFs = 1
+  Exported Variable 3 = String "temperature"
+  Exported Variable 3 DOFs = 1
+
+  Flow Solver Name = String "Flow Solution"
+  Flow Loads Name = String "Flow Solution Loads"
+  Pressure Variable = String "Pressure"
+  
+End
+
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(5) = 1 2 3 4 5
+ Flow Solution Name = String "Flow Solution"
+ Convection = Computed
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Bedrock 
+Boundary Condition 1
+  Target Boundaries = 1
+    Name = "bed"
+  
+ ComputeNormal = Logical True
+ 
+ Mass Consistent Normals = Logical True
+
+  Normal-Tangential Velocity = Logical True  
+  Velocity 1 = Real 0.0e0  
+  
+ Slip Coefficient 2 = real 0.006
+ Slip Coefficient 3 = real 0.006
+  
+  Enthalpy Heat Flux BC = logical True
+  Enthalpy Heat Flux = real $flux_geo*3600*24*365.25
+
+End
+
+! Upper Surface
+Boundary Condition 2
+  Target Boundaries = 2
+   
+  Depth = real 0.0
+  Enthalpy_h = Equals Surf Enth
+
+End
+
+! Sides
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Normal-Tangential Velocity = Logical True  
+  Velocity 1 = Real 0.0e0  
+
+End

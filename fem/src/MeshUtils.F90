@@ -43,9 +43,7 @@
 
 MODULE MeshUtils
 
-#ifdef USE_ISO_C_BINDINGS
     USE LoadMod
-#endif
     USE ElementUtils
     USE ElementDescription
     USE Interpolation
@@ -158,6 +156,7 @@ CONTAINS
      Mesh % AdaptiveDepth = 0
      Mesh % Changed   = .FALSE. !  TODO: Change this sometime
      Mesh % Stabilize = .FALSE.
+     Mesh % MeshTag = 1
 
      Mesh % Variables => NULL()
      Mesh % Parent => NULL()
@@ -341,7 +340,7 @@ CONTAINS
      INTEGER :: SolverId, BodyId, Def_Dofs(:,:)
 
      TYPE(ValueList_t), POINTER :: Params
-     INTEGER :: i, j,k,l, n, slen
+     INTEGER :: i, j,k,l, n, slen, Family
      INTEGER, POINTER :: Body_Dofs(:,:)
      LOGICAL  :: stat, Found
      REAL(KIND=dp) :: x,y,z
@@ -422,13 +421,17 @@ CONTAINS
           x = SUM(Mesh % Nodes % x(Element % NodeIndexes))/n
           y = SUM(Mesh % Nodes % y(Element % NodeIndexes))/n
           z = SUM(Mesh % Nodes % z(Element % NodeIndexes))/n
-          WRITE( str, * ) 'cx= ',TRIM(i2s(Element % ElementIndex)),x,y,z
+!          WRITE( str, * ) 'cx= ',TRIM(i2s(Element % ElementIndex)),x,y,z
+          WRITE( str, * ) 'cx= ',TRIM(i2s(Element % BodyId)),x,y,z
           str = TRIM(str) // '; ' // TRIM(ElementDef(j+3:))//'(cx)'
           slen = LEN_TRIM(str)
           CALL matc(str,RESULT,slen)
-          READ(RESULT,*) x
+          READ(RESULT(1:slen),*) x
           Body_Dofs(:,6) = 0
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
+          Family = Element % TYPE % ElementCode / 100
+          Solver % Def_Dofs(Family, BodyId, 6) = &
+              MAX(Solver % Def_Dofs(Family, BodyId, 6), NINT(x))
         ELSE
           READ( ElementDef(j+2:), * ) l
           Body_Dofs(:,6) = l
@@ -2014,7 +2017,7 @@ CONTAINS
 
 
 
- !> An interface over potential mesh loading strateties. 
+ !> An interface over potential mesh loading strategies. 
  !----------------------------------------------------------------- 
  SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs,IsParallel ) 
    
@@ -2196,6 +2199,8 @@ CONTAINS
 
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
+   ForcePrep = ListGetLogical( Model % Simulation,'Finalize Meshes Before Extrusion',Found)
+   
    IF( PRESENT( LoadOnly ) ) THEN
      IF( LoadOnly ) THEN
        RETURN
@@ -2361,7 +2366,7 @@ CONTAINS
        IF(ListGetLogical( Model % BCs(id) % Values, &
            'Default Target', GotIt)) DefaultTargetBC = id       
        BList => ListGetIntegerArray( Model % BCs(id) % Values, &
-           'Target Boundaries', GotIt ) 
+           'Target Boundaries', GotIt )
        IF ( Gotit ) THEN
          DO k=1,SIZE(BList)
            bndry = Blist(k)
@@ -2379,12 +2384,20 @@ CONTAINS
            END IF
          END DO
        ELSE
-         IF( IndexMap( id ) /= 0 .AND. id /= DefaultTargetBC ) THEN
-           CALL Warn('LoadMesh','Unset BC already set by > Target Boundaries < : '&
-               //TRIM(I2S(id)) )
-         ELSE 
-           ! IndexMap( id ) = id
+         IF (ListCheckPresent(Model % BCs(id) % Values, 'Target Nodes') .OR. &
+             ListCheckPresent(Model % BCs(id) % Values, 'Target Coordinates')) &
+             CYCLE
+         IF (IndexMap( id ) /= 0 .AND. id == DefaultTargetBC ) THEN ! DefaultTarget has been given
+           CALL Warn('LoadMesh','Default Target is a Target Boundaries entry in > Boundary Condition < : '&
+               //TRIM(I2S(IndexMap(id))) )
          END IF
+         !
+         !IF( IndexMap( id ) /= 0 .AND. id /= DefaultTargetBC ) THEN
+         !  CALL Warn('LoadMesh','Unset BC already set by > Target Boundaries < : '&
+         !      //TRIM(I2S(id)) )
+         !ELSE 
+         !  ! IndexMap( id ) = id
+         !END IF
        END IF
      END DO
 
@@ -2600,7 +2613,7 @@ CONTAINS
          mat_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
-         FirstOrderElements, InheritDG, Hit
+         FirstOrderElements, InheritDG, Hit, Stat
      TYPE(Element_t), POINTER :: Element, Parent, pParent
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
@@ -2644,28 +2657,64 @@ CONTAINS
     ! -----------------------------------------------------------
     MeshDeps = .FALSE.; FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
 
+    !
+    ! As a preliminary step, check if an element definition is given 
+    ! an equation section. The more common way is give the element
+    ! definition in a solver section.
+    !
     DO eq_id=1,Model % NumberOFEquations
       Vlist => Model % Equations(eq_id) % Values
-      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
       FoundEqDefs = FoundEqDefs .OR. FoundDef0
-      j = INDEX(ElementDef0,'p:')
-      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+
+      IF (FoundDef0) THEN
+        !
+        ! Check if the order of p-basis is defined by calling a special
+        ! MATC function:
+        !
+        j = INDEX(ElementDef0,'p:')
+        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+      ELSE
+        !
+        ! Check if element definitions are given for each solver separately
+        ! by using a special keyword construct and tag the corresponding
+        ! entries in the list of the solvers. This was thought to serve
+        ! the definition of bodywise p-orders, but it seems this doesn't
+        ! work really. TO DO: REPAIR OR REMOVE
+        ! 
+        DO Solver_id=1,Model % NumberOfSolvers
+          IF (PRESENT(mySolver)) THEN
+            IF ( Solver_id /= mySolver ) CYCLE
+          ELSE
+            IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
+          END IF
+
+          ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
+          FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef
+
+          j = INDEX(ElementDef,'p:')
+          IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+        END DO
+      END IF
     END DO
 
+    !
+    ! Tag solvers for which the element definition has been given in
+    ! a solver section:
+    !
     DO solver_id=1,Model % NumberOFSolvers
       Vlist => Model % Solvers(solver_id) % Values
 
       ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
       FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-      ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
-      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
-
       j = INDEX(ElementDef0,'p:')
       IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
     END DO
 
-    IF(.NOT.MeshDeps) THEN
+    ! The basic case without the order of p-basis being defined by a MATC function:
+    !
+    IF (.NOT.MeshDeps) THEN
       ElementDef = ' '
       FoundDef0 = .FALSE.
       DO body_id=1,Model % NumberOfBodies
@@ -2687,7 +2736,7 @@ CONTAINS
             FoundDef = .FALSE.
             IF(FoundSolverDefs(solver_id)) &
                 ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
- 
+
             IF ( FoundDef ) THEN
               CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef, solver_id, body_id, Indofs )
             ELSE
@@ -2724,6 +2773,7 @@ CONTAINS
          ElementDef0 = ' '
          IF( FoundEq ) THEN
            Vlist => Model % Equations(eq_id) % Values
+           FoundDef0 = .FALSE.
            IF( FoundEqDefs.AND.body_id/=body_id0 ) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
            DO solver_id=1,Model % NumberOfSolvers
@@ -2750,7 +2800,7 @@ CONTAINS
            END DO
          END IF
          body_id0 = body_id
-      END IF
+       END IF
 
 
        el_id = Element % TYPE % ElementCode / 100
@@ -2819,7 +2869,6 @@ CONTAINS
      IF( dgindex > 0 ) THEN
        InheritDG = ListCheckPresentAnyMaterial( CurrentModel,'DG Parent Material')
      END IF
-
      
      ! non-nodal elements in boundary elements
      !------------------------------------------------------------    
@@ -2903,7 +2952,7 @@ CONTAINS
          IF( k == 0 ) THEN
            CALL Fatal('NonnodalElements','Cannot define DG indexes for BC!')
          ELSE IF( k == 1 ) THEN
-           Parent = pParent        
+           Parent => pParent        
          ELSE IF(.NOT. Hit ) THEN
            CALL Fatal('NonnodalElements','Cannot define DG indexes for internal BC!')       
          END IF
@@ -2922,6 +2971,27 @@ CONTAINS
 
      IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
 
+     ! Override automated "NeedEdges" if requested by the user.
+     !------------------------------------------------------------------------------------
+     IF(PRESENT(mySolver)) THEN
+       Stat = ListGetLogical(Model % Solvers(mySolver) % Values, 'Need Edges', Found)
+       IF(Found) NeedEdges = Stat
+
+       IF( ListGetLogical(Model % Solvers(mySolver) % Values, 'NeedEdges', Found) ) THEN
+         IF(.NOT. NeedEdges) CALL Fatal('NonNodalElements','Use "Need Edges" instead of "NeedEdges"') 
+       END IF
+     END IF
+
+     IF( Mesh % MeshDim == 2 ) THEN
+       Stat = ListGetLogical(Model % Simulation, 'Need Edges 2D', Found)
+       IF(Found) NeedEdges = Stat
+     END IF
+
+     IF( Mesh % MeshDim == 3 ) THEN
+       Stat = ListGetLogical(Model % Simulation, 'Need Edges 3D', Found)
+       IF(Found) NeedEdges = Stat
+     END IF
+     
      IF ( NeedEdges ) THEN
        CALL Info('NonNodalElements','Requested elements require creation of edges',Level=8)
        CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
@@ -5447,6 +5517,7 @@ CONTAINS
       TotSumArea = 0.0_dp
       Point = 0.0_dp
       MaxSubTriangles = 0
+      MaxSubElem = 0
 
       ! Save center of elements for master mesh for fast rough test
       n = BMesh2 % NumberOfBulkElements
@@ -11227,9 +11298,79 @@ CONTAINS
     END FUNCTION Det3x3
 
   END SUBROUTINE CylinderFit
+  
+  !------------------------------------------------------------------------------------------------
+  !> Finds nodes for which CandNodes are True such that their mutual distance is somehow
+  !> maximized. We first find lower left corner, then the node that is furtherst apart from it,
+  !> and continue as long as there are nodes to find. Typically we would be content with two nodes
+  !> on a line, three nodes on a plane, and four nodes on a volume.
+  !-------------------------------------------------------------------------------------------------
+  SUBROUTINE FindExtremumNodes(Mesh,CandNodes,NoExt,Inds) 
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, ALLOCATABLE :: CandNodes(:)
+    INTEGER :: NoExt
+    INTEGER, POINTER :: Inds(:)
+
+    REAL(KIND=dp) :: Coord(3),dCoord(3),dist,MinDist,MaxDist
+    REAL(KIND=dp), ALLOCATABLE :: SetCoord(:,:)
+    INTEGER :: i,j,k
+    
+    ALLOCATE( SetCoord(NoExt,3) )
+    SetCoord = 0.0_dp
+    Inds = 0
+    
+    ! First find the lower left corner
+    MinDist = HUGE(MinDist) 
+    DO i=1, Mesh % NumberOfNodes
+      IF(.NOT. CandNodes(i) ) CYCLE
+      Coord(1) = Mesh % Nodes % x(i)
+      Coord(2) = Mesh % Nodes % y(i)
+      Coord(3) = Mesh % Nodes % z(i)
+      Dist = SUM( Coord )
+      IF( Dist < MinDist ) THEN
+        Inds(1) = i
+        MinDist = Dist
+        SetCoord(1,:) = Coord
+      END IF
+    END DO
+    
+    ! Find more points such that their minimum distance to the previous point(s)
+    ! is maximized.
+    DO j=2,NoExt
+      ! The maximum minimum distance of any node from the previously defined nodes
+      MaxDist = 0.0_dp
+      DO i=1, Mesh % NumberOfNodes
+        IF(.NOT. CandNodes(i) ) CYCLE
+        Coord(1) = Mesh % Nodes % x(i)
+        Coord(2) = Mesh % Nodes % y(i)
+        Coord(3) = Mesh % Nodes % z(i)
+        
+        ! Minimum distance from the previously defined nodes
+        MinDist = HUGE(MinDist)
+        DO k=1,j-1
+          dCoord = SetCoord(k,:) - Coord
+          Dist = SUM( dCoord**2 )          
+          MinDist = MIN( Dist, MinDist )
+        END DO
+        
+        ! If the minimum distance is greater than in any other node, choose this
+        IF( MaxDist < MinDist ) THEN
+          MaxDist = MinDist 
+          Inds(j) = i
+          SetCoord(j,:) = Coord
+        END IF
+      END DO
+    END DO
+
+    PRINT *,'Extremum Inds:',Inds
+    DO i=1,NoExt
+      PRINT *,'Node:',Inds(i),SetCoord(i,:)
+    END DO
+    
+  END SUBROUTINE FindExtremumNodes
+    
 
   
-
   !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming rotating boundaries make 
   !> a coordinate transformation to (phi,z) level where the interpolation
@@ -15204,7 +15345,8 @@ END SUBROUTINE FindNeighbourNodes
      TYPE(Matrix_t), POINTER   :: Matrix
      REAL(KIND=dp), POINTER :: Work(:)
      INTEGER, POINTER :: Permutation(:)
-     TYPE(Variable_t), POINTER :: TimeVar, SaveVar
+     TYPE(Variable_t), POINTER :: TimeVar, SaveVar, Var
+     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
      SaveVar => Solver % Variable
      DOFs = SaveVar % DOFs
@@ -15274,6 +15416,18 @@ END SUBROUTINE FindNeighbourNodes
            CALL AllocateArray( Solver % Variable % EigenVectors, n, &
                     SIZE(Solver % Variable % Values) ) 
 
+           IF( Solver % Variable % Dofs > 1 ) THEN
+             DO k=1,Solver % Variable % DOFs
+               str = ComponentName( Solver % Variable % Name, k )
+               Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+               IF ( ASSOCIATED( Var ) ) THEN
+                 Var % EigenValues => Solver % Variable % EigenValues
+                 Var % EigenVectors =>  & 
+                     Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+               END IF
+             END DO
+           END IF
+           
            Solver % Variable % EigenValues  = 0.0d0
            Solver % Variable % EigenVectors = 0.0d0
 
@@ -18409,6 +18563,9 @@ CONTAINS
     Eps = ListGetConstReal( Params,'Dot Product Tolerance',GotIt)
     IF(.NOT. GotIt) Eps = 1.0d-4
 
+    nnodes = Mesh % NumberOfNodes
+    nsize = nnodes
+
     VarName = ListGetString(Params,'Mapping Mask Variable',GotIt )
     MaskExists = .FALSE.
     IF(GotIt) THEN
@@ -18418,19 +18575,25 @@ CONTAINS
         IF( MaskExists ) THEN
           ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
           MaskPerm = Var % Perm 
-          CALL Info(Caller,&
-              'Using variable as mask: '//TRIM(VarName),Level=8)
+          nsize = MAXVAL( MaskPerm ) 
+          CALL Info(Caller,'Using variable as mask: '//TRIM(VarName),Level=8)
         END IF
       END IF      
+    ELSE
+      VarName = ListGetString(Params,'Mapping Mask Name',MaskExists )
+      IF( MaskExists ) THEN
+        CALL Info(Caller,'Using name as mask: '//TRIM(VarName),Level=8)
+        MaskPerm => NULL() 
+        CALL MakePermUsingMask( CurrentModel, Solver, Mesh, VarName, &
+            .FALSE., MaskPerm, nsize )
+        PRINT *,'nsize:',nsize,SIZE(MaskPerm),MAXVAL(MaskPerm(1:nnodes))
+      END IF         
     END IF
 
-    nnodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
-      nsize = MAXVAL( MaskPerm ) 
       CALL Info(Caller,'Applying mask of size: '//TRIM(I2S(nsize)),Level=10)
     ELSE
-      nsize = nnodes
-      CALL Info(Caller,'Applying mask to the whole mesh',Level=10)
+      CALL Info(Caller,'Applying extrusion on the whole mesh',Level=10)
     END IF 
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )

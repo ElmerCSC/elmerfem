@@ -31,7 +31,8 @@
        REAL(KIND=dp), POINTER :: store(:)
        REAL(KIND=dp), ALLOCATABLE, TARGET :: astore(:),vstore(:,:), BB(:,:), &
              nodes_x(:),nodes_y(:),nodes_z(:), xpart(:), ypart(:), zpart(:)
-       LOGICAL :: al
+       LOGICAL :: al, Stat
+       INTEGER :: PassiveCoordinate
 
        TYPE ProcRecv_t
          INTEGER :: n = 0
@@ -83,6 +84,16 @@
          RETURN
       END IF
 
+      ! Passive coordinate is needed also here in order not to use that direction
+      ! for the bounding box checks.
+      !---------------------------------------------------------------------------
+      PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
+          'Interpolation Passive Coordinate', Stat ) 
+      IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
+        PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
+            'Interpolation Passive Coordinate', Stat ) 
+      END IF
+            
       ! Interpolate within our own partition, flag the points we found:
       ! ---------------------------------------------------------------      
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
@@ -95,7 +106,7 @@
       n = COUNT(.NOT.FoundNodes); dn = n
 
       IF( InfoActive(20) ) THEN
-        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//TRIM(I2S(n)))        
+        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//TRIM(I2S(n)))
       END IF
       
       AL = .FALSE.
@@ -184,9 +195,9 @@
           myBB = BB(:,i)
           npart = 0
           DO j=1,n
-            IF ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) .OR. &
-                 nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) .OR. &
-                 nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) CYCLE
+            IF ( ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) ) .AND. PassiveCoordinate /= 1 ) CYCLE
+            IF ( ( nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) ) .AND. PassiveCoordinate /= 2 ) CYCLE
+            IF ( ( nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) .AND. PassiveCoordinate /= 3 ) CYCLE
             npart = npart+1
           END DO
           ProcSend(proc+1) % n = npart
@@ -194,9 +205,9 @@
             ALLOCATE( xpart(npart),ypart(npart),zpart(npart),ProcSend(proc+1) % perm(npart) )
             npart = 0
             DO j=1,n
-              IF ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) .OR. &
-                   nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) .OR. &
-                   nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) CYCLE
+              IF ( ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) ) .AND. PassiveCoordinate /= 1 ) CYCLE
+              IF ( ( nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) ) .AND. PassiveCoordinate /= 2 ) CYCLE
+              IF ( ( nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) .AND. PassiveCoordinate /= 3 ) CYCLE
               npart=npart+1
               ProcSend(proc+1) % perm(npart)=j
               xpart(npart) = Nodes_x(j)
@@ -318,6 +329,7 @@
         ! try interpolating values for the points:
         ! ----------------------------------------
         ALLOCATE( FoundNodesPar(n) ); FoundNodesPar=.FALSE.
+        
         CALL InterpolateMeshToMeshQ( OldMesh, nMesh, OldVariables, &
            nMesh % Variables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodesPar )
 
@@ -681,7 +693,7 @@ END SUBROUTINE InterpolateMeshToMesh
          PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
                'Interpolation Passive Coordinate', Stat ) 
        END IF
-          
+              
        CylProject = ListGetLogical( CurrentModel % Simulation, &
             'Interpolation Cylindric', Stat )                     
        IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN

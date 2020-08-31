@@ -2128,6 +2128,8 @@ RETURN
         i = Particles % ElementIndex(No)        
         IF( i > 0 ) THEN
           ElementSize = SizeValues(i)
+        ELSE
+          ElementSize = 0._dp
         END IF
       END IF
       RETURN
@@ -3160,7 +3162,9 @@ RETURN
     END SELECT
 
 
-    IF( GotMask .AND. ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    IF( GotMask ) THEN
+      IF ( ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    END IF
 
     !------------------------------------------------------------------------
     ! Velocities may be initialized using a given list, or obtaining them
@@ -5866,7 +5870,7 @@ RETURN
         tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,HgoalIsUniso,PrevTimeStep, &
 	DtVar,TimeVar
     
-    dtout = 0.0_dp
+    dtout = 0.0_dp; dtave = 0._dp
 
     IF( InitInterval ) THEN
       Params => ListGetSolverParams()
@@ -5943,7 +5947,7 @@ RETURN
 
       ! Constrain the timestep
       !------------------------------------------------------------------
-      dt = MAX( MIN( dt, dtmax ), dtmin )
+!     dt = MAX( MIN( dt, dtmax ), dtmin )
 
       ! Do not exceed the total integration time
       !-------------------------------------------

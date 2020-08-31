@@ -1,0 +1,15 @@
+
+
+== Elmer/Ice
+
+This directory contains glaciological extensions to the elmerfem code.  Further information can be found at the http://elmerice.elmerfem.org[Elmer/Ice community web site] (this site also contains instructions for signing up for the Elmer/Ice email list).
+
+
+=== Documentation:
+
+* http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Standard Elmerfem documentation]
+* http://elmerfem.org/elmerice/wiki/doku.php[Elmer/Ice Wiki (most Elmer/Ice documentation is here)]
+* https://github.com/ElmerCSC/elmerfem/tree/devel/elmerice/Solvers/Documentation[Elmer/Ice github documentation is being written here]
+* http://www.elmerfem.org/forum/viewforum.php?f=21&sid=0594d76f9ca24ea552593d81fc3e6b54[Elmer/Ice forum]
+
+

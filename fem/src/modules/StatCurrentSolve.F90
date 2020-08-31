@@ -112,9 +112,6 @@ END SUBROUTINE StatCurrentSolver_Init
      REAL (KIND=DP) :: Norm, HeatingTot, VolTot, CurrentTot, ControlTarget, ControlScaling = 1.0
      REAL (KIND=DP) :: Resistance, PotDiff
      REAL (KIND=DP) :: at, st, at0
-#ifndef USE_ISO_C_BINDINGS
-     REAL (KIND=DP) :: CPUTime, RealTime
-#endif
 
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER, POINTER :: PotentialPerm(:)
@@ -180,7 +177,7 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
        N = Model % MaxElementNodes
  
        IF(AllocationsDone) THEN

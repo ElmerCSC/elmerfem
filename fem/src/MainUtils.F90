@@ -46,9 +46,7 @@ MODULE MainUtils
 !------------------------------------------------------------------------------
   Use BlockSolve
   USE IterSolve, ONLY : NumericalError
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
 
 !------------------------------------------------------------------------------
   IMPLICIT NONE
@@ -446,12 +444,8 @@ CONTAINS
     EXTERNAL :: PROCEDURE
     INTEGER  :: PROCEDURE
 !------------------------------------------------------------------------------
-#ifndef USE_ISO_C_BINDINGS
-   INTEGER(KIND=AddrInt) :: AddrFunc
-#else
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
-#endif
 !------------------------------------------------------------------------------
     Solver % PROCEDURE = AddrFunc( PROCEDURE )
 !------------------------------------------------------------------------------
@@ -1095,14 +1089,27 @@ CONTAINS
     END IF
 
 
+#if 0
+    ! Here we can for testing purposes change all solver named xxx to yyy
+    ! and then rerun all the tests, for example. Don't activate unless for this kind
+    ! of development work.
+    i = INDEX( proc_name,'HeatSolver')
+    IF( i /= 0 ) THEN
+      proc_name = 'HeatSolveVec HeatSolver'
+      CALL ListAddString(SolverParams, 'Procedure', proc_name,.FALSE.)
+      CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=6)
+    END IF
+#endif
+
+
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
     !----------------------------------------------------------------------------------
     DoIt = .FALSE.
     IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) THEN
-      IF( ParEnv % PEs > 1 ) THEN
-        CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
-      END IF
+!     IF( ParEnv % PEs > 1 ) THEN
+!       CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
+!     END IF
       DoIt = .TRUE.
     END IF
     IF( ListGetLogical( SolverParams,'Nonlinear Timestepping',Found ) ) DoIt = .TRUE.
@@ -1835,6 +1842,11 @@ CONTAINS
 
       END IF
     END DO
+
+    IF(Doit) THEN
+      ALLOCATE(Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)));
+      Solver % Matrix % MassValues=0._dp
+    END IF
 
 
     !------------------------------------------------------------------
@@ -2665,7 +2677,7 @@ CONTAINS
     REAL(KIND=dp) :: RelativeChange, Tolerance, PrevDT = 0.0d0, Relaxation, SSCond
     INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
-        NeedSol, CalculateDerivative, TestConvergence, TestDivergence, DivergenceExit, &
+        NeedSol, CalculateDerivative, TestConvergence=.FALSE., TestDivergence, DivergenceExit, &
         ExecSlot, CoupledAbort
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
@@ -2707,7 +2719,9 @@ CONTAINS
     IF ( TransientSimulation ) THEN
       DO k=1,nSolvers
         Solver => Model % Solvers(k)
-        IF ( Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+        IF ( Solver % PROCEDURE /= 0 ) THEN
+          CALL InitializeTimestep(Solver)
+         END IF
       END DO
     END IF
 
@@ -3240,23 +3254,6 @@ CONTAINS
     INTEGER, POINTER :: VarInds(:)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: SolverParams
-
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE 
-      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
-          M, D, S, F, Element, Nrow, Ncol )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t)   :: Model
-        TYPE(Solver_t)  :: Solver
-        REAL(KIND=dp)   :: dt
-        LOGICAL :: Transient
-        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
-        TYPE(Element_t) :: Element
-        INTEGER :: Nrow, Ncol
-      END SUBROUTINE ExecLocalAssembly
-    END INTERFACE
-#endif
 
     SolverParams => ListGetSolverParams(Solver)
 
@@ -4569,22 +4566,6 @@ CONTAINS
     LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
     LOGICAL :: AllocationsDone = .FALSE., Diagonal
 
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE 
-      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
-          M, D, S, F, Element, Nrow, Ncol )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t)   :: Model
-        TYPE(Solver_t)  :: Solver
-        REAL(KIND=dp)   :: dt
-        LOGICAL :: Transient
-        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
-        TYPE(Element_t) :: Element
-        INTEGER :: Nrow, Ncol
-      END SUBROUTINE ExecLocalAssembly
-    END INTERFACE
-#endif
     SAVE :: AllocationsDone, AllocCols, AllocRows, &
         FORCE, STIFF, DAMP, MASS, ColInds, RowInds, indexes
 
@@ -4911,7 +4892,7 @@ CONTAINS
     INTEGER :: i, n, Sweep, MeshDim 
     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Found
+    LOGICAL :: Found, HasFCT
     TYPE(Mesh_t), POINTER :: Mesh
     
     IF( .NOT. ( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) ) RETURN
@@ -4928,6 +4909,7 @@ CONTAINS
     CALL Info('SetActiveElementsTable',&
         'Creating active element table for: '//TRIM(EquationName),Level=12)
 
+    HasFCT = ListGetLogical( Solver % Values, 'Linear System FCT', Found )
 
     Mesh => Solver % Mesh
     
@@ -4937,7 +4919,7 @@ CONTAINS
       n = 0
       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
         Element => Solver % Mesh % Elements(i)
-        IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
+        IF( .NOT.HasFCT .AND. Element % PartIndex/=ParEnv % myPE ) CYCLE
         IF ( CheckElementEquation( Model, Element, EquationName ) ) THEN
           n = n + 1
           IF( Sweep == 0 ) THEN
@@ -5039,33 +5021,11 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
-       ! Check that the solver is active in some of the active output solvers
-       IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
-         IF( ParEnv % MyPe >= MinOutputPE .AND. &
-             ParEnv % MyPe <= MaxOutputPE ) THEN 
-           OutputPE = ParEnv % MyPE
-         ELSE
-           OutputPE = -1
-         END IF
-       ELSE         
-        ! Otherwise get the first active partition for this solver
-        DO i=1,ParEnv % PEs
-           IF ( ParEnv % Active(i) ) THEN
-             EXIT
-           END IF
-         END DO
-
-         OutputPE = -1
-         IF ( i-1 == ParEnv % MyPE ) THEN
-           OutputPE = i-1 
-         ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
-           OutputPE = 0
-         END IF
-       END IF
-
-
+     IF ( ParEnv % PEs > 1 .AND. .NOT. SlaveNotParallel ) THEN
+       ! Set the communicator and active info partitions.
+       
        n = COUNT(ParEnv % Active)
+       
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
            IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
@@ -5091,18 +5051,48 @@ CONTAINS
            M % Comm = comm_active
            M => M % Parent
          END DO
+
+         IF( ANY( ParEnv % Active(MinOutputPE+1:MIN(MaxOutputPE+1,ParEnv % PEs)) ) ) THEN
+           ! If any of the active output partitions in active just use it.
+           ! Typically the 1st one. Others are passive. 
+           IF( ParEnv % MyPe >= MinOutputPE .AND. &
+               ParEnv % MyPe <= MaxOutputPE ) THEN 
+             OutputPE = ParEnv % MyPE
+           ELSE
+             OutputPE = -1
+           END IF
+         ELSE         
+           ! Otherwise find the 1st active partition and if found use it.
+           ! Otherwise use the 0:th partition. 
+           DO i=1,ParEnv % PEs
+             IF ( ParEnv % Active(i) ) EXIT
+           END DO
+
+           OutputPE = -1
+           IF ( i-1 == ParEnv % MyPE ) THEN
+             OutputPE = i-1 
+           ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+             OutputPE = 0
+           END IF
+         END IF
        ELSE
          M => Solver % Matrix
          DO WHILE( ASSOCIATED(M) )
            M % Comm = ELMER_COMM_WORLD
            M => M % Parent
          END DO
+
+         ! Here set the the default partitions active. 
+         IF( ParEnv % MyPe >= MinOutputPE .AND. &
+             ParEnv % MyPe <= MaxOutputPE ) THEN 
+           OutputPE = ParEnv % MyPE
+         ELSE
+           OutputPE = -1
+         END IF
        END IF
-     ELSE
-       OutputPE = -1
-       IF(ParEnv % myPE == 0 ) OutputPE=0
      END IF
 
+       
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( ParEnv % PEs>1 .AND. MeActive ) THEN
@@ -5138,20 +5128,24 @@ CONTAINS
        Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
 
-
-
-
+     ! This is more featured version than the original one with just one flag.
+     ! This way different solvers can detect when their mesh has been updated. 
+     Solver % MeshChanged = Solver % Mesh % Changed
+     IF( Solver % MeshTag /= Solver % Mesh % MeshTag ) THEN
+       Solver % MeshChanged = .TRUE.
+       Solver % MeshTag = Solver % Mesh % MeshTag
+     END IF       
      
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL INFO("SingleSolver", "Attempting to call solver", level=5)
+     CALL Info("SingleSolver", "Attempting to call solver", level=5)
      SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
-        CALL INFO("SingleSolver", Message, level=5)
+        CALL Info("SingleSolver", Message, level=5)
      END IF
 
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
@@ -5177,7 +5171,6 @@ CONTAINS
      ! Compute all dependent fields, components and derivatives related to the primary solver.
      !-----------------------------------------------------------------------   
      CALL UpdateDependentObjects( Solver, .TRUE. ) 
-
      
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
@@ -5200,12 +5193,9 @@ CONTAINS
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
          UpdateExported, GotCoordTransform, NamespaceFound
-     INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId
+     INTEGER :: i, j, k, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
-#ifndef USE_ISO_C_BINDINGS
-     CPUTime,RealTime
-#endif
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
@@ -5213,7 +5203,7 @@ CONTAINS
 
      INTEGER :: ScanningLoops, scan, sOutputPE
      LOGICAL :: GotLoops
-     TYPE(Variable_t), POINTER :: ScanVar
+     TYPE(Variable_t), POINTER :: ScanVar, Var
         
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -5255,6 +5245,7 @@ CONTAINS
 !---------------------------------------------------------------------------------   
 ! There may also be predefined discrete intervals for the execution of the solver.
 !---------------------------------------------------------------------------------   
+     execi = 1
      ExecIntervals => ListGetIntegerArray( Params,'Exec Intervals', Found )
      IF( .NOT. Found ) THEN
        ExecIntervals =>  ListGetIntegerArray( Params,'Exec Interval', Found )
@@ -5275,8 +5266,9 @@ CONTAINS
        ELSE
          timei0 = 0
        END IF
-
-       IF( MOD( timestep-1-timei0, ExecIntervals(timei)) /= 0 ) RETURN
+       
+       execi = ExecIntervals(timei)
+       IF( MOD( timestep-1-timei0, execi) /= 0 ) RETURN              
      END IF
 
 !-------------------------------------------------------------------------------
@@ -5322,6 +5314,11 @@ CONTAINS
      IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
        DTScal = ListGetConstReal( Params, 'Timestep Scale', Found )
        IF ( .NOT. Found ) DTScal = 1.0_dp
+
+       IF( ListGetLogical( Params,'Timestep Over Intervals',Found) ) THEN
+         DTScal = 1.0_dp * Execi
+       END IF
+
        Solver % dt = DtScal * dt 
 
        IF ( TransientSimulation ) THEN
@@ -5405,11 +5402,23 @@ CONTAINS
            IF ( .NOT. ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
              CALL Info('MainUtils','Creating modes over scanned fields',Level=8)
              ALLOCATE( Solver % Variable % EigenValues(ScanningLoops) )
-             ALLOCATE( Solver % Variable % EigenVectors(ScanningLoops,n) )
+             ALLOCATE( Solver % Variable % EigenVectors(ScanningLoops,n) )             
+
+             IF( Solver % Variable % Dofs > 1 ) THEN
+               DO k=1,Solver % Variable % DOFs
+                 str = ComponentName( Solver % Variable % Name, k )
+                 Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+                 IF ( ASSOCIATED( Var ) ) THEN
+                   Var % EigenValues => Solver % Variable % EigenValues
+                   Var % EigenVectors =>  & 
+                       Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+                 END IF
+               END DO
+             END IF
            END IF
            Solver % Variable % EigenValues(scan) = 1.0_dp * scan
            Solver % Variable % EigenVectors(scan,:) = Solver % Variable % Values
-         END IF         
+         END IF
        END IF
 
        

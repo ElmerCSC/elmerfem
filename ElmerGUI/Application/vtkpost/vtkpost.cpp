@@ -37,10 +37,24 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
+#if WITH_QT5
+  #include <QtWidgets>
+#endif
 
 #include <QtGui>
 #include <QScriptEngine>
 #include <iostream>
+#include <vtkXMLUnstructuredGridReader.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkDataSet.h>
+#include <vtkPointData.h>
+#include <vtkCellData.h>
+#include <vtkQuadraticTetra.h>
+#include <vtkQuadraticHexahedron.h>
+#include <vtkTriQuadraticHexahedron.h>
+#include <vtkQuadraticTriangle.h>
+#include <vtkQuadraticQuad.h>
+#include <vtkQuadraticEdge.h>
 
 #include "epmesh.h"
 #include "vtkpost.h"
@@ -64,7 +78,12 @@
 #include "matc.h"
 #endif
 
+#if VTK_MAJOR_VERSION >= 8
+#include <QVTKOpenGLNativeWidget.h>
+#else
 #include <QVTKWidget.h>
+#endif
+
 #include <vtkLookupTable.h>
 #include <vtkActor.h>
 #include <vtkTextActor.h>
@@ -73,7 +92,7 @@
 #include <vtkRenderWindowInteractor.h>
 #include <vtkCamera.h>
 #include <vtkCellArray.h>
-#include <vtkFloatArray.h>
+#include <vtkDoubleArray.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
@@ -145,7 +164,13 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
   VtkPost* vtkPost = reinterpret_cast<VtkPost*>(clientdata);
   vtkRenderer* renderer = vtkPost->GetRenderer();
   vtkActor* pickedPointActor = vtkPost->GetPickedPointActor();
+
+#if VTK_MAJOR_VERSION >= 8
+  QVTKOpenGLNativeWidget* qvtkWidget = vtkPost->GetQVTKWidget();
+#else
   QVTKWidget* qvtkWidget = vtkPost->GetQVTKWidget();
+#endif
+
   vtkAbstractPicker* picker = qvtkWidget->GetInteractor()->GetPicker();
   vtkPropPicker* propPicker = vtkPropPicker::SafeDownCast(picker);
 
@@ -243,10 +268,37 @@ VtkPost::VtkPost(QWidget *parent)
 
   // Default color map (from blue to red):
   //--------------------------------------
+  double hueRange[2] = {0.6667, 0};
+  int nColor =128;
   currentLut = vtkLookupTable::New();
-  currentLut->SetHueRange(0.6667, 0);
-  currentLut->SetNumberOfColors(128);
+  currentLut->SetHueRange(hueRange);
+  currentLut->SetNumberOfColors(nColor);
   currentLut->Build();
+
+  surfaceLut = vtkLookupTable::New();
+  surfaceLut->SetHueRange(hueRange);
+  surfaceLut->SetNumberOfColors(nColor);
+  surfaceLut->Build();
+
+  vectorLut = vtkLookupTable::New();
+  vectorLut->SetHueRange(hueRange);
+  vectorLut->SetNumberOfColors(nColor);
+  vectorLut->Build();
+
+  isocontourLut = vtkLookupTable::New();
+  isocontourLut->SetHueRange(hueRange);
+  isocontourLut->SetNumberOfColors(nColor);
+  isocontourLut->Build();
+
+  isosurfaceLut = vtkLookupTable::New();
+  isosurfaceLut->SetHueRange(hueRange);
+  isosurfaceLut->SetNumberOfColors(nColor);
+  isosurfaceLut->Build();
+
+  streamlineLut = vtkLookupTable::New();
+  streamlineLut->SetHueRange(hueRange);
+  streamlineLut->SetNumberOfColors(nColor);
+  streamlineLut->Build();
 
   // User interfaces, widgets, and draw routines:
   //---------------------------------------------
@@ -312,7 +364,12 @@ VtkPost::VtkPost(QWidget *parent)
 
   // Central widget:
   //----------------
-  qvtkWidget = new QVTKWidget(this);
+  #if VTK_MAJOR_VERSION >= 8
+    qvtkWidget = new QVTKOpenGLNativeWidget(this);  
+    qvtkWidget->setFormat(QVTKOpenGLNativeWidget::defaultFormat());
+  #else
+    qvtkWidget = new QVTKWidget(this);
+  #endif
   setCentralWidget(qvtkWidget);
 
   // VTK interaction:
@@ -570,6 +627,14 @@ void VtkPost::createActions()
   preferencesAct->setStatusTip("Show preferences");
   connect(preferencesAct, SIGNAL(triggered()), this, SLOT(showPreferencesDialogSlot()));
 
+  playAct = new QAction(QIcon(""), tr("Play"), this);
+  playAct->setStatusTip("Play");
+  connect(playAct, SIGNAL(triggered()), this, SLOT(playSlot()));
+
+  timestepAct = new QAction(QIcon(""), tr("Time step"), this);
+  playAct->setStatusTip("Time step");
+  connect(timestepAct, SIGNAL(triggered()), this, SLOT(timestepSlot()));
+  
   // Edit menu:
   //------------
 #ifdef EG_MATC
@@ -601,6 +666,41 @@ void VtkPost::createActions()
   showHelpAct = new QAction(QIcon(":/icons/help-about.png"), tr("Help..."), this);
   showHelpAct->setStatusTip("Show help dialog");
   connect(showHelpAct, SIGNAL(triggered()), this, SLOT(showHelpSlot()));
+
+  // Displace geometry by displacement field:
+  //-----------------------------------------
+  displaceAct = new QAction(QIcon(""), tr("Displace"), this);
+  displaceAct->setStatusTip("Displace geometry by displacement field");
+  displaceAct->setCheckable(true);
+  displaceAct->setChecked(false);
+  connect(displaceAct, SIGNAL(toggled(bool)), this, SLOT(displaceSlot(bool)));
+
+
+  // View normal plane:
+  //------------------------------------------
+  viewXYpPlaneAct = new QAction(QIcon(""), tr("xy+"), this);
+  viewXYpPlaneAct->setStatusTip("View XY plane");
+  connect(viewXYpPlaneAct, SIGNAL(triggered()), this, SLOT(viewXYpPlaneSlot()));
+
+  viewXYmPlaneAct = new QAction(QIcon(""), tr("xy-"), this);
+  viewXYmPlaneAct->setStatusTip("View XY plane");
+  connect(viewXYmPlaneAct, SIGNAL(triggered()), this, SLOT(viewXYmPlaneSlot()));
+
+  viewYZpPlaneAct = new QAction(QIcon(""), tr("yz+"), this);
+  viewYZpPlaneAct->setStatusTip("View YZ plane");
+  connect(viewYZpPlaneAct, SIGNAL(triggered()), this, SLOT(viewYZpPlaneSlot()));
+
+  viewYZmPlaneAct = new QAction(QIcon(""), tr("yz-"), this);
+  viewYZmPlaneAct->setStatusTip("View YZ plane");
+  connect(viewYZmPlaneAct, SIGNAL(triggered()), this, SLOT(viewYZmPlaneSlot()));
+
+  viewZXpPlaneAct = new QAction(QIcon(""), tr("zx+"), this);
+  viewZXpPlaneAct->setStatusTip("View ZX plane");
+  connect(viewZXpPlaneAct, SIGNAL(triggered()), this, SLOT(viewZXpPlaneSlot()));
+
+  viewZXmPlaneAct = new QAction(QIcon(""), tr("zx-"), this);
+  viewZXmPlaneAct->setStatusTip("View ZX plane");
+  connect(viewZXmPlaneAct, SIGNAL(triggered()), this, SLOT(viewZXmPlaneSlot()));
 }
 
 void VtkPost::createMenus()
@@ -665,6 +765,8 @@ void VtkPost::createMenus()
   viewMenu->addAction(fitToWindowAct);
   viewMenu->addAction(resetModelViewAct);
   viewMenu->addAction(redrawAct);
+  viewMenu->addSeparator();
+  viewMenu->addAction(displaceAct);
 
   // Help menu:
   //-----------
@@ -688,6 +790,37 @@ void VtkPost::createToolbars()
   viewToolBar->addAction(preferencesAct);
   viewToolBar->addSeparator();
   viewToolBar->addAction(redrawAct);
+
+  planeViewToolBar = new QToolBar(tr("PlaneView"));
+  addToolBar(Qt::BottomToolBarArea, planeViewToolBar);
+  planeViewToolBar->addAction(viewXYpPlaneAct);
+  planeViewToolBar->addAction(viewXYmPlaneAct);
+  planeViewToolBar->addAction(viewYZpPlaneAct);
+  planeViewToolBar->addAction(viewYZmPlaneAct);
+  planeViewToolBar->addAction(viewZXpPlaneAct);
+  planeViewToolBar->addAction(viewZXmPlaneAct);
+ 
+  displacementToolBar = new QToolBar(tr("Displacement"));
+  addToolBar(Qt::BottomToolBarArea, displacementToolBar);
+  displacementToolBar->addAction(displaceAct);
+  displacementScaleFactorSpinBox.setDecimals(10);
+  displacementScaleFactorSpinBox.setValue(1);
+  connect(&displacementScaleFactorSpinBox, SIGNAL(valueChanged(double)), this, SLOT(displacementScaleFactorSpinBoxValueChanged(double)));
+  displacementToolBar->insertWidget(displaceAct,&displacementScaleFactorSpinBox);
+  displacementScaleFactorSpinBox.setEnabled(false);
+  displaceAct->setEnabled(false);
+
+  timestepToolBar = new QToolBar(tr("Timestep"));
+  addToolBar(Qt::BottomToolBarArea, timestepToolBar);
+  timestepToolBar->addAction(timestepAct);
+  timestepToolBar->addAction(playAct);
+  timestepSlider = new QSlider(Qt::Horizontal);
+  connect(timestepSlider, SIGNAL(valueChanged(int)), this, SLOT(timestepSliderValueChanged(int)));
+  timestepToolBar->insertWidget(playAct,timestepSlider);
+
+  timestepSlider->setEnabled(false);
+  playAct->setEnabled(false);  
+  iEndStep = -1;
 }
 
 void VtkPost::createStatusBar()
@@ -996,6 +1129,449 @@ void VtkPost::getPostLineStream(QTextStream* postStream)
 //----------------------------------------------------------------------
 bool VtkPost::ReadPostFile(QString postFileName)
 {
+  if(drawSurfaceAct->isChecked()) hideSurfaceSlot();
+  if(drawVectorAct->isChecked()) hideVectorSlot();
+  if(drawIsoContourAct->isChecked()) hideIsoContourSlot();
+  if(drawIsoSurfaceAct->isChecked()) hideIsoSurfaceSlot();
+  if(drawColorBarAct->isChecked()) hideColorBarSlot();
+  if(drawStreamLineAct->isChecked()) hideStreamLineSlot();
+
+  if(postFileName.endsWith(".ep", Qt::CaseInsensitive)) return ReadElmerPostFile(postFileName);
+  if(postFileName.endsWith(".vtu", Qt::CaseInsensitive)) return ReadVtuFile(postFileName);
+
+  return false;
+}
+
+int VtkPost::vtk2ElmerElement(int vtkCode){
+	int elmerCode;
+	switch(vtkCode){
+		case 1:  elmerCode = 101; break;
+		case 10:  elmerCode = 504; break;
+		case 12:  elmerCode = 808; break;
+		case 13:  elmerCode = 706; break;
+		case 14:  elmerCode = 605; break;
+		case 21:  elmerCode = 203; break;
+		case 22:  elmerCode = 306; break;
+		case 23:  elmerCode = 408; break;
+		case 24:  elmerCode = 510; break;
+		case 25:  elmerCode = 820; break;
+		case 26:  elmerCode = 715; break;
+		case 27:  elmerCode = 613; break;
+		case 28:  elmerCode = 409; break;
+		case 29:  elmerCode = 827; break;
+		case 3:  elmerCode = 202; break;
+		case 5:  elmerCode = 303; break;
+		case 9:  elmerCode = 404; break;
+		default:   cout << " Not implemented for vtktype: " << vtkCode<< endl;
+	}
+	return elmerCode;
+}
+
+// Read ParaView format file
+//----------------------------------------------------------------------
+bool VtkPost::ReadVtuFile(QString postFileName)
+{
+
+  // Open the post file:
+  //=====================
+  this->postFileName = postFileName;
+  this->postFileRead = false;
+
+  QFile postFile(postFileName);
+  QFileInfo info(postFileName);
+  QDir dir = info.dir();
+
+  if(!postFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    return false;
+  postFile.close();
+    
+  cout << "Loading vtu-file " << endl;
+
+  readEpFile->ui.applyButton->setEnabled(false);
+  readEpFile->ui.cancelButton->setEnabled(false);
+  readEpFile->ui.okButton->setEnabled(false);
+  readEpFile->setWindowTitle("Reading...");
+  readEpFile->repaint();
+  
+  // Read in nodes, elements, timesteps, and scalar components:
+  //-----------------------------------------------------------
+  int nodes, elements, timesteps, components;
+  int start = readEpFile->ui.start->value() - 1;
+  int end = readEpFile->ui.end->value() - 1;
+ 
+  QString postFilePath = dir.filePath(readEpFile->vtuFileNameList.at(start));
+	vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
+	reader->SetFileName(postFilePath.toLatin1().data());
+	reader->Update();
+
+	nodes = reader->GetNumberOfPoints();
+	elements = reader->GetNumberOfCells();
+	timesteps = readEpFile->vtuFileNameList.length();
+
+  cout << "vtu file header says:" << endl;
+  cout << "Nodes: " << nodes << endl;
+  cout << "Elements: " << elements << endl;
+  cout << "Timesteps: " << timesteps << endl;
+
+  // Read field names & set up menu actions:
+  //=========================================
+  if(epMesh->epNode) delete [] epMesh->epNode;
+  if(epMesh->epElement) delete [] epMesh->epElement;
+
+  for(int i = 0; i < scalarFields; i++ ) {
+     ScalarField *sf = &scalarField[i];
+#ifdef EG_MATC
+
+#ifdef WITH_QT5
+     QByteArray nm = sf->name.trimmed().toLatin1();
+#else
+     QByteArray nm = sf->name.trimmed().toAscii();
+#endif
+
+     var_delete( nm.data() );
+#else
+     if(sf->value) free(sf->value);
+#endif
+  }
+
+  scalarFields = 0;
+
+  // Add the null field:
+  //--------------------
+  QString fieldName = "Null";
+  ScalarField* nullField = addScalarField(fieldName, nodes*timesteps, NULL);
+  nullField->minVal = 0.0;
+  nullField->maxVal = 0.0;
+
+  // Add the scalar fields:
+  //-----------------------
+    QString fieldType;
+  	components = 0;
+	vtkUnstructuredGrid *output = reader->GetOutput();
+	vtkPointData *pointData = output->GetPointData();
+	vtkCellData *cellData = output->GetCellData();
+
+	for(int i = 0; i < reader->GetNumberOfPointArrays(); i++){
+		components += pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents();
+		fieldName = reader->GetPointArrayName(i);
+		if( pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents() > 1) fieldType = "vector";
+		else fieldType = "scalar";
+
+#if WITH_QT5
+    cout << fieldType.toLatin1().data() << ": ";
+    cout << fieldName.toLatin1().data() << endl;
+#else
+    cout << fieldType.toAscii().data() << ": ";
+    cout << fieldName.toAscii().data() << endl;    
+#endif
+
+		if(fieldType == "scalar")
+			addScalarField(fieldName, nodes*timesteps, NULL);
+
+		if(fieldType == "vector") {
+			addVectorField(fieldName, nodes*timesteps);
+			addScalarField(fieldName + "_abs", nodes*timesteps, NULL);
+		}
+	}
+
+  // Nodes:
+  //========
+  epMesh->epNodes = nodes;
+  epMesh->epNode = new EpNode[nodes];
+
+  for(int i = 0; i < nodes; i++) {
+    EpNode *epn = &epMesh->epNode[i];
+    output->GetPoint(i, epn->x);
+  }
+//cout << "[VTU] Nodes loaded." << endl;
+
+  // Add nodes to field variables:
+  //-------------------------------
+  addVectorField("nodes", nodes);
+  int index = -1;
+  for(int i = 0; i < scalarFields; i++) {
+    ScalarField *sf = &scalarField[i];
+    if(sf->name == "nodes_x") {
+      index = i;
+      break;
+    }
+  }
+  ScalarField *sfx = &scalarField[index+0];
+  ScalarField *sfy = &scalarField[index+1];
+  ScalarField *sfz = &scalarField[index+2];
+
+  for( int i=0; i < nodes; i++ )
+  {
+    sfx->value[i] = epMesh->epNode[i].x[0];
+    sfy->value[i] = epMesh->epNode[i].x[1];
+    sfz->value[i] = epMesh->epNode[i].x[2];
+  }
+
+//cout << "[VTU] Nodes added as ScalarField." << endl;
+
+  // Elements:
+  //==========
+  epMesh->epElements = elements;
+  epMesh->epElement = new EpElement[elements];
+  vtkIntArray* geometryIds = (vtkIntArray*) cellData->GetArray("GeometryIds");
+  for(int i = 0; i < elements; i++) {
+    EpElement *epe = &epMesh->epElement[i];
+	vtkCell* cell = output->GetCell(i);
+	epe->code = cell->GetCellType();
+	epe->code = vtk2ElmerElement(epe->code);
+	epe->groupName = QString::number(geometryIds->GetValue(i));
+
+//    epe->indexes = epe->code % 100;
+    epe->indexes = cell->GetNumberOfPoints();
+	epe->index = new int[epe->indexes];
+	for(int j = 0; j < epe->indexes; j++) {
+		epe->index[j] = cell->GetPointId(j);
+	}
+  }
+
+  // Add complementary information to group name
+  // This logic is inaccurate, but good for most cases where the number of bodies < 100. 
+  //--------------------------------------------
+  for(int i = 0; i < elements; i++) {
+	EpElement *epe = &epMesh->epElement[i];
+	if(geometryIds->GetValue(i) <= 99){	epe->groupName += " (body)";} 
+	else{epe->groupName += " (boundary)";}
+  }
+
+
+//cout << "[VTU] Elements loaded." << endl;
+
+  // Data:
+  //=======
+  vtkDoubleArray* doubleArray;
+  for(int l = start; l <= end; l++){
+	if(l != start){
+		reader->Delete();
+		reader =  vtkXMLUnstructuredGridReader::New();
+		postFilePath = dir.filePath(readEpFile->vtuFileNameList.at(l));
+		reader->SetFileName(postFilePath.toLatin1().data());
+		reader->Update();
+		output = reader->GetOutput();
+		pointData = output->GetPointData();
+		cellData = output->GetCellData();
+		//cout << "<VTU> "<<  postFilePath.toLatin1().data() << endl;
+	}		
+	int sfcount = 1; // 1 to skip node field
+	for(int j=0; j < reader->GetNumberOfPointArrays(); j++){
+		doubleArray = (vtkDoubleArray*) pointData->GetArray(j); //ElmerSolver stores data as Float64
+		int nComponents = doubleArray->GetNumberOfComponents();
+		for(int i=0; i < nodes; i++){
+			for(int k=0; k < nComponents; k++){
+				scalarField[sfcount+k].value[nodes*(l-start)+i] = doubleArray->GetValue(nComponents*i+k);
+			}
+		}
+		sfcount += nComponents;
+		if(nComponents > 1){ // add abs value of vector
+			for(int i=0; i < nodes; i++){
+				double absValue = 0;
+				for(int k=0; k < nComponents; k++){
+					absValue += doubleArray->GetValue(nComponents*i+k)*doubleArray->GetValue(nComponents*i+k);
+				}
+				scalarField[sfcount].value[nodes*(l-start)+i] = sqrt(absValue);
+			}
+			sfcount++;
+		}
+		//cout << "[VTU] " << reader->GetPointArrayName(j) << " loaded." << endl;
+	}
+  }
+  int real_timesteps = nodes * (end - start + 1)/nodes;
+  cout << real_timesteps << " timesteps read in." << endl;
+  reader->Delete();
+  reader = NULL;
+  
+
+  // Subtract displacement from nodes:
+  // ---------------------------------
+  for(int j = 0; j < scalarFields; j++){
+	  if(scalarField[j].name == "displacement_x" || scalarField[j].name == "Displacement_x"){
+		  for(int i = 0; i < nodes; i++) {
+			EpNode *epn = &epMesh->epNode[i];
+			epn->x[0] -= scalarField[j+0].value[i];
+			epn->x[1] -= scalarField[j+1].value[i];
+			epn->x[2] -= scalarField[j+2].value[i];
+		  }
+		  int index = -1;
+		  for(int i = 0; i < scalarFields; i++) {
+			ScalarField *sf = &scalarField[i];
+			if(sf->name == "nodes_x") {
+			  index = i;
+			  break;
+			}
+		  }
+		  ScalarField *sfx = &scalarField[index+0];
+		  ScalarField *sfy = &scalarField[index+1];
+		  ScalarField *sfz = &scalarField[index+2];
+
+		  for( int i=0; i < nodes; i++ )
+		  {
+			sfx->value[i] = epMesh->epNode[i].x[0];
+			sfy->value[i] = epMesh->epNode[i].x[1];
+			sfz->value[i] = epMesh->epNode[i].x[2];
+		  }
+	  }
+  }
+
+
+  // Initial min & max values:
+  //============================
+  int ifield=0, size;
+  while( ifield<scalarFields )
+  {
+    ScalarField *sf = &scalarField[ifield];
+
+    int sf_timesteps = sf->values/nodes;
+    if ( real_timesteps < sf_timesteps )
+    {
+      sf->values = real_timesteps*nodes;
+#ifdef EG_MATC
+      QString name=sf->name;
+      int n = sf->name.indexOf("_x");
+      if ( n>0 ) 
+      {
+        name = sf->name.mid(0,n);
+
+        QString cmd = name+"="+name+"(0:2,0:"+QString::number(sf->values-1)+")";
+
+#if WITH_QT5
+        mtc_domath(cmd.toLatin1().data());
+
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
+        mtc_domath(cmd.toAscii().data());
+
+        VARIABLE *var = var_check(name.toAscii().data());
+#endif
+
+        sf = &scalarField[ifield];
+        sf->value = &M(var,0,0);
+        minMax(sf);
+
+        ifield++;
+        sf = &scalarField[ifield];
+        sf->value = &M(var,1,0);
+        sf->values = real_timesteps*nodes;
+        minMax(sf);
+
+        ifield++;
+        sf = &scalarField[ifield];
+        sf->value = &M(var,2,0);
+        sf->values = real_timesteps*nodes;
+        minMax(sf);
+      } else {
+        size=sf->values*sizeof(double);
+
+#if WITH_QT5
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
+        VARIABLE *var = var_check(name.toAscii().data());
+#endif       
+        sf->value = (double *)ALLOC_PTR(realloc(
+              ALLOC_LST(sf->value), ALLOC_SIZE(size)) );
+        MATR(var) = sf->value;
+        NCOL(var) = sf->values;
+        minMax(sf);
+      }
+#else
+      size = sf->values*sizeof(double);
+      sf->value = (double *)realloc(sf->value,size);
+      minMax(sf);
+#endif
+    } else {
+      minMax(sf);
+    }
+    ifield++;
+  }
+
+  timesteps = real_timesteps;
+  timeStep->maxSteps = timesteps;
+  timeStep->ui.start->setValue(1);
+  timeStep->ui.stop->setValue(timesteps);
+
+  // Set up the group edit menu:
+  //=============================
+  groupActionHash.clear();
+  editGroupsMenu->clear();
+
+  for(int i = 0; i < elements; i++) {
+    EpElement* epe = &epMesh->epElement[i];
+
+    QString groupName = epe->groupName;
+    
+    if(groupActionHash.contains(groupName))
+      continue;
+
+    QAction* groupAction = new QAction(groupName, this);
+    groupAction->setCheckable(true);
+    groupAction->setChecked(true);
+    editGroupsMenu->addAction(groupAction);
+    groupActionHash.insert(groupName, groupAction);
+  }
+
+  // Populate the widgets in user interface dialogs:
+  //-------------------------------------------------
+  populateWidgetsSlot();
+
+  this->postFileRead = true;
+
+  groupChangedSlot(NULL);
+  connect(editGroupsMenu, SIGNAL(triggered(QAction*)), this, SLOT(groupChangedSlot(QAction*)));
+  
+  editGroupsMenu->addSeparator();
+  editGroupsMenu->addAction(regenerateGridsAct);
+
+  // Set the null field active:
+  //---------------------------
+  drawSurfaceAct->setChecked(true);
+
+  renderer->ResetCamera();
+  
+  readEpFile->ui.fileName->setText(postFileName);
+  readEpFile->readHeader();
+  readEpFile->ui.applyButton->setEnabled(true);
+  readEpFile->ui.cancelButton->setEnabled(true);
+  readEpFile->ui.okButton->setEnabled(true);
+  readEpFile->setWindowTitle("Read input file");
+  readEpFile->repaint();
+
+  redrawSlot();
+  timestepSlider->setEnabled(timesteps > 1);
+  playAct->setEnabled(timesteps > 1);
+  timestepSlider->setRange(1,timesteps);
+  timestepSlider->setValue(1);
+  timestepAct->setText( "1/" + QString::number(timesteps));// + " ");
+
+  renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
+  initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
+
+  return true;
+}
+
+//----------------------------------------------------------------------
+bool VtkPost::ReadSingleVtuFile(QString postFileName)
+{
+/*
+  readEpFile->vtuFileNameList.clear();
+  readEpFile->vtuFileNameList.append(postFileName);
+  readEpFile->ui.start->setValue(1);
+  readEpFile->ui.end->setValue(1);    
+  return ReadVtuFile(postFileName);
+*/
+  readEpFile->ui.fileName->setText(postFileName);
+  readEpFile->readHeader();
+  readEpFile->ui.allButton->click();
+  readEpFile->ui.okButton->click();
+  return true;
+//  return ReadVtuFile(postFileName);  
+}
+// Read ElmerPost format file
+//----------------------------------------------------------------------
+bool VtkPost::ReadElmerPostFile(QString postFileName)
+{
   // Open the post file:
   //=====================
   this->postFileName = postFileName;
@@ -1039,7 +1615,13 @@ bool VtkPost::ReadPostFile(QString postFileName)
   for(int i = 0; i < scalarFields; i++ ) {
      ScalarField *sf = &scalarField[i];
 #ifdef EG_MATC
+
+#ifdef WITH_QT5
+     QByteArray nm = sf->name.trimmed().toLatin1();
+#else
      QByteArray nm = sf->name.trimmed().toAscii();
+#endif
+
      var_delete( nm.data() );
 #else
      if(sf->value) free(sf->value);
@@ -1065,8 +1647,13 @@ bool VtkPost::ReadPostFile(QString postFileName)
     fieldType = fieldType.trimmed();
     fieldName = fieldName.trimmed();
 
+#if WITH_QT5
+    cout << fieldType.toLatin1().data() << ": ";
+    cout << fieldName.toLatin1().data() << endl;
+#else
     cout << fieldType.toAscii().data() << ": ";
-    cout << fieldName.toAscii().data() << endl;
+    cout << fieldName.toAscii().data() << endl;    
+#endif
 
     if(fieldType == "scalar")
       addScalarField(fieldName, nodes*timesteps, NULL);
@@ -1118,6 +1705,11 @@ bool VtkPost::ReadPostFile(QString postFileName)
   epMesh->epElements = elements;
   epMesh->epElement = new EpElement[elements];
 
+  
+  // indexes for VTK
+	int order820[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16};
+	int order827[]={1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16,24,22,21,23,25,26,27};
+
   for(int i = 0; i < elements; i++) {
     EpElement *epe = &epMesh->epElement[i];
 
@@ -1128,15 +1720,37 @@ bool VtkPost::ReadPostFile(QString postFileName)
     epe->indexes = epe->code % 100;
     epe->index = new int[epe->indexes];
     
-    for(int j = 0; j < epe->indexes; j++) {
-      QString tmpString = "";
-      postLineStream >> tmpString;
-      if(tmpString.isEmpty()) {
-	getPostLineStream(&postStream);
-        postLineStream >> tmpString;
-      }
-      epe->index[j] = tmpString.toInt();
-    }
+	if(epe->code == 820){
+		for(int j = 0; j < epe->indexes; j++) {
+		  QString tmpString = "";
+		  postLineStream >> tmpString;
+		  if(tmpString.isEmpty()) {
+		getPostLineStream(&postStream);
+			postLineStream >> tmpString;
+		  }
+		  epe->index[order820[j]-1] = tmpString.toInt();
+		}
+	}else if(epe->code == 827){
+		for(int j = 0; j < epe->indexes; j++) {
+		  QString tmpString = "";
+		  postLineStream >> tmpString;
+		  if(tmpString.isEmpty()) {
+		getPostLineStream(&postStream);
+			postLineStream >> tmpString;
+		  }
+		  epe->index[order827[j]-1] = tmpString.toInt();
+		}
+	}else{
+		for(int j = 0; j < epe->indexes; j++) {
+		  QString tmpString = "";
+		  postLineStream >> tmpString;
+		  if(tmpString.isEmpty()) {
+		getPostLineStream(&postStream);
+			postLineStream >> tmpString;
+		  }
+		  epe->index[j] = tmpString.toInt();
+		}
+	}
   }
 
   // Data:
@@ -1184,8 +1798,16 @@ bool VtkPost::ReadPostFile(QString postFileName)
         name = sf->name.mid(0,n);
 
         QString cmd = name+"="+name+"(0:2,0:"+QString::number(sf->values-1)+")";
+
+#if WITH_QT5
+        mtc_domath(cmd.toLatin1().data());
+
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
         mtc_domath(cmd.toAscii().data());
+
         VARIABLE *var = var_check(name.toAscii().data());
+#endif
 
         sf = &scalarField[ifield];
         sf->value = &M(var,0,0);
@@ -1205,7 +1827,11 @@ bool VtkPost::ReadPostFile(QString postFileName)
       } else {
         size=sf->values*sizeof(double);
 
+#if WITH_QT5
+        VARIABLE *var = var_check(name.toLatin1().data());
+#else
         VARIABLE *var = var_check(name.toAscii().data());
+#endif       
         sf->value = (double *)ALLOC_PTR(realloc(
               ALLOC_LST(sf->value), ALLOC_SIZE(size)) );
         MATR(var) = sf->value;
@@ -1277,6 +1903,11 @@ bool VtkPost::ReadPostFile(QString postFileName)
   readEpFile->repaint();
 
   redrawSlot();
+  timestepSlider->setEnabled(timesteps > 1);
+  playAct->setEnabled(timesteps > 1);
+  timestepSlider->setRange(1,timesteps);
+  timestepSlider->setValue(1);
+  timestepAct->setText( "1/" + QString::number(timesteps));// + " ");
 
   renderer->GetActiveCamera()->GetPosition(initialCameraPosition);
   initialCameraRoll = renderer->GetActiveCamera()->GetRoll();
@@ -1288,8 +1919,12 @@ void VtkPost::addVectorField(QString fieldName, int values)
 {
    
 #ifdef EG_MATC
-    QByteArray nm=fieldName.trimmed().toAscii();
 
+#if WITH_QT5
+    QByteArray nm=fieldName.trimmed().toLatin1();
+#else
+    QByteArray nm=fieldName.trimmed().toAscii();
+#endif
     char *name = (char *)malloc( nm.count()+1 );
     strcpy(name,nm.data());
 
@@ -1324,8 +1959,12 @@ ScalarField* VtkPost::addScalarField(QString fieldName, int values, double *valu
  
   if ( !sf->value ) {
 #ifdef EG_MATC
-    QByteArray nm=fieldName.trimmed().toAscii();
 
+#if WITH_QT5
+    QByteArray nm=fieldName.trimmed().toLatin1();
+#else
+    QByteArray nm=fieldName.trimmed().toAscii();
+#endif
     char *name = (char *)malloc( nm.count()+1 );
     strcpy(name,nm.data());
     VARIABLE *var = var_check(name);
@@ -1397,110 +2036,95 @@ void VtkPost::groupChangedSlot(QAction* groupAction)
     x[2] = sfz->value[i];
     points->InsertPoint(i, x);
   }
+
+  // Displace geometry by displacement field
+  bool hasDisplacement = false;
+  for(int j = 0; j < scalarFields; j++){
+    if(scalarField[j].name == "displacement_x" || scalarField[j].name == "Displacement_x"){
+	  hasDisplacement = true;
+	}
+  }
+  displacementScaleFactorSpinBox.setEnabled(hasDisplacement);
+  displaceAct->setEnabled(hasDisplacement);
+  if(hasDisplacement && displaceAct->isChecked()){
+	  double scale = displacementScaleFactorSpinBox.value();
+	  for(int j = 0; j < scalarFields; j++){
+		if(scalarField[j].name == "displacement_x" || scalarField[j].name == "Displacement_x"){
+			for(int i = 0; i < epMesh->epNodes; i++) {
+				x[0] = sfx->value[i] + scalarField[j+0].value[i] * scale;
+				x[1] = sfy->value[i] + scalarField[j+1].value[i] * scale;
+				x[2] = sfz->value[i] + scalarField[j+2].value[i] * scale;
+				points->InsertPoint(i, x);
+			}
+		}
+	  }
+  }
+
   volumeGrid->SetPoints(points);
   surfaceGrid->SetPoints(points);
   lineGrid->SetPoints(points);
   points->Delete();
 
-  // Volume grid:
-  //---------------
+  /// Elements:
+  ///-----------
+  vtkCell* cell = NULL;
   vtkTetra* tetra = vtkTetra::New();
+  vtkQuadraticTetra* qtetra =vtkQuadraticTetra::New();
   vtkHexahedron* hexa = vtkHexahedron::New();
-
-  for(int i = 0; i < epMesh->epElements; i++) {
-    EpElement* epe = &epMesh->epElement[i];
-
-    if(epe->code == 504) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 4; j++)
-	tetra->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	volumeGrid->InsertNextCell(tetra->GetCellType(), tetra->GetPointIds());
-    }
-    
-    if(epe->code == 808) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-      
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 8; j++)
-	hexa->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	volumeGrid->InsertNextCell(hexa->GetCellType(), hexa->GetPointIds());
-    }
-  }
-  tetra->Delete();
-  hexa->Delete();
-
-  // Surface grid:
-  //---------------
+  vtkQuadraticHexahedron* qhexa = vtkQuadraticHexahedron::New();
+  vtkTriQuadraticHexahedron* tqhexa = vtkTriQuadraticHexahedron::New();
   vtkTriangle* tria = vtkTriangle::New();
+  vtkQuadraticTriangle* qtria = vtkQuadraticTriangle::New();
   vtkQuad* quad = vtkQuad::New();
-  for(int i = 0; i < epMesh->epElements; i++) {
-    EpElement* epe = &epMesh->epElement[i];
-
-    if(epe->code == 303) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 3; j++)
-	tria->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	surfaceGrid->InsertNextCell(tria->GetCellType(), tria->GetPointIds());
-    }
-
-    if(epe->code == 404) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
-
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 4; j++)
-	quad->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	surfaceGrid->InsertNextCell(quad->GetCellType(), quad->GetPointIds());
-    }
-
-  }
-  tria->Delete();
-  quad->Delete();
-
-  // Line grid:
-  //---------------
+  vtkQuadraticQuad* qquad = vtkQuadraticQuad::New();
   vtkLine* line = vtkLine::New();
+  vtkQuadraticEdge* qedge = vtkQuadraticEdge::New();
+  vtkUnstructuredGrid* grid = NULL;
+
   for(int i = 0; i < epMesh->epElements; i++) {
     EpElement* epe = &epMesh->epElement[i];
 
-    if(epe->code == 202) {
-      QString groupName = epe->groupName;
-      if(groupName.isEmpty()) continue;
+	switch(epe->code){
+		case 504: cell = tetra; grid = volumeGrid; break;
+		case 510: cell = qtetra; grid = volumeGrid; break;
+		case 808: cell = hexa; grid = volumeGrid; break;
+		case 820: cell = qhexa;  grid = volumeGrid; break;
+		case 827: cell = tqhexa;  grid = volumeGrid; break;
+		case 303: cell = tria; grid = surfaceGrid; break;
+		case 306: cell = qtria; grid = surfaceGrid; break;
+		case 404: cell = quad; grid = surfaceGrid; break;
+		case 408: cell = qquad; grid = surfaceGrid; break;
+		case 202: cell = line; grid = lineGrid; break;
+		case 203: cell = qedge; grid = lineGrid; break;
+		default: cell = NULL; grid = NULL; break;
+	}
 
-      QAction* groupAction = groupActionHash.value(groupName);
-      if(groupAction == NULL) continue;
-      
-      for(int j = 0; j < 3; j++)
-	line->GetPointIds()->SetId(j, epe->index[j]);
-      
-      if(groupAction->isChecked())
-	lineGrid->InsertNextCell(line->GetCellType(), line->GetPointIds());
-    }
+	if(cell != NULL){
+		QString groupName = epe->groupName;
+		if(groupName.isEmpty()) continue;
+
+		QAction* groupAction = groupActionHash.value(groupName);
+		if(groupAction == NULL) continue;
+	      
+		for(int j = 0; j < epe->code % 100; j++)
+		cell->GetPointIds()->SetId(j, epe->index[j]);
+	      
+		if(groupAction->isChecked())
+		grid->InsertNextCell(cell->GetCellType(), cell->GetPointIds());
+	}
   }
+
+  tetra->Delete();
+  qtetra->Delete();
+  hexa->Delete();
+  qhexa->Delete();
+  tqhexa->Delete();
+  tria->Delete();
+  qtria->Delete();
+  quad->Delete();
+  qquad->Delete();
   line->Delete();
+  qedge->Delete();
 
   if(timeStep->ui.regenerateBeforeDrawing->isChecked()) return;
 
@@ -1885,6 +2509,7 @@ void VtkPost::fitToWindowSlot()
 {
   if(!postFileRead) return;
   renderer->ResetCamera();  
+  redrawSlot();
 }
 
 // Reset model view:
@@ -1893,6 +2518,7 @@ void VtkPost::resetModelViewSlot()
 {
   if(!postFileRead) return;
   SetInitialCameraPosition();
+  redrawSlot();
 }
 
 // Clip all -action toggled:
@@ -1904,7 +2530,11 @@ void VtkPost::clipAllToggledSlot(bool)
 
 // Other public methods:
 //----------------------------------------------------------------------
+#if VTK_MAJOR_VERSION >= 8
+QVTKOpenGLNativeWidget* VtkPost::GetQVTKWidget()
+#else
 QVTKWidget* VtkPost::GetQVTKWidget()
+#endif
 {
   return qvtkWidget;
 }
@@ -2050,10 +2680,10 @@ int VtkPost::NofNodes()
    return epMesh->epNodes;
 }
 
-vtkLookupTable* VtkPost::GetCurrentLut()
+/*vtkLookupTable* VtkPost::GetCurrentLut()
 {
   return currentLut;
-}
+}*/
 
 QString VtkPost::GetCurrentSurfaceName()
 {
@@ -2238,6 +2868,7 @@ void VtkPost::ResetAll()
   SetOrientation(0, 0, 0);
   SetOrigin(0, 0, 0);
   SetScale(1, 1, 1);
+  redrawSlot();
 }
 
 //------------------------------------------------------------
@@ -2713,8 +3344,12 @@ bool VtkPost::SavePngFile(QString fileName)
   vtkPNGWriter* writer = vtkPNGWriter::New();
 
   writer->SetInputConnection(image->GetOutputPort());
+  
+#if WITH_QT5
+  writer->SetFileName(fileName.toLatin1().data());
+#else
   writer->SetFileName(fileName.toAscii().data());
-
+#endif
   qvtkWidget->GetRenderWindow()->Render();
   writer->Write();
 
@@ -2785,4 +3420,103 @@ bool VtkPost::Execute(QString fileName)
   return true;
 }
 
+//--------------------------------
+void VtkPost::displaceSlot(bool b)
+{
+	groupChangedSlot(NULL);
+}
 
+void VtkPost::displacementScaleFactorSpinBoxValueChanged(double)
+{
+	if(displaceAct->isChecked()){ groupChangedSlot(NULL);}
+}
+
+vtkLookupTable* VtkPost::GetLut(QString actorName)
+{
+	if(actorName == "Surface"){
+		return surfaceLut;
+	}else if(actorName == "Vector"){
+		return vectorLut;
+	}else if(actorName == "Isocontour"){
+		return isocontourLut;
+	}else if(actorName == "Isosurface"){
+		return isosurfaceLut;
+	}else  if(actorName == "Streamline"){
+		return streamlineLut;
+	}
+
+	cout << "VtkPost::GetLut(QString actorName) - not matching actorName" << endl;
+	return NULL;
+}
+
+void VtkPost::timestepSliderValueChanged(int step){
+	timestepAct->setText(QString::number(step) + "/" + QString::number(timestepSlider->maximum()));// + " ");
+	timeStep->ui.timeStep->setValue(step);
+	redrawSlot();
+}
+
+void VtkPost::timestepSlot(){
+  readEpFileSlot();
+}
+
+void VtkPost::playSlot(){
+	if(iEndStep < 0){
+		int iStartStep = timestepSlider->value();
+		if( iStartStep == timestepSlider->maximum()){
+			iStartStep = 1; 
+		}
+		iEndStep = timestepSlider->maximum();
+		playAct->setText("Stop");
+		for(int i = iStartStep; i <= iEndStep; i++){
+			timestepSlider->setValue(i);
+		}
+		iEndStep = -1;
+		playAct->setText("Play");
+	}else{
+		iEndStep = -1;
+		playAct->setText("Play");
+	}
+}
+
+void VtkPost::viewXYpPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,0,1);
+  renderer->GetActiveCamera()->SetViewUp(0,1,0);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewXYmPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,0,-1);
+  renderer->GetActiveCamera()->SetViewUp(0,1,0);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewYZpPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(1,0,0);
+  renderer->GetActiveCamera()->SetViewUp(0,0,1);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewYZmPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(-1,0,0);
+  renderer->GetActiveCamera()->SetViewUp(0,0,1);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewZXpPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,1,0);
+  renderer->GetActiveCamera()->SetViewUp(1,0,0);
+  renderer->ResetCamera();
+  redrawSlot();
+}
+void VtkPost::viewZXmPlaneSlot(){
+  renderer->GetActiveCamera()->SetFocalPoint(0,0,0);
+  renderer->GetActiveCamera()->SetPosition(0,-1,0);
+  renderer->GetActiveCamera()->SetViewUp(1,0,0);
+  renderer->ResetCamera();
+  redrawSlot();
+}

@@ -24,7 +24,8 @@ End
 
 Material 1
   Name = "Ideal"
-  Wave Speed = Real 1.0
+  Sound Speed = Real 1.0
+!  Wave Speed = Real 1.0
 End 
 
 Equation 1
@@ -32,15 +33,16 @@ Equation 1
 End
 
 Solver 1
-  Equation = "Poisson"
+  Equation = "WaveEq"
 
   Variable = "Potential"
   Variable DOFs = 1
-  Procedure = "WaveEq" "WaveSolver"
+!  Procedure = "WaveEq" "WaveSolver"
+  Procedure = "WaveSolver" "WaveSolver"
 
   Steady State Convergence Tolerance = 1e-09
 
-!  Linear System Solver = "Direct"
+  Linear System Solver = "Direct"
   Linear System Direct Method = Umfpack
 
   Linear System Scaling = Logical True
@@ -58,7 +60,7 @@ Solver 1
 !  Eigen System Shift = Real 1.0e3
 
 ! For visualization purposes make amplitude one for all
-  Eigen System Normalize To Unity = Logical True
+!  Eigen System Normalize To Unity = Logical True
 
   Eigen Analysis = True
   Eigen System Values = 10

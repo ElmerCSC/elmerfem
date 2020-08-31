@@ -277,7 +277,7 @@ CONTAINS
     END IF
     IF( .NOT. Found .AND. .NOT. Warned .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
-      CALL Warn('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
+      CALL Fatal('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
       Warned = .TRUE.
     END IF
 
@@ -322,7 +322,7 @@ CONTAINS
     END IF
     IF( .NOT. Found .AND. .NOT. Warned .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
-      CALL Warn('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
+      CALL Fatal('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
       Warned = .TRUE.
     END IF
 !------------------------------------------------------------------------------

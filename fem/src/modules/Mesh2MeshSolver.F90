@@ -118,7 +118,7 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
   Params => GetSolverParams()
 
   TargetMesh => NULL()
-
+  
   i = ListGetInteger( Params,'Target Mesh Solver Index',Found ) 
   IF( Found ) THEN
     ! Target mesh solver is explicitly given
@@ -213,22 +213,19 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
   ELSE
     FromVars => ThisMesh % Variables 
   END IF
-
-  
-  CALL Info('Mesh2MeshSolver','Mapping all fields in primary mesh to target mesh!',Level=7)
-
+ 
   ! For some reason this is not always active.
   ! If this is not set parallel interpolation could fail.
   !----------------------------------------------------------------------
   IF( ParEnv % PEs > 1 ) ParEnv % Active = .TRUE.
 
-
   ! Here is all the real interpolation work (serial & parallel)
   !---------------------------------------------------------------------
+  CALL Info('Mesh2MeshSolver','Mapping all fields in primary mesh to target mesh!',Level=7)
   CALL InterpolateMeshToMesh( ThisMesh, TargetMesh, &
       FromVars, TargetMesh % Variables )
-  !---------------------------------------------------------------------
-
+  CALL Info('Mesh2MeshSolver','Done mapping all fields in primary mesh to target mesh!',Level=15)
+  !---------------------------------------------------------------------  
 
   ! If we has some additive variables then add the base values.
   !----------------------------------------------------------------
@@ -245,26 +242,56 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
     END DO
     DEALLOCATE( BaseSol ) 
   END IF
-
+  
   ! Validate the mapped variables because otherwise we might accidentally be performing
   ! mapping again when calling GetVariable.
   !------------------------------------------------------------------------------------
-  Var => FromVars
-  DO WHILE( ASSOCIATED( Var ) )            
-    DoIt = ( SIZE( Var % Values ) > Var % DOFs )  ! not global variable
-    IF( DoIt ) DoIt = .NOT. ( Var % Secondary )   ! not secondary
-    IF( DoIt ) DoIt = ( Var % Name(1:10) /= 'coordinate' )  ! not coordinate
-    IF( DoIt ) THEN  ! exists in both meshes
+
+  IF( NoVar > 0 ) THEN
+    DO i = 1,NoVar    
+      WRITE (Name,'(A,I0)') 'Variable ',i
+      VarName = GetString( Params, Name, Found )
+            
+      Var => VariableGet( ThisMesh % Variables, VarName, ThisOnly = .TRUE. )
+      pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+
+      IF( ASSOCIATED( Var ) ) THEN
+        IF( InfoActive(20) ) &
+          PRINT *,'FromRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
+      END IF
+      IF( ASSOCIATED( pVar ) ) THEN
+        pVar % Valid = .TRUE.
+        pVar % ValuesChanged = .TRUE.
+        IF( InfoActive(20) ) &
+            PRINT *,'ToRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
+      END IF
+   END DO
+  ELSE  
+    Var => FromVars
+    DO WHILE( ASSOCIATED( Var ) )
+      ! Check that it exists as target variable
       pVar => VariableGet( TargetMesh % Variables, Var % Name(1:Var % NameLen), ThisOnly=.TRUE.)
       DoIt = ASSOCIATED( pVar )
-    END IF
-    IF( DoIt ) THEN
-      CALL Info('Mesh2MeshSolver','Validatig variable in target mesh: '//TRIM(Var % Name ),Level=7)
-      pVar % Valid = .TRUE.
-      pVar % ValuesChanged = .TRUE.
-    END IF
-    Var => Var % Next
-  END DO
+      
+      IF( DoIt ) THEN
+        DoIt = ( SIZE( pVar % Values ) > Var % DOFs )  ! not global variable
+        IF( DoIt ) DoIt = ( pVar % Name(1:10) /= 'coordinate' )  ! not coordinate
+      END IF
+      
+      IF( DoIt ) THEN
+        CALL Info('Mesh2MeshSolver','Validatig variable in target mesh: '//TRIM(Var % Name ),Level=7)
+        pVar % Valid = .TRUE.
+        pVar % ValuesChanged = .TRUE.
+        
+        IF( InfoActive(20) ) THEN
+          PRINT *,'FromRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
+          PRINT *,'ToRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
+        END IF
+      END IF
+      
+      Var => Var % Next
+    END DO
+  END IF
     
   CALL Info('Mesh2MeshSolver','Interpolated variables between meshes',Level=7)
   

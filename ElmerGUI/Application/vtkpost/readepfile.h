@@ -55,6 +55,8 @@ public:
   Ui::readEpFileDialog ui;
 
   void readHeader();
+  
+  QStringList vtuFileNameList;
 
 signals:
   void readPostFileSignal(QString);

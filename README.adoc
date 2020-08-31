@@ -1,0 +1,139 @@
+:imagesdir: pics
+[.text-center]
+image::ElmerLogoPlain64x64.png[float="right"]
+== Elmer FEM
+
+
+This is the official source code repository for the Elmer FEM software suite.
+
+
+
+[.text-center]
+image:https://img.shields.io/github/stars/ElmerCSC/elmerfem.svg?style=social&label=Stars&style=plastic["GitHub stars"] image:https://img.shields.io/github/watchers/ElmerCSC/elmerfem.svg?style=social&label=Watch&style=plastic["GitHub watchers"] image:https://img.shields.io/github/forks/ElmerCSC/elmerfem.svg?style=social&label=Fork&style=plastic["GitHub forks"]
+
+ 
+[.text-center]
+image:https://img.shields.io/github/contributors/ElmerCSC/elmerfem.svg?style=flat["GitHub contributors"]
+ image:https://img.shields.io/github/issues-pr/ElmerCSC/elmerfem.svg?style=flat["GitHub pull requests", link=https://github.com/ElmerCSC/elmerfem/pulls] image:https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat[] 
+
+[.text-center]
+image:https://img.shields.io/github/last-commit/ElmerCSC/elmerfem.svg?style=flat["GitHub last commit"] image:https://img.shields.io/github/issues-raw/ElmerCSC/elmerfem.svg?maxAge=25000["Issues", link=https://github.com/ElmerCSC/elmerfem/issues] image:https://img.shields.io/github/languages/count/ElmerCSC/elmerfem[GitHub language count]
+
+
+
+
+[.text-justify]
+Elmer is a finite element software for numerical solution of partial differential equations. Elmer is capable of handling any number of equations and is therefore ideally suited for the simulation of multiphysical problems. It includes models, for example, of structural mechanics, fluid dynamics, heat transfer and electromagnetics. Users can also write their own equations that can be dynamically linked with the main program.
+
+Elmer consists of several parts. The most important ones are ElmerSolver the finite element solver, ElmerGUI the graphical user interface, and ElmerGrid the mesh creation and manipulation tool. Also a visualization tool, ElmerPost, is included in the package but it is no longer developed.  
+
+
+=== Download Binaries:
+
+You may download binaries and virtual machines from http://www.elmerfem.org/blog/binaries/[here]
+
+=== Docker:
+
+ * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub], More info https://raw.githubusercontent.com/ElmerCSC/elmerfem/release/ReleaseNotes/release_8.4.txt[here]
+ * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
+ * CoSci-LLC/docker-elmerice https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
+
+=== Documentation
+
+You may find the PDFs for the documentation http://www.elmerfem.org/blog/documentation/[here]
+
+=== Compiling:
+
+
+==== macOS:
+
+ * download this repository either az a zip file via GitHub or using `git clone https://github.com/ElmerCSC/elmerfem.git`
+ * go to the downloaded directory `mkdir build` and `cd build`
+ * Install HomeBrew
+ * Install GNU GCC `brew install gcc`
+ * Install CMake `brew install cmake`
+ * Without: 
+    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE`
+ * With MPI:
+    ** Install OpenMPI `brew install open-mpi`
+    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE`
+ * With ElmerGUI:
+    ** install qt4 with `brew install cartr/qt4/qt@4` 
+    ** install qwt with `brew install cartr/qt4/qwt-qt4`
+    ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE -D WITH_ELMERGUI:BOOLEAN=TRUE`
+ * With ElmerPost:
+    ** `brew cask install xquartz`
+    ** ....
+ * `make`
+ * `make install`
+
+==== Ubuntu
+
+ * install the dependencies `sudo apt install git cmake build-essential fortran libopenmpi-dev libblas-dev liblapack-dev`
+ * Without:
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE`
+ * With MPI:
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE`
+ * With ElmerGUI:
+    ** `sudo apt install libqt4-dev libqwt-dev`
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ELMERGUI:BOOLEAN=TRUE`
+ * `make`
+ * `sudo make install`
+ * the executable are in `/usr/local/bin` folder, you may add this to your PATH if you will.
+
+=== Licencing: image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
+
+[.text-justify]
+Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers as well, and the project is open for new contributions. More information about Elmer's licensing http://www.elmerfem.org/blog/license/[here].
+
+
+=== Package managers:
+
+[.text-center]
+image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging status", link=https://repology.org/project/elmerfem/versions]
+
+==== Chocolatey:
+
+[.text-center]
+image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
+
+=== Social:
+
+[.text-justify]
+Here on https://discordapp.com/invite/NeZEBZn[this Discord channel] you may ask for help or dicuss different Elmer related matters:
+
+[.text-center]
+image::https://img.shields.io/discord/412182089279209474.svg["Discord Chat", link=https://discordapp.com/invite/NeZEBZn]
+
+Follow ElmerFEM on Twitter:
+
+[.text-center]
+image:https://img.shields.io/twitter/follow/elmerfem.svg?style=social["Twitter Follow", link=https://twitter.com/elmerfem] image:https://img.shields.io/twitter/follow/ElmerIce1.svg?style=social["Twitter Follow", link=https://twitter.com/ElmerIce1] image:https://img.shields.io/twitter/follow/CSCfi.svg?style=social["Twitter Follow", link=https://twitter.com/CSCfi] 
+
+Ask your questions on Reddit:
+
+[.text-center]
+image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
+
+
+=== Computational Glaciology "Elmer/Ice":
+
+* http://elmerice.elmerfem.org[Elmer/Ice community web site]
+* https://github.com/ElmerCSC/elmerfem/tree/elmerice/elmerice/[Elmer/Ice README]
+
+
+=== Other links:
+
+
+* http://www.elmerfem.org/[Elmer Blog]
+* https://www.csc.fi/web/elmer[official CSC homepage]
+* http://www.elmerfem.org/forum/[Elmer forum] (preferred place for asking questions)
+* https://postit.csc.fi/sympa/info/elmerupdates[Updates maling list]
+* https://sourceforge.net/projects/elmerfem/[Elmer at sourceforge (deprecated)] image:https://img.shields.io/sourceforge/dt/elmerfem.svg["Download Elmer", link=https://sourceforge.net/projects/elmerfem/files/latest/download]
+* image:https://i.stack.imgur.com/gVE0j.png["LinkedIn badge", link=https://www.linkedin.com/groups/3682354/] https://www.linkedin.com/groups/3682354/[LinkedIn]
+* https://www.youtube.com/user/elmerfem[YouTube]
+* https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
+* http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
+* http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
+
+

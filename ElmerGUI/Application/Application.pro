@@ -97,7 +97,8 @@ contains(DEFINES, EG_OCC) {
 
    unix: DEFINES += HAVE_CONFIG_H HAVE_IOSTREAM HAVE_FSTREAM HAVE_LIMITS_H
    win32: DEFINES += WNT CSFDB
-   macx: DEFINED -= EG_OCC         # not supported at the moment
+   # macx: DEFINED -= EG_OCC         # not supported at the moment
+   macx: DEFINES += OSX
 
    INCLUDEPATH += $${OCC_INCLUDEPATH}
    LIBPATH += $${OCC_LIBPATH}
@@ -152,6 +153,7 @@ HEADERS += src/bodypropertyeditor.h \
            src/summaryeditor.h \
            src/solverlogwindow.h \
            src/objectbrowser.h \
+           src/newprojectdialog.h \
            plugins/egconvert.h \
            plugins/egdef.h \
            plugins/egmain.h \
@@ -176,7 +178,8 @@ FORMS += forms/bodypropertyeditor.ui \
          forms/meshcontrol.ui \
          forms/parallel.ui \
          forms/solverparameters.ui \
-         forms/summaryeditor.ui
+         forms/summaryeditor.ui \
+         forms/newproject.ui
 
 SOURCES += src/bodypropertyeditor.cpp \
            src/boundarydivision.cpp \
@@ -206,6 +209,7 @@ SOURCES += src/bodypropertyeditor.cpp \
            src/summaryeditor.cpp \
            src/solverlogwindow.cpp \
            src/objectbrowser.cpp \
+           src/newprojectdialog.cpp \
            plugins/egconvert.cpp \
            plugins/egmain.cpp \
            plugins/egmesh.cpp \

@@ -277,6 +277,7 @@ CONTAINS
 
      SELECT CASE( Order)
      CASE(1)
+
        DO i=1,NB1
          s = 0.0_dp
          DO j=1,N
@@ -790,6 +791,8 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:)
     REAL(KIND=dp) :: su,mu,uj,ui,a(6)
 !------------------------------------------------------------------------------
+
+    IF( Order == 0 ) RETURN
     
     n = Matrix % NumberOfRows
     Rows   => Matrix % Rows

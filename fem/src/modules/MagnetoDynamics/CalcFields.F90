@@ -549,7 +549,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), POINTER :: R_t(:,:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
-   REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
+   REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent, CircEqVoltageFactor
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
@@ -881,6 +881,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      IF (ASSOCIATED(CompParams)) THEN
        CoilType = GetString(CompParams, 'Coil Type', Found)
        IF (Found) CoilBody = .TRUE.
+       CircEqVoltageFactor = GetConstReal(CompParams, 'Circuit Equation Voltage Factor', Found)
+       IF (.NOT. Found) CircEqVoltageFactor = 1._dp
      END IF 
  
      !------------------------------------------------------------------------------
@@ -1135,8 +1137,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
 
          CASE ('massive')
-           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-           localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId) * CircEqVoltageFactor
+           localV(2) = localV(2) + LagrangeVar % Values(VvarId+1) * CircEqVoltageFactor
            SELECT CASE(dim)
            CASE(2)
              E(1,3) = E(1,3)-localV(1) * grads_coeff
@@ -1151,8 +1153,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            DO k = 1, VvarDofs-1
              Reindex = 2*k
              Imindex = Reindex+1
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
-             localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1) * CircEqVoltageFactor
+             localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1) * CircEqVoltageFactor
            END DO
            SELECT CASE(dim)
            CASE(2)
@@ -1236,7 +1238,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END SELECT
 
          CASE ('massive')
-           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId) * CircEqVoltageFactor
            SELECT CASE(dim)
            CASE(2)
              E(1,3) = E(1,3)-localV(1) * grads_coeff
@@ -1247,7 +1249,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CASE ('foil winding')
            localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
            DO k = 1, VvarDofs-1
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1) * CircEqVoltageFactor
            END DO
            SELECT CASE(dim)
            CASE(2)
@@ -1274,17 +1276,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            CASE(3)
              IF (Transient) THEN
                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-
-               IF (HasAngularVelocity) THEN
-                 !
-                 ! Add w x A so as to create E-field that conforms with the 
-                 ! assumption of force and charge being invariant. Multiplication
-                 ! with the electric conductivity then gives the current density 
-                 ! with respect to the fixed frame:
-                 !
-                 E(1,:) = E(1,:) + CrossProduct(angular_velo, &
-                     MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)))
-               END IF
              END IF
 
              IF (np > 0 .AND. .NOT. Transient) THEN
@@ -1903,7 +1894,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END DO
 
      DO k=1,3
-       IF( TotalLoss(k) > TINY( TotalLoss(k) ) ) CYCLE
+       IF( TotalLoss(k) < TINY( TotalLoss(k) ) ) CYCLE
        IF( k == 1 ) THEN
          CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Linear by bodies',Level=6)
        ELSE IF( k == 2 ) THEN
@@ -2074,6 +2065,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       Element => GetBoundaryElement(i)
       BC => GetBC()
       IF (.NOT. ASSOCIATED(BC)) CYCLE
+
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Element,1)
+        Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Element)
+        Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
       C = GetConstReal(BC, 'Layer Electric Conductivity', Found)
       IF (ANY(ABS(C(1:n)) > AEPS)) THEN
@@ -2250,20 +2253,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 CONTAINS
 
 !-------------------------------------------------------------------
-  SUBROUTINE SumElementalVariable(Var, Values, BodyId, Additive)
+  SUBROUTINE SumElementalVariable(Var, Values, BodyId, uAdditive)
 !-------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Variable_t), POINTER :: Var
     REAL(KIND=dp), OPTIONAL, TARGET :: Values(:)
     INTEGER, OPTIONAL :: BodyId
-    LOGICAL, OPTIONAL :: Additive
+    LOGICAL, OPTIONAL :: uAdditive
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: NodeSum(:)
     INTEGER :: n, j, k, l, nodeind, dgind, bias
     LOGICAL, ALLOCATABLE :: AirGapNode(:)
+    LOGICAL :: Additive
     REAL(KIND=dp), POINTER :: ValuesSource(:)
 
+
+    Additive = .FALSE.
+    IF(PRESENT(uAdditive)) Additive = uAdditive
 
     IF(PRESENT(Values)) THEN
       ValuesSource => Values
@@ -2283,7 +2290,9 @@ CONTAINS
       ! Collect DG data to nodal vector
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
-        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
+        IF(PRESENT(BodyID)) THEN
+          IF(Element % BodyID /= BodyID) CYCLE
+        END IF
         DO l = 1, Element % TYPE % NumberOfNodes
           nodeind = Element % NodeIndexes(l)
           dgind = Var % Perm(Element % DGIndexes(l))
@@ -2297,12 +2306,14 @@ CONTAINS
       ! Sum nodal data to elements
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
-        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
+        IF(PRESENT(BodyID)) THEN
+          IF(Element % BodyID /= BodyID) CYCLE
+        END IF
         DO l=1,Element%TYPE%NumberofNodes
           nodeind = Element % NodeIndexes(l)
           dgind = Var % Perm(Element % DGIndexes(l))
           IF( dgind > 0 ) THEN
-            IF (PRESENT(Additive) .AND. Additive) THEN
+            IF( Additive) THEN
               Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind) + &
                 Var % Values( var % DOFs*(dgind-1)+k)
             ELSE
@@ -2846,41 +2857,6 @@ CONTAINS
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalCopy
 !------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
- 
-
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)

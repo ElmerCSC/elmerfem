@@ -1,0 +1,26 @@
+Elmer version: 8.2
+Elmer revision: dadb15d
+Elmer compilation date: 2017-05-08
+File started at: 2017/05/08 16:56:03
+ 
+Variables in columns of matrix: ./6459/dat/6459.dat
+   1: res: eddy current power
+   2: res: magnetic field energy
+   3: res: harmonic loss linear
+   4: res: harmonic loss quadratic
+   5: res: joule loss
+   6: res: time
+   7: res: i_component(1) re
+   8: res: i_component(1) im
+   9: res: v_component(1) re
+  10: res: v_component(1) im
+  11: res: v_component(1)re dof  1
+  12: res: v_component(1)im dof  1
+  13: res: v_component(1)re dof  2
+  14: res: v_component(1)im dof  2
+  15: res: i_s1 re
+  16: res: i_s1 im
+  17: res: v_s1 re
+  18: res: v_s1 im
+  19: res: r_component(1)
+  20: res: p_dc_component(1)

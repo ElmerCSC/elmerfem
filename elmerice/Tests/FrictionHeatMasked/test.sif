@@ -255,13 +255,13 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Equation 1
    Active Solvers(7) = 1 2 3 4 5 8 9
+   Flow Solution Name = String "Flow Solution"
+   Flow Loads Name = String "Flow Solution Loads"
+   Friction Load Mask = String "Friction Load Mask"
 End
 
 Equation 2
   Active Solvers(2) = 6 7
-  Flow Solution Name = String "Flow Solution"
-  Flow Loads Name = String "Flow Solution Loads"
-  Friction Load Mask = String "Friction Load Mask"
 End
 
 

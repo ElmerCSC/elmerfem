@@ -56,13 +56,8 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation ) ! {{{
 
   Params => GetSolverParams()
   CALL ListAddInteger( Params, 'Variable Dofs',1 )
-  IF( .NOT. ListCheckPresent(  Params,'Variable') ) THEN
-    CALL ListAddString( Params,'Variable','Potential')
-  END IF
-
-  IF(.NOT. ListCheckPresent( Params,'Apply Mortar BCs') ) THEN
-    CALL ListAddLogical( Params,'Apply Mortar BCs',.TRUE.)
-  END IF
+  CALL ListAddNewString( Params,'Variable','Potential')
+  CALL ListAddNewLogical( Params,'Apply Mortar BCs',.TRUE.)
   
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2D_Init ! }}}
@@ -1040,20 +1035,18 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found
   TYPE(Element_t),POINTER :: Element
-
   REAL(KIND=dp) :: Norm
   INTEGER :: i,j,k,ip,jp,n, nb, nd, t, istat, Active, iter, NonlinIter
-
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
   COMPLEX(KIND=dp), PARAMETER :: im=(0._dp,1._dp)
-
   LOGICAL, SAVE :: NewtonRaphson = .FALSE., CSymmetry
-  INTEGER :: CoupledIter
-  TYPE(Variable_t), POINTER :: IterV, CoordVar
-
+  INTEGER :: CoupledIter, TransientSolverInd
+  TYPE(Variable_t), POINTER :: IterV, CoordVar, LVar
   TYPE(Matrix_t),POINTER::CM
-
+  TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(LEN=MAX_NAME_LEN) :: sname   
+  
 !------------------------------------------------------------------------------
 
 
@@ -1074,7 +1067,29 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
   IF(GetCoupledIter() > 1) NewtonRaphson=.TRUE.
 
-  NonlinIter = GetInteger(GetSolverParams(), &
+  ! Check whether we have also transient solver present.
+  ! If we do, then add namespace for the material parameters.
+  ! Note that these checks assume hard-coded subroutine names in this module.
+  TransientSolverInd = 0
+  DO i=1,Model % NumberOfSolvers      
+    sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
+    j = INDEX( sname,'MagnetoDynamics2DHarmonic')
+    IF( j > 0 ) CYCLE
+    k = INDEX( sname,'MagnetoDynamics2D')
+    IF( k > 0 ) THEN
+      TransientSolverInd = i
+      EXIT
+    END IF
+  END DO
+    
+  IF( TransientSolverInd > 0 ) THEN
+    CALL Info('MagnetoDynamics2DHarmonic','Transient solver index found: '//TRIM(I2S(i)),Level=8)
+    CALL ListPushNameSpace('harmonic:')
+  END IF
+    
+  Params => GetSolverParams()
+
+  NonlinIter = GetInteger(Params, &
       'Nonlinear system max iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
@@ -1139,7 +1154,32 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
    END IF
    
    CALL DefaultFinish()
-   
+
+   ! Perform restart if continuing to transient real-valued combination. 
+   IF( ListGetLogical( Params,'Transient Restart',Found ) ) THEN
+     IF( TransientSolverInd == 0 ) THEN
+       CALL Fatal('MagnetoDynamics2Harmonic','Could not find transient solver for restart!')
+     END IF
+     
+     LVar => Model % Solvers(TransientSolverInd) % Variable 
+     IF( ASSOCIATED( LVar ) ) THEN         
+       LVar % Values = Solver % Variable % Values(1::2)
+     END IF
+     
+     Lvar => VariableGet( Mesh % Variables,'LagrangeMultiplier')
+     IF ( ASSOCIATED(Lvar) ) THEN
+       CALL Info('MagnetoDynamics2DHarmonic',&
+           'Size of Lagrange Multiplier: '//TRIM(I2S(SIZE(LVar % Values))),Level=8)
+       DO i=1,SIZE( LVar % Values ) / 2
+         Lvar % Values(i) = Lvar % Values(2*(i-1)+1)
+       END DO
+     END IF     
+   END IF
+
+   IF( TransientSolverInd > 0 ) THEN
+     CALL ListPopNamespace()
+   END IF
+  
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -2177,12 +2217,14 @@ CONTAINS
     LOGICAL :: StrandedHomogenization, FoundIm
 
     REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
+    REAL(KIND=dp), ALLOCATABLE :: CoreLossUDF(:)
+    REAL(KIND=dp) :: CoreLossUDFatIp
 
     LOGICAL :: LaminateModelPowerCompute=.FALSE., InPlaneProximity=.FALSE.
     REAL(KIND=dp) :: LaminatePowerDensity, BMagnAtIP, Fsk, Lambda, LaminateThickness, &
                      mu0=4d-7*PI, skindepth
     
-    LOGICAL :: BertottiCompute = .FALSE.
+    LOGICAL :: BertottiCompute = .FALSE., LossUDF = .FALSE.
     REAL(KIND=dp) :: BertottiLoss, BRTc1, BRTc2, BRTc3, BRTc4, BRTc5
 
     SAVE Nodes
@@ -2190,7 +2232,7 @@ CONTAINS
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
     ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
-    ALLOCATE( Cond(n), mu(n), sigma_33(n), sigmaim_33(n) ) 
+    ALLOCATE( Cond(n), mu(n), sigma_33(n), sigmaim_33(n), CoreLossUDF(n)) 
     LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
     ModelDepth = GetCircuitModelDepth()
 
@@ -2428,6 +2470,9 @@ CONTAINS
         BRTc5 = GetCReal( Material,'Extended Bertotti Coefficient 5',Found ) 
         IF (.NOT. Found) BRTc5 = 1.5_dp
       END IF
+
+      LossUDF = .FALSE.
+      CoreLossUDF = GetReal( Material,'Core Loss User Function', LossUDF ) 
       
       IF (BodyVolumesCompute) THEN
         BodyId = GetBody()
@@ -2583,6 +2628,12 @@ CONTAINS
           BertottiLoss = BRTc1*Freq*BMagnAtIP**2.+ BRTc2*(Freq*BMagnAtIP)**2.+BRTc3*Freq**BRTc4*BMagnAtIP**BRTc5
           TotalHeating = TotalHeating + BertottiLoss
           BAtIp(6) = BAtIp(6) + BertottiLoss ! unorthodox
+        END IF
+
+        IF (LossUDF) THEN
+          CoreLossUDFatIp = SUM(Basis(1:n) * CoreLossUDF(1:n))
+          TotalHeating = TotalHeating + CoreLossUDFatIp
+          BAtIp(6) = BAtIp(6) + CoreLossUDFatIp! unorthodox
         END IF
 
         IF( LossEstimation ) THEN
@@ -3003,7 +3054,7 @@ CONTAINS
       
 
 
-    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33 )
+    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33, CoreLossUDF)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly

@@ -31,6 +31,7 @@ SET(HEADERS src/bodypropertyeditor.h
   src/summaryeditor.h 
   src/objectbrowser.h 
   src/solverlogwindow.h 
+  src/newprojectdialog.h 
   plugins/egconvert.h 
   plugins/egdef.h 
   plugins/egmain.h 
@@ -56,7 +57,8 @@ SET(FORMS forms/bodypropertyeditor.ui
   forms/meshcontrol.ui 
   forms/parallel.ui 
   forms/solverparameters.ui 
-  forms/summaryeditor.ui)
+  forms/summaryeditor.ui
+  forms/newproject.ui)
 
 
 SET(SOURCES src/bodypropertyeditor.cpp 
@@ -87,6 +89,7 @@ SET(SOURCES src/bodypropertyeditor.cpp
   src/summaryeditor.cpp 
   src/solverlogwindow.cpp 
   src/objectbrowser.cpp 
+  src/newprojectdialog.cpp
   plugins/egconvert.cpp 
   plugins/egmain.cpp 
   plugins/egmesh.cpp 
@@ -171,6 +174,13 @@ IF(WITH_VTK AND NOT WITHOUT_VTKPOST)
 ENDIF()
 
 IF(WITH_OCC)
+
+#  set(ELMER_USE_OCC_VARIANT "Official Version"  CACHE STRING  "Official OpenCASCADE version or community edition")
+#  set_property(CACHE ELMER_USE_OCC_VARIANT PROPERTY STRINGS
+#              "Official Version"
+#              "Community Edition"
+#  )
+
   SET(HEADERS ${HEADERS} cad/cadview.h  cad/cadpreferences.h)
   SET(FORMS ${FORMS} cad/cadpreferences.ui)
   SET(SOURCES ${SOURCES} cad/cadview.cpp cad/cadpreferences.cpp)
@@ -199,7 +209,7 @@ ADD_EXECUTABLE(ElmerGUI WIN32 ${SOURCES} ${UI_HEADERS} ${UI_RESOURCES})
 SET(CPACK_PACKAGE_EXECUTABLES ElmerGUI "ElmerGUI")
 
 IF(WITH_QT5)
-  QT5_USE_MODULES(ElmerGUI OpenGL Xml Script Gui Core PrintSupport)
+  QT5_USE_MODULES(ElmerGUI OpenGL Xml Script Gui Core Svg Widgets PrintSupport)
 ENDIF()
 
 TARGET_LINK_LIBRARIES(ElmerGUI ng ${QT_LIBRARIES})

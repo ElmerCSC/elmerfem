@@ -1,0 +1,91 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  
+  Output Intervals = 0
+  Post File = case.vtu
+End
+
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+! These work as well and could be useful when linear system is hard to solve
+!  Linear System Residual Mode = True
+!  Linear System Convergence Tolerance = 1.0e-04
+End
+
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Youngs modulus = 1.0e6
+  Density = 1.0
+  Poisson ratio = 0.3
+End
+
+Boundary Condition 1
+  Name = "Natural" 
+  Target Boundaries(4) = 1 2 3 4
+End 
+
+Boundary Condition 2
+  Name = "Contact"
+  Target Boundaries(1) = 6
+
+  Force 3 = Variable "Coordinate 1"
+    Real
+      0.0 0.0
+      0.49 0.0
+      0.51 -1.0e5
+      1.0  -1.0e5
+    End
+
+!  Displacement Plane = Logical True
+End
+
+Boundary Condition 3
+  Name = "Bottom"
+  Target Boundaries(1) = 5
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+
+Solver 1 :: Reference Norm = 2.95225931E-02

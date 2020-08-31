@@ -367,7 +367,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   Perm => Solver % Variable % Perm
   Vecpot => Solver % Variable % Values
 
-  IF ( .NOT. AllocationsDone .OR. Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Mesh % MaxElementDOFs  ! just big enough
 
      IF(ALLOCATED(FORCE)) THEN
@@ -977,39 +977,6 @@ CONTAINS
 
 !------------------------------------------------------------------------------
  END FUNCTION DoSolve
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
- 
-
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
 
 
@@ -1785,79 +1752,48 @@ END SUBROUTINE LocalConstraintMatrix
          END IF CONDUCTOR
        END IF ! (.NOT. CoilBody)
 
-       LORENTZ_EFFECT: IF ( HasVelocity ) THEN
+       LORENTZ_EFFECT: IF ( HasVelocity .AND. .NOT. Transient) THEN
          !
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          !
          A_CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
-           IF (Transient) THEN
-             IF (HasAngularVelocity) THEN
-               !
-               ! In a transient case where the mesh is transformed via a rigid motion the angular velocity 
-               ! can be used to add a correction term -(omega x A) in order to replace the substantial 
-               ! time derivative which the time stepping machinery of Elmer generates by
-               ! the upper convected (Lie) time derivative. Otherwise the definition of the velocity should 
-               ! be in-built into the transformation of the mesh and doesn't need to be specified explicitly. 
-               !
-               DO p=1,np          
-                 DO j=1,nd-np
-                   q = j+np
+           !
+           ! In the case of steady state model add the effect of v x curl A to 
+           ! the electromagnetic field: 
+           !
+           DO p=1,np
+             DO j=1,nd-np
+               q = j+np
 #ifndef __INTEL_COMPILER
-                   STIFF(p,q) = STIFF(p,q) - &
-                       SUM(MATMUL(C,CrossProduct(omega, WBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
-#endif
-                   ! TO DO: Add a workaround for the compiler?
-                 END DO
-               END DO
-
-               DO i = 1,nd-np
-                 p = i+np
-                 DO j = 1,nd-np
-                   q = j+np          
-                   STIFF(p,q) = STIFF(p,q) - &
-                       SUM(WBasis(i,:)*MATMUL(C,CrossProduct(omega, WBasis(j,:))))*detJ*IP % s(t)
-                 END DO
-               END DO
-             END IF
-           ELSE
-             !
-             ! In the case of steady state model add the effect of v x curl A to 
-             ! the electromagnetic field: 
-             !
-             DO p=1,np
-               DO j=1,nd-np
-                 q = j+np
-#ifndef __INTEL_COMPILER
-                 STIFF(p,q) = STIFF(p,q) - &
-                     SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
+               STIFF(p,q) = STIFF(p,q) - &
+                   SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(p,:))*detJ*IP % s(t)
 #else
-                 ! Ifort workaround
-                 RotWJ(1:3) = RotWBasis(j,1:3)
-                 ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
-                 ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
-                 CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
-                 CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
-                 CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
-                 CVeloSum = REAL(0,dp)
-                 DO k=1,3
-                   CVeloSum = CVeloSum + CVelo(k)*dBasisdx(p,k)
-                 END DO
-                 STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
+               ! Ifort workaround
+               RotWJ(1:3) = RotWBasis(j,1:3)
+               ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
+               ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
+               CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
+               CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
+               CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
+               CVeloSum = REAL(0,dp)
+               DO k=1,3
+                 CVeloSum = CVeloSum + CVelo(k)*dBasisdx(p,k)
+               END DO
+               STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
 #endif
-               END DO
              END DO
+           END DO
 
-             DO i = 1,nd-np
-               p = i+np
-               DO j = 1,nd-np
-                 q = j+np          
-                 STIFF(p,q) = STIFF(p,q) - &
-                     SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
-               END DO
+           DO i = 1,nd-np
+             p = i+np
+             DO j = 1,nd-np
+               q = j+np          
+               STIFF(p,q) = STIFF(p,q) - &
+                   SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
              END DO
+           END DO
 
-           END IF
          END IF A_CONDUCTOR
        END IF LORENTZ_EFFECT
 

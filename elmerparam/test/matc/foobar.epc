@@ -1,2 +1,0 @@
-MATC = TRUE
-FUNCTION = $sum((R - I)^2)

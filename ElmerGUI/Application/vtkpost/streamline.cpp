@@ -50,7 +50,13 @@
 #include <vtkPointData.h>
 #include <vtkPointSource.h>
 #include <vtkLineSource.h>
-#include <vtkStreamLine.h>
+
+#if VTK_MAJOR_VERSION <= 7
+  #include <vtkStreamLine.h>
+#else
+  #include <vtkStreamTracer.h>
+#endif
+
 #include <vtkRungeKutta4.h>
 #include <vtkRibbonFilter.h>
 #include <vtkPolyDataMapper.h>
@@ -72,6 +78,15 @@ StreamLine::StreamLine(QWidget *parent)
   connect(ui.keepLimits, SIGNAL(stateChanged(int)), this, SLOT(keepLimitsSlot(int)));
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+#if VTK_MAJOR_VERSION >= 8
+  ui.propagLabel->setText(QString("Max propagation:"));
+  ui.stepLabel->setText(QString("Max integ. step:"));
+  ui.integStepLabel->setText(QString("Initial integ. step:"));
+  ui.threadsLabel->setText(QString("Max step:"));
+  ui.threads->setValue(2000);
+#endif
+
 }
 
 StreamLine::~StreamLine()
@@ -289,7 +304,13 @@ void StreamLine::draw(VtkPost* vtkPost, TimeStep* timeStep)
     }
   }
 
+#if VTK_MAJOR_VERSION <= 7
   vtkStreamLine* streamer = vtkStreamLine::New();
+#else
+  vtkStreamTracer* streamer = vtkStreamTracer::New();
+#endif
+
+  
   vtkRungeKutta4* integrator = vtkRungeKutta4::New();
 
 #if VTK_MAJOR_VERSION <= 5
@@ -312,9 +333,12 @@ void StreamLine::draw(VtkPost* vtkPost, TimeStep* timeStep)
 #endif
   }
 
-  streamer->SetIntegrator(integrator);
+  streamer->SetIntegrator(integrator);  
+  
+#if VTK_MAJOR_VERSION <= 7  
   streamer->SetMaximumPropagationTime(propagationTime);
   streamer->SetIntegrationStepLength(integStepLength);
+  
   if(forward && backward) {
     streamer->SetIntegrationDirectionToIntegrateBothDirections();
   } else if(forward) {
@@ -323,7 +347,23 @@ void StreamLine::draw(VtkPost* vtkPost, TimeStep* timeStep)
     streamer->SetIntegrationDirectionToBackward();
   }
   streamer->SetStepLength(stepLength);
-  streamer->SetNumberOfThreads(threads);
+  streamer->SetNumberOfThreads(threads);  
+
+#else
+  streamer->SetMaximumPropagation(propagationTime);
+  streamer->SetInitialIntegrationStep(stepLength);
+  
+   if(forward && backward) {
+    streamer->SetIntegrationDirectionToBoth();
+  } else if(forward) {
+    streamer->SetIntegrationDirectionToForward();    
+  } else {
+    streamer->SetIntegrationDirectionToBackward();
+  }
+  streamer->SetMaximumIntegrationStep(integStepLength);
+  streamer->SetMaximumNumberOfSteps(threads);  
+  
+#endif
   
   vtkRibbonFilter* ribbon = vtkRibbonFilter::New();
 
@@ -346,7 +386,8 @@ void StreamLine::draw(VtkPost* vtkPost, TimeStep* timeStep)
   }
 
   mapper->SetColorModeToMapScalars();
-  mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  //mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  mapper->SetLookupTable(vtkPost->GetLut("Streamline"));
 
   vtkPost->GetStreamLineActor()->SetMapper(mapper);
 

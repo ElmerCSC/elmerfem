@@ -37,7 +37,9 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
-
+#if WITH_QT5
+  #include <QtWidgets>
+#endif  
 #include <QtGui>
 #include <iostream>
 #include <vtkRenderWindow.h>
@@ -131,7 +133,12 @@ void TimeStep::canProceedWithNextSlot(vtkRenderWindow *renderWindow)
     
     vtkPNGWriter *writer =  vtkPNGWriter::New();
     writer->SetInputConnection(image->GetOutputPort());
+
+#if WITH_QT5    
+    writer->SetFileName(fileName.toLatin1().data());
+#else
     writer->SetFileName(fileName.toAscii().data());
+#endif
 
     renderWindow->Render();
     writer->Write();
