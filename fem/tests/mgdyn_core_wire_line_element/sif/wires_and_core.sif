@@ -1,4 +1,5 @@
 ! Simple case for testing the line element in 3D simulation.
+! Original date: March 2020
 ! eelis.takala@gmail.com
 
 $ B0 = 1
