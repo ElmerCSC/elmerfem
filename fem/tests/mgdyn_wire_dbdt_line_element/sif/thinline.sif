@@ -71,7 +71,8 @@ Solver 2  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Linear System Convergence Tolerance = 1.0e-8
 End
 Solver 3  !---- ResultOutputSolve, ResultOutputSolver
-   Exec Solver = After timestep
+   !Exec Solver = After timestep
+   Exec Solver = Never
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
    Output File Name = thinline
