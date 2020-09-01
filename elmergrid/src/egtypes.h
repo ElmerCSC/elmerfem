@@ -1,4 +1,4 @@
-/* femtypes.h */
+/* femtypes.h -> egtypes.h */
 /* Defines the types used in the FEM model. */
 
 /* Definiotins used in allocating space for the structures. */

@@ -1,4 +1,4 @@
-/* femknot.h */
+/* femknot.h -> egmesh.h */
 /* This module includes utilities that operate on single knots. It builds
    structures where the knots can be saved, it finds boundaries,
    copies knots from structures to others and destroys structures that

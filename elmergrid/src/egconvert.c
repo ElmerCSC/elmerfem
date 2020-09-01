@@ -23,7 +23,7 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-/* --------------------:  femfilein.c  :-------------------------- */
+/* --------------------:  egconvert.c  :-------------------------- */
 
 #include <stdio.h>
 #include <math.h>
@@ -35,12 +35,11 @@
 /*#include <strings.h>*/
 /*#include <unistd.h>*/
 
-#include "nrutil.h"
-#include "common.h"
-#include "femdef.h"
-#include "femtypes.h"
-#include "femknot.h"
-#include "femfilein.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egmesh.h"
+#include "egconvert.h"
 
 #define GETLINE getlineptr=fgets(line,MAXLINESIZE,in) 
 #define GETLONGLINE getlineptr=fgets(longline,LONGLINESIZE,in)

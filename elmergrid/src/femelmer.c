@@ -42,11 +42,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "nrutil.h"
-#include "common.h"
-#include "femdef.h"
-#include "femtypes.h"
-#include "femknot.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egmesh.h"
 #include "femelmer.h"
 #include "../config.h"
 

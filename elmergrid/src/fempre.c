@@ -52,16 +52,15 @@
 #include <ctype.h>
 #include <math.h>
 
-#include "common.h"
-#include "nrutil.h"
-#include "femdef.h"
-#include "femtypes.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
 #include "femmesh.h"
-#include "femknot.h"
+#include "egmesh.h"
 #include "feminfo.h"
 #include "femelmer.h"
-#include "femfilein.h"
-#include "femfileout.h"
+#include "egconvert.h"
+#include "egexport.h"
 
 
 static void Instructions()

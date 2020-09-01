@@ -23,7 +23,7 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-/* --------------------------:  femknot.c  :----------------------------
+/* --------------------------:  egmesh.c  :----------------------------
 
    This module includes subroutines that formulate the mesh into structures 
    more usuful for the user. These are the functions that should be used for 
@@ -37,12 +37,11 @@
 #include <math.h>
 #include <limits.h>
 
-#include "common.h"
-#include "nrutil.h"
-#include "femdef.h"
-#include "femtypes.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
 #include "femmesh.h"
-#include "femknot.h"
+#include "egmesh.h"
 
 #define DEBUG 0
 

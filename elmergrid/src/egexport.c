@@ -23,7 +23,7 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-/* --------------------:  femfilein.c  :-------------------------- */
+/* --------------------:  egexport.c  :-------------------------- */
 
 #include <stdio.h>
 #include <math.h>
@@ -33,12 +33,11 @@
 #include <string.h>
 /*#include <unistd.h>*/
 
-#include "nrutil.h"
-#include "common.h"
-#include "femdef.h"
-#include "femtypes.h"
-#include "femknot.h"
-#include "femfileout.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egmesh.h"
+#include "egexport.h"
 
 
 int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
