@@ -48,7 +48,7 @@
 #include "femmesh.h"
 #include "egmesh.h"
 #include "feminfo.h"
-#include "femelmer.h"
+#include "egparallel.h" 
 
 int matcactive=FALSE, iodebug=FALSE;
 

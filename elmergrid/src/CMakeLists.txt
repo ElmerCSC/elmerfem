@@ -16,9 +16,9 @@ ENDIF()
 SET(METIS_INSTALL FALSE CACHE BOOL "")
 ADD_SUBDIRECTORY(metis-5.1.0)
 
-SET(elmergrid_SRCS egdef.h femelmer.h egconvert.h
+SET(elmergrid_SRCS egdef.h egparallel.h egnative.h egconvert.h
   egexport.h feminfo.h egmesh.h femmesh.h 
-  egtypes.h egutils.h femelmer.c egconvert.c egexport.c
+  egtypes.h egutils.h egparallel.c egnative.c egconvert.c egexport.c
   feminfo.c egmesh.c femmesh.c fempre.c 
   egutils.c)
 

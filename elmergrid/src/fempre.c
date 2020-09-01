@@ -58,7 +58,8 @@
 #include "femmesh.h"
 #include "egmesh.h"
 #include "feminfo.h"
-#include "femelmer.h"
+#include "egnative.h"
+#include "egparallel.h"
 #include "egconvert.h"
 #include "egexport.h"
 

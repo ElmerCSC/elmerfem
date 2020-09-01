@@ -1,22 +1,8 @@
-/* femelmer.h */
-/* Routines for input, output and manipulation of Funcs and ElmerPost
-   formats (programs created by Juha Ruokolainen at CSC). */ 
+/* femelmer.h -> egparallel.h */
 #define PARTMETIS 1
 
-int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info);
-int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int nonames, int info);
 int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int parts,
 				 int minstep, int maxstep, int dstep, int info);
-int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
-		      int nobound,char *prefix,int decimals,int info);
-int SaveSolutionElmerTriangles(struct FemType *data,char *prefix,int info);
-int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int decimals,int nooverwrite, int info);
-int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
-		 char *prefix,int info);
-int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
-			 char *prefix,int decimals, int info);
 int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct BoundaryType *bound,
 			    int dimpart[],int dimper[],int partorder, Real corder[],
 			    Real parttol, int info);
@@ -36,7 +22,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 				 struct ElmergridType *eg, int info);
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
 			 int partorder, Real corder[],Real parttol,int info);
-int LinearNodes(int elemtype);
+/* int LinearNodes(int elemtype); */
 #if PARTMETIS
 int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
 		       int partitions,int dual,int info);
