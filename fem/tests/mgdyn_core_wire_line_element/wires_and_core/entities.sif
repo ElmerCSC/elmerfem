@@ -1,0 +1,42 @@
+!------ Skeleton for body section -----
+Body 1
+  Name = core
+End
+
+Body 2
+  Name = air
+End
+
+!------ Skeleton for boundary section -----
+Boundary Condition 1
+  Name = parallel_flux
+End
+
+Boundary Condition 2
+  Name = wire1
+End
+
+Boundary Condition 3
+  Name = wire2
+End
+
+Boundary Condition 4
+  Name = wire1_t1
+End
+
+Boundary Condition 5
+  Name = wire1_t2
+End
+
+Boundary Condition 6
+  Name = wire2_t1
+End
+
+Boundary Condition 7
+  Name = wire2_t2
+End
+
+Boundary Condition 8
+  Name = bnry10
+End
+

@@ -2559,15 +2559,17 @@ MODULE AscBinOutputUtils
   USE Types
   IMPLICIT NONE
   
-  LOGICAL, PRIVATE :: AsciiOutput, SinglePrec
+  LOGICAL, PRIVATE :: AsciiOutput, SinglePrec, CalcSum = .FALSE.
   INTEGER, PRIVATE :: VtuUnit = 0, BufferSize = 0
   REAL, POINTER, PRIVATE :: FVals(:)
   REAL(KIND=dp), POINTER, PRIVATE :: DVals(:)
   INTEGER, POINTER, PRIVATE :: IVals(:)
   INTEGER, PRIVATE :: INoVals, NoVals
-
+  REAL(KIND=dp) :: RSum = 0.0_dp, Isum = 0.0_dp
+  INTEGER :: Rcount = 0, Icount = 0, Scount = 0, Ssum = 0 
+  
   SAVE :: AsciiOutput, SinglePrec, VtuUnit,  BufferSize, &
-      FVals, DVals, IVals
+      FVals, DVals, IVals, CalcSum, Rsum, Isum, Ssum, RCount, Icount, Scount
   
 
 
@@ -2651,6 +2653,11 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     
     WRITE( VtuUnit ) TRIM(Str)        
+    IF( CalcSum ) THEN
+      Scount = Scount + 1
+      Ssum = Ssum + len_trim( Str ) 
+    END IF
+    
     
   END SUBROUTINE AscBinStrWrite
   
@@ -2686,6 +2693,10 @@ CONTAINS
         WRITE( Str,'(ES16.7E3)') val
       END IF
       WRITE( VtuUnit ) TRIM(Str)        
+      IF( CalcSum ) THEN
+        Rcount = Rcount + 1
+        Rsum = Rsum + val
+      END IF
       RETURN
     END IF
 
@@ -2698,6 +2709,16 @@ CONTAINS
       ELSE
         WRITE( VtuUnit ) DVals(1:NoVals) 
       END IF
+      
+      IF( CalcSum ) THEN
+        Rcount = Rcount + NoVals
+        IF( SinglePrec ) THEN
+          Rsum = 1.0_dp * SUM( Fvals(1:NoVals) )
+        ELSE
+          Rsum = SUM( DVals(1:NoVals) )
+        END IF
+      END IF
+      
       NoVals = 0
       IF( Empty ) RETURN 
     END IF
@@ -2737,7 +2758,8 @@ CONTAINS
     IF( AsciiOutput ) THEN
       IF( Empty ) RETURN
       WRITE( Str, '(" ",I0)') ival
-      WRITE( VtuUnit ) TRIM(Str)        
+      WRITE( VtuUnit ) TRIM(Str)
+      IF( CalcSum ) Isum = Isum + ival
       RETURN
     END IF
 
@@ -2746,6 +2768,10 @@ CONTAINS
         RETURN
       ELSE 
         WRITE( VtuUnit ) Ivals(1:INoVals)
+        IF( CalcSum ) THEN
+          Icount = Icount + 1
+          Isum = Isum + SUM( Ivals(1:INoVals) )
+        END IF
       END IF
       INoVals = 0
       IF( Empty ) RETURN 
@@ -2755,6 +2781,48 @@ CONTAINS
     Ivals(INoVals) = ival
         
   END SUBROUTINE AscBinIntegerWrite
+
+  
+  SUBROUTINE AscBinInitNorm(CalcNorm) 
+    LOGICAL :: CalcNorm
+
+    CalcSum = CalcNorm
+    RSum = 0.0_dp
+    ISum = 0.0_dp
+    Ssum = 0
+    Rcount = 0
+    Icount = 0
+    Scount = 0
+    
+  END SUBROUTINE AscBinInitNorm
+
+  
+  FUNCTION AscBinCompareNorm(RefResults) RESULT ( RelativeNorm ) 
+    REAL(KIND=dp), DIMENSION(*) :: RefResults 
+    REAL(KIND=dp) :: RelativeNorm
+    REAL(KIND=dp) :: ThisResults(6)
+    REAL(KIND=dp) :: c
+    INTEGER :: i 
+    
+    ThisResults(1) = scount
+    ThisResults(2) = icount
+    ThisResults(3) = rcount
+    ThisResults(4) = ssum
+    ThisResults(5) = isum ! we use real for isum since it could be huge too!
+    ThisResults(6) = rsum
+    
+    PRINT *,'Checksums for file output:'
+    PRINT *,'RefResults:',NINT(RefResults(1:4)),RefResults(5:6)
+    PRINT *,'ThisResults:',NINT(ThisResults(1:4)),ThisResults(5:6)
+
+    ! We have a special relative pseunonorm that should be one!
+    RelativeNorm = 0.0
+    DO i=1,6
+      c = ThisResults(i)/RefResults(i)
+      RelativeNorm = RelativeNorm + MAX( c, 1.0_dp /c ) / 6
+    END DO
+    
+  END FUNCTION AscBinCompareNorm
   
   
 END MODULE AscBinOutputUtils

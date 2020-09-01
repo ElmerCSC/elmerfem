@@ -1,0 +1,78 @@
+Elmer Release Notes for version 8.2
+===================================
+
+Previous release: 8.1
+Period covered: 30 October 2015 - 11 March 2016
+
+
+ElmerSolver libary functionality
+--------------------------------
+- Added support for MKL Parallel Direct Sparse Direct Solver for Clusters.
+
+- Internal spline integration added. The integral curve is computed while adding the 
+  data to the list to speed up calculation of definite integrals (IntegrateCurve()).
+
+- Implement reduction operators for components. These are similar to the ones that exist already in
+  SaveScalars but they operate only on the "Master Bodies" and "Master Boundaries" as defined in the 
+  component section.  
+
+- Mesh multiplication implemented for elementtype 706 (prisms) 
+
+- Implemented automated overlay also with dimensionally reduced projectors. 
+
+- Hierarchic edge element (curl-conforming) basis functions of second order for all basic element shapes 
+  (pyramid still missing). The background mesh may then consist of nodal elements of either first or second degree.
+
+- Documentation (in ElmerSolver Manual) for advanced finite element definitions
+
+
+ElmerSolver Solver modules
+---------------------------
+- MagnetoDynamics
+  o The AV solver updated to support the discretization with new second-order edge elements
+
+- MagnetoDynamicsCalcFields (post-processor for MgDyn solvers):
+  o Correct treatment of generalized nodal forces also for nonlinear H-B curves. 
+  o Include airgap model in the generalized nodal forces computation. Only applicable to elemental fields.
+  o Allow magnetic force reduction computation to components. These are activated by the logical keywords
+    "calculate magnetic force" and "calculate magnetic torque". If airgap exists, then proper reduction
+    requires use of elemental forces. 
+
+- HeatSolver
+  o Enable > spatial 2 < phase change model also with enthalpy given by a UDF by implementing automated numerical derivation. 
+  o Allow phase change cases to be a combination of enthalpy and latent heat. Previously heat capacity needed to be intagrated.
+  o Allow combination of 2D and 3D heat solver by adding a keyword for the 2D part thickness 
+
+- FlowSolver
+  o Better implementation of P2-P1/Q2-Q1 approximation to avoid computational instabilities. 
+    Use Stabilization Method={p2p1|p2/p1} to select this approximation method.
+
+- ParStokes (Stokes equations) solver
+  o P2-P1/Q2-Q1 approximation over nodal elements of second degree
+  o Default values introduced to simplify writing of sif files in the case of block preconditioning
+  o Elmer Models Manual documentation created for the ParStokes solver
+
+- CoilSolver
+  o The coil position can now be automatically found from the maximum moment of inertia
+  o Support of several coils where each coil is defined in component section
+  o Parallelized the coil solver
+
+- StructuredMeshMapper
+  o Added support for mid-layer when doing mappings.
+
+- ResultOutputSolver:
+  o In VTU output implemented minimal discontinuous basis for DG fields where discontinuity is maintaied only over 
+    body interfaces. Activated by "Discontinuous Bodies = Logical True" keyword.
+    If discontinous reduction is used, the results are averaged for the representative node. 
+
+- SaveScalars
+  o Allow saving of results computed in Components by "Save Component Results" keyword. 
+
+
+ElmerGrid
+---------
+- Added offset for materials and bc indexes when doing cloning of meshes
+- When doing partitioning with connected sets, allow hybrid partitioning also with geometric version
+
+
+

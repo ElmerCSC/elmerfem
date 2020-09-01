@@ -3194,7 +3194,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI, Count, MaxCount, i
-    LOGICAL :: LinearSystemTrialing
+    LOGICAL :: LinearSystemTrialing, SourceControl
 
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
     
@@ -3232,24 +3232,22 @@ CONTAINS
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
-
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
-
     
     IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
       RETURN
-    END IF
-    
+    END IF    
 
+    SourceControl = ListGetLogical( Params,'Apply Source Control',Found )
+    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.TRUE. ) 
     
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
     A => Solver % Matrix
-    x => Solver % Variable
-    
+    x => Solver % Variable    
     b => A % RHS
     SOL => x % Values
 
@@ -3260,7 +3258,7 @@ CONTAINS
       PRINT *,'range A'//TRIM(I2S(ParEnv % MyPe))//':', &
           MINVAL( A % Values ), MAXVAL( A % Values ), SUM( A % Values ), SUM( ABS(A % Values) )
     END IF
-
+       
     
 10  CONTINUE
 
@@ -3303,7 +3301,8 @@ CONTAINS
       END IF
     END IF
     
-
+    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.FALSE. ) 
+    
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF( Found .AND. TRIM( saveslot ) == 'after') THEN
@@ -3317,6 +3316,7 @@ CONTAINS
       CALL FCT_Correction( Solver )
     END IF
 
+    ! Backchange the linear system 
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver, .TRUE. )
     END IF
@@ -5872,6 +5872,7 @@ CONTAINS
       BUpd = BUpd .OR. GetLogical( Params,'Save Bulk System', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk Matrix', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constraint Modes Analysis',Found) 
+      BUpd = BUpd .OR. GetLogical( Params,'Control Use Loads',Found )
     END IF
 
     IF( BUpd ) THEN

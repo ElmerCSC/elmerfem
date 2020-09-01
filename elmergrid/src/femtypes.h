@@ -387,6 +387,7 @@ struct ElmergridType {
 
   Real cscale[3], 
     corder[3],
+    parttol,
     cmerge,
     ctranslate[3],
     crotate[3],

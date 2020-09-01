@@ -79,7 +79,7 @@ CONTAINS
     INTEGER :: MaxNDOFs, MaxDGDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
 
 
-    CALL Info('BlockSolver','Creating block variables',Level=8)
+    CALL Info('CreateBlockVariable','Creating block variables',Level=8)
     
     Mesh => Solver % Mesh
     Params => Solver % Values
@@ -196,7 +196,7 @@ CONTAINS
         TRIM(VarName), Dofs, Perm = VarPerm )          
     
     WRITE( Message,'(A,I0,A)') 'Creating variable '//TRIM(VarName)//' with ',Dofs,' dofs'
-    CALL Info('BlockSolver',Message)
+    CALL Info('CreateBlockVariable', Message)
     
     Var => VariableGet( Mesh % Variables, VarName )         
 
@@ -549,7 +549,7 @@ CONTAINS
     INTEGER::i,j,k,i_aa,i_vv,i_av,i_va,n;
     REAL(KIND=DP) :: SumAbsMat
     
-    CALL Info('BlockSolver','Picking block matrix of size '//TRIM(I2S(NoVar))//' from monolithic one',Level=10)
+    CALL Info('BlockPickMatrix','Picking block matrix of size '//TRIM(I2S(NoVar))//' from monolithic one',Level=10)
 
     SolverMatrix => Solver % Matrix 
     Params => Solver % Values
@@ -562,7 +562,7 @@ CONTAINS
         IF( TotMatrix % GotBlockStruct) THEN
           ! A generic picking method for submatrices
           !----------------------------------------------------------------------
-          CALL Info('BlockSolver','Picking generic block matrix ('&
+          CALL Info('BlockPickMatrix','Picking generic block matrix ('&
               //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)
           CALL CRS_BlockMatrixPick2(SolverMatrix,Amat,TotMatrix % BlockStruct,RowVar,ColVar)
         ELSE
@@ -570,19 +570,19 @@ CONTAINS
           !----------------------------------------------------------------------
           IF( ReuseMatrix ) THEN
             IF( RowVar + ColVar > 2 .AND. Amat % NumberOfRows == 0 ) THEN
-              CALL Info('BlockSolver','Copying block matrix topology ('&
+              CALL Info('BlockPickMatrix','Copying block matrix topology ('&
                   //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)
               CALL CRS_CopyMatrixTopology( TotMatrix % Submatrix(1,1) % Mat, Amat )
             END IF
           END IF
-          CALL Info('BlockSolver','Picking simple block matrix ('&
+          CALL Info('BlockPickMatrix','Picking simple block matrix ('&
               //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)          
           CALL CRS_BlockMatrixPick(SolverMatrix,Amat,NoVar,RowVar,ColVar)          
             
           IF( Amat % NumberOfRows > 0 ) THEN
             SumAbsMat = SUM( ABS( Amat % Values ) )
             IF( SumAbsMat < SQRT( TINY( SumAbsMat ) ) ) THEN
-              CALL Info('BlockSolver','Matrix is actually all zero, eliminating it!',Level=12)
+              CALL Info('BlockPickMatrix','Matrix is actually all zero, eliminating it!',Level=12)
               DEALLOCATE( Amat % Values ) 
               IF( .NOT. ReuseMatrix ) THEN
                 DEALLOCATE( Amat % Rows, Amat % Cols )
@@ -618,7 +618,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     
     
-    CALL Info('BlockSolver','Picking block matrix of size '//TRIM(I2S(NoVar))//' from monolithic one',Level=10)
+    CALL Info('BlockPickDofsPhysical','Picking block matrix of size '//TRIM(I2S(NoVar))//' from monolithic one',Level=10)
 
     n_bf = CurrentModel % NumberOfBodyForces
 
@@ -638,7 +638,7 @@ CONTAINS
     END DO
     
     IF( MaxBlock == 0 ) THEN
-      CALL Fatal('BlockSolver','Cannot create a physical block structure as no >Block Index< given!')
+      CALL Fatal('BlockPickDofsPhysical','Cannot create a physical block structure as no >Block Index< given!')
     END IF
 
     Mesh => Solver % Mesh 
@@ -674,7 +674,7 @@ CONTAINS
     
     n = COUNT( BlockIndex == 0 )
     IF( n > 0 ) THEN
-      CALL Info('BlockSolver','Number of indexes without block matrix index: '//TRIM(I2S(n)),Level=7)
+      CALL Info('BlockPickDofsPhysical','Number of indexes without block matrix index: '//TRIM(I2S(n)),Level=7)
       IF( MinBlock > 1 ) THEN
         k = 1
       ELSE
@@ -683,7 +683,7 @@ CONTAINS
       END IF
       WHERE( BlockIndex == 0 ) BlockIndex = k
     ELSE
-      CALL Info('BlockSolver','All physical domains given block index',Level=10)
+      CALL Info('BlockPickDofsPhysical','All physical domains given block index',Level=10)
     END IF
     
     MaxBlock = NINT( ParallelReduction(1.0_dp*MaxBlock, 2 ) )    
@@ -710,7 +710,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     
     
-    CALL Info('BlockSolver','Picking block matrix for mixed hdiv solver',Level=10)
+    CALL Info('BlockPickHdiv','Picking block matrix for mixed hdiv solver',Level=10)
 
     Mesh => Solver % Mesh
     nn = Mesh % NumberOfNodes
@@ -756,14 +756,14 @@ CONTAINS
       END IF
     END DO
 
-    IF( nncount > 0 ) CALL Info('BlockSolver','Number of nodal dofs: '//TRIM(I2S(nncount)),Level=8)
-    IF( necount > 0 ) CALL Info('BlockSolver','Number of edge dofs: '//TRIM(I2S(necount)),Level=8)
-    IF( nfcount > 0 ) CALL Info('BlockSolver','Number of face dofs: '//TRIM(I2S(nfcount)),Level=8)
-    IF( nbcount > 0 ) CALL Info('BlockSolver','Number of elemental dofs: '//TRIM(I2S(nbcount)),Level=8)
+    IF( nncount > 0 ) CALL Info('BlockPickHdiv','Number of nodal dofs: '//TRIM(I2S(nncount)),Level=8)
+    IF( necount > 0 ) CALL Info('BlockPickHdiv','Number of edge dofs: '//TRIM(I2S(necount)),Level=8)
+    IF( nfcount > 0 ) CALL Info('BlockPickHdiv','Number of face dofs: '//TRIM(I2S(nfcount)),Level=8)
+    IF( nbcount > 0 ) CALL Info('BlockPickHdiv','Number of elemental dofs: '//TRIM(I2S(nbcount)),Level=8)
        
     NoVar = nnis + neis + nfis + nbis
 
-    CALL Info('BlockSolver','Found dofs related to '//TRIM(I2S(NoVar))//' groups',Level=6)
+    CALL Info('BlockPickHdiv','Found dofs related to '//TRIM(I2S(NoVar))//' groups',Level=6)
     
   END SUBROUTINE BlockPickHdiv
   
@@ -858,7 +858,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: B_aa,B_av,B_va,B_vv,C_aa,C_vv,A,CM
     REAL(KIND=DP) :: SumAbsMat
     
-    CALL Info('BlockSolverAV','Picking block matrix from monolithic one',Level=10)
+    CALL Info('BlockPickMatrixAV','Picking block matrix from monolithic one',Level=10)
 
     SolverMatrix => Solver % Matrix 
     
@@ -1367,7 +1367,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: PSolver
     LOGICAL :: InheritCM, PrecTrue 
     
-    CALL Info('BlockSolver','Picking constraints to block matrix',Level=10)
+    CALL Info('BlockPickConstraint','Picking constraints to block matrix',Level=10)
 
     
     SolverMatrix => Solver % Matrix 
@@ -1516,7 +1516,7 @@ CONTAINS
                
     END DO
       
-    CALL Info('BlockSolver','Setting format of constraint blocks to CRS',Level=20)
+    CALL Info('BlockPickConstraint','Setting format of constraint blocks to CRS',Level=20)
     IF(.NOT. InheritCM ) THEN
       CALL List_toCRSMatrix(C1)
     END IF
@@ -1536,9 +1536,9 @@ CONTAINS
     VarName = "lambda"
     Var => VariableGet( Solver % Mesh % Variables, VarName )
     IF(ASSOCIATED( Var ) ) THEN
-      CALL Info('BlockSolver','Using existing variable > '//TRIM(VarName)//' <')		
+      CALL Info('BlockPickConstraint','Using existing variable > '//TRIM(VarName)//' <')		
     ELSE		
-      CALL Info('BlockSolver','Variable > '//TRIM(VarName)//' < does not exist, creating')
+      CALL Info('BlockPickConstraint','Variable > '//TRIM(VarName)//' < does not exist, creating')
       PSolver => Solver
       
       n = i1
@@ -2766,7 +2766,7 @@ CONTAINS
         WRITE( Message,'(A,I0)') 'Block Jacobi iteration: ',iter
         CALL BlockUpdateRhs(TotMatrix)
       END IF
-      CALL Info('BlockSolver',Message,Level=6)
+      CALL Info('BlockStandardIter',Message,Level=6)
       MaxChange = 0.0_dp
       TotNorm = 0.0_dp
       
@@ -2807,7 +2807,7 @@ CONTAINS
         IF( A % NumberOfRows == 0 ) THEN
           A => TotMatrix % Submatrix(i,i) % Mat
         ELSE
-          CALL Info('BlockSolver','Using preconditioning block: '//TRIM(I2S(i)))
+          CALL Info('BlockStandardIter','Using preconditioning block: '//TRIM(I2S(i)))
         END IF
         
         !Solver % Matrix => A
@@ -3240,6 +3240,7 @@ CONTAINS
         END DO
       END DO
 
+      MonolithicVar % Name = '' ! Some name needed to avoid an uninitialised value error
       MonolithicVar % Values => CollX
       MonolithicVar % Dofs = 1
       MonolithicVar % Perm => NULL()
@@ -3385,7 +3386,7 @@ CONTAINS
     INTEGER, POINTER :: BlockIndex(:)
     
 
-    CALL Info('BlockSolverInt','---------------------------------------',Level=5)
+    CALL Info('BlockSolveInt','---------------------------------------',Level=5)
 
     Params => Solver % Values
     Mesh => Solver % Mesh
@@ -3398,7 +3399,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     BlockPrec = ListGetLogical( Params,'Block Preconditioner',GotIt)
     IF(.NOT. GotIt) THEN
-      CALL Info('BlockSolver','Using block preconditioning mode by default')
+      CALL Info('BlockSolveInt','Using block preconditioning mode by default')
       BlockPrec = .TRUE.
     END IF
 
@@ -3490,7 +3491,7 @@ CONTAINS
         CALL BlockPickMatrix( Solver, NoVar ) !VarDofs )
         VarDofs = NoVar
       ELSE
-        CALL Info('BlockSolver','Using the original matrix as the (1,1) block!',Level=10)
+        CALL Info('BlockSolveInt','Using the original matrix as the (1,1) block!',Level=10)
         TotMatrix % SubMatrix(1,1) % Mat => SolverMatrix        
       END IF
 
@@ -3561,7 +3562,7 @@ CONTAINS
     ! related to nonlinearity and assembly.
     !----------------------------------------------------------------------
     IF( NoVar == 1 ) THEN
-      CALL Info('BlockSolverInt','Solving in standard manner',Level=6)
+      CALL Info('BlockSolveInt','Solving in standard manner',Level=6)
       
       Solver % Variable => TotMatrix % SubVector(1) % Var
       Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
@@ -3569,16 +3570,16 @@ CONTAINS
       TotNorm = DefaultSolve()
       MaxChange = Solver % Variable % NonlinChange 
     ELSE IF( BlockMonolithic ) THEN
-      CALL Info('BlockSolverInt','Using monolithic strategy for the block',Level=6)        
+      CALL Info('BlockSolveInt','Using monolithic strategy for the block',Level=6)        
       CALL BlockMonolithicSolve( Solver, MaxChange )      
     ELSE IF( BlockPrec ) THEN
-      CALL Info('BlockSolverInt','Using block preconditioning strategy',Level=6)        
+      CALL Info('BlockSolveInt','Using block preconditioning strategy',Level=6)        
       CALL BlockKrylovIter( Solver, MaxChange )
     ELSE
       Solver % Variable => TotMatrix % SubVector(1) % Var
       Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
       
-      CALL Info('BlockSolverInt','Using block solution strategy',Level=6)
+      CALL Info('BlockSolveInt','Using block solution strategy',Level=6)
       CALL BlockStandardIter( Solver, MaxChange )
     END IF
 
@@ -3605,8 +3606,8 @@ CONTAINS
       CALL BlockBackCopyVar( Solver, TotMatrix )
     END IF
       
-    CALL Info('BlockSolverInt','All done')
-    CALL Info('BlockSolverInt','-------------------------------------------------',Level=5)
+    CALL Info('BlockSolveInt','All done')
+    CALL Info('BlockSolveInt','-------------------------------------------------',Level=5)
 
   END SUBROUTINE BlockSolveInt
 END MODULE BlockSolve

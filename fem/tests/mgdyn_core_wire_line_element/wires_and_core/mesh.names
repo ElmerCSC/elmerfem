@@ -1,0 +1,12 @@
+! ----- names for bodies -----
+$ core = 8
+$ air = 9
+! ----- names for boundaries -----
+$ parallel_flux = 1
+$ wire1 = 2
+$ wire2 = 3
+$ wire1_t1 = 4
+$ wire1_t2 = 5
+$ wire2_t1 = 6
+$ wire2_t2 = 7
+$ bnry10 = 10

@@ -1,0 +1,61 @@
+Elmer/Ice Release Notes for Elmer 8.4
+-------------------------------------
+
+* Added F90 functions for ice heat capacity and conductivity as well as
+  for pressure melting point added via USF_Iceproprerties.F90 including
+  two tests for TemperateIceSolver. They can be called via:
+   Temp Heat Capacity = Variable Temp
+    Real Procedure "ElmerIceUSF" "IceCapacity"
+  and
+   Temp Heat Conductivity = Variable Temp
+    Real Procedure "ElmerIceUSF" "IceConductivity"
+  as well as
+    Temp Upper Limit = Variable HydroPressure
+    Real Procedure "ElmerIceUSF" "IcePressureMeltingPoint"
+  By default those functions  accept arguments and deliver output in
+  SI units. There can be scaling factors passed to each of them, like:
+     Heat Capacity Scaling Factor = Real $(secondsperyear)^(2.0)
+     Heat Conductivity Scaling Factor = Real $(secondsperyear)*1.0E-06
+     Pressure Scaling Factor = Real 1.0E06  
+  Read http://elmerfem.org/elmerice/wiki/doku.php?id=userfunctions:iceproperties
+  
+* Introduced fixes to grounding line code. Previously USF_Contact only
+  compared the magnitude of flow solution loads and fwater, ignoring the
+  direction. GetHydrostaticLoads has been modified to include contributions
+  from other boundary conditions (i.e. the ice/ocean front) because flow
+  solution loads includes these.
+
+* Introduced new scalar product definition for Beta Adjoint optimisation.
+  By default, the minimisation procedure (using m1qn3) uses the Euclidean
+  scalar product so that the gradients of the cost function are proportional
+  to the area surrounding the nodes. For unstructured meshes where element
+  size varies by orders of magnitude with no relation to the velocity magnitude,
+  this may result in significant mesh dependence. The new scalar product
+  attempts to solve this problem by normalising the gradient values by the
+  'boundary weight', i.e. the element area seen by each node. 
+  This option can be enabled by setting:    
+    Mesh Independent = Logical True
+  in the Optimize_m1qn3 solver section. 
+
+* Elmer/Ice-sheetIntroduced standard configuration files
+  to run ice-sheet wide simulations with Elmer, see
+  http://elmerice.elmerfem.org/elmer-ice-sheet for more details.
+    
+* Added GlaDS solvers (basal hydrology) and 4 Tests for these solvers.
+  Usage of these solvers are documented on the wiki
+  http://elmerfem.org/elmerice/wiki/doku.php?id=solvers:glads
+
+* New SSA-FS coupler implemented, including testcase.
+  Introduced a new solver SSAmask that marks full-Stokes and SSA areas.
+  Method can be checked in elmerice/Tests/MISMIP_FS-SSA
+
+* New entropy-based temperature solver elmerice/Solvers/EnthalpySolver.F90
+  Usage of this solvers are documented on the wiki
+  http://elmerfem.org/elmerice/wiki/doku.php?id=solvers:enthalpy 
+  There is and associated test elmerice/Tests/Enthalpy.
+  It follows the approach described in :
+
+	Aschwanden, A., E. Bueler, C. Khroulev, and H. Blatter (2012),
+	An enthalpy formulation for glaciers and ice sheets,
+	Journal of Glaciology,
+	58(209), 441–457, doi:10.3189/2012JoG11J088.

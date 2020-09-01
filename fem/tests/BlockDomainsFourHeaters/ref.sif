@@ -101,7 +101,10 @@ End
 
 Body Force 4
   Name = "Heater4"
-  Heat Source = $h4
+
+! Test this as well here...
+  Volumetric Heat Source = $h4
+! Heat Source = $h4
 End
 
 

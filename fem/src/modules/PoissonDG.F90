@@ -1,57 +1,45 @@
-!/******************************************************************************
+!/*****************************************************************************/
 ! *
-! *       ELMER, A Computational Fluid Dynamics Program.
+! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
-! *       Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.,
-! *                                    Finland.
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
 !
 !/******************************************************************************
 ! *
-! ******************************************************************************
+! *  Authors: Juha Ruokolainen, Mikko Lyly
+! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
 ! *
-! *                    Author:       Juha Ruokolainen
-! *
-! *                    Address: CSC - IT Center for Science Ltd.
-! *                                Keilaranta 14, P.O. BOX 405
-! *                                  02101 Espoo, Finland
-! *                                  Tel. +358 0 457 2723
-! *                                Telefax: +358 0 457 2302
-! *                              EMail: Juha.Ruokolainen@csc.fi
-! *
-! *                       Date: 08 Jun 1997
-! *
-! *                Modified by: Mikko Lyly
-! *
-! *       Date of modification: 02 Dec 2003
+! *  Original Date: 08.06.1997
 ! *
 ! *****************************************************************************/
- 
+
+!------------------------------------------------------------------------------
+!>  Solves the Poisson equation with discontinuous Galerkin method!
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  Solves the Poisson equation with discontinuous Galerkin method!
-!
-!  ARGUMENTS:
-!
-!  TYPE(Model_t) :: Model,  
-!     INPUT: All model information (mesh, materials, BCs, etc...)
-!
-!  TYPE(Solver_t) :: Solver
-!     INPUT: Linear equation solver options
-!
-!  DOUBLE PRECISION :: dt,
-!     INPUT: Timestep size for time dependent simulations
-!
-!  LOGICAL :: TransientSimulation
-!     INPUT: Steady state or transient simulation
-!
-!******************************************************************************
      USE DefUtils
-
      IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
@@ -74,8 +62,7 @@
      REAL(KIND=dp) :: Beta, Gamma, Norm
      
      SAVE STIFF, LOAD, FORCE, AllocationsDone, EpsilonBoundary
-!*******************************************************************************
-
+!------------------------------------------------------------------------------
      TYPE( Element_t ), POINTER :: Edges(:), Faces(:), p(:), elm
      TYPE(Nodes_t) :: ElementNodes
 
@@ -85,7 +72,8 @@
 
      REAL(KIND=dp), POINTER :: LocalSolution(:)
      INTEGER :: Active, DOFs
-!*******************************************************************************
+!------------------------------------------------------------------------------
+
 
      Mesh => GetMesh()
 

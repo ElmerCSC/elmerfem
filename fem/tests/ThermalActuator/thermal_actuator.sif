@@ -3,8 +3,10 @@
 ! edit of the version to allow the consistency tests. 
 ! Uses normal SI units.
 
+! The original Ansys mesh has been transformed into a Gmsh msh
+! in file actuator.msh.
 Header
-  Mesh DB "." "mesh"
+  Mesh DB "." "actuator"
 End
 
 Simulation

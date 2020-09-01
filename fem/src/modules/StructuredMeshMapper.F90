@@ -140,7 +140,6 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   NumberOfFixedLayers = SIZE( FixedLayers )
 
   BotProj = ListGetLogical(SolverParams,'Project To Bottom',Found ) 
-
   
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
@@ -290,7 +289,12 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
         //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
         ') tangled nodes!',Level=5)
   END IF    
-  
+ 
+  IF(ListGetLogical( SolverParams,'Mesh Mapping Passive',Found ) ) THEN
+    CALL Info(Caller,'Taking back the suggested mapping!',Level=5)
+    Coord(1:nsize) = OrigCoord(1:nsize)
+  END IF
+ 
   ! If there is a mask then the coordinate is not directly linked to the real coordinate.
   ! Hence we need to do it here for the real coordinate. 
   IF( MaskExists ) THEN
@@ -813,7 +817,7 @@ CONTAINS
       END IF
     END DO
 
-    CALL Info('StructureMeshMapper','Finished multilayer mapping',Level=8)
+    CALL Info(Caller,'Finished multilayer mapping',Level=8)
     
 
   END SUBROUTINE MultiLayerMapper
