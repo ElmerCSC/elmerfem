@@ -739,7 +739,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
   
   if(vpartitions1 > 1) {
 
-    if(info) printf("Ordering 1st direction with (%.3g*x + %.3g*y + %.3g*z)\n",cx,cy,cz);
+    if(info) printf("Ordering 1st direction with (%.3lg*x + %.3lg*y + %.3lg*z)\n",cx,cy,cz);
 
     for(j=1;j<=noelements;j++) {
       if( data->elemconnectexist ) {
@@ -1066,9 +1066,9 @@ int PartitionSimpleElementsNonRecursive(struct FemType *data,int dimpart[],int d
     MinZ = MIN( MinZ, z);
   }
   if( info ) {
-    printf("Range in x-direction: %12.5e %12.5e\n",MinX,MaxX);
-    printf("Range in y-direction: %12.5e %12.5e\n",MinY,MaxY);
-    printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in x-direction: %12.5le %12.5le\n",MinX,MaxX);
+    printf("Range in y-direction: %12.5le %12.5le\n",MinY,MaxY);
+    printf("Range in z-direction: %12.5le %12.5le\n",MinZ,MaxZ);
   }
    
   for(j=1;j<=noelements;j++) {
@@ -1220,9 +1220,9 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
   }
 
   if( info ) {
-    printf("Range in r-direction: %12.5e %12.5e\n",MinR,MaxR);
-    printf("Range in f-direction: %12.5e %12.5e\n",MinF,MaxF);
-    printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in r-direction: %12.5le %12.5le\n",MinR,MaxR);
+    printf("Range in f-direction: %12.5le %12.5le\n",MinF,MaxF);
+    printf("Range in z-direction: %12.5le %12.5le\n",MinZ,MaxZ);
   }
   if( MaxF - MinF > 180.0 ) {
     MaxF = 360.0;
@@ -1531,7 +1531,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
   }
 
   if( info ) {
-    printf("Range in coordinate extent: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in coordinate extent: %12.5le %12.5le\n",MinZ,MaxZ);
   }
 
   /* Zero is the 1st value so that recursive algos can be used. */ 
@@ -2157,7 +2157,7 @@ int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
     nodepart[i] = 1;  
 
   if(vpartitions1 > 1) {
-    if(info) printf("Ordering 1st direction with (%.3g*x + %.3g*y + %.3g*z)\n",cx,cy,cz);
+    if(info) printf("Ordering 1st direction with (%.3lg*x + %.3lg*y + %.3lg*z)\n",cx,cy,cz);
     for(j=1;j<=noknots;j++) {
       x = data->x[j];
       y = data->y[j];

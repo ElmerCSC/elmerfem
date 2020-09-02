@@ -1,12 +1,26 @@
 /* nrutil.h + common.h -> egutils.h */
 
+
+#ifndef _EGUTILS_H_
+#define _EGUTILS_H_
+
+int MemoryUsage();
+
 /* Numerical Recipes' uncopyrighted vector and matrix allocation 
    and deallocation routines. */
 
-#ifndef _NR_UTILS_H_
-#define _NR_UTILS_H_
+typedef double Real;
+#define Rvector       dvector
+#define Ivector       ivector
+#define Rmatrix       dmatrix
+#define Imatrix       imatrix
+#define free_Rvector  free_dvector
+#define free_Ivector  free_ivector  
+#define free_Rmatrix  free_dmatrix
+#define free_Imatrix  free_imatrix
+#define TRUE 1
+#define FALSE 0
 
-int MemoryUsage();
 void nrerror(char error_text[]);
 
 float *vector(int,int);
@@ -35,28 +49,10 @@ void free_submatrix(float **,int,int,int,int);
 
 void free_f3tensor(double ***t,int nrl,int nrh,int ncl,int nch,int ndl,int ndh);
 
-#endif
-
-
 /* Common subroutines that operate on vectors, matrices and other basic 
    data types: Find the minimum or maximum place or value, find 
    the mean, calculate the mean difference, save to or load from 
    an external file etc. */
-
-#ifndef _COMMON_H_
-#define _COMMON_H_
-
-typedef double Real;
-#define Rvector       dvector
-#define Ivector       ivector
-#define Rmatrix       dmatrix
-#define Imatrix       imatrix
-#define free_Rvector  free_dvector
-#define free_Ivector  free_ivector  
-#define free_Rmatrix  free_dmatrix
-#define free_Imatrix  free_imatrix
-#define TRUE 1
-#define FALSE 0
 
 void timer_init();
 void timer_activate(const char *prefix);

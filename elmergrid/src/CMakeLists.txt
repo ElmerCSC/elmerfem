@@ -17,9 +17,9 @@ SET(METIS_INSTALL FALSE CACHE BOOL "")
 ADD_SUBDIRECTORY(metis-5.1.0)
 
 SET(elmergrid_SRCS egdef.h egparallel.h egnative.h egconvert.h
-  egexport.h feminfo.h egmesh.h femmesh.h 
+  egexport.h egextra.h egmesh.h 
   egtypes.h egutils.h egparallel.c egnative.c egconvert.c egexport.c
-  feminfo.c egmesh.c femmesh.c fempre.c 
+  egextra.c egmesh.c fempre.c 
   egutils.c)
 
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/metis)

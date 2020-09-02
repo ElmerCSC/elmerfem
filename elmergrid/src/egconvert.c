@@ -2297,7 +2297,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
 
       printf("Found %d bulk elements\n",nobulk);
       if(nobulk+nobound > noelements) printf("Too few elements (%d) were allocated!!\n",noelements);
-      printf("Allocated %.4g %% too many elements\n",
+      printf("Allocated %.4lg %% too many elements\n",
 	     noelements*100.0/(nobulk+nobound)-100.0);
 
 

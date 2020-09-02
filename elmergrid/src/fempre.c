@@ -55,9 +55,8 @@
 #include "egutils.h"
 #include "egdef.h"
 #include "egtypes.h"
-#include "femmesh.h"
 #include "egmesh.h"
-#include "feminfo.h"
+#include "egextra.h"
 #include "egnative.h"
 #include "egparallel.h"
 #include "egconvert.h"
@@ -304,9 +303,7 @@ int main(int argc, char *argv[])
 
   case 1:        
     if(LoadElmergrid(&grids,&nogrids,eg.filesin[nofile],eg.relh,info) == 1) {   
-      if(dim == 3) ExampleGrid3D(&grids,&nogrids,info);
-      if(dim == 2) ExampleGrid2D(&grids,&nogrids,info);
-      if(dim == 1) ExampleGrid1D(&grids,&nogrids,info);
+      CreateExampleGrid(eg.dim,&grids,&nogrids,info);
       SaveElmergrid(grids,nogrids,eg.filesin[nofile],info); 
       printf("Because file %s didn't exist, it was created for you.\n",eg.filesin[nofile]);
       Goodbye();
@@ -613,12 +610,12 @@ int main(int argc, char *argv[])
 	  if(grids[k].boundsolid[j] < 4) {
 	    CreateBoundary(cell[k],&(data[k]),&(boundaries[k][j]),
 			   grids[k].boundext[j],grids[k].boundint[j],
-			   1,grids[k].boundtype[j]);  
+			   1,grids[k].boundtype[j],info);  
 	  } 
 	  else { 
 	    CreatePoints(cell[k],&(data[k]),&(boundaries[k][j]),
 			 grids[k].boundext[j],grids[k].boundint[j],
-			 grids[k].boundsolid[j],grids[k].boundtype[j]); 	    
+			 grids[k].boundsolid[j],grids[k].boundtype[j],info); 	    
 	  }
 	}
       }

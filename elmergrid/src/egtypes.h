@@ -28,6 +28,8 @@
 #define CONPERIODIC 2
 #define CONCONSTRAINT 3
 
+#define MAXELEMENTTYPE 827
+
 struct CRSType {
   int *rows, *cols;
   int rowsize,colsize; 

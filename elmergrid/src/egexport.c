@@ -74,7 +74,7 @@ int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
   else if(data->coordsystem == COORD_POLAR) fprintf(out,"P\n");
 
   for(i=1; i <= noknots; i++) 
-    fprintf(out,"%8d, %12.4e, %12.4e, 0.0\n",i,data->x[i],data->y[i]);
+    fprintf(out,"%8d, %12.4le, %12.4le, 0.0\n",i,data->x[i],data->y[i]);
 
   fprintf(out,"*ELEMENT,TYPE=");
   if(nonodes == 4) fprintf(out,"DC2D4 ");
@@ -211,7 +211,7 @@ int SaveFidapOutput(struct FemType *data,char *prefix,int info,
       } 
     }    
 
-  fprintf(out,"TIMESTEP: %5d TIME:     %15.7e INCRMNT: %15.7e\n",1,1.0,1.0);
+  fprintf(out,"TIMESTEP: %5d TIME:     %15.7le INCRMNT: %15.7le\n",1,1.0,1.0);
 
   fprintf(out,"VELOCITY\n");            
   if(vctrs < 2) 

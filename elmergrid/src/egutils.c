@@ -470,9 +470,9 @@ void timer_show()
   }
 
 #if MEM_USAGE
-  fprintf(out,"%3d %12.4e %12.4e %12.4e\n",visited,time-timer_t0,time-timer_dt,memusage);
+  fprintf(out,"%3d %12.4le %12.4le %12.4le\n",visited,time-timer_t0,time-timer_dt,memusage);
 #else
-  fprintf(out,"%3d %12.4e %12.4e\n",visited,time-timer_t0,time-timer_dt);
+  fprintf(out,"%3d %12.4le %12.4le\n",visited,time-timer_t0,time-timer_dt);
 #endif
 
   fclose(out);
@@ -730,7 +730,7 @@ void SaveRealVector(Real *vector,int first,int last,char *filename)
 
   out = fopen(filename,"w");
   for (i=first;i<=last;i++) {
-    fprintf(out,"%6e",vector[i]);
+    fprintf(out,"%.6le",vector[i]);
     fprintf(out,"\n");
     }
   fclose(out);
@@ -808,7 +808,7 @@ void SaveRealMatrix(Real **matrix,int row_first,int row_last,
   out = fopen(filename,"w");
   for (j=row_first;j<=row_last;j++) {
     for (i=col_first;i<=col_last;i++) {
-      fprintf(out,"%-14.6g",matrix[j][i]);
+      fprintf(out,"%-14.6lg",matrix[j][i]);
       fprintf(out,"\t");
     }
     fprintf(out,"\n");
@@ -898,7 +898,7 @@ void SaveNonZeros(Real **matrix,int row_first,int row_last,
   for (j=row_first;j<=row_last;j++) 
     for (i=col_first;i<=col_last;i++) 
       if (fabs(matrix[j][i]) > nearzero) 
-        fprintf(out,"%d\t %d\t %-12.6e\n",j,i,matrix[j][i]);
+        fprintf(out,"%d\t %d\t %-12.6le\n",j,i,matrix[j][i]);
   
   fclose(out);
 }
