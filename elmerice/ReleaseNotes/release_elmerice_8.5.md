@@ -2,7 +2,9 @@ Elmer/Ice Release Notes for version 8.5
 =======================================
 
 Previous release: **8.5**
+
 Period covered: **18 Dec 2018 - 30 Aug 2020**
+
 Number of commits: **~110** (excluding merges of other branches)
 
 These release notes provide information on most essential changes in Elmer/Ice functionalioties. Starting from the uppermost directory of the source tree, you can inquire changes inside the elmerice-directory using
