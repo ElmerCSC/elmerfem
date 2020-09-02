@@ -33,3 +33,25 @@ int SolutionFromMeshToMesh(struct CellType *cell1, struct GridType *grid1,
 			   struct FemType *data2,
 			   int mapgeo,int variable,int info);
 
+void InspectVector(Real *vector,int first,int last,Real *min,
+		   Real *max,int *mini,int *maxi);
+int  Steepest(Real *vector,int first,int last);
+Real MeanVector(Real *vector,int first,int last);
+Real AbsMeanVector(Real *vector,int first,int last);
+Real DifferVector(Real *vector1,Real *vector2,int first,int last);
+void ReformVector(Real *vector1,int n1,Real *vector2,int n2);
+void AdjustVector(Real max,Real min,Real *vector,int first,int last);
+int  ReadRealVector(Real *vector,int first,int last,char *filename);
+void SaveRealVector(Real *vector,int first,int last,char *filename);
+int  ReadRealMatrix(Real **matrix,int row_first,int row_last,
+		    int col_first,int col_last,char *filename);
+void SaveRealMatrix(Real **matrix,int row_first,int row_last,
+		    int col_first,int col_last,char *filename);
+int  ReadIntegerVector(int *vector,int first,int last,char *filename);
+void SaveIntegerVector(int *vector,int first,int last,char *filename);
+int  ReadIntegerMatrix(int **matrix,int row_first,int row_last,
+		       int col_first,int col_last,char *filename);
+void SaveIntegerMatrix(int **matrix,int row_first,int row_last,
+		       int col_first,int col_last,char *filename);
+void SaveNonZeros(Real **matrix,int row_first,int row_last,
+		  int col_first,int col_last,char *filename);

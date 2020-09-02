@@ -357,17 +357,15 @@ int main(int argc, char *argv[])
     break;
 
   case 7:
-    if(LoadFidapInput(&(data[nofile]),eg.filesin[nofile],TRUE))
-      Goodbye();
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
+    if(LoadFidapInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
     if(!eg.usenames) data[nofile].boundarynamesexist = data[nofile].bodynamesexist = FALSE;
-    ElementsToBoundaryConditions(&(data[nofile]),boundaries[nofile],FALSE,TRUE);
-    RenumberBoundaryTypes(&data[nofile],boundaries[nofile],TRUE,0,info);
   
     nomeshes++;
     break;
@@ -390,24 +388,21 @@ int main(int argc, char *argv[])
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
-    }
-   
-    if(LoadComsolMesh(&(data[nofile]),eg.filesin[nofile],info)) 
+    }   
+    if(LoadComsolMesh(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],info)) 
       Goodbye();
-    ElementsToBoundaryConditions(&(data[nofile]),boundaries[nofile],FALSE,TRUE);
     nomeshes++;
     break;
 
   case 10:
-    if(LoadFieldviewInput(&(data[nofile]),eg.filesin[nofile],TRUE))
-      Goodbye();
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	    
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
-    ElementsToBoundaryConditions(&(data[nofile]),boundaries[nofile],FALSE,TRUE);
+    if(LoadFieldviewInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
     nomeshes++;
     break;
 
@@ -479,8 +474,6 @@ int main(int argc, char *argv[])
       Goodbye();
     nomeshes++;
     break;
-
-
 
     
 #if 0

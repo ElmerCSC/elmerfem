@@ -3122,8 +3122,13 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
       if(maxmat > MAXBODYID) 
 	printf("LoadElmergrid: material indices larger to %d may create problems.\n",
 	       MAXBODYID);
+      printf("LoadElmergrid: materials interval is [%d,%d]\n",minmat,maxmat);
+      grid[k]->firstmaterial = minmat;
+      grid[k]->lastmaterial = maxmat;
+
+      grid[k]->maxmaterial = maxmat;
     }
-    else if(strstr(command,"MATERIALS INTERVAL")) {
+    else if(strstr(command,"MATERIALS INTERVAL")) { 
       sscanf(params,"%d %d",&(*grid)[k].firstmaterial,&(*grid)[k].lastmaterial);      
     }
      
