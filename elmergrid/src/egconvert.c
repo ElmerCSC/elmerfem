@@ -3,7 +3,7 @@
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
    Author: Peter Raback
-   Email: Peter.Raback@csc.fi
+   Email: elmeradm@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
             02101 Espoo, Finland

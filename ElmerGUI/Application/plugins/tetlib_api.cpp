@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Raback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *

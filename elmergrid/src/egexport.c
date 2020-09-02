@@ -2,8 +2,8 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
-   Email: Peter.Raback@csc.fi
+   Author: Peter Raback
+   Email: elmeradm@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
             02101 Espoo, Finland
@@ -66,7 +66,7 @@ int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
   if(info) printf("Saving ABAQUS data to %s.\n",filename);  
 
   fprintf(out,"*HEADING\n");
-  fprintf(out,"Abaqus input file creator by Peter.Raback@csc.fi\n");
+  fprintf(out,"Abaqus input file created by ElmerGrid\n");
 
   fprintf(out,"*NODE, SYSTEM=");
   if(data->coordsystem == COORD_CART2) fprintf(out,"R\n");
@@ -168,7 +168,7 @@ int SaveFidapOutput(struct FemType *data,char *prefix,int info,
 
   /* Control information */
   fprintf(out,"** FIDAP NEUTRAL FILE\n");
-  fprintf(out,"Fidap input file creator by Peter.Raback@csc.fi\n");
+  fprintf(out,"Fidap input file created by ElmerGrid\n");
   fprintf(out,"VERSION %7.2f\n",7.52); /* Fidap version */
   fprintf(out," 1 Dec 96    12:00:00\n");
   fprintf(out,"%15s%15s%15s%15s%15s\n","NO. OF NODES",
