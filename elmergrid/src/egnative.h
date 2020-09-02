@@ -1,12 +1,10 @@
 /* femelmer.h + femmesh.h -> egnative.h */
 void InitGrid(struct GridType *grid);
-void CreateExampleGrid(int dim,struct GridType **grids,int *nogrids,int info); 
+void CreateExampleGrid(int dim,struct GridType **grids,int *nogrids,int info);
 void SetElementDivision(struct GridType *grid,Real relh,int info);
 void SetCellData(struct GridType *grid,struct CellType *cell,int info);
 void CreateCells(struct GridType *grid,struct CellType **cell,int info);
 void DestroyCells(struct CellType **cell); 
-int SetCellKnots(struct GridType *grid, struct CellType *cell,int info);
-int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info);
 int GetKnotCoordinate(struct CellType *cell,int i,int j,Real *x,Real *y);
 int GetKnotIndex(struct CellType *cell,int i,int j);
 int GetElementIndices(struct CellType *cell,int i,int j,int *ind);

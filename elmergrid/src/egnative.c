@@ -988,6 +988,7 @@ void SetElementDivision(struct GridType *grid,Real relh,int info)
 
 
 
+
 void SetCellData(struct GridType *grid,struct CellType *cell,int info)
 /* Sets the data that can directly be derived from type GridType. 
  */
@@ -1075,7 +1076,7 @@ void SetCellData(struct GridType *grid,struct CellType *cell,int info)
 
 
 
-int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
+static int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
 /* Uses given mesh to number the knots present in the cells.
    The knots are numbered independently of the cells from left 
    to right and up to down. Only the numbers of four knots at the 
@@ -1151,7 +1152,7 @@ int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
     degree = 3;
     break;
   default:
-    printf("CreateCells: No numbering scheme for %d-node elements.\n",
+    printf("SetCellKnots: No numbering scheme for %d-node elements.\n",
 	   grid->nonodes);
     return(2);
   }
@@ -1296,7 +1297,7 @@ int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
 
 
 
-int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info)
+static int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info)
 {
   int i;
   int degree,nonodes;
@@ -1324,7 +1325,7 @@ int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info)
     break;
 
   default:
-    printf("CreateCells: No numbering scheme for %d-node elements.\n",
+    printf("SetCellKnots1D: No numbering scheme for %d-node elements.\n",
 	   grid->nonodes);
     return(2);
   }
@@ -2054,6 +2055,125 @@ void SetElementDivisionCylinder(struct GridType *grid,int info)
 
 
 
+static int GetCommand(char *line1,char *line2,FILE *io) 
+/* Line1 for commands and line2 for arguments. */
+{
+  int i,j,isend;
+  char line0[MAXLINESIZE],*charend,*matcpntr0,*matcpntr;
+  int gotlinefeed;
+
+ newline:
+
+  for(i=0;i<MAXLINESIZE;i++) 
+    line2[i] = line1[i] = line0[i] = ' ';
+
+  charend = fgets(line0,MAXLINESIZE,io);
+  isend = (charend == NULL);
+
+  if(isend) return(1);
+
+  if(strlen(line0)<=strspn(line0," \t\r\n")) goto newline;
+
+  if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!' || line0[0] == '\n') goto newline;
+  if(!matcactive && line0[0] == '*') goto newline;
+
+#ifndef DISABLE_MATC
+  if(matcactive) {
+    matcpntr0 = strchr(line0,'$');
+    if(matcpntr0) {
+      matcpntr = mtc_domath(&matcpntr0[1]);
+      if(matcpntr) {
+	strcpy(matcpntr0, matcpntr);
+	if(0) printf("B: %s\n%s\n",matcpntr0,matcpntr);
+      }
+      else {
+	if(0) printf("B0: %s\n",matcpntr0);
+	goto newline;
+      }
+    }
+  }
+#endif 
+  
+  gotlinefeed = FALSE;
+  j = 0;
+  for(i=0;i<MAXLINESIZE;i++) {
+    if(line0[i] == '\n' || line0[i] == '\0' ) {
+      gotlinefeed = TRUE;
+      break;
+    }
+    if(line0[i] == '=') {
+      j = i;
+      break;
+    }
+    line1[i] = toupper(line0[i]);
+  }
+
+  /* After these commands there will be no nextline even though there is no equality sign */
+  if(strstr(line1,"END")) return(0);
+  if(strstr(line1,"NEW MESH")) return(0);
+
+  if(j) { /* Arguments are actually on the same line after '=' */
+    for(i=j+1;i<MAXLINESIZE;i++) {
+      line2[i-j-1] = line0[i];    
+      if( line0[i] == '\n' || line0[i] == '\0' ) {
+	gotlinefeed = TRUE;
+	break;
+      }
+    }  
+    if(!gotlinefeed) {
+      printf("There is a risk that somethings was missed in line:\n");
+      printf("%s\n",line0);
+      smallerror("Check your output line length!\n");
+    }
+  }
+  else { /* rguments are on the next line */
+  newline2:
+    charend = fgets(line2,MAXLINESIZE,io);
+    isend = (charend == NULL);
+    if(isend) return(2);
+    if(line2[0] == '#' || line2[0] == '%' || line2[0] == '!') goto newline2;
+    if(!matcactive && line2[0] == '*') goto newline2;
+
+    gotlinefeed = FALSE;
+    for(i=0;i<MAXLINESIZE;i++) {
+      if(line2[i] == '\n' || line2[i] == '\0' ) {
+	gotlinefeed = TRUE;
+	break;
+      }
+    }
+    if(!gotlinefeed) {
+      printf("There is a risk that somethings was missed in line:\n");
+      printf("%s\n",line2);
+      smallerror("Check your output line length!\n");
+    }
+
+#ifndef DISABLE_MATC
+    if(matcactive) {
+      matcpntr0 = strchr(line2,'$');
+      if(matcpntr0) {
+	matcpntr = mtc_domath(&matcpntr0[1]);
+	if(matcpntr) {
+	  strcpy(matcpntr0, matcpntr);
+	  if(0) printf("C: %s\n%s\n",matcpntr0,matcpntr);
+	}
+      }
+    }
+#endif 
+  }
+
+  if(iodebug) {
+    printf("command: ");
+    for(i=0;i<40;i++) printf("%c",line1[i]);
+    printf("\nparams: ");
+    for(i=0;i<40;i++) printf("%c",line2[i]);
+    printf("\n");
+  }
+  
+  return(0);
+}
+
+
+
 int SaveElmergrid(struct GridType *grid,int nogrids,char *prefix,int info)
 {
   int sameline,maxsameline;
@@ -2268,122 +2388,6 @@ int SaveElmergrid(struct GridType *grid,int nogrids,char *prefix,int info)
 }
 
 
-static int GetCommand(char *line1,char *line2,FILE *io) 
-/* Line1 for commands and line2 for arguments. */
-{
-  int i,j,isend;
-  char line0[MAXLINESIZE],*charend,*matcpntr0,*matcpntr;
-  int gotlinefeed;
-
- newline:
-
-  for(i=0;i<MAXLINESIZE;i++) 
-    line2[i] = line1[i] = line0[i] = ' ';
-
-  charend = fgets(line0,MAXLINESIZE,io);
-  isend = (charend == NULL);
-
-  if(isend) return(1);
-
-  if(strlen(line0)<=strspn(line0," \t\r\n")) goto newline;
-
-  if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!' || line0[0] == '\n') goto newline;
-  if(!matcactive && line0[0] == '*') goto newline;
-
-#ifndef DISABLE_MATC
-  if(matcactive) {
-    matcpntr0 = strchr(line0,'$');
-    if(matcpntr0) {
-      matcpntr = mtc_domath(&matcpntr0[1]);
-      if(matcpntr) {
-	strcpy(matcpntr0, matcpntr);
-	if(0) printf("B: %s\n%s\n",matcpntr0,matcpntr);
-      }
-      else {
-	if(0) printf("B0: %s\n",matcpntr0);
-	goto newline;
-      }
-    }
-  }
-#endif 
-  
-  gotlinefeed = FALSE;
-  j = 0;
-  for(i=0;i<MAXLINESIZE;i++) {
-    if(line0[i] == '\n' || line0[i] == '\0' ) {
-      gotlinefeed = TRUE;
-      break;
-    }
-    if(line0[i] == '=') {
-      j = i;
-      break;
-    }
-    line1[i] = toupper(line0[i]);
-  }
-
-  /* After these commands there will be no nextline even though there is no equality sign */
-  if(strstr(line1,"END")) return(0);
-  if(strstr(line1,"NEW MESH")) return(0);
-
-  if(j) { /* Arguments are actually on the same line after '=' */
-    for(i=j+1;i<MAXLINESIZE;i++) {
-      line2[i-j-1] = line0[i];    
-      if( line0[i] == '\n' || line0[i] == '\0' ) {
-	gotlinefeed = TRUE;
-	break;
-      }
-    }  
-    if(!gotlinefeed) {
-      printf("There is a risk that somethings was missed in line:\n");
-      printf("%s\n",line0);
-      smallerror("Check your output line length!\n");
-    }
-  }
-  else { /* rguments are on the next line */
-  newline2:
-    charend = fgets(line2,MAXLINESIZE,io);
-    isend = (charend == NULL);
-    if(isend) return(2);
-    if(line2[0] == '#' || line2[0] == '%' || line2[0] == '!') goto newline2;
-    if(!matcactive && line2[0] == '*') goto newline2;
-
-    gotlinefeed = FALSE;
-    for(i=0;i<MAXLINESIZE;i++) {
-      if(line2[i] == '\n' || line2[i] == '\0' ) {
-	gotlinefeed = TRUE;
-	break;
-      }
-    }
-    if(!gotlinefeed) {
-      printf("There is a risk that somethings was missed in line:\n");
-      printf("%s\n",line2);
-      smallerror("Check your output line length!\n");
-    }
-
-#ifndef DISABLE_MATC
-    if(matcactive) {
-      matcpntr0 = strchr(line2,'$');
-      if(matcpntr0) {
-	matcpntr = mtc_domath(&matcpntr0[1]);
-	if(matcpntr) {
-	  strcpy(matcpntr0, matcpntr);
-	  if(0) printf("C: %s\n%s\n",matcpntr0,matcpntr);
-	}
-      }
-    }
-#endif 
-  }
-
-  if(iodebug) {
-    printf("command: ");
-    for(i=0;i<40;i++) printf("%c",line1[i]);
-    printf("\nparams: ");
-    for(i=0;i<40;i++) printf("%c",line2[i]);
-    printf("\n");
-  }
-  
-  return(0);
-}
 
 
 
@@ -2883,21 +2887,21 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
 
   for(;;) {
     if(GetCommand(command,params,in)) {
-      printf("Reached the end of command file\n");
+      if(info) printf("Reached the end of command file\n");
       goto end;
     }    
 
     /* Control information */
     if(strstr(command,"VERSION")) {
       if(strstr(command,"080500")) {
-	printf("Loading old version of Elmergrid file.\n");
+	if(info) printf("Loading old version of Elmergrid file.\n");
 	i = LoadElmergridOld(grid,nogrids,prefix,info);
 	return(i);
       }
       else {
 	sscanf(params,"%ld",&code);
 	if(code == 210903) 
-	  printf("Loading ElmerGrid file version: %ld\n",code);
+	  if(info) printf("Loading ElmerGrid file version: %ld\n",code);
 	else {
 	  printf("Unknown ElmerGrid file version: %ld\n",code);
 	  return(2);
@@ -2952,7 +2956,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
 	grid[k]->dimension = 3;
       }
       else printf("Unknown coordinate system: %s\n",params);
-      printf("Defining the coordinate system (%d-DIM).\n",grid[k]->dimension);
+      if(info) printf("Defining the coordinate system (%d-DIM).\n",grid[k]->dimension);
     }
     
     else if(strstr(command,"SUBCELL DIVISIONS")) {
@@ -2977,7 +2981,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     }
     
     else if(strstr(command,"MINIMUM ELEMENT DIVISION")) {
-      printf("Loading minimum number of elements\n");
+      if(info) printf("Loading minimum number of elements\n");
 
       if((*grid)[k].dimension == 1) 
 	sscanf(params,"%d",&(*grid)[k].minxelems); 
@@ -2991,7 +2995,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     }      
     
     else if(strstr(command,"SUBCELL LIMITS 1")) {
-      printf("Loading %d subcell limits in X-direction\n",grid[k]->xcells+1);
+      if(info) printf("Loading %d subcell limits in X-direction\n",grid[k]->xcells+1);
       cp = params;
       for(i=0;i<=grid[k]->xcells;i++) {
 	grid[k]->x[i] = next_real(&cp);
@@ -3002,7 +3006,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
       }
     }    
     else if(strstr(command,"SUBCELL LIMITS 2")) {
-      printf("Loading %d subcell limits in Y-direction\n",grid[k]->ycells+1);
+      if(info) printf("Loading %d subcell limits in Y-direction\n",grid[k]->ycells+1);
       cp = params;
       for(i=0;i<=grid[k]->ycells;i++) {
 	grid[k]->y[i] = next_real(&cp);
@@ -3013,7 +3017,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
       }
     }      
     else if(strstr(command,"SUBCELL LIMITS 3")) {
-      printf("Loading %d subcell limits in Z-direction\n",grid[k]->zcells+1);
+      if(info) printf("Loading %d subcell limits in Z-direction\n",grid[k]->zcells+1);
       cp = params;
       for(i=0;i<=grid[k]->zcells;i++) {
 	grid[k]->z[i] = next_real(&cp);
@@ -3025,19 +3029,19 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     }
 
     else if(strstr(command,"SUBCELL SIZES 1")) {
-      printf("Loading %d subcell sizes in X-direction\n",grid[k]->xcells);
+      if(info) printf("Loading %d subcell sizes in X-direction\n",grid[k]->xcells);
       cp = params;
       for(i=1;i<=grid[k]->xcells;i++) grid[k]->x[i] = next_real(&cp);
       for(i=1;i<=grid[k]->xcells;i++) grid[k]->x[i] = grid[k]->x[i-1] + grid[k]->x[i];
     }      
     else if(strstr(command,"SUBCELL SIZES 2")) {
-      printf("Loading %d subcell sizes in Y-direction\n",grid[k]->ycells);
+      if(info) printf("Loading %d subcell sizes in Y-direction\n",grid[k]->ycells);
       cp = params;
       for(i=1;i<=grid[k]->ycells;i++) grid[k]->y[i] = next_real(&cp);
       for(i=1;i<=grid[k]->ycells;i++) grid[k]->y[i] = grid[k]->y[i-1] + grid[k]->y[i];
     }      
     else if(strstr(command,"SUBCELL SIZES 3")) {
-      printf("Loading %d subcell sizes in Z-direction\n",grid[k]->zcells);
+      if(info) printf("Loading %d subcell sizes in Z-direction\n",grid[k]->zcells);
       cp = params;
       for(i=1;i<=grid[k]->zcells;i++) grid[k]->z[i] = next_real(&cp);
       for(i=1;i<=grid[k]->zcells;i++) grid[k]->z[i] = grid[k]->z[i-1] + grid[k]->z[i];
@@ -3096,7 +3100,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
     }
 
     else if(strstr(command,"MATERIAL STRUCTURE")) {
-      printf("Loading material structure\n");
+      if(info) printf("Loading material structure\n");
 
       /* Initialize the default structure with zeros */
       for(j=grid[k]->ycells;j>=1;j--) 
@@ -3123,8 +3127,6 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
 	printf("LoadElmergrid: material indices larger to %d may create problems.\n",
 	       MAXBODYID);
       printf("LoadElmergrid: materials interval is [%d,%d]\n",minmat,maxmat);
-      grid[k]->firstmaterial = minmat;
-      grid[k]->lastmaterial = maxmat;
 
       grid[k]->maxmaterial = maxmat;
     }

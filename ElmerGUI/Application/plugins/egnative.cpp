@@ -1048,7 +1048,7 @@ int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
     degree = 3;
     break;
   default:
-    printf("CreateCells: No numbering scheme for %d-node elements.\n",
+    printf("SetCellKnots: No numbering scheme for %d-node elements.\n",
 	   grid->nonodes);
     return(2);
   }
@@ -1221,7 +1221,7 @@ int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info)
     break;
 
   default:
-    printf("CreateCells: No numbering scheme for %d-node elements.\n",
+    printf("SetCellKnots1D: No numbering scheme for %d-node elements.\n",
 	   grid->nonodes);
     return(2);
   }
