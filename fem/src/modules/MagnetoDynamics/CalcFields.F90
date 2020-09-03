@@ -553,7 +553,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
-   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity
+   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity, HasThinLines=.FALSE.
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
    REAL(KIND=dp) :: HarmPowerCoeff = 0.5_dp
@@ -2143,6 +2143,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
   END IF
 
   ThinLinePower = 0._dp
+  HasThinLines = .FALSE.
   ALLOCATE(ThinLineCrossect(n), ThinLineCond(n))
   Active = GetNOFBoundaryElements()
   DO i=1,Active
@@ -2155,6 +2156,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL Info("CalcFields", "Found a Thin Line Element", level=10)
        ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
        IF (.NOT. Found) CALL Fatal('CalcFields','Thin Line Conductivity not found!')
+       HasThinLines = .TRUE.
      ELSE
        CYCLE
      END IF
@@ -2243,9 +2245,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
   ThinLinePower  = ParallelReduction(ThinLinePower)
 
-  WRITE(Message,*) 'Total thin line power (the Joule effect): ', ThinLinePower
-  CALL Info( 'MagnetoDynamicsCalcFields', Message )
-  CALL ListAddConstReal(Model % Simulation, 'res: thin line power', ThinLinePower)
+  IF (HasThinLines) THEN
+    WRITE(Message,*) 'Total thin line power (the Joule effect): ', ThinLinePower
+    CALL Info( 'MagnetoDynamicsCalcFields', Message )
+    CALL ListAddConstReal(Model % Simulation, 'res: thin line power', ThinLinePower)
+  END IF
 
 
   DEALLOCATE(ThinLineCrossect, ThinLineCond)
