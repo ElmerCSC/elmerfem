@@ -2148,16 +2148,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
   DO i=1,Active
      Element => GetBoundaryElement(i)
      BC=>GetBC()
-     IF (.NOT. ASSOCIATED(BC) ) CYCLE
-     SELECT CASE(GetElementFamily())
-     CASE(1)
-       CYCLE
-     CASE(2)
-       k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
-     CASE(3,4)
-       CYCLE
-     END SELECT
-     IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
      ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
 
@@ -2168,6 +2158,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ELSE
        CYCLE
      END IF
+
+     IF (.NOT. ASSOCIATED(BC) ) CYCLE
+     SELECT CASE(GetElementFamily())
+     CASE(1)
+       CYCLE
+     CASE(2)
+       k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
+     CASE(3,4)
+       CYCLE
+     END SELECT
+     IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
 
      Model % CurrentElement => Element
