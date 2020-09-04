@@ -4132,7 +4132,7 @@ use spariterglobals
          CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j )
          
 #ifdef HAVE_LUA
-         IF ( .not. ptr % LuaFun ) THEN
+         IF ( .NOT. ptr % LuaFun ) THEN
 #endif
            IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
              DO l=1,j
@@ -4150,7 +4150,7 @@ use spariterglobals
 
 #ifdef HAVE_LUA
          ELSE
-           call ElmerEvalLua(LuaState, ptr, T, F(i), varcount)
+           CALL ElmerEvalLua(LuaState, ptr, T, F(i), j )
          END IF
 #endif
          IF( AllGlobal ) THEN
@@ -5502,7 +5502,7 @@ use spariterglobals
                END IF
 #ifdef HAVE_LUA
              ELSE
-               CALL ElmerEvalLua(LuaState, ptr, T, F(i), Handle % varcount)
+               CALL ElmerEvalLua(LuaState, ptr, T, F(i), j )
              END IF
 #endif
 
@@ -5599,7 +5599,7 @@ use spariterglobals
                
 #ifdef HAVE_LUA
              ELSE
-               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, Handle % varcount)
+               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, j )
              END IF
 #endif
              ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
