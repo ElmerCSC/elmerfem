@@ -485,7 +485,11 @@
 !      Update global matrix and rhs vector from local matrix & vector:
 !      ---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
-       IF ( EigenOrHarmonicAnalysis() ) CALL DefaultUpdateMass( MASS )
+
+       IF ( EigenOrHarmonicAnalysis() .OR. GetLogical(SolverParams, &
+           'Harmonic Mode', GotIt) ) THEN
+         CALL DefaultUpdateMass( MASS )
+       END IF
      END DO
 !-----------------------------------------------------------------------------
     END SUBROUTINE BulkAssembly
@@ -1394,7 +1398,7 @@
             END DO
          END IF
 
-!        Mass matrix (only translation):
+!        Mass matrix
 !        -------------------------------
          IF( .NOT.StabilityAnalysis ) THEN
            DO p = 1,n
@@ -1405,6 +1409,10 @@
                    + rho * h * Basis(p) * Basis(q) * s
                MASS(6*p-3,6*q-3) = MASS(6*p-3,6*q-3) &
                    + rho * h * Basis(p) * Basis(q) * s
+               MASS(6*p-2,6*q-2) = MASS(6*p-2,6*q-2) &
+                   + rho * h**3/12.0d0 *  Basis(p) * Basis(q) * s
+               MASS(6*p-1,6*q-1) = MASS(6*p-1,6*q-1) &
+                   + rho * h**3/12.0d0 *  Basis(p) * Basis(q) * s
              END DO
            END DO
          END IF
@@ -1449,10 +1457,10 @@
        STIFF(1:i,1:i) = MATMUL( STIFF(1:i,1:i), Tblock(1:i,1:i) )
        STIFF(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), STIFF(1:i,1:i) )
 
-       IF( StabilityAnalysis ) THEN
-         MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
-         MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
-       END IF
+!       IF( StabilityAnalysis ) THEN
+       MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
+       MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
+!       END IF
 
        IF( LargeDeflection ) THEN
           NonlinForce(1:i) = MATMUL( TRANSPOSE(Tblock(1:i,1:i)), NonlinForce(1:i) )
@@ -1479,10 +1487,10 @@
          FORCE = FORCE + NonlinForce
        END IF
 
-       IF( StabilityAnalysis ) THEN
-         MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
-         MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
-       END IF
+!       IF( StabilityAnalysis ) THEN
+       MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
+       MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
+!       END IF
 
        STIFF = ( STIFF + TRANSPOSE(STIFF) ) / 2.0d0
        MASS  = ( MASS  + TRANSPOSE(MASS) )  / 2.0d0
