@@ -1,4 +1,4 @@
-/* femdef.h */
+/* femdef.h -> egdef.h */
 /* General definitions for the FEM program. */
 
 #ifndef _FEMDEF_H_

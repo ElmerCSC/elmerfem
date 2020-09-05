@@ -1,4 +1,4 @@
-/* femtypes.h */
+/* femtypes.h -> egtypes.h */
 /* Defines the types used in the FEM model. */
 
 /* Definiotins used in allocating space for the structures. */
@@ -27,6 +27,8 @@
 #define CONDISCONT 1
 #define CONPERIODIC 2
 #define CONCONSTRAINT 3
+
+#define MAXELEMENTTYPE 827
 
 struct CRSType {
   int *rows, *cols;

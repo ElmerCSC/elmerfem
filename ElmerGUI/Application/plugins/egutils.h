@@ -19,7 +19,6 @@ typedef double Real;
 #define TRUE 1
 #define FALSE 0
 
-
 /* Numerical Recipes' uncopyrighted vector and matrix allocation 
    and deallocation routines. */
 int MemoryUsage();

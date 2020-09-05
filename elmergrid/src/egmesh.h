@@ -1,4 +1,4 @@
-/* femknot.h */
+/* femknot.h -> egmesh.h */
 /* This module includes utilities that operate on single knots. It builds
    structures where the knots can be saved, it finds boundaries,
    copies knots from structures to others and destroys structures that
@@ -28,16 +28,14 @@ void DestroyKnots(struct FemType *data);
 void SideAreas(struct FemType *data,struct BoundaryType *bound);
 int CreateBoundary(struct CellType *cell,struct FemType *data,
 		   struct BoundaryType *bound,int material1,int material2,
-		   int solidmat,int boundarytype);
+		   int solidmat,int boundarytype,int info);
 int AllocateBoundary(struct BoundaryType *bound,int size);
-int CreateBoundaryChain(struct FemType *data,struct BoundaryType *bound,int info);
 int DestroyBoundary(struct BoundaryType *bound);
-int CreateBoundaries(struct CellType *cell,
-		     struct FemType *data,
-		     struct BoundaryType *boundaries);
+int CreateBoundaries(struct CellType *cell,struct FemType *data,
+		     struct BoundaryType *boundaries,int info);
 int CreatePoints(struct CellType *cell,struct FemType *data,
 		 struct BoundaryType *bound,
-		 int param1,int param2,int pointmode,int pointtype);
+		 int param1,int param2,int pointmode,int pointtype,int info);
 int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
 			     int boundtype,int endnodes,int info);
 int SetDiscontinuousPoints(struct FemType *data,struct PointType *point,
@@ -49,11 +47,6 @@ int FindCorners(struct GridType *grid,struct CellType *cell,
 		struct FemType *data,int info);
 
 int ConstantToBilinear(struct FemType *data,int var1,int var2);
-int SolutionFromMeshToMesh(struct CellType *cell1, struct GridType *grid1, 
-			   struct FemType *data1,
-			   struct CellType *cell2, struct GridType *grid2, 
-			   struct FemType *data2,
-			   int mapgeo,int variable,int info);
 int ElementsToTriangles(struct FemType *data,struct BoundaryType *bound,
 			Real critangle,int info);
 int IncreaseElementOrder(struct FemType *data,int info);

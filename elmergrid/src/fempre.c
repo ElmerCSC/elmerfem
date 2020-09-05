@@ -2,8 +2,8 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter R�back
-   Email: Peter.Raback@csc.fi
+   Author: Peter Raback
+   Email: elmeradm@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
             02101 Espoo, Finland
@@ -52,16 +52,15 @@
 #include <ctype.h>
 #include <math.h>
 
-#include "common.h"
-#include "nrutil.h"
-#include "femdef.h"
-#include "femtypes.h"
-#include "femmesh.h"
-#include "femknot.h"
-#include "feminfo.h"
-#include "femelmer.h"
-#include "femfilein.h"
-#include "femfileout.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egmesh.h"
+#include "egextra.h"
+#include "egnative.h"
+#include "egparallel.h"
+#include "egconvert.h"
+#include "egexport.h"
 
 
 static void Instructions()
@@ -304,9 +303,7 @@ int main(int argc, char *argv[])
 
   case 1:        
     if(LoadElmergrid(&grids,&nogrids,eg.filesin[nofile],eg.relh,info) == 1) {   
-      if(dim == 3) ExampleGrid3D(&grids,&nogrids,info);
-      if(dim == 2) ExampleGrid2D(&grids,&nogrids,info);
-      if(dim == 1) ExampleGrid1D(&grids,&nogrids,info);
+      CreateExampleGrid(eg.dim,&grids,&nogrids,info);
       SaveElmergrid(grids,nogrids,eg.filesin[nofile],info); 
       printf("Because file %s didn't exist, it was created for you.\n",eg.filesin[nofile]);
       Goodbye();
@@ -360,17 +357,15 @@ int main(int argc, char *argv[])
     break;
 
   case 7:
-    if(LoadFidapInput(&(data[nofile]),eg.filesin[nofile],TRUE))
-      Goodbye();
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
+    if(LoadFidapInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
     if(!eg.usenames) data[nofile].boundarynamesexist = data[nofile].bodynamesexist = FALSE;
-    ElementsToBoundaryConditions(&(data[nofile]),boundaries[nofile],FALSE,TRUE);
-    RenumberBoundaryTypes(&data[nofile],boundaries[nofile],TRUE,0,info);
   
     nomeshes++;
     break;
@@ -393,24 +388,21 @@ int main(int argc, char *argv[])
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
-    }
-   
-    if(LoadComsolMesh(&(data[nofile]),eg.filesin[nofile],info)) 
+    }   
+    if(LoadComsolMesh(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],info)) 
       Goodbye();
-    ElementsToBoundaryConditions(&(data[nofile]),boundaries[nofile],FALSE,TRUE);
     nomeshes++;
     break;
 
   case 10:
-    if(LoadFieldviewInput(&(data[nofile]),eg.filesin[nofile],TRUE))
-      Goodbye();
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	    
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
-    ElementsToBoundaryConditions(&(data[nofile]),boundaries[nofile],FALSE,TRUE);
+    if(LoadFieldviewInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
     nomeshes++;
     break;
 
@@ -482,8 +474,6 @@ int main(int argc, char *argv[])
       Goodbye();
     nomeshes++;
     break;
-
-
 
     
 #if 0
@@ -613,12 +603,12 @@ int main(int argc, char *argv[])
 	  if(grids[k].boundsolid[j] < 4) {
 	    CreateBoundary(cell[k],&(data[k]),&(boundaries[k][j]),
 			   grids[k].boundext[j],grids[k].boundint[j],
-			   1,grids[k].boundtype[j]);  
+			   1,grids[k].boundtype[j],info);  
 	  } 
 	  else { 
 	    CreatePoints(cell[k],&(data[k]),&(boundaries[k][j]),
 			 grids[k].boundext[j],grids[k].boundint[j],
-			 grids[k].boundsolid[j],grids[k].boundtype[j]); 	    
+			 grids[k].boundsolid[j],grids[k].boundtype[j],info); 	    
 	  }
 	}
       }

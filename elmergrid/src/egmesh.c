@@ -2,8 +2,8 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter R�back
-   Email: Peter.Raback@csc.fi
+   Author: Peter Raback
+   Email: elmeradm@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
             02101 Espoo, Finland
@@ -23,7 +23,7 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-/* --------------------------:  femknot.c  :----------------------------
+/* --------------------------:  egmesh.c  :----------------------------
 
    This module includes subroutines that formulate the mesh into structures 
    more usuful for the user. These are the functions that should be used for 
@@ -37,12 +37,11 @@
 #include <math.h>
 #include <limits.h>
 
-#include "common.h"
-#include "nrutil.h"
-#include "femdef.h"
-#include "femtypes.h"
-#include "femmesh.h"
-#include "femknot.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egnative.h"
+#include "egmesh.h"
 
 #define DEBUG 0
 
@@ -1632,7 +1631,7 @@ void SideAreas(struct FemType *data,struct BoundaryType *bound)
 
 int CreateBoundary(struct CellType *cell,struct FemType *data,
 		   struct BoundaryType *bound,int material1,int material2,
-		   int solidmat,int boundarytype)
+		   int solidmat,int boundarytype,int info)
 /* This subroutine makes a boundary which includes all sides that separate
    two materials that fulfill the conditions in the function call. If both
    materials are positive only the sides for which both of the materials
@@ -1653,15 +1652,15 @@ int CreateBoundary(struct CellType *cell,struct FemType *data,
     dimsides = 4;
 
   if(bound->created == TRUE) {
-    printf("CreateBoundary: You tried to recreate the boundary!\n");
+    if(info) printf("CreateBoundary: You tried to recreate the boundary!\n");
     return(1);
   }
   if(!data->created) {
-    printf("CreateBoundary: You tried to create a boundary before the knots were made.");
+    if(info) printf("CreateBoundary: You tried to create a boundary before the knots were made.");
     return(2);
   }
   if(material1 < 0  &&  material2 < 0) {
-    printf("CreateBoundary: the material arguments are both negative");
+    if(info) printf("CreateBoundary: the material arguments are both negative");
     return(3);
   }
 
@@ -1766,8 +1765,8 @@ startpoint:
     }  
 
   if(nosides == 0) {
-    printf("No boundary between materials %d and %d exists.\n",
-	   material1,material2); 
+    if(info) printf("No boundary between materials %d and %d exists.\n",
+		    material1,material2); 
     return(0);
   }
 
@@ -1803,8 +1802,8 @@ startpoint:
   
   /* Calculate the areas of the side elements. */
   SideAreas(data,bound);  
-  printf("%d element sides between materials %d and %d were located to type %d.\n",
-	 nosides,material1,material2,boundarytype); 
+  if(info) printf("%d element sides between materials %d and %d were located to type %d.\n",
+		  nosides,material1,material2,boundarytype); 
 
   return(0);
 }
@@ -1855,104 +1854,6 @@ int AllocateBoundary(struct BoundaryType *bound,int size)
 
 
 
-int CreateBoundaryChain(struct FemType *data,struct BoundaryType *bound,int info)
-{
-  int i,sideind[MAXNODESD1],sideind2[MAXNODESD1]; 
-  int size,indfirst,indsecond,side,setchain,sideelemtype;
-
-  if(bound->created == FALSE) {
-    if(info) printf("CreateBoundaryChain: boundary not created!\n");
-    return(1);
-  }
-  if(bound->nosides < 2) {
-    if(info) printf("CreateBoundaryChain: there must be at least 2 sides!\n");
-    return(2);
-  }
-  if(bound->echain == TRUE) {
-    if(0) printf("CreateBoundaryChain: chain already exists!\n");
-    return(3);
-  }
-
-  setchain = FALSE;
-restart:
-  /* First determine the way that the chain starts. */
-  GetElementSide(bound->parent[1],bound->side[1],bound->normal[1],data,sideind,&sideelemtype);
-  GetElementSide(bound->parent[2],bound->side[2],bound->normal[2],data,sideind2,&sideelemtype);
-  if(sideind[1] == sideind2[0]) {
-    indfirst = sideind[0];
-    indsecond = sideind[1];
-  }
-  else if(sideind[0] == sideind2[1]) {
-    indfirst = sideind[1];
-    indsecond = sideind[0];
-  }
-  else {
-    printf("CreateBoundaryChain: Impossible case!\n");
-    indfirst = sideind[0];
-    indsecond = sideind[1];
-  }
-
-  if(setchain) {
-    bound->chain[0] = indfirst;
-    bound->chain[1] = indsecond;
-  }
-  size = 1;
-  side = 1;
-
-  /* The chain is followed in positive direction while successful,
-     if not the direction is changed and so on... */
-  for(;;) {	
-    for(i=side+1;i<=bound->nosides;i++) {
-      GetElementSide(bound->parent[i],bound->side[i],bound->normal[i],data,sideind,&sideelemtype);
-      if(sideind[0] == indsecond) {
-	indsecond = sideind[1];
-	goto jump;
-      }
-      else if(sideind[1] == indsecond) {
-	indsecond = sideind[0];
-	goto jump;
-      }
-    }
-	
-    for(i=side-1;i>=1;i--) {
-      GetElementSide(bound->parent[i],bound->side[i],bound->normal[i],data,sideind,&sideelemtype);
-      if(sideind[0] == indsecond) {
-	indsecond = sideind[1];
-	goto jump;
-      }
-      else if(sideind[1] == indsecond) {
-	indsecond = sideind[0];
-	goto jump;
-      }
-    } 
-    goto theend;
-    
-  jump:
-    size++;
-    if(setchain) 
-      bound->chain[size] = indsecond;
-    side = i;
-    if(indsecond == indfirst) goto theend;
-  }
-  
-theend:  
-  if(setchain == FALSE) {
-    if(size != bound->nosides) 
-      printf("CreateBoundaryChain: the boundary is not continuous (%d vs. %d)\n",
-	     size,bound->nosides);
-    else 
-      printf("CreateBoundaryChain: the boundary is continuous with %d nodes.\n",size+1);
-    bound->chain = Ivector(0,size);
-    bound->echain = TRUE;
-    bound->chainsize = size;
-    setchain = TRUE;
-    goto restart;
-  }
-  return(0);
-}
-
-
-
 int DestroyBoundary(struct BoundaryType *bound)
 /* Destroys boundaries of various types. */
 {
@@ -1992,7 +1893,7 @@ int DestroyBoundary(struct BoundaryType *bound)
 
 
 int CreateBoundaries(struct CellType *cell,struct FemType *data,
-		     struct BoundaryType *boundaries)
+		     struct BoundaryType *boundaries,int info)
 {
   int i,j;
  
@@ -2008,7 +1909,7 @@ int CreateBoundaries(struct CellType *cell,struct FemType *data,
       } 
       CreateBoundary(cell,data,&boundaries[j],
 		     data->boundext[i],data->boundint[i],
-		     data->boundsolid[i],data->boundtype[i]);
+		     data->boundsolid[i],data->boundtype[i],info);
     }
   return(0);
 }
@@ -2017,7 +1918,7 @@ int CreateBoundaries(struct CellType *cell,struct FemType *data,
 
 int CreatePoints(struct CellType *cell,struct FemType *data,
 		 struct BoundaryType *bound,
-		 int param1,int param2,int pointmode,int pointtype)
+		 int param1,int param2,int pointmode,int pointtype,int info)
 {
   int size,i,no,corner,times,elem,node;
 
@@ -2090,7 +1991,7 @@ omstart:
 
       bound->parent[i] = elem;
       node = data->topology[elem][corner];
-      printf("Found node %d at (%.3g, %.3g)\n",node,data->x[node],data->y[node]);
+      if(info) printf("Found node %d at (%.3lg, %.3lg)\n",node,data->x[node],data->y[node]);
     }
   }  
 
@@ -2101,8 +2002,8 @@ omstart:
     goto omstart;
   }
 
-  printf("Created %d new points of type %d in the corner of materials %d and %d.\n",
-	 size,pointtype,param1,param2);
+  if(info) printf("Created %d new points of type %d in the corner of materials %d and %d.\n",
+		  size,pointtype,param1,param2);
   
   return(FALSE);
 }
@@ -2720,175 +2621,6 @@ omstart:
   if(allocated == FALSE) goto omstart;
 
   if(info) printf("Found %d material corners.\n",nocorners);
-  return(0);
-}
-
-
-
-int SolutionFromMeshToMesh(struct CellType *cell1, struct GridType *grid1, 
-			   struct FemType *data1,
-			   struct CellType *cell2, struct GridType *grid2, 
-			   struct FemType *data2,
-			   int mapgeo,int variable,int info)
-/* Copies variable values from data1 to data2 for two meshes that have similar
-   geometry, but different number of elements. Its assumed that all the 
-   elements are rectangular in shape. The subroutine may, however, be 
-   applied to nonrectangular geometries also, but then the accuracy is 
-   difficult to estimate. Note that this subroutine holds only for 
-   linear elements.
-   */
-{
-  int xcell,ycell,i1,j1,i2,j2,no1,no2;
-  int ind1[MAXNODESD2],ind2,k;
-  int nonodes1,nonodes2,unknowns;
-  int elem1,elem2,mapres,fast;
-  Real coord1[DIM*MAXNODESD2],x2,y2,rx,ry;
-  Real epsilon=1.0e-20;
-  Real *vector1=NULL,*vector2=NULL;
-  
-  if(!data1->edofs[variable] || !data2->edofs[variable])
-    return(1);
-
-  unknowns = data1->edofs[variable];
-  vector1 = data1->dofs[variable];
-  vector2 = data2->dofs[variable];
-
-  nonodes1 = grid1->nonodes;
-  nonodes2 = grid2->nonodes;
-
-  if(nonodes1 != 4 || nonodes2 != 4) {
-    if(info) printf("SolutionFromMeshToMesh: algorithm defined only for 4-node elements\n");
-    return(2);
-  }
-
-  if(mapgeo && data2->mapgeo < data1->mapgeo) 
-    data2->mapgeo = data1->mapgeo;
-  else 
-    mapgeo = FALSE;
-
-  if(data2->iterdofs[variable] < data1->iterdofs[variable]) {
-    mapres = TRUE;
-    data2->iterdofs[variable] = data1->iterdofs[variable];
-  }
-  else
-    mapres = FALSE;
-      
-  if(!mapres && !mapgeo) {
-    if(info) 
-      printf("SolutionFromMeshToMesh: no mapping for geometry or variable %s (%d vs. %d)!\n",
-	     data1->dofname[variable],data1->iterdofs[variable],data2->iterdofs[variable]);
-    return(0);
-  }
-
-  if(grid1->noknots == data1->noknots && grid2->noknots == data2->noknots) 
-    fast = TRUE;
-  else
-    fast = FALSE;
-
-  for(xcell=1;xcell<=MAXCELLS;xcell++)
-    for(ycell=1;ycell<=MAXCELLS;ycell++) 
-
-      /* Go through cells that are common to both grids. */
-      if( (no1= grid1->numbered[ycell][xcell]) && (no2= grid2->numbered[ycell][xcell]) ) {
-
-	if(0) printf("xcell=%d  ycell=%d  no1=%d  no=%d\n",xcell,ycell,no1,no2); 
-
-        j1 = 1;
-        for(j2=0; j2 <= cell2[no2].yelem; j2++) {
-	  i1 = 1;
-          for(i2=0; i2 <= cell2[no2].xelem; i2++) {
-	    
-	    /* ind2 is the original node number for the node */
-	    ind2 = GetKnotCoordinate(&(cell2)[no2],i2,j2,&x2,&y2);
-	    GetElementCoordinates(&(cell1)[no1],i1,j1,coord1,ind1);
-
-	    /* Find j1 and i1 in the rectangular mesh so that 
-	       the node ind2 lies in the element */
-	    if(coord1[TOPRIGHT+nonodes1]+epsilon < y2 && j1 < cell1[no1].yelem)
-	      do {
-	        j1++;
-	        GetElementCoordinates(&(cell1)[no1],i1,j1,coord1,ind1);
-	      } while(j1 < cell1[no1].yelem  &&  coord1[TOPRIGHT+nonodes1] < y2);
-	    
- 	    if(coord1[TOPRIGHT]+epsilon < x2 && i1 < cell1[no1].xelem)
-	      do {
-	        i1++;
-	        GetElementCoordinates(&(cell1)[no1],i1,j1,coord1,ind1);
-	      } while(i1 < cell1[no1].xelem  &&  coord1[TOPRIGHT] < x2);
-	    
-	    if(0) printf("j2=%d  i2=%d  j1=%d  i1=%d\n",j2,i2,j1,i1);
-
-	    rx = (coord1[BOTRIGHT]-x2) 
-	      / (coord1[BOTRIGHT]-coord1[BOTLEFT]);
-
-	    ry = (coord1[TOPLEFT+nonodes1]-y2) 
-	      / (coord1[TOPLEFT+nonodes1]-coord1[BOTLEFT+nonodes1]);
-
-	    rx = MIN(rx,1.0);
-	    rx = MAX(rx,0.0);
-	    ry = MIN(ry,1.0);
-	    ry = MAX(ry,0.0);
-
-	    /* Find the new indices. If there are no discontinuous 
-	       boundaries they are the same as the old ones. */
-	    if(!fast) {
-	      elem1=GetElementIndex(&(cell1)[no1],i1,j1);
-	      for(k=0;k<4;k++)
-		ind1[k] = data1->topology[elem1][k];
-
-	      if(0) printf("elem1=%d  ind1=[%d %d %d %d]\n",elem1,ind1[0],ind1[1],ind1[2],ind1[3]);
-	      
-	      if(i2>0 && j2>0) {
-		elem2 = GetElementIndex(&(cell2)[no2],i2,j2);
-		ind2 = data2->topology[elem2][TOPRIGHT];
-	      }
-	      else if(i2==0 && j2>0) {
-		elem2 = GetElementIndex(&(cell2)[no2],i2+1,j2);
-		ind2 = data2->topology[elem2][TOPLEFT];
-	      }
-	      else if(i2>0 && j2==0) {
-		elem2 = GetElementIndex(&(cell2)[no2],i2,j2+1);
-		ind2 = data2->topology[elem2][BOTRIGHT];
-	      }
-	      else {
-		elem2 = GetElementIndex(&(cell2)[no2],i2+1,j2+1);
-		ind2 = data2->topology[elem2][BOTLEFT];
-	      }
-	    }
-
-	    if(mapgeo) {
-	      data2->x[ind2] 
-		= data1->x[ind1[BOTLEFT]] * rx * ry
-		+ data1->x[ind1[BOTRIGHT]] * (1.-rx) * ry
-		+ data1->x[ind1[TOPLEFT]] * rx * (1.-ry)
-		+ data1->x[ind1[TOPRIGHT]] * (1.-rx) * (1.-ry);
-	      data2->y[ind2] 
-		= data1->y[ind1[BOTLEFT]] * rx * ry
-		+ data1->y[ind1[BOTRIGHT]] * (1.-rx) * ry
-		+ data1->y[ind1[TOPLEFT]] * rx * (1.-ry)
-		+ data1->y[ind1[TOPRIGHT]] * (1.-rx) * (1.-ry);
-	    }
-	    
-	    if(mapres) 
-	      for(k=1;k<=unknowns;k++) {
-		vector2[unknowns*(ind2-1)+k] 
-		  = vector1[unknowns*(ind1[BOTLEFT]-1)+k] * rx * ry
-		  + vector1[unknowns*(ind1[BOTRIGHT]-1)+k]* (1.-rx) * ry
-		  + vector1[unknowns*(ind1[TOPLEFT]-1)+k] * rx * (1.-ry)
-		  + vector1[unknowns*(ind1[TOPRIGHT]-1)+k]* (1.-rx) * (1.-ry);
-	      }
-	  }
-        }
-      }
-  
-  if(info) {
-    if(mapgeo) 
-      printf("Geometry was mapped from one mesh to another!\n");
-    if(mapres) 
-      printf("Results of %s was mapped from one mesh to another!\n",
-	     data1->dofname[variable]);
-  }  
-
   return(0);
 }
 
@@ -4214,7 +3946,7 @@ void ReorderElements(struct FemType *data,struct BoundaryType *bound,
     corder[2] = cz;
   }
 
-  if(info) printf("Ordering with (%.3g*x + %.3g*y + %.3g*z)\n",cx,cy,cz);
+  if(info) printf("Ordering with (%.3lg*x + %.3lg*y + %.3lg*z)\n",cx,cy,cz);
   for(i=1;i<=noknots;i++) {
     arrange[i] = cx*data->x[i] + cy*data->y[i] + cz*data->z[i];  
   }
@@ -4242,7 +3974,7 @@ void ReorderElements(struct FemType *data,struct BoundaryType *bound,
 
 #if 0
   for(i=1;i<=noknots;i++) 
-    printf("i=%d  indx=%d  revi=%d  f=%.2g\n",
+    printf("i=%d  indx=%d  revi=%d  f=%.2lg\n",
 	   i,indx[i],revindx[i],arrange[indx[i]]);
 #endif  
 
@@ -5746,11 +5478,11 @@ static void CylindricalCoordinateTransformation(struct FemType *data,Real r1,Rea
   int candidates,*candidatelist=NULL,*indx=NULL;
 
   if(rectangle) {
-    printf("Rectangular geometry with r1=%.4g for %d nodes.\n",
+    printf("Rectangular geometry with r1=%.4lg for %d nodes.\n",
 	   r1,data->noknots);
   }
   else {
-    printf("Cylindrical geometry with r1=%.4g r2=%.4g for %d nodes.\n",
+    printf("Cylindrical geometry with r1=%.4lg r2=%.4lg for %d nodes.\n",
 	 r1,r2,data->noknots);
   }
   
@@ -5895,7 +5627,7 @@ static void CylindricalCoordinateImprove(struct FemType *data,Real factor,
   int i;
   Real x,y,r,q,q2,c,cmin,cmax,eps;
 
-  printf("Cylindrical coordinate for r1=%.4g and r2=%.4g.\n",r1,r2);
+  printf("Cylindrical coordinate for r1=%.4lg and r2=%.4lg.\n",r1,r2);
 
   eps = 1.0e-10;
  
@@ -5909,7 +5641,7 @@ static void CylindricalCoordinateImprove(struct FemType *data,Real factor,
 
   if(fabs(c-1.0) < eps) return;
 
-  printf("Improving cylindrical mesh quality r1=%.4g, r2=%.4g and c=%.4g\n",r1,r2,c);
+  printf("Improving cylindrical mesh quality r1=%.4lg, r2=%.4lg and c=%.4lg\n",r1,r2,c);
 
   for(i=1;i<=data->noknots;i++) {
     x = data->x[i];
@@ -5956,7 +5688,7 @@ void CylindricalCoordinateCurve(struct FemType *data,
   Real x,y,z;
   Real z0,z1,f,f0,z2,x2,r0;
   
-  printf("Cylindrical coordinate curve, zet=%.3g  rad=%.3g  angle=%.3g\n",
+  printf("Cylindrical coordinate curve, zet=%.3lg  rad=%.3lg  angle=%.3lg\n",
 	 zet,rad,angle);
   
   r0 = rad;
@@ -7101,7 +6833,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
       data->x[i] = cos(fii)*x - sin(fii)*y;
       data->y[i] = sin(fii)*x + cos(fii)*y;
     }
-    if(info) printf("Applied helicity of %12.5e degrees\n",grid->zhelicity);
+    if(info) printf("Applied helicity of %12.5le degrees\n",grid->zhelicity);
   }
 
 }
@@ -7216,7 +6948,7 @@ void MergeElements(struct FemType *data,struct BoundaryType *bound,
   for(i=1;i<=noknots;i++)
     doubles[i] = 0;
 
-  if(info) printf("Merging nodes close (%.3g) to one another.\n",eps);
+  if(info) printf("Merging nodes close (%.3lg) to one another.\n",eps);
 
   dz = 0.0;
   for(i=1;i<noknots;i++) {
@@ -8002,7 +7734,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
   if(!periodicdim[0] && !periodicdim[1] && !periodicdim[2]) return(1);
 
   if(data->periodicexist) {
-    printf("FindPeriodicNodes: Subroutine is called for second time�\n");
+    printf("FindPeriodicNodes: Subroutine is called for second time?\n");
     return(2);
   }
 
@@ -8034,7 +7766,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
       if(coordmin > coord[i]) coordmin = coord[i];
     }
 
-    if(info) printf("Coordinate in dimension %d is at the interval [%.3g, %.3g]\n",
+    if(info) printf("Coordinate in dimension %d is at the interval [%.3lg, %.3lg]\n",
 		    dim,coordmin,coordmax);
 
     if(coordmax-coordmin < 1.0e-10) continue;
@@ -8110,7 +7842,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
 	  }
 	}
 	else {
-	  printf("Couldn't find a periodic counterpart for node %d at [%.3g %.3g]]\n",
+	  printf("Couldn't find a periodic counterpart for node %d at [%.3lg %.3lg]]\n",
 		 j,data->x[j],data->y[j]);
 	}
       }
@@ -9874,7 +9606,7 @@ int RotateTranslateScale(struct FemType *data,struct ElmergridType *eg,int info)
   Real xmin, xmax, ymin, ymax, zmin, zmax;
 
   if(eg->scale) {
-    if(info) printf("Scaling mesh with vector [%.3g %.3g %.3g]\n",
+    if(info) printf("Scaling mesh with vector [%.3lg %.3lg %.3lg]\n",
 	   eg->cscale[0],eg->cscale[1],eg->cscale[2]);
     for(i=1;i<=data->noknots;i++) {
       data->x[i] *= eg->cscale[0]; 
@@ -9885,7 +9617,7 @@ int RotateTranslateScale(struct FemType *data,struct ElmergridType *eg,int info)
   }
   
   if(eg->rotate) {
-    if(info) printf("Rotating mesh with degrees [%.3g %.3g %.3g]\n",
+    if(info) printf("Rotating mesh with degrees [%.3lg %.3lg %.3lg]\n",
 		    eg->crotate[0],eg->crotate[1],eg->crotate[2]);
     cx = FM_PI * eg->crotate[0]/180.0;
     cy = FM_PI * eg->crotate[1]/180.0;
@@ -9920,7 +9652,7 @@ int RotateTranslateScale(struct FemType *data,struct ElmergridType *eg,int info)
   }
 
   if(eg->translate) {
-    if(info) printf("Translating the mesh with vector [%.3g %.3g %.3g]\n",
+    if(info) printf("Translating the mesh with vector [%.3lg %.3lg %.3lg]\n",
 		    eg->ctranslate[0],eg->ctranslate[1],eg->ctranslate[2]);
     for(i=1;i<=data->noknots;i++) {
       data->x[i] += eg->ctranslate[0];

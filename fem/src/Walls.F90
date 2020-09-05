@@ -28,10 +28,10 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Jari Hämäläinen
+! *  Authors: Jari H?m?l?inen
 ! *  Address: VTT Energy
 ! *           P.O.Box 1603
-! *           40101 Jyväskylä, Finland 
+! *           40101 Jyv?skyl?, Finland 
 ! *
 ! *  Authors: Juha Ruokolainen
 ! *  Email:   Juha.Ruokolainen@csc.fi
@@ -96,7 +96,7 @@
 
 !----------------------------------------------------------------------------
 !> Give difference between the tangential velocity given by 
-!> Reichardt´s wall law and the tangential velocity of the previous 
+!> Reichardt's wall law and the tangential velocity of the previous 
 !> iteration.
 !
 !         Input:

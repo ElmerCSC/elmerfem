@@ -2,8 +2,8 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter R��back
-   Email: Peter.Raback@csc.fi
+   Author: Peter Raback
+   Email: elmeradm@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
             02101 Espoo, Finland
@@ -23,7 +23,7 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-/* --------------------:  femfilein.c  :-------------------------- */
+/* --------------------:  egconvert.c  :-------------------------- */
 
 #include <stdio.h>
 #include <math.h>
@@ -32,15 +32,12 @@
 #include <ctype.h>
 #include <string.h>
 #include <limits.h>
-/*#include <strings.h>*/
-/*#include <unistd.h>*/
 
-#include "nrutil.h"
-#include "common.h"
-#include "femdef.h"
-#include "femtypes.h"
-#include "femknot.h"
-#include "femfilein.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egmesh.h"
+#include "egconvert.h"
 
 #define GETLINE getlineptr=fgets(line,MAXLINESIZE,in) 
 #define GETLONGLINE getlineptr=fgets(longline,LONGLINESIZE,in)
@@ -1327,7 +1324,7 @@ static void ReorderFidapNodes(struct FemType *data,int element,int nodes,int typ
 
 
 
-int LoadFidapInput(struct FemType *data,char *prefix,int info)
+int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *prefix,int info)
 /* Load the grid from a format that can be read by FIDAP 
    program designed for fluid mechanics. 
 
@@ -1580,6 +1577,9 @@ end:
   
   if(info) printf("Finished reading the Fidap neutral file\n");
 
+  ElementsToBoundaryConditions(data,boundaries,FALSE,TRUE);
+  RenumberBoundaryTypes(data,boundaries,TRUE,0,info);  
+
   return(0);
 }
 
@@ -1762,14 +1762,14 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
     sscanf(line,"%le %le %le",&dummy1,&dummy2,&dummy3);
 
     if(i==0) {
-      noelements = dummy1+0.5;
-      noknots = dummy2+0.5;
-      boundarytypes = dummy3+0.5;
+      noelements = (int) (dummy1+0.5);
+      noknots = (int) (dummy2+0.5);
+      boundarytypes = (int) (dummy3+0.5);
     }
     else {
-      ansysdim[i] = dummy1+0.5;
-      ansysnodes[i] = dummy2+0.5;
-      ansystypes[i] = dummy3+0.5;
+      ansysdim[i] = (int) (dummy1+0.5);
+      ansysnodes[i] = (int) (dummy2+0.5);
+      ansystypes[i] = (int) (dummy3+0.5);
     }
   }
   fclose(in);
@@ -2122,7 +2122,7 @@ static void ReorderFieldviewNodes(struct FemType *data,int *oldtopology,
 
 
 
-int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
+int LoadFieldviewInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info)
 /* Load the grid from a format that can be read by FieldView
    program by PointWise. This is a suitable format to read files created
    by GridGen. */
@@ -2298,7 +2298,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
 
       printf("Found %d bulk elements\n",nobulk);
       if(nobulk+nobound > noelements) printf("Too few elements (%d) were allocated!!\n",noelements);
-      printf("Allocated %.4g %% too many elements\n",
+      printf("Allocated %.4lg %% too many elements\n",
 	     noelements*100.0/(nobulk+nobound)-100.0);
 
 
@@ -2329,6 +2329,8 @@ end:
 
   if(maxindx != noknots) 
     printf("The maximum index %d differs from the number of nodes %d !\n",maxindx,noknots);
+
+  ElementsToBoundaryConditions(data,bound,FALSE,TRUE);
   
   return(0);
 }
@@ -2538,7 +2540,7 @@ int LoadMeditInput(struct FemType *data,struct BoundaryType *bound,
 /* This procedure reads the mesh assuming Medit format
    */
 {
-  int noknots,noelements,maxnodes,dim=0,elementtype;
+  int noknots=0,noelements=0,maxnodes,dim=0,elementtype=0;
   int i,j,allocated;
   FILE *in;
   char *cp,line[MAXLINESIZE],nodefile[MAXFILESIZE];
@@ -3015,7 +3017,7 @@ static void ReorderComsolNodes(int elementtype,int *topo)
 
 
 
-int LoadComsolMesh(struct FemType *data,char *prefix,int info)
+int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,int info)
 /* Load the grid in Comsol Multiphysics mesh format */
 {
   int noknots,noelements,maxnodes,material;
@@ -3218,6 +3220,8 @@ end:
   fclose(in);
 
   if(info) printf("The Comsol mesh was loaded from file %s.\n\n",filename);
+  ElementsToBoundaryConditions(data,bound,FALSE,TRUE);
+
   return(0);
 }
 
