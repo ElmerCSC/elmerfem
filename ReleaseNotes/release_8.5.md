@@ -58,9 +58,11 @@ Enhanced Solver Modules
 ### HeatSolver
 - New tentative vectorized version: HeatSolverVec
 - Enable symmetric 3D cases for view factor computation. 
-- Make Gebharadt factors linear system symmetric, if possible "ViewFactor Symmetry".
+- Make Gebhart factors linear system symmetric, if possible "ViewFactor Symmetry".
 
-
+### StressSolver
+- Added Maxwell visco-elastic model to linear elasticity solver
+- possible also to be run incrompressible (introducing pressure variable)
 
 ElmerSolver library functionality
 ---------------------------------
