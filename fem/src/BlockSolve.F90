@@ -1648,15 +1648,17 @@ CONTAINS
   SUBROUTINE FsiCouplingBlocks( Solver )
 
     TYPE(Solver_t) :: Solver
-    INTEGER :: i,j,Novar
+    INTEGER :: i, j, k, Novar
 
-    LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
     TYPE(Variable_t), POINTER :: FVar, SVar
+    INTEGER, POINTER :: ConstituentSolvers(:)
+    LOGICAL :: Found
     LOGICAL :: IsPlate, IsShell, IsNs, IsPres
     
     Params => Solver % Values
+    ConstituentSolvers => ListGetIntegerArray(Params, 'Block Solvers', Found)
 
     IsPlate = .FALSE.
     IsShell = .FALSE.
@@ -1664,7 +1666,7 @@ CONTAINS
     IsPres = .FALSE.
     
     i = ListGetInteger( Params,'Structure Solver Index',Found)
-    IF( Found ) THEN
+    IF ( Found ) THEN
       IsPlate = ListGetLogical( CurrentModel % Solvers(i) % Values,&
           'Plate Solver', Found )
       IsShell = ListGetLogical( CurrentModel % Solvers(i) % Values,&
@@ -1675,6 +1677,30 @@ CONTAINS
         i = ListGetInteger( Params,'Shell Solver Index',IsShell)
       END IF
     END IF
+
+    !
+    ! The first and second entries in the "Block Solvers" list define 
+    ! the solver sections to assemble the (1,1)-block and (2,2)-block, 
+    ! respectively. The following check is needed as the solver section
+    ! numbers may not index TotMatrix % Submatrix(:,:) directly.
+    !
+    IF (i > 0) THEN
+      Found = .FALSE.
+      DO k=1,SIZE(ConstituentSolvers)
+        IF (i == ConstituentSolvers(k)) THEN
+          Found = .TRUE.
+          EXIT
+        END IF
+      END DO
+      IF (.NOT. Found) THEN
+        CALL Fatal('FsiCouplingBlocks', &
+            'Structure/Plate/Shell Solver Index is not an entry in the Block Solvers array')
+      ELSE
+        i = k
+      END IF
+    END IF
+    IF (i > 2) CALL Fatal('FsiCouplingBlocks', &
+        'Use the first two entries of Block Solvers to define FSI coupling')
       
     j = ListGetInteger( Params,'Fluid Solver Index',Found)
     IF(.NOT. Found ) THEN
@@ -1683,6 +1709,25 @@ CONTAINS
         j = ListGetInteger( Params,'Pressure Solver Index',IsPres)
       END IF
     END IF
+
+    IF (j > 0) THEN
+      Found = .FALSE.
+      DO k=1,SIZE(ConstituentSolvers)
+        IF (j == ConstituentSolvers(k)) THEN
+          Found = .TRUE.
+          EXIT
+        END IF
+      END DO
+      IF (.NOT. Found) THEN
+        CALL Fatal('FsiCouplingBlocks', &
+            'Fluid/NS/Pressure Solver Index is not an entry in the Block Solvers array')
+      ELSE
+        j = k
+      END IF
+    END IF
+    IF (j > 2) CALL Fatal('FsiCouplingBlocks', &
+        'Use the first two entries of Block Solvers to define FSI coupling')
+
     IF( j == 0 ) THEN
       IF( i > 1 .AND. TotMatrix % NoVar == 2 ) j = 3 - i 
     END IF
@@ -1695,7 +1740,10 @@ CONTAINS
       IF( j > 0 ) CALL Warn('FsiCouplingBlocks','Fluid solver given but not structure!')
       RETURN
     END IF
-      
+    
+!    IF (i > TotMatrix % NoVar .OR. j > TotMatrix % NoVar) &
+!        CALL Fatal('FsiCouplingBlocks','Use solver sections 1 and 2 to define FSI coupling') 
+  
     A_fs => TotMatrix % Submatrix(j,i) % Mat
     A_sf => TotMatrix % Submatrix(i,j) % Mat
     

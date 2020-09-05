@@ -6961,7 +6961,7 @@ END SUBROUTINE SetNodalSources
 
 !------------------------------------------------------------------------------
 !> Sets nodal loads directly to the matrix structure. 
-!> The intended use for this, is for example, in multiphysics coupling where
+!> The intended use for this is, for example, in multiphysics coupling where
 !> the nodal loads may have been computed by another solver. 
 !------------------------------------------------------------------------------
    SUBROUTINE SetNodalLoads( Model, A, b, Name, DOF, NDOFs, Perm )
@@ -14882,12 +14882,12 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   
   
   IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
-    CALL Warn('CgangeToHarmonicSystem','Not applicable without a variable')
+    CALL Warn('ChangeToHarmonicSystem','Not applicable without a variable')
     RETURN    
   END IF
 
   IF( .NOT. ASSOCIATED( Solver % Matrix ) ) THEN
-    CALL Warn('CgangeToHarmonicSystem','Not applicable without a matrix')
+    CALL Warn('ChangeToHarmonicSystem','Not applicable without a matrix')
     RETURN    
   END IF
   

@@ -1018,7 +1018,7 @@ END INTERFACE
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
 
-       CALL Info('AddVtuOutputSolverHack','Finished appeding VTU output solver',Level=12)
+       CALL Info('AddVtuOutputSolverHack','Finished appending VTU output solver',Level=12)
        
      END SUBROUTINE AddVtuOutputSolverHack
 
@@ -1102,7 +1102,7 @@ END INTERFACE
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'scalars:' )
 
-       CALL Info('AddSaveScalarsHack','Finished appeding SaveScalars solver',Level=12)
+       CALL Info('AddSaveScalarsHack','Finished appending SaveScalars solver',Level=12)
        
      END SUBROUTINE AddSaveScalarsHack
 

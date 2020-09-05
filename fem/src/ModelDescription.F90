@@ -5575,7 +5575,7 @@ END SUBROUTINE GetNodalElementSize
     CALL Info('FreeSolver','Free solver matrix',Level=20)
     CALL FreeMatrix(Solver % Matrix)
 
-    CALL Info('FreeSolver','Free solver miscallenous',Level=20)
+    CALL Info('FreeSolver','Free solver miscellaneous',Level=20)
     CALL FreeValueList(Solver % Values)
     IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
     IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
