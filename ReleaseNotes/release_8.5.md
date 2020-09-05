@@ -1,7 +1,7 @@
 Elmer Release Notes for version 8.5
 ===================================
 
-Previous release: **8.5**  
+Previous release: **8.4**  
 Period covered: **18 Dec 2018 - 30 Aug 2020**  
 Number of commits: **~1140** (excluding merges)  
 
