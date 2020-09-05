@@ -2142,7 +2142,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
   END IF
 
-  HasThinLines = ListGetLogicalAnyBC(Model,'Thin Line Crossection Area')
+  HasThinLines = ListCheckPresentAnyBC(Model,'Thin Line Crossection Area')
   IF(HasThinLines) THEN
     ThinLinePower = 0._dp
     ALLOCATE(ThinLineCrossect(n), ThinLineCond(n))
