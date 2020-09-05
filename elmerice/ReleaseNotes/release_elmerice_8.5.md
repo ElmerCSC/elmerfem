@@ -11,6 +11,13 @@ These release notes provide information on most essential changes in Elmer/Ice f
 ```bash
 git log --since="2018-12-18" -- elmerice
 ```
+Overview of changes/enhancements
+--------------------------------
+
+- improvements to inversion methods
+- a set of changes to allow coupling of the GlaDS solvers with the calving solvers in a two-mesh, 3D simulation. Includes a new plume solver that currently relies on the external ODEPack library (not included in the Elmer distribution).
+- a new thermodynaically consistent model for permafrost with saturated aquifers
+
 
 New Solver/Userfunction Modules
 --------------------------------
