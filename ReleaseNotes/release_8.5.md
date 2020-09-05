@@ -63,6 +63,7 @@ Enhanced Solver Modules
 ### StressSolver
 - Added Maxwell visco-elastic model to linear elasticity solver
 - possible also to be run incrompressible (introducing pressure variable)
+- optional pre-stress advection term for layered Earth-deformation model
 
 ElmerSolver library functionality
 ---------------------------------
