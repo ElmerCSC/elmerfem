@@ -16,7 +16,7 @@ New Solver/Userfunction Modules
 --------------------------------
 - `Calving3D_lset.F90`: Return calving as a level set function (work in progress).
 - `CalvingRemeshMMG.F90`: Cut a calving event directly out of a 3D mesh without external gmsh or mesh extrusion. Initial work on allowing calving margins to migrate.
-- `PlumeSolver.F90` (associated ODEPack library files: `opkda1.F`, `opkda2.F`, `opkdmain.F`): Provides plume melt rates across the calving front of a glacier. Fed by output from GlaDS solvers. Simulates a continuous sheet-style plume across entire front, split up into segments defined by frontal nodes and mesh resolution.
+- `PlumeSolver.F90` - associated ODEPack library files: `opkda1.F`, `opkda2.F`, `opkdmain.F`(not included in Elmer reopsitory): Provides plume melt rates across the calving front of a glacier. Fed by output from GlaDS solvers. Simulates a continuous sheet-style plume across entire front, split up into segments defined by frontal nodes and mesh resolution.
 
 - `CalvingHydroInterp.F90`: Interpolates required variables between 3D ice mesh and 2D hydrology mesh, if using a multi-mesh approach. This is more complicated than it sounds.
 
@@ -24,6 +24,8 @@ New Solver/Userfunction Modules
 - `USF_SourceCalcCalving.F90`: Uuser function that calculates the source term for GlaDS as a combination of surface melt (provided in some user-specified variable or input file) and basal melt (worked out automatically from the residual of the TemperateIce solver)
 - `BasalMelt3D.F90`: Solver that works out basal melt on ungrounded portions of a glacier.
 - `GMValid.F90`: Solver that discriminates between ungrounded areas that are connected to the fjord and isolated ungrounded patches inland.
+- `Permafrost.F90`: Collection of solvers for permafrost simlations of a saturated aquifer including heat transfer and phase change as well as solute transport and mechanical deformation (the later involving the linear elasticity solver)
+- `PermafrostMaterials.F90`: module for material functions given by either a thermodynamically consistent model by Hartikainen or a simplified model by Andersson. Reads default values from `permafrostsolutedb.dat`and `permafrostmaterialdb.dat`.
 
 Enhanced Solver/Userfunction Modules
 ------------------------------------
