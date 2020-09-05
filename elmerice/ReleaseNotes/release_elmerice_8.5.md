@@ -24,7 +24,7 @@ New Solver/Userfunction Modules
 - `USF_SourceCalcCalving.F90`: Uuser function that calculates the source term for GlaDS as a combination of surface melt (provided in some user-specified variable or input file) and basal melt (worked out automatically from the residual of the TemperateIce solver)
 - `BasalMelt3D.F90`: Solver that works out basal melt on ungrounded portions of a glacier.
 - `GMValid.F90`: Solver that discriminates between ungrounded areas that are connected to the fjord and isolated ungrounded patches inland.
-- `Permafrost.F90`: Collection of solvers for permafrost simlations of a saturated aquifer including heat transfer and phase change as well as solute transport and mechanical deformation (the later involving the linear elasticity solver)
+- `Permafrost.F90`: Collection of solvers for permafrost simlations of a saturated aquifer including heat transfer and phase change as well as solute transport and mechanical deformation (the latter involving the linear elasticity solver)
 - `PermafrostMaterials.F90`: module for material functions given by either a thermodynamically consistent model by Hartikainen or a simplified model by Andersson. Reads default values from `permafrostsolutedb.dat`and `permafrostmaterialdb.dat`.
 
 Enhanced Solver/Userfunction Modules
@@ -32,7 +32,7 @@ Enhanced Solver/Userfunction Modules
 - `GlaDSCoupledSolver.F90`: modified to work on a secondary hydrology mesh (as opposed to the primary ice mesh) and to discriminate properly between fjord-connected ungrounded areas and isolated ungrounded patches inland. Also should work on the basal boundary of an internally extruded 3D mesh.
 - `GlaDSchannelSolver.F90`:  changes to achieve the same outcome as above.
 - `CalvingRemesh.F90` and `Calving3D.F90`: changed to avoid interpolating hydrology-specific solvers to the ice mesh after calving. Also changed to allow ice solvers and calving to run at different timestep to hydrology.
-- `GroundedSolver.F90: Minor tweak to allow frontal grounded basal nodes to be listed as grounding-line nodes, so that the plume solver knows where to stick plumes
+- `GroundedSolver.F90`: Minor tweak to allow frontal grounded basal nodes to be listed as grounding-line nodes, so that the plume solver knows where to stick plumes
 
 
 ElmerSolver library functionality
