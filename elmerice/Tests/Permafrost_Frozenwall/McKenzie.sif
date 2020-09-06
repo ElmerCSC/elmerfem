@@ -53,6 +53,7 @@ End
 
 Material 1
    Density = 1.0 ! Just a dummy
+   Rock Material File = File "McKenzie.dat"
    Rock Material ID = Integer 1
    Conductivity Arithmetic Mean Weight = Real 0.5
    Temperature Variable = Equals "PFTemp"
