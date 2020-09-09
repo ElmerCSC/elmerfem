@@ -1,0 +1,263 @@
+!echo on
+!Check Keywords "Warn"
+$p0=0.0  ! 101032.0 
+$gauge=0.0
+$grav=0.0 ! 9.81 switch off, as else own weight would deform more than anything else
+$T0 = 273.15
+$deltaT = 20.0
+$filename="biot_nograv_dI"
+$elmnttype="p:1 b:1"
+$directsolver="UMFPACK"
+
+Header :: Mesh DB "." "biot"
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  TimeStepping Method = BDF  
+  BDF Order = 1         
+  Timestep Sizes(1) = $	 1.0 * 3600.0
+  TimeStep Intervals(1) = 30
+  Output Intervals(1) = 30 
+  Steady State Max Iterations = 1 ! this needs to be reduced to max 2 if running Lagrangian mesh scheme
+  Steady State Min Iterations = 1
+  !Output File = $filename".result"
+  Initialize Dirichlet Conditions = Logical False
+  Restart Before Initial Conditions = Logical True
+  Coordinate Mapping(3) = Integer 1 2 3
+  Max Output Level = 3
+  End
+
+Constants
+  Gravity(4) = 0 -1 0 $grav
+  Reference Temperature = Real 273.15
+  Reference Pressure = Real $p0
+  Gas Constant = Real 8.3145
+  Permafrost DeltaT = Real 1.0
+  Permafrost eps = Real 0.99
+  Avogadro Number = Real 6.022140857E23
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body Force  1
+  Stress Bodyforce at IP = Logical True
+  Stress Bodyforce 2 = Variable PFTemp, GWPressure, Porosity, Salinity, Xi
+    Real Procedure "ElmerIceSolvers" "GetElasticityForce"
+  Stress Bodyforce 1 = 0.0
+  Stress Pressure = Equals GWPressure  
+End
+
+Material 1
+   Density = 1.0 ! Just a dummy
+   Rock Material File = File "./biot.dat"
+   Rock Material ID = Integer 1
+   Conductivity Arithmetic Mean Weight = Real 0.5
+   Radiogenic Reference Depth = Real 10000.0
+  Youngs Modulus = Variable Porosity, Xi
+     Real Procedure "ElmerIceSolvers" "GetEG"
+  Poisson Ratio =   Variable Porosity, Xi
+     Real  Procedure "ElmerIceSolvers" "GetNuG"
+  Youngs Modulus at IP = Logical True
+  Poisson Ratio at IP = Logical True
+  Temperature Variable = Equals "PFTemp"
+  Porosity Variable = Equals "Porosity"
+  Salinity Variable = Equals "Salinity"
+  Pressure Variable = Equals "GWPressure"
+  Stress Invariant Velocity Variable = Equals "Stress Invariant Velocity"
+End
+
+Equation 1
+  Active Solvers(7) = 1 2 3 4 5 6 7
+End
+
+! flow depth
+Solver 1
+  Equation = "Flowdepth"
+  Exec Solver = "Never"
+
+  Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+  Variable = String "Depth"
+  Variable DOFs = 1
+  Freesurf Name = String "Surface"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = $directsolver
+  Gradient = Real -1.0E00
+
+  Calc Free Surface = Logical FALSE
+End
+
+
+! dummy (pre-processing) solver setting temperature
+Solver 2
+  Equation = "Permafrost"
+  Element = $elmnttype 
+  Exec Solver = "Never"
+  Output Xi = Logical True
+   Variable = "PFTemp"
+  Procedure = "ElmerIceSolvers" "PermaFrostHeatTransfer"
+  Linear System Solver = Direct
+  Linear System Direct Method = $directsolver
+  Output Xi = Logical True
+  Steady State Convergence Tolerance = 1e-03
+  Exported Variable 1 = -dofs 1 "Salinity"
+  Initialize Steady State = Logical True
+End
+
+! groundwater flow (Darcy) yeilding pressure as solution
+Solver 3
+  Equation = "Darcy"
+  Element = $elmnttype 
+  Variable = -dofs 1 "GWPressure"
+  Procedure = "ElmerIceSolvers" "PermafrostGroundwaterFlow"  
+  !Linear System Solver = Direct
+  !Linear System Direct Method = "umfpack"
+   Linear System Solver = Iterative
+  Linear System Iterative Method  = BiCGStab
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1e-09
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance = 1e-06
+  Steady State Convergence Tolerance = 1e-03
+  Linear System Nullify Guess = Logical True
+  Initialize Steady State = Logical True
+  Compute Deformation = Logical True
+  ! needed to get gorundwater flux in output
+  Exported Variable 1 = -IP "Groundwater Flux 1"
+  Exported Variable 2 = -IP "Groundwater Flux 2"        
+End
+
+
+! lin ealisticyt solver for bedrock deformation
+Solver 4
+  Equation = "Bedrock Deformation"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "bedrock deformation"
+  Variable DOFs = Integer 2
+  Calculate Stresses = True
+  Calculate Strains = True
+  Displace Mesh = Logical False ! switch to True for Lagrangian scheme 
+  Quasi Stationary = Logical True ! no mass-matrix, despite finite densities
+  
+  Linear System Solver = Direct
+  Linear System Symmetric = Logical True
+  Linear System Scaling = Logical False
+  Linear System Direct Method = $directsolver
+
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+
+  Steady State Convergence Tolerance= 1.0e-3
+  Bedrock Deformation Velocity = Logical True
+  Optimize Bandwidth = True
+  Bubbles in global system = False
+End
+
+! computes invariant from stress needed in Darcy source term
+Solver 5
+  Equation = "Compute Invariant"
+  Element = $elmnttype
+  Procedure = "ElmerIceSolvers" "PermafrostStressInvariant"
+  Variable = -dofs 1 "Stress Invariant"
+  Stress Variable Name = String "Stress"
+  Pressure Variable = String "GWPressure"
+  Exported Variable 1 = -dofs 1 "Stress Invariant Velocity"
+  Bubbles in global system = False
+End
+
+!computes change in porosity based on strain from lin. elasiticyt solver
+Solver 6
+   Equation = "Compute Porosity"
+   !Exec Solver = "Never"
+   Exec Solver = "After Timestep"
+   Procedure = "ElmerIceSolvers" "PermafrostPorosityEvolution"
+   Element = $elmnttype
+   Variable = -dofs 1 Porosity
+   Strain Variable = String "strain"
+   Temperature Variable = String "PFTemp"
+   Salinity Variable = String "Salinity" 
+   Pressure Variable = String "GWPressure"
+End
+
+
+Solver 7
+  Equation = "ResultOutput"
+  Element = $elmnttype	
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Exec Solver = "After Timestep"
+  Exec Interval = 10
+  VTU Format = True
+  Output File Name = $filename
+  Scalar Field 1 = "PFTemp"
+  Scalar Field 2 = "GWPressure"
+  Scalar Field 3 = "Porosity"
+  Scalar Field 4 = "Stress Invariant"
+  Scalar Field 5 = "Stress Invariant Velocity"
+  Scalar Field 6 = "Groundwater Flux 1"
+  Scalar Field 7 = "Groundwater Flux 2"
+  Vector Field 1 = "Bedrock Deformation"
+  Vector Field 2 = "Stress"
+  Vector Field 3 = "Strain"
+  Save Geometry Ids = True
+  Discontinuous Galerkin = Logical True
+  Discontinuous Bodies = Logical True
+End
+
+
+Initial Condition 1
+   PFTemp = Real $T0 + deltaT
+   GWPressure = Real $p0
+   Porosity = Real 0.4
+   Xi = Real 1.0
+   Salinity = Real 0.0
+End
+
+Boundary Condition 1
+  Name = "sides"
+  Target Boundaries(1) = 4
+  Bedrock Deformation 1 = Real 0.0
+  PFTemp = Real $T0 + deltaT
+End
+
+Boundary Condition 2
+  Name = "bottom"
+  Target Boundaries = 3
+  PFTemp = Real $T0 + deltaT
+  Bedrock Deformation 2 = Real 0.0
+  Bedrock Deformation 1 = Real 0.0  
+End
+
+Boundary Condition 3
+  Name = "top free"
+  Target Boundaries = 2
+  GWPressure = Real $p0
+  Save Line = Logical True
+  Depth = Real 0.0
+  Normal Force = $-p0
+End
+
+Boundary Condition 4
+  Name = "top force"
+  Target Boundaries = 1
+  GWPressure = Real $p0
+  Save Line = Logical True
+  Depth = Real 0.0
+  Normal Force = Variable Time
+      Real MATC "(tx > 2 * 3600 )*(tx < 20* 3600)*(-1.0e05) - p0"
+End
+
+Solver 3 :: Reference Norm = Real 40.361370
+Solver 3 :: Reference Norm Tolerance = Real 1E-04
+Solver 4 :: Reference Norm = Real 0.16666636E-03
+Solver 4 :: Reference Norm Tolerance = Real 1E-05
+$fprintf( stderr, "Permafrost: Biot wihout gravity \n");
+RUN
+$fprintf( stderr, "Permafrost: Biot without gravity: Target NRM Solver 3/4 = 40.361370/0.16666636E-03\n" );
