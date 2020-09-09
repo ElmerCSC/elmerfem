@@ -54,6 +54,8 @@
 #include "egparallel.h" 
 
 
+#define getline fgets(line,MAXLINESIZE,in) 
+
 
 int SaveCellInfo(struct GridType *grid,struct CellType *cell,
 		 char *prefix,int info)
