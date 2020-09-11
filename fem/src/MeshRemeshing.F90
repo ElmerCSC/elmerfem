@@ -32,10 +32,12 @@ CONTAINS
 !============================================
 
 
-SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
+SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Parallel
+  INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
+  INTEGER, OPTIONAL :: PairCount
 
 #ifdef HAVE_MMG
   TYPE(Element_t),POINTER :: Element
@@ -43,7 +45,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
 
   INTEGER :: i,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ref,ierr
   INTEGER, ALLOCATABLE :: NodeRefs(:)
-  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.
+  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_MMG3D_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("MMG3D","Only works for 3D meshes!")
 
@@ -148,6 +150,17 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
     END SELECT
   END DO
   IF (DEBUG) PRINT *,'--**-- MMG3D - Set elements DONE'
+
+  !! use element pairs '202' elements
+  Elem202 = (PRESENT(EdgePairs))
+  If (Elem202) THEN
+    DO i=1, PairCount
+      NEdges = NEdges + 1 
+      CALL MMG3D_Set_edge(mmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, nedges, ierr)
+    END DO
+  END IF
+
+  IF (DEBUG) PRINT *, '--**-- MMG3D - Set edge elements DONE'
 
 #else
      CALL FATAL('Set_MMG3D_Mesh',&
@@ -924,10 +937,11 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
        hgrad,ierr)
 
   !Turn off sharp angle detection (0)
+  print *, 'first call of angle detection $$$- turned off'     
   CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle, &
        0,ierr)
   !Option to set angle detection threshold:
-  ! CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
+  !CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
   !      85.0_dp,ierr)
 
 
