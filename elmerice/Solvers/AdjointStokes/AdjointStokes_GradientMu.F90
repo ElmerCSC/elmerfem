@@ -45,11 +45,11 @@
 !
 ! Sometimes a modified function of viscosity is used such that viscosity != optvar and instead
 ! viscosity = f(optvar) where optvar is the variable to be optimised.  In this case the 'Viscosity
-! derivative' must be set in the boundary condition. The USF_CoV functions can be used for this.
+! derivative' must be set in the material section. The USF_CoV functions can be used for this.
 ! For example, for the case viscosity = optvar^2, viscosity can be set like this in the material section:
 !   viscosity = variable optvar
 !     REAL procedure "ElmerIceUSF" "Asquare"
-! And the partial derivative can be set like this in the BC section:
+! And the partial derivative can be set like this:
 !   Viscosity derivative = Variable optvar
 !     REAL procedure "ElmerIceUSF" "Asquare_d"
 !
@@ -59,7 +59,7 @@
 !       -Optimise_m1qn3[Serial/Parallel].f90: for the optimization
 !
 ! *****************************************************************************
-SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
+SUBROUTINE  AdjointStokes_GradientMuSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
   USE DefUtils
@@ -284,7 +284,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   RETURN
   
 !------------------------------------------------------------------------------
-END SUBROUTINE DJDMu_Adjoint
+END SUBROUTINE AdjointStokes_GradientMuSolver
 !------------------------------------------------------------------------------
 
 
