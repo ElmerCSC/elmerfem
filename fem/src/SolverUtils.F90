@@ -13771,7 +13771,7 @@ END FUNCTION SearchNodeL
     NeedPrevSol = ResidualMode
 
     IF(.NOT. NeedPrevSol ) THEN
-      Relaxation = ListGetConstReal( Params, &
+      Relaxation = ListGetCReal( Params, &
           'Nonlinear System Relaxation Factor', Found )
       IF( Found ) NeedPrevSol = (Relaxation /= 1.0_dp)
     END IF

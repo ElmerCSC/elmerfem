@@ -2705,7 +2705,12 @@ use spariterglobals
 
       IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
 
-      ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
+      IF( n == 1 ) THEN
+        ptr % TYPE = LIST_TYPE_INTEGER
+      ELSE
+        ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
+      END IF
+      
       ptr % IValues(1:n) = IValues(1:n)
 
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
@@ -3296,10 +3301,10 @@ use spariterglobals
        CALL ListPopActiveName()
 
      CASE( LIST_TYPE_VARIABLE_SCALAR, LIST_TYPE_VARIABLE_SCALAR_STR )       
-       CALL Fatal('ListGetConstReal','Constant cannot depend on variables!')
+       CALL Fatal('ListGetConstReal','Constant cannot depend on variables: '//TRIM(Name))
 
      CASE DEFAULT
-       CALL Fatal('ListGetConstReal','Cannot evaluate list type!')       
+       CALL Fatal('ListGetConstReal','Invalid list type for: '//TRIM(Name))       
        
      END SELECT
 
