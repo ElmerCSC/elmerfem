@@ -60,6 +60,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
   ntris = 0
   nquads = 0
   nedges = 0
+  IF(Present(PairCount)) NEdges= PairCount
 
   nbulk = Mesh % NumberOfBulkElements
   nbdry = Mesh % NumberOfBoundaryElements
@@ -153,7 +154,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 
   !! use element pairs '202' elements
   Elem202 = (PRESENT(EdgePairs))
-  If (Elem202) THEN
+  IF (Elem202) THEN
     DO i=1, PairCount
       NEdges = NEdges + 1 
       CALL MMG3D_Set_edge(mmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, nedges, ierr)

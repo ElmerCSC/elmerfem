@@ -48,6 +48,10 @@ MODULE CalvingGeometry
    MODULE PROCEDURE Double2DArraySizeP, Double2DArraySizeA
   END INTERFACE
 
+  INTERFACE Double3DArraySize
+   MODULE PROCEDURE Double3DArraySizeP, Double3DArraySizeA
+  END INTERFACE
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Derived type for 3D crevasse group info
   ! 
@@ -3879,6 +3883,60 @@ CONTAINS
 
    END SUBROUTINE Double2DArraySizeP
 
+   SUBROUTINE Double3DArraySizeA(Vec, fill)
+      !only doubles size in one dimension
+      INTEGER, ALLOCATABLE :: Vec(:,:,:)
+      INTEGER, OPTIONAL :: fill
+      !----------------------------------------
+      INTEGER, ALLOCATABLE :: WorkVec(:,:,:), D(:)
+      
+      ALLOCATE(D(3))
+      d = SHAPE(Vec)
+
+      ALLOCATE(WorkVec(d(1), d(2),d(3)))
+
+      WorkVec = Vec
+      
+      DEALLOCATE(Vec)
+      ALLOCATE(Vec(d(1),d(2),2*d(3)))
+
+      IF(PRESENT(fill)) THEN
+         Vec = fill
+      ELSE
+         Vec = 0
+      END IF
+
+      Vec(:,:,1:d(3)) = WorkVec
+
+   END SUBROUTINE Double3DArraySizeA
+
+   SUBROUTINE Double3DArraySizeP(Vec, fill)
+      !only doubles size in one dimension
+      INTEGER, POINTER :: Vec(:,:,:)
+      INTEGER, OPTIONAL :: fill
+      !----------------------------------------
+      INTEGER, ALLOCATABLE :: WorkVec(:,:,:), D(:)
+      
+      ALLOCATE(D(3))
+      d = SHAPE(Vec)
+
+      ALLOCATE(WorkVec(d(1), d(2),d(3)))
+
+      WorkVec = Vec
+      
+      DEALLOCATE(Vec)
+      ALLOCATE(Vec(d(1),d(2),2*d(3)))
+
+      IF(PRESENT(fill)) THEN
+         Vec = fill
+      ELSE
+         Vec = 0
+      END IF
+
+      Vec(:,:,1:d(3)) = WorkVec
+
+   END SUBROUTINE Double3DArraySizeP
+
    SUBROUTINE GetCalvingEdgeNodes(Mesh, Parallel, Shared, TotalCount)
       ! Cycle through all 303 elements of GatheredMesh, creating lists of those
       ! on the top surface, bottom surface, calving front, possibly also lateral
@@ -3894,314 +3952,112 @@ CONTAINS
       LOGICAL :: Parallel
       !---------------
       INTEGER :: i,j,k, &
-            BoundaryNumber, NumNodes, FirstCount, SecondCount, ThirdCount, FourthCount, &
-            FifthCount, SixthCount, CountOneTwo, CountOneThree, CountOneFour, CountOneFive, &
-            CountOneSix, Match, TotalCount
-      INTEGER, ALLOCATABLE :: ElementNodes(:), FirstBdryNodes(:,:), &
-            SecondBdryNodes(:,:), ThirdBdryNodes(:,:), FourthBdryNodes(:,:), FifthBdryNodes(:,:), &
-            SixthBdryNodes(:,:), SharedOneTwo(:,:), SharedOneThree(:,:), SharedOneFour(:,:), &
-            SharedOneFive(:,:), SharedOneSix(:,:), shared(:, :)
+            BoundaryNumber, NumNodes, Match, BoundaryID, TotalCount
+      INTEGER, ALLOCATABLE :: ElementNodes(:), Counts(:), BdryNodes(:,:,:), &
+            SharedOne(:,:,:), CountOne(:), Shared(:, :)
       LOGICAL :: Debug, Counted, FirstMatch, SecondMatch, ThirdMatch
       CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
       SolverName = 'GetCalvingEdgeNodes'
 
       IF (Parallel) CALL Fatal(SolverName, 'Written to run in serial with MMG')
 
-      FirstCount = 0
-      SecondCount = 0
-      ThirdCount = 0
-      FourthCount = 0
-      FifthCount = 0
-      SixthCount = 0
-
-
-      ALLOCATE(FirstBdryNodes(3,100), &
-              SecondBdryNodes(3,100), &
-              ThirdBdryNodes(3,100), &
-              FourthBdryNodes(3,100), &
-              FifthBdryNodes(3,100), &
-              SixthBdryNodes(3,100))
-
-      DO i=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-        Element => Mesh % Elements(i)
-        ElementNodes = Element % NodeIndexes
-        BoundaryNumber = Element % BoundaryInfo % constraint
-        
-        NumNodes = Element % TYPE % NumberOfNodes
-        IF (NumNodes /= 3) CALL FATAL(Solvername, "BoundaryElements must be 303s")
-
-        IF (BoundaryNumber == 1) THEN
-          FirstCount = FirstCount + 1 
-          IF(FirstCount > SIZE(FirstBdryNodes(1,:))) THEN
-            IF(Debug) PRINT *, 'FirstBdryNodes, doubling size of node array.'
-            CALL Double2DArraySize(FirstBdryNodes)
-          END IF
-          FirstBdryNodes(:, FirstCount) = ElementNodes 
-        ELSE IF (BoundaryNumber == 2) THEN
-          SecondCount = SecondCount + 1 
-          IF(SecondCount > SIZE(SecondBdryNodes(1,:))) THEN
-            IF(Debug) PRINT *, 'SecondBdryNodes, doubling size of node array.'
-            CALL Double2DArraySize(SecondBdryNodes)
-          END IF
-          SecondBdryNodes(:,SecondCount) = ElementNodes
-        ELSE IF (BoundaryNumber == 3) THEN             
-          ThirdCount = ThirdCount + 1 
-          IF(ThirdCount > SIZE(ThirdBdryNodes(1,:))) THEN
-            IF(Debug) PRINT *, 'ThirdBdryNodes, doubling size of node array.'
-            CALL Double2DArraySize(ThirdBdryNodes)
-          END IF
-          ThirdBdryNodes(:,ThirdCount) = ElementNodes
-        ELSE IF (BoundaryNumber == 4) THEN
-          FourthCount = FourthCount + 1 
-          IF(FourthCount > SIZE(FourthBdryNodes(1,:))) THEN
-            IF(Debug) PRINT *, 'FourthBdryNodes, doubling size of node array.'
-            CALL Double2DArraySize(FourthBdryNodes)
-          END IF
-          FourthBdryNodes(:,FourthCount) = ElementNodes
-        ELSE IF (BoundaryNumber == 5) THEN
-          FifthCount = FifthCount + 1 
-          IF(FifthCount > SIZE(FifthBdryNodes(1,:))) THEN
-            IF(Debug) PRINT *, 'FifthBdryNodes, doubling size of node array.'
-            CALL Double2DArraySize(FifthBdryNodes)
-          END IF
-          FifthBdryNodes(:,FifthCount) = ElementNodes
-        ELSE IF (BoundaryNumber == 6) THEN
-          SixthCount = SixthCount + 1 
-          IF(SixthCount > SIZE(SixthBdryNodes(1,:))) THEN
-            IF(Debug) PRINT *, 'SixthBdryNodes, doubling size of node array.'
-            CALL Double2DArraySize(SixthBdryNodes)
-          END IF
-          SixthBdryNodes(:,SixthCount) = ElementNodes
-        ELSE
-          print *, ElementNodes(j), BoundaryNumber
-          CALL FATAL(Solvername, "BoundaryElement: has no boundary number")
-        END IF
+      ALLOCATE(Counts(6))
+      DO i=1,6
+         Counts(i) = 0
       END DO
 
-            !set counts for calving and other boundary shared nodes
-      CountOneTwo = 0
-      CountOneThree = 0
-      CountOneFour = 0
-      CountOneFive = 0
-      CountOneSix = 0
+      ALLOCATE(BdryNodes(6,3,100))
+
+      DO i=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+         Element => Mesh % Elements(i)
+         ElementNodes = Element % NodeIndexes
+         BoundaryNumber = Element % BoundaryInfo % constraint
+        
+         NumNodes = Element % TYPE % NumberOfNodes
+         IF (NumNodes /= 3) CALL FATAL(Solvername, "BoundaryElements must be 303s")
+
+         DO BoundaryID=1,6
+            IF (BoundaryNumber == BoundaryID) THEN
+               Counts(BoundaryID) = Counts(BoundaryID) + 1
+               IF (Counts(BoundaryID) > SIZE(BdryNodes(BoundaryID,1,:))) THEN
+                  IF(Debug) PRINT *, BoundaryID, 'BdryNodes, doubling array size'
+                  CALL Double3DArraySize(BdryNodes)
+               END IF
+            !ELSE
+            !   print *, ElementNodes(i), BoundaryNumber
+            !   CALL FATAL(Solvername, "BoundaryElement: has no boundary number")
+               BdryNodes(BoundaryID,:,Counts(BoundaryID)) = ElementNodes
+            END IF    
+         END DO
+      END DO
+
+      !set counts for calving and other boundary shared nodes
+      ALLOCATE(CountOne(5))
+      DO i=1,5
+         CountOne(i) = 0
+      END DO
       
       !set allocatables
-      ALLOCATE(SharedOneTwo(2,100), &
-              SharedOneThree(2,100), &
-              SharedOneFour(2,100), &
-              SharedOneFive(2,100), &
-              SharedOneSix(2,100))
+      ALLOCATE(SharedOne(5,2,100))
 
       ! loop for 1-2, 1-3 ... 1-6
       !!! assume one is calving front
-      IF (FirstCount /= 0) THEN
-        DO i=1, FirstCount
-          IF (SecondCount /= 0) THEN
-            DO j=1, SecondCount
-              Match = 0
-              FirstMatch=.FALSE.
-              SecondMatch=.FALSE.
-              ThirdMatch=.FALSE.
-              DO k=1,3
-                IF (FirstBdryNodes(1,i) == SecondBdryNodes(k,j)) THEN
-                  FirstMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(2,i) == SecondBdryNodes(k,j)) THEN
-                  SecondMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(3,i) == SecondBdryNodes(k,j)) THEN
-                  ThirdMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-              END DO
-              IF (Match == 2) THEN
-                CountOneTwo = CountOneTwo + 1
-                IF(CountOneTwo > SIZE(SharedOneTwo(1, :))) THEN
-                  IF(Debug) PRINT *, 'SharedOneTwo, doubling size of node array.'
-                  CALL Double2DArraySize(SharedOneTwo)
-                END IF
-                IF (FirstMatch .AND. SecondMatch) THEN
-                  SharedOneTwo(:,CountOneTwo) = FirstBdryNodes(1:2,i)
-                ELSE IF (SecondMatch .AND. ThirdMatch) THEN
-                  SharedOneTwo(:,CountOneTwo) = FirstBdryNodes(2:3,i)
-                ELSE IF (FirstMatch .AND. ThirdMatch) THEN
-                  SharedOneTwo(1,CountOneTwo) = FirstBdryNodes(1,i)
-                  SharedOneTwo(2,CountOneTwo) = FirstBdryNodes(3,i)
-                END IF
-              ELSE IF (Match == 3) THEN
-                CALL FATAL(Solvername, "BoundaryElement: Duplicated")
-              END IF
+      IF (Counts(1) /= 0) THEN
+         DO i=1, Counts(1)
+            DO BoundaryID=2,6
+               IF (Counts(BoundaryID) /= 0) THEN
+                  DO j=1, Counts(BoundaryID)
+                     Match = 0
+                     FirstMatch=.FALSE.
+                     SecondMatch=.FALSE.
+                     ThirdMatch=.FALSE.
+                     DO k=1,3
+                        IF (BdryNodes(1,1,i) == BdryNodes(BoundaryID,k,j)) THEN
+                           FirstMatch=.TRUE.
+                           Match = Match + 1
+                        END IF
+                        IF (BdryNodes(1,2,i) == BdryNodes(BoundaryID,k,j)) THEN
+                           SecondMatch=.TRUE.
+                           Match = Match + 1
+                        END IF
+                        IF (BdryNodes(1,3,i) == BdryNodes(BoundaryID,k,j)) THEN
+                           ThirdMatch=.TRUE.
+                           Match = Match + 1
+                        END IF
+                     END DO
+                     IF (Match == 2) THEN
+                        CountOne(BoundaryID-1) = CountOne(BoundaryID-1) + 1
+                        IF(CountOne(BoundaryID-1) > SIZE(SharedOne(BoundaryID-1,1, :))) THEN
+                           IF(Debug) PRINT *, 'SharedOne boundaryID-,',BoundaryID, 'doubling size of node array.'
+                           CALL Double3DArraySize(SharedOne)
+                        END IF
+                        IF (FirstMatch .AND. SecondMatch) THEN
+                           SharedOne(BoundaryID-1,:,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,1:2,i)
+                        ELSE IF (SecondMatch .AND. ThirdMatch) THEN
+                           SharedOne(BoundaryID-1,:,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,2:3,i)
+                        ELSE IF (FirstMatch .AND. ThirdMatch) THEN
+                           SharedOne(BoundaryID-1,1,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,1,i)
+                           SharedOne(BoundaryID-1,2,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,3,i)
+                        END IF
+                     ELSE IF (Match == 3) THEN
+                        print*, 1,BdryNodes(1,:,i)
+                        print*, BoundaryID,BdryNodes(BoundaryID,:,j), j
+                        CALL FATAL(Solvername, "BoundaryElement: Duplicated")
+                     END IF
+                  END DO
+               END IF
             END DO
-          END IF
-          IF (ThirdCount /= 0) THEN
-            DO j=1, ThirdCount
-              Match = 0
-              FirstMatch=.FALSE.
-              SecondMatch=.FALSE.
-              ThirdMatch=.FALSE.
-              DO k=1,3
-                IF (FirstBdryNodes(1,i) == ThirdBdryNodes(k,j)) THEN
-                  FirstMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(2,i) == ThirdBdryNodes(k,j)) THEN
-                  SecondMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(3,i) == ThirdBdryNodes(k,j)) THEN
-                  ThirdMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-              END DO
-              IF (Match == 2) THEN
-                CountOneThree = CountOneThree + 1
-                IF(CountOneThree > SIZE(SharedOneThree(1, :))) THEN
-                  IF(Debug) PRINT *, 'SharedOneThree, doubling size of node array.'
-                  CALL Double2DArraySize(SharedOneThree)
-                END IF
-                IF (FirstMatch .AND. SecondMatch) THEN
-                  SharedOneThree(:,CountOneThree) = FirstBdryNodes(1:2,i)
-                ELSE IF (SecondMatch .AND. ThirdMatch) THEN
-                  SharedOneThree(:,CountOneThree) = FirstBdryNodes(2:3,i)
-                ELSE IF (FirstMatch .AND. ThirdMatch) THEN
-                  SharedOneThree(1,CountOneThree) = FirstBdryNodes(1,i)
-                  SharedOneThree(2,CountOneThree) = FirstBdryNodes(3,i)
-                END IF
-              ELSE IF (Match == 3) THEN
-                CALL FATAL(Solvername, "BoundaryElement: Duplicated")
-              END IF
-            END DO
-          END IF
-          IF (FourthCount /= 0) THEN
-            DO j=1, FourthCount
-              Match = 0
-              FirstMatch=.FALSE.
-              SecondMatch=.FALSE.
-              ThirdMatch=.FALSE.
-              DO k=1,3
-                IF (FirstBdryNodes(1,i) == FourthBdryNodes(k,j)) THEN
-                  FirstMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(2,i) == FourthBdryNodes(k,j)) THEN
-                  SecondMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(3,i) == FourthBdryNodes(k,j)) THEN
-                  ThirdMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-              END DO
-              IF (Match == 2) THEN
-                CountOneFour = CountOneFour + 1
-                IF(CountOneFour > SIZE(SharedOneFour(1, :))) THEN
-                  IF(Debug) PRINT *, 'SharedOneFour, doubling size of node array.'
-                  CALL Double2DArraySize(SharedOneFour)
-                END IF
-                IF (FirstMatch .AND. SecondMatch) THEN
-                  SharedOneFour(:,CountOneFour) = FirstBdryNodes(1:2,i)
-                ELSE IF (SecondMatch .AND. ThirdMatch) THEN
-                  SharedOneFour(:,CountOneFour) = FirstBdryNodes(2:3,i)
-                ELSE IF (FirstMatch .AND. ThirdMatch) THEN
-                  SharedOneFour(1,CountOneFour) = FirstBdryNodes(1,i)
-                  SharedOneFour(2,CountOneFour) = FirstBdryNodes(3,i)
-                END IF
-              ELSE IF (Match == 3) THEN
-                CALL FATAL(Solvername, "BoundaryElement: Duplicated")
-              END IF
-            END DO
-          END IF
-          IF (FifthCount /= 0) THEN
-            DO j=1, FifthCount
-              Match = 0
-              FirstMatch=.FALSE.
-              SecondMatch=.FALSE.
-              ThirdMatch=.FALSE.
-              DO k=1,3
-                IF (FirstBdryNodes(1,i) == FifthBdryNodes(k,j)) THEN
-                  FirstMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(2,i) == FifthBdryNodes(k,j)) THEN
-                  SecondMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(3,i) == FifthBdryNodes(k,j)) THEN
-                  ThirdMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-              END DO
-              IF (Match == 2) THEN
-                CountOneFive = CountOneFive + 1
-                IF(CountOneFive > SIZE(SharedOneFive(1, :))) THEN
-                  IF(Debug) PRINT *, 'SharedOneFive, doubling size of node array.'
-                  CALL Double2DArraySize(SharedOneFive)
-                END IF
-                IF (FirstMatch .AND. SecondMatch) THEN
-                  SharedOneFive(:,CountOneFive) = FirstBdryNodes(1:2,i)
-                ELSE IF (SecondMatch .AND. ThirdMatch) THEN
-                  SharedOneFive(:,CountOneFive) = FirstBdryNodes(2:3,i)
-                ELSE IF (FirstMatch .AND. ThirdMatch) THEN
-                  SharedOneFive(1,CountOneFive) = FirstBdryNodes(1,i)
-                  SharedOneFive(2,CountOneFive) = FirstBdryNodes(3,i)
-                END IF
-              ELSE IF (Match == 3) THEN
-                CALL FATAL(Solvername, "BoundaryElement: Duplicated")
-              END IF
-            END DO
-          END IF
-          IF (SixthCount /= 0) THEN
-            DO j=1, SixthCount
-              Match = 0
-              FirstMatch=.FALSE.
-              SecondMatch=.FALSE.
-              ThirdMatch=.FALSE.
-              DO k=1,3
-                IF (FirstBdryNodes(1,i) == SixthBdryNodes(k,j)) THEN
-                  FirstMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(2,i) == SixthBdryNodes(k,j)) THEN
-                  SecondMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-                IF (FirstBdryNodes(3,i) == SixthBdryNodes(k,j)) THEN
-                  ThirdMatch=.TRUE.
-                  Match = Match + 1
-                END IF
-              END DO
-              IF (Match == 2) THEN
-                CountOneSix = CountOneSix + 1
-                IF(CountOneSix > SIZE(SharedOneSix(1, :))) THEN
-                  IF(Debug) PRINT *, 'SharedOneSix, doubling size of node array.'
-                  CALL Double2DArraySize(SharedOneSix)
-                END IF
-                IF (FirstMatch .AND. SecondMatch) THEN
-                  SharedOneSix(:,CountOneSix) = FirstBdryNodes(1:2,i)
-                ELSE IF (SecondMatch .AND. ThirdMatch) THEN
-                  SharedOneSix(:,CountOneSix) = FirstBdryNodes(2:3,i)
-                ELSE IF (FirstMatch .AND. ThirdMatch) THEN
-                  SharedOneSix(1,CountOneSix) = FirstBdryNodes(1,i)
-                  SharedOneSix(2,CountOneSix) = FirstBdryNodes(3,i)
-                END IF
-              ELSE IF (Match == 3) THEN
-                CALL FATAL(Solvername, "BoundaryElement: Duplicated")
-              END IF
-            END DO
-          END IF
-        END DO 
+         END DO
       END IF
 
-      TotalCount = CountOneTwo+CountOneThree+CountOneThree &
-                  +CountOneFour+CountOneFive+CountOneSix
+      TotalCount = CountOne(1)+CountOne(2) &
+                  +CountOne(3)+CountOne(4)+CountOne(5)
       ALLOCATE(Shared(2, TotalCount))
-      Shared(:,1:CountOneTwo) = SharedOneTwo(:,1:CountOneTwo)
-      Shared(:,CountOneTwo+1:CountOneThree) = SharedOneThree(:, 1:CountOneThree)
-      Shared(:,CountOneThree+1:CountOneFour) = SharedOneFour(:, 1:CountOneFour)
-      Shared(:,CountOneFour+1:CountOneFive) = SharedOneFive(:, 1:CountOneFive)
-      Shared(:,CountOneFive+1:CountOneSix) = SharedOneSix(:, 1:CountOneSix)
+      Shared(:,1:CountOne(1)) = SharedOne(1,:,1:CountOne(1))
+      Shared(:,CountOne(1)+1:CountOne(2)) = SharedOne(2,:,1:CountOne(2))
+      Shared(:,CountOne(1)+CountOne(2)+1:CountOne(3)) = SharedOne(3,:, 1:CountOne(3))
+      Shared(:,CountOne(1)+CountOne(2)+CountOne(3)+1:CountOne(4)) = SharedOne(4,:, 1:CountOne(4))
+      Shared(:,CountOne(1)+CountOne(2)+CountOne(3)+CountOne(4)+1:CountOne(5)) = SharedOne(5,:, 1:CountOne(5))
 
    END SUBROUTINE GetCalvingEdgeNodes
 
