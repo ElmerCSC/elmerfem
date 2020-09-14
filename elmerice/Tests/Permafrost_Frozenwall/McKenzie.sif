@@ -1,0 +1,185 @@
+!echo on
+!Check Keywords "Warn"
+
+#p0=100132.0
+#gauge=500.0
+#grav=9.81
+#Toffset = 0.0
+#deltaT = 4.0
+#yc0=0.0
+#rhogw = 999.9 + yc0*(1740.0 - 999.9)
+#Toffset = 0.0
+#deltaT = 4.0
+
+$elmntstrng="p:1 b:1"
+
+
+
+Header :: Mesh DB "." "frozenwall"
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  TimeStepping Method = BDF  
+  BDF Order = 1
+  Timestep Sizes(1) = #10.0*24.0 * 3600
+  TimeStep Intervals(1) =  4
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 10
+  !Output File = "McKenzie.result"
+  Initialize Dirichlet Conditions = Logical False
+  Max Output Level = 3
+End
+
+Constants
+  Gas Constant = Real 8.3145	
+  Gravity(4) = 0 -1 0 #grav
+  Reference Temperature = Real 273.15
+  Reference Pressure = Real #p0
+  Permafrost DeltaT = Real #deltaT
+  Permafrost eps = Real 0.99
+  Gas Constant = Real 8.3145
+  Avogadro Number = Real 6.022140857E23
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Material 1
+   Density = 1.0 ! Just a dummy
+   Rock Material File = File "McKenzie.dat"
+   Rock Material ID = Integer 1
+   Conductivity Arithmetic Mean Weight = Real 0.5
+   Temperature Variable = Equals "PFTemp"
+   Pressure Variable = Equals "GWPressure"
+   Salinity Variable = Equals "Salinity"
+   Porosity Variable = Equals "eta0"
+End
+
+Equation 1
+  Active Solvers(4) = 1 2 3 4
+End
+
+!==============================================================================
+! /// Initialize ///
+!==============================================================================
+
+Solver 1
+  Equation = "Element Material"
+  Exec Solver = "Before Simulation"
+  Procedure = File "ElmerIceSolvers" "PermafrostElmntOutput"  
+  Export all = Logical True
+End
+
+Solver 2
+  Equation = "Darcy"
+  Element = $elmntstrng
+  Variable = -dofs 1 "GWPressure"
+  Procedure = "ElmerIceSolvers" "PermafrostGroundwaterFlow"  
+  Linear System Solver = Iterative
+  Linear System Iterative Method  = "GCR"
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1e-07
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1e-05
+  Steady State Convergence Tolerance = 1e-03
+  Exported Variable 1 = -IP "Groundwater Flux 1"
+  Exported Variable 2 = -IP "Groundwater Flux 2"	
+  Linear System Nullify Guess = Logical True
+  Compute Time Derivatives = Logical False
+  Exported Variable 3 = -dofs 1 Salinity
+End
+
+Solver 3
+  Equation = "Permafrost"
+  Element = $elmntstrng
+  !Exec Solver = Never
+  Variable = "PFTemp"
+  Output Xi = Logical True
+  Procedure = "ElmerIceSolvers" "PermaFrostHeatTransfer"
+  Output Xi = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method  = BiCGStab
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-07
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Relaxation Factor = $3.0/4.0
+  Steady State Convergence Tolerance = 1e-03
+End
+
+Solver 4
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Exec Solver = "After Timestep"
+  Exec Interval = 4
+  VTU Format = True
+  Output File Name = "McKenzie_.vtu"
+  Scalar Field 1 = "PFTemp"
+  Scalar Field 2 = File "Groundwater Flux 1"
+  Scalar Field 3 = File "Groundwater Flux 2"
+  Scalar Field 4 = "Xi"
+  Save Geometry Ids = Logical True
+  !Discontinuous Galerkin = Logical True
+  !Discontinuous Bodies = Logical True
+  Save Elemental Fields = Logical True
+  Save Bulk Only = Logical True
+End
+
+
+Initial Condition 1
+  Porosity = Real 0.1
+  PFTemp = Real #273.15 + 5.0 + Toffset
+  GWPressure = Real #p0
+  Salinity = Real #yc0
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+  PFTemp = Real #273.15 + 5.0 + Toffset
+  GWPressure = Variable Coordinate 2
+     Real Lua "p0 + gauge + 10.0*(1.0 - 0.1*tx[0])*rhogw*grav"
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+  GWPressure = Variable Coordinate 2
+     Real Lua "p0 + 10.0*(1.0 - 0.1*tx[0])*rhogw*grav"
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+  PFTemp = Real #273.15 - 5.0  + Toffset
+End
+
+Boundary Condition 4
+  Name = "bottom"
+  Target Boundaries = 4
+  ! natural BC's (no flux, adiabatic)
+End
+
+Boundary Condition 5
+  Name = "top"
+  Target Boundaries = 5
+  ! natural BC's (no flux, adiabatic)
+End
+
+Solver 2 :: Reference Norm = Real 99481.811
+Solver 2 :: Reference Norm Tolerance = Real 1E-04
+Solver 3 :: Reference Norm = Real 161.85983
+Solver 3 :: Reference Norm Tolerance = Real 1E-04
+$fprintf( stderr, "Permafrost: Frozenwall (McKenzie) \n");
+RUN
+$fprintf( stderr, "Permafrost: Frozenwall (McKenzie): Target NRM Solver 2/4 = 99481.811/161.85983\n" );
+
+
+

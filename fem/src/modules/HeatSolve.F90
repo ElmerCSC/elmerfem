@@ -936,8 +936,11 @@ END BLOCK
 !------------------------------------------------------------------------------
 !          Given heat source
 !------------------------------------------------------------------------------
-           Load(1:n) = Density(1:n) *  GetReal( BodyForce, 'Heat Source', Found )
-           
+           Load(1:n) = GetReal( BodyForce, 'Volumetric Heat Source', Found )
+           IF(.NOT. Found ) THEN
+             Load(1:n) = Density(1:n) *  GetReal( BodyForce, 'Heat Source', Found )
+           END IF
+             
            IF ( SmartHeaterControl .AND. NewtonLinearization .AND. SmartTolReached) THEN
               IF(  SmartHeaters(bf_id) ) THEN
                HeaterControlLocal = .TRUE.
@@ -2645,7 +2648,7 @@ CONTAINS
 
      INTEGER :: i,j,k,l,n,t,DIM
 
-     LOGICAL :: stat, Found, Compressible
+     LOGICAL :: stat, Found, Compressible, VolSource
      TYPE( Variable_t ), POINTER :: Var
 
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -2824,9 +2827,13 @@ CONTAINS
                  1, Model % NumberOFBodyForces)
 
      NodalSource = 0.0d0
-     IF ( Found .AND. k > 0  ) THEN
-        NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
-               'Heat Source', n, Element % NodeIndexes, Found )
+     IF( k > 0 ) THEN
+       NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
+           'Volumetric Heat Source', n, Element % NodeIndexes, VolSource ) 
+       IF( .NOT. VolSource ) THEN
+         NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
+             'Heat Source', n, Element % NodeIndexes, Found )
+       END IF
      END IF
 
 !
@@ -2873,8 +2880,13 @@ CONTAINS
 !          g^{jk} (C T_{,j}}_{,k} + p div(u) - h
 !       ---------------------------------------------------
 !
-        Residual = -Density * SUM( NodalSource(1:n) * Basis(1:n) )
 
+        IF( VolSource ) THEN
+          Residual = -SUM( NodalSource(1:n) * Basis(1:n) )
+        ELSE
+          Residual = -Density * SUM( NodalSource(1:n) * Basis(1:n) )
+        END IF
+          
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
            DO j=1,DIM
 !

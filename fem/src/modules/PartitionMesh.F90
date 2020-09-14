@@ -1,15 +1,47 @@
-!------------------------------------------------------------------------------
-!> Partition the finite element mesh using a set of different strategies.
-!> This is first a solver, but will perhaps eventually be made an internal routine.
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
 !
-!> The idea is that one could use recursive strategies for different pieces of the 
-!> finite element mesh. This way the physics can be better taken into account than
-!> when using stand alone partitioning tools.
-!
-!> This will hopefully gradually move to the library and become there an fully
-!> integrated strategy making this solver obsolete.
-!
-! P.R.
+!/******************************************************************************
+! *
+! *  Partition the finite element mesh using a set of different strategies.
+! *  This is first a solver, but will perhaps eventually be made an internal routine.
+! *
+! *  The idea is that one could use recursive strategies for different pieces of the 
+! *  finite element mesh. This way the physics can be better taken into account than
+! *  when using stand alone partitioning tools.
+! *
+! *  This will hopefully gradually move to the library and become there an fully
+! *  integrated strategy making this solver obsolete.
+! *
+! *  Authors: Peter Råback
+! *  Email:   Peter.Raback@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *****************************************************************************/
+
 !------------------------------------------------------------------------------
    SUBROUTINE PartitionMeshSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------

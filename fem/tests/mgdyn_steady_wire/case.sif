@@ -130,6 +130,9 @@ Solver 4
   Output File Name = wire
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
+
+  Reference Sums(6) = Real 44 13 116875 1442 402295082 3.6139440456815133
+  Reference Norm = 1.0
 End
 
 Solver 5
