@@ -3180,7 +3180,9 @@ use spariterglobals
        RVal = ListGetConstReal( List, Name )
        L = ( RVal > 0.0_dp )
      ELSE
-       CALL Fatal('ListGetLogicalGen','Invalid list type for: '//TRIM(Name))
+       L = .TRUE.
+       !Mere presence implies true mask
+       !CALL Fatal('ListGetLogicalGen','Invalid list type for: '//TRIM(Name))
      END IF
      
 !------------------------------------------------------------------------------
