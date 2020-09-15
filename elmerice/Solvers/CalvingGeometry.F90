@@ -3788,7 +3788,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: NullSolver => NULL()
     INTEGER :: i,dummyint,FaceNodeCount, ierr, proc
     REAL(KIND=dp) :: Orientation(3),OrientSaved(3),xLeft,yLeft,xRight,yRight
-    REAL(KIND=dp) :: RecvXL,RecvYL,RecvXR,RecvYR    
+    REAL(KIND=dp) :: RecvXL,RecvYL,RecvXR,RecvYR,Temp
     REAL(KIND=dp), POINTER :: PArray(:,:) => NULL()
     INTEGER, POINTER :: Perm(:), FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
         FrontNodeNums(:)=>NULL(),LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
@@ -3817,7 +3817,7 @@ CONTAINS
         CALL Info("GetFrontOrientation","No predefined Front Orientation, computing instead.", Level=6)
      END IF
     END IF
-    PRINT *, 'GetFrontOrientation test'
+    
     IF(Constant) THEN
       Orientation = OrientSaved
       RETURN
@@ -3865,6 +3865,7 @@ CONTAINS
                  0 ,7001, ELMER_COMM_WORLD, ierr )
             CALL MPI_BSEND(yLeft, 1, MPI_DOUBLE_PRECISION, &
                  0 ,7002, ELMER_COMM_WORLD, ierr )
+            IF (Debug) PRINT *, 'sending left'
          END IF      
          IF (HaveRight .AND. (ParEnv % MyPE>0) ) THEN ! right not in root
             iRight=ParEnv % MyPE
@@ -3872,12 +3873,12 @@ CONTAINS
                  0 , 7003, ELMER_COMM_WORLD, ierr )
             CALL MPI_BSEND(yRight, 1, MPI_DOUBLE_PRECISION, &
                  0 , 7004, ELMER_COMM_WORLD, ierr )
+            IF (Debug) PRINT *, 'sending right'
          END IF
          IF (Debug) PRINT *, 'sent the corners'
          IF (Boss) THEN
             IF (Debug) PRINT *, ParEnv % PEs
-            IF ((.NOT.HaveLeft).AND.Parallel) THEN
-                  PRINT *, 'got here'                  
+            IF (.NOT.HaveLeft) THEN
                   CALL MPI_RECV(RecvXL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
                        7001,ELMER_COMM_WORLD, status, ierr )
                   CALL MPI_RECV(RecvYL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
@@ -3917,15 +3918,21 @@ CONTAINS
       ELSE
          ! set dot product equal to 0
          ! no need to ensure it is unit normal, done in ComputeRotation
-         Orientation(1)=1.0_dp
-         Orientation(2)=(yRight-yLeft)/(xLeft-xRight)
+         IF(xRight > xLeft) THEN
+            Orientation(2)=1.0_dp
+         ELSE
+            Orientation(2)=-1.0_dp
+         END IF
+         Orientation(1)=Orientation(2)*(yRight-yLeft)/(xLeft-xRight)
       END IF
       END IF !boss
       IF (Parallel) CALL MPI_BCAST(Orientation,3,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       ! deallocations
        DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
     END IF
-    IF((.NOT. Constant).AND.(Debug))  PRINT *, "GetFrontOrientation: ", Orientation
+    Temp=(Orientation(1)**2+Orientation(2)**2+Orientation(3)**2)**0.5
+    Orientation=Orientation/Temp ! normalized the orientation
+    IF((.NOT. Constant).AND.Debug)  PRINT *, "GetFrontOrientation: ", Orientation,'part',ParEnv % MyPE
   END FUNCTION GetFrontOrientation
 
 END MODULE CalvingGeometry
