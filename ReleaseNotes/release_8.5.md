@@ -32,7 +32,7 @@ New Solver Modules
 - Intended for Elmer/Ice community but also other may find it useful. 
 
 
-### BeamSolver
+### BeamSolver3D
 - Solver for the Timoshenko equations of elastic beams embedded in 3-D space (see Elmer Models Manual for documentation)
 
 ### GmshReader
