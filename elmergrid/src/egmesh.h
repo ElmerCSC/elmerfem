@@ -23,9 +23,8 @@ void AllocateKnots(struct FemType *data);
 void CreateKnots(struct GridType *grid,struct CellType *cell,
 		 struct FemType *data,int noknots,int info);
 int CreateVariable(struct FemType *data,int variable,int unknowns,
-		   Real value,char *variablename,int eorder);
+		   Real value,const char *variablename,int eorder);
 void DestroyKnots(struct FemType *data);
-void SideAreas(struct FemType *data,struct BoundaryType *bound);
 int CreateBoundary(struct CellType *cell,struct FemType *data,
 		   struct BoundaryType *bound,int material1,int material2,
 		   int solidmat,int boundarytype,int info);
@@ -36,10 +35,9 @@ int CreateBoundaries(struct CellType *cell,struct FemType *data,
 int CreatePoints(struct CellType *cell,struct FemType *data,
 		 struct BoundaryType *bound,
 		 int param1,int param2,int pointmode,int pointtype,int info);
+int CreateNewNodes(struct FemType *data,int *order,int material,int newknots);
 int SetDiscontinuousBoundary(struct FemType *data,struct BoundaryType *bound,
 			     int boundtype,int endnodes,int info);
-int SetDiscontinuousPoints(struct FemType *data,struct PointType *point,
-			   int material);
 int SetConnectedNodes(struct FemType *data,struct BoundaryType *bound,
 		      int bctype,int connecttype,int info);
 int SetConnectedElements(struct FemType *data,int info);
@@ -80,6 +78,8 @@ void MergeBoundaries(struct FemType *data,struct BoundaryType *bound,int *double
 void SeparateCartesianBoundaries(struct FemType *data,struct BoundaryType *bound,int info);
 void ElementsToBoundaryConditions(struct FemType *data,
 				  struct BoundaryType *bound,int retainorphans, int info);
+int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct ElmergridType *eg,int info);
+int SideAndBulkBoundaries(struct FemType *data,struct BoundaryType *bound,struct ElmergridType *eg,int info);
 void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
 			  int *bcinds,int *bctags,int nbc,int bccount,
 			  int info);

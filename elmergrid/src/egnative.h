@@ -1,4 +1,6 @@
 /* femelmer.h + femmesh.h -> egnative.h */
+void Instructions();
+void Goodbye();
 void InitGrid(struct GridType *grid);
 void CreateExampleGrid(int dim,struct GridType **grids,int *nogrids,int info);
 void SetElementDivision(struct GridType *grid,Real relh,int info);
@@ -17,10 +19,10 @@ void SetElementDivisionExtruded(struct GridType *grid,int info);
 void SetElementDivisionCylinder(struct GridType *grid,int info);
 
 int SaveElmergrid(struct GridType *grid,int nogrids,char *prefix,int info);
-int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int info);
+int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info);
 
 void InitParameters(struct ElmergridType *eg);
-int InlineParameters(struct ElmergridType *eg,int argc,char *argv[]);
+int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,int info);
 int LoadCommands(char *prefix,struct ElmergridType *eg,
 		 struct GridType *grid, int mode,int info);
 

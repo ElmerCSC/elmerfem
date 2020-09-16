@@ -1,6 +1,4 @@
 /* femelmer.h -> egparallel.h */
-#define PARTMETIS 1
-
 int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int parts,
 				 int minstep, int maxstep, int dstep, int info);
 int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct BoundaryType *bound,
@@ -8,7 +6,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
 			    Real parttol, int info);
 int PartitionSimpleElementsNonRecursive(struct FemType *data,
 					int dimpart[],int dimper[],int info);
-#if PARTMETIS
+#if USE_METIS
 int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bound,
 				    int nparts,int metisopt,int info);
 #endif
@@ -23,7 +21,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
 			 int partorder, Real corder[],Real parttol,int info);
 /* int LinearNodes(int elemtype); */
-#if PARTMETIS
+#if USE_METIS
 int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
 		       int partitions,int dual,int info);
 int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,

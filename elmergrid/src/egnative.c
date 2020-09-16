@@ -49,9 +49,9 @@
 #include "egdef.h"
 #include "egtypes.h"
 #include "egmesh.h"
-#include "egparallel.h"
+/* #include "egparallel.h" */
 #include "egnative.h"
-#include "../config.h"
+/*#include "../config.h"*/
 
 #define getline fgets(line,MAXLINESIZE,in) 
 
@@ -61,7 +61,7 @@
 
 int matcactive=FALSE, iodebug=FALSE;
 
-int MAXINMETHODS = 15;
+#define MAXINMETHODS 21
 char *InMethods[] = {
   /*0*/ "EG",
   /*1*/ "ELMERGRID",
@@ -79,9 +79,16 @@ char *InMethods[] = {
   /*13*/ "GID",
   /*14*/ "GMSH",
   /*15*/ "PARTITIONED",
+  /*16*/ "FVCOM",
+  /*17*/ "NASTRAN",
+  /*18*/ "CGSIM",
+  /*19*/ "GEO",
+  /*20*/ "FLUX2D",
+  /*21*/ "FLUX3D",
 };
 
-int MAXOUTMETHODS = 5;
+
+#define MAXOUTMETHODS 5
 char *OutMethods[] = {
   /*0*/ "EG",
   /*1*/ "ELMERGRID",
@@ -92,11 +99,167 @@ char *OutMethods[] = {
 };
 
 
+void Instructions()
+{
+  printf("****************** Elmergrid ************************\n");
+  printf("This program can create simple 2D structured meshes consisting of\n");
+  printf("linear, quadratic or cubic rectangles or triangles. The meshes may\n");
+  printf("also be extruded and revolved to create 3D forms. In addition many\n");
+  printf("mesh formats may be imported into Elmer software. Some options have\n");
+  printf("not been properly tested. Contact the author if you face problems.\n\n");
 
-#ifndef DISABLE_MATC
+  printf("The program has two operation modes\n");
+  printf("A) Command file mode which has the command file as the only argument\n");
+  printf("   'ElmerGrid commandfile.eg'\n\n");
+
+  printf("B) Inline mode which expects at least three input parameters\n");
+  printf("   'ElmerGrid 1 3 test'\n\n");
+  printf("The first parameter defines the input file format:\n");
+  printf("1)  .grd      : ElmerGrid file format\n");
+  printf("2)  .mesh.*   : Elmer input format\n");
+  printf("3)  .ep       : Elmer output format\n");
+  printf("4)  .ansys    : Ansys input format\n");
+  printf("5)  .inp      : Abaqus input format by Ideas\n");
+  printf("6)  .fil      : Abaqus output format\n");
+  printf("7)  .FDNEUT   : Gambit (Fidap) neutral file\n");
+  printf("8)  .unv      : Universal mesh file format\n");
+  printf("9)  .mphtxt   : Comsol Multiphysics mesh format\n");
+  printf("10) .dat      : Fieldview format\n");
+  printf("11) .node,.ele: Triangle 2D mesh format\n");
+  printf("12) .mesh     : Medit mesh format\n");
+  printf("13) .msh      : GID mesh format\n");
+  printf("14) .msh      : Gmsh mesh format\n");
+  printf("15) .ep.i     : Partitioned ElmerPost format\n");
+  printf("16) .2dm      : 2D triangular FVCOM format\n");
+#if 0
+  printf("16)  .d       : Easymesh input format\n");
+  printf("17) .msh      : Nastran format\n");
+  printf("18) .msh      : CGsim format\n");
+  printf("19) .geo      : Geo format\n");
+  printf("20) .tra      : Cedrat Flux 2D format\n");
+  printf("21) .pf3      : Cedrat Flux 3D format\n");
+#endif 
+
+  printf("\nThe second parameter defines the output file format:\n");
+  printf("1)  .grd      : ElmerGrid file format\n");
+  printf("2)  .mesh.*   : ElmerSolver format (also partitioned .part format)\n");
+  printf("3)  .ep       : ElmerPost format\n");
+  printf("4)  .msh      : Gmsh mesh format\n");
+  printf("5)  .vtu      : VTK ascii XML format\n");
+#if 0
+  printf("5)  .inp      : Abaqus input format\n");
+  printf("7)  .fidap    : Fidap format\n");
+  if(0) printf("8)  .n .e .s  : Easymesh output format\n");
+  printf("18) .ep       : Fastcap input format.\n");
+#endif
+
+  printf("\nThe third parameter is the name of the input file.\n");
+  printf("If the file does not exist, an example with the same name is created.\n");
+  printf("The default output file name is the same with a different suffix.\n\n");
+
+  printf("There are several additional in-line parameters that are\n");
+  printf("taken into account only when applicable to the given format.\n");
+
+  printf("-out str             : name of the output file\n");
+  printf("-in str              : name of a secondary input file\n");
+  printf("-decimals            : number of decimals in the saved mesh (eg. 8)\n");
+  printf("-relh real           : give relative mesh density parameter for ElmerGrid meshing\n");
+  printf("-triangles           : rectangles will be divided to triangles\n");
+  printf("-merge real          : merges nodes that are close to each other\n");
+  printf("-order real[3]       : reorder elements and nodes using c1*x+c2*y+c3*z\n");
+  printf("-centralize          : set the center of the mesh to origin\n");
+  printf("-scale real[3]       : scale the coordinates with vector real[3]\n");
+  printf("-translate real[3]   : translate the nodes with vector real[3]\n");
+  printf("-rotate real[3]      : rotate around the main axis with angles real[3]\n");
+  printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
+  printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
+  printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
+  printf("-cloneinds           : when performing cloning should cloned entities be given new indexes\n");
+  printf("-unite               : the meshes will be united\n");
+  printf("-unitenooverlap      : the meshes will be united without overlap in entity numbering\n");
+  printf("-polar real          : map 2D mesh to a cylindrical shell with given radius\n");
+  printf("-cylinder            : map 2D/3D cylindrical mesh to a cartesian mesh\n");
+  printf("-reduce int[2]       : reduce element order at material interval [int1 int2]\n");
+  printf("-increase            : increase element order from linear to quadratic\n");
+  printf("-bcoffset int        : add an offset to the boundary conditions\n");
+  printf("-discont int         : make the boundary to have secondary nodes\n");
+  printf("-connect int         : make the boundary to have internal connection among its elements\n");
+  printf("-removeintbcs        : remove internal boundaries if they are not needed\n");
+  printf("-removelowdim        : remove boundaries that are two ranks lower than highest dim\n");
+  printf("-removeunused        : remove nodes that are not used in any element\n");
+  printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
+  printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
+  printf("-autoclean           : this performs the united action of the four above\n");
+  printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
+  printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
+  printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
+  printf("-boundtype int[3]    : set sidetypes in interval [int1 int2] to type int3\n");
+  printf("-layer int[2] real[2]: make a boundary layer for given boundary\n");
+  printf("-layermove int       : apply Jacobi filter int times to move the layered mesh\n");
+  printf("-divlayer int[2] real[2]: make a boundary layer for given boundary\n");
+  printf("-3d / -2d / -1d      : mesh is 3, 2 or 1-dimensional (applies to examples)\n");
+  printf("-isoparam            : ensure that higher order elements are convex\n");
+  printf("-nonames             : disable use of mesh.names even if it would be supported by the format\n");
+  printf("-nosave              : disable saving part altogether\n");
+  printf("-nooverwrite         : if mesh already exists don't overwrite it\n");
+  printf("-vtuone              : start real node indexes in vtu file from one\n");
+  printf("-timer               : show timer information\n");
+  printf("-infofile str        : file for saving the timer and size information\n");
+
+  printf("\nKeywords are related to mesh partitioning for parallel ElmerSolver runs:\n");
+  printf("-partition int[3]    : the mesh will be partitioned in cartesian main directions\n");
+  printf("-partorder real[3]   : in the 'partition' method set the direction of the ordering\n");
+  printf("-parttol real        : in the 'partition' method set the tolerance for ordering\n");
+  printf("-partcell int[3]     : the mesh will be partitioned in cells of fixed sizes\n");
+  printf("-partcyl int[3]      : the mesh will be partitioned in cylindrical main directions\n");
+#if USE_METIS
+  if(0) printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
+  printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
+  printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
+  printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
+  printf("-metisseed int       : random number generator seed for Metis algorithms\n");
+#endif
+  printf("-partdual            : use the dual graph in partition method (when available)\n");
+  printf("-halo                : create halo for the partitioning for DG\n");
+  printf("-halobc              : create halo for the partitioning at boundaries only\n");
+  printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
+  printf("-halogreedy          : create halo being greedy over the partition interfaces\n");
+  printf("-indirect            : create indirect connections (102 elements) in the partitioning\n");
+  printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
+  printf("-partoptim           : apply aggressive optimization to node sharing\n");
+  printf("-partnobcoptim       : do not apply optimization to bc ownership sharing\n");
+  printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
+  printf("-parthypre           : number the nodes continuously partitionwise\n");
+  printf("-partzbc             : partition connected BCs separately to partitions in Z-direction\n");
+  printf("-partrbc             : partition connected BCs separately to partitions in R-direction\n");
+#if USE_METIS
+  printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
+#endif
+  printf("-partlayers int      : extend boundary partitioning by element layers\n");
+
+  printf("\nKeywords are related to (nearly obsolete) ElmerPost format:\n");
+  printf("-partjoin int        : number of ElmerPost partitions in the data to be joined\n");
+  printf("-saveinterval int[3] : the first, last and step for fusing parallel data\n");
+  printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
+
+  if(0) printf("-names               : conserve name information where applicable\n");
+}
+ 
+
+void Goodbye()
+{
+  printf("\nThank you for using Elmergrid!\n");
+  printf("Send bug reports and feature wishes to elmeradm@csc.fi\n");
+  exit(0);
+}
+
+
+
+#if USE_MATC
 char *mtc_domath(const char *);
 void mtc_init(FILE * input, FILE * output, FILE * error);
 #endif
+
 
 static int Getline(char *line1,FILE *io) 
 {
@@ -116,7 +279,7 @@ static int Getline(char *line1,FILE *io)
   if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!') goto newline;
   if(!matcactive && line0[0] == '*') goto newline;
 
-#ifndef DISABLE_MATC
+#if USE_MATC
   if(matcactive) {
     matcpntr0 = strchr(line0,'$');
     if(matcpntr0) {
@@ -1390,7 +1553,7 @@ int GetKnotIndex(struct CellType *cell,int i,int j)
    range [0..n] and [0..m]. Requires only the structure CellType. 
    */
 {
-  int ind,aid,maxj;
+  int ind=0,aid=0,maxj=0;
 
   if(cell->numbering == NUMBER_1D) {
     ind = cell->left1st;
@@ -2077,7 +2240,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!' || line0[0] == '\n') goto newline;
   if(!matcactive && line0[0] == '*') goto newline;
 
-#ifndef DISABLE_MATC
+#if USE_MATC
   if(matcactive) {
     matcpntr0 = strchr(line0,'$');
     if(matcpntr0) {
@@ -2147,7 +2310,7 @@ static int GetCommand(char *line1,char *line2,FILE *io)
       smallerror("Check your output line length!\n");
     }
 
-#ifndef DISABLE_MATC
+#if USE_MATC
     if(matcactive) {
       matcpntr0 = strchr(line2,'$');
       if(matcpntr0) {
@@ -2849,7 +3012,7 @@ end:
 
 
 
-int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int info) 
+int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info) 
 {
   char filename[MAXFILESIZE];
   char command[MAXLINESIZE],params[MAXLINESIZE];
@@ -2925,7 +3088,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,Real relh,int
       if(strstr(params,"FALSE")) 
 	matcactive = FALSE;
       else {
-#ifndef DISABLE_MATC
+#if USE_MATC
 	matcactive = TRUE;
 	mtc_init(NULL, stdout, stderr);
 	strcpy(command, "format( 12 )");	
@@ -3380,9 +3543,9 @@ end:
   }
 
   
-  for(k=nogrids0;k < (*nogrids) && k<MAXCASES;k++) {
+  /* for(k=nogrids0;k < (*nogrids) && k<MAXCASES;k++) {
     SetElementDivision(&(*grid)[k],relh,info);
-  }
+    } */
 
   fclose(in);
   return(0);
@@ -3397,6 +3560,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->relh = 1.0;
   eg->inmethod = 0;
   eg->outmethod = 0;
+  eg->silent = FALSE;
   eg->nofilesin = 1;
   eg->unitemeshes = FALSE;
   eg->unitenooverlap = FALSE;
@@ -3482,7 +3646,7 @@ void InitParameters(struct ElmergridType *eg)
 
 
 
-int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
+int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,int info)
 {
   int arg,i,dim;
   char command[MAXLINESIZE];
@@ -3492,41 +3656,52 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
   printf("Elmergrid reading in-line arguments\n");
 
   /* Type of input file */
-  strcpy(command,argv[1]);
-  for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
-  for(i=0;i<=MAXINMETHODS;i++) {
-    if(strstr(command,InMethods[i])) {
-      eg->inmethod = i;
-      break;
-    }
-  }
-  if(i>MAXINMETHODS) eg->inmethod = atoi(argv[1]);
+  if(first > 3) {
+    for(i=0;i<MAXLINESIZE;i++) command[i] = ' ';
 
-
-  /* Type of output file (fewer options) */
-  strcpy(command,argv[2]);
-  for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
-  for(i=1;i<=MAXOUTMETHODS;i++) {
-    if(strstr(command,OutMethods[i])) {
-      eg->outmethod = i;
-      break;
+    strcpy(command,argv[1]);
+    for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
+    for(i=0;i<=MAXINMETHODS;i++) {
+      if(strstr(command,InMethods[i])) {
+	eg->inmethod = i;
+	break;
+      }
     }
-  }
-  if(i>MAXOUTMETHODS) eg->outmethod = atoi(argv[2]);
+    if(i>MAXINMETHODS) eg->inmethod = atoi(argv[1]);
+    
+
+    /* Type of output file (fewer options) */
+    strcpy(command,argv[2]);
+    for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
+    for(i=1;i<=MAXOUTMETHODS;i++) {
+      if(strstr(command,OutMethods[i])) {
+	eg->outmethod = i;
+	break;
+      }
+    }
+    if(i>MAXOUTMETHODS) eg->outmethod = atoi(argv[2]);
  
-
-  /* Default names of output file are derived from input file name */
-  strcpy(eg->filesin[0],argv[3]);
-  strcpy(eg->filesout[0],eg->filesin[0]);
-  strcpy(eg->infofile,eg->filesin[0]);
+    /* Name of output file */
+    strcpy(eg->filesin[0],argv[3]);
+    strcpy(eg->filesout[0],eg->filesin[0]);
+    strcpy(eg->infofile,eg->filesin[0]);
+  }
 
 
   /* The optional inline parameters */
 
-  for(arg=4;arg <argc; arg++) {
+  for(arg=first;arg <argc; arg++) {
 
+    if(strcmp(argv[arg],"-silent") == 0) {
+      eg->silent = TRUE;
+      info = FALSE;
+    }
 
-
+    if(strcmp(argv[arg],"-verbose") == 0) {
+      eg->silent = FALSE;
+      info = TRUE;
+    }
+    
     if(strcmp(argv[arg],"-in") ==0 ) {
       if(arg+1 >= argc) {
 	printf("The secondary input file name is required as a parameter\n");
@@ -3594,7 +3769,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->order = TRUE;
 	eg->corder[0] = atof(argv[arg+1]);
 	eg->corder[1] = atof(argv[arg+2]);
-	eg->corder[2] = atof(argv[arg+3]);
+	if(dim==3) eg->corder[2] = atof(argv[arg+3]);
       }
     }
 
@@ -3649,7 +3824,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->scale = TRUE;
 	eg->cscale[0] = atof(argv[arg+1]);
 	eg->cscale[1] = atof(argv[arg+2]);
-	eg->cscale[2] = atof(argv[arg+3]);
+	if(dim==3) eg->cscale[2] = atof(argv[arg+3]);
       }
     }
 
@@ -3662,7 +3837,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	eg->translate = TRUE;
 	eg->ctranslate[0] = atof(argv[arg+1]);
 	eg->ctranslate[1] = atof(argv[arg+2]);
-	eg->ctranslate[2] = atof(argv[arg+3]);
+	if(dim==3) eg->ctranslate[2] = atof(argv[arg+3]);
       }
     }
 
@@ -3881,7 +4056,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-metis") == 0 ||
        strcmp(argv[arg],"-metisrec") == 0 ||
        strcmp(argv[arg],"-metiskway") == 0 ) {
-#if PARTMETIS
+#if USE_METIS
       if(arg+1 >= argc) {
 	printf("The number of partitions is required as a parameter\n");
 	return(15);
@@ -4403,21 +4578,21 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       if(strstr(params,"TRUE")) eg->increase = TRUE;      
     }
     else if(strstr(command,"METIS OPTION")) {
-#if PARTMETIS
+#if USE_METIS
       sscanf(params,"%d",&eg->partopt);
 #else
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif
     }
     else if(strstr(command,"METIS")) {
-#if PARTMETIS
+#if USE_METIS
       sscanf(params,"%d",&eg->metis);
 #else
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif
     }
     else if(strstr(command,"METISKWAY")) {
-#if PARTMETIS
+#if USE_METIS
       sscanf(params,"%d",&eg->metis);
       eg->partopt = 3;
 #else
@@ -4425,7 +4600,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 #endif
     }
     else if(strstr(command,"METISREC")) {
-#if PARTMETIS
+#if USE_METIS
       sscanf(params,"%d",&eg->metis);
       eg->partopt = 2;
 #else

@@ -55,3 +55,7 @@ void SaveIntegerMatrix(int **matrix,int row_first,int row_last,
 		       int col_first,int col_last,char *filename);
 void SaveNonZeros(Real **matrix,int row_first,int row_last,
 		  int col_first,int col_last,char *filename);
+int EchoFile(char *filename);
+int SetDiscontinuousPoints(struct FemType *data,struct PointType *point,
+			   int material);
+void SideAreas(struct FemType *data,struct BoundaryType *bound);
