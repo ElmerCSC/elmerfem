@@ -3786,19 +3786,20 @@ CONTAINS
     TYPE(Mesh_t),POINTER :: Mesh
     !--------------------------
     TYPE(Solver_t), POINTER :: NullSolver => NULL()
+    TYPE(Variable_t), POINTER :: TimeVar
     INTEGER :: i,dummyint,FaceNodeCount, ierr, proc
     REAL(KIND=dp) :: Orientation(3),OrientSaved(3),xLeft,yLeft,xRight,yRight
-    REAL(KIND=dp) :: RecvXL,RecvYL,RecvXR,RecvYR,Temp
+    REAL(KIND=dp) :: RecvXL,RecvYL,RecvXR,RecvYR,Temp,PrevTime
     REAL(KIND=dp), POINTER :: PArray(:,:) => NULL()
     INTEGER, POINTER :: Perm(:), FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
         FrontNodeNums(:)=>NULL(),LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
-    LOGICAL :: FirstTime=.TRUE.,Constant,Debug=.False.,Parallel,&
-         HaveRight=.FALSE.,HaveLeft=.FALSE., Boss
+    LOGICAL :: FirstTime=.TRUE.,Constant,Debug=.TRUE.,Parallel,&
+         HaveRight=.FALSE.,HaveLeft=.FALSE., Boss, FirstThisTime
     CHARACTER(LEN=MAX_NAME_LEN) :: FrontMaskName, TopMaskName, &
          LeftMaskName, RightMaskName
     INTEGER :: status(MPI_STATUS_SIZE), iLeft, iRight
-    SAVE :: FirstTime,Constant,PArray,OrientSaved, Parallel, Boss
-
+    SAVE :: FirstTime,Constant,PArray,OrientSaved, Parallel, Boss, FirstThisTime
+    SAVE :: PrevTime
     IF(FirstTime) THEN
       FirstTime = .FALSE.
       !TODO - this will need to be defined on individual boundary conditions
@@ -3807,7 +3808,8 @@ CONTAINS
            Constant)
       Parallel = (ParEnv % PEs > 1)
       Boss = (ParEnv % MyPE == 0) .OR. (.NOT. Parallel)
-     IF(Debug) PRINT *,'got here'
+      PrevTime = 0.0_dp
+      FirstThisTime = .TRUE.
      IF(Constant) THEN
          CALL Info("GetFrontOrientation","Using predefined Front Orientation from SIF.", Level=6)
          DO i=1,3
@@ -3815,10 +3817,20 @@ CONTAINS
          END DO
      ELSE ! constant not found above
         CALL Info("GetFrontOrientation","No predefined Front Orientation, computing instead.", Level=6)
-     END IF
+     END IF ! constant
+    END IF ! first time
+
+    ! check whether already did a front orientation computation this timestep
+    TimeVar => VariableGet( Model % Variables, 'Timestep' )
+    IF (Debug) PRINT *, 'Time', TimeVar % Values
+    IF (Debug)  PRINT *, 'PrevTime', PrevTime
+    IF (Debug)  PRINT *, 'FirstThisTime', FirstThisTime
+    IF  (TimeVar % Values(1) > PrevTime ) THEN
+        FirstThisTime=.TRUE.
     END IF
-    
-    IF(Constant) THEN
+    PrevTime = TimeVar % Values(1)
+    IF (.NOT. FirstThisTime) PRINT *, 'use orientation calculated earlier in this timestep'    
+    IF(Constant .OR. (.NOT. FirstThisTime) ) THEN
       Orientation = OrientSaved
       RETURN
     ELSE
@@ -3933,6 +3945,8 @@ CONTAINS
     Temp=(Orientation(1)**2+Orientation(2)**2+Orientation(3)**2)**0.5
     Orientation=Orientation/Temp ! normalized the orientation
     IF((.NOT. Constant).AND.Debug)  PRINT *, "GetFrontOrientation: ", Orientation,'part',ParEnv % MyPE
+    FirstThisTime=.FALSE.
+    OrientSaved=Orientation
   END FUNCTION GetFrontOrientation
 
 END MODULE CalvingGeometry
