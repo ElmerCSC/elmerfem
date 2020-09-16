@@ -4032,12 +4032,12 @@ CONTAINS
                            CALL Double3DArraySize(SharedOne)
                         END IF
                         IF (FirstMatch .AND. SecondMatch) THEN
-                           SharedOne(BoundaryID-1,:,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,1:2,i)
+                           SharedOne(BoundaryID-1,:,CountOne(BoundaryID-1)) = BdryNodes(1,1:2,i)
                         ELSE IF (SecondMatch .AND. ThirdMatch) THEN
-                           SharedOne(BoundaryID-1,:,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,2:3,i)
+                           SharedOne(BoundaryID-1,:,CountOne(BoundaryID-1)) = BdryNodes(1,2:3,i)
                         ELSE IF (FirstMatch .AND. ThirdMatch) THEN
-                           SharedOne(BoundaryID-1,1,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,1,i)
-                           SharedOne(BoundaryID-1,2,CountOne(BoundaryID-1)) = BdryNodes(BoundaryID,3,i)
+                           SharedOne(BoundaryID-1,1,CountOne(BoundaryID-1)) = BdryNodes(1,1,i)
+                           SharedOne(BoundaryID-1,2,CountOne(BoundaryID-1)) = BdryNodes(1,3,i)
                         END IF
                      ELSE IF (Match == 3) THEN
                         print*, 1,BdryNodes(1,:,i)

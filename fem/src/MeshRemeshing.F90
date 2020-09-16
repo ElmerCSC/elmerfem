@@ -158,8 +158,12 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     DO i=1, PairCount
       NEdges = NEdges + 1 
       CALL MMG3D_Set_edge(mmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, nedges, ierr)
+      !CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
+      CALL MMG3D_Set_requiredEdge(mmgMesh, Nedges, ierr)
     END DO
   END IF
+
+  
 
   IF (DEBUG) PRINT *, '--**-- MMG3D - Set edge elements DONE'
 
