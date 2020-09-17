@@ -53,7 +53,8 @@
 #include "egnative.h"
 /*#include "../config.h"*/
 
-#define getline fgets(line,MAXLINESIZE,in) 
+#define GETLINE ioptr=fgets(line,MAXLINESIZE,in) 
+static char *ioptr;
 
 
 #define DEBUG 0
@@ -62,7 +63,7 @@
 int matcactive=FALSE, iodebug=FALSE;
 
 #define MAXINMETHODS 21
-char *InMethods[] = {
+const char *InMethods[] = {
   /*0*/ "EG",
   /*1*/ "ELMERGRID",
   /*2*/ "ELMERSOLVER",
@@ -89,7 +90,7 @@ char *InMethods[] = {
 
 
 #define MAXOUTMETHODS 5
-char *OutMethods[] = {
+const char *OutMethods[] = {
   /*0*/ "EG",
   /*1*/ "ELMERGRID",
   /*2*/ "ELMERSOLVER",
@@ -4385,13 +4386,13 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   char command[MAXLINESIZE],params[MAXLINESIZE],*cp;
 
   FILE *in=NULL;
-  int i,j;
+  int i,j,iostat;
 
   iodebug = FALSE;
 
   if( mode == 0) {  
     if (in = fopen("ELMERGRID_STARTINFO","r")) {
-      fscanf(in,"%s",filename);
+      iostat = fscanf(in,"%s",filename);
       fclose(in);
       printf("Using the file %s defined in ELMERGRID_STARTINFO\n",filename);
       if ((in = fopen(filename,"r")) == NULL) {
@@ -5058,15 +5059,15 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   else 
     printf("Loading header from %s\n",filename);
 
-  getline;
+  GETLINE;
   sscanf(line,"%d %d %d",&noknots,&noelements,&nosides);
-  getline;
+  GETLINE;
   sscanf(line,"%d",&tottypes);
 
   maxelemtype = 0;
   maxnodes = 0;
   for(i=1;i<=tottypes;i++) {   
-    getline;
+    GETLINE;
     sscanf(line,"%d",&dummyint);
     maxelemtype = MAX( dummyint, maxelemtype );
     j = maxelemtype % 100;
@@ -5099,7 +5100,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   activeperm = FALSE;
   for(i=1; i <= noknots; i++) {
-    getline;
+    GETLINE;
     sscanf(line,"%d %d %le %le %le",
 	   &j, &dummyint, &(data->x[i]),&(data->y[i]),&(data->z[i]));
     if(j != i && !activeperm) {
