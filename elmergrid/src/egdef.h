@@ -24,12 +24,10 @@
 #endif
 #endif
 
-#ifndef _COMMON_H_
 typedef double Real;
 typedef int Integer;
 #define TRUE 1
 #define FALSE 0
-#endif
 
 /* Natural constants */
 #ifndef FM_PI
