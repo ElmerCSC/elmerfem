@@ -5748,6 +5748,8 @@ END SUBROUTINE GetNodalElementSize
    CALL Info(Caller, '-----------------------------------------', Level=5 )
    CALL Info(Caller, 'Setting sweeping parameters for simulation',Level=4 )
 
+   FinishEarly = .FALSE.
+
    NoParam = ListGetInteger( Params,'Parameter Count',Found )
    IF(.NOT. Found ) THEN
      NoParam = ListGetInteger( Params,'Number of Parameters',Found)
@@ -6161,7 +6163,6 @@ END SUBROUTINE GetNodalElementSize
         NoImprovements, OptTol, Visited
 
     GotParams = .TRUE.
-    FinishEarly = .FALSE.
     
     !------------------------------------------------------------------------------
     ! In the 1st round perform initializations 

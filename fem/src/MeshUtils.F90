@@ -17376,8 +17376,7 @@ CONTAINS
        Reorder = [ (i, i=1,NewMesh % NumberOfNodes) ]
 
        k = NewMesh % Nodes % NumberOfNodes - Mesh % Nodes % NumberOfNodes
-
-       CALL ParallelGlobalNumbering( NewMesh, Mesh, k, IntCnts, IntArray, Reorder )
+       CALL ParallelGlobalNumbering( NewMesh, Mesh, k, Reorder )
 
 !      Account for the reordering of the nodes:
 !      ----------------------------------------
