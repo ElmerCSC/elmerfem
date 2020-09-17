@@ -1,4 +1,4 @@
-/* femtypes.h -> egtypes.h */
+/* femtypes.h */
 /* Defines the types used in the FEM model. */
 
 /* Definiotins used in allocating space for the structures. */
@@ -103,7 +103,7 @@ struct GridType {
     dz0,
     limitdx, 
     triangleangle,
-    xyratio, /* ratio between dx and dy */
+    xyratio, /* ratio between dx0 and dy0 */
     xzratio;
   Real rotateradius1,rotateradius2,rotateimprove;
   int rotate,rotateblocks,rotatecurve,rotatecartesian,mappings,
@@ -302,6 +302,7 @@ struct ModelType {
 struct ElmergridType {
 
   int dim,
+    silent,
     center,
     scale,      /* scale the geometry */
     order,      /* reorder the nodes */

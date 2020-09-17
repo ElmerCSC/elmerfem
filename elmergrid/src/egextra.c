@@ -1582,3 +1582,108 @@ void SaveNonZeros(Real **matrix,int row_first,int row_last,
   
   fclose(out);
 }
+
+
+int EchoFile(char *filename)
+#define LINELENGTH 100
+{
+  FILE *in;
+  char line[LINELENGTH];
+
+  if((in = fopen(filename,"r")) == NULL) {
+    printf("Could not open file '%s'.\n",filename);
+    return(1);
+  }
+
+  while(fgets(line,LINELENGTH,in) != NULL)
+    printf("%s",line);
+
+  fclose(in);
+  return(0);
+}
+
+
+
+int SetDiscontinuousPoints(struct FemType *data,struct PointType *point,
+			   int material)
+/* Create secondary point for a given point. 
+   The variable that is used to set up the boundary must not 
+   have any previously defined Dirichlet points. 
+   */
+{
+  int i,ind,corner,*order=NULL;
+  int parent,new;
+  int newsuccess;
+
+  if(point->nopoints == FALSE) {
+    printf("SetDiscontinuousPoint: No points exists!\n");
+    return(0);
+  }
+
+  order = Ivector(1,data->noknots);
+  for(i=1;i<=data->noknots;i++) 
+    order[i] = i;
+
+  
+  /* Find the number of new nodes */
+  new = 0;
+  for(i=0;i<point->nopoints;i++) {
+    parent = point->parent[i];
+    corner = point->corner[i];
+    ind = data->topology[parent][corner];
+    if(order[ind] >= 0) {
+      new++;
+      order[ind] = -new;
+    }
+  }
+
+  if(new == 0)
+    return(0);
+
+  newsuccess = CreateNewNodes(data,order,material,new);
+  
+  return(newsuccess);
+}
+
+
+void SideAreas(struct FemType *data,struct BoundaryType *bound)
+/* Calculate the sideares for later use into structure 'bound'. 
+   In 2D case the area means line length.
+   */
+{
+  int i,ind[MAXNODESD1],sideelemtype;  
+  Real r1,r2,z1,z2;
+
+  if(data->mapgeo == bound->maparea) 
+    return;
+
+  bound->totalarea = 0.;
+
+  if(data->dim != 2) {
+    return;
+  }
+
+
+  for(i=1; i<=bound->nosides; i++) {
+
+    GetElementSide(bound->parent[i],bound->side[i],bound->normal[i],
+		   data,ind,&sideelemtype);
+
+    r1 = data->x[ind[0]];
+    r2 = data->x[ind[1]];
+    z1 = data->y[ind[0]];
+    z2 = data->y[ind[1]];
+
+    if(bound->coordsystem == COORD_CART2) 
+      bound->areas[i] = sqrt( (z1-z2)*(z1-z2) + (r1-r2)*(r1-r2) );
+    else if(bound->coordsystem == COORD_AXIS)  
+      bound->areas[i] = FM_PI * (r1+r2) * 
+	sqrt( (z1-z2)*(z1-z2) + (r1-r2)*(r1-r2) );
+    else if(bound->coordsystem == COORD_POLAR) 
+      bound->areas[i] = fabs((z2-z1)*(r1+r2)/2.0);
+
+    bound->totalarea += bound->areas[i];
+  }
+  bound->maparea = data->mapgeo;
+}
+

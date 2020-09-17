@@ -49,7 +49,7 @@
 #include "egparallel.h"
 #include "../config.h"
 
-#if PARTMETIS
+#if USE_METIS
 #include "metis-5.1.0/include/metis.h"
 #endif
 
@@ -1671,7 +1671,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 }
 
 
-#if PARTMETIS
+#if USE_METIS
 int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bound,
 				    int nparts,int metisopt,int info) {
   int i,j,k,l,n,m,dim;
@@ -2592,7 +2592,7 @@ int PartitionMetisMesh(struct FemType *data,struct ElmergridType *eg,
 
 
 
-#if PARTMETIS
+#if USE_METIS
 int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 			struct ElmergridType *eg,int partitions,int metisopt,
 			int dual,int info)
@@ -4909,7 +4909,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 }
 
 
-#if PARTMETIS 
+#if USE_METIS 
 int ReorderElementsMetis(struct FemType *data,int info)
 /* Calls the fill reduction ordering algorithm of Metis library. */
 {

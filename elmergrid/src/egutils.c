@@ -66,7 +66,7 @@ int MemoryUsage()
    
 
 
-void nrerror(char error_text[])
+void nrerror(const char error_text[])
 /* standerd error handler */
 {
   fprintf(stderr,"run-time error...\n");
@@ -483,7 +483,7 @@ void timer_show()
 
 
 
-void bigerror(char error_text[])
+void bigerror(const char error_text[])
 {
   fprintf(stderr,"The program encountered a major error...\n");
   fprintf(stderr,"%s\n",error_text);
@@ -492,7 +492,7 @@ void bigerror(char error_text[])
 }
 
 
-void smallerror(char error_text[])
+void smallerror(const char error_text[])
 {
   fprintf(stderr,"The program encountered a minor error...\n");
   fprintf(stderr,"%s\n",error_text);
@@ -534,7 +534,7 @@ int Minimi(Real *vector,int first,int last)
   Real min;
   int i,mini;
 
-  mini=-1;
+  mini=first;
   min=vector[first];
   for(i=first+1;i<=last;i++)
     if(min>vector[i]) 
@@ -597,6 +597,51 @@ void AddExtension(const char *fname1,char *fname2,const char *newext)
   }
   strcat(fname2, ".");
   strcat(fname2,newext);
+}
+
+
+int StringToStrings(const char *buf,char args[10][10],int maxcnt,char separator)
+/*  Finds real numbers separated by a certain separator from a string.
+    'buf'       - input string ending to a EOF
+    'dest'      - a vector of real numbers
+    'maxcnt'    - maximum number of real numbers to be read
+    'separator'	- the separator of real numbers
+    The number of numbers found is returned in the function value.
+    */
+{
+  int i,cnt,totlen,finish;
+  char *ptr1 = (char *)buf, *ptr2;
+  
+
+  totlen = strlen(buf);
+  finish = 0;
+  cnt = 0;
+
+  if (!buf[0]) return 0;
+
+  do {
+    ptr2 = strchr(ptr1,separator);
+    if(ptr2) {
+      for(i=0;i<10;i++) {
+	args[cnt][i] = ptr1[i];
+	if(ptr1 + i >= ptr2) break;
+      }
+      args[cnt][i] = '\0';
+      ptr1 = ptr2+1;
+    }
+    else {
+      for(i=0;i<10;i++) {
+	if(ptr1 + i >= buf+totlen) break;
+	args[cnt][i] = ptr1[i];
+      }
+      args[cnt][i] = '\0';
+      finish = 1;
+    }
+    
+    cnt++;
+  } while (cnt < maxcnt && !finish);
+  
+  return cnt;
 }
 
 
@@ -666,25 +711,6 @@ int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator)
   } while (cnt < maxcnt && ptr2 != NULL);
 
   return cnt;
-}
-
-
-int EchoFile(char *filename)
-#define LINELENGTH 100
-{
-  FILE *in;
-  char line[LINELENGTH];
-
-  if((in = fopen(filename,"r")) == NULL) {
-    printf("Could not open file '%s'.\n",filename);
-    return(1);
-  }
-
-  while(fgets(line,LINELENGTH,in) != NULL)
-    printf("%s",line);
-
-  fclose(in);
-  return(0);
 }
 
 
