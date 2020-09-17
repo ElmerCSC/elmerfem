@@ -108,7 +108,7 @@ CONTAINS
     ELSE IF( PRESENT(Quiet) ) THEN
       IF ( Quiet ) q = 1
     ELSE
-      IF ( .NOT. OutputLevelMask(4) ) q = 1
+      IF ( .NOT. OutputLevelMask(6) ) q = 1
     END IF
 
     a = 1

@@ -19,7 +19,7 @@ Header :: Mesh DB "." "frozenwall"
 
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
   Simulation Type = Transient
   TimeStepping Method = BDF  
@@ -30,7 +30,6 @@ Simulation
   Steady State Max Iterations = 10
   !Output File = "McKenzie.result"
   Initialize Dirichlet Conditions = Logical False
-  Max Output Level = 3
 End
 
 Constants
@@ -177,9 +176,3 @@ Solver 2 :: Reference Norm = Real 99481.811
 Solver 2 :: Reference Norm Tolerance = Real 1E-04
 Solver 3 :: Reference Norm = Real 161.85983
 Solver 3 :: Reference Norm Tolerance = Real 1E-04
-$fprintf( stderr, "Permafrost: Frozenwall (McKenzie) \n");
-RUN
-$fprintf( stderr, "Permafrost: Frozenwall (McKenzie): Target NRM Solver 2/4 = 99481.811/161.85983\n" );
-
-
-

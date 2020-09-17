@@ -140,7 +140,8 @@ CONTAINS
           CALL Fatal( 'CheckLinearSolverOptions', 'There is no direct parallel solver available (MUMPS)')
 #endif
         END IF
-        CALL Info('CheckLinearSolverOptions','Setting > Linear System Direct Method < to:'//TRIM(str) )
+        CALL Info('CheckLinearSolverOptions',&
+            'Setting > Linear System Direct Method < to:'//TRIM(str), Level=6)
         CALL ListAddString( Params,'Linear System Direct Method', str )
       END IF
 
@@ -1461,16 +1462,16 @@ CONTAINS
 
         ThreadedStartup = ListGetLogical( SolverParams,'Multithreaded Startup',Found )
         IF( ThreadedStartup ) THEN
-          CALL Info('AddEquationBasics','Using multithreaded startup')
+          CALL Info('AddEquationBasics','Using multithreaded startup',Level=6)
         END IF
         
         MultiColourSolver = ListGetLogical( SolverParams,'MultiColour Solver',Found )
 
         IF( MultiColourSolver .OR. ThreadedStartup ) THEN
-          CALL Info('AddEquationBasics','Creating structures for mesh colouring')
+          CALL Info('AddEquationBasics','Creating structures for mesh colouring',Level=8)
           ConsistentColours = .FALSE.
           IF ( ListGetLogical(SolverParams,'MultiColour Consistent', Found) ) THEN
-            CALL Info('AddEquationBasics','Creating consistent colouring')
+            CALL Info('AddEquationBasics','Creating consistent colouring',Level=8)
             ConsistentColours = .TRUE.
           END IF
 
@@ -2553,7 +2554,7 @@ CONTAINS
      END IF
 
      CALL Info('CreateChildSolver','Creating solver of size '//TRIM(I2S(Dofs))//' for variable: &
-         '//TRIM(ChildVarName),Level=5)
+         '//TRIM(ChildVarName),Level=6)
 
      NULLIFY( Solver ) 
      ALLOCATE( Solver )
@@ -3292,7 +3293,7 @@ CONTAINS
 
     AllDirFlag = .FALSE.
     IF( IsProcedure .OR. IsAssemblySolver ) THEN
-      CALL Info('CoupledSolver','Using existing variable and matrix')
+      CALL Info('CoupledSolver','Using existing variable and matrix',Level=8)
       IF(.NOT. ASSOCIATED(Solver % Matrix)) THEN
         CALL Fatal('CoupledSolver','In legacy solver mode the Matrix should exist!')
       END IF
@@ -3314,7 +3315,7 @@ CONTAINS
         Var => VariableGet( Mesh % Variables, TRIM(VarName) )
         
         IF(.NOT. ASSOCIATED( Var )) THEN
-          CALL Info('CoupledSolver','Variable '//TRIM(VarName)//' does not exist, creating')
+          CALL Info('CoupledSolver','Variable '//TRIM(VarName)//' does not exist, creating',Level=10)
           PSolver => Solver
           Var => CreateBlockVariable(PSolver, i, VarName )
         END IF
@@ -3365,7 +3366,7 @@ CONTAINS
         IF( ConDofs > 0 ) THEN
           Var => VariableGet( Mesh % Variables, VarName )
           IF( .NOT. ASSOCIATED(Var) ) THEN
-            CALL Info('CoupledSolver','Constraint '//TRIM(VarName)//' does not exist, creating')
+            CALL Info('CoupledSolver','Constraint '//TRIM(VarName)//' does not exist, creating',Level=10)
             ALLOCATE(ConsValues(ConDofs))
             CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
                 VarName, ConDofs, ConsValues, Output = .FALSE. )          
@@ -3381,20 +3382,20 @@ CONTAINS
 
       DO j=1,NoVar+NoCons
         WRITE(Message,'(A,I0,A,T35,I0)') 'Permutation offset ',j,': ',OffSet(j)
-        CALL Info('CoupledSolver',Message)
+        CALL Info('CoupledSolver',Message,Level=8)
       END DO
       
       TotSize = SUM( VarSizes )
       MaxDofs = MAXVAL( VarDofs )
       
       WRITE(Message,'(A,T35,I0)') 'Number of coupled variables: ',NoVar
-      CALL Info('CoupledSolver',Message)
+      CALL Info('CoupledSolver',Message,Level=8)
       
       WRITE(Message,'(A,T35,I0)') 'Number of constraints: ',NoCons
-      CALL Info('CoupledSolver',Message)
+      CALL Info('CoupledSolver',Message,Level=8)
       
       WRITE(Message,'(A,T35,I0)') 'Size of coupled system: ',TotSize
-      CALL Info('CoupledSolver',Message)
+      CALL Info('CoupledSolver',Message,Level=8)
       
       ! For the 1st time the matrix should be a list, later CRS
       !--------------------------------------------------------
@@ -3409,7 +3410,7 @@ CONTAINS
       !------------------------------------------------------------
       VarName = ListGetString( SolverParams,'Variable', GotIt )
       IF(.NOT. GotIt) THEN
-        CALL Info('CoupledSolver','New coupled variable added: Alldofs', Level=5)
+        CALL Info('CoupledSolver','New coupled variable added: Alldofs', Level=6)
         VarName = 'alldofs'
       END IF
 
@@ -3574,7 +3575,7 @@ CONTAINS
     DEALLOCATE( FORCE, STIFF, DAMP, MASS, ColInds, RowInds, Indexes )
     IF( AllDirFlag ) DEALLOCATE( AllDir ) 
     
-    CALL Info('CoupledSolver','All done')
+    CALL Info('CoupledSolver','All done',Level=8)
     CALL Info('CoupledSolver','-------------------------------------------------',Level=5)
 
 
@@ -3627,7 +3628,7 @@ CONTAINS
     !> using the single system vector names and sizes.
     !----------------------------------------------------------------------------------
     SUBROUTINE CoupledSystemDirichlet()
-      CALL Info( 'CoupledSolver', 'Setting coupled system Dirichlet conditions', Level=4 )
+      CALL Info( 'CoupledSolver', 'Setting coupled system Dirichlet conditions', Level=6 )
       
       DO i = 1,NoVar
         WRITE (str,'(A,I0)') 'Variable ',i
@@ -3648,7 +3649,7 @@ CONTAINS
     ! initial guess.
     !----------------------------------------------------------------------------------
     SUBROUTINE SingleToCoupledVector()
-      CALL Info('CoupledSolver','Copying an initial guess',Level=5)
+      CALL Info('CoupledSolver','Copying an initial guess',Level=8)
       
       DO i = 1,NoVar + NoCons
         IF( VarDofs(i) == 0 ) CYCLE
@@ -3675,7 +3676,7 @@ CONTAINS
     !> original vectors.
     !----------------------------------------------------------------------------------
     SUBROUTINE CoupledToSingleVector()
-      CALL Info('CoupledSolver','Copying results into original variables',Level=5)
+      CALL Info('CoupledSolver','Copying results into original variables',Level=8)
       DO i = 1,NoVar + NoCons
         IF( VarDofs(i) == 0 ) CYCLE
         
@@ -3707,7 +3708,7 @@ CONTAINS
       !-----------------------------------------------------------------------------------
       INTEGER :: TargetDof, TmpInds(4) 
 
-      CALL Info('CoupledSolver','Starting constraint assembly',Level=5)
+      CALL Info('CoupledSolver','Starting constraint assembly',Level=8)
       
       BulkMode = .TRUE.
 200   IF(BulkMode) THEN
@@ -4008,7 +4009,7 @@ CONTAINS
     IF( Solver % SolverMode /= SOLVER_MODE_BLOCK ) THEN
       CALL Fatal('BlockSolver','You should maybe not be here?')
     ELSE
-      CALL Info('BlockSolver','Solving system of equations utilizing block strategies')
+      CALL Info('BlockSolver','Solving system of equations utilizing block strategies',Level=5)
     END IF
     CALL Info('BlockSolver','---------------------------------------',Level=5)
 
@@ -4059,7 +4060,7 @@ CONTAINS
 
         ! Create the matrix structures using the list structure as 
         !------------------------------------------------------------------------------    
-        CALL Info('BlockSolver','Creating matrix structured using list matrices')
+        CALL Info('BlockSolver','Creating matrix structured using list matrices',Level=12)
         DO RowVar=1,NoVar
           Solver % Variable => TotMatrix % SubVector(RowVar) % Var
           
@@ -4112,14 +4113,14 @@ CONTAINS
       CALL ListAddLogical(SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
     END IF       
 
-    CALL Info('BlockSolver','-------------------------------------------------',Level=5)
+    CALL Info('BlockSolver','-------------------------------------------------',Level=6)
     Residual = -1.0_dp
     PrevResidual = -1.0_dp
     
     DO iter = 1,NonLinIter
       
       WRITE(Message,'(A,T35,I0)') 'Coupled iteration: ',iter
-      CALL Info('BlockSolver',Message,Level=5)
+      CALL Info('BlockSolver',Message,Level=6)
 
       tests = 0
 
@@ -4142,7 +4143,7 @@ CONTAINS
         IF(.NOT. GotIt) ScaleSystem = .TRUE.
         
         IF( ScaleSystem ) THEN
-	  CALL Info('BlockSolver','Applying scaling')
+	  CALL Info('BlockSolver','Applying scaling',Level=8)
           CALL ScaleLinearSystem(Solver, SolverMatrix, &
               SolverMatrix % Rhs, Solver % Variable % Values )
           CALL ListAddLogical( Solver % Values,'Linear System Scaling',.FALSE.)
@@ -4245,7 +4246,7 @@ CONTAINS
       ! related to nonlinearity and assembly.
       !----------------------------------------------------------------------
       IF( NoVar == 1 ) THEN
-	CALL Info('BlockSolver','Solving in standard manner',Level=6)
+	CALL Info('BlockSolver','Solving in standard manner',Level=8)
 
         Solver % Variable => TotMatrix % SubVector(1) % Var
         Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
@@ -4254,14 +4255,14 @@ CONTAINS
         MaxChange = Solver % Variable % NonlinChange 
 
       ELSE IF( BlockPrec ) THEN
-	CALL Info('BlockSolver','Using block preconditioning strategy',Level=6)        
+	CALL Info('BlockSolver','Using block preconditioning strategy',Level=8)        
         CALL BlockKrylovIter( Solver, MaxChange )
 
       ELSE
         Solver % Variable => TotMatrix % SubVector(1) % Var
         Solver % Matrix => TotMatrix % Submatrix(1,1) % Mat
 
-	CALL Info('BlockSolver','Using block solution strategy',Level=6)
+	CALL Info('BlockSolver','Using block solution strategy',Level=8)
         CALL BlockStandardIter( Solver, MaxChange )
       END IF      
       CALL ListPopNameSpace()
@@ -4288,8 +4289,8 @@ CONTAINS
     Solver % Variable => SolverVar
     Solver % Matrix => SolverMatrix
 
-    CALL Info('BlockSolver','All done')
-    CALL Info('BlockSolver','-------------------------------------------------',Level=5)
+    CALL Info('BlockSolver','All done',Level=8)
+    CALL Info('BlockSolver','-------------------------------------------------',Level=6)
 
 
   CONTAINS 
@@ -4310,7 +4311,7 @@ CONTAINS
 
       LOGICAL :: OffDiagonal
 
-      CALL Info( 'BlockSolver', 'Setting block system Dirichlet conditions', Level=4 )
+      CALL Info( 'BlockSolver', 'Setting block system Dirichlet conditions', Level=8 )
       
       Solver % Matrix => BlockMatrix % SubMatrix( NoRow, NoCol ) % Mat
       IF( Solver % Matrix % NumberOfRows == 0 ) RETURN
@@ -4344,7 +4345,7 @@ CONTAINS
       TYPE(Matrix_t), POINTER :: A
 
 
-      CALL Info('BlockSolver','Computing block matrix norm',Level=5)
+      CALL Info('BlockSolver','Computing block matrix norm',Level=8)
       
       NoVar = BlockMatrix % NoVar
       ALLOCATE( rtmp( BlockMatrix % MaxSize ), res( BlockMatrix % MaxSize) )
@@ -4515,7 +4516,7 @@ CONTAINS
         END DO
         
         Alpha = Alpha * Relaxation
-        CALL Info( 'CheckStepSize','Step rejected, increasing relaxation', Level=3 )      
+        CALL Info( 'CheckStepSize','Step rejected, increasing relaxation', Level=5 )      
         ! PRINT *,'Residual',Residual,PrevResidual,Alpha
 
       END IF
@@ -4648,7 +4649,7 @@ CONTAINS
       RowInds = 0
     END IF
       
-    CALL Info('BlockSystemAssembly','Starting block system assembly',Level=5)
+    CALL Info('BlockSystemAssembly','Starting block system assembly',Level=8)
     
     BulkMode = .TRUE.
     
@@ -4700,7 +4701,7 @@ CONTAINS
     IF ( ProcPntr == 0 ) THEN
       CALL Fatal('BlockSystemAssembly','Assembly routine not found: '//TRIM(ProcName))
     ELSE
-      CALL Info('BlockSystemAssembly','Using assembly routine: '//TRIM(ProcName))
+      CALL Info('BlockSystemAssembly','Using assembly routine: '//TRIM(ProcName),Level=8)
     END IF
     
     ! These may be fetched within the assembly routine, if needed
@@ -4834,7 +4835,7 @@ CONTAINS
     INTEGER :: NColours, col
     REAL(KIND=dp) :: Norm
 
-    CALL Info('ExecSolverInSteps','Performing solution in steps',Level=5)
+    CALL Info('ExecSolverInSteps','Performing solution in steps',Level=6)
     ProcName = ListGetString( Solver % Values,'Procedure', Found )
 
     MaxIter = ListGetInteger( Solver % Values,'Nonlinear System Max Iterations', Found ) 
@@ -5140,12 +5141,12 @@ CONTAINS
      ! -----------------------------------
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
-     CALL Info("SingleSolver", "Attempting to call solver", level=5)
+     CALL Info("SingleSolver", "Attempting to call solver", level=8)
      SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
-        CALL Info("SingleSolver", Message, level=5)
+        CALL Info("SingleSolver", Message, level=8)
      END IF
 
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
@@ -5354,7 +5355,7 @@ CONTAINS
        WRITE(Message, '(A,I0,A,I0,A)' ) &
            'Passive element BC no. ',j, ' assigned to BC-ID no. ', &
            PassiveBcId
-       CALL INFO('MainUtils',Message,Level=5)
+       CALL INFO('MainUtils',Message,Level=6)
      END IF
 
      ScanningLoops = ListGetInteger( Params,'Scanning Loops',GotLoops)
@@ -5448,7 +5449,7 @@ CONTAINS
               //TRIM(str),rst)
        WRITE(Message,'(a,f8.2,f8.2,a)') 'Solver time (CPU,REAL) for '&
         //TRIM(str)//': ',st,rst,' (s)'
-       CALL Info('SolverActivate',Message)    
+       CALL Info('SolverActivate',Message,Level=4)    
 
        IF( ListGetLogical(Params,'Solver Timing Cumulative',Found)) THEN
           ct = ListGetConstReal(CurrentModel % Simulation,'res: cum solver cpu time '&
@@ -5558,9 +5559,9 @@ CONTAINS
 
           !> Output
           WRITE (Message,*) "---------------- Predictor-Corrector Control ----------------------"
-          CALL Info('Predictor-Corrector', Message, Level=3)
+          CALL Info('Predictor-Corrector', Message, Level=4)
           WRITE (Message,*) "current dt=", dtOld, "next dt=",  dt
-          CALL Info('Predictor-Corrector', Message, Level=3)
+          CALL Info('Predictor-Corrector', Message, Level=4)
           WRITE (Message,*) "zeta=", zeta, "eta=",  eta, "terr=", timeError
           CALL Info('Predictor-Corrector', Message, Level=6)
           dtOld = dt
