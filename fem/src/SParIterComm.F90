@@ -1800,14 +1800,12 @@ CONTAINS
 
 
 !--------------------------------------------------------------------  
-   SUBROUTINE SParGlobalNumbering( Mesh, OldMesh, NewNodeCnt, &
-            OldIntCnts, OldIntArray, Reorder )
+   SUBROUTINE SParGlobalNumbering( Mesh, OldMesh, NewNodeCnt, Reorder )
 !-----------------------------------------------------------------------
     USE GeneralUtils
 !-----------------------------------------------------------------------
      TYPE(Mesh_t) :: Mesh, OldMesh
-     INTEGER, TARGET :: NewNodeCnt, OldIntArray(:), &
-               OldIntCnts(:), Reorder(:)
+     INTEGER, TARGET :: NewNodeCnt,Reorder(:)
 !-----------------------------------------------------------------------
      INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
      INTEGER :: ierr
@@ -2477,7 +2475,9 @@ tstart = realtime()
 
      RETURN
 
+
 !???????????????????????????????????????????????????????????????????????????????
+#if 0
 
 !
 !    Lowest numbered PE will compute the size of
@@ -2793,6 +2793,7 @@ END DO
 
 
      CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+#endif
 
 CONTAINS
 
