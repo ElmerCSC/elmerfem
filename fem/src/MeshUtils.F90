@@ -3553,7 +3553,7 @@ CONTAINS
     UseLongEdge = ListGetLogical(CurrentModel % Simulation, &
          "Stabilization Use Longest Element Edge",Stat)
 
-    DO i=1,Mesh % NumberOfBulkElements
+    DO i=1,Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
        Element => Mesh % Elements(i)
        n = Element % TYPE % NumberOfNodes
        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
