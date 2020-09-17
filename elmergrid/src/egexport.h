@@ -1,6 +1,5 @@
-/* femfileout.h */
-/* Routines for exporting data to other
-   FEM packages, such as Abaqus and Fidap. */
+/* femfileout.h -> egexport.h */
+/* Routines for exporting data to other FEM or visualization software. */
 
 int SaveAbaqusInput(struct FemType *data,char *prefix,int info);
 int SaveFidapOutput(struct FemType *data,char *prefix,int info,

@@ -5575,7 +5575,7 @@ END SUBROUTINE GetNodalElementSize
     CALL Info('FreeSolver','Free solver matrix',Level=20)
     CALL FreeMatrix(Solver % Matrix)
 
-    CALL Info('FreeSolver','Free solver miscallenous',Level=20)
+    CALL Info('FreeSolver','Free solver miscellaneous',Level=20)
     CALL FreeValueList(Solver % Values)
     IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
     IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
@@ -5747,6 +5747,8 @@ END SUBROUTINE GetNodalElementSize
    
    CALL Info(Caller, '-----------------------------------------', Level=5 )
    CALL Info(Caller, 'Setting sweeping parameters for simulation',Level=4 )
+
+   FinishEarly = .FALSE.
 
    NoParam = ListGetInteger( Params,'Parameter Count',Found )
    IF(.NOT. Found ) THEN
@@ -6161,7 +6163,6 @@ END SUBROUTINE GetNodalElementSize
         NoImprovements, OptTol, Visited
 
     GotParams = .TRUE.
-    FinishEarly = .FALSE.
     
     !------------------------------------------------------------------------------
     ! In the 1st round perform initializations 

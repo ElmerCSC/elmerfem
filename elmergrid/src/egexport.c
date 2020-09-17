@@ -2,8 +2,8 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter Råback
-   Email: Peter.Raback@csc.fi
+   Author: Peter Raback
+   Email: elmeradm@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
             02101 Espoo, Finland
@@ -23,7 +23,7 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-/* --------------------:  femfilein.c  :-------------------------- */
+/* --------------------:  egexport.c  :-------------------------- */
 
 #include <stdio.h>
 #include <math.h>
@@ -33,12 +33,11 @@
 #include <string.h>
 /*#include <unistd.h>*/
 
-#include "nrutil.h"
-#include "common.h"
-#include "femdef.h"
-#include "femtypes.h"
-#include "femknot.h"
-#include "femfileout.h"
+#include "egutils.h"
+#include "egdef.h"
+#include "egtypes.h"
+#include "egmesh.h"
+#include "egexport.h"
 
 
 int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
@@ -67,7 +66,7 @@ int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
   if(info) printf("Saving ABAQUS data to %s.\n",filename);  
 
   fprintf(out,"*HEADING\n");
-  fprintf(out,"Abaqus input file creator by Peter.Raback@csc.fi\n");
+  fprintf(out,"Abaqus input file created by ElmerGrid\n");
 
   fprintf(out,"*NODE, SYSTEM=");
   if(data->coordsystem == COORD_CART2) fprintf(out,"R\n");
@@ -75,7 +74,7 @@ int SaveAbaqusInput(struct FemType *data,char *prefix,int info)
   else if(data->coordsystem == COORD_POLAR) fprintf(out,"P\n");
 
   for(i=1; i <= noknots; i++) 
-    fprintf(out,"%8d, %12.4e, %12.4e, 0.0\n",i,data->x[i],data->y[i]);
+    fprintf(out,"%8d, %12.4le, %12.4le, 0.0\n",i,data->x[i],data->y[i]);
 
   fprintf(out,"*ELEMENT,TYPE=");
   if(nonodes == 4) fprintf(out,"DC2D4 ");
@@ -169,7 +168,7 @@ int SaveFidapOutput(struct FemType *data,char *prefix,int info,
 
   /* Control information */
   fprintf(out,"** FIDAP NEUTRAL FILE\n");
-  fprintf(out,"Fidap input file creator by Peter.Raback@csc.fi\n");
+  fprintf(out,"Fidap input file created by ElmerGrid\n");
   fprintf(out,"VERSION %7.2f\n",7.52); /* Fidap version */
   fprintf(out," 1 Dec 96    12:00:00\n");
   fprintf(out,"%15s%15s%15s%15s%15s\n","NO. OF NODES",
@@ -212,7 +211,7 @@ int SaveFidapOutput(struct FemType *data,char *prefix,int info,
       } 
     }    
 
-  fprintf(out,"TIMESTEP: %5d TIME:     %15.7e INCRMNT: %15.7e\n",1,1.0,1.0);
+  fprintf(out,"TIMESTEP: %5d TIME:     %15.7le INCRMNT: %15.7le\n",1,1.0,1.0);
 
   fprintf(out,"VELOCITY\n");            
   if(vctrs < 2) 

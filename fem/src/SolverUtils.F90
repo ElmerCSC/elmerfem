@@ -4899,6 +4899,17 @@ CONTAINS
               END DO
             END DO
 
+            IF( InfoActive( 20 ) ) THEN
+              DO j=1,NoNodes
+                i = IndNodes(j)
+                IF(i<1) CYCLE
+                PRINT *,'Nearest node is:',i,MinDist(j)                
+                PRINT *,'Target Coordinates:',CoordNodes(j,:)
+                PRINT *,'Nearest coordinates:',Model % Mesh % Nodes % x(i),&
+                    Model % Mesh % Nodes % y(i), Model % Mesh % Nodes % z(i)
+              END DO
+            END IF
+            
             ! In parallel case eliminate all except the nearest node. 
             ! This relies on the fact that for each node partition the 
             ! distance to nearest node is computed accurately. 
@@ -4908,7 +4919,7 @@ CONTAINS
                 IndNodes(j) = 0
               END IF
             END DO
-
+            
             NOFNodesFound = 0
             DO j=1,NoNodes
                IF ( IndNodes(j)>0 ) THEN
@@ -4919,6 +4930,10 @@ CONTAINS
             
             ! In the first time add the found nodes to the list structure
             IF ( NOFNodesFound > 0 ) THEN
+              DO i=1,NOFNodesFound
+                CALL Info('SetNodalLoads','Target Nodes('//TRIM(I2S(i))//&
+                    ') = '//TRIM(I2S(IndNodes(i))),Level=7)
+              END DO
               CALL ListAddIntegerArray( ValueList,'Target Nodes', &
                   NOFNodesFound, IndNodes) 
               NodesFound = .TRUE.            
@@ -6961,7 +6976,7 @@ END SUBROUTINE SetNodalSources
 
 !------------------------------------------------------------------------------
 !> Sets nodal loads directly to the matrix structure. 
-!> The intended use for this, is for example, in multiphysics coupling where
+!> The intended use for this is, for example, in multiphysics coupling where
 !> the nodal loads may have been computed by another solver. 
 !------------------------------------------------------------------------------
    SUBROUTINE SetNodalLoads( Model, A, b, Name, DOF, NDOFs, Perm )
@@ -7130,6 +7145,17 @@ END SUBROUTINE SetNodalSources
               END DO
             END DO
 
+            IF( InfoActive( 20 ) ) THEN
+              DO j=1,NoNodes
+                i = IndNodes(j)
+                IF(i<1) CYCLE
+                PRINT *,'Nearest node is:',i,MinDist(j)
+                PRINT *,'Target Coordinates:',CoordNodes(j,:)
+                PRINT *,'Nearest coordinates:',Model % Mesh % Nodes % x(i),&
+                    Model % Mesh % Nodes % y(i), Model % Mesh % Nodes % z(i)
+              END DO
+            END IF
+            
             ! In parallel case eliminate all except the nearest node. 
             ! This relies on the fact that for each node partition the 
             ! distance to nearest node is computed accurately. 
@@ -7158,6 +7184,10 @@ END SUBROUTINE SetNodalSources
             
             ! In the first time add the found nodes to the list structure
             IF ( NOFNodesFound > 0 ) THEN
+              DO i=1,NOFNodesFound
+                CALL Info('SetNodalLoads','Target Nodes('//TRIM(I2S(i))//&
+                    ') = '//TRIM(I2S(IndNodes(i))),Level=7)
+              END DO
               CALL ListAddIntegerArray( ValueList,'Target Nodes', &
                   NOFNodesFound, IndNodes) 
               NodesFound = .TRUE.            
@@ -13741,7 +13771,7 @@ END FUNCTION SearchNodeL
     NeedPrevSol = ResidualMode
 
     IF(.NOT. NeedPrevSol ) THEN
-      Relaxation = ListGetConstReal( Params, &
+      Relaxation = ListGetCReal( Params, &
           'Nonlinear System Relaxation Factor', Found )
       IF( Found ) NeedPrevSol = (Relaxation /= 1.0_dp)
     END IF
@@ -14882,12 +14912,12 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   
   
   IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
-    CALL Warn('CgangeToHarmonicSystem','Not applicable without a variable')
+    CALL Warn('ChangeToHarmonicSystem','Not applicable without a variable')
     RETURN    
   END IF
 
   IF( .NOT. ASSOCIATED( Solver % Matrix ) ) THEN
-    CALL Warn('CgangeToHarmonicSystem','Not applicable without a matrix')
+    CALL Warn('ChangeToHarmonicSystem','Not applicable without a matrix')
     RETURN    
   END IF
   

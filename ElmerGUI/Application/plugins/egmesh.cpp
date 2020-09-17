@@ -2,8 +2,8 @@
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
-   Author: Peter R�back
-   Email: Peter.Raback@csc.fi
+   Author: Peter Raback
+   Email: elmeradm@csc.fi
    Address: CSC - IT Center for Science Ltd.
             Keilaranta 14
             02101 Espoo, Finland
@@ -6490,7 +6490,7 @@ int FindPeriodicNodes(struct FemType *data,int periodicdim[],int info)
   if(!periodicdim[0] && !periodicdim[1] && !periodicdim[2]) return(1);
 
   if(data->periodicexist) {
-    printf("FindPeriodicNodes: Subroutine is called for second time�\n");
+    printf("FindPeriodicNodes: Subroutine is called for second time?\n");
     return(2);
   }
 
