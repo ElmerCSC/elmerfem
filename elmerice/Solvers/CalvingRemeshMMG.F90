@@ -914,3 +914,240 @@ CONTAINS
   END SUBROUTINE EnforceGroundedMask
 
 END SUBROUTINE CalvingRemeshMMG
+
+SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
+
+  USE CalvingGeometry
+
+  IMPLICIT NONE
+
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+  !-------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Solver_t) :: RemeshSolver
+  TYPE(Variable_t), POINTER :: FlowVar, TimeVar
+  TYPE(ValueList_t), POINTER :: Params, FuncParams
+  LOGICAL :: Parallel, Found, CheckFlowDiverge=.TRUE., CheckFlowMax, FirstTime=.TRUE.,&
+       NSDiverge, NSFail, NSTooFast
+  REAL(KIND=dp) :: SaveNewtonTol, MaxNSDiverge, MaxNSValue, FirstMaxNSValue, FlowMax,&
+       SaveFlowMax, Mag, NSChange, SaveDt, SaveRelax,SaveMeshHmin,SaveMeshHmax,&
+       SaveMeshHgrad,SaveMeshHausd
+  REAL(KIND=dp), POINTER :: TimestepSizes(:,:)
+  INTEGER :: i,j,SaveNewtonIter,Num, ierr, FailCount
+  CHARACTER(MAX_NAME_LEN) :: FlowVarName, SolverName, EqName, RemeshEqName
+
+  SAVE ::SaveNewtonTol, SaveNewtonIter, SaveFlowMax, SaveDt, FirstTime, FailCount,&
+       SaveRelax,SaveMeshHmin,SaveMeshHmax,SaveMeshHausd,SaveMeshHgrad
+
+  Mesh => Solver % Mesh
+  SolverName = 'CheckFlowConvergenceMMG'
+  Params => Solver % Values
+  Parallel = (ParEnv % PEs > 1)
+  FuncParams => GetMaterial(Mesh % Elements(1)) !TODO, this is not generalised
+  FlowVarName = ListGetString(Params,'Flow Solver Name',Found)
+  IF(.NOT. Found) FlowVarName = "Flow Solution"
+  FlowVar => VariableGet(Mesh % Variables, FlowVarName, .TRUE., UnfoundFatal=.TRUE.)
+
+  RemeshEqName = ListGetString(Params,'Remesh Equation Name',Found)
+  IF(.NOT. Found) RemeshEqName = "remesh"
+
+  !Get a handle to the remesh solver
+  Found = .FALSE.
+  DO j=1,Model % NumberOfSolvers
+    IF(ListGetString(Model % Solvers(j) % Values, "Equation") == RemeshEqName) THEN
+      RemeshSolver = Model % Solvers(j)
+      Found = .TRUE.
+      EXIT
+    END IF
+  END DO
+  IF(.NOT. Found) CALL Fatal(SolverName, "Failed to get handle to Remesh Solver.")
+
+  IF(FirstTime) THEN
+
+    FailCount = 0
+    TimestepSizes => ListGetConstRealArray( Model % Simulation, &
+         'Timestep Sizes', Found, UnfoundFatal=.TRUE.)
+    IF(SIZE(TimestepSizes,1) > 1) CALL Fatal(SolverName,&
+         "Calving solver requires a single constant 'Timestep Sizes'")
+    SaveDt = TimestepSizes(1,1)
+
+    SaveNewtonTol = ListGetConstReal(FlowVar % Solver % Values, &
+         "Nonlinear System Newton After Tolerance", Found)
+    IF(.NOT. Found) SaveNewtonTol = 1.0E-3
+    SaveNewtonIter = ListGetInteger(FlowVar % Solver % Values, &
+         "Nonlinear System Newton After Iterations", Found)
+    IF(.NOT. Found) SaveNewtonIter = 15
+
+    SaveRelax = ListGetConstReal(FlowVar % Solver % Values, &
+         "Nonlinear System Relaxation Factor", Found)
+    IF(.NOT. Found) SaveRelax = 1.0
+    PRINT *, 'TO DO: replace with MMG stuff, hausdorff?'
+    ! Use RemeshMMG3D Hmin in Material or Mesh Hmin in RemeshSolver
+    ! should remesh without calving/cutting as well, so take RemeshMMG3D
+    SaveMeshHmin = ListGetConstReal(FuncParams, "RemeshMMG3D Hmin", Found, UnfoundFatal=.TRUE.)
+    SaveMeshHmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax", Found, UnfoundFatal=.TRUE.)
+    SaveMeshHausd = ListGetConstReal(FuncParams, "RemeshMMG3D Hausd", Found, UnfoundFatal=.TRUE.)
+    SaveMeshHgrad = ListGetConstReal(FuncParams, "RemeshMMG3D Hgrad", Found, UnfoundFatal=.TRUE.)
+  END IF
+
+  !Get current simulation time
+  TimeVar => VariableGet(Model % Variables, 'Time', .TRUE.)
+
+  MaxNSDiverge = ListGetConstReal(Params, "Maximum Flow Solution Divergence", CheckFlowDiverge)
+  MaxNSValue = ListGetConstReal(Params, "Maximum Velocity Magnitude", CheckFlowMax)
+  FirstMaxNSValue = ListGetConstReal(Params, "First Time Max Expected Velocity", Found)
+  IF(.NOT. Found .AND. CheckFlowDiverge) THEN
+    CALL Info(SolverName, "'First Time Max Expected Velocity' not found, setting to 1.0E4")
+    FirstMaxNSValue = 1.0E4
+  END IF
+
+  !====================================================!
+  !---------------- DO THINGS! ------------------------!
+  !====================================================!
+
+  NSFail=.FALSE.
+  NSDiverge=.FALSE.
+  NSTooFast=.FALSE.
+
+  !In addition to checking for absolute failure (% NonlinConverged = 0), we can check
+  !for suspiciously large shift in the max variable value (this usually indicates a problem)
+  !and we can also check for unphysically large velocity values
+  IF(CheckFlowDiverge .OR. CheckFlowMax) THEN
+
+    FlowMax = 0.0_dp
+    DO i=1,Mesh % NumberOfNodes
+      Mag = 0.0_dp
+
+      DO j=1,FlowVar % DOFs-1
+        Mag = Mag + (FlowVar % Values( (FlowVar % Perm(i)-1)*FlowVar % DOFs + j ) ** 2.0_dp)
+      END DO
+      Mag = Mag ** 0.5_dp
+      FlowMax = MAX(FlowMax, Mag)
+    END DO
+
+    CALL MPI_AllReduce(MPI_IN_PLACE, FlowMax, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+  END IF
+
+  IF(CheckFlowDiverge) THEN
+    !First time, there's no previous velocity against which to check divergence.
+    !This is somewhat messy because of the separate 'Maximum Velocity Magnitude'
+    IF(FirstTime) SaveFlowMax = MIN(FlowMax,FirstMaxNSValue)
+
+    NSChange = FlowMax / SaveFlowMax
+    PRINT *,'Debug, Flow Max (old/new): ',SaveFlowMax, FlowMax,' NSChange: ',NSChange
+
+    IF(NSChange > MaxNSDiverge) THEN
+      NSDiverge = .TRUE.
+      CALL Info(SolverName,"Large change in maximum velocity suggests dodgy&
+           &Navier-Stokes solution.")
+    END IF
+    IF(.NOT. NSDiverge) SaveFlowMax = FlowMax
+  END IF
+
+  IF(CheckFlowMax) THEN
+    IF(FlowMax > MaxNSValue) THEN
+      NSTooFast = .TRUE.
+      CALL Info(SolverName,"Large maximum velocity suggests dodgy&
+           &Navier-Stokes solution.")
+    END IF
+  END IF
+
+  NSFail = FlowVar % NonlinConverged < 1 .OR. NSDiverge .OR. NSTooFast
+
+  IF(NSFail) THEN
+    CALL Info(SolverName, "Skipping solvers except Remesh because NS failed to converge.")
+
+    FailCount = FailCount + 1
+    PRINT *, 'FailCount=',FailCount
+    ! PRINT *, 'Temporarily set failcount to 2, to force remeshing!'
+    ! FailCount=2
+    IF(FailCount >= 4) THEN
+       CALL Fatal(SolverName, "Don't seem to be able to recover from NS failure, giving up...")
+    END IF
+
+    !Set the clock back one second less than a timestep size.
+    !This means next time we are effectively redoing the same timestep
+    !but without any solvers which are dependent on (t > told) to reallocate
+    TimeVar % Values(1) = TimeVar % Values(1) - SaveDt + (1.0/(365.25 * 24 * 60 * 60.0_dp))
+
+
+    CALL ListAddConstReal(FlowVar % Solver % Values, &
+         "Nonlinear System Newton After Tolerance", 0.0_dp)
+    CALL ListAddInteger( FlowVar % Solver % Values, &
+         "Nonlinear System Newton After Iterations", 10000)
+
+    !If this is the second failure in a row, fiddle with the mesh
+PRINT *, 'TO DO, set MMG stuff instead, need to change remesh distance?'
+    IF(FailCount >= 2) THEN
+       CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
+       CALL Info(SolverName,"Temporarily slightly change RemeshMMG3D params ")
+       CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmin", SaveMeshHmin*0.9_dp)
+       CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmin", SaveMeshHmin*1.1_dp)
+       CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", 1.1_dp) !default 1.3
+       CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hausd", SaveMeshHausd*1.1_dp)
+       
+    END IF
+
+    IF( .NOT. (NSTooFast .OR. NSDiverge)) THEN
+      !---Not quite converging---!
+
+      CALL ListAddConstReal(FlowVar % Solver % Values, &
+           "Nonlinear System Relaxation Factor", 0.9_dp)
+
+    ELSE
+      !---Solution blowing up----!
+
+      !Set var values to zero so it doesn't mess up viscosity next time
+      FlowVar % Values = 0.0_dp
+
+      !TODO: What else? different linear method? more relaxation?
+    END IF
+  ELSE
+! set original values back
+    FailCount = 0
+    CALL ListAddConstReal(FlowVar % Solver % Values, &
+         "Nonlinear System Newton After Tolerance", SaveNewtonTol)
+    CALL ListAddInteger( FlowVar % Solver % Values, &
+         "Nonlinear System Newton After Iterations", SaveNewtonIter)
+    CALL ListAddConstReal(FlowVar % Solver % Values, &
+         "Nonlinear System Relaxation Factor", SaveRelax)
+    CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmin", SaveMeshHmin)
+    CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hmax", SaveMeshHmax)
+    CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hgrad", SaveMeshHgrad)
+    CALL ListAddConstReal(FuncParams, "RemeshMMG3D Hausd", SaveMeshHausd)
+
+  END IF
+
+  !Set a simulation switch to be picked up by Remesher
+  CALL ListAddLogical( Model % Simulation, 'Flow Solution Failed', NSFail )
+
+  !Switch off solvers
+  DO Num = 1,999
+    WRITE(Message,'(A,I0)') 'Switch Off Equation ',Num
+    EqName = ListGetString( Params, Message, Found)
+    IF( .NOT. Found) EXIT
+
+    Found = .FALSE.
+    DO j=1,Model % NumberOfSolvers
+      IF(ListGetString(Model % Solvers(j) % Values, "Equation") == EqName) THEN
+        Found = .TRUE.
+        !Turn off (or on) the solver
+        !If NS failed to converge, (switch) off = .true.
+        CALL SwitchSolverExec(Model % Solvers(j), NSFail)
+        EXIT
+      END IF
+    END DO
+
+    IF(.NOT. Found) THEN
+      WRITE (Message,'(A,A,A)') "Failed to find Equation Name: ",EqName,&
+           " to switch off after calving."
+      CALL Fatal(SolverName,Message)
+    END IF
+  END DO
+
+  FirstTime = .FALSE.
+
+END SUBROUTINE CheckFlowConvergenceMMG
