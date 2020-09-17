@@ -75,10 +75,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
        front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
        group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4), &
-       PairCount
+       PairCount,RPairCount
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
-       PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:)
+       PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
        target_length(:,:)
@@ -632,7 +632,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         !TODO - apparently there is beta-testing capability to do both levelset cut and anisotropic
         !remeshing in the same step:
         !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
-        CALL RemeshMMG3D(NewMeshR, NewMeshRR, NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+        CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
+        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+        CALL RemeshMMG3D(NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
 
         !Update parallel info from old mesh nodes (shared node neighbours)
         CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)

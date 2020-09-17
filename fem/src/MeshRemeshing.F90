@@ -818,11 +818,13 @@ END SUBROUTINE MapNewParallelInfo
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
+SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
 
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
   TYPE(ValueList_t), POINTER, OPTIONAL :: Params
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
+  INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
+  INTEGER, OPTIONAL :: PairCount
   !-----------
   TYPE(ValueList_t), POINTER :: FuncParams, Material
   TYPE(Element_t), POINTER :: Element
@@ -914,7 +916,13 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
        MMG5_ARG_end)
 
-  CALL SET_MMG3D_MESH(InMesh,Parallel)
+  IF (Present(PairCount)) THEN
+    CALL SET_MMG3D_MESH(InMesh,Parallel,EdgePairs,PairCount)
+  ELSE
+    print*,'$$$$$$$ think this wiil break'
+    CALL SET_MMG3D_MESH(InMesh,Parallel)
+    print*,'$$$$$$$ it didnt'
+  END IF
 
   !Set the metric values at nodes
   CALL MMG3D_Set_SolSize(mmgMesh, mmgSol, MMG5_Vertex, NNodes, SolType,ierr)
@@ -931,7 +939,7 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
       IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
     END IF
   END DO
-
+   
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
        hmin,ierr)
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmax,&
@@ -971,6 +979,13 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
     END DO
   END IF
 
+  !IF (Present(EdgePairs)) THEN
+  !  DO i=1, PairCount
+  !    CALL MMG3D_Set_edge(mmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, i, ierr)
+  !    !CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
+  !    CALL MMG3D_Set_requiredEdge(mmgMesh, i, ierr)
+  !  END DO
+  !END IF 
 
   IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
