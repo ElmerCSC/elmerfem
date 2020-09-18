@@ -973,11 +973,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init0( Model,Solver,dt,TransientSimulation 
   REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
   LOGICAL :: TransientSimulation !< Steady state or transient simulation
 !------------------------------------------------------------------------------
-  IF( .NOT.ListCheckPresent( Solver % Values, 'Apply Mortar BCs') ) &
-    CALL ListAddLogical( Solver % Values, 'Apply Mortar BCs', .TRUE.)
-
-  IF( .NOT.ListCheckPresent( Solver % Values, 'Linear System Complex') ) &
-    CALL ListAddLogical( Solver % Values, 'Linear System Complex', .TRUE.)
+  CALL ListAddNewLogical( Solver % Values, 'Apply Mortar BCs', .TRUE.)
+  CALL ListAddNewLogical( Solver % Values, 'Linear System Complex', .TRUE.)
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init0
 !------------------------------------------------------------------------------
@@ -997,18 +994,11 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,TransientSimulation )
 
   Params => GetSolverParams(Solver)
   CALL ListAddInteger( Params, 'Variable Dofs',2 )
-  IF( .NOT. ListCheckPresent(  Params,'Variable') ) THEN
-    CALL ListAddString( Params,'Variable',&
-        'Potential[Potential re:1 Potential im:1]')
-  END IF
+  CALL ListAddNewString( Params,'Variable',&
+      'Potential[Potential re:1 Potential im:1]')
 
-  IF(.NOT. ListCheckPresent( Params,'Apply Mortar BCs') ) THEN
-    CALL ListAddLogical( Params,'Apply Mortar BCs',.TRUE.)
-  END IF
-  
-  IF(.NOT. ListCheckPresent( Params,'Linear System Complex') ) THEN
-    CALL ListAddLogical( Params,'Linear System Complex',.TRUE.)
-  END IF
+  CALL ListAddNewLogical( Params,'Apply Mortar BCs',.TRUE.)
+  CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init
@@ -1384,7 +1374,7 @@ CONTAINS
 
     CALL GetLocalSolution(POT, UElement=Element)
     POTC = POT(1,:) + im*POT(2,:)
-    Omega = GetAngularFrequency(Found=Found)
+    Omega = GetAngularFrequency()
 
     !Numerical integration:
     !----------------------
@@ -1451,9 +1441,10 @@ CONTAINS
 
     Material => GetMaterial(Element)
 
-    Omega = GetAngularFrequency(Found=Found)
+    Omega = GetAngularFrequency()
+    
     InPlaneProximity = .FALSE.
-   
+    
     CoilBody = .FALSE.
     CompParams => GetComponentParams( Element )
     CoilType = ''
@@ -1953,9 +1944,7 @@ SUBROUTINE Bsolver_init( Model,Solver,dt,Transient )
   LOGICAL :: Found
 
   SolverParams => GetSolverParams()
-  IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-    CALL ListAddString( SolverParams, 'Variable','-nooutput bsolver_temp' )
-  END IF
+  CALL ListAddNewString( SolverParams, 'Variable','-nooutput bsolver_temp' )
   IF( GetLogical( SolverParams,'Target Variable Complex',Found ) ) THEN
     CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable',SolverParams),'B[B re:2 B im:2]')

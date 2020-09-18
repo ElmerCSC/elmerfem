@@ -556,7 +556,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: CSymmetry, HBCurve, LorentzConductivity, HasThinLines=.FALSE.
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
-   REAL(KIND=dp) :: HarmPowerCoeff = 0.5_dp
+   REAL(KIND=dp) :: HarmPowerCoeff 
    REAL(KIND=dp) :: line_tangent(3)
    INTEGER :: IOUnit
    
@@ -570,8 +570,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
 
-   IF (GetLogical(SolverParams, 'Calculate harmonic peak power', Found)) HarmPowerCoeff = 1.0_dp
-
+   IF (GetLogical(SolverParams, 'Calculate harmonic peak power', Found)) THEN
+     HarmPowerCoeff = 1.0_dp
+   ELSE
+     HarmPowerCoeff = 0.5_dp
+   END IF
+     
    Pname = GetString(SolverParams, 'Potential Variable',Found)
    IF(.NOT. Found ) Pname = 'av'
    Found = .FALSE.
