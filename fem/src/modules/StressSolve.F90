@@ -58,10 +58,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     CHARACTER :: DimensionString
 
 !------------------------------------------------------------------------------
-    CALL Info( 'StressSolve_init', ' ', Level=1 )
-    CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=1 )
-    CALL Info( 'StressSolve_init', 'Solving displacements from linear elasticity model',Level=1 )     
-    CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=1 )
+    CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=4 )
+    CALL Info( 'StressSolve_init', 'Solving displacements from linear elasticity model',Level=4 )     
+    CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=4 )
     SolverParams => GetSolverParams()
     dim = CoordinateSystemDimension()
 
@@ -162,7 +161,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
             NextFreeKeyword('Exported Variable ',SolverParams), &
             Message )
       WRITE (Message,'(A,A,I1,A)') 'Added:','-dofs ',DIM, ' Displacement Velocity'
-      CALL INFO('StressSolve_init',Message,Level=1)
+      CALL INFO('StressSolve_init',Message,Level=5)
     END IF
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
@@ -615,9 +614,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        FixDisplacement = GetLogical( SolverParams, 'Fix Displacement', Found )
        IF(.NOT. Found) FixDisplacement = .TRUE.
        IF(FixDisplacement) THEN
-         CALL Info( 'StressSolve', 'Using six fixed displacement to compute the spring matrix' ) 
+         CALL Info( 'StressSolve', 'Using six fixed displacement to compute the spring matrix',Level=5 ) 
        ELSE
-         CALL Info( 'StressSolve', 'Using six pure forces and moments to compute the spring matrix' ) 
+         CALL Info( 'StressSolve', 'Using six pure forces and moments to compute the spring matrix',Level=5 ) 
        END IF
        MinIter = 6
        MaxIter = 6
@@ -644,8 +643,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        at0 = RealTime()
 
        IF( MaxIter > 1 ) THEN
-         WRITE( Message, * ) 'Displacemet iteration: ', iter
-         CALL Info( 'StressSolve', Message,Level=4 )
+         CALL Info( 'StressSolve','Displacemet iteration: '//TRIM(I2S(iter)),Level=4)
        END IF
        CALL Info( 'StressSolve', 'Starting assembly...',Level=5 )
 !------------------------------------------------------------------------------
@@ -675,7 +673,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
 1000   CALL BulkAssembly()
        CALL DefaultFinishBulkAssembly()
-       CALL Info( 'StressSolve', 'Bulk assembly done', Level=5 )
 
 2000   CALL BCAssembly()
        CALL DefaultFinishBoundaryAssembly()
@@ -689,9 +686,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        END IF
 
        CALL DefaultDirichletBCS()
-
-
-       CALL Info( 'StressSolve', 'Set boundaries done', Level=5 )
 
        !------------------------------------------------------------------------------
        !     Check stepsize for nonlinear iteration
@@ -720,7 +714,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
          UzawaParameter = GetConstReal( SolverParams, 'Uzawa Parameter', Found )
          IF( .NOT.Found ) THEN
             WRITE( Message, * ) 'Using default value 1.0 for Uzawa parameter'
-            CALL Info( 'StressSolve', Message, Level=4 )
+            CALL Info( 'StressSolve', Message, Level=5 )
             UzawaParameter = 1.0d0
          END IF
          
@@ -850,7 +844,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
          DO i=1,nomodes
 
            WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i 
-           CALL INfo('StressSolver', Message ) 
+           CALL INfo('StressSolver', Message,Level=5 ) 
 
            DO l=1,2
             IF ( l==1 ) THEN
@@ -1019,8 +1013,8 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
      
      CALL DefaultFinish()
      
-     CALL Info('StressSolver','All done',Level=4)
-     CALL Info('StressSolver','------------------------------------------',Level=4)
+     CALL Info('StressSolver','All done',Level=5)
+     CALL Info('StressSolver','------------------------------------------',Level=5)
 
 !------------------------------------------------------------------------------
 
@@ -2120,8 +2114,8 @@ CONTAINS
         CALL ListAddLogical( SolverParams,'Apply Contact BCs',.TRUE.) 
       END IF
 
-      CALL Info('StressSolver','Finished Stress Computation',Level=5)
-      CALL Info('StressSolver','------------------------------------------',Level=5)
+      CALL Info('StressSolver','Finished Stress Computation',Level=7)
+      CALL Info('StressSolver','------------------------------------------',Level=7)
 
       CALL ListSetNameSpace('')
 
@@ -2582,10 +2576,8 @@ CONTAINS
        KmatFile = ListGetString(SolverParams,'Model Lumping Filename',stat )
        IF(.NOT. stat) KmatFile = "Kmat.dat"
 
-       CALL Info( 'StressSolve', '-----------------------------------------', Level=4 )
        WRITE( Message, * ) 'Saving lumped elastic spring to file ', TRIM(KmatFile)
        CALL Info( 'StressSolve', Message, Level=4 )
-       CALL Info( 'StressSolve', '-----------------------------------------', Level=4 )
               
        IF (FixDisplacement) THEN
          Kmat(:,1:3) = Kmat(:,1:3) / dX 
