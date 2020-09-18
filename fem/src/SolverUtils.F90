@@ -6852,7 +6852,7 @@ CONTAINS
       Coeff = ParallelScalingFactor()
       IF(ABS(Coeff) < TINY(Coeff)) CYCLE
 
-      CALL LocalSourceAssembly(Element, n, dofs, FORCE )
+      CALL LocalSourceAssembly(Element, dofs, FORCE )
 
       DO i=1,dofs
         SrcVec(dofs*(Perm(Indexes)-1)+i) = SrcVec(dofs*(Perm(Indexes)-1)+i) + &
@@ -6899,10 +6899,10 @@ CONTAINS
 
     
 !------------------------------------------------------------------------------
-    SUBROUTINE LocalSourceAssembly(Element, n, dofs, FORCE)
+    SUBROUTINE LocalSourceAssembly(Element, dofs, FORCE)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER, INTENT(IN) :: n, dofs
+    INTEGER, INTENT(IN) :: dofs
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: FORCE(:,:)
 !------------------------------------------------------------------------------
@@ -6910,13 +6910,13 @@ CONTAINS
     REAL(KIND=dp) :: weight, SourceAtIp, DetJ
     INTEGER, POINTER :: Indexes(:)
     LOGICAL :: Stat,Found
-    INTEGER :: i,j,t,m,allocstat
+    INTEGER :: i,j,t,m,n,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
 
     SAVE Nodes,Basis,ElemSource
 !------------------------------------------------------------------------------
-        
+
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = Mesh % MaxElementNodes
@@ -6929,7 +6929,8 @@ CONTAINS
 
     IP = GaussPoints( Element, PReferenceElement = .FALSE.)
     Indexes => Element % NodeIndexes
-    
+    n = Element % Type % NumberOfNodes
+
     Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
     Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
     Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
@@ -17459,6 +17460,7 @@ CONTAINS
       IF( PRESENT( ElementNodes ) ) THEN
         Normal = NormalVector( Element, ElementNodes, Check = .TRUE. ) 
       ELSE
+        n = Element % Type % NumberOfNodes
         Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
         Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
         Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
