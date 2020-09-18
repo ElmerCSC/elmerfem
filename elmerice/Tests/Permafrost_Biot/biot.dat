@@ -1,0 +1,35 @@
+1         NumberOfRockRecords
+bedrock   1
+0.1       Xi0
+0.35      eta0
+0.1       etak
+3.5       ks0th
+0.006     ew
+0.0       bs
+2600.0    rhos0
+840.0     cs0
+0.0       hs0
+1.0e-08   kgwh0_11
+0.0       kgwh0_12
+0.0       kgwh0_13
+0.0       kgwh0_21
+1.0e-08   kgwh0_22
+0.0       kgwh0_23
+0.0       kgwh0_31
+0.0       kgwh0_32
+1.0e-08   kgwh0_33
+4.0       qexp
+0.0       alphaL
+0.0       alphaT
+0.0       RadGen
+1.0 0.0 0.0 0.0 0.0 0.0 acs
+0.0       as0
+1.0 0.0 0.0 0.0 0.0 0.0 aas
+0.0       ks0
+1.0 0.0 0.0 0.0 0.0 0.0 cks
+5.0e06    Es0
+0.4       nuS0
+0         acsl
+0         aasl
+0         cksl
+

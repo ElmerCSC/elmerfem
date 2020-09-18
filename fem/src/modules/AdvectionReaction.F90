@@ -86,7 +86,7 @@
      VariableName = TRIM(Solver % Variable % Name)
      WRITE(Message,'(A,A)')&
           'AdvectionReactionSolver for variable ', VariableName
-     CALL INFO(SolverName,Message,Level=1)
+     CALL INFO(SolverName,Message,Level=5)
 
      Mesh => GetMesh()
 
@@ -110,7 +110,7 @@
        IF ( istat /= 0 ) THEN
           CALL FATAL(SolverName,'Memory allocation error.' )
        ELSE
-          CALL INFO(SolverName,'Memory allocation done',Level=1 )
+          CALL INFO(SolverName,'Memory allocation done',Level=12 )
        END IF
        DIM = CoordinateSystemDimension()
        AllocationsDone = .TRUE.
@@ -148,9 +148,9 @@
         LimitSolution = .FALSE.
 
      IF (LimitSolution) THEN
-        CALL INFO(SolverName, 'Keyword > Limit Solution < found. Solution will be limited',Level=1)
+        CALL INFO(SolverName, 'Keyword > Limit Solution < found. Solution will be limited',Level=6)
      ELSE
-        CALL INFO(SolverName, 'No keyword > Limit Solution < found. Solution will not be limited',Level=1)
+        CALL INFO(SolverName, 'No keyword > Limit Solution < found. Solution will not be limited',Level=6)
      END IF
 
      !------------------------------------------------------------------------------
@@ -167,14 +167,13 @@
         at0 = RealTime()
 
         CALL Info( SolverName, ' ', Level=4 )
-        CALL Info( SolverName, ' ', Level=4 )
         CALL Info( SolverName, '-------------------------------------',Level=4 )
-        WRITE( Message,'(A,I3,A,I3)') &
+        WRITE( Message,'(A,I0,A,I0)') &
             'Nonlinear iteration no.', iter,' of max',NonlinearIterMax
         CALL Info( SolverName, Message, Level=4 )
         CALL Info( SolverName, '-------------------------------------',Level=4 )
-        CALL Info( SolverName, ' ', Level=4 )
-        CALL Info( SolverName, 'Starting Assembly...', Level=4 )
+        CALL Info( SolverName, ' ', Level=6 )
+        CALL Info( SolverName, 'Starting Assembly...', Level=6 )
 
 
         CALL DefaultInitialize()
@@ -187,9 +186,7 @@
               WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
                    (Active-t) / &
                    (1.0*Active)), ' % done'
-
               CALL Info( SolverName, Message, Level=5 )
-
               at0 = RealTime()
            END IF
            !------------------------------------------------------------------------------
@@ -222,11 +219,6 @@
            ! the body force (r.h.s) = source
            !------------------------------------------------------------------------------         
            LOAD(1:n) = GetReal( BodyForce, TRIM(VariableName) // ' Source', Found )    
-           IF (.NOT.Found) THEN
-              WRITE(Message,'(A,A,A)') 'Body Force >',TRIM(VariableName) // ' Source','< not found'
-              CALL INFO(SolverName, Message, Level=42)
-              LOAD(1:n)  = 0.0d0
-            END IF
 
            !------------------------------------------------------------------------------
            ! Get convection and mesh velocity
@@ -237,13 +229,6 @@
            ! get reaction constant
            !-----------------------
            Gamma(1:n)  = GetReal( Material, TRIM(VariableName) // ' Gamma', Found )
-           IF (.NOT.Found) THEN
-
-             WRITE(Message,'(A,A,A)') 'Material Property >',TRIM(VariableName) // ' Gamma','< not found'
-              CALL INFO(SolverName, Message, Level=42)
-              Gamma(1:n)  = 0.0d0
-           END IF
-
            
            CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, Velo, MeshVelo, Gamma, Element, n ) 
            IF ( Transient ) CALL Default1stOrderTime( MASS, STIFF, FORCE )
@@ -316,7 +301,6 @@
         END DO
 
         CALL DefaultFinishAssembly()
-        CALL Info( SolverName, 'Assembly done', Level=4 )
 
         !------------------------------------------------------------------------------
         !     Solve the system and check for convergence
@@ -339,7 +323,7 @@
         RelativeChange = Solver % Variable % NonlinChange 
         
         IF ( Solver % Variable % NonlinConverged == 1 )  THEN 
-           WRITE(Message,'(A,I6,A,I6,A)') &
+           WRITE(Message,'(A,I0,A,I0,A)') &
                 'Nonlinear iteration converged after ', iter, &
                 ' out of max ',NonlinearIterMax,' iterations'
            CALL INFO(SolverName,Message)
@@ -383,9 +367,9 @@
            END DO
         END DO
         WRITE(Message,'(a,i10)') 'Limited values for upper limit: ', CorrectedUpperLimit
-        CALL Info( SolverName, Message, Level=3 )
+        CALL Info( SolverName, Message, Level=4 )
         WRITE(Message,'(a,i10)') 'Limited values for lower limit: ', CorrectedLowerLimit
-        CALL Info( SolverName, Message, Level=3 )
+        CALL Info( SolverName, Message, Level=4 )
      END IF
 
 
