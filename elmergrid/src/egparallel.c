@@ -53,9 +53,6 @@
 #include "metis-5.1.0/include/metis.h"
 #endif
 
-#define getline fgets(line,MAXLINESIZE,in) 
-
-
 
 int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int parts,
 				 int minstep, int maxstep, int dstep, int info)

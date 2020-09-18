@@ -58,4 +58,3 @@ void SaveNonZeros(Real **matrix,int row_first,int row_last,
 int EchoFile(char *filename);
 int SetDiscontinuousPoints(struct FemType *data,struct PointType *point,
 			   int material);
-void SideAreas(struct FemType *data,struct BoundaryType *bound);
