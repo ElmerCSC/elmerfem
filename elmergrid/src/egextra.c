@@ -54,7 +54,8 @@
 #include "egparallel.h" 
 
 
-#define getline fgets(line,MAXLINESIZE,in) 
+#define GETLINE ioptr=fgets(line,MAXLINESIZE,in) 
+static char *ioptr;
 
 
 int SaveCellInfo(struct GridType *grid,struct CellType *cell,
@@ -577,7 +578,7 @@ int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info)
 
   InitializeKnots(data);
 
-  getline;
+  GETLINE;
   sscanf(line,"%d %d %d %d",&noknots,&noelements,&novctrs,&timesteps);
 
   data->dim = 3;
@@ -606,7 +607,7 @@ int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info)
 
   if(info) printf("Reading %d coordinates.\n",noknots);
   for(i=1; i <= noknots; i++) {
-    getline;
+    GETLINE;
     sscanf(line,"%le %le %le",
 	   &(data->x[i]),&(data->y[i]),&(data->z[i]));
   }
@@ -1408,16 +1409,16 @@ void AdjustVector(Real max,Real min,Real *vector,int first,int last)
 int ReadRealVector(Real *vector,int first,int last,char *filename)
 /* Reads a Real vector from an ascii-file with a given name. */
 {
-  int i;
+  int i,iostat;
   FILE *in;
   Real num;
-
+    
   if ((in = fopen(filename,"r")) == NULL) {
     printf("The opening of the real vector file '%s' wasn't succesfull !\n",filename);
     return(1);
   }
   for(i=first;i<=last;i++) {
-    fscanf(in,"%le\n",&num);
+    iostat = fscanf(in,"%le\n",&num);
     vector[i]=num;
     }
   fclose(in);
@@ -1445,7 +1446,7 @@ void SaveRealVector(Real *vector,int first,int last,char *filename)
 
 int ReadIntegerVector(int *vector,int first,int last,char *filename)
 {
-  int i;
+  int i,iostat;
   FILE *in;
   int num;
 
@@ -1454,7 +1455,7 @@ int ReadIntegerVector(int *vector,int first,int last,char *filename)
     return(1);
   }
   for(i=first;i<=last;i++) {
-    fscanf(in,"%d\n",&num);
+    iostat = fscanf(in,"%d\n",&num);
     vector[i]=num;
     }
   fclose(in);
@@ -1482,7 +1483,7 @@ void SaveIntegerVector(int *vector,int first,int last,char *filename)
 int ReadRealMatrix(Real **matrix,int row_first,int row_last,
 		int col_first,int col_last,char *filename)
 {
-  int i,j;
+  int i,j,iostat;
   FILE *in;
   Real num;
 
@@ -1493,7 +1494,7 @@ int ReadRealMatrix(Real **matrix,int row_first,int row_last,
 
   for(j=row_first;j<=row_last;j++) {
     for(i=col_first;i<=col_last;i++) {
-      fscanf(in,"%le\n",&num);
+      iostat = fscanf(in,"%le\n",&num);
       matrix[j][i]=num;
     }
   }
@@ -1526,7 +1527,7 @@ void SaveRealMatrix(Real **matrix,int row_first,int row_last,
 int ReadIntegerMatrix(int **matrix,int row_first,int row_last,
 		int col_first,int col_last,char *filename)
 {
-  int i,j;
+  int i,j,iostat;
   FILE *in;
   int num;
 
@@ -1537,7 +1538,7 @@ int ReadIntegerMatrix(int **matrix,int row_first,int row_last,
 
   for(j=row_first;j<=row_last;j++) {
     for(i=col_first;i<=col_last;i++) {
-      fscanf(in,"%d\n",&num);
+      iostat = fscanf(in,"%d\n",&num);
       matrix[j][i]=num;
     }
   }
@@ -1643,47 +1644,5 @@ int SetDiscontinuousPoints(struct FemType *data,struct PointType *point,
   newsuccess = CreateNewNodes(data,order,material,new);
   
   return(newsuccess);
-}
-
-
-void SideAreas(struct FemType *data,struct BoundaryType *bound)
-/* Calculate the sideares for later use into structure 'bound'. 
-   In 2D case the area means line length.
-   */
-{
-  int i,ind[MAXNODESD1],sideelemtype;  
-  Real r1,r2,z1,z2;
-
-  if(data->mapgeo == bound->maparea) 
-    return;
-
-  bound->totalarea = 0.;
-
-  if(data->dim != 2) {
-    return;
-  }
-
-
-  for(i=1; i<=bound->nosides; i++) {
-
-    GetElementSide(bound->parent[i],bound->side[i],bound->normal[i],
-		   data,ind,&sideelemtype);
-
-    r1 = data->x[ind[0]];
-    r2 = data->x[ind[1]];
-    z1 = data->y[ind[0]];
-    z2 = data->y[ind[1]];
-
-    if(bound->coordsystem == COORD_CART2) 
-      bound->areas[i] = sqrt( (z1-z2)*(z1-z2) + (r1-r2)*(r1-r2) );
-    else if(bound->coordsystem == COORD_AXIS)  
-      bound->areas[i] = FM_PI * (r1+r2) * 
-	sqrt( (z1-z2)*(z1-z2) + (r1-r2)*(r1-r2) );
-    else if(bound->coordsystem == COORD_POLAR) 
-      bound->areas[i] = fabs((z2-z1)*(r1+r2)/2.0);
-
-    bound->totalarea += bound->areas[i];
-  }
-  bound->maparea = data->mapgeo;
 }
 

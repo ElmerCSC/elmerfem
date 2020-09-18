@@ -39,12 +39,11 @@
 #include "egmesh.h"
 #include "egconvert.h"
 
-#define GETLINE getlineptr=fgets(line,MAXLINESIZE,in) 
-#define GETLONGLINE getlineptr=fgets(longline,LONGLINESIZE,in)
+#define GETLINE ioptr=fgets(line,MAXLINESIZE,in) 
+#define GETLONGLINE ioptr=fgets(longline,LONGLINESIZE,in)
 
 static int linenumber;
-static char *getlineptr;
-
+static char *ioptr;
 
 static int Getrow(char *line1,FILE *io,int upper) 
 {
