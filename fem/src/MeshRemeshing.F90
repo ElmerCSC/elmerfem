@@ -158,8 +158,8 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
     DO i=1, PairCount
       NEdges = NEdges + 1 
       CALL MMG3D_Set_edge(mmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, nedges, ierr)
-      !CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
-      CALL MMG3D_Set_requiredEdge(mmgMesh, Nedges, ierr)
+      CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
+      !CALL MMG3D_Set_requiredEdge(mmgMesh, Nedges, ierr)
     END DO
   END IF
 
@@ -919,9 +919,7 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
   IF (Present(PairCount)) THEN
     CALL SET_MMG3D_MESH(InMesh,Parallel,EdgePairs,PairCount)
   ELSE
-    print*,'$$$$$$$ think this wiil break'
     CALL SET_MMG3D_MESH(InMesh,Parallel)
-    print*,'$$$$$$$ it didnt'
   END IF
 
   !Set the metric values at nodes
@@ -949,8 +947,7 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
        hgrad,ierr)
 
-  !Turn off sharp angle detection (0)
-  print *, 'first call of angle detection $$$- turned off'     
+  !Turn off sharp angle detection (0)   
   CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle, &
        0,ierr)
   !Option to set angle detection threshold:
@@ -979,13 +976,6 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
     END DO
   END IF
 
-  !IF (Present(EdgePairs)) THEN
-  !  DO i=1, PairCount
-  !    CALL MMG3D_Set_edge(mmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, i, ierr)
-  !    !CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
-  !    CALL MMG3D_Set_requiredEdge(mmgMesh, i, ierr)
-  !  END DO
-  !END IF 
 
   IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
