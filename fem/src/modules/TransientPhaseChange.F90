@@ -31,7 +31,7 @@
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: 08 Jun 1997
-! *  Modified by: Peter Råback
+! *  Modified by: Peter Raback
 ! *  Modification date: 14.1.2010
 ! *
 ! *****************************************************************************/

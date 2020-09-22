@@ -6,7 +6,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian 2D
 !  Simulation Type = Steady State
   Simulation Type = Scanning 
@@ -62,7 +62,6 @@ Solver 1
 
   Large Deflection = False ! Switch to the small strain formulation 
   Initialize State Variables = Logical False
-
 End
 
 Equation 1

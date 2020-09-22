@@ -63,7 +63,12 @@ Matc::Matc(QWidget *parent)
   mtc_init( NULL, stdout, stderr );
   QString elmerGuiHome = getenv("ELMERGUI_HOME");
   QString mcIniLoad = "source(\"" + elmerGuiHome.replace("\\", "/") + "/edf/mc.ini\")";
+
+#ifdef WITH_QT5
+  mtc_domath( mcIniLoad.toLatin1().data() );
+#else
   mtc_domath( mcIniLoad.toAscii().data() );
+#endif
 
   com_init( (char *)"grad", FALSE, FALSE, com_grad, 1, 1,
             (char *)"r = grad(f): compute gradient of a scalar variable f.\n") ;
@@ -280,7 +285,12 @@ QString Matc::domatc(VtkPost* vtkPost)
   QString cmd=ui.mcEdit->text().trimmed();
   ui.mcEdit->clear();
   
+#ifdef WITH_QT5
+  ptr=mtc_domath(cmd.toLatin1().data());
+#else
   ptr=mtc_domath(cmd.toAscii().data());
+#endif
+
   ui.mcHistory->append(cmd);
   res = "";
   if ( ptr ) {

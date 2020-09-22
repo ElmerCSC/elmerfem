@@ -3325,7 +3325,7 @@ CONTAINS
          PrimarySolver
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
     INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL()
+    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3480,20 +3480,30 @@ CONTAINS
                 END IF
              END IF
 
+             !Check for duplicate solvers with same var
+             !Nullify/deallocate and repoint the matrix
+             !Note: previously this DO loop was after the FreeMatrix
+             !and pointing below, but this caused double free errors
+             DO j=1,Model % NumberOfSolvers
+               IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
+               IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
+               IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
+
+               !If the other solver's matrix is the same as WorkSolver matrix, we just
+               !nullify, otherwise we deallocate. After the first timestep, solvers
+               !with the same variable will have the same matrix
+               IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkSolver % Matrix)) THEN
+                 Model % Solvers(j) % Matrix => NULL()
+               ELSE
+                 CALL FreeMatrix(Model % Solvers(j) % Matrix)
+               END IF
+               !Point this other solver % matrix to the matrix we just created
+               Model % Solvers(j) % Matrix => WorkMatrix
+             END DO
+
+             !Deallocate the old matrix & repoint
              IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
              WorkSolver % Matrix => WorkMatrix
-
-             !Check for duplicate solvers with same var
-             DO j=1,Model % NumberOfSolvers
-                IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
-                IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
-                IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
-                !Ideally, the solver's old matrix would be freed here, but apart from the 
-                !first timestep, it'll be a duplicate
-                IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkMatrix)) CYCLE
-                CALL FreeMatrix(Model % Solvers(j) % Matrix)
-                Model % Solvers(j) % Matrix => WorkMatrix
-             END DO
 
              NULLIFY(WorkMatrix)
 
@@ -3610,8 +3620,11 @@ CONTAINS
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
 
+    !CHANGE - need to delete UnfoundNOtes from this statement, or front
+    !variables not copied across. If you get some odd interpolation artefact,
+    !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask", UnfoundNodes,globaleps=globaleps,localeps=localeps)
+         "Calving Front Mask",globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3631,8 +3644,17 @@ CONTAINS
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
 
+    !CHANGE
+    !Needs to be told to ignore certain solvers if using multiple meshes
+    SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
+
     DO i=1,Model % NumberOfSolvers
        WorkSolver => Model % Solvers(i)
+
+       !CHANGE - see above
+       IF (ASSOCIATED(SolversToIgnore)) THEN
+         IF(ANY(SolversToIgnore(1:SIZE(SolversToIgnore))==i)) CYCLE
+       END IF
 
        WorkSolver % Mesh => NewMesh !note, assumption here that there's only one active mesh
 

@@ -17,14 +17,17 @@ End
 
 Simulation
   Max Output Level = 5
+
   Coordinate System = "Cartesian"
   Simulation Type = Steady
-  Steady State Max Iterations = 1
   Output Intervals(1) = 1
+  Steady State Max Iterations = 1
 
   Coordinate Scaling = 1.0e-3
 
-  $w=1.0e5
+  Post File = a.ep
+
+  $ w = 1.0e5
   Angular Frequency = Real $w
 End
 
@@ -114,6 +117,9 @@ Solver 3
   Output File Name = wire
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
+
+  Reference Sums(6) = Real 59 13 206250 2064 402295082 3.6139440456815133
+  Reference Norm = 1.0
 End
 
 Solver 4

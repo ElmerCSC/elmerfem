@@ -62,9 +62,12 @@ End
 
 Solver 2
   Procedure = "ResultOutputSolve" "ResultOutputSOlver"
-  Exec Solver = Never
+  Exec Solver = After All
   Output Format = vtu
   Discontinuous Galerkin = True
+
+  Reference Sums(6) = Real 44 8 89100 1388 43973415 512.62222222229627
+  Reference Norm = 1.0
 End
 
 !----------

@@ -26,13 +26,8 @@ static int *surfEltop, *surfEltopShade, * shadeParent;
 
 static int compact = 1, verify = 0, selfshading = 1;
 
-#ifdef USE_ISO_C_BINDINGS
 extern "C" void STDCALLBULL viewfactorsaxis
   (int *n,int *surf, Real *crd, Real *vf, int *idiv, int *fast)
-#else
-extern "C" void STDCALLBULL FC_FUNC(viewfactorsaxis,VIEWFACTORSAXIS) 
-  (int *n,int *surf, Real *crd, Real *vf, int *idiv, int *fast)
-#endif
 {
   int i, j, ii, jj,div;
   Real a, sum, viewint, viewint2, vf2, sumdvf;

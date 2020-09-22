@@ -43,6 +43,7 @@
 MODULE EMWaveSolverUtils
 
    USE DefUtils
+   IMPLICIT NONE
 
 CONTAINS
 
@@ -152,15 +153,15 @@ SUBROUTINE EMWaveSolver_Init0(Model,Solver,dt,Transient)
     END IF    
     IF( SecondOrder ) THEN
       CALL ListAddString( SolverParams, "Element", &
-          "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
+          "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )           
     ELSE IF (PiolaVersion) THEN    
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
     ELSE
       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
     END IF
   END IF
 
-  ! Use by some solvers e.g. SaveLine to aknowledge E as edge field
+  ! Use by some solvers e.g. SaveLine to acknowledge E as edge field
   CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
   IF( ListGetLogical( SolverParams,'Constant Bulk Matrix',Found ) ) THEN
     CALL ListAddNewLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)    
@@ -194,11 +195,11 @@ END SUBROUTINE EMWaveSolver_Init0
 
 
 !------------------------------------------------------------------------------
-!> Solve the electric field E from the rot-rot equation
+!> Solve the electric field E from the curl-curl equation
 ! 
-!> rot (1/mu_r) rot E - \kappa_0^2 epsilon_r E = i omega mu_0 J
+!> curl (1/mu) curl E + d^2 (epsilon E)/dt^2 + d/dt (sigma E) = -d/dt J
 !
-!>  using edge elements (Nedelec/W basis of lowest degree) 
+!> using edge elements (curl-conforming vector finite elements at most degree 2) 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
@@ -230,7 +231,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
   SAVE STIFF, DAMP, MASS, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
 
-  CALL Info('VectorHelmholztSolver','Solving electromagnetic waves in time',Level=5)
+  CALL Info('EMWaveSolver','Solving electromagnetic waves in time',Level=5)
 
   SolverParams => GetSolverParams()
 
@@ -239,6 +240,11 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
     PiolaVersion = .TRUE.
   ELSE
     PiolaVersion = GetLogical( SolverParams,'Use Piola Transform', Found )
+  END IF
+
+  IF (CoordinateSystemDimension() == 2) THEN
+    IF (.NOT. PiolaVersion) &
+        CALL Fatal('EMWaveSolver', 'A 2D model needs Use Piola Transform = True')
   END IF
 
   dofs = Solver % Variable % Dofs
@@ -277,7 +283,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
     CALL DoBoundaryAssembly()
     
-    ! Default routines for finisging assembly and solving the system
+    ! Default routines for finishing assembly and solving the system
     Norm = DefaultSolve()
     IF( DefaultConverged() ) EXIT
 
@@ -287,7 +293,7 @@ SUBROUTINE EMWaveSolver( Model,Solver,dt,Transient )
 
   CALL DefaultFinish()
   
-  CALL Info('VectorHelmholztSolver','All done',Level=10)
+  CALL Info('EMWaveSolver','All done',Level=10)
   
 
   
@@ -344,7 +350,7 @@ CONTAINS
 
     InitHandles = .TRUE.
 
-    ! Robin type of BC in terms of H:
+    ! Robin type of BC in terms of E:
     !--------------------------------
     Active = GetNOFBoundaryElements()
     DO t=1,Active
@@ -396,7 +402,7 @@ CONTAINS
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DetJ, weight, eps, mu, muinv, L(3), cond
-    REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),WBasis(nd,3),RotWBasis(nd,3)
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3),WBasis(nd,3),RotWBasis(nd,3)
     LOGICAL :: Stat
     INTEGER :: t, i, j
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -407,9 +413,9 @@ CONTAINS
     SAVE Cd_h, Mu_h, Eps_h, Cond_h, AllocationsDone
 
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density 1')
-      CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density 2')
-      CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density 3')
+      CALL ListInitElementKeyword( Cd_h(1),'Body Force','Current Density Rate 1')
+      CALL ListInitElementKeyword( Cd_h(2),'Body Force','Current Density Rate 2')
+      CALL ListInitElementKeyword( Cd_h(3),'Body Force','Current Density Rate 3')
 
       ! These have been normalized by mu0 and eps0 in _init section
       CALL ListInitElementKeyword( Mu_h,'Material','Relative Permeability')
@@ -452,15 +458,15 @@ CONTAINS
         FORCE(i) = FORCE(i) - SUM(L*WBasis(i,:)) * weight
         
         DO j = 1,nd
-          ! the mu^-1 curl u . curl v 
+          ! the mu^-1 curl E . curl v 
           STIFF(i,j) = STIFF(i,j) + muinv * &
               SUM(RotWBasis(i,:) * RotWBasis(j,:)) * weight
           
-          ! the term d^2 ( \epsilon u.v ) / dt^2
+          ! the term d^2 ( \epsilon E) / dt^2 . v
           MASS(i,j) = MASS(i,j) +  &
               eps * SUM(WBasis(j,:) * WBasis(i,:)) * weight
 
-          ! the term d ( \rho u.v ) / dt for conducting materials
+          ! the term d ( \sigma E) / dt .v for conducting materials
           DAMP(i,j) = DAMP(i,j) +  &
               cond * SUM(WBasis(j,:) * WBasis(i,:)) * weight
         END DO
@@ -472,7 +478,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  !-----------------------------------------------------------------------------
+!-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( MASS, DAMP, STIFF, FORCE, Element, n, nd, PiolaVersion, InitHandles )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:)
@@ -480,9 +486,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: DetJ,Normal(3),Tem(n)
+    REAL(KIND=dp) :: DetJ, Tem(n)
     REAL(KIND=dp) :: B, L(3), muinv, mu, weight, tanWBasis(3)
-    REAL(KIND=dp) :: Basis(nd), WBasis(nd,3), RotWBasis(nd,3),dBasisdx(nd,3) 
+    REAL(KIND=dp) :: Basis(n), WBasis(nd,3), RotWBasis(nd,3), dBasisdx(n,3) 
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, p, q
@@ -524,11 +530,20 @@ CONTAINS
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     DO t=1,IP % n
-      stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
-      
-      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
-      weight = detJ * IP%s(t)
+      !
+      ! We need to branch as the only way to get the traces of 2D vector finite elements 
+      ! is to call EdgeElementInfo:
+      !
+      IF (GetElementFamily(Element) == 2) THEN
+        stat = EdgeElementInfo(Element, Nodes, IP % u(t), IP % v(t), IP % w(t), detF = detJ, &
+            Basis = Basis, EdgeBasis = Wbasis, dBasisdx = dBasisdx, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo(Element,Nodes,IP % u(t), IP % v(t), IP % w(t),detJ,Basis,dBasisdx, &
+            EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+      END IF
+
+!      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
+      weight = detJ * IP % s(t)
 
       mu = mu0 * ListGetElementReal( mu_h, Basis, Parent )
       muinv = 1.0_dp / mu
@@ -542,16 +557,25 @@ CONTAINS
         L = L + MATMUL( Tem(1:n), dBasisdx(1:n,1:3) )
       END IF
       DO i = 1,nd
-        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
-        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
+!        NOTE that the edge basis function 
+!             which has been received here is automatically tangential to the 
+!             boundary, so computing tangential projection is unnecessary
+!
+!        tanWBasis(1:3) = WBasis(i,:) - Normal(1:3)*sum(Normal(1:3) * WBasis(i,:))
+!        FORCE(i) = FORCE(i) + muinv * sum(L(1:3) * tanWBasis(1:3)) * weight
+
+        FORCE(i) = FORCE(i) - muinv * sum(L(1:3) * WBasis(i,1:3)) * weight
       END DO
 
       B = ListGetElementReal( Damp_h, Basis, Element, Found ) 
       IF( Found ) THEN
         DO i = 1,nd
-          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal * WBasis(i,:))
+!          Again, computing tangential projection is unnecessary here
+!
+!          tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal * WBasis(i,:))
           DO j = 1,nd
-            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
+!            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(tanWBasis(:) * WBasis(j,:)) * weight
+            DAMP(i,j) = DAMP(i,j) + muinv * B * SUM(WBasis(i,:) * WBasis(j,:)) * weight
           END DO
         END DO
       END IF
@@ -607,10 +631,10 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
     CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
   END IF
 
-  ! In case we are solving truly discontinuous Galerkin fields then we do it by assemblying
+  ! In case we are solving truly discontinuous Galerkin fields then we do it by assembling
   ! normal linear system. Here we allocate for the DG type of fields that are computed elementwise
   ! while the FE fields are solved using standard Galerkin. Hence unintuitively we exit here
-  ! for elemental fields if the primary field is itself elemenetal.
+  ! for elemental fields if the primary field is itself elemental.
   !-----------------------------------------------------------------------------------------------
   IF( GetLogical(SolverParams,'Discontinuous Galerkin',Found)) RETURN
 
@@ -657,7 +681,7 @@ SUBROUTINE EMWaveCalcFields_Init0(Model,Solver,dt,Transient)
   ! Electric field is always computed
   CALL ListAddString( SolverParams,&
       NextFreeKeyword('Exported Variable', SolverParams), &
-      "Elfied E[Elfied E:3]");
+      "Elfield E[Elfield E:3]");
 
   ! When requested we may also compute the 1st and 2nd time derivative.
   ! They exist by default as whitney fields but also needs to be projected

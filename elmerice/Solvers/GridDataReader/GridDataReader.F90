@@ -55,9 +55,11 @@ MODULE NetCDFInterface
   INTEGER :: VarId
   INTEGER :: NetCDFStatus
   LOGICAL :: Debug = .FALSE.
+  LOGICAL :: READALL=.FALSE.
+  REAL(KIND=dp),ALLOCATABLE :: VarValues(:,:,:,:)
 
   SAVE FileId, DimIds, CoordVarIds, VarId, Debug
-  PRIVATE Fileid, DimIds, CoordVarIds, VarId, Debug, NetCDFStatus
+  PRIVATE Fileid, DimIds, CoordVarIds, VarId, Debug, NetCDFStatus,VarValues
 
   INTERFACE  NetCDFCoordVar
      MODULE PROCEDURE NetCDFCoordVar1D
@@ -251,7 +253,7 @@ MODULE NetCDFInterface
               UniformCoords = .FALSE.
            END IF
 
-           IF (UniformCoords) THEN
+           !IF (UniformCoords) THEN
               WRITE(Message,'(A,ES12.3)') 'Grid parameter of dimension > '&
                    //TRIM(CoordName)//' < is ',dx0
               CALL Info('GridDataReader',Message, Level=6 )
@@ -259,7 +261,7 @@ MODULE NetCDFInterface
               WRITE(Message,'(A,2ES12.3,A)') 'Range of dimension > '&
                    //TRIM(CoordName)//' < is [',FirstTwo(1),LastTwo(2),']'
               CALL Info('GridDataReader',Message, Level=6 )
-           END IF
+           !END IF
         END IF
 
         IF( i <= 3 ) THEN
@@ -333,11 +335,12 @@ MODULE NetCDFInterface
     !-------------------------------------------------------------------------------
     !> Set NetCDF index of the variable to be mapped
     !-------------------------------------------------------------------------------
-    SUBROUTINE NetCDFVariableInit( VarName )
+    SUBROUTINE NetCDFVariableInit( VarName ,DimSize,nTime,TimeIndex)
 
       IMPLICIT NONE
 
       CHARACTER(*), INTENT(IN) :: VarName
+      INTEGER :: DimSize(3),nTime,TimeIndex
       !-----------------------------------------------------------------------------
 
       VarId = 0
@@ -346,6 +349,31 @@ MODULE NetCDFInterface
         CALL Fatal('GridDataReader','NetCDF variable name not found: '//TRIM(VarName))
       END IF
 
+
+      IF (READALL) THEN
+       CALL INFO('GridDataReader','Reading full variable array from NETCDF file',level=5)
+       IF (ALLOCATED(VarValues)) deallocate(VarValues)
+       IF (DimSize(3).EQ.0) THEN
+        IF (nTime.EQ.0) THEN
+         ALLOCATE(VarValues(DimSize(1),DimSize(2),1,1))
+         NetCDFstatus = NF90_GET_VAR(FileId,VarId,VarValues(:,:,1,1))
+        ELSE
+         ALLOCATE(VarValues(DimSize(1),DimSize(2),nTime,1))
+         NetCDFstatus = NF90_GET_VAR(FileId,VarId,VarValues(:,:,:,1),&
+           (/ 1, 1,TimeIndex /),(/ DimSize(1),DimSize(2),nTime /))        
+        ENDIF
+       ELSE
+        IF (nTime.EQ.0) THEN
+         ALLOCATE(VarValues(DimSize(1),DimSize(2),DimSize(3),1))
+         NetCDFstatus = NF90_GET_VAR(FileId,VarId,VarValues(:,:,:,1))
+        ELSE
+         ALLOCATE(VarValues(DimSize(1),DimSize(2),DimSize(3),nTime))
+         NetCDFstatus = NF90_GET_VAR(FileId,VarId,VarValues(:,:,:,:),&
+           (/ 1, 1, 1, TimeIndex /),(/ DimSize(1),DimSize(2),DimSize(3),nTime /)) 
+        ENDIF
+      ENDIF
+     ENDIF
+      
       IF(Debug) PRINT *,'NetCDF variable index: ',TRIM(VarName), VarId
 
     END SUBROUTINE NetCDFVariableInit
@@ -371,12 +399,20 @@ MODULE NetCDFInterface
       IF( TimeIndex == 0 ) THEN
         CountVector2D = (/ 2, 2 /)
         IndexVector2D = (/ DimIndex(1), DimIndex(2) /)
-        NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil2D,IndexVector2D,CountVector2D)
+        IF (.NOT.READALL) THEN
+          NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil2D,IndexVector2D,CountVector2D)
+        ELSE
+         stencil2D(:,:)=VarValues(DimIndex(1):(DimIndex(1)+1),DimIndex(2):(DimIndex(2)+1),1,1)
+        ENDIF
         outcome(:,:,1) = stencil2D(:,:)
       ELSE
        CountVector3D = (/ 2, 2, 1 /)
         IndexVector3D = (/ DimIndex(1), DimIndex(2), TimeIndex /)
-        NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil3D,IndexVector3D,CountVector3D)
+        IF (.NOT.READALL) THEN
+         NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil3D,IndexVector3D,CountVector3D)
+        ELSE
+         stencil3D(:,:,1) = VarValues(DimIndex(1):(DimIndex(1)+1),DimIndex(2):(DimIndex(2)+1),TimeIndex,1)
+        ENDIF
         outcome(:,:,1) = stencil3D(:,:,1)
       END IF
 
@@ -415,12 +451,25 @@ MODULE NetCDFInterface
       IF( TimeIndex == 0 ) THEN
         CountVector3D = (/ 2, 2, 2 /)
         IndexVector3D = (/ DimIndex(1), DimIndex(2), DimIndex(3) /)
-        NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil3D,IndexVector3D,CountVector3D)
+        IF (.NOT.READALL) THEN
+          NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil3D,IndexVector3D,CountVector3D)
+        ELSE
+          stencil3D(:,:,:)=VarValues(DimIndex(1):(DimIndex(1)+1),&
+                                     DimIndex(2):(DimIndex(2)+1),&
+                                     DimIndex(3):(DimIndex(3)+1),1)
+        ENDIF
         outcome(:,:,:) = stencil3D(:,:,:)
       ELSE
         CountVector4D = (/ 2, 2, 2, 1 /)
         IndexVector4D = (/ DimIndex(1), DimIndex(2), DimIndex(3), TimeIndex /)
-        NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil4D,IndexVector4D,CountVector4D)
+        IF (.NOT.READALL) THEN
+          NetCDFstatus = NF90_GET_VAR(FileId,VarId,stencil4D,IndexVector4D,CountVector4D)
+        ELSE
+          stencil4D(:,:,:,1)=VarValues(DimIndex(1):(DimIndex(1)+1),&
+                                     DimIndex(2):(DimIndex(2)+1),&
+                                     DimIndex(3):(DimIndex(3)+1),&
+                                     TimeIndex)
+        ENDIF
         outcome(:,:,:) = stencil4D(:,:,:,1)
       END IF
 
@@ -509,6 +558,8 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
       KeepOld
   INTEGER, POINTER :: CoordMapping(:), PeriodicDir(:)
 
+
+
   ! General initializations
   !------------------------------------------------------------------------------
 
@@ -525,6 +576,8 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   ! Elmer resolution and coordinate system
   !------------------------------------------------------------------------------
   CALL InitEpsilon( Params, Eps, EpsTime )
+
+  READALL= ListGetLogical( Params,'Read full array')
 
   CoordSystem = GetString( Params,'Coordinate Transformation',&
       DoCoordinateTransformation)
@@ -752,7 +805,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     END IF
 
     CALL Info('GridDataReader','Performing interpolation for variable: '//TRIM(VarName) )
-    CALL NetCDFVariableInit( VarName )
+    CALL NetCDFVariableInit( VarName ,DimSize,nTime,IntTimeIndex)
 
     ! Get Elmer variable, if not present create it.
     !-------------------------------------------------------------------------------
@@ -1036,12 +1089,10 @@ CONTAINS
       CALL Info('GridDataReader', 'Keyword > Y Epsilon < not given, setting equal to > X Epsilon <',Level=6)
       Eps(2) = Eps(1)
     END IF
-    IF( NetDim == 3 ) THEN
-      Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
-      IF ( .NOT. Found ) THEN
-        CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
-        Eps(3) = Eps(1)
-      END IF
+    Eps(3) = GetConstReal(Params, "Z Epsilon", Found )
+    IF ( .NOT. Found ) THEN
+      CALL Info('GridDataReader', 'Keyword > Z Epsilon < not given, setting equal to > X Epsilon <',Level=6)
+      Eps(3) = Eps(1)
     END IF
 
     EpsTime = GetConstReal(Params, "Time Epsilon", Found )
@@ -1163,10 +1214,11 @@ CONTAINS
        ! all coord variable dimensions are 1D so search each separately
        DO i = 1,NetDim
           success = findCell1D(coordVar(i),x(i),Ind(i),weights(i))
-          WRITE(Message, '(A)') 'Not yet tested this combination of netcdf &
-               &coordinate variable dimensions &
-               &(non-uniform, all single), pls remove this comment if it works...'
-          CALL Warn('GridDataReader',Message)
+          !WRITE(Message, '(A)') 'Not yet tested this combination of netcdf &
+          !     &coordinate variable dimensions &
+          !     &(non-uniform, all single), pls remove this comment if it works...'
+          ! F. Gillet - March 2020 - seems ok now
+          !CALL Warn('GridDataReader',Message)
        END DO
 
     ELSEIF ((CoordVarNDims(1) == 2) .AND. (CoordVarNDims(2) == 2)) THEN
@@ -1290,11 +1342,12 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: Weights
 
     LOGICAL :: success
+    
 
-    ind     = 0
-    Weights = 0.0_dp
+    ind     = SearchInterval(coordVar%Values(:,1,1),xe)
+    Weights = (xe-coordVar%Values(ind,1,1)) / (coordVar%Values(ind+1,1,1)-coordVar%Values(ind,1,1))
 
-    success = .FALSE.
+    success = .TRUE.
 
   END FUNCTION findCell1D
 

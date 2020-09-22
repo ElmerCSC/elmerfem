@@ -1655,8 +1655,9 @@ CONTAINS
     ALLOCATE( Basis(n), NodalCurr(3,n) )
     
     FluxVar => VariableGet( Mesh % Variables,'CoilCurrent')
-    IF( .NOT. ASSOCIATED( FluxVar ) ) THEN
-      CALL Fatal('CoilSolver','CoilCurrent not associated!')
+    FluxVarE => VariableGet( Mesh % Variables,'CoilCurrent E')
+    IF( .NOT. ( ASSOCIATED( FluxVar ) .OR. ASSOCIATED( FluxVarE ) ) ) THEN
+      CALL Fatal('CoilSolver','CoilCurrent (nodal and elemental) not associated!')
     END IF
     
 
@@ -1722,23 +1723,50 @@ CONTAINS
       END IF
 
 
-      
-      ! Now perform the normalization to the target value
-      DO i = 1, Solver % Mesh % NumberOfNodes
-        IF( NoCoils > 1 ) THEN
-          IF( CoilIndex(i) /= Coil ) CYCLE
-        END IF
-        j = FluxVar % Perm(i)
-        IF( j == 0 ) CYCLE
-      
-        LocalCurr(1:dim) = FluxVar % Values( dim*(j-1)+1: dim*(j-1)+dim )
-        AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )
-        IF( AbsCurr > TINY( AbsCurr ) ) THEN
-          ScaleCurr = TargetDensity / AbsCurr 
-          FluxVar % Values( dim*(j-1)+1: dim*(j-1)+dim ) = &
-              ScaleCurr * LocalCurr(1:dim)
-        END IF
-      END DO
+      IF( ASSOCIATED( FluxVar ) ) THEN
+        ! Now perform the normalization of the nodal field
+        DO i = 1, Solver % Mesh % NumberOfNodes
+          IF( NoCoils > 1 ) THEN
+            IF( CoilIndex(i) /= Coil ) CYCLE
+          END IF
+          j = FluxVar % Perm(i)
+          IF( j == 0 ) CYCLE
+
+          LocalCurr(1:dim) = FluxVar % Values( dim*(j-1)+1: dim*(j-1)+dim )
+          AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )
+          IF( AbsCurr > TINY( AbsCurr ) ) THEN
+            ScaleCurr = TargetDensity / AbsCurr 
+            FluxVar % Values( dim*(j-1)+1: dim*(j-1)+dim ) = &
+                ScaleCurr * LocalCurr(1:dim)
+          END IF
+        END DO
+      END IF
+
+      IF( ASSOCIATED( FluxVarE ) ) THEN
+        ! Now perform the normalization of the elemental field
+        Active = GetNOFActive()          
+        DO elem=1,Active
+          Element => GetActiveElement(elem)          
+          n  = GetElementNOFNodes()
+          IF( NoCoils > 1 ) THEN
+            IF( ANY( CoilIndex( Element % NodeIndexes ) /= Coil ) ) CYCLE
+          END IF
+
+          DO i=1,n
+            j = FluxVarE % Perm( Element % DGIndexes(i) )
+            IF( j == 0 ) CYCLE
+            
+            LocalCurr(1:dim) = FluxVarE % Values( dim*(j-1)+1: dim*(j-1)+dim )
+            AbsCurr = SQRT( SUM( LocalCurr(1:dim) ** 2 ) )
+            IF( AbsCurr > TINY( AbsCurr ) ) THEN
+              ScaleCurr = TargetDensity / AbsCurr 
+              FluxVarE % Values( dim*(j-1)+1: dim*(j-1)+dim ) = &
+                  ScaleCurr * LocalCurr(1:dim)
+            END IF
+          END DO
+        END DO
+      END IF
+
     END DO
 
 !------------------------------------------------------------------------------

@@ -1196,11 +1196,7 @@ MODULE Integration
     REAL(KIND=dp) :: Points(n),Weights(n)
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m
-#ifdef USE_ISO_C_BINDINGS
     TYPE(C_FFTCMPLX) :: W(n+1)
-#else
-    COMPLEX(KIND=dp) :: W(n+1)
-#endif
     REAL(KIND=dp) :: arr((n+1)/2+1), V(n+2)
 
     DO i=1,(n+1)/2
@@ -1221,11 +1217,7 @@ MODULE Integration
     V(k+1) = 1._dp/arr(k)
 
     DO i=1,n+1
-#ifdef USE_ISO_C_BINDINGS
       W(i) % rval = -(V(i)+V(n-i+3))
-#else
-      W(i) = -(V(i)+V(n-i+3))
-#endif
     END DO
     CALL frfftb(n+1,W,V)
 
@@ -2743,9 +2735,9 @@ CONTAINS
 
      SELECT CASE(ElementFamily)
      CASE (1)
-        IntegStuff = GaussPoints0D(1)
+        IP = GaussPoints0D(1)
      CASE (2)
-        IntegStuff = GaussPoints1D(2)
+        IP = GaussPoints1D(2)
      CASE(3)
         IF (SecondOrder) THEN
            IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)

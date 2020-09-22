@@ -7,12 +7,14 @@ Simulation
   Max Output Level = 5
 
   Simulation Type = Steady
-  Steady State Max Iterations  = 500
-
-!  Post File = "channel.ep"
+  Steady State Max Iterations = 100
+  
+  Post File = "channel.vtu"
 ! Output File = "channel.dat"
-! Output Intervals = 100
-  Restart File = channel.dat
+  Output Intervals = 0
+
+! Its difficult to converge, use a good restart
+  Restart File = channel_init.dat
   Restart Position = 0
 End
 
@@ -27,19 +29,19 @@ End
 
 Initial Condition 1
   Kinetic Energy = Variable Coordinate 2
-   Real MATC "4*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
+    Real MATC "4*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
 
   Kinetic Dissipation = Variable Coordinate 2
-   Real MATC "40*(1-(2*((tx-0.4699)/0.127-0.5))^2)+10"
+    Real MATC "40*(1-(2*((tx-0.4699)/0.127-0.5))^2)+10"
 
   V2 = Variable Coordinate 2
-   Real MATC "2*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
+    Real MATC "2*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
 
   F = Variable Coordinate 2
-   Real MATC "2*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
+    Real MATC "2*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
 
   Velocity 1 = Variable Coordinate 2
-   Real MATC "25*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
+    Real MATC "25*(1-(2*((tx-0.4699)/0.127-0.5))^2)"
 
   Velocity 2 = 0
 End
@@ -166,6 +168,9 @@ Boundary Condition 3
   Noslip Wall BC = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 10.0884
-Solver 3 :: Reference Norm Tolerance = Real 1e-3
-RUN
+Solver 1 :: Reference Norm = 6.98967578E+01
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
+Solver 2 :: Reference Norm = 1.46319880E+03
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
+Solver 3 :: Reference Norm = 1.00884854E+01
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-4

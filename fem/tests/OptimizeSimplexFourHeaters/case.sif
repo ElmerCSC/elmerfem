@@ -15,9 +15,9 @@ Simulation
   Coordinate Mapping(3) = Integer 1 2 3
   Simulation Type = scanning
   Steady State Max Iterations = 1
-  Timestep Intervals = 250
+  Timestep Intervals = 100
   Output Intervals = 0
-  Post File = "case.ep"
+  Post File = "case.vtu"
 End
 
 Constants
@@ -110,8 +110,9 @@ End
 
 Solver 2
   Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
-  Variable DOFs = 1
+
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
   Linear System Max Iterations = 300
@@ -135,7 +136,7 @@ Boundary Condition 1
   Temperature = Real 0
 End
 
-Solver 2 :: Reference Norm = Real 22.027671047551930
-RUN
+Solver 2 :: Reference Norm = 2.15705666E+01
+
 
 

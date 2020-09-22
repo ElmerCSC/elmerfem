@@ -475,11 +475,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
        TimeOrder, TimeStepsTaken=0,estindexes(6),&
        ParticleStepsTaken=0, Group, NoGroups = 0
   REAL(KIND=dp) :: dtime, tottime = 0.0
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: cput1,cput2,dcput
-#else
-  REAL(KIND=dp) :: cput1,cput2,dcput,CPUTime
-#endif
   REAL(KIND=dp), POINTER :: TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
 

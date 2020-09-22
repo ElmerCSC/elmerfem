@@ -64,6 +64,8 @@ Solver 2
   Vtu format = Logical True
 
   Mesh = square
+
+  Enable Interpolation = Logical True
   Save This Mesh Only = Logical True 
 
   Scalar Field 1 = Temperature

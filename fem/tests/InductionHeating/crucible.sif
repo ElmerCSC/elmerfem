@@ -12,7 +12,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
 !  Output File = "crucible.result"
-  Post File = "crucible.ep"
+!  Post File = "crucible.vtu"
 End
 
 Constants

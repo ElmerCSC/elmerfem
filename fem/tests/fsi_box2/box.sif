@@ -19,7 +19,7 @@ Simulation
   Steady State Max Iterations = 200
   Steady State Min Iterations = 2
   Output Intervals = 0
-  Post File = "acc.ep"
+  Post File = "acc.vtu"
 
   TimeStepping Method = BDF  
   BDF Order = 1         

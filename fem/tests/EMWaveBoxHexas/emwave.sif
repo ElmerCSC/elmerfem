@@ -19,7 +19,7 @@ Simulation
 
   Coordinate System = "Cartesian"
   Simulation Type = Transient
-  Timestepping Method = implicit euler
+  Timestepping Method = Bossak
   Timestep Sizes = $2*pi/(w*nwave)
 
 ! For the test we have 1/2 wave. Change this to a larger value when needed.
@@ -58,7 +58,6 @@ Solver 1
   Linear System Symmetric = False
   Procedure = "EMWaveSolver" "EMWaveSolver"
 
-! ei toimi ainakaan visualisoinnissa?
   Quadratic Approximation = Logical False
 
   Linear System Scaling = True
@@ -147,9 +146,9 @@ End
 
 
 Body Force 1
-  !Current Density 1 = ...
-  !Current Density 2 = ...
-  !Current Density 3 = ...
+  !Current Density Rate 1 = ...
+  !Current Density Rate 2 = ...
+  !Current Density Rate 3 = ...
 End
 
 
@@ -157,13 +156,11 @@ Boundary Condition 1
   Name = "Inlet"
   Target Boundaries(1) = 5
 
+  E {e} 1 = Real 0 
   E {e} 2 = Variable "time"
     Real MATC "sin(w*tx)"
+  E {e} 3 = Real 0 
 
-  ! E {e} = Real 0
-  ! E {f} = Real 0
-
-  ! Electric Damping Coefficient = ...
   ! Magnetic Boundary Load 1 = ...
   ! Magnetic Boundary Load 2 = ...
   ! Magnetic Boundary Load 3 = ...
@@ -173,16 +170,16 @@ Boundary Condition 2
   Name = "Outlet"
   Target Boundaries(1) = 6 
 
-  E {e} = Real 0
-  E {f} = Real 0
+  Electric Damping Coefficient = Real $ sqrt(eps0 * mu0)
 End
 
 Boundary Condition 3
   Name = "Sides"
   Target Boundaries(4) = 1 2 3 4 
 
-  E {e} = Real 0
-  E {f} = Real 0
+  E {e} 1 = Real 0
+  E {e} 2 = Real 0
+  E {e} 3 = Real 0
 End
 
 

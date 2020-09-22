@@ -1,0 +1,432 @@
+Elmer Release Notes for version 8.4
+===================================
+
+Previous release: 8.3
+Period covered: 18 May 2017 - 18 Dec 2018
+Number of commits: ~750 (excluding merges)
+
+These are just the most essential changes.
+You can get a complete listing of commit messages, for example, with:
+git log --since="2017-05-18"  > log.txt
+
+New Solver Modules
+==================
+
+StatCurrentSolveVec
+-------------------
+- Modernized version of StatCurrentSolve (not totally similar feature set)
+- Uses ListGetElement keyword fetches and vectorized assembly routines 
+- New way to compute resistivity matrix utilizing constrained modes.
+- Farfield conditions where added around origin. 
+- Elemental result fields enabled. 
+
+
+EmWaveSolver
+------------
+- Module for electromagnetic waves in time domain
+- Utilizes 1st and 2nd order Hcurl conforming elements
+- Transient counterpart to VectorHelmholtz module
+- Undocumented solver. 
+
+WaveSolver
+----------
+- Solver for scalar waves in time domain 
+- Upgraded from a test case to real module
+- Some changes to the variational formulation
+- Use of ValueHandles for faster evaluation of keywords
+- Documentation available in Elmer Models Manual
+
+
+Mesh2MeshSolver
+--------------
+- Basically a wrapper for GetVariable that can control the parameters used for Mesh2Mesh interpolation.
+- The routine can give a number of parameters to be interpolated.
+- Works in parallel at least with same number of partitions.
+- Undomented solver.
+
+
+ModelPDEevol
+------------
+- Module only applied in the solver of the same name
+- Uses keyword handles and multilthreaded assembly
+- Ideal solver as a basis for own developments 
+
+
+OpenFOAM2ElmerIO
+----------------
+- A file based coupler for importing fields from OpenFOAM to Elmer.
+- The interpolation is carried out in Elmer using Galerkin method with diffusion for regularization.
+- Elmer reads the data from files in OpenFOAM format. 
+- For optimal performance study the EOF library 
+
+
+Elmer2OpenFOAMIO
+----------------
+- A file based coupler for exporting fields from Elmer to OpenFOAM
+- Interpolation is carried out in Elmer on cell centerpoints written by OpenFOAM.
+- Elmer writes a file in OpenFOAM format.
+- For optimal performance study the EOF library.
+- Joined documentation with the previous routine in Models Manual
+
+
+Enhanced Solver Modules
+=======================
+
+ElasticSolver
+-------------
+  o a somewhat limited support for giving the material model in the Abaqus 
+    UMAT format has been added
+  o for simple examples see the test cases UMAT_* and a template for the UMAT 
+    subroutine currently contained in the solver code
+  o see also the updated version of the solver documentation (Elmer Models 
+    Manual, Ch 6)
+
+ShellSolver
+-----------
+  o a major revision of the shell solver has been done and it can now handle 
+    geometrically nonlinear problems
+  o see also the updated version of the solver documentation (Elmer Models 
+    Manual, Ch 7)    
+
+MagnetoDynamics
+---------------
+- Added simple regularization to steady and transient cases
+- Enable tree gauging in parallel runs. The gauge tree is still constructed sequentially,
+  but only once in a single run.
+- Option to apply "Gauge Tree" only to non-conducting region.
+- Lorentz velocity term for 3D WhitneyAVHarmonicSolver.
+
+MagnetoDynamics2D
+-----------------
+- Zirka-Moroz hysteresis model for MagnetoDynamics 2D
+  o Zirka, Sergey & Moroz, Y.I. & Harrison, R.G. & Chiesa, Nicola. (2014).
+    Inverse Hysteresis Models for Transient Simulation. Power Delivery, IEEE
+    Transactions on. 29. 552-559. 10.1109/TPWRD.2013.2274530. 
+  o Test cases:
+    * circuits2D_with_hysteresis: 2d test with circuit
+    * circuits2D_with_hysteresis_axi: 2d axisymmetric test with circuit
+    * Zirka: unit test that tries to recover hysteretic BH curve from FE simulation.
+
+VectorHelmholtz
+---------------
+- Enabled solver to use quadratic edge elements
+- Some streamlining of code
+- New BC: Keyword `TEM potential` defines a quantity whose gradient is used as Neumann load.
+
+
+CoilSolver
+----------
+- For closed coils there is a more narrow band where the jump BCs are set
+
+ParticleDynamics
+----------------
+- Enable the module to use different types of particles with different properties
+
+ParticleAdvector
+----------------
+- Fixes for parallel operation 
+- Enable elemental and DG result fields to eliminate problems related to interfaces.
+
+SaveLine
+--------
+- Enable use of SaveLine for edge element fields
+
+SaveScalars
+-----------
+- New operators: 'rms' (root-mean-square), 'int square', 'int square mean'
+
+
+VtuOutputSolver
+---------------
+- Enable saving of elemental and ip fields
+- If DG type of output is requested ip fields are fitted on-the-fly solving a small linear system
+
+
+
+ElmerSolver library functionality
+=================================
+
+
+Lua support for ElmerSolver sif files
+-------------------------------------
+- Includes Lua 5.1.5 interpreter inside Elmer codebase under
+  contrib/lua-5.1.5
+- Enabled in compilation with cmake variable `WITH_LUA`.
+  o Setting `USE_SYSTEM_LUA=TRUE` makes cmake look for system Lua.
+  o CMake variables `LUA_LIBRARIES`, `LUA_INCLUDE_DIR` disables cmake
+    from searching Lua.
+- Enables Lua expressions inside sif file in following cases
+  o Inline syntax with `#<lua expression>#` or `#<lua expression>`
+    similarly to matc
+  o Commented sections in main sif file as follows
+      ```
+      !---LUA BEGIN
+      ! <first line of lua code>
+      ! <second line of lua code>
+      ! ...
+      ! <last line of lua code>
+      !---LUA END
+      ```
+    Such code blocks are to be executed prior to reading the rest of
+    the sif-file. Thus, such code blocks are not executed in included
+    files.
+  o Using variable dependent keyword evaluations:
+      ```
+      keyword = variable var_a, var_b, var_c, ..., var_n
+        real lua "expr"
+      tensor keyword (i,j) = variable var_a, var_b, var_c, ..., var_n
+        real lua "expr 1, expr 2, expr 3, ..., expr i*j"
+      ```
+    Here the entries to the `tensor keyword` are given in a row-wise
+    order.
+- Should work in threaded mode too.
+- Includes 2 tests: `Lua` and `KeywordUnitTestLua`
+
+
+Multithreading and vectorization:
+--------------------------------    
+- Multithreaded added to many parts of the library code
+  o HUTI CG, BiCGStab, HUTI GMRES and BiCGStabL (double precision versions)
+  o SparMatrixVector in SParIterSolver
+  o Norm computation & matrix scaling
+  o Matrix creation and bandwidth computation
+  o Modifications to enable experimental multithreaded startup.
+    Multithreaded Startup = Logical <boolean>
+  o Boundary mesh is now also colored when MultiColour Solver is set to True.
+    Colour index lists for boundary mesh are available in
+    Mesh % BoundaryColourIndexList similarly to regular colour index lists.
+  o Added partial implementation of ListMatrixArray type as a thread safe
+    replacements of ListMatrix 
+  o Completely removed locking from the critical path in FE assembly
+  o Improved NUMA locality by initializing the system matrix in parallel with threads
+  o Improved NUMA locality by making Gauss points structure private to each thread.
+  o ElementInfoVec and LinearForms module now use stack storage for work space.
+  o GetCurrentElement and SetCurrentElement modified to give out correct values
+    when called from within parallel regions.
+  o Modified CheckElementEquation to be thread safe.
+  o Test cases Added multithreaded and mesh colored version of ModelPDE. 	
+
+- SIMD improvements:
+  o Added linear forms for (grad u, v), (u,v) in H^1 to LinearForms module.
+  o Added testing of (GradU,V) and (U,V) linear forms to LinearFormsAssembly
+    test (only constant coefficients).
+  o SIMD efficiency improvements to GetElementNOFDOFs.
+  o Improved SIMD performance of ElementInfoVec, ElementMetricVec and
+    LinearForms for a small number of Gauss points.
+  o Significantly improved the performance of CRS_GlueLocalMatrixVec by swithing
+    to an alternative algorithm and introducing software prefetching.
+  o H1Basis has been refactored to avoid register spilling arising from
+    accessing unaligned multidimensional array.
+	
+
+Block preconditioning
+---------------------
+- Block treatment has two main uses
+  o Split up monolithic equations into subproblems that are easier to solve
+  o Combine linear multiphysical coupled problems into a block matrix
+  o These are usually best solver with outer Krylov iteration using GCR
+
+- Implement new experimental ways to split existing linear system
+  o Into Re and Im blocks for complex solvers
+  o Into horizontal and vertical (hor-ver) degrees of freedom for lowest order edge elements
+  o Into Cartesian direction for fully Cartesian edge element meshes
+  o These might not be fully operational particularly in parallel
+  o Constraints dealt as additional blocks
+
+- FSI: Implement ways to combine fluid and structure solvers to form a block matrix
+  o Library routines used to create the coupling matrices
+  o Limited to nodal degrees of freedom
+  o Currently assumed linear solvers for the different fields
+  o Test cases exists for a number of combinations of structure and fluid solvers
+  o Structure solver can be linear plate solver, shell solver, or stress solver
+  o Fluid solver can be Helmholtz solver, for example
+
+
+Linear solver features
+----------------------
+- Pseudocomplex gcr implemented to be used mainly in conjunction of block preconditioners
+- Enable any transient solver to be solved as harmonic when > Harmonic Mode = True < keyword is given.
+  o Also harmonic field is named for visualization
+  o Can be used in conjunction with block preconditioning
+- In Hypre interface adapted during the solution procedure although
+  a previously constructed Hypre solver is utilized. This feature depends on
+  giving the command Linear System Adaptive Tolerance = True.
+- Added > Linear System Min Iterations < parameter to HutIter structures and applied it
+  to the built-in GCR iterative method. Sometimes block preconditioning needs more than one iteration.
+- Linear solver strategy that uses namespaces to try out different strategies until convergence is reached.
+  Currently only own Krylov methods and direct methods supported.
+  Activates by >Linear System Trialing = Logical True< and the linear solver strategies with namespaces.
+- When using >filename numbering< in SaveScalars only update the file number the 1st time visiting the subroutine.
+
+Dirichlet conditions
+--------------------
+- Dirichlet conditions were totally reformulated
+  o Separates the detection and assigning of the conditions
+  o Makes many follow-up steps easier, e.g. optimal scaling of the linear system
+- Some fix for nontrivial boundary conditions for p-elements
+
+
+Non-nodal field types
+----------------------
+- Better support for different field types
+  o nodal, elemental, DG, ip 
+  o New types supported for exported variables
+  o ListGetElementalReal operations may depend on these variables types
+  o Ip fields may depend on adaptive Gaussian quadratures
+  o Initialization improved for non-nodal fields
+  o Exported variables may be used to make them active only in subsection on where the primary solver is.   
+  o Mask is a logical keyword in Body Force section given my keyword >Exported Variable i Mask<
+
+Derived fields
+---------------
+- Restructure the computation of derived fields
+- Enable exported variables to be transient and their velocity be saved
+
+
+Adaptive quadratures
+--------------------
+- GaussPointsAdapt implemented to allow higher integration rules within a band
+
+
+Reduced basis DG
+----------------
+- Enable solution of PDEs using "reduced basis DG" where discontinuities are only present between bodies.
+  This allows for a more economical treatment of discontinuities than having a complete discontinuous
+  Galerkin method.
+- Also it is more flexible than having the discontinuity created in the mesh.
+  There are multiple ways how the bodies can be grouped when creating discontinuities between them.
+
+
+Zoltan interface
+----------------
+- Added preliminary Zoltan interface to allow parallel mesh repartitioning for purposes of load
+  balancing/initial mesh distribution.
+- Allows serial meshes to be parallelised within Elmer and distributed to processors.
+- Also allows load rebalancing during simulations following mesh modification.
+- Still work in progress. 
+
+
+MMG interface
+--------------
+- Added library interface to MMG 3D for performing remeshing and mesh adaptation functions via API.
+- 3D meshes can be adapted based on user-defined metrics, and domain geometry can be chopped (e.g. fracture events)
+  using a level set method. MMG functions are serial only, but routines have been added to isolate subregions of
+  the mesh requiring adaptation, reducing overall computational cost.
+- Still under development. 
+
+
+Internal partitioning
+---------------------
+- Routines allow to skip the separate partitioning routine with ElmerGrid
+- Does not deal with halos yet.
+- Either geometric routine, or any routine by Zoltan.
+- Keywords to Zoltan passed by namespace 'zoltan:'
+- Own strategies have limited support for hybrid partitioning
+
+
+EOF library
+-----------
+- Separate library developed by Juris Vencels, see https://eof-library.com/
+- Some of the general developments of Elmer motivated by a streamlined operation for the EOF library,
+  e.g. the improved support for different field types.
+
+
+Local assembly vectorization
+----------------------------
+- Add (hopefully) temporary unvectorized p-pyramid to "ElementInfoVec".
+- Added `LinearForms_UdotV` in `LinearForms.F90`
+
+
+Miscellaneous
+------------
+- Enable _post solver slot for single solvers to have cleaner routines. 
+- Enable > Output Directory < keyword also in Simulation section such that SaveScalars,
+  SaveLine, and VtuOutputSolver can use a common target directory more easily.
+- Enable using Solver specific mesh with of #partitions different from  #mpitasks.
+- Read command line arguments when there are more than 1 MPI task as well.
+  This should make ELMERSOLVER_STARTINFO file superfluous.
+    
+
+
+ElmerGrid
+=========
+- Support for Gmsh version 4 import
+
+- Fixes and enhancements to mesh formats
+  o Abaqus format (.ino) in case mesh parts are used
+  o Prism added to Ansys import
+  o Fixed ordering of quadratic triangle in universal format (.unv)
+
+- Modifications in partitioning routines
+  o Updated to use fresh Metis v. 5.1.0 (after it was released with suitable license)
+  o Enable contiguous Metis partitioning on request
+  o Added tests for partitioning
+  o Remove writing of parallel orphan nodes after ElmerSolver communicates Dirichlet nodes
+
+ElmerGUI
+========
+- Add Paraview icon to ElmerGUI (with a permission from Kitware).
+- Add stress computation to ElmerGUI for nonlinear solvers
+- Add xml file for harmonic av solver.
+- ElmerGUI new version of OCC without vtk-post    
+- Ensure that ElmerGUI locale follows that of C language.
+- Modify default of linear solvers in ElmerGUI
+
+
+MATC
+====
+- add internal function "env" such that in sif files one can use
+  str=env("name")
+  o The routine makes it possible to pass environmental variables to ElmerSolver
+
+
+Configuration & Compilation
+===========================
+    
+- cmake improvements:
+  o Create pkg-config file `elmer.pc` if cmake variable
+    `CREATE_PKGCONFIG_FILE` is set to true
+  o The `elmer.pc` file is installed under
+    `${CMAKE_INSTALL_PREFIX}/share/pkgconfig` by default. The install path
+    can be changed with cmake variable `PKGCONFIG_PC_PATH`
+  o Improved the way CMake detects and uses BLAS/LAPACK from Intel Math
+    Kernel library. BLAS and LAPACK routines from Intel MKL are now used by default if
+    detected by FindMKL unless BLAS_LIBRARIES and LAPACK_LIBRARIES CMake
+    variables have been set.
+  o Added detection of OpenMP SIMD features within the build
+    system. Added routines for checking the existence and the
+    functionality of the used OMP SIMD -features in the code.
+  o Make suitesparse solver cholmod & spqr usable also when "USE_ISO_C_BIDINGS"
+    true at compile time.
+  o Added global preprocessor macros to allow OpenMP SIMD functionality
+    to be disabled if needed:
+  o Included Elmer/Ice library in elmerf90 command when compiled with
+
+- ctest improvements:
+  o output stdout/stderr if CTEST_OUTPUT_ON_FAILURE=1 env variable is set
+    
+- Dockerfile added to promote easy cross-platform builds of Elmer/Ice (by nwrichmond)
+  o The dockerfile shows the recipe for a Docker image which runs Elmer/Ice in
+    a lightweight Ubuntu Linux environment. This way, anyone can use Elmer/Ice
+    whether they are on a Windows, Mac, or Linux platform - all they need to do
+    is install Docker, then follow the instructions laid out on the Docker Hub
+    description for the Elmer/Ice Docker image:
+
+Elmer/Ice
+=========
+New features in Elmer/Ice are documented in elmerfem/elmerice/ReleaseNotes/release_elmerice_8.4.txt
+
+
+
+Acknowledgements
+================
+Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.)
+git log shows contributions from from Mikko B., Eelis T., Fabien G.-C., Olivier G., Janne K.,
+Joe T., Nick R., Juris V., Pavel P., and Sami I..
+
+Additionally there are many ongoing developments in several branches
+that have not been merged to this release, and are therefore not covered here. 
+Also sometimes the code has been passed on by the original author by means other than the
+git, and in such cases the names may have been accidentally omitted.
+
+The contribution of all developers is gratefully acknowledged. 

@@ -10,7 +10,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  Post File   = "ptest.ep"
+!  Post File   = "ptest.vtu"
 ! Output File = "ptest.dat"
 End
 

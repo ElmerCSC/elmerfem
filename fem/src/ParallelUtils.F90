@@ -1106,13 +1106,13 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-    SUBROUTINE ParallelGlobalNumbering(Mesh,OldMesh,NewNodes,IntCnts,IntArray,Reorder)
+    SUBROUTINE ParallelGlobalNumbering(Mesh,OldMesh,NewNodes,Reorder)
 !-------------------------------------------------------------------------------
        TYPE(Mesh_t) :: Mesh, OldMesh
-       INTEGER :: NewNodes,IntCnts(:),IntArray(:),Reorder(:)
+       INTEGER :: NewNodes,Reorder(:)
 !-------------------------------------------------------------------------------
 #ifdef PARALLEL_FOR_REAL
-        CALL SparGlobalNumbering( Mesh,OldMesh,NewNodes,IntCnts,IntArray,Reorder )
+        CALL SparGlobalNumbering( Mesh,OldMesh,NewNodes,Reorder )
 #endif
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelGlobalNumbering

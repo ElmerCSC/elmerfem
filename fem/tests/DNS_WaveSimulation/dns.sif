@@ -14,8 +14,8 @@ Simulation
   Timestep intervals = 20
   Timestep sizes = $1/(40*f)
   Output Intervals(1) = 1
-  Post File   = "tube.ep"
-!  Output File = "rotns.dat"
+!  Post File   = "tube.vtu"
+!  Output File = "tube.dat"
   Steady State Max Iterations = 1
 End
 

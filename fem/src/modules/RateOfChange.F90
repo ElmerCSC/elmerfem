@@ -88,11 +88,7 @@
      REAL(KIND=dp), ALLOCATABLE :: &
          LocalStiffMatrix(:,:), LocalForce(:), LocalU0(:), &
          V1(:), V2(:), V3(:)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, st, Norm
-#else
-     REAL(KIND=dp) :: at, st, CPUTime, Norm
-#endif
 
      SAVE LocalStiffMatrix, LocalForce, ElementNodes, & 
           AllocationsDone, LocalU0, U0Var, V1, V2, V3

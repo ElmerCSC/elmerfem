@@ -65,19 +65,19 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    TYPE(Element_t), POINTER ::  BoundaryElement, BCElement, CurElement, ParentElement
    TYPE(ValueList_t), POINTER :: BC, material, ParentMaterial, BodyForce
    INTEGER :: NBoundary, NParent, BoundaryElementNode, ParentElementNode, body_id, other_body_id, material_id
-   INTEGER :: nodenumber, NumberOfNodesOnBoundary 
+   INTEGER :: nodenumber, NumberOfNodesOnBoundary, OldMeshTag 
    INTEGER, ALLOCATABLE :: NodeOnBoundary(:)
    INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, bf_id_FS 
    REAL(KIND=dp) :: y, pw, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: Zsl, rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: S(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal=.TRUE.
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal=.TRUE., MeshChanged=.FALSE.
    CHARACTER(LEN=MAX_NAME_LEN)  :: BottomSurfaceName
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
    SAVE S, rhow, gravity, Zsl, NormalFlux, a_perp, SourceFunc
    SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal
-   SAVE BottomSurfaceName, bf_id_FS 
+   SAVE BottomSurfaceName, bf_id_FS, OldMeshTag
    
 
 
@@ -95,6 +95,8 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    IF (FirstTime) THEN
       NewTime = .TRUE.
       told = t
+
+      OldMeshTag = Model % Mesh % MeshTag
       DIM = CoordinateSystemDimension()
 
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
@@ -171,8 +173,14 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
       END IF
    ENDIF  ! FirstTime
 
-   IF(FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
+   IF(OldMeshTag /= Model % Mesh % MeshTag) THEN
+     OldMeshTag = Model % Mesh % MeshTag
+     MeshChanged = .TRUE.
+   END IF
+   IF(Model % Mesh % Changed) MeshChanged = .TRUE.
 
+   IF(FirstTime .OR. (NewTime .AND. MeshChanged)) THEN
+      MeshChanged = .FALSE.
       IF(.NOT. FirstTime) &
            DEALLOCATE(NodeOnBoundary, SourceFunc)
       ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
@@ -370,15 +378,15 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    INTEGER :: NBoundary, NParent, BoundaryElementNode, ParentElementNode, body_id, other_body_id, material_id
    INTEGER :: nodenumber, NumberOfNodesOnBoundary 
    INTEGER, ALLOCATABLE :: NodeOnBoundary(:)
-   INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM 
+   INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, OldMeshTag
    REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: Ns(:), normal(:,:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS   
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,MeshChanged=.FALSE.
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
    SAVE rhow, gravity
-   SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal 
+   SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal,OldMeshTag
 
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
@@ -394,12 +402,19 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    ! .OR. (NewTime .AND. Model % Mesh % Changed)
    IF(FirstTime) THEN
       NewTime = .TRUE.
+      OldMeshTag = Model % Mesh % MeshTag
    ELSE IF(t > told) THEN
       NewTime = .TRUE.
       told = t
    END IF
 
-   IF (FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
+   IF(OldMeshTag .NE. Model % Mesh % MeshTag) THEN
+     OldMeshTag = Model % Mesh % MeshTag
+     MeshChanged = .TRUE.
+   END IF
+   IF(Model % Mesh % Changed) MeshChanged = .TRUE.
+
+   IF (FirstTime .OR. (NewTime .AND. MeshChanged)) THEN
 
       IF(.NOT. FirstTime) DEALLOCATE(NodeOnBoundary, Ns)
       FirstTime = .FALSE.

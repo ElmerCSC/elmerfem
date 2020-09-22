@@ -3,8 +3,10 @@
 ! edit of the version to allow the consistency tests. 
 ! Uses normal SI units.
 
+! The original Ansys mesh has been transformed into a Gmsh msh
+! in file actuator.msh.
 Header
-  Mesh DB "." "mesh"
+  Mesh DB "." "actuator"
 End
 
 Simulation
@@ -13,7 +15,7 @@ Simulation
   Steady State Max Iterations = 50
   Output Intervals = 1
 !  Output File = "actuator.result"
-!  Post File = "actuator.ep"
+!  Post File = "actuator.vtu"
   
 ! from um:s to m:s
   Coordinate Scaling = 1.0e-6

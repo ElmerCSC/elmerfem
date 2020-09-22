@@ -43,6 +43,7 @@
 
 #include <QTextEdit>
 #include <QHash>
+#include <QMap>
 #include <QScriptEngine>
 
 #include "meshtype.h"
@@ -95,8 +96,8 @@ class SifGenerator  {
   void makeInitialConditionBlocks();
   void makeBoundaryBlocks();
   
-  QHash<int, int> bodyMap;
-  QHash<int, int> boundaryMap;
+  QMap<int, int> bodyMap;// QHash<int, int> bodyMap;
+  QMap<int, int> boundaryMap;// QHash<int, int> boundaryMap;
 
  private:
   mesh_t* mesh;

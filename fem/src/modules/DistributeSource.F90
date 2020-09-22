@@ -57,17 +57,17 @@ SUBROUTINE DistributeSource(Model, Solver, dt, Transient)
   TYPE(Element_t), POINTER :: Element
 !-------------------------------------------------------------------------------
 
-  INTERFACE
-    SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-        NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
-      USE Types
-      TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
-      TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
-      LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
-      CHARACTER(LEN=*),OPTIONAL :: MaskName
-      TYPE(Projector_t), POINTER, OPTIONAL :: Projector
-    END SUBROUTINE InterpolateMeshToMeshQ
-  END INTERFACE
+!  INTERFACE
+!    SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
+!        NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+!      USE Types
+!      TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
+!      TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
+!      LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
+!      CHARACTER(LEN=*),OPTIONAL :: MaskName
+!      TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+!    END SUBROUTINE InterpolateMeshToMeshQ
+!  END INTERFACE
 
 
   MeshLocal => GetMesh()

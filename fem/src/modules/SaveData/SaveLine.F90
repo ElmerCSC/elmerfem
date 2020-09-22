@@ -127,7 +127,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
 
   LOGICAL, ALLOCATABLE :: LineTag(:)
-  LOGICAL :: cand, Parallel, InitializePerm
+  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen
   
   REAL(KIND=dp) :: R0(3),R1(3),dR(3),S0(3),S1(3),dS(3),LocalCoord(3),&
       MinCoord(3),MaxCoord(3),GlobalCoord(3),LineN(3),LineT1(3), &
@@ -138,11 +138,16 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
 
-  CALL Info('SaveLine','-----------------------------------------', Level=4 )
-  CALL Info('SaveLine','Saving data on specified lines',Level=4)
-
   Params => GetSolverParams()
+  SideFile = ListGetString(Params,'Filename',GotIt )
+  IF(.NOT. GotIt) SideFile = DefaultSideFile
 
+  CALL Info('SaveLine','-----------------------------------------', Level=4 )
+  CALL Info('SaveLine','Saving data on lines to file: '//TRIM(SideFile),Level=4)
+  CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
+
+  FileIsOpen = .FALSE.
+  
   i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
   IF( Found ) THEN
     CALL Info('SaveLine','Using mesh of solver '//TRIM(I2S(i)))
@@ -262,8 +267,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
   ! Open files for saving
   !------------------------------------------------------------------------------
-  CALL OpenLineFile()
-  
+  !CALL OpenLineFile()
+
   ! Search existing boundary to save if any
   !------------------------------------------------------------------------------
   CALL SaveExistingLines()
@@ -573,6 +578,42 @@ CONTAINS
   END SUBROUTINE GlobalToLocalCoordsReduced
   
 
+  SUBROUTINE OpenLineFile() 
+
+    IF(FileIsOpen) RETURN
+    FileIsOpen = .TRUE.    
+    
+    CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
+    SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
+
+    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
+
+    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
+      IF( Parallel ) THEN
+        CALL Warn('SaveLine','Cannot number filenames in parallel with another number!')
+      ELSE
+        SideParFile = NextFreeFilename( SideParFile ) 
+      END IF
+    END IF
+
+    CALL Info('SaveLine','Saving line data to file: '//TRIM(SideParFile),Level=12)
+
+    FileAppend = ListGetLogical(Params,'File Append',GotIt )
+
+    IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
+      OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND')
+    ELSE 
+      OPEN (NEWUNIT=LineUnit,FILE=SideParFile)
+    END IF
+
+
+  END SUBROUTINE OpenLineFile
+
+  
+  SUBROUTINE CloseLineFile()
+    IF(FileIsOpen) CLOSE(LineUnit)
+  END SUBROUTINE CloseLineFile
+
 
   ! Write a line of data for a point in a known element.
   !----------------------------------------------------------------------
@@ -587,7 +628,7 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
     REAL(KIND=dp), OPTIONAL :: GlobalCoord(3)
     
-    INTEGER :: i,j,k,l,ivar,ii
+    INTEGER :: i,j,k,l,ivar,ii,i1,i2
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: UseGivenNode, PiolaVersion, EdgeBasis
     INTEGER :: n, nd, np, EdgeBasisDegree, Labels(5)
@@ -597,15 +638,17 @@ CONTAINS
     REAL(KIND=dp) :: u,v,w
     INTEGER, TARGET :: NodeIndex(1), Indexes(27)
     INTEGER :: n0
-
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
-
+    REAL(KIND=dp) :: AveMult
+    
     SAVE :: Nodes
 
     Indexes = 0
     n0 = 0
-    
+
+    CALL OpenLineFile()
+      
     IF( .NOT. SkipBoundaryInfo ) THEN      
       Labels = 0
       IF( LineInd /= 0 ) THEN
@@ -694,7 +737,6 @@ CONTAINS
             END IF
             np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
           END IF
-
         ELSE
           nd = GetElementDOFs( Indexes, Element )
           n = Element % Type % NumberOfNodes
@@ -722,6 +764,7 @@ CONTAINS
         ELSE
           PtoIndexes => Element % NodeIndexes 
         END IF
+
       ELSE
         IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
           NodeIndex(1) = dgnode_id
@@ -759,8 +802,47 @@ CONTAINS
           END DO
         END IF
         No = No + Var % Dofs * NoEigenValues
-      ELSE                  
-        IF( ASSOCIATED( PtoIndexes ) ) THEN
+      ELSE                          
+        IF( Var % TYPE == Variable_on_elements ) THEN
+          l = Element % ElementIndex 
+          IF( SIZE( Var % Perm ) >= l ) THEN
+            l = Var % Perm(l)
+          END IF
+          IF( l > 0 ) THEN
+            DO ii=1,Var % Dofs
+              Values(No+ii) = Var % Values(Var%Dofs*(l-1)+ii)
+            END DO
+            IF( comps >= 2 ) THEN
+              Values(No+2) = Var % Values(l)
+            END IF
+            IF( comps >= 3 ) THEN
+              Values(No+3) = Var % Values(l)
+            END IF
+          END IF
+        ELSE IF ( Var % TYPE == Variable_on_gauss_points ) THEN
+          i1 = Var % Perm(Element % ElementIndex)
+          i2 = Var % Perm(Element % ElementIndex+1)-1
+          IF(i2>i1 ) THEN
+            AveMult = 1.0_dp/(i2-i1) 
+            i2 = i2-1
+            IF( Var % Dofs > 1 ) THEN
+              DO l=1,Var % Dofs
+                DO ii=i1,i2
+                  Values(No+l) = Values(No+l) + AveMult * Var % Values(Var%Dofs*(ii-1)+l)
+                END DO
+              END DO
+            ELSE
+              Values(No+1) = AveMult * SUM(Var % Values(i1:i2))
+              IF( comps >= 2 ) THEN
+                Values(No+2) = AveMult * SUM(Var2 % Values(i1:i2))
+              END IF
+              IF( comps >= 3 ) THEN
+                Values(No+3) = AveMult * SUM(Var3 % Values(i1:i2))
+              END IF
+            END IF
+          END IF
+
+        ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
           DO k=1,n
             l = PtoIndexes(k)
             IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
@@ -769,7 +851,6 @@ CONTAINS
                 Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
                     Var % Values(Var%Dofs*(l-1)+ii)
               END DO
-
               IF( comps >= 2 ) THEN
                 Values(No+2) = Values(No+2) + PtoBasis(k) * &
                     Var2 % Values(l)
@@ -777,11 +858,11 @@ CONTAINS
               IF( comps >= 3 ) THEN
                 Values(No+3) = Values(No+3) + PtoBasis(k) * &
                     Var3 % Values(l)
-              END IF
-                
+              END IF                
             END IF
           END DO
         END IF
+        
         No = No + MAX( Var % Dofs, comps )
      END IF
     END DO
@@ -1002,47 +1083,6 @@ CONTAINS
   END SUBROUTINE BoundaryFlux
 
 
-  SUBROUTINE OpenLineFile() 
-    
-    SideFile = ListGetString(Params,'Filename',GotIt )
-    IF(.NOT. GotIt) SideFile = DefaultSideFile
-
-    CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
-    SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
-
-    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
-
-    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-      IF( Parallel ) THEN
-        CALL Warn('SaveLine','Cannot number filenames in parallel with another number!')
-      ELSE
-        SideParFile = NextFreeFilename( SideParFile ) 
-      END IF
-    END IF
-
-    CALL Info('SaveLine','Saving line data to file: '//TRIM(SideParFile),Level=12)
-
-    FileAppend = ListGetLogical(Params,'File Append',GotIt )
-
-    IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-      OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND')
-    ELSE 
-      OPEN (NEWUNIT=LineUnit,FILE=SideParFile)
-    END IF
-
-    CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
-    WRITE( Message, * ) 'Saving line data to file ', TRIM(SideFile)
-    CALL Info( 'SaveLine', Message, Level=4 )
-    CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
-
-  END SUBROUTINE OpenLineFile
-
-
-  
-  SUBROUTINE CloseLineFile()
-    CLOSE(LineUnit)
-  END SUBROUTINE CloseLineFile
-
 
 
 ! Save a line (or boundary) that exist already in mesh.
@@ -1067,7 +1107,7 @@ CONTAINS
 
     IF( Solver % TimesVisited > 0 ) THEN
       InitializePerm = ( MaskName /= PrevMaskName ) 
-      InitializePerm = InitializePerm .OR. Solver % Mesh % Changed
+      InitializePerm = InitializePerm .OR. Solver % MeshChanged
     ELSE
       InitializePerm = .TRUE.
     END IF
