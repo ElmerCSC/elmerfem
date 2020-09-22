@@ -12884,15 +12884,15 @@ CONTAINS
       AntiPeriodic = ( AntiRotational .OR. AntiRadial .OR. AntiAxial .OR. AntiPlane ) 
     END IF
       
-    IF( AntiPeriodic ) CALL Info('PeriodicProjector','Assuming antiperiodic conforming projector',Level=8)
+    IF( AntiPeriodic ) CALL Info('PeriodicPermutation','Assuming antiperiodic conforming projector',Level=8)
     
-    IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
-    IF( Axial ) CALL Info('PeriodicProjector','Enforcing > Axial Projector <',Level=12)
-    IF( Sliding ) CALL Info('PeriodicProjector','Enforcing > Sliding Projector <',Level=12)
-    IF( Cylindrical ) CALL Info('PeriodicProjector','Enforcing > Cylindrical Projector <',Level=12)
-    IF( Rotational ) CALL Info('PeriodicProjector','Enforcing > Rotational Projector <',Level=12)
-    IF( Flat ) CALL Info('PeriodicProjector','Enforcing > Flat Projector <',Level=12)
-    IF( Plane ) CALL Info('PeriodicProjector','Enforcing > Plane Projector <',Level=12)
+    IF( Radial ) CALL Info('PeriodicPermutation','Enforcing > Radial Projector <',Level=12)
+    IF( Axial ) CALL Info('PeriodicPermutation','Enforcing > Axial Projector <',Level=12)
+    IF( Sliding ) CALL Info('PeriodicPermutation','Enforcing > Sliding Projector <',Level=12)
+    IF( Cylindrical ) CALL Info('PeriodicPermutation','Enforcing > Cylindrical Projector <',Level=12)
+    IF( Rotational ) CALL Info('PeriodicPermutation','Enforcing > Rotational Projector <',Level=12)
+    IF( Flat ) CALL Info('PeriodicPermutation','Enforcing > Flat Projector <',Level=12)
+    IF( Plane ) CALL Info('PeriodicPermutation','Enforcing > Plane Projector <',Level=12)
 
     DoNodes = .TRUE.
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) DoNodes = .FALSE.    
@@ -12907,7 +12907,7 @@ CONTAINS
     IF( DoEdges ) THEN
       IF(isPelement(Mesh % Elements(1))) THEN
         DoEdges = .FALSE.
-        CALL Info('PeriodicProjector','Edge projector will not be created for p-element mesh',Level=10)
+        CALL Info('PeriodicPermutation','Edge projector will not be created for p-element mesh',Level=10)
       END IF
     END IF
         
