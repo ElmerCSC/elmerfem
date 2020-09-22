@@ -1408,7 +1408,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
       if(info) printf("Allocating for %d knots and %d %d-node elements.\n",
 		      noknots,noelements,maxnodes);
       AllocateKnots(data);
-      if(info) printf("reading the nodes\n");
+      if(info) printf("Reading the nodes\n");
       for(i=1;i<=noknots;i++) {
 	GETLINE;
 	if (dim == 2)
@@ -1465,7 +1465,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
 	  data->topology = topology;
 	}
 
-	if(0) printf("reading %d element topologies with %d nodes for %s\n",
+	if(info) printf("reading %d element topologies with %d nodes for %s\n",
 			elems,nodes,entityname);
 
 	for(entity=1;entity<=maxentity;entity++) {
@@ -1498,7 +1498,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
 	  ReorderFidapNodes(data,i,nodes,typeflag);
 
 	  if(data->elementtypes[i] == 0) {
-	    printf("******** nolla\n");
+	    printf("Elementtype is zero!\n");
 	  }
 
 	  if(entity) data->material[i] = entity;
@@ -1510,7 +1510,8 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
     break;
       
     case 10:
-      if(info) printf("reading the velocity field\n");
+      dim = 3;
+      if(info) printf("Reading the velocity field\n");
       CreateVariable(data,2,dim,0.0,"Velocity",FALSE);
       vel = data->dofs[2];
       for(j=1;j<=noknots;j++) {
@@ -1524,8 +1525,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
       break;
       
     case 11:
-
-      if(info) printf("reading the temperature field\n");
+      if(info) printf("Reading the temperature field\n");
       CreateVariable(data,1,1,0.0,"Temperature",FALSE);
       temp = data->dofs[1];
       for(j=1;j<=noknots;j++) {
@@ -1549,7 +1549,7 @@ end:
       if(data->topology[i][j] > maxknot) maxknot = data->topology[i][j];
 
   if(maxknot > noknots) {
-    if(info) printf("renumbering the nodes from 1 to %d\n",noknots);
+    if(info) printf("Renumbering the nodes from 1 to %d\n",noknots);
 
     ind = ivector(1,maxknot);
     for(i=1;i<=maxknot;i++)
@@ -1984,7 +1984,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   FindPointParents(data,bound,boundarynodes,nodeindx,boundindx,info);
 
   if(namesexist) {
-    int bcind,*bctypes=NULL,*bctypeused=NULL,*bcused=NULL,newsides;
+    int bcind=0,*bctypes=NULL,*bctypeused=NULL,*bcused=NULL,newsides=0;
 
     data->bodynamesexist = TRUE;
     if(bound[0].nosides) {

@@ -118,12 +118,6 @@ int main(int argc, char *argv[])
       Goodbye();
     }
   }
-#if 0
-  if(eg.inmethod != 8 && eg.outmethod == 5) {
-    printf("To write Easymesh format you need to read easymesh format!\n");
-    errorstat++;
-  }
-#endif
 
   if(eg.timeron) timer_activate(eg.infofile);
 

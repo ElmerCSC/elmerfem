@@ -133,7 +133,6 @@ void Instructions()
   printf("15) .ep.i     : Partitioned ElmerPost format\n");
   printf("16) .2dm      : 2D triangular FVCOM format\n");
 #if 0
-  printf("16)  .d       : Easymesh input format\n");
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");
   printf("19) .geo      : Geo format\n");
@@ -150,7 +149,6 @@ void Instructions()
 #if 0
   printf("5)  .inp      : Abaqus input format\n");
   printf("7)  .fidap    : Fidap format\n");
-  if(0) printf("8)  .n .e .s  : Easymesh output format\n");
   printf("18) .ep       : Fastcap input format.\n");
 #endif
 
@@ -214,7 +212,6 @@ void Instructions()
   printf("-partcell int[3]     : the mesh will be partitioned in cells of fixed sizes\n");
   printf("-partcyl int[3]      : the mesh will be partitioned in cylindrical main directions\n");
 #if USE_METIS
-  if(0) printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");

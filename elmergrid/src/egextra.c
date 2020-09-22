@@ -113,15 +113,9 @@ int SaveBoundary(struct FemType *data,struct BoundaryType *bound,
 
     GetElementSide(bound->parent[i],bound->side[i],bound->normal[i],data,sideind,&sideelemtype);
 
-    fprintf(out,"%-12.4le %-12.4le %-12.4le %-12.4le ",
+    fprintf(out,"%-12.4le %-12.4le %-12.4le %-12.4le\n",
 	    data->x[sideind[0]],data->x[sideind[1]],
 	    data->y[sideind[0]],data->y[sideind[1]]);
-    for(k=0;k<MAXVARS;k++) 
-      if(bound->evars[k]) {
-	if(bound->points[k] == 1) 
-	  fprintf(out,"%-10.4le ",bound->vars[k][i]);
-      }		
-    fprintf(out,"\n");
   }
 
   fclose(out);
@@ -256,21 +250,6 @@ int SaveBoundariesChain(struct FemType *data,struct BoundaryType *bound,
 	ind = bound[j].chain[i];
 	fprintf(out,"%-10.4le %-10.4le %-6d ",
 		data->x[ind],data->y[ind],ind);
-	for(k=0;k<MAXVARS;k++) 
-	  if(bound[j].evars[k]) {
-	    if(bound[j].points[k] == 0)
-	      fprintf(out,"%-10.4le ",bound[j].vars[k][i]);
-	    else if(bound[j].points[k] == 1) {
-	      if(i==0)
-		fprintf(out,"%-10.4le ",bound[j].vars[k][1]);		
-	      else if(i==length)
-		fprintf(out,"%-10.4le ",bound[j].vars[k][length]);		
-	      else
-		fprintf(out,"%-10.4le ",
-			0.5*(bound[j].vars[k][i]+bound[j].vars[k][i+1]));	
-	    }
-	  }
-
 	for(k=0;k<MAXDOFS;k++) {
 	  if(data->edofs[k] == 1) 
 	    fprintf(out,"%-10.4le  ",data->dofs[k][ind]);
@@ -300,9 +279,6 @@ int SaveBoundariesChain(struct FemType *data,struct BoundaryType *bound,
       }
       fprintf(out,"col3: node indices\n");
       col = 3;
-      for(k=0;k<MAXVARS;k++) 
-	if(bound[j].evars[k] && bound[j].points[k] <= 1) 
-	  fprintf(out,"col%d: %s\n",++col,bound[j].varname[k]);	  
       for(k=0;k<MAXDOFS;k++) {
 	if(data->edofs[k] == 1) 
 	  fprintf(out,"col%d: %s\n",++col,data->dofname[k]);	  
