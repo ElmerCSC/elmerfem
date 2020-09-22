@@ -32,10 +32,12 @@ CONTAINS
 !============================================
 
 
-SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
+SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 
   TYPE(Mesh_t), POINTER :: Mesh
   LOGICAL :: Parallel
+  INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
+  INTEGER, OPTIONAL :: PairCount
 
 #ifdef HAVE_MMG
   TYPE(Element_t),POINTER :: Element
@@ -43,7 +45,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
 
   INTEGER :: i,NNodes,NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, nbulk, nbdry,ref,ierr
   INTEGER, ALLOCATABLE :: NodeRefs(:)
-  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.
+  LOGICAL :: Warn101=.FALSE., Warn202=.FALSE.,Debug=.FALSE.,Elem202
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="Set_MMG3D_Mesh"
   IF(CoordinateSystemDimension() /= 3) CALL Fatal("MMG3D","Only works for 3D meshes!")
 
@@ -58,6 +60,7 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
   ntris = 0
   nquads = 0
   nedges = 0
+  IF(Present(PairCount)) NEdges= PairCount
 
   nbulk = Mesh % NumberOfBulkElements
   nbdry = Mesh % NumberOfBoundaryElements
@@ -148,6 +151,21 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel)
     END SELECT
   END DO
   IF (DEBUG) PRINT *,'--**-- MMG3D - Set elements DONE'
+
+  !! use element pairs '202' elements
+  Elem202 = (PRESENT(EdgePairs))
+  IF (Elem202) THEN
+    DO i=1, PairCount
+      NEdges = NEdges + 1 
+      CALL MMG3D_Set_edge(mmgMesh, EdgePairs(1,i), EdgePairs(2,i), 1, nedges, ierr)
+      CALL MMG3D_Set_ridge(mmgMesh, nedges, ierr)
+      !CALL MMG3D_Set_requiredEdge(mmgMesh, Nedges, ierr)
+    END DO
+  END IF
+
+  
+
+  IF (DEBUG) PRINT *, '--**-- MMG3D - Set edge elements DONE'
 
 #else
      CALL FATAL('Set_MMG3D_Mesh',&
@@ -800,11 +818,13 @@ END SUBROUTINE MapNewParallelInfo
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
+SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
 
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
   TYPE(ValueList_t), POINTER, OPTIONAL :: Params
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
+  INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
+  INTEGER, OPTIONAL :: PairCount
   !-----------
   TYPE(ValueList_t), POINTER :: FuncParams, Material
   TYPE(Element_t), POINTER :: Element
@@ -896,7 +916,11 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
        MMG5_ARG_end)
 
-  CALL SET_MMG3D_MESH(InMesh,Parallel)
+  IF (Present(PairCount)) THEN
+    CALL SET_MMG3D_MESH(InMesh,Parallel,EdgePairs,PairCount)
+  ELSE
+    CALL SET_MMG3D_MESH(InMesh,Parallel)
+  END IF
 
   !Set the metric values at nodes
   CALL MMG3D_Set_SolSize(mmgMesh, mmgSol, MMG5_Vertex, NNodes, SolType,ierr)
@@ -913,7 +937,7 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
       IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
     END IF
   END DO
-
+   
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
        hmin,ierr)
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmax,&
@@ -923,11 +947,11 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,Params,NodeFixed,ElemFixed)
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
        hgrad,ierr)
 
-  !Turn off sharp angle detection (0)
+  !Turn off sharp angle detection (0)   
   CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle, &
        0,ierr)
   !Option to set angle detection threshold:
-  ! CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
+  !CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_angleDetection,&
   !      85.0_dp,ierr)
 
 

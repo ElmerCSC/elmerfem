@@ -104,16 +104,16 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
 !-----------------------------------------------------------------------------
 ! Local variables for performing analyses with harmonic interfaces
 !-----------------------------------------------------------------------------
-  TYPE(Variable_t), POINTER :: FlowSol, DispSol
+  TYPE(Variable_t), POINTER :: FlowSol, DispSol, DispSolIm
   LOGICAL :: FlowInterface, StructureInterface, stat 
   LOGICAL :: AnyFlowInterface, AnyStructureInterface, GotFrequency
-  REAL(KIND=dp), POINTER :: Flow(:), Disp(:)
+  REAL(KIND=dp), POINTER :: Flow(:), Disp(:), DispIm(:)
   COMPLEX(KIND=dp), POINTER :: DispEigen(:)
   INTEGER, POINTER ::  FlowPerm(:), DispPerm(:), PresPerm(:)
-  INTEGER :: dim, FlowDofs, DispDofs, NoEigen
+  INTEGER :: dim, FlowDofs, DispDofs, NoEigen, DispMode 
   TYPE(Element_t),POINTER :: Parent
   COMPLEX(KIND=dp), ALLOCATABLE :: WallVelocity(:,:)
-  COMPLEX(KIND=dp) :: ImUnit
+  COMPLEX(KIND=dp) :: ImUnit, cu
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
 
   SAVE WallVelocity
@@ -222,6 +222,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
       CALL Fatal('HelmholtzSolver','No displacement variable associated:'//TRIM(VarName))
     END IF
 
+    DispMode = -1
     NoEigen = GetInteger( SolverParams,'Displacement Variable EigenMode',Found)
     IF( NoEigen > 0 ) THEN
       IF( NoEigen > SIZE(DispSol % EigenValues)) THEN
@@ -235,11 +236,26 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
       IF( DispDofs < dim ) THEN
         CALL Fatal('HelmholtzSolver','Eigenmode displacement field should have at least 1*dim components')
       END IF
+      DispMode = 1
     ELSE
-      IF( DispDofs /= 2*dim ) THEN
-        CALL Fatal('HelmholtzSolver','Harmonic displacement field should have 2*dim components')
+      IF( DispDofs == 2*dim ) THEN
+        DispMode = 2
+        CONTINUE
+      ELSE IF( DispDofs == dim ) THEN
+        DispSolIm => VariableGet( Solver % Mesh % Variables,TRIM(VarName)//' im' )
+        DispMode = 3 
+        IF ( ASSOCIATED(DispSol) ) THEN
+          DispIm => DispSolIm % Values
+          DispMode = 4
+        END IF
+      ELSE        
+        CALL Fatal('HelmholtzSolver','Harmonic displacement field should have n*dim components')
       END IF
     END IF
+    IF( DispMode == -1 ) THEN
+      CALL Fatal('HelmholtzSolver','Could not determine displacement mode!')
+    END IF
+        
   END IF
 
 
@@ -431,22 +447,23 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
            IF ( ANY( DispPerm( Element % NodeIndexes(1:n) ) == 0 ) ) THEN
              CALL Fatal( 'HelmholtzSolve', 'Displacement solution is not available on boundary')
            END IF           
-           IF( NoEigen > 0 ) THEN
-             DO j=1,n
-               k = DispPerm( Element % NodeIndexes(j) ) 
-               DO l=1,dim
-                 WallVelocity(l,j) = DispEigen( (k-1)*DispDofs + l )
-               END DO
-             END DO          
-           ELSE
-             DO j=1,n
-               k = DispPerm( Element % NodeIndexes(j) ) 
-               DO l=1,dim
-                 WallVelocity(l,j) = Disp( (k-1)*DispDofs + 2*l-1 ) + &
-                     ImUnit * Disp( (k-1)*DispDofs + 2*l )
-               END DO
+
+           DO j=1,n
+             k = DispPerm( Element % NodeIndexes(j) ) 
+             DO l=1,dim
+               IF( DispMode == 1 ) THEN
+                 cu = DispEigen( (k-1)*DispDofs + l )
+               ELSE IF( DispMode == 2 ) THEN
+                 cu = CMPLX( Disp( (k-1)*DispDofs + 2*l-1 ), Disp( (k-1)*DispDofs + 2*l ) )
+               ELSE IF( DispMode == 3 ) THEN                
+                 cu = CMPLX( Disp( (k-1)*DispDofs + l ), 0.0_dp )
+               ELSE 
+                 cu = CMPLX( Disp( (k-1)*DispDofs + l ),  DispIm( (k-1)*DispDofs + l ) )
+               END IF
+
+               WallVelocity(l,j) = cu
              END DO
-           END IF
+           END DO
            WallVelocity = ImUnit * AngularFrequency * WallVelocity
          END IF
          

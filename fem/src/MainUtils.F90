@@ -872,14 +872,15 @@ CONTAINS
    !> Create permutation table that follows the degrees of freedom of the primary
    !> permutation but is masked by a flag on the body force section.
    !---------------------------------------------------------------------------------
-   SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, SecName, MaskPerm, nsize )
+   SUBROUTINE CreateMaskedPerm( Solver, FullPerm, MaskName, MaskPerm, nsize, SecName )
 
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, POINTER :: FullPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName, SecName
+     CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
      INTEGER, POINTER :: MaskPerm(:) 
      INTEGER :: nsize
-          
+     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: SecName
+         
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element
      INTEGER :: t, n, m
@@ -890,12 +891,7 @@ CONTAINS
      
      
      CALL Info('CreateMaskedPerm','Creating variable with mask: '//TRIM(MaskName),Level=8)
-       
-     EquationName = ListGetString( Solver % Values, 'Equation', Found)
-     IF( .NOT. Found ) THEN
-       CALL Fatal('CreateMaskedPerm','Equation not present!')
-     END IF     
-     
+            
      Mesh => Solver % Mesh
      NULLIFY( MaskPerm ) 
 
@@ -906,19 +902,32 @@ CONTAINS
 
      DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
        Element => Mesh % Elements(t)
-            
-       IF( Element % PartIndex == ParEnv % myPE ) THEN
-         IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN
-           
-           BF => ListGetSection( Element, SecName )
-           ActiveElem = ListGetLogicalGen( BF, MaskName )
 
-           IF( ActiveElem ) THEN
-             m = GetElementDOFs( Indexes, Element, Solver )
-             MaskPerm( Indexes(1:m) ) = FullPerm( Indexes(1:m) )
-           END IF
+       IF( ParEnv % PEs > 1 ) THEN
+         IF( t <= Mesh % NumberOfBulkElements ) THEN
+           IF( Element % PartIndex /= ParEnv % myPE ) CYCLE
          END IF
        END IF
+       
+       IF( PRESENT( SecName ) ) THEN
+         BF => ListGetSection( Element, SecName ) 
+       ELSE
+         IF( t <= Mesh % NumberOfBulkElements ) THEN
+           BF => ListGetSection( Element,'body force')
+         ELSE
+           BF => ListGetSection( Element,'boundary condition')
+         END IF
+       END IF
+
+       
+       IF(.NOT. ASSOCIATED( BF ) ) CYCLE
+
+       ActiveElem = ListGetLogicalGen( BF, MaskName )
+
+       IF( ActiveElem ) THEN
+         MaskPerm( Element % NodeIndexes ) = FullPerm( Element % NodeIndexes )
+       END IF
+
      END DO
        
      m = 0
@@ -961,7 +970,7 @@ CONTAINS
         MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
         VariableGlobal, VariableIP, VariableElem, VariableDG, VariableNodal, &
         DG, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, IsProcedure, &
-        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt
+        IsStepsSolver, LegacySolver, UseMask, TransientVar, InheritVarType, DoIt, GotSecName
     
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname,mask_name, sec_name
 
@@ -1251,6 +1260,7 @@ CONTAINS
     IF(.NOT. Found ) THEN
       ! Variable does not exist
       !------------------------------------------------------
+      CALL Info('AddEquationBasics','Creating null variable with no name',Level=15)
 
       ALLOCATE( Solver % Variable )
       Solver % Variable % Name = ''
@@ -1269,6 +1279,8 @@ CONTAINS
       !-----------------------------------------------------------------
       
     ELSE
+      CALL Info('AddEquationBasics','Treating variable string: '//TRIM(var_name),Level=15)
+
       ! It may be a normal field variable or a global (0D) variable
       !------------------------------------------------------------------------
       VariableGlobal = ListGetLogical( SolverParams, 'Variable Global', Found )
@@ -1296,24 +1308,20 @@ CONTAINS
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
-        END IF
         
-        IF ( SEQL(var_name, '-global ') ) THEN
+        ELSE IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
-        END IF
         
-        IF ( SEQL(var_name, '-ip ') ) THEN
+        ELSE IF ( SEQL(var_name, '-ip ') ) THEN
           VariableIp = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
-        END IF
 
-         IF ( SEQL(var_name, '-elem ') ) THEN
+        ELSE IF ( SEQL(var_name, '-elem ') ) THEN
           VariableElem = .TRUE.
           var_name(1:LEN(var_name)-6) = var_name(7:)
-        END IF
                
-        IF ( SEQL(var_name, '-dofs ') ) THEN
+        ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs
           i = 7
           j = LEN_TRIM( var_name )
@@ -1322,6 +1330,8 @@ CONTAINS
             IF ( i > j ) EXIT
           END DO
           var_name(1:LEN(var_name)-i) = var_name(i+1:)
+        ELSE
+          CALL Fatal('AddEquationBasics','Do not know how to parse: '//TRIM(var_name))
         END IF
       END DO
       IF ( DOFs == 0 ) DOFs = 1
@@ -1522,6 +1532,7 @@ CONTAINS
         ! permutation vector
         !-----------------------------------------------------------------
         IF( ListGetLogical( SolverParams, 'No Matrix', Found ) ) THEN
+          CALL Info('AddEquationBasics','No matrix needed any more, freeing structures!',Level=12)
           Solver % SolverMode = SOLVER_MODE_MATRIXFREE
           CALL FreeMatrix( Solver % Matrix )
         END IF
@@ -1586,6 +1597,7 @@ CONTAINS
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' Mask'
       tmpname = ListGetString( SolverParams, str, UseMask )
      
+      GotSecName = .FALSE.
       IF( UseMask ) THEN
         i3 = LEN_TRIM(tmpname) 
         i1 = INDEX(tmpname,':')
@@ -1601,6 +1613,7 @@ CONTAINS
           mask_name = tmpname(i2:i3)
           CALL Info('CreateIpPerm','masking with section: '//TRIM(sec_name),Level=12)
           CALL Info('CreateIpPerm','masking with keyword: '//TRIM(mask_name),Level=12)
+          GotSecName = .TRUE.
         ELSE          
           sec_name = 'body force'
           mask_name = tmpname(1:i3)
@@ -1632,13 +1645,15 @@ CONTAINS
       InheritVarType = .FALSE.
       
       DO WHILE( var_name(1:1) == '-' )
+
+        PRINT *,'analyzing: ',l,TRIM(var_name)
+
         IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
-        END IF
-
+          
         ! Different types of variables: global, ip, elem, dg
-        IF ( SEQL(var_name, '-global ') ) THEN
+        ELSE IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
           
@@ -1657,10 +1672,8 @@ CONTAINS
         ELSE IF ( SEQL(var_name, '-dg ') ) THEN
           VariableDG = .TRUE.
           var_name(1:LEN(var_name)-4) = var_name(5:)
-
-        END IF
-            
-        IF ( SEQL(var_name, '-dofs ') ) THEN
+                  
+        ELSE IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs 
           j = LEN_TRIM( var_name )
           k = 7
@@ -1669,7 +1682,10 @@ CONTAINS
             IF ( k > j ) EXIT
           END DO
           var_name(1:LEN(var_name)-(k+2)) = var_name(k+1:)
+        ELSE
+          CALL Fatal('AddEquationBasics','Do not know how to parse: '//TRIM(var_name))          
         END IF
+        
       END DO
       IF ( DOFs == 0 ) DOFs = 1
 
@@ -1734,7 +1750,13 @@ CONTAINS
           InheritVarType = .TRUE.
           IF( UseMask ) THEN
             NULLIFY( Perm )
-            CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, sec_name, Perm, nsize )
+            IF( GotSecName ) THEN
+              CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, &
+                  Perm, nsize, sec_name )
+            ELSE
+              CALL CreateMaskedPerm( Solver, Solver % Variable % Perm, Mask_Name, &
+                  Perm, nsize )
+            END IF              
             nsize = DOFs * nsize
           ELSE
             nSize = DOFs * SIZE(Solver % Variable % Values) / Solver % Variable % DOFs          
@@ -2960,6 +2982,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+    CALL Info('SolveEquations','Performing set of solvers in sequence',Level=12)
+    
      DO i=1,CoupledMaxIter
        IF ( TransientSimulation .OR. Scanning ) THEN
          IF( CoupledMaxIter > 1 ) THEN
@@ -4901,7 +4925,8 @@ CONTAINS
       CALL Fatal('SetActiveElementsTable','Equation not present!')
     END IF
 
-    CALL Info('SetActiveElementsTable','Creating active element table for: '//TRIM(EquationName),Level=12)
+    CALL Info('SetActiveElementsTable',&
+        'Creating active element table for: '//TRIM(EquationName),Level=12)
 
 
     Mesh => Solver % Mesh
@@ -5344,6 +5369,8 @@ CONTAINS
      ELSE
        ScanningLoops = 1
      END IF
+
+     CALL SwapRefElemNodes( ANY(Solver % Def_Dofs(:,:,6)>0) )
 
      DO scan = 1, ScanningLoops        
        !----------------------------------------------------------------------

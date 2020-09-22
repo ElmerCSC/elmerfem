@@ -1848,7 +1848,7 @@ CONTAINS
                ! This includes only interface dofs donwstream from
                ! non-contact zone.
                BLOCK
-                 REAL(kind=DP) :: r1(3),r2(3),dr(3),reps=1.0e-6
+                 REAL(kind=DP) :: r1(3),r2(3),dr(3),reps=1.0d-6
                  
                  DO i=1,n
                    j = FieldPerm( NodeIndexes(i) )
@@ -4022,7 +4022,7 @@ CONTAINS
          END DO
        END DO
        
-       CoeffEps = 1.0e-8 * MAXVAL( ABS( CoeffTable ) )
+       CoeffEps = 1.0d-8 * MAXVAL( ABS( CoeffTable ) )
        DO i=1,SIZE( CoeffTable )            
          IF( NodeDone( i ) .AND. ( ABS( CoeffTable(i) ) > CoeffEps ) ) THEN
            DistVar % Values( i ) = DistVar % Values( i ) / CoeffTable( i ) 
@@ -9515,14 +9515,14 @@ END FUNCTION SearchNodeL
       r = x(1:n)-x0(1:n)
       Change = ComputeNorm(Solver, n, r)
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0/ (Norm+PrevNorm)
+        Change = Change * 2.0_dp/ (Norm+PrevNorm)
       END IF
       DEALLOCATE(r)      
 
     CASE('norm')
       Change = ABS( Norm-PrevNorm )
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
-        Change = Change * 2.0/ (Norm+PrevNorm)
+        Change = Change * 2.0_dp/ (Norm+PrevNorm)
       END IF
       
     CASE DEFAULT
@@ -9715,7 +9715,10 @@ END FUNCTION SearchNodeL
 
 
 !------------------------------------------------------------------------------
-!> Adaptive version for getting gaussian integration points
+!> Adaptive version for getting gaussian integration points.
+!> Also saves some time in initializations.
+!> Note: the routine uses the pointer to Solver to check whether definitions
+!> need to be remade. 
 !----------------------------------------------------------------------------------------------
 
   FUNCTION GaussPointsAdapt( Element, Solver, PReferenceElement ) RESULT(IntegStuff)
@@ -9726,30 +9729,37 @@ END FUNCTION SearchNodeL
     LOGICAL, OPTIONAL :: PReferenceElement           !< For switching to the p-version reference element
     TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+    CHARACTER(LEN=MAX_NAME_LEN) :: VarName, GaussDef
     TYPE(Solver_t), POINTER :: pSolver, prevSolver => NULL()
     TYPE(Variable_t), POINTER :: IntegVar
     INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
-    LOGICAL :: UseAdapt, Found
-    INTEGER :: i,n
-    LOGICAL :: Debug
-
+    LOGICAL :: UseAdapt, Found,ElementalRule
+    INTEGER :: i,n,ElementalNp(8),prevVisited = -1
+    LOGICAL :: Debug, InitDone 
     
-    SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np
+    SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
+        ElementalRule, ElementalNp, prevVisited
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
     ELSE
       pSolver => CurrentModel % Solver
     END IF
+       
+    !Debug = ( Element % ElementIndex == 1)
 
-    Debug = ( Element % ElementIndex == 0)
-    
-    IF( .NOT. ASSOCIATED( pSolver, prevSolver ) ) THEN
+    InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. ( prevVisited == pSolver % TimesVisited )
+        
+    IF( .NOT. InitDone ) THEN
       RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
-      Np = 0
+      Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
+      
+      GaussDef = ListGetString( pSolver % Values,'Element Integration Points',ElementalRule )
+      IF( ElementalRule ) THEN
+        CALL ElementalGaussRules( GaussDef )
+      END IF
       
       VarName = ListGetString( pSolver % Values,'Adaptive Integration Variable',UseAdapt )
       IF( UseAdapt ) THEN
@@ -9771,7 +9781,8 @@ END FUNCTION SearchNodeL
         !PRINT *,'Adaptive Integration Strategy:',MinV,MaxV,AdaptOrder,AdaptNp
       END IF
 
-      prevSolver => pSolver      
+      prevSolver => pSolver
+      prevVisited = pSolver % TimesVisited
     END IF
 
     IF( UseAdapt ) THEN
@@ -9788,8 +9799,12 @@ END FUNCTION SearchNodeL
       END IF
     END IF
       
-    IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
+    !IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
 
+    IF( ElementalRule ) THEN
+      Np = ElementalNp( Element % TYPE % ElementCode / 100 ) 
+    END IF
+    
     IF( Np > 0 ) THEN
       IntegStuff = GaussPoints( Element, Np = Np, PReferenceElement = PReferenceElement ) 
     ELSE IF( RelOrder /= 0 ) THEN
@@ -9798,9 +9813,65 @@ END FUNCTION SearchNodeL
       IntegStuff = GaussPoints( Element, PReferenceElement = PReferenceElement ) 
     END IF
 
-    IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
+    !IF( Debug ) PRINT *,'Adapt real nodes',IntegStuff % n
+    
+
+  CONTAINS
+
+!------------------------------------------------------------------------------
+    SUBROUTINE ElementalGaussRules(GaussDef)
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=*) :: GaussDef
+!------------------------------------------------------------------------------
+      INTEGER  :: i,j,k,n,m
       
+
+      n = LEN_TRIM(GaussDef)
+      ElementalNp = 0
+
+      ! PRINT *,'gauss def:',GaussDef(1:n)
+      
+      DO i=2,8
+        j = 0
+        SELECT CASE( i )
+        CASE( 2 )
+          j =  INDEX( GaussDef(1:n), '-line' ) ! position of string "-line"
+          m = 5 ! length of string "-line"
+        CASE( 3 )
+          j =  INDEX( GaussDef(1:n), '-tri' ) 
+          m = 4
+        CASE( 4 )
+          j =  INDEX( GaussDef(1:n), '-quad' )
+          m = 5
+        CASE( 5 )
+          j =  INDEX( GaussDef(1:n), '-tetra' )
+          m = 6
+        CASE( 6 )
+          j =  INDEX( GaussDef(1:n), '-pyramid' )
+          m = 8
+        CASE( 7 )
+          j =  INDEX( GaussDef(1:n), '-prism' )
+          m = 6
+        CASE( 8 )
+          j =  INDEX( GaussDef(1:n), '-brick' )
+          m = 6
+        END SELECT
+
+        IF( j > 0 ) THEN
+          READ( GaussDef(j+m:n), * ) k
+          ElementalNp(i) = k
+        END IF
+      END DO
+
+      ! PRINT *,'Elemental Gauss Rules:',ElementalNp
+      
+!------------------------------------------------------------------------------
+    END SUBROUTINE ElementalGaussRules
+!------------------------------------------------------------------------------
+    
+    
   END FUNCTION GaussPointsAdapt
+!------------------------------------------------------------------------------
   
 
 !------------------------------------------------------------------------------
@@ -10153,7 +10224,7 @@ END FUNCTION SearchNodeL
       ELSE
         Change = ABS( Norm-PrevNorm )
         IF( Norm + PrevNorm > 0.0) THEN
-          Change = Change * 2.0 / ( Norm + PrevNorm )
+          Change = Change * 2.0_dp / ( Norm + PrevNorm )
         END IF
       END IF
 
@@ -16521,7 +16592,7 @@ CONTAINS
       DO i=1,CouplingNodes
         WallNormal => CouplingNormals(i,:)
         sNormal = SQRT( SUM( WallNormal**2) )
-        IF( sNormal > 1.0e-3 ) THEN
+        IF( sNormal > 1.0d-3 ) THEN
           WallNormal = WallNormal / sNormal 
           PRINT *,'WallNormal:',WallNormal
         ELSE
@@ -17464,7 +17535,7 @@ CONTAINS
        
      EpsVal = ListGetConstReal( Solver % Values,&
          'Minimum Projector Value', Found )
-     IF(.NOT. Found ) EpsVal = 1.0e-8_dp
+     IF(.NOT. Found ) EpsVal = 1.0d-8
      
      
      SumProjectors = ListGetLogical( Solver % Values,&

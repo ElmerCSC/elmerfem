@@ -715,9 +715,11 @@
     MeshDir = ""
 
     CurrentModel % DIMENSION = 2
-    PlaneMesh => LoadMesh2( Model, MeshDir, filename_root, .FALSE., 1, 0 )
+    PlaneMesh => LoadMesh2( Model, MeshDir, filename_root, .FALSE., 1, 0, LoadOnly=.FALSE.)
     CurrentModel % DIMENSION = 3
-    !NOTE: checked that planemesh exists on every PE, seems fine
+
+    !Isomesh does dodgy things with edgetables, so best to release it here.
+    CALL ReleaseMeshEdgeTables(PlaneMesh)
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &

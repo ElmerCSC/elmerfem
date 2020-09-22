@@ -2394,7 +2394,7 @@ ELMER_SOLVER_HOME &
       IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
       IF( MeshLevels > 1 ) THEN
-        CALL Info('LOadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
+        CALL Info('LoadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
       END IF
       
       MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
@@ -2438,6 +2438,11 @@ ELMER_SOLVER_HOME &
           CALL ReleaseMesh(OldMesh)
         END IF
         Model % Meshes => NewMesh
+
+        IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
+          CALL GeneratePeriodicProjectors( Model, NewMesh ) 
+        END IF
+                    
       END DO
 
 
@@ -2483,21 +2488,29 @@ ELMER_SOLVER_HOME &
         CALL Info('LoadModel',Message,Level=7)
 
         single=.FALSE.
+        nprocs = numprocs
+      
         IF ( SEQL(Name, '-single ') ) THEN
-          single=.TRUE.
+          single=.TRUE.          
           Name=Name(9:)
+          IF( ParEnv % PEs > 1 ) THEN
+            CALL Info('LoadModel','Whole mesh will be read for each partition!',Level=7)
+          END IF
         END IF
 
         nprocs = numprocs
         IF ( SEQL(Name, '-part ') ) THEN
           READ( Name(7:), * ) nprocs
+          IF( ParEnv % PEs > 1 ) THEN
+            CALL Info('LoadModel','This mesh is only active at partitions: '&
+                //TRIM(I2S(nprocs)),Level=7)
+          END IF 
           i = 7
           DO WHILE(Name(i:i)/=' ')
            i=i+1
           END DO
           Name=Name(i+1:)
         END IF
-
 
         OneMeshName = .FALSE.
         k = 1
@@ -2537,30 +2550,38 @@ ELMER_SOLVER_HOME &
           END DO
         END IF
 
-        Mesh => Model % Meshes
-        Found = .FALSE.
-        DO WHILE( ASSOCIATED( Mesh ) )
-           Found = .TRUE.
-           k = 1
-           j = i+1
-           DO WHILE( MeshName(j:j) /= CHAR(0) )
+        ! If we have requested a unique copy of the mesh then do not check
+        ! whether the mesh is already loaded as the primary mesh, or as some
+        ! other solver-specific mesh. 
+        IF(ListGetLogical( Model % Solvers(s) % Values,'Mesh Enforce Local Copy',Found ) ) THEN
+          CALL Info('LoadModel','Skipping tests whether the mesh with same name exists!',Level=7)
+        ELSE
+          Found = .FALSE.
+          Mesh => Model % Meshes
+          DO WHILE( ASSOCIATED( Mesh ) )
+            Found = .TRUE.
+            k = 1
+            j = i+1
+            DO WHILE( MeshName(j:j) /= CHAR(0) )
               IF ( Mesh % Name(k:k) /= MeshName(j:j) ) THEN
                 Found = .FALSE.
                 EXIT
               END IF
               k = k + 1
               j = j + 1
-           END DO
-           IF ( LEN_TRIM(Mesh % Name) /= k-1 ) Found = .FALSE.
-           IF ( Found ) EXIT
-           Mesh => Mesh % Next
-        END DO
+            END DO
+            IF ( LEN_TRIM(Mesh % Name) /= k-1 ) Found = .FALSE.
+            IF ( Found ) EXIT
+            Mesh => Mesh % Next
+          END DO
 
-        IF ( Found ) THEN
-          Model % Solvers(s) % Mesh => Mesh
-          CYCLE
+          IF ( Found ) THEN
+            CALL Info('LoadModel','Mesh with the same name has already been loaded, cycling.',Level=7) 
+            Model % Solvers(s) % Mesh => Mesh
+            CYCLE
+          END IF
         END IF
-
+          
         DO i=1,6
           DO j=1,8
             Def_Dofs(j,i) = MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i))
@@ -2581,7 +2602,8 @@ ELMER_SOLVER_HOME &
           END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
-
+        Model % Solvers(s) % Mesh % SingleMesh = Single
+        
 
         MeshLevels = ListGetInteger( Model % Solvers(s) % Values, 'Mesh Levels', GotIt )
         IF ( .NOT. GotIt ) MeshLevels=1

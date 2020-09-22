@@ -1680,7 +1680,7 @@ use spariterglobals
      END IF
 
 #ifdef DEVEL_LISTCOUNTER
-     IF( ASSOCIATED( new ) ) new % Counter = new % Counter + 1
+!     IF( ASSOCIATED( new ) ) new % Counter = new % Counter + 1
 #endif
 
 
@@ -1880,7 +1880,7 @@ use spariterglobals
      IF(.NOT.ASSOCIATED(List)) RETURN
 
      k = StringToLowerCase( str,Name,.TRUE. )
-
+     
      IF( ListGetnamespace(strn) ) THEN
        stack => Namespace_stack
        DO WHILE(.TRUE.)
@@ -1912,7 +1912,7 @@ use spariterglobals
      IF ( .NOT. ASSOCIATED(ptr) ) THEN
        Ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
-         n = ptr % NameLen
+         n = ptr % NameLen         
          IF ( n==k ) THEN
            IF ( ptr % Name(1:n) == str(1:n) ) EXIT
          END IF
@@ -1923,10 +1923,8 @@ use spariterglobals
 #ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1
-     ELSE IF( INDEX( name,': not found' ) == 0 ) THEN
-       CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//': not found',.TRUE.) 
-       ! This seems to cause problems so we use the one above
-       !       CALL ListAddNewLogical( List, TRIM(name)//': not found',.TRUE.) 
+       !ELSE IF( INDEX( name,': not found' ) == 0 ) THEN
+       !CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//': not found',.TRUE.) 
      END IF
 #endif
      
@@ -3200,7 +3198,8 @@ use spariterglobals
 
 !------------------------------------------------------------------------------
 !> A generalized version of ListGetLogical. Uses logical, only if the keyword is
-!> of type locical, otherwise returns True if the keyword is present.
+!> of type locical, if the type is real it return True for positive values,
+!> and otherwise returns True IF the keyword is present.
 !> Since the absence if a sign of False there is no separate Found flag.
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ListGetLogicalGen( List, Name) RESULT(L)
@@ -3211,17 +3210,27 @@ use spariterglobals
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
      LOGICAL :: Found
+     REAL(KIND=dp) :: Rval
 !------------------------------------------------------------------------------
 
      L = .FALSE.
+     
      ptr => ListFind(List,Name,Found)
-     IF ( ASSOCIATED(ptr) ) THEN
-       IF(ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR ) THEN
-         L = ptr % Lvalue
-       ELSE
-         L = .TRUE.
-       END IF
-     END IF    
+     IF ( .NOT. ASSOCIATED(ptr) ) RETURN
+     
+     IF(ptr % TYPE == LIST_TYPE_LOGICAL ) THEN
+       L = ptr % Lvalue
+       
+     ELSE IF ( ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR .OR. & 
+         ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_STR .OR. &
+         ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR_PROC ) THEN
+
+       RVal = ListGetConstReal( List, Name )
+       L = ( RVal > 0.0_dp )
+     ELSE
+       L = .TRUE.
+     END IF
+     
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogicalGen
 !------------------------------------------------------------------------------
@@ -3449,6 +3458,8 @@ use spariterglobals
       NULLIFY( bodylst ) 
     END IF
     LFound = .FALSE.
+
+    NULLIFY( lst )
     
     SELECT CASE ( SectionName ) 
 
@@ -4258,7 +4269,7 @@ use spariterglobals
            IF( PRESENT( eps ) ) THEN
              xeps = eps
            ELSE
-             xeps = 1.0e-8
+             xeps = 1.0d-8
            END IF
            T(1) = x - xeps
            F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
@@ -4300,7 +4311,7 @@ use spariterglobals
          IF( PRESENT( eps ) ) THEN
            xeps = eps
          ELSE
-           xeps = 1.0e-8
+           xeps = 1.0d-8
          END IF
          
          WRITE( cmd, * ) 'tx=', x-xeps
@@ -8331,9 +8342,11 @@ END SUBROUTINE
    !------------------------------------------------------------------------------
    SUBROUTINE ReportListCounters( Model ) 
      TYPE(Model_t) :: Model
+     CHARACTER(LEN=MAX_NAME_LEN) :: dirname
 
      INTEGER :: i, totcount, nelem     
-
+     LOGICAL :: Unused
+     
      CALL Info('ReportListCounters','Saving ListGet operations count per bulk elements')
 
      ! OPEN(10,FILE="listcounter.dat")
@@ -8342,41 +8355,59 @@ END SUBROUTINE
 
      totcount = 0
 
+     
+     CALL GETCWD(dirname)
+     WRITE( 10,'(A)') 'Working directory: '//TRIM(dirname)
+        
      ! These are only for reference
      nelem = Model % Mesh % NumberOfBulkElements
-     
-     CALL ReportList('Simulation', Model % Simulation )
-     CALL ReportList('Constants', Model % Constants )
+
+     WRITE( 10,'(T4,A)') 'Number of elements: '//TRIM(I2S(nelem))
+     WRITE( 10,'(T4,A)') 'Number of nodes: '//TRIM(I2S(Model % Mesh % NumberOfNodes))
+         
+     Unused = .TRUE.
+100  IF( Unused ) THEN
+       WRITE( 10,'(T4,A)') 'Unused keywords:'       
+     ELSE
+       WRITE( 10,'(T4,A)') 'Used keywords:'              
+     END IF
+               
+     CALL ReportList('Simulation', Model % Simulation, Unused )
+     CALL ReportList('Constants', Model % Constants, Unused )
      DO i=1,Model % NumberOfEquations
-       CALL ReportList('Equation '//TRIM(I2S(i)), Model % Equations(i) % Values)
+       CALL ReportList('Equation '//TRIM(I2S(i)), Model % Equations(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfComponents
-       CALL ReportList('Component '//TRIM(I2S(i)), Model % Components(i) % Values )
+       CALL ReportList('Component '//TRIM(I2S(i)), Model % Components(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfBodyForces
-       CALL ReportList('Body Force '//TRIM(I2S(i)), Model % BodyForces(i) % Values )
+       CALL ReportList('Body Force '//TRIM(I2S(i)), Model % BodyForces(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfICs
-       CALL ReportList('Initial Condition '//TRIM(I2S(i)), Model % ICs(i) % Values )
+       CALL ReportList('Initial Condition '//TRIM(I2S(i)), Model % ICs(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfBCs
-       CALL ReportList('Boundary Condition '//TRIM(I2S(i)), Model % BCs(i) % Values )
+       CALL ReportList('Boundary Condition '//TRIM(I2S(i)), Model % BCs(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfMaterials
-       CALL ReportList('Material '//TRIM(I2S(i)), Model % Materials(i) % Values )
+       CALL ReportList('Material '//TRIM(I2S(i)), Model % Materials(i) % Values, Unused )
      END DO
      DO i=1,Model % NumberOfBoundaries
-       CALL ReportList('Boundary '//TRIM(I2S(i)), Model % Boundaries(i) % Values )
+       CALL ReportList('Boundary '//TRIM(I2S(i)), Model % Boundaries(i) % Values, Unused )
      END DO     
      DO i=1,Model % NumberOfSolvers
-       CALL ReportList('Solver '//TRIM(I2S(i)), Model % Solvers(i) % Values )
+       CALL ReportList('Solver '//TRIM(I2S(i)), Model % Solvers(i) % Values, Unused )
      END DO
+
+     IF( Unused ) THEN
+       Unused = .FALSE.
+       GOTO 100
+     END IF
+
      CLOSE(10)
-     
-     WRITE(Message,'(I0,T10,A,F8.3,A)') totcount,"List operations total (",&
-         1.0_dp * totcount / Model % Mesh % NumberOfBulkElements," per element )"
-     CALL Info('ReportListCounters',Message)
-     
+
+         
+     CALL Info('ReportListCounters','List operations total count:'//TRIM(I2S(totcount)))     
 
    CONTAINS
 
@@ -8384,9 +8415,10 @@ END SUBROUTINE
      !------------------------------------------------------------------------------
      ! Plot the number of times that the list entries have been called.
      !------------------------------------------------------------------------------
-     SUBROUTINE ReportList( SectionName, List )
+     SUBROUTINE ReportList( SectionName, List, Unused )
        TYPE(ValueList_t), POINTER :: List
        CHARACTER(LEN=*) :: SectionName
+       LOGICAL :: Unused
        !------------------------------------------------------------------------------
        TYPE(ValueListEntry_t), POINTER :: ptr
        INTEGER :: n, m
@@ -8397,10 +8429,13 @@ END SUBROUTINE
        DO WHILE( ASSOCIATED(ptr) )
          n = ptr % NameLen
          m = ptr % Counter 
-         
-         WRITE( 10,'(F10.5,T12,A,T35,A)') &
-             1.0*m / nelem, TRIM(SectionName),ptr % Name(1:n)
-         totcount = totcount + m 
+
+         IF( Unused .AND. m == 0 ) THEN
+           WRITE( 10,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)         
+         ELSE IF(.NOT. Unused .AND. m > 0 ) THEN
+           WRITE( 10,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
+           totcount = totcount + m
+         END IF
          ptr => ptr % Next
        END DO
 

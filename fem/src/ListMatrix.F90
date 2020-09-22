@@ -367,15 +367,20 @@ CONTAINS
    END FUNCTION List_GetMatrixIndex
 !-------------------------------------------------------------------------------
 
-   SUBROUTINE List_AddMatrixIndexes(List,k1,nk2,Ind,Pind)
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_AddMatrixIndexes(List,k1,nk2,Ind)
+   ! Add an array of sorted indeces to a row in ListMatrix_t. "ind" may
+   ! contain duplicate entries.
+!-------------------------------------------------------------------------------
      IMPLICIT NONE
-     TYPE(ListMatrix_t), POINTER :: List(:)
+
+     TYPE(ListMatrix_t) :: List(:)
      INTEGER, INTENT(IN) :: k1, nk2
-     INTEGER, INTENT(IN) :: Ind(nk2), Pind(nk2)
+     INTEGER, INTENT(IN) :: Ind(nk2)
 
      TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry
 !-------------------------------------------------------------------------------
-     INTEGER :: i,k2,k2i,j
+     INTEGER :: i,k2,k2i,j, k,prevind
 
      IF (k1>SIZE(List)) THEN
        CALL Fatal('List_AddMatrixIndexes','Row index out of bounds')
@@ -387,36 +392,42 @@ CONTAINS
      ! First element needs special treatment as it may modify 
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
-       Entry => List_GetMatrixEntry(Ind(Pind(1)),NULL())
+       Entry => List_GetMatrixEntry(Ind(1),NULL())
        List(k1) % Degree = 1
        List(k1) % Head => Entry
        k2i = 2
-     ELSE IF (RowPtr % INDEX > Ind(Pind(1))) THEN
-         Entry => List_GetMatrixEntry(Ind(Pind(1)),RowPtr)
-         List(k1) % Degree = List(k1) % Degree + 1
-         List(k1) % Head => Entry
-         k2i = 2
-     ELSE IF (RowPtr % INDEX == Ind(Pind(1))) THEN
-         k2i = 2
+       prevind = ind(1)
+     ELSE IF (RowPtr % Index > Ind(1)) THEN
+       Entry => List_GetMatrixEntry(Ind(1),RowPtr)
+       List(k1) % Degree = List(k1) % Degree + 1
+       List(k1) % Head => Entry
+       k2i = 2
+       prevind = ind(1)
+     ELSE IF (RowPtr % Index == Ind(1)) THEN
+        k2i = 2
+        prevind = ind(1)
      ELSE
        k2i = 1
+       prevind = -1
      END IF
 
      PrevPtr => List(k1) % Head
-     RowPtr => List(k1) % Head % Next
+     RowPtr  => List(k1) % Head % Next
+
      DO i=k2i,nk2
-       k2=Ind(Pind(i))
+       k2=Ind(i)
+       if (k2 == prevind) cycle
 
        ! Find a correct place place to add index to
        DO WHILE( ASSOCIATED(RowPtr) )
-         IF (RowPtr % INDEX >= k2) EXIT
+         IF (RowPtr % Index >= k2) EXIT
          PrevPtr => RowPtr
-         RowPtr => RowPtr % Next
+         RowPtr  => RowPtr % Next
        END DO
        
        IF (ASSOCIATED(RowPtr)) THEN
          ! Do not add duplicates
-         IF (RowPtr % INDEX /= k2) THEN
+         IF (RowPtr % Index /= k2) THEN
            ! Create new element between PrevPtr and RowPtr
            Entry => List_GetMatrixEntry(k2,RowPtr)
            PrevPtr % Next => Entry
@@ -424,28 +435,36 @@ CONTAINS
 
            ! Advance to next element in list
            PrevPtr => Entry
-           RowPtr => Entry % Next
+!          RowPtr  => 
          ELSE
            ! Advance to next element in list
            PrevPtr => RowPtr
-           RowPtr => RowPtr % Next
+           RowPtr  => RowPtr % Next
          END IF
        ELSE
          EXIT
        END IF
+
+       prevind = k2
      END DO
 
-     ! Add rest of the entries in Ind to list (if any)
      DO j=i,nk2
-       k2=Ind(Pind(j))
-       Entry => List_GetMatrixEntry(k2,NULL())
+       k2 = Ind(j)
+       if (k2 == prevind) cycle
+       prevind = k2
+
+       Entry => List_GetMatrixEntry(k2,null())
        PrevPtr % Next => Entry
-       PrevPtr => Entry
+       PrevPtr => PrevPtr % Next
        List(k1) % Degree = List(k1) % Degree + 1
      END DO
+!-------------------------------------------------------------------------------
    END SUBROUTINE List_AddMatrixIndexes
+!-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
    FUNCTION List_GetMatrixEntry(ind, next) RESULT(ListEntry)
+!-------------------------------------------------------------------------------
      IMPLICIT NONE
 
      INTEGER, INTENT(IN) :: ind
@@ -462,7 +481,9 @@ CONTAINS
      ListEntry % Value = REAL(0,dp)
      ListEntry % INDEX = ind
      ListEntry % Next => next
+!-------------------------------------------------------------------------------
    END FUNCTION List_GetMatrixEntry     
+!-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
    SUBROUTINE List_DeleteMatrixElement(List,k1,k2)

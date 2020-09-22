@@ -6,7 +6,7 @@
 !> that speeds up the interpolation.
 !------------------------------------------------------------------------------
      SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
+         NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
 !------------------------------------------------------------------------------
        USE Lists
        USE SParIterComm
@@ -19,11 +19,11 @@
        LOGICAL, OPTIONAL :: UseQuadrantTree
        TYPE(Projector_t), POINTER, OPTIONAL :: Projector
        CHARACTER(LEN=*),OPTIONAL :: MaskName
+       LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
 !-------------------------------------------------------------------------------
        INTEGER, ALLOCATABLE :: perm(:), vperm(:)
        INTEGER, POINTER :: nperm(:)
        LOGICAL, ALLOCATABLE :: FoundNodes(:)
-       LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
        TYPE(Mesh_t), POINTER :: nMesh
        TYPE(VAriable_t), POINTER :: Var, nVar
        INTEGER :: i,j,k,l,nfound,maxrecv,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
@@ -80,11 +80,12 @@
       ! we found:
       ! -----------------------------------------------------
 
+      
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
          NewVariables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
 
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
-
+      
       ! special case "all found":
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
@@ -99,6 +100,12 @@
       CALL SParActiveSUM(dn,2)
       IF ( dn==0 ) RETURN
 
+      ! No use to continue even in parallel, since the OldMeshes are all the same!
+      IF( OldMesh % SingleMesh ) THEN
+        CALL Warn('InterpolateMeshToMesh','Could not find all dofs in single mesh: '//TRIM(I2S(NINT(dn))))
+        RETURN
+      END IF
+      
 
       ! Exchange partition bounding boxes:
       ! ----------------------------------

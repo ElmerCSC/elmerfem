@@ -394,7 +394,9 @@ END INTERFACE
                                                     ! interpolation type
 
      TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
-     REAL(KIND=dp), DIMENSION(:), POINTER CONTIG :: NodeU, NodeV, NodeW
+     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: NodeU, NodeV, NodeW
+     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: P_NodeU, P_NodeV, P_NodeW
+     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: N_NodeU, N_NodeV, N_NodeW
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------
@@ -812,6 +814,8 @@ END INTERFACE
      INTEGER, POINTER :: RePartition(:) => NULL()
      TYPE(NeighbourList_t), POINTER :: Halo(:) => NULL()
      LOGICAL :: HaveHalo = .FALSE.
+
+     LOGICAL :: SingleMesh = .FALSE.
      
    END TYPE Mesh_t
 

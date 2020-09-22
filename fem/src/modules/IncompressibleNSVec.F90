@@ -113,7 +113,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPointsAdapt( Element )
+    IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
     ngp = IP % n
 
     ElemDim = Element % Type % Dimension
@@ -963,7 +963,7 @@ END BLOCK
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, &
                 NormalTangential_h, NormalTangentialVelo_h
-
+    
     SAVE Basis
     
 !------------------------------------------------------------------------------
@@ -984,8 +984,7 @@ END BLOCK
 
       InitHandles = .FALSE.
     END IF
-
-
+    
     IF( ALLOCATED( Basis ) ) THEN
       IF( SIZE( Basis ) < nd ) THEN
         DEALLOCATE( Basis ) 
@@ -1011,7 +1010,7 @@ END BLOCK
     IF (.NOT.Found) THEN
         NormalTangential = ListGetElementLogical( NormalTangential_h, Element, Found )
     END IF
-   
+    
     DO t=1,ngp      
 !------------------------------------------------------------------------------
 !    Basis function values & derivatives at the integration point
@@ -1019,7 +1018,7 @@ END BLOCK
       stat = ElementInfo( Element,Nodes,IP % u(t),IP % v(t),IP % w(t), detJ, Basis )
 
       s = detJ * IP % s(t)
-     
+      
       ! Slip coefficient
       !----------------------------------
       SlipCoeff = ListGetElementReal3D( SlipCoeff_h, Basis, Element, HaveSlip, GaussPoint = t )      
@@ -1031,7 +1030,7 @@ END BLOCK
       ! Given force to the normal direction
       !------------------------------------
       ExtPressure = ListGetElementReal( ExtPressure_h, Basis, Element, HavePres, GaussPoint = t )      
-
+      
       ! Nothing to do, exit the routine
       IF(.NOT. (HaveSlip .OR. HaveForce .OR. HavePres)) RETURN
 
@@ -1039,7 +1038,7 @@ END BLOCK
       IF( HavePres .OR. NormalTangential ) THEN
         Normal = NormalVector( Element, Nodes, IP % u(t),IP %v(t),.TRUE. )
       END IF
-
+      
       ! Project external pressure to the normal direction
       IF( HavePres ) THEN
         IF( NormalTangential ) THEN
@@ -1131,7 +1130,7 @@ END BLOCK
         END IF
       END IF
     END DO
-          
+      
     CALL DefaultUpdateEquations( STIFF, FORCE )
         
   END SUBROUTINE LocalBoundaryMatrix
@@ -1261,7 +1260,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   REAL(KIND=dp) :: Norm
 
   LOGICAL :: AllocationsDone = .FALSE., Found, StokesFlow, BlockPrec
-  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitHandles=.TRUE., InitBCHandles=.TRUE.
+  LOGICAL :: GradPVersion, DivCurlForm, SpecificLoad, InitHandles,InitBCHandles
 
   TYPE(Solver_t), POINTER, SAVE :: SchurSolver => Null()
   
@@ -1311,10 +1310,10 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! This in not fully informative if several element types are present.
   !-----------------------------------------------------------------------------
   Element => Mesh % Elements( Solver % ActiveElements(1) ) 
-  IP = GaussPointsAdapt(Element)
+  IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
   CALL Info('IncompressibleNSSolver', &
       'Number of 1st integration points: '//TRIM(I2S(IP % n)), Level=5)
-
+  
   !-----------------------------------------------------------------------------
   ! Set the flags/parameters which define how the system is assembled: 
   !-----------------------------------------------------------------------------
@@ -1355,7 +1354,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
     IF (ASSOCIATED(SchurSolver)) THEN
       CALL DefaultInitialize(USolver=SchurSolver)
     END IF
-
+    
     Newton = GetNewtonActive( Solver )
 
     DO Element_id=1,1
@@ -1374,7 +1373,6 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
           SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .TRUE., &
           SchurSolver )
     END DO
-    InitHandles = .FALSE.
     
     !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
@@ -1390,15 +1388,16 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       ! Get element local matrix and rhs vector:
       !-----------------------------------------
       CALL LocalBulkMatrix(Element, n, nd, nd+nb, dim,  DivCurlForm, GradPVersion, &
-          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE., &
+          SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .FALSE.,&
           SchurSolver )
     END DO
     !$OMP END DO
     !$OMP END PARALLEL
-
+    
     CALL DefaultFinishBulkAssembly()
-
+    
     Active = GetNOFBoundaryElements()
+    InitBCHandles = .TRUE.  
     DO Element_id=1,Active
       Element => GetBoundaryElement(Element_id)
       IF (ActiveBoundaryElement()) THEN
@@ -1410,15 +1409,16 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
         ! Get element local matrix and rhs vector:
         !-----------------------------------------
         CALL LocalBoundaryMatrix(Element, n, nd, dim, InitBCHandles )
+        InitBCHandles = .FALSE.
       END IF
     END DO
 
     CALL DefaultFinishBoundaryAssembly()
-
+    
     CALL DefaultFinishAssembly()
     CALL DefaultDirichletBCs()
     IF(ASSOCIATED(SchurSolver)) CALL DefaultDirichletBCs(USolver=SchurSolver)
-
+    
     Norm = DefaultSolve()
 
     IF ( Solver % Variable % NonlinConverged == 1 ) EXIT

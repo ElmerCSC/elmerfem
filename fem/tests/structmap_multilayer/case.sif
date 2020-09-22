@@ -1,0 +1,116 @@
+! A simple 3D steady-state structured mesh mapping example  
+! This case with multiple layers.
+!
+! Test case authors: Peter Råback
+! Test case created: 5.11.2019
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Surface1"
+  Body Force = 1
+  Equation = 2
+  Material = 1
+  Initial Condition = 1
+End 
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1 
+End
+
+Equation 2
+  Name = "SurfaceHeat"
+  Active Solvers(1) = 2
+End 	 
+
+Initial Condition 1
+  Name = "LayerInit"
+  LayerHeight 1 = Variable "Coordinate"
+    Real MATC "-0.1"
+  LayerHeight 2 = Variable "Coordinate"
+    Real MATC "0.2-0.1*tx(0)"
+  LayerHeight 3 = Variable "Coordinate"
+    Real MATC "0.4+0.1*tx(0)"
+  LayerHeight 4 = Variable "Coordinate"
+    Real MATC "0.6+0.1*tx(1)"   
+End 
+
+Solver 1
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+
+  Fixed Layer Indexes(4) = Integer 1 6 15 21
+  Fixed Layer Variable = String "LayerHeight"
+End 
+
+
+Solver 2
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Nonlinear System Max Iterations = 1
+
+  Exported Variable 1 = -dofs 4 LayerHeight
+End
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(4) = 1 2 3 4
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries = 5 
+End
+
+Boundary Condition 4
+  Name = "Top"
+  Target Boundaries = 6 
+  Body Id = 2
+End
+
+Solver 2 :: Reference Norm = 3.73260519E-02
+
+!End Of File

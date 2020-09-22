@@ -94,7 +94,7 @@
         PhaseChange=.FALSE., CheckLatentHeatRelease=.FALSE., FirstTime, &
         SmartHeaterControl, IntegralHeaterControl, HeaterControlLocal, SmartTolReached=.FALSE., &
         TransientHeaterControl, SmartHeaterAverage, ConstantBulk, SaveBulk, &
-	TransientAssembly, Converged, AnyMultiply
+	TransientAssembly, Converged, AnyMultiply, NeedFlowSol
      LOGICAL, POINTER :: SmartHeaters(:), IntegralHeaters(:)
 
      TYPE(Variable_t), POINTER :: TempSol,FlowSol,HeatSol,CurrentSol, MeshSol, DensitySol
@@ -211,20 +211,34 @@
      IF ( LocalNodes <= 0 ) RETURN
 
      SolverParams => GetSolverParams()
-     ConvectionField = GetString( SolverParams, 'Temperature Convection Field', Found )
 
-     IF ( Found ) THEN
-       FlowSol => VariableGet( Solver % Mesh % Variables, ConvectionField )
-     ELSE
-       FlowSol => VariableGet( Solver % Mesh % Variables, 'Flow Solution' )
+     NeedFlowSol = .FALSE.
+     DO i=1,Model % NumberOfEquations
+       ConvectionFlag = GetString( Model % Equations(i) % Values, 'Convection', Found )
+       IF ( ConvectionFlag == 'computed' ) THEN
+         NeedFlowSol = .TRUE.
+         EXIT
+       END IF
+     END DO
+
+     FlowSol => NULL()
+     IF( NeedFlowSol ) THEN
+       ConvectionField = GetString( SolverParams, 'Temperature Convection Field', Found )     
+       IF ( Found ) THEN       
+         FlowSol => VariableGet( Solver % Mesh % Variables, ConvectionField )
+       ELSE
+         FlowSol => VariableGet( Solver % Mesh % Variables, 'Flow Solution' )
+       END IF
+      
+       IF ( ASSOCIATED( FlowSol ) ) THEN
+         FlowPerm     => FlowSol % Perm
+         NSDOFs       =  FlowSol % DOFs
+         FlowSolution => FlowSol % Values
+       ELSE
+         CALL Fatal('HeatSolver','Flow is "computed" but not flow field available!')
+       END IF
      END IF
-
-     IF ( ASSOCIATED( FlowSol ) ) THEN
-       FlowPerm     => FlowSol % Perm
-       NSDOFs       =  FlowSol % DOFs
-       FlowSolution => FlowSol % Values
-     END IF
-
+       
      DensitySol => VariableGet( Solver % Mesh % Variables, 'Density' )
 
      ! Check whether we have some heater controls. This will affect initialization stuff. 
@@ -830,8 +844,7 @@
            IF ( .NOT. Found ) &
              W(1:n) = GetReal( Equation, 'Convection Velocity 3', Found )
 
-         ELSE IF ( ConvectionFlag == 'computed' .AND. &
-              ASSOCIATED(FlowSolution) ) THEN
+         ELSE IF ( ConvectionFlag == 'computed' ) THEN
            DO i=1,n
              k = FlowPerm(Element % NodeIndexes(i))
              IF ( k > 0 ) THEN
@@ -865,9 +878,6 @@
                W(i) = 0.0d0
              END IF
            END DO
-         ELSE IF (ConvectionFlag=='computed' ) THEN
-           CALL Warn( 'HeatSolver', 'Convection model specified ' //  &
-                 'but no associated flow field present?' )
          ELSE
            IF ( ALL(MU==0) ) C1 = 0.0D0 
          END IF

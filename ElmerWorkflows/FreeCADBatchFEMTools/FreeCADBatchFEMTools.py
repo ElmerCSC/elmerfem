@@ -77,7 +77,7 @@ def faces_with_vertices_in_symmetry_plane(face_object_list, plane=None, abs_tol=
     and the center of mass are in the plane.
 
     :param face_object_list: list of FreeCAD face objects
-    :param plane: symmetry plane ('zx', 'xy' or 'yz')
+    :param plane: symmetry plane.
 
     :return: list of FreeCAD face objects that are in the given symmetry plane
     """
@@ -86,15 +86,15 @@ def faces_with_vertices_in_symmetry_plane(face_object_list, plane=None, abs_tol=
     for face_object in face_object_list:
         vertices = face_object.Vertexes
         center_of_mass = face_object.CenterOfMass
-        if plane=='zx': center_compare_value = center_of_mass.y
-        elif plane=='xy': center_compare_value = center_of_mass.z
-        elif plane=='yz': center_compare_value = center_of_mass.x
-        else: raise ValueError("Wrong keyword for plane variable, should be: zx, xy or yz!")
+        if plane in ['zx', 'xz']: center_compare_value = center_of_mass.y
+        elif plane in ['xy', 'yx']: center_compare_value = center_of_mass.z
+        elif plane in ['yz', 'zy']: center_compare_value = center_of_mass.x
+        else: raise ValueError("Wrong keyword for plane variable, should be: zx, xy, yz, xz, yx or zy!")
         for i, vertex in enumerate(vertices):
-            if plane=='zx': compare_value = vertex.Y
-            elif plane=='xy': compare_value = vertex.Z
-            elif plane=='yz': compare_value = vertex.X
-            else: raise ValueError("Wrong keyword for plane variable, should be: zx, xy or yz!")
+            if plane in ['zx', 'xz']: compare_value = vertex.Y
+            elif plane in ['xy', 'yx']: compare_value = vertex.Z
+            elif plane in ['yz', 'zy']: compare_value = vertex.X
+            else: raise ValueError("Wrong keyword for plane variable, should be: zx, xy, yz, xz, yx or zy!")
             if not isclose(compare_value, 0., abs_tol=abs_tol): break
         if i==len(vertices)-1 and isclose(center_compare_value, 0., abs_tol=abs_tol): face_object_list_out.append(face_object)
     return face_object_list_out
@@ -280,6 +280,29 @@ def get_point_from_solid(solid, tolerance=0.0001):
                         return test_point
     return None
 
+def get_point_from_face_close_to_edge(face):
+    """
+    Increases parameter range minimum values of face by one until at least
+    two of the x, y and z coordinates of the corresponding point has moved at least 1mm.
+    If point is not found None is returned.
+
+    :param face: FreeCAD face object.
+
+    :return: None or FreeCAD vector object.
+    """
+    u_min, u_max, v_min, v_max = face.ParameterRange
+    p1 = face.valueAt(u_min, v_min)
+    u_test, v_test = u_min+1, v_min+1
+    while u_test < u_max and v_test < v_max:
+        p2 = face.valueAt(u_test, v_test)
+        # Check at least two coordinates moved 1mm
+        if (abs(p1.x - p2.x) >= 1) + (abs(p1.y - p2.y) >= 1) + (abs(p1.z - p2.z) >= 1) > 1:
+            if face.isPartOfDomain(u_test, v_test):
+                return p2
+            return None
+        u_test, v_test = u_test+1, v_test+1
+    return None
+
 def get_point_from_face(face):
     """
     Returns point from given face.
@@ -288,6 +311,9 @@ def get_point_from_face(face):
 
     :return: None or FreeCAD vector object
     """
+    point = get_point_from_face_close_to_edge(face)
+    if point is not None:
+        return point
     u_min, u_max, v_min, v_max = face.ParameterRange
     u_len, v_len = u_max-u_min, v_max-v_min
     # use primes so same points are not checked multiple times

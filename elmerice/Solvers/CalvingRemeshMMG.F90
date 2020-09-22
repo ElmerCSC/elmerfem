@@ -74,10 +74,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
        front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
-       group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4)
+       group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4), &
+       PairCount,RPairCount
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
-       PGDOFs_send(:),pcalv_front(:),GtoLNN(:)
+       PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
        target_length(:,:)
@@ -366,7 +367,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
            MMG5_ARG_end)
 
-      CALL Set_MMG3D_Mesh(GatheredMesh, .TRUE.)
+      CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., EdgePairs, PairCount)
+      !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+      CALL Set_MMG3D_Mesh(GatheredMesh, .TRUE., EdgePairs, PairCount)
 
       !Request isosurface discretization
       CALL MMG3D_Set_iparameter(mmgMesh, mmgSol, MMGPARAM_iso, 1,ierr)
@@ -374,10 +377,17 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !set angle detection on (1, default) and set threshold angle (85 degrees)
       !TODO - here & in MeshRemesh, need a better strategy than automatic detection
       !i.e. feed in edge elements.
+
+      !I think these are defunct as they are called in RemeshMMG
+      ! this is unless cutting lset and anisotrophic remeshing take place in one step 
+      !print *, 'first call of angle detection $$$ - turned on '
       CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_angle, &
-           1,ierr)
-      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_angleDetection,&
-           85.0_dp,ierr)
+           0,ierr)
+
+      !!! angle detection changes calving in next time steps dramatically 
+      !! if on automatically turns angle on
+      !CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_angleDetection,&
+      !     85.0_dp,ierr)
 
       !Set geometric parameters for remeshing
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
@@ -427,7 +437,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !! remesh function
       CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
 
-      IF(Debug) CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
+      IF(Debug) CALL MMG3D_SaveMesh(mmgMesh,"test_out_angleoff.mesh",LEN(TRIM("test_out_angleoff.mesh")),ierr)
 
       CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
@@ -622,7 +632,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         !TODO - apparently there is beta-testing capability to do both levelset cut and anisotropic
         !remeshing in the same step:
         !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
-        CALL RemeshMMG3D(NewMeshR, NewMeshRR, NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+        CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
+        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+        CALL RemeshMMG3D(NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
 
         !Update parallel info from old mesh nodes (shared node neighbours)
         CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)

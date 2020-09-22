@@ -299,7 +299,9 @@ END INTERFACE
 
          INQUIRE(Unit=InFileUnit, Opened=GotIt)
          IF ( gotIt ) CLOSE(inFileUnit)
-         
+
+         ! Here we read the whole model including command file and detault mesh file
+         !---------------------------------------------------------------------------------
          OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',ERR=20 )
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
@@ -311,8 +313,6 @@ END INTERFACE
                     'Additive namespaces', Found ) )
 
          !----------------------------------------------------------------------------------
-         ! ???
-         !----------------------------------------------------------------------------------
          MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
 
          !------------------------------------------------------------------------------
@@ -321,7 +321,6 @@ END INTERFACE
          ! it may be just as simple to add them directly. 
          !------------------------------------------------------------------------------
          CALL CompleteModelKeywords( )
-
 
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
@@ -338,6 +337,9 @@ END INTERFACE
                ELSE
                   ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLayers-1)
                END IF
+
+               ! Make the solvers point to the extruded mesh, not the original mesh
+               !-------------------------------------------------------------------
                DO i=1,CurrentModel % NumberOfSolvers
                   IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
                        CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
@@ -625,7 +627,7 @@ END INTERFACE
 
 #ifdef DEVEL_LISTCOUNTER
      CALL Info('ElmerSolver','Reporting list counters for code optimization purposes only!')
-     CALL Info('ElmerSolver','If you get these lines with production code undefine > LISTCOUNTER < !')
+     CALL Info('ElmerSolver','If you get these lines with production code undefine > DEVEL_LISTCOUNTER < !')
      CALL ReportListCounters( CurrentModel )
 #endif
      
@@ -1826,8 +1828,8 @@ END INTERFACE
            ELSE
              OutputName = TRIM(RestartFile)
            END IF
-                      
-           IF ( ParEnv % PEs > 1 ) &
+                                 
+           IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
                OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
            CALL SetCurrentMesh( CurrentModel, Mesh )
 
@@ -1873,10 +1875,10 @@ END INTERFACE
          ELSE
            OutputName = TRIM(RestartFile)
          END IF
-         IF ( ParEnv % PEs > 1 ) &
+         IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
            OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
 
-         CALL SetCurrentMesh( CurrentModel, Mesh )
+         CALL SetCurrentMesh( CurrentModel, Mesh )         
          CALL LoadRestartFile( OutputName, k, Mesh )
 
          StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)

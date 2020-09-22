@@ -87,9 +87,7 @@ Solver 1
   Linear System Symmetric = True
   Optimize Bandwidth = False
 
-!  Dump System = Logical True
-!  Dump System Prefix = File navier
-!  Dump System And Exit = Logical True
+! Linear System Save = Logical True
 
   Nonlinear System Consistent Norm = Logical True
   Linear System Symmetric = True

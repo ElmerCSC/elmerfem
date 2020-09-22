@@ -44,6 +44,14 @@ MODULE CalvingGeometry
      MODULE PROCEDURE DoubleIntVectorSizeP, DoubleIntVectorSizeA
   END INTERFACE
 
+  INTERFACE Double3DArraySize
+   MODULE PROCEDURE Double3DArraySizeP, Double3DArraySizeA
+  END INTERFACE
+
+  INTERFACE Double4DArraySize
+   MODULE PROCEDURE Double4DArraySizeP, Double4DArraySizeA
+  END INTERFACE
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Derived type for 3D crevasse group info
   ! 
@@ -635,13 +643,13 @@ CONTAINS
     INTEGER :: PathCount, First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
-         ShiftTo, Dir1(2), Dir2(2), CCW_value
+         ShiftTo, Dir1(2), Dir2(2), CCW_value,a1(2),a2(2),b1(2),b2(2),intersect(2)
     REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start
     INTEGER, ALLOCATABLE :: WorkInt(:)
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
-         DoProjectible
+         DoProjectible, headland
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:)
     CHARACTER(MAX_NAME_LEN) :: FuncName="ValidateCrevassePaths"
@@ -769,6 +777,7 @@ CONTAINS
 
             IF(Debug) PRINT *, 'Debug, node ',i,' dir1,2: ',Dir1, Dir2
             IF(Debug) PRINT *, 'Debug, node ',i,' constriction direction: ',ConstrictDirection(i,:)
+            IF(Debug) PRINT *, 'Debug, node ',i,' xyz: ',Mesh % Nodes % x(n),Mesh % Nodes % y(n),Mesh % Nodes % z(n)
           END IF
         END DO
 
@@ -846,7 +855,33 @@ CONTAINS
               CYCLE
             END IF
 
-            IF(Debug) PRINT *,'Constrictions ',j,i,' face each other, chopping...'
+            IF(Debug) PRINT *,'Constrictions ',i,j,' do face each other: ',&
+                 SUM(ConstrictDirection(i,:)*Dir1)
+
+            !test that the line drawn between the constriction doesn't intersect
+            !any intermediate elements as this indicates
+            !crossing a headland (difficult to draw - but it's bad news)
+            !
+            ! -  ---      ---- -
+            !  \/   \    /   \/
+            !        ----
+            !
+
+            a1(1) = Mesh % Nodes % y(First)
+            a1(2) = Mesh % Nodes % z(First)
+            a2(1) = Mesh % Nodes % y(Last)
+            a2(2) = Mesh % Nodes % z(Last)
+            headland = .FALSE.
+            DO k=i+1,j-2
+              b1(1) = Mesh % Nodes % y(k)
+              b1(2) = Mesh % Nodes % z(k)
+              b2(1) = Mesh % Nodes % y(k+1)
+              b2(2) = Mesh % Nodes % z(k+1)
+
+              CALL LineSegmentsIntersect(a1,a2,b1,b2,intersect,headland)
+              IF(headland) EXIT
+            END DO
+            IF(headland) CYCLE
 
             MaxDist = NodeDist3D(Mesh % Nodes,First, Last)
 
@@ -859,6 +894,8 @@ CONTAINS
                    (NodeDist3D(Mesh % Nodes, Last, n) <= MaxDist)) CYCLE !within range
 
               FarNode(k) = .TRUE.
+              IF(Debug) PRINT *,'Far node: ',k,' xyz: ',Mesh % Nodes % x(n),&
+                   Mesh % Nodes % y(n),Mesh % Nodes % z(n)
 
             END DO
           END DO
@@ -3552,6 +3589,8 @@ CONTAINS
     !set partitions to active, so variable can be -global -nooutput
     CALL ParallelActive(.TRUE.) 
     !MPI_BSend buffer issue in this call to InterpolateMeshToMesh
+    !Free quadrant tree to ensure its rebuilt in InterpolateMeshToMesh (bug fix)
+    CALL FreeQuadrantTree(OldMesh % RootQuadrant)
     CALL InterpolateMeshToMesh( OldMesh, NewMesh, OldMesh % Variables, UnfoundNodes=UnfoundNodes)
     IF(ANY(UnfoundNodes)) THEN
        PRINT *, ParEnv % MyPE, ' missing ', COUNT(UnfoundNodes),' out of ',SIZE(UnfoundNodes),&
@@ -3950,6 +3989,251 @@ CONTAINS
     FirstThisTime=.FALSE.
     OrientSaved=Orientation
   END FUNCTION GetFrontOrientation
+
+   SUBROUTINE Double3DArraySizeA(Vec, fill)
+      !only doubles size in one dimension
+      INTEGER, ALLOCATABLE :: Vec(:,:,:)
+      INTEGER, OPTIONAL :: fill
+      !----------------------------------------
+      INTEGER, ALLOCATABLE :: WorkVec(:,:,:), D(:)
+      
+      ALLOCATE(D(3))
+      d = SHAPE(Vec)
+
+      ALLOCATE(WorkVec(d(1), d(2),d(3)))
+
+      WorkVec = Vec
+      
+      DEALLOCATE(Vec)
+      ALLOCATE(Vec(d(1),d(2),2*d(3)))
+
+      IF(PRESENT(fill)) THEN
+         Vec = fill
+      ELSE
+         Vec = 0
+      END IF
+
+      Vec(:,:,1:d(3)) = WorkVec
+
+   END SUBROUTINE Double3DArraySizeA
+
+   SUBROUTINE Double3DArraySizeP(Vec, fill)
+      !only doubles size in one dimension
+      INTEGER, POINTER :: Vec(:,:,:)
+      INTEGER, OPTIONAL :: fill
+      !----------------------------------------
+      INTEGER, ALLOCATABLE :: WorkVec(:,:,:), D(:)
+      
+      ALLOCATE(D(3))
+      d = SHAPE(Vec)
+
+      ALLOCATE(WorkVec(d(1), d(2),d(3)))
+
+      WorkVec = Vec
+      
+      DEALLOCATE(Vec)
+      ALLOCATE(Vec(d(1),d(2),2*d(3)))
+
+      IF(PRESENT(fill)) THEN
+         Vec = fill
+      ELSE
+         Vec = 0
+      END IF
+
+      Vec(:,:,1:d(3)) = WorkVec
+
+   END SUBROUTINE Double3DArraySizeP
+
+   SUBROUTINE Double4DArraySizeA(Vec, fill)
+      !only doubles size in one dimension
+      INTEGER, ALLOCATABLE :: Vec(:,:,:,:)
+      INTEGER, OPTIONAL :: fill
+      !----------------------------------------
+      INTEGER, ALLOCATABLE :: WorkVec(:,:,:,:), D(:)
+      
+      ALLOCATE(D(3))
+      d = SHAPE(Vec)
+
+      ALLOCATE(WorkVec(d(1),d(2),d(3),d(4)))
+
+      WorkVec = Vec
+      
+      DEALLOCATE(Vec)
+      ALLOCATE(Vec(d(1),d(2),d(3),2*d(4)))
+
+      IF(PRESENT(fill)) THEN
+         Vec = fill
+      ELSE
+         Vec = 0
+      END IF
+
+      Vec(:,:,:,1:d(4)) = WorkVec
+
+   END SUBROUTINE Double4DArraySizeA
+
+   SUBROUTINE Double4DArraySizeP(Vec, fill)
+      !only doubles size in one dimension
+      INTEGER, POINTER :: Vec(:,:,:,:)
+      INTEGER, OPTIONAL :: fill
+      !----------------------------------------
+      INTEGER, ALLOCATABLE :: WorkVec(:,:,:,:), D(:)
+      
+      ALLOCATE(D(3))
+      d = SHAPE(Vec)
+
+      ALLOCATE(WorkVec(d(1),d(2),d(3),d(4)))
+
+      WorkVec = Vec
+      
+      DEALLOCATE(Vec)
+      ALLOCATE(Vec(d(1),d(2),d(3),2*d(4)))
+
+      IF(PRESENT(fill)) THEN
+         Vec = fill
+      ELSE
+         Vec = 0
+      END IF
+
+      Vec(:,:,:,1:d(4)) = WorkVec
+
+   END SUBROUTINE Double4DArraySizeP
+
+   SUBROUTINE GetCalvingEdgeNodes(Mesh, Parallel, Shared, TotalCount)
+      ! Cycle through all 303 elements of GatheredMesh, creating lists of those
+      ! on the top surface, bottom surface, calving front, possibly also lateral
+      ! margins
+      ! Cycle these lists, identifying elements on different boundaries, which
+      ! share nodes (therefore share a theoretical 202 element), construct
+      ! list of these 202 elements
+      ! Add option to Set_MMG3D_Mesh to feed in 202 elements, or find a way to add
+      ! elems after Set_MMG3D_mesh is finished doing its thing
+
+      TYPE(Mesh_t),POINTER :: Mesh
+      TYPE(Element_t),POINTER :: Element
+      LOGICAL :: Parallel
+      !---------------
+      INTEGER :: i,j,k, BoundaryNumber, NumNodes, Match, BoundaryID, TotalCount, &
+            FirstBdryID, SecondBdryID, CountSoFar 
+      INTEGER, ALLOCATABLE :: ElementNodes(:), Counts(:), BdryNodes(:,:,:), &
+            CountPairs(:,:),SharedPairs(:,:,:,:),Shared(:, :)
+      LOGICAL :: Debug, Counted, FirstMatch, SecondMatch, ThirdMatch
+      CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+      SolverName = 'GetCalvingEdgeNodes'
+
+      IF (Parallel) CALL Fatal(SolverName, 'Written to run in serial with MMG')
+
+      ALLOCATE(Counts(6))
+      DO i=1,6
+         Counts(i) = 0
+      END DO
+
+      ALLOCATE(BdryNodes(6,3,100))
+
+      DO i=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+         Element => Mesh % Elements(i)
+         ElementNodes = Element % NodeIndexes
+         BoundaryNumber = Element % BoundaryInfo % constraint
+        
+         NumNodes = Element % TYPE % NumberOfNodes
+         IF (NumNodes /= 3) CALL FATAL(Solvername, "BoundaryElements must be 303s")
+
+         DO BoundaryID=1,6
+            IF (BoundaryNumber == BoundaryID) THEN
+               Counts(BoundaryID) = Counts(BoundaryID) + 1
+               IF (Counts(BoundaryID) > SIZE(BdryNodes(BoundaryID,1,:))) THEN
+                  IF(Debug) PRINT *, BoundaryID, 'BdryNodes, doubling array size'
+                  CALL Double3DArraySize(BdryNodes)
+               END IF
+            !ELSE
+            !   print *, ElementNodes(i), BoundaryNumber
+            !   CALL FATAL(Solvername, "BoundaryElement: has no boundary number")
+               BdryNodes(BoundaryID,:,Counts(BoundaryID)) = ElementNodes
+            END IF    
+         END DO
+      END DO
+
+      !set counts for calving and other boundary shared nodes
+      ALLOCATE(CountPairs(5,5))
+      CountPairs(:,:) = 0
+      
+      !set allocatables
+      ALLOCATE(SharedPairs(5,5,2,100))
+
+      ! loop for 1-2, 1-3 ... 1-6, 2,3 ... 5,6
+      !!! assume one is calving front
+      DO FirstBdryID=1,5
+         IF (Counts(FirstBdryID) /= 0) THEN
+            DO i=1, Counts(FirstBdryID)
+               DO SecondBdryID=FirstBdryID+1,6
+                  IF (Counts(SecondBdryID) /= 0) THEN
+                     DO j=1, Counts(SecondBdryID)
+                        Match = 0
+                        FirstMatch=.FALSE.
+                        SecondMatch=.FALSE.
+                        ThirdMatch=.FALSE.
+                        DO k=1,3
+                           IF (BdryNodes(FirstBdryID,1,i) == BdryNodes(SecondBdryID,k,j)) THEN
+                              FirstMatch=.TRUE.
+                              Match = Match + 1
+                           END IF
+                           IF (BdryNodes(FirstBdryID,2,i) == BdryNodes(SecondBdryID,k,j)) THEN
+                              SecondMatch=.TRUE.
+                              Match = Match + 1
+                           END IF
+                           IF (BdryNodes(FirstBdryID,3,i) == BdryNodes(SecondBdryID,k,j)) THEN
+                              ThirdMatch=.TRUE.
+                              Match = Match + 1
+                           END IF
+                        END DO
+                        IF (Match == 2) THEN
+                           CountPairs(FirstBdryID,SecondBdryID-FirstBdryID) = CountPairs(FirstBdryId,SecondBdryID-FirstBdryID) + 1
+                           IF (CountPairs(FirstBdryID,SecondBdryID-FirstBdryID) > &
+                           SIZE(SharedPairs(FirstBdryID,SecondBdryID-FirstBdryID,1,:))) THEN
+                              IF(Debug) PRINT *, 'SharedPairs boundaryIDs-,',FirstBdryID,SecondBdryID,'doubling size of node array.'
+                              CALL Double4DArraySize(SharedPairs)
+                           END IF
+                           IF (FirstMatch .AND. SecondMatch) THEN
+                              SharedPairs(FirstBdryID,SecondBdryID-FirstBdryID,:,CountPairs(FirstBdryID,SecondBdryID-FirstBdryID)) &
+                              = BdryNodes(FirstBdryID,1:2,i)
+                           ELSE IF (SecondMatch .AND. ThirdMatch) THEN
+                              SharedPairs(FirstBdryID,SecondBdryID-FirstBdryID,:,CountPairs(FirstBdryID,SecondBdryID-FirstBdryID)) &
+                              = BdryNodes(FirstBdryID,2:3,i)
+                           ELSE IF (FirstMatch .AND. ThirdMatch) THEN
+                              SharedPairs(FirstBdryID,SecondBdryID-FirstBdryID,1,CountPairs(FirstBdryID,SecondBdryID-FirstBdryID)) &
+                              = BdryNodes(FirstBdryID,1,i)
+                              SharedPairs(FirstBdryID,SecondBdryID-FirstBdryID,2,CountPairs(FirstBdryID,SecondBdryID-FirstBdryID)) &
+                              = BdryNodes(FirstBdryID,3,i)
+                           END IF
+                        ELSE IF (Match == 3) THEN
+                           PRINT*, 'BoundaryElement: Duplicated', FirstBdryID,BdryNodes(FirstBdryID,:,i)
+                           PRINT*, 'BoundaryElement: Duplicated', SecondBdryID,BdryNodes(SecondBdryID,:,j), j
+                           CALL FATAL(Solvername, "BoundaryElement: Duplicated")
+                        END IF
+                     END DO
+                  END IF
+               END DO
+            END DO
+         END IF
+      END DO
+      
+      TotalCount=0
+      DO i=1,5
+         DO j=1,5
+            TotalCount=TotalCount+CountPairs(i,j)
+         END DO
+      END DO
+
+      ALLOCATE(Shared(2, TotalCount))
+
+      CountSoFar=0
+      DO i=1,5
+         DO j=1,5
+            Shared(:,1+CountSoFar:CountSoFar+CountPairs(i,j)) = SharedPairs(i,j,:,1:CountPairs(i,j))
+            CountSoFar = CountSoFar + CountPairs(i,j)
+         END DO
+      END DO
+
+   END SUBROUTINE GetCalvingEdgeNodes
 
 END MODULE CalvingGeometry
 
