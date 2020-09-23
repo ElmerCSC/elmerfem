@@ -2826,7 +2826,7 @@ CONTAINS
        LOGICAL :: LinearContactGap, DebugNormals
        
        
-       CALL Info(Caller,'Computing distance between mortar boundaries',Level=14)
+       CALL Info('CalculateMortarDistance','Computing distance between mortar boundaries',Level=14)
 
        DispVals => Solver % Variable % Values
        IF( .NOT. ASSOCIATED( DispVals ) ) THEN
@@ -2842,7 +2842,7 @@ CONTAINS
          ELSE
            PrevDispVals => Solver % Variable % PrevValues(:,3)
          END IF
-         IF(.NOT. ASSOCIATED( PrevDispVals ) ) CALL Fatal(Caller,&
+         IF(.NOT. ASSOCIATED( PrevDispVals ) ) CALL Fatal('CalculateMortarDistance',&
              'Previous displacement field required!')
        END IF
 
@@ -3211,7 +3211,7 @@ CONTAINS
              END DO
              
            CASE DEFAULT
-             CALL Fatal(Caller,'Implement linear gaps for: '//TRIM(I2S(ElemCode)))
+             CALL Fatal('CalculateMortarDistance','Implement linear gaps for: '//TRIM(I2S(ElemCode)))
            END SELECT
          END DO
        END IF
@@ -3808,7 +3808,7 @@ CONTAINS
        INTEGER :: i,j,k,ind,IndN, IndT1, IndT2
        LOGICAL :: Found
 
-       CALL Info('StickCoefficienttSet','Setting the stick coefficient entry for tangent components at stick',Level=10)
+       CALL Info('StickCoefficientSet','Setting the stick coefficient entry for tangent components at stick',Level=10)
 
        ! Determine now whether we have contact or not
        DO i = 1,Projector % NumberOfRows
@@ -3965,7 +3965,7 @@ CONTAINS
            END IF
 
          CASE DEFAULT
-           CALL Fatal('NormalContactSet','Cannot deal with element: '//TRIM(I2S(elemcode)))
+           CALL Fatal(Caller,'Cannot deal with element: '//TRIM(I2S(elemcode)))
 
          END SELECT
        END DO
@@ -4403,7 +4403,7 @@ CONTAINS
       ELSE IF( Oper == 'max' ) THEN
         OperNo = 2
       ELSE
-        CALL Fatal('DirichletDofRange','Unknown operator: '//TRIM(Oper))
+        CALL Fatal('DirichletDofsRange','Unknown operator: '//TRIM(Oper))
       END IF
     END IF
           
@@ -4931,7 +4931,7 @@ CONTAINS
             ! In the first time add the found nodes to the list structure
             IF ( NOFNodesFound > 0 ) THEN
               DO i=1,NOFNodesFound
-                CALL Info('SetNodalLoads','Target Nodes('//TRIM(I2S(i))//&
+                CALL Info(Caller, 'Target Nodes('//TRIM(I2S(i))//&
                     ') = '//TRIM(I2S(IndNodes(i))),Level=7)
               END DO
               CALL ListAddIntegerArray( ValueList,'Target Nodes', &
@@ -5190,7 +5190,7 @@ CONTAINS
       ! Move the list matrix because of its flexibility
       IF( NeedListMatrix ) THEN
         CALL Info(Caller,'Using List maxtrix to set constant constraints',Level=8)
-        CALL Info('SetDircihletBoundaries','Original matrix non-zeros: '&
+        CALL Info(Caller,'Original matrix non-zeros: '&
             //TRIM(I2S(SIZE( A % Cols ))),Level=8)
         IF( ASSOCIATED( A % BulkValues ) ) THEN
           ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
@@ -5333,7 +5333,7 @@ CONTAINS
           DEALLOCATE( Cols0, Rows0, BulkValues0 ) 
         END IF
         
-        CALL Info('SetDircihletBoundaries','Modified matrix non-zeros: '&
+        CALL Info(Caller,'Modified matrix non-zeros: '&
             //TRIM(I2S(SIZE( A % Cols ))),Level=8)
       END IF
     END IF
@@ -5360,7 +5360,7 @@ CONTAINS
       ! Move the list matrix because of its flexibility
       IF( NeedListMatrix ) THEN
         CALL Info(Caller,'Using List maxtrix to set constant constraints',Level=8)
-        CALL Info('SetDircihletBoundaries','Original matrix non-zeros: '&
+        CALL Info(Caller,'Original matrix non-zeros: '&
             //TRIM(I2S(SIZE( A % Cols ))),Level=8)
         IF( ASSOCIATED( A % BulkValues ) ) THEN
           ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
@@ -5465,7 +5465,7 @@ CONTAINS
           DEALLOCATE( Cols0, Rows0, BulkValues0 ) 
         END IF
         
-        CALL Info('SetDircihletBoundaries','Modified matrix non-zeros: '&
+        CALL Info(Caller,'Modified matrix non-zeros: '&
             //TRIM(I2S(SIZE( A % Cols ))),Level=8)
       END IF
     END IF
@@ -6024,7 +6024,7 @@ CONTAINS
       
       IF( ASSOCIATED( Projector, &
           Model % Solver % MortarBCs(This) % Projector) ) THEN
-        CALL Info('SetPeridociBoundariesPass1','Using existing projector: '&
+        CALL Info('SetPeriodicBoundariesPass1','Using existing projector: '&
             //TRIM(I2S(This)),Level=8)
         RETURN
       END IF
@@ -6041,7 +6041,7 @@ CONTAINS
           END IF
         END IF
         IF( .NOT. ASSOCIATED( MortarBC % Diag ) ) THEN
-          CALL Info('SetWeightedPeridocBCsPass1','Allocating projector mortar diag',Level=10)
+          CALL Info('SetPeriodicBoundariesPass1','Allocating projector mortar diag',Level=10)
           ALLOCATE( MortarBC % Diag( NDofs * Projector % NumberOfRows ) )
           MortarBC % Diag = 0.0_dp
         ELSE
@@ -6054,7 +6054,7 @@ CONTAINS
           END IF
         END IF
         IF( .NOT. ASSOCIATED( MortarBC % Rhs ) ) THEN
-          CALL Info('SetWeightedProjectorPass1','Allocating projector mortar rhs',Level=10)
+          CALL Info('SetPeriodicBoundariesPass1','Allocating projector mortar rhs',Level=10)
           ALLOCATE( MortarBC % Rhs( NDofs * Projector % NumberOfRows ) )
           MortarBC % Rhs = 0.0_dp
         ELSE
@@ -6069,7 +6069,7 @@ CONTAINS
         END IF
       END IF
       IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN
-        CALL Info('SetWeightedProjectorPass1','Allocating projector mortar perm',Level=10)
+        CALL Info('SetPeriodicBoundariesPass1','Allocating projector mortar perm',Level=10)
         ALLOCATE( MortarBC % Perm( SIZE( Perm ) ) )
       END IF
       
@@ -6716,7 +6716,7 @@ CONTAINS
 
     DEALLOCATE( BCPerm ) 
     
-    CALL Info('SetConstraintModesBoundarues','All done',Level=10)
+    CALL Info('SetConstraintModesBoundaries','All done',Level=10)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE SetConstraintModesBoundaries
@@ -7279,7 +7279,7 @@ CONTAINS
        IF ( GotIt ) THEN
          DO j=1,n
            IF ( NodeIndexes(j) > SIZE(Perm) .OR. NodeIndexes(j) < 1 ) THEN
-             CALL Warn('SetNodalLoads','Invalid Node Number')
+             CALL Warn('SetPointLoads','Invalid Node Number')
              CYCLE
            END IF
          
@@ -8743,7 +8743,7 @@ CONTAINS
       IF( LhsSystem ) THEN
         DO i = 1, Model % NumberOfBcs
           IF( NtSlaveBC( i ) .AND. NtMasterBC( i ) ) THEN
-            CALL Warn('AverageBoundaryNormals','BC '//TRIM(I2S(i))//' is both N-T master and slave!')
+            CALL Warn(Caller,'BC '//TRIM(I2S(i))//' is both N-T master and slave!')
           END IF
         END DO
 
@@ -8772,7 +8772,7 @@ CONTAINS
 
         LhsConflicts = COUNT( LhsTangent .AND. RhsTangent )
         IF( LhsConflicts > 0 ) THEN
-          CALL Warn('AverageBoundaryNormals',&
+          CALL Warn(Caller,&
               'There are '//TRIM(I2S(LhsConflicts))//' nodes that could be both rhs and lhs!')
         END IF
       END IF
@@ -8797,7 +8797,7 @@ CONTAINS
       END DO
       
       IF( ListGetLogical( Model % Simulation,'Save Averaged Normals',Found ) ) THEN
-        CALL Info('AverageBoundaryNormals','Saving averaged boundary normals to variable: Averaged Normals')
+        CALL Info(Caller,'Saving averaged boundary normals to variable: Averaged Normals')
         NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
         
         IF(.NOT. ASSOCIATED( NrmVar ) ) THEN
@@ -11429,7 +11429,7 @@ END FUNCTION SearchNodeL
       IF( InfoActive(10) ) THEN
         DO i=1,m
           WRITE(Message,'(A,I0,A,ES12.3)') 'Beta(',i,') = ',Betas(i)
-          CALL Info('LinearAcceleration',Message)
+          CALL Info('NonLinearAcceleration',Message)
         END DO
       END IF
                                 
@@ -11758,7 +11758,7 @@ END FUNCTION SearchNodeL
       RETURN
     END IF
 
-    CALL Info('ComputeNodalWeights','Computing weights for the mesh entities',Level=6)
+    CALL Info('CalculateEntityWeights','Computing weights for the mesh entities',Level=6)
     n = Mesh % MaxElementNodes
 
     NoBC = Model % NumberOfBCs
@@ -12308,7 +12308,7 @@ END FUNCTION SearchNodeL
 
     
     WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
-    CALL Info( 'OptimalMatrixScaling', Message, Level=5 )
+    CALL Info( 'RowEquilibration', Message, Level=5 )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE RowEquilibration
@@ -12595,7 +12595,7 @@ END FUNCTION SearchNodeL
        CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
 
        WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
-       CALL Info( 'SolveLinearSystem', Message, Level=5)
+       CALL Info( 'CalculateLoads', Message, Level=5)
      ELSE 
        DO i=1,Aaid % NumberOfRows
          IF ( ParEnv % Pes>1 ) THEN
@@ -12611,7 +12611,7 @@ END FUNCTION SearchNodeL
       CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
 
       WRITE( Message, * ) 'Energy Norm: ', Energy
-      CALL Info( 'SolveLinearSystem', Message, Level=5)
+      CALL Info( 'CalculateLoads', Message, Level=5)
     END IF
   END IF
 
@@ -12946,22 +12946,22 @@ END FUNCTION SearchNodeL
       CALL Fatal('BCLoadsComputation','We should have the boundary matrix!')
     END IF
         
-    CALL Info('CalculateBCLoads','Computing boundary loads',Level=6)
+    CALL Info('BCLoadsComputation','Computing boundary loads',Level=6)
     IF( BCMat % FORMAT == MATRIX_LIST ) THEN
       CALL List_ToCRSMatrix( BCMat )
-      CALL Info('CalculateBCLoads','Matrix format changed to CRS',Level=8)
+      CALL Info('BCLoadsComputation','Matrix format changed to CRS',Level=8)
     END IF
 
     Name = TRIM(Solver % Variable % Name)//' BCLoads'
     BCVar => VariableGet( Solver % Mesh % Variables, TRIM( Name ) )
     IF(.NOT. ASSOCIATED( BCVar ) ) THEN
-      CALL Fatal('CalculateBCLoads','Variable not present: '//TRIM(Name))
+      CALL Fatal('BCLoadsComputation','Variable not present: '//TRIM(Name))
     END IF
     
     CALL MatrixVectorMultiply( BCMat, Solver % Variable % Values, BCVar % Values )
     BCVar % Values = BCVar % Values - BCMat % rhs
 
-    CALL Info('CalculateBCLoads','All done',Level=12)
+    CALL Info('BCLoadsComputation','All done',Level=12)
 
   END SUBROUTINE BCLoadsComputation
 
@@ -14763,7 +14763,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
     INTEGER :: Nfrequency
     TYPE(ValueList_t), POINTER :: BC
 
-    CALL Info( 'HarmonicSolve', 'Solving initially transient style system as harmonic one', Level=5)
+    CALL Info( 'SolveHarmonicSystem', 'Solving initially transient style system as harmonic one', Level=5)
     
     n = Solver % Matrix % NumberofRows
     DOFs = Solver % Variable % DOFs * 2
@@ -14823,7 +14823,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
     ELSE
       Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
       IF( .NOT. Found ) THEN
-        CALL Fatal( 'AddEquation', '> Frequency < must be given for harmonic analysis.' )
+        CALL Fatal( 'SolveHarmonicSystem', '> Frequency < must be given for harmonic analysis.' )
       END IF
       
       Nfrequency = 1
@@ -14842,7 +14842,7 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
       ELSE
         WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
       END IF
-      CALL Info( 'HarmonicSolve', Message, Level=4 )
+      CALL Info( 'SolveHarmonicSystem', Message, Level=4 )
 
       omega = 2 * PI * Frequency
       DO k=1,n

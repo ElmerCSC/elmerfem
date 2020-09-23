@@ -472,7 +472,7 @@ CONTAINS
            SimulationId = Name(15:)
         ELSE
           WRITE( Message, * ) 'Unknown input field in header section: ' // TRIM(Name)
-          CALL Fatal( 'Model Input',  Message )
+          CALL Fatal( Caller,  Message )
         END IF
       END DO
 
@@ -605,7 +605,7 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBCs ) THEN
             WRITE( Message, * ) 'Boundary Condition section number ('//TRIM(I2S(Arrayn))// &
                 ') exceeds number of BCs ('//TRIM(I2S(Model % NumberOfBCs))//')'
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           Model % BCs(ArrayN) % Tag = ArrayN
           List => Model % BCs(Arrayn) % Values
@@ -637,7 +637,7 @@ CONTAINS
               Model % NumberOfBoundaries ) THEN
             WRITE( Message, * ) 'Boundary section number: ',BoundaryIndex, &
                 ' exceeds header value.'
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           Model % BoundaryId(BoundaryIndex) = Arrayn
           List => Model % Boundaries(BoundaryIndex) % Values
@@ -686,7 +686,7 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfICs ) THEN
             WRITE( Message, * ) 'Initial Condition section number: ',Arrayn, &
                 ' exceeds header value.'
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           Model % ICs(ArrayN) % Tag = ArrayN
           List => Model % ICs(Arrayn) % Values
@@ -738,7 +738,7 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfMaterials ) THEN
             WRITE( Message, * ) 'Material section number: ',Arrayn, &
                 ' exceeds header value.'
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           List => Model % Materials(Arrayn) % Values
         END IF
@@ -785,7 +785,7 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodyForces ) THEN
             WRITE( Message, * ) 'Body Force section number: ',Arrayn, &
                 ' exceeds header value.'
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           List => Model % BodyForces(Arrayn) % Values
         END IF
@@ -833,7 +833,7 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfEquations ) THEN
             WRITE( Message, * ) 'Equation section number: ',Arrayn, &
                 ' exceeds header value.'
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           List => Model % Equations(ArrayN) % Values
         END IF
@@ -883,7 +883,7 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBodies ) THEN
             WRITE( Message, * ) 'Body section number: ',Arrayn, &
                 ' exceeds header value. Aborting. '
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           List => Model % Bodies(Arrayn) % Values
         END IF
@@ -932,7 +932,7 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfComponents ) THEN
             WRITE( Message, * ) 'Component section number: ',Arrayn, &
                 ' exceeds header value. Aborting. '
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           List => Model % Components(Arrayn) % Values
         END IF
@@ -996,13 +996,13 @@ CONTAINS
           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfSolvers ) THEN
             WRITE( Message, * ) 'Solver section number: ',Arrayn, &
                 ' exceeds header value. Aborting. '
-            CALL Fatal( 'Model Input', Message )
+            CALL Fatal( Caller, Message )
           END IF
           List => Model % Solvers(Arrayn) % Values
         END IF
       ELSE
         WRITE( Message, * ) 'Unknown input section name: ',TRIM(Section)
-        CALL Fatal( 'Model Input', Message )
+        CALL Fatal( Caller, Message )
       END IF
 !------------------------------------------------------------------------------
       
@@ -1316,7 +1316,7 @@ CONTAINS
 10  CONTINUE
 
     WRITE( Message, * ) 'Cannot find input file: ', TRIM(FileName)
-    CALL Warn( 'Model Input', Message )
+    CALL Warn( Caller, Message )
 
 CONTAINS
 
@@ -1387,12 +1387,12 @@ CONTAINS
           hash => HashCreate( 50,4 )
           IF ( .NOT. ASSOCIATED( hash ) ) THEN
              IF ( CheckAbort <= 2 ) THEN
-               CALL Warn( 'Model Input', 'Can not create the hash table for SOLVER.KEYWORDS.' )
-               CALL Warn( 'Model Input', 'keyword checking disabled.' )
+               CALL Warn( 'CheckKeyWord', 'Can not create the hash table for SOLVER.KEYWORDS.' )
+               CALL Warn( 'CheckKeyWord', 'keyword checking disabled.' )
                CheckAbort = 0
                RETURN
              ELSE
-               CALL Fatal( 'Model Input','Can not create the hash table for SOLVER.KEYWORDS.' )
+               CALL Fatal( 'CheckKeyWord','Can not create the hash table for SOLVER.KEYWORDS.' )
              END IF
           END IF
 
@@ -1412,12 +1412,12 @@ CONTAINS
 
              IF ( istat /= 0 ) THEN
                 IF ( CheckAbort <= 2 ) THEN
-                  CALL Warn( 'Model Input', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
-                  CALL Warn( 'Model Input', ' keyword checking disabled.' )
+                  CALL Warn( 'CheckKeyWord', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
+                  CALL Warn( 'CheckKeyWord', ' keyword checking disabled.' )
                   CheckAbort = 0
                   RETURN
                 ELSE
-                  CALL Fatal( 'Model Input', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
+                  CALL Fatal( 'CheckKeyWord', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
                 END IF
              END IF
 
@@ -1426,11 +1426,11 @@ CONTAINS
              lstat = HashAdd( hash, str1, Val )
              IF ( .NOT. lstat ) THEN
                 IF ( CheckAbort <= 2 ) THEN
-                   CALL Warn( 'Model Input', 'Hash table build error. Keyword checking disabled.' )
+                   CALL Warn( 'CheckKeyWord', 'Hash table build error. Keyword checking disabled.' )
                    CheckAbort = 0
                    RETURN
                 ELSE
-                   CALL Fatal( 'Model Input', 'Hash table build error.' )
+                   CALL Fatal( 'CheckKeyWord', 'Hash table build error.' )
                 END IF
              END IF
           END DO
@@ -1439,7 +1439,7 @@ CONTAINS
           IF ( FirstTime ) THEN
              FirstTime = .FALSE.
              OPEN( 1, FILE='SOLVER.KEYWORDS', STATUS='OLD', ERR=6 )
-             CALL Info( 'Model Input', 'Found local SOLVER.KEYWORDS file, ' // &
+             CALL Info( 'CheckKeyWord', 'Found local SOLVER.KEYWORDS file, ' // &
                         'adding keywords to runtime database.' )
              GOTO 5
 6            CONTINUE
@@ -1495,7 +1495,7 @@ CONTAINS
           IF ( .NOT. ( ScanOnly .OR. CheckAbort == 2) ) THEN
             WRITE( Message, * ) 'Unlisted keyword: [', TRIM(name), &
                       '] in section: [', TRIM(Section), ']'
-            CALL Info( 'Model Input', Message )
+            CALL Info( 'CheckKeyWord', Message )
 
             ! This is intended to be activated when new keywords are checked 
             ! Generally it can be set false
@@ -1524,12 +1524,12 @@ CONTAINS
                '] in section: [', TRIM(Section), ']',  &
                ' is given wrong type: [', TRIM(TYPE),  &
                '], should be of type: [', TRIM(Val % TYPE),']'
-          CALL Fatal( 'Model Input', Message )
+          CALL Fatal( 'CheckKeyWord', Message )
         END IF
        ELSE
          WRITE( Message, * ) 'Unlisted keyword: [', TRIM(name), &
              '] in section: [', TRIM(Section), '].'
-         CALL Fatal( 'Model Input', Message )
+         CALL Fatal( 'CheckKeyWord', Message )
        END IF
 
        RETURN
@@ -1537,10 +1537,10 @@ CONTAINS
 10     CONTINUE
 
        IF ( CheckAbort <= 2 ) THEN
-          CALL Warn( 'Model Input', 'Keyword check requested, but SOLVER.KEYWORDS' // &
+          CALL Warn( 'CheckKeyWord', 'Keyword check requested, but SOLVER.KEYWORDS' // &
                  ' database not available.' )
        ELSE
-          CALL Fatal( 'Model Input', 'Keyword check requested, but SOLVER.KEYWORDS' // &
+          CALL Fatal( 'CheckKeyWord', 'Keyword check requested, but SOLVER.KEYWORDS' // &
                  ' database not available.' )
        END IF
 !------------------------------------------------------------------------------
@@ -1587,7 +1587,7 @@ CONTAINS
         IF ( SEQL(Name,'include') ) THEN
           OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',IOSTAT=iostat)
           IF( iostat /= 0 ) THEN
-            CALL Fatal( 'Model Input','Cannot find include file: '//TRIM(Name(9:)))
+            CALL Fatal( 'SectionContents','Cannot find include file: '//TRIM(Name(9:)))
           END IF
             
           CALL SectionContents( Model,List,CheckAbort,FreeNames, &
@@ -1691,7 +1691,7 @@ CONTAINS
                IF ( .NOT. ScanOnly ) THEN 
                  SELECT CASE ( TYPE )
                  CASE (LIST_TYPE_CONSTANT_SCALAR )
-                   call Fatal('ModelDescription', 'Constant expressions are not supported with Lua. &
+                   call Fatal('SectionContents', 'Constant expressions are not supported with Lua. &
                        Please provide at least a dummy argument.')
 
                    IF ( SizeGiven ) THEN
@@ -2066,13 +2066,13 @@ CONTAINS
 !------------------------------------------------------------------------------
         CHARACTER(LEN=*) :: Section, Name, LastString
 
-         CALL Error( 'Model Input', ' ' )
+         CALL Error( 'LoadInputFile', ' ' )
          WRITE( Message, * ) 'Unknown specifier: [',TRIM(LastString),']'
-         CALL Error( 'Model Input', Message )
+         CALL Error( 'LoadInputFile', Message )
          WRITE( Message, * ) 'In section: [', TRIM(Section), ']'
-         CALL Error( 'Model Input', Message )
+         CALL Error( 'LoadInputFile', Message )
          WRITE( Message, * ) 'For property name:[',TRIM(Name),']'
-         CALL Fatal( 'Model Input', Message )
+         CALL Fatal( 'LoadInputFile', Message )
 !------------------------------------------------------------------------------
       END SUBROUTINE SyntaxError
 !------------------------------------------------------------------------------
@@ -2324,7 +2324,7 @@ CONTAINS
       !$OMP CRITICAL
       LuaState = lua_init()
       IF(.NOT. LuaState % Initialized) THEN
-        CALL Fatal('ModelDescription', 'Failed to initialize Lua subsystem.')
+        CALL Fatal('LoadModel', 'Failed to initialize Lua subsystem.')
       END IF
 
       ! Store mpi task and omp thread ids in a table
@@ -2492,7 +2492,7 @@ CONTAINS
       Single = ListGetLogical( Model % Simulation,'Partition Mesh', GotIt ) 
       IF ( Single ) THEN
         IF( ParEnv % PEs == 1 ) THEN
-          CALL Warn('LoadMesh','Why perform partitioning in serial case?')
+          CALL Warn('LoadModel','Why perform partitioning in serial case?')
         END IF
         IF( ParEnv % MyPe == 0 ) THEN
           SerialMesh => LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,&
@@ -2505,7 +2505,7 @@ CONTAINS
         IF( ParEnv % PEs > 1) THEN
           Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
         ELSE
-          CALL Info('LoadMesh','Only one active partition, using the serial mesh as it is!')
+          CALL Info('LoadModel','Only one active partition, using the serial mesh as it is!')
           IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
             DEALLOCATE( SerialMesh % RePartition ) 
           END IF
