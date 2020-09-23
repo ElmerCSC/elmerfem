@@ -960,6 +960,3 @@ End
 
 Solver 27 :: Reference Norm = Real 1
 Solver 27 :: Reference Norm Tolerance = Real 1E-05
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=1,EPS=1E-05\n" );

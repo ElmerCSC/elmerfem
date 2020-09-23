@@ -536,20 +536,70 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     END DO ASSEMBLYLOOP
 
+    !----------------------------------------------------------------------
+    ! Add linearly elastic beams.
+    !----------------------------------------------------------------------    
+    ASSEMBLE_BEAMS: DO k=1,Active
+      BGElement => GetActiveElement(k)
+
+      Family = GetElementFamily(BGElement)
+      IF (Family /= 2) CYCLE
+
+      n  = GetElementNOFNodes()
+      nd = GetElementDOFs(Indices)
+      nb = GetElementNOFBDOFs()
+
+      !----------------------------------------------------------------------
+      ! We assume that p-element definitions are not empoyed and hard-code
+      ! the bubble count:
+      !----------------------------------------------------------------------
+      nb = 1
+      IF (.NOT.(n == 2 .AND. nd == 2)) CALL Fatal('ShellSolver', &
+          'An unsupported 1-D element type or definition')
+
+      IF (LargeDeflection) THEN
+        CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+      ELSE
+        LocalSol = 0.0d0
+      END IF
+
+      CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
+          HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce)
+
+      IF (LargeDeflection .AND. NonlinIter == 1) THEN
+        ! ---------------------------------------------------------------------------
+        ! Create a RHS vector which contains just the contribution of external loads
+        ! for the purpose of nonlinear error estimation:
+        ! ---------------------------------------------------------------------------
+        ValuesSaved => Solver % Matrix % RHS
+        Solver % Matrix % RHS => Solver % Matrix % BulkRHS
+        CALL DefaultUpdateForce(LocalRHSForce)
+        Solver % Matrix % RHS => ValuesSaved
+      END IF
+    END DO ASSEMBLE_BEAMS
+    
     CALL DefaultFinishBulkAssembly() 
 
-    
+
     Active = GetNOFBoundaryElements()
 
     BOUNDARY_ASSEMBLY: DO k=1,Active
       BGElement => GetBoundaryElement(k)
       Family = GetElementFamily(BGElement)
 
-      IF (ActiveBoundaryElement() .AND. Family == 2) THEN
+      IF (ActiveBoundaryElement() .AND. Family <= 2) THEN
         n  = GetElementNOFNodes(BGElement)
         nd = GetElementNOFDOFs(BGElement)
-        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar)
-      END IF     
+
+        IF (LargeDeflection) THEN
+          CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+        ELSE
+          LocalSol = 0.0d0
+        END IF
+
+        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar, LargeDeflection, &
+            MassAssembly, HarmonicAssembly, LocalSol)
+      END IF
     END DO BOUNDARY_ASSEMBLY
 
     CALL DefaultFinishBoundaryAssembly()
@@ -789,7 +839,7 @@ CONTAINS
     INTEGER, POINTER :: ActiveElements(:)
     !------------------------------------------------------------------------------
     LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
-    INTEGER :: n, iostat, i, j, k, i0, NumberOfLines
+    INTEGER :: n, iostat, i, j, k, i0, NumberOfLines, Family
     INTEGER, POINTER :: InvPerm(:)
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
@@ -854,6 +904,11 @@ CONTAINS
       Active = GetNOFActive()
       DO k=1,Active
         Element => GetActiveElement(k)
+        Family = GetElementFamily(Element)
+        ! -------------------------------------------------------------------
+        ! The director data is expected for surface elements only:
+        ! -------------------------------------------------------------------
+        IF (Family < 3) CYCLE
         ! -------------------------------------------------------------------
         ! If mesh.elements.data has defined the director, respect that data:
         ! -------------------------------------------------------------------
@@ -1012,6 +1067,7 @@ CONTAINS
     DO k=1,Active
       Element => GetActiveElement(k)
       Family = GetElementFamily(Element)
+      IF (Family < 3) CYCLE
       n  = GetElementNOFNodes()
       CALL GetElementNodes( Nodes )
 
@@ -1119,11 +1175,11 @@ CONTAINS
     Active = GetNOFActive()
     DO k=1,Active
       Element => GetActiveElement(k)
+      Family = GetElementFamily(Element)
+      IF (Family < 3) CYCLE
       CALL GetElementNodes(Nodes)
 
       DirectorValues => GetElementalDirector(Element, Nodes)
-
-      Family = GetElementFamily(Element)
 
       ! Set some default values:
       Subtriangulation = .FALSE.
@@ -3510,6 +3566,7 @@ CONTAINS
     REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
     REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
+    REAL(KIND=dp) :: Damping(n), DampCoef
     REAL(KIND=dp) :: nu, E, h, NormalTraction, Kappa
     REAL(KIND=dp) :: DetJ, Weight, Norm
 
@@ -3618,7 +3675,10 @@ CONTAINS
     ELSE
       Load(1:n) = 0.0d0
     END IF
-    IF ( MassAssembly ) rho(1:n) = GetReal(GetMaterial(), 'Density')
+    IF ( MassAssembly ) THEN
+      rho(1:n) = GetReal(GetMaterial(), 'Density')
+      Damping(1:n) = GetReal(GetMaterial(), 'Rayleigh Damping Alpha', Found)
+    END IF
 
     ! ------------------------------------------------------------------------------
     ! The size of the constitutive matrix for 2D shell equations
@@ -3818,7 +3878,10 @@ CONTAINS
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
       NormalTraction = SUM( Load(1:n) * Basis(1:n) )
-      IF ( MassAssembly ) rho0 = SUM( rho(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) THEN
+        rho0 = SUM( rho(1:n) * Basis(1:n) )
+        DampCoef = SUM( Damping(1:n) * Basis(1:n) )
+      END IF
 
       ! The matrix description of the elasticity tensor:
       CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
@@ -4360,7 +4423,10 @@ CONTAINS
               Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
                   Basis(i) * Basis(j) * Weight
               Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
-                  h**3/12.0d0 * Basis(i) * Basis(j) * Weight
+                  h**2/12.0d0 * Basis(i) * Basis(j) * Weight
+              
+              Damp((i-1)*m+k,(j-1)*m+k) = Damp((i-1)*m+k,(j-1)*m+k) + &
+                  DampCoef * Basis(i) * Basis(j) * Weight              
             END DO
           END DO
         END DO
@@ -4432,14 +4498,15 @@ CONTAINS
 
     IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
 
-    IF( MassAssembly ) THEN
+    IF ( MassAssembly ) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
+      Damp(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Damp(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
 
-      IF( TransientSimulation ) THEN
+      IF ( TransientSimulation ) THEN
         CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
-      ELSE IF( HarmonicAssembly ) THEN
+      ELSE IF ( HarmonicAssembly ) THEN
         CALL DefaultUpdateMass( MASS )
-        ! update damping if present!
+        CALL DefaultUpdateDamp( DAMP )
       END IF
     END IF
 
@@ -4454,24 +4521,33 @@ CONTAINS
 ! from given resultant force and resultant couple vectors over the 1-D
 ! boundary.
 !------------------------------------------------------------------------------
-  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m)
+  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m, LargeDeflection, &
+      MassAssembly, HarmonicAssembly, LocalSol)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component 
     INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
+    LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
+    LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
+    LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
+    REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Found, AssemblyNeeded, Stat
+    LOGICAL :: Found, AssemblyNeeded, AssembleSprings, AssembleMass, Stat
 
-    INTEGER :: i, i0, t
-    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Force(m*nd), Basis(nd)
-    REAL(KIND=dp) :: NodalForce(3,1:n), NodalCouple(3,1:n)
+    INTEGER :: i, i0, j, k, t
+    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Damp(m*nd,m*nd)
+    REAL(KIND=dp) :: Force(m*nd), Basis(nd)
+    REAL(KIND=dp) :: PrevSolVec(m*nd)
+    REAL(KIND=dp) :: NodalForce(3,n), NodalCouple(3,n)
+    REAL(KIND=dp) :: NodalSprings(6,n), NodalMass(6,n)
     REAL(KIND=dp) :: ResultantForce(3), ResultantCouple(3)
+    REAL(KIND=dp) :: Spring(6), MassVals(6)
     REAL(KIND=dp) :: detJ, Weight
 
     SAVE Nodes
@@ -4482,11 +4558,30 @@ CONTAINS
     CALL GetRealVector(BC, NodalForce(1:3,1:n), 'Resultant Force', AssemblyNeeded)
     CALL GetRealVector(BC, NodalCouple(1:3,1:n), 'Resultant Couple', Found)
     AssemblyNeeded = AssemblyNeeded .OR. Found
+    CALL GetRealVector(BC, NodalSprings(1:6,1:n), 'Spring', AssembleSprings)
+    AssemblyNeeded = AssemblyNeeded .OR. AssembleSprings
+    IF (MassAssembly) THEN
+      CALL GetRealVector(BC, NodalMass(1:6,1:n), 'Mass', AssembleMass)
+      AssemblyNeeded = AssemblyNeeded .OR. AssembleMass
+    ELSE
+      AssembleMass = .FALSE.
+    END IF
     IF (.NOT. AssemblyNeeded) RETURN
 
     CALL GetElementNodes(Nodes)
     Force = 0.0d0
     Stiff = 0.0d0
+    Mass = 0.0d0
+    Damp = 0.0d0
+
+    ! ------------------------------------------------------------------------
+    ! Vectorize the previous solution 
+    ! ------------------------------------------------------------------------
+    IF (LargeDeflection .AND. AssembleSprings) THEN
+      DO k=1,m
+        PrevSolVec(k:m*nd:m) = LocalSol(k,1:nd)
+      END DO
+    END IF
 
     ! Note that in the following the integration is not done accurately as
     ! the effect of the improved surface reconstruction is not taken into
@@ -4504,9 +4599,50 @@ CONTAINS
         Force(i0+1:i0+3) = Force(i0+1:i0+3) + Weight * ResultantForce(1:3) * Basis(i)
         Force(i0+4:i0+6) = Force(i0+4:i0+6) + Weight * ResultantCouple(1:3) * Basis(i)
       END DO
+
+      IF (AssembleSprings) THEN
+        Spring(1:6) = MATMUL(NodalSprings(1:6,1:n), Basis(1:n))
+        DO k=1,3
+          DO i=1,nd
+            DO j=1,nd
+              Stiff((i-1)*m+k,(j-1)*m+k) = Stiff((i-1)*m+k,(j-1)*m+k) + &
+                  Spring(k) * Basis(i) * Basis(j) * Weight
+              Stiff((i-1)*m+3+k,(j-1)*m+3+k) = Stiff((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  Spring(k+3) * Basis(i) * Basis(j) * Weight
+            END DO
+          END DO
+        END DO
+      END IF
+
+      IF (MassAssembly .AND. AssembleMass) THEN
+        MassVals(1:6) = MATMUL(NodalMass(1:6,1:n), Basis(1:n))
+        DO k=1,3
+          DO i=1,nd
+            DO j=1,nd
+              Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
+                  MassVals(k) * Basis(i) * Basis(j) * Weight
+              Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  MassVals(k+3) * Basis(i) * Basis(j) * Weight
+            END DO
+          END DO
+        END DO
+      END IF
+
     END DO
 
-    CALL DefaultUpdateEquations(Stiff,Force)
+    IF (LargeDeflection .AND. AssembleSprings) THEN
+      Force(1:m*nd) = Force(1:m*nd) - MATMUL(Stiff(1:m*nd,1:m*nd), PrevSolVec(1:m*nd)) 
+    END IF
+
+    IF (MassAssembly .AND. AssembleMass) THEN
+      IF (HarmonicAssembly) THEN
+        CALL DefaultUpdateMass(Mass)
+      ELSE
+        CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+      END IF
+    END IF
+
+    CALL DefaultUpdateEquations(Stiff, Force)
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellBoundaryMatrix
 !------------------------------------------------------------------------------
@@ -4552,7 +4688,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: res_z, maxres_z, minres_z
     REAL(KIND=dp) :: U_mid(3), U_upper(3), U_lower(3), h_eff
-    REAL(KIND=dp) :: d(3), d_h(3), v(3), DNU(3)
+    REAL(KIND=dp) :: d(3), e3(3), d_h(3), v(3), DNU(3)
 ! ---------------------------------------------------------------------------------
     IF (.NOT. ListGetLogicalAnyBC(Model, 'Structure Interface')) RETURN
     IF (.NOT. Displacement % DOFs == 3) THEN
@@ -4741,6 +4877,11 @@ CONTAINS
             END IF
           END IF
         END DO
+
+        IF (jz == 0) jz = TargetNode
+        IF (lz == 0) lz = TargetNode
+        IF (jz == lz) CALL Fatal('SetSolidCouplingBCs', &
+            'No solid nodes to span the director')
 
         ! PRINT *, 'HANDLING NODE = ', TargetNode
         ! PRINT *, 'UPPER NODE = ', JZ
@@ -6413,76 +6554,514 @@ CONTAINS
 ! Return the global coordinates at the mid-node of the edge by evaluating
 ! the value of the space curve. This function is just for testing purposes.
 !-------------------------------------------------------------------------------------
-FUNCTION EdgeMidNode(Element, e) RESULT(X)
+  FUNCTION EdgeMidNode(Element, e) RESULT(X)
 !-----------------------------------------------------------------------
-  TYPE(Element_t), POINTER, INTENT(IN) :: Element
-  INTEGER, INTENT(IN) :: e     ! Edge identifier 
-  REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: e     ! Edge identifier 
+    REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
 !-----------------------------------------------------------------------
-  TYPE(Nodes_t) :: Nodes
-  INTEGER :: CurveDataSize, i0, cn
-  REAL(KIND=dp), POINTER :: EdgeParams(:)
-  REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
-  REAL(KIND=dp) :: d(CurveDataSize2), h, xe
-  REAL(KIND=dp) :: r1(3), r2(3)
-  REAL(KIND=dp) :: u, v, f
+    TYPE(Nodes_t) :: Nodes
+    INTEGER :: CurveDataSize, i0, cn
+    REAL(KIND=dp), POINTER :: EdgeParams(:)
+    REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
+    REAL(KIND=dp) :: d(CurveDataSize2), h, xe
+    REAL(KIND=dp) :: r1(3), r2(3)
+    REAL(KIND=dp) :: u, v, f
 !-----------------------------------------------------------------------
-  IF (Element % Type % NumberOfNodes > 4) &
-      CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
+    IF (Element % Type % NumberOfNodes > 4) &
+        CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
 
-  !-----------------------------------------------------------------------
-  ! Retrieve parametrizations of curved edges:
-  !------------------------------------------------------------------------
-  EdgeParams => GetElementProperty('edge parameters', Element)
+    !-----------------------------------------------------------------------
+    ! Retrieve parametrizations of curved edges:
+    !------------------------------------------------------------------------
+    EdgeParams => GetElementProperty('edge parameters', Element)
 
-  h = 2.0d0
-  CurveDataSize = CurveDataSize1
+    h = 2.0d0
+    CurveDataSize = CurveDataSize1
 
-  i0 = (e-1)*CurveDataSize
-  d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
+    i0 = (e-1)*CurveDataSize
+    d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
 
-  cn = 2
-  CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
+    cn = 2
+    CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
 
-  CALL GetElementNodes(Nodes, Element) 
+    CALL GetElementNodes(Nodes, Element) 
 
-  Family = GetElementFamily(Element)
-  SELECT CASE(Family)
-  CASE(3)
-    SELECT CASE(e)
-    CASE(1)
-      r1(1) = Nodes % x(1)
-      r1(2) = Nodes % y(1)
-      r1(3) = Nodes % z(1)
-      r2(1) = Nodes % x(2)
-      r2(2) = Nodes % y(2)
-      r2(3) = Nodes % z(2)
-    CASE(2)
-      r1(1) = Nodes % x(2)
-      r1(2) = Nodes % y(2)
-      r1(3) = Nodes % z(2)
-      r2(1) = Nodes % x(3)
-      r2(2) = Nodes % y(3)
-      r2(3) = Nodes % z(3)
+    Family = GetElementFamily(Element)
+    SELECT CASE(Family)
     CASE(3)
-      r1(1) = Nodes % x(3)
-      r1(2) = Nodes % y(3)
-      r1(3) = Nodes % z(3)
-      r2(1) = Nodes % x(1)
-      r2(2) = Nodes % y(1)
-      r2(3) = Nodes % z(1)
+      SELECT CASE(e)
+      CASE(1)
+        r1(1) = Nodes % x(1)
+        r1(2) = Nodes % y(1)
+        r1(3) = Nodes % z(1)
+        r2(1) = Nodes % x(2)
+        r2(2) = Nodes % y(2)
+        r2(3) = Nodes % z(2)
+      CASE(2)
+        r1(1) = Nodes % x(2)
+        r1(2) = Nodes % y(2)
+        r1(3) = Nodes % z(2)
+        r2(1) = Nodes % x(3)
+        r2(2) = Nodes % y(3)
+        r2(3) = Nodes % z(3)
+      CASE(3)
+        r1(1) = Nodes % x(3)
+        r1(2) = Nodes % y(3)
+        r1(3) = Nodes % z(3)
+        r2(1) = Nodes % x(1)
+        r2(2) = Nodes % y(1)
+        r2(3) = Nodes % z(1)
+      END SELECT
+    CASE(4)
+      CALL Fatal('EdgeMidNode', '4-node implementation missing')
     END SELECT
-  CASE(4)
-    CALL Fatal('EdgeMidNode', '4-node implementation missing')
-  END SELECT
 
-  X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
-      d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+    X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+        d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
 
 !-----------------------------------------------------------------------
-END FUNCTION EdgeMidNode
+  END FUNCTION EdgeMidNode
 !-----------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+! Integrate and assemble the local beam stiffness matrix. The local DOFs always 
+! correspond to the displacement components along the tangent direction and the
+! principal axes of the cross section. The transformation to global DOFs is done
+! within this subroutine. The stiffness matrix K corresponding to the global 
+! DOFs is thus obtained as K = R^T k R and the RHS vector F is obtained as 
+! F = R^T f.
+!
+! This routine is basically a copy of the routine contained in BeamSolver3D.F90.
+! The differences are within successive delimiters " !*** ".
+! TO DO: Avoid having two versions of the same routine by moving this to a single
+! place.  
+!------------------------------------------------------------------------------
+  SUBROUTINE BeamStiffnessMatrix(Element, n, nd, nb, TransientSimulation, &
+      MassAssembly, HarmonicAssembly, LargeDeflection, LocalSol, RHSForce)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: n, nd, nb
+    LOGICAL, INTENT(IN) :: TransientSimulation
+    LOGICAL, OPTIONAL, INTENT(IN) :: MassAssembly     ! To activate mass matrix integration
+    LOGICAL, OPTIONAL, INTENT(IN) :: HarmonicAssembly ! To activate the global mass matrix updates
+    LOGICAL, OPTIONAL, INTENT(IN) :: LargeDeflection  ! To activate nonlinear terms
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: LocalSol(:,:) ! The previous solution iterate
+    REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)         ! Local RHS vector corresponding to external loads
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BodyForce, Material
+    TYPE(Nodes_t) :: Nodes, LocalNodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    LOGICAL :: Found, Stat
+    LOGICAL :: NonlinAssembly
+
+    INTEGER :: DOFs
+    INTEGER :: i, t, p, q
+    INTEGER :: i0, p0, q0
+
+    REAL(KIND=dp), POINTER :: ArrayPtr(:,:) => NULL()
+    REAL(KIND=dp), POINTER :: StiffBlock(:,:), MassBlock(:,:)
+    REAL(KIND=dp), DIMENSION(3), PARAMETER :: ZBasis = (/ 0.0d0, 0.0d0, 0.1d1 /)
+
+    REAL(KIND=dp), TARGET :: Mass(6*nd,6*nd), Stiff(6*nd,6*nd), Damp(6*nd,6*nd)
+    REAL(KIND=dp) :: Force(6*nd)
+    REAL(KIND=dp) :: RBlock(3,3), R(6*nd,6*nd)
+    REAL(KIND=dp) :: Basis(nd), dBasis(nd,3), DetJ, Weight
+    REAL(KIND=dp) :: Youngs_Modulus(n), Shear_Modulus(n), Area(n), Density(n)
+    REAL(KIND=dp) :: Torsional_Constant(n) 
+    REAL(KIND=dp) :: Area_Moment_2(n), Area_Moment_3(n)
+    REAL(KIND=dp) :: Mass_Inertia_Moment(n) 
+    REAL(KIND=dp) :: Load(3,n), f(3)
+    REAL(KIND=dp) :: PrevSolVec(6*nd)
+    REAL(KIND=dp) :: E, A, G, rho
+    REAL(KIND=dp) :: EA, GA, MOI, Mass_per_Length 
+    REAL(KIND=dp) :: E_diag(3)
+
+    REAL(KIND=dp) :: p1(3), p2(3), e1(3), e2(3), e3(3)
+    REAL(KIND=dp) :: L, Norm
+
+    SAVE Nodes, LocalNodes
+!------------------------------------------------------------------------------
+    IF (n > 2) CALL Fatal('BeamSolver3D', &
+        'Only 2-node background meshes supported currently')
+
+    DOFs = 6
+!    dim = CoordinateSystemDimension()
+
+    CALL GetElementNodes(Nodes)
+
+    Mass  = 0.0_dp
+    Stiff = 0.0_dp
+    Damp = 0.0_dp
+    Force = 0.0_dp
+!***
+    RHSForce = 0.0d0
+    IF (PRESENT(LargeDeflection)) THEN
+      NonlinAssembly = LargeDeflection
+    ELSE
+      NonlinAssembly = .FALSE.
+    END IF
+    IF (NonlinAssembly) THEN
+      IF (.NOT. PRESENT(LocalSol)) CALL Fatal('BeamStiffnessMatrix', &
+          'Previous solution iterate needed')
+      DO i=1,DOFs
+        PrevSolVec(i:DOFs*(nd-nb):DOFs) = LocalSol(i,1:(nd-nb))
+      END DO  
+    END IF
+!***
+
+    BodyForce => GetBodyForce()
+    IF ( ASSOCIATED(BodyForce) ) THEN
+      !
+      ! Force components refer to the basis of the global frame:
+      !
+      Load(1,1:n) = GetReal(BodyForce, 'Body Force 1', Found)
+      Load(2,1:n) = GetReal(BodyForce, 'Body Force 2', Found)
+      Load(3,1:n) = GetReal(BodyForce, 'Body Force 3', Found)
+    ELSE
+      Load = 0.0_dp
+    END IF
+
+    Material => GetMaterial()
+    Youngs_Modulus(1:n) = GetReal(Material, 'Youngs Modulus', Found)
+    Shear_Modulus(1:n) = GetReal(Material, 'Shear Modulus', Found)
+    Area(1:n) = GetReal(Material, 'Cross Section Area', Found)
+    Torsional_Constant(1:n) = GetReal(Material, 'Torsional Constant', Found)
+    Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area 2', Found)
+    Area_Moment_3(1:n) = GetReal(Material, 'Second Moment of Area 3', Found)
+
+!***    IF (TransientSimulation) THEN
+    IF (MassAssembly) THEN
+      Density(1:n) = GetReal(Material, 'Density', Found)
+    END IF
+
+    !
+    ! Compute the tangent vector e1 to the beam axis:
+    !
+    p1(1) = Nodes % x(1)
+    p1(2) = Nodes % y(1)
+    p1(3) = Nodes % z(1)
+    p2(1) = Nodes % x(2)
+    p2(2) = Nodes % y(2)
+    p2(3) = Nodes % z(2)
+    e1 = p2 - p1
+    L = SQRT(SUM(e1(:)**2))
+    e1 = 1.0_dp/L * e1
+    !
+    ! Cross section parameters are given with respect to a local frame. 
+    ! Determine its orientation:
+    !
+!***
+    ArrayPtr => ListGetConstRealArray(Material, 'Director', Found)
+    IF (Found) THEN
+      e3 = 0.0d0
+      DO i=1,SIZE(ArrayPtr,1)
+        e3(i) = ArrayPtr(i,1)
+      END DO
+      Norm = SQRT(SUM(e3(:)**2))
+      e3 = 1.0_dp/Norm * e3
+      IF (ABS(DOT_PRODUCT(e1,e3)) > 100.0_dp * AEPS) CALL Fatal('BeamSolver3D', &
+          'Director should be orthogonal to the beam axis')
+      e2 = CrossProduct(e3, e1)
+!***      
+    ELSE
+      ArrayPtr => ListGetConstRealArray(Material, 'Principal Direction 2', Found)
+      IF (Found) THEN
+        e2 = 0.0d0
+        DO i=1,SIZE(ArrayPtr,1)
+          e2(i) = ArrayPtr(i,1)
+        END DO
+        Norm = SQRT(SUM(e2(:)**2))
+        e2 = 1.0_dp/Norm * e2     
+      ELSE
+        e2 = -ZBasis
+      END IF
+      IF (ABS(DOT_PRODUCT(e1,e2)) > 100.0_dp * AEPS) CALL Fatal('BeamSolver3D', &
+          'Principal Direction 2 should be orthogonal to the beam axis')
+      e3 = CrossProduct(e1, e2)
+    END IF
+
+ 
+    !
+    ! Allocate an additional variable so as to write nodes data with respect to
+    ! the local frame.
+    !
+    IF (.NOT. ASSOCIATED(LocalNodes % x)) THEN
+      ALLOCATE(LocalNodes % x(n), LocalNodes % y(n), LocalNodes % z(n) ) 
+      LocalNodes % NumberOfNodes = n
+      LocalNodes % y(:) = 0.0_dp
+      LocalNodes % z(:) = 0.0_dp
+    END IF
+    LocalNodes % x(1) = 0.0d0
+    LocalNodes % x(2) = L
+
+    !-----------------------
+    ! Numerical integration:
+    !-----------------------
+!***
+    IF (.NOT. IsPElement(Element) .AND. nd > n) THEN
+      IP = GaussPoints(Element, 3)
+    ELSE
+      IP = GaussPoints(Element)
+    END IF
+!***
+    DO t=1,IP % n
+      !--------------------------------------------------------------
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo(Element, LocalNodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasis)
+
+!***
+      ! Create a bubble if the element is the standard 2-node element:
+      IF (.NOT. IsPElement(Element) .AND. nd > n) THEN
+        Basis(n+1) = Basis(1) * Basis(2)
+        dBasis(3,:) = dBasis(1,:) * Basis(2) + Basis(1) * dBasis(2,:)
+      END IF
+!***
+      !------------------------------------------
+      ! The model data at the integration point:
+      !------------------------------------------
+      f(1) = SUM(Basis(1:n) * Load(1,1:n))
+      f(2) = SUM(Basis(1:n) * Load(2,1:n))
+      f(3) = SUM(Basis(1:n) * Load(3,1:n))      
+
+      ! TO DO: Add option to give the applied moment load
+
+      E = SUM(Basis(1:n) * Youngs_Modulus(1:n))
+      G = SUM(Basis(1:n) * Shear_Modulus(1:n))      
+      A = SUM(Basis(1:n) * Area(1:n))
+
+      E_diag(1) = G * SUM(Basis(1:n) * Torsional_Constant(1:n))
+      E_diag(2) = E * SUM(Basis(1:n) * Area_Moment_2(1:n))
+      E_diag(3) = E * SUM(Basis(1:n) * Area_Moment_3(1:n)) 
+
+!***      IF (TransientSimulation) THEN
+      IF (MassAssembly) THEN
+        rho = SUM(Basis(1:n) * Density(1:n))
+        MOI = rho/E * sqrt(E_diag(2)**2 + E_diag(3)**2)
+        Mass_per_Length = rho * A
+      END IF
+
+      GA = G*A
+      EA = E*A
+
+      ! TO DO: Add option to give shear correction factors
+
+      Weight = IP % s(t) * DetJ
+
+      DO p=1,nd
+        p0 = (p-1)*DOFs
+        DO q=1,nd
+          q0 = (q-1)*DOFs
+          StiffBlock => Stiff(p0+1:p0+DOFs,q0+1:q0+DOFs)
+          MassBlock => Mass(p0+1:p0+DOFs,q0+1:q0+DOFs)
+          !
+          ! (Du',v'):
+          !
+          StiffBlock(1,1) = StiffBlock(1,1) + &
+              EA * dBasis(q,1) * dBasis(p,1) * Weight
+          StiffBlock(2,2) = StiffBlock(2,2) + &
+              GA * dBasis(q,1) * dBasis(p,1) * Weight
+          StiffBlock(3,3) = StiffBlock(3,3) + &
+              GA * dBasis(q,1) * dBasis(p,1) * Weight
+  
+!***          IF (TransientSimulation) THEN
+          IF (MassAssembly) THEN
+            MassBlock(1,1) = MassBlock(1,1) + &
+                Mass_per_Length * Basis(q) * Basis(p) * Weight
+            MassBlock(2,2) = MassBlock(2,2) + &
+                Mass_per_Length * Basis(q) * Basis(p) * Weight
+            MassBlock(3,3) = MassBlock(3,3) + &
+                Mass_per_Length * Basis(q) * Basis(p) * Weight
+          END IF
+
+          IF (q > n) CYCLE
+          !
+          ! -(D theta x t,v'):
+          !
+          StiffBlock(2,6) = StiffBlock(2,6) - &
+              GA * Basis(q) * dBasis(p,1) * Weight
+          StiffBlock(3,5) = StiffBlock(3,5) + &
+              GA * Basis(q) * dBasis(p,1) * Weight
+        END DO
+        
+        Force(p0+1) = Force(p0+1) + Weight * DOT_PRODUCT(f,e1)* Basis(p)
+        Force(p0+2) = Force(p0+2) + Weight * DOT_PRODUCT(f,e2)* Basis(p)
+        Force(p0+3) = Force(p0+3) + Weight * DOT_PRODUCT(f,e3)* Basis(p)
+
+        IF (p > n) CYCLE
+
+        DO q=1,nd
+          q0 = (q-1)*DOFs
+          StiffBlock => Stiff(p0+1:p0+DOFs,q0+1:q0+DOFs)
+          MassBlock => Mass(p0+1:p0+DOFs,q0+1:q0+DOFs)
+          !
+          ! -(D u',psi x t):
+          !
+          StiffBlock(5,3) = StiffBlock(5,3) + &
+              GA * Basis(p) * dBasis(q,1) * Weight
+          StiffBlock(6,2) = StiffBlock(6,2) - &
+              GA * Basis(p) * dBasis(q,1) * Weight
+
+          IF (q > n) CYCLE
+
+          !
+          ! (E theta',psi') + (D theta x t,psi x t):
+          !
+          StiffBlock(4,4) = StiffBlock(4,4) + &
+              E_diag(1) * dBasis(q,1) * dBasis(p,1) * Weight
+          StiffBlock(5,5) = StiffBlock(5,5) + &
+              E_diag(2) * dBasis(q,1) * dBasis(p,1) * Weight + &
+              GA * Basis(p) * Basis(q) * Weight
+          StiffBlock(6,6) = StiffBlock(6,6) + &
+              E_diag(3) * dBasis(q,1) * dBasis(p,1) * Weight + &
+              GA * Basis(p) * Basis(q) * Weight
+
+!***          IF (TransientSimulation) THEN
+          IF (MassAssembly) THEN
+            MassBlock(4,4) = MassBlock(4,4) + MOI * Basis(q) * Basis(p) * Weight
+            MassBlock(5,5) = MassBlock(5,5) + rho/E * E_diag(2) * &
+                Basis(q) * Basis(p) * Weight
+            MassBlock(6,6) = MassBlock(6,6) + rho/E * E_diag(3) * &
+                Basis(q) * Basis(p) * Weight
+          END IF
+
+        END DO
+      END DO
+    END DO
+
+    CALL BeamCondensate(nd-nb, nb, DOFs, 3, Stiff, Force)
+    
+!***
+    !
+    ! Switch to rotation variables which conform with the rotated moments - M x d:
+    !
+    R = 0.0d0
+    DO i=1,nd-nb
+      i0 = (i-1)*DOFs
+      R(i0+1,i0+1) = 1.0d0
+      R(i0+2,i0+2) = 1.0d0
+      R(i0+3,i0+3) = 1.0d0
+      R(i0+4,i0+5) = 1.0d0
+      R(i0+5,i0+4) = -1.0d0
+      R(i0+6,i0+6) = 1.0d0
+    END DO
+    DOFs = (nd-nb)*DOFs
+    Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+        MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+    Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
+
+    IF (MassAssembly) &
+        Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+        MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))    
+
+    !
+    ! The moment around the director is not compatible with the shell model.
+    ! Remove its contribution:
+    !
+    DO p=1,nd-nb
+      Stiff(6*p,:) = 0.0d0
+      Stiff(:,6*p) = 0.0d0
+      Stiff(6*p,6*p) = 0.0d0
+      Force(6*p) = 0.0d0
+      Mass(6*p,:) = 0.0d0
+      Mass(:,6*p) = 0.0d0
+    END DO
+!***
+
+    !
+    ! Build the transformation matrix in order to switch to the global DOFs
+    !
+    DOFs = 6
+    R = 0.0d0
+    RBlock(1,1:3) = e1(1:3)
+    RBlock(2,1:3) = e2(1:3)
+    RBlock(3,1:3) = e3(1:3)
+    DO i=1,nd-nb
+      i0 = (i-1)*DOFs
+      R(i0+1:i0+3,i0+1:i0+3) =  RBlock(1:3,1:3)
+      R(i0+4:i0+6,i0+4:i0+6) =  RBlock(1:3,1:3)
+    END DO
+
+    !-------------------------------------------------------
+    ! Transform to the global DOFs:
+    !-------------------------------------------------------
+    DOFs = (nd-nb)*DOFs
+    Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+        MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+    Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
+
+!***
+    RHSForce(1:DOFs) = Force(1:DOFs)
+    IF (NonlinAssembly) Force(1:DOFs) = Force(1:DOFs) - &
+        MATMUL(Stiff(1:DOFs,1:DOFs), PrevSolVec(1:DOFs))
+!***
+
+    IF (MassAssembly) THEN
+      Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+          MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+      IF (TransientSimulation) THEN
+        CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+      ELSE IF (HarmonicAssembly) THEN
+        CALL DefaultUpdateMass(Mass)
+      END IF
+    END IF
+
+    CALL DefaultUpdateEquations(Stiff, Force)
+!------------------------------------------------------------------------------
+  END SUBROUTINE BeamStiffnessMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE BeamCondensate(n, nb, dofs, dim, K, F, F1 )
+!------------------------------------------------------------------------------
+    USE LinearAlgebra
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: n    ! Nodes after condensation
+    INTEGER, INTENT(IN) :: nb   ! The number of bubble basis functions
+    INTEGER, INTENT(IN) :: dofs ! DOFs per node
+    INTEGER, INTENT(IN) :: dim  ! The first dim fields have bubbles
+    REAL(KIND=dp), INTENT(INOUT) :: K(:,:)          ! The stiffness matrix
+    REAL(KIND=dp), INTENT(INOUT) :: F(:)            ! The RHS vector
+    REAL(KIND=dp), OPTIONAL, INTENT(INOUT) :: F1(:) ! Some other RHS vector
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Kbl(nb*dim,n*dofs), Kbb(nb*dim,nb*dim), Fb(nb*dim)
+    REAL(KIND=dp) :: Klb(n*dofs,nb*dim)
+    
+    INTEGER :: i, m, p, Cdofs(dofs*n), Bdofs(dim*nb)
+!------------------------------------------------------------------------------
+    
+    Cdofs(1:n*dofs) = (/ (i, i=1,n*dofs) /)
+
+    m = 0
+    DO p = 1,nb
+      DO i = 1,dim
+        m = m + 1
+        Bdofs(m) = dofs*(n+p-1) + i
+      END DO
+    END DO
+
+    Kbb = K(Bdofs,Bdofs)
+    Kbl = K(Bdofs,Cdofs)
+    Klb = K(Cdofs,Bdofs)
+    Fb  = F(Bdofs)
+
+    CALL InvertMatrix( Kbb,nb*dim )
+
+    F(1:dofs*n) = F(1:dofs*n) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    K(1:dofs*n,1:dofs*n) = &
+        K(1:dofs*n,1:dofs*n) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
+
+    IF (PRESENT(F1)) THEN
+      Fb  = F1(Bdofs)
+      F1(1:dofs*n) = F1(1:dofs*n) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE BeamCondensate
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver

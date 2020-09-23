@@ -1,0 +1,39 @@
+## default file to generate documentation from .md files using pandoc
+# run: pandoc -d MakeDoc.yml 
+from: markdown
+to: pdf
+
+output-file: Documentation_Adjoint.pdf
+
+top-level-division: part
+
+input-files:
+- Introduction.md
+- Generic_part.md
+-  Adjoint_GradientValidation.md
+-  Optimize_m1qn3.md
+-  Adjoint_LinearSolver.md 
+- CostSolvers_part.md
+-  Adjoint_CostDiscSolver.md
+-  Adjoint_CostContSolver.md
+-  AdjointSSA_CostFluxDivSolver.md
+- RegSolvers_part.md
+-  Adjoint_CostRegSolver.md
+-  AdjointSSA_CostTaubSolver.md
+- StokesSolvers_part.md
+-  AdjointStokes_GradientBetaSolver.md
+- SSASolvers_part.md
+-  AdjointSSA_SSASolver.md
+-  AdjointSSA_GradientSolver.md
+- Utility.md
+
+standalone: true
+
+table-of-contents: true
+
+number-sections: true
+
+variables:
+  documentclass: scrreprt
+  urlcolor: cyan
+  #documentclass: report 

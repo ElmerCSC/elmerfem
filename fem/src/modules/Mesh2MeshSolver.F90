@@ -72,6 +72,11 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
   
   IMPLICIT NONE
 !------------------------------------------------------------------------------
+  TYPE AdditiveSol_t
+    LOGICAL :: Additive
+    REAL(KIND=dp), ALLOCATABLE :: Values(:)
+  END TYPE AdditiveSol_t 
+  TYPE(AdditiveSol_t), ALLOCATABLE :: BaseSol(:)
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
@@ -81,10 +86,10 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh, ThisMesh, TargetMesh
   TYPE(ValueList_t), POINTER :: Params
-  TYPE(Variable_t), POINTER :: Var
+  TYPE(Variable_t), POINTER :: Var, pVar, FromVars
   CHARACTER(LEN=MAX_NAME_LEN) :: Name, VarName, MaskName
-  INTEGER :: i, n
-  LOGICAL :: Found, GotMaskName, AdditiveMode, DoAdd  
+  INTEGER :: i, n, NoVar
+  LOGICAL :: Found, GotMaskName, AdditiveMode, DoAdd, DoIt
   REAL(KIND=dp), ALLOCATABLE :: TmpSol(:)
   
   INTERFACE
@@ -106,16 +111,14 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
 
   
   CALL Info('Mesh2MeshSolver','Mapping result between meshes')
-
-  
+    
   ThisMesh => Getmesh()
   CALL Info('Mesh2MeshSolver','This mesh name is: '//TRIM(ThisMesh % Name),Level=7)   
-
 
   Params => GetSolverParams()
 
   TargetMesh => NULL()
-
+  
   i = ListGetInteger( Params,'Target Mesh Solver Index',Found ) 
   IF( Found ) THEN
     ! Target mesh solver is explicitly given
@@ -143,79 +146,154 @@ SUBROUTINE Mesh2MeshSolver( Model,Solver,dt,TransientSimulation )
 
   CALL Info('Mesh2MeshSolver','Target mesh name is: '//TRIM(TargetMesh % Name),Level=7)   
 
-  
-  IF( ListCheckPresent( Params,'Variable 1') ) THEN
-    CALL Info('Mesh2MeshSolver','Mapping field one at a time as requested',Level=7)
-    
-    CALL SetCurrentMesh( CurrentModel, TargetMesh )
+  AdditiveMode = .FALSE.
+  NoVar = 0
+  DO i = 1,100    
+    WRITE (Name,'(A,I0)') 'Variable ',i
+    IF( .NOT. ListCheckPresent( Params, Name ) ) EXIT
+    NoVar = i
+  END DO
+   
+  IF( NoVar > 0 ) THEN      
+    CALL Info('Mesh2MeshSolver','Mapping '//TRIM(I2S(NoVar))//' fields as requested',Level=7)
+        
+    ALLOCATE( FromVars )
+    pVar => FromVars
 
-    AdditiveMode = ListGetLogical( Params,'Interpolation Additive',Found ) 
+    AdditiveMode = ListCheckPrefix( Params,'Variable Additive')
     IF( AdditiveMode ) THEN
-      CALL Info('Mesh2MeshSolver','Interpolating in additive mode',Level=15)
+      ALLOCATE( BaseSol( NoVar ) )
+      BaseSol(1:NoVar) % Additive = .FALSE.
+      CALL Info('Mesh2MeshSolver','Interpolating in additive mode',Level=10)
     END IF
-
-    DO i = 1,100    
+    
+    DO i = 1,NoVar    
       WRITE (Name,'(A,I0)') 'Variable ',i
       VarName = GetString( Params, Name, Found )
       IF(.NOT. Found ) EXIT    
 
-      WRITE (Name,'(A,I0)') 'Mask ',i
-      MaskName = GetString( Params, Name, GotMaskName )
-
-      ! Use namespace such that in principle each variable could have different set of
-      ! interpolation rules attached to them. 
-      CALL ListPushNameSpace('var'//TRIM(I2S(i))//':')
-
-      ! Here we might invalidate the variable in the primary mesh so that it really needs to be interpolated
-      Var => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+      IF( i > 1 ) THEN
+        ALLOCATE( pVar % Next )
+        pVar => pVar % Next
+      END IF
+            
+      Var => VariableGet( ThisMesh % Variables, VarName, ThisOnly = .TRUE. )
       IF( ASSOCIATED( Var ) ) THEN
-        Var % Valid = .FALSE.
+        pVar = Var
+      ELSE
+        pVar % Name = TRIM(VarName)
+        pVar % dofs =  1
+        ALLOCATE( PVar % Perm(0) )
+      END IF
+      pVar % Next => NULL()
+      
+      ! If the target variable has different name
+      ! rename the primary variable also so that default subroutines can be used.
+      !-------------------------------------------------------------------------
+      WRITE (Name,'(A,I0)') 'Target Variable ',i
+      VarName = GetString( Params, Name, Found )
+      IF( Found ) THEN
+        pVar % Name = VarName
+        pVar % NameLen = LENTRIM( VarName ) 
       END IF
 
-      ! This is provided if we want the interpolation to be cumulative
-      DoAdd = .FALSE.
-      IF( ASSOCIATED( Var ) ) THEN      
-        IF( AdditiveMode ) THEN
-          n = SIZE( Var % Values ) 
-          IF(ALLOCATED( TmpSol ) ) THEN
-            IF( SIZE( TmpSol ) < n ) DEALLOCATE( TmpSol ) 
-          END IF
-          IF( .NOT. ALLOCATED( TmpSol ) ) THEN
-            ALLOCATE( TmpSol( n ) )
-          END IF
-          DoAdd = .TRUE.
-          TmpSol(1:n) = Var % Values(1:n)
+      ! If the variable is additive allocate and save for the base values
+      !-------------------------------------------------------------------       
+      WRITE (Name,'(A,I0)') 'Variable Additive ',i
+      IF( ListGetLogical( Params,Name, Found ) ) THEN
+        Var => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+        IF(.NOT. ASSOCIATED( Var ) ) THEN
+          CALL Fatal('Mesh2MeshSolver','Only existing fields may be additive!')
+        END IF
+        BaseSol(i) % Additive = .TRUE.
+        ALLOCATE( BaseSol(i) % Values( SIZE( Var % Values ) ) )
+        BaseSol(i) % Values = Var % Values
+      END IF
+    END DO
+  ELSE
+    FromVars => ThisMesh % Variables 
+  END IF
+ 
+  ! For some reason this is not always active.
+  ! If this is not set parallel interpolation could fail.
+  !----------------------------------------------------------------------
+  IF( ParEnv % PEs > 1 ) ParEnv % Active = .TRUE.
+
+  ! Here is all the real interpolation work (serial & parallel)
+  !---------------------------------------------------------------------
+  CALL Info('Mesh2MeshSolver','Mapping all fields in primary mesh to target mesh!',Level=7)
+  CALL InterpolateMeshToMesh( ThisMesh, TargetMesh, &
+      FromVars, TargetMesh % Variables )
+  CALL Info('Mesh2MeshSolver','Done mapping all fields in primary mesh to target mesh!',Level=15)
+  !---------------------------------------------------------------------  
+
+  ! If we has some additive variables then add the base values.
+  !----------------------------------------------------------------
+  IF( AdditiveMode ) THEN
+    DO i = 1,NoVar
+      IF( BaseSol(i) % Additive ) THEN
+        WRITE (Name,'(A,I0)') 'Variable ',i
+        VarName = GetString( Params, Name, Found )
+        Var => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+        CALL Info('Mesh2MeshSolver','Adding variable to base field: '//TRIM(VarName),Level=7)
+        Var % Values = Var % Values + BaseSol(i) % Values
+        DEALLOCATE( BaseSol(i) % Values ) 
+      END IF
+    END DO
+    DEALLOCATE( BaseSol ) 
+  END IF
+  
+  ! Validate the mapped variables because otherwise we might accidentally be performing
+  ! mapping again when calling GetVariable.
+  !------------------------------------------------------------------------------------
+
+  IF( NoVar > 0 ) THEN
+    DO i = 1,NoVar    
+      WRITE (Name,'(A,I0)') 'Variable ',i
+      VarName = GetString( Params, Name, Found )
+            
+      Var => VariableGet( ThisMesh % Variables, VarName, ThisOnly = .TRUE. )
+      pVar => VariableGet( TargetMesh % Variables, VarName, ThisOnly = .TRUE. )
+
+      IF( ASSOCIATED( Var ) ) THEN
+        IF( InfoActive(20) ) &
+          PRINT *,'FromRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
+      END IF
+      IF( ASSOCIATED( pVar ) ) THEN
+        pVar % Valid = .TRUE.
+        pVar % ValuesChanged = .TRUE.
+        IF( InfoActive(20) ) &
+            PRINT *,'ToRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
+      END IF
+   END DO
+  ELSE  
+    Var => FromVars
+    DO WHILE( ASSOCIATED( Var ) )
+      ! Check that it exists as target variable
+      pVar => VariableGet( TargetMesh % Variables, Var % Name(1:Var % NameLen), ThisOnly=.TRUE.)
+      DoIt = ASSOCIATED( pVar )
+      
+      IF( DoIt ) THEN
+        DoIt = ( SIZE( pVar % Values ) > Var % DOFs )  ! not global variable
+        IF( DoIt ) DoIt = ( pVar % Name(1:10) /= 'coordinate' )  ! not coordinate
+      END IF
+      
+      IF( DoIt ) THEN
+        CALL Info('Mesh2MeshSolver','Validatig variable in target mesh: '//TRIM(Var % Name ),Level=7)
+        pVar % Valid = .TRUE.
+        pVar % ValuesChanged = .TRUE.
+        
+        IF( InfoActive(20) ) THEN
+          PRINT *,'FromRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(Var % Name),MAXVAL(Var % Values )      
+          PRINT *,'ToRange'//TRIM(I2S(ParEnv % Mype))//': ', TRIM(pVar % Name),MAXVAL(pVar % Values )      
         END IF
       END IF
-
-      ! Try to find the variable in target mesh, this includes MeshToMesh interpolation by default
-      IF( GotMaskName ) THEN      
-        Var => VariableGet( TargetMesh % Variables, VarName, MaskName = MaskName )
-      ELSE 
-        Var => VariableGet( TargetMesh % Variables, VarName )
-      END IF
-
-      IF( DoAdd ) THEN
-        Var % Values(1:n) = Var % Values(1:n) + TmpSol(1:n)
-      END IF
-
-      IF(.NOT. ASSOCIATED( Var ) ) THEN
-        CALL Warn('Mesh2MeshSolver','Could not find variable '//TRIM(VarName)//' in part '//TRIM(I2S(ParEnv % MyPe)))
-      END IF
-
-      PRINT *,'Variable range:',MINVAL( Var % Values), MAXVAL( Var % Values ), &
-          SUM( Var % Values ) / SIZE( Var % Values ) 
-
-      CALL ListPopNamespace()
+      
+      Var => Var % Next
     END DO
-    CALL SetCurrentMesh( CurrentModel, ThisMesh )
-    CALL Info('Mesh2MeshSolver','Succesfully interpolated '//TRIM(I2S(i-1))//' variables',Level=7)
-  ELSE
-    CALL Info('Mesh2MeshSolver','Mapping all fields in primary mesh to target mesh!',Level=7)
-    CALL InterpolateMeshToMesh( ThisMesh, TargetMesh, &
-        ThisMesh % Variables, TargetMesh % Variables )
-    CALL Info('Mesh2MeshSolver','Interpolated variables between meshes',Level=7)
   END IF
+    
+  CALL Info('Mesh2MeshSolver','Interpolated variables between meshes',Level=7)
   
 !------------------------------------------------------------------------------
 END SUBROUTINE Mesh2MeshSolver

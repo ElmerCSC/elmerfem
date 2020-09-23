@@ -123,6 +123,7 @@ int FtFont(ClientData,Tcl_Interp*,int,char**);
 int FtText(ClientData,Tcl_Interp*,int,char**);
 #endif
 
+
 static void fpe_sig( int sig ) { signal( SIGFPE, fpe_sig ); }
 
 static void int_sig( int sig )

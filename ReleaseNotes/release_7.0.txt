@@ -1,0 +1,158 @@
+From: Peter Råback <Peter.Raback@csc.fi>
+Subject: [Elmerupdates] Elmer 7.0 released
+Date: Thu, 31 May 2012 15:25:20 +0300
+
+
+
+Hi All
+
+Due to the LGPL update of Elmer library we changed the leading number in the 
+Elmer version. So the current number is 7.0. There are not other drastic 
+changes but as the license policy of LGPL is different from GPL we considered 
+that it was time for a change. So starting from version 7.0 you can now link 
+your fully own (not derived!) solvers with the library as you wish.
+
+There are also fresh Windows versions and documentation on sourceforge and 
+nic.funet.fi.
+
+Below are the major new features between revisions 5191 (aka 6.2.) and 5685 
+(aka 7.0).
+
+Thank you very much for all the contributors!
+
+Best regards,
+ElmerTeam
+
+
+Software development:
+----------------------------
+* Doxygen code documentation system taken into use, 
+http://www.elmerfem.org/doxygen
+* Moved dynamically linked solvers into separate subdirectory "fem/modules"
+* Moved the ElmerSolver library under LGPL license.
+
+Element basis:
+-----------------
+* Edge basis functions for quad & brick & wedge elements.
+* New BC section Keyword "Mass consistent normals". Use mass preserving 
+normals on normal-tangential conditions instead of the usual nodal averaged 
+normals. Works in 2D and for linear- and trilinear elements in 3D.
+* Enabled requesting of Gauss Points using relative order {-1,0,+1}. This is 
+enabled for p-elements with generic rules and for Lagrangian elements the 
+number of Gauss points for specific order must be provided in "elements.def". 
+For the code developer the option is seen as a new optional parameter 
+"RelOrder" in GaussPoints funtion. This must be implemented for each solver 
+separately. So far only StressSolve has been modified to with the "Relative 
+Integration Order" keyword.
+
+Linear system:
+------------------
+* Linear systems may now be scaled in the solution phase using the row 
+equilibration (by setting Linear System Row Equilibration = Logical True)
+* It is now possible to utilize the block solver strategy for monolithic 
+solver (BlockSolve.src). Uses the legacy solvers only for assembly, splits 
+the matrix into blocks and then solves the boock system.
+* Modified HYPRE interface (contribution from Jonas Thies):
+- Allow separate setup and solve.
+- New keyword "HYPRE Block Diagonal", which does something similar to the 
+BILUn serial preconditioner when calling HYPRE.
+- HYPRE interface now accepts 'CG' as solver option.
+* interface to linear solvers from the Trilinos libraries. This can be 
+enabled by compiling with -DHAVE_TRILINOS and currently works only in 
+parallel (through SParIterSolver). Some examples are in 
+fem/examples/TrilinosSolvers. This is still very experimental! (contribution 
+from Jonas Thies)
+* Added a simple iterative method 'richardson' preconditioned with a lumped 
+mass matrix. The algorithm is very similar to Jacobi. Might have some use in 
+solving problems involving just a simple mass matrix.
+
+Misc:
+------
+* Enabled keyword "Timestep size" that takes MATC definitions etc. as any 
+other Real variable.
+* Add interface "GetLocalSolution()" to unify "GetScalarLocalSolution()" and 
+"GetVectorLocalSolution" utility subroutines.
+* Improved control on verbosity. Additional in-line parameters -s/--silent, 
+default level of four for Info, and keyword check 'silent'.
+* Enabled internal 1D mesh generation for the 1D outlet solver.
+* Improved the speed of ListGetReal command in case when a constant is being 
+fecthed. Also made a new subroutine ListGetRealAtIp and a related data 
+structure that is intended to be called at each integration point. The data 
+structure includes information that is used to remember things from previous 
+evaluations to save time. This is not yet used in any solver so changes are 
+still possible, and even probable.
+* Solver section keyword "Back Rotate N-T System=Logical" (default: True). 
+This keyword can be set to false, to disable the rotation of the solution 
+fields of normal-tangential boundaries to coordinate directions.
+
+New features for old Solvers:
+-----------------------------------
+HelmholtzSolver:
+* Enabled variable density fields in Helmholtz solver. This affects the 
+results only when density is not constant. Also a interface to harmonic 
+structural analysis was implemented.
+
+ElasticSolve:
+* Stress and strain computation enabled.
+* New material models: a neo-Hookean material model and an orthotropic 
+material model added for handling cases with large rotations and small strains
+
+FlowSolver:
+* Add new Navier-Stokes discretization option 'Laplace Discretization'. The 
+diffusion term discretized is \mu div(grad(u)) instead of the default 2\mu 
+div(\epsilon(u)). The resulting linear system is smaller (in terms of 
+nonzeros) and usually easier to solve. This has, however, an effect on the 
+meaning of the various boundary conditions.
+* introduced Glen's flow law as a separate non-linear flow law in Effective 
+Viscosity
+
+StatElecSolver:
+* Added infinity conditions to the electrostatic equation. These assume 
+spherical symmetry of the far-field.
+
+SaveLine:
+* Enabled solution of isocurve points in SaveLine: Given some field, save the 
+intersection points that have a predefined value.
+
+ResultOutputSolver (all related to VTU output):
+* Enabled VTK Collection for timesteps
+* Enables saving of body and bc id:s by keyword "Save Geometry Ids"
+* Implemented eigenmode saving with two different numbering strategies
+* Enabled timestep indexes with more than four numbers in length.
+* Enables saving of "elemental" information.
+
+HeatSolver:
+* Added perfusion rate to HeatSolver (contribution from Matthias Zenker).
+
+StressSolver:
+* Add more general form of Robin type of BC:s: -(tau,n) + Ku = f, with K a 
+dim x dim matrix given with "Spring ij" keywords.
+
+MagnetoDynamicsCalcFields:
+* Modify the results computation (MagnetoDynamicsCalcFields) as so that 
+default output still is nodally fitted variables. Also elementwise nodal 
+fields directly computed to nodes (variable names with ' E' postfix)
+* If "Discontinuous Galerkin=True" then elementwise nodally fitted variables 
+(with no postfix on names)
+* If "Discontinuous Galerkin=True" and "Average within Materials=Logical 
+True" then materialwise fitted variables (discontinuous at material 
+interfaces, with no postfix on names)
+
+Note that default ElmerPost output only contains the nodally fitted 
+variables, use ResultOutputSolver with format="ep" or format="vtu" to look at 
+the other variations.
+
+New Solvers:
+----------------
+ParticleAdvector:
+* Particle based solver for diffusion-free advection of scalar fields. For 
+each node a particle is sent -dt backwards in time and the field value is 
+taken from the resulting upstream point. This provides diffusion free 
+advection. The robustness of the solver may still be suspectable since it is 
+based on the ability to follow particles in a mesh.
+
+ThermoElectricSolver:
+* First version of a tightly coupled thermoelectric solver.
+
+ShallowNS:
+* First version of the shallow water Navier-Stokes equations solver. 

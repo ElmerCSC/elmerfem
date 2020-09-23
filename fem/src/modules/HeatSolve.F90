@@ -131,6 +131,8 @@
        PhaseVelocity(:,:), HeatConductivityIso(:), &
        PerfusionRate(:), PerfusionDensity(:), PerfusionHeatCapacity(:), PerfusionRefTemperature(:)
 
+     REAL(KIND=dp), ALLOCATABLE :: Areas(:), Emiss(:)
+
      SAVE U, V, W, MU, MASS, STIFF, LOAD, PressureCoeff, &
        FORCE, ElementNodes, HeatConductivity, HeatCapacity, HeatTransferCoeff, &
        Enthalpy, EnthalpyFraction, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
@@ -174,9 +176,6 @@
      END INTERFACE
 
      REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: CPUTime,RealTime
-#endif
 
 
      CALL Info('HeatSolver','-------------------------------------------',Level=6)
@@ -209,6 +208,7 @@
   
      LocalNodes = COUNT( TempPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
+     IF(SIZE(Temperature) < LocalNodes) LocalNodes = SIZE(Temperature)
 
      SolverParams => GetSolverParams()
 
@@ -248,7 +248,7 @@
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
         N = Solver % Mesh % MaxElementDOFs
 
         IF ( AllocationsDone ) THEN
@@ -363,7 +363,7 @@
      Constants => GetConstants()
      IF( IsRadiation ) THEN
        StefanBoltzmann = ListGetConstReal( Model % Constants, &
-                     'Stefan Boltzmann' )
+                     'Stefan Boltzmann',UnfoundFatal=.TRUE.)
      END IF
 
 !------------------------------------------------------------------------------
@@ -575,6 +575,34 @@
      CumulativeTime = 0.0d0
      HeaterControlLocal = .FALSE.
 
+     IF(isRadiation) THEN
+BLOCK
+       TYPE(ValueList_t), POINTER :: BC
+       INTEGER :: bindex, nb
+
+       nb = Solver % Mesh % NumberOfBoundaryElements
+       ALLOCATE(Areas(nb), Emiss(nb))
+       Areas=0; Emiss=0
+
+       DO j=1,nb
+         bindex = j + Solver % Mesh % NumberOfBulkElements
+         Element => Solver % Mesh % Elements(bindex)
+
+         BC => GetBC(Element)
+         IF (ASSOCIATED(BC)) THEN
+           IF (ListCheckPresent(BC, 'Radiation')) THEN
+             n = GetElementNOFNodes(Element)
+             Areas(j) = ElementArea( Solver % Mesh, Element, n )
+
+             NodalEmissivity(1:n) = GetReal(BC,'Emissivity',Found)
+             IF (.NOT. Found) &
+               NodalEmissivity(1:n) = GetParentMatProp('Emissivity',Element)
+             Emiss(j) = SUM(NodalEmissivity(1:n)) / n
+           END IF
+         END IF
+       END DO
+END BLOCK
+     END IF
 !------------------------------------------------------------------------------
      FirstTime = .TRUE.
 
@@ -908,8 +936,11 @@
 !------------------------------------------------------------------------------
 !          Given heat source
 !------------------------------------------------------------------------------
-           Load(1:n) = Density(1:n) *  GetReal( BodyForce, 'Heat Source', Found )
-           
+           Load(1:n) = GetReal( BodyForce, 'Volumetric Heat Source', Found )
+           IF(.NOT. Found ) THEN
+             Load(1:n) = Density(1:n) *  GetReal( BodyForce, 'Heat Source', Found )
+           END IF
+             
            IF ( SmartHeaterControl .AND. NewtonLinearization .AND. SmartTolReached) THEN
               IF(  SmartHeaters(bf_id) ) THEN
                HeaterControlLocal = .TRUE.
@@ -1507,6 +1538,7 @@ CONTAINS
     END SUBROUTINE AddGlobalTime
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
     SUBROUTINE DiffuseGrayRadiation( Model, Solver, Element,  &
       Temperature, TempPerm, ForceVector,AngleFraction, Text)
@@ -1516,35 +1548,49 @@ CONTAINS
       TYPE(Element_t), POINTER :: Element
       INTEGER :: TempPerm(:)
       REAL(KIND=dp) :: Temperature(:), ForceVector(:)
-      REAL(KIND=dp) :: AngleFraction, Text
+      REAL(KIND=dp) :: AngleFraction, Text, LOAD, TransCoeff
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: Area, Asum
-      INTEGER :: i,j,k,l,m,ImplicitFactors
+      REAL(KIND=dp) :: Area, Asum, gEmissivity, Base(12)
+      REAL(KIND=dp), POINTER :: Fact(:)
+      INTEGER :: i,j,k,l,m,ImplicitFactors, nf,nr, bindex, nb
       INTEGER, POINTER :: ElementList(:)
 !------------------------------------------------------------------------------
 !     If linear iteration compute radiation load
 !------------------------------------------------------------------------------
 
-
-      Asum = 0.0d0
+      Asum = 0.0_dp
       IF ( .NOT. NewtonLinearization ) THEN
+
         Text = ComputeRadiationLoad( Model, Solver % Mesh, Element, &
-                 Temperature, TempPerm, Emissivity, AngleFraction)
+           Temperature, TempPerm, Emissivity, AngleFraction, Areas, Emiss )
+
       ELSE   !  Full Newton-Raphson solver
 !------------------------------------------------------------------------------
 !       Go through surfaces (j) this surface (i) is getting
 !       radiated from.
 !------------------------------------------------------------------------------
 
-        Area  = ElementArea( Solver % Mesh, Element, n )
         ElementList => Element % BoundaryInfo % GebhardtFactors % Elements
 
-        DO j=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+        nf = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
 
-          RadiationElement => Solver % Mesh % Elements( ElementList(j) )
+        bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
+        Area  = Areas(bindex)
+        CALL GetBase( Base, Element, n, ElementNodes )
 
-          Text = ComputeRadiationCoeff(Model,Solver % Mesh,Element,j) / ( Area )
+        Fact => Element % BoundaryInfo % GebhardtFactors % Factors
+
+        DO j=1,nf
+
+          RadiationElement => Solver % Mesh % Elements(ElementList(j))
+
+!         Text = ComputeRadiationCoeff(Model,Solver % Mesh,Element,j) / ( Area )
+!         bindex = ElementList(j) - Solver % Mesh % NumberOfBulkElements
+!         Text = Areas(bindex) * Emiss(bindex) * ABS(Fact(j)) / Area
+          Text = Fact(j)
+
           Asum = Asum + Text
+
 !------------------------------------------------------------------------------
 !         Gebhardt factors are given elementwise at the center
 !         of the element, so take average of nodal temperatures
@@ -1559,33 +1605,32 @@ CONTAINS
           IF(j <= ImplicitFactors) THEN
             
             S = (SUM( Temperature( TempPerm( RadiationElement % &
-                NodeIndexes))**4 )/k )**(1.0d0/4.0d0)
+                NodeIndexes))**4 )/k )**(1._dp/4._dp)
 !------------------------------------------------------------------------------
-!         Linearization of the G_jiT^4_j term
+!          Linearization of the G_jiT^4_j term
 !------------------------------------------------------------------------------
-            HeatTransferCoeff(1:n) = -4 * Text * S**3 * StefanBoltzmann
-            LOAD(1:n) = -3 * Text * S**4 * StefanBoltzmann
+           LOAD = -3 * Text * S**4 * StefanBoltzmann
+           TransCoeff = -4 * Text * S**3 * StefanBoltzmann
 !------------------------------------------------------------------------------
-!         Integrate the contribution of surface j over surface i
-!         and add to global matrix
+!          Integrate the contribution of surface j over surface i
+!          and add to global matrix
 !------------------------------------------------------------------------------
-            CALL IntegOverA( STIFF, FORCE, LOAD, &
-                HeatTransferCoeff, Element, n, k, ElementNodes ) 
-            
-            IF ( TransientAssembly ) THEN
-              MASS = 0.d0
-              CALL Add1stOrderTime( MASS, STIFF, &
-                  FORCE,dt,n,1,TempPerm(Element % NodeIndexes),Solver )
-            END IF
+!           CALL IntegOverA( STIFF, FORCE, LOAD, &
+!                TransCoeff, Element, n, k, ElementNodes ) 
+
+!           IF ( TransientAssembly ) THEN
+!             MASS = 0.0_dp
+!             CALL Add1stOrderTime( MASS, STIFF, &
+!                 FORCE,dt,n,1,TempPerm(Element % NodeIndexes),Solver )
+!           END IF
             
             DO m=1,n
               k1 = TempPerm( Element % NodeIndexes(m) )
               DO l=1,k
                 k2 = TempPerm( RadiationElement % NodeIndexes(l) )
-                CALL AddToMatrixElement( StiffMatrix,k1, &
-                    k2,STIFF(m,l) )
+                CALL AddToMatrixElement( StiffMatrix,k1,k2,TransCoeff*Base(m)/k )
               END DO
-              ForceVector(k1) = ForceVector(k1) + FORCE(m)
+              ForceVector(k1) = ForceVector(k1) + Load*Base(m)
             END DO
 
           ELSE
@@ -1593,15 +1638,15 @@ CONTAINS
             S = (SUM( Temperature( TempPerm( RadiationElement % &
                 NodeIndexes))**4 )/k )
             
-            HeatTransferCoeff(1:n) = 0.0d0
-            LOAD(1:n) = Text * S * StefanBoltzmann
+            LOAD = Text * S * StefanBoltzmann
             
-            CALL IntegOverA( STIFF, FORCE, LOAD, &
-                HeatTransferCoeff, Element, n, k, ElementNodes ) 
-            
+!           TransCoeff = 0.0_dp
+!           CALL IntegOverA( STIFF, FORCE, LOAD, &
+!               TransCoeff, Element, n, k, ElementNodes ) 
+
             DO m=1,n
               k1 = TempPerm( Element % NodeIndexes(m) )
-              ForceVector(k1) = ForceVector(k1) + FORCE(m)
+              ForceVector(k1) = ForceVector(k1) + LOAD*Base(m)
             END DO
             
           END IF 
@@ -1619,7 +1664,6 @@ CONTAINS
 
     END SUBROUTINE DiffuseGrayRadiation
 !------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
     SUBROUTINE EffectiveHeatCapacity()
@@ -1853,20 +1897,18 @@ CONTAINS
 
 
 
+
 !------------------------------------------------------------------------------
-   SUBROUTINE IntegOverA( BoundaryMatrix, BoundaryVector, &
-     LOAD, NodalAlpha, Element, n, m, Nodes )
+   SUBROUTINE GetBase( Base, Element, n, Nodes )
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:), &
-                    LOAD(:),NodalAlpha(:)
+     REAL(KIND=dp) :: Base(:)
 
      TYPE(Nodes_t)   :: Nodes
      TYPE(Element_t) :: Element
 
      INTEGER :: n,  m
 
-     REAL(KIND=dp) :: Basis(n)
-     REAL(KIND=dp) :: dBasisdx(n,3),SqrtElementMetric
+     REAL(KIND=dp) :: Basis(n), DetJ
 
      REAL(KIND=dp) :: u,v,w,s,x,y,z
      REAL(KIND=dp) :: Force,Alpha
@@ -1879,8 +1921,7 @@ CONTAINS
      LOGICAL :: stat
 !------------------------------------------------------------------------------
 
-     BoundaryVector = 0.0D0
-     BoundaryMatrix = 0.0D0
+     Base = 0._dp
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
@@ -1894,6 +1935,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Now we start integrating
 !------------------------------------------------------------------------------
+
      DO t=1,N_Integ
        u = U_Integ(t)
        v = V_Integ(t)
@@ -1901,10 +1943,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
-       stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric, &
-                  Basis,dBasisdx )
+       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis )
 
-       s = SqrtElementMetric * S_Integ(t)
+       s = detJ * S_Integ(t)
 !------------------------------------------------------------------------------
 !      Coordinatesystem dependent info
 !------------------------------------------------------------------------------
@@ -1915,13 +1956,81 @@ CONTAINS
          s = s * CoordinateSqrtMetric( x,y,z )
        END IF
 !------------------------------------------------------------------------------
-       Force = SUM( LOAD(1:n) * Basis )
-       Alpha = SUM( NodalAlpha(1:n) * Basis )
+       DO p=1,N
+         Base(p) = Base(p) + s * Basis(p)
+       END DO
+     END DO
+   END SUBROUTINE GetBase
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE IntegOverA( BoundaryMatrix, BoundaryVector, &
+     LOAD, NodalAlpha, Element, n, m, Nodes )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:), LOAD,NodalAlpha
+
+     TYPE(Nodes_t)   :: Nodes
+     TYPE(Element_t) :: Element
+
+     INTEGER :: n,  m
+
+     REAL(KIND=dp) :: Basis(n), DetJ
+
+     REAL(KIND=dp) :: u,v,w,s,x,y,z
+     REAL(KIND=dp) :: Force,Alpha
+     REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
+
+     INTEGER :: i,t,q,p,N_Integ
+
+     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+
+     LOGICAL :: stat
+!------------------------------------------------------------------------------
+
+     BoundaryVector = 0.0_dp
+     BoundaryMatrix = 0.0_dp
+!------------------------------------------------------------------------------
+!    Integration stuff
+!------------------------------------------------------------------------------
+     IntegStuff = GaussPoints( Element )
+     U_Integ => IntegStuff % u
+     V_Integ => IntegStuff % v
+     W_Integ => IntegStuff % w
+     S_Integ => IntegStuff % s
+     N_Integ =  IntegStuff % n
+
+!------------------------------------------------------------------------------
+!   Now we start integrating
+!------------------------------------------------------------------------------
+     Force = LOAD
+     Alpha = NodalAlpha / m
+
+     DO t=1,N_Integ
+       u = U_Integ(t)
+       v = V_Integ(t)
+       w = W_Integ(t)
+!------------------------------------------------------------------------------
+!     Basis function values & derivatives at the integration point
+!------------------------------------------------------------------------------
+       stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis )
+
+       s = detJ * S_Integ(t)
+!------------------------------------------------------------------------------
+!      Coordinatesystem dependent info
+!------------------------------------------------------------------------------
+       IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+         x = SUM( Nodes % x(1:n)*Basis )
+         y = SUM( Nodes % y(1:n)*Basis )
+         z = SUM( Nodes % z(1:n)*Basis )
+         s = s * CoordinateSqrtMetric( x,y,z )
+       END IF
+!------------------------------------------------------------------------------
+!      Force = SUM( LOAD(1:n) * Basis )
+!      Alpha = SUM( NodalAlpha(1:n) * Basis )
 
        DO p=1,N
          DO q=1,M
-           BoundaryMatrix(p,q) = BoundaryMatrix(p,q) + &
-                  s * Alpha * Basis(p) / m
+           BoundaryMatrix(p,q) = BoundaryMatrix(p,q) + s * Alpha * Basis(p)
          END DO
        END DO
 
@@ -1931,7 +2040,6 @@ CONTAINS
      END DO
    END SUBROUTINE IntegOverA
 !------------------------------------------------------------------------------
-
 
 
 !------------------------------------------------------------------------------
@@ -2167,7 +2275,7 @@ CONTAINS
               Emissivity = SUM( NodalEmissivity(1:En)) / En
 
               StefanBoltzMann = &
-                    ListGetConstReal( Model % Constants,'Stefan Boltzmann' )
+                  ListGetConstReal( Model % Constants,'Stefan Boltzmann',UnfoundFatal=.TRUE. )
 
            !---------------------
            CASE( 'diffuse gray' )
@@ -2540,7 +2648,7 @@ CONTAINS
 
      INTEGER :: i,j,k,l,n,t,DIM
 
-     LOGICAL :: stat, Found, Compressible
+     LOGICAL :: stat, Found, Compressible, VolSource
      TYPE( Variable_t ), POINTER :: Var
 
      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
@@ -2719,9 +2827,13 @@ CONTAINS
                  1, Model % NumberOFBodyForces)
 
      NodalSource = 0.0d0
-     IF ( Found .AND. k > 0  ) THEN
-        NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
-               'Heat Source', n, Element % NodeIndexes, Found )
+     IF( k > 0 ) THEN
+       NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
+           'Volumetric Heat Source', n, Element % NodeIndexes, VolSource ) 
+       IF( .NOT. VolSource ) THEN
+         NodalSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
+             'Heat Source', n, Element % NodeIndexes, Found )
+       END IF
      END IF
 
 !
@@ -2768,8 +2880,13 @@ CONTAINS
 !          g^{jk} (C T_{,j}}_{,k} + p div(u) - h
 !       ---------------------------------------------------
 !
-        Residual = -Density * SUM( NodalSource(1:n) * Basis(1:n) )
 
+        IF( VolSource ) THEN
+          Residual = -SUM( NodalSource(1:n) * Basis(1:n) )
+        ELSE
+          Residual = -Density * SUM( NodalSource(1:n) * Basis(1:n) )
+        END IF
+          
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
            DO j=1,DIM
 !

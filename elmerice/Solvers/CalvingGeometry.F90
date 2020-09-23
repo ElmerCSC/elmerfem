@@ -3325,7 +3325,7 @@ CONTAINS
          PrimarySolver
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
     INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL()
+    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3480,20 +3480,30 @@ CONTAINS
                 END IF
              END IF
 
+             !Check for duplicate solvers with same var
+             !Nullify/deallocate and repoint the matrix
+             !Note: previously this DO loop was after the FreeMatrix
+             !and pointing below, but this caused double free errors
+             DO j=1,Model % NumberOfSolvers
+               IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
+               IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
+               IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
+
+               !If the other solver's matrix is the same as WorkSolver matrix, we just
+               !nullify, otherwise we deallocate. After the first timestep, solvers
+               !with the same variable will have the same matrix
+               IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkSolver % Matrix)) THEN
+                 Model % Solvers(j) % Matrix => NULL()
+               ELSE
+                 CALL FreeMatrix(Model % Solvers(j) % Matrix)
+               END IF
+               !Point this other solver % matrix to the matrix we just created
+               Model % Solvers(j) % Matrix => WorkMatrix
+             END DO
+
+             !Deallocate the old matrix & repoint
              IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
              WorkSolver % Matrix => WorkMatrix
-
-             !Check for duplicate solvers with same var
-             DO j=1,Model % NumberOfSolvers
-                IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
-                IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
-                IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
-                !Ideally, the solver's old matrix would be freed here, but apart from the 
-                !first timestep, it'll be a duplicate
-                IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkMatrix)) CYCLE
-                CALL FreeMatrix(Model % Solvers(j) % Matrix)
-                Model % Solvers(j) % Matrix => WorkMatrix
-             END DO
 
              NULLIFY(WorkMatrix)
 
@@ -3610,8 +3620,11 @@ CONTAINS
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
 
+    !CHANGE - need to delete UnfoundNOtes from this statement, or front
+    !variables not copied across. If you get some odd interpolation artefact,
+    !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask", UnfoundNodes,globaleps=globaleps,localeps=localeps)
+         "Calving Front Mask",globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3631,8 +3644,17 @@ CONTAINS
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
 
+    !CHANGE
+    !Needs to be told to ignore certain solvers if using multiple meshes
+    SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
+
     DO i=1,Model % NumberOfSolvers
        WorkSolver => Model % Solvers(i)
+
+       !CHANGE - see above
+       IF (ASSOCIATED(SolversToIgnore)) THEN
+         IF(ANY(SolversToIgnore(1:SIZE(SolversToIgnore))==i)) CYCLE
+       END IF
 
        WorkSolver % Mesh => NewMesh !note, assumption here that there's only one active mesh
 
@@ -3853,141 +3875,142 @@ CONTAINS
          CALL Info("GetFrontOrientation","Using predefined Front Orientation from SIF.", Level=6)
          DO i=1,3
            OrientSaved(i) = PArray(i,1)
-         END DO
+        END DO
      ELSE ! constant not found above
         CALL Info("GetFrontOrientation","No predefined Front Orientation, computing instead.", Level=6)
      END IF ! constant
-    END IF ! first time
-
-    ! check whether already did a front orientation computation this timestep
-    TimeVar => VariableGet( Model % Variables, 'Timestep' )
-    IF (Debug) PRINT *, 'Time', TimeVar % Values
-    IF (Debug)  PRINT *, 'PrevTime', PrevTime
-    IF (Debug)  PRINT *, 'FirstThisTime', FirstThisTime
-    IF  (TimeVar % Values(1) > PrevTime ) THEN
-        FirstThisTime=.TRUE.
-    END IF
-    PrevTime = TimeVar % Values(1)
-    IF (.NOT. FirstThisTime) PRINT *, 'use orientation calculated earlier in this timestep'    
-    IF(Constant .OR. (.NOT. FirstThisTime) ) THEN
-      Orientation = OrientSaved
-      RETURN
-    ELSE
-      PRINT *, 'computing orientation'
-      Orientation(3) = 0.0_dp ! always set z-component to 0
-      Mesh => Model % Mesh
-      !Get the front line
-      FrontMaskName = "Calving Front Mask"
-      TopMaskName = "Top Surface Mask"
-      CALL MakePermUsingMask( Model, NullSolver, Mesh, TopMaskName, &
-        .FALSE., TopPerm, dummyint)
-      CALL MakePermUsingMask( Model, NullSolver, Mesh, FrontMaskName, &
-        .FALSE., FrontPerm, FaceNodeCount)
-      LeftMaskName = "Left Sidewall Mask"
-      RightMaskName = "Right Sidewall Mask"
-      !Generate perms to quickly get nodes on each boundary
-      CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
-        .FALSE., LeftPerm, dummyint)
-      CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
-           .FALSE., RightPerm, dummyint)
-      iLeft=0
-      iRight=0
-      HaveLeft=.FALSE.
-      HaveRight=.FALSE.
-      DO i=1,Mesh % NumberOfNodes
-         IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
-           IF( LeftPerm(i) >0  ) THEN
-              xLeft = Mesh % Nodes % x(i)
-              yLeft = Mesh % Nodes % y(i)
-              HaveLeft =.TRUE.
-           ELSE IF ( RightPerm(i) >0  ) THEN
-              xRight = Mesh % Nodes % x(i)
-              yRight = Mesh % Nodes % y(i)
-              HaveRight =.TRUE.
-           END IF
-         END IF
-      END DO
-      IF (Debug)  PRINT *, 'GetFrontOrientation: HaveLeft, HaveRight', HaveLeft, HaveRight
-      IF (Parallel) THEN
-         IF (HaveLeft) PRINT *, 'GetFrontOrientation: xL, yL', xLeft, yLeft
-         IF (HaveRight)  PRINT *, 'GetFrontOrientation: xR, yR', xRight, yRight
-         IF (Debug) PRINT *, 'communicate the corners'
-         IF (HaveLeft  .AND. (ParEnv % MyPE>0)) THEN ! left not in root
-            iLeft=ParEnv % MyPE
-            CALL MPI_BSEND(xLeft, 1, MPI_DOUBLE_PRECISION, &
-                 0 ,7001, ELMER_COMM_WORLD, ierr )
-            CALL MPI_BSEND(yLeft, 1, MPI_DOUBLE_PRECISION, &
-                 0 ,7002, ELMER_COMM_WORLD, ierr )
-            IF (Debug) PRINT *, 'sending left'
-         END IF      
-         IF (HaveRight .AND. (ParEnv % MyPE>0) ) THEN ! right not in root
-            iRight=ParEnv % MyPE
-            CALL MPI_BSEND(xRight, 1, MPI_DOUBLE_PRECISION, &
-                 0 , 7003, ELMER_COMM_WORLD, ierr )
-            CALL MPI_BSEND(yRight, 1, MPI_DOUBLE_PRECISION, &
-                 0 , 7004, ELMER_COMM_WORLD, ierr )
-            IF (Debug) PRINT *, 'sending right'
-         END IF
-         IF (Debug) PRINT *, 'sent the corners'
-         IF (Boss) THEN
-            IF (Debug) PRINT *, ParEnv % PEs
-            IF (.NOT.HaveLeft) THEN
-                  CALL MPI_RECV(RecvXL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                       7001,ELMER_COMM_WORLD, status, ierr )
-                  CALL MPI_RECV(RecvYL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                       7002,ELMER_COMM_WORLD, status, ierr )
-                  xLeft=RecvXL
-                  yLeft=RecvYL
-            END IF
-            IF (.NOT. HaveRight) THEN
-                  CALL MPI_RECV(RecvXR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                       7003,ELMER_COMM_WORLD, status, ierr )
-                  CALL MPI_RECV(RecvYR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                       7004,ELMER_COMM_WORLD, status, ierr )
-                  xRight=RecvXR
-                  yRight=RecvYR
-            END IF
-            IF (Debug) PRINT *, 'received corners'
-            IF (Debug) PRINT *, 'GetFrontOrientation: Boss xL, yL, xR, yR', xLeft, yLeft, xRight, yRight
-         END IF
-      END IF ! end if parallel
-      IF (Boss) THEN ! root or not parallel
-      IF( ABS(xLeft-xRight) < AEPS) THEN
-         ! front orientation is aligned with y-axis
-         Orientation(2) =  0.0_dp
-         IF(yRight > yLeft) THEN
-            Orientation(1)=1.0_dp
-         ELSE
-            Orientation(1)=-1.0_dp
-         END IF
-      ELSE IF (ABS(yLeft-yRight)<AEPS) THEN
-         ! front orientation is aligned with x-axis
-         Orientation(1) = 0.0_dp
-         IF(xRight > xLeft) THEN
-            Orientation(2)=1.0_dp
-         ELSE
-            Orientation(2)=-1.0_dp
-         END IF
-      ELSE
-         ! set dot product equal to 0
-         ! no need to ensure it is unit normal, done in ComputeRotation
-         IF(xRight > xLeft) THEN
-            Orientation(2)=1.0_dp
-         ELSE
-            Orientation(2)=-1.0_dp
-         END IF
-         Orientation(1)=Orientation(2)*(yRight-yLeft)/(xLeft-xRight)
-      END IF
-      END IF !boss
-      IF (Parallel) CALL MPI_BCAST(Orientation,3,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
-      ! deallocations
-       DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
-    END IF
-    Temp=(Orientation(1)**2+Orientation(2)**2+Orientation(3)**2)**0.5
-    Orientation=Orientation/Temp ! normalized the orientation
-    IF((.NOT. Constant).AND.Debug)  PRINT *, "GetFrontOrientation: ", Orientation,'part',ParEnv % MyPE
-    FirstThisTime=.FALSE.
-    OrientSaved=Orientation
+  END IF ! first time
+  IF (Constant) THEN
+     Orientation=OrientSaved
+  ELSE
+        ! check whether already did a front orientation computation this timestep
+        TimeVar => VariableGet( Model % Variables, 'Timestep' )
+        IF (Debug) PRINT *, 'Time', TimeVar % Values
+        IF (Debug)  PRINT *, 'PrevTime', PrevTime
+        IF (Debug)  PRINT *, 'FirstThisTime', FirstThisTime
+        IF  (TimeVar % Values(1) > PrevTime ) THEN
+           FirstThisTime=.TRUE.
+        END IF
+        PrevTime = TimeVar % Values(1)
+        IF (.NOT. FirstThisTime) PRINT *, 'use orientation calculated earlier in this timestep'    
+        IF (.NOT. FirstThisTime) THEN
+           Orientation = OrientSaved
+           RETURN
+        ELSE
+           PRINT *, 'computing orientation'
+           Orientation(3) = 0.0_dp ! always set z-component to 0
+           Mesh => Model % Mesh
+           !Get the front line
+           FrontMaskName = "Calving Front Mask"
+           TopMaskName = "Top Surface Mask"
+           CALL MakePermUsingMask( Model, NullSolver, Mesh, TopMaskName, &
+                .FALSE., TopPerm, dummyint)
+           CALL MakePermUsingMask( Model, NullSolver, Mesh, FrontMaskName, &
+                .FALSE., FrontPerm, FaceNodeCount)
+           LeftMaskName = "Left Sidewall Mask"
+           RightMaskName = "Right Sidewall Mask"
+           !Generate perms to quickly get nodes on each boundary
+           CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
+                .FALSE., LeftPerm, dummyint)
+           CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
+                .FALSE., RightPerm, dummyint)
+           iLeft=0
+           iRight=0
+           DO i=1,Mesh % NumberOfNodes
+              IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
+                 IF( LeftPerm(i) >0  ) THEN
+                    xLeft = Mesh % Nodes % x(i)
+                    yLeft = Mesh % Nodes % y(i)
+                    HaveLeft =.TRUE.
+                 ELSE IF ( RightPerm(i) >0  ) THEN
+                    xRight = Mesh % Nodes % x(i)
+                    yRight = Mesh % Nodes % y(i)
+                    HaveRight =.TRUE.
+                 END IF
+              END IF
+           END DO
+           IF (Debug)  PRINT *, 'GetFrontOrientation: HaveLeft, HaveRight', HaveLeft, HaveRight
+           IF (Parallel) THEN
+              IF (HaveLeft) PRINT *, 'GetFrontOrientation: xL, yL', xLeft, yLeft
+              IF (HaveRight)  PRINT *, 'GetFrontOrientation: xR, yR', xRight, yRight
+              IF (Debug) PRINT *, 'communicate the corners'
+              IF (HaveLeft  .AND. (ParEnv % MyPE>0)) THEN ! left not in root
+                 iLeft=ParEnv % MyPE
+                 CALL MPI_BSEND(xLeft, 1, MPI_DOUBLE_PRECISION, &
+                      0 ,7001, ELMER_COMM_WORLD, ierr )
+                 CALL MPI_BSEND(yLeft, 1, MPI_DOUBLE_PRECISION, &
+                      0 ,7002, ELMER_COMM_WORLD, ierr )
+                 IF (Debug) PRINT *, 'sending left'
+              END IF
+              IF (HaveRight .AND. (ParEnv % MyPE>0) ) THEN ! right not in root
+                 iRight=ParEnv % MyPE
+                 CALL MPI_BSEND(xRight, 1, MPI_DOUBLE_PRECISION, &
+                      0 , 7003, ELMER_COMM_WORLD, ierr )
+                 CALL MPI_BSEND(yRight, 1, MPI_DOUBLE_PRECISION, &
+                      0 , 7004, ELMER_COMM_WORLD, ierr )
+                 IF (Debug) PRINT *, 'sending right'
+              END IF
+              IF (Debug) PRINT *, 'sent the corners'
+              IF (Boss) THEN
+                 IF (Debug) PRINT *, ParEnv % PEs
+                 IF (.NOT.HaveLeft) THEN
+                    CALL MPI_RECV(RecvXL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                         7001,ELMER_COMM_WORLD, status, ierr )
+                    CALL MPI_RECV(RecvYL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                         7002,ELMER_COMM_WORLD, status, ierr )
+                    xLeft=RecvXL
+                    yLeft=RecvYL
+                 END IF
+                 IF (.NOT. HaveRight) THEN
+                    CALL MPI_RECV(RecvXR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                         7003,ELMER_COMM_WORLD, status, ierr )
+                    CALL MPI_RECV(RecvYR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                         7004,ELMER_COMM_WORLD, status, ierr )
+                    xRight=RecvXR
+                    yRight=RecvYR
+                 END IF
+                 IF (Debug) PRINT *, 'received corners'
+                 IF (Debug) PRINT *, 'GetFrontOrientation: Boss xL, yL, xR, yR', xLeft, yLeft, xRight, yRight
+              END IF
+           END IF ! end if parallel
+           IF (Boss) THEN ! root or not parallel
+              IF( ABS(xLeft-xRight) < AEPS) THEN
+                 ! front orientation is aligned with y-axis
+                 Orientation(2) =  0.0_dp
+                 IF(yRight > yLeft) THEN
+                    Orientation(1)=1.0_dp
+                 ELSE
+                    Orientation(1)=-1.0_dp
+                 END IF
+              ELSE IF (ABS(yLeft-yRight)<AEPS) THEN
+                 ! front orientation is aligned with x-axis
+                 Orientation(1) = 0.0_dp
+                 IF(xRight > xLeft) THEN
+                    Orientation(2)=1.0_dp
+                 ELSE
+                    Orientation(2)=-1.0_dp
+                 END IF
+              ELSE
+                 ! set dot product equal to 0
+                 ! no need to ensure it is unit normal, done in ComputeRotation
+                 IF(xRight > xLeft) THEN
+                    Orientation(2)=1.0_dp
+                 ELSE
+                    Orientation(2)=-1.0_dp
+                 END IF
+                 Orientation(1)=Orientation(2)*(yRight-yLeft)/(xLeft-xRight)
+              END IF
+           END IF !boss
+           IF (Parallel) CALL MPI_BCAST(Orientation,3,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+           ! deallocations
+           DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
+        END IF
+        Temp=(Orientation(1)**2+Orientation(2)**2+Orientation(3)**2)**0.5
+        Orientation=Orientation/Temp ! normalized the orientation
+        IF(Debug)  PRINT *, "GetFrontOrientation: ", Orientation,'part',ParEnv % MyPE
+        FirstThisTime=.FALSE.
+        OrientSaved=Orientation
+     END IF !Constant
   END FUNCTION GetFrontOrientation
 
    SUBROUTINE Double3DArraySizeA(Vec, fill)

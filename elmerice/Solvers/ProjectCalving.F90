@@ -85,7 +85,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
        SeaLevel, LocalM(3,3),EigValues(3),EI(3),dumy,dumy2,work(27)
   REAL(KIND=dp), POINTER :: MinHeight3D(:), MaxHeight3D(:), MinWidth3D(:), MaxWidth3D(:)
   REAL(KIND=dp), POINTER :: IntValues(:,:), IntBasis(:,:), IntExtent(:),EigenStress(:)
-  INTEGER :: MaxInt, Int
+  INTEGER :: MaxInt, NoInt
   INTEGER, POINTER :: Perm2D(:), Perm3D(:), PlanePerm(:), VolumePerm(:), &
        StressPerm(:), PwPerm(:)
   INTEGER :: i,j,k,k2,l,n,t,lnode,node, StressDOFs
@@ -109,7 +109,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   TYPE(ValueTable_t) :: ValueTable3D(2), ValueTable2D(3)
 
   TYPE PointStore_t
-    INTEGER :: Int
+    INTEGER :: NoInt
     REAL(KIND=dp),POINTER :: IntExtent(:), IntValues(:,:)
   END TYPE PointStore_t
   TYPE(PointStore_t), ALLOCATABLE :: PointStore(:)
@@ -424,7 +424,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   DO i=1,PlaneNodes
     ALLOCATE( PointStore(i) % IntValues(DOFs_3D,MaxInt), &
               PointStore(i) % IntExtent(MaxInt) )
-    PointStore(i) % Int = 0
+    PointStore(i) % NoInt = 0
     PointStore(i) % IntExtent = 0
     PointStore(i) % IntValues = 0
   END DO
@@ -458,7 +458,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
 
     ! Loop over 3D elements:
     ! ---------------------
-    Int = 0
+    NoInt = 0
     DO t = 1, VolumeElements
 
       Loops(2) = Loops(2) + 1
@@ -515,8 +515,8 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
         ! store extent of the line + value(s) at point of
         ! intersection:
         ! ------------------------------------------------
-        PointStore(lnode) % Int = PointStore(lnode) % Int + 1
-        curr=PointStore(lnode) % Int
+        PointStore(lnode) % NoInt = PointStore(lnode) % NoInt + 1
+        curr=PointStore(lnode) % NoInt
         IF (curr>SIZE(PointStore(lnode) % IntExtent)) &
             CALL AllocateMoreSpace(PointStore(lnode), MaxInt)
 
@@ -545,7 +545,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
       myNodes = myNodes + (PlaneNodes-Parenv % Pes*myNodes)
 
   IF ( Parenv % PEs>1 ) THEN
-    CALL CheckBuffer( (2 * (2 * (DOFs_3D+1)*SUM(PointStore(:) % Int)) + PlaneNodes ))
+    CALL CheckBuffer( (2 * (2 * (DOFs_3D+1)*SUM(PointStore(:) % NoInt)) + PlaneNodes ))
     CALL SendPoints()
     CALL ReceivePoints()
     CALL CheckBuffer(1) !Just frees the buffer space for future subroutines.
@@ -612,7 +612,7 @@ CONTAINS
       IF ( pe==ParEnv % PEs-1 ) peNodes=peNodesn
       peEnd = peStart+peNodes-1
 
-      totcount=SUM(PointStore(peStart:peEnd) % Int)
+      totcount=SUM(PointStore(peStart:peEnd) % NoInt)
       ALLOCATE( cm_int(peNodes) ); cm_int=0
 
       IF ( totcount>0 ) THEN
@@ -622,11 +622,11 @@ CONTAINS
         j=0; totcount=0
         DO lnode=peStart,peEnd
           j = j + 1
-          cm_int(j) = PointStore(lnode) % Int
+          cm_int(j) = PointStore(lnode) % NoInt
           DO k=1,cm_int(j)
             totcount=totcount+1
-            int=DOFs_3D*(totcount-1)
-            cm_values(int+1:int+DOFs_3D) = &
+            NoInt = DOFs_3D*(totcount-1)
+            cm_values(NoInt+1:NoInt+DOFs_3D) = &
                PointStore(lnode) % IntValues(1:DOFs_3D,k)
             cm_extent(totcount) = PointStore(lnode) % IntExtent(k)
            END DO
@@ -676,18 +676,18 @@ CONTAINS
         totcount = 0
         DO lnode=myStart,myStart+myNodes-1
           j=j+1
-          curr = PointStore(lnode) % Int
+          curr = PointStore(lnode) % NoInt
           IF ( curr+cm_int(j)>SIZE(PointStore(lnode) % IntExtent)) &
             CALL AllocateMoreSpace(PointStore(lnode),cm_int(j))
 
           DO k=1,cm_int(j)
             totcount=totcount+1
             curr=curr+1
-            int = DOFs_3D*(totcount-1)
+            NoInt = DOFs_3D*(totcount-1)
             PointStore(lnode) % IntExtent(curr) = cm_extent(totcount)
-            PointStore(lnode) % IntValues(:,curr) = cm_values(int+1:int+DOFs_3D)
+            PointStore(lnode) % IntValues(:,curr) = cm_values(NoInt+1:NoInt+DOFs_3D)
           END DO
-          PointStore(lnode) % Int=curr
+          PointStore(lnode) % NoInt=curr
         END DO
         DEALLOCATE(cm_values, cm_extent)
       END IF
@@ -719,8 +719,8 @@ CONTAINS
       lnode = Perm2D(node)
       IF(lnode<myStart .OR. lnode>myStart+myNodes-1) CYCLE
 
-      Int = PointStore(lnode) % Int
-      IF (Int<2) THEN
+      NoInt = PointStore(lnode) % NoInt
+      IF (NoInt<2) THEN
          WRITE(Message, *) "Only one hit for 2D node: ", node
 
          ValueTable2D(1) % Values(lnode) = 0.0_dp
@@ -735,8 +735,8 @@ CONTAINS
       Loops(7) = Loops(7) + 1
 
       !Sort intersections in descending order
-      ALLOCATE(IntOrder(Int)); IntOrder = [(i,i=1,Int)]
-      CALL SortR(Int, IntOrder, IntExtent)
+      ALLOCATE(IntOrder(NoInt)); IntOrder = [(i,i=1,NoInt)]
+      CALL SortR(NoInt, IntOrder, IntExtent)
 
       !---------------------------------------------------
       ! Search downwards for CSurfIndex zero contour
@@ -748,7 +748,7 @@ CONTAINS
 
       !Cycle nodes in descending order (moving down from top surface)
       IF(IntValues(1,IntOrder(1)) > 0.0_dp) THEN
-         DO j=1,Int-1
+         DO j=1,NoInt-1
             k = IntOrder(j)
             k2 = IntOrder(j+1)
 
@@ -786,14 +786,14 @@ CONTAINS
       ! of Stress and Pw *SEPARATELY* or else we will mistake surface
       ! crevasses for basal. See ProjectToPlane_mod.ora for details
       !-------------------------------------------------------------
-      BContour = IntExtent(Int)
+      BContour = IntExtent(NoInt)
       Found = .FALSE.
 
       !Calculate Pw at the base of the column, based on sea level and salt water density
-      PW_base = -1.0 * (IntExtent(Int) - SeaLevel) * g * RhoWS
+      PW_base = -1.0 * (IntExtent(NoInt) - SeaLevel) * g * RhoWS
 
       !Cycle nodes in ascending order
-      DO j=Int, 2, -1
+      DO j=NoInt, 2, -1
          k = IntOrder(j)
          k2 = IntOrder(j-1)
 
@@ -805,8 +805,8 @@ CONTAINS
          ELSE
             !In-crevasse pressure only equals sea pressure at base of ice
             !then drops at a rate of dz * RhoWF, not dz * RhoWS
-            Pw1 = PW_base - (IntExtent(j) - IntExtent(Int)) * g * RhoWF
-            Pw2 = PW_base - (IntExtent(j-1) - IntExtent(Int)) * g * RhoWF
+            Pw1 = PW_base - (IntExtent(j) - IntExtent(NoInt)) * g * RhoWF
+            Pw2 = PW_base - (IntExtent(j-1) - IntExtent(NoInt)) * g * RhoWF
          END IF
 
          CIndex1 = Stress1
@@ -817,7 +817,7 @@ CONTAINS
 
          !No basal crevasse in lower node, if first time, no crevasse, else an error
          IF(CIndex1 < 0.0_dp) THEN
-            IF(j==Int) THEN
+            IF(j==NoInt) THEN
                Found = .TRUE.
                EXIT !bottom node has no basal crevasse, we're done
             END IF
@@ -904,11 +904,11 @@ CONTAINS
       !Full penetration
       IF((SContour < (BContour + EPSILON(BContour))) .OR. &
            (.NOT. Found) .OR. &
-           (IntExtent(Int) >= IntExtent(1)+EPSILON(IntExtent(1)))) THEN
+           (IntExtent(NoInt) >= IntExtent(1)+EPSILON(IntExtent(1)))) THEN
 
          ValueTable2D(2) % Values(lnode) = 0.0_dp
       ELSE
-         ValueTable2D(2) % Values(lnode) = (SContour - BContour) / (IntExtent(1) - IntExtent(Int))
+         ValueTable2D(2) % Values(lnode) = (SContour - BContour) / (IntExtent(1) - IntExtent(NoInt))
       END IF
 
       !Surface crevasse model
@@ -919,7 +919,7 @@ CONTAINS
              ((IntExtent(1) - SContour) / (IntExtent(1) - SeaLevel))
       END IF
 
-      IF(CountHits) ValueTable2D(3) % Values(lnode) = REAL(Int)
+      IF(CountHits) ValueTable2D(3) % Values(lnode) = REAL(NoInt)
 
       DEALLOCATE(IntOrder)
 

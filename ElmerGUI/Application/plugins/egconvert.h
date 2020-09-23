@@ -1,11 +1,6 @@
 /* femfilein.h */
 /* Routines for importing existing FEM meshes */
 
-
-/* These have been removed from the ElmerGUI version
-   int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
-   int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info); */
-
 int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
 int LoadFidapInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);
 int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,char *prefix,int info);

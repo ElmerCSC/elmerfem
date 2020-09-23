@@ -1,0 +1,197 @@
+Juha Ruokolainen, 09 May 2011, 13:18
+
+Hello all,
+
+we have updated Elmer windows binaries at sourceforge.net/projectes/elmerfem. There are now
+a few new binary packages in addition to the familiar installer. The packages are:
+
+o 32bit windows installer with GUI and compiler gfortran-elmer (gfortran 4.3.3)
+
+o 32bit windows .zip file (no installer, just unzip to your preferred location) with GUI but 
+no compiler, compiled with recent MinGW default compiler (gcc 4.5.2 )
+
+o 64bit windows .zip file, includes only ElmerSolver and related utilities, i.e. without GUI or compiler.
+The package was compiled with recent x86_64-mingw32-w64 compiler package. Useful for those with
+large models where 2GB memory is not enough.
+
+The download pages and "README" files within the packages have more detailed information.
+
+We have decided to call this package (SVN rev 5191) Elmer release 6.2. (Somewhat cursory) release notes
+below.
+
+Hopefully we'll be able to do more regular release update in future. 
+
+Enjoy the new features.
+Elmer Team.
+
+
+Elmer changes between 6.0 and 6.2 
+=================================
+
+Below is a list of most important new features between versions 6.0 and 6.2 in period 21.9.2010 and 6.5.2011.
+Additionally there are some smaller features, numerous bug fixes, new test case and improvements in the documentation. 
+
+More precisely, there were 548 commits to the version control system and 36 new test cases. 
+
+
+ElmerSolver Library functionality
+-----------------------------------------------
+
+* In Norm computation it is now possible to pick just some components. Keyword
+'Nonlinear System Norm Components' is used to set the desired ones.
+
+* New dependency type 'opposes' and made that and 'equal' special cases of the
+curve interpolation using just one parameter.
+
+* Cubic spline interpolation for parameter tables. The cubic spline interpolation may be selected
+by adding specifier "Cubic" to table defintion:
+
+CODE: SELECT ALL
+param = Variable $varname
+  Real Cubic
+     ..
+   End
+
+
+* Parallel mesh to mesh interpolation: The mesh-to-mesh interpolation should work
+now in parallel without any modifications to serial cases.
+
+* External loadable matrix vector multiply with the Solver-section keyword:
+CODE: SELECT ALL
+Matrix Vector Proc = "file" "proc"
+
+The routine is called using call syntax as below
+
+CODE: SELECT ALL
+SUBROUTINE MatVecSubr(n,Rows,Cols,Values,x,b,0)
+INTEGER::n
+INTEGER :: Rows(n+1),Cols(*)
+REAL(KIND=dp) :: x(n),b(n),Values(*)
+
+where n equals system size, Rows, Cols & Values contain the CRS matrix structure with 1 based indexing.
+The routine should return the value of b=Ax.
+
+* Created a new solution procedure "BlockSolver" that enables block-wise treatment of the stiffness
+matrix. This enables easily some efficient block-preconditioning strategies. The approach is still
+experimental and there are just some simple examples. 
+
+
+* Implemented soft limiter with upper and lower bounds. It may be used both for boundaries and for bodies.
+The keywords are '$varname Lower Limit' and '$varname Upper Limit'.
+
+* Optional timing for the whole solver execution. The keyword is 'Solver Timing = Logical'. The times
+will be saved by SaveScalars solver, if present. 
+
+* New keyword '$varname Condition Passive = Logical' to constraint 'body wise' passive dergees of freedom.
+
+* Boundary conditon keyword 'Passive Target = Logical' to dynamically add new boundary condtion
+between 'active' and 'passive' domains.
+
+* SIF keyword 'mumps percentage increase working space' for setting MUMPS parameter icntl(14)
+
+* Try preserving mesh grading when calling EqualSplitting(). The feature should work optimally when grading 
+profile is 1D. The keyword in Simulation section is 'Mesh Keep Grading = Logical'. 
+
+* Add (experimental) Feti solver applicable to Poisson and Navier type of equations. Typical usage
+by "Linear System Solver = feti", "Linear System Iterative Method = CPG", "Feti Kernel Rot-Trans = True". 
+Works only in parallel.
+
+* Solver section keywords "Dump system Matrix = filename" and "Dump system RHS = filename"
+to write current matrix and/or rhs vector to disk. These are directly loadable to matlab, for example.
+
+* Implemented a constant offset for periodic BCs. This is taken into use by the keyword 
+"Periodic BC Offset $varname = Real". 
+
+* Interface the CHOLMOD, a Cholesky factorization package. This is strictly for positive-definite
+systems.
+
+Build instructions:
+
+o get SuiteSparse
+
+http://www.cise.ufl.edu/research/sparse/SuiteSparse/
+
+o get Metis
+
+http://glaros.dtc.umn.edu/gkhome/metis/metis/download
+
+Easiest to put the metis source under SuiteSparse/.
+
+o Edit the SuiteSparse/UFconfig/UFconfig.mk
+
+- change the installation directory
+
+- add -fPIC to CFLAGS on x86_64 platforms
+
+o Edit SuiteSparse/metis-4.x.x/Lib/Makefile
+
+- add -fPIC to CFLAGS on x86_64 platforms
+
+o make
+
+make install
+
+o replace $ELMER_HOME/lib/libamd.a with SuiteSparseInstall/libamd.a
+
+o Compile elmer/fem with
+
+CODE: SELECT ALL
+  export CHOLMOD_DIR=SuiteSparseInstall/
+  export CFLAGS="$CFLAGS -DHAVE_CHOLMOD -I$CHOLMOD_DIR/"
+  export FCPPFLAGS="$FCPPFLAGS -DHAVE_CHOLMOD"
+
+
+and f.ex.
+CODE: SELECT ALL
+   configure ..  --with-blas="-L$CHOLMOD_DIR -lcholmod -lcamd -lccolamd -lcolamd -lmetis -L$ACML_DIR/ -lacml"
+
+or similiar. In the .sif-file solver keywords "Linear system Symmetric=True; Linear System Direct Method=cholmod"
+may be used.
+
+Dynamics Solvers:
+----------------------------
+
+* HeatSolver: Added alternative keyword for enthalpy, 'Specific Enthalpy' given in units [E]/[m] rather than [E]/[V].o 
+
+* FlowSolver: Anisotropic Viscosity model. Set "Viscosity Model=anisotropic" and give "Visocity" as a 3x3 (2D) or
+6x6 (3D) matrix.
+
+* FlowSolver :First version of rotating coordinates system in Navier-Stokes equations. Invoked by adding keyword 
+"Angular Velocity" in body force section.
+
+* FlowSolver: Newton linearization of the material law. Newton linearization of the non-newtonian material models
+is done automatically when the Newton linearization is switched on.
+
+* SSTKOmega: Use Reichardt wall function in SST K-Omega model (if requested). Usage as in other turbulence models,
+e.g. set "Wall Law = True" in the boundary condition section.
+
+* ShearRateSolver: Added a simple solver for computing the local shearrate field using Galerkin method.
+
+* MagnetodDynamics: Newton type iteration of nonlinear materials for steady and transient cases within "MagnetoDynamics"
+solver. Test case in "tests/mgdyn_bh".
+
+* FreeSurfaceSolver: Feature to account for horizontal ALE contribution, set 'ALE Formulation = Logical True' in Solver section
+
+* RigidMeshMapper: Enabled the saving of velocity field in rigid mesh mapper. 
+
+* RichardsSolver: Activated the richards solver in keywords, documentation and gui
+
+* StatElecBoundary: 1D electrostatic BCs from for planar MEMS structures, for example.
+
+* SaveScalars: Two statistical operators: 'sum abs' and 'mean abs' (the latter only works in serial).
+
+* SaveGridData: Added a new subroutine for saving uniform data for visualization purposes in vti format (VtkImageData). 
+
+* ResultOutputSolver: Introduced binary and single precision output for XML VTK saving.
+
+* IsosurfaceSolver: Improved the isosurface extractor for multiple surfaces and for isolines.
+
+* ElementSizeSolver: Just a small solver that gives the nodal elementsize (for rather uniform meshes). 
+
+* SaveLine & SaveScalars: Optional parameter 'Output Directory = String' 
+
+ElmerGUI
+---------------
+
+* Free text fields for dynamic editors.
+

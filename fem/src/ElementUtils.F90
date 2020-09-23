@@ -51,6 +51,7 @@ MODULE ElementUtils
     USE CRSMatrix
     USE Interpolation
     USE BandwidthOptimize
+    IMPLICIT NONE
 
 CONTAINS
 
@@ -63,6 +64,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver
      REAL(KIND=dp) :: x(1), b(1)
+     INTEGER :: i
 
      TYPE(SplittedMatrixT), POINTER :: s
      TYPE(BasicMatrix_t), POINTER :: m
@@ -281,40 +283,38 @@ CONTAINS
 !> in the list matrix topology.
 !------------------------------------------------------------------------------
   SUBROUTINE MakeListMatrix( Model,Solver,Mesh,List,Reorder, &
-        LocalNodes,Equation, DGSolver, GlobalBubbles, &
+        LocalNodes, Equation, DGSolver, GlobalBubbles, &
         NodalDofsOnly, ProjectorDofs, CalcNonZeros )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
+    TYPE(Solver_t) :: Solver
     TYPE(Mesh_t)   :: Mesh
-    TYPE(Matrix_t) :: Matrix
-    TYPE(SOlver_t) :: Solver
     TYPE(ListMatrix_t), POINTER :: List(:)
-    INTEGER, OPTIONAL ::Reorder(:)
+    INTEGER, OPTIONAL :: Reorder(:)
+    INTEGER :: LocalNodes
+    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: DGSolver
     LOGICAL, OPTIONAL :: GlobalBubbles
     LOGICAL, OPTIONAL :: NodalDofsOnly
     LOGICAL, OPTIONAL :: ProjectorDofs
-    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: CalcNonZeros
 !------------------------------------------------------------------------------
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat
     INTEGER, ALLOCATABLE :: InvPerm(:), IndirectPairs(:)
-
     LOGICAL :: Flag, FoundDG, GB, DB, Found, Radiation, DoProjectors, &
         DoNonZeros, DgIndirect
-
     TYPE(Matrix_t), POINTER :: Projector
-
     INTEGER :: IndexSize, NumberOfFactors
     INTEGER, ALLOCATABLE :: Indexes(:)
-
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
-
     TYPE(Matrix_t),POINTER :: PMatrix
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, Left, Right
+    CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
+    LOGICAL :: GotIt
+    CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrix'
 !------------------------------------------------------------------------------
 
-    CALL Info('MakeListMatrix','Creating list matrix',Level=14)
+    CALL Info(Caller,'Creating list matrix',Level=14)
 
     GB = .FALSE.
     IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
@@ -344,20 +344,19 @@ CONTAINS
     END IF
 
     IF( EDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Edges) ) THEN
-      CALL Warn('MakeListMatrix','Edge dofs requested but not edges exist in mesh!')
+      CALL Warn(Caller,'Edge dofs requested but not edges exist in mesh!')
       EDOFS = 0
     END IF
 
     IF( FDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Faces) ) THEN
-      CALL Warn('MakeListMatrix','Face dofs requested but not faces exist in mesh!')
+      CALL Warn(Caller,'Face dofs requested but not faces exist in mesh!')
       FDOFS = 0
     END IF
-
 
     IndexSize = 128
     ALLOCATE( Indexes(IndexSize), STAT=istat )
     IF( istat /= 0 ) THEN
-      CALL Fatal('MakeListMatrix','Allocation error for Indexes')
+      CALL Fatal(Caller,'Allocation error for Indexes')
     END IF
 
     ! Create sparse matrix for the Discontinuous Galerkin solver 
@@ -371,7 +370,7 @@ CONTAINS
         DGIndirect = ListGetLogical( Solver % Values,'DG Indirect Connections',Found )
 
         IF( DGIndirect ) THEN
-          CALL Info('MakeListMatrix','Creating also indirect connections!',Level=12)
+          CALL Info(Caller,'Creating also indirect connections!',Level=12)
           ALLOCATE( IndirectPairs( LocalNodes ) )
           IndirectPairs = 0
         END IF
@@ -389,7 +388,7 @@ CONTAINS
           END DO
 
           IF( Elm % DGDofs /= Elm % TYPE % NumberOfNodes ) THEN
-            CALL Fatal('MakeListMatrix','Mismatch in sizes in reduced basis DG!')
+            CALL Fatal(Caller,'Mismatch in sizes in reduced basis DG!')
           END IF
 
           DO i=1,n
@@ -600,6 +599,115 @@ CONTAINS
       END IF
     END IF ! DGSolver
 
+    
+    !     Diffuse gray radiation condition:
+    !     ---------------------------------
+    Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
+    IF ( .NOT. Found .AND. PRESENT(Equation) ) &
+        Radiation = Radiation .OR. (Equation == 'heat equation')
+    IF( Radiation ) THEN        
+      Radiation = .FALSE.
+      DO i=1,Model % NumberOfBCs
+        RadiationFlag = ListGetString( Model % BCs(i) % Values, 'Radiation', GotIt )
+        IF (GotIt) THEN
+          IF ( RadiationFlag == 'diffuse gray' ) THEN
+            Radiation = .TRUE.
+            EXIT
+          END IF
+        END IF
+      END DO
+    END IF
+    
+    IF ( Radiation ) THEN
+      BLOCK
+        INTEGER, ALLOCATABLE :: Inds(:),ElemInds(:),ElemInds2(:)
+        INTEGER :: cnt, maxnodes
+
+        n = Mesh % MaxElementNodes
+        ALLOCATE( ElemInds(n), ElemInds2(n) )
+        ElemInds = 0
+        ElemInds2 = 0
+
+        ! Check the maximum number of nodes in boundary element
+        maxnodes = 0
+        DO i = Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          
+          Element => Mesh % Elements(i)
+
+          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+          
+          n = Element % Type % NumberOfNodes
+          maxnodes = MAX( n, maxnodes )
+        END DO
+        
+        
+        CALL Info(Caller,'Adding radiation matrix',Level=14)      
+        DO i = Mesh % NumberOfBulkElements+1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          
+          Element => Mesh % Elements(i)
+
+          IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE
+          IF ( .NOT. ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) CYCLE
+
+          NumberOfFactors = Element % BoundaryInfo % &
+              GebhardtFactors % NumberOfImplicitFactors
+          IF(NumberOfFactors == 0 ) CYCLE
+          
+          n = Element % Type % NumberOfNodes
+          
+          IF( DgSolver ) THEN
+            CALL DgRadiationIndexes(Element,n,ElemInds)
+          END IF
+            
+          DO j=1,Element % TYPE % NumberOfNodes
+
+            IF( DgSolver ) THEN
+              k1 = Reorder(ElemInds(j))
+            ELSE
+              k1 = Reorder(Element % NodeIndexes(j))
+            END IF
+                        
+            IF (.NOT.ALLOCATED(inds)) THEN
+              ALLOCATE(inds(maxnodes*NumberOfFactors))
+            ELSE IF(SIZE(inds)<maxnodes*NumberOfFactors) THEN
+              DEALLOCATE(inds)
+              ALLOCATE(inds(maxnodes*NumberOfFactors))
+            END IF
+
+            cnt = 0
+            DO n=1,NumberOfFactors
+
+              Elm => Mesh % Elements( Element % BoundaryInfo % &
+                  GebhardtFactors % Elements(n) )
+
+              IF( DgSolver ) THEN
+                CALL DgRadiationIndexes(Elm,Elm % Type % NumberOfNodes,ElemInds2)
+              END IF
+              
+              DO k=1,Elm % TYPE % NumberOfNodes
+                cnt = cnt + 1
+
+                IF( DGSolver ) THEN
+                  inds(cnt) = Reorder(ElemInds2(k))
+                ELSE
+                  inds(cnt) = Reorder(Elm % NodeIndexes(k))
+                END IF
+              END DO
+            END DO
+            
+            CALL Sort(cnt,inds)
+
+            CALL List_AddMatrixIndexes(List,k1,cnt,inds)
+          END DO
+        END DO
+      END BLOCK
+      CALL Info(Caller,'Done Adding radiation matrix',Level=14)
+    END IF
+
+    
     ! If this is not a GD solver then create permutation considering 
     ! nodal, edge, face and bubble dofs. 
     !-------------------------------------------------------------------
@@ -627,7 +735,7 @@ CONTAINS
             IF ( ALLOCATED( Indexes ) ) DEALLOCATE( Indexes )
             ALLOCATE( Indexes(n), STAT=istat )
             IF( istat /= 0 ) THEN
-              CALL Fatal('MakeListMatrix','Allocation error for Indexes of size: '//TRIM(I2S(n)))
+              CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
             END IF
          END IF
 
@@ -683,40 +791,8 @@ CONTAINS
       END DO
 
       IF ( ALLOCATED( Indexes ) ) DEALLOCATE( Indexes )
-!
-!     Diffuse gray radiation condition:
-!     ---------------------------------
-      Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
-      IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-        Radiation = Radiation .OR. (Equation == 'heat equation')
 
-      IF ( Radiation ) THEN
-        DO i = Mesh % NumberOfBulkElements+1, &
-          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-
-          Element => Mesh % Elements(i)
-          IF ( ASSOCIATED(Element % BoundaryInfo % GebhardtFactors) ) THEN
-             DO j=1,Element % TYPE % NumberOfNodes
-                k1 = Reorder(Element % NodeIndexes(j))
-
-                NumberOfFactors = Element % BoundaryInfo % &
-                  GebhardtFactors % NumberOfImplicitFactors
-
-                DO n=1,NumberOfFactors
-
-                  Elm => Mesh % Elements( Element % BoundaryInfo % &
-                              GebhardtFactors % Elements(n) )
-
-                  DO k=1,Elm % TYPE % NumberOfNodes
-                     k2 = Reorder( Elm % NodeIndexes(k) )
-                     Lptr => List_GetMatrixIndex( List,k1,k2 )
-                  END DO
-                END DO
-             END DO
-          END IF
-        END DO
-      END IF
-
+      
       DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements+ &
                      Mesh % NumberOfBoundaryElements
         IF ( Mesh % Elements(i) % TYPE % ElementCode <  102 .OR. &
@@ -755,7 +831,7 @@ CONTAINS
           IF( ListGetLogical( Model % BCs(This) % Values,&
               'Periodic BC Use Lagrange Coefficient',Found)) CYCLE
 
-          CALL Info('MakeListMatrix','Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
+          CALL Info(Caller,'Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
 
           DO i=1,Projector % NumberOfRows
             k = Reorder( Projector % InvPerm(i) )
@@ -810,6 +886,61 @@ CONTAINS
       DEALLOCATE( InvPerm ) 
     END IF
 
+  CONTAINS
+
+
+    ! Pick thet correct indexes for radition when using discontinuous Galerkin.
+    ! In internal BCs we expect to find 'emissivity' given on either side.
+    !--------------------------------------------------------------------------
+    SUBROUTINE DgRadiationIndexes(Element,n,ElemInds)
+
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: n
+      INTEGER :: ElemInds(:)
+
+      TYPE(Element_t), POINTER :: Left, Right, Parent
+      INTEGER :: i,i1,n1,mat_id
+      LOGICAL :: Found
+           
+      Left => Element % BoundaryInfo % Left
+      Right => Element % BoundaryInfo % Right
+      
+      IF(ASSOCIATED(Left) .AND. ASSOCIATED(Right)) THEN
+        DO i=1,2
+          IF(i==1) THEN
+            Parent => Left
+          ELSE
+            Parent => Right
+          END IF
+          
+          mat_id = ListGetInteger( CurrentModel % Bodies(Parent % BodyId) % Values, &
+              'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
+          IF( ListCheckPresent( CurrentModel % Materials(mat_id) % Values,'Emissivity') ) EXIT
+
+          IF( i==2) THEN
+            CALL Fatal(Caller,'DG boundary parents should have emissivity!')
+          END IF          
+        END DO                
+      ELSE IF(ASSOCIATED(Left)) THEN
+        Parent => Left
+      ELSE IF(ASSOCIATED(Right)) THEN
+        Parent => Right
+      ELSE
+        CALL Fatal(Caller,'DG boundary should have parents!')
+      END IF
+
+      n1 = Parent % TYPE % NumberOfNodes
+      DO i=1,n
+        DO i1 = 1, n1
+          IF( Parent % NodeIndexes( i1 ) == Element % NodeIndexes(i) ) THEN
+            ElemInds(i) = Parent % DGIndexes( i1 )
+            EXIT
+          END IF
+        END DO
+      END DO
+      
+    END SUBROUTINE DgRadiationIndexes
+
 !------------------------------------------------------------------------------
   END SUBROUTINE MakeListMatrix
 !------------------------------------------------------------------------------
@@ -826,39 +957,36 @@ CONTAINS
         NodalDofsOnly, ProjectorDofs, CalcNonZeros )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
+    TYPE(Solver_t) :: Solver
     TYPE(Mesh_t)   :: Mesh
-    TYPE(Matrix_t) :: Matrix
-    TYPE(SOlver_t) :: Solver
     TYPE(ListMatrixArray_t) :: List
     INTEGER, OPTIONAL :: Reorder(:)
+    INTEGER :: LocalNodes
+    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: DGSolver
     LOGICAL, OPTIONAL :: GlobalBubbles
     LOGICAL, OPTIONAL :: NodalDofsOnly
     LOGICAL, OPTIONAL :: ProjectorDofs
-    CHARACTER(LEN=*), OPTIONAL :: Equation
     LOGICAL, OPTIONAL :: CalcNonZeros
 !------------------------------------------------------------------------------
-    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat, nthr
-
+    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, nReord, EDOFs, FDOFs, BDOFs, This, istat, nthr
     LOGICAL :: Flag, FoundDG, GB, Found, Radiation, DoProjectors, DoNonZeros
-    INTEGER, ALLOCATABLE :: InvPerm(:)
-    
+    INTEGER, ALLOCATABLE :: InvPerm(:)    
     TYPE(Matrix_t), POINTER :: Projector
-
     INTEGER :: IndexSize, NumberOfFactors
     INTEGER, ALLOCATABLE :: Indexes(:), IndexReord(:), IPerm(:)
-
     TYPE(ListMatrixEntry_t), POINTER :: CList, Lptr
-
     TYPE(Matrix_t),POINTER :: PMatrix
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2, ElementsList(:)
     TYPE(Graph_t), POINTER :: CurrentColourList
     INTEGER :: CurrentColour, BoundaryColour, CurrentColourStart, &
           CurrentColourEnd, NumberOfMeshColours
-    LOGICAL :: NeedLocking
+    LOGICAL :: NeedLocking, GotIt
+    CHARACTER(LEN=MAX_NAME_LEN) :: RadiationFlag
+    CHARACTER(*), PARAMETER :: Caller = 'MakeListMatrixArray'
 !------------------------------------------------------------------------------
 
-    CALL Info('MakeListMatrixArray','Creating list matrix',Level=14)
+    CALL Info(Caller,'Creating list matrix',Level=14)
 
     GB = .FALSE.
     IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
@@ -894,12 +1022,12 @@ CONTAINS
     END IF
 
     IF( EDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Edges) ) THEN
-      CALL Warn('MakeListMatrixArray','Edge dofs requested but not edges exist in mesh!')
+      CALL Warn(Caller,'Edge dofs requested but not edges exist in mesh!')
       EDOFS = 0
     END IF
 
     IF( FDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Faces) ) THEN
-      CALL Warn('MakeListMatrixArray','Face dofs requested but not faces exist in mesh!')
+      CALL Warn(Caller,'Face dofs requested but not faces exist in mesh!')
       FDOFS = 0
     END IF
 
@@ -910,7 +1038,7 @@ CONTAINS
        IndexSize = 128
        ALLOCATE( Indexes(IndexSize), STAT=istat )
        IF( istat /= 0 ) THEN
-         CALL Fatal('MakeListMatrixArray','Allocation error for Indexes')
+         CALL Fatal(Caller,'Allocation error for Indexes')
        END IF
 
        ! TODO: Add multithreading
@@ -993,11 +1121,11 @@ CONTAINS
     IF (.NOT. FoundDG) THEN
       
       !$OMP PARALLEL &
-      !$OMP SHARED(LocalNodes, List, ListNew, Equation, EDOFS, FDOFS, GB, &
+      !$OMP SHARED(LocalNodes, List, Equation, EDOFS, FDOFS, GB, &
       !$OMP        Reorder, Model, Mesh, NumberOfMeshColours, CurrentColourStart, NeedLocking, &
       !$OMP        CurrentColourEnd, CurrentColourList, ElementsList, Solver, BoundaryColour) &
       !$OMP PRIVATE(Element, Indexes, istat, IndexSize, IndexReord, &
-      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, LptrNew, Errors, &
+      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, &
       !$OMP         CurrentColour) &
       !$OMP DEFAULT(NONE)
 
@@ -1014,14 +1142,14 @@ CONTAINS
            CurrentColourStart = 1
            CurrentColourEnd = Mesh % NumberOfBulkElements+Mesh % NumberOFBoundaryElements
          ELSE IF (CurrentColour <= Solver % ColourIndexList % n) THEN
-           CALL Info('MakeListMatrixArray','ListMatrix add colour: '//TRIM(I2S(CurrentColour)),Level=10)
+           CALL Info(Caller,'ListMatrix add colour: '//TRIM(I2S(CurrentColour)),Level=10)
            CurrentColourList => Solver % ColourIndexList
            ElementsList => Mesh % Elements(1:Mesh % NumberOfBulkElements)
            CurrentColourStart = CurrentColourList % Ptr(CurrentColour)
            CurrentColourEnd = CurrentColourList % Ptr(CurrentColour+1)-1
          ELSE
            BoundaryColour = CurrentColour-Solver % ColourIndexList % n
-           CALL Info('MakeListMatrixArray','ListMatrix add boundary colour: '//TRIM(I2S(BoundaryColour)),Level=10)
+           CALL Info(Caller,'ListMatrix add boundary colour: '//TRIM(I2S(BoundaryColour)),Level=10)
 
            CurrentColourList => Solver % BoundaryColourIndexList
            ! Boundary elements are stored after bulk elements in Mesh
@@ -1059,7 +1187,7 @@ CONTAINS
                     IndexReord(IndexSize), &
                     IPerm(IndexSize), STAT=istat )
                IF( istat /= 0 ) THEN
-                  CALL Fatal('MakeListMatrixArray','Allocation error for Indexes of size: '//TRIM(I2S(n)))
+                  CALL Fatal(Caller,'Allocation error for Indexes of size: '//TRIM(I2S(n)))
                END IF
             END IF
             
@@ -1129,9 +1257,22 @@ CONTAINS
 !     ---------------------------------
       Radiation = ListGetLogical( Solver % Values, 'Radiation Solver', Found )
       IF ( .NOT. Found .AND. PRESENT(Equation) ) &
-        Radiation = Radiation .OR. (Equation == 'heat equation')
-
+          Radiation = Radiation .OR. (Equation == 'heat equation')
+      IF( Radiation ) THEN        
+        Radiation = .FALSE.
+        DO i=1,Model % NumberOfBCs
+          RadiationFlag = ListGetString( Model % BCs(i) % Values, 'Radiation', GotIt )
+          IF (GotIt) THEN
+            IF ( RadiationFlag == 'diffuse gray' ) THEN
+              Radiation = .TRUE.
+              EXIT
+            END IF
+          END IF
+        END DO
+      END IF
+      
       IF ( Radiation ) THEN
+        CALL Info(Caller,'Adding radiation matrix entries',Level=14)
         DO i = Mesh % NumberOfBulkElements+1, &
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
@@ -1156,6 +1297,7 @@ CONTAINS
              END DO
           END IF
         END DO
+        CALL Info(Caller,'Done Adding radiation matrix',Level=14)
       END IF
 
       ! TODO: Add multithreading
@@ -1197,7 +1339,7 @@ CONTAINS
           IF( ListGetLogical( Model % BCs(This) % Values,&
               'Periodic BC Use Lagrange Coefficient',Found)) CYCLE
 
-          CALL Info('MakeListMatrixArray','Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
+          CALL Info(Caller,'Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
 
           ! TODO: Add multithreading
           DO i=1,Projector % NumberOfRows
@@ -1486,6 +1628,7 @@ CONTAINS
      
      Mesh % MaxBDOFs = BDOFs
      
+     Eq = ''
      IF ( PRESENT( Equation ) ) n = StringToLowerCase( Eq,Equation )
 
      Perm = 0
@@ -1605,7 +1748,7 @@ CONTAINS
        CALL ListMatrixArray_Free( ListMatrixArray )       
      ELSE
        NULLIFY( ListMatrix )
-       CALL Info('CreateMatrix','Creating list matrix for equation',Level=14)
+       CALL Info('CreateMatrix','Creating list matrix for equation: '//TRIM(Eq),Level=14)
        IF ( PRESENT(Equation) ) THEN
          CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
                NodalDofsOnly, ProjectorDofs, CalcNonZeros = .FALSE.)
@@ -1803,6 +1946,61 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    END FUNCTION CreateOdeMatrix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   FUNCTION CreateDiagMatrix( Model, Solver, Dofs, TimeOrder ) RESULT(Matrix)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t), TARGET :: Solver
+     INTEGER :: DOFs
+     TYPE(Matrix_t), POINTER :: Matrix
+     INTEGER, OPTIONAL :: TimeOrder
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     INTEGER i,j,k
+!------------------------------------------------------------------------------
+
+     Matrix => NULL()
+
+     !IF ( ListGetLogical( Solver % Values, 'No matrix',Found)) RETURN
+     
+     ! Create a list matrix that allows for unspecified entries in the matrix 
+     ! structure to be introduced.
+     Matrix => AllocateMatrix()
+     Matrix % FORMAT = MATRIX_LIST
+     
+     ! Initialize matrix indices
+     DO i = 1, Dofs
+       CALL List_AddMatrixIndex(Matrix % ListMatrix, i, i) 
+     END DO
+
+     CALL List_ToCRSMatrix(Matrix)
+     CALL CRS_SortMatrix(Matrix,.TRUE.)
+     
+     CALL Info('CreateOdeMatrix','Number of rows in diag matrix: '//&
+         TRIM(I2S(Matrix % NumberOfRows)), Level=9)
+
+     IF( PRESENT( TimeOrder ) ) THEN
+       IF( TimeOrder >= 1 ) THEN
+         ALLOCATE( Matrix % MassValues( SIZE( Matrix % Values ) ) )
+         Matrix % MassValues = 0.0_dp
+       END IF
+       IF( TimeOrder >= 2 ) THEN
+         ALLOCATE( Matrix % DampValues( SIZE( Matrix % Values ) ) )
+         Matrix % DampValues = 0.0_dp
+       END IF
+     END IF
+     
+     Matrix % Solver => Solver
+     Matrix % DGMatrix = .FALSE.
+     Matrix % Subband = 1
+     Matrix % COMPLEX = .FALSE.
+     ! Matrix % FORMAT  = MatrixFormat
+
+!------------------------------------------------------------------------------
+   END FUNCTION CreateDiagMatrix
 !------------------------------------------------------------------------------
 
 

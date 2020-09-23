@@ -159,15 +159,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       Alpha(:), Beta(:),LayerH(:),LayerV(:), Basis(:), dBasisdx(:,:)
   
   REAL(KIND=dp) :: RelPerm1, RelPerm2
-  REAL(KIND=dp) :: PermittivityOfVacuum, Norm, RelativeChange
-  
-#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: PermittivityOfVacuum, Norm, RelativeChange  
   REAL (KIND=DP) :: Wetot, at0, ss
   REAL (KIND=DP) :: at, st, PotentialDifference, Capacitance
-#else
-  REAL (KIND=DP) :: Wetot, at0, RealTime, ss
-  REAL (KIND=DP) :: at, st, CPUTime, PotentialDifference, Capacitance
-#endif
   REAL (KIND=DP) :: MinPotential, MaxPotential
   
   INTEGER, POINTER :: NodeIndexes(:), CapBodyIndex(:), Ivals(:)
@@ -508,7 +502,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       CALL MatrixVectorMultiply( Solver % Matrix, Potential, Charges)
       Solver % Matrix % Values => PValues
       Charges = Charges * PermittivityOfVacuum
-      
+
+      IF( iter == 1 ) CapMatrix = 0.0_dp
       Permi = iter
       DO i=1,Mesh % NumberOfNodes
         Permj = CapBodyIndex(i)

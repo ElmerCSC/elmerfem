@@ -96,12 +96,7 @@
      REAL(KIND=dp), POINTER :: SecInv(:)
      SAVE SecInv
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
-#else
-     REAL(KIND=dp) :: at,at0,CPUTime,RealTime, KMax, EMax, KVal, EVal
-#endif
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution

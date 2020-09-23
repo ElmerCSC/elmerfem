@@ -60,11 +60,7 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   LOGICAL :: GotIt, GotCoeff, Visited = .FALSE.
   REAL(KIND=dp) :: Norm
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: DivergenceSol
   
   SAVE Visited

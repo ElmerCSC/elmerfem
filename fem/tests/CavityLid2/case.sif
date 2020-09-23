@@ -26,7 +26,7 @@ Simulation
   Timestepping method = bdf
   BDF Order = 2
 
-  Post File = case.ep
+  Post File = case.vtu
   Set Dirichlet BCs by BC Numbering = True
 End
 

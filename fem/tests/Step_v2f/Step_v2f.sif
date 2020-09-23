@@ -14,7 +14,7 @@ Simulation
 
   Set Dirichlet BCs by BC Numbering = True
 
-  Post File = "Step_small.ep"
+  Post File = "Step_small.vtu"
 ! Output File = "Step_small.result"
 End
 

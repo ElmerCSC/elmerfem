@@ -418,7 +418,11 @@ CONTAINS
         MATMUL(Stiff(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
     Force(1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-    IF (TransientSimulation) CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+    IF (TransientSimulation) THEN
+      Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(R(1:DOFs,1:DOFs)), &
+          MATMUL(Mass(1:DOFs,1:DOFs),R(1:DOFs,1:DOFs)))
+      CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+    END IF
 
     CALL DefaultUpdateEquations(Stiff, Force)
 !------------------------------------------------------------------------------
