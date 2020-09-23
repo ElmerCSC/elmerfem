@@ -23,18 +23,21 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-
-/* -------------------------------:  egutils.c  :----------------------------
-   Includes common operations for operating vectors and such.
-*/
-
-#include <string.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
+#include <sys/types.h>
+#include <time.h> 
 
-#include "egutils.h" 
+/* Possible monitoring of memory usage, if supported */
+#define MEM_USAGE 0
+#if MEM_USAGE
+#include <sys/resource.h>
+#endif
 
+#include "egutils.h"
 
 #define FREE_ARG char*
 #define SHOWMEM 0
@@ -52,6 +55,17 @@ int MemoryUsage()
 #endif
 
 
+/* The following routines are copied from the book
+   "Numerical Recipes in C, The art of scientific computing" 
+   by Cambridge University Press and include the following
+
+   Non-Copyright Notice: This appendix and its utility routines are 
+   herewith placed into the public domain. Anyone may copy them freely
+   for any purpose. We of course accept no liability whatsoever for 
+   any such use. */
+   
+
+
 void nrerror(const char error_text[])
 /* standerd error handler */
 {
@@ -63,6 +77,7 @@ void nrerror(const char error_text[])
 
 
 /* Vector initialization */
+
 float *vector(int nl,int nh)
 /* allocate a float vector with subscript range v[nl..nh] */
 {
@@ -79,6 +94,11 @@ int *ivector(int nl,int nh)
 /* Allocate an int vector with subscript range v[nl..nh] */
 {
   int *v;
+
+  if( nh < nl ) {
+    printf("Allocation impossible in ivector: %d %d\n",nl,nh);
+    exit(1);
+  }
 
   v=(int*) malloc((size_t) (nh-nl+1+1)*sizeof(int));
   if (!v) nrerror("allocation failure in ivector()");
@@ -121,6 +141,11 @@ double *dvector(int nl,int nh)
 /* allocate a double vector with subscript range v[nl..nh] */
 {
   double *v;
+
+  if( nh < nl ) {
+    printf("Allocation impossible in dvector: %d %d\n",nl,nh);
+    exit(1);
+  }
 
   v=(double *)malloc((size_t) (nh-nl+1+1)*sizeof(double));
   if (!v) nrerror("allocation failure in dvector()");
@@ -168,6 +193,13 @@ double **dmatrix(int nrl,int nrh,int ncl,int nch)
 {
   int i, nrow=nrh-nrl+1, ncol=nch-ncl+1;
   double **m;
+
+  if( nrh < nrl || nch < ncl ) {
+    printf("Allocation impossible in dmatrix: %d %d %d %d\n",nrl,nrh,ncl,nch);
+    exit(1);
+  }
+
+
   
   /* allocate pointers to rows */
   m=(double **) malloc((size_t) (nrow+1)*sizeof(double*));
@@ -201,6 +233,11 @@ int **imatrix(int nrl,int nrh,int ncl,int nch)
 {
   int i, nrow=nrh-nrl+1, ncol=nch-ncl+1;
   int **m;
+
+  if( nrh < nrl || nch < ncl ) {
+    printf("Allocation impossible in imatrix: %d %d %d %d\n",nrl,nrh,ncl,nch);
+    exit(1);
+  }
   
   /* allocate pointers to rows */
   m=(int **) malloc((size_t) (nrow+1)*sizeof(int*));
@@ -228,6 +265,59 @@ int **imatrix(int nrl,int nrh,int ncl,int nch)
 } 
 
 
+
+float **submatrix(float **a,int oldrl,int oldrh,int oldcl,int oldch,int newrl,int newcl)
+/* point a submatrix [newrl..][newcl..] to a[oldrl..oldrh][oldcl..oldch] */
+{
+  int i,j, nrow=oldrh-oldrl+1, ncol=oldcl-newcl;
+  float **m;
+  
+  /* allocate array of pointers to rows */
+  m=(float **) malloc((size_t) ((nrow+1)*sizeof(float*)));
+  if (!m) nrerror("allocation failure in submatrix()");
+  m += 1;
+  m -= newrl;
+  
+  /* set pointers to rows */
+  for(i=oldrl,j=newrl;i<=oldrh;i++,j++) 
+    m[j]=a[i]+ncol;
+  
+  return(m);
+}
+
+/* Tensor initialization */
+
+double ***f3tensor(int nrl,int nrh,int ncl,int nch,int ndl,int ndh)
+/* allocate a double 3tensor with range t[nrl..nrh][ncl..nch][ndl..ndh] */
+{
+  int i,j,nrow=nrh-nrl+1,ncol=nch-ncl+1,ndep=ndh-ndl+1;
+  double ***t;
+
+  t=(double***) malloc((size_t)((nrow+1)*sizeof(double***)));
+  if (!t) nrerror("allocation failure 1 in f3tensor()");
+  t += 1;
+  t -= nrl;
+
+  t[nrl]=(double**) malloc((size_t)((nrow*ncol+1)*sizeof(double*)));
+  if(!t[nrl]) nrerror("allocation failure 2 in f3tensor()");
+  t[nrl] += 1;
+  t[nrl] -= ncl;
+
+  t[nrl][ncl]=(double*) malloc((size_t)((nrow*ncol*ndep+1)*sizeof(double)));
+  if(!t[nrl][ncl]) nrerror("allocation failure 3 in f3tensor()");
+  t[nrl][ncl] += 1;
+  t[nrl][ncl] -= ndl;
+
+  for(j=ncl+1;j<=nch;j++) t[nrl][j] = t[nrl][j-1]+ndep;
+  for(i=nrl+1;i<=nrh;i++) {
+    t[i] = t[i-1]+ncol;
+    t[i][ncl] = t[i-1][ncl]+ncol*ndep;
+    for(j=ncl+1;j<=nch;j++) t[i][j] = t[i][j-1]+ndep;
+  }
+  return(t);
+}
+
+
 /* Deallocation routines */
 
 void free_vector(float *v,int nl,int nh)
@@ -242,7 +332,7 @@ void free_ivector(int *v,int nl,int nh)
 #endif
 
   free((FREE_ARG) (v+nl-1));
-}
+} 
 
 void free_cvector(unsigned char *v,int nl,int nh)
 {
@@ -294,6 +384,104 @@ void free_imatrix(int **m,int nrl,int nrh,int ncl,int nch)
   free((FREE_ARG) (m+nrl-1));
 }
 
+void free_submatrix(float **b,int nrl,int nrh,int ncl,int nch)
+{
+  free((FREE_ARG) (b+nrl-1));
+}
+
+void free_f3tensor(double ***t,int nrl,int nrh,int ncl,int nch,int ndl,int ndh)
+{
+  free((FREE_ARG) (t[nrl][ncl]+ndl-1));
+  free((FREE_ARG) (t[nrl]+ncl-1));
+  free((FREE_ARG) (t+nrl-1));
+}
+
+
+/* -------------------------------:  common.c  :----------------------------
+   Includes common operations for operating vectors and such. */
+
+
+static Real timer_t0, timer_dt;
+static int timer_active = FALSE;
+static char timer_filename[600];
+
+void timer_init()
+{
+  timer_active = FALSE;
+}
+
+
+void timer_activate(const char *prefix)
+{
+  Real time;
+  timer_active = TRUE; 
+
+  time = clock() / (double)CLOCKS_PER_SEC;
+
+  AddExtension(prefix,timer_filename,"time");
+
+  printf("Activating timer (s): %.2f\n",time);
+  printf("Saving timer info to file %s\n",timer_filename);
+
+  timer_dt = time;
+  timer_t0 = time;
+}
+
+
+void timer_show()
+{
+  static int visited = 0;
+  Real time;
+  FILE *out;
+#if MEM_USAGE
+  int who,ret;
+  Real memusage;
+  static struct rusage usage;
+#endif
+
+  if(!timer_active) return;
+
+  time = clock() / (double)CLOCKS_PER_SEC;
+  printf("Elapsed time (s): %.2f %.2f\n",time-timer_t0,time-timer_dt);
+
+#if MEM_USAGE
+  who = RUSAGE_SELF;
+  ret = getrusage( who, &usage );
+  if( !ret ) {
+    printf("maxrss %ld\n",usage.ru_maxrss);
+    printf("ixrss %ld\n",usage.ru_ixrss);
+    printf("idrss %ld\n",usage.ru_idrss);
+    printf("isrss %ld\n",usage.ru_isrss);
+
+    memusage = (double) 1.0 * usage.ru_maxrss;
+  }
+  else {
+    printf("Failed to obtain resource usage!\n");
+    memusage = 0.0;
+  }
+#endif
+
+  visited = visited + 1;
+  if( visited == 1 ) {
+    out = fopen(timer_filename,"w");
+  }
+  else {
+    out = fopen(timer_filename,"a");    
+  }
+
+#if MEM_USAGE
+  fprintf(out,"%3d %12.4le %12.4le %12.4le\n",visited,time-timer_t0,time-timer_dt,memusage);
+#else
+  fprintf(out,"%3d %12.4le %12.4le\n",visited,time-timer_t0,time-timer_dt);
+#endif
+
+  fclose(out);
+
+  timer_dt = time; 
+}
+
+
+
 
 void bigerror(const char error_text[])
 {
@@ -309,7 +497,6 @@ void smallerror(const char error_text[])
   fprintf(stderr,"The program encountered a minor error...\n");
   fprintf(stderr,"%s\n",error_text);
   fprintf(stderr,"...we'll try to continue...\n");
-  exit(1);
 }
 
 
@@ -345,8 +532,9 @@ int Minimi(Real *vector,int first,int last)
 /* Returns the position of the smallest value of vector in range [first,last]. */
 {
   Real min;
-  int i,mini = 0;
+  int i,mini;
 
+  mini=first;
   min=vector[first];
   for(i=first+1;i<=last;i++)
     if(min>vector[i]) 
@@ -374,8 +562,9 @@ int Maximi(Real *vector,int first,int last)
 /* Returns the position of the largest value of vector in range [first,last]. */
 {
   Real max;
-  int i,maxi = 0;
+  int i,maxi;
 
+  maxi=-1;
   max=vector[first];
   for(i=first+1;i<=last;i++) 
     if(max<vector[i]) 
@@ -383,6 +572,7 @@ int Maximi(Real *vector,int first,int last)
 
   return(maxi);
 }
+
 
 
 void AddExtension(const char *fname1,char *fname2,const char *newext)
@@ -394,20 +584,23 @@ void AddExtension(const char *fname1,char *fname2,const char *newext)
    there has to be room for the extension. 
    */
 {
-  char *ptr1;
+  char *ptr1,*ptr2;
 
   strcpy(fname2,fname1); 
+  ptr1 = strrchr(fname2, '.');
 
-  //ML:
-  return;
-
-  ptr1 = strchr(fname2, '.');
-  if (ptr1) *ptr1 = '\0';
+  if (ptr1) {
+    int badpoint=FALSE;
+    ptr2 = strrchr(fname2, '/');
+    if(ptr2 && ptr2 > ptr1) badpoint = TRUE;
+    if(!badpoint) *ptr1 = '\0';
+  }
   strcat(fname2, ".");
   strcat(fname2,newext);
 }
 
-int StringToStrings(const char *buf,char args[10][10],int maxcnt,char separator)
+
+int StringToStrings(const char *buf,char args[10][15],int maxcnt,char separator)
 /*  Finds real numbers separated by a certain separator from a string.
     'buf'       - input string ending to a EOF
     'dest'      - a vector of real numbers
@@ -429,7 +622,7 @@ int StringToStrings(const char *buf,char args[10][10],int maxcnt,char separator)
   do {
     ptr2 = strchr(ptr1,separator);
     if(ptr2) {
-      for(i=0;i<10;i++) {
+      for(i=0;i<15;i++) {
 	args[cnt][i] = ptr1[i];
 	if(ptr1 + i >= ptr2) break;
       }
@@ -437,7 +630,7 @@ int StringToStrings(const char *buf,char args[10][10],int maxcnt,char separator)
       ptr1 = ptr2+1;
     }
     else {
-      for(i=0;i<10;i++) {
+      for(i=0;i<15;i++) {
 	if(ptr1 + i >= buf+totlen) break;
 	args[cnt][i] = ptr1[i];
       }
@@ -480,12 +673,40 @@ int StringToInteger(const char *buf,int *dest,int maxcnt,char separator)
 {
   int cnt = 0;
   char *ptr1 = (char *)buf, *ptr2;
-
+  int ival;
+  
   if (!buf[0]) return 0;
   do {
+    
     ptr2 = strchr(ptr1,separator);
     if (ptr2) ptr2[0] = '\0';
-    dest[cnt++] = atoi(ptr1);
+    ival = atoi(ptr1);
+
+    dest[cnt++] = ival;
+    
+    if (ptr2) ptr1 = ptr2+1;
+  } while (cnt < maxcnt && ptr2 != NULL);
+
+  return cnt;
+}
+
+int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator)
+{
+  int cnt = 0;
+  char *ptr1 = (char *)buf, *ptr2;
+  int ival;
+  
+  if (!buf[0]) return 0;
+  do {
+    
+    ptr2 = strchr(ptr1,separator);
+    if (ptr2) ptr2[0] = '\0';
+    ival = atoi(ptr1);
+
+    if(ival == 0) break;
+      
+    dest[cnt++] = ival;      
+
     if (ptr2) ptr1 = ptr2+1;
   } while (cnt < maxcnt && ptr2 != NULL);
 
@@ -503,6 +724,18 @@ int next_int(char **start)
   return(i);
 }
 
+int next_int_n(char **start, int n)
+{
+  int i;
+  char *end = *start+n;
+  char saved = *end;
+
+  *end = '\0';
+  i = strtol(*start,NULL,10);
+  *end = saved;
+  *start = end;
+  return(i);
+}
 
 Real next_real(char **start)
 {
@@ -516,81 +749,74 @@ Real next_real(char **start)
 }
 
 
-
-/* Indexing algorithm, Creates an index table */
-#define SWAPI(a,b) itemp=(a);(a)=(b);(b)=itemp;
-#define M 7
-#define NSTACK 50
-
-void SortIndex(int n,double *arr,int *indx)
+/*
+ * sort: sort an (double) array to ascending order, and move the elements of
+ *       another (integer) array accordingly. the latter can be used as track
+ *       keeper of where an element in the sorted order at position (k) was in
+ *       in the original order (Ord[k]), if it is initialized to contain
+ *       numbers (0..N-1) before calling sort. 
+ *
+ * Parameters:
+ *
+ * N:      int                  / number of entries in the arrays.
+ * Key:    double[N]             / array to be sorted.
+ * Ord:    int[N]               / change this accordingly.
+ */
+void SortIndex( int N, double *Key, int *Ord )
 {
-  int i,indxt,ir,itemp,j,k,l;
-  int jstack,*istack;
-  double a;
+  double CurrentKey;
 
-  ir = n;
-  l = 1;
-  jstack = 0;  
-  istack = ivector(1,NSTACK);
+  int CurrentOrd;
 
-  for(j=1;j<=n;j++) 
-    indx[j] = j;
+  int CurLastPos;
+  int CurHalfPos;
 
-  for(;;) {
-    if (ir-l < M) {
-      for(j=l+1;j<=ir;j++) {
-	indxt = indx[j];
-	a = arr[indxt];
-	for(i=j-1;i>=1;i--) {
-	  if(arr[indx[i]] <= a) break;
-	  indx[i+1] = indx[i];
-	}
-	indx[i+1] = indxt;
-      }
-      if(jstack == 0) break;
-      ir = istack[jstack--];
-      l = istack[jstack--];
-    } 
-    else {
-      k = (l+ir) >>  1;
-      SWAPI(indx[k],indx[l+1]);
-      if(arr[indx[l+1]] > arr[indx[ir]]) {
-	SWAPI(indx[l+1],indx[ir]);
-      }
-      if(arr[indx[l]] > arr[indx[ir]]) {
-	SWAPI(indx[l],indx[ir]);
-      }
-      if(arr[indx[l+1]] > arr[indx[l]]) {
-	SWAPI(indx[l+1],indx[l]);
-      }
-      i = l+1;
-      j = ir;
-      indxt = indx[l];
-      a = arr[indxt];
-      for(;;) {
-	do i++; while(arr[indx[i]] < a);
-	do j--; while(arr[indx[j]] > a);
-	if(j < i) break;
-	SWAPI(indx[i],indx[j]);
-      }
-      indx[l] = indx[j];
-      indx[j] = indxt;
-      jstack += 2;
-      if(jstack > NSTACK) printf("NSTACK too small in SortIndex.");
-      if(ir-i+1 >= j-l) {
-	istack[jstack]   = ir;
-	istack[jstack-1] = i;
-	ir = j-1;
-      } else {
-	istack[jstack] = j-1;
-	istack[jstack-1] = l;
-	l = i;
+  int i;
+  int j; 
+ 
+  /* Initialize order */
+  for(i=1;i<=N;i++)
+    Ord[i] = i;
+
+  CurHalfPos = N / 2 + 1;
+  CurLastPos = N;
+  while( 1 ) {
+    if ( CurHalfPos > 1 ) {
+      CurHalfPos--;
+      CurrentKey = Key[CurHalfPos];
+      CurrentOrd = Ord[CurHalfPos];
+    } else {
+      CurrentKey = Key[CurLastPos];
+      CurrentOrd = Ord[CurLastPos];
+      Key[CurLastPos] = Key[1];
+      Ord[CurLastPos] = Ord[1];
+      CurLastPos--;
+      if ( CurLastPos == 1 ) {
+	Key[1] = CurrentKey;
+	Ord[1] = CurrentOrd;
+	return;
       }
     }
+    i = CurHalfPos;
+    j = 2 * CurHalfPos;
+    while( j <= CurLastPos ) {
+      if ( j < CurLastPos && Key[j] < Key[j + 1] ) {
+	j++;
+      }
+      if ( CurrentKey < Key[j] ) {
+	Key[i] = Key[j];
+	Ord[i] = Ord[j];
+	i  = j;
+	j += i;
+      } else {
+	j = CurLastPos + 1;
+      }
+    }
+    Key[i] = CurrentKey;
+    Ord[i] = CurrentOrd;
   }
-  free_ivector(istack,1,NSTACK);
-}
 
+}
 
 
 
