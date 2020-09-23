@@ -210,6 +210,10 @@ int main(int argc, char *argv[])
     }
     if(LoadFidapInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
       Goodbye();
+    
+    eg.bulkorder = TRUE;
+    eg.boundorder = TRUE;
+
     if(!eg.usenames) data[nofile].boundarynamesexist = data[nofile].bodynamesexist = FALSE;
   
     nomeshes++;
@@ -295,9 +299,10 @@ int main(int argc, char *argv[])
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
+
     if (LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
       Goodbye();
-    nomeshes++;
+    nomeshes++;    
     break;
 
   case 15: 

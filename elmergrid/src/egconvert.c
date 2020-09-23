@@ -1577,7 +1577,7 @@ end:
   if(info) printf("Finished reading the Fidap neutral file\n");
 
   ElementsToBoundaryConditions(data,boundaries,FALSE,TRUE);
-  RenumberBoundaryTypes(data,boundaries,TRUE,0,info);  
+  /* RenumberBoundaryTypes(data,boundaries,TRUE,0,info); */
 
   return(0);
 }
@@ -3541,13 +3541,13 @@ allocate:
 
 
 static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int info)
+			  char *filename,int usetaggeom, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
-  int usetaggeom,tagmat,verno;
+  int tagmat,verno;
   int physvolexist, physsurfexist;
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
@@ -3564,10 +3564,10 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
-  usetaggeom = FALSE;
   physvolexist = FALSE;
   physsurfexist = FALSE;
-
+  usetaggeom = FALSE;
+  
 omstart:
 
   for(;;) {
@@ -3748,11 +3748,6 @@ omstart:
 
   ElementsToBoundaryConditions(data,bound,FALSE,info);
 
-  /* The geometric entities are rather randomly numbered */
-  if( usetaggeom ) {
-    RenumberBoundaryTypes(data,bound,TRUE,0,info);
-    RenumberMaterialTypes(data,bound,info);
-  }
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
 
@@ -3763,12 +3758,12 @@ omstart:
 
 
 static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int info)
+			  char *filename,int usetaggeom, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
   int tagmat,verno;
   int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
   FILE *in;
@@ -3788,6 +3783,7 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   maxelemtype = 0;
   physvolexist = FALSE;
   physsurfexist = FALSE;
+  usetaggeom = TRUE; /* The default */
   for(i=0;i<4;i++) maxtag[i] = 0;
 
   
@@ -3864,13 +3860,14 @@ omstart:
       int nobound, idum;
       Real rdum;
       
+      usetaggeom = FALSE;
+
       GETLINE;
       cp = line;
       numPoints = next_int(&cp);
       numCurves = next_int(&cp);
       numSurfaces = next_int(&cp);
       numVolumes = next_int(&cp);
-
       
       if(allocated) {
 	tagsize = 0;
@@ -3885,7 +3882,6 @@ omstart:
       }
       
       for(tagdim=0;tagdim<=3;tagdim++) {	
-
 	
 	if( tagdim == 0 ) 
 	  numEnt = numPoints;
@@ -3901,8 +3897,9 @@ omstart:
 	else if( maxtag[tagdim] > 0 )
 	  printf("Maximum original tag for %d %dDIM entities is %d\n",numEnt,tagdim,maxtag[tagdim]);
 
-	if(numEnt > 0 && !allocated) printf("Reading %d entities in %dD\n",numEnt,tagdim);
-
+	if(numEnt > 0 && !allocated) {
+	  printf("Reading %d entities in %dD\n",numEnt,tagdim);
+	}
 	
 	for(i=1; i <= numEnt; i++) {
 	  GETLONGLINE;
@@ -4188,12 +4185,12 @@ omstart:
 
 
 static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int info)
+			   char *filename,int usetaggeom, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
   int tagmat,verno;
   int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
   FILE *in;
@@ -4213,6 +4210,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   maxelemtype = 0;
   physvolexist = FALSE;
   physsurfexist = FALSE;
+  usetaggeom = TRUE; /* The default */
   for(i=0;i<4;i++) maxtag[i] = 0;
 
 omstart:
@@ -4303,6 +4301,8 @@ omstart:
       int tag,tagdim,nophys,phystag;
       int nobound, idum;
       Real rdum;
+
+      usetaggeom = FALSE;
       
       GETLINE;
       cp = line;
@@ -4631,12 +4631,12 @@ omstart:
 }
 
 int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int info)
+		  char *prefix,int info)
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
-  int errnum;
-
+  int errnum,usetaggeom;
+  
   sprintf(filename,"%s",prefix);
   if ((in = fopen(filename,"r")) == NULL) {
     sprintf(filename,"%s.msh",prefix);
@@ -4668,14 +4668,14 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     
     if( verno == 4 ) {
       if( minorno == 0 ) 
-	errnum = LoadGmshInput4(data,bound,filename,info);
+	errnum = LoadGmshInput4(data,bound,filename,usetaggeom,info);
       else if( minorno == 1 ) 
-	errnum = LoadGmshInput41(data,bound,filename,info);
+	errnum = LoadGmshInput41(data,bound,filename,usetaggeom,info);
       else
 	printf("Minor version not yet supported, cannot continue!\n");
     }
     else {
-      errnum = LoadGmshInput2(data,bound,filename,info);
+      errnum = LoadGmshInput2(data,bound,filename,usetaggeom,info);
     }      
   } else {
     fclose(in);
@@ -4688,6 +4688,13 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     errnum = LoadGmshInput1(data,bound,filename,info);
   }     
 
+  if( info ) {
+    if( usetaggeom )
+      printf("Using geometric numbering of entities\n");
+    else
+      printf("Using physical numbering of entities\n");
+  }
+  
   return(errnum);
 }
 
@@ -4700,7 +4707,7 @@ int LoadFvcomMesh(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
   int elemnodes,maxelemtype,elemtype0,bclines;
-  int usetaggeom,tagmat,bccount;
+  int tagmat,bccount;
   int *bcinds,*bctags,nbc,nbc0,bc_id;
   FILE *in;
   char *cp,line[MAXLINESIZE];
@@ -4717,7 +4724,6 @@ int LoadFvcomMesh(struct FemType *data,struct BoundaryType *bound,
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 303;
-  usetaggeom = FALSE;
 
   noelements = 0;
   bclines = 0;
@@ -4838,7 +4844,7 @@ int LoadGeoInput(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
   int elemnodes,maxelemtype,elemtype0;
-  int usetaggeom,tagmat;
+  int tagmat;
   FILE *in;
   char *cp,line[MAXLINESIZE];
 
@@ -4854,7 +4860,6 @@ int LoadGeoInput(struct FemType *data,struct BoundaryType *bound,
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
-  usetaggeom = FALSE;
 
 omstart:
 
