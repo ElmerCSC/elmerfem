@@ -3624,7 +3624,7 @@ CONTAINS
     !variables not copied across. If you get some odd interpolation artefact,
     !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask",globaleps=globaleps,localeps=localeps)
+         "Calving Front Mask",UnfoundNodes,globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
