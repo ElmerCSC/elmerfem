@@ -163,8 +163,14 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   ! if executed before the actual computations...
   ! -----------------------------------------------------------------------
   CALL ListAddConstReal(Model % Simulation,'res: Eddy current power',0._dp)
-  CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',0._dp)
 
+  IF( ListGetLogical( SolverParams,'Separate Magnetic Energy',Found ) ) THEN
+    CALL ListAddConstReal(Model % Simulation,'res: Electric Field Energy',0._dp)
+    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',0._dp)
+  ELSE
+    CALL ListAddConstReal(Model % Simulation,'res: ElectroMagnetic Field Energy',0._dp)
+  END IF
+    
   IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) &
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency',0._dp)
 
@@ -493,7 +499,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), B2
-   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy, w_dens, R_t_ip(3,3)
+   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(2), w_dens, R_t_ip(3,3)
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
@@ -1369,10 +1375,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
        END IF
 
+       Energy(1) = Energy(1) + s*0.5*PR_ip*SUM(E**2)
+
        IF(ASSOCIATED(HB) .AND. RealField) THEN 
-         Energy = Energy + s*(0.5*PR_ip*SUM(E**2) + w_dens)
+         Energy(2) = Energy(2) + s*w_dens
        ELSE
-         Energy = Energy + s*0.5*(PR_ip*SUM(E**2) + R_ip*SUM(B**2))
+         Energy(2) = Energy(2) + s*0.5*R_ip*SUM(B**2)
        END IF
 
        DO p=1,n
@@ -1850,7 +1858,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ! Perform parallel reductions 
    Power  = ParallelReduction(Power)
-   Energy = ParallelReduction(Energy)
+   Energy(1) = ParallelReduction(Energy(1))
+   Energy(2) = ParallelReduction(Energy(2))
   
    IF (LossEstimation) THEN
      DO j=1,2
@@ -1872,9 +1881,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL Info( 'MagnetoDynamicsCalcFields', Message )
    CALL ListAddConstReal( Model % Simulation, 'res: Eddy current power', Power )
 
-   WRITE(Message,*) '(Electro)Magnetic Field Energy: ', Energy
-   CALL Info( 'MagnetoDynamicsCalcFields', Message )
-   CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
+   IF( ListGetLogical( SolverParams,'Separate Magnetic Energy',Found ) ) THEN
+     WRITE(Message,'(A,ES12.3)') 'Electric Field Energy: ', Energy(1)
+     CALL Info( 'MagnetoDynamicsCalcFields', Message )
+     WRITE(Message,'(A,ES12.3)') 'Magnetic Field Energy: ', Energy(2)
+     CALL Info( 'MagnetoDynamicsCalcFields', Message )
+     CALL ListAddConstReal(Model % Simulation,'res: Electric Field Energy',Energy(1))
+     CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy(2))
+   ELSE
+     WRITE(Message,'(A,ES12.3)') 'ElectroMagnetic Field Energy: ',SUM(Energy)
+     CALL Info( 'MagnetoDynamicsCalcFields', Message )
+     CALL ListAddConstReal(Model % Simulation,'res: ElectroMagnetic Field Energy',SUM(Energy))
+   END IF
+
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM, R_t )
 
@@ -2533,7 +2552,7 @@ CONTAINS
           END DO
         END IF
 
-        Energy = Energy + GapLength_ip*s*0.5*R_ip*B2
+        Energy(2) = Energy(2) + GapLength_ip*s*0.5*R_ip*B2
 
         DO p=1,n
           IF(HasLeft) LeftFORCE(LeftMap(p), 1:3) = LeftFORCE(LeftMap(p), 1:3) + s*NF_ip_l(p,1:3)
