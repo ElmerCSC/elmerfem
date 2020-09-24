@@ -67,7 +67,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
   !--------------------------------------
-  TYPE(Variable_t), POINTER :: CalvingVar
+  TYPE(Variable_t), POINTER :: CalvingVar,DistanceVar
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
@@ -84,11 +84,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        target_length(:,:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
-  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.,DoAniso
+  LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
+       RemeshOccurs,CheckFlowConvergence
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
-
+  Debug=.FALSE.
   Mesh => Model % Mesh
   NNodes = Mesh % NumberOfNodes
   NBulk = Mesh % NumberOfBulkElements
@@ -131,26 +132,47 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     PRINT *,ParEnv % MyPE,' hausd: ',hausd
     PRINT *,ParEnv % MyPE,' remeshing distance: ',remesh_thresh
   END IF
+  
+  !If FlowSolver failed to converge (usually a result of weird mesh), large unphysical
+  !calving events can be predicted. So, turn off CalvingOccurs, and ensure a remesh
+  !Also undo this iterations mesh update
+  NSFail = ListGetLogical(Model % Simulation, "Flow Solution Failed",CheckFlowConvergence)
+  IF(CheckFlowConvergence) THEN
+    IF(NSFail) THEN
+      CalvingOccurs = .FALSE.
+      RemeshOccurs = .TRUE.
+      CALL Info(SolverName, "Remeshing but not calving because NS failed to converge.")
+    END IF
+  ELSE
+     CalvingOccurs=.TRUE.
+     RemeshOccurs=.TRUE.
+  END IF
 
+  ALLOCATE(remeshed_node(NNodes),&
+       fixed_node(NNodes))
+  remeshed_node = .FALSE.
+  fixed_node = .FALSE.
+  
   !Get the calving levelset function (-ve inside calving event, +ve in intact ice)
   !-------------------
-  CalvingVar => VariableGet(Mesh % Variables, "Calving Lset", .TRUE., UnfoundFatal=.TRUE.)
+  IF (CalvingOccurs) THEN
+     CalvingVar => VariableGet(Mesh % Variables, "Calving Lset", .TRUE., UnfoundFatal=.TRUE.)
 
-  ALLOCATE(test_dist(NNodes),&
-       test_lset(NNodes),&
-       remeshed_node(NNodes),&
-       calved_node(NNodes),&
-       fixed_node(NNodes)&
-       )
+     ALLOCATE(test_lset(NNodes),&
+          calved_node(NNodes)&
+          )
 
-  test_dist = 0.0
-  remeshed_node = .FALSE.
-  calved_node = .FALSE.
-  fixed_node = .FALSE.
-
-  test_lset = CalvingVar % Values(CalvingVar % Perm(:)) !TODO - quick&dirty, possibly zero perm?
-  calved_node = test_lset < 0.0
-  remeshed_node = test_lset < remesh_thresh
+     calved_node = .FALSE.
+     test_lset = CalvingVar % Values(CalvingVar % Perm(:)) !TODO - quick&dirty, possibly zero perm?
+     calved_node = test_lset < 0.0
+     remeshed_node = test_lset < remesh_thresh
+  ELSE
+     ! TO DO some other wah to define remeshed nodes
+     DistanceVar  => VariableGet(Mesh % Variables, "Distance", .TRUE., UnfoundFatal=.TRUE.)
+     ALLOCATE(test_dist(NNodes))
+     test_dist = DistanceVar  % Values(DistanceVar % Perm(:))
+     remeshed_node = test_dist < remesh_thresh
+  END IF
 
   my_calv_front = 0
   IF(ANY(remeshed_node)) THEN
@@ -323,11 +345,17 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END DO
     END IF
 
+    IF (CalvingOccurs) THEN
     !Gather the level set function
     CALL MPI_GatherV(PACK(test_lset,remeshed_node), COUNT(remeshed_node), MPI_DOUBLE_PRECISION, &
           Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, 0, COMM_CALVE,ierr)
     IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
-
+    ELSE
+    !Gather the distance to front, but let it output to Ptest_lset to avoid repetitive code
+    CALL MPI_GatherV(PACK(test_dist,remeshed_node), COUNT(remeshed_node), MPI_DOUBLE_PRECISION, &
+          Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, 0, COMM_CALVE,ierr)
+    IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
+    END IF
     !Gather the GDOFs
     CALL MPI_GatherV(PACK(Mesh % ParallelInfo % GlobalDOFs,remeshed_node), &
          COUNT(remeshed_node), MPI_INTEGER, PGDOFs_send, Prnode_count, &
@@ -353,12 +381,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END IF
       END DO
     END IF
-
-  END IF
+  END IF ! My calving front > 1
 
   !Nominated partition does the remeshing
   IF(ImBoss) THEN
-
+  IF (CalvingOccurs) THEN
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgSol  = 0
@@ -598,8 +625,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
+      END IF ! CalvingOccurs
+
       DoAniso = .TRUE.
-      IF(DoAniso) THEN
+      IF(DoAniso .AND. CalvingOccurs) THEN
 
         new_fixed_elem = PACK(new_fixed_elem, .NOT. RmElem)
         new_fixed_node = PACK(new_fixed_node, .NOT. RmNode)
@@ -632,6 +661,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         !TODO - apparently there is beta-testing capability to do both levelset cut and anisotropic
         !remeshing in the same step:
         !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
+        ! GetCalvingEdgeNodes detects all shared boundary edges, to keep them sharp
         CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
         !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
         CALL RemeshMMG3D(NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
@@ -643,10 +673,18 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         NewMeshR => NewMeshRR
         NewMeshRR => NULL()
 
-      ELSE
+      ELSE IF (DoAniso) THEN
+         ! remeshing but no calving
+        CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., REdgePairs, RPairCount)
+        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+        CALL RemeshMMG3D(GatheredMesh, NewMeshR,REdgePairs, RPairCount,NodeFixed=fixed_node, ElemFixed=fixed_elem)
+                !Update parallel info from old mesh nodes (shared node neighbours)
+        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+        
+      ELSE ! Not DoAniso
 
         !Update parallel info from old mesh nodes (shared node neighbours)
-        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+        IF (CalvingOccurs) CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
 
       END IF
 
@@ -655,7 +693,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       GatheredMesh => NewMeshR
       NewMeshR => NULL()
       NewMeshRR => NULL()
-   END IF
+   END IF ! ImBoss
 
    !Wait for all partitions to finish
    IF(My_Calv_Front>0) THEN
@@ -1068,14 +1106,15 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   END IF
 
   NSFail = FlowVar % NonlinConverged < 1 .OR. NSDiverge .OR. NSTooFast
-
+  PRINT *, 'temporarily set NSFail=True for testing'
+  NSFail=.TRUE.
   IF(NSFail) THEN
     CALL Info(SolverName, "Skipping solvers except Remesh because NS failed to converge.")
 
     FailCount = FailCount + 1
     PRINT *, 'FailCount=',FailCount
-    ! PRINT *, 'Temporarily set failcount to 2, to force remeshing!'
-    ! FailCount=2
+    PRINT *, 'Temporarily set failcount to 2, to force remeshing!'
+    FailCount=2
     IF(FailCount >= 4) THEN
        CALL Fatal(SolverName, "Don't seem to be able to recover from NS failure, giving up...")
     END IF
@@ -1092,7 +1131,7 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
          "Nonlinear System Newton After Iterations", 10000)
 
     !If this is the second failure in a row, fiddle with the mesh
-PRINT *, 'TO DO, set MMG stuff instead, need to change remesh distance?'
+    PRINT *, 'TO DO, optimize MMG parameters, need to change remesh distance as well?'
     IF(FailCount >= 2) THEN
        CALL Info(SolverName,"NS failed twice, fiddling with the mesh... ")
        CALL Info(SolverName,"Temporarily slightly change RemeshMMG3D params ")
