@@ -1376,7 +1376,7 @@ CONTAINS
              INQUIRE(FILE=TRIM(str1), EXIST=fexist)
           END IF
           IF (.NOT. fexist) THEN
-             CALL Fatal('CheckKeyWord', 'SOLVER.KEYWORDS not found')
+             CALL Fatal('CheckKeyword', 'SOLVER.KEYWORDS not found')
           END IF
 
           OPEN( 1, FILE=TRIM(str1), STATUS='OLD', ERR=10 )
@@ -1387,12 +1387,12 @@ CONTAINS
           hash => HashCreate( 50,4 )
           IF ( .NOT. ASSOCIATED( hash ) ) THEN
              IF ( CheckAbort <= 2 ) THEN
-               CALL Warn( 'CheckKeyWord', 'Can not create the hash table for SOLVER.KEYWORDS.' )
-               CALL Warn( 'CheckKeyWord', 'keyword checking disabled.' )
+               CALL Warn( 'CheckKeyword', 'Can not create the hash table for SOLVER.KEYWORDS.' )
+               CALL Warn( 'CheckKeyword', 'keyword checking disabled.' )
                CheckAbort = 0
                RETURN
              ELSE
-               CALL Fatal( 'CheckKeyWord','Can not create the hash table for SOLVER.KEYWORDS.' )
+               CALL Fatal( 'CheckKeyword','Can not create the hash table for SOLVER.KEYWORDS.' )
              END IF
           END IF
 
@@ -1412,12 +1412,12 @@ CONTAINS
 
              IF ( istat /= 0 ) THEN
                 IF ( CheckAbort <= 2 ) THEN
-                  CALL Warn( 'CheckKeyWord', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
-                  CALL Warn( 'CheckKeyWord', ' keyword checking disabled.' )
+                  CALL Warn( 'CheckKeyword', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
+                  CALL Warn( 'CheckKeyword', ' keyword checking disabled.' )
                   CheckAbort = 0
                   RETURN
                 ELSE
-                  CALL Fatal( 'CheckKeyWord', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
+                  CALL Fatal( 'CheckKeyword', 'Can not allocate the hash table entry for SOLVER.KEYWORDS.' )
                 END IF
              END IF
 
@@ -1426,11 +1426,11 @@ CONTAINS
              lstat = HashAdd( hash, str1, Val )
              IF ( .NOT. lstat ) THEN
                 IF ( CheckAbort <= 2 ) THEN
-                   CALL Warn( 'CheckKeyWord', 'Hash table build error. Keyword checking disabled.' )
+                   CALL Warn( 'CheckKeyword', 'Hash table build error. Keyword checking disabled.' )
                    CheckAbort = 0
                    RETURN
                 ELSE
-                   CALL Fatal( 'CheckKeyWord', 'Hash table build error.' )
+                   CALL Fatal( 'CheckKeyword', 'Hash table build error.' )
                 END IF
              END IF
           END DO
@@ -1439,7 +1439,7 @@ CONTAINS
           IF ( FirstTime ) THEN
              FirstTime = .FALSE.
              OPEN( 1, FILE='SOLVER.KEYWORDS', STATUS='OLD', ERR=6 )
-             CALL Info( 'CheckKeyWord', 'Found local SOLVER.KEYWORDS file, ' // &
+             CALL Info( 'CheckKeyword', 'Found local SOLVER.KEYWORDS file, ' // &
                         'adding keywords to runtime database.' )
              GOTO 5
 6            CONTINUE
@@ -1495,7 +1495,7 @@ CONTAINS
           IF ( .NOT. ( ScanOnly .OR. CheckAbort == 2) ) THEN
             WRITE( Message, * ) 'Unlisted keyword: [', TRIM(name), &
                       '] in section: [', TRIM(Section), ']'
-            CALL Info( 'CheckKeyWord', Message )
+            CALL Info( 'CheckKeyword', Message )
 
             ! This is intended to be activated when new keywords are checked 
             ! Generally it can be set false
@@ -1524,12 +1524,12 @@ CONTAINS
                '] in section: [', TRIM(Section), ']',  &
                ' is given wrong type: [', TRIM(TYPE),  &
                '], should be of type: [', TRIM(Val % TYPE),']'
-          CALL Fatal( 'CheckKeyWord', Message )
+          CALL Fatal( 'CheckKeyword', Message )
         END IF
        ELSE
          WRITE( Message, * ) 'Unlisted keyword: [', TRIM(name), &
              '] in section: [', TRIM(Section), '].'
-         CALL Fatal( 'CheckKeyWord', Message )
+         CALL Fatal( 'CheckKeyword', Message )
        END IF
 
        RETURN
@@ -1537,10 +1537,10 @@ CONTAINS
 10     CONTINUE
 
        IF ( CheckAbort <= 2 ) THEN
-          CALL Warn( 'CheckKeyWord', 'Keyword check requested, but SOLVER.KEYWORDS' // &
+          CALL Warn( 'CheckKeyword', 'Keyword check requested, but SOLVER.KEYWORDS' // &
                  ' database not available.' )
        ELSE
-          CALL Fatal( 'CheckKeyWord', 'Keyword check requested, but SOLVER.KEYWORDS' // &
+          CALL Fatal( 'CheckKeyword', 'Keyword check requested, but SOLVER.KEYWORDS' // &
                  ' database not available.' )
        END IF
 !------------------------------------------------------------------------------

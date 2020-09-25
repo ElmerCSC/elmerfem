@@ -14390,7 +14390,7 @@ CONTAINS
     END DO
 
     CALL Info('FindMeshEdges2D','Creating hash table of size '&
-        //TRIM(I2S(Mesh % NumberOfNodes))//' for noto-to-node connectivity',Level=12)
+        //TRIM(I2S(Mesh % NumberOfNodes))//' for node-to-node connectivity',Level=12)
     ALLOCATE( HashTable( Mesh % NumberOfNodes ) )
     DO i=1,Mesh % NumberOfNodes
        NULLIFY( HashTable(i) % Head )

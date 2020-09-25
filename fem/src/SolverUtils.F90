@@ -7267,9 +7267,12 @@ CONTAINS
      SUBROUTINE SetPointLoads(n)
        INTEGER :: n
        REAL(KIND=dp) :: Work(n)
+       LOGICAL :: ImaginaryLoads
+       CHARACTER(LEN=MAX_NAME_LEN) :: LoadNameIm
 
        IF(n<=0) RETURN
-       
+       ImaginaryLoads = ASSOCIATED(A % RHS_im)
+
        IF ( DOF > 0 ) THEN
          Work(1:n) = ListGetReal( ValueList, LoadName, n, NodeIndexes, gotIt )
        ELSE
@@ -7296,6 +7299,36 @@ CONTAINS
              END IF
            END IF
          END DO
+       END IF
+
+       IF (ImaginaryLoads) THEN
+         IF (DOF > 0) THEN
+           Work(1:n) = ListGetReal(ValueList, LoadName(1:nlen) // ' im', n, NodeIndexes, gotIt)
+         ELSE
+           CALL ListGetRealArray(ValueList, LoadName(1:nlen) // ' im', WorkA, n, NodeIndexes, gotIt)
+         END IF
+         
+         IF (GotIt) THEN
+           DO j=1,n
+             IF ( NodeIndexes(j) > SIZE(Perm) .OR. NodeIndexes(j) < 1 ) THEN
+               CALL Warn('SetPointLoads','Invalid Node Number')
+               CYCLE
+             END IF
+         
+             k = Perm(NodeIndexes(j))
+             IF ( k > 0 ) THEN
+               IF (DOF > 0) THEN
+                 k = NDOFs * (k-1) + DOF
+                 A % RHS_im(k) = A % RHS_im(k) + Work(j) 
+               ELSE
+                 DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
+                   k1 = NDOFs * (k-1) + l
+                   A % RHS_im(k1) = A % RHS_im(k1) + WorkA(l,1,j) 
+                 END DO
+               END IF
+             END IF
+           END DO
+         END IF
        END IF
 
      END SUBROUTINE SetPointLoads
