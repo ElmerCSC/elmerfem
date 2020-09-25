@@ -12,14 +12,18 @@
 
 if(APPLE)
   # message("you need to have gcc-gfrotran installed using HomeBrew")
-  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-9")
-  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-9")
+  # set(CMAKE_C_COMPILER "/usr/bin/gcc")
+  # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
+  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-10")
+  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
   set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
   # set(BLA_VENDOR "OpenBLAS")
   # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
   # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
   # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
 endif()
+
+
 
 
 
@@ -178,12 +182,38 @@ IF(WITH_OpenMP)
     OpenMP_Fortran_FLAGS
     OpenMP_CXX_FLAGS
     )
+
+  # Add OpenMP flags to compilation flags
+  # if(APPLE)
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_C "${CMAKE_C_COMPILER}")
+  #     set(OpenMP_C_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_C_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #   endif()
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
+  #     set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #   endif()
+  # else()
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  # endif()
+
+#if("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+#  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
+#endif()
   
   FIND_PACKAGE(OpenMP REQUIRED)
-  # Add OpenMP flags to compilation flags
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  
+  
 
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
