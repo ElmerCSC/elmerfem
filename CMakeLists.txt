@@ -207,9 +207,9 @@ IF(WITH_OpenMP)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   # endif()
 
-#if("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
-#  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
-#endif()
+if("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
+endif()
   
   FIND_PACKAGE(OpenMP REQUIRED)
   
