@@ -3,7 +3,7 @@ Elmer Release Notes for version 8.5
 
 Previous release: **8.4**  
 Period covered: **18 Dec 2018 - 30 Aug 2020**  
-Number of commits: **~1140** (excluding merges)  
+Number of commits: **~1260** (excluding merges)  
 
 These release notes provide information on the most essential changes.
 You can get a complete listing of commit messages, for example, with:  
@@ -47,6 +47,11 @@ New Solver Modules
 ### SpringAssembly
 - A generic utility to add node-wise springs and masses to structural models (see Elmer Models Manual for documentation)
 
+### MarchingODESolver
+- A solver that can compute ordinary differential equations on a moving mesh.
+- It is assumed that the mesh is structured and there is known draw speed. This
+  make it possible to relate timestep and mesh parameter directrly with each other.
+
 
 Enhanced Solver Modules
 -----------------------
@@ -59,6 +64,9 @@ Enhanced Solver Modules
 ### EMWaveSolver
 - the solver updated to support the basis functions of second order and simulation in 2D 
 - the solver is now documented in Elmer Models Manual
+
+### MagnetoDynamics3D
+- Fixes and generalization to Jfix determination. 
 
 ### MagnetoDynamics2D
 - a velocity field can be given to add a Lorentz term to the equations
@@ -81,7 +89,7 @@ Enhanced Solver Modules
 
 ### HeatSolver
 - A new tentative vectorized version: HeatSolverVec
-- Enable symmetric 3D cases for view factor computation. 
+- Enable symmetric 3D cases for view factor computation. Significant timesavings. 
 - Make Gebhart factors linear system symmetric, if possible "ViewFactor Symmetry".
 
 ### StressSolver
@@ -91,6 +99,10 @@ Enhanced Solver Modules
 
 ### WhitneyAVHarmonicSolver
 - A surface impedance condition for the time-harmonic AV model
+
+### WaveSolver
+- The solver can be used to model harmonic and eigenmode cases as well. 
+
 
 ElmerSolver library functionality
 ---------------------------------
@@ -145,6 +157,14 @@ ElmerSolver library functionality
 - Applicable also to transient system as the variable "time" is not used for the control level. 
 
 
+### Inline parameters
+- Enable inline keywords -rpar and -ipar
+- They are followed by the number of argument + values of the arguments. 
+
+### Generic source control
+- We may tune an r.h.s. load vector such that the solution (or reaction force) at
+  given node is the desired one.
+- Mimics the old Smart Control operation of HeatSolve but on a library level.
 
 ElmerGrid
 ---------
@@ -152,18 +172,32 @@ ElmerGrid
 - Tentative reader for FVCOM format
 - Add possibility to define seed for Metis partitioning (-metisseed).
 - Maintain entity names in extrusion
-
+- ElmerGrid and its plugin under ElmerGUI where harmonized such that they use the same codebase. 
 
 
 ElmerGUI
 --------
-- Include many improvements by Saeki
-
+- Huge number of improvements by Saeki!
+- Read all the timesteps when launching ElmerVTK
+- Seperated paraview process from ElmerPost process
+- Toolbar button for ElmerPost is now switchable to ElmerVTK or ParaView.
+- When vtu file is specified, read vtu file when starting VTKPost from ElmerGUI
+- Redraw after reseting model
+- Added Time-step toolbar  in the bottom. Displace button is also moved to the bottom.
+- Deleted sif autogen
+- Adjustment for VTK8.2
+- Adjustment of new project menu
+- More detailed log messages 
+- Adjusted "Save project" menu and added "New project..." menu.
+- Object browser was added
+- "Save and run" action and highlight colors
+- Make GUI more stream-lined    
+- Improved project loading and made it more robust.
+ 
 Configuration & Compilation
 ---------------------------
-    
-- cmake improvements:
-
+- New Windows installer utilizing msys2
+    - either with or without ElmerGUI + with or without MPI = 4 installers
 
 Elmer/Ice
 ---------
