@@ -101,7 +101,7 @@ Simulation
   Steady State Min Iterations = 1
 
   Output File = "$namerun".result" !"
-  max output level = 20
+  max output level = 10
 End
 
 !---------------------------------------------------
@@ -767,6 +767,3 @@ End
 
 Solver 16 :: Reference Norm = Real 1.79613790E+01
 Solver 16 :: Reference Norm Tolerance = Real 1E-04
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=1.79613790E+01,EPS=1E-04\n" );

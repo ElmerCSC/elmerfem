@@ -3422,7 +3422,8 @@ CONTAINS
     ReduceStep = CheckStepSize(Solver,First,nsize,values,values0) 
 
     IF( Last .AND. .NOT. ReduceStep ) THEN
-      CALL Info('DefaultLinesearch','Maximum number of nonlinear iterations reached, giving up after linesearch')
+      CALL Info('DefaultLinesearch',&
+          'Maximum number of nonlinear iterations reached, giving up after linesearch',Level=6)
     END IF
 
     IF( PRESENT( Converged ) ) THEN
@@ -4796,7 +4797,7 @@ CONTAINS
      END IF
 
      CALL Info('DefUtils::DefaultDirichletBCs', &
-            'Setting Dirichlet boundary conditions', Level=5)
+            'Setting Dirichlet boundary conditions', Level=6)
      
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled: 
@@ -5344,7 +5345,7 @@ CONTAINS
      CALL EnforceDirichletConditions( Solver, A, b )
      
  
-     CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=5)
+     CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=10)
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultDirichletBCs
 !------------------------------------------------------------------------------
@@ -5877,7 +5878,7 @@ CONTAINS
 
     IF( BUpd ) THEN
       str = GetString( Params,'Equation',Found)
-      CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=5 )
+      CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=6 )
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
       ELSE

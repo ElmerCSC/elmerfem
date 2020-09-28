@@ -50,7 +50,7 @@ Simulation
   Steady State Max Iterations = 1
 
 !  Output File = "$Step".result"
-  Post File = "$Step".vtu"
+  Post File = $Step$".vtu"
   max output level = 4  
 End
 
@@ -384,6 +384,3 @@ End
 
 Solver 7 :: Reference Norm = Real 0.81472727E-01
 Solver 7 :: Reference Norm Tolerance = Real 1E-04
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.81472727E-01,EPS=1E-04\n" );

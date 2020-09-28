@@ -1,0 +1,112 @@
+! Simple case for magnetic flux density boundary condition
+! eelis.takala@gmail.com
+
+$ B0 = 0.50
+$ freq = 0.0005
+$ omega = 2 * pi * freq
+$ nstep = 1
+$ periodnstep = 1
+
+Check Keywords "Warn"
+INCLUDE box/mesh.names
+Header 1
+   Mesh DB "." "box"
+End
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+Initial Condition 1
+   A {e} = Real 0
+   A  = Real 0
+End
+Simulation 1
+   Max Output Level = 5
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 0.001
+   Simulation Type = Transient
+   Timestepping Method = BDF
+   BDF Order = 1
+   Timestep intervals = $ nstep * periodnstep
+   Timestep Sizes = $ 1/(freq*nstep*periodnstep)
+   Steady State Max Iterations = 1
+   Output Intervals = 1
+End
+Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
+   Exec Solver = Always
+   Equation = "MGDynamics"
+   Variable = "A"
+   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = Bicgstab
+   Linear System preconditioning = none
+   Linear System Convergence Tolerance = 1.e-8
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System ILUT Tolerance=1e-8
+   BicgstabL polynomial degree = 6
+   Steady State Convergence Tolerance = 1e-08
+End
+Solver 2  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
+   Exec Solver = Always
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+Solver 3  !---- ResultOutputSolve, ResultOutputSolver
+   Exec Solver = After timestep
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = box
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 4  !---- SaveData, SaveScalars
+!   Exec Solver = After timestep
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = box/dat/box.dat
+End
+Equation 1
+   Active Solvers(3) = 1 2 3
+End
+Material 1  !---- air: generic
+   Name = air
+   Electric Conductivity = 1
+   Relative Permeability = 1
+End
+Body 1  !---- Air
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+End
+Boundary Condition 1  !---- BCn Flux Parallel
+   Name = BCn Flux Parallel
+   Target Boundaries(4) = $ xplus xminus yplus yminus
+   A {e} = Real 0
+   A = Real 0
+End
+Boundary Condition 2  !---- Flux density
+   Name = Normal flux density
+   Target Boundaries(2) = $ zplus zminus
+   Magnetic Flux Density 3 = 1
+End
+Solver 2 :: Reference Norm = Real 8.02231251E-06
+Solver 2 :: Reference Norm Tolerance = Real 1E-03
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

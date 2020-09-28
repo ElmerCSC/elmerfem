@@ -96,7 +96,9 @@ VARIABLE *fil_fread(var) VARIABLE *var;
   FILE *fp;
 
   int i, ind, len;
+  size_t iosize;
 
+  
   ind = *MATR(var);
   if (ind < 0 || ind >= MAXFILES)
   {
@@ -120,7 +122,7 @@ VARIABLE *fil_fread(var) VARIABLE *var;
     error("fread: invalid length specified.\n");
   }
   res = var_temp_new(TYPE_DOUBLE, 1, (len+sizeof(double)-1)>>3);
-  fread(MATR(res), 1, len, fp);
+  iosize = fread(MATR(res), 1, len, fp);
 
   if (feof(fp))
   {
@@ -239,7 +241,8 @@ VARIABLE *fil_fgets(var) VARIABLE *var;
   FILE *fp;
 
   int i, ind;
-
+  char *ioptr;
+  
   ind = *MATR(var);
   if (ind < 0 || ind >= MAXFILES)
   {
@@ -257,7 +260,7 @@ VARIABLE *fil_fgets(var) VARIABLE *var;
     error("fgets: end of file detected.\n");
   }
 
-  fgets(str_pstr, STR_MAXLEN, fp);
+  ioptr = fgets(str_pstr, STR_MAXLEN, fp);
 
   if (feof(fp))
   {
@@ -518,7 +521,9 @@ VARIABLE *fil_load(ptr) VARIABLE *ptr;
 
   char *file;
   FILE *fp;
-
+  size_t iosize;
+  int iostat;
+  
   file = var_to_string(ptr);
   
   if ((fp = fopen(file, "r")) == (FILE *)NULL)
@@ -526,7 +531,7 @@ VARIABLE *fil_load(ptr) VARIABLE *ptr;
     error( "load: can't open file: %s.\n", file );
   }
 
-  fscanf(fp, "%d %d %d %d", &ftype, &type, &nrow, &ncol);
+  iostat = fscanf(fp, "%d %d %d %d", &ftype, &type, &nrow, &ncol);
 
   if (ferror(fp)) {
     fclose(fp); error("load: error reading file.n");
@@ -539,7 +544,7 @@ VARIABLE *fil_load(ptr) VARIABLE *ptr;
     for(i = 0; i < nrow; i++) 
       for(j = 0; j < ncol; j++)
       {
-        fscanf(fp, "%lf", &M(res, i, j));
+        iostat = fscanf(fp, "%lf", &M(res, i, j));
         if (ferror(fp))
         {
            fclose(fp); error("load: error reading file.\n");
@@ -549,7 +554,7 @@ VARIABLE *fil_load(ptr) VARIABLE *ptr;
   else
   {
     fgetc(fp);
-    fread(MATR(res), 1, MATSIZE(res), fp);
+    iosize = fread(MATR(res), 1, MATSIZE(res), fp);
     if (ferror(fp))
     {
         fclose(fp); error("load: error reading file.\n");

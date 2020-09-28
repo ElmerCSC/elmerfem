@@ -1506,7 +1506,7 @@ CONTAINS
                 END IF
 
                 IF( n == 0 ) THEN
-                  ElemVectVal(k) = 0.0_dp
+                  ElemVectVal(1:sdofs) = 0.0_dp
                 ELSE
                   DO j=1,n
                     ElemInd(j) = Perm(m)+j
