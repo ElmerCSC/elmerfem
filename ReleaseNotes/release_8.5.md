@@ -2,7 +2,7 @@ Elmer Release Notes for version 8.5
 ===================================
 
 Previous release: **8.4**  
-Period covered: **18 Dec 2018 - 30 Aug 2020**  
+Period covered: **Dec 18 2018 - Aug 30 2020**  
 Number of commits: **~1260** (excluding merges)  
 
 These release notes provide information on the most essential changes.
@@ -49,8 +49,8 @@ New Solver Modules
 
 ### MarchingODESolver
 - A solver that can compute ordinary differential equations on a moving mesh.
-- It is assumed that the mesh is structured and there is known draw speed. This
-  make it possible to relate timestep and mesh parameter directrly with each other.
+- It is assumed that the mesh is structured and there is a known draw speed. This
+  make it possible to relate timestep and mesh parameter directly with each other.
 
 
 Enhanced Solver Modules
@@ -66,7 +66,7 @@ Enhanced Solver Modules
 - the solver is now documented in Elmer Models Manual
 
 ### MagnetoDynamics3D
-- Fixes and generalization to Jfix determination. 
+- Fixes and generalization to the source projection (the determination of Jfix). 
 
 ### MagnetoDynamics2D
 - a velocity field can be given to add a Lorentz term to the equations
@@ -89,7 +89,7 @@ Enhanced Solver Modules
 
 ### HeatSolver
 - A new tentative vectorized version: HeatSolverVec
-- Enable symmetric 3D cases for view factor computation. Significant timesavings. 
+- Enable symmetric 3D cases for view factor computation to obtain significant timesavings. 
 - Make Gebhart factors linear system symmetric, if possible "ViewFactor Symmetry".
 
 ### StressSolver
@@ -162,7 +162,7 @@ ElmerSolver library functionality
 - They are followed by the number of argument + values of the arguments. 
 
 ### Generic source control
-- We may tune an r.h.s. load vector such that the solution (or reaction force) at
+- We may tune a r.h.s. load vector such that the solution (or reaction force) at
   given node is the desired one.
 - Mimics the old Smart Control operation of HeatSolve but on a library level.
 
@@ -172,7 +172,7 @@ ElmerGrid
 - Tentative reader for FVCOM format
 - Add possibility to define seed for Metis partitioning (-metisseed).
 - Maintain entity names in extrusion
-- ElmerGrid and its plugin under ElmerGUI where harmonized such that they use the same codebase. 
+- ElmerGrid and its plugin under ElmerGUI were harmonized such that they use the same codebase. 
 
 
 ElmerGUI
@@ -191,8 +191,8 @@ ElmerGUI
 - Adjusted "Save project" menu and added "New project..." menu.
 - Object browser was added
 - "Save and run" action and highlight colors
-- Make GUI more stream-lined    
-- Improved project loading and made it more robust.
+- Make GUI more streamlined    
+- Improved and more robust project loading.
  
 Configuration & Compilation
 ---------------------------
