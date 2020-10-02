@@ -779,7 +779,7 @@ END INTERFACE
          
          IF( Success ) THEN
            CALL Info('CompareToReferenceSolution',&
-               'PASSED all '//TRIM(I2S(TestCount))//' tests!',Level=4)
+               'PASSED all '//TRIM(I2S(TestCount))//' tests!',Level=3)
          ELSE         
            CALL Warn('CompareToReferenceSolution','FAILED '//TRIM(I2S(FailCount))//&
                ' tests out of '//TRIM(I2S(TestCount))//'!')
@@ -858,15 +858,14 @@ END INTERFACE
            ELSE         
              WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                  'Solver ',solver_id,' PASSED:  Norm =',Norm,'  RefNorm =',RefNorm
-             CALL Info('CompareToReferenceSolution',Message,Level=4)
+             CALL Info('CompareToReferenceSolution',Message,Level=3)
            END IF
            IF( AbsoluteErr ) THEN
              WRITE( Message,'(A,ES13.6)') 'Absolute Error to reference norm:',Err
            ELSE
              WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
            END IF
-           CALL Info('CompareToReferenceSolution',Message, Level = 4 )
-
+           CALL Info('CompareToReferenceSolution',Message, Level = 3 )
          END IF
 
          IF( CompareSolution ) THEN
@@ -908,13 +907,13 @@ END INTERFACE
                    'Solver ',solver_id,' FAILED:  Solution = ',Norm,'  RefSolution =',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
                WRITE( Message,'(A,ES13.6)') 'Relative Error to reference solution:',Err
-               CALL Info('CompareToReferenceSolution',Message, Level = 4 )
+               CALL Info('CompareToReferenceSolution',Message, Level = 3 )
              END IF
              Success = .FALSE.
            ELSE         
              WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                  'Solver ',solver_id,' PASSED:  Solution =',Norm,'  RefSolution =',RefNorm
-             CALL Info('CompareToReferenceSolution',Message,Level=4)
+             CALL Info('CompareToReferenceSolution',Message,Level=3)
            END IF
          END IF
 
@@ -1018,7 +1017,7 @@ END INTERFACE
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
 
-       CALL Info('AddVtuOutputSolverHack','Finished appeding VTU output solver',Level=12)
+       CALL Info('AddVtuOutputSolverHack','Finished appending VTU output solver',Level=12)
        
      END SUBROUTINE AddVtuOutputSolverHack
 
@@ -1102,7 +1101,7 @@ END INTERFACE
        ! Add a few often needed keywords also if they are given in simulation section
        CALL ListCopyPrefixedKeywords( Simu, Params, 'scalars:' )
 
-       CALL Info('AddSaveScalarsHack','Finished appeding SaveScalars solver',Level=12)
+       CALL Info('AddSaveScalarsHack','Finished appending SaveScalars solver',Level=12)
        
      END SUBROUTINE AddSaveScalarsHack
 
@@ -1879,11 +1878,13 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      LOGICAL :: Gotit, DoIt
-     INTEGER :: i, j, k
+     INTEGER :: i, j, k, l
      REAL(KIND=dp) :: StartTime
      TYPE(Mesh_t), POINTER :: Mesh, pMesh
      TYPE(ValueList_t), POINTER :: RestartList
      LOGICAL, ALLOCATABLE :: MeshDone(:)
+     INTEGER, POINTER :: MeshesToRestart(:)
+     LOGICAL :: CheckMesh, DoMesh
 !------------------------------------------------------------------------------
 
      
@@ -1957,7 +1958,14 @@ END INTERFACE
  
      ! Do the standard global restart
      !-----------------------------------------------------------------
-     RestartList => CurrentModel % Simulation    
+     RestartList => CurrentModel % Simulation
+
+     ! We may supress restart from certain meshes.
+     ! This was initially only related to calving, but no need to limit to that. 
+     l = 0
+     MeshesToRestart => ListGetIntegerArray(RestartList,&
+         'Meshes To Restart', CheckMesh )
+     
      RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
      IF ( GotIt ) THEN      
        k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
@@ -1985,16 +1993,24 @@ END INTERFACE
          END IF
          IF ( ParEnv % PEs > 1 .AND. .NOT. Mesh % SingleMesh ) &
            OutputName = TRIM(OutputName) // '.' // TRIM(i2s(ParEnv % MyPe))
+         
+         l = l+1
 
-         CALL SetCurrentMesh( CurrentModel, Mesh )         
-         CALL LoadRestartFile( OutputName, k, Mesh )
-
-         StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
-         IF( GotIt ) THEN
-	   Var  => VariableGet( Mesh % Variables, 'Time' )
-           IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
+         DoMesh = .TRUE.
+         IF(CheckMesh) THEN
+           DoMesh = (ANY(MeshesToRestart == l))
          END IF
 
+         IF( DoMesh ) THEN
+           CALL SetCurrentMesh( CurrentModel, Mesh )
+           CALL LoadRestartFile( OutputName, k, Mesh )
+           
+           StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
+           IF( GotIt ) THEN
+             Var  => VariableGet( Mesh % Variables, 'Time' )
+             IF ( ASSOCIATED( Var ) )  Var % Values(1) = StartTime
+           END IF
+         END IF           
          Mesh => Mesh % Next
        END DO
      ELSE
@@ -2130,13 +2146,35 @@ END INTERFACE
          END IF
 
          IF ( Transient .OR. Scanning ) THEN
-           dtfunc = ListGetConstReal( CurrentModel % Simulation, &
-               'Timestep Function', gotIt)
+           dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Function',GotIt )
            IF(GotIt) THEN
              CALL Warn('ExecSimulation','Obsolete keyword > Timestep Function < , use > Timestep Size < instead')
-           ELSE
-             dtfunc = ListGetCReal( CurrentModel % Simulation, &
-                 'Timestep Size', gotIt)
+           ELSE           
+             dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Size', gotIt)
+           END IF
+           IF( GotIt ) THEN             
+             BLOCK                 
+               TYPE(Variable_t), POINTER :: tVar
+               INTEGER :: dtiter 
+               REAL(KIND=dp) :: t0
+               dtiter = ListGetInteger( CurrentModel % Simulation,'Timestep Size Iterations',Found)
+
+               ! If timestep size depends on time i.e. dt=dt(t) we may sometimes want to iterate
+               ! so that the timestep is consistent with the new time t+dt i.e. dt=dt(t+dt).
+               IF( dtiter > 0 ) THEN
+                 tVar => VariableGet( CurrentModel % Mesh % Variables, 'time' )
+                 IF(ASSOCIATED(tVar)) THEN
+                   t0 = tVar % Values(1)
+                   ! Iterate for consistent time + timestep size. 
+                   DO i=1,dtiter  
+                     tVar % Values(1) = t0 + dtfunc
+                     dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Size' )
+                   END DO
+                   ! Revert back to original time, this will be added later on again.
+                   tVar % Values(1) = t0
+                 END IF
+               END IF
+             END BLOCK
            END IF
            IF(GotIt) THEN
              dt = dtfunc

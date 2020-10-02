@@ -1,0 +1,202 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! PARAMETERS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+$yearinsec = 365.25*24*60*60
+$rhoi = 917.0/(1.0e6*yearinsec^2)  ! MPa - a - m
+$rhow = 1028.0/(1.0e6*yearinsec^2)
+$gravity = -9.81*yearinsec^2
+$mu=1.8e8*1.0e-6*(2.0*yearinsec)^(-1.0/3.0)
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh2D"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D
+  Simulation Type = Steady State
+
+  ! Internal extrusion
+  Extruded Mesh Levels=5
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+  OutPut Intervals = 1
+
+  Post File = "Direct.vtu"
+  OutPut File = "Direct.result"
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Bodies
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Initial Conditions
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Velocity 3 = Real 0.0
+
+  Zb = Variable coordinate 1, Coordinate 2
+     REAL procedure "MacAyeal_USFs" "Zb"
+
+  Zs = Variable coordinate 1, Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Zs"
+
+  BetaS = Variable coordinate 1, Coordinate 2
+     REAL procedure "MacAyeal_USFs" "betaSquare"
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!  Body Forces
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0            
+  Flow BodyForce 2 = Real 0.0              
+  Flow BodyForce 3 = Real $gravity
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Materials
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi
+  Viscosity Model = String "power law"
+
+  Viscosity = Real $mu
+
+  Viscosity Exponent = Real $1.0e00/3.0e00
+  Critical Shear Rate = Real 1.0e-10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Solvers
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!! Before simulation
+Solver 1
+  Exec Solver = before simulation
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+
+  Top Surface Variable Name = String "Zs"
+  Bottom Surface Variable Name = String "Zb"
+
+  Displacement Mode = Logical False
+  Correct Surface = Logical True
+  Minimum Height = Real 1.0
+End
+
+!! Always
+
+!!!!!!!!!!!!!!!!!!!!!
+!! Velocity solution
+!!  body 1 (bulk)
+!!!!!!!!!!!!!!!!!!!!!
+Solver 2
+  Equation = "Navier-Stokes"
+
+  Stabilize = logical True
+  flow model = Stokes
+
+! Linear system
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning= ILU0
+  Linear System Convergence Tolerance= 1.0e-10
+  Linear System Max Iterations = 1000
+
+! non linear iterations
+! system self adjoint if Newton is used for the last iterations
+  Nonlinear System Max Iterations = Integer 100
+  Nonlinear System Convergence Tolerance  = Real 1.0e-7
+  Nonlinear System Newton After Iterations = Integer 10
+  Nonlinear System Newton After Tolerance = Real 1.0e-04
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Reset Newton = Logical True
+
+  Steady State Convergence Tolerance = Real 1.0e-12
+
+! Exported Variable
+  Exported Variable 1 = BetaS
+  Exported Variable 1 mask = String "bottom"
+
+  Exported Variable 2 = Zb
+  Exported Variable 2 mask = String "bottom"
+
+  Exported Variable 3 = Zs
+  Exported Variable 3 mask = String "top"
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Equations
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! bulk
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Boundary Conditions
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Boundary Condition 1
+  Name = "Side Walls"
+  Target Boundaries(2) = 1 3
+  
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Inflow"
+  Target Boundaries = 4 
+
+  Velocity 1 = Variable Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Inflow"
+  Velocity 2 = Real 0.0
+
+End
+
+Boundary Condition 3
+  Name = "OutFlow"
+  Target Boundaries = 2
+
+  Velocity 1 = Variable Coordinate 2
+      REAL procedure "MacAyeal_USFs" "Outflow"
+  Velocity 2 = Real 0.0
+End
+
+Boundary Condition 4
+  Name = "bottom"
+
+  bottom = logical True
+
+  Normal-tangential Velocity = True
+  Velocity 1 = Real 0.0e0
+
+  Slip Coefficient 2 = Equals BetaS
+  Slip Coefficient 3 = Equals BetaS
+
+End
+
+Boundary Condition 5
+  Name = "top"
+
+  top = logical True
+End

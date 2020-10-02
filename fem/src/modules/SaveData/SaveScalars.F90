@@ -1537,7 +1537,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: ParallelOperator
     !------------------------------------------------------------------------
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
-    REAL, ALLOCATABLE :: TmpValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
     LOGICAL, POINTER :: TmpValuesInteger(:)     
     TYPE(Variable_t), POINTER :: TargetVar

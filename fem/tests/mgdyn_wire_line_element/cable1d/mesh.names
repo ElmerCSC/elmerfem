@@ -1,0 +1,10 @@
+! ----- names for bodies -----
+$ air = 1
+! ----- names for boundaries -----
+$ cable = 2
+$ zplus = 3
+$ zminus = 4
+$ fluxparallel = 5
+$ currentin = 6
+$ currentout = 7
+$ bnry8 = 8

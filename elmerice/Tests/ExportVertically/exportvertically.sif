@@ -16,7 +16,7 @@ Simulation
   Steady State Max Iterations = 1
   Steady State Min Iterations = 1
   Post File = "export_vertically.vtu"
-  max output level = 20
+  max output level = 5
 End
 
 Body 1
@@ -64,6 +64,3 @@ End
 
 Solver 1 :: Reference Norm = Real 0.52380952
 Solver 1 :: Reference Norm Tolerance = Real 1E-06
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.52380952,EPS=1E-06\n" );

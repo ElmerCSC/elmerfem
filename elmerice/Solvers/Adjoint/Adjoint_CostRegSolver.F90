@@ -201,14 +201,14 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
            OPEN (12, FILE=CostFile)
                    write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
                    write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jreg'
+                   write(12,'(A)') '# iter, Jreg,sqrt(2*Jreg/area)'
            CLOSE(12)
          End if
     Else
            OPEN (12, FILE=CostFile)
                    write(12,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
                    write(12,1001) Lambda
-                   write(12,'(A)') '# iter, Jreg'
+                   write(12,'(A)') '# iter, Jreg,sqrt(2*Jreg/area)'
            CLOSE(12)
     End if
   

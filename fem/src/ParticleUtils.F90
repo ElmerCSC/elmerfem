@@ -2128,6 +2128,8 @@ RETURN
         i = Particles % ElementIndex(No)        
         IF( i > 0 ) THEN
           ElementSize = SizeValues(i)
+        ELSE
+          ElementSize = 0._dp
         END IF
       END IF
       RETURN
@@ -2142,7 +2144,8 @@ RETURN
     IF( .NOT. ConstantDt ) THEN
       ! Use existing variable only if it is of correct size!
       ElementSizeVar => VariableGet( Mesh % Variables,'Element Size' )
-      NULLIFY( SizeValues ) 
+      NULLIFY( SizeValues )
+
       IF( ASSOCIATED( ElementSizeVar ) ) THEN
         SizeValues => ElementSizeVar % Values
         IF( ASSOCIATED( SizeValues ) ) THEN
@@ -2163,7 +2166,7 @@ RETURN
     DO t=1,NoElems
       Element => Mesh % Elements(t)      
       CALL GetElementNodes( Nodes, Element ) 
-      n = Element % TYPE % NumberOfNodes
+      n = GetElementNOFNodes()
 
       IP = GaussPoints( Element )
       u = SUM( IP % u ) / IP % n 
@@ -2201,6 +2204,12 @@ RETURN
       h0 = ElementSizeMin
     ELSE
       h0 = ElementSizeAve
+    END IF
+
+    IF(ConstantDt) THEN
+       ElementSize =  h0
+    ELSE
+      ElementSize =  SizeValues(No)
     END IF
           
     Visited = .TRUE.
@@ -5945,7 +5954,7 @@ RETURN
 
       ! Constrain the timestep
       !------------------------------------------------------------------
-      dt = MAX( MIN( dt, dtmax ), dtmin )
+!     dt = MAX( MIN( dt, dtmax ), dtmin )
 
       ! Do not exceed the total integration time
       !-------------------------------------------

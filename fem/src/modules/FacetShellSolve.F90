@@ -106,7 +106,7 @@
      REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), &
           LoadX(:), LoadY(:), LoadZ(:), LoadN(:), FORCE(:), &
           Poisson(:), Thickness(:), Young(:), Tension(:), &
-          MASS(:,:), DAMP(:,:), Density(:), &
+          MASS(:,:), DAMP(:,:), DampingCoef(:), Density(:), &
           LocalDeflection(:), SxxElement(:), SyyElement(:), SzzElement(:), &
           SxyElement(:), SxzElement(:), SyzElement(:), LoadVector(:,:), &
           Weights(:,:), Referenced(:), &
@@ -137,7 +137,7 @@
 
      SAVE STIFF, MASS, LoadX, LoadY, LoadZ, LoadN, &
           FORCE, ElementNodes, Poisson, Density, Young, Thickness, &
-          Tension, AllocationsDone, DAMP, LocalDeflection, &
+          Tension, AllocationsDone, DAMP, DampingCoef, LocalDeflection, &
           SxxNodal, SyyNodal, SzzNodal, SxyNodal, SxzNodal, SyzNodal, &
           EpsxxNodal, EpsyyNodal, EpszzNodal, EpsxyNodal, EpsxzNodal, &
           EpsyzNodal, LoadVector
@@ -185,7 +185,7 @@
                  LoadZ( N ), LoadN( N ), &
                  Poisson( N ), Young( N ), &
                  Density ( N ), Thickness( N ), &
-                 Tension( N ), &
+                 Tension( N ), DampingCoef( N ), &
                  LocalDeflection( 6*N ), &
                  LoadVector( 6, N ), &
                  STAT=istat )
@@ -472,10 +472,12 @@
        Tension(1:n) = GetReal( Material, 'Tension', GotIt )
        IF( .NOT. GotIt ) Tension = 0.0d0
 
-       CALL LocalMatrix(  STIFF, DAMP, MASS, &
+       DampingCoef(1:n) = GetReal( Material, 'Rayleigh Damping Alpha', GotIt )
+
+       CALL LocalMatrix( STIFF, DAMP, MASS, &
             FORCE, LoadX, LoadY, LoadZ, LoadN, CurrentElement, n, &
             ElementNodes, StabParam1, StabParam2, t, Poisson,     &
-            Young, LocalDeflection, LargeDeflection,  &
+            Young, DampingCoef, LocalDeflection, LargeDeflection,  &
             StabilityAnalysis, Nvector )
 
        IF( TransientSimulation ) THEN
@@ -485,7 +487,12 @@
 !      Update global matrix and rhs vector from local matrix & vector:
 !      ---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
-       IF ( EigenOrHarmonicAnalysis() ) CALL DefaultUpdateMass( MASS )
+
+       IF ( EigenOrHarmonicAnalysis() .OR. GetLogical(SolverParams, &
+           'Harmonic Mode', GotIt) ) THEN
+         CALL DefaultUpdateMass( MASS )
+         CALL DefaultUpdateDamp( DAMP )
+       END IF
      END DO
 !-----------------------------------------------------------------------------
     END SUBROUTINE BulkAssembly
@@ -895,7 +902,7 @@
      SUBROUTINE LocalMatrix( STIFF, DAMP, MASS, &
           FORCE, NodalLoadX, NodalLoadY, NodalLoadZ, NodalLoadN, &
           Element, N, Nodes, StabParam1, StabParam2, &
-          ElementNumber, NodalPoisson, NodalYoung, &
+          ElementNumber, NodalPoisson, NodalYoung, NodalDampingCoef, &
           LocalDeflection, LargeDeflection, StabilityAnalysis, Nvector )
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), MASS(:,:), &
@@ -904,7 +911,7 @@
        REAL(KIND=dp) :: NodalLoadX(:), NodalLoadY(:), NodalLoadZ(:), &
            NodalLoadN(:), LocalDeflection(:), Nvector(:)
        REAL(KIND=dp) :: StabParam1, StabParam2
-       REAL(KIND=dp) :: NodalPoisson(:), NodalYoung(:)
+       REAL(KIND=dp) :: NodalPoisson(:), NodalYoung(:), NodalDampingCoef(:)
        LOGICAL :: LargeDeflection, StabilityAnalysis
        INTEGER :: N, ElementNumber
        TYPE(Nodes_t) :: Nodes
@@ -918,7 +925,7 @@
             Omega(1,MaxDofs), Gdrilling(1,1), GradDeflection(2,MaxDofs), & !*
             ZetaStrain(3,maxDofs)
 
-       REAL(KIND=dp) :: detJ, U, V, W, S, SCF, rho, h, &
+       REAL(KIND=dp) :: detJ, U, V, W, S, SCF, rho, h, DampCoef, &
             LoadN, LoadX, LoadY, LoadZ, Nmatrix(2,2), &
             GradTest(2), GradBasis(2), LV1(3,1), LV2(3,1), TempVec(3,1), &
             NormalForce(2,2), NonLinForce(MaxDofs), LV3(3,1)
@@ -1032,6 +1039,7 @@
          LoadN = SUM( NodalLoadN(1:n) * Basis(1:n) )
          rho   = SUM( Density(1:n)    * Basis(1:n) )
          h     = SUM( Thickness(1:n)  * Basis(1:n) )
+         DampCoef = SUM( NodalDampingCoef(1:n) * Basis(1:n) )
 
          CALL IsotropicElasticity( Dmatrix, &
              Astarmatrix, NodalPoisson, NodalYoung, Thickness, Basis, n )
@@ -1394,7 +1402,7 @@
             END DO
          END IF
 
-!        Mass matrix (only translation):
+!        Mass matrix
 !        -------------------------------
          IF( .NOT.StabilityAnalysis ) THEN
            DO p = 1,n
@@ -1405,6 +1413,10 @@
                    + rho * h * Basis(p) * Basis(q) * s
                MASS(6*p-3,6*q-3) = MASS(6*p-3,6*q-3) &
                    + rho * h * Basis(p) * Basis(q) * s
+               MASS(6*p-2,6*q-2) = MASS(6*p-2,6*q-2) &
+                   + rho * h**3/12.0d0 *  Basis(p) * Basis(q) * s
+               MASS(6*p-1,6*q-1) = MASS(6*p-1,6*q-1) &
+                   + rho * h**3/12.0d0 *  Basis(p) * Basis(q) * s
              END DO
            END DO
          END IF
@@ -1422,6 +1434,21 @@
                END DO
             END DO
          END IF
+
+!
+!        Mass-proportional damping matrix (for translations only):
+!        ---------------------------------------------------------
+         DO p = 1,n
+           DO q = 1,n
+             Damp(6*p-5,6*q-5) = Damp(6*p-5,6*q-5) &
+                 + DampCoef * rho * h * Basis(p) * Basis(q) * s
+             Damp(6*p-4,6*q-4) = Damp(6*p-4,6*q-4) &
+                 + DampCoef * rho * h * Basis(p) * Basis(q) * s
+             Damp(6*p-3,6*q-3) = Damp(6*p-3,6*q-3) &
+                 + DampCoef * rho * h * Basis(p) * Basis(q) * s
+           END DO
+         END DO
+
       END DO
 
 !      Restore the original node points:
@@ -1449,10 +1476,10 @@
        STIFF(1:i,1:i) = MATMUL( STIFF(1:i,1:i), Tblock(1:i,1:i) )
        STIFF(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), STIFF(1:i,1:i) )
 
-       IF( StabilityAnalysis ) THEN
-         MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
-         MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
-       END IF
+!       IF( StabilityAnalysis ) THEN
+       MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
+       MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
+!       END IF
 
        IF( LargeDeflection ) THEN
           NonlinForce(1:i) = MATMUL( TRANSPOSE(Tblock(1:i,1:i)), NonlinForce(1:i) )
@@ -1479,10 +1506,13 @@
          FORCE = FORCE + NonlinForce
        END IF
 
-       IF( StabilityAnalysis ) THEN
-         MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
-         MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
-       END IF
+!       IF( StabilityAnalysis ) THEN
+       MASS(1:i,1:i) = MATMUL( MASS(1:i,1:i), Tblock(1:i,1:i) )
+       MASS(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), MASS(1:i,1:i) )
+!       END IF
+
+       Damp(1:i,1:i) = MATMUL( Damp(1:i,1:i), Tblock(1:i,1:i) )
+       Damp(1:i,1:i) = MATMUL( TRANSPOSE( Tblock(1:i,1:i) ), Damp(1:i,1:i) )
 
        STIFF = ( STIFF + TRANSPOSE(STIFF) ) / 2.0d0
        MASS  = ( MASS  + TRANSPOSE(MASS) )  / 2.0d0

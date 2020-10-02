@@ -586,11 +586,13 @@ END BLOCK
             CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
             CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')            
 
-            IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
-              CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
-            END IF
-            IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
-              CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+            IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
+                CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
+              END IF
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
+                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+              END IF
             END IF
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
               CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')

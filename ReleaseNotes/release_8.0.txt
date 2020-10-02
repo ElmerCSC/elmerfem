@@ -1,0 +1,400 @@
+Elmer Release Notes for version 8.0
+===================================
+
+Previous release: 7.0
+Period covered: 1 June 2012 - 28 April 2015
+
+
+Here is a list of the most relevant new features of Elmer between since the last official version 7.0 published
+on 31 May 2012. 
+
+There has been many drastic changes in recent times in Elmer project. Elmer had been trasferred from gnu autotools 
+to cmake, and from using svn into git. However, here we only list the most important new features related to code 
+functionality. The internal changes required in the cmake transition, package generaration and multithreading 
+have been equally significant but they are mainly omitted here. 
+
+Additionally the features related to Elmer/ICE branch of Elmer are not covered in by these release notes. 
+The Elmer/ICE related information is well covered in its dedicated site.
+
+
+
+ElmerSolver 
+===========
+
+New Finite elements
+-------------------
+- New edge element basis functions for H(curl):
+  o 6-DOF triangle
+  o 6-DOF quadrilateral
+  o 12-DOF tetrahedron
+  o 10-DOF pyramid
+  o 8-DOF pyramid (use only for affine elements)
+  o 15-DOF prism
+  o 27-DOF hexahedron
+- New face element basis functions for H(div):
+  o 6-DOF triangle (BDM)
+  o 6-DOF quadrilateral (ABF)
+  o 12-DOF tetrahedron (BDM)
+- Several new test cases relating to new edge and face elements added
+- The documentation of face and edge elements created (Appendix F of ElmerSolver manual) 
+
+
+Linear system solvers
+---------------------
+- FETI, Finite element tearing and interconnect
+  o A domain decomposition method for solving large elliptic problems in parallel 
+  o MUMPS serial and QR of Cholmod may be used for nullspace detection of the local problems,
+  o Add option 'Feti dump system=Logica', to dump the FETI system (K,f,R,B) to disk.
+    Dump may also include inequality constraints.
+
+- Support for Intel MKL (Pardiso) with WITH_MKL:BOOL=TRUE|FALSE CMake variable. 
+
+  Allow some more control over the MKL Pardiso settings, especially setting the matrix
+  type by using keyword 'Linear System Matrix Type', with choices    
+  o 'general' or 'nonsymmetric'
+  o 'postive definite'
+  o 'symmetric idefinite'
+  o 'structurally symmetric
+
+  the last three also need the setting "Linear System Symmetric = True".
+  If this keyword is not given, the matrix type is determined as    
+  o "Linear System Symmetric=False" -> 'nonsymmetric'
+  o "Linear System Symmetric=True" & "Linear System Positive
+     Definite=true"  -> 'positive definite'
+  o "Linear System Symmetric=True" & "Linear System Postive
+     Definite=False" -> 'structurally symmetric'
+    
+  Note that the "Structurally Symmetric" mode of the MKL Pardiso can't handle
+  (symmetric) indefinite matrices.
+
+- Updated Hypre & Trilinos interfaces.
+  o HYPRE parameter 'BoomerAMG Strong Threshold'
+  o Add interface to Hypre AMS preconditoner.
+  o In Trilinos added possibility to pass node coordinates to ML 
+    (set "aggregation: aux: enable" in the ML parameter list)
+
+- Direct solvers
+  o Default to MUMPS for parallel direct solver
+  o Default to Umfpack for serial runs
+
+- Keep MPI alive even if #cores=1, e.g. allow, f.ex., use of MUMPS solver in serial runs
+  with MPI-linked executable.  
+
+- GCR iteration
+  o  Recompute the true residual when restarting and check the accuracy of 
+     the iterated residual norm when the convergence criterion is met
+
+- Stopping creteria
+  o Add option to use |Ax-b|/(|A||x|+|b|) as stopping criteria.
+  o Componentwise and normwise relative backward errors may be used as stopping criteria for linear solvers.
+
+- Add 'mumpslocal' direct solver option (has some additional functionality to 'mumps')
+
+- Possibility to scale the solution optimally before going to linear systems solution. 
+
+- Added namespace 'mglowest:' to the linear solvers used for the lowest level in all multigrid methods.
+
+- Converge tolerances related to the block preconditioning may now be adjusted adaptively during the 
+  solution process if the keyword "Linear System Adaptive Tolerance" is given.
+
+- Enable saving of ConstraintMatrix mainly for debugging purposes. 
+
+- Added Matrix_t field  "PrecValues(:)"; use this when factorizing ILUs
+  instead of "Values", if defined by user. The "PrecValues" may be
+  update elementwise using DefaultUpdatePrec(P), and it is by default
+  scaled by the same scaling as the "Values" field.
+
+
+Mesh interpolation and manipulation
+-----------------------------------
+
+- Internal LoadMesh functionality 
+  o Eliminates the need of old "eio" library. 
+  o Othewise the functionality is maintained.
+
+- Discontinuous Meshes:
+  o It is now possible to introduce discontinuous boundaries to the mesh at the time of reading the mesh. 
+    At the boundaries the nodes are doubled which may be used to introduce discontinuities on the fields.
+  o For the discontinuity projectors may be applied to restore the continuity, or to set jump conditions 
+    on the boundary. Keyword is "Discontinuous Boundary = Logical True" in BC section.  
+  o There are many test cases with prefix "DisContBoundary". 
+
+- Internal mesh extrusion that can be applied also in parallel. 
+  o May remove meshing bottle-necks by allowing efficient mesh generation from 2D foot-prints. 
+  o It is possible to have a desired distribution of elements in the extruded direction. 
+  o Min and max coordinate in the extruded direction may be given.
+  o Several options to tweak how the entities are treated and numbered in extrusion. 
+
+- Projectors
+  o Projectors to ensure the the continuity of fields over nonconformal (or conformal) mesh interfaces.
+  o Both node-to-surface (strong) and surface-to-surface (weak, galerkin, mortar) type of projectors available
+  o A tailored projector family "Level Projector" for cases where exact match between interface meshes 
+    may be found at some lower dimensional surface (or line)
+  o Various strategies implemented (flat, rotational, radial) implemented to allow flattening of interface meshes.
+    The flattened interface meshes allow more accurate projection since there is no faceting of the meshes.
+  o Rotational projectors may be periodic or antiperiodic.
+  o Also edge degrees of freedom may be projected. 
+
+
+Nonlinear system features
+-------------------------
+- Nonlinear Timestepping
+  o Improved Newmark time integration scheme so that the terms related to previous timestep also 
+    use previous stiffness matrix and force vector. This may yield better accuracy for nonlinear 
+    problems in time. 
+
+- FCT, Flux Corrected Transport
+  o A preliminary version of monotonicity preserving scheme (see e.g. Dimitri Kuzmin et al.) 
+  o Requires global access to mass matrix and is applicable only to transient scalar problems. 
+  o Activation by "Linear System FCT = Logical True" to advection-diffusion type of equation 
+    (with Crank-Nicholsen time discreation).
+
+- Soft Limiters:
+  o Changed the way how soft limiters can be applied so that the residual is computed within the assembly loop. 
+    This makes it possible to apply soft limiters also to nonlinear cases.
+   
+- Slave Solver strategy for coupled problems
+  o Any solver can have "Slave Solvers" which are solved within the DefaultInitialize slot 
+    of the primary solver. This makes it possible to implement efficient coupling methods
+    for nonlinear problems, also accounting step-size control.
+
+- Add keyword "Nonlinear System Compute Change in Scaled System = Logical". The
+  purpose is to allow linear & nonlinear convergence measure matching when
+  "Nonlinear System Convergence Measure = residual"
+
+- Modified the linesearch and made it more easily usable with legacy solvers. 
+  o At minimum, just include "IF( DefaultLinesearch() ) GOTO 100" where the goto address is 
+    the start of the assembly process. 
+
+
+Other libtary functionality
+---------------------------
+- Table input:
+  o Specification "Cubic Monotone" implemented to sif-file table input.
+    This keeps the cubic spline monotone, if the input is monotone.
+            
+- ListGetFun: 
+  o Subroutine that may be called internall by an argument still maintaining the standard GetReal sif syntax. 
+  o Enabled optional computation of derivatives in ListGetFun. 
+
+- Added possibility to obtain the keyword for which an User Defined Function is called for
+  Using "ListGetActiveName()" function.
+
+- Added possibility to output information on several partitions when running in parallel using keyword 
+  "Max Output Partition" of type Integer. 
+
+- Added functions "GetRealVector" and "GetComplexVector" to allow for easier definition of vector valued 
+  keywords within user modules. Also works for "Equals" and "Opposes" statements. 
+
+- Added Component list type for entities not related to mesh. E.g. electric circuits, chemical reactions etc. 
+  Use GetComponent() to get these from the list. 
+
+- Created a new way to compare to reference solution where the user may give Solver-specific "Reference Norm".
+  Case is passed when all reference norms are passed within given tolerance. Also added possibility to compare 
+  to analytical solution when making tests in addition to precomputed reference norm.
+  Keywords for this is "Reference Solution" of type Real. 
+
+- Simple geometric clustering methods implemented for future internal partitioning.
+
+- Implicit friction model where the tangential traction is set to be the normal traction multiplied by a signed friction coefficient.
+  Works yet properly only in 2D. 
+
+- Enable setting of BCs (and body forces) such that constant value is enforced on the BC (or body force). 
+  One node is used as the "supernode" and other rows are lumped to this row. The other nodal dofs will get the 
+  same value as the one in the supernode.
+
+- Adding a keyword in sif to change bodywise element type definitions for solvers. The used convention is given in Body section 
+  in the following form, Solver n: Element = String, where String is the conventional element type definition.
+
+- Any real valued keyword may be normalized by area (or volume) by giving keyword 'keyword normalize by area' (or volume) 
+  resulting to the value of 'keyword' being divided by the area (volume) at the time of calling. The area should be the 
+  operator for BCs and for other field (material, body, body force) the volume should apply. 
+
+- A utility to set just one node in boundary/body force section to make floating potentials unique.
+
+- More versatile saving of linear systems. Called with keyword 'Linear System Save'.
+
+- Possibilitty to add default boundary condition with keyword 'Default Target = Logical' in BC section.
+
+- ListGetRealAtIP function routine to also deal with computing data at IPs.
+
+- Added ListCheckPrefix keyword for checking whether keyword with given prefix exists. Also added
+  ListCheckPrefixAny* routines for checking if a keyword with the given prefix in any BC, Body Force, Body or IC.
+
+- Various ListCheckAny* functions to make it possible to simplify many solver modules. 
+
+- Added function for checking whether a keyword with a given prefix exists, ListCheckPrefix. As there can be multiple 
+  corresponding keywords to this it does not make sense to get the value. A typical use could be to check for existance 
+  of keywords of style 'prefix '//TRIM(VarName).
+
+- Keyword > Exec Condition < for Solver section implemented to allow setting of condition that determinenes 
+  whether a solver will be executed. A positive number is regarded to be True. 
+
+- Added possibility to enforce steady-state execution within transient simulation by setting > Steady State Condition < 
+  flag to a positive number. 
+
+- Saving and restarting works also with global variables. Also there is a better chance that they will work with non-nodal fields. 
+  Restart may be selective such that 'Restart Variable i', i=1,2,3,.. may be optionally given in the Simulation section. 
+
+- Global variable for periodic problems 'Periodic Time'. Time period may be set by "Simulation Block"
+  keyword 'Time Period', the default is inifite. This makes it easy to have parameters with cyclic dependence. 
+
+- Add a "Solver" section flag "Enforce Exact Dirichlet BCs" (default: true), setting
+  this to false restores old behaviour concerning Dirichlet BC & external constraint
+  interaction.
+
+- Improvements for p-elements
+  o Try to apply p-element basis & integration schemes only
+    to Solvers that ask for p-elements
+  o Enable p-basis for "Mesh Level=n" generated meshes
+
+
+ElmerSolver Solver modules 
+---------------------------
+- MagnetocDynamics: 
+  o CalcFields: can also compute derived fields for initial 2D nodal potential.
+  o Improved logic when to compute Jfix field and its BCs. 
+  o The nonlinear iteration can now use the stopping criterion ||b-A(V)V|| / ||b|| with V the 
+    current nonlinear iterate. 
+  o The use of new Piola transformed elements can now be activated from a sif file for stationary and 
+    transient cases. 
+  o Anisotropic electric conductivity should now be handled correctly for any type of conductivity 
+    tensor (even nonsymmetric)
+  o Calculate votages, torque and moment of inertia. 
+  o Add block solution for (MagnetoDynamics style) implemted for A-V formualation 
+    (no other matrix blocks assumed).
+  o CalcFields: support for stranded coils current density and electric fields computation. 
+    A possibility to calculate JxB, that is the magnetic force.
+  o Added a functionality to compute the Average Magnetic Flux, Average Magnetic Flux Density 
+    and Magnetic Flux Area on a given boundary.
+  o Added the so called classical Low-Frequency Model to MagnetoDynamics module for taking 
+    eddy currents into account in lamination stacks.
+  o Harmonic: Added low frequency and wide-frequency band models for taking eddies in laminate 
+    stacks into account 
+  o Adding a possibility to use rotation matrix in MagnetoDynamics. 
+    This could be used to transform the anisotropic material property tensors.
+  o Added a foil coil which is now a regognized option as a coil model.
+
+- MagneticDynamics2D: 
+  o New solver with similar functionality as with the MagnetoDynamics solver but for 2D nodal elemenets
+  o Harmonic and steady state versions available. 
+  o Also cylindrically symmetric cases may be treated.
+
+- VectorHelmholz:
+  o New solver that can be used to study vector valued wave problems in electromagnetics.
+  o Solver includes shifted matrix for ILU preconditioning. The solver can use both the 
+    simplest and lowest non-affine edge elements. 
+  o Includes also VectorHelmholtzCalcFields to compute postprocessed fields. 
+
+- WaveSolver: 
+  o New preliminary solver for the classical transient wave equation for scalar potential.
+
+- HarmonicLoss: 
+  o New solver that can be make on on-the-fly fourier transform and estimate the componentwise 
+    harmonic losses. Losses can be linear or quadratic with frequency. 
+
+- StatCurrentSolver: 
+  o Implemented nonlinearity for StatCurrentSolver 
+
+- ParticleAcvector:
+  o When advecting particles may compute path integrals over the particle track
+
+- HeatSolver: 
+  o Implemented 'Infinity BC Temperature' for HeatSolver that assumes infinately large conducting domain.
+ 
+- ResultOutputSolver: 
+  o A hack to save results automatically also in vtu format by just giving the "Post File" the suffix ".vtu".
+  o Added support of Elmer elements 820 and 827 to VtuOutputSolver.
+  o Vtu output format can now also save discontinuous fields where each node is saved separately for each element. 
+    The keyword for this is "Discontinuous Galerkin = True". Note that the resulting VTU files may be huge!
+  o In VtuOutputSolver enable saving and omitting of halo elements in parallel output. 
+    New logical keywords introduced 'Skip Halo Elements' and 'Save Halo Elements Only'.
+  o In vtu format enables saving of only boundaries or bulk elements. Activated by new keywords 
+    'Save Boundaries Only' and 'Save Bulk Only'.
+  o Include information about possible discontinuity of the mesh in the filename of vtu files.
+  o Introduced two new keywords, "Save Elemental Fields" and "Save Nodal Fields" in VTU format. The default for both is "True". 
+  o Added a mask condition that may be used to pick the elements and nodes to be saved in VTU format in ResultOutputSolver.
+  o Added default names for physical bodies/BCs in case of Gmsh output.
+
+- ElasticSolver:
+  o The spring BC definition is now given in terms of the pseudo-traction vector
+  o Surface traction BCs can now be defined using the conventional terms even for large displacements. 
+  o Enhanced postprocessing features to inlude principal strain computation
+
+- StressSolver:
+  o Added namespace for stress computation to allow different linear system settings.
+  o Nonlinear Linesearch added to linear elasticity solver
+
+- SaveData
+  o SaveDependence: New auxiliary subroutine for saving functional forms in a 1D table.
+
+- SaveParticleData:
+  o Added Gsmh output for the particles.
+
+- IsoSurfaceSolver:
+  o New Solver for saving isolines or isosurfaces of given field as a mesh. 
+    Also saving of .geo files for Gmsh for further meshing. 
+
+- DataToFieldSolver:
+  o Given data in scattered points fit a field to the data. In the case of noisy or missing 
+    data diffusion may be added for regularization. 
+
+- Acoustics: 
+  o New Solver for the linearized NS equations in the frequency domain.
+
+- CompessibleNS
+  o New Solver for large-amplitude acoustics in time domain.
+
+- CoilSolver: 
+  o A preliminary solver that may be used to set currents for closed open and closed coils. 
+    The current may be normalized to given density, or other heuristic methods may be used to make 
+    the current distribution more uniform. 
+
+
+ElmerGUI
+---------
+- New XML files for menu defitions: 
+  o vectorhelmholtz.xml: Wave equation for electric/magnetic fields
+  o magnetodynamics2d.xml
+- New keyword settings in meny
+  o bicgstabl polynomial order setting
+  o vanka as choice for preconditioner
+- Generate sif automatically when saving a mesh or exiting
+- Group similar boundary conditions in ElmerGUI for more compact sifs. 
+- Possibility to use ParaView in post processing in ElmerGUI. The PATH environment variable 
+  of the workstation should point to the bin directory of PV.
+
+ElmerGrid
+---------
+- ElmerGrid export:
+  o Basic Gmsh output to ElmerGrid. 
+  o Ascii XML VTK writer. The purpose of this is to provide an alternative way to view 
+    the meshes and partitioning prior to actually computing anything.
+
+- ElmerGrid import:
+  o Preserves names of entities also for Gmsh mesh format.
+  o GiD import extended for two additional elementtypes.
+  o Adopted Comsol input to the new style of .mphtxt files for geometric entity names
+
+- ElmerGrid partitioning:
+  o Improved partitioning so that the user may use dual graph instead of the nodal graph to make the partitioning. 
+    This is invoked with flag '-partdual'.
+  o Memory savings implemented by directly constructing sparse matrices (for Metis). 
+  o Implemented new hierarchical partitioning routine that can be used to first 
+    partition boundary elements with Metis, and thereafter the remaining bulk elements. The user may also 
+    extend the partitioned boundary with additional element layers to the bulk elements (default is one).
+  o Improved on partitioning routines for rotational and constrained problems. 
+  o Enabled hybrid partitioning where the connected elements may be partitioned using 1D partitioning and the 
+    rest of the elements are partitioned with Metis.
+  o First version of halo in z-direction, testing still incomplete.
+  o Enabled even partitioning with the -partitioning flag. 
+
+- Other features:
+  o Enabled that the checking of parent elements for bc elements in partitioning is done only optionally using new -partbcoptim flag. 
+  o Enabled constant helicity when extruding meshes. 
+  o New style of selective extrusion where the materials to be extruded may be handpicked for each laye  
+    
+
+
+
+    

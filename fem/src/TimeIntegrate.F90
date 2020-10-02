@@ -277,6 +277,7 @@ CONTAINS
 
      SELECT CASE( Order)
      CASE(1)
+
        DO i=1,NB1
          s = 0.0_dp
          DO j=1,N

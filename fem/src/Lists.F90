@@ -2705,7 +2705,12 @@ use spariterglobals
 
       IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
 
-      ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
+      IF( n == 1 ) THEN
+        ptr % TYPE = LIST_TYPE_INTEGER
+      ELSE
+        ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
+      END IF
+      
       ptr % IValues(1:n) = IValues(1:n)
 
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
@@ -2992,6 +2997,10 @@ use spariterglobals
        RETURN
      END IF
 
+     IF( ptr % type /= LIST_TYPE_INTEGER ) THEN
+       CALL Fatal('ListGetInteger','Invalid list type for: '//TRIM(Name))
+     END IF
+     
      IF ( ptr % PROCEDURE /= 0 ) THEN
        CALL ListPushActiveName(Name)
        L = ExecIntFunction( ptr % PROCEDURE, CurrentModel )
@@ -3050,13 +3059,12 @@ use spariterglobals
          END IF
        END IF
        RETURN
-     END IF
-
+     END IF     
+     
      IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
-       WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
+       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
                '] not used consistently.'
        CALL Fatal( 'ListGetIntegerArray', Message )
-       RETURN
      END IF
 
      n = SIZE(ptr % IValues)
@@ -3132,7 +3140,13 @@ use spariterglobals
        END IF
        RETURN
      END IF
-     L = ptr % Lvalue
+
+     IF(ptr % TYPE == LIST_TYPE_LOGICAL ) THEN
+       L = ptr % Lvalue
+     ELSE
+       CALL Fatal('ListGetLogical','Invalid list type for: '//TRIM(Name))
+     END IF
+     
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogical
 !------------------------------------------------------------------------------
@@ -3172,6 +3186,8 @@ use spariterglobals
        L = ( RVal > 0.0_dp )
      ELSE
        L = .TRUE.
+       !Mere presence implies true mask
+       !CALL Fatal('ListGetLogicalGen','Invalid list type for: '//TRIM(Name))
      END IF
      
 !------------------------------------------------------------------------------
@@ -3203,7 +3219,13 @@ use spariterglobals
        END IF
        RETURN
      END IF
-     S = ptr % Cvalue
+     
+     IF( ptr % Type == LIST_TYPE_STRING ) THEN     
+       S = ptr % Cvalue
+     ELSE
+       CALL Fatal('ListGetString','Invalid list type: '//TRIM(Name))
+     END IF
+       
 !------------------------------------------------------------------------------
    END FUNCTION ListGetString
 !------------------------------------------------------------------------------
@@ -3278,6 +3300,12 @@ use spariterglobals
            ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,xx,yy,zz )
        CALL ListPopActiveName()
 
+     CASE( LIST_TYPE_VARIABLE_SCALAR, LIST_TYPE_VARIABLE_SCALAR_STR )       
+       CALL Fatal('ListGetConstReal','Constant cannot depend on variables: '//TRIM(Name))
+
+     CASE DEFAULT
+       CALL Fatal('ListGetConstReal','Invalid list type for: '//TRIM(Name))       
+       
      END SELECT
 
      IF ( PRESENT( minv ) ) THEN
@@ -3556,9 +3584,6 @@ use spariterglobals
 
 
   
-
-
-  
 !------------------------------------------------------------------------------
 !> Given a string containing comma-separated variablenames, reads the strings
 !> and obtains the corresponding variables to a table.
@@ -3674,10 +3699,15 @@ use spariterglobals
            CYCLE
          ELSE IF( Var % TYPE == Variable_on_elements ) THEN
            Element => CurrentModel % CurrentElement
-           IF( ASSOCIATED( Element ) ) k1 = Element % ElementIndex
+           IF( ASSOCIATED( Element ) ) THEN
+             k1 = Element % ElementIndex
+           ELSE
+             CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
+           END IF
          ELSE IF ( Var % TYPE == Variable_on_nodes_on_elements ) THEN
            Element => CurrentModel % CurrentElement
            IF ( ASSOCIATED(Element) ) THEN
+             k1 = 0
              IF ( ASSOCIATED(Element % DGIndexes) ) THEN
                n = Element % TYPE % NumberOfNodes
                IF ( SIZE(Element % DGIndexes)==n ) THEN
@@ -3689,6 +3719,12 @@ use spariterglobals
                  END DO
                END IF
              END IF
+             IF( k1 == 0 ) THEN
+               CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
+                   ' in element '//TRIM(I2S(Element % ElementIndex)))
+             END IF
+           ELSE
+             CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
            END IF
          END IF
 
@@ -4030,7 +4066,7 @@ use spariterglobals
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
            WRITE(Message, '(A,A)') "Failed to find real: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal("ListGetReal", Message)
          END IF
        END IF
        RETURN
@@ -4121,7 +4157,7 @@ use spariterglobals
          CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j )
          
 #ifdef HAVE_LUA
-         IF ( .not. ptr % LuaFun ) THEN
+         IF ( .NOT. ptr % LuaFun ) THEN
 #endif
            IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
              DO l=1,j
@@ -4139,7 +4175,7 @@ use spariterglobals
 
 #ifdef HAVE_LUA
          ELSE
-           call ElmerEvalLua(LuaState, ptr, T, F(i), varcount)
+           CALL ElmerEvalLua(LuaState, ptr, T, F(i), j )
          END IF
 #endif
          IF( AllGlobal ) THEN
@@ -5491,7 +5527,7 @@ use spariterglobals
                END IF
 #ifdef HAVE_LUA
              ELSE
-               CALL ElmerEvalLua(LuaState, ptr, T, F(i), Handle % varcount)
+               CALL ElmerEvalLua(LuaState, ptr, T, F(i), j )
              END IF
 #endif
 
@@ -5588,7 +5624,7 @@ use spariterglobals
                
 #ifdef HAVE_LUA
              ELSE
-               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, Handle % varcount)
+               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, j )
              END IF
 #endif
              ELSE IF ( ptr % PROCEDURE /= 0 ) THEN

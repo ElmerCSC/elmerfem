@@ -204,6 +204,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: MassAssembly, HarmonicAssembly
   LOGICAL :: Parallel
   LOGICAL :: SolidShellCoupling
+  LOGICAL :: DrillingDOFs
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -224,6 +225,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
   REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0
+  REAL(KIND=dp) :: DrillingPar
 
   CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile
 
@@ -274,6 +276,15 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       StrainReductionMethod = AutomatedChoice
 
   Bubbles = GetLogical(SolverPars, 'Bubbles', Found)
+  DrillingDOFs = GetLogical(SolverPars, 'Drilling DOFs', Found)
+  IF (DrillingDOFs) CALL Warn('ShellSolver', &
+      'Drilling DOFs do not support all options and alters the meaning of all rotational DOFs/BCs')
+  IF (DrillingDOFs) THEN
+    DrillingPar = GetConstReal(SolverPars, 'Drilling Stabilization Parameter', Found)
+    IF (.NOT. Found) DrillingPar = 1.0d0
+  ELSE
+    DrillingPar = 1.0d0
+  END IF
 
   !-----------------------------------------------------------------------------------
   ! The field variables for saving the orientation of lines of curvature basis
@@ -378,6 +389,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
 
   IF (LargeDeflection) THEN
+    IF (DrillingDOFs) CALL Fatal('ShellSolver', &
+        'Drilling DOFs cannot yet be combined with Large Deflection')
     SolveBenchmarkCase = .FALSE.
     IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
         ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
@@ -479,8 +492,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! -----------------------------------------------------------------------------
       CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
           LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
-          ApplyBubbles, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, &
-          TotalErr, BenchmarkProblem=SolveBenchmarkCase)
+          ApplyBubbles, DrillingDOFs, DrillingPar, MassAssembly, HarmonicAssembly, LocalRHSForce, &
+          ShellModelArea, TotalErr, BenchmarkProblem=SolveBenchmarkCase)
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -561,6 +574,11 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
         CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
       ELSE
         LocalSol = 0.0d0
+      END IF
+
+      IF (DrillingDOFs) THEN
+        CALL Warn('ShellSolver', 'Drilling DOFs does not yet support beam sections')
+        CYCLE
       END IF
 
       CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
@@ -3492,8 +3510,9 @@ CONTAINS
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, MassAssembly, &
-      HarmonicAssembly, RHSForce, Area, Error, BenchmarkProblem)
+      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, &
+      DrillingDOFs, DrillingPar, MassAssembly, HarmonicAssembly, RHSForce, Area, &
+      Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
@@ -3506,6 +3525,8 @@ CONTAINS
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
     INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
+    LOGICAL, INTENT(IN) :: DrillingDOFs                ! Switches to drilling DOFs (limited functionality)
+    REAL(KIND=dp), INTENT(IN) :: DrillingPar           ! A stabilization parameter for drilling DOFs 
     LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
@@ -3547,7 +3568,7 @@ CONTAINS
 
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
     REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(7)
-    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd)
+    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), TMat(m*nd,m*nd)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
     REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
@@ -3566,6 +3587,7 @@ CONTAINS
     REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
     REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
+    REAL(KIND=dp) :: Damping(n), DampCoef
     REAL(KIND=dp) :: nu, E, h, NormalTraction, Kappa
     REAL(KIND=dp) :: DetJ, Weight, Norm
 
@@ -3674,7 +3696,10 @@ CONTAINS
     ELSE
       Load(1:n) = 0.0d0
     END IF
-    IF ( MassAssembly ) rho(1:n) = GetReal(GetMaterial(), 'Density')
+    IF ( MassAssembly ) THEN
+      rho(1:n) = GetReal(GetMaterial(), 'Density')
+      Damping(1:n) = GetReal(GetMaterial(), 'Rayleigh Damping Alpha', Found)
+    END IF
 
     ! ------------------------------------------------------------------------------
     ! The size of the constitutive matrix for 2D shell equations
@@ -3729,6 +3754,7 @@ CONTAINS
     END DO
 
     Q = 0.0d0
+    TMat = 0.0d0
     DO j=1,nd
       ! ------------------------------------------------------------------------
       ! The following transformation is designed for the Lagrange element DOFs.
@@ -3751,8 +3777,30 @@ CONTAINS
       Q(i0+1:i0+3,i0+1:i0+3) =  QBlock(1:3,1:3)
       Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
 
+      IF (DrillingDOFs) THEN
+        !
+        ! TMat is a transformation matrix for expressing the components of
+        ! beta vector as rotated components a theta vector according to
+        ! the relation beta = d x theta
+        !
+        TMat(i0+1,i0+1) = 1.0d0
+        TMat(i0+2,i0+2) = 1.0d0
+        TMat(i0+3,i0+3) = 1.0d0
+        TMat(i0+4,i0+5) = -1.0d0
+        TMat(i0+5,i0+4) = 1.0d0
+        TMat(i0+6,i0+6) = 1.0d0
+      ELSE
+        TMat(i0+1,i0+1) = 1.0d0
+        TMat(i0+2,i0+2) = 1.0d0
+        TMat(i0+3,i0+3) = 1.0d0
+        TMat(i0+4,i0+4) = 1.0d0
+        TMat(i0+5,i0+5) = 1.0d0
+        TMat(i0+6,i0+6) = 1.0d0
+      END IF
+
     END DO    
     PrevSolVec(1:DOFs) = MATMUL(Q(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
+    PrevSolVec(1:DOFs) = MATMUL(TMat(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
 
     ! ------------------------------------------------------------------------
     ! Finally, integrate local element matrices:
@@ -3874,10 +3922,13 @@ CONTAINS
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
       NormalTraction = SUM( Load(1:n) * Basis(1:n) )
-      IF ( MassAssembly ) rho0 = SUM( rho(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) THEN
+        rho0 = SUM( rho(1:n) * Basis(1:n) )
+        DampCoef = SUM( Damping(1:n) * Basis(1:n) )
+      END IF
 
       ! The matrix description of the elasticity tensor:
-      CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
+      CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu, DrillingDOFs, DrillingPar)
 
 
       ! Shear correction factor:
@@ -4056,14 +4107,24 @@ CONTAINS
         END DO
       END IF
 
-      !----------------------------------------------------------------------
-      ! Normal stress T^{33} via energy principle: We add a term of the type
-      ! e * T^{33}(e)
-      !----------------------------------------------------------------------
-      BM(4,6:DOFs:m) = -Basis(1:nd)
-      BM(4,1:DOFs) = BM(4,1:DOFs) + nu/((1.0d0-nu)*A1**2) * BM(1,1:DOFs) + &
-          nu/((1.0d0-nu)*A2**2) * BM(2,1:DOFs)
-      
+      IF (DrillingDOFs) THEN
+        !----------------------------------------------------------------------
+        ! Add terms which define the drilling DOFs:
+        !----------------------------------------------------------------------
+        BM(4,6:DOFs:m) = Basis(1:nd)
+        DO p=1,nd
+          BM(4,(p-1)*m+2) = -0.5d0 * (dBasis(p,1) - 2.0d0 * C212 * Basis(p))
+          BM(4,(p-1)*m+1) = 0.5d0 * (dBasis(p,2) - 2.0d0 * C211 * Basis(p))
+        END DO
+      ELSE
+        !----------------------------------------------------------------------
+        ! Normal stress T^{33} via energy principle: We add a term of the type
+        ! e * T^{33}(e)
+        !----------------------------------------------------------------------
+        BM(4,6:DOFs:m) = -Basis(1:nd)
+        BM(4,1:DOFs) = BM(4,1:DOFs) + nu/((1.0d0-nu)*A1**2) * BM(1,1:DOFs) + &
+            nu/((1.0d0-nu)*A2**2) * BM(2,1:DOFs)
+      END IF
 
       StrainVec = 0.0d0
       IF (LargeDeflection) THEN
@@ -4340,7 +4401,7 @@ CONTAINS
       !----------------------------------------------------------------------------------------
       ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
       !----------------------------------------------------------------------------------------
-      IF (.NOT. BenchmarkProblem) THEN
+      IF (.NOT. DrillingDOFs .AND. .NOT. BenchmarkProblem) THEN
         BS(3,6:DOFs:m) = dBasis(1:nd,1)
         BS(4,6:DOFs:m) = dBasis(1:nd,2)
         Weight = h**2/12.0d0 * Weight
@@ -4415,6 +4476,10 @@ CONTAINS
             DO j=1,nd
               Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
                   Basis(i) * Basis(j) * Weight
+              Damp((i-1)*m+k,(j-1)*m+k) = Damp((i-1)*m+k,(j-1)*m+k) + &
+                  DampCoef * Basis(i) * Basis(j) * Weight              
+
+              IF (k > 2 .AND. DrillingDOFs) CYCLE
               Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
                   h**2/12.0d0 * Basis(i) * Basis(j) * Weight
             END DO
@@ -4483,19 +4548,27 @@ CONTAINS
     !-------------------------------------------------------
     ! Transform to the global DOFs:
     !-------------------------------------------------------
+    Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
     Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
+
+    Force(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),Force(1:DOFs))
     Force(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-    IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+    IF (LargeDeflection) THEN
+      ! RHSForce(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+      RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+    END IF
 
     IF ( MassAssembly ) THEN
+      Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
+      Damp(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Damp(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
 
       IF ( TransientSimulation ) THEN
         CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
       ELSE IF ( HarmonicAssembly ) THEN
         CALL DefaultUpdateMass( MASS )
-        ! update damping if present!
+        CALL DefaultUpdateDamp( DAMP )
       END IF
     END IF
 
@@ -5362,12 +5435,30 @@ CONTAINS
 ! The matrix representation of the elasticity tensor with respect an orthogonal
 ! basis. The case A1 = A2 = 1 corresponds to an orthonormal basis.     
 !------------------------------------------------------------------------------
-  SUBROUTINE ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
+  SUBROUTINE ElasticityMatrix(CMat, GMat, A1, A2, E, nu, DrillingDOFs, StabPar)
 !------------------------------------------------------------------------------    
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(OUT) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp), INTENT(IN) :: A1, A2, E, nu  
+    LOGICAL, OPTIONAL, INTENT(IN) :: DrillingDOFs
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: StabPar
 !------------------------------------------------------------------------------
+    LOGICAL :: WithDrillingDOFs
+    REAL(KIND=dp) :: StabConst
+!------------------------------------------------------------------------------
+    IF (PRESENT(DrillingDOFs)) THEN
+      WithDrillingDOFs = DrillingDOFs
+      IF (WithDrillingDOFs) THEN
+        IF (PRESENT(StabPar)) THEN
+          StabConst = StabPar
+        ELSE
+          StabConst = 1.0d0
+        END IF
+      END IF
+    ELSE
+      WithDrillingDOFs = .FALSE.
+    END IF
+
     CMat = 0.0d0
     GMat = 0.0d0
 
@@ -5384,10 +5475,14 @@ CONTAINS
     CMat(2,2) = CMat(2,2)/A2**4   
     CMat(3,3) = CMat(3,3)/(A1**2 * A2**2)
 
-    ! The row corresponding to the normal stress: A deviation from the state of
-    ! vanishing normal stress produces deformation energy as described by
-    ! the 3-D Hooke's law.
-    CMat(4,4) = (1.0d0-nu) * E /( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
+    IF (WithDrillingDOFs) THEN
+      CMat(4,4) = StabConst * E/(1.0d0 + nu)
+    ELSE
+      ! The row corresponding to the normal stress: A deviation from the state of
+      ! vanishing normal stress produces deformation energy as described by
+      ! the 3-D Hooke's law.
+      CMat(4,4) = (1.0d0-nu) * E /( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
+    END IF
 
     GMat(1,1) = E/(2.0d0*(1.0d0 + nu)*A1**2)
     GMat(2,2) = E/(2.0d0*(1.0d0 + nu)*A2**2)

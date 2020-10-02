@@ -135,7 +135,7 @@
 !    Anyway, to be on the safe side, if the simulation  is time dependent,
 !    change the number of integration points  here.
 !
-!    NOTE: THIS DOESN´T FIX THE PROBLEM FOR THE KE Model
+!    NOTE: THIS DOESN'T FIX THE PROBLEM FOR THE KE Model
 !------------------------------------------------------------------------------
      eq = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
      TransientSimulation = .FALSE.

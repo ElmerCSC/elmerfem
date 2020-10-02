@@ -57,7 +57,7 @@ Solver 1
 
   Linear System Solver = Iterative
   Linear System Preconditioning = Diagonal
-  Linear System Iterative Method = bicgstabl
+  Linear System Iterative Method = BiCGStabL
   Bicgstabl Polynomial Degree = 4
 
   Linear System Residual Output = 20

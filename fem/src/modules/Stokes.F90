@@ -609,7 +609,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
        CALL Info( 'NavierStokesSolver', Message, Level=4)
      END IF
 
-     RelaxationFactor = ListGetConstReal( Solver % Values, &
+     RelaxationFactor = ListGetCReal( Solver % Values, &
           'Nonlinear System Relaxation Factor', Found )
      IF ( Found ) THEN
         Solver % Variable % Values(1:n) = (1.0d0 - RelaxationFactor) * PrevSol(1:n) + &

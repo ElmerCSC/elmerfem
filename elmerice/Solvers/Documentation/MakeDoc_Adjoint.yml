@@ -20,6 +20,8 @@ input-files:
 - RegSolvers_part.md
 -  Adjoint_CostRegSolver.md
 -  AdjointSSA_CostTaubSolver.md
+- StokesSolvers_part.md
+-  AdjointStokes_GradientBetaSolver.md
 - SSASolvers_part.md
 -  AdjointSSA_SSASolver.md
 -  AdjointSSA_GradientSolver.md

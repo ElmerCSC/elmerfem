@@ -5,5 +5,4 @@ CONFIGURE_FILE( flux.sif flux.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO  angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(fluxsolver)
-ADD_ELMER_LABEL(fluxsolver quick)
+ADD_ELMER_TEST(fluxsolver LABELS quick vtu)

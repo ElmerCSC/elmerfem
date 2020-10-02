@@ -786,7 +786,11 @@ CONTAINS
 
           s = 0.0d0
           DO i=1,BasisFunctions(n) % n
-             s = s + Coeff(i) * u**p(i)
+            IF (p(i)==0) THEN
+              s = s + Coeff(i)
+            ELSE
+              s = s + Coeff(i) * u**p(i)
+            END if
           END DO
           y = y + s * x(n)
        END IF
@@ -822,7 +826,11 @@ CONTAINS
 
        s = 0.0d0
        DO i=1,BasisFunctions(n) % n
-          s = s + Coeff(i) * u**p(i)
+         IF (p(i)==0) THEN
+           s = s + Coeff(i)
+         ELSE
+           s = s + Coeff(i) * u**p(i)
+         END if
        END DO
        y(n) = s
      END DO

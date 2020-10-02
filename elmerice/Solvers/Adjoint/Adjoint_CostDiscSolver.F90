@@ -56,32 +56,8 @@ END SUBROUTINE Adjoint_CostDiscSolver_init0
 SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
-!Compute a cost function as: J=SUM_1^Nobs 0.5*(u-u^obs)2
-!            where u is evaluated at observation location
-!   Serial/Parallel    2D/3D
-!
-!     OUTPUT are : J and xb (sensitivity of J w.r.t. u)
-!
-!    !! Be careful this solver will reset the cost and DJDu to 0;
-!     so it has to be used as the first cost solver in an inverse problem sequence
-!
-!
-!     INPUT PARAMETERS are:
-!
-!      In solver section:
-!               Coordinates Dimension = Integer (default = Coordinate system dimension)
-!               
-!               Cost Filename = File (default = 'CostOfT.dat')
-!               Cost Variable Name = String (default= 'CostValue')
-!               Lambda = Real (default= '1.0')
-!               Observed Variable Name = String 
-!               Observation File Name = File
-!               Parallel observation Files = Logical
-!               Save use data = logical
-!
-!      Variables
-!                Velocityb (forcing for the adjoint pb;DOFs== Pb dimension)
-!
+! Discrete cost function evaluated as a sum of the differences at observations points
+! See documentation under ELMER_SRC/elmerice/Solvers/Documentation/Adjoint_CostDiscSolver.md
 !******************************************************************************
   USE ParticleUtils
   USE GeneralUtils
@@ -130,6 +106,8 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL,SAVE :: Firsttime=.true.,Parallel
   LOGICAL,SAVE :: FirstRound=.True.
   LOGICAL,SAVE :: SAVE_USED_DATA=.False.
+  LOGICAL,SAVE :: HaveSTD=.FALSE.
+  LOGICAL,SAVE :: CompNorm=.FALSE.
   LOGICAL :: Found
   LOGICAL :: ParallelFile,ProcessedFile,ActiveNumbering
 
@@ -139,7 +117,11 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
   integer :: i,j,s
   INTEGER :: k
+  real(kind=dp) :: StdMin
   real(kind=dp) :: Cost,Cost_S
+  real(kind=dp) :: rms,rms_s
+  real(kind=dp) :: misfit
+  REAL(Kind=dp) :: VmNorm,VoNorm,StdNorm,VmNormb,um,umb
   real(kind=dp) :: Coord(3),UVW(3)
   REAL(KIND=dp) :: V(3)
   INTEGER,SAVE :: NTOT=-1,NTOT_S
@@ -151,14 +133,14 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: BoundarySolver
 
   ! Variables with obs.
-  REAL(KIND=dp),ALLOCATABLE,SAVE :: xobs(:,:),Vobs(:,:)
+  REAL(KIND=dp),ALLOCATABLE,SAVE :: xobs(:,:),Vobs(:,:),StdObs(:,:)
   INTEGER,ALLOCATABLE,SAVE :: InElement(:)
   INTEGER,SAVE :: nobs
 
   ! Variables related to netcdf
   CHARACTER(LEN=MAX_NAME_LEN) :: Xdim,Ydim,VarName
   REAL(KIND=dp),ALLOCATABLE :: Fillv(:)
-  REAL(KIND=dp),ALLOCATABLE :: xx(:),yy(:),ObsArray(:,:,:)
+  REAL(KIND=dp),ALLOCATABLE :: xx(:),yy(:),ObsArray(:,:,:),StdObsArray(:,:,:)
   INTEGER :: XMinIndex,XMaxIndex,YMinIndex,YMaxIndex,nx,ny
   INTEGER :: NetcdfStatus,varid,ncid,ierr
   LOGICAL :: NETCDFFormat
@@ -204,6 +186,19 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
       Lambda = 1.0_dp
       CALL ListAddConstReal( SolverParams,'Lambda',Lambda)
    End if
+
+   ! error is the difference of the norm?
+   CompNorm = ListGetLogical(SolverParams,'Compute norm difference', Found)
+   IF(.NOT.Found) CompNorm=.FALSE.
+
+   !! Give information about standard error
+   HaveSTD=ListGetLogical(SolverParams,'Use standard error',Found)
+   IF (.NOT.Found) HaveSTD=.False.
+   IF (HaveSTD) THEN
+      StdMin=ListGetConstReal(SolverParams,'standard error Min Value',Found)
+      IF (.NOT.Found) StdMin=100*AEPS
+   END IF
+
 !!!!!!!!!!! get Solver Variables
 
   CostFile = ListGetString(Solver % Values,'Cost Filename',Found )
@@ -214,14 +209,22 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
         OPEN (IO, FILE=CostFile)
              write(IO,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
              write(IO,1001) Lambda
-             write(IO,'(A)') '# iter, Lambda*J0, rms'
+             IF (HaveSTD) THEN
+               write(IO,'(A)') '# iter, Lambda*J0, sqrt(2*J0/Nobs),rms'
+             ELSE
+               write(IO,'(A)') '# iter, Lambda*J0, sqrt(2*J0/Nobs)'
+             END IF
         CLOSE(IO)
      End if
   Else
        OPEN (IO, FILE=CostFile)
              write(IO,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
              write(IO,1001) Lambda
-             write(IO,*)'# iter, Lambda*J0, rms'
+             IF (HaveSTD) THEN
+               write(IO,'(A)') '# iter, Lambda*J0, sqrt(2*J0/Nobs),rms'
+             ELSE
+               write(IO,'(A)') '# iter, Lambda*J0, sqrt(2*J0/Nobs)'
+             END IF
        CLOSE(IO)
   End if
 
@@ -316,10 +319,12 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
       CALL MinMaxIndex(xx,nx,xmin,xmax,XMinIndex,XMaxIndex)
       CALL MinMaxIndex(yy,ny,ymin,ymax,YMinIndex,YMaxIndex)
 
+
      !! get ux and uy
       nx=XMaxIndex-XMinIndex+1
       ny=YMaxIndex-YMinIndex+1
       ALLOCATE(ObsArray(nx,ny,VarDIM),fillv(VarDIM))
+      IF (HaveSTD) ALLOCATE(StdObsArray(nx,ny,VarDIM))
 
       DO k=1,VarDIM
         IF (VarDIM==1) THEN
@@ -351,11 +356,41 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
            CALL FATAL(Trim(SolverName),TRIM(VarName) // 'has no attribute _FillValue')
       END DO
 
+      IF (HaveSTD) THEN
+        DO k=1,VarDIM
+          IF (VarDIM==1) THEN
+            VarName=ListGetString( SolverParams, "Netcdf Std Var Name", UnFoundFatal=.True. )
+          ELSE
+            VarName=ListGetString( SolverParams, TRIM(ComponentName("Netcdf Std Var",k)) // " Name", Found )
+            IF (.NOT.Found) THEN
+              CALL WARN(SolverName,'keyword <' // &
+                      TRIM(ComponentName("Netcdf Std Var",k)) // " Name" // ' not found, taking default')
+              select case (k)
+                case (1)
+                  VarName='ex'
+                case (2)
+                  VarName='ey'
+              end select
+            ENDIF
+          ENDIF
+          NetCDFstatus = nf90_inq_varid(ncid,trim(VarName),varid)
+          IF ( NetCDFstatus /= NF90_NOERR ) &
+           CALL Fatal(Trim(SolverName),'Unable to get netcdf variable id for ' // TRIM(VarName))
+          NetCDFstatus = nf90_get_var(ncid, Varid, StdObsArray(:, :,k), &
+                            start = (/ XMinIndex, YMinIndex /),     &
+                            count = (/ nx,ny/))
+          IF ( NetCDFstatus /= NF90_NOERR ) &
+            CALL Fatal(Trim(SolverName),'Unable to get netcdf variable' // TRIM(VarName))
+        END DO
+      END IF
+
       !! close netcdf
       NetCDFstatus = nf90_close(ncid)
 
       !!
       ALLOCATE(xobs(nx*ny,3),Vobs(nx*ny,VarDIM))
+      IF (HaveSTD) ALLOCATE(StdObs(nx*ny,VarDIM))
+
       ALLOCATE(InElement(nx*ny))
       InElement(:)=-1
       xobs=0._dp
@@ -370,11 +405,14 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
          xobs(nobs,2)=yy(YMinIndex+j-1)
          Do k=1,VarDIM
           Vobs(nobs,k)=ObsArray(i,j,k)
+          IF (HaveSTD) & 
+            StdObs(nobs,k)=max(StdObsArray(i,j,k),StdMin)
          END DO
         End do
       End do
 
       DEALLOCATE(xx,yy,ObsArray,fillv)
+      IF (HaveSTD) DEALLOCATE(StdObsArray)
 
 #else
 
@@ -410,6 +448,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      close(IO)
 
      ALLOCATE(xobs(nobs,3),Vobs(nobs,VarDIM))
+     IF (HaveSTD) ALLOCATE(StdObs(nobs,VarDIM))
      ALLOCATE(InElement(nobs))
      InElement(:)=-1
 
@@ -418,7 +457,11 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
      open(IO,file=trim(SideParFile))
      do i=1,nobs
        IF (ProcessedFile) THEN
-         read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM),AI
+         IF (HaveSTD) THEN
+           read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM),(StdObs(i,j),j=1,VarDIM),AI
+         ELSE
+           read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM),AI
+         END IF
 
          IF (ActiveNumbering) THEN
            Element => GetActiveElement(AI)
@@ -429,7 +472,11 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
            InElement(i) = AI
          ENDIF
        ELSE
-         read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM)
+         IF (HaveSTD) THEN
+           read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM),(StdObs(i,j),j=1,VarDIM)
+         ELSE
+           read(IO,*) (xobs(i,j),j=1,CoordDIM),(Vobs(i,j),j=1,VarDIM)
+         ENDIF
        ENDIF
      end do
      close(IO)
@@ -479,6 +526,7 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
 
 ! Compute the cost
     Cost=0._dp
+    rms=0._dp
 
     Element => GetActiveElement(1)
     ElementIndex = Element % ElementIndex
@@ -589,23 +637,67 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
             stat = ElementInfo( Element,ElementNodes,UVW(1),UVW(2),UVW(3),SqrtElementMetric, &
                               Basis,dBasisdx )
 
-            ! Variable at obs point
-            Do i=1,VarDIM
-              V(i)=SUM(Values(VDOFs*(Perm(NodeIndexes(1:n))-1)+i)*basis(1:n))
-            End do
-
-            ! Update cost
-            Do i=1,VarDIM
-              Cost=Cost+0.5*Lambda*(V(i)-Vobs(s,i))*(V(i)-Vobs(s,i))
-            End do
-
-            !Derivative of Cost at nodal Point
-            Do j=1,n
+            IF (CompNorm) THEN
+              VmNorm=0._dp
+              VoNorm=0._dp
+              StdNorm=0._dp
               Do i=1,VarDIM
-               k=VDOFS*(VbPerm(NodeIndexes(j))-1)+i
-               Vb(k)=Vb(k)+Lambda*(V(i)-Vobs(s,i))*basis(j)
+                um=SUM(Values(VDOFs*(Perm(NodeIndexes(1:n))-1)+i)*basis(1:n))
+                VmNorm=VmNorm+um**2
+                VoNorm=VoNorm+Vobs(s,i)**2
+                IF (HaveSTD) &
+                  StdNorm=StdNorm+StdObs(s,i)**2
+              END DO
+              misfit=sqrt(VmNorm)-sqrt(VoNorm)
+              IF (HaveSTD) then
+                rms=rms+misfit**2
+                misfit=misfit/sqrt(StdNorm)
+              ENDIF
+              Cost = Cost + 0.5*Lambda*misfit**2
+              VmNormb=Lambda*misfit
+              IF (HaveSTD) &
+                 VmNormb=VmNormb/sqrt(StdNorm)
+              IF (VmNorm.GT.10*AEPS) THEN
+                VmNormb=0.5*VmNormb*VmNorm**(-0.5)
+              ELSE
+                VmNormb=0._dp
+              END IF
+
+              Do i=1,VarDIM
+                um=SUM(Values(VDOFs*(Perm(NodeIndexes(1:n))-1)+i)*basis(1:n))
+                umb=2*um*VmNormb
+                Do j=1,n
+                  k=VDOFS*(VbPerm(NodeIndexes(j))-1)+i
+                  Vb(k)=Vb(k)+umb*basis(j)
+                End do
+              END DO
+
+
+            ELSE
+              ! Update cost
+              Do i=1,VarDIM
+                V(i)=SUM(Values(VDOFs*(Perm(NodeIndexes(1:n))-1)+i)*basis(1:n))
+                misfit=(V(i)-Vobs(s,i))
+                IF (HaveSTD) then
+                 rms=rms+misfit**2
+                 misfit=misfit/StdObs(s,i)
+                END IF
+                Cost=Cost+0.5*Lambda*misfit**2
               End do
-            End Do
+
+              !Derivative of Cost at nodal Point
+              ! derivative of (V(i)-Vobs(s,i))**2/std**2=
+              !  2*(V(i)-Vobs(s,i))/std**2 * (dV(i)/Vnodal)
+              Do j=1,n
+                Do i=1,VarDIM
+                 k=VDOFS*(VbPerm(NodeIndexes(j))-1)+i
+                 misfit=(V(i)-Vobs(s,i))
+                 IF (HaveSTD) misfit=misfit/StdObs(s,i)**2
+                 Vb(k)=Vb(k)+Lambda*misfit*basis(j)
+                End do
+              End Do
+
+            ENDIF
 
           END IF
 
@@ -629,13 +721,21 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
                   MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
            CALL MPI_ALLREDUCE(Cost,Cost_S,1,&
                   MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
+          IF (HaveSTD) &
+             CALL MPI_ALLREDUCE(rms,rms_S,1,&
+                  MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
           CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
           IF (ASSOCIATED(CostVar)) THEN
                  CostVar % Values(1)=Cost_S
           END IF
          IF (Solver % Matrix % ParMatrix % ParEnv % MyPE == 0) then
                  OPEN (IO, FILE=CostFile,POSITION='APPEND')
-                 write(IO,'(e13.5,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost_S,sqrt(2.0*Cost_S/(NTOT_S*Lambda))
+                 IF (HaveSTD) THEN
+                   write(IO,'(4(ES20.11E3))') TimeVar % Values(1),Cost_S,& 
+                           sqrt(2.0*Cost_S/(NTOT_S*Lambda)),sqrt(rms_S/NTOT_S)
+                 ELSE
+                   write(IO,'(3(ES20.11E3))') TimeVar % Values(1),Cost_S,sqrt(2.0*Cost_S/(NTOT_S*Lambda))
+                 END IF
                  CLOSE(IO)
                  write(Message,'(A,A,I0)') trim(SolverName),'total number of data points:',NTOT_S
                  call INFO(SolverName,Message,level=3)
@@ -646,7 +746,12 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
                     CostVar % Values(1)=Cost
             END IF
             OPEN (IO, FILE=CostFile,POSITION='APPEND')
-            write(IO,'(e13.5,2x,e15.8,2x,e15.8)') TimeVar % Values(1),Cost,sqrt(2.0*Cost/(NTOT*Lambda))
+            IF (HaveSTD) THEN
+              write(IO,'(4(ES20.11E3))') TimeVar % Values(1),Cost,&
+                      sqrt(2.0*Cost/(NTOT*Lambda)),sqrt(rms/NTOT)
+            ELSE 
+              write(IO,'(3(ES20.11E3))') TimeVar % Values(1),Cost,sqrt(2.0*Cost/(NTOT*Lambda))
+            END IF
             close(IO)
             write(Message,'(A,A,I0)') trim(SolverName),'total number of data points:',NTOT
             call INFO(SolverName,Message,level=3)
@@ -667,6 +772,11 @@ SUBROUTINE Adjoint_CostDiscSolver( Model,Solver,dt,TransientSimulation )
            DO i=1,VarDIM
              write(IO,'(ES20.11E3)',ADVANCE='NO') Vobs(s,i)
            END DO
+           IF (HaveSTD) THEN
+             DO i=1,VarDIM
+               write(IO,'(ES20.11E3)',ADVANCE='NO') StdObs(s,i)
+             END DO
+           END IF
            write(IO,'(x,I0)') InElement(s)
         End if
       End do

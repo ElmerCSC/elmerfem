@@ -2223,15 +2223,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !> Dmitri Kuzmin (2008): "Explicit and implicit FEM-FCT algorithms with flux linearization"
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_FCTLowOrder( A )
+    USE SparIterGlobals
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A           !< Initial higher order matrix
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,k2,l,kb,n
+    INTEGER :: i,j,k,k2,l,kb,n, proc0, proc1,p,q, gi,gj
     REAL(KIND=dp) :: Aij,Aji,Aii,Dij,dFij,msum
     REAL(KIND=dp), POINTER :: ML(:)
     INTEGER, POINTER :: Rows(:), Cols(:),Diag(:)
     LOGICAL :: Found, Positive
     INTEGER :: pcount
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(element_t), POINTER :: Element
+    LOGICAL, ALLOCATABLE :: ActiveNodes(:), RowFound(:)
+
+    TYPE(Matrix_t), POINTER :: im
+    
+    INCLUDE "mpif.h"
 
     CALL Info('CRS_FCTLowOrder','Making low order FCT correction to matrix',Level=5)
 
@@ -2239,6 +2247,15 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Rows => A % Rows
     Cols => A % Cols
     Diag => A % Diag
+
+    Solver => CurrentModel % Solver
+    ALLOCATE(ActiveNodes(n)); activeNodes=.FALSE.
+
+    DO i=1,Solver % NumberofActiveElements
+      Element => Solver % Mesh % Elements(Solver % ActiveElements(i))
+      IF ( Element % PartIndex /= ParEnv % MyPE ) CYCLE
+      ActiveNodes(Solver % Variable % Perm(Element % NodeIndexes)) = .TRUE.
+    END do
 
     IF(.NOT. ASSOCIATED(A % FCT_D) ) THEN
       ALLOCATE( A % FCT_D(SIZE( A % Values) ) ) 
@@ -2253,15 +2270,20 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     pcount = 0
     Positive = .TRUE.
 
-    DO i=1,N
+    N = A % NumberOfRows
+    Rows => A % Rows
+    Cols => A % Cols
+    Diag => A % Diag
 
-      Aii = A % Values(Diag(i))
+    DO i=1,n
+      IF ( .NOT. ActiveNodes(i) ) CYCLE
+
+      Aii = A % Values(A % Diag(i))
       IF( Aii > 0.0_dp ) pcount = pcount + 1
-
       DO k = Rows(i), Rows(i+1)-1
         j = Cols(k)
+        IF ( .NOT. ActiveNodes(j) ) CYCLE
 
-        ! Go through the lower symmetric part (ij) and find the corresponding entry (ji)
         IF( i >= j ) CYCLE
 
         ! First find entry (j,i)
@@ -2276,11 +2298,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           CALL Fatal('CRS_FCTLowOrder','Entry not found, matrix topology not symmetric!?')
         END IF
 
-        ! Formula (30) in Kuzmin's paper
         ! Modified so that it also works similarly to A and -A
-        Aij = A % Values(k)
-        Aji = A % Values(k2)
+        Aij = A % Values(k); Aji = A % Values(k2)
+        IF (ParEnv % PEs>1) THEN
+          Aij = Aij + A % HaloValues(k)
+          Aji = Aji + A % HaloValues(k2)
+        END IF
 
+        ! Formula (30) in Kuzmin's paper
         ! Positive = Aii > 0.0_dp
         ! In Kuzmin's paper matrix K is -K compared to Elmer convention.
         ! Hence also the condition here is opposite. 
@@ -2297,13 +2322,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
         END IF
 
         ! Formula (32) in Kuzmin's paper
-        IF( ABS( Dij ) > 0.0_dp ) THEN
-          A % FCT_D(k) = A % FCT_D(k) + Dij
+        IF( ABS(Dij) > 0._dp ) THEN
+          A % FCT_D(k)  = A % FCT_D(k)  + Dij
           A % FCT_D(k2) = A % FCT_D(k2) + Dij
           A % FCT_D(Diag(i)) = A % FCT_D(Diag(i)) - Dij
-          A % FCT_D(Diag(j)) = A % FCT_D(Diag(j)) - Dij          
+          A % FCT_D(Diag(j)) = A % FCT_D(Diag(j)) - Dij
         END IF
-        
       END DO
     END DO
 
@@ -2311,9 +2335,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     CALL Info('CRS_FCTLowOrder',Message,Level=8)
 
     A % Values = A % Values + A % FCT_D
-    
+
     ! Just some optional stuff for debugging purposes
-    IF(.FALSE.) THEN
+    IF (.FALSE.) THEN
       CALL CRS_RowSumInfo( A, A % BulkValues ) 
       CALL CRS_RowSumInfo( A, A % Values ) 
       CALL CRS_RowSumInfo( A, A % FCT_D ) 
@@ -2321,9 +2345,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     ! Create a lumped mass matrix by computing the rowsums of the 
     ! initial mass matrix.
-    CALL Info('CRS_FCTLowOder','Creating lumped mass matrix',Level=10)
-    IF( .NOT. ASSOCIATED( A % MassValuesLumped ) ) THEN         
-      ALLOCATE( A % MassValuesLumped( n ) )
+    CALL Info('CRS_FCTLowOrder','Creating lumped mass matrix',Level=10)
+    IF(.NOT. ASSOCIATED(A % MassValuesLumped)) THEN         
+      ALLOCATE(A % MassValuesLumped(n))
     END IF
     ML => A % MassValuesLumped     
     DO i=1,n
@@ -3039,8 +3063,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     TYPE(Matrix_t), POINTER :: A1
 !------------------------------------------------------------------------------
     WRITE(Message,'(a,i1,a)')  &
-         'ILU(',ILUn,') (Real), Starting Factorization:'
-    CALL Info( 'CRS_IncompleteLU', Message, Level = 5 )
+         'ILU(',ILUn,') (Real), Performing Factorization:'
+    CALL Info( 'CRS_IncompleteLU', Message, Level = 6 )
     st = CPUTime()
 
     N = A % NumberOfRows
@@ -3076,7 +3100,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
              ALLOCATE( A1 )
 
              DO i=1,ILUn-1
-                CALL Info('CRS_IncompleLU','Recursive round: '//I2S(i))
+                CALL Info('CRS_IncompleLU','Recursive round: '//I2S(i),Level=7)
 
                 A1 % Cols => A % ILUCols
                 A1 % Rows => A % ILURows
@@ -3249,16 +3273,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     WRITE(Message,'(a,i1,a,i9)') 'ILU(', ILUn, &
         ') (Real), NOF nonzeros: ',ILURows(n+1)
-    CALL Info( 'CRS_IncompleteLU', Message, Level=5 )
+    CALL Info( 'CRS_IncompleteLU', Message, Level=6 )
 
     WRITE(Message,'(a,i1,a,i9)') 'ILU(', ILUn, &
         ') (Real), filling (%) : ',   &
          FLOOR(ILURows(n+1)*(100.0d0/Rows(n+1)))
-    CALL Info( 'CRS_IncompleteLU', Message, Level=5 )
+    CALL Info( 'CRS_IncompleteLU', Message, Level=6 )
 
     WRITE(Message,'(A,I1,A,F8.2)') 'ILU(',ILUn, &
         ') (Real), Factorization ready at (s): ', CPUTime()-st
-    CALL Info( 'CRS_IncompleteLU', Message, Level=5 )
+    CALL Info( 'CRS_IncompleteLU', Message, Level=6 )
 
     Status = .TRUE.
 !------------------------------------------------------------------------------
@@ -3399,8 +3423,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     COMPLEX(KIND=dp), ALLOCATABLE :: S(:), T(:)
 !------------------------------------------------------------------------------
 
-    WRITE(Message,'(a,i1,a)') 'ILU(',ILUn,') (Complex), Starting Factorization:'
-    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=5 )
+    WRITE(Message,'(a,i1,a)') 'ILU(',ILUn,') (Complex), Performing Factorization:'
+    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=6 )
     st = CPUTime()
 
     N = A % NumberOfRows
@@ -3596,16 +3620,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     WRITE(Message,'(a,i1,a,i9)') 'ILU(', ILUn, &
         ') (Complex), NOF nonzeros: ',ILURows(n/2+1)
-    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=5 )
+    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=6 )
 
     WRITE(Message,'(a,i1,a,i9)') 'ILU(', ILUn, &
         ') (Complex), filling (%) : ',   &
          FLOOR(ILURows(n/2+1)*(400.0d0/Rows(n+1)))
-    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=5 )
+    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=6 )
 
     WRITE(Message,'(A,I1,A,F8.2)') 'ILU(',ILUn, &
         ') (Complex), Factorization ready at (s): ', CPUTime()-st
-    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=5 )
+    CALL Info( 'CRS_ComplexIncompleteLU', Message, Level=6 )
 
     Status = .TRUE.
 !------------------------------------------------------------------------------
@@ -3729,7 +3753,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     REAL(KIND=dp) :: t
 !------------------------------------------------------------------------------
 
-    CALL Info( 'CRS_ILUT', 'Starting factorization:', Level=5 )
+    CALL Info( 'CRS_ILUT', 'Performing factorization:', Level=6 )
     t = CPUTime()
 
     n = A % NumberOfRows
@@ -3743,12 +3767,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     CALL ComputeILUT( A, n, TOL )
 ! 
     WRITE( Message, * ) 'ILU(T) (Real), NOF nonzeros: ',A % ILURows(N+1)
-    CALL Info( 'CRS_ILUT', Message, Level=5 )
+    CALL Info( 'CRS_ILUT', Message, Level=6 )
     WRITE( Message, * ) 'ILU(T) (Real), filling (%): ', &
          FLOOR(A % ILURows(N+1)*(100.0d0/A % Rows(N+1)))
-    CALL Info( 'CRS_ILUT', Message, Level=5 )
+    CALL Info( 'CRS_ILUT', Message, Level=6 )
     WRITE(Message,'(A,F8.2)') 'ILU(T) (Real), Factorization ready at (s): ', CPUTime()-t
-    CALL Info( 'CRS_ILUT', Message, Level=5 )
+    CALL Info( 'CRS_ILUT', Message, Level=6 )
 
     Status = .TRUE.
 !------------------------------------------------------------------------------
@@ -3945,12 +3969,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
     
     WRITE( Message, * ) 'ILU(T) (Complex), NOF nonzeros: ',A % ILURows(n+1)
-    CALL Info( 'CRS_ComplexILUT', Message, Level=5 )
+    CALL Info( 'CRS_ComplexILUT', Message, Level=6 )
     WRITE( Message, * ) 'ILU(T) (Complex), filling (%): ', &
          FLOOR(A % ILURows(n+1)*(400.0d0/A % Rows(2*n+1)))
-    CALL Info( 'CRS_ComplexILUT', Message, Level=5 )
+    CALL Info( 'CRS_ComplexILUT', Message, Level=6 )
     WRITE(Message,'(A,F8.2)') 'ILU(T) (Complex), Factorization ready at (s): ', CPUTime()-t
-    CALL Info( 'CRS_ComplexILUT', Message, Level=5 )
+    CALL Info( 'CRS_ComplexILUT', Message, Level=6 )
 
     Status = .TRUE.
 !------------------------------------------------------------------------------

@@ -26,8 +26,20 @@ The countour can be provided as :
 By default the contour is a Gmsh *compound line*, i.e. the mesh will exactly follow the contour nodes. 
 In case of a very complex curved contour it might be interesting to *simplify* the contour, to avoid over-refinement.
 
-*Splines* can be used with the argument **--spline**, but it may be less accurate to really track the countour and may leed to 
-loops.
+*Splines* can be used with the argument **--spline**, but it may be less accurate to really track the countour and may leed to loops.
+
+The mandatory *-r* argument prescribe the uniform mesh resolution. The mesh size is prescribed at the boundary nodes
+and by prescribing a uniform background field. 
+
+Once created the .geo can be edited to change the default values (see Gmsh documentation).
+
+Mesh your file using:  
+```
+## basic gmsh
+gmsh -2 [-format msh2] <outputfile>
+## convert to Elmer mesh
+ElmerGrid 14 2 [msh filename] -autoclean 
+```
 
 If the input file contains only one feature (ASCII file or shapefile with 1 polygon or 1 polyline), there will be only
 one boundary condition type. Otherwise (in case of several polylines) each feature will be attributed
@@ -45,25 +57,7 @@ In general, the workflow in a GIS sofware will be as follow:
 - Check that all the lines have the same orientation (you can reverse the orientation of the lines)
 - Enventualy create the attribute BC (integer) and give the value so that the *BC* form a continuous closed contour  
 
-The .geo can be edited to change the default values. 
-In particular gmsh export the mesh size from the boundaries, in case of a complex curved contour with coumpound line
-this may result in fine mesh resolution in the whole domain.
 
-Editing the .geo file and putting:
-```
-Mesh.CharacteristicLengthExtendFromBoundary = 0;
-Mesh.CharacteristicLengthMin=<value>;
-Mesh.CharacteristicLengthMax=<value>;
-```
-will allow to keep a high resolution to capture the countour while prescribing a uniform mesh size in the interior.
-
-At the end mesh your file using:  
-```
-## basic gmsh
-gmsh -2 [-format msh2] <outputfile>
-## convert to Elmer mesh
-ElmerGrid 14 2 [msh filename] -autoclean 
-```
 
 ## MeshToShp.py 
 

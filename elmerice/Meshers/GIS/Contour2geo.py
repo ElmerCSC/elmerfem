@@ -13,6 +13,7 @@
 # VERSION: V1 
 # CREATED: 2020-05-02
 # MODIFIED: 
+#  * 2020-05-19: prescribe mesh size using uniform background fied
 #
 #========================================== 
 import sys, getopt
@@ -151,6 +152,14 @@ def main(argv):
    geo.write('Mesh.Algorithm=5; \n')
    geo.write('// To controle the element size, one can directly modify the lc value in the geo file // \n')
    geo.write('lc = {0} ; \n'.format(el_size))
+   geo.write('// Mesh size near the boundary from prescribed value  //\n')
+   geo.write('Mesh.CharacteristicLengthFromCurvature = 0; \n')
+   geo.write('Mesh.CharacteristicLengthFromPoints = 1; \n')
+   geo.write('// Give a backgroung field with uniform value for the mesh size  // \n')
+   geo.write('Mesh.CharacteristicLengthExtendFromBoundary = 0; \n')
+   geo.write('Field[1] = MathEval; \n')
+   geo.write('Field[1].F = Sprintf("%g",lc); \n')
+   geo.write('Background Field = 1; \n')
 
    # write the points coordinates (x,y,0,lc)
    np=0
@@ -216,7 +225,7 @@ def main(argv):
     
       geo.write('Physical Surface(1) = {1}; \n')
 
-      geo.close()
+   geo.close()
 
 
 def usage():
