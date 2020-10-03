@@ -1,4 +1,4 @@
-Elmer/Ice Release Notes for version 8.5
+Elmer/Ice Release Notes for version 9.0
 =======================================
 
 Previous release: **8.4**

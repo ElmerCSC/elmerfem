@@ -1,4 +1,4 @@
-Elmer Release Notes for version 8.5
+Elmer Release Notes for version 9.0
 ===================================
 
 Previous release: **8.4**  
@@ -197,7 +197,7 @@ Configuration & Compilation
 
 Elmer/Ice
 ---------
-- New features in Elmer/Ice are documented in elmerfem/elmerice/ReleaseNotes/release_elmerice_8.5.md
+- New features in Elmer/Ice are documented in elmerfem/elmerice/ReleaseNotes/release_elmerice_9.0.md
 
 
 
