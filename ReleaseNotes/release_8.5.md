@@ -177,22 +177,18 @@ ElmerGrid
 
 ElmerGUI
 --------
-- Huge number of improvements by Saeki!
-- Read all the timesteps when launching ElmerVTK
-- Seperated paraview process from ElmerPost process
-- Toolbar button for ElmerPost is now switchable to ElmerVTK or ParaView.
-- When vtu file is specified, read vtu file when starting VTKPost from ElmerGUI
-- Redraw after reseting model
-- Added Time-step toolbar  in the bottom. Displace button is also moved to the bottom.
-- Deleted sif autogen
-- Adjustment for VTK8.2
-- Adjustment of new project menu
-- More detailed log messages 
-- Adjusted "Save project" menu and added "New project..." menu.
-- Object browser was added
-- "Save and run" action and highlight colors
-- Make GUI more streamlined    
-- Improved and more robust project loading.
+Huge number of improvements by Saeki! Highlights include:
+- Object browser to view the case at a glance and to easily access the most windows.
+- Removed sif auto-generation functionality to aviod unintended overwriting of sif file.
+- "Generate, save and run" button to quickly run the case modifed via GUI.
+- "Save and run" button on sif window to quickly run the case modifed via sif window.
+- Postprocessor button selectable from ElmerVTK, ElmerPost or ParaView.
+- "New project..." menu as an alternative way to start a new project.
+- Seperated "Save project as..." menu from "Save project" menu to save the project in a different directory.
+- Improved and more robust project loading
+- "Preference" menue on sif window and on solver log window for syntax highlighting and font selection.
+- "Recent projects" in File menu for quick loading of recently used projects. 
+- Improved ElmerVTK postprocessor (reading smple .vtu file, bottom toolbar including time-step control and displace button, etc)
  
 Configuration & Compilation
 ---------------------------
