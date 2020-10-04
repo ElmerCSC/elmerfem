@@ -16,7 +16,7 @@ Overview of changes/enhancements
 
 - Improvements to inversion methods
 - Coupling of the GlaDS solvers with the calving solvers in a two-mesh, 3D simulation. Includes a new plume solver that currently relies on the external ODEPack library (not included in the Elmer distribution).
-- New thermodynaically consistent model for permafrost with saturated aquifers
+- New thermodynamically consistent model for permafrost with saturated aquifers
 
 
 New Solver/Userfunction Modules
