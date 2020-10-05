@@ -2993,7 +2993,7 @@ CONTAINS
                en % z( n ), STAT=istat )
 
      IF( istat /= 0 ) THEN
-       CALL Fatal('ElementCharacteristicLengths','Allocation error for ElementNodes')
+       CALL Fatal('NormalOfDegenerateElement','Allocation error for ElementNodes')
      END IF
 
      en % x(1:n) = Model % Nodes % x(Element % NodeIndexes)
