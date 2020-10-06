@@ -17549,7 +17549,7 @@ CONTAINS
 !> tied up with the value of the first entry in the "Block Solvers" array. 
 !------------------------------------------------------------------------------
   SUBROUTINE StructureCouplingAssembly(Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
-      IsSolid, IsPlate, IsShell, IsBeam )
+      IsSolid, IsPlate, IsShell, IsBeam, DrillingDOFs)
 !------------------------------------------------------------------------------    
     TYPE(Solver_t) :: Solver          !< The leading solver defining block structure 
     TYPE(Variable_t), POINTER :: FVar !< "Slave" structure variable
@@ -17559,6 +17559,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A_fs   !< (2,1)-block for interaction
     TYPE(Matrix_t), POINTER :: A_sf   !< (1,2)-block for interaction
     LOGICAL :: IsSolid, IsPlate, IsShell, IsBeam !< The type of the slave variable
+    LOGICAL :: DrillingDOFs           !< Use drilling rotation formulation for shells
    !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
@@ -17637,6 +17638,7 @@ CONTAINS
         INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
         INTEGER :: InterfaceN, hits
         INTEGER :: p,lf,ls,ii,jj,n,m,t
+        INTEGER :: MaxDOF
         REAL(KIND=dp), POINTER :: Director(:)
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
         REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
@@ -17658,8 +17660,20 @@ CONTAINS
         NodeHits = 0
         InterfacePerm = 0
 
-        ! First, zero the rows related to directional derivative dofs, 
+        ! First, in the basic case zero the rows related to directional derivative dofs, 
         ! i.e. the components 4,5,6. "s" refers to solid and "f" to shell.
+        ! The implementation for drilling rotation formulation still assumes a special 
+        ! orientation (d = E_Z) of the model. A possible generalization would depend on
+        ! the use of a local (normal-tangential) coordinate system with the sixth DOF
+        ! being the component along the director, so that this DOF would be determined
+        ! solely from the shell model without a coupling with the solid DOFs.
+        !
+        IF (DrillingDOFs) THEN
+          MaxDOF = 5
+        ELSE
+          MaxDOF = 6
+        END IF
+
         InterfaceN = 0
         DO i=1,Mesh % NumberOfNodes
           jf = FPerm(i)      
@@ -17670,7 +17684,7 @@ CONTAINS
           InterfaceN = InterfaceN + 1
           InterfacePerm(i) = InterfaceN
 
-          DO lf = 4, 6
+          DO lf = 4, MaxDOF
             kf = fdofs*(jf-1)+lf
 
             IF( ConstrainedF(kf) ) CYCLE
@@ -17808,44 +17822,77 @@ CONTAINS
 
             !PRINT *,'Director:',ShellElement % ElementIndex,jj,Director            
 
-            DO lf = 4, 6                            
+            DO lf = 4, MaxDOF                            
               kf = fdofs*(jf-1)+lf
 
               IF( ConstrainedF(kf) ) CYCLE
 
-              DO ls = 1, dim
+              IF (DrillingDOFs) THEN
                 !
-                ! Directional derivative dofs of the shell equations: 
-                ! We try to enforce the condition d_{i+3}=-<(grad u)n,e_i> 
-                ! where i=1,2,3; i+3=lf, n is director, e_i is unit vector, and 
-                ! u is the displacement field of the solid. 
-                DO p=1,n
+                ! In the case of drilling rotation formulation, the tangential components
+                ! trace of the global rotations ROT is related to the directional derivative
+                ! of the displacement field u by -Du[d] x d = d x ROT x d. This is still 
+                ! a toylike implementation assuming a special orientation.
+                !
+
+                IF (ABS(1.0_dp - ABS(Director(3))) > 1.0d-5) CALL Fatal(Caller, &
+                    'Coupling with drilling rotation formulation needs a z-oriented director')  
+
+                DO p = 1,n
                   js = SPerm(Indexes(p))
-                  ks = sdofs*(js-1)+lf-3
-                  val = Director(ls) * dBasisdx(p,ls)
+                  SELECT CASE(lf)
+                  CASE(4)
+                    ks = sdofs*(js-1)+2
+                    val = Director(3) * dBasisdx(p,3)
+                  CASE(5)
+                    ks = sdofs*(js-1)+1
+                    val = -Director(3) * dBasisdx(p,3)
+                  CASE DEFAULT
+                    CALL Fatal(Caller, 'Non-tangential component?')
+                  END SELECT
 
                   CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
-
-                  ! Here the idea is to distribute the implicit moments of the shell solver
-                  ! to forces for the solid solver. So even though the stiffness matrix related to the
-                  ! directional derivatives is nullified, the forces are not forgotten.
-                  ! This part may be thought of as being based on two (Råback's) conjectures: 
-                  ! in the first place the Lagrange variable formulation should bring us to a symmetric 
-                  ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
-                  ! reactions obtained by performing a matrix-vector product.
-                  !
-                  ! Note that no attempt is currently made to transfer external moment
-                  ! loads of the shell model to loads of the coupled model. Likewise
-                  ! rotational inertia terms of the shell model are not transformed
-                  ! to inertia terms of the coupled model. Neglecting the rotational
-                  ! inertia might be acceptable in many cases.
-                  !
-                  ! Note that the minus sign of the entries is correct here:
+                  
                   DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                     CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
                   END DO
                 END DO
-              END DO
+              ELSE
+                !
+                ! Directional derivative dofs D_{i+3} of the shell equations: 
+                ! We try to enforce the condition D_{i+3}=-<(grad u)d,e_i> 
+                ! where i=1,2,3; i+3=lf, d is director, e_i is unit vector, and 
+                ! u is the displacement field of the solid.
+                !
+                DO p = 1, n
+                  js = SPerm(Indexes(p))
+                  ks = sdofs*(js-1)+lf-3
+                  DO ls = 1, dim
+                    val = Director(ls) * dBasisdx(p,ls)
+
+                    CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
+
+                    ! Here the idea is to distribute the implicit moments of the shell solver
+                    ! to forces for the solid solver. So even though the stiffness matrix related to the
+                    ! directional derivatives is nullified, the forces are not forgotten.
+                    ! This part may be thought of as being based on two (Råback's) conjectures: 
+                    ! in the first place the Lagrange variable formulation should bring us to a symmetric 
+                    ! coefficient matrix and the values of Lagrange variables can be estimated as nodal 
+                    ! reactions obtained by performing a matrix-vector product.
+                    !
+                    ! Note that no attempt is currently made to transfer external moment
+                    ! loads of the shell model to loads of the coupled model. Likewise
+                    ! rotational inertia terms of the shell model are not transformed
+                    ! to inertia terms of the coupled model. Neglecting the rotational
+                    ! inertia might be acceptable in many cases.
+                    !
+                    ! Note that the minus sign of the entries is correct here:
+                    DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
+                    END DO
+                  END DO
+                END DO
+              END IF
 
               ! This should sum up to unity!
               CALL AddToMatrixElement(A_f,kf,kf,weight)
