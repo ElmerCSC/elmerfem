@@ -207,14 +207,8 @@ IF(WITH_OpenMP)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   # endif()
 
-if("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
-  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
-endif()
-  
   FIND_PACKAGE(OpenMP REQUIRED)
   
-  
-
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
   IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
@@ -228,6 +222,15 @@ endif()
     ENDIF()
   ENDIF()
 ENDIF()
+
+# Get rid of the annoying rank mismatch warning
+IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+  IF(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.9)
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
+#    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
+  ENDIF()
+ENDIF()
+  
 
 IF(WITH_MPI)
   # Advanced properties
