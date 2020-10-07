@@ -17616,13 +17616,13 @@ CONTAINS
       IF( ASSOCIATED( A_s % MassValues ) ) THEN
         DoMass = .TRUE.        
       ELSE
-        CALL Warn(Caller,'Both solid and shell should have MassValues!')
+        CALL Warn(Caller,'Both models should have MassValues!')
       END IF
     END IF
 
     DoDamp = ASSOCIATED( A_f % DampValues )
     IF( DoDamp ) THEN
-      CALL Warn(Caller,'Damping matrix values at shell interface will be dropped!')
+      CALL Warn(Caller,'Damping matrix values at a coupling interface will be dropped!')
     END IF
 
     ! This is still under development and not used for anything
@@ -17638,10 +17638,10 @@ CONTAINS
         INTEGER, ALLOCATABLE :: NodeHits(:), InterfacePerm(:), InterfaceElems(:,:)
         INTEGER :: InterfaceN, hits
         INTEGER :: p,lf,ls,ii,jj,n,m,t
-        INTEGER :: MaxDOF
+        INTEGER :: NormalDir
         REAL(KIND=dp), POINTER :: Director(:)
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
-        REAL(KIND=dp), ALLOCATABLE :: A_f0(:)
+        REAL(KIND=dp), ALLOCATABLE :: A_f0(:), rhs0(:), Mass0(:)
         REAL(KIND=dp) :: u,v,w,weight,detJ,val
         REAL(KIND=dp) :: x, y, z 
 
@@ -17655,6 +17655,14 @@ CONTAINS
         ! Memorize the original values
         ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
         A_f0 = A_f % Values
+        IF (DrillingDOFs) THEN
+          ALLOCATE(rhs0(SIZE(A_f % rhs)))
+          rhs0 = A_f % rhs
+          IF (DoMass) THEN
+            ALLOCATE(Mass0(SIZE(A_f % MassValues)))
+            Mass0 = A_f % MassValues
+          END IF
+        END IF
 
         ALLOCATE( NodeHits( Mesh % NumberOfNodes ), InterfacePerm( Mesh % NumberOfNodes ) )
         NodeHits = 0
@@ -17662,18 +17670,7 @@ CONTAINS
 
         ! First, in the basic case zero the rows related to directional derivative dofs, 
         ! i.e. the components 4,5,6. "s" refers to solid and "f" to shell.
-        ! The implementation for drilling rotation formulation still assumes a special 
-        ! orientation (d = E_Z) of the model. A possible generalization would depend on
-        ! the use of a local (normal-tangential) coordinate system with the sixth DOF
-        ! being the component along the director, so that this DOF would be determined
-        ! solely from the shell model without a coupling with the solid DOFs.
         !
-        IF (DrillingDOFs) THEN
-          MaxDOF = 5
-        ELSE
-          MaxDOF = 6
-        END IF
-
         InterfaceN = 0
         DO i=1,Mesh % NumberOfNodes
           jf = FPerm(i)      
@@ -17684,7 +17681,7 @@ CONTAINS
           InterfaceN = InterfaceN + 1
           InterfacePerm(i) = InterfaceN
 
-          DO lf = 4, MaxDOF
+          DO lf = 4, 6
             kf = fdofs*(jf-1)+lf
 
             IF( ConstrainedF(kf) ) CYCLE
@@ -17822,7 +17819,8 @@ CONTAINS
 
             !PRINT *,'Director:',ShellElement % ElementIndex,jj,Director            
 
-            DO lf = 4, MaxDOF                            
+
+            DO lf = 4, 6
               kf = fdofs*(jf-1)+lf
 
               IF( ConstrainedF(kf) ) CYCLE
@@ -17831,32 +17829,77 @@ CONTAINS
                 !
                 ! In the case of drilling rotation formulation, the tangential components
                 ! trace of the global rotations ROT is related to the directional derivative
-                ! of the displacement field u by -Du[d] x d = d x ROT x d. This is still 
-                ! a toylike implementation assuming a special orientation.
+                ! of the displacement field u by -Du[d] x d = d x ROT x d. This implementation 
+                ! is limited to cases where the director is aligned with one of the global
+                ! coordinate axes.
                 !
+                NormalDir = 0
+                IF (ABS(1.0_dp - ABS(Director(1))) < 1.0d-5) THEN
+                  NormalDir = 1
+                ELSE IF (ABS(1.0_dp - ABS(Director(2))) < 1.0d-5) THEN
+                  NormalDir = 2
+                ELSE IF (ABS(1.0_dp - ABS(Director(3))) < 1.0d-5) THEN
+                  NormalDir = 3
+                END IF
+                IF (NormalDir == 0) CALL Fatal(Caller, &
+                    'Coupling with drilling rotation formulation needs an axis-aligned director')
 
-                IF (ABS(1.0_dp - ABS(Director(3))) > 1.0d-5) CALL Fatal(Caller, &
-                    'Coupling with drilling rotation formulation needs a z-oriented director')  
+                IF ((lf-3) /= NormalDir) THEN
 
-                DO p = 1,n
-                  js = SPerm(Indexes(p))
-                  SELECT CASE(lf)
-                  CASE(4)
-                    ks = sdofs*(js-1)+2
-                    val = Director(3) * dBasisdx(p,3)
-                  CASE(5)
-                    ks = sdofs*(js-1)+1
-                    val = -Director(3) * dBasisdx(p,3)
-                  CASE DEFAULT
-                    CALL Fatal(Caller, 'Non-tangential component?')
-                  END SELECT
+                  DO p = 1,n
+                    js = SPerm(Indexes(p))
 
-                  CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
+                    IF (NormalDir == 1) THEN
+                      SELECT CASE(lf)
+                      CASE(5)
+                        ks = sdofs*(js-1)+3
+                        val = dBasisdx(p,1)
+                      CASE(6)
+                        ks = sdofs*(js-1)+2
+                        val = -dBasisdx(p,1)
+                      END SELECT
+                    ELSE IF (NormalDir == 2) THEN
+                      SELECT CASE(lf)
+                      CASE(4)
+                        ks = sdofs*(js-1)+3
+                        val = -dBasisdx(p,2)
+                      CASE(6)
+                        ks = sdofs*(js-1)+1
+                        val = dBasisdx(p,2)
+                      END SELECT
+                    ELSE IF (NormalDir == 3) THEN
+                      SELECT CASE(lf)
+                      CASE(4)
+                        ks = sdofs*(js-1)+2
+                        val = dBasisdx(p,3)
+                      CASE(5)
+                        ks = sdofs*(js-1)+1
+                        val = -dBasisdx(p,3)
+                      END SELECT
+                    END IF
+
+                    CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
                   
-                  DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
-                    CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
+                    DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                      CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
+                    END DO
                   END DO
-                END DO
+                  
+                ELSE
+                  !
+                  ! Return one row of deleted values to the shell matrix
+                  !
+                  DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                    A_f % Values(k) = A_f0(k)
+                    IF (DoMass) A_f % MassValues(k) = Mass0(k)
+                  END DO
+
+                  A_f % rhs(kf) = rhs0(kf)
+
+                  ! TO DO: Return also damp values if used
+
+                END IF
+
               ELSE
                 !
                 ! Directional derivative dofs D_{i+3} of the shell equations: 
@@ -17900,7 +17943,12 @@ CONTAINS
           END DO
         END DO
         DEALLOCATE( Basis, dBasisdx, Nodes % x, Nodes % y, Nodes % z )
-        DEALLOCATE(A_f0, NodeHits, InterfacePerm)
+        DEALLOCATE(A_f0, NodeHits, InterfacePerm, InterfaceElems)
+        IF (DrillingDOFs) THEN
+          DEALLOCATE(rhs0)
+          IF (DoMass) DEALLOCATE(Mass0)
+        END IF
+
       END BLOCK
     END IF
     
