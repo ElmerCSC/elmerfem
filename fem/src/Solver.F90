@@ -65,6 +65,9 @@ PROGRAM Solver
        CALL FLUSH(6)
      END IF
    END IF
+
+   STOP
+   
 END PROGRAM Solver
 
 ! ******************************************************************************
