@@ -3515,6 +3515,7 @@ CONTAINS
       DrillingDOFs, DrillingPar, MassAssembly, HarmonicAssembly, RHSForce, Area, &
       Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
+    USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
@@ -5382,57 +5383,6 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE ShearCorrectionFactor(Kappa,Thickness,x,y,n)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    REAL(KIND=dp) :: Kappa,Thickness,x(:),y(:)
-    INTEGER :: n
-!------------------------------------------------------------------------------
-    REAL(KIND=dp) :: x21,x32,x43,x13,x14,y21,y32,y43,y13,y14, &
-        l21,l32,l43,l13,l14,alpha,h
-!------------------------------------------------------------------------------
-    Kappa = 1.0d0
-    SELECT CASE(n)
-    CASE(3)
-      alpha = 0.20d0
-      x21 = x(2)-x(1)
-      x32 = x(3)-x(2)
-      x13 = x(1)-x(1)
-      y21 = y(2)-y(1)
-      y32 = y(3)-y(2)
-      y13 = y(1)-y(1)
-      l21 = SQRT(x21**2 + y21**2)
-      l32 = SQRT(x32**2 + y32**2)
-      l13 = SQRT(x13**2 + y13**2)
-      h = MAX(l21,l32,l13)
-      Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-    CASE(4)
-      alpha = 0.10d0
-      x21 = x(2)-x(1)
-      x32 = x(3)-x(2)
-      x43 = x(4)-x(3)
-      x14 = x(1)-x(4)
-      y21 = y(2)-y(1)
-      y32 = y(3)-y(2)
-      y43 = y(4)-y(3)
-      y14 = y(1)-y(4)
-      l21 = SQRT(x21**2 + y21**2)
-      l32 = SQRT(x32**2 + y32**2)
-      l43 = SQRT(x43**2 + y43**2)
-      l14 = SQRT(x14**2 + y14**2)
-      h = MAX(l21,l32,l43,l14)
-      Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-
-    CASE DEFAULT
-      CALL Fatal('ShearCorrectionFactor',&
-          'Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
-    END SELECT
-!------------------------------------------------------------------------------
-  END SUBROUTINE ShearCorrectionFactor
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
 ! The matrix representation of the elasticity tensor with respect an orthogonal
 ! basis. The case A1 = A2 = 1 corresponds to an orthonormal basis.     
 !------------------------------------------------------------------------------
@@ -5491,29 +5441,7 @@ CONTAINS
   END SUBROUTINE ElasticityMatrix
 !------------------------------------------------------------------------------    
 
-!------------------------------------------------------------------------------
-! Perform the operation
-!
-!    A = A + C' * B * C * s
-!
-! with
-!
-!    Size( A ) = n x n
-!    Size( B ) = m x m
-!    Size( C ) = m x n
-!------------------------------------------------------------------------------
-  SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
-    REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
-    INTEGER, INTENT(IN) :: m, n
-    REAL(KIND=dp), INTENT(IN) :: s
-!------------------------------------------------------------------------------
-    A(1:n,1:n) = A(1:n,1:n) + s * MATMUL(TRANSPOSE(C(1:m,1:n)),MATMUL(B(1:m,1:m),C(1:m,1:n))) 
-!------------------------------------------------------------------------------
-  END SUBROUTINE StrainEnergyDensity
-!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------

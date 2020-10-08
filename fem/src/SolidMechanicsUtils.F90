@@ -473,12 +473,176 @@ CONTAINS
   END SUBROUTINE BeamCondensate
 !------------------------------------------------------------------------------
   
-  
-  ! This module could contain common implementations for  
-  !  - SUBROUTINE ElasticityMatrix
-  !  - SUBROUTINE StrainEnergyDensity
-  !  - SUBROUTINE ShearCorrectionFactor
-  ! etc.
+!------------------------------------------------------------------------------
+!> Perform the operation
+!>
+!>    A = A + C' * B * C * s
+!>
+!> with
+!>
+!>    Size( A ) = n x n
+!>    Size( B ) = m x m
+!>    Size( C ) = m x n
+!------------------------------------------------------------------------------
+  SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
+    REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
+    INTEGER, INTENT(IN) :: m, n
+    REAL(KIND=dp), INTENT(IN) :: s
+!------------------------------------------------------------------------------
+    A(1:n,1:n) = A(1:n,1:n) + s * MATMUL(TRANSPOSE(C(1:m,1:n)),MATMUL(B(1:m,1:m),C(1:m,1:n))) 
+!------------------------------------------------------------------------------
+  END SUBROUTINE StrainEnergyDensity
+!------------------------------------------------------------------------------
+
+ 
+!------------------------------------------------------------------------------
+  SUBROUTINE Jacobi3(Jmat, invJ, detJ, x, y)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(OUT) :: Jmat(:,:), invJ(:,:), detJ
+    REAL(KIND=dp), INTENT(IN) :: x(:), y(:)
+!------------------------------------------------------------------------------
+    Jmat(1,1) = x(2)-x(1)
+    Jmat(2,1) = x(3)-x(1)
+    Jmat(1,2) = y(2)-y(1)
+    Jmat(2,2) = y(3)-y(1)
+
+    detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
+
+    invJ(1,1) =  Jmat(2,2)/detJ
+    invJ(2,2) =  Jmat(1,1)/detJ
+    invJ(1,2) = -Jmat(1,2)/detJ
+    invJ(2,1) = -Jmat(2,1)/detJ
+!------------------------------------------------------------------------------
+  END SUBROUTINE Jacobi3
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE Jacobi4(Jmat, invJ, detJ, xi, eta, x, y)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(OUT) :: Jmat(:,:), invJ(:,:), detJ
+    REAL(KIND=dp), INTENT(IN) :: xi, eta, x(:), y(:)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: dNdxi(4), dNdeta(4)
+    INTEGER :: i
+!------------------------------------------------------------------------------
+    dNdxi(1) = -(1-eta)/4.0d0
+    dNdxi(2) =  (1-eta)/4.0d0
+    dNdxi(3) =  (1+eta)/4.0d0
+    dNdxi(4) = -(1+eta)/4.0d0
+    dNdeta(1) = -(1-xi)/4.0d0
+    dNdeta(2) = -(1+xi)/4.0d0
+    dNdeta(3) =  (1+xi)/4.0d0
+    dNdeta(4) =  (1-xi)/4.0d0
+       
+    Jmat = 0.0d0
+    DO i=1,4
+      Jmat(1,1) = Jmat(1,1) + dNdxi(i)*x(i)
+      Jmat(1,2) = Jmat(1,2) + dNdxi(i)*y(i)
+      Jmat(2,1) = Jmat(2,1) + dNdeta(i)*x(i)
+      Jmat(2,2) = Jmat(2,2) + dNdeta(i)*y(i)
+    END DO
+
+    detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
+
+    invJ(1,1) = Jmat(2,2)/detJ
+    invJ(2,2) = Jmat(1,1)/detJ
+    invJ(1,2) = -Jmat(1,2)/detJ
+    invJ(2,1) = -Jmat(2,1)/detJ
+!------------------------------------------------------------------------------
+  END SUBROUTINE Jacobi4
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ShearCorrectionFactor(Kappa, Thickness, x, y, n, StabParam)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), INTENT(OUT) :: Kappa
+    REAL(KIND=dp), INTENT(IN) :: Thickness, x(:), y(:)
+    INTEGER, INTENT(IN) :: n
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: StabParam
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: x21,x32,x43,x13,x14,y21,y32,y43,y13,y14, &
+        l21,l32,l43,l13,l14,alpha,h
+    REAL(KIND=dp) :: StabPar
+!------------------------------------------------------------------------------
+    IF (PRESENT(StabParam)) THEN
+      StabPar = StabParam
+    ELSE
+      StabPar = 1.0d0
+    END IF
+
+    Kappa = 1.0d0
+    SELECT CASE(n)
+    CASE(3)
+      alpha = 0.20d0 * StabPar
+      x21 = x(2)-x(1)
+      x32 = x(3)-x(2)
+      x13 = x(1)-x(1)
+      y21 = y(2)-y(1)
+      y32 = y(3)-y(2)
+      y13 = y(1)-y(1)
+      l21 = SQRT(x21**2 + y21**2)
+      l32 = SQRT(x32**2 + y32**2)
+      l13 = SQRT(x13**2 + y13**2)
+      h = MAX(l21,l32,l13)
+      Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
+    CASE(4)
+      alpha = 0.10d0 * StabPar
+      x21 = x(2)-x(1)
+      x32 = x(3)-x(2)
+      x43 = x(4)-x(3)
+      x14 = x(1)-x(4)
+      y21 = y(2)-y(1)
+      y32 = y(3)-y(2)
+      y43 = y(4)-y(3)
+      y14 = y(1)-y(4)
+      l21 = SQRT(x21**2 + y21**2)
+      l32 = SQRT(x32**2 + y32**2)
+      l43 = SQRT(x43**2 + y43**2)
+      l14 = SQRT(x14**2 + y14**2)
+      h = MAX(l21,l32,l43,l14)
+      Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
+    CASE DEFAULT
+      CALL Fatal('ShearCorrectionFactor','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
+    END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE ShearCorrectionFactor
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE IsotropicElasticity(Ematrix, Gmatrix, Poisson, Young, Thickness,&
+      Basis, n)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Ematrix(:,:), Gmatrix(:,:), Basis(:)
+    REAL(KIND=dp) :: Poisson(:), Young(:), Thickness(:)
+    REAL(KIND=dp) :: Euvw, Puvw, Guvw, Tuvw
+    INTEGER :: n
+!------------------------------------------------------------------------------
+    Euvw = SUM( Young(1:n)*Basis(1:n) )
+    Puvw = SUM( Poisson(1:n)*Basis(1:n) )
+    Tuvw = SUM( Thickness(1:n)*Basis(1:n) )
+    Guvw = Euvw/(2.0d0*(1.0d0 + Puvw))
+
+    Ematrix = 0.0d0
+    Ematrix(1,1) = 1.0d0
+    Ematrix(1,2) = Puvw
+    Ematrix(2,1) = Puvw
+    Ematrix(2,2) = 1.0d0
+    Ematrix(3,3) = (1.0d0-Puvw)/2.0d0
+
+    Ematrix = Ematrix* Euvw * (Tuvw**3) / (12.0d0*(1.0d0-Puvw**2))
+    
+    Gmatrix = 0.0d0
+    Gmatrix(1,1) = Guvw*Tuvw
+    Gmatrix(2,2) = Guvw*Tuvw
+!------------------------------------------------------------------------------
+  END SUBROUTINE IsotropicElasticity
+!------------------------------------------------------------------------------
+
   
 END MODULE SolidMechanicsUtils
 
