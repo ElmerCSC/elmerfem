@@ -551,6 +551,12 @@ END INTERFACE
 !------------------------------------------------------------------------------
      IF ( Initialize /= 1 ) CALL Info( 'ElmerSolver', '*** Elmer Solver: ALL DONE ***',Level=3 )
 
+     ! This may be used to study problems at the finish
+     IF( ListGetLogical( CurrentModel % Simulation,'Dirty Finish', GotIt ) ) THEN
+       CALL Info('ElmerSolver','Skipping freeing of the Model structure',Level=4)
+       RETURN
+     END IF
+     
      IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
 #ifdef HAVE_TRILINOS
