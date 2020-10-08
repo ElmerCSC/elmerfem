@@ -25,7 +25,7 @@
 ! *
 ! *  Some common subroutines for the solvers of solid mechanics
 ! *
-! *  Authors: Mika Malinen
+! *  Authors: Mika Malinen, Mikko Lyly
 ! *  Email:   mika.malinen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
