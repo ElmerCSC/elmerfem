@@ -67,6 +67,7 @@ Enhanced Solver Modules
 
 ### MagnetoDynamics3D
 - Fixes and generalization to the source projection (the determination of Jfix). 
+- A surface impedance condition for the time-harmonic AV model
 
 ### MagnetoDynamics2D
 - a velocity field can be given to add a Lorentz term to the equations
@@ -97,11 +98,14 @@ Enhanced Solver Modules
 - possible also to be run incompressible (introducing pressure variable)
 - optional pre-stress advection term for layered Earth-deformation model
 
-### WhitneyAVHarmonicSolver
-- A surface impedance condition for the time-harmonic AV model
-
 ### WaveSolver
 - The solver can be used to model harmonic and eigenmode cases as well. 
+
+### ParticleAdvector
+- Allow particles to be sent from Gaussian integration points as well. This is beneficial
+for robustness since they are not located at surface.
+- Local integration time based on local Courant number. 
+
 
 
 ElmerSolver library functionality
@@ -150,6 +154,21 @@ ElmerSolver library functionality
 - Implemented a version of Anderson Acceleration where previous solutions and
   residuals are used to accelerate the nonlinear convergence.
 - May increase linear convergence to quadratic, quadratic convergence (Newton's method) is not improved.
+
+### Swapping meshes on-the-fly
+- Implemented library functionality to swap meshes during the simulation.
+- Currently no history data is interpolated. 
+
+### ListGetElemental routines
+- More flexible routines for obtaining material parameters for the Gaussian integration points.
+- Detects automatically what kind of fields the dependency depends on (nodal, DG, elemental, IP points)
+- Vectorized versions to be used with vectorized finite element assembly
+
+### View factors
+- Allow computation of view factors in 3D cases with symmetry.
+- Speed-up computation for cases where emissivity not equal to one.
+- Enable view factors to be used in conjunction with DG (in HeatSolveVec)
+
 
 ### Run Control
 - Enable external loop control over the simulation.
