@@ -1787,11 +1787,11 @@ CONTAINS
     INTEGER :: i,j,k,ind1,ind2,Novar
     INTEGER, POINTER :: ConstituentSolvers(:)
     LOGICAL :: Found
-    TYPE(ValueList_t), POINTER :: Params
+    TYPE(ValueList_t), POINTER :: Params, ShellParams
     TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
     TYPE(Variable_t), POINTER :: FVar, SVar
     LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid, GotBlockSolvers
-
+    LOGICAL :: DrillingDOFs
     
     Params => Solver % Values
     ConstituentSolvers => ListGetIntegerArray(Params, 'Block Solvers', GotBlockSolvers)
@@ -1843,9 +1843,16 @@ CONTAINS
       IF(.NOT. ASSOCIATED( FVar ) ) THEN
         CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
       END IF
+
+      IF (IsShell) THEN
+        ShellParams => CurrentModel % Solvers(ind2) % Values
+        DrillingDOFs = GetLogical(ShellParams, 'Drilling DOFs', Found)
+      ELSE
+        DrillingDOFs = .FALSE.
+      END IF
       
       CALL StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
-          IsSolid, IsPlate, IsShell, IsBeam )
+          IsSolid, IsPlate, IsShell, IsBeam, DrillingDOFs)
       !IF (IsShell) THEN
       !  CALL StructureCouplingAssembly_defutils( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
       !      IsSolid, IsPlate, IsShell, IsBeam)

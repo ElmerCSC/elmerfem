@@ -62,8 +62,12 @@ PROGRAM Solver
                    CPUTime()-CT, RealTime()-RT
        DateStr = FormatDate()
        WRITE( *,'(A,A)' ) 'ELMER SOLVER FINISHED AT: ', TRIM(DateStr)
+       CALL FLUSH(6)
      END IF
    END IF
+
+   STOP
+   
 END PROGRAM Solver
 
 ! ******************************************************************************

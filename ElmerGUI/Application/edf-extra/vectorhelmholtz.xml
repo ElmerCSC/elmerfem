@@ -36,16 +36,6 @@
       <Material>
         <Parameter Widget="Label" > <Name> Material properties </Name> </Parameter>
 	<Parameter Widget="Edit" >
-	  <Name> Inverse Relative Permeability </Name>
-	  <Type> String </Type>
-	  <Whatis> Give the inverse relative permeability compared to vacuum (real part). </Whatis>
-	</Parameter>
-	<Parameter Widget="Edit" >
-	  <Name> Inverse Relative Permeability im </Name>
-	  <Type> String </Type>
-	  <Whatis> Give the inverse relative permeability compared to vacuum (imag part). </Whatis>
-	</Parameter>
-	<Parameter Widget="Edit" >
 	  <Name> Relative Permittivity </Name>
 	  <Type> String </Type>
 	  <Whatis> Give the relative permittivity of medium (real part). </Whatis>
@@ -54,6 +44,16 @@
 	  <Name> Relative Permittivity im</Name>
 	  <Type> String </Type>
 	  <Whatis> Give the relative permittivity of medium (imag part). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Relative Reluctivity</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative reluctivity of the medium (real part). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Relative Reluctivity im</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative reluctivity of the medium (imag part). </Whatis>
 	</Parameter>
       </Material>
 
