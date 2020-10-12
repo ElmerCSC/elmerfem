@@ -144,10 +144,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
+  COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:)
 
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
 
-  REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
+  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
@@ -155,7 +156,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
   LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
-  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar
+  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
   LOGICAL :: ExtNewton
@@ -170,7 +171,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: CompParams
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
-       Acoef, Cwrk, Cwrk_im, LamCond, &
+       Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
        GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
@@ -208,7 +209,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
-          GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
+          GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), Acoef_t(3,3,N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
@@ -369,10 +370,20 @@ CONTAINS
          END IF
        END IF
        Acoef = 0.0_dp
+       Acoef_t = CMPLX(0.0d0,0.0d0, kind=dp)
        Tcoef = 0.0_dp
        Material => GetMaterial( Element )
        IF ( ASSOCIATED(Material) ) THEN
-         CALL GetReluctivity(Material,Acoef,n)
+         HasTensorReluctivity = .FALSE.
+         CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+         IF (HasTensorReluctivity) THEN
+           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+             Acoef(1:n) = Acoef_t(1,1,1:n) 
+             HasTensorReluctivity = .FALSE.
+           END IF
+         ELSE
+           CALL GetReluctivity(Material,Acoef,n)
+         END IF
 
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
@@ -1191,7 +1202,6 @@ CONTAINS
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
-       mu = SUM( Basis(1:n) * Acoef(1:n) )
 
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
@@ -1234,6 +1244,8 @@ CONTAINS
          IF ( Newton ) THEN
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
+       ELSE
+         mu = SUM( Basis(1:n) * Acoef(1:n) )
        END IF
 
        IF (LaminateStack) THEN
@@ -1251,20 +1263,28 @@ CONTAINS
          END SELECT
        END IF
 
-       Nu = CMPLX(0._dp, 0._dp)
-       Nu(1,1) = mu
-       Nu(2,2) = mu
-       Nu(3,3) = mu
+       IF (HasTensorReluctivity) THEN
+         DO i = 1,3
+           DO j = 1,3
+             Nu(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+           END DO
+         END DO
+       ELSE
+         Nu = CMPLX(0._dp, 0._dp)
+         Nu(1,1) = mu
+         Nu(2,2) = mu
+         Nu(3,3) = mu
 
-       IF (CoilBody .AND. StrandedHomogenization) THEN
-         nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
-         nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
-         Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
-         nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
-         nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
-         Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
-         Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
-       END IF 
+         IF (CoilBody .AND. StrandedHomogenization) THEN
+           nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
+           nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
+           Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
+           nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
+           nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
+           Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
+           Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
+         END IF
+       END IF
  
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )

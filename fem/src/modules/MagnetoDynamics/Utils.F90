@@ -35,9 +35,7 @@
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
-!>  Solve Maxwell equations in vector potential formulation (or the A-V
-!>  formulation) and (relatively)low frequency approximation using lowest
-!>  order Withney 1-forms (edge elements).
+!>  Utilities for the A-V solvers of electromagnetism
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 MODULE MagnetoDynamicsUtils
@@ -249,8 +247,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
-    INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
+    INTEGER :: n
 !------------------------------------------------------------------------------
     LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
@@ -291,8 +289,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
-    INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
+    INTEGER :: n
 !------------------------------------------------------------------------------
     LOGICAL :: L, Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
@@ -335,15 +333,10 @@ CONTAINS
 !-------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
-    REAL(KIND=dp), POINTER :: Acoef(:,:,:)
+    REAL(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
     INTEGER, INTENT(IN) :: n
     LOGICAL , INTENT(OUT) :: Found
 !-------------------------------------------------------------------------------
-    LOGICAL :: FirstTime = .FALSE.
-    INTEGER :: k
-    REAL(KIND=dp) :: Avacuum
-
-    SAVE Avacuum
 
     CALL GetRealArray( Material, Acoef, 'Reluctivity', Found )
     !
@@ -357,24 +350,18 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 !> Get complex tensorial reluctivity
-!> Untested
 !------------------------------------------------------------------------------
   SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found, Cwrk)
 !-------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
-    COMPLEX(KIND=dp), POINTER :: Acoef(:,:,:)
-    REAL(KIND=dp), POINTER, OPTIONAL :: Cwrk(:,:,:)
+    COMPLEX(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
     INTEGER, INTENT(IN) :: n
     LOGICAL , INTENT(OUT) :: Found
+    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(OUT) :: Cwrk(:,:,:)
 !-------------------------------------------------------------------------------
-    LOGICAL :: FirstTime = .FALSE.
     LOGICAL :: Found_im
-    INTEGER :: k1,k2,k3
-    REAL(KIND=dp) :: Avacuum
     REAL(KIND=dp), POINTER :: work(:,:,:)
-
-    SAVE Avacuum
 
     IF(.NOT. PRESENT(Cwrk)) THEN
       ALLOCATE(work(size(Acoef,1), size(Acoef,2), size(Acoef,3)))
@@ -382,13 +369,11 @@ CONTAINS
       work => Cwrk
     END IF
 
+    CALL GetRealArray( Material, work, 'Reluctivity', Found )
+    Acoef(:,:,1:n) = CMPLX(work(:,:,1:n), 0.0d0, kind=dp)
 
-    CALL GetRealArray( Material, work, 'Relative Reluctivity', Found )
-    Acoef(:,:,:) = work(:,:,:)
-
-    CALL GetRealArray( Material, work, 'Relative Reluctivity im', Found_im )
-
-    Acoef = CMPLX(REAL(Acoef), work)
+    CALL GetRealArray( Material, work, 'Reluctivity im', Found_im )
+    IF (Found_im) Acoef(:,:,1:n) = CMPLX(REAL(Acoef(:,:,1:n)), work(:,:,1:n), kind=dp)
 
     Found = Found .OR. Found_im
 
