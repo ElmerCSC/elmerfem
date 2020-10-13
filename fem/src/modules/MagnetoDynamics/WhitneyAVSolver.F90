@@ -231,7 +231,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: VecPot(:)
-  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:)
+  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:), &
@@ -372,14 +372,14 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
      IF(ALLOCATED(FORCE)) THEN
        DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, TCoef, GapLength, AirGapMu, &
-             Acoef, LamThick, LamCond, WBase, RotM, DConstr, Acoef_t,ThinLineCrossect, ThinLineCond )
+             Acoef, LamThick, LamCond, WBase, RotM, DConstr, ThinLineCrossect, ThinLineCond )
      END IF
 
      ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N),  &
-          DConstr(N,N), Acoef_t(3,3,N), &
+          DConstr(N,N), &
           ThinLineCrossect(N), ThinLineCond(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
@@ -621,7 +621,6 @@ CONTAINS
      END IF
 
      Acoef = 0.0d0
-     Acoef_t = 0.0d0
      Tcoef = 0.0d0
      Material => GetMaterial( Element )
      IF ( ASSOCIATED(Material) ) THEN
@@ -635,6 +634,10 @@ CONTAINS
          END IF
        ELSE
          CALL GetReluctivity(Material,Acoef,n)
+       END IF
+       IF (HasTensorReluctivity) THEN
+         IF (size(Acoef_t,1)/=3 .AND. size(Acoef_t,2)/=3) CALL Fatal('WhitneyAVSolver', &
+             'Reluctivity tensor should be of size 3x3')
        END IF
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
