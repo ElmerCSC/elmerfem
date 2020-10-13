@@ -62,7 +62,7 @@ ENDIF()
 ADD_EXECUTABLE(ElmerGUIlogger WIN32 ${SOURCES} ${UI_RESOURCES})
 
 IF(WITH_QT5)
-  QT5_USE_MODULES(ElmerGUIlogger OpenGL Xml Script Gui Core Svg Widgets PrintSupport)
+  QT5_USE_MODULES(ElmerGUIlogger OpenGL Xml Script Gui Core Widgets PrintSupport)
 ENDIF()
 
 TARGET_LINK_LIBRARIES(ElmerGUIlogger ${QT_LIBRARIES})
