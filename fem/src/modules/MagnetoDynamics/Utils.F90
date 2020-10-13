@@ -361,25 +361,48 @@ CONTAINS
     REAL(KIND=dp), POINTER, OPTIONAL, INTENT(OUT) :: Cwrk(:,:,:)
 !-------------------------------------------------------------------------------
     LOGICAL :: Found_im
-    REAL(KIND=dp), POINTER :: work(:,:,:)
+    REAL(KIND=dp), POINTER :: work(:,:,:) => NULL()
+    INTEGER :: n1, n2, n3
 
-    IF(.NOT. PRESENT(Cwrk)) THEN
-      ALLOCATE(work(size(Acoef,1), size(Acoef,2), size(Acoef,3)))
-    ELSE
-      work => Cwrk
-    END IF
+    IF (ASSOCIATED(Acoef)) DEALLOCATE(Acoef)
+    
+!    IF(.NOT. PRESENT(Cwrk)) THEN
+!      ALLOCATE(work(size(Acoef,1), size(Acoef,2), size(Acoef,3)))
+!    ELSE
+!      work => Cwrk
+!    END IF
+!    IF (PRESENT(Cwrk)) work => Cwrk
 
     CALL GetRealArray( Material, work, 'Reluctivity', Found )
-    Acoef(:,:,1:n) = CMPLX(work(:,:,1:n), 0.0d0, kind=dp)
+
+    IF (Found) THEN
+      n1 = SIZE(work,1)
+      n2 = SIZE(work,2)
+      n3 = SIZE(work,3)
+      ALLOCATE(Acoef(n1, n2, n3))
+      Acoef(:,:,:) = CMPLX(work(:,:,:), 0.0d0, kind=dp)
+    END IF
 
     CALL GetRealArray( Material, work, 'Reluctivity im', Found_im )
-    IF (Found_im) Acoef(:,:,1:n) = CMPLX(REAL(Acoef(:,:,1:n)), work(:,:,1:n), kind=dp)
-
-    Found = Found .OR. Found_im
-
-    IF(.NOT. PRESENT(Cwrk)) THEN
-      DEALLOCATE(work)
+    IF (Found_im) THEN
+      n1 = SIZE(work,1)
+      n2 = SIZE(work,2)
+      n3 = SIZE(work,3)
+      IF (.NOT. ASSOCIATED(Acoef)) THEN
+        ALLOCATE(Acoef(n1, n2, n3))
+        Acoef(:,:,:) = CMPLX(0.0d0, work(:,:,:), kind=dp)
+      ELSE
+        IF (SIZE(Acoef,1) /= n1 .OR. SIZE(Acoef,2) /= n2 .OR.  SIZE(Acoef,3) /= n3) &
+            CALL Fatal('GetReluctivityTensorC', 'Reluctivity and Reluctivity im of different size')
+        Acoef(1:n1,1:n2,1:n3) = CMPLX(REAL(Acoef(1:n1,1:n2,1:n3)), work(1:n1,1:n2,1:n3), kind=dp)
+      END IF
     END IF
+    Found = Found .OR. Found_im
+    IF (ASSOCIATED(work)) DEALLOCATE(work)
+
+!    IF(.NOT. PRESENT(Cwrk)) THEN
+!      DEALLOCATE(work)
+!    END IF
 !-------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityTensorC
 !-------------------------------------------------------------------------------

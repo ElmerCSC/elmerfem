@@ -144,7 +144,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
-  COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:)
+  COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
 
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
 
@@ -209,7 +209,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
-          GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), Acoef_t(3,3,N), LamCond(N), &
+          GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
@@ -370,7 +370,6 @@ CONTAINS
          END IF
        END IF
        Acoef = 0.0_dp
-       Acoef_t = CMPLX(0.0d0,0.0d0, kind=dp)
        Tcoef = 0.0_dp
        Material => GetMaterial( Element )
        IF ( ASSOCIATED(Material) ) THEN
@@ -380,11 +379,12 @@ CONTAINS
            IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
              Acoef(1:n) = Acoef_t(1,1,1:n) 
              HasTensorReluctivity = .FALSE.
+           ELSE IF (size(Acoef_t,1)/=3 .AND. size(Acoef_t,2)/=3) THEN
+             CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
            END IF
          ELSE
            CALL GetReluctivity(Material,Acoef,n)
          END IF
-
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
