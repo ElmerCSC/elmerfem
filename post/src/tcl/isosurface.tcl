@@ -76,14 +76,14 @@ set IsosurfaceColorSetMinMax 0
 
 proc isosurface_update {} {
 
+   .isosurface.cset.min delete 0 end
+   .isosurface.cset.max delete 0 end
+
    global IsosurfaceColor IsosurfaceColorMin IsosurfaceColorMax
 
    UpdateVariable IsosurfaceColor
 
-   .isosurface.cset.min delete 0 end
    .isosurface.cset.min insert end [format %-10.5g $IsosurfaceColorMin]
-
-   .isosurface.cset.max delete 0 end
    .isosurface.cset.max insert end [format %-10.5g $IsosurfaceColorMax]
 }
 
