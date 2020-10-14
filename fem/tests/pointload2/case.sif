@@ -6,7 +6,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
@@ -47,14 +47,6 @@ Solver 1
 
   Linear System Solver = Direct
   Linear System Direct Method = UMFPack
-  Linear System Iterative Method = BiCGStab
-  Linear System Max Iterations = 500
-  Linear System Convergence Tolerance = 1.0e-8
-  Linear System Preconditioning = ILU0
-  Linear System ILUT Tolerance = 1.0e-3
-  Linear System Abort Not Converged = False
-  Linear System Residual Output = 1
-  Linear System Precondition Recompute = 1
 End
 
 Equation 1
@@ -93,5 +85,3 @@ End
 
 Solver 1 :: Reference Norm = Real 0.72547626961324641
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
-
-RUN

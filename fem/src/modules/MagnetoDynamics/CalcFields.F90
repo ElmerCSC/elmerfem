@@ -553,7 +553,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
-   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity
+   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity, HasThinLines=.FALSE.
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
    REAL(KIND=dp) :: HarmPowerCoeff = 0.5_dp
@@ -2142,112 +2142,117 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
   END IF
 
-  ThinLinePower = 0._dp
-  ALLOCATE(ThinLineCrossect(n), ThinLineCond(n))
-  Active = GetNOFBoundaryElements()
-  DO i=1,Active
-     Element => GetBoundaryElement(i)
-     BC=>GetBC()
-     IF (.NOT. ASSOCIATED(BC) ) CYCLE
-     SELECT CASE(GetElementFamily())
-     CASE(1)
-       CYCLE
-     CASE(2)
-       k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
-     CASE(3,4)
-       CYCLE
-     END SELECT
-     IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
+  HasThinLines = ListCheckPresentAnyBC(Model,'Thin Line Crossection Area')
+  IF(HasThinLines) THEN
+    ThinLinePower = 0._dp
+    ALLOCATE(ThinLineCrossect(n), ThinLineCond(n))
+    Active = GetNOFBoundaryElements()
+    DO i=1,Active
+       Element => GetBoundaryElement(i)
+       BC=>GetBC()
 
-     ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
+       ThinLineCrossect = GetReal( BC, 'Thin Line Crossection Area', Found)
 
-     IF (Found) THEN
-       CALL Info("CalcFields", "Found a Thin Line Element", level=10)
-       ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
-       IF (.NOT. Found) CALL Fatal('CalcFields','Thin Line Conductivity not found!')
-     ELSE
-       CYCLE
-     END IF
-
-
-     Model % CurrentElement => Element
-     nd = GetElementNOFDOFs(Element)
-     n  = GetElementNOFNodes(Element)
-     CALL GetElementNodes(Nodes, Element)
-!     line_tangent = 0._dp
-!     line_tangent(1) = Nodes % x(2) - Nodes % x(1)
-!     line_tangent(2) = Nodes % y(2) - Nodes % y(1)
-!     line_tangent(3) = Nodes % z(2) - Nodes % z(1)
-!     line_tangent(:) = line_tangent(:) / SQRT(SUM(line_tangent(:)**2._dp))
-
-     CALL GetVectorLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
-     IF (Transient) THEN 
-       CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
-       PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
-     END IF
-
-    ! Numerical integration:
-    !-----------------------
-    IP = GaussPoints(Element)
-
-    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
-
-    DO j=1,IP % n
-       stat = EdgeElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-            IP % W(j), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-            dBasisdx = dBasisdx, BasisDegree = 1, &
-            ApplyPiolaTransform = .TRUE.)
- 
-       C_ip  = SUM(Basis(1:n) * ThinLineCond(1:n))
-       Area = SUM(Basis(1:n) * ThinLineCrossect(1:n))
-       s = detJ*IP % s(j)
-
-       IF (vDOFS == 1) THEN
-         !da/dt part
-         IF (Transient) THEN
-           E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
-         END IF
-
-         !grad V part
-         E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-
-         ! The Joule heating power per unit volume: J.E = (sigma * E).E
-!         Coeff = Area * C_ip * SUM(line_tangent(:) * E(1,:)) ** 2._dp * s
-         Coeff = Area * C_ip * SUM(E(1,:) ** 2._dp) * s
+       IF (Found) THEN
+         CALL Info("CalcFields", "Found a Thin Line Element", level=10)
+         ThinLineCond = GetReal(BC, 'Thin Line Conductivity', Found)
+         IF (.NOT. Found) CALL Fatal('CalcFields','Thin Line Conductivity not found!')
+         HasThinLines = .TRUE.
        ELSE
-         !da/dt part
-         E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-         !grad V part
-         E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-         
-         E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-         E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
-         CALL Warn('CalcFields', 'Power loss not implemented for harmonic case')
-         Coeff = 0._dp
-         ! Now Power = J.conjugate(E), with the possible imaginary component neglected.         
-         !Coeff = HarmPowerCoeff * (SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-         !    TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s - &
-         !    SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
-         !    TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s + &
-         !    SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-         !    TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
-         !    SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
-         !    TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s)
+         CYCLE
        END IF
 
-       ThinLinePower = ThinLinePower + Coeff
+       IF (.NOT. ASSOCIATED(BC) ) CYCLE
+       SELECT CASE(GetElementFamily())
+       CASE(1)
+         CYCLE
+       CASE(2)
+         k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
+       CASE(3,4)
+         CYCLE
+       END SELECT
+       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
+
+       Model % CurrentElement => Element
+       nd = GetElementNOFDOFs(Element)
+       n  = GetElementNOFNodes(Element)
+       CALL GetElementNodes(Nodes, Element)
+  !     line_tangent = 0._dp
+  !     line_tangent(1) = Nodes % x(2) - Nodes % x(1)
+  !     line_tangent(2) = Nodes % y(2) - Nodes % y(1)
+  !     line_tangent(3) = Nodes % z(2) - Nodes % z(1)
+  !     line_tangent(:) = line_tangent(:) / SQRT(SUM(line_tangent(:)**2._dp))
+
+       CALL GetVectorLocalSolution(SOL, Pname, uElement=Element, uSolver=pSolver)
+       IF (Transient) THEN 
+         CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
+         PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
+       END IF
+
+      ! Numerical integration:
+      !-----------------------
+      IP = GaussPoints(Element)
+
+      np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+
+      DO j=1,IP % n
+         stat = EdgeElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
+              IP % W(j), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+              dBasisdx = dBasisdx, BasisDegree = 1, &
+              ApplyPiolaTransform = .TRUE.)
+   
+         C_ip  = SUM(Basis(1:n) * ThinLineCond(1:n))
+         Area = SUM(Basis(1:n) * ThinLineCrossect(1:n))
+         s = detJ*IP % s(j)
+
+         IF (vDOFS == 1) THEN
+           !da/dt part
+           IF (Transient) THEN
+             E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           END IF
+
+           !grad V part
+           E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+
+           ! The Joule heating power per unit volume: J.E = (sigma * E).E
+  !         Coeff = Area * C_ip * SUM(line_tangent(:) * E(1,:)) ** 2._dp * s
+           Coeff = Area * C_ip * SUM(E(1,:) ** 2._dp) * s
+         ELSE
+           !da/dt part
+           E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+           !grad V part
+           E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
+           
+           E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+           E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+           CALL Warn('CalcFields', 'Power loss not implemented for harmonic case')
+           Coeff = 0._dp
+           ! Now Power = J.conjugate(E), with the possible imaginary component neglected.         
+           !Coeff = HarmPowerCoeff * (SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+           !    TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s - &
+           !    SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+           !    TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s + &
+           !    SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+           !    TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
+           !    SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+           !    TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s)
+         END IF
+
+         ThinLinePower = ThinLinePower + Coeff
+
+      END DO
     END DO
-  END DO
 
-  ThinLinePower  = ParallelReduction(ThinLinePower)
+    ThinLinePower  = ParallelReduction(ThinLinePower)
+    WRITE(Message,*) 'Total thin line power (the Joule effect): ', ThinLinePower
+    CALL Info( 'MagnetoDynamicsCalcFields', Message )
+    CALL ListAddConstReal(Model % Simulation, 'res: thin line power', ThinLinePower)
 
-  WRITE(Message,*) 'Total thin line power (the Joule effect): ', ThinLinePower
-  CALL Info( 'MagnetoDynamicsCalcFields', Message )
-  CALL ListAddConstReal(Model % Simulation, 'res: thin line power', ThinLinePower)
+    DEALLOCATE(ThinLineCrossect, ThinLineCond)
+  END IF
 
 
-  DEALLOCATE(ThinLineCrossect, ThinLineCond)
 
 
 CONTAINS

@@ -3566,6 +3566,7 @@ CONTAINS
     REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
     REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
+    REAL(KIND=dp) :: Damping(n), DampCoef
     REAL(KIND=dp) :: nu, E, h, NormalTraction, Kappa
     REAL(KIND=dp) :: DetJ, Weight, Norm
 
@@ -3674,7 +3675,10 @@ CONTAINS
     ELSE
       Load(1:n) = 0.0d0
     END IF
-    IF ( MassAssembly ) rho(1:n) = GetReal(GetMaterial(), 'Density')
+    IF ( MassAssembly ) THEN
+      rho(1:n) = GetReal(GetMaterial(), 'Density')
+      Damping(1:n) = GetReal(GetMaterial(), 'Rayleigh Damping Alpha', Found)
+    END IF
 
     ! ------------------------------------------------------------------------------
     ! The size of the constitutive matrix for 2D shell equations
@@ -3874,7 +3878,10 @@ CONTAINS
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
       NormalTraction = SUM( Load(1:n) * Basis(1:n) )
-      IF ( MassAssembly ) rho0 = SUM( rho(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) THEN
+        rho0 = SUM( rho(1:n) * Basis(1:n) )
+        DampCoef = SUM( Damping(1:n) * Basis(1:n) )
+      END IF
 
       ! The matrix description of the elasticity tensor:
       CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
@@ -4417,6 +4424,9 @@ CONTAINS
                   Basis(i) * Basis(j) * Weight
               Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
                   h**2/12.0d0 * Basis(i) * Basis(j) * Weight
+              
+              Damp((i-1)*m+k,(j-1)*m+k) = Damp((i-1)*m+k,(j-1)*m+k) + &
+                  DampCoef * Basis(i) * Basis(j) * Weight              
             END DO
           END DO
         END DO
@@ -4490,12 +4500,13 @@ CONTAINS
 
     IF ( MassAssembly ) THEN
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
+      Damp(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Damp(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
 
       IF ( TransientSimulation ) THEN
         CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
       ELSE IF ( HarmonicAssembly ) THEN
         CALL DefaultUpdateMass( MASS )
-        ! update damping if present!
+        CALL DefaultUpdateDamp( DAMP )
       END IF
     END IF
 

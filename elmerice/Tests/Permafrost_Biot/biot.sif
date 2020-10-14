@@ -27,8 +27,7 @@ Simulation
   Initialize Dirichlet Conditions = Logical False
   Restart Before Initial Conditions = Logical True
   Coordinate Mapping(3) = Integer 1 2 3
-  Max Output Level = 3
-  End
+End
 
 Constants
   Gravity(4) = 0 -1 0 $grav
@@ -120,10 +119,11 @@ Solver 3
   Procedure = "ElmerIceSolvers" "PermafrostGroundwaterFlow"  
   !Linear System Solver = Direct
   !Linear System Direct Method = "umfpack"
-   Linear System Solver = Iterative
+  Linear System Solver = Iterative
   Linear System Iterative Method  = BiCGStab
   Linear System Max Iterations = 5000
   Linear System Convergence Tolerance = 1e-09
+  Linear System Residual Output = 0
   Nonlinear System Max Iterations = 50
   Nonlinear System Convergence Tolerance = 1e-06
   Steady State Convergence Tolerance = 1e-03
@@ -148,9 +148,9 @@ Solver 4
   Quasi Stationary = Logical True ! no mass-matrix, despite finite densities
   
   Linear System Solver = Direct
-  Linear System Symmetric = Logical True
   Linear System Scaling = Logical False
   Linear System Direct Method = $directsolver
+  Linear System Residual Output = 0
 
   Nonlinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Max Iterations = 1
@@ -258,6 +258,3 @@ Solver 3 :: Reference Norm = Real 40.361370
 Solver 3 :: Reference Norm Tolerance = Real 1E-04
 Solver 4 :: Reference Norm = Real 0.16666636E-03
 Solver 4 :: Reference Norm Tolerance = Real 1E-05
-$fprintf( stderr, "Permafrost: Biot wihout gravity \n");
-RUN
-$fprintf( stderr, "Permafrost: Biot without gravity: Target NRM Solver 3/4 = 40.361370/0.16666636E-03\n" );

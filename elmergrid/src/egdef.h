@@ -1,15 +1,33 @@
-/* femdef.h */
+/* femdef.h -> egdef.h */
 /* General definitions for the FEM program. */
 
 #ifndef _FEMDEF_H_
 #define _FEMDEF_H_
 
-#ifndef _COMMON_H_
+#ifdef EG_PLUGIN
+#define USE_MATC 0
+#else
+#ifdef DISABLE_MATC
+#define USE_MATC 0
+#else
+#define USE_MATC 1
+#endif
+#endif
+
+#ifdef EG_PLUGIN
+#define USE_METIS 0
+#else
+#ifdef DISABLE_METIS
+#define USE_METIS 0
+#else
+#define USE_METIS 1
+#endif
+#endif
+
 typedef double Real;
 typedef int Integer;
 #define TRUE 1
 #define FALSE 0
-#endif
 
 /* Natural constants */
 #ifndef FM_PI

@@ -313,7 +313,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
-            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            CALL Info('AddComponentEquationsAndCouplings',&
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
           ELSE
             Comp % Resistance = 0._dp
@@ -1153,7 +1154,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
-            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            CALL Info('AddComponentEquationsAndCouplings', &
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
             CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
           ELSE
             Comp % Resistance = 0._dp
@@ -1831,15 +1833,15 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     ! Reading parameter for supply frequency
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
     IF (EEC) THEN
-      CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=4)
 	    WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
       
           
       EEC_max = GetInteger( SolverParams, 'EEC Steps', EEC_lim)
       IF (.NOT. EEC_lim) EEC_max = 5 !Typically 5 correections is enough
       WRITE( Message,'(A,I5,A)') 'Applying ', EEC_max, ' halfperiod corrections'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
       
       EEC_time_0 = 0.0
       
@@ -1864,7 +1866,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
       EEC_cnt = EEC_cnt + 1
       WRITE( Message,'(A,4G11.4)') 'Performing EEC #', EEC_cnt
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq
 
@@ -1911,12 +1913,12 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
 
-   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=3) 
+   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=5) 
    DO p=1,n_Circuits
      CALL Info('CircuitsOutput', 'Writing Circuit Variables for &
-       Circuit '//TRIM(i2s(p)), Level=3) 
+       Circuit '//TRIM(i2s(p)), Level=5) 
      CALL Info('CircuitsOutput', 'There are '//TRIM(i2s(Circuits(p)%n))//&
-       ' Circuit Variables', Level=3)
+       ' Circuit Variables', Level=5)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
        
@@ -1954,7 +1956,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
      END DO
 
      CALL Info('CircuitsOutput', 'Writing Component Variables for &
-       Circuit '//TRIM(i2s(p)), Level=3) 
+       Circuit '//TRIM(i2s(p)), Level=5) 
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &

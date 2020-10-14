@@ -2144,7 +2144,8 @@ RETURN
     IF( .NOT. ConstantDt ) THEN
       ! Use existing variable only if it is of correct size!
       ElementSizeVar => VariableGet( Mesh % Variables,'Element Size' )
-      NULLIFY( SizeValues ) 
+      NULLIFY( SizeValues )
+
       IF( ASSOCIATED( ElementSizeVar ) ) THEN
         SizeValues => ElementSizeVar % Values
         IF( ASSOCIATED( SizeValues ) ) THEN
@@ -2165,7 +2166,7 @@ RETURN
     DO t=1,NoElems
       Element => Mesh % Elements(t)      
       CALL GetElementNodes( Nodes, Element ) 
-      n = Element % TYPE % NumberOfNodes
+      n = GetElementNOFNodes()
 
       IP = GaussPoints( Element )
       u = SUM( IP % u ) / IP % n 
@@ -2203,6 +2204,12 @@ RETURN
       h0 = ElementSizeMin
     ELSE
       h0 = ElementSizeAve
+    END IF
+
+    IF(ConstantDt) THEN
+       ElementSize =  h0
+    ELSE
+      ElementSize =  SizeValues(No)
     END IF
           
     Visited = .TRUE.

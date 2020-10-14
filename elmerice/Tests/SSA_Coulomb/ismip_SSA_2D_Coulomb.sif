@@ -60,7 +60,7 @@ Initial Condition 1
     Real MATC "-tx*tan(Slope)-1000.0"
 
   Effective Pressure = Variable coordinate 1 , Coordinate 2
-     Real  MATC "0.2*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))
+     Real  MATC "0.2*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

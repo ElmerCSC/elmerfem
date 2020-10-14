@@ -3553,7 +3553,7 @@ CONTAINS
     UseLongEdge = ListGetLogical(CurrentModel % Simulation, &
          "Stabilization Use Longest Element Edge",Stat)
 
-    DO i=1,Mesh % NumberOfBulkElements
+    DO i=1,Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
        Element => Mesh % Elements(i)
        n = Element % TYPE % NumberOfNodes
        Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
@@ -17376,8 +17376,7 @@ CONTAINS
        Reorder = [ (i, i=1,NewMesh % NumberOfNodes) ]
 
        k = NewMesh % Nodes % NumberOfNodes - Mesh % Nodes % NumberOfNodes
-
-       CALL ParallelGlobalNumbering( NewMesh, Mesh, k, IntCnts, IntArray, Reorder )
+       CALL ParallelGlobalNumbering( NewMesh, Mesh, k, Reorder )
 
 !      Account for the reordering of the nodes:
 !      ----------------------------------------

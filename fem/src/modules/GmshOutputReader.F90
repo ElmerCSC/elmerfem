@@ -56,7 +56,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
   INTEGER, PARAMETER :: LENGTH = 1024
   CHARACTER(LEN=LENGTH) :: Txt, FieldName, CompName, str
   CHARACTER(MAX_NAME_LEN) :: InputFile, InputDirectory, VarName
-  INTEGER :: FileUnit
+  INTEGER :: FileUnit=1
   TYPE(Mesh_t), POINTER :: FromMesh, ToMesh
   TYPE(Variable_t), POINTER :: Var
   CHARACTER(*), PARAMETER :: Caller = 'GmshOutputReader'  
@@ -211,7 +211,7 @@ SUBROUTINE GmshOutputReader( Model,Solver,dt,TransientSimulation )
         CALL Info(Caller,'Creating variable structure',Level=20)
       ELSE
         CALL Info(Caller,'Reusing variable structure',Level=20)
-        ALLOCATE( FromMesh % Variables )
+        FromMesh % Variables => Null()
         ALLOCATE( Perm( NoNodes ) )
         DO i =1, NoNodes
           Perm(i) = i

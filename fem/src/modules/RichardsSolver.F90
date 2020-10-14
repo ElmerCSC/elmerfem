@@ -412,7 +412,7 @@ END MODULE PorousMaterials
       END IF
       
       IF( InitSolution ) THEN
-        Relax = GetConstReal(SolverParams,&
+        Relax = GetCReal(SolverParams,&
             'Nonlinear System Relaxation Factor',Found)
         IF(Found) THEN
           CALL ListAddConstReal(SolverParams,&

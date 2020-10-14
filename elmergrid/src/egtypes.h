@@ -22,11 +22,14 @@
 #define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
 #define MAXHALOMODES 10
+#define MAXFORMATS 15
 
 #define CONPLAIN 0
 #define CONDISCONT 1
 #define CONPERIODIC 2
 #define CONCONSTRAINT 3
+
+#define MAXELEMENTTYPE 827
 
 struct CRSType {
   int *rows, *cols;
@@ -100,7 +103,7 @@ struct GridType {
     dz0,
     limitdx, 
     triangleangle,
-    xyratio, /* ratio between dx and dy */
+    xyratio, /* ratio between dx0 and dy0 */
     xzratio;
   Real rotateradius1,rotateradius2,rotateimprove;
   int rotate,rotateblocks,rotatecurve,rotatecartesian,mappings,
@@ -299,6 +302,7 @@ struct ModelType {
 struct ElmergridType {
 
   int dim,
+    silent,
     center,
     scale,      /* scale the geometry */
     order,      /* reorder the nodes */
