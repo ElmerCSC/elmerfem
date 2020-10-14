@@ -3761,8 +3761,9 @@ CONTAINS
                            GlobalUnfoundNodes(:), PartUnfoundCount(:), OtherParts(:), SkipNodes(:), &
                            SharedNodes(:), Neighbours(:,:), Neighbrs(:), PartsOnBound(:), PartsWithUnfoundNodes(:), &
                            ReqParts(:), RequiredParts(:)
+    LOGICAL, ALLOCATABLE :: PartHasUnfoundNodes(:)
     INTEGER :: ClusterSize, ierr, status, proc, UnfoundCount, countparts, TotalUnFoundNodes, &
-               UnfoundCountSend, CountSoFar, SharedCount, PartsCount, NoNeighbours, PartHasUnfoundNodes, Counter
+               UnfoundCountSend, CountSoFar, SharedCount, PartsCount, NoNeighbours, Counter
     SolverName = 'InterpMaskedBCReduced'
 
     CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
@@ -3818,102 +3819,55 @@ CONTAINS
          UnfoundNodes, OldMaskLogical, NewMaskLogical, Variables=OldMesh % Variables, &
          GlobalEps=geps, LocalEps=leps)
 
-    PartHasUnfoundNodes = ParEnv % MyPE
-    IF(ANY(UnfoundNodes)) THEN
-      PartMask = .TRUE.
-    ELSE
-      PartMask = .FALSE.
-    END IF
+    UnfoundCount = COUNT(UnfoundNodes)
+    PartMask = UnfoundCount > 0
+    ClusterSize = ParEnv % PEs
 
-    !Calculate cluster size
-    CALL MPI_COMM_SIZE(ELMER_COMM_WORLD, ClusterSize, ierr)
+    ! Gather missing counts at this stage
+    ALLOCATE(PartUnfoundCount(ClusterSize), &
+         PartHasUnfoundNodes(ClusterSize))
+    PartHasUnfoundNodes = .FALSE.
 
-    countparts = 0
-    ALLOCATE(OtherParts(ClusterSize-1))
-    DO i=1, ClusterSize
-       IF(i-1 /= ParEnv % MyPE) THEN
-          CountParts = CountParts +1
-          OtherParts(CountParts) = i-1
-       END IF
-    END DO
+    CALL MPI_AllGather(UnfoundCount, 1, MPI_INTEGER, &
+         PartUnfoundCount, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
-    ALLOCATE(PartsWithUnfoundNodes(ClusterSize-1))
-    ALLOCATE(PartsMask(ClusterSize-1))
-    DO i=1, ClusterSize-1
-      proc = OtherParts(i)
-      print*, proc
-      CALL MPI_BSEND( PartHasUnfoundNodes, 1, MPI_INTEGER, proc, &
-      5001, ELMER_COMM_WORLD,ierr )
-      CALL MPI_RECV( PartsWithUnfoundNodes(i), 1, MPI_INTEGER, proc, &
-      5001, ELMER_COMM_WORLD, status, ierr )
-      CALL MPI_BSEND( PartMask, 1, MPI_LOGICAL, proc, &
-      5004, ELMER_COMM_WORLD,ierr )
-      CALL MPI_RECV( PartsMask(i), 1, MPI_LOGICAL, proc, &
-      5004, ELMER_COMM_WORLD, status, ierr )
-    END DO
+    PartHasUnfoundNodes = PartUnfoundCount > 0
 
-    ALLOCATE(ReqParts(ClusterSize -1))
-    Counter = 0
-    DO i=1, ClusterSize-1
-      IF(PartsMask(i)) THEN
-         Counter = counter + 1
-         ReqParts(i) = PartsWithUnfoundNodes(i)
-      END IF
-    END DO
-    ALLOCATE(RequiredParts(Counter))
-    RequiredParts = ReqParts(1:counter)
-    DEALLOCATE(ReqParts)
-
+    ! Now every processor knows which of the other processors are seeking nodes
+    ! Note that I've modified stuff here to also include the current partition
+    ! (trust me it's easier)  So size of RequiredParts is ClusterSize
+    RequiredParts = PACK((/ (i, i=0,ClusterSize-1) /), PartHasUnfoundNodes)
+    
+    PRINT*, ParEnv % MyPE, 'PartUnfoundCount: ', PartUnfoundCount
     PRINT*, ParEnv % MyPE, 'requiredparts', requiredparts 
+
+    ! Only processors which are missing at least one node enter this loop
     IF(ANY(UnfoundNodes)) THEN
       IF(SIZE(RequiredParts) > 0) THEN
          ! create required paritions group
          !CALL MPI_COMM_split(ELMER_COMM_WORLD, )
       
-         !convert unfound nodes to global dofs
-         ALLOCATE(UnfoundNodesGlobal(SIZE(UnfoundNodes)))
-         UnfoundCount = 0
-         UnfoundCountSend = 0
-         DO i=1, SIZE(Unfoundnodes)
-            IF(UnfoundNodes(i)) THEN
-               UnfoundCount = UnfoundCount + 1
-               UnfoundCountSend = UnfoundCountSend + 1
-               UnfoundNodesGlobal(UnfoundCount) = NewMesh % ParallelInfo % GlobalDOFs(i)
-            END IF
-         END DO
-         ALLOCATE(GlobalUnfoundNodes(UnfoundCount))
-         GlobalUnfoundNodes = UnfoundNodesGlobal(1:UnfoundCount)
+        ! Create an array of global DOFs of missing nodes
+        GlobalUnfoundNodes = PACK(NewMesh % ParallelInfo % GlobalDOFs, UnfoundNodes)
+
          !IF(ParEnv % MyPE == 0) PRINT*, 'helpme', GlobalUnfoundNodes
-         DEALLOCATE(UnfoundNodesGlobal)
          !!! WORKS UP TO HERE !!!!
 
-         !Calculate number of unfound nodes across all partitions
-         ALLOCATE(PartUnfoundCount(ClusterSize-1))
-         DO i=1, SIZE(RequiredParts)
-            proc = RequiredParts(i)
-            print*, proc
-            CALL MPI_BSEND( UnfoundCount, 1, MPI_INTEGER, proc, &
-            5002, ELMER_COMM_WORLD,ierr )
-            CALL MPI_RECV( PartUnfoundCount(i), 1, MPI_INTEGER, proc, &
-            5002, ELMER_COMM_WORLD, status, ierr )
-         END DO
-         UnfoundCountSend = SIZE(GlobalUnfoundNodes)
-         
-         TotalUnFoundNodes = SUM(PartUnfoundCount) + UnfoundCount
+         TotalUnFoundNodes = SUM(PartUnfoundCount) ! But remember this likely includes duplicates
 
-         IF(ParEnv % MyPE == 0) PRINT*, 'before1 count', PartUnfoundCount
-         IF(ParEnv % MyPE == 1) PRINT*, 'before2 count', PartUnfoundCount
-         IF(ParEnv % MyPE == 2) PRINT*, 'before3 count', PartUnfoundCount
-         IF(ParEnv % MyPE == 3) PRINT*, 'before4 count', PartUnfoundCount
-         IF(ParEnv % MyPE == 0) PRINT*, 'before1', GlobalUnfoundNodes
-         IF(ParEnv % MyPE == 1) PRINT*, 'before2', GlobalUnfoundNodes
+         PRINT *, ParEnv % MyPE,' before count ',PartUnfoundCount
+         PRINT *, ParEnv % MyPE,' before ',GlobalUnfoundNodes
          !!! WORKS TO HERE !!!
 
+         ! This loop won't necessarily work - no partition can pass 'MPI_RECV' until the
+         ! matching send has completed. Likely to deadlock. You should make sure of 
+         ! MPI_IRECV, MPI_SEND and MPI_Waitall - see MeshPartition.F90:L622 and note
+         ! the inclusion of a 'status' variable for IRECV/WaitALL
          ALLOCATE(PartUnfoundNodesGlobal(SUM(PartUnfoundCount)))
          CountSoFar = 1 
-         DO i=1, SIZE(RequiredParts)
+         DO i=1, SIZE(RequiredParts)  
             proc = RequiredParts(i)
-            CALL MPI_BSEND( GlobalUnfoundNodes, UnfoundCountSend, MPI_INTEGER, proc, &
+            CALL MPI_BSEND( GlobalUnfoundNodes, UnfoundCount, MPI_INTEGER, proc, &
             4000, ELMER_COMM_WORLD,ierr )
             CALL MPI_RECV( PartUnfoundNodesGlobal(CountSoFar:SUM(PartUnfoundCount(1:i))), &
             PartUnfoundCount(i), MPI_INTEGER, proc, 4000, ELMER_COMM_WORLD, status, ierr )
@@ -3927,7 +3881,13 @@ CONTAINS
          SharedCount=0
          ALLOCATE(Skipnodes(UnfoundCount))
          ALLOCATE(Neighbours(UnfoundCount, 2))
-         
+
+         !What you should do here is, rather than looping over the size of UnfoundNodes is
+         ! 1. Construct an ordered list of every GlobalDOF which needs to be found (on ANY partition) (AllMissingGlobal)
+         ! 2. Construct a logical array of the same size which is TRUE where the current partition needs the node (MissingThisGlobal)
+         ! 3. Loop over AllMissingGlobal (possibly with an MPI_Barrier on each loop).
+         ! NOTE - this means you will need to make *every* partition enter this loop (as opposed to just the ones which are missing nodes)
+         ! but this is OK because there's no real performance hit - those partitions would just be waiting anyway
          DO i=1, SIZE(UnfoundNodes)
             IF(UnfoundNodes(i)) THEN
                skip = .TRUE.
@@ -3963,7 +3923,7 @@ CONTAINS
          ALLOCATE(SharedNodes(SharedCount))
          SharedNodes = SkipNodes(1:SharedCount)
 
-         CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+         CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr) ! Can't barrier here!
          !DEALLOCATE(SkipNodes)
          print*, 'sharednodes', ParEnv % MyPE, Sharedcount,'count',SharedNodes
          
@@ -3980,7 +3940,7 @@ CONTAINS
                      NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
                END IF
             END DO
-            CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+            CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr) ! Can't barrier here!
          END DO
       ELSE !! only one partition searching for nodes
          PRINT *,ParEnv % MyPE,'Didnt find point: ', i, &
