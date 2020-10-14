@@ -26,14 +26,19 @@ End
 
 
 Material 1
-  Reluctivity = Real 1
-  Reluctivity Im = Real 0
-! Reluctivity(3,3) = 1.0 0.0 0.0 \ 
-!                    0.0 1.0 0.0 \
-!                    0.0 0.0 1.0
-! Reluctivity Im(3,3) = 0.0 0.0 0.0 \ 
-!                    0.0 0.0 0.0 \
-!                    0.0 0.0 0.0
+!  Reluctivity = Real 1
+!  Reluctivity Im = Real 0
+
+  !
+  ! The reluctivity could be described by using a scalar parameter but
+  ! here we give it as a higher-order tensor to test the functionality:
+  ! 
+  Reluctivity(3,3) = 1.0 0.0 0.0 \ 
+                     0.0 1.0 0.0 \
+                     0.0 0.0 1.0
+  Reluctivity Im(3,3) = 0.0 0.0 0.0 \ 
+                     0.0 0.0 0.0 \
+                     0.0 0.0 0.0
 
 ! Permittivity = Real 1
   Electric Conductivity = Real 1

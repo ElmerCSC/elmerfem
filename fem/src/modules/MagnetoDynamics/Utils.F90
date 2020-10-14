@@ -250,15 +250,16 @@ CONTAINS
     REAL(KIND=dp) :: Acoef(:)
     INTEGER :: n
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    LOGICAL :: Found, FirstTime = .TRUE.
     REAL(KIND=dp) :: Avacuum
 
-    SAVE Avacuum 
+    SAVE FirstTime, Avacuum 
+!------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
       Avacuum = GetConstReal( CurrentModel % Constants, &
               'Permeability of Vacuum', Found )
-      IF(.NOT. Found ) Avacuum = PI * 4.0d-7
+      IF (.NOT. Found ) Avacuum = PI * 4.0d-7
       FirstTime = .FALSE.
     END IF
   
@@ -273,10 +274,9 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
     END IF
-    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+    IF( .NOT. Found .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
       CALL Fatal('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
-      Warned = .TRUE.
     END IF
 
 !------------------------------------------------------------------------------
@@ -292,10 +292,11 @@ CONTAINS
     COMPLEX(KIND=dp) :: Acoef(:)
     INTEGER :: n
 !------------------------------------------------------------------------------
-    LOGICAL :: L, Found, FirstTime = .TRUE., Warned = .FALSE.
+    LOGICAL :: L, Found, FirstTime = .TRUE.
     REAL(KIND=dp) :: Avacuum
 
-    SAVE Avacuum 
+    SAVE Avacuum, FirstTime
+!------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
       Avacuum = GetConstReal( CurrentModel % Constants, &
@@ -318,16 +319,15 @@ CONTAINS
          GetReal( Material, 'Reluctivity im', L ), KIND=dp )
       Found = Found .OR. L
     END IF
-    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+    IF( .NOT. Found .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
       CALL Fatal('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
-      Warned = .TRUE.
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityC
 !------------------------------------------------------------------------------
 
-!> Get real tensorial reluctivity
+!> Get a real-valued reluctivity tensor
 !------------------------------------------------------------------------------
   SUBROUTINE GetReluctivityTensorR(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
@@ -335,43 +335,48 @@ CONTAINS
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
     REAL(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
     INTEGER, INTENT(IN) :: n
-    LOGICAL , INTENT(OUT) :: Found
-!-------------------------------------------------------------------------------
+    LOGICAL, INTENT(OUT) :: Found
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), SAVE :: nu_vacuum
+    LOGICAL, SAVE :: FirstTime
+!------------------------------------------------------------------------------
+
+    IF ( FirstTime ) THEN
+      nu_vacuum = GetConstReal( CurrentModel % Constants, &
+              'Permeability of Vacuum', Found )
+      IF (.NOT. Found ) THEN
+        nu_vacuum = 1.0d0/(PI * 4.0d-7)
+      ELSE
+        nu_vacuum =  1.0d0/nu_vacuum
+      END IF
+      FirstTime = .FALSE.
+    END IF
 
     CALL GetRealArray( Material, Acoef, 'Reluctivity', Found )
-    !
-    ! Earlier versions used 'Relative Reluctivity' although 'Relative' appears
-    ! to lack a physical meaning. For backward compatibility seek for
-    ! the old keyword command if needed:
-    !
-    IF (.NOT. Found) CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
+
+    IF (.NOT. Found) THEN
+      CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
+      IF (Found) Acoef = nu_vacuum * Acoef
+    END IF
 !-------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityTensorR
 !-------------------------------------------------------------------------------
 
-!> Get complex tensorial reluctivity
+!> Get a complex-valued reluctivity tensor
 !------------------------------------------------------------------------------
-  SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found, Cwrk)
+  SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
     COMPLEX(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
-    INTEGER, INTENT(IN) :: n
-    LOGICAL , INTENT(OUT) :: Found
-    REAL(KIND=dp), POINTER, OPTIONAL, INTENT(OUT) :: Cwrk(:,:,:)
+    INTEGER, INTENT(IN) :: n                                      ! An inactive variable
+    LOGICAL, INTENT(OUT) :: Found                                 
 !-------------------------------------------------------------------------------
     LOGICAL :: Found_im
     REAL(KIND=dp), POINTER :: work(:,:,:) => NULL()
     INTEGER :: n1, n2, n3
 
     IF (ASSOCIATED(Acoef)) DEALLOCATE(Acoef)
-    
-!    IF(.NOT. PRESENT(Cwrk)) THEN
-!      ALLOCATE(work(size(Acoef,1), size(Acoef,2), size(Acoef,3)))
-!    ELSE
-!      work => Cwrk
-!    END IF
-!    IF (PRESENT(Cwrk)) work => Cwrk
 
     CALL GetRealArray( Material, work, 'Reluctivity', Found )
 
@@ -398,11 +403,8 @@ CONTAINS
       END IF
     END IF
     Found = Found .OR. Found_im
-    IF (ASSOCIATED(work)) DEALLOCATE(work)
 
-!    IF(.NOT. PRESENT(Cwrk)) THEN
-!      DEALLOCATE(work)
-!    END IF
+    IF (ASSOCIATED(work)) DEALLOCATE(work)
 !-------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityTensorC
 !-------------------------------------------------------------------------------
@@ -417,13 +419,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Pvacuum = 0._dp
+    SAVE FirstTime, Warned, Pvacuum
+!------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
       Pvacuum = GetConstReal( CurrentModel % Constants, &
               'Permittivity of Vacuum', Found )
       FirstTime = .FALSE.
     END IF
-    
 
     Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
     IF ( Found ) THEN
