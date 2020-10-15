@@ -68,9 +68,11 @@ Enhanced Solver Modules
 ### MagnetoDynamics3D
 - Fixes and generalization to the source projection (the determination of Jfix). 
 - A surface impedance condition for the time-harmonic AV model
+- thin region formulation for 1D wires in transient analysis
 
 ### MagnetoDynamics2D
 - a velocity field can be given to add a Lorentz term to the equations
+- Coreloss a posteriori formulas (Bertotti + extended Bertotti)
 
 ### ResultOutputSolver
 - Vtu format:
@@ -218,5 +220,8 @@ Elmer/Ice
 ---------
 - New features in Elmer/Ice are documented in elmerfem/elmerice/ReleaseNotes/release_elmerice_9.0.md
 
+Other
+-----
+- FreeCADBatchFEMTools improvements and added tests
 
 
