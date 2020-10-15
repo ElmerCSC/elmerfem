@@ -636,7 +636,7 @@ CONTAINS
          CALL GetReluctivity(Material,Acoef,n)
        END IF
        IF (HasTensorReluctivity) THEN
-         IF (size(Acoef_t,1)/=3 .AND. size(Acoef_t,2)/=3) CALL Fatal('WhitneyAVSolver', &
+         IF (size(Acoef_t,1)/=3) CALL Fatal('WhitneyAVSolver', &
              'Reluctivity tensor should be of size 3x3')
        END IF
 !------------------------------------------------------------------------------
@@ -1503,7 +1503,7 @@ END SUBROUTINE LocalConstraintMatrix
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Acoefder(n), C(3,3), &
                      RotMLoc(3,3), RotM(3,3,n), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3)
@@ -1607,15 +1607,19 @@ END SUBROUTINE LocalConstraintMatrix
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
-       A = SUM( Basis(1:n) * Acoef(1:n) )
-       mu = A
-
-       IF(HasTensorReluctivity) THEN
-         DO i = 1,3
-           DO j = 1,3
-             A_t(i,j) = sum(Basis(1:n)*Acoef_t(i,j,1:n))
+       IF (HasTensorReluctivity) THEN
+         IF (SIZE(Acoef_t,2) == 1) THEN
+           A_t = 0.0d0
+           DO i = 1,3
+             A_t(i,i) = SUM(Basis(1:n)*Acoef_t(i,1,1:n))
            END DO
-         END DO
+         ELSE
+           DO i = 1,3
+             DO j = 1,3
+               A_t(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+             END DO
+           END DO
+         END IF
        END IF
 
        ! Compute convection type term coming from a rigid motion:
@@ -1686,6 +1690,7 @@ END SUBROUTINE LocalConstraintMatrix
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
        ELSE
+         mu = SUM( Basis(1:n) * Acoef(1:n) )
          muder = 0._dp
        END IF
 
@@ -1813,12 +1818,12 @@ END SUBROUTINE LocalConstraintMatrix
             SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
          DO j = 1,nd-np
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) 
 
-           ! Aniostropic part
-           IF(HasTensorReluctivity) THEN
+           IF (HasTensorReluctivity) THEN
              STIFF(p,q) = STIFF(p,q) &
-                  + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+                 + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+           ELSE
+             STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)              
            END IF
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &

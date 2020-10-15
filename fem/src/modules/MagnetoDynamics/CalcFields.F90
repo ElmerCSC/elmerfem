@@ -1321,12 +1321,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          w_dens = IntegrateCurve(HBBval,HBHval,HBCval,0._dp,Babs)
        ELSE
          R_ip = SUM( Basis(1:n)*R(1:n) )
-         IF(HasTensorReluctivity) THEN
-           DO k = 1,3
-             DO l = 1,3
-               R_t_ip(k,l) = sum(Basis(1:n)*R_t(k,l,1:n))
+         IF (HasTensorReluctivity) THEN
+           IF (SIZE(R_t,2) == 1) THEN
+             R_t_ip = 0.0d0
+             DO k = 1,3
+               R_t_ip(k,k) = SUM(Basis(1:n)*R_t(k,1,1:n))
              END DO
-           END DO
+           ELSE
+             DO k = 1,3
+               DO l = 1,3
+                 R_t_ip(k,l) = sum(Basis(1:n)*R_t(k,l,1:n))
+               END DO
+             END DO
+           END IF
            w_dens = 0.5*SUM(B(1,:)*MATMUL(R_t_ip,B(1,:)))
          END IF
          w_dens = 0.5*R_ip*SUM(B(1,:)**2)

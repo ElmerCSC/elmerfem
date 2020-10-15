@@ -379,7 +379,7 @@ CONTAINS
            IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
              Acoef(1:n) = Acoef_t(1,1,1:n) 
              HasTensorReluctivity = .FALSE.
-           ELSE IF (size(Acoef_t,1)/=3 .AND. size(Acoef_t,2)/=3) THEN
+           ELSE IF (size(Acoef_t,1)/=3) THEN
              CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
            END IF
          ELSE
@@ -1264,13 +1264,20 @@ CONTAINS
        END IF
 
        IF (HasTensorReluctivity) THEN
-         DO i = 1,3
-           DO j = 1,3
-             Nu(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+         IF (SIZE(Acoef_t,2) == 1) THEN
+           Nu = CMPLX(0._dp, 0._dp, kind=dp)
+           DO i = 1,3
+             Nu(i,i) = SUM(Basis(1:n)*Acoef_t(i,1,1:n))
            END DO
-         END DO
+         ELSE
+           DO i = 1,3
+             DO j = 1,3
+               Nu(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+             END DO
+           END DO
+         END IF
        ELSE
-         Nu = CMPLX(0._dp, 0._dp)
+         Nu = CMPLX(0._dp, 0._dp, kind=dp)
          Nu(1,1) = mu
          Nu(2,2) = mu
          Nu(3,3) = mu

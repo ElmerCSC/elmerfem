@@ -327,7 +327,9 @@ CONTAINS
   END SUBROUTINE GetReluctivityC
 !------------------------------------------------------------------------------
 
-!> Get a real-valued reluctivity tensor
+!> Get a real-valued reluctivity tensor. This subroutine seeks values which
+!> are strictly given as reluctivity (giving the permeability is not an option
+!> here).
 !------------------------------------------------------------------------------
   SUBROUTINE GetReluctivityTensorR(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
@@ -362,7 +364,9 @@ CONTAINS
   END SUBROUTINE GetReluctivityTensorR
 !-------------------------------------------------------------------------------
 
-!> Get a complex-valued reluctivity tensor
+!> Get a complex-valued reluctivity tensor. This subroutine seeks values which
+!> are strictly given as reluctivity (giving the permeability is not an option
+!> here).
 !------------------------------------------------------------------------------
   SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
