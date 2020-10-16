@@ -985,6 +985,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            l = MIN(SIZE(R), SIZE(R_t,3))
            R(1:l) = R_t(1,1,1:l)
            HasTensorReluctivity = .FALSE.
+         ELSE
+           R = 0.0d0
          END IF
        ELSE
          CALL GetReluctivity(Material,R,n)
