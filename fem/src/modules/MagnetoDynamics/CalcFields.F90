@@ -492,29 +492,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !  a background element of type 827):
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: WBasis(54,3), RotWBasis(54,3), Basis(27), dBasisdx(27,3)
-   REAL(KIND=dp) :: SOL(2,81), PSOL(81), ElPotSol(1,27), C(27)
+   REAL(KIND=dp) :: SOL(2,81), PSOL(81), ElPotSol(1,27), R(27), C(27)
    REAL(KIND=dp) :: Wbase(27), alpha(27), NF_ip(27,3)
    REAL(KIND=dp) :: PR(27), omega_velo(3,27), lorentz_velo(3,27)
-   COMPLEX(KIND=dp) :: Magnetization(3,27), BodyForceCurrDens(3,27)
-   COMPLEX(KIND=dp) :: R_Z(27)
+   COMPLEX(KIND=dp) :: Magnetization(3,27), BodyForceCurrDens(3,27) 
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), B2
-   REAL(KIND=dp) :: detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(2), w_dens
+   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(2), w_dens, R_t_ip(3,3)
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
-   REAL(KIND=dp) :: R_ip, mu_r
 
    COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3)
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value, Zs
-   COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
-   COMPLEX(KIND=dp), POINTER :: Reluct_Z(:,:,:)
-   COMPLEX(KIND=dp) :: R_ip_Z, Nu(3,3)
 
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
@@ -532,14 +527,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
-
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
               ImposeBodyForcePotential, JouleHeatingFromCurrent, HasZirka
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
-   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity, HasThinLines=.FALSE.
    
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -559,12 +551,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE :: ThinLineCrossect(:),ThinLineCond(:)
 
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>NULL(), Cwrk_im(:,:,:)=>NULL()
+   COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
+   REAL(KIND=dp), POINTER :: R_t(:,:,:)
 
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
    REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent, CircEqVoltageFactor
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
-
+   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity, HasThinLines=.FALSE.
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
    REAL(KIND=dp) :: HarmPowerCoeff 
@@ -756,7 +751,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(EL_ML2)  ) ElementalFields=.TRUE.
 
    n = Mesh % MaxElementDOFs
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
+   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n), R_t(3,3,n))
 
    SOL = 0._dp; PSOL=0._dp
 
@@ -795,7 +790,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
 
 
-   C = 0._dp; PR=0._dp
+   C = 0._dp; R=0._dp; PR=0._dp
    Magnetization = 0._dp
 
    Power = 0._dp; Energy = 0._dp
@@ -959,7 +954,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 
      !---------------------------------------------------------------------------------------------
-     R_Z = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+
      HasTensorReluctivity = .FALSE.
      CALL GetConstRealArray( Material, HB, 'H-B curve', Found )
      IF ( ASSOCIATED(HB) ) THEN
@@ -984,22 +979,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
         END IF
       END IF
      ELSE
-       ! 
-       ! Seek reluctivity as complex-valued: A given reluctivity can be a tensor 
-       !
-       CALL GetReluctivity(Material,Reluct_Z,n,HasTensorReluctivity)
+       CALL GetReluctivity(Material,R_t,n,HasTensorReluctivity)
        IF (HasTensorReluctivity) THEN
-         IF (SIZE(Reluct_Z,1)==1 .AND. SIZE(Reluct_Z,2)==1) THEN
-           l = MIN(SIZE(R_Z), SIZE(Reluct_Z,3))
-           R_Z(1:l) = Reluct_Z(1,1,1:l)
+         IF (SIZE(R_t,1)==1 .AND. SIZE(R_t,2)==1) THEN
+           l = MIN(SIZE(R), SIZE(R_t,3))
+           R(1:l) = R_t(1,1,1:l)
            HasTensorReluctivity = .FALSE.
-         ELSE
-           R_Z(1:l) = CMPLX(0.0_dp, 0.0_dp, kind=dp)
          END IF
        ELSE
-         ! Seek via a given permeability: In this case the reluctivity will be 
-         ! a complex scalar:
-         CALL GetReluctivity(Material,R_Z,n)
+         CALL GetReluctivity(Material,R,n)
        END IF
      END IF
 
@@ -1326,44 +1314,30 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END SELECT
        END IF
        
-       Nu = CMPLX(0.0d0, 0.0d0, kind=dp)
+
        IF ( ASSOCIATED(HB) ) THEN
-         ! Why just the real part of B is used? 
          Babs=SQRT(SUM(B(1,:)**2))
          R_ip = InterpolateCurve(HBBval,HBHval,Babs,HBCval)/Babs
          w_dens = IntegrateCurve(HBBval,HBHval,HBCval,0._dp,Babs)
-         DO k=1,3
-           Nu(k,k) = CMPLX(R_ip, 0.0d0, kind=dp)
-         END DO
        ELSE
+         R_ip = SUM( Basis(1:n)*R(1:n) )
          IF (HasTensorReluctivity) THEN
-           IF (SIZE(Reluct_Z,2) == 1) THEN
-             DO k = 1, MIN(3, SIZE(Reluct_Z,1))
-               Nu(k,k) = SUM(Basis(1:n)*Reluct_Z(k,1,1:n))
+           IF (SIZE(R_t,2) == 1) THEN
+             R_t_ip = 0.0d0
+             DO k = 1,3
+               R_t_ip(k,k) = SUM(Basis(1:n)*R_t(k,1,1:n))
              END DO
            ELSE
-             DO k = 1, MIN(3, SIZE(Reluct_Z,1))
-               DO l = 1, MIN(3, SIZE(Reluct_Z,2))
-                 Nu(k,l) = sum(Basis(1:n)*Reluct_Z(k,l,1:n))
+             DO k = 1,3
+               DO l = 1,3
+                 R_t_ip(k,l) = sum(Basis(1:n)*R_t(k,l,1:n))
                END DO
              END DO
            END IF
-           !
-           ! Why just the real part of B?
-           !
-           w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
-           R_ip = 0.0d0
-         ELSE
-           R_ip_Z = SUM(Basis(1:n)*R_Z(1:n))
-           DO k=1,3
-             Nu(k,k) = R_ip_Z
-           END DO
-           ! Ensure that works as before (the complex part has been ignored):
-           R_ip = REAL(R_ip_Z)
-           w_dens = 0.5*R_ip*SUM(B(1,:)**2)
+           w_dens = 0.5*SUM(B(1,:)*MATMUL(R_t_ip,B(1,:)))
          END IF
+         w_dens = 0.5*R_ip*SUM(B(1,:)**2)
        END IF
-
        PR_ip = SUM( Basis(1:n)*PR(1:n) )
 
        IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS) ) THEN
@@ -1928,7 +1902,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
 
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
-   DEALLOCATE( MASS,FORCE,Tcoef,RotM )
+   DEALLOCATE( MASS,FORCE,Tcoef,RotM, R_t )
 
    IF (LossEstimation) THEN
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
@@ -2134,10 +2108,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       END SELECT
       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
-      C_ip = GetConstReal(BC, 'Layer Electric Conductivity', Found)
-      IF (ABS(C_ip) > AEPS) THEN
-        mu_r = GetConstReal(BC, 'Layer Relative Permeability', Found)
-        IF (.NOT. Found) mu_r = 1.0_dp
+      C = GetConstReal(BC, 'Layer Electric Conductivity', Found)
+      IF (ANY(ABS(C(1:n)) > AEPS)) THEN
+        R = GetConstReal(BC, 'Layer Relative Permeability', Found)
+        IF (.NOT. Found) R = 1.0_dp
       ELSE
         CYCLE
       END IF
@@ -2164,7 +2138,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
         END IF
 
-        val = SQRT(2.0_dp/(C_ip * Omega * 4.0d0 * PI * 1d-7 * mu_r)) ! The layer thickness
+        C_ip = SUM(Basis(1:n) * C(1:n))
+        R_ip = SUM(Basis(1:n) * R(1:n))
+        R_ip = 4.0d0 * PI * 1d-7 * R_ip
+        val = SQRT(2.0_dp/(C_ip * Omega * R_ip)) ! The layer thickness
         Zs = CMPLX(1.0_dp, 1.0_dp, KIND=dp) / (C_ip*val)
 
         E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))

@@ -171,5 +171,5 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
-solver 3::Reference norm = 9.54680124E+00
+solver 3::Reference norm = 11.516506516399119
 solver 3::Reference norm tolerance = 1e-5
