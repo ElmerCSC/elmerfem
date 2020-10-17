@@ -513,7 +513,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value, Zs
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
-   COMPLEX(KIND=dp), POINTER :: Reluct_Z(:,:,:)
+   COMPLEX(KIND=dp), POINTER, SAVE :: Reluct_Z(:,:,:) => NULL()
    COMPLEX(KIND=dp) :: R_ip_Z, Nu(3,3)
 
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
