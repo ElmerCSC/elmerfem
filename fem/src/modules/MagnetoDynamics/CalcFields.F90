@@ -1427,26 +1427,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
          IF ( (ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) .and. .not. HasZirka) THEN
            IF(.NOT. HasZirka) then
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(1,:)-REAL(MG_ip))*Basis(p)
-             k = k+3
-             IF ( Vdofs>1 ) THEN
-               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(2,:)-AIMAG(MG_ip))*Basis(p)
+             IF (RealField) THEN
+               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + &
+                   s * (MATMUL(REAL(Nu), B(1,:)) - REAL(MG_ip)) * Basis(p)
+               k = k+3
+             ELSE
+               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s * &
+                   (MATMUL(REAL(Nu), B(1,:)) - MATMUL(AIMAG(Nu), B(2,:)) - REAL(MG_ip)) * Basis(p)
+               k = k+3
+               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s * &
+                   (MATMUL(AIMAG(Nu), B(1,:)) + MATMUL(REAL(Nu), B(2,:)) - AIMAG(MG_ip)) * Basis(p) 
                k = k+3
              END IF
-
-!             IF (RealField) THEN
-!               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + &
-!                   s * (MATMUL(REAL(Nu), B(1,:)) - REAL(MG_ip)) * Basis(p)
-!               k = k+3
-!             ELSE
-!               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s * &
-!                   (MATMUL(REAL(Nu), B(1,:)) - MATMUL(AIMAG(Nu), B(2,:)) - REAL(MG_ip)) * Basis(p)
-!               k = k+3
-!               FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s * &
-!                   (MATMUL(AIMAG(Nu), B(1,:)) + MATMUL(REAL(Nu), B(2,:)) - AIMAG(MG_ip)) * Basis(p) 
-!               k = k+3
-!             END IF
-
            ELSE
              ! Never here?
              FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)-s*(REAL(MG_ip))*Basis(p)
