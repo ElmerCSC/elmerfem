@@ -1349,7 +1349,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              END DO
            END IF
            !
-           ! Why just the real part of B?
+           ! Note that this uses just the real part of B:
            !
            w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
            R_ip = 0.0d0
@@ -1409,10 +1409,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        Energy(1) = Energy(1) + s*0.5*PR_ip*SUM(E**2)
 
-       IF(ASSOCIATED(HB) .AND. RealField) THEN 
+       IF (ASSOCIATED(HB) .AND. RealField) THEN 
          Energy(2) = Energy(2) + s*w_dens
        ELSE
-         Energy(2) = Energy(2) + s*0.5*R_ip*SUM(B**2)
+         IF (RealField) THEN
+           Energy(2) = Energy(2) + s*0.5* SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:))
+         ELSE
+           Energy(2) = Energy(2) + s*0.5*( SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
+               SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:)) ) 
+         END IF
        END IF
 
        DO p=1,n
