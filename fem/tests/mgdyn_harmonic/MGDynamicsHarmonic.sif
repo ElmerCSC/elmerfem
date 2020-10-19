@@ -26,22 +26,22 @@ End
 
 
 Material 1
-  Reluctivity = Real 1
-  Reluctivity Im = Real 0
+!  Reluctivity = Real 1
+!  Reluctivity Im = Real 0
 
   !
   ! Here the reluctivity can be described by using a scalar parameter but
-  ! the following commands could define it as a higher-order tensor to test 
+  ! the following commands define it as a higher-order tensor to test 
   ! the functionality. Note that the postprocessing subroutine 
   ! MagnetoDynamicsCalcFields cannot yet handle the given magnetic anisotropy 
-  ! correctly in all places.
+  ! correctly in the calculation of nodal forces and the Maxwell stress tensor.
   ! 
-!  Reluctivity(3,3) = 1.0 0.0 0.0 \ 
-!                     0.0 1.0 0.0 \
-!                     0.0 0.0 1.0
-!  Reluctivity Im(3,3) = 0.0 0.0 0.0 \ 
-!                     0.0 0.0 0.0 \
-!                     0.0 0.0 0.0
+  Reluctivity(3,3) = 1.0 0.0 0.0 \ 
+                     0.0 1.0 0.0 \
+                     0.0 0.0 1.0
+  Reluctivity Im(3,3) = 0.0 0.0 0.0 \ 
+                     0.0 0.0 0.0 \
+                     0.0 0.0 0.0
 !
 !  Reluctivity(3) = 1.0 1.0 1.0
 !  Reluctivity Im(3) = 0.0 0.0 0.0
