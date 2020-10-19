@@ -3757,13 +3757,10 @@ CONTAINS
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
     LOGICAL, ALLOCATABLE :: PartsMask(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
-    INTEGER, ALLOCATABLE :: UnfoundNodesGlobal(:), PartUnfoundNodesGlobal(:), UnfoundNodesNum(:), &
-                           GlobalUnfoundNodes(:), PartUnfoundCount(:), OtherParts(:), SkipNodes(:), &
-                           SharedNodes(:), Neighbours(:,:), Neighbrs(:), PartsOnBound(:), PartsWithUnfoundNodes(:), &
-                           ReqParts(:), RequiredParts(:)
+    INTEGER, ALLOCATABLE :: PartUnfoundCount(:), AllUnfoundDOFS(:), UnfoundDOFS(:), disps(:), Unique(:), &
+                           FinalDOFs(:), UnfoundIndex(:), UnfoundShared(:), Repeats(:)
     LOGICAL, ALLOCATABLE :: PartHasUnfoundNodes(:)
-    INTEGER :: ClusterSize, ierr, status, proc, UnfoundCount, countparts, TotalUnFoundNodes, &
-               UnfoundCountSend, CountSoFar, SharedCount, PartsCount, NoNeighbours, Counter
+    INTEGER :: ClusterSize, ierr, UnfoundCount, min_val, max_val, CountDOFs, CountRepeats, Previous, NodeCount
     SolverName = 'InterpMaskedBCReduced'
 
     CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
@@ -3777,6 +3774,8 @@ CONTAINS
 
     OldMaskLogical = (OldMaskPerm <= 0)
     NewMaskLogical = (NewMaskPerm <= 0)
+    IF(PRESENT(SeekNodes)) NewMaskLogical = &
+    NewMaskLogical .OR. .NOT. SeekNodes
     
     IF(PRESENT(globaleps)) THEN
       geps = globaleps
@@ -3820,146 +3819,86 @@ CONTAINS
          GlobalEps=geps, LocalEps=leps)
 
     UnfoundCount = COUNT(UnfoundNodes)
-    PartMask = UnfoundCount > 0
+
     ClusterSize = ParEnv % PEs
 
     ! Gather missing counts at this stage
     ALLOCATE(PartUnfoundCount(ClusterSize), &
          PartHasUnfoundNodes(ClusterSize))
-    PartHasUnfoundNodes = .FALSE.
-
     CALL MPI_AllGather(UnfoundCount, 1, MPI_INTEGER, &
          PartUnfoundCount, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
-    PartHasUnfoundNodes = PartUnfoundCount > 0
+    ! Process node numbers and global node number important for translation later on
+    ! gather all DOFs from all processes
+    UnfoundDOFS = PACK(NewMesh % ParallelInfo % GlobalDOFs, UnfoundNodes)
+    UnfoundIndex = PACK((/ (i,i=1,SIZE(UnfoundNodes)) /),UnfoundNodes .eqv. .TRUE.)
 
-    ! Now every processor knows which of the other processors are seeking nodes
-    ! Note that I've modified stuff here to also include the current partition
-    ! (trust me it's easier)  So size of RequiredParts is ClusterSize
-    RequiredParts = PACK((/ (i, i=0,ClusterSize-1) /), PartHasUnfoundNodes)
-    
-    PRINT*, ParEnv % MyPE, 'PartUnfoundCount: ', PartUnfoundCount
-    PRINT*, ParEnv % MyPE, 'requiredparts', requiredparts 
+    ALLOCATE(disps(ClusterSize))
+    disps(1) = 0
+    DO i=2,ClusterSize
+      disps(i) = disps(i-1) + PartUnfoundCount(i-1)
+    END DO
+    ALLOCATE(AllUnfoundDOFS(SUM(PartUnfoundCount)))
+    CALL MPI_allGatherV(UnfoundDOFS, UnfoundCount, MPI_INTEGER, &
+    AllUnfoundDOFS, PartUnfoundCount, disps, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+    IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
 
-    ! Only processors which are missing at least one node enter this loop
-    IF(ANY(UnfoundNodes)) THEN
-      IF(SIZE(RequiredParts) > 0) THEN
-         ! create required paritions group
-         !CALL MPI_COMM_split(ELMER_COMM_WORLD, )
+    ! Loop to remove duplicates and order allDOFs in ascending order
+    CountDOFs=0
+    CountRepeats=0
+    IF(SUM(PartUnfoundCount) > 0) THEN
+      ALLOCATE(unique(SIZE(AllUnfoundDOFS)), repeats(SIZE(AllUnfoundDOFS)))
+      min_val = minval(AllUnfoundDOFS)-1
+      max_val = maxval(AllUnfoundDOFS)
       
-        ! Create an array of global DOFs of missing nodes
-        GlobalUnfoundNodes = PACK(NewMesh % ParallelInfo % GlobalDOFs, UnfoundNodes)
+      DO WHILE (min_val<max_val)
+         Previous = COUNT(AllUNfoundDOFS>min_val)
+         CountDOFs = CountDOFs+1
+         min_val = MINVAL(AllUnfoundDOFS, mask=AllUnfoundDOFS>min_val)
+         Unique(countDOFs) = min_val
+         IF(COUNT(AllUnfoundDOFS>min_val) /= Previous-1) THEN
+            CountRepeats = CountRepeats + 1
+            Repeats(CountRepeats) = min_val
+         END IF
+      END DO
+    END IF 
+    ALLOCATE(FinalDOFs(CountDOFs), source=Unique(1:countDOFs))
+    ALLOCATE(UnfoundShared(CountRepeats), source=Repeats(1:CountRepeats))
 
-         !IF(ParEnv % MyPE == 0) PRINT*, 'helpme', GlobalUnfoundNodes
-         !!! WORKS UP TO HERE !!!!
+      !What you should do here is, rather than looping over the size of UnfoundNodes is
+      ! 1. Construct an ordered list of every GlobalDOF which needs to be found (on ANY partition) (AllMissingGlobal)
+      ! 2. Construct a logical array of the same size which is TRUE where the current partition needs the node (MissingThisGlobal)
+      ! 3. Loop over AllMissingGlobal (possibly with an MPI_Barrier on each loop).
+      ! NOTE - this means you will need to make *every* partition enter this loop (as opposed to just the ones which are missing nodes)
+      ! but this is OK because there's no real performance hit - those partitions would just be waiting anyway
 
-         TotalUnFoundNodes = SUM(PartUnfoundCount) ! But remember this likely includes duplicates
+    !NewMaskLogical changes purpose, now it masks supporting nodes
+    NewMaskLogical = (NewMaskPerm <= 0)
 
-         PRINT *, ParEnv % MyPE,' before count ',PartUnfoundCount
-         PRINT *, ParEnv % MyPE,' before ',GlobalUnfoundNodes
-         !!! WORKS TO HERE !!!
-
-         ! This loop won't necessarily work - no partition can pass 'MPI_RECV' until the
-         ! matching send has completed. Likely to deadlock. You should make sure of 
-         ! MPI_IRECV, MPI_SEND and MPI_Waitall - see MeshPartition.F90:L622 and note
-         ! the inclusion of a 'status' variable for IRECV/WaitALL
-         ALLOCATE(PartUnfoundNodesGlobal(SUM(PartUnfoundCount)))
-         CountSoFar = 1 
-         DO i=1, SIZE(RequiredParts)  
-            proc = RequiredParts(i)
-            CALL MPI_BSEND( GlobalUnfoundNodes, UnfoundCount, MPI_INTEGER, proc, &
-            4000, ELMER_COMM_WORLD,ierr )
-            CALL MPI_RECV( PartUnfoundNodesGlobal(CountSoFar:SUM(PartUnfoundCount(1:i))), &
-            PartUnfoundCount(i), MPI_INTEGER, proc, 4000, ELMER_COMM_WORLD, status, ierr )
-            CountSoFar = SUM(PartUnfoundCount(1:i)) + 1
-         END DO
-         IF(ParEnv % MyPE == 1) PRINT*, 'after1', PartUnfoundNodesGlobal
-         IF(ParEnv % MyPE == 0) PRINT*, 'after2', PartUnfoundNodesGlobal
-         !PartUnfoundNodesGlobal(ParEnv % MyPE + 1,:) = UnfoundNodesGlobal
-         !NewMaskLogical changes purpose, now it masks supporting nodes
-         NewMaskLogical = (NewMaskPerm <= 0)
-         SharedCount=0
-         ALLOCATE(Skipnodes(UnfoundCount))
-         ALLOCATE(Neighbours(UnfoundCount, 2))
-
-         !What you should do here is, rather than looping over the size of UnfoundNodes is
-         ! 1. Construct an ordered list of every GlobalDOF which needs to be found (on ANY partition) (AllMissingGlobal)
-         ! 2. Construct a logical array of the same size which is TRUE where the current partition needs the node (MissingThisGlobal)
-         ! 3. Loop over AllMissingGlobal (possibly with an MPI_Barrier on each loop).
-         ! NOTE - this means you will need to make *every* partition enter this loop (as opposed to just the ones which are missing nodes)
-         ! but this is OK because there's no real performance hit - those partitions would just be waiting anyway
-         DO i=1, SIZE(UnfoundNodes)
-            IF(UnfoundNodes(i)) THEN
-               skip = .TRUE.
-               DO j=1, SIZE(PartUnfoundNodesGlobal)
-                  IF(NewMesh % ParallelInfo % GlobalDOFs(i) /= PartUnfoundNodesGlobal(j)) THEN
-                     CYCLE
-                  ELSE
-                     skip = .FALSE.
-                     SharedCount = SharedCount + 1
-                     SkipNodes(SharedCount) = i
-                     IF(SIZE(NewMesh % ParallelInfo % NeighbourList(i) % Neighbours) > 2) THEN
-                        CALL FATAL(Solvername, 'SharedNode over 3 partitions')
-                     END IF
-                     Neighbours(SharedCount, :)  = NewMesh % ParallelInfo % NeighbourList(i) % Neighbours
-                  END IF
-               END DO
-               IF(skip) THEN
-                  PRINT *,ParEnv % MyPE,'Didnt find point: ', i, &
-                  ' x:', NewMesh % Nodes % x(i),&
-                  ' y:', NewMesh % Nodes % y(i),&
-                  ' z:', NewMesh % Nodes % z(i)
-                  ! i = nodenumber
-                  print*, 'cnversion', i, NewMesh % ParallelInfo % GlobalDOFs(i)
-
-                  CALL InterpolateUnfoundPoint( i, NewMesh, HeightName, InterpDim, &
-                     NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
-               END IF
-
-            END IF
-         END DO
-
-         
-         ALLOCATE(SharedNodes(SharedCount))
-         SharedNodes = SkipNodes(1:SharedCount)
-
-         CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr) ! Can't barrier here!
-         !DEALLOCATE(SkipNodes)
-         print*, 'sharednodes', ParEnv % MyPE, Sharedcount,'count',SharedNodes
-         
-         DO i=1, SIZE(SharedNodes)
-            DO j=1, SIZE(Neighbours(i,:))
-               IF(ParEnv % MyPE == Neighbours(i, j)) THEN
-                  PRINT *,ParEnv % MyPE,'Didnt find SHARED point: ', i, &
-                  ' x:', NewMesh % Nodes % x(i),&
-                  ' y:', NewMesh % Nodes % y(i),&
-                  ' z:', NewMesh % Nodes % z(i)
-                  
-                  print*, 'numneigh',ParEnv % MyPE, Neighbours(i,j)
-                  CALL InterpolateUnfoundPoint( SharedNodes(i), NewMesh, HeightName, InterpDim, &
-                     NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
-               END IF
-            END DO
-            CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr) ! Can't barrier here!
-         END DO
-      ELSE !! only one partition searching for nodes
-         PRINT *,ParEnv % MyPE,'Didnt find point: ', i, &
+    !Loop through all DOFS with barrier before shared nodes 
+    NodeCount = 0
+    DO i=1, SIZE(FinalDOFs)
+      ! no need for a mask since nodes in both arrays in ascending order
+      IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
+         ! ok to barrier since all parts enter loop and
+         ! have same AllUnfoundDOFs/UnfoundShared
+         ! barrier for shared nodes to endsure these are found at same time
+         CALL MPI_Barrier(ELMER_COMM_WORLD, ierr)
+      END IF
+      ! no need for a mask since nodes in both arrays in ascending order
+      IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+         NodeCount = NodeCount + 1
+         !nodenumber = UnfoundIndex(nodecount) since different on each process
+         !always finds correct translation from DOFs to process nodenumber since
+         !all arrays in ascending order 
+         PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
          ' x:', NewMesh % Nodes % x(i),&
          ' y:', NewMesh % Nodes % y(i),&
          ' z:', NewMesh % Nodes % z(i)
-         ! i = nodenumber
-         print*, 'cnversion', i, NewMesh % ParallelInfo % GlobalDOFs(i)
-
-         CALL InterpolateUnfoundPoint( i, NewMesh, HeightName, InterpDim, &
+         CALL InterpolateUnfoundPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
             NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
       END IF
-
-       WRITE(Message, '(i0,a,a,a,i0,a,i0,a)') ParEnv % MyPE,&
-            ' Failed to find all points on face: ',MaskName, ', ',&
-            COUNT(UnfoundNodes),' of ',COUNT(.NOT. NewMaskLogical),' missing points.'
-       CALL Warn("InterpMaskedBCReduced", Message)
-       !DEALLOCATE(PartUnfoundNodesGlobal, GlobalUnfoundNodes)
-    END IF
+    END DO
 
     DEALLOCATE(OldMaskLogical, &
          NewMaskLogical, NewMaskPerm, &
