@@ -958,8 +958,6 @@ CONTAINS
     INTEGER :: i,j,n,idx,NoNeighbours,NoSuppNodes,VarCount,&
          VarNo,proc,status(MPI_STATUS_SIZE), counter, ierr
     INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:)
-    INTEGER, POINTER :: Neighbours(:)
-    INTEGER :: Count1, Count2, Count3, Count4, Count5, count6, count7
     Debug = .TRUE.
     Parallel = ParEnv % PEs > 1
 
@@ -979,11 +977,6 @@ CONTAINS
     NoNeighbours = SIZE(Mesh %  ParallelInfo % &
          NeighbourList(NodeNumber) % Neighbours) - 1
     HasNeighbours = NoNeighbours > 0
-
-    print*, '$$$$$$$$$$$ -1', nodenumber, Mesh %  ParallelInfo % &
-    NeighbourList(NodeNumber) % Neighbours
-    print*, 'numneigh',ParEnv % MyPE, NoNeighbours, Mesh %  ParallelInfo % NeighbourList(NodeNumber) % Neighbours
-
 
     !Create list of neighbour partitions (this will almost always be 0 :( )
     IF(HasNeighbours) THEN
@@ -1009,13 +1002,11 @@ CONTAINS
                  count1 = count1+1
             END IF 
        END DO
-       IF(Count1 < 2) print*, '$$$$$$$$- count less than 2', nodenumber, Mesh % ParallelInfo % GlobalDOFs(nodenumber)
     END IF
 
     !Count this partition's relevant nodes
     ALLOCATE(ValidNode(Mesh % NumberOfNodes))
     ValidNode = .FALSE.
-    print*, '$$$$$$$$$$$ -2'
     !Start by marking .TRUE. based on ElemMask if present
     IF(PRESENT(ElemMask)) THEN
       DO i=1,SIZE(ElemMask)
@@ -1026,7 +1017,6 @@ CONTAINS
     ELSE
       ValidNode = .TRUE.
     END IF
-    print*, '$$$$$$$$$$$ -3'
     !Knock down by node mask if present
     IF(PRESENT(NodeMask)) THEN
       DO i=1,SIZE(NodeMask)
@@ -1039,7 +1029,6 @@ CONTAINS
       IF(HeightVar % Perm(i) > 0) CYCLE
       ValidNode(i) = .FALSE.
     END DO
-    print*, '$$$$$$$$$$$ -4'
     IF(Debug) PRINT *,ParEnv % MyPE,'Debug, seeking nn: ',NodeNumber,' found ',&
          COUNT(ValidNode),' valid nodes.'
 
@@ -1055,8 +1044,6 @@ CONTAINS
 
       !Doesn't contain our point
       IF(.NOT. ANY(Element % NodeIndexes(1:n)==NodeNumber)) CYCLE
-      print*, 'boundinfo', nodenumber, Element % NodeIndexes, 'b', Element % BoundaryInfo % constraint, ParEnv % MyPE, &
-      Element % TYPE % ElementCode
       !Cycle element nodes
       DO j=1,n
         idx = Element % NodeIndexes(j)
@@ -1071,13 +1058,12 @@ CONTAINS
     ALLOCATE(SuppNodes(NoSuppNodes))
     SuppNodes = WorkInt(:NoSuppNodes)
 
+    !cycle thorugh suppnodes and node to calculate VarCount for wanted boundary
+    !suppnodes on lower part then removed to avoid interp bias
     VarCount = 1
     IF(PRESENT(Variables)) THEN
      Var => Variables
      DO WHILE(ASSOCIATED(Var))
-         !print*, 'loop count',count2
-         !count2=count2+1
-         !print*, 'vardofs',Var % DOFs
        IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
             (Var % DOFs > 1) .OR. &                    !-multi-dof
             (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
@@ -1097,7 +1083,6 @@ CONTAINS
      END DO
     END IF
 
-    print*, '$$$$$$$$$$$ -5', varcount
     !If we aren't the only partition seeking this node, some supporting
     !nodes will also belong to these partitions. Easiest way to remove
     !duplicates is to set priority by partition number. So, if a
@@ -1106,10 +1091,7 @@ CONTAINS
     IF(HasNeighbours) THEN
       DO i=1,NoSuppNodes
         Neighbours => Mesh % ParallelInfo % NeighbourList(WorkInt(i)) % Neighbours
-
-        PRINT*, 'lookhere',ParEnv % MyPE, WorkInt(i), Neighbours
         DO j=1,SIZE(Neighbours)
-          PRINT*, Neighbours(j), NeighbourParts
           IF(Neighbours(j) > ParEnv % MyPE .AND. ANY(NeighbourParts == Neighbours(j))) THEN
             WorkInt(i) = 0
             EXIT
@@ -1123,9 +1105,7 @@ CONTAINS
            ' higher partition has node, so deleting...'
     END IF
 
-    print*, '$$$$$$$$$$$ -6', NoSuppNodes
     DEALLOCATE(SuppNodes)
-
     ALLOCATE(SuppNodes(NoSuppNodes))
     SuppNodes = PACK(WorkInt, WorkInt > 0)
     DEALLOCATE(WorkInt)
@@ -1133,16 +1113,7 @@ CONTAINS
     IF(Debug) PRINT *,ParEnv % MyPE,'Debug, seeking nn: ',NodeNumber,' found ',&
          NoSuppNodes,' supporting nodes.'
 
-    !count variables if requested
-        !1 = HeightVar
-       count1=0
-       count2=0
-       count3=0
-       count4=0
-       count5=0
-       count6=0
-       count7=0
-
+    !count variables if requested, 1 = HeightVar
     ALLOCATE(interpedValue(VarCount))
 
     !Cycle supporting nodes, gathering weighted contributions
@@ -1197,35 +1168,24 @@ CONTAINS
 
       END IF
     END DO
-    print*, '$$$$$$$$$$$ -8'
-    !PARALLEL STUFF
 
-    !varcount = 45
-    print*, '$$$$$$$- compiled'
+    !PARALLEL STUFF
     IF(HasNeighbours) THEN
       ALLOCATE(PartWeightSums(NoNeighbours+1),&
            PartInterpedValues(VarCount * (NoNeighbours+1)))
 
       PartWeightSums(1) = WeightSum
       PartInterpedValues(1:VarCount) = interpedValue(1:VarCount)
-      print*, '$$$$$$$$$$$ -8 -1'
       DO i=1,NoNeighbours
         proc = NeighbourParts(i)
-        print*, '$$$$$$$$$$$ -8 -2'
         CALL MPI_BSEND( interpedValue, VarCount, MPI_DOUBLE_PRECISION, proc, &
              3000, ELMER_COMM_WORLD,ierr )
-        print*, '$$$$$$$$$$$ -8 -3'
         CALL MPI_BSEND( weightsum, 1, MPI_DOUBLE_PRECISION, proc, &
              3001, ELMER_COMM_WORLD,ierr )
-        print*, '$$$$$$$$$$$ -8 -4', NoNeighbours, i, proc
-        print*, PartInterpedValues( (i*VarCount)+1  : (i+1)*VarCount), &
-        VarCount, MPI_DOUBLE_PRECISION, proc, 3000, ELMER_COMM_WORLD, status, ierr
         CALL MPI_RECV( PartInterpedValues( (i*VarCount)+1  : (i+1)*VarCount), &
              VarCount, MPI_DOUBLE_PRECISION, proc, 3000, ELMER_COMM_WORLD, status, ierr )
-        print*, '$$$$$$$$$$$ -8 -5'
         CALL MPI_RECV( PartWeightSums(i+1), 1, MPI_DOUBLE_PRECISION, proc, &
              3001, ELMER_COMM_WORLD, status, ierr )
-        print*, '$$$$$$$$$$$ -8 -6'
       END DO
 
       interpedValue = 0.0_dp
@@ -1236,7 +1196,6 @@ CONTAINS
       END DO
       weightSum = SUM(PartWeightSums)
     END IF
-    print*, '$$$$$$$$$$$ -9'
     interpedValue = interpedValue/weightsum
 
     !Finally, put the interped values in their place
@@ -1269,7 +1228,7 @@ CONTAINS
         Var => Var % Next
       END DO
     END IF
-    print*, '$$$$$$$$$$$ -10 and done'
+
     IF(HasNeighbours) DEALLOCATE(NeighbourParts)
 
   END SUBROUTINE InterpolateUnfoundPoint
