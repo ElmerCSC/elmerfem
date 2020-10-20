@@ -1328,8 +1328,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        
        Nu = CMPLX(0.0d0, 0.0d0, kind=dp)
        IF ( ASSOCIATED(HB) ) THEN
-         ! Why just the real part of B is used? 
-         Babs=SQRT(SUM(B(1,:)**2))
+         IF (RealField) THEN
+           Babs=SQRT(SUM(B(1,:)**2))
+         ELSE
+           Babs = SQRT(SUM(B(1,:)**2 + B(2,:)**2))
+         END IF
+         Babs = MAX(Babs, 1.d-8)
          R_ip = InterpolateCurve(HBBval,HBHval,Babs,HBCval)/Babs
          w_dens = IntegrateCurve(HBBval,HBHval,HBCval,0._dp,Babs)
          DO k=1,3
@@ -1415,6 +1419,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF (RealField) THEN
            Energy(2) = Energy(2) + s*0.5* SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:))
          ELSE
+           ! This yields twice the time average:
            Energy(2) = Energy(2) + s*0.5*( SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
                SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:)) ) 
          END IF
