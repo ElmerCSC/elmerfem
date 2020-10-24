@@ -44,7 +44,7 @@ typedef struct {
 } ElmerAMGX;
 
 
-void amgxsolve_( int **a_in, int *n_in, int *rows, int *cols, double *vals,
+void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
   double *b_in, double *x_in,int *nonlin_update, char *config_name)
 {
     int i,j,k,n = *n_in;
@@ -76,6 +76,7 @@ void amgxsolve_( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 fprintf( stderr, "----\n" );
 fprintf( stderr, "%s\n" , config_name );
 fprintf( stderr, "----\n" );
+
       AMGX_SAFE_CALL(AMGX_config_create_from_file(&ptr->cfg, config_name));
 
       AMGX_resources_create_simple(&ptr->rsrc, ptr->cfg);
@@ -94,8 +95,10 @@ double bnrm;
 
 // scale by ||b|| to get comperable convergence criteria to other linear solvers.
 
+    bnrm = 0.0;
     for(i<0; i<n; i++ ) bnrm += b_in[i]*b_in[i];
     bnrm = sqrt(bnrm);
+    if ( bnrm < 1.e-16 ) bnrm = 1;
 
     for(i=0; i<n; i++ ) b_in[i] = b_in[i]/bnrm;
     AMGX_vector_upload( ptr->b, n, 1, b_in );

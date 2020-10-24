@@ -12678,24 +12678,32 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   SUBROUTINE AMGXSolver( A, x, b, Solver )
 !------------------------------------------------------------------------------
+    USE iso_c_binding, only: C_INTPTR_T, C_CHAR, C_NULL_CHAR
+
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp) :: x(:), b(:)
 
     INTERFACE
-      SUBROUTINE AMGSolve(AMGX, n, rows, cols, vals, b, x, config)
+      SUBROUTINE AMGXSolve(AMGX, n, rows, cols, vals, b, x, &
+              nonlin_update, config ) BIND(C, Name="AMGXSolve")
+
          USE Types
+         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
+
+         IMPLICIT NONE
 
          INTEGER(KIND=C_INTPTR_T) :: AMGX
-         CHARACTER(*) :: config
-         INTEGER :: rows(*), cols(*)
          REAL(KIND=dp) :: vals(*), b(*), x(*)
-      END SUBROUTINE AMGSolve
+         CHARACTER(KIND=C_CHAR) :: config(*)
+         INTEGER :: rows(*), cols(*), nonlin_update, n
+      END SUBROUTINE AMGXSolve
     END INTERFACE
 
+    CHARACTER(KIND=C_CHAR) :: cfg(MAX_NAME_LEN)
     CHARACTER(LEN=MAX_NAME_LEN) :: config
     LOGICAL :: found
-    INTEGER :: nonlin_update
+    INTEGER :: nonlin_update, i
 
 #ifdef HAVE_AMGX
     nonlin_update = 0
@@ -12703,12 +12711,13 @@ END FUNCTION SearchNodeL
       nonlin_update = 1;
 
     config = ListGetString( Solver % Values, 'AMGX Config')
+    DO i=1,LEN_TRIM(config)
+      cfg(i) = config(i:i)
+    END DO
+    cfg(i) = C_NULL_CHAR
 
-    A % Rows = A % Rows - 1; A % Cols = A % Cols - 1
-    CALL AMGXSolve( A % AMGX, A % NumberOfRows, A % Rows, A % Cols, &
-         A % Values, b, x, nonlin_update, TRIM(config)//CHAR(0) )
-                                  
-    A % rows = A % rows + 1; A % Cols = A % Cols + 1
+    CALL AMGXSolve( A % AMGX, A % NumberOfRows, A % Rows-1, A % Cols-1, &
+          A % Values, b, x, nonlin_update, cfg )
 #else
     CALL Fatal('AMGXSolver', 'AMGX doesn't seem to be included.')
 #endif
