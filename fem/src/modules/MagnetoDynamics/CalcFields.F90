@@ -51,7 +51,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
   LOGICAL :: Found, ElementalFields, RealField, FoundVar
   INTEGER, POINTER :: Active(:)
-  INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
+  INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln,dim
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
@@ -59,6 +59,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   ! as is done in this initialization. 
   SolverParams => GetSolverParams()
 
+  dim = CoordinateSystemDimension()
+  
   ! The only purpose of this parsing of the variable name is to identify
   ! whether the field is real or complex. As the variable has not been
   ! created at this stage we have to do some dirty parsing. 
@@ -86,7 +88,11 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
       END IF
     END DO
   ELSE
-    CALL ListAddString(SolverParams,'Potential Variable','av')
+    IF( dim == 3 ) THEN
+      CALL ListAddString(SolverParams,'Potential Variable','av')
+    ELSE
+      CALL ListAddString(SolverParams,'Potential Variable','potential')
+    END IF
   END IF
     
   ! When we created the case for GUI where "av" is not given in sif then it is impossible to
@@ -95,17 +101,19 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     DO i=1,Model % NumberOfSolvers
       sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
       
-      j = INDEX( sname,'WhitneyAVSolver')
-      IF( j > 0 ) THEN
-        CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be real valued',Level=12)
-        Vdofs = 1
-        EXIT
-      END IF
-
       j = INDEX( sname,'WhitneyAVHarmonicSolver')
+      IF( j == 0 ) j = INDEX( sname,'MagnetoDynamics2DHarmonic')
       IF( j > 0 ) THEN
         CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be complex valued',Level=12)
         Vdofs = 2
+        EXIT
+      END IF
+
+      j = INDEX( sname,'WhitneyAVSolver')
+      IF( j == 0 ) j = INDEX( sname,'MagnetoDynamics2D')
+      IF( j > 0 ) THEN
+        CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be real valued',Level=12)
+        Vdofs = 1
         EXIT
       END IF
     END DO
@@ -565,6 +573,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: HarmPowerCoeff 
    REAL(KIND=dp) :: line_tangent(3)
    INTEGER :: IOUnit
+   REAL(KIND=dp) :: SaveNorm
+   INTEGER :: NormIndex
    
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
 !-------------------------------------------------------------------------------------------
@@ -576,6 +586,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
 
+   ! This is a hack to be able to control the norm that is tested for
+   NormIndex = GetInteger(SolverParams,'Show Norm Index',Found ) 
+   SaveNorm = 0.0_dp
+   
    IF (GetLogical(SolverParams, 'Calculate harmonic peak power', Found)) THEN
      HarmPowerCoeff = 1.0_dp
    ELSE
@@ -583,7 +597,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END IF
      
    Pname = GetString(SolverParams, 'Potential Variable',Found)
-   IF(.NOT. Found ) Pname = 'av'
+   IF(.NOT. Found ) THEN
+     IF( dim == 3 ) THEN
+       Pname = 'av'
+     ELSE
+       Pname = 'potential'
+     END IF
+   END IF
+
+PRINT *,'pname:',found,dim,TRIM(pname)
+   
    Found = .FALSE.
    DO i=1,Model % NumberOfSolvers
      pSolver => Model % Solvers(i)
@@ -2284,8 +2307,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     DEALLOCATE(ThinLineCrossect, ThinLineCond)
   END IF
 
-
-
+  IF( NormIndex > 0 ) THEN
+    WRITE(Message,*) 'Reverting norm to: ', SaveNorm
+    CALL Info( 'MagnetoDynamicsCalcFields', Message )
+    Solver % Variable % Norm = SaveNorm
+  END IF
 
 CONTAINS
 
@@ -2803,7 +2829,9 @@ CONTAINS
      Solver % Variable % Values=0
      Norm = DefaultSolve()
      var % Values(i::m) = Solver % Variable % Values
-   END DO
+
+     IF( NormIndex == dofs ) SaveNorm = Norm
+  END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE GlobalSol
 !------------------------------------------------------------------------------
