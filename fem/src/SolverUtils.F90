@@ -12675,6 +12675,47 @@ END FUNCTION SearchNodeL
   END SUBROUTINE SolveLinearSystem
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AMGXMatrixVectorMultiply( A, u, v, Solver )
+!------------------------------------------------------------------------------
+    USE iso_c_binding, only: C_INTPTR_T, C_CHAR, C_NULL_CHAR
+
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp) :: u(*), v(*)
+
+    INTERFACE
+      SUBROUTINE AMGXmv(AMGX, n, rows, cols, vals, b, x, nonlin_update ) BIND(C, Name="AMGXmv")
+
+         USE Types
+         USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
+
+         IMPLICIT NONE
+
+         INTEGER(KIND=C_INTPTR_T) :: AMGX
+         REAL(KIND=dp) :: vals(*), b(*), x(*)
+         INTEGER :: rows(*), cols(*), nonlin_update, n
+      END SUBROUTINE AMGXmv
+    END INTERFACE
+
+    LOGICAL :: Found
+    INTEGER :: nonlin_update, i
+
+#ifdef HAVE_AMGX
+    nonlin_update = 0
+    IF ( ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
+      nonlin_update = 1;
+
+    CALL AMGXmv( A % AMGXMV, A % NumberOfRows, A % Rows-1, A % Cols-1, &
+                  A % Values, u, v, nonlin_update )
+#else
+    CALL Fatal('AMGXSolver', 'AMGX doesn't seem to be included.')
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE AMGXMatrixVectorMultiply
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
   SUBROUTINE AMGXSolver( A, x, b, Solver )
 !------------------------------------------------------------------------------
@@ -12724,6 +12765,8 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXSolver
 !------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
 !> Given a linear system Ax=b make a change of variables such that we will 

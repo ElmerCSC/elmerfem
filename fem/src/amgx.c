@@ -38,10 +38,64 @@ void print_callback(const char *msg, int length) { printf("%s", msg); }
 typedef struct {
    AMGX_matrix_handle A;
    AMGX_config_handle cfg;
-   AMGX_vector_handle b,x;
+   AMGX_vector_handle b,x,u,v;
    AMGX_resources_handle rsrc;
    AMGX_solver_handle solver;
 } ElmerAMGX;
+
+
+void ElmerAMGXInitialize()
+{
+   static int first = 1;
+
+   if ( first ) {
+     first = 0;
+
+     AMGX_SAFE_CALL(AMGX_initialize());
+     AMGX_SAFE_CALL(AMGX_initialize_plugins());
+
+     AMGX_SAFE_CALL(AMGX_register_print_callback(&print_callback));
+     AMGX_SAFE_CALL(AMGX_install_signal_handler());
+   }
+}
+
+void AMGXmv( int **a_in, int *n_in, int *rows, int *cols, double *vals,
+           double *u_in, double *v_in,int *nonlin_update )
+{
+    int i,j,k,n = *n_in;
+
+    AMGX_Mode mode;
+    AMGX_SOLVE_STATUS status;
+
+    ElmerAMGX *ptr;
+
+    ElmerAMGXInitialize();
+
+    ptr = (ElmerAMGX *)*a_in;
+    if(!ptr)
+    {
+      ptr = (ElmerAMGX *)calloc(sizeof(ElmerAMGX),1);
+      *a_in = (int *)ptr;
+
+      mode = AMGX_mode_dDDI;
+
+      AMGX_SAFE_CALL(AMGX_config_create(&ptr->cfg, "algorithm=AGGREGATION"));
+
+      AMGX_resources_create_simple(&ptr->rsrc, ptr->cfg);
+      AMGX_matrix_create(&ptr->A, ptr->rsrc, mode);
+      AMGX_vector_create(&ptr->u, ptr->rsrc, mode);
+      AMGX_vector_create(&ptr->v, ptr->rsrc, mode);
+
+      AMGX_matrix_upload_all(ptr->A,n,rows[n],1,1,rows,cols,vals,NULL );
+    }else  if(*nonlin_update) {
+      AMGX_matrix_upload_all(ptr->A,n,rows[n],1,1,rows,cols,vals,NULL );
+    }
+
+    AMGX_vector_upload( ptr->u, n, 1, u_in );
+    AMGX_vector_upload( ptr->v, n, 1, v_in );
+    AMGX_matrix_vector_multiply(ptr->A, ptr->u, ptr->v);
+    AMGX_vector_download(ptr->v, v_in);
+}
 
 
 void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
@@ -49,21 +103,12 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 {
     int i,j,k,n = *n_in;
 
-    static int first = 1;
     AMGX_Mode mode;
     AMGX_SOLVE_STATUS status;
 
     ElmerAMGX *ptr;
 
-    if ( first ) {
-      first = 0;
-
-      AMGX_SAFE_CALL(AMGX_initialize());
-      AMGX_SAFE_CALL(AMGX_initialize_plugins());
-
-      AMGX_SAFE_CALL(AMGX_register_print_callback(&print_callback));
-      AMGX_SAFE_CALL(AMGX_install_signal_handler());
-    }
+    ElmerAMGXInitialize();
 
     ptr = (ElmerAMGX *)*a_in;
     if(!ptr)

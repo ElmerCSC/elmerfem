@@ -1909,9 +1909,11 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
 
     REAL(KIND=dp), POINTER :: b(:)
-    LOGICAL :: DoSum 
+    LOGICAL :: DoSum , DoAMGXMV, Found
     
     CALL Info('BlockMatrixVectorProd','Starting block matrix multiplication',Level=20)
+
+    DoAMGXMV = ListGetLogical( CurrentModel % Solver % Values, 'Block AMGX M-V', Found)
     
     NoVar = TotMatrix % NoVar
     Offset => TotMatrix % Offset
@@ -1931,7 +1933,6 @@ CONTAINS
     ALLOCATE( s(MaxSize) )
 
     v(1:offset(NoVar+1)) = 0
-    
 
     DO i=1,NoVar
       DO j=1,NoVar
@@ -1959,6 +1960,8 @@ CONTAINS
           
           IF (isParallel) THEN
             CALL ParallelMatrixVector( A, u(j1:j2), s  )
+          ELSE IF ( DoAMGXMV ) THEN
+            CALL AMGXMatrixVectorMultiply(A,u(j1:j2),s, CurrentModel % Solver)
           ELSE
             CALL CRS_MatrixVectorMultiply( A, u(j1:j2), s )
           END IF
