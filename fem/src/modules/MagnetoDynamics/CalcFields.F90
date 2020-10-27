@@ -1393,19 +1393,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
          DO k=1,n
            DO l=1,3
-             DO m=1,3
-               NF_ip(k,l) = NF_ip(k,l) - (R_ip*(B(1,l)*B(1,m)))*dBasisdx(k,m)
-             END DO
-             NF_ip(k,l) = NF_ip(k,l) + (R_ip*B2-w_dens)*dBasisdx(k,l)
+             val = SUM(dBasisdx(k,1:3)*B(1,1:3))
+             NF_ip(k,l) = NF_ip(k,l) - R_ip*B(1,l)*val + &
+                 (R_ip*B2-w_dens)*dBasisdx(k,l)
            END DO
          END DO
 
          IF (.NOT. RealField) THEN
            DO k=1,n
              DO l=1,3
-               DO m=1,3
-                 NF_ip(k,l) = NF_ip(k,l) - (R_ip*(B(2,l)*B(2,m)))*dBasisdx(k,m)
-               END DO
+               val = SUM(dBasisdx(k,1:3)*B(2,1:3))
+               NF_ip(k,l) = NF_ip(k,l) - R_ip*B(2,l)*val
              END DO
            END DO
          END IF
