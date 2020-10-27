@@ -1962,7 +1962,7 @@ CONTAINS
           IF (isParallel) THEN
             CALL ParallelMatrixVector( A, u(j1:j2), s  )
           ELSE IF ( DoAMGXMV ) THEN
-            CALL AMGXMatrixVectorMultiply(A,u(j1:j2),s, SolverRef )
+            CALL AMGXMatrixVectorMultiply(A, u(j1:j2), s, SolverRef )
           ELSE
             CALL CRS_MatrixVectorMultiply( A, u(j1:j2), s )
           END IF
@@ -2653,7 +2653,11 @@ CONTAINS
             END IF
             A => TotMatrix % Submatrix(k,i) % Mat            
             IF( A % NumberOfRows > 0 ) THEN
-              CALL CRS_MatrixVectorMultiply(A,x,rtmp )
+              IF(DoAMGXMV) THEN
+                CALL AMGXMatrixVectorMultiply(A, x, rtmp, SolverRef )
+              ELSE
+                CALL CRS_MatrixVectorMultiply(A,x,rtmp )
+              END IF
               DoSum = .TRUE.
             ELSE IF( TotMatrix % SubMatrixTranspose(i,k) ) THEN
               A => TotMatrix % SubMatrix(i,k) % Mat
