@@ -38,6 +38,7 @@ MODULE BlockSolve
 
   LOGICAL, PRIVATE :: isParallel=.FALSE.
 
+  TYPE(Solver_t), POINTER, SAVE :: SolverRef
   TYPE(Variable_t), POINTER :: SolverVar => Null()
   TYPE(Matrix_t), POINTER :: SolverMatrix => Null(), SaveMatrix
 
@@ -1913,7 +1914,7 @@ CONTAINS
     
     CALL Info('BlockMatrixVectorProd','Starting block matrix multiplication',Level=20)
 
-    DoAMGXMV = ListGetLogical( CurrentModel % Solver % Values, 'Block AMGX M-V', Found)
+    DoAMGXMV = ListGetLogical( SolverRef % Values, 'Block AMGX M-V', Found)
     
     NoVar = TotMatrix % NoVar
     Offset => TotMatrix % Offset
@@ -1961,7 +1962,7 @@ CONTAINS
           IF (isParallel) THEN
             CALL ParallelMatrixVector( A, u(j1:j2), s  )
           ELSE IF ( DoAMGXMV ) THEN
-            CALL AMGXMatrixVectorMultiply(A,u(j1:j2),s, CurrentModel % Solver)
+            CALL AMGXMatrixVectorMultiply(A,u(j1:j2),s, SolverRef )
           ELSE
             CALL CRS_MatrixVectorMultiply( A, u(j1:j2), s )
           END IF
@@ -2349,7 +2350,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var, Var_save
 
     LOGICAL :: GotOrder, BlockGS, Found, NS, ScaleSystem, DoSum, &
-        IsComplex, BlockScaling, DiagScaling, ThisScaling, UsePrecMat
+        IsComplex, BlockScaling, DiagScaling, ThisScaling, UsePrecMat, DoAMGXMv
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -2362,6 +2363,8 @@ CONTAINS
 
     Solver => CurrentModel % Solver
     Params => Solver % Values
+
+    DoAMGXMv = ListGetLogical( Params, 'Block AMGX M-V', Found )
     
     ! Enable user defined order for the solution of blocks
     !---------------------------------------------------------------
@@ -2545,18 +2548,20 @@ CONTAINS
             ASolver,MatvecF=AddrFunc(SParMatrixVector), &
             DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm))
 #else
-        !CALL SolveSystem( A, ParMatrix, b, x, Var % Norm, Var % DOFs, ASolver )
-        CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
+       !CALL SolveSystem( A, ParMatrix, b, x, Var % Norm, Var % DOFs, ASolver )
+       CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
 #endif
       ELSE
         
-        !ScaleSystem = ListGetLogical( Params,'block: Linear System Scaling', Found )
-        !IF(.NOT. Found) ScaleSystem = .TRUE.
-        !IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,b,x )
-        
-        CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
-
-        !IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,b,x)       
+        IF(DoAMGXMv) THEN
+          ScaleSystem = ListGetLogical( Params,'Linear System Scaling', Found )
+          IF(.NOT. Found) ScaleSystem = .TRUE.
+          IF ( ScaleSystem ) CALL ScaleLinearSystem(ASolver, A,btmp,x )
+          CALL AMGXSolver( A, x, btmp, ASolver )
+          IF( ScaleSystem ) CALL BackScaleLinearSystem(ASolver,A,btmp,x)
+        ELSE
+          CALL SolveLinearSystem( A, btmp, x, Var % Norm, Var % DOFs, ASolver )
+        END IF
       END IF
       
       
@@ -3156,6 +3161,7 @@ CONTAINS
     Params => Solver % Values
     Mesh => Solver % Mesh
     PSolver => Solver
+    SolverRef => Solver
 
     isParallel = ParEnv % PEs > 1
     
