@@ -605,8 +605,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
    END IF
 
-PRINT *,'pname:',found,dim,TRIM(pname)
-   
    Found = .FALSE.
    DO i=1,Model % NumberOfSolvers
      pSolver => Model % Solvers(i)
