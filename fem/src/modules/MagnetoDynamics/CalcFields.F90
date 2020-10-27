@@ -499,7 +499,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp) :: R_Z(27)
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
-   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), B2
+   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB
    REAL(KIND=dp) :: detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(2), w_dens
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
@@ -1352,10 +1352,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                END DO
              END DO
            END IF
-           !
-           ! Note that this uses just the real part of B:
-           !
-           w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
            R_ip = 0.0d0
          ELSE
            R_ip_Z = SUM(Basis(1:n)*R_Z(1:n))
@@ -1364,7 +1360,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
            ! Ensure that works as before (the complex part has been ignored):
            R_ip = REAL(R_ip_Z)
-           w_dens = 0.5*R_ip*SUM(B(1,:)**2)
+         END IF
+         IF (RealField) THEN
+           w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
+         ELSE
+           w_dens = 0.5*( SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
+               SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:)) ) 
          END IF
        END IF
        PR_ip = SUM( Basis(1:n)*PR(1:n) )
@@ -1390,12 +1391,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        
        IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
          NF_ip = 0._dp
-         B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
+         IF (RealField) THEN
+           HdotB = SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:))
+         ELSE
+           HdotB = SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
+               SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:))
+         END IF
          DO k=1,n
            DO l=1,3
              val = SUM(dBasisdx(k,1:3)*B(1,1:3))
              NF_ip(k,l) = NF_ip(k,l) - R_ip*B(1,l)*val + &
-                 (R_ip*B2-w_dens)*dBasisdx(k,l)
+                 (HdotB-w_dens)*dBasisdx(k,l)
            END DO
          END DO
 
