@@ -1358,7 +1358,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            DO k=1,3
              Nu(k,k) = R_ip_Z
            END DO
-           ! Ensure that works as before (the complex part has been ignored):
+           ! 
+           ! The calculation of the Maxwell stress tensor doesn't yet support
+           ! a tensor-form reluctivity. Create the scalar reluctivity parameter
+           ! so that the Maxwell stress tensor may be calculated. The complex 
+           ! part will be ignored.
+           !
            R_ip = REAL(R_ip_Z)
          END IF
          IF (RealField) THEN
@@ -1401,7 +1406,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          DO k=1,n
            DO l=1,3
              val = SUM(dBasisdx(k,1:3)*B(1,1:3))
-             NF_ip(k,l) = NF_ip(k,l) - R_ip*B(1,l)*val + &
+             NF_ip(k,l) = NF_ip(k,l) - SUM(REAL(Nu(l,1:3)) * B(1,1:3)) * val + &
                  (HdotB-w_dens)*dBasisdx(k,l)
            END DO
          END DO
@@ -1410,7 +1415,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            DO k=1,n
              DO l=1,3
                val = SUM(dBasisdx(k,1:3)*B(2,1:3))
-               NF_ip(k,l) = NF_ip(k,l) - R_ip*B(2,l)*val
+               NF_ip(k,l) = NF_ip(k,l) - SUM(REAL(Nu(l,1:3)) * B(2,1:3)) * val
              END DO
            END DO
          END IF

@@ -34,7 +34,7 @@ Material 1
   ! the following commands define it as a higher-order tensor to test 
   ! the functionality. Note that the postprocessing subroutine 
   ! MagnetoDynamicsCalcFields cannot yet handle the given magnetic anisotropy 
-  ! correctly in the calculation of nodal forces and the Maxwell stress tensor.
+  ! correctly in the calculation of the Maxwell stress tensor.
   ! 
   Reluctivity(3,3) = 1.0 0.0 0.0 \ 
                      0.0 1.0 0.0 \
