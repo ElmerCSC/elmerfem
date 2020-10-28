@@ -49,23 +49,22 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
-  LOGICAL :: Found, ElementalFields, RealField, FoundVar
+  LOGICAL :: Found, ElementalFields, RealField, FoundVar, Hcurl
   INTEGER, POINTER :: Active(:)
-  INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln,dim
+  INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln,pIndex
   TYPE(ValueList_t), POINTER :: SolverParams, DGSolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
   SolverParams => GetSolverParams()
-
-  dim = CoordinateSystemDimension()
   
   ! The only purpose of this parsing of the variable name is to identify
   ! whether the field is real or complex. As the variable has not been
   ! created at this stage we have to do some dirty parsing. 
   pname = GetString(SolverParams, 'Potential variable', Found)
   vdofs = 0
+  pIndex = 0 
   FoundVar = .FALSE.
 
   IF( Found ) THEN
@@ -83,36 +82,47 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
           k = k+j
           IF(k<LEN(sname)) j=INDEX(sname(k+1:),':')
         END DO
+        pIndex = i
         FoundVar = .TRUE.
         EXIT
       END IF
     END DO
-  ELSE
-    IF( dim == 3 ) THEN
-      CALL ListAddString(SolverParams,'Potential Variable','av')
-    ELSE
-      CALL ListAddString(SolverParams,'Potential Variable','potential')
+    
+    IF(.NOT. FoundVar ) THEN
+      CALL Fatal('MagnetoDynamicsCalcFields_Init0','Could not find solver for variable: '//TRIM(sname))
     END IF
   END IF
-    
+
+  
   ! When we created the case for GUI where "av" is not given in sif then it is impossible to
   ! determine from the variable declaration what kind of solver we have. 
   IF( .NOT. FoundVar ) THEN
-    DO i=1,Model % NumberOfSolvers
+    Hcurl = .FALSE.
+    DO i=Model % NumberOfSolvers,1,-1
       sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
       
       j = INDEX( sname,'WhitneyAVHarmonicSolver')
-      IF( j == 0 ) j = INDEX( sname,'MagnetoDynamics2DHarmonic')
       IF( j > 0 ) THEN
-        CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be complex valued',Level=12)
+        Hcurl = .TRUE.
+        vDofs = 2
+        EXIT
+      END IF
+
+      j = INDEX( sname,'MagnetoDynamics2DHarmonic')
+      IF( j > 0 ) THEN
         Vdofs = 2
         EXIT
       END IF
 
       j = INDEX( sname,'WhitneyAVSolver')
-      IF( j == 0 ) j = INDEX( sname,'MagnetoDynamics2D')
       IF( j > 0 ) THEN
-        CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be real valued',Level=12)
+        Hcurl = .TRUE.
+        vDofs = 1
+        EXIT
+      END IF
+      
+      j = INDEX( sname,'MagnetoDynamics2D')
+      IF( j > 0 ) THEN
         Vdofs = 1
         EXIT
       END IF
@@ -121,12 +131,20 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     IF( Vdofs == 0 ) THEN
       CALL Fatal('MagnetoDynamicsCalcFields_Init0','Could not determine target variable type (real or complex)')
     END IF
+    pIndex = i 
   END IF
 
-  IF ( Vdofs==0 ) Vdofs=1
+  RealField = ( Vdofs /= 2 )
+  IF( RealField ) THEN
+    CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be real valued',Level=12)
+  ELSE
+    CALL Info('MagnetoDynamicsCalcFields_Init0','The target solver seems to be complex valued',Level=12)
+  END IF
 
-  RealField = ( Vdofs == 1 )
-  CALL ListAddLogical( SolverParams, 'Target Variable Real Field', RealField ) 
+  CALL ListAddNewLogical( SolverParams, 'Target Variable Real Field', RealField )   
+  CALL Info('MagnetoDynamicsCalcFields_Init0','Target Variable Solver Index: '&
+    //TRIM(I2S(pIndex)),Level=12)
+  CALL ListAddNewInteger( SolverParams, 'Target Variable Solver Index', pIndex ) 
   
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamicsCalcFields_Init0
@@ -572,7 +590,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueListEntry_t), POINTER :: HBLst
    REAL(KIND=dp) :: HarmPowerCoeff 
    REAL(KIND=dp) :: line_tangent(3)
-   INTEGER :: IOUnit
+   INTEGER :: IOUnit, pIndex
    REAL(KIND=dp) :: SaveNorm
    INTEGER :: NormIndex
    
@@ -595,29 +613,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ELSE
      HarmPowerCoeff = 0.5_dp
    END IF
-     
-   Pname = GetString(SolverParams, 'Potential Variable',Found)
-   IF(.NOT. Found ) THEN
-     IF( dim == 3 ) THEN
-       Pname = 'av'
-     ELSE
-       Pname = 'potential'
-     END IF
-   END IF
 
-   Found = .FALSE.
-   DO i=1,Model % NumberOfSolvers
-     pSolver => Model % Solvers(i)
-     IF ( Pname == getVarName(pSolver % Variable)) THEN
-       Found = .TRUE.
-       EXIT
-     END IF
-   END DO
+   pIndex = ListGetInteger( SolverParams,'Target Variable Solver Index',UnfoundFatal=.TRUE.)
+   pSolver => Model % Solvers(pIndex) 
+   pname = getVarName(pSolver % Variable)
 
-   IF(.NOT. Found ) THEN
-     CALL Fatal('MagnetoDynamicsCalcFields','Solver associated to potential variable > '&
-         //TRIM(Pname)//' < not found!')
-   END IF
+   CALL Info('MagnetoDynamicsCalcFields','Using potential variable: '//TRIM(Pname),Level=7)
 
    ! Inherit the solution basis from the primary solver
    vDOFs = pSolver % Variable % DOFs
