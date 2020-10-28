@@ -1364,6 +1364,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF (RealField) THEN
            w_dens = 0.5*SUM(B(1,:)*MATMUL(REAL(Nu), B(1,:)))
          ELSE
+           ! This yields twice the time average:
            w_dens = 0.5*( SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
                SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:)) ) 
          END IF
@@ -1416,18 +1417,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
 
        Energy(1) = Energy(1) + s*0.5*PR_ip*SUM(E**2)
-
-       IF (ASSOCIATED(HB) .AND. RealField) THEN 
-         Energy(2) = Energy(2) + s*w_dens
-       ELSE
-         IF (RealField) THEN
-           Energy(2) = Energy(2) + s*0.5* SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:))
-         ELSE
-           ! This yields twice the time average:
-           Energy(2) = Energy(2) + s*0.5*( SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
-               SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:)) ) 
-         END IF
-       END IF
+       Energy(2) = Energy(2) + s*w_dens
 
        DO p=1,n
          DO q=1,n
