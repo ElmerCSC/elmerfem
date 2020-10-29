@@ -1001,12 +1001,17 @@ CONTAINS
     n = GetElementNOFNodes(Element)       
     CALL GetElementNodes( Nodes, UElement=Element) 
     n = Element % TYPE % NumberOfNodes
- 
+    
+    IF( .NOT. ASSOCIATED( Element % BoundaryInfo % GebhardtFactors ) ) THEN
+      CALL Fatal('HeatSolverVec','Gebhardt factors not calculated for boundary!')
+    END IF
+    
     Fact => Element % BoundaryInfo % GebhardtFactors % Factors
     ElementList => Element % BoundaryInfo % GebhardtFactors % Elements
 
     bindex = Element % ElementIndex - Solver % Mesh % NumberOfBulkElements
     nf = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+      
     nf_imp = Element % BoundaryInfo % GebhardtFactors % NumberOfImplicitFactors      
     IF( nf_imp == 0 ) nf_imp = nf
 
