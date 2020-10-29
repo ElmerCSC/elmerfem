@@ -2011,7 +2011,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   
   SAVE Visited
 
-  CALL Warn('BSolver','This module is obsolite! USE MagnetoDynamicsCalcFields instead')
+  CALL Warn('BSolver','This module is obsolete! USE MagnetoDynamicsCalcFields instead')
 
   
   CALL Info( 'BSolver', '-------------------------------------',Level=4 )
