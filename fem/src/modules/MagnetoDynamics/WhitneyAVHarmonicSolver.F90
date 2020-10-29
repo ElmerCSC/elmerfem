@@ -107,12 +107,12 @@ END SUBROUTINE WhitneyAVHarmonicSolver_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solve vector potential A, scale potential V
+!>  Solve a vector potential A and scalar potential V from
 ! 
 !>  j omega sigma A+rot (1/mu) rot A+sigma grad(V) = J^s+rot M^s-sigma grad(V^s)
 !>  -div(sigma (j omega A+grad(V)))=0
 !
-!>  using edge elements (Nedelec/W basis of lowest degree) + nodal basis for V.
+!>  by using edge elements (Nedelec) + nodal basis for V.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
@@ -130,15 +130,16 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
-  TYPE(Element_t),POINTER :: Element, Edge
-
-  REAL(KIND=dp) :: Norm, Omega
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams, SolverParams
+  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
+  LOGICAL :: ExtNewton
+  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
   INTEGER :: NoIterationsMin, NoIterationsMax
-
-  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER :: NewtonIter
+  INTEGER, POINTER :: Perm(:)
+  INTEGER, ALLOCATABLE :: FluxMap(:)
 
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
@@ -146,28 +147,20 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
   COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
 
+  REAL(KIND=dp) :: Norm, Omega
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
-
   REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
-
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
-  TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
+  REAL(KIND=dp) :: NewtonTol
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
-  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
-  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
-  REAL(KIND=dp) :: NewtonTol
-  INTEGER :: NewtonIter
-  LOGICAL :: ExtNewton
-  
-  INTEGER, POINTER :: Perm(:)
-  INTEGER, ALLOCATABLE :: FluxMap(:)
-  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
-
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Element_t),POINTER :: Element, Edge
+  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams, SolverParams
+  TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
-  
   TYPE(ValueList_t), POINTER :: CompParams
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
@@ -1064,32 +1057,31 @@ CONTAINS
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
                      RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
+    REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
+    REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
+    REAL(KIND=dp) :: nu_val, nuim_val
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
+           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
 
+    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
                         CVelo(3), CVeloSum
-    REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
 
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
     LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
-    TYPE(GaussIntegrationPoints_t) :: IP
-
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
-           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueListEntry_t), POINTER :: Lst
-    
-    TYPE(Nodes_t), SAVE :: Nodes
-
-    TYPE(ValueList_t), POINTER :: CompParams
     LOGICAL :: StrandedHomogenization, FoundIm
-    REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
-    REAL(KIND=dp) :: nu_val, nuim_val
+
+    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
+
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueListEntry_t), POINTER :: Lst
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -1313,7 +1305,7 @@ CONTAINS
            L = L - MATMUL(JfixPot, dBasisdx(1:n,:))
          END IF
        END IF
-                
+
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
@@ -1332,7 +1324,7 @@ CONTAINS
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
               IF ( SUM(C) /= 0._dp ) THEN
-                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
+                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
               END IF
             END DO
             DO j=1,nd-np
@@ -1393,7 +1385,7 @@ CONTAINS
            END IF
 
            STIFF(p,q) = STIFF(p,q) + &
-              SUM(MATMUL(Nu, RotWBasis(i,:))*RotWBasis(j,:))*detJ*IP%s(t)
+              SUM(MATMUL(Nu, RotWBasis(j,:))*RotWBasis(i,:))*detJ*IP%s(t)
 
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
