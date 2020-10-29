@@ -205,7 +205,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: MassAssembly, HarmonicAssembly
   LOGICAL :: Parallel
   LOGICAL :: SolidShellCoupling
-  LOGICAL :: DrillingDOFs
+  LOGICAL :: DrillingDOFs, RotateDOFs
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -277,6 +277,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       StrainReductionMethod = AutomatedChoice
 
   Bubbles = GetLogical(SolverPars, 'Bubbles', Found)
+
   DrillingDOFs = GetLogical(SolverPars, 'Drilling DOFs', Found)
   IF (DrillingDOFs) CALL Warn('ShellSolver', &
       'Drilling DOFs do not support all options and alters the meaning of all rotational DOFs/BCs')
@@ -286,6 +287,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   ELSE
     DrillingPar = 1.0d0
   END IF
+
+  RotateDOFs = GetLogical(SolverPars, 'Rotate DOFs', Found)
 
   !-----------------------------------------------------------------------------------
   ! The field variables for saving the orientation of lines of curvature basis
@@ -493,8 +496,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! -----------------------------------------------------------------------------
       CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
           LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
-          ApplyBubbles, DrillingDOFs, DrillingPar, MassAssembly, HarmonicAssembly, LocalRHSForce, &
-          ShellModelArea, TotalErr, BenchmarkProblem=SolveBenchmarkCase)
+          ApplyBubbles, DrillingDOFs, DrillingPar, RotateDOFs, MassAssembly, HarmonicAssembly, &
+          LocalRHSForce, ShellModelArea, TotalErr, BenchmarkProblem=SolveBenchmarkCase)
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -3512,8 +3515,8 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
       StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, &
-      DrillingDOFs, DrillingPar, MassAssembly, HarmonicAssembly, RHSForce, Area, &
-      Error, BenchmarkProblem)
+      DrillingDOFs, DrillingPar, RotateDOFs, MassAssembly, HarmonicAssembly, &
+      RHSForce, Area, Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
@@ -3529,6 +3532,7 @@ CONTAINS
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
     LOGICAL, INTENT(IN) :: DrillingDOFs                ! Switches to drilling DOFs (limited functionality)
     REAL(KIND=dp), INTENT(IN) :: DrillingPar           ! A stabilization parameter for drilling DOFs 
+    LOGICAL, INTENT(IN) :: RotateDOFs                  ! Use rotated DOFs (a tentative option)
     LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
@@ -3570,7 +3574,7 @@ CONTAINS
 
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
     REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(7)
-    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), TMat(m*nd,m*nd)
+    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), TMat(m*nd,m*nd), RotMat(3,3)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
     REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
@@ -3777,7 +3781,31 @@ CONTAINS
       i0 = (j-1)*m
 
       Q(i0+1:i0+3,i0+1:i0+3) =  QBlock(1:3,1:3)
-      Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
+      !
+      ! Optionally we can switch to rotated components theta such that
+      ! -Du[d] = d x theta + <theta,d>d. The tangent plane components are
+      ! then more intuitive when thinking in terms of moments.
+      ! 
+      IF (RotateDOFs) THEN
+        ! 
+        ! Create a matrix RotMat such that d x v = RotMat * v
+        !
+        RotMat = 0.0d0
+        RotMat(2,1) = abasis3(3)
+        RotMat(3,1) = -abasis3(2)
+        RotMat(1,2) = -abasis3(3)
+        RotMat(3,2) = abasis3(1)
+        RotMat(1,3) = abasis3(2)
+        RotMat(2,3) = -abasis3(1)
+
+        DO k=1,3
+          Q(i0+4,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis1(:))
+          Q(i0+5,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis2(:))
+          Q(i0+6,i0+3+k) = abasis3(k)
+        END DO
+      ELSE
+        Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
+      END IF
 
       IF (DrillingDOFs) THEN
         !
