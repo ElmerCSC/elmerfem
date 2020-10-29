@@ -12578,6 +12578,8 @@ END FUNCTION SearchNodeL
         CALL FetiSolver( A, x, b, Solver )
       CASE('block')
         CALL BlockSolveExt( A, x, b, Solver )
+      CASE('amgx')
+        CALL AMGXSolver( A, x, b, Solver )
      CASE DEFAULT
         CALL DirectSolver( A, x, b, Solver )
       END SELECT
@@ -12704,8 +12706,9 @@ END FUNCTION SearchNodeL
 
 #ifdef HAVE_AMGX
     nonlin_update = 0
-    IF ( ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) &
+    IF ( ListGetLogical( Solver % Values, 'Linear System Refactorize', Found ) ) THEN
       nonlin_update = 1;
+    END IF
 
     CALL AMGXmv( A % AMGXMV, A % NumberOfRows, A % Rows-1, A % Cols-1, &
                   A % Values, u, v, nonlin_update )
@@ -12715,6 +12718,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   END SUBROUTINE AMGXMatrixVectorMultiply
 !------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE AMGXSolver( A, x, b, Solver )
@@ -12727,7 +12731,7 @@ END FUNCTION SearchNodeL
 
     INTERFACE
       SUBROUTINE AMGXSolve(AMGX, n, rows, cols, vals, b, x, &
-              nonlin_update, config ) BIND(C, Name="AMGXSolve")
+              nonlin_update, config, comm, ng, part_vec, gdofs, bnrm ) BIND(C, Name="AMGXSolve")
 
          USE Types
          USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
@@ -12735,16 +12739,22 @@ END FUNCTION SearchNodeL
          IMPLICIT NONE
 
          INTEGER(KIND=C_INTPTR_T) :: AMGX
-         REAL(KIND=dp) :: vals(*), b(*), x(*)
+         REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm
          CHARACTER(KIND=C_CHAR) :: config(*)
-         INTEGER :: rows(*), cols(*), nonlin_update, n
+         INTEGER :: rows(*), cols(*), nonlin_update, n, comm, gdofs(*), ng, part_vec(*)
       END SUBROUTINE AMGXSolve
     END INTERFACE
 
+
     CHARACTER(KIND=C_CHAR) :: cfg(MAX_NAME_LEN)
     CHARACTER(LEN=MAX_NAME_LEN) :: config
-    LOGICAL :: found
-    INTEGER :: nonlin_update, i
+    LOGICAL :: found, isparallel 
+    INTEGER :: nonlin_update, i, j, n, lrow, me, you
+    REAL(KIND=dp)  :: bnrm
+
+    TYPE(Matrix_t), POINTER :: Bm
+    INTEGER, SAVE :: ng
+    INTEGER, ALLOCATABLE, SAVE :: Owner(:), Aperm(:), part_vec(:), Ilperm(:)
 
 #ifdef HAVE_AMGX
     nonlin_update = 0
@@ -12757,8 +12767,195 @@ END FUNCTION SearchNodeL
     END DO
     cfg(i) = C_NULL_CHAR
 
-    CALL AMGXSolve( A % AMGX, A % NumberOfRows, A % Rows-1, A % Cols-1, &
-          A % Values, b, x, nonlin_update, cfg )
+    me =  Parenv % MyPe
+    isParallel = Parenv % PEs>1
+
+    IF(isParallel) THEN
+
+      IF(.NOT.ASSOCIATED(A % CollectionMatrix)) THEN
+        IF(ALLOCATED(Owner))THEN
+          DEALLOCATE(Owner,APerm,ILperm,part_vec)
+        END IF
+
+        n = SIZE(A % ParallelInfo % GlobalDOFs)
+        ALLOCATE( Owner(n), Aperm(n) )
+        CALL ContinuousNumbering(A % ParallelInfo,A % Perm,APerm,Owner)
+
+        ng = 0
+        DO i=1, A % NumberOfRows
+          IF(A % ParallelInfo % NeighbourList(i) % Neighbours(1) == me) ng=ng+1
+        END DO
+        ng = NINT(ParallelReduction(1._dp*ng))
+
+        ALLOCATE(part_vec(ng)); part_vec=-1
+        DO i=1,A % NumberOfRows
+          part_vec(aperm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+        END DO
+
+        BLOCK
+          INTEGER:: ierr
+          INTEGER, ALLOCATABLE :: part_vec1(:)
+
+          ALLOCATE(Part_Vec1(ng)); part_vec1=-1
+          CALL MPI_ALLREDUCE( part_vec, part_vec1, ng, MPI_INTEGER, MPI_MAX, ELMER_COMM_WORLD, ierr )
+          part_vec = part_vec1
+        END BLOCK
+
+        BLOCK
+          INTEGER, ALLOCATABLE :: GlobalToLocal(:),lperm(:),rRows(:),rSize(:),cBuf(:),SendTo(:)
+          REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
+          INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt
+
+          TYPE SendStuff_t
+            INTEGER, ALLOCATABLE :: Size(:), Rows(:)
+          END TYPE SendStuff_t
+          TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
+
+          Bm => AllocateMatrix(); Bm % Format = MATRIX_LIST
+
+          ALLOCATE(SendTo(ParEnv % Pes),GlobalToLocal(ng),LPerm(A % NumberOfRows),iLPerm(A % NumberOfRows))
+
+          LPerm = 0; iLPerm = 0
+          LRow = 0
+          SendTo = 0
+          GlobalToLocal = 0
+   
+          DO i=1,a % NumberofRows
+            you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+            IF ( you == me ) THEN
+              LRow = LRow+1
+              LPerm(i)  = LRow
+              iLPerm(LRow) = i
+              DO j=A % Rows(i+1)-1, A % Rows(i),-1
+                CALL AddToMatrixElement(Bm,LPow,APerm(A  % Cols(j)), A % Values(j))
+              END DO
+              GlobalToLocal(aperm(i)) = LRow
+            ELSE
+              SendTo(you+1) = SendTo(you+1)+1
+            END IF
+          END DO
+
+          ALLOCATE(SendStuff(ParEnv % Pes))
+          DO i=1,ParEnv % PEs
+            IF( i-1==me ) CYCLE
+            IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
+
+            ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
+            ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
+          END DO
+   
+          SendTo = 0
+          DO i=1,a % NumberOfRows
+            you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+            IF ( you /= me ) THEN
+              SendTo(you+1) = SendTo(you+1)+1
+              SendStuff(you+1) % Size(Sendto(you+1))  = A % Rows(i+1)-A % Rows(i)
+              SendStuff(you+1) % Rows(Sendto(you+1))  = i
+            END IF
+          END DO
+
+          DO i=1,ParEnV % PEs
+            IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
+
+            CALL MPI_BSEND( SendTo(i), 1, MPI_INTEGER, i-1, 1200, ELMER_COMM_WORLD, status, ierr )
+            IF(Sendto(i)==0) CYCLE
+
+            CALL MPI_BSEND( aperm(SendStuff(i) % Rows), SendTo(i),MPI_INTEGER,i-1, &
+                          1201,ELMER_COMM_WORLD, status, ierr )
+            CALL MPI_BSEND( SendStuff(i) % Size, SendTo(i),MPI_INTEGER,i-1, &
+                          1202,ELMER_COMM_WORLD, status, ierr )
+            DO j=1,SendTo(i)
+              k = SendStuff(i) % Rows(j)
+              CALL MPI_BSEND( aperm(A % Cols(A % Rows(k):A % Rows(k+1)-1)), SendStuff(i) % Size(j), &
+                         MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, status, ierr )
+
+              CALL MPI_BSEND( A % Values(A % Rows(k):A % Rows(k+1)-1), SendStuff(i) % Size(j), &
+                      MPI_DOUBLE_PRECISION,i-1, 1204,ELMER_COMM_WORLD, status, ierr )
+            END DO
+          END DO
+
+          DO i=1,ParEnV % PEs
+            IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
+
+            CALL MPI_RECV( rcnt, 1, MPI_INTEGER, i-1, 1200, ELMER_COMM_WORLD, status, ierr )
+            IF(rcnt==0) CYCLE
+
+            ALLOCATE( rRows(rcnt), rSize(rcnt) )
+
+            CALL MPI_RECV( rRows, rcnt, MPI_INTEGER, i-1, 1201, ELMER_COMM_WORLD, status, ierr )
+            CALL MPI_RECV( rSize, rcnt, MPI_INTEGER, i-1, 1202, ELMER_COMM_WORLD, status, ierr )
+            DO j=1,rcnt
+              k = GlobalToLocal(rRows(j))
+              IF ( k==0 ) THEN
+                PRINT*,Parenv % MyPE, i-1, 'not mine then ?', rRows(j)
+                CYCLE
+              END IF
+              ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
+              CALL MPI_RECV( cBuf, rSize(j), MPI_INTEGER,i-1, &
+                    1203,ELMER_COMM_WORLD, status,ierr )
+              CALL MPI_RECV( vBuf, rSize(j), MPI_DOUBLE_PRECISION,i-1,i &
+                    1204,ELMER_COMM_WORLD, status,ierr )
+
+              DO l=1,rSize(j)
+                CAll AddToMatrixElement(Bm,k,cBuf(l),vBuf(l))
+              END DO
+              DEALLOCATE(cbuf, vbuf)
+            END DO
+
+            DEALLOCATE( rRows, rSize )
+          END DO
+
+          CALL List_toCRSMatrix(Bm)
+          A % CollectionMatrix => Bm
+        END BLOCK
+      ELSE
+        Bm => A % CollectionMatrix
+        lrow = 0
+        Bm % Values = 0._dp
+        DO i=1,a % NumberofRows
+          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          IF ( you == me ) THEN
+            lrow = lrow+1
+            DO j=A % Rows(i+1)-1, A % Rows(i),-1
+              CALL AddToMatrixElement(Bm, lrow, aperm(A  % Cols(j)), A % Values(j))
+            END DO
+          END IF
+        END DO
+      END IF
+
+      BLOCK
+        REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
+
+        n = Bm % NumberOfRows
+        j = A  % NumberOfRows
+        ALLOCATE(bb(n), xb(n), r(j) )
+
+        r = b(1:j)
+        CALL ParallelSumVector(A, r)
+        x = 0
+        DO i=1,n
+          bb(i) = r(iLPerm(i))
+          xb(i) = x(iLPerm(i))
+        END DO
+        bnrm = SQRT(ParallelReduction(SUM(bb**2)))
+
+        CALL AMGXSolve( A % AMGX, n, Bm % Rows-1, Bm % Cols-1, Bm % Values,  &
+          bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, part_vec, APerm-1, bnrm )
+
+        x = 0
+        DO i=1,n
+          x(iLPerm(i)) = xb(i)
+        END DO
+        CALL ParallelSumVector(A, x)
+      END BLOCK
+    ELSE
+      n = A % NumberOfRows
+      bnrm = SQRT(SUM(b**2))
+
+      CALL AMGXSolve( A % AMGX, n, A % Rows-1, A % Cols-1, &
+        A % Values, b, x, nonlin_update, cfg, ELMER_COMM_WORLD, n, &
+           A % Diag, A % Diag, bnrm ) ! <--- a % diag  for dummy
+    END IF
 #else
     CALL Fatal('AMGXSolver', 'AMGX doesn't seem to be included.')
 #endif

@@ -32,6 +32,8 @@
 
 #include "amgx_c.h"
 
+#include <mpi.h>
+
 /* print callback (could be customized) */
 void print_callback(const char *msg, int length) { printf("%s", msg); }
 
@@ -98,10 +100,17 @@ void AMGXmv( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 }
 
 
+/*
 void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
   double *b_in, double *x_in,int *nonlin_update, char *config_name)
+*/
+void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
+  double *b_in, double *x_in,int *nonlin_update, char *config_name, int *fcomm, 
+    int *ng_in, int *part_vec, int *gdofs, double *bnrm_in )
 {
-    int i,j,k,n = *n_in;
+    int i,j,k,n = *n_in, ng=*ng_in;
+    static MPI_Comm comm;
+    double bnrm = *bnrm_in;
 
     AMGX_Mode mode;
     AMGX_SOLVE_STATUS status;
@@ -113,53 +122,100 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
     ptr = (ElmerAMGX *)*a_in;
     if(!ptr)
     {
+
       ptr = (ElmerAMGX *)calloc(sizeof(ElmerAMGX),1);
       *a_in = (int *)ptr;
 
       mode = AMGX_mode_dDDI;
 
-fprintf( stderr, "----\n" );
-fprintf( stderr, "%s\n" , config_name );
-fprintf( stderr, "----\n" );
+      fprintf( stderr, "----\n" );
+      fprintf( stderr, "%s\n" , config_name );
+      fprintf( stderr, "----\n" );
 
       AMGX_SAFE_CALL(AMGX_config_create_from_file(&ptr->cfg, config_name));
 
-      AMGX_resources_create_simple(&ptr->rsrc, ptr->cfg);
+      if ( n==ng ) {
+        AMGX_resources_create_simple(&ptr->rsrc, ptr->cfg);
+      } else {
+        int gpu_ids[] = {0}, ierr, s;
+
+        comm = MPI_Comm_f2c(*fcomm);
+        ierr = MPI_Comm_size(comm, &s);
+        AMGX_resources_create(&ptr->rsrc, ptr->cfg, &comm, 1, gpu_ids);
+      }
+
       AMGX_matrix_create(&ptr->A, ptr->rsrc, mode);
       AMGX_vector_create(&ptr->x, ptr->rsrc, mode);
       AMGX_vector_create(&ptr->b, ptr->rsrc, mode);
+
       AMGX_solver_create(&ptr->solver, ptr->rsrc, mode, ptr->cfg);
 
-      AMGX_matrix_upload_all(ptr->A,n,rows[n],1,1,rows,cols,vals,NULL );
+      if ( n==ng ) {
+        AMGX_matrix_upload_all(ptr->A,n,rows[n],1,1,rows,cols,vals,NULL );
+      } else {
+        AMGX_matrix_upload_all_global_32(ptr->A,ng,n,rows[n],1,1,rows,cols,vals,NULL,1,1,part_vec);
+      }
     }else  if(*nonlin_update) {
-      AMGX_matrix_upload_all(ptr->A,n,rows[n],1,1,rows,cols,vals,NULL );
+      if ( n==ng ) {
+        AMGX_matrix_upload_all(ptr->A,n,rows[n],1,1,rows,cols,vals,NULL );
+      } else {
+        AMGX_matrix_upload_all_global_32(ptr->A,ng,n,rows[n],1,1,rows,cols,vals,NULL,1,1,part_vec);
+      }
     }
 
-{
-double bnrm;
+    if  ( n==ng )
+    {
+      double bnrm;
 
 // scale by ||b|| to get comperable convergence criteria to other linear solvers.
 
-    bnrm = 0.0;
-    for(i<0; i<n; i++ ) bnrm += b_in[i]*b_in[i];
-    bnrm = sqrt(bnrm);
-    if ( bnrm < 1.e-16 ) bnrm = 1;
+      bnrm = 0.0;
+      for(i<0; i<n; i++ ) bnrm += b_in[i]*b_in[i];
+      bnrm = sqrt(bnrm);
+      if ( bnrm < 1.e-16 ) bnrm = 1;
 
-    for(i=0; i<n; i++ ) b_in[i] = b_in[i]/bnrm;
-    AMGX_vector_upload( ptr->b, n, 1, b_in );
-    for(i=0; i<n; i++ ) b_in[i] = b_in[i]*bnrm;
 
-    for(i=0; i<n; i++ ) x_in[i] = x_in[i]/bnrm;
-    AMGX_vector_upload( ptr->x, n, 1, x_in );
+      for(i=0; i<n; i++ ) b_in[i] = b_in[i]/bnrm;
+      AMGX_vector_upload( ptr->b, n, 1, b_in );
+      for(i=0; i<n; i++ ) b_in[i] = b_in[i]*bnrm;
 
-    AMGX_solver_setup(ptr->solver, ptr->A);
-    AMGX_solver_solve(ptr->solver, ptr->b, ptr->x);
+      for(i=0; i<n; i++ ) x_in[i] = x_in[i]/bnrm;
+      AMGX_vector_upload( ptr->x, n, 1, x_in );
 
-    AMGX_vector_download(ptr->x, x_in);
-    for(i=0; i<n; i++ ) x_in[i] = x_in[i]*bnrm;
-}
+      AMGX_solver_setup(ptr->solver, ptr->A);
+      AMGX_solver_solve(ptr->solver, ptr->b, ptr->x);
 
-    AMGX_solver_get_status(ptr->solver, &status);
+      AMGX_vector_download(ptr->x, x_in);
+      for(i=0; i<n; i++ ) x_in[i] = x_in[i]*bnrm;
+    } else {
+      double *b_t, *x_t;
+
+      b_t = (double *)calloc(  ng,sizeof(double) );
+      x_t = (double *)calloc(  ng,sizeof(double) );
+
+      if ( bnrm < 1.e-16 ) bnrm = 1;
+
+      for(i=0; i<n; i++ ) b_t[i] = b_in[i]/bnrm;
+      AMGX_vector_bind(ptr->b, ptr->A);
+      AMGX_vector_upload( ptr->b, n, 1, b_t );
+
+      for(i=0; i<n; i++ ) x_t[i] = x_in[i]/bnrm;
+      AMGX_vector_bind(ptr->x, ptr->A);
+      AMGX_vector_upload( ptr->x, n, 1, x_t );
+
+      MPI_Barrier(comm);
+      AMGX_solver_setup(ptr->solver, ptr->A);
+
+      MPI_Barrier(comm);
+      AMGX_solver_solve(ptr->solver, ptr->b, ptr->x);
+
+      AMGX_vector_download(ptr->x, x_t);
+      for(i=0; i<n; i++ ) x_in[i] = x_t[i]*bnrm;
+
+      free(b_t); free(x_t);
+    }
+
+//    AMGX_solver_get_status(ptr->solver, &status);
 
 #if 0
     AMGX_solver_destroy(solver);
