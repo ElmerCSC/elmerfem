@@ -12754,7 +12754,7 @@ END FUNCTION SearchNodeL
 
     TYPE(Matrix_t), POINTER :: Bm
     INTEGER, SAVE :: ng
-    INTEGER, ALLOCATABLE, SAVE :: Owner(:), Aperm(:), part_vec(:), Ilperm(:)
+    INTEGER, ALLOCATABLE, SAVE :: Owner(:), APerm(:), part_vec(:), iLPerm(:)
 
 #ifdef HAVE_AMGX
     nonlin_update = 0
@@ -12772,64 +12772,66 @@ END FUNCTION SearchNodeL
 
     IF(isParallel) THEN
 
-      IF(.NOT.ASSOCIATED(A % CollectionMatrix)) THEN
-        IF(ALLOCATED(Owner))THEN
-          DEALLOCATE(Owner,APerm,ILperm,part_vec)
-        END IF
+      BLOCK
+        INTEGER, ALLOCATABLE :: part_vec1(:)
 
-        n = SIZE(A % ParallelInfo % GlobalDOFs)
-        ALLOCATE( Owner(n), Aperm(n) )
-        CALL ContinuousNumbering(A % ParallelInfo,A % Perm,APerm,Owner)
+        INTEGER, ALLOCATABLE, SAVE :: GlobalToLocal(:),rRows(:),rSize(:),cBuf(:),SendTo(:)
+        REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
+        INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt
 
-        ng = 0
-        DO i=1, A % NumberOfRows
-          IF(A % ParallelInfo % NeighbourList(i) % Neighbours(1) == me) ng=ng+1
-        END DO
-        ng = NINT(ParallelReduction(1._dp*ng))
+        TYPE SendStuff_t
+          INTEGER, ALLOCATABLE :: Size(:), Rows(:)
+        END TYPE SendStuff_t
+        TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
+ 
+        IF(.NOT. ASSOCIATED(A % CollectionMatrix)) THEN
+          IF(ALLOCATED(Owner))THEN
+            DEALLOCATE(Owner,APerm,ILperm,part_vec, SendTo, GlobalToLocal)
+          END IF
 
-        ALLOCATE(part_vec(ng)); part_vec=-1
-        DO i=1,A % NumberOfRows
-          part_vec(aperm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
-        END DO
+          n = SIZE(A % ParallelInfo % GlobalDOFs)
+          ALLOCATE( Owner(n), Aperm(n) )
+          CALL ContinuousNumbering(A % ParallelInfo,A % Perm,APerm,Owner)
 
-        BLOCK
-          INTEGER:: ierr
-          INTEGER, ALLOCATABLE :: part_vec1(:)
+          ng = 0
+          DO i=1, A % NumberOfRows
+            IF(A % ParallelInfo % NeighbourList(i) % Neighbours(1) == me) ng=ng+1
+          END DO
+          ng = NINT(ParallelReduction(1._dp*ng))
+
+          ALLOCATE(part_vec(ng)); part_vec=-1
+          DO i=1,A % NumberOfRows
+            part_vec(aperm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+          END DO
 
           ALLOCATE(Part_Vec1(ng)); part_vec1=-1
-          CALL MPI_ALLREDUCE( part_vec, part_vec1, ng, MPI_INTEGER, MPI_MAX, ELMER_COMM_WORLD, ierr )
+          CALL MPI_ALLREDUCE( part_vec, part_vec1, ng, MPI_INTEGER, MPI_MAX, &
+                            ELMER_COMM_WORLD, ierr )
           part_vec = part_vec1
-        END BLOCK
 
-        BLOCK
-          INTEGER, ALLOCATABLE :: GlobalToLocal(:),lperm(:),rRows(:),rSize(:),cBuf(:),SendTo(:)
-          REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
-          INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt
-
-          TYPE SendStuff_t
-            INTEGER, ALLOCATABLE :: Size(:), Rows(:)
-          END TYPE SendStuff_t
-          TYPE(SendStuff_t), ALLOCATABLE :: SendStuff(:)
-
+          ALLOCATE(SendTo(ParEnv % Pes),GlobalToLocal(ng),iLPerm(A % NumberOfRows))
           Bm => AllocateMatrix(); Bm % Format = MATRIX_LIST
+        ELSE
+          Bm => A % CollectionMatrix
+        END IF
 
-          ALLOCATE(SendTo(ParEnv % Pes),GlobalToLocal(ng),LPerm(A % NumberOfRows),iLPerm(A % NumberOfRows))
+        IF( Bm % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
 
-          LPerm = 0; iLPerm = 0
+          iLPerm = 0
           LRow = 0
           SendTo = 0
           GlobalToLocal = 0
-   
-          DO i=1,a % NumberofRows
+ 
+          IF (Bm % Format == MATRIX_CRS  ) Bm % Values = 0._dp
+          DO i=1,A % NumberofRows
             you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
             IF ( you == me ) THEN
               LRow = LRow+1
-              LPerm(i)  = LRow
               iLPerm(LRow) = i
               DO j=A % Rows(i+1)-1, A % Rows(i),-1
-                CALL AddToMatrixElement(Bm,LPow,APerm(A  % Cols(j)), A % Values(j))
+                CALL AddToMatrixElement(Bm,LRow,APerm(A  % Cols(j)), A % Values(j))
               END DO
-              GlobalToLocal(aperm(i)) = LRow
+              GlobalToLocal(APerm(i)) = LRow
             ELSE
               SendTo(you+1) = SendTo(you+1)+1
             END IF
@@ -12839,11 +12841,11 @@ END FUNCTION SearchNodeL
           DO i=1,ParEnv % PEs
             IF( i-1==me ) CYCLE
             IF(.NOT.ParEnv % IsNeighbour(i))  CYCLE
-
+  
             ALLOCATE( SendStuff(i) % Rows(SendTo(i)) )
             ALLOCATE( SendStuff(i) % Size(SendTo(i)) )
           END DO
-   
+ 
           SendTo = 0
           DO i=1,a % NumberOfRows
             you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
@@ -12862,6 +12864,7 @@ END FUNCTION SearchNodeL
 
             CALL MPI_BSEND( aperm(SendStuff(i) % Rows), SendTo(i),MPI_INTEGER,i-1, &
                           1201,ELMER_COMM_WORLD, status, ierr )
+  
             CALL MPI_BSEND( SendStuff(i) % Size, SendTo(i),MPI_INTEGER,i-1, &
                           1202,ELMER_COMM_WORLD, status, ierr )
             DO j=1,SendTo(i)
@@ -12877,13 +12880,13 @@ END FUNCTION SearchNodeL
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-            CALL MPI_RECV( rcnt, 1, MPI_INTEGER, i-1, 1200, ELMER_COMM_WORLD, status, ierr )
+            CALL MPI_RECV(rcnt,1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD,status,ierr)
             IF(rcnt==0) CYCLE
 
             ALLOCATE( rRows(rcnt), rSize(rcnt) )
 
-            CALL MPI_RECV( rRows, rcnt, MPI_INTEGER, i-1, 1201, ELMER_COMM_WORLD, status, ierr )
-            CALL MPI_RECV( rSize, rcnt, MPI_INTEGER, i-1, 1202, ELMER_COMM_WORLD, status, ierr )
+            CALL MPI_RECV(rRows,rcnt,MPI_INTEGER,i-1,1201,ELMER_COMM_WORLD,status,ierr)
+            CALL MPI_RECV(rSize,rcnt,MPI_INTEGER,i-1,1202,ELMER_COMM_WORLD,status,ierr)
             DO j=1,rcnt
               k = GlobalToLocal(rRows(j))
               IF ( k==0 ) THEN
@@ -12893,7 +12896,8 @@ END FUNCTION SearchNodeL
               ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
               CALL MPI_RECV( cBuf, rSize(j), MPI_INTEGER,i-1, &
                     1203,ELMER_COMM_WORLD, status,ierr )
-              CALL MPI_RECV( vBuf, rSize(j), MPI_DOUBLE_PRECISION,i-1,i &
+
+              CALL MPI_RECV( vBuf, rSize(j), MPI_DOUBLE_PRECISION,i-1, &
                     1204,ELMER_COMM_WORLD, status,ierr )
 
               DO l=1,rSize(j)
@@ -12904,24 +12908,14 @@ END FUNCTION SearchNodeL
 
             DEALLOCATE( rRows, rSize )
           END DO
-
-          CALL List_toCRSMatrix(Bm)
-          A % CollectionMatrix => Bm
-        END BLOCK
-      ELSE
-        Bm => A % CollectionMatrix
-        lrow = 0
-        Bm % Values = 0._dp
-        DO i=1,a % NumberofRows
-          you = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
-          IF ( you == me ) THEN
-            lrow = lrow+1
-            DO j=A % Rows(i+1)-1, A % Rows(i),-1
-              CALL AddToMatrixElement(Bm, lrow, aperm(A  % Cols(j)), A % Values(j))
-            END DO
+          CALL MPI_BARRIER(ELMER_COMM_WORLD,ierr)
+ 
+          IF( Bm % Format == MATRIX_LIST ) THEN
+            CALL List_toCRSMatrix(Bm)
+            A % CollectionMatrix => Bm
           END IF
-        END DO
-      END IF
+        END IF
+      END BLOCK
 
       BLOCK
         REAL(KIND=dp), ALLOCATABLE :: bb(:),xb(:), r(:)
@@ -12932,6 +12926,7 @@ END FUNCTION SearchNodeL
 
         r = b(1:j)
         CALL ParallelSumVector(A, r)
+
         x = 0
         DO i=1,n
           bb(i) = r(iLPerm(i))
