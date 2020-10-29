@@ -5699,7 +5699,7 @@ END SUBROUTINE GetNodalElementSize
  !> This routine makes it possible to refer to the parameters
  !> in the .sif file by rpar(0), rpar(1),...
  !-----------------------------------------------------------------------------
- SUBROUTINE SetParametersMATC(NoParam,Param)
+ SUBROUTINE SetRealParametersMATC(NoParam,Param)
 
    INTEGER :: NoParam
    REAL(KIND=dp), ALLOCATABLE :: Param(:)
@@ -5719,8 +5719,34 @@ END SUBROUTINE GetNodalElementSize
      !$OMP END PARALLEL
    END DO
 
- END SUBROUTINE SetParametersMATC
+ END SUBROUTINE SetRealParametersMATC
 
+ !------------------------------------------------------------------------------
+ !> This routine makes it possible to refer to the parameters
+ !> in the .sif file by rpar(0), rpar(1),...
+ !-----------------------------------------------------------------------------
+ SUBROUTINE SetIntegerParametersMATC(NoParam,Param)
+
+   INTEGER :: NoParam
+   INTEGER, ALLOCATABLE :: Param(:)
+
+   INTEGER :: i,j,tj
+   CHARACTER(LEN=MAX_STRING_LEN) :: cmd, tmp_str, tcmd, ttmp_str
+
+   DO i=1,NoParam
+     WRITE( cmd, * ) 'ipar('//TRIM(i2s(i-1))//')=', Param(i)
+     j = LEN_TRIM(cmd)
+     !$OMP PARALLEL DEFAULT(NONE) &
+     !$OMP SHARED(cmd, tmp_str, j ) &
+     !$OMP PRIVATE(tcmd, ttmp_str, tj)
+     tj = j
+     tcmd = cmd               
+     CALL matc( tcmd, ttmp_str, tj )
+     !$OMP END PARALLEL
+   END DO
+
+ END SUBROUTINE SetIntegerParametersMATC
+ 
  
 !------------------------------------------------------------------------------
 !> Adds parameters used in the simulation either predefined or from run control.
@@ -5804,7 +5830,7 @@ END SUBROUTINE GetNodalElementSize
    END IF
 
    ! Set parametes to be accessible to the MATC preprocessor when reading sif file. 
-   CALL SetParametersMATC(NoParam,Param)
+   CALL SetRealParametersMATC(NoParam,Param)
 
    CALL Info(Caller, '-----------------------------------------', Level=5 )
 

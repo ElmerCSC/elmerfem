@@ -118,8 +118,9 @@
      TYPE(Model_t), POINTER, SAVE :: Control
      CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
      LOGICAL :: DoControl, GotParams
-     INTEGER :: nr
+     INTEGER :: nr,ni
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
+     INTEGER, ALLOCATABLE :: ipar(:)
      
 #ifdef HAVE_TRILINOS
 INTERFACE
@@ -169,9 +170,25 @@ END INTERFACE
                CALL GET_COMMAND_ARGUMENT(i, OptionString)
                READ( OptionString,*) rpar(j)
              END DO
-             CALL Info('MAIN','Read '//TRIM(I2S(nr))//' parameters from command line!')
-             CALL SetParametersMATC(nr,rpar)
+             CALL Info('MAIN','Read '//TRIM(I2S(nr))//' real parameters from command line!')
+             CALL SetRealParametersMATC(nr,rpar)
            END IF
+
+           IF( OptionString=='-ipar' ) THEN
+             ! Followed by number of paramters + the parameter values
+             i = i + 1
+             CALL GET_COMMAND_ARGUMENT(i, OptionString)
+             READ( OptionString,*) ni             
+             ALLOCATE( ipar(nr) )
+             DO j=1,ni
+               i = i + 1
+               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               READ( OptionString,*) ipar(j)
+             END DO
+             CALL Info('MAIN','Read '//TRIM(I2S(ni))//' integer parameters from command line!')
+             CALL SetIntegerParametersMATC(ni,ipar)
+           END IF
+
            Silent = Silent .OR. &
                ( OptionString=='-s' .OR. OptionString=='--silent' ) 
            Version = Version .OR. &
