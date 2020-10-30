@@ -46,6 +46,18 @@ typedef struct {
 } ElmerAMGX;
 
 
+#include "cuda_runtime.h"
+
+/* CUDA error macro */
+#define CUDA_SAFE_CALL(call) do {                                 \
+  cudaError_t err = call;                                         \
+  if(cudaSuccess != err) {                                        \
+    fprintf(stderr, "Cuda error in file '%s' in line %i : %s.\n", \
+            __FILE__, __LINE__, cudaGetErrorString( err) );       \
+    exit(EXIT_FAILURE);                                           \
+  } } while (0)
+
+
 void ElmerAMGXInitialize()
 {
    static int first = 1;
@@ -93,7 +105,9 @@ void AMGXmv( int **a_in, int *n_in, int *rows, int *cols, double *vals,
       AMGX_matrix_upload_all(ptr->A,n,rows[n],1,1,rows,cols,vals,NULL );
     }
 
+    AMGX_vector_bind(ptr->u, ptr->A);
     AMGX_vector_upload( ptr->u, n, 1, u_in );
+    AMGX_vector_bind(ptr->v, ptr->A);
     AMGX_vector_upload( ptr->v, n, 1, v_in );
     AMGX_matrix_vector_multiply(ptr->A, ptr->u, ptr->v);
     AMGX_vector_download(ptr->v, v_in);
@@ -106,9 +120,9 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 */
 void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
   double *b_in, double *x_in,int *nonlin_update, char *config_name, int *fcomm, 
-    int *ng_in, int *part_vec, int *gdofs, double *bnrm_in )
+     int *ng_in, int *part_vec, double *bnrm_in )
 {
-    int i,j,k,n = *n_in, ng=*ng_in;
+    int i,j,k,n = *n_in, ng=*ng_in, lrank, nranks, rank, gpu_count;
     static MPI_Comm comm;
     double bnrm = *bnrm_in;
 
@@ -119,7 +133,6 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 
     ElmerAMGXInitialize();
 
-    ptr = (ElmerAMGX *)*a_in;
     if(!ptr)
     {
 
@@ -137,17 +150,21 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
       if ( n==ng ) {
         AMGX_resources_create_simple(&ptr->rsrc, ptr->cfg);
       } else {
-        int gpu_ids[] = {0}, ierr, s;
-
         comm = MPI_Comm_f2c(*fcomm);
-        ierr = MPI_Comm_size(comm, &s);
-        AMGX_resources_create(&ptr->rsrc, ptr->cfg, &comm, 1, gpu_ids);
+        MPI_Comm_size(comm, &nranks);
+        MPI_Comm_rank(comm, &rank);
+
+        CUDA_SAFE_CALL(cudaGetDeviceCount(&gpu_count));
+        lrank = rank % gpu_count;
+        CUDA_SAFE_CALL(cudaSetDevice(lrank));
+        printf("Process %d selecting device %d\n", rank, lrank);
+
+        AMGX_resources_create(&ptr->rsrc, ptr->cfg, &comm, 1, &lrank);
       }
 
       AMGX_matrix_create(&ptr->A, ptr->rsrc, mode);
       AMGX_vector_create(&ptr->x, ptr->rsrc, mode);
       AMGX_vector_create(&ptr->b, ptr->rsrc, mode);
-
       AMGX_solver_create(&ptr->solver, ptr->rsrc, mode, ptr->cfg);
 
       if ( n==ng ) {
@@ -205,7 +222,6 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 
       MPI_Barrier(comm);
       AMGX_solver_setup(ptr->solver, ptr->A);
-
       MPI_Barrier(comm);
       AMGX_solver_solve(ptr->solver, ptr->b, ptr->x);
 
