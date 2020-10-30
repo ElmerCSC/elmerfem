@@ -10,16 +10,16 @@ You can get a complete listing of commit messages, for example, with:
 git log --since="2018-12-18"  > log.txt
 
 Apart from the core Elmer team at CSC (Juhani K., Mika M., Juha R., Peter R., Thomas Z.)
-git log shows contributions from from Daniel B., Denis C., Eef v. D., Eelis T., Fabien G-C,
+git log shows contributions from Daniel B., Denis C., Eef v. D., Eelis T., Fabien G-C,
 Foad S. F., Fredrik R., Olivier G., Joe T., Luz P., Mondher C., Rupert G., Sami I.,
-Sami R., Samuel C., and Saeki T. have contributed to making this release. 
+Sami R., Samuel C., and Saeki T. to this release. 
 
 Additionally there are many ongoing developments in several branches
-that have not been merged to this release, and are therefore not covered here. 
-Also sometimes the code has been passed on by the original author by means other than the
+that have not been merged to this release and are not therefore covered here. 
+Also sometimes the code has been passed on by the original author by other means than the
 git, and in such cases the names may have been accidentally omitted.
 
-The contribution of all developers is gratefully acknowledged! 
+The contributions of all developers are gratefully acknowledged! 
 
 
 New Solver Modules
@@ -42,7 +42,7 @@ New Solver Modules
 
 ### ModelMixedPoisson
 - A general-purpose mixed FEM solver for the Poisson equation (see Elmer Models Manual for documentation)
-- employs a div-conforming (face) finite element approximation
+- Employs a div-conforming (face) finite element approximation
 
 ### SpringAssembly
 - A generic utility to add node-wise springs and masses to structural models (see Elmer Models Manual for documentation)
@@ -50,28 +50,28 @@ New Solver Modules
 ### MarchingODESolver
 - A solver that can compute ordinary differential equations on a moving mesh.
 - It is assumed that the mesh is structured and there is a known draw speed. This
-  make it possible to relate timestep and mesh parameter directly with each other.
+  makes it possible to relate timestep and mesh parameter directly with each other.
 
 
 Enhanced Solver Modules
 -----------------------
 
 ### ElasticSolve
-- adding a new UMAT material model is simplified: compilation with an elmerf90 command is sufficient
-- the state variables of UMAT material model can be written to a result file and visualized
+- Adding a new UMAT material model is simplified: compilation with an elmerf90 command is sufficient
+- The state variables of UMAT material model can be written to a result file and visualized
 - UMAT implementation updated to support axial symmetry 
 
 ### EMWaveSolver
-- the solver updated to support the basis functions of second order and simulation in 2D 
-- the solver is now documented in Elmer Models Manual
+- The solver updated to support the basis functions of second order and simulation in 2D 
+- The solver is now documented in Elmer Models Manual
 
 ### MagnetoDynamics3D
 - Fixes and generalization to the source projection (the determination of Jfix). 
 - A surface impedance condition for the time-harmonic AV model
-- thin region formulation for 1D wires in transient analysis
+- Thin region formulation for 1D wires in transient analysis
 
 ### MagnetoDynamics2D
-- a velocity field can be given to add a Lorentz term to the equations
+- A velocity field can be given to add a Lorentz term to the equations
 - Coreloss a posteriori formulas (Bertotti + extended Bertotti)
 
 ### ResultOutputSolver
@@ -92,13 +92,13 @@ Enhanced Solver Modules
 
 ### HeatSolver
 - A new tentative vectorized version: HeatSolverVec
-- Enable symmetric 3D cases for view factor computation to obtain significant timesavings. 
-- Make Gebhart factors linear system symmetric, if possible "ViewFactor Symmetry".
+- Enable symmetric 3D cases for view factor computation to obtain significant timesavings
+- Make Gebhart factors linear system symmetric, if possible "ViewFactor Symmetry"
 
 ### StressSolver
-- Added Maxwell visco-elastic model to linear elasticity solver
-- possible also to be run incompressible (introducing pressure variable)
-- optional pre-stress advection term for layered Earth-deformation model
+- Added a Maxwell visco-elastic model to linear elasticity solver
+- Possible also to be run as incompressible (introducing pressure variable)
+- Optional pre-stress advection term for layered Earth-deformation model
 
 ### WaveSolver
 - The solver can be used to model harmonic and eigenmode cases as well. 
@@ -140,7 +140,7 @@ ElmerSolver library functionality
   assembled into one degree of freedom.
 - This decreases the size of the linear system and is numerically favourable.
 - Antiperiodicity may be included. For vector-valued problems all components must be treated alike. 
-- Conforming BCs for edge dofs may consider direction of edge.
+- Conforming BCs for edge dofs may consider the direction of edge.
 - See test cases with "Apply Conforming BCs" and "Conforming BC" defined.
     
 ### Improved internal partitioning with Zoltan
@@ -152,10 +152,10 @@ ElmerSolver library functionality
 - Also possible to call before and after each nonlinear iteration.
 
 
-### Anderson Acceleration for linear systems
+### Anderson Acceleration for nonlinear systems
 - Implemented a version of Anderson Acceleration where previous solutions and
   residuals are used to accelerate the nonlinear convergence.
-- May increase linear convergence to quadratic, quadratic convergence (Newton's method) is not improved.
+- May increase nonlinear convergence to quadratic, quadratic convergence (Newton's method) is not improved.
 
 ### Swapping meshes on-the-fly
 - Implemented library functionality to swap meshes during the simulation.
@@ -175,7 +175,7 @@ ElmerSolver library functionality
 ### Run Control
 - Enable external loop control over the simulation.
 - May be used in optimization and parametric scanning etc.
-- Applicable also to transient system as the variable "time" is not used for the control level. 
+- Applicable also to transient systems as the variable "time" is not used for the control level. 
 
 
 ### Inline parameters
@@ -200,21 +200,21 @@ ElmerGUI
 --------
 Huge number of improvements by Saeki! Highlights include:
 - Object browser to view the case at a glance and to easily access the most windows.
-- Removed sif auto-generation functionality to aviod unintended overwriting of sif file.
+- Removed sif auto-generation functionality to avoid unintended overwriting of sif file.
 - "Generate, save and run" button to quickly run the case modifed via GUI.
 - "Save and run" button on sif window to quickly run the case modifed via sif window.
 - Postprocessor button selectable from ElmerVTK, ElmerPost or ParaView.
 - "New project..." menu as an alternative way to start a new project.
 - Seperated "Save project as..." menu from "Save project" menu to save the project in a different directory.
 - Improved and more robust project loading
-- "Preference" menue on sif window and on solver log window for syntax highlighting and font selection.
+- "Preference" menu on sif window and on solver log window for syntax highlighting and font selection.
 - "Recent projects" in File menu for quick loading of recently used projects. 
-- Improved ElmerVTK postprocessor (reading smple .vtu file, bottom toolbar including time-step control and displace button, etc)
+- Improved ElmerVTK postprocessor (reading simple .vtu file, bottom toolbar including time-step control and displace button, etc)
  
 Configuration & Compilation
 ---------------------------
 - New Windows installer utilizing msys2
-    - either with or without ElmerGUI + with or without MPI = 4 installers
+    - either with or without ElmerGUI + with or without MPI installers
 
 Elmer/Ice
 ---------
