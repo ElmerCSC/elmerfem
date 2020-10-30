@@ -12731,7 +12731,7 @@ END FUNCTION SearchNodeL
 
     INTERFACE
       SUBROUTINE AMGXSolve(AMGX, n, rows, cols, vals, b, x, &
-              nonlin_update, config, comm, ng, part_vec, gdofs, bnrm ) BIND(C, Name="AMGXSolve")
+              nonlin_update, config, comm, ng, part_vec, bnrm ) BIND(C, Name="AMGXSolve")
 
          USE Types
          USE ISO_C_BINDING, ONLY: C_CHAR, C_INTPTR_T
@@ -12741,7 +12741,7 @@ END FUNCTION SearchNodeL
          INTEGER(KIND=C_INTPTR_T) :: AMGX
          REAL(KIND=dp) :: vals(*), b(*), x(*), bnrm
          CHARACTER(KIND=C_CHAR) :: config(*)
-         INTEGER :: rows(*), cols(*), nonlin_update, n, comm, gdofs(*), ng, part_vec(*)
+         INTEGER :: rows(*), cols(*), nonlin_update, n, comm, ng, part_vec(*)
       END SUBROUTINE AMGXSolve
     END INTERFACE
 
@@ -12777,7 +12777,7 @@ END FUNCTION SearchNodeL
 
         INTEGER, ALLOCATABLE, SAVE :: GlobalToLocal(:),rRows(:),rSize(:),cBuf(:),SendTo(:)
         REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
-        INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt
+        INTEGER :: status(MPI_STATUS_SIZE),ierr,i,j,k,l,lrow,you,rcnt,proc
 
         TYPE SendStuff_t
           INTEGER, ALLOCATABLE :: Size(:), Rows(:)
@@ -12801,7 +12801,7 @@ END FUNCTION SearchNodeL
 
           ALLOCATE(part_vec(ng)); part_vec=-1
           DO i=1,A % NumberOfRows
-            part_vec(aperm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+            part_vec(APerm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
           END DO
 
           ALLOCATE(Part_Vec1(ng)); part_vec1=-1
@@ -12816,7 +12816,6 @@ END FUNCTION SearchNodeL
         END IF
 
         IF( Bm % Format == MATRIX_LIST .OR. nonlin_update==1 ) THEN
-
           iLPerm = 0
           LRow = 0
           SendTo = 0
@@ -12862,14 +12861,14 @@ END FUNCTION SearchNodeL
             CALL MPI_BSEND( SendTo(i), 1, MPI_INTEGER, i-1, 1200, ELMER_COMM_WORLD, status, ierr )
             IF(Sendto(i)==0) CYCLE
 
-            CALL MPI_BSEND( aperm(SendStuff(i) % Rows), SendTo(i),MPI_INTEGER,i-1, &
+            CALL MPI_BSEND( APerm(SendStuff(i) % Rows), SendTo(i),MPI_INTEGER,i-1, &
                           1201,ELMER_COMM_WORLD, status, ierr )
   
             CALL MPI_BSEND( SendStuff(i) % Size, SendTo(i),MPI_INTEGER,i-1, &
                           1202,ELMER_COMM_WORLD, status, ierr )
             DO j=1,SendTo(i)
               k = SendStuff(i) % Rows(j)
-              CALL MPI_BSEND( aperm(A % Cols(A % Rows(k):A % Rows(k+1)-1)), SendStuff(i) % Size(j), &
+              CALL MPI_BSEND( APerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)), SendStuff(i) % Size(j), &
                          MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, status, ierr )
 
               CALL MPI_BSEND( A % Values(A % Rows(k):A % Rows(k+1)-1), SendStuff(i) % Size(j), &
@@ -12880,25 +12879,26 @@ END FUNCTION SearchNodeL
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-            CALL MPI_RECV(rcnt,1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD,status,ierr)
+            CALL MPI_RECV(rcnt,1,MPI_INTEGER,MPI_ANY_SOURCE,1200,ELMER_COMM_WORLD,status,ierr)
             IF(rcnt==0) CYCLE
 
+            proc = status(MPI_SOURCE)
             ALLOCATE( rRows(rcnt), rSize(rcnt) )
 
-            CALL MPI_RECV(rRows,rcnt,MPI_INTEGER,i-1,1201,ELMER_COMM_WORLD,status,ierr)
-            CALL MPI_RECV(rSize,rcnt,MPI_INTEGER,i-1,1202,ELMER_COMM_WORLD,status,ierr)
+            CALL MPI_RECV(rRows,rcnt,MPI_INTEGER,proc,1201,ELMER_COMM_WORLD,status,ierr)
+            CALL MPI_RECV(rSize,rcnt,MPI_INTEGER,proc,1202,ELMER_COMM_WORLD,status,ierr)
             DO j=1,rcnt
               k = GlobalToLocal(rRows(j))
               IF ( k==0 ) THEN
-                PRINT*,Parenv % MyPE, i-1, 'not mine then ?', rRows(j)
+                PRINT*,Parenv % MyPE,proc, 'not mine then ?', rRows(j)
                 CYCLE
               END IF
               ALLOCATE(cBuf(rSize(j)), vBuf(rSize(j)))
-              CALL MPI_RECV( cBuf, rSize(j), MPI_INTEGER,i-1, &
-                    1203,ELMER_COMM_WORLD, status,ierr )
+              CALL MPI_RECV(cBuf,rSize(j),MPI_INTEGER,proc,1203, &
+                        ELMER_COMM_WORLD,status,ierr )
 
-              CALL MPI_RECV( vBuf, rSize(j), MPI_DOUBLE_PRECISION,i-1, &
-                    1204,ELMER_COMM_WORLD, status,ierr )
+              CALL MPI_RECV(vBuf,rSize(j),MPI_DOUBLE_PRECISION,proc, &
+                      1204,ELMER_COMM_WORLD, status,ierr)
 
               DO l=1,rSize(j)
                 CAll AddToMatrixElement(Bm,k,cBuf(l),vBuf(l))
@@ -12935,7 +12935,7 @@ END FUNCTION SearchNodeL
         bnrm = SQRT(ParallelReduction(SUM(bb**2)))
 
         CALL AMGXSolve( A % AMGX, n, Bm % Rows-1, Bm % Cols-1, Bm % Values,  &
-          bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, part_vec, APerm-1, bnrm )
+          bb, xb, nonlin_update, cfg, ELMER_COMM_WORLD, ng, part_vec, bnrm )
 
         x = 0
         DO i=1,n
@@ -12949,7 +12949,7 @@ END FUNCTION SearchNodeL
 
       CALL AMGXSolve( A % AMGX, n, A % Rows-1, A % Cols-1, &
         A % Values, b, x, nonlin_update, cfg, ELMER_COMM_WORLD, n, &
-           A % Diag, A % Diag, bnrm ) ! <--- a % diag  for dummy
+           A % Diag, bnrm ) ! <--- a % diag  for dummy
     END IF
 #else
     CALL Fatal('AMGXSolver', 'AMGX doesn't seem to be included.')
