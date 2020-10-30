@@ -542,7 +542,7 @@ CONTAINS
         DO i = 1,nd
           DO j = 1,nd
             ! the term i\omega\sigma E.v
-            STIFF(i,j) = STIFF(i,j) + im * Omega * Cond * &
+            STIFF(i,j) = STIFF(i,j) - im * Omega * Cond * &
                 SUM(WBasis(j,:) * WBasis(i,:)) * weight
           END DO
         END DO
