@@ -141,13 +141,10 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 
       mode = AMGX_mode_dDDI;
 
-      fprintf( stderr, "----\n" );
-      fprintf( stderr, "%s\n" , config_name );
-      fprintf( stderr, "----\n" );
-
       AMGX_SAFE_CALL(AMGX_config_create_from_file(&ptr->cfg, config_name));
 
       if ( n==ng ) {
+        nranks = 1; rank = 0;
         AMGX_resources_create_simple(&ptr->rsrc, ptr->cfg);
       } else {
         comm = MPI_Comm_f2c(*fcomm);
@@ -160,6 +157,12 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
         printf("Process %d selecting device %d\n", rank, lrank);
 
         AMGX_resources_create(&ptr->rsrc, ptr->cfg, &comm, 1, &lrank);
+      }
+
+      if ( rank==0 ) {
+        fprintf( stderr, "----\n" );
+        fprintf( stderr, "%s\n" , config_name );
+        fprintf( stderr, "----\n" );
       }
 
       AMGX_matrix_create(&ptr->A, ptr->rsrc, mode);
