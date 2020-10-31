@@ -133,9 +133,9 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 
     ElmerAMGXInitialize();
 
+    ptr = (ElmerAMGX *)*a_in;
     if(!ptr)
     {
-
       ptr = (ElmerAMGX *)calloc(sizeof(ElmerAMGX),1);
       *a_in = (int *)ptr;
 
