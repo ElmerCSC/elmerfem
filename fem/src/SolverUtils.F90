@@ -12773,7 +12773,7 @@ END FUNCTION SearchNodeL
     IF(isParallel) THEN
 
       BLOCK
-        INTEGER, ALLOCATABLE :: part_vec1(:)
+        INTEGER, ALLOCATABLE :: part_vec_tmp(:)
 
         INTEGER, ALLOCATABLE, SAVE :: GlobalToLocal(:),rRows(:),rSize(:),cBuf(:),SendTo(:)
         REAL(KIND=dp), ALLOCATABLE :: vBuf(:)
@@ -12799,18 +12799,17 @@ END FUNCTION SearchNodeL
           END DO
           ng = NINT(ParallelReduction(1._dp*ng))
 
-          ALLOCATE(part_vec(ng)); part_vec=-1
+          ALLOCATE(part_vec(ng), part_vec_tmp(ng));
+          part_vec_tmp=-1; part_vec=-1
           DO i=1,A % NumberOfRows
-            part_vec(APerm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
+            part_vec_tmp(APerm(i)) = A % ParallelInfo % NeighbourList(i) % Neighbours(1)
           END DO
-
-          ALLOCATE(Part_Vec1(ng)); part_vec1=-1
-          CALL MPI_ALLREDUCE( part_vec, part_vec1, ng, MPI_INTEGER, MPI_MAX, &
+          CALL MPI_ALLREDUCE( part_vec_tmp, part_vec, ng, MPI_INTEGER, MPI_MAX, &
                             ELMER_COMM_WORLD, ierr )
-          part_vec = part_vec1
+          DEALLOCATE(part_vec_tmp)
 
-          ALLOCATE(SendTo(ParEnv % Pes),GlobalToLocal(ng),iLPerm(A % NumberOfRows))
           Bm => AllocateMatrix(); Bm % Format = MATRIX_LIST
+          ALLOCATE(SendTo(ParEnv % Pes),GlobalToLocal(ng),iLPerm(A % NumberOfRows))
         ELSE
           Bm => A % CollectionMatrix
         END IF
@@ -12858,21 +12857,21 @@ END FUNCTION SearchNodeL
           DO i=1,ParEnV % PEs
             IF(i-1==me .OR. .NOT. ParEnv % IsNeighbour(i)) CYCLE
 
-            CALL MPI_BSEND( SendTo(i), 1, MPI_INTEGER, i-1, 1200, ELMER_COMM_WORLD, status, ierr )
+            CALL MPI_BSEND(SendTo(i),1,MPI_INTEGER,i-1,1200,ELMER_COMM_WORLD,status, ierr)
             IF(Sendto(i)==0) CYCLE
 
-            CALL MPI_BSEND( APerm(SendStuff(i) % Rows), SendTo(i),MPI_INTEGER,i-1, &
-                          1201,ELMER_COMM_WORLD, status, ierr )
+            CALL MPI_BSEND(APerm(SendStuff(i) % Rows),SendTo(i),MPI_INTEGER,i-1, &
+                          1201,ELMER_COMM_WORLD,status,ierr )
   
-            CALL MPI_BSEND( SendStuff(i) % Size, SendTo(i),MPI_INTEGER,i-1, &
-                          1202,ELMER_COMM_WORLD, status, ierr )
+            CALL MPI_BSEND( SendStuff(i) % Size,SendTo(i),MPI_INTEGER,i-1, &
+                          1202,ELMER_COMM_WORLD,status,ierr )
             DO j=1,SendTo(i)
               k = SendStuff(i) % Rows(j)
-              CALL MPI_BSEND( APerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)), SendStuff(i) % Size(j), &
+              CALL MPI_BSEND(APerm(A % Cols(A % Rows(k):A % Rows(k+1)-1)),SendStuff(i) % Size(j), &
                          MPI_INTEGER,i-1, 1203,ELMER_COMM_WORLD, status, ierr )
 
-              CALL MPI_BSEND( A % Values(A % Rows(k):A % Rows(k+1)-1), SendStuff(i) % Size(j), &
-                      MPI_DOUBLE_PRECISION,i-1, 1204,ELMER_COMM_WORLD, status, ierr )
+              CALL MPI_BSEND(A % Values(A % Rows(k):A % Rows(k+1)-1),SendStuff(i) % Size(j), &
+                      MPI_DOUBLE_PRECISION,i-1,1204,ELMER_COMM_WORLD, status, ierr )
             END DO
           END DO
 
@@ -12927,7 +12926,6 @@ END FUNCTION SearchNodeL
         r = b(1:j)
         CALL ParallelSumVector(A, r)
 
-        x = 0
         DO i=1,n
           bb(i) = r(iLPerm(i))
           xb(i) = x(iLPerm(i))
