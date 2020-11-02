@@ -2201,6 +2201,10 @@ END INTERFACE
            END IF
            IF(GotIt) THEN
              dt = dtfunc
+             IF(dt < EPSILON(dt) ) THEN
+               WRITE(Message,'(A,ES12.3)') 'Timestep smaller than epsilon: ',dt
+               CALL Fatal('ExecSimulation', Message)
+             END IF             
            ELSE
              dt = TimestepSizes(interval,1)
            END IF
