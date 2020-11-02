@@ -414,8 +414,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>    Read the element description input file and add the element types to a
-!>    global list. The file is assumed to be found under the name
+!>   Read the element description input file and add the element types to a
+!>   global list. The file is assumed to be found under the name
 !>        $ELMER_HOME/lib/elements.def
 !>   This is the first routine the user of the element utilities should call
 !>   in his/her code.
@@ -967,19 +967,19 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of a quantity x given at element nodes
-!>   at local coordinate point (u,vb) inside the element. Element basis functions
-!>   are used to compute the value.This is for 2D elements, and shouldn't probably
+!>   Given element structure return the value of a quantity x known at element nodes
+!>   at local coordinate point (u,v) inside the element. Element basis functions
+!>   are used to compute the value. This is for 2D elements, and shouldn't probably
 !>   be called directly by the user but through the wrapper routine
 !>   InterpolateInElement.
 !------------------------------------------------------------------------------
    FUNCTION InterpolateInElement2D( element,x,u,v ) RESULT(y)
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element          !< element structure
-     REAL(KIND=dp) :: u                  !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp) :: v                  !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x    !< Nodal values of the quantity whose partial derivative we want to know
-     REAL(KIND=dp) :: y                  !< value of the quantity y = x(u,v)
+     REAL(KIND=dp) :: u                  !< u at the point where the quantity is evaluated
+     REAL(KIND=dp) :: v                  !< v at the point where the quantity is evaluated
+     REAL(KIND=dp), DIMENSION(:) :: x    !< Nodal values of the quantity
+     REAL(KIND=dp) :: y                  !< The value of the quantity y = x(u,v)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1065,8 +1065,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of the first partial derivative with
-!>   respect to local coordinate u of i quantity x given at element nodes at local
+!>   Given element structure return the value of the first partial derivative with
+!>   respect to local coordinate u of a quantity x given at element nodes at local
 !>   coordinate point u,v inside the element. Element basis functions are used to
 !>   compute the value. 
 !------------------------------------------------------------------------------
@@ -1373,8 +1373,8 @@ CONTAINS
    SUBROUTINE NodalBasisFunctions3D( y,element,u,v,w )
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
-     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp) :: y(:)             !< value of the quantity y = x(u,v,w)
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the basis functions
+     REAL(KIND=dp) :: y(:)             !< The values of the basis functions
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1541,47 +1541,47 @@ CONTAINS
       l = elt % BasisFunctionDegree
       BasisFunctions => elt % BasisFunctions
 
-IF ( Elt % ElementCode == 605 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+      IF ( Elt % ElementCode == 605 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1) * ( -(1-u) + u*w * s ) / 4
-  y = y + x(2) * ( -(1+u) - u*w * s ) / 4
-  y = y + x(3) * (  (1+u) + u*w * s ) / 4
-  y = y + x(4) * (  (1-u) - u*w * s ) / 4
+        y = 0.0d0
+        y = y + x(1) * ( -(1-u) + u*w * s ) / 4
+        y = y + x(2) * ( -(1+u) - u*w * s ) / 4
+        y = y + x(3) * (  (1+u) + u*w * s ) / 4
+        y = y + x(4) * (  (1-u) - u*w * s ) / 4
 
-  RETURN
-ELSE IF ( Elt % ElementCode == 613 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+        RETURN
+      ELSE IF ( Elt % ElementCode == 613 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
-           (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
+        y = 0.0d0
+        y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
+            (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
 
-  y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
-           ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
+        y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
+            ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
 
-  y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
-           ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
+        y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
+            ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
 
-  y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
-           (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
+        y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
+            (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
 
-  y = y + x(5)  * 0.0d0
+        y = y + x(5)  * 0.0d0
 
-  y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
-  y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
-  y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
-  y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
+        y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
+        y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
+        y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
+        y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
 
-  y = y - x(10) *  w * (1-u-w) * s
-  y = y - x(11) *  w * (1+u-w) * s
-  y = y + x(12) *  w * (1+u-w) * s
-  y = y + x(13) *  w * (1-u-w) * s
-  RETURN
-END IF
+        y = y - x(10) *  w * (1-u-w) * s
+        y = y - x(11) *  w * (1+u-w) * s
+        y = y + x(12) *  w * (1+u-w) * s
+        y = y + x(13) *  w * (1-u-w) * s
+        RETURN
+      END IF
 
       y = 0.0d0
       DO n = 1,elt % NumberOfNodes
