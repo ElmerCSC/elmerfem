@@ -4,7 +4,7 @@
 #
 
 #  AMGX_INCLUDE_DIR  - user modifiable choice of where to AMGX include dir
-#  AMGX_LIBRARY    - user modifiable choice of where AMGX library is
+#  AMGX_LIBRARY      - user modifiable choice of where AMGX library is
 
 # his module returns these variables for the rest of the project to use.
 #
@@ -18,56 +18,41 @@
 
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
-# If AMGX_LIBRARY and AMGX_INCLUDE_DIR  are already defined, do nothing
-IF(AMGX_LIBRARY AND AMGX_INCLUDE_DIR AND CUDA_LIBRARIES)
-   SET(AMGX_FOUND TRUE)
-   RETURN()
-ENDIF()
 
 FIND_PACKAGE(CUDA)
 message("Cuda libraries: " ${CUDA_LIBRARIES})
 
 SET(AMGX_FOUND FALSE)
-SET(AMGXINCLUDE
-  "${AMGXROOT}/include"
-  "$ENV{AMGXROOT}/include"
-  "${AMGX_ROOT}/include"
-  "$ENV{AMGX_ROOT}/include"
-  "${CMAKE_SOURCE_DIR}/amgx/include"
-  INTERNAL
-  )
 
-FIND_PATH(AMGX_INCLUDE_DIR
-  amgx_c.h
+FIND_PATH(AMGX_INCLUDE_DIR amgx_c.h
   HINTS 
-  ${AMGXINCLUDE}
+  "${AMGXINCLUDE}" "${AMGX_ROOT}/include"
   )
 
-SET(AMGXLIB 
-  "${AMGXROOT}/lib"
-  "$ENV{AMGXROOT}/lib"
-  "${AMGX_ROOT}/lib"
-  "$ENV{AMGX_ROOT}/lib"
-  "${CMAKE_SOURCE_DIR}/amgx/lib"
-  INTERNAL)
 
-FIND_LIBRARY(AMGX_LIBRARY amgx HINTS ${AMGXLIB})
+MESSAGE ("${AMGX_ROOT}")
 
-#SET(AMGX_LIBRARIES ${AMGXLIB} ${CUDA_LIBRARIES})
+FIND_LIBRARY(AMGX_LIBRARY
+  NAMES amgx 
+  NAMES_PER_DIR
+  HINTS "${AMGX_ROOT}/lib" "${AMGXLIB}"
+  REQUIRED
+  )
 
-IF (AMGX_INCLUDE_DIR AND AMGX_LIBRARIES)
-  UNSET(AMGX_FAILMSG)
-  SET(AMGXLIB_FOUND TRUE)
-ELSE()
-  SET(AMGX_FAILMSG "AMGX libraries not found.")
+IF (AMGX_LIBRARY AND AMGX_INCLUDE_DIR)
+  SET (AMGX_FOUND TRUE)
 ENDIF()
 
-IF (NOT AMGX_FAILMSG)
-  SET(AMGX_FOUND TRUE)
+
+IF (AMGX_FOUND)
+  SET(AMGX_INCLUDE_DIRS "${AMGX_INCLUDE_DIR}")
+  SET(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_cusparse_LIBRARY} ${CUDA_cublas_LIBRARY} ${CUDA_cusolver_LIBRARY} ${CUDA_nvToolsExt_LIBRARY})
+  SET(AMGX_LIBRARIES ${AMGX_LIBRARY} ${CUDA_LIBRARIES})
+ELSE()
+    MESSAGE (FATAL_ERROR, "AMGX not found")
 ENDIF()
 
 MARK_AS_ADVANCED(
-  AMGX_FAILMSG
   AMGX_FOUND
   AMGX_INCLUDE_DIR
   AMGX_LIBRARY
