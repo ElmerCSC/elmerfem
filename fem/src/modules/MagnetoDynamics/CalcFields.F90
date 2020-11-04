@@ -526,7 +526,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), HdotB
-   REAL(KIND=dp) :: detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(2), w_dens
+   REAL(KIND=dp) :: detJ, C_ip, PR_ip, ST(3,3), Omega, ThinLinePower, Power, Energy(3), w_dens
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3), angular_velo(3)
@@ -1416,15 +1416,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END SELECT
          END DO
        END IF
+
+       IF (RealField) THEN
+         HdotB = SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:))
+       ELSE
+         HdotB = SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
+             SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:))
+       END IF
        
        IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
          NF_ip = 0._dp
-         IF (RealField) THEN
-           HdotB = SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:))
-         ELSE
-           HdotB = SUM(MATMUL(REAL(Nu), B(1,:)) * B(1,:)) + &
-               SUM(MATMUL(REAL(Nu), B(2,:)) * B(2,:))
-         END IF
          DO k=1,n
            DO l=1,3
              val = SUM(dBasisdx(k,1:3)*B(1,1:3))
@@ -1445,6 +1446,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        Energy(1) = Energy(1) + s*0.5*PR_ip*SUM(E**2)
        Energy(2) = Energy(2) + s*w_dens
+       Energy(3) = Energy(3) + (HdotB - w_dens) * s
 
        DO p=1,n
          DO q=1,n
@@ -1930,7 +1932,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    Power  = ParallelReduction(Power)
    Energy(1) = ParallelReduction(Energy(1))
    Energy(2) = ParallelReduction(Energy(2))
-  
+   Energy(3) = ParallelReduction(Energy(3))
+ 
    IF (LossEstimation) THEN
      DO j=1,2
        DO i=1,2
@@ -1951,13 +1954,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL Info( 'MagnetoDynamicsCalcFields', Message )
    CALL ListAddConstReal( Model % Simulation, 'res: Eddy current power', Power )
 
-   IF( ListGetLogical( SolverParams,'Separate Magnetic Energy',Found ) ) THEN
+   IF ( ListGetLogical( SolverParams,'Separate Magnetic Energy',Found ) ) THEN
      WRITE(Message,'(A,ES12.3)') 'Electric Field Energy: ', Energy(1)
      CALL Info( 'MagnetoDynamicsCalcFields', Message )
      WRITE(Message,'(A,ES12.3)') 'Magnetic Field Energy: ', Energy(2)
      CALL Info( 'MagnetoDynamicsCalcFields', Message )
+     WRITE(Message,'(A,ES12.3)') 'Magnetic Coenergy: ', Energy(3)
+     CALL Info( 'MagnetoDynamicsCalcFields', Message )
      CALL ListAddConstReal(Model % Simulation,'res: Electric Field Energy',Energy(1))
      CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy(2))
+     CALL ListAddConstReal(Model % Simulation,'res: Magnetic Coenergy',Energy(3))
    ELSE
      WRITE(Message,'(A,ES12.3)') 'ElectroMagnetic Field Energy: ',SUM(Energy)
      CALL Info( 'MagnetoDynamicsCalcFields', Message )
