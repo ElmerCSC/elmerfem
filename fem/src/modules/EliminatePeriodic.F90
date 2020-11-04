@@ -64,11 +64,7 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
   TYPE(Element_t),POINTER :: CurrentElement, Parent
   REAL(KIND=dp), POINTER :: LocalEigenVectorsReal(:,:), LocalEigenVectorsImag(:,:)
   REAL(KIND=dp), POINTER :: f(:), TempVectorReal(:), TempVectorImag(:),u(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: CenterOfRigidBody(3), TotTime, at, Scale
-#else
-  REAL(KIND=dp) :: CenterOfRigidBody(3), CPUtime, TotTime, at, Scale
-#endif
   LOGICAL, ALLOCATABLE :: PeriodicProj(:)
   LOGICAL :: stat, GotIt, Rigid, EigAnal
   INTEGER, ALLOCATABLE, TARGET :: ColN(:)

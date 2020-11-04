@@ -45,7 +45,6 @@ SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
-SET(WITH_AMGX FALSE CACHE BOOL "Include NVIDIA AMGX library")
 
 SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
 
@@ -54,9 +53,9 @@ SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
-if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
-  CMAKE_POLICY(SET CMP0022 OLD)
-ENDIF()
+# if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
+#   CMAKE_POLICY(SET CMP0022 OLD)
+# ENDIF()
 
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
@@ -64,6 +63,7 @@ ENABLE_TESTING()
 
 SET(ELMER_FEM_MAJOR_VERSION 8)
 SET(ELMER_FEM_MINOR_VERSION 4)
+
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
 
@@ -120,9 +120,28 @@ IF(WITH_OpenMP)
   
   FIND_PACKAGE(OpenMP REQUIRED)
   # Add OpenMP flags to compilation flags
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  # if(APPLE)
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_C "${CMAKE_C_COMPILER}")
+  #     set(OpenMP_C_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_C_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #   endif()
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
+  #     set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #   endif()
+  # else()
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  # endif()
 
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
@@ -160,38 +179,64 @@ IF(WITH_AMGX)
   FIND_PACKAGE(AMGX)
 ENDIF()
 
-IF(WITH_MKL)
-  # Find MKL
-  FIND_PACKAGE(MKL REQUIRED)
-  SET(HAVE_MKL TRUE)
-  MARK_AS_ADVANCED(HAVE_MKL)
-  # Set BLAS and LAPACK to point to MKL
-  SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-  SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-  IF(MKL_SCALAPACK_LIBRARIES_FOUND)
-    SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
-    # Versions >11.1 of MKL include Cluster PARDISO direct solver
-    IF(MKL_CPARDISO_FOUND)
-      SET(HAVE_CPARDISO TRUE)
-      MARK_AS_ADVANCED(HAVE_CPARDISO)
+# if(APPLE)
+#   # message(STATUS "Trying to find Accelerate library")
+#   # find_library(BLAS_LIBRARIES Accelerate HINTS /System/Library/Frameworks/Accelerate.framework)
+#   # MARK_AS_ADVANCED(BLAS_LIBRARIES)
+#   # set(BLAS_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -framework accelerate")
+#   # find_path(LAPACK_INCLUDE_DIRS
+#   #   NAMES clapack.h
+#   #   PATHS ${BLAS_INCLUDE_DIRS}
+#   #   NO_DEFAULT_PATH
+#   # )
+#   # set(LAPACK_HEADER ${LAPACK_INCLUDE_DIRS}/clapack.h)
+#   # set(LAPACK_SUFFIX "_")
+#   # set(LAPACK_PREFIX)
+
+#   # message(STATUS "Using Accelerate framework on macOS")
+#   message("using the local blas library")
+#   # option(BLAS_VERBOSE "Print some additional information during BLAS libraries detection" ON)
+#   set(BLAS_DIR "./mathlibs/src/blas/")
+# set(BLA_VENDOR "Generic")
+
+  # set(ACCELERATE_LIBS "-framework Accelerate")
+  # BLAS_Accelerate_LIBRARY:FILEPATH=/System/Library/Frameworks/Accelerate.framework
+
+
+# else()
+  IF(WITH_MKL)
+    # Find MKL
+    FIND_PACKAGE(MKL REQUIRED)
+    SET(HAVE_MKL TRUE)
+    MARK_AS_ADVANCED(HAVE_MKL)
+    # Set BLAS and LAPACK to point to MKL
+    SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+    SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+    IF(MKL_SCALAPACK_LIBRARIES_FOUND)
+      SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
+      # Versions >11.1 of MKL include Cluster PARDISO direct solver
+      IF(MKL_CPARDISO_FOUND)
+        SET(HAVE_CPARDISO TRUE)
+        MARK_AS_ADVANCED(HAVE_CPARDISO)
+      ENDIF()
+    ENDIF()
+    INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+  ELSE()
+    IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+      # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
+      FIND_PACKAGE(MKL QUIET)
+      IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
+        # Set BLAS and LAPACK to point to MKL, in order to work around
+        # CMake FindBLAS finding wrong core library for GNU Fortran
+        SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+        SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+        INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+        SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+      ENDIF()
     ENDIF()
   ENDIF()
-  INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-ELSE()
-  IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
-    # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
-    FIND_PACKAGE(MKL QUIET)
-    IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
-      # Set BLAS and LAPACK to point to MKL, in order to work around
-      # CMake FindBLAS finding wrong core library for GNU Fortran
-      SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-      SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-      INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-      SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-    ENDIF()
-  ENDIF()
-ENDIF()
+# endif(APPLE)
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
@@ -246,6 +291,10 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
 
 FIND_PACKAGE(MMG)
+# INCLUDE("cmake/Modules/FindMMG.cmake")
+# INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+# TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+
 
 IF(MMG_FOUND)
 
@@ -464,16 +513,6 @@ IF(WITH_MPI)
     MESSAGE(STATUS "------------------------------------------------")
   ENDIF(WITH_Hypre)
 ENDIF(WITH_MPI)
-
-IF(WITH_AMGX)
-    MESSAGE(STATUS "  AMGX:            " "${AMGX_FOUND}")
-    MESSAGE(STATUS "  AMGX include:    " "${AMGX_INCLUDE_DIR}")
-    MESSAGE(STATUS "  AMGX library:    " "${AMGX_LIBRARY}")
-    MESSAGE(STATUS "  AMGX libraries:  " "${AMGX_LIBRARIES}")
-    MESSAGE(STATUS "  CUDA libraries:  " "${CUDA_LIBRARIES}")
-    MESSAGE(STATUS "  CUDA libdir:     " "${CUDA_LIBDIR}")
-    MESSAGE(STATUS "------------------------------------------------")
-ENDIF(WITH_AMGX)  
 
 IF(WITH_Trilinos)
   MESSAGE(STATUS "  Trilinos:           " "${Trilinos_FOUND}")

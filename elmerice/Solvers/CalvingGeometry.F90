@@ -634,12 +634,12 @@ CONTAINS
     INTEGER :: PathCount, First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
-         ShiftTo, Dir1(2), Dir2(2)
+         ShiftTo, Dir1(2), Dir2(2),a1(2),a2(2),b1(2),b2(2),intersect(2)
     REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start
     INTEGER, ALLOCATABLE :: WorkInt(:)
-    LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath
+    LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath,headland
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:)
 
@@ -726,6 +726,7 @@ CONTAINS
 
             IF(Debug) PRINT *, 'Debug, node ',i,' dir1,2: ',Dir1, Dir2
             IF(Debug) PRINT *, 'Debug, node ',i,' constriction direction: ',ConstrictDirection(i,:)
+            IF(Debug) PRINT *, 'Debug, node ',i,' xyz: ',Mesh % Nodes % x(n),Mesh % Nodes % y(n),Mesh % Nodes % z(n)
           END IF
         END DO
 
@@ -803,6 +804,34 @@ CONTAINS
               CYCLE
             END IF
 
+            IF(Debug) PRINT *,'Constrictions ',i,j,' do face each other: ',&
+                 SUM(ConstrictDirection(i,:)*Dir1)
+
+            !test that the line drawn between the constriction doesn't intersect
+            !any intermediate elements as this indicates
+            !crossing a headland (difficult to draw - but it's bad news)
+            !
+            ! -  ---      ---- -
+            !  \/   \    /   \/
+            !        ----
+            !
+
+            a1(1) = Mesh % Nodes % y(First)
+            a1(2) = Mesh % Nodes % z(First)
+            a2(1) = Mesh % Nodes % y(Last)
+            a2(2) = Mesh % Nodes % z(Last)
+            headland = .FALSE.
+            DO k=i+1,j-2
+              b1(1) = Mesh % Nodes % y(k)
+              b1(2) = Mesh % Nodes % z(k)
+              b2(1) = Mesh % Nodes % y(k+1)
+              b2(2) = Mesh % Nodes % z(k+1)
+
+              CALL LineSegmentsIntersect(a1,a2,b1,b2,intersect,headland)
+              IF(headland) EXIT
+            END DO
+            IF(headland) CYCLE
+
             MaxDist = NodeDist3D(Mesh % Nodes,First, Last)
 
             DO k=i+1,j-1
@@ -814,6 +843,8 @@ CONTAINS
                    (NodeDist3D(Mesh % Nodes, Last, n) <= MaxDist)) CYCLE !within range
 
               FarNode(k) = .TRUE.
+              IF(Debug) PRINT *,'Far node: ',k,' xyz: ',Mesh % Nodes % x(n),&
+                   Mesh % Nodes % y(n),Mesh % Nodes % z(n)
 
             END DO
           END DO
@@ -3236,7 +3267,7 @@ CONTAINS
          PrimarySolver
     LOGICAL, POINTER :: UnfoundNodes(:)=>NULL()
     INTEGER :: i,j,k,DOFs, nrows,n
-    INTEGER, POINTER :: WorkPerm(:)=>NULL()
+    INTEGER, POINTER :: WorkPerm(:)=>NULL(), SolversToIgnore(:)=>NULL()
     REAL(KIND=dp), POINTER :: WorkReal(:)=>NULL(), WorkReal2(:)=>NULL(), PArray(:,:) => NULL()
     REAL(KIND=dp) :: FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), &
          globaleps, localeps
@@ -3395,20 +3426,30 @@ CONTAINS
                 END IF
              END IF
 
+             !Check for duplicate solvers with same var
+             !Nullify/deallocate and repoint the matrix
+             !Note: previously this DO loop was after the FreeMatrix
+             !and pointing below, but this caused double free errors
+             DO j=1,Model % NumberOfSolvers
+               IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
+               IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
+               IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
+
+               !If the other solver's matrix is the same as WorkSolver matrix, we just
+               !nullify, otherwise we deallocate. After the first timestep, solvers
+               !with the same variable will have the same matrix
+               IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkSolver % Matrix)) THEN
+                 Model % Solvers(j) % Matrix => NULL()
+               ELSE
+                 CALL FreeMatrix(Model % Solvers(j) % Matrix)
+               END IF
+               !Point this other solver % matrix to the matrix we just created
+               Model % Solvers(j) % Matrix => WorkMatrix
+             END DO
+
+             !Deallocate the old matrix & repoint
              IF(ASSOCIATED(WorkSolver % Matrix)) CALL FreeMatrix(WorkSolver % Matrix)
              WorkSolver % Matrix => WorkMatrix
-
-             !Check for duplicate solvers with same var
-             DO j=1,Model % NumberOfSolvers
-                IF(ASSOCIATED(WorkSolver, Model % Solvers(j))) CYCLE
-                IF(.NOT. ASSOCIATED(Model % Solvers(j) % Variable)) CYCLE
-                IF( TRIM(Model % Solvers(j) % Variable % Name) /= TRIM(Var % Name)) CYCLE
-                !Ideally, the solver's old matrix would be freed here, but apart from the 
-                !first timestep, it'll be a duplicate
-                IF(ASSOCIATED(Model % Solvers(j) % Matrix, WorkMatrix)) CYCLE
-                CALL FreeMatrix(Model % Solvers(j) % Matrix)
-                Model % Solvers(j) % Matrix => WorkMatrix
-             END DO
 
              NULLIFY(WorkMatrix)
 
@@ -3504,6 +3545,8 @@ CONTAINS
     !set partitions to active, so variable can be -global -nooutput
     CALL ParallelActive(.TRUE.) 
     !MPI_BSend buffer issue in this call to InterpolateMeshToMesh
+    !Free quadrant tree to ensure its rebuilt in InterpolateMeshToMesh (bug fix)
+    CALL FreeQuadrantTree(OldMesh % RootQuadrant)
     CALL InterpolateMeshToMesh( OldMesh, NewMesh, OldMesh % Variables, UnfoundNodes=UnfoundNodes)
     IF(ANY(UnfoundNodes)) THEN
        PRINT *, ParEnv % MyPE, ' missing ', COUNT(UnfoundNodes),' out of ',SIZE(UnfoundNodes),&
@@ -3523,8 +3566,11 @@ CONTAINS
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
 
+    !CHANGE - need to delete UnfoundNOtes from this statement, or front
+    !variables not copied across. If you get some odd interpolation artefact,
+    !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask", UnfoundNodes,globaleps=globaleps,localeps=localeps)
+         "Calving Front Mask",globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3544,8 +3590,17 @@ CONTAINS
     ! Point solvers at the correct mesh and variable
     !-----------------------------------------------
 
+    !CHANGE
+    !Needs to be told to ignore certain solvers if using multiple meshes
+    SolversToIgnore => ListGetIntegerArray(Params, 'Solvers To Ignore')
+
     DO i=1,Model % NumberOfSolvers
        WorkSolver => Model % Solvers(i)
+
+       !CHANGE - see above
+       IF (ASSOCIATED(SolversToIgnore)) THEN
+         IF(ANY(SolversToIgnore(1:SIZE(SolversToIgnore))==i)) CYCLE
+       END IF
 
        WorkSolver % Mesh => NewMesh !note, assumption here that there's only one active mesh
 

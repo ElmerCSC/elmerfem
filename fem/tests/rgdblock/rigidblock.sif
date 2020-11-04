@@ -9,7 +9,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 ! Output File = "anturi.dat"
-! Post File = "anturi.ep"
+! Post File = "anturi.vtu"
 End
 
 Body 1

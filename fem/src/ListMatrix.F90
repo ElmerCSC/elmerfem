@@ -230,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=8)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=7)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix
@@ -308,7 +308,7 @@ CONTAINS
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
-    CALL Info('ListToCRSMatrix','Matrix format changed from CRS to List', Level=7)
+    CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix
 !-------------------------------------------------------------------------------
@@ -772,7 +772,7 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList1, CList2, Lptr
               
      IF ( .NOT. ASSOCIATED(List) ) THEN
-       CALL Warn('List_MoveRow','No List matrix present!')
+       CALL Warn('List_ExchangeRowStructure','No List matrix present!')
        RETURN
      END IF
          
@@ -806,49 +806,17 @@ CONTAINS
 
 
 
-   
+!------------------------------------------------------------------------------
+!>    Add the entries of a local matrix to a list-format matrix.    
 !------------------------------------------------------------------------------
   SUBROUTINE List_GlueLocalMatrix( A,N,Dofs,Indexes,LocalMatrix )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  DESCRIPTION:
-!    Add a set of values (.i.e. element stiffness matrix) to a CRS format
-!    matrix. For this matrix the entries are ordered so that 1st for one
-!    dof you got all nodes, and then for second etc. 
-!
-!  ARGUMENTS:
-!
-!  TYPE(Matrix_t) :: Lmat
-!     INOUT: Structure holding matrix, values are affected in the process
-!
-!  INTEGER :: Nrow, Ncol
-!     INPUT: Number of nodes in element, or other dofs
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: RowInds, ColInds
-!     INPUT: Permutation of the rows and column dofs
-!
-!  REAL(KIND=dp) :: LocalMatrix(:,:)
-!     INPUT: A (Nrow x RowDofs) x ( Ncol x ColDofs) matrix holding the values to be
-!            added to the CRS format matrix
-!
-!******************************************************************************
-!------------------------------------------------------------------------------
- 
-     REAL(KIND=dp) :: LocalMatrix(:,:)
-     INTEGER :: N,DOFs, Indexes(:)
      TYPE(ListMatrix_t), POINTER :: A(:)
-
+     INTEGER :: N,DOFs, Indexes(:)
+     REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
      REAL(KIND=dp) :: Value
      INTEGER :: i,j,k,l,c,Row,Col
      
@@ -871,48 +839,18 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!>    Add the entries of a local matrix to a list-format matrix by allowing
+!>    offsets
+!------------------------------------------------------------------------------
    SUBROUTINE List_GlueLocalSubMatrix( List,row0,col0,Nrow,Ncol, &
           RowInds,ColInds,RowDofs,ColDofs,LocalMatrix )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  DESCRIPTION:
-!    Add a set of values (.i.e. element stiffness matrix) to a CRS format
-!    matrix. For this matrix the entries are ordered so that 1st for one
-!    dof you got all nodes, and then for second etc. 
-!
-!  ARGUMENTS:
-!
-!  TYPE(Matrix_t) :: Lmat
-!     INOUT: Structure holding matrix, values are affected in the process
-!
-!  INTEGER :: Nrow, Ncol
-!     INPUT: Number of nodes in element, or other dofs
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: RowInds, ColInds
-!     INPUT: Permutation of the rows and column dofs
-!
-!  REAL(KIND=dp) :: LocalMatrix(:,:)
-!     INPUT: A (Nrow x RowDofs) x ( Ncol x ColDofs) matrix holding the values to be
-!            added to the CRS format matrix
-!
-!******************************************************************************
-!------------------------------------------------------------------------------
- 
-     REAL(KIND=dp) :: LocalMatrix(:,:)
-     TYPE(ListMatrix_t), POINTER :: List(:)
+     TYPE(ListMatrix_t), POINTER :: List(:) 
      INTEGER :: Nrow,Ncol,RowDofs,ColDofs,Col0,Row0,RowInds(:),ColInds(:)
-
+     REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
      REAL(KIND=dp) :: Value
      INTEGER :: i,j,k,l,c,Row,Col
      

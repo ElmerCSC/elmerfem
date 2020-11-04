@@ -334,7 +334,7 @@ SUBROUTINE StatElecForce( Model,Solver,dt,TransientSimulation )
   DEALLOCATE( LocalPotential, Permittivity )
   DEALLOCATE( NodalWeight )
 
-  ! These are some obsolite stuff but let's do this anyways
+  ! These are some obsolete stuff but let's do this anyways
   IF( CalculateField ) THEN
     FieldVar % PrimaryMesh => Mesh
     CALL InvalidateVariable( Model % Meshes,  Mesh, 'Electric Force Density' )

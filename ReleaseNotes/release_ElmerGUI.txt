@@ -1,0 +1,68 @@
+From: Mikko Lyly <Mikko.Lyly@csc.fi>
+Subject: [Elmerupdates] ElmerGUI release announcement
+Date: Thu, 5 Jun 2008 11:06:44 +0300
+
+
+Dear Elmer user,
+
+We are pleased to announce the release of ElmerGUI, the new graphical user 
+interface and pre-processor for Elmer.
+
+The new pre-processor is intended to replace the old software component, 
+ElmerFront, which is no longer supported.
+
+Compared to ElmerFront, the new pre-processor has
+
+o Enhanced mesh generation and mesh manipulation tools
+o Enhanced visualization routines (based on OpenGL and extensions)
+o Better compatibility with the latest Solver
+o 100% programmable/customizable menu entries for equations, materials, 
+etc.
+
+ElmerGUI is able to utilize the following mesh generators:
+
+o ElmerGrid (built-in)
+o Netgen (plugin)
+o Tetgen (plugin)
+
+The source code of ElmerGUI is available from the subversion repository of 
+project "elmerfem" at SF.net:
+
+svn co https://elmerfem.svn.sourceforge.net/svnroot/elmerfem elmerfem
+
+The source code and installation instructions can be found from the directory
+
+elmerfem/trunk/misc/Mesh3D
+
+Compilation instructions for the Netgen- and Tetgen-plugins can be found from 
+the directories
+
+elmerfem/trunk/misc/netgen_patches
+elmerfem/trunk/misc/tetgen_patches
+
+There is also a binary distribution available for Windows XP 
+(Elmer-svn2997_gfortran.exe):
+
+http://sourceforge.net/project/showfiles.php?group_id=147815
+
+The binary installer contains the Netgen-plugin for ElmerGUI. The 
+Tetgen-plugin is not included in the
+distribution (the user who wants to use Tetgen should consult Tetgen's site 
+for a licence and compile the
+plugin from source). Sample input files are available in the fdneut, grd, and 
+stl subdirectories in
+
+C:\Elmer5.4\samples\ElmerGUI\samples
+
+A very small tutorial on the basic usage of ElmerGUI is available from the 
+Wiki-pages at
+
+http://elmerfem.wiki.sourceforge.net/
+
+More detailed documentation and tutorials will follow.
+
+Best regards,
+
+Mikko Lyly
+Juha Ruokolainen
+Peter Råback

@@ -1942,12 +1942,8 @@ END SUBROUTINE FetiProject
     LOGICAL  :: Found, Floating=.FALSE., FetiInit, QR, MumpsLU, MumpsNS
     REAL(KIND=dp), POINTER :: xtmp(:),btmp(:),rtmp(:)
     INTEGER(KIND=AddrInt) :: mvProc, dotProc, nrmProc, stopcProc, precProc
-#ifndef USE_ISO_C_BINDINGS 
-    INTEGER(KIND=AddrInt) :: AddrFunc
-#else
     INTEGER(KIND=AddrInt) :: AddrFunc
     EXTERNAL :: AddrFunc
-#endif
 
     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
     INTEGER, POINTER CONTIG :: SaveCols(:),SaveRows(:)
@@ -1962,7 +1958,6 @@ END SUBROUTINE FetiProject
     TYPE(ValueList_t), POINTER :: BC
 
 #ifdef HAVE_CHOLMOD
-#ifdef USE_ISO_C_BINDINGS
     INTERFACE
       SUBROUTINE SPQR_NZ(chol,nz) BIND(c,NAME="spqr_nz")
         USE Types
@@ -1977,7 +1972,6 @@ END SUBROUTINE FetiProject
         INTEGER(Kind=AddrInt) :: chol
       END SUBROUTINE SPQR_NullSpace
     END INTERFACE
-#endif
 #endif
 
 !------------------------------------------------------------------------------
@@ -2183,7 +2177,7 @@ END SUBROUTINE FetiProject
     IF(dumptofiles) THEN
       CALL SaveR()
       CALL Info( 'Feti:', 'File dumping completed, exiting.')
-      CALL ParallelFinalize(); STOP
+      CALL ParallelFinalize(); STOP EXIT_OK
     END IF
     
 

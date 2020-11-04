@@ -52,10 +52,7 @@ MODULE IterSolve
    USE CRSMatrix
    USE BandMatrix
    USE IterativeMethods
-
-#ifdef USE_ISO_C_BINDINGS
    USE huti_sfe
-#endif
 
    IMPLICIT NONE
 
@@ -161,9 +158,7 @@ CONTAINS
   RECURSIVE SUBROUTINE IterSolver( A,x,b,Solver,ndim,DotF, &
               NormF,MatvecF,PrecF,StopcF )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     USE huti_sfe
-#endif
     USE ListMatrix
     USE SParIterGlobals
     IMPLICIT NONE
@@ -184,7 +179,7 @@ CONTAINS
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt, Refactorize,Found,GotDiagFactor,Robust
-    LOGICAL :: ComplexSystem, PseudoComplexSystem
+    LOGICAL :: ComplexSystem, PseudoComplexSystem, DoFatal
     
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
 
@@ -195,33 +190,14 @@ CONTAINS
     EXTERNAL MultigridPrec
     EXTERNAL NormwiseBackwardError, ComponentwiseBackwardError
     EXTERNAL NormwiseBackwardErrorGeneralized
-#ifndef USE_ISO_C_BINDINGS
-    INTEGER  :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
-        HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
-    EXTERNAL :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
-        HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
-    
-    INTEGER  :: HUTI_Z_BICGSTAB, HUTI_Z_BICGSTAB_2, HUTI_Z_TFQMR, &
-        HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
-    EXTERNAL :: HUTI_Z_BICGSTAB, HUTI_Z_BICGSTAB_2, HUTI_Z_TFQMR, &
-        HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
-
-    REAL(KIND=dp) :: ddot, dnrm2, dznrm2
-    EXTERNAL :: ddot, dnrm2, dznrm2   
-    
-    COMPLEX(KIND=dp) :: zdotc
-    EXTERNAL :: zdotc
-#endif
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pcondrProc, mvProc, iterProc, StopcProc
     INTEGER(KIND=Addrint) :: AddrFunc
-#ifdef USE_ISO_C_BINDINGS
     INTEGER :: astat
     COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
     EXTERNAL :: AddrFunc    
-#endif
 
     INTERFACE
       SUBROUTINE VankaCreate(A,Solver)
@@ -426,35 +402,27 @@ CONTAINS
     HUTI_MINIT = ListGetInteger( Params, &
         'Linear System Min Iterations', GotIt )
     
-#ifdef USE_ISO_C_BINDINGS
     IF( ComplexSystem ) THEN
-        ALLOCATE(workC(N/2,wsize), stat=istat)
-        IF ( istat /= 0 ) THEN
-            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-        END IF
-        workC = cmplx(0,0,dp)
+      ALLOCATE(workC(N/2,wsize), stat=istat)
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+      END IF
+      workC = cmplx(0,0,dp)
     ELSE
-        ALLOCATE(work(N,wsize), stat=istat)
-        IF ( istat /= 0 ) THEN
-            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-        END IF
-        !$OMP PARALLEL PRIVATE(j)
-        DO j=1,wsize
-           !$OMP DO
-           DO i=1,N
-              work(i,j) = real(0,dp)
-           END DO
-           !$OMP END DO
+      ALLOCATE(work(N,wsize), stat=istat)
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+      END IF
+      !$OMP PARALLEL PRIVATE(j)
+      DO j=1,wsize
+        !$OMP DO
+        DO i=1,N
+          work(i,j) = real(0,dp)
         END DO
-        !$OMP END PARALLEL
+        !$OMP END DO
+      END DO
+      !$OMP END PARALLEL
     END IF
-#else
-    ALLOCATE( work(N,wsize),stat=istat )
-    IF ( istat /= 0 ) THEN
-      CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
-    END IF
-    work=0._dp
-#endif
 
     IF ( (IterType == ITER_BiCGStab2 .OR. IterType == ITER_BiCGStabL .OR. &
          IterType == ITER_BiCGStab ) .AND. ALL(x == 0.0) ) x = 1.0d-8
@@ -928,7 +896,6 @@ CONTAINS
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
     
-#ifdef USE_ISO_C_BINDINGS
     IF ( ComplexSystem ) THEN
       ! Associate xC and bC with complex variables
       ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
@@ -955,16 +922,12 @@ CONTAINS
       DEALLOCATE(bC,xC)
     ELSE
       CALL Info('IterSolver','Calling real valued iterative solver',Level=32)
+
       CALL IterCall( iterProc, x, b, ipar, dpar, work, &
           mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     ENDIF
-#else
-    CALL Info('IterSolver','Calling iterative solver',Level=32)   
-    CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
-#endif
-    GlobalMatrix => SaveGlobalM
 
+    GlobalMatrix => SaveGlobalM
     
     stack_pos=stack_pos-1
     
@@ -979,8 +942,14 @@ CONTAINS
       CALL Info('IterSolve','Returned return code: '//TRIM(I2S(HUTI_INFO)),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
         CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
-      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
-        CALL NumericalError( 'IterSolve', 'Too many iterations were needed.')        
+      ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN                
+        DoFatal = ListGetLogical( Params,'Linear System Abort Not Converged',Found )
+        IF(.NOT. Found ) DoFatal = .TRUE.
+        IF( DoFatal ) THEN
+          CALL NumericalError('IterSolve','Too many iterations were needed.')
+        ELSE
+          CALL Info('IterSolve','Linear iteration did not converge to tolerance',Level=6)
+        END IF
       ELSE IF( HUTI_INFO == HUTI_HALTED ) THEN
         CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
       END IF
@@ -989,15 +958,11 @@ CONTAINS
       END IF
     END IF
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
     IF ( ComplexSystem ) THEN
-        DEALLOCATE( workC )
+      DEALLOCATE( workC )
     ELSE
-        DEALLOCATE( work )
+      DEALLOCATE( work )
     END IF
-#else 
-    DEALLOCATE( work )
-#endif
 
 !------------------------------------------------------------------------------
   END SUBROUTINE IterSolver
@@ -1013,7 +978,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Caller, String
      LOGICAL, OPTIONAL :: IsFatal
 !-----------------------------------------------------------------------
-     LOGICAL :: GlobalNumFatal, SolverNumFatal, DoFatal, Found
+     LOGICAL :: DoFatal, Found
 !-----------------------------------------------------------------------
 
      !Fatality logic:
@@ -1025,19 +990,9 @@ CONTAINS
      IF(PRESENT(IsFatal)) THEN
        DoFatal = IsFatal
      ELSE
-       SolverNumFatal = ListGetLogical( CurrentModel % Solver % Values, &
-            'Linear System Abort Not Converged', Found)
-       IF(Found) THEN
-         DoFatal = SolverNumFatal
-       ELSE
-         GlobalNumFatal = ListGetLogical(CurrentModel % Simulation,&
-            'Global Abort Not Converged',Found)
-         IF(Found) THEN
-           DoFatal = GlobalNumFatal
-         ELSE
-           DoFatal = .TRUE.
-         END IF
-       END IF
+       DoFatal = ListGetLogical(CurrentModel % Simulation,&
+           'Global Abort Not Converged',Found)
+       IF(.NOT. Found ) DoFatal = .TRUE.
      END IF
 
      IF(DoFatal) THEN

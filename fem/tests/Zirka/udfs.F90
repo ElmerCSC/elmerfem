@@ -11,9 +11,9 @@ FUNCTION a(Model, n, X) RESULT(Y)
   TYPE(Valuelist_t), POINTER :: Params
   logical :: found
 !-------------------------------------------------------------------------------
-  
   Params => ListGetSolverParams()
   a_mult = ListGetCReal(Params, 'a_mult', found)
+  y = 0._dp  
   if (.not. found) return
   Y = X(1)*a_mult
 !-------------------------------------------------------------------------------
@@ -33,9 +33,9 @@ FUNCTION m(Model, n, X) RESULT(Y)
   TYPE(Valuelist_t), POINTER :: Params
   logical :: found
 !-------------------------------------------------------------------------------
-  
   Params => ListGetSolverParams()
   a_mult = ListGetCReal(Params, 'a_mult', found)
+  y = 0._dp  
   if (.not. found) return
   Y = a_mult*1.26d6
 !-------------------------------------------------------------------------------
@@ -56,9 +56,9 @@ FUNCTION jplus(Model, n, X) RESULT(Y) ! {{{
   logical :: found
 !-------------------------------------------------------------------------------
 
-  Y = 0
   Params => ListGetSolverParams()
   a_mult = ListGetCReal(Params, 'a_mult', found)
+  y = 0._dp
   if (.not. found) return
   Y = a_mult
 !-------------------------------------------------------------------------------
@@ -77,9 +77,9 @@ FUNCTION jminus(Model, n, X) RESULT(Y) ! {{{
   logical :: found
 !-------------------------------------------------------------------------------
 
-  Y = 0
   Params => ListGetSolverParams()
   a_mult = ListGetCReal(Params, 'a_mult', found)
+  y = 0._dp
   if (.not. found) return
   Y = -a_mult
 !-------------------------------------------------------------------------------

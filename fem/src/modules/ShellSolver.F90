@@ -137,6 +137,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
   USE DefUtils
   USE ElementDescription
+  USE SolidMechanicsUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -204,6 +205,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   LOGICAL :: MassAssembly, HarmonicAssembly
   LOGICAL :: Parallel
   LOGICAL :: SolidShellCoupling
+  LOGICAL :: DrillingDOFs, RotateDOFs
 
   INTEGER, POINTER :: Indices(:) => NULL()
   INTEGER, POINTER :: VisitsList(:) => NULL()
@@ -224,6 +226,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2), ZNodes(MaxPatchNodes)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
   REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0
+  REAL(KIND=dp) :: DrillingPar
 
   CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile
 
@@ -274,6 +277,18 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       StrainReductionMethod = AutomatedChoice
 
   Bubbles = GetLogical(SolverPars, 'Bubbles', Found)
+
+  DrillingDOFs = GetLogical(SolverPars, 'Drilling DOFs', Found)
+  IF (DrillingDOFs) CALL Warn('ShellSolver', &
+      'Drilling DOFs do not support all options and alters the meaning of all rotational DOFs/BCs')
+  IF (DrillingDOFs) THEN
+    DrillingPar = GetConstReal(SolverPars, 'Drilling Stabilization Parameter', Found)
+    IF (.NOT. Found) DrillingPar = 1.0d0
+  ELSE
+    DrillingPar = 1.0d0
+  END IF
+
+  RotateDOFs = GetLogical(SolverPars, 'Rotate DOFs', Found)
 
   !-----------------------------------------------------------------------------------
   ! The field variables for saving the orientation of lines of curvature basis
@@ -378,6 +393,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   NonlinTol =  GetConstReal(SolverPars, 'Nonlinear System Convergence Tolerance')
 
   IF (LargeDeflection) THEN
+    IF (DrillingDOFs) CALL Fatal('ShellSolver', &
+        'Drilling DOFs cannot yet be combined with Large Deflection')
     SolveBenchmarkCase = .FALSE.
     IF (.NOT. ASSOCIATED(Solver % Matrix % BulkRHS)) &
         ALLOCATE(Solver % Matrix % BulkRHS(SIZE(Solver % Matrix % RHS)))
@@ -479,8 +496,8 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! -----------------------------------------------------------------------------
       CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
           LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
-          ApplyBubbles, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, &
-          TotalErr, BenchmarkProblem=SolveBenchmarkCase)
+          ApplyBubbles, DrillingDOFs, DrillingPar, RotateDOFs, MassAssembly, HarmonicAssembly, &
+          LocalRHSForce, ShellModelArea, TotalErr, BenchmarkProblem=SolveBenchmarkCase)
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -536,20 +553,75 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
 
     END DO ASSEMBLYLOOP
 
+    !----------------------------------------------------------------------
+    ! Add linearly elastic beams.
+    !----------------------------------------------------------------------    
+    ASSEMBLE_BEAMS: DO k=1,Active
+      BGElement => GetActiveElement(k)
+
+      Family = GetElementFamily(BGElement)
+      IF (Family /= 2) CYCLE
+
+      n  = GetElementNOFNodes()
+      nd = GetElementDOFs(Indices)
+      nb = GetElementNOFBDOFs()
+
+      !----------------------------------------------------------------------
+      ! We assume that p-element definitions are not empoyed and hard-code
+      ! the bubble count:
+      !----------------------------------------------------------------------
+      nb = 1
+      IF (.NOT.(n == 2 .AND. nd == 2)) CALL Fatal('ShellSolver', &
+          'An unsupported 1-D element type or definition')
+
+      IF (LargeDeflection) THEN
+        CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+      ELSE
+        LocalSol = 0.0d0
+      END IF
+
+      IF (DrillingDOFs) THEN
+        CALL Warn('ShellSolver', 'Drilling DOFs does not yet support beam sections')
+        CYCLE
+      END IF
+
+      CALL BeamStiffnessMatrix(BGElement, n, nd+nb, nb, TransientSimulation, MassAssembly, &
+          HarmonicAssembly, LargeDeflection, LocalSol, LocalRHSForce, .TRUE.)
+
+      IF (LargeDeflection .AND. NonlinIter == 1) THEN
+        ! ---------------------------------------------------------------------------
+        ! Create a RHS vector which contains just the contribution of external loads
+        ! for the purpose of nonlinear error estimation:
+        ! ---------------------------------------------------------------------------
+        ValuesSaved => Solver % Matrix % RHS
+        Solver % Matrix % RHS => Solver % Matrix % BulkRHS
+        CALL DefaultUpdateForce(LocalRHSForce)
+        Solver % Matrix % RHS => ValuesSaved
+      END IF
+    END DO ASSEMBLE_BEAMS
+    
     CALL DefaultFinishBulkAssembly() 
 
-    
+
     Active = GetNOFBoundaryElements()
 
     BOUNDARY_ASSEMBLY: DO k=1,Active
       BGElement => GetBoundaryElement(k)
       Family = GetElementFamily(BGElement)
 
-      IF (ActiveBoundaryElement() .AND. Family == 2) THEN
+      IF (ActiveBoundaryElement() .AND. Family <= 2) THEN
         n  = GetElementNOFNodes(BGElement)
         nd = GetElementNOFDOFs(BGElement)
-        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar)
-      END IF     
+
+        IF (LargeDeflection) THEN
+          CALL GetVectorLocalSolution(LocalSol, USolver=Solver)
+        ELSE
+          LocalSol = 0.0d0
+        END IF
+
+        CALL ShellBoundaryMatrix(BGElement, n, nd, ShellModelPar, LargeDeflection, &
+            MassAssembly, HarmonicAssembly, LocalSol)
+      END IF
     END DO BOUNDARY_ASSEMBLY
 
     CALL DefaultFinishBoundaryAssembly()
@@ -789,7 +861,7 @@ CONTAINS
     INTEGER, POINTER :: ActiveElements(:)
     !------------------------------------------------------------------------------
     LOGICAL :: UseFieldVariable, ReadNodalDirectors, WriteElementsData, Found
-    INTEGER :: n, iostat, i, j, k, i0, NumberOfLines
+    INTEGER :: n, iostat, i, j, k, i0, NumberOfLines, Family
     INTEGER, POINTER :: InvPerm(:)
     REAL(KIND=dp), POINTER :: NodalDirector(:,:)  
     REAL(KIND=dp), POINTER :: DirectorValues(:)
@@ -854,6 +926,11 @@ CONTAINS
       Active = GetNOFActive()
       DO k=1,Active
         Element => GetActiveElement(k)
+        Family = GetElementFamily(Element)
+        ! -------------------------------------------------------------------
+        ! The director data is expected for surface elements only:
+        ! -------------------------------------------------------------------
+        IF (Family < 3) CYCLE
         ! -------------------------------------------------------------------
         ! If mesh.elements.data has defined the director, respect that data:
         ! -------------------------------------------------------------------
@@ -1012,6 +1089,7 @@ CONTAINS
     DO k=1,Active
       Element => GetActiveElement(k)
       Family = GetElementFamily(Element)
+      IF (Family < 3) CYCLE
       n  = GetElementNOFNodes()
       CALL GetElementNodes( Nodes )
 
@@ -1119,11 +1197,11 @@ CONTAINS
     Active = GetNOFActive()
     DO k=1,Active
       Element => GetActiveElement(k)
+      Family = GetElementFamily(Element)
+      IF (Family < 3) CYCLE
       CALL GetElementNodes(Nodes)
 
       DirectorValues => GetElementalDirector(Element, Nodes)
-
-      Family = GetElementFamily(Element)
 
       ! Set some default values:
       Subtriangulation = .FALSE.
@@ -3436,9 +3514,11 @@ CONTAINS
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, MassAssembly, &
-      HarmonicAssembly, RHSForce, Area, Error, BenchmarkProblem)
+      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, &
+      DrillingDOFs, DrillingPar, RotateDOFs, MassAssembly, HarmonicAssembly, &
+      RHSForce, Area, Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
+    USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! An element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
@@ -3450,6 +3530,9 @@ CONTAINS
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
     INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
+    LOGICAL, INTENT(IN) :: DrillingDOFs                ! Switches to drilling DOFs (limited functionality)
+    REAL(KIND=dp), INTENT(IN) :: DrillingPar           ! A stabilization parameter for drilling DOFs 
+    LOGICAL, INTENT(IN) :: RotateDOFs                  ! Use rotated DOFs (a tentative option)
     LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
     LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
     REAL(KIND=dp), INTENT(OUT) :: RHSForce(:)          ! Local RHS vector corresponding to external loads
@@ -3491,7 +3574,7 @@ CONTAINS
 
     REAL(KIND=dp) :: StrainVec(6), StressVec(6)
     REAL(KIND=dp) :: PrevSolVec(m*nd), PrevField(7)
-    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd)
+    REAL(KIND=dp) :: QBlock(3,3), Q(m*nd,m*nd), TMat(m*nd,m*nd), RotMat(3,3)
     REAL(KIND=dp) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp) :: A11, A22, SqrtDetA, A1, A2, B11, B22
     REAL(KIND=dp) :: C111, C112, C221, C222, C211, C212
@@ -3510,6 +3593,7 @@ CONTAINS
     REAL(KIND=dp) :: ChristoffelMat1(2,2,nd), ChristoffelMat2(2,2,nd)
     REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
+    REAL(KIND=dp) :: Damping(n), DampCoef
     REAL(KIND=dp) :: nu, E, h, NormalTraction, Kappa
     REAL(KIND=dp) :: DetJ, Weight, Norm
 
@@ -3618,7 +3702,10 @@ CONTAINS
     ELSE
       Load(1:n) = 0.0d0
     END IF
-    IF ( MassAssembly ) rho(1:n) = GetReal(GetMaterial(), 'Density')
+    IF ( MassAssembly ) THEN
+      rho(1:n) = GetReal(GetMaterial(), 'Density')
+      Damping(1:n) = GetReal(GetMaterial(), 'Rayleigh Damping Alpha', Found)
+    END IF
 
     ! ------------------------------------------------------------------------------
     ! The size of the constitutive matrix for 2D shell equations
@@ -3673,6 +3760,7 @@ CONTAINS
     END DO
 
     Q = 0.0d0
+    TMat = 0.0d0
     DO j=1,nd
       ! ------------------------------------------------------------------------
       ! The following transformation is designed for the Lagrange element DOFs.
@@ -3693,10 +3781,56 @@ CONTAINS
       i0 = (j-1)*m
 
       Q(i0+1:i0+3,i0+1:i0+3) =  QBlock(1:3,1:3)
-      Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
+      !
+      ! Optionally we can switch to rotated components theta such that
+      ! -Du[d] = d x theta + <theta,d>d. The tangent plane components are
+      ! then more intuitive when thinking in terms of moments.
+      ! 
+      IF (RotateDOFs) THEN
+        ! 
+        ! Create a matrix RotMat such that d x v = RotMat * v
+        !
+        RotMat = 0.0d0
+        RotMat(2,1) = abasis3(3)
+        RotMat(3,1) = -abasis3(2)
+        RotMat(1,2) = -abasis3(3)
+        RotMat(3,2) = abasis3(1)
+        RotMat(1,3) = abasis3(2)
+        RotMat(2,3) = -abasis3(1)
+
+        DO k=1,3
+          Q(i0+4,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis1(:))
+          Q(i0+5,i0+3+k) = DOT_PRODUCT(RotMat(:,k), abasis2(:))
+          Q(i0+6,i0+3+k) = abasis3(k)
+        END DO
+      ELSE
+        Q(i0+4:i0+6,i0+4:i0+6) =  QBlock(1:3,1:3)
+      END IF
+
+      IF (DrillingDOFs) THEN
+        !
+        ! TMat is a transformation matrix for expressing the components of
+        ! beta vector as rotated components a theta vector according to
+        ! the relation beta = d x theta
+        !
+        TMat(i0+1,i0+1) = 1.0d0
+        TMat(i0+2,i0+2) = 1.0d0
+        TMat(i0+3,i0+3) = 1.0d0
+        TMat(i0+4,i0+5) = -1.0d0
+        TMat(i0+5,i0+4) = 1.0d0
+        TMat(i0+6,i0+6) = 1.0d0
+      ELSE
+        TMat(i0+1,i0+1) = 1.0d0
+        TMat(i0+2,i0+2) = 1.0d0
+        TMat(i0+3,i0+3) = 1.0d0
+        TMat(i0+4,i0+4) = 1.0d0
+        TMat(i0+5,i0+5) = 1.0d0
+        TMat(i0+6,i0+6) = 1.0d0
+      END IF
 
     END DO    
     PrevSolVec(1:DOFs) = MATMUL(Q(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
+    PrevSolVec(1:DOFs) = MATMUL(TMat(1:DOFs,1:DOFs),PrevSolVec(1:DOFs))
 
     ! ------------------------------------------------------------------------
     ! Finally, integrate local element matrices:
@@ -3818,10 +3952,13 @@ CONTAINS
       nu = SUM( PoissonRatio(1:n) * Basis(1:n) )
       E = SUM( YoungsMod(1:n) * Basis(1:n) )
       NormalTraction = SUM( Load(1:n) * Basis(1:n) )
-      IF ( MassAssembly ) rho0 = SUM( rho(1:n) * Basis(1:n) )
+      IF ( MassAssembly ) THEN
+        rho0 = SUM( rho(1:n) * Basis(1:n) )
+        DampCoef = SUM( Damping(1:n) * Basis(1:n) )
+      END IF
 
       ! The matrix description of the elasticity tensor:
-      CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
+      CALL ElasticityMatrix(CMat, GMat, A1, A2, E, nu, DrillingDOFs, DrillingPar)
 
 
       ! Shear correction factor:
@@ -4000,14 +4137,24 @@ CONTAINS
         END DO
       END IF
 
-      !----------------------------------------------------------------------
-      ! Normal stress T^{33} via energy principle: We add a term of the type
-      ! e * T^{33}(e)
-      !----------------------------------------------------------------------
-      BM(4,6:DOFs:m) = -Basis(1:nd)
-      BM(4,1:DOFs) = BM(4,1:DOFs) + nu/((1.0d0-nu)*A1**2) * BM(1,1:DOFs) + &
-          nu/((1.0d0-nu)*A2**2) * BM(2,1:DOFs)
-      
+      IF (DrillingDOFs) THEN
+        !----------------------------------------------------------------------
+        ! Add terms which define the drilling DOFs:
+        !----------------------------------------------------------------------
+        BM(4,6:DOFs:m) = Basis(1:nd)
+        DO p=1,nd
+          BM(4,(p-1)*m+2) = -0.5d0 * (dBasis(p,1) - 2.0d0 * C212 * Basis(p))
+          BM(4,(p-1)*m+1) = 0.5d0 * (dBasis(p,2) - 2.0d0 * C211 * Basis(p))
+        END DO
+      ELSE
+        !----------------------------------------------------------------------
+        ! Normal stress T^{33} via energy principle: We add a term of the type
+        ! e * T^{33}(e)
+        !----------------------------------------------------------------------
+        BM(4,6:DOFs:m) = -Basis(1:nd)
+        BM(4,1:DOFs) = BM(4,1:DOFs) + nu/((1.0d0-nu)*A1**2) * BM(1,1:DOFs) + &
+            nu/((1.0d0-nu)*A2**2) * BM(2,1:DOFs)
+      END IF
 
       StrainVec = 0.0d0
       IF (LargeDeflection) THEN
@@ -4284,7 +4431,7 @@ CONTAINS
       !----------------------------------------------------------------------------------------
       ! The part of transverse shear strains which depend linearly on the thickness coordinate: 
       !----------------------------------------------------------------------------------------
-      IF (.NOT. BenchmarkProblem) THEN
+      IF (.NOT. DrillingDOFs .AND. .NOT. BenchmarkProblem) THEN
         BS(3,6:DOFs:m) = dBasis(1:nd,1)
         BS(4,6:DOFs:m) = dBasis(1:nd,2)
         Weight = h**2/12.0d0 * Weight
@@ -4359,8 +4506,12 @@ CONTAINS
             DO j=1,nd
               Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
                   Basis(i) * Basis(j) * Weight
+              Damp((i-1)*m+k,(j-1)*m+k) = Damp((i-1)*m+k,(j-1)*m+k) + &
+                  DampCoef * Basis(i) * Basis(j) * Weight              
+
+              IF (k > 2 .AND. DrillingDOFs) CYCLE
               Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
-                  h**3/12.0d0 * Basis(i) * Basis(j) * Weight
+                  h**2/12.0d0 * Basis(i) * Basis(j) * Weight
             END DO
           END DO
         END DO
@@ -4427,19 +4578,27 @@ CONTAINS
     !-------------------------------------------------------
     ! Transform to the global DOFs:
     !-------------------------------------------------------
+    Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
     Stiff(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Stiff(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
+
+    Force(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),Force(1:DOFs))
     Force(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),Force(1:DOFs))
 
-    IF (LargeDeflection) RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+    IF (LargeDeflection) THEN
+      ! RHSForce(1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+      RHSForce(1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),RHSForce(1:DOFs))
+    END IF
 
-    IF( MassAssembly ) THEN
+    IF ( MassAssembly ) THEN
+      Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(TMat(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),TMat(1:DOFs,1:DOFs)))
       Mass(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Mass(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
+      Damp(1:DOFs,1:DOFs) = MATMUL(TRANSPOSE(Q(1:DOFs,1:DOFs)),MATMUL(Damp(1:DOFs,1:DOFs),Q(1:DOFs,1:DOFs)))
 
-      IF( TransientSimulation ) THEN
+      IF ( TransientSimulation ) THEN
         CALL Default2ndOrderTime(MASS,DAMP,STIFF,FORCE)
-      ELSE IF( HarmonicAssembly ) THEN
+      ELSE IF ( HarmonicAssembly ) THEN
         CALL DefaultUpdateMass( MASS )
-        ! update damping if present!
+        CALL DefaultUpdateDamp( DAMP )
       END IF
     END IF
 
@@ -4454,24 +4613,33 @@ CONTAINS
 ! from given resultant force and resultant couple vectors over the 1-D
 ! boundary.
 !------------------------------------------------------------------------------
-  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m)
+  SUBROUTINE ShellBoundaryMatrix(BGElement, n, nd, m, LargeDeflection, &
+      MassAssembly, HarmonicAssembly, LocalSol)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: BGElement  ! A boundary element of background mesh
     INTEGER, INTENT(IN) :: n                           ! The number of background element nodes
     INTEGER, INTENT(IN) :: nd                          ! The number of DOFs per component 
     INTEGER, INTENT(IN) :: m                           ! The number of DOFs per node
+    LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
+    LOGICAL, INTENT(IN) :: MassAssembly                ! To activate mass matrix integration
+    LOGICAL, INTENT(IN) :: HarmonicAssembly            ! To activate the global mass matrix updates
+    REAL(KIND=dp), INTENT(IN) :: LocalSol(:,:)         ! The previous solution iterate
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Found, AssemblyNeeded, Stat
+    LOGICAL :: Found, AssemblyNeeded, AssembleSprings, AssembleMass, Stat
 
-    INTEGER :: i, i0, t
-    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Force(m*nd), Basis(nd)
-    REAL(KIND=dp) :: NodalForce(3,1:n), NodalCouple(3,1:n)
+    INTEGER :: i, i0, j, k, t
+    REAL(KIND=dp) :: Stiff(m*nd,m*nd), Mass(m*nd,m*nd), Damp(m*nd,m*nd)
+    REAL(KIND=dp) :: Force(m*nd), Basis(nd)
+    REAL(KIND=dp) :: PrevSolVec(m*nd)
+    REAL(KIND=dp) :: NodalForce(3,n), NodalCouple(3,n)
+    REAL(KIND=dp) :: NodalSprings(6,n), NodalMass(6,n)
     REAL(KIND=dp) :: ResultantForce(3), ResultantCouple(3)
+    REAL(KIND=dp) :: Spring(6), MassVals(6)
     REAL(KIND=dp) :: detJ, Weight
 
     SAVE Nodes
@@ -4482,11 +4650,30 @@ CONTAINS
     CALL GetRealVector(BC, NodalForce(1:3,1:n), 'Resultant Force', AssemblyNeeded)
     CALL GetRealVector(BC, NodalCouple(1:3,1:n), 'Resultant Couple', Found)
     AssemblyNeeded = AssemblyNeeded .OR. Found
+    CALL GetRealVector(BC, NodalSprings(1:6,1:n), 'Spring', AssembleSprings)
+    AssemblyNeeded = AssemblyNeeded .OR. AssembleSprings
+    IF (MassAssembly) THEN
+      CALL GetRealVector(BC, NodalMass(1:6,1:n), 'Mass', AssembleMass)
+      AssemblyNeeded = AssemblyNeeded .OR. AssembleMass
+    ELSE
+      AssembleMass = .FALSE.
+    END IF
     IF (.NOT. AssemblyNeeded) RETURN
 
     CALL GetElementNodes(Nodes)
     Force = 0.0d0
     Stiff = 0.0d0
+    Mass = 0.0d0
+    Damp = 0.0d0
+
+    ! ------------------------------------------------------------------------
+    ! Vectorize the previous solution 
+    ! ------------------------------------------------------------------------
+    IF (LargeDeflection .AND. AssembleSprings) THEN
+      DO k=1,m
+        PrevSolVec(k:m*nd:m) = LocalSol(k,1:nd)
+      END DO
+    END IF
 
     ! Note that in the following the integration is not done accurately as
     ! the effect of the improved surface reconstruction is not taken into
@@ -4504,9 +4691,50 @@ CONTAINS
         Force(i0+1:i0+3) = Force(i0+1:i0+3) + Weight * ResultantForce(1:3) * Basis(i)
         Force(i0+4:i0+6) = Force(i0+4:i0+6) + Weight * ResultantCouple(1:3) * Basis(i)
       END DO
+
+      IF (AssembleSprings) THEN
+        Spring(1:6) = MATMUL(NodalSprings(1:6,1:n), Basis(1:n))
+        DO k=1,3
+          DO i=1,nd
+            DO j=1,nd
+              Stiff((i-1)*m+k,(j-1)*m+k) = Stiff((i-1)*m+k,(j-1)*m+k) + &
+                  Spring(k) * Basis(i) * Basis(j) * Weight
+              Stiff((i-1)*m+3+k,(j-1)*m+3+k) = Stiff((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  Spring(k+3) * Basis(i) * Basis(j) * Weight
+            END DO
+          END DO
+        END DO
+      END IF
+
+      IF (MassAssembly .AND. AssembleMass) THEN
+        MassVals(1:6) = MATMUL(NodalMass(1:6,1:n), Basis(1:n))
+        DO k=1,3
+          DO i=1,nd
+            DO j=1,nd
+              Mass((i-1)*m+k,(j-1)*m+k) = Mass((i-1)*m+k,(j-1)*m+k) + &
+                  MassVals(k) * Basis(i) * Basis(j) * Weight
+              Mass((i-1)*m+3+k,(j-1)*m+3+k) = Mass((i-1)*m+3+k,(j-1)*m+3+k) + &
+                  MassVals(k+3) * Basis(i) * Basis(j) * Weight
+            END DO
+          END DO
+        END DO
+      END IF
+
     END DO
 
-    CALL DefaultUpdateEquations(Stiff,Force)
+    IF (LargeDeflection .AND. AssembleSprings) THEN
+      Force(1:m*nd) = Force(1:m*nd) - MATMUL(Stiff(1:m*nd,1:m*nd), PrevSolVec(1:m*nd)) 
+    END IF
+
+    IF (MassAssembly .AND. AssembleMass) THEN
+      IF (HarmonicAssembly) THEN
+        CALL DefaultUpdateMass(Mass)
+      ELSE
+        CALL Default2ndOrderTime(Mass, Damp, Stiff, Force)
+      END IF
+    END IF
+
+    CALL DefaultUpdateEquations(Stiff, Force)
 !------------------------------------------------------------------------------
   END SUBROUTINE ShellBoundaryMatrix
 !------------------------------------------------------------------------------
@@ -4552,7 +4780,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: DirectorValues(:)
     REAL(KIND=dp) :: res_z, maxres_z, minres_z
     REAL(KIND=dp) :: U_mid(3), U_upper(3), U_lower(3), h_eff
-    REAL(KIND=dp) :: d(3), d_h(3), v(3), DNU(3)
+    REAL(KIND=dp) :: d(3), e3(3), d_h(3), v(3), DNU(3)
 ! ---------------------------------------------------------------------------------
     IF (.NOT. ListGetLogicalAnyBC(Model, 'Structure Interface')) RETURN
     IF (.NOT. Displacement % DOFs == 3) THEN
@@ -4741,6 +4969,11 @@ CONTAINS
             END IF
           END IF
         END DO
+
+        IF (jz == 0) jz = TargetNode
+        IF (lz == 0) lz = TargetNode
+        IF (jz == lz) CALL Fatal('SetSolidCouplingBCs', &
+            'No solid nodes to span the director')
 
         ! PRINT *, 'HANDLING NODE = ', TargetNode
         ! PRINT *, 'UPPER NODE = ', JZ
@@ -5178,66 +5411,33 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE ShearCorrectionFactor(Kappa,Thickness,x,y,n)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    REAL(KIND=dp) :: Kappa,Thickness,x(:),y(:)
-    INTEGER :: n
-!------------------------------------------------------------------------------
-    REAL(KIND=dp) :: x21,x32,x43,x13,x14,y21,y32,y43,y13,y14, &
-        l21,l32,l43,l13,l14,alpha,h
-!------------------------------------------------------------------------------
-    Kappa = 1.0d0
-    SELECT CASE(n)
-    CASE(3)
-      alpha = 0.20d0
-      x21 = x(2)-x(1)
-      x32 = x(3)-x(2)
-      x13 = x(1)-x(1)
-      y21 = y(2)-y(1)
-      y32 = y(3)-y(2)
-      y13 = y(1)-y(1)
-      l21 = SQRT(x21**2 + y21**2)
-      l32 = SQRT(x32**2 + y32**2)
-      l13 = SQRT(x13**2 + y13**2)
-      h = MAX(l21,l32,l13)
-      Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-    CASE(4)
-      alpha = 0.10d0
-      x21 = x(2)-x(1)
-      x32 = x(3)-x(2)
-      x43 = x(4)-x(3)
-      x14 = x(1)-x(4)
-      y21 = y(2)-y(1)
-      y32 = y(3)-y(2)
-      y43 = y(4)-y(3)
-      y14 = y(1)-y(4)
-      l21 = SQRT(x21**2 + y21**2)
-      l32 = SQRT(x32**2 + y32**2)
-      l43 = SQRT(x43**2 + y43**2)
-      l14 = SQRT(x14**2 + y14**2)
-      h = MAX(l21,l32,l43,l14)
-      Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-
-    CASE DEFAULT
-      CALL Fatal('ShearCorrectionFactor',&
-          'Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
-    END SELECT
-!------------------------------------------------------------------------------
-  END SUBROUTINE ShearCorrectionFactor
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
 ! The matrix representation of the elasticity tensor with respect an orthogonal
 ! basis. The case A1 = A2 = 1 corresponds to an orthonormal basis.     
 !------------------------------------------------------------------------------
-  SUBROUTINE ElasticityMatrix(CMat, GMat, A1, A2, E, nu)
+  SUBROUTINE ElasticityMatrix(CMat, GMat, A1, A2, E, nu, DrillingDOFs, StabPar)
 !------------------------------------------------------------------------------    
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(OUT) :: CMat(4,4), GMat(2,2)
     REAL(KIND=dp), INTENT(IN) :: A1, A2, E, nu  
+    LOGICAL, OPTIONAL, INTENT(IN) :: DrillingDOFs
+    REAL(KIND=dp), OPTIONAL, INTENT(IN) :: StabPar
 !------------------------------------------------------------------------------
+    LOGICAL :: WithDrillingDOFs
+    REAL(KIND=dp) :: StabConst
+!------------------------------------------------------------------------------
+    IF (PRESENT(DrillingDOFs)) THEN
+      WithDrillingDOFs = DrillingDOFs
+      IF (WithDrillingDOFs) THEN
+        IF (PRESENT(StabPar)) THEN
+          StabConst = StabPar
+        ELSE
+          StabConst = 1.0d0
+        END IF
+      END IF
+    ELSE
+      WithDrillingDOFs = .FALSE.
+    END IF
+
     CMat = 0.0d0
     GMat = 0.0d0
 
@@ -5254,10 +5454,14 @@ CONTAINS
     CMat(2,2) = CMat(2,2)/A2**4   
     CMat(3,3) = CMat(3,3)/(A1**2 * A2**2)
 
-    ! The row corresponding to the normal stress: A deviation from the state of
-    ! vanishing normal stress produces deformation energy as described by
-    ! the 3-D Hooke's law.
-    CMat(4,4) = (1.0d0-nu) * E /( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
+    IF (WithDrillingDOFs) THEN
+      CMat(4,4) = StabConst * E/(1.0d0 + nu)
+    ELSE
+      ! The row corresponding to the normal stress: A deviation from the state of
+      ! vanishing normal stress produces deformation energy as described by
+      ! the 3-D Hooke's law.
+      CMat(4,4) = (1.0d0-nu) * E /( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
+    END IF
 
     GMat(1,1) = E/(2.0d0*(1.0d0 + nu)*A1**2)
     GMat(2,2) = E/(2.0d0*(1.0d0 + nu)*A2**2)
@@ -5265,29 +5469,7 @@ CONTAINS
   END SUBROUTINE ElasticityMatrix
 !------------------------------------------------------------------------------    
 
-!------------------------------------------------------------------------------
-! Perform the operation
-!
-!    A = A + C' * B * C * s
-!
-! with
-!
-!    Size( A ) = n x n
-!    Size( B ) = m x m
-!    Size( C ) = m x n
-!------------------------------------------------------------------------------
-  SUBROUTINE StrainEnergyDensity(A, B, C, m, n, s)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    REAL(KIND=dp), INTENT(INOUT) :: A(:,:)
-    REAL(KIND=dp), INTENT(IN) :: B(:,:), C(:,:)
-    INTEGER, INTENT(IN) :: m, n
-    REAL(KIND=dp), INTENT(IN) :: s
-!------------------------------------------------------------------------------
-    A(1:n,1:n) = A(1:n,1:n) + s * MATMUL(TRANSPOSE(C(1:m,1:n)),MATMUL(B(1:m,1:m),C(1:m,1:n))) 
-!------------------------------------------------------------------------------
-  END SUBROUTINE StrainEnergyDensity
-!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -6413,76 +6595,75 @@ CONTAINS
 ! Return the global coordinates at the mid-node of the edge by evaluating
 ! the value of the space curve. This function is just for testing purposes.
 !-------------------------------------------------------------------------------------
-FUNCTION EdgeMidNode(Element, e) RESULT(X)
+  FUNCTION EdgeMidNode(Element, e) RESULT(X)
 !-----------------------------------------------------------------------
-  TYPE(Element_t), POINTER, INTENT(IN) :: Element
-  INTEGER, INTENT(IN) :: e     ! Edge identifier 
-  REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
+    TYPE(Element_t), POINTER, INTENT(IN) :: Element
+    INTEGER, INTENT(IN) :: e     ! Edge identifier 
+    REAL(KIND=dp) :: X(3)        ! Global coordinates at the mid-node of the edge 
 !-----------------------------------------------------------------------
-  TYPE(Nodes_t) :: Nodes
-  INTEGER :: CurveDataSize, i0, cn
-  REAL(KIND=dp), POINTER :: EdgeParams(:)
-  REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
-  REAL(KIND=dp) :: d(CurveDataSize2), h, xe
-  REAL(KIND=dp) :: r1(3), r2(3)
-  REAL(KIND=dp) :: u, v, f
+    TYPE(Nodes_t) :: Nodes
+    INTEGER :: CurveDataSize, i0, cn
+    REAL(KIND=dp), POINTER :: EdgeParams(:)
+    REAL(KIND=dp) :: HermBasis(6), dHermBasis(6), ddHermBasis(6)
+    REAL(KIND=dp) :: d(CurveDataSize2), h, xe
+    REAL(KIND=dp) :: r1(3), r2(3)
+    REAL(KIND=dp) :: u, v, f
 !-----------------------------------------------------------------------
-  IF (Element % Type % NumberOfNodes > 4) &
-      CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
+    IF (Element % Type % NumberOfNodes > 4) &
+        CALL Fatal('EdgeMidNode', 'Just 3-node and 4-node elements implemented')
 
-  !-----------------------------------------------------------------------
-  ! Retrieve parametrizations of curved edges:
-  !------------------------------------------------------------------------
-  EdgeParams => GetElementProperty('edge parameters', Element)
+    !-----------------------------------------------------------------------
+    ! Retrieve parametrizations of curved edges:
+    !------------------------------------------------------------------------
+    EdgeParams => GetElementProperty('edge parameters', Element)
 
-  h = 2.0d0
-  CurveDataSize = CurveDataSize1
+    h = 2.0d0
+    CurveDataSize = CurveDataSize1
 
-  i0 = (e-1)*CurveDataSize
-  d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
+    i0 = (e-1)*CurveDataSize
+    d(1:CurveDataSize) = EdgeParams(i0+1:i0+CurveDataSize)
 
-  cn = 2
-  CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
+    cn = 2
+    CALL HermiteBasis(0.0d0, h, HermBasis(1:2*cn), dHermBasis(1:2*cn), ddHermBasis(1:2*cn), cn)
 
-  CALL GetElementNodes(Nodes, Element) 
+    CALL GetElementNodes(Nodes, Element) 
 
-  Family = GetElementFamily(Element)
-  SELECT CASE(Family)
-  CASE(3)
-    SELECT CASE(e)
-    CASE(1)
-      r1(1) = Nodes % x(1)
-      r1(2) = Nodes % y(1)
-      r1(3) = Nodes % z(1)
-      r2(1) = Nodes % x(2)
-      r2(2) = Nodes % y(2)
-      r2(3) = Nodes % z(2)
-    CASE(2)
-      r1(1) = Nodes % x(2)
-      r1(2) = Nodes % y(2)
-      r1(3) = Nodes % z(2)
-      r2(1) = Nodes % x(3)
-      r2(2) = Nodes % y(3)
-      r2(3) = Nodes % z(3)
+    Family = GetElementFamily(Element)
+    SELECT CASE(Family)
     CASE(3)
-      r1(1) = Nodes % x(3)
-      r1(2) = Nodes % y(3)
-      r1(3) = Nodes % z(3)
-      r2(1) = Nodes % x(1)
-      r2(2) = Nodes % y(1)
-      r2(3) = Nodes % z(1)
+      SELECT CASE(e)
+      CASE(1)
+        r1(1) = Nodes % x(1)
+        r1(2) = Nodes % y(1)
+        r1(3) = Nodes % z(1)
+        r2(1) = Nodes % x(2)
+        r2(2) = Nodes % y(2)
+        r2(3) = Nodes % z(2)
+      CASE(2)
+        r1(1) = Nodes % x(2)
+        r1(2) = Nodes % y(2)
+        r1(3) = Nodes % z(2)
+        r2(1) = Nodes % x(3)
+        r2(2) = Nodes % y(3)
+        r2(3) = Nodes % z(3)
+      CASE(3)
+        r1(1) = Nodes % x(3)
+        r1(2) = Nodes % y(3)
+        r1(3) = Nodes % z(3)
+        r2(1) = Nodes % x(1)
+        r2(2) = Nodes % y(1)
+        r2(3) = Nodes % z(1)
+      END SELECT
+    CASE(4)
+      CALL Fatal('EdgeMidNode', '4-node implementation missing')
     END SELECT
-  CASE(4)
-    CALL Fatal('EdgeMidNode', '4-node implementation missing')
-  END SELECT
 
-  X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
-      d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
+    X(1:3) = r1(1:3)*HermBasis(1) + r2(1:3)*HermBasis(2) + &
+        d(1:3)*0.5d0*HermBasis(3) + d(4:6)*0.5d0*HermBasis(4)
 
 !-----------------------------------------------------------------------
-END FUNCTION EdgeMidNode
+  END FUNCTION EdgeMidNode
 !-----------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver

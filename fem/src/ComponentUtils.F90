@@ -4,20 +4,20 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
@@ -49,6 +49,7 @@ MODULE ComponentUtils
 
    USE ElementUtils
    USE ModelDescription
+   IMPLICIT NONE
 
  CONTAINS
 
@@ -77,7 +78,7 @@ MODULE ComponentUtils
      LOGICAL, ALLOCATABLE :: VisitedNode(:)
      REAL(KIND=dp) :: Origin(3), Axis(3), P(3), F(3), v1(3), v2(3)
      REAL(KIND=dp), POINTER :: Pwrk(:,:)
-     INTEGER :: t, i, j, k, dofs, globalnode
+     INTEGER :: t, i, j, k, n, dofs, globalnode
      LOGICAL :: ElementalVar, Found, NeedLocation
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce     
@@ -275,7 +276,7 @@ MODULE ComponentUtils
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
      LOGICAL, ALLOCATABLE :: VisitedNode(:)
-     INTEGER :: t, i, j, k, NoDofs, globalnode, sumi
+     INTEGER :: t, i, j, k, l, n, NoDofs, globalnode, sumi
      REAL(KIND=dp) :: X, Minimum, Maximum, AbsMinimum, AbsMaximum, SumX, SumXX, SumAbsX
      LOGICAL :: ElementalVar, Found
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
@@ -481,9 +482,9 @@ MODULE ComponentUtils
 ! Local variables
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: t, i, j, k, NoDofs
+     INTEGER :: t, i, j, k, n, NoDofs
      INTEGER, POINTER :: NodeIndexes(:), DofIndexes(:)
-     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,Grad(3)
+     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,x,Grad(3)
      REAL(KIND=dp) :: func, CoeffAtIp, integral, vol
      LOGICAL :: ElementalVar, Found, Stat
      INTEGER :: PermIndexes(Model % MaxElementNodes)

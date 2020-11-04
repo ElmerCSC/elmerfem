@@ -29,7 +29,7 @@ Simulation
   Timestep Sizes = 1
   Output Intervals = 0
 
-  Post File = $fileprefix$.ep
+  Post File = $fileprefix$.vtu
   Fixed Area = Logical True
 End
 

@@ -81,18 +81,17 @@
      INTEGER :: BandSize,SubbandSize,RadiationSurfaces,Row,Col
      INTEGER, DIMENSION(:), POINTER :: Perm
 
-     REAL(KIND=dp) :: Norm,PrevNorm,MinFactor, Normal_in
+     REAL(KIND=dp) :: Norm,PrevNorm,MinFactor, Normal_in, Plane
  
      TYPE(Nodes_t) :: ElementNodes
-     TYPE(ValueList_t), POINTER :: BC, Material
+     TYPE(ValueList_t), POINTER :: BC, Material, Params
 
      INTEGER :: LeftNode,RightNode,LeftBody,RightBody,RadBody
      REAL(KIND=dp) :: NX,NY,NZ,NRM(3),DensL,DensR
 
-     INTEGER :: divide
+     INTEGER :: divide, nprob
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
-#ifdef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: at0
+     REAL(KIND=dp) :: at0, rt0
 
      INTERFACE
         ! void viewfactors3d
@@ -124,9 +123,6 @@
             INTEGER :: idiv, fast 
         END SUBROUTINE viewfactorsaxis
      END INTERFACE
-#else
-     REAL(KIND=dp) :: at0, CPUTime
-#endif
 
      INTEGER, POINTER :: Timesteps(:)
      INTEGER :: TimeIntervals,interval,timestep,combineInt
@@ -139,6 +135,7 @@
      TYPE(Element_t), POINTER :: RadElements(:)
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
      LOGICAL :: RadiationOpen, Combine
+     INTEGER, PARAMETER :: VFUnit = 10
 
      EXTERNAL MatvecViewFact,DiagPrecViewFact
 
@@ -174,7 +171,7 @@
      Model => LoadModel( ModelName,.FALSE.,1,0 )
 
      CurrentModel => Model
-
+          
      NULLIFY( Mesh )
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
@@ -186,15 +183,46 @@
          EXIT
        ENDIF
      END DO
-  
+     
      IF ( .NOT. ASSOCIATED(Mesh) ) THEN
-       CALL Fatal( 'ViewFactors', 'No heat equation definition. ' // &
-                  'Cannot compute factors.' )
+       CALL Fatal('ViewFactors','No heat equation definition. Cannot compute factors.')
      END IF
+
+     Params => GetSolverParams()
+
+     
+#define SYMMETRY_NOW .TRUE.
+     IF(SYMMETRY_NOW) THEN
+       DO i=1,6
+         SELECT CASE(i)
+         CASE(1)
+           Plane = GetCReal( Params, 'Viewfactor Symmetry x min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry x', GotIt );
+         CASE(2)
+           Plane = GetCReal( Params, 'Viewfactor Symmetry x max', Found );
+         CASE(3)
+           Plane = GetCReal( Params, 'Viewfactor Symmetry y min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry y', GotIt );
+         CASE(4)
+           Plane = GetCReal( Params, 'Viewfactor Symmetry y max', Found );
+         CASE(5)
+           Plane = GetCReal( Params, 'Viewfactor Symmetry z min', Found );
+           IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry z', GotIt );
+         CASE(6)
+           Plane = GetCReal( Params, 'Viewfactor Symmetry z max', Found );
+         END SELECT
+
+         IF(.NOT. Found ) CYCLE
+
+         CALL Info('ViewFactors','Duplicating mesh in coordinate direction: '//TRIM(I2S((i+1)/2)))
+         
+         CALL MirrorMesh(Mesh, i, Plane)
+       END DO
+     END  IF
+
      CALL SetCurrentMesh( Model,Mesh )
 
-     CALL Info( 'ViewFactors', '... Done',Level=3 )
-     CALL Info( 'ViewFactors', ' ',Level=3 )
+     CALL Info( 'ViewFactors','Number of nodes in mesh: '//TRIM(I2S(Mesh % NumberOfNodes)),Level=7)
 
 !------------------------------------------------------------------------------
 !    Figure out requested coordinate system
@@ -223,17 +251,17 @@
          ElementNodes % z(Model % MaxElementNodes),STAT=istat )
      
      IF ( CylindricSymmetry ) THEN
-       ALLOCATE( Coords(2 * Model % NumberOfNodes), STAT=istat )
-       DO i=1,Model % NumberOfNodes
-         Coords(2*(i-1)+1) = Model % Nodes % x(i)
-         Coords(2*(i-1)+2) = Model % Nodes % y(i)
+       ALLOCATE( Coords(2 * Mesh % NumberOfNodes), STAT=istat )
+       DO i=1,Mesh % NumberOfNodes
+         Coords(2*(i-1)+1) = Mesh % Nodes % x(i)
+         Coords(2*(i-1)+2) = Mesh % Nodes % y(i)
        END DO
      ELSE
-       ALLOCATE( Coords(3 * Model % NumberOfNodes), STAT=istat )
-       DO i=1,Model % NumberOfNodes
-         Coords(3*(i-1)+1) = Model % Nodes % x(i)
-         Coords(3*(i-1)+2) = Model % Nodes % y(i)
-         Coords(3*(i-1)+3) = Model % Nodes % z(i)
+       ALLOCATE( Coords(3 * Mesh % NumberOfNodes), STAT=istat )
+       DO i=1,Mesh % NumberOfNodes
+         Coords(3*(i-1)+1) = Mesh % Nodes % x(i)
+         Coords(3*(i-1)+2) = Mesh % Nodes % y(i)
+         Coords(3*(i-1)+3) = Mesh % Nodes % z(i)
        END DO
      END IF
 
@@ -245,13 +273,12 @@
      ! when several radiation boundaries are needed both the original and
      ! the new elementlist needs to be in the memory. Thus the hassle.
 
-     MinFactor = ListGetConstReal(Solver % Values,'Minimum View Factor',GotIt)
+     MinFactor = ListGetConstReal(Params,'Minimum View Factor',GotIt)
      IF(.NOT. GotIt) MinFactor = 1.0d-20
 
-     CALL AllocateVector( RadElements, Model % NumberOfBoundaryElements, 'ViewFactors' )
+     CALL AllocateVector( RadElements, Mesh % NumberOfBoundaryElements, 'ViewFactors' )
 
-
-     IF( Model % NumberOfBoundaryElements == 0) THEN
+     IF( Mesh % NumberOfBoundaryElements == 0) THEN
        CALL Warn('ViewFactors','There are no boundary elements at all!')
        STOP
      END IF
@@ -259,7 +286,7 @@
 ! Check the maximum radiation body
      MaxRadiationBody = 0
 
-     DO t= 1, Model % NumberOfBoundaryElements
+     DO t= 1, Mesh % NumberOfBoundaryElements
 
        Element => GetBoundaryElement(t)
        IF ( GetElementFamily() == 1 ) CYCLE
@@ -274,7 +301,7 @@
        END IF
      END DO
 
-     IF( Model % NumberOfBoundaryElements == 0) THEN
+     IF( Mesh % NumberOfBoundaryElements == 0) THEN
        CALL Warn('ViewFactors','There are no radiation boundary elements!')
        STOP
      END IF
@@ -295,10 +322,10 @@
 !    of the elements...
 !------------------------------------------------------------------------------
 
-       DO t=1,Model % NumberOfBoundaryElements
+       DO t=1,Mesh % NumberOfBoundaryElements
          Element => GetBoundaryElement(t)
          IF ( GetElementFamily() == 1 ) CYCLE
-         
+
          BC => GetBC()
          IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
          
@@ -308,8 +335,8 @@
            IF(i == RadiationBody) THEN
              RadiationOpen = RadiationOpen .OR. GetLogical( BC, 'Radiation Boundary Open', GotIt )
              RadiationSurfaces = RadiationSurfaces + 1
-             j = t + Model % NumberOFBulkElements
-             RadElements(RadiationSurfaces) = Model % Elements(j)
+             j = t + Mesh % NumberOFBulkElements
+             RadElements(RadiationSurfaces) = Mesh % Elements(j)
            END IF
          END IF
        END DO
@@ -327,8 +354,7 @@
          END IF
        END IF
        
-       WRITE( LMessage,'(A,I9)' ) 'Number of surfaces participating in radiation',N
-       CALL Info('ViewFactors',LMessage)
+       CALL Info('ViewFactors','Number of surfaces participating in radiation: '//TRIM(I2S(N)))
        
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surfaces(2*N), Factors(N*N), STAT=istat )
@@ -347,10 +373,9 @@
          CALL GetElementNodes(ElementNodes)
          
          IF ( GetElementFamily() == 3 ) THEN
-           nrm = NormalVector( Element,ElementNodes, &
-               1.0d0 / 3.0d0, 1.0d0 / 3.0d0 )
+           nrm = NormalVector( Element,ElementNodes,1/3._dp, 1/3._dp )
          ELSE
-           nrm = NormalVector( Element, ElementNodes, 0.0d0, 0.0d0 )
+           nrm = NormalVector( Element, ElementNodes, 0.0_dp, 0.0_dp )
          END IF
          
          LeftBody = 0
@@ -380,7 +405,7 @@
            ELSE
              CALL Warn('ViewFactors','LeftBody not associated')
            END IF
-           LeftEmis=ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
+           LeftEmis = ListCheckPresent(Model % Materials(MatId) % Values,'Emissivity') 
          END IF
          
          RightBody = 0
@@ -433,7 +458,7 @@
 
          IF ( RadBody < 0 ) RadBody = 0
          
-         IF ( RadBody > 0 .AND. (RadBody /= RightBody .AND. RadBody /= LeftBody) ) THEN
+         IF ( RadBody>0 .AND. (RadBody /= RightBody .AND. RadBody /= LeftBody) ) THEN
            CALL Error( 'ViewFactors', 'Inconsistent direction information (Radiation Target Body)' )
            WRITE( LMessage, * ) 'Radiation Target: ', RadBody, ' Left, Right: ', LeftBody, RightBody
            CALL Fatal( 'ViewFactors', LMessage )
@@ -444,9 +469,9 @@
          Normal_in = -1.0
          IF ( RadBody <= 0 ) Normal_in = 1.0
          
-         nx = SUM(ElementNodes % x)/k - Model % Nodes % x(LeftNode)
-         ny = SUM(ElementNodes % y)/k - Model % Nodes % y(LeftNode)
-         nz = SUM(ElementNodes % z)/k - Model % Nodes % z(LeftNode)
+         nx = SUM(ElementNodes % x)/k - Mesh % Nodes % x(LeftNode)
+         ny = SUM(ElementNodes % y)/k - Mesh % Nodes % y(LeftNode)
+         nz = SUM(ElementNodes % z)/k - Mesh % Nodes % z(LeftNode)
          
          IF ( CylindricSymmetry ) THEN
            IF ( Normal_in * (Nrm(1)*nx + Nrm(2)*Ny + Nrm(3)*nz) > 0 ) THEN
@@ -467,7 +492,7 @@
                 TYPE(t) = 404
            END SELECT
            DO i=1,j
-             Surfaces(j*(t-1)+i) = Element % NodeIndexes(i) - 1
+             Surfaces(j*(t-1)+i) = Element % NodeIndexes(i)-1
            END DO
            
            IF (Normal_in*(Nrm(1)*Nx + Nrm(2)*Ny + Nrm(3)*nz)>0) THEN
@@ -476,14 +501,13 @@
              Normals(3*(t-1)+1:3*(t-1)+3) = -Nrm
            END IF
          END IF
-         
        END DO
-       
+
        CALL Info( 'ViewFactors', 'Computing viewfactors...', Level=4 )
 
-       at0 = CPUTime()
+       at0 = CPUTime(); rt0 = RealTime()
        
-       Combine = GetLogical( GetSolverParams(), 'Viewfactor combine elements',GotIt)
+       Combine = GetLogical( Params, 'Viewfactor combine elements',GotIt)
        IF ( .NOT. GotIt ) Combine = .TRUE.
        IF( Combine ) THEN
          CombineInt = 1
@@ -492,43 +516,89 @@
        END IF
 
        IF ( CylindricSymmetry ) THEN
-         divide = GetInteger( GetSolverParams(), 'Viewfactor divide',GotIt)
+         divide = GetInteger( Params, 'Viewfactor divide',GotIt)
          IF ( .NOT. GotIt ) Divide = 1
          CALL ViewFactorsAxis( N, Surfaces, Coords, Factors, divide, CombineInt )
        ELSE
-         AreaEPS = GetConstReal( GetSolverParams(), 'Viewfactor Area Tolerance',  GotIt )
+         AreaEPS = GetConstReal( Params, 'Viewfactor Area Tolerance',  GotIt )
          IF ( .NOT. GotIt ) AreaEPS = 1.0d-1
-         FactEPS = GetConstReal( GetSolverParams(), 'Viewfactor Factor Tolerance ', GotIt )
+         FactEPS = GetConstReal( Params, 'Viewfactor Factor Tolerance ', GotIt )
          IF ( .NOT. GotIt ) FactEPS = 1.0d-2
-         RayEPS = GetConstReal( GetSolverParams(), 'Viewfactor Raytrace Tolerace',  GotIt )
+         RayEPS = GetConstReal( Params, 'Viewfactor Raytrace Tolerace',  GotIt )
          IF ( .NOT. GotIt ) RayEPS = 1.0d-5
-         Nrays = GetInteger( GetSolverParams(), 'Viewfactor Number of Rays ',  GotIt )
+         Nrays = GetInteger( Params, 'Viewfactor Number of Rays ',  GotIt )
          IF ( .NOT. GotIt ) Nrays = 1
 
          CALL ViewFactors3D( &
-             N, Surfaces, TYPE, Coords, Normals, &
-             0, Surfaces, TYPE, Coords, Normals, &
+             N, Surfaces, Type, Coords, Normals, &
+             0, Surfaces, Type, Coords, Normals, &
              Factors, AreaEPS, FactEPS, RayEPS, Nrays, 4, 3, CombineInt )
        END IF
        
-       WRITE (Message,'(A,F8.2)') 'View factors computed in time (s):',CPUTime()-at0
+       WRITE (Message,'(A,F8.2,F8.2)') 'View factors computed in time (s):',CPUTime()-at0, RealTime()-rt0
        CALL Info( 'ViewFactors',Message, Level=3 )
+
+       IF(SYMMETRY_NOW) THEN
+         DO l=6,1,-1
+           SELECT CASE(l)
+           CASE(1)
+             Plane = GetCReal( Params, 'Viewfactor Symmetry x min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry x', GotIt );
+             ! Note that Plane is zero if 1st keyword not found!
+           CASE(2)
+             Plane = GetCReal( Params, 'Viewfactor Symmetry x max', Found );
+           CASE(3)
+             Plane = GetCReal( Params, 'Viewfactor Symmetry y min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry y', GotIt );
+           CASE(4)
+             Plane = GetCReal( Params, 'Viewfactor Symmetry y max', Found );
+           CASE(5)
+             Plane = GetCReal( Params, 'Viewfactor Symmetry z min', Found );
+             IF(.NOT. Found ) Found = ListGetLogical( Params, 'Viewfactor Symmetry z', GotIt );
+           CASE(6)
+             Plane = GetCReal( Params, 'Viewfactor Symmetry z max', Found );
+           END SELECT
+           IF(.NOT.Found) CYCLE
+
+           CALL Info('ViewFactors','Symmetry reduction in coordinate direction: '//TRIM(I2S((l+1)/2)))
+           
+           k = 0
+           DO i=1,n/2
+           DO j=1,n/2
+             k = k + 1
+             Factors(k) = Factors((i-1)*n+j) + Factors((i-1)*n+j+n/2)
+           END DO
+           END DO
+           n = n/2
+         END DO
+       END IF
        
-       
+#if 0
+       write(1,*) 2*n,n, 1,4,'vector: nrm scalar:view'
+       do i=1,n
+         Element => RadElements(i)
+         write(1,*) model % nodes % x(element % nodeindexes(1)), mesh % nodes % y(element % nodeindexes(1)),0
+         write(1,*) model % nodes % x(element % nodeindexes(2)), mesh % nodes % y(element % nodeindexes(2)),0
+       end do
+       do i=1,n
+         Element => RadElements(i)
+         write(1,*) element % boundaryinfo % constraint, ' 202 ', 2*(i-1),2*(i-1)+1
+       end do
+       do i=1,n
+         write(1,*) normals(3*(i-1)+1:3*(i-1)+3), factors((3-1)*n+i)
+         write(1,*) normals(3*(i-1)+1:3*(i-1)+3), factors((3-1)*n+i)
+       end do
+#endif
+
+       nprob = 0
        DO i=1,N
-         s = 0.0D0
+         s = 0.0_dp
          DO j=1,N
            IF(Factors((i-1)*N+j) < MinFactor) Factors((i-1)*N+j) = 0.0d0         
            s = s + Factors((i-1)*N+j)
          END DO
          
-	 IF( .NOT. RadiationOpen .AND. s < 0.1 ) THEN
-	  PRINT *,'Problematic row sum',i,s,n
-	  j = Surfaces(2*i-1)
-	  PRINT *,'coord 1:',j,Coords(2*j-1),Coords(2*j)
-	  j = Surfaces(2*i)
-	  PRINT *,'coord 2:',j,Coords(2*j-1),Coords(2*j)
-         END IF
+	 IF( .NOT. RadiationOpen .AND. s < 0.5 ) nprob = nprob + 1
 
          IF(i == 1) THEN
            Fmin = s 
@@ -537,25 +607,26 @@
            FMin = MIN( FMin,s )
            FMax = MAX( FMax,s )
          END IF
-       END DO
-       
+       END DO       
        
        CALL Info( 'ViewFactors', ' ', Level=3 )
        CALL info( 'ViewFactors', 'Viewfactors before manipulation: ', Level=3 )
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       WRITE( LMessage, * ) '        Minimum row sum: ',FMin
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       WRITE( LMessage, * ) '        Maximum row sum: ',FMax
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       
+       WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
+       CALL Info( 'ViewFactors', Message )
+       WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
+       CALL Info( 'ViewFactors', Message )
+       IF(nprob>0) CALL info( 'ViewFactors', 'Number of rowsums below 0.5 is: '&
+           //TRIM(I2S(nprob))//' (out of '//TRIM(I2S(n))//')')
        
        at0 = CPUTime()
 
        IF( RadiationOpen ) THEN
-         CALL Info( 'ViewFactors','Symmetrizing Factors... ', Level=3 )
+         CALL Info( 'ViewFactors','Symmetrizing Factors... ')
        ELSE
-         CALL Info( 'ViewFactors','Normalizaing Factors...',Level=3)
+         CALL Info( 'ViewFactors','Normalizaing Factors...')
+         IF( Fmin < EPSILON( Fmin ) ) THEN
+           CALL Fatal('ViewFactors','Invalied view factors for normalization, check your geometry!')
+         END IF       
        END IF
 
        CALL NormalizeFactors( Model )
@@ -566,11 +637,10 @@
            s = s + Factors((i-1)*N+j)
          END DO
          IF(i == 1) THEN
-           Fmin = s
-           Fmax = s
+           Fmin = s; Fmax = s
          ELSE
-           FMin = MIN( FMin,s )
-           FMax = MAX( FMax,s )
+           FMin = MIN(FMin,s)
+           FMax = MAX(FMax,s)
          END IF
        END DO
        
@@ -578,16 +648,17 @@
        CALL Info( 'ViewFactors',Message, Level=3 )
        
        CALL Info( 'ViewFactors', ' ', Level=3 )
-       CALL info( 'ViewFactors', 'Viewfactors after manipulation: ', Level=3 )
-       CALL Info( 'ViewFactors', ' ', Level=3 )
-       WRITE( LMessage, * ) '        Minimum row sum: ',FMin
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       WRITE( LMessage, * ) '        Maximum row sum: ',FMax
-       CALL Info( 'ViewFactors', LMessage, Level=3 )
-       IF( FMax > 1.0_dp ) THEN
+       CALL info( 'ViewFactors', 'Viewfactors after manipulation: ')
+       WRITE( Message,'(A,ES12.3)') 'Minimum row sum: ',FMin
+       CALL Info( 'ViewFactors', Message )
+       WRITE( Message,'(A,ES12.3)') 'Maximum row sum: ',Fmax
+       CALL Info( 'ViewFactors', Message )
+       IF( FMax > 1.001 ) THEN
          CALL Warn('ViewFactors','Rowsum of view factors should not be larger than one!')
        END IF
-       CALL Info( 'ViewFactors', ' ', Level=3 )
+       IF( FMin < 0.999 ) THEN
+         CALL Warn('ViewFactors','Rowsum of view factors should not be smaller than one!')
+       END IF
 
 
        ViewFactorsFile = GetString( GetSimulation(),'View Factors',GotIt)
@@ -604,26 +675,57 @@
          OutputName = TRIM(ViewFactorsFile)
        END IF
        
-       OPEN( 1,File=TRIM(OutputName),STATUS='UNKNOWN' )
-       
-       ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
-       MinFactor = MinFactor / 10.0
-       
-       DO i=1,N
-         k = 0
-         DO j=1,N
-           IF ( Factors((i-1)*N+j) > MinFactor ) k = k + 1
-         END DO
-         WRITE( 1,* ) k
-         DO j=1,N
-           IF ( Factors((i-1)*N+j) > MinFactor ) THEN
-             WRITE( 1,* ) i,j,Factors((i-1)*N+j)
-           END IF
-         END DO
-       END DO
-       
-       CLOSE(1)
+       BLOCK
+         LOGICAL :: BinaryMode
+         LOGICAL, ALLOCATABLE :: SaveMask(:)
+         ALLOCATE( SaveMask(SIZE(Factors)))
+                  
+         ! Use loser constraint for MinFactor as the errors can't be renormalized any more 
+         MinFactor = MinFactor / 10.0
+         
+         BinaryMode = ListGetLogical( Params,'Viewfactor Binary Output',Found ) 
+         
+         SaveMask = ( Factors > MinFactor )
 
+         IF( BinaryMode ) THEN
+           CALL Info('ViewFactors','Saving view factors in binary mode',Level=5)
+
+           OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), FORM = 'unformatted', &
+               ACCESS = 'stream', STATUS='replace', ACTION='write' )
+           
+           WRITE( VFUnit ) N
+
+           DO i=1,N
+             k = COUNT( SaveMask((i-1)*N+1:i*N) )
+             WRITE( VFUnit ) k 
+             DO j=1,N
+               IF( SaveMask((i-1)*N+j ) ) THEN
+                 WRITE( VFUnit ) j,Factors((i-1)*N+j)
+               END IF
+             END DO
+           END DO           
+         ELSE
+           CALL Info('ViewFactors','Saving view factors in ascii mode',Level=5)
+
+           OPEN( UNIT=VFUnit, FILE=TRIM(OutputName), STATUS='unknown' )
+           
+           DO i=1,N
+             k = COUNT( SaveMask((i-1)*N+1:i*N) )
+             WRITE( VFUnit,* ) k
+             DO j=1,N
+               IF ( SaveMask((i-1)*N+j) ) THEN
+                 WRITE( VFUnit,* ) i,j,Factors((i-1)*N+j)
+               END IF
+             END DO
+           END DO
+         END IF
+           
+         CLOSE(VFUnit)
+
+         DEALLOCATE( SaveMask ) 
+         
+       END BLOCK
+         
        IF ( CylindricSymmetry ) THEN
          DEALLOCATE( Surfaces, Factors)
        ELSE
@@ -645,20 +747,13 @@
       SUBROUTINE NormalizeFactors( Model )
         IMPLICIT NONE
         TYPE(Model_t), POINTER :: Model
-
+!------------------------------------------------------------------------------
         INTEGER :: itmax,it,i,j,k
-
         LOGICAL :: li,lj
-
         REAL(KIND=dp), ALLOCATABLE :: RHS(:),SOL(:),Areas(:),PSOL(:)
-
         REAL(KIND=dp) :: cum,s,si,sj
         REAL(KIND=dp), PARAMETER :: eps=1.0D-20
-#ifdef USE_ISO_C_BINDINGS
         REAL(KIND=dp) :: at1
-#else
-        REAL(KIND=dp) :: at1, CPUTime
-#endif
 
         itmax = 20
         it = 0
@@ -674,8 +769,8 @@
 !       First force the matrix (before dividing by area) to be symmetric
 !------------------------------------------------------------------------------
         DO i=1,n
-          Areas(i) = ElementArea( Model % Mesh, RadElements(i), &
-               RadElements(i) % TYPE % NumberOfNodes )
+          Element => RadElements(i)
+          Areas(i) = ElementArea( Mesh, Element, Element % Type % NumberOfNodes)
         END DO
         
         DO i=1,n
@@ -779,22 +874,15 @@
     SUBROUTINE IterSolv( N,x,b )
       IMPLICIT NONE
 
+      INTEGER :: N
       REAL(KIND=dp), DIMENSION(n) :: x,b
 
       REAL(KIND=dp) :: dpar(50)
-
-      INTEGER :: N,ipar(50),wsize
+      INTEGER :: ipar(50),wsize
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
-
       INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
-#ifndef USE_ISO_C_BINDINGS
-      INTEGER  :: HUTI_D_CG
-      EXTERNAL :: HUTI_D_CG
-      INTEGER(KIND=AddrInt) :: AddrFunc
-#else
       INTEGER(KIND=AddrInt) :: AddrFunc
       EXTERNAL :: AddrFunc
-#endif
 !------------------------------------------------------------------------------
       HUTI_NDIM = N
       dProc = 0
@@ -826,11 +914,102 @@
       DEALLOCATE( work )
     END SUBROUTINE IterSolv 
 
+
+    SUBROUTINE MirrorMesh(Mesh,c,Plane )
+       IMPLICIT NONE
+
+       TYPE(Mesh_t) :: Mesh
+       INTEGER :: c
+       REAL(KIND=dp) :: Plane
+
+
+       TYPE(Element_t), POINTER :: el(:)
+       INTEGER :: i,j,ne, nd, nn, nb, nv
+       REAL(KIND=dp), POINTER :: ox(:), oy(:), oz(:)
+
+       nv  = Mesh % NumberOfBulkElements
+       nb  = Mesh % NumberOfBoundaryElements
+       ne  = nb+nv
+
+       nd = Mesh % NumberOfNodes
+       ox => Mesh % Nodes % x
+       oy => Mesh % Nodes % y
+       oz => Mesh % Nodes % z
+       ALLOCATE(Mesh % Nodes % x(2*nd), Mesh % Nodes % y(2*nd), Mesh % Nodes % z(2*nd) )
+
+       DO i=1,nd
+         Mesh % Nodes % x(i) = ox(i)
+         Mesh % Nodes % y(i) = oy(i)
+         Mesh % Nodes % z(i) = oz(i)
+         SELECT CASE(c)
+         CASE(1,2)
+           Mesh % Nodes % x(i+nd) = 2*Plane - ox(i)
+           Mesh % Nodes % y(i+nd) = oy(i)
+           Mesh % Nodes % z(i+nd) = oz(i)
+         CASE(3,4)
+           Mesh % Nodes % x(i+nd) = ox(i)
+           Mesh % Nodes % y(i+nd) = 2*Plane - oy(i)
+           Mesh % Nodes % z(i+nd) = oz(i)
+         CASE(5,6)
+           Mesh % Nodes % x(i+nd) = ox(i)
+           Mesh % Nodes % y(i+nd) = oy(i)
+           Mesh % Nodes % z(i+nd) = 2*Plane - oz(i)
+         END SELECT
+       END DO
+
+       el => Mesh % Elements
+       ALLOCATE(Mesh % Elements(2*ne))
+       DO i=1,nv
+         Mesh % Elements(i)    = el(i)
+         Mesh % Elements(i+nv) = el(i)
+         nn = el(i) % Type % NumberOfNodes
+         ALLOCATE(Mesh % Elements(i+nv) % NodeIndexes(nn))
+         Mesh % Elements(i+nv) % NodeIndexes = el(i) % NodeIndexes+nd
+         Mesh % Elements(i+nv) % ElementIndex = i+nv
+       END DO
+
+       DO i=nv+1,ne
+         j = i+nv
+         Mesh % Elements(j)    = el(i)
+         Mesh % Elements(j+nb) = el(i)
+         nn = el(i) % Type % NumberOfNodes
+         ALLOCATE(Mesh % Elements(j+nb) % NodeIndexes(nn))
+         Mesh % Elements(j+nb) % NodeIndexes = el(i) % NodeIndexes+nd
+
+         ALLOCATE(Mesh % Elements(j) % BoundaryInfo)
+         Mesh % Elements(j) % BoundaryInfo    = el(i) % BoundaryInfo
+
+         ALLOCATE(Mesh % Elements(j+nb) % BoundaryInfo)
+         Mesh % Elements(j+nb) % BoundaryInfo = el(i) % BoundaryInfo
+
+         IF(ASSOCIATED(Mesh % Elements(j) % BoundaryInfo % Left)) THEN
+           Mesh % Elements(j+nb) % BoundaryInfo % Left => &
+             Mesh % Elements(el(i) % BoundaryInfo % Left % ElementIndex+nv)
+         END IF
+
+         IF(ASSOCIATED(Mesh % Elements(j) % BoundaryInfo % Right)) THEN
+           Mesh % Elements(j+nb) % BoundaryInfo % Right => &
+             Mesh % Elements(el(i) % BoundaryInfo % Right % ElementIndex+nv)
+         END IF
+       END DO
+
+       DEALLOCATE(ox,oy,oz)
+
+       Mesh % NumberOfNodes = 2*nd
+       Mesh % NumberOfBulkElements = 2*Mesh % NumberOfBulkElements
+       Mesh % NumberOfBoundaryElements = 2*Mesh % NumberOfBoundaryElements
+
+       Model % NumberOfNodes = Mesh % NUmberOfNodes
+       Model % NumberOfBulkElements = Mesh % NumberOfBulkElements
+       Model % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements
+     END SUBROUTINE MirrorMesh
+
   END PROGRAM ViewFactors
 
 
   SUBROUTINE DiagPrecViewFact( u,v,ipar )
     USE ViewFactorGlobals
+    IMPLICIT NONE
 
     REAL(KIND=dp) :: u(*),v(*)
     INTEGER :: ipar(*)
@@ -844,6 +1023,7 @@
 
   SUBROUTINE MatvecViewFact( u,v,ipar )
     USE ViewFactorGlobals
+    IMPLICIT NONE
 
     INTEGER :: ipar(*)
     REAL(KIND=dp) :: u(*),v(*)

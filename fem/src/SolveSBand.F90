@@ -57,14 +57,14 @@
        CALL DPBTRF( 'L',N,Subband,A,Band,iINFO )
         IF ( iinfo /= 0 ) THEN
          PRINT*,'ERROR: SolveSymmetricBand: singular matrix. LAPACK DPBTRF iinfo: ',iinfo
-          STOP
+          STOP 1
         END IF
 
        iINFO = 0
        CALL DPBTRS( 'L',N,Subband,M,A,Band,X,N,iINFO )
         IF ( iinfo /= 0 ) THEN
          PRINT*,'ERROR: SolveSymmetricBand: singular matrix. LAPACK DPBTRS iinfo: ',iinfo
-          STOP
+          STOP 1
         END IF
 
        END
@@ -90,14 +90,14 @@
        CALL ZPBTRF( 'L',N,Subband,A,Band,iINFO )
         IF ( iinfo /= 0 ) THEN
          PRINT*,'ERROR: SolveSymmetricBand: singular matrix. LAPACK ZPBTRF iinfo: ',iinfo
-          STOP
+          STOP 1
         END IF
 
        iINFO = 0
        CALL ZPBTRS( 'L',N,Subband,M,A,Band,X,N,iINFO )
         IF ( iinfo /= 0 ) THEN
          PRINT*,'ERROR: SolveSymmetricBand: singular matrix. LAPACK ZPBTRS iinfo: ',iinfo
-          STOP
+          STOP 1
         END IF
 
        END

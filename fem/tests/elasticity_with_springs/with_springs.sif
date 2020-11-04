@@ -1,0 +1,95 @@
+Header
+  Mesh DB "." "beam"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+! Output File = "elasticity.result"
+  Post File = "beam.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+   Density = 1.0
+   Youngs Modulus = 70e9
+   Poisson Ratio = 0.3
+End
+
+Solver 1
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Assembly Solvers(1) = 2
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1000
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Convergence Measure = Residual
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+
+!  Elasticity Solver Linear = True
+!  Neo-Hookean Material = True 
+
+  Calculate Strains = True
+  Calculate Stresses = True
+  Calculate Loads = Logical True
+End
+
+Solver 2
+  Equation = "Assemble Springs"
+  Exec Solver = Never
+  Procedure = "SpringAssembly" "SpringAssembler"
+  Displacement Variable Name = "Displacement"
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = False
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Surface Traction 2 = Real -5.0e7
+End
+
+Boundary Condition 3
+  Target Nodes(1) = 541
+!  Target Boundaries(1) = 5
+  Spring 1 = 0.0d0
+  Spring 2 = 1e+8
+End
+
+!Boundary Condition 4
+!  Target Nodes(2) = 548 549
+!  Spring 1 = 1e+10
+!  Spring 2 = 0.0d0
+!End
+
+
+Solver 1 :: Reference Norm = Real 7.19587110E-02

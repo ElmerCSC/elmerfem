@@ -302,7 +302,7 @@ Solver 4
   VTU BinaryFile = Logical False
 
   Channels OutPut Directory Name = String "results"
-  Channels OutPut File Name = String "$namerun"_channels"
+  Channels OutPut File Name = String $namerun$"_channels"
 End
 
 !---------------------------------------------------
@@ -351,6 +351,3 @@ End
 
 Solver 1 :: Reference Norm = Real 2.51446150E+00 
 Solver 1 :: Reference Norm Tolerance = Real 1E-04
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=2.51446150E+00,EPS=1E-04\n" );

@@ -10,7 +10,7 @@ Simulation
   Steady State Max Iterations  = 100
 
   Initialize Dirichlet Conditions = False
-  Post File = "channel.ep"
+!  Post File = "channel.vtu"
 End
 
 

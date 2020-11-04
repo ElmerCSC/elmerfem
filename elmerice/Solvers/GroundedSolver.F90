@@ -76,19 +76,21 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Material, SolverParams
-  TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar
+  TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar, FrontVar, LSvar
   TYPE(Nodes_t), SAVE :: Nodes
 
-  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.
+  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.,&
+             AllGrounded = .FALSE., useLSvar = .FALSE.
 
   INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
-  INTEGER, POINTER :: Permutation(:), bedrockPerm(:)
+  INTEGER, POINTER :: Permutation(:), bedrockPerm(:), LSvarPerm(:)
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
   REAL(KIND=dp) :: z, toler
   REAL(KIND=dp), ALLOCATABLE :: zb(:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolver', bedrockName
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolver', bedrockName,&
+                                 FrontVarName, LSvarName
 
   INTEGER,PARAMETER :: MATERIAL_DEFAULT = 1, MATERIAL_NAMED = 2, VARIABLE = 3
        
@@ -124,22 +126,48 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      CALL FATAL(SolverName, 'No tolerance given for the Grounded Mask.')
   END IF
 
-  bedrockName = GetString(SolverParams, 'Bedrock Variable', GotIt)
-  IF (GotIt) THEN
-     bedrockSource = VARIABLE
-     CALL info(SolverName, 'Bedrock Variable name found', level=8)
-  ELSE
-     bedrockName = GetString(SolverParams, 'Bedrock Material', GotIt)
-     IF (GotIt) THEN
-        bedrockSource = MATERIAL_NAMED
-        CALL info(SolverName, 'Bedrock Material name found', level=8)
-     ELSE
-        bedrockSource = MATERIAL_DEFAULT     
-        CALL info(SolverName, 'No Bedrock Variable or Material; searching for material \"Min Zs Bottom\".', level=8)
-     END IF
+  !CHANGE
+  !This to enforce all nodes grounded when doing non-calving hydrology to
+  !restart a calving simulation from
+  AllGrounded = GetLogical(SolverParams, 'All Grounded', GotIt)
+  IF(.NOT. GotIt) AllGrounded = .FALSE.
+  IF(.NOT. AllGrounded) THEN
+
+    ! If the user gives a lower surface variable name then use this instead of
+    ! node coords for the lower ice surface.
+    LSvarName = GetString(SolverParams, 'lower surface variable', GotIt)
+    IF (GotIt) THEN
+      CALL info(SolverName, 'lower surface variable name found', level=8)
+      useLSvar = .TRUE.
+    ELSE
+      useLSvar = .FALSE.
+    END IF
+    
+    bedrockName = GetString(SolverParams, 'Bedrock Variable', GotIt)
+    IF (GotIt) THEN
+       bedrockSource = VARIABLE
+       CALL info(SolverName, 'Bedrock Variable name found', level=8)
+    ELSE
+       bedrockName = GetString(SolverParams, 'Bedrock Material', GotIt)
+       IF (GotIt) THEN
+          bedrockSource = MATERIAL_NAMED
+          CALL info(SolverName, 'Bedrock Material name found', level=8)
+       ELSE
+          bedrockSource = MATERIAL_DEFAULT     
+          CALL info(SolverName, 'No Bedrock Variable or Material; searching for material \"Min Zs Bottom\".', level=8)
+       END IF
+    END IF
   END IF
 
-
+  !CHANGE
+  !Any variable defined on the calving front
+  FrontVarName = GetString(SolverParams, 'Front Variable', GotIt)
+  IF(GotIt) THEN
+    FrontVar => VariableGet(Model % Mesh % Variables, FrontVarName,UnFoundFatal=UnFoundFatal)
+  ELSE
+    CALL INFO( SolverName , 'No front variable defined. Some basal frontal nodes may be left with GroundedMask=1')
+    FrontVar => NULL()
+  END IF
     
   !--------------------------------------------------------------
   ! Grounded/floating loop based on height of base above bedrock.
@@ -148,40 +176,57 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      Element => GetActiveElement(t)
      n = GetElementNOFNodes()
      
-     SELECT CASE(bedrockSource)
-     CASE (VARIABLE)
-        bedrockVar => VariableGet(Model % Mesh % Variables, bedrockName,UnFoundFatal=UnFoundFatal)
-        bedrockPerm => bedrockVar % Perm
-        zb(1:n) =  bedrockVar % values(bedrockPerm(Element % NodeIndexes)) + toler
-        NULLIFY(bedrockPerm)
-        NULLIFY(bedrockVar)
-     CASE (MATERIAL_NAMED)
-        Material => GetMaterial( Element )
-        zb(1:n) = ListGetReal( Material,bedrockName, n , & 
+     IF(.NOT. AllGrounded) THEN
+
+       SELECT CASE(bedrockSource)
+       CASE (VARIABLE)
+          bedrockVar => VariableGet(Model % Mesh % Variables, bedrockName,UnFoundFatal=UnFoundFatal)
+          bedrockPerm => bedrockVar % Perm
+          zb(1:n) =  bedrockVar % values(bedrockPerm(Element % NodeIndexes)) + toler
+          NULLIFY(bedrockPerm)
+          NULLIFY(bedrockVar)
+       CASE (MATERIAL_NAMED)
+          Material => GetMaterial( Element )
+          zb(1:n) = ListGetReal( Material,bedrockName, n , & 
              Element % NodeIndexes, GotIt,UnFoundFatal=UnFoundFatal) + toler
-     CASE (MATERIAL_DEFAULT)
-        Material => GetMaterial( Element )
-        zb(1:n) = ListGetReal( Material,'Min Zs Bottom',n , & 
+       CASE (MATERIAL_DEFAULT)
+          Material => GetMaterial( Element )
+          zb(1:n) = ListGetReal( Material,'Min Zs Bottom',n , & 
              Element % NodeIndexes, GotIt,UnFoundFatal=UnFoundFatal) + toler
-     END SELECT
+       END SELECT
+     END IF
      
      CALL GetElementNodes( Nodes )
      
      DO i = 1, n
         Nn = Permutation(Element % NodeIndexes(i))
         IF (Nn==0) CYCLE
-        IF (DIM == 2) THEN
-           z = Nodes % y( i )
-        ELSE IF (DIM == 3) THEN
-           z = Nodes % z( i )
+        !CHANGE
+        !To enforce grounding
+        IF(AllGrounded) THEN
+          VariableValues(Nn) = 1.0_dp
+          CYCLE
+        END IF
+
+        IF (useLSvar) THEN
+          LSvar => VariableGet(Model % Mesh % Variables, LSvarName, UnFoundFatal=UnFoundFatal)
+          LSvarPerm => LSvar % Perm
+          z = LSvar % values( LSvarPerm(Element % NodeIndexes(i)) )
+        ELSE
+          IF (DIM == 2) THEN
+            z = Nodes % y( i )
+          ELSE IF (DIM == 3) THEN
+            z = Nodes % z( i )
+          END IF
+
         END IF
         
         ! Geometrical condition. Is the node is above the bedrock 
         ! (plus the tolerance)?  Note: zb includes tolerance.
         IF (z > zb(i)) THEN
-           VariableValues(Nn) = -1.0_dp
+          VariableValues(Nn) = -1.0_dp
         ELSE
-           VariableValues(Nn) = 1.0_dp
+          VariableValues(Nn) = 1.0_dp
         END IF
      END DO
   END DO
@@ -218,6 +263,20 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
               IF (DIM==3) PRINT *, 'Grounding Line, (x,y)', Nodes % x( i ), Nodes % y( i )
            END IF
         END DO
+     END IF
+
+    !CHANGE
+    !To label all basal frontal nodes not already ungrounded or on GL as on GL -
+    !by definition, they're the last grounded node. Also necessary to make
+    !plumes work properly.
+     IF(ASSOCIATED(FrontVar)) THEN
+       DO i=1, n
+         Nn = FrontVar % Perm(Element % NodeIndexes(i))
+         IF(Nn==0) CYCLE
+         Nn = Permutation(Element % NodeIndexes(i))
+         IF(Nn==0) CYCLE
+         IF (VariableValues(Nn) == 1.0_dp) VariableValues(Nn) = 0.0_dp
+       END DO
      END IF
   END DO
   

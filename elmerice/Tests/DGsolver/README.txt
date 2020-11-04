@@ -2,8 +2,6 @@
 
 To run the test:
 ----------------
-elmerf90 ./PROG/DGtoNodalVariable.f90 -o DGtoNodalVariable
-elmerf90 ./PROG/InitializeDGVariable.f90 -o InitializeDGVariable
 ElmerGrid 1 2 cube.grd
 ElmerSolver density.sif
 
@@ -13,4 +11,9 @@ Results established:
 Laure Tavard,LGGE
 Froggy cluster (CIMENT: Grenoble University HPC centre)
 Revision 58f71b4
+09.09.2020
+Olivier Gagliardini
+Test modified - simplified use of DG variables
+Mac OS X 
+Version: 8.4 (Rev: b7e3d999, Compiled: 2020-09-08)
 

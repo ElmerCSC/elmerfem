@@ -29,7 +29,26 @@
 ! *  Original Date: 
 ! * 
 ! *****************************************************************************
-!
+SUBROUTINE AdjointSSA_CostFluxDivSolver_init0(Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: Name
+
+  Name = ListGetString( Solver % Values, 'Equation',UnFoundFatal=.TRUE.)
+  CALL ListAddNewString( Solver % Values,'Variable',&
+          '-nooutput '//TRIM(Name)//'_var')
+  CALL ListAddLogical(Solver % Values, 'Optimize Bandwidth',.FALSE.)
+
+END SUBROUTINE AdjointSSA_CostFluxDivSolver_init0
 ! *****************************************************************************
 SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
 ! *****************************************************************************
@@ -116,6 +135,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: ComputeDJDZb,ComputeDJDZs,ResetCost
   Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit
+  LOGICAL :: BoundarySolver
   CHARACTER*10 :: date,temps
 
   save Firsttime,Parallel 
@@ -124,11 +144,14 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
 
 
   SolverParams => GetSolverParams()
-  DIM=GetInteger(SolverParams ,'Problem Dimension',Found)
-  If (.NOT.Found) then
-     CALL WARN(SolverName,'Keyword >Problem Dimension< not found, assume DIM = CoordinateSystemDimension()')
-     DIM = CoordinateSystemDimension()
-  Endif
+
+  !! check if we are on a boundary or in the bulk
+    BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
+    IF (BoundarySolver) THEN
+      DIM = CoordinateSystemDimension() - 1
+    ELSE
+      DIM = CoordinateSystemDimension()
+    ENDIF
 
    Lambda =  GetConstReal( SolverParams,'Lambda', Found)
    IF(.NOT.Found) THEN
@@ -418,7 +441,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
    
    Return
 
- 1000  format('#date,time,',a1,'/',a1,'/',a4,',',a2,':',a2,':',a2)
+ 1000  format('#date,time,',a2,'/',a2,'/',a4,',',a2,':',a2,':',a2)
  1001  format('#lambda,',e15.8)
 !------------------------------------------------------------------------------
 END SUBROUTINE AdjointSSA_CostFluxDivSolver

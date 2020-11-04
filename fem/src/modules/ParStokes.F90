@@ -153,13 +153,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: i, j, k, nlen, Round, MaxIterations, RestartM
   INTEGER, ALLOCATABLE :: Indexes(:)
   INTEGER, POINTER :: NodeIndexes(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: MinTolerance, t0, rt0, st, rst, ct, &
        BaseTolerance, TargetTol, RelTolerance, PrecondTol
-#else
-  REAL(KIND=dp) :: MinTolerance, t0, rt0, st, rst, ct, CPUTime, RealTime, maxU=0.0d0, maxV=0.0d0, &
-       BaseTolerance, TargetTol, RelTolerance, PrecondTol
-#endif
   TYPE(Solver_t), POINTER :: PressureSolver, VelocitySolver
   TYPE(Matrix_t), POINTER :: MMatrix, PMatrix, AMatrix 
   REAL(KIND=dp), ALLOCATABLE :: Snew(:), R(:), S(:,:), V(:,:), &

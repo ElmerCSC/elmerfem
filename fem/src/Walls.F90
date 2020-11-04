@@ -28,10 +28,10 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Jari Hämäläinen
+! *  Authors: Jari H?m?l?inen
 ! *  Address: VTT Energy
 ! *           P.O.Box 1603
-! *           40101 Jyväskylä, Finland 
+! *           40101 Jyv?skyl?, Finland 
 ! *
 ! *  Authors: Juha Ruokolainen
 ! *  Email:   Juha.Ruokolainen@csc.fi
@@ -78,7 +78,10 @@
          DFX = D_WALL_LAW( UFRIC,UT,DENSIT,VISCOS,DIST,ROUGH )
 
 ! Newton step:
-         IF (DFX.EQ.0.0d0) STOP 'dfx=0'
+         IF (DFX.EQ.0.0d0) THEN
+            PRINT*,'Walls:: SOLVE_UFRIC: dfx = 0'
+            STOP 1
+         END IF
          UFRIC = UFRIC - FX/DFX
          YPLUS = DENSIT * UFRIC * DIST / VISCOS
          IF ( DABS(FX) <= TOL ) EXIT
@@ -93,7 +96,7 @@
 
 !----------------------------------------------------------------------------
 !> Give difference between the tangential velocity given by 
-!> Reichardt´s wall law and the tangential velocity of the previous 
+!> Reichardt's wall law and the tangential velocity of the previous 
 !> iteration.
 !
 !         Input:

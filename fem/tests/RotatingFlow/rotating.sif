@@ -18,7 +18,7 @@ Simulation
   BDF Order = 1
   Solver Input File = case.sif
 
-!  Post File = rotating.ep
+!  Post File = rotating.vtu
   Filename Numbering = True
 End
 

@@ -76,7 +76,7 @@
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
         Projection, CrevasseThreshold, search_eps, Norm, MinCalvingSize,&
         PauseVolumeThresh, BotZ, TopZ, prop, MaxBergVolume, dy, dz, dzdy, &
-        gradLimit, Displace, y_coord(2), ShiftTo,&
+        gradLimit, Displace, y_coord(2), ShiftTo, Time,&
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -715,9 +715,11 @@
     MeshDir = ""
 
     CurrentModel % DIMENSION = 2
-    PlaneMesh => LoadMesh2( Model, MeshDir, filename_root, .FALSE., 1, 0 )
+    PlaneMesh => LoadMesh2( Model, MeshDir, filename_root, .FALSE., 1, 0, LoadOnly=.FALSE.)
     CurrentModel % DIMENSION = 3
-    !NOTE: checked that planemesh exists on every PE, seems fine
+
+    !Isomesh does dodgy things with edgetables, so best to release it here.
+    CALL ReleaseMeshEdgeTables(PlaneMesh)
 
     rt = RealTime() - rt0
     IF(ParEnv % MyPE == 0) &
@@ -1694,6 +1696,7 @@
 
     END IF
 
+    CALL ListAddConstReal( Model % Simulation, 'CalvingTime', Time )
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
 CONTAINS

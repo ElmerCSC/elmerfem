@@ -17,7 +17,7 @@ Simulation
   Coordinate System = "Axi Symmetric"
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-!  Post File = "crucible.vtu"
+  Post File = "crucible.vtu"
 
   Frequency = Real 50.0e3
 End
@@ -88,21 +88,15 @@ Solver 1
 End
 
 Solver 2
-  Exec Solver = never
+  Equation = CalcFields
 
-  Equation = BSolver
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
 
-  Procedure = "MagnetoDynamics2D" "BSolver"
+  Calculate Elemental Fields = Logical True
+  Calculate Nodal Fields = Logical True
 
-  Discontinuous Galerkin = Logical True
-  Average Within Materials = Logical True
-
-!  Frequency = Real 50.0e3
   Calculate Joule Heating = Logical True
   Desired Heating Power = Real 3.0e3
-
-  Target Variable = Potential
-  Target Variable Complex = Logical True
 
   Linear System Solver = Iterative
   Linear System Symmetric=True
@@ -115,8 +109,10 @@ Solver 2
   Linear System Iterative Method = BicgstabL
 
   Nonlinear System Max Iterations = 1
-  Nonlinear System Convergence Tolerance = 1.0e-6
-  Nonlinear System Relaxation Factor = 1
+
+! Pick the right norm for consistency check
+  Skip Compute Steady State Change = Logical True
+  Show Norm Index = 1
 End
 
 
@@ -150,6 +146,7 @@ Boundary Condition 1
   Potential Im = Real 0.0
 End
 
-Solver 1 :: Reference Norm = Real 0.88822024E-05
-RUN
+Solver 1 :: Reference Norm = 0.88822024E-05
+Solver 2 :: Reference Norm = 0.16749970E-03
+
 

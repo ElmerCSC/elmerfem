@@ -23,7 +23,7 @@
 !-------------------------------------------------------------------------------
        INTEGER, ALLOCATABLE :: perm(:), vperm(:)
        INTEGER, POINTER :: nperm(:)
-       LOGICAL, ALLOCATABLE :: FoundNodes(:)
+       LOGICAL, ALLOCATABLE :: FoundNodes(:), FoundNodesPar(:)
        TYPE(Mesh_t), POINTER :: nMesh
        TYPE(VAriable_t), POINTER :: Var, nVar
        INTEGER :: i,j,k,l,nfound,maxrecv,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
@@ -31,7 +31,8 @@
        REAL(KIND=dp), POINTER :: store(:)
        REAL(KIND=dp), ALLOCATABLE, TARGET :: astore(:),vstore(:,:), BB(:,:), &
              nodes_x(:),nodes_y(:),nodes_z(:), xpart(:), ypart(:), zpart(:)
-       LOGICAL :: al
+       LOGICAL :: al, Stat
+       INTEGER :: PassiveCoordinate
 
        TYPE ProcRecv_t
          INTEGER :: n = 0
@@ -68,19 +69,33 @@
          ALLOCATE(UnfoundNodes(NewMesh % NumberOfNodes))
       END IF
 
+      ! In serial interpolation is simple
+      !------------------------------------
       IF ( ParEnv % PEs<=1 ) THEN
          CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
 
+         IF( InfoActive(20) ) THEN
+           n = COUNT(.NOT. FoundNodes )
+           CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//TRIM(I2S(n)))
+         END IF
+                    
          IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
          RETURN
       END IF
 
-      ! Interpolate within our own partition, flag the points
-      ! we found:
-      ! -----------------------------------------------------
-
-      
+      ! Passive coordinate is needed also here in order not to use that direction
+      ! for the bounding box checks.
+      !---------------------------------------------------------------------------
+      PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
+          'Interpolation Passive Coordinate', Stat ) 
+      IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
+        PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
+            'Interpolation Passive Coordinate', Stat ) 
+      END IF
+            
+      ! Interpolate within our own partition, flag the points we found:
+      ! ---------------------------------------------------------------      
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
          NewVariables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
 
@@ -90,6 +105,10 @@
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
 
+      IF( InfoActive(20) ) THEN
+        CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//TRIM(I2S(n)))
+      END IF
+      
       AL = .FALSE.
       IF (.NOT.ASSOCIATED(ParEnv % Active) ) THEN
         ALLOCATE(Parenv % Active(PArEnv % PEs))
@@ -105,10 +124,10 @@
         CALL Warn('InterpolateMeshToMesh','Could not find all dofs in single mesh: '//TRIM(I2S(NINT(dn))))
         RETURN
       END IF
-      
 
       ! Exchange partition bounding boxes:
-      ! ----------------------------------
+      ! This is needed to eliminate the amount of data to send among partitions.
+      ! ------------------------------------------------------------------------
       myBB = HUGE(mybb(1))
       IF(OldMesh % NumberOfNodes /= 0) THEN
         myBB(1) = MINVAL(OldMesh % Nodes % x)
@@ -140,7 +159,9 @@
       CALL CheckBuffer((n*(3 * 2)) + 2) !3 x double precision coord, 2 x count
 
       IF ( n==0 ) THEN
-        DEALLOCATE(FoundNodes, BB)
+        ! We have found all nodes, nothing to do except sent the info to others!
+        !----------------------------------------------------------------------
+        DEALLOCATE(BB)
         DO i=1,ParEnv % PEs
           IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
           proc = i-1
@@ -160,7 +181,6 @@
           nodes_y(j) = NewMesh % Nodes % y(i)
           nodes_z(j) = NewMesh % Nodes % z(i)
         END DO
-        DEALLOCATE(FoundNodes)
 
         ! ...and ask those from others
         ! -------------------------------
@@ -175,9 +195,9 @@
           myBB = BB(:,i)
           npart = 0
           DO j=1,n
-            IF ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) .OR. &
-                 nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) .OR. &
-                 nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) CYCLE
+            IF ( ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) ) .AND. PassiveCoordinate /= 1 ) CYCLE
+            IF ( ( nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) ) .AND. PassiveCoordinate /= 2 ) CYCLE
+            IF ( ( nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) .AND. PassiveCoordinate /= 3 ) CYCLE
             npart = npart+1
           END DO
           ProcSend(proc+1) % n = npart
@@ -185,9 +205,9 @@
             ALLOCATE( xpart(npart),ypart(npart),zpart(npart),ProcSend(proc+1) % perm(npart) )
             npart = 0
             DO j=1,n
-              IF ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) .OR. &
-                   nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) .OR. &
-                   nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) CYCLE
+              IF ( ( nodes_x(j)<myBB(1) .OR. nodes_x(j)>myBB(4) ) .AND. PassiveCoordinate /= 1 ) CYCLE
+              IF ( ( nodes_y(j)<myBB(2) .OR. nodes_y(j)>myBB(5) ) .AND. PassiveCoordinate /= 2 ) CYCLE
+              IF ( ( nodes_z(j)<myBB(3) .OR. nodes_z(j)>myBB(6) ) .AND. PassiveCoordinate /= 3 ) CYCLE
               npart=npart+1
               ProcSend(proc+1) % perm(npart)=j
               xpart(npart) = Nodes_x(j)
@@ -308,11 +328,12 @@
 
         ! try interpolating values for the points:
         ! ----------------------------------------
-        ALLOCATE( FoundNodes(n) ); FoundNodes=.FALSE.
+        ALLOCATE( FoundNodesPar(n) ); FoundNodesPar=.FALSE.
+        
         CALL InterpolateMeshToMeshQ( OldMesh, nMesh, OldVariables, &
-           nMesh % Variables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
+           nMesh % Variables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodesPar )
 
-        nfound = COUNT(FoundNodes)
+        nfound = COUNT(FoundNodesPar)
 
         CALL MPI_BSEND( nfound, 1, MPI_INTEGER, proc, &
                 2001, ELMER_COMM_WORLD, ierr )
@@ -323,7 +344,7 @@
           ALLOCATE(vstore(nfound,nvars), vperm(nfound)); vstore=0
           k = 0
           DO j=1,n
-            IF ( .NOT.FoundNodes(j)) CYCLE   
+            IF ( .NOT.FoundNodesPar(j)) CYCLE   
             k = k + 1
             vperm(k) = j
             Var => OldVariables
@@ -361,7 +382,7 @@
                 Nmesh % Nodes % z)
 
         CALL ReleaseMesh(Nmesh)
-        DEALLOCATE(foundnodes, Nmesh)
+        DEALLOCATE(FoundNodesPar, Nmesh)
       END DO
       DEALLOCATE(ProcRecv)
 
@@ -391,14 +412,12 @@
         CALL MPI_RECV( vperm, n, MPI_INTEGER, proc, &
               2002, ELMER_COMM_WORLD, status, ierr )
 
-        !Mark nodes as found if requested
-        IF(PRESENT(UnfoundNodes)) THEN
-           DO j=1,n
-              k=perm(ProcSend(proc+1) % Perm(vperm(j)))
-              UnfoundNodes(k) = .FALSE.
-           END DO
-        END IF
-
+        !Mark nodes as found 
+        DO j=1,n
+          k=perm(ProcSend(proc+1) % Perm(vperm(j)))          
+          FoundNodes(k) = .TRUE.
+        END DO
+                
         ! recv values and store:
         ! ----------------------
         Var => OldVariables
@@ -445,10 +464,18 @@
       CALL MPI_BARRIER(ParEnv % ActiveComm,ierr)
 
       IF(AL) THEN
-         DEALLOCATE(Parenv % Active)
-         ParEnv % Active => NULL()
-       END IF
+        DEALLOCATE(Parenv % Active)
+        ParEnv % Active => NULL()
+      END IF
 
+      n = COUNT(.NOT. FoundNodes )           
+      CALL Info('InterpolateMeshToMesh',&
+	'Number of unfound nodes in all partitions: '//TRIM(I2S(n)),Level=6)
+      
+      IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
+      DEALLOCATE( FoundNodes ) 
+      
+      
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -507,10 +534,10 @@ CONTAINS
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
      NULLIFY( Mesh % ParallelInfo % INTERFACE )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )
-
+         
   END FUNCTION AllocateMesh
 !-------------------------------------------------------------------------------
-     END SUBROUTINE InterpolateMeshToMesh
+END SUBROUTINE InterpolateMeshToMesh
 !-------------------------------------------------------------------------------
 
 
@@ -666,7 +693,7 @@ CONTAINS
          PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
                'Interpolation Passive Coordinate', Stat ) 
        END IF
-          
+              
        CylProject = ListGetLogical( CurrentModel % Simulation, &
             'Interpolation Cylindric', Stat )                     
        IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN

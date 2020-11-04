@@ -91,9 +91,7 @@
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
      REAL(KIND=dp) :: at,st
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: CPUTime
-#endif
+
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
           DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef, Dofs
@@ -291,8 +289,11 @@
 
 !------------------------------------------------------------------------------
      SUBROUTINE LocalMatrix( STIFF, DAMP, MASS, &
-          Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef )
+         Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef )
 !------------------------------------------------------------------------------
+       USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor, &
+           IsotropicElasticity
+
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), &
             MASS(:,:), Force(:), Load(:), DampingCoef(:), SpringCoef(:)
        INTEGER :: n, DOFs
@@ -371,7 +372,7 @@
             Curvature(3,3*p  ) = dBasisdx(p,1)
          END DO
 
-         CALL AddInnerProducts(STIFF,Ematrix,Curvature,3,3*n,s)
+         CALL StrainEnergyDensity(STIFF,Ematrix,Curvature,3,3*n,s)
 
 !        In-plane stiffness:
 !        -------------------
@@ -390,7 +391,7 @@
             ShearStrain(2,3*p-2) = dBasisdx(p,2)
          END DO 
 
-         CALL AddInnerProducts(STIFF, &
+         CALL StrainEnergyDensity(STIFF, &
               Gmatrix,ShearStrain,2,3*n,Kappa*s)
 !
 !        Tensile stiffness:
@@ -401,7 +402,7 @@
             ShearStrain(2,3*p-2) = dBasisdx(p,2)
          END DO 
 
-         CALL AddInnerProducts(STIFF,Tmatrix,ShearStrain,2,3*n,s)
+         CALL StrainEnergyDensity(STIFF,Tmatrix,ShearStrain,2,3*n,s)
 
 !        Spring Coeffficient:
 !        -------------------
@@ -447,38 +448,8 @@
        END DO
 !------------------------------------------------------------------------------
      END SUBROUTINE LocalMatrix
-
-
-!==============================================================================
-
-
-     SUBROUTINE IsotropicElasticity(Ematrix, &
-          Gmatrix,Poisson,Young,Thickness,Basis,n)
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Ematrix(:,:), Gmatrix(:,:), Basis(:)
-     REAL(KIND=dp) :: Poisson(:), Young(:), Thickness(:)
-     REAL(KIND=dp) :: Euvw, Puvw, Guvw, Tuvw
-     INTEGER :: n
-!------------------------------------------------------------------------------
-       Euvw = SUM( Young(1:n)*Basis(1:n) )
-       Puvw = SUM( Poisson(1:n)*Basis(1:n) )
-       Tuvw = SUM( Thickness(1:n)*Basis(1:n) )
-       Guvw = Euvw/(2.0d0*(1.0d0 + Puvw))
 
-       Ematrix = 0.0d0
-       Ematrix(1,1) = 1.0d0
-       Ematrix(1,2) = Puvw
-       Ematrix(2,1) = Puvw
-       Ematrix(2,2) = 1.0d0
-       Ematrix(3,3) = (1.0d0-Puvw)/2.0d0
-
-       Ematrix = Ematrix* Euvw * (Tuvw**3) / (12.0d0*(1.0d0-Puvw**2))
-
-       Gmatrix = 0.0d0
-       Gmatrix(1,1) = Guvw*Tuvw
-       Gmatrix(2,2) = Guvw*Tuvw
-!------------------------------------------------------------------------------
-     END SUBROUTINE IsotropicElasticity
 
 
 !------------------------------------------------------------------------------
@@ -488,7 +459,6 @@
 !>  in silicon condenser microphones', Sensors and Actuators A 54 (1996) 499-504.
 ! The model in verified in the special assignment of Jani Paavilainen 
 !------------------------------------------------------------------------------
-
      SUBROUTINE PerforatedElasticity(Ematrix, &
          Gmatrix,Poisson,Young,Thickness,HoleFraction, &
          HoleSize, Basis,n)
@@ -531,94 +501,13 @@
        Gmatrix(2,2) = Gmatrix(1,1)
 !------------------------------------------------------------------------------
      END SUBROUTINE PerforatedElasticity
-
-!==============================================================================
-
-
-     SUBROUTINE ShearCorrectionFactor(Kappa,Thickness,x,y,n)
 !------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Kappa,Thickness,x(:),y(:)
-       INTEGER :: n
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: x21,x32,x43,x13,x14,y21,y32,y43,y13,y14, &
-            l21,l32,l43,l13,l14,alpha,h
-!------------------------------------------------------------------------------
-       Kappa = 1.0d0
-       SELECT CASE(n)
-          CASE(3)
-             alpha = 0.20d0
-             x21 = x(2)-x(1)
-             x32 = x(3)-x(2)
-             x13 = x(1)-x(1)
-             y21 = y(2)-y(1)
-             y32 = y(3)-y(2)
-             y13 = y(1)-y(1)
-             l21 = SQRT(x21**2 + y21**2)
-             l32 = SQRT(x32**2 + y32**2)
-             l13 = SQRT(x13**2 + y13**2)
-             h = MAX(l21,l32,l13)
-             Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-          CASE(4)
-             alpha = 0.10d0
-             x21 = x(2)-x(1)
-             x32 = x(3)-x(2)
-             x43 = x(4)-x(3)
-             x14 = x(1)-x(4)
-             y21 = y(2)-y(1)
-             y32 = y(3)-y(2)
-             y43 = y(4)-y(3)
-             y14 = y(1)-y(4)
-             l21 = SQRT(x21**2 + y21**2)
-             l32 = SQRT(x32**2 + y32**2)
-             l43 = SQRT(x43**2 + y43**2)
-             l14 = SQRT(x14**2 + y14**2)
-             h = MAX(l21,l32,l43,l14)
-             Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-          CASE DEFAULT
-            CALL Fatal('SmitcSolver','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
-          END SELECT
-!------------------------------------------------------------------------------
-     END SUBROUTINE ShearCorrectionFactor
 
 
-!==============================================================================
-
-
-     SUBROUTINE AddInnerProducts(A,B,C,m,n,s)
 !------------------------------------------------------------------------------
-!      Performs the operation
-!
-!         A = A + C' * B * C * s
-!
-!      with
-!
-!         Size( A ) = n x n
-!         Size( B ) = m x m
-!         Size( C ) = m x n
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: A(:,:),B(:,:),C(:,:),s
-       INTEGER :: m,n
-!------------------------------------------------------------------------------
-       INTEGER :: i,j,k,l
-!------------------------------------------------------------------------------
-       DO i=1,n
-          DO j=1,n
-             DO k=1,m
-                DO l=1,m
-                   A(i,j) = A(i,j) + C(k,i)*B(k,l)*C(l,j) * s
-                END DO
-             END DO
-          END DO
-       END DO
-!------------------------------------------------------------------------------
-     END SUBROUTINE AddInnerProducts
-
-
-!==============================================================================
-
-
      SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n)
 !------------------------------------------------------------------------------
+       USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4 
        REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V
        INTEGER :: n
 !------------------------------------------------------------------------------
@@ -774,68 +663,9 @@
        END SELECT
 !------------------------------------------------------------------------------
      END SUBROUTINE CovariantInterpolation
-
-
-!==============================================================================
-
-
-     SUBROUTINE Jacobi3(Jmat,invJ,detJ,x,y)
 !------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Jmat(:,:),invJ(:,:),detJ,x(:),y(:)
+
+
 !------------------------------------------------------------------------------
-       Jmat(1,1) = x(2)-x(1)
-       Jmat(2,1) = x(3)-x(1)
-       Jmat(1,2) = y(2)-y(1)
-       Jmat(2,2) = y(3)-y(1)
-
-       detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
-
-       invJ(1,1) =  Jmat(2,2)/detJ
-       invJ(2,2) =  Jmat(1,1)/detJ
-       invJ(1,2) = -Jmat(1,2)/detJ
-       invJ(2,1) = -Jmat(2,1)/detJ
-!------------------------------------------------------------------------------
-     END SUBROUTINE Jacobi3
-
-
-!==============================================================================
-
-
-     SUBROUTINE Jacobi4(Jmat,invJ,detJ,xi,eta,x,y)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Jmat(:,:),invJ(:,:),detJ,xi,eta,x(:),y(:)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: dNdxi(4), dNdeta(4)
-       INTEGER :: i
-
-       dNdxi(1) = -(1-eta)/4.0d0
-       dNdxi(2) =  (1-eta)/4.0d0
-       dNdxi(3) =  (1+eta)/4.0d0
-       dNdxi(4) = -(1+eta)/4.0d0
-       dNdeta(1) = -(1-xi)/4.0d0
-       dNdeta(2) = -(1+xi)/4.0d0
-       dNdeta(3) =  (1+xi)/4.0d0
-       dNdeta(4) =  (1-xi)/4.0d0
-       
-       Jmat = 0.0d0
-       DO i=1,4
-          Jmat(1,1) = Jmat(1,1) + dNdxi(i)*x(i)
-          Jmat(1,2) = Jmat(1,2) + dNdxi(i)*y(i)
-          Jmat(2,1) = Jmat(2,1) + dNdeta(i)*x(i)
-          Jmat(2,2) = Jmat(2,2) + dNdeta(i)*y(i)
-       END DO
-
-       detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
-
-       invJ(1,1) = Jmat(2,2)/detJ
-       invJ(2,2) = Jmat(1,1)/detJ
-       invJ(1,2) = -Jmat(1,2)/detJ
-       invJ(2,1) = -Jmat(2,1)/detJ
-!------------------------------------------------------------------------------
-     END SUBROUTINE Jacobi4
-
-!==============================================================================
-
-
    END SUBROUTINE SmitcSolver
 !------------------------------------------------------------------------------

@@ -1,0 +1,131 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "box"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 1
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals(1) = 1   
+  Timestep Intervals(1) = 30
+  Timestep Sizes(1) = 1.0
+  !Post File = "data.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+  Convection = "constant"
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Direct"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 350
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+  Exported Variable 1 = -dofs 2 "Mesh Update"
+  Exported Variable 2 = -dofs 2 "Mesh Velocity"
+End
+
+Solver 2 
+  Exec Solver = "before timestep"
+!never
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 2
+
+!  Mapping Mask Variable = String "Temperature"
+!  Bottom Surface Level = Real -1.0
+  Displacement Mode = Logical False
+  Mesh Velocity Variable = String "Mesh Velocity 2"
+  Mesh Update Variable = String "Mesh Update 2"
+  Mesh Velocity First Zero  = True
+End 
+
+Initial Condition 1
+ Mesh Velocity 1 = Real 0.0
+ Mesh Velocity 2 = Real 0.0
+ Mesh Update 1 = Real 0.0
+ Mesh Update 2 = Real 0.0
+ Temperature = Equals  Coordinate 2
+End
+
+Material 1
+  Name = "Bulk Material"
+  Density = 1
+  Heat Conductivity = 0.01
+  Heat Capacity = 10.0
+  Convection Velocity 1 = 0.3
+  Convection Velocity 2 = 0.0
+End
+
+Body Force 1
+  Name = "Bulk BodyForce"
+  Heat Source = 0.0
+End
+
+Boundary Condition 1
+  Name = "bottom"
+  Target Boundaries = 1 
+  Bottom Surface = Variable "Coordinate 1", Time
+     Real MATC "-0.2*sin(pi*tx(1)/30.0)*sin(5*tx(0))"
+  !Temperature = 0
+  Temperature = Equals Coordinate 2 
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries = 2 
+  !Temperature = 0
+End
+
+Boundary Condition 3
+  Name = "top"
+    Target Boundaries = 3 
+  Top Surface = Variable "Coordinate 1", Time
+    Real MATC "0.5 + 0.2*sin(pi*tx(1)/30.0)*sin(5*tx(0))"
+  Temperature = Equals Coordinate 2 
+End
+
+Boundary Condition 4
+  Name = "left"
+  Target Boundaries = 4 
+  Temperature = 10
+End
+
+Solver 1 :: Reference Norm = Real 5.62599881
+RUN
+!End Of File

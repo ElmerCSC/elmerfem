@@ -103,7 +103,7 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
 
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
+  IF ( (.NOT. AllocationsDone) .OR. Solver % MeshChanged  ) THEN
     DIM = CoordinateSystemDimension()
     n = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
     m = Model % Mesh % NumberOfNodes
@@ -133,7 +133,8 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
       WRITE(Message,*) 'Element no. ', t,' not associated'
       CALL FATAL(SolverName,Message)
     END IF
-    
+    Model % CurrentElement => Element
+
     IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
     n = GetElementNOFNodes( Element )
 

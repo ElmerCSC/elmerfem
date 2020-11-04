@@ -1,14 +1,46 @@
 ElmerSolver cmake test case how-to 
 ==================================
-Juhani Kataja / CSC, 2014/11, updated 2017/1
+Juhani Kataja / CSC, 2014/11, 2017/1
+Peter Råback /CSC, 8/2020
+
+The aim of this document is to give some background on testing and describe how
+to create a minimalistic test problem using cmake/ctest. 
+
+Background
+----------
+The test cases are used to check for possible bugs, and to ensure consistancy
+and backward compability. For that purpose they are currently around 700
+(situation 8/2020) cases. Most of these are minimalistic but there are also
+computationally more expensive cases.
+
+The tests are located in directory
+
+$ELMERSRC/fem/tests
+
+Developers and other are encouraged to provide minimal test cases for new or
+untested features. This ensures the feature will be available also in the
+future versions of Elmer.
 
 
-The aim of this document is to describe how to create a minimalistic test
-problem using cmake/ctest. 
+Running test cases
+------------------
+When you have compiled the code you can run all the case with
+>ctest
+
+It is may be a good idea to only run the small tests with two
+processes, for example
+>ctest -L quick -j2
+
+There are many labels besided "quick" that can be used. 
+
+Test cases can be also run manually and used as starting point for more
+complicated cases. Look at "runtests.cmake" to get a hint how the mesh is
+created and execute the simulation usually just saying "ElmerSolver" in
+the test directory.
 
 
-Quick the Instructions for creating a ctest from scratch
---------------------------------------------------------
+Creating a ctest from scratch
+-----------------------------
 
 1)    Create a subdirectory in "fem/tests/<testname>" named after the test
 
@@ -51,7 +83,7 @@ execute_process(COMMAND <command-name> <arg1> <arg2> ...)
 RUN_ELMER_TEST()
 ################################################################################
 
-5)    To run the test, compile Elmer and run "ctest -R <testname>" in the build
+5)    To run this test, compile Elmer and run "ctest -R <testname>" in the build
       directory (This will run all test matching <testname>)
 
 
@@ -67,6 +99,8 @@ where n is the number of MPI processes and <label_i> is a label associated with 
 Having parallel test requires partitioned mesh as well. That can be automatically done in
 the runtest.cmake file with the `execute_process` cmake command:
 
-execute_process(COMMAND ${ELMERGRID_BIN} 2 2 <meshdir> -partition <...> -nooverwrite)
+execute_process(COMMAND ${ELMERGRID_BIN} 2 2 <meshdir> -metiskway #np -nooverwrite)
 
-This will execute ElmerGrid with arguments "2 2 <meshdir> -partition <...> -nooverwrite".
+This will execute ElmerGrid with arguments "2 2 <meshdir> -metiskway #np -nooverwrite".
+
+
