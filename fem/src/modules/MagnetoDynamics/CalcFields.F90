@@ -1965,9 +1965,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy(2))
      CALL ListAddConstReal(Model % Simulation,'res: Magnetic Coenergy',Energy(3))
    ELSE
-     WRITE(Message,'(A,ES12.3)') 'ElectroMagnetic Field Energy: ',SUM(Energy)
+     WRITE(Message,'(A,ES12.3)') 'ElectroMagnetic Field Energy: ',SUM(Energy(1:2))
      CALL Info( 'MagnetoDynamicsCalcFields', Message )
-     CALL ListAddConstReal(Model % Simulation,'res: ElectroMagnetic Field Energy',SUM(Energy))
+     CALL ListAddConstReal(Model % Simulation,'res: ElectroMagnetic Field Energy',SUM(Energy(1:2)))
    END IF
 
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
