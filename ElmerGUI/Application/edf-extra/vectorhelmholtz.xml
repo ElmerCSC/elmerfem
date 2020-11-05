@@ -308,7 +308,7 @@
          <Whatis> Calculate Poynting Vector </Whatis>
        </Parameter>
        <Parameter Widget="CheckBox"> 
-         <Name> Calculate Div Poynting Vector </Name>
+         <Name> Calculate Div of Poynting Vector </Name>
          <Type> Logical </Type> 
          <Whatis> Calculate Divergence of Poyntings vector</Whatis>
        </Parameter>
