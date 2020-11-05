@@ -68,6 +68,7 @@ Solver 3
    Calculate Magnetic Vector Potential = False
    Calculate Magnetic Flux Density = True
    Calculate Magnetic Field Strength = Logical True
+   Separate Magnetic Energy = True
    Steady State Convergence Tolerance = 0
    Linear System Solver = "Iterative"
    Linear System Preconditioning = None
@@ -89,8 +90,8 @@ End
 Solver 5
   Equation = "scalars"
   procedure = "SaveData" "SaveScalars"
-  !variable 1 = res: magnetic field energy
-  show norm index = integer 2
+  show norm index = integer 3
+!  Filename = "tmp.dat"
 End
 
 
