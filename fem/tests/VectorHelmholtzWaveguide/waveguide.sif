@@ -47,8 +47,6 @@ Material 1
   Relative Permittivity = Real 1
   !Relative Permittivity im = Real 0
   
-  !Inverse Relative Permeability = Real 1
-  !Inverse Relative Permeability im = Variable coordinate 3
   !Real MATC "if (tx>0.1) -2.2135; else 0;"
   !Relative Permittivity im = Variable coordinate 3
   !Real MATC "if (tx>0.1) 2.2135/5; else 0;"
