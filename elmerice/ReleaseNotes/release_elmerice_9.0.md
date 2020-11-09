@@ -13,8 +13,9 @@ git log --since="2018-12-18" -- elmerice
 ```
 Overview of changes/enhancements
 --------------------------------
-
-- Improvements to inversion methods
+- Documentation of new solvers from now on is placed using MarkDown under `elmerice/Solvers/Documentation/`
+- Improvements to inversion methods:
+  - Introduced new directory structure to distinguish general Adjoint solver routines (`elmerice/Solvers/Adjoint`), solvers solely needed for inversions using SSA (`elmerice/Solvers/AdjointSSA`) and solvers solely needed for invesions using Stokes (`elmerice/Solvers/AdjointStokes`).  As there have been a lot of changes/new files introduced, we do not list those below but rather refer the user to the new documentation in MarkDown, which is to be found under (`elmerice/Solvers/Documentation/`).
 - Coupling of the GlaDS solvers with the calving solvers in a two-mesh, 3D simulation. Includes a new plume solver that currently relies on the external ODEPack library (not included in the Elmer distribution).
 - New thermodynamically consistent model for permafrost with saturated aquifers
 
@@ -33,13 +34,14 @@ New Solver/Userfunction Modules
 - `GMValid.F90`: Solver that discriminates between ungrounded areas that are connected to the fjord and isolated ungrounded patches inland.
 - `Permafrost.F90`: Collection of solvers for permafrost simlations of a saturated aquifer including heat transfer and phase change as well as solute transport and mechanical deformation (the latter involving the linear elasticity solver)
 - `PermafrostMaterials.F90`: Module for material functions given by either a thermodynamically consistent model by Hartikainen or a simplified model by Andersson. Reads default values from `permafrostsolutedb.dat`and `permafrostmaterialdb.dat`.
+- `SurfaceBuondaryEnthalpy`: Surface Boundary Condition for steady state thermal regime
 
 Enhanced Solver/Userfunction Modules
 ------------------------------------
 - `GlaDSCoupledSolver.F90`: Modified to work on a secondary hydrology mesh (as opposed to the primary ice mesh) and to discriminate properly between fjord-connected ungrounded areas and isolated ungrounded patches inland. Also should work on the basal boundary of an internally extruded 3D mesh.
 - `GlaDSchannelSolver.F90`:  Changes to achieve the same outcome as above.
 - `CalvingRemesh.F90` and `Calving3D.F90`: Changed to avoid interpolating hydrology-specific solvers to the ice mesh after calving. Also changed to allow ice solvers and calving to run at different timestep to hydrology.
-- `GroundedSolver.F90`: Minor tweak to allow frontal grounded basal nodes to be listed as grounding-line nodes, so that the plume solver knows where to stick plumes
+- `GroundedSolver.F90`: Minor tweak to allow frontal grounded basal nodes to be listed as grounding-line nodes, so that the plume solver knows where to stick plumes. Introducing the possiblity to use lower surface variable (instead of node coordinate - which is still default)
 
 
 ElmerSolver library functionality
