@@ -2,8 +2,8 @@ Elmer Release Notes for version 9.0
 ===================================
 
 Previous release: **8.4**  
-Period covered: **Dec 18 2018 - Aug 30 2020**  
-Number of commits: **~1260** (excluding merges)  
+Period covered: **Dec 18 2018 - Nov 10 2020**  
+Number of commits: **~1340** (excluding merges)  
 
 These release notes provide information on the most essential changes.
 You can get a complete listing of commit messages, for example, with:  
@@ -74,6 +74,11 @@ Enhanced Solver Modules
 - A velocity field can be given to add a Lorentz term to the equations
 - Coreloss a posteriori formulas (Bertotti + extended Bertotti)
 
+### MagnetoDynamicsCalcFields
+- Enabled computation of magnetic co-energy.
+- Enabled magnetic unisotrophy with tensor valued reluctivity.  
+- Condider imaginary part of reluctivity.
+
 ### ResultOutputSolver
 - Vtu format:
     - Enable saving of pieces, i.e. bodies and boundaries 
@@ -86,6 +91,7 @@ Enhanced Solver Modules
 - Spring, resultant force and couple BCs added
 - Combined analysis of 2-D shells and 1-D beams enabled
 - Fully coupled analysis of 2-D shells and 3-D solids enabled (still subject to some geometric constraints on the mesh) 
+- Drilling degrees of freedom version enabled for ShellSolver. 
 
 ### StructuredMeshMapper
 - Enable arbitrary number of layers, before limited to three. 
