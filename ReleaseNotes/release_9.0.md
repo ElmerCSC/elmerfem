@@ -65,19 +65,19 @@ Enhanced Solver Modules
 - The solver updated to support the basis functions of second order and simulation in 2D 
 - The solver is now documented in Elmer Models Manual
 
-### MagnetoDynamics3D
+### MagnetoDynamics
 - Fixes and generalization to the source projection (the determination of Jfix). 
 - A surface impedance condition for the time-harmonic AV model
 - Thin region formulation for 1D wires in transient analysis
+- Magnetic anisotropy (a complex-valued reluctivity tensor) enabled for the time-harmonic AV model 
 
 ### MagnetoDynamics2D
 - A velocity field can be given to add a Lorentz term to the equations
 - Coreloss a posteriori formulas (Bertotti + extended Bertotti)
 
 ### MagnetoDynamicsCalcFields
-- Enabled computation of magnetic co-energy.
-- Enabled magnetic unisotrophy with tensor valued reluctivity.  
-- Condider imaginary part of reluctivity.
+- Enabled postprocessing in the case of a complex-valued reluctivity tensor
+- Enabled the computation of magnetic co-energy
 
 ### ResultOutputSolver
 - Vtu format:
@@ -91,7 +91,7 @@ Enhanced Solver Modules
 - Spring, resultant force and couple BCs added
 - Combined analysis of 2-D shells and 1-D beams enabled
 - Fully coupled analysis of 2-D shells and 3-D solids enabled (still subject to some geometric constraints on the mesh) 
-- Drilling degrees of freedom version enabled for ShellSolver. 
+- Partial support for using an alternate formulation with drilling degrees of freedom
 
 ### StructuredMeshMapper
 - Enable arbitrary number of layers, before limited to three. 
