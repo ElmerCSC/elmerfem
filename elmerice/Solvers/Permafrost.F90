@@ -355,7 +355,7 @@ CONTAINS
     REAL(KIND=dp) :: CgwppAtIP,CgwpTAtIP,CgwpYcAtIP,CgwpI1AtIP,KgwAtIP(3,3),KgwppAtIP(3,3),KgwpTAtIP(3,3),&
          meanfactor,MinKgw,gradTAtIP(3),gradPAtIP(3),gradYcAtIP(3),fluxTAtIP(3),fluxgAtIP(3),vstarAtIP(3) ! needed in equation
     REAL(KIND=dp) :: JgwDAtIP(3),JcFAtIP(3), DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3),&
-         fcAtIP(3), DispersionCoefficient ! from salinity transport
+         fcAtIP(3), DispersionCoefficient, MolecularDiffusionCoefficent ! from salinity transport
     REAL(KIND=dp) :: Xi0Tilde,XiTAtIP,XiPAtIP,XiYcAtIP,XiEtaAtIP,ksthAtIP  ! function values needed for KGTT  XiAtIP,
     REAL(KIND=dp) :: B1AtIP,B2AtIP,DeltaGAtIP,bijAtIP(2,2),bijYctIP(2,2),&
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
@@ -380,7 +380,7 @@ CONTAINS
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
     INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
-         CryogenicSuction=.FALSE.
+         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -443,6 +443,7 @@ CONTAINS
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
+    MolecularDiffusionCoefficent = GetConstReal(Material,"Molecular Diffusion Coefficent", ConstantDiffusion)
     CryogenicSuction = GetLogical(Material,"Compute Cryogenic Suction", Found)
 
     ! check, whether we have globally or element-wise defined values of rock-material parameters
@@ -659,12 +660,11 @@ CONTAINS
         END IF
       END IF
 
-      ! parameters for diffusion-dispersion flow
-      r12AtIP = GetR(CurrentSoluteMaterial,CurrentSolventMaterial,GasConstant,&
-           rhowAtIP,rhocAtIP,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP)
-      DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,rhocAtIP,mugwAtIP,TemperatureAtIP)
+ 
+
       
-      IF ( (.NOT.ConstantDispersion) .OR. FluxOutput) THEN
+      !IF ( (.NOT.ConstantDispersion) .OR. FluxOutput) THEN
+      IF (FluxOutput) THEN
          JgwDAtIP = GetJgwD(KgwppAtIP,KgwpTAtIP,KgwAtIP,gradpAtIP,gradTAtIP,&
              Gravity,rhogwAtIP,DIM,CryogenicSuction)
         !PRINT *, "JgwDAtIP", JgwDAtIP
@@ -680,8 +680,16 @@ CONTAINS
         IF (ConstantDispersion) THEN
           KcAtIP = GetConstKC(DispersionCoefficient)
         ELSE
+          IF (ConstantDiffusion) THEN
+            DmAtIP = MolecularDiffusionCoefficent
+          ELSE
+            DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,rhocAtIP,mugwAtIP,TemperatureAtIP)
+          END IF
           KcAtIP = GetKc(RockMaterialID,DmAtIP,XiAtIP(IPPerm),JgwDAtIP,PorosityAtIP)
-        END IF  
+        END IF
+        ! parameters for diffusion-dispersion flow
+        r12AtIP = GetR(CurrentSoluteMaterial,CurrentSolventMaterial,GasConstant,&
+             rhowAtIP,rhocAtIP,XiAtIP(IPPerm),TemperatureAtIP,SalinityAtIP)
         fcAtIP = GetFc(rhocAtIP,rhowAtIP,Gravity,r12AtIP,XiTAtIP,XiPAtIP,XiAtIP(IPPerm),gradPAtIP,gradTAtIP)
         KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
         JcFAtIP = GetJcF(KcYcYcAtIP,KcAtIP,fcAtIP,gradYcAtIP,SalinityAtIP)        
@@ -2645,15 +2653,17 @@ CONTAINS
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
     REAL(KIND=dp) :: rhosAtIP,rhowAtIP,rhoiAtIP,rhocAtIP,rhogwAtIP, & ! material properties at IP
          CcYcTAtIP, CcYcPAtIP, CcYcYcAtIP, rhocPAtIP, rhocYcAtIP, rhocTAtIP,& ! material properties at IP
-         DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3), fcAtIP(3), extforceFlux(3), DispersionCoefficient ! material properties at IP
+         DmAtIP, r12AtIP(2), KcAtIP(3,3), KcYcYcAtIP(3,3), fcAtIP(3), extforceFlux(3),&
+         DispersionCoefficient, MolecularDiffusionCoefficent ! material properties at IP
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
-         StiffPQ, meanfactor, DummyTensor(3,3)
+         StiffPQ, meanfactor
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n), XiBefore
     REAL(KIND=dp), POINTER :: gWork(:,:), XiAtIp(:)
     INTEGER :: i,j,t,p,q,DIM, RockMaterialID, IPPerm
     INTEGER, POINTER :: XiAtIPPerm(:)
-    LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,ConstantDispersion,CryogenicSuction=.FALSE.
+    LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
+         ConstantDispersion=.FALSE.,ConstantDiffusion=.FALSE.,CryogenicSuction=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -2712,7 +2722,9 @@ CONTAINS
          MinKgw = 1.0D-14
 
     DispersionCoefficient = GetConstReal(Material,"Dispersion Coefficient", ConstantDispersion)
-
+    MolecularDiffusionCoefficent = &
+         GetConstReal(Material,"Molecular Diffusion Coefficent", ConstantDiffusion)
+    
     deltaInElement = delta(CurrentSolventMaterial,eps,DeltaT,T0,GasConstant)
     !      PRINT *,"Here0"
     ! Numerical integration:
@@ -2838,17 +2850,21 @@ CONTAINS
       !IF (r12AtIP(2) > 1.2_dp) PRINT *,"Salinity: R2", r12AtIp(2)
 
       !DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,rhocAtIP,mugwAtIP,TemperatureAtIP)
-      DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,CurrentSoluteMaterial % rhoc0,&
-           CurrentSolventMaterial % muw0,TemperatureAtIP)
+
       !PRINT *, "Solute: SalinityAtIP", SalinityAtIP
       !PRINT *, "Solute: Dm", DmAtIP,CurrentSoluteMaterial % rhoc0,CurrentSolventMaterial % muw0,TemperatureAtIP
       IF (ConstantDispersion) THEN
         KcAtIP = GetConstKC(DispersionCoefficient)
         !PRINT *,"DispersionCoefficient",KcAtIP
       ELSE
-        DummyTensor = GetConstKC(3.565d-06)
+        IF (ConstantDiffusion) THEN
+          DmAtIP = MolecularDiffusionCoefficent
+        ELSE
+          DmAtIP = Dm(CurrentSoluteMaterial,N0,GasConstant,CurrentSoluteMaterial % rhoc0,&
+               CurrentSolventMaterial % muw0,TemperatureAtIP)
+        END IF
         KcAtIP = GetKc(RockMaterialID,DmAtIP,XiAtIP(IPPerm),JgwDAtIP,PorosityAtIP)
-        !PRINT *,"Solute: Kc", KcAtIP(1,1), DummyTensor(1,1), DmAtIP,XiAtIP(IPPerm),JgwDAtIP(1:2),PorosityAtIP
+        !PRINT *,"Solute: Kc", KcAtIP(1,1), DmAtIP,XiAtIP(IPPerm),JgwDAtIP(1:2),PorosityAtIP
       END IF
       KcYcYcAtIP = GetKcYcYc(KcAtIP,r12AtIP)
       !PRINT *,"Solute: KcYcYc", KcYcYcAtIP(1,1)
