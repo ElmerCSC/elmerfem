@@ -85,10 +85,19 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   Real(KIND=dp) :: Unorm
   REAL(KIND=dp), allocatable :: FullMat(:,:)
   character(len=50) :: fo1
-  character(LEN=MAX_NAME_LEN) :: SolName,SolverName
+  character(LEN=MAX_NAME_LEN) :: SolName
+  character(LEN=MAX_NAME_LEN) :: SolverName="Adjoint Solver"
 
 
   save SolverName,Firsttime,SolverInd,STIFF,FORCE,ExtPressure,LoadVector,Alpha,Beta,SlipCoeff,w
+
+   CALL Info(SolverName,'***********************',level=0)
+   CALL Info(SolverName,' This solver has been replaced by:',level=0)
+   CALL Info(SolverName,'   Adjoint_LinearSolver  ',level=0)
+   CALL Info(SolverName,' See documentation under:   ',level=0)
+   CALL Info(SolverName,'   elmerice/Solvers/Documentation   ',level=0)
+   CALL Info(SolverName,'***********************',level=0)
+   CALL FATAL(SolverName,' Use new solver !!')
 
   DIM = CoordinateSystemDimension()
 
@@ -104,7 +113,6 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
 
   if (Firsttime) then
           Firsttime=.False.
-          SolverName = "Adjoint Solver"
           N = Solver % Mesh % MaxElementDOFs
           allocate(FORCE(  2*NSDOFs*N ),STIFF( 2*NSDOFs*N,2*NSDOFs*N ),ExtPressure(N), & 
                     SlipCoeff(3,N),LoadVector(4,N),Alpha(N),Beta(N),w(N))

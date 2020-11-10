@@ -435,7 +435,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
 
 
    if (ParEnv % MyPE .ne.0) then
-             call MPI_BSEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,ELMER_COMM_WORLD,ierr)
+             call MPI_SEND(LocalToGlobalPerm(1),NActiveNodes,MPI_INTEGER,0,8001,ELMER_COMM_WORLD,ierr)
    else
            NodePerm(1:NActiveNodes)=LocalToGlobalPerm(1:NActiveNodes)
            ni=1+NActiveNodes
