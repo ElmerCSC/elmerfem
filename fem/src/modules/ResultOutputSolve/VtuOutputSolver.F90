@@ -851,7 +851,7 @@ CONTAINS
     Params => GetSolverParams()
     Buffered = .TRUE.
     FlipActive = .FALSE.
-
+    
 
     ! we could have huge amount of gauss points
     ALLOCATE( ElemInd(512)) !Model % Mesh % MaxElementDOFS))
@@ -1067,10 +1067,6 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            !IF( NoModes + NoModes2 > 0 ) THEN
-            !  CALL Warn('WriteVtuXMLFile','Modes cannot currently be given componentwise!')
-            !  CYCLE
-            !END IF
             IF( VarType == Variable_on_gauss_points ) THEN
               CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
               CYCLE
@@ -1146,9 +1142,11 @@ CONTAINS
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info('WriteVTUFile','Setting field type to discontinuous',Level=12)
               InvFieldPerm => InvDgPerm
-            ELSE
+            ELSE IF( ALLOCATED( InvNodePerm ) ) THEN
               CALL Info('WriteVTUFile','Setting field type to nodal',Level=14)
               InvFieldPerm => InvNodePerm
+            ELSE
+              InvFieldPerm => NULL()
             END IF
 
             IF(.NOT. EigenAnalysis ) THEN
@@ -1212,6 +1210,12 @@ CONTAINS
             !---------------------------------------------------------------------
             IF( WriteData ) THEN
 
+              IF( .NOT. NoPermutation .AND. NumberOfDofNodes > 0 ) THEN
+                IF(.NOT. ASSOCIATED( InvFieldPerm ) ) THEN
+                  CALL Fatal(Caller,'InvFieldPerm not associated!')
+                END IF
+              END IF
+              
               IF( BinaryOutput ) WRITE( VtuUnit ) k
 
               DO ii = 1, NumberOfDofNodes
@@ -1506,7 +1510,7 @@ CONTAINS
                 END IF
 
                 IF( n == 0 ) THEN
-                  ElemVectVal(k) = 0.0_dp
+                  ElemVectVal(1:sdofs) = 0.0_dp
                 ELSE
                   DO j=1,n
                     ElemInd(j) = Perm(m)+j
@@ -2178,7 +2182,7 @@ CONTAINS
               WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
 
               ! Note: this should be added for "HarmonicMode" and "ConstraintMode" too
-              ! now the .vptu file for these vectors is not correct!
+              ! now the .pvtu file for these vectors is not correct!
             END IF
 
             IF( AsciiOutput ) THEN

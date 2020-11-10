@@ -247,11 +247,8 @@ struct FemType {
 struct BoundaryType {
   int created,       /* is boundary created? */
     nosides,         /* sides on the boundary */
-    maxsidenodes,  /* number of sidenodes on the element */
-    fixedpoints,     /* number of fixed points allowed */
+    maxsidenodes,    /* number of sidenodes on the element */
     coordsystem,     /* coordinate system flag */
-    maparea,         /* mappings of the area */
-    open,            /* is the closure partially open? */
     echain,          /* does the chain exist? */
     ediscont,        /* does the discontinuous boundary exist */
     chainsize;       /* size of the chain */ 
@@ -266,13 +263,7 @@ struct BoundaryType {
     *normal,         /* direction of the normal */
     *elementtypes,   /* side element types if needed */
     **topology,       /* topology if needed */
-    points[MAXVARS], /* how many points for each side? */
-    evars[MAXVARS];  /* does the variables exist? */
-  Real totalarea,       /* total area of the side */
-    areasexist,
-    *areas,             /* side areas */
-    *vars[MAXVARS];     /* variables on the sides */
-  char varname[MAXVARS][MAXNAMESIZE]; /* variable name */
+    points[MAXVARS]; /* how many points for each side? */
 };
 
 /* Sometimes one point is discontinuous or there is 

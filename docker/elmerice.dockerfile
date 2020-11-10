@@ -8,6 +8,8 @@ WORKDIR /home
 RUN printf "Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;" \
 	>> /etc/apt/apt.conf.d/99fixbadproxy
 
+ENV DEBIAN_FRONTEND="noninteractive"
+
 # Add the necessary packages to compile Elmer/Ice
 RUN apt update -o Acquire::CompressionTypes::Order::=gz && apt upgrade -y && apt install -y \
 	build-essential \

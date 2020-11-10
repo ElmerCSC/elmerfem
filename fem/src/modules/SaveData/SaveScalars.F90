@@ -1537,7 +1537,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: ParallelOperator
     !------------------------------------------------------------------------
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
-    REAL, ALLOCATABLE :: TmpValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
     LOGICAL, POINTER :: TmpValuesInteger(:)     
     TYPE(Variable_t), POINTER :: TargetVar
@@ -2023,7 +2023,7 @@ CONTAINS
     REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
     REAL(KIND=dp) :: EnergyTensor(3,3,Model % MaxElementNodes),&
-        EnergyCoeff(Model % MaxElementNodes) 
+        EnergyCoeff(Model % MaxElementNodes), ElemVals(Model % MaxElementNodes) 
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
     REAL(KIND=dp) :: func, coeff, integral1, integral2, Grad(3), CoeffGrad(3)
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
@@ -2085,7 +2085,17 @@ CONTAINS
         IF( .NOT. ListGetLogical( MaskList, MaskName, GotIt ) ) CYCLE
       END IF
 
-
+      IF( NoDOFs == 1 ) THEN      
+        ElemVals(1:n) = Var % Values(Var % Perm(PermIndexes) )
+      ELSE
+        ElemVals(1:n) = 0.0_dp
+        DO i=1,NoDOFs
+          ElemVals(1:n) = ElemVals(1:n) + Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+i )**2
+        END DO
+        ElemVals(1:) = SQRT(ElemVals(1:n))
+      END IF
+        
+      
       k = ListGetInteger( Model % Bodies( Element % BodyId ) % Values, &
           'Material', GotIt, minv=1, maxv=Model % NumberOfMaterials )
 
@@ -2163,26 +2173,26 @@ CONTAINS
           integral1 = integral1 + coeff * S
 
           CASE ('int','int mean')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
 
           integral1 = integral1 + S * coeff * func 
 
           CASE ('int square','int square mean','int rms')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func**2 
           
           CASE ('int abs','int abs mean')
-          func = ABS( SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) ) )
+          func = ABS( SUM( ElemVals(1:n) * Basis(1:n) ) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
 
           CASE ('int variance')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
@@ -2191,7 +2201,7 @@ CONTAINS
           CASE ('diffusive energy')
           CoeffGrad = 0.0d0
           DO j = 1, DIM
-            Grad(j) = SUM( dBasisdx(1:n,j) *  Var % Values(Var % Perm(PermIndexes)) )
+            Grad(j) = SUM( dBasisdx(1:n,j) * ElemVals(1:n) )
             DO k = 1, DIM
               CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * &
                   SUM( dBasisdx(1:n,k) * Var % Values(Var % Perm(PermIndexes)) )
@@ -2201,12 +2211,12 @@ CONTAINS
           integral1 = integral1 + s * SUM( Grad(1:DIM) * CoeffGrad(1:DIM) )
 
           CASE ('convective energy')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           
           IF(NoDofs == 1) THEN
-            func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+            func = SUM( ElemVals(1:n) * Basis(1:n) )
             integral1 = integral1 + s * coeff * func**2
           ELSE
             func = 0.0d0
@@ -2218,7 +2228,7 @@ CONTAINS
 
           CASE ('potential energy')
 
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
 

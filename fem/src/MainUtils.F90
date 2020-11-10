@@ -112,7 +112,7 @@ CONTAINS
 #endif
         CASE( 'cpardiso')
 #if !defined(HAVE_CPARDISO) || !defined(HAVE_MKL)
-        CALL Fatal( 'CheckSolverOptions', ' Cluster Pardiso solver has not been installed.' )
+        CALL Fatal( 'CheckLinearSolverOptions', ' Cluster Pardiso solver has not been installed.' )
 #endif
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
@@ -1619,8 +1619,8 @@ CONTAINS
           END IF
           sec_name = tmpname(1:i1)
           mask_name = tmpname(i2:i3)
-          CALL Info('CreateIpPerm','masking with section: '//TRIM(sec_name),Level=12)
-          CALL Info('CreateIpPerm','masking with keyword: '//TRIM(mask_name),Level=12)
+          CALL Info('AddEquationBasics','masking with section: '//TRIM(sec_name),Level=12)
+          CALL Info('AddEquationBasics','masking with keyword: '//TRIM(mask_name),Level=12)
           GotSecName = .TRUE.
         ELSE          
           sec_name = 'body force'
@@ -2009,7 +2009,7 @@ CONTAINS
         
     IF( DoIt ) THEN
       IF( .NOT. ASSOCIATED( pVar % PrevValues ) ) THEN
-        CALL Warn('AddEquationSolution',&
+        CALL Warn('CreateTimeDerivativeVariables',&
             'Transient restart requires PrevValues!')
       ELSE 
         DO k = 1, SIZE( pVar % PrevValues, 2 )
@@ -2325,10 +2325,10 @@ CONTAINS
           freqv => ListGetConstRealArray( Solver % Values, 'Frequency', Found )
           IF(Found ) THEN
             IF( SIZE( Freqv,1) < n ) THEN
-              CALL Fatal( 'AddEquation', 'Frequency must be at least same size as > Harmonic System Values <')
+              CALL Fatal( 'AddEquationSolution', 'Frequency must be at least same size as > Harmonic System Values <')
             END IF
           ELSE
-            CALL Fatal( 'AddEquation', '> Frequency < must be given for harmonic analysis.' )
+            CALL Fatal( 'AddEquationSolution', '> Frequency < must be given for harmonic analysis.' )
           END IF
         ELSE
           n = 1

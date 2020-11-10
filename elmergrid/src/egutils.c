@@ -600,7 +600,7 @@ void AddExtension(const char *fname1,char *fname2,const char *newext)
 }
 
 
-int StringToStrings(const char *buf,char args[10][10],int maxcnt,char separator)
+int StringToStrings(const char *buf,char args[10][15],int maxcnt,char separator)
 /*  Finds real numbers separated by a certain separator from a string.
     'buf'       - input string ending to a EOF
     'dest'      - a vector of real numbers
@@ -622,7 +622,7 @@ int StringToStrings(const char *buf,char args[10][10],int maxcnt,char separator)
   do {
     ptr2 = strchr(ptr1,separator);
     if(ptr2) {
-      for(i=0;i<10;i++) {
+      for(i=0;i<15;i++) {
 	args[cnt][i] = ptr1[i];
 	if(ptr1 + i >= ptr2) break;
       }
@@ -630,7 +630,7 @@ int StringToStrings(const char *buf,char args[10][10],int maxcnt,char separator)
       ptr1 = ptr2+1;
     }
     else {
-      for(i=0;i<10;i++) {
+      for(i=0;i<15;i++) {
 	if(ptr1 + i >= buf+totlen) break;
 	args[cnt][i] = ptr1[i];
       }

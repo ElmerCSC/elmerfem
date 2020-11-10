@@ -1802,7 +1802,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   LOGICAL, SAVE :: EEC, First =.TRUE.
   LOGICAL :: EEC_lim
-  REAL, SAVE :: EEC_freq, EEC_time_0
+  REAL(KIND=dp), SAVE :: EEC_freq, EEC_time_0
   INTEGER, SAVE :: EEC_max, EEC_cnt = 0
   REAL :: TTime
   TYPE(ValueList_t), POINTER :: SolverParams

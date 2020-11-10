@@ -1580,6 +1580,10 @@ void DestroyKnots(struct FemType *data)
   free_Rvector(data->y,1,data->noknots);
   free_Rvector(data->z,1,data->noknots);
 
+  data->noknots = 0;
+  data->noelements = 0;
+  data->maxnodes = 0;
+
   if(data->nocorners > 0)
     free_Ivector(data->corners,1,2*data->nocorners);
 }
@@ -1649,12 +1653,6 @@ startpoint:
 
       /* The free boundary conditions are not allowed if the negative
 	 keywords are used. */
-
-#if 0
-      /* This has been eliminated since it just causes confusion */
-      if(sidemat == MAT_ORIGO  &&  material1 != MAT_ORIGO  &&
-	 (material1 <= MAT_BIGGER || material2 <= MAT_BIGGER)) continue;
-#endif
 
       /* Either material must be the one defined. */
       if( material1 >= 0  &&  material1 != sidemat) continue;
@@ -1736,9 +1734,6 @@ startpoint:
     bound->created = TRUE;
     bound->nosides = size = nosides;
     bound->coordsystem = data->coordsystem;
-    bound->fixedpoints = 1;
-    bound->open = FALSE;
-    bound->maparea = 0;
     bound->types = Ivector(1,nosides);
     bound->side = Ivector(1,nosides);
     bound->side2 = Ivector(1,nosides);
@@ -1749,9 +1744,6 @@ startpoint:
 
     bound->echain = FALSE;
     bound->ediscont = FALSE;
-
-    for(i=0;i<MAXVARS;i++) 
-      bound->evars[i] = FALSE;
 
     goto startpoint;
   }
@@ -1774,9 +1766,6 @@ int AllocateBoundary(struct BoundaryType *bound,int size)
     
   bound->created = TRUE;
   bound->nosides = size;
-  bound->fixedpoints = 1;
-  bound->open = FALSE;
-  bound->maparea = 0;
   bound->echain = FALSE;
   bound->ediscont = FALSE;
 
@@ -1797,9 +1786,6 @@ int AllocateBoundary(struct BoundaryType *bound,int size)
     bound->types[i] = 0;
     bound->normal[i] = 1;
   }
-
-  for(i=0;i<MAXVARS;i++) 
-    bound->evars[i] = FALSE;
 
   return(0);
 }
@@ -1825,11 +1811,8 @@ int DestroyBoundary(struct BoundaryType *bound)
   free_Ivector(bound->side2,1,nosides);
   free_Ivector(bound->parent,1,nosides);
   free_Ivector(bound->parent2,1,nosides);
-
-  for(i=0;i<MAXVARS;i++) 
-    if(bound->evars[i]) {
-      bound->evars[i] = 0;
-    }
+  free_Ivector(bound->types,1,nosides);
+  free_Ivector(bound->normal,1,nosides);
 
   bound->nosides = 0;
   bound->created = FALSE;

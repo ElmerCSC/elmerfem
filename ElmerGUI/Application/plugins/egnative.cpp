@@ -1,4 +1,4 @@
-/*  
+/*   
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
@@ -23,48 +23,309 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/* -------------------------------:  egnative.c  :----------------------------
+   This module includes routines for I/O of native formats of Elmer. 
+*/
 
- /* -----------------------:  egnative.c  :----------------------
-
-   These subroutines are used to create the native mesh of ElmerGrid.
-   */
-
-#include <stdlib.h>
 #include <stdio.h>
-#include <math.h>
+#include <unistd.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-#include <float.h>
+#include <math.h>
+
+#if HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+
 #include <stdarg.h>
+#include <stdio.h>
+#include <limits.h>
+#include <ctype.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "egutils.h"
 #include "egdef.h"
 #include "egtypes.h"
-#include "egnative.h"
 #include "egmesh.h"
+/* #include "egparallel.h" */
+#include "egnative.h"
+/*#include "../config.h"*/
 
-int matcactive;
+#define GETLINE ioptr=fgets(line,MAXLINESIZE,in) 
+static char *ioptr;
 
-#if HAVE_MATC
+
+#define DEBUG 0
+
+
+int matcactive=FALSE, iodebug=FALSE;
+
+#define MAXINMETHODS 21
+const char *InMethods[] = {
+  /*0*/ "EG",
+  /*1*/ "ELMERGRID",
+  /*2*/ "ELMERSOLVER",
+  /*3*/ "ELMERPOST",
+  /*4*/ "ANSYS",
+  /*5*/ "IDEAS",
+  /*6*/ "ABAQUS",
+  /*7*/ "FIDAP",
+  /*8*/ "UNV",
+  /*9*/ "COMSOL",
+  /*10*/ "FIELDVIEW",
+  /*11*/ "TRIANGLE",
+  /*12*/ "MEDIT",
+  /*13*/ "GID",
+  /*14*/ "GMSH",
+  /*15*/ "PARTITIONED",
+  /*16*/ "FVCOM",
+  /*17*/ "NASTRAN",
+  /*18*/ "CGSIM",
+  /*19*/ "GEO",
+  /*20*/ "FLUX2D",
+  /*21*/ "FLUX3D",
+};
+
+
+#define MAXOUTMETHODS 5
+const char *OutMethods[] = {
+  /*0*/ "EG",
+  /*1*/ "ELMERGRID",
+  /*2*/ "ELMERSOLVER",
+  /*3*/ "ELMERPOST",
+  /*4*/ "GMSH",
+  /*5*/ "VTU",
+};
+
+
+void Instructions()
+{
+  printf("****************** Elmergrid ************************\n");
+  printf("This program can create simple 2D structured meshes consisting of\n");
+  printf("linear, quadratic or cubic rectangles or triangles. The meshes may\n");
+  printf("also be extruded and revolved to create 3D forms. In addition many\n");
+  printf("mesh formats may be imported into Elmer software. Some options have\n");
+  printf("not been properly tested. Contact the author if you face problems.\n\n");
+
+  printf("The program has two operation modes\n");
+  printf("A) Command file mode which has the command file as the only argument\n");
+  printf("   'ElmerGrid commandfile.eg'\n\n");
+
+  printf("B) Inline mode which expects at least three input parameters\n");
+  printf("   'ElmerGrid 1 3 test'\n\n");
+  printf("The first parameter defines the input file format:\n");
+  printf("1)  .grd      : ElmerGrid file format\n");
+  printf("2)  .mesh.*   : Elmer input format\n");
+  printf("3)  .ep       : Elmer output format\n");
+  printf("4)  .ansys    : Ansys input format\n");
+  printf("5)  .inp      : Abaqus input format by Ideas\n");
+  printf("6)  .fil      : Abaqus output format\n");
+  printf("7)  .FDNEUT   : Gambit (Fidap) neutral file\n");
+  printf("8)  .unv      : Universal mesh file format\n");
+  printf("9)  .mphtxt   : Comsol Multiphysics mesh format\n");
+  printf("10) .dat      : Fieldview format\n");
+  printf("11) .node,.ele: Triangle 2D mesh format\n");
+  printf("12) .mesh     : Medit mesh format\n");
+  printf("13) .msh      : GID mesh format\n");
+  printf("14) .msh      : Gmsh mesh format\n");
+  printf("15) .ep.i     : Partitioned ElmerPost format\n");
+  printf("16) .2dm      : 2D triangular FVCOM format\n");
+#if 0
+  printf("17) .msh      : Nastran format\n");
+  printf("18) .msh      : CGsim format\n");
+  printf("19) .geo      : Geo format\n");
+  printf("20) .tra      : Cedrat Flux 2D format\n");
+  printf("21) .pf3      : Cedrat Flux 3D format\n");
+#endif 
+
+  printf("\nThe second parameter defines the output file format:\n");
+  printf("1)  .grd      : ElmerGrid file format\n");
+  printf("2)  .mesh.*   : ElmerSolver format (also partitioned .part format)\n");
+  printf("3)  .ep       : ElmerPost format\n");
+  printf("4)  .msh      : Gmsh mesh format\n");
+  printf("5)  .vtu      : VTK ascii XML format\n");
+#if 0
+  printf("5)  .inp      : Abaqus input format\n");
+  printf("7)  .fidap    : Fidap format\n");
+  printf("18) .ep       : Fastcap input format.\n");
+#endif
+
+  printf("\nThe third parameter is the name of the input file.\n");
+  printf("If the file does not exist, an example with the same name is created.\n");
+  printf("The default output file name is the same with a different suffix.\n\n");
+
+  printf("There are several additional in-line parameters that are\n");
+  printf("taken into account only when applicable to the given format.\n");
+
+  printf("-out str             : name of the output file\n");
+  printf("-in str              : name of a secondary input file\n");
+  printf("-decimals            : number of decimals in the saved mesh (eg. 8)\n");
+  printf("-relh real           : give relative mesh density parameter for ElmerGrid meshing\n");
+  printf("-triangles           : rectangles will be divided to triangles\n");
+  printf("-merge real          : merges nodes that are close to each other\n");
+  printf("-order real[3]       : reorder elements and nodes using c1*x+c2*y+c3*z\n");
+  printf("-centralize          : set the center of the mesh to origin\n");
+  printf("-scale real[3]       : scale the coordinates with vector real[3]\n");
+  printf("-translate real[3]   : translate the nodes with vector real[3]\n");
+  printf("-rotate real[3]      : rotate around the main axis with angles real[3]\n");
+  printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
+  printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
+  printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
+  printf("-cloneinds           : when performing cloning should cloned entities be given new indexes\n");
+  printf("-unite               : the meshes will be united\n");
+  printf("-unitenooverlap      : the meshes will be united without overlap in entity numbering\n");
+  printf("-polar real          : map 2D mesh to a cylindrical shell with given radius\n");
+  printf("-cylinder            : map 2D/3D cylindrical mesh to a cartesian mesh\n");
+  printf("-reduce int[2]       : reduce element order at material interval [int1 int2]\n");
+  printf("-increase            : increase element order from linear to quadratic\n");
+  printf("-bcoffset int        : add an offset to the boundary conditions\n");
+  printf("-discont int         : make the boundary to have secondary nodes\n");
+  printf("-connect int         : make the boundary to have internal connection among its elements\n");
+  printf("-removeintbcs        : remove internal boundaries if they are not needed\n");
+  printf("-removelowdim        : remove boundaries that are two ranks lower than highest dim\n");
+  printf("-removeunused        : remove nodes that are not used in any element\n");
+  printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
+  printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
+  printf("-autoclean           : this performs the united action of the four above\n");
+  printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
+  printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
+  printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
+  printf("-boundtype int[3]    : set sidetypes in interval [int1 int2] to type int3\n");
+  printf("-layer int[2] real[2]: make a boundary layer for given boundary\n");
+  printf("-layermove int       : apply Jacobi filter int times to move the layered mesh\n");
+  printf("-divlayer int[2] real[2]: make a boundary layer for given boundary\n");
+  printf("-3d / -2d / -1d      : mesh is 3, 2 or 1-dimensional (applies to examples)\n");
+  printf("-isoparam            : ensure that higher order elements are convex\n");
+  printf("-nonames             : disable use of mesh.names even if it would be supported by the format\n");
+  printf("-nosave              : disable saving part altogether\n");
+  printf("-nooverwrite         : if mesh already exists don't overwrite it\n");
+  printf("-vtuone              : start real node indexes in vtu file from one\n");
+  printf("-timer               : show timer information\n");
+  printf("-infofile str        : file for saving the timer and size information\n");
+
+  printf("\nKeywords are related to mesh partitioning for parallel ElmerSolver runs:\n");
+  printf("-partition int[3]    : the mesh will be partitioned in cartesian main directions\n");
+  printf("-partorder real[3]   : in the 'partition' method set the direction of the ordering\n");
+  printf("-parttol real        : in the 'partition' method set the tolerance for ordering\n");
+  printf("-partcell int[3]     : the mesh will be partitioned in cells of fixed sizes\n");
+  printf("-partcyl int[3]      : the mesh will be partitioned in cylindrical main directions\n");
+#if USE_METIS
+  printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
+  printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
+  printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
+  printf("-metisseed int       : random number generator seed for Metis algorithms\n");
+#endif
+  printf("-partdual            : use the dual graph in partition method (when available)\n");
+  printf("-halo                : create halo for the partitioning for DG\n");
+  printf("-halobc              : create halo for the partitioning at boundaries only\n");
+  printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
+  printf("-halogreedy          : create halo being greedy over the partition interfaces\n");
+  printf("-indirect            : create indirect connections (102 elements) in the partitioning\n");
+  printf("-periodic int[3]     : periodic coordinate directions for parallel & conforming meshes\n");
+  printf("-partoptim           : apply aggressive optimization to node sharing\n");
+  printf("-partnobcoptim       : do not apply optimization to bc ownership sharing\n");
+  printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
+  printf("-parthypre           : number the nodes continuously partitionwise\n");
+  printf("-partzbc             : partition connected BCs separately to partitions in Z-direction\n");
+  printf("-partrbc             : partition connected BCs separately to partitions in R-direction\n");
+#if USE_METIS
+  printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
+#endif
+  printf("-partlayers int      : extend boundary partitioning by element layers\n");
+
+  printf("\nKeywords are related to (nearly obsolete) ElmerPost format:\n");
+  printf("-partjoin int        : number of ElmerPost partitions in the data to be joined\n");
+  printf("-saveinterval int[3] : the first, last and step for fusing parallel data\n");
+  printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
+
+  if(0) printf("-names               : conserve name information where applicable\n");
+}
+ 
+
+void Goodbye()
+{
+  printf("\nThank you for using Elmergrid!\n");
+  printf("Send bug reports and feature wishes to elmeradm@csc.fi\n");
+  exit(0);
+}
+
+
+
+#if USE_MATC
 char *mtc_domath(const char *);
 void mtc_init(FILE * input, FILE * output, FILE * error);
 #endif
+
+
+static int Getline(char *line1,FILE *io) 
+{
+  int i,isend;
+  char line0[MAXLINESIZE],*charend,*matcpntr,*matcpntr0;
+
+  for(i=0;i<MAXLINESIZE;i++) 
+    line0[i] = ' ';
+
+ newline:
+
+  charend = fgets(line0,MAXLINESIZE,io);
+  isend = (charend == NULL);
+
+  if(isend) return(1);
+
+  if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!') goto newline;
+  if(!matcactive && line0[0] == '*') goto newline;
+
+#if USE_MATC
+  if(matcactive) {
+    matcpntr0 = strchr(line0,'$');
+    if(matcpntr0) {
+      matcpntr = mtc_domath(&matcpntr0[1]);
+      if(matcpntr) {
+	strcpy(matcpntr0, matcpntr);
+	if(0) printf("A: %s\n%s\n",matcpntr0,matcpntr);
+      }
+    }
+  }
+#endif 
+
+  if(strstr(line0,"subcell boundaries")) goto newline;
+  if(strstr(line0,"material structure")) goto newline;
+  if(strstr(line0,"mode")) goto newline;
+  if(strstr(line0,"type")) goto newline;
+
+  for(i=0;i<MAXLINESIZE;i++) 
+    line1[i] = toupper(line0[i]);
+
+  if(iodebug) {
+    printf("line: ");
+    for(i=0;i<40;i++) printf("%c",line1[i]);
+    printf("\n");
+  }
+
+  return(0);
+}
+
 
 
 void InitGrid(struct GridType *grid)
 /* Initializes the grid of a specific mesh. A grid can differ 
    between various differential equations. 
    */
+#define MAXBODYID 1000
 {
   int i,j;
 
   grid->layered = FALSE;
   grid->layeredbc = TRUE;
+  grid->layerbcoffset = 0;
   grid->triangles = FALSE;
   grid->triangleangle = 0.0;
   grid->partitions = FALSE;
   grid->wantedelems = 0;
+  grid->wantedelems3d = 0;
+  grid->wantednodes3d = 0;
   grid->limitdx = 0.0;
   grid->limitdxverify = FALSE;
 
@@ -76,7 +337,7 @@ void InitGrid(struct GridType *grid)
   grid->minxelems = grid->minyelems = 1;
   grid->minzelems = 2;
   grid->firstmaterial = 1;
-  grid->lastmaterial = MAXMATERIALS;
+  grid->lastmaterial = MAXBODYID;
   grid->autoratio = 1;
   grid->xyratio = 1.0;
   grid->xzratio = 1.0;
@@ -123,9 +384,13 @@ void InitGrid(struct GridType *grid)
     grid->zdens[i] = 1.0;
     grid->z[i] = 0.;
     grid->zfirstmaterial[i] = 1;
-    grid->zlastmaterial[i] = MAXMATERIALS;
+    grid->zlastmaterial[i] = MAXBODYID;
     grid->zmaterial[i] = 0; 
   }
+
+  grid->zmaterialmapexists = FALSE;
+  grid->zhelicityexists = FALSE;
+  grid->zhelicity = 0.0;
 
   /* Initializes the numbering of the cells. */
   for(j=0;j<=MAXCELLS+1;j++)
@@ -967,12 +1232,12 @@ void SetCellData(struct GridType *grid,struct CellType *cell,int info)
 	cell[cnew].neighbour[7] = grid->numbered[j+1][i-1];
       }
 
-  if(0) printf("%d cells were created.\n",grid->nocells);
+  if(info) printf("%d cells were created.\n",grid->nocells);
 }
 
 
 
-int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
+static int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
 /* Uses given mesh to number the knots present in the cells.
    The knots are numbered independently of the cells from left 
    to right and up to down. Only the numbers of four knots at the 
@@ -989,10 +1254,10 @@ int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
 {
   int i,j,level,center;
   int degree,centernodes,sidenodes,nonodes;
-  int cnew = 0,cup = 0,cleft = 0,cleftup = 0;
+  int cnew=0,cup=0,cleft=0,cleftup=0;
   int elemno,knotno;
   int maxwidth,width,numbering;
-  int xcells,ycells,*yelems,*xelems;
+  int xcells,ycells,*yelems=NULL,*xelems=NULL;
 
   numbering = grid->numbering;
   nonodes = grid->nonodes;
@@ -1179,12 +1444,12 @@ int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
   grid->noelements = elemno;
 
   if(info) {
-    printf("There are %d knots in %d %d-node elements.\n",knotno,elemno,nonodes);
+    printf("Numbered %d knots in %d %d-node elements.\n",knotno,elemno,nonodes);
     if(numbering == NUMBER_XY) 
-      if(0) printf("Numbering order was <x><y> and max levelwidth %d.\n",
+      printf("Numbering order was <x><y> and max levelwidth %d.\n",
 	     maxwidth);
     else if(numbering == NUMBER_YX) 
-      if(0) printf("Numbering order was <y><x> and max levelwidth %d.\n",
+      printf("Numbering order was <y><x> and max levelwidth %d.\n",
 	     maxwidth);
   }
 
@@ -1193,7 +1458,7 @@ int SetCellKnots(struct GridType *grid, struct CellType *cell,int info)
 
 
 
-int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info)
+static int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info)
 {
   int i;
   int degree,nonodes;
@@ -1259,6 +1524,26 @@ int SetCellKnots1D(struct GridType *grid, struct CellType *cell,int info)
 
 
 
+void CreateCells(struct GridType *grid,struct CellType **cell,int info)
+{
+  (*cell) = (struct CellType*)
+    malloc((size_t) (grid->nocells+1)*sizeof(struct CellType)); 
+
+  SetCellData(grid,*cell,info);
+
+  if(grid->dimension == 1) 
+    SetCellKnots1D(grid,*cell,info);
+  else
+    SetCellKnots(grid,*cell,info);
+}
+
+
+void DestroyCells(struct CellType **cell)
+{
+  free(cell);
+}
+
+
 
 int GetKnotIndex(struct CellType *cell,int i,int j)
 /* Given the cell and knot indices gives the corresponding 
@@ -1266,7 +1551,7 @@ int GetKnotIndex(struct CellType *cell,int i,int j)
    range [0..n] and [0..m]. Requires only the structure CellType. 
    */
 {
-  int ind,aid,maxj = 0;
+  int ind=0,aid=0,maxj=0;
 
   if(cell->numbering == NUMBER_1D) {
     ind = cell->left1st;
@@ -1284,6 +1569,10 @@ int GetKnotIndex(struct CellType *cell,int i,int j)
   else if(cell->numbering == NUMBER_YX) {
     aid = j; j = i; i = aid;
     maxj = cell->xelem;
+  }
+  else {
+    maxj = 0;
+    bigerror("GetKnotIndex: Unknown numbering scheme!");
   }
 
   if(j == 0) 
@@ -1360,7 +1649,7 @@ int GetElementIndices(struct CellType *cell,int i,int j,int *ind)
    requires only the structure CellType.
    */
 {
-  int nonodes,numbering,elemind = 0;
+  int nonodes,numbering,elemind=0;
   
   nonodes = cell->nonodes;
   numbering = cell->numbering;
@@ -1420,7 +1709,7 @@ int GetElementIndices(struct CellType *cell,int i,int j,int *ind)
       printf("GetElementIndices: not implemented for %d nodes.\n",nonodes);    
   }
 
-  else if(numbering == NUMBER_YX) {
+  else if(numbering == NUMBER_YX) { 
     elemind = cell->elem1st+(j-1) + (i-1)*cell->elemwidth;
     
     if(nonodes == 4) return(elemind);
@@ -1495,7 +1784,7 @@ int GetElementIndex(struct CellType *cell,int i,int j)
    requires only the structure CellType.
    */
 {
-  int elemind = 0;
+  int elemind=0;
  
   if(cell->numbering == NUMBER_XY) 
     elemind = cell->elem1st+(i-1) + (j-1)*cell->elemwidth;
@@ -1516,7 +1805,7 @@ int GetElementCoordinates(struct CellType *cell,int i,int j,
    rectangular.
    */
 {
-  int k,nonodes,numbering,elemind = 0;
+  int k,nonodes,numbering,elemind=0;
   Real xrat,yrat;
 
   k = nonodes = cell->nonodes;
@@ -1927,53 +2216,12 @@ void SetElementDivisionCylinder(struct GridType *grid,int info)
 
 
 
-static int Getline(char *line1,FILE *io) 
-{
-  int i,isend;
-  char line0[MAXLINESIZE],*charend;
-
-  for(i=0;i<MAXLINESIZE;i++) 
-    line0[i] = ' ';
-
- newline:
-
-  charend = fgets(line0,MAXLINESIZE,io);
-  isend = (charend == NULL);
-
-  if(isend) return(1);
-
-  if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!') goto newline;
-  if(!matcactive && line0[0] == '*') goto newline;
-
-#if HAVE_MATC
-  if(matcactive) {
-    matcpntr0 = strchr(line0,'$');
-    if(matcpntr0) {
-      matcpntr = mtc_domath(&matcpntr0[1]);
-      if(matcpntr) {
-	strcpy(matcpntr0, matcpntr);
-	if(0) printf("A: %s\n%s\n",matcpntr0,matcpntr);
-      }
-    }
-  }
-#endif 
-
-  if(strstr(line0,"subcell boundaries")) goto newline;
-  if(strstr(line0,"material structure")) goto newline;
-  if(strstr(line0,"mode")) goto newline;
-  if(strstr(line0,"type")) goto newline;
-
-  for(i=0;i<MAXLINESIZE;i++) 
-    line1[i] = toupper(line0[i]);
-
-  return(0);
-}
-
-
 static int GetCommand(char *line1,char *line2,FILE *io) 
+/* Line1 for commands and line2 for arguments. */
 {
-  int i,j,isend,empty;
-  char line0[MAXLINESIZE],*charend;
+  int i,j,isend;
+  char line0[MAXLINESIZE],*charend,*matcpntr0,*matcpntr;
+  int gotlinefeed;
 
  newline:
 
@@ -1985,14 +2233,12 @@ static int GetCommand(char *line1,char *line2,FILE *io)
 
   if(isend) return(1);
 
-  if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!' || line0[0] == '\n' || line0[1] == '\n') goto newline;
+  if(strlen(line0)<=strspn(line0," \t\r\n")) goto newline;
+
+  if(line0[0] == '#' || line0[0] == '%' || line0[0] == '!' || line0[0] == '\n') goto newline;
   if(!matcactive && line0[0] == '*') goto newline;
 
-  empty = TRUE;
-  for(i=1;i<20;i++) if(line0[i] != ' ') empty = FALSE;
-  if(empty) goto newline;
-
-#if HAVE_MATC
+#if USE_MATC
   if(matcactive) {
     matcpntr0 = strchr(line0,'$');
     if(matcpntr0) {
@@ -2008,9 +2254,14 @@ static int GetCommand(char *line1,char *line2,FILE *io)
     }
   }
 #endif 
-
+  
+  gotlinefeed = FALSE;
   j = 0;
   for(i=0;i<MAXLINESIZE;i++) {
+    if(line0[i] == '\n' || line0[i] == '\0' ) {
+      gotlinefeed = TRUE;
+      break;
+    }
     if(line0[i] == '=') {
       j = i;
       break;
@@ -2022,12 +2273,21 @@ static int GetCommand(char *line1,char *line2,FILE *io)
   if(strstr(line1,"END")) return(0);
   if(strstr(line1,"NEW MESH")) return(0);
 
-
-  if(j) {
-    for(i=j+1;i<MAXLINESIZE;i++) 
-      line2[i-j-1] = line0[i];      
+  if(j) { /* Arguments are actually on the same line after '=' */
+    for(i=j+1;i<MAXLINESIZE;i++) {
+      line2[i-j-1] = line0[i];    
+      if( line0[i] == '\n' || line0[i] == '\0' ) {
+	gotlinefeed = TRUE;
+	break;
+      }
+    }  
+    if(!gotlinefeed) {
+      printf("There is a risk that somethings was missed in line:\n");
+      printf("%s\n",line0);
+      smallerror("Check your output line length!\n");
+    }
   }
-  else {
+  else { /* rguments are on the next line */
   newline2:
     charend = fgets(line2,MAXLINESIZE,io);
     isend = (charend == NULL);
@@ -2035,7 +2295,20 @@ static int GetCommand(char *line1,char *line2,FILE *io)
     if(line2[0] == '#' || line2[0] == '%' || line2[0] == '!') goto newline2;
     if(!matcactive && line2[0] == '*') goto newline2;
 
-#if HAVE_MATC
+    gotlinefeed = FALSE;
+    for(i=0;i<MAXLINESIZE;i++) {
+      if(line2[i] == '\n' || line2[i] == '\0' ) {
+	gotlinefeed = TRUE;
+	break;
+      }
+    }
+    if(!gotlinefeed) {
+      printf("There is a risk that somethings was missed in line:\n");
+      printf("%s\n",line2);
+      smallerror("Check your output line length!\n");
+    }
+
+#if USE_MATC
     if(matcactive) {
       matcpntr0 = strchr(line2,'$');
       if(matcpntr0) {
@@ -2048,11 +2321,17 @@ static int GetCommand(char *line1,char *line2,FILE *io)
     }
 #endif 
   }
+
+  if(iodebug) {
+    printf("command: ");
+    for(i=0;i<40;i++) printf("%c",line1[i]);
+    printf("\nparams: ");
+    for(i=0;i<40;i++) printf("%c",line2[i]);
+    printf("\n");
+  }
   
   return(0);
 }
-
-
 
 
 
@@ -2190,6 +2469,11 @@ int SaveElmergrid(struct GridType *grid,int nogrids,char *prefix,int info)
     fprintf(out,"Triangles = %s\n",grid[j].triangles ? "True" : "False");
     if(grid[j].autoratio) 
       fprintf(out,"Surface Elements = %d\n",grid[j].wantedelems);
+    if(dim == 3 && grid[j].wantedelems3d) 
+      fprintf(out,"Volume Elements = %d\n",grid[j].wantedelems3d);
+    if(dim == 3 && grid[j].wantednodes3d) 
+      fprintf(out,"Volume Nodes = %d\n",grid[j].wantednodes3d);
+
     if(dim == 2)
       fprintf(out,"Coordinate Ratios = %-8.3lg\n",grid[j].xyratio);
     if(dim == 3)
@@ -2268,12 +2552,470 @@ int SaveElmergrid(struct GridType *grid,int nogrids,char *prefix,int info)
 
 
 
+static int LoadElmergridOld(struct GridType **grid,int *nogrids,char *prefix,int info) 
+{
+  char filename[MAXFILESIZE];
+  FILE *in;
+  int i,j,k,l,error=0;
+  Real scaling;
+  char *cp;
+  int mode,noknots,noelements,dim,axisymmetric;
+  int elemcode,maxnodes,totelems,nogrids0;
+  int minmat,maxmat;
+  char line[MAXLINESIZE];
+
+
+  AddExtension(prefix,filename,"grd");
+  if ((in = fopen(filename,"r")) == NULL) {
+    printf("LoadElmergrid: opening of the file '%s' wasn't successful !\n",filename);
+    return(1);
+  }
+
+  if(info) printf("Loading the geometry from file '%s'.\n",filename);
+
+  InitGrid(grid[*nogrids]);
+  k = *nogrids;
+  nogrids0 = *nogrids;
+
+  mode = 0;
+  noknots = 0;
+  noelements = 0;
+  dim = 0;
+  axisymmetric = FALSE;
+  elemcode = 0;
+  maxnodes = 4;
+  totelems = 0;
+  scaling = 1.0;
+
+
+
+  Getline(line,in);
+  for(;;) {
+    if(Getline(line,in)) goto end;
+    if(line[0]=='\0') goto end;
+
+    if(strstr(line,"END")) goto end;
+    if(strstr(line,"RESULTS")) goto end;
+
+    /* Control information */
+    if(strstr(line,"VERSION")) mode = 1;
+    else if(strstr(line,"GEOMETRY")) mode = 2;
+    else if(strstr(line,"MAPPINGS IN")) mode = 31;
+    else if(strstr(line,"MAPPINGS OUT")) mode = 32;
+    else if(strstr(line,"MAPPINGS")) mode = 3;
+    else if(strstr(line,"NUMBERING")) mode = 4;
+    else if(strstr(line,"MESHING")) mode = 5;
+    else if(strstr(line,"ELEMENTS")) mode = 6;
+    else if(strstr(line,"ELEMENT NUMBER")) mode = 29;
+    else if(strstr(line,"NODES")) mode = 7;
+    else if(strstr(line,"TRIANGLE")) mode = 8;
+    else if(strstr(line,"SQUARE")) mode = 17;
+    else if(strstr(line,"COORDINATE RATIO"))  mode = 10;
+    else if(strstr(line,"MATERIALS")) mode = 11;
+    else if(strstr(line,"LAYERED ST")) mode = 12;
+    else if(strstr(line,"ELEMENT RAT")) mode = 13;
+    else if(strstr(line,"ELEMENT DENS")) mode = 14;
+    else if(strstr(line,"ELEMENT MINIMUM")) mode = 27;
+    else if(strstr(line,"BOUNDARY COND")) mode = 15;
+    else if(strstr(line,"ELEMENTTYPE") || strstr(line,"ELEMENTCODE")) mode = 16;
+    else if(strstr(line,"ROTATE")) mode = 20;
+    else if(strstr(line,"ROTRAD")) mode = 21;
+    else if(strstr(line,"ROTBLOCK")) mode = 22;
+    else if(strstr(line,"ROTIMP")) mode = 24;
+    else if(strstr(line,"ROTCURVE")) mode = 25;
+    else if(strstr(line,"REDUCE ELEMENT")) mode = 26;
+    else if(strstr(line,"SCALING")) mode = 23;
+    else if(strstr(line,"LAYERED BO")) mode = 28;
+    else if(strstr(line,"POLAR RADIUS")) mode = 30;
+
+
+    switch (mode) {
+    case 1: 
+      printf("Loading Elmergrid file: %s\n",line);
+      mode = 0;
+      break;
+      
+    case 2:
+      grid[k]->dimension = 2;
+      if(strstr(line,"CARTES") && strstr(line,"1D")) {
+	grid[k]->coordsystem = COORD_CART1;
+	grid[k]->dimension = 1;
+      }
+      else if(strstr(line,"CARTES") && strstr(line,"2D")) 
+	grid[k]->coordsystem = COORD_CART2;
+      else if(strstr(line,"AXIS") && strstr(line,"2D")) 
+	grid[k]->coordsystem = COORD_AXIS;
+      else if(strstr(line,"POLAR") && strstr(line,"2D")) 
+	grid[k]->coordsystem = COORD_POLAR;
+      else if(strstr(line,"CARTES") && strstr(line,"3D")) {
+	grid[k]->coordsystem = COORD_CART3;
+	grid[k]->dimension = 3;
+      }
+      else if(strstr(line,"CYLINDRICAL")) {
+	grid[k]->coordsystem = COORD_CYL;
+	grid[k]->dimension = 3;
+      }
+      else printf("Unknown coordinate system: %s\n",line);
+      printf("Defining the coordinate system (%d-DIM).\n",grid[k]->dimension);
+
+      Getline(line,in);
+
+      if(grid[k]->dimension == 1) {
+	sscanf(line,"%d",&(*grid)[k].xcells);
+	grid[k]->ycells = 1;	
+      }
+      if(grid[k]->dimension == 2) 
+	sscanf(line,"%d %d",&(*grid)[k].xcells,&(*grid)[k].ycells);
+      if(grid[k]->dimension == 3) 
+	sscanf(line,"%d %d %d",&(*grid)[k].xcells,&(*grid)[k].ycells,&(*grid)[k].zcells);      
+      if(grid[k]->xcells >= MAXCELLS || grid[k]->ycells >= MAXCELLS || 
+	 grid[k]->zcells >= MAXCELLS) {
+	printf("LoadGrid: Too many subcells [%d %d %d] vs. %d:\n",
+	       grid[k]->xcells,grid[k]->ycells,grid[k]->zcells,MAXCELLS);
+      }
+      
+      if(grid[k]->dimension == 1) {
+	printf("Loading [%d] subcell intervals in 1D\n",
+	       grid[k]->xcells);
+      }
+      else if(grid[k]->dimension == 2) {
+	printf("Loading [%d %d] subcell intervals in 2D\n",
+	       grid[k]->xcells,grid[k]->ycells);   
+      } else {
+	printf("Loading [%d %d %d] subcell intervals in 3D\n",
+	       grid[k]->xcells,grid[k]->ycells,grid[k]->zcells);   
+      }
+
+
+      for(j=1;j<=grid[k]->dimension;j++) {
+	Getline(line,in);
+	cp=line;
+
+	if(j==1) for(i=0;i<=grid[k]->xcells;i++) grid[k]->x[i] = next_real(&cp);
+	if(j==2) for(i=0;i<=grid[k]->ycells;i++) grid[k]->y[i] = next_real(&cp);
+	if(j==3) for(i=0;i<=grid[k]->zcells;i++) grid[k]->z[i] = next_real(&cp);
+      }
+
+      printf("Loading material structure\n");
+
+      for(j=grid[k]->ycells;j>=1;j--) {
+	
+	Getline(line,in);
+	cp=line;
+	
+	for(i=1;i<=grid[k]->xcells;i++) 
+	  grid[k]->structure[j][i] = next_int(&cp);
+      }
+
+      minmat = maxmat = grid[k]->structure[1][1];
+      for(j=grid[k]->ycells;j>=1;j--) 
+	for(i=1;i<=grid[k]->xcells;i++) {
+	  if(minmat > grid[k]->structure[j][i])
+	    minmat = grid[k]->structure[j][i];
+	  if(maxmat < grid[k]->structure[j][i])
+	    maxmat = grid[k]->structure[j][i];
+	}      
+      if(minmat < 0) 
+	printf("LoadElmergrid: please use positive material indices.\n");
+
+      mode = 0;
+      break;
+
+    case 3:
+    case 31:
+    case 32:
+
+      /* I don't know how to set this, luckily this piece of code should be obsolete */
+      l = 1;
+      for(i=grid[k]->mappings;i<grid[k]->mappings+l;i++) {
+	Getline(line,in);
+	cp=line; 
+
+	grid[k]->mappingtype[i] = next_int(&cp);
+	if(mode == 32) grid[k]->mappingtype[i] += 50*SGN(grid[k]->mappingtype[i]);
+
+	grid[k]->mappingline[i] = next_int(&cp);
+	grid[k]->mappinglimits[2*i] = next_real(&cp);
+	grid[k]->mappinglimits[2*i+1] = next_real(&cp);
+	grid[k]->mappingpoints[i] = next_int(&cp);
+	grid[k]->mappingparams[i] = Rvector(0,grid[k]->mappingpoints[i]);
+	for(j=0;j<grid[k]->mappingpoints[i];j++) 
+	  grid[k]->mappingparams[i][j] = next_real(&cp);
+      }
+      
+      printf("Loaded %d geometry mappings\n",l);
+      grid[k]->mappings += l;
+
+      mode = 0;
+      break;
+      
+    case 4: /* NUMBERING */
+      if(strstr(line,"HORIZ")) grid[k]->numbering = NUMBER_XY;
+      if(strstr(line,"VERTI")) grid[k]->numbering = NUMBER_YX;
+      mode = 0;
+      break;
+
+    case 5: /* MESHING */
+      if((*nogrids) >= MAXCASES) {
+	printf("There are more grids than was allocated for!\n"); 
+	printf("Ignoring meshes starting from %d\n.",(*nogrids)+1);
+	goto end;
+      }
+      (*nogrids)++;
+      printf("Loading element meshing no %d\n",*nogrids);
+      k = *nogrids - 1;	           
+      if(k > nogrids0) (*grid)[k] = (*grid)[k-1];	 
+      mode = 0;
+      break;
+
+    case 6: /* ELEMENTS */
+      sscanf(line,"%d",&(*grid)[k].wantedelems);
+      mode = 0;
+      break;
+
+    case 7: /* NODES */
+      sscanf(line,"%d",&(*grid)[k].nonodes);      
+      
+      (*grid)[k].elemmidpoints = FALSE;
+      if((*grid)[k].nonodes == 4) 
+	(*grid)[k].elemorder = 1;
+      if((*grid)[k].nonodes == 8) 
+	(*grid)[k].elemorder = 2;
+      if((*grid)[k].nonodes == 16) 
+	(*grid)[k].elemorder = 3;
+
+      if((*grid)[k].nonodes == 9) { 
+	(*grid)[k].elemorder = 2;
+	(*grid)[k].elemmidpoints = TRUE;
+      }
+      if((*grid)[k].nonodes == 12) { 
+	(*grid)[k].elemorder = 3;
+	(*grid)[k].elemmidpoints = TRUE;
+      }
+
+
+      mode = 0;
+      break;
+
+    case 8: /* TRIANGLES */
+      (*grid)[k].triangles = TRUE;
+      mode = 0;
+      break;
+
+    case 17: /* SQUARES */
+      (*grid)[k].triangles = FALSE;
+      mode = 0;
+      break;
+
+    case 16: /* ELEMENTTYPE and ELEMENTCODE */
+      sscanf(line,"%d",&elemcode);
+      if(elemcode/100 == 2) {
+	(*grid)[k].triangles = FALSE;      
+	(*grid)[k].nonodes = elemcode%100;
+      }
+      else if(elemcode/100 == 4) {
+	(*grid)[k].triangles = FALSE;      
+	(*grid)[k].nonodes = elemcode%100;
+      }
+      else if(elemcode/100 == 3) {  
+	(*grid)[k].triangles = TRUE;      
+	if(elemcode%100 == 3)       (*grid)[k].nonodes = 4;
+	else if(elemcode%100 == 6)  (*grid)[k].nonodes = 9;
+	else if(elemcode%100 == 10) (*grid)[k].nonodes = 16;	
+      }
+
+      (*grid)[k].elemmidpoints = FALSE;
+      if((*grid)[k].nonodes == 4) 
+	(*grid)[k].elemorder = 1;
+      if((*grid)[k].nonodes == 8) 
+	(*grid)[k].elemorder = 2;
+      if((*grid)[k].nonodes == 16) 
+	(*grid)[k].elemorder = 3;
+
+      if((*grid)[k].nonodes == 9) { 
+	(*grid)[k].elemorder = 2;
+	(*grid)[k].elemmidpoints = TRUE;
+      }
+      if((*grid)[k].nonodes == 12) { 
+	(*grid)[k].elemorder = 3;
+	(*grid)[k].elemmidpoints = TRUE;
+      }
+
+      mode = 0;
+      break;
+
+    case 10: /* COORDINATE RATIO */
+      if((*grid)[k].dimension == 2) 
+	sscanf(line,"%le",&(*grid)[k].xyratio);
+      if((*grid)[k].dimension == 3) 
+	sscanf(line,"%le %le",&(*grid)[k].xyratio,&(*grid)[k].xzratio);      
+      mode = 0;
+      break;
+
+    case 11: /* MATERIALS */
+      sscanf(line,"%d %d",&(*grid)[k].firstmaterial,&(*grid)[k].lastmaterial);      
+      mode = 0;
+      break;
+
+    case 12: /* LAYERES */
+      for(i=1;i<=(*grid)[k].zcells;i++) {
+	Getline(line,in);
+	sscanf(line,"%d %d %d\n",
+		&(*grid)[k].zfirstmaterial[i],&(*grid)[k].zlastmaterial[i],&(*grid)[k].zmaterial[i]); 
+      }
+      mode = 0;
+      break;
+
+    case 13: /* ELEMENT RATIOS */
+      printf("Loading element ratios\n");
+
+      for (j=1;j<=(*grid)[k].dimension;j++) {
+	Getline(line,in);
+	cp = line;
+
+	if(j==1) for(i=1;i<=(*grid)[k].xcells;i++) (*grid)[k].xexpand[i] = next_real(&cp);
+	if(j==2) for(i=1;i<=(*grid)[k].ycells;i++) (*grid)[k].yexpand[i] = next_real(&cp);
+	if(j==3) for(i=1;i<=(*grid)[k].zcells;i++) (*grid)[k].zexpand[i] = next_real(&cp);
+      }
+      mode = 0;
+      break;
+
+    case 29: /* ELEMENT NUMBER */
+      printf("Loading element numbers\n");
+
+      for (j=1;j<=(*grid)[k].dimension;j++) {
+	Getline(line,in);
+	cp = line;
+	if(j==1) for(i=1;i<=(*grid)[k].xcells;i++) (*grid)[k].xelems[i] = next_int(&cp);
+	if(j==2) for(i=1;i<=(*grid)[k].ycells;i++) (*grid)[k].yelems[i] = next_int(&cp);
+	if(j==3) for(i=1;i<=(*grid)[k].zcells;i++) (*grid)[k].zelems[i] = next_int(&cp);
+      }
+      (*grid)[k].autoratio = 0;
+      mode = 0;
+      break;
+
+    case 27: /* ELEMENT MINIMUM */
+      printf("Loading minimum number of elements\n");
+      if((*grid)[k].dimension == 1) 
+	sscanf(line,"%d",&(*grid)[k].minxelems);
+      if((*grid)[k].dimension == 2) 
+	sscanf(line,"%d %d",&(*grid)[k].minxelems,&(*grid)[k].minyelems);
+      if((*grid)[k].dimension == 3) 
+	sscanf(line,"%d %d %d",&(*grid)[k].minxelems,&(*grid)[k].minyelems,&(*grid)[k].minzelems);
+      mode = 0;
+      break;
+
+    case 14: /* ELEMENT DENSITIES */
+      printf("Loading element densities\n");
+      for (j=1;j<=(*grid)[k].dimension;j++) {
+	Getline(line,in);
+	cp = line;
+
+	if(j==1) for(i=1;i<=(*grid)[k].xcells;i++) (*grid)[k].xdens[i] = next_real(&cp);
+	if(j==2) for(i=1;i<=(*grid)[k].ycells;i++) (*grid)[k].ydens[i] = next_real(&cp);
+	if(j==3) for(i=1;i<=(*grid)[k].zcells;i++) (*grid)[k].zdens[i] = next_real(&cp);
+      }
+      mode = 0;
+      break;
+
+    case 15: /* BOUNDARY CONDITIONS */
+      sscanf(line,"%d",&(*grid)[k].noboundaries);
+      printf("Loading %d boundary conditions\n",(*grid)[k].noboundaries);
+
+      for(i=0;i<(*grid)[k].noboundaries;i++) {
+	Getline(line,in);
+	sscanf(line,"%d %d %d %d",
+	       &(*grid)[k].boundtype[i],&(*grid)[k].boundext[i],
+	       &(*grid)[k].boundint[i],&(*grid)[k].boundsolid[i]);
+      }  
+      mode = 0;
+      break;
+
+    case 20: /* ROTATE */
+      (*grid)[k].rotate = TRUE;
+      mode = 0;
+      break;
+
+    case 21: /* ROTRAD */
+      sscanf(line,"%le",&(*grid)[k].rotateradius2);
+      mode = 0;
+      break;
+
+    case 22: /* ROTBLOCK */
+      sscanf(line,"%d",&(*grid)[k].rotateblocks);
+      if(0) printf("Reading blocks %d\n",(*grid)[k].rotateblocks);
+      mode = 0;
+      break;
+
+    case 24: /* ROTIMP */
+      sscanf(line,"%le",&(*grid)[k].rotateimprove);
+      mode = 0;
+      break;
+
+    case 30: /* POLAR RADIUS */
+      sscanf(line,"%le",&(*grid)[k].polarradius);
+      mode = 0;
+      break;
+
+    case 25: /* ROTCURVE */
+      (*grid)[k].rotatecurve = TRUE;
+      sscanf(line,"%le%le%le",&(*grid)[k].curvezet,
+	     &(*grid)[k].curverad,&(*grid)[k].curveangle);
+      mode = 0;
+      break;
+
+    case 26: /* REDUCE ELEMENT */
+      sscanf(line,"%d%d",&(*grid)[k].reduceordermatmin,
+	     &(*grid)[k].reduceordermatmax);
+      mode = 0;
+      break;
+
+    case 28: /* LAYERED BO */
+      sscanf(line,"%d",&(*grid)[k].layeredbc);
+      mode = 0;
+      break;
+
+    case 23: /* SCALING */
+      sscanf(line,"%le",&scaling);
+      for(i=0;i<=(*grid)[k].xcells;i++) (*grid)[k].x[i] *= scaling;
+      if((*grid)[k].dimension > 1) 
+	for(i=0;i<=(*grid)[k].ycells;i++) (*grid)[k].y[i] *= scaling;
+      if((*grid)[k].dimension == 3) 
+	for(i=0;i<=(*grid)[k].ycells;i++) (*grid)[k].z[i] *= scaling;
+
+      (*grid)[k].rotateradius2 *= scaling;
+      (*grid)[k].curverad *= scaling;
+      (*grid)[k].curvezet *= scaling;
+      mode = 0;
+      break;
+
+    default:
+      if(0) printf("Unknown case: %s",line);
+    }
+
+  }
+
+end:
+
+  if(info) printf("Found %d divisions for grid\n",*nogrids);
+
+  for(k=nogrids0;k < (*nogrids) && k<MAXCASES;k++) {
+    SetElementDivision(&(*grid)[k],1.0,info);
+  }
+
+
+  fclose(in);
+  return(error);
+}
+
+
+
 int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info) 
 {
   char filename[MAXFILESIZE];
   char command[MAXLINESIZE],params[MAXLINESIZE];
   FILE *in;
-  int i,j,k,error=0;
+  int i,j,k;
   char *cp;
   int noknots,noelements,dim,axisymmetric;
   int elemcode,maxnodes,totelems,nogrids0,minmat,maxmat;
@@ -2292,6 +3034,8 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
   k = *nogrids;
   nogrids0 = *nogrids;
 
+  iodebug = FALSE;
+
   noknots = 0;
   noelements = 0;
   dim = 0;
@@ -2304,40 +3048,56 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 
   for(;;) {
     if(GetCommand(command,params,in)) {
-      if(0) printf("Reached the end of command file\n");
+      if(info) printf("Reached the end of command file\n");
       goto end;
     }    
 
     /* Control information */
     if(strstr(command,"VERSION")) {
-      sscanf(params,"%ld",&code);
-      if(code == 210903) {
-	if(info) printf("Loading ElmerGrid file version: %d\n", (int)code);
+      if(strstr(command,"080500")) {
+	if(info) printf("Loading old version of Elmergrid file.\n");
+	i = LoadElmergridOld(grid,nogrids,prefix,info);
+	return(i);
       }
       else {
-	printf("Unknown ElmerGrid file version: %d\n", (int)code);
-	return(2);
+	sscanf(params,"%ld",&code);
+	if(code == 210903) 
+	  if(info) printf("Loading ElmerGrid file version: %ld\n",code);
+	else {
+	  printf("Unknown ElmerGrid file version: %ld\n",code);
+	  return(2);
+	}
       }
       *nogrids += 1;
     }      
 
+    else if(strstr(command,"DEBUG IO")) {
+      for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
+      if(strstr(params,"FALSE")) 
+	iodebug = FALSE;
+      else {
+	iodebug = TRUE;
+	printf("IO debugging activated\n");
+      }
+    }
+ 
     else if(strstr(command,"MATC")) {
       for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
       if(strstr(params,"FALSE")) 
 	matcactive = FALSE;
       else {
-#if HAVE_MATC
+#if USE_MATC
 	matcactive = TRUE;
 	mtc_init(NULL, stdout, stderr);
 	strcpy(command, "format( 12 )");	
 	mtc_domath(command);	 
-	if(info) printf("MATC language activated with 12 digit accuracy.\n");	
+	printf("MATC language activated with 12 digit accuracy.\n");	
 #else
-	printf("This version was compiled without MATC library.\n");		
-#endif
+        matcactive = FALSE;
+        printf("Unable to activate matc as it is not even compiled.\n");
+#endif 
       }
     }
-
     
     else if(strstr(command,"COORDINATE SYSTEM")) {
       for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
@@ -2357,7 +3117,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	grid[k]->dimension = 3;
       }
       else printf("Unknown coordinate system: %s\n",params);
-      if(0) printf("Defining the coordinate system (%d-DIM).\n",grid[k]->dimension);
+      if(info) printf("Defining the coordinate system (%d-DIM).\n",grid[k]->dimension);
     }
     
     else if(strstr(command,"SUBCELL DIVISIONS")) {
@@ -2369,10 +3129,11 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	sscanf(params,"%d %d",&(*grid)[k].xcells,&(*grid)[k].ycells);
       else if(grid[k]->dimension == 3) 
 	sscanf(params,"%d %d %d",&(*grid)[k].xcells,&(*grid)[k].ycells,&(*grid)[k].zcells);      
+
       if(grid[k]->xcells >= MAXCELLS || grid[k]->ycells >= MAXCELLS || grid[k]->zcells >= MAXCELLS) {
 	printf("LoadElmergrid: Too many subcells [%d %d %d] vs. %d:\n",
 	       grid[k]->xcells,grid[k]->ycells,grid[k]->zcells,MAXCELLS);
-      }
+     }
 
       /* Initialize the default structure with ones */
       for(j=grid[k]->ycells;j>=1;j--) 
@@ -2381,45 +3142,67 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
     }
     
     else if(strstr(command,"MINIMUM ELEMENT DIVISION")) {
-      if(0) printf("Loading minimum number of elements\n");
+      if(info) printf("Loading minimum number of elements\n");
+
       if((*grid)[k].dimension == 1) 
-	sscanf(params,"%d",&(*grid)[k].minxelems);
-      if((*grid)[k].dimension == 2) 
+	sscanf(params,"%d",&(*grid)[k].minxelems); 
+
+      if((*grid)[k].dimension == 2)  
 	sscanf(params,"%d %d",&(*grid)[k].minxelems,&(*grid)[k].minyelems);
+
       if((*grid)[k].dimension == 3) 
-	sscanf(params,"%d %d %d",&(*grid)[k].minxelems,&(*grid)[k].minyelems,&(*grid)[k].minzelems);
+	sscanf(params,"%d %d %d",&(*grid)[k].minxelems,
+	       &(*grid)[k].minyelems,&(*grid)[k].minzelems);
     }      
     
     else if(strstr(command,"SUBCELL LIMITS 1")) {
-      if(0) printf("Loading [%d] subcell limits in X-direction\n",grid[k]->xcells+1);
+      if(info) printf("Loading %d subcell limits in X-direction\n",grid[k]->xcells+1);
       cp = params;
-      for(i=0;i<=grid[k]->xcells;i++) grid[k]->x[i] = next_real(&cp);
+      for(i=0;i<=grid[k]->xcells;i++) {
+	grid[k]->x[i] = next_real(&cp);
+	if(i > 0 && grid[k]->x[i] < grid[k]->x[i-1]) {
+	  printf("Subcell limits 1(%d): %12.6le %12.6le\n",i,grid[k]->x[i],grid[k]->x[i-1]);
+	  bigerror("Values for limits 1 should be a growing series, existing\n");
+	}
+      }
     }    
     else if(strstr(command,"SUBCELL LIMITS 2")) {
-      if(0) printf("Loading [%d] subcell limits in Y-direction\n",grid[k]->ycells+1);
+      if(info) printf("Loading %d subcell limits in Y-direction\n",grid[k]->ycells+1);
       cp = params;
-      for(i=0;i<=grid[k]->ycells;i++) grid[k]->y[i] = next_real(&cp);
+      for(i=0;i<=grid[k]->ycells;i++) {
+	grid[k]->y[i] = next_real(&cp);
+	if(i > 0 && grid[k]->y[i] < grid[k]->y[i-1]) {
+	  printf("Subcell limits 2(%d): %12.6le %12.6le\n",i,grid[k]->y[i],grid[k]->y[i-1]);
+	  bigerror("Values for limits should be a growing series, existing\n");
+	}
+      }
     }      
     else if(strstr(command,"SUBCELL LIMITS 3")) {
-      if(0) printf("Loading [%d] subcell limits in Z-direction\n",grid[k]->zcells+1);
+      if(info) printf("Loading %d subcell limits in Z-direction\n",grid[k]->zcells+1);
       cp = params;
-      for(i=0;i<=grid[k]->zcells;i++) grid[k]->z[i] = next_real(&cp);
+      for(i=0;i<=grid[k]->zcells;i++) {
+	grid[k]->z[i] = next_real(&cp);
+	if(i > 0 && grid[k]->z[i] < grid[k]->z[i-1]) {
+	  printf("Subcell limits 3(%d): %12.6le %12.6le\n",i,grid[k]->z[i],grid[k]->z[i-1]);
+	  bigerror("Values for limits should be a growing series, existing\n");
+	}
+      }
     }
 
     else if(strstr(command,"SUBCELL SIZES 1")) {
-      if(0) printf("Loading [%d] subcell sizes in X-direction\n",grid[k]->xcells);
+      if(info) printf("Loading %d subcell sizes in X-direction\n",grid[k]->xcells);
       cp = params;
       for(i=1;i<=grid[k]->xcells;i++) grid[k]->x[i] = next_real(&cp);
       for(i=1;i<=grid[k]->xcells;i++) grid[k]->x[i] = grid[k]->x[i-1] + grid[k]->x[i];
     }      
     else if(strstr(command,"SUBCELL SIZES 2")) {
-      if(0) printf("Loading [%d] subcell sizes in Y-direction\n",grid[k]->ycells);
+      if(info) printf("Loading %d subcell sizes in Y-direction\n",grid[k]->ycells);
       cp = params;
       for(i=1;i<=grid[k]->ycells;i++) grid[k]->y[i] = next_real(&cp);
       for(i=1;i<=grid[k]->ycells;i++) grid[k]->y[i] = grid[k]->y[i-1] + grid[k]->y[i];
     }      
     else if(strstr(command,"SUBCELL SIZES 3")) {
-      if(0) printf("Loading [%d] subcell sizes in Z-direction\n",grid[k]->zcells);
+      if(info) printf("Loading %d subcell sizes in Z-direction\n",grid[k]->zcells);
       cp = params;
       for(i=1;i<=grid[k]->zcells;i++) grid[k]->z[i] = next_real(&cp);
       for(i=1;i<=grid[k]->zcells;i++) grid[k]->z[i] = grid[k]->z[i-1] + grid[k]->z[i];
@@ -2478,7 +3261,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
     }
 
     else if(strstr(command,"MATERIAL STRUCTURE")) {
-      if(0) printf("Loading material structure\n");
+      if(info) printf("Loading material structure\n");
 
       /* Initialize the default structure with zeros */
       for(j=grid[k]->ycells;j>=1;j--) 
@@ -2501,15 +3284,20 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	}      
       if(minmat < 0) 
 	printf("LoadElmergrid: please use positive material indices.\n");
-      if(maxmat > MAXMATERIALS) 
+      if(maxmat > MAXBODYID) 
 	printf("LoadElmergrid: material indices larger to %d may create problems.\n",
-	       MAXMATERIALS);
+	       MAXBODYID);
+      printf("LoadElmergrid: materials interval is [%d,%d]\n",minmat,maxmat);
+
+      grid[k]->maxmaterial = maxmat;
     }
-    else if(strstr(command,"MATERIALS INTERVAL")) {
+    else if(strstr(command,"MATERIALS INTERVAL")) { 
       sscanf(params,"%d %d",&(*grid)[k].firstmaterial,&(*grid)[k].lastmaterial);      
     }
      
     else if(strstr(command,"REVOLVE")) {
+      if(0) printf("revolve: %s %s\n",command,params);
+
       if(strstr(command,"REVOLVE RADIUS")) {
 	(*grid)[k].rotate = TRUE;
 	sscanf(params,"%le",&(*grid)[k].rotateradius2);
@@ -2545,7 +3333,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
     }
     
     else if(strstr(command,"BOUNDARY DEFINITION")) {
-      if(0) printf("Loading boundary conditions\n");
+      printf("Loading boundary conditions\n");
       
       for(i=0;i<MAXBOUNDARIES;i++) {
 	if(i>0) Getline(params,in);
@@ -2555,15 +3343,15 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	       &(*grid)[k].boundtype[i],&(*grid)[k].boundext[i],
 	       &(*grid)[k].boundint[i],&(*grid)[k].boundsolid[i]);
       }  
-      if(0) printf("Found %d boundaries\n",i);
+      printf("Found %d boundaries\n",i);
       (*grid)[k].noboundaries = i;
     }
     
-    else if(strstr(command,"LAYERED BOUNDARIES")) {
+    /* else if(strstr(command,"LAYERED BOUNDARIES")) {
       for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
       if(strstr(params,"TRUE")) (*grid)[k].layeredbc = 1;
       if(strstr(params,"FALSE")) (*grid)[k].layeredbc = 0;
-    }
+    } */
     
     else if(strstr(command,"NUMBERING")) {
       for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
@@ -2608,6 +3396,13 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
       if(strstr(params,"TRUE")) (*grid)[k].limitdxverify = TRUE;
       if(strstr(params,"FALSE")) (*grid)[k].limitdxverify = FALSE;
     }
+    else if(strstr(command,"VOLUME ELEMENTS")) {
+      sscanf(params,"%d",&(*grid)[k].wantedelems3d);
+    }
+    else if(strstr(command,"VOLUME NODES")) {
+      sscanf(params,"%d",&(*grid)[k].wantednodes3d);
+    }
+
     else if(strstr(command,"COORDINATE RATIO")) {
       if((*grid)[k].dimension == 2) 
 	sscanf(params,"%le",&(*grid)[k].xyratio);
@@ -2657,13 +3452,13 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
       (*grid)[k].autoratio = 0;
     }
     
-    else if(strstr(command,"EXTRUDED STRUCTURE")) {
+    /* else if(strstr(command,"EXTRUDED STRUCTURE")) {
       for(i=1;i<=(*grid)[k].zcells;i++) {
 	if(i>1) Getline(params,in);
 	sscanf(params,"%d %d %d\n",
 	       &(*grid)[k].zfirstmaterial[i],&(*grid)[k].zlastmaterial[i],&(*grid)[k].zmaterial[i]); 
       }
-    }
+    } */
     
     else if(strstr(command,"GEOMETRY MAPPINGS")) {     
       if(k > 0) (*grid)[k].mappings = 0;
@@ -2686,7 +3481,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	for(j=0;j<(*grid)[k].mappingpoints[i];j++) 
 	  (*grid)[k].mappingparams[i][j] = next_real(&cp);
       }      
-      if(0) printf("Loaded %d geometry mappings\n",i);
+      printf("Loaded %d geometry mappings\n",i);
       (*grid)[k].mappings = i;      
     }
 
@@ -2701,19 +3496,19 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 	goto end;
       }
       (*nogrids)++;
-      if(0) printf("\nLoading element meshing no %d\n",*nogrids);
+      printf("\nLoading element meshing no %d\n",*nogrids);
       k = *nogrids - 1;	           
       if(k > nogrids0) (*grid)[k] = (*grid)[k-1];	 
     }
 
     else {
-      if(1) printf("Unknown command: %s",command);
+      if(0) printf("Unknown command: %s",command);
     }
   }
 
 end:
 
-  if(0) printf("Found %d divisions for grid\n",*nogrids);
+  if(info) printf("Found %d divisions for grid\n",*nogrids);
   
   for(k=nogrids0;k < (*nogrids) && k<MAXCASES;k++) {
 
@@ -2745,8 +3540,13 @@ end:
     }    
   }
 
+  
+  /* for(k=nogrids0;k < (*nogrids) && k<MAXCASES;k++) {
+    SetElementDivision(&(*grid)[k],relh,info);
+    } */
+
   fclose(in);
-  return(error);
+  return(0);
 }
 
 
@@ -2754,19 +3554,20 @@ end:
 void InitParameters(struct ElmergridType *eg)
 {
   int i;
-  
+
   eg->relh = 1.0;
   eg->inmethod = 0;
   eg->outmethod = 0;
   eg->silent = FALSE;
   eg->nofilesin = 1;
   eg->unitemeshes = FALSE;
+  eg->unitenooverlap = FALSE;
   eg->triangles = FALSE;
   eg->triangleangle = 0.0;
   eg->rotate = FALSE;
   eg->polar = FALSE;
   eg->cylinder = FALSE;
-  eg->usenames = FALSE;
+  eg->usenames = TRUE;
   eg->layers = 0;
   eg->layereps = 0.0;
   eg->layermove = 0;
@@ -2774,13 +3575,20 @@ void InitParameters(struct ElmergridType *eg)
   eg->elements3d = 0;
   eg->nodes3d = 0;
   eg->metis = 0;
-  eg->partitionhalo = FALSE;
+  eg->metiscontig = FALSE;
+  eg->metisseed = 0;
+  eg->partopt = 0;
+  eg->partoptim = FALSE;
+  eg->partbcoptim = TRUE;
+  eg->partjoin = 0;
+  for(i=0;i<MAXHALOMODES;i++) eg->parthalo[i] = FALSE;
   eg->partitionindirect = FALSE;
   eg->reduce = FALSE;
   eg->increase = FALSE;
   eg->translate = FALSE;
   eg->isoparam = FALSE;
   eg->removelowdim = FALSE;
+  eg->removeintbcs = FALSE;
   eg->removeunused = FALSE;
   eg->dim = 3;
   eg->center = FALSE;
@@ -2791,9 +3599,18 @@ void InitParameters(struct ElmergridType *eg)
   eg->bulkbounds = 0;
   eg->partorder = FALSE;
   eg->findsides = FALSE;
-  eg->pelems = 0;
-  eg->belems = 0;
+  eg->parthypre = FALSE;
+  eg->partdual = FALSE;
+  eg->partbcz = 0;
+  eg->partbcr = 0;
+  eg->partbclayers = 1;
+  eg->partbcmetis = 0;
+  eg->partbw = FALSE;
   eg->saveboundaries = TRUE;
+  eg->vtuone = FALSE;
+  eg->timeron = FALSE;
+  eg->nosave = FALSE;
+  eg->nooverwrite = FALSE;
   eg->merge = FALSE;
   eg->bcoffset = FALSE;
   eg->periodic = 0;
@@ -2804,11 +3621,21 @@ void InitParameters(struct ElmergridType *eg)
   eg->boundorder = FALSE;
   eg->sidemappings = 0;
   eg->bulkmappings = 0;
+  eg->coordinatemap[0] = eg->coordinatemap[1] = eg->coordinatemap[2] = 0;
   eg->clone[0] = eg->clone[1] = eg->clone[2] = 0;
+  eg->mirror[0] = eg->mirror[1] = eg->mirror[2] = 0;
+  eg->cloneinds = FALSE;
+  eg->mirrorbc = 0;
   eg->decimals = 12;
   eg->discont = 0;
   eg->connect = 0;
-  eg->advancedmat = 0;
+  eg->connectboundsnosets = 0;
+
+  eg->rotatecurve = FALSE;
+  eg->curverad = 0.5;
+  eg->curveangle = 90.0;
+  eg->curvezet = 0.0;
+  eg->parttol = 0.0;
   
   for(i=0;i<MAXSIDEBULK;i++) 
     eg->sidebulk[i] = 0;
@@ -2817,24 +3644,756 @@ void InitParameters(struct ElmergridType *eg)
 
 
 
+int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,int info)
+{
+  int arg,i,dim;
+  char command[MAXLINESIZE];
+  
+  dim = eg->dim;
+
+  printf("Elmergrid reading in-line arguments\n");
+
+  /* Type of input file */
+  if(first > 3) {
+    for(i=0;i<MAXLINESIZE;i++) command[i] = ' ';
+
+    strcpy(command,argv[1]);
+    for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
+    for(i=0;i<=MAXINMETHODS;i++) {
+      if(strstr(command,InMethods[i])) {
+	eg->inmethod = i;
+	break;
+      }
+    }
+    if(i>MAXINMETHODS) eg->inmethod = atoi(argv[1]);
+    
+
+    /* Type of output file (fewer options) */
+    strcpy(command,argv[2]);
+    for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
+    for(i=1;i<=MAXOUTMETHODS;i++) {
+      if(strstr(command,OutMethods[i])) {
+	eg->outmethod = i;
+	break;
+      }
+    }
+    if(i>MAXOUTMETHODS) eg->outmethod = atoi(argv[2]);
+ 
+    /* Name of output file */
+    strcpy(eg->filesin[0],argv[3]);
+    strcpy(eg->filesout[0],eg->filesin[0]);
+    strcpy(eg->infofile,eg->filesin[0]);
+  }
+
+
+  /* The optional inline parameters */
+
+  for(arg=first;arg <argc; arg++) {
+
+    if(strcmp(argv[arg],"-silent") == 0) {
+      eg->silent = TRUE;
+      info = FALSE;
+    }
+
+    if(strcmp(argv[arg],"-verbose") == 0) {
+      eg->silent = FALSE;
+      info = TRUE;
+    }
+    
+    if(strcmp(argv[arg],"-in") ==0 ) {
+      if(arg+1 >= argc) {
+	printf("The secondary input file name is required as a parameter\n");
+	return(1);
+      }
+      else {
+	strcpy(eg->filesin[eg->nofilesin],argv[arg+1]);
+	printf("A secondary input file %s will be loaded.\n",eg->filesin[eg->nofilesin]);
+	eg->nofilesin++;
+      }
+    }
+
+    if(strcmp(argv[arg],"-out") == 0) {
+      if(arg+1 >= argc) {
+	printf("The output name is required as a parameter\n");
+	return(2);
+      }
+      else {
+	strcpy(eg->filesout[0],argv[arg+1]);
+      }
+    }
+
+ 
+    if(strcmp(argv[arg],"-decimals") == 0) {
+      eg->decimals = atoi(argv[arg+1]);
+    }
+
+    if(strcmp(argv[arg],"-triangles") ==0) {
+      eg->triangles = TRUE;
+      printf("The rectangles will be split to triangles.\n");
+      if(arg+1 < argc) {
+	if(strcmp(argv[arg+1],"-")) {
+	  eg->triangleangle = atof(argv[arg+1]);
+	}
+      }
+    }
+
+    if(strcmp(argv[arg],"-merge") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give a parameter for critical distance.\n");
+	return(3);
+      }
+      else {
+	eg->merge = TRUE;
+	eg->cmerge = atof(argv[arg+1]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-relh") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give a relative mesh density related to the specifications\n");
+	return(3);
+      }
+      else {
+	eg->relh = atof(argv[arg+1]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-order") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give %d parameters for the order vector.\n",dim);
+ 	return(4);
+      }
+      else {
+	eg->order = TRUE;
+	eg->corder[0] = atof(argv[arg+1]);
+	eg->corder[1] = atof(argv[arg+2]);
+	if(dim==3) eg->corder[2] = atof(argv[arg+3]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-parttol") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give a tolerance for gemetric partition algorithms\n");
+	return(3);
+      }
+      else {
+	eg->parttol = atof(argv[arg+1]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-autoorder") == 0) {
+      eg->order = 2;
+    }
+
+    if(strcmp(argv[arg],"-halo") == 0) {
+      eg->parthalo[1] = TRUE;
+    }
+    if(strcmp(argv[arg],"-halobc") == 0) {
+      eg->parthalo[2] = TRUE;
+    }
+    if(strcmp(argv[arg],"-halodb") == 0) {
+      eg->parthalo[1] = TRUE;
+      eg->parthalo[2] = TRUE;            
+    }   
+    if(strcmp(argv[arg],"-haloz") == 0) {
+      eg->parthalo[3] = TRUE;
+    }
+    if(strcmp(argv[arg],"-halor") == 0) {
+      eg->parthalo[3] = TRUE;
+    }
+    if(strcmp(argv[arg],"-halogreedy") == 0) {
+      eg->parthalo[4] = TRUE;
+    }    
+    if(strcmp(argv[arg],"-indirect") == 0) {
+      eg->partitionindirect = TRUE;
+    }
+    if(strcmp(argv[arg],"-metisorder") == 0) {
+      eg->order = 3;
+    }    
+    if(strcmp(argv[arg],"-centralize") == 0) {
+      eg->center = TRUE;
+    }
+    if(strcmp(argv[arg],"-scale") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give %d parameters for the scaling.\n",dim);
+ 	return(5);
+     }
+      else {
+	eg->scale = TRUE;
+	eg->cscale[0] = atof(argv[arg+1]);
+	eg->cscale[1] = atof(argv[arg+2]);
+	if(dim==3) eg->cscale[2] = atof(argv[arg+3]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-translate") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give %d parameters for the translate vector.\n",dim);
+	return(6);
+      }
+      else {
+	eg->translate = TRUE;
+	eg->ctranslate[0] = atof(argv[arg+1]);
+	eg->ctranslate[1] = atof(argv[arg+2]);
+	if(dim==3) eg->ctranslate[2] = atof(argv[arg+3]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-saveinterval") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give min, max and step for the interval.\n");
+	return(7);
+      }
+      else {
+	eg->saveinterval[0] = atoi(argv[arg+1]);
+	eg->saveinterval[1] = atoi(argv[arg+2]);
+	eg->saveinterval[2] = atoi(argv[arg+3]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-rotate") == 0 || strcmp(argv[arg],"-rotate") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give three parameters for the rotation angles.\n");
+	return(8);
+      }
+      else {
+	eg->rotate = TRUE;
+	eg->crotate[0] = atof(argv[arg+1]);
+	eg->crotate[1] = atof(argv[arg+2]);
+	eg->crotate[2] = atof(argv[arg+3]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-clone") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give the number of clones in each %d directions.\n",dim);
+ 	return(9);
+     }
+      else {
+	eg->clone[0] = atoi(argv[arg+1]);
+	eg->clone[1] = atoi(argv[arg+2]);
+	if(dim == 3) eg->clone[2] = atoi(argv[arg+3]);
+      }
+    }
+    if(strcmp(argv[arg],"-clonesize") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give the clone size in each %d directions.\n",dim);
+ 	return(10);
+      }
+      else {
+	eg->clonesize[0] = atof(argv[arg+1]);
+	eg->clonesize[1] = atof(argv[arg+2]);
+	if(dim == 3) eg->clonesize[2] = atof(argv[arg+3]);
+      }
+    }
+    if(strcmp(argv[arg],"-cloneinds") == 0) {
+      eg->cloneinds = TRUE;
+    }
+    if(strcmp(argv[arg],"-mirror") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give the symmetry of the coordinate directions, eg. 1 1 0\n");
+      }
+      else {
+	eg->mirror[0] = atoi(argv[arg+1]);
+	eg->mirror[1] = atoi(argv[arg+2]);
+	if(dim == 3) eg->mirror[2] = atoi(argv[arg+3]);
+      }
+    }
+    if(strcmp(argv[arg],"-mirrorbc") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give the number of symmetry BC.\n");
+ 	return(11);
+      }
+      else {
+	eg->mirrorbc = atoi(argv[arg+1]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-unite") == 0) {
+      eg->unitemeshes = TRUE;
+      printf("The meshes will be united.\n");
+    }   
+    if(strcmp(argv[arg],"-unitenooverlap") == 0) {
+      eg->unitemeshes = TRUE;
+      eg->unitenooverlap = TRUE;
+      printf("The meshes will be united without overlap in BCs or bodies.\n");
+    }   
+
+    if(strcmp(argv[arg],"-nonames") == 0) {
+      eg->usenames = FALSE;
+      printf("Names will be omitted even if they would exist\n");
+    }   
+
+    if(strcmp(argv[arg],"-removelowdim") == 0) {
+      eg->removelowdim = TRUE;
+      printf("Lower dimensional boundaries will be removed\n");
+    }   
+
+    if(strcmp(argv[arg],"-removeintbcs") == 0) {
+      eg->removeintbcs = TRUE;
+      printf("Lower dimensional boundaries will be removed\n");
+    }   
+
+    if(strcmp(argv[arg],"-removeunused") == 0) {
+      eg->removeunused = TRUE;
+      printf("Nodes that do not appear in any element will be removed\n");
+    }   
+
+    if(strcmp(argv[arg],"-autoclean") == 0) {
+      eg->removelowdim = TRUE;
+      eg->bulkorder = TRUE;
+      eg->boundorder = TRUE;
+      eg->removeunused = TRUE;
+      printf("Lower dimensional boundaries will be removed\n");
+      printf("Materials and boundaries will be renumbered\n");
+      printf("Nodes that do not appear in any element will be removed\n");
+    }   
+
+    if(strcmp(argv[arg],"-polar") == 0) {
+      eg->polar = TRUE;
+      printf("Making transformation to polar coordinates.\n");
+      if(arg+1 >= argc) {
+	printf("The preferred radius is required as a parameter\n");
+	eg->polarradius = 1.0;
+      }
+      else {
+	eg->polarradius = atoi(argv[arg+1]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-cylinder") == 0) {
+      eg->cylinder = TRUE;
+      printf("Making transformation from cylindrical to cartesian coordinates.\n");
+    }
+
+    if(strcmp(argv[arg],"-reduce") == 0) {
+      if(arg+2 >= argc) {
+	printf("Give two material for the interval.\n");
+ 	return(12);
+      }
+      else {
+	eg->reduce = TRUE;      
+	eg->reducemat1 = atoi(argv[arg+1]);
+	eg->reducemat2 = atoi(argv[arg+2]);
+      }
+    }
+    if(strcmp(argv[arg],"-increase") == 0) {
+      eg->increase = TRUE;
+    }
+    if(strcmp(argv[arg],"-bulkorder") == 0) {
+      eg->bulkorder = TRUE;
+    }
+    if(strcmp(argv[arg],"-boundorder") == 0) {
+      eg->boundorder = TRUE;
+    }
+    if(strcmp(argv[arg],"-partition") == 0  ||
+       strcmp(argv[arg],"-partcell") == 0  || 
+       strcmp(argv[arg],"-partcyl") == 0 ) {
+      if(arg+dim >= argc) {
+	printf("The number of partitions in %d dims is required as parameters.\n",dim);
+	return(13);
+      }
+      else {
+	eg->partitions = 1;
+	eg->partdim[0] = atoi(argv[arg+1]);
+	eg->partdim[1] = atoi(argv[arg+2]);
+	if(dim == 3) eg->partdim[2] = atoi(argv[arg+3]);
+	eg->partitions = 1;
+	for(i=0;i<3;i++) {
+	  if(eg->partdim[i] == 0) eg->partdim[i] = 1;
+	  eg->partitions *= eg->partdim[i];
+	}
+	eg->partopt = -1;
+	if( strcmp(argv[arg],"-partition") == 0 ) {
+	  if(arg+4 < argc) 
+	    if(argv[arg+4][0] != '-') eg->partopt = atoi(argv[arg+4]);
+	}
+	else if( strcmp( argv[arg],"-partcell") == 0 )  {
+	  eg->partopt = 2;
+	} else if( strcmp( argv[arg],"-partcyl") == 0 ) {
+	  eg->partopt = 3;
+	}
+	  
+	printf("The mesh will be partitioned geometrically to %d partitions.\n",
+	       eg->partitions);
+      }
+    }
+    if(strcmp(argv[arg],"-partorder") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give %d parameters for the order vector.\n",dim);
+ 	return(14);
+      }
+      else {
+	eg->partorder = 1;
+	eg->partcorder[0] = atof(argv[arg+1]);
+	eg->partcorder[1] = atof(argv[arg+2]);
+	if(dim==3) eg->partcorder[2] = atof(argv[arg+3]);
+      }
+    }
+    if(strcmp(argv[arg],"-partoptim") == 0) {
+      eg->partoptim = TRUE;
+      printf("Aggressive optimization will be applied to node sharing.\n");
+    }
+    if(strcmp(argv[arg],"-partnobcoptim") == 0) {
+      eg->partbcoptim = FALSE;
+      printf("Aggressive optimization will not be applied to parent element sharing.\n");
+    }
+    if(strcmp(argv[arg],"-partbw") == 0) {
+      eg->partbw = TRUE;
+      printf("Bandwidth will be optimized for partitions.\n");
+    }
+    if(strcmp(argv[arg],"-parthypre") == 0) {
+      eg->parthypre = TRUE;
+      printf("Numbering of partitions will be made continuous.\n");
+    }
+    if(strcmp(argv[arg],"-partdual") == 0) {
+      eg->partdual = TRUE;
+      printf("Using dual (elemental) graph in partitioning.\n");
+    }
+
+    if(strcmp(argv[arg],"-metis") == 0 ||
+       strcmp(argv[arg],"-metisrec") == 0 ||
+       strcmp(argv[arg],"-metiskway") == 0 ) {
+#if USE_METIS
+      if(arg+1 >= argc) {
+	printf("The number of partitions is required as a parameter\n");
+	return(15);
+      }
+      else {
+	eg->metis = atoi(argv[arg+1]);
+	printf("The mesh will be partitioned with Metis to %d partitions.\n",eg->metis);
+	eg->partopt = 0;
+	if(strcmp(argv[arg],"-metisrec") == 0)
+	  eg->partopt = 2;
+	else if(strcmp(argv[arg],"-metiskway") == 0 )
+	  eg->partopt = 3;
+	else if(arg+2 < argc) 
+	  if(argv[arg+2][0] != '-') eg->partopt = atoi(argv[arg+2]);
+      }    
+#else
+      printf("This version of ElmerGrid was compiled without Metis library!\n");
+#endif     
+    }
+    
+    if(strcmp(argv[arg],"-metisseed") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The random number seed is required as parameter for -metisseed!\n");
+	return(15);
+      }
+      else {
+	eg->metisseed = atoi(argv[arg+1]);
+	printf("Seed for Metis partitioning routines: %d\n",eg->metisseed);
+      }
+    }
+    
+    if(strcmp(argv[arg],"-partjoin") == 0) {
+      if(arg+1 >= argc) {
+	printf("The number of partitions is required as a parameter!\n");
+	return(15);
+      }
+      else {
+	eg->partjoin = atoi(argv[arg+1]);
+	printf("The results will joined using %d partitions.\n",eg->partjoin);
+      }
+    }
+
+    if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of 1D partitions is required as a parameter!\n");
+	return(15);
+      }
+      else {
+	eg->partbcz = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions in Z.\n",eg->partbcz);
+      }
+    }
+
+    if(strcmp(argv[arg],"-partrbc") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of 1D partitions is required as a parameter!\n");
+	return(15);
+      }
+      else {
+	eg->partbcr = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions in R.\n",eg->partbcr);
+      }
+    }
+
+    if(strcmp(argv[arg],"-partlayers") == 0) {
+      if(arg+1 >= argc) {
+	printf("The number of layers to be extended is required as a parameter\n");
+	return(15);
+      }
+      else {
+	eg->partbclayers = atoi(argv[arg+1]);
+	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbclayers);
+      }
+    }
+
+    if(strcmp(argv[arg],"-metiscontig") == 0 ) {
+      eg->metiscontig = TRUE;
+    }
+    
+    if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of Metis partitions is required as a parameter\n");
+	return(15);
+      }
+      else {
+	eg->partbcmetis = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions by Metis.\n",eg->partbcmetis);
+      }
+    }
+
+    if(strcmp(argv[arg],"-periodic") == 0) {
+      if(arg+dim >= argc) {
+	printf("Give the periodic coordinate directions (e.g. 1 1 0)\n");
+ 	return(16);
+      }
+      else {
+	eg->periodicdim[0] = atoi(argv[arg+1]);
+	eg->periodicdim[1] = atoi(argv[arg+2]);
+	if(dim == 3) eg->periodicdim[2] = atoi(argv[arg+3]);
+      }
+    }
+
+    if(strcmp(argv[arg],"-discont") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give the discontinuous boundary conditions.\n");
+ 	return(17);
+      }
+      else {
+	eg->discontbounds[eg->discont] = atoi(argv[arg+1]);
+	eg->discont++;
+      }
+    }
+
+    if(strcmp(argv[arg],"-connect") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give the connected boundary conditions.\n");
+ 	return(10);
+      }
+      else {
+	eg->connectboundsnosets += 1;
+	for(i=arg+1;i<argc && strncmp(argv[i],"-",1); i++) { 
+	  eg->connectbounds[eg->connect] = atoi(argv[i]);
+	  eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
+	  eg->connect++;
+	}
+      }
+    } 
+
+    if(strcmp(argv[arg],"-connectall") == 0) {
+      eg->connectboundsnosets += 1;
+      eg->connectbounds[eg->connect] = -1;
+      eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
+      eg->connect++;
+    }
+
+    if(strcmp(argv[arg],"-connectint") == 0) {
+      eg->connectboundsnosets += 1;
+      eg->connectbounds[eg->connect] = -2;
+      eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
+      eg->connect++;
+    }
+
+    if(strcmp(argv[arg],"-connectfree") == 0) {
+      eg->connectboundsnosets += 1;
+      eg->connectbounds[eg->connect] = -3;
+      eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
+      eg->connect++;
+    }
+ 
+    if(strcmp(argv[arg],"-boundbound") == 0) {
+      for(i=arg+1;i<=arg+3 && i<argc; i++) {
+	eg->boundbound[3*eg->boundbounds+i-(1+arg)] = atoi(argv[i]);
+	if((i-arg)%3 == 0) eg->boundbounds++;
+      }
+    } 
+    if(strcmp(argv[arg],"-bulkbound") == 0) {
+      for(i=arg+1;i<=arg+3 && i<argc; i++) {
+	eg->bulkbound[3*eg->bulkbounds+i-(1+arg)] = atoi(argv[i]);
+	if((i-arg)%3 == 0) eg->bulkbounds++;
+      }
+    } 
+    if(strcmp(argv[arg],"-boundtype") == 0) {
+      for(i=arg+1;i<argc && strncmp(argv[i],"-",1); i++) 
+	eg->sidemap[3*eg->sidemappings+i-1-arg] = atoi(argv[i]);
+      eg->sidemappings++;
+    } 
+    if(strcmp(argv[arg],"-bulktype") == 0) {
+      for(i=arg+1;i<argc && strncmp(argv[i],"-",1); i++) 
+	eg->bulkmap[3*eg->bulkmappings+i-1-arg] = atoi(argv[i]);
+      eg->bulkmappings++;
+    } 
+    if(strcmp(argv[arg],"-coordinatemap") == 0) {
+      if( arg+3 >= argc ) {
+	printf("Give three parameters for the index permutation\n");
+	return(18);
+      }
+      else {
+	for(i=0;i<3;i++) 
+	  eg->coordinatemap[i] = atoi(argv[arg+1+i]);
+      }
+    } 
+    if(strcmp(argv[arg],"-layer") == 0) {
+      if(arg+4 >= argc) {
+	printf("Give four parameters for the layer: boundary, elements, thickness, ratio.\n");
+	return(18);
+      }
+      else if(eg->layers == MAXBOUNDARIES) {
+	printf("There can only be %d layers, sorry.\n",MAXBOUNDARIES);
+	return(19);
+      }
+      else {
+	eg->layerbounds[eg->layers] = atoi(argv[arg+1]);
+	eg->layernumber[eg->layers] = atoi(argv[arg+2]);
+	eg->layerthickness[eg->layers] = atof(argv[arg+3]);
+	eg->layerratios[eg->layers] = atof(argv[arg+4]);
+	eg->layerparents[eg->layers] = 0;
+	eg->layers++;
+      }
+    }
+    
+    if(strcmp(argv[arg],"-layermove") == 0) {
+      if(arg+1 >= argc) {
+	printf("Give maximum number of Jacobi filters.\n");
+ 	return(20);
+      }
+      else {
+	eg->layermove = atoi(argv[arg+1]);
+      }
+    }
+
+    /* This uses a very dirty trick where the variables related to argument -layer are used 
+       with a negative indexing */ 
+    if(strcmp(argv[arg],"-divlayer") == 0) {
+      if(arg+4 >= argc) {
+	printf("Give four parameters for the layer: boundary, elements, relative thickness, ratio.\n");
+	return(21);
+      }
+      else if(abs(eg->layers) == MAXBOUNDARIES) {
+	printf("There can only be %d layers, sorry.\n",MAXBOUNDARIES);
+	return(22);
+      }
+      else {
+	eg->layerbounds[abs(eg->layers)] = atoi(argv[arg+1]);
+	eg->layernumber[abs(eg->layers)] = atoi(argv[arg+2]);
+	eg->layerthickness[abs(eg->layers)] = atof(argv[arg+3]);
+	eg->layerratios[abs(eg->layers)] = atof(argv[arg+4]);
+	eg->layerparents[abs(eg->layers)] = 0;
+	eg->layers--;
+      }
+    }
+
+    if(strcmp(argv[arg],"-3d") == 0) {
+      eg->dim = dim = 3;
+    }
+    if(strcmp(argv[arg],"-2d") == 0) {
+      eg->dim = dim = 2;
+    }
+    if(strcmp(argv[arg],"-1d") == 0) {
+      eg->dim = dim = 1;
+    }
+
+    if(strcmp(argv[arg],"-isoparam") == 0) {
+      eg->isoparam = TRUE;
+    }
+    if(strcmp(argv[arg],"-nobound") == 0) {
+      eg->saveboundaries = FALSE;
+    }
+    if(strcmp(argv[arg],"-vtuone") == 0) {
+      eg->vtuone = TRUE;
+    }
+    if(strcmp(argv[arg],"-nosave") == 0) {
+      eg->nosave = TRUE;
+    }
+    if(strcmp(argv[arg],"-nooverwrite") == 0) {
+      eg->nooverwrite = TRUE;
+    }
+    if(strcmp(argv[arg],"-timer") == 0) {
+      eg->timeron = TRUE;
+    }
+
+    if(strcmp(argv[arg],"-infofile") == 0) {
+      eg->timeron = TRUE;
+      if(arg+1 >= argc) {
+	printf("The output name is required as a parameter\n");
+	return(2);
+      }
+      else {
+	strcpy(eg->infofile,argv[arg+1]);
+      }
+    }
+    
+
+    /* The following keywords are not actively used */
+
+    if(strcmp(argv[arg],"-bcoffset") == 0) {
+      eg->bcoffset = atoi(argv[arg+1]);
+    }
+    if(strcmp(argv[arg],"-noelements") == 0) {
+      eg->elements3d = atoi(argv[arg+1]);
+    }
+    if(strcmp(argv[arg],"-nonodes") == 0) {
+      eg->nodes3d = atoi(argv[arg+1]);
+    }
+
+    if(strcmp(argv[arg],"-sidefind") == 0) {
+      eg->findsides = 0;
+      for(i=arg+1;i<argc && strncmp(argv[i],"-",1); i++) {
+	eg->sidebulk[i-1-arg] = atoi(argv[i]);
+	eg->findsides++;
+      }
+    } 
+    if(strcmp(argv[arg],"-findbound") == 0) {
+      eg->findsides = 0;
+      for(i=arg+1;i+1<argc && strncmp(argv[i],"-",1); i += 2) {
+	eg->sidebulk[i-1-arg] = atoi(argv[i]);
+	eg->sidebulk[i-arg] = atoi(argv[i+1]);
+	eg->findsides++;
+      }
+    } 
+  }
+
+  {
+    int badpoint;
+    char *ptr1,*ptr2;
+    ptr1 = strrchr(eg->filesout[0], '.');
+    if(ptr1) {
+      badpoint=FALSE;
+      ptr2 = strrchr(eg->filesout[0], '/');
+      if(ptr2 && ptr2 > ptr1) badpoint = TRUE;
+      if(!badpoint) *ptr1 = '\0';
+    }
+  }
+
+  printf("Output will be saved to file %s.\n",eg->filesout[0]);
+
+  return(0);
+}
+
+
 
 
 int LoadCommands(char *prefix,struct ElmergridType *eg,
-		 struct GridType *grid, int mode,const char *IOmethods[],
-		 int info) 
+		 struct GridType *grid, int mode,int info) 
 {
-  char filename[MAXFILESIZE],command[MAXLINESIZE],params[MAXLINESIZE],*cp;
+  char filename[MAXFILESIZE];
+  char command[MAXLINESIZE],params[MAXLINESIZE],*cp;
 
-  FILE *in = NULL;
-  int i,j;
+  FILE *in=NULL;
+  int i,j,iostat;
+
+  iodebug = FALSE;
 
   if( mode == 0) {  
     if (in = fopen("ELMERGRID_STARTINFO","r")) {
-      fscanf(in,"%s",filename);
+      iostat = fscanf(in,"%s",filename);
       fclose(in);
       printf("Using the file %s defined in ELMERGRID_STARTINFO\n",filename);
       if ((in = fopen(filename,"r")) == NULL) {
-	printf("LoadCommands: opening of the file '%s' wasn't successful!\n",filename);
+	printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
 	return(1);
       }    
       else printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -2842,10 +4401,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else 
       return(2);
   }
-  if(mode == 1) { 
+  else if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't successful!\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
       return(3);
     }    
     if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);    
@@ -2853,10 +4412,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   else if(mode == 2) {
     AddExtension(prefix,filename,"grd");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadCommands: opening of the file '%s' wasn't successful!\n",filename);
+      printf("LoadCommands: opening of the file '%s' wasn't successful !\n",filename);
       return(4);
     }    
-    if(info) printf("Loading ElmerGrid commands from file '%s'.\n",filename);
+    if(info) printf("\nLoading ElmerGrid commands from file '%s'.\n",filename);
   }
 
 
@@ -2864,7 +4423,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
   for(;;) {
 
     if(GetCommand(command,params,in)) {
-      if(0) printf("Reached the end of command file\n");
+      printf("Reached the end of command file\n");
       goto end;
     }    
 
@@ -2872,36 +4431,36 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
     if(mode <= 1) {
       if(strstr(command,"INPUT FILE")) {
-	sscanf(params,"%s", &(eg->filesin[0]));
+	sscanf(params,"%s",eg->filesin[0]);
       }
 
       else if(strstr(command,"OUTPUT FILE")) {
-	sscanf(params,"%s",&(eg->filesout[0]));
+	sscanf(params,"%s",eg->filesout[0]);
       }
 
       else if(strstr(command,"INPUT MODE")) {
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	
-	for(i=0;i<=MAXFORMATS;i++) {
-	  if(strstr(params,IOmethods[i])) {
+	for(i=0;i<=MAXINMETHODS;i++) {
+	  if(strstr(params,InMethods[i])) {
 	    eg->inmethod = i;
 	    break;
 	  }
 	}
-	if(i>MAXFORMATS) sscanf(params,"%d",&eg->inmethod);
+	if(i>MAXINMETHODS) sscanf(params,"%d",&eg->inmethod);
       }
 
       else if(strstr(command,"OUTPUT MODE")) {
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	
 	/* Type of output file (fewer options) */
-	for(i=1;i<=MAXFORMATS;i++) {
-	  if(strstr(params,IOmethods[i])) {
+	for(i=1;i<=MAXOUTMETHODS;i++) {
+	  if(strstr(params,OutMethods[i])) {
 	    eg->outmethod = i;
 	    break;
 	  }
 	}
-	if(i>MAXFORMATS) sscanf(params,"%d",&eg->outmethod);	
+	if(i>MAXOUTMETHODS) sscanf(params,"%d",&eg->outmethod);	
       }
     }    
     /* End of command file specific part */
@@ -2909,6 +4468,9 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
     if(strstr(command,"DECIMALS")) {
       sscanf(params,"%d",&eg->decimals);
+    }
+    else if(strstr(command,"BOUNDARY OFFSET")) {
+      sscanf(params,"%d",&eg->bcoffset);
     }
     else if(strstr(command,"TRIANGLES CRITICAL ANGLE")) {
       sscanf(params,"%le",&eg->triangleangle);
@@ -2925,6 +4487,14 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->unitemeshes = TRUE;      
     }
+    else if(strstr(command,"UNITENOOVERLAP")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) {
+	eg->unitemeshes = TRUE;      
+	eg->unitenooverlap = TRUE;      
+      }
+    }
+    
     else if(strstr(command,"ORDER NODES")) {
       eg->order = TRUE;
       if(eg->dim == 1) 
@@ -2977,7 +4547,18 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 	  sscanf(params,"%d%d%d",&eg->clone[0],&eg->clone[1],&eg->clone[2]);
       }
     }
-
+    else if(strstr(command,"MERGE")) {
+      eg->merge = TRUE;
+      sscanf(params,"%le",&eg->cmerge);
+    }
+    else if(strstr(command,"MIRROR")) {
+      if(eg->dim == 1) 
+	sscanf(params,"%d",&eg->mirror[0]);
+      else if(eg->dim == 2) 
+	sscanf(params,"%d%d",&eg->mirror[0],&eg->mirror[1]);
+      else if(eg->dim == 3) 
+	sscanf(params,"%d%d%d",&eg->mirror[0],&eg->mirror[1],&eg->mirror[2]);
+    }
     else if(strstr(command,"POLAR RADIUS")) {
       eg->polar = TRUE;
       sscanf(params,"%le",&eg->polarradius);
@@ -2994,61 +4575,42 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->increase = TRUE;      
     }
-    else if(strstr(command,"ADVANCED ELEMENTS")) {
-      printf("Loading advanced element definitions\n");
-      
-      for(i=0;i<MAXMATERIALS;i++) {
-	if(i>0) Getline(params,in);
-	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-	if(strstr(params,"END")) break;
-		
-	sscanf(params,"%d%d%d%d%d%d%d",
-	       &eg->advancedelem[7*i],&eg->advancedelem[7*i+1],&eg->advancedelem[7*i+2],
-	       &eg->advancedelem[7*i+3],&eg->advancedelem[7*i+4],&eg->advancedelem[7*i+5],
-	       &eg->advancedelem[7*i+6]);
-      }  
-      eg->advancedmat = i;
-      printf("Found %d definitions for advanced elements.\n",i);
-    }
-    else if(strstr(command,"POWER ELEMENTS")) {
-      printf("Loading p-type element definitions\n");
-      
-      for(i=0;i<MAXMATERIALS;i++) {
-	if(i>0) Getline(params,in);
-	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-	if(strstr(params,"END")) break;
-	sscanf(params,"%d%d%d",
-	       &eg->pelemmap[3*i],&eg->pelemmap[3*i+1],&eg->pelemmap[3*i+2]);
-      }  
-      eg->pelems = i;
-      printf("Found %d definitions for p-elements.\n",i);
-    }
-    else if(strstr(command,"BUBBLE ELEMENTS")) {
-      printf("Loading bubble element definitions\n");
-      
-      for(i=0;i<MAXMATERIALS;i++) {
-	if(i>0) Getline(params,in);
-	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-	if(strstr(params,"END")) break;
-	sscanf(params,"%d%d%d",
-	       &eg->belemmap[3*i],&eg->belemmap[3*i+1],&eg->belemmap[3*i+2]);
-      }  
-      eg->belems = i;
-      printf("Found %d definitions for bubble elements.\n",i);
-    }
     else if(strstr(command,"METIS OPTION")) {
-#if HAVE_METIS
+#if USE_METIS
       sscanf(params,"%d",&eg->partopt);
 #else
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif
     }
     else if(strstr(command,"METIS")) {
-#if HAVE_METIS
+#if USE_METIS
       sscanf(params,"%d",&eg->metis);
 #else
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif
+    }
+    else if(strstr(command,"METISKWAY")) {
+#if USE_METIS
+      sscanf(params,"%d",&eg->metis);
+      eg->partopt = 3;
+#else
+      printf("This version of ElmerGrid was compiled without Metis library!\n");
+#endif
+    }
+    else if(strstr(command,"METISREC")) {
+#if USE_METIS
+      sscanf(params,"%d",&eg->metis);
+      eg->partopt = 2;
+#else
+      printf("This version of ElmerGrid was compiled without Metis library!\n");
+#endif
+    }
+    else if(strstr(command,"PARTITION DUAL")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->partdual = TRUE;      
+    }
+    else if(strstr(command,"PARTJOIN")) {
+      sscanf(params,"%d",&eg->partjoin);
     }
     else if(strstr(command,"PARTITION ORDER")) {
       eg->partorder = 1;
@@ -3056,7 +4618,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       if(eg->dim == 3) sscanf(params,"%le%le%le",&eg->partcorder[0],
 			      &eg->partcorder[1],&eg->partcorder[2]);      
     }
-    else if(strstr(command,"PARTITION")) {
+    else if(strstr(command,"PARTITION") || strstr(command,"PARTCYL") || strstr(command,"PARTCELL")) {
       if(eg->dim == 2) sscanf(params,"%d%d",&eg->partdim[0],&eg->partdim[1]);
       if(eg->dim == 3) sscanf(params,"%d%d%d",&eg->partdim[0],&eg->partdim[1],&eg->partdim[2]);
       eg->partitions = 1;
@@ -3064,6 +4626,8 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 	if(eg->partdim[i] < 1) eg->partdim[i] = 1;
 	eg->partitions *= eg->partdim[i];
       }
+      if( strstr(command,"PARTCYL") ) eg->partopt = 3;
+      if( strstr(command,"PARTCCELL") ) eg->partopt = 2;
     }
     else if(strstr(command,"PERIODIC")) {
       if(eg->dim == 2) sscanf(params,"%d%d",&eg->periodicdim[0],&eg->periodicdim[1]);
@@ -3072,14 +4636,34 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     }
     else if(strstr(command,"HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = TRUE;      
+      if(strstr(params,"TRUE")) eg->parthalo[1] = TRUE;      
+    }
+    else if(strstr(command,"BOUNDARY HALO")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->parthalo[2] = TRUE;
+    }
+    else if(strstr(command,"EXTRUDED HALO")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->parthalo[3] = TRUE;
+    }
+    else if(strstr(command,"GREEDY HALO")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->parthalo[4] = TRUE;
+    }    
+    else if(strstr(command,"PARTBW")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->partbw = TRUE;      
+    }
+    else if(strstr(command,"PARTHYPRE")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->parthypre = TRUE;      
     }
     else if(strstr(command,"INDIRECT")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->partitionindirect = TRUE;      
     }
     else if(strstr(command,"BOUNDARY TYPE MAPPINGS")) {
-      for(i=0;i<MAXMATERIALS;i++) {
+      for(i=0;i<MAXMAPPINGS;i++) {
 	if(i>0) Getline(params,in);
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	if(strstr(params,"END")) break;
@@ -3090,7 +4674,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       eg->sidemappings = i;
     }
     else if(strstr(command,"BULK TYPE MAPPINGS")) {
-      for(i=0;i<MAXMATERIALS;i++) {
+      for(i=0;i<MAXMAPPINGS;i++) {
 	if(i>0) Getline(params,in);
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	if(strstr(params,"END")) break;
@@ -3100,6 +4684,9 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       printf("Found %d bulk type mappings\n",i);
       eg->bulkmappings = i;
     }
+    else if(strstr(command,"COORDINATE MAPPING")) {
+      sscanf(params,"%d%d%d",&eg->coordinatemap[0],&eg->coordinatemap[1],&eg->coordinatemap[2]);
+    }	
     else if(strstr(command,"BOUNDARY BOUNDARY")) {
       for(i=0;i<MAXBOUNDARIES;i++) {
 	if(i>0) Getline(params,in);
@@ -3172,9 +4759,17 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->removelowdim = TRUE; 
     }
+    else if(strstr(command,"REMOVE INTERNAL BOUNDARIES")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->removeintbcs = TRUE; 
+    }
     else if(strstr(command,"REMOVE UNUSED NODES")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->removeunused = TRUE; 
+    }
+    else if(strstr(command,"NO MESH NAMES")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->usenames = FALSE; 
     }
     else if(strstr(command,"REORDER MATERIAL")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
@@ -3195,21 +4790,40 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->saveboundaries = FALSE;
     }
+    else if(strstr(command,"LAYERED BOUNDARIES")) {
+      for(i=0;i<MAXLINESIZE;i++) params[i] = toupper(params[i]);
+      if(strstr(params,"TRUE")) grid->layeredbc = 1;
+      if(strstr(params,"FALSE")) grid->layeredbc = 0;
+    }
     else if(strstr(command,"EXTRUDED")) {
       grid->dimension = 3;
 
       if(strstr(command,"EXTRUDED DIVISIONS")) {
 	sscanf(params,"%d",&grid->zcells);		
       }
+      if(strstr(command,"EXTRUDED BC OFFSET")) {
+	sscanf(params,"%d",&grid->layerbcoffset);		
+      }
       else if(strstr(command,"EXTRUDED LIMITS")) {
 	cp = params;
-	for(i=0;i<=grid->zcells;i++) grid->z[i] = next_real(&cp);
+	for(i=0;i<=grid->zcells;i++ ) { 
+	  grid->z[i] = next_real(&cp);
+	  if(i > 0 && grid->z[i] < grid->z[i-1]) {
+	    printf("Extruded limits %d: %12.6le %12.6le\n",i,grid->z[i],grid->z[i-1]);
+	    bigerror("Values for limits should be a growing series, existing\n");
+	  }
+	}
       }
+      else if(strstr(command,"EXTRUDED SIZES")) {
+	cp = params;
+	for(i=1;i<=grid->zcells;i++) grid->z[i] = next_real(&cp);
+	for(i=1;i<=grid->zcells;i++) grid->z[i] = grid->z[i-1] + grid->z[i];
+      }     
       else if(strstr(command,"EXTRUDED ELEMENTS")) {
 	cp = params;
 	for(i=1;i<=grid->zcells;i++) grid->zelems[i] = next_int(&cp);
 	grid->autoratio = FALSE;    
-      }
+      } 
       else if(strstr(command,"EXTRUDED RATIOS")) {
 	cp = params;
 	for(i=1;i<=grid->zcells;i++) grid->zexpand[i] = next_real(&cp);
@@ -3225,12 +4839,863 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 		 &grid->zfirstmaterial[i],&grid->zlastmaterial[i],&grid->zmaterial[i]); 
 	}
       }
+      else if(strstr(command,"EXTRUDED MAX MATERIAL")) {
+	sscanf(params,"%d",&grid->maxmaterial);		
+      }
+      else if(strstr(command,"EXTRUDED MATERIAL MAPPINGS")) {
+	grid->zmaterialmap = Imatrix(1,grid->zcells,1,grid->maxmaterial);
+	for(i=1;i<=grid->zcells;i++) {
+	  if(i>1) Getline(params,in); 
+	  cp = params;
+	  for(j=1;j<=grid->maxmaterial;j++)
+	    grid->zmaterialmap[i][j] = next_int(&cp);
+	}
+	grid->zmaterialmapexists = TRUE;
+      }
+      else if(strstr(command,"EXTRUDED HELICITY")) {
+	sscanf(params,"%le",&grid->zhelicity);			
+	grid->zhelicityexists = TRUE;
+      }
 
     }
   }
-  
+
 end:
-  if(0) printf("Read commands from a file\n");
+  printf("Read commands from a file\n");
+
+  return(0);
+}
+
+
+
+
+
+static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
+			  int sideelem,int sideelemtype,int *sideind)
+{
+  int i,j,sideelemtype2,elemind,parent,normal,elemtype;
+  int elemsides,side,sidenodes,nohits,hit,hit1,hit2;
+  int sideind2[MAXNODESD1];
+  int debug;
+  
+  hit = FALSE;
+  elemsides = 0;
+  elemtype = 0;
+  hit1 = FALSE;
+  hit2 = FALSE;
+
+  debug = FALSE;
+  
+  for(parent=1;parent<=2;parent++) {
+    if(parent == 1) 
+      elemind = bound->parent[sideelem];
+    else
+      elemind = bound->parent2[sideelem];
+    
+    if(elemind > 0) {
+      elemtype = data->elementtypes[elemind];
+      elemsides = elemtype / 100;
+
+      if(elemsides == 8) elemsides = 6;
+      else if(elemsides == 7) elemsides = 5;
+      else if(elemsides == 6) elemsides = 5;
+      else if(elemsides == 5) elemsides = 4;
+      
+      for(normal=1;normal >= -1;normal -= 2) {
+
+	for(side=0;side<elemsides;side++) {
+
+	  if(debug) printf("elem = %d %d %d %d\n",elemind,elemsides,normal,side);
+
+	  GetElementSide(elemind,side,normal,data,&sideind2[0],&sideelemtype2);
+	  
+	  if(sideelemtype2 < 300 && sideelemtype > 300) break;	
+	  if(sideelemtype2 < 200 && sideelemtype > 200) break;		
+	  if(sideelemtype != sideelemtype2) continue;
+
+	  sidenodes = sideelemtype / 100;
+
+	  for(j=0;j<sidenodes;j++) {
+	    if(debug) printf("sidenode: %d %d %d\n",j,sideind[j],sideind2[j]);
+
+	    hit = TRUE;
+	    for(i=0;i<sidenodes;i++) 
+	      if(sideind[(i+j)%sidenodes] != sideind2[i]) hit = FALSE;
+	    
+	    if(hit == TRUE) {
+	      if(parent == 1) {
+		hit1 = TRUE;
+		bound->side[sideelem] = side;
+		bound->normal[sideelem] = normal;
+	      }
+	      else {
+		hit2 = TRUE;
+		bound->side2[sideelem] = side;	      
+	      }
+	      goto skip;
+	    }
+	  }
+	}
+      }
+
+      
+      /* this finding of sides does not guarantee that normals are oriented correctly */
+      normal = 1;
+      hit = FALSE;
+ 
+      for(side=0;;side++) {
+
+	if(0) printf("side = %d\n",side);
+
+	GetElementSide(elemind,side,normal,data,&sideind2[0],&sideelemtype2);
+
+	if(sideelemtype2 == 0 ) break;
+	if(sideelemtype2 < 300 && sideelemtype > 300) break;	
+	if(sideelemtype2 < 200 && sideelemtype > 200) break;		
+	if(sideelemtype != sideelemtype2) continue;
+		
+	sidenodes = sideelemtype % 100;
+
+	nohits = 0;
+	for(j=0;j<sidenodes;j++) 
+	  for(i=0;i<sidenodes;i++) 
+	    if(sideind[i] == sideind2[j]) nohits++;
+	if(nohits == sidenodes) {
+	  hit = TRUE;
+	  if(parent == 1) {
+	    hit1 = TRUE;
+	    bound->side[sideelem] = side;
+	  }
+	  else {
+	    hit2 = TRUE;
+	    bound->side2[sideelem] = side;	      
+	  }
+	  goto skip;
+	}
+	
+      }
+
+    skip:  
+      if(!hit) {
+	printf("FindParentSide: cannot locate BC element in parent %d: %d\n",parent,elemind);
+	printf("BC elem %d of type %d with corner indexes: ",sideelem,sideelemtype);
+	for(i=0;i<sideelemtype/100;i++)
+	  printf(" %d ",sideind[i]);
+	printf("\n");
+
+	printf("Bulk elem %d of type %d with corner indexes: ",elemind,elemtype);
+	j = elemtype/100;
+	if( j >= 5 && j<=7 ) j = j-1;
+	for(i=0;i<j;i++)
+	  printf(" %d ",data->topology[elemind][i]);
+	printf("\n");             
+      }
+    }
+  }
+
+  if(hit1 || hit2) 
+    return(0);
+  else
+    return(1);
+}
+
+
+static int Getnamerow(char *line,FILE *io,int upper) 
+{
+  int i,isend;
+  char *charend;
+
+
+  charend = fgets(line,MAXLINESIZE,io);
+  isend = (charend == NULL);
+
+  if(isend) 
+    return(1);
+  else
+    return(0);
+}
+
+
+
+int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
+		   char *prefix,int nonames, int info)
+/* This procedure reads the mesh assuming ElmerSolver format.
+   */
+{
+  int noknots,noelements,nosides,maxelemtype,maxnodes,nonodes;
+  int sideind[MAXNODESD1],tottypes,elementtype;
+  int i,j,k,l,dummyint,cdstat,fail;
+  int falseparents,noparents,bctopocreated;
+  int activeperm,activeelemperm,mini,maxi,minelem,maxelem,p1,p2;
+  int *nodeperm,*elemperm,*invperm,*invelemperm;
+  int iostat,noelements0;
+  FILE *in;
+  char line[MAXLINESIZE],line2[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
+  char *ptr1,*ptr2;
+
+
+  sprintf(directoryname,"%s",prefix);
+  cdstat = chdir(directoryname);
+
+  if(info) {
+    if(cdstat) 
+      printf("Loading mesh in ElmerSolver format from root directory.\n");
+    else
+      printf("Loading mesh in ElmerSolver format from directory %s.\n",directoryname);
+  }
+
+  InitializeKnots(data);
+
+
+  sprintf(filename,"%s","mesh.header");
+  if ((in = fopen(filename,"r")) == NULL) {
+    printf("LoadElmerInput: The opening of the header-file %s failed!\n",
+	   filename);
+    return(1);
+  }
+  else 
+    printf("Loading header from %s\n",filename);
+
+  GETLINE;
+  sscanf(line,"%d %d %d",&noknots,&noelements,&nosides);
+  GETLINE;
+  sscanf(line,"%d",&tottypes);
+
+  maxelemtype = 0;
+  maxnodes = 0;
+  for(i=1;i<=tottypes;i++) {   
+    GETLINE;
+    sscanf(line,"%d",&dummyint);
+    maxelemtype = MAX( dummyint, maxelemtype );
+    j = maxelemtype % 100;
+    maxnodes = MAX( j, maxnodes );
+  }
+  printf("Maximum elementtype index is: %d\n",maxelemtype);
+  printf("Maximum number of nodes in element is: %d\n",maxnodes);
+  fclose(in);
+
+  data->dim = GetElementDimension(maxelemtype);
+
+  data->maxnodes = maxnodes;
+  data->noknots = noknots;
+  data->noelements = noelements0 = noelements;
+
+
+  if(info) printf("Allocating for %d knots and %d elements.\n",
+		  noknots,noelements);
+  AllocateKnots(data);
+
+
+  sprintf(filename,"%s","mesh.nodes");
+  if ((in = fopen(filename,"r")) == NULL) {
+    if(info) printf("LoadElmerInput: The opening of the nodes-file %s failed!\n",
+		    filename);
+    bigerror("Cannot continue without nodes file!\n");
+  }
+  else 
+    printf("Loading %d Elmer nodes from %s\n",noknots,filename);
+
+  activeperm = FALSE;
+  for(i=1; i <= noknots; i++) {
+    GETLINE;
+    sscanf(line,"%d %d %le %le %le",
+	   &j, &dummyint, &(data->x[i]),&(data->y[i]),&(data->z[i]));
+    if(j != i && !activeperm) {
+      printf("LoadElmerInput: The node number (%d) at node %d is not compact, creating permutation\n",j,i);
+      activeperm = TRUE;
+      nodeperm = Ivector(1,noknots);
+      for(k=1;k<i;k++) nodeperm[k] = k;
+    }
+    if(activeperm) nodeperm[i] = j;
+  }
+  fclose(in);
+
+
+  /* Create inverse permutation for nodes */
+  if(activeperm) {
+    for(i=1;i<=noknots;i++) {
+      if(i==1) {
+	mini = nodeperm[i];
+	maxi = nodeperm[i];
+      }
+      else {
+	mini = MIN(nodeperm[i],mini);
+	maxi = MAX(nodeperm[i],maxi);
+      }
+    }
+    if(info) printf("LoadElmerInput: Node index range is: [%d %d]\n",mini,maxi);
+    invperm = Ivector(mini,maxi);
+    for(i=mini;i<=maxi;i++)
+      invperm[i] = -1;
+    for(i=1;i<=noknots;i++) {
+      j = nodeperm[i];
+      if( invperm[j] > 0 ) 
+	printf("LoadElmerInput: Node %d is redundant which may be problematic!\n",j);      
+      else
+	invperm[j] = i;
+    }
+  }
+  else {
+    mini = 1;
+    maxi = noknots;
+  }
+  
+  
+  activeelemperm = FALSE;
+  sprintf(filename,"%s","mesh.elements");
+  if ((in = fopen(filename,"r")) == NULL) {
+    printf("LoadElmerInput: The opening of the element-file %s failed!\n",
+	   filename);
+    bigerror("Cannot continue without element file!\n");
+  }
+  else 
+    if(info) printf("Loading %d bulk elements from %s\n",noelements,filename);
+  
+  for(i=1; i <= noelements; i++) {
+    iostat = fscanf(in,"%d",&j);
+    if(iostat <= 0 ) {
+      printf("LoadElmerInput: Failed reading element line %d, reducing size of element table to %d!\n",i,i-1);
+      data->noelements = noelements = i-1;
+      break;
+    }
+    
+    if(i != j && !activeelemperm) {
+      printf("LoadElmerInput: The element numbering (%d) at element %d is not compact, creating permutation\n",j,i);
+      activeelemperm = TRUE;
+      elemperm = Ivector(1,noelements0);
+      for(k=1; k < i; k++)
+	elemperm[k] = k;
+    }
+    if( activeelemperm ) elemperm[i] = j;
+    iostat = fscanf(in,"%d %d",&(data->material[i]),&elementtype);
+    if( iostat < 2 ) {
+      printf("LoadElmerInput: Failed reading definitions for bulk element %d\n",j);
+      bigerror("Cannot continue without this data!\n");
+    }
+    if(elementtype > maxelemtype ) {
+      printf("Invalid bulk elementtype: %d\n",elementtype);
+      bigerror("Cannot continue with invalid elements");
+    }
+    data->elementtypes[i] = elementtype;
+    nonodes = elementtype % 100;
+    if( nonodes > maxnodes ) {
+      printf("Number of nodes %d in element %d is greater than allocated maximum %d\n",nonodes,j,maxnodes);
+      bigerror("Cannot continue with invalid elements");
+    }
+    for(k=0;k<nonodes;k++) {
+      iostat = fscanf(in,"%d",&l);
+      if( l < mini || l > maxi ) {
+	printf("Node %d in element %d is out of range: %d\n",k+1,j,l);
+	bigerror("Cannot continue with this node numbering");
+      }
+      if( activeperm )
+	data->topology[i][k] = invperm[l];
+      else
+	data->topology[i][k] = l;
+    }
+  }
+  fclose(in);
+ 
+
+  /* Create inverse permutation for bulk elements */
+  if(activeelemperm) {
+    for(i=1;i<=noelements;i++) {
+      if(i==1) {
+	minelem = elemperm[i];
+	maxelem = elemperm[i];
+      }
+      else {
+	minelem = MIN(elemperm[i],minelem);
+	maxelem = MAX(elemperm[i],maxelem);
+      }
+    }
+    if(info) printf("LoadElmerInput: Element index range is: [%d %d]\n",minelem,maxelem);
+    invelemperm = Ivector(minelem,maxelem);
+    for(i=minelem;i<=maxelem;i++)
+      invelemperm[i] = -1;
+    for(i=1;i<=noelements;i++) {
+      j = elemperm[i];
+      if( invelemperm[j] > 0 )
+	printf("LoadElmerInput: Element %d is redundant which may be problematic!\n",j);      
+      else	
+	invelemperm[j] = i;
+    }
+  }
+  else {
+    minelem = 1;
+    maxelem = noelements;
+  }
+
+
+
+  falseparents = 0;
+  noparents = 0;
+  bctopocreated = FALSE;
+
+  sprintf(filename,"%s","mesh.boundary");
+  if ((in = fopen(filename,"r")) == NULL) {
+    printf("LoadElmerInput: The opening of the boundary-file %s failed!\n",
+	   filename);
+    return(4);
+  }
+  else {
+    if(info) printf("Loading %d boundary elements from %s\n",nosides,filename);
+  }
+
+  if( nosides > 0 ) {
+    AllocateBoundary(bound,nosides);
+    data->noboundaries = 1;
+  };
+
+  i = 0;
+  for(k=1; k <= nosides; k++) {
+    
+    iostat = fscanf(in,"%d",&dummyint);
+    if( iostat < 1 ) {
+      printf("LoadElmerInput: Failed reading boundary element line %d, reducing size of element table to %d!\n",k,i);
+      bound->nosides = nosides = i;
+      break;
+    }      
+    i++;
+
+    iostat = fscanf(in,"%d %d %d %d",&(bound->types[i]),&p1,&p2,&elementtype);
+    if(iostat < 4 ) {
+      printf("LoadElmerInput: Failed reading definitions for boundary element %d\n",k);
+      bigerror("Cannot continue without this data!\n"); 
+    }    
+    if( p1 > 0 && (p1 < minelem || p1 > maxelem ) ) {
+      printf("Parent in boundary element %d out of range: %d\n",k,p1);    
+      bigerror("Cannot continue with bad parents");
+    }
+    if( p2 > 0 && (p2 < minelem || p2 > maxelem ) ) {
+      printf("Parent in boundary element %d out of range: %d\n",k,p2);
+      bigerror("Cannot continue with bad parents");
+    }
+      
+    if(activeelemperm) {
+      if( p1 > 0 ) p1 = invelemperm[p1];
+      if( p2 > 0 ) p2 = invelemperm[p2];
+    }
+    
+    if(elementtype > maxelemtype ) {
+      printf("Invalid boundary elementtype: %d\n",elementtype);
+      bigerror("Cannot continue with invalid elements");
+    }
+    nonodes = elementtype % 100;
+    if( nonodes > maxnodes ) {
+      printf("Number of nodes %d in side element %d is greater than allocated maximum %d\n",nonodes,dummyint,maxnodes);
+      bigerror("Cannot continue with invalid elements");
+    }
+    
+    for(j=0;j< nonodes ;j++) { 
+      iostat = fscanf(in,"%d",&l);
+      if(activeperm) 
+	sideind[j] = invperm[l];
+      else
+	sideind[j] = l;
+    }
+          
+    if( p1 == 0 && p2 != 0 ) {
+      bound->parent[i] = p2;
+      bound->parent2[i] = p1;
+    }
+    else {
+      bound->parent[i] = p1;
+      bound->parent2[i] = p2;
+    }
+    
+    if(bound->parent[i] > 0) {
+      fail = FindParentSide(data,bound,i,elementtype,sideind);
+      if(fail) falseparents++;      
+    }
+    else {
+#if 0
+      printf("Parents not specified for side %d with inds: ",dummyint);
+      for(j=0;j< elementtype%100 ;j++) 
+	printf("%d ",sideind[j]);
+      printf("and type: %d\n",bound->types[i]);   
+#endif
+      if( !bctopocreated ) {
+	bound->elementtypes = Ivector(1,nosides);
+	for(j=1;j<=nosides;j++)
+	  bound->elementtypes[j] = 0;
+	bound->topology = Imatrix(1,nosides,0,data->maxnodes-1);
+	bctopocreated = TRUE;
+      }
+      for(j=0;j< elementtype%100 ;j++) 
+	bound->topology[i][j] = sideind[j];
+      bound->elementtypes[i] = elementtype;
+
+      printf("elementtype = %d %d %d\n",i,elementtype,sideind[0]);
+      noparents++;
+    }
+  }
+  
+  if( falseparents ) {
+    printf("There seems to be %d false parents in the mesh\n",falseparents);
+  }
+  if( noparents ) {
+    printf("There seems to be %d bc elements without parents in the mesh\n",noparents);
+  }
+
+  bound->nosides = i;
+  fclose(in); 
+  
+  /* Save node permutation for later use */
+  data->nodepermexist = activeperm;
+  if(activeperm) {
+    data->nodeperm = nodeperm;
+    free_Ivector(invperm,mini,maxi);
+  }
+  
+  /* Element permutation is irrelevant probably for practical purposes (?) and hence it is forgotten. */
+  if(activeelemperm) {
+    free_Ivector(invelemperm,minelem,maxelem);
+    free_Ivector(elemperm,1,noelements0);
+  }
+  
+
+
+  sprintf(filename,"%s","mesh.names");
+  if (in = fopen(filename,"r") ) {
+    int isbody,started,nameproblem;
+    
+    isbody = TRUE;
+    nameproblem = FALSE;
+
+    if( nonames ) {
+      printf("Ignoring > mesh.names < because it was explicitly requested!\n");
+      goto namesend;
+    }
+
+    if(info) printf("Loading names for mesh parts from file %s\n",filename);
+
+    for(;;) {
+      if(Getnamerow(line,in,FALSE)) goto namesend;
+
+      if(strstr(line,"names for boundaries")) {
+	if(info) printf("Reading names for mesh boundaries\n");
+	isbody = FALSE;
+	continue;
+      }
+      else if(strstr(line,"names for bodies")) {
+	if(info) printf("Reading names for mesh bodies\n");	
+	isbody = TRUE;
+	continue;
+      }
+
+      /* get position for entity name */
+      ptr1 = strchr( line,'$');
+      if(!ptr1) continue;
+      ptr1++;
+
+      /* get position for entity index and read it */
+      ptr2 = strchr( line,'=');
+      if(!ptr2) continue;
+      ptr2++;      
+      j = next_int(&ptr2);
+
+      /* Initialize the entity name by white spaces */
+      for(i=0;i<MAXLINESIZE;i++) 
+	line2[i] = ' ';
+
+      started = FALSE;
+      k = 0;
+      for(i=0;i<MAXLINESIZE;i++) {
+	if( ptr1[0] == '=' ) {
+	  /* remove possible trailing white space */
+	  if(line2[k-1] == ' ') k--;	    
+	  line2[k] = '\0';
+	  break;
+	}
+	if(started || ptr1[0] != ' ') {
+	  /* remove possible leading white space */
+	  line2[k] = ptr1[0];
+	  started = TRUE;
+	  k++;
+	}
+	ptr1++;
+      }
+     
+      /* Copy the entityname to mesh structure */
+      if( isbody ) {
+	if(j < 0 || j > MAXBODIES ) {
+	  printf("Cannot treat names for body %d\n",j);
+	  nameproblem = TRUE;
+	}
+	else {
+	  strcpy(data->bodyname[j],line2);	
+	  data->bodynamesexist = TRUE;
+	}
+      }
+      else {
+	if(j < 0 || j > MAXBOUNDARIES ) {
+	  printf("Cannot treat names for boundary %d\n",j);
+	  nameproblem = TRUE;
+	}
+	else {
+	  strcpy(data->boundaryname[j],line2);	
+	  data->boundarynamesexist = TRUE;
+	}
+      }
+    }
+    namesend:
+
+    if( nameproblem ) {
+      data->boundarynamesexist = FALSE;
+      data->bodynamesexist = FALSE;
+      printf("Warning: omitting use of names because the indexes are beyond range, code some more...\n");
+    }
+  }
+
+
+  if(!cdstat) cdstat = chdir("..");
+
+  if(info) printf("Elmer mesh loaded successfully\n");
+
+  return(0);
+}
+
+
+int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
+		   char *prefix,int decimals,int nooverwrite, int info)
+/* Saves the mesh in a form that may be used as input 
+   in Elmer calculations. 
+   */
+{
+  int noknots,noelements,material,sumsides,elemtype,fail,cdstat;
+  int sideelemtype,conelemtype,nodesd1,nodesd2,newtype;
+  int i,j,k,l,bulktypes[MAXELEMENTTYPE+1],sidetypes[MAXELEMENTTYPE+1];
+  int alltypes[MAXELEMENTTYPE+1],tottypes;
+  int ind[MAXNODESD1],ind2[MAXNODESD1],usedbody[MAXBODIES],usedbc[MAXBCS];
+  FILE *out;
+  char filename[MAXFILESIZE], outstyle[MAXFILESIZE];
+  char directoryname[MAXFILESIZE];
+
+  if(!data->created) {
+    printf("You tried to save points that were never created.\n");
+    return(1);
+  }
+
+  noelements = data->noelements;
+  noknots = data->noknots;
+  sumsides = 0;
+
+  for(i=0;i<=MAXELEMENTTYPE;i++)
+    alltypes[i] = bulktypes[i] = sidetypes[i] = 0;
+
+  for(i=0;i<MAXBODIES;i++)
+    usedbody[i] = 0;
+  for(i=0;i<MAXBCS;i++)
+    usedbc[i] = 0;
+
+  sprintf(directoryname,"%s",prefix);
+
+  if(info) printf("Saving mesh in ElmerSolver format to directory %s.\n",
+		  directoryname);
+
+  fail = chdir(directoryname);
+  if(fail) {
+#ifdef MINGW32
+    fail = mkdir(directoryname);
+#else
+    fail = mkdir(directoryname,0750);
+#endif
+    if(fail) {
+      printf("Could not create a result directory!\n");
+      return(1);
+    }
+    else {
+      cdstat = chdir(directoryname);
+    }
+  }
+  else {
+    if(info) printf("Reusing an existing directory\n");
+    if(nooverwrite) {
+      if (out = fopen("mesh.header", "r")) {
+	printf("Mesh seems to already exist, writing is cancelled!\n"); 
+	return(1);
+      }
+    }
+  }
+
+  
+  sprintf(filename,"%s","mesh.nodes");
+  out = fopen(filename,"w");
+
+  if(info) printf("Saving %d coordinates to %s.\n",noknots,filename);  
+  if(out == NULL) {
+    printf("opening of file was not successful\n");
+    return(2);
+  }
+
+  sprintf(outstyle,"%%d %%d %%.%dg %%.%dg %%.%dg\n",decimals,decimals,decimals);
+  for(i=1; i <= noknots; i++) 
+    fprintf(out,outstyle,i,-1,data->x[i],data->y[i],data->z[i]);    
+
+  fclose(out);
+
+  sprintf(filename,"%s","mesh.elements");
+  out = fopen(filename,"w");
+  if(info) printf("Saving %d element topologies to %s.\n",noelements,filename);
+  if(out == NULL) {
+    printf("opening of file was not successful\n");
+    return(3);
+  }
+
+  for(i=1;i<=noelements;i++) {
+    elemtype = data->elementtypes[i];
+    material = data->material[i];
+
+    if(material < MAXBODIES) usedbody[material] += 1;
+    fprintf(out,"%d %d %d",i,material,elemtype);
+
+    bulktypes[elemtype] += 1;
+    nodesd2 = elemtype%100;
+    for(j=0;j < nodesd2;j++) 
+      fprintf(out," %d",data->topology[i][j]);
+    fprintf(out,"\n");          
+  }
+  fclose(out);
+
+
+  sprintf(filename,"%s","mesh.boundary");
+  out = fopen(filename,"w");
+  if(info) printf("Saving boundary elements to %s.\n",filename);
+  if(out == NULL) {
+    printf("opening of file was not successful\n");
+    return(4);
+  }
+
+  sumsides = 0;
+
+
+  /* Save normal boundaries */
+  for(j=0;j < MAXBOUNDARIES;j++) {
+    if(bound[j].created == FALSE) continue;
+    if(bound[j].nosides == 0) continue;
+    
+    for(i=1; i <= bound[j].nosides; i++) {
+      GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
+      sumsides++;
+      
+      fprintf(out,"%d %d %d %d ",
+	      sumsides,bound[j].types[i],bound[j].parent[i],bound[j].parent2[i]);
+      fprintf(out,"%d",sideelemtype);
+      
+      if(bound[j].types[i] < MAXBCS) usedbc[bound[j].types[i]] += 1;
+
+      sidetypes[sideelemtype] += 1;
+      nodesd1 = sideelemtype%100;
+      for(l=0;l<nodesd1;l++)
+	fprintf(out," %d",ind[l]);
+      fprintf(out,"\n");
+    }
+  }
+
+  newtype = 0;
+  for(j=0;j < MAXBOUNDARIES;j++) {
+    if(bound[j].created == FALSE) continue;
+    for(i=1; i <= bound[j].nosides; i++) 
+      newtype = MAX(newtype, bound[j].types[i]);
+  }  
+  fclose(out);
+
+  tottypes = 0;
+  for(i=0;i<=MAXELEMENTTYPE;i++) {
+    alltypes[i] = bulktypes[i] + sidetypes[i];
+    if(alltypes[i]) tottypes++;
+  }
+
+  sprintf(filename,"%s","mesh.header");
+  out = fopen(filename,"w");
+  if(info) printf("Saving header info to %s.\n",filename);  
+  if(out == NULL) {
+    printf("opening of file was not successful\n");
+    return(4);
+  }
+  fprintf(out,"%-6d %-6d %-6d\n",
+	  noknots,noelements,sumsides);
+  fprintf(out,"%-6d\n",tottypes);
+  for(i=0;i<=MAXELEMENTTYPE;i++) {
+    if(alltypes[i]) 
+      fprintf(out,"%-6d %-6d\n",i,bulktypes[i]+sidetypes[i]);
+  }
+  fclose(out);
+
+
+  if(data->boundarynamesexist || data->bodynamesexist) {
+    sprintf(filename,"%s","mesh.names");
+    out = fopen(filename,"w");
+    if(info) printf("Saving names info to %s.\n",filename);  
+    if(out == NULL) {
+      printf("opening of file was not successful\n");
+      return(5);
+    }
+    
+    if(data->bodynamesexist) {
+      fprintf(out,"! ----- names for bodies -----\n");
+      for(i=1;i<MAXBODIES;i++) 
+	if(usedbody[i]) fprintf(out,"$ %s = %d\n",data->bodyname[i],i);
+    }     
+    if(data->boundarynamesexist) {
+      fprintf(out,"! ----- names for boundaries -----\n");
+      for(i=1;i<MAXBCS;i++) 
+	if(usedbc[i]) fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
+    }
+    fclose(out);
+
+    sprintf(filename,"%s","entities.sif");
+    out = fopen(filename,"w");
+    if(info) printf("Saving entities info to %s.\n",filename);  
+    if(out == NULL) {
+      printf("opening of file was not successful\n");
+      return(5);
+    }
+
+    if(data->bodynamesexist) {
+      fprintf(out,"!------ Skeleton for body section -----\n");
+      j = 0;
+      for(i=1;i<MAXBODIES;i++) {
+	if(usedbody[i]) {
+	  j = j + 1;
+	  fprintf(out,"Body %d\n",j);
+	  fprintf(out,"  Name = %s\n",data->bodyname[i]);
+	  fprintf(out,"End\n\n");
+	}
+      }
+    }
+
+    if(data->boundarynamesexist) {
+      fprintf(out,"!------ Skeleton for boundary section -----\n");
+      j = 0;
+      for(i=1;i<MAXBCS;i++) {
+	if(usedbc[i]) {
+	  j = j + 1;
+	  fprintf(out,"Boundary Condition %d\n",j);
+	  fprintf(out,"  Name = %s\n",data->boundaryname[i]);
+	  fprintf(out,"End\n\n");
+	}
+      }
+    }
+    fclose(out);
+  }
+  
+  if(data->nodepermexist) {
+    sprintf(filename,"%s","mesh.nodeperm");
+    out = fopen(filename,"w");
+
+    if(info) printf("Saving initial node permutation to %s.\n",filename);  
+    if(out == NULL) {
+      printf("opening of file was not successful\n");
+      return(3);
+    }
+    for(i=1; i <= noknots; i++) 
+      fprintf(out,"%d %d\n",i,data->nodeperm[i]);
+  }
+
+
+  cdstat = chdir("..");
   
   return(0);
 }
@@ -3272,13 +5737,9 @@ int CreateElmerGridMesh(struct GridType *grid,
       }
     }
   }
-#if 0
-  else {
-    CreateAllBoundaries(cell,data,boundaries,info);
-  }
-#endif
 
   free(cell);
 
   return 0;
 }
+

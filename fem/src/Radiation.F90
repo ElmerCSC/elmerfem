@@ -65,13 +65,19 @@ CONTAINS
 
      REAL(KIND=dp) :: Asum
      TYPE(Element_t),POINTER  :: RadElement
-     INTEGER :: i,j,n, bindex
+     INTEGER :: i,j,n, bindex,nf 
      REAL(KIND=dp), POINTER :: Vals(:)
      INTEGER, POINTER :: Cols(:)
      REAL(KIND=dp) :: A1,A2,Emissivity1
      LOGICAL :: Found
 !------------------------------------------------------------------------------
 
+     IF( .NOT. ASSOCIATED( Element % BoundaryInfo % GebhardtFactors ) ) THEN
+       CALL Fatal('ComputeRadiationLoad','Gebhardt factors not calculated for boundary!')
+     END IF
+     
+     nf = Element % BoundaryInfo % GebhardtFactors % NumberOfFactors          
+     
      IF(PRESENT(Areas) .AND. PRESENT(Emiss) ) THEN
 
        bindex = Element % ElementIndex - Mesh % NumberOfBulkElements
@@ -82,7 +88,7 @@ CONTAINS
 
        T = 0._dp
        Asum = 0._dp
-       DO i=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+       DO i=1,nf
          RadElement => Mesh % Elements(Cols(i))
          n = RadElement % TYPE % NumberOfNodes
   
@@ -100,7 +106,7 @@ CONTAINS
 
        T = 0.0_dp
        Asum = 0.0_dp
-       DO i=1,Element % BoundaryInfo % GebhardtFactors % NumberOfFactors
+       DO i=1,nf
          RadElement => Mesh % Elements(Cols(i))
          n = RadElement % TYPE % NumberOfNodes
 
