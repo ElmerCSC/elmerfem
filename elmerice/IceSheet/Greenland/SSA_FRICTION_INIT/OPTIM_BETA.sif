@@ -61,19 +61,15 @@ Body Force 1
   Flow BodyForce 2 = Real 0.0              
   Flow BodyForce 3 = Real $gravity
 
-! change of variable; DJDBeta is the derivative of the Cost fn w.r.t. the slip coeff.
-  DJDalpha = Variable DJDBeta , alpha
-     REAL procedure "ElmerIceUSF" "Derivative_TenPowerA"
-
 !# For Jdiv
   Top Surface Accumulation = Equals smb
   Bottom Surface Accumulation = Real 0.0
   Observed dhdt = Equals dhdt_obs
 
 !# Cost not computed if H<=Hmin
-  CostV Passive = Variable H
+  Cost_var Passive = Variable H
          Real procedure "USFs" "PassiveCond_H"
-  CostDiv Passive = Variable H
+  Cost_Cost_DHDT Passive = Variable H
          Real procedure "USFs" "PassiveCond_H"
   Passive Element Min Nodes = Integer 3
 
@@ -95,6 +91,8 @@ Material 1
   ! The friction parameter is 10^the optimised variable to insure > 0
   SSA Friction Parameter = Variable alpha
       REAL procedure "ElmerIceUSF" "TenPowerA"
+  SSA Friction Parameter Derivative = Variable alpha
+     REAL procedure "ElmerIceUSF" "TenPowerA_d"
 End
 !#######################################################
 !#######################################################
@@ -104,18 +102,17 @@ Solver 1
 
   Procedure = "ElmerIceSolvers" "AdjointSSA_SSASolver"
 
-!! Mandatory for the adjoint 
-  Calculate Loads = Logical True
-
 !! NUMERICAL INFORMATION
   !Linear System Solver = Direct
   !Linear System Direct Method = mumps
+  !mumps percentage increase working space = integer 40
    Linear System Solver = Iterative
-   Linear System Max Iterations = 300
-   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 500
+   Linear System Iterative Method = GCR
+   Linear System GCR Restart =  250
    Linear System Preconditioning = ILU2
    Linear System Abort Not Converged = False
-   Linear System Residual Output = 1000
+   Linear System Residual Output = 500
    Linear System Convergence Tolerance = 1.0e-12
 
    Nonlinear System Max Iterations = 30
@@ -131,11 +128,10 @@ Solver 1
   GL integration points number = Integer 20
 !!!!!
 !! Variables required for the inverse method
-  Exported Variable 1 = -nooutput CostValue
-  Exported Variable 2 = -nooutput DJDBeta
-  Exported Variable 3 = -nooutput "Velocityb"
-  Exported Variable 3 DOFs = 2
-  Exported Variable 4 = -nooutput "ssavelocity loads"
+  Exported Variable 1 = -global CostValue
+  Exported Variable 2 = -nooutput alpha
+  Exported Variable 3 = -nooutput DJDalpha
+  Exported Variable 4 = -nooutput "Velocityb"
   Exported Variable 4 DOFs = 2
 End
 !#######################################################
@@ -143,44 +139,28 @@ End
 !! Here the cost is the discrete sum_1^Ndata 1/2 ||u-u^obs|| evaluated at the data location (which may not correspond to mesh nodes)
 Solver 2
   Equation = "Cost"
-  !!  Solver need to be associated => Define dumy variable
-    Variable = -nooutput "CostV"
-    Variable DOFs = 1
+  procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
 
-    procedure = "ElmerIceSolvers" "AdjointSSA_CostDiscSolver"
-
-   Optimize Bandwidth = logical false
-
-   Problem Dimension = Integer 2 !2D mesh and 2D SSA Solution
    Cost Variable Name = String "CostValue"  ! Name of Cost Variable
+   Lambda = Real 1.0
  ! save the cost as a function of iterations (iterations,Cost,rms=sqrt(2*Cost/Ndata)
-   Cost Filename = File "Cost_U_$name$.dat"
-   Lambda=Real 1.0
+   Cost Filename = File "Cost_$name$.dat"
 
    Observed Variable Name = String "SSAVelocity"
- ! File with data: 
- !   ASCII x,y,u,v
- ! or netcdf with vx, vy
-   Observation File Name = File "$VELOCITY_DATA$"
- ! 
-   Save used data = logical False
+   Observed Variable dimension = Integer 2
+
+ ! ASCII File with data: x,y,u,v
+   Observation File Name = File "$OBSERVATION_FILE$"
 end
 !#######################################################
 !!! Compute Cost function Jdiv (mismatch between model and observed flux divergence)
 !!  Jdiv=int_ 0.5 * (dhdt_obs + div(uH)-MB)^2
 Solver 3
   Equation = "Cost_DHDT"
-  !!  Solver need to be associated => Define dumy variable
-    Variable = -nooutput "CostDiv"
-    Variable DOFs = 1
-
    procedure = "ElmerIceSolvers" "AdjointSSA_CostFluxDivSolver"
-
-   Optimize Bandwidth = logical false
 
    Reset Cost Value = Logical False
 
-   Problem Dimension = Integer 2 !2D mesh and 2D SSA Solution
    Cost Variable Name = String "CostValue"  ! Name of Cost Variable
 
    Lambda= Real $LambdaDiv
@@ -198,68 +178,47 @@ Solver 4
   Variable = -nooutput Adjoint
   Variable Dofs = 2
 
-  procedure = "ElmerIceSolvers" "AdjointSSA_AdjointSolver"
+  procedure = "ElmerIceSolvers" "Adjoint_LinearSolver"
 
 !Name of the flow solution solver
-  Flow Solution Equation Name = string "SSA"
+   Direct Solver Equation Name = string "SSA"
 
-!! Numerical Stuff
-  !Linear System Solver = Direct
-  !Linear System Direct Method = mumps
-   Linear System Solver = Iterative
-   Linear System Max Iterations = 300
-   Linear System Iterative Method = BiCGStab
-   Linear System Preconditioning = ILU2
-   Linear System Abort Not Converged = False
-   Linear System Residual Output = 1000
-   Linear System Convergence Tolerance = 1.0e-12
+!  Linear System Solver = Direct
+!  Linear System Direct Method = mumps
+!  mumps percentage increase working space = integer 40
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart =  250
+  Linear System Preconditioning = ILU2
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 500
+  Linear System Convergence Tolerance = 1.0e-12
+
 End
 !#######################################################
 !!!!!  Compute Derivative of Cost function / Beta
 Solver 5
   Equation = "DJDBeta"
-
-  !!  Solver need to be associated => Define dumy variable
-    Variable = -nooutput "DJDB"
-    Variable DOFs = 1
-
-    procedure = "ElmerIceSolvers" "AdjointSSA_GradientSolver"
-
-    Optimize Bandwidth = logical false
+   procedure = "ElmerIceSolvers" "AdjointSSA_GradientSolver"
 
     Flow Solution Name = String "SSAVelocity"
     Adjoint Solution Name = String "Adjoint"
-
-    Compute DJDBeta = Logical True   ! Derivative with respect to the Friction parameter
+    ! Derivative with respect to the Friction parameter
+    ! here will be with respect to alpha (see Material)
+    Compute DJDBeta = Logical True
+    DJDBeta Name = String "DJDalpha"
     Reset DJDBeta = Logical True
-
 end
 !#######################################################
-Solver 6
-  Equation = "UpdateExport"
-   Variable = -nooutput "dumy"
-    Procedure = File "ElmerIceSolvers" "UpdateExport"
-    Optimize Bandwidth = logical false
-
-!used here to update DJDalpha from DJDbeta (see corresponding line in Body Force section)
-  Exported Variable 1 =  alpha
-  Exported Variable 2 =  -nooutput DJDalpha
-End
-!#######################################################
-!!!!!  Compute Regularistaion term
+!!!!!  Compute Regularisation term
 !   Regularisation by default is: Lambda * int_{Pb dimension} 0.5 * (d(var)/dx)**2 
 !     OUTPUT are : J and DJDvar
-Solver 7
-  Equation = "DJDBeta_Reg"
+Solver 6
+  Equation = "CostReg"
+   procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
 
-  !!  Solver need to be associated => Define dumy variable
-    Variable = -nooutput "DJDBReg"
-    Variable DOFs = 1
-
-    procedure = "ElmerIceSolvers" "AdjointSSA_CostRegSolver"
-    Optimize Bandwidth = logical false
-
-    Problem Dimension=Integer 2
     Cost Filename=File "CostReg_$name$.dat"
     Optimized Variable Name= String "alpha"
     Gradient Variable Name= String "DJDalpha"
@@ -267,37 +226,37 @@ Solver 7
     Lambda= Real $LambdaReg
     Reset Cost Value= Logical False  !=> DJDapha already initialized in solver DJDBeta; switch off initialisation to 0 at the beginning of this solver
     A priori Regularisation= Logical False
+
 end
 !#######################################################
-!!!!! Optimization procedure : Parallel only
-Solver 8
+!!!!! Optimization procedure :
+Solver 7
   Equation = "Optimize_m1qn3"
-  !!  Solver need to be associated => Define dumy variable
-    Variable =  -nooutput "UB"
-    Variable DOFs = 1
-
   procedure = "ElmerIceSolvers" "Optimize_m1qn3Parallel"
 
   Cost Variable Name = String "CostValue"
   Optimized Variable Name = String "alpha"
   Gradient Variable Name = String "DJDalpha"
-  gradient Norm File = String "GradientNormAdjoint_$name$.dat"
+  gradient Norm File = File "GradientNormAdjoint_$name$.dat"
+
+  !!
+  Mesh Independent = Logical FALSE
 
  ! M1QN3 Parameters
   M1QN3 dxmin = Real 1.0e-10
-  M1QN3 epsg = Real  1.e-8
+  M1QN3 epsg = Real  1.e-6
   M1QN3 niter = Integer $niter
   M1QN3 nsim = Integer $niter
   M1QN3 impres = Integer 5
-  M1QN3 DIS Mode = Logical False
-  M1QN3 df1 = Real 0.1
+  M1QN3 DIS Mode = Logical true
+  M1QN3 df1 = Real 0.5
   M1QN3 normtype = String "dfn"
-  M1QN3 OutputFile = File  "M1QN3_$name$.dat"
+  M1QN3 OutputFile = File  "M1QN3_$name$.out"
   M1QN3 ndz = Integer 20
 
 end
 !#######################################################
-Solver 9
+Solver 8
   Equation = "UpdateExport2"
    Variable = -nooutput "dumy2"
     Procedure = File "ElmerIceSolvers" "UpdateExport"
@@ -308,7 +267,7 @@ End
 !#######################################################
 !#######################################################
 Equation 1
-  Active Solvers(9) = 1 2 3 4 5 6 7 8 9
+  Active Solvers(8) = 1 2 3 4 5 6 7 8
 End
 !#######################################################
 !#######################################################
