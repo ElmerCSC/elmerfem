@@ -460,9 +460,9 @@ CONTAINS
     IP = GaussPointsAdapt( Element )   
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(SolverName,'Number of Gauss points for 1st element:'&
-          //TRIM(I2S(IP % n)),Level=7)
+          //TRIM(I2S(IP % n)),Level=31)
       CALL Info(SolverName,'Elemental n:'//TRIM(I2S(n))//' nd:'&
-          //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=7)
+          //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=31)
     END IF
     
     DO t=1,IP % n
@@ -3051,13 +3051,13 @@ CONTAINS
       IF (FluxCondition .OR. GWFluxCondition) THEN ! else spare us the computation
 
         ! Variables (Temperature, Porosity, Pressure, Salinity) at IP
-        TemperatureAtIP = ListGetElementReal( Temperature_h, Basis, Element, Found, GaussPoint=t)
+        TemperatureAtIP = ListGetElementRealParent( Temperature_h, Basis, Element, Found)
         IF (.NOT.Found) CALL FATAL(SolverName,'Temperature not found')
-        PorosityAtIP = ListGetElementReal( Porosity_h, Basis, Element, Found, GaussPoint=t)
+        PorosityAtIP = ListGetElementRealParent( Porosity_h, Basis, Element, Found)
         IF (.NOT.Found) CALL FATAL(SolverName,'Porosity not found')
-        PressureAtIP = ListGetElementReal( Pressure_h, Basis, Element, Found, GaussPoint=t)
+        PressureAtIP = ListGetElementRealParent( Pressure_h, Basis, Element, Found)
         IF (.NOT.Found) CALL FATAL(SolverName,'Pressure not found')
-        SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
+        SalinityAtIP = ListGetElementRealParent( Salinity_h, Basis, Element, Found)
         IF (.NOT.Found) CALL WARN(SolverName,'Salinity not found - setting to zero')
 
         !Materialproperties needed at IP
@@ -3085,7 +3085,7 @@ CONTAINS
                XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
                .TRUE.,.FALSE., .FALSE., .FALSE.,.FALSE.) ! we need to compute, as IP's on boundary elements deviate from bulk
           ! NB: XiTAtIP, XiPAtIP, XiYcAtIP not needed
-          PRINT *, "SoluteTransportBC", XiAtIP
+          !PRINT *, "SoluteTransportBC", XiAtIP
         END SELECT
         rhocAtIP = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP,TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
 
