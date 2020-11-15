@@ -119,10 +119,10 @@ End
 Boundary Condition 1
   Target Boundaries(1) = 1
   Name = "HotInFlow"
-!  Velocity 3 = Variable Coordinate
-!    Real MATC "100.0*(1.0e-4-tx(0)^2-tx(1)^2)"
   Velocity 3 = Variable Coordinate
-    Real Procedure "InletVelo" "InletVelo"
+    Real MATC "100.0*(1.0e-4-tx(0)^2-tx(1)^2)"
+!  Velocity 3 = Variable Coordinate
+!    Real Procedure "InletVelo" "InletVelo"
   Velocity 1 = 0.0
   Velocity 2 = 0.0
   Temperature = 350
