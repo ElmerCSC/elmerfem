@@ -4511,17 +4511,30 @@ omstart:
     else if(strstr(line,"$Periodic")) {
       int numPeriodicLinks;
       if(allocated) printf("Reading periodic links but doing nothing with them!\n");
-      
-      GETLINE;
-      cp = line;
-      numPeriodicLinks = next_int(&cp);
-      for(i=1; i <= numPeriodicLinks; i++) {
+
+      if(1) {
+	numPeriodicLinks = 0;
+	for(;;) {
+	  GETLINE;
+	  if(strstr(line,"$EndPeriodic")) {
+	    if(allocated) printf("Number of lines for periodic stuff: %d\n",numPeriodicLinks);
+	    break;
+	  }
+	  numPeriodicLinks++;
+	}
+      }
+      else {	      
 	GETLINE;
-      }     
-      GETLINE;
-      if(!strstr(line,"$EndPeriodic")) {
-	printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
-      }           
+	cp = line;
+	numPeriodicLinks = next_int(&cp);
+	for(i=1; i <= numPeriodicLinks; i++) {
+	  GETLINE;
+	}     
+	GETLINE;
+	if(!strstr(line,"$EndPeriodic")) {
+	  printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
+	}
+      }
     }
 
     else if(strstr(line,"$PartitionedEntities")) {
