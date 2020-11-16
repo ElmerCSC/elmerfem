@@ -958,6 +958,7 @@ CONTAINS
     INTEGER :: i,j,n,idx,NoNeighbours,NoSuppNodes,VarCount,&
          VarNo,proc,status(MPI_STATUS_SIZE), counter, ierr
     INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:)
+    INTEGER, POINTER :: Neighbours(:)
     Debug = .TRUE.
     Parallel = ParEnv % PEs > 1
 
@@ -991,16 +992,12 @@ CONTAINS
       END DO
     END IF
 
-    count1=0
     IF(HasNeighbours) THEN
        DO i=Mesh % NumberOfBulkElements+1,Mesh % NumberOfBulkElements &
             + Mesh % NumberOfBoundaryElements
             Element => Mesh % Elements(i)
             n = Element % TYPE % NumberOfNodes
             IF(.NOT. ANY(Element % NodeIndexes(1:n)==NodeNumber)) CYCLE
-            IF(Element % BoundaryInfo % constraint == 1) THEN
-                 count1 = count1+1
-            END IF 
        END DO
     END IF
 
