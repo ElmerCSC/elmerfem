@@ -450,11 +450,9 @@ CONTAINS
            M = Basis(q) * Basis(p)
            A = 0.0d0
 
-           IF(GradAbs > AEPS) THEN
-             DO i=1,dim
-               A = A + FL * (Grad(i) / GradAbs) * dBasisdx(q,i) * Basis(p)
-             END DO
-           END IF
+           DO i=1,dim
+             A = A + FL * Grad(i) * dBasisdx(q,i) * Basis(p)
+           END DO
 
 !------------------------------------------------------------------------------
 !           The convection term
