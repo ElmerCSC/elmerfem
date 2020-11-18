@@ -78,6 +78,9 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
  * With ElmerGUI:
     ** `sudo apt install libqt4-dev libqwt-dev`
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ELMERGUI:BOOLEAN=TRUE`
+ * With Elmer/Ice (enabling netcdf and MUMPS):
+    ** `sudo apt install libnetcdf-dev libnetcdff-dev libmumps-dev`
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ElmerIce:BOOLEAN=TRUE -DWITH_Mumps:BOOL=TRUE` 
  * `make`
  * `sudo make install`
  * The executables are in `/usr/local/bin` folder, you may add this to your PATH if you will
