@@ -676,7 +676,7 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
 {
   int material,noknots,noelements,bulkelems,sideelems,vtktype,elemtype,boundtype;
   char filename[MAXFILESIZE],outstyle[MAXFILESIZE];
-  int i,j,k,nodesd2,elemind,idoffset,di;
+  int i,j,k,nodesd2,elemind,idoffset,di,maxbody,minbc;
   int ind[MAXNODESD2];
   int LittleEnd,PrecBits,elemoffset;
   FILE *out;
@@ -719,7 +719,35 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
     return(3);
   }
 
-  idoffset = 100;
+  maxbody = 0;
+  for(i=1;i<=bulkelems;i++) 
+    maxbody = MAX( maxbody, data->material[i] );
+  minbc = 0;  
+  for(j=0;j<nobound;j++) {
+    if(bound[j].created == FALSE) continue;      
+    for(i=1;i<=bound[j].nosides;i++) {
+      boundtype = bound[j].types[i];
+      if( minbc == 0 )
+	minbc = boundtype;
+      else
+	minbc = MIN( minbc, boundtype );
+    }
+  }
+
+  idoffset = 0;
+  if( minbc !=0 && minbc <= maxbody ) {  
+    idoffset = 100;
+    for(;;) {
+      if(maxbody > idoffset )
+	idoffset *= 10;
+      else
+	break;
+    }
+    printf("Setting offset for boundaries: %d\n",idoffset);
+  }
+
+
+  
   LittleEnd = FALSE;
   PrecBits = 64; /* 32 for single precision */
   
