@@ -60,13 +60,13 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   IF( .NOT. Found ) THEN
     IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
         ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity") ) THEN
-      CALL Info("WhitneyAVSolver_Init0", "Moving material requires always scalar potential",Level=10)
+      CALL Info("WhitneyAVSolver_Init0", "Moving material triggers the use of scalar potential",Level=10)
       StaticConductivity = .TRUE.
     END IF
 
     IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
       CALL Info("WhitneyAVSolver_Init0", &
-          "> Electric Current Density < always requires scalar potential",Level=10)    
+          "> Electric Current Density < triggers the use of scalar potential",Level=10)    
       StaticConductivity = .TRUE.
     END IF
   END IF
@@ -197,12 +197,12 @@ END SUBROUTINE WhitneyAVSolver_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solve vector potential A
+!>  Solve a vector potential A and scalar potential V from
 ! 
-!> sigma @A/@t + rot (1/mu) rot A = J^s + curl(M^s) - sigma grad(V^s)
-!>   -div(sigma*(@A/@t+grad(V))=0 .
+!>  sigma @A/@t + rot (1/mu) rot A + sigma grad(V) = J^s + curl(M^s) - sigma grad(V^s)
+!>   -div(sigma*(@A/@t+grad(V))) = 0 .
 !
-!>  using edge elements (Nedelec/Whitney basis of lowest degree)+nodal basis for V.
+!>  by using edge elements for A + nodal basis for V.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
