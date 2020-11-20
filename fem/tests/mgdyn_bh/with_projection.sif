@@ -77,6 +77,8 @@ Solver 3
    Linear System Symmetric = True
    Potential Variable = String "P"
 
+   Separate Magnetic Energy = True
+
    Calculate Magnetic Vector Potential = False
    Calculate Magnetic Flux Density = True
    Calculate Magnetic Field Strength = Logical True
@@ -106,7 +108,7 @@ Solver 5
   Equation = "scalars"
   procedure = "SaveData" "SaveScalars"
   !variable 1 = res: magnetic field energy
-  show norm index = integer 2
+  show norm index = integer 3
 End
 
 
