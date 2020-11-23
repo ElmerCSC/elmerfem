@@ -506,7 +506,6 @@ CONTAINS
        ! --------------------------------------------------
        CALL MPI_RECV( vperm, n, MPI_INTEGER, proc, &
             2102, ELMER_COMM_WORLD, status, ierr )
-
        CALL MPI_RECV( RecvLocalDistance, n, MPI_DOUBLE_PRECISION, proc, &
             2100, ELMER_COMM_WORLD, status, ierr )
 
@@ -940,7 +939,7 @@ CONTAINS
   !Subroutine designed to interpolate single missing points which sometimes
   !occur on the base and top interpolation, from surrounding nodes of the same mesh.
   SUBROUTINE InterpolateUnfoundPoint( NodeNumber, Mesh, HeightName, HeightDimensions,&
-       ElemMask, NodeMask, Variables )
+       BoundaryID, ElemMask, NodeMask, Variables )
 
     TYPE(Mesh_t), TARGET, INTENT(INOUT)  :: Mesh
     TYPE(Variable_t), POINTER, OPTIONAL :: Variables
@@ -948,16 +947,18 @@ CONTAINS
     INTEGER :: NodeNumber
     INTEGER, POINTER :: HeightDimensions(:)
     LOGICAL, POINTER, OPTIONAL :: ElemMask(:),NodeMask(:)
+    INTEGER, OPTIONAL :: BoundaryID
     !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: HeightVar, Var
     TYPE(Element_t),POINTER :: Element
-    LOGICAL :: Parallel, Debug, HasNeighbours
+    LOGICAL :: Parallel, Debug, HasNeighbours, NeedAllSuppNodes
     LOGICAL, ALLOCATABLE :: ValidNode(:)
     REAL(KIND=dp) :: Point(3), SuppPoint(3), weightsum, weight, Exponent, distance
     REAL(KIND=dp), ALLOCATABLE :: interpedValue(:), PartWeightSums(:), PartInterpedValues(:)
     INTEGER :: i,j,n,idx,NoNeighbours,NoSuppNodes,VarCount,&
-         VarNo,proc,status(MPI_STATUS_SIZE), counter, ierr
-    INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:)
+         VarNo,proc,status(MPI_STATUS_SIZE), counter, ierr, NoValidSuppNodes, VarCountValid, &
+         TestVarCount
+    INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:), VarNodes(:)
     INTEGER, POINTER :: Neighbours(:)
     Debug = .TRUE.
     Parallel = ParEnv % PEs > 1
@@ -1055,36 +1056,11 @@ CONTAINS
     ALLOCATE(SuppNodes(NoSuppNodes))
     SuppNodes = WorkInt(:NoSuppNodes)
 
-    !cycle thorugh suppnodes and node to calculate VarCount for wanted boundary
-    !suppnodes on lower part then removed to avoid interp bias
-    VarCount = 1
-    IF(PRESENT(Variables)) THEN
-     Var => Variables
-     DO WHILE(ASSOCIATED(Var))
-       IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
-            (Var % DOFs > 1) .OR. &                    !-multi-dof
-            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
-            (Var % Name == HeightName) .OR. &          !-already got
-            Var % Secondary) THEN                      !-secondary
-              Var => Var % Next
-         CYCLE
-       END IF
-       IF(ANY(Var % Perm(SuppNodes) <= 0) .OR. &
-            (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
-         Var => Var % Next
-         CYCLE
-       END IF
-
-       VarCount = VarCount + 1
-       Var => Var % Next
-     END DO
-    END IF
-
     !If we aren't the only partition seeking this node, some supporting
     !nodes will also belong to these partitions. Easiest way to remove
     !duplicates is to set priority by partition number. So, if a
     !higher partition number (in NeighbourParts) also has a given supp
-    !node, we delete it.
+    !node, we delete it.  
     IF(HasNeighbours) THEN
       DO i=1,NoSuppNodes
         Neighbours => Mesh % ParallelInfo % NeighbourList(WorkInt(i)) % Neighbours
@@ -1096,19 +1072,123 @@ CONTAINS
         END DO
 
       END DO
-
       NoSuppNodes = COUNT(WorkInt > 0)
       IF(Debug) PRINT *,ParEnv % MyPE, ' Debug, seeking ',NodeNumber,&
-           ' higher partition has node, so deleting...'
+          ' higher partition has node, so deleting...'
     END IF
+    
 
+    ! ValidSuppNodes used for interpolation so one node isn't counted twice
+    ! but Supp nodes used for Varcount and variable extraction so the correct number of vars
+    ! is found when there is a shared node with only one validsuppnode
+    PRINT*, ParEnv % MyPE, 'SuppNodeOriginal', SuppNodes
     DEALLOCATE(SuppNodes)
     ALLOCATE(SuppNodes(NoSuppNodes))
     SuppNodes = PACK(WorkInt, WorkInt > 0)
     DEALLOCATE(WorkInt)
 
+    ! if boundaryid not give, old method used....
+    ! so two situations arise from shared nodes on boundaries on lower part
+    ! both only effect lower process
+    ! 1 - varcount is higher when neigbours on other parts are removed
+    !     in this case the original SuppNodes Varcount is correct
+    ! 2 - varcount is lower when neighbours on other parts are removed
+    !     in this case the ValidSuppNodes Varcount is correct
+    ! The only way to insure that the correct response to the scenario is to check with 
+    ! the higher part and decide what the correct response is
+    ! a third problem can arise on higher part when varcount is lower than the correct varcount
+    ! from the lower process
+
+    ! Previous method didn't work for numerous variation of shared nodes when either
+    ! the shared node or a suppnode was on the boundary
+    ! only fool proof way to insure varcount and varno is correct is to 
+    ! find the element with nodenumber in which has the same boundaryid as the mask 
+    ! (eg. the boundary on which the interp is taking place on)
+    ! use the nodes from this element to filter varcount and varno
+    ! BUT only the filtered suppnodes are used for the interp
+    IF(PRESENT(BoundaryID)) THEN
+      ALLOCATE(VarNodes(3))
+      DO i=Mesh % NumberOfBulkElements+1,Mesh % NumberOfBulkElements &
+          + Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(i)
+        n = Element % TYPE % NumberOfNodes
+
+        !Doesn't contain our point
+        IF(.NOT. ANY(Element % NodeIndexes(1:n)==NodeNumber)) CYCLE
+        DO j=1,n
+          idx = Element % NodeIndexes(j)
+          IF(idx == NodeNumber) THEN
+            IF(BoundaryID == Element % BoundaryInfo % constraint) THEN
+              VarNodes = Element % NodeIndexes
+            END IF
+          END IF
+        END DO
+      END DO
+    ELSE
+      ALLOCATE(VarNodes(NoSuppNodes))
+      VarNodes = SuppNodes
+      ! see notes above
+      WRITE(Message,'(A,A,A)') 'No BoundaryID given', &
+      'See InterpMaskedBCReduced to see boundary maskname', &
+      'This can lead to errors on shared nodes'
+      CALL WARN('InterpolateUnfoundPoint', Message)
+    END IF
+
+    !cycle thorugh suppnodes and node to calculate VarCount for wanted boundary
+    !suppnodes on lower part then removed to avoid interp bias
+    VarCount = 1
+    IF(PRESENT(Variables)) THEN
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
+              (Var % DOFs > 1) .OR. &                    !-multi-dof
+              (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
+              (Var % Name == HeightName) .OR. &          !-already got
+              Var % Secondary) THEN                      !-secondary
+                Var => Var % Next
+          CYCLE
+        END IF
+        IF(ANY(Var % Perm(VarNodes) <= 0) .OR. &
+              (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
+          Var => Var % Next
+          CYCLE
+        END IF
+
+        VarCount = VarCount + 1
+        Var => Var % Next
+      END DO
+    END IF
+
     IF(Debug) PRINT *,ParEnv % MyPE,'Debug, seeking nn: ',NodeNumber,' found ',&
          NoSuppNodes,' supporting nodes.'
+
+
+    IF(PRESENT(Variables)) THEN
+      !VarNodes for varcount
+      TestVarCount = 1
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+  
+        !Is the variable valid?
+        IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
+            (Var % DOFs > 1) .OR. &                    !-multi-dof
+            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
+            (Var % Name == HeightName) .OR. &          !-already got
+            Var % Secondary) THEN                      !-secondary
+          Var => Var % Next
+          CYCLE
+        END IF
+        IF(ANY(Var % Perm(SuppNodes) <= 0) .OR. &
+          (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
+          Var => Var % Next
+          CYCLE
+        END IF
+  
+        TestVarCount = TestVarCount +1 
+  
+        Var => Var % Next
+      END DO
+    END IF
 
     !count variables if requested, 1 = HeightVar
     ALLOCATE(interpedValue(VarCount))
@@ -1117,7 +1197,10 @@ CONTAINS
     !to HeightVar, and variables if requested
     weightsum = 0.0_dp
     interpedValue = 0.0_dp
+
+    PRINT*, PArEnv % MyPE, 'Nosuppnodes', NoSuppNodes, 'SuppNOdes', SuppNodes
     DO i=1,NoSuppNodes
+      ! SuppNodes for interp
       SuppPoint(1) = Mesh % Nodes % x(SuppNodes(i))
       SuppPoint(2) = Mesh % Nodes % y(SuppNodes(i))
       SuppPoint(3) = Mesh % Nodes % z(SuppNodes(i))
@@ -1133,9 +1216,10 @@ CONTAINS
       weightsum = weightsum + weight
 
       interpedValue(1) = interpedValue(1) + &
-           weight * HeightVar % Values(HeightVar % Perm(SuppNodes(i)))
+          weight * HeightVar % Values(HeightVar % Perm(SuppNodes(i))) 
 
       IF(PRESENT(Variables)) THEN
+        !VarNodes for varcount
         VarNo = 1
         Var => Variables
         DO WHILE(ASSOCIATED(Var))
@@ -1149,7 +1233,7 @@ CONTAINS
             Var => Var % Next
             CYCLE
           END IF
-          IF(ANY(Var % Perm(SuppNodes) <= 0) .OR. &
+          IF(ANY(Var % Perm(VarNodes) <= 0) .OR. &
                (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
             Var => Var % Next
             CYCLE
@@ -1158,13 +1242,16 @@ CONTAINS
           VarNo = VarNo + 1
 
           interpedValue(VarNo) = interpedValue(VarNo) + &
-               weight * Var % Values(Var % Perm(SuppNodes(i)))
+          weight * Var % Values(Var % Perm(SuppNodes(i)))
 
           Var => Var % Next
         END DO
-
       END IF
     END DO
+
+    PRINT*, ParEnv % MyPE, 'Varcount', varcount, 'varno', varno
+    ! need to create a mask for when varcount for boundaries lower than those of the mask
+    ! boundary layer and send varcount to other process
 
     !PARALLEL STUFF
     IF(HasNeighbours) THEN
@@ -1212,7 +1299,7 @@ CONTAINS
           Var => Var % Next
           CYCLE
         END IF
-        IF(ANY(Var % Perm(SuppNodes) <= 0) .OR. &
+        IF(ANY(Var % Perm(VarNodes) <= 0) .OR. &
              (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
           Var => Var % Next
           CYCLE

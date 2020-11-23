@@ -3624,7 +3624,7 @@ CONTAINS
     !variables not copied across. If you get some odd interpolation artefact,
     !suspect this
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask", UnfoundNodes,globaleps=globaleps,localeps=localeps)
+         "Calving Front Mask", globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3753,14 +3753,15 @@ CONTAINS
     INTEGER, POINTER  :: InterpDim(:)
     INTEGER :: i,j,dummyint
     REAL(KIND=dp) :: geps,leps
-    LOGICAL :: Debug, skip, PartMask
+    LOGICAL :: Debug, skip, PartMask, FoundBoundary
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
     LOGICAL, ALLOCATABLE :: PartsMask(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
     INTEGER, ALLOCATABLE :: PartUnfoundCount(:), AllUnfoundDOFS(:), UnfoundDOFS(:), disps(:), Unique(:), &
                            FinalDOFs(:), UnfoundIndex(:), UnfoundShared(:), Repeats(:)
     LOGICAL, ALLOCATABLE :: PartHasUnfoundNodes(:)
-    INTEGER :: ClusterSize, ierr, UnfoundCount, min_val, max_val, CountDOFs, CountRepeats, Previous, NodeCount
+    INTEGER :: ClusterSize, ierr, UnfoundCount, min_val, max_val, CountDOFs, CountRepeats, Previous, NodeCount, &
+               BoundaryID
     SolverName = 'InterpMaskedBCReduced'
 
     CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
@@ -3875,6 +3876,14 @@ CONTAINS
     !NewMaskLogical changes purpose, now it masks supporting nodes
     NewMaskLogical = (NewMaskPerm <= 0)
 
+    ! FInd mask Boundary id so we can use for awkward unfoundpoints
+    DO i=1, Model % NumberOfBCs
+      FoundBoundary = ListCheckPresent(Model % BCs(i) % Values, MaskName)
+      IF(.NOT. FoundBoundary) CYCLE
+      BoundaryID = i
+    END DO
+
+    PRINT*, ParEnv % MyPE, MaskName, 'NumberofUnfoundpoints', Size(FinalDOFs), UnfoundCount
     !Loop through all DOFS with barrier before shared nodes 
     NodeCount = 0
     DO i=1, SIZE(FinalDOFs)
@@ -3890,13 +3899,14 @@ CONTAINS
          NodeCount = NodeCount + 1
          !nodenumber = UnfoundIndex(nodecount) since different on each process
          !always finds correct translation from DOFs to process nodenumber since
-         !all arrays in ascending order 
+         !all arrays in ascending order
          PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
          ' x:', NewMesh % Nodes % x(i),&
          ' y:', NewMesh % Nodes % y(i),&
-         ' z:', NewMesh % Nodes % z(i)
+         ' z:', NewMesh % Nodes % z(i), &
+         'GDOF', FinalDOFs(i)
          CALL InterpolateUnfoundPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
-            NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
+            BoundaryID, NodeMask=NewMaskLogical, Variables=NewMesh % Variables)
       END IF
     END DO
 
