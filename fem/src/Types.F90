@@ -409,7 +409,8 @@ MODULE Types
 
    
    TYPE VariableTable_t     
-     TYPE(Variable_t), POINTER :: Variable
+     TYPE(Variable_t), POINTER :: Variable => NULL()
+     REAL(KIND=dp) :: ParamValue
    END TYPE VariableTable_t
 
    
