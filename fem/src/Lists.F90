@@ -3598,7 +3598,9 @@ use spariterglobals
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Var
-
+     LOGICAL :: IsNumber
+     REAL(KIND=dp) :: Val
+     
      SomeAtIp = .FALSE.
      SomeAtNodes = .FALSE.
      AllGlobal = .TRUE.
@@ -3630,26 +3632,38 @@ use spariterglobals
          count = count + 3 
          SomeAtNodes = .TRUE.
          AllGlobal = .FALSE.
-       ELSE
-         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
+       ELSE 
+         IsNumber = .FALSE.
+         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )         
          IF ( .NOT. ASSOCIATED( Var ) ) THEN
-           CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
-           CALL Info('ListParseStrToVars','Parse counters: '&
-               //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
-           CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
-               TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+           IF( VERIFY( str(l0:l1),'.0123456789') == 0 ) THEN
+             IsNumber = .TRUE.
+             READ(str(l0:l1),*) Val
+           ELSE           
+             CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
+             CALL Info('ListParseStrToVars','Parse counters: '&
+                 //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+             CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
+                 TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+           END IF
          END IF
+
          count = count + 1
-         VarTable(count) % Variable => Var
-     
-         IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.
-                
-         IF( Var % TYPE == Variable_on_gauss_points ) THEN
-           SomeAtIp = .TRUE.
+
+         IF( IsNumber ) THEN
+           !PRINT *,'We do have a number:',Val
+           VarTable(count) % Variable => NULL()
+           VarTable(count) % ParamValue = Val
          ELSE
-           SomeAtNodes = .TRUE.
+           VarTable(count) % Variable => Var           
+           IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.           
+           IF( Var % TYPE == Variable_on_gauss_points ) THEN
+             SomeAtIp = .TRUE.
+           ELSE
+             SomeAtNodes = .TRUE.
+           END IF
          END IF
-         
+           
        END IF
 
        ! New start after the comma
@@ -3684,6 +3698,12 @@ use spariterglobals
        
        Var => VarTable(Vari) % Variable
 
+       IF(.NOT. ASSOCIATED( Var ) ) THEN
+         count = count + 1
+         T(count) = VarTable(Vari) % ParamValue
+         CYCLE
+       END IF
+       
        Varsize = SIZE( Var % Values ) / Var % Dofs 
        
        IF( Varsize == 1 ) THEN
@@ -3772,6 +3792,13 @@ use spariterglobals
      
      DO Vari = 1, VarCount 
        Var => VarTable(Vari) % Variable
+
+       IF(.NOT. ASSOCIATED( Var ) ) THEN
+         count = count + 1
+         T(count) = VarTable(Vari) % ParamValue
+         CYCLE
+       END IF
+       
        Varsize = SIZE( Var % Values ) / Var % Dofs 
 
        k1 = 0

@@ -60,13 +60,13 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   IF( .NOT. Found ) THEN
     IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
         ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity") ) THEN
-      CALL Info("WhitneyAVSolver_Init0", "Moving material requires always scalar potential",Level=10)
+      CALL Info("WhitneyAVSolver_Init0", "Moving material triggers the use of scalar potential",Level=10)
       StaticConductivity = .TRUE.
     END IF
 
     IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
       CALL Info("WhitneyAVSolver_Init0", &
-          "> Electric Current Density < always requires scalar potential",Level=10)    
+          "> Electric Current Density < triggers the use of scalar potential",Level=10)    
       StaticConductivity = .TRUE.
     END IF
   END IF
@@ -197,12 +197,12 @@ END SUBROUTINE WhitneyAVSolver_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solve vector potential A
+!>  Solve a vector potential A and scalar potential V from
 ! 
-!> sigma @A/@t + rot (1/mu) rot A = J^s + curl(M^s) - sigma grad(V^s)
-!>   -div(sigma*(@A/@t+grad(V))=0 .
+!>  sigma @A/@t + rot (1/mu) rot A + sigma grad(V) = J^s + curl(M^s) - sigma grad(V^s)
+!>   -div(sigma*(@A/@t+grad(V))) = 0 .
 !
-!>  using edge elements (Nedelec/Whitney basis of lowest degree)+nodal basis for V.
+!>  by using edge elements for A + nodal basis for V.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
@@ -1498,21 +1498,21 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
-    INTEGER :: n, nd
+    LOGICAL :: LaminateStack, CoilBody
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Acoefder(n), C(3,3), &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega(3), omega_velo(3,n), &
+                     RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
-
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, &
+    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, &
         HasVelocity, HasLorentzVelocity, HasAngularVelocity
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -1650,13 +1650,19 @@ END SUBROUTINE LocalConstraintMatrix
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilBody .AND. CoilType /= 'massive') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') THEN
+         DO i=1,3
+           DO j=1,3
+             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+           END DO
+         END DO
+         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       END IF
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
@@ -1705,7 +1711,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
-         CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+         CONDUCTOR: IF ( SUM(ABS(C)) > AEPS ) THEN
            IF ( Transient ) THEN
              DO p=1,np
                DO q=1,np
@@ -1765,7 +1771,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          !
-         A_CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+         A_CONDUCTOR: IF ( SUM(ABS(C)) > AEPS ) THEN
            !
            ! In the case of steady state model add the effect of v x curl A to 
            ! the electromagnetic field: 
@@ -1865,12 +1871,10 @@ END SUBROUTINE LocalConstraintMatrix
          END DO
 
          IF ( HasStabC ) THEN
-           DO j = 1, np
-             q = j
-             DO i = 1, np
-               p = i
-               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t) &
-                     + gauge_penalize_m*Basis(j)*Basis(i)*detJ*IP%s(t)
+           DO q = 1, np
+             DO p = 1, np
+               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t) &
+                     + gauge_penalize_m*Basis(q)*Basis(p)*detJ*IP%s(t)
              END DO
            END DO
          END IF

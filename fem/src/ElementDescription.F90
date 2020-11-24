@@ -9457,7 +9457,7 @@ END SUBROUTINE PickActiveFace
           D1 = -1.0d0
           D2 = -1.0d0          
        CASE DEFAULT
-          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic square face Indices')
+          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic triangular face Indices')
        END SELECT
 !---------------------------------------------------------
      END SUBROUTINE TriangleFaceDofsOrdering

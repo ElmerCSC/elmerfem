@@ -59,10 +59,10 @@ solver 2
   linear system symmetric = True
   linear system solver = iterative
   linear system preconditioning = none
-  linear system convergence tolerance = 1e-6
+  linear system convergence tolerance = 1e-8
   linear system residual output = 10
   linear system max iterations = 5000
-  linear system iterative method = bicgstab
+  linear system iterative method = bicgstab2
   linear system direct method = mumps
   use lagrange gauge = logical true
   use tree gauge = logical false
@@ -95,6 +95,7 @@ solver 4
   vtu format = True
   Output File Name = stabilized
   discontinuous bodies = logical true
+  Save Geometry IDs = Logical True
 !  vector field 1 = String "Volume Current"
 !  vector field 2 = String "Magnetic Flux Density E"
 !  vector field 3 = String "Magnetic Field Strength E"

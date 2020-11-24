@@ -1052,13 +1052,16 @@ CONTAINS
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
-    INTEGER :: n, nd
+    LOGICAL :: LaminateStack, CoilBody
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
+                     RotMLoc(3,3), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
@@ -1070,9 +1073,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
                         CVelo(3), CVeloSum
 
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody, &
+    LOGICAL :: Stat, Newton, Cubic, HBCurve, &
                HasVelocity, HasLorenzVelocity, HasAngularVelocity
     LOGICAL :: StrandedHomogenization, FoundIm
 
@@ -1220,14 +1221,19 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilBody .AND. CoilType /= 'massive') &
-                   RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') THEN
+         DO i=1,3
+           DO j=1,3
+             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )             
+           END DO
+         END DO
+         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       END IF
 
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
@@ -1311,21 +1317,18 @@ CONTAINS
 
        ! If we calculate a coil, the nodal degrees of freedom are not used:
        ! ------------------------------------------------------------------
-       IF (.NOT. CoilBody) THEN
+       NONCOIL_CONDUCTOR: IF (.NOT. CoilBody .AND. SUM(ABS(C)) > AEPS ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
           DO i=1,np
             p = i
-            DO j=1,np
-              q = j
+            DO q=1,np
 
               ! Compute the conductivity term <C grad V,grad v> for stiffness 
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
-              IF ( SUM(C) /= 0._dp ) THEN
                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
-              END IF
             END DO
             DO j=1,nd-np
               q = j+np
@@ -1342,7 +1345,7 @@ CONTAINS
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
             END DO
           END DO
-       END IF ! (.NOT. CoilBody)
+       END IF NONCOIL_CONDUCTOR
 
        IF ( HasVelocity ) THEN
          DO i=1,np
