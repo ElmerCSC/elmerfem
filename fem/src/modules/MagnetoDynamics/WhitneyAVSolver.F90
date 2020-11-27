@@ -1865,8 +1865,8 @@ END SUBROUTINE LocalConstraintMatrix
            q = j
            DO i = 1,nd-np
              p = i+np
-             STIFF(q,p) = STIFF(q,p) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
-             STIFF(p,q) = STIFF(p,q) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(q,p) = STIFF(q,p) - SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(p,q) = STIFF(p,q) - SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
            END DO
          END DO
 

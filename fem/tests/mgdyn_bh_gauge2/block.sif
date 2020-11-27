@@ -1,5 +1,5 @@
 !
-! The specialities of this case are that the consistently stabilized 
+! The specialities of this case are that the consistently regularized 
 ! formulation for magnetostatics is used (ensuring a unique vector potential 
 ! solution) and that a block-preconditioned linear solver is applied to solve 
 ! the resulting linear algebra problem; see the second solver section.
@@ -78,9 +78,9 @@ solver 2
 
 ! Linear system solver for blocks
 !-----------------------------------------
-  linear system max iterations = 250
+  linear system max iterations = 500
   linear system residual output = 10
-  linear system convergence tolerance = 1e-6
+  linear system convergence tolerance = 1e-4
 
 ! The default would be to solve first for V and then for A.
 ! For the stabilized Lagrange multiplier formulation the reverse order 
