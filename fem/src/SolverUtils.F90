@@ -13368,7 +13368,14 @@ END FUNCTION SearchNodeL
         CALL ScaleEigenVectors( A, Solver % Variable % EigenVectors, &
             SIZE(Solver % Variable % EigenValues), NormalizeToUnity ) 
       END IF
-      
+
+      ! This is temporal (?) fix for a glitch where the complex eigen vector
+      ! is expanded to one where real and complex parts follow each other. 
+      IF( ListGetLogical( Solver % Values,'Expand Eigen Vectors', Stat ) ) THEN
+        CALL ExpandEigenVectors( A, Solver % Variable % EigenVectors, &
+            Solver % NOFEigenValues, Solver % Variable % dofs )
+      END IF
+        
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
     END IF
@@ -13977,6 +13984,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     n = StiffMatrix % NumberOfRows
 
     IF ( .NOT. Solver % Matrix % COMPLEX ) THEN
+      CALL Info('SolveEigenSystem','Soving real valued eigen system of size: '//TRIM(I2S(n)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolve( Solver, StiffMatrix, n, NOFEigen, &
                 EigenValues, EigenVectors )
@@ -13985,6 +13993,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
                 EigenValues, EigenVectors )
       END IF
     ELSE
+      CALL Info('SolveEigenSystem','Soving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
               NOFEigen, EigenValues, EigenVectors )

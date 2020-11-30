@@ -2301,18 +2301,26 @@ CONTAINS
            
             Solver % Variable % EigenValues  = 0.0d0
             Solver % Variable % EigenVectors = 0.0d0
-            
-            DO k=1,Solver % Variable % DOFs
-              str = ComponentName( Solver % Variable % Name, k )
-              Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
-              IF ( ASSOCIATED( Var ) ) THEN
-                Var % EigenValues => Solver % Variable % EigenValues
-                Var % EigenVectors =>  & 
-                     Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
-              END IF
-            END DO
-          END IF
 
+            IF( Solver % Variable % DOFs > 1 ) THEN
+              CALL Info('AddEquationSolution','Repointing '//TRIM(I2S(Solver % Variable % DOFs))//&
+                  ' eigenvalue components for: '//TRIM(Solver % Variable % Name))
+              
+              DO k=1,Solver % Variable % DOFs
+                str = ComponentName( Solver % Variable % Name, k )
+                Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+                
+                IF( ASSOCIATED( Var ) ) THEN
+                  CALL Info('AddEquationSolution','Eigenvalue component '&
+                      //TRIM(I2S(k))//': '//TRIM(str))
+                  Var % EigenValues => Solver % Variable % EigenValues
+                  Var % EigenVectors =>  & 
+                      Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+                END IF
+              END DO
+            END IF
+          END IF
+            
           ALLOCATE( Solver % Matrix % MassValues(SIZE(Solver % Matrix % Values)), STAT=AllocStat)
           IF( AllocStat /= 0 ) CALL Fatal('AddEquationSolution','Allocation error for MassValues')
           
