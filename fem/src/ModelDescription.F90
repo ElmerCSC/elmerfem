@@ -4555,10 +4555,11 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE WritePostFile( PostFile,ResultFile,Model,TimeCount,AppendFlag )
 !------------------------------------------------------------------------------
-    TYPE(Model_t), POINTER :: Model 
-    INTEGER :: TimeCount
-    LOGICAL, OPTIONAL :: AppendFlag
-    CHARACTER(LEN=*) :: PostFile,ResultFile
+    TYPE(Model_t), POINTER :: Model !< Everything. 
+    INTEGER :: TimeCount            !< How many steps to save
+    LOGICAL, OPTIONAL :: AppendFlag !< Usually we append. This is also a sign that this is not ResultToPost. 
+    CHARACTER(LEN=*) :: PostFile    !< Name of the Post file
+    CHARACTER(LEN=*) :: ResultFile  !< ResultFile is needed only when we convert Result to Post 
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Variable_t), POINTER :: Var,Var1,Displacement,MeshUpdate,MaskVar
@@ -5036,6 +5037,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
+   
    DO WHILE( .TRUE. )
       IF ( AppendFlag ) THEN
          SavedCount = Model % Mesh % SavesDone
