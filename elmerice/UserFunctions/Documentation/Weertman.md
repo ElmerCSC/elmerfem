@@ -7,7 +7,7 @@
 ## General Description
 The file USF_Sliding.f90 contains user functions to apply non-linear friction at the base of glacier.
 
-The first user function (Sliding_Weertman) is a non-linear Weertman-type friction law and is described in [this page](./Weertman.md). The second user function (Friction_Coulomb) is a non-linear water-pressure-dependent friction law, as proposed by Schoof (2005) and Gagliardini et al. (2007), and is presented [here](./Coulomb.md). The third user function (Sliding_Budd) is described here and is from Budd et al 1984 (Annals of Glaciology 5, page 29-36).
+The first user function (Sliding_Weertman) is a non-linear Weertman-type friction law and is described in [this page](./Weertman.md). The second user function (Friction_Coulomb) is a non-linear water-pressure-dependent friction law, as proposed by Schoof (2005) and Gagliardini et al. (2007), and is presented [here](./Coulomb.md). The third user function (Sliding_Budd) is described [here](./Budd.md) and is from Budd et al 1984 (Annals of Glaciology 5, page 29-36).
 
 The friction law in Weertman_Sliding is of the form:
 *tau_b = C.{u_b}^{m - 1} . u_b*

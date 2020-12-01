@@ -8,7 +8,7 @@
 ## General Description
 The aim of this user function is to test the contact during the non-linear iteration of the Stokes solver. This is done through the application of basal sliding. If the Grounding line is retreating, nodes can move from grounded to floating and the variable GroundedMask is updated accordingly. The contact is tested once after the solution of the non-linear iterations has slightly converged and then is kept fixed until the complete convergence of the non-linear iterations.
 
-This user function uses the variables GroundedMask, computed by [GroundedSolver](../Solvers/GroundedSolver.md), Fw, computed by [GetHydrostaticLoads](../Solvers/GetHydrostaticLoads.md), the residual of the Stokes solver in Flow Solution Loads, and the Normal Vector from the [ComputeNormal](../Solvers/Normal.md) Solver. If the keyword Non Detachment Inland Distance has a positive value, the variable Distance computed by the Distance Solver of the Elmer distribution is also needed.
+This user function uses the variables GroundedMask, computed by [GroundedSolver](../../Solvers/Documentation/GroundedSolver.md), Fw, computed by [GetHydrostaticLoads](../../Solvers/Documentation/GetHydrostaticLoads.md), the residual of the Stokes solver in Flow Solution Loads, and the Normal Vector from the [ComputeNormal](../../Solvers/Documentation/Normal.md) Solver. If the keyword Non Detachment Inland Distance has a positive value, the variable Distance computed by the Distance Solver of the Elmer distribution is also needed.
 
 ## SIF contents
 The required keywords in the SIF file for these user functions are:
