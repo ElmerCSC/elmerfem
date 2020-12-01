@@ -3,7 +3,7 @@ This page describes the solver Remesh which handles the domain remeshing which i
 
 In addition to the main solver, Remesh makes use of an auxiliary mesh update solver which must be present in the SIF.
 
-![remeshing algorithm](./rememsh_algo.png)
+![remeshing algorithm](./remesh_algo.png)
 
 ## The Remeshing Algorithm
 

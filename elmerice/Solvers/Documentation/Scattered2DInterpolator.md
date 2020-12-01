@@ -36,7 +36,7 @@ Go to the ELMER_TRUNK/elmerice/ScatteredDataInterpolator directory
 Edit/Update the Makefile and compile/install the solver
 
 ## SIF contents
-The Solver section must include"
+The Solver section must include:
 
 ```
 Solver 

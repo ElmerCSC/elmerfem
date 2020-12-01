@@ -19,7 +19,7 @@ Initial Condition 2
   EPLHead = real 0.0
 End
 ```
-The transfer between the two layers is dealt with here. An example is given here with the [WaterTransfer](../UserFunctions/WaterTransfer.md) user function, but one could choose to define an other type of transfer (just keep in mind the sign of the transfer, positive if the flux is from the efficient to the inefficient system).
+The transfer between the two layers is dealt with here. An example is given here with the [WaterTransfer](../../UserFunctions/Documentation/WaterTransfer.md) user function, but one could choose to define an other type of transfer (just keep in mind the sign of the transfer, positive if the flux is from the efficient to the inefficient system).
 
 ```
 Body Force 1
