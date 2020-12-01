@@ -1,5 +1,5 @@
-#Solver Flotation
-##General Information
+# Solver Flotation
+## General Information
 - **Solver Fortran File:** Flotation.F90
 - **Solver Name:** Flotation
 - **Required Output Variable(s):** Zb (or Variable name prescribed by Bottom Surface Name), Zs (or Variable name prescribed by Top Surface Name)
@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** GroundedMask, bedrock, DZbDt, DZsDt
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 The aim of this solver is to apply the flotation criterion to compute the top and bottom surface elevation, knowing the ice thickness. In general it will be used with the [SSA Solver](./SSA.md) and [Thickness Solver](./ThicknessSolver.md)
 
 The bottom surface elevation z_b is computed as:
@@ -23,7 +23,7 @@ The top surface elevation *z_s* is then simply given as *z_s = z_b + H*
 
 If the variable DZbDt and/or DZsDt are present then the elevation change is given as *dz/dt={Delta z} / {Delta t}*
 
-##SIF contents
+## SIF contents
 ```
 Constants
  Sea level = Real .... !z_sea
@@ -45,6 +45,6 @@ Solver 3
 End
 ```
 
-##Examples
+## Examples
 For examples look in your elmer source distribution under
 [ELMER_TRUNK]/elmerice/Tests/SSA_IceSheet

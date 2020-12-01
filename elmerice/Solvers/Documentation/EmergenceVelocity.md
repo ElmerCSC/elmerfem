@@ -1,5 +1,5 @@
-#Retrieve Emergence Velocity
-##General Information
+# Retrieve Emergence Velocity
+## General Information
 - **Solver Fortran File:** Emergence.F90
 - **Solver Name:** GetEmergenceVelocity
 - **Required Output Variable(s):**
@@ -10,7 +10,7 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This is a pseudo solver (i.e., it only composes a new variable from given, not solving a matrix) to retrieve the emergence velocity from a given surface normal vector and a (ice) velocity field. It uses the fact that the scalar-product between surface velocity and surface normal gives (apart from a factor that is very close to unity) the emergence velocity
 
 *v_{em} =  - u  {{\partial h}/{\partial x}} - v  {{\partial h}/{\partial y}} + w,*
@@ -33,7 +33,7 @@ and the emergence velocity can be approximated by
 
 *v_{em} = \vec{u} . \vec{n}*
 
-##SIF Contents
+## SIF Contents
 The following SIF excerpt additionally contains solvers needed for the surface Normal Vector (Solver 2) and the Flow Solution (Solver 3).
 
 ```
@@ -87,8 +87,8 @@ Equation 2
   Flow Solution Name = String "Flow Solution"
 End
 ```
-##Example
+## Example
 An example solving the emergence velocity for a surface velocity and shape distribution computed on a Bueler-profile can be found in [ELMER_TRUNK]/elmerice/Tests/Emergence.
 
-##References
+## References
 Välisuo, I., T. Zwinger, and J. Kohler, 2017. Inverse solution of surface mass balance of Midtre Lovénbreen, Svalbard, accepted Journal of Glaciology

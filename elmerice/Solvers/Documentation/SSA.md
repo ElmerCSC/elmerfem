@@ -1,5 +1,5 @@
-#Solver Shallow Stream/Shelf Approximation (SSA)
-##General Information
+# Solver Shallow Stream/Shelf Approximation (SSA)
+## General Information
 **:!: Important changes have been made in SSABasalSolver. This doc applies from Rev. 6480.**
 
 - **Solver Fortran File:** SSASolver.f90
@@ -15,8 +15,8 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
-###Ice flow
+## General Description
+### Ice flow
 The SSABasalSolver solves the classical SSA equation, it has been modified in Rev. 6440 to be executed either on a grid of dimension lower than the problem dimension itself (i.e. the top or bottom grid of a 2D or 3D mesh for a SSA 1D or 2D problem), or on a grid of the same dimension as the problem (i.e. 2D mesh for a 2D plane view SSA solution).
 It will work on a 3D mesh only if the mesh has been extruded along the vertical direction and if the baseline boundary conditions have been preserved (to impose neumann conditions).
 The mandatory input variables are the bottom surface elevation and top surface elevation variables called Zb and Zs, respectively.
@@ -41,7 +41,7 @@ When the SSA solution is computed on a boundary of a mesh of dimension larger th
 - exported on the whole mesh using the StructuredProjectToPlane solver (preferred solution) or the SSASolver routine
 - used as a Dirichlet condition for the SIA velocity (see the [SIA Solver](./SIA.md)).
 
-###Basal friction
+### Basal friction
 Since version 6480, there are three friction laws implemented in the SSA solver:
 
 - a linear friction law
@@ -68,7 +68,7 @@ The latter two are non-linear and a Newton linearisation can be used. The fricti
   - SSA Min Effective Pressure → *N_{min}*, such that *N >= N_{min}*
 When *u_b = (u^2+v^2)^{1/2}< u_{t0}*, *u_b* in the previous equations is replaced by *u_{t0}*.
 
-##SIF contents
+## SIF contents
 Solver section:
 
 ```
@@ -245,5 +245,5 @@ Boundary Condition 2
 End
 ```
 
-##Examples
+## Examples
 For examples look in your elmer source distribution under [ELMER_TRUNK]/elmerice/Tests/SSA and under [ELMER_TRUNK]/elmerice/examples/Test_SSA.

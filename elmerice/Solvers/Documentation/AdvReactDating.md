@@ -1,5 +1,5 @@
-#Solving the age equation
-##General Description
+# Solving the age equation
+## General Description
 This page explains how to use the general AdvectionReactionSolver from the Elmer distribution to get an Age/Depth relation:
 
 *{{\partial A}/{\partial t}} + u . grad(A) =1*
@@ -10,7 +10,7 @@ The AdvectionReactionSolver solves the general equation
 
 In the particular case of the age equation, one has *gamma = -epsilon_m* and *sigma = 1*. Obviously *gamma = 0* for an incompressible flow. For a compressible flow (snow/firn rheology), the trace of the strain-rate tensor *epsilon_m* should be evaluated using the [ComputeStrainRate Solver](./ComputeStrainRate.md) or directly from the [Porous Solver](./PorousSolve.md).
 
-##SIF contents
+## SIF contents
 The Solver section looks like:
 
 ```
@@ -114,6 +114,6 @@ Material 1
  DGAge Gamma = Real 0.0
 End
 ```
-Example
+## Example
 An example using the AdvectionReaction solver to solve the age equation can be found in [ELMER_TRUNK]/elmerice/examples/Test_Dating. For a steady 1D flow, the dating equation simplifies to dA/dx = 1/u and solutions are of the form A = ln(Kv) with u = v/v'.
 Two tests can be also found in [ELMER_TRUNK]/elmerice/Tests/Dating and [ELMER_TRUNK]/elmerice/Tests/Density.

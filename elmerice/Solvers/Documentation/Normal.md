@@ -1,5 +1,5 @@
-#Solver ComputeNormal
-##General Information
+# Solver ComputeNormal
+## General Information
 - **Solver Fortran File:** ComputeNormal.f90
 - **Solver Name:** ComputeNormal
 - **Required Output Variable(s):** default is Normal Vector
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 Solver for computing nodal normal vectors on boundaries based on an averaged value of the adjacent elements. Bear in mind that in parallel computations this requires halo-elements, such that cross-partition information is available.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 ```
@@ -40,5 +40,5 @@ Boundary Condition 2
 End
 ```
 
-##Examples
+## Examples
 A 2D example can be found in [ELMER_TRUNK]/elmerice/Tests/Contact.

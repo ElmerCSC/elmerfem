@@ -1,5 +1,5 @@
-#Solver for the Thickness evolution equation
-##General Information
+# Solver for the Thickness evolution equation
+## General Information
 - **Solver Fortran File:** ThicknessSolver.f90
 - **Solver Name:** ThicknessSolver
 - **Required Output Variable(s):** H
@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** dhdt
 - **Optional Input Variable(s):** FlowSolution
 
-##General Description
+## General Description
 Solve the Thickness evolution equation:
 *dh/dt + div(uH) = Ms + Mb*
 where:
@@ -20,7 +20,7 @@ This solver can be used on a mesh of the same dimension as the problem (e.g. sol
 
 When working on a mesh of the same dimension as the problem it can be usefull to have an extruded mesh along the vertical direction and to use the StructuredProjectToPlane and StructuredMeshMapper solvers to compute the mean horizontal velocity (from the Stokes solution), export the value of H computed on one boundary in the whole mesh and update the mesh (see examples).
 
-##SIF contents
+## SIF contents
 Solver section:
 
 ```
@@ -108,5 +108,5 @@ Boundary Condition 1
 End
 ```
 
-##Examples
+## Examples
 For examples look in your elmer source distribution under [ELMER_TRUNK]/elmerice/Tests/ThicknessSolver or [ELMER_TRUNK]/elmerice/Tests/SSA_IceSheet or [ELMER_TRUNK]/elmerice/examples/Test_SSA.

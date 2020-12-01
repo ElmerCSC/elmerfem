@@ -1,4 +1,4 @@
-#Solvers
+# Solvers
 
 This set of documentation presents the various solvers developed to solve glaciological applications using the finite element code Elmer. A solver is a Fortran subroutine that solves a differential equation on a given domain for all the nodal variables belonging to this domain. Very often, this results in solving a linear system. In certain cases, when the equation is only local, this can be done more simply by updating and iterating over all the nodes of the domain.
 

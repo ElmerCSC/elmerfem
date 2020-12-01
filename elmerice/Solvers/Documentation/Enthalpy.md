@@ -1,5 +1,5 @@
-#Enthalpy Solver
-##General Information
+# Enthalpy Solver
+## General Information
 - **Solver Fortran File:** EnthalpySolver.f90
 - **Solver Name:** EnthalpySolver
 - **Required Output Variable(s):** Enthalpy_h, Phase Change Enthalpy, Temperature and Water Content
@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 Solves the enthalpy equation:
 
 *rho {{\partial H}/{\partial t}} + rho u .grad H = div(k grad H) + tr (sigma epsilon) + Q_lat*
@@ -33,7 +33,7 @@ where
 - *L* is the latent heat of fusion
 For the boundary conditions, a flux (Enthalpy Heat Flux) has the same meaning than for the temperature solver (W/m2). For a Dirichlet boundary condition on the enthalpy variable, the same definition as in the solver has to be used, i.e. H(T, omega) = int_T0^T C_p (T) dT. See example below.
 
-##SIF contents
+## SIF contents
 In this example, ice velocity is in m/s and pressure in MPa.
 
 ```
@@ -107,8 +107,8 @@ End
 End
 ```
 
-##Examples
+## Examples
 An example solving for the enthalpy within the Tete Rousse glacier assuming an elevation dependent enthalpy at the upper surface can be found in [ELMER_TRUNK]/elmerice/Tests/Enthalpy.
 
-##References
+## References
 Gilbert, A., O. Gagliardini, C. Vincent, and P. Wagnon, 2014. A 3-D thermal regime model suitable for cold accumulation zones of polythermal mountain glaciers, J. Geophys. Res. Earth Surf., 119, doi:10.1002/2014JF003199.

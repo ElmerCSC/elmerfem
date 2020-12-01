@@ -1,5 +1,5 @@
-#GetHydrostaticLoads Solver
-##General Information
+# GetHydrostaticLoads Solver
+## General Information
 - **Solver Fortran File:** GetHydrostaticLoads.f90
 - **Solver Name:** GetHydrostaticLoads
 - **Required Output Variable(s):** Fw (user defined DOFs=2 in 2D, 3 in 3D)
@@ -7,15 +7,15 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 For a given boundary, this solver computes the equivalent nodal force induced by a pressure on the surface (read from the keyword External Pressure). The result is a force vector (Fx,Fy) in 2D and (Fx,Fy,Fz) in 3D.
 
-##Known bugs
+## Known bugs
 2018-12-15: Periodic boundary conditions fixed
 
 2013-03-07: GetHydrostaticloads has an issue for periodic boundary conditions: the force is half what it should be on the periodic boundary whereas the residual account for the fact that the domain is periodic. TODO: fix this!
 
-##SIF contents
+## SIF contents
 ```
 Solver 1
   Equation = Fw
@@ -37,5 +37,5 @@ Boundary Condition 3
 End
 ```
 
-##Examples
+## Examples
 In the example found in [ELMER_TRUNK]/elmerice/Tests/ForceToStress, a pressure applied on a boundary is first integrated to get nodal force using the GetHydrostaticLoads solver, and then the pressure is recovered using the [ForceToStress Solver](./ForceToStress.md).

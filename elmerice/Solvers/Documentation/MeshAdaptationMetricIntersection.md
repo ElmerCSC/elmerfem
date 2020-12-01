@@ -1,5 +1,5 @@
-#Mesh Adaptation (metric intersection)
-##General Information
+# Mesh Adaptation (metric intersection)
+## General Information
 - **Solver Fortran File:** MMG2D_MetricIntersect.F90
 - **Solver Name:** ElmerIce_MeshAdapt2D(MMG2D_MetricIntersect)
 - **Required Output Variable(s):**
@@ -10,7 +10,7 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This is a pseudo solver (i.e. it is not solving an equation).
 
 This solver is used for the mesh adaptation ([Mesh Adaptation](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:meshadaptation)) to perform the intersection of two anisotropic metrics *M_1* and *M_2*.
@@ -25,7 +25,7 @@ with *P* the matrix where the columns are the normalised eigenvectors *(e_i)_{i=
 
 A variable containing the metric *M_i* must have 3 dofs *(M_{11},M_{22},M_{12})*.
 
-##SIF contents
+## SIF contents
 ```
 Solver 6
    Equation = "Metric"
@@ -44,5 +44,5 @@ Solver 6
 End
 ```
 
-##Example
+## Example
 An example for anisotropic mesh adaptation using 2 varaibles can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso2.

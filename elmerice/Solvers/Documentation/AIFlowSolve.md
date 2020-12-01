@@ -1,6 +1,6 @@
-#Anisotropic ice rheology - AIFlow Solver
+# Anisotropic ice rheology - AIFlow Solver
 
-##General Information
+## General Information
 - **Solver Fortran File:** AIFlowSolve_nlD2.f90 and AIFlowSolve_nlS2.f90
 - **Solver Name:** AIFlowSolver_nlD2 and AIFlowSolve_nlS2
 - **Required Output Variable(s):** AIFLow
@@ -8,7 +8,7 @@
 - **Optional Output Variable(s):** DeviatoricStress, StrainRate and Spin
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 Solves the Stokes equation for the General Orthotropic Flow Law (GOLF) as a function of the fabric. The fabric is described using the second-order orientation tensor and its evolution can be computed using the [Fabric Solver](./FabricSolve.md). There are two different versions of the AIFlow solver depending on the non-linear extension of the flow law applied (see SIF section comments).
 
 The anisotropic rheology as a function of the fabric is stored in a file of the type 040010010.Va. This file contains the dimensionless viscosity tabulated on a regular grid in the space spanned by the two largest eigenvectors of the second-order orientation tensor. This file is the output of a separate run of a micro-macro model (some viscosity input files can be downloaded [here](./viscosityfiles.tar.gz)). The name file (abcdefghi.Ma) contains the information about the micro-scale and type of micro-macro model used. Its nomenclature is:
@@ -17,11 +17,11 @@ The anisotropic rheology as a function of the fabric is stored in a file of the 
 - grain anisotropy parameter gamma=e.fg
 - stress exponent n=h.i
 - model used for tabulation =M (V holds for VPSC model)
-###2.5D model – AIFlow solver accounting for flow width
+### 2.5D model – AIFlow solver accounting for flow width
 
 Any real ensemble of flow lines may widen or get narrow, so the width of this flow tube can be accounted for in a two dimensional (x,z) model in the AIFlow solver (2.5D model). In the **Material section**, add the **FlowWidth** key word, that contains the width of the flow tube. For mass conservation, the accumulation area that should be considered correspond to the upper surface area that depends on the flow width.
 
-##SIF contents
+## SIF contents
 ```
 ! Solve the equation for the orthotropic flow law
 !  AIFlow Solvers
@@ -110,10 +110,10 @@ Boundary Condition 2
   AIFlow Slip Coeff 1 = Real 0.0   ! Slip coeff.
 End
 ```
-##Examples
+## Examples
 [ELMER_TRUNK]/elmerice/Tests/AIFlowSolve
 
-##References
+## References
 - Extension of the linear version of the GOLF law to its non-linear form is presented in this publication:
 Ma Y., O. Gagliardini, C. Ritz, F. Gillet-Chaulet, G. Durand and M. Montagnat, 2010. Enhancement factors for grounded ice and ice shelves inferred from an anisotropic ice-flow model. J. Glaciol., 56(199), p. 805-812.
 

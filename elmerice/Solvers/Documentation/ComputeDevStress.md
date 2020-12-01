@@ -1,5 +1,5 @@
-#Solver ComputeDevStress
-##General Information
+# Solver ComputeDevStress
+## General Information
 - **Solver Fortran File:** ComputeDevStressNS.f90
 - **Solver Name:** ComputeDevStress
 - **Required Output Variable(s):** default is Stress (else in Stress Variable Name)
@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 The aim of this solver is to compute deviatoric or Cauchy stress from flow solution. For a 2D simulation there are 4 DOFs (S11, S22, S33, S12), for a 3D simulation, 2 additional are being solved for (S11, S22, S33, S12, S23, S31). This solver uses a dummy variable and solves 4 (6 in 3D) times a 1 DOF system for each stress components.
 
 The Cauchy stress is computed using:
@@ -16,7 +16,7 @@ where *epsilon* is directly evaluated from the velocity field and *p* is the iso
 
 This solver doesn't work for the GOLF anisotropic ([AIFlow Solver](./AIFlowSolve.md)) and the snow/firn ([Porous Solver](./PorousSolve.md)) rheologies. Nevertheless, these two solvers have intrinsic functions that allow direct computation of the stress.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 ```
@@ -53,9 +53,9 @@ Material 1
 End
 ```
 
-##Examples
+## Examples
 A 2D example can be found in [ELMER_TRUNK]/elmerice/Tests/ComputeDevStress.
 
-##Reference
+## Reference
 This solver can be cited using the following references:
 Gagliardini O., D. Cohen, P. Råback and T. Zwinger, 2007. Finite-Element Modeling of Subglacial Cavities and Related Friction Law. J. of Geophys. Res., Earth Surface, 112, F02027.

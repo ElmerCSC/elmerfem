@@ -1,6 +1,6 @@
-#Solving the Mass Conservation of Snow/Firn
+# Solving the Mass Conservation of Snow/Firn
 
-##General Description
+## General Description
 This page explains how to use the general AdvectionReactionSolver from the Elmer distribution to get the density evolution in case of a compressible material (snow/firn) under a given velocity field computed from the [Porous Solver](./PorousSolve.md). The AdvectionReactionSolver solves the general equation
 
 *{{\partial A}/{\partial t}} + div (A u) + gamma A=sigma*
@@ -11,7 +11,7 @@ Note 1: equation (4.1) in the Elmer Model Manual for the AdvectionReaction sover
 
 Note 2: Have a look to this [post](http://elmerfem.org/forum/viewtopic.php?f=7&t=3066&p=9570#p9570) on the Elmer Forum regarding the initialisation of both the DG primary and exported variables of the AdvectionReaction solver (see the example at the end of this page).
 
-##SIF contents
+## SIF contents
 The Solver section looks like:
 
 ```
@@ -89,7 +89,7 @@ Material 1
  DGDens Gamma = Real 0.0
 End
 ```
-##Examples
+## Examples
 A 1D example build from an analytical solution can be found in [ELMER_TRUNK]/elmerice/Tests/Density. In that case, the velocity and density are inversely proportional (u(z) = K/D(z)).
 
 A 3D example coupling the [Porous Solver](./PorousSolve.md) and the calculation of the density field can be found in [ELMER_TRUNK]/elmerice/Tests/DGsolver.

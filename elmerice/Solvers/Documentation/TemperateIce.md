@@ -1,5 +1,5 @@
-#TemperateIce Solver
-##General Information
+# TemperateIce Solver
+## General Information
 - **Solver Fortran File:** TemperateIce.f90
 - **Solver Name:** TemperateIceSolver
 - **Required Output Variable(s):** Temp (user defined)
@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** Temp Homologous, Temp Residual
 - **Optional Input Variable(s):** Deformational Heat W
 
-##General Description
+## General Description
 This solver treats the heat transfer problem with respect to an upper limit of the temperature (usually with ice the pressure-melting point, T< T_pm). Optionally, such a limit (and furthermore also a lower limit, e.g., T > 0 K) is introduced by solving the consequent variational inequality problem using an algorithm that - in comparison to the free surface problem - can be interpreted as a contact problem solver. In case of temperature, it basically introduces additional heat sinks/sources in order to comply with the constraints.
 
 The volumetric heat source term can be estimated from the ice flow deformational heat using the [DeformationalHeat](./DeformationalHeat.md) Solver.
@@ -16,10 +16,10 @@ The volumetric heat source term can be estimated from the ice flow deformational
 
 `Loop While Unconstrained Nodes = Logical True`
 
-##Known bugs
+## Known bugs
 timestep was not initialized; caused excessive heating if transient simulations with more than one iteration at the steady state level were done. Fixed June 2012
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are given below. The MATC functions used here are explained and given on [this page](http://elmerfem.org/elmerice/wiki/doku.php?id=tips:thermoprop).
 
 ```
@@ -120,9 +120,9 @@ End
 ```
 See also [Thermodynamic Properties](http://elmerfem.org/elmerice/wiki/doku.php?id=tips:thermoprop) for heat capacity and conductivity functions.
 
-##Examples
+## Examples
 An example demonstrating the use of the thermal properties of ice can be found in [ELMER_TRUNK]/elmerice/Tests/TemperateIceTest
 
-##Reference
+## Reference
 When used this solver can be cited using the following reference:
 Zwinger T. , R. Greve, O. Gagliardini , T. Shiraiwa and M. Lyly, 2007. A full Stokes-flow thermo-mechanical model for firn and ice applied to the Gorshkov crater glacier, Kamchatka. Annals of Glaciol., 45, p. 29-37.

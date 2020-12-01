@@ -1,5 +1,5 @@
-#GridDataReader Solver
-##General Information
+# GridDataReader Solver
+## General Information
 - **Solver Fortran File:** GridDataReader.f90 (under elmerice/netcdf2-tree)
 - **Solver Name:** GridDataReader
 - **Required Output Variable(s):** None
@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** all from NetCDF file interpolated variables
 - **Optional Input Variable(s):** None
 
-##Compilation
+## Compilation
 **Update 37f46d0** under elmerice branch
 Now you can automatically build, test & compile the solver with cmake.
 **Update e375a11** under elmerice branch:
@@ -20,18 +20,18 @@ cmake
    -DNetCDF_LIBRARY=PATH_TO_libnetcdf.so \
    -DNetCDFF_LIBRARY=PATH_TO_libnetcdff.so \
 ```
-###Old Version
+### Old Version
 This solver is not part of the standard Elmer/Ice installation and has to be compiled manually. There is an example compilation call in the directory. Naturally, the system needs to have a compatible NetCDF library installed. In particular, the Fortran compiler with which the NetCDF library has been compiled has to be the same Elmer and Elmer/Ice has been compiled with (module compatibility)
 
-##General Information
+## General Information
 This auxiliary solver enables to read in variables from a NetCDF file and interpolates the values to the mesh as variables of the same name. The interpolation is done by using the Finite Element test functions.
 
 By default the code will loop over the mesh nodes and read only the values required for the interpolation at the given node. This might involve a lot of I/O and become a bottle neck. Loading the whole netcdf at the begining requires to allocate more space in the memory but might be more efficient if possible. This possibility is given by setting: *Read full array = Logical True*
 
-##Known Bugs
+## Known Bugs
 None, so far.
 
-##SIF contents
+## SIF contents
 ```
 Solver 1
   Equation = Reader
@@ -71,7 +71,7 @@ Solver 1
 End
 ```
 
-##Test
+## Test
 Located under [ELMER_TRUNK]/elmerice/Tests/GridDataReader
 You can test with
 
@@ -81,5 +81,5 @@ or
 ctest -L netcdf
 ```
 
-##Example
+## Example
 The directory [ELMER_TRUNK]/elmerice/netcdf2 contains the example above, that should work with the NetCDF file provided by the [searise group](http://websrv.cs.umt.edu/isis/index.php/Present_Day_Greenland#Data_Download).

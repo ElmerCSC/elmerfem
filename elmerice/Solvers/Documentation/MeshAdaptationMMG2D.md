@@ -1,5 +1,5 @@
-#Mesh Adaptation (MMG2D)
-##General Information
+# Mesh Adaptation (MMG2D)
+## General Information
 - **Solver Fortran File:** MMG2DSolver.F90
 - **Solver Name:** ElmerIce_MeshAdapt2D(MMG2DSolver)
 - **Required Output Variable(s):**
@@ -9,7 +9,7 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This is a pseudo solver (i.e. it is not solving an equation). This solver is used for the mesh adaptation ([Mesh Adaptation](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:meshadaptation)).
 
 This solver call the Mmg library (http://www.mmgtools.org/) to perform the mesh adaptation. This requires you to separately install the Mmg code (https://github.com/MmgTools/mmg). This solver is included only if the cmake arguments “MMG_INCLUDE_DIR” and “MMG_LIBRARY” are provided when compiling elmerice.
@@ -22,7 +22,7 @@ Our implementation is actually restricted to the adaptation of plane-view 2D mes
 
 Tested with Mmg master branch commit (6acfa9e7b20e41134d56af10eba1bb8fd1283f8f).
 
-##SIF contents
+## SIF contents
 ```
 Solver 1
   Exec Solver = after timestep
@@ -57,6 +57,6 @@ Boundary Condition X
 End
 ```
 
-##Example
+## Example
 An example for isotropic mesh adaptation can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Iso.
 Examples for anisotropic mesh adaptation can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso1 and [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso2, where the mesh size is adapted using 1 or 2 variables (i.e. combining metric informations), respectively.

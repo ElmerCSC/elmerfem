@@ -1,5 +1,5 @@
-#ForceToStress Solver
-##General Information
+# ForceToStress Solver
+## General Information
 - **Solver Fortran File:** ForceToStress.f90
 - **Solver Name:** ForceToStress
 - **Required Output Variable(s):** Stress (user defined)
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 For a given boundary, this solver computes the nodal stress equivalent to a given nodal force. Force here means the result of a variable, named stress, which is of the same units than the force but per unit-area in 3D or unit-length in 2D. This can be used also to infer the flux from the value of a debit or to infer a tangential stress from the value of a tangential force.
 
-##SIF contents
+## SIF contents
 In the SIF example below, the normal stress on a boundary is inferred from the 3rd component of the Stokes residual.
 
 ```
@@ -49,7 +49,7 @@ Boundary Condition 3
 End
 ```
 
-##Examples
+## Examples
 In the example found in [ELMER_TRUNK]/elmerice/Tests/ForceToStress, a pressure applied on a boundary is first integrated to get nodal force using the [GetHydrostaticLoad Solver](./GetHydrostaticLoads.md), and then the pressure is recovered using the ForceToStress Solver.
 
 2 more tests were added on 15-12-2018:

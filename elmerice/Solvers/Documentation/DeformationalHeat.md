@@ -1,5 +1,5 @@
-#DeformationalHeat Solver
-##General Information
+# DeformationalHeat Solver
+## General Information
 - **Solver Fortran File:** DeformationalHeat.f90
 - **Solver Name:** DeformationalHeatSolver
 - **Required Output Variable(s):** W (User Defined)
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This solver computes the volumetric heat produced by ice flow deformation.
 
-##SIF contents
+## SIF contents
 This solver produces the volumetric heat source due to ice deformation (strain heating). This can be directly used within the TemperateIceSolver using the body-force keyword Temp Volume Source (provided your temperature variable is called Temp. Important: Do not use that as a Heat Source for the regular HeatSolve (it would need a specific heat source).
 
 The required keywords in the SIF file for this solver are:
@@ -35,5 +35,5 @@ Body Force 1
    Temp Volume Source = Equals W
 End
 ```
-##Example
+## Example
 A test using the DeformationalHeat solver can be found in [ELMER_TRUNK]/elmerice/Tests/Teterousse_DeformHeat.

@@ -1,5 +1,5 @@
-#Solver ComputeStrainRate
-##General Information
+# Solver ComputeStrainRate
+## General Information
 - **Solver Fortran File:** ComputeStrainRate.f90
 - **Solver Name:** ComputeStrainRate
 - **Required Output Variable(s):** default is StrainRate (else in StrainRate Variable Name)
@@ -7,14 +7,14 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 The aim of this solver is to compute the strain-rate tensor from the flow solution. For a 2D simulation there are 5 DOFs (E11, E22, E33, E12, Eii) and for a 3D simulation, 2 additional (7 DOFs) are being solved for (E11, E22, E33, E12, E23, E31, Eii). This solver uses a dummy variable and solves 5 (7 in 3D) times a 1 DOF system for each strain-rate components and the trace of the strain-rate tensor (Eii).
 
 The Strain-rate tensor is computed using:
 *epsilon_{ij}  =  {1/2} ({u_{i,j} + u_{j,i}})*
 where *u* is the velocity vector solution of the Stokes problem.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 ```
@@ -40,5 +40,5 @@ Solver 1
 End
 ```
 
-##Examples
+## Examples
 An example using this solver can be found in [ELMER_TRUNK]/elmerice/examples/Test_StrainRate.

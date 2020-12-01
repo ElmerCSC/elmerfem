@@ -1,6 +1,5 @@
-#Solver FlowDepth Solver
-
-##General Information
+# Solver FlowDepth Solver
+## General Information
 - **Solver Fortran File:** Flowdepth.f90
 - **Solver Name:** FlowdepthSolver
 - **Required Output Variable(s):** Depth or Height (user defined)
@@ -8,12 +7,12 @@
 - **Optional Output Variable(s):** FreeSurf, FreeSurfGrad1, FreeSurfGrad2 (FreeSurf name is user defined)
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This solver computes the vertical distance from a surface (either free surface or bedrock in Glaciology). In structured FD-grids this is a trivial procedure - not so in unstructured FEM meshes as used by Elmer. A degenerated Poisson equation has to be solved in order to get nodal values for either the flow depth below the free surface or the flow height above the bedrock. It can also compute the horizontal derivative of the upper/lower surface if Depth/height is calculated.
 
 Alternatively, if you are using a structured mesh, you might consider replacing the FlowDepth solver by the StructuredProjectToPlane solver, as explained [here](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:structuredmesh).
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 ```
@@ -83,7 +82,7 @@ Boundary Condition 3
   Flowdepth Skip = Logical True
 End
 ```
-##Examples
+## Examples
 Tests using the FlowDepth and FlowHeight solvers can be found in [ELMER_TRUNK]/elmerice/Tests/FlowDepth and [ELMER_TRUNK]/elmerice/Tests/FlowHeight .
 
 

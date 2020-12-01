@@ -1,5 +1,5 @@
-#Fabric Evolution - DG Fabric Solver
-##General Information
+# Fabric Evolution - DG Fabric Solver
+## General Information
 - **Solver Fortran File:** FabricSolve.f90
 - **Solver Name:** FabricSolver
 - **Required Output Variable(s):** Fabric
@@ -7,12 +7,12 @@
 - **Optional Output Variable(s):** EigenV
 - **Optional Input Variable(s):** Mesh Velocity
 
-##General Description
+## General Description
 This solver solves the fabric evolution equations for the anisotropic law obtained from the [AIFlow solver](./AIFlowSolve.md). In Elmer/Ice, the fabric is described using the 5 independent components of the second-order orientation tensor. The grain rotation is induced by the macroscopic strain-rate and the deviatoric stress, and their relative influence is controlled by the interaction parameter (from 0 for purely strain-induced rotation to 1 for purely stress induced rotation). To account for other phenomena than grain rotation, one can use the diffusion parameter.
 
 The eigenvalues of the second-order orientation tensor Fabric are computed if the variable EigenV exists.
 
-##SIF contents
+## SIF contents
 ```
 ! Solve the equation for the orthotropic flow law
 !  AIFlow Solvers
@@ -77,9 +77,9 @@ Boundary Condition 1
 End
 ```
 
-##Examples
+## Examples
 Download an example using the Fabric Solver. TODO
 
-##References
+## References
 - Fabric evolution and numerical implementation within Elmer/Ice are presented in this publication:
 Gillet-Chaulet F., O. Gagliardini , J. Meyssonnier, T. Zwinger and J. Ruokolainen, 2006. Flow-induced anisotropy in polar ice and related ice-sheet flow modelling. J. Non-Newtonian Fluid Mech., 134, p. 33-43.

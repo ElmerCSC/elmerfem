@@ -1,5 +1,5 @@
-#IntegratedVelocity Solver
-##General Information
+# IntegratedVelocity Solver
+## General Information
 - **Solver Fortran File:** IntegratedVelocity.f90
 - **Solver Name:** IntegratedVelocity
 - **Required Output Variable(s):** Integrated Velocity (DIM-1)
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This solver compute the mean vertically integrated horizontal velocities, either on the bedrock surface or on the upper surface. If the keyword Compute Flux is set to True, the horizontal fluxes are computed else the mean horizontal velocities are computed (default).
 
-##SIF contents
+## SIF contents
 ```
 Solver 3
   Equation = "Integrated Velocity"
@@ -39,5 +39,5 @@ Boundary Condition 1
 End
 ```
 
-##Examples
+## Examples
 An example using the IntegratedVelocity Solver can be found in [ELMER_TRUNK]/elmerice/Tests/IntegratedVelocity.

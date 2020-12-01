@@ -1,5 +1,5 @@
-#Surface Boundary Condition for steady state thermal regime
-##General Information
+# Surface Boundary Condition for steady state thermal regime
+## General Information
 - **Solver Fortran File:** SurfaceBoundaryEnthalpy.f90
 - **Solver Name:** SurfEnthBoundarySolver
 - **Required Output Variable(s):** Surf Enth
@@ -9,7 +9,7 @@
 - **Optional Input Data:** Daily precipitation time series
 For vertically structured 3D mesh only. Works in serial and parallel.
 
-##General Description
+## General Description
 SurfEnthBoundarySolver is a pseudo-solver which compute surface mass balance and Dirichlet surface boundary condition for the Enthalpy solver. It takes into account firn heating processes by solving vertical melt-water percolation and refreezing.
 
 The solver uses the provided air temperature (and precipitation) daily record to compute the associated mean surface characteristic of the glacier over the period covered by the provided data time series. It can output the following variables:
@@ -28,7 +28,7 @@ The mass balance model is based on a degree day model that takes into account po
 
 Gilbert, A., Sinisalo, A., Gurung, T. R., Fujita, K., Maharjan, S. B., Sherpa, T. C., & Fukuda, T. (2020). The influence of water percolation through crevasses on the thermal regime of a Himalayan mountain glacier. The Cryosphere, 14(4), 1273–1288. [https://doi.org/10.5194/tc-14-1273-2020](https://doi.org/10.5194/tc-14-1273-2020)
 
-##SIF contents
+## SIF contents
 The parameters are set in the constant section of the sif file :
 
 ```
@@ -144,8 +144,8 @@ Boundary Condition 2
 End
 ```
 
-##Examples
+## Examples
 An example solving for the enthalpy within the Rika Samba Glacier using the SurfEnthBoundarySolver can be found in [ELMER_TRUNK]/elmerice/examples/Test_SurfaceBoundaryEnth.
 
-##Reference
+## Reference
 Gilbert, A., Sinisalo, A., Gurung, T. R., Fujita, K., Maharjan, S. B., Sherpa, T. C., & Fukuda, T. (2020). The influence of water percolation through crevasses on the thermal regime of a Himalayan mountain glacier. The Cryosphere, 14(4), 1273–1288. [https://doi.org/10.5194/tc-14-1273-2020](https://doi.org/10.5194/tc-14-1273-2020)

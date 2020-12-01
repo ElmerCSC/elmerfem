@@ -1,10 +1,10 @@
-#ISCAL (Ice Sheet Coupled Approximation Levels)
+# ISCAL (Ice Sheet Coupled Approximation Levels)
 ISCAL couples the SIA with the full Stokes (FS) equations, so that the FS equations are used only where the SIA is inaccurate. The SIA error is estimated automatically. The core of the code is FlowSolveSIAFS.f90 which couples the SIA and FS solution, the SIASolverOnExtruded.f90 which computes the SIA-solution, and the ErrorEstimationSubs.f90 which estimates the error.
 
-##Coupling
+## Coupling
 The coupling simply consists of setting the SIA solution as a boundary condition to the FS solution. The SIA solution is computed over the whole domain (computational cost neglible). Technically, this is done by splitting the FEM-matrix A into a block-matrix [A_FS, A_Co; A_Oc, A_SIA], where A_FS represents the Stokes equations in the FS areas, and A_SIA represents the Stokes equations in the SIA areas (i.e., A_SIA is not needed), A_Co representes the coupling from SIA to FS areas and A_Oc represents the coupling from FS to SIA areas. Only A_FS and A_Co is assembled. A_Co is multiplied by the forcing and moved to the right hand side. The remaining system A_FS * FSsolution = RHS is solved. Finally, the complete solution is constructed by combining the FSsolution in the FS areas with the SIA solution in the SIA areas. All of this is done from within FlowSolveSIAFS.f90, which is a modified version of the Elmer core routine FlowSolve.f90.
 
-##Error Estimators
+## Error Estimators
 The FS is used where the SIA error is too high. There are three ways of estimating the SIA error:
 - Computing the relative error in the SIA velocity.
 - Computing the error in a functional of the SIA solution (such as flux through a certain point). Only implemented in 2D.
@@ -12,15 +12,15 @@ The FS is used where the SIA error is too high. There are three ways of estimati
 
 This is done in ErrorEstimationSubs.f90
 
-##SIA solution
+## SIA solution
 The SIASolverOnExtruded.f90 solves the SIA equations on extruded meshes in an efficient way. It is possible to instead use the built-in SIA solver or any other approximative solver (as long as it is computationally inexpensive).
 
-##Use
+## Use
 The code is compiled with Compile.sh (change the path where it puts the binaries…). The code for the ISCAL is used in the same way as the rest of Elmer, i.e. you add solvers in your sif-file. The FlowSolveSIAFS.f90 is used in the same way as the original FlowSolve.f90 routine, but with some extra keywords. An example sif-entry is found below. The SIA-solver requires a few solvers to run before it (namely several FluxSolvers to compute gradients of ice surface etc.). An example of sif-entries for this is found below. The SIA-solver should always run before the coupler (FlowSolveSIAFS.f90).
 
 There are two extra output variables for the coupling code which you can view in, for example, Paraview - the ApproximationLevel which is 1 for SIA areas and 2 for full Stokes areas, and the SIAerror, which is the error in the SIA (can be computed in three different ways).
 
-###SIA Solver keywords description
+### SIA Solver keywords description
 *Velocity Cutoff = Real 50000 Sets a maximum limit on the velocity, in this case 50 000 meters per year
 
 *Active Coordinate = 3 The coordinate direction in which the integrals of SIA will be computed - always set to the vertical direction!
@@ -35,7 +35,7 @@ There are two extra output variables for the coupling code which you can view in
 
 *Thickness Name = String H
 
-###Coupler Keywords
+### Coupler Keywords
 - Couple Approximations = Logical True True if you wanna couple SIA and full Stokes, false if you wanna run only full Stokes
 
 - SIA as initial condition = Logical True True if you want to use SIA as initial condition in the first timestep

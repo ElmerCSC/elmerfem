@@ -1,5 +1,5 @@
-#Hydrology - GlaDS model from Werder et al. (2013)
-##General Information
+# Hydrology - GlaDS model from Werder et al. (2013)
+## General Information
 - **Solver Fortran Files:** GlaDSCoupledSolver.F90 and GlaDSchannelSolver.F90
 - **Solver Names:** GlaDSCoupledSolver, GlaDSsheetThickDummy and GlaDSchannelOut
 - **Required Output Variable(s):** Hydraulic Potential, Sheet Thickness and Channel Area
@@ -7,14 +7,14 @@
 - **Optional Output Variable(s):** Vclose, Wopen, Water Pressure, Effective Pressure, Sheet Discharge, Sheet Storage, Flux from Moulins (nodal variables) and Channel Flux (edge variable, to be exported in GlaDSchannelOut).
 - **Optional Input Variable(s):** Zb
 
-##Known bugs
+## Known bugs
 If in parallel a moulin belongs to two partitions, the flux from the moulin is taken into account twice. This is may be not a bug, but the partitioning should avoid to have moulins at the boundary of partitions. The python tool makemoulin.py (in [ELMER_TRUNK]/elmerice/Meshers) take care to have no duplicated moulins on the boundaries of partitions.
 
 If running the solver on a 3d internally extruded mesh, one should specify Preserve Edges = True and Preserve Baseline = True in the Simulation section.
 
 If running on a “true” 3d mesh, the GlaDSchannelsSolver has to be executed on the 3d body (not the bottom surface body as for the two other GlaDS solvers).
 
-##General Description
+## General Description
 The complete description of the equations solved by the GlaDS solver can be found in Werder et al. (2013). The implementation follows exactly these equations, except that optionally the hydraulic potential can be computed at the top of the water sheet instead than at the bed (keyword: Neglect Sheet Thickness in Potential).
 
 The GlaDS solver solves for the hydraulic potential, the water sheet thickness and the cross-sectional area of the channels. Whereas the two first variables are nodal variable and define continuous fields, the Channel area is a discrete field only defined on the edge of the elements.
@@ -25,7 +25,7 @@ The GlaDS model is composed of three solvers:
 - GlaDSchannelOut has two functions: declare that the Channel Area variable is an edge variable (Element = “n:0 e:1”) and create output vtu files for edge variables.
 Since version Version 8.3 (Rev: b213b0c8), GlaDSchannelOut works for parallel simulation (no more vtk or acscii output, only vtu). These solvers only work in transient. They can be executed either on a 2d plane view mesh defining the bedrock or on the boundary of a 3d mesh. If using internal extrusion within Elmer see the [structured mesh](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:structuredmesh) page for essential keywords to preserve baseline and edges. More details about the specificity of the solvers are given below.
 
-##SIF contents
+## SIF contents
 The SIF examples given here are from the tests used in the [SHMIP](https://shmip.bitbucket.io/). The name of the variables as well as some constants have to be defined in the Constants section:
 
 ```
@@ -174,7 +174,7 @@ Boundary Condition 4
   Moulin Flux = Real $4.5*yearinsec
 End
 ```
-##Making a mesh with Moulins
+## Making a mesh with Moulins
 Moulins are 101 boundary elements. ElmerGrid does not export correctly 101 boundary elements from gmsh or when partitioning a mesh. To add 101 boundary elements to an existing mesh, thanks to Mondher Chekki (IGE), one can use the python tool makemoulin.py (in [ELMER_TRUNK]/elmerice/Meshers).
 
 Usage:
@@ -182,10 +182,10 @@ Usage:
 `python makemoulin.py --meshdir mesh_dir --moulin moulin_file --partition number_of_partition`
 where moulin_file is an ascii file which contains the (x,y) coordinates of the moulins. The same file has to be used in gmsh so that nodes with the moulin coordinates already exist.
 
-##Examples
+## Examples
 Examples using the GlaDS Solver can be found in [ELMER_TRUNK]/elmerice/Tests/.
 
-##References
+## References
 The description of the GlaDS model is in:
 - Werder M.A., I.J. Hewitt, C.G. Schoof and G.E. Flowers, 2013. Modeling channelized and distributed subglacial drainage in two dimensions. Journal of Geophysical Research: Earth Surface, 118(4), 2140-2158.
 The implementation of the GlaDS model in Elmer/Ice is described here:

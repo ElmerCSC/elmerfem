@@ -1,4 +1,4 @@
-#Scattered2DDataInterpolator
+# Scattered2DDataInterpolator
 Solver to interpolate sparse 2D data sets onto the FE mesh.
 
 Interpolation is made using external libraries
@@ -35,7 +35,7 @@ nn and csa libraries must be compiled by the user
 Go to the ELMER_TRUNK/elmerice/ScatteredDataInterpolator directory
 Edit/Update the Makefile and compile/install the solver
 
-##SIF contents
+## SIF contents
 The Solver section must include"
 
 ```
@@ -126,7 +126,7 @@ Solver 2
 End
 ```
 
-##Test
+## Test
 Located under [ELMER_TRUNK]/elmerice/Tests/ScatteredDataInterpolator
 You can test with
 
@@ -134,6 +134,6 @@ ctest -L ScatteredDataInterpolator
 or 
 ctest -L netcdf
 
-##Example
+## Example
 A test case is provided under
 [ELMER_TRUNK]/elmerice/examples/Test_Scattered2DDataInterpolator .

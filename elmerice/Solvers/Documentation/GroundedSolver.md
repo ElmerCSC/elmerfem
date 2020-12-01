@@ -1,5 +1,5 @@
-#Solver Grounded Solver
-##General Information
+# Solver Grounded Solver
+## General Information
 - **Solver Fortran File:** GroundedSolver.f90
 - **Solver Name:** GroundedSolver
 - **Required Output Variable(s):** GroundedMask (user defined)
@@ -7,13 +7,13 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##Versions
+## Versions
 The solver GroundedSolverInit has been suppressed (version 7078). Instead, the solver GroundedSolver should be executed twice (one before the simulation and one at each time step).
 
-##General Description
+## General Description
 The aim of these solvers is to compute a mask to qualify which part of the bed is grounded, which one is floating and which one belongs to the grounding line. The GroundedMask value is +1 where grounded, -1 where floating and 0 on the grounding line.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 To initialise the GroundedMask variable
@@ -63,5 +63,5 @@ Material 1
 End
 ```
 
-##Examples
+## Examples
 An example testing the Grounded solver can be found in [ELMER_TRUNK]/elmerice/Tests/Grounded. See also GL_MISMIP and Contact (also in the Tests directory).

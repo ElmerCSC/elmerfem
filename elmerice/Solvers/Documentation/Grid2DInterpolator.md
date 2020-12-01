@@ -1,5 +1,5 @@
-#Grid2DInterpolator
-##General Description
+# Grid2DInterpolator
+## General Description
 This solver interpolates data given on a regular 2D grid in an ASCII file (x y Value). A bilinear interpolation is used. By default, the data in the ASCII file have to be ordered such that
 
 ```
@@ -41,7 +41,7 @@ The grid is described by giving:
 - Cells with no data are identified by value (within a given tolerance)
 WARNING: All data with values between (noData - tol) and (noData + tol) will be ignored (where noData and tol are the no data value and tolerance, see below). In the case a node falls in a cell of the DEM containing no data, the nodal value is assigned to the closest DEM value. This robust feature might be dangerous if too many nodes are outside of the DEM domain. The solver gives the number of nodes outside of the DEM domain and the farthest DEM point used to evaluate the nodal values.
 
-##SIF contents
+## SIF contents
 Add this solver and execute it before the simulation. Here, it is used to read the surface DEM and the bedrock DEM given by the files DEM_TR_surf.dat and DEM_TR_bed.dat, respectively.
 
 ```
@@ -98,5 +98,5 @@ Boundary Condition 3
 End
 ```
 
-##Example
+## Example
 An example using the Tete Rousse surface and bedrock DEM can be found in [ELMER_TRUNK]/elmerice/Tests/Grid2DInterpolator.

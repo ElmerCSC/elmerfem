@@ -1,5 +1,5 @@
-#Solver ComputeEigenValues
-##General Information
+# Solver ComputeEigenValues
+## General Information
 - **Solver Fortran File:** ComputeEigenValues.f90
 - **Solver Name:** ComputeEigenValues
 - **Required Output Variable(s):** default is EigenStress (else in EigenValue Variable Name)
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** EigenVector1, EigenVector2 and EigenVector3
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 The aim of this solver is to compute the eigenvalues of a tensor variable (e.g., strain-rate or stress tensors). Optionnaly, the 3 eigenvectors corresponding to each of the three eigenvalues can be computed.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 ```
@@ -36,5 +36,5 @@ Solver 3
   Exported Variable 4 DOFS = 3
 End
 ```
-##Examples
+## Examples
 An example in which the eigenvalues and eigenvectors of the strain-rate tensor are computed can be found here [ELMER_TRUNK]/elmerice/examples/Test_StrainRate.

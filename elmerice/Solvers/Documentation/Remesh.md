@@ -1,11 +1,11 @@
-#Remesh
+# Remesh
 This page describes the solver Remesh which handles the domain remeshing which is required after large calving events in the [3D calving model](http://elmerfem.org/elmerice/wiki/doku.php?id=problems:calving).
 
 In addition to the main solver, Remesh makes use of an auxiliary mesh update solver which must be present in the SIF.
 
 ![remeshing algorithm](./rememsh_algo.png)
 
-##The Remeshing Algorithm
+## The Remeshing Algorithm
 
 ```
 Solver Options
@@ -95,7 +95,7 @@ Solver 22
 End
 ```
 
-##CheckFlowConvergence
+## CheckFlowConvergence
 An additional solver “CheckFlowConvergence” is provided to allow the model to detect when remeshing has failed to produce a viable mesh for the computation of the flow solution. This solver, which should be called immediately after the flow solver, checks that the flow solution appears to be behaving by checking that:
 
 The convergence flag of the flow solver is 'True'

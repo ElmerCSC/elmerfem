@@ -1,5 +1,5 @@
-#Mesh Adaptation (metric)
-##General Information
+# Mesh Adaptation (metric)
+## General Information
 - **Solver Fortran File:** MMG2D_MetricAniso.F90
 - **Solver Name:** ElmerIce_MeshAdapt2D(MMG2D_MetricAniso)
 - **Required Output Variable(s):**
@@ -10,7 +10,7 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This solver is used for the mesh adaptation ([Mesh Adaptation](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:meshadaptation)) to compute the anisotropic metric M.
 
 The metric M , used to define the element size, derives from a geometric error estimate based on an upper bound for the interpolation error of a continuous field to piecewise linear elements (Frey and Alauzet, 2005).
@@ -28,7 +28,7 @@ First this solver computes the hessian matrix *H*. As computing second derivativ
 
 Finally, the metric *M* is then computed from Eq. (1)
 
-##SIF contents
+## SIF contents
 ```
 Solver 5
    Equation = "Metric2"
@@ -58,5 +58,5 @@ Body Force 1
 End
 ```
 
-##Example
+## Example
 Examples for anisotropic mesh adaptation can be found under [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso1 and [ELMER_TRUNK]/elmerice/Tests/MMG2D_Aniso2, where the mesh size is adapted using 1 or 2 variables (i.e. combining metric informations), respectively.

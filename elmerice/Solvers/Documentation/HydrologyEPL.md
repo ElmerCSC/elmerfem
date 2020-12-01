@@ -1,5 +1,5 @@
-#Efficient drainage system solver
-##General Information
+# Efficient drainage system solver
+## General Information
 - **Solver Fortran File:** EPLSolver.f90
 - **Solver Name:** EPLSolver
 - **Required Output Variable(s):** EPLHead, Open EPL and EPLHead Homologous
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** EPL Head Upper Limit (required if the upper limit is used)
 
-##General Description
+## General Description
 This solver treat the diffusion equation for the efficient drainage system. The activation of the layer is dealt by the Open EPL mask. The upper limit is needed to increase the size of the drainage system once the water head in the efficient layer reaches a given value.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are given below. The [IDSSolver](./HydrologyIDS.md) is needed to use the efficient layer solver. In the following, we assume that the SIF file is written as shown in the [IDSSolver](./HydrologyIDS.md) section; the SIF should then be written as follows.
 
 ```
@@ -103,9 +103,9 @@ Boundary Condition 5
 End
 ```
 
-##Example
+## Example
 Two basic tests can be found in [ELMER_TRUNK]/elmerice/Tests/Hydro_SedOnly and [ELMER_TRUNK]/elmerice/Tests/Hydro_Coupled.
 
-##Reference
+## Reference
 When used this solver can be cited using the following reference :
 de Fleurian, B.; Gagliardini, O.; Zwinger, T.; Durand, G.; Le Meur, E.; Mair, D. & Råback, P. A double continuum hydrological model for glacier applications The Cryosphere, 2014, 8, 137-153

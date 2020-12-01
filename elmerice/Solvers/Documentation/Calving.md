@@ -1,7 +1,7 @@
-#Calving2D
+# Calving2D
 This page describes the solver Calving2D which is the main component of Elmer/Ice's [2D calving model](http://elmerfem.org/elmerice/wiki/doku.php?id=problems:calving).
 
-#Calving3D
+# Calving3D
 This page describes the solver Calving3D which computes crevasse depth and predicts calving events in the [3D calving model](http://elmerfem.org/elmerice/wiki/doku.php?id=problems:calving).
 
 In addition to the main solver, Calving3D makes use of two auxiliary solvers which must be present in the SIF: Calving Isosurface, ProjectCalving.

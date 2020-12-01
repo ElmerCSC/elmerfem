@@ -1,5 +1,5 @@
-#Solver ExportVertically
-##General Information
+# Solver ExportVertically
+## General Information
 - **Solver Fortran File:** ExportVertically.f90
 - **Solver Name:** ExportVertically
 - **Required Output Variable(s):** user defined
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 The aim of this solver is to export vertically in the whole domain the value of the variable set as a Dirichlet condition on the upper or lower boundary. This can be used for example if one want to know in the whole domain the GroundedMask variable which is only computed on the bedrock boundary.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 ```
@@ -29,5 +29,5 @@ Boundary Condition 1
 End
 ```
 
-##Examples
+## Examples
 An example in which an analytical function is exported vertically on the whole domain can be found in [ELMER_TRUNK]/elmerice/Tests/ExportVertically.

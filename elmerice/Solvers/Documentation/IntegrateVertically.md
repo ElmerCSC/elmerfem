@@ -1,5 +1,5 @@
-#IntegrateVertically Solver
-##General Information
+# IntegrateVertically Solver
+## General Information
 - **Solver Fortran File:** IntegrateVertically.f90
 - **Solver Name:** IntegrateVertically
 - **Required Output Variable(s):** given by the variable name
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This solver compute the depth integrated value of a variable (sum_zb^zs D dz) or the mean value (1/H sum_zb^zs D dz). The resulting integrated value or mean can be computed on the upper surface or on the lower one. If the mean value is computed (Compute Mean = Logical True), the depth (if On Surface = Logical False) or the height (if On Surface = Logical True) has to be calculated. If the integrated variable is calculated on the upper surface (On Surface = Logical True), a Dirichlet BC has to be given at the bottom surface, and vice versa.
 
-##SIF contents
+## SIF contents
 ```
 Solver 2
   Equation = "IntegrateVertically"
@@ -41,5 +41,5 @@ Boundary Condition 2
 End
 ```
 
-##Examples
+## Examples
 An example using the IntegrateVertically Solver can be found in [ELMER_TRUNK]/elmerice/Tests/IntegrateVertically.

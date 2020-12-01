@@ -1,5 +1,5 @@
-#Snow/firn rheology - Solver Porous Solver
-##General Information
+# Snow/firn rheology - Solver Porous Solver
+## General Information
 - **Solver Fortran File:** PorousSolve.f90
 - **Solver Name:** PorousSolver
 - **Required Output Variable(s):** Porous
@@ -7,14 +7,14 @@
 - **Optional Output Variable(s):** StrainRate, DeviatoricStress
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This solver computes the flow of snow/firn material (i.e., porous incompressible ice) using the snow/firn law proposed by Gagliardini and Meyssonnier (1997). The snow/ice rheological law is function of the relative density, which is a required input variable for this solver. The law depends on two function, a(D) and b(D), which are parametrized functions of the relative density D.
 
 As optional output variables, strain-rate, deviatoric stress and spin can be calculated. In this solver, the nodal value of these quantities is computed as the average contribution from all the elements belonging at this given node. This can be slightly different than the evaluation obtained using the variational method (as in the [Strain-rate solver](./ComputeStrainRate.md) and the [ComputeDevStress](./ComputeDevStress.md) solver).
 
 More details about the snow/firn law can be found here: [poroussolver.pdf](./poroussolver.pdf).
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for the Porous Solver are:
 
 ```
@@ -109,10 +109,10 @@ Boundary Condition 2
 End
 ```
 
-##Examples
+## Examples
 An example using the Porous Solver can be found in [ELMER_TRUNK]/elmerice/examples/Test_Porous.
 
-##Reference
+## Reference
 The snow/firn rheological law is from:
 Gagliardini O. and J. Meyssonnier, 1997. Flow simulation of a firn covered cold glacier. Annals of Glaciol., 24, p. 242-248.
 

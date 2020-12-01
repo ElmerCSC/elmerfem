@@ -1,5 +1,5 @@
-#Inefficient drainage system solver
-##General Information
+# Inefficient drainage system solver
+## General Information
 - **Solver Fortran File:** IDSSolver.f90
 - **Solver Name:** IDSSolver
 - **Required Output Variable(s):** IDSHead, IDSHead Residual, IDSHead Homologous and IDSHead Pressure
@@ -7,10 +7,10 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** IDS Head Upper Limit (required if the upper limit is used)
 
-##General Description
+## General Description
 This solver treats the diffusion equation with a user-defined upper limit.
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are given bellow. The IDSSolver can be used alone, coupling between the two layer is treated in the [EPLSolver](./HydrologyEPL.md) section
 
 The hydrological system is only treated at the bed, it requires then a new equation, we keep the Material an Body Force section of the ice.
@@ -112,9 +112,9 @@ Boundary Condition 5
 End
 ```
 
-##Example
+## Example
 Two basic tests can be found in [ELMER_TRUNK]/elmerice/Tests/Hydro_SedOnly and [ELMER_TRUNK]/elmerice/Tests/Hydro_Coupled.
 
-##Reference
+## Reference
 When used this solver can be cited using the following reference :
 de Fleurian, B.; Gagliardini, O.; Zwinger, T.; Durand, G.; Le Meur, E.; Mair, D. & Råback, P. A double continuum hydrological model for glacier applications The Cryosphere, 2014, 8, 137-153

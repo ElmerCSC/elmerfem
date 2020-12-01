@@ -1,5 +1,5 @@
-#Solver Shallow Ice Approximation (SIA)
-##General Information
+# Solver Shallow Ice Approximation (SIA)
+## General Information
 - **Solver Fortran File:** SIASolver.f90
 - **Solver Name:** SIAVariable and SIASolver
 - **Required Output Variable(s):** SIAFlow
@@ -7,7 +7,7 @@
 - **Optional Output Variable(s):** None
 - **Optional Input Variable(s):** None
 
-##General Description
+## General Description
 This SIA solver is not classical in the sense that the equations are not solved on a grid of dimension lower than the problem dimension itself. The geometry (H, B and S) is here given by the mesh. For a flow line problem, the mesh is a plane surface, and a volume for a 3D problem. Regarding this aspect, this solver is certainly not as efficient as a classical SIA solver. But, on the other hand, it works for an unstructured grid and non-constant viscosity. The SIA velocities and pressure can be used, for example, as initial conditions for the Stokes Solver. Contrary to the NS solver, the gravity must be orientated along the z-axis.
 
 The SIA solver uses the same input parameters as the NS solver (Viscosity, Density, Viscosity Exponent, Flow BodyForce,…). Doesn't work with the built-in Glen's flow law (TODO). Need to run the [FlowDepth solver](./FlowDepth.md) first.
@@ -16,7 +16,7 @@ The basal velocities are given as Dirichlet BC on the bedrock surface. The [SSA 
 
 More information regarding how the SIA is solved using the SIASolver can be found [here](./siasolver.pdf).
 
-##SIF contents
+## SIF contents
 The required keywords in the SIF file for this solver are:
 
 ```
@@ -59,5 +59,5 @@ Boundary Condition 6
 End
 ```
 
-##Examples
+## Examples
 An example using the SIASolver applied to experiment A160 of ISMIP-HOM benchamrks can be found in [ELMER_TRUNK]/elmerice/Tests/SIA.
