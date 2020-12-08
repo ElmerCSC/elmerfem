@@ -758,7 +758,7 @@ CONTAINS
         FORCE(p) = FORCE(p) - &
              Weight * Basis(p) * GlobalRockMaterial % etak(RockMaterialID) *&
              (rhocAtIP - rhowAtIP)* SUM(JcFAtIP(1:DIM)*dBasisdx(p,1:DIM))
-        FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
+        FORCE(p) = FORCE(p) + Weight * LoadAtIP * Basis(p)
         IF (CryogenicSuction) &
              FORCE(p) = FORCE(p) + Weight * rhogwAtIP * SUM(fluxTAtIP(1:DIM)*dBasisdx(p,1:DIM))
         IF (ComputeDt) THEN
