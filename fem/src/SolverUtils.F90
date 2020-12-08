@@ -12431,7 +12431,7 @@ END FUNCTION SearchNodeL
     END DO
     !$OMP END DO NOWAIT
     
-#if 0
+#if 1
     IF ( ASSOCIATED( A % PrecValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
         !$OMP DO
