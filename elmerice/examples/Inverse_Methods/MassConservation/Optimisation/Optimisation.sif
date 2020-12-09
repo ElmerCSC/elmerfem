@@ -1,12 +1,17 @@
+! Optimise the convection velocity to match the observed ie thicknesses
 !-----------------------------
 ! PARAMETERS:
 !----------------------------
 $name=ipar(0)
+$ID="Optim"
+
+!# regularisation parameter
 $LambdaReg=rpar(0)
 
-$ID="Optim"
+!# H observations
 $OBSERVATION_FILE="Hflight.txt"
 
+!number of iterations and output intervals
 $niter=200
 $nout=25
 !
@@ -32,13 +37,14 @@ Simulation
 
   max output level = 3
 End
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Body 1
   Equation = 1
   Body Force = 1
   Initial Condition = 1
 End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! initial convection velocity
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Initial Condition 1
   Velocity 1 = Variable USolution 1, r 1
@@ -57,6 +63,8 @@ Body Force 1
   Bottom Surface Accumulation = Real 0.0
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute H
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 1
    Equation = "Thickness"
@@ -81,7 +89,9 @@ Solver 1
 
    Steady State Convergence Tolerance = Real 1.0e-12
 End
-
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute Cost
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 2
   Equation = "Cost"
     procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
@@ -96,7 +106,10 @@ Solver 2
 
    Observation File Name = File "$OBSERVATION_FILE$"
 end
-
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute regularisation (penalise spatial derivatives of H)
+!  has to be befoe the adjoint as in depends on H
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 3
   Equation = String "CostReg"
   procedure = "ElmerIceSolvers" "Adjoint_CostRegSolver"
@@ -114,9 +127,9 @@ Solver 3
 
   A priori Regularisation = Logical False
 end
-
-
-!!!!  Adjoint Solution
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!  adjoint
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 4
   Equation = "Adjoint"
   Variable = -nooutput Adjoint
@@ -130,8 +143,9 @@ Solver 4
    Linear System Solver = Direct
    Linear System Direct Method = umfpack
 End
-
-!!!!!  Compute Derivative of Cost function / Beta
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!  Gradient
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 5
   Equation = "DJDp"
 
@@ -150,7 +164,9 @@ Solver 5
   Exported Variable 2 = DJDsmbTop
   Exported Variable 2 DOFs = 1
 end
-
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+!  Optimisation
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Solver 6
   Equation = "Optimize_m1qn3"
@@ -161,9 +177,6 @@ Solver 6
   Gradient Variable Name = String "DJDUV"
   gradient Norm File = String "GradientNormAdjoint_$name$.dat"
 
-  !Note: it may be beneficial to set this to True, which scales
-  !the gradient by 1/boundary_weights. With this set to false,
-  !larger elements produce larger gradients.
   Mesh Independent = Logical False
 
 ! M1QN3 Parameters
@@ -178,8 +191,6 @@ Solver 6
   M1QN3 OutputFile = File  "M1QN3_$name$.out"
   M1QN3 ndz = Integer 20
 end
-
-
 !!######################
 Equation 1
   Active Solvers(6) = 1 2 3 4 5 6
@@ -189,6 +200,7 @@ Boundary Condition 1
   name = "Sides"
   Target Boundaries(2) = 1 3
 
+  ! we set dirichlet here as we may get inflow
   H = Equals HSolution
 End
 

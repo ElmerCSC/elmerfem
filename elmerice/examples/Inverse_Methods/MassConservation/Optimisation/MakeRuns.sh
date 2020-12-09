@@ -1,17 +1,18 @@
 #!/bin/bash
 
+# set src dir
+export SRC_DIR=../src
+
 # mesh resolution
 res=2000.0
-
-export SRC_DIR=../src
 
 ## Make mesh
 . $SRC_DIR/MakeMesh.sh $res
 
-## compile
+## compile required USFs
 make -f $SRC_DIR/Makefile
 
-## get data
+## gerenate synthetic noisy data
 python3 $SRC_DIR/MakeObs.py
 
 ## run init
@@ -27,5 +28,5 @@ do
 	ElmerSolver Optimisation.sif -ipar 1 $c -rpar 1 $i
 done
 
-
+## extract the L-Curve
 . ./MakeLCurve.sh

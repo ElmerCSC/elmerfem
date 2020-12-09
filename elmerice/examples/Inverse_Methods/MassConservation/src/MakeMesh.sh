@@ -1,4 +1,14 @@
 #!/bin/bash
+#########################################
+# Bash script to generate the Elmer mesh
+#  from rectangle .geo
+#
+# INPUTS:
+#	- SRC_DIR: environnement variable with the path to this directory
+#	- Arguments:
+#		- $1 : element size
+#		- $2 : output mesh name (.msh) (OPTIONAL)
+#########################################
 # check that there is one input argument
 if [ -z "$1" ]
 then
@@ -9,9 +19,9 @@ fi
 
 # argument is the required mesh resolution
 res=$1
-# convert to int for the output name
-printf -v int %.0f "$res"
 
+# if a second argument is present it is the gmsh mesh file
+#  default is rectangle.msh
 if [ -z "$2" ]
 then
   output=rectangle.msh

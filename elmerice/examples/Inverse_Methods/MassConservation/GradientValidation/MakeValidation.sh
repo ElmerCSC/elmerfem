@@ -1,17 +1,18 @@
 #!/bin/bash
  
-# mesh resolution
-res=2000.0
-
+## define the src dir
 export SRC_DIR=../src
+
+## mesh resolution
+res=2000.0
 
 ## Make mesh
 . $SRC_DIR/MakeMesh.sh $res
 
-## compile
+## compile required USFs
 make -f $SRC_DIR/Makefile
 
-## get data
+## generate synthetic obsevations
 python3 $SRC_DIR/MakeObs.py
 
 ## run validation

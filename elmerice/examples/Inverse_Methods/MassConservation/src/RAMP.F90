@@ -1,3 +1,41 @@
+!/*****************************************************************************/
+! *
+! *  Elmer/Ice, a glaciological add-on to Elmer
+! *  http://elmerice.elmerfem.org
+! *
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+! ******************************************************************************
+! *
+! *  Authors: F. Gillet-Chaulet
+! *  Web:     http://elmerice.elmerfem.org
+! *
+! *  Original Date: Dec. 2020
+! *
+! *  A collection of user function for the ice shelf ramp :
+! *   - Thickness
+! *   - Velocity
+! *   - SMB
+! *  Required parameters are read from the constant section see  the
+! functions RAMP_PARAMETERS and PHYSICAL_PARAMETERS below
+! *****************************************************************************
+!-----------------------------------------------------------------------------
+      ! H(x)
        FUNCTION Thickness(Model,nodenumber,x) RESULT(H)
        USE DefUtils
        implicit none
@@ -18,7 +56,7 @@
        
        End FUNCTION Thickness
 
-
+       ! Ux(x)
        FUNCTION Velocity(Model,nodenumber,x) RESULT(U)
        USE DefUtils
        implicit none
@@ -46,6 +84,7 @@
 
        END FUNCTION Velocity
 
+       ! SMB(x)
        FUNCTION SMB(Model,nodenumber,x) RESULT(adot)
        USE DefUtils
        implicit none
@@ -74,7 +113,6 @@
 
        END FUNCTION SMB
 
-
        FUNCTION H_n(x,n,Hgl,dhdx) RESULT(Hn)
        USE DefUtils
        implicit none
@@ -97,8 +135,6 @@
       
        END FUNCTION A_star 
        
-
-
        SUBROUTINE RAMP_PARAMETERS(Model,Vgl,Hgl,dhdx)
        USE DefUtils
        implicit none

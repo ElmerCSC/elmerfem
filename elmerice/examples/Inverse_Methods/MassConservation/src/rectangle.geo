@@ -1,5 +1,6 @@
+// Generic gmsh .geo file to mesh a rectangular domain
 // parameters: resolution and rectangle length and width
-// can be changed in line using e.g. "-setnumber lc [VALUE]"
+//  (can be changed in line using e.g. "-setnumber lc [VALUE]")
 DefineConstant[ lc = {1.0e3, Name "resolution"},
                 x = {200.0e3, Name "lenght"},
 		y = {50.0e3, Name "width"}];

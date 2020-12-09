@@ -42,23 +42,22 @@ Simulation
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!The bottom for the SSA
 Body 1
   Equation = 1
   Body Force = 1
   Material = 1
   Initial Condition = 1
 End
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Initial Condition 1
 ! analytical SMB
   SMB = Variable Coordinate 1
     REAL procedure "RAMP" "SMB"
-
+! analytical Thickness
   H = Variable Coordinate 1
     REAL procedure "RAMP" "Thickness"
 
+! for the flotation need to define the bed
   bedrock = Real -1000.0
 
 ! anaytical solution for the u-velocity
@@ -79,6 +78,7 @@ Body Force 1
   Top Surface Accumulation = Equals SMB
   Bottom Surface Accumulation = Real 0.0
 
+! compute the error between model and analytical solutions
   dh = Variable H, HSolution
     REAL LUA "tx[0]-tx[1]"
 
@@ -103,6 +103,8 @@ Material 1
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Flotation : update Zs, Zb and GroundedMask from H and bedrock
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 1
    Equation = "Flotation"
    Variable = GroundedMask
@@ -115,7 +117,9 @@ Solver 1
    Exported Variable 5 = -dofs 2 USolution
    Exported Variable 6 = HSolution
 End
-
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! SSA using analytical H
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 2
   Equation = "SSA"
   Variable = -dofs 2 "SSAVelocity"
@@ -134,6 +138,8 @@ Solver 2
   Steady State convergence tolerance = Real 1.0e-5
 End
 !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Steady state H from anlytical velocity and SMB
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 3
    Equation = "Thickness"
    Variable = -dofs 1 "H"
@@ -147,6 +153,9 @@ Solver 3
   Flow Solution Name = String "USolution"
 End
 
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute the difference and save results
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 Solver 4
   Equation = "Compare"
   Variable = -nooutput upd
@@ -173,8 +182,6 @@ Solver 5
  Variable 3 = du
  Operator 3 = rms
 End
-
-
 !!######################
 Equation 1
   Active Solvers(4) = 1 2 3 4
