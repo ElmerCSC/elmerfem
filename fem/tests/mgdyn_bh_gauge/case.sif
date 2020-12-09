@@ -55,7 +55,7 @@ solver 2
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
   Fix input current density = Logical true
   Newton-Raphson Iteration = Logical True
-  nonlinear system max iterations = 10
+  nonlinear system max iterations = 30
   nonlinear system convergence tolerance = 1e-6
   linear system symmetric = True
   linear system solver = iterative
@@ -64,7 +64,7 @@ solver 2
   linear system residual output = 10
   linear system max iterations = 5000
   linear system iterative method = bicgstab2
-  linear system direct method = mumps
+!  linear system direct method = mumps
   use lagrange gauge = logical true
   use tree gauge = logical false
   lagrange gauge penalization coefficient = real 1e0
@@ -80,6 +80,7 @@ solver 3
   Calculate Magnetic Vector Potential = True
   Calculate Magnetic Flux Density = True
   calculate magnetic field strength = True
+  Separate Magnetic Energy = True
   steady state convergence tolerance = 1e-6
   linear system solver = iterative
   linear system preconditioning = none
@@ -105,7 +106,7 @@ end
 solver 5
   equation = scalars
   Procedure = "SaveData" "SaveScalars"
-  show norm index = 2
+  show norm index = 3
   parallel Reduce = true
   filename = f.dat
 end
@@ -113,7 +114,7 @@ end
 solver 6
   equation = scalars2
   Procedure = "SaveData" "SaveScalars"
-  show norm index = 3
+  show norm index = 4
   parallel reduce = true
 end
 
@@ -140,10 +141,14 @@ material 1
 end
 
 material 2
-  relative permittivity = 1.0
-  name = iron
-  electric conductivity = 0.0
-  relative permeability = 1000.0
+  relative Permittivity = 1.0
+  Name = "Iron"
+  Electric Conductivity = 0.0
+  Relative Permeability = 1000.
+
+  H-B Curve(31,2) = Real
+   INCLUDE HB
+
 end
 
 material 3
@@ -204,6 +209,6 @@ end
 
 Solver 6 :: Reference Norm = Real  8.05311383E-03
 Solver 6 :: Reference Norm tolerance = Real 2e-4
-Solver 5 :: reference norm = real 5.28894624E-05
+Solver 5 :: reference norm = real 2.204993E-05
 Solver 5 :: reference norm tolerance = real 2e-4
 
