@@ -2,7 +2,9 @@
 ! This sif file gives an alternate for the original test as defined in the file
 ! case.sif. This alternative makes the vector potential variable unique in an 
 ! iterated manner (in connection with the nonlinear iteration) by performing the
-! Helmholtz projection after solving the A-V solution candidate. 
+! Helmholtz projection after solving the A-V solution candidate. Here the 
+! nonlinear iteration thus combines two tasks. It resolves the nonlinearity due 
+! to the B-H law and makes the vector potential unique.
 !
 
 
@@ -75,9 +77,11 @@ Solver 3
    Linear System Symmetric = True
    Potential Variable = String "P"
 
+   Separate Magnetic Energy = True
+
    Calculate Magnetic Vector Potential = True
    Calculate Magnetic Flux Density = True
-   Calculate Magnetic Field Strength = Logical False
+   Calculate Magnetic Field Strength = Logical True
    Steady State Convergence Tolerance = 0
    Linear System Solver = "Iterative"
    Linear System Preconditioning = None
@@ -95,14 +99,14 @@ Solver 4
   Save Geometry IDs = Logical True
   Vtu format = Logical True
   Output File Name = with_projection
-  discontinuous bodies = logical true
+  Discontinuous Bodies = True
 End
 
 Solver 5
   Equation = "scalars"
   procedure = "SaveData" "SaveScalars"
   !variable 1 = res: magnetic field energy
-  show norm index = integer 2
+  show norm index = integer 3
 End
 
 
@@ -168,6 +172,9 @@ Material 2
   Name = "Iron"
   Electric Conductivity = 0.0
   Relative Permeability = 1000.
+
+  H-B Curve(31,2) = Real
+   INCLUDE HB
 End
 
 Material 3
@@ -222,7 +229,7 @@ Boundary Condition 1
    Target Boundaries(1) = 52
    P {e} = real 0
    Potential = 0.001
-   Phi = Real 0.0   
+   Phi = Real 0.0
 End
 
 Boundary Condition 2
@@ -230,14 +237,14 @@ Boundary Condition 2
    Target Boundaries(1) = 42
    P {e} = Real 0
    Potential = 0.0
-   Phi = Real 0.0 
+   Phi = Real 0.0
 End
 
 Boundary Condition 3
    Name = "BCn Flux Parallel"
    Target Boundaries(3) = 4 28 29
    P {e} = Real 0
-   Phi = Real 0.0 
+   Phi = Real 0.0
 End
 
 Body Force 1
@@ -248,4 +255,6 @@ Body Force 1
   Current Density 3 = Equals Volume current 3
 End
 
-Solver 5 :: reference norm = real 5.28894624E-05
+Solver 3 :: Reference Norm = Real 0.28682860E-03
+Solver 5 :: reference norm = real 2.204993E-05
+

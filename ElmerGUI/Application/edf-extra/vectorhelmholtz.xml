@@ -298,9 +298,9 @@
          <Whatis> Calculate Magnetic Field Strength </Whatis>
        </Parameter>
        <Parameter Widget="CheckBox"> 
-         <Name> Calculate Magnetic Flux </Name> 
+         <Name> Calculate Magnetic Flux Density </Name> 
          <Type> Logical </Type> 
-         <Whatis> Calculate Magnetic Flux </Whatis>
+         <Whatis> Calculate Magnetic Flux Density </Whatis>
        </Parameter>
        <Parameter Widget="CheckBox"> 
          <Name> Calculate Poynting Vector </Name> 

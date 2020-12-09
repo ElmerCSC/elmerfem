@@ -2842,12 +2842,14 @@ END INTERFACE
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: EigAnal = .FALSE., Found
-    INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,timesteps,SavedEigenValues
+    INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
+    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
     
-    Simul = ListGetString( CurrentModel % Simulation,  'Simulation Type' )
+    Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 
     OutputFile = ListGetString( CurrentModel % Simulation,'Output File',GotIt )
+
     IF ( Gotit ) THEN
       IF ( ParEnv % PEs > 1 ) THEN
         DO i=1,MAX_NAME_LEN
@@ -2882,18 +2884,26 @@ END INTERFACE
       !--------------------------------------------------
       IF ( Mesh % OutputActive ) THEN
         nlen = LEN_TRIM(Mesh % Name)
+
         IF ( nlen==0 .OR. FileNameQualified(OutputFile) ) THEN
           OutputName = OutputFile
         ELSE
           OutputName = Mesh % Name(1:nlen)//'/'//TRIM(OutputFile)
         END IF
         
-        IF ( nlen==0 .OR. FileNameQualified(PostFile) ) THEN
-          PostName = PostFile
-        ELSE
-          Postname = Mesh % Name(1:nlen)//'/'//TRIM(PostFile)
+        nlen2 = LEN_TRIM(OutputPath)
+        IF(nlen2 == 1) THEN
+          IF(OutputPath(1:1) == '.') nlen2 = 0
         END IF
         
+        ! If "Results Directory" is given (nlen2>0) we want to give that
+        ! priority over mesh directory. 
+        IF ( FileNameQualified(PostFile) .OR. nlen2 > 0 .OR. nlen==0 ) THEN
+          PostName = PostFile
+        ELSE
+          PostName = Mesh % Name(1:nlen)//'/'//TRIM(PostFile)
+        END IF
+                
         IF ( ListGetLogical( CurrentModel % Simulation,'Filename Numbering',GotIt) ) THEN
           IF( CurrentStep == 0 ) THEN
             PostName = NextFreeFilename(PostName)

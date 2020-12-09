@@ -79,7 +79,7 @@ Solver 3
 
    Separate Magnetic Energy = True
 
-   Calculate Magnetic Vector Potential = False
+   Calculate Magnetic Vector Potential = True
    Calculate Magnetic Flux Density = True
    Calculate Magnetic Field Strength = Logical True
    Steady State Convergence Tolerance = 0
@@ -99,9 +99,7 @@ Solver 4
   Save Geometry IDs = Logical True
   Vtu format = Logical True
   Output File Name = with_projection
-!  Vector Field 1 = String "Volume Current"
-!  Vector Field 2 = String "Magnetic Flux Density E"
-!  Vector Field 3 = String "Magnetic Field Strength E"
+  Discontinuous Bodies = True
 End
 
 Solver 5
@@ -257,7 +255,6 @@ Body Force 1
   Current Density 3 = Equals Volume current 3
 End
 
-Solver 3 :: Reference Norm = Real 17.869450
+Solver 3 :: Reference Norm = Real 0.28682860E-03
 Solver 5 :: reference norm = real 2.204993E-05
-RUN
-!End Of File
+

@@ -879,14 +879,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
      Freq = Omega / (2*PI)
      
-     IF ( ASSOCIATED(MFS) ) THEN
+     IF ( ASSOCIATED(MFS) .OR. ASSOCIATED(EL_MFS)) THEN
        FoundMagnetization = .FALSE.
        IF(ASSOCIATED(BodyForce)) THEN
          CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
        END IF
 
-       IF(.NOT.FoundMagnetization) THEN
-         CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
+       IF(.NOT.FoundMagnetization .AND. ASSOCIATED(Material)) THEN
+         CALL GetComplexVector( Material,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
        END IF
      END IF
 

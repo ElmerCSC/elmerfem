@@ -184,6 +184,7 @@ IF(WITH_OpenMP)
     OpenMP_Fortran_FLAGS
     OpenMP_CXX_FLAGS
     )
+  FIND_PACKAGE(OpenMP REQUIRED)
 
   # Add OpenMP flags to compilation flags
   # if(APPLE)
@@ -209,7 +210,7 @@ IF(WITH_OpenMP)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
   # endif()
 
-  FIND_PACKAGE(OpenMP REQUIRED)
+ 
   
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
