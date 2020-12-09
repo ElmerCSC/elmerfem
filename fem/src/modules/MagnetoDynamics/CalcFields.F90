@@ -599,7 +599,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: SaveNorm
    INTEGER :: NormIndex
 
-   LOGICAL :: CoilUseWvec, WvecInitHandle
+   LOGICAL :: CoilUseWvec, WvecInitHandle=.TRUE.
    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
    TYPE(VariableHandle_t), SAVE :: Wvec_h
 
