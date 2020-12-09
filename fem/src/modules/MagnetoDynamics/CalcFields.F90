@@ -600,6 +600,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER :: NormIndex
 
    LOGICAL :: CoilUseWvec, WvecInitHandle
+   CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
    TYPE(VariableHandle_t), SAVE :: Wvec_h
 
    
@@ -943,6 +944,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
        IF (CoilUseWvec) THEN
          IF( WvecInitHandle ) THEN
+           CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+           IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
            CALL ListInitElementVariable( Wvec_h, 'W Vector E' )
            WvecInitHandle = .FALSE.
          END IF

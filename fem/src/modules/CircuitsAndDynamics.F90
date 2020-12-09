@@ -417,6 +417,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
                CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
@@ -460,7 +461,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
       IF (CoilUseWvec) THEN
         IF( InitHandle ) THEN
-          CALL ListInitElementVariable( Wvec_h, 'W Vector E' )
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
           InitHandle = .FALSE.
         END IF
       ELSE

@@ -195,6 +195,7 @@ Component 1  !---- A1
    Master Bodies = Integer 3
    Coil Type = String stranded
    Coil Use W Vector = Logical True
+   W Vector Variable Name = String "W Vector E"
    Number of Turns = Real 8
 !   Electrode Area = Real 0.01
    Electrode Boundaries(2) = Integer 4 5
