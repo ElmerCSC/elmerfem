@@ -1,6 +1,12 @@
 ! Simple case for testing the stranded coil in transient 3D simulation.
-! Author: Eelis Takala, Trafotek Oy
-! Original date: May 2017
+! This is the same case as circuits_transient_stranded, but the wire 
+! density vector is given via wire vector instead of wire potential
+! using "Coil Use W Vector = Logical True" keyword in the component section.
+! Why this option? -You can compute your wires in a full coil without cuts
+! which you cannot do using wire potential. Checkout coil solver for full
+! coils.
+! Author: Eelis Takala 
+! Original date: December 2020
 ! eelis.takala@gmail.com
 Check Keywords "Warn"
 INCLUDE sif/6480-circuits.definitions
@@ -125,7 +131,7 @@ Solver 8  !---- CircuitsAndDynamics, CircuitsOutput
    Procedure = "CircuitsAndDynamics" "CircuitsOutput"
 End
 Solver 9  !---- ResultOutputSolve, ResultOutputSolver
-   Exec Solver = Never 
+   Exec Solver = Always
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
    Output File Name = 6480-results
@@ -188,6 +194,7 @@ Component 1  !---- A1
    Name = String A1
    Master Bodies = Integer 3
    Coil Type = String stranded
+   Coil Use W Vector = Logical True
    Number of Turns = Real 8
 !   Electrode Area = Real 0.01
    Electrode Boundaries(2) = Integer 4 5
@@ -239,7 +246,7 @@ Boundary Condition 7  !---- Beta0
    Target Boundaries = $ A1_beta0
    Body 3: Beta = Real 0
 End
-Solver 6 :: Reference Norm = Real 2.30686587E-03
+Solver 6 :: Reference Norm = Real 2.30685690E-03
 Solver 6 :: Reference Norm Tolerance = Real 1E-03
 Solver 7 :: Reference Norm = Real 5.08844468E+04 
 Solver 7 :: Reference Norm Tolerance = Real 1E-03

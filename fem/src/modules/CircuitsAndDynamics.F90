@@ -369,7 +369,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
           SELECT CASE(CoilType)
           CASE ('stranded')
-            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
+            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
             CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt)
@@ -395,11 +395,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
+    TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Component_t) :: Comp
     INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
 
@@ -414,13 +415,16 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     LOGICAL :: stat
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+               CoilUseWvec=.FALSE., Found
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
+
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
     
     SAVE CSymmetry, dim
-    
+
     IF (First) THEN
       First = .FALSE.
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -450,7 +454,21 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase, 'w')
+
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+    
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CALL ListInitElementVariable( Wvec_h, 'W Vector E' )
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        !CALL GetLocalSolution(Wbase, 'w')
+        ! when W Potential solver is used, 'w' is not enough.
+        CALL GetWPotential(WBase)
+      END IF
+
       ncdofs=nd-nn
     END IF
 
@@ -477,7 +495,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+
+        IF (CoilUseWvec) THEN
+          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
       END SELECT
 
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))

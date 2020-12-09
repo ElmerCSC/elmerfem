@@ -119,6 +119,11 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
   CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
         TRIM(varname)//" Potential" )
 
+  i=i+1
+
+  CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          "-dg "//TRIM(varname)//" Vector E["//TRIM(varname)//" Vector E:3]" )
+
   DEALLOCATE(Model % Solvers)
   Model % Solvers => Solvers
   Model % NumberOfSolvers = n+1
@@ -467,21 +472,34 @@ CONTAINS
   TYPE(Element_t), POINTER :: Element
   TYPE(Valuelist_t), POINTER :: Solverparams
   TYPE(Variable_t), POINTER, SAVE :: wpotvar
+  TYPE(Variable_t), POINTER, SAVE :: wvecvar
   LOGICAL, SAVE :: First=.TRUE.
+  LOGICAL :: stat
+  REAL(KIND=dp) :: Basis(nn), DetJ
+  REAL(KIND=dp) :: dBasisdx(nn,3)
   CHARACTER(LEN=MAX_NAME_LEN), SAVE :: varname
-  REAL(KIND=dp) :: wpot(nn)
+  REAL(KIND=dp) :: wpot(nn), wvec(3)
   REAL(KIND=dp) :: Wnorm
+  TYPE(GaussIntegrationPoints_t) :: IP
+  TYPE(Nodes_t) :: Nodes
+  SAVE Nodes
 
+  CALL GetElementNodes(Nodes)
   varname = GetString(GetSolverParams(), 'Variable', Found)
   IF (First) THEN
     First = .FALSE.
     wpotvar => VariableGet( Mesh % Variables, TRIM(varname)//' Potential')
     IF(.NOT. ASSOCIATED(wpotvar)) THEN
-      CALL Fatal('SaveElementWSolution()','Direction variable not found')
+      CALL Fatal('SaveElementWSolution()','W Potential variable not found')
+    END IF
+    wvecvar => VariableGet( Mesh % Variables, TRIM(varname)//' Vector E')
+    IF(.NOT. ASSOCIATED(wvecvar)) THEN
+      CALL Fatal('SaveElementWSolution()','W Vector variable not found')
     END IF
   END IF
  
   CALL GetLocalSolution(wpot, varname)
+  IP = GaussPoints(Element)
   DO j=1,nn
     IF (ASSOCIATED(wpotvar)) THEN
       DO k=1,wpotvar % DOFs
@@ -490,6 +508,26 @@ CONTAINS
 !          print *, ParEnv % MyPe, "Wnorm:", Wnorm
           wpotvar % Values( wpotvar % DOFs*(wpotvar % Perm( &
               Element % DGIndexes(j))-1)+k) = wpot(j)/Wnorm
+        END IF
+      END DO
+    END IF
+
+    IF (ASSOCIATED(wvecvar)) THEN
+      ! ----------------------
+      ! Basis function values & derivatives at the integration point
+      ! That hopefully are at the vardof locations:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
+                IP % W(j), detJ, Basis,dBasisdx )
+
+      wvec = MATMUL(wpot(1:nn), dBasisdx(1:nn,:))
+
+      DO k=1,wvecvar % DOFs
+        IF (Wnorm > EPSILON(Wnorm)) THEN
+          IF( CoilType/='stranded' ) Wnorm = 1._dp
+!          print *, ParEnv % MyPe, "Wnorm:", Wnorm
+          wvecvar % Values( wvecvar % DOFs*(wvecvar % Perm( &
+              Element % DGIndexes(j))-1)+k) = wvec(k)/Wnorm
         END IF
       END DO
     END IF
