@@ -1213,9 +1213,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
            k = k+3
          END IF
          IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H) 
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H)*Basis(p)
            k = k+3
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)*Basis(p)
            k = k+3
          END IF
          IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN
