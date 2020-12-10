@@ -155,9 +155,10 @@ CONTAINS
           ForcePart(ntot))
     END IF
 
+    ALLOCATE(muDerVec0(ngp))
+    muDerVec0 = 0._dp
     IF (Newton) THEN
-      ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
-      muDerVec0 = 0._dp
+      ALLOCATE(g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
     END IF
 
     IF( InitHandles ) THEN
