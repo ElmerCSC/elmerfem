@@ -25,6 +25,9 @@ input-files:
 - SSASolvers_part.md
 -  AdjointSSA_SSASolver.md
 -  AdjointSSA_GradientSolver.md
+- ThicknessSolver_part.md
+-  AdjointThickness_ThicknessSolver.md
+-  AdjointThickness_GradientSolver.md
 - Utility.md
 
 standalone: true
