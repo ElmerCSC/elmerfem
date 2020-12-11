@@ -3063,6 +3063,8 @@ CONTAINS
            DO i=1,n
              Solver % Matrix % rhs(i) = Solver % Matrix % BulkRhs(i)
            END DO
+         ELSE
+           Solver % Matrix % rhs = 0.0d0
          END IF
          RETURN
        END IF
@@ -5826,7 +5828,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Finished the bulk assembly of the matrix equation.
+!> Finishes the bulk assembly of the matrix equation.
 !> Optionally save the matrix for later use.
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultFinishBulkAssembly( Solver, BulkUpdate )
