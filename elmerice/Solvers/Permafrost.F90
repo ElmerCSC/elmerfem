@@ -3415,7 +3415,7 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: PorosityName,ElementRockMaterialName
   LOGICAL :: Visited = .FALSE., Found, GotIt,ElementWiseRockMaterial,IsNodalVariable=.FALSE.
 
-  SAVE Visited,ElementWiseRockMaterial,NodalHits,IsNodalVariable
+  SAVE Visited,ElementWiseRockMaterial,IsNodalVariable,NumberOfRockRecords
   !,DIM,NumberOfRockRecords
 
   !------------------------------------------------------------------------------
@@ -3445,19 +3445,22 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
   IF ( ASSOCIATED( PorosityVariable ) ) THEN
     PorosityPerm    => PorosityVariable % Perm
     PorosityValues  => PorosityVariable % Values
+    CALL INFO(SolverName,'Found porosity variable:'//TRIM(PorosityName),Level=7)
   ELSE
     CALL FATAL(SolverName, 'Could not find "Porosity Variable"')
   END IF
 
   IsNodalVariable = GetLogical(SolverParams, &
        'Nodal Porosity', GotIt)
+  PRINT *,"IsNodalVariable", IsNodalVariable, GotIt
   IF (.NOT.GotIt) THEN
     CALL WARN(SolverName,'Keyword "Nodal Porosity" not found. Assuming element-wise porosity variable')
   ELSE IF (IsNodalVariable) THEN
-    CALL INFO(SolverName,'Assigning porosity to nodal variable',Level=5)
-    ALLOCATE(NodalHits(Model % Mesh % NumberOfNodes))
+    CALL INFO(SolverName,'Assigning porosity to nodal variable',Level=3)
+    ALLOCATE(NodalHits(Solver % Mesh % NumberOfNodes))
     NodalHits = 0
-    CALL INFO(SolverName,'Assigning porosity to elemen-wise variable',Level=5)
+  ELSE
+    CALL INFO(SolverName,'Assigning porosity to element-wise variable',Level=3)
   END IF
   !==============================================================================
   ! Loop over elements
@@ -3487,16 +3490,17 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
         ! read element-wise material parameter (GlobalRockMaterial will have one entry each element)
         NumberOfRockRecords = &
              ReadPermafrostElementRockMaterial(ElementRockMaterialName,Solver,DIM)
-        PRINT *, "NumberOfRockRecords", NumberOfRockRecords
+        PRINT *, "Partition:", ParEnv % myPe, "NumberOfRockRecords:", NumberOfRockRecords
       ELSE
         NumberOfRockRecords =  ReadPermafrostRockMaterial( Material )
+        WRITE (Message,*) "NumberOfRockRecords in File: ", TRIM(ElementRockMaterialName), ":", NumberOfRockRecords
+        CALL INFO(SolverName, Message, Level=5)
       END IF
       IF (NumberOfRockRecords < 1) THEN
         CALL FATAL(SolverName,'No Rock Material specified')
       ELSE
         CALL INFO(SolverName,'Permafrost Rock Material read',Level=6)
       END IF
-      dim = CoordinateSystemDimension()
       Visited=.True.
     END IF
 
@@ -3511,7 +3515,6 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
       DO j=1,N
         CurrentNode = PorosityPerm(NodeIndexes(j))
         IF (CurrentNode <= 0) CYCLE
-        !  !PRINT *,CurrentNode, i
         PorosityValues(CurrentNode) = PorosityValues(CurrentNode) + GlobalRockMaterial % eta0(RockMaterialID)
         NodalHits(CurrentNode) = NodalHits(CurrentNode) + 1
       END DO
@@ -3522,8 +3525,9 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
 
   IF (IsNodalVariable) THEN
     DO j = 1,Model % Mesh % NumberOfNodes
-      CurrentNode = PorosityPerm(NodeIndexes(j))
-      IF (CurrentNode > 0)  PorosityValues(CurrentNode) = PorosityValues(CurrentNode)/NodalHits(CurrentNode)
+      CurrentNode = PorosityPerm(j)
+      IF (CurrentNode <= 0) CYCLE
+      PorosityValues(CurrentNode) = PorosityValues(CurrentNode)/NodalHits(CurrentNode)    
     END DO
     DEALLOCATE(NodalHits)
   END IF

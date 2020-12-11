@@ -560,7 +560,6 @@ CONTAINS
         READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(I),  Comment
         READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(I),  Comment
       END DO
-      WRITE(Message,'(A,I2,A,A)') "Read ",NumerOfRockRecords," rock material records from file ", TRIM(MaterialFileName)
       CALL INFO(FunctionName,Message,Level=1)
 30    CLOSE(io)
       IF (I < NumerOfRockRecords) THEN
@@ -1414,7 +1413,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
     REAL(KIND=dp) :: Tstar, XiAnderson
     IF (Porosity <= 0.0) &
-         CALL FATAL("Permafrost(GetXiAnderson)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiAnderson)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
     XiAnderson =  MAX(MIN((rhos0/rhow)*(A*(Tstar**B)/Porosity),1.0_dp),0.0_dp)
   END FUNCTION GetXiAnderson
@@ -1423,7 +1422,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
     REAL(KIND=dp) :: Tstar
     IF (Porosity <= 0.0) &
-         CALL FATAL("Permafrost(GetXiAndersonT)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiAndersonT)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
     IF (Xi == 1.0_dp .OR. Xi == 0.0_dp) THEN
       XiAndersonT = 0.0_dp
@@ -1436,7 +1435,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
     REAL(KIND=dp) :: Tstar
     IF (Porosity <= 0.0_dp) &
-         CALL FATAL("Permafrost(GetXiAndersonT)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiAndersonP)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
     IF (Xi == 1_dp .OR. Xi == 0.0_dp) THEN
       XiAndersonP = 0.0_dp
@@ -1449,7 +1448,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(IN) :: Xi,A,B,Beta,rhow,rhos0,T0,Temperature,Pressure,Porosity
     REAL(KIND=dp) :: Tstar
     IF (Porosity <= 0.0) &
-         CALL FATAL("Permafrost(GetXiAndersonEta)","Zero or negative porosity detected")
+         CALL FATAL("PermafrostMaterials(GetXiAndersonEta)","Zero or negative porosity detected")
     Tstar = T0 - Beta * Pressure - Temperature
     IF (Xi == 1.0_dp .OR. Xi == 0.0_dp) THEN
       XiAndersonEta = 0.0_dp
@@ -1724,7 +1723,7 @@ CONTAINS
       IF (Xi0 == 0.0_dp) THEN
         Xi0tilde = 1.0_dp
       ELSE
-        CALL FATAL("Permafrost(GetXi)","Zero or negative porosity detected")
+        CALL FATAL("PermafrostMaterials(GetXiTilde)","Zero or negative porosity detected")
       END IF
     ELSE
       !Xi0tilde = MIN(Xi0 * (eta0/Porosity) * (1.0_dp - Porosity)/(1.0_dp - eta0),1.0_dp)
@@ -1847,7 +1846,7 @@ CONTAINS
       XiEta = 0.5_dp*aux1*(aux2 + aux3) * (Xi0*eta0/(1.0_dp - eta0))&
            *(1.0_dp/(Porosity**2.0_dp))*Xi*Xi
     ELSE
-      CALL WARN("Permafrost(XiEta)","Porosity out of physical range - returning zero")
+      CALL WARN("PermafrostMaterials(XiEta)","Porosity out of physical range - returning zero")
       XiEta = 0.0_dp
     END IF
   END FUNCTION XiEta
@@ -2610,7 +2609,7 @@ CONTAINS
     INTEGER :: I, J
     !-------------------------
     IF (mugw <= 0.0_dp) &
-         CALL FATAL("Permafrost(GetKgw)","Unphysical viscosity detected")
+         CALL FATAL("PermafrostMaterials(GetKgw)","Unphysical viscosity detected")
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
     qexp = GlobalRockMaterial % qexp(RockMaterialID)
