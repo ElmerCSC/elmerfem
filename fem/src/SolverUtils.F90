@@ -659,7 +659,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!> Restores the saved bulk after
+!> Restores the RHS vector and the stiffness, mass and damping matrices by
+!> using the data objects A % Bulk* of the argument A
 !------------------------------------------------------------------------------
    SUBROUTINE RestoreBulkMatrix( A )
 !------------------------------------------------------------------------------

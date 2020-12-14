@@ -3035,37 +3035,23 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
+     IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+       CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
+     END IF     
+
      IF( PRESENT( UseConstantBulk ) ) THEN
        IF ( UseConstantBulk ) THEN
+         IF (.NOT. ASSOCIATED( Solver % Matrix % BulkRhs ) ) THEN
+           Solver % Matrix % rhs = 0.0d0
+         END IF
+
          CALL Info('DefaultInitialize','Using constant bulk matrix',Level=8)
-         IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
+         IF (.NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
            CALL Warn('DefaultInitialize','Constant bulk system requested but not associated!')
            RETURN
          END IF
 
-         n = SIZE(Solver % Matrix % Values)
-         DO i=1,n
-           Solver % Matrix % Values(i) = Solver % Matrix % BulkValues(i)
-         END DO
-
-         IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) THEN
-           DO i=1,n
-             Solver % Matrix % MassValues(i) = Solver % Matrix % BulkMassValues(i)
-           END DO
-         END IF
-         IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) THEN
-           DO i=1,n
-             Solver % Matrix % DampValues(i) = Solver % Matrix % BulkDampValues(i)
-           END DO
-         END IF
-         IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) THEN
-           n = SIZE(Solver % Matrix % RHS)
-           DO i=1,n
-             Solver % Matrix % rhs(i) = Solver % Matrix % BulkRhs(i)
-           END DO
-         ELSE
-           Solver % Matrix % rhs = 0.0d0
-         END IF
+         CALL RestoreBulkMatrix(Solver % Matrix)
          RETURN
        END IF
      END IF
@@ -3079,11 +3065,6 @@ CONTAINS
      IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
        CALL ChangeToHarmonicSystem( Solver, .TRUE. )
      END IF
-     
-     
-     IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
-       CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
-     END IF     
      
      CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
 
