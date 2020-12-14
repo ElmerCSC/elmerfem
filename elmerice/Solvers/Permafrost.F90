@@ -598,6 +598,7 @@ CONTAINS
         RhoOffsetAtIPPerm => RhoOffsetAtIPVar % Perm  
         RhoOffsetAtIP => RhoOffsetAtIPVar % Values
         IPPermRhogw = RhoOffsetAtIPPerm(ElementID) + t
+        ! density of whole ground (rock + water + ice + solutes)
         rhoGAtIP = rhoG(rhosAtIP,rhogwAtIP,rhoiAtIP,PorosityAtIP,SalinityAtIP,XiAtIP(IPPerm))
         IF (rhoGAtIP .NE. rhoGAtIP) THEN
           PRINT *,rhosAtIP,rhogwAtIP,rhoiAtIP,PorosityAtIP,SalinityAtIP,XiAtIP
@@ -5185,7 +5186,10 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
        NumberOfRockRecords,FirstTime,CurrentSoluteMaterial,CurrentSolventMaterial,&
        OffsetDensity
 
-  
+  IF (IPNo >= 0) THEN
+    WRITE(Message,*) 'IP number invalid:', IPNo, ' - is this an IP valid call to this routine?'
+    CALL FATAL(FunctionName,Message)
+  END IF
   IF (.NOT.ConstantsRead) THEN
     ConstantsRead = &
          ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
@@ -5194,12 +5198,16 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
       OffsetDensity = .FALSE.
       CALL WARN(FunctionName,'No offset for groundwater pressure included - might lead to artifial high compression')
     ELSE
-      CALL INFO(FunctionName,'Offset groundwater pressure is activated',Level=4)
+      CALL INFO(FunctionName,'Offset groundwater pressure is activated',Level=5)
     END IF
   END IF
   Element => Model % CurrentElement
+  IF (.NOT.ASSOCIATED(Element)) CALL FATAL(FunctionName,'Element not asssociated')
   t = Element % ElementIndex
-  IF (.NOT.ASSOCIATED(Element)) CALL FATAL(FunctionName,'Element not associated')
+  IF (t <= 0) THEN
+    WRITE(Message,*) 'Element number invalid:', t
+    CALL FATAL(FunctionName,Message)
+  END IF
   IF (OffsetDensity) THEN
     RhoOffsetAtIPVar => VariableGet( Model % Mesh % Variables, 'Reference Offset Density')
     IF (.NOT.ASSOCIATED(RhoOffsetAtIPVar)) THEN
@@ -5207,7 +5215,7 @@ FUNCTION GetElasticityForce(Model,IPNo,ArgumentsAtIP) RESULT(EforceAtIP) ! needs
       CALL FATAL(FunctionName,Message)
     END IF
     RhoOffsetAtIPPerm => RhoOffsetAtIPVar % Perm
-    IPPerm = RhoOffsetAtIPPerm(t) + IPNo  
+    IPPerm = RhoOffsetAtIPPerm(t) + ABS(IPNo)
     RhoOffsetAtIP => RhoOffsetAtIPVar % Values
     InitialOffsetRhoAtIP = RhoOffsetAtIP(IPPerm)
   ELSE
