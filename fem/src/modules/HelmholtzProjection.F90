@@ -37,6 +37,29 @@
 ! *
 !******************************************************************************
 
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+
+  SolverParams => GetSolverParams()
+  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
 !> Compute a H1-regular scalar field to obtain the Helmholtz projection P(A)
 !> of a curl-conforming vector field A. Given the solution field Phi of this 
@@ -295,6 +318,8 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Found, PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
+  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
     !
     ! Automatization is not perfect due to the early phase when this 
