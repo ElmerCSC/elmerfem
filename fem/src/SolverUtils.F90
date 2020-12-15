@@ -20390,7 +20390,11 @@ CONTAINS
      SAVE LocalVar
 
      IF( FromVar % TYPE /= Variable_on_gauss_points ) RETURN
-
+     
+     IF( PRESENT( ToVar ) ) THEN
+       IF(.NOT. ASSOCIATED( ToVar ) ) RETURN
+     END IF
+     
      CALL Info('Ip2DgSwapper','Swapping variable from ip to dg:'//TRIM(FromVar % Name),Level=8)
 
      dofs = FromVar % Dofs

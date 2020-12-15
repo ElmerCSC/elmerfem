@@ -338,7 +338,9 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
 
   END DO
 
-     
+  CALL DefaultFinish()
+
+       
   IF( ListGetLogical( Params,'Compute BC Flux',Found ) ) THEN
     CALL Info(Solvername,'Computing flux for Dirichlet BCs for salinity',Level=6)
     DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux')
@@ -347,10 +349,13 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     END IF
     BCFluxVar => VariableGet( Solver % Mesh % Variables,'BC Flux')
     IF(.NOT. ASSOCIATED( BCFluxVar ) ) THEN
-      ! Create permutation where "salinity" is found
+      CALL Info(SolverName,'Creating permutation for boundary flux',Level=12)
+      ALLOCATE( BCFluxPerm( Solver % Mesh % NumberOfNodes ) )
+      BCFluxPerm = 0
       CALL MakePermUsingMask( Model, Solver, Solver % Mesh,'Salinity',.FALSE.,&
           BCFluxPerm, BCFluxNodes )
-      ! Create variable "bc flux"
+      CALL Info(SolverName,'Creating variable for boundary flux of size: '&
+          //TRIM(I2S(BCFluxNodes)),Level=12)
       CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver,&
           'BC Flux', DummyGWFluxVar % DOFs, Perm = BCFluxPerm )
     END IF
@@ -358,7 +363,6 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     CALL Ip2DgSwapper( Solver % Mesh, DummyGWFluxVar, BCFluxVar )
   END IF
   
-  CALL DefaultFinish()
 
 CONTAINS
   ! PermafrostGroundWaterFlow : Assembly of the matrix entries arising from the bulk elements 
