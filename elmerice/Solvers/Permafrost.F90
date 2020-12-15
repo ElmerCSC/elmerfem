@@ -120,6 +120,13 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   TYPE(ValueHandle_t) :: Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        TemperatureDt_h, SalinityDt_h, StressInv_h,StressInvDt_h,Vstar1_h, Vstar2_h, Vstar3_h
   
+
+  ! Additional variables to output salinity at BCs with conditional dirichlet 
+  INTEGER, POINTER :: BCFluxPerm(:)
+  INTEGER, SAVE :: BCFluxNodes 
+  TYPE(Variable_t), POINTER :: BCFluxVar
+    
+  
   SAVE DIM,FirstTime,AllocationsDone,CurrentSoluteMaterial,CurrentSolventMaterial,&
        ElementWiseRockMaterial, ComputeDeformation, FluxOutput,&
        StressInvAllocationsDone, StressInvDtAllocationsDone, OffsetDensity, &
@@ -331,6 +338,26 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
 
   END DO
 
+     
+  IF( ListGetLogical( Params,'Compute BC Flux',Found ) ) THEN
+    CALL Info(Solvername,'Computing flux for Dirichlet BCs for salinity',Level=6)
+    DummyGWfluxVar => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux')
+    IF(.NOT. ASSOCIATED(DummyGWFluxVar) ) THEN
+      CALL Fatal(SolverName,'Groundwater Flux not available!')
+    END IF
+    BCFluxVar => VariableGet( Solver % Mesh % Variables,'BC Flux')
+    IF(.NOT. ASSOCIATED( BCFluxVar ) ) THEN
+      ! Create permutation where "salinity" is found
+      CALL MakePermUsingMask( Model, Solver, Solver % Mesh,'Salinity',.FALSE.,&
+          BCFluxPerm, BCFluxNodes )
+      ! Create variable "bc flux"
+      CALL VariableAddVector( Solver % Mesh % Variables,Solver % Mesh,Solver,&
+          'BC Flux', DummyGWFluxVar % DOFs, Perm = BCFluxPerm )
+    END IF
+    BCFluxVar => VariableGet( Solver % Mesh % Variables,'BC Flux')
+    CALL Ip2DgSwapper( Solver % Mesh, DummyGWFluxVar, BCFluxVar )
+  END IF
+  
   CALL DefaultFinish()
 
 CONTAINS
@@ -1968,7 +1995,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
     IF( Solver % Variable % NonlinConverged > 0 ) EXIT
 
   END DO
-
+  
   CALL DefaultFinish()
 
 CONTAINS
@@ -2453,8 +2480,10 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
   ! this can come handy to produce a balance-pressure field at the
   ! start of the simulation
   !---------------------------------------------------------------  
-  IF (FirstTime) &
-       InitializeSteadyState = GetLogical(Params,'Initialize Steady State',Found)
+  IF (FirstTime) THEN
+    InitializeSteadyState = GetLogical(Params,'Initialize Steady State',Found)
+  END IF
+
   IF (InitializeSteadyState) THEN
     IF (GetTimeStep() == 1) THEN
       CALL INFO(SolverName,"Initializing with steady state (no mass matrix)",Level=6)
