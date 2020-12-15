@@ -3599,7 +3599,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName="PermafrostPorosityEvolution"
   CHARACTER(LEN=MAX_NAME_LEN) :: PorosityName,PressureName,TemperatureName,StrainVarName,ElementRockMaterialName
   LOGICAL :: FirstTime=.TRUE.,FirstVisit=.TRUE.,Found,GotIt,ElementWiseRockMaterial,&
-       StrainVarExists, TemperatureVarExists, PressureVarExists,ConstVal
+       StrainVarExists, TemperatureVarExists, PressureVarExists,ConstVal,ConstantTemp
   !------------------------------
   SAVE FirstTime,FirstVisit,ElementWiseRockMaterial,&
        NodalStrain, NodalTemperature, NodalPressure,&
@@ -3611,7 +3611,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
        StrainPerm, TemperaturePerm, PressurePerm,&
        StrainVarExists, TemperatureVarExists, PressureVarExists, &
        DIM, N0, GasConstant, DeltaT, T0, p0, eps, Gravity,&
-       NumberOfRockRecords
+       NumberOfRockRecords, ConstantTemp
 
   !------------------------------------------------------------------------------
   CALL INFO(SolverName, '-----------------------------------', Level=4)
@@ -3663,6 +3663,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
     ELSE
       CALL FATAL(SolverName,'No "Strain Varaible" associated')
     END IF
+    ConstantTemp = GetLogical(SolverParams,'Constant Temperature',Found)
     TemperatureName = GetString(SolverParams,'Temperature Variable',Found)
     IF (.NOT.Found) THEN
       CALL WARN(SolverName,' "Temperature Variable" not found - assuming default value "Temperature" ')
@@ -3671,11 +3672,17 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
       WRITE(Message,*) '"Temperature Variable" found and set to: ',TRIM(TemperatureName)
       CALL INFO(SolverName,Message,Level=5)
     END IF
-    CALL AssignSingleVar(Solver,Model,NodalTemperature,TemperatureVar,&
-         TemperaturePerm, Temperature, &
-         TemperatureName,TemperatureDOFS,TemperatureVarExists,&
-         PrevNodalVariable=PrevNodalTemperature, PrevVariable=PrevTemperature)
-
+    IF (ConstantTemp) THEN
+      CALL AssignSingleVar(Solver,Model,NodalTemperature,TemperatureVar,&
+           TemperaturePerm, Temperature, &
+           TemperatureName,TemperatureDOFS,TemperatureVarExists)
+      ALLOCATE(PrevNodalTemperature(Solver % Mesh % MaxElementNodes))
+    ELSE
+      CALL AssignSingleVar(Solver,Model,NodalTemperature,TemperatureVar,&
+           TemperaturePerm, Temperature, &
+           TemperatureName,TemperatureDOFS,TemperatureVarExists,&
+           PrevNodalVariable=PrevNodalTemperature, PrevVariable=PrevTemperature)
+    END IF
     
     PressureName = GetString(SolverParams,'Pressure Variable',Found)
     IF (.NOT.Found) THEN
@@ -3692,12 +3699,15 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
 
     FirstVisit = GetLogical(SolverParams,'Initialize Time Derivatives',Found)
     IF (.NOT.Found) FirstVisit = .FALSE.
+  ELSE
+    IF (ConstantTemp) &
+         ALLOCATE(PrevNodalTemperature(Solver % Mesh % MaxElementNodes))
   END IF
   ! some sanity check
   IF (.NOT.ASSOCIATED(Temperature) .OR. .NOT.ASSOCIATED(TemperaturePerm))&
        CALL FATAL(SolverName,'Values of temperature variable not found')
-  IF (.NOT.ASSOCIATED(PrevTemperature))&
-       CALL FATAL(SolverName,'Previous values of temperature variable not found')
+  IF (.NOT.ConstantTemp .AND. .NOT.ASSOCIATED(PrevTemperature)) &
+    CALL FATAL(SolverName,'Previous values of temperature variable not found') 
   IF (.NOT.ASSOCIATED(Pressure) .OR. .NOT.ASSOCIATED(PressurePerm))&
        CALL FATAL(SolverName,'Values of pressure variable not found')
   IF (.NOT.ASSOCIATED(PrevPressure))&
@@ -3747,10 +3757,18 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
     CALL ReadSingleVar(N,CurrentElement,TemperaturePerm,NodalTemperature,Temperature,TemperatureDOFs)
     CALL ReadSingleVar(N,CurrentElement,PressurePerm,NodalPressure,Pressure,PressureDOFs)
     IF (FirstVisit) THEN ! write current values if starting
-      CALL ReadSingleVar(N,CurrentElement,TemperaturePerm,PrevNodalTemperature,Temperature,TemperatureDOFs)
+      IF (.NOT.ConstantTemp) THEN
+        CALL ReadSingleVar(N,CurrentElement,TemperaturePerm,PrevNodalTemperature,Temperature,TemperatureDOFs)
+      ELSE
+        PrevNodalTemperature(1:N) = NodalTemperature(1:N)
+      END IF
       CALL ReadSingleVar(N,CurrentElement,PressurePerm,PrevNodalPressure,Pressure,PressureDOFs)
     ELSE
-      CALL ReadSingleVar(N,CurrentElement,TemperaturePerm,PrevNodalTemperature,PrevTemperature,TemperatureDOFs)
+      IF (.NOT.ConstantTemp) THEN
+        CALL ReadSingleVar(N,CurrentElement,TemperaturePerm,PrevNodalTemperature,PrevTemperature,TemperatureDOFs)
+      ELSE
+        PrevNodalTemperature(1:N) = NodalTemperature(1:N)
+      END IF
       CALL ReadSingleVar(N,CurrentElement,PressurePerm,PrevNodalPressure,PrevPressure,PressureDOFs)
     END IF
 
@@ -3811,6 +3829,8 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
       END IF
     END DO
   END DO
+  IF (ConstantTemp) &
+       DEALLOCATE(PrevNodalTemperature)
   FirstVisit = .FALSE.
 END SUBROUTINE PermafrostPorosityEvolution
 
@@ -4943,7 +4963,9 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
   !-----------
   SAVE FirstTime,NumberOfRockRecords,CurrentSolventMaterial,DIM,ElementWiseRockMaterial
 
-
+  IF (IPNo >= 0) THEN
+    CALL FATAL(FunctionName,'Invalid IP number in argument')
+  END IF
   Element => Model % CurrentElement
   IF (.NOT.ASSOCIATED(Element)) CALL FATAL(FunctionName,'Element not associated')
   t = Element % ElementIndex
@@ -4955,7 +4977,8 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
   END IF
   XiAtIPPerm => XiAtIPVar % Perm
   XiAtIp => XiAtIPVar % Values
-  IPPerm = XiAtIPPerm(t) + IPNo
+  
+  IPPerm = XiAtIPPerm(t) + ABS(IPNo)
 
   IF (FirstTime .OR. (Model % Mesh % Changed)) THEN
     DIM =  CoordinateSystemDimension()
@@ -4994,12 +5017,12 @@ FUNCTION GetKGuu(Model,IPNo,PorosityAtIP) RESULT(KGuuAtIP)
   KGuuAtIP = KGuu(EGAtIP,nuGAtIP,DIM)
 END FUNCTION GetKGuu
 !---------------------------------------------------------------------------------------------
-FUNCTION GetBetaG(Model,IPNo,ArgumentsAtIP) RESULT(betaGAtIP)
+FUNCTION GetBetaG(Model,DummyIPNo,ArgumentsAtIP) RESULT(betaGAtIP)
   USE DefUtils
   USE PermaFrostMaterials
   IMPLICIT NONE
   TYPE(Model_t) :: Model
-  INTEGER, INTENT(IN) :: IPNo
+  INTEGER, INTENT(IN) :: DummyIPNo
   REAL(KIND=dp) :: ArgumentsAtIP(2), betaGAtIP
   !--------------
   TYPE(Solver_t) :: DummySolver
@@ -5055,12 +5078,12 @@ FUNCTION GetBetaG(Model,IPNo,ArgumentsAtIP) RESULT(betaGAtIP)
   betaGAtIP = betaG(CurrentSolventMaterial,RockMaterialID,XiAtIP,PorosityAtIP)
 END FUNCTION GetBetaG
   !---------------------------------------------------------------------------------------------
-FUNCTION GetNuG(Model,IPNo,ArgumentsAtIP) RESULT(nuGAtIP)
+FUNCTION GetNuG(Model,DummyIPNo,ArgumentsAtIP) RESULT(nuGAtIP)
   USE DefUtils
   USE PermaFrostMaterials
   IMPLICIT NONE
   TYPE(Model_t) :: Model
-  INTEGER, INTENT(IN) :: IPNo
+  INTEGER, INTENT(IN) :: DummyIPNo
   REAL(KIND=dp) :: ArgumentsAtIP(2), nuGAtIP
   
   !-----
