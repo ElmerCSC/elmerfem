@@ -3418,12 +3418,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, BulkUpdate, VecAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      REAL(KIND=dp) :: G(:,:), f(:)
-     LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
+     LOGICAL, OPTIONAL :: VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
@@ -3631,12 +3631,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate, MCAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
-     LOGICAL, OPTIONAL :: BulkUpdate, MCAssembly
+     LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this 
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A

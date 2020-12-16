@@ -2053,12 +2053,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % RHS = 0.0_dp
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
   
   TotDofs = FluxDofs
   JouleHeating = ListGetLogical( SolverParams, 'Calculate Joule Heating', GotIt )
@@ -2118,38 +2113,46 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   SaveRHS => Solver % Matrix % RHS
 
   CALL BulkAssembly()
+
+  IF (ConstantBulkMatrix) THEN 
+    IF (.NOT. ConstantBulkMatrixInUse) THEN
+      CALL Info('BSolver','Saving the system matrix', Level=6)
+      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
+    END IF
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
+  END IF
+
   CALL DefaultFinishAssembly()
-!        
-!------------------------------------------------------------------------------     
+  CALL DefaultDirichletBCs()
 
-   CALL DefaultDirichletBCs()
-      
-   TotNorm = 0.0_dp
-   DO i=1,TotDofs
-     Solver % Matrix % RHS => ForceVector(:,i)
-     Solver % Variable % Values = 0
-     UNorm = DefaultSolve()
-     TotNorm = TotNorm + SUM(Solver % Variable % Values**2)
-     IF( i <= FluxDofs ) THEN
-       FluxSol % Values(i::FluxDofs) = Solver % Variable % Values
-     ELSE IF( i == FluxDofs + 1 ) THEN
-       JouleSol % Values = Solver % Variable % Values
-     ELSE IF( i == FluxDofs + 2 ) THEN
-       HeatingSol % Values = Solver % Variable % Values
-     ELSE 
-       CurrDensSol % Values(i-Fluxdofs-2::2) = Solver % Variable % Values
-     END IF
-   END DO
-   DEALLOCATE( ForceVector )  
+  TotNorm = 0.0_dp
+  DO i=1,TotDofs
+    Solver % Matrix % RHS => ForceVector(:,i)
+    Solver % Variable % Values = 0
+    UNorm = DefaultSolve()
+    TotNorm = TotNorm + SUM(Solver % Variable % Values**2)
+    IF( i <= FluxDofs ) THEN
+      FluxSol % Values(i::FluxDofs) = Solver % Variable % Values
+    ELSE IF( i == FluxDofs + 1 ) THEN
+      JouleSol % Values = Solver % Variable % Values
+    ELSE IF( i == FluxDofs + 2 ) THEN
+      HeatingSol % Values = Solver % Variable % Values
+    ELSE 
+      CurrDensSol % Values(i-Fluxdofs-2::2) = Solver % Variable % Values
+    END IF
+  END DO
+  DEALLOCATE( ForceVector )  
 
-   Solver % Matrix % RHS => SaveRHS
-   TotNorm = SQRT(TotNorm)
-   Solver % Variable % Norm = Totnorm
+  Solver % Matrix % RHS => SaveRHS
+  TotNorm = SQRT(TotNorm)
+  Solver % Variable % Norm = Totnorm
 
 !------------------------------------------------------------------------------     
   
-   WRITE( Message, * ) 'Result Norm: ',TotNorm
-   CALL Info( 'BSolver', Message, Level=4 )
+  WRITE( Message, * ) 'Result Norm: ',TotNorm
+  CALL Info( 'BSolver', Message, Level=4 )
 
 
 CONTAINS
@@ -2695,8 +2698,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         Solver % Matrix % Rhs => SaveRHS
-        CALL DefaultUpdateEquations( STIFF, FORCE(1,1:nd), &
-            BulkUpdate=ConstantBulkMatrix )
+        CALL DefaultUpdateEquations( STIFF, FORCE(1,1:nd) )
       END IF
 
       DO i=1,TotDofs
@@ -2728,15 +2730,16 @@ CONTAINS
       END IF
     END IF
 
-    ! Assembly of the face terms:
-    !----------------------------
-    IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) THEN
-      IF (GetLogical(GetSolverParams(),'Average Within Materials',Found)) THEN
-        FORCE = 0.0d0
-        CALL AddLocalFaceTerms( STIFF, FORCE(1,:) )
+    ! Assembly of the face terms (note: this gives no contribution to RHS)
+    !---------------------------------------------------------------------
+    IF ( .NOT. ConstantBulkMatrixInUse ) THEN
+      IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) THEN
+        IF (GetLogical(GetSolverParams(),'Average Within Materials',Found)) THEN
+          FORCE = 0.0d0
+          CALL AddLocalFaceTerms( STIFF, FORCE(1,:) )
+        END IF
       END IF
     END IF
-
 
     IF( LossEstimation ) THEN
       DO j=1,2
