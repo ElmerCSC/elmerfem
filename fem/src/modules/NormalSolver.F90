@@ -110,18 +110,22 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),dim))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
-!    
+
   CALL BulkAssembly()
-  CALL DefaultFinishBulkAssembly()
+  IF (ConstantBulkMatrix) THEN
+    IF (.NOT. ConstantBulkMatrixInUse) THEN
+      CALL Info('NormalSolver','Saving the system matrix', Level=6)
+      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
+    END IF
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
+  END IF
 
   !No flux BCs for this solver
   CALL DefaultFinishAssembly()
@@ -155,8 +159,9 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
     DO j=1,Solver % Matrix % NumberOfRows
       NrmSol % Values(DOFs*(j-1)+i) = Solver % Variable % Values(j)
     END DO
-    Solver % Matrix % RHS => SaveRHS
   END DO
+  Solver % Matrix % RHS => SaveRHS
+
   IF ( SetD ) DEALLOCATE(Values)
 
   DO i=1,Solver % Matrix % NumberOFRows
@@ -176,7 +181,6 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------     
  
   DEALLOCATE( ForceVector )
-  Solver % Matrix % RHS => SaveRHS
   
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1

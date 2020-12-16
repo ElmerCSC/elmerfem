@@ -120,12 +120,7 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % RHS = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   ! If vorticity has many components, compute them one-by-one
   IF(Dofs > 1) THEN
@@ -135,7 +130,13 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   END IF
 
   CALL BulkAssembly()
-  IF(.NOT. ConstantBulkMatrixInUse ) THEN
+  IF (ConstantBulkMatrix) THEN
+    IF (.NOT. ConstantBulkMatrixInUse) THEN
+      CALL Info('VorticitySolver','Saving the system matrix', Level=6)
+      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
+    END IF
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+  ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
 
@@ -162,7 +163,6 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
         VorticitySol % Values(DOFs*(j-1)+i) = Solver % Variable % Values(j)
       END DO
     END DO
-    Solver % Matrix % RHS => SaveRHS
     TotNorm = SQRT(TotNorm)
  
     DEALLOCATE( ForceVectors )
