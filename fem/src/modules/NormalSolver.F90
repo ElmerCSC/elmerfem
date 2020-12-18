@@ -118,11 +118,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 
   CALL BulkAssembly()
   IF (ConstantBulkMatrix) THEN
-    IF (.NOT. ConstantBulkMatrixInUse) THEN
-      CALL Info('NormalSolver','Saving the system matrix', Level=6)
-      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
-    END IF
-    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
   ELSE
     CALL DefaultFinishBulkAssembly()
   END IF

@@ -196,11 +196,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   END DO
 
   IF (ConstantBulkMatrix) THEN 
-    IF (.NOT. ReadySystemMatrix) THEN
-      CALL Info('HelmholtzProjector','Saving the system matrix', Level=6)
-      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
-    END IF
-    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ReadySystemMatrix, RHSUpdate = .FALSE.)
   ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
@@ -513,11 +509,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
   END DO
 
   IF (ConstantBulkMatrix) THEN 
-    IF (.NOT. ReadySystemMatrix) THEN
-      CALL Info('RemoveKernelComponent','Saving the system matrix', Level=6)
-      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
-    END IF
-    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ReadySystemMatrix, RHSUpdate = .FALSE.)
   ELSE
     CALL DefaultFinishBulkAssembly()
   END IF

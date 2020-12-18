@@ -141,12 +141,8 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
   
   CALL BulkAssembly()
-  IF( ConstantBulkMatrix ) THEN
-    IF(.NOT. ConstantBulkMatrixInUse ) THEN
-      CALL Info('ScalarPotentialSolver','Saving the system matrix', Level=6)
-      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
-    END IF
-    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+  IF ( ConstantBulkMatrix ) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
   ELSE
     CALL DefaultFinishBulkAssembly()
   END IF

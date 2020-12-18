@@ -5812,14 +5812,15 @@ CONTAINS
 !> Finishes the bulk assembly of the matrix equation.
 !> Optionally save the matrix for later use.
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultFinishBulkAssembly( Solver, BulkUpdate )
+  SUBROUTINE DefaultFinishBulkAssembly( Solver, BulkUpdate, RHSUpdate )
 !------------------------------------------------------------------------------
     TYPE(Solver_t), OPTIONAL, TARGET :: Solver
-    LOGICAL, OPTIONAL :: BulkUpdate
+    LOGICAL, OPTIONAL :: BulkUpdate  ! Direct control on whether matrices are saved
+    LOGICAL, OPTIONAL :: RHSUpdate   ! Direct control on whether RHS is saved
 
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: Bupd, Found
+    LOGICAL :: Bupd, UpdateRHS, Found
     INTEGER :: n
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     LOGICAL :: Transient
@@ -5840,6 +5841,12 @@ CONTAINS
         
     ! Reset colouring 
     PSolver % CurrentColour = 0
+
+    IF ( PRESENT(RHSUpdate) ) THEN
+      UpdateRHS = RHSUpdate
+    ELSE  
+      UpdateRHS = .TRUE.
+    END IF
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
@@ -5863,10 +5870,10 @@ CONTAINS
       str = GetString( Params,'Equation',Found)
       CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=6 )
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
-        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE., BulkRHS = UpdateRHS ) 
       ELSE
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues), &
-            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues) ) 
+            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues), BulkRHS = UpdateRHS ) 
       END IF
     END IF
 
