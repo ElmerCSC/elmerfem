@@ -110,6 +110,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
       CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
       CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Residual Output',20)
       CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
+      CALL ListAddNewInteger(SolverParams,'Jfix: Norm Permutation',1)
       CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Complex',.FALSE.)
       CALL ListAddNewLogical(SolverParams,'Jfix: Apply Conforming BCs',.FALSE.)
 
@@ -257,7 +258,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     IF ( ParEnv % PEs>1) ParEnv = A % ParMatrix % ParEnv
 
     CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
-
+    
     WRITE(Message,'(A,ES12.3)') 'Norm for Jfix computation: ',SUM( ABS( jfixpot % Values ) )
     CALL Info('JfixPotentialSolver',Message,Level=8)
 

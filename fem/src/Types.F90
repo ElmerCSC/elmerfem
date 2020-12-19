@@ -815,6 +815,13 @@ MODULE Types
      LOGICAL :: LumpedDiag = .TRUE.
    END TYPE MortarBC_t
 
+   TYPE TabulatedBasisAtIp_t
+     REAL(KIND=dp), POINTER :: Basis(:) => NULL()
+     REAL(KIND=dp), POINTER :: dBasisdx(:,:) => NULL()
+     REAL(KIND=dp) :: Weight = 0.0_dp
+   END TYPE TabulatedBasisAtIp_t
+
+   
 !------------------------------------------------------------------------------
 
 !   TYPE Constants_t

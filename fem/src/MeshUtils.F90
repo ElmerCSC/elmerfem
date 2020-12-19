@@ -4210,6 +4210,7 @@ CONTAINS
     LOGICAL :: TagNormalFlip, Turn
     TYPE(Nodes_t) :: ElementNodes
     REAL(KIND=dp) :: Normal(3)
+    LOGICAL :: Parallel
     
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
 
@@ -4248,7 +4249,9 @@ CONTAINS
     NarrowHalo = .FALSE.
     NoHalo = .FALSE.
 
-    IF( ParEnv % PEs > 1 ) THEN
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
+    
+    IF( Parallel ) THEN
       ! Account for halo elements that share some nodes for the master boundary
       NarrowHalo = ListGetLogical(Model % Solver % Values,'Projector Narrow Halo',Found)
 
@@ -11440,6 +11443,9 @@ CONTAINS
       ! to the angle. This may depende on time etc. 
       IF( k == 1 ) THEN
         DegOffset = ListGetCReal(BParams,'Rotational Projector Angle Offset',SetDegOffset ) 
+        IF(.NOT. SetDegOffset ) THEN
+          DegOffset = ListGetCReal(BParams,'Mesh Rotate 3',SetDegOffset )          
+        END IF
       ELSE
         SetDegOffset = .FALSE.
       END IF
@@ -15472,6 +15478,7 @@ END SUBROUTINE FindNeighbourNodes
     TYPE(PElementDefs_t), POINTER :: PDefs
     INTEGER :: ierr, ParTmp(6), ParSizes(6)
     INTEGER, ALLOCATABLE :: FacePerm(:), BulkPerm(:)
+    LOGICAL :: Parallel
 !------------------------------------------------------------------------------
     IF ( .NOT. ASSOCIATED( Mesh ) ) RETURN
 
@@ -15486,6 +15493,10 @@ END SUBROUTINE FindNeighbourNodes
 
     NewMesh => AllocateMesh()
 
+    NewMesh % SingleMesh = Mesh % SingleMesh
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. NewMesh % SingleMesh )
+
+    
     EdgesPresent = ASSOCIATED(Mesh % Edges)
     IF(.NOT.EdgesPresent) CALL FindMeshEdges( Mesh )
 
@@ -17004,7 +17015,7 @@ END SUBROUTINE FindNeighbourNodes
     ParTmp(5) = NewMesh % NumberOfBulkElements
     ParTmp(6) = NewMesh % NumberOfBoundaryElements
 
-    IF( .FALSE. .AND. ParEnv % PEs > 1 ) THEN
+    IF( .FALSE. .AND. Parallel ) THEN
       CALL MPI_ALLREDUCE(ParTmp,ParSizes,6,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
 
       CALL Info('SplitMeshEqual','Information on parallel mesh sizes')
@@ -17028,7 +17039,9 @@ END SUBROUTINE FindNeighbourNodes
 !
 !   Update structures needed for parallel execution:
 !   ------------------------------------------------
-    CALL UpdateParallelMesh( Mesh, NewMesh )
+    IF( Parallel ) THEN
+      CALL UpdateParallelMesh( Mesh, NewMesh )
+    END IF
 !
 !
 !   Finalize:
@@ -17060,7 +17073,6 @@ CONTAINS
        LOGICAL :: Found
 !------------------------------------------------------------------------------
 
-       IF ( ParEnv % PEs <= 1 ) RETURN
 !
 !      Update mesh interfaces for parallel execution.
 !      ==============================================
@@ -22046,7 +22058,9 @@ CONTAINS
     INTEGER :: n,i,j,k,l,nodeind,dgind, Nneighbours
     REAL(KIND=dp) :: AveHits
     LOGICAL, ALLOCATABLE :: IsNeighbour(:)
+    LOGICAL :: Parallel
 
+    
     IF(.NOT. ASSOCIATED(var)) RETURN
     IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
 
@@ -22058,10 +22072,13 @@ CONTAINS
           //TRIM(Var % Name), Level=8)
     END IF
 
+    Parallel = (ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
+    
+    
     n = Mesh % NumberOfNodes
     ALLOCATE( BodyCount(n), BodyAverage(n), IsNeighbour(Parenv % PEs) )
-
-
+  
+    
     DO i=1,CurrentModel % NumberOfBodies
 
       DO k=1,Var % Dofs
@@ -22087,7 +22104,7 @@ CONTAINS
           !PRINT *,'AveHits:',i,AveHits
         END IF
 
-        IF(ParEnv % Pes>1) THEN
+        IF( Parallel ) THEN
           Nneighbours = MeshNeighbours(Mesh, IsNeighbour)
           CALL SendInterface(); CALL RecvInterface()
         END IF

@@ -3636,7 +3636,7 @@ use spariterglobals
          IsNumber = .FALSE.
          Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )         
          IF ( .NOT. ASSOCIATED( Var ) ) THEN
-           IF( VERIFY( str(l0:l1),'.0123456789') == 0 ) THEN
+           IF( VERIFY( str(l0:l1),'-.0123456789') == 0 ) THEN
              IsNumber = .TRUE.
              READ(str(l0:l1),*) Val
            ELSE           
