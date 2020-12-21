@@ -1499,15 +1499,20 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Energy(2) = Energy(2) + s*w_dens
        Energy(3) = Energy(3) + (HdotB - w_dens) * s
 
-       DO p=1,n
-         DO q=1,n
-           MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
+       IF (ElementalFields .OR. .NOT. ConstantMassMatrixInUse) THEN
+         DO p=1,n
+           DO q=1,n
+             MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
+           END DO
          END DO
+       END IF
+
+       DO p=1,n
          k = 0
          
          IF( ASSOCIATED(MFD) .OR. ASSOCIATED(EL_MFD) ) THEN
            DO l=1,vDOFs
-             FORCE(p,k+1:fdim+3) = FORCE(p,k+1:fdim+3)+s*B(l,1:fdim)*Basis(p)
+             FORCE(p,k+1:fdim+k) = FORCE(p,k+1:fdim+k)+s*B(l,1:fdim)*Basis(p)
              k = k+fdim
            END DO
          END IF
@@ -1517,15 +1522,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            ! Skipping it will certainly cause errors since k becomes invalid
            !IF(.NOT. HasZirka) then
            IF (RealField) THEN
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + &
-                 s * (MATMUL(REAL(Nu), B(1,:)) - REAL(MG_ip)) * Basis(p)
+             FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + &
+                 s * (MATMUL(REAL(Nu(1:fdim,1:fdim)), B(1,1:fdim)) - REAL(MG_ip(1:fdim))) * Basis(p)
              k = k+fdim
            ELSE
-             FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + s * &
-                 (MATMUL(REAL(Nu), B(1,1:fdim)) - MATMUL(AIMAG(Nu), B(2,1:fdim)) - REAL(MG_ip(1:fdim))) * Basis(p)
+             FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + s * ( &
+                 MATMUL(REAL(Nu(1:fdim,1:fdim)), B(1,1:fdim)) - &
+                 MATMUL(AIMAG(Nu(1:fdim,1:fdim)), B(2,1:fdim)) - REAL(MG_ip(1:fdim))) * Basis(p)
              k = k+fdim
-             FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + s * &
-                 (MATMUL(AIMAG(Nu), B(1,1:fdim)) + MATMUL(REAL(Nu), B(2,1:fdim)) - AIMAG(MG_ip(1:fdim))) * Basis(p) 
+             FORCE(p,k+1:k+fdim) = FORCE(p,k+1:k+fdim) + s * ( &
+                 MATMUL(AIMAG(Nu(1:fdim,1:fdim)), B(1,1:fdim)) + &
+                 MATMUL(REAL(Nu(1:fdim,1:fdim)), B(2,1:fdim)) - AIMAG(MG_ip(1:fdim))) * Basis(p) 
              k = k+fdim
            END IF
            !ELSE
