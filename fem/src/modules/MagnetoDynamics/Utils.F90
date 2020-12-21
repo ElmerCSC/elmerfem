@@ -422,13 +422,14 @@ CONTAINS
     REAL(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
     LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
-    REAL(KIND=dp) :: Pvacuum = 0._dp
+    REAL(KIND=dp) :: Pvacuum
     SAVE FirstTime, Warned, Pvacuum
 !------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
       Pvacuum = GetConstReal( CurrentModel % Constants, &
               'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
       FirstTime = .FALSE.
     END IF
 

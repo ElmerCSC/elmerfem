@@ -620,33 +620,34 @@ CONTAINS
        END IF
      END IF
 
+     LaminateStack = .FALSE.
+     LaminateStackModel = ''
+     HasTensorReluctivity = .FALSE.
      Acoef = 0.0d0
      Tcoef = 0.0d0
-     Material => GetMaterial( Element )
      IF ( ASSOCIATED(Material) ) THEN
-       HasTensorReluctivity = .FALSE.
-       CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
-       IF (HasTensorReluctivity) THEN
-         IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
-           i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
-           Acoef(1:i) = Acoef_t(1,1,1:i) 
-           HasTensorReluctivity = .FALSE.
+       IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+         CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+         IF (HasTensorReluctivity) THEN
+           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+             i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
+             Acoef(1:i) = Acoef_t(1,1,1:i) 
+             HasTensorReluctivity = .FALSE.
+           END IF
+         ELSE
+           CALL GetReluctivity(Material,Acoef,n)
          END IF
-       ELSE
-         CALL GetReluctivity(Material,Acoef,n)
-       END IF
-       IF (HasTensorReluctivity) THEN
-         IF (size(Acoef_t,1)/=3) CALL Fatal('WhitneyAVSolver', &
-             'Reluctivity tensor should be of size 3x3')
+         IF (HasTensorReluctivity) THEN
+           IF (size(Acoef_t,1)/=3) CALL Fatal('WhitneyAVSolver', &
+               'Reluctivity tensor should be of size 3x3')
+         END IF
        END IF
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
-       
        Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
        
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
-       IF (.NOT. LaminateStack) LaminateStackModel = ''
      END IF
 
 
@@ -1569,7 +1570,6 @@ END SUBROUTINE LocalConstraintMatrix
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
-        HBCurve = .TRUE.
       END IF
     END IF
     

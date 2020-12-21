@@ -784,14 +784,12 @@ END SUBROUTINE EMWaveCalcFields_Init
    REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: MASS(:,:), FORCE(:,:), GForce(:,:) 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer, &
-       ConstantBulkInUse = .FALSE.
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, SecondOrder, AnyTimeDer
+   LOGICAL :: ConstantBulkMatrix, ConstantBulkInUse
    INTEGER :: soln
    TYPE(ValueList_t), POINTER :: SolverParams 
 
    REAL(KIND=dp) :: mu, eps, mu0, eps0
-
-   SAVE ConstantBulkInUse
    
 !-------------------------------------------------------------------------------------------
    CALL Info('EMWaveCalcFields','Computing postprocessing fields')
@@ -826,9 +824,8 @@ END SUBROUTINE EMWaveCalcFields_Init
      PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found ) 
    END IF
    
-   IF (PiolaVersion) &
-       CALL Info('MagnetoDynamicsCalcFields', &
-       'Using Piola transformed finite elements',Level=5)
+   IF (PiolaVersion) CALL Info('EMWaveCalcFields', &
+       'Using Piola transformed finite elements', Level=5)
 
    Mesh => GetMesh()
 
@@ -864,17 +861,25 @@ END SUBROUTINE EMWaveCalcFields_Init
    
    n = Mesh % MaxElementDOFs   
    ALLOCATE( MASS(n,n), FORCE(n,dofs), Pivot(n) )
-   
-   CALL DefaultInitialize(UseConstantBulk = ConstantBulkInUse )
-   
+
+   ConstantBulkMatrix = ListGetLogical(SolverParams, 'Constant Bulk Matrix', Found)   
+   ConstantBulkInUse = ASSOCIATED(Solver % Matrix % BulkValues) .AND. &
+       ConstantBulkMatrix
+
+   IF (NodalFields) THEN
+     CALL DefaultInitialize(UseConstantBulk = ConstantBulkInUse )
+   ELSE
+     CALL DefaultInitialize()
+   END IF
+
    DO t = 1, GetNOFActive()
      Element => GetActiveElement(t)
      n = GetElementNOFNodes()
      nd = GetElementNOFDOFs(uSolver=pSolver)
      
-     CALL LocalAssembly(t==1)
+     CALL LocalAssembly(t==1, IntegrateMass = ElementalFields .OR. .NOT.ConstantBulkInUse)
      
-     IF(NodalFields) THEN
+     IF (NodalFields) THEN
        IF(.NOT. ConstantBulkInUse ) THEN
          CALL DefaultUpdateEquations( MASS,FORCE(:,1))
        END IF
@@ -886,7 +891,7 @@ END SUBROUTINE EMWaveCalcFields_Init
        Solver % Matrix % RHS => Fsave
      END IF
 
-     IF(ElementalFields) THEN
+     IF (ElementalFields) THEN
        dofcount = 0
        CALL LUdecomp(MASS,n,pivot)
        CALL LocalSol(EF_e,   3, n, MASS, FORCE, pivot, dofcount)
@@ -899,16 +904,21 @@ END SUBROUTINE EMWaveCalcFields_Init
    ! Assembly of the face terms in case we have DG method where we
    ! want to average the fields within materials making them continuous.
    !-----------------------------------------------------------------
-   IF(.NOT. ConstantBulkInUse ) THEN
-     IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
-       IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
+   IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
+     IF (GetLogical( SolverParams,'Average Within Materials',Found)) THEN
+       IF(.NOT. ConstantBulkInUse ) THEN
          FORCE = 0.0_dp
          CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
        END IF
      END IF
    END IF
 
-   IF(NodalFields) THEN
+   IF (NodalFields) THEN
+     IF (ConstantBulkMatrix .AND. .NOT. ConstantBulkInUse) THEN
+       CALL Info('EMWaveCalcFields', 'Saving the system matrix', Level=6)
+       CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
+     END IF
+
      Fsave => Solver % Matrix % RHS
      dofcount = 0
      CALL GlobalSol(EF ,  3, Gforce, dofcount)
@@ -917,15 +927,13 @@ END SUBROUTINE EMWaveCalcFields_Init
      Solver % Matrix % RHS => Fsave
    END IF
 
-   ConstantBulkInUse = ListGetLogical( SolverParams,'Constant Bulk Matrix',Found )
-
 
 CONTAINS
 
 
-  SUBROUTINE LocalAssembly(InitHandles) 
+  SUBROUTINE LocalAssembly(InitHandles, IntegrateMass) 
 
-    LOGICAL :: InitHandles
+    LOGICAL :: InitHandles, IntegrateMass
 
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1011,10 +1019,15 @@ CONTAINS
         
       s = IP % s(j) * detJ
 
-      DO p=1,n
-        DO q=1,n
-          MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
+      IF (IntegrateMass) THEN
+        DO p=1,n
+          DO q=1,n
+            MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
+          END DO
         END DO
+      END IF
+
+      DO p=1,n
         k = 0
         IF ( ASSOCIATED(EF).OR.ASSOCIATED(EF_e)) THEN
           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(EF_ip)*Basis(p)

@@ -102,12 +102,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,TransientSimulation )
   !-------------------------------------------
   Active = GetNOFActive()
 
-  IF ( ConstantBulkMatrixInUse ) THEN
-     Solver % Matrix % Values = Solver % Matrix % BulkValues        
-     Solver % Matrix % RHS = 0.0_dp
-  ELSE
-     CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   DO t=1,Active      !Solver % NumberOfActiveElements
      Element => GetActiveElement(t)
@@ -131,7 +126,6 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,TransientSimulation )
 
      ! Update global matrix and rhs vector from local matrix & vector:
      !----------------------------------------------------------------
-     !CALL DefaultUpdateEquations( STIFF, FORCE )
      IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         CALL DefaultUpdateEquations( STIFF, FORCE )
      ELSE
@@ -140,9 +134,13 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,TransientSimulation )
         
   END DO
 
-  IF( .NOT. ConstantBulkMatrixInUse ) THEN
+  IF ( ConstantBulkMatrix ) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, &
+        RHSUpdate = .FALSE.)
+  ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
+
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
   

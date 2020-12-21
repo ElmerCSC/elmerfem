@@ -87,9 +87,9 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
       RETURN
     END IF
     Dofs = DivergenceSol % DOFs
-    IF(Dofs /= 1) CALL Fatal('DivergenceSolver','Divergence should have 1 component in 2D')
+    IF(Dofs /= 1) CALL Fatal('DivergenceSolver','Divergence should have 1 component')
   ELSE
-     CALL Fatal('DivergenceSolver','Variable does not exist or its size is zero!')      
+     CALL Fatal('DivergenceSolver','Variable does not exist!')      
   END IF
 
   CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -108,18 +108,13 @@ SUBROUTINE DivergenceSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % RHS = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   CALL BulkAssembly()
-  IF( ConstantBulkMatrix ) THEN
-    IF(.NOT. ConstantBulkMatrixInUse ) THEN
-      CALL DefaultFinishBulkAssembly( BulkUpdate = .TRUE.)
-    END IF
+  IF ( ConstantBulkMatrix ) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
   END IF
 
   CALL DefaultFinishAssembly()

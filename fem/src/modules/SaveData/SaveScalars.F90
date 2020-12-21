@@ -168,11 +168,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen, &
       jsonpos
-  INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
+  INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
 
-  SAVE :: jsonpos
+  SAVE :: jsonpos, PrevRunInd
   
 !------------------------------------------------------------------------------
 
@@ -190,6 +190,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   SaveFluxRange = ListGetLogical( Params,'Save Flux Range',GotIt)
   IF(.NOT. GotIt) SaveFluxRange = .TRUE.
+
+  RunInd = 0
+  Var => VariableGet( Model % Variables,'run')
+  IF( ASSOCIATED( Var ) ) RunInd = NINT( Var % Values(1) )
+
   
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -202,13 +207,28 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(i > 0) THEN
         Suffix = ScalarsFile(i:j)
         WRITE( ScalarsFile,'(A,I0,A)') &
-            ScalarsFile(1:i-1)//'_',ParEnv % PEs,Suffix(1:j-i+1)
+            ScalarsFile(1:i-1)//'_np',ParEnv % PEs,Suffix(1:j-i+1)
       ELSE
         WRITE( ScalarsFile,'(A,I0)') &
-            ScalarsFile(1:j)//'_',ParEnv % PEs 
+            ScalarsFile(1:j)//'_np',ParEnv % PEs 
       END IF
     END IF
 
+    ! Optionally number files by the run control loop.
+    IF(ListGetLogical(Params,'Run Control Numbering',GotIt)) THEN
+      i = INDEX( ScalarsFile,'.',.TRUE. )
+      j = LEN_TRIM(ScalarsFile)
+      IF(i > 0) THEN
+        Suffix = ScalarsFile(i:j)
+        WRITE( ScalarsFile,'(A,I0,A)') &
+            ScalarsFile(1:i-1)//'_run',RunInd,Suffix(1:j-i+1)
+      ELSE
+        WRITE( ScalarsFile,'(A,I0)') &
+            ScalarsFile(1:j)//'_run',RunInd
+      END IF
+      IF( RunInd /= PrevRunInd ) Solver % TimesVisited = 0      
+    END IF
+    
     CALL SolverOutputDirectory( Solver, ScalarsFile, OutputDirectory )
     ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
     
@@ -1185,7 +1205,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     LineInd = ListGetInteger( Params,'Line Marker',GotIt)
     PrevNoValues = ListGetInteger( Params,'Save Scalars Dofs',GotIt) 
 
-    IF(WriteCore .AND. NoValues /= PrevNoValues) THEN 
+    IF(WriteCore .AND. ( NoValues /= PrevNoValues .OR. RunInd /= PrevRunInd ) ) THEN 
       CALL ListAddInteger( Params,'Save Scalars Dofs',NoValues )
 
       WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
@@ -1475,6 +1495,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   n = 1
   n = NINT( ParallelReduction(1.0_dp*n) )
+
+  PrevRunInd = RunInd
   
   CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 

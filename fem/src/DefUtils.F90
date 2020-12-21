@@ -3035,35 +3035,23 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
+     IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+       CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
+     END IF     
+
      IF( PRESENT( UseConstantBulk ) ) THEN
        IF ( UseConstantBulk ) THEN
+         IF (.NOT. ASSOCIATED( Solver % Matrix % BulkRhs ) ) THEN
+           Solver % Matrix % rhs = 0.0d0
+         END IF
+
          CALL Info('DefaultInitialize','Using constant bulk matrix',Level=8)
-         IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
+         IF (.NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
            CALL Warn('DefaultInitialize','Constant bulk system requested but not associated!')
            RETURN
          END IF
 
-         n = SIZE(Solver % Matrix % Values)
-         DO i=1,n
-           Solver % Matrix % Values(i) = Solver % Matrix % BulkValues(i)
-         END DO
-
-         IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) THEN
-           DO i=1,n
-             Solver % Matrix % MassValues(i) = Solver % Matrix % BulkMassValues(i)
-           END DO
-         END IF
-         IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) THEN
-           DO i=1,n
-             Solver % Matrix % DampValues(i) = Solver % Matrix % BulkDampValues(i)
-           END DO
-         END IF
-         IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) THEN
-           n = SIZE(Solver % Matrix % RHS)
-           DO i=1,n
-             Solver % Matrix % rhs(i) = Solver % Matrix % BulkRhs(i)
-           END DO
-         END IF
+         CALL RestoreBulkMatrix(Solver % Matrix)
          RETURN
        END IF
      END IF
@@ -3077,11 +3065,6 @@ CONTAINS
      IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
        CALL ChangeToHarmonicSystem( Solver, .TRUE. )
      END IF
-     
-     
-     IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
-       CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
-     END IF     
      
      CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
 
@@ -3126,7 +3109,11 @@ CONTAINS
      
      CALL Info('DefaultStart','Starting solver: '//&
         TRIM(ListGetString(Params,'Equation')),Level=10)
-
+     
+     IF( ListGetLogical( Params,'Store Cyclic System', Found ) ) THEN
+       CALL StoreCyclicSolution( Solver ) 
+     END IF
+     
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -3435,12 +3422,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, BulkUpdate, VecAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      REAL(KIND=dp) :: G(:,:), f(:)
-     LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
+     LOGICAL, OPTIONAL :: VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
@@ -3648,12 +3635,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate, MCAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
-     LOGICAL, OPTIONAL :: BulkUpdate, MCAssembly
+     LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this 
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
@@ -5826,17 +5813,18 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Finished the bulk assembly of the matrix equation.
+!> Finishes the bulk assembly of the matrix equation.
 !> Optionally save the matrix for later use.
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultFinishBulkAssembly( Solver, BulkUpdate )
+  SUBROUTINE DefaultFinishBulkAssembly( Solver, BulkUpdate, RHSUpdate )
 !------------------------------------------------------------------------------
     TYPE(Solver_t), OPTIONAL, TARGET :: Solver
-    LOGICAL, OPTIONAL :: BulkUpdate
+    LOGICAL, OPTIONAL :: BulkUpdate  ! Direct control on whether matrices are saved
+    LOGICAL, OPTIONAL :: RHSUpdate   ! Direct control on whether RHS is saved
 
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: Bupd, Found
+    LOGICAL :: Bupd, UpdateRHS, Found
     INTEGER :: n
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     LOGICAL :: Transient
@@ -5857,6 +5845,12 @@ CONTAINS
         
     ! Reset colouring 
     PSolver % CurrentColour = 0
+
+    IF ( PRESENT(RHSUpdate) ) THEN
+      UpdateRHS = RHSUpdate
+    ELSE  
+      UpdateRHS = .TRUE.
+    END IF
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
@@ -5880,10 +5874,10 @@ CONTAINS
       str = GetString( Params,'Equation',Found)
       CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=6 )
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
-        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE., BulkRHS = UpdateRHS ) 
       ELSE
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues), &
-            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues) ) 
+            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues), BulkRHS = UpdateRHS ) 
       END IF
     END IF
 

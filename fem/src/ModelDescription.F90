@@ -2281,6 +2281,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir,MeshName
     TYPE(valuelist_t), POINTER :: lst
     INTEGER, ALLOCATABLE :: EdgeDOFs(:),FaceDOFs(:)
+    LOGICAL :: Parallel
 !------------------------------------------------------------------------------
 
     ALLOCATE( Model )
@@ -2514,8 +2515,18 @@ CONTAINS
 
         CALL PrepareMesh( Model, Model % Meshes, ParEnv % PEs > 1, Def_Dofs )          
       ELSE
-        Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs )
+        Single = ListGetLogical( Model % Simulation,'Single Mesh', GotIt ) 
+        IF( Single ) THEN
+          IF( ParEnv % PEs > 1 ) THEN
+            CALL Info('LoadModel','Whole primary mesh will be read for each partition!',Level=7)
+          END IF
+          Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+              BoundariesOnly, 1, mype, Def_Dofs )
+        ELSE
+          Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+              BoundariesOnly, numprocs, mype, Def_Dofs )
+        END IF
+        Model % Meshes % SingleMesh = Single       
       END IF
       
 
@@ -2538,7 +2549,7 @@ CONTAINS
             //TRIM(I2S(MeshLevels)))
       END IF
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
-      IF ( .NOT. GotIt ) MeshKeep=MeshLevels
+      IF ( .NOT. GotIt ) MeshKeep = MeshLevels
 
       IF( MeshLevels > 1 ) THEN
         CALL Info('LoadMesh','Keeping number of meshes: '//TRIM(I2S(MeshKeep)),Level=8)
@@ -2751,7 +2762,8 @@ CONTAINS
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
         Model % Solvers(s) % Mesh % SingleMesh = Single
         
-
+        Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Single)
+        
         MeshLevels = ListGetInteger( Model % Solvers(s) % Values, 'Mesh Levels', GotIt )
         IF ( .NOT. GotIt ) MeshLevels=1
 
@@ -2760,7 +2772,6 @@ CONTAINS
 
         MeshPower   = ListGetConstReal( Model % Simulation, 'Mesh Grading Power',GotIt)
         MeshGrading = ListGetLogical( Model % Simulation, 'Mesh Keep Grading', GotIt)
-
 
         DO i=2,MeshLevels
           OldMesh => Model % Solvers(s) % Mesh
@@ -2786,8 +2797,10 @@ CONTAINS
             DEALLOCATE(EdgeDOFs,FaceDOFs)
 
             CALL SetMeshMaxDofs(NewMesh)
-            IF(ParEnv % PEs>1) CALL SParEdgeNumbering(NewMesh)
-            IF(ParEnv % PEs>1) CALL SParFAceNumbering(NewMesh)
+            IF( Parallel ) THEN
+              CALL SParEdgeNumbering(NewMesh)
+              CALL SParFAceNumbering(NewMesh)
+            END IF
           END IF
 
           IF ( i>MeshLevels-MeshKeep+1 ) THEN
@@ -2838,7 +2851,7 @@ CONTAINS
     Mesh => Model % Meshes
     DO WHILE( ASSOCIATED( Mesh ) )
       CALL MeshStabParams( Mesh )
-      Mesh => Mesh % Next
+      Mesh => Mesh % Next      
     END DO
 
 !------------------------------------------------------------------------------

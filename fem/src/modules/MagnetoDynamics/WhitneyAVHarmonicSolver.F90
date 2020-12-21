@@ -362,21 +362,25 @@ CONTAINS
            END SELECT
          END IF
        END IF
+
+       LaminateStack = .FALSE.
+       LaminateStackModel = ''
+       HasTensorReluctivity = .FALSE.
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
-       Material => GetMaterial( Element )
        IF ( ASSOCIATED(Material) ) THEN
-         HasTensorReluctivity = .FALSE.
-         CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
-         IF (HasTensorReluctivity) THEN
-           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
-             Acoef(1:n) = Acoef_t(1,1,1:n) 
-             HasTensorReluctivity = .FALSE.
-           ELSE IF (size(Acoef_t,1)/=3) THEN
-             CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
+         IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+           CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+           IF (HasTensorReluctivity) THEN
+             IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+               Acoef(1:n) = Acoef_t(1,1,1:n) 
+               HasTensorReluctivity = .FALSE.
+             ELSE IF (size(Acoef_t,1)/=3) THEN
+               CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
+             END IF
+           ELSE
+             CALL GetReluctivity(Material,Acoef,n)
            END IF
-         ELSE
-           CALL GetReluctivity(Material,Acoef,n)
          END IF
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
@@ -384,7 +388,6 @@ CONTAINS
          Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
-         IF (.NOT. LaminateStack) LaminateStackModel = ''
        END IF
 
        LamThick=0d0
@@ -1129,7 +1132,6 @@ CONTAINS
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
-        HBCurve = .TRUE.
       END IF
     END IF
 

@@ -53,11 +53,13 @@ Solver 3
    Target Variable="A"
    Procedure = "MagnetoDynamics2D" "bSolver"
    Discontinuous Galerkin = Logical True
+   Average Within Materials = True
+   Constant Bulk Matrix = True
    Linear System Solver = Iterative
    Linear System Iterative Method = BicgstabL
    Linear System Symmetric = True
    Linear System Max Iterations = 100
-   Linear System Preconditioning = None
+   Linear System Preconditioning = ILU0
    Linear System Convergence Tolerance = 1e-8
 End
 Solver 4 ! Result output

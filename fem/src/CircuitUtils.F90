@@ -1810,7 +1810,7 @@ CONTAINS
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
-    CALL SetCircuitsParallelInfo()
+    IF (ParEnv % PEs > 1) CALL SetCircuitsParallelInfo()
 
     ! COUNT SIZES:
     ! ============

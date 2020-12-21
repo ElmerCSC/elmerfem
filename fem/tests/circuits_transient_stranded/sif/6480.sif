@@ -239,7 +239,7 @@ Boundary Condition 7  !---- Beta0
    Target Boundaries = $ A1_beta0
    Body 3: Beta = Real 0
 End
-Solver 6 :: Reference Norm = Real 7.02911464E-03
+Solver 6 :: Reference Norm = Real 2.30686587E-03
 Solver 6 :: Reference Norm Tolerance = Real 1E-03
 Solver 7 :: Reference Norm = Real 5.08844468E+04 
 Solver 7 :: Reference Norm Tolerance = Real 1E-03

@@ -117,6 +117,7 @@ Solver 6
   Potential variable = "P"
   Variable = "phi"
   Variable DOFs = 1
+  Constant Bulk Matrix = True
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
@@ -134,6 +135,7 @@ Solver 7
   Potential variable = "P"
   Variable = "Kernel Component"
   Variable DOFs = 1
+  Constant Bulk Matrix = True
 
   linear system solver = iterative
   linear system iterative method = CG
@@ -171,7 +173,6 @@ Material 2
   relative Permittivity = 1.0
   Name = "Iron"
   Electric Conductivity = 0.0
-  Relative Permeability = 1000.
 
   H-B Curve(31,2) = Real
    INCLUDE HB

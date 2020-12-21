@@ -534,7 +534,8 @@ END BLOCK
       INTEGER :: ngp
       REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp) :: NodalSol(:,:), ViscDerVec(:)
+      REAL(KIND=dp) :: NodalSol(:,:)
+      REAL(KIND=dp), ALLOCATABLE :: ViscDerVec(:)
       LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
 

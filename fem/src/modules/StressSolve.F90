@@ -1081,7 +1081,7 @@ CONTAINS
 
        IF( AnyDamping ) THEN
          Damping(1:n) = GetReal( Material, 'Damping', Found )
-         RayleighDamping = GetLogical( Material, 'Rayleigh damping', Found )
+         RayleighDamping = ListCheckPrefix( Material, 'Rayleigh damping' )
          IF( RayleighDamping ) THEN
            RayleighAlpha(1:N) = GetReal( Material, 'Rayleigh Damping alpha', Found )
            RayleighBeta(1:N) = GetReal( Material, 'Rayleigh Damping beta', Found )
