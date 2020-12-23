@@ -99,6 +99,10 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
   ELSE
     CALL ListAddNewLogical(SolverPars, 'Large Deflection', .TRUE.)
     CALL ListAddNewInteger(SolverPars, 'Nonlinear System Max Iterations', 50)
+    IF (Transient) THEN
+      CALL ListAddInteger(SolverPars, 'Time derivative order', 2)
+      CALL ListAddString(SolverPars, 'Timestepping Method', 'Bossak')
+    END IF
   END IF
   CALL ListAddNewConstReal(SolverPars, 'Nonlinear System Convergence Tolerance', 1.0d-5)
   CALL ListAddNewLogical(SolverPars, 'Skip Compute Nonlinear Change', .TRUE.)

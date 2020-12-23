@@ -1257,7 +1257,7 @@ CONTAINS
         END IF
         CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=10)
       ELSE
-        CALL Warn( 'AddEquation', '> Timestepping method < defaulted to > Implicit Euler <' )
+        CALL Warn('AddEquationBasics', '> Timestepping method < defaulted to > Implicit Euler <' )
         CALL ListAddString( SolverParams, 'Timestepping Method', 'Implicit Euler' )
       END IF
 
