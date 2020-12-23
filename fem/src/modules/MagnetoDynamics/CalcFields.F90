@@ -799,8 +799,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    n = Mesh % MaxElementDOFs
 
-   ! Note: currently we allocate too large FORCE as there seems to be a problem...
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs+10), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
+   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n))
 
    SOL = 0._dp; PSOL=0._dp
 

@@ -2452,12 +2452,8 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
 
   CALL BulkAssembly()
 
-  IF (ConstantBulkMatrix) THEN 
-    IF (.NOT. ConstantBulkMatrixInUse) THEN
-      CALL Info('BSolver','Saving the system matrix', Level=6)
-      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
-    END IF
-    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+  IF (ConstantBulkMatrix) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
   ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
