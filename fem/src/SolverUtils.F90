@@ -20415,6 +20415,264 @@ CONTAINS
 
    END SUBROUTINE SolverOutputDirectory
    !-----------------------------------------------------------------------------
+
+
+   
+   ! When we have a field defined on IP points we may temporarily swap it to be a field
+   ! defined on DG points. This is done by solving small linear system for each element.
+   !------------------------------------------------------------------------------------
+   SUBROUTINE Ip2DgField( Mesh, Element, nip, fip, ndg, fdg )
+     !------------------------------------------------------------------------------
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: nip, ndg
+     REAL(KIND=dp) :: fip(:), fdg(:)
+     !------------------------------------------------------------------------------
+     REAL(KIND=dp) :: Weight, DetJ
+     REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
+     INTEGER :: i,t,p,q,n
+     TYPE(GaussIntegrationPoints_t) :: IP
+     TYPE(Nodes_t) :: Nodes
+     LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
+
+     SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
+     !------------------------------------------------------------------------------
+
+     IF( .NOT. AllocationsDone ) THEN
+       n = Mesh % MaxElementNodes
+       ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
+       CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
+           CurrentCoordinateSystem() == CylindricSymmetric
+       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+       AllocationsDone = .TRUE.
+     END IF
+
+     n = Element % TYPE % NumberOfNodes 
+     IF( n /= ndg ) CALL Fatal('Ip2DgField','Mismatch in sizes!')
+
+     Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+     Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+     Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+
+     MASS  = 0._dp
+     LOAD = 0._dp
+
+     ! Numerical integration:
+     !-----------------------
+     IP = GaussPoints( Element, nip )
+
+     DO t=1,IP % n
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
+       Weight = IP % s(t) * DetJ
+
+       IF( CSymmetry ) THEN
+         Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+       END IF
+
+       DO p=1,n
+         LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
+         DO q=1,n
+           MASS(p,q) = MASS(p,q) + Weight * Basis(q) * Basis(p)
+         END DO
+       END DO
+     END DO
+
+     CALL LuSolve(n,MASS,LOAD) 
+
+     fdg(1:n) = LOAD(1:n)
+
+   END SUBROUTINE Ip2DgField
+
+
+   ! This routine changes the IP field to DG field just while the results are being written.
+   !---------------------------------------------------------------------------------------
+   SUBROUTINE Ip2DgSwapper( Mesh, FromVar, ToVar, ToType ) 
+
+     TYPE( Mesh_t), POINTER :: Mesh
+     TYPE( Variable_t), POINTER :: FromVar
+     TYPE( Variable_t), POINTER, OPTIONAL :: ToVar
+     INTEGER, OPTIONAL :: ToType
+
+     TYPE( Variable_t), POINTER :: TmpVar
+     INTEGER :: TmpType
+     TYPE( Variable_t), TARGET :: LocalVar
+     INTEGER :: permsize,ipsize,varsize,dofs,i,j,k,n,m,e,t,allocstat
+     TYPE(Element_t), POINTER :: Element
+     REAL(KIND=dp) :: fip(32),fdg(32)
+     LOGICAL :: DgField, NodeField
+     INTEGER, ALLOCATABLE :: NodeHits(:)
+     INTEGER, POINTER :: Indexes(:)
+     
+     SAVE LocalVar
+
+     IF( FromVar % TYPE /= Variable_on_gauss_points ) RETURN
+     
+     IF( PRESENT( ToVar ) ) THEN
+       IF(.NOT. ASSOCIATED( ToVar ) ) RETURN
+     END IF
+     
+     CALL Info('Ip2DgSwapper','Swapping variable from ip to dg:'//TRIM(FromVar % Name),Level=8)
+
+     dofs = FromVar % Dofs
+
+     IF( PRESENT( ToType ) ) THEN
+       TmpType = ToType
+     ELSE IF( PRESENT( ToVar ) ) THEN
+       TmpType = ToVar % TYPE
+     ELSE
+       TmpType = Variable_on_nodes_on_elements
+     END IF
+     
+     DgField = ( TmpType == Variable_on_nodes_on_elements )
+     NodeField = ( TmpType == Variable_on_nodes )
+
+     IF(.NOT. (DgField .OR. NodeField ) ) THEN
+       CALL Fatal('Ip2DgSwapper','Wrong type of variable!')        
+     END IF
+     
+               
+     ! Inherit stuff from the primary field to temporal field
+     IF( PRESENT( ToVar ) ) THEN
+       TmpVar => ToVar
+       IF( TmpVar % dofs /= dofs ) THEN
+         CALL Fatal('Ip2DgSwapper','Variables are of different size!')        
+       END IF
+     ELSE
+       TmpVar => LocalVar
+       TmpVar % Name = FromVar % Name
+       TmpVar % Dofs = dofs
+       TmpVar % Type = TmpType
+       
+       ! Calculate the sizes related to the primary variable
+       n = Mesh % NumberOfBulkElements
+       ipsize = FromVar % Perm(n+1) - FromVar % Perm(1)
+       CALL Info('Ip2DgSwapper','Size of ip table: '//TRIM(I2S(ipsize)),Level=20)
+       
+       IF( DgField ) THEN
+         permsize = 0
+         DO t=1,Mesh % NumberOfBulkElements
+           Element => Mesh % Elements(t)
+           n = Element % TYPE % NumberOfNodes           
+           permsize = permsize + n            
+         END DO
+       ELSE
+         permsize = Mesh % NumberOfNodes                  
+       END IF
+       CALL Info('Ip2DgSwapper','Size of permutation table: '//TRIM(I2S(permsize)),Level=20)
+       
+       IF(ASSOCIATED( TmpVar % Perm ) ) THEN
+         IF( SIZE( TmpVar % Perm ) < permsize ) DEALLOCATE( TmpVar % Perm )
+       END IF
+       IF(.NOT. ASSOCIATED( TmpVar % Perm ) ) THEN
+         ALLOCATE( TmpVar % Perm(permsize), STAT=allocstat )
+         IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Perm')
+       END IF
+       TmpVar % Perm = 0 
+
+       ! Mark the existing permutations in the temporal variable
+       DO t=1,Mesh % NumberOfBulkElements
+         Element => Mesh % Elements(t)
+         n = Element % Type % NumberOfNodes                     
+         e = Element % ElementIndex
+         m = FromVar % Perm(e+1) - FromVar % Perm(e)
+
+         IF( m > 0 ) THEN
+           IF( DgField ) THEN
+             TmpVar % Perm( Element % DgIndexes ) = 1
+           ELSE
+             TmpVar % Perm( Element % NodeIndexes ) = 1
+           END IF
+         END IF
+       END DO
+
+       ! Number the permutations in the temporal variable
+       j = 0
+       DO i = 1, permsize
+         IF( TmpVar % Perm( i ) == 0 ) CYCLE
+         j = j + 1
+         TmpVar % Perm( i ) = j
+       END DO
+       varsize = j
+       CALL Info('Ip2DgSwapper','Size of target variable: '//TRIM(I2S(varsize)),Level=20)
+        
+       IF(ASSOCIATED( TmpVar % Values ) ) THEN
+         IF( SIZE( TmpVar % Values ) < varsize * dofs ) DEALLOCATE( TmpVar % Values )
+       END IF
+       IF(.NOT. ASSOCIATED( TmpVar % Values ) ) THEN
+         ALLOCATE( TmpVar % Values(varsize * dofs), STAT=allocstat)
+         IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Values')      
+       END IF
+       TmpVar % Values = 0.0_dp
+     END IF
+
+     
+     IF( NodeField ) THEN
+       TmpVar % Values = 0.0_dp
+       n = SIZE( TmpVar % Values ) / TmpVar % Dofs
+       ALLOCATE( NodeHits(n) )
+       NodeHits = 0
+     END IF
+     
+     DO t=1,Mesh % NumberOfBulkElements
+       Element => Mesh % Elements(t)
+       n = Element % Type % NumberOfNodes            
+       e = Element % ElementIndex
+
+       m = FromVar % Perm(e+1) - FromVar % Perm(e)
+
+       IF( m == 0 ) CYCLE 
+
+       IF( DgField ) THEN
+         IF( ALL( TmpVar % Perm( Element % DgIndexes ) == 0 ) ) CYCLE          
+       ELSE
+         IF( ALL( TmpVar % Perm( Element % NodeIndexes ) == 0 ) ) CYCLE                  
+       END IF
+              
+       DO k=1,dofs
+         DO i=1,m        
+           j = FromVar % Perm(t) + i 
+           fip(i) = FromVar % Values(dofs*(j-1)+k)
+         END DO
+
+         ! Solve the elemental equation involving mass matrix
+         CALL Ip2DgField( Mesh, Element, m, fip, n, fdg )
+
+         IF( DgField ) THEN
+           Indexes => Element % DgIndexes
+         ELSE
+           Indexes => Element % NodeIndexes
+         END IF
+
+         DO i=1,n        
+           j = TmpVar % Perm( Indexes(i) ) 
+           IF( j > 0 ) THEN
+             IF( DgField ) THEN
+               TmpVar % Values(dofs*(j-1)+k) = fdg(i)
+             ELSE
+               TmpVar % Values(dofs*(j-1)+k) = TmpVar % Values(dofs*(j-1)+k) + fdg(i)
+               IF( k==1 ) NodeHits(j) = NodeHits(j) + 1
+             END IF
+           END IF
+         END DO
+       END DO
+     END DO
+       
+     IF( DgField ) THEN
+       CALL Info('Ip2DgSwapper','Swapping variable from ip to dg done',Level=12)
+     ELSE
+       DO k=1,dofs
+         WHERE( NodeHits > 0 ) 
+           TmpVar % Values(k::dofs) = TmpVar % Values(k::dofs) / NodeHits
+         END WHERE
+       END DO
+       DEALLOCATE( NodeHits ) 
+       CALL Info('Ip2DgSwapper','Swapping variable from ip to nodal done',Level=12)
+     END IF
+     
+     IF( .NOT. PRESENT( ToVar ) ) FromVar => TmpVar
+       
+   END SUBROUTINE Ip2DgSwapper
+       
  
    ! When we have a transient and time-periodic system it may be
    ! beneficial to store the values and use them as an initial guess
