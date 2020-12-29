@@ -1896,6 +1896,11 @@ CONTAINS
       biAtIP = GetBi(CurrentSoluteMaterial,RockMaterialID,&
            Xi0Tilde,SalinityAtIP,.TRUE.)
       XiAtIP = GetXi(BAtIP,DAtIP)
+      IF (XiAtIP <= 0.0_dp) THEN
+        WRITE(Message,*) 'Xi=',XiAtIP,' reset to 0.001'
+        CALL WARN("GetXiHartikainen",Message)
+        XiAtIP = 0.001_dp
+      END IF
     END IF
     !----------------------------------------------------
     XiTAtIP = 0.0_dp
