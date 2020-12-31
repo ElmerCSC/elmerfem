@@ -26,7 +26,7 @@ Simulation
   BDF Order = 1
   Timestep Sizes(1) = #10.0*24.0 * 3600
   TimeStep Intervals(1) =  4
-  Output Intervals(1) = 1
+  Output Intervals(1) = 1 !only applies to result output, if there is
   Steady State Max Iterations = 10
   !Output File = "McKenzie.result"
   Initialize Dirichlet Conditions = Logical False
@@ -52,7 +52,7 @@ End
 
 Material 1
    Density = 1.0 ! Just a dummy
-   Rock Material File = File "McKenzie.dat"
+   Rock Material File = File "McKenzie.db"
    Rock Material ID = Integer 1
    Conductivity Arithmetic Mean Weight = Real 0.5
    Temperature Variable = Equals "PFTemp"
