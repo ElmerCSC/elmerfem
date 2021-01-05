@@ -5076,20 +5076,15 @@ CONTAINS
               IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
                  SELECT CASE(GetElementFamily())
                  CASE(2)
-                   DO j=1,Parent % TYPE % NumberOfEdges
-                     Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
-                     n = 0
-                     DO k=1,Element % TYPE % NumberOfNodes
-                       DO l=1,Edge % TYPE % NumberOfNodes
-                         IF ( Element % NodeIndexes(k)==Edge % NodeIndexes(l)) n=n+1
-                       END DO
-                     END DO
-                     IF ( n==Element % TYPE % NumberOfNodes ) EXIT
-                   END DO
 
+                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
+
+                   IF ( .NOT. ASSOCIATED(Edge) ) CYCLE
                    IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
+                   IF (EDOFs < 1) CYCLE
+
                    n = Edge % TYPE % NumberOfNodes
                    CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {e}',Work, &
                        EDOFs, SecondKindBasis)
@@ -5108,21 +5103,9 @@ CONTAINS
                    END DO
 
                  CASE(3,4)
-                   !Check that solver % mesh % faces exists?
-!-- Better:                   IF ( ASSOCIATED(Parent % FaceIndexes) ) THEN
-                   DO j=1,Parent % TYPE % NumberOfFaces
-                     Face => Solver % Mesh % Faces(Parent % FaceIndexes(j))
-                     IF ( GetElementFamily(Element)==GetElementFamily(Face) ) THEN
-                       n = 0
-                       DO k=1,Element % TYPE % NumberOfNodes
-                         DO l=1,Face % TYPE % NumberOfNodes
-                           IF ( Element % NodeIndexes(k)==Face % NodeIndexes(l)) n=n+1
-                         END DO
-                       END DO
-                       IF ( n==Face % TYPE % NumberOfNodes ) EXIT
-                     END IF
-                   END DO
+                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
 
+                   IF (.NOT. ASSOCIATED(Face)) CYCLE
                    IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                    ! ---------------------------------------------------------------------
@@ -5134,6 +5117,7 @@ CONTAINS
                    DO l=1,Face % TYPE % NumberOfEdges
                      Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
                      EDOFs = Edge % BDOFs
+                     IF (EDOFs < 1) CYCLE                     
                      n = Edge % TYPE % NumberOfNodes
 
                      CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, TRIM(Name)//' {e}', &
@@ -5186,142 +5170,57 @@ CONTAINS
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)
              ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D and
-             ! for the Nedelec tetrahedron of the first and second kind in 3D.
+             ! for a 48-DOF brick and the Nedelec tetrahedron of the first and second kind 
+             ! in 3D.
              !--------------------------------------------------------------------------
              SELECT CASE(GetElementFamily())
              CASE(2)
-               IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
-                 DO j=1,Parent % TYPE % NumberOfEdges
-                   Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
-                   n = 0
-                   DO k=1,Element % TYPE % NumberOfNodes
-                     DO l=1,Edge % TYPE % NumberOfNodes
-                       IF ( Element % NodeIndexes(k)==Edge % NodeIndexes(l)) n=n+1
-                     END DO
-                   END DO
-                   IF ( n==Element % TYPE % NumberOfNodes ) EXIT
-                 END DO
+               
+               CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
 
-                 IF (n /= Element % TYPE % NumberOfNodes) CYCLE
-                 IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
+               IF (.NOT. ASSOCIATED(Edge)) CYCLE
+               IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
-                 EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
-                 n = Edge % TYPE % NumberOfNodes
-                 CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {f}',Work, &
-                     EDOFs, SecondKindBasis, FaceElement=.TRUE.)
+               EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
 
-                 n=GetElementDOFs(gInd,Edge)
+               IF (EDOFs < 1) CYCLE
 
-                 n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
-                 DO j=1,EDOFs
-                   k = n_start + j
-                   nb = x % Perm(gInd(k))
-                   IF ( nb <= 0 ) CYCLE
-                   nb = Offset + x % DOFs*(nb-1) + DOF
+               n = Edge % TYPE % NumberOfNodes
+               CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {f}',Work, &
+                   EDOFs, SecondKindBasis, FaceElement=.TRUE.)
 
-                   A % ConstrainedDOF(nb) = .TRUE.
-                   A % Dvalues(nb) = Work(j) 
-                 END DO
+               n=GetElementDOFs(gInd,Edge)
 
-               END IF
+               n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+               DO j=1,EDOFs
+                 k = n_start + j
+                 nb = x % Perm(gInd(k))
+                 IF ( nb <= 0 ) CYCLE
+                 nb = Offset + x % DOFs*(nb-1) + DOF
+
+                 A % ConstrainedDOF(nb) = .TRUE.
+                 A % Dvalues(nb) = Work(j) 
+               END DO
 
              CASE(3)
-               IF ( ASSOCIATED( Parent % FaceIndexes ) ) THEN
-                 DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
-                   Face => Solver % Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
-                   IF ( GetElementFamily(Element)==GetElementFamily(Face) ) THEN
-                     n = 0
-                     DO k=1,Element % TYPE % NumberOfNodes
-                       DO l=1,Face % TYPE % NumberOfNodes
-                         IF ( Element % NodeIndexes(k)==Face % NodeIndexes(l)) n=n+1
-                       END DO
-                     END DO
-                     IF ( n==Face % TYPE % NumberOfNodes ) EXIT
-                   END IF
-                 END DO
+               
+               CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
 
-                 IF (n /= Element % TYPE % NumberOfNodes) CYCLE
-                 IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
-                 
-                 FDOFs = Face % BDOFs
+               IF (.NOT. ASSOCIATED(Face)) CYCLE
+               IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
-                 IF (FDOFs > 0) THEN
-                   CALL FaceElementOrientation(Parent, ReverseSign, ActiveFaceId)
-                   IF (SecondKindBasis) &
-                       CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
-                   n = Face % TYPE % NumberOfNodes
+               FDOFs = Face % BDOFs
 
-                   CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
-                       TRIM(Name)//' {f}', Work, FDOFs, SecondKindBasis)
+               IF (FDOFs > 0) THEN
+                 CALL FaceElementOrientation(Parent, ReverseSign, ActiveFaceId)
+                 IF (SecondKindBasis) &
+                     CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
+                 n = Face % TYPE % NumberOfNodes
 
-                   IF (SecondKindBasis) THEN
-                     !
-                     ! Conform to the orientation and ordering used in the
-                     ! assembly of the global equations
-                     !
-                     DefaultDOFs(1:FDOFs) = Work(1:FDOFs)
-                     IF (ReverseSign(ActiveFaceId)) THEN
-                       S = -1.0d0
-                     ELSE
-                       S = 1.0d0
-                     END IF
+                 CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
+                     TRIM(Name)//' {f}', Work, FDOFs, SecondKindBasis)
 
-                     DO j=1,FDOFs
-                       k = FDofMap(ActiveFaceId,j)
-                       Work(j) = S * DefaultDOFs(k)
-                     END DO
-                   ELSE
-                     IF (ReverseSign(ActiveFaceId)) Work(1:FDOFs) = -1.0d0*Work(1:FDOFs)
-                   END IF
-
-                   n = GetElementDOFs(GInd,Face)
-                   !
-                   ! Make an offset by the count of nodal DOFs. This provides
-                   ! the right starting point if edge DOFs are not present.
-                   !
-                   n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
-                   !
-                   ! Check if we need to increase the offset by the count of
-                   ! edge DOFs:
-                   !
-                   IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
-                     EDOFs = 0
-                     DO l=1,Face % TYPE % NumberOfEdges
-                       Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
-                       EDOFs = EDOFs + Edge % BDOFs
-                     END DO
-                     n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
-                   END IF
-
-                   DO j=1,FDOFs
-                     k = n_start + j
-                     nb = x % Perm(gInd(k))
-                     IF ( nb <= 0 ) CYCLE
-                     nb = Offset + x % DOFs*(nb-1) + DOF
-
-                     A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = Work(j) 
-                   END DO
-                 END IF
-               END IF
-
-             CASE(4)
-               IF ( ASSOCIATED( Parent % FaceIndexes ) ) THEN
-
-                 CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
-
-                 IF (.NOT. ASSOCIATED(Face)) CYCLE
-                 IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
-                 
-                 FDOFs = Face % BDOFs
-
-                 IF (FDOFs > 0) THEN
-                   CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId, ReverseSign)
-                   n = Face % TYPE % NumberOfNodes
-
-                   CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
-                       TRIM(Name)//' {f}', Work, FDOFs)
-
+                 IF (SecondKindBasis) THEN
                    !
                    ! Conform to the orientation and ordering used in the
                    ! assembly of the global equations
@@ -5337,37 +5236,101 @@ CONTAINS
                      k = FDofMap(ActiveFaceId,j)
                      Work(j) = S * DefaultDOFs(k)
                    END DO
-
-                   n = GetElementDOFs(GInd,Face)
-
-                   !
-                   ! Make an offset by the count of nodal DOFs. This provides
-                   ! the right starting point if edge DOFs are not present.
-                   !
-                   n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
-                   !
-                   ! Check if we need to increase the offset by the count of
-                   ! edge DOFs:
-                   !
-                   IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
-                     EDOFs = 0
-                     DO l=1,Face % TYPE % NumberOfEdges
-                       Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
-                       EDOFs = EDOFs + Edge % BDOFs
-                     END DO
-                     n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
-                   END IF
-
-                   DO j=1,FDOFs
-                     k = n_start + j
-                     nb = x % Perm(gInd(k))
-                     IF ( nb <= 0 ) CYCLE
-                     nb = Offset + x % DOFs*(nb-1) + DOF
-
-                     A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = Work(j) 
-                   END DO
+                 ELSE
+                   IF (ReverseSign(ActiveFaceId)) Work(1:FDOFs) = -1.0d0*Work(1:FDOFs)
                  END IF
+
+                 n = GetElementDOFs(GInd,Face)
+                 !
+                 ! Make an offset by the count of nodal DOFs. This provides
+                 ! the right starting point if edge DOFs are not present.
+                 !
+                 n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
+                 !
+                 ! Check if we need to increase the offset by the count of
+                 ! edge DOFs:
+                 !
+                 IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
+                   EDOFs = 0
+                   DO l=1,Face % TYPE % NumberOfEdges
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     EDOFs = EDOFs + Edge % BDOFs
+                   END DO
+                   n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
+                 END IF
+
+                 DO j=1,FDOFs
+                   k = n_start + j
+                   nb = x % Perm(gInd(k))
+                   IF ( nb <= 0 ) CYCLE
+                   nb = Offset + x % DOFs*(nb-1) + DOF
+
+                   A % ConstrainedDOF(nb) = .TRUE.
+                   A % Dvalues(nb) = Work(j) 
+                 END DO
+               END IF
+
+             CASE(4)
+               
+               CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
+
+               IF (.NOT. ASSOCIATED(Face)) CYCLE
+               IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
+
+               FDOFs = Face % BDOFs
+
+               IF (FDOFs > 0) THEN
+                 CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId, ReverseSign)
+                 n = Face % TYPE % NumberOfNodes
+
+                 CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
+                     TRIM(Name)//' {f}', Work, FDOFs)
+
+                 !
+                 ! Conform to the orientation and ordering used in the
+                 ! assembly of the global equations
+                 !
+                 DefaultDOFs(1:FDOFs) = Work(1:FDOFs)
+                 IF (ReverseSign(ActiveFaceId)) THEN
+                   S = -1.0d0
+                 ELSE
+                   S = 1.0d0
+                 END IF
+
+                 DO j=1,FDOFs
+                   k = FDofMap(ActiveFaceId,j)
+                   Work(j) = S * DefaultDOFs(k)
+                 END DO
+
+                 n = GetElementDOFs(GInd,Face)
+
+                 !
+                 ! Make an offset by the count of nodal DOFs. This provides
+                 ! the right starting point if edge DOFs are not present.
+                 !
+                 n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
+                 !
+                 ! Check if we need to increase the offset by the count of
+                 ! edge DOFs:
+                 !
+                 IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
+                   EDOFs = 0
+                   DO l=1,Face % TYPE % NumberOfEdges
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     EDOFs = EDOFs + Edge % BDOFs
+                   END DO
+                   n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
+                 END IF
+
+                 DO j=1,FDOFs
+                   k = n_start + j
+                   nb = x % Perm(gInd(k))
+                   IF ( nb <= 0 ) CYCLE
+                   nb = Offset + x % DOFs*(nb-1) + DOF
+
+                   A % ConstrainedDOF(nb) = .TRUE.
+                   A % Dvalues(nb) = Work(j) 
+                 END DO
                END IF
 
              CASE DEFAULT
