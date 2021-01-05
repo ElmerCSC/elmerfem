@@ -5419,13 +5419,14 @@ END SUBROUTINE FaceElementOrientation
 !> This subroutine produces information about how the basis functions of face (vector)
 !> elements have to be reordered to conform with the global ordering convention.
 !-----------------------------------------------------------------------------------
-SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
+SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex, ReverseSign)
 !-----------------------------------------------------------------------------------
   IMPLICIT NONE
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces
   INTEGER, INTENT(OUT) :: FDofMap(:,:)         !< Face-wise information for the basis permutation  
   INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
+  LOGICAL, OPTIONAL, INTENT(OUT) :: ReverseSign(:) !< For bricks face-wise information about the sign reversions
 !-----------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh 
   LOGICAL :: Parallel
@@ -5600,7 +5601,7 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
 
     END DO
 
-    ! TO DO: Return info about the normal reverses if desired
+    IF (PRESENT(ReverseSign)) ReverseSign(1:6) = ReverseNormal(1:6)
 
   CASE DEFAULT
     CALL Fatal('FaceElementBasisOrdering', 'Unsupported element family')
