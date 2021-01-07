@@ -21,9 +21,12 @@
 ! *
 ! *****************************************************************************/
 ! *
-! * Solve the mixed formulation of the Poisson equation by using div-conforming
-! * (face) finite elements of degree k = 1
+! *  Solve the mixed formulation of the Poisson equation by using div-conforming
+! *  (face) finite elements.
 ! *
+! *  NOTE: It is assumed that the last bubble DOF is used for approximating 
+! *        the scalar variable. That is, the scalar variable is approximated 
+! *        as an elementwise constant.
 ! *
 ! *  Authors: Mika Malinen
 ! *  Email:   mika.malinen@csc.fi
@@ -135,10 +138,12 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n   ! The number of background element nodes
     INTEGER :: nd  ! The total count of DOFs (nodal, facial and elementwise)
-    INTEGER :: nb  ! The number of elementwise DOFs (for the scalar unknown)
+    INTEGER :: nb  ! The number of elementwise DOFs (for the scalar and flux variables)
     INTEGER :: dim
     LOGICAL :: SecondFamily
 !------------------------------------------------------------------------------
+    INTEGER, PARAMETER :: MaxFaceBasisDim = 48
+
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -148,7 +153,7 @@ CONTAINS
     INTEGER :: t, i, j, p, q, np
 
     REAL(KIND=dp) :: Load(n), a_parameter(n), MatPar, f
-    REAL(KIND=dp) :: FaceBasis(nd-nb,3), DivFaceBasis(nd-nb)
+    REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
     REAL(KIND=dp) :: Basis(n), DetJ, s
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes )
@@ -166,8 +171,10 @@ CONTAINS
       IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
     CASE(5)
       IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
+    CASE(8)
+      IP = GaussPointsBrick(64)
     CASE DEFAULT
-      CALL Fatal('MixedPoisson', 'A simplicial mesh assumed currently')
+      CALL Fatal('MixedPoisson', 'A non-supported element type')
     END SELECT
 
     !----------------------------------------------------------------
@@ -204,7 +211,7 @@ CONTAINS
             STIFF(p,q) = STIFF(p,q) + Basis(p) * Basis(q) * s    
           END DO
 
-          DO q = nd-nb+1,nd
+          DO q = nd,nd
             STIFF(p,q) = STIFF(p,q) - Basis(p) * 1.0d0 * s            
           END DO
         END DO
@@ -213,15 +220,15 @@ CONTAINS
       !--------------------------------------------------------------
       ! The contribution from the variation with the flux variable q
       !---------------------------------------------------------------
-      DO p = 1,nd-np-nb
+      DO p = 1,nd-np-1
         i = np + p
-        DO q = 1,nd-np-nb
+        DO q = 1,nd-np-1
           j = np + q
           STIFF(i,j) = STIFF(i,j) + MatPar * &
               SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s
         END DO
 
-        DO q = nd-nb+1,nd
+        DO q = nd,nd
           STIFF(i,q) = STIFF(i,q) + 1.0d0 * DivFaceBasis(p) * s
         END DO
       END DO
@@ -229,15 +236,15 @@ CONTAINS
       !--------------------------------------------------
       ! The contribution from the constraint div q = -f
       !--------------------------------------------------
-      DO p = nd-nb+1,nd
-        DO q = 1,nd-np-nb
+      DO p = nd,nd
+        DO q = 1,nd-np-1
           j = np + q
           STIFF(p,j) = STIFF(p,j) + 1.0d0 * DivFaceBasis(q) * s
         END DO
       END DO
       
       IF (EvaluateSource) THEN
-        DO p = nd-nb+1,nd
+        DO p = nd,nd
           FORCE(p) = FORCE(p) - f * 1.0d0 * s 
         END DO
       END IF
@@ -266,13 +273,14 @@ CONTAINS
     TYPE(ValueHandle_t) :: ScalarField
     TYPE(Nodes_t) :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: RevertSign(6), stat, AssembleForce, OrientationsMatch
+    LOGICAL :: ReverseSign(6), stat, AssembleForce, OrientationsMatch
     LOGICAL :: RevertIndices
     INTEGER, POINTER :: FaceMap(:,:)
-    INTEGER, TARGET :: TetraFaceMap(4,3)
-    INTEGER :: FDofMap(4,3)
-    INTEGER :: OriginalIndices(3)
+    INTEGER, TARGET :: TetraFaceMap(4,3), BrickFaceMap(6,4)
+    INTEGER :: FDofMap(6,4)
+    INTEGER :: OriginalIndices(4)
     INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches, FDOFs
+    INTEGER :: ParentFamily
     REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), WorkTrace(nd)
     REAL(KIND=dp) :: detJ, s, u, v, w, g
 
@@ -280,10 +288,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     Family = GetElementFamily(Element)
     IF (Family == 1) RETURN
-    IF (Family == 4) THEN
-      CALL Warn('ModelMixedPoisson', 'Neumann BCs for 4-node faces have not been implemented yet')
-      RETURN
-    END IF
 
     BC => GetBC()
     IF (.NOT. ASSOCIATED(BC)) RETURN
@@ -303,6 +307,7 @@ CONTAINS
       Parent => Element % BoundaryInfo % Right
     END IF
     IF (.NOT. ASSOCIATED(Parent)) RETURN
+    ParentFamily = GetElementFamily(Parent)
     !
     ! Identify the face representing the element among the faces of 
     ! the parent element:
@@ -314,14 +319,14 @@ CONTAINS
     !
     ! Use the parent element to check whether sign reversions are needed:
     !
-    CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+    CALL FaceElementOrientation(Parent, ReverseSign, ActiveFaceId)
 
     !
     ! In the case of the basis of the second kind the effect of orientation
     ! must be taken into account:
     !
     RevertIndices = .FALSE.
-    IF (SecondFamily) THEN
+    IF ((ParentFamily == 3 .OR. ParentFamily == 5) .AND. SecondFamily) THEN
       SELECT CASE(Family)
       CASE(2)
         !
@@ -329,7 +334,7 @@ CONTAINS
         ! orientation of the edge:
         !
         FaceMap => GetEdgeMap(GetElementFamily(Parent))
-        IF (RevertSign(ActiveFaceId)) THEN
+        IF (ReverseSign(ActiveFaceId)) THEN
           OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,2))
         ELSE
           OrientationsMatch = Element % NodeIndexes(1) == Parent % NodeIndexes(FaceMap(ActiveFaceId,1))
@@ -351,16 +356,39 @@ CONTAINS
           ! The parent element face is indexed differently, reorder and revert afterwards:
           !
           OriginalIndices(1:3) = Element % NodeIndexes(1:3)
-          Element % NodeIndexes(1:3) =  Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3))
+          Element % NodeIndexes(1:3) = Parent % NodeIndexes(TetraFaceMap(ActiveFaceId,1:3))
           RevertIndices = .TRUE.
         END IF
 
+      END SELECT
+    ELSE
+      SELECT CASE(GetElementFamily(Parent))
+      CASE(8)
+        IF (FDOFs /= 4) CALL Fatal('ModelMixedPoisson', '4-DOF faces expected')
+ 
+        BrickFaceMap(1,:) = (/ 2, 1, 4, 3 /)
+        BrickFaceMap(2,:) = (/ 5, 6, 7, 8 /)
+        BrickFaceMap(3,:) = (/ 1, 2, 6, 5 /)
+        BrickFaceMap(4,:) = (/ 2, 3, 7, 6 /)
+        BrickFaceMap(5,:) = (/ 3, 4, 8, 7 /)
+        BrickFaceMap(6,:) = (/ 4, 1, 5, 8 /)
+
+        CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
+        
+        IF (ANY(Element % NodeIndexes(1:4) /= Parent % NodeIndexes(BrickFaceMap(ActiveFaceId,1:4)))) THEN
+          !
+          ! The parent element face is indexed differently, reorder and revert afterwards:
+          !
+          OriginalIndices(1:4) = Element % NodeIndexes(1:4)
+          Element % NodeIndexes(1:4) = Parent % NodeIndexes(BrickFaceMap(ActiveFaceId,1:4))
+          RevertIndices = .TRUE.        
+        END IF
       END SELECT
     END IF
 
     np = n * Solver % Def_Dofs(GetElementFamily(Parent), Parent % BodyId, 1)
 
-    IF (RevertSign(ActiveFaceId)) THEN
+    IF (ReverseSign(ActiveFaceId)) THEN
       s = -1.0d0
     ELSE
       s = 1.0d0
@@ -415,7 +443,7 @@ CONTAINS
           WorkTrace(2) = -1.0d0*(u + (-8 + 4*Sqrt(3.0d0)*v)/12.0d0)
           WorkTrace(3) = -1.0d0*(4.0d0 - 8*Sqrt(3.0d0)*v)/12.0d0
           !
-          ! Reorder and revert signs:
+          ! Reorder and reverse signs:
           !
           DO j=1,FDOFs
             k = FDofMap(ActiveFaceId,j)
@@ -424,6 +452,14 @@ CONTAINS
         ELSE
           TraceBasis(1) = s / SQRT(3.0d0)
         END IF
+      CASE(4)
+        stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetJ, Basis)
+
+        DO j=1,FDOFs
+          k = FDofMap(ActiveFaceId,j)
+          TraceBasis(j) = s * Basis(k)
+        END DO
       END SELECT
 
       w = IP % s(t) ! NOTE: No need to multiply with DetJ
@@ -439,7 +475,14 @@ CONTAINS
 
     IF (AssembleForce) CALL DefaultUpdateForce(Force)
 
-    IF (RevertIndices) Element % NodeIndexes(1:3) = OriginalIndices(1:3)
+    IF (RevertIndices) THEN
+      SELECT CASE(Family)
+      CASE(3)
+        Element % NodeIndexes(1:3) = OriginalIndices(1:3)
+      CASE(4)
+        Element % NodeIndexes(1:4) = OriginalIndices(1:4)
+      END SELECT
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
