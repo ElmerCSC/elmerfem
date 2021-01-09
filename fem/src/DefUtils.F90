@@ -5250,13 +5250,14 @@ CONTAINS
                  ! Check if we need to increase the offset by the count of
                  ! edge DOFs:
                  !
-                 IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
+                 IF ( ASSOCIATED(Face % EdgeIndexes) .AND. &
+                     Solver % Def_Dofs(3,Parent % BodyId,2) > 0) THEN
                    EDOFs = 0
                    DO l=1,Face % TYPE % NumberOfEdges
                      Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
                      EDOFs = EDOFs + Edge % BDOFs
                    END DO
-                   n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
+                   n_start = n_start + EDOFs
                  END IF
 
                  DO j=1,FDOFs
@@ -5308,18 +5309,19 @@ CONTAINS
                  ! Make an offset by the count of nodal DOFs. This provides
                  ! the right starting point if edge DOFs are not present.
                  !
-                 n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
+                 n_start = Solver % Def_Dofs(4,Parent % BodyId,1) * Face % NDOFs
                  !
                  ! Check if we need to increase the offset by the count of
                  ! edge DOFs:
                  !
-                 IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
+                 IF ( ASSOCIATED(Face % EdgeIndexes) .AND. &
+                     Solver % Def_Dofs(4,Parent % BodyId,2) > 0) THEN
                    EDOFs = 0
                    DO l=1,Face % TYPE % NumberOfEdges
                      Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
                      EDOFs = EDOFs + Edge % BDOFs
                    END DO
-                   n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
+                   n_start = n_start + EDOFs
                  END IF
 
                  DO j=1,FDOFs
