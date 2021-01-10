@@ -3089,7 +3089,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=MAX_NAME_LEN) :: FName, PosName, DateStr, EqName, VarName
     LOGICAL :: SaveCoordinates, MoveBoundary, GotIt, SaveThis, &
-        SaveGlobal, OutputVariableList
+        SaveGlobal, OutputVariableList, SaveIp, ThisIp
     INTEGER, POINTER :: PrevPerm(:) 
     INTEGER(IntOff_k) :: PrevPermPos, Pos
     INTEGER(IntOff_k), SAVE :: VarPos(MAX_OUTPUT_VARS) = 0
@@ -3120,6 +3120,8 @@ CONTAINS
     
     OutputVariableList = ListCheckPresent( CurrentModel % Simulation,&
         'Output Variable 1')
+
+    SaveIp = ListGetLogical( CurrentModel % Simulation,'Output IP Variables',Found ) 
 
     ! The first time we start by writing the header.
     IF ( Mesh % SavesDone == 0 ) THEN
@@ -3169,11 +3171,12 @@ CONTAINS
           END IF
 
           ! Never save variables on gauss points as they are not supported when reading in!
-          IF( Var % TYPE == Variable_on_gauss_points ) THEN
+          ThisIp = ( Var % TYPE == Variable_on_gauss_points ) 
+          IF( ThisIp .AND. .NOT. SaveIP ) THEN
             Var => Var % Next
             CYCLE
           END IF
-          
+            
           SaveThis = .FALSE.
           IF( SIZE(Var % Values) == Var % Dofs ) THEN
             SaveThis = SaveGlobal
@@ -3291,27 +3294,28 @@ CONTAINS
         END DO
       END IF
 
-      IF( Var % Type == Variable_on_gauss_points ) SaveThis = .FALSE.
+      ThisIP = ( Var % TYPE == Variable_on_gauss_points )
+      IF( ThisIp) SaveThis = SaveIP
 
-      
       IF( SaveThis ) THEN
         IF( SaveAll .OR. Var % ValuesChanged ) THEN
           CALL WriteVarName( OutputUnit,PosUnit,Var % Name(1:k),VarPos(j) )
           CALL WritePerm( OutputUnit, Var % Perm, PrevPerm )
           
-          IF ( ASSOCIATED(Var % Perm) ) THEN
+          IF ( ASSOCIATED(Var % Perm) .AND. .NOT. ThisIp ) THEN
             n = SIZE(Var % Perm)
+            DO i=1, n
+              k = Var % Perm(i)
+              IF ( k > 0 ) THEN
+                CALL WriteReal( OutputUnit,Var % Values(k) )
+              END IF
+            END DO
           ELSE
             n = SIZE( Var % Values )
-          END IF
-          
-          DO i=1, n
-            k = i
-            IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(i)
-            IF ( k > 0 ) THEN
+            DO k=1, n
               CALL WriteReal( OutputUnit,Var % Values(k) )
-            END IF
-          END DO
+            END DO
+          END IF
           Var % ValuesChanged = .FALSE.
         ELSE
           IF ( Binary ) CALL BinWriteInt8( PosUnit,INT(VarPos(j),Int8_k) )
@@ -3531,7 +3535,7 @@ CONTAINS
     TYPE(Solver_t),   POINTER :: Solver
     TYPE(Variable_t), POINTER :: TimeVar, tStepVar
 
-    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis
+    LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm
     LOGICAL, SAVE :: PosFile = .FALSE.
     LOGICAL, SAVE :: Binary, RestartVariableList, GotPerm, GotIt
     INTEGER, SAVE, ALLOCATABLE :: RestartVariableSizes(:)
@@ -3722,7 +3726,7 @@ CONTAINS
         CALL Info(Caller,'Total number of dofs to load: '//I2S(TotalDofs) )
         EXIT
       END IF
-
+      
       IF( FmtVersion < 3 ) THEN
         ! Figure out what is the solver to which the variable is associated to
         ! this requires that the 'Equation' keyword is unique.
@@ -3843,6 +3847,7 @@ CONTAINS
       ! hence this feature could save some resources.
       !---------------------------------------------------------------------------
       LoadThis = .TRUE.
+
       IF( RestartVariableList ) THEN
         IF( Dofs == 1 ) DofCount = DofCount + 1
         LoadThis = .FALSE.
@@ -3888,7 +3893,6 @@ CONTAINS
       ! Check whether a variable exists or not. If it does not exist then 
       ! create the variable so that it can be filled with the data.
       !------------------------------------------------------------------
-      
 
       Var => VariableGet( Mesh % Variables, VarName,.TRUE. )      
 
@@ -3904,14 +3908,14 @@ CONTAINS
           CALL Warn(Caller,'Fields are of different size ('&
               //TRIM(I2S(FieldSize))//' vs. '//TRIM(I2S(SIZE(Var % Values)))//'): '//TRIM(VarName))
         ELSE
-          CALL Info(Caller,'Fields sizes match for: '//TRIM(VarName),Level=20)         
+          CALL Info(Caller,'Fields sizes '//TRIM(I2S(FieldSize))//' match for: '//TRIM(VarName),Level=20)         
         END IF
         IF(ASSOCIATED(Var % Perm)) THEN
           IF( PermSize /= SIZE( Var % Perm ) ) THEN
             CALL Warn(Caller,'Permutations are of different size ('&
                  //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
           ELSE
-            CALL Info(Caller,'Permutation sizes match for: '//TRIM(VarName),Level=20)
+            CALL Info(Caller,'Permutation sizes '//TRIM(I2S(PermSize))//' match for: '//TRIM(VarName),Level=20)
           END IF
         ELSEIF(PermSize > 0) THEN
             CALL Warn(Caller,'Existing variable defined without perm: '&
@@ -4056,7 +4060,7 @@ CONTAINS
 
       WRITE( Message,'(A,I0)') 'Reading timestep: ',Timestep
       CALL Info( Caller,Message, Level=4)
-      
+
       DO i=1,TotalDOFs
 
         LoadThis = .TRUE.
@@ -4099,15 +4103,19 @@ CONTAINS
           Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
           IF ( ASSOCIATED(Var) ) THEN
             CALL Info(Caller,'Using existing variable for reading: '//TRIM(Row),Level=15)
+            ThisIp = ( Var % TYPE == Variable_on_gauss_points ) 
           ELSE
             CALL Warn(Caller,'Variable is not present for reading: '//TRIM(Row))
+            ThisIp = .FALSE.
           END IF
           IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
             DEALLOCATE( Var % Perm ) ; Var % Perm => NULL()
             CALL Fatal(Caller,'Permutation should either exist or not!')
           END IF
 
-          IF ( ASSOCIATED(Var % Perm) .AND. FmtVersion > 0 ) THEN
+          UsePerm = ( GotPerm .AND. .NOT. ThisIp ) 
+          
+          IF ( UsePerm .AND. FmtVersion > 0 ) THEN
             n = SIZE(Var % Perm)
           ELSE
             n = SIZE(Var % Values)
@@ -4121,7 +4129,7 @@ CONTAINS
           END IF
 
           ! in case of (.NOT. LoadThis) n has already been set
-          IF(GotPerm) THEN
+          IF( UsePerm ) THEN
             IF( n > SIZE( Perm ) ) THEN
               n = SIZE( Perm )
               CALL Info(Caller,'Reducing size of read loop for smaller Perm vector')
@@ -4131,7 +4139,7 @@ CONTAINS
 
           DO j=1, n
             IF ( FmtVersion > 0 ) THEN             
-              CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
+              CALL GetValue( RestartUnit, Perm, UsePerm, j, k, Val )
             ELSE
               READ( RestartUnit,* ) Node, k, Val
             END IF
@@ -4140,7 +4148,7 @@ CONTAINS
             ! ascii format would loose it, but now we can cycle the rest. 
             IF(.NOT. LoadThis ) CYCLE
 
-            IF ( .NOT. GotPerm ) THEN
+            IF ( .NOT. UsePerm ) THEN
               Var % Values(k) = Val
             ELSE IF( SIZE( Var % Perm ) < j ) THEN
               CYCLE
@@ -4443,7 +4451,7 @@ CONTAINS
       END DO
 
       GotPerm = .TRUE.
-
+      
    END SUBROUTINE ReadPerm
 
 
