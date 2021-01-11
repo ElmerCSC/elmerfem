@@ -522,9 +522,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     END IF
 
     ! We may want to do integrals over projected surfaces
-    PassiveCoordinate = ListGetLogical( Params,'Passive Coordinate',GotIt )
+    PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate',GotIt )
     IF(.NOT. GotIt ) THEN
-      PassiveCoordinate = ListGetLogical( Params,'Passive Coordinate '//TRIM(I2S(NoOper)), GotIt )
+      PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate '//TRIM(I2S(NoOper)), GotIt )
     END IF
 
     WRITE (Name,'(A,I0)') 'Coefficient ',NoOper
