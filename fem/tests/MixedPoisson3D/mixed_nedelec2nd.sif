@@ -52,7 +52,7 @@ Solver 1
   ! the piecewise constant approximation of the
   ! variable of the Poisson equation in the standard form.
   !-------------------------------------------------------
-  Element = "n:1 f:3 b:1"
+  Element = "n:1 -tetra b:1 -tri_face b:3"
   Second Kind Basis = Logical True
   Optimize Bandwidth = False
   Bubbles in Global System = Logical True

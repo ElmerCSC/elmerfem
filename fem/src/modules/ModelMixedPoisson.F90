@@ -39,6 +39,64 @@
 ! *
 !******************************************************************************
 
+
+!------------------------------------------------------------------------------
+SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverPars
+  LOGICAL :: Found, SecondFamily
+  INTEGER :: dim
+  CHARACTER(LEN=MAX_NAME_LEN) :: csys
+!------------------------------------------------------------------------------
+  SolverPars => GetSolverParams()
+  SecondFamily = GetLogical(SolverPars, 'Second Kind Basis', Found)
+
+  csys = ListGetString(Model % Simulation, 'Coordinate System', Found)
+  IF (.NOT. Found) THEN 
+    IF (.NOT. ListCheckPresent(SolverPars, 'Element')) &
+        CALL Fatal('MixedPoisson_Init0', 'The keyword Element should be specified')
+  ELSE
+    !
+    ! The coordinate system dimension cannot yet be returned by the function
+    ! CoordinateSystemDimension due to early execution of this initialization
+    ! subroutine;  instead the value of "Coordinate System" is employed.
+    !
+    SELECT CASE (csys)
+    CASE('cartesian 2d')
+      IF (SecondFamily) THEN
+        CALL ListAddNewString(SolverPars, "Element", "n:0 e:2 b:1")
+      ELSE
+        CALL ListAddNewString(SolverPars, "Element", "n:0 e:1 b:1")
+      END IF
+
+    CASE('cartesian 3d')
+      IF (SecondFamily) THEN
+        CALL ListAddNewString(SolverPars, "Element", &
+            "n:0 -tetra b:1 -brick b:25 -quad_face b:4 -tri_face b:3")
+      ELSE
+        CALL ListAddNewString(SolverPars, "Element", &
+            "n:0 -tetra b:1 -brick b:25 -quad_face b:4 -tri_face b:1")
+      END IF
+
+    CASE DEFAULT
+      IF (.NOT. ListCheckPresent(SolverPars, 'Element')) &
+          CALL Fatal('MixedPoisson_Init0', 'The keyword Element should be specified')     
+    END SELECT
+  END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE MixedPoisson_Init0
+!------------------------------------------------------------------------------
+
+
+
 !------------------------------------------------------------------------------
 SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------

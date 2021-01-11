@@ -42,7 +42,6 @@ Solver 1
   ! the piecewise constant approximation of the
   ! variable of the Poisson equation in the standard form.
   !-------------------------------------------------------
-  Element = "n:0 e:2 b:1"
   Second Kind Basis = Logical True
   Optimize Bandwidth = False
   Bubbles in Global System = Logical True
