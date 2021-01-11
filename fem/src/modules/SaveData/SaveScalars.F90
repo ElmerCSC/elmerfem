@@ -167,7 +167,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen, &
-      jsonpos
+      jsonpos, PassiveCoordinate
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
@@ -520,7 +520,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       NegOper = .TRUE.
       Oper = Oper(10:nlen)
     END IF
-    
+
+    ! We may want to do integrals over projected surfaces
+    PassiveCoordinate = ListGetLogical( Params,'Passive Coordinate',GotIt )
+    IF(.NOT. GotIt ) THEN
+      PassiveCoordinate = ListGetLogical( Params,'Passive Coordinate '//TRIM(I2S(NoOper)), GotIt )
+    END IF
 
     WRITE (Name,'(A,I0)') 'Coefficient ',NoOper
     CoefficientName = ListGetString(Params,TRIM(Name),GotCoeff )
@@ -2091,7 +2096,17 @@ CONTAINS
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
-      
+
+      IF( PassiveCoordinate > 0 ) THEN
+        SELECT CASE( PassiveCoordinate ) 
+        CASE(1) 
+          ElementNodes % x(1:n) = 0.0_dp 
+        CASE(2)           
+          ElementNodes % y(1:n) = 0.0_dp
+        CASE(3) 
+          ElementNodes % z(1:n) = 0.0_dp
+        END SELECT
+      END IF
 
       ! If we are masking operators with correct (body, body force, or material) then do it here
       IF( BodyOper ) THEN        
@@ -2443,8 +2458,18 @@ CONTAINS
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
 
+        IF( PassiveCoordinate > 0 ) THEN
+          SELECT CASE( PassiveCoordinate ) 
+          CASE(1) 
+            ElementNodes % x(1:n) = 0.0_dp 
+          CASE(2)           
+            ElementNodes % y(1:n) = 0.0_dp
+          CASE(3) 
+            ElementNodes % z(1:n) = 0.0_dp
+          END SELECT
+        END IF
 
-
+        
         SELECT CASE(OperName)
           
         CASE('diffusive flux') 
