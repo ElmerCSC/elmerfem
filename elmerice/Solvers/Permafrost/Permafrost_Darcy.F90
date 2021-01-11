@@ -73,7 +73,8 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
        InitializeSteadyState=.FALSE., ActiveMassMatrix=.TRUE., ComputeDeformation=.FALSE.,DeformationExists=.FALSE.,&
        StressInvAllocationsDone=.FALSE.,StressInvDtAllocationsDone=.FALSE.,&
        HydroGeo=.FALSE.,ComputeDt=.FALSE.,FluxOutput=.FALSE.,&
-       TemperatureTimeDerExists=.FALSE.,SalinityTimeDerExists=.FALSE., OffsetDensity=.FALSE.
+       TemperatureTimeDerExists=.FALSE.,SalinityTimeDerExists=.FALSE., OffsetDensity=.FALSE., &
+       ComputeFreshwaterHead=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostGroundWaterFlow'
   !CHARACTER(LEN=MAX_NAME_LEN) :: TemperatureName, PorosityName, SalinityName, StressInvName, &
@@ -235,6 +236,8 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
           CALL INFO(SolverName,"Switching time derivatives in force vector off",Level=9)
         END IF
       END IF
+
+      ComputeFreshwaterHead = GetLogical(Material,'Compute Freshwater Head',Found)
       
       PhaseChangeModel = ListGetString(Material, &
            'Permafrost Phase Change Model', Found )
@@ -282,7 +285,8 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
       CALL LocalMatrixDarcy( Model, Element, t, N, ND+NB, Active,  &
            CurrentSoluteMaterial,CurrentSolventMaterial,&
            PhaseChangeModel,ElementWiseRockMaterial, ActiveMassMatrix, &
-           ComputeDt,ComputeDeformation,HydroGeo, OffsetDensity,FluxOutput)
+           ComputeDt,ComputeDeformation,HydroGeo, OffsetDensity,FluxOutput, &
+           ComputeFreshwaterHead)
     END DO
     OffsetDensity = .FALSE. ! sure to not read after first time
     CALL DefaultFinishBulkAssembly()
@@ -342,7 +346,7 @@ CONTAINS
   SUBROUTINE LocalMatrixDarcy( Model, Element, ElementID, n, nd, NoElements,&
        CurrentSoluteMaterial,CurrentSolventMaterial,&
        PhaseChangeModel, ElementWiseRockMaterial, ActiveMassMatrix,&
-       ComputeDt,ComputeDeformation,HydroGeo,OffsetDensity,FluxOutput)
+       ComputeDt,ComputeDeformation,HydroGeo,OffsetDensity,FluxOutput,ComputeFreshwaterHead)
     IMPLICIT NONE
     !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
@@ -351,7 +355,8 @@ CONTAINS
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     LOGICAL :: ElementWiseRockMaterial,ActiveMassMatrix,ComputeDt,&
-         ComputeDeformation,HydroGeo,OffsetDensity,FluxOutput
+         ComputeDeformation,HydroGeo,OffsetDensity,FluxOutput,&
+         ComputeFreshwaterHead
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: CgwppAtIP,CgwpTAtIP,CgwpYcAtIP,CgwpI1AtIP,KgwAtIP(3,3),KgwppAtIP(3,3),KgwpTAtIP(3,3),&
@@ -373,14 +378,14 @@ CONTAINS
          rhowTAtIP,rhowPAtIP,rhowYcAtIP,&
          rhoiPAtIP,rhoiTAtIP,&
          rhocPAtIP,rhocTAtIP,rhocYcAtIP,&
-         rhogwPAtIP,rhogwTAtIP,rhogwYcAtIP, rhoGAtIP
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ
+         rhogwPAtIP,rhogwTAtIP,rhogwYcAtIP, rhoGAtIP, rhow0
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,StiffPQ,elevationAtIp
     REAL(KIND=dp) :: TemperatureAtIP,PorosityAtIP,KPorosityAtIP,SalinityAtIP,PressureAtIP
     REAL(KIND=dp) :: TemperatureDtAtIP,SalinityDtAtIP,PressureDtAtIP,StressInvDtAtIP 
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp) , POINTER :: gWork(:,:)
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
-    INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw
+    INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw,IPPermFreshwaterHead
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
          ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -388,9 +393,9 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostGroundWaterFlow', &
          FunctionName='Permafrost (LocalMatrixDarcy)'
-    TYPE(Variable_t), POINTER :: XiAtIPVar, RhoOffsetAtIPVar,GWfluxVar1,GWfluxVar2,GWfluxVar3
-    INTEGER, POINTER :: XiAtIPPerm(:), RhoOffsetAtIPPerm(:),GWfluxPerm(:)
-    REAL(KIND=dp), POINTER :: XiAtIP(:), RhoOffsetAtIP(:),GWFluxVal(:)
+    TYPE(Variable_t), POINTER :: XiAtIPVar, RhoOffsetAtIPVar,GWfluxVar1,GWfluxVar2,GWfluxVar3,FreshwaterHeadAtIPVar
+    INTEGER, POINTER :: XiAtIPPerm(:), RhoOffsetAtIPPerm(:),GWfluxPerm(:),FreshwaterHeadAtIPPerm(:)
+    REAL(KIND=dp), POINTER :: XiAtIP(:), RhoOffsetAtIP(:),GWFluxVal(:),FreshwaterHeadAtIP(:)
     
     SAVE Nodes, ConstantsRead, ConstVal, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity
     !------------------------------------------------------------------------------
@@ -608,7 +613,31 @@ CONTAINS
         END IF
         RhoOffsetAtIP(IPPermRhoGW) = rhoGAtIP - rhogwAtIP
       END IF
-      
+
+
+      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NEW !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+      IF (ComputeFreshwaterHead) THEN
+        FreshwaterHeadAtIPVar => VariableGet( Model % Mesh % Variables, 'Freshwater Head')
+        IF (.NOT.ASSOCIATED(FreshwaterHeadAtIPVar)) THEN
+          WRITE(Message,*) '"Compute Freshwater Head" set but variable "Freshwater Head" is not associated'
+        END IF
+        FreshwaterHeadAtIPPerm => FreshwaterHeadAtIPVar % Perm  
+        FreshwaterHeadAtIP => FreshwaterHeadAtIPVar % Values
+        IPPermFreshwaterHead = FreshwaterHeadAtIPPerm(ElementID) + t
+        SELECT CASE(DIM)
+        CASE(1)
+          elevationAtIp = SUM( Basis(1:N)*Solver % Mesh % Nodes % x(1:N) )
+        CASE(2)
+          elevationAtIp = SUM( Basis(1:N)*Solver % Mesh % Nodes % y(1:N) )
+        CASE DEFAULT
+          elevationAtIp = SUM( Basis(1:N)*Solver % Mesh % Nodes % z(1:N) )
+        END SELECT   
+        rhow0 = CurrentSolventMaterial % rhow0
+        FreshwaterHeadAtIP(IPPermFreshwaterHead) = &
+             (rhow0/rhogwAtIP)*(PressureAtIP/(rhow0*SQRT(SUM(gravity(1:DIM)*gravity(1:DIM)))) + elevationAtIp) &
+             + ((rhogwAtIP - rhow0)/rhow0) * elevationAtIP
+      END IF
+
       rhogwPAtIP = rhogwP(rhowPAtIP,rhocPAtIP,XiAtIP(IPPerm),SalinityAtIP)
       rhogwTAtIP = rhogwT(rhowTAtIP,rhocTAtIP,XiAtIP(IPPerm),SalinityAtIP)
 
