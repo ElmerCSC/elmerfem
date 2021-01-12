@@ -211,11 +211,12 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
 
-    LOGICAL :: Stat, Found, EvaluateMatPar, EvaluateSource
+    LOGICAL :: Stat, Found, EvaluateMatPar, EvaluateSource, Convection
 
     INTEGER :: t, i, j, p, q, np
 
     REAL(KIND=dp) :: Load(n), a_parameter(n), MatPar, f
+    REAL(KIND=dp) :: Velo(dim,n), v(dim)
     REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
     REAL(KIND=dp) :: Basis(n), DetJ, s
 !------------------------------------------------------------------------------
@@ -250,6 +251,14 @@ CONTAINS
     a_parameter(1:n) = GetReal(Material, 'Material Parameter', EvaluateMatPar)
     IF (.NOT. EvaluateMatPar) MatPar = 1.0_dp
 
+    Convection = .FALSE.
+    Velo = 0.0d0
+    DO i=1,dim
+      Velo(i,1:n) = GetReal(Material, &
+          'Convection Velocity '//TRIM(I2S(i)), Found)
+      Convection = Convection .OR. Found
+    END DO
+
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) &
         Load(1:n) = GetReal(BodyForce, 'Source Field', EvaluateSource)
@@ -264,6 +273,7 @@ CONTAINS
 
       IF (EvaluateMatPar) MatPar = 1.0_dp/SUM(Basis(1:n) * a_parameter(1:n))
       IF (EvaluateSource) f = SUM(Basis(1:n) * Load(1:n))
+      IF (Convection) v(:) = MATMUL(Velo(:,1:n), Basis(1:n))
 
       s = detJ * IP % s(t)
 
@@ -308,6 +318,15 @@ CONTAINS
           Stiff(p,j) = Stiff(p,j) + 1.0d0 * DivFaceBasis(q) * s
         END DO
       END DO
+
+      IF (Convection) THEN
+        DO p = nd,nd
+          DO q = 1,nd-np-1
+            j = np + q
+            Stiff(p,j) = Stiff(p,j) - SUM(FaceBasis(q,1:dim) * v(1:dim)) * 1.0d0 * s
+          END DO
+        END DO
+      END IF
       
       IF (EvaluateSource) THEN
         DO p = nd,nd
