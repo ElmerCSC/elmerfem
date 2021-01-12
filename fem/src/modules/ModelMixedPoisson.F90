@@ -74,7 +74,7 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
       IF (SecondFamily) THEN
         CALL ListAddNewString(SolverPars, "Element", "n:0 e:2 b:1")
       ELSE
-        CALL ListAddNewString(SolverPars, "Element", "n:0 e:1 b:1")
+        CALL ListAddNewString(SolverPars, "Element", "n:0 e:1 -tri b:1 -quad b:3")
       END IF
 
     CASE('cartesian 3d')
@@ -227,6 +227,8 @@ CONTAINS
     SELECT CASE( GetElementFamily(Element) )
     CASE(3)
       IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+    CASE(4)
+      IP = GaussPointsQuad(9)
     CASE(5)
       IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
     CASE(8)
