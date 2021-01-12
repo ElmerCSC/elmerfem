@@ -54,7 +54,8 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
   TYPE(ValueList_t), POINTER :: SolverPars
   LOGICAL :: Found, SecondFamily
   INTEGER :: dim
-  CHARACTER(LEN=MAX_NAME_LEN) :: csys
+  CHARACTER(LEN=MAX_NAME_LEN) :: csys, VarName
+
 !------------------------------------------------------------------------------
   SolverPars => GetSolverParams()
   SecondFamily = GetLogical(SolverPars, 'Second Kind Basis', Found)
@@ -91,6 +92,15 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
           CALL Fatal('MixedPoisson_Init0', 'The keyword Element should be specified')     
     END SELECT
   END IF
+
+  
+  ! Add pressure variable if not present, and get its name
+  CALL ListAddNewString(SolverPars,'Potential Variable','mixedpot' )
+  VarName = ListGetString(SolverPars,'Potential Variable')
+    
+  CALL ListAddString( SolverPars,NextFreeKeyword(&
+      'Exported Variable',SolverPars),'-elem '//TRIM(VarName))
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson_Init0
 !------------------------------------------------------------------------------
@@ -564,3 +574,55 @@ CONTAINS
 !------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+! Postprocessing utility for the main solver. 
+!------------------------------------------------------------------------------
+SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(Mesh_t), POINTER :: Mesh
+  CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+  LOGICAL :: Found
+  TYPE(Variable_t), POINTER :: pVar, Var
+  TYPE(Element_t), POINTER :: Element
+  INTEGER, ALLOCATABLE :: Indexes(:)
+  INTEGER :: dim, active, t, n, nd, nb
+  REAL(KIND=dp) :: val
+  
+  Params => GetSolverParams()
+  Mesh => GetMesh()
+  Var => Solver % Variable
+  dim = CoordinateSystemDimension()
+
+  ALLOCATE( Indexes(Solver % Mesh % MaxElementDOFs) )
+  
+  ! Get the elemental pressure variable where postprocessing is saved to
+  VarName = ListGetString(Params,'Potential Variable')
+  pVar => VariableGet( Mesh % Variables, VarName ) 
+  
+  active = GetNOFActive()
+  
+  DO t=1,active
+    Element => GetActiveElement(t)
+    n  = GetElementNOFNodes() 
+    nd = GetElementDOFs( Indexes, Element )  
+    nb = SIZE(Element % BubbleIndexes(:))
+
+    ! last bubble dofs is the pressure
+    val = Var % Values( Var % Perm(Indexes(nd)) )
+
+    ! assign it to be outputted
+    pVar % Values(pVar % Perm(Element % ElementIndex) ) = val
+  END DO
+        
+END SUBROUTINE MixedPoisson_post

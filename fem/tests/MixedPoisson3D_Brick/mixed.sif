@@ -20,6 +20,8 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
   Post File = "mixed_brick.vtu"
+
+  vtu: Save Bulk Only = Logical True
 End
 
 Body 1
