@@ -118,11 +118,11 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
 
   INTEGER :: dim, n, nb, nd, t, istat, active
 
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), Load(:,:)
+  REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Mass(:,:), Force(:), Load(:,:)
   REAL(KIND=dp) :: Norm
 
 
-  SAVE STIFF, FORCE, AllocationsDone
+  SAVE Stiff, Mass, Force, AllocationsDone
 !------------------------------------------------------------------------------
   CALL DefaultStart()
 
@@ -134,7 +134,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
 
   IF ( .NOT. AllocationsDone ) THEN
     N = Mesh % MaxElementDOFs  ! just big enough
-    ALLOCATE( FORCE(N), STIFF(N,N), STAT=istat )
+    ALLOCATE( Force(N), Stiff(N,N), Mass(N,N), STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'MixedPoisson', 'Memory allocation error.' )
     END IF
@@ -159,11 +159,14 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
 
     ! Get element local matrix and rhs vector:
     !----------------------------------------
-    CALL LocalMatrix(STIFF, FORCE, Element, n, nd, nb, dim, SecondFamily)
-    
+    CALL LocalMatrix(Stiff, Mass, Force, Element, n, nd, nb, dim, SecondFamily, &
+        TransientSimulation)
+
+    IF (TransientSimulation) CALL Default1stOrderTime(Mass, Stiff, Force)  
+
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
-    CALL DefaultUpdateEquations(STIFF, FORCE)
+    CALL DefaultUpdateEquations(Stiff, Force)
 
   END DO
 
@@ -190,15 +193,17 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
 CONTAINS
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(STIFF, FORCE, Element, n, nd, nb, dim, SecondFamily)
+  SUBROUTINE LocalMatrix(Stiff, Mass, Force, Element, n, nd, nb, dim, &
+      SecondFamily, NeedMass)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: Stiff(:,:), Mass(:,:), Force(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n   ! The number of background element nodes
     INTEGER :: nd  ! The total count of DOFs (nodal, facial and elementwise)
     INTEGER :: nb  ! The number of elementwise DOFs (for the scalar and flux variables)
     INTEGER :: dim
     LOGICAL :: SecondFamily
+    LOGICAL :: NeedMass    
 !------------------------------------------------------------------------------
     INTEGER, PARAMETER :: MaxFaceBasisDim = 48
 
@@ -216,8 +221,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes )
 
-    STIFF = 0.0d0
-    FORCE = 0.0d0
+    Stiff = 0.0d0
+    Mass = 0.0d0
+    Force = 0.0d0
 
     !------------------------------------------------------------------------
     ! The reference element is chosen to be that used for p-approximation,
@@ -268,11 +274,11 @@ CONTAINS
       IF (np > 0) THEN
         DO p = 1,n
           DO q = 1,n       
-            STIFF(p,q) = STIFF(p,q) + Basis(p) * Basis(q) * s    
+            Stiff(p,q) = Stiff(p,q) + Basis(p) * Basis(q) * s    
           END DO
 
           DO q = nd,nd
-            STIFF(p,q) = STIFF(p,q) - Basis(p) * 1.0d0 * s            
+            Stiff(p,q) = Stiff(p,q) - Basis(p) * 1.0d0 * s            
           END DO
         END DO
       END IF
@@ -284,12 +290,12 @@ CONTAINS
         i = np + p
         DO q = 1,nd-np-1
           j = np + q
-          STIFF(i,j) = STIFF(i,j) + MatPar * &
+          Stiff(i,j) = Stiff(i,j) + MatPar * &
               SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s
         END DO
 
         DO q = nd,nd
-          STIFF(i,q) = STIFF(i,q) + 1.0d0 * DivFaceBasis(p) * s
+          Stiff(i,q) = Stiff(i,q) + 1.0d0 * DivFaceBasis(p) * s
         END DO
       END DO
 
@@ -299,14 +305,22 @@ CONTAINS
       DO p = nd,nd
         DO q = 1,nd-np-1
           j = np + q
-          STIFF(p,j) = STIFF(p,j) + 1.0d0 * DivFaceBasis(q) * s
+          Stiff(p,j) = Stiff(p,j) + 1.0d0 * DivFaceBasis(q) * s
         END DO
       END DO
       
       IF (EvaluateSource) THEN
         DO p = nd,nd
-          FORCE(p) = FORCE(p) - f * 1.0d0 * s 
+          Force(p) = Force(p) - f * 1.0d0 * s 
         END DO
+      END IF
+
+      IF (NeedMass) THEN
+        !
+        ! Here piecewise constant approximation is assumed. This
+        ! could be integrated with one-point quadrature.
+        !
+        Mass(nd,nd) = Mass(nd,nd) - s
       END IF
 
     END DO
@@ -341,7 +355,7 @@ CONTAINS
     INTEGER :: OriginalIndices(4)
     INTEGER :: j, k, l, t, np, p, ActiveFaceId, Family, matches, FDOFs
     INTEGER :: ParentFamily
-    REAL(KIND=dp) :: FORCE(nd), Basis(n), TraceBasis(nd), WorkTrace(nd)
+    REAL(KIND=dp) :: Force(nd), Basis(n), TraceBasis(nd), WorkTrace(nd)
     REAL(KIND=dp) :: detJ, s, u, v, w, g
 
     SAVE ScalarField, Nodes
@@ -528,7 +542,7 @@ CONTAINS
       IF (AssembleForce) THEN
         DO p = 1,nd-np
           j = np + p
-          FORCE(j) = FORCE(j) + g * TraceBasis(p) * w 
+          Force(j) = Force(j) + g * TraceBasis(p) * w 
         END DO
       END IF
     END DO
