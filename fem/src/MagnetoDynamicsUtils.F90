@@ -56,21 +56,27 @@
              'Electric Conductivity im', Cwrk, n, Element % NodeIndexes, Found )
       END IF 
       IF (Found) THEN
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-            DO i=1,3
-               Tcoef( i,i,1:n ) = Cwrk( 1,1,1:n )
+        IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
+          DO i=1,3
+            Tcoef(i,i,1:n) = Cwrk(1,1,1:n)
+          END DO
+        ELSE
+          IF ( SIZE(Cwrk,1) == 1 ) THEN
+            DO i=1,MIN(3, SIZE(Cwrk,2))
+              Tcoef( i,i,1:n ) = Cwrk( 1,i,1:n )
             END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+          ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
+              Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
             END DO
-         ELSE
+          ELSE
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               DO j=1,MIN(3,SIZE(Cwrk,2))
-                  Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
-               END DO
+              DO j=1,MIN(3,SIZE(Cwrk,2))
+                Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
+              END DO
             END DO
-         END IF
+          END IF
+        END IF
       END IF
     END IF
 
@@ -140,21 +146,27 @@
              'Relative Permeability im', Cwrk, n, Element % NodeIndexes, Found )
       END IF 
       IF (Found) THEN
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-            DO i=1,3
-               mu( i,i,1:n ) = Cwrk( 1,1,1:n )
+        IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
+          DO i=1,3
+            mu(i,i,1:n) = Cwrk(1,1,1:n)
+          END DO
+        ELSE
+          IF ( SIZE(Cwrk,1) == 1 ) THEN
+            DO i=1,MIN(3, SIZE(Cwrk,2))
+              mu( i,i,1:n ) = Cwrk( 1,i,1:n )
             END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+          ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               mu(i,i,1:n) = Cwrk(i,1,1:n)
+              mu(i,i,1:n) = Cwrk(i,1,1:n)
             END DO
-         ELSE
+          ELSE
             DO i=1,MIN(3,SIZE(Cwrk,1))
-               DO j=1,MIN(3,SIZE(Cwrk,2))
-                  mu( i,j,1:n ) = Cwrk(i,j,1:n)
-               END DO
+              DO j=1,MIN(3,SIZE(Cwrk,2))
+                mu( i,j,1:n ) = Cwrk(i,j,1:n)
+              END DO
             END DO
-         END IF
+          END IF
+        END IF
       END IF
     END IF
 !------------------------------------------------------------------------------
@@ -189,21 +201,27 @@
           varname(1:slen)//' im', Cwrk, n, Element % NodeIndexes, Found )
       END IF 
       IF (Found) THEN
-         IF ( SIZE(Cwrk,1) == 1 ) THEN
-            DO i=1,tsize
-               T( i,i,1:n ) = Cwrk( 1,1,1:n )
+        IF (SIZE(Cwrk,1) == 1 .AND. SIZE(Cwrk,2) == 1) THEN
+          DO i=1,tsize
+            T(i,i,1:n) = Cwrk(1,1,1:n)
+          END DO
+        ELSE
+          IF ( SIZE(Cwrk,1) == 1 ) THEN
+            DO i=1,MIN(tsize, SIZE(Cwrk,2))
+              T( i,i,1:n ) = Cwrk( 1,i,1:n )
             END DO
-         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+          ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
             DO i=1,MIN(tsize,SIZE(Cwrk,1))
-               T(i,i,1:n) = Cwrk(i,1,1:n)
+              T(i,i,1:n) = Cwrk(i,1,1:n)
             END DO
-         ELSE
+          ELSE
             DO i=1,MIN(tsize,SIZE(Cwrk,1))
-               DO j=1,MIN(tsize,SIZE(Cwrk,2))
-                  T( i,j,1:n ) = Cwrk(i,j,1:n)
-               END DO
+              DO j=1,MIN(tsize,SIZE(Cwrk,2))
+                T( i,j,1:n ) = Cwrk(i,j,1:n)
+              END DO
             END DO
-         END IF
+          END IF
+        END IF
       END IF
     END IF
 !------------------------------------------------------------------------------
