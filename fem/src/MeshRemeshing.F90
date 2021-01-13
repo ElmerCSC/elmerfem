@@ -48,6 +48,7 @@ INTEGER :: MMGPARAM_iso = MMG3D_IPARAM_iso
 INTEGER :: MMGPARAM_hgrad = MMG3D_DPARAM_hgrad
 INTEGER :: MMGPARAM_angle = MMG3D_IPARAM_angle
 INTEGER :: MMGPARAM_angleDetection = MMG3D_DPARAM_angleDetection
+INTEGER :: MMGPARAM_debug = MMG3D_IPARAM_debug
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 #endif
@@ -1022,6 +1023,11 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
 
   !! GET THE NEW MESH
   CALL GET_MMG3D_MESH(OutMesh,Parallel)
+
+  !! Release mmg mesh
+  CALL MMG3D_Free_all(MMG5_ARG_start, &
+  MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+  MMG5_ARG_end)
 
   NBulk = OutMesh % NumberOfBulkElements
   NBdry = OutMesh % NumberOfBoundaryElements
