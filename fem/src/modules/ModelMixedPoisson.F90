@@ -94,7 +94,7 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
   END IF
 
   
-  ! Add pressure variable if not present, and get its name
+  ! Add scalar variable if not present, and get its name
   CALL ListAddNewString(SolverPars,'Potential Variable','mixedpot' )
   VarName = ListGetString(SolverPars,'Potential Variable')
     
@@ -206,6 +206,8 @@ CONTAINS
   SUBROUTINE LocalMatrix(Stiff, Mass, Force, Element, n, nd, nb, dim, &
       SecondFamily, NeedMass)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils, ONLY : GetTensor
+
     REAL(KIND=dp) :: Stiff(:,:), Mass(:,:), Force(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n   ! The number of background element nodes
@@ -222,11 +224,12 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
 
     LOGICAL :: Stat, Found, EvaluateMatPar, EvaluateSource, Convection
+    LOGICAL :: TensorValuedPar
 
     INTEGER :: t, i, j, p, q, np
 
-    REAL(KIND=dp) :: Load(n), a_parameter(n), MatPar, f
-    REAL(KIND=dp) :: Velo(dim,n), v(dim)
+    REAL(KIND=dp) :: Load(n), a_parameter(n), mu(dim,dim,n), K(dim,dim), MatPar, f
+    REAL(KIND=dp) :: Velo(dim,n), v(dim), tmp(dim)
     REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
     REAL(KIND=dp) :: Basis(n), DetJ, s
 !------------------------------------------------------------------------------
@@ -258,8 +261,11 @@ CONTAINS
     ! A material parameter and source:
     !----------------------------------------------------------------
     Material => GetMaterial()
-    a_parameter(1:n) = GetReal(Material, 'Material Parameter', EvaluateMatPar)
-    IF (.NOT. EvaluateMatPar) MatPar = 1.0_dp
+    mu = GetTensor(Element, n, dim, 'Material Tensor', 're', TensorValuedPar)
+    IF (.NOT. TensorValuedPar) THEN
+      a_parameter(1:n) = GetReal(Material, 'Material Parameter', EvaluateMatPar)
+      IF (.NOT. EvaluateMatPar) MatPar = 1.0_dp
+    END IF
 
     Convection = .FALSE.
     Velo = 0.0d0
@@ -281,7 +287,16 @@ CONTAINS
           IP % W(t), detF=detJ, Basis=Basis, FBasis=FaceBasis, &
           DivFBasis=DivFaceBasis, BDM=SecondFamily, ApplyPiolaTransform=.TRUE.)
 
-      IF (EvaluateMatPar) MatPar = 1.0_dp/SUM(Basis(1:n) * a_parameter(1:n))
+      IF (TensorValuedPar) THEN
+        DO i=1,dim
+          DO j=1,dim
+            K(i,j) = SUM(Basis(1:n) * mu(i,j,1:n))
+          END DO
+        END DO
+      ELSE
+        IF (EvaluateMatPar) MatPar = 1.0_dp/SUM(Basis(1:n) * a_parameter(1:n))
+      END IF
+
       IF (EvaluateSource) f = SUM(Basis(1:n) * Load(1:n))
       IF (Convection) v(:) = MATMUL(Velo(:,1:n), Basis(1:n))
 
@@ -306,14 +321,29 @@ CONTAINS
       !--------------------------------------------------------------
       ! The contribution from the variation with the flux variable q
       !---------------------------------------------------------------
+      IF (TensorValuedPar) THEN
+        DO p = 1,nd-np-1
+          i = np + p
+          DO q = 1,nd-np-1
+            j = np + q
+            tmp = MATMUL(K,FaceBasis(q,1:dim))
+            Stiff(i,j) = Stiff(i,j) + & 
+                SUM( tmp(1:dim) * FaceBasis(p,1:dim) ) * s
+          END DO
+        END DO
+      ELSE
+        DO p = 1,nd-np-1
+          i = np + p
+          DO q = 1,nd-np-1
+            j = np + q
+            Stiff(i,j) = Stiff(i,j) + MatPar * &
+                SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s           
+          END DO
+        END DO
+      END IF
+
       DO p = 1,nd-np-1
         i = np + p
-        DO q = 1,nd-np-1
-          j = np + q
-          Stiff(i,j) = Stiff(i,j) + MatPar * &
-              SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s
-        END DO
-
         DO q = nd,nd
           Stiff(i,q) = Stiff(i,q) + 1.0d0 * DivFaceBasis(p) * s
         END DO
@@ -643,5 +673,6 @@ SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
     ! assign it to be outputted
     pVar % Values(pVar % Perm(Element % ElementIndex) ) = val
   END DO
-        
+!------------------------------------------------------------------------------        
 END SUBROUTINE MixedPoisson_post
+!------------------------------------------------------------------------------

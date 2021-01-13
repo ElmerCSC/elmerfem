@@ -36,7 +36,8 @@ Body Force 1
 End
 
 Material 1
-   Material Parameter = Real 1.0
+!   Material Parameter = Real 1.0
+  Material Tensor(3,3) = Real 1 0 0 0 1 0 0 0 1
 End
 
 Equation 1
