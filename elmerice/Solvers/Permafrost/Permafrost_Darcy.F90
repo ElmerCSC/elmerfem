@@ -98,7 +98,8 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
        TemperatureDt_h, SalinityDt_h, StressInv_h, StressInvDt_h, &
        Vstar1_h, Vstar2_h, Vstar3_h, NormalVar_h, &
        TemperatureBC_h, PressureBC_h, SalinityBC_h, PorosityBC_h,&
-       ActiveMassMatrix, InitializeSteadyState, HydroGeo, ComputeDt
+       ActiveMassMatrix, InitializeSteadyState, HydroGeo, ComputeDt, &
+       ComputeFreshwaterHead
   !------------------------------------------------------------------------------
   CALL DefaultStart()
 
@@ -125,6 +126,9 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     ELSE
       CALL INFO(SolverName,"Omitting stress invariant derivative in force vector",Level=4)
     END IF
+    ComputeFreshwaterHead = GetLogical(Params,'Compute Freshwater Head',Found)
+      IF (ComputeFreshwaterHead) &
+           CALL INFO(SolverName,'Computing freshwater head',Level=4)
   END IF
   
   IF (InitializeSteadyState) THEN
@@ -236,8 +240,6 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
           CALL INFO(SolverName,"Switching time derivatives in force vector off",Level=9)
         END IF
       END IF
-
-      ComputeFreshwaterHead = GetLogical(Material,'Compute Freshwater Head',Found)
       
       PhaseChangeModel = ListGetString(Material, &
            'Permafrost Phase Change Model', Found )
@@ -631,7 +633,7 @@ CONTAINS
           elevationAtIp = SUM( Basis(1:N)*Solver % Mesh % Nodes % y(1:N) )
         CASE DEFAULT
           elevationAtIp = SUM( Basis(1:N)*Solver % Mesh % Nodes % z(1:N) )
-        END SELECT   
+        END SELECT
         rhow0 = CurrentSolventMaterial % rhow0
         FreshwaterHeadAtIP(IPPermFreshwaterHead) = &
              (rhow0/rhogwAtIP)*(PressureAtIP/(rhow0*SQRT(SUM(gravity(1:DIM)*gravity(1:DIM)))) + elevationAtIp) &
