@@ -433,7 +433,7 @@ CONTAINS
       ELSE
         IF ( SIZE(Hwrk,1) == 1 ) THEN
            DO i=1,MIN(3,SIZE(HWrk,2) )
-              Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
+              Tensor( i,i,1:n ) = Hwrk( 1,i,1:n )
            END DO
         ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
            DO i=1,MIN(3,SIZE(Hwrk,1))
