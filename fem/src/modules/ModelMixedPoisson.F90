@@ -21,8 +21,8 @@
 ! *
 ! *****************************************************************************/
 ! *
-! *  Solve the mixed formulation of the Poisson equation by using div-conforming
-! *  (face) finite elements.
+! *  Solve the mixed formulation of the generalized Poisson equation by using 
+! *  div-conforming (face) finite elements.
 ! *
 ! *  NOTE: It is assumed that the last bubble DOF is used for approximating 
 ! *        the scalar variable. That is, the scalar variable is approximated 
@@ -93,6 +93,7 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
     END SELECT
   END IF
 
+  CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
   
   ! Add scalar variable if not present, and get its name
   CALL ListAddNewString(SolverPars,'Potential Variable','mixedpot' )
