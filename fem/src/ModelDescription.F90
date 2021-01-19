@@ -2401,7 +2401,7 @@ CONTAINS
 
       !
       ! Allocate Def_Dofs array in the Solver structure for handling information
-      ! about possible non-standard interpolation methods (discontinuous nodal 
+      ! about possible non-standard interpolation methods (discontinuous
       ! interpolation or p-approximation) or non-standard DOFs which may be 
       ! associated with edges, faces and element interiors. Whether the standard 
       ! nodal DOFs are active is also indicated.
@@ -2415,9 +2415,9 @@ CONTAINS
       ! interpolation method is applied or how many special DOFs are associated
       ! with specific geometric entities. The indices 1,2,3 and 5 can be used to check 
       ! the number of nodal DOFs, edge DOFs, face DOFs and elementwise bubble DOFs, respectively,
-      ! while the indices 4 and 6 refer to discontinuous nodal interpolation
-      ! and p-approximation, respectively, with Def_Dofs(:,:,6) indicating the approximation
-      ! order. 
+      ! while the indices 4 and 6 refer to discontinuous interpolation
+      ! and p-approximation, respectively, with Def_Dofs(:,:,4) being the number of DOFs
+      ! per element and Def_Dofs(:,:,6) indicating the approximation order. 
       !
       ! Note that the element sets associated with the indices 9 and 10 are only used to check
       ! the number of facewise bubbles in 3D, so in this case only the entries Def_Dofs(9,:,5)
@@ -2445,7 +2445,7 @@ CONTAINS
    
       IF ( .NOT. stat ) THEN
         IF ( ListGetLogical( Solver % Values, 'Discontinuous Galerkin', stat ) ) THEN
-           Solver % Def_Dofs(:,:,4) = 0
+           Solver % Def_Dofs(:,:,4) = 0  ! The final value is set when calling LoadMesh2 
            IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
            Solver % DG = .TRUE.
@@ -2966,6 +2966,11 @@ CONTAINS
       j = INDEX( ElementDef(1:n), 'd:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation within LoadMesh2,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
         Solver_Def_Dofs(ind,:,4) = l
         IF ( Def_Dofs_Update ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
       ELSE 

@@ -406,6 +406,11 @@ CONTAINS
       j = INDEX( ElementDef, 'd:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
         Body_Dofs(:,4) = l
         Def_Dofs(1:8,4) = MAX(Def_Dofs(1:8,4), l )
       ELSE 
@@ -2853,7 +2858,7 @@ CONTAINS
        IF ( inDofs(el_id,4) == 0 ) THEN
          inDOFs(el_id,4) = n
        END IF
-         
+
        NULLIFY( Element % DGIndexes )
        IF ( inDOFs(el_id,4) > 0 ) THEN
          CALL AllocateVector( Element % DGIndexes, inDOFs(el_id,4))
