@@ -1,0 +1,21 @@
+! ----- names for bodies -----
+$ air = 1
+! ----- names for boundaries -----
+$ xminus = 2
+$ xplus = 3
+$ yminus = 4
+$ yplus = 5
+$ zplus = 6
+$ zminus = 7
+$ wire1 = 8
+$ wire2 = 9
+$ rc1 = 10
+$ rc2 = 11
+$ wire1_t1 = 12
+$ wire1_t2 = 13
+$ wire2_t1 = 14
+$ wire2_t2 = 15
+$ coil = 19
+$ coil_t1 = 20
+$ coil_t2 = 21
+$ bnry22 = 22

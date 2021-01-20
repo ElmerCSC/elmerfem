@@ -28,31 +28,31 @@ Elmer is a finite element software for numerical solution of partial differentia
 Elmer consists of several parts. The most important ones are ElmerSolver the finite element solver, ElmerGUI the graphical user interface, and ElmerGrid the mesh creation and manipulation tool. Also a visualization tool, ElmerPost, is included in the package but it is no longer developed.  
 
 
-=== Download Binaries:
+=== Download binaries
 
-You may download binaries and virtual machines from http://www.elmerfem.org/blog/binaries/[here]
+You may download binaries and virtual machines from http://www.elmerfem.org/blog/binaries/[here].
 
-=== Docker:
+=== Docker
 
- * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub], More info https://raw.githubusercontent.com/ElmerCSC/elmerfem/release/ReleaseNotes/release_8.4.txt[here]
+ * nwrichmond/elmerice: https://hub.docker.com/r/nwrichmond/elmerice/[Docker Hub], https://raw.githubusercontent.com/ElmerCSC/elmerfem/release/ReleaseNotes/release_8.4.txt[more info]
  * unifem/Elmer-desktop: https://github.com/unifem/Elmer-desktop[GitHub]
- * CoSci-LLC/docker-elmerice https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
+ * CoSci-LLC/docker-elmerice: https://hub.docker.com/repository/docker/coscillc/elmerice[Docker Hub], https://github.com/CoSci-LLC/docker-elmerice[GitHub]
 
 === Documentation
 
-You may find the PDFs for the documentation http://www.elmerfem.org/blog/documentation/[here]
+You may find the PDFs for the documentation http://www.elmerfem.org/blog/documentation/[here].
 
-=== Compiling:
+=== Compiling
 
 
-==== macOS:
+==== macOS
 
- * download this repository either az a zip file via GitHub or using `git clone https://github.com/ElmerCSC/elmerfem.git`
- * go to the downloaded directory `mkdir build` and `cd build`
- * Install HomeBrew
- * Install GNU GCC `brew install gcc`
+ * Download this repository either az a zip file via GitHub or using `git clone https://github.com/ElmerCSC/elmerfem.git`
+ * Go to the downloaded directory `mkdir build` and `cd build`
+ * Install Homebrew
+ * Install GCC `brew install gcc`
  * Install CMake `brew install cmake`
- * Without: 
+ * Without MPI: 
     ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE`
  * With MPI:
     ** Install OpenMPI `brew install open-mpi`
@@ -69,35 +69,42 @@ You may find the PDFs for the documentation http://www.elmerfem.org/blog/documen
 
 ==== Ubuntu
 
- * install the dependencies `sudo apt install git cmake build-essential fortran libopenmpi-dev libblas-dev liblapack-dev`
- * Without:
+ * Download the source code and create `build` directory as above
+ * Install the dependencies `sudo apt install git cmake build-essential gfortran libopenmpi-dev libblas-dev liblapack-dev`
+ * Without MPI:
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE`
  * With MPI:
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE`
  * With ElmerGUI:
     ** `sudo apt install libqt4-dev libqwt-dev`
     ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ELMERGUI:BOOLEAN=TRUE`
+ * With Elmer/Ice (enabling netcdf and MUMPS):
+    ** `sudo apt install libnetcdf-dev libnetcdff-dev libmumps-dev`
+    ** `cmake .. -DWITH_OpenMP:BOOLEAN=TRUE -DWITH_MPI:BOOLEAN=TRUE -DWITH_ElmerIce:BOOLEAN=TRUE -DWITH_Mumps:BOOL=TRUE` 
  * `make`
  * `sudo make install`
- * the executable are in `/usr/local/bin` folder, you may add this to your PATH if you will.
+ * The executables are in `/usr/local/bin` folder, you may add this to your PATH if you will
 
-=== Licencing: image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
+=== Licensing
+
+image:https://img.shields.io/badge/License-GPLv2-blue.svg["License: GPL v2", link=https://www.gnu.org/licenses/gpl-2.0]  image:https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg["License: LGPL v2.1", link=https://www.gnu.org/licenses/lgpl-2.1]
 
 [.text-justify]
-Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers as well, and the project is open for new contributions. More information about Elmer's licensing http://www.elmerfem.org/blog/license/[here].
+Elmer software is licensed under GPL except for the ElmerSolver library which is licensed under LGPL license. Elmer is mainly developed at CSC - IT Center for Science, Finland. However, there have been numerous contributions from other organizations and developers as well,
+and the project is open for new contributions. More information about Elmer's licensing link:license_texts/ElmerLicensePolicy.txt[here].
 
 
-=== Package managers:
+=== Package managers
 
 [.text-center]
 image::https://repology.org/badge/vertical-allrepos/elmerfem.svg["Packaging status", link=https://repology.org/project/elmerfem/versions]
 
-==== Chocolatey:
+==== Chocolatey
 
 [.text-center]
 image:https://img.shields.io/chocolatey/dt/elmer-mpi["Chocolatey", link=https://chocolatey.org/packages/elmer-mpi]
 
-=== Social:
+=== Social
 
 [.text-justify]
 Here on https://discordapp.com/invite/NeZEBZn[this Discord channel] you may ask for help or dicuss different Elmer related matters:
@@ -116,8 +123,13 @@ Ask your questions on Reddit:
 image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit subscribers", link=https://www.reddit.com/r/ElmerFEM/]
 
 
-=== Other links:
+=== Computational Glaciology "Elmer/Ice"
 
+* http://elmerice.elmerfem.org[Elmer/Ice community web site]
+* https://github.com/ElmerCSC/elmerfem/tree/elmerice/elmerice/[Elmer/Ice README]
+
+
+=== Other links
 
 * http://www.elmerfem.org/[Elmer Blog]
 * https://www.csc.fi/web/elmer[official CSC homepage]
@@ -129,6 +141,5 @@ image:https://img.shields.io/reddit/subreddit-subscribers/ElmerFEM["Subreddit su
 * https://launchpad.net/~elmer-csc-ubuntu/+archive/ubuntu/elmer-csc-ppa[Launchpad]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/bin/[VM and Windows builds]
 * http://www.nic.funet.fi/pub/sci/physics/elmer/doc/[Documentation]
-* http://elmerice.elmerfem.org[Elmer/ICE community]
 
 

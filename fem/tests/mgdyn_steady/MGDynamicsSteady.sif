@@ -15,6 +15,8 @@ Simulation
 
   Post File = MGDynamics.vtu
   Output Intervals(1) = 1
+
+Initialize Dirichlet Conditions = False
 End
 
 Body 1
@@ -44,7 +46,7 @@ Solver 1
   Variable = "P"
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
 
-  Linear System Symmetric = False
+  Linear System Symmetric = True
   Fix input Current Density = Logical False
 
 !  Linear System Solver = "Direct"
@@ -54,7 +56,7 @@ Solver 1
   Linear System Preconditioning = none
   Linear System Residual Output = 10
   Linear System Max Iterations = 5000
-  Linear System Iterative Method = Bicgstab
+  Linear System Iterative Method = CGS
   Linear System Convergence Tolerance = 1.0e-10
 
 ! USE Tree Gauge = Logical TRUE

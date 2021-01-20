@@ -421,6 +421,11 @@ CONTAINS
              l = MAX(0,Def_Dofs(3))
              j = Face % TYPE % ElementCode/100
              IF(l==0) THEN
+               !
+               ! NOTE: This depends on what dofs have been introduced
+               ! by using the construct "-quad_face b: ..." and
+               ! "-tri_face b: ..."
+               !
                IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
                  e = Face % BoundaryInfo % Left % BodyId
                  l = MAX(0,Solver % Def_Dofs(j+6,e,5))
@@ -2705,7 +2710,12 @@ use spariterglobals
 
       IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
 
-      ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
+      IF( n == 1 ) THEN
+        ptr % TYPE = LIST_TYPE_INTEGER
+      ELSE
+        ptr % TYPE = LIST_TYPE_CONSTANT_TENSOR
+      END IF
+      
       ptr % IValues(1:n) = IValues(1:n)
 
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
@@ -2992,6 +3002,10 @@ use spariterglobals
        RETURN
      END IF
 
+     IF( ptr % type /= LIST_TYPE_INTEGER ) THEN
+       CALL Fatal('ListGetInteger','Invalid list type for: '//TRIM(Name))
+     END IF
+     
      IF ( ptr % PROCEDURE /= 0 ) THEN
        CALL ListPushActiveName(Name)
        L = ExecIntFunction( ptr % PROCEDURE, CurrentModel )
@@ -3050,13 +3064,12 @@ use spariterglobals
          END IF
        END IF
        RETURN
-     END IF
-
+     END IF     
+     
      IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
-       WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
+       WRITE(Message,*) 'Value type for property [', TRIM(Name), &
                '] not used consistently.'
        CALL Fatal( 'ListGetIntegerArray', Message )
-       RETURN
      END IF
 
      n = SIZE(ptr % IValues)
@@ -3132,7 +3145,13 @@ use spariterglobals
        END IF
        RETURN
      END IF
-     L = ptr % Lvalue
+
+     IF(ptr % TYPE == LIST_TYPE_LOGICAL ) THEN
+       L = ptr % Lvalue
+     ELSE
+       CALL Fatal('ListGetLogical','Invalid list type for: '//TRIM(Name))
+     END IF
+     
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogical
 !------------------------------------------------------------------------------
@@ -3172,6 +3191,8 @@ use spariterglobals
        L = ( RVal > 0.0_dp )
      ELSE
        L = .TRUE.
+       !Mere presence implies true mask
+       !CALL Fatal('ListGetLogicalGen','Invalid list type for: '//TRIM(Name))
      END IF
      
 !------------------------------------------------------------------------------
@@ -3203,7 +3224,13 @@ use spariterglobals
        END IF
        RETURN
      END IF
-     S = ptr % Cvalue
+     
+     IF( ptr % Type == LIST_TYPE_STRING ) THEN     
+       S = ptr % Cvalue
+     ELSE
+       CALL Fatal('ListGetString','Invalid list type: '//TRIM(Name))
+     END IF
+       
 !------------------------------------------------------------------------------
    END FUNCTION ListGetString
 !------------------------------------------------------------------------------
@@ -3278,6 +3305,12 @@ use spariterglobals
            ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,xx,yy,zz )
        CALL ListPopActiveName()
 
+     CASE( LIST_TYPE_VARIABLE_SCALAR, LIST_TYPE_VARIABLE_SCALAR_STR )       
+       CALL Fatal('ListGetConstReal','Constant cannot depend on variables: '//TRIM(Name))
+
+     CASE DEFAULT
+       CALL Fatal('ListGetConstReal','Invalid list type for: '//TRIM(Name))       
+       
      END SELECT
 
      IF ( PRESENT( minv ) ) THEN
@@ -3556,9 +3589,6 @@ use spariterglobals
 
 
   
-
-
-  
 !------------------------------------------------------------------------------
 !> Given a string containing comma-separated variablenames, reads the strings
 !> and obtains the corresponding variables to a table.
@@ -3573,7 +3603,9 @@ use spariterglobals
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Var
-
+     LOGICAL :: IsNumber
+     REAL(KIND=dp) :: Val
+     
      SomeAtIp = .FALSE.
      SomeAtNodes = .FALSE.
      AllGlobal = .TRUE.
@@ -3605,26 +3637,38 @@ use spariterglobals
          count = count + 3 
          SomeAtNodes = .TRUE.
          AllGlobal = .FALSE.
-       ELSE
-         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
+       ELSE 
+         IsNumber = .FALSE.
+         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )         
          IF ( .NOT. ASSOCIATED( Var ) ) THEN
-           CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
-           CALL Info('ListParseStrToVars','Parse counters: '&
-               //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
-           CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
-               TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+           IF( VERIFY( str(l0:l1),'-.0123456789') == 0 ) THEN
+             IsNumber = .TRUE.
+             READ(str(l0:l1),*) Val
+           ELSE           
+             CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
+             CALL Info('ListParseStrToVars','Parse counters: '&
+                 //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+             CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
+                 TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+           END IF
          END IF
+
          count = count + 1
-         VarTable(count) % Variable => Var
-     
-         IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.
-                
-         IF( Var % TYPE == Variable_on_gauss_points ) THEN
-           SomeAtIp = .TRUE.
+
+         IF( IsNumber ) THEN
+           !PRINT *,'We do have a number:',Val
+           VarTable(count) % Variable => NULL()
+           VarTable(count) % ParamValue = Val
          ELSE
-           SomeAtNodes = .TRUE.
+           VarTable(count) % Variable => Var           
+           IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.           
+           IF( Var % TYPE == Variable_on_gauss_points ) THEN
+             SomeAtIp = .TRUE.
+           ELSE
+             SomeAtNodes = .TRUE.
+           END IF
          END IF
-         
+           
        END IF
 
        ! New start after the comma
@@ -3659,6 +3703,12 @@ use spariterglobals
        
        Var => VarTable(Vari) % Variable
 
+       IF(.NOT. ASSOCIATED( Var ) ) THEN
+         count = count + 1
+         T(count) = VarTable(Vari) % ParamValue
+         CYCLE
+       END IF
+       
        Varsize = SIZE( Var % Values ) / Var % Dofs 
        
        IF( Varsize == 1 ) THEN
@@ -3674,10 +3724,15 @@ use spariterglobals
            CYCLE
          ELSE IF( Var % TYPE == Variable_on_elements ) THEN
            Element => CurrentModel % CurrentElement
-           IF( ASSOCIATED( Element ) ) k1 = Element % ElementIndex
+           IF( ASSOCIATED( Element ) ) THEN
+             k1 = Element % ElementIndex
+           ELSE
+             CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
+           END IF
          ELSE IF ( Var % TYPE == Variable_on_nodes_on_elements ) THEN
            Element => CurrentModel % CurrentElement
            IF ( ASSOCIATED(Element) ) THEN
+             k1 = 0
              IF ( ASSOCIATED(Element % DGIndexes) ) THEN
                n = Element % TYPE % NumberOfNodes
                IF ( SIZE(Element % DGIndexes)==n ) THEN
@@ -3689,6 +3744,12 @@ use spariterglobals
                  END DO
                END IF
              END IF
+             IF( k1 == 0 ) THEN
+               CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
+                   ' in element '//TRIM(I2S(Element % ElementIndex)))
+             END IF
+           ELSE
+             CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
            END IF
          END IF
 
@@ -3736,6 +3797,13 @@ use spariterglobals
      
      DO Vari = 1, VarCount 
        Var => VarTable(Vari) % Variable
+
+       IF(.NOT. ASSOCIATED( Var ) ) THEN
+         count = count + 1
+         T(count) = VarTable(Vari) % ParamValue
+         CYCLE
+       END IF
+       
        Varsize = SIZE( Var % Values ) / Var % Dofs 
 
        k1 = 0
@@ -4030,7 +4098,7 @@ use spariterglobals
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
            WRITE(Message, '(A,A)') "Failed to find real: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal("ListGetReal", Message)
          END IF
        END IF
        RETURN
@@ -4121,7 +4189,7 @@ use spariterglobals
          CALL VarsToValuesOnNodes( VarCount, VarTable, k, T, j )
          
 #ifdef HAVE_LUA
-         IF ( .not. ptr % LuaFun ) THEN
+         IF ( .NOT. ptr % LuaFun ) THEN
 #endif
            IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
              DO l=1,j
@@ -4139,7 +4207,7 @@ use spariterglobals
 
 #ifdef HAVE_LUA
          ELSE
-           call ElmerEvalLua(LuaState, ptr, T, F(i), varcount)
+           CALL ElmerEvalLua(LuaState, ptr, T, F(i), j )
          END IF
 #endif
          IF( AllGlobal ) THEN
@@ -5491,7 +5559,7 @@ use spariterglobals
                END IF
 #ifdef HAVE_LUA
              ELSE
-               CALL ElmerEvalLua(LuaState, ptr, T, F(i), Handle % varcount)
+               CALL ElmerEvalLua(LuaState, ptr, T, F(i), j )
              END IF
 #endif
 
@@ -5588,7 +5656,7 @@ use spariterglobals
                
 #ifdef HAVE_LUA
              ELSE
-               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, Handle % varcount)
+               call ElmerEvalLua(LuaState, ptr, T, Handle % RTensor, j )
              END IF
 #endif
              ELSE IF ( ptr % PROCEDURE /= 0 ) THEN

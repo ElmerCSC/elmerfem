@@ -1,0 +1,215 @@
+! Compute the steady-state ice thickness using a velocity fields
+!  where random noise has been added to the analytical solution
+!  and validate the computation of the gradient of J with respect to the velocity
+!-----------------------------
+! PARAMETERS:
+!----------------------------
+$name=ipar(0)
+$ID="Valid"
+$OBSERVATION_FILE="Hflight.txt"
+!
+include ../src/PARAMETERS.sif
+!
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+  RAMP Hgl = Real $Hgl
+  RAMP Vgl = Real $V_gl
+  RAMP dhdx = Real $dhdx
+
+  RAMP RateFactor = Real $A
+  RAMP Glen = Real $n
+  RAMP rhoi = Real $rhoi
+  RAMP rhow = Real $rhow
+  RAMP gravity = Real $gravity
+
+  Random Function = String "normal"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+
+  Simulation Type = Steady
+
+  Steady State Min Iterations = 20
+  Steady State Max Iterations = 20
+
+  Post File = "$ID$_$name$.vtu"
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+! analytical SMB
+  SMB = Variable Coordinate 1
+    REAL procedure "RAMP" "SMB"
+
+! and thickness
+  HSolution  = Variable Coordinate 1
+    REAL procedure "RAMP" "Thickness"
+
+! anaytical solution for the u-velocity
+  USolution 1  = Variable Coordinate 1
+    REAL procedure "RAMP" "Velocity"
+  USolution 2 = Real 0.0
+! random noise
+  r 1 = Variable 20.0, 0.0
+    REAL procedure "Random" "Random"
+
+  r 2 = Variable 20.0, 0.0
+    REAL procedure "Random" "Random"
+
+! convection velocity is truth + noise
+  Velocity 1 = Variable USolution 1, r 1
+    REAL LUA "tx[0]+tx[1]"
+
+  Velocity 2 = Variable USolution 2, r 2
+    REAL LUA "tx[0]+tx[1]"
+
+! the perturbation variable for the finite diffence computation
+!  use a random field
+  VarP 1 = Variable 20.0, 0.0
+    REAL procedure "Random" "Random"
+
+  VarP 2 = Variable 20.0, 0.0
+    REAL procedure "Random" "Random"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity
+
+  Top Surface Accumulation = Equals SMB
+  Bottom Surface Accumulation = Real 0.0
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute the thickness
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver 1
+   Equation = "Thickness"
+   Variable = -dofs 1 "H"
+
+   Procedure = "ElmerIceSolvers" "AdjointThickness_ThicknessSolver"
+
+   Linear System Solver = Direct
+   Linear System Direct Method = umfpack
+
+!!  the convection velocity (mean horizontal velocity)
+    Flow Solution Name = String "Velocity"
+!!    
+   Exported Variable 1 = SMB
+   Exported Variable 2 = HSolution
+   Exported Variable 3 = -dofs 2 r
+   Exported Variable 4 = -dofs 2 USolution
+   Exported Variable 5 = -dofs 2 Velocity
+
+   Exported Variable 6 = -global CostValue
+   Exported Variable 7 = -dofs 2 VarP
+   Exported Variable 8 = Hb
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute the cost function
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver 2
+  Equation = "Cost"
+    procedure = "ElmerIceSolvers" "Adjoint_CostDiscSolver"
+
+   Cost Variable Name = String "CostValue"  ! Name of Cost Variable
+   Lambda = Real 1.0
+ ! save the cost as a function of iterations (iterations,Cost,rms=sqrt(2*Cost/Ndata)
+   Cost Filename = File "CostValiodation_$name$.dat"
+
+   Observed Variable Name = String "H"
+   Observed Variable dimension = Integer 1
+
+   Observation File Name = File "$OBSERVATION_FILE$"
+end
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute the adjoint
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver 3
+  Equation = "Adjoint"
+  Variable = -nooutput Adjoint
+  Variable Dofs = 1
+
+  procedure = "ElmerIceSolvers" "Adjoint_LinearSolver"
+
+!Name of the flow solution solver
+  Direct Solver Equation Name = string "Thickness"
+
+   Linear System Solver = Direct
+   Linear System Direct Method = umfpack
+End
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+! Compute the gradient of J
+!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Solver 4
+  Equation = "DJDp"
+
+  procedure = "ElmerIceSolvers" "AdjointThickness_GradientSolver"
+
+  Thickness Solution Name = String H
+  Adjoint Solution Name = String "Adjoint"
+  Flow Solution Name = String "Velocity"
+
+  ComputeDJDUV = Logical True
+  ComputeDJDsmbTop = Logical True
+
+  Exported Variable 1 = DJDUV
+  Exported Variable 1 DOFs = 2
+
+  Exported Variable 2 = DJDsmbTop
+  Exported Variable 2 DOFs = 1
+end
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Validation
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 5
+  Equation = "GradientValidation"
+  procedure = "ElmerIceSolvers" "Adjoint_GradientValidation"
+
+  Cost Variable Name = String "CostValue"
+  Optimized Variable Name = String "Velocity"
+  Perturbation Variable Name = String "VarP"
+  Gradient Variable Name = String "DJDUV"
+
+  Result File = File "Validation_$name$.dat"
+
+end
+
+!!######################
+Equation 1
+  Active Solvers(5) = 1 2 3 4 5
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  name = "Sides"
+  Target Boundaries(2) = 1 3
+
+! here we set H on the sides as with the noise we may get inflow velocities
+  H = Equals HSolution
+End
+
+Boundary Condition 2
+  name = "calving front"
+  Target Boundaries = 2
+  
+End
+Boundary Condition 3
+  name = "inflow"
+  Target Boundaries = 4
+
+  H = Real $Hgl
+End

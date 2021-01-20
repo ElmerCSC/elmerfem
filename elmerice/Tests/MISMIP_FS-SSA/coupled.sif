@@ -675,11 +675,11 @@ Boundary Condition 5
   Real MATC "rhoi*gravity*tx(0)+tx(1)/(tx(2)-tx(3))"
 End
 
-Solver 11 :: Reference Norm = 363.73065
+Solver 10 :: Reference Norm = 209.36728
+Solver 10 :: Reference Norm Tolerance = Real 1E-05
+Solver 11 :: Reference Norm = 374.02211
 Solver 11 :: Reference Norm Tolerance = Real 1E-05
-Solver 15 :: Reference Norm = 5762.2931
-Solver 15 :: Reference Norm Tolerance = Real 1E-05
-Solver 18 :: Reference Norm = Real 1622.37887
+Solver 18 :: Reference Norm = Real 1622.4065
 Solver 18 :: Reference Norm Tolerance = Real 1E-05
 
 $fprintf( stderr, "TEST CASE 1\n");

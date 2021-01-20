@@ -502,7 +502,8 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       CALL MatrixVectorMultiply( Solver % Matrix, Potential, Charges)
       Solver % Matrix % Values => PValues
       Charges = Charges * PermittivityOfVacuum
-      
+
+      IF( iter == 1 ) CapMatrix = 0.0_dp
       Permi = iter
       DO i=1,Mesh % NumberOfNodes
         Permj = CapBodyIndex(i)

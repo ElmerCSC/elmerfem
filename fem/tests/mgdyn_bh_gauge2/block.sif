@@ -1,5 +1,5 @@
 !
-! The specialities of this case are that the consistently stabilized 
+! The specialities of this case are that the consistently regularized 
 ! formulation for magnetostatics is used (ensuring a unique vector potential 
 ! solution) and that a block-preconditioned linear solver is applied to solve 
 ! the resulting linear algebra problem; see the second solver section.
@@ -20,7 +20,6 @@ Simulation
   simulation type = steady state
   steady state max iterations = 1
   output intervals = 1
-!  Post File = "block.vtu"
 end
 
 Constants
@@ -52,7 +51,7 @@ solver 2
   use piola transform = logical false
   Fix input current density = Logical true
   Newton-Raphson Iteration = Logical True
-  nonlinear system max iterations = 10
+  nonlinear system max iterations = 30
   nonlinear system convergence tolerance = 1e-6
 
   use lagrange gauge = logical true
@@ -78,9 +77,9 @@ solver 2
 
 ! Linear system solver for blocks
 !-----------------------------------------
-  linear system max iterations = 250
+  linear system max iterations = 500
   linear system residual output = 10
-  linear system convergence tolerance = 1e-6
+  linear system convergence tolerance = 1e-4
 
 ! The default would be to solve first for V and then for A.
 ! For the stabilized Lagrange multiplier formulation the reverse order 
@@ -99,7 +98,6 @@ solver 2
   Block 11: Linear System Preconditioning = ILU0
   Block 11: Linear System Abort Not Converged = False
 
-!  use tree gauge = logical false
 !  linear system refactorize = logical true
 
 end
@@ -124,10 +122,12 @@ solver 4
   equation = resultoutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   vtu format = True
+  Output File Name = block
   discontinuous bodies = logical true
-  vector field 1 = String "Volume Current"
-  vector field 2 = String "Magnetic Flux Density E"
-  vector field 3 = String "Magnetic Field Strength E"
+  Save Geometry IDs = Logical True
+!  vector field 1 = String "Volume Current"
+!  vector field 2 = String "Magnetic Flux Density E"
+!  vector field 3 = String "Magnetic Field Strength E"
 end
 
 solver 5
@@ -168,10 +168,13 @@ material 1
 end
 
 material 2
-  relative permittivity = 1.0
   name = iron
+  relative permittivity = 1.0
   electric conductivity = 0.0
-  relative permeability = 1000.0
+
+  H-B Curve(31,2) = Real
+   INCLUDE HB
+
 end
 
 material 3
@@ -242,6 +245,6 @@ end
 
 Solver 6 :: Reference Norm = Real  8.05311383E-03
 Solver 6 :: Reference Norm tolerance = Real 2e-4
-Solver 5 :: reference norm = real 5.28894624E-05
+Solver 5 :: reference norm = real 2.204993E-05
 Solver 5 :: reference norm tolerance = real 2e-4
 

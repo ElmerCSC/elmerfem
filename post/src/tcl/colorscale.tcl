@@ -67,14 +67,14 @@ set ColorScaleColorMax   1.0
 
 proc colscale_update {} {
 
+   .colscale.set.min delete 0 end
+   .colscale.set.max delete 0 end
+
    global ColorScaleColor ColorScaleColorMin ColorScaleColorMax
 
    UpdateVariable ColorScaleColor
 
-   .colscale.set.min delete 0 end
    .colscale.set.min insert end [format %-10.5g $ColorScaleColorMin]
-
-   .colscale.set.max delete 0 end
    .colscale.set.max insert end [format %-10.5g $ColorScaleColorMax]
 }
 

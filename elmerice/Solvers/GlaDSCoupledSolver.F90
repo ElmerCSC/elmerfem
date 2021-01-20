@@ -72,12 +72,12 @@
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge, Face, Bulk
      TYPE(ValueList_t), POINTER :: Equation, Material, SolverParams, BodyForce, BC, Constants
+     TYPE(Variable_t), POINTER :: WorkVar, WorkVar2
 
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
           NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin, Ne, BDForder, &
-          CoupledIter
-     INTEGER :: tpack, Mpack
+          CoupledIter, Nel, ierror, ChannelSolver, FluxVariable, ThicknessSolver, ierr
 
      TYPE(Variable_t), POINTER :: HydPotSol
      TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
@@ -85,12 +85,14 @@
 
      INTEGER, POINTER :: NodeIndexes(:), HydPotPerm(:), PwPerm(:), ZbPerm(:), &
              ThickPerm(:), VPerm(:), WPerm(:), NPerm(:), AreaPerm(:), & 
-             qPerm(:), hstorePerm(:), QcPerm(:), QmPerm(:)
+             qPerm(:), hstorePerm(:), QcPerm(:), QmPerm(:),&
+             CAPerm(:), CFPerm(:), SHPerm(:)
 
      REAL(KIND=dp), POINTER :: HydPot(:), HydPotPrev(:,:), ForceVector(:)
      REAL(KIND=dp), POINTER :: ThickSolution(:), ThickPrev(:,:), VSolution(:), WSolution(:), &
             NSolution(:), PwSolution(:), AreaSolution(:), AreaPrev(:,:), ZbSolution(:), &
-            qSolution(:), hstoreSolution(:), QcSolution(:), QmSolution(:)
+            qSolution(:), hstoreSolution(:), QcSolution(:), QmSolution(:),&
+            CAValues(:), CFValues(:), SHValues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, SolverName
      CHARACTER(LEN=MAX_NAME_LEN) :: SheetThicknessName, ChannelAreaName, ZbName
@@ -98,11 +100,12 @@
 
      LOGICAL :: Found, FluxBC, Channels, Storage, FirstTime = .TRUE., &
           AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
-          meltChannels = .TRUE., NeglectH = .TRUE. 
+          meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
+          CycleElement=.FALSE., MABool = .FALSE., MHBool = .FALSE. 
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
-          Norm, PrevNorm, S, C, Qc
+          Norm, PrevNorm, S, C, Qc, MaxArea, MaxH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:), SheetConductivity(:), ChannelConductivity(:),&
        FORCE(:),  C1(:), CT(:), OldValues(:), Refq(:)
@@ -148,7 +151,8 @@
           ChannelAreaName, ZbName, IceDensity, Ac, alphac, CCt, &
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
-          Vvar, ublr, hr2, Refq
+          Vvar, ublr, hr2, Refq, Nel,&
+          Calving
 
       
      totst = 0.0_dp
@@ -174,15 +178,17 @@
      LocalNodes = COUNT( HydPotPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
 
-     DIM = CoordinateSystemDimension()
+     !CHANGE (and at all DIMs)
+     DIM = Solver % Mesh % MeshDim
 
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
      IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
         N = Solver % Mesh % MaxElementNodes
-        M = Model % Mesh % NumberOfNodes
+        M = Solver % Mesh % NumberOfNodes
         Ne = Solver % Mesh % NumberOfEdges
+        Nel = Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements
         K = SIZE( SystemMatrix % Values )
         L = SIZE( SystemMatrix % RHS )
 
@@ -209,7 +215,7 @@
                 IceDensity, Ac, alphac, CCt, &
                 CCw, lc, OldValues, NoChannel, NodalNoChannel, &
                 Vvar, ublr, hr2, &
-                Refq )
+                Refq)
 
         END IF                           
         
@@ -236,7 +242,7 @@
              CCw(N), lc(N), OldValues(K), NoChannel(M), NodalNoChannel(N), &
              Vvar(M), ublr(M), hr2(M), &
              refq(dim*M), &
-             STAT=istat )
+             STAT=istat)
 
         IF ( istat /= 0 ) THEN
            CALL FATAL( SolverName, 'Memory allocation error' )
@@ -261,13 +267,17 @@
 
         ! Find the nodes for which we have no channel (on the boundary)
         ! Default is False - We allow Channel to growth everywhere
-        NoChannel = .False. 
+        NoChannel = .False.
         DO t=1, Solver % Mesh % NumberOfBoundaryElements
+           ! get element information
            Element => GetBoundaryElement(t)
+           !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
+           IF ((ParEnv % PEs > 1) .AND. &
+            (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
 
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
-              
+   
            NULLIFY(BC)
            BC => GetBC( Element )
            bc_id = GetBCId( Element )
@@ -278,6 +288,7 @@
 
         AllocationsDone = .TRUE.
      END IF
+
 
 !------------------------------------------------------------------------------
 !    Read physical and numerical constants and initialize 
@@ -313,6 +324,67 @@
            WRITE(ZbName,'(A)') 'Zb'
         END IF
 
+        !CHANGE - to get Channel variables added to this solver mesh if
+        !doing calving and hydrology and consequently having many meshes
+        Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
+        IF(.NOT.Found) Calving = .FALSE.
+        IF(Calving) THEN
+          DO i=1,Model % NumberOfSolvers
+            IF(Model % Solvers(i) % Variable % Name == ChannelAreaName) THEN 
+              ChannelSolver = i
+              EXIT
+            END IF
+          END DO
+          WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                     % Variables, ChannelAreaName, ThisOnly=.TRUE.)
+          ALLOCATE(CAPerm(SIZE(WorkVar % Perm)), CAValues(SIZE(WorkVar % Values)))
+          CAPerm = WorkVar % Perm
+          CAValues = WorkVar % Values
+          CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
+               'Channel Area', 1, CAValues, CAPerm)
+          WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',&
+                      ThisOnly=.TRUE.)
+          ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
+                   % Order, Solver % TimeOrder)))
+          WorkVar % PrevValues(:,1) = WorkVar % Values
+            
+          WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                     % Variables, 'Channel Flux', ThisOnly=.TRUE.)
+          ALLOCATE(CFPerm(SIZE(WorkVar % Perm)), CFValues(SIZE(WorkVar % Values)))
+          CFPerm = WorkVar % Perm
+          CFValues = WorkVar % Values
+          CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
+               'Channel Flux', 1, CFValues, CFPerm) 
+          WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Flux',&
+                      ThisOnly=.TRUE.)
+          ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
+                   % Order, Solver % TimeOrder)))
+          WorkVar % PrevValues(:,1) = WorkVar % Values
+
+          !The same for sheet thickness
+          DO i=1,Model % NumberOfSolvers
+            IF(Model % Solvers(i) % Variable % Name == SheetThicknessName) THEN 
+              ThicknessSolver = i
+              EXIT
+            END IF
+          END DO
+          WorkVar => VariableGet(Model % Solvers(ThicknessSolver) % Mesh&
+                     % Variables, SheetThicknessName, ThisOnly=.TRUE.)
+          ALLOCATE(SHPerm(SIZE(WorkVar % Perm)), SHValues(SIZE(WorkVar % Values)))
+          SHPerm = WorkVar % Perm
+          SHValues = WorkVar % Values !Needed to reflect initial condition
+          CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
+               'Sheet Thickness', 1, SHValues, SHPerm)
+          WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
+                      ThisOnly=.TRUE.)
+          ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
+                   % Order, Solver % TimeOrder)))
+          WorkVar % PrevValues(:,1) = WorkVar % Values
+          !Necessary to ensure initial condition value reflected in PrevValues
+          WorkVar % PrevValues(1:Solver % Mesh % NumberOfNodes,1) = WorkVar % Values(1:Solver % Mesh % NumberOfNodes)
+          NULLIFY(WorkVar)
+        END IF
+
         ! TODO : implement higher order BDF method
         BDForder = GetInteger(GetSimulation(),'BDF Order', Found)
         IF (.NOT.Found) BDForder = 1
@@ -340,6 +412,18 @@
 
      Channels = GetLogical( SolverParams,'Activate Channels', Found )
      IF (.NOT. Found) Channels = .FALSE.
+
+     !CHANGE
+     !To pick up channel and sheet size limiters, if specified
+     MaxArea  = GetConstReal( SolverParams, &
+          'Max Channel Area',    MABool )
+     IF ((.NOT. MABool)) CALL WARN(SolverName,'No max channel area specified. &
+          Channels may grow very large')
+
+     MaxH  = GetConstReal( SolverParams, &
+          'Max Sheet Thickness',    MHBool )
+     IF ((.NOT. MHBool)) CALL WARN(SolverName,'No max sheet thickness specified.&
+          Sheet may grow very large')
 
      IF (Channels) THEN
         meltChannels = GetLogical( SolverParams,'Activate Melt From Channels', Found )
@@ -376,11 +460,11 @@
      CoupledTol  = GetConstReal( SolverParams, &
           'Coupled Convergence Tolerance',    Found )
      IF ((.Not.Found).AND.(CoupledIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
-
+     
      ThickSol => VariableGet( Solver % Mesh % Variables, SheetThicknessName, UnfoundFatal = .TRUE. )
      ThickPerm     => ThickSol % Perm
      ThickSolution => ThickSol % Values
-     ThickPrev => ThickSol % PrevValues  
+     ThickPrev => ThickSol % PrevValues
 
      IF (Channels) THEN
         AreaSol => VariableGet( Solver % Mesh % Variables, ChannelAreaName, UnfoundFatal = .TRUE. )
@@ -454,14 +538,11 @@
 !   Loop for the coupling of the three equations
 !------------------------------------------------------------------------------
     ! check on the coupled Convergence is done on the potential solution only
-    M = Model % Mesh % NumberOfNodes
-    Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
-
+    M = Solver % Mesh % NumberOfNodes
     IF (ParEnv % PEs > 1) THEN
-       PrevCoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M)
-    ELSE
-       PrevCoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) &
-                               & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
+       PrevCoupledNorm = ParallelNorm(M,HydPot(HydPotPerm(1:M))) 
+    ELSE            
+       PrevCoupledNorm = SQRT(SUM(HydPot(HydPotPerm(1:M))*HydPot(HydPotPerm(1:M))))/M
     END IF
 
     DO iterC = 1, CoupledIter
@@ -486,7 +567,7 @@
            CALL Info( SolverName, ' ', Level=4 )
            CALL Info( SolverName, 'Starting Assembly...', Level=4 )
               
-           M = Model % Mesh % NumberOfNodes
+           M = Solver % Mesh % NumberOfNodes
            Ne = Solver % Mesh % NumberOfEdges
             
            !------------------------------------------------------------------------------
@@ -587,7 +668,8 @@
                     END IF 
                  END IF
                  CT(i) = Ev(i) /( WaterDensity * gravity)
-                 Wopen(i) = MAX(ub(i) / lr(i) * (hr(i) - ThickSolution(k)), 0.0) 
+                 Wopen(i) = MAX(ub(i) / lr(i) * (hr(i) - ThickSolution(k)), 0.0)
+ 
                  Phi0(i) = Snn(i) + gravity*WaterDensity*zb
                  IF (.Not.NeglectH) THEN 
                     Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
@@ -602,7 +684,7 @@
               IF ( ASSOCIATED( BodyForce ) ) THEN
                  bf_id = GetBodyForceId()
                  LOAD(1:N) = LOAD(1:N) + &
-                      GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
+                   GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
               END IF
               ! f = m - w + v
               ! v is not added here as it will be linearized for the assembly
@@ -616,7 +698,6 @@
               FORCE = 0.0_dp
               ! cartesian coords
               !----------------
-
               IF ( CurrentCoordinateSystem() == Cartesian ) THEN
                   CALL SheetCompose( MASS, STIFF, FORCE, LOAD, &
                        ThickSolution(ThickPerm(Element % NodeIndexes(1:n))), &
@@ -650,23 +731,21 @@
            body_id = -1
            NULLIFY(Material)
            DO t=1, Solver % Mesh % NumberOfEdges 
-              
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
-              IF (ParEnv % PEs > 1) THEN
-                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-              END IF
+              IF ((ParEnv % PEs > 1) .AND. &
+                (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
               IF (n/=2) CALL FATAL(SolverName, 'Work only for edge element of type 202')
-
               ! We keep only the edge which belong in the sheet surface
               ! i.e. Both nodes have Perm > 0
               IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
 
               ! We check if we are in a boundary where we want No channel
               IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
+
 
               EdgeNodes % x(1:n) = Solver % Mesh % Nodes % x(Edge % NodeIndexes(1:n))
               EdgeNodes % y(1:n) = Solver % Mesh % Nodes % y(Edge % NodeIndexes(1:n))
@@ -752,9 +831,12 @@
               END DO
 
 ! The variable Channel Area is defined on the edges only
-              M = Model % Mesh % NumberOfNodes
-
-              IF (AreaPerm(M+t) <=   0)  CYCLE 
+              M = Solver % Mesh % NumberOfNodes
+              !CHANGE
+              !To stabilise channels
+              IF(MABool) THEN
+                IF(AreaSolution(AreaPerm(M+t)) > MaxArea) AreaSolution(AreaPerm(M+t)) = MaxArea
+              END IF
               ChannelArea = AreaSolution(AreaPerm(M+t))
 
               !------------------------------------------------------------------------------
@@ -777,6 +859,16 @@
                  WRITE(Message,'(A)')' Work only for cartesian coordinate'
                  CALL FATAL( SolverName, Message)
               END IF              
+              !CHANGE
+              !To stop weird channel instability where some channels grow
+              !exponentially to stupid levels and eventually mess up whole
+              !mesh. Usually seems to be channels with limited fluxes that
+              !shouldn't do much, so resetting to 0 seems safest
+              !TODO Come up with a better way of fixing this
+              IF(MABool) THEN
+                k = AreaPerm(M+t)
+                IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
+              END IF
               ! This should be not needed as MASS = 0 here
               IF ( TransientSimulation ) THEN
                  CALL Default1stOrderTime( MASS, STIFF, FORCE, Edge )
@@ -831,7 +923,6 @@
                   ! If variable exist, update the Flux from Moulins variable 
                   IF (ASSOCIATED( QmSol )) THEN
                      j = Element % NodeIndexes(1)
-                     IF ( HydPotPerm(j) <=  0 ) CYCLE 
                      QmSolution(QmPerm(j)) = MoulinFlux(1)-MASS(1,1)*(HydPot(HydPotPerm(j))-HydPotPrev(HydPotPerm(j),1))/dt 
                   END IF
 
@@ -901,6 +992,7 @@
            !------------------------------------------------------------------------------
            at = CPUTime() - at
            st = CPUTime()
+           Norm = 0.0_dp
 
            PrevNorm = Solver % Variable % Norm
            Norm = DefaultSolve()
@@ -934,7 +1026,6 @@
 !------------------------------------------------------------------------------
 !       Update the Sheet Thickness                 
 !------------------------------------------------------------------------------
-
            DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t,Solver)
               IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
@@ -963,6 +1054,46 @@
 
               N = GetElementNOFNodes(Element)
               CALL GetElementNodes( ElementNodes )
+
+              !CHANGE
+              !If calving, cycle elements with ungrounded nodes and zero all
+              !hydrology variables
+              IF(Calving) THEN
+                CycleElement = .FALSE.
+                WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                IF(ASSOCIATED(WorkVar)) THEN
+                  DO i=1, N
+                    IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
+                      !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
+                        CycleElement = .TRUE.
+
+                        WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
+                        Vvar(Element % NodeIndexes(i)) = 0.0
+                        NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
+                        !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
+                        hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
+                      !END IF
+                    END IF
+                  END DO
+                END IF
+                IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
+                  DO i=1, N
+                    IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
+                      CycleElement = .TRUE.
+
+                      WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
+                      Vvar(Element % NodeIndexes(i)) = 0.0
+                      NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
+                      !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
+                      hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
+                    END IF
+                  END DO
+                END IF
+                NULLIFY(WorkVar, WorkVar2)
+                IF(CycleElement) CYCLE
+              END IF              
+
               CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
                   betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
 
@@ -991,21 +1122,67 @@
                  Wo = MAX(ub(i) / lr(i) * (hr(i) - ThickSolution(k)), 0.0) 
                  he = Ev(i)*(HydPot(HydPotPerm(j))/(WaterDensity*gravity)-zb)
                  ublr(j) = ub(i)/lr(i)
-                 hr2(j) = hr(i) 
+                 hr2(j) = hr(i)
+
+                 !CHANGE
+                 !To stop it working out values for non-ice covered parts of a
+                 !hydromesh in a coupled calving-hydro simulation
+                 IF(Calving) THEN
+                   IF(Snn(i)==0.0) THEN
+                     Np = 0.0
+                     !pw = 0.0
+                     he = 0.0
+                   END IF
+                 END IF 
 
                  ! Save this for output only
                  IF (ASSOCIATED(WSol)) WSolution(WPerm(j)) = Wo
                  IF (ASSOCIATED(NSol)) NSolution(NPerm(j)) = Np
                  IF (ASSOCIATED(PwSol)) PwSolution(PwPerm(j)) = pw
-                 IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he 
-
+                 IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he
               END DO
            END DO     !  Bulk elements
-
            ! Loop over all nodes to update ThickSolution
-           DO j = 1, Model % Mesh % NumberOfNodes
+           DO j = 1, Solver % Mesh % NumberOfNodes
               k = ThickPerm(j)
               IF (k==0) CYCLE
+              !CHANGE
+              !If calving, cycle elements with ungrounded nodes and zero all
+              !hydrology variables
+              IF(Calving) THEN
+                CycleElement = .FALSE.
+                WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                IF(ASSOCIATED(WorkVar)) THEN
+                  IF(WorkVar % Values(k)>0.0) THEN !.AND. WorkVar2 % Values(k)<0.0) THEN
+                      CycleElement = .TRUE.
+                      ThickSolution(k) = 0.0
+                      ThickPrev(k,1) = 0.0
+                  END IF
+                END IF
+                IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
+                  IF(WorkVar2 % Values(k)<0.0) THEN 
+                    CycleElement = .TRUE.
+                    ThickSolution(k) = 0.0
+                    ThickPrev(k,1) = 0.0
+                  END IF
+                END IF
+                WorkVar => VariableGet(Solver % Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                IF(WorkVar % Values(k)==0.0) THEN
+                  ThickSolution(k) = 0.0
+                  ThickPrev(k,1) = 0.0
+                  CycleElement = .TRUE.
+                END IF
+                NULLIFY(WorkVar, WorkVar2)
+                IF(CycleElement) CYCLE
+              END IF
+              IF(MHBool) THEN
+                IF (ThickSolution(k)>MaxH) THEN
+                  ThickSolution(k) = 0.0
+                  ThickPrev(k,1) = 0.0
+                END IF
+              END IF
+
               SELECT CASE(methodSheet)
               CASE('implicit') 
                  IF (ThickSolution(k) > hr2(j)) THEN
@@ -1032,7 +1209,6 @@
               Vvar(j) = Vvar(j) * ThickSolution(k)
 
            END DO 
-
 !------------------------------------------------------------------------------
 !       Update the Channels Area                 
 !------------------------------------------------------------------------------
@@ -1041,26 +1217,54 @@
 !------------------------------------------------------------------------------
      IF (Channels) THEN 
         t = Solver % Mesh % NumberOfEdges 
-        M = Model % Mesh % NumberOfNodes
-        tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
+        M = Solver % Mesh % NumberOfNodes
 
         IF (ParEnv % PEs > 1) THEN
-            PrevNorm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
-        ELSE
-           PrevNorm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
-                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
+           PrevNorm = ParallelNorm(t,AreaSolution(AreaPerm(M+1:M+t))) 
+        ELSE            
+           PrevNorm = SQRT(SUM(AreaSolution(AreaPerm(M+1:M+t))*AreaSolution(AreaPerm(M+1:M+t))))/t  
         END IF
 
         DO iter = 1, NonlinearIter
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
-                 IF (ParEnv % PEs > 1) THEN
-                   IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-                 END IF
+                 IF ((ParEnv % PEs > 1) .AND. &
+                   (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
                  n = Edge % TYPE % NumberOfNodes
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
+
+                 !CHANGE
+                 !If calving, cycle elements with ungrounded nodes and zero all
+                 !hydrology variables
+                 IF(Calving) THEN
+                   CycleElement = .FALSE.
+                   WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                   WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+                   IF(ASSOCIATED(WorkVar)) THEN
+                     DO i=1, n
+                       IF(WorkVar % Values(WorkVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
+                         !IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN
+                           CycleElement = .TRUE.
+                           AreaSolution(AreaPerm(M+t)) = 0.0
+                           QcSolution(QcPerm(M+t)) = 0.0
+                         !END IF
+                       END IF
+                     END DO
+                   END IF
+                   IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
+                     DO i=1,n
+                       IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN 
+                         CycleElement = .TRUE.
+                         AreaSolution(AreaPerm(M+t)) = 0.0
+                         QcSolution(QcPerm(M+t)) = 0.0
+                       END IF
+                     END DO
+                   END IF
+                   NULLIFY(WorkVar, WorkVar2)
+                   IF(CycleElement) CYCLE
+                 END IF              
 
                  EdgeNodes % x(1:n) = Solver % Mesh % Nodes % x(Edge % NodeIndexes(1:n))
                  EdgeNodes % y(1:n) = Solver % Mesh % Nodes % y(Edge % NodeIndexes(1:n))
@@ -1132,9 +1336,7 @@
                     Bfactor(i) = 1.0/(Lw * IceDensity(i)) 
                  END DO
 
-                 M = Model % Mesh % NumberOfNodes
-
-                 IF (AreaPerm(M+t) <= 0 ) CYCLE
+                 M = Solver % Mesh % NumberOfNodes
                  ChannelArea = AreaSolution(AreaPerm(M+t))
 
 ! Compute the force term to evolve the channels area
@@ -1152,8 +1354,7 @@
                  END IF
 
                  k = AreaPerm(M+t)
-                 IF ( k <=  0 ) CYCLE  
-                 SELECT CASE(methodChannels)
+                 SELECT CASE(methodSheet)
                  CASE('implicit') 
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
                  CASE('explicit')
@@ -1162,20 +1363,33 @@
                     AreaSolution(k) = (AreaPrev(k,1)*(1.0_dp + 0.5*ALPHA*dt) + dt*BETA)/(1.0_dp - 0.5*dt*ALPHA)
                  END SELECT 
 
+                 !CHANGE
+                 !To stop weird channel instability where some channels grow
+                 !exponentially to stupid levels and eventually mess up whole
+                 !mesh. Usually seems to be channels with limited fluxes that
+                 !shouldn't do much, so resetting to 0 seems safest
+                 !TODO Come up with a better way of fixing this
+                 IF(MABool) THEN
+                   IF(AreaPrev(k,1) .NE. 0.0) THEN
+                     IF(AreaSolution(k)>1.0 .AND. (AreaSolution(k)/AreaPrev(k,1))>5.0) THEN
+                       AreaSolution(k) = AreaPrev(k,1)
+                     END IF
+                   END IF
+                   IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
+                   IF(ISNAN(AreaSolution(k))) AreaSolution(k) = 0.0
+                 END IF
+
                  ! Save Qc if variable exists
                  IF (ASSOCIATED(QcSol)) THEN
-                    IF ( QcPerm(M+t) <= 0 ) CYCLE
                     QcSolution(QcPerm(M+t)) = Qc
                  END IF
               END DO
 
            t = Solver % Mesh % NumberOfEdges 
-           tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
            IF (ParEnv % PEs > 1) THEN
-               Norm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
-           ELSE
-               Norm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
-                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
+              Norm = ParallelNorm(t,AreaSolution(AreaPerm(M+1:M+t))) 
+           ELSE            
+              Norm = SQRT(SUM(AreaSolution(AreaPerm(M+1:M+t))*AreaSolution(AreaPerm(M+1:M+t))))/t  
            END IF
 
            IF ( PrevNorm + Norm /= 0.0d0 ) THEN
@@ -1188,11 +1402,9 @@
 
            WRITE( Message, * ) 'S (NRM,RELC) : ',iter, Norm, RelativeChange
            CALL Info( SolverName, Message, Level=3 )
-           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) ,&
-                AreaPerm(M+1:M+t) /=0))),MAXLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
+           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(AreaPerm(M+1:M+t))),MAXLOC(AreaSolution)  
            CALL Info( SolverName, Message, Level=3 )
-           WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),&
-                MINLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
+           WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(AreaPerm(M+1:M+t))),MINLOC(AreaSolution)   
 
 
     !      !----------------------
@@ -1202,21 +1414,21 @@
         END DO ! of the nonlinear iteration
 
         ! Make sure Area > 0
-        DO i=1,t
-           IF( AreaPerm(M+i) <= 0 ) CYCLE 
-           AreaSolution(AreaPerm(M+i)) = MAX(AreaSolution(AreaPerm(M+i)), 0.0_dp)
-        END DO
+        AreaSolution(AreaPerm(M+1:M+t)) = MAX(AreaSolution(AreaPerm(M+1:M+t)),0.0_dp)
+        !CHANGE
+        !Stop channels from expanding to eleventy-stupid
+        IF(MABool) THEN
+          AreaSolution(AreaPerm(M+1:M+t)) = MIN(AreaSolution(AreaPerm(M+1:M+t)),MaxArea)
+        END IF
 
 
      END IF  ! If Channels
 
       !   Check for convergence                           
-      Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
       IF (ParEnv % PEs > 1) THEN
-         CoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M) 
-      ELSE
-         CoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) & 
-                             & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
+         CoupledNorm = ParallelNorm(M,HydPot(HydPotPerm(1:M))) 
+      ELSE            
+         CoupledNorm = SQRT(SUM(HydPot(HydPotPerm(1:M))*HydPot(HydPotPerm(1:M))))/M
       END IF
       
       IF ( PrevCoupledNorm + CoupledNorm /= 0.0d0 ) THEN
@@ -1228,7 +1440,7 @@
 
       WRITE( Message, * ) 'COUPLING LOOP (NRM,RELC) : ',iterC, CoupledNorm, RelativeChange
       CALL Info( SolverName, Message, Level=3 )
-       
+
       IF ((RelativeChange < CoupledTol).AND. (iterC > 1)) EXIT 
    END DO ! iterC
 
@@ -1236,14 +1448,8 @@
 ! Output some useful variables
 !--------------------------------------------------------------------------------------------
 ! Already computed variables
-   M = Model % Mesh % NumberOfNodes
-
-   IF (ASSOCIATED(VSol)) THEN 
-      DO i=1, M
-        IF ( VPerm(i) <=  0 ) CYCLE
-        VSolution(VPerm(i)) = Vvar(i)
-      ENDDO
-   ENDIF 
+   M = Solver % Mesh % NumberOfNodes
+   IF (ASSOCIATED(VSol)) VSolution(VPerm(1:M)) = Vvar(1:M)
 
 ! Output the sheet discharge (dimension = dimSheet)
    IF (ASSOCIATED(qSol)) THEN
@@ -1252,6 +1458,9 @@
 
       ! Loop over all elements are we need to compute grad(Phi)
       DO t=1,Solver % NumberOfActiveElements
+         !CHANGE - necessary if using a 2D mesh as is otherwise set to 1 as
+         !boundary elements are last in first loop where it's set
+         dimSheet = Element % TYPE % DIMENSION
          Element => GetActiveElement(t,Solver)
          IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
 
@@ -1273,11 +1482,50 @@
 
          n = GetElementNOFNodes(Element)
          CALL GetElementNodes( ElementNodes )
+         !CHANGE
+         !If calving, cycle elements with ungrounded nodes and zero all
+         !hydrology variables
+         IF(Calving) THEN
+           CycleElement = .FALSE.
+           WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+           WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+           IF(ASSOCIATED(WorkVar)) THEN
+             DO i=1, n
+               IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
+                 !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
+                   CycleElement = .TRUE.
+                   DO j=1,dimSheet
+                     k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
+                     qSolution(k) = 0.0
+                     Refq(k) = 0.0
+                   END DO
+                   EXIT
+                 !END IF
+               END IF
+             END DO
+           END IF
+           IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
+             DO i=1,n
+               IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
+                 CycleElement = .TRUE.
+                 DO j=1,dimSheet
+                   k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
+                   qSolution(k) = 0.0
+                   Refq(k) = 0.0
+                 END DO
+                 EXIT
+               END IF
+             END DO
+           END IF
+           NULLIFY(WorkVar, WorkVar2)
+           IF(CycleElement) CYCLE
+         END IF             
+ 
          ! we need the SheetConductivity, alphas, betas
          CALL GetParametersSheet( Element, Material, n, SheetConductivity, alphas, &
                betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
          
-          ! Go for all nodes of the element        
+          ! Go for all nodes of the element
           DO i=1,n
              Discharge = 0.0_dp
              CALL SheetDischargeCompute( & 
@@ -1296,18 +1544,24 @@
       END DO
 
       ! Mean nodal value
-      DO i=1,n
-         DO j=1,dimSheet
-            k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-            IF ( Refq(k) > 0.0_dp ) THEN 
-              qSolution(k) = qSolution(k)/Refq(k) 
-            END IF
-         END DO  
-      END DO
+      WHERE(Refq > 0.0_dp)
+         qSolution = qSolution / Refq
+      END WHERE
 
    END IF
 
    SubroutineVisited = .TRUE.
+
+   !CHANGE - to make sure PrevValues for added variables in calving updated
+   IF(Calving) THEN
+     WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
+                ThisOnly=.TRUE.)
+     WorkVar % PrevValues(1:Solver % Mesh % NumberOfNodes,1) = WorkVar % Values(1:Solver % Mesh % NumberOfNodes)
+     WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',&
+                ThisOnly=.TRUE.)
+     WorkVar % PrevValues(1:Solver % Mesh % NumberOfEdges,1) = WorkVar % Values(1:Solver % Mesh % NumberOfEdges)
+     NULLIFY(WorkVar)
+   END IF
 
 CONTAINS    
 
@@ -1426,7 +1680,7 @@ CONTAINS
        PhiG = SUM(NodalHydPot(1:n)*Basis(1:n))
        Phi0 = SUM(NodalPhi0(1:n)*Basis(1:n))
        Vfactor = SUM(NodalAr(1:n)*Basis(1:n)) * hsheet
-       ng = SUM(NodalNg(1:n)*Basis(1:n))
+       ng = SUM(NodalNg(1:n)*Basis(1:n)) 
        Vfactor = Vfactor * ABS(Phi0-PhiG)**(ng-1.0_dp)
 
        Force = SUM( LoadVector(1:n)*Basis(1:n) ) 
@@ -1810,8 +2064,7 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
        Ks = Ks * Ngrad**(nbs-2.0_dp) 
 
        Kc = SUM( NodalKc(1:n) * Basis(1:n))
-! OG 17/06/2019 - CArea in factor of ALPHA 
-       Kc = Kc * MAX(CArea,0.0)**(nac-1.0_dp)
+       Kc = Kc * MAX(CArea,0.0)**(nac-1.0_dp) 
        Kc = Kc * Ngrad**(nbc-2.0_dp)  
 
        PhiG = SUM(NodalHydPot(1:n)*Basis(1:n))
@@ -1868,19 +2121,17 @@ END SUBROUTINE GetEvolveChannel
            Snn(:), lr(:), hr(:), Ar(:), ng(:)
   INTEGER :: N
   LOGICAL :: Found = .FALSE.
-
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t), POINTER :: Material
 
 !------------------------------------------------------------------------------
-
   SheetConductivity = 0.0_dp
   SheetConductivity = ListGetReal(Material, 'Sheet Conductivity', n, Element % NodeIndexes, &
-           Found, UnfoundFatal = .TRUE. ) 
+           Found, UnfoundFatal = .TRUE. )
                    
   alphas = 0.0_dp
   alphas(1:N) =  ListGetReal( Material, 'Sheet Flow Exponent alpha', n, Element % NodeIndexes, &
-           Found, UnfoundFatal = .TRUE. ) 
+           Found, UnfoundFatal = .TRUE. )
 
   betas = 0.0_dp
   betas(1:N) =  ListGetReal( Material, 'Sheet Flow Exponent beta', n, Element % NodeIndexes, &
@@ -1891,8 +2142,8 @@ END SUBROUTINE GetEvolveChannel
            Found, UnfoundFatal = .TRUE. ) 
                    
   ub = 0.0_dp
-  ub(1:N) = ListGetReal( Material, 'Sliding Velocity',  N, Element % NodeIndexes, &
-           Found, UnfoundFatal = .TRUE. ) 
+  ub(1:N) = ListGetReal( Material, 'Sliding Velocity',  n, Element % NodeIndexes, &
+            Found, UnfoundFatal = .TRUE. )
 
   Snn = 0.0_dp
   Snn(1:N) = ListGetReal( Material, 'Ice Normal Stress',  N, Element % NodeIndexes, & 
@@ -1944,7 +2195,7 @@ END SUBROUTINE GetParametersSheet
 
   SheetConductivity = 0.0_dp
   SheetConductivity(1:n) = ListGetReal(Material, 'Sheet Conductivity', n, Edge % NodeIndexes, &
-           Found, UnfoundFatal = .TRUE. ) 
+           Found, UnfoundFatal = .TRUE. )
                    
   ChannelConductivity = 0.0_dp
   ChannelConductivity(1:n) = ListGetReal(Material, 'Channel Conductivity', n, Edge % NodeIndexes, & 
@@ -2058,7 +2309,6 @@ END SUBROUTINE GetParametersChannel
 !------------------------------------------------------------------------------
   END SUBROUTINE SheetDischargeCompute
 !------------------------------------------------------------------------------
-
 !------------------------------------------------------------------------------
 END SUBROUTINE GlaDSCoupledsolver
 !------------------------------------------------------------------------------

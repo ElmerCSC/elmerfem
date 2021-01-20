@@ -92,3 +92,4 @@ end
 
 ### Tests and Examples
 
+- See examples for the [Adjoint CostRegSolver](../../examples/Adjoint_CostRegSolver)

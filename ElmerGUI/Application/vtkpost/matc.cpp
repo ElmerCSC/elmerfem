@@ -50,6 +50,12 @@
 #include <vtkPointData.h>
 #include <vtkCellDataToPointData.h>
 
+#ifndef FALSE
+#define FALSE 0
+#endif
+
+
+
 using namespace std;
 
 Matc::Matc(QWidget *parent)

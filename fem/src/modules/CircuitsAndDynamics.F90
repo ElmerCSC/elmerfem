@@ -313,7 +313,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
-            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            CALL Info('AddComponentEquationsAndCouplings',&
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
           ELSE
             Comp % Resistance = 0._dp
@@ -368,7 +369,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
           SELECT CASE(CoilType)
           CASE ('stranded')
-            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
+            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
             CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt)
@@ -394,11 +395,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
+    TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Component_t) :: Comp
     INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
 
@@ -413,13 +415,17 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     LOGICAL :: stat
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+               CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
+
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
     
     SAVE CSymmetry, dim
-    
+
     IF (First) THEN
       First = .FALSE.
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -449,7 +455,23 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase, 'w')
+
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+    
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        !CALL GetLocalSolution(Wbase, 'w')
+        ! when W Potential solver is used, 'w' is not enough.
+        CALL GetWPotential(WBase)
+      END IF
+
       ncdofs=nd-nn
     END IF
 
@@ -476,7 +498,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+
+        IF (CoilUseWvec) THEN
+          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
       END SELECT
 
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
@@ -1153,7 +1180,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
-            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            CALL Info('AddComponentEquationsAndCouplings', &
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
             CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
           ELSE
             Comp % Resistance = 0._dp
@@ -1800,7 +1828,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   LOGICAL, SAVE :: EEC, First =.TRUE.
   LOGICAL :: EEC_lim
-  REAL, SAVE :: EEC_freq, EEC_time_0
+  REAL(KIND=dp), SAVE :: EEC_freq, EEC_time_0
   INTEGER, SAVE :: EEC_max, EEC_cnt = 0
   REAL :: TTime
   TYPE(ValueList_t), POINTER :: SolverParams
@@ -1831,15 +1859,15 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     ! Reading parameter for supply frequency
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
     IF (EEC) THEN
-      CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=4)
 	    WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
       
           
       EEC_max = GetInteger( SolverParams, 'EEC Steps', EEC_lim)
       IF (.NOT. EEC_lim) EEC_max = 5 !Typically 5 correections is enough
       WRITE( Message,'(A,I5,A)') 'Applying ', EEC_max, ' halfperiod corrections'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
       
       EEC_time_0 = 0.0
       
@@ -1864,7 +1892,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
       EEC_cnt = EEC_cnt + 1
       WRITE( Message,'(A,4G11.4)') 'Performing EEC #', EEC_cnt
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq
 
@@ -1911,12 +1939,12 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
 
-   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=3) 
+   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=5) 
    DO p=1,n_Circuits
      CALL Info('CircuitsOutput', 'Writing Circuit Variables for &
-       Circuit '//TRIM(i2s(p)), Level=3) 
+       Circuit '//TRIM(i2s(p)), Level=5) 
      CALL Info('CircuitsOutput', 'There are '//TRIM(i2s(Circuits(p)%n))//&
-       ' Circuit Variables', Level=3)
+       ' Circuit Variables', Level=5)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
        
@@ -1954,7 +1982,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
      END DO
 
      CALL Info('CircuitsOutput', 'Writing Component Variables for &
-       Circuit '//TRIM(i2s(p)), Level=3) 
+       Circuit '//TRIM(i2s(p)), Level=5) 
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &

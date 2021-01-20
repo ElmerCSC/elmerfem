@@ -290,7 +290,7 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   REAL(KIND=dp) ::FrontOrientation(3), RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3)
   REAL(KIND=dp), POINTER :: TimestepSizes(:,:)
   REAL(KIND=dp) :: time, dt, PseudoSSdt, SaveDt, LastRemeshTime, TimeSinceRemesh, ForceRemeshTime,&
-       ZThresh, global_eps, local_eps
+       ZThresh, global_eps, local_eps, CalvingTime
   LOGICAL :: Debug, Parallel, CalvingOccurs, RemeshOccurs, PauseSolvers, Found, &
        RotFS, FirstTime = .TRUE.,CalvingLastTime, PauseAfterCalving, FrontalBecomeBasal, &
        TangleOccurs, CheckTangled, NSFail, CheckFlowConvergence, IgnoreCalving
@@ -414,12 +414,20 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   !Get current simulation time
   TimeVar => VariableGet(Model % Variables, 'Time', .TRUE.)
   time = TimeVar % Values(1)
+  !CHANGE
+  CalvingTime = ListGetConstReal(Model % Simulation, 'CalvingTime', Found)
 
   !Is there a calving event?
   IF(.NOT. IgnoreCalving) THEN
     CalvingOccurs = ListGetLogical(Model % Simulation, 'CalvingOccurs', Found)
     IF(.NOT.Found) CALL Warn(SolverName, "Unable to find CalvingOccurs logical, &
          & assuming no calving event.")
+    !CHANGE
+    IF(time == CalvingTime) THEN
+      CalvingOccurs = CalvingOccurs
+    ELSE
+      CalvingOccurs = .FALSE.
+    END IF
   ELSE
     CalvingOccurs = .FAlSE.
   END IF
@@ -542,7 +550,9 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
 
      NewMesh % Name = TRIM(Mesh % Name)
      NewMesh % OutputActive = .TRUE.
-     NewMesh % Changed = .TRUE. 
+     NewMesh % Changed = .TRUE.
+     !CHANGE
+     NewMesh % MeshTag = Mesh % MeshTag + 1 
 
      CALL SwitchMesh(Model, Solver, Mesh, NewMesh)
      CALL MeshStabParams( Model % Mesh )
@@ -675,7 +685,9 @@ SUBROUTINE Remesher( Model, Solver, dt, Transient )
   END IF
 
   FirstTime = .FALSE.
-  CalvingLastTime = CalvingOccurs
+
+  !CHANGE
+  IF(time == CalvingTime) CalvingLastTime = CalvingOccurs
 
   IF(ASSOCIATED(NewBasalNode)) DEALLOCATE(NewBasalNode)
 

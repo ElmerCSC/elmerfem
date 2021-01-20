@@ -412,7 +412,7 @@ END MODULE PorousMaterials
       END IF
       
       IF( InitSolution ) THEN
-        Relax = GetConstReal(SolverParams,&
+        Relax = GetCReal(SolverParams,&
             'Nonlinear System Relaxation Factor',Found)
         IF(Found) THEN
           CALL ListAddConstReal(SolverParams,&
@@ -860,12 +860,7 @@ SUBROUTINE RichardsPostprocess( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % rhs = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   ! We need DIM r.h.s. vectors, allocated DIM-1 additional ones  
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),Dofs-1))  
@@ -873,7 +868,12 @@ SUBROUTINE RichardsPostprocess( Model,Solver,dt,Transient )
   SaveRHS => Solver % Matrix % RHS
   
   CALL BulkAssembly()
-  CALL DefaultFinishBulkAssembly()
+
+  IF (ConstantBulkMatrix) THEN 
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
+  END IF
 
   CALL DefaultFinishAssembly()
   

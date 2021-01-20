@@ -70,7 +70,8 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
 !  
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: DefaultCostFile = 'CostOfT.dat'
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName,CostFile
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='CostSolver_Adjoint'
+  CHARACTER(LEN=MAX_NAME_LEN) :: CostFile
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName
   TYPE(Element_t),POINTER ::  Element
   TYPE(Variable_t), POINTER :: TimeVar,CostVar
@@ -94,6 +95,13 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
   save SolverName,CostSolName,CostFile
   save ElementNodes
 
+   CALL Info(SolverName,'***********************',level=0)
+   CALL Info(SolverName,' This solver has been replaced by:',level=0)
+   CALL Info(SolverName,'   Adjoint_CostContSolver  ',level=0)
+   CALL Info(SolverName,' See documentation under:   ',level=0)
+   CALL Info(SolverName,'   elmerice/Solvers/Documentation   ',level=0)
+   CALL Info(SolverName,'***********************',level=0)
+   CALL FATAL(SolverName,' Use new solver !!')
 
   SolverParams => GetSolverParams()
   DIM=GetInteger(SolverParams ,'Problem Dimension',Found)

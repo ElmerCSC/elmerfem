@@ -6,5 +6,4 @@ ADD_ELMERICETEST_MODULE(Teterousse3a_b USF_TR ./PROG/USF_TR.f90)
 FILE(COPY ELMERSOLVER_STARTINFO PROG teterousse.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMERICE_TEST(Teterousse3a_b)
-ADD_ELMERICE_LABEL(Teterousse3a_b elmerice-long)
-ADD_ELMERICE_LABEL(Teterousse3a_b slow)
+ADD_ELMERICE_LABEL(Teterousse3a_b elmerice-fast)

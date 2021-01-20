@@ -12,8 +12,10 @@
 
 if(APPLE)
   # message("you need to have gcc-gfrotran installed using HomeBrew")
-  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-9")
-  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-9")
+  # set(CMAKE_C_COMPILER "/usr/bin/gcc")
+  # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
+  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-10")
+  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
   set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
   # set(BLA_VENDOR "OpenBLAS")
   # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
@@ -23,12 +25,16 @@ endif()
 
 
 
+
+
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
 PROJECT(Elmer Fortran C CXX)
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
+
+# CMAKE_VERSION seems to require this in minimum
+CMAKE_MINIMUM_REQUIRED(VERSION 3.0.2)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
@@ -122,8 +128,9 @@ MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
 ENABLE_TESTING()
 
-SET(ELMER_FEM_MAJOR_VERSION 8)
-SET(ELMER_FEM_MINOR_VERSION 4)
+SET(ELMER_FEM_MAJOR_VERSION 9)
+SET(ELMER_FEM_MINOR_VERSION 0)
+
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
 
@@ -177,13 +184,34 @@ IF(WITH_OpenMP)
     OpenMP_Fortran_FLAGS
     OpenMP_CXX_FLAGS
     )
-  
   FIND_PACKAGE(OpenMP REQUIRED)
-  # Add OpenMP flags to compilation flags
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 
+  # Add OpenMP flags to compilation flags
+  # if(APPLE)
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_C "${CMAKE_C_COMPILER}")
+  #     set(OpenMP_C_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_C_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #   endif()
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
+  #     set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #   endif()
+  # else()
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  # endif()
+
+ 
+  
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
   IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
@@ -197,6 +225,15 @@ IF(WITH_OpenMP)
     ENDIF()
   ENDIF()
 ENDIF()
+
+# Get rid of the annoying rank mismatch warning
+IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+  IF(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.9)
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
+#    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
+  ENDIF()
+ENDIF()
+  
 
 IF(WITH_MPI)
   # Advanced properties

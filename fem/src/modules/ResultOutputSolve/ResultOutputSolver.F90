@@ -32,7 +32,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   USE DefUtils
-
+  USE AscBinOutputUtils
+  
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
@@ -42,7 +43,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: SaveGid, SaveVTK, SaveOpenDx, SaveGmsh, &
       SaveVTU, SaveEP, SaveAny, ListSet = .FALSE., ActiveMesh, &
       SomeMeshSaved, SaveAllMeshes
-  INTEGER :: i,nInterval=1, nstep=0, OutputCount = 0, MeshDim,&
+  INTEGER :: i,nInterval=1, nstep=0, OutputCount(6) = 0, MeshDim,&
       MinMeshDim,MaxMeshDim,MeshLevel,nlen,NoMeshes
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
@@ -54,6 +55,10 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: ModelVariables
   CHARACTER(*), PARAMETER :: Caller = 'ResultOutputSolver'
   INTEGER :: SaveSolverMeshIndex
+  LOGICAL :: CalcNrm
+  REAL(KIND=dp) :: Nrm
+  REAL(KIND=dp), POINTER :: RefResults(:,:)
+  
   
   SAVE SubroutineVisited, OutputCount, ListSet, MeshDim, ListMeshName
 
@@ -127,12 +132,15 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     CALL Info(Caller,'Saving with prefix: '//TRIM(FilePrefix))
   END IF	
 
-
   ! The idea of this is that the independent subroutines may be called 
   ! with different data sets and still maintaining the standard output calling convention
-  OutputCount = OutputCount + 1
-  CALL ListAddInteger( Params,'Output Count',OutputCount)
-
+  IF(SaveVtu)  OutputCount(1) = OutputCount(1) + 1
+  IF(SaveGmsh) OutputCount(2) = OutputCount(2) + 1
+  IF(SaveVTK)  OutputCount(3) = OutputCount(3) + 1
+  IF(SaveEp)   OutputCount(4) = OutputCount(4) + 1
+  IF(SaveGid)  OutputCount(5) = OutputCount(5) + 1
+  IF(SaveOpenDx) OutputCount(6) = OutputCount(6) + 1
+  
   ! Finally go for it and write desired data
   ! Some formats requite that the list of variables is explicitly given
   !-----------------------------------------
@@ -146,6 +154,9 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   
   MinMeshDim = ListGetInteger( Params,'Minimum Mesh Dimension',Found )
   MaxMeshDim = ListGetInteger( Params,'Maximum Mesh Dimension',Found )
+
+  RefResults => ListGetConstRealArray( Params,'Reference Sums',CalcNrm )
+  CALL AscBinInitNorm(CalcNrm) 
   
   ! Loop over the meshes and save them using the selected format(s).
   ! First iteration just count the meshes. 
@@ -244,38 +255,44 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
     IF ( ASSOCIATED(Mesh)) THEN
 
-    CALL SetCurrentMesh( Model, Mesh )
-    Model % Variables => Mesh % variables 
-    SomeMeshSaved = .TRUE.
+      CALL SetCurrentMesh( Model, Mesh )
+      Model % Variables => Mesh % variables 
+      SomeMeshSaved = .TRUE.
+
+      IF( SaveVTU ) THEN
+        CALL Info( Caller,'Saving in unstructured VTK XML (.vtu) format' )               
+        CALL ListAddInteger( Params,'Output Count',OutputCount(1))
+        CALL VtuOutputSolver( Model,Solver,dt,TransientSimulation )
+      END IF
+      IF( SaveGmsh ) THEN
+        CALL Info( Caller,'Saving in gmsh 2.0 (.msh) format' )
+        CALL ListAddInteger( Params,'Output Count',OutputCount(2))      
+        CALL GmshOutputSolver( Model,Solver,dt,TransientSimulation )
+      END IF
+      IF( SaveVTK ) THEN
+        CALL Info( Caller,'Saving in legacy VTK (.vtk) format' )
+        CALL ListAddInteger( Params,'Output Count',OutputCount(3))
+        CALL VtkOutputSolver( Model,Solver,dt,TransientSimulation )
+      END IF
+      IF( SaveEP ) THEN
+        CALL Info( Caller,'Saving in ElmerPost (.ep) format' )
+        CALL ListAddInteger( Params,'Output Count',OutputCount(4))
+        CALL ElmerPostOutputSolver( Model,Solver,dt,TransientSimulation )
+      END IF
+      IF( SaveGid ) THEN
+        CALL Info( Caller,'Saving in GiD format' )    
+        CALL ListAddInteger( Params,'Output Count',OutputCount(5))
+        CALL GiDOutputSolver( Model,Solver,dt,TransientSimulation )
+      END IF
+      IF( SaveOpenDx ) THEN
+        CALL Info( Caller,'Saving in OpenDX (.dx) format' )
+        CALL ListAddInteger( Params,'Output Count',OutputCount(6))
+        CALL DXOutputSolver( Model,Solver,dt,TransientSimulation )
+      END IF
+
+      CALL Info( Caller, '-------------------------------------')
+    END IF
     
-    IF( SaveGid ) THEN
-      CALL Info( Caller,'Saving in GiD format' )    
-      CALL GiDOutputSolver( Model,Solver,dt,TransientSimulation )
-    END IF
-    IF( SaveGmsh ) THEN
-      CALL Info( Caller,'Saving in gmsh 2.0 format' )        
-      CALL GmshOutputSolver( Model,Solver,dt,TransientSimulation )
-    END IF
-    IF( SaveVTK ) THEN
-      CALL Info( Caller,'Saving in legacy VTK format' )            
-      CALL VtkOutputSolver( Model,Solver,dt,TransientSimulation )
-    END IF
-    IF( SaveVTU ) THEN
-      CALL Info( Caller,'Saving in unstructured VTK XML (.vtu) format' )               
-      CALL VtuOutputSolver( Model,Solver,dt,TransientSimulation )
-    END IF
-    IF( SaveOpenDx ) THEN
-      CALL Info( Caller,'Saving in OpenDX format' )                   
-      CALL DXOutputSolver( Model,Solver,dt,TransientSimulation )
-    END IF
-    IF( SaveEP ) THEN
-      CALL Info( Caller,'Saving in ElmerPost format' )                   
-      CALL ElmerPostOutputSolver( Model,Solver,dt,TransientSimulation )
-    END IF
-
-    CALL Info( Caller, '-------------------------------------')
-    END IF
-
     iMesh => iMesh % Next
   END DO
 
@@ -293,4 +310,16 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   SubroutineVisited = .TRUE.
 
+  IF( CalcNrm ) THEN
+    IF( SaveVtu ) THEN
+      Nrm = AscBinCompareNorm(RefResults(:,1))
+      Solver % Variable % Norm = Nrm
+      WRITE( Message,'(A,ES12.3)' ) 'Calculate Pseudonorm:',Nrm
+      CALL Info(Caller, Message)
+    ELSE
+      CALL Warn(Caller,'Reference norm computation implemented only for VTU format!')
+    END IF
+  END IF
+
+  
 END SUBROUTINE ResultOutputSolver

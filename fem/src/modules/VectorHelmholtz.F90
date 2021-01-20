@@ -238,7 +238,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
-    mu0inv = GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
+    mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
   END IF
   IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
   
@@ -542,7 +542,7 @@ CONTAINS
         DO i = 1,nd
           DO j = 1,nd
             ! the term i\omega\sigma E.v
-            STIFF(i,j) = STIFF(i,j) + im * Omega * Cond * &
+            STIFF(i,j) = STIFF(i,j) - im * Omega * Cond * &
                 SUM(WBasis(j,:) * WBasis(i,:)) * weight
           END DO
         END DO
@@ -1027,7 +1027,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN
-     mu0inv = GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
+     mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
    END IF
    IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
    
@@ -1213,9 +1213,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
            k = k+3
          END IF
          IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H) 
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H)*Basis(p)
            k = k+3
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)*Basis(p)
            k = k+3
          END IF
          IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN

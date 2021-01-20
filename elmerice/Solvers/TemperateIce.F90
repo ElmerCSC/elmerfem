@@ -80,7 +80,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
 
   INTEGER :: i,j,k,l,m,n,t,iter,body_id,eq_id,material_id, &
        istat, LocalNodes,bf_id, bc_id,  DIM, ierr, &
-       NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin
+       NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin, constrainednodes
 
   INTEGER, POINTER :: NodeIndexes(:), TempPerm(:),FlowPerm(:),CurrentPerm(:),MeshPerm(:)
 
@@ -100,7 +100,8 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
        SaveRelax,dt,CumulativeTime, RelativeChange, &
        Norm,PrevNorm,S,C, &
        ReferencePressure=0.0d0, &
-       HeatCapacityGradient(3), round = 0.0D00
+       HeatCapacityGradient(3), round = 0.0D00, &
+       MinTemp, MaxTemp, CurrTemp
   REAL(KIND=dp), POINTER :: Temp(:), FlowSolution(:), &
        ForceVector(:), PrevSolution(:), HC(:), Hwrk(:,:,:),&
        PointerToResidualVector(:),&
@@ -186,7 +187,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
   !------------------------------------------------------------------------------
   !    Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Solver % Mesh % MaxElementNodes
      M = Model % Mesh % NumberOfNodes
      K = SIZE( SystemMatrix % Values )
@@ -463,7 +464,17 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
      !WRITE(Message,'(a,e13.6,a,e13.6)') &
      !     'Max/min values Temperature:', MAXVAL( Temp(:)),'/',MINVAL( Temp(:))
      !CALL INFO(SolverName,Message,Level=4)
-     PRINT *, ParEnv % myPe, ': Max/min values Temperature:', MAXVAL( Temp(:)),'/',MINVAL( Temp(:))
+     MinTemp = MINVAL( Temp(:))
+     MaxTemp = MAXVAL( Temp(:))
+     IF( ParEnv % PEs > 1 ) THEN
+       CurrTemp = MinTemp
+       CALL MPI_ALLREDUCE(CurrTemp,MinTemp,1,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
+       CurrTemp = MaxTemp
+       CALL MPI_ALLREDUCE(CurrTemp,MaxTemp,1,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
+     END IF
+     WRITE (Message, *) 'Max/min values Temperature: ', MaxTemp,'/', MinTemp
+     !PRINT *, ParEnv % myPe, ': Max/min values Temperature:', MAXVAL( Temp(:)),'/',MINVAL( Temp(:))
+     CALL INFO( SolverName, Message, Level=3)
      !-----------------------------------------------------------------------------
      body_id = -1
      NULLIFY(Material)
@@ -990,8 +1001,16 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
            !CALL INFO(SolverName,Message,Level=1)
            !WRITE(Message,'(a,i10)') 'Number of constrained points:', COUNT(ActiveNode) 
            !CALL
-           IF (k>0) PRINT *, ParEnv % myPe, ':', 'Deactivated Periodic BC nodes:', k
-           PRINT *, ParEnv % myPe, ':',' Number of constrained points:', COUNT(ActiveNode)
+          IF (k>0) PRINT *, ParEnv % myPe, ':', 'Deactivated Periodic BC nodes:', k
+          IF (ParEnv % PEs > 1 ) THEN
+            CALL MPI_ALLREDUCE(COUNT(ActiveNode), constrainednodes, 1, MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr)
+          ELSE
+            constrainednodes = COUNT(ActiveNode)
+          END IF
+          !PRINT *, ParEnv % myPe, ':',' Number of constrained points:', COUNT(ActiveNode)
+          WRITE (Message, *) 'Number of constrained points: ', constrainednodes
+          CALL INFO( SolverName, Message, Level=3)
+          
         END IF
      END IF
   END DO ! of the nonlinear iteration

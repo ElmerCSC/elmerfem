@@ -260,7 +260,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF(.NOT. GotFrequency ) THEN
-    CALL Fatal('HelmholtzSolver','Could not fugure out Frquency!')
+    CALL Fatal('HelmholtzSolver','Could not figure out Frequency!')
   END IF
 
 

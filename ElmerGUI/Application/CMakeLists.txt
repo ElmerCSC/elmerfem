@@ -102,6 +102,8 @@ SET(SOURCES src/bodypropertyeditor.cpp
   twod/twodview.cpp 
   twod/curveeditor.cpp)
 
+ADD_DEFINITIONS(-DEG_PLUGIN)
+
 IF(WITH_QWT)
   SET(HEADERS ${HEADERS} src/convergenceview.h)
   SET(SOURCES ${SOURCES} src/convergenceview.cpp)

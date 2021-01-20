@@ -81,7 +81,7 @@ CONTAINS
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
         VeloVec(:,:), PresVec(:), GradVec(:,:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
+    REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
 
     REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1), muder, jacord(ntot,ntot,dim+1,dim+1), &
                        JAC(ntot*(dim+1),ntot*(dim+1) ), jsum
@@ -156,9 +156,6 @@ CONTAINS
     END IF
 
     IF (Newton) THEN
-      IF (ALLOCATED(muDerVec0)) THEN
-        DEALLOCATE(muDerVec0, g, StrainRateVec)
-      END IF
       ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
       muDerVec0 = 0._dp
     END IF
@@ -537,7 +534,8 @@ END BLOCK
       INTEGER :: ngp
       REAL(KIND=dp) :: BasisVec(:,:), dBasisdxVec(:,:,:)
       TYPE(Element_t), POINTER :: Element
-      REAL(KIND=dp) :: NodalSol(:,:), ViscDerVec(:)
+      REAL(KIND=dp) :: NodalSol(:,:)
+      REAL(KIND=dp), ALLOCATABLE :: ViscDerVec(:)
       LOGICAL :: InitHandles , ViscNewton
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
 
@@ -589,11 +587,13 @@ END BLOCK
             CALL ListInitElementKeyword( ViscEne2_h,'Material','Activation Energy 2',DefRValue=139.0d03)       
             CALL ListInitElementKeyword( ViscTemp_h,'Material','Relative Temperature')            
 
-            IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
-              CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
-            END IF
-            IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
-              CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+            IF (.NOT.ListCheckPresentAnyMaterial( CurrentModel,'Glen Allow Old Keywords')) THEN
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Constant Temperature') ) THEN
+                CALL Fatal('EffectiveViscosityVec','Replace >Constant Temperature< with >Relative Temperature<')
+              END IF
+              IF( ListCheckPresentAnyMaterial( CurrentModel,'Temperature Field Variable') ) THEN
+                CALL Fatal('EffectiveViscosityVec','Replace >Temperature Field Variable< with >Relative Temperature<')
+              END IF
             END IF
             IF( ListCheckPresentAnyMaterial( CurrentModel,'Glen Enhancement Factor Function')  ) THEN
               CALL Fatal('EffectiveViscosityVec','No Glen function API yet!')

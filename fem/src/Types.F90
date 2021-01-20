@@ -200,7 +200,7 @@ MODULE Types
     REAL(KIND=dp) :: RhsScaling
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
-        PrecValues(:)=>NULL()
+        PrecValues(:)=>NULL(), HaloValues(:)=>Null(), HaloMassValues(:)=>Null()
 
 #ifdef HAVE_FETI4I
     TYPE(C_PTR) :: PermonMatrix = C_NULL_PTR, PermonSolverInstance = C_NULL_PTR
@@ -409,7 +409,8 @@ MODULE Types
 
    
    TYPE VariableTable_t     
-     TYPE(Variable_t), POINTER :: Variable
+     TYPE(Variable_t), POINTER :: Variable => NULL()
+     REAL(KIND=dp) :: ParamValue
    END TYPE VariableTable_t
 
    
@@ -814,6 +815,13 @@ MODULE Types
      LOGICAL :: LumpedDiag = .TRUE.
    END TYPE MortarBC_t
 
+   TYPE TabulatedBasisAtIp_t
+     REAL(KIND=dp), POINTER :: Basis(:) => NULL()
+     REAL(KIND=dp), POINTER :: dBasisdx(:,:) => NULL()
+     REAL(KIND=dp) :: Weight = 0.0_dp
+   END TYPE TabulatedBasisAtIp_t
+
+   
 !------------------------------------------------------------------------------
 
 !   TYPE Constants_t
@@ -892,6 +900,7 @@ MODULE Types
     LOGICAL :: UseCoilResistance = .FALSE.
   END TYPE Component_t
 
+!-------------------Circuit stuff----------------------------------------------
   TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
@@ -924,7 +933,10 @@ MODULE Types
 !     Variables
 !
       TYPE(Variable_t), POINTER  :: Variables => NULL()
-!
+
+!     External control of the simulation to sweep over parameter space.
+      TYPE(ValueList_t), POINTER :: Control => Null()
+      
 !     Some physical constants, that will be read from the database or set by
 !     other means: gravity direction/intensity and Stefan-Boltzmann constant)
 !

@@ -14,9 +14,11 @@
  Regularistaion from **prior** value
 
 - Valid_CostRegSolver5.sif
- Optimisation using a **prior**. Must be run in parallel
+ Optimisation using a **prior**. 
 
-## RUnning the tests
+## Running the tests
+
+All cases can be run in serial or parallel
 
 ```bash
 # Make mesh

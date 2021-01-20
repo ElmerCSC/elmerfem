@@ -49,7 +49,7 @@ Solver 1
 
 ! Not active when using potential as source
   Fix Input Current density = True
-  jfix: Skip Compute Nonlinear Change = Logical False
+  jfix: Skip Compute Nonlinear Change = Logical True
 
 ! This only has effect is single node BC is not given in body force
   Automated Source Projection BCs = Logical True
@@ -93,7 +93,7 @@ Solver 2
   Linear System Preconditioning = ILU0
   Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
-  Linear System Residual Output = 1
+  Linear System Residual Output = 10
   Linear System Precondition Recompute = 1
 
   Calculate Nodal Forces = True

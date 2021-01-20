@@ -1,1 +1,1 @@
-# Regularisation
+# Regularisation {#reg_solvers}

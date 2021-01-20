@@ -113,3 +113,4 @@ Bellow is the sequence and related keywords in the *.sif* file:
 
 ### Tests and Examples
 
+- See examples for the [inverse methods](../../examples/Inverse_Methods)

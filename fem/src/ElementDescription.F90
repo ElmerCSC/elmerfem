@@ -414,8 +414,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>    Read the element description input file and add the element types to a
-!>    global list. The file is assumed to be found under the name
+!>   Read the element description input file and add the element types to a
+!>   global list. The file is assumed to be found under the name
 !>        $ELMER_HOME/lib/elements.def
 !>   This is the first routine the user of the element utilities should call
 !>   in his/her code.
@@ -786,7 +786,11 @@ CONTAINS
 
           s = 0.0d0
           DO i=1,BasisFunctions(n) % n
-             s = s + Coeff(i) * u**p(i)
+            IF (p(i)==0) THEN
+              s = s + Coeff(i)
+            ELSE
+              s = s + Coeff(i) * u**p(i)
+            END if
           END DO
           y = y + s * x(n)
        END IF
@@ -822,7 +826,11 @@ CONTAINS
 
        s = 0.0d0
        DO i=1,BasisFunctions(n) % n
-          s = s + Coeff(i) * u**p(i)
+         IF (p(i)==0) THEN
+           s = s + Coeff(i)
+         ELSE
+           s = s + Coeff(i) * u**p(i)
+         END if
        END DO
        y(n) = s
      END DO
@@ -959,19 +967,19 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of a quantity x given at element nodes
-!>   at local coordinate point (u,vb) inside the element. Element basis functions
-!>   are used to compute the value.This is for 2D elements, and shouldn't probably
+!>   Given element structure return the value of a quantity x known at element nodes
+!>   at local coordinate point (u,v) inside the element. Element basis functions
+!>   are used to compute the value. This is for 2D elements, and shouldn't probably
 !>   be called directly by the user but through the wrapper routine
 !>   InterpolateInElement.
 !------------------------------------------------------------------------------
    FUNCTION InterpolateInElement2D( element,x,u,v ) RESULT(y)
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element          !< element structure
-     REAL(KIND=dp) :: u                  !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp) :: v                  !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp), DIMENSION(:) :: x    !< Nodal values of the quantity whose partial derivative we want to know
-     REAL(KIND=dp) :: y                  !< value of the quantity y = x(u,v)
+     REAL(KIND=dp) :: u                  !< u at the point where the quantity is evaluated
+     REAL(KIND=dp) :: v                  !< v at the point where the quantity is evaluated
+     REAL(KIND=dp), DIMENSION(:) :: x    !< Nodal values of the quantity
+     REAL(KIND=dp) :: y                  !< The value of the quantity y = x(u,v)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1057,8 +1065,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>   Given element structure return value of the first partial derivative with
-!>   respect to local coordinate u of i quantity x given at element nodes at local
+!>   Given element structure return the value of the first partial derivative with
+!>   respect to local coordinate u of a quantity x given at element nodes at local
 !>   coordinate point u,v inside the element. Element basis functions are used to
 !>   compute the value. 
 !------------------------------------------------------------------------------
@@ -1365,8 +1373,8 @@ CONTAINS
    SUBROUTINE NodalBasisFunctions3D( y,element,u,v,w )
 !------------------------------------------------------------------------------
      TYPE(Element_t) :: element        !< element structure
-     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the partial derivative
-     REAL(KIND=dp) :: y(:)             !< value of the quantity y = x(u,v,w)
+     REAL(KIND=dp) :: u,v,w            !< Point at which to evaluate the basis functions
+     REAL(KIND=dp) :: y(:)             !< The values of the basis functions
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -1533,47 +1541,47 @@ CONTAINS
       l = elt % BasisFunctionDegree
       BasisFunctions => elt % BasisFunctions
 
-IF ( Elt % ElementCode == 605 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+      IF ( Elt % ElementCode == 605 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1) * ( -(1-u) + u*w * s ) / 4
-  y = y + x(2) * ( -(1+u) - u*w * s ) / 4
-  y = y + x(3) * (  (1+u) + u*w * s ) / 4
-  y = y + x(4) * (  (1-u) - u*w * s ) / 4
+        y = 0.0d0
+        y = y + x(1) * ( -(1-u) + u*w * s ) / 4
+        y = y + x(2) * ( -(1+u) - u*w * s ) / 4
+        y = y + x(3) * (  (1+u) + u*w * s ) / 4
+        y = y + x(4) * (  (1-u) - u*w * s ) / 4
 
-  RETURN
-ELSE IF ( Elt % ElementCode == 613 ) THEN
-  IF ( w == 1 ) w = 1.0d0-1.0d-12
-  s = 1.0d0 / (1-w)
+        RETURN
+      ELSE IF ( Elt % ElementCode == 613 ) THEN
+        IF ( w == 1 ) w = 1.0d0-1.0d-12
+        s = 1.0d0 / (1-w)
 
-  y = 0.0d0
-  y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
-           (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
+        y = 0.0d0
+        y = y + x(1)  * ( -( (1-u) * (1-v) - w + u*v*w * s ) +  &
+            (-u-v-1) * ( -(1-u) + u*w * s ) ) / 4
 
-  y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
-           ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
+        y = y + x(2)  * ( -( (1+u) * (1-v) - w - u*v*w * s ) + &
+            ( u-v-1) * ( -(1+u) - u*w * s ) ) / 4
 
-  y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
-           ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
+        y = y + x(3)  * (  ( (1+u) * (1+v) - w + u*v*w * s ) + &
+            ( u+v-1) * (  (1+u) + u*w * s ) ) / 4
 
-  y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
-           (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
+        y = y + x(4)  * (  ( (1-u) * (1+v) - w - u*v*w * s ) + &
+            (-u+v-1) * (  (1-u) - u*w * s ) ) / 4
 
-  y = y + x(5)  * 0.0d0
+        y = y + x(5)  * 0.0d0
 
-  y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
-  y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
-  y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
-  y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
+        y = y - x(6)  *  (1+u-w)*(1-u-w) * s / 2
+        y = y + x(7)  * ( (1-v-w)*(1+u-w) - (1+v-w)*(1+u-w) ) * s / 2
+        y = y + x(8)  *  (1+u-w)*(1-u-w) * s / 2
+        y = y + x(9)  * ( (1-v-w)*(1-u-w) - (1+v-w)*(1-u-w) ) * s / 2
 
-  y = y - x(10) *  w * (1-u-w) * s
-  y = y - x(11) *  w * (1+u-w) * s
-  y = y + x(12) *  w * (1+u-w) * s
-  y = y + x(13) *  w * (1-u-w) * s
-  RETURN
-END IF
+        y = y - x(10) *  w * (1-u-w) * s
+        y = y - x(11) *  w * (1+u-w) * s
+        y = y + x(12) *  w * (1+u-w) * s
+        y = y + x(13) *  w * (1-u-w) * s
+        RETURN
+      END IF
 
       y = 0.0d0
       DO n = 1,elt % NumberOfNodes
@@ -4422,18 +4430,20 @@ END BLOCK
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
+       INTEGER, PARAMETER :: MaxDOFs = 48 ! The largest DOF count handled, revise when new elements are added
+
        TYPE(Mesh_t), POINTER :: Mesh
        INTEGER, POINTER :: EdgeMap(:,:), FaceMap(:,:), Ind(:)
        INTEGER :: SquareFaceMap(4)
        INTEGER :: DOFs
        INTEGER :: n, dim, q, i, j, k, ni, nj, nk, I1, I2
-       INTEGER :: FDofMap(4,3), DofsPerFace, FaceIndices(4)
+       INTEGER :: FDofMap(6,4), DofsPerFace, FaceIndices(4)
        REAL(KIND=dp) :: LF(3,3)
-       REAL(KIND=dp) :: DivBasis(12) ! Note the hard-coded size, alter if new elements are added
-       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2
-       REAL(KIND=dp) :: BDMBasis(12,3), BDMDivBasis(12), WorkBasis(2,3), WorkDivBasis(2)
+       REAL(KIND=dp) :: DivBasis(MaxDOFs)
+       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), S, D1, D2, fun, dfun
+       REAL(KIND=dp) :: WorkBasis(24,3), WorkDivBasis(24)
 
-       LOGICAL :: RevertSign(4), CreateBDMBasis, Parallel
+       LOGICAL :: ReverseSign(6), CreateBDMBasis, Parallel
        LOGICAL :: CreateDualBasis
        LOGICAL :: PerformPiolaTransform
 !-----------------------------------------------------------------------------------------------------
@@ -4492,6 +4502,11 @@ END BLOCK
              Basis(q) = TetraNodalPBasis(q, u, v, w)
              dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
           END DO
+       CASE(8)
+         DO q=1,n
+           Basis(q) = BrickNodalPBasis(q, u, v, w)
+           dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
+         END DO
        CASE DEFAULT
           CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
        END SELECT          
@@ -4531,7 +4546,7 @@ END BLOCK
           !-----------------------------------------------------------------------------------
           ! Check first whether a sign reversion will be needed as face dofs have orientation.
           !-----------------------------------------------------------------------------------
-          CALL FaceElementOrientation(Element, RevertSign)
+          CALL FaceElementOrientation(Element, ReverseSign)
 
           IF (CreateBDMBasis) THEN
              !----------------------------------------------------------------------------
@@ -4577,7 +4592,7 @@ END BLOCK
              ! Now do the reordering and sign reversion:
              !-----------------------------------------------------
              DO q=1,3
-               IF (RevertSign(q)) THEN
+               IF (ReverseSign(q)) THEN
                  DO j=1,DofsPerFace
                    i = (q-1)*DofsPerFace + j
                    WorkBasis(j,1:2) = FBasis(i,1:2)
@@ -4598,7 +4613,7 @@ END BLOCK
              FBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
              FBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
              DivBasis(1) =  SQRT(3.0d0)/3.0d0
-             IF (RevertSign(1)) THEN
+             IF (ReverseSign(1)) THEN
                FBasis(1,:) = -FBasis(1,:)
                DivBasis(1) = -DivBasis(1)
              END IF
@@ -4606,7 +4621,7 @@ END BLOCK
              FBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
              FBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
              DivBasis(2) =  SQRT(3.0d0)/3.0d0        
-             IF (RevertSign(2)) THEN
+             IF (ReverseSign(2)) THEN
                FBasis(2,:) = -FBasis(2,:)
                DivBasis(2) = -DivBasis(2)
              END IF
@@ -4614,7 +4629,7 @@ END BLOCK
              FBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
              FBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
              DivBasis(3) =  SQRT(3.0d0)/3.0d0          
-             IF (RevertSign(3)) THEN
+             IF (ReverseSign(3)) THEN
                FBasis(3,:) = -FBasis(3,:)
                DivBasis(3) = -DivBasis(3)
              END IF
@@ -4818,10 +4833,10 @@ END BLOCK
           ! This branch is for handling tetrahedra
           !-----------------------------------------------------------------------------------
           ! Check first whether a sign reversion will be needed as face dofs have orientation.
-          ! If the sign is not reverted, the positive value of the degree of freedom produces
+          ! If the sign is not reversed, the positive value of the degree of freedom produces
           ! positive outward flux from the element through the face handled.
           !-----------------------------------------------------------------------------------
-          CALL FaceElementOrientation(Element, RevertSign)
+          CALL FaceElementOrientation(Element, ReverseSign)
 
           IF (CreateBDMBasis) THEN
              DOFs = 12
@@ -4830,62 +4845,62 @@ END BLOCK
              ! Create a table of BDM basis functions in the default order
              !----------------------------------------------------------------------------
              ! Face {213}:
-             BDMBasis(1,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
-             BDMBasis(1,2) = (-2*Sqrt(2.0d0) - 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
-             BDMBasis(1,3) = (-8 - 12*u + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
+             WorkBasis(1,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
+             WorkBasis(1,2) = (-2*Sqrt(2.0d0) - 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
+             WorkBasis(1,3) = (-8 - 12*u + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
 
-             BDMBasis(2,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
-             BDMBasis(2,2) = (-2*Sqrt(2.0d0) + 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
-             BDMBasis(2,3) = u + (-8 + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
+             WorkBasis(2,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
+             WorkBasis(2,2) = (-2*Sqrt(2.0d0) + 3*Sqrt(2.0d0)*u + Sqrt(3.0d0)*w)/12.0
+             WorkBasis(2,3) = u + (-8 + 4*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
 
-             BDMBasis(3,1) = -u/(2.0*Sqrt(6.0d0))
-             BDMBasis(3,2) = (Sqrt(2.0d0) + 3*Sqrt(6.0d0)*v - 2*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(3,3) = (4 - 8*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
+             WorkBasis(3,1) = -u/(2.0*Sqrt(6.0d0))
+             WorkBasis(3,2) = (Sqrt(2.0d0) + 3*Sqrt(6.0d0)*v - 2*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(3,3) = (4 - 8*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w)/12.0
 
              ! Face {124}:
-             BDMBasis(4,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
-             BDMBasis(4,2) = (-6*Sqrt(2.0d0) + 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(4,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(5,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
-             BDMBasis(5,2) = (-6*Sqrt(2.0d0) - 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(5,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(6,1) = -u/(2.0*Sqrt(6.0d0))
-             BDMBasis(6,2) = (3*Sqrt(2.0d0) - Sqrt(6.0d0)*v - 6*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(6,3) = (5*w)/(2.0*Sqrt(6.0d0))
+             WorkBasis(4,1) = (2*Sqrt(6.0d0)*u + 3*(-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w))/12.0
+             WorkBasis(4,2) = (-6*Sqrt(2.0d0) + 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(4,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(5,1) = (3*Sqrt(6.0d0) + 2*Sqrt(6.0d0)*u - 3*Sqrt(2.0d0)*v - 3*w)/12.0
+             WorkBasis(5,2) = (-6*Sqrt(2.0d0) - 9*Sqrt(2.0d0)*u + 2*Sqrt(6.0d0)*v + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(5,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(6,1) = -u/(2.0*Sqrt(6.0d0))
+             WorkBasis(6,2) = (3*Sqrt(2.0d0) - Sqrt(6.0d0)*v - 6*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(6,3) = (5*w)/(2.0*Sqrt(6.0d0))
 
              ! Face {234}:
-             BDMBasis(7,1) = (5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v - 6*w)/12.0
-             BDMBasis(7,2) = -v/(2.0*Sqrt(6.0d0))
-             BDMBasis(7,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(8,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v - 3*w)/12.0
-             BDMBasis(8,2) = (5*Sqrt(6.0)*v - 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(8,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(9,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 9*w)/12.0
-             BDMBasis(9,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(9,3) = (5*w)/(2.0*Sqrt(6.0d0))
+             WorkBasis(7,1) = (5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v - 6*w)/12.0
+             WorkBasis(7,2) = -v/(2.0*Sqrt(6.0d0))
+             WorkBasis(7,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(8,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v - 3*w)/12.0
+             WorkBasis(8,2) = (5*Sqrt(6.0)*v - 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(8,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(9,1) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u + 9*w)/12.0
+             WorkBasis(9,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(9,3) = (5*w)/(2.0*Sqrt(6.0d0))
 
              ! Face {314}:             
-             BDMBasis(10,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v + 3*w)/12.0
-             BDMBasis(10,2) = (5*Sqrt(6.0d0)*v - 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(10,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(11,1) = (-5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v + 6*w)/12.0
-             BDMBasis(11,2) = -v/(2.0*Sqrt(6.0d0))
-             BDMBasis(11,3) = -w/(2.0*Sqrt(6.0d0))
-             BDMBasis(12,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 9*w)/12.0
-             BDMBasis(12,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
-             BDMBasis(12,3) = (5*w)/(2.0*Sqrt(6.0d0))
+             WorkBasis(10,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 6*Sqrt(2.0d0)*v + 3*w)/12.0
+             WorkBasis(10,2) = (5*Sqrt(6.0d0)*v - 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(10,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(11,1) = (-5*Sqrt(6.0d0) + 5*Sqrt(6.0d0)*u + 6*Sqrt(2.0d0)*v + 6*w)/12.0
+             WorkBasis(11,2) = -v/(2.0*Sqrt(6.0d0))
+             WorkBasis(11,3) = -w/(2.0*Sqrt(6.0d0))
+             WorkBasis(12,1) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - 9*w)/12.0
+             WorkBasis(12,2) = (-(Sqrt(6.0d0)*v) + 3*Sqrt(3.0d0)*w)/12.0
+             WorkBasis(12,3) = (5*w)/(2.0*Sqrt(6.0d0))
 
              !----------------------------------------------------------------------
              ! Find out how face basis functions must be ordered so that the global
              ! indexing convention is respected. 
              !-----------------------------------------------------------------------
-             CALL FaceElementBasisOrdering(Element, FDofMap)
+             CALL FaceElementBasisOrdering(Element, FDofMap(1:4,1:3))
 
              !-----------------------------------------------------
              ! Now do the actual reordering and sign reversion
              !-----------------------------------------------------
              DO q=1,4
-                IF (RevertSign(q)) THEN
+                IF (ReverseSign(q)) THEN
                    S = -1.0d0
                 ELSE
                    S = 1.0d0
@@ -4894,7 +4909,7 @@ END BLOCK
                 DO j=1,DofsPerFace
                    k = FDofMap(q,j)
                    i = (q-1)*DofsPerFace + j
-                   FBasis(i,:) = S * BDMBasis((q-1)*DofsPerFace+k,:)
+                   FBasis(i,:) = S * WorkBasis((q-1)*DofsPerFace+k,:)
                    DivBasis(i) = S * sqrt(3.0d0)/(2.0d0*sqrt(2.0d0))
                 END DO
              END DO
@@ -4908,7 +4923,7 @@ END BLOCK
              FBasis(1,2) = -SQRT(6.0d0)/12.0d0 + SQRT(2.0d0)/4.0d0 * v
              FBasis(1,3) = -1.0d0/SQRT(3.0d0) + SQRT(2.0d0)/4.0d0 * w
              DivBasis(1) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(1) ) THEN
+             IF ( ReverseSign(1) ) THEN
                 FBasis(1,:) = -FBasis(1,:)
                 DivBasis(1) = -DivBasis(1)
              END IF
@@ -4917,7 +4932,7 @@ END BLOCK
              FBasis(2,2) = -SQRT(6.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * v
              FBasis(2,3) = SQRT(2.0d0)/4.0d0 * w
              DivBasis(2) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(2) ) THEN
+             IF ( ReverseSign(2) ) THEN
                 FBasis(2,:) = -FBasis(2,:)
                 DivBasis(2) = -DivBasis(2)
              END IF
@@ -4926,7 +4941,7 @@ END BLOCK
              FBasis(3,2) = SQRT(2.0d0)/4.0d0 * v
              FBasis(3,3) = SQRT(2.0d0)/4.0d0 * w
              DivBasis(3) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(3) ) THEN
+             IF ( ReverseSign(3) ) THEN
                 FBasis(3,:) = -FBasis(3,:)
                 DivBasis(3) = -DivBasis(3)
              END IF
@@ -4935,11 +4950,158 @@ END BLOCK
              FBasis(4,2) = SQRT(2.0d0)/4.0d0 * v
              FBasis(4,3) = SQRT(2.0d0)/4.0d0 * w
              DivBasis(4) = 3.0d0*SQRT(2.0d0)/4.0d0
-             IF ( RevertSign(4) ) THEN
+             IF ( ReverseSign(4) ) THEN
                 FBasis(4,:) = -FBasis(4,:)
                 DivBasis(4) = -DivBasis(4)
              END IF
           END IF
+       CASE(8)
+         !--------------------------------------------------------------
+         ! This branch is for handling brick elements
+         !--------------------------------------------------------------  
+         ! Check first whether a sign reverse will be needed.
+         ! If the sign is not reversed, the positive value of the degree of freedom produces
+         ! positive outward flux from the element through the face handled.
+         !-----------------------------------------------------------------------------------
+         CALL FaceElementOrientation(Element, ReverseSign)
+
+         DOFs = 48   ! 4 DOFs per face and 24 elementwise DOFs
+         DofsPerFace = 4
+         WorkBasis = 0.0d0
+
+         !
+         ! Face 2143:
+         !
+         SquareFaceMap(:) = (/ 2,1,4,3 /)
+         DO q=1,4
+           WorkBasis(q,3) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), u, v) * LineNodalPBasis(1, w)
+           WorkDivBasis(q) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), u, v) * dLineNodalPBasis(1, w)
+         END DO
+
+         !
+         ! Face 5678:
+         !
+         DO q=1,4
+           WorkBasis(4+q,3) = QuadNodalPBasis(q, u, v) * LineNodalPBasis(2, w)
+           WorkDivBasis(4+q) = QuadNodalPBasis(q, u, v) * dLineNodalPBasis(2, w)
+         END DO
+         
+         !
+         ! Face 1265:
+         !         
+         DO q=1,4
+           WorkBasis(8+q,2) = -1.0d0 * QuadNodalPBasis(q, u, w) * LineNodalPBasis(1, v)
+           WorkDivBasis(8+q) = -1.0d0 * QuadNodalPBasis(q, u, w) * dLineNodalPBasis(1, v)
+         END DO
+
+         !
+         ! Face 2376:
+         !         
+         DO q=1,4
+           WorkBasis(12+q,1) = QuadNodalPBasis(q, v, w) * LineNodalPBasis(2, u)
+           WorkDivBasis(12+q) = QuadNodalPBasis(q, v, w) * dLineNodalPBasis(2, u)
+         END DO
+
+         !
+         ! Face 3487:
+         !
+         SquareFaceMap(:) = (/ 2,1,4,3 /)
+         DO q=1,4
+           WorkBasis(16+q,2) = QuadNodalPBasis(SquareFaceMap(q), u, w) * LineNodalPBasis(2, v)
+           WorkDivBasis(16+q) = QuadNodalPBasis(SquareFaceMap(q), u, w) * dLineNodalPBasis(2, v)
+         END DO
+
+         !
+         ! Face 4152:
+         !
+         SquareFaceMap(:) = (/ 2,1,4,3 /)
+         DO q=1,4
+           WorkBasis(20+q,1) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), v, w) * LineNodalPBasis(1, u)
+           WorkDivBasis(20+q) = -1.0d0 * QuadNodalPBasis(SquareFaceMap(q), v, w) * dLineNodalPBasis(1, u)
+         END DO
+
+         !----------------------------------------------------------------------
+         ! Find out how face basis functions must be ordered so that the global
+         ! indexing convention is respected. 
+         !-----------------------------------------------------------------------
+         CALL FaceElementBasisOrdering(Element, FDofMap(1:6,1:4))
+
+         !-----------------------------------------------------
+         ! Now do the actual reordering and sign reverses
+         !-----------------------------------------------------
+         DO q=1,6
+           IF (ReverseSign(q)) THEN
+             S = -1.0d0
+           ELSE
+             S = 1.0d0
+           END IF
+
+           DO j=1,DofsPerFace
+             k = FDofMap(q,j)
+             i = (q-1)*DofsPerFace + j
+             FBasis(i,:) = S * WorkBasis((q-1)*DofsPerFace+k,:)
+             DivBasis(i) = S * WorkDivBasis((q-1)*DofsPerFace+k)
+           END DO
+         END DO
+
+         !
+         ! 24 interior basis functions (8 per coordinate direction)
+         !
+         k = 24
+         DO j=1,2
+           SELECT CASE(j)
+           CASE(1)
+             fun = 1.0d0
+             dfun = 0.0d0
+           CASE(2)
+             fun = 2.0d0 * u
+             dfun = 2.0d0
+           END SELECT
+           DO q=1,4
+             k = k + 1
+             FBasis(k,1) = QuadNodalPBasis(q, v, w) * LineNodalPBasis(1, u) * LineNodalPBasis(2, u) * fun
+             DivBasis(k) = QuadNodalPBasis(q, v, w) * ( dLineNodalPBasis(1, u) * LineNodalPBasis(2, u) * fun + &
+                 LineNodalPBasis(1, u) * dLineNodalPBasis(2, u) * fun + &
+                 LineNodalPBasis(1, u) * LineNodalPBasis(2, u) * dfun )
+           END DO
+         END DO
+
+         DO j=1,2
+           SELECT CASE(j)
+           CASE(1)
+             fun = 1.0d0
+             dfun = 0.0d0
+           CASE(2)
+             fun = 2.0d0 * v
+             dfun = 2.0d0
+           END SELECT
+           DO q=1,4
+             k = k + 1
+             FBasis(k,2) = QuadNodalPBasis(q, u, w) * LineNodalPBasis(1, v) * LineNodalPBasis(2, v) * fun
+             DivBasis(k) = QuadNodalPBasis(q, u, w) * ( dLineNodalPBasis(1, v) * LineNodalPBasis(2, v) * fun + &
+                 LineNodalPBasis(1, v) * dLineNodalPBasis(2, v) * fun + &
+                 LineNodalPBasis(1, v) * LineNodalPBasis(2, v) * dfun )
+           END DO
+         END DO
+
+         DO j=1,2
+           SELECT CASE(j)
+           CASE(1)
+             fun = 1.0d0
+             dfun = 0.0d0
+           CASE(2)
+             fun = 2.0d0 * w
+             dfun = 2.0d0
+           END SELECT
+           DO q=1,4
+             k = k + 1
+             FBasis(k,3) = QuadNodalPBasis(q, u, v) * LineNodalPBasis(1, w) * LineNodalPBasis(2, w) * fun
+             DivBasis(k) = QuadNodalPBasis(q, u, v) * ( dLineNodalPBasis(1, w) * LineNodalPBasis(2, w) * fun + &
+                 LineNodalPBasis(1, w) * dLineNodalPBasis(2, w) * fun + &
+                 LineNodalPBasis(1, w) * LineNodalPBasis(2, w) * dfun )
+           END DO
+         END DO
+
        CASE DEFAULT
           CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
        END SELECT
@@ -5020,16 +5182,16 @@ END BLOCK
 
 !-----------------------------------------------------------------------------------
 !> Get information about whether a sign reversion will be needed to obtain right
-!> DOFs for face (vector) elements. If the sign is not reverted, the positive value of 
+!> DOFs for face (vector) elements. If the sign is not reversed, the positive value of 
 !> the degree of freedom produces positive outward flux from the element through 
 !> the face handled.
 !-----------------------------------------------------------------------------------
-SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
+SUBROUTINE FaceElementOrientation(Element, ReverseSign, FaceIndex, Nodes)
 !-----------------------------------------------------------------------------------
   IMPLICIT NONE
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D/2-D element having 2-D/1-D faces 
-  LOGICAL, INTENT(OUT) :: RevertSign(:)        !< Face-wise information about the sign reversions
+  LOGICAL, INTENT(OUT) :: ReverseSign(:)       !< Face-wise information about the sign reversions
   INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
   TYPE(Nodes_t), OPTIONAL :: Nodes             !< An inactive variable related to code verification
 !-----------------------------------------------------------------------------------
@@ -5037,16 +5199,16 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
   LOGICAL :: Parallel
   
   INTEGER, POINTER :: FaceMap(:,:), Ind(:)
-  INTEGER, TARGET :: TetraFaceMap(4,3)
+  INTEGER, TARGET :: TetraFaceMap(4,3), BrickFaceMap(6,4)
   INTEGER :: FaceIndices(4)
   INTEGER :: j, q, first_face, last_face
 
   ! Some inactive variables that were used in the code verification
-  LOGICAL :: RevertSign2(4), CheckSignReversions
-  INTEGER :: i, k, A, B, C, D
-  REAL(KIND=dp) :: t1(3), t2(3), m(3), e(3)
+  LOGICAL :: ReverseSign2(4), CheckSignReversions
+  INTEGER :: i, k, A, B, C, D, I1, I2
+  REAL(KIND=dp) :: t1(3), t2(3), m(3), e(3), D1, D2
 !-----------------------------------------------------------------------------------
-  RevertSign(:) = .FALSE.
+  ReverseSign(:) = .FALSE.
 
   IF (PRESENT(FaceIndex)) THEN
     first_face = FaceIndex
@@ -5064,7 +5226,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     FaceMap => GetEdgeMap(3) 
 
     IF (.NOT. PRESENT(FaceIndex)) last_face = 3
-    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
         'Too small array for listing element faces')
     
     DO q=first_face,last_face
@@ -5077,14 +5239,14 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         END DO
       END IF
 
-      IF (FaceIndices(2) < FaceIndices(1)) RevertSign(q) = .TRUE.
+      IF (FaceIndices(2) < FaceIndices(1)) ReverseSign(q) = .TRUE.
     END DO
 
   CASE(4)
     FaceMap => GetEdgeMap(4)
 
     IF (.NOT. PRESENT(FaceIndex)) last_face = 4
-    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
         'Too small array for listing element faces')
     
     DO q=first_face,last_face
@@ -5097,7 +5259,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         END DO
       END IF
 
-      IF (FaceIndices(2) < FaceIndices(1)) RevertSign(q) = .TRUE.
+      IF (FaceIndices(2) < FaceIndices(1)) ReverseSign(q) = .TRUE.
     END DO
 
   CASE(5)
@@ -5109,7 +5271,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     FaceMap => TetraFaceMap
 
     IF (.NOT. PRESENT(FaceIndex)) last_face = 4
-    IF (SIZE(RevertSign) < last_face) CALL Fatal('FaceElementOrientation', &
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
         'Too small array for listing element faces')
 
     DO q=first_face,last_face
@@ -5124,15 +5286,15 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
              
       IF ( (FaceIndices(1) < FaceIndices(2)) .AND. (FaceIndices(1) < FaceIndices(3)) ) THEN
         IF (FaceIndices(3) < FaceIndices(2)) THEN
-          RevertSign(q) = .TRUE.
+          ReverseSign(q) = .TRUE.
         END IF
       ELSE IF ( ( FaceIndices(2) < FaceIndices(1) ) .AND. ( FaceIndices(2) < FaceIndices(3) ) ) THEN
         IF ( FaceIndices(1) < FaceIndices(3) ) THEN
-          RevertSign(q) = .TRUE.
+          ReverseSign(q) = .TRUE.
         END IF
       ELSE  
         IF ( FaceIndices(2) < FaceIndices(1) ) THEN
-          RevertSign(q) = .TRUE.
+          ReverseSign(q) = .TRUE.
         END IF
       END IF
     END DO
@@ -5144,7 +5306,7 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
     CheckSignReversions = .FALSE.
     IF (CheckSignReversions) THEN
       DO q=1,4
-        RevertSign2(q) = .FALSE.
+        ReverseSign2(q) = .FALSE.
         i = FaceMap(q,1)
         j = FaceMap(q,2)
         k = FaceMap(q,3)
@@ -5203,17 +5365,48 @@ SUBROUTINE FaceElementOrientation(Element, RevertSign, FaceIndex, Nodes)
         e(2) = Nodes % y(D) - Nodes % y(A)                
         e(3) = Nodes % z(D) - Nodes % z(A)  
 
-        IF ( SUM(m(1:3) * e(1:3)) > 0.0d0 ) RevertSign2(q) = .TRUE.
+        IF ( SUM(m(1:3) * e(1:3)) > 0.0d0 ) ReverseSign2(q) = .TRUE.
 
       END DO
 
-      IF ( ANY(RevertSign(1:4) .NEQV. RevertSign2(1:4)) ) THEN
+      IF ( ANY(ReverseSign(1:4) .NEQV. ReverseSign2(1:4)) ) THEN
         PRINT *, 'CONFLICTING SIGN REVERSIONS SUGGESTED'
-        PRINT *, RevertSign(1:4)
-        PRINT *, RevertSign2(1:4)
+        PRINT *, ReverseSign(1:4)
+        PRINT *, ReverseSign2(1:4)
         STOP EXIT_ERROR
       END IF
     END IF
+
+  CASE(8)
+    !
+    ! Write the face map such that by default the normal points outwards
+    ! from the brick:
+    !
+    BrickFaceMap(1,:) = (/ 2, 1, 4, 3 /)
+    BrickFaceMap(2,:) = (/ 5, 6, 7, 8 /)
+    BrickFaceMap(3,:) = (/ 1, 2, 6, 5 /)
+    BrickFaceMap(4,:) = (/ 2, 3, 7, 6 /)
+    BrickFaceMap(5,:) = (/ 3, 4, 8, 7 /)
+    BrickFaceMap(6,:) = (/ 4, 1, 5, 8 /)
+
+    FaceMap => BrickFaceMap
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 6
+    IF (SIZE(ReverseSign) < last_face) CALL Fatal('FaceElementOrientation', &
+        'Too small array for listing element faces')
+
+    DO q=first_face,last_face
+      DO j=1,4
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,4
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+    
+      CALL SquareFaceDofsOrdering(I1, I2, D1, D2, FaceIndices(1:4), ReverseSign(q))
+    END DO
 
   CASE DEFAULT
     CALL Fatal('FaceElementOrientation', 'Unsupported element family')
@@ -5225,23 +5418,25 @@ END SUBROUTINE FaceElementOrientation
 !-----------------------------------------------------------------------------------
 !> This subroutine produces information about how the basis functions of face (vector)
 !> elements have to be reordered to conform with the global ordering convention.
-!> Currently this can handle only the tetrahedron of Nedelec's second family.
 !-----------------------------------------------------------------------------------
-SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
+SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex, ReverseSign)
 !-----------------------------------------------------------------------------------
   IMPLICIT NONE
 
   TYPE(Element_t), INTENT(IN) :: Element       !< A 3-D element having 2-D faces
-  INTEGER, INTENT(OUT) :: FDofMap(4,3)         !< Face-wise information for the basis permutation  
+  INTEGER, INTENT(OUT) :: FDofMap(:,:)         !< Face-wise information for the basis permutation  
   INTEGER, OPTIONAL, INTENT(IN) :: FaceIndex   !< Check just one face that is specified here
+  LOGICAL, OPTIONAL, INTENT(OUT) :: ReverseSign(:) !< For bricks face-wise information about the sign reversions
 !-----------------------------------------------------------------------------------
   TYPE(Mesh_t), POINTER :: Mesh 
   LOGICAL :: Parallel
+  LOGICAL :: ReverseNormal(6)
   INTEGER, POINTER :: FaceMap(:,:), Ind(:)
-  INTEGER, TARGET :: TetraFaceMap(4,3), FaceIndices(4)
-  INTEGER :: j, q, first_face, last_face
+  INTEGER, TARGET :: TetraFaceMap(4,3), BrickFaceMap(6,4), FaceIndices(4)
+  INTEGER :: i, j, k, l, q, first_face, last_face
 !-----------------------------------------------------------------------------------
-  FDofMap(4,3) = 0
+  FDofMap = 0
+  ReverseNormal(:) = .FALSE.
 
   IF (PRESENT(FaceIndex)) THEN
     first_face = FaceIndex
@@ -5256,6 +5451,9 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
 
   SELECT CASE(Element % TYPE % ElementCode / 100)
   CASE(5)
+    !
+    ! This handles the tetrahedron of Nedelec's second family
+    !
     TetraFaceMap(1,:) = (/ 2, 1, 3 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4 /)
     TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
@@ -5304,6 +5502,106 @@ SUBROUTINE FaceElementBasisOrdering(Element, FDofMap, FaceIndex)
         END IF
       END IF
     END DO
+
+  CASE(8)
+    !
+    ! Write the face map such that by default the normal points outwards
+    ! from the brick:
+    !
+    BrickFaceMap(1,:) = (/ 2, 1, 4, 3 /)
+    BrickFaceMap(2,:) = (/ 5, 6, 7, 8 /)
+    BrickFaceMap(3,:) = (/ 1, 2, 6, 5 /)
+    BrickFaceMap(4,:) = (/ 2, 3, 7, 6 /)
+    BrickFaceMap(5,:) = (/ 3, 4, 8, 7 /)
+    BrickFaceMap(6,:) = (/ 4, 1, 5, 8 /)
+
+    FaceMap => BrickFaceMap
+
+    IF (.NOT. PRESENT(FaceIndex)) last_face = 6
+
+    DO q=first_face,last_face
+      DO j=1,4
+        FaceIndices(j) = Ind(FaceMap(q,j))
+      END DO
+      IF (Parallel) THEN
+        DO j=1,4
+          FaceIndices(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndices(j))
+        END DO
+      END IF
+    
+!      CALL SquareFaceDofsOrdering(I1, I2, D1, D2, FaceIndices(1:4), ReverseSign(q))
+
+      i = 1
+      j = 2
+      IF ( FaceIndices(i) < FaceIndices(j) ) THEN
+        k = i
+      ELSE
+        k = j
+      END IF
+      i = 4
+      j = 3 
+      IF ( FaceIndices(i) < FaceIndices(j) ) THEN
+        l = i
+      ELSE
+        l = j
+      END IF
+      IF ( FaceIndices(k) > FaceIndices(l) ) THEN
+        k = l
+      END IF
+!      A = k
+
+      SELECT CASE(k)
+      CASE(1)
+        FDofMap(q,1) = 1
+        FDofMap(q,3) = 3
+        IF ( FaceIndices(2) < FaceIndices(4) ) THEN
+          FDofMap(q,2) = 2
+          FDofMap(q,4) = 4
+        ELSE
+          FDofMap(q,2) = 4
+          FDofMap(q,4) = 2
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE(2)
+        FDofMap(q,2) = 1
+        FDofMap(q,4) = 3
+        IF ( FaceIndices(3) < FaceIndices(1) ) THEN
+          FDofMap(q,1) = 4
+          FDofMap(q,3) = 2
+        ELSE
+          FDofMap(q,1) = 2
+          FDofMap(q,3) = 4
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE(3)
+        FDofMap(q,3) = 1
+        FDofMap(q,1) = 3
+        IF ( FaceIndices(4) < FaceIndices(2) ) THEN
+          FDofMap(q,2) = 4
+          FDofMap(q,4) = 2
+        ELSE
+          FDofMap(q,2) = 2
+          FDofMap(q,4) = 4
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE(4)
+        FDofMap(q,4) = 1
+        FDofMap(q,2) = 3
+        IF ( FaceIndices(1) < FaceIndices(3) ) THEN
+          FDofMap(q,1) = 2
+          FDofMap(q,3) = 4
+        ELSE
+          FDofMap(q,1) = 4
+          FDofMap(q,3) = 2
+          ReverseNormal(q) = .TRUE.
+        END IF
+      CASE DEFAULT
+        CALL Fatal('ElementDescription::FaceElementBasisOrdering','Erratic square face Indices')
+      END SELECT
+
+    END DO
+
+    IF (PRESENT(ReverseSign)) ReverseSign(1:6) = ReverseNormal(1:6)
 
   CASE DEFAULT
     CALL Fatal('FaceElementBasisOrdering', 'Unsupported element family')
@@ -5457,7 +5755,7 @@ END SUBROUTINE PickActiveFace
        REAL(KIND=dp) :: LBasis(Element % TYPE % NumberOfNodes), Beta(4), EdgeSign(16)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder, ApplyTraceMapping, Found
-       LOGICAL :: RevertSign(4)
+       LOGICAL :: ReverseSign(4)
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
        INTEGER :: ActiveFaceId
@@ -5883,9 +6181,9 @@ END SUBROUTINE PickActiveFace
            !
            ! Use the parent element to check whether sign reversions are needed:
            !
-           CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
+           CALL FaceElementOrientation(Parent, ReverseSign, ActiveFaceId)
            
-           IF (RevertSign(ActiveFaceId)) THEN
+           IF (ReverseSign(ActiveFaceId)) THEN
              EdgeBasis(1,1) = -0.5d0
            ELSE
              EdgeBasis(1,1) = 0.5d0
@@ -5915,7 +6213,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(1,1) = -(3.0d0 + 3.0d0*Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
                EdgeBasis(1,2) = -(3.0d0 + Sqrt(3.0d0)*u - Sqrt(3.0d0)*v)/6.0d0
@@ -5948,7 +6246,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(3,1) = ((3.0d0 + Sqrt(3.0d0))*v)/6.0d0
                EdgeBasis(3,2) = -(-3.0d0 + Sqrt(3.0d0) + (-3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
@@ -5979,7 +6277,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*v)/6.0d0
                EdgeBasis(5,2) = -(-3.0d0 - Sqrt(3.0d0) + (3.0d0 + Sqrt(3.0d0))*u + 2.0d0*Sqrt(3.0d0)*v)/6.0d0
@@ -6336,7 +6634,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(1,1) = -(6.0d0 + 6.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
                EdgeBasis(1,2) = -(6.0d0 + 2.0d0*Sqrt(3.0d0)*u - 2.0d0*Sqrt(3.0d0)*v - Sqrt(6.0d0)*w)/12.0d0
@@ -6383,7 +6681,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(3,1) = (3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w)/24.0d0
                EdgeBasis(3,2) = -(4.0d0*(-3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
@@ -6432,7 +6730,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(5,1) = ((-3.0d0 + Sqrt(3.0d0))*(4.0d0*v - Sqrt(2.0d0)*w))/24.0d0
                EdgeBasis(5,2) = -(4.0d0*(3.0d0 + Sqrt(3.0d0))*u + 8.0d0*Sqrt(3.0d0)*v + &
@@ -6483,7 +6781,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(7,1) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
                EdgeBasis(7,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
@@ -6530,7 +6828,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(9,1) = ((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(2.0d0))
                EdgeBasis(9,2) = -((3.0d0 + Sqrt(3.0d0))*w)/(4.0d0*Sqrt(6.0d0))
@@ -6577,7 +6875,7 @@ END SUBROUTINE PickActiveFace
              nj = Element % NodeIndexes(j)
              IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-               ! The sign and order of basis functions are reverted as
+               ! The sign and order of basis functions are reversed as
                ! compared with the other possibility
                EdgeBasis(11,1) = 0.0d0
                EdgeBasis(11,2) = ((1.0d0 + Sqrt(3.0d0))*w)/(2.0d0*Sqrt(2.0d0))
@@ -8847,7 +9145,7 @@ END SUBROUTINE PickActiveFace
              ! The lowest-order element from the optimal family. The optimal
              ! accuracy is obtained also for non-affine meshes.
              ! -------------------------------------------------------------
-             ! First twelwe basis functions associated with the edges
+             ! First twelve basis functions associated with the edges
              ! -------------------------------------------------------------
              i = EdgeMap(1,1)
              j = EdgeMap(1,2)
@@ -9054,7 +9352,7 @@ END SUBROUTINE PickActiveFace
              END IF
 
              ! ---------------------------------------------------------------------
-             ! Additional twelwe basis functions on the square faces (two per face).
+             ! Additional twelve basis functions on the square faces (two per face).
              ! ---------------------------------------------------------------------         
              BrickFaceMap(1,:) = (/ 1,2,3,4 /)          
              BrickFaceMap(2,:) = (/ 5,6,7,8 /)
@@ -9449,7 +9747,7 @@ END SUBROUTINE PickActiveFace
           D1 = -1.0d0
           D2 = -1.0d0          
        CASE DEFAULT
-          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic square face Indices')
+          CALL Fatal('ElementDescription::TriangleFaceDofsOrdering','Erratic triangular face Indices')
        END SELECT
 !---------------------------------------------------------
      END SUBROUTINE TriangleFaceDofsOrdering
@@ -9527,14 +9825,24 @@ END SUBROUTINE PickActiveFace
      END SUBROUTINE TriangleFaceDofsOrdering2
 !-----------------------------------------------------------
 
-
 !---------------------------------------------------------
-     SUBROUTINE SquareFaceDofsOrdering(I1,I2,D1,D2,Ind)       
-!-----------------------------------------------------------
-       INTEGER ::  I1, I2, Ind(4)
-       REAL(KIND=dp) :: D1, D2
+!> This subroutine can be used to create a unique parametrization of
+!> quadrilateral faces so that different elements sharing the same
+!> face can list the basis functions associated with the face in
+!> a unique order. If the face of the reference element is represented
+!> by default using two basis vectors e(1,:) and e(2,:), the unique
+!> parametrization uses the basis E1 = D1 * e(I1,:) and 
+!> E2 = D2 * e(I2,:). 
+!----------------------------------------------------------------------
+     SUBROUTINE SquareFaceDofsOrdering(I1, I2, D1, D2, Ind, ReverseSign)       
+!----------------------------------------------------------------------
+       INTEGER, INTENT(OUT) ::  I1, I2      !< Permutation info about coordinate directions
+       REAL(KIND=dp), INTENT(OUT) :: D1, D2 !< Sign reversion info related to coordinate directions  
+       INTEGER, INTENT(IN) :: Ind(4)        !< The global indices of quadrilateral face
+       LOGICAL, OPTIONAL, INTENT(OUT) :: ReverseSign   ! Is e(1,:) x e(2,:) /=  E1 x E2
 !----------------------------------------------------------
        INTEGER ::  i, j, k, l, A
+       LOGICAL :: ReverseNormal
 ! -------------------------------------------------------------------
 !  Find input for applying an order change and sign reversions to two
 !  basis functions associated with a square face. To this end, 
@@ -9565,6 +9873,8 @@ END SUBROUTINE PickActiveFace
        END IF
        A = k
 
+       ReverseNormal = .FALSE.
+       
        SELECT CASE(A)
        CASE(1)
           IF ( Ind(2) < Ind(4) ) THEN
@@ -9576,7 +9886,8 @@ END SUBROUTINE PickActiveFace
              I1 = 2
              I2 = 1
              D1 = 1.0d0
-             D2 = 1.0d0 
+             D2 = 1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE(2)
           IF ( Ind(3) < Ind(1) ) THEN
@@ -9589,6 +9900,7 @@ END SUBROUTINE PickActiveFace
              I2 = 2
              D1 = -1.0d0
              D2 = 1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE(3)
           IF ( Ind(4) < Ind(2) ) THEN
@@ -9601,6 +9913,7 @@ END SUBROUTINE PickActiveFace
              I2 = 1
              D1 = -1.0d0
              D2 = -1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE(4)
           IF ( Ind(1) < Ind(3) ) THEN
@@ -9613,10 +9926,13 @@ END SUBROUTINE PickActiveFace
              I2 = 2
              D1 = 1.0d0
              D2 = -1.0d0
+             ReverseNormal = .TRUE.
           END IF
        CASE DEFAULT
           CALL Fatal('ElementDescription::SquareFaceDofsOrdering','Erratic square face Indices')
        END SELECT
+
+       IF (PRESENT(ReverseSign)) ReverseSign = ReverseNormal
 !----------------------------------------------------------
      END SUBROUTINE SquareFaceDofsOrdering
 !----------------------------------------------------------
@@ -9751,7 +10067,7 @@ END SUBROUTINE PickActiveFace
              PermVec(k) = k
           END DO
           ! ---------------------------------------------------------------------
-          ! Additional twelwe basis functions on the square faces (two per face).
+          ! Additional twelve basis functions on the square faces (two per face).
           ! ---------------------------------------------------------------------         
           BrickFaceMap(1,:) = (/ 1,2,3,4 /)          
           BrickFaceMap(2,:) = (/ 5,6,7,8 /)

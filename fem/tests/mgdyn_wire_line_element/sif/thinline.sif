@@ -1,0 +1,127 @@
+! Simple case for testing the line element in 3D simulation.
+! Original date: March 2020
+! eelis.takala@gmail.com
+Check Keywords "Warn"
+INCLUDE cable1d/mesh.names
+Header 1
+   Mesh DB "." "cable1d"
+End
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+Initial Condition 1
+   A {e} = Real 0
+   A  = Real 0
+End
+Simulation 1
+   Max Output Level = 5
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 1
+   Simulation Type = Transient
+   Timestepping Method = BDF
+   BDF Order = 1
+   Timestep intervals = 3
+   Timestep Sizes = 1
+   Steady State Max Iterations = 1
+   Output Intervals = 1
+End
+Solver 1  !---- MagnetoDynamics, WhitneyAVSolver
+   Exec Solver = Always
+   Equation = "MGDynamics"
+   Variable = "A"
+   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = none
+   Linear System Convergence Tolerance = 1.e-8
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   Linear System ILUT Tolerance=1e-8
+   BicgstabL polynomial degree = 6
+   Steady State Convergence Tolerance = 1e-08
+End
+Solver 2  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
+   Exec Solver = Always
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+Solver 3  !---- ResultOutputSolve, ResultOutputSolver
+   !Exec Solver = After timestep
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = thinline
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 4  !---- SaveData, SaveScalars
+   Exec Solver = After timestep
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = cable/dat/cable.dat
+End
+Equation 1
+   Active Solvers(3) = 1 2 3
+End
+Material 1  !---- air: generic
+   Name = air
+   Electric Conductivity = 1
+   Relative Permeability = 1
+End
+Body 1  !---- Air
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+   Body Force = 1
+End
+Boundary Condition 1  !---- BCn Flux Parallel
+   Name = BCn Flux Parallel
+   Target Boundaries(1) = $ fluxparallel
+   A {e} = Real 0
+End
+Boundary Condition 2  !---- ground
+   Name = ground
+   Target Boundaries = $ currentout
+   W = Real 0
+   A {e} = Real 0
+   A = Real 0
+End
+Boundary Condition 3  !---- current in
+   Name = current in 
+   Target Boundaries = $ currentin
+   A {e} = Real 0
+   A = Real 2
+End
+Boundary Condition 4  !---- ground
+   Name = flux
+   Target Boundaries(2) = $ zplus zminus
+   A {e} = Real 0
+End
+Boundary Condition 5 !---- cable
+   Name = cable
+   Target Boundaries(1) = $ cable
+   Thin Line Conductivity = Real 1e20
+   Thin Line Crossection Area = Real 1e-6
+End
+ 
+Solver 2 :: Reference Norm = Real 1.848E-01
+Solver 2 :: Reference Norm Tolerance = Real 1E-03
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

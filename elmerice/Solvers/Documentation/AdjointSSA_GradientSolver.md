@@ -33,10 +33,10 @@ The sequence in the .sif is usually as follow:
 1. Compute the velocity using the [SSA solver](#ssa_direct_solver)
 2. Compute a cost function that measure the diffrence between the model and some observations
 3. Compute the solution of the [adjoint linear system](#adjoint_linearsolver)
-4. Compute the gradient of your cost function with respect to your input parameters
+4. **Compute the gradient of your cost function with respect to your input parameters**
 
 
-If a change of variable is used for the input friction coefficient of viscosity, the derivative of
+If a change of variable is used for the input friction coefficient or viscosity, the derivative of
 the friction coefficient or viscosity with respect to your input variable can directly be provided
 in the Material section. 
 
@@ -127,8 +127,10 @@ Or using ElmerIce build-in user functions:
   SSA Mean Viscosity Derivative = Variable alpha
     REAL procedure "ElmerIceUSF" "Asquare_d"
 
+ End
 
 ```
 
-- 
+### Tests and Examples
 
+- See examples for the [SSA inverse methods](../../examples/Inverse_Methods)
