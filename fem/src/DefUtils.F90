@@ -5113,7 +5113,12 @@ CONTAINS
 
                    n=GetElementDOFs(gInd,Edge)
 
-                   n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+                   IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                     n_start = Edge % NDOFs
+                   ELSE
+                     n_start = 0
+                   END IF
+
                    DO j=1,EDOFs
                      k = n_start + j
                      nb = x % Perm(gInd(k))
@@ -5147,8 +5152,12 @@ CONTAINS
                      
                      n = GetElementDOFs(gInd,Edge)
 
-                     n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
-
+                     IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                       n_start = Edge % NDOFs
+                     ELSE
+                       n_start = 0
+                     END IF
+ 
                      DO j=1,EDOFs
 
                        k = n_start + j
@@ -5213,7 +5222,11 @@ CONTAINS
 
                n=GetElementDOFs(gInd,Edge)
 
-               n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+               IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                 n_start = Edge % NDOFs
+               ELSE
+                 n_start = 0
+               END IF
                DO j=1,EDOFs
                  k = n_start + j
                  nb = x % Perm(gInd(k))
@@ -5267,7 +5280,11 @@ CONTAINS
                  ! Make an offset by the count of nodal DOFs. This provides
                  ! the right starting point if edge DOFs are not present.
                  !
-                 n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
+                 IF (Solver % Def_Dofs(3,Parent % BodyId,1) > 0) THEN
+                   n_start = Face % NDOFs
+                 ELSE
+                   n_start = 0
+                 END IF
                  !
                  ! Check if we need to increase the offset by the count of
                  ! edge DOFs:
@@ -5331,7 +5348,11 @@ CONTAINS
                  ! Make an offset by the count of nodal DOFs. This provides
                  ! the right starting point if edge DOFs are not present.
                  !
-                 n_start = Solver % Def_Dofs(4,Parent % BodyId,1) * Face % NDOFs
+                 IF (Solver % Def_Dofs(4,Parent % BodyId,1) > 0) THEN
+                   n_start = Face % NDOFs
+                 ELSE
+                   n_start = 0
+                 END IF
                  !
                  ! Check if we need to increase the offset by the count of
                  ! edge DOFs:

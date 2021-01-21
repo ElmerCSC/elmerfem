@@ -12258,7 +12258,7 @@ END SUBROUTINE PickActiveFace
       Lambda = SUM( ( Surface - Rinit ) * Normal ) / Rproj
     END IF
 
-    IF( FaceElement % NDofs == 4 ) THEN
+    IF( FaceElement % Type % NumberOfNodes == 4 ) THEN
       IF( third == 3 ) THEN
         third = 4
 	Lambda0 = Lambda
@@ -12297,7 +12297,7 @@ END SUBROUTINE PickActiveFace
     ! Then solve the exact points of intersection from a 3x3 or 2x2 linear system
     !--------------------------------------------------------------------------
     IF( ElemDim == 2 ) THEN
-      n = FaceElement % NDofs
+      n = FaceElement % Type % NumberOfNodes
       ! In 3D rectangular faces are treated as two triangles
       IF( n == 4 .OR. n == 8 .OR. n == 9 ) THEN
         notriangles = 2
