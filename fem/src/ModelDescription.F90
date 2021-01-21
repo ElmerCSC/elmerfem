@@ -2624,6 +2624,8 @@ CONTAINS
           CALL SetMeshMaxDofs(NewMesh)
           IF(ParEnv % PEs>1) CALL SParEdgeNumbering(NewMesh)
           IF(ParEnv % PEs>1) CALL SParFaceNumbering(NewMesh)
+        ELSE
+          CALL SetMeshMaxDofs(NewMesh)
         END IF
 
         IF ( i>MeshLevels-MeshKeep+1 ) THEN
@@ -2840,6 +2842,8 @@ CONTAINS
               CALL SParEdgeNumbering(NewMesh)
               CALL SParFAceNumbering(NewMesh)
             END IF
+          ELSE
+            CALL SetMeshMaxDofs(NewMesh)
           END IF
 
           IF ( i>MeshLevels-MeshKeep+1 ) THEN

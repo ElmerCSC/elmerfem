@@ -179,6 +179,7 @@ CONTAINS
 
      Mesh % MinFaceDOFs = 1000
      Mesh % MinEdgeDOFs = 1000
+     Mesh % MaxNDOFs = 0
      Mesh % MaxFaceDOFs = 0
      Mesh % MaxEdgeDOFs = 0
      Mesh % MaxBDOFs = 0
@@ -2846,12 +2847,8 @@ CONTAINS
        el_id = Element % TYPE % ElementCode / 100
 
        ! Apply the elementtypes
-       IF ( inDOFs(el_id,1) /= 0 ) THEN
-         Element % NDOFs = n
-       ELSE
-         Element % NDOFs = 0
-       END IF
 
+       Element % NDOFs = n * MAX(0,inDOFs(el_id,1)) ! The count of all nodal DOFs for the element
        EdgeDOFs(i) = MAX(0,inDOFs(el_id,2))
        FaceDOFs(i) = MAX(0,inDOFs(el_id,3))
 
@@ -3328,22 +3325,25 @@ CONTAINS
        Element % PDefs % GaussPoints = getNumberOfGaussPoints( Element, Mesh )
      END IF
 
+     Mesh % MaxBDOFs = MAX( Element % BDOFs, Mesh % MaxBDOFs )
+     Mesh % MaxNDOFs = MAX(Element % NDOFs / Element % TYPE % NumberOfNodes, &
+         Mesh % MaxNDOFs)
+   END DO
+
+   DO i=1,Mesh % NumberOFBulkElements
+     Element => Mesh % Elements(i)
+
      ! Set max element dofs here (because element size may have changed
      ! when edges and faces have been set). This is the absolute worst case.
      ! Element which has MaxElementDOFs may not even be present as a 
      ! real element
      Mesh % MaxElementDOFs = MAX( Mesh % MaxElementDOFs, &
-          Element % TYPE % NumberOfNodes + &
+          Element % TYPE % NumberOfNodes * Mesh % MaxNDOFs + &
           Element % TYPE % NumberOfEdges * Mesh % MaxEdgeDOFs + &
           Element % TYPE % NumberOfFaces * Mesh % MaxFaceDOFs + &
           Element % BDOFs, &
           Element % DGDOFs )
 
-     Mesh % MaxBDOFs = MAX( Element % BDOFs, Mesh % MaxBDOFs )
-   END DO
-
-   DO i=1,Mesh % NumberOFBulkElements
-     Element => Mesh % Elements(i)
      IF ( Element % BDOFs > 0 ) THEN
        ALLOCATE( Element % BubbleIndexes(Element % BDOFs) )
        DO j=1,Element % BDOFs

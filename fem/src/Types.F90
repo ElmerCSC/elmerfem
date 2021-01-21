@@ -781,6 +781,7 @@ MODULE Types
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
      INTEGER :: MinEdgeDOFs, MinFaceDOFs
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
+     INTEGER :: MaxNDOFs ! The maximum of nodal DOFs per node (created with a flag "n:")
 
      LOGICAL :: EntityWeightsComputed 
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
