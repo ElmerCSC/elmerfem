@@ -2521,25 +2521,25 @@ CONTAINS
     CgwTT = (1.0_dp - xc)*rhow*cw + xc*rhoc*cc
   END FUNCTION GetCgwTT
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetCgwpp(rhogw,rhoi,rhogwp,rhoip,rhosp,&
+  FUNCTION GetCgwpp(rhogw,rhoi,rhos,rhogwp,rhoip,rhosp,&
        kappaG,Xi,Xip,&
        RockMaterialID,Porosity)RESULT(Cgwpp)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhogwp,rhoip,rhosp,kappaG,Xi,Xip,Porosity
+    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhos,rhogwp,rhoip,rhosp,kappaG,Xi,Xip,Porosity
     INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp) :: Cgwpp
     !-------------------------
     Cgwpp = Porosity * ( (rhogw - rhoi) * Xip  + Xi * rhogwp + (1.0_dp - Xi)*rhoip ) &
-         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) * ( (1.0_dp - Porosity) * rhosp + kappaG )
+         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) * ( (1.0_dp - Porosity) * rhosp/rhos  + kappaG )
   END FUNCTION GetCgwpp
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetCgwpT(rhogw,rhoi,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity)RESULT(CgwpT)
+  FUNCTION GetCgwpT(rhogw,rhoi,rhos,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity)RESULT(CgwpT)
     IMPLICIT NONE
-    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity
+    REAL(KIND=dp), INTENT(IN) :: rhogw,rhoi,rhos,rhogwT,rhoiT,rhosT,Xi,XiT,Porosity
     REAL(KIND=dp) :: CgwpT
     !-------------------------
     CgwpT = Porosity * ( (rhogw - rhoi) * XiT  + Xi * rhogwT + (1.0_dp - Xi)*rhoiT ) &
-         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) *(1.0_dp - Porosity) * rhosT
+         + (Xi * rhogw + (1.0_dp - Xi)*rhoi) *(1.0_dp - Porosity) * rhosT/rhos
   END FUNCTION GetCgwpT
   !---------------------------------------------------------------------------------------------
   FUNCTION GetCgwpYc(rhogw,rhoi,rhogwYc,Xi,XiYc,Porosity)RESULT(CgwpYc)
