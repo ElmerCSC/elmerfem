@@ -1618,11 +1618,11 @@ CONTAINS
      n = 0
      IF( Solver % DG ) THEN
        n = Element % DGDOFs
-        IF ( n>0 ) RETURN
+       IF ( n>0 ) RETURN
      END IF
 
 
-     id =Element % BodyId
+     id = Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
          id = Element % BoundaryInfo % Left % BodyId
@@ -1696,7 +1696,8 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face
 
      LOGICAL :: Found, GB, DGdisable, NeedEdges
-     INTEGER :: nb,i,j,k,id,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs, Ind, ElemFamily
+     INTEGER :: nb,i,j,k,id,NDOFs,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs
+     INTEGER :: Ind, ElemFamily, DOFsPerNode
 
      Element => GetCurrentElement(UElement)
      ElemFamily = GetElementFamily(Element)
@@ -1707,6 +1708,7 @@ CONTAINS
         Solver => CurrentModel % Solver
      END IF
 
+     NDOFs = Solver % Mesh % MaxNDOFs
      NB = 0
 
      DGDisable=.FALSE.
@@ -1747,9 +1749,12 @@ CONTAINS
      IF ( id == 0 ) id=1
 
      IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN
-       DO i=1,Element % NDOFs
-          NB = NB + 1
-          Indexes(NB) = Element % NodeIndexes(i)
+       DOFsPerNode = Element % NDOFs / Element % TYPE % NumberOfNodes
+       DO i=1,Element % TYPE % NumberOfNodes
+         DO j=1,DOFsPerNode
+           NB = NB + 1
+           Indexes(NB) = NDOFs * (Element % NodeIndexes(i)-1) + j
+         END DO
        END DO
      END IF
 
@@ -1788,7 +1793,7 @@ CONTAINS
           DO i=1,EDOFs
              NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
-                      i + Solver % Mesh % NumberOfNodes
+                      i + NDOFs * Solver % Mesh % NumberOfNodes
           END DO
         END DO
      END IF
@@ -1799,7 +1804,8 @@ CONTAINS
            DO i=1,FDOFs
               NB = NB + 1
               Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
-                 Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+                 NDOFs * Solver % Mesh % NumberOfNodes + &
+                 EdgeDOFs*Solver % Mesh % NumberOfEdges
            END DO
         END DO
      END IF
@@ -1834,7 +1840,7 @@ CONTAINS
            DO i=1,EDOFs
                NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Parent % EdgeIndexes(Ind)-1) + &
-                      i + Solver % Mesh % NumberOfNodes
+                      i + NDOFs * Solver % Mesh % NumberOfNodes
            END DO
          END IF
 
@@ -1859,7 +1865,7 @@ CONTAINS
            DO i=1,FDOFs
              NB = NB + 1
              Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
-                Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+                NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
            END DO
          END IF
        END SELECT
@@ -1868,8 +1874,8 @@ CONTAINS
            DO i=1,Element % BDOFs
               NB = NB + 1
               Indexes(NB) = FaceDOFs*Solver % Mesh % NumberOfFaces + &
-                 Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
-                   Element % BubbleIndexes(i)
+                  NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
+                  Element % BubbleIndexes(i)
            END DO
         END IF
      END IF
