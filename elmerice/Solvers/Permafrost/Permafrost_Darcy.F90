@@ -680,7 +680,7 @@ CONTAINS
              RockMaterialID,PorosityAtIP)
         !PRINT *,"CgwppAtIP:",CgwppAtIP," KgwppAtIP", KgwppAtIP
       END IF
-      CgwpTAtIP = GetCgwpT(rhogwAtIP,rhoiAtIP,rhos,rhogwTAtIP,rhoiTAtIP,rhosTAtIP,XiAtIP(IPPerm),XiTAtIP,PorosityAtIP)
+      CgwpTAtIP = GetCgwpT(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwTAtIP,rhoiTAtIP,rhosTAtIP,XiAtIP(IPPerm),XiTAtIP,PorosityAtIP)
       IF (.NOT.NoSalinity) THEN
         CgwpYcAtIP = GetCgwpYc(rhogwAtIP,rhoiAtIP,rhogwYcAtIP,XiAtIP(IPPerm),XiYcAtIP,PorosityAtIP)     
       END IF
