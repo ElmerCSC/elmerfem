@@ -386,15 +386,17 @@ CONTAINS
        Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
        
        ndofs = Def_Dofs(1)
-       DO j=1,ndofs
+       IF (ndofs > 0) THEN
          DO i=1,Element % TYPE % NumberOfNodes
-           l = MaxNDOFs * (Element % NodeIndexes(i)-1) + j
-           IF ( Perm(l) == 0 ) THEN
-             k = k + 1
-             Perm(l) =  k
-           END IF
+           DO j=1,ndofs
+             l = MaxNDOFs * (Element % NodeIndexes(i)-1) + j
+             IF ( Perm(l) == 0 ) THEN
+               k = k + 1
+               Perm(l) =  k
+             END IF
+           END DO
          END DO
-       END DO
+       END IF
 
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
           DO i=1,Element % TYPE % NumberOfEdges
