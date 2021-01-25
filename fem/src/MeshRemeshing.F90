@@ -132,7 +132,10 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 
   ref = 0
   DO i=1,NVerts
-    IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i)
+    ! ref = GDOF + 10 to avoid an input ref of 10 being confused
+    ! with mmg output ref of 10 which occurs on some new nodes
+    ! GDOF = ref - 10
+    IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i) + 10
     CALL MMG3D_Set_vertex(mmgMesh, Mesh%Nodes%x(i), &
          Mesh%Nodes%y(i),Mesh%Nodes%z(i), ref, i, ierr)
 !         Mesh%Nodes%y(i),Mesh%Nodes%z(i), 0, Mesh % ParallelInfo % GlobalDOFs(i), ierr)
@@ -417,7 +420,10 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          'CALL TO  MMG3D_Get_vertex FAILED')
     IF(Parallel) THEN
       IF(required > 0) THEN
-        NewMesh % ParallelInfo % GlobalDOFs(ii) = ref
+        ! ref = GDOF + 10 to avoid an input ref of 10 being confused
+        ! with mmg output ref of 10 which occurs on some new nodes
+        ! GDOF = ref - 10
+        NewMesh % ParallelInfo % GlobalDOFs(ii) = ref - 10
       ELSE
         !GlobalDOF undefined - need to negotiate w/ other parts
         NewMesh % ParallelInfo % GlobalDOFs(ii) = 0
