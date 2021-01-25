@@ -178,7 +178,7 @@ SUBROUTINE PorosityInit(Model, Solver, Timestep, TransientSimulation )
       IF (CurrentNode <= 0) CYCLE
       PorosityValues(CurrentNode) = PorosityValues(CurrentNode)/NodalHits(CurrentNode)    
     END DO
-    DEALLOCATE(NodalHits)
+    !DEALLOCATE(NodalHits)
   END IF
   
   CALL INFO(SolverName, '-----------------------------------', Level=4)

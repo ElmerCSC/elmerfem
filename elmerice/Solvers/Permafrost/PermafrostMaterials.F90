@@ -560,7 +560,7 @@ CONTAINS
         READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(I),  Comment
         READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(I),  Comment
       END DO
-      CALL INFO(FunctionName,Message,Level=1)
+      !CALL INFO(FunctionName,Message,Level=1)
 30    CLOSE(io)
       IF (I < NumerOfRockRecords) THEN
         WRITE(Message,'(I3,A,I3)') I,"records read, which is smaller than given number ", NumerOfRockRecords
@@ -1889,6 +1889,15 @@ CONTAINS
     END IF
     IF (ComputeXi)  THEN
       XiAtIP = GetXi(BAtIP,DAtIP)
+      IF (XiAtIP < 0.0_dp) THEN
+        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
+        XiAtIP = 0.0_dp
+        CALL WARN("GetXiHartikainen",Message)
+      ELSE IF (XiAtIP > 1.0_dp) THEN
+        WRITE (Message,*) 'Dedected invalid value for Xi=', XiAtIP
+        XiAtIP = 0.99_dp
+        CALL WARN("GetXiHartikainen",Message)
+      END IF
     END IF
     
     ! updates of derivatives
