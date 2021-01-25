@@ -3616,7 +3616,6 @@ CONTAINS
          "Top Surface Mask",globaleps=globaleps,localeps=localeps)
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Bottom Surface Mask",globaleps=globaleps,localeps=localeps)
-
     CALL RotateMesh(OldMesh, RotationMatrix)
     CALL RotateMesh(NewMesh, RotationMatrix)
 
@@ -3901,10 +3900,11 @@ CONTAINS
          !always finds correct translation from DOFs to process nodenumber since
          !all arrays in ascending order
          PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
-         ' x:', NewMesh % Nodes % x(i),&
-         ' y:', NewMesh % Nodes % y(i),&
-         ' z:', NewMesh % Nodes % z(i), &
-         'GDOF', FinalDOFs(i)
+         ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
+         ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
+         ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
+         'GDOF', FinalDOFs(i), &
+         NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
          CALL InterpolateUnfoundPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
             BoundaryID, NodeMask=NewMaskLogical, Variables=NewMesh % Variables)
       END IF
@@ -3958,7 +3958,9 @@ CONTAINS
     END IF ! first time
 
     ! check whether already did a front orientation computation this timestep
-    TimeVar => VariableGet( Model % Variables, 'Timestep' )
+    ! Changed Model % Mesh % Variables to avoid segfault as when calling vtusolver after mmg step as
+    ! Model % Variables lost after vtuoutput
+    TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
     IF (Debug) PRINT *, 'Time', TimeVar % Values
     IF (Debug)  PRINT *, 'PrevTime', PrevTime
     IF (Debug)  PRINT *, 'FirstThisTime', FirstThisTime
