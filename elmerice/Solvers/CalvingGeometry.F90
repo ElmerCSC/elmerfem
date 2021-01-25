@@ -3616,14 +3616,18 @@ CONTAINS
          "Top Surface Mask",globaleps=globaleps,localeps=localeps)
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Bottom Surface Mask",globaleps=globaleps,localeps=localeps)
-    CALL RotateMesh(OldMesh, RotationMatrix)
-    CALL RotateMesh(NewMesh, RotationMatrix)
+
+    ! removed as 2d interp on calving front no longer valid since calving front is
+    ! not projectable
+
+    !CALL RotateMesh(OldMesh, RotationMatrix)
+    !CALL RotateMesh(NewMesh, RotationMatrix)
 
     !CHANGE - need to delete UnfoundNOtes from this statement, or front
     !variables not copied across. If you get some odd interpolation artefact,
     !suspect this
-    CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask", globaleps=globaleps,localeps=localeps)
+    !CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
+    !     "Calving Front Mask", globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3636,8 +3640,8 @@ CONTAINS
     ! be missed would be variables defined solely on the front. Currently, none
     ! of these are important for the next timestep, so this should be fine.
 
-    CALL RotateMesh(NewMesh, UnrotationMatrix)
-    CALL RotateMesh(OldMesh, UnrotationMatrix)
+    !CALL RotateMesh(NewMesh, UnrotationMatrix)
+    !CALL RotateMesh(OldMesh, UnrotationMatrix)
 
     !-----------------------------------------------
     ! Point solvers at the correct mesh and variable
