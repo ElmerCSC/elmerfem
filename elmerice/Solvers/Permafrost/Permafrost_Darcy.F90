@@ -675,12 +675,12 @@ CONTAINS
       IF (HydroGeo) THEN   ! Simplifications: Xip=0 Xi=1 kappas=0
         CgwppAtIP = PorosityAtIP * rhogwPAtIP + rhogwAtIP * kappaGAtIP
       ELSE
-        CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
+        CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
              kappaGAtIP,XiAtIP(IPPerm),XiPAtIP,&
              RockMaterialID,PorosityAtIP)
         !PRINT *,"CgwppAtIP:",CgwppAtIP," KgwppAtIP", KgwppAtIP
       END IF
-      CgwpTAtIP = GetCgwpT(rhogwAtIP,rhoiAtIP,rhogwTAtIP,rhoiTAtIP,rhosTAtIP,XiAtIP(IPPerm),XiTAtIP,PorosityAtIP)
+      CgwpTAtIP = GetCgwpT(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwTAtIP,rhoiTAtIP,rhosTAtIP,XiAtIP(IPPerm),XiTAtIP,PorosityAtIP)
       IF (.NOT.NoSalinity) THEN
         CgwpYcAtIP = GetCgwpYc(rhogwAtIP,rhoiAtIP,rhogwYcAtIP,XiAtIP(IPPerm),XiYcAtIP,PorosityAtIP)     
       END IF
