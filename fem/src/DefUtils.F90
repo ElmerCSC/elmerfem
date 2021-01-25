@@ -1606,9 +1606,6 @@ CONTAINS
      INTEGER :: i,j, id, ElemFamily
      LOGICAL :: Found, GB, NeedEdges
 
-     Element => GetCurrentElement( UElement )
-     ElemFamily = GetElementFamily(Element)
-
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
@@ -1616,11 +1613,20 @@ CONTAINS
      END IF
 
      n = 0
+
+     IF (.NOT. ASSOCIATED(Solver)) THEN
+       CALL Warn('GetElementNOFDOFS', &
+           'Cannot return the number of DOFs without knowing solver')
+       RETURN
+     END IF
+
+     Element => GetCurrentElement( UElement )
+     ElemFamily = GetElementFamily(Element)
+
      IF( Solver % DG ) THEN
        n = Element % DGDOFs
        IF ( n>0 ) RETURN
      END IF
-
 
      id = Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
@@ -1698,9 +1704,6 @@ CONTAINS
      LOGICAL :: Found, GB, DGdisable, NeedEdges
      INTEGER :: nb,i,j,k,id,NDOFs,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs
      INTEGER :: Ind, ElemFamily, DOFsPerNode
-
-     Element => GetCurrentElement(UElement)
-     ElemFamily = GetElementFamily(Element)
      
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
@@ -1714,6 +1717,9 @@ CONTAINS
        CALL Warn('GetElementDOFS', 'Cannot return DOFs data without knowing solver')
        RETURN
      END IF
+
+     Element => GetCurrentElement(UElement)
+     ElemFamily = GetElementFamily(Element)
 
      DGDisable=.FALSE.
      IF (PRESENT(NotDG)) DGDisable=NotDG
@@ -1775,8 +1781,8 @@ CONTAINS
        END DO
      END IF
 
-     ! default for nodal elements, if no solver active:
-     ! ------------------------------------------------
+     ! The DOFs of advanced elements cannot be returned without knowing mesh
+     ! ---------------------------------------------------------------------
      IF (.NOT.ASSOCIATED(Solver % Mesh)) RETURN
 
      NeedEdges = .FALSE.
