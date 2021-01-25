@@ -656,7 +656,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
         CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
         !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-        CALL RemeshMMG3D(NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+        CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
 
         !Update parallel info from old mesh nodes (shared node neighbours)
         CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)

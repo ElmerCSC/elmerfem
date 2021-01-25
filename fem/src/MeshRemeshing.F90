@@ -854,14 +854,16 @@ END SUBROUTINE MapNewParallelInfo
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
+SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
 
+  TYPE(Model_t) :: Model
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
   TYPE(ValueList_t), POINTER, OPTIONAL :: Params
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
   !-----------
+  TYPE(Mesh_t), POINTER :: WorkMesh
   TYPE(ValueList_t), POINTER :: FuncParams, Material
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:)
@@ -904,12 +906,16 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
 
   IF(AnisoFlag) THEN
 
+    WorkMesh => Model % Mesh
+    Model % Mesh => InMesh
+
     SolType = MMG5_Tensor
     !Upper triangle of symmetric tensor: 11,12,13,22,23,33
     ALLOCATE(Metric(NNodes,6))
     Metric = 0.0
     DO i=1,NNodes
       NodeNum = i
+
       CALL ListGetRealArray(FuncParams,"RemeshMMG3D Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
 
       !Metric = 1.0/(edge_length**2)
@@ -917,6 +923,9 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
       Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
       Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
     END DO
+
+    Model % Mesh => WorkMesh
+    WorkMesh => NULL()
 
   ELSE
 
