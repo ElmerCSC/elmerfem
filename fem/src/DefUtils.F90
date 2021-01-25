@@ -1748,7 +1748,7 @@ CONTAINS
         IF ( NB > 0 ) RETURN
      END IF
 
-     id =Element % BodyId
+     id = Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
          id = Element % BoundaryInfo % Left % BodyId
@@ -1840,7 +1840,7 @@ CONTAINS
          Parent => Element % BoundaryInfo % Right
        IF (.NOT.ASSOCIATED(Parent) ) RETURN
 
-       SELECT CASE(GetElementFamily(Element))
+       SELECT CASE(ElemFamily)
        CASE(2)
          IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
            IF ( isActivePElement(Element) ) THEN
@@ -1860,7 +1860,7 @@ CONTAINS
 
            EDOFs = Element % BDOFs
            DO i=1,EDOFs
-               NB = NB + 1
+             NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Parent % EdgeIndexes(Ind)-1) + &
                       i + NDOFs * Solver % Mesh % NumberOfNodes
            END DO
