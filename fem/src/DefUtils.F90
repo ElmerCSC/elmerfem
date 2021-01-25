@@ -1686,7 +1686,7 @@ CONTAINS
 
 !> In addition to returning the number of degrees of freedom associated with 
 !> the element, the indexes of the degrees of freedom are also returned.
-  FUNCTION GetElementDOFs( Indexes, UElement, USolver,NotDG )  RESULT(NB)
+  FUNCTION GetElementDOFs( Indexes, UElement, USolver, NotDG )  RESULT(NB)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      INTEGER :: Indexes(:)
@@ -1707,9 +1707,13 @@ CONTAINS
      ELSE
         Solver => CurrentModel % Solver
      END IF
-
-     NDOFs = Solver % Mesh % MaxNDOFs
+       
      NB = 0
+
+     IF (.NOT. ASSOCIATED(Solver)) THEN
+       CALL Warn('GetElementDOFS', 'Cannot return DOFs data without knowing solver')
+       RETURN
+     END IF
 
      DGDisable=.FALSE.
      IF (PRESENT(NotDG)) DGDisable=NotDG
@@ -1748,6 +1752,19 @@ CONTAINS
      END IF
      IF ( id == 0 ) id=1
 
+     IF (.NOT.ASSOCIATED(Solver % Mesh)) THEN
+       IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN  
+         CALL Warn('GetElementDOFS', &
+             'Solver mesh unknown, the node indices are returned')
+         NDOFs = 1
+       ELSE
+         CALL Warn('GetElementDOFS', &
+             'Solver mesh unknown, no indices returned')
+       END IF
+     ELSE
+       NDOFs = Solver % Mesh % MaxNDOFs
+     END IF
+
      IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN
        DOFsPerNode = Element % NDOFs / Element % TYPE % NumberOfNodes
        DO i=1,Element % TYPE % NumberOfNodes
@@ -1760,8 +1777,7 @@ CONTAINS
 
      ! default for nodal elements, if no solver active:
      ! ------------------------------------------------
-     IF(.NOT.ASSOCIATED(Solver)) RETURN
-     IF(.NOT.ASSOCIATED(Solver % Mesh)) RETURN
+     IF (.NOT.ASSOCIATED(Solver % Mesh)) RETURN
 
      NeedEdges = .FALSE.
      DO i=2,SIZE(Solver % Def_Dofs,3)
