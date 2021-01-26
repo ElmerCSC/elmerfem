@@ -322,6 +322,9 @@
                            'CALL TO MMGS_Get_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Get_meshSize DONE'    
 
+      IF (nq.ne.0) CALL FATAL('MMGSolver',&
+                           'Sorry no support for 404 elements')
+
 ! INITIALISE THE NEW MESH STRUCTURE
       NewMesh => AllocateMesh()
       IF (IncrementMeshNumber) THEN
@@ -467,7 +470,7 @@
       TYPE(Element_t),POINTER :: Element
       INTEGER, POINTER :: NodeIndexes(:)
 
-      INTEGER :: NVert,NEle,NEdge
+      INTEGER :: NVert,NEle,NEdge,Nquad
       INTEGER :: n
       INTEGER :: ier
       INTEGER :: ii,tt
@@ -475,8 +478,10 @@
       NVert=Mesh%NumberOfNodes
       NEle=Mesh%NumberOfBulkElements
       NEdge=Mesh%NumberOfBoundaryElements
+      ! support only 303 elements no 404
+      Nquad=0
 
-      CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,0,NEdge,ier)
+      CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,Nquad,NEdge,ier)
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                         'CALL TO MMG2D_Set_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Set_meshSize DONE'
