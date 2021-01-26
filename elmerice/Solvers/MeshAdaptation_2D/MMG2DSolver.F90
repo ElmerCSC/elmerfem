@@ -310,14 +310,14 @@
 !------------------------------------------------------------------------------
       TYPE(Element_t),POINTER ::  Element
       INTEGER, POINTER :: NodeIndexes(:)
-      INTEGER :: np,nt,na,ier
+      INTEGER :: np,nt,na,nq,ier
       INTEGER :: ref,corner,required,ridge
       INTEGER :: parent,ied
       INTEGER :: tt, jj, kk, ll
 
 
      !> a) get the size of the mesh: vertices,  triangles, edges
-      CALL MMG2D_Get_meshSize(mmgMesh,np,nt,na,ier)
+      CALL MMG2D_Get_meshSize(mmgMesh,np,nt,nq,na,ier)
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                            'CALL TO MMGS_Get_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Get_meshSize DONE'    
@@ -476,7 +476,7 @@
       NEle=Mesh%NumberOfBulkElements
       NEdge=Mesh%NumberOfBoundaryElements
 
-      CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,NEdge,ier)
+      CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,0,NEdge,ier)
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                         'CALL TO MMG2D_Set_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Set_meshSize DONE'
