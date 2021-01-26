@@ -82,6 +82,7 @@
 #ifdef HAVE_MMG
 #include "mmg/mmg2d/libmmg2df.h"
 #endif
+
       TYPE(Model_t) :: Model
       TYPE(Solver_t), TARGET :: Solver
       TYPE(Solver_t), POINTER ::PSolver
@@ -120,6 +121,17 @@
       LOGICAL :: IncrementMeshNumber
       LOGICAL :: UniformSize
       LOGICAL :: TestConvergence
+
+! has new preprocessors macros
+#ifdef MMGVERSION_H
+! check that version is at least 5.5 
+#if MMG_VERSION_LT(5,5) 
+      CALL FATAL('MMGSolver','Upgrade to MMG 5.5')
+#endif
+#else
+      !no macro case; assume it's older...
+      CALL FATAL('MMGSolver','Upgrade to MMG 5.5')
+#endif
 
       nVisit=nVisit+1
 
