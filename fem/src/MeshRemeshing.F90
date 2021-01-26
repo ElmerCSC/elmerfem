@@ -48,6 +48,7 @@ INTEGER :: MMGPARAM_hgrad = MMG3D_DPARAM_hgrad
 INTEGER :: MMGPARAM_angle = MMG3D_IPARAM_angle
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
+MMG5_DATA_PTR_T :: mmgMet
 #endif
 
 CONTAINS

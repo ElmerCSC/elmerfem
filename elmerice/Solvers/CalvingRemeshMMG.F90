@@ -373,6 +373,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgSol  = 0
+      mmgMet  = 0
 
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
@@ -429,7 +430,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
-      CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
+      CALL MMG3D_mmg3dls(mmgMesh,mmgSol,mmgMet,ierr)
 
       CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
 
