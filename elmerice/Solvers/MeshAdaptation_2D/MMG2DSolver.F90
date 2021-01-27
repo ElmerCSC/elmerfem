@@ -82,6 +82,9 @@
 #ifdef HAVE_MMG
 #include "mmg/mmg2d/libmmg2df.h"
 #endif
+#ifndef MMGVERSION_H
+#define MMG_VERSION_LT(MAJOR,MINOR) 1
+#endif
 
       TYPE(Model_t) :: Model
       TYPE(Solver_t), TARGET :: Solver
@@ -121,17 +124,6 @@
       LOGICAL :: IncrementMeshNumber
       LOGICAL :: UniformSize
       LOGICAL :: TestConvergence
-
-! has new preprocessors macros
-#ifdef MMGVERSION_H
-! check that version is at least 5.5 
-#if MMG_VERSION_LT(5,5) 
-      CALL FATAL('MMGSolver','Upgrade to MMG 5.5')
-#endif
-#else
-      !no macro case; assume it's older...
-      CALL FATAL('MMGSolver','Upgrade to MMG 5.5')
-#endif
 
       nVisit=nVisit+1
 
@@ -329,13 +321,18 @@
 
 
      !> a) get the size of the mesh: vertices,  triangles, edges
+
+#if MMG_VERSION_LT(5,5) 
+      CALL MMG2D_Get_meshSize(mmgMesh,np,nt,na,ier)
+#else
       CALL MMG2D_Get_meshSize(mmgMesh,np,nt,nq,na,ier)
+      IF (nq.ne.0) CALL FATAL('MMGSolver',&
+                           'Sorry no support for 404 elements')
+#endif
+
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                            'CALL TO MMGS_Get_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Get_meshSize DONE'    
-
-      IF (nq.ne.0) CALL FATAL('MMGSolver',&
-                           'Sorry no support for 404 elements')
 
 ! INITIALISE THE NEW MESH STRUCTURE
       NewMesh => AllocateMesh()
@@ -493,7 +490,12 @@
       ! support only 303 elements no 404
       Nquad=0
 
+#if MMG_VERSION_LT(5,5) 
+      CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,NEdge,ier)
+#else
       CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,Nquad,NEdge,ier)
+#endif
+
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                         'CALL TO MMG2D_Set_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Set_meshSize DONE'
