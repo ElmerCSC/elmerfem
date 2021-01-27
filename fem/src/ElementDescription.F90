@@ -11743,7 +11743,7 @@ END SUBROUTINE PickActiveFace
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
     LOGICAL :: IsPassive
     !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER :: Element,tmp
     REAL(KIND=dp), ALLOCATABLE :: Passive(:)
     INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
     LOGICAL :: Found
@@ -11767,7 +11767,9 @@ END SUBROUTINE PickActiveFace
     IF( NoPassiveElements ) RETURN       
 
     IF (PRESENT(UElement)) THEN
+      tmp => CurrentModel % CurrentElement
       Element => UElement
+      CurrentModel % CurrentElement => Element
     ELSE
 #ifdef _OPENMP
       IF (omp_in_parallel()) THEN
@@ -11824,6 +11826,9 @@ END SUBROUTINE PickActiveFace
       END IF
     END IF
 
+    IF (PRESENT(UElement)) THEN
+       CurrentModel % CurrentElement => tmp
+    END IF
 !------------------------------------------------------------------------------
   END FUNCTION CheckPassiveElement
 !------------------------------------------------------------------------------
