@@ -1,6 +1,6 @@
 !
 ! Solve the mixed formulation of the Poisson equation by using div-conforming
-! (face) finite elements of degree k = 1.
+! (face) finite elements. Here brick elements are used. 
 !
 ! This test is used to check that mixed boundary conditions (the flux and 
 ! the scalar field specified on complementary parts of the boundary) are
@@ -10,16 +10,18 @@
 Check Keywords "Warn"
 
 Header
-  Mesh DB "." "square"
+  Mesh DB "." "testcube"
 End
 
 Simulation
   Max Output Level = 5
-  Coordinate System = "Cartesian 2D"
+  Coordinate System = "Cartesian 3D"
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-!  Post File = "rt.vtu"
+  Post File = "mixed_brick.vtu"
+
+  vtu: Save Bulk Only = Logical True
 End
 
 Body 1
@@ -34,7 +36,8 @@ Body Force 1
 End
 
 Material 1
-   Material Parameter = Real 1.0
+!   Material Parameter = Real 1.0
+  Material Tensor(3,3) = Real 1 0 0 0 1 0 0 0 1
 End
 
 Equation 1
@@ -47,12 +50,12 @@ Solver 1
   Variable DOFs = 1
   Procedure = "ModelMixedPoisson" "MixedPoisson"
   !-------------------------------------------------------
-  ! Here the bubble dof is used for constructing
-  ! the piecewise constant approximation of the
+  ! Here the bubble dofs are used for both approximating flux and
+  ! constructing the piecewise constant approximation of the
   ! variable of the Poisson equation in the standard form.
   !-------------------------------------------------------
-  Second Kind Basis = Logical False
-  Optimize Bandwidth = False
+  Element = "n:1 b:25 f:4"
+  Optimize Bandwidth = True
   Bubbles in Global System = Logical True
   Linear System Solver = Iterative
   Linear System Iterative Method = GCR
@@ -62,31 +65,32 @@ Solver 1
   Linear System Convergence Tolerance = 1e-7
 End
 
-
 Boundary Condition 1
   !
   ! Prescribe the flux variable as a Dirichlet condition:
   !
-  Target Boundaries(2) = 2 3
+  Target Boundaries(4) = 1 3 5 6
   MixedSol {f} 1 = Real 0.0
-  MixedSol {f} 2 = Real 0.0 
+  MixedSol {f} 2 = Real 0.0
+  MixedSol {f} 3 = Real 0.0
 End
 
 Boundary Condition 2
   !
-  ! Prescribe the scalar variable on the boundary x=0 weakly:
+  ! Prescribe the scalar variable
   !
-  Target Boundaries(1) = 1
+  Target Boundaries(1) = 4
   Scalar Field = Real 0.0
 End
 
 Boundary Condition 3
   !
-  ! Prescribe the scalar variable on the boundary x=1 weakly:
+  ! Prescribe the scalar variable
   !
-  Target Boundaries(1) = 4
+  Target Boundaries(1) = 2
   Scalar Field = Real 1.0
 End
 
-Solver 1 :: Reference Norm = Real 3.62862802E-01
-Solver 1 :: Reference Norm Tolerance = Real 1.0E-6
+
+Solver 1 :: Reference Norm = Real 2.14973513E-01
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5

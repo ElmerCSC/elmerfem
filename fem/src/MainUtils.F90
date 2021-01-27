@@ -463,6 +463,24 @@ CONTAINS
      TYPE(Solver_t), POINTER :: Solver
 !------------------------------------------------------------------------------
 
+  INTERFACE
+    SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
+        NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
+      USE Lists
+      USE SParIterComm
+      USE Interpolation
+      USE CoordinateSystems
+      USE MeshUtils, ONLY: ReleaseMesh
+      TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
+      TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
+      LOGICAL, OPTIONAL :: UseQuadrantTree
+      TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+      CHARACTER(LEN=*),OPTIONAL :: MaskName
+      LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
+    END SUBROUTINE InterpolateMeshToMesh
+  END INTERFACE
+
+
      Def_Dofs = -1;
      DO i=1,Model % NumberOfSolvers
        DO j=1,10
@@ -503,7 +521,6 @@ CONTAINS
      IF(ASSOCIATED(Model % Variables, Mesh % Variables)) Model % Variables => NewMesh % Variables
 
      Mesh % Next => Null()
-     CALL ReleaseMesh( Mesh )
 
      Transient = ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient'
 
@@ -519,6 +536,13 @@ CONTAINS
          IF ( Transient .AND. Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
        END IF
      END DO
+
+     IF( Transient ) THEN
+       CALL InterpolateMeshToMesh( Mesh, NewMesh, Mesh % Variables, NewMesh % Variables ) 
+     END IF
+
+
+     CALL ReleaseMesh( Mesh )
 
      CALL MeshStabParams( Newmesh )
      NewMesh % Changed = .TRUE.
@@ -1257,7 +1281,7 @@ CONTAINS
         END IF
         CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=10)
       ELSE
-        CALL Warn( 'AddEquation', '> Timestepping method < defaulted to > Implicit Euler <' )
+        CALL Warn('AddEquationBasics', '> Timestepping method < defaulted to > Implicit Euler <' )
         CALL ListAddString( SolverParams, 'Timestepping Method', 'Implicit Euler' )
       END IF
 
@@ -3195,7 +3219,7 @@ CONTAINS
 
       IF( TestConvergence ) THEN
         IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
-          CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(i)),Level=4)
+          CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(MIN(i,CoupledMaxIter))),Level=4)
           CoupledAbort = ListGetLogical( Model % Simulation,  &
               'Coupled System Abort Not Converged', Found )
           CALL NumericalError('SolveEquations','Coupled system did not converge',CoupledAbort)

@@ -2337,9 +2337,9 @@ END INTERFACE
            CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
            
            IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
-             IF( Transient ) THEN
-               CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
-             END IF
+!            IF( Transient ) THEN
+!              CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
+!            END IF
              
              ! we cannot have mesh depend on "time" or "timestep" if they are not available as
              ! variables. 

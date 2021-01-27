@@ -328,8 +328,13 @@ CONTAINS
      
    END SUBROUTINE InitializeMesh
 
-
-   
+!------------------------------------------------------------------------------
+! This version of creating def_dofs arrays has limited abilities since it does not
+! support element family flags (cf. the subroutine GetDefs in ModelDescription). 
+! There is no need for calling this unless the element definition is given in an 
+! equation section or a matc function is used to evaluate the order of p-basis,
+! since otherwise the subroutine GetDefs has done the necessary work.
+! TO DO: Have just one subroutine for writing def_dofs arrays ?
 !------------------------------------------------------------------------------
    SUBROUTINE GetMaxDefs(Model, Mesh, Element, ElementDef, SolverId, BodyId, Def_Dofs)
 !------------------------------------------------------------------------------
@@ -371,7 +376,11 @@ CONTAINS
      Body_Dofs => Solver % Def_Dofs(1:8,BodyId,:)
 
      j = INDEX(ElementDef, '-') ! FIX this to include elementtypewise defs...
-     IF ( j>0 ) RETURN
+     IF ( j>0 ) THEN
+       CALL Warn('GetMaxDefs', &
+           'Element set flags not supported, move element definition to a solver section')
+       RETURN
+     END IF
 
      j = INDEX( ElementDef, 'n:' )
      IF ( j>0 ) THEN
@@ -397,6 +406,11 @@ CONTAINS
       j = INDEX( ElementDef, 'd:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
         Body_Dofs(:,4) = l
         Def_Dofs(1:8,4) = MAX(Def_Dofs(1:8,4), l )
       ELSE 
@@ -427,11 +441,11 @@ CONTAINS
           slen = LEN_TRIM(str)
           CALL matc(str,RESULT,slen)
           READ(RESULT(1:slen),*) x
-          Body_Dofs(:,6) = 0
+
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
           Family = Element % TYPE % ElementCode / 100
-          Solver % Def_Dofs(Family, BodyId, 6) = &
-              MAX(Solver % Def_Dofs(Family, BodyId, 6), NINT(x))
+          Body_Dofs(Family, 6) = &
+              MAX(Body_Dofs(Family, 6), NINT(x))
         ELSE
           READ( ElementDef(j+2:), * ) l
           Body_Dofs(:,6) = l
@@ -2613,7 +2627,8 @@ CONTAINS
          mat_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
-         FirstOrderElements, InheritDG, Hit, Stat
+         FirstOrderElements, InheritDG, Hit, Stat, &
+         UpdateDefDofs(Model % NumberOfSolvers)
      TYPE(Element_t), POINTER :: Element, Parent, pParent
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
@@ -2627,7 +2642,6 @@ CONTAINS
      CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )     
     
      DGIndex = 0
-     NeedEdges = .FALSE.
 
      InDofs = 0
      InDofs(:,1) = 1
@@ -2636,7 +2650,7 @@ CONTAINS
      ELSE
        DO s=1,Model % NumberOfSolvers
          DO i=1,6
-           DO j=1,8
+           DO j=1,10
              inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
            END DO
          END DO
@@ -2655,11 +2669,12 @@ CONTAINS
     !
     ! Check whether the "Element" definitions can depend on mesh
     ! -----------------------------------------------------------
-    MeshDeps = .FALSE.; FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
+    MeshDeps = .FALSE.  ! The order of p-basis given with a MATC function
+    FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
 
     !
     ! As a preliminary step, check if an element definition is given 
-    ! an equation section. The more common way is give the element
+    ! in an equation section. The more common way is to give the element
     ! definition in a solver section.
     !
     DO eq_id=1,Model % NumberOFEquations
@@ -2673,57 +2688,70 @@ CONTAINS
         ! MATC function:
         !
         j = INDEX(ElementDef0,'p:')
-        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+        IF (j>0 .AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
       ELSE
         !
         ! Check if element definitions are given for each solver separately
         ! by using a special keyword construct and tag the corresponding
-        ! entries in the list of the solvers. This was thought to serve
-        ! the definition of bodywise p-orders, but it seems this doesn't
-        ! work really. TO DO: REPAIR OR REMOVE
+        ! entries in the list of the solvers. 
         ! 
         DO Solver_id=1,Model % NumberOfSolvers
           IF (PRESENT(mySolver)) THEN
             IF ( Solver_id /= mySolver ) CYCLE
           ELSE
+            ! Respect definitions given in the solver section:
             IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
           END IF
 
           ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
           FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef
 
-          j = INDEX(ElementDef,'p:')
-          IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+          IF (FoundDef) THEN
+            j = INDEX(ElementDef,'p:')
+            IF (j>0 .AND. ElementDef(j+2:j+2)=='%') MeshDeps = .TRUE.
+          END IF
         END DO
       END IF
     END DO
 
     !
     ! Tag solvers for which the element definition has been given in
-    ! a solver section:
+    ! a solver section. The function LoadModel has already read these
+    ! element definitions except for cases where the order of p-basis is
+    ! defined in terms of a MATC function. The array UpdateDefDofs will
+    ! show whether element definitions should be re-read.
     !
-    DO solver_id=1,Model % NumberOFSolvers
+    UpdateDefDofs = .TRUE.
+    DO solver_id=1,Model % NumberOfSolvers
       Vlist => Model % Solvers(solver_id) % Values
 
       ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
-      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-      j = INDEX(ElementDef0,'p:')
-      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
+      IF (FoundDef0) THEN
+        FoundSolverDefs(Solver_id) = .TRUE.
+
+        j = INDEX(ElementDef0,'p:')
+        IF (j>0 .AND. ElementDef0(j+2:j+2)=='%') THEN
+          meshdeps = .TRUE.
+        ELSE
+          ! Solverwise element definitions have already be read in LoadModel,
+          ! indicate that re-reading is not needed here
+          UpdateDefDofs(Solver_id) = .FALSE.
+        END IF
+      END IF
     END DO
 
     ! The basic case without the order of p-basis being defined by a MATC function:
     !
     IF (.NOT.MeshDeps) THEN
-      ElementDef = ' '
       FoundDef0 = .FALSE.
       DO body_id=1,Model % NumberOfBodies
         ElementDef0 = ' '
         Vlist => Model % Bodies(body_id) % Values
         eq_id = ListGetInteger(Vlist,'Equation',FoundEq)
-        IF( FoundEq ) THEN
+        IF ( FoundEq ) THEN
           Vlist => Model % Equations(eq_id) % Values
-          IF(FoundEqDefs) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+          IF (FoundEqDefs) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
           DO solver_id=1,Model % NumberOfSolvers
 
@@ -2740,12 +2768,16 @@ CONTAINS
             IF ( FoundDef ) THEN
               CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef, solver_id, body_id, Indofs )
             ELSE
-              IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
-                 ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
+              IF (UpdateDefDofs(Solver_id)) THEN
+                IF (.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
+                    ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
 
-              CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef0, solver_id, body_id, Indofs )
+                CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef0, solver_id, body_id, Indofs )
 
-              IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+                IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+              ! ELSE
+              !   PRINT *, 'NO NEED TO RECREATE DEF_DOFS '
+              END IF
             END IF
           END DO
         END IF
@@ -2757,21 +2789,27 @@ CONTAINS
      body_id0 = -1; FoundDef=.FALSE.; FoundEq=.FALSE.
      ElementDef = ' '
 
+     !
+     ! Check whether face DOFs have been generated by "-quad_face b: ..." or
+     ! "-tri_face b: ..."
+     !
+     NeedEdges = ANY( inDOFs(9:10,5)>0 )
+
      DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
 
        body_id = Element % BodyId
        n = Element % TYPE % NumberOfNodes
        
-       ! Check the Solver specific element types
-       IF( Meshdeps ) THEN
+       ! Check if the order of p-basis depends on a MATC function
+       IF ( Meshdeps ) THEN
          IF ( body_id/=body_id0 ) THEN
            Vlist => Model % Bodies(body_id) % Values
            eq_id = ListGetInteger(Vlist,'Equation',FoundEq)
+           ElementDef0 = ' '
          END IF
 
-         ElementDef0 = ' '
-         IF( FoundEq ) THEN
+         IF ( FoundEq ) THEN
            Vlist => Model % Equations(eq_id) % Values
            FoundDef0 = .FALSE.
            IF( FoundEqDefs.AND.body_id/=body_id0 ) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
@@ -2790,12 +2828,14 @@ CONTAINS
              IF ( FoundDef ) THEN
                CALL GetMaxDefs( Model, Mesh, Element, ElementDef, solver_id, body_id, Indofs )
              ELSE
-               IF(.NOT. FoundDef0.AND.FoundSolverDefs(solver_id)) &
-                  ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
+               IF (UpdateDefDofs(Solver_id)) THEN
+                 IF (.NOT. FoundDef0.AND.FoundSolverDefs(solver_id)) &
+                     ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
 
-               CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+                 CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
 
-               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+                 IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+               END IF
              END IF
            END DO
          END IF
@@ -2818,7 +2858,7 @@ CONTAINS
        IF ( inDofs(el_id,4) == 0 ) THEN
          inDOFs(el_id,4) = n
        END IF
-         
+
        NULLIFY( Element % DGIndexes )
        IF ( inDOFs(el_id,4) > 0 ) THEN
          CALL AllocateVector( Element % DGIndexes, inDOFs(el_id,4))
@@ -2826,8 +2866,6 @@ CONTAINS
            DGIndex = DGIndex + 1
            Element % DGIndexes(j) = DGIndex
          END DO
-       ELSE
-         NULLIFY( Element % DGIndexes )
        END IF
        Element % DGDOFs = MAX(0,inDOFs(el_id,4))
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
@@ -2838,7 +2876,24 @@ CONTAINS
          NeedEdges = .TRUE.
 
          ! Calculate element bubble dofs and set element p
-         Element % PDefs % P = inDOFs(el_id,6)
+
+         Element % PDefs % P = inDOFs(el_id,6)   ! NOTE: If the order of p-basis is given by
+                                                 ! a MATC function, the order is here defined
+                                                 ! to be the maximum order over the element
+                                                 ! processed so far. This is 
+                                                 ! erroneous as the resulting p-distribution  
+                                                 ! thus depends on the numbering of geometric
+                                                 ! entities.
+         !
+         ! Try to fix the issue described in the above remark in a special case 
+         ! where a single element definition is given in the equation section:
+         !
+         IF (FoundEqDefs .AND. Model % NumberOfSolvers > 0) THEN
+           ! All solvers have the same element definition, pick one of these
+           ! to set the polynomial degree:
+           Element % PDefs % P = Model % Solvers(1) % Def_Dofs(el_id,Body_Id,6)
+         END IF
+
          IF ( inDOFs(el_id,5) > 0 ) THEN
            Element % BDOFs = inDOFs(el_id,5)
          ELSE
@@ -2888,7 +2943,12 @@ CONTAINS
        n = Element % TYPE % NumberOfNodes
        Element % NDOFs  = n
        el_id = ELement % TYPE % ElementCode / 100
-
+       
+       !
+       ! NOTE: The following depends on what dofs have been introduced
+       ! by using the construct "-quad_face b: ..." and
+       ! "-tri_face b: ..."
+       !
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
          IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
            Element % NDOFs = 0
@@ -3196,6 +3256,11 @@ CONTAINS
                CALL AssignLocalNumber(Face, Face % BoundaryInfo % Right, Mesh)
              END IF
           ELSE IF (PRESENT(FaceDOFs)) THEN
+             !
+             ! NOTE: This depends on what dofs have been introduced
+             ! by using the construct "-quad_face b: ..." and
+             ! "-tri_face b: ..."
+             !
              el_id = face % TYPE % ElementCode / 100
              Face % BDOFs = MAX(FaceDOFs(i), Face % BDOFs)
              IF ( PRESENT(inDOFs) ) Face % BDOFs = MAX(Face % BDOFs, InDOFs(el_id+6,5))
@@ -3206,7 +3271,7 @@ CONTAINS
           Mesh % MaxFaceDOFs = MAX(Face % BDOFs, Mesh % MaxFaceDOFs)
        END DO
     END DO
-    IF ( Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs ) Mesh % MinFaceDOFs = MEsh % MaxFaceDOFs
+    IF ( Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs ) Mesh % MinFaceDOFs = Mesh % MaxFaceDOFs
 
     ! Set local edges for boundary elements
     DO i=Mesh % NumberOfBulkElements + 1, &
@@ -3255,10 +3320,10 @@ CONTAINS
    TYPE(Element_t), POINTER :: Element
    INTEGER :: i,j,n
 
-   ! Set gauss points for each p element
    DO i=1,Mesh % NumberOfBulkElements
      Element => Mesh % Elements(i)
 
+     ! Set gauss points for each p element
      IF ( ASSOCIATED(Element % PDefs) ) THEN
        Element % PDefs % GaussPoints = getNumberOfGaussPoints( Element, Mesh )
      END IF
