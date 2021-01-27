@@ -115,10 +115,7 @@ Solver 1 ! whitneyavsolver
  !Linear System Solver = "Direct"
  !Linear System Direct Method = UMFPack
   Steady State Convergence Tolerance = 1e-06
-  Apply Mortar BCs = Logical True
-  use biorthogonal basis = logical true
 
-  projector skip nodes = true
   Edge Basis = Logical True
   Optimize Bandwidth = False
 End
@@ -136,7 +133,6 @@ Solver 2 ! MagnetoDynamicsCalcFields
   Calculate Nodal Forces = Logical True
   Calculate Elemental Fields = Logical True
   !Calculate Maxwell Stress = Logical True
-  Apply Mortar BCs = Logical false
   !Optimize Bandwidth = False
 
   Linear System Solver = Iterative

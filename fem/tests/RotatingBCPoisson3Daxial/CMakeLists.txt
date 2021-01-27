@@ -5,4 +5,5 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO sector_extrude.eg sector.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(RotatingBCPoisson3Daxial NPROCS 1 6)
+ADD_ELMER_TEST(RotatingBCPoisson3Daxial NPROCS 1 6 LABELS mortar)
+

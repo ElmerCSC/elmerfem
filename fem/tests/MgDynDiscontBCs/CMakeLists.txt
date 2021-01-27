@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO geom DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(MgDynDiscontBCs LABELS whitney quick)
+ADD_ELMER_TEST(MgDynDiscontBCs LABELS whitney mortar quick)
