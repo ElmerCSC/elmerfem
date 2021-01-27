@@ -421,6 +421,11 @@ CONTAINS
              l = MAX(0,Def_Dofs(3))
              j = Face % TYPE % ElementCode/100
              IF(l==0) THEN
+               !
+               ! NOTE: This depends on what dofs have been introduced
+               ! by using the construct "-quad_face b: ..." and
+               ! "-tri_face b: ..."
+               !
                IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
                  e = Face % BoundaryInfo % Left % BodyId
                  l = MAX(0,Solver % Def_Dofs(j+6,e,5))

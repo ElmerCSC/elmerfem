@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY mortar_quarter.geo ELMERSOLVER_STARTINFO extrude_quarter.eg mortar_quarter.msh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(RotatingBCPoisson3DSymmSkew)
+ADD_ELMER_TEST(RotatingBCPoisson3DSymmSkew LABELS mortar heateq)
