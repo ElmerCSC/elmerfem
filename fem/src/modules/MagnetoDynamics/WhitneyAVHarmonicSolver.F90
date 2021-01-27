@@ -519,7 +519,7 @@ CONTAINS
              MuParameter=GetConstReal( BC, 'Thin Sheet Relative Permeability', Found)
              IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
              ! Technically, there is no skin but why create yet another conductivity variable?
-             SkinCond = GetConstReal( BC, 'Thin Sheet Conductivity', Found)
+             SkinCond = GetConstReal( BC, 'Thin Sheet Electric Conductivity', Found)
              IF (.NOT. Found) SkinCond = 1.0_dp ! if not found default to "air" property
              CALL LocalMatrixThinSheet( STIFF, FORCE, LOAD, GapLength, MuParameter, &
                                             SkinCond, Element, n, nd )
