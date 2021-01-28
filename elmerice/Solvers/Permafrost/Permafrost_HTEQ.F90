@@ -102,23 +102,13 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Params, Material
-  TYPE(Variable_t), POINTER :: TemperatureVar,PressureVar,PorosityVar,SalinityVar,&
-       TemperatureDtVar, PressureDtVar, SalinityDtVar,&
-       DepthVar, DummyGWfluxVar
+  TYPE(Variable_t), POINTER :: DummyGWfluxVar
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat,DepthDOFs
   INTEGER,PARAMETER :: io=23
-  INTEGER,POINTER :: TemperaturePerm(:), PressurePerm(:),&
-       PorosityPerm(:),SalinityPerm(:),GWfluxPerm1(:),&
-       TemperatureDtPerm(:), PressureDtPerm(:), SalinityDtPerm(:),&
-       GWfluxPerm2(:),GWfluxPerm3(:), DepthPerm(:)
-  REAL(KIND=dp) :: Norm, meanfactor
-  REAL(KIND=dp),POINTER :: Temperature(:), Pressure(:), Porosity(:), Salinity(:),&
-       TemperatureDt(:), PressureDt(:), SalinityDt(:),&
-       GWflux1(:),GWflux2(:),GWflux3(:), Depth(:)
-  LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE.,&
-       ConstantPorosity=.TRUE., NoSalinity=.TRUE., NoPressure=.TRUE., FluxOutput = .FALSE.,&
+  REAL(KIND=dp) :: Norm
+  LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE., FluxOutput = .FALSE.,&
        ComputeDt=.FALSE.,ElementWiseRockMaterial, DepthExists=.FALSE.,&
        InitializeSteadyState=.FALSE.,ActiveMassMatrix=.TRUE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
