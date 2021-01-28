@@ -2248,19 +2248,24 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      INTEGER, ALLOCATABLE :: IndexMap(:), TmpIndexMap(:)
      INTEGER, POINTER :: Blist(:)
-     INTEGER :: id,minid,maxid,body,bndry,DefaultTargetBC
+     INTEGER :: id,minid,maxid,body,bndry,DefaultTargetBC, DefaultTargetBody
 
 
      ! If "target bodies" is used map the bodies accordingly
      !------------------------------------------------------
      Found = .FALSE. 
+     DefaultTargetBody = 0
      DO id=1,Model % NumberOfBodies
-       IF( ListCheckPresent( Model % Bodies(id) % Values,'Target Bodies') ) THEN
-         Found = .TRUE.
-         EXIT
-       END IF
+       IF( ListCheckPresent( Model % Bodies(id) % Values,'Target Bodies') ) Found = .TRUE.
+       IF(ListGetLogical( Model % Bodies(id) % Values, &
+           'Default Target', GotIt)) DefaultTargetBody = id       
      END DO
 
+     IF( DefaultTargetBody /= 0 ) THEN
+       CALL Info('MapBodiesAndBCs','Default Target Body: '&
+           //TRIM(I2S(DefaultTargetBody)),Level=8)
+     END IF
+     
      IF( Found ) THEN
        CALL Info('MapBodiesAndBCs','Remapping bodies',Level=8)      
        minid = HUGE( minid ) 
@@ -2301,14 +2306,16 @@ CONTAINS
              END IF
            END DO
          ELSE
-           IF( IndexMap( id ) /= 0 ) THEN
-             CALL Warn('MapBodiesAndBCs','Unset body already set by > Target Boundaries < : '&
-                 //TRIM(I2S(id)) )
-           ELSE 
-             IndexMap( id ) = id
+           IF( DefaultTargetBody == 0 ) THEN
+             IF( IndexMap( id ) /= 0 ) THEN
+               CALL Warn('MapBodiesAndBCs','Unset body already set by > Target Boundaries < : '&
+                   //TRIM(I2S(id)) )
+             ELSE 
+               IndexMap( id ) = id
+             END IF
            END IF
          END IF
-
+           
        END DO
 
        IF( .FALSE. ) THEN
@@ -2321,10 +2328,13 @@ CONTAINS
        DO i=1,Mesh % NumberOfBulkElements
          Element => Mesh % Elements(i)
          id = Element % BodyId
-!        IF( IndexMap( id ) == 0 ) THEN
-!          PRINT *,'Unmapped body: ',id
-!          IndexMap(id) = id
-!        END IF
+
+         IF( IndexMap( id ) == 0 ) THEN
+           IF( DefaultTargetBody /= 0 ) THEN
+             IndexMap( id ) = DefaultTargetBody
+           END IF
+         END IF
+
          Element % BodyId = IndexMap( id ) 
        END DO
 
