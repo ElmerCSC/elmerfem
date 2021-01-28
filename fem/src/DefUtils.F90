@@ -1606,9 +1606,6 @@ CONTAINS
      INTEGER :: i,j, id, ElemFamily
      LOGICAL :: Found, GB, NeedEdges
 
-     Element => GetCurrentElement( UElement )
-     ElemFamily = GetElementFamily(Element)
-
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
@@ -1616,13 +1613,22 @@ CONTAINS
      END IF
 
      n = 0
-     IF( Solver % DG ) THEN
-       n = Element % DGDOFs
-        IF ( n>0 ) RETURN
+
+     IF (.NOT. ASSOCIATED(Solver)) THEN
+       CALL Warn('GetElementNOFDOFS', &
+           'Cannot return the number of DOFs without knowing solver')
+       RETURN
      END IF
 
+     Element => GetCurrentElement( UElement )
+     ElemFamily = GetElementFamily(Element)
 
-     id =Element % BodyId
+     IF( Solver % DG ) THEN
+       n = Element % DGDOFs
+       IF ( n>0 ) RETURN
+     END IF
+
+     id = Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
          id = Element % BoundaryInfo % Left % BodyId
@@ -1686,7 +1692,7 @@ CONTAINS
 
 !> In addition to returning the number of degrees of freedom associated with 
 !> the element, the indexes of the degrees of freedom are also returned.
-  FUNCTION GetElementDOFs( Indexes, UElement, USolver,NotDG )  RESULT(NB)
+  FUNCTION GetElementDOFs( Indexes, UElement, USolver, NotDG )  RESULT(NB)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      INTEGER :: Indexes(:)
@@ -1696,18 +1702,24 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face
 
      LOGICAL :: Found, GB, DGdisable, NeedEdges
-     INTEGER :: nb,i,j,k,id,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs, Ind, ElemFamily
-
-     Element => GetCurrentElement(UElement)
-     ElemFamily = GetElementFamily(Element)
+     INTEGER :: nb,i,j,k,id,NDOFs,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs
+     INTEGER :: Ind, ElemFamily, DOFsPerNode
      
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
         Solver => CurrentModel % Solver
      END IF
-
+       
      NB = 0
+
+     IF (.NOT. ASSOCIATED(Solver)) THEN
+       CALL Warn('GetElementDOFS', 'Cannot return DOFs data without knowing solver')
+       RETURN
+     END IF
+
+     Element => GetCurrentElement(UElement)
+     ElemFamily = GetElementFamily(Element)
 
      DGDisable=.FALSE.
      IF (PRESENT(NotDG)) DGDisable=NotDG
@@ -1736,7 +1748,7 @@ CONTAINS
         IF ( NB > 0 ) RETURN
      END IF
 
-     id =Element % BodyId
+     id = Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
          id = Element % BoundaryInfo % Left % BodyId
@@ -1746,17 +1758,32 @@ CONTAINS
      END IF
      IF ( id == 0 ) id=1
 
+     IF (.NOT.ASSOCIATED(Solver % Mesh)) THEN
+       IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN  
+         CALL Warn('GetElementDOFS', &
+             'Solver mesh unknown, the node indices are returned')
+         NDOFs = 1
+       ELSE
+         CALL Warn('GetElementDOFS', &
+             'Solver mesh unknown, no indices returned')
+       END IF
+     ELSE
+       NDOFs = Solver % Mesh % MaxNDOFs
+     END IF
+
      IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN
-       DO i=1,Element % NDOFs
-          NB = NB + 1
-          Indexes(NB) = Element % NodeIndexes(i)
+       DOFsPerNode = Element % NDOFs / Element % TYPE % NumberOfNodes
+       DO i=1,Element % TYPE % NumberOfNodes
+         DO j=1,DOFsPerNode
+           NB = NB + 1
+           Indexes(NB) = NDOFs * (Element % NodeIndexes(i)-1) + j
+         END DO
        END DO
      END IF
 
-     ! default for nodal elements, if no solver active:
-     ! ------------------------------------------------
-     IF(.NOT.ASSOCIATED(Solver)) RETURN
-     IF(.NOT.ASSOCIATED(Solver % Mesh)) RETURN
+     ! The DOFs of advanced elements cannot be returned without knowing mesh
+     ! ---------------------------------------------------------------------
+     IF (.NOT.ASSOCIATED(Solver % Mesh)) RETURN
 
      NeedEdges = .FALSE.
      DO i=2,SIZE(Solver % Def_Dofs,3)
@@ -1788,7 +1815,7 @@ CONTAINS
           DO i=1,EDOFs
              NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
-                      i + Solver % Mesh % NumberOfNodes
+                      i + NDOFs * Solver % Mesh % NumberOfNodes
           END DO
         END DO
      END IF
@@ -1799,7 +1826,8 @@ CONTAINS
            DO i=1,FDOFs
               NB = NB + 1
               Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
-                 Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+                 NDOFs * Solver % Mesh % NumberOfNodes + &
+                 EdgeDOFs*Solver % Mesh % NumberOfEdges
            END DO
         END DO
      END IF
@@ -1812,7 +1840,7 @@ CONTAINS
          Parent => Element % BoundaryInfo % Right
        IF (.NOT.ASSOCIATED(Parent) ) RETURN
 
-       SELECT CASE(GetElementFamily(Element))
+       SELECT CASE(ElemFamily)
        CASE(2)
          IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
            IF ( isActivePElement(Element) ) THEN
@@ -1832,9 +1860,9 @@ CONTAINS
 
            EDOFs = Element % BDOFs
            DO i=1,EDOFs
-               NB = NB + 1
+             NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Parent % EdgeIndexes(Ind)-1) + &
-                      i + Solver % Mesh % NumberOfNodes
+                      i + NDOFs * Solver % Mesh % NumberOfNodes
            END DO
          END IF
 
@@ -1859,7 +1887,7 @@ CONTAINS
            DO i=1,FDOFs
              NB = NB + 1
              Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
-                Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+                NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
            END DO
          END IF
        END SELECT
@@ -1868,8 +1896,8 @@ CONTAINS
            DO i=1,Element % BDOFs
               NB = NB + 1
               Indexes(NB) = FaceDOFs*Solver % Mesh % NumberOfFaces + &
-                 Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
-                   Element % BubbleIndexes(i)
+                  NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
+                  Element % BubbleIndexes(i)
            END DO
         END IF
      END IF
@@ -5113,7 +5141,12 @@ CONTAINS
 
                    n=GetElementDOFs(gInd,Edge)
 
-                   n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+                   IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                     n_start = Edge % NDOFs
+                   ELSE
+                     n_start = 0
+                   END IF
+
                    DO j=1,EDOFs
                      k = n_start + j
                      nb = x % Perm(gInd(k))
@@ -5147,8 +5180,12 @@ CONTAINS
                      
                      n = GetElementDOFs(gInd,Edge)
 
-                     n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
-
+                     IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                       n_start = Edge % NDOFs
+                     ELSE
+                       n_start = 0
+                     END IF
+ 
                      DO j=1,EDOFs
 
                        k = n_start + j
@@ -5213,7 +5250,11 @@ CONTAINS
 
                n=GetElementDOFs(gInd,Edge)
 
-               n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+               IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                 n_start = Edge % NDOFs
+               ELSE
+                 n_start = 0
+               END IF
                DO j=1,EDOFs
                  k = n_start + j
                  nb = x % Perm(gInd(k))
@@ -5267,7 +5308,11 @@ CONTAINS
                  ! Make an offset by the count of nodal DOFs. This provides
                  ! the right starting point if edge DOFs are not present.
                  !
-                 n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
+                 IF (Solver % Def_Dofs(3,Parent % BodyId,1) > 0) THEN
+                   n_start = Face % NDOFs
+                 ELSE
+                   n_start = 0
+                 END IF
                  !
                  ! Check if we need to increase the offset by the count of
                  ! edge DOFs:
@@ -5331,7 +5376,11 @@ CONTAINS
                  ! Make an offset by the count of nodal DOFs. This provides
                  ! the right starting point if edge DOFs are not present.
                  !
-                 n_start = Solver % Def_Dofs(4,Parent % BodyId,1) * Face % NDOFs
+                 IF (Solver % Def_Dofs(4,Parent % BodyId,1) > 0) THEN
+                   n_start = Face % NDOFs
+                 ELSE
+                   n_start = 0
+                 END IF
                  !
                  ! Check if we need to increase the offset by the count of
                  ! edge DOFs:

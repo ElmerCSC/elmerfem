@@ -123,19 +123,20 @@ CONTAINS
      CHARACTER(LEN=*) :: Equation
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
 !------------------------------------------------------------------------------
-     INTEGER i,j,l,t,n,e,k,k1,EDOFs, FDOFs, BDOFs, ndofs, el_id
+     INTEGER i,j,l,t,n,e,k,k1, MaxNDOFs, EDOFs, FDOFs, BDOFs, ndofs, el_id
      INTEGER :: Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
      LOGICAL :: FoundDG, DG, DB, GB, Found, Radiation
      TYPE(Element_t),POINTER :: Element, Edge, Face
      CHARACTER(*), PARAMETER :: Caller = 'InitialPermutation'
- !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
      Perm = 0
      k = 0
      EDOFs = Mesh % MaxEdgeDOFs
      FDOFs = Mesh % MaxFaceDOFs
      BDOFs = Mesh % MaxBDOFs
+     MaxNDOFs = Mesh % MaxNDOFs
 
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB=GlobalBubbles
@@ -383,15 +384,19 @@ CONTAINS
 
        el_id = Element % TYPE % ElementCode / 100
        Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
-       ndofs = Element % NDOFs
-       IF ( Def_Dofs(1) >= 0 ) ndofs=Def_Dofs(1)*Element % TYPE % NumberOfNodes
-       DO i=1,ndofs
-         j = Element % NodeIndexes(i)
-         IF ( Perm(j) == 0 ) THEN
-           k = k + 1
-           Perm(j) = k
-         END IF
-       END DO
+       
+       ndofs = Def_Dofs(1)
+       IF (ndofs > 0) THEN
+         DO i=1,Element % TYPE % NumberOfNodes
+           DO j=1,ndofs
+             l = MaxNDOFs * (Element % NodeIndexes(i)-1) + j
+             IF ( Perm(l) == 0 ) THEN
+               k = k + 1
+               Perm(l) =  k
+             END IF
+           END DO
+         END DO
+       END IF
 
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
           DO i=1,Element % TYPE % NumberOfEdges
@@ -406,7 +411,7 @@ CONTAINS
              END IF
 
              DO e=1,ndofs
-                j = Mesh % NumberOfNodes + EDOFs*(Element % EdgeIndexes(i)-1) + e
+                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*(Element % EdgeIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
                    Perm(j) =  k
@@ -445,7 +450,7 @@ CONTAINS
              END IF
 
              DO e=1,ndofs
-                j = Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                           FDOFs*(Element % FaceIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
@@ -465,7 +470,7 @@ CONTAINS
          END IF
 
          DO i=1,ndofs
-            j = Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+            j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                  FDOFs*Mesh % NumberOfFaces + Element % BubbleIndexes(i)
             IF ( Perm(j) == 0 ) THEN
                k = k + 1
