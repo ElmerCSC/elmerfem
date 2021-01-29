@@ -710,6 +710,7 @@
    BMFromFile = ListGetLogical( Params, "Background Melt From File", Found)
    IF(.NOT. Found) BMFromFile = .FALSE.
    AverageMelt = GetLogical( Params, "Scale Melt To Average", Found)
+   IF(.NOT. Found) AverageMelt = .FALSE.
 
    IF(.NOT. Calving) THEN
      IF(.NOT. Visited) THEN
