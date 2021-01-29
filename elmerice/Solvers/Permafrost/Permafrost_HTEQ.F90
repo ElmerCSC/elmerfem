@@ -110,7 +110,8 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: Norm
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE., FluxOutput = .FALSE.,&
        ComputeDt=.FALSE.,ElementWiseRockMaterial, DepthExists=.FALSE.,&
-       InitializeSteadyState=.FALSE.,ActiveMassMatrix=.TRUE.
+       InitializeSteadyState=.FALSE.,ActiveMassMatrix=.TRUE.,&
+       NoSalinity=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostHeatEquation'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, SalinityName, GWfluxName, PhaseChangeModel,&
@@ -322,7 +323,8 @@ CONTAINS
     REAL(KIND=dp), POINTER :: gWork(:,:)
     INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
-         CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.
+         CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
+         NoSalinity=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -369,6 +371,8 @@ CONTAINS
 
     ! Get stuff from SIF Material section
     Material => GetMaterial(Element)
+
+    NoSalinity = GetLogical(Material,'No Salinity',Found)
     IF (ElementWiseRockMaterial) THEN
       RockMaterialID = ElementID  ! each element has it's own set of parameters
     ELSE
@@ -424,7 +428,15 @@ CONTAINS
       IF (.NOT.Found) CALL FATAL(SolverName,'Porosity not found')
       PressureAtIP = ListGetElementReal( Pressure_h, Basis, Element, Found, GaussPoint=t)
       IF (.NOT.Found) CALL FATAL(SolverName,'Pressure not found')
-      SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
+      IF (NoSalinity) THEN
+        SalinityAtIP = 0.0_dp
+      ELSE
+        SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
+        IF (.NOT.Found) THEN
+          CALL INFO(SolverName,'Salinity not found - setting to zero',Level=7)
+          NoSalinity=.TRUE.
+        END IF
+      END IF
       TemperatureAtIP = ListGetElementReal( Temperature_h, Basis, Element, Found, GaussPoint=t)
       IF (.NOT.Found) CALL FATAL(SolverName,'Temperature not found')
       !IF (.NOT.Found) CALL WARN(SolverName,'Salinity not found - setting to zero')

@@ -413,7 +413,24 @@ CONTAINS
     XiAtIPPerm => XiAtIPVar % Perm   
     XiAtIP => XiAtIPVar % Values
 
-
+    ! find needed variables
+    IF (ComputeFreshwaterHead) THEN
+      FreshwaterHeadAtIPVar => VariableGet( Model % Mesh % Variables, 'Freshwater Head')
+      IF (.NOT.ASSOCIATED(FreshwaterHeadAtIPVar)) THEN
+        WRITE(Message,*) '"Compute Freshwater Head" set but variable "Freshwater Head" is not associated'
+      END IF
+      FreshwaterHeadAtIPPerm => FreshwaterHeadAtIPVar % Perm  
+      FreshwaterHeadAtIP => FreshwaterHeadAtIPVar % Values
+    END IF
+    IF (OffsetDensity) THEN
+      RhoOffsetAtIPVar => VariableGet( Model % Mesh % Variables, 'Reference Offset Density')
+      IF (.NOT.ASSOCIATED(RhoOffsetAtIPVar)) THEN
+        WRITE(Message,*) '"Permafrost Offset Density" is set, but variable "Reference Offset Density" is not associated'
+        CALL FATAL(SolverName,Message)
+      END IF
+      RhoOffsetAtIPPerm => RhoOffsetAtIPVar % Perm  
+      RhoOffsetAtIP => RhoOffsetAtIPVar % Values
+    END IF
     IF (FluxOutput) THEN
       GWfluxVar1 => VariableGet( Solver % Mesh % Variables, 'Groundwater Flux 1')
       GWfluxPerm => GWfluxVar1 % Perm
@@ -448,6 +465,8 @@ CONTAINS
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
 
+    NoSalinity = GetLogical(Material,'No Salinity',Found)
+    
     ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
     IF (ConstVal) &
         CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
@@ -473,6 +492,7 @@ CONTAINS
       CALL Info(SolverName,'Elemental n:'//TRIM(I2S(n))//' nd:'&
           //TRIM(I2S(nd))//' nd:'//TRIM(I2S(nb)),Level=31)
     END IF
+
     
     DO t=1,IP % n
       IPPerm = XiAtIPPerm(ElementID) + t
@@ -496,8 +516,15 @@ CONTAINS
       IF (.NOT.Found) CALL FATAL(SolverName,'Porosity not found')
       PressureAtIP = ListGetElementReal( Pressure_h, Basis, Element, Found, GaussPoint=t)
       IF (.NOT.Found) CALL FATAL(SolverName,'Pressure not found')
-      SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
-      IF (.NOT.Found) CALL WARN(SolverName,'Salinity not found - setting to zero')
+      IF (NoSalinity) THEN
+        SalinityAtIP = 0.0_dp
+      ELSE
+        SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
+        IF (.NOT.Found) THEN
+          CALL INFO(SolverName,'Salinity not found - setting to zero',Level=7)
+          NoSalinity=.TRUE.
+        END IF
+      END IF
       IF (ComputeDeformation) THEN
         StressInvDtAtIP = ListGetElementReal( StressInvDt_h, Basis, Element, Found, GaussPoint=t)
         IF (.NOT.Found) &
@@ -599,13 +626,7 @@ CONTAINS
       END IF
       rhogwAtIP = rhogw(rhowAtIP,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP)
       IF (OffsetDensity) THEN
-        RhoOffsetAtIPVar => VariableGet( Model % Mesh % Variables, 'Reference Offset Density')
-        IF (.NOT.ASSOCIATED(RhoOffsetAtIPVar)) THEN
-          WRITE(Message,*) '"Permafrost Offset Density" is set, but variable "Reference Offset Density" is not associated'
-          CALL FATAL(SolverName,Message)
-        END IF
-        RhoOffsetAtIPPerm => RhoOffsetAtIPVar % Perm  
-        RhoOffsetAtIP => RhoOffsetAtIPVar % Values
+
         IPPermRhogw = RhoOffsetAtIPPerm(ElementID) + t
         ! density of whole ground (rock + water + ice + solutes)
         rhoGAtIP = rhoG(rhosAtIP,rhogwAtIP,rhoiAtIP,PorosityAtIP,SalinityAtIP,XiAtIP(IPPerm))
@@ -619,12 +640,6 @@ CONTAINS
 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! NEW !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       IF (ComputeFreshwaterHead) THEN
-        FreshwaterHeadAtIPVar => VariableGet( Model % Mesh % Variables, 'Freshwater Head')
-        IF (.NOT.ASSOCIATED(FreshwaterHeadAtIPVar)) THEN
-          WRITE(Message,*) '"Compute Freshwater Head" set but variable "Freshwater Head" is not associated'
-        END IF
-        FreshwaterHeadAtIPPerm => FreshwaterHeadAtIPVar % Perm  
-        FreshwaterHeadAtIP => FreshwaterHeadAtIPVar % Values
         IPPermFreshwaterHead = FreshwaterHeadAtIPPerm(ElementID) + t
         SELECT CASE(DIM)
         CASE(1)
