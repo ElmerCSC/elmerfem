@@ -116,7 +116,7 @@ Known issues:
 
 ### CalvingHydroInterp.F90
 This represents the other major block of new code written as part of this suite. It handles the interpolation of necessary variables between the ice and hydrology meshes, but also moves read-in variables (using GridDataReader or similar) from their solver-specific secondary hydrology meshes to the primary hydrology mesh associated with GlaDSCoupledSolver. It also corrects interpolation artefacts that will otherwise nix your simulation sooner or later, and ensures conservation of the temperature residual (one of the interpolated variables) to stop the glacier accidentally destroying or creating some energy….
-The file contains two main subroutines, imaginatively titled “IceToHydroInterp” and “HydroToIceInterp”. Make sure you get them the right way round. IceToHydroInterp interpolates the ice normal stress, velocity, grounded mask and temperature residual over to the hydrology mesh and then spends a lot of time clearing up artefacts and conserving the temperature residual. HydroToIceInterp is much simpler, as the hydrology mesh is usually finer than the ice mesh, so the interpolation routine doesn’t create anywhere near as many artefacts in problematic locations. Therefore, it pretty much just interpolates the water pressure, effective pressure and sheet discharge onto the ice mesh.
+The file contains two main subroutines, imaginatively titled “IceToHydroInterp” and “HydroToIceInterp”. Make sure you get them the right way round. IceToHydroInterp interpolates the ice normal stress, velocity, grounded mask and temperature residual over to the hydrology mesh and then spends a lot of time clearing up artefacts and conserving the temperature residual. HydroToIceInterp is much simpler, as the hydrology mesh is usually finer than the ice mesh, so the interpolation routine doesn’t create anywhere near as many artefacts in problematic locations. Therefore, it pretty much just interpolates the water pressure and effective pressure onto the ice mesh.
 There are also two small subroutines: “HydroWeightsSolver” and “IceWeightsSolver”. These calculate the boundary weights used in the main routines (the reason this happens in a separate solver is complicated – suffice to say it does exist). These need to be called as solvers before the relevant interpolation routines (IceToHydro or HydroToIce) are called, otherwise they’ll crash. IceWeightsSolver needs to run every time the ice mesh is updated (probably every n timesteps); HydroWeightsSolver every time the hydrology mesh is updated (probably never, so it can just run once at the start of the simulation).
 Solver options and inputs (for IceToHydroInterp; others have nothing fancy):
 * `Load Reader Variables = Logical True/False`
@@ -134,7 +134,7 @@ Known issues:
 * None, though the artefact correction could probably be improved
 
 ### HydroRestart.F90
-Largely a direct copy of the Restart() subroutine within the Elmer source code, with a few modifications to disentangle it from all the other restart machinery and to make it pick up the right variables from the right place and send them to the right place.
+Largely a direct copy of the Restart() subroutine within the Elmer source code, with a few modifications to disentangle it from all the other restart machinery and to make it pick up the right variables from the right place and send them to the right place. Assumes the hydraulic potential, channel area and sheet thickness variables are all called by those default names, so don't change them. Uses the namespace feature in Elmer.
 Solver options and inputs:
 * `hp: Restart Variable 1 = String “Name”`
   * All the variables that should be restarted on the primary hydrology mesh (i.e. all those that are normally calculated by or associated with GlaDSCoupledSolver) should be listed like this – just number the entries consecutively
@@ -147,7 +147,7 @@ Known issues:
 * None
 
 ### USF_SourceCalcCalving.F90
-This is a USF that calculates the Hydraulic Potential Volume Source term required in the Body Force section of the SIF for GlaDS. If provided with a surface runoff variable (I usually load it in from a raster) and the temperature residual variable, it will calculate the resulting internal melt and add on the surface melt for each node on the hydrology mesh (or, at the base of your 3D ice mesh, if you’re using GlaDS without all the other bells and whistles), so you can easily vary the source term spatially across your domain.
+This is a USF that calculates the Hydraulic Potential Volume Source term required in the Body Force section of the SIF for GlaDS. If provided with a surface runoff variable (I usually load it in from a raster) and the temperature residual variable (for internal/basal melt), it will calculate the resulting internal melt and add on the surface melt for each node on the hydrology mesh (or, at the base of your 3D ice mesh, if you’re using GlaDS without all the other bells and whistles), so you can easily vary the source term spatially across your domain. The USF also assumes the name of the hydraulic potential variable calculated by GlaDS is 'hydraulic potential', so don't change it.
 USF options and inputs:
 * These all go in the same Body Force section as where you define the source term
 * `Internal Melt = Logical True/False`
@@ -161,7 +161,7 @@ USF options and inputs:
 * Finally, when defining the source term, you call this USF just like any other, and it does not matter what variable you use in the call – the USF will ignore it.
 
 ### BasalMelt3D.F90
-This is a very simple solver written by Joe Todd that applies a specified basal melt rate to any ungrounded parts of the glacier base.
+This is a very simple solver written by Joe Todd that applies a specified basal melt rate to any ungrounded parts of the glacier base. You need to specify `Calving Front Mask = Logical True` in the relevant boundary condition.
 Solver options and inputs:
 * `Basal Melt Stats File = String …`
   * The path to write a file containing some basal melt stats to.
@@ -176,12 +176,12 @@ Solver options and inputs:
 * `Basal Melt Summer Start = Real …`
   * The time in the simulation to begin using summer melt rates (expressed as a number between 0 and 1)
 * `Basal Melt Summer Stop = Real …`
-  * The time in the simulation to begin using summer melt rates (expressed as a number between 0 and 1)
+  * The time in the simulation to stop using summer melt rates (expressed as a number between 0 and 1)
 
 ### GMValid.F90
-This is a very simple solver that’s more-or-less just a stripped-down copy of BasalMelt3D.F90 and exists to set up a mask variable for which ungrounded areas are connected to the fjord and which aren’t.
+This is a very simple solver that’s more-or-less just a stripped-down copy of BasalMelt3D.F90 and exists to set up a mask variable for which ungrounded areas are connected to the fjord and which aren’t. You need to specify `Calving Front Mask = Logical True` in the relevant boundary condition.
 Solver options and inputs:
-* None – just the usual lines to define the equation, etc.
+* `GroundedMask Variable = String ...` (defaults to GroundedMask)
 
 ## Problems
 If you find something that doesn’t work or you can’t easily fix or isn’t listed here, email Samuel Cook (samuel.cook@univ-grenoble-alpes.fr)
