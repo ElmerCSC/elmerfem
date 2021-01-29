@@ -23,7 +23,7 @@
 ! ******************************************************************************
 ! *
 ! *  Authors: Samuel Cook
-! *  Email:   
+! *  Email: samuel.cook@univ-grenoble-alpes.fr  
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
 ! *  Original Date: 
