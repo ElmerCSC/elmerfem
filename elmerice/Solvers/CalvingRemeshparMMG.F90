@@ -65,6 +65,10 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
 
 #include "parmmg/libparmmgtypesf.h"
 
+#ifndef MMGVERSION_H
+#define MMG_VERSION_LT(MAJOR,MINOR) 1
+#endif
+
 TYPE(Model_t) :: Model
 TYPE(Solver_t), TARGET :: Solver
 REAL(KIND=dp) :: dt
@@ -428,7 +432,12 @@ IF(ImBoss) THEN
 
     !> ------------------------------ STEP  II --------------------------
     !! remesh function
+#if MMG_VERSION_LT(5,5)
     CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
+#else
+    CALL MMG3D_mmg3dls(mmgMesh,mmgSol,mmgMet,ierr)
+#endif
+
 
     IF(Debug) CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
 
