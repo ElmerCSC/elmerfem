@@ -87,6 +87,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
        RemeshOccurs,CheckFlowConvergence
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
+  TYPE(Variable_t), POINTER :: TimeVar
+  INTEGER :: Time
+  REAL(KIND=dp) :: TimeReal
+
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
   Debug=.FALSE.
@@ -416,6 +420,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_angleDetection,&
       !     85.0_dp,ierr)
 
+      !Turn on debug (1)
+      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_debug, &
+           1,ierr)
+
       !Set geometric parameters for remeshing
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
            hmin,ierr)
@@ -463,6 +471,15 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
       CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
+
+      TimeVar => VariableGet( Model % Variables, 'Timestep' )
+      TimeReal = TimeVar % Values(1)
+      Time = INT(TimeReal)
+      IF ( ierr == MMG5_STRONGFAILURE ) THEN
+        PRINT*,"BAD ENDING OF MMG3DLS: UNABLE TO SAVE MESH", Time
+      ELSE IF ( ierr == MMG5_LOWFAILURE ) THEN
+        PRINT*,"BAD ENDING OF MMG3DLS", time
+      ENDIF
 
       IF(Debug) CALL MMG3D_SaveMesh(mmgMesh,"test_out_angleoff.mesh",LEN(TRIM("test_out_angleoff.mesh")),ierr)
 
@@ -579,6 +596,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       END DO
 
+      !! Release mmg mesh
+      CALL MMG3D_Free_all(MMG5_ARG_start, &
+      MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+      MMG5_ARG_end)
+
       !MMG3DLS returns constraint = 10 on newly formed boundary elements
       !(i.e. the new calving front). Here it is set to front_BC_id
       !And set all BC BodyIDs based on constraint
@@ -664,7 +686,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         ! GetCalvingEdgeNodes detects all shared boundary edges, to keep them sharp
         CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
         !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-        CALL RemeshMMG3D(NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+        CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
 
         !Update parallel info from old mesh nodes (shared node neighbours)
         CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)

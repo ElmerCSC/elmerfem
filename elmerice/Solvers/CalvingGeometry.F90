@@ -3617,14 +3617,17 @@ CONTAINS
     CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
          "Bottom Surface Mask",globaleps=globaleps,localeps=localeps)
 
-    CALL RotateMesh(OldMesh, RotationMatrix)
-    CALL RotateMesh(NewMesh, RotationMatrix)
+    ! removed as 2d interp on calving front no longer valid since calving front is
+    ! not projectable
+
+    !CALL RotateMesh(OldMesh, RotationMatrix)
+    !CALL RotateMesh(NewMesh, RotationMatrix)
 
     !CHANGE - need to delete UnfoundNOtes from this statement, or front
     !variables not copied across. If you get some odd interpolation artefact,
     !suspect this
-    CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
-         "Calving Front Mask",globaleps=globaleps,localeps=localeps)
+    !CALL InterpMaskedBCReduced(Model, Solver, OldMesh, NewMesh, OldMesh % Variables, &
+    !     "Calving Front Mask", globaleps=globaleps,localeps=localeps)
 
     !NOTE: InterpMaskedBCReduced on the calving front will most likely fail to
     ! find a few points, due to vertical adjustment to account for GroundedSolver.
@@ -3637,8 +3640,8 @@ CONTAINS
     ! be missed would be variables defined solely on the front. Currently, none
     ! of these are important for the next timestep, so this should be fine.
 
-    CALL RotateMesh(NewMesh, UnrotationMatrix)
-    CALL RotateMesh(OldMesh, UnrotationMatrix)
+    !CALL RotateMesh(NewMesh, UnrotationMatrix)
+    !CALL RotateMesh(OldMesh, UnrotationMatrix)
 
     !-----------------------------------------------
     ! Point solvers at the correct mesh and variable
@@ -3751,11 +3754,17 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER, POINTER :: OldMaskPerm(:)=>NULL(), NewMaskPerm(:)=>NULL()
     INTEGER, POINTER  :: InterpDim(:)
-    INTEGER :: i,dummyint
+    INTEGER :: i,j,dummyint
     REAL(KIND=dp) :: geps,leps
-    LOGICAL :: Debug
+    LOGICAL :: Debug, skip, PartMask
     LOGICAL, POINTER :: OldMaskLogical(:), NewMaskLogical(:), UnfoundNodes(:)=>NULL()
-    CHARACTER(LEN=MAX_NAME_LEN) :: HeightName
+    LOGICAL, ALLOCATABLE :: PartsMask(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: HeightName, Solvername
+    INTEGER, ALLOCATABLE :: PartUnfoundCount(:), AllUnfoundDOFS(:), UnfoundDOFS(:), disps(:), Unique(:), &
+                           FinalDOFs(:), UnfoundIndex(:), UnfoundShared(:), Repeats(:)
+    LOGICAL, ALLOCATABLE :: PartHasUnfoundNodes(:)
+    INTEGER :: ClusterSize, ierr, UnfoundCount, min_val, max_val, CountDOFs, CountRepeats, Previous, NodeCount
+    SolverName = 'InterpMaskedBCReduced'
 
     CALL MakePermUsingMask( Model, Solver, NewMesh, MaskName, &
          .FALSE., NewMaskPerm, dummyint)
@@ -3769,8 +3778,8 @@ CONTAINS
     OldMaskLogical = (OldMaskPerm <= 0)
     NewMaskLogical = (NewMaskPerm <= 0)
     IF(PRESENT(SeekNodes)) NewMaskLogical = &
-         NewMaskLogical .OR. .NOT. SeekNodes
-
+    NewMaskLogical .OR. .NOT. SeekNodes
+    
     IF(PRESENT(globaleps)) THEN
       geps = globaleps
     ELSE
@@ -3812,27 +3821,103 @@ CONTAINS
          UnfoundNodes, OldMaskLogical, NewMaskLogical, Variables=OldMesh % Variables, &
          GlobalEps=geps, LocalEps=leps)
 
-    IF(ANY(UnfoundNodes)) THEN
-      !NewMaskLogical changes purpose, now it masks supporting nodes
-      NewMaskLogical = (NewMaskPerm <= 0)
+    UnfoundCount = COUNT(UnfoundNodes)
 
-      DO i=1, SIZE(UnfoundNodes)
-          IF(UnfoundNodes(i)) THEN
-             PRINT *,ParEnv % MyPE,'Didnt find point: ', i, &
-                  ' x:', NewMesh % Nodes % x(i),&
-                  ' y:', NewMesh % Nodes % y(i),&
-                  ' z:', NewMesh % Nodes % z(i)
+    ClusterSize = ParEnv % PEs
 
-             CALL InterpolateUnfoundPoint( i, NewMesh, HeightName, InterpDim, &
-                  NodeMask=NewMaskLogical, Variables=NewMesh % Variables )
-          END IF
-       END DO
+    ! Gather missing counts at this stage
+    ALLOCATE(PartUnfoundCount(ClusterSize), &
+         PartHasUnfoundNodes(ClusterSize))
+    CALL MPI_AllGather(UnfoundCount, 1, MPI_INTEGER, &
+         PartUnfoundCount, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
-       WRITE(Message, '(i0,a,a,a,i0,a,i0,a)') ParEnv % MyPE,&
-            ' Failed to find all points on face: ',MaskName, ', ',&
-            COUNT(UnfoundNodes),' of ',COUNT(.NOT. NewMaskLogical),' missing points.'
-       CALL Warn("InterpMaskedBCReduced", Message)
-    END IF
+    ! Process node numbers and global node number important for translation later on
+    ! gather all DOFs from all processes
+    UnfoundDOFS = PACK(NewMesh % ParallelInfo % GlobalDOFs, UnfoundNodes)
+    UnfoundIndex = PACK((/ (i,i=1,SIZE(UnfoundNodes)) /),UnfoundNodes .eqv. .TRUE.)
+
+    ALLOCATE(disps(ClusterSize))
+    disps(1) = 0
+    DO i=2,ClusterSize
+      disps(i) = disps(i-1) + PartUnfoundCount(i-1)
+    END DO
+    ALLOCATE(AllUnfoundDOFS(SUM(PartUnfoundCount)))
+    CALL MPI_allGatherV(UnfoundDOFS, UnfoundCount, MPI_INTEGER, &
+    AllUnfoundDOFS, PartUnfoundCount, disps, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+    IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
+
+    ! Loop to remove duplicates and order allDOFs in ascending order
+    CountDOFs=0
+    CountRepeats=0
+    IF(SUM(PartUnfoundCount) > 0) THEN
+      ALLOCATE(unique(SIZE(AllUnfoundDOFS)), repeats(SIZE(AllUnfoundDOFS)))
+      min_val = minval(AllUnfoundDOFS)-1
+      max_val = maxval(AllUnfoundDOFS)
+      
+      DO WHILE (min_val<max_val)
+         Previous = COUNT(AllUNfoundDOFS>min_val)
+         CountDOFs = CountDOFs+1
+         min_val = MINVAL(AllUnfoundDOFS, mask=AllUnfoundDOFS>min_val)
+         Unique(countDOFs) = min_val
+         IF(COUNT(AllUnfoundDOFS>min_val) /= Previous-1) THEN
+            CountRepeats = CountRepeats + 1
+            Repeats(CountRepeats) = min_val
+         END IF
+      END DO
+    END IF 
+    ALLOCATE(FinalDOFs(CountDOFs), source=Unique(1:countDOFs))
+    ALLOCATE(UnfoundShared(CountRepeats), source=Repeats(1:CountRepeats))
+
+      !What you should do here is, rather than looping over the size of UnfoundNodes is
+      ! 1. Construct an ordered list of every GlobalDOF which needs to be found (on ANY partition) (AllMissingGlobal)
+      ! 2. Construct a logical array of the same size which is TRUE where the current partition needs the node (MissingThisGlobal)
+      ! 3. Loop over AllMissingGlobal (possibly with an MPI_Barrier on each loop).
+      ! NOTE - this means you will need to make *every* partition enter this loop (as opposed to just the ones which are missing nodes)
+      ! but this is OK because there's no real performance hit - those partitions would just be waiting anyway
+
+    !NewMaskLogical changes purpose, now it masks supporting nodes
+    NewMaskLogical = (NewMaskPerm <= 0)
+
+    PRINT*, ParEnv % MyPE, MaskName, ' NumberofUnfoundpoints', Size(FinalDOFs), UnfoundCount
+    !Loop through all DOFS with barrier before shared nodes 
+    NodeCount = 0
+    DO i=1, SIZE(FinalDOFs)
+      ! no need for a mask since nodes in both arrays in ascending order
+      IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
+         ! ok to barrier since all parts enter loop and
+         ! have same AllUnfoundDOFs/UnfoundShared
+         ! barrier for shared nodes to endsure these are found at same time
+         CALL MPI_Barrier(ELMER_COMM_WORLD, ierr)
+         !nodenumber = UnfoundIndex(nodecount) since different on each process
+         !always finds correct translation from DOFs to process nodenumber since
+         !all arrays in ascending order
+         IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+            NodeCount = NodeCount + 1
+            PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
+            ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
+            ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
+            ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
+            'GDOF', FinalDOFs(i), &
+            NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
+            CALL InterpolateUnfoundSharedPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
+               NodeMask=NewMaskLogical, Variables=NewMesh % Variables)
+         END IF
+      ! no need for a mask since nodes in both arrays in ascending order
+      ELSE IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+         NodeCount = NodeCount + 1
+         !nodenumber = UnfoundIndex(nodecount) since different on each process
+         !always finds correct translation from DOFs to process nodenumber since
+         !all arrays in ascending order
+         PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
+         ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
+         ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
+         ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
+         'GDOF', FinalDOFs(i), &
+         NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
+         CALL InterpolateUnfoundPoint( UnfoundIndex(nodecount), NewMesh, HeightName, InterpDim, &
+            NodeMask=NewMaskLogical, Variables=NewMesh % Variables)
+      END IF
+    END DO
 
     DEALLOCATE(OldMaskLogical, &
          NewMaskLogical, NewMaskPerm, &
@@ -3879,138 +3964,137 @@ CONTAINS
      ELSE ! constant not found above
         CALL Info("GetFrontOrientation","No predefined Front Orientation, computing instead.", Level=6)
      END IF ! constant
-  END IF ! first time
-  IF (Constant) THEN
-     Orientation=OrientSaved
-  ELSE
-        ! check whether already did a front orientation computation this timestep
-        TimeVar => VariableGet( Model % Variables, 'Timestep' )
-        IF (Debug) PRINT *, 'Time', TimeVar % Values
-        IF (Debug)  PRINT *, 'PrevTime', PrevTime
-        IF (Debug)  PRINT *, 'FirstThisTime', FirstThisTime
-        IF  (TimeVar % Values(1) > PrevTime ) THEN
-           FirstThisTime=.TRUE.
-        END IF
-        PrevTime = TimeVar % Values(1)
-        IF (.NOT. FirstThisTime) PRINT *, 'use orientation calculated earlier in this timestep'    
-        IF (.NOT. FirstThisTime) THEN
-           Orientation = OrientSaved
-           RETURN
-        ELSE
-           PRINT *, 'computing orientation'
-           Orientation(3) = 0.0_dp ! always set z-component to 0
-           Mesh => Model % Mesh
-           !Get the front line
-           FrontMaskName = "Calving Front Mask"
-           TopMaskName = "Top Surface Mask"
-           CALL MakePermUsingMask( Model, NullSolver, Mesh, TopMaskName, &
-                .FALSE., TopPerm, dummyint)
-           CALL MakePermUsingMask( Model, NullSolver, Mesh, FrontMaskName, &
-                .FALSE., FrontPerm, FaceNodeCount)
-           LeftMaskName = "Left Sidewall Mask"
-           RightMaskName = "Right Sidewall Mask"
-           !Generate perms to quickly get nodes on each boundary
-           CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
-                .FALSE., LeftPerm, dummyint)
-           CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
-                .FALSE., RightPerm, dummyint)
-           iLeft=0
-           iRight=0
-           DO i=1,Mesh % NumberOfNodes
-              IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
-                 IF( LeftPerm(i) >0  ) THEN
-                    xLeft = Mesh % Nodes % x(i)
-                    yLeft = Mesh % Nodes % y(i)
-                    HaveLeft =.TRUE.
-                 ELSE IF ( RightPerm(i) >0  ) THEN
-                    xRight = Mesh % Nodes % x(i)
-                    yRight = Mesh % Nodes % y(i)
-                    HaveRight =.TRUE.
-                 END IF
-              END IF
-           END DO
-           IF (Debug)  PRINT *, 'GetFrontOrientation: HaveLeft, HaveRight', HaveLeft, HaveRight
-           IF (Parallel) THEN
-              IF (HaveLeft) PRINT *, 'GetFrontOrientation: xL, yL', xLeft, yLeft
-              IF (HaveRight)  PRINT *, 'GetFrontOrientation: xR, yR', xRight, yRight
-              IF (Debug) PRINT *, 'communicate the corners'
-              IF (HaveLeft  .AND. (ParEnv % MyPE>0)) THEN ! left not in root
-                 iLeft=ParEnv % MyPE
-                 CALL MPI_BSEND(xLeft, 1, MPI_DOUBLE_PRECISION, &
-                      0 ,7001, ELMER_COMM_WORLD, ierr )
-                 CALL MPI_BSEND(yLeft, 1, MPI_DOUBLE_PRECISION, &
-                      0 ,7002, ELMER_COMM_WORLD, ierr )
-                 IF (Debug) PRINT *, 'sending left'
-              END IF
-              IF (HaveRight .AND. (ParEnv % MyPE>0) ) THEN ! right not in root
-                 iRight=ParEnv % MyPE
-                 CALL MPI_BSEND(xRight, 1, MPI_DOUBLE_PRECISION, &
-                      0 , 7003, ELMER_COMM_WORLD, ierr )
-                 CALL MPI_BSEND(yRight, 1, MPI_DOUBLE_PRECISION, &
-                      0 , 7004, ELMER_COMM_WORLD, ierr )
-                 IF (Debug) PRINT *, 'sending right'
-              END IF
-              IF (Debug) PRINT *, 'sent the corners'
-              IF (Boss) THEN
-                 IF (Debug) PRINT *, ParEnv % PEs
-                 IF (.NOT.HaveLeft) THEN
-                    CALL MPI_RECV(RecvXL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                         7001,ELMER_COMM_WORLD, status, ierr )
-                    CALL MPI_RECV(RecvYL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                         7002,ELMER_COMM_WORLD, status, ierr )
-                    xLeft=RecvXL
-                    yLeft=RecvYL
-                 END IF
-                 IF (.NOT. HaveRight) THEN
-                    CALL MPI_RECV(RecvXR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                         7003,ELMER_COMM_WORLD, status, ierr )
-                    CALL MPI_RECV(RecvYR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
-                         7004,ELMER_COMM_WORLD, status, ierr )
-                    xRight=RecvXR
-                    yRight=RecvYR
-                 END IF
-                 IF (Debug) PRINT *, 'received corners'
-                 IF (Debug) PRINT *, 'GetFrontOrientation: Boss xL, yL, xR, yR', xLeft, yLeft, xRight, yRight
-              END IF
-           END IF ! end if parallel
-           IF (Boss) THEN ! root or not parallel
-              IF( ABS(xLeft-xRight) < AEPS) THEN
-                 ! front orientation is aligned with y-axis
-                 Orientation(2) =  0.0_dp
-                 IF(yRight > yLeft) THEN
-                    Orientation(1)=1.0_dp
-                 ELSE
-                    Orientation(1)=-1.0_dp
-                 END IF
-              ELSE IF (ABS(yLeft-yRight)<AEPS) THEN
-                 ! front orientation is aligned with x-axis
-                 Orientation(1) = 0.0_dp
-                 IF(xRight > xLeft) THEN
-                    Orientation(2)=1.0_dp
-                 ELSE
-                    Orientation(2)=-1.0_dp
-                 END IF
-              ELSE
-                 ! set dot product equal to 0
-                 ! no need to ensure it is unit normal, done in ComputeRotation
-                 IF(xRight > xLeft) THEN
-                    Orientation(2)=1.0_dp
-                 ELSE
-                    Orientation(2)=-1.0_dp
-                 END IF
-                 Orientation(1)=Orientation(2)*(yRight-yLeft)/(xLeft-xRight)
-              END IF
-           END IF !boss
-           IF (Parallel) CALL MPI_BCAST(Orientation,3,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
-           ! deallocations
-           DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
-        END IF
-        Temp=(Orientation(1)**2+Orientation(2)**2+Orientation(3)**2)**0.5
-        Orientation=Orientation/Temp ! normalized the orientation
-        IF(Debug)  PRINT *, "GetFrontOrientation: ", Orientation,'part',ParEnv % MyPE
-        FirstThisTime=.FALSE.
-        OrientSaved=Orientation
-     END IF !Constant
+   END IF ! first time
+
+    ! check whether already did a front orientation computation this timestep
+    ! Changed Model % Mesh % Variables to avoid segfault as when calling vtusolver after mmg step as
+    ! Model % Variables lost after vtuoutput
+    TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
+    IF (Debug) PRINT *, 'Time', TimeVar % Values
+    IF (Debug)  PRINT *, 'PrevTime', PrevTime
+    IF (Debug)  PRINT *, 'FirstThisTime', FirstThisTime
+    IF  (TimeVar % Values(1) > PrevTime ) THEN
+        FirstThisTime=.TRUE.
+    END IF
+    PrevTime = TimeVar % Values(1)
+    IF (.NOT. FirstThisTime) PRINT *, 'use orientation calculated earlier in this timestep'    
+    IF(Constant .OR. (.NOT. FirstThisTime) ) THEN
+      Orientation = OrientSaved
+      RETURN
+    ELSE
+      PRINT *, 'computing orientation'
+      Orientation(3) = 0.0_dp ! always set z-component to 0
+      Mesh => Model % Mesh
+      !Get the front line
+      FrontMaskName = "Calving Front Mask"
+      TopMaskName = "Top Surface Mask"
+      CALL MakePermUsingMask( Model, NullSolver, Mesh, TopMaskName, &
+        .FALSE., TopPerm, dummyint)
+      CALL MakePermUsingMask( Model, NullSolver, Mesh, FrontMaskName, &
+        .FALSE., FrontPerm, FaceNodeCount)
+      LeftMaskName = "Left Sidewall Mask"
+      RightMaskName = "Right Sidewall Mask"
+      !Generate perms to quickly get nodes on each boundary
+      CALL MakePermUsingMask( Model, NullSolver, Mesh, LeftMaskName, &
+        .FALSE., LeftPerm, dummyint)
+      CALL MakePermUsingMask( Model, NullSolver, Mesh, RightMaskName, &
+           .FALSE., RightPerm, dummyint)
+      iLeft=0
+      iRight=0
+      DO i=1,Mesh % NumberOfNodes
+         IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
+           IF( LeftPerm(i) >0  ) THEN
+              xLeft = Mesh % Nodes % x(i)
+              yLeft = Mesh % Nodes % y(i)
+              HaveLeft =.TRUE.
+           ELSE IF ( RightPerm(i) >0  ) THEN
+              xRight = Mesh % Nodes % x(i)
+              yRight = Mesh % Nodes % y(i)
+              HaveRight =.TRUE.
+           END IF
+         END IF
+      END DO
+      IF (Debug)  PRINT *, 'GetFrontOrientation: HaveLeft, HaveRight', HaveLeft, HaveRight
+      IF (Parallel) THEN
+         IF (HaveLeft) PRINT *, 'GetFrontOrientation: xL, yL', xLeft, yLeft
+         IF (HaveRight)  PRINT *, 'GetFrontOrientation: xR, yR', xRight, yRight
+         IF (Debug) PRINT *, 'communicate the corners'
+         IF (HaveLeft  .AND. (ParEnv % MyPE>0)) THEN ! left not in root
+            iLeft=ParEnv % MyPE
+            CALL MPI_BSEND(xLeft, 1, MPI_DOUBLE_PRECISION, &
+                 0 ,7001, ELMER_COMM_WORLD, ierr )
+            CALL MPI_BSEND(yLeft, 1, MPI_DOUBLE_PRECISION, &
+                 0 ,7002, ELMER_COMM_WORLD, ierr )
+            IF (Debug) PRINT *, 'sending left'
+         END IF
+         IF (HaveRight .AND. (ParEnv % MyPE>0) ) THEN ! right not in root
+            iRight=ParEnv % MyPE
+            CALL MPI_BSEND(xRight, 1, MPI_DOUBLE_PRECISION, &
+                 0 , 7003, ELMER_COMM_WORLD, ierr )
+            CALL MPI_BSEND(yRight, 1, MPI_DOUBLE_PRECISION, &
+                 0 , 7004, ELMER_COMM_WORLD, ierr )
+            IF (Debug) PRINT *, 'sending right'
+         END IF
+         IF (Debug) PRINT *, 'sent the corners'
+         IF (Boss) THEN
+            IF (Debug) PRINT *, ParEnv % PEs
+            IF (.NOT.HaveLeft) THEN
+                  CALL MPI_RECV(RecvXL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                       7001,ELMER_COMM_WORLD, status, ierr )
+                  CALL MPI_RECV(RecvYL,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                       7002,ELMER_COMM_WORLD, status, ierr )
+                  xLeft=RecvXL
+                  yLeft=RecvYL
+            END IF
+            IF (.NOT. HaveRight) THEN
+                  CALL MPI_RECV(RecvXR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                       7003,ELMER_COMM_WORLD, status, ierr )
+                  CALL MPI_RECV(RecvYR,1,MPI_DOUBLE_PRECISION,MPI_ANY_SOURCE,&
+                       7004,ELMER_COMM_WORLD, status, ierr )
+                  xRight=RecvXR
+                  yRight=RecvYR
+            END IF
+            IF (Debug) PRINT *, 'received corners'
+            IF (Debug) PRINT *, 'GetFrontOrientation: Boss xL, yL, xR, yR', xLeft, yLeft, xRight, yRight
+         END IF
+      END IF ! end if parallel
+      IF (Boss) THEN ! root or not parallel
+      IF( ABS(xLeft-xRight) < AEPS) THEN
+         ! front orientation is aligned with y-axis
+         Orientation(2) =  0.0_dp
+         IF(yRight > yLeft) THEN
+            Orientation(1)=1.0_dp
+         ELSE
+            Orientation(1)=-1.0_dp
+         END IF
+      ELSE IF (ABS(yLeft-yRight)<AEPS) THEN
+         ! front orientation is aligned with x-axis
+         Orientation(1) = 0.0_dp
+         IF(xRight > xLeft) THEN
+            Orientation(2)=1.0_dp
+         ELSE
+            Orientation(2)=-1.0_dp
+         END IF
+      ELSE
+         ! set dot product equal to 0
+         ! no need to ensure it is unit normal, done in ComputeRotation
+         IF(xRight > xLeft) THEN
+            Orientation(2)=1.0_dp
+         ELSE
+            Orientation(2)=-1.0_dp
+         END IF
+         Orientation(1)=Orientation(2)*(yRight-yLeft)/(xLeft-xRight)
+      END IF
+      END IF !boss
+      IF (Parallel) CALL MPI_BCAST(Orientation,3,MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+      ! deallocations
+       DEALLOCATE(FrontPerm, TopPerm, LeftPerm, RightPerm)
+    END IF
+    Temp=(Orientation(1)**2+Orientation(2)**2+Orientation(3)**2)**0.5
+    Orientation=Orientation/Temp ! normalized the orientation
+    IF((.NOT. Constant).AND.Debug)  PRINT *, "GetFrontOrientation: ", Orientation,'part',ParEnv % MyPE
+    FirstThisTime=.FALSE.
+    OrientSaved=Orientation
   END FUNCTION GetFrontOrientation
 
    SUBROUTINE Double3DArraySizeA(Vec, fill)

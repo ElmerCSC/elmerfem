@@ -625,7 +625,7 @@ IF(ImBoss) THEN
       !TODO - apparently there is beta-testing capability to do both levelset cut and anisotropic
       !remeshing in the same step:
       !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
-      CALL RemeshMMG3D(NewMeshR, NewMeshRR, NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+      CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR, NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
 
       !Update parallel info from old mesh nodes (shared node neighbours)
       CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)

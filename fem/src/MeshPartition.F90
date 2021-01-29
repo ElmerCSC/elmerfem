@@ -2517,7 +2517,7 @@ CONTAINS
 
     ! Add the number of elements coming from different partitions
     DO part=1,NoPartitions
-      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( part-1 == ParEnv % Mype ) CYCLE
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
 
@@ -2553,7 +2553,7 @@ CONTAINS
 
     ! also check the imported global indexes
     DO part=1,NoPartitions
-      IF( i-1 == ParEnv % Mype ) CYCLE
+      IF( part-1 == ParEnv % Mype ) CYCLE
       PPack => RecPack(part)
       IF( PPack % icount <= 5 ) CYCLE
       i1 = PPack % indpos + 1

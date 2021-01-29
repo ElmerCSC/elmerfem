@@ -48,6 +48,7 @@ INTEGER :: MMGPARAM_iso = MMG3D_IPARAM_iso
 INTEGER :: MMGPARAM_hgrad = MMG3D_DPARAM_hgrad
 INTEGER :: MMGPARAM_angle = MMG3D_IPARAM_angle
 INTEGER :: MMGPARAM_angleDetection = MMG3D_DPARAM_angleDetection
+INTEGER :: MMGPARAM_debug = MMG3D_IPARAM_debug
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 #endif
@@ -131,7 +132,10 @@ SUBROUTINE Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
 
   ref = 0
   DO i=1,NVerts
-    IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i)
+    ! ref = GDOF + 10 to avoid an input ref of 10 being confused
+    ! with mmg output ref of 10 which occurs on some new nodes
+    ! GDOF = ref - 10
+    IF(Parallel) ref = Mesh % ParallelInfo % GlobalDOFs(i) + 10
     CALL MMG3D_Set_vertex(mmgMesh, Mesh%Nodes%x(i), &
          Mesh%Nodes%y(i),Mesh%Nodes%z(i), ref, i, ierr)
 !         Mesh%Nodes%y(i),Mesh%Nodes%z(i), 0, Mesh % ParallelInfo % GlobalDOFs(i), ierr)
@@ -416,7 +420,10 @@ SUBROUTINE Get_MMG3D_Mesh(NewMesh, Parallel, FixedNodes, FixedElems)
          'CALL TO  MMG3D_Get_vertex FAILED')
     IF(Parallel) THEN
       IF(required > 0) THEN
-        NewMesh % ParallelInfo % GlobalDOFs(ii) = ref
+        ! ref = GDOF + 10 to avoid an input ref of 10 being confused
+        ! with mmg output ref of 10 which occurs on some new nodes
+        ! GDOF = ref - 10
+        NewMesh % ParallelInfo % GlobalDOFs(ii) = ref - 10
       ELSE
         !GlobalDOF undefined - need to negotiate w/ other parts
         NewMesh % ParallelInfo % GlobalDOFs(ii) = 0
@@ -847,14 +854,16 @@ END SUBROUTINE MapNewParallelInfo
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
+SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
 
+  TYPE(Model_t) :: Model
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
   TYPE(ValueList_t), POINTER, OPTIONAL :: Params
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
   !-----------
+  TYPE(Mesh_t), POINTER :: WorkMesh
   TYPE(ValueList_t), POINTER :: FuncParams, Material
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:)
@@ -897,12 +906,16 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
 
   IF(AnisoFlag) THEN
 
+    WorkMesh => Model % Mesh
+    Model % Mesh => InMesh
+
     SolType = MMG5_Tensor
     !Upper triangle of symmetric tensor: 11,12,13,22,23,33
     ALLOCATE(Metric(NNodes,6))
     Metric = 0.0
     DO i=1,NNodes
       NodeNum = i
+
       CALL ListGetRealArray(FuncParams,"RemeshMMG3D Target Length", WorkReal, 1, NodeNum, UnfoundFatal=.TRUE.)
 
       !Metric = 1.0/(edge_length**2)
@@ -910,6 +923,9 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
       Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
       Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
     END DO
+
+    Model % Mesh => WorkMesh
+    WorkMesh => NULL()
 
   ELSE
 
@@ -1022,6 +1038,11 @@ SUBROUTINE RemeshMMG3D(InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Pa
 
   !! GET THE NEW MESH
   CALL GET_MMG3D_MESH(OutMesh,Parallel)
+
+  !! Release mmg mesh
+  CALL MMG3D_Free_all(MMG5_ARG_start, &
+  MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+  MMG5_ARG_end)
 
   NBulk = OutMesh % NumberOfBulkElements
   NBdry = OutMesh % NumberOfBoundaryElements
