@@ -123,19 +123,20 @@ CONTAINS
      CHARACTER(LEN=*) :: Equation
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
 !------------------------------------------------------------------------------
-     INTEGER i,j,l,t,n,e,k,k1,EDOFs, FDOFs, BDOFs, ndofs, el_id
+     INTEGER i,j,l,t,n,e,k,k1, MaxNDOFs, EDOFs, FDOFs, BDOFs, ndofs, el_id
      INTEGER :: Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
      LOGICAL :: FoundDG, DG, DB, GB, Found, Radiation
      TYPE(Element_t),POINTER :: Element, Edge, Face
      CHARACTER(*), PARAMETER :: Caller = 'InitialPermutation'
- !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
      Perm = 0
      k = 0
      EDOFs = Mesh % MaxEdgeDOFs
      FDOFs = Mesh % MaxFaceDOFs
      BDOFs = Mesh % MaxBDOFs
+     MaxNDOFs = Mesh % MaxNDOFs
 
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB=GlobalBubbles
@@ -383,15 +384,19 @@ CONTAINS
 
        el_id = Element % TYPE % ElementCode / 100
        Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
-       ndofs = Element % NDOFs
-       IF ( Def_Dofs(1) >= 0 ) ndofs=Def_Dofs(1)*Element % TYPE % NumberOfNodes
-       DO i=1,ndofs
-         j = Element % NodeIndexes(i)
-         IF ( Perm(j) == 0 ) THEN
-           k = k + 1
-           Perm(j) = k
-         END IF
-       END DO
+       
+       ndofs = Def_Dofs(1)
+       IF (ndofs > 0) THEN
+         DO i=1,Element % TYPE % NumberOfNodes
+           DO j=1,ndofs
+             l = MaxNDOFs * (Element % NodeIndexes(i)-1) + j
+             IF ( Perm(l) == 0 ) THEN
+               k = k + 1
+               Perm(l) =  k
+             END IF
+           END DO
+         END DO
+       END IF
 
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
           DO i=1,Element % TYPE % NumberOfEdges
@@ -406,7 +411,7 @@ CONTAINS
              END IF
 
              DO e=1,ndofs
-                j = Mesh % NumberOfNodes + EDOFs*(Element % EdgeIndexes(i)-1) + e
+                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*(Element % EdgeIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
                    Perm(j) =  k
@@ -421,6 +426,11 @@ CONTAINS
              l = MAX(0,Def_Dofs(3))
              j = Face % TYPE % ElementCode/100
              IF(l==0) THEN
+               !
+               ! NOTE: This depends on what dofs have been introduced
+               ! by using the construct "-quad_face b: ..." and
+               ! "-tri_face b: ..."
+               !
                IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
                  e = Face % BoundaryInfo % Left % BodyId
                  l = MAX(0,Solver % Def_Dofs(j+6,e,5))
@@ -440,7 +450,7 @@ CONTAINS
              END IF
 
              DO e=1,ndofs
-                j = Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                           FDOFs*(Element % FaceIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
@@ -460,7 +470,7 @@ CONTAINS
          END IF
 
          DO i=1,ndofs
-            j = Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+            j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                  FDOFs*Mesh % NumberOfFaces + Element % BubbleIndexes(i)
             IF ( Perm(j) == 0 ) THEN
                k = k + 1
@@ -3619,7 +3629,9 @@ use spariterglobals
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Var
-
+     LOGICAL :: IsNumber
+     REAL(KIND=dp) :: Val
+     
      SomeAtIp = .FALSE.
      SomeAtNodes = .FALSE.
      AllGlobal = .TRUE.
@@ -3651,26 +3663,38 @@ use spariterglobals
          count = count + 3 
          SomeAtNodes = .TRUE.
          AllGlobal = .FALSE.
-       ELSE
-         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )
+       ELSE 
+         IsNumber = .FALSE.
+         Var => VariableGet( CurrentModel % Variables,TRIM(str(l0:l1)) )         
          IF ( .NOT. ASSOCIATED( Var ) ) THEN
-           CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
-           CALL Info('ListParseStrToVars','Parse counters: '&
-               //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
-           CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
-               TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+           IF( VERIFY( str(l0:l1),'-.0123456789') == 0 ) THEN
+             IsNumber = .TRUE.
+             READ(str(l0:l1),*) Val
+           ELSE           
+             CALL Info('ListParseStrToVars','Parsed variable '//TRIM(I2S(count+1))//' of '//str(1:slen),Level=3)
+             CALL Info('ListParseStrToVars','Parse counters: '&
+                 //TRIM(I2S(l0))//', '//TRIM(I2S(l1))//', '//TRIM(I2S(slen)),Level=10)
+             CALL Fatal('ListParseStrToVars', 'Can''t find independent variable:['// &
+                 TRIM(str(l0:l1))//'] for dependent variable:['//TRIM(Name)//']' ) 
+           END IF
          END IF
+
          count = count + 1
-         VarTable(count) % Variable => Var
-     
-         IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.
-                
-         IF( Var % TYPE == Variable_on_gauss_points ) THEN
-           SomeAtIp = .TRUE.
+
+         IF( IsNumber ) THEN
+           !PRINT *,'We do have a number:',Val
+           VarTable(count) % Variable => NULL()
+           VarTable(count) % ParamValue = Val
          ELSE
-           SomeAtNodes = .TRUE.
+           VarTable(count) % Variable => Var           
+           IF( SIZE( Var % Values ) > Var % Dofs ) AllGlobal = .FALSE.           
+           IF( Var % TYPE == Variable_on_gauss_points ) THEN
+             SomeAtIp = .TRUE.
+           ELSE
+             SomeAtNodes = .TRUE.
+           END IF
          END IF
-         
+           
        END IF
 
        ! New start after the comma
@@ -3705,6 +3729,12 @@ use spariterglobals
        
        Var => VarTable(Vari) % Variable
 
+       IF(.NOT. ASSOCIATED( Var ) ) THEN
+         count = count + 1
+         T(count) = VarTable(Vari) % ParamValue
+         CYCLE
+       END IF
+       
        Varsize = SIZE( Var % Values ) / Var % Dofs 
        
        IF( Varsize == 1 ) THEN
@@ -3793,6 +3823,13 @@ use spariterglobals
      
      DO Vari = 1, VarCount 
        Var => VarTable(Vari) % Variable
+
+       IF(.NOT. ASSOCIATED( Var ) ) THEN
+         count = count + 1
+         T(count) = VarTable(Vari) % ParamValue
+         CYCLE
+       END IF
+       
        Varsize = SIZE( Var % Values ) / Var % Dofs 
 
        k1 = 0

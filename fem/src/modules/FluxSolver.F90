@@ -181,22 +181,22 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % rhs = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
   
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),DOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
   
   CALL BulkAssembly()
-  IF( ConstantBulkMatrix ) THEN
-    IF(.NOT. ConstantBulkMatrixInUse ) THEN
-      CALL DefaultFinishBulkAssembly( BulkUpdate = .TRUE.)
+
+  IF ( ConstantBulkMatrix ) THEN
+    IF (.NOT. ConstantBulkMatrixInUse) THEN
+      CALL Info('FluxSolver','Saving the system matrix', Level=6)
+      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
     END IF
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
   END IF
 
   CALL DefaultFinishAssembly()

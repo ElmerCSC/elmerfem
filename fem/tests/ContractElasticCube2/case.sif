@@ -1,0 +1,112 @@
+! Simple test case that shows how to
+! 1) Contract an elastic cube with constant force
+! 2) Fix slip BC at one interface
+!
+! P.R. 2.12.2020
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+
+  Timestep Intervals = 10
+  Timestep Sizes = 0.1
+  Timestepping Method = implicit euler
+
+  Output Intervals = 1
+!  Post File = case.vtu
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Nonlinear System Max Iterations = 1
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+End
+
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs modulus = 1.0e3
+  Density = 1.0
+  Poisson ratio = 0.3
+End
+
+! Natural BCs at the sides
+Boundary Condition 1
+  Name = "Natural" 
+  Target Boundaries(4) = 1 2 3 4
+End 
+
+! Force correspongs closely to the 1st case with Dirichlet BCs
+! Note that this large a force really makes the system nonlinear.
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries(1) = 6
+
+  Force 3 = Variable "time"
+    Real LUA "-200*tx[0]"
+
+! This flag enforces the displacement to always be constant
+! keeping the top surface flat.
+  Displacement 3 Constant = Logical True
+End
+
+Boundary Condition 3
+  Name = "Bottom"
+  Target Boundaries(1) = 5
+  Displacement 3 = Real 0.0
+End
+
+! We need to fix the origin to fix two translations
+Boundary Condition 4
+  Name = "Origin"
+  Target Coordinates(1,3) = Real 0.0 0.0 0.0
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+! Fix one additional point to fix one remaining rotation
+Boundary Condition 5
+  Name = "Origin"
+  Target Coordinates(1,3) = Real 1.0 0.0 0.0
+  Displacement 2 = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 0.76536826E-01
+

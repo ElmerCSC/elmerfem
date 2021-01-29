@@ -51,6 +51,7 @@ INTEGER :: MMGPARAM_angleDetection = MMG3D_DPARAM_angleDetection
 INTEGER :: MMGPARAM_debug = MMG3D_IPARAM_debug
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
+MMG5_DATA_PTR_T :: mmgMet
 #endif
 
 CONTAINS

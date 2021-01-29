@@ -164,15 +164,13 @@ SUBROUTINE ShearrateSolver( Model,Solver,dt,Transient )
   ForceVector => Solver % Matrix % rhs 
   ShearrateField => Solver % Variable % Values
 
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    ForceVector = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   CALL BulkAssembly()
-  IF(.NOT. ConstantBulkMatrixInUse ) THEN
+
+  IF ( ConstantBulkMatrix ) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
 

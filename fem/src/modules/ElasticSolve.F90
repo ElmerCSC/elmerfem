@@ -336,6 +336,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)
   REAL(KIND=dp), POINTER :: UmatEnergy0(:),UmatStress0(:), UmatState0(:)
   LOGICAL, ALLOCATABLE :: UmatInitDone(:)
+  LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta
+  REAL(KIND=dp) :: RayleighAlpha, RayleighBeta  
   
   CHARACTER(*), PARAMETER :: Caller = 'ElasticSolver'
 
@@ -460,7 +462,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
       ListGetLogical( SolverParams, 'Mixed Formulation', GotIt )
   IF (MixedFormulation .AND. (STDOFs /= (dim + 1))) CALL Fatal(Caller, &
       'With mixed formulation variable DOFs should equal to space dimensions + 1')
-
+  
+  AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
+      ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
+  GotDamping = .FALSE.
+  GotRayleighAlpha = .FALSE.
+  GotRayleighBeta = .FALSE.
+  
   !------------------------------------------------------------------------------
   !     Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
@@ -814,7 +822,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         ReferenceTemperature(1:n) = GetReal( Material, 'Reference Temperature', GotIt )
         
         Density(1:n) = GetReal( Material, 'Density', GotIt )
-        Damping(1:n) = GetReal( Material, 'Damping' ,GotIt )
+
+        IF( AnyDamping ) THEN
+          Damping(1:n) = GetReal( Material, 'Damping' ,GotDamping )
+          RayleighAlpha = GetCReal( Material, 'Rayleigh Damping alpha',GotRayleighAlpha )
+          RayleighBeta = GetCReal( Material, 'Rayleigh Damping beta', GotRayleighBeta )
+        END IF
+                
         !------------------------------------------------------------------------------
         !        Set body forces
         !------------------------------------------------------------------------------
@@ -931,6 +945,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                 Isotropic, RotateModuli, TransformMatrix)
           END IF
         END IF
+
+        IF( GotRayleighAlpha ) THEN
+          LocalDampMatrix = LocalDampMatrix + RayleighAlpha * LocalMassMatrix
+        END IF
+        IF( GotRayleighBeta ) THEN
+          LocalDampMatrix = LocalDampMatrix + RayleighBeta * LocalStiffMatrix
+        END IF
+        
         !------------------------------------------------------------------------------
         !        If time dependent simulation, add mass matrix to global 
         !        matrix and global RHS vector
@@ -2032,7 +2054,17 @@ CONTAINS
 
       ! Utilize the Rayleigh damping:
       ! -----------------------------
-      DampMatrix = Damping * MassMatrix
+      IF( GotDamping ) THEN
+        DO p = 1,ntot
+          DO q = 1,ntot
+            DO i = 1,cdim
+              DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  = DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  + Basis(p)*Basis(q)*Damping*s
+            END DO
+          END DO
+        END DO
+      END IF
 
     END DO
 !------------------------------------------------------------------------------
@@ -2412,21 +2444,29 @@ CONTAINS
        !      Integrate mass matrix:
        !      ----------------------
        DO p = 1,ntot
-          DO q = 1,ntot
-             DO i = 1,cdim
-
-                MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                     = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                     + Basis(p)*Basis(q)*Density*s
-
-             END DO
-          END DO
+         DO q = 1,ntot
+           DO i = 1,cdim
+             MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                 = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                 + Basis(p)*Basis(q)*Density*s
+           END DO
+         END DO
        END DO
 
-       !      Utilize the Rayleigh damping:
+       !      Utilize the nodal damping:
        !      -----------------------------
-       DampMatrix = Damping * MassMatrix
-
+       IF( GotDamping ) THEN
+         DO p = 1,ntot
+           DO q = 1,ntot
+             DO i = 1,cdim               
+               DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                   = DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                   + Basis(p)*Basis(q)*Damping*s
+             END DO
+           END DO
+         END DO
+       END IF
+       
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -2738,9 +2778,19 @@ CONTAINS
        END DO
 
        !-------------------------------------
-       !      Utilize the Rayleigh damping:
+       !  Utilize the nodal damping:
        !-------------------------------------
-       DampMatrix = Damping * MassMatrix
+       IF( GotDamping ) THEN
+         DO p = 1,ntot
+           DO q = 1,ntot
+             DO i = 1,cdim
+               DampMatrix(DOFs*(p-1)+i,DOFs*(q-1)+i) &
+                   = DampMatrix(DOFs*(p-1)+i,DOFs*(q-1)+i) &
+                   + Basis(p)*Basis(q)*Damping*s
+             END DO
+           END DO
+         END DO
+       END IF
        
        !-------------------------------------------------------------------------------
        ! Add remaining terms which relate to having the pressure variable as an unknown: 

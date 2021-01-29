@@ -409,7 +409,8 @@ MODULE Types
 
    
    TYPE VariableTable_t     
-     TYPE(Variable_t), POINTER :: Variable
+     TYPE(Variable_t), POINTER :: Variable => NULL()
+     REAL(KIND=dp) :: ParamValue
    END TYPE VariableTable_t
 
    
@@ -780,6 +781,7 @@ MODULE Types
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
      INTEGER :: MinEdgeDOFs, MinFaceDOFs
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
+     INTEGER :: MaxNDOFs ! The maximum of nodal DOFs per node (created with a flag "n:")
 
      LOGICAL :: EntityWeightsComputed 
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
@@ -814,6 +816,13 @@ MODULE Types
      LOGICAL :: LumpedDiag = .TRUE.
    END TYPE MortarBC_t
 
+   TYPE TabulatedBasisAtIp_t
+     REAL(KIND=dp), POINTER :: Basis(:) => NULL()
+     REAL(KIND=dp), POINTER :: dBasisdx(:,:) => NULL()
+     REAL(KIND=dp) :: Weight = 0.0_dp
+   END TYPE TabulatedBasisAtIp_t
+
+   
 !------------------------------------------------------------------------------
 
 !   TYPE Constants_t

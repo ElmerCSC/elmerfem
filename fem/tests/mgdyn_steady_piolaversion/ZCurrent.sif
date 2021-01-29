@@ -10,7 +10,6 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 1
 !  Post File = zcurrent.ep
-  New Load Mesh = Logical True
 End
 
 Body 1

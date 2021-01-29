@@ -81,7 +81,9 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     ./AdjointSSA/AdjointSSA_CostRegSolver.F90 ./AdjointSSA/AdjointSSA_SSASolver.F90
     ./AdjointSSA/AdjointSSA_CostContSolver.F90 ./AdjointSSA/AdjointSSA_CostFluxDivSolver.F90
     ./AdjointSSA/AdjointSSA_CostTaubSolver.F90
-    ./AdjointSSA/AdjointSSA_GradientSolver.F90 PermafrostMaterials.F90 Permafrost.F90
+    ./AdjointSSA/AdjointSSA_GradientSolver.F90 
+    ./AdjointThickness/AdjointThickness_GradientSolver.F90   ./AdjointThickness/AdjointThickness_ThicknessSolver.F90
+    PermafrostMaterials.F90 Permafrost.F90
     SurfaceBoundaryEnthalpy.F90
     Calving.F90 FrontDisplacement.F90 
     TwoMeshes.F90 ProjectCalving.F90 ComputeCalvingNormal.F90 

@@ -76,7 +76,8 @@
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
-           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),sSweep(:),sPar(:)
+         steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),&
+         sSweep(:),sPar(:),sFinish(:),sProduce(:)
 
      TYPE(Element_t),POINTER :: CurrentElement
 
@@ -118,8 +119,9 @@
      TYPE(Model_t), POINTER, SAVE :: Control
      CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
      LOGICAL :: DoControl, GotParams
-     INTEGER :: nr
+     INTEGER :: nr,ni
      REAL(KIND=dp), ALLOCATABLE :: rpar(:)
+     INTEGER, ALLOCATABLE :: ipar(:)
      
 #ifdef HAVE_TRILINOS
 INTERFACE
@@ -169,9 +171,25 @@ END INTERFACE
                CALL GET_COMMAND_ARGUMENT(i, OptionString)
                READ( OptionString,*) rpar(j)
              END DO
-             CALL Info('MAIN','Read '//TRIM(I2S(nr))//' parameters from command line!')
-             CALL SetParametersMATC(nr,rpar)
+             CALL Info('MAIN','Read '//TRIM(I2S(nr))//' real parameters from command line!')
+             CALL SetRealParametersMATC(nr,rpar)
            END IF
+
+           IF( OptionString=='-ipar' ) THEN
+             ! Followed by number of paramters + the parameter values
+             i = i + 1
+             CALL GET_COMMAND_ARGUMENT(i, OptionString)
+             READ( OptionString,*) ni             
+             ALLOCATE( ipar(nr) )
+             DO j=1,ni
+               i = i + 1
+               CALL GET_COMMAND_ARGUMENT(i, OptionString)
+               READ( OptionString,*) ipar(j)
+             END DO
+             CALL Info('MAIN','Read '//TRIM(I2S(ni))//' integer parameters from command line!')
+             CALL SetIntegerParametersMATC(ni,ipar)
+           END IF
+
            Silent = Silent .OR. &
                ( OptionString=='-s' .OR. OptionString=='--silent' ) 
            Version = Version .OR. &
@@ -551,6 +569,12 @@ END INTERFACE
 !------------------------------------------------------------------------------
      IF ( Initialize /= 1 ) CALL Info( 'ElmerSolver', '*** Elmer Solver: ALL DONE ***',Level=3 )
 
+     ! This may be used to study problems at the finish
+     IF( ListGetLogical( CurrentModel % Simulation,'Dirty Finish', GotIt ) ) THEN
+       CALL Info('ElmerSolver','Skipping freeing of the Model structure',Level=4)
+       RETURN
+     END IF
+     
      IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
 #ifdef HAVE_TRILINOS
@@ -580,7 +604,7 @@ END INTERFACE
        IF(.NOT. Found ) RETURN
 
        IF(ExtrudeLayers < 2) THEN
-         CALL Fatal('CreateExtrudedMesh','There must be at least two layers!')
+         CALL Fatal('ElmerSolver','There must be at least two "Extruded Mesh Layers"!')
        END IF
 
        ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
@@ -623,9 +647,20 @@ END INTERFACE
              'Timestep Intervals', GotIt )
 
          IF ( .NOT.GotIt ) THEN
-           CALL Fatal( ' ', 'Keyword > Timestep Intervals < MUST be ' //  &
+           CALL Fatal('ElmerSolver', 'Keyword > Timestep Intervals < MUST be ' //  &
                'defined for transient and scanning simulations' )
          END IF
+
+         IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',GotIt ) ) THEN
+           DO i=1,SIZE(Timesteps,1)
+             IF( MODULO( Timesteps(i), ParEnv % PEs ) /= 0 ) THEN
+               CALL Fatal('ElmerSolver','"Timestep Intervals" should be divisible by #np')
+             END IF
+             Timesteps(i) = Timesteps(i) / ParEnv % PEs
+           END DO
+           CALL Info('ElmerSolver','Divided timestep intervals equally for each partition!',Level=4)
+         END IF
+         
          TimestepSizes => ListGetConstRealArray( CurrentModel % Simulation, &
              'Timestep Sizes', GotIt )
          IF ( .NOT.GotIt ) THEN
@@ -633,7 +668,7 @@ END INTERFACE
              ALLOCATE(TimestepSizes(SIZE(Timesteps),1))
              TimestepSizes = 1.0_dp
            ELSE
-             CALL Fatal( ' ', 'Keyword [Timestep Sizes] MUST be ' //  &
+             CALL Fatal( 'ElmerSolver', 'Keyword [Timestep Sizes] MUST be ' //  &
                  'defined for time dependent simulations' )
            END IF
          END IF
@@ -680,24 +715,22 @@ END INTERFACE
 
        IF ( FirstLoad ) &
            ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
-         steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), &
-         sPar(1), sScan(1), sSweep(1) )
+           steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), &
+           sPar(1), sScan(1), sSweep(1), sFinish(1), sProduce(1) )
        
-       dt   = 0._dp
-       
+       dt = 0._dp       
        sTime = 0._dp
        sStep = 0
        sPeriodic = 0._dp
-       sScan = 0._dp
-       
+       sScan = 0._dp       
        sSize = dt
-       sPrevSizes = 0_dp
-       
-       sInterval = 0._dp
-       
+       sPrevSizes = 0_dp       
+       sInterval = 0._dp       
        steadyIt = 0
        nonlinIt = 0
-       sPar = 0       
+       sPar = 0
+       sFinish = -1.0_dp
+       sProduce = -1.0_dp
        
      END SUBROUTINE InitializeIntervals
        
@@ -1211,6 +1244,13 @@ END INTERFACE
        CALL VariableAdd( Mesh % Variables, Mesh, &
                Name='coupled iter', DOFs=1, Values=steadyIt )
 
+       ! For periodic systems we may do several cycles.
+       ! After convergence is reached we may start producing the results.
+       IF( ListCheckPresent( CurrentModel % Simulation,'Periodic Timesteps') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='Finish',DOFs=1, Values=sFinish )
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='Produce',DOFs=1, Values=sProduce )         
+       END IF
+      
        IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
@@ -2056,7 +2096,7 @@ END INTERFACE
      INTEGER :: interval, timestep, i, j, k, n
      REAL(KIND=dp) :: dt, ddt, dtfunc, timeleft
      INTEGER :: cum_timestep
-     INTEGER, SAVE ::  stepcount=0, RealTimestep
+     INTEGER, SAVE ::  stepcount, RealTimestep
      LOGICAL :: ExecThis,SteadyStateReached=.FALSE.,PredCorrControl, &
          DivergenceControl, HaveDivergence
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
@@ -2073,6 +2113,8 @@ END INTERFACE
      TYPE(AdaptiveVariables_t), ALLOCATABLE, SAVE :: AdaptVars(:)     
      REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
      INTEGER, SAVE :: PrevMeshI = 0
+     INTEGER :: nPeriodic
+     LOGICAL :: ParallelTime
      
      !$OMP PARALLEL
      IF(.NOT.GaussPointsInitialized()) CALL GaussPointsInit()
@@ -2103,22 +2145,41 @@ END INTERFACE
 
      AdaptiveTime = ListGetLogical( CurrentModel % Simulation, &
          'Adaptive Timestepping', GotIt )
-     
+
+     stepcount = 0
      DO interval = 1, TimeIntervals
         stepcount = stepcount + Timesteps(interval)
      END DO 
 
      dt = 1.0_dp
      cum_Timestep = 0
-     ddt = -1.0_dp  
+     ddt = -1.0_dp
+
+
+     ParallelTime = ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping', GotIt ) &
+         .AND. ( ParEnv % PEs > 1 ) 
+     nPeriodic = ListGetInteger( CurrentModel % Simulation,'Periodic Timesteps',GotIt )
+     IF( ParallelTime ) THEN
+       IF( MODULO( nPeriodic, ParEnv % PEs ) /= 0 ) THEN
+         CALL Fatal('ExecSimulation','For parallel timestepping "Periodic Timesteps" must be divisible by #np')
+       END IF
+       nPeriodic = nPeriodic / ParEnv % PEs
+     END IF
+     IF( ParallelTime ) THEN
+       IF( nPeriodic == 0 ) THEN
+         CALL Fatal('ExecSimulation','Parallel timestepping requires "Periodic Timesteps"')
+       END IF
+     END IF
+       
+     
      DO interval = 1,TimeIntervals
        
 !------------------------------------------------------------------------------
 !      go through number of timesteps within an interval
-!------------------------------------------------------------------------------
-       timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
+!------------------------------------------------------------------------------       
+       timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)       
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
-
+         
        IF(GetNameSpaceCheck()) THEN
          IF(Scanning) THEN
            CALL ListPushNamespace('scan:')
@@ -2130,6 +2191,7 @@ END INTERFACE
        END IF
 
        RealTimestep = 1
+              
        DO timestep = 1,Timesteps(interval)
          
          cum_Timestep = cum_Timestep + 1
@@ -2178,6 +2240,10 @@ END INTERFACE
            END IF
            IF(GotIt) THEN
              dt = dtfunc
+             IF(dt < EPSILON(dt) ) THEN
+               WRITE(Message,'(A,ES12.3)') 'Timestep smaller than epsilon: ',dt
+               CALL Fatal('ExecSimulation', Message)
+             END IF             
            ELSE
              dt = TimestepSizes(interval,1)
            END IF
@@ -2233,6 +2299,19 @@ END INTERFACE
          
 !------------------------------------------------------------------------------
          sTime(1) = sTime(1) + dt
+
+         IF( nPeriodic > 0 ) THEN
+           timePeriod = ParEnv % PEs * nPeriodic * dt           
+           IF( ParallelTime ) THEN
+             IF( cum_Timestep == 1 ) THEN
+               sTime(1) = sTime(1) + ParEnv % MyPe * nPeriodic * dt
+             ELSE IF( MODULO( cum_Timestep, nPeriodic ) == 1 ) THEN
+               CALL Info('ExecSimulation','Making jump in time-parallel scheme!')
+               sTime(1) = sTime(1) + nPeriodic * (ParEnv % PEs - 1) * dt
+             END IF
+           END IF
+         END IF
+                  
          sPeriodic(1) = sTime(1)
          DO WHILE(sPeriodic(1) > timePeriod)
            sPeriodic(1) = sPeriodic(1) - timePeriod 
@@ -2258,9 +2337,9 @@ END INTERFACE
            CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
            
            IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
-             IF( Transient ) THEN
-               CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
-             END IF
+!            IF( Transient ) THEN
+!              CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
+!            END IF
              
              ! we cannot have mesh depend on "time" or "timestep" if they are not available as
              ! variables. 
@@ -2291,8 +2370,8 @@ END INTERFACE
            CALL Info( 'MAIN', '-------------------------------------', Level=3 )
 
            IF ( Transient .OR. Scanning ) THEN
-             WRITE( Message, * ) 'Time: ',TRIM(i2s(cum_Timestep)),'/', &
-                   TRIM(i2s(stepcount)), sTime(1)
+             WRITE( Message,'(A,ES12.3)') 'Time: '//TRIM(i2s(cum_Timestep))//'/'// &
+                   TRIM(i2s(stepcount))//':', sTime(1)
              CALL Info( 'MAIN', Message, Level=3 )
 
              newtime= RealTime()
@@ -2612,26 +2691,31 @@ END INTERFACE
 
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
          IF( GotIt .AND. RealTime() - RT0 > maxtime ) THEN
-            CALL Info('ElmerSolver','Reached allowed maximum real time, exiting...')
+            CALL Info('ElmerSolver','Reached allowed maximum real time, exiting...',Level=3)
             GOTO 100
          END IF
 
 	 exitcond = ListGetCReal( CurrentModel % Simulation,'Exit Condition',GotIt)
 	 IF( GotIt .AND. exitcond > 0.0_dp ) THEN
-            CALL Info('ElmerSolver','Found a positive exit condition, exiting...')
+            CALL Info('ElmerSolver','Found a positive exit condition, exiting...',Level=3)
             GOTO 100
          END IF
-	 
+
+         IF( sFinish(1) > 0.0_dp ) THEN
+           CALL Info('ElmerSolver','Finishing condition "finish" found to be positive, exiting...',Level=3)
+           GOTO 100
+         END IF
+           
 !------------------------------------------------------------------------------
 
          IF ( SteadyStateReached .AND. .NOT. (Transient .OR. Scanning) ) THEN
             IF ( Timestep >= CoupledMinIter ) EXIT
          END IF
-
+         
 !------------------------------------------------------------------------------
        END DO ! timestep within an iterval
 !------------------------------------------------------------------------------
-
+       
 !------------------------------------------------------------------------------
      END DO ! timestep intervals, i.e. the simulation
 !------------------------------------------------------------------------------
@@ -2815,12 +2899,14 @@ END INTERFACE
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
     LOGICAL :: EigAnal = .FALSE., Found
-    INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,timesteps,SavedEigenValues
+    INTEGER :: i, j,k,l,n,q,CurrentStep,nlen,nlen2,timesteps,SavedEigenValues
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
+    CHARACTER(MAX_NAME_LEN) :: OutputDirectory
     
-    Simul = ListGetString( CurrentModel % Simulation,  'Simulation Type' )
+    Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 
     OutputFile = ListGetString( CurrentModel % Simulation,'Output File',GotIt )
+
     IF ( Gotit ) THEN
       IF ( ParEnv % PEs > 1 ) THEN
         DO i=1,MAX_NAME_LEN
@@ -2855,18 +2941,26 @@ END INTERFACE
       !--------------------------------------------------
       IF ( Mesh % OutputActive ) THEN
         nlen = LEN_TRIM(Mesh % Name)
+
         IF ( nlen==0 .OR. FileNameQualified(OutputFile) ) THEN
           OutputName = OutputFile
         ELSE
           OutputName = Mesh % Name(1:nlen)//'/'//TRIM(OutputFile)
         END IF
         
-        IF ( nlen==0 .OR. FileNameQualified(PostFile) ) THEN
-          PostName = PostFile
-        ELSE
-          Postname = Mesh % Name(1:nlen)//'/'//TRIM(PostFile)
+        nlen2 = LEN_TRIM(OutputPath)
+        IF(nlen2 == 1) THEN
+          IF(OutputPath(1:1) == '.') nlen2 = 0
         END IF
         
+        ! If "Results Directory" is given (nlen2>0) we want to give that
+        ! priority over mesh directory. 
+        IF ( FileNameQualified(PostFile) .OR. nlen2 > 0 .OR. nlen==0 ) THEN
+          PostName = PostFile
+        ELSE
+          PostName = Mesh % Name(1:nlen)//'/'//TRIM(PostFile)
+        END IF
+                
         IF ( ListGetLogical( CurrentModel % Simulation,'Filename Numbering',GotIt) ) THEN
           IF( CurrentStep == 0 ) THEN
             PostName = NextFreeFilename(PostName)

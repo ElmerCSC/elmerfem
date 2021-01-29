@@ -64,6 +64,7 @@ SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
     CALL Info('OutletCompute_Init','Creating internal 1D mesh')
 
     Mesh => CreateLineMesh( Params )
+    CALL SetMeshMaxDofs(Mesh)
     Solver % Mesh => Mesh 
 
     PMesh => Model % Meshes

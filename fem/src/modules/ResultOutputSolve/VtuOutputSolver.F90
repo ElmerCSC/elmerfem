@@ -23,6 +23,7 @@
 MODULE VtuXMLFile
   USE DefUtils 
   USE MeshUtils
+  USE SolverUtils
   USE SaveUtils
   USE MainUtils
   USE ElementDescription
@@ -124,180 +125,6 @@ CONTAINS
   END SUBROUTINE AverageBodyFields
 
   
-  ! When we have a field defined on IP points we may temporarily swap it to be a field
-  ! defined on DG points. This is done by solving small linear system for each element.
-  !------------------------------------------------------------------------------------
-  SUBROUTINE Ip2DgField( Element, nip, fip, ndg, fdg )
-    !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
-    INTEGER :: nip, ndg
-    REAL(KIND=dp) :: fip(:), fdg(:)
-!------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Weight, DetJ
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
-    INTEGER :: i,t,p,q,n
-    TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t) :: Nodes
-    TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
-
-    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
-!------------------------------------------------------------------------------
-
-    Mesh => GetMesh()
-    IF( .NOT. AllocationsDone ) THEN
-      n = Mesh % MaxElementNodes
-      ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
-      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
-          CurrentCoordinateSystem() == CylindricSymmetric
-      AllocationsDone = .TRUE.
-    END IF
-    
-    n = GetElementNOFNodes( Element ) 
-    IF( n /= ndg ) CALL Fatal('Ip2DgField','Mismatch in sizes!')
-
-    CALL GetElementNodes( Nodes, Element )
-    MASS  = 0._dp
-    LOAD = 0._dp
-
-    ! Numerical integration:
-    !-----------------------
-    IP = GaussPoints( Element, nip )
-
-    DO t=1,IP % n
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
-      Weight = IP % s(t) * DetJ
-
-      IF( CSymmetry ) THEN
-        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
-      END IF
-      
-      DO p=1,n
-        LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
-        DO q=1,n
-          MASS(p,q) = MASS(p,q) + Weight * Basis(q) * Basis(p)
-        END DO
-      END DO
-    END DO
-
-    CALL LuSolve(n,MASS,LOAD) 
-    
-    fdg(1:n) = LOAD(1:n)
-    
-  END SUBROUTINE Ip2DgField
-
-
-  ! This routine changes the IP field to DG field just while the results are being written.
-  !---------------------------------------------------------------------------------------
-  SUBROUTINE Ip2DgSwapper( Mesh, Var ) 
-
-    TYPE( Mesh_t), POINTER :: Mesh
-    TYPE( Variable_t), POINTER :: Var
-
-    TYPE( Variable_t), TARGET :: TmpVar
-    INTEGER :: dgsize,ipsize,varsize,dofs,i,j,k,n,m,e,t,allocstat
-    TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: fip(32),fdg(32)
-    
-    SAVE TmpVar
-
-    IF( Var % TYPE /= Variable_on_gauss_points ) RETURN
-
-    CALL Info('Ip2DgSwapper','Swapping variable from ip to dg:'//TRIM(Var % Name),Level=8)
-    
-    dofs = Var % Dofs
-    n = SIZE( Var % Values ) 
-
-    ! Inherit stuff from the primary field to temporal field
-    TmpVar % Name = Var % Name
-    TmpVar % Dofs = Var % Dofs
-    TmpVar % Type = Variable_on_nodes_on_elements
-    
-    ! Calculate the sizes
-    dgsize = 0
-    ipsize = 0
-    varsize = 0
-    DO t=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)
-      n = Element % Type % NumberOfNodes
-      dgsize = dgsize + n 
-
-      j = Element % ElementIndex
-      m = Var % Perm(j+1) - Var % Perm(j)
-      ipsize = ipsize + m
-
-      IF( m > 0 ) varsize = varsize + n
-    END DO
-
-    CALL Info('Ip2DgSwapper','Sizes for dg, ip and var: '&
-        //TRIM(I2S(dgsize))//', '//TRIM(I2S(ipsize))//', '//TRIM(I2S(varsize)),Level=20)
-   
-    IF(ASSOCIATED( TmpVar % Perm ) ) THEN
-      IF( SIZE( TmpVar % Perm ) < dgsize ) DEALLOCATE( TmpVar % Perm )
-    END IF
-    IF(.NOT. ASSOCIATED( TmpVar % Perm ) ) THEN
-      ALLOCATE( TmpVar % Perm(dgsize), STAT=allocstat )
-      IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Perm')
-    END IF
-    TmpVar % Perm = 0 
-
-    IF(ASSOCIATED( TmpVar % Values ) ) THEN
-      IF( SIZE( TmpVar % Values ) < varsize * dofs ) DEALLOCATE( TmpVar % Values )
-    END IF
-    IF(.NOT. ASSOCIATED( TmpVar % Values ) ) THEN
-      ALLOCATE( TmpVar % Values(varsize * dofs), STAT=allocstat)
-      IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Values')      
-    END IF
-    TmpVar % Values = 0 
-
-    ! Number the permutation in the temporal variable
-    DO t=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)
-      n = Element % Type % NumberOfNodes            
-      e = Element % ElementIndex
-      m = Var % Perm(e+1) - Var % Perm(e)
-
-      IF( m == 0 ) CYCLE
-      TmpVar % Perm( Element % DgIndexes ) = 1
-    END DO
-
-    j = 0
-    DO i = 1, dgsize
-      IF( TmpVar % Perm( i ) == 0 ) CYCLE
-      j = j + 1
-      TmpVar % Perm( i ) = j
-    END DO
-    IF( j /= varsize ) CALL Fatal('Ip2DgSwapper','Inconsistent sizes in numbering')
-        
-    DO t=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(t)
-      n = Element % Type % NumberOfNodes            
-      e = Element % ElementIndex
-      m = Var % Perm(e+1) - Var % Perm(e)
-
-      IF( m == 0 ) CYCLE 
-
-      DO k=1,dofs
-        DO i=1,m        
-          j = Var % Perm(t) + i 
-          fip(i) = Var % Values(dofs*(j-1)+k)
-        END DO
-        
-        CALL Ip2DgField( Element, m, fip, n, fdg )
-        
-        DO i=1,n        
-          j = TmpVar % Perm( Element % DgIndexes(i) )
-          TmpVar % Values(dofs*(j-1)+k) = fdg(i)
-        END DO
-      END DO
-    END DO
-
-    Var => TmpVar
-
-    CALL Info('Ip2DgSwapper','Swapping variable from ip to dg done',Level=20)
-    
-  END SUBROUTINE Ip2DgSwapper
-    
   
   ! Write the filename for saving .vtu, .pvd, and .pvtu files.
   ! Partname, partition and timestep may be added to the name.
@@ -851,7 +678,7 @@ CONTAINS
     Params => GetSolverParams()
     Buffered = .TRUE.
     FlipActive = .FALSE.
-
+    
 
     ! we could have huge amount of gauss points
     ALLOCATE( ElemInd(512)) !Model % Mesh % MaxElementDOFS))
@@ -1067,10 +894,6 @@ CONTAINS
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            !IF( NoModes + NoModes2 > 0 ) THEN
-            !  CALL Warn('WriteVtuXMLFile','Modes cannot currently be given componentwise!')
-            !  CYCLE
-            !END IF
             IF( VarType == Variable_on_gauss_points ) THEN
               CALL Warn('WriteVtuXMLFile','Gauss point variables cannot currently be given componentwise!')
               CYCLE
@@ -1146,9 +969,11 @@ CONTAINS
             IF( ( DG .OR. DN ) .AND. VarType == Variable_on_nodes_on_elements ) THEN
               CALL Info('WriteVTUFile','Setting field type to discontinuous',Level=12)
               InvFieldPerm => InvDgPerm
-            ELSE
+            ELSE IF( ALLOCATED( InvNodePerm ) ) THEN
               CALL Info('WriteVTUFile','Setting field type to nodal',Level=14)
               InvFieldPerm => InvNodePerm
+            ELSE
+              InvFieldPerm => NULL()
             END IF
 
             IF(.NOT. EigenAnalysis ) THEN
@@ -1212,6 +1037,12 @@ CONTAINS
             !---------------------------------------------------------------------
             IF( WriteData ) THEN
 
+              IF( .NOT. NoPermutation .AND. NumberOfDofNodes > 0 ) THEN
+                IF(.NOT. ASSOCIATED( InvFieldPerm ) ) THEN
+                  CALL Fatal(Caller,'InvFieldPerm not associated!')
+                END IF
+              END IF
+              
               IF( BinaryOutput ) WRITE( VtuUnit ) k
 
               DO ii = 1, NumberOfDofNodes
@@ -1506,7 +1337,7 @@ CONTAINS
                 END IF
 
                 IF( n == 0 ) THEN
-                  ElemVectVal(k) = 0.0_dp
+                  ElemVectVal(1:sdofs) = 0.0_dp
                 ELSE
                   DO j=1,n
                     ElemInd(j) = Perm(m)+j
@@ -2178,7 +2009,7 @@ CONTAINS
               WRITE( FullName,'(A,I0)') TRIM( FieldName )//' EigenMode',IndField
 
               ! Note: this should be added for "HarmonicMode" and "ConstraintMode" too
-              ! now the .vptu file for these vectors is not correct!
+              ! now the .pvtu file for these vectors is not correct!
             END IF
 
             IF( AsciiOutput ) THEN

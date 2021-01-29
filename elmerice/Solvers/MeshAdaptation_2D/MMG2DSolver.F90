@@ -82,6 +82,10 @@
 #ifdef HAVE_MMG
 #include "mmg/mmg2d/libmmg2df.h"
 #endif
+#ifndef MMGVERSION_H
+#define MMG_VERSION_LT(MAJOR,MINOR) 1
+#endif
+
       TYPE(Model_t) :: Model
       TYPE(Solver_t), TARGET :: Solver
       TYPE(Solver_t), POINTER ::PSolver
@@ -310,14 +314,22 @@
 !------------------------------------------------------------------------------
       TYPE(Element_t),POINTER ::  Element
       INTEGER, POINTER :: NodeIndexes(:)
-      INTEGER :: np,nt,na,ier
+      INTEGER :: np,nt,na,nq,ier
       INTEGER :: ref,corner,required,ridge
       INTEGER :: parent,ied
       INTEGER :: tt, jj, kk, ll
 
 
      !> a) get the size of the mesh: vertices,  triangles, edges
+
+#if MMG_VERSION_LT(5,5) 
       CALL MMG2D_Get_meshSize(mmgMesh,np,nt,na,ier)
+#else
+      CALL MMG2D_Get_meshSize(mmgMesh,np,nt,nq,na,ier)
+      IF (nq.ne.0) CALL FATAL('MMGSolver',&
+                           'Sorry no support for 404 elements')
+#endif
+
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                            'CALL TO MMGS_Get_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Get_meshSize DONE'    
@@ -467,7 +479,7 @@
       TYPE(Element_t),POINTER :: Element
       INTEGER, POINTER :: NodeIndexes(:)
 
-      INTEGER :: NVert,NEle,NEdge
+      INTEGER :: NVert,NEle,NEdge,Nquad
       INTEGER :: n
       INTEGER :: ier
       INTEGER :: ii,tt
@@ -475,8 +487,15 @@
       NVert=Mesh%NumberOfNodes
       NEle=Mesh%NumberOfBulkElements
       NEdge=Mesh%NumberOfBoundaryElements
+      ! support only 303 elements no 404
+      Nquad=0
 
+#if MMG_VERSION_LT(5,5) 
       CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,NEdge,ier)
+#else
+      CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,Nquad,NEdge,ier)
+#endif
+
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                         'CALL TO MMG2D_Set_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Set_meshSize DONE'

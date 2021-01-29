@@ -61,6 +61,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IMPLICIT NONE
 
 #include "mmg/mmg3d/libmmgtypesf.h"
+#ifndef MMGVERSION_H
+#define MMG_VERSION_LT(MAJOR,MINOR) 1
+#endif
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
@@ -393,6 +396,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgSol  = 0
+      mmgMet  = 0
 
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
@@ -470,7 +474,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
+#if MMG_VERSION_LT(5,5) 
       CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
+#else
+      CALL MMG3D_mmg3dls(mmgMesh,mmgSol,mmgMet,ierr)
+#endif
 
       TimeVar => VariableGet( Model % Variables, 'Timestep' )
       TimeReal = TimeVar % Values(1)

@@ -226,7 +226,7 @@ CONTAINS
     INTEGER :: i,n
     LOGICAL :: reorder, Visited = .FALSE.
 
-    INTEGER, TARGET :: order510(10),order613(13),order715(15),order820(20)
+    INTEGER, TARGET, SAVE :: order510(10),order613(13),order715(15),order820(20)
     INTEGER, POINTER :: order(:)
 
     SAVE Visited
@@ -235,7 +235,7 @@ CONTAINS
       order510(:) = (/ 0,1,2,3,4,5,6,7,9,8 /)
       order613(:) = (/ 0,1,2,3,4,5,8,10,6,7,9,11,12 /)
       order715(:) = (/ 0,1,2,3,4,5,6,9,7,8,10,11,12,14,13 /)
-      order820(:) = (/ 0,1,2,3,4,5,6,7,8,11,12,9,10,12,14,15,16,18,19,17 /)
+      order820(:) = (/ 0,1,2,3,4,5,6,7,8,11,13,9,10,12,14,15,16,18,19,17 /)
       Visited = .TRUE.
     END IF
 

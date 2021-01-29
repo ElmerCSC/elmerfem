@@ -1,13 +1,14 @@
 !
-! The solution of a magnetostatic problem by using the consistently stabilized 
+! The solution of a magnetostatic problem by using the consistently regularized 
 ! formulation (to ensure a unique vector potential solution). See also the 
-! alternate test mgdyn_bh_gauge2 for using a more effective linear solver.  
+! alternate test mgdyn_bh_gauge2 for using a potentially more effective linear 
+! solver.  
 !
-! The consistently stabilized formulation employs the scalar variable as 
-! a Lagrange multiplier to impose the divergence-free constraint on A. 
+! The consistently regularized formulation employs the scalar variable as 
+! an augmented Lagrangian variable to impose the divergence-free constraint on A. 
 ! The uniqueness of the vector potential can also be enforced in an iterated
-! manner without introducing a coupled system to solve A and the Lagrange 
-! multiplier. For this alternative see the file with_projection.sif.
+! manner without introducing a coupled system to solve A and the scalar 
+! variable. For this alternative see the file with_projection.sif.
 !
 
 $ fileprefix = "tet"
@@ -54,16 +55,16 @@ solver 2
   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
   Fix input current density = Logical true
   Newton-Raphson Iteration = Logical True
-  nonlinear system max iterations = 10
+  nonlinear system max iterations = 30
   nonlinear system convergence tolerance = 1e-6
   linear system symmetric = True
   linear system solver = iterative
   linear system preconditioning = none
-  linear system convergence tolerance = 1e-6
+  linear system convergence tolerance = 1e-8
   linear system residual output = 10
   linear system max iterations = 5000
-  linear system iterative method = bicgstab
-  linear system direct method = mumps
+  linear system iterative method = bicgstab2
+!  linear system direct method = mumps
   use lagrange gauge = logical true
   use tree gauge = logical false
   lagrange gauge penalization coefficient = real 1e0
@@ -79,6 +80,7 @@ solver 3
   Calculate Magnetic Vector Potential = True
   Calculate Magnetic Flux Density = True
   calculate magnetic field strength = True
+  Separate Magnetic Energy = True
   steady state convergence tolerance = 1e-6
   linear system solver = iterative
   linear system preconditioning = none
@@ -95,6 +97,7 @@ solver 4
   vtu format = True
   Output File Name = stabilized
   discontinuous bodies = logical true
+  Save Geometry IDs = Logical True
 !  vector field 1 = String "Volume Current"
 !  vector field 2 = String "Magnetic Flux Density E"
 !  vector field 3 = String "Magnetic Field Strength E"
@@ -103,7 +106,7 @@ end
 solver 5
   equation = scalars
   Procedure = "SaveData" "SaveScalars"
-  show norm index = 2
+  show norm index = 3
   parallel Reduce = true
   filename = f.dat
 end
@@ -111,7 +114,7 @@ end
 solver 6
   equation = scalars2
   Procedure = "SaveData" "SaveScalars"
-  show norm index = 3
+  show norm index = 4
   parallel reduce = true
 end
 
@@ -138,10 +141,13 @@ material 1
 end
 
 material 2
-  relative permittivity = 1.0
-  name = iron
-  electric conductivity = 0.0
-  relative permeability = 1000.0
+  relative Permittivity = 1.0
+  Name = "Iron"
+  Electric Conductivity = 0.0
+
+  H-B Curve(31,2) = Real
+   INCLUDE HB
+
 end
 
 material 3
@@ -202,6 +208,6 @@ end
 
 Solver 6 :: Reference Norm = Real  8.05311383E-03
 Solver 6 :: Reference Norm tolerance = Real 2e-4
-Solver 5 :: reference norm = real 5.28894624E-05
+Solver 5 :: reference norm = real 2.204993E-05
 Solver 5 :: reference norm tolerance = real 2e-4
 

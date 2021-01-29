@@ -60,13 +60,13 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   IF( .NOT. Found ) THEN
     IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
         ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity") ) THEN
-      CALL Info("WhitneyAVSolver_Init0", "Moving material requires always scalar potential",Level=10)
+      CALL Info("WhitneyAVSolver_Init0", "Moving material triggers the use of scalar potential",Level=10)
       StaticConductivity = .TRUE.
     END IF
 
     IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
       CALL Info("WhitneyAVSolver_Init0", &
-          "> Electric Current Density < always requires scalar potential",Level=10)    
+          "> Electric Current Density < triggers the use of scalar potential",Level=10)    
       StaticConductivity = .TRUE.
     END IF
   END IF
@@ -197,12 +197,12 @@ END SUBROUTINE WhitneyAVSolver_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solve vector potential A
+!>  Solve a vector potential A and scalar potential V from
 ! 
-!> sigma @A/@t + rot (1/mu) rot A = J^s + curl(M^s) - sigma grad(V^s)
-!>   -div(sigma*(@A/@t+grad(V))=0 .
+!>  sigma @A/@t + rot (1/mu) rot A + sigma grad(V) = J^s + curl(M^s) - sigma grad(V^s)
+!>   -div(sigma*(@A/@t+grad(V))) = 0 .
 !
-!>  using edge elements (Nedelec/Whitney basis of lowest degree)+nodal basis for V.
+!>  by using edge elements for A + nodal basis for V.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
@@ -231,7 +231,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: VecPot(:)
-  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:)
+  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:), &
@@ -372,14 +372,14 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
      IF(ALLOCATED(FORCE)) THEN
        DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, TCoef, GapLength, AirGapMu, &
-             Acoef, LamThick, LamCond, WBase, RotM, DConstr, Acoef_t,ThinLineCrossect, ThinLineCond )
+             Acoef, LamThick, LamCond, WBase, RotM, DConstr, ThinLineCrossect, ThinLineCond )
      END IF
 
      ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N),  &
-          DConstr(N,N), Acoef_t(3,3,N), &
+          DConstr(N,N), &
           ThinLineCrossect(N), ThinLineCond(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
@@ -620,30 +620,34 @@ CONTAINS
        END IF
      END IF
 
+     LaminateStack = .FALSE.
+     LaminateStackModel = ''
+     HasTensorReluctivity = .FALSE.
      Acoef = 0.0d0
-     Acoef_t = 0.0d0
      Tcoef = 0.0d0
-     Material => GetMaterial( Element )
      IF ( ASSOCIATED(Material) ) THEN
-       HasTensorReluctivity = .FALSE.
-       CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
-       IF (HasTensorReluctivity) THEN
-         IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
-           i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
-           Acoef(1:i) = Acoef_t(1,1,1:i) 
-           HasTensorReluctivity = .FALSE.
+       IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+         CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+         IF (HasTensorReluctivity) THEN
+           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+             i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
+             Acoef(1:i) = Acoef_t(1,1,1:i) 
+             HasTensorReluctivity = .FALSE.
+           END IF
+         ELSE
+           CALL GetReluctivity(Material,Acoef,n)
          END IF
-       ELSE
-         CALL GetReluctivity(Material,Acoef,n)
+         IF (HasTensorReluctivity) THEN
+           IF (size(Acoef_t,1)/=3) CALL Fatal('WhitneyAVSolver', &
+               'Reluctivity tensor should be of size 3x3')
+         END IF
        END IF
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
-       
        Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
        
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
-       IF (.NOT. LaminateStack) LaminateStackModel = ''
      END IF
 
 
@@ -1495,21 +1499,21 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
-    INTEGER :: n, nd
+    LOGICAL :: LaminateStack, CoilBody
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega(3), omega_velo(3,n), &
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Acoefder(n), C(3,3), &
+                     RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
-
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, &
+    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, &
         HasVelocity, HasLorentzVelocity, HasAngularVelocity
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -1566,7 +1570,6 @@ END SUBROUTINE LocalConstraintMatrix
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
-        HBCurve = .TRUE.
       END IF
     END IF
     
@@ -1604,15 +1607,19 @@ END SUBROUTINE LocalConstraintMatrix
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
-       A = SUM( Basis(1:n) * Acoef(1:n) )
-       mu = A
-
-       IF(HasTensorReluctivity) THEN
-         DO i = 1,3
-           DO j = 1,3
-             A_t(i,j) = sum(Basis(1:n)*Acoef_t(i,j,1:n))
+       IF (HasTensorReluctivity) THEN
+         IF (SIZE(Acoef_t,2) == 1) THEN
+           A_t = 0.0d0
+           DO i = 1,3
+             A_t(i,i) = SUM(Basis(1:n)*Acoef_t(i,1,1:n))
            END DO
-         END DO
+         ELSE
+           DO i = 1,3
+             DO j = 1,3
+               A_t(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+             END DO
+           END DO
+         END IF
        END IF
 
        ! Compute convection type term coming from a rigid motion:
@@ -1643,13 +1650,19 @@ END SUBROUTINE LocalConstraintMatrix
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilBody .AND. CoilType /= 'massive') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') THEN
+         DO i=1,3
+           DO j=1,3
+             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+           END DO
+         END DO
+         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       END IF
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
@@ -1683,6 +1696,7 @@ END SUBROUTINE LocalConstraintMatrix
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
        ELSE
+         mu = SUM( Basis(1:n) * Acoef(1:n) )
          muder = 0._dp
        END IF
 
@@ -1697,7 +1711,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
-         CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+         CONDUCTOR: IF ( SUM(ABS(C)) > AEPS ) THEN
            IF ( Transient ) THEN
              DO p=1,np
                DO q=1,np
@@ -1757,7 +1771,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          !
-         A_CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+         A_CONDUCTOR: IF ( SUM(ABS(C)) > AEPS ) THEN
            !
            ! In the case of steady state model add the effect of v x curl A to 
            ! the electromagnetic field: 
@@ -1810,12 +1824,12 @@ END SUBROUTINE LocalConstraintMatrix
             SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
          DO j = 1,nd-np
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) 
 
-           ! Aniostropic part
-           IF(HasTensorReluctivity) THEN
+           IF (HasTensorReluctivity) THEN
              STIFF(p,q) = STIFF(p,q) &
-                  + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+                 + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+           ELSE
+             STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)              
            END IF
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
@@ -1851,18 +1865,16 @@ END SUBROUTINE LocalConstraintMatrix
            q = j
            DO i = 1,nd-np
              p = i+np
-             STIFF(q,p) = STIFF(q,p) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
-             STIFF(p,q) = STIFF(p,q) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(q,p) = STIFF(q,p) - SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(p,q) = STIFF(p,q) - SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
            END DO
          END DO
 
          IF ( HasStabC ) THEN
-           DO j = 1, np
-             q = j
-             DO i = 1, np
-               p = i
-               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t) &
-                     + gauge_penalize_m*Basis(j)*Basis(i)*detJ*IP%s(t)
+           DO q = 1, np
+             DO p = 1, np
+               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t) &
+                     + gauge_penalize_m*Basis(q)*Basis(p)*detJ*IP%s(t)
              END DO
            END DO
          END IF

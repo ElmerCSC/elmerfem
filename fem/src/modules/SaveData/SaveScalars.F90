@@ -167,12 +167,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen, &
-      jsonpos
-  INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
+      jsonpos, PassiveCoordinate
+  INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
 
-  SAVE :: jsonpos
+  SAVE :: jsonpos, PrevRunInd
   
 !------------------------------------------------------------------------------
 
@@ -190,6 +190,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   SaveFluxRange = ListGetLogical( Params,'Save Flux Range',GotIt)
   IF(.NOT. GotIt) SaveFluxRange = .TRUE.
+
+  RunInd = 0
+  Var => VariableGet( Model % Variables,'run')
+  IF( ASSOCIATED( Var ) ) RunInd = NINT( Var % Values(1) )
+
   
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -202,13 +207,28 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(i > 0) THEN
         Suffix = ScalarsFile(i:j)
         WRITE( ScalarsFile,'(A,I0,A)') &
-            ScalarsFile(1:i-1)//'_',ParEnv % PEs,Suffix(1:j-i+1)
+            ScalarsFile(1:i-1)//'_np',ParEnv % PEs,Suffix(1:j-i+1)
       ELSE
         WRITE( ScalarsFile,'(A,I0)') &
-            ScalarsFile(1:j)//'_',ParEnv % PEs 
+            ScalarsFile(1:j)//'_np',ParEnv % PEs 
       END IF
     END IF
 
+    ! Optionally number files by the run control loop.
+    IF(ListGetLogical(Params,'Run Control Numbering',GotIt)) THEN
+      i = INDEX( ScalarsFile,'.',.TRUE. )
+      j = LEN_TRIM(ScalarsFile)
+      IF(i > 0) THEN
+        Suffix = ScalarsFile(i:j)
+        WRITE( ScalarsFile,'(A,I0,A)') &
+            ScalarsFile(1:i-1)//'_run',RunInd,Suffix(1:j-i+1)
+      ELSE
+        WRITE( ScalarsFile,'(A,I0)') &
+            ScalarsFile(1:j)//'_run',RunInd
+      END IF
+      IF( RunInd /= PrevRunInd ) Solver % TimesVisited = 0      
+    END IF
+    
     CALL SolverOutputDirectory( Solver, ScalarsFile, OutputDirectory )
     ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
     
@@ -500,7 +520,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       NegOper = .TRUE.
       Oper = Oper(10:nlen)
     END IF
-    
+
+    ! We may want to do integrals over projected surfaces
+    PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate',GotIt )
+    IF(.NOT. GotIt ) THEN
+      PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate '//TRIM(I2S(NoOper)), GotIt )
+    END IF
 
     WRITE (Name,'(A,I0)') 'Coefficient ',NoOper
     CoefficientName = ListGetString(Params,TRIM(Name),GotCoeff )
@@ -1185,7 +1210,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     LineInd = ListGetInteger( Params,'Line Marker',GotIt)
     PrevNoValues = ListGetInteger( Params,'Save Scalars Dofs',GotIt) 
 
-    IF(WriteCore .AND. NoValues /= PrevNoValues) THEN 
+    IF(WriteCore .AND. ( NoValues /= PrevNoValues .OR. RunInd /= PrevRunInd ) ) THEN 
       CALL ListAddInteger( Params,'Save Scalars Dofs',NoValues )
 
       WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
@@ -1475,6 +1500,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   n = 1
   n = NINT( ParallelReduction(1.0_dp*n) )
+
+  PrevRunInd = RunInd
   
   CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 
@@ -1537,7 +1564,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: ParallelOperator
     !------------------------------------------------------------------------
     CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
-    REAL, ALLOCATABLE :: TmpValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
     LOGICAL, POINTER :: TmpValuesInteger(:)     
     TYPE(Variable_t), POINTER :: TargetVar
@@ -2023,7 +2050,7 @@ CONTAINS
     REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
     REAL(KIND=dp) :: EnergyTensor(3,3,Model % MaxElementNodes),&
-        EnergyCoeff(Model % MaxElementNodes) 
+        EnergyCoeff(Model % MaxElementNodes), ElemVals(Model % MaxElementNodes) 
     REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
     REAL(KIND=dp) :: func, coeff, integral1, integral2, Grad(3), CoeffGrad(3)
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
@@ -2069,7 +2096,17 @@ CONTAINS
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
-      
+
+      IF( PassiveCoordinate > 0 ) THEN
+        SELECT CASE( PassiveCoordinate ) 
+        CASE(1) 
+          ElementNodes % x(1:n) = 0.0_dp 
+        CASE(2)           
+          ElementNodes % y(1:n) = 0.0_dp
+        CASE(3) 
+          ElementNodes % z(1:n) = 0.0_dp
+        END SELECT
+      END IF
 
       ! If we are masking operators with correct (body, body force, or material) then do it here
       IF( BodyOper ) THEN        
@@ -2085,7 +2122,17 @@ CONTAINS
         IF( .NOT. ListGetLogical( MaskList, MaskName, GotIt ) ) CYCLE
       END IF
 
-
+      IF( NoDOFs == 1 ) THEN      
+        ElemVals(1:n) = Var % Values(Var % Perm(PermIndexes) )
+      ELSE
+        ElemVals(1:n) = 0.0_dp
+        DO i=1,NoDOFs
+          ElemVals(1:n) = ElemVals(1:n) + Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+i )**2
+        END DO
+        ElemVals(1:) = SQRT(ElemVals(1:n))
+      END IF
+        
+      
       k = ListGetInteger( Model % Bodies( Element % BodyId ) % Values, &
           'Material', GotIt, minv=1, maxv=Model % NumberOfMaterials )
 
@@ -2163,26 +2210,26 @@ CONTAINS
           integral1 = integral1 + coeff * S
 
           CASE ('int','int mean')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
 
           integral1 = integral1 + S * coeff * func 
 
           CASE ('int square','int square mean','int rms')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func**2 
           
           CASE ('int abs','int abs mean')
-          func = ABS( SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) ) )
+          func = ABS( SUM( ElemVals(1:n) * Basis(1:n) ) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
 
           CASE ('int variance')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           integral1 = integral1 + S * coeff * func 
@@ -2191,7 +2238,7 @@ CONTAINS
           CASE ('diffusive energy')
           CoeffGrad = 0.0d0
           DO j = 1, DIM
-            Grad(j) = SUM( dBasisdx(1:n,j) *  Var % Values(Var % Perm(PermIndexes)) )
+            Grad(j) = SUM( dBasisdx(1:n,j) * ElemVals(1:n) )
             DO k = 1, DIM
               CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * &
                   SUM( dBasisdx(1:n,k) * Var % Values(Var % Perm(PermIndexes)) )
@@ -2201,12 +2248,12 @@ CONTAINS
           integral1 = integral1 + s * SUM( Grad(1:DIM) * CoeffGrad(1:DIM) )
 
           CASE ('convective energy')
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
           
           IF(NoDofs == 1) THEN
-            func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+            func = SUM( ElemVals(1:n) * Basis(1:n) )
             integral1 = integral1 + s * coeff * func**2
           ELSE
             func = 0.0d0
@@ -2218,7 +2265,7 @@ CONTAINS
 
           CASE ('potential energy')
 
-          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          func = SUM( ElemVals(1:n) * Basis(1:n) )
           IF( PosOper ) func = MAX( 0.0_dp, func )
           IF( NegOper ) func = MIN( 0.0_dp, func ) 
 
@@ -2411,8 +2458,18 @@ CONTAINS
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
 
+        IF( PassiveCoordinate > 0 ) THEN
+          SELECT CASE( PassiveCoordinate ) 
+          CASE(1) 
+            ElementNodes % x(1:n) = 0.0_dp 
+          CASE(2)           
+            ElementNodes % y(1:n) = 0.0_dp
+          CASE(3) 
+            ElementNodes % z(1:n) = 0.0_dp
+          END SELECT
+        END IF
 
-
+        
         SELECT CASE(OperName)
           
         CASE('diffusive flux') 
