@@ -1809,4 +1809,5 @@ solver:real:         'cyclic system convergence tolerance'
 simulation:logical:  'parallel timestepping'
 simulation:integer:  'periodic timesteps'
 simulation:logical:  'single mesh'
+simulation:logical:  'output file final only'
 
