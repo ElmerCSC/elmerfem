@@ -1,0 +1,72 @@
+! A beam case with some geometric appeal: spring
+!
+! To make the mesh:
+! ElmerGrid 1 2 spring.grd
+! octave beam2spring.m
+!
+! P.R. 31.1.2021
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "spring"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Post File = "spring.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+ Youngs Modulus = Real 0.2
+ Shear Modulus = Real 1.0
+
+ ! Specify I_k:
+ Second Moment of Area = Real 1.0
+ ! Specify A:
+ Cross Section Area = Real 1.0
+ ! Specify J_T:
+ Torsional Constant = Real 1.0
+ ! The density is used only in transient cases:
+ Density = 2700.0
+End
+
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Timoshenko Beam Equations"
+  Procedure = "BeamSolver3D" "TimoshenkoSolver"
+
+  Nonlinear System Max Iterations = 1
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 1 = Real 0.0
+  U 2 = Real 0.0
+  U 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  U 1 = Real 0.0
+  U 2 = Real 0.0
+  U 3 = Real 1.0
+End
+
+
+Solver 1 :: Reference Norm = 6.05769127
+
