@@ -732,9 +732,6 @@ CONTAINS
       REAL(KIND=dp) :: Basis(n), DetJ, s
 
 
-      a_parameter(1:n) = GetReal(GetMaterial(), 'Material Parameter', Found )
-      IF(.NOT. Found ) a_parameter = 1._dp
-
       !------------------------------------------------------------------------
       ! The reference element is chosen to be that used for p-approximation,
       ! so we need to switch to using a quadrature which would not be used 
@@ -769,15 +766,13 @@ CONTAINS
 
         s = IP % s(t) * DetJ
 
-        MatPar = 1._dp / SUM(Basis(1:n)*a_parameter(1:n))
-
         DO i=1,n
          DO j=1,n
            MASS(i,j) = MASS(i,j) + s * Basis(i)*Basis(j)
          END DO
-         FORCE_x(i) = FORCE_x(i) + s * MatPar * SUM(FaceBasis(1:nval,1) * vals(1:nval))
-         FORCE_y(i) = FORCE_y(i) + s * MatPar * SUM(FaceBasis(1:nval,2) * vals(1:nval))
-         FORCE_z(i) = FORCE_z(i) + s * MatPar * SUM(FaceBasis(1:nval,3) * vals(1:nval))
+         FORCE_x(i) = FORCE_x(i) + s * SUM(FaceBasis(1:nval,1) * vals(1:nval))
+         FORCE_y(i) = FORCE_y(i) + s * SUM(FaceBasis(1:nval,2) * vals(1:nval))
+         FORCE_z(i) = FORCE_z(i) + s * SUM(FaceBasis(1:nval,3) * vals(1:nval))
         END DO
       END DO
 
