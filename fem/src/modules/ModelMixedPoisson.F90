@@ -770,9 +770,9 @@ CONTAINS
          DO j=1,n
            MASS(i,j) = MASS(i,j) + s * Basis(i)*Basis(j)
          END DO
-         FORCE_x(i) = FORCE_x(i) + s * SUM(FaceBasis(1:nval,1) * vals(1:nval))
-         FORCE_y(i) = FORCE_y(i) + s * SUM(FaceBasis(1:nval,2) * vals(1:nval))
-         FORCE_z(i) = FORCE_z(i) + s * SUM(FaceBasis(1:nval,3) * vals(1:nval))
+         FORCE_x(i) = FORCE_x(i) + s * SUM(FaceBasis(1:nval,1) * vals(1:nval)) * Basis(i)
+         FORCE_y(i) = FORCE_y(i) + s * SUM(FaceBasis(1:nval,2) * vals(1:nval)) * Basis(i)
+         FORCE_z(i) = FORCE_z(i) + s * SUM(FaceBasis(1:nval,3) * vals(1:nval)) * Basis(i)
         END DO
       END DO
 
