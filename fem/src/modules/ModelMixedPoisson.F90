@@ -101,7 +101,20 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
     
   CALL ListAddString( SolverPars,NextFreeKeyword(&
       'Exported Variable',SolverPars),'-elem '//TRIM(VarName))
+
+  CALL ListAddString( SolverPars,NextFreeKeyword(&
+      'Exported Variable',SolverPars), TRIM(VarName))
   
+
+
+  CALL ListAddNewString(SolverPars,'Flux Variable','mixedflux' )
+  VarName = ListGetString(SolverPars,'Flux Variable')
+
+  CALL ListAddString( SolverPars,NextFreeKeyword(&
+      'Exported Variable',SolverPars),'-dofs 3 -dg '//TRIM(VarName))
+
+  CALL ListAddString( SolverPars,NextFreeKeyword(&
+      'Exported Variable',SolverPars), TRIM(VarName))
 !------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson_Init0
 !------------------------------------------------------------------------------
@@ -643,22 +656,34 @@ SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
   LOGICAL :: Found
-  TYPE(Variable_t), POINTER :: pVar, Var
+  TYPE(Variable_t), POINTER :: pVar, Var, fVar
   TYPE(Element_t), POINTER :: Element
   INTEGER, ALLOCATABLE :: Indexes(:)
-  INTEGER :: dim, active, t, n, nd, nb
+  INTEGER :: dim, active, t, n, nd, nb, np
   REAL(KIND=dp) :: val
-  
+
+  LOGICAL :: SecondFamily
+
+  REAL(KIND=dp), ALLOCATABLE :: Flux_x(:), Flux_y(:), Flux_z(:)
+
   Params => GetSolverParams()
+
+  SecondFamily = GetLogical(Params, 'Second Kind Basis', Found)
+  
   Mesh => GetMesh()
   Var => Solver % Variable
   dim = CoordinateSystemDimension()
 
-  ALLOCATE( Indexes(Solver % Mesh % MaxElementDOFs) )
+  n = Solver % Mesh % MaxElementDOFs
+  ALLOCATE( Indexes(n) )
+  ALLOCATE( Flux_x(n), Flux_y(n), Flux_z(n))
   
   ! Get the elemental pressure variable where postprocessing is saved to
   VarName = ListGetString(Params,'Potential Variable')
   pVar => VariableGet( Mesh % Variables, VarName ) 
+
+  VarName = ListGetString(Params,'Flux Variable')
+  fVar => VariableGet( Mesh % Variables, VarName ) 
   
   active = GetNOFActive()
   
@@ -668,12 +693,103 @@ SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
     nd = GetElementDOFs( Indexes, Element )  
     nb = SIZE(Element % BubbleIndexes(:))
 
+    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
+
     ! last bubble dofs is the pressure
     val = Var % Values( Var % Perm(Indexes(nd)) )
 
     ! assign it to be outputted
-    pVar % Values(pVar % Perm(Element % ElementIndex) ) = val
+    pVar % Values(pVar % Perm(Element % ElementIndex)) = val
+
+    CALL GetFlux( n,nd-np-1,Var % Values(Var % Perm(Indexes(np+1:nd-1))) )
+
+    fVar % Values(3*(fVar % Perm(Element % dGIndexes(1:n))-1)+1) = Flux_x(1:n)
+    fVar % Values(3*(fVar % Perm(Element % dGIndexes(1:n))-1)+2) = Flux_y(1:n)
+    fVar % Values(3*(fVar % Perm(Element % dGIndexes(1:n))-1)+3) = Flux_z(1:n)
+
   END DO
+
+CONTAINS
+
+  SUBROUTINE GetFlux( n, nval,vals )
+
+      INTEGER :: n, nval
+      REAL(KIND=dp) :: MASS(n,n), FORCE_x(n), FORCE_y(n), FORCE_z(n), vals(:)
+
+      INTEGER, PARAMETER :: MaxFaceBasisDim = 48
+
+      TYPE(GaussIntegrationPoints_t) :: IP
+      TYPE(Nodes_t), SAVE :: Nodes
+
+      LOGICAL :: Stat, Found, EvaluateMatPar, EvaluateSource, Convection
+      LOGICAL :: TensorValuedPar
+
+      INTEGER :: t, i, j, p, q, np
+
+      REAL(KIND=dp) :: Load(n), a_parameter(n), mu(dim,dim,n), K(dim,dim), MatPar, f
+      REAL(KIND=dp) :: Velo(dim,n), v(dim), tmp(dim)
+      REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
+      REAL(KIND=dp) :: Basis(n), DetJ, s
+
+
+      a_parameter(1:n) = GetReal(GetMaterial(), 'Material Parameter', Found )
+      IF(.NOT. Found ) a_parameter = 1._dp
+
+      !------------------------------------------------------------------------
+      ! The reference element is chosen to be that used for p-approximation,
+      ! so we need to switch to using a quadrature which would not be used 
+      ! otherwise
+      !------------------------------------------------------------------------
+      SELECT CASE( GetElementFamily(Element) )
+      CASE(3)
+        IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+      CASE(4)
+        IP = GaussPointsQuad(9)
+      CASE(5)
+        IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
+      CASE(8)
+        IP = GaussPointsBrick(64)
+      CASE DEFAULT
+        CALL Fatal('MixedPoisson', 'A non-supported element type')
+      END SELECT
+
+      CALL GetElementNodes(Nodes)
+
+      MASS = 0._dp
+      FORCE_x = 0._dp
+      FORCE_y = 0._dp
+      FORCE_z = 0._dp
+      ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
+      np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
+
+      DO t=1,IP % n
+        stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detF=detJ, Basis=Basis, FBasis=FaceBasis, &
+            DivFBasis=DivFaceBasis, BDM=SecondFamily, ApplyPiolaTransform=.TRUE.)
+
+        s = IP % s(t) * DetJ
+
+        MatPar = 1._dp / SUM(Basis(1:n)*a_parameter(1:n))
+
+        DO i=1,n
+         DO j=1,n
+           MASS(i,j) = MASS(i,j) + s * Basis(i)*Basis(j)
+         END DO
+         FORCE_x(i) = FORCE_x(i) + s * MatPar * SUM(FaceBasis(1:nval,1) * vals(1:nval))
+         FORCE_y(i) = FORCE_y(i) + s * MatPar * SUM(FaceBasis(1:nval,2) * vals(1:nval))
+         FORCE_z(i) = FORCE_z(i) + s * MatPar * SUM(FaceBasis(1:nval,3) * vals(1:nval))
+        END DO
+      END DO
+
+
+      CALL InvertMatrix(MASS,n)
+      Flux_x(1:n) = MATMUL(MASS, FORCE_x)
+      Flux_y(1:n) = MATMUL(MASS, FORCE_y)
+      Flux_z(1:n) = MATMUL(MASS, FORCE_z)
+
+  END SUBROUTINE GetFlux
+
+
 !------------------------------------------------------------------------------        
 END SUBROUTINE MixedPoisson_post
-!------------------------------------------------------------------------------
+!-----------------------------------------------------------------------------
