@@ -3361,6 +3361,9 @@ CONTAINS
     IF(ASSOCIATED(NewMesh % Variables)) CALL Fatal(SolverName,&
          "New mesh already has variables associated!")
 
+    ! need to set Mesh % MaxNDOFs in NewMesh
+    CALL SetMeshMaxDOFs(NewMesh)
+
     !interpolation epsilons
     globaleps = 1.0E-2_dp
     localeps = 1.0E-2_dp
