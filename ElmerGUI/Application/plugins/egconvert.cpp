@@ -5412,6 +5412,9 @@ omstart:
 	  }	  
 	}
       }
+      if(info) {
+	printf("Element type range in whole mesh is [%d %d]\n",minelemtype,maxelemtype);
+      }
     }
 
     if( mode == 2420 ) {
@@ -5607,6 +5610,7 @@ omstart:
 	  }
 	  else if(grouptype == 7) {
 	    nopoints += 1;
+
 	    if(allocated) {
 	      elemcode = 101;
 	      data->material[noelements+nopoints] = nogroup;
@@ -5765,7 +5769,7 @@ end:
      Now separate the lower dimensional elements to be boundary elements. */
   ElementsToBoundaryConditions(data,bound,TRUE,info);
  
-  if(info) printf("The Universal mesh was loaded from file %s.\n\n",filename);
+  if(info) printf("The Universal mesh was loaded from file %s.\n",filename);
 
   return(0);
 }
