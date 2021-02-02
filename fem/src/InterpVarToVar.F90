@@ -1280,7 +1280,7 @@ CONTAINS
       DO j=1,SIZE(Neighbours)
         IF(Neighbours(j) > ParEnv % MyPE .AND. ANY(NeighbourParts == Neighbours(j))) THEN
           WorkInt(i) = 0
-          PRINT*, ParEnv % MyPE, 'nodenumber', nodenumber, 'neighbours', Neighbours(j)
+          IF(Debug) PRINT*, ParEnv % MyPE, 'nodenumber', nodenumber, 'neighbours', Neighbours(j)
           EXIT
         END IF
       END DO
@@ -1360,6 +1360,18 @@ CONTAINS
         END DO
       END IF
     END DO
+
+    ! one proc could have no suppnodes so need to calculate maskcount
+    IF(NoSuppNodes == 0) THEN
+      IF(PRESENT(Variables)) THEN
+        MaskCount = 1
+        Var => Variables
+        DO WHILE(ASSOCIATED(Var))
+          MaskCount = MaskCount + 1
+          Var => Var % Next
+        END DO
+      END IF
+    END IF
 
     !crop supppnode mask and interpedvalue
     ALLOCATE(WorkMask(NoSuppNodes, MaskCount), WorkArray(MaskCount))
