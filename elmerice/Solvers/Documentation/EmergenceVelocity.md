@@ -91,4 +91,4 @@ End
 An example solving the emergence velocity for a surface velocity and shape distribution computed on a Bueler-profile can be found in [ELMER_TRUNK]/elmerice/Tests/Emergence.
 
 ## References
-Välisuo, I., T. Zwinger, and J. Kohler, 2017. Inverse solution of surface mass balance of Midtre Lovénbreen, Svalbard, accepted Journal of Glaciology
+Välisuo, I., T. Zwinger, and J. Kohler, 2017. Inverse solution of surface mass balance of Midtre Lovénbreen, Svalbard, Journal of Glaciology, 1-10, doi:10.1017/jog.2017.26

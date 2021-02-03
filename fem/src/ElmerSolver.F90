@@ -81,7 +81,7 @@
 
      TYPE(Element_t),POINTER :: CurrentElement
 
-     LOGICAL :: GotIt,Transient,Scanning,LastSaved, MeshMode = .FALSE.
+     LOGICAL :: GotIt,Transient,Scanning, LastSaved, MeshMode = .FALSE.
 
      INTEGER :: TimeIntervals,interval,timestep, &
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter
@@ -2337,9 +2337,9 @@ END INTERFACE
            CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
            
            IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
-             IF( Transient ) THEN
-               CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
-             END IF
+!            IF( Transient ) THEN
+!              CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
+!            END IF
              
              ! we cannot have mesh depend on "time" or "timestep" if they are not available as
              ! variables. 
@@ -2672,7 +2672,13 @@ END INTERFACE
                IF( ExecThis ) CALL SolverActivate( CurrentModel,Solver,dt,Transient )
              END DO 
 
-             CALL SaveCurrent(Timestep)
+             ! Output file is used to Save the results for restart.
+             ! Optionally we may save just the final stage which saves disk space and time.
+             IF( .NOT. ListGetLogical( CurrentModel % Simulation,'Output File Final Only',GotIt) ) THEN               
+               CALL SaveCurrent(Timestep)
+             END IF
+
+             CALL SaveToPost(TimeStep)
              LastSaved = .TRUE.
 
              DO i=1,nSolvers
@@ -2755,7 +2761,11 @@ END INTERFACE
        END DO
 
        CALL SaveToPost(0)
-       CALL SaveCurrent(Timestep)
+       CALL SaveToPost(TimeStep)
+       
+       IF( .NOT. ListGetLogical( CurrentModel % Simulation,'Output File Final Only',GotIt) ) THEN               
+         CALL SaveCurrent(Timestep)
+       END IF
 
        DO i=1,CurrentModel % NumberOfSolvers
          Solver => CurrentModel % Solvers(i)
@@ -2765,7 +2775,11 @@ END INTERFACE
          IF ( GotIt ) ExecThis = ( When == 'after saving') 
          IF( ExecThis ) CALL SolverActivate( CurrentModel,Solver,dt,Transient )
        END DO
+     ELSE IF( ListGetLogical( CurrentModel % Simulation,'Output File Final Only',GotIt) ) THEN               
+       CALL SaveCurrent(Timestep)
      END IF
+
+
      
 !------------------------------------------------------------------------------
    END SUBROUTINE ExecSimulation
@@ -2887,7 +2901,8 @@ END INTERFACE
         Mesh => Mesh % Next
       END DO
     END IF
-    CALL SaveToPost(CurrentStep)
+! We want to seprate saving of ElmerPost file and Result file.    
+!    CALL SaveToPost(CurrentStep)
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveCurrent
 !------------------------------------------------------------------------------

@@ -34,9 +34,9 @@
 ! *
 ! *****************************************************************************/
 !------------------------------------------------------------------------------
-!>  Renormalizes the levelset function using straight-forward geometric search
-!>  Also includes an option to do the covection at the same time as an alternavtive
-!>  for using a separate solver for the advection.
+!>  Renormalizes the level-set function using straight-forward geometric search.
+!>  Also includes an option to do the convection at the same time as an alternative
+!>  to using a separate solver for the advection.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
    SUBROUTINE LevelSetDistance( Model,Solver,Timestep,TransientSimulation )
@@ -146,7 +146,7 @@
          ALLOCATE( Direction( Solver % Mesh % NumberOfBulkElements), STAT=istat )
        END IF
        IF ( istat /= 0 ) THEN
-         CALL Fatal( 'RerormalizeSolver', 'Memory allocation error 2.' )
+         CALL Fatal( 'LevelSetDistance', 'Memory allocation error 2.' )
        END IF
        ExtractAllocated = .TRUE.
      END IF
@@ -243,7 +243,7 @@
 
      st = CPUTIme()-st
      WRITE(Message,'(a,F8.2)') 'Reinitialization done in time (s):',st
-     CALL Info( 'LevelSetNormalize',Message, Level=4 )
+     CALL Info( 'LevelSetDistance',Message, Level=4 )
  
      IF(Convect) THEN
        WRITE(Message,'(a,ES12.3)') 'Maximum Levelset Change',dsmax

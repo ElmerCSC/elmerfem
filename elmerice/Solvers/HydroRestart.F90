@@ -23,7 +23,7 @@
 ! ******************************************************************************
 ! *
 ! *  Authors: Samuel Cook 
-! *  Email:   sc690@cam.ac.uk
+! *  Email:   samuel.cook@univ-grenoble-alpes.fr
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - Scientific Computing Ltd.
 ! *           Keilaranta 14
