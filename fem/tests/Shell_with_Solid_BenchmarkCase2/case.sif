@@ -34,7 +34,11 @@ Simulation
   Simulation Type = Steady State
   Output Intervals = 1
   Steady State Max Iterations = 1
-  Post File = coupled2.vtu
+
+  Post File = coupled.vtu
+  vtu: Vector Field 1 = String "displacement"
+  vtu: Vector Field 1 Complement = String "u"
+  vtu: Vector Field 2 = String "dnu"
 End
 
 Body 1
