@@ -49,6 +49,8 @@ INTEGER :: MMGPARAM_hgrad = MMG3D_DPARAM_hgrad
 INTEGER :: MMGPARAM_angle = MMG3D_IPARAM_angle
 INTEGER :: MMGPARAM_angleDetection = MMG3D_DPARAM_angleDetection
 INTEGER :: MMGPARAM_debug = MMG3D_IPARAM_debug
+INTEGER :: MMGPARAM_rmc = MMG3D_DPARAM_rmc
+INTEGER :: MMGPARAM_nosurf = MMG3D_IPARAM_nosurf
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 MMG5_DATA_PTR_T :: mmgMet
@@ -993,6 +995,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
        hausd,ierr)
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMG3D_DPARAM_hgrad,&
        hgrad,ierr)
+  ! allow surface modifications
+  CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_nosurf,&
+       0,ierr)
 
   !Turn off sharp angle detection (0)   
   CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMG3D_IPARAM_angle, &
