@@ -106,6 +106,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   MyPe = ParEnv % MyPE
   PEs = ParEnv % PEs
 
+#if MMG_VERSION_LT(5,6)
+  PRINT*, SolverName, ': Starting MMG'
+#else
+  CALL FATAL(SolverName, 'Calving code only works with MMG 5.5')
+#endif
+
   !Check all elements are tetras or tris:
   DO i=1,NBulk+Nbdry
     Element => Mesh % Elements(i)
@@ -395,19 +401,19 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IF (CalvingOccurs) THEN
       !Initialise MMG datastructures
       mmgMesh = 0
-      mmgSol  = 0
+      mmgLs  = 0
       mmgMet  = 0
 
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
-           MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-           MMG5_ARG_end)
+          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
+          MMG5_ARG_end)
 
       CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., EdgePairs, PairCount)
       !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
       CALL Set_MMG3D_Mesh(GatheredMesh, .TRUE., EdgePairs, PairCount)
 
       !Request isosurface discretization
-      CALL MMG3D_Set_iparameter(mmgMesh, mmgSol, MMGPARAM_iso, 1,ierr)
+      CALL MMG3D_Set_iparameter(mmgMesh, mmgLs, MMGPARAM_iso, 1,ierr)
 
       !set angle detection on (1, default) and set threshold angle (85 degrees)
       !TODO - here & in MeshRemesh, need a better strategy than automatic detection
@@ -416,7 +422,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !I think these are defunct as they are called in RemeshMMG
       ! this is unless cutting lset and anisotrophic remeshing take place in one step 
       !print *, 'first call of angle detection $$$ - turned on '
-      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_angle, &
+      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgLs,MMGPARAM_angle, &
            0,ierr)
 
       !!! angle detection changes calving in next time steps dramatically 
@@ -425,23 +431,23 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !     85.0_dp,ierr)
 
       !Turn on debug (1)
-      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_debug, &
+      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgLs,MMGPARAM_debug, &
            1,ierr)
 
       !Set geometric parameters for remeshing
-      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
+      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hmin,&
            hmin,ierr)
-      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmax,&
+      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hmax,&
            hmax,ierr)
-      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hausd,&
+      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hausd,&
            hausd,ierr)
-      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hgrad,&
+      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hgrad,&
            hgrad,ierr)
 
       !Feed in the level set distance
-      CALL MMG3D_SET_SOLSIZE(mmgMesh, mmgSol, MMG5_Vertex, GNNode ,MMG5_Scalar, ierr)
+      CALL MMG3D_SET_SOLSIZE(mmgMesh, mmgLs, MMG5_Vertex, GNNode ,MMG5_Scalar, ierr)
       DO i=1,GNNode
-        CALL MMG3D_Set_scalarSol(mmgSol,&
+        CALL MMG3D_Set_scalarSol(mmgLs,&
              Gtest_lset(i), &
              i,ierr)
       END DO
@@ -469,16 +475,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END DO
 
       !> 4) (not mandatory): check if the number of given entities match with mesh size
-      CALL MMG3D_Chk_meshData(mmgMesh,mmgSol,ierr)
+      CALL MMG3D_Chk_meshData(mmgMesh,mmgLs,ierr)
       IF ( ierr /= 1 ) CALL EXIT(105)
 
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
-#if MMG_VERSION_LT(5,5) 
-      CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
-#else
-      CALL MMG3D_mmg3dls(mmgMesh,mmgSol,mmgMet,ierr)
-#endif
+      ! mmg5.5 not using isosurface discretization. More robust to remesh seperately
+      ! addtionally computationally lighter as iceberg are not finely remeshed
+      CALL MMG3D_mmg3dls(mmgMesh,mmgLs,0_dp,ierr)
 
       TimeVar => VariableGet( Model % Variables, 'Timestep' )
       TimeReal = TimeVar % Values(1)
@@ -489,7 +493,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         PRINT*,"BAD ENDING OF MMG3DLS", time
       ENDIF
 
-      IF(Debug) CALL MMG3D_SaveMesh(mmgMesh,"test_out_angleoff.mesh",LEN(TRIM("test_out_angleoff.mesh")),ierr)
+      CALL MMG3D_SaveMesh(mmgMesh,"test_ls.mesh",LEN(TRIM("test_ls.mesh")),ierr)
 
       CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
@@ -606,8 +610,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       !! Release mmg mesh
       CALL MMG3D_Free_all(MMG5_ARG_start, &
-      MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
-      MMG5_ARG_end)
+          MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
+          MMG5_ARG_end)
 
       !MMG3DLS returns constraint = 10 on newly formed boundary elements
       !(i.e. the new calving front). Here it is set to front_BC_id
