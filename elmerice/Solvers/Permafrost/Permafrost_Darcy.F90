@@ -980,12 +980,12 @@ CONTAINS
         ! Given flux:
         ! -----------
         IF (Fluxcondition) THEN
-          DO i=1,DIM
-            fluxgAtIP(i) = rhogwAtIP * SUM(KgwAtIP(i,1:DIM)*Gravity(1:DIM))
+          !DO i=1,DIM
+          !  fluxgAtIP(i) = rhogwAtIP * SUM(KgwAtIP(i,1:DIM)*Gravity(1:DIM))
             !PRINT *, "fluxgAtIP(",i,")=",rhogwAtIP, "KgwAtIP=", KgwAtIP(i,1:DIM)
-          END DO
+          !END DO
           
-          F = SUM(Basis(1:n)*flux(1:n)) - 0.0*SUM(NormalAtIP(1:DIM)*fluxgAtIP(1:DIM))
+          F = SUM(Basis(1:n)*flux(1:n))
           
           !PRINT *,"F=",F,SUM(Basis(1:n)*flux(1:n)), NormalAtIP(1:DIM), fluxgAtIP(1:DIM)
           FORCE(1:nd) = FORCE(1:nd) + Weight * F * Basis(1:nd)
