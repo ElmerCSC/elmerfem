@@ -1032,6 +1032,8 @@ CONTAINS
       DO j=1,n
         idx = Element % NodeIndexes(j)
         IF(idx == NodeNumber) CYCLE
+        IF(ANY(WorkInt == idx)) CYCLE !already got
+        IF(.NOT. ValidNode(idx)) CYCLE !invalid
 
         NoSuppNodes = NoSuppNodes + 1
         WorkInt(NoSuppNodes) = idx
@@ -1250,6 +1252,8 @@ CONTAINS
       DO j=1,n
         idx = Element % NodeIndexes(j)
         IF(idx == NodeNumber) CYCLE
+        IF(ANY(WorkInt == idx)) CYCLE !already got
+        IF(.NOT. ValidNode(idx)) CYCLE !invalid
 
         NoSuppNodes = NoSuppNodes + 1
         WorkInt(NoSuppNodes) = idx
