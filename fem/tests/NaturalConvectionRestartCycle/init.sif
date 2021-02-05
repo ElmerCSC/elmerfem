@@ -34,6 +34,7 @@ Simulation
   Output Global Variables = Logical True
   Output File Cycle = Integer 3
 
+! This test with ascii
 !  Binary Output = Logical True
 
 ! This is for testing purposes
