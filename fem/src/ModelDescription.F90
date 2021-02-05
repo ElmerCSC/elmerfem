@@ -3374,6 +3374,8 @@ CONTAINS
 
       IF( SaveThis ) THEN
         IF( SaveAll .OR. Var % ValuesChanged ) THEN
+          CALL Info('SaveResult','Writing variable: '//Var % Name(1:k),Level=20)
+
           CALL WriteVarName( OutputUnit,PosUnit,Var % Name(1:k),VarPos(j) )
           CALL WritePerm( OutputUnit, Var % Perm, PrevPerm )
           
@@ -3428,59 +3430,67 @@ CONTAINS
 
          IF ( .NOT.ASSOCIATED( CurrPerm ) ) THEN
 
-            IF ( Binary ) THEN
-               CALL BinWriteInt4( OutputUnit,0 )
-            ELSE
-               WRITE( OutputUnit, '(A)' ) 'Perm: NULL'
-            END IF
+           CALL Info('SaveResult','Perm is NULL',Level=32)
+
+           IF ( Binary ) THEN
+             CALL BinWriteInt4( OutputUnit,0 )
+           ELSE
+             WRITE( OutputUnit, '(A)' ) 'Perm: NULL'
+           END IF
 
          ELSE
-         
-            SameAsPrev = .FALSE.
-            IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
-               SameAsPrev = .TRUE.
-            ELSE IF ( ASSOCIATED( PrevPerm ) ) THEN
-               IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
-                  IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
-               END IF
-            END IF
 
-            IF ( SameAsPrev ) THEN
+           SameAsPrev = .FALSE.
+           IF ( ASSOCIATED( CurrPerm, PrevPerm ) ) THEN
+             SameAsPrev = .TRUE.
+           ELSE IF ( ASSOCIATED( PrevPerm ) ) THEN
+             IF ( SIZE(CurrPerm) == SIZE(PrevPerm) ) THEN
+               IF ( ALL( CurrPerm == PrevPerm ) ) SameAsPrev = .TRUE.
+             END IF
+           END IF
 
-               IF ( Binary ) THEN
-                  CALL BinWriteInt4( OutputUnit,-1 )
-                  CALL BinWriteInt8( OutputUnit,INT( PrevPermPos,Int8_k ) )
-               ELSE
-                  WRITE( OutputUnit, '(A)' ) 'Perm: use previous'
-               END IF
+           IF ( SameAsPrev ) THEN
 
-            ELSE
+             CALL Info('SaveResult','Perm is same as previous',Level=32)
 
-               PrevPerm => Var % Perm
+             IF ( Binary ) THEN
+               CALL BinWriteInt4( OutputUnit,-1 )
+               CALL BinWriteInt8( OutputUnit,INT( PrevPermPos,Int8_k ) )
+             ELSE
+               WRITE( OutputUnit, '(A)' ) 'Perm: use previous'
+             END IF
 
-               n = COUNT( CurrPerm > 0 )
-               IF ( Binary ) THEN
-                  PrevPermPos = BinFTell( OutputUnit )
-                  CALL BinWriteInt4( OutputUnit, SIZE(CurrPerm) )
-                  CALL BinWriteInt4( OutputUnit, n )
-                  DO i = 1, SIZE( CurrPerm )
-                     IF ( CurrPerm(i) > 0 ) THEN
-                        CALL BinWriteInt4( OutputUnit,i )
-                        CALL BinWriteInt4( OutputUnit,CurrPerm(i) )
-                     END IF
-                  END DO
-               ELSE
-                  WRITE( OutputUnit,'(A,i12," ",i12)') 'Perm: ', SIZE(CurrPerm), n
-                  DO i = 1, SIZE( CurrPerm )
-                     IF ( CurrPerm(i) > 0 ) THEN
-                        WRITE( OutputUnit, '(2i11)' ) i,CurrPerm(i)
-                     END IF
-                  END DO
-               END IF
+           ELSE
 
-            END IF
+             PrevPerm => Var % Perm
 
+             n = COUNT( CurrPerm > 0 )
+
+             CALL Info('SaveResult','Writing Perm of size '&
+                 //TRIM(I2S(SIZE(CurrPerm)))//' with '//TRIM(I2S(n))//' nonzeros',Level=20)
+
+             IF ( Binary ) THEN
+               PrevPermPos = BinFTell( OutputUnit )
+               CALL BinWriteInt4( OutputUnit, SIZE(CurrPerm) )
+               CALL BinWriteInt4( OutputUnit, n )
+               DO i = 1, SIZE( CurrPerm )
+                 IF ( CurrPerm(i) > 0 ) THEN
+                   CALL BinWriteInt4( OutputUnit,i )
+                   CALL BinWriteInt4( OutputUnit,CurrPerm(i) )
+                 END IF
+               END DO
+             ELSE
+               WRITE( OutputUnit,'(A,i12," ",i12)') 'Perm: ', SIZE(CurrPerm), n
+               DO i = 1, SIZE( CurrPerm )
+                 IF ( CurrPerm(i) > 0 ) THEN
+                   WRITE( OutputUnit, '(2i11)' ) i,CurrPerm(i)
+                 END IF
+               END DO
+             END IF
+
+           END IF
          END IF
+         
       END SUBROUTINE WritePerm
 
 
@@ -3602,9 +3612,9 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
     CHARACTER(LEN=:), ALLOCATABLE :: Row
     CHARACTER(LEN=MAX_STRING_LEN) :: FName,Trash
-    INTEGER ::i,j,k,k2,n,nt,Node,DOFs,TotalDofs,DofCount,SavedCount,Timestep,NSDOFs,nlen
-    INTEGER :: nNodes, Stat, FieldSize, PermSize
-    INTEGER, SAVE :: FmtVersion
+    INTEGER ::i,j,k,k2,n,nt,Node,DOFs,SavedCount,Timestep,NSDOFs,nlen
+    INTEGER :: nNodes, Stat, FieldSize, PermSize, FieldSize2, PermSize2
+    INTEGER, SAVE :: FmtVersion, DofCount, TotalDofs
     INTEGER, ALLOCATABLE :: Perm(:)
 
     TYPE(Solver_t),   POINTER :: Solver
@@ -3612,10 +3622,10 @@ CONTAINS
 
     LOGICAL :: RestartFileOpen = .FALSE., Cont, Found, LoadThis, ThisIp, UsePerm
     LOGICAL, SAVE :: PosFile = .FALSE.
-    LOGICAL, SAVE :: Binary, RestartVariableList, GotPerm, GotIt
-    INTEGER, SAVE, ALLOCATABLE :: RestartVariableSizes(:)
-    LOGICAL, SAVE, ALLOCATABLE :: RestartVariableFound(:)
-    INTEGER, SAVE :: RestartVariableCount
+    LOGICAL, SAVE :: Binary, GotPerm, GotIt, CreateVariables
+    INTEGER, SAVE, ALLOCATABLE :: FileVariableInfo(:,:)
+    LOGICAL, SAVE, ALLOCATABLE :: ListVariableFound(:)
+    INTEGER, SAVE :: ListVariableCount
     TYPE(ValueList_t), POINTER :: ResList
     
     REAL(KIND=dp) :: Dummy,Val,Time
@@ -3628,8 +3638,6 @@ CONTAINS
 
     CHARACTER(*), PARAMETER :: Caller = 'LoadRestartFile'
     
-    SAVE TotalDOFs, PermSize, FieldSize
-
     tstart = CPUTime()
 !------------------------------------------------------------------------------
 !   Open restart file and search for the right position
@@ -3643,20 +3651,39 @@ CONTAINS
       RETURN
     END IF
     CALL Info( Caller,'Reading data from file: '//TRIM(RestartFile), Level = 4 )
-    
+
+    ! This routine may be called either in Simulation section or from Solver section
     IF( PRESENT( SolverId ) ) THEN
       ResList => CurrentModel % Solvers(SolverId) % Values
     ELSE
       ResList => CurrentModel % Simulation
     END IF
     
-    RestartVariableList = ListCheckPresent( ResList,'Restart Variable 1')
-    IF( RestartVariableList ) THEN
-      CALL Info(Caller,'Reading only variables given by: "Restart Variable i"',Level=10)
+    
+    ! If we want to skip some of the variables we need to have a list 
+    ! of their sizes still. This is particularly true with variables that 
+    ! do not have permutation since they could be a field (like coordinate)
+    ! or a global variable (like time).
+    !----------------------------------------------------------------------
+    DO j=1,1000
+      VarName = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
+      IF(.NOT. Found ) EXIT
+    END DO
+    j = j - 1    
+    IF( j > 0 ) THEN
+      CALL Info(Caller,'Number of variable to read is: '//TRIM(I2S(j)),Level=10)
+      IF( ALLOCATED( ListVariableFound ) ) DEALLOCATE( ListVariableFound ) 
+      ALLOCATE( ListVariableFound(j) )
+      CALL Info(Caller,'Reading only '//TRIM(I2S(j))//' variables given by: "Restart Variable i"',Level=10)
     ELSE
       CALL Info(Caller,'Reading all variables (if not wanted use "Restart Variable i" )',Level=10)      
     END IF
+    ListVariableCount = j
 
+    ! We can optionally not create variables automatically
+    CreateVariables = ListGetLogical( ResList,'Restart Create Variables',Found )
+    IF(.NOT. Found ) CreateVariables = .TRUE.
+    
         
     Cont = .FALSE.
     IF ( PRESENT( Continuous ) ) Cont = Continuous
@@ -3710,31 +3737,29 @@ CONTAINS
     END IF
 
     IF ( Row(3:8) == 'BINARY' ) THEN
-        Binary = .TRUE.
-        FmtVersion = 1
-        E = Row(1:1)
-        CALL Info( Caller, TRIM(Row(3:)), Level = 4 )
+      Binary = .TRUE.
+      FmtVersion = 1
+      E = Row(1:1)
+      CALL Info( Caller, TRIM(Row(3:)), Level = 4 )
     ELSE IF ( Row(2:7) == 'BINARY' ) THEN
-        Binary = .TRUE.
-        FmtVersion = 2
-        READ( Row(9:9),'(I1)',IOSTAT=iostat) FmtVersion
-        IF( iostat /= 0 ) THEN
-          CALL Fatal(Caller,'Error reading version: '//TRIM(Row))
-        END IF
-        i = INDEX( Row, "." )
-        E = Row(i+1:i+1)
-        CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
+      Binary = .TRUE.
+      FmtVersion = 2
+      READ( Row(9:9),'(I1)',IOSTAT=iostat) FmtVersion
+      IF( iostat /= 0 ) THEN
+        CALL Fatal(Caller,'Error reading version: '//TRIM(Row))
+      END IF
+      i = INDEX( Row, "." )
+      E = Row(i+1:i+1)
+      CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
     ELSE IF ( Row(2:6) == 'ASCII' ) THEN
-        Binary = .FALSE.
-        READ( Row(8:8),'(I1)',IOSTAT=iostat) FmtVersion
-        IF( iostat /= 0 ) THEN
-          CALL Fatal(Caller,'Error reading version: '//TRIM(Row))
-        END IF
-        CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
+      Binary = .FALSE.
+      READ( Row(8:8),'(I1)',IOSTAT=iostat) FmtVersion
+      IF( iostat /= 0 ) THEN
+        CALL Fatal(Caller,'Error reading version: '//TRIM(Row))
+      END IF
+      CALL Info( Caller, TRIM(Row(2:)), Level = 4 )
     ELSE 
-        Binary = .FALSE.
-        FmtVersion = 0
-        CALL Info( Caller, 'ASCII 0', Level = 4 )
+      CALL Fatal(Caller,'Could not dertemine file format, obsolite?')
     END IF
     
     IF( Binary ) THEN
@@ -3742,41 +3767,34 @@ CONTAINS
     ELSE
       CALL Info( Caller,'Reading ascii restart file version '//TRIM(I2S(FmtVersion)), Level = 4)
     END IF
-      
-    ! If we want to skip some of the variables we need to have a list 
-    ! of their sizes still. This is particularly true with variables that 
-    ! do not have permutation since they could be a field (like coordinate)
-    ! or a global variable (like time).
-    !----------------------------------------------------------------------
-    IF( RestartVariableList ) THEN            
-      DO j=1,1000
-        VarName = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
-        IF(.NOT. Found ) EXIT
-      END DO
-      j = j - 1
-      CALL Info(Caller,'Number of variable to read is: '//TRIM(I2S(j)),Level=10)
-      IF( ALLOCATED( RestartVariableFound ) ) DEALLOCATE( RestartVariableFound ) 
-      ALLOCATE( RestartVariableFound(j) )
-      RestartVariableCount = j
-      RestartVariableFound = .FALSE.
 
-      DO WHILE( ReadAndTrim(RestartUnit,Row) )
-        nlen = LEN_TRIM(Row)        
-        k = INDEX( Row(1:nlen),'total dofs:',.TRUE.) 
-        IF( k /= 0 ) THEN
-          READ( Row(k+11:nlen),*,IOSTAT=iostat ) TotalDofs
-          IF( iostat /= 0 ) THEN
-            CALL Fatal(Caller,'Unable to load total dofs!')
-          END IF
-          EXIT
-        END IF
-      END DO
-      IF(ALLOCATED( RestartVariableSizes) ) DEALLOCATE( RestartVariableSizes)
-      ALLOCATE( RestartVariableSizes(TotalDofs) )
-      RestartVariableSizes = 0
-      REWIND( RestartUnit )
+    IF( FmtVersion < 3 .AND. ListVariableCount > 0 ) THEN      
+      CALL Fatal(Caller,'Cannot pick variables with old file format!')
     END IF
 
+    
+    ! Check how many one-component values there are to read.
+    ! The vector valued fields will be always saved component-wise. 
+    DO WHILE( ReadAndTrim(RestartUnit,Row) )
+      nlen = LEN_TRIM(Row)        
+      k = INDEX( Row(1:nlen),'total dofs:',.TRUE.) 
+      IF( k /= 0 ) THEN
+        READ( Row(k+11:nlen),*,IOSTAT=iostat ) TotalDofs
+        IF( iostat /= 0 ) THEN
+          CALL Fatal(Caller,'Unable to load total dofs!')
+        END IF
+        EXIT
+      END IF
+    END DO
+    REWIND( RestartUnit )    
+    CALL Info(Caller,'Total number of dofs in restart file: '//TRIM(I2S(TotalDofs)), Level = 5)
+
+    ! Components are:
+    ! FieldSize, PermSize, Load?, SolverId
+    IF(ALLOCATED( FileVariableInfo) ) DEALLOCATE( FileVariableInfo)
+    ALLOCATE( FileVariableInfo(TotalDofs,3) )
+    FileVariableInfo = 0
+       
     ! Find the start of dof definition part
     ! Here we use the INDEX so that there could be some empty space
     ! also before the keyword. 
@@ -3791,25 +3809,19 @@ CONTAINS
     DO WHILE( ReadAndTrim(RestartUnit,Row) )
 
       nlen = LEN_TRIM(Row)
-
+      
+      ! Abort when we have reached the end of the variable list
       k = INDEX( Row(1:nlen),'total dofs:',.TRUE.) 
-      IF( k /= 0 ) THEN
-        READ( Row(k+11:nlen),*,IOSTAT=iostat ) TotalDofs
-        IF( iostat /= 0 ) THEN
-          CALL Fatal(Caller,'Unable to load total dofs!')
-        END IF
-        CALL Info(Caller,'Total number of dofs to load: '//I2S(TotalDofs) )
-        EXIT
-      END IF
+      IF( k /= 0 ) EXIT
       
       IF( FmtVersion < 3 ) THEN
         ! Figure out what is the solver to which the variable is associated to
         ! this requires that the 'Equation' keyword is unique.
         ! I wonder if this is used at all?
-        k = INDEX(Row,']')+1
+        k = INDEX(Row(1:nlen),']')+1
         
         ! The last colon in the line
-        k = k+INDEX(Row(k:),':',.TRUE.)-1
+        k = k+INDEX(Row(k:nlen),':',.TRUE.)-1
         NULLIFY(Solver)
         DO i = 1,CurrentModel % NumberOfSolvers
           Solver => CurrentModel % Solvers(i)
@@ -3824,11 +3836,17 @@ CONTAINS
         DO k=j,1,-1
           IF ( Row(k:k) == ' ' ) EXIT
         END DO
-        READ(Row(k+1:),*,IOSTAT=iostat) DOFs
+        READ(Row(k+1:nlen),*,IOSTAT=iostat) DOFs
         IF( iostat /= 0 ) THEN
-          CALL Fatal(Caller,'Error reading DOFs: '//TRIM(Row(k+1:)))
+          CALL Fatal(Caller,'Error reading DOFs: '//Row(k+1:nlen))
         END IF
 
+        IF( Dofs == 1 ) THEN
+          DofCount = DofCount + 1
+          FieldSize = 0
+          PermSize = 0
+        END IF
+        
         IF( Dofs < 1 ) CALL Fatal(Caller,'The Dofs should be positive: '//i2s(DOFs))
         
         ! Figure out the name of the variable
@@ -3838,52 +3856,55 @@ CONTAINS
         ELSE
           VarName = TRIM(Row(1:k-1))
         END IF
-        FieldSize = 0
         FullName = VarName
+        
       ELSE IF( FmtVersion == 3 ) THEN
 
         ! read the field names
         ! the full name includes the possible info behind bracets [...]
-        j = INDEX( Row,']')
+        j = INDEX( Row(1:nlen),']')
         IF( j == 0 ) THEN
           ! names are the same
-          j = INDEX( Row,':') 
+          j = INDEX( Row(1:nlen),':') 
           IF( j > 1 ) THEN
             VarName = TRIM(Row(1:j-1))
             FullName = VarName
           ELSE
-            CALL Warn(Caller,'Cannot read variable name: '//TRIM(Row))
+            CALL Warn(Caller,'Cannot read variable name: '//Row(1:nlen))
           END IF
         ELSE
           FullName = TRIM(Row(1:j))
-          j = INDEX( Row,'[')
+          j = INDEX( Row(1:nlen),'[')
           IF( j == 0 ) THEN
-            CALL Warn(Caller,'Missing left parenthesis: '//TRIM(Row))
+            CALL Warn(Caller,'Missing left parenthesis: '//Row(1:nlen))
             VarName = FullName
           ELSE
             VarName = TRIM(Row(1:j-1))
           END IF
         END IF
 
-        CALL Info(Caller,'Reading variable: '//TRIM(VarName),Level=12)
+        CALL Info(Caller,'Initializing variable: '//TRIM(VarName),Level=12)
         
         ! read the size of field, size or perm and number of dofs per node
         !-----------------------------------------------------------------
-        j = MAX(INDEX(Row,']'),1)
-        k = INDEX( Row(j:),':')
+        j = MAX(INDEX(Row(1:nlen),']'),1)
+        k = INDEX( Row(j:nlen),':')
         j = j+k
-        READ(Row(j+1:),*,IOSTAT=iostat) FieldSize,PermSize,DOFs
+        READ(Row(j+1:nlen),*,IOSTAT=iostat) FieldSize,PermSize,DOFs
         IF( iostat /= 0 ) THEN
-          CALL Fatal(Caller,'Error reading size information: '//TRIM(Row(j+1:)))
+          CALL Fatal(Caller,'Error reading size information: '//TRIM(Row(j+1:nlen)))
         END IF
 
-        CALL Info(Caller,'Size of the field to load: '//TRIM(I2S(FieldSize)),Level=15)
-        CALL Info(Caller,'Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=15)
-         
+        CALL Info(Caller,'Size of the field to load: '//TRIM(I2S(FieldSize)),Level=20)
+        CALL Info(Caller,'Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=20)
 
+        IF( Dofs == 1 ) THEN
+          DofCount = DofCount + 1
+        END IF
+        
         ! read the name of the solver and associate it to existing solver
         !----------------------------------------------------------------
-        k = INDEX( Row(j+1:),':')
+        k = INDEX( Row(j+1:nlen),':')
         j = j+k
         DO k=j+1,nlen
           IF( Row(k:k) /= ' ') EXIT
@@ -3913,21 +3934,26 @@ CONTAINS
           CALL Info(Caller,'Associated variable to solver using Mesh: '//TRIM(I2S(i)),Level=20)
           Solver => CurrentModel % Solvers(i)
         END IF
-      ELSE
-        CALL Fatal(Caller,'Unknown file version: '//I2S(FmtVersion))
       END IF
 
-      ! The user may optionally give a list of the fields to be loaded from the 
-      ! result file. All fields that will be loaded will also be allocated for and
-      ! hence this feature could save some resources.
-      !---------------------------------------------------------------------------
+      FileVariableInfo(DofCount,1) = FieldSize
+      FileVariableInfo(DofCount,2) = PermSize
+      
+      k = LEN_TRIM( VarName )
+      IF( k == 0 ) THEN
+        CALL Warn(Caller,'Could not deduce variable name!')
+        CYCLE 
+      END IF
+           
+      ! By default we load all fields
+      !-------------------------------
       LoadThis = .TRUE.
-
-      IF( RestartVariableList ) THEN
-        IF( Dofs == 1 ) DofCount = DofCount + 1
+      
+      ! If list is give check that variable is on the list.
+      !---------------------------------------------------------------------------
+      IF( ListVariableCount > 0  ) THEN
         LoadThis = .FALSE.
-        k = LEN_TRIM( VarName )
-        DO j=1,1000
+        DO j=1,ListVariableCount
           VarName2 = ListGetString( ResList,'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
@@ -3938,39 +3964,18 @@ CONTAINS
             ! so that also all the corresponding scalar components (1,2,3,...) are saved. 
             IF( k > k2 ) LoadThis = ( VERIFY( VarName(k2+1:k),' 0123456789') == 0 )             
             IF( LoadThis ) THEN
-              RestartVariableFound(j) = .TRUE.
+              ListVariableFound(j) = .TRUE.
               EXIT
             END IF
           END IF
         END DO        
-        IF(.NOT. LoadThis ) THEN
-          IF( FieldSize == 0 ) THEN
-            CALL Fatal(Caller,'Cannot pick variables with old format!')
-          END IF
-          IF( Dofs == 1 ) THEN
-             IF(PermSize > 0) THEN
-                RestartVariableSizes(DofCount) = PermSize
-             ELSE
-                RestartVariableSizes(DofCount) = FieldSize
-             END IF
-          END IF
-        END IF
+        IF(.NOT. LoadThis ) CYCLE
       END IF
-
-      IF( LEN_TRIM( VarName ) == 0 ) THEN
-        CALL Warn(Caller,'Could not deduce variable name!')
-        LoadThis = .FALSE.
-      END IF
-
-
-      IF(.NOT. LoadThis) CYCLE
-
+        
       ! Check whether a variable exists or not. If it does not exist then 
       ! create the variable so that it can be filled with the data.
       !------------------------------------------------------------------
-
-      Var => VariableGet( Mesh % Variables, VarName,.TRUE. )      
-
+      Var => VariableGet( Mesh % Variables, VarName,.TRUE. )                  
       IF ( ASSOCIATED(Var) ) THEN
         CALL Info(Caller,'Using existing variable: '//TRIM(VarName),Level=12)
 
@@ -3978,40 +3983,41 @@ CONTAINS
           CALL Fatal(Caller,'Fields have different number of components ('&
               //TRIM(I2S(Dofs))//' vs. '//TRIM(I2S(Var % Dofs))//'): '//TRIM(VarName))
         END IF
-        
+
         IF( FieldSize /= SIZE( Var % Values ) ) THEN
           CALL Warn(Caller,'Fields are of different size ('&
               //TRIM(I2S(FieldSize))//' vs. '//TRIM(I2S(SIZE(Var % Values)))//'): '//TRIM(VarName))
         ELSE
           CALL Info(Caller,'Fields sizes '//TRIM(I2S(FieldSize))//' match for: '//TRIM(VarName),Level=20)         
         END IF
+        
         IF(ASSOCIATED(Var % Perm)) THEN
           IF( PermSize /= SIZE( Var % Perm ) ) THEN
             CALL Warn(Caller,'Permutations are of different size ('&
-                 //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
+                //TRIM(I2S(PermSize))//' vs. '//TRIM(I2S(SIZE(Var % Perm)))//'): '//TRIM(VarName))
           ELSE
             CALL Info(Caller,'Permutation sizes '//TRIM(I2S(PermSize))//' match for: '//TRIM(VarName),Level=20)
           END IF
-        ELSEIF(PermSize > 0) THEN
-            CALL Warn(Caller,'Existing variable defined without perm: '&
-                 //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
+        ELSE IF(PermSize > 0) THEN
+          CALL Warn(Caller,'Existing variable defined without perm: '&
+              //TRIM(VarName)//' but size in restart file is: '//TRIM(I2S(PermSize)))
         END IF
-      ELSE
+      ELSE IF( CreateVariables ) THEN
         CALL Info(Caller,'Creating variable: '//TRIM(VarName),Level=6)
 
         ALLOCATE( Var )
-
         ! The old format (ver. < 3) does not include information on vector sizes prior to loading
         ! thus make an educated guess.
         !----------------------------------------------------------------------------------------
-        IF( FieldSize == 0 .AND. FmtVersion<3 ) THEN
+        IF( FieldSize == 0 .AND. FmtVersion < 3 ) THEN
+          CALL Warn(Caller,'Old restart format assumes full nodal basis for non-existing variables!')
           FieldSize = Mesh % NumberOfNodes * DOFs
           PermSize = Mesh % NumberOfNodes
         END IF
-
+          
         ALLOCATE( Var % Values(FieldSize) )
         Var % Values = 0.0          
-
+        
         IF( PermSize > 0 ) THEN
           ALLOCATE( Var % Perm(PermSize) )
           Var % Perm = 0
@@ -4023,39 +4029,39 @@ CONTAINS
 !         (must be done this way for the output routines to work properly...)
 !----------------------------------------------------------------------------
           NSDOFS = Dofs
-
-          Velocity1 => Var % Values(1:NSDOFs*Mesh % NumberOfNodes:NSDOFs)
+          
+          Velocity1 => Var % Values(1::NSDOFs)
           CALL VariableAdd( Mesh % Variables,  Mesh, Solver, 'Velocity 1', &
-                       1, Velocity1, Var % Perm )
-
-          Velocity2 => Var % Values(2:NSDOFs*mesh % NumberOfNodes:NSDOFs)
+              1, Velocity1, Var % Perm )
+          
+          Velocity2 => Var % Values(2::NSDOFs)
           CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Velocity 2', &
-                       1, Velocity2, Var % Perm )
-
+              1, Velocity2, Var % Perm )
+          
           IF ( NSDOFs == 3 ) THEN
-            Pressure => Var % Values(3:NSDOFs*Mesh % NumberOfNodes:NSDOFs)
+            Pressure => Var % Values(3::NSDOFs)
             CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Pressure', &
-                       1, Pressure, Var % Perm )
+                1, Pressure, Var % Perm )
           ELSE
-            Velocity3 => Var % Values(3:NSDOFs*Mesh % NumberOfNodes:NSDOFs)
+            Velocity3 => Var % Values(3::NSDOFs)
             CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Velocity 3', &
-                       1, Velocity3, Var % Perm )
-
-            Pressure => Var % Values(4:NSDOFs*Mesh % NumberOfNodes:NSDOFs)
-             CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Pressure', &
-                         1, Pressure, Var % Perm )
-           END IF
+                1, Velocity3, Var % Perm )
+            
+            Pressure => Var % Values(4::NSDOFs)
+            CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Pressure', &
+                1, Pressure, Var % Perm )
+          END IF
 !------------------------------------------------------------------------------
 !        Then add the thing itself
 !------------------------------------------------------------------------------
-         CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
-                'Flow Solution',NSDOFs,Var % Values,Var % Perm )
+          CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
+              'Flow Solution',NSDOFs,Var % Values,Var % Perm )
         ELSE IF( PermSize == 0 ) THEN
           CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
               FullName,DOFs,Var % Values) 
           IF ( DOFs > 1 ) THEN
             DO i=1,DOFs
-              Component => Var % Values(i:FieldSize:DOFs)
+              Component => Var % Values(i::DOFs)
               name = ComponentName( FullName, i )
               CALL VariableAdd( Mesh % Variables,  Mesh, Solver, name, &
                   1, Component )
@@ -4066,14 +4072,21 @@ CONTAINS
               FullName,DOFs,Var % Values,Var % Perm )
           IF ( DOFs > 1 ) THEN
             DO i=1,DOFs
-              Component => Var % Values(i:FieldSize:DOFs)
+              Component => Var % Values(i::DOFs)
               name = ComponentName( FullName, i )
               CALL VariableAdd( Mesh % Variables,  Mesh, Solver, name, &
-                           1, Component, Var % Perm )
+                  1, Component, Var % Perm )
             END DO
           END IF
         END IF
+      ELSE
+        LoadThis = .FALSE.
       END IF
+      
+      IF( Dofs == 1 .AND. LoadThis ) THEN
+        FileVariableInfo(DofCount,3) = 1      
+      END IF
+        
     END DO
 
     IF ( Binary ) THEN
@@ -4133,24 +4146,23 @@ CONTAINS
       WRITE( Message,'(A,ES12.3)') 'Reading time sequence: ',Time
       CALL Info( Caller,Message, Level=4)
 
-      WRITE( Message,'(A,I0)') 'Reading timestep: ',Timestep
+      WRITE( Message,'(A,I0)') 'Reading variables on timestep: ',Timestep
       CALL Info( Caller,Message, Level=4)
 
       DO i=1,TotalDOFs
 
-        LoadThis = .TRUE.
-        IF( RestartVariableList ) THEN
-          n = RestartVariableSizes(i)
-          LoadThis = ( n == 0 ) 
-        END IF
-
+        ! Use the information from header for the sizes
+        FieldSize = FileVariableInfo(i,1)
+        PermSize = FileVariableInfo(i,2)
+        LoadThis = ( FileVariableInfo(i,3) == 1 )
+        
         IF ( PosFile ) THEN
           Pos = GetPosition( PosUnit,TimeCount,i )
           CALL BinFSeek( RestartUnit,Pos,BIN_SEEK_SET )
         END IF
 
         CALL ReadVariableName( RestartUnit,Row,Stat )
-
+        
         ! If not all variables were saved for this time step, and we're not
         ! using a .pos file, we may have reached the end even though i < TotalDOFs.
         IF ( Stat /= 0 ) EXIT
@@ -4168,33 +4180,43 @@ CONTAINS
         ! Note that Var % Perm is the permutation associated with the current field
         ! while Perm will be the permutation associated with the saved field. 
         ! They could be different, even though the usually are not!
-        IF ( FmtVersion > 0 ) THEN
-          CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=12)
-          CALL ReadPerm( RestartUnit, Perm, GotPerm )           
+        CALL Info(Caller,'Reading permutation order for: '//TRIM(Row),Level=12)
+        CALL ReadPerm( RestartUnit, Perm, GotPerm )           
+        IF( GotPerm ) THEN
           CALL Info(Caller,'Succesfully read permutation order for: '//TRIM(Row),Level=20)
         END IF
-
+          
         IF( LoadThis ) THEN
-          Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
-          IF ( ASSOCIATED(Var) ) THEN
-            CALL Info(Caller,'Using existing variable for reading: '//TRIM(Row),Level=15)
-            ThisIp = ( Var % TYPE == Variable_on_gauss_points ) 
+          ! Size of read loop for field variable
+          IF( GotPerm ) THEN
+            n = PermSize
+            IF( n == 0 ) THEN
+              CALL Fatal(Caller,'Inconsistent permutation definitions in restart file!')
+            END IF
           ELSE
-            CALL Warn(Caller,'Variable is not present for reading: '//TRIM(Row))
-            ThisIp = .FALSE.
+            n = FieldSize
           END IF
+          CALL Info(Caller,'Size of load loop is '//TRIM(I2S(n)),Level=15)
+
+          Var => VariableGet( Mesh % Variables,Row, ThisOnly=.TRUE. )
+          IF ( .NOT. ASSOCIATED(Var) ) THEN
+            CALL Fatal(Caller,'Variable is not present for reading: '//TRIM(Row))
+          END IF
+
+          FieldSize2 = SIZE( Var % Values )
+          IF( ASSOCIATED( Var % Perm ) ) PermSize2 = SIZE( Var % Perm ) 
+          ThisIp = ( Var % TYPE == Variable_on_gauss_points ) 
+            
           IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
-            DEALLOCATE( Var % Perm ) ; Var % Perm => NULL()
             CALL Fatal(Caller,'Permutation should either exist or not!')
           END IF
 
+          ! Ip dofs don't use the permutation in a standard way
           UsePerm = ( GotPerm .AND. .NOT. ThisIp ) 
           
-          IF ( UsePerm .AND. FmtVersion > 0 ) THEN
-            n = SIZE(Var % Perm)
-          ELSE
-            n = SIZE(Var % Values)
-          END IF
+          IF ( UsePerm ) PermSize2 = SIZE(Var % Perm)
+          FieldSize2 = SIZE( Var % Values ) 
+          
           ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
           IF( ASSOCIATED( Var % Solver ) ) THEN
             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
@@ -4203,35 +4225,22 @@ CONTAINS
             END IF
           END IF
 
-          ! in case of (.NOT. LoadThis) n has already been set
-          IF( UsePerm ) THEN
-            IF( n > SIZE( Perm ) ) THEN
-              n = SIZE( Perm )
-              CALL Info(Caller,'Reducing size of read loop for smaller Perm vector')
-            END IF
-            CALL Info(Caller,'Size of load loop is '//TRIM(I2S(n)),Level=15)
-          END IF
 
           DO j=1, n
-            IF ( FmtVersion > 0 ) THEN             
-              CALL GetValue( RestartUnit, Perm, UsePerm, j, k, Val )
-            ELSE
-              READ( RestartUnit,* ) Node, k, Val
-            END IF
+            CALL GetValue( RestartUnit, Perm, UsePerm, j, k, Val )
 
             ! One can not really omit reading the lines since otherwise at least the 
-            ! ascii format would loose it, but now we can cycle the rest. 
-            IF(.NOT. LoadThis ) CYCLE
-
+            ! ascii format would loose it, but now we can cycle the rest.             
+            IF( UsePerm .AND. j > PermSize2 ) CYCLE
+            IF( k == 0 .OR. k > FieldSize2 ) CYCLE
+                                    
             IF ( .NOT. UsePerm ) THEN
               Var % Values(k) = Val
-            ELSE IF( SIZE( Var % Perm ) < j ) THEN
-              CYCLE
             ELSE IF ( Var % Perm(j) > 0 ) THEN
-              IF ( k > 0 ) Var % Values(Var % Perm(j)) = Val
+              Var % Values(Var % Perm(j)) = Val
             ELSE 
               Var % Perm(j) = k
-              IF ( k > 0 ) Var % Values(k) = Val
+              Var % Values(k) = Val
             END IF
           END DO
 
@@ -4243,23 +4252,12 @@ CONTAINS
           CALL InvalidateVariable( CurrentModel % Meshes, Mesh, Row )
         ELSE
           ! Just cycle the values, do not even try to be smart
-          
-          IF( GotPerm ) THEN
-            n = COUNT( Perm > 0 )
-          ELSE
-            n = FieldSize
-          END IF
-
-          DO j=1, n
-            IF ( FmtVersion > 0 ) THEN             
-              CALL CycleValue( RestartUnit )
-            ELSE
-              READ( RestartUnit,* ) Node, k, Val
-            END IF
+          DO j=1, FieldSize
+            CALL CycleValue( RestartUnit )
           END DO
         END IF ! IF( LoadThis ) 
 
-      END DO
+      END DO  ! TotalDOFs
       nt = nt + 1
     END DO
 !------------------------------------------------------------------------------
@@ -4316,13 +4314,11 @@ CONTAINS
       END DO
     END IF
 
-    IF( RestartVariableList ) THEN
-      DO j=1,RestartVariableCount
-        IF( .NOT. RestartVariableFound(j) ) THEN
-          CALL Warn(Caller,'Could not find restart variable: '//TRIM(I2S(j)))
-        END IF
-      END DO
-    END IF
+    DO j=1,ListVariableCount
+      IF( .NOT. ListVariableFound(j) ) THEN
+        CALL Warn(Caller,'Could not find restart variable: '//TRIM(I2S(j)))
+      END IF
+    END DO
     
     tstop = CPUTime()
     
