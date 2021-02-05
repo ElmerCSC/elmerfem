@@ -3160,46 +3160,62 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: CurrentElement
-    INTEGER :: i,j,k,k2,DOFs, dates(8), n, PermSize,IsVector
+    INTEGER :: i,j,k,k2,DOFs, dates(8), n, PermSize,IsVector,SavesDone,FileCycle,FileInd
     TYPE(Variable_t), POINTER :: Var
     CHARACTER(LEN=MAX_NAME_LEN) :: FName, PosName, DateStr, EqName, VarName
     LOGICAL :: SaveCoordinates, MoveBoundary, GotIt, SaveThis, &
-        SaveGlobal, OutputVariableList, SaveIp, ThisIp
+        SaveGlobal, OutputVariableList, SaveIp, ThisIp, InitFile 
     INTEGER, POINTER :: PrevPerm(:) 
     INTEGER(IntOff_k) :: PrevPermPos, Pos
     INTEGER(IntOff_k), SAVE :: VarPos(MAX_OUTPUT_VARS) = 0
     LOGICAL :: Found
     CHARACTER(1) :: E
-
+    TYPE(ValueList_t), POINTER :: ResList
+    CHARACTER(*), PARAMETER :: Caller = 'SaveResult'
+   
     SAVE SaveCoordinates
 
 !------------------------------------------------------------------------------
 !   If first time here, count number of variables
 !------------------------------------------------------------------------------
+    SavesDone = Mesh % SavesDone 
 
+    ! The list from where to fetch the values.
+    ResList => CurrentModel % Simulation
+    
+    ! If we have cyclic files then each file includes all data but we cyclicly write the
+    ! data on top of previous files. 
+    FileCycle = ListGetInteger( ResList,'Output File Cycle', Found )
+
+    ! cyclic files are always independent and hence must always be initiated.
+    IF( FileCycle > 0 ) THEN
+      InitFile = .TRUE.
+      FileInd = MODULO( Mesh % SavesDone, FileCycle ) 
+    ELSE
+      InitFile = ( Mesh % SavesDone == 0 )
+    END IF
+          
     FName = FileName
     IF ( .NOT. FileNameQualified(FileName) ) THEN
       IF ( LEN_TRIM(OutputPath) > 0 ) THEN
         FName = TRIM(OutputPath) // '/' // TRIM(FileName)
       END IF
     END IF
-    IF( Mesh % SavesDone == 0) THEN
-      CALL Info('SaveResult','-----------------------------------------',Level=4)
-      CALL Info('SaveResult','Saving results to file: '//TRIM(FName), Level=4 )
+    IF( FileCycle > 0 ) THEN
+      Fname = TRIM(Fname)//TRIM(I2S(FileInd))
     END IF
-
+    
     PosName = TRIM(FName) // ".pos"
 
-    SaveGlobal = ListGetLogical( CurrentModel % Simulation,'Output Global Variables',&
-        Found ) 
+    CALL Info(Caller,'-----------------------------------------',Level=5)
+    CALL Info(Caller,'Saving results to file: '//TRIM(FName), Level=4 )
     
-    OutputVariableList = ListCheckPresent( CurrentModel % Simulation,&
-        'Output Variable 1')
-
-    SaveIp = ListGetLogical( CurrentModel % Simulation,'Output IP Variables',Found ) 
+    SaveGlobal = ListGetLogical( ResList,'Output Global Variables',Found )     
+    OutputVariableList = ListCheckPresent( ResList,'Output Variable 1')
+    SaveIp = ListGetLogical( ResList,'Output IP Variables',Found ) 
 
     ! The first time we start by writing the header.
-    IF ( Mesh % SavesDone == 0 ) THEN
+    IF ( InitFile ) THEN
 
       ! Check whether the coordinates should be saved also 
       IF ( PRESENT( FreeSurface ) ) THEN
@@ -3218,14 +3234,13 @@ CONTAINS
           IF ( SaveCoordinates ) EXIT
         END DO
       END IF      
-      IF( ListGetLogical( CurrentModel % Simulation,'Output Coordinates',&
-          Found ) ) SaveCoordinates = .TRUE.      
+      SaveCoordinates = ListGetLogical( ResList,'Output Coordinates',Found )
       IF( SaveCoordinates ) THEN
-        IF ( Mesh % SavesDone==0) CALL Info('SaveResult','Saving also coordinates',Level=12)
+        CALL Info(Caller,'Saving also coordinates',Level=12)
       END IF
       
       ! Write the header to file
-      IF(Mesh % SavesDone==0) CALL Info('SaveResult','Writing the header part',Level=12)
+      CALL Info(Caller,'Writing the header part',Level=12)
       CALL InitializeFile( OutputUnit, FName, PosUnit, PosName )
 
       DateStr = FormatDate()
@@ -3268,8 +3283,7 @@ CONTAINS
           IF( OutputVariableList .AND. SaveThis ) THEN
             SaveThis = .FALSE.
             DO j=1,1000
-              VarName = ListGetString(CurrentModel % Simulation,&
-                  'Output Variable '//I2S(j), Found )
+              VarName = ListGetString( ResList,'Output Variable '//I2S(j), Found )
               IF( .NOT. Found ) EXIT
               k2 = LEN_TRIM(VarName)
               IF( VarName(1:k2) == Var % Name(1:k2) ) THEN
@@ -3333,8 +3347,8 @@ CONTAINS
       CALL AppendOpen( OutputUnit,FName,PosUnit,PosName )
     END IF
 
-    IF(Mesh % SavesDone==0) CALL Info('SaveResult','Writing data for the current timestep',Level=12)
-    CALL WriteTime( OutputUnit,PosUnit,Mesh % SavesDone+1, Time, SimulationTime )
+    CALL Info(Caller,'Writing data for the current timestep',Level=12)
+    CALL WriteTime( OutputUnit,PosUnit,SavesDone+1, Time, SimulationTime )
 
 !------------------------------------------------------------------------------
 !   Write data to disk
@@ -3359,8 +3373,7 @@ CONTAINS
       IF( OutputVariableList .AND. SaveThis ) THEN
         SaveThis = .FALSE.
         DO j=1,1000
-          VarName = ListGetString(CurrentModel % Simulation,&
-              'Output Variable '//I2S(j), Found )
+          VarName = ListGetString(ResList,'Output Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           IF( TRIM( VarName ) == TRIM( Var % Name(1:k) ) ) THEN
             SaveThis = .TRUE.
@@ -3374,7 +3387,7 @@ CONTAINS
 
       IF( SaveThis ) THEN
         IF( SaveAll .OR. Var % ValuesChanged ) THEN
-          CALL Info('SaveResult','Writing variable: '//Var % Name(1:k),Level=20)
+          CALL Info(Caller,'Writing variable: '//Var % Name(1:k),Level=20)
 
           CALL WriteVarName( OutputUnit,PosUnit,Var % Name(1:k),VarPos(j) )
           CALL WritePerm( OutputUnit, Var % Perm, PrevPerm )
@@ -3410,11 +3423,8 @@ CONTAINS
       CLOSE( OutputUnit )
     END IF
 
-
-    IF( Mesh % SavesDone == 0 ) THEN
-      CALL Info('SaveResult','Done writing results file',Level=12)
-      CALL Info('SaveResult','-----------------------------------------',Level=4)
-    END IF
+    CALL Info(Caller,'Done writing results file',Level=5)
+    CALL Info(Caller,'-----------------------------------------',Level=5)
 
     Mesh % SavesDone = Mesh % SavesDone + 1
     SaveCount = Mesh % SavesDone 
@@ -3430,7 +3440,7 @@ CONTAINS
 
          IF ( .NOT.ASSOCIATED( CurrPerm ) ) THEN
 
-           CALL Info('SaveResult','Perm is NULL',Level=32)
+           CALL Info(Caller,'Perm is NULL',Level=32)
 
            IF ( Binary ) THEN
              CALL BinWriteInt4( OutputUnit,0 )
@@ -3451,7 +3461,7 @@ CONTAINS
 
            IF ( SameAsPrev ) THEN
 
-             CALL Info('SaveResult','Perm is same as previous',Level=32)
+             CALL Info(Caller,'Perm is same as previous',Level=32)
 
              IF ( Binary ) THEN
                CALL BinWriteInt4( OutputUnit,-1 )
@@ -3466,7 +3476,7 @@ CONTAINS
 
              n = COUNT( CurrPerm > 0 )
 
-             CALL Info('SaveResult','Writing Perm of size '&
+             CALL Info(Caller,'Writing Perm of size '&
                  //TRIM(I2S(SIZE(CurrPerm)))//' with '//TRIM(I2S(n))//' nonzeros',Level=20)
 
              IF ( Binary ) THEN
@@ -3502,7 +3512,6 @@ CONTAINS
          IF ( Binary ) THEN
             VarPos = BinFTell( OutputUnit )
             CALL BinWriteInt8( PosUnit, INT(VarPos,Int8_k) )
-
             CALL BinWriteString( OutputUnit,TRIM(Name) )
          ELSE
             WRITE( OutputUnit,'(a)' ) TRIM(Name)
@@ -3538,7 +3547,7 @@ CONTAINS
             CALL BinWriteDouble( OutputUnit, SimulationTime )
          ELSE
             WRITE( OutputUnit,'(a,i7,i7,ES17.8E3)' ) 'Time: ',SavesDone,nTime, &
-                                                   SimulationTime
+                SimulationTime
          END IF
       END SUBROUTINE WriteTime
 
@@ -3680,17 +3689,17 @@ CONTAINS
     END IF
     ListVariableCount = j
 
-    ! We can optionally not create variables automatically
+    ! We can optionally not create variables automatically - default is True
     CreateVariables = ListGetLogical( ResList,'Restart Create Variables',Found )
     IF(.NOT. Found ) CreateVariables = .TRUE.
     
-        
+    ! We can continue where we left, this would be the case if we load whole history        
     Cont = .FALSE.
     IF ( PRESENT( Continuous ) ) Cont = Continuous
     IF ( PRESENT( EOF ) ) EOF = .FALSE.
-
     IF ( Cont .AND. RestartFileOpen ) GOTO 30
 
+    ! Check the output directory for the data
     IF ( .NOT. FileNameQualified(RestartFile) .AND. LEN_TRIM(OutputPath)>0 ) THEN
       FName = TRIM(OutputPath) // '/' // TRIM(RestartFile)
     ELSE
@@ -3736,6 +3745,8 @@ CONTAINS
       CALL Fatal(Caller,'Error reading header line!')
     END IF
 
+    ! We have different evolutionaly format.
+    ! Basically the newest one should dominate but there may be old data...
     IF ( Row(3:8) == 'BINARY' ) THEN
       Binary = .TRUE.
       FmtVersion = 1
@@ -3771,7 +3782,6 @@ CONTAINS
     IF( FmtVersion < 3 .AND. ListVariableCount > 0 ) THEN      
       CALL Fatal(Caller,'Cannot pick variables with old file format!')
     END IF
-
     
     ! Check how many one-component values there are to read.
     ! The vector valued fields will be always saved component-wise. 
@@ -3805,7 +3815,6 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     DofCount = 0
-
     DO WHILE( ReadAndTrim(RestartUnit,Row) )
 
       nlen = LEN_TRIM(Row)
@@ -3902,7 +3911,7 @@ CONTAINS
           DofCount = DofCount + 1
         END IF
         
-        ! read the name of the solver and associate it to existing solver
+        ! Read the name of the solver and associate it to existing solver
         !----------------------------------------------------------------
         k = INDEX( Row(j+1:nlen),':')
         j = j+k
@@ -3936,6 +3945,7 @@ CONTAINS
         END IF
       END IF
 
+      ! Memorize the size information 
       FileVariableInfo(DofCount,1) = FieldSize
       FileVariableInfo(DofCount,2) = PermSize
       
@@ -4082,7 +4092,8 @@ CONTAINS
       ELSE
         LoadThis = .FALSE.
       END IF
-      
+
+      ! Memorize whether this will be loaded or not.
       IF( Dofs == 1 .AND. LoadThis ) THEN
         FileVariableInfo(DofCount,3) = 1      
       END IF
@@ -4205,13 +4216,13 @@ CONTAINS
 
           FieldSize2 = SIZE( Var % Values )
           IF( ASSOCIATED( Var % Perm ) ) PermSize2 = SIZE( Var % Perm ) 
-          ThisIp = ( Var % TYPE == Variable_on_gauss_points ) 
             
           IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
             CALL Fatal(Caller,'Permutation should either exist or not!')
           END IF
 
           ! Ip dofs don't use the permutation in a standard way
+          ThisIp = ( Var % TYPE == Variable_on_gauss_points ) 
           UsePerm = ( GotPerm .AND. .NOT. ThisIp ) 
           
           IF ( UsePerm ) PermSize2 = SIZE(Var % Perm)
@@ -4271,7 +4282,7 @@ CONTAINS
        END IF
        RestartFileOpen = .FALSE.
     END IF
-
+ 
 
     ! This is now obsolete for the new format
     IF( FmtVersion < 3 ) THEN
@@ -4663,7 +4674,7 @@ CONTAINS
 
     REAL(KIND=dp) :: Time,Dummy, MeshScale, Coord(3)
     INTEGER :: ii,i,j,k,l,n,m,q,Node,idummy,DOFs,SavedCount,TimeStep, &
-         NumberOfNodes, NumberOfElements, ind, nDOFs, MeshDim, Nzeros
+        NumberOfNodes, NumberOfElements, ind, nDOFs, MeshDim, Nzeros
     INTEGER, POINTER :: MaskPerm(:), MaskOrder(:)
 !------------------------------------------------------------------------------
 
