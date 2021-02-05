@@ -460,7 +460,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hgrad,&
            hgrad,ierr)
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_rmc,&
-           0.01_dp,ierr)
+           0.0001_dp,ierr)
 
       !Feed in the level set distance
       CALL MMG3D_SET_SOLSIZE(mmgMesh, mmgLs, MMG5_Vertex, GNNode ,MMG5_Scalar, ierr)
