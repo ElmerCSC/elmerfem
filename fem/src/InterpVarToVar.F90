@@ -1447,7 +1447,7 @@ CONTAINS
     END DO
 
     !interpedvalue/sumweights
-    interpedValue = interpedValue/sumweights
+    FinalInterpedValues = FinalInterpedValues/sumweights
 
     !Finally, put the interped values in their place
     HeightVar % Values(HeightVar % Perm(NodeNumber)) = interpedValue(1)
@@ -1474,7 +1474,7 @@ CONTAINS
 
         !if any suppnode from any proc has var
         IF(ANY(PartSuppNodeMask(:,:,MaskCount))) THEN
-          Var % Values(Var % Perm(NodeNumber)) = interpedValue(MaskCount)
+          Var % Values(Var % Perm(NodeNumber)) = FinalInterpedValues(MaskCount)
         END IF
 
         Var => Var % Next
