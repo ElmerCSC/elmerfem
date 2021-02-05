@@ -88,10 +88,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
-       RemeshOccurs,CheckFlowConvergence
+       RemeshOccurs,CheckFlowConvergence, Remesh
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   TYPE(Variable_t), POINTER :: TimeVar
-  INTEGER :: Time
+  INTEGER :: Time, remeshtimestep
   REAL(KIND=dp) :: TimeReal
 
   SolverParams => GetSolverParams()
@@ -111,6 +111,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 #else
   CALL FATAL(SolverName, 'Calving code only works with MMG 5.5')
 #endif
+
+  Remesh = .FALSE.
+
+  TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
+  TimeReal = TimeVar % Values(1)
+  Time = INT(TimeReal)
 
   !Check all elements are tetras or tris:
   DO i=1,NBulk+Nbdry
@@ -137,6 +143,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   hausd = ListGetConstReal(SolverParams, "Mesh Hausd",Default=20.0_dp)
   remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", Default=1000.0_dp)
   CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", Default="Calving Lset")
+  remeshtimestep = ListGetInteger(SolverParams,"Remesh TimeStep", Default=2)
 
   IF(ParEnv % MyPE == 0) THEN
     PRINT *,ParEnv % MyPE,' hmin: ',hmin
@@ -144,6 +151,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     PRINT *,ParEnv % MyPE,' hgrad: ',hgrad
     PRINT *,ParEnv % MyPE,' hausd: ',hausd
     PRINT *,ParEnv % MyPE,' remeshing distance: ',remesh_thresh
+    PRINT *,ParEnv % MyPE,' remeshing every ', remeshtimestep
   END IF
 
   !If FlowSolver failed to converge (usually a result of weird mesh), large unphysical
@@ -486,13 +494,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       ! addtionally computationally lighter as iceberg are not finely remeshed
       CALL MMG3D_mmg3dls(mmgMesh,mmgLs,0_dp,ierr)
 
-      TimeVar => VariableGet( Model % Variables, 'Timestep' )
-      TimeReal = TimeVar % Values(1)
-      Time = INT(TimeReal)
       IF ( ierr == MMG5_STRONGFAILURE ) THEN
         PRINT*,"BAD ENDING OF MMG3DLS: UNABLE TO SAVE MESH", Time
       ELSE IF ( ierr == MMG5_LOWFAILURE ) THEN
         PRINT*,"BAD ENDING OF MMG3DLS", time
+        Remesh =.TRUE.
       ENDIF
 
       CALL MMG3D_SaveMesh(mmgMesh,"test_ls.mesh",LEN(TRIM("test_ls.mesh")),ierr)
@@ -698,16 +704,26 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         !remeshing in the same step:
         !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
         ! GetCalvingEdgeNodes detects all shared boundary edges, to keep them sharp
-        CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
-        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-        CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+
+        !remesh?
+        !! assume no other failures do we remesh after calving
+        ! always remesh firsttime step
+        IF(Time == 1) Remesh=.TRUE.
+
+        ! then remesh every nth term
+        IF(INT((Time-1)/remeshtimestep)*remeshtimestep == Time-1) Remesh=.TRUE.
+
+        IF(Remesh) THEN
+          CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
+          !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+          CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
+          CALL ReleaseMesh(NewMeshR)
+          NewMeshR => NewMeshRR
+          NewMeshRR => NULL()
+        END IF
 
         !Update parallel info from old mesh nodes (shared node neighbours)
-        CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
-
-        CALL ReleaseMesh(NewMeshR)
-        NewMeshR => NewMeshRR
-        NewMeshRR => NULL()
+        CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
 
       ELSE IF (DoAniso) THEN
          ! remeshing but no calving
