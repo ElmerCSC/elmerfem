@@ -4345,5 +4345,64 @@ CONTAINS
 
    END SUBROUTINE GetCalvingEdgeNodes
 
+   SUBROUTINE MeshVolume(Mesh, Parallel, Volume)
+
+      TYPE(Mesh_t), POINTER :: Mesh
+      LOGICAL :: Parallel
+      REAL(kind=dp) :: Volume
+      !-----------------------------
+      TYPE(Element_t), POINTER :: Element
+      INTEGER :: i, j, NBdry, NBulk, n, ierr
+      INTEGER, ALLOCATABLE :: ElementNodes(:)
+      REAL(kind=dp), ALLOCATABLE :: Vertices(:,:), Vectors(:,:), PartVolume(:)
+      REAL(kind=dp) :: det, det1, det2, det3
+
+      NBdry = Mesh % NumberOfBoundaryElements
+      NBulk = Mesh % NumberOfBulkElements
+
+      ALLOCATE(Vertices(4,3), Vectors(3,3))
+
+      ! calculate volume of each bulk tetra. Add these together to get mesh volume
+      Volume = 0.0_dp
+      DO, i=1, NBulk
+        Element => Mesh % Elements(i)
+        ElementNodes = Element % NodeIndexes
+        n = Element % TYPE % NumberOfNodes
+
+        IF(n /= 4) CALL FATAL('MeshVolume', 'Only designed for tetra mesh')
+
+        ! get elem nodes
+        DO j=1, n
+          Vertices(j,1) = Mesh % Nodes % x(ElementNodes(j))
+          Vertices(j,2) = Mesh % Nodes % y(ElementNodes(j))
+          Vertices(j,3) = Mesh % Nodes % z(ElementNodes(j))
+        END DO
+
+        ! calculate vectors AB, AC and AD
+        ! play these in 3x3 matrix
+        DO j=1,3
+          Vectors(j,:) = Vertices(1,:) - Vertices(j+1,:)
+        END DO
+
+        ! calc matrix det
+        Det = ABS(Vectors(1,1) * (Vectors(2,2)*Vectors(3,3) - Vectors(2,3)*Vectors(3,2)) &
+                - Vectors(1,2) * (Vectors(2,1)*Vectors(3,3) - Vectors(2,3)*Vectors(3,1)) &
+                + Vectors(1,3) * (Vectors(2,1)*Vectors(3,2) - Vectors(2,2)*Vectors(3,1)))
+
+        ! tetra volume = det/6
+        Volume = Volume + Det/6
+
+      END DO
+
+      ! if parallel calculate total mesh volume over all parts
+      IF(Parallel) THEN
+        ALLOCATE(PartVolume(ParEnv % PEs))
+        CALL MPI_AllGather(Volume, 1, MPI_DOUBLE_PRECISION, &
+        PartVolume, 1, MPI_DOUBLE_PRECISION, ELMER_COMM_WORLD, ierr)
+        Volume = SUM(PartVolume)
+      END IF
+
+    END SUBROUTINE MeshVolume
+
 END MODULE CalvingGeometry
 

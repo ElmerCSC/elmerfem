@@ -92,7 +92,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   TYPE(Variable_t), POINTER :: TimeVar
   INTEGER :: Time, remeshtimestep
-  REAL(KIND=dp) :: TimeReal
+  REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume
 
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -117,6 +117,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
   TimeReal = TimeVar % Values(1)
   Time = INT(TimeReal)
+
+  !for first time step calculate mesh volume
+  IF(Time == 1) THEN
+   CALL MeshVolume(Mesh, .TRUE., PreCalveVolume)
+   IF(MyPe == 0) PRINT*, 'First timestep precalve volume = ', PreCalveVolume
+  END IF
 
   !Check all elements are tetras or tris:
   DO i=1,NBulk+Nbdry
@@ -412,6 +418,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       mmgLs  = 0
       mmgMet  = 0
 
+      CALL MeshVolume(GatheredMesh, .FALSE., PreCalveVolume)
+
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
           MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
           MMG5_ARG_end)
@@ -705,6 +713,13 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         !https://forum.mmgtools.org/t/level-set-and-anisotropic-mesh-optimization/369/3
         ! GetCalvingEdgeNodes detects all shared boundary edges, to keep them sharp
 
+        ! calculate calved volume
+        CALL MeshVolume(NewMeshR, .FALSE., PostCalveVolume)
+
+        CalveVolume = PreCalveVolume - PostCalveVolume
+
+        PRINT*, 'CalveVolume', CalveVolume
+
         !remesh?
         !! assume no other failures do we remesh after calving
         ! always remesh firsttime step
@@ -798,6 +813,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    !After SwitchMesh because we need GroundedMask
    CALL EnforceGroundedMask(Mesh)
+
+   !Calculate mesh volume
+   CALL MeshVolume(Model % Mesh, .TRUE., PostCalveVolume)
+   IF(MyPe == 0) PRINT*, 'Post calve volume: ', PostCalveVolume, ' after timestep', Time
 
    !Recompute mesh bubbles etc
    CALL MeshStabParams( Model % Mesh )
