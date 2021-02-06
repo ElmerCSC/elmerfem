@@ -3850,13 +3850,13 @@ CONTAINS
           CALL Fatal(Caller,'Error reading DOFs: '//Row(k+1:nlen))
         END IF
 
-        IF( Dofs == 1 ) THEN
-          DofCount = DofCount + 1
-          FieldSize = 0
-          PermSize = 0
-        END IF
-        
-        IF( Dofs < 1 ) CALL Fatal(Caller,'The Dofs should be positive: '//i2s(DOFs))
+        IF( Dofs < 1 ) CALL Fatal(Caller,'The Dofs should be positive: '//i2s(DOFs))        
+
+        ! The old format (ver. < 3) does not include information on vector sizes prior to loading
+        ! thus make an educated guess.
+        !----------------------------------------------------------------------------------------        
+        FieldSize = Mesh % NumberOfNodes
+        PermSize = Mesh % NumberOfNodes
         
         ! Figure out the name of the variable
         j = INDEX(Row,'[')
@@ -3906,10 +3906,6 @@ CONTAINS
 
         CALL Info(Caller,'Size of the field to load: '//TRIM(I2S(FieldSize)),Level=20)
         CALL Info(Caller,'Size of the permutation vector to load: '//TRIM(I2S(PermSize)),Level=20)
-
-        IF( Dofs == 1 ) THEN
-          DofCount = DofCount + 1
-        END IF
         
         ! Read the name of the solver and associate it to existing solver
         !----------------------------------------------------------------
@@ -3946,9 +3942,13 @@ CONTAINS
       END IF
 
       ! Memorize the size information 
-      FileVariableInfo(DofCount,1) = FieldSize
-      FileVariableInfo(DofCount,2) = PermSize
-      
+      ! All dofs have been saved by their component only
+      IF( Dofs == 1 ) THEN
+        DofCount = DofCount + 1
+        FileVariableInfo(DofCount,1) = FieldSize
+        FileVariableInfo(DofCount,2) = PermSize
+      END IF
+        
       k = LEN_TRIM( VarName )
       IF( k == 0 ) THEN
         CALL Warn(Caller,'Could not deduce variable name!')
@@ -4016,14 +4016,6 @@ CONTAINS
         CALL Info(Caller,'Creating variable: '//TRIM(VarName),Level=6)
 
         ALLOCATE( Var )
-        ! The old format (ver. < 3) does not include information on vector sizes prior to loading
-        ! thus make an educated guess.
-        !----------------------------------------------------------------------------------------
-        IF( FieldSize == 0 .AND. FmtVersion < 3 ) THEN
-          CALL Warn(Caller,'Old restart format assumes full nodal basis for non-existing variables!')
-          FieldSize = Mesh % NumberOfNodes * DOFs
-          PermSize = Mesh % NumberOfNodes
-        END IF
           
         ALLOCATE( Var % Values(FieldSize) )
         Var % Values = 0.0          
