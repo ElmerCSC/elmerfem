@@ -17897,7 +17897,7 @@ CONTAINS
 
 
         ! We need to create mesh edges to simplify many things
-        CALL FindMeshEdges( Mesh ) 
+        CALL FindMeshEdges( Mesh, FindFaces=.FALSE. ) 
         ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
         EdgePerm = 0
         EdgeCount = 0
@@ -17925,7 +17925,7 @@ CONTAINS
           NoFound = 0
           NoFound2 = 0
           
-          DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          DO t=1,Mesh % NumberOfBulkElements ! Mesh % NumberOfBoundaryElements
             
             Element => Mesh % Elements(t)
             Indexes => Element % NodeIndexes 
@@ -17947,11 +17947,11 @@ CONTAINS
             ! Ok, now register the shell element to the edge that it is associated to
 
 !          ! This does not work since the edges are only defined where there are also faces!
-!          DO i = 1, Element % TYPE % NumberOfEdges
-!            j = Element % EdgeIndexes(i)
+           DO i = 1, Element % TYPE % NumberOfEdges
+             j = Element % EdgeIndexes(i)
 
-            ! This does work but is N^2
-            DO j=1,Mesh % NumberOfEdges
+!           ! This does work but is N^2
+!           DO j=1,Mesh % NumberOfEdges
               
               IF( EdgePerm(j) == 0 ) CYCLE
               Edge => Mesh % Edges(j)
@@ -17992,6 +17992,7 @@ CONTAINS
             //TRIM(I2S(MaxEdgeShellCount)),Level=10)
         CALL Info(Caller,'Total number of edge shell owners: '&
             //TRIM(I2S(SUM(EdgeShellCount))),Level=10)
+
 
         NoFound = COUNT( EdgeShellCount == 0 ) 
         CALL Info(Caller,'Number of edges with no shell owners: '//TRIM(I2S(NoFound)),Level=10)

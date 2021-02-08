@@ -14287,18 +14287,24 @@ CONTAINS
 !> Currently only for triangles and tetras. If mesh already
 !> has edges do nothing.
 !------------------------------------------------------------------------------
-  SUBROUTINE FindMeshEdges( Mesh, FindEdges)
+  SUBROUTINE FindMeshEdges( Mesh, FindEdges, FindFaces )
 !------------------------------------------------------------------------------
      TYPE(Mesh_t) :: Mesh
-     LOGICAL, OPTIONAL :: FindEdges
+     LOGICAL, OPTIONAL :: FindEdges, FindFaces
 
-     LOGICAL :: FindEdges3D
+     LOGICAL :: FindEdges3D, FindFaces3d
      INTEGER :: MeshDim, SpaceDim, MaxElemDim 
 
      IF(PRESENT(FindEdges)) THEN
        FindEdges3D = FindEdges
      ELSE
        FindEdges3D = .TRUE.
+     END IF
+
+     IF(PRESENT(FindFaces)) THEN
+       FindFaces3D = FindFaces
+     ELSE
+       FindFaces3D = .TRUE.
      END IF
 
 !------------------------------------------------------------------------------
@@ -14330,7 +14336,7 @@ CONTAINS
        END IF
 
      CASE(3)
-       IF ( .NOT.ASSOCIATED( Mesh % Faces) ) THEN
+       IF ( .NOT.ASSOCIATED(Mesh % Faces) .AND. FindFaces3D ) THEN
          CALL Info('FindMeshEdges','Determining faces in 3D mesh',Level=8)
          CALL FindMeshFaces3D( Mesh )
        END IF
@@ -14404,6 +14410,8 @@ CONTAINS
         IF ( .NOT. ASSOCIATED(Faces) .OR. .NOT. ASSOCIATED(FaceInd) ) CYCLE
 
         DO j=1,nd
+          IF(FaceInd(j)<=0) CYCLE
+
           Face => Faces(FaceInd(j))
           IF ( .NOT.ASSOCIATED(Face % TYPE,Boundary % TYPE) ) CYCLE
 
@@ -14988,10 +14996,21 @@ CONTAINS
     INTEGER, POINTER :: EdgeMap(:,:), FaceEdgeMap(:,:)
     INTEGER, TARGET  :: TetraEdgeMap(6,3), BrickEdgeMap(12,3), TetraFaceMap(4,6), &
       WedgeEdgeMap(9,3), PyramidEdgeMap(8,3), TetraFaceEdgeMap(4,3), &
-      BrickFaceEdgeMap(8,4), WedgeFaceEdgeMap(6,4), PyramidFaceEdgeMap(5,4)
+      BrickFaceEdgeMap(8,4), WedgeFaceEdgeMap(6,4), PyramidFaceEdgeMap(5,4), &
+         QuadEdgeMap(4,3), TriEdgeMap(3,3)
 !------------------------------------------------------------------------------
 
     CALL Info('FindMeshEdges3D','Finding mesh edges in 3D mesh',Level=12)
+
+    TriEdgeMap(1,:) = [1,2,4]
+    TriEdgeMap(2,:) = [2,3,5]
+    TriEdgeMap(3,:) = [3,1,6]
+
+    QuadEdgeMap(1,:) = [1,2,5]
+    QuadEdgeMap(2,:) = [2,3,6]
+    QuadEdgeMap(3,:) = [3,4,7]
+    QuadEdgeMap(4,:) = [4,1,8]
+
 
     TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
     TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
@@ -15093,6 +15112,14 @@ CONTAINS
           n = Element % TYPE % NumberOfEdges
        ELSE 
           SELECT CASE( Element % TYPE % ElementCode / 100 )
+          CASE(3)
+             n = 3
+             EdgeMap => TriEdgeMap
+             FaceEdgeMap => Null()
+          CASE(4)
+             n = 4
+             EdgeMap => QuadEdgeMap
+             FaceEdgeMap => Null()
           CASE(5)
              n = 6
              EdgeMap => TetraEdgeMap
@@ -15155,7 +15182,7 @@ CONTAINS
                 Edges(Edge) % PDefs % pyramidQuadEdge = .TRUE.
              END IF
 
-             IF ( ASSOCIATED(Mesh % Faces) ) THEN
+             IF ( ASSOCIATED(Mesh % Faces).AND.ASSOCIATED(FaceEdgeMap) ) THEN
                DO ii=1,Element % TYPE % NumberOfFaces
                  Face => Mesh % Faces(Element % FaceIndexes(ii))
                  IF ( .NOT. ASSOCIATED(Face % EdgeIndexes) ) THEN
