@@ -290,7 +290,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
            ComputeDt,ComputeDeformation,HydroGeo, OffsetDensity,FluxOutput, &
            ComputeFreshwaterHead)
     END DO
-    OffsetDensity = .FALSE. ! sure to not read after first time
+    OffsetDensity = .FALSE. ! make sure to not read after first time
     CALL DefaultFinishBulkAssembly()
     Active = GetNOFBoundaryElements()
     DO t=1,Active
@@ -949,9 +949,9 @@ CONTAINS
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
              IP % W(t), detJ, Basis, dBasisdx )
         !PRINT *, "Normal"
-          NormalAtIP = &
-               ListGetElementVectorSolution( NormalVar_h, Basis, Element, Found=Found, GaussPoint=t,dofs=DIM)
-        !IF (Recharge) THEN
+        NormalAtIP = &
+             ListGetElementVectorSolution( NormalVar_h, Basis, Element, Found=Found, GaussPoint=t,dofs=DIM)
+        IF (Recharge) THEN
           ! Variables (Temperature, Porosity, Pressure, Salinity) at IP
           TemperatureAtIP = ListGetElementReal( TemperatureBC_h, Basis, Element, Found=Found, GaussPoint=t)
           IF (.NOT.Found) CALL FATAL(SolverName,'Temperature not found')
@@ -960,21 +960,22 @@ CONTAINS
           PressureAtIP = ListGetElementReal( PressureBC_h, Basis, Element, Found=Found, GaussPoint=t)
           !SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
 
-          SalinityAtIP = 0.0_dp
-          XiAtIP = 1.0_dp
-          mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
-               XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
-          KgwAtIP = 0.0_dp
-          KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-               mugwAtIP,XiAtIP,MinKgw)
+          SalinityAtIP = 0.0_dp ! WE ASSUME FRESHWATER INFLOW!!!
+          !XiAtIP = 1.0_dp  ! WE ASSUME FULLY UNFROZEN INFLOW!!!
+          !mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
+          !     XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
+          !KgwAtIP = 0.0_dp
+          !KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
+          !     mugwAtIP,XiAtIP,MinKgw)
           ! using pure water for recharge
           rhogwAtIP =  rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
          ! DO i=1,DIM
          !   fluxgAtIP(i) = rhogwAtIP * SUM(KgwAtIP(i,1:DIM)*Gravity(1:DIM))
          ! END DO
         !ELSE
-        !  fluxgAtIP(1:DIM) = 0.0_dp 
-        !END IF
+          !  fluxgAtIP(1:DIM) = 0.0_dp
+          
+        END IF
         
         Weight = IP % s(t) * DetJ
         ! Given flux:
@@ -984,8 +985,11 @@ CONTAINS
           !  fluxgAtIP(i) = rhogwAtIP * SUM(KgwAtIP(i,1:DIM)*Gravity(1:DIM))
             !PRINT *, "fluxgAtIP(",i,")=",rhogwAtIP, "KgwAtIP=", KgwAtIP(i,1:DIM)
           !END DO
-          
-          F = SUM(Basis(1:n)*flux(1:n))
+          IF (Recharge) THEN
+            F = SUM(Basis(1:n)*rhogwAtIP*flux(1:n))
+          ELSE
+            F = SUM(Basis(1:n)*flux(1:n))
+          END IF
           
           !PRINT *,"F=",F,SUM(Basis(1:n)*flux(1:n)), NormalAtIP(1:DIM), fluxgAtIP(1:DIM)
           FORCE(1:nd) = FORCE(1:nd) + Weight * F * Basis(1:nd)
