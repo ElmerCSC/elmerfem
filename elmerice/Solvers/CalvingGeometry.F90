@@ -3605,10 +3605,18 @@ CONTAINS
     !Free quadrant tree to ensure its rebuilt in InterpolateMeshToMesh (bug fix)
     CALL FreeQuadrantTree(OldMesh % RootQuadrant)
     CALL InterpolateMeshToMesh( OldMesh, NewMesh, OldMesh % Variables, UnfoundNodes=UnfoundNodes)
+    ! unfound nodes are on or near calving front when terminus advances
+    ! 3D interp missing nodes doesn't require projectablility or to do calving front seperately as
+    ! we only need bulk variables.
+    ! only thing is these nodes tend to group together eg when a section of the terminus advances
+    ! need to make sure that we don't interp from any other unfound nodes.
     IF(ANY(UnfoundNodes)) THEN
        PRINT *, ParEnv % MyPE, ' missing ', COUNT(UnfoundNodes),' out of ',SIZE(UnfoundNodes),&
             ' nodes in SwitchMesh.'
     END IF
+
+    ! could improve improve by only required procs entering this
+    CALL InterpAdvanceUnfoundNodes(OldMesh, NewMesh, UnfoundNodes)
 
     !---------------------------------------------------------
     ! For top, bottom and calving front BC, do reduced dim 
@@ -4403,6 +4411,573 @@ CONTAINS
       END IF
 
     END SUBROUTINE MeshVolume
+
+    ! subroutine to interp variables for missing nodes caused from terminus advance. These are generally on the calving front
+    ! but could be anywhere on the mesh which has advacne beyond the previous timestep
+    SUBROUTINE InterpAdvanceUnfoundNodes(OldMesh, NewMesh, Unfoundnodes)
+
+      IMPLICIT NONE
+
+      TYPE(Mesh_t), POINTER :: OldMesh, NewMesh
+      LOGICAL, POINTER :: UnfoundNodes(:)
+      !----------------------------
+      INTEGER :: i, UnfoundCount, ClusterSize, ierr, CountDOFs, CountRepeats, min_val, max_val, &
+          previous, NodeCount
+      INTEGER, ALLOCATABLE :: PartUnfoundCount(:), UnfoundDOFS(:), UnfoundIndex(:),  disps(:), &
+          AllUnfoundDOFS(:), unique(:), repeats(:), FinalDOFs(:), UnfoundShared(:)
+      CHARACTER(LEN=MAX_NAME_LEN) :: Solvername
+      SolverName = 'InterpAdvanceUnfoundNodes'
+
+      PRINT*, SolverName
+
+      UnfoundCount = COUNT(UnfoundNodes)
+
+      ClusterSize = ParEnv % PEs
+
+      ! Gather missing counts at this stage
+      ALLOCATE(PartUnfoundCount(ClusterSize))
+      CALL MPI_AllGather(UnfoundCount, 1, MPI_INTEGER, &
+           PartUnfoundCount, 1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+
+      ! Process node numbers and global node number important for translation later on
+      ! gather all DOFs from all processes
+      UnfoundDOFS = PACK(NewMesh % ParallelInfo % GlobalDOFs, UnfoundNodes)
+      UnfoundIndex = PACK((/ (i,i=1,SIZE(UnfoundNodes)) /),UnfoundNodes .eqv. .TRUE.)
+
+      ALLOCATE(disps(ClusterSize))
+      disps(1) = 0
+      DO i=2,ClusterSize
+        disps(i) = disps(i-1) + PartUnfoundCount(i-1)
+      END DO
+      ALLOCATE(AllUnfoundDOFS(SUM(PartUnfoundCount)))
+      CALL MPI_allGatherV(UnfoundDOFS, UnfoundCount, MPI_INTEGER, &
+      AllUnfoundDOFS, PartUnfoundCount, disps, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+      IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
+
+      ! Loop to remove duplicates and order allDOFs in ascending order
+      CountDOFs=0
+      CountRepeats=0
+      IF(SUM(PartUnfoundCount) > 0) THEN
+        ALLOCATE(unique(SIZE(AllUnfoundDOFS)), repeats(SIZE(AllUnfoundDOFS)))
+        min_val = minval(AllUnfoundDOFS)-1
+        max_val = maxval(AllUnfoundDOFS)
+
+        DO WHILE (min_val<max_val)
+           Previous = COUNT(AllUNfoundDOFS>min_val)
+           CountDOFs = CountDOFs+1
+           min_val = MINVAL(AllUnfoundDOFS, mask=AllUnfoundDOFS>min_val)
+           Unique(countDOFs) = min_val
+           IF(COUNT(AllUnfoundDOFS>min_val) /= Previous-1) THEN
+              CountRepeats = CountRepeats + 1
+              Repeats(CountRepeats) = min_val
+           END IF
+        END DO
+      END IF
+      ALLOCATE(FinalDOFs(CountDOFs), source=Unique(1:countDOFs))
+      ALLOCATE(UnfoundShared(CountRepeats), source=Repeats(1:CountRepeats))
+
+      PRINT*, ParEnv % MyPE, SolverName, Size(FinalDOFs), UnfoundCount
+      !Loop through all DOFS with barrier before shared nodes
+      NodeCount = 0
+      DO i=1, SIZE(FinalDOFs)
+        ! no need for a mask since nodes in both arrays in ascending order
+        IF(ANY(UnfoundShared == FinalDOFs(i))) THEN
+           ! ok to barrier since all parts enter loop and
+           ! have same AllUnfoundDOFs/UnfoundShared
+           ! barrier for shared nodes to endsure these are found at same time
+           CALL MPI_Barrier(ELMER_COMM_WORLD, ierr)
+           !nodenumber = UnfoundIndex(nodecount) since different on each process
+           !always finds correct translation from DOFs to process nodenumber since
+           !all arrays in ascending order
+           IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+              NodeCount = NodeCount + 1
+              PRINT *,ParEnv % MyPE,'Didnt find shared point: ', UnfoundIndex(nodecount), &
+              ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
+              ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
+              ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
+              'GDOF', FinalDOFs(i), &
+              NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
+              CALL InterpolateUnfoundSharedPoint3D( UnfoundIndex(nodecount), NewMesh, &
+                  NewMesh % Variables, FinalDOFs )
+           END IF
+        ! no need for a mask since nodes in both arrays in ascending order
+        ELSE IF(ANY(UnfoundDOFS == FinalDOFs(i))) THEN
+           NodeCount = NodeCount + 1
+           !nodenumber = UnfoundIndex(nodecount) since different on each process
+           !always finds correct translation from DOFs to process nodenumber since
+           !all arrays in ascending order
+           PRINT *,ParEnv % MyPE,'Didnt find point: ', UnfoundIndex(nodecount), &
+           ' x:', NewMesh % Nodes % x(Unfoundindex(nodecount)),&
+           ' y:', NewMesh % Nodes % y(Unfoundindex(nodecount)),&
+           ' z:', NewMesh % Nodes % z(Unfoundindex(nodecount)), &
+           'GDOF', FinalDOFs(i), &
+           NewMesh % ParallelInfo % GlobalDOFs(UnfoundIndex(nodecount))
+           CALL InterpolateUnfoundPoint3D( UnfoundIndex(nodecount), NewMesh, &
+              NewMesh % Variables, FinalDOFs )
+        END IF
+      END DO
+
+   END SUBROUTINE InterpAdvanceUnfoundNodes
+
+  SUBROUTINE InterpolateUnfoundPoint3D( NodeNumber, Mesh, Variables, UnfoundDOFS )
+
+    ! similar process to InterpolateUnfoundPoint but uses bulk element
+    ! 3D interpolation
+    ! also prevents unfound nodes which have yet to be interped from being suppnodes
+
+    TYPE(Mesh_t), TARGET, INTENT(INOUT)  :: Mesh
+    TYPE(Variable_t), POINTER, OPTIONAL :: Variables
+    INTEGER :: NodeNumber
+    INTEGER, ALLOCATABLE :: UnfoundDOFS(:)
+    !------------------------------------------------------------------------------
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Element_t),POINTER :: Element
+    LOGICAL :: Parallel, Debug, HasNeighbours
+    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), WorkMask(:,:)
+    REAL(KIND=dp) :: Point(3), SuppPoint(3), weight, Exponent, distance
+    REAL(KIND=dp), ALLOCATABLE :: interpedValue(:),SuppNodeWeights(:),WorkArray(:), SumWeights(:)
+    INTEGER :: i,j,n,idx,NoNeighbours,NoSuppNodes, MaskCount
+    INTEGER, ALLOCATABLE :: WorkInt(:), SuppNodes(:)
+    INTEGER, POINTER :: Neighbours(:)
+    Debug = .TRUE.
+    Parallel = ParEnv % PEs > 1
+
+    !The sought point
+    Point(1) = Mesh % Nodes % x(NodeNumber)
+    Point(2) = Mesh % Nodes % y(NodeNumber)
+    Point(3) = Mesh % Nodes % z(NodeNumber)
+
+    !IDW exponent
+    Exponent = 1.0
+
+    !Is another partition also contributing to this
+    NoNeighbours = SIZE(Mesh %  ParallelInfo % &
+         NeighbourList(NodeNumber) % Neighbours) - 1
+    HasNeighbours = NoNeighbours > 0
+
+    IF(HasNeighbours) THEN
+      ! given the complexity of shared point problems put in seperate subroutine
+      CALL FATAL('InterpolateUnfoundPoint3D', 'Use InterpolateUnfoundSharedPoint3D for shared nodes!')
+    END IF
+
+    ALLOCATE(WorkInt(100))
+    WorkInt = 0
+
+    ! cycle trhough bulk elements
+    NoSuppNodes = 0
+    DO i=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(i)
+      n = Element % TYPE % NumberOfNodes
+
+      !Doesn't contain our point
+      IF(.NOT. ANY(Element % NodeIndexes(1:n)==NodeNumber)) CYCLE
+      !Cycle element nodes
+      DO j=1,n
+        idx = Element % NodeIndexes(j)
+        IF(idx == NodeNumber) CYCLE
+        IF(ANY(WorkInt == idx)) CYCLE
+        !  do not include nodes that has yet to be interped
+        ! nodes are interped in GDOF order so if this unfoundnode has a lower
+        ! GDOF then the SuppNode has yet to be interped
+        IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
+          Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
+
+        NoSuppNodes = NoSuppNodes + 1
+        WorkInt(NoSuppNodes) = idx
+      END DO
+    END DO
+
+    ALLOCATE(SuppNodes(NoSuppNodes))
+    SuppNodes = WorkInt(:NoSuppNodes)
+
+    IF(Debug) PRINT *,ParEnv % MyPE,'Debug, seeking nn: ',NodeNumber,' found ',&
+        NoSuppNodes,' supporting nodes.'
+
+    !create suppnode mask and get node values
+    ! get node weights too
+    ALLOCATE(SuppNodeMask(NoSuppNodes, 1000))
+    ALLOCATE(InterpedValue(1000))
+    ALLOCATE(SuppNodeWeights(NoSuppNodes))
+    SuppNodeMask = .FALSE.
+    interpedValue = 0.0_dp
+    DO i=1, NoSuppNodes
+      ! SuppNodes for interp
+      SuppPoint(1) = Mesh % Nodes % x(SuppNodes(i))
+      SuppPoint(2) = Mesh % Nodes % y(SuppNodes(i))
+      SuppPoint(3) = Mesh % Nodes % z(SuppNodes(i))
+
+      distance = 0.0_dp
+      DO j=1,3
+        distance = distance + (Point(j) - SuppPoint(j))**2.0_dp
+      END DO
+      distance = distance**0.5_dp
+
+      weight = distance**(-exponent)
+      SuppNodeWeights(i) = weight
+
+      SuppNodeMask(i, 1) = .TRUE.
+
+      IF(PRESENT(Variables)) THEN
+        MaskCount = 0 ! zero since no variables already
+        Var => Variables
+        DO WHILE(ASSOCIATED(Var))
+          MaskCount = MaskCount + 1
+          IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
+              (Var % DOFs > 1) .OR. &                    !-multi-dof
+              (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
+              Var % Secondary) THEN                      !-secondary
+                Var => Var % Next
+            CYCLE
+          END IF
+          IF(Var % Perm(SuppNodes(i)) <= 0 .OR. &
+              (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
+            Var => Var % Next
+            CYCLE
+          END IF
+
+          SuppNodeMask(i, MaskCount) = .TRUE.
+          InterpedValue(MaskCount) = interpedvalue(MaskCount) + &
+          weight * Var % Values(Var % Perm(SuppNodes(i)))
+
+          Var => Var % Next
+        END DO
+      END IF
+    END DO
+
+    !crop supppnode mask and interpedvalue
+    ALLOCATE(WorkMask(NoSuppNodes, MaskCount), WorkArray(MaskCount))
+    WorkMask = SuppNodeMask(:,1:MaskCount)
+    WorkArray = InterpedValue(1:MaskCount)
+    DEALLOCATE(SuppNodeMask, InterpedValue)
+    ALLOCATE(SuppNodeMask(NoSuppNodes, MaskCount), InterpedValue(MaskCount))
+    SuppNodeMask = WorkMask
+    InterpedValue = WorkArray
+    DEALLOCATE(WorkMask, WorkArray)
+
+    !Calculate weights
+    ALLOCATE(SumWeights(MaskCount))
+    SumWeights = 0.0_dp
+    DO i=1, NoSuppNodes
+      DO j=1, MaskCount
+        !var exists on that node
+        IF(SuppNodeMask(i,j)) THEN
+          SumWeights(j) = SumWeights(j) + SuppNodeWeights(i)
+        END IF
+      END DO
+    END DO
+
+    interpedValue = interpedValue/SumWeights
+
+    ! no neighbours
+    IF(PRESENT(Variables)) THEN
+      MaskCount = 0
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        MaskCount = MaskCount + 1
+        IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
+            (Var % DOFs > 1) .OR. &                    !-multi-dof
+            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
+            Var % Secondary) THEN                      !-secondary
+          Var => Var % Next
+          CYCLE
+        END IF
+        IF(Var % Perm(NodeNumber) <= 0) THEN      !-not fully defined here
+          Var => Var % Next
+          CYCLE
+        END IF
+
+        !if any suppnode had variable
+        IF(ANY(SuppNodeMask(:,MaskCount))) THEN
+          Var % Values(Var % Perm(NodeNumber)) = interpedValue(MaskCount)
+        END IF
+
+        Var => Var % Next
+      END DO
+    END IF
+
+  END SUBROUTINE InterpolateUnfoundPoint3D
+
+  SUBROUTINE InterpolateUnfoundSharedPoint3D( NodeNumber, Mesh, Variables, UnfoundDOFS )
+
+    ! similar process to InterpolateUnfoundShared Point but uses bulk element
+    ! 3D interpolation
+    ! also prevents unfound nodes which have yet to be interped from being suppnodes
+
+    TYPE(Mesh_t), TARGET, INTENT(INOUT)  :: Mesh
+    TYPE(Variable_t), POINTER, OPTIONAL :: Variables
+    INTEGER :: NodeNumber
+    INTEGER, ALLOCATABLE :: UnfoundDOFs(:)
+    !------------------------------------------------------------------------------
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Element_t),POINTER :: Element
+    LOGICAL :: Parallel, Debug, HasNeighbours
+    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), WorkMask(:,:), PartSuppNodeMask(:,:,:)
+    REAL(KIND=dp) :: Point(3), SuppPoint(3), weight, Exponent, distance
+    REAL(KIND=dp), ALLOCATABLE :: interpedValue(:), PartInterpedValues(:,:), &
+         SuppNodeWeights(:), PartSuppNodeWeights(:,:), WorkArray(:), SumWeights(:),&
+         FinalInterpedValues(:)
+    INTEGER :: i,j,k,n,idx,NoNeighbours,NoSuppNodes,&
+         proc,status(MPI_STATUS_SIZE), counter, ierr, MaskCount
+    INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:), PartNoSuppNodes(:)
+    INTEGER, POINTER :: Neighbours(:)
+    Debug = .TRUE.
+    Parallel = ParEnv % PEs > 1
+
+    !The sought point
+    Point(1) = Mesh % Nodes % x(NodeNumber)
+    Point(2) = Mesh % Nodes % y(NodeNumber)
+    Point(3) = Mesh % Nodes % z(NodeNumber)
+
+    !IDW exponent
+    Exponent = 1.0
+
+    !Is another partition also contributing to this
+    NoNeighbours = SIZE(Mesh %  ParallelInfo % &
+         NeighbourList(NodeNumber) % Neighbours) - 1
+    HasNeighbours = NoNeighbours > 0
+
+    ALLOCATE(WorkInt(100))
+    WorkInt = 0
+
+    !Cycle elements containing our node, adding other nodes to list
+    NoSuppNodes = 0
+    DO i=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(i)
+      n = Element % TYPE % NumberOfNodes
+
+      !Doesn't contain our point
+      IF(.NOT. ANY(Element % NodeIndexes(1:n)==NodeNumber)) CYCLE
+      !Cycle element nodes
+      DO j=1,n
+        idx = Element % NodeIndexes(j)
+        IF(idx == NodeNumber) CYCLE
+        IF(ANY(WorkInt == idx)) CYCLE
+        !  do not include nodes that has yet to be interped
+        ! nodes are interped in GDOF order so if this unfoundnode has a lower
+        ! GDOF then the SuppNode has yet to be interped
+        IF(ANY(UnfoundDOFS == Mesh % ParallelInfo % GlobalDOFs(idx)) .AND. &
+          Mesh % ParallelInfo % GlobalDOFs(NodeNumber) < Mesh % ParallelInfo % GlobalDOFs(idx)) CYCLE
+
+        NoSuppNodes = NoSuppNodes + 1
+        WorkInt(NoSuppNodes) = idx
+      END DO
+    END DO
+
+    ALLOCATE(SuppNodes(NoSuppNodes))
+    SuppNodes = WorkInt(:NoSuppNodes)
+
+    !Create list of neighbour partitions (this will almost always be 0 :( )
+    ALLOCATE(NeighbourParts(NoNeighbours))
+    counter = 0
+    DO i=1,NoNeighbours+1
+      IF(Mesh %  ParallelInfo % NeighbourList(NodeNumber) % &
+           Neighbours(i) == ParEnv % MyPE) CYCLE
+      counter = counter + 1
+      NeighbourParts(counter) = Mesh %  ParallelInfo &
+           % NeighbourList(NodeNumber) % Neighbours(i)
+    END DO
+
+    !If we aren't the only partition seeking this node, some supporting
+    !nodes will also belong to these partitions. Easiest way to remove
+    !duplicates is to set priority by partition number. So, if a
+    !higher partition number (in NeighbourParts) also has a given supp
+    !node, we delete it.
+    DO i=1,NoSuppNodes
+      Neighbours => Mesh % ParallelInfo % NeighbourList(WorkInt(i)) % Neighbours
+      DO j=1,SIZE(Neighbours)
+        IF(Neighbours(j) > ParEnv % MyPE .AND. ANY(NeighbourParts == Neighbours(j))) THEN
+          WorkInt(i) = 0
+          IF(Debug) PRINT*, ParEnv % MyPE, 'nodenumber', nodenumber, 'neighbours', Neighbours(j)
+          EXIT
+        END IF
+      END DO
+
+    END DO
+    NoSuppNodes = COUNT(WorkInt > 0)
+    IF(Debug) PRINT *,ParEnv % MyPE, ' Debug, seeking ',NodeNumber,&
+          ' higher partition has node, so deleting...'
+
+    DEALLOCATE(SuppNodes)
+    ALLOCATE(SuppNodes(NoSuppNodes))
+    SuppNodes = PACK(WorkInt, WorkInt > 0)
+    DEALLOCATE(WorkInt)
+
+    !share NoSuppNodes
+    ALLOCATE(PartNoSuppNodes(NoNeighbours+1))
+    PartNoSuppNodes(1) = NoSuppNodes
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      CALL MPI_BSEND( NoSuppNodes, 1, MPI_INTEGER, proc, &
+        4000, ELMER_COMM_WORLD,ierr )
+      CALL MPI_RECV( PartNoSuppNodes(i+1) , 1, MPI_INTEGER, proc, &
+        4000, ELMER_COMM_WORLD, status, ierr )
+    END DO
+
+    !create suppnode mask and get node values
+    ! get node weights too
+    ALLOCATE(SuppNodeMask(NoSuppNodes, 1000))
+    ALLOCATE(InterpedValue(1000))
+    ALLOCATE(SuppNodeWeights(NoSuppNodes))
+    SuppNodeMask = .FALSE.
+    interpedValue = 0.0_dp
+    DO i=1, NoSuppNodes
+      ! SuppNodes for interp
+      SuppPoint(1) = Mesh % Nodes % x(SuppNodes(i))
+      SuppPoint(2) = Mesh % Nodes % y(SuppNodes(i))
+      SuppPoint(3) = Mesh % Nodes % z(SuppNodes(i))
+
+      distance = 0.0_dp
+      DO j=1,3
+        distance = distance + (Point(j) - SuppPoint(j))**2.0_dp
+      END DO
+      distance = distance**0.5_dp
+
+      weight = distance**(-exponent)
+      SuppNodeWeights(i) = weight
+
+      SuppNodeMask(i, 1) = .TRUE.
+
+      IF(PRESENT(Variables)) THEN
+        MaskCount = 0 ! since we start with no variables
+        Var => Variables
+        DO WHILE(ASSOCIATED(Var))
+          MaskCount = MaskCount + 1
+          IF((SIZE(Var % Values) == Var % DOFs) .OR. &    !-global
+              (Var % DOFs > 1) .OR. &                    !-multi-dof
+              (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
+              Var % Secondary) THEN                      !-secondary
+                Var => Var % Next
+            CYCLE
+          END IF
+          IF(Var % Perm(SuppNodes(i)) <= 0 .OR. &
+              (Var % Perm(NodeNumber) <= 0)) THEN      !-not fully defined here
+            Var => Var % Next
+            CYCLE
+          END IF
+
+          SuppNodeMask(i, MaskCount) = .TRUE.
+          InterpedValue(MaskCount) = InterpedValue(MaskCount) + &
+          weight * Var % Values(Var % Perm(SuppNodes(i)))
+
+          Var => Var % Next
+        END DO
+      END IF
+    END DO
+
+    ! one proc could have no suppnodes so need to calculate maskcount
+    IF(NoSuppNodes == 0) THEN
+      IF(PRESENT(Variables)) THEN
+        MaskCount = 1
+        Var => Variables
+        DO WHILE(ASSOCIATED(Var))
+          MaskCount = MaskCount + 1
+          Var => Var % Next
+        END DO
+      END IF
+    END IF
+
+    !crop supppnode mask and interpedvalue
+    ALLOCATE(WorkMask(NoSuppNodes, MaskCount), WorkArray(MaskCount))
+    WorkMask = SuppNodeMask(:,1:MaskCount)
+    WorkArray = InterpedValue(1:MaskCount)
+    DEALLOCATE(SuppNodeMask, InterpedValue)
+    ALLOCATE(SuppNodeMask(NoSuppNodes, MaskCount), InterpedValue(MaskCount))
+    SuppNodeMask = WorkMask
+    InterpedValue = WorkArray
+    DEALLOCATE(WorkMask, WorkArray)
+
+    !share SuppNodeMask
+    ALLOCATE(PartSuppNodeMask(NoNeighbours+1, 25, MaskCount))
+    PartSuppNodeMask = .FALSE.
+    PartSuppNodeMask(1,:NoSuppNodes,:) = SuppNodeMask
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      CALL MPI_BSEND( SuppNodeMask, NoSuppNodes*MaskCount, MPI_LOGICAL, proc, &
+        4001, ELMER_COMM_WORLD,ierr )
+      CALL MPI_RECV( PartSuppNodeMask(i+1,:PartNoSuppNodes(i+1),: ) , &
+        PartNoSuppNodes(i+1)*MaskCount, MPI_LOGICAL, proc, &
+        4001, ELMER_COMM_WORLD, status, ierr )
+    END DO
+
+    !share interped value
+    ALLOCATE(PartInterpedValues(NoNeighbours+1, MaskCount))
+    PartInterpedValues(1,1:MaskCount) = InterpedValue
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      CALL MPI_BSEND( InterpedValue, MaskCount, MPI_DOUBLE_PRECISION, proc, &
+        4002, ELMER_COMM_WORLD,ierr )
+      CALL MPI_RECV( PartInterpedValues(i+1,:), MaskCount, MPI_DOUBLE_PRECISION, proc, &
+        4002, ELMER_COMM_WORLD, status, ierr )
+    END DO
+
+    !share suppnode weights
+    ALLOCATE(PartSuppNodeWeights(NoNeighbours+1, 25))
+    PartSuppNodeWeights(1,1:NoSuppNodes) = SuppNodeWeights
+    DO i=1, NoNeighbours
+      proc = NeighbourParts(i)
+      CALL MPI_BSEND( SuppNodeWeights, NoSuppNodes, MPI_DOUBLE_PRECISION, proc, &
+        4003, ELMER_COMM_WORLD,ierr )
+      CALL MPI_RECV( PartSuppNodeWeights(i+1,1:PartNoSuppNodes(i+1)), &
+        PartNoSuppNodes(i+1), MPI_DOUBLE_PRECISION, proc, &
+        4003, ELMER_COMM_WORLD, status, ierr )
+    END DO
+
+    !calculate interped values
+    ALLOCATE(FinalInterpedValues(MaskCount))
+    FinalInterpedValues = 0.0_dp
+    ! add up interpedvalues
+    DO i=1, NoNeighbours+1
+      FinalInterpedValues = FinalInterpedValues + PartInterpedValues(i, :)
+    END DO
+
+    ! calculate weight for each var
+    ALLOCATE(SumWeights(MaskCount))
+    SumWeights = 0.0_dp
+    DO i=1, NoNeighbours+1
+      ! loop through procs suppnodes
+      DO j=1, PartNoSuppNodes(i)
+        DO k=1, MaskCount
+          !var exists on that node
+          IF(PartSuppNodeMask(i,j,k)) THEN
+            SumWeights(k) = SumWeights(k) + PartSuppNodeWeights(i,j)
+          END IF
+        END DO
+      END DO
+    END DO
+
+    !interpedvalue/sumweights
+    FinalInterpedValues = FinalInterpedValues/sumweights
+
+    !return values
+    IF(PRESENT(Variables)) THEN
+      MaskCount = 0
+      Var => Variables
+      DO WHILE(ASSOCIATED(Var))
+        MaskCount = MaskCount + 1
+
+        IF((SIZE(Var % Values) == Var % DOFs) .OR. & !-global
+            (Var % DOFs > 1) .OR. &                    !-multi-dof
+            (Var % Name(1:10)=='coordinate') .OR. &    !-coord var
+            Var % Secondary) THEN                      !-secondary
+          Var => Var % Next
+          CYCLE
+        END IF
+        IF(Var % Perm(NodeNumber) <= 0) THEN      !-not fully defined here
+          Var => Var % Next
+          CYCLE
+        END IF
+
+        !if any suppnode from any proc has var
+        IF(ANY(PartSuppNodeMask(:,:,MaskCount))) THEN
+          Var % Values(Var % Perm(NodeNumber)) = FinalInterpedValues(MaskCount)
+          PRINT*, ParEnv % MyPE, Var % Name, FinalInterpedValues(maskcount), InterpedValue(maskcount)
+        END IF
+
+        Var => Var % Next
+      END DO
+    END IF
+
+  END SUBROUTINE InterpolateUnfoundSharedPoint3D
 
 END MODULE CalvingGeometry
 
