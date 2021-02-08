@@ -58,7 +58,19 @@ Solver 1
 End
 
 
+! Create pateremers as variables so that they can be saved to the
+! vtu files, for example. Have this executed before results are
+! saved. 
 Solver 2
+  Exec Solver = "before saving"
+  Equation = SaveBC
+  Procedure = "SaveData" "SaveBoundaryValues"
+
+  Parameter 1 = "External Temperature"
+!  Parameter 2 = "Heat Transfer Coefficient"
+End
+
+Solver 3
   Exec Solver = never
 
   Equation = SaveLine
@@ -66,6 +78,7 @@ Solver 2
 
   Filename = f.dat
 End
+
 
 Material 1
   Name = "Material"
