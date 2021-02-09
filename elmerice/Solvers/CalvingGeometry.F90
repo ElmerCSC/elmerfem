@@ -3606,9 +3606,10 @@ CONTAINS
     CALL FreeQuadrantTree(OldMesh % RootQuadrant)
     CALL InterpolateMeshToMesh( OldMesh, NewMesh, OldMesh % Variables, UnfoundNodes=UnfoundNodes)
     ! unfound nodes are on or near calving front when terminus advances
-    ! 3D interp missing nodes doesn't require projectablility or to do calving front seperately as
+    ! 3D interp missing nodes doesn't require projectablility or to interp calving front seperately
+    ! since there are no important variables only present on calving front
     ! we only need bulk variables.
-    ! only thing is these nodes tend to group together eg when a section of the terminus advances
+    ! these nodes tend to group together eg when a section of the terminus advances
     ! need to make sure that we don't interp from any other unfound nodes.
     IF(ANY(UnfoundNodes)) THEN
        PRINT *, ParEnv % MyPE, ' missing ', COUNT(UnfoundNodes),' out of ',SIZE(UnfoundNodes),&
@@ -4413,7 +4414,7 @@ CONTAINS
     END SUBROUTINE MeshVolume
 
     ! subroutine to interp variables for missing nodes caused from terminus advance. These are generally on the calving front
-    ! but could be anywhere on the mesh which has advacne beyond the previous timestep
+    ! but could be anywhere on the mesh which has advanced beyond the previous timestep
     SUBROUTINE InterpAdvanceUnfoundNodes(OldMesh, NewMesh, Unfoundnodes)
 
       IMPLICIT NONE
