@@ -20,3 +20,12 @@ Temperature = Variable Coordinate 3
 where *NameUSF* is the name of the fortran function in the file MyUSF.f90.
 
 Instead of using a fortran user function, one can write directly in the SIF file a MATC function, as explained here. However, MATC functions present some limitations and cannot be used in all cases. Moreover, MATC functions are less computationally efficient, and should be avoided for very large problems.
+
+## Writing documentation
+Github already renders .md files but these do not support maths very well.  
+You can generate a .pdf that will display the maths better (if you've written it in the .md file using LaTEX syntax) using e.g. pandoc.
+> pandoc -f gfm -t pdf -s SomeDocumentationFile.md > SomeDocumentationFile.pdf
+will generate a fully rendered pdf version of any of the files.
+
+If you've written a new USF, please use the [Template.md](./Template.md) file to set up your documentation before uploading it to this directory.
+
