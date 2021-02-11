@@ -18,12 +18,13 @@
 ### Additional subsection 1 {e.g. Geographical Restriction}
 {In Soviet Russia, this solver solves YOU}
 
-## Known Bugs
-{If there are any known issues, detail them here}
+## Known Bugs and Limitations
+{If there are any known issues or limitations that could be improved, detail them here}
 - {e.g. 2019-02-22 Lunar phase issue fixed}
 - {e.g. 2017-05-14 This solver only works at full moon}
+- {e.g. Does not work in parallel}
 
-## SIF contents
+## SIF Contents
 {Provide examples of all the required SIF contents for a typical use of the solver/USF. Please ensure you include examples of lines that need to be added to other parts of the SIF (BCs, Material, etc.), not just the solver/USF block}
 The required keywords in the SIF file for this solver/USF are:
 
@@ -47,3 +48,6 @@ End
 ## Examples
 {Show where a relevant example in the Elmer distribution can be found}
 An example in which the ... can be found here [ELMER_TRUNK]/elmerice/Tests/...
+
+## References
+{If the solver is derived from a published source or is the main subject of one, provide a reference here}
