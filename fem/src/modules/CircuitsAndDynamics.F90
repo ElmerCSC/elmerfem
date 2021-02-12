@@ -1300,7 +1300,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(Component_t) :: Comp
     TYPE(Valuelist_t), POINTER :: CompParams
