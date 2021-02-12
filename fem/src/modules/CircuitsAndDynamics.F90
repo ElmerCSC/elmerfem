@@ -1398,7 +1398,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        IF (CoilUseWvec) THEN
+          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
         !print *, "W Pot norm:", SQRT(SUM(w**2._dp))
       END SELECT
 
