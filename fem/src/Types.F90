@@ -565,10 +565,11 @@ MODULE Types
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
      TYPE(Solver_t), POINTER :: Solver => NULL()
-     LOGICAL :: Valid, Output
+     LOGICAL :: Valid = .TRUE.
+     LOGICAL :: Output = .TRUE.
      TYPE(Mesh_t), POINTER :: PrimaryMesh => NULL()
 
-     LOGICAL :: ValuesChanged = .FALSE.
+     LOGICAL :: ValuesChanged = .TRUE.
 
 ! Some variables are created from pointers to the primary variables
      LOGICAL :: Secondary = .FALSE.
@@ -781,6 +782,7 @@ MODULE Types
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
      INTEGER :: MinEdgeDOFs, MinFaceDOFs
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
+     INTEGER :: MaxNDOFs ! The maximum of nodal DOFs per node (created with a flag "n:")
 
      LOGICAL :: EntityWeightsComputed 
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&

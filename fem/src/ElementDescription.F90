@@ -11743,7 +11743,7 @@ END SUBROUTINE PickActiveFace
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
     LOGICAL :: IsPassive
     !------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element
+    TYPE(Element_t), POINTER :: Element,tmp
     REAL(KIND=dp), ALLOCATABLE :: Passive(:)
     INTEGER :: body_id, bf_id, nlen, NbrNodes,PassNodes, LimitNodes
     LOGICAL :: Found
@@ -11767,7 +11767,9 @@ END SUBROUTINE PickActiveFace
     IF( NoPassiveElements ) RETURN       
 
     IF (PRESENT(UElement)) THEN
+      tmp => CurrentModel % CurrentElement
       Element => UElement
+      CurrentModel % CurrentElement => Element
     ELSE
 #ifdef _OPENMP
       IF (omp_in_parallel()) THEN
@@ -11824,6 +11826,9 @@ END SUBROUTINE PickActiveFace
       END IF
     END IF
 
+    IF (PRESENT(UElement)) THEN
+       CurrentModel % CurrentElement => tmp
+    END IF
 !------------------------------------------------------------------------------
   END FUNCTION CheckPassiveElement
 !------------------------------------------------------------------------------
@@ -12258,7 +12263,7 @@ END SUBROUTINE PickActiveFace
       Lambda = SUM( ( Surface - Rinit ) * Normal ) / Rproj
     END IF
 
-    IF( FaceElement % NDofs == 4 ) THEN
+    IF( FaceElement % Type % NumberOfNodes == 4 ) THEN
       IF( third == 3 ) THEN
         third = 4
 	Lambda0 = Lambda
@@ -12297,7 +12302,7 @@ END SUBROUTINE PickActiveFace
     ! Then solve the exact points of intersection from a 3x3 or 2x2 linear system
     !--------------------------------------------------------------------------
     IF( ElemDim == 2 ) THEN
-      n = FaceElement % NDofs
+      n = FaceElement % Type % NumberOfNodes
       ! In 3D rectangular faces are treated as two triangles
       IF( n == 4 .OR. n == 8 .OR. n == 9 ) THEN
         notriangles = 2

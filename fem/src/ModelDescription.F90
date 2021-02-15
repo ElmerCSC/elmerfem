@@ -363,7 +363,7 @@ CONTAINS
     !-----------------------------------------------------------------------
     IF( PRESENT( ControlOnly ) ) THEN
       IF( ControlOnly ) THEN
-        CALL Info(Caller,'Reading only "Run Control" section',Level=12)    
+        CALL Info(Caller,'Trying to read "Run Control" section only',Level=20)    
         DO WHILE(ReadAndTrim(InFileUnit,Section,Echo,NoEval=.TRUE.))
           IF( SEQL(Section,'run control') ) THEN                        
             IF(.NOT.ASSOCIATED(Model % Control)) &
@@ -2624,6 +2624,8 @@ CONTAINS
           CALL SetMeshMaxDofs(NewMesh)
           IF(ParEnv % PEs>1) CALL SParEdgeNumbering(NewMesh)
           IF(ParEnv % PEs>1) CALL SParFaceNumbering(NewMesh)
+        ELSE
+          CALL SetMeshMaxDofs(NewMesh)
         END IF
 
         IF ( i>MeshLevels-MeshKeep+1 ) THEN
@@ -2840,6 +2842,8 @@ CONTAINS
               CALL SParEdgeNumbering(NewMesh)
               CALL SParFAceNumbering(NewMesh)
             END IF
+          ELSE
+            CALL SetMeshMaxDofs(NewMesh)
           END IF
 
           IF ( i>MeshLevels-MeshKeep+1 ) THEN

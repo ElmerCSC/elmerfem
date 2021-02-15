@@ -710,6 +710,8 @@ END SUBROUTINE InterpolateMeshToMesh
 
        PiolaT = .FALSE.
        IF (EdgeBasis) THEN
+         IF (.NOT. ASSOCIATED(CurrentModel % Solver % Mesh)) CALL Fatal('InterpolateMeshToMeshQ', &
+             'Edge basis functions need an associated mesh')
          PiolaT = ListGetLogical(CurrentModel % Solver % Values,'Use Piola Transform',Found)
        END IF
 
@@ -1013,15 +1015,25 @@ END SUBROUTINE InterpolateMeshToMesh
               v = LocalV(i)
               w = LocalW(i)
 
-              IF(EdgeBasis) THEN
+              IF (EdgeBasis) THEN
                 CALL GetElementNodes(Nodes,Element)
               ELSE
                 CALL GetElementNodes(Nodes,Element,UMesh=OldMesh)
               END IF
 
-              k = GetElementDOFs( Indexes, Element, NotDG=ASSOCIATED(CurrentModel % Solver))
-
-              np = GetElementNOFNodes(Element)
+              np = GetElementNOFNodes(Element)              
+              IF (EdgeBasis) THEN
+                k = GetElementDOFs( Indexes, Element, NotDG=.TRUE.)                
+              ELSE
+                !
+                ! In this case calling GetElementDOFs appears to generate warnings
+                ! (since CurrentModel % Solver % Mesh may not be associated for some reason),
+                ! now we proceed silently assuming the Lagrange interpolation
+                !
+                k = np
+                Indexes(1:k) = Element % NodeIndexes(1:k)
+              END IF
+              
               IF (ANY(Indexes(1:np)>Element % NodeIndexes)) np=0
 
               IF( EdgeBasis) THEN

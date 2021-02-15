@@ -300,7 +300,8 @@ int main(int argc, char *argv[])
       boundaries[nofile][i].nosides = 0;
     }
 
-    if (LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+    if (LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],
+		      eg.multidim,TRUE))
       Goodbye();
     nomeshes++;    
     break;

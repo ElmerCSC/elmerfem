@@ -10,6 +10,8 @@
 ## General Description
 This solver computes the vertical distance from a surface (either free surface or bedrock in Glaciology). In structured FD-grids this is a trivial procedure - not so in unstructured FEM meshes as used by Elmer. A degenerated Poisson equation has to be solved in order to get nodal values for either the flow depth below the free surface or the flow height above the bedrock. It can also compute the horizontal derivative of the upper/lower surface if Depth/height is calculated.
 
+An optional feature provided by this solver is to compute the gradient components of the surface from where the distance is evaluated.
+
 Alternatively, if you are using a structured mesh, you might consider replacing the FlowDepth solver by the StructuredProjectToPlane solver, as explained [here](http://elmerfem.org/elmerice/wiki/doku.php?id=mesh:structuredmesh).
 
 ## SIF contents
