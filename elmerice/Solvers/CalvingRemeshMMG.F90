@@ -91,7 +91,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        RemeshOccurs,CheckFlowConvergence, Remesh
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   TYPE(Variable_t), POINTER :: TimeVar
-  INTEGER :: Time, remeshtimestep
+  INTEGER :: Time, remeshtimestep, proc
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume
 
   SolverParams => GetSolverParams()
@@ -412,7 +412,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   !Nominated partition does the remeshing
   IF(ImBoss) THEN
-  IF (CalvingOccurs) THEN
+    IF (CalvingOccurs) THEN
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgLs  = 0
@@ -794,6 +794,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CALL Fatal(SolverName, 'Bad GID 0')
    END DO
 
+   ParEnv % IsNeighbour(:)  = .FALSE.
+   DO i=1, Mesh % NumberOfNodes
+     IF ( ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours) ) THEN
+       DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+         proc = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)
+         IF ( ParEnv % Active(proc+1).AND.proc/=ParEnv % MYpe) &
+             ParEnv % IsNeighbour(proc+1) = .TRUE.
+       END DO
+     END IF
+   END DO
 
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution
