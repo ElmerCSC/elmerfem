@@ -794,6 +794,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CALL Fatal(SolverName, 'Bad GID 0')
    END DO
 
+
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution
    !-------------------------------
@@ -823,6 +824,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    !Release the old mesh
    CALL ReleaseMesh(GatheredMesh)
+
+   !remove mesh update
+   CALL ResetMeshUpdate(Model, Solver)
 
 CONTAINS
 
@@ -1275,3 +1279,60 @@ SUBROUTINE CheckFlowConvergenceMMG( Model, Solver, dt, Transient )
   FirstTime = .FALSE.
 
 END SUBROUTINE CheckFlowConvergenceMMG
+
+SUBROUTINE ResetMeshUpdate(Model, Solver)
+  USE MeshUtils
+
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  ! --------------------
+  TYPE(Variable_t), POINTER :: Var, RefVar
+  TYPE(ValueList_t), POINTER :: Params
+  INTEGER :: Num
+  LOGICAL :: Found
+  CHARACTER(MAX_NAME_LEN) :: SolverName, VarName
+  SolverName = 'ResetMeshUpdate'
+
+  Params => Solver % Values
+
+  DO Num = 1,999
+    WRITE(Message,'(A,I0)') 'Mesh Update Variable ',Num
+    VarName = ListGetString( Params, Message, Found)
+    IF( .NOT. Found) EXIT
+
+    Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
+    IF(.NOT. ASSOCIATED(Var)) THEN
+       WRITE(Message,'(A,A)') "Listed mesh update variable but can not find: ",VarName
+       CALL Fatal(SolverName, Message)
+    END IF
+    Var % Values = 0.0_dp
+  END DO
+
+  !Turn off free surface solvers for next timestep
+  !And set values equal to z (or rotated) coordinate
+  DO Num = 1,999
+    WRITE(Message,'(A,I0)') 'FreeSurface Variable ',Num
+    VarName = ListGetString( Params, Message, Found)
+    IF( .NOT. Found) EXIT
+
+    Var => VariableGet( Model % Mesh % Variables, VarName, .TRUE. )
+    IF(.NOT. ASSOCIATED(Var)) THEN
+       WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",VarName
+       CALL Fatal(SolverName, Message)
+    END IF
+
+    RefVar => VariableGet( Model % Mesh % Variables, "Reference "//TRIM(VarName), .TRUE. )
+    IF(.NOT. ASSOCIATED(RefVar)) THEN
+       WRITE(Message,'(A,A)') "Listed FreeSurface variable but can not find: ",&
+            "Reference "//TRIM(VarName)
+       CALL Fatal(SolverName, Message)
+    END IF
+
+    DO i=1,Model % Mesh % NumberOfNodes
+      IF(Var % Perm(i) <= 0) CYCLE
+      Var % Values(Var % Perm(i)) = Model % Mesh % Nodes % z(i)
+      RefVar % Values(RefVar % Perm(i)) = Model % Mesh % Nodes % z(i)
+    END DO
+ END DO
+
+END SUBROUTINE ResetMeshUpdate
