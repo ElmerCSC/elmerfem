@@ -5994,8 +5994,8 @@ END SUBROUTINE GetNodalElementSize
      LOGICAL :: GotIt
      
      SAVE MinCost , NoBetter
-
-     IF( Cost > MinCost ) RETURN
+     
+     IF( ABS( Cost ) > ABS( MinCost ) ) RETURN
           
      ! Found a new best parameter combination
      !---------------------------------------
@@ -6009,13 +6009,13 @@ END SUBROUTINE GetNodalElementSize
      Name = ListGetString(OptList,'Parameter Best File',GotIt )
      IF( GotIt ) THEN
        OPEN( NEWUNIT=IOUnit, FILE=Name, STATUS='UNKNOWN')
-       WRITE (IOUnit,'(I0)') NoParam
+       WRITE (IOUnit,'(A,ES17.8E3)') 'Cost: ',Cost
+       WRITE (IOUnit,'(A,I0)') 'Improvements: ',NoBetter
+       WRITE (IOUnit,'(A,I0)') 'Iterations: ',piter
+       WRITE (IOUnit,'(A,I0)') 'NoParam: ',NoParam
        DO i=1,NoParam
          WRITE (IOUnit,'(ES17.8E3)') Param(i)
        END DO
-       WRITE (IOUnit,'(ES17.8E3)') Cost
-       WRITE (IOUnit,'(I0)') NoBetter
-       WRITE (IOUnit,'(I0)') piter
        CLOSE(IOUnit)
      END IF
         
@@ -6744,7 +6744,7 @@ END SUBROUTINE GetNodalElementSize
         ratio = 0.0_dp
         ls = 0.1 * ls
 
-        PRINT *,'Simplex: coeff',ls
+        !PRINT *,'Simplex: coeff',ls
         no = 1
       END IF
 
