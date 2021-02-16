@@ -636,6 +636,65 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Inserts totally legit variable to variable list.
+!------------------------------------------------------------------------------
+    SUBROUTINE VariableAppend( Variables,NewVar)
+!------------------------------------------------------------------------------
+      TYPE(Variable_t), POINTER :: Variables
+      TYPE(Variable_t), POINTER :: NewVar
+!------------------------------------------------------------------------------
+      LOGICAL :: stat
+      TYPE(Variable_t), POINTER :: ptr,ptr1
+      LOGICAL :: Hit
+      INTEGER :: n,n1
+      CHARACTER(*), PARAMETER :: Caller = 'VariableAppend'
+!------------------------------------------------------------------------------
+
+            
+      CALL Info(Caller,'Inserting variable > '//TRIM(NewVar % Name)//&
+          ' < of size '//TRIM(I2S(SIZE(NewVar % Values))),Level=15)
+
+      IF ( .NOT.ASSOCIATED(NewVar) ) THEN
+        CALL Warn(Caller,'Cannot insert null variable to list!')
+        RETURN
+      END IF
+
+      IF ( .NOT.ASSOCIATED(Variables) ) THEN
+        CALL Warn(Caller,'Cannot insert variable to empty list!')
+        RETURN
+      END IF
+
+      n1 = LEN_TRIM( NewVar % Name ) 
+
+      
+      Hit = .FALSE.
+      ptr => Variables
+      DO WHILE( ASSOCIATED( ptr ) )
+        n = LEN_TRIM( ptr % Name )
+        IF ( n == n1 ) THEN
+          IF ( ptr % Name(1:n) == NewVar % Name(1:n) ) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END IF
+        ptr1 => ptr
+        ptr => ptr % Next
+      END DO
+
+      IF( Hit ) THEN
+        CALL Info(Caller,'Found variable in list: '//TRIM(NewVar % Name))
+      ELSE
+        CALL Info(Caller,'Append existing variable to end of list: '//TRIM(NewVar % Name))
+        ptr1 % Next => NewVar
+        NewVar % Next => NULL()
+      END IF
+
+    END SUBROUTINE VariableAppend
+ !------------------------------------------------------------------------------
+     
+  
+
+!------------------------------------------------------------------------------
 !> Adds a new variable to the list of variables. 
 !> The structures need to be allocated externally beforehand. 
 !------------------------------------------------------------------------------
@@ -7920,6 +7979,7 @@ use spariterglobals
     Var => Variables
 
     DO WHILE( ASSOCIATED( Var ) )
+
       ! Skip if variable is not active for saving       
       IF ( .NOT. Var % Output ) THEN
         Var => Var % Next
@@ -7942,7 +8002,7 @@ use spariterglobals
         CONTINUE
 
       END IF
-
+      
       ! Skip if variable is otherwise strange in size
       IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
         IF( Var % TYPE == Variable_on_nodes ) THEN
@@ -7957,7 +8017,7 @@ use spariterglobals
           END IF         
         END IF
       END IF
-
+      
       VarDim = Var % Dofs
       IsVector = (VarDim > 1)
       Set = .FALSE.
