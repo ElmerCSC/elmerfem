@@ -340,6 +340,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   Mesh % Repartition = ParEnv % MyPE + 1
   DO i=1,NBulk+NBdry
     IF(elem_send(i)) Mesh % Repartition(i) = my_cboss+1
+    IF(ImBoss .AND. .NOT. elem_send(i)) THEN
+      WRITE(Message, '(A,i0,A)') "ImBoss sending Element ",i," to NonCalvBoss"
+      CALL WARN(SolverName, Message)
+      Mesh % Repartition(i) = NonCalvBoss+1
+    END IF
   END DO
 
   GatheredMesh => RedistributeMesh(Model, Mesh, .TRUE., .FALSE.)
