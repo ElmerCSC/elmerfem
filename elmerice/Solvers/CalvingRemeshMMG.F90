@@ -78,11 +78,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
        front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
        group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4), &
-       PairCount,RPairCount
+       PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
-       Nodes(:), IslandCounts(:)
+       Nodes(:), IslandCounts(:), pNCalvNodes(:,:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
        target_length(:,:)
@@ -208,6 +208,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     my_calv_front = 1 !this is integer (not logical) so we can later move to multiple calving fronts
   END IF
 
+  NCalvNodes = COUNT(remeshed_node)
+
   !TODO - could make this more efficient by cutting out some of the elements from the calved region.
   !This region will be remeshed too, but we discard it, so the closer we can get to the edge of the
   !calving event, the better.
@@ -264,6 +266,15 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   CALL MPI_AllGather(my_calv_front, 1, MPI_INTEGER, pcalv_front, &
        1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
 
+  ! loop to allow negotiation for multiple calving fronts
+  ! This communication allows the determination of which part of the mesh
+  ! has the most calvnodes and will become cboss
+  ALLOCATE(pNCalvNodes(MAXVAL(pcalv_front),PEs))
+  DO i=1, MAXVAL(pcalv_front)
+    CALL MPI_ALLGATHER(NCalvNodes, 1, MPI_INTEGER, pNCalvNodes(i,:), &
+    1, MPI_INTEGER, ELMER_COMM_WORLD, ierr)
+  END DO
+
   IF(Debug) THEN
     PRINT *,mype,' debug calv_front: ',my_calv_front
     PRINT *,mype,' debug calv_fronts: ',pcalv_front
@@ -291,9 +302,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !Work out to whom I send mesh parts for calving
   !TODO - this is currently the lowest partition number which has some calving nodes,
   !but it'd be more efficient to take the partition with the *most* calved nodes
+  !Now cboss set to part with most calving nodes
+  !NonCalvBoss will take any non calving nodes from the cboss
+  ! this is still *TODO*
   IF(My_Calv_Front>0) THEN
 
-    my_cboss = MINLOC(pcalv_front, 1, MASK=pcalv_front==calv_front)-1
+    ! assume currently only one calving front
+    my_cboss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MAXVAL(pNCalvNodes(1,:)))-1
+    nonCalvBoss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MINVAL(pNCalvNodes(1,:)))-1
     IF(Debug) PRINT *,MyPe,' debug calving boss: ',my_cboss
     ImBoss = MyPE == my_cboss
 
@@ -302,9 +318,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       Prnode_count = 0
     END IF
   ELSE
+    ! only used if cboss has non calving nodes
+    nonCalvBoss = MINLOC(pNCalvNodes(1,:), 1, MASK=pNCalvNodes(1,:)==MINVAL(pNCalvNodes(1,:)))-1
     ImBoss = .FALSE.
   END IF
 
+  !croot location is i when cboss = groupmember(i)
+  DO i=1, ncalv_parts
+    IF(my_cboss /= cgroup_membs(i)) CYCLE
+    croot = i-1
+  END DO
 
   !Redistribute the mesh (i.e. partitioning) so that cboss partitions
   !contain entire calving/remeshing regions.
@@ -313,6 +336,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     IF(ierr /= 0) PRINT *,ParEnv % MyPE,' could not allocate Mesh % Repartition'
   END IF
 
+  !TODO send non calving nodes on ImBoss to nocalvboss
   Mesh % Repartition = ParEnv % MyPE + 1
   DO i=1,NBulk+NBdry
     IF(elem_send(i)) Mesh % Repartition(i) = my_cboss+1
@@ -335,7 +359,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IF(My_Calv_Front>0) THEN
     !root is always zero because cboss is always lowest member of new group (0)
     CALL MPI_Gather(COUNT(remeshed_node), 1, MPI_INTEGER, Prnode_count, 1, &
-         MPI_INTEGER, 0, COMM_CALVE,ierr)
+         MPI_INTEGER, croot, COMM_CALVE,ierr)
 
     IF(ImBoss) THEN
 
@@ -377,18 +401,18 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     IF (CalvingOccurs) THEN
     !Gather the level set function
     CALL MPI_GatherV(PACK(test_lset,remeshed_node), COUNT(remeshed_node), MPI_DOUBLE_PRECISION, &
-          Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, 0, COMM_CALVE,ierr)
+          Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, croot, COMM_CALVE,ierr)
     IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
     ELSE
     !Gather the distance to front, but let it output to Ptest_lset to avoid repetitive code
     CALL MPI_GatherV(PACK(test_dist,remeshed_node), COUNT(remeshed_node), MPI_DOUBLE_PRECISION, &
-          Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, 0, COMM_CALVE,ierr)
+          Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, croot, COMM_CALVE,ierr)
     IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
     END IF
     !Gather the GDOFs
     CALL MPI_GatherV(PACK(Mesh % ParallelInfo % GlobalDOFs,remeshed_node), &
          COUNT(remeshed_node), MPI_INTEGER, PGDOFs_send, Prnode_count, &
-         disps, MPI_INTEGER, 0, COMM_CALVE,ierr)
+         disps, MPI_INTEGER, croot, COMM_CALVE,ierr)
     IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
 
     !Nodes with levelset value greater than remesh_thresh are kept fixed
