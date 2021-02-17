@@ -81,17 +81,19 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        PairCount,RPairCount
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
-       PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:)
+       PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
+       Nodes(:), IslandCounts(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
        target_length(:,:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
-       elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
+       elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
+       UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
-       RemeshOccurs,CheckFlowConvergence, Remesh
+       RemeshOccurs,CheckFlowConvergence, Remesh, HasNeighbour
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   TYPE(Variable_t), POINTER :: TimeVar
-  INTEGER :: Time, remeshtimestep, proc
+  INTEGER :: Time, remeshtimestep, proc, idx, island, node
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume
 
   SolverParams => GetSolverParams()
@@ -675,7 +677,116 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
-      END IF ! CalvingOccurs
+      NNodes = NewMeshR % NumberOfNodes
+      NBulk = NewMeshR % NumberOfBulkElements
+      NBdry = NewMeshR % NumberOfBoundaryElements
+
+      !sometimes some icebergs are not removed fully from the MMG levelset
+      !find all connected nodes in groups and remove in groups not in the
+      !main icebody
+      !limit here of 10 possible mesh 'islands'
+      ALLOCATE(FoundNode(10, NNodes), ElNodes(4), &
+              UsedElem(NBulk), NewNodes(NBulk))
+      FoundNode = .FALSE.! count of nodes found
+      UsedElem = .FALSE. !count of elems used
+      NewNodes=.FALSE. !count of new elems in last sweep
+      island=0 ! count of different mesh islands
+      HasNeighbour=.FALSE. ! whether node has neighour
+      DO WHILE(COUNT(FoundNode) < NNodes)
+        ! if last sweep has found no new neighbour nodes then move onto new island
+        IF(.NOT. HasNeighbour) THEN
+          island = island + 1
+          IF(Island > 10) CALL FATAL(SolverName, 'More than 10 icebergs left after levelset')
+          !find first unfound node
+          Inner: DO i=1, NNodes
+            IF(ANY(FoundNode(:, i))) CYCLE
+            NewNodes(i) = .TRUE.
+            FoundNode(island, i) = .TRUE.
+            EXIT Inner
+          END DO Inner
+        END IF
+        HasNeighbour=.FALSE.
+        nodes=PACK((/ (i,i=1,SIZE(NewNodes)) /), NewNodes .eqv. .TRUE.)
+        NewNodes=.FALSE.
+        DO i=1, Nbulk
+          IF(UsedElem(i)) CYCLE !already used elem
+          DO j=1, SIZE(Nodes)
+            node=Nodes(j)
+            Element => NewMeshR % Elements(i)
+            ElNodes = Element % NodeIndexes
+            IF(.NOT. ANY(ElNodes==node)) CYCLE ! doesn't contain node
+            UsedElem(i) = .TRUE. ! got nodes from elem
+            DO k=1,SIZE(ElNodes)
+              idx = Element % NodeIndexes(k)
+              IF(idx == Node) CYCLE ! this nodes
+              IF(FoundNode(island,idx)) CYCLE ! already got
+              FoundNode(island, idx) = .TRUE.
+              counter = counter + 1
+              HasNeighbour = .TRUE.
+              NewNodes(idx) = .TRUE.
+            END DO
+          END DO
+        END DO
+      END DO
+
+      ALLOCATE(IslandCounts(10))
+      DO i=1,10
+        IslandCounts(i) = COUNT(FoundNode(i, :))
+      END DO
+      Island = COUNT(IslandCounts > 0)
+      DEALLOCATE(IslandCounts) ! reused
+
+      ! if iceberg not removed mark nodes and elems
+      IF(Island > 1) THEN
+        CALL WARN(SolverName, 'Mesh island found after levelset- removing...')
+        ALLOCATE(RmIslandNode(NNodes), RmIslandElem(Nbulk+NBdry),&
+                IslandCounts(Island))
+        RmIslandNode = .FALSE.
+        RmIslandElem = .FALSE.
+        counter=0
+        DO i=1, 10
+          IF(COUNT(FoundNode(i, :)) == 0) CYCLE
+          counter=counter+1
+          IslandCounts(counter) = COUNT(FoundNode(i, :))
+        END DO
+        DO i=1, Island
+          IF(IslandCounts(i) < MAXVAL(IslandCounts)) THEN
+            DO j=1, NNodes
+              IF(.NOT. FoundNode(i,j)) CYCLE! if not part of island
+              RmIslandNode(j) = .TRUE.
+            END DO
+          END IF
+        END DO
+        ! mark all elems with rm nodes as need removing
+        nodes = PACK((/ (i,i=1,SIZE(RmIslandNode)) /), RmIslandNode .eqv. .TRUE.)
+        DO i=1, Nbulk+Nbdry
+          Element => NewMeshR % Elements(i)
+          ElNodes = Element % NodeIndexes
+          !any([(any(A(i) == B), i = 1, size(A))])
+          IF( .NOT. ANY([(ANY(ElNodes(i)==Nodes), i = 1, SIZE(ElNodes))])) CYCLE
+          RmIslandElem(i) = .TRUE.
+        END DO
+
+        !Chop out missed iceberg if they exist
+        CALL CutMesh(NewMeshR, RmIslandNode, RmIslandElem)
+
+        !modify rmelem and rmnode to include island removal
+        counter=0
+        DO i=1, SIZE(RmElem)
+          IF(RmElem(i)) CYCLE
+          counter=counter+1
+          IF(RmIslandElem(Counter)) RmElem(i) =.TRUE.
+        END DO
+        counter=0
+        DO i=1, SIZE(RmNode)
+          IF(RmNode(i)) CYCLE
+          counter=counter+1
+          IF(RmIslandNode(Counter)) RmNode(i) =.TRUE.
+        END DO
+        CALL INFO(SolverName, 'Mesh island removed', level=10)
+      END IF
+
+    END IF ! CalvingOccurs
 
       DoAniso = .TRUE.
       IF(DoAniso .AND. CalvingOccurs) THEN
