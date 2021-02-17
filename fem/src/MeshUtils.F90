@@ -99,7 +99,7 @@ CONTAINS
         ALLOCATE(Element % PDefs, STAT=istat)
         IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
      ELSE
-       CALL Info('AllocatePDefinitions','P element definitions already allocated',Level=10)
+       CALL Info('AllocatePDefinitions','P element definitions already allocated',Level=22)
      END IF
 
      ! Initialize fields
