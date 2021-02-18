@@ -9,7 +9,7 @@ FILE(COPY ${PROJECT_SOURCE_DIR}/MMG2D_Transient/MESH_I0_J0  DESTINATION "${CMAKE
 FILE(REMOVE "TEST.PASSED")
 
 SET(ENV{ELMERSOLVER_BIN} "${ELMERSOLVER_BIN}")
-EXECUTE_PROCESS(COMMAND sh -c ". ./Script_Transient.sh" 
+EXECUTE_PROCESS(COMMAND bash -c ". ./Script_Transient.sh" 
 	        OUTPUT_FILE "test-stdout.log"
 		ERROR_FILE "test-stderr.log")
 
