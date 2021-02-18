@@ -224,7 +224,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   NULLIFY(OldVar)
   NoVar = 0
 
-  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
+  NormInd = ListGetInteger( SolverParams,'Show Norm Index',GotIt)
 
   debug = .FALSE.
 
@@ -350,6 +350,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     END IF
 
     IF( Oper == 'height' .OR. Oper == 'depth' .OR. Oper == 'index' .OR. Oper == 'distance') THEN
+      ReducedDimensional = .FALSE.
+    ELSE IF( ListGetLogical( SolverParams,'Project to everywhere',GotIt ) ) THEN
       ReducedDimensional = .FALSE.
     ELSE
       ReducedDimensional = .TRUE.
