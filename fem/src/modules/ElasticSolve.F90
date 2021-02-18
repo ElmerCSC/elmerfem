@@ -59,6 +59,9 @@ SUBROUTINE ElasticSolver_Init0( Model,Solver,dt,Transient )
   IF( MixedFormulation ) THEN
     CALL ListAddNewString( SolverParams, "Element", "p:2" )
   END IF
+  
+  CALL ListAddLogical( SolverParams,'Solid Solver',.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init0
 !------------------------------------------------------------------------------

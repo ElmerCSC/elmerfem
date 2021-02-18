@@ -41,7 +41,7 @@
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver: StressSolver. 
 !------------------------------------------------------------------------------
-SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
+SUBROUTINE StressSolver_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
@@ -166,8 +166,10 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
 
+    CALL ListAddLogical( SolverParams,'Solid Solver',.TRUE.)
+    
 !------------------------------------------------------------------------------
-  END SUBROUTINE StressSolver_Init
+  END SUBROUTINE StressSolver_Init0
 !------------------------------------------------------------------------------
 
 
