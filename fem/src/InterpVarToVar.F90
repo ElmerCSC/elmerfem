@@ -1179,7 +1179,8 @@ CONTAINS
     TYPE(Variable_t), POINTER :: HeightVar, Var
     TYPE(Element_t),POINTER :: Element
     LOGICAL :: Parallel, Debug, HasNeighbours
-    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), WorkMask(:,:), PartSuppNodeMask(:,:,:)
+    LOGICAL, ALLOCATABLE :: ValidNode(:), SuppNodeMask(:,:), WorkMask(:,:), PartSuppNodeMask(:,:,:), &
+         UseProc(:)
     REAL(KIND=dp) :: Point(3), SuppPoint(3), weight, Exponent, distance
     REAL(KIND=dp), ALLOCATABLE :: interpedValue(:), PartInterpedValues(:,:), &
          SuppNodeWeights(:), PartSuppNodeWeights(:,:), WorkArray(:), SumWeights(:),&
@@ -1299,6 +1300,11 @@ CONTAINS
     SuppNodes = PACK(WorkInt, WorkInt > 0)
     DEALLOCATE(WorkInt)
 
+    IF(NoSuppNodes == 0) THEN
+      WRITE(Message, '(i0,A,i0)') ParEnv % MyPE, 'NoSuppNodes = ',NoSuppNodes
+      CALL WARN('InterpVarToVar', Message)
+    END IF
+
     !share NoSuppNodes
     ALLOCATE(PartNoSuppNodes(NoNeighbours+1))
     PartNoSuppNodes(1) = NoSuppNodes
@@ -1309,6 +1315,17 @@ CONTAINS
       CALL MPI_RECV( PartNoSuppNodes(i+1) , 1, MPI_INTEGER, proc, &
         4000, ELMER_COMM_WORLD, status, ierr )
     END DO
+
+    ! an mpi_error can occur if one proc has zero supp nodes
+    ALLOCATE(UseProc(NoNeighbours+1))
+    UseProc = .TRUE. ! default is to use proc
+    IF(ANY(PartNoSuppNodes == 0)) THEN
+      DO i=1, NoNeighbours+1
+         IF(PartNoSuppNodes(i) == 0) UseProc(i) = .FALSE.
+      END DO
+      !reassign noneighbours to neighbours with suppnodes
+      NoNeighbours = COUNT(UseProc)-1
+    END IF
 
     !create suppnode mask and get node values
     ! get node weights too
@@ -1393,11 +1410,15 @@ CONTAINS
     PartSuppNodeMask(1,:NoSuppNodes,:) = SuppNodeMask
     DO i=1, NoNeighbours
       proc = NeighbourParts(i)
-      CALL MPI_BSEND( SuppNodeMask, NoSuppNodes*MaskCount, MPI_LOGICAL, proc, &
-        4001, ELMER_COMM_WORLD,ierr )
-      CALL MPI_RECV( PartSuppNodeMask(i+1,:PartNoSuppNodes(i+1),: ) , &
-        PartNoSuppNodes(i+1)*MaskCount, MPI_LOGICAL, proc, &
-        4001, ELMER_COMM_WORLD, status, ierr )
+      IF(UseProc(1)) THEN ! if this proc has supp nodes send
+        CALL MPI_BSEND( SuppNodeMask, NoSuppNodes*MaskCount, MPI_LOGICAL, proc, &
+          4001, ELMER_COMM_WORLD,ierr )
+      END IF
+      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
+        CALL MPI_RECV( PartSuppNodeMask(i+1,:PartNoSuppNodes(i+1),: ) , &
+          PartNoSuppNodes(i+1)*MaskCount, MPI_LOGICAL, proc, &
+          4001, ELMER_COMM_WORLD, status, ierr )
+      END If
     END DO
 
     !share interped value
@@ -1405,10 +1426,14 @@ CONTAINS
     PartInterpedValues(1,1:MaskCount) = InterpedValue
     DO i=1, NoNeighbours
       proc = NeighbourParts(i)
-      CALL MPI_BSEND( InterpedValue, MaskCount, MPI_DOUBLE_PRECISION, proc, &
-        4002, ELMER_COMM_WORLD,ierr )
-      CALL MPI_RECV( PartInterpedValues(i+1,:), MaskCount, MPI_DOUBLE_PRECISION, proc, &
-        4002, ELMER_COMM_WORLD, status, ierr )
+      IF(UseProc(1)) THEN ! if this proc has supp nodes send
+        CALL MPI_BSEND( InterpedValue, MaskCount, MPI_DOUBLE_PRECISION, proc, &
+          4002, ELMER_COMM_WORLD,ierr )
+      END IF
+      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
+        CALL MPI_RECV( PartInterpedValues(i+1,:), MaskCount, MPI_DOUBLE_PRECISION, proc, &
+          4002, ELMER_COMM_WORLD, status, ierr )
+      END IF
     END DO
 
     !share suppnode weights
@@ -1416,11 +1441,15 @@ CONTAINS
     PartSuppNodeWeights(1,1:NoSuppNodes) = SuppNodeWeights
     DO i=1, NoNeighbours
       proc = NeighbourParts(i)
-      CALL MPI_BSEND( SuppNodeWeights, NoSuppNodes, MPI_DOUBLE_PRECISION, proc, &
-        4003, ELMER_COMM_WORLD,ierr )
-      CALL MPI_RECV( PartSuppNodeWeights(i+1,1:PartNoSuppNodes(i+1)), &
-        PartNoSuppNodes(i+1), MPI_DOUBLE_PRECISION, proc, &
-        4003, ELMER_COMM_WORLD, status, ierr )
+      IF(UseProc(1)) THEN ! if this proc has supp nodes send
+        CALL MPI_BSEND( SuppNodeWeights, NoSuppNodes, MPI_DOUBLE_PRECISION, proc, &
+          4003, ELMER_COMM_WORLD,ierr )
+      END IF
+      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
+        CALL MPI_RECV( PartSuppNodeWeights(i+1,1:PartNoSuppNodes(i+1)), &
+          PartNoSuppNodes(i+1), MPI_DOUBLE_PRECISION, proc, &
+          4003, ELMER_COMM_WORLD, status, ierr )
+      END IF
     END DO
 
     !calculate interped values
