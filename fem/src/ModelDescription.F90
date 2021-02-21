@@ -3727,7 +3727,7 @@ CONTAINS
       IF( ListGetLogical( ResList,'Restart Error Continue',Found ) ) THEN
         ! This partition does not have a mesh
         IF( iostat /= 0 ) RETURN 
-      ELSE IF( FileCount == 0 ) THEN
+      ELSE IF( iostat /= 0 ) THEN
         CALL Error( Caller,'=======================================' )
         CALL Error( Caller,'' )
         CALL Error( Caller,'Could not open parallel restart file "'//TRIM(FName)//'"' )
