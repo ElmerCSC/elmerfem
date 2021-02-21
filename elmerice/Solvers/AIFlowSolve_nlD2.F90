@@ -433,7 +433,7 @@
 !------------------------------------------------------------------------------
          CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
       END DO
-
+      CALL DefaultFinishBulkAssembly()
       CALL Info( 'AIFlowSolve', 'Assembly done', Level=4 )
 
 !------------------------------------------------------------------------------
@@ -516,7 +516,7 @@
          END IF
       END DO
 !------------------------------------------------------------------------------
-
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------

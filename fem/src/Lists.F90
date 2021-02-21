@@ -3798,19 +3798,19 @@ use spariterglobals
            IF ( ASSOCIATED(Element) ) THEN
              k1 = 0
              IF ( ASSOCIATED(Element % DGIndexes) ) THEN
-               n = Element % TYPE % NumberOfNodes
-               IF ( SIZE(Element % DGIndexes)==n ) THEN
-                 DO i=1,n
-                   IF ( Element % NodeIndexes(i)==ind ) THEN
-                     k1 = Element % DGIndexes(i)
-                     EXIT
-                   END IF
-                 END DO
-               END IF
+               n = SIZE(Element % DGIndexes)
+               DO i=1,n
+                 IF ( Element % NodeIndexes(i)==ind ) THEN
+                   k1 = Element % DGIndexes(i)
+                   EXIT
+                 END IF
+               END DO
+             ELSE
+               CALL Fatal('VarsToValuesOnNodes','DG field requires DGIndexes: '//TRIM(Var % Name))              
              END IF
              IF( k1 == 0 ) THEN
                CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
-                   ' in element '//TRIM(I2S(Element % ElementIndex)))
+                   ' in element '//TRIM(I2S(Element % ElementIndex))//' for '//TRIM(Var % Name))
              END IF
            ELSE
              CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
@@ -3957,15 +3957,13 @@ use spariterglobals
          Element => CurrentModel % CurrentElement
          IF ( ASSOCIATED(Element) ) THEN
            IF ( ASSOCIATED(Element % DGIndexes) ) THEN
-             n = Element % TYPE % NumberOfNodes
-             IF ( SIZE(Element % DGIndexes)==n ) THEN
-               DO i=1,n
-                 IF ( Element % NodeIndexes(i)==ind ) THEN
-                   k1 = Element % DGIndexes(i)
-                   EXIT
-                 END IF
-               END DO
-             END IF
+             n =  SIZE(Element % DGIndexes)
+             DO i=1,n
+               IF ( Element % NodeIndexes(i)==ind ) THEN
+                 k1 = Element % DGIndexes(i)
+                 EXIT
+               END IF
+             END DO
            END IF
          END IF
        END IF
