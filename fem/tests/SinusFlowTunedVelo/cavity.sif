@@ -34,7 +34,7 @@ Run Control
   Initial Step Size = Real 1.0e-3
   Max Step Size = Real 1.0
 ! For this linear case we would find the optimum with one shot.
-! This would be more usefull in nonlinear cases...
+! This would be more useful in nonlinear cases...
   Step Size Relaxation Factor = Real 0.8
 
 ! This is a design task with the goal flx=1.0

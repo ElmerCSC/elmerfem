@@ -617,7 +617,7 @@ CONTAINS
          k = Cols(j)
          s2 = Set(k)
          IF( s1 * s2 < 0 ) THEN
-           ! The diagonal needs also to be compensated for the cutted connections.
+           ! The diagonal needs also to be compensated for the cut connections.
            ! For Laplace operator the row sum is known to be zero. 
            A % BulkValues(dia) = A % BulkValues(dia) + A % BulkValues(j)
            A % BulkValues(j) = 0.0_dp

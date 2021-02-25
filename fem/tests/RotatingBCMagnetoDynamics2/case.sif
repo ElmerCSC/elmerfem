@@ -3,7 +3,7 @@
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
 ! an optional skew of 20 degrees in the rotor. 
-! Increse number of extruded layers for better accuracy. 
+! Increase number of extruded layers for better accuracy. 
 !
 ! This test case uses a level projector which assumes that 
 ! the extruded layers are at constant z-levels.

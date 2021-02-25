@@ -4707,7 +4707,7 @@ END SUBROUTINE ElasticSolver
           'Normal Force', En, Edge % NodeIndexes, GotIt )
 
 !       If dirichlet BC for displacement in any direction given,
-!       nullify force in that directon:
+!       nullify force in that direction:
 !       ------------------------------------------------------------------
         Dir = 1.0d0
         s = ListGetConstReal( Model % BCs(j) % Values, 'Displacement 1', GotIt )

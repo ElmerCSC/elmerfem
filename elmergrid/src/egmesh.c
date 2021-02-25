@@ -5958,7 +5958,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     printf("CreateKnotsExtruded: not implemented for elementtypes %d!\n",origtype);
     return;
   }
-  printf("Maxium elementtype %d extruded to type %d.\n",origtype,elemtype);
+  printf("Maximum elementtype %d extruded to type %d.\n",origtype,elemtype);
 
   nonodes2d = origtype%100;
   data->maxnodes = nonodes3d = elemtype%100;
@@ -7549,7 +7549,7 @@ void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
 
   AllocateBoundary(bound,sideelements);
   
-  /* Calculate how may times a node apppears */
+  /* Calculate how may times a node appears */
   possible = Ivector(1,noknots);
   for(i=1;i<=noknots;i++) possible[i] = 0; 
   for(elemind=1;elemind <= data->noelements;elemind++) { 

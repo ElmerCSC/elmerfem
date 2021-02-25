@@ -5656,7 +5656,7 @@ CONTAINS
             
       DO ind=1,BMesh1 % NumberOfBulkElements        
         
-        ! Optionally save the submesh for specified element, for vizualization and debugging
+        ! Optionally save the submesh for specified element, for visualization and debugging
         SaveElem = ( SaveInd == ind )
         DebugElem = ( DebugInd == ind )
 
@@ -9073,7 +9073,7 @@ CONTAINS
               
       DO ind=1,BMesh1 % NumberOfBulkElements
 
-        ! Optionally save the submesh for specified element, for vizualization and debugging
+        ! Optionally save the submesh for specified element, for visualization and debugging
         SaveElem = ( SaveInd == ind )
         DebugElem = ( DebugInd == ind )
 
@@ -10238,7 +10238,7 @@ CONTAINS
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
-        ! Optionally save the submesh for specified element, for vizualization and debugging
+        ! Optionally save the submesh for specified element, for visualization and debugging
         SaveElem = ( SaveInd == ind )
 
         Element => BMesh1 % Elements(ind)        
@@ -22148,7 +22148,7 @@ CONTAINS
     arr(n+1)=arr(n)+indi
   END SUBROUTINE ComputeCRSIndexes
 
-  !> Calcalate body average for a discontinuous galerkin field.
+  !> Calculate body average for a discontinuous galerkin field.
   !> The intended use is in conjunction of saving the results. 
   !> This tampers the field and therefore may have unwanted side effects
   !> if the solution is to be used for something else too.
