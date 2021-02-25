@@ -600,7 +600,7 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Local variables
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: WriteToFile(6)=.FALSE., Found
+  LOGICAL :: WriteIPVar(6)=.FALSE., Found
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostIPOutput_init'
 
   
@@ -609,20 +609,20 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
 
   SolverParams => GetSolverParams()
-  WriteToFile(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
-  WriteToFile(2)=ListGetLogical(SolverParams,"Export mugw",Found)
-  !WriteToFile(3)=ListGetLogical(SolverParams,"Export ",Found)
-  !WriteToFile(4)=ListGetLogical(SolverParams,"Export ",Found)
-  !WriteToFile(5)=ListGetLogical(SolverParams,"Export ",Found)
-  !WriteToFile(6)=ListGetLogical(SolverParams,"Export ",Found)
+  WriteIPVar(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
+  WriteIPVar(2)=ListGetLogical(SolverParams,"Export mugw",Found)
+  !WriteIPVar(3)=ListGetLogical(SolverParams,"Export ",Found)
+  !WriteIPVar(4)=ListGetLogical(SolverParams,"Export ",Found)
+  !WriteIPVar(5)=ListGetLogical(SolverParams,"Export ",Found)
+  !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
 
-  IF(WriteToFile(1)) THEN 
+  IF(WriteIPVar(1)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
          "-IP -dofs 1 rhogw")
     CALL INFO(SolverName,'Added rhogw as variable',Level=5)
   END IF
-    IF(WriteToFile(1)) THEN 
+    IF(WriteIPVar(1)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
          "-IP -dofs 1 mugw")
@@ -654,7 +654,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found, FirstTime=.TRUE., AllocationsDone=.FALSE., FluxOutput = .FALSE.,&
        ComputeDt=.FALSE.,ElementWiseRockMaterial, DepthExists=.FALSE.,&
        InitializeSteadyState=.FALSE.,ActiveMassMatrix=.TRUE.,&
-       WriteToFile(6)=.FALSE.
+       WriteIPVar(6)=.FALSE.
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: VariableBaseName(:)
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostIPOutput'
   CHARACTER(LEN=MAX_NAME_LEN) :: PressureName, PorosityName, SalinityName, GWfluxName, PhaseChangeModel,&
@@ -706,12 +706,12 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   
   !CALL DefaultStart()
   SolverParams => GetSolverParams()
-  WriteToFile(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
-  WriteToFile(2)=ListGetLogical(SolverParams,"Export mugw",Found)
-  !WriteToFile(3)=ListGetLogical(SolverParams,"Export ",Found)
-  !WriteToFile(4)=ListGetLogical(SolverParams,"Export ",Found)
-  !WriteToFile(5)=ListGetLogical(SolverParams,"Export ",Found)
-  !WriteToFile(6)=ListGetLogical(SolverParams,"Export ",Found)
+  WriteIPVar(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
+  WriteIPVar(2)=ListGetLogical(SolverParams,"Export mugw",Found)
+  !WriteIPVar(3)=ListGetLogical(SolverParams,"Export ",Found)
+  !WriteIPVar(4)=ListGetLogical(SolverParams,"Export ",Found)
+  !WriteIPVar(5)=ListGetLogical(SolverParams,"Export ",Found)
+  !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
   
   Active = GetNOFActive()
     DO t=1,Active
@@ -756,13 +756,13 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
         CALL INFO(SolverName,Message,Level=9)
       END IF
 
-      CALL SetIPValues(  Element, t, Active, n, nd+nb, WriteToFile,&
+      CALL SetIPValues(  Element, t, Active, n, nd+nb, WriteIPVar,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial)
     END DO
 CONTAINS
   SUBROUTINE SetIPValues(Element, ElementID, NoElements, n, nd,&
-       WriteToFile, CurrentSoluteMaterial, CurrentSolventMaterial,&
+       WriteIPVar, CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial)
      IMPLICIT NONE
     !------------------------------------------------------------------------------
@@ -770,7 +770,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
-    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial, WriteToFile(6)
+    LOGICAL, INTENT(IN) :: ElementWiseRockMaterial, WriteIPVar(6)
     CHARACTER(LEN=MAX_NAME_LEN) :: PhaseChangeModel
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: DepthAtIP,RefDepth,CGTTAtIP, CgwTTAtIP, CGTpAtIP, CGTycAtIP,KGTTAtIP(3,3)   ! needed in equation
@@ -826,7 +826,7 @@ CONTAINS
     XiAtIPPerm => XiAtIPVar % Perm
     XiAtIp => XiAtIPVar % Values
 
-    IF (WriteToFile(1)) THEN
+    IF (WriteIPVar(1)) THEN
       rhogwAtIPVar => VariableGet( Solver % Mesh % Variables, 'rhogw')
       IF (.NOT.ASSOCIATED(rhogwAtIPVar)) THEN
         WRITE(Message,*) 'Variable "rhogw" is not associated'
@@ -836,7 +836,7 @@ CONTAINS
       rhogwAtIP => rhogwAtIPVar % Values
     END IF
 
-    IF (WriteToFile(2)) THEN
+    IF (WriteIPVar(2)) THEN
       mugwAtIPVar => VariableGet( Solver % Mesh % Variables, 'mugw')
       IF (.NOT.ASSOCIATED(mugwAtIPVar)) THEN
         WRITE(Message,*) 'Variable "mugw" is not associated'
@@ -932,12 +932,21 @@ CONTAINS
              XiAtIP(IPPerm),XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
              .FALSE.,.TRUE.,.FALSE.,.TRUE.,.FALSE.)
       END SELECT
-      IF (WriteToFile(1)) THEN
+
+      ! compute salt density
+      IF (NoSalinity) THEN
+        rhocAtIP    = 0.0_dp
+      ELSE
+        rhocAtIP    = rhoc(CurrentSoluteMaterial,T0,p0,XiAtIP(IPPerm),TemperatureAtIP,PressureAtIP,SalinityAtIP,ConstVal)
+      END IF
+
+      ! compute values for output
+      IF (WriteIPVar(1)) THEN
         rhowAtIP  = rhowupdate(CurrentSolventMaterial,rhowAtIP,XiAtIP(IPPerm),SalinityAtIP,ConstVal)
          
         rhogwAtIP(rhogwAtIPPerm(ElementID) +t) = rhogw(rhowAtIP,rhocAtIP,XiAtIP(IPPerm),SalinityAtIP)
       END IF
-      IF (WriteToFile(2)) THEN
+      IF (WriteIPVar(2)) THEN
         mugwAtIP(mugwATIPPerm(ElementID) +t) = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       END IF
