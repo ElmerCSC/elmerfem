@@ -22,7 +22,7 @@ The variable that contains the derivative must exist.
 To be consistent with other solvers it should be named *velocityb* if the model variable is *Flow Solution* (i.e. solving Stokes) or *ssavelocity* (i.e. solving SSA), or *Varb* for other direct equations (where *Var* is the name of the direct solver variable). 
 It's dimension should be consistent with the dimension of the Model Variable. The derivative of the cost function should also be provided by the user in the Body Force and should provide the exact derivative of the Cost with respect to the given componenet of the direct variable.
 
-Be carefull, this solver will reset the values of the cost and sensitivity to 0; so that it must be used in first place in an assimilation sequence.
+Be careful, this solver will reset the values of the cost and sensitivity to 0; so that it must be used in first place in an assimilation sequence.
 
 In general this solver will be executed on the whole mesh for vertically integrated models or on the upper free surface
 for a 3D model and 2D surface observations.

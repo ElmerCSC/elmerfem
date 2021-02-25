@@ -11346,7 +11346,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: PreSolve
     LOGICAL, OPTIONAL :: NoSolve
     !------------------------------------------------------------------------------
-    ! We have a special stucture for the iterates and residuals so that we can
+    ! We have a special structure for the iterates and residuals so that we can
     ! cycle over the pointers instead of the values. 
     TYPE AndersonVect_t
       LOGICAL :: Additive
@@ -14042,7 +14042,7 @@ END FUNCTION SearchNodeL
 
       CALL LinearSystemResidual( A, b, x, res )
       bb => res
-      ! Set the initial guess for the redidual system to zero
+      ! Set the initial guess for the residual system to zero
       x = 0.0_dp
     ELSE
       bb => b
@@ -16754,7 +16754,7 @@ CONTAINS
     END IF
 
     IF(.NOT. ASSOCIATED( A ) ) THEN
-      CALL Fatal(Caller,'Matrix not assciated!')
+      CALL Fatal(Caller,'Matrix not associated!')
     END IF
 
     SaveMass = ListGetLogical( Params,'Linear System Save Mass',Found)
@@ -20622,7 +20622,7 @@ CONTAINS
          nd = LEN_TRIM(OutputDirectory)
        END IF
        ! To be on the safe side create the directory. If it already exists no harm done.
-       ! Note that only one direcory may be created. Hence if there is a path with many subdirectories
+       ! Note that only one directory may be created. Hence if there is a path with many subdirectories
        ! that will be a problem. Fortran does not have a standard ENQUIRE for directories hence
        ! we just try to make it. 
        IF( DoDir ) THEN

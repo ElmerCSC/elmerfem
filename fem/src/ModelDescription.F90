@@ -3140,7 +3140,7 @@ CONTAINS
     END DO
 
 
-    ! This is intended to simplify the setting up of command file for structure-stucture
+    ! This is intended to simplify the setting up of command file for structure-structure
     ! coupling. In effect only one keyword should be needed for the coupling.
     ! This hack is of course prone to errors if the underlaying assumptions change. 
     DO i=1,Model % NumberOfSolvers
@@ -5973,12 +5973,12 @@ END SUBROUTINE GetNodalElementSize
      PRINT *,'Parameters:',NoParam,Param
    END IF
 
-   ! Set parametes to be accessible to the MATC preprocessor when reading sif file. 
+   ! Set parameters to be accessible to the MATC preprocessor when reading sif file.
    CALL SetRealParametersMATC(NoParam,Param)
 
    CALL Info(Caller, '-----------------------------------------', Level=5 )
 
-   
+
  CONTAINS
 
 

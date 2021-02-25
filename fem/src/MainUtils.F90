@@ -3236,7 +3236,7 @@ CONTAINS
 !> This is a line of monolithic solvers where different physics and constraints 
 !> are assemblied to the same matrix.
 !> Provide assembly loop and solution of linear and nonlinear systems
-!> This routine uses minimalistic assmebly routines to create the 
+!> This routine uses minimalistic assembly routines to create the 
 !> matrices. Often the results to less labour in coding which may be 
 !> comprimized by less flexibility.
 ! 
