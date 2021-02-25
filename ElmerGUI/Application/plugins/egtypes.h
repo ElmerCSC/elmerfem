@@ -341,6 +341,7 @@ struct ElmergridType {
     cylinder,
     unitemeshes,
     reduce,
+    multidim, 
     removelowdim,
     removeunused,
     removeintbcs,

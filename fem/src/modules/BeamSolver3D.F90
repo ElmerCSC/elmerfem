@@ -77,6 +77,8 @@ SUBROUTINE TimoshenkoSolver_Init0(Model, Solver, dt, Transient)
   CALL ListAddNewString(SolverPars, 'Element', 'p:1 b:1')
 
   CALL ListAddLogical(SolverPars, 'Bubbles in Global System', .FALSE.)
+
+  CALL ListAddNewLogical(SolverPars,'Beam Solver',.TRUE.)
 !------------------------------------------------------------------------------
 END SUBROUTINE TimoshenkoSolver_Init0
 !------------------------------------------------------------------------------

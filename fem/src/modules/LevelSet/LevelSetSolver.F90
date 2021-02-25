@@ -35,8 +35,8 @@
 ! *****************************************************************************/
  !------------------------------------------------------------------------------
 !>  Solve the advection equation for the Levelset-function using stabilization
-!>  or bubbless. For the accuracy it is advisable to use 2nd order time-stepping
-!>  and courant number smaller than one. 
+!>  or bubbles. For the accuracy it is advisable to use 2nd order time-stepping
+!>  and Courant number smaller than one. 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
    SUBROUTINE LevelSetSolver( Model,Solver,Timestep,TransientSimulation )

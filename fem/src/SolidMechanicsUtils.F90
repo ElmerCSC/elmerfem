@@ -146,9 +146,16 @@ CONTAINS
     Shear_Modulus(1:n) = GetReal(Material, 'Shear Modulus', Found)
     Area(1:n) = GetReal(Material, 'Cross Section Area', Found)
     Torsional_Constant(1:n) = GetReal(Material, 'Torsional Constant', Found)
-    Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area 2', Found)
-    Area_Moment_3(1:n) = GetReal(Material, 'Second Moment of Area 3', Found)
 
+    ! If we don't give the moment of area component-wise it is assumed to be the same
+    Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area', Found)
+    IF( Found ) THEN
+      Area_Moment_3(1:n) = Area_Moment_2(1:n)
+    ELSE
+      Area_Moment_2(1:n) = GetReal(Material, 'Second Moment of Area 2', Found)
+      Area_Moment_3(1:n) = GetReal(Material, 'Second Moment of Area 3', Found)
+    END IF
+      
     IF (MassAssembly) THEN
       Density(1:n) = GetReal(Material, 'Density', Found)
     END IF
@@ -189,12 +196,14 @@ CONTAINS
         END DO
         Norm = SQRT(SUM(e2(:)**2))
         e2 = 1.0_dp/Norm * e2     
+        e3 = CrossProduct(e1, e2)
       ELSE
-        e2 = -ZBasis
+        !e2 = -ZBasis
+        !e3 = CrossProduct(e1, e2)
+        CALL TangentDirections( e1, e2, e3 ) 
       END IF
       IF (ABS(DOT_PRODUCT(e1,e2)) > 100.0_dp * AEPS) CALL Fatal('BeamStiffnessMatrix', &
           'Principal Direction 2 should be orthogonal to the beam axis')
-      e3 = CrossProduct(e1, e2)
     END IF
 
  

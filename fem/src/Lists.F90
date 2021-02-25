@@ -123,19 +123,20 @@ CONTAINS
      CHARACTER(LEN=*) :: Equation
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
 !------------------------------------------------------------------------------
-     INTEGER i,j,l,t,n,e,k,k1,EDOFs, FDOFs, BDOFs, ndofs, el_id
+     INTEGER i,j,l,t,n,e,k,k1, MaxNDOFs, EDOFs, FDOFs, BDOFs, ndofs, el_id
      INTEGER :: Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
      LOGICAL :: FoundDG, DG, DB, GB, Found, Radiation
      TYPE(Element_t),POINTER :: Element, Edge, Face
      CHARACTER(*), PARAMETER :: Caller = 'InitialPermutation'
- !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
      Perm = 0
      k = 0
      EDOFs = Mesh % MaxEdgeDOFs
      FDOFs = Mesh % MaxFaceDOFs
      BDOFs = Mesh % MaxBDOFs
+     MaxNDOFs = Mesh % MaxNDOFs
 
      GB = .FALSE.
      IF ( PRESENT(GlobalBubbles) ) GB=GlobalBubbles
@@ -383,15 +384,19 @@ CONTAINS
 
        el_id = Element % TYPE % ElementCode / 100
        Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
-       ndofs = Element % NDOFs
-       IF ( Def_Dofs(1) >= 0 ) ndofs=Def_Dofs(1)*Element % TYPE % NumberOfNodes
-       DO i=1,ndofs
-         j = Element % NodeIndexes(i)
-         IF ( Perm(j) == 0 ) THEN
-           k = k + 1
-           Perm(j) = k
-         END IF
-       END DO
+       
+       ndofs = Def_Dofs(1)
+       IF (ndofs > 0) THEN
+         DO i=1,Element % TYPE % NumberOfNodes
+           DO j=1,ndofs
+             l = MaxNDOFs * (Element % NodeIndexes(i)-1) + j
+             IF ( Perm(l) == 0 ) THEN
+               k = k + 1
+               Perm(l) =  k
+             END IF
+           END DO
+         END DO
+       END IF
 
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
           DO i=1,Element % TYPE % NumberOfEdges
@@ -406,7 +411,7 @@ CONTAINS
              END IF
 
              DO e=1,ndofs
-                j = Mesh % NumberOfNodes + EDOFs*(Element % EdgeIndexes(i)-1) + e
+                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*(Element % EdgeIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
                    Perm(j) =  k
@@ -445,7 +450,7 @@ CONTAINS
              END IF
 
              DO e=1,ndofs
-                j = Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+                j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                           FDOFs*(Element % FaceIndexes(i)-1) + e
                 IF ( Perm(j) == 0 ) THEN
                    k = k + 1
@@ -465,7 +470,7 @@ CONTAINS
          END IF
 
          DO i=1,ndofs
-            j = Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+            j = MaxNDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                  FDOFs*Mesh % NumberOfFaces + Element % BubbleIndexes(i)
             IF ( Perm(j) == 0 ) THEN
                k = k + 1
@@ -629,6 +634,65 @@ CONTAINS
     END FUNCTION StringToLowerCase
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Inserts totally legit variable to variable list.
+!------------------------------------------------------------------------------
+    SUBROUTINE VariableAppend( Variables,NewVar)
+!------------------------------------------------------------------------------
+      TYPE(Variable_t), POINTER :: Variables
+      TYPE(Variable_t), POINTER :: NewVar
+!------------------------------------------------------------------------------
+      LOGICAL :: stat
+      TYPE(Variable_t), POINTER :: ptr,ptr1
+      LOGICAL :: Hit
+      INTEGER :: n,n1
+      CHARACTER(*), PARAMETER :: Caller = 'VariableAppend'
+!------------------------------------------------------------------------------
+
+            
+      CALL Info(Caller,'Inserting variable > '//TRIM(NewVar % Name)//&
+          ' < of size '//TRIM(I2S(SIZE(NewVar % Values))),Level=15)
+
+      IF ( .NOT.ASSOCIATED(NewVar) ) THEN
+        CALL Warn(Caller,'Cannot insert null variable to list!')
+        RETURN
+      END IF
+
+      IF ( .NOT.ASSOCIATED(Variables) ) THEN
+        CALL Warn(Caller,'Cannot insert variable to empty list!')
+        RETURN
+      END IF
+
+      n1 = LEN_TRIM( NewVar % Name ) 
+
+      
+      Hit = .FALSE.
+      ptr => Variables
+      DO WHILE( ASSOCIATED( ptr ) )
+        n = LEN_TRIM( ptr % Name )
+        IF ( n == n1 ) THEN
+          IF ( ptr % Name(1:n) == NewVar % Name(1:n) ) THEN
+            Hit = .TRUE.
+            EXIT
+          END IF
+        END IF
+        ptr1 => ptr
+        ptr => ptr % Next
+      END DO
+
+      IF( Hit ) THEN
+        CALL Info(Caller,'Found variable in list: '//TRIM(NewVar % Name))
+      ELSE
+        CALL Info(Caller,'Append existing variable to end of list: '//TRIM(NewVar % Name))
+        ptr1 % Next => NewVar
+        NewVar % Next => NULL()
+      END IF
+
+    END SUBROUTINE VariableAppend
+ !------------------------------------------------------------------------------
+     
+  
 
 !------------------------------------------------------------------------------
 !> Adds a new variable to the list of variables. 
@@ -3734,19 +3798,19 @@ use spariterglobals
            IF ( ASSOCIATED(Element) ) THEN
              k1 = 0
              IF ( ASSOCIATED(Element % DGIndexes) ) THEN
-               n = Element % TYPE % NumberOfNodes
-               IF ( SIZE(Element % DGIndexes)==n ) THEN
-                 DO i=1,n
-                   IF ( Element % NodeIndexes(i)==ind ) THEN
-                     k1 = Element % DGIndexes(i)
-                     EXIT
-                   END IF
-                 END DO
-               END IF
+               n = SIZE(Element % DGIndexes)
+               DO i=1,n
+                 IF ( Element % NodeIndexes(i)==ind ) THEN
+                   k1 = Element % DGIndexes(i)
+                   EXIT
+                 END IF
+               END DO
+             ELSE
+               CALL Fatal('VarsToValuesOnNodes','DG field requires DGIndexes: '//TRIM(Var % Name))              
              END IF
              IF( k1 == 0 ) THEN
                CALL Fatal('VarsToValueOnNodes','Could not find index '//TRIM(I2S(ind))//&
-                   ' in element '//TRIM(I2S(Element % ElementIndex)))
+                   ' in element '//TRIM(I2S(Element % ElementIndex))//' for '//TRIM(Var % Name))
              END IF
            ELSE
              CALL Fatal('VarsToValuesOnNodes','CurrentElement not associated!')
@@ -3893,15 +3957,13 @@ use spariterglobals
          Element => CurrentModel % CurrentElement
          IF ( ASSOCIATED(Element) ) THEN
            IF ( ASSOCIATED(Element % DGIndexes) ) THEN
-             n = Element % TYPE % NumberOfNodes
-             IF ( SIZE(Element % DGIndexes)==n ) THEN
-               DO i=1,n
-                 IF ( Element % NodeIndexes(i)==ind ) THEN
-                   k1 = Element % DGIndexes(i)
-                   EXIT
-                 END IF
-               END DO
-             END IF
+             n =  SIZE(Element % DGIndexes)
+             DO i=1,n
+               IF ( Element % NodeIndexes(i)==ind ) THEN
+                 k1 = Element % DGIndexes(i)
+                 EXIT
+               END IF
+             END DO
            END IF
          END IF
        END IF
@@ -7915,6 +7977,7 @@ use spariterglobals
     Var => Variables
 
     DO WHILE( ASSOCIATED( Var ) )
+
       ! Skip if variable is not active for saving       
       IF ( .NOT. Var % Output ) THEN
         Var => Var % Next
@@ -7937,7 +8000,7 @@ use spariterglobals
         CONTINUE
 
       END IF
-
+      
       ! Skip if variable is otherwise strange in size
       IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
         IF( Var % TYPE == Variable_on_nodes ) THEN
@@ -7952,7 +8015,7 @@ use spariterglobals
           END IF         
         END IF
       END IF
-
+      
       VarDim = Var % Dofs
       IsVector = (VarDim > 1)
       Set = .FALSE.

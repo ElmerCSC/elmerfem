@@ -637,16 +637,16 @@ void GetBoundaryElement(int sideind,struct BoundaryType *bound,struct FemType *d
 
   /*GetElementSide(elemind2,side,1,data,&sideind2[0],&sideelemtype2); */
 
-  if(element) {    
+  if(element) {
     side = bound->side[sideind];
     normal = bound->normal[sideind];
-
     GetElementSide(element,side,normal,data,ind,sideelemtype);
   }
   else {
     *sideelemtype = bound->elementtypes[sideind];
 
     n = *sideelemtype % 100;
+    
     for(i=0;i<n;i++)
       ind[i] = bound->topology[sideind][i];
 
@@ -4180,7 +4180,9 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
   if(noelements < 1) return(1);
 
   elemtype = GetMaxElementType(data);
+
   maxelemdim = GetElementDimension(elemtype);
+
   if(info) printf("Maximum elementtype is %d and dimension %d\n",elemtype,maxelemdim);
   
   elemtype = GetMinElementType(data);
@@ -4199,9 +4201,12 @@ int RemoveLowerDimensionalBoundaries(struct FemType *data,struct BoundaryType *b
 
       oldnosides++;
       parent =  bound[j].parent[i];
-      side = bound[j].side[i];
-      GetElementSide(parent,side,1,data,sideind,&sideelemtype);
 
+      side = bound[j].side[i];
+
+      GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype);
+      /* Old: GetElementSide(parent,side,1,data,sideind,&sideelemtype); */
+      
       elemdim = GetElementDimension(sideelemtype);
 
       /* if(maxelemdim - elemdim > 1) continue; */
@@ -7128,7 +7133,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   for(elemind=1;elemind <= data->noelements;elemind++) { 
     /* if(moveelement[elemind]) continue; */
     elemtype = data->elementtypes[elemind];
-    if(elemtype < 200 ) continue;
+    if(elemtype < 200 ) continue; 
     for(i=0;i<data->elementtypes[elemind]%100;i++) {
       j = data->topology[elemind][i];
       possible[j] += 1;
@@ -7172,7 +7177,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   /* Go through boundary element candidates starting from higher dimension */
   for(loopdim=elemdim-1;loopdim>=0;loopdim--) {
 
-    if(0) printf("loopdim = %d\n",loopdim);
+    if(debug) printf("loopdim = %d\n",loopdim);
     
     for(elemind=1;elemind <= data->noelements;elemind++) {
 
@@ -7203,7 +7208,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	
 	elemtype = data->elementtypes[elemind2];
 	elemdim2 = GetElementDimension(elemtype);
-
+	
 	/* Owner element should have highger dimension */
 	if(elemdim2 <= sideelemdim ) continue;
 
@@ -7218,16 +7223,13 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	if(hit >= sidenodes) elemhits++;
 	
 	for(side=0;side<=100;side++) {	  
-	  if(0) printf("elem1=%d l=%d elem2=%d side=%d\n",elemind,l,elemind2,side);
-	  
 	  GetElementSide(elemind2,side,1,data,&sideind2[0],&sideelemtype2);
 	  
-	  if(0) printf("elemtype=%d sidelemtype=%d %d\n",
-			   elemtype,sideelemtype,sideelemtype2);
-	  
 	  if(sideelemtype2 == 0 ) break;
+
 	  if(sideelemtype2 < 300 && sideelemtype > 300) break;	
 	  if(sideelemtype2 < 200 && sideelemtype > 200) break;		
+	  if(sideelemtype2 != sideelemtype ) continue;	  
 
 	  sidenodes2 = sideelemtype2 % 100;	
 	  if(sidenodes != sidenodes2) continue;
@@ -7246,9 +7248,15 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	    continue;
 	  }
 	}
-
-	if(hit < sidenodes ) {
-	  printf("Preliminary hit but not really: %d %d\n",hit,sidenodes);
+	if( sidenodes == 1 && !hit) {
+	  printf("elemind = %d sideind %d vs. ",elemind,sideind[0]);
+	  for(j=0;j<sidenodes2;j++) 
+	    printf("%d ",sideind2[j]);
+	  printf("\n");						 
+	}
+	
+	if(hit < sidenodes || !sideelemtype2) {
+	  if(0) printf("Preliminary hit but not really: %d %d\n",hit,sidenodes);
 	  continue;
 	}
 	  
@@ -7263,7 +7271,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	else {
 	  sideelem += 1;
 	  same = TRUE;
-	  if(debug) printf("  Found 1st: %d %d %d\n",elemind,elemind2,side);
+	  if(debug) printf("  Found 1st: %d %d %d %d %d\n",elemind,elemind2,side,sideelemtype,sideelemtype2);
 
 	  bound->parent[sideelem] = elemind2;
 	  bound->side[sideelem] = side;
@@ -7289,10 +7297,10 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	}
       }
       
-      if(!same) {	
+      if(!same) {			
 	/* If the element is of dimension DIM-1 then create a table showing where they are */
 	if(retainorphans ) {
-	  /* If we have only one degree smaller elements then make them bulk elements. */
+	  /* If we have only one degree smaller unfound element then keep them as bulk elements. */
 	  if( moveelement[elemind] == 1) {	
 	    moveelement[elemind] = 0;
 	    lowdimbulk++;
@@ -7308,7 +7316,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	    notfounds[elemind] = TRUE;
 
 	    if(0) {
-	      printf("element: index = %d type = %d nodes = %d elemhits = %d\n",
+	      printf("element: elemind = %d type = %d nodes = %d elemhits = %d\n",
 		     elemind,sideelemtype,sidenodes,elemhits);
 	      printf("         inds =");
 	      for(i=0;i<sidenodes;i++)
@@ -7351,7 +7359,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
     
     printf("Removing %d lower dimensional elements from the element list\n",removed);
     if(notfound) {
-      printf("************************** WARNING **********************\n");
+      if(0) printf("************************** WARNING **********************\n");
       if(retainorphans) {
 	printf("Adding %d elements to boundary without parent information\n",notfound);
 	
@@ -7363,14 +7371,18 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	for(elemind=1;elemind <= data->noelements;elemind++) {
 	  if(!notfounds[elemind]) continue;
 	  sideelem++;
+
 	  j = data->elementtypes[elemind];
-	  bound->elementtypes[sideelem] = j;
+	  bound->elementtypes[sideelem] = j;	  
+
 	  for(i=0;i<j%100;i++)
 	    bound->topology[sideelem][i] = data->topology[elemind][i];
 	  
 	  /* Adding some constant here could be used for debugging */
 	  bound->types[sideelem] = data->material[elemind] + 1*10;
+	  bound->parent[sideelem] = 0;
 	}
+	bound->nosides = sideelem;
       }
       else {
 	printf("Removing %d lower dimensional elements without parent information\n",notfound);	
@@ -7407,11 +7419,13 @@ void ElementsToBoundaryConditions(struct FemType *data,
 
   /* Reorder boundary to point at the new arrangement of master elements */
   for(i=1;i<=bound->nosides;i++) {
+    if(!bound->parent[i]) continue;
+
     if( !parentorder[bound->parent[i]] ) {
       printf("Zero reorder: %d %d %d\n",i,bound->parent[i],bound->side[i]);
       bigerror("Sorry folks!");
     }
-
+    
     if(bound->parent[i])  bound->parent[i] = parentorder[bound->parent[i]];
     if(bound->parent2[i])  bound->parent2[i] = parentorder[bound->parent2[i]];
     
@@ -7429,8 +7443,8 @@ void ElementsToBoundaryConditions(struct FemType *data,
   free_Imatrix(invtopo,1,noknots,1,maxpossible);
   if(notfound) free_Ivector(notfounds,1,noelements);
 
-  if(0) printf("All done\n");
-
+  if(debug) printf("All done\n");
+  
   return;
 }
 

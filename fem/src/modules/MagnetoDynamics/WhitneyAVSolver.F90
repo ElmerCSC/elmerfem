@@ -52,6 +52,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
        b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16
   INTEGER :: Paramlist
+  CHARACTER(LEN=MAX_NAME_LEN):: ElemType
   Paramlist = 0
 
   SolverParams => GetSolverParams()
@@ -98,36 +99,34 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
          b_Piola + b_Gauge + b_Secondorder, &
          b_Piola + b_Transient + b_Secondorder + b_StaticCond, &
          b_Piola + b_Secondorder + b_StaticCond)
-      CALL ListAddString( SolverParams, "Element", &
-         "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
+      ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2"
 
     CASE (b_Piola + b_Transient, &
          b_Piola + b_Transient + b_StaticCond, &
          b_Piola + b_Transient + b_Gauge)
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
 
     CASE (b_Piola + b_Gauge)
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
 
     CASE (b_Piola + b_Secondorder)
-      CALL ListAddString( SolverParams, "Element", &
-           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+      ElemType = "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" 
 
     CASE (b_Piola)
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:0 e:1 -brick b:3 -quad_face b:2"
 
     CASE (b_Piola + b_StaticCond )
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
 
     CASE (b_Transient, &
          b_Transient + b_StaticCond, &
          b_StaticCond, &
          b_Gauge + b_Transient, &
          b_Gauge)
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+      ElemType = "n:1 e:1" 
 
     CASE (b_empty)
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      ElemType = "n:0 e:1" 
 
     CASE default
       WRITE (Message,*) 'Unsupported degree-gauge-transient combination', Paramlist
@@ -135,6 +134,10 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     END SELECT
 
+    CALL Info('WhitneyAVSolver_Init0','Setting element type to: "'//TRIM(ElemType)//'"')
+    CALL ListAddString( SolverParams,'Element',ElemType ) 
+
+    
     IF( GetString(SolverParams,'Linear System Solver',Found) == 'block' ) THEN
       IF ( PiolaVersion ) THEN
         CALL Fatal('WhitneyAVSolver_Init0','Block strategy not applicable to piola version!')

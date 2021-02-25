@@ -6770,13 +6770,12 @@ RETURN
     LOGICAL :: GotIt, Parallel, FixedMeshend,SinglePrec
     
     CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
-    CHARACTER(MAX_NAME_LEN) :: VtuFile, PvtuFile 
+    CHARACTER(MAX_NAME_LEN) :: VtuFile, PvtuFile, BaseFile, OutputDirectory
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, &
         Status, MinSaveStatus, MaxSaveStatus, PrecBits, PrecSize, IntSize, &
         iTime 
-    CHARACTER(MAX_NAME_LEN) :: Dir
     REAL(KIND=dp) :: SaveNodeFraction, LocalVal(3)
     LOGICAL :: BinaryOutput,AsciiOutput,Found,Visited = .FALSE.,SaveFields
     REAL(KIND=dp) :: DoubleWrk
@@ -6784,11 +6783,13 @@ RETURN
 
     CHARACTER(MAX_NAME_LEN) :: Str
     INTEGER :: NumberOfNodes, ParallelNodes, Dim
+    TYPE(Solver_t), POINTER :: pSolver
     
     SAVE :: MinSaveStatus, MaxSaveStatus
     
     Params => ListGetSolverParams()
     Mesh => GetMesh()
+    pSolver => GetSolver()
     
     ExtCount = ListGetInteger( Params,'Output Count',GotIt)
     IF( GotIt ) THEN
@@ -6824,7 +6825,7 @@ RETURN
 
     SinglePrec = GetLogical( Params,'Single Precision',GotIt) 
     IF( SinglePrec ) THEN
-      CALL Info('VtuOutputSolver','Using single precision arithmetics in output!',Level=7)
+      CALL Info('ParticleOutputVtu','Using single precision arithmetics in output!',Level=7)
     END IF
     
     IF( SinglePrec ) THEN
@@ -6859,35 +6860,32 @@ RETURN
       END IF
     END IF
 
+    BaseFile = FilePrefix
+    CALL SolverOutputDirectory( pSolver, BaseFile, OutputDirectory, UseMeshDir = .TRUE.  )
+    BaseFile = TRIM(OutputDirectory)// '/' //TRIM(BaseFile)    
 
-    IF (LEN_TRIM(Mesh % Name) > 0 ) THEN
-      Dir = TRIM(Mesh % Name) // "/"
-    ELSE
-      Dir = "./"
-    END IF
-    
     IF(Parallel .AND. Part == 0) THEN
       IF( iTime < 10000 ) THEN
-        WRITE( PvtuFile,'(A,A,I4.4,".pvtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( PvtuFile,'(A,I4.4,".pvtu")' ) TRIM(BaseFile),iTime
       ELSE
-        WRITE( PvtuFile,'(A,A,I0,".pvtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( PvtuFile,'(A,I0,".pvtu")' ) TRIM(BaseFile),iTime
       END IF
       CALL WritePvtuFile( PvtuFile )
     END IF
     
     IF ( Parallel ) THEN
       IF( iTime < 10000 ) THEN
-        WRITE( VtuFile,'(A,A,I4.4,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
+        WRITE( VtuFile,'(A,I4.4,A,I4.4,".vtu")' ) TRIM(BaseFile),Part+1,"par",&
             iTime
       ELSE
-        WRITE( VtuFile,'(A,A,I4.4,A,I0,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
+        WRITE( VtuFile,'(A,I4.4,A,I0,".vtu")' ) TRIM(BaseFile),Part+1,"par",&
             iTime
       END IF
     ELSE
       IF( iTime < 10000 ) THEN
-        WRITE( VtuFile,'(A,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( VtuFile,'(A,I4.4,".vtu")' ) TRIM(BaseFile),iTime
       ELSE
-        WRITE( VtuFile,'(A,A,I0,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( VtuFile,'(A,I0,".vtu")' ) TRIM(BaseFile),iTime
       END IF
     END IF
 

@@ -985,7 +985,7 @@ CONTAINS
 
     INTEGER(KIND=AddrInt) :: InitProc, AssProc
 
-    INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
+    INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs, MaxDOFsPerNode
     INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim, AllocStat, &
         i1,i2,i3
 
@@ -1433,11 +1433,16 @@ CONTAINS
         IF(.TRUE.) THEN
           eq = ListGetString( Solver  % Values, 'Equation', Found )
           MaxNDOFs  = 0
+          MaxDOFsPerNode = 0
           MaxDGDOFs = 0
+          MaxBDOFs = 0
           DO i=1,Solver % Mesh % NumberOFBulkElements
             CurrentElement => Solver % Mesh % Elements(i)
             MaxDGDOFs = MAX( MaxDGDOFs, CurrentElement % DGDOFs )
+            MaxBDOFs  = MAX( MaxBDOFs,  CurrentElement % BDOFs )
             MaxNDOFs  = MAX( MaxNDOFs,  CurrentElement % NDOFs )
+            MaxDOFsPerNode =  MAX( MaxDOFsPerNode, CurrentElement % NDOFs / &
+                CurrentElement % TYPE % NumberOfNodes )
           END DO
           
           MaxEDOFs = 0
@@ -1452,16 +1457,10 @@ CONTAINS
             MaxFDOFs  = MAX( MaxFDOFs,  CurrentElement % BDOFs )
           END DO
           
-          MaxBDOFs = 0
-          DO i=1,Solver % Mesh % NumberOFBulkElements
-            CurrentElement => Solver % Mesh % Elements(i)
-            MaxBDOFs  = MAX( MaxBDOFs,  CurrentElement % BDOFs )
-          END DO
-          
           GlobalBubbles = ListGetLogical( SolverParams, 'Bubbles in Global System', Found )
           IF (.NOT.Found) GlobalBubbles = .TRUE.
 
-          Ndeg = Ndeg + Solver % Mesh % NumberOfNodes 
+          Ndeg = Ndeg + MaxDOFsPerNode * Solver % Mesh % NumberOfNodes 
           IF ( MaxEDOFs > 0 ) Ndeg = Ndeg + MaxEDOFs * Solver % Mesh % NumberOFEdges
           IF ( MaxFDOFs > 0 ) Ndeg = Ndeg + MaxFDOFs * Solver % Mesh % NumberOFFaces
           IF ( GlobalBubbles ) &
@@ -2478,6 +2477,7 @@ CONTAINS
                  Solver % Mesh % Changed = .FALSE.
                ELSE
                  NewMesh => SplitMeshEqual( Solver % Mesh )
+                 CALL SetMeshMaxDofs(NewMesh)
                  NewMesh % Next => CurrentModel % Meshes
                  CurrentModel % Meshes => NewMesh
                  
@@ -5235,7 +5235,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
-         UpdateExported, GotCoordTransform, NamespaceFound
+         GotCoordTransform, NamespaceFound
      INTEGER :: i, j, k, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct

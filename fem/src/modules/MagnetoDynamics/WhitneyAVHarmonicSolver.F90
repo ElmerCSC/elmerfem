@@ -514,7 +514,18 @@ CONTAINS
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
            CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
          ELSE         
-           CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+           GapLength = GetConstReal( BC, 'Thin Sheet Thickness', Found)
+           IF (Found) THEN
+             MuParameter=GetConstReal( BC, 'Thin Sheet Relative Permeability', Found)
+             IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
+             ! Technically, there is no skin but why create yet another conductivity variable?
+             SkinCond = GetConstReal( BC, 'Thin Sheet Electric Conductivity', Found)
+             IF (.NOT. Found) SkinCond = 1.0_dp ! if not found default to "air" property
+             CALL LocalMatrixThinSheet( STIFF, FORCE, LOAD, GapLength, MuParameter, &
+                                            SkinCond, Element, n, nd )
+           ELSE
+             CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+           END IF
          END IF
        END IF
        
@@ -1639,6 +1650,118 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixAirGapBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixThinSheet(  STIFF, FORCE, LOAD, Thickness, Permeability, &
+                                          Conductivity, Element, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: LOAD(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
+    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C
+    
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
+
+       sheetThickness  = SUM(Basis(1:n) * Thickness(1:n))
+       mu  = SUM(Basis(1:n) * Permeability(1:n))
+       C  = SUM(Basis(1:n) * Conductivity(1:n))
+
+       CONDUCTOR: IF ( C > AEPS ) THEN
+          !
+          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
+          ! --------------------------------------------------------
+          DO i=1,np
+            p = i
+            DO q=1,np
+
+              ! Compute the conductivity term <C grad V,grad v> for stiffness 
+              ! matrix (anisotropy taken into account)
+              ! -------------------------------------------
+                STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+            END DO
+            DO j=1,nd-np
+              q = j+np
+              
+              ! Compute the conductivity term <j * omega * C A,grad v> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+                  sheetThickness * C*SUM(Wbasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+
+              ! Compute the conductivity term <C grad V, eta> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! ------------------------------------------------
+              STIFF(q,p) = STIFF(q,p) + sheetThickness * C*SUM(dBasisdx(i,:)*WBasis(j,:))*detJ*IP % s(t)
+            END DO
+          END DO
+       END IF CONDUCTOR
+
+       ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
+       !        J + curl(M) - C*grad(P'):
+       ! ----------------------------------------------------
+       DO i = 1,nd-np
+         p = i+np
+       !  FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
+       !     SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
+
+         DO j = 1,nd-np
+           q = j+np
+           STIFF(p,q) = STIFF(p,q) + sheetThickness / (mu*muVacuum) * &
+              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+
+           ! Compute the conductivity term <j * omega * C A,eta> 
+           ! for stiffness matrix (anisotropy taken into account)
+           ! ----------------------------------------------------
+           STIFF(p,q) = STIFF(p,q) + sheetThickness * im*Omega* &
+              C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+         END DO
+       END DO
+
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixThinSheet
 !------------------------------------------------------------------------------
 
 
