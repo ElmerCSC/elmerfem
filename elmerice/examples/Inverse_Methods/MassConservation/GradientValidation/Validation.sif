@@ -76,7 +76,7 @@ Initial Condition 1
   Velocity 2 = Variable USolution 2, r 2
     REAL LUA "tx[0]+tx[1]"
 
-! the perturbation variable for the finite diffence computation
+! the perturbation variable for the finite difference computation
 !  use a random field
   VarP 1 = Variable 20.0, 0.0
     REAL procedure "Random" "Random"

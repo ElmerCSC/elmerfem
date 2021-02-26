@@ -1265,7 +1265,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             ELSE
               Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
             END IF
-            CALL Add_stranded(Element,Tcoef,Comp,nn_elem,nd_elem)
+            CALL Add_stranded(Element,Tcoef,Comp,nn_elem,nd_elem,CompParams)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
          !   CALL GetConductivity(Element, Tcoef, nn_elem)
@@ -1297,12 +1297,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(Component_t) :: Comp
+    TYPE(Valuelist_t), POINTER :: CompParams
     INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
 
     TYPE(Solver_t), POINTER :: ASolver
@@ -1323,7 +1324,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
+
+    LOGICAL :: InitHandle = .TRUE.
     
+    LOGICAL :: CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
+
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
+
     SAVE CSymmetry, dim
 
     IF (First) THEN
@@ -1347,8 +1355,21 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     ncdofs=nd
     IF (dim == 3) THEN
       ncdofs=nd-nn
-      CALL GetWPotential(WBase)
-      !print *, "W Potential", Wbase
+
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        CALL GetWPotential(WBase)
+        !print *, "W Potential", Wbase
+      END IF
     END IF
 
     VvarId = Comp % vvar % ValueId + nm
@@ -1377,7 +1398,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        IF (CoilUseWvec) THEN
+          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
         !print *, "W Pot norm:", SQRT(SUM(w**2._dp))
       END SELECT
 

@@ -95,8 +95,8 @@ void Parallel::defaultsButtonClicked()
   ui.parallelArgsLineEdit->setText("-np %n ElmerSolver_mpi");
 #endif
 
-  ui.divideLineEdit->setText("ElmerGrid 2 2 %msh -metis %n");
-  ui.mergeLineEdit->setText("ElmerGrid 15 3 %ep -partjoin %n");
+  ui.divideLineEdit->setText("ElmerGrid 2 2 %msh -metiskway %n");
+  ui.mergeLineEdit->setText("echo 'No need to merge VTU files!'");
 }
 
 void Parallel::okButtonClicked()

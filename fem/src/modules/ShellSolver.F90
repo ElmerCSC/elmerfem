@@ -66,8 +66,10 @@
 ! *
 ! *****************************************************************************/
 
+
+
 !------------------------------------------------------------------------------
-SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
+SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -132,7 +134,7 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
   CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
   
 !------------------------------------------------------------------------------
-END SUBROUTINE ShellSolver_Init
+END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------
 
 

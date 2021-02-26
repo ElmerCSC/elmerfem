@@ -9842,7 +9842,8 @@ END FUNCTION SearchNodeL
       CALL Info(Caller,'Updating exported variables',Level=20)
       CALL UpdateExportedVariables( Solver )	
     END IF
-       
+
+    
     ! Update components that depende on the solution of the solver.
     ! Nonlinear level allows some nonlinear couplings within the solver. 
     !-----------------------------------------------------------------------------------------
@@ -11357,7 +11358,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: PreSolve
     LOGICAL, OPTIONAL :: NoSolve
     !------------------------------------------------------------------------------
-    ! We have a special stucture for the iterates and residuals so that we can
+    ! We have a special structure for the iterates and residuals so that we can
     ! cycle over the pointers instead of the values. 
     TYPE AndersonVect_t
       LOGICAL :: Additive
@@ -14053,7 +14054,7 @@ END FUNCTION SearchNodeL
 
       CALL LinearSystemResidual( A, b, x, res )
       bb => res
-      ! Set the initial guess for the redidual system to zero
+      ! Set the initial guess for the residual system to zero
       x = 0.0_dp
     ELSE
       bb => b
@@ -14161,7 +14162,7 @@ END SUBROUTINE SolveSystem
 !> Solve a linear eigen system.
 !------------------------------------------------------------------------------
 SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
-        EigenValues, EigenVectors,Solver )
+    EigenValues, EigenVectors,Solver )
 !------------------------------------------------------------------------------
     USE EigenSolve
 !------------------------------------------------------------------------------
@@ -14179,22 +14180,21 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
       CALL Info('SolveEigenSystem','Soving real valued eigen system of size: '//TRIM(I2S(n)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolve( Solver, StiffMatrix, n, NOFEigen, &
-                EigenValues, EigenVectors )
+            EigenValues, EigenVectors )
       ELSE
         CALL ParallelArpackEigenSolve( Solver, StiffMatrix, n, NOFEigen, &
-                EigenValues, EigenVectors )
+            EigenValues, EigenVectors )
       END IF
     ELSE
       CALL Info('SolveEigenSystem','Soving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
-              NOFEigen, EigenValues, EigenVectors )
+            NOFEigen, EigenValues, EigenVectors )
       ELSE
         CALL ParallelArpackEigenSolveComplex( Solver, StiffMatrix, n/2, NOFEigen, &
-                EigenValues, EigenVectors )
+            EigenValues, EigenVectors )
       END IF
     END IF
-   
     
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveEigenSystem
@@ -14323,192 +14323,192 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
+  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
 
-  CHARACTER(LEN=*)  :: var_name
-  LOGICAL, OPTIONAL :: NoOutput, Global
-  INTEGER, OPTIONAL :: Dofs
-  LOGICAL, OPTIONAL :: IpVariable
-  LOGICAL, OPTIONAL :: ElemVariable
-  LOGICAL, OPTIONAL :: DgVariable
-  
-  INTEGER :: i,j,k,m
+    CHARACTER(LEN=*)  :: var_name
+    LOGICAL, OPTIONAL :: NoOutput, Global
+    INTEGER, OPTIONAL :: Dofs
+    LOGICAL, OPTIONAL :: IpVariable
+    LOGICAL, OPTIONAL :: ElemVariable
+    LOGICAL, OPTIONAL :: DgVariable
 
-  IF(PRESENT(NoOutput)) NoOutput = .FALSE.
-  IF(PRESENT(Global)) Global = .FALSE.
-  IF(PRESENT(Dofs)) Dofs = 0
-  IF(PRESENT(IpVariable)) IpVariable = .FALSE.
-  
-  DO WHILE( var_name(1:1) == '-' )
+    INTEGER :: i,j,k,m
 
-    m = 0
-    IF ( SEQL(var_name, '-nooutput ') ) THEN
-      IF(PRESENT(NoOutput)) NoOutput = .TRUE.
-      m = 10
+    IF(PRESENT(NoOutput)) NoOutput = .FALSE.
+    IF(PRESENT(Global)) Global = .FALSE.
+    IF(PRESENT(Dofs)) Dofs = 0
+    IF(PRESENT(IpVariable)) IpVariable = .FALSE.
 
-    ELSE IF ( SEQL(var_name, '-global ') ) THEN
-      IF(PRESENT(Global)) Global = .TRUE.
-      m = 8
+    DO WHILE( var_name(1:1) == '-' )
 
-    ELSE IF ( SEQL(var_name, '-ip ') ) THEN
-      IF(PRESENT(IpVariable)) IpVariable = .TRUE.      
-      m = 4
+      m = 0
+      IF ( SEQL(var_name, '-nooutput ') ) THEN
+        IF(PRESENT(NoOutput)) NoOutput = .TRUE.
+        m = 10
 
-    ELSE IF ( SEQL(var_name, '-dg ') ) THEN
-      IF(PRESENT(DgVariable)) DgVariable = .TRUE.      
-      m = 4
+      ELSE IF ( SEQL(var_name, '-global ') ) THEN
+        IF(PRESENT(Global)) Global = .TRUE.
+        m = 8
 
-    ELSE IF ( SEQL(var_name, '-elem ') ) THEN
-      IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
-      m = 6
+      ELSE IF ( SEQL(var_name, '-ip ') ) THEN
+        IF(PRESENT(IpVariable)) IpVariable = .TRUE.      
+        m = 4
+
+      ELSE IF ( SEQL(var_name, '-dg ') ) THEN
+        IF(PRESENT(DgVariable)) DgVariable = .TRUE.      
+        m = 4
+
+      ELSE IF ( SEQL(var_name, '-elem ') ) THEN
+        IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
+        m = 6
+      END IF
+
+      IF( m > 0 ) THEN
+        var_name(1:LEN(var_name)-m) = var_name(m+1:)
+      END IF
+
+      IF ( SEQL(var_name, '-dofs ') ) THEN
+        IF(PRESENT(DOFs)) READ( var_name(7:), * ) DOFs     
+        j = LEN_TRIM( var_name )
+        k = 7
+        DO WHILE( var_name(k:k) /= ' '  )
+          k = k + 1
+          IF ( k > j ) EXIT
+        END DO
+        var_name(1:LEN(var_name)-(k+2)) = var_name(k+1:)
+      END IF
+    END DO
+
+  END SUBROUTINE VariableNameParser
+
+
+  !> Create permutation for fields on integration points, optionally with mask.
+  !> The non-masked version is saved to Solver structure for reuse while the
+  !> masked version may be unique to every variable. 
+  !-----------------------------------------------------------------------------------
+  SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName, UpdateOnly )
+
+    TYPE(Solver_t), POINTER :: Solver
+    INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
+    CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName      
+    LOGICAL, OPTIONAL :: UpdateOnly
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: t, n, IpCount , RelOrder, nIp
+    CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+    LOGICAL :: Found, ActiveElem, ActiveElem2
+    INTEGER, POINTER :: IpOffset(:) 
+    TYPE(ValueList_t), POINTER :: BF
+    LOGICAL :: UpdatePerm
+
+    n = 0
+    IF( PRESENT( MaskPerm ) ) n = n + 1
+    IF( PRESENT( MaskName ) ) n = n + 1
+    IF( PRESENT( SecName ) ) n = n + 1
+    IF( PRESENT( UpdateOnly ) ) n = n + 1
+
+    ! Currently a lazy check
+    IF( n /= 0 .AND. n /= 3 .AND. n /= 2) THEN
+      CALL Fatal('CreateIpPerm','Only some optional parameter combinations are possible')
     END IF
-    
-    IF( m > 0 ) THEN
-      var_name(1:LEN(var_name)-m) = var_name(m+1:)
+
+    UpdatePerm = .FALSE.
+    IF( PRESENT( UpdateOnly ) ) UpdatePerm = UpdateOnly
+
+    IF( UpdatePerm ) THEN
+      CALL Info('CreateIpPerm','Updating IP permutation table',Level=8)       
+    ELSE IF( PRESENT( MaskPerm ) ) THEN
+      CALL Info('CreateIpPerm','Creating masked permutation for integration points',Level=8)
+    ELSE       
+      IF( ASSOCIATED( Solver % IpTable ) ) THEN
+        CALL Info('CreateIpPerm','IpTable already allocated, returning',Level=8)
+      END IF
+      CALL Info('CreateIpPerm','Creating permutation for integration points',Level=8)
     END IF
-   
-    IF ( SEQL(var_name, '-dofs ') ) THEN
-      IF(PRESENT(DOFs)) READ( var_name(7:), * ) DOFs     
-      j = LEN_TRIM( var_name )
-      k = 7
-      DO WHILE( var_name(k:k) /= ' '  )
-        k = k + 1
-        IF ( k > j ) EXIT
-      END DO
-      var_name(1:LEN(var_name)-(k+2)) = var_name(k+1:)
+
+    EquationName = ListGetString( Solver % Values, 'Equation', Found)
+    IF( .NOT. Found ) THEN
+      CALL Fatal('CreateIpPerm','Equation not present!')
     END IF
-  END DO
 
-END SUBROUTINE VariableNameParser
+    Mesh => Solver % Mesh
+    NULLIFY( IpOffset ) 
+
+    n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+
+    IF( UpdatePerm ) THEN
+      IpOffset => MaskPerm
+      ActiveElem = (IpOffset(2)-IpOffset(1) > 0 )
+      IF( n >= 2 ) ActiveElem2 = (IpOffset(3)-IpOffset(2) > 0 )
+    ELSE
+      ALLOCATE( IpOffset( n + 1) )     
+      IpOffset = 0
+      IF( PRESENT( MaskPerm ) ) MaskPerm => IpOffset
+    END IF
+    IpCount = 0
+
+    nIp = ListGetInteger( Solver % Values,'Gauss Points on Ip Variables', Found ) 
+
+    DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+      Element => Mesh % Elements(t)
+
+      IF( .NOT. UpdatePerm ) THEN
+        ActiveElem = .FALSE.
+        IF( Element % PartIndex == ParEnv % myPE ) THEN
+          IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN             
+            IF( PRESENT( MaskName ) ) THEN
+              BF => ListGetSection( Element, SecName )
+              ActiveElem = ListGetLogicalGen( BF, MaskName )
+            ELSE
+              ActiveElem = .TRUE.
+            END IF
+          END IF
+        END IF
+      END IF
+
+      IF( ActiveElem ) THEN
+        IF( nIp > 0 ) THEN
+          IpCount = IpCount + nIp
+        ELSE
+          IP = GaussPointsAdapt( Element )
+          IpCount = IpCount + Ip % n
+        END IF
+      END IF
+
+      ! We are reusing the permutation table hence we must be one step ahead 
+      IF( UpdatePerm .AND. n >= t+1) THEN
+        ActiveElem = ActiveElem2
+        ActiveElem2 = (IpOffset(t+2)-IpOffset(t+1) > 0 )
+      END IF
+
+      IpOffset(t+1) = IpCount
+    END DO
+
+    IF( .NOT. PRESENT( MaskPerm ) ) THEN
+      ALLOCATE( Solver % IpTable ) 
+      Solver % IpTable % IpOffset => IpOffset
+      Solver % IpTable % IpCount = IpCount
+    END IF
+
+    IF( UpdatePerm ) THEN
+      CALL Info('CreateIpPerm','Updated permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
+    ELSE       
+      CALL Info('CreateIpPerm','Created permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
+    END IF
+
+  END SUBROUTINE CreateIpPerm
 
 
-   !> Create permutation for fields on integration points, optionally with mask.
-   !> The non-masked version is saved to Solver structure for reuse while the
-   !> masked version may be unique to every variable. 
-   !-----------------------------------------------------------------------------------
-   SUBROUTINE CreateIpPerm( Solver, MaskPerm, MaskName, SecName, UpdateOnly )
+  SUBROUTINE UpdateIpPerm( Solver, Perm )
 
-     TYPE(Solver_t), POINTER :: Solver
-     INTEGER, POINTER, OPTIONAL :: MaskPerm(:)
-     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: MaskName, SecName      
-     LOGICAL, OPTIONAL :: UpdateOnly
-     
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(GaussIntegrationPoints_t) :: IP
-     TYPE(Element_t), POINTER :: Element
-     INTEGER :: t, n, IpCount , RelOrder, nIp
-     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
-     LOGICAL :: Found, ActiveElem, ActiveElem2
-     INTEGER, POINTER :: IpOffset(:) 
-     TYPE(ValueList_t), POINTER :: BF
-     LOGICAL :: UpdatePerm
-     
-     n = 0
-     IF( PRESENT( MaskPerm ) ) n = n + 1
-     IF( PRESENT( MaskName ) ) n = n + 1
-     IF( PRESENT( SecName ) ) n = n + 1
-     IF( PRESENT( UpdateOnly ) ) n = n + 1
-     
-     ! Currently a lazy check
-     IF( n /= 0 .AND. n /= 3 .AND. n /= 2) THEN
-       CALL Fatal('CreateIpPerm','Only some optional parameter combinations are possible')
-     END IF
+    TYPE(Solver_t), POINTER :: Solver
+    INTEGER, POINTER :: Perm(:)
 
-     UpdatePerm = .FALSE.
-     IF( PRESENT( UpdateOnly ) ) UpdatePerm = UpdateOnly
+    CALL CreateIpPerm( Solver, Perm, UpdateOnly = .TRUE.)
 
-     IF( UpdatePerm ) THEN
-       CALL Info('CreateIpPerm','Updating IP permutation table',Level=8)       
-     ELSE IF( PRESENT( MaskPerm ) ) THEN
-       CALL Info('CreateIpPerm','Creating masked permutation for integration points',Level=8)
-     ELSE       
-       IF( ASSOCIATED( Solver % IpTable ) ) THEN
-         CALL Info('CreateIpPerm','IpTable already allocated, returning',Level=8)
-       END IF
-       CALL Info('CreateIpPerm','Creating permutation for integration points',Level=8)
-     END IF
-
-     EquationName = ListGetString( Solver % Values, 'Equation', Found)
-     IF( .NOT. Found ) THEN
-       CALL Fatal('CreateIpPerm','Equation not present!')
-     END IF     
-     
-     Mesh => Solver % Mesh
-     NULLIFY( IpOffset ) 
-
-     n = Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-
-     IF( UpdatePerm ) THEN
-       IpOffset => MaskPerm
-       ActiveElem = (IpOffset(2)-IpOffset(1) > 0 )
-       IF( n >= 2 ) ActiveElem2 = (IpOffset(3)-IpOffset(2) > 0 )
-     ELSE
-       ALLOCATE( IpOffset( n + 1) )     
-       IpOffset = 0
-       IF( PRESENT( MaskPerm ) ) MaskPerm => IpOffset
-     END IF
-     IpCount = 0
-
-     nIp = ListGetInteger( Solver % Values,'Gauss Points on Ip Variables', Found ) 
-     
-     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
-       Element => Mesh % Elements(t)
-            
-       IF( .NOT. UpdatePerm ) THEN
-         ActiveElem = .FALSE.
-         IF( Element % PartIndex == ParEnv % myPE ) THEN
-           IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN             
-             IF( PRESENT( MaskName ) ) THEN
-               BF => ListGetSection( Element, SecName )
-               ActiveElem = ListGetLogicalGen( BF, MaskName )
-             ELSE
-               ActiveElem = .TRUE.
-             END IF
-           END IF
-         END IF
-       END IF
-         
-       IF( ActiveElem ) THEN
-         IF( nIp > 0 ) THEN
-           IpCount = IpCount + nIp
-         ELSE
-           IP = GaussPointsAdapt( Element )
-           IpCount = IpCount + Ip % n
-         END IF
-       END IF
-
-       ! We are reusing the permutation table hence we must be one step ahead 
-       IF( UpdatePerm .AND. n >= t+1) THEN
-         ActiveElem = ActiveElem2
-         ActiveElem2 = (IpOffset(t+2)-IpOffset(t+1) > 0 )
-       END IF
-         
-       IpOffset(t+1) = IpCount
-     END DO
-
-     IF( .NOT. PRESENT( MaskPerm ) ) THEN
-       ALLOCATE( Solver % IpTable ) 
-       Solver % IpTable % IpOffset => IpOffset
-       Solver % IpTable % IpCount = IpCount
-     END IF
-
-     IF( UpdatePerm ) THEN
-       CALL Info('CreateIpPerm','Updated permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
-     ELSE       
-       CALL Info('CreateIpPerm','Created permutation for IP points: '//TRIM(I2S(IpCount)),Level=8)  
-     END IF
-       
-   END SUBROUTINE CreateIpPerm
-
-   
-   SUBROUTINE UpdateIpPerm( Solver, Perm )
-
-     TYPE(Solver_t), POINTER :: Solver
-     INTEGER, POINTER :: Perm(:)
-
-     CALL CreateIpPerm( Solver, Perm, UpdateOnly = .TRUE.)
-
-   END SUBROUTINE UpdateIpPerm
+  END SUBROUTINE UpdateIpPerm
 
 
 
@@ -14518,234 +14518,277 @@ END SUBROUTINE VariableNameParser
 !------------------------------------------------------------------------------
   SUBROUTINE UpdateExportedVariables( Solver )  
 !------------------------------------------------------------------------------
-  TYPE(Solver_t), TARGET :: Solver
-  
-  INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2,NoGauss
-  CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name,tmpname,condname
-  REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
-  INTEGER, POINTER :: Indexes(:), VarIndexes(:), Perm(:)
-  LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone = .FALSE.
-  LOGICAL, POINTER :: ActivePart(:),ActiveCond(:)
-  TYPE(Variable_t), POINTER :: ExpVariable
-  TYPE(ValueList_t), POINTER :: ValueList
-  TYPE(Element_t),POINTER :: Element  
-  TYPE(GaussIntegrationPoints_t) :: IP
-  TYPE(Nodes_t) :: Nodes
-  REAL(KIND=dp), ALLOCATABLE :: Basis(:)
-  REAL(KIND=dp) :: detJ
-  TYPE(ValueHandle_t) :: LocalSol_h
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(Solver_t), POINTER :: pSolver
+    TYPE(Solver_t), TARGET :: Solver
 
-  
-  SAVE LocalSol_h
+    INTEGER :: i,j,k,l,n,m,t,bf_id,dofs,nsize,i1,i2,NoGauss
+    CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name,tmpname,condname
+    REAL(KIND=dp), POINTER :: Values(:), Solution(:), LocalSol(:), LocalCond(:)
+    INTEGER, POINTER :: Indexes(:), VarIndexes(:), Perm(:)
+    LOGICAL :: Found, Conditional, GotIt, Stat, StateVariable, AllocationsDone = .FALSE.
+    LOGICAL, POINTER :: ActivePart(:),ActiveCond(:)
+    TYPE(Variable_t), POINTER :: ExpVariable
+    TYPE(ValueList_t), POINTER :: ValueList
+    TYPE(Element_t),POINTER :: Element  
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+    REAL(KIND=dp) :: detJ
+    TYPE(ValueHandle_t) :: LocalSol_h
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Solver_t), POINTER :: pSolver
+    CHARACTER(*), PARAMETER :: Caller = 'UpdateExportedVariables'
 
-  CALL Info('UpdateExportedVariables','Updating variables, if any!',Level=20)
 
-  AllocationsDone = .FALSE.
-  Mesh => Solver % Mesh
-  
-  l = 0
-  DO WHILE( .TRUE. )
-    l = l + 1
+    SAVE LocalSol_h
 
-    str = ComponentName( 'exported variable', l )    
+    CALL Info(Caller,'Updating variables, if any!',Level=20)
 
-    var_name = ListGetString( Solver % Values, str, GotIt )    
-    IF(.NOT. GotIt) EXIT
+    AllocationsDone = .FALSE.
+    Mesh => Solver % Mesh
 
-    CALL Info('UpdateExportedVariables','Trying to set values for variable: '//TRIM(Var_name),Level=20)
-    
-    CALL VariableNameParser( var_name ) 
-    
-    ExpVariable => VariableGet( Mesh % Variables, Var_name )
-    IF( .NOT. ASSOCIATED(ExpVariable)) CYCLE
-      
-    CALL Info('UpdateExportedVariables','Setting values for variable: '//TRIM(Var_name),Level=20)
-      
-    IF(.NOT. AllocationsDone ) THEN
-      m = CurrentModel % NumberOFBodyForces
-      ALLOCATE( ActivePart(m), ActiveCond(m) )
-      
-      m = Mesh % MaxElementDOFs
-      ALLOCATE( LocalSol(m), LocalCond(m))
-      
-      m =  CurrentModel % MaxElementNodes
-      ALLOCATE( Basis(m), Nodes % x(m), Nodes % y(m), Nodes % z(m) )
+    l = 0
+    DO WHILE( .TRUE. )
+      l = l + 1
 
-      AllocationsDone = .TRUE.
-    END IF
+      str = ComponentName( 'exported variable', l )    
 
-    Dofs = ExpVariable % DOFs
-    Values => ExpVariable % Values
-    Perm => ExpVariable % Perm
-    n = LEN_TRIM( var_name )
-    
-    StateVariable = ( SIZE( Values ) == DOFs ) .OR. ( ExpVariable % Type == Variable_Global ) 
-    IF( StateVariable ) THEN
-      CALL Info('UpdateExportedVariables','Updating state variable',Level=20)
-      IF( Dofs > 1 ) THEN
-        tmpname = ComponentName( var_name(1:n), j )
-        Solution => Values( j:j )
-      ELSE
-        tmpname = var_name(1:n)
-        Solution => Values
+      var_name = ListGetString( Solver % Values, str, GotIt )    
+      IF(.NOT. GotIt) EXIT
+
+      CALL Info(Caller,'Trying to set values for variable: '//TRIM(Var_name),Level=20)
+
+      CALL VariableNameParser( var_name ) 
+
+      ExpVariable => VariableGet( Mesh % Variables, Var_name )
+      IF( .NOT. ASSOCIATED(ExpVariable)) CYCLE
+
+      CALL Info(Caller,'Setting values for variable: '//TRIM(Var_name),Level=20)
+
+      IF(.NOT. AllocationsDone ) THEN
+        m = CurrentModel % NumberOFBodyForces
+        ALLOCATE( ActivePart(m), ActiveCond(m) )
+
+        m = Mesh % MaxElementDOFs
+        ALLOCATE( LocalSol(m), LocalCond(m))
+
+        m =  CurrentModel % MaxElementNodes
+        ALLOCATE( Basis(m), Nodes % x(m), Nodes % y(m), Nodes % z(m) )
+
+        AllocationsDone = .TRUE.
       END IF
- 
-      DO bf_id=1,CurrentModel % NumberOFBodyForces
-        IF( ListCheckPresent( &
-            CurrentModel % BodyForces(bf_id) % Values,TmpName ) ) THEN
-          CALL Info('UpdateExportedVariables',&
-              'Found a proper definition for state variable',Level=6)
-          Solution = ListGetCReal( CurrentModel % BodyForces(bf_id) % Values,TmpName)
-          EXIT
+
+      Dofs = ExpVariable % DOFs
+      Values => ExpVariable % Values
+      Perm => ExpVariable % Perm
+      n = LEN_TRIM( var_name )
+
+      StateVariable = ( SIZE( Values ) == DOFs ) .OR. ( ExpVariable % Type == Variable_Global ) 
+      IF( StateVariable ) THEN
+        CALL Info(Caller,'Updating state variable',Level=20)
+        IF( Dofs > 1 ) THEN
+          tmpname = ComponentName( var_name(1:n), j )
+          Solution => Values( j:j )
+        ELSE
+          tmpname = var_name(1:n)
+          Solution => Values
         END IF
-      END DO
-      CYCLE
-    END IF
-
-    CALL Info('UpdateExportedVariables','Updating field variable with dofs: '//TRIM(I2S(DOFs)),Level=12)
-
-        
-    DO j=1,DOFs
-      
-100   Values => ExpVariable % Values
-      IF( Dofs > 1 ) THEN
-        tmpname = ComponentName( var_name(1:n), j )
-        Solution => Values( j:: DOFs ) 
-      ELSE
-        tmpname = var_name(1:n)
-        Solution => Values
-      END IF
-      condname = TRIM(tmpname) //' Condition' 
-      
-      !------------------------------------------------------------------------------
-      ! Go through the Dirichlet conditions in the body force lists
-      !------------------------------------------------------------------------------      
-      ActivePart = .FALSE.
-      ActiveCond = .FALSE.
-
-      DO bf_id=1,CurrentModel % NumberOFBodyForces
-        ActivePart(bf_id) = ListCheckPresent( &
-            CurrentModel % BodyForces(bf_id) % Values,TmpName ) 
-        ActiveCond(bf_id) = ListCheckPresent( &
-            CurrentModel % BodyForces(bf_id) % Values,CondName )      
-      END DO
-      
-      IF ( .NOT. ANY( ActivePart ) ) CYCLE
-
-      CALL Info('UpdateExportedVariables','Found a proper definition in body forces',Level=8)
-
-      
-      IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
-        ! Initialize handle when doing values on Gauss points!
-        CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
+ 
+        DO bf_id=1,CurrentModel % NumberOFBodyForces
+          IF( ListCheckPresent( &
+              CurrentModel % BodyForces(bf_id) % Values,TmpName ) ) THEN
+            CALL Info(Caller,&
+                'Found a proper definition for state variable',Level=6)
+            Solution = ListGetCReal( CurrentModel % BodyForces(bf_id) % Values,TmpName)
+            EXIT
+          END IF
+        END DO
+        CYCLE
       END IF
 
-      DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      CALL Info(Caller,'Updating field variable with dofs: '//TRIM(I2S(DOFs)),Level=12)
 
-        Element => Mesh % Elements(t) 
-        IF( Element % BodyId <= 0 ) CYCLE
-        bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values,&
-            'Body Force',GotIt)
 
-        IF(.NOT. GotIt) CYCLE
-        IF(.NOT. ActivePart(bf_id)) CYCLE
-        Conditional = ActiveCond(bf_id)
-        
-        CurrentModel % CurrentElement => Element
-        m = Element % TYPE % NumberOfNodes
-        Indexes => Element % NodeIndexes
-        ValueList => CurrentModel % BodyForces(bf_id) % Values
+      DO j=1,DOFs
+
+100     Values => ExpVariable % Values
+        IF( Dofs > 1 ) THEN
+          tmpname = ComponentName( var_name(1:n), j )
+          Solution => Values( j:: DOFs ) 
+        ELSE
+          tmpname = var_name(1:n)
+          Solution => Values
+        END IF
+        condname = TRIM(tmpname) //' Condition' 
+      
+        !------------------------------------------------------------------------------
+        ! Go through the Dirichlet conditions in the body force lists
+        !------------------------------------------------------------------------------      
+        ActivePart = .FALSE.
+        ActiveCond = .FALSE.
+
+        DO bf_id=1,CurrentModel % NumberOFBodyForces
+          ActivePart(bf_id) = ListCheckPresent( &
+              CurrentModel % BodyForces(bf_id) % Values,TmpName ) 
+          ActiveCond(bf_id) = ListCheckPresent( &
+              CurrentModel % BodyForces(bf_id) % Values,CondName )      
+        END DO
+
+        IF ( .NOT. ANY( ActivePart ) ) CYCLE
+
+        CALL Info(Caller,'Found a proper definition in body forces',Level=8)
+
 
         IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
-    
-          i1 = Perm( Element % ElementIndex )
-          i2 = Perm( Element % ElementIndex + 1 )
-          NoGauss = i2 - i1
-          
-          ! This is not active here
-          IF( NoGauss == 0 ) CYCLE
-          
-          IP = GaussPointsAdapt( Element, Solver )
-
-          IF( NoGauss /= IP % n ) THEN
-            
-            CALL Info('UpdateExportedVariables',&
-                'Number of Gauss points has changed, redoing permutations!',Level=8)
-
-            pSolver => Solver
-            CALL UpdateIpPerm( pSolver, Perm )
-            nsize = MAXVAL( Perm )
-
-            CALL Info('UpdateExportedVariables','Total number of new IP dofs: '//TRIM(I2S(nsize)),Level=7)
-
-            IF( SIZE( ExpVariable % Values ) /= ExpVariable % Dofs * nsize ) THEN
-              DEALLOCATE( ExpVariable % Values )
-              ALLOCATE( ExpVariable % Values( nsize * ExpVariable % Dofs ) )
-            END IF
-            ExpVariable % Values = 0.0_dp
-            GOTO 100 
-          END IF
-          
-          Nodes % x(1:m) = Mesh % Nodes % x(Indexes)
-          Nodes % y(1:m) = Mesh % Nodes % y(Indexes)
-          Nodes % z(1:m) = Mesh % Nodes % z(Indexes)
-
-          IF( Conditional ) THEN
-            CALL Warn('UpdateExportedVariable','Elemental variable cannot be conditional!')
-          END IF
-
-          DO k=1,IP % n
-            stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
-                IP % W(k), detJ, Basis )
-            Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k) 
-          END DO
-          
-        ELSE IF( ExpVariable % TYPE == Variable_on_elements ) THEN
-          IF( Conditional ) THEN
-            CALL Warn('UpdateExportedVariable','Elemental variables not conditional!')
-          END IF
-          LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
-          i = Perm( Element % ElementIndex ) 
-          IF( i > 0 ) Solution(i) = SUM( LocalSol(1:m) ) / m
-          
-        ELSE
-          IF( ExpVariable % TYPE == Variable_on_nodes_on_elements ) THEN
-            VarIndexes => Element % DGIndexes
-          ELSE
-            VarIndexes => Indexes
-          END IF
-          
-          LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
-          
-          IF( Conditional ) THEN
-            LocalCond(1:m) = ListGetReal(ValueList, CondName, m, Indexes(1:m) )
-            DO i=1,m
-              IF( LocalCond(i) > 0.0_dp ) THEN
-                IF( Perm(VarIndexes(i)) > 0 ) THEN
-                  Solution( Perm(VarIndexes(i)) ) = LocalSol(i)
-                END IF
-              END IF
-            END DO
-          ELSE
-            IF( ALL( Perm(VarIndexes(1:m)) > 0 ) ) THEN
-              Solution( Perm(VarIndexes(1:m)) ) = LocalSol(1:m)
-            END IF
-          END IF
-          
+          ! Initialize handle when doing values on Gauss points!
+          CALL ListInitElementKeyword( LocalSol_h,'Body Force',TmpName )
         END IF
-      END DO
-      
-    END DO
-  END DO
 
-  IF( AllocationsDone ) THEN
-    DEALLOCATE(ActivePart, ActiveCond, LocalSol, LocalCond, Basis, &
-        Nodes % x, Nodes % y, Nodes % z )
-  END IF
-    
-END SUBROUTINE UpdateExportedVariables
+        DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+          Element => Mesh % Elements(t) 
+          IF( Element % BodyId <= 0 ) CYCLE
+          bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values,&
+              'Body Force',GotIt)
+
+          IF(.NOT. GotIt) CYCLE
+          IF(.NOT. ActivePart(bf_id)) CYCLE
+          Conditional = ActiveCond(bf_id)
+
+          CurrentModel % CurrentElement => Element
+          m = Element % TYPE % NumberOfNodes
+          Indexes => Element % NodeIndexes
+          ValueList => CurrentModel % BodyForces(bf_id) % Values
+
+          IF( ExpVariable % TYPE == Variable_on_gauss_points ) THEN 
+
+            i1 = Perm( Element % ElementIndex )
+            i2 = Perm( Element % ElementIndex + 1 )
+            NoGauss = i2 - i1
+
+            ! This is not active here
+            IF( NoGauss == 0 ) CYCLE
+
+            IP = GaussPointsAdapt( Element, Solver )
+
+            IF( NoGauss /= IP % n ) THEN
+
+              CALL Info(Caller,&
+                  'Number of Gauss points has changed, redoing permutations!',Level=8)
+
+              pSolver => Solver
+              CALL UpdateIpPerm( pSolver, Perm )
+              nsize = MAXVAL( Perm )
+
+              CALL Info(Caller,'Total number of new IP dofs: '//TRIM(I2S(nsize)),Level=7)
+
+              IF( SIZE( ExpVariable % Values ) /= ExpVariable % Dofs * nsize ) THEN
+                DEALLOCATE( ExpVariable % Values )
+                ALLOCATE( ExpVariable % Values( nsize * ExpVariable % Dofs ) )
+              END IF
+              ExpVariable % Values = 0.0_dp
+              GOTO 100 
+            END IF
+
+            Nodes % x(1:m) = Mesh % Nodes % x(Indexes)
+            Nodes % y(1:m) = Mesh % Nodes % y(Indexes)
+            Nodes % z(1:m) = Mesh % Nodes % z(Indexes)
+
+            IF( Conditional ) THEN
+              CALL Warn(Caller,'Elemental variable cannot be conditional!')
+            END IF
+
+            DO k=1,IP % n
+              stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
+                  IP % W(k), detJ, Basis )
+              Solution(i1+k) = ListGetElementReal( LocalSol_h,Basis,Element,Found,GaussPoint=k) 
+            END DO
+
+          ELSE IF( ExpVariable % TYPE == Variable_on_elements ) THEN
+            IF( Conditional ) THEN
+              CALL Warn(Caller,'Elemental variables not conditional!')
+            END IF
+            LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
+            i = Perm( Element % ElementIndex ) 
+            IF( i > 0 ) Solution(i) = SUM( LocalSol(1:m) ) / m
+
+          ELSE
+            IF( ExpVariable % TYPE == Variable_on_nodes_on_elements ) THEN
+              VarIndexes => Element % DGIndexes
+            ELSE
+              VarIndexes => Indexes
+            END IF
+
+            LocalSol(1:m) = ListGetReal(ValueList, TmpName, m, Indexes(1:m) )
+
+            IF( Conditional ) THEN
+              LocalCond(1:m) = ListGetReal(ValueList, CondName, m, Indexes(1:m) )
+              DO i=1,m
+                IF( LocalCond(i) > 0.0_dp ) THEN
+                  IF( Perm(VarIndexes(i)) > 0 ) THEN
+                    Solution( Perm(VarIndexes(i)) ) = LocalSol(i)
+                  END IF
+                END IF
+              END DO
+            ELSE
+              IF( ALL( Perm(VarIndexes(1:m)) > 0 ) ) THEN
+                Solution( Perm(VarIndexes(1:m)) ) = LocalSol(1:m)
+              END IF
+            END IF
+
+          END IF
+        END DO
+
+      END DO
+    END DO
+
+
+    l = 0
+    DO WHILE( .TRUE. )
+      l = l + 1
+      str = ComponentName( 'project variable', l )    
+
+      var_name = ListGetString( Solver % Values, str, GotIt )    
+      IF(.NOT. GotIt) EXIT
+      CALL Info(Caller,'Variable requested for projection: '//TRIM(var_name),Level=20)
+      
+      CALL VariableNameParser( var_name )     
+      ExpVariable => VariableGet( Mesh % Variables, Var_name )
+      IF( .NOT. ASSOCIATED(ExpVariable)) THEN
+        CALL Warn(Caller,'Could not find variable for projection: '//TRIM(Var_name))
+        CYCLE
+      END IF
+
+      IF( ExpVariable % TYPE /= Variable_on_gauss_points ) THEN
+        CALL Fatal(Caller,'Variable projection implemented on for IP variable!')
+      END IF
+
+      k = Variable_on_nodes
+
+      str = ComponentName( 'project type', l )
+      tmpname = ListGetString( Solver % Values, str, GotIt )    
+
+      k = Variable_on_nodes
+      IF( GotIt ) THEN
+        IF( tmpname == 'elem' ) THEN
+          k = Variable_on_elements
+        ELSE IF( tmpname == 'dg' ) THEN
+          k = Variable_on_nodes_on_elements
+        END IF
+      END IF
+
+      CALL Info(Caller,'Variable type for projection: '//TRIM(I2S(k)),Level=20)
+
+      CALL Ip2DgSwapper( Mesh, ExpVariable, ToType = k )
+
+      CALL Info(Caller,'Finished projection of variable',Level=30)
+    END DO
+
+    IF( AllocationsDone ) THEN
+      DEALLOCATE(ActivePart, ActiveCond, LocalSol, LocalCond, Basis, &
+          Nodes % x, Nodes % y, Nodes % z )
+    END IF
+      
+  END SUBROUTINE UpdateExportedVariables
 
 
 !------------------------------------------------------------------------------
@@ -16723,7 +16766,7 @@ CONTAINS
     END IF
 
     IF(.NOT. ASSOCIATED( A ) ) THEN
-      CALL Fatal(Caller,'Matrix not assciated!')
+      CALL Fatal(Caller,'Matrix not associated!')
     END IF
 
     SaveMass = ListGetLogical( Params,'Linear System Save Mass',Found)
@@ -17909,7 +17952,7 @@ CONTAINS
 
 
         ! We need to create mesh edges to simplify many things
-        CALL FindMeshEdges( Mesh ) 
+        CALL FindMeshEdges( Mesh, FindFaces=.FALSE. ) 
         ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
         EdgePerm = 0
         EdgeCount = 0
@@ -17937,7 +17980,7 @@ CONTAINS
           NoFound = 0
           NoFound2 = 0
           
-          DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          DO t=1,Mesh % NumberOfBulkElements ! Mesh % NumberOfBoundaryElements
             
             Element => Mesh % Elements(t)
             Indexes => Element % NodeIndexes 
@@ -17959,11 +18002,11 @@ CONTAINS
             ! Ok, now register the shell element to the edge that it is associated to
 
 !          ! This does not work since the edges are only defined where there are also faces!
-!          DO i = 1, Element % TYPE % NumberOfEdges
-!            j = Element % EdgeIndexes(i)
+           DO i = 1, Element % TYPE % NumberOfEdges
+             j = Element % EdgeIndexes(i)
 
-            ! This does work but is N^2
-            DO j=1,Mesh % NumberOfEdges
+!           ! This does work but is N^2
+!           DO j=1,Mesh % NumberOfEdges
               
               IF( EdgePerm(j) == 0 ) CYCLE
               Edge => Mesh % Edges(j)
@@ -18004,6 +18047,7 @@ CONTAINS
             //TRIM(I2S(MaxEdgeShellCount)),Level=10)
         CALL Info(Caller,'Total number of edge shell owners: '&
             //TRIM(I2S(SUM(EdgeShellCount))),Level=10)
+
 
         NoFound = COUNT( EdgeShellCount == 0 ) 
         CALL Info(Caller,'Number of edges with no shell owners: '//TRIM(I2S(NoFound)),Level=10)
@@ -20590,7 +20634,7 @@ CONTAINS
          nd = LEN_TRIM(OutputDirectory)
        END IF
        ! To be on the safe side create the directory. If it already exists no harm done.
-       ! Note that only one direcory may be created. Hence if there is a path with many subdirectories
+       ! Note that only one directory may be created. Hence if there is a path with many subdirectories
        ! that will be a problem. Fortran does not have a standard ENQUIRE for directories hence
        ! we just try to make it. 
        IF( DoDir ) THEN
@@ -20655,7 +20699,9 @@ CONTAINS
      TYPE(GaussIntegrationPoints_t) :: IP
      TYPE(Nodes_t) :: Nodes
      LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
+     CHARACTER(*), PARAMETER :: Caller = 'Ip2DgField'
 
+     
      SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
      !------------------------------------------------------------------------------
 
@@ -20669,7 +20715,7 @@ CONTAINS
      END IF
 
      n = Element % TYPE % NumberOfNodes 
-     IF( n /= ndg ) CALL Fatal('Ip2DgField','Mismatch in sizes!')
+     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
 
      Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
      Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
@@ -20705,132 +20751,157 @@ CONTAINS
    END SUBROUTINE Ip2DgField
 
 
+
    ! This routine changes the IP field to DG field just while the results are being written.
    !---------------------------------------------------------------------------------------
-   SUBROUTINE Ip2DgSwapper( Mesh, FromVar, ToVar, ToType ) 
+   SUBROUTINE Ip2DgSwapper( Mesh, FromVar, ToVar, ToType, ToName )
 
      TYPE( Mesh_t), POINTER :: Mesh
      TYPE( Variable_t), POINTER :: FromVar
      TYPE( Variable_t), POINTER, OPTIONAL :: ToVar
      INTEGER, OPTIONAL :: ToType
-
+     CHARACTER(*), OPTIONAL :: ToName
+       
      TYPE( Variable_t), POINTER :: TmpVar
      INTEGER :: TmpType
-     TYPE( Variable_t), TARGET :: LocalVar
-     INTEGER :: permsize,ipsize,varsize,dofs,i,j,k,n,m,e,t,allocstat
+     INTEGER :: permsize,ipsize,varsize,i,j,k,n,m,e,t,allocstat,dofs
      TYPE(Element_t), POINTER :: Element
      REAL(KIND=dp) :: fip(32),fdg(32)
-     LOGICAL :: DgField, NodeField
+     LOGICAL :: DgField, NodalField, ElemField, Listed
      INTEGER, ALLOCATABLE :: NodeHits(:)
      INTEGER, POINTER :: Indexes(:)
+     CHARACTER(LEN=MAX_NAME_LEN) :: TmpName
+     CHARACTER(*), PARAMETER :: Caller = 'Ip2DgSwapper'
      
-     SAVE LocalVar
-
-     IF( FromVar % TYPE /= Variable_on_gauss_points ) RETURN
-     
-     IF( PRESENT( ToVar ) ) THEN
-       IF(.NOT. ASSOCIATED( ToVar ) ) RETURN
+     IF( FromVar % TYPE /= Variable_on_gauss_points ) THEN
+       CALL Warn(Caller,'Only IP fields can be swapped!: '//TRIM(FromVar % Name))
+       RETURN
      END IF
-     
-     CALL Info('Ip2DgSwapper','Swapping variable from ip to dg:'//TRIM(FromVar % Name),Level=8)
+       
+     CALL Info(Caller,'Swapping variable from ip field: '//TRIM(FromVar % Name),Level=8)
 
-     dofs = FromVar % Dofs
-
+     TmpType = Variable_on_nodes_on_elements
      IF( PRESENT( ToType ) ) THEN
        TmpType = ToType
      ELSE IF( PRESENT( ToVar ) ) THEN
-       TmpType = ToVar % TYPE
-     ELSE
-       TmpType = Variable_on_nodes_on_elements
+       IF( ASSOCIATED( ToVar ) ) THEN
+         TmpType = ToVar % TYPE
+       END IF
      END IF
      
      DgField = ( TmpType == Variable_on_nodes_on_elements )
-     NodeField = ( TmpType == Variable_on_nodes )
+     NodalField = ( TmpType == Variable_on_nodes )
+     ElemField = ( TmpType == Variable_on_elements )
 
-     IF(.NOT. (DgField .OR. NodeField ) ) THEN
-       CALL Fatal('Ip2DgSwapper','Wrong type of variable!')        
+     IF(.NOT. (DgField .OR. NodalField .OR. ElemField ) ) THEN
+       CALL Fatal(Caller,'Wrong type of variable: '//TRIM(I2S(TmpType)))
      END IF
      
-               
-     ! Inherit stuff from the primary field to temporal field
+     IF( PRESENT( ToName ) ) THEN
+       TmpName = TRIM(ToName)
+     ELSE IF( DgField ) THEN
+       TmpName = TRIM(FromVar % Name)//'_dg'
+     ELSE IF( NodalField ) THEN
+       TmpName = TRIM(FromVar % Name)//'_nodal'
+     ELSE IF( ElemField ) THEN
+       TmpName = TRIM(FromVar % Name)//'_elem'
+     END IF
+     CALL Info(Caller,'Projected variable is named: '//TRIM(TmpName),Level=20)
+
+          
+     TmpVar => NULL()
      IF( PRESENT( ToVar ) ) THEN
        TmpVar => ToVar
-       IF( TmpVar % dofs /= dofs ) THEN
-         CALL Fatal('Ip2DgSwapper','Variables are of different size!')        
-       END IF
-     ELSE
-       TmpVar => LocalVar
-       TmpVar % Name = FromVar % Name
-       TmpVar % Dofs = dofs
-       TmpVar % Type = TmpType
-       
-       ! Calculate the sizes related to the primary variable
-       n = Mesh % NumberOfBulkElements
-       ipsize = FromVar % Perm(n+1) - FromVar % Perm(1)
-       CALL Info('Ip2DgSwapper','Size of ip table: '//TRIM(I2S(ipsize)),Level=20)
-       
-       IF( DgField ) THEN
-         permsize = 0
-         DO t=1,Mesh % NumberOfBulkElements
-           Element => Mesh % Elements(t)
-           n = Element % TYPE % NumberOfNodes           
-           permsize = permsize + n            
-         END DO
-       ELSE
-         permsize = Mesh % NumberOfNodes                  
-       END IF
-       CALL Info('Ip2DgSwapper','Size of permutation table: '//TRIM(I2S(permsize)),Level=20)
-       
-       IF(ASSOCIATED( TmpVar % Perm ) ) THEN
-         IF( SIZE( TmpVar % Perm ) < permsize ) DEALLOCATE( TmpVar % Perm )
-       END IF
-       IF(.NOT. ASSOCIATED( TmpVar % Perm ) ) THEN
-         ALLOCATE( TmpVar % Perm(permsize), STAT=allocstat )
-         IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Perm')
-       END IF
-       TmpVar % Perm = 0 
-
-       ! Mark the existing permutations in the temporal variable
-       DO t=1,Mesh % NumberOfBulkElements
-         Element => Mesh % Elements(t)
-         n = Element % Type % NumberOfNodes                     
-         e = Element % ElementIndex
-         m = FromVar % Perm(e+1) - FromVar % Perm(e)
-
-         IF( m > 0 ) THEN
-           IF( DgField ) THEN
-             TmpVar % Perm( Element % DgIndexes ) = 1
-           ELSE
-             TmpVar % Perm( Element % NodeIndexes ) = 1
-           END IF
-         END IF
-       END DO
-
-       ! Number the permutations in the temporal variable
-       j = 0
-       DO i = 1, permsize
-         IF( TmpVar % Perm( i ) == 0 ) CYCLE
-         j = j + 1
-         TmpVar % Perm( i ) = j
-       END DO
-       varsize = j
-       CALL Info('Ip2DgSwapper','Size of target variable: '//TRIM(I2S(varsize)),Level=20)
-        
-       IF(ASSOCIATED( TmpVar % Values ) ) THEN
-         IF( SIZE( TmpVar % Values ) < varsize * dofs ) DEALLOCATE( TmpVar % Values )
-       END IF
-       IF(.NOT. ASSOCIATED( TmpVar % Values ) ) THEN
-         ALLOCATE( TmpVar % Values(varsize * dofs), STAT=allocstat)
-         IF( allocstat /= 0 ) CALL Fatal('Ip2DgSwapper','Allocation error for TmpVar % Values')      
-       END IF
-       TmpVar % Values = 0.0_dp
+     ELSE 
+       TmpVar => VariableGet( Mesh % Variables, TmpName )       
      END IF
 
+     dofs = FromVar % Dofs
+     Listed = ASSOCIATED( TmpVar ) 
+     IF(.NOT. Listed ) THEN
+       CALL Info(Caller,'Allocating temporal variable for projection',Level=20)
+       ALLOCATE( TmpVar )       
+       ! Inherit stuff from the primary field to temporal field
+       TmpVar % Name = TmpName 
+       TmpVar % Dofs = dofs
+       TmpVar % Type = TmpType
+       TmpVar % NameLen = LEN_TRIM(TmpVar % Name)
+       TmpVar % Solver => FromVar % Solver
+     END IF
+
+     ! Calculate the sizes related to the primary variable
+     n = Mesh % NumberOfBulkElements
+     ipsize = FromVar % Perm(n+1) - FromVar % Perm(1)
+     CALL Info(Caller,'Size of ip table: '//TRIM(I2S(ipsize)),Level=20)
+
+     IF( DgField ) THEN
+       permsize = 0
+       DO t=1,Mesh % NumberOfBulkElements
+         Element => Mesh % Elements(t)
+         n = Element % TYPE % NumberOfNodes           
+         permsize = permsize + n            
+       END DO
+     ELSE IF( ElemField ) THEN
+       permsize = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+     ELSE
+       permsize = Mesh % NumberOfNodes                  
+     END IF
+     CALL Info(Caller,'Size of permutation table: '//TRIM(I2S(permsize)),Level=20)
+
+
+     IF(ASSOCIATED( TmpVar % Perm ) ) THEN
+       IF( SIZE( TmpVar % Perm ) < permsize ) DEALLOCATE( TmpVar % Perm )
+     END IF
+     IF(.NOT. ASSOCIATED( TmpVar % Perm ) ) THEN
+       ALLOCATE( TmpVar % Perm(permsize), STAT=allocstat )
+       IF( allocstat /= 0 ) CALL Fatal(Caller,'Allocation error for TmpVar % Perm')
+     END IF
+      
+     ! Mark the existing permutations in the temporal variable
+     TmpVar % Perm = 0 
+     DO t=1,Mesh % NumberOfBulkElements
+       Element => Mesh % Elements(t)
+       n = Element % Type % NumberOfNodes                     
+       e = Element % ElementIndex
+       m = FromVar % Perm(e+1) - FromVar % Perm(e)
+
+       IF( m > 0 ) THEN
+         IF( DgField ) THEN
+           IF( .NOT. ASSOCIATED( Element % DGIndexes ) ) THEN
+             CALL Warn(Caller,'Cannot project to DG field without DGIndexes!')
+             EXIT
+           END IF
+           TmpVar % Perm( Element % DgIndexes ) = 1
+         ELSE IF( ElemField ) THEN
+           TmpVar % Perm( Element % ElementIndex ) = 1
+         ELSE
+           TmpVar % Perm( Element % NodeIndexes ) = 1
+         END IF
+       END IF
+     END DO
+
+     ! Number the permutations in the temporal variable
+     j = 0
+     DO i = 1, permsize
+       IF( TmpVar % Perm( i ) == 0 ) CYCLE
+       j = j + 1
+       TmpVar % Perm( i ) = j
+     END DO
+     varsize = j
+     CALL Info(Caller,'Size of target variable: '//TRIM(I2S(varsize)),Level=20)
+
      
-     IF( NodeField ) THEN
-       TmpVar % Values = 0.0_dp
-       n = SIZE( TmpVar % Values ) / TmpVar % Dofs
-       ALLOCATE( NodeHits(n) )
+     IF(ASSOCIATED( TmpVar % Values ) ) THEN
+       IF( SIZE( TmpVar % Values ) < varsize * dofs ) DEALLOCATE( TmpVar % Values )
+     END IF
+     IF(.NOT. ASSOCIATED( TmpVar % Values ) ) THEN
+       ALLOCATE( TmpVar % Values(varsize * dofs), STAT=allocstat)
+       IF( allocstat /= 0 ) CALL Fatal(Caller,'Allocation error for TmpVar % Values')      
+     END IF
+     TmpVar % Values = 0.0_dp
+          
+     IF( NodalField ) THEN
+       ALLOCATE( NodeHits(varsize) )
        NodeHits = 0
      END IF
      
@@ -20845,22 +20916,30 @@ CONTAINS
 
        IF( DgField ) THEN
          IF( ALL( TmpVar % Perm( Element % DgIndexes ) == 0 ) ) CYCLE          
+       ELSE IF( ElemField ) THEN
+         IF( TmpVar % Perm( t ) == 0 ) CYCLE
        ELSE
          IF( ALL( TmpVar % Perm( Element % NodeIndexes ) == 0 ) ) CYCLE                  
        END IF
-              
+
        DO k=1,dofs
          DO i=1,m        
            j = FromVar % Perm(t) + i 
            fip(i) = FromVar % Values(dofs*(j-1)+k)
          END DO
 
+         IF( ElemField ) THEN
+           j = TmpVar % Perm( t ) 
+           TmpVar % Values(dofs*(j-1)+k) = SUM( fip(1:m) ) / m 
+           CYCLE
+         END IF
+
          ! Solve the elemental equation involving mass matrix
          CALL Ip2DgField( Mesh, Element, m, fip, n, fdg )
 
          IF( DgField ) THEN
            Indexes => Element % DgIndexes
-         ELSE
+         ELSE IF( NodalField ) THEN
            Indexes => Element % NodeIndexes
          END IF
 
@@ -20877,9 +20956,19 @@ CONTAINS
          END DO
        END DO
      END DO
-       
+
+     IF(.NOT. Listed ) THEN
+       IF( PRESENT( ToVar ) ) THEN
+         ToVar => TmpVar
+       ELSE
+         CALL VariableAppend( Mesh % Variables,TmpVar)
+       END IF
+     END IF
+            
      IF( DgField ) THEN
-       CALL Info('Ip2DgSwapper','Swapping variable from ip to dg done',Level=12)
+       CALL Info(Caller,'Swapping variable from ip to dg done',Level=12)
+     ELSE IF( ElemField ) THEN
+       CALL Info(Caller,'Swapping variable from ip to elemental done',Level=12)
      ELSE
        DO k=1,dofs
          WHERE( NodeHits > 0 ) 
@@ -20887,14 +20976,143 @@ CONTAINS
          END WHERE
        END DO
        DEALLOCATE( NodeHits ) 
-       CALL Info('Ip2DgSwapper','Swapping variable from ip to nodal done',Level=12)
+       CALL Info(Caller,'Swapping variable from ip to nodal done',Level=12)
      END IF
      
-     IF( .NOT. PRESENT( ToVar ) ) FromVar => TmpVar
-       
    END SUBROUTINE Ip2DgSwapper
+   !-------------------------------------------------------------------------------------
        
- 
+
+
+   ! Generic evaluation of field value at given point of element.
+   ! The idea is that the field value to be evaluated may be nodal, elemental,
+   ! dg, or gauss point field. Perhaps even edge or face element field.
+   !-------------------------------------------------------------------------------------
+   FUNCTION EvalFieldAtElem( Mesh, Var, Element, Basis, dofi, eigeni, imVal, GotVal ) RESULT ( Val )
+
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Variable_t), POINTER :: Var
+     TYPE(Element_t), POINTER :: Element
+     REAL(KIND=dp), POINTER :: Basis(:)
+     INTEGER, OPTIONAL :: dofi
+     INTEGER, OPTIONAL :: eigeni
+     LOGICAL, OPTIONAL :: GotVal
+     REAL(KIND=dp), OPTIONAL :: ImVal
+     REAL(KIND=dp) :: Val
+
+     COMPLEX(KIND=dp) :: cVal
+     INTEGER :: VIndexes(100)
+     REAL(KIND=dp) :: vValues(100),fValues(100)
+     REAL(KIND=dp), POINTER :: rValues(:)
+     COMPLEX(KIND=dp), POINTER :: cValues(:)
+     INTEGER :: dofs,n,i,j,k,l,i1,i2,nip     
+     LOGICAL :: GotIt, IsEigen
+
+
+     IF( PRESENT(GotVal) ) GotVal = .FALSE.
+     GotIt = .FALSE.
+     Val = 0.0_dp
+     cVal = 0.0_dp
+
+     n = Element % Type % NumberOfNodes
+
+     rValues => Var % Values
+     dofs = Var % Dofs
+     IF( dofs > 1 ) THEN
+       IF(.NOT. PRESENT( dofi ) ) THEN
+         CALL Fatal('EvalFieldAtElem','We need "dofi" as argument!')
+       END IF
+     END IF
+
+     IF( PRESENT( EigenI ) ) THEN       
+       IF( dofs > 1 ) THEN
+         cValues => Var % EigenVectors(eigeni,dofi :: dofs )
+       ELSE
+         cValues => Var % EigenVectors(eigeni,:)
+       END IF
+       IsEigen = .TRUE.
+     ELSE
+       IF( dofs > 1 ) THEN
+         rValues => Var % Values(dofi::dofs)
+       ELSE
+         rValues => Var % Values
+       END IF
+       IsEigen = .FALSE.
+     END IF
+
+     IF( Var % TYPE == Variable_on_nodes ) THEN
+       VIndexes(1:n) = Var % Perm( Element % NodeIndexes ) 
+
+       IF( ALL( VIndexes(1:n) /= 0 ) ) THEN         
+         IF( IsEigen ) THEN
+           cVal = SUM( Basis(1:n) * cvalues( VIndexes(1:n) ) )
+         ELSE
+           Val = SUM( Basis(1:n) * rvalues( VIndexes(1:n) ) )
+         END IF
+         GotIt = .TRUE.
+       END IF
+
+     ELSE IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+       VIndexes(1:n) = Var % Perm( Element % DGIndexes ) 
+
+       IF( ALL( VIndexes(1:n) /= 0 ) ) THEN
+         IF( isEigen ) THEN
+           cVal = SUM( Basis(1:n) * cValues( VIndexes(1:n) ) )
+         ELSE
+           Val = SUM( Basis(1:n) * rValues( VIndexes(1:n) ) )
+         END IF
+         GotIt = .TRUE.
+       END IF
+
+     ELSE IF( Var % TYPE == Variable_on_elements ) THEN
+       j = Var % Perm( Element % ElementIndex )
+
+       IF( j > 0 ) THEN
+         IF( isEigen ) THEN
+           cVal = rValues( j ) 
+         ELSE
+           Val = rValues( j ) 
+         END IF
+         GotIt = .TRUE.
+       END IF
+
+     ELSE IF( Var % Type == Variable_on_gauss_points ) THEN              
+       i1 = Var % Perm(Element % ElementIndex)       
+       i2 = Var % Perm(Element % ElementIndex+1)-1
+       nip = i2-i1
+       IF(nip > 0) THEN
+         IF( IsEigen ) THEN
+           VValues = REAL( cValues(i1:i2-1) )
+         ELSE
+           VValues(1:nip) = rValues(i1:i2-1)
+         END IF
+         CALL Ip2DgField( Mesh, Element, nip, VValues, n, FValues )         
+
+         Val = SUM( Basis(1:n) * FValues(1:n) )
+
+         ! We don't have complex operator for Ip2Dg yet!
+         cVal = Val
+         GotIt = .TRUE.
+       END IF
+     END IF
+
+     IF( PRESENT( GotVal ) ) THEN
+       GotVal = GotIt
+     ELSE
+       CALL Warn('EvalFieldAtElem','Could not evaluate field at element!')
+     END IF
+
+     IF( IsEigen ) THEN
+       Val = REAL( cVal ) 
+       IF( PRESENT( imVal ) ) imVal = AIMAG( cVal ) 
+     END IF
+
+     
+   END FUNCTION EvalFieldAtElem
+   !---------------------------------------------------------------------------------------
+
+
+   
    ! When we have a transient and time-periodic system it may be
    ! beneficial to store the values and use them as an initial guess
    ! for the next round. This tabulates the system and performs the

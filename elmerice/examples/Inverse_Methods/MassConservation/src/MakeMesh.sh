@@ -4,7 +4,7 @@
 #  from rectangle .geo
 #
 # INPUTS:
-#	- SRC_DIR: environnement variable with the path to this directory
+#	- SRC_DIR: environment variable with the path to this directory
 #	- Arguments:
 #		- $1 : element size
 #		- $2 : output mesh name (.msh) (OPTIONAL)

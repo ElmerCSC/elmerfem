@@ -46,7 +46,7 @@ End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Body Force 1
   ! Nodal Value prescribed here
-  ! can be usefull if we want to make a change of variable
+  ! can be useful if we want to make a change of variable
   CostReg Nodal Variable = Variable Var
    Real procedure "ElmerIceUSF" "TenPowerA"
   ! Provide a function that give teh derivative

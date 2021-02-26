@@ -978,7 +978,7 @@ void ObjectBrowser::treeItemExpandedSlot(
     updateBodyProperties();
     for (int i = 0; i < bodyPropertyParentTreeItem->childCount(); i++)
       bodyPropertyParentTreeItem->child(i)->setExpanded(true);
-    updateBoundaryProperties(); // This was added to avoid crushing when chosing
+    updateBoundaryProperties(); // This was added to avoid crushing when choosing
                                 // body property just after loading 3D mesh
                                 // without expanding boundary condition parent
                                 // item.

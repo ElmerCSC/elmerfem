@@ -594,7 +594,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     CALL ParticleStatistics( Particles, 1 )
   END IF
 
-  ! a logaritmic scale of indexes is used to estimate time
+  ! a logarithmic scale of indexes is used to estimate time
   !--------------------------------------------------------
   IF( TimeInfo ) THEN
     cput1 = CPUTime()

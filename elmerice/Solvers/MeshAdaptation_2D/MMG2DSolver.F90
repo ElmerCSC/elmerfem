@@ -343,7 +343,7 @@
       END IF
 
       NewMesh%MaxElementNodes=3
-      NewMesh%MaxElementDOFs=3
+      !NewMesh%MaxElementDOFs=3
       NewMesh%MeshDim=Solver%Mesh%MeshDim
 
       NewMesh % NumberOfNodes = np
@@ -427,6 +427,8 @@
 
          Element % BoundaryInfo % Left => NewMesh % Elements(parent)
       End do
+
+      CALL SetMeshMaxDOFs(NewMesh)
 
       END FUNCTION GET_MMG2D_MESH
 

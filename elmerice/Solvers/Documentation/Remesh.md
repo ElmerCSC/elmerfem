@@ -1,11 +1,29 @@
-# Remesh
-This page describes the solver Remesh which handles the domain remeshing which is required after large calving events in the [3D calving model](http://elmerfem.org/elmerice/wiki/doku.php?id=problems:calving).
+# Solver Remesh (& CheckConvergence)
+## General Information
 
-In addition to the main solver, Remesh makes use of an auxiliary mesh update solver which must be present in the SIF.
+- **Solver Fortran File:** CalvingRemesh.F90
+- **Solver Name:** Remesher
+- **Required Output Variable(s):** RemeshHeight (only used internally)
+- **Required Input Variable(s):** Remesh Update, GroundedMask
+- **Optional Output Variable(s):** None
+- **Optional Input Variable(s):** None
 
-![remeshing algorithm](./remesh_algo.png)
+## General Description
+This solver, which will be deprecated and replaced with CalvingRemeshMMG, handles the remeshing of a 3D mesh following a calving event predicted by the solver Find_Calving3D.
 
-## The Remeshing Algorithm
+CalvingRemesh takes a vector variable, by default called "Calving", which defines the displacement due to calving for every node on the calving front. The plan-view footprint of the post-calving mesh is computed and externally meshed using gmsh. This footprint is extruded and deformed to produce a (hopefully) high quality mesh. Finally, 'SwitchMesh' (from CalvingGeometry.F90) is called, which interpolates all the field variables from old to new mesh.
+
+CalvingRemesh makes extensive use of reduced dimension interpolation. That is, interpolating data from one surface to another, ignoring the Z dimension. This is used to get ice surface and base elevations for the new mesh, and also to interpolate the new shape of the calving front. Due to the reliance on this interpolation, the calving front *must remain projectible in the direction of ice flow*.
+
+This solver also relies on a copy of the MeshUpdate solver to compute mesh displacement based on a Dirichlet condition at the calving front (due to calving) and at the inflow boundary/sidewalls (which are stationary).
+
+The solver needs to know several things about the setup, including:
+
+	- Which BC is which (via e.g. "Top Surface Mask = Logical True")
+	- Parameters for mesh quality (e.g. Remesh Min Distance Threshold)
+	- Mesh Update & Free Surface variables (need to be treated carefully)
+
+## SIF contents
 
 ```
 Solver Options
@@ -95,7 +113,11 @@ Solver 22
 End
 ```
 
-## CheckFlowConvergence
+## Examples
+
+See [ELMER_TRUNK]/elmerice/Tests/Calving3D
+
+# Solver CheckFlowConvergence
 An additional solver “CheckFlowConvergence” is provided to allow the model to detect when remeshing has failed to produce a viable mesh for the computation of the flow solution. This solver, which should be called immediately after the flow solver, checks that the flow solution appears to be behaving by checking that:
 
 The convergence flag of the flow solver is 'True'

@@ -38,6 +38,32 @@
 ! *
 ! *****************************************************************************/
 
+
+!------------------------------------------------------------------------------
+!> Initialization for the primary solver: StressSolver. 
+!------------------------------------------------------------------------------
+SUBROUTINE StressSolver_Init0( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+
+    TYPE(Model_t)  :: Model
+    TYPE(Solver_t) :: Solver
+    REAL(KIND=dp) :: dt
+    LOGICAL :: Transient
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+
+    SolverParams => GetSolverParams()
+
+    CALL ListAddLogical( SolverParams,'Solid Solver',.TRUE.)
+    
+!------------------------------------------------------------------------------
+  END SUBROUTINE StressSolver_Init0
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver: StressSolver. 
 !------------------------------------------------------------------------------
@@ -62,12 +88,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     CALL Info( 'StressSolve_init', 'Solving displacements from linear elasticity model',Level=4 )     
     CALL Info( 'StressSolve_init', '--------------------------------------------------',Level=4 )
     SolverParams => GetSolverParams()
-    dim = CoordinateSystemDimension()
 
-    IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      CALL ListAddInteger( SolverParams, 'Variable DOFs', dim )
-      CALL ListAddString( SolverParams, 'Variable', 'Displacement' )
-    END IF
+    dim = CoordinateSystemDimension()   
+    CALL ListAddNewString( SolverParams, 'Variable', '-dofs '//TRIM(I2S(dim))//' Displacement' )
 
     MaxwellMaterial = ListGetLogicalAnyMaterial(Model, 'Maxwell material')
     IF (.NOT.MaxwellMaterial) THEN
@@ -83,11 +106,9 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       CALL ListAddString(SolverParams, 'Timestepping Method', 'BDF' )
       CALL ListAddInteger(SolverParams, 'BDF Order', 2 )
       CALL ListAddInteger(SolverParams, 'Time derivative Order', 1)
-      DO i=1,100
-        IF ( .NOT. ListCheckPresent( SolverParams, 'Exported Variable '//trim(i2s(i))) ) EXIT
-      END DO
-      CALL ListAddString( SolverParams, 'Exported Variable '//trim(i2s(i)), &
-              '-dofs '//trim(i2s(dim**2))//' -ip ve_stress' )
+      CALL ListAddString( SolverParams, &
+          NextFreeKeyword('Exported Variable ',SolverParams), &
+          '-dofs '//TRIM(i2s(dim**2))//' -ip ve_stress' )
     END IF
     
     IF(.NOT.ListCheckPresent( SolverParams, 'Time derivative order') ) &
@@ -155,17 +176,13 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     END IF
     
     IF (CalcVelocities) THEN
-      WRITE (Message,'(A,I1,A)') '-dofs ',DIM, ' Displacement Velocity'
-      
       CALL ListAddString( SolverParams,&
             NextFreeKeyword('Exported Variable ',SolverParams), &
-            Message )
-      WRITE (Message,'(A,A,I1,A)') 'Added:','-dofs ',DIM, ' Displacement Velocity'
-      CALL INFO('StressSolve_init',Message,Level=5)
+            '-dofs '//TRIM(I2S(dim))//' Displacement Velocity')
     END IF
     
     CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
-
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolver_Init
 !------------------------------------------------------------------------------
@@ -2371,7 +2388,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-! At the end of each iteration assemblys one line of the Kmatrix and finally 
+! At the end of each iteration assemblies one line of the Kmatrix and finally 
 ! invert the matrix. The displacements and the springs are taken to be the 
 ! average values on the surface.
 !------------------------------------------------------------------------------
@@ -2907,7 +2924,7 @@ CONTAINS
      ExtPressure(1:En) = GetReal( BC, 'Normal Force', Found )
 
      ! If dirichlet BC for displacement in any direction given,
-     ! nullify force in that directon:
+     ! nullify force in that direction:
      ! --------------------------------------------------------
      Dir = 1.0d0
      IF ( ListCheckPresent( BC, 'Displacement' ) )   Dir = 0

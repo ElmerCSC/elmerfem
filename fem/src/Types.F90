@@ -565,10 +565,11 @@ MODULE Types
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
      TYPE(Solver_t), POINTER :: Solver => NULL()
-     LOGICAL :: Valid, Output
+     LOGICAL :: Valid = .TRUE.
+     LOGICAL :: Output = .TRUE.
      TYPE(Mesh_t), POINTER :: PrimaryMesh => NULL()
 
-     LOGICAL :: ValuesChanged = .FALSE.
+     LOGICAL :: ValuesChanged = .TRUE.
 
 ! Some variables are created from pointers to the primary variables
      LOGICAL :: Secondary = .FALSE.

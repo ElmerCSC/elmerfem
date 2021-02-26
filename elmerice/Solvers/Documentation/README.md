@@ -18,7 +18,11 @@ where NameProcedureInMySolver is the name of the fortran procedure in the file M
 # Providing documentation for ElmerIce Solvers
 
 Github already renders .md files but these do not support maths very well.  
-You can generate a .pdf using e.g. pandoc.
+You can generate a .pdf that will display the maths better (if you've written it in the .md file using LaTEX syntax) using e.g. pandoc.
+> pandoc -f gfm -t pdf -s SomeDocumentationFile.md > SomeDocumentationFile.pdf
+will generate a fully rendered pdf version of any of the files.
+
+If you've written a new solver, please use the [Template.md](./Template.md) file to set up your documentation before uploading it to this directory.
 
 To generate the doucumentation for the adjoint method run:
 > pandoc -d MakeDoc_Adjoint.yml
@@ -70,4 +74,4 @@ Generic user functions:
 
 ## Coupled hydrology-plumes-calving
 
-This is pretty much the output of Samuel Cook's PhD thesis on 3D coupled modelling of a tidewater glacier, and involves coupling the GlaDS hydrology solvers with Joe Todd's 3D calving solvers, and a new 1D ODE solver for glacial meltwater plumes based on the work of Donald Slater. Several other new solvers are also required to manage the interaction between all these moving parts. If you're interested in using this set-up, a full description, including all necessary solvers, SIF inclusions, and mesh fiddliness, is provided in [CoupledIceHydrologyCalvingPlumesDocumentation](CoupledIceHydrologyCalvingPlumesDocumentation.md). Note: all the necessary modifications to existing Elmer/Ice solvers are in the distributed versions, so you shouldn't have to do anything not listed in the doc, as long as I've not forgotten to tell you about something important. Any questions, email me at samuel.cook .at. univ-grenoble-alpes.fr
+This is pretty much the output of Samuel Cook's PhD thesis on 3D coupled modelling of a tidewater glacier, and involves coupling the GlaDS hydrology solvers with Joe Todd's 3D calving solvers, and a new 1D ODE solver for glacial meltwater plumes based on the work of Donald Slater. Several other new solvers are also required to manage the interaction between all these moving parts. If you're interested in using this set-up, a full description, including all necessary solvers, SIF inclusions, and mesh fiddliness, is provided in [CoupledIceHydrologyCalvingPlumesDocumentation](CoupledIceHydrologyCalvingPlumesDocumentation.md)(the individual new solvers are also all documented in their own .md files, which you may find it useful to look at). Note: all the necessary modifications to existing Elmer/Ice solvers are in the distributed versions, so you shouldn't have to do anything not listed in the doc, as long as I've not forgotten to tell you about something important. Any questions, email me at samuel.cook .at. univ-grenoble-alpes.fr
