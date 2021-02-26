@@ -215,11 +215,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     CoilParts = 2
   ELSE
     IF( .NOT. ListGetLogicalAnyBC( Model,'Coil Start') ) THEN
-      CALL Info('CoilSolver','Assuming coil that is not closed',Level=3)
+      CALL Info('CoilSolver','Assuming coil that is not closed',Level=5)
       CALL Fatal('CoilSolver','> Coil Start < must be defined on some BC')
     END IF
     IF( .NOT. ListGetLogicalAnyBC( Model,'Coil End') ) THEN
-      CALL Info('CoilSolver','Assuming coil that is not closed',Level=3)
+      CALL Info('CoilSolver','Assuming coil that is not closed',Level=5)
       CALL Fatal('CoilSolver','> Coil End < must be defined on some BC')
     END IF
     CoilParts = 1
@@ -231,7 +231,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   IF( .NOT. Found ) CalcCurr = .TRUE.
 
   NormalizeCurrent = ListGetLogical( Params,'Normalize Coil Current',Found ) 
+  IF( NormalizeCurrent ) THEN
+    CALL Info('CoilSolver','Normalizing current density (as for stranded coil)',Level=5)
+  END IF
 
+  
   IF( FixConductivity ) THEN
     IF( CoilAnisotropic ) THEN
       MaxNonlinIter = 3
