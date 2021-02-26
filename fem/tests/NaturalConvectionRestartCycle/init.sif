@@ -1,4 +1,12 @@
 ! In addition for simple natural convection here restart is applied.
+! This creates the restart and case.sif continues from it.
+!
+! From the basic case this is different in that there are 3 cyclic
+! files that are alternated and written on top of each other.
+! This saves disc space. Currently one has to check what is the most recent. 
+!
+! Also we add a p-element that is here 2nd order and 1st order
+! in the case file. 
 
 $ relax = 0.7
 
@@ -10,31 +18,31 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
-  Steady State Min Iterations = 1
   Steady State Max Iterations = 30
   Timestepping Method = bdf
   Bdf Order = 1
   Timestep intervals(1) = 10
   Timestep Sizes(1) = 1.0
-  Output Intervals(1) = 1 
+  Output Intervals(1) = 5
 
-  Post File = case.vtu
-!  Output File = case.result
+!  Output File = ../init_bin.result
+  Output File = ../init_asc.result
+  Output Global Variables = Logical True
+  Output File Cycle = Integer 3
+
+! This test with ascii
 !  Binary Output = Logical True
 
-!  Restart File = ../init_asc.result
-  Restart File = ../init_bin.result
-!  Restart File = ../old.result
-  Restart Position = 0
-
-! These are for testing selective restart
-  Restart Variable 1 = String Temperature
-  Restart Variable 2 = String Velocity      ! takes components 1 & 2
-  Restart Variable 3 = String globaltest 1  ! takes component of the global vector
+! This is for testing purposes
+!  Output Variable 1 = String Pressure 
+!  Output Variable 2 = String Temperature
+!  Output Variable 3 = String time
+!  Output Variable 4 = String globaltest
+!  Output Variable 5 = String fieldtest 3
 End
 
 Constants
@@ -47,7 +55,7 @@ End
 
 Body 1
   Target Bodies(1) = 1
-  Name = "Fluid"
+  Name = "Body 1"
   Equation = 1
   Material = 1
   Body Force = 1
@@ -69,8 +77,6 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Relaxation Factor = $ relax
 
-  Nonlinear System Consistent Norm = Logical True
-
   Linear System Symmetric = True
   Linear System Solver = Iterative
   Linear System Iterative Method = GCR
@@ -79,6 +85,9 @@ Solver 1
   Linear System Preconditioning = ILU0
   Linear System Abort Not Converged = False
   Linear System Residual Output = 10
+
+! For testing saving of global vector variables
+  Exported Variable 1 = -dofs 3 -global GlobalTest
 End
 
 Solver 2
@@ -96,8 +105,6 @@ Solver 2
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Relaxation Factor = $ relax
 
-  Nonlinear System Consistent Norm = Logical True
-
   Linear System Symmetric = True
   Linear System Solver = Iterative
   Linear System Iterative Method = Bicgstabl
@@ -108,12 +115,23 @@ Solver 2
   Linear System Residual Output = 10
 End
 
+! We add some complexity with an additional solver
+! which has different p-order than in the restart file. 
+Solver 3
+  Exec Solver = never
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDE" "AdvDiffSolver"
+  Element = "p:2"
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1e-9
+End
 
 
 Equation 1
   Name = "Natural Convection"
   Convection = Computed
-  Active Solvers(2) = 1 2
+  Active Solvers(3) = 1 2 3
 End
 
 Material 1
@@ -171,6 +189,3 @@ Boundary Condition 4
   Temperature = 293.0
 End
 
-Solver 2 :: Reference Norm = Real 3.23629024598017228E-004
-Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
-RUN

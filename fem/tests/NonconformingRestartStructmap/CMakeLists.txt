@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO angle.grd rect DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(NonconformingRestartStructmap NPROCS 1 4 LABELS useextrude)
+ADD_ELMER_TEST(NonconformingRestartStructmap NPROCS 1 4 LABELS useextrude restart)

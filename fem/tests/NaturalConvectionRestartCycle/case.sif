@@ -1,4 +1,14 @@
 ! In addition for simple natural convection here restart is applied.
+! This case uses the restart created by file init.sif.
+!
+! From the basic case this is different in that there are 3 cyclic
+! files that are alternated and written on top of each other.
+! This saves disc space. Currently one has to check what is the most recent. 
+!
+! Also we add a p-element that is here 2nd order and 1st order
+! in the case file. 
+!
+! P.R. 5.2.2021
 
 $ relax = 0.7
 
@@ -22,14 +32,17 @@ Simulation
   Timestep Sizes(1) = 1.0
   Output Intervals(1) = 1 
 
-  Post File = case.vtu
+!  Post File = case.vtu
 !  Output File = case.result
 !  Binary Output = Logical True
 
-!  Restart File = ../init_asc.result
-  Restart File = ../init_bin.result
+  Restart File = ../init_asc.result2
+!  Restart File = ../init_bin.result
 !  Restart File = ../old.result
   Restart Position = 0
+
+! This can prohibit creation of variables
+!  Restart Create Variables = False
 
 ! These are for testing selective restart
   Restart Variable 1 = String Temperature
@@ -69,8 +82,6 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Relaxation Factor = $ relax
 
-  Nonlinear System Consistent Norm = Logical True
-
   Linear System Symmetric = True
   Linear System Solver = Iterative
   Linear System Iterative Method = GCR
@@ -96,8 +107,6 @@ Solver 2
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Relaxation Factor = $ relax
 
-  Nonlinear System Consistent Norm = Logical True
-
   Linear System Symmetric = True
   Linear System Solver = Iterative
   Linear System Iterative Method = Bicgstabl
@@ -108,12 +117,23 @@ Solver 2
   Linear System Residual Output = 10
 End
 
+! We add some complexity with an additional solver
+! which has different p-order than in the restart file. 
+Solver 3
+  Exec Solver = never
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDE" "AdvDiffSolver"
+  Element = "p:1"
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1e-9
+End
 
 
 Equation 1
   Name = "Natural Convection"
   Convection = Computed
-  Active Solvers(2) = 1 2
+  Active Solvers(3) = 1 2 3
 End
 
 Material 1
