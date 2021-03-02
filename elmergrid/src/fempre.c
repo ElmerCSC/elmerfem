@@ -695,6 +695,9 @@ int main(int argc, char *argv[])
   
   if(eg.coordinatemap[0] && eg.coordinatemap[1] && eg.coordinatemap[2] ) {
     Real *tmpcoord[3];
+
+    if(info) printf("Mapping coordinates with [%d %d %d]\n",
+		    eg.coordinatemap[0],eg.coordinatemap[1],eg.coordinatemap[2]);
     for(k=0;k<nomeshes;k++) {
       tmpcoord[0] = data[k].x;
       tmpcoord[1] = data[k].y;
@@ -792,11 +795,13 @@ int main(int argc, char *argv[])
 	free_Ivector(data[k].periodic,1,data[k].noknots);
 	data[k].periodicexist = FALSE;
       }
+      if(info) printf("Partitioning routines finished!\n");	
     }
     timer_show();
   }
 
   if(eg.timeron) {
+    if(info) printf("Saving size info for timing purposes\n");
     for(k=0;k<nomeshes;k++) 
       SaveSizeInfo(&data[k],boundaries[k],eg.infofile,info);
   }
