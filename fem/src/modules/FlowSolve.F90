@@ -1665,7 +1665,7 @@ CONTAINS
 
 !
 !       If dirichlet BC for velocity in any direction given,
-!       nullify force in that directon:
+!       nullify force in that direction:
 !       ------------------------------------------------------------------
         Dir = 1
         s = ListGetConstReal( Model % BCs(bc) % Values, 'Velocity 1', GotIt )

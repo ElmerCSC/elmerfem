@@ -4153,6 +4153,7 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
       data->material[j] = mapmat[data->material[j]];
 
     if(data->bodynamesexist) {
+      if(info) printf("Mapping entity names to follow material indexes\n");
       for(j=minmat;j<=MIN(maxmat,MAXBODIES-1);j++) {
 	if(mapmat[j]) 
 	  strcpy(data->bodyname[mapmat[j]],data->bodyname[j]);
@@ -4163,6 +4164,8 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
     if(info) printf("Numbering of bodies is already ok\n");
   }
   free_Ivector(mapmat,minmat,maxmat);
+
+  if(info) printf("Renumbering of material types completed!\n");
 }
 
 
@@ -5958,7 +5961,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
     printf("CreateKnotsExtruded: not implemented for elementtypes %d!\n",origtype);
     return;
   }
-  printf("Maxium elementtype %d extruded to type %d.\n",origtype,elemtype);
+  printf("Maximum elementtype %d extruded to type %d.\n",origtype,elemtype);
 
   nonodes2d = origtype%100;
   data->maxnodes = nonodes3d = elemtype%100;
@@ -7455,6 +7458,8 @@ int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct E
   
 
   if(eg->sidemappings) {
+    if(info) printf("Renumbering boundary types with %d mappings\n",eg->sidemappings);
+
     for(l=0;l<eg->sidemappings;l++) 
       if(info) printf("Setting boundary types between %d and %d to %d\n",
 		      eg->sidemap[3*l],eg->sidemap[3*l+1],eg->sidemap[3*l+2]);
@@ -7477,6 +7482,8 @@ int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct E
   }
   
   if(eg->bulkmappings) {
+    if(info) printf("Renumbering bulk types with %d mappings\n",eg->bulkmappings);
+
     for(l=0;l<eg->bulkmappings;l++) 
       if(info) printf("Setting material types between %d and %d to %d\n",
 		      eg->bulkmap[3*l],eg->bulkmap[3*l+1],eg->bulkmap[3*l+2]);
@@ -7549,7 +7556,7 @@ void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,
 
   AllocateBoundary(bound,sideelements);
   
-  /* Calculate how may times a node apppears */
+  /* Calculate how may times a node appears */
   possible = Ivector(1,noknots);
   for(i=1;i<=noknots;i++) possible[i] = 0; 
   for(elemind=1;elemind <= data->noelements;elemind++) { 

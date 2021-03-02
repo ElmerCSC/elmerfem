@@ -8,8 +8,8 @@ to create a minimalistic test problem using cmake/ctest.
 
 Background
 ----------
-The test cases are used to check for possible bugs, and to ensure consistancy
-and backward compability. For that purpose they are currently around 700
+The test cases are used to check for possible bugs, and to ensure consistency
+and backward compatibility. For that purpose they are currently around 700
 (situation 8/2020) cases. Most of these are minimalistic but there are also
 computationally more expensive cases.
 

@@ -129,7 +129,7 @@ stress. </Whatis>
 
         <Parameter Widget="CheckBox" Enabled="False"> 
             <Name> Fix Displacements </Name>
-            <Whatis> This keyword defined if the displacements or forces are set and thereby chooces the model lumping algorhitm.</Whatis>
+            <Whatis> This keyword defined if the displacements or forces are set and thereby chooces the model lumping algorithm.</Whatis>
         </Parameter>
 
         <Parameter Widget="Label"> <Name> More Options </Name> </Parameter>
@@ -307,7 +307,7 @@ stress. </Whatis>
          <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
          <Parameter Widget="Edit" >
             <Name>Youngs modulus</Name>
-            <Whatis> The elastic modulus must be given with this keyword. The modulus may be given as a scalar for the isotropic case or as 6 × 6 (3D) or 4 × 4 (2D and axisymmetric) matrix for the anisotropic case. Although the matrices are symmetric, all entries must be given. </Whatis>
+            <Whatis> The elastic modulus must be given with this keyword. The modulus may be given as a scalar for the isotropic case or as 6 ï¿½ 6 (3D) or 4 ï¿½ 4 (2D and axisymmetric) matrix for the anisotropic case. Although the matrices are symmetric, all entries must be given. </Whatis>
          </Parameter>
 
          <Parameter Widget="Edit" >

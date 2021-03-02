@@ -260,7 +260,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
     IF ( istat /= 0 ) CALL Fatal( 'TransientPhaseChange', 'Memory allocation error 1.' )     
     
 
-    ! Check whether normals are computed by an auxialiary solver
+    ! Check whether normals are computed by an auxiliary solver
     !---------------------------------------------------------------------------------
     VariableName = ListGetString( Params, 'Normal Variable', Stat )
     IF(Stat) THEN

@@ -159,7 +159,7 @@ END INTERFACE
            i = i + 1 
            CALL GET_COMMAND_ARGUMENT(i, OptionString)
            IF( OptionString=='-rpar' ) THEN
-             ! Followed by number of paramters + the parameter values
+             ! Followed by number of parameters + the parameter values
              i = i + 1
              CALL GET_COMMAND_ARGUMENT(i, OptionString)
              READ( OptionString,*) nr             
@@ -174,7 +174,7 @@ END INTERFACE
            END IF
 
            IF( OptionString=='-ipar' ) THEN
-             ! Followed by number of paramters + the parameter values
+             ! Followed by number of parameters + the parameter values
              i = i + 1
              CALL GET_COMMAND_ARGUMENT(i, OptionString)
              READ( OptionString,*) ni             
@@ -2035,17 +2035,17 @@ END INTERFACE
          
        END DO
      END IF
- 
+
      ! Do the standard global restart
      !-----------------------------------------------------------------
      RestartList => CurrentModel % Simulation
 
-     ! We may supress restart from certain meshes.
-     ! This was initially only related to calving, but no need to limit to that. 
+     ! We may suppress restart from certain meshes.
+     ! This was initially only related to calving, but no need to limit to that.
      l = 0
      MeshesToRestart => ListGetIntegerArray(RestartList,&
          'Meshes To Restart', CheckMesh )
-     
+
      RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
      IF ( GotIt ) THEN      
        k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
@@ -2941,7 +2941,7 @@ END INTERFACE
         Mesh => Mesh % Next
       END DO
     END IF
-! We want to seprate saving of ElmerPost file and Result file.    
+! We want to separate saving of ElmerPost file and Result file.
 !    CALL SaveToPost(CurrentStep)
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveCurrent

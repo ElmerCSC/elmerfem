@@ -1,9 +1,9 @@
 !--------------------------------------------------------------------
-! A test case for Stuctured mesh mapper with a mask.
+! A test case for Structured mesh mapper with a mask.
 ! The extruded structure and related operations are only covered where
 ! the mask name is true. 
 !
-! Peter Råback / 24.8.2020
+! Peter Rï¿½back / 24.8.2020
 !--------------------------------------------------------------------
 
 Header

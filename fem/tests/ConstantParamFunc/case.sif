@@ -72,7 +72,7 @@ Material 1
   Heat Capacity = Real 1.0
 End
 
-! Four body forces with alternating second paramater
+! Four body forces with alternating second parameter
 Body Force 1
   Name = "Heater1"
   Heat Source = Variable "time, 1"

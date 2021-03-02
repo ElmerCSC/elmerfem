@@ -9574,6 +9574,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: y(:)
     LOGICAL :: Parallel
+    LOGICAL, ALLOCATABLE :: PassiveDof(:)
     
     CALL Info('ComputeNorm','Computing norm of solution',Level=10)
     
@@ -9595,7 +9596,7 @@ END FUNCTION SearchNodeL
     NormComponents => ListGetIntegerArray(Solver % Values,&
         'Nonlinear System Norm Components',Stat)
     IF(Stat) THEN
-      NormDofs = SIZE( NormComponents ) 
+      NormDofs = SIZE( NormComponents )       
     ELSE
       NormDofs = ListGetInteger(Solver % Values,'Nonlinear System Norm Dofs',Stat)
       IF(Stat) THEN
@@ -9608,7 +9609,18 @@ END FUNCTION SearchNodeL
         NormDofs = Dofs        
       END IF
     END IF
- 
+
+    ALLOCATE( PassiveDof(0:Dofs-1) )
+    IF( NormDofs < Dofs ) THEN
+      PassiveDof = .TRUE.
+      DO i=1,NormDofs
+        PassiveDof(NormComponents(i)-1) = .FALSE.        
+      END DO
+    ELSE
+      PassiveDof = .FALSE.
+    END IF
+          
+    
     n = nin
     totn = 0
     
@@ -9636,12 +9648,71 @@ END FUNCTION SearchNodeL
       x => y
       DEALLOCATE(iPerm)
     END IF
-    
-    IF( NormDofs < Dofs ) THEN
-      IF( ConsistentNorm ) THEN
-        CALL Warn('ComputeNorm','Consistent norm not implemented for selective norm')
-      END IF
 
+
+    IF( ConsistentNorm ) THEN
+      ! In consistent norm we have to skip the dofs not owned by the partition in order
+      ! to count each dof only once. 
+      Norm = 0.0_dp
+      
+      SELECT CASE(NormDim)
+
+      CASE(0) 
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = MAX( Norm, ABS( val ) )
+          totn = totn + 1
+        END DO
+
+      CASE(1)
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + ABS(val)
+          totn = totn + 1
+        END DO
+
+      CASE(2)          
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + val**2
+          totn = totn + 1
+        END DO
+
+      CASE DEFAULT
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + val**NormDim 
+          totn = totn + 1
+        END DO
+      END SELECT
+
+      totn = NINT( ParallelReduction(1._dp*totn) )
+      nscale = 1.0_dp * totn
+      
+      SELECT CASE(NormDim)
+      CASE(0)
+        Norm = ParallelReduction(Norm,2)
+      CASE(1)
+        Norm = ParallelReduction(Norm) / nscale
+      CASE(2)
+        Norm = SQRT(ParallelReduction(Norm)/nscale)
+      CASE DEFAULT
+        Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
+      END SELECT
+    
+    ELSE IF( NormDofs < Dofs ) THEN
       totn = NINT( ParallelReduction(1._dp*n) )
       nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
@@ -9686,66 +9757,7 @@ END FUNCTION SearchNodeL
           Norm = (Norm/nscale)**(1.0d0/NormDim)
         END IF
       END SELECT
-    ELSE IF( ConsistentNorm ) THEN
-      ! In consistent norm we have to skip the dofs not owned by the partition in order
-      ! to count each dof only once. 
-
-      Norm = 0.0_dp
-      totn = 0
-      DO j=1,n
-        IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-            == ParEnv % MyPE ) totn = totn + 1
-      END DO        
-
-      totn = NINT( ParallelReduction(1._dp*totn) )
-      nscale = 1.0_dp * totn
-
-      SELECT CASE(NormDim)
-        
-      CASE(0) 
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = MAX( Norm, ABS( val ) )
-        END DO
-        
-      CASE(1)
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = Norm + ABS(val)
-        END DO
-        
-      CASE(2)          
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = Norm + val**2 
-        END DO
-        
-      CASE DEFAULT
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = Norm + val**NormDim 
-        END DO
-      END SELECT
-
-      SELECT CASE(NormDim)
-      CASE(0)
-        Norm = ParallelReduction(Norm,2)
-      CASE(1)
-        Norm = ParallelReduction(Norm) / nscale
-      CASE(2)
-        Norm = SQRT(ParallelReduction(Norm)/nscale)
-      CASE DEFAULT
-        Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
-      END SELECT
-      
+            
     ELSE IF( Parallel ) THEN
       val = ParallelReduction(1.0_dp*n)
       totn = NINT( val )
@@ -9770,7 +9782,7 @@ END FUNCTION SearchNodeL
           Norm = (ParallelReduction(val)/nscale)**(1.0d0/NormDim)
         END SELECT
       END IF
-      
+
     ELSE
       val = 0.0_dp
       SELECT CASE(NormDim)
@@ -11346,7 +11358,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: PreSolve
     LOGICAL, OPTIONAL :: NoSolve
     !------------------------------------------------------------------------------
-    ! We have a special stucture for the iterates and residuals so that we can
+    ! We have a special structure for the iterates and residuals so that we can
     ! cycle over the pointers instead of the values. 
     TYPE AndersonVect_t
       LOGICAL :: Additive
@@ -14042,7 +14054,7 @@ END FUNCTION SearchNodeL
 
       CALL LinearSystemResidual( A, b, x, res )
       bb => res
-      ! Set the initial guess for the redidual system to zero
+      ! Set the initial guess for the residual system to zero
       x = 0.0_dp
     ELSE
       bb => b
@@ -16754,7 +16766,7 @@ CONTAINS
     END IF
 
     IF(.NOT. ASSOCIATED( A ) ) THEN
-      CALL Fatal(Caller,'Matrix not assciated!')
+      CALL Fatal(Caller,'Matrix not associated!')
     END IF
 
     SaveMass = ListGetLogical( Params,'Linear System Save Mass',Found)
@@ -20622,7 +20634,7 @@ CONTAINS
          nd = LEN_TRIM(OutputDirectory)
        END IF
        ! To be on the safe side create the directory. If it already exists no harm done.
-       ! Note that only one direcory may be created. Hence if there is a path with many subdirectories
+       ! Note that only one directory may be created. Hence if there is a path with many subdirectories
        ! that will be a problem. Fortran does not have a standard ENQUIRE for directories hence
        ! we just try to make it. 
        IF( DoDir ) THEN

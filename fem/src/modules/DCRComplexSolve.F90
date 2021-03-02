@@ -205,7 +205,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
      CALL Info( 'DCRComplexSolve', Message, Level=4 )
      CALL Info( 'DCRComplexSolve', '-------------------------------------', Level=4 )
      CALL Info( 'DCRComplexSolve', ' ', Level=4 )
-     CALL Info( 'DCRComplexSolve', 'Starting Assmebly', Level=4 )
+     CALL Info( 'DCRComplexSolve', 'Starting Assembly', Level=4 )
 
      CALL InitializeToZero( StiffMatrix, ForceVector )
 !
