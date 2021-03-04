@@ -8040,6 +8040,8 @@ CONTAINS
       RETURN
     END IF
     
+
+
     
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
@@ -8106,7 +8108,7 @@ CONTAINS
     ! Deallocate scaling since otherwise it could be misused out of context
     IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
         
-    CALL Info(Caller,'Dirichlet boundary conditions enforced', Level=12)
+    CALL Info(Caller,'Dirichlet conditions enforced for dofs: '//TRIM(I2S(n)), Level=6)
     
   END SUBROUTINE EnforceDirichletConditions
 !-------------------------------------------------------------------------------

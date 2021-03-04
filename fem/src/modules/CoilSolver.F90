@@ -76,13 +76,7 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
   CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
   IF(.NOT. Found ) CalculateNodal = .TRUE.
   
-  !IF(.NOT. (CalculateElemental .OR. CalculateNodal ) ) THEN
-  !  CalculateNodal = .TRUE.
-  !END IF
-
-  IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
-    CALL ListAddString( Params,'Variable','-nooutput CoilTmp')
-  END IF
+  CALL ListAddNewString( Params,'Variable','-nooutput CoilTmp')
 
   CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
       'CoilPot')
@@ -447,13 +441,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
           val = 0.0_dp
         END IF
         
-        !s = StiffMatrix % Values(StiffMatrix % Diag(i))
-        !ForceVector(i) = val * s
-
         CALL UpdateDirichletDof( Solver % Matrix, i, val )
-                
-        !CALL ZeroRow( StiffMatrix,i )
-        !CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
       END DO
       
       ! If we use narrow strategy we need to cut the connections in the bulk values
@@ -1537,6 +1525,7 @@ CONTAINS
     
     REAL(KIND=dp) :: InitialCurrent,possum, negsum, sumerr
     INTEGER :: i,j,k,Coil,nsize,posi,negi
+    LOGICAL :: DoIt
 
 
     nsize = SIZE( LoadVar % Perm ) 
@@ -1554,7 +1543,7 @@ CONTAINS
       DO i=1,nsize
         j = LoadVar % Perm(i) 
         IF( j == 0 ) CYCLE
-
+        
         IF( ParEnv % PEs > 1 ) THEN
           IF( Solver % Matrix % ParallelInfo % Neighbourlist(j) % Neighbours(1) &
               /= ParEnv % MyPe ) CYCLE
@@ -1563,11 +1552,13 @@ CONTAINS
         IF( NoCoils > 1 ) THEN
           IF( CoilIndex(i) /= Coil ) CYCLE
         END IF
-
+        
         ! Note that the narrow part of the gap is omitted and here only 
         ! currents related to the outher parts of the gap (with |sgn|=2) 
         ! are accounted for. 
         sgn = Set(j)
+        IF( sgn == 0 ) CYCLE
+        
         IF( MODULO(sgn,10) == 2  ) THEN
           possum = possum + LoadVar % Values(j)
           posi = posi + 1
@@ -1576,7 +1567,7 @@ CONTAINS
           negi = negi + 1
         END IF
       END DO
-    
+          
       IF( ParEnv % PEs > 1 ) THEN
         possum = ParallelReduction( possum ) 
         negsum = ParallelReduction( negsum ) 
@@ -1587,20 +1578,31 @@ CONTAINS
 
       WRITE (Message,'(A,I6,ES12.4)') 'Negative coil currents:',negi,negsum
       CALL Info('CoilSolver',Message,Level=12)
-    
+
+
+      DoIt = .TRUE.
+      
       IF( ABS( possum ) < EPSILON( possum ) ) THEN
-        CALL Fatal('CoilSolver','No positive current sources on coil end!')
+        CALL Warn('CoilSolver','No positive current sources on coil end!')
+        DoIt = .FALSE.
       END IF
       IF( ABS( negsum ) < EPSILON( negsum ) ) THEN
-        CALL Fatal('CoilSolver','No negative current sources on coil end!')
-      END IF            
+        CALL Warn('CoilSolver','No negative current sources on coil end!')
+        DoIt = .FALSE.
+      END IF
+
+      IF(.NOT. DoIt) THEN
+        CALL Fatal('CoilSolver','Crappy potentials, cannot continue!')
+        RETURN
+      END IF
+
       
       sumerr = 2.0 * ABS( ABS( possum ) - ABS( negsum ) )  / (ABS( possum ) + ABS( negsum ) ) 
       WRITE (Message,'(A,ES12.4)') 'Discrepancy of start and end coil currents: ',sumerr 
       CALL Info('CoilSolver',Message,Level=7)
 
       IF( sumerr > 0.5 ) THEN
-        CALL Warn('CoilSolver','Positive and negative sums differ too much!')
+        CALL Warn('CoilSolver','Positive and negative sums differ quite a bit!')
       END IF
 
       InitialCurrent = ( possum - negsum ) / 2.0
