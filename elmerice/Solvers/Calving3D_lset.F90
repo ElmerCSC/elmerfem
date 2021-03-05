@@ -48,7 +48,7 @@
 !-----------------------------------------------
    TYPE(ValueList_t), POINTER :: Params, MeshParams => NULL()
    TYPE(Variable_t), POINTER :: CalvingVar, DistVar, CrevVar, &
-        SignDistVar, HitCountVar, IsolineIDVar
+        SignDistVar, HitCountVar, IsolineIDVar, MeshCrossVar
    TYPE(Solver_t), POINTER :: PCSolver => NULL(), &
         VTUOutputSolver => NULL(), IsoSolver => NULL()
    TYPE(Mesh_t), POINTER :: Mesh, PlaneMesh, IsoMesh, WorkMesh, WorkMesh2
@@ -56,13 +56,16 @@
    TYPE(Nodes_t), TARGET :: FaceNodesT
    INTEGER :: i,j,jmin,k,n,dim, dummyint, NoNodes, ierr, PEs, &
         FaceNodeCount, DOFs, PathCount, LeftConstraint, RightConstraint, &
-        FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount 
+        FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount, &
+        node, nodecounter, CurrentNodePosition, StartNode, NodePositions(3), &
+        directions
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
         FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
         SignDistPerm(:), NodeIndexes(:),IceNodeIndexes(:),&
         EdgeMap(:,:)
-   INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:)
+   INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
+         PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:)
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
@@ -78,17 +81,18 @@
 
    REAL(KIND=dp), POINTER :: DistValues(:), SignDistValues(:), WorkReal(:), &
         CalvingValues(:)
-   REAL(KIND=dp), ALLOCATABLE :: CrevX(:),CrevY(:),IMBdryNodes(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: CrevX(:),CrevY(:),IMBdryNodes(:,:), Polygon(:,:), PathPoly(:,:), &
+        EdgeX(:), EdgeY(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         filename_root, &
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
         PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
         MoveMeshDir
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
-        SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE.
+        SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), IMOnMargin(:), &
         IMOnLeft(:), IMOnRight(:),&
-        IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:)
+        IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
 
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath
 
@@ -324,6 +328,13 @@
     WorkReal = 0.0_dp
     CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "hitcount", &
          1, WorkReal, WorkPerm)
+    NULLIFY(WorkReal)
+
+    !Variable for edge of Solver % Mesh for polygon creation for levelset sign
+    ALLOCATE(WorkReal(n))
+    WorkReal = 0.0_dp
+    CALL VariableAdd(PlaneMesh % Variables, PlaneMesh, PCSolver, "meshcrossover", &
+         1, WorkReal, WorkPerm)
     NULLIFY(WorkReal, WorkPerm)
 
     !Solver variable - crevasse penetration in range 0-1
@@ -360,21 +371,26 @@
 
       HitCountVar => VariableGet(PlaneMesh % Variables, "hitcount", .TRUE.,UnfoundFatal=.TRUE.)
       IsolineIdVar => VariableGet(PlaneMesh % Variables, "isoline id", .TRUE.,UnfoundFatal=.TRUE.)
+      MeshCrossVar => VariableGet(PlaneMesh % Variables, "meshcrossover", .TRUE.,UnfoundFatal=.TRUE.)
 
+      ! meshcrossover - 2 = glacier hit, 1 = edge, first node outside glacier domain, 0=outside glacier domain
+      MeshCrossVar % Values = 2.0
       !Set PlaneMesh exterior nodes to ave_cindex = 1 (no calving)
       !                             and IsolineID = 1 (exterior)
       DO i=1,PlaneMesh % NumberOfNodes
         IF(HitCountVar % Values(HitCountVar % Perm(i)) <= 0.0_dp) THEN
           CrevVar % Values(CrevVar % Perm(i)) = 1.0
           IsolineIDVar % Values(IsolineIDVar % Perm(i)) = 1.0
+          MeshCrossVar % Values(MeshCrossVar % Perm(i)) = 0.0
         END IF
       END DO
 
       !PlaneMesh nodes in elements which cross the 3D domain boundary
       !get ave_cindex = 0 (to enable CrevassePaths/isolines to reach the edge)
       !Also mark elements which cross the edge of the 3D domain (TODO - not used!)
-      ALLOCATE(PlaneEdgeElem(PlaneMesh % NumberOfBulkElements))
+      ALLOCATE(PlaneEdgeElem(PlaneMesh % NumberOfBulkElements), EdgeNode(PlaneMesh % NumberOfNodes))
       PlaneEdgeElem = .FALSE.
+      EdgeNode = .FALSE.
 
       DO i=1, PlaneMesh % NumberOfBulkElements
         NodeIndexes => PlaneMesh % Elements(i) % NodeIndexes
@@ -388,13 +404,158 @@
 
           !Mark nodes just outside the edge to CrevVar = 0.0
           DO j=1,n
-            IF(HitCountVar % Values(HitCountVar % Perm(NodeIndexes(j))) <= 0.0_dp) &
+            IF(HitCountVar % Values(HitCountVar % Perm(NodeIndexes(j))) <= 0.0_dp) THEN
                  CrevVar % Values(CrevVar % Perm(NodeIndexes(j))) = 0.0
+                 MeshCrossVar % Values(MeshCrossVar % Perm(NodeIndexes(j))) = 1.0
+                 EdgeNode(NodeIndexes(j)) = .TRUE.
+            END IF
           END DO
 
         END IF
       END DO
-      PRINT *,'Debug - PlaneEdgeElem: ',COUNT(PlaneEdgeElem)
+      PRINT *,'Debug - PlaneEdgeElem: ',COUNT(PlaneEdgeElem), 'EdgeNode: ', COUNT(EdgeNode)
+
+      ! get planmesh edgenodes in a line- nodes just outside the solver%mesh domain-
+      ! for calving lset sign. These nodes used to make calving polygon
+      !! Elem 404 Structure
+      !  4____1
+      !  |    |
+      !  |____|
+      !  3    2
+      ! following code assumes this structure in order to find edge nodes in order
+      ! create edgeline so we can stitch this with crevasses
+
+      ALLOCATE(UsedElem(PlaneMesh % NumberOfBulkElements), StartNodes(2, 5))
+      UsedElem=.FALSE.
+      StartNodes=0
+      DO startnode=1, PlaneMesh % NumberOfNodes
+        IF(.NOT. EdgeNode(startnode)) CYCLE
+        !StartNode = !random start point
+        directions=0
+
+        ! find how many starting directions
+        DO i=1, PlaneMesh % NumberOfBulkElements
+          IF(.NOT. PlaneEdgeElem(i)) CYCLE
+          NodeIndexes => PlaneMesh % Elements(i) % NodeIndexes
+          n = PlaneMesh % Elements(i) % TYPE % NumberOfNodes
+          IF(.NOT. ANY(NodeIndexes(1:n)==startnode)) CYCLE
+          NodePositions=0
+          nodecounter=0
+          DO j=1,n
+            IF(.NOT. EdgeNode(NodeIndexes(j))) CYCLE ! not a edge node
+            IF(NodeIndexes(j) == startnode) THEN
+              CurrentNodePosition = j
+              CYCLE ! this node
+            END IF
+            nodecounter=nodecounter+1
+            NodePositions(nodecounter)=j
+          END DO
+
+          ! assign nodes found so we can create edgeline in two directions
+          IF(nodecounter == 0) THEN
+            CYCLE !only contains startnode
+          ELSE IF(nodecounter == 1) THEN
+            directions=directions+1
+            StartNodes(directions, 1) = NodeIndexes(NodePositions(1))
+          ELSE IF(nodecounter == 2) THEN
+            IF(NodePositions(2)-NodePositions(1) == 2) THEN
+              directions=directions+2
+              StartNodes(1, 1)=NodeIndexes(NodePositions(1))
+              StartNodes(2, 1)=NodeIndexes(NodePositions(2))
+            ELSE
+              directions=directions+1
+              IF(ABS(NodePositions(1)-CurrentNodePosition) /= 2) THEN ! closest node
+                StartNodes(directions, 1)=NodeIndexes(NodePositions(1))
+                StartNodes(directions, 2)=NodeIndexes(NodePositions(2))
+              ELSE
+                StartNodes(directions, 1)=NodeIndexes(NodePositions(2))
+                StartNodes(directions, 2)=NodeIndexes(NodePositions(1))
+              END IF
+            END IF
+          END IF
+          UsedElem(i)=.TRUE.
+        END DO
+
+        ! add startnodes to edgeline
+        ALLOCATE(Edgeline(directions, COUNT(EdgeNode)), nodes(directions), &
+                EdgeCount(directions))
+        EdgeCount = 0
+        EdgeLine = 0
+        DO i=1, directions
+          EdgeCount(i) = COUNT(StartNodes(i,:) /= 0)
+          IF(i==1) THEN ! for initial startnode
+            EdgeCount(i) = EdgeCount(i) + 1
+            EdgeLine(i, 1) = startnode
+            EdgeLine(i, 2:EdgeCount(i)) = PACK(StartNodes(i,:), StartNodes(i,:) /= 0)
+          ELSE
+            EdgeLine(i, 1:EdgeCount(i)) = PACK(StartNodes(i,:), StartNodes(i,:) /= 0)
+          END IF
+
+          nodes(i) = EdgeLine(i, EdgeCount(i))
+        END DO
+
+        ! loop through starting with startnodes to find remaining edgenodes
+        ! in order
+        DO WHILE(COUNT(EdgeNode) > SUM(EdgeCount))
+          DO i=1, PlaneMesh % NumberOfBulkElements
+            IF(.NOT. PlaneEdgeElem(i)) CYCLE
+            IF(UsedElem(i)) CYCLE ! already used elem
+            NodeIndexes => PlaneMesh % Elements(i) % NodeIndexes
+            n = PlaneMesh % Elements(i) % TYPE % NumberOfNodes
+            DO j=1, directions
+              node = Nodes(j)
+              IF(.NOT. ANY(NodeIndexes(1:n)==node)) CYCLE
+              nodecounter=0
+              NodePositions=0
+              DO k=1,n
+                IF(.NOT. EdgeNode(NodeIndexes(k))) CYCLE ! not a edge node
+                IF(NodeIndexes(k) == node) THEN
+                  CurrentNodePosition = k
+                  CYCLE ! this node
+                END IF
+                nodecounter=nodecounter+1
+                NodePositions(nodecounter) = k
+              END DO
+              IF(nodecounter == 1) THEN
+                EdgeCount(j) = EdgeCount(j) + 1
+                EdgeLine(j, EdgeCount(j)) = NodeIndexes(NodePositions(1))
+              ELSE IF(nodecounter == 2) THEN
+                DO k=1, nodecounter
+                  IF(ABS(CurrentNodePosition - NodePositions(k)) /= 2) THEN ! first node
+                    EdgeLine(j, EdgeCount(j) + 1) = NodeIndexes(NodePositions(k))
+                  ELSE ! second node
+                    EdgeLine(j, EdgeCount(j) + 2) = NodeIndexes(NodePositions(k))
+                  END IF
+                END DO
+                EdgeCount(j) = EdgeCount(j) + 2
+              ELSE IF(nodecounter == 3) THEN
+                CALL FATAL('PlaneMesh', '4 edge nodes in one element!')
+              END IF
+              Nodes(j)=Edgeline(j, EdgeCount(j))
+              IF(nodecounter>0) UsedElem(i)=.TRUE.
+            END DO
+          END DO
+        END DO
+        EXIT ! initial loop only to get random start point
+      END DO
+
+      ! translate edge nodes into x and y and join both strings
+      ALLOCATE(EdgeX(SUM(EdgeCount)), EdgeY(SUM(EdgeCount)))
+      nodecounter=0
+      IF(directions > 1) THEN
+        DO i=EdgeCount(2),1, -1 ! backwards iteration
+          nodecounter=nodecounter+1
+          EdgeX(nodecounter) = PlaneMesh % Nodes % x(EdgeLine(2, i))
+          EdgeY(nodecounter) = PlaneMesh % Nodes % y(EdgeLine(2, i))
+        END DO
+      END IF
+      DO i=1, EdgeCount(1)
+        nodecounter=nodecounter+1
+        EdgeX(nodecounter) = PlaneMesh % Nodes % x(EdgeLine(1, i))
+        EdgeY(nodecounter) = PlaneMesh % Nodes % y(EdgeLine(1, i))
+      END DO
+
+      ! end of finding planmesh edge
 
        ! Locate Isosurface Solver
        DO i=1,Model % NumberOfSolvers
@@ -638,6 +799,7 @@
        CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
             IMOnLeft, IMOnRight, .FALSE.)
 
+
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
           CurrentPath => CrevassePaths
@@ -694,6 +856,7 @@
             IsoMesh % Nodes % y(0),&
             IsoMesh % Nodes % z(0))
     END IF !Boss
+
 
     ! calculate signed distance here
     ALLOCATE(WorkReal(NoNodes))
@@ -789,6 +952,12 @@
      !above IF(Parallel) but that's assumed implicitly
      !make sure that code works for empty isomesh as well!!
 
+     ! get calving polygons
+     ! implied the mesh is only on boss but other procs also enter as
+     ! parallel comm occurs within the subroutine
+     CALL GetCalvingPolygons(EdgeX, EdgeY, NoPaths, CrevX, CrevY, CrevStart, CrevEnd, &
+                                    Polygon, PolyStart, PolyEnd, .TRUE.)
+
      ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
      IsCalvingNode=.FALSE.
 
@@ -801,27 +970,27 @@
 
          ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
          DO j=1, NoPaths
+           ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
+           PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
            DO k=CrevStart(j), CrevEnd(j)-1
              xl=CrevX(k);yl=CrevY(k)
              xr=CrevX(k+1);yr=CrevY(k+1)
              TempDist=PointLineSegmDist2D( (/xl,yl/),(/xr,yr/), (/xx,yy/))
              IF(TempDist <= (ABS(MinDist)+AEPS) ) THEN ! as in ComputeDistanceWithDirection
-               angle = (xr-xl)*(yy-yl)-(xx-xl)*(yr-yl) ! angle to get sign of distance function
-               ! In case distance is equal, favor segment with clear angles
-               ! angle0 doesn't need to be initialized as TempDist < (ABS(MinDist) - AEPS) holds
-               ! at some point, angle only important if TempDist ~= MinDist
-               IF( (TempDist < (ABS(MinDist) - AEPS)) .OR. (ABS(angle) > ABS(angle0)) ) THEN
-                 IF( angle < 0.0) THEN ! TO DO possibly direction(i) * angle if not always same
-                   MinDist = -TempDist
-                   IsCalvingNode(i) = .TRUE.
-                 ELSE
-                   MinDist = TempDist
-                 END IF
-                 angle0 = angle
-                 jmin=k ! TO DO rm jmin? not necessary anymore
+               ! updated so no longer based off an angle. This caused problems when the front was
+               ! no longer projectable. Instead the node is marked to calve if it is inside the calving polygon.
+               ! PointInPolygon2D based of the winding number algorithm
+               inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+               IF(inside) THEN ! inside calved area
+                 MinDist = -TempDist
+                 IsCalvingNode(i) = .TRUE.
+               ELSE
+                 MinDist = TempDist
                END IF
+               jmin=k ! TO DO rm jmin? not necessary anymore
              END IF
            END DO
+           DEALLOCATE(PathPoly)
          END DO
 
          SignDistValues(SignDistPerm(i)) =  MinDist

@@ -52,6 +52,10 @@ MODULE CalvingGeometry
    MODULE PROCEDURE Double4DArraySizeP, Double4DArraySizeA
   END INTERFACE
 
+  INTERFACE DoubleDPVectorSize
+   MODULE PROCEDURE DoubleDPVectorSizeP, DoubleDPVectorSizeA
+  END INTERFACE
+
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Derived type for 3D crevasse group info
   ! 
@@ -1361,6 +1365,65 @@ CONTAINS
     END DO
     
   END FUNCTION ElementPathID
+
+  !--------------------------------------------------------------------------
+  !tests if a point is Left|On|Right of an infinite line.
+  !  Input:  three points a, b, and c
+  !   Return: >0 for c left of the line AB
+  !           =0 for c  on the line AB
+  !           <0 for c  right of the line AB
+  ! used for winding number algorithm
+  !---------------------------------------------------------------------------
+  FUNCTION IsLeft(a, b, c) RESULT(d)
+    REAL(kind=dp) :: a(2), b(2), c(2), d
+
+    d = (b(1)-a(1)) * (c(2)-a(2)) - &
+    (c(1)-a(1)) * (b(2)-a(2))
+
+  END FUNCTION Isleft
+
+  !----------------------------------------------------------------------------
+  ! point in polygon - winding number algorithm
+  !
+  ! input a polygon where polygon(1) = polygon(n) where n = SIZE(polygon)
+  !----------------------------------------------------------------------------
+
+  FUNCTION PointInPolygon2D(Polygon, Point) RESULT(inside)
+    REAL(kind=dp), ALLOCATABLE :: polygon(:,:)
+    REAL(kind=dp) :: left, point(2)
+    INTEGER :: n, i, windingnumber
+    LOGICAL :: inside
+
+    IF(SIZE(polygon(:,1)) /= 2) CALL FATAL('PointInPolygon2D', 'Please provide a 2D array with x and y coords')
+    n=SIZE(polygon(1,:))
+
+    windingnumber=100
+    DO i=1, n-1
+      ! polygon y i <= point y
+      IF(polygon(2,i) <= point(2)) THEN !start with y<=P.y
+        IF(polygon(2, i+1) > point(2)) THEN !upward crossing
+          left=IsLeft(Polygon(:, i), Polygon(:, i+1), Point(:))
+          IF(left > 0) THEN !p is to left of intersect
+            windingnumber=windingnumber+1 !valid up intersect
+          END IF
+        END IF
+      ELSE    !start at y> point y
+        IF(polygon(2, i+1) <= point(2)) THEN ! downward crossing
+          Left = IsLeft(Polygon(:, i), Polygon(:, i+1), Point(:))
+          IF(left < 0) THEN ! p right of edge
+            windingnumber=windingnumber-1
+          END IF
+        END IF
+      END IF
+    END DO
+
+    IF(windingnumber /= 100) THEN
+      inside = .TRUE.
+    ELSE
+      inside = .FALSE.
+    END IF
+
+  END FUNCTION PointInPolygon2D
 
   !-----------------------------------------------------------------------------
   ! Constructs groups of nodes which fall below a given threshold for some variable
@@ -5007,6 +5070,142 @@ CONTAINS
     END IF
 
   END SUBROUTINE InterpolateUnfoundSharedPoint3D
+
+  !Doubles the size of a pointer double precision array
+  !This version takes a Pointer argument, should
+  !be used with care...
+  SUBROUTINE DoubleDPVectorSizeP(Vec, fill)
+    REAL(kind=dp), POINTER :: Vec(:)
+    REAL(kind=dp), OPTIONAL :: fill
+    !----------------------------------------
+    REAL(kind=dp), ALLOCATABLE :: WorkVec(:)
+
+    ALLOCATE(WorkVec(SIZE(Vec)))
+    WorkVec = Vec
+
+    DEALLOCATE(Vec)
+    ALLOCATE(Vec(2*SIZE(WorkVec)))
+
+    IF(PRESENT(fill)) THEN
+       Vec = fill
+    ELSE
+       Vec = 0
+    END IF
+
+    Vec(1:SIZE(WorkVec)) = WorkVec
+
+  END SUBROUTINE DoubleDPVectorSizeP
+
+  !Doubles the size of a pointer double precision array
+  !Allocatable array version
+  SUBROUTINE DoubleDPVectorSizeA(Vec, fill)
+    REAL(kind=dp), ALLOCATABLE :: Vec(:)
+    REAL(kind=dp), OPTIONAL :: fill
+    !----------------------------------------
+    REAL(kind=dp), ALLOCATABLE :: WorkVec(:)
+
+    ALLOCATE(WorkVec(SIZE(Vec)))
+    WorkVec = Vec
+
+    DEALLOCATE(Vec)
+    ALLOCATE(Vec(2*SIZE(WorkVec)))
+
+    IF(PRESENT(fill)) THEN
+       Vec = fill
+    ELSE
+       Vec = 0
+    END IF
+
+    Vec(1:SIZE(WorkVec)) = WorkVec
+
+  END SUBROUTINE DoubleDPVectorSizeA
+
+  ! returns calving polygons if given edge and crevasse info.
+  ! assumes all this is on boss and then broadcast to other procs.
+  SUBROUTINE  GetCalvingPolygons(EdgeX, EdgeY, NoPaths, CrevX, CrevY, CrevStart, CrevEnd, &
+   Polygon, PolyStart, PolyEnd, Parallel)
+
+    REAL(kind=dp), ALLOCATABLE :: EdgeX(:), EdgeY(:), CrevX(:), CrevY(:)
+    INTEGER, ALLOCATABLE :: CrevStart(:), CrevEnd(:)
+    INTEGER :: NoPaths
+    LOGICAL :: Parallel
+    !-------------------------------------------------------------------------
+    REAL(kind=dp), ALLOCATABLE :: PolyX(:), PolyY(:), Polygon(:,:)
+    INTEGER, ALLOCATABLE :: PolyStart(:), PolyEnd(:)
+    INTEGER :: path, i, counter, CrevLen, crop(2), EdgeLen, ierr
+    REAL(kind=dp) :: StartX, StartY, EndX, EndY
+    LOGICAL :: Boss
+
+    IF(.NOT. Parallel) CALL FATAL('GetCrevasseBoundaryNodes', 'Must be run in parallel')
+
+    Boss=.FALSE.
+    IF(ParEnv % MyPE == 0) Boss = .TRUE.
+
+    IF(Boss) THEN
+      ALLOCATE(PolyX(100), PolyY(100), PolyStart(NoPaths), PolyEnd(NoPaths))
+      counter=0
+      DO path=1, NoPaths
+        StartX = CrevX(CrevStart(path))
+        StartY = CrevY(CrevStart(path))
+        EndX = CrevX(CrevEnd(path))
+        EndY = CrevY(CrevEnd(path))
+        CrevLen = CrevEnd(path) - CrevStart(path) + 1
+        DO i=1, SIZE(EdgeX)
+          IF(EdgeX(i) == StartX .AND. EdgeY(i) == StartY) crop(1) = i
+          IF(EdgeX(i) == EndX .AND. EdgeY(i) == EndY) crop(2) = i
+        END DO
+
+        EdgeLen =  MAXVAL(crop)-MINVAL(crop)-2+1
+
+        DO WHILE(SIZE(PolyX) < Counter+CrevLen+EdgeLen+1)
+          CALL DoubleDPVectorSize(PolyX)
+          CALL DoubleDPVectorSize(PolyY)
+        END DO
+
+        PolyX(Counter+1:counter+CrevLen) = CrevX(CrevStart(path):CrevEnd(path))
+        PolyY(Counter+1:counter+CrevLen) = CrevY(CrevStart(path):CrevEnd(path))
+        PolyStart(path) = Counter+1
+        counter = Counter+CrevLen
+
+        IF(crop(2) < crop(1)) THEN ! end of crev lines up with start of edge no need to flip edge
+          PolyX(Counter+1:Counter+EdgeLen) = EdgeX(MINVAL(crop)+1:MAXVAL(crop)-1)
+          PolyY(Counter+1:Counter+EdgeLen) = EdgeY(MINVAL(crop)+1:MAXVAL(crop)-1)
+          counter=counter+EdgeLen
+        ELSE
+          ! since crevasses are plotted left to right if crevasse on part of front facing upstream
+          ! need to add the edge in reverse
+          DO i=MAXVAL(crop)-1, MINVAL(crop)+1, -1 ! backwards iteration
+            counter=counter+1
+            PolyX(Counter) = EdgeX(i)
+            PolyY(Counter) = EdgeY(i)
+          END DO
+        END IF
+
+        ! add first node in again to complete polygon
+        counter=counter+1
+        PolyX(Counter) = CrevX(CrevStart(path))
+        PolyY(counter) = CrevY(CrevStart(path))
+
+        PolyEnd(path) = Counter
+      END DO
+
+      ALLOCATE(Polygon(2, Counter))
+      Polygon(1,:) = PolyX(1:Counter)
+      Polygon(2,:) = PolyY(1:Counter)
+      DEALLOCATE(PolyX, PolyY)
+
+    END IF !boss
+
+    ! send bdrynode info to all procs
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+		CALL MPI_BCAST(counter, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+		IF(.NOT. Boss) ALLOCATE(Polygon(2, counter), PolyStart(NoPaths), &
+                            PolyEnd(NoPaths))
+		CALL MPI_BCAST(Polygon, Counter*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+		CALL MPI_BCAST(PolyEnd, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+		CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+  END SUBROUTINE GetCalvingPolygons
 
 END MODULE CalvingGeometry
 
