@@ -637,12 +637,12 @@ CONTAINS
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s
-    INTEGER :: e,t,i,j,n,Active
+    INTEGER :: e,t,i,j,n,Active,ierr
     LOGICAL :: stat,Found,CoilCenterSet
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: Volume,Center(3),SerTmp(4),ParTmp(4),ierr
+    REAL(KIND=dp) :: Volume,Center(3),SerTmp(4),ParTmp(4)
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
 
     n = Mesh % MaxElementNodes
@@ -752,12 +752,12 @@ CONTAINS
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s,CoilTangentTmp(3)
-    INTEGER :: e,t,i,j,n,Active
+    INTEGER :: e,t,i,j,n,Active,ierr
     LOGICAL :: stat,Found
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), CP(3), ierr
+    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), CP(3)
     REAL(KIND=dp) :: EigWrk(20)
     INTEGER :: EigInfo, Three
 
@@ -894,8 +894,8 @@ CONTAINS
     LOGICAL :: Mirror 
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: x,y,z,x0,y0,dy
-    REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3),ierr
-    INTEGER :: i,j,k,ioffset
+    REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3)
+    INTEGER :: i,j,k,ioffset,ierr
     LOGICAL :: Found
 
     CALL Info('CoilSolver','Choosing fixing nodes for set: '//TRIM(I2S(SetNo)))
