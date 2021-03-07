@@ -256,7 +256,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
        HasStabC, RegularizeWithMass
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, mass_reg_epsilon
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, mass_reg_epsilon
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -295,10 +295,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Using Piola Transformed element basis functions',Level=4)
   END IF
 
-  SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
-  TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
+  SteadyGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. .NOT. Transient
+  TransientGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. Transient
  
-
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
     IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
@@ -325,7 +324,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
   
-  mass_reg_epsilon = GetCReal(GetSolverParams(), 'Mass regularize epsilon', RegularizeWithMass)
+  mass_reg_epsilon = GetCReal(SolverParams, 'Mass regularize epsilon', RegularizeWithMass)
   IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
     RegularizeWithMass = .FALSE.
   END IF
@@ -334,11 +333,13 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     CALL Info("WhitneyAVSolver", Message)
   END IF
 
-  gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
-  gauge_penalize_m = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient mass', Found)
+  gauge_coeff = GetCReal(SolverParams, 'Lagrange Gauge coefficient',Found )
+  IF(.NOT. Found ) gauge_coeff = 1.0_dp
+  gauge_penalize_c = GetCReal(SolverParams, 'Lagrange Gauge Penalization coefficient', HasStabC)
+  gauge_penalize_m = GetCReal(SolverParams, 'Lagrange Gauge Penalization coefficient mass', Found)
   HasStabC = HasStabC .OR. Found
 
-  IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
+  IF ( HasStabC ) THEN
     WRITE (Message, *) 'Lagrange Gauge penalization coefficient', gauge_penalize_c
     CALL Info('WhitneyAVSolver', message)
     WRITE (Message, *) 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
@@ -648,8 +649,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
-       Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
-       
+       Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)       
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
      END IF
 
@@ -682,7 +682,7 @@ CONTAINS
      IF (Transient) CALL DefaultUpdateMass(MASS)
 
      
-     ! Collect weak diverence constraint.
+     ! Collect weak divergence constraint.
      !-----------------------------------------------------------------
      IF (Transient .AND. TransientGauge .AND. .NOT. TransientGaugeCollected) THEN
        CALL LocalConstraintMatrix( DConstr, Element, n, nd+nb, PiolaVersion, SecondOrder)
@@ -832,7 +832,7 @@ CONTAINS
   ! ---------------------------------------------
   IF ( TG ) THEN
     ! temporary fix to some scaling problem (to be resolved)...
-    CALL ListAddLogical( GetSolverParams(), 'Linear System Dirichlet Scaling', .FALSE.) 
+    CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
   END IF
 
   CALL DefaultDirichletBCs()
@@ -1517,7 +1517,7 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, &
-        HasVelocity, HasLorentzVelocity, HasAngularVelocity
+        HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -1553,9 +1553,11 @@ END SUBROUTINE LocalConstraintMatrix
     END IF
       
     HasVelocity = .FALSE.
+    LocalGauge = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN
       CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
       CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorentzVelocity)
+      LocalGauge = GetLogical( BodyForce,'Local Lagrange Gauge', Found ) 
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
 
@@ -1676,7 +1678,7 @@ END SUBROUTINE LocalConstraintMatrix
        ! Add -C * grad(V^s), where C is a tensor
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
-       
+
        IF( JFix ) THEN
          IF( JFixSolve ) THEN
            ! If we haven't solved for the disbalance of source terms assemble it here
@@ -1863,13 +1865,13 @@ END SUBROUTINE LocalConstraintMatrix
 
        ! In steady state we can utilize the scalar variable
        ! for gauging the vector potential.
-       IF ( SteadyGauge ) THEN
+       IF ( SteadyGauge .OR. LocalGauge ) THEN
          DO j = 1, np
            q = j
            DO i = 1,nd-np
              p = i+np
-             STIFF(q,p) = STIFF(q,p) - SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
-             STIFF(p,q) = STIFF(p,q) - SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(q,p) = STIFF(q,p) - gauge_coeff * SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(p,q) = STIFF(p,q) - gauge_coeff * SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
            END DO
          END DO
 
@@ -2329,7 +2331,7 @@ END SUBROUTINE LocalConstraintMatrix
 
     ALLOCATE(FaceMap(Mesh % NumberOfFaces)); FaceMap=0
     Faces = 0
-    DO t=1,Active
+   DO t=1,Active
       Element => GetBoundaryElement(t)
 
       IF ( GetElementFamily()==1 ) CYCLE
