@@ -1013,18 +1013,20 @@ def create_transfinite_mesh_param_dict(volume_name, surface_name_list, direction
         mesh_params['line_params'] = line_params
     return {'transfinite_mesh_params': mesh_params}
 
-def create_transfinite_line_param_dict(edge_list, nof_points, progression=1, comment=''):
+def create_transfinite_line_param_dict(edge_list, nof_points, progression=1, comment='', mesh_type='Progression'):
     """
     Creates dictionary containing transfinite line parameters.
 
     :param edge_list: List containing FreeCAD edge objects.
     :param nof_points: Integer.
-    :param progression: Number.
+    :param progression: Number (mesh_type coefficient).
     :param comment: String (commented in geo file).
+    :param mesh_type: String.
 
     :return: Dictionary.
     """
-    return {'edges': edge_list, 'points': str(nof_points), 'progression': str(progression), 'comment': comment}
+    return {'edges': edge_list, 'points': str(nof_points), 'progression': str(progression), 
+            'mesh_type': mesh_type, 'comment': comment}
 
 def merge_entities_dicts(entities_dicts, name, default_mesh_size=None, add_prefixes=None):
     """ 
