@@ -70,6 +70,11 @@
 
       <BodyForce>
         <Parameter Widget="Label" > <Name> Given current density </Name> </Parameter>
+         <Parameter Widget="CheckBox" >
+	   <Name> Use Elemental CoilCurrent </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use the current density field as computed by CoilSolver. </Whatis>
+         </Parameter>
 	<Parameter Widget="Edit" >
 	  <Name> Current Density 1 </Name>
 	  <Type> String </Type>
@@ -85,6 +90,12 @@
 	  <Type> String </Type>
 	  <Whatis> Give the current density in z-direction. </Whatis>
 	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density Amplitude </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the amplitude of the current density vector. </Whatis>
+	</Parameter>
+		
         <Parameter Widget="Label" > <Name> External electric potential </Name> </Parameter>
 	<Parameter Widget="Edit" >
 	  <Name> Electric Potential </Name>
@@ -118,6 +129,16 @@
 	   <Name> Fix Input Current Density </Name>
 	   <Type> Logical </Type>
 	   <Whatis> Fix the given input current to be divergence free. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+	   <Name> Use Elemental CoilCurrent </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use elemental current density, CoilCurrent e, computed by CoilSolver. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+	   <Name> Use Nodal CoilCurrent </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use nodal current density, CoilCurrent, computed by CoilSolver. </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox" >
 	   <Name> Use Tree Gauge </Name>
