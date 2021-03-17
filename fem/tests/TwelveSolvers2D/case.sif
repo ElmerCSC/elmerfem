@@ -4,7 +4,7 @@
 !
 ! P.R. 14.3.2021
 
-$ prefix = "dens"
+$ prefix = "case"
 $ visc = 1.0e-3
 
 Header
