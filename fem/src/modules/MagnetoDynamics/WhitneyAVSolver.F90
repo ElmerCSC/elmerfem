@@ -271,7 +271,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER :: n_n, n_e
   INTEGER, POINTER :: Vperm(:), Aperm(:)
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
-    
+
+  CHARACTER(LEN=MAX_NAME_LEN):: ElemCurrentName
+  LOGICAL :: UseElemCurrent
+  TYPE(Variable_t), POINTER :: ElemCurrentVar
+  REAL(KIND=dp) :: CurrAmp
+  
   SAVE STIFF, LOAD, MASS, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
        Acoef_t, DConstr, ThinLineCrossect, ThinLineCond
@@ -297,7 +302,25 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SteadyGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. .NOT. Transient
   TransientGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. Transient
- 
+
+  ElemCurrentName = GetString( SolverParams,'Elemental Current Name',UseElemCurrent ) 
+  IF(.NOT. UseElemCurrent ) THEN
+    UseElemCurrent = GetLogical(SolverParams,'Use Elemental CoilCurrent',Found )
+    ElemCurrentName = 'CoilCurrent e'
+  END IF
+  IF( UseElemCurrent ) THEN
+    ElemCurrentVar => VariableGet(Mesh % Variables, ElemCurrentName )
+    IF( ASSOCIATED( ElemCurrentVar ) ) THEN
+      CALL Info('WhitneyAVSolver','Using precomputed field for current density: '//TRIM(ElemCurrentName),Level=5)
+      IF( ElemCurrentVar % TYPE /= Variable_on_nodes_on_elements ) THEN
+        CALL Info('WhitneyAVSolver','Using precomputed current density is not elemental field!')
+      END IF
+    ELSE
+      CALL Fatal('WhitneyAVSolver','Elemental current requested but not found:'//TRIM(ElemCurrentName))
+    END IF
+  END IF
+
+  
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
     IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
@@ -431,7 +454,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   JFix = GetLogical(SolverParams,'Fix input Current Density', Found)
   IF (.NOT. Found .AND. .NOT. Transient ) THEN
     ! Only fix the current density if there is one
-    JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
+    JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density') .OR. UseElemCurrent
   END IF
   JFixSolve = JFix
 
@@ -587,11 +610,21 @@ CONTAINS
      END IF
      
      LOAD = 0.0d0
+
+     ! This way we don't have to inquire the list for all three components separately.
+     ! Also writing of the sif file becomes more economical.
+     IF( UseElemCurrent ) THEN
+       CALL GetVectorLocalSolution( Load,UVariable=ElemCurrentVar)       
+     END IF
+
+     
      BodyForce => GetBodyForce()
      FoundMagnetization = .FALSE.
-     IF ( ASSOCIATED(BodyForce) ) THEN
-       
+     IF ( ASSOCIATED(BodyForce) ) THEN       
        CALL GetRealVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
+       CurrAmp = ListGetCReal( BodyForce,'Current Density Amplitude',Found ) 
+       IF(Found) Load(1:3,1:n) = CurrAmp * Load(1:3,1:n)
+       
        CALL GetRealVector( BodyForce, Load(4:6,1:n), &
                 'Magnetization', FoundMagnetization )
        Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
