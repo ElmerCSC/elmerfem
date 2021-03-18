@@ -545,7 +545,38 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     END IF
     CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
   END IF
+
+  IF( ListGetLogical( Params,'Fix Input Current Density',Found ) ) THEN
+    IF( .NOT. ( ASSOCIATED( FluxVarE ) ) ) THEN
+      CALL Fatal('CoilSolver','Fixing can be done only for elemental coil current!')
+    END IF
+                       
+    CALL DefaultInitialize()
+    Active = GetNOFActive()          
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()           
+      CALL LocalCorrMatrix(  Element, n, nd )
+    END DO
+
+    ! Set just one Dirichlet node.
+    ! In serial it can be as well the 1st one. 
+    CALL UpdateDirichletDof(Solver % Matrix, 1, 0._dp)        
+      
+    ! Only Default dirichlet conditions activate the BCs above!
+    CALL DefaultDirichletBCs()
     
+    Norm = DefaultSolve()
+    
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()           
+      CALL LocalCorrCurrent(  Element, n, nd )
+    END DO
+  END IF
+  
 
   ! Some optional postprocessing mainly for debugging purposes
   CoilSetVar => VariableGet( Mesh % Variables,'CoilSet' )
@@ -1516,6 +1547,119 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  ! Assembly the potential equation related to Jfix field with divergence of
+  ! elemental coil current as source.
+  !-------------------------------------------------------------------------
+  SUBROUTINE LocalCorrMatrix( Element, n, nd )
+    !------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    !------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,L(3),Lfix(3,nd)
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+    LOGICAL :: Stat,Found
+    INTEGER :: i,t,p,q
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: Material
+    SAVE Nodes
+    !------------------------------------------------------------------------------
+
+    CALL GetElementNodes( Nodes )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    ! Current density at nodes
+    DO i=1,n
+      j = FluxVarE % Perm( Element % DGIndexes(i) )      
+      Lfix(1:3,i) = FluxVarE % Values( 3*j-2: 3*j )
+    END DO
+    
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )                
+      Weight = IP % s(t) * detJ
+
+      ! Current density at integration point
+      L = MATMUL(Lfix(1:3,1:n),Basis(1:n))
+      
+      DO p=1,n
+        DO q=1,n
+          STIFF(p,q) = STIFF(p,q) + Weight * SUM(dBasisdx(q,:)*dBasisdx(p,:))
+        END DO
+        FORCE(p) = FORCE(p) + SUM(L * dBasisdx(p,:)) * Weight
+      END DO
+    END DO
+
+    CALL DefaultUpdateEquations(STIFF,FORCE)
+    !------------------------------------------------------------------------------
+  END SUBROUTINE LocalCorrMatrix
+!------------------------------------------------------------------------------
+
+  ! Correct the current elementwise to be divergence free.
+  ! This is done by solving elementwise the fixing currents.
+  !------------------------------------------------------------------------------
+  SUBROUTINE LocalCorrCurrent( Element, n, nd )
+    !------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    !------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),NodalPot(nd),DetJ,Weight
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd,3),x(nd)
+    INTEGER :: pivot(nd)
+    LOGICAL :: Stat,Found
+    INTEGER :: i,j,k,t,p,q
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    SAVE Nodes
+    !------------------------------------------------------------------------------
+
+    CALL GetElementNodes( Nodes )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    
+    NodalPot(1:n) = Solver % Variable % Values( Perm( Element % NodeIndexes ) )             
+    
+    ! Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )                
+      Weight = IP % s(t) * detJ
+
+      DO p=1,n
+        DO q=1,n
+          STIFF(p,q) = STIFF(p,q) + Weight * Basis(p) * Basis(q) 
+        END DO
+        ! Source for each coordinate direction
+        DO k=1,3
+          FORCE(p,k) = FORCE(p,k) + Weight * Basis(p) * SUM(dBasisdx(1:n,k)*NodalPot(1:n))
+        END DO
+      END DO
+    END DO
+
+
+    CALL LUdecomp(STIFF,n,pivot)
+    ! Fixing for each coordinate direction
+    DO k=1,3
+      x = FORCE(1:n,k)
+      CALL LUSolve(n,STIFF,x,pivot)
+
+      DO i=1,n
+        j = FluxVarE % Perm( Element % DGIndexes(i) )              
+        FluxVarE % Values( 3*(j-1)+k) = FluxVarE % Values( 3*(j-1)+k) - x(i)
+      END DO
+    END DO    
+    
+    !------------------------------------------------------------------------------
+  END SUBROUTINE LocalCorrCurrent
+!------------------------------------------------------------------------------
+
+
+  
 ! Scale the potential such that the total current is the desired one.
 ! The scaling uses the feature where the nodal current is computed from
 ! r=Ax-b where the components of r are the nodal currents corresponding to
