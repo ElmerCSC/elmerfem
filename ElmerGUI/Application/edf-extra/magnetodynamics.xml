@@ -70,11 +70,6 @@
 
       <BodyForce>
         <Parameter Widget="Label" > <Name> Given current density </Name> </Parameter>
-         <Parameter Widget="CheckBox" >
-	   <Name> Use Elemental CoilCurrent </Name>
-	   <Type> Logical </Type>
-	   <Whatis> Use the current density field as computed by CoilSolver. </Whatis>
-         </Parameter>
 	<Parameter Widget="Edit" >
 	  <Name> Current Density 1 </Name>
 	  <Type> String </Type>
@@ -123,22 +118,17 @@
          <Parameter Widget="Edit" Enabled="True">
            <Name> Procedure </Name>
            <DefaultValue> "MagnetoDynamics" "WhitneyAVSolver" </DefaultValue>
-         </Parameter>	 
+         </Parameter>
+	 <Parameter Widget="CheckBox" >
+	   <Name> Use Elemental CoilCurrent </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use the elemental current density, CoilCurrent e, computed by CoilSolver. </Whatis>
+         </Parameter>
          <Parameter Widget="CheckBox" >
 	   <Parameter Widget="Label" > <Name> Special options </Name> </Parameter>
 	   <Name> Fix Input Current Density </Name>
 	   <Type> Logical </Type>
-	   <Whatis> Fix the given input current to be divergence free. </Whatis>
-         </Parameter>
-         <Parameter Widget="CheckBox" >
-	   <Name> Use Elemental CoilCurrent </Name>
-	   <Type> Logical </Type>
-	   <Whatis> Use elemental current density, CoilCurrent e, computed by CoilSolver. </Whatis>
-         </Parameter>
-         <Parameter Widget="CheckBox" >
-	   <Name> Use Nodal CoilCurrent </Name>
-	   <Type> Logical </Type>
-	   <Whatis> Use nodal current density, CoilCurrent, computed by CoilSolver. </Whatis>
+	   <Whatis> Fix the given input current in body force section to be divergence free. </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox" >
 	   <Name> Use Tree Gauge </Name>
