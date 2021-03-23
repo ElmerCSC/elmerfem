@@ -267,6 +267,7 @@ MODULE Types
      LOGICAL, DIMENSION(:), POINTER   :: SendingNB
      INTEGER                          :: NumOfNeighbours
      INTEGER                          :: NumberOfThreads = 1
+     LOGICAL                          :: ExternalInit
    END TYPE ParEnv_t
 
 
