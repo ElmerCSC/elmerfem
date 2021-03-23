@@ -58,7 +58,7 @@
         FaceNodeCount, DOFs, PathCount, LeftConstraint, RightConstraint, &
         FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount, &
         node, nodecounter, CurrentNodePosition, StartNode, NodePositions(3), &
-        directions, Counter
+        directions, Counter, ClosestCrev
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
         FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
