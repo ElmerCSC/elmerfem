@@ -73,7 +73,7 @@
         CrevasseThreshold, MinCalvingSize, PauseVolumeThresh, &
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
         angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
-        buffer, gridmesh_dx, &
+        buffer, gridmesh_dx, FrontLeft(2), FrontRight(2),&
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -739,6 +739,8 @@
             MPI_MAX, 0, ELMER_COMM_WORLD, ierr)
      END IF
 
+     CALL GetFrontCorners(Model, FrontLeft, FrontRight)
+
      IF(Boss) THEN
 
        IF(ANY(IMBdryConstraint == 0)) THEN
@@ -828,12 +830,12 @@
        ! Also, we have deleted unnecessary elements, but their nodes
        ! remain, but this also isn't a problem as InterpVarToVar
        ! cycles elements, not nodes.
-
        CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight)
-       CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
-            IMOnLeft, IMOnRight, .FALSE.)
-
+       !CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
+       !     IMOnLeft, IMOnRight, .FALSE.)
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY)
+       CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, FrontLeft, FrontRight)
 
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount

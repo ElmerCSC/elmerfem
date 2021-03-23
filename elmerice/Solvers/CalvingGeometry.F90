@@ -5230,5 +5230,532 @@ CONTAINS
 
   END SUBROUTINE GetCalvingPolygons
 
+  SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, OnLeft, OnRight)
+    IMPLICIT NONE
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(CrevassePath_t), POINTER :: CrevassePaths
+    REAL(kind=dp) :: EdgeX(:), EdgeY(:)
+    LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:)
+    !-------------------------------------------------
+    TYPE(CrevassePath_t), POINTER :: CurrentPath, WorkPath
+    INTEGER :: i,j, counter, first, last, path
+    REAL(kind=dp), ALLOCATABLE :: Polygons(:,:), PathPoly(:,:)
+    INTEGER, ALLOCATABLE :: PolyStart(:), PolyEnd(:)
+    REAL(kind=dp) :: xx, yy
+    LOGICAL :: inside, debug
+
+    ! remove paths that end on both lateral boundaries
+    IF(PRESENT(OnLeft) .OR. PRESENT(OnRight)) THEN
+      !CALL Assert((PRESENT(OnLeft) .AND. PRESENT(OnRight)), FuncName, &
+      !     "Provided only one of OnLeft/OnRight!")
+
+      !Check that crevasse path doesn't begin and end on same lateral margin
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
+        !Check node OnLeft, OnRight
+        First = CurrentPath % NodeNumbers(1)
+        Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+        IF((OnLeft(First) .AND. OnLeft(Last)) .OR. &
+             (OnRight(First) .AND. OnRight(Last))) THEN
+          CurrentPath % Valid = .FALSE.
+        END IF
+        CurrentPath => CurrentPath % Next
+      END DO
+
+      !Actually remove previous marked
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
+        WorkPath => CurrentPath % Next
+
+        IF(.NOT. CurrentPath % Valid) THEN
+          IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
+          CALL RemoveCrevassePath(CurrentPath)
+          IF(Debug) CALL Info("ValidateCrevassePaths","Removing a crevasse path which &
+               &starts and ends on same margin")
+        END IF
+        CurrentPath => WorkPath
+      END DO
+    END IF
+
+    CALL GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygons, PolyStart, PolyEnd)
+
+    ! remove crevs found within other crevasses
+    CurrentPath => CrevassePaths
+    path=0
+    DO WHILE(ASSOCIATED(CurrentPath))
+      path=path+1
+      inside = .FALSE.
+      DO i=1, SIZE(PolyStart)
+        IF(i==path) CYCLE
+        ALLOCATE(PathPoly(2, PolyEnd(i)-PolyStart(i)+1))
+        PathPoly = Polygons(:, PolyStart(i):PolyEnd(i))
+        DO j=2, CurrentPath % NumberOfNodes-1
+          xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(j))
+          yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(j))
+          inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+          IF(inside) THEN
+            CurrentPath % Valid = .FALSE.
+            EXIT
+          END IF
+        END DO
+        DEALLOCATE(PathPoly)
+        IF(inside) EXIT
+      END DO
+
+      CurrentPath => CurrentPath % Next
+    END DO
+
+    !Actually remove previous marked
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+       WorkPath => CurrentPath % Next
+
+       IF(.NOT. CurrentPath % Valid) THEN
+          IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
+          CALL RemoveCrevassePath(CurrentPath)
+          IF(Debug) CALL Info("ValidateCrevassePaths","Removing a crevasse path")
+       END IF
+       CurrentPath => WorkPath
+    END DO
+
+    DEALLOCATE(Polygons)
+
+  END SUBROUTINE RemoveInvalidCrevs
+
+  SUBROUTINE GetFrontCorners(Model, FrontLeft, FrontRight)
+
+    TYPE(Model_t) :: Model
+    !--------------------------
+    TYPE(Solver_t), POINTER :: NullSolver => NULL()
+    INTEGER :: i,dummyint, LeftRoot, RightRoot, ierr, NNodes
+    REAL(KIND=dp) :: FrontLeft(2), FrontRight(2)
+    INTEGER, POINTER :: FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
+        LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
+    LOGICAL :: FoundRight, FoundLeft
+    LOGICAL, ALLOCATABLE :: PFoundRight(:), PFoundLeft(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: FrontMaskName, TopMaskName, &
+         LeftMaskName, RightMaskName
+
+    NNodes = Model % Mesh % NumberOfNodes
+
+    ALLOCATE(FrontPerm(NNodes), TopPerm(NNodes), LeftPerm(NNodes),&
+        RightPerm(NNodes))
+    FrontMaskName = "Calving Front Mask"
+    TopMaskName = "Top Surface Mask"
+    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, TopMaskName, &
+      .FALSE., TopPerm, dummyint)
+    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, FrontMaskName, &
+      .FALSE., FrontPerm, dummyint)
+    LeftMaskName = "Left Sidewall Mask"
+    RightMaskName = "Right Sidewall Mask"
+    !Generate perms to quickly get nodes on each boundary
+    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, LeftMaskName, &
+      .FALSE., LeftPerm, dummyint)
+    CALL MakePermUsingMask( Model, NullSolver, Model % Mesh, RightMaskName, &
+         .FALSE., RightPerm, dummyint)
+
+    FoundLeft=.FALSE.
+    FoundRight=.FALSE.
+    DO i=1,NNodes
+       IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
+         IF( LeftPerm(i) >0  ) THEN
+            FrontLeft(1) = Model % Mesh % Nodes % x(i)
+            FrontLeft(2) = Model % Mesh % Nodes % y(i)
+            FoundLeft = .TRUE.
+         ELSE IF ( RightPerm(i) >0  ) THEN
+            FrontRight(1) = Model % Mesh % Nodes % x(i)
+            FrontRight(2) = Model % Mesh % Nodes % y(i)
+            FoundRight = .TRUE.
+         END IF
+       END IF
+    END DO
+
+    DEALLOCATE(TopPerm, FrontPerm, LeftPerm, RightPerm)
+
+    ALLOCATE(PFoundRight(ParEnv % PEs), PFoundLeft(ParEnv % PEs))
+    CALL MPI_ALLGATHER(FoundRight, 1, MPI_LOGICAL, PFoundRight, 1, &
+            MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+    CALL MPI_ALLGATHER(FoundLeft, 1, MPI_LOGICAL, PFoundLeft, 1, &
+            MPI_LOGICAL, ELMER_COMM_WORLD, ierr)
+
+    DO i=1, ParEnv % PEs
+      IF(.NOT. PFoundLeft(i) .AND. .NOT. PFoundRight(i)) CYCLE
+      IF(PFoundLeft(i)) LeftRoot = i-1
+      IF(PFoundRight(i)) RightRoot = i-1
+    END DO
+
+    CALL MPI_BCAST(FrontLeft,2,MPI_DOUBLE_PRECISION, LeftRoot, ELMER_COMM_WORLD, ierr)
+    CALL MPI_BCAST(FrontRight,2,MPI_DOUBLE_PRECISION, RightRoot, ELMER_COMM_WORLD, ierr)
+
+  END SUBROUTINE GetFrontCorners
+
+  SUBROUTINE ValidateNPCrevassePaths(Mesh, CrevassePaths, OnLeft, OnRight, FrontLeft, FrontRight)
+    IMPLICIT NONE
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(CrevassePath_t), POINTER :: CrevassePaths
+    LOGICAL, ALLOCATABLE :: OnLeft(:),OnRight(:)
+    REAL(KIND=dp) :: FrontRight(2), FrontLeft(2)
+    INTEGER :: First, Last, LeftIdx, RightIdx
+    !---------------------------------------------------
+    REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
+         ShiftTo, Dir1(2), Dir2(2), CCW_value,a1(2),a2(2),b1(2),b2(2),intersect(2), &
+         StartX, StartY, EndX, EndY, Orientation(3), temp
+    REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:)
+    TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
+    INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path
+    INTEGER, ALLOCATABLE :: WorkInt(:)
+    LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
+         DoProjectible, headland
+    LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
+         FarNode(:), DeleteNode(:), Constriction(:)
+    CHARACTER(MAX_NAME_LEN) :: FuncName="ValidateNPCrevassePaths"
+    REAL(kind=dp) :: rt0, rt
+
+    rt0 = RealTime()
+    Debug = .FALSE.
+    Snakey = .TRUE.
+    CurrentPath => CrevassePaths
+
+    path=0
+    DO WHILE(ASSOCIATED(CurrentPath))
+      path=path+1
+      First = CurrentPath % NodeNumbers(1)
+      Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+      StartX = Mesh % Nodes % x(First)
+      StartY = Mesh % Nodes % y(First)
+      EndX = Mesh % Nodes % x(Last)
+      EndY = Mesh % Nodes % y(Last)
+
+      IF(OnLeft(First)) THEN
+        StartX = FrontLeft(1)
+        StartY = FrontLeft(2)
+      ELSE IF(OnRight(First)) THEN
+        StartX = FrontRight(1)
+        StartY = FrontRight(2)
+      END IF
+      IF(OnLeft(Last)) THEN
+        EndX = FrontLeft(1)
+        EndY = FrontLeft(2)
+      ELSE IF(OnRight(Last)) THEN
+        EndX = FrontRight(1)
+        EndY = FrontRight(2)
+      END IF
+
+      orientation(3) = 0.0_dp
+      IF( ABS(StartX-EndX) < AEPS) THEN
+        ! front orientation is aligned with y-axis
+        Orientation(2) =  0.0_dp
+        IF(EndY > StartY) THEN
+          Orientation(1)=1.0_dp
+        ELSE
+          Orientation(1)=-1.0_dp
+        END IF
+      ELSE IF (ABS(StartY-EndY)<AEPS) THEN
+        ! front orientation is aligned with x-axis
+        Orientation(1) = 0.0_dp
+        IF(EndX > StartX) THEN
+          Orientation(2)=1.0_dp
+        ELSE
+          Orientation(2)=-1.0_dp
+        END IF
+      ELSE
+        CALL ComputePathExtent(CrevassePaths, Mesh % Nodes, .TRUE.)
+        ! endx always greater than startx
+        ! check if yextent min smaller than starty
+        IF(CurrentPath % Right ==  StartY .OR. &
+          CurrentPath % Right == EndY) THEN
+          Orientation(2)=1.0_dp
+        ELSE
+          Orientation(2)=-1.0_dp
+        END IF
+        Orientation(1)=Orientation(2)*(EndY-StartY)/(StartX-EndX)
+      END IF
+      Temp=(Orientation(1)**2+Orientation(2)**2+Orientation(3)**2)**0.5
+      Orientation=Orientation/Temp ! normalized the orientation
+
+      RotationMatrix = ComputeRotationMatrix(Orientation)
+      UnRotationMatrix = TRANSPOSE(RotationMatrix)
+
+      ! Temporarily rotate the mesh
+      CALL RotateMesh(Mesh, RotationMatrix)
+
+      ! Find path %left, %right, %extent (width)
+      CALL ComputePathExtent(CurrentPath, Mesh % Nodes, .TRUE.)
+
+      !-----------------------------------------------------
+      ! Paths should not 'snake' inwards in a narrow slit...
+      !-----------------------------------------------------
+
+      !it's insufficient to require that no nodes be
+      !further away than the two edge nodes.
+      !Instead, must ensure that no nodes are further away than any
+      !surrounding nodes.
+
+      !First need to determine path orientation
+      !with respect to front....
+
+      !if ToLeft, the crevasse path goes from right to left, from the
+      !perspective of someone sitting in the fjord, looking at the front
+      ToLeft = Mesh % Nodes % y(Last) > Mesh % Nodes % y(First)
+
+      IF(Debug) THEN
+          FrontDist = NodeDist3D(Mesh % Nodes,First, Last)
+          PRINT *,'PATH: ', CurrentPath % ID, ' FrontDist: ',FrontDist
+          PRINT *,'PATH: ', CurrentPath % ID, &
+               ' nonodes: ',CurrentPath % NumberOfNodes,&
+               ' noelems: ',CurrentPath % NumberOfElements
+      END IF
+
+      !Cycle path nodes, finding those which are too far away
+      ALLOCATE(FarNode(CurrentPath % NumberOfNodes), &
+             Constriction(CurrentPath % NumberOfNodes),&
+             ConstrictDirection(CurrentPath % NumberOfNodes,2))
+      FarNode = .FALSE.
+      Constriction = .FALSE.
+      ConstrictDirection = 0.0_dp
+
+      !Determine which nodes have the potential to be constriction (based on angle)
+      !and compute constriction direction (i.e. which way the 'pointy bit' points...')
+      DO i=2,CurrentPath % NumberOfNodes-1
+        First = CurrentPath % NodeNumbers(i-1)
+        Last = CurrentPath % NodeNumbers(i+1)
+        n = CurrentPath % NodeNumbers(i)
+
+          CCW_value = ((Mesh % Nodes % y(n) - Mesh % Nodes % y(First)) * &
+               (Mesh % Nodes % z(Last) - Mesh % Nodes % z(First))) - &
+               ((Mesh % Nodes % z(n) - Mesh % Nodes % z(First)) * &
+               (Mesh % Nodes % y(Last) - Mesh % Nodes % y(First)))
+
+          CCW = CCW_value > 0.0_dp
+
+          IF((CCW .NEQV. ToLeft) .AND. (ABS(CCW_value) > 10*AEPS)) THEN
+            Constriction(i) = .TRUE.
+            !Calculate constriction direction
+
+            Dir1(1) = Mesh % Nodes % y(n) - Mesh % Nodes % y(First)
+            Dir1(2) = Mesh % Nodes % z(n) - Mesh % Nodes % z(First)
+            Dir1 = Dir1 / ((Dir1(1)**2.0 + Dir1(2)**2.0) ** 0.5)
+
+            Dir2(1) = Mesh % Nodes % y(n) - Mesh % Nodes % y(Last)
+            Dir2(2) = Mesh % Nodes % z(n) - Mesh % Nodes % z(Last)
+            Dir2 = Dir2 / ((Dir2(1)**2.0 + Dir2(2)**2.0) ** 0.5)
+
+            ConstrictDirection(i,1) = Dir1(1) + Dir2(1)
+            ConstrictDirection(i,2) = Dir1(2) + Dir2(2)
+            ConstrictDirection(i,:) = ConstrictDirection(i,:) / &
+                 ((ConstrictDirection(i,1)**2.0 + ConstrictDirection(i,2)**2.0) ** 0.5)
+
+            IF(Debug) PRINT *, 'Debug, node ',i,' dir1,2: ',Dir1, Dir2
+            IF(Debug) PRINT *, 'Debug, node ',i,' constriction direction: ',ConstrictDirection(i,:)
+            IF(Debug) PRINT *, 'Debug, node ',i,' xyz: ',Mesh % Nodes % x(n),Mesh % Nodes % y(n),Mesh % Nodes % z(n)
+          END IF
+        END DO
+
+        !First and last can always be constriction
+        Constriction(1) = .TRUE.
+        Constriction(SIZE(Constriction)) = .TRUE.
+
+        !Compute constriction direction for first and last
+        !We don't have info about the third node, so take orthogonal to 2
+        Last = CurrentPath % NodeNumbers(2)
+        n = CurrentPath % NodeNumbers(1)
+        Dir1(1) = Mesh % Nodes % y(n) - Mesh % Nodes % y(Last)
+        Dir1(2) = Mesh % Nodes % z(n) - Mesh % Nodes % z(Last)
+        Dir1 = Dir1 / ((Dir1(1)**2.0 + Dir1(2)**2.0) ** 0.5)
+
+        !Depending on which end of the chain we are,
+        !we take either the right or left orthogonal vector
+        IF(ToLeft) THEN
+          ConstrictDirection(1,1) = Dir1(2)
+          ConstrictDirection(1,2) = -1.0 * Dir1(1)
+        ELSE
+          ConstrictDirection(1,1) = -1.0 * Dir1(2)
+          ConstrictDirection(1,2) = Dir1(1)
+        END IF
+        IF(Debug) PRINT *, 'Debug, node 1 constriction direction: ',ConstrictDirection(1,:)
+
+        Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes - 1)
+        n = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+
+        Dir1(1) = Mesh % Nodes % y(n) - Mesh % Nodes % y(Last)
+        Dir1(2) = Mesh % Nodes % z(n) - Mesh % Nodes % z(Last)
+        Dir1 = Dir1 / ((Dir1(1)**2.0 + Dir1(2)**2.0) ** 0.5)
+
+        IF(.NOT. ToLeft) THEN
+          ConstrictDirection(CurrentPath % NumberOfNodes,1) = Dir1(2)
+          ConstrictDirection(CurrentPath % NumberOfNodes,2) = -1.0 * Dir1(1)
+        ELSE
+          ConstrictDirection(CurrentPath % NumberOfNodes,1) = -1.0 * Dir1(2)
+          ConstrictDirection(CurrentPath % NumberOfNodes,2) = Dir1(1)
+        END IF
+        IF(Debug) PRINT *, 'Debug, node last constriction direction: ',&
+             ConstrictDirection(CurrentPath % NumberOfNodes,:)
+
+        !---------------------------------------
+        ! Now that we have constrictions marked and directions computed, cycle nodes
+
+        DO i=1,CurrentPath % NumberOfNodes
+          IF(.NOT. Constriction(i)) CYCLE
+
+          DO j=CurrentPath % NumberOfNodes,i+1,-1
+            IF(.NOT. Constriction(j)) CYCLE
+
+
+            First = CurrentPath % NodeNumbers(i)
+            Last = CurrentPath % NodeNumbers(j)
+
+            !Check that these constrictions 'face' each other via dot product
+            Dir1(1) = Mesh % Nodes % y(Last) - Mesh % Nodes % y(First)
+            Dir1(2) = Mesh % Nodes % z(Last) - Mesh % Nodes % z(First)
+            Dir2(1) = -Dir1(1)
+            Dir2(2) = -Dir1(2)
+
+            !If the two constrictions aren't roughly facing each other:
+            ! <  > rather than    > <
+            ! then skip this combo
+            IF(SUM(ConstrictDirection(i,:)*Dir1) < 0) THEN
+              IF(Debug) PRINT *,'Constrictions ',i,j,' do not face each other 1: ',&
+                   SUM(ConstrictDirection(i,:)*Dir1)
+              CYCLE
+            END IF
+
+            IF(SUM(ConstrictDirection(j,:)*Dir2) < 0) THEN
+              IF(Debug) PRINT *,'Constrictions ',j,i,' do not face each other 2: ',&
+                   SUM(ConstrictDirection(j,:)*Dir2)
+              CYCLE
+            END IF
+
+            IF(Debug) PRINT *,'Constrictions ',i,j,' do face each other: ',&
+                 SUM(ConstrictDirection(i,:)*Dir1)
+
+            !test that the line drawn between the constriction doesn't intersect
+            !any intermediate elements as this indicates
+            !crossing a headland (difficult to draw - but it's bad news)
+            !
+            ! -  ---      ---- -
+            !  \/   \    /   \/
+            !        ----
+            !
+
+            a1(1) = Mesh % Nodes % y(First)
+            a1(2) = Mesh % Nodes % z(First)
+            a2(1) = Mesh % Nodes % y(Last)
+            a2(2) = Mesh % Nodes % z(Last)
+            headland = .FALSE.
+            DO k=i+1,j-2
+              b1(1) = Mesh % Nodes % y(k)
+              b1(2) = Mesh % Nodes % z(k)
+              b2(1) = Mesh % Nodes % y(k+1)
+              b2(2) = Mesh % Nodes % z(k+1)
+
+              CALL LineSegmentsIntersect(a1,a2,b1,b2,intersect,headland)
+              IF(headland) EXIT
+            END DO
+            IF(headland) CYCLE
+
+            MaxDist = NodeDist3D(Mesh % Nodes,First, Last)
+
+            DO k=i+1,j-1
+              IF(FarNode(k)) CYCLE
+
+              n = CurrentPath % NodeNumbers(k)
+
+              IF((NodeDist3D(Mesh % Nodes, First, n) <= MaxDist) .AND. &
+                   (NodeDist3D(Mesh % Nodes, Last, n) <= MaxDist)) CYCLE !within range
+
+              FarNode(k) = .TRUE.
+              IF(Debug) PRINT *,'Far node: ',k,' xyz: ',Mesh % Nodes % x(n),&
+                   Mesh % Nodes % y(n),Mesh % Nodes % z(n)
+
+            END DO
+          END DO
+        END DO
+
+        !Cycle elements, marking those which need to be adjusted
+        ALLOCATE(BreakElement(CurrentPath % NumberOfElements),&
+             DeleteElement(CurrentPath % NumberOfElements))
+        BreakElement = .FALSE.
+        DeleteElement = .FALSE.
+
+        DO i=1,CurrentPath % NumberOfElements
+          IF(ANY(FarNode(i:i+1))) THEN
+            IF(ALL(FarNode(i:i+1))) THEN
+              DeleteElement(i) = .TRUE.
+              IF(Debug) PRINT  *,'PATH: ', CurrentPath % ID, ' element: ',i,' is deleted.'
+            ELSE
+              BreakElement(i) = .TRUE.
+              IF(Debug) PRINT  *,'PATH: ', CurrentPath % ID, ' element: ',i,' is broken.'
+            END IF
+          END IF
+        END DO
+
+        DO i=1,CurrentPath % NumberOfElements
+          IF((.NOT. BreakElement(i)) .OR. DeleteElement(i)) CYCLE
+          !This element needs to be adjusted
+          DO j=i+1,CurrentPath % NumberOfElements
+            IF(.NOT. (BreakElement(j) .OR. DeleteElement(j))) &
+                 CALL Fatal("ValidateCrevasseGroups","Programming error in maintaining aspect ratio")
+            IF(DeleteElement(j)) CYCLE
+            !This is the next 'break element' after i
+            !Determine which nodes we keep
+
+            IF((CurrentPath % NodeNumbers(j) /= &
+                 Mesh % Elements(CurrentPath % ElementNumbers(j)) % NodeIndexes(1)) .OR. &
+                 (CurrentPath % NodeNumbers(j+1) /= &
+                 Mesh % Elements(CurrentPath % ElementNumbers(j)) % NodeIndexes(2))) THEN
+
+              CALL Fatal("ValidateCrevassePaths", "Chain building error")
+            END IF
+
+            Mesh % Elements(CurrentPath % ElementNumbers(i)) % NodeIndexes(2) = &
+                 Mesh % Elements(CurrentPath % ElementNumbers(j)) % NodeIndexes(2)
+
+            !We now want to delete it, because we only keep one from each broken pair
+            DeleteElement(j) = .TRUE.
+            EXIT !we paired this one, move on
+          END DO
+        END DO
+
+        !Delete the elements and nodes
+        IF(COUNT(DeleteElement) > 0) THEN
+          !elements
+          ALLOCATE(WorkInt(COUNT(.NOT. DeleteElement)))
+          WorkInt = PACK(CurrentPath % ElementNumbers,.NOT.DeleteElement)
+
+          DEALLOCATE(CurrentPath % ElementNumbers)
+          ALLOCATE(CurrentPath % ElementNumbers(SIZE(WorkInt)))
+
+          CurrentPath % ElementNumbers = WorkInt
+          CurrentPath % NumberOfElements = SIZE(WorkInt)
+          DEALLOCATE(WorkInt)
+
+          !nodes
+          ALLOCATE(WorkInt(COUNT(.NOT. FarNode)))
+          WorkInt = PACK(CurrentPath % NodeNumbers, .NOT.FarNode)
+
+          DEALLOCATE(CurrentPath % NodeNumbers)
+          ALLOCATE(CurrentPath % NodeNumbers(SIZE(WorkInt)))
+
+          CurrentPath % NodeNumbers = WorkInt
+          CurrentPath % NumberOfNodes = SIZE(WorkInt)
+          DEALLOCATE(WorkInt)
+        END IF
+
+        DEALLOCATE(FarNode, Constriction, ConstrictDirection, BreakElement, DeleteElement)
+
+
+
+      !--------------------------------------------------------
+      ! Put the mesh back
+      !--------------------------------------------------------
+      CALL RotateMesh(Mesh, UnRotationMatrix)
+      CurrentPath => CurrentPath % Next
+    END DO
+
+    rt = RealTime() - rt0
+    PRINT*, 'time', rt
+
+  END SUBROUTINE ValidateNPCrevassePaths
+
 END MODULE CalvingGeometry
 
