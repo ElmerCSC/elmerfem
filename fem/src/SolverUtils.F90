@@ -11955,8 +11955,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp), POINTER :: bc_weights(:),body_weights(:),&
         mat_weights(:),bf_weights(:),tmp_weights(:)
-    REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3), &
-        Coeff
+    REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3),Coeff
     LOGICAL :: Found, Stat, BodyElem
 
 
@@ -12012,7 +12011,6 @@ END FUNCTION SearchNodeL
       mat_id = 0
       body_id = 0
       bc_id = 0
-      Coeff = 1.0_dp
 
       BodyElem = ( e <= Mesh % NumberOfBulkElements ) 
       Element => Mesh % Elements( e )
@@ -12025,7 +12023,7 @@ END FUNCTION SearchNodeL
             'Material',Found)
       ELSE
         Found = .FALSE.
-        DO bc_id = 1,Model % NumberOfBCs
+        DO bc_id = 1,NoBC
           Found = ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) 
           IF( Found ) EXIT
         END DO
@@ -12063,12 +12061,18 @@ END FUNCTION SearchNodeL
       Indexes => Element % NodeIndexes
 
       n = Element % TYPE % NumberOfNodes
+
+      ElementNodes % x = 0.0_dp
+      ElementNodes % y = 0.0_dp
+      ElementNodes % z = 0.0_dp
+      
       ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes)
       ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes)
       ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes)
 
-      IntegStuff = GaussPoints( Element )
-
+      IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints, &
+          EdgeBasis = .FALSE., PReferenceElement = .FALSE. )
+      
       DO t=1,IntegStuff % n        
         U = IntegStuff % u(t)
         V = IntegStuff % v(t)
