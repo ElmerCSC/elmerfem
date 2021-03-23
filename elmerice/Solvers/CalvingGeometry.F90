@@ -395,10 +395,11 @@ CONTAINS
   ! Closed loops are removed from crevasse paths
   !--------------------------------------------------------------------
 
-  SUBROUTINE CheckCrevasseNodes(Mesh, CrevassePaths)
+  SUBROUTINE CheckCrevasseNodes(Mesh, CrevassePaths, Onleft, OnRight)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
+    LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:)
     !-------------------------------------------------
     TYPE(CrevassePath_t), POINTER :: CurrentPath,WorkPath
     INTEGER :: i,j,ElNo,counter, ElementNumbers(2)
@@ -432,9 +433,20 @@ CONTAINS
     !Replace element nodeindexes where nodes are removed
     DO i=1,Mesh % NumberOfBulkElements
        DO j=1,SIZE(Mesh % Elements(i) % NodeIndexes)
-          IF(RemoveNode(Mesh % Elements(i) % NodeIndexes(j))) &
-               Mesh % Elements(i) % NodeIndexes(j) = &
-               ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
+          IF(RemoveNode(Mesh % Elements(i) % NodeIndexes(j))) THEN
+            IF(PRESENT(OnLeft) .AND. OnLeft(Mesh % Elements(i) % NodeIndexes(j))) THEN
+              OnLeft(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+              OnLeft(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            END IF
+            IF(PRESENT(OnRight) .AND. OnRight(Mesh % Elements(i) % NodeIndexes(j))) THEN
+              PRINT*, 'replace', Mesh % Elements(i) % NodeIndexes(j),&
+              ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
+              OnRight(Mesh % Elements(i) % NodeIndexes(j)) = .FALSE.
+              OnRight(ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))) = .TRUE.
+            END IF
+            Mesh % Elements(i) % NodeIndexes(j) = &
+            ReplaceWithNode(Mesh % Elements(i) % NodeIndexes(j))
+          END IF
        END DO
     END DO
 

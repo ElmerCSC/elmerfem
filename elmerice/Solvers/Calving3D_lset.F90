@@ -830,7 +830,7 @@
        ! cycles elements, not nodes.
 
        CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
-       CALL CheckCrevasseNodes(IsoMesh, CrevassePaths)
+       CALL CheckCrevasseNodes(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight)
        CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
             IMOnLeft, IMOnRight, .FALSE.)
 
