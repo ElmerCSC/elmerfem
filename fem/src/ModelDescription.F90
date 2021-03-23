@@ -3232,7 +3232,7 @@ CONTAINS
     ! If we have cyclic files then each file includes all data but we cyclicly write the
     ! data on top of previous files. 
     FileCycle = ListGetInteger( ResList,'Output File Cycle', Found )
-
+    
     ! cyclic files are always independent and hence must always be initiated.
     IF( FileCycle > 0 ) THEN
       InitFile = .TRUE.
@@ -3248,9 +3248,13 @@ CONTAINS
       END IF
     END IF
     IF( FileCycle > 0 ) THEN
-      Fname = TRIM(Fname)//TRIM(I2S(FileInd))
+      Fname = TRIM(Fname)//'_'//TRIM(I2S(FileInd))//'nc'
     END IF
-    
+
+    IF( ParEnv % PEs > 1 ) THEN
+      Fname = TRIM(Fname)//'.'//TRIM(i2s(ParEnv % MyPE))
+    END IF
+        
     PosName = TRIM(FName) // ".pos"
 
     CALL Info(Caller,'-----------------------------------------',Level=5)

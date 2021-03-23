@@ -2047,7 +2047,10 @@ END INTERFACE
          'Meshes To Restart', CheckMesh )
 
      RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
-     IF ( GotIt ) THEN      
+     IF ( GotIt ) THEN
+       k = ListGetInteger( RestartList,'Restart File Number',GotIt)
+       IF( GotIt ) RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(k))//'nc'
+              
        k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
        Mesh => CurrentModel % Meshes
 
@@ -2849,13 +2852,13 @@ END INTERFACE
             //TRIM(OutputFile))
       END IF
       
-      IF ( ParEnv % PEs > 1 ) THEN
-        DO i=1,MAX_NAME_LEN
-          IF ( OutputFile(i:i) == ' ' ) EXIT
-        END DO
-        OutputFile(i:i) = '.'
-        WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
-      END IF
+      !IF ( ParEnv % PEs > 1 ) THEN
+      !  DO i=1,MAX_NAME_LEN
+      !    IF ( OutputFile(i:i) == ' ' ) EXIT
+      !  END DO
+      !  OutputFile(i:i) = '.'
+      !  WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+      !END IF
       
       BinaryOutput = ListGetLogical( CurrentModel % Simulation,'Binary Output',GotIt )
       IF ( .NOT.GotIt ) BinaryOutput = .FALSE.
