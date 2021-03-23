@@ -150,8 +150,15 @@ def add_transfinite_lines_to_geo_file(directory, transfinite_param_list, file_na
                         for surface_name in p_dict['surface_list']:
                             geo_file.write(_get_transfinite_surface_geo_file_line(surface_name, p_dict, geom_id_dict,
                                                                                   exact_surface_equality))
-                        geo_file.write('Transfinite Volume {{{}}};\n'.format(', '.join(geom_id_dict[p_dict['volume']])))
+                        if p_dict.get('volume_corner_points', None):
+                            geo_file.write('Transfinite Volume {{{}}} = {{{}}};\n'.format(', '.join(geom_id_dict[p_dict['volume']]),
+                                                                                          ', '.join(p_dict['volume_corner_points'])))
+                        else:
+                            geo_file.write('Transfinite Volume {{{}}};\n'.format(', '.join(geom_id_dict[p_dict['volume']])))
                     geo_file.write('\n')
                 geo_file.write(line)
     os.remove(geo_path_cp)
+    
+    
+    
 
