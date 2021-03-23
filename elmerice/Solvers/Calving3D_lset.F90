@@ -1001,7 +1001,7 @@
          IF (Debug) PRINT *, ParEnv % MyPE, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
          xx = Solver % Mesh % Nodes % x(i)
          yy = Solver % Mesh % Nodes % y(i)
-         MinDist = MAXVAL(DistValues) ! NOTE dependency on Dist here
+         MinDist = HUGE(1.0_dp)
 
          inside=.FALSE.
          ClosestCrev=0
