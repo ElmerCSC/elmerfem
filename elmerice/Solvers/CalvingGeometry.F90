@@ -5136,88 +5136,97 @@ CONTAINS
 
   ! returns calving polygons if given edge and crevasse info.
   ! assumes all this is on boss and then broadcast to other procs.
-  SUBROUTINE  GetCalvingPolygons(EdgeX, EdgeY, NoPaths, CrevX, CrevY, CrevStart, CrevEnd, &
-   Polygon, PolyStart, PolyEnd, Parallel)
-
-    REAL(kind=dp), ALLOCATABLE :: EdgeX(:), EdgeY(:), CrevX(:), CrevY(:)
-    INTEGER, ALLOCATABLE :: CrevStart(:), CrevEnd(:)
-    INTEGER :: NoPaths
-    LOGICAL :: Parallel
+  SUBROUTINE  GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, GridSize)
+    IMPLICIT NONE
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(CrevassePath_t), POINTER :: CrevassePaths
+    REAL(kind=dp) :: EdgeX(:), EdgeY(:)
+    REAL(kind=dp), OPTIONAL :: GridSize
     !-------------------------------------------------------------------------
+    TYPE(CrevassePath_t), POINTER :: CurrentPath
     REAL(kind=dp), ALLOCATABLE :: PolyX(:), PolyY(:), Polygon(:,:)
     INTEGER, ALLOCATABLE :: PolyStart(:), PolyEnd(:)
-    INTEGER :: path, i, counter, CrevLen, crop(2), EdgeLen, ierr
-    REAL(kind=dp) :: StartX, StartY, EndX, EndY
-    LOGICAL :: Boss
+    INTEGER :: path, i, counter, CrevLen, crop(2), EdgeLen, start, end
+    REAL(kind=dp) :: StartX, StartY, EndX, EndY, err_buffer
 
-    IF(.NOT. Parallel) CALL FATAL('GetCrevasseBoundaryNodes', 'Must be run in parallel')
+    path=0
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+      path=path+1
+      CurrentPath => CurrentPath % Next
+    END DO
 
-    Boss=.FALSE.
-    IF(ParEnv % MyPE == 0) Boss = .TRUE.
+    ALLOCATE(PolyX(100), PolyY(100), PolyStart(path), PolyEnd(path))
+    counter=0
+    path=0
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+      path=path+1
 
-    IF(Boss) THEN
-      ALLOCATE(PolyX(100), PolyY(100), PolyStart(NoPaths), PolyEnd(NoPaths))
-      counter=0
-      DO path=1, NoPaths
-        StartX = CrevX(CrevStart(path))
-        StartY = CrevY(CrevStart(path))
-        EndX = CrevX(CrevEnd(path))
-        EndY = CrevY(CrevEnd(path))
-        CrevLen = CrevEnd(path) - CrevStart(path) + 1
-        DO i=1, SIZE(EdgeX)
-          IF(EdgeX(i) == StartX .AND. EdgeY(i) == StartY) crop(1) = i
-          IF(EdgeX(i) == EndX .AND. EdgeY(i) == EndY) crop(2) = i
-        END DO
+      start=CurrentPath % NodeNumbers(1)
+      end=CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+      StartX = Mesh % Nodes % x(start)
+      StartY = Mesh % Nodes % y(start)
+      EndX = Mesh % Nodes % x(end)
+      EndY = Mesh % Nodes % y(end)
+      CrevLen = CurrentPath % NumberOfNodes
 
-        EdgeLen =  MAXVAL(crop)-MINVAL(crop)-2+1
+      crop =0
+      IF(PRESENT(GridSize)) THEN
+        err_buffer = GridSize/10
+      ELSE
+        err_buffer = 0.0_dp
+      END IF
 
-        DO WHILE(SIZE(PolyX) < Counter+CrevLen+EdgeLen+1)
-          CALL DoubleDPVectorSize(PolyX)
-          CALL DoubleDPVectorSize(PolyY)
-        END DO
+      DO i=1, SIZE(EdgeX)
+        IF((EdgeX(i) <= StartX+err_buffer .AND. EdgeX(i) >= StartX-err_buffer) .AND. &
+        (EdgeY(i) <= StartY+err_buffer  .AND. EdgeY(i) >= StartY-err_buffer)) crop(1) = i
+        IF((EdgeX(i) <= EndX+err_buffer  .AND. EdgeX(i) >= EndX-err_buffer) .AND. &
+        (EdgeY(i) <= EndY+err_buffer  .AND. EdgeY(i) >= EndY-err_buffer )) crop(2) = i
+      END DO
+      IF(ANY(crop == 0)) CALL FATAL('GetCalvingPolygons', 'Edge not found')
 
-        PolyX(Counter+1:counter+CrevLen) = CrevX(CrevStart(path):CrevEnd(path))
-        PolyY(Counter+1:counter+CrevLen) = CrevY(CrevStart(path):CrevEnd(path))
-        PolyStart(path) = Counter+1
-        counter = Counter+CrevLen
+      EdgeLen =  MAXVAL(crop)-MINVAL(crop)-2+1
 
-        IF(crop(2) < crop(1)) THEN ! end of crev lines up with start of edge no need to flip edge
-          PolyX(Counter+1:Counter+EdgeLen) = EdgeX(MINVAL(crop)+1:MAXVAL(crop)-1)
-          PolyY(Counter+1:Counter+EdgeLen) = EdgeY(MINVAL(crop)+1:MAXVAL(crop)-1)
-          counter=counter+EdgeLen
-        ELSE
-          ! since crevasses are plotted left to right if crevasse on part of front facing upstream
-          ! need to add the edge in reverse
-          DO i=MAXVAL(crop)-1, MINVAL(crop)+1, -1 ! backwards iteration
-            counter=counter+1
-            PolyX(Counter) = EdgeX(i)
-            PolyY(Counter) = EdgeY(i)
-          END DO
-        END IF
-
-        ! add first node in again to complete polygon
-        counter=counter+1
-        PolyX(Counter) = CrevX(CrevStart(path))
-        PolyY(counter) = CrevY(CrevStart(path))
-
-        PolyEnd(path) = Counter
+      DO WHILE(SIZE(PolyX) < Counter+CrevLen+EdgeLen+1)
+        CALL DoubleDPVectorSize(PolyX)
+        CALL DoubleDPVectorSize(PolyY)
       END DO
 
-      ALLOCATE(Polygon(2, Counter))
-      Polygon(1,:) = PolyX(1:Counter)
-      Polygon(2,:) = PolyY(1:Counter)
-      DEALLOCATE(PolyX, PolyY)
+      PolyStart(path) = Counter+1
+      DO i=1, CrevLen
+        counter=counter+1
+        PolyX(Counter) = Mesh % Nodes % x(CurrentPath % NodeNumbers(i))
+        PolyY(Counter) = Mesh % Nodes % y(CurrentPath % NodeNumbers(i))
+      END DO
 
-    END IF !boss
+      IF(crop(2) < crop(1)) THEN ! end of crev lines up with start of edge no need to flip edge
+        PolyX(Counter+1:Counter+EdgeLen) = EdgeX(MINVAL(crop)+1:MAXVAL(crop)-1)
+        PolyY(Counter+1:Counter+EdgeLen) = EdgeY(MINVAL(crop)+1:MAXVAL(crop)-1)
+        counter=counter+EdgeLen
+      ELSE
+        ! since crevasses are plotted left to right if crevasse on part of front facing upstream
+        ! need to add the edge in reverse
+        DO i=MAXVAL(crop)-1, MINVAL(crop)+1, -1 ! backwards iteration
+          counter=counter+1
+          PolyX(Counter) = EdgeX(i)
+          PolyY(Counter) = EdgeY(i)
+        END DO
+      END IF
 
-    ! send bdrynode info to all procs
-    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
-		CALL MPI_BCAST(counter, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-		IF(.NOT. Boss) ALLOCATE(Polygon(2, counter), PolyStart(NoPaths), &
-                            PolyEnd(NoPaths))
-		CALL MPI_BCAST(Polygon, Counter*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
-		CALL MPI_BCAST(PolyEnd, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
-		CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+      ! add first node in again to complete polygon
+      counter=counter+1
+      PolyX(Counter) = StartX
+      PolyY(counter) = StartY
+      PolyEnd(path) = Counter
+
+      CurrentPath => CurrentPath % Next
+    END DO
+
+    ALLOCATE(Polygon(2, Counter))
+    Polygon(1,:) = PolyX(1:Counter)
+    Polygon(2,:) = PolyY(1:Counter)
+    DEALLOCATE(PolyX, PolyY)
 
   END SUBROUTINE GetCalvingPolygons
 

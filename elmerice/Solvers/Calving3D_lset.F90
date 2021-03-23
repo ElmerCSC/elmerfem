@@ -988,10 +988,18 @@
      !make sure that code works for empty isomesh as well!!
 
      ! get calving polygons
-     ! implied the mesh is only on boss but other procs also enter as
-     ! parallel comm occurs within the subroutine
-     CALL GetCalvingPolygons(EdgeX, EdgeY, NoPaths, CrevX, CrevY, CrevStart, CrevEnd, &
-                                    Polygon, PolyStart, PolyEnd, .TRUE.)
+     IF(Boss) THEN
+      CALL GetCalvingPolygons(IsoMesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, gridmesh_dx)
+     END IF
+
+     ! send bdrynode info to all procs
+     CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(counter, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     IF(.NOT. Boss) ALLOCATE(Polygon(2, counter), PolyStart(NoPaths), &
+                          PolyEnd(NoPaths))
+     CALL MPI_BCAST(Polygon, Counter*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(PolyEnd, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+     CALL MPI_BCAST(PolyStart, NoPaths, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
 
      ALLOCATE(IsCalvingNode(Mesh % NumberOfNodes))
      IsCalvingNode=.FALSE.
