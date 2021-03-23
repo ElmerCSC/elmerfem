@@ -58,7 +58,7 @@
         FaceNodeCount, DOFs, PathCount, LeftConstraint, RightConstraint, &
         FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount, &
         node, nodecounter, CurrentNodePosition, StartNode, NodePositions(3), &
-        directions
+        directions, Counter
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
         FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
@@ -91,7 +91,7 @@
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
         SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), IMOnMargin(:), &
-        IMOnLeft(:), IMOnRight(:),&
+        IMOnLeft(:), IMOnRight(:), FoundNode(:), &
         IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
 
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath
@@ -478,7 +478,7 @@
 
         ! add startnodes to edgeline
         ALLOCATE(Edgeline(directions, COUNT(EdgeNode)), nodes(directions), &
-                EdgeCount(directions))
+                EdgeCount(directions), FoundNode(directions))
         EdgeCount = 0
         EdgeLine = 0
         DO i=1, directions
@@ -497,6 +497,7 @@
         ! loop through starting with startnodes to find remaining edgenodes
         ! in order
         DO WHILE(COUNT(EdgeNode) > SUM(EdgeCount))
+          FoundNode=.FALSE.
           DO i=1, PlaneMesh % NumberOfBulkElements
             IF(.NOT. PlaneEdgeElem(i)) CYCLE
             IF(UsedElem(i)) CYCLE ! already used elem
@@ -520,9 +521,11 @@
                 EdgeCount(j) = EdgeCount(j) + 1
                 EdgeLine(j, EdgeCount(j)) = NodeIndexes(NodePositions(1))
               ELSE IF(nodecounter == 2) THEN
+                counter=0
                 DO k=1, nodecounter
                   IF(ABS(CurrentNodePosition - NodePositions(k)) /= 2) THEN ! first node
-                    EdgeLine(j, EdgeCount(j) + 1) = NodeIndexes(NodePositions(k))
+                    EdgeLine(j, EdgeCount(j) + 1 + Counter) = NodeIndexes(NodePositions(k))
+                    counter=counter+1
                   ELSE ! second node
                     EdgeLine(j, EdgeCount(j) + 2) = NodeIndexes(NodePositions(k))
                   END IF
@@ -532,9 +535,18 @@
                 CALL FATAL('PlaneMesh', '4 edge nodes in one element!')
               END IF
               Nodes(j)=Edgeline(j, EdgeCount(j))
-              IF(nodecounter>0) UsedElem(i)=.TRUE.
+              IF(nodecounter>0) THEN
+                UsedElem(i)=.TRUE.
+                FoundNode(j)=.TRUE.
+              END IF
             END DO
           END DO
+          IF(.NOT. ANY(FoundNode)) THEN
+            DO i=1, directions
+              IF(FoundNode(i)) CYCLE
+              Nodes(i)=Edgeline(i, EdgeCount(i)-1)
+            END DO
+          END IF
         END DO
         EXIT ! initial loop only to get random start point
       END DO
