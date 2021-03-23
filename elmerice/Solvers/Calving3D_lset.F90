@@ -994,6 +994,7 @@
 
      ! send bdrynode info to all procs
      CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+     IF(Boss) counter=SIZE(Polygon(1,:))
      CALL MPI_BCAST(counter, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
      IF(.NOT. Boss) ALLOCATE(Polygon(2, counter), PolyStart(NoPaths), &
                           PolyEnd(NoPaths))
