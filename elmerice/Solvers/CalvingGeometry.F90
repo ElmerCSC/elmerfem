@@ -4027,7 +4027,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:), FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
         FrontNodeNums(:)=>NULL(),LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
     LOGICAL :: FirstTime=.TRUE.,Constant,Debug=.TRUE.,Parallel,&
-         HaveRight=.FALSE.,HaveLeft=.FALSE., Boss, FirstThisTime
+         HaveRight,HaveLeft, Boss, FirstThisTime
     CHARACTER(LEN=MAX_NAME_LEN) :: FrontMaskName, TopMaskName, &
          LeftMaskName, RightMaskName
     INTEGER :: status(MPI_STATUS_SIZE), iLeft, iRight
@@ -4088,6 +4088,8 @@ CONTAINS
            .FALSE., RightPerm, dummyint)
       iLeft=0
       iRight=0
+      HaveLeft=.FALSE.
+      HaveRight=.FALSE.
       DO i=1,Mesh % NumberOfNodes
          IF( (TopPerm(i) >0 ) .AND. (FrontPerm(i) >0 )) THEN
            IF( LeftPerm(i) >0  ) THEN
