@@ -998,15 +998,25 @@
 
      IF (NoPaths > 0 ) THEN
        DO i=1,Solver % Mesh % NumberOfNodes
-         IF (Debug) PRINT *, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
+         IF (Debug) PRINT *, ParEnv % MyPE, 'For node i', i,' out of ',Solver % Mesh % NumberOfNodes
          xx = Solver % Mesh % Nodes % x(i)
          yy = Solver % Mesh % Nodes % y(i)
          MinDist = MAXVAL(DistValues) ! NOTE dependency on Dist here
 
-         ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+         inside=.FALSE.
+         ClosestCrev=0
          DO j=1, NoPaths
+           IF(inside) CYCLE ! already found
            ALLOCATE(PathPoly(2, PolyEnd(j)-PolyStart(j)+1))
            PathPoly = Polygon(:, PolyStart(j):PolyEnd(j))
+           inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+           IF(inside) ClosestCrev = j
+           DEALLOCATE(PathPoly)
+         END DO
+
+         ! TO DO; brute force here, checking all crevasse segments, better to find closest crev first
+         DO j=1, NoPaths
+           IF(inside .AND. j/=ClosestCrev) CYCLE
            DO k=CrevStart(j), CrevEnd(j)-1
              xl=CrevX(k);yl=CrevY(k)
              xr=CrevX(k+1);yr=CrevY(k+1)
@@ -1015,22 +1025,20 @@
                ! updated so no longer based off an angle. This caused problems when the front was
                ! no longer projectable. Instead the node is marked to calve if it is inside the calving polygon.
                ! PointInPolygon2D based of the winding number algorithm
-               inside = PointInPolygon2D(PathPoly, (/xx, yy/))
-               IF(inside) THEN ! inside calved area
-                 MinDist = -TempDist
+               IF(j==ClosestCrev) THEN ! inside calved area
                  IsCalvingNode(i) = .TRUE.
+                 MinDist = -TempDist
                ELSE
                  MinDist = TempDist
                END IF
                jmin=k ! TO DO rm jmin? not necessary anymore
              END IF
            END DO
-           DEALLOCATE(PathPoly)
          END DO
 
          SignDistValues(SignDistPerm(i)) =  MinDist
-         IF(Debug)     PRINT *, 'Shortest distance to closest segment in crevassepath ',MinDist
-         IF(Debug)     PRINT *, 'jmin is ',jmin
+         IF(Debug)     PRINT *, ParEnv % MyPE, i, 'Shortest distance to closest segment in crevassepath ',MinDist
+         IF(Debug)     PRINT *, ParEnv % MyPE, i, 'jmin is ',jmin
        END DO
      END IF
 
