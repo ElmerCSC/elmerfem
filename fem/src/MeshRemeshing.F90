@@ -51,6 +51,7 @@ INTEGER :: MMGPARAM_angleDetection = MMG3D_DPARAM_angleDetection
 INTEGER :: MMGPARAM_debug = MMG3D_IPARAM_debug
 INTEGER :: MMGPARAM_rmc = MMG3D_DPARAM_rmc
 INTEGER :: MMGPARAM_nosurf = MMG3D_IPARAM_nosurf
+INTEGER :: MMGPARAM_aniso = MMG3D_IPARAM_anisosize
 MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 MMG5_DATA_PTR_T :: mmgMet
@@ -986,6 +987,10 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
       IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
     END IF
   END DO
+
+  !Turn on debug (1)
+  CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_debug, &
+  1,ierr)
    
   CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgSol,MMGPARAM_hmin,&
        hmin,ierr)
@@ -1028,7 +1033,8 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
     END DO
   END IF
 
-
+  CALL MMG3D_SaveMesh(mmgMesh,"MMG3D_preremesh.mesh",LEN(TRIM("MMG3D_preremesh.mesh")),ierr)
+  CALL MMG3D_SaveSol(mmgMesh, mmgSol, "MMG3D_preremesh.sol",LEN(TRIM("MMG3D_preremesh.sol")),ierr)
   IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
 
@@ -1041,7 +1047,8 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   ENDIF
   IF (DEBUG) PRINT *,'--**-- MMG3D_mmg3dlib DONE'
 
-  CALL MMG3D_SaveMesh(mmgMesh,"test_MMG3D_remesh.mesh",LEN(TRIM("test_MMG3D_remesh.mesh")),ierr)
+  CALL MMG3D_SaveMesh(mmgMesh,"MMG3D_remesh.mesh",LEN(TRIM("MMG3D_remesh.mesh")),ierr)
+  CALL MMG3D_SaveSol(mmgMesh, mmgSol, "MMG3D_remesh.sol",LEN(TRIM("MMG3D_remesh.sol")),ierr)
 
   !! GET THE NEW MESH
   CALL GET_MMG3D_MESH(OutMesh,Parallel)

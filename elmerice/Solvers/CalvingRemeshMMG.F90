@@ -481,6 +481,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgLs,MMGPARAM_debug, &
            1,ierr)
 
+      !Turn off automatic aniso remeshing (0)
+      CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgLs,MMGPARAM_aniso, &
+           0,ierr)
+
       !Set geometric parameters for remeshing
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hmin,&
            hmin,ierr)
@@ -527,6 +531,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       CALL MMG3D_Chk_meshData(mmgMesh,mmgLs,ierr)
       IF ( ierr /= 1 ) CALL EXIT(105)
 
+      CALL MMG3D_SaveMesh(mmgMesh,"test_prels.mesh",LEN(TRIM("test_prels.mesh")),ierr)
+      CALL MMG3D_SaveSol(mmgMesh, mmgLs,"test_prels.sol",LEN(TRIM("test_prels.sol")),ierr)
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
       ! mmg5.5 not using isosurface discretization. More robust to remesh seperately
@@ -541,6 +547,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       ENDIF
 
       CALL MMG3D_SaveMesh(mmgMesh,"test_ls.mesh",LEN(TRIM("test_ls.mesh")),ierr)
+      CALL MMG3D_SaveSol(mmgMesh, mmgLs,"test_ls.sol",LEN(TRIM("test_ls.sol")),ierr)
 
       CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
