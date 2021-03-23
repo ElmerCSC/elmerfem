@@ -65,7 +65,8 @@
         SignDistPerm(:), NodeIndexes(:),IceNodeIndexes(:),&
         EdgeMap(:,:)
    INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
-         PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:)
+         PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
+         WorkInt(:), IMBdryNNums(:)
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
@@ -654,10 +655,12 @@
              IMBdryNodes(IMBdryCount,3) = Isomesh % Nodes % x(NodeIndexes(2))
              IMBdryNodes(IMBdryCount,4) = Isomesh % Nodes % y(NodeIndexes(2))
              IMBdryENums(IMBdryCount) = i
+             WorkInt(1+(IMBdryCount-1)*2: IMBdryCount*2) = NodeIndexes ! becomes IMBdryNNums
            END IF
          END DO
-         IF(k==1) ALLOCATE(IMBdryNodes(IMBdryCount,4),IMBdryENums(IMBdryCount))
+         IF(k==1) ALLOCATE(IMBdryNodes(IMBdryCount,4),IMBdryENums(IMBdryCount), WorkInt(IMBdryCount*2))
        END DO
+
      END IF
 
      IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
@@ -743,22 +746,6 @@
          CALL Fatal(SolverName,"Failed to identify boundary constraint for all isomesh edge elements")
        END IF
 
-       DO i=1,IMBdryCount
-         k = IMBdryENums(i)
-         IF(IMBdryConstraint(i) == FrontConstraint) IMOnFront(k) = .TRUE.
-         IF(IMBdryConstraint(i) == LeftConstraint) IMOnLeft(k) = .TRUE.
-         IF(IMBdryConstraint(i) == RightConstraint) IMOnRight(k) = .TRUE.
-       END DO
-
-       IF(Debug) THEN
-          PRINT *, 'debug, count IMOnFront: ', COUNT(IMOnFront)
-          PRINT *, 'debug, count IMOnSide: ', COUNT(IMOnSide)
-          PRINT *, 'debug, count IMOnMargin: ', COUNT(IMOnMargin)
-          PRINT *, 'debug, isomesh bulkelements,', IsoMesh % NumberOfBulkElements
-          PRINT *, 'debug, isomesh boundaryelements,', IsoMesh % NumberOfBoundaryElements
-          PRINT *, 'debug, size isomesh elements: ', SIZE(IsoMesh % Elements)
-       END IF
-
        !-----------------------------------------------------------------
        ! Cycle elements, deleting any which lie wholly on a margin
        !-----------------------------------------------------------------
@@ -795,6 +782,42 @@
        IsoMesh % Elements => WorkElements
        IsoMesh % NumberOfBulkElements = SIZE(WorkElements)
        NULLIFY(WorkElements)
+
+       ALLOCATE(IMBdryNNums(IMBdryCount))
+       nodecounter=0
+       IMBdryNNums=0
+       DO i=1, IMBdryCount*2
+        counter=0
+        DO j=1, IsoMesh % NumberOfBulkElements
+          NodeIndexes => Isomesh % Elements(j) % NodeIndexes
+          IF(.NOT. ANY(NodeIndexes == WorkInt(i))) CYCLE
+          counter=counter+1
+        END DO
+        IF(counter==1) THEN
+          Nodecounter=nodecounter+1
+          IMBdryNNums(nodecounter) = WorkInt(i)
+        END IF
+       END DO
+       DEALLOCATE(WorkInt)
+
+       DO i=1,IMBdryCount
+         k = IMBdryNNums(i)
+         PRINT*, i, k, IMBdryConstraint(i)
+         IF(k==0) CYCLE
+         IF(IMBdryConstraint(i) == FrontConstraint) IMOnFront(k) = .TRUE.
+         IF(IMBdryConstraint(i) == LeftConstraint) IMOnLeft(k) = .TRUE.
+         IF(IMBdryConstraint(i) == RightConstraint) IMOnRight(k) = .TRUE.
+       END DO
+
+       IF(Debug) THEN
+          PRINT *, 'debug, count IMOnFront: ', COUNT(IMOnFront)
+          PRINT *, 'debug, count IMOnSide: ', COUNT(IMOnSide)
+          PRINT *, 'debug, count IMOnMargin: ', COUNT(IMOnMargin)
+          PRINT *, 'debug, isomesh bulkelements,', IsoMesh % NumberOfBulkElements
+          PRINT *, 'debug, isomesh boundaryelements,', IsoMesh % NumberOfBoundaryElements
+          PRINT *, 'debug, size isomesh elements: ', SIZE(IsoMesh % Elements)
+       END IF
+
 
        !Find chains which make contact with front twice
        !===============================================
