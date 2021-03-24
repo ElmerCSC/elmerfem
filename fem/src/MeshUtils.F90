@@ -11376,6 +11376,137 @@ CONTAINS
     END FUNCTION Det3x3
 
   END SUBROUTINE CylinderFit
+
+
+
+  ! Code for fitting a sphere. Not yet used.
+  !-------------------------------------------------------------------------
+  SUBROUTINE SphereFit(Mesh, Params, BCind ) 
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Params
+    INTEGER, OPTIONAL :: BCind
+
+    INTEGER :: i,j,t,t1,t2,NoNodes,Tag
+    LOGICAL :: BCMode
+    LOGICAL, ALLOCATABLE :: ActiveNode(:)
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)    
+    REAL(KIND=dp) :: xc,yc,zc,Rad
+
+    
+    CALL Info('SphereFit','Trying to fit a sphere to element patch',Level=6)
+
+    ! Set the range for the possible active elements. 
+    IF( PRESENT( BCind ) ) THEN
+      BCMode = .TRUE.
+      t1 = Mesh % NumberOfBulkElements + 1
+      t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Tag = CurrentModel % BCs(BCind) % Tag
+    ELSE
+      BCMode = .FALSE.
+      t1 = 1
+      t2 = Mesh % NumberOfBulkElements
+    END IF
+
+    ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+    ActiveNode = .FALSE.
+
+    ! Mark the nodes that belong to the active elements.
+    ! 1) Either we only have bulk elements in which case we use all of the nodes or
+    ! 2) We are given a boundary index and only use the nodes related to it. 
+    DO t=t1,t2
+      Element => Mesh % Elements(t)
+      IF( BCMode ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
+        IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+      END IF
+      ActiveNode(Element % NodeIndexes) = .TRUE.              
+    END DO
+
+    ! If all nodes are active just use pointers to the nodes.
+    ! Otherwise create list of the nodes. 
+    NoNodes = COUNT( ActiveNode )
+    IF( NoNodes == Mesh % NumberOfNodes ) THEN
+      x => Mesh % Nodes % x
+      y => Mesh % Nodes % y
+      z => Mesh % Nodes % z
+    ELSE
+      ALLOCATE( x(NoNodes), y(NoNodes), z(NoNodes) )
+      j = 0
+      DO i=1,Mesh % NumberOfNodes
+        IF(.NOT. ActiveNode(i) ) CYCLE
+        j = j + 1
+        x(j) = Mesh % Nodes % x(i)
+        y(j) = Mesh % Nodes % y(i)
+        z(j) = Mesh % Nodes % z(i)
+      END DO
+    END IF
+
+    ! Call the function to set the sphere parameters for the nodes.
+    CALL SphereFitfun(NoNodes,x,y,z,xc,yc,zc,Rad)
+
+    IF( NoNodes < Mesh % NumberOfNodes ) THEN
+      DEALLOCATE(x,y,z)
+    END IF
+
+    ! Add the sphere parameters to the list so that they can be used later
+    ! directly without having to fit the parameters again.  
+    CALL ListAddConstReal( Params,'Sphere Center X',xc )
+    CALL ListAddConstReal( Params,'Sphere Center Y',yc )
+    CALL ListAddConstReal( Params,'Sphere Center Z',zc )
+    CALL ListAddConstReal( Params,'Sphere Radius',Rad )
+    
+  CONTAINS
+    
+
+    ! Sumith YD: Fast Geometric Fit Algorithm for Sphere Using Exact Solution
+    !------------------------------------------------------------------------
+    SUBROUTINE SphereFitfun(n,x,y,z,xc,yc,zc,R)
+      INTEGER :: n
+      REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+      REAL(KIND=dp) :: xc,yc,zc,R
+      
+      REAL(KIND=dp) :: Sx,Sy,Sz,Sxx,Syy,Szz,Sxy,Sxz,Syz,&
+          Sxxx,Syyy,Szzz,Syzz,Sxyy,Sxzz,Sxxy,Sxxz,Syyz,&
+          A1,a,b,c,d,e,f,g,h,j,k,l,m,delta
+      
+      Sx = SUM(x); Sy = SUM(y); Sz = SUM(z);
+      Sxx = SUM(x*x); Syy = SUM(y*y);
+      Szz = SUM(z*z); Sxy = SUM(x*y);
+      Sxz = SUM(x*z); Syz = SUM(y*z);
+      Sxxx = SUM(x*x*x); Syyy = SUM(y*y*y);
+      Szzz = SUM(z*z*z); Sxyy = SUM(x*y*y);
+      Sxzz = SUM(x*z*z); Sxxy = SUM(x*x*y);
+      Sxxz = SUM(x*x*z); Syyz =SUM(y*y*z);
+      Syzz = SUM(y*z*z);
+
+      ! We should do parallel reduction here if the surface is split among
+      ! several MPI processes. 
+      
+      A1 = Sxx +Syy +Szz;
+      a = 2*Sx*Sx-2*N*Sxx;
+      b = 2*Sx*Sy-2*N*Sxy;
+      c = 2*Sx*Sz-2*N*Sxz;
+      d = -N*(Sxxx +Sxyy +Sxzz)+A1*Sx;
+      e = 2*Sx*Sy-2*N*Sxy;
+      f = 2*Sy*Sy-2*N*Syy;
+      g = 2*Sy*Sz-2*N*Syz;
+      h = -N*(Sxxy +Syyy +Syzz)+A1*Sy;
+      j = 2*Sx*Sz-2*N*Sxz;
+      k = 2*Sy*Sz-2*N*Syz;
+      l = 2*Sz*Sz-2*N*Szz;
+      m = -N*(Sxxz +Syyz + Szzz)+A1*Sz;
+      delta = a*(f*l - g*k)-e*(b*l-c*k) + j*(b*g-c*f);
+
+      xc = (d*(f*l-g*k) -h*(b*l-c*k) +m*(b*g-c*f))/delta;
+      yc = (a*(h*l-m*g) -e*(d*l-m*c) +j*(d*g-h*c))/delta;
+      zc = (a*(f*m-h*k) -e*(b*m-d*k) +j*(b*h-d*f))/delta;
+      R = SQRT(xc*xc+yc*yc+zc*zc+(A1-2*(xc*Sx+yc*Sy+zc*Sz))/N);
+
+    END SUBROUTINE SphereFitfun
+
+  END SUBROUTINE SphereFit
+    
   
   !------------------------------------------------------------------------------------------------
   !> Finds nodes for which CandNodes are True such that their mutual distance is somehow

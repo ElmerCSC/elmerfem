@@ -552,8 +552,6 @@ CONTAINS
      END IF
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
 
-     Element => GetCurrentElement(UElement)
-
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
@@ -564,6 +562,8 @@ CONTAINS
        END IF
      END IF
 
+     Element => GetCurrentElement(UElement)
+
      ! If variable is defined on gauss points return that instead
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        j = Element % ElementIndex
@@ -572,6 +572,15 @@ CONTAINS
          x(i) = Values(Variable % Perm(j) + i)
        END DO
        RETURN
+     ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       Indexes => Element % DGIndexes
+       n = Element % Type % NumberOfNodes
+       DO i=1,n
+         j = Variable % Perm(Indexes(i))
+         IF(j==0) CYCLE
+         x(i) = Values(j)
+       END DO
+       RETURN       
      END IF
 
      
@@ -649,16 +658,6 @@ CONTAINS
      END IF
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
 
-     Element => GetCurrentElement(UElement)
-
-     Indexes => GetIndexStore()
-     IF ( ASSOCIATED(Variable % Solver ) ) THEN
-       n = GetElementDOFs( Indexes, Element, Variable % Solver )
-     ELSE
-       n = GetElementDOFs( Indexes, Element, Solver )
-     END IF
-     n = MIN( n, SIZE(x,2) )
-
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
@@ -668,8 +667,10 @@ CONTAINS
          END IF
        END IF
      END IF
+     
+     Element => GetCurrentElement(UElement)
 
-
+       
      ! If variable is defined on gauss points return that instead
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        ASSOCIATE(dofs => variable % dofs)
@@ -689,8 +690,30 @@ CONTAINS
          END DO
          RETURN
        END ASSOCIATE
+     ELSE IF(  Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       Indexes => Element % DGIndexes
+       n = Element % TYPE % NumberOfNodes
+       ASSOCIATE(dofs => variable % dofs)
+         DO i=1,n
+           j = variable % perm(indexes(i))
+           IF( j==0 ) CYCLE
+           DO k=1,dofs
+             x(k, i) = Values((j-1)*dofs + k)
+           END DO
+         END DO
+         RETURN
+       END ASSOCIATE       
      END IF
 
+     
+     Indexes => GetIndexStore()
+     IF ( ASSOCIATED(Variable % Solver ) ) THEN
+       n = GetElementDOFs( Indexes, Element, Variable % Solver )
+     ELSE
+       n = GetElementDOFs( Indexes, Element, Solver )
+     END IF
+     n = MIN( n, SIZE(x,2) )
+     
      DO i=1,Variable % DOFs
        IF ( ASSOCIATED( Variable % Perm ) ) THEN
          IF( Variable % PeriodicFlipActive ) THEN

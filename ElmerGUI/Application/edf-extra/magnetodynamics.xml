@@ -85,6 +85,12 @@
 	  <Type> String </Type>
 	  <Whatis> Give the current density in z-direction. </Whatis>
 	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density Amplitude </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the amplitude of the current density vector. </Whatis>
+	</Parameter>
+		
         <Parameter Widget="Label" > <Name> External electric potential </Name> </Parameter>
 	<Parameter Widget="Edit" >
 	  <Name> Electric Potential </Name>
@@ -112,12 +118,17 @@
          <Parameter Widget="Edit" Enabled="True">
            <Name> Procedure </Name>
            <DefaultValue> "MagnetoDynamics" "WhitneyAVSolver" </DefaultValue>
-         </Parameter>	 
+         </Parameter>
+	 <Parameter Widget="CheckBox" >
+	   <Name> Use Elemental CoilCurrent </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use the elemental current density, CoilCurrent e, computed by CoilSolver. </Whatis>
+         </Parameter>
          <Parameter Widget="CheckBox" >
 	   <Parameter Widget="Label" > <Name> Special options </Name> </Parameter>
 	   <Name> Fix Input Current Density </Name>
 	   <Type> Logical </Type>
-	   <Whatis> Fix the given input current to be divergence free. </Whatis>
+	   <Whatis> Fix the given input current in body force section to be divergence free. </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox" >
 	   <Name> Use Tree Gauge </Name>
