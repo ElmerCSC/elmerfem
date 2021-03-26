@@ -86,9 +86,9 @@
 	  <Whatis> Give the current density in z-direction. </Whatis>
 	</Parameter>
 	<Parameter Widget="Edit" >
-	  <Name> Current Density Amplitude </Name>
+	  <Name> Current Density Multiplier </Name>
 	  <Type> String </Type>
-	  <Whatis> Give the amplitude of the current density vector. </Whatis>
+	  <Whatis> Give the multiplier of the current density vector. Default is one. </Whatis>
 	</Parameter>
 		
         <Parameter Widget="Label" > <Name> External electric potential </Name> </Parameter>
@@ -120,12 +120,12 @@
            <DefaultValue> "MagnetoDynamics" "WhitneyAVSolver" </DefaultValue>
          </Parameter>
 	 <Parameter Widget="CheckBox" >
+	   <Parameter Widget="Label" > <Name> Special options </Name> </Parameter>
 	   <Name> Use Elemental CoilCurrent </Name>
 	   <Type> Logical </Type>
 	   <Whatis> Use the elemental current density, CoilCurrent e, computed by CoilSolver. </Whatis>
          </Parameter>
          <Parameter Widget="CheckBox" >
-	   <Parameter Widget="Label" > <Name> Special options </Name> </Parameter>
 	   <Name> Fix Input Current Density </Name>
 	   <Type> Logical </Type>
 	   <Whatis> Fix the given input current in body force section to be divergence free. </Whatis>

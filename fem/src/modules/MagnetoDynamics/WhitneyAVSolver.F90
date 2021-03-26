@@ -273,7 +273,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
 
   CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
-  LOGICAL :: UseCoilCurrent
+  LOGICAL :: UseCoilCurrent, ElemCurrent
   TYPE(Variable_t), POINTER :: CoilCurrentVar
   REAL(KIND=dp) :: CurrAmp
   
@@ -313,11 +313,14 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       IF(Found) CoilCurrentName = 'CoilCurrent e'
     END IF
   END IF
+  ElemCurrent = .FALSE.
   IF( UseCoilCurrent ) THEN
     CoilCurrentVar => VariableGet(Solver % Mesh % Variables, CoilCurrentName )
     IF( ASSOCIATED( CoilCurrentVar ) ) THEN
       CALL Info('WhitneyAVSolver','Using precomputed field for current density: '//TRIM(CoilCurrentName),Level=5)
-      IF( CoilCurrentVar % TYPE /= Variable_on_nodes_on_elements ) THEN
+      IF( CoilCurrentVar % TYPE == Variable_on_nodes_on_elements ) THEN
+        ElemCurrent = .TRUE.
+      ELSE
         CALL Warn('WhitneyAVSolver','Precomputed CoilCurrent is not an elemental field!')
       END IF
     ELSE
@@ -459,7 +462,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   JFix = GetLogical(SolverParams,'Fix input Current Density', Found)
   IF (.NOT. ( Found .OR. Transient ) ) THEN
     ! Only fix the current density if there is one
-    JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density') .OR. UseCoilCurrent
+    JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density') 
   END IF
   JFixSolve = JFix
 
@@ -621,14 +624,23 @@ CONTAINS
      
      BodyForce => GetBodyForce()
      FoundMagnetization = .FALSE.
-     IF ( ASSOCIATED(BodyForce) ) THEN       
-       IF( UseCoilCurrent ) THEN
+
+     ! If the coil current field is elemental it is discontinuous and need not be limited
+     ! to the body force. For nodal ones we don't have the same luxury.
+     IF( UseCoilCurrent ) THEN
+       IF( ElemCurrent .OR. ASSOCIATED(BodyForce) ) THEN
          CALL GetVectorLocalSolution( Load,UElement=Element,UVariable=CoilCurrentVar)       
-       ELSE       
+       END IF
+     END IF
+       
+
+     IF ( ASSOCIATED(BodyForce) ) THEN       
+       ! If not already given by CoilCurrent, request for current density
+       IF( .NOT. UseCoilCurrent ) THEN
          CALL GetRealVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
        END IF
 
-       CurrAmp = ListGetCReal( BodyForce,'Current Density Amplitude',Found ) 
+       CurrAmp = ListGetCReal( BodyForce,'Current Density Multiplier',Found ) 
        IF(Found) Load(1:3,1:n) = CurrAmp * Load(1:3,1:n)
        
        CALL GetRealVector( BodyForce, Load(4:6,1:n), &

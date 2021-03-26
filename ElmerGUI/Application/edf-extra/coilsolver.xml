@@ -62,41 +62,26 @@
 			<Whatis> Center of the coil. If not given center of volume of the coil. </Whatis>
 		</Parameter>
 		<Parameter Widget="CheckBox" >
-			<Name> Calculate Nodal Fields </Name>
-			<Type> Logical </Type>
-			<DefaultValue> True </DefaultValue>
-			<Whatis> Calculate standard nodal fields. </Whatis>
-		</Parameter>
-		<Parameter Widget="CheckBox" >
 			<Name> Calculate Elemental Fields </Name>
 			<Type> Logical </Type>
+			<DefaultValue> True </DefaultValue>
 			<Whatis> Calculate elemental fields using Discontinuous Galerkin basis. </Whatis>
+		</Parameter>
+		<Parameter Widget="CheckBox" >
+			<Name> Calculate Nodal Fields </Name>
+			<Type> Logical </Type>
+			<Whatis> Calculate standard nodal fields. </Whatis>
 		</Parameter>
 		<Parameter Widget="CheckBox" >
 			<Name> Narrow Interface </Name>
 			<Type> Logical </Type>
 			<Whatis> For closed coil use narrow strategy to set the one/zero BCs. </Whatis>
-					<Parameter Widget="CheckBox" >
-			<Name> Coil Conductivity Fix </Name>
-			<Type> Logical </Type>
-			<Whatis> Fix the coil conductivity so that the current density would be more even. </Whatis>
 		</Parameter>
-		<Parameter Widget="CheckBox" >
-			<Name> Coil Anisotropic </Name>
-			<Type> Logical </Type>
-			<Whatis> Make the conductivity be aligned with the gradient of the potential. </Whatis>
-		</Parameter>
-		<Parameter Widget="CheckBox" >
-			<Name> Use Wall Distance </Name>
-			<Type> Logical </Type>
-			<Whatis> Use wall distance to introduce anisotropy into the coil conductivity. </Whatis>
-		</Parameter>
-		<Parameter Widget="Edit" >
-			<Name> Cfix diffusion </Name>
-			<Type> Real </Type>
-			<Whatis> Diffusion coefficient for regularization of c field. </Whatis>
-		</Parameter>
-		</Parameter>
+                <Parameter Widget="CheckBox" >
+	           <Name> Fix Input Current Density </Name>
+	           <Type> Logical </Type>
+	           <Whatis> Fix the computed elemental current density to be divergence free. </Whatis>
+                </Parameter>
 	</Solver>
 
 	<BoundaryCondition>

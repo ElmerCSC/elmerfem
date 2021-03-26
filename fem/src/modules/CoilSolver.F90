@@ -108,22 +108,24 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
         '-elem CoilIndex e')
   END IF
 
-  CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
-  IF( .NOT. Found ) CalcCurr = .TRUE.
-  IF( CalcCurr ) THEN
-    IF( CalculateElemental ) THEN
-      CALL ListAddString( Params,&
-          NextFreeKeyword('Exported Variable',Params),&
-          '-dg CoilCurrent e[CoilCurrent e:'//TRIM(I2S(dim))//']')
-    END IF
-    IF( CalculateNodal ) THEN
-      CALL ListAddString( Params,&
-          NextFreeKeyword('Exported Variable',Params),&
-          'CoilCurrent[CoilCurrent:'//TRIM(I2S(dim))//']')
+  IF(.NOT. CalculateElemental ) THEN
+    IF( ListGetLogical( Params,'Fix Input Current Density',Found ) ) THEN
+      CalculateElemental = .TRUE.
+      CALL Info('CoilSolver_int','Computing elemental field as only that can be fixed!')
     END IF
   END IF
-    
   
+  IF( CalculateElemental ) THEN
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable',Params),&
+        '-dg -dofs '//TRIM(I2S(dim))//' CoilCurrent e')
+  END IF
+  IF( CalculateNodal ) THEN
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable',Params),&
+        '-dofs '//TRIM(I2S(dim))//' CoilCurrent')
+  END IF
+      
 ! Loads are needed to compute the induced currents in a numerically optimal way
   CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
 
@@ -547,10 +549,11 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( ListGetLogical( Params,'Fix Input Current Density',Found ) ) THEN
+    FluxVarE => VariableGet( Mesh % Variables,'CoilCurrent E')  
     IF( .NOT. ( ASSOCIATED( FluxVarE ) ) ) THEN
       CALL Fatal('CoilSolver','Fixing can be done only for elemental coil current!')
     END IF
-                       
+    
     CALL DefaultInitialize()
     Active = GetNOFActive()          
     DO t=1,Active
@@ -1803,13 +1806,14 @@ CONTAINS
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n), NodalCurr(3,n) )
-    
+
+    ! Current densties to be computed
     FluxVar => VariableGet( Mesh % Variables,'CoilCurrent')
     FluxVarE => VariableGet( Mesh % Variables,'CoilCurrent E')
+    
     IF( .NOT. ( ASSOCIATED( FluxVar ) .OR. ASSOCIATED( FluxVarE ) ) ) THEN
       CALL Fatal('CoilSolver','CoilCurrent (nodal and elemental) not associated!')
-    END IF
-    
+    END IF    
 
     DO Coil = 1, NoCoils 
 
