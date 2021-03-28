@@ -7076,8 +7076,8 @@ void ElementsToBoundaryConditions(struct FemType *data,
   int sideind[MAXNODESD1],sideind2[MAXNODESD1],elemsides,side,hit,same,minelemtype;
   int sidenodes,sidenodes2,maxelemtype,elemtype,elemdim,sideelements,material;
   int *moveelement=NULL,*parentorder=NULL,*possible=NULL,**invtopo=NULL;
-  int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim;
-  int debug,unmoved,removed,elemhits,loopdim,elemdim2,lowdimbulk;
+  int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim,minelemdim,maxelemdim;
+  int debug,unmoved,removed,elemhits,loopdim,lowdimbulk;
   int notfound,*notfounds=NULL;
 
 
@@ -7100,12 +7100,93 @@ void ElementsToBoundaryConditions(struct FemType *data,
   minelemtype = GetMinElementType(data);
   if(info) printf("Trailing bulk elementtype is %d\n",minelemtype);
 
-  elemdim = GetElementDimension(maxelemtype);
-  if( elemdim - GetElementDimension(minelemtype) == 0) {
+  maxelemdim = GetElementDimension(maxelemtype);
+  minelemdim = GetElementDimension(minelemtype);
+  if( maxelemdim - minelemdim == 0) {
     if(info) printf("No lower dimensional elements present!\n");
     return;
   }
+
+  if(maxelemdim-minelemdim > 1 ) {
+    int **tagcount;
+    int mintag,maxtag,tag,overlap;
+
+    mintag=maxtag=tag=overlap=-1;
     
+    if(info) printf("Checking that different dimensions have unique boundary tags!\n");
+
+    for(k=0;k<=2;k++) {
+      for(i=1;i<=noelements;i++) {
+	elemdim = GetElementDimension(data->elementtypes[i]);      
+	tag = data->material[i];
+	
+	/* Get the tag interval for all elements */
+	if(k==0) {
+	  if(maxtag==-1) {
+	    mintag = maxtag = tag;
+	  }
+	  else {
+	    mintag = MIN(mintag,tag);
+	    maxtag = MAX(maxtag,tag);
+	  }
+	}
+
+	/* Count the number of tags for each dimensional */
+	else if(k==1) {
+	  tagcount[elemdim][tag] += 1;
+	}
+
+	/* Set the new tags for lower dimensions */
+	else if(k==2) {
+	  if(elemdim < maxelemdim ) { 
+	    data->material[i] = tagcount[elemdim][tag];
+	  }
+	}
+      }
+      
+      if(k==0) {
+	if(info) printf("Tag interval for boundaries: [%d %d]\n",mintag,maxtag);
+	tagcount = Imatrix(0,maxelemdim,mintag,maxtag);
+	for(i=0;i<=maxelemdim;i++)
+	  for(j=mintag;j<=maxtag;j++)
+	    tagcount[i][j] = 0;
+      }
+      else if(k==1) {
+	for(j=mintag;j<=maxtag;j++) {
+	  overlap = 0;
+	  for(i=0;i<maxelemdim;i++) 
+	    if(tagcount[i][j]) overlap++;
+	  if(overlap>1) break;
+	}
+	if(overlap>1) {
+	  if(info) printf("We have an overlap, applying offsets!\n");
+	  tag = 0;
+	  for(i=maxelemdim-1;i>=0;i--)
+	    for(j=mintag;j<=maxtag;j++) {
+	      if(tagcount[i][j]) {
+		if(tag+1 <= j) {
+		  tag = j;
+		}
+		else  {
+		  tag++;
+		  if(info) printf("Replacing tag in %d-dim %d -> %d\n",i,j,tag);
+		}
+		tagcount[i][j] = tag;
+	      }
+	    }
+	}	  
+	else  {	  
+	  if(info) printf("No overlap, no offsets needed!\n");
+	  break;
+	}	
+      }
+      else if(k==2) {
+	if(info) printf("Renumbered tags for boundary elements!\n");
+      }
+    }
+    free_Imatrix(tagcount,0,maxelemdim,mintag,maxtag);
+  }
+  
   moveelement = Ivector(1,noelements); 
 
   sideelements = 0;
@@ -7121,7 +7202,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
     sideelemdim = GetElementDimension(data->elementtypes[i]);
 
     /* Lower dimensional elements are candidates to become BC elements */
-    moveelement[i] = elemdim - sideelemdim;
+    moveelement[i] = maxelemdim - sideelemdim;
     if(moveelement[i]) sideelements++;
   }
   if(info) printf("There are %d (out of %d) lower dimensional elements.\n",
@@ -7178,7 +7259,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
   debug = FALSE;
 
   /* Go through boundary element candidates starting from higher dimension */
-  for(loopdim=elemdim-1;loopdim>=0;loopdim--) {
+  for(loopdim=maxelemdim-1;loopdim>=0;loopdim--) {
 
     if(debug) printf("loopdim = %d\n",loopdim);
     
@@ -7210,10 +7291,10 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	if(moveelement[elemind2]) continue;
 	
 	elemtype = data->elementtypes[elemind2];
-	elemdim2 = GetElementDimension(elemtype);
+	elemdim = GetElementDimension(elemtype);
 	
 	/* Owner element should have highger dimension */
-	if(elemdim2 <= sideelemdim ) continue;
+	if(elemdim <= sideelemdim ) continue;
 
 	hit = 0;
 	for(i=0;i<sidenodes;i++)
