@@ -2568,7 +2568,7 @@ int ElementsToTriangles(struct FemType *data,struct BoundaryType *bound,
       dy2 = data->y[data->topology[i][(j+1)%4]] - data->y[data->topology[i][j]];
       ds1 = sqrt(dx1*dx1+dy1*dy1);
       ds2 = sqrt(dx2*dx2+dy2*dy2);
-      angles[j] = (180.0/M_PI) * acos((dx1*dx2+dy1*dy2)/(ds1*ds2));
+      angles[j] = (180.0/FM_PI) * acos((dx1*dx2+dy1*dy2)/(ds1*ds2));
       
       /* Slightly favor divisions where corner is split */
       if(needed[data->topology[i][j]] == 1) angles[j] *= 1.001;
@@ -6561,7 +6561,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 	  yc = data->y[sideind[i]];
 
 	  rad = sqrt(yc*yc+xc*xc);
-	  fii = 2*atan2(yc,xc)/M_PI;  /* Map fii to [0 4] */
+	  fii = 2*atan2(yc,xc)/FM_PI;  /* Map fii to [0 4] */
 
 	  rads[i] = rad;
 	  fiis[i] = fii;
@@ -6704,7 +6704,7 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
   if( grid->zhelicityexists ) {
     Real helicity,fii,x,y,z,minz,maxz;
 
-    helicity = (M_PI/180.0)*grid->zhelicity;
+    helicity = (FM_PI/180.0)*grid->zhelicity;
 
     minz = maxz = data->z[1];
     for(i=1;i<=data->noknots;i++) {
@@ -10202,11 +10202,13 @@ int DestroyCRSMatrix(struct CRSType *sp) {
 int DestroyInverseTopology(struct FemType *data,int info)
 {
   DestroyCRSMatrix( &data->invtopo );
+  return(0);
 }
 
 int DestroyDualGraph(struct FemType *data,int info)
 {
   DestroyCRSMatrix( &data->dualgraph );
+  return(0);
 }
 
 
