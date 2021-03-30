@@ -1388,7 +1388,7 @@ CONTAINS
     END IF
   END FUNCTION GetXi0Tilde
   !---------------------------------------------------------------------------------------------
-  REAL(KIND=dp) FUNCTION fw(RockMaterialID,CurrentSolventMaterial,&
+  REAL (KIND=dp) FUNCTION fw(RockMaterialID,CurrentSolventMaterial,&
        Xi0tilde,rhow,Xi,GasConstant,Temperature)
     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
@@ -1891,20 +1891,21 @@ CONTAINS
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: rhow,rhoc,Xi,Salinity
     !------------
-    REAL(KIND=dp) :: xc, LSalinity    
+    REAL(KIND=dp) :: xc
     !------------
-!!$    IF (Salinity < 0.0_dp) THEN
-!!$      CALL WARN("rhogw","Salinity smaller than 0")
-!!$      LSalinity = 0.0_dp
-!!$    ELSE IF (Salinity > 0.3_dp) THEN
-!!$      CALL WARN("rhogw","Salinity larger than 0.3")
-!!$      LSalinity = 0.3_dp
-!!$    ELSE
-!!$      LSalinity =Salinity 
-!!$    END IF
-    xc = Salinity/Xi
+    xc = MAX(Salinity/Xi,0.0_dp)
     rhogw = rhow + xc*(rhoc - rhow)
   END FUNCTION rhogw
+  !---------------------------------------------------------------------------------------------
+  REAL (KIND=dp) FUNCTION rhogw_driesner(rhow,dummyrhoc,Xi,Salinity)
+    IMPLICIT NONE
+    REAL(KIND=dp), INTENT(IN) :: rhow,dummyrhoc,Xi,Salinity
+    !------------
+    REAL(KIND=dp) :: xc   
+    !------------
+    xc = MAX(Salinity/Xi,0.0_dp)
+    rhogw = rhow*(18.01528_dp * (1.0_dp - xc) + 58.443_dp * xc)/18.01528_dp
+  END FUNCTION rhogw_driesner
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogwP(rhowp,rhocp,Xi,Salinity)
     IMPLICIT NONE
