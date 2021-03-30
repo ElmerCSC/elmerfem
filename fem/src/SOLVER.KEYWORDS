@@ -1819,3 +1819,6 @@ solver:logical:      'automated structure-structure coupling'
 solver:logical:      'use nodal coilcurrent'
 solver:logical:      'use elemental coilcurrent'
 bodyforce:real:      'current density multiplier'
+solver:logical:      'nonlinear system nodal norm'
+solver:logical:      'steady state nodal norm'
+

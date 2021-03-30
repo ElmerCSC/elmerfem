@@ -15,6 +15,10 @@ End
 Constants
 End
 
+$tsteps=100
+$dt=1.0/tsteps
+$alpha=1.0e3
+
 Simulation
   Max Output Level = 5
   Coordinate System = Cartesian
@@ -22,14 +26,13 @@ Simulation
   Steady State Max Iterations = 1
 
 ! The more timesteps we have the closer we get to the analytical solution
-$tsteps=100
   Timestepping Method = Bossak
-  Timestep Sizes = $1.0/tsteps
+  Timestep Sizes = $dt
   Timestep Intervals = $tsteps
 
   Output Intervals = 0
   vtu: Save Bulk Only = Logical True
-  Post File = "case.vtu"
+!  Post File = "case.vtu"
 End
 
 Body 1
@@ -58,7 +61,7 @@ Material 1
   Density = 1.0e-3
   Youngs Modulus = 1.0e3
   Poisson Ratio = 0.3
-  Rayleigh Damping Alpha = 1.0e3
+  Rayleigh Damping Alpha = $alpha
 End
 
 Solver 1
