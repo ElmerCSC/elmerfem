@@ -19,7 +19,7 @@ Run Control
 ! a) give parameters in sif
 ! Parameter Array(4,4) = Real 1 0 0 0 0 2 0 0 0 0 3 0 0 0 0 4
 
-  Max Output Level = Integer 7
+  Max Output Level = 5
 
 ! b) give parameters as an ascii matrix:
   Parameter File = File "par.dat"
@@ -36,7 +36,7 @@ End
 
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = String Cartesian
   Coordinate Mapping(3) = Integer 1 2 3
   Simulation Type = Steady State 

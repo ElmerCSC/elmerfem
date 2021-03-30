@@ -43,7 +43,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Simulation Type = Steady State
 End
 

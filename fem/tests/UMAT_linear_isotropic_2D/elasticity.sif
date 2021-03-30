@@ -6,7 +6,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian 2D
 !  Simulation Type = Steady State
   Simulation Type = Scanning 
