@@ -44,12 +44,12 @@ Run Control
 
 ! We may have higher output level for this section as this must be
 ! read before other sections. 
-  Max Output Level = Integer 20 
+  Max Output Level = 5 
 End
 
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System  = Cartesian 2D 
   
   Set Dirichlet BCs by BC Numbering = Logical True

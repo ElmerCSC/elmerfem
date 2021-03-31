@@ -549,10 +549,12 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF( ListGetLogical( Params,'Fix Input Current Density',Found ) ) THEN
+    CALL Info('CoilSolver','Finding fixing potential for elemental current density!')
+    
     FluxVarE => VariableGet( Mesh % Variables,'CoilCurrent E')  
     IF( .NOT. ( ASSOCIATED( FluxVarE ) ) ) THEN
       CALL Fatal('CoilSolver','Fixing can be done only for elemental coil current!')
-    END IF
+    END IF    
     
     CALL DefaultInitialize()
     Active = GetNOFActive()          
@@ -572,6 +574,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     
     Norm = DefaultSolve()
     
+    CALL Info('CoilSolver','Fixing elemental current density to be divergence free!')
     DO t=1,Active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()

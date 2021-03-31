@@ -17,7 +17,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 4
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
   Steady State Max Iterations = 1

@@ -9921,7 +9921,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: iterVar, VeloVar, dtVar, WeightVar
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
-        SkipConstraints, ResidualMode, RelativeP
+        SkipConstraints, ResidualMode, RelativeP, NodalNorm
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
@@ -9965,6 +9965,8 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= IterNo ) Relax = .FALSE.
       END IF	
 
+      NodalNorm = ListGetLogical(SolverParams,'Steady State Nodal Norm',Stat)
+      
       RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
@@ -10020,6 +10022,8 @@ END FUNCTION SearchNodeL
       SkipConstraints = ListGetLogical(SolverParams,&
           'Nonlinear System Convergence Without Constraints',Stat) 
 
+      NodalNorm = ListGetLogical(SolverParams,'Nonlinear System Nodal Norm',Stat)
+      
       RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
@@ -10054,6 +10058,14 @@ END FUNCTION SearchNodeL
 
     IF( SkipConstraints ) n = MIN( n, Solver % Matrix % NumberOfRows )
 
+    ! If requested (for p-elements) only use the dofs associated to nodes. 
+    ! One should not optimize bandwidth if this is desired. 
+    IF( NodalNorm ) THEN
+      i = MAXVAL( Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes ) )
+      n = MIN(n,i*Solver % Variable % Dofs)
+    END IF
+
+    
     Stat = .FALSE.
     x0 => NULL()
     IF(PRESENT(values0)) THEN

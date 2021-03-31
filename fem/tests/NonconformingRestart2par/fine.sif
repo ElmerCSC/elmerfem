@@ -17,7 +17,7 @@ Simulation
   ! For interpolation it seems to be important to tell the dimension
   Coordinate System = Cartesian 2D
 
-  Max Output Level = 7
+  Max Output Level = 5
 
   Simulation Type = Steady
   Steady State Max Iterations = 1

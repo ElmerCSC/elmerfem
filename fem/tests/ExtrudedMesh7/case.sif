@@ -13,7 +13,7 @@ Simulation
   Extruded Mesh Levels = Integer 5
   Extruded Mesh Ratio = Real -0.5
   
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1

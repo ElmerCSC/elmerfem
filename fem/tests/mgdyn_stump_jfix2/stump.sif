@@ -15,7 +15,7 @@ Simulation
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady
   Steady State Max Iterations = 1
-  Max Output Level = 7
+  Max Output Level = 5
 End
 
 Constants

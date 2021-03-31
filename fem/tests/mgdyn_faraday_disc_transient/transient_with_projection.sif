@@ -64,7 +64,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
+  Max Output Level = 5
   Simulation Type = Transient
 !  Timestepping Method = crank-nicolson
   Timestepping Method = BDF
