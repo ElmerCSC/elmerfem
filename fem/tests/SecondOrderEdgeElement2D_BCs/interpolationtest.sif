@@ -67,7 +67,7 @@ Solver 1
   Linear System Solver = Iterative
   Linear System Iterative Method = bicgstab2
   Linear System Preconditioning = none
-!  Linear System Row Equilibration = Logical True
+  Linear System Residual Output = 10
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1e-11
 End
@@ -86,5 +86,5 @@ End
 !    Real MATC "tx(0)*tx(0)*tx(1)"
 !End
 
-Solver 1 :: Reference Norm = Real 0.51707410
-Solver 1 :: Reference Norm Tolerance = Real 1.0E-6
+Solver 1 :: Reference Norm = 7.46553280E-01
+Solver 1 :: Reference Norm Tolerance = 1.0E-6

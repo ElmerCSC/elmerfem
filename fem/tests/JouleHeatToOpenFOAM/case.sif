@@ -149,5 +149,5 @@ Boundary Condition 6
 End
 
 
-Solver 1 :: Reference Norm = 1.39040615E-03
-Solver 2 :: Reference Norm = 2.33960458E+00
+Solver 1 :: Reference Norm = 1.39040030E-03
+Solver 2 :: Reference Norm = 2.33958023E+00

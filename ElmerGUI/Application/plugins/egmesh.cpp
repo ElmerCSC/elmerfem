@@ -5030,7 +5030,7 @@ int IncreaseElementOrder(struct FemType *data,int info)
 {
   int i,j,side,element,maxcon,con,newknots,ind,ind2;
   int noelements,noknots,nonodes,maxnodes,maxelemtype,hit,node;
-  int elemtype;
+  int elemtype,stat;
   int **newnodetable=NULL,inds[2],**newtopo=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
   
@@ -5144,7 +5144,7 @@ int IncreaseElementOrder(struct FemType *data,int info)
     data->elementtypes[element] = elemtype;
   }
 
-  DestroyNodalGraph(data,info);
+  stat = DestroyNodalGraph(data,info);
 
   free_Rvector(data->x,1,data->noknots);
   free_Rvector(data->y,1,data->noknots);
@@ -9988,7 +9988,7 @@ int CreateInverseTopology(struct FemType *data,int info)
 int CreateDualGraph(struct FemType *data,int unconnected,int info)
 {
   int totcon,dcon,noelements,noknots,elemtype,nonodes,i,j,k,l,i2,m,ind,hit,ci,ci2;
-  int dualmaxcon,invmaxcon,showgraph,freeelements,step,orphanelements;
+  int dualmaxcon,invmaxcon,showgraph,freeelements,step,orphanelements,stat;
   int *elemconnect,*neededby;
   int *dualrow,*dualcol,dualsize,dualmaxelem,allocated;
   int *invrow,*invcol;
@@ -10176,7 +10176,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
 
   /* Inverse topology is created for partitioning only and then the direct
      topology is needed elsewhere as well. Do do not destroy it. */ 
-  if(0) DestroyInverseTopology(data,info);
+  if(0) stat = DestroyInverseTopology(data,info);
 
   return(0);
 }
@@ -10201,14 +10201,16 @@ int DestroyCRSMatrix(struct CRSType *sp) {
 
 int DestroyInverseTopology(struct FemType *data,int info)
 {
-  DestroyCRSMatrix( &data->invtopo );
-  return(0);
+  int stat;
+  stat = DestroyCRSMatrix( &data->invtopo );
+  return(stat);
 }
 
 int DestroyDualGraph(struct FemType *data,int info)
 {
-  DestroyCRSMatrix( &data->dualgraph );
-  return(0);
+  int stat;
+  stat = DestroyCRSMatrix( &data->dualgraph );
+  return(stat);
 }
 
 
