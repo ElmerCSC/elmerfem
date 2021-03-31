@@ -117,7 +117,7 @@ Solver 3
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
 
-  Reference Sums(6) = Real 59 13 206250 2064 402295082 3.6139440456815133
+  Reference Sums(6) = Real 59 13 206250 2064 402220888 4.178146196
   Reference Norm = 1.0
 End
 
@@ -205,5 +205,5 @@ Boundary Condition 6
 End
 
 
-Solver 4 :: Reference Norm = 1.42291820E+03
+Solver 4 :: Reference Norm = 1.42295178E+03
 Solver 4 :: Reference Norm Tolerance = 1e-4
