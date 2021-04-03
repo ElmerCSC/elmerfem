@@ -414,6 +414,8 @@ CONTAINS
        CALL Info( 'RefineMesh', &
                 'Current mesh seems fine. I will do nothing.', Level=6 )
        GOTO 10
+    ELSE
+       CALL SetMeshMaxDofs(NewMesh)
     END IF
 
     CALL Info( 'RefineMesh', 'The new mesh consists of: ', Level=5 )

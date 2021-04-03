@@ -205,7 +205,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
      CALL Info( 'DCRComplexSolve', Message, Level=4 )
      CALL Info( 'DCRComplexSolve', '-------------------------------------', Level=4 )
      CALL Info( 'DCRComplexSolve', ' ', Level=4 )
-     CALL Info( 'DCRComplexSolve', 'Starting Assmebly', Level=4 )
+     CALL Info( 'DCRComplexSolve', 'Starting Assembly', Level=4 )
 
      CALL InitializeToZero( StiffMatrix, ForceVector )
 !
@@ -448,26 +448,33 @@ CONTAINS
 
       IF ( .NOT. stat ) RETURN
 
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
 
-         DO i=1,MIN(3,SIZE(Hwrk,2))
-            Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
-         END DO
-
-      ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,1))
-            Tensor(i,i,1:n) = Hwrk(i,1,1:n)
-         END DO
-
-      ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
-           DO j=1,MIN(3,SIZE(Hwrk,2))
-              Tensor( i,j,1:n ) = Hwrk(i,j,1:n)
-           END DO
+      IF ( IsScalar ) THEN
+        DO i=1,SIZE(Tensor,1)
+          Tensor(i,i,1:n) = Hwrk(1,1,1:n)
         END DO
+      ELSE
+        IF ( SIZE(Hwrk,1) == 1 ) THEN
 
+          DO i=1,MIN(3,SIZE(Hwrk,2))
+            Tensor( i,i,1:n ) = Hwrk( 1,i,1:n )
+          END DO
+
+        ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
+
+          DO i=1,MIN(3,SIZE(Hwrk,1))
+            Tensor(i,i,1:n) = Hwrk(i,1,1:n)
+          END DO
+
+        ELSE
+
+          DO i=1,MIN(3,SIZE(Hwrk,1))
+            DO j=1,MIN(3,SIZE(Hwrk,2))
+              Tensor( i,j,1:n ) = Hwrk(i,j,1:n)
+            END DO
+          END DO
+
+        END IF
       END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE InputTensor
@@ -503,7 +510,7 @@ CONTAINS
       IF ( SIZE(Hwrk,1) == 1 ) THEN
 
          DO i=1,MIN(3,SIZE(Hwrk,2))
-            Tensor( i,1:n ) = Hwrk( 1,1,1:n )
+            Tensor( i,1:n ) = Hwrk( 1,i,1:n )
          END DO
 
       ELSE

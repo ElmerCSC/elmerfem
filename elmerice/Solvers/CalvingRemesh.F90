@@ -3026,7 +3026,7 @@ CONTAINS
     CASE(3)
        Var % Values = Mesh % Nodes % z
     CASE DEFAULT
-       CALL FATAL("Remesh","Problem setting coordinate variable.  This shoudn't have happened.")
+       CALL FATAL("Remesh","Problem setting coordinate variable.  This shouldn't have happened.")
     END SELECT
 
   END SUBROUTINE SetCoordVar

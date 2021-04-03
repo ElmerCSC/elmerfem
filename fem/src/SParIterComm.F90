@@ -132,6 +132,7 @@ CONTAINS
     ParEnv % MyPE = 0
     ParEnv % PEs  = 1
     ParEnv % ActiveComm = 0
+    ParEnv % ExternalInit = .FALSE.
 
     ierr = 0
 #ifdef _OPENMP
@@ -145,7 +146,11 @@ CONTAINS
       CALL Fatal( 'ParCommInit', Message )
     END IF
 #else
-    CALL MPI_INIT( ierr )
+    CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
+    IF ( ierr /= 0 ) RETURN
+    IF (.NOT. ParEnv % ExternalInit) THEN
+        CALL MPI_INIT( ierr )
+    END IF
 #endif
     IF ( ierr /= 0 ) RETURN
 
@@ -4877,11 +4882,13 @@ SUBROUTINE ParEnvFinalize()
 
   !*********************************************************************
   CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-  CALL MPI_FINALIZE( ierr )
+  IF (.NOT. ParEnv % ExternalInit) THEN
+    CALL MPI_FINALIZE( ierr )
 
-  IF ( ierr /= 0 ) THEN
-     WRITE( Message, * ) 'MPI Finalization failed ! (ierr=', ierr, ')'
-     CALL Fatal( 'ParEnvFinalize', Message )
+    IF ( ierr /= 0 ) THEN
+       WRITE( Message, * ) 'MPI Finalization failed ! (ierr=', ierr, ')'
+       CALL Fatal( 'ParEnvFinalize', Message )
+    END IF
   END IF
 !*********************************************************************
 END SUBROUTINE ParEnvFinalize

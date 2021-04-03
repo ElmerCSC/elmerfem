@@ -463,7 +463,7 @@ void MainWindow::createActions() {
   saveProjectAsAct = new QAction(QIcon(":/icons/edit-copy.png"),
                                  tr("&Save project as..."), this);
   saveProjectAsAct->setStatusTip(
-      tr("Save current project by specifing directory"));
+      tr("Save current project by specifying directory"));
   connect(saveProjectAsAct, SIGNAL(triggered()), this,
           SLOT(saveProjectAsSlot()));
 
@@ -6965,7 +6965,7 @@ void MainWindow::resultsSlot() {
   QFile file(postName);
   if (!file.exists()) {
     logMessage("Elmerpost input file does not exist.");
-    /*Even though input file does not exist, lauch ElmerPost*/
+    /*Even though input file does not exist, launch ElmerPost*/
     post->start("ElmerPost");
     killresultsAct->setEnabled(true);
     if (!post->waitForStarted()) {

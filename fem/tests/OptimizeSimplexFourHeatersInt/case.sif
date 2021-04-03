@@ -47,7 +47,7 @@ Run Control
   !Max Step Size = Real
   !Step Size Relaxation Factor = Real
 
-  Max Output Level = Integer 20 
+  Max Output Level = 5 
 End 
 
 Simulation
@@ -56,7 +56,7 @@ Simulation
   Simulation Type = Steay State 
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Max Output Level = 20 
+  Max Output Level = 5 
   Post File = "case.vtu"
 End
 

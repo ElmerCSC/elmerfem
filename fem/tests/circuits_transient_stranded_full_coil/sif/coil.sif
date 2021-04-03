@@ -99,7 +99,7 @@ Solver 1  !---- CoilSolver, CoilSolver
   Linear System Convergence Tolerance = 1e-6
   Linear System Iterative Method = BiCGStab
   Linear System Residual Output = 1
-  ! When we normalize, we introduce propably some divergence that
+  ! When we normalize, we introduce probably some divergence that
   ! does not impress the solver very much... Helmholtz projection needed?
   Normalize Coil Current = Logical False 
   Nonlinear System Consistent Norm = Logical True

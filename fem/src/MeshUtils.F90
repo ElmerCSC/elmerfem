@@ -99,7 +99,7 @@ CONTAINS
         ALLOCATE(Element % PDefs, STAT=istat)
         IF ( istat /= 0) CALL Fatal('AllocatePDefinitions','Unable to allocate memory')
      ELSE
-       CALL Info('AllocatePDefinitions','P element definitions already allocated',Level=10)
+       CALL Info('AllocatePDefinitions','P element definitions already allocated',Level=22)
      END IF
 
      ! Initialize fields
@@ -179,6 +179,7 @@ CONTAINS
 
      Mesh % MinFaceDOFs = 1000
      Mesh % MinEdgeDOFs = 1000
+     Mesh % MaxNDOFs = 0
      Mesh % MaxFaceDOFs = 0
      Mesh % MaxEdgeDOFs = 0
      Mesh % MaxBDOFs = 0
@@ -328,8 +329,13 @@ CONTAINS
      
    END SUBROUTINE InitializeMesh
 
-
-   
+!------------------------------------------------------------------------------
+! This version of creating def_dofs arrays has limited abilities since it does not
+! support element family flags (cf. the subroutine GetDefs in ModelDescription). 
+! There is no need for calling this unless the element definition is given in an 
+! equation section or a matc function is used to evaluate the order of p-basis,
+! since otherwise the subroutine GetDefs has done the necessary work.
+! TO DO: Have just one subroutine for writing def_dofs arrays ?
 !------------------------------------------------------------------------------
    SUBROUTINE GetMaxDefs(Model, Mesh, Element, ElementDef, SolverId, BodyId, Def_Dofs)
 !------------------------------------------------------------------------------
@@ -371,7 +377,11 @@ CONTAINS
      Body_Dofs => Solver % Def_Dofs(1:8,BodyId,:)
 
      j = INDEX(ElementDef, '-') ! FIX this to include elementtypewise defs...
-     IF ( j>0 ) RETURN
+     IF ( j>0 ) THEN
+       CALL Warn('GetMaxDefs', &
+           'Element set flags not supported, move element definition to a solver section')
+       RETURN
+     END IF
 
      j = INDEX( ElementDef, 'n:' )
      IF ( j>0 ) THEN
@@ -397,6 +407,11 @@ CONTAINS
       j = INDEX( ElementDef, 'd:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
+
+        ! Zero value triggers discontinuous approximation,
+        ! substitute the default negative initialization value to avoid troubles:
+        IF (l == 0) l = -1
+
         Body_Dofs(:,4) = l
         Def_Dofs(1:8,4) = MAX(Def_Dofs(1:8,4), l )
       ELSE 
@@ -427,11 +442,11 @@ CONTAINS
           slen = LEN_TRIM(str)
           CALL matc(str,RESULT,slen)
           READ(RESULT(1:slen),*) x
-          Body_Dofs(:,6) = 0
+
           Def_Dofs(1:8,6)  = MAX(Def_Dofs(1:8,6),NINT(x))
           Family = Element % TYPE % ElementCode / 100
-          Solver % Def_Dofs(Family, BodyId, 6) = &
-              MAX(Solver % Def_Dofs(Family, BodyId, 6), NINT(x))
+          Body_Dofs(Family, 6) = &
+              MAX(Body_Dofs(Family, 6), NINT(x))
         ELSE
           READ( ElementDef(j+2:), * ) l
           Body_Dofs(:,6) = l
@@ -2233,19 +2248,24 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      INTEGER, ALLOCATABLE :: IndexMap(:), TmpIndexMap(:)
      INTEGER, POINTER :: Blist(:)
-     INTEGER :: id,minid,maxid,body,bndry,DefaultTargetBC
+     INTEGER :: id,minid,maxid,body,bndry,DefaultTargetBC, DefaultTargetBody
 
 
      ! If "target bodies" is used map the bodies accordingly
      !------------------------------------------------------
      Found = .FALSE. 
+     DefaultTargetBody = 0
      DO id=1,Model % NumberOfBodies
-       IF( ListCheckPresent( Model % Bodies(id) % Values,'Target Bodies') ) THEN
-         Found = .TRUE.
-         EXIT
-       END IF
+       IF( ListCheckPresent( Model % Bodies(id) % Values,'Target Bodies') ) Found = .TRUE.
+       IF(ListGetLogical( Model % Bodies(id) % Values, &
+           'Default Target', GotIt)) DefaultTargetBody = id       
      END DO
 
+     IF( DefaultTargetBody /= 0 ) THEN
+       CALL Info('MapBodiesAndBCs','Default Target Body: '&
+           //TRIM(I2S(DefaultTargetBody)),Level=8)
+     END IF
+     
      IF( Found ) THEN
        CALL Info('MapBodiesAndBCs','Remapping bodies',Level=8)      
        minid = HUGE( minid ) 
@@ -2286,14 +2306,16 @@ CONTAINS
              END IF
            END DO
          ELSE
-           IF( IndexMap( id ) /= 0 ) THEN
-             CALL Warn('MapBodiesAndBCs','Unset body already set by > Target Boundaries < : '&
-                 //TRIM(I2S(id)) )
-           ELSE 
-             IndexMap( id ) = id
+           IF( DefaultTargetBody == 0 ) THEN
+             IF( IndexMap( id ) /= 0 ) THEN
+               CALL Warn('MapBodiesAndBCs','Unset body already set by > Target Boundaries < : '&
+                   //TRIM(I2S(id)) )
+             ELSE 
+               IndexMap( id ) = id
+             END IF
            END IF
          END IF
-
+           
        END DO
 
        IF( .FALSE. ) THEN
@@ -2306,10 +2328,13 @@ CONTAINS
        DO i=1,Mesh % NumberOfBulkElements
          Element => Mesh % Elements(i)
          id = Element % BodyId
-!        IF( IndexMap( id ) == 0 ) THEN
-!          PRINT *,'Unmapped body: ',id
-!          IndexMap(id) = id
-!        END IF
+
+         IF( IndexMap( id ) == 0 ) THEN
+           IF( DefaultTargetBody /= 0 ) THEN
+             IndexMap( id ) = DefaultTargetBody
+           END IF
+         END IF
+
          Element % BodyId = IndexMap( id ) 
        END DO
 
@@ -2613,7 +2638,8 @@ CONTAINS
          mat_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
          FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), &
-         FirstOrderElements, InheritDG, Hit, Stat
+         FirstOrderElements, InheritDG, Hit, Stat, &
+         UpdateDefDofs(Model % NumberOfSolvers)
      TYPE(Element_t), POINTER :: Element, Parent, pParent
      TYPE(Element_t) :: DummyElement
      TYPE(ValueList_t), POINTER :: Vlist
@@ -2627,7 +2653,6 @@ CONTAINS
      CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )     
     
      DGIndex = 0
-     NeedEdges = .FALSE.
 
      InDofs = 0
      InDofs(:,1) = 1
@@ -2636,7 +2661,7 @@ CONTAINS
      ELSE
        DO s=1,Model % NumberOfSolvers
          DO i=1,6
-           DO j=1,8
+           DO j=1,10
              inDofs(j,i) = MAX(Indofs(j,i),MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i)))
            END DO
          END DO
@@ -2655,11 +2680,12 @@ CONTAINS
     !
     ! Check whether the "Element" definitions can depend on mesh
     ! -----------------------------------------------------------
-    MeshDeps = .FALSE.; FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
+    MeshDeps = .FALSE.  ! The order of p-basis given with a MATC function
+    FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
 
     !
     ! As a preliminary step, check if an element definition is given 
-    ! an equation section. The more common way is give the element
+    ! in an equation section. The more common way is to give the element
     ! definition in a solver section.
     !
     DO eq_id=1,Model % NumberOFEquations
@@ -2673,57 +2699,70 @@ CONTAINS
         ! MATC function:
         !
         j = INDEX(ElementDef0,'p:')
-        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+        IF (j>0 .AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
       ELSE
         !
         ! Check if element definitions are given for each solver separately
         ! by using a special keyword construct and tag the corresponding
-        ! entries in the list of the solvers. This was thought to serve
-        ! the definition of bodywise p-orders, but it seems this doesn't
-        ! work really. TO DO: REPAIR OR REMOVE
+        ! entries in the list of the solvers. 
         ! 
         DO Solver_id=1,Model % NumberOfSolvers
           IF (PRESENT(mySolver)) THEN
             IF ( Solver_id /= mySolver ) CYCLE
           ELSE
+            ! Respect definitions given in the solver section:
             IF (ListCheckPresent(Model % Solvers(Solver_id) % Values, 'Mesh')) CYCLE
           END IF
 
           ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
           FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef
 
-          j = INDEX(ElementDef,'p:')
-          IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+          IF (FoundDef) THEN
+            j = INDEX(ElementDef,'p:')
+            IF (j>0 .AND. ElementDef(j+2:j+2)=='%') MeshDeps = .TRUE.
+          END IF
         END DO
       END IF
     END DO
 
     !
     ! Tag solvers for which the element definition has been given in
-    ! a solver section:
+    ! a solver section. The function LoadModel has already read these
+    ! element definitions except for cases where the order of p-basis is
+    ! defined in terms of a MATC function. The array UpdateDefDofs will
+    ! show whether element definitions should be re-read.
     !
-    DO solver_id=1,Model % NumberOFSolvers
+    UpdateDefDofs = .TRUE.
+    DO solver_id=1,Model % NumberOfSolvers
       Vlist => Model % Solvers(solver_id) % Values
 
       ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
-      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-      j = INDEX(ElementDef0,'p:')
-      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
+      IF (FoundDef0) THEN
+        FoundSolverDefs(Solver_id) = .TRUE.
+
+        j = INDEX(ElementDef0,'p:')
+        IF (j>0 .AND. ElementDef0(j+2:j+2)=='%') THEN
+          meshdeps = .TRUE.
+        ELSE
+          ! Solverwise element definitions have already be read in LoadModel,
+          ! indicate that re-reading is not needed here
+          UpdateDefDofs(Solver_id) = .FALSE.
+        END IF
+      END IF
     END DO
 
     ! The basic case without the order of p-basis being defined by a MATC function:
     !
     IF (.NOT.MeshDeps) THEN
-      ElementDef = ' '
       FoundDef0 = .FALSE.
       DO body_id=1,Model % NumberOfBodies
         ElementDef0 = ' '
         Vlist => Model % Bodies(body_id) % Values
         eq_id = ListGetInteger(Vlist,'Equation',FoundEq)
-        IF( FoundEq ) THEN
+        IF ( FoundEq ) THEN
           Vlist => Model % Equations(eq_id) % Values
-          IF(FoundEqDefs) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+          IF (FoundEqDefs) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
           DO solver_id=1,Model % NumberOfSolvers
 
@@ -2740,12 +2779,16 @@ CONTAINS
             IF ( FoundDef ) THEN
               CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef, solver_id, body_id, Indofs )
             ELSE
-              IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
-                 ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
+              IF (UpdateDefDofs(Solver_id)) THEN
+                IF (.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
+                    ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
 
-              CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef0, solver_id, body_id, Indofs )
+                CALL GetMaxDefs( Model, Mesh, DummyElement, ElementDef0, solver_id, body_id, Indofs )
 
-              IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+                IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+              ! ELSE
+              !   PRINT *, 'NO NEED TO RECREATE DEF_DOFS '
+              END IF
             END IF
           END DO
         END IF
@@ -2757,21 +2800,27 @@ CONTAINS
      body_id0 = -1; FoundDef=.FALSE.; FoundEq=.FALSE.
      ElementDef = ' '
 
+     !
+     ! Check whether face DOFs have been generated by "-quad_face b: ..." or
+     ! "-tri_face b: ..."
+     !
+     NeedEdges = ANY( inDOFs(9:10,5)>0 )
+
      DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
 
        body_id = Element % BodyId
        n = Element % TYPE % NumberOfNodes
        
-       ! Check the Solver specific element types
-       IF( Meshdeps ) THEN
+       ! Check if the order of p-basis depends on a MATC function
+       IF ( Meshdeps ) THEN
          IF ( body_id/=body_id0 ) THEN
            Vlist => Model % Bodies(body_id) % Values
            eq_id = ListGetInteger(Vlist,'Equation',FoundEq)
+           ElementDef0 = ' '
          END IF
 
-         ElementDef0 = ' '
-         IF( FoundEq ) THEN
+         IF ( FoundEq ) THEN
            Vlist => Model % Equations(eq_id) % Values
            FoundDef0 = .FALSE.
            IF( FoundEqDefs.AND.body_id/=body_id0 ) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
@@ -2790,12 +2839,14 @@ CONTAINS
              IF ( FoundDef ) THEN
                CALL GetMaxDefs( Model, Mesh, Element, ElementDef, solver_id, body_id, Indofs )
              ELSE
-               IF(.NOT. FoundDef0.AND.FoundSolverDefs(solver_id)) &
-                  ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
+               IF (UpdateDefDofs(Solver_id)) THEN
+                 IF (.NOT. FoundDef0.AND.FoundSolverDefs(solver_id)) &
+                     ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
 
-               CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+                 CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
 
-               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+                 IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
+               END IF
              END IF
            END DO
          END IF
@@ -2806,19 +2857,15 @@ CONTAINS
        el_id = Element % TYPE % ElementCode / 100
 
        ! Apply the elementtypes
-       IF ( inDOFs(el_id,1) /= 0 ) THEN
-         Element % NDOFs = n
-       ELSE
-         Element % NDOFs = 0
-       END IF
 
+       Element % NDOFs = n * MAX(0,inDOFs(el_id,1)) ! The count of all nodal DOFs for the element
        EdgeDOFs(i) = MAX(0,inDOFs(el_id,2))
        FaceDOFs(i) = MAX(0,inDOFs(el_id,3))
 
        IF ( inDofs(el_id,4) == 0 ) THEN
          inDOFs(el_id,4) = n
        END IF
-         
+
        NULLIFY( Element % DGIndexes )
        IF ( inDOFs(el_id,4) > 0 ) THEN
          CALL AllocateVector( Element % DGIndexes, inDOFs(el_id,4))
@@ -2826,8 +2873,6 @@ CONTAINS
            DGIndex = DGIndex + 1
            Element % DGIndexes(j) = DGIndex
          END DO
-       ELSE
-         NULLIFY( Element % DGIndexes )
        END IF
        Element % DGDOFs = MAX(0,inDOFs(el_id,4))
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
@@ -2838,7 +2883,24 @@ CONTAINS
          NeedEdges = .TRUE.
 
          ! Calculate element bubble dofs and set element p
-         Element % PDefs % P = inDOFs(el_id,6)
+
+         Element % PDefs % P = inDOFs(el_id,6)   ! NOTE: If the order of p-basis is given by
+                                                 ! a MATC function, the order is here defined
+                                                 ! to be the maximum order over the element
+                                                 ! processed so far. This is 
+                                                 ! erroneous as the resulting p-distribution  
+                                                 ! thus depends on the numbering of geometric
+                                                 ! entities.
+         !
+         ! Try to fix the issue described in the above remark in a special case 
+         ! where a single element definition is given in the equation section:
+         !
+         IF (FoundEqDefs .AND. Model % NumberOfSolvers > 0) THEN
+           ! All solvers have the same element definition, pick one of these
+           ! to set the polynomial degree:
+           Element % PDefs % P = Model % Solvers(1) % Def_Dofs(el_id,Body_Id,6)
+         END IF
+
          IF ( inDOFs(el_id,5) > 0 ) THEN
            Element % BDOFs = inDOFs(el_id,5)
          ELSE
@@ -2886,9 +2948,14 @@ CONTAINS
        END IF
 
        n = Element % TYPE % NumberOfNodes
-       Element % NDOFs  = n
        el_id = ELement % TYPE % ElementCode / 100
-
+       Element % NDOFs  = n * MAX(0,inDOFs(el_id,1))
+       
+       !
+       ! NOTE: The following depends on what dofs have been introduced
+       ! by using the construct "-quad_face b: ..." and
+       ! "-tri_face b: ..."
+       !
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
          IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
            Element % NDOFs = 0
@@ -3196,6 +3263,11 @@ CONTAINS
                CALL AssignLocalNumber(Face, Face % BoundaryInfo % Right, Mesh)
              END IF
           ELSE IF (PRESENT(FaceDOFs)) THEN
+             !
+             ! NOTE: This depends on what dofs have been introduced
+             ! by using the construct "-quad_face b: ..." and
+             ! "-tri_face b: ..."
+             !
              el_id = face % TYPE % ElementCode / 100
              Face % BDOFs = MAX(FaceDOFs(i), Face % BDOFs)
              IF ( PRESENT(inDOFs) ) Face % BDOFs = MAX(Face % BDOFs, InDOFs(el_id+6,5))
@@ -3206,7 +3278,7 @@ CONTAINS
           Mesh % MaxFaceDOFs = MAX(Face % BDOFs, Mesh % MaxFaceDOFs)
        END DO
     END DO
-    IF ( Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs ) Mesh % MinFaceDOFs = MEsh % MaxFaceDOFs
+    IF ( Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs ) Mesh % MinFaceDOFs = Mesh % MaxFaceDOFs
 
     ! Set local edges for boundary elements
     DO i=Mesh % NumberOfBulkElements + 1, &
@@ -3255,30 +3327,33 @@ CONTAINS
    TYPE(Element_t), POINTER :: Element
    INTEGER :: i,j,n
 
-   ! Set gauss points for each p element
    DO i=1,Mesh % NumberOfBulkElements
      Element => Mesh % Elements(i)
 
+     ! Set gauss points for each p element
      IF ( ASSOCIATED(Element % PDefs) ) THEN
        Element % PDefs % GaussPoints = getNumberOfGaussPoints( Element, Mesh )
      END IF
+
+     Mesh % MaxBDOFs = MAX( Element % BDOFs, Mesh % MaxBDOFs )
+     Mesh % MaxNDOFs = MAX(Element % NDOFs / Element % TYPE % NumberOfNodes, &
+         Mesh % MaxNDOFs)
+   END DO
+
+   DO i=1,Mesh % NumberOFBulkElements
+     Element => Mesh % Elements(i)
 
      ! Set max element dofs here (because element size may have changed
      ! when edges and faces have been set). This is the absolute worst case.
      ! Element which has MaxElementDOFs may not even be present as a 
      ! real element
      Mesh % MaxElementDOFs = MAX( Mesh % MaxElementDOFs, &
-          Element % TYPE % NumberOfNodes + &
+          Element % TYPE % NumberOfNodes * Mesh % MaxNDOFs + &
           Element % TYPE % NumberOfEdges * Mesh % MaxEdgeDOFs + &
           Element % TYPE % NumberOfFaces * Mesh % MaxFaceDOFs + &
           Element % BDOFs, &
           Element % DGDOFs )
 
-     Mesh % MaxBDOFs = MAX( Element % BDOFs, Mesh % MaxBDOFs )
-   END DO
-
-   DO i=1,Mesh % NumberOFBulkElements
-     Element => Mesh % Elements(i)
      IF ( Element % BDOFs > 0 ) THEN
        ALLOCATE( Element % BubbleIndexes(Element % BDOFs) )
        DO j=1,Element % BDOFs
@@ -4210,6 +4285,7 @@ CONTAINS
     LOGICAL :: TagNormalFlip, Turn
     TYPE(Nodes_t) :: ElementNodes
     REAL(KIND=dp) :: Normal(3)
+    LOGICAL :: Parallel
     
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
 
@@ -4248,7 +4324,9 @@ CONTAINS
     NarrowHalo = .FALSE.
     NoHalo = .FALSE.
 
-    IF( ParEnv % PEs > 1 ) THEN
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
+    
+    IF( Parallel ) THEN
       ! Account for halo elements that share some nodes for the master boundary
       NarrowHalo = ListGetLogical(Model % Solver % Values,'Projector Narrow Halo',Found)
 
@@ -5578,7 +5656,7 @@ CONTAINS
             
       DO ind=1,BMesh1 % NumberOfBulkElements        
         
-        ! Optionally save the submesh for specified element, for vizualization and debugging
+        ! Optionally save the submesh for specified element, for visualization and debugging
         SaveElem = ( SaveInd == ind )
         DebugElem = ( DebugInd == ind )
 
@@ -8995,7 +9073,7 @@ CONTAINS
               
       DO ind=1,BMesh1 % NumberOfBulkElements
 
-        ! Optionally save the submesh for specified element, for vizualization and debugging
+        ! Optionally save the submesh for specified element, for visualization and debugging
         SaveElem = ( SaveInd == ind )
         DebugElem = ( DebugInd == ind )
 
@@ -10160,7 +10238,7 @@ CONTAINS
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
-        ! Optionally save the submesh for specified element, for vizualization and debugging
+        ! Optionally save the submesh for specified element, for visualization and debugging
         SaveElem = ( SaveInd == ind )
 
         Element => BMesh1 % Elements(ind)        
@@ -11298,6 +11376,137 @@ CONTAINS
     END FUNCTION Det3x3
 
   END SUBROUTINE CylinderFit
+
+
+
+  ! Code for fitting a sphere. Not yet used.
+  !-------------------------------------------------------------------------
+  SUBROUTINE SphereFit(Mesh, Params, BCind ) 
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Params
+    INTEGER, OPTIONAL :: BCind
+
+    INTEGER :: i,j,t,t1,t2,NoNodes,Tag
+    LOGICAL :: BCMode
+    LOGICAL, ALLOCATABLE :: ActiveNode(:)
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), POINTER :: x(:),y(:),z(:)    
+    REAL(KIND=dp) :: xc,yc,zc,Rad
+
+    
+    CALL Info('SphereFit','Trying to fit a sphere to element patch',Level=6)
+
+    ! Set the range for the possible active elements. 
+    IF( PRESENT( BCind ) ) THEN
+      BCMode = .TRUE.
+      t1 = Mesh % NumberOfBulkElements + 1
+      t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Tag = CurrentModel % BCs(BCind) % Tag
+    ELSE
+      BCMode = .FALSE.
+      t1 = 1
+      t2 = Mesh % NumberOfBulkElements
+    END IF
+
+    ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+    ActiveNode = .FALSE.
+
+    ! Mark the nodes that belong to the active elements.
+    ! 1) Either we only have bulk elements in which case we use all of the nodes or
+    ! 2) We are given a boundary index and only use the nodes related to it. 
+    DO t=t1,t2
+      Element => Mesh % Elements(t)
+      IF( BCMode ) THEN
+        IF( .NOT. ASSOCIATED( Element % BoundaryInfo ) ) CYCLE     
+        IF ( Element % BoundaryInfo % Constraint /= Tag ) CYCLE
+      END IF
+      ActiveNode(Element % NodeIndexes) = .TRUE.              
+    END DO
+
+    ! If all nodes are active just use pointers to the nodes.
+    ! Otherwise create list of the nodes. 
+    NoNodes = COUNT( ActiveNode )
+    IF( NoNodes == Mesh % NumberOfNodes ) THEN
+      x => Mesh % Nodes % x
+      y => Mesh % Nodes % y
+      z => Mesh % Nodes % z
+    ELSE
+      ALLOCATE( x(NoNodes), y(NoNodes), z(NoNodes) )
+      j = 0
+      DO i=1,Mesh % NumberOfNodes
+        IF(.NOT. ActiveNode(i) ) CYCLE
+        j = j + 1
+        x(j) = Mesh % Nodes % x(i)
+        y(j) = Mesh % Nodes % y(i)
+        z(j) = Mesh % Nodes % z(i)
+      END DO
+    END IF
+
+    ! Call the function to set the sphere parameters for the nodes.
+    CALL SphereFitfun(NoNodes,x,y,z,xc,yc,zc,Rad)
+
+    IF( NoNodes < Mesh % NumberOfNodes ) THEN
+      DEALLOCATE(x,y,z)
+    END IF
+
+    ! Add the sphere parameters to the list so that they can be used later
+    ! directly without having to fit the parameters again.  
+    CALL ListAddConstReal( Params,'Sphere Center X',xc )
+    CALL ListAddConstReal( Params,'Sphere Center Y',yc )
+    CALL ListAddConstReal( Params,'Sphere Center Z',zc )
+    CALL ListAddConstReal( Params,'Sphere Radius',Rad )
+    
+  CONTAINS
+    
+
+    ! Sumith YD: Fast Geometric Fit Algorithm for Sphere Using Exact Solution
+    !------------------------------------------------------------------------
+    SUBROUTINE SphereFitfun(n,x,y,z,xc,yc,zc,R)
+      INTEGER :: n
+      REAL(KIND=dp), POINTER :: x(:),y(:),z(:)
+      REAL(KIND=dp) :: xc,yc,zc,R
+      
+      REAL(KIND=dp) :: Sx,Sy,Sz,Sxx,Syy,Szz,Sxy,Sxz,Syz,&
+          Sxxx,Syyy,Szzz,Syzz,Sxyy,Sxzz,Sxxy,Sxxz,Syyz,&
+          A1,a,b,c,d,e,f,g,h,j,k,l,m,delta
+      
+      Sx = SUM(x); Sy = SUM(y); Sz = SUM(z);
+      Sxx = SUM(x*x); Syy = SUM(y*y);
+      Szz = SUM(z*z); Sxy = SUM(x*y);
+      Sxz = SUM(x*z); Syz = SUM(y*z);
+      Sxxx = SUM(x*x*x); Syyy = SUM(y*y*y);
+      Szzz = SUM(z*z*z); Sxyy = SUM(x*y*y);
+      Sxzz = SUM(x*z*z); Sxxy = SUM(x*x*y);
+      Sxxz = SUM(x*x*z); Syyz =SUM(y*y*z);
+      Syzz = SUM(y*z*z);
+
+      ! We should do parallel reduction here if the surface is split among
+      ! several MPI processes. 
+      
+      A1 = Sxx +Syy +Szz;
+      a = 2*Sx*Sx-2*N*Sxx;
+      b = 2*Sx*Sy-2*N*Sxy;
+      c = 2*Sx*Sz-2*N*Sxz;
+      d = -N*(Sxxx +Sxyy +Sxzz)+A1*Sx;
+      e = 2*Sx*Sy-2*N*Sxy;
+      f = 2*Sy*Sy-2*N*Syy;
+      g = 2*Sy*Sz-2*N*Syz;
+      h = -N*(Sxxy +Syyy +Syzz)+A1*Sy;
+      j = 2*Sx*Sz-2*N*Sxz;
+      k = 2*Sy*Sz-2*N*Syz;
+      l = 2*Sz*Sz-2*N*Szz;
+      m = -N*(Sxxz +Syyz + Szzz)+A1*Sz;
+      delta = a*(f*l - g*k)-e*(b*l-c*k) + j*(b*g-c*f);
+
+      xc = (d*(f*l-g*k) -h*(b*l-c*k) +m*(b*g-c*f))/delta;
+      yc = (a*(h*l-m*g) -e*(d*l-m*c) +j*(d*g-h*c))/delta;
+      zc = (a*(f*m-h*k) -e*(b*m-d*k) +j*(b*h-d*f))/delta;
+      R = SQRT(xc*xc+yc*yc+zc*zc+(A1-2*(xc*Sx+yc*Sy+zc*Sz))/N);
+
+    END SUBROUTINE SphereFitfun
+
+  END SUBROUTINE SphereFit
+    
   
   !------------------------------------------------------------------------------------------------
   !> Finds nodes for which CandNodes are True such that their mutual distance is somehow
@@ -11440,6 +11649,9 @@ CONTAINS
       ! to the angle. This may depende on time etc. 
       IF( k == 1 ) THEN
         DegOffset = ListGetCReal(BParams,'Rotational Projector Angle Offset',SetDegOffset ) 
+        IF(.NOT. SetDegOffset ) THEN
+          DegOffset = ListGetCReal(BParams,'Mesh Rotate 3',SetDegOffset )          
+        END IF
       ELSE
         SetDegOffset = .FALSE.
       END IF
@@ -13201,6 +13413,8 @@ CONTAINS
 !> must be done with StructuredMeshMapper, or some similar utility. 
 !> The top and bottom surface will be assigned Boundary Condition tags
 !> with indexes one larger than the maximum used on by the 2D mesh. 
+!> NOTE: This function handles NDOFs of the element structure in a way
+!>       which is not consistent with "Element = n:N ...", with N>1 
 !------------------------------------------------------------------------------
   FUNCTION MeshExtrude(Mesh_in, in_levels, ExtrudedMeshName) RESULT(Mesh_out)
 !------------------------------------------------------------------------------
@@ -13746,7 +13960,7 @@ CONTAINS
        CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
     END IF
 
-    !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
   END FUNCTION MeshExtrude
 !------------------------------------------------------------------------------
 
@@ -14204,18 +14418,24 @@ CONTAINS
 !> Currently only for triangles and tetras. If mesh already
 !> has edges do nothing.
 !------------------------------------------------------------------------------
-  SUBROUTINE FindMeshEdges( Mesh, FindEdges)
+  SUBROUTINE FindMeshEdges( Mesh, FindEdges, FindFaces )
 !------------------------------------------------------------------------------
      TYPE(Mesh_t) :: Mesh
-     LOGICAL, OPTIONAL :: FindEdges
+     LOGICAL, OPTIONAL :: FindEdges, FindFaces
 
-     LOGICAL :: FindEdges3D
+     LOGICAL :: FindEdges3D, FindFaces3d
      INTEGER :: MeshDim, SpaceDim, MaxElemDim 
 
      IF(PRESENT(FindEdges)) THEN
        FindEdges3D = FindEdges
      ELSE
        FindEdges3D = .TRUE.
+     END IF
+
+     IF(PRESENT(FindFaces)) THEN
+       FindFaces3D = FindFaces
+     ELSE
+       FindFaces3D = .TRUE.
      END IF
 
 !------------------------------------------------------------------------------
@@ -14247,7 +14467,7 @@ CONTAINS
        END IF
 
      CASE(3)
-       IF ( .NOT.ASSOCIATED( Mesh % Faces) ) THEN
+       IF ( .NOT.ASSOCIATED(Mesh % Faces) .AND. FindFaces3D ) THEN
          CALL Info('FindMeshEdges','Determining faces in 3D mesh',Level=8)
          CALL FindMeshFaces3D( Mesh )
        END IF
@@ -14321,6 +14541,8 @@ CONTAINS
         IF ( .NOT. ASSOCIATED(Faces) .OR. .NOT. ASSOCIATED(FaceInd) ) CYCLE
 
         DO j=1,nd
+          IF(FaceInd(j)<=0) CYCLE
+
           Face => Faces(FaceInd(j))
           IF ( .NOT.ASSOCIATED(Face % TYPE,Boundary % TYPE) ) CYCLE
 
@@ -14489,8 +14711,9 @@ CONTAINS
              END IF
 
              Edges(Edge) % NDofs = 0
-             IF (Element % NDOFs /= 0 ) &
-                Edges(Edge) % NDOFs  = Edges(Edge) % TYPE % NumberOfNodes
+             IF (Element % NDOFs /= 0 ) Edges(Edge) % NDOFs = &
+                 Element % NDOFs / Element % TYPE % NumberOfNodes * &
+                 Edges(Edge) % TYPE % NumberOfNodes
              Edges(Edge) % BDOFs  = 0
              Edges(Edge) % DGDOFs = 0
              NULLIFY( Edges(Edge) % EdgeIndexes )
@@ -14819,8 +15042,9 @@ CONTAINS
              END IF
              
              Faces(Face) % NDOFs  = 0
-             IF (Element % NDOFs /= 0 ) &
-                Faces(Face) % NDOFs  = Faces(Face) % TYPE % NumberOfNodes
+             IF (Element % NDOFs /= 0) Faces(Face) % NDOFs = &
+                 Element % NDOFs / Element % TYPE % NumberOfNodes * &
+                 Faces(Face) % TYPE % NumberOfNodes
              Faces(Face) % BDOFs  = 0
              Faces(Face) % DGDOFs = 0
              Faces(Face) % EdgeIndexes => NULL()
@@ -14903,10 +15127,21 @@ CONTAINS
     INTEGER, POINTER :: EdgeMap(:,:), FaceEdgeMap(:,:)
     INTEGER, TARGET  :: TetraEdgeMap(6,3), BrickEdgeMap(12,3), TetraFaceMap(4,6), &
       WedgeEdgeMap(9,3), PyramidEdgeMap(8,3), TetraFaceEdgeMap(4,3), &
-      BrickFaceEdgeMap(8,4), WedgeFaceEdgeMap(6,4), PyramidFaceEdgeMap(5,4)
+      BrickFaceEdgeMap(8,4), WedgeFaceEdgeMap(6,4), PyramidFaceEdgeMap(5,4), &
+         QuadEdgeMap(4,3), TriEdgeMap(3,3)
 !------------------------------------------------------------------------------
 
     CALL Info('FindMeshEdges3D','Finding mesh edges in 3D mesh',Level=12)
+
+    TriEdgeMap(1,:) = [1,2,4]
+    TriEdgeMap(2,:) = [2,3,5]
+    TriEdgeMap(3,:) = [3,1,6]
+
+    QuadEdgeMap(1,:) = [1,2,5]
+    QuadEdgeMap(2,:) = [2,3,6]
+    QuadEdgeMap(3,:) = [3,4,7]
+    QuadEdgeMap(4,:) = [4,1,8]
+
 
     TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
     TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
@@ -15008,6 +15243,14 @@ CONTAINS
           n = Element % TYPE % NumberOfEdges
        ELSE 
           SELECT CASE( Element % TYPE % ElementCode / 100 )
+          CASE(3)
+             n = 3
+             EdgeMap => TriEdgeMap
+             FaceEdgeMap => Null()
+          CASE(4)
+             n = 4
+             EdgeMap => QuadEdgeMap
+             FaceEdgeMap => Null()
           CASE(5)
              n = 6
              EdgeMap => TetraEdgeMap
@@ -15070,7 +15313,7 @@ CONTAINS
                 Edges(Edge) % PDefs % pyramidQuadEdge = .TRUE.
              END IF
 
-             IF ( ASSOCIATED(Mesh % Faces) ) THEN
+             IF ( ASSOCIATED(Mesh % Faces).AND.ASSOCIATED(FaceEdgeMap) ) THEN
                DO ii=1,Element % TYPE % NumberOfFaces
                  Face => Mesh % Faces(Element % FaceIndexes(ii))
                  IF ( .NOT. ASSOCIATED(Face % EdgeIndexes) ) THEN
@@ -15104,8 +15347,9 @@ CONTAINS
              Edges(Edge) % TYPE => GetElementType( 201 + degree, .FALSE.)
 
              Edges(Edge) % NDOFs  = 0
-             IF (Element % NDOFs /= 0 ) &
-                Edges(Edge) % NDOFs  = Edges(Edge) % TYPE % NumberOfNodes
+             IF (Element % NDOFs /= 0) Edges(Edge) % NDOFs = &
+                 Element % NDOFs / Element % TYPE % NumberOfNodes * &
+                 Edges(Edge) % TYPE % NumberOfNodes
              Edges(Edge) % BDOFs  = 0
              Edges(Edge) % DGDOFs = 0
              Edges(Edge) % EdgeIndexes => NULL()
@@ -15472,6 +15716,7 @@ END SUBROUTINE FindNeighbourNodes
     TYPE(PElementDefs_t), POINTER :: PDefs
     INTEGER :: ierr, ParTmp(6), ParSizes(6)
     INTEGER, ALLOCATABLE :: FacePerm(:), BulkPerm(:)
+    LOGICAL :: Parallel
 !------------------------------------------------------------------------------
     IF ( .NOT. ASSOCIATED( Mesh ) ) RETURN
 
@@ -15486,6 +15731,10 @@ END SUBROUTINE FindNeighbourNodes
 
     NewMesh => AllocateMesh()
 
+    NewMesh % SingleMesh = Mesh % SingleMesh
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. NewMesh % SingleMesh )
+
+    
     EdgesPresent = ASSOCIATED(Mesh % Edges)
     IF(.NOT.EdgesPresent) CALL FindMeshEdges( Mesh )
 
@@ -17004,7 +17253,7 @@ END SUBROUTINE FindNeighbourNodes
     ParTmp(5) = NewMesh % NumberOfBulkElements
     ParTmp(6) = NewMesh % NumberOfBoundaryElements
 
-    IF( .FALSE. .AND. ParEnv % PEs > 1 ) THEN
+    IF( .FALSE. .AND. Parallel ) THEN
       CALL MPI_ALLREDUCE(ParTmp,ParSizes,6,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
 
       CALL Info('SplitMeshEqual','Information on parallel mesh sizes')
@@ -17028,7 +17277,9 @@ END SUBROUTINE FindNeighbourNodes
 !
 !   Update structures needed for parallel execution:
 !   ------------------------------------------------
-    CALL UpdateParallelMesh( Mesh, NewMesh )
+    IF( Parallel ) THEN
+      CALL UpdateParallelMesh( Mesh, NewMesh )
+    END IF
 !
 !
 !   Finalize:
@@ -17060,7 +17311,6 @@ CONTAINS
        LOGICAL :: Found
 !------------------------------------------------------------------------------
 
-       IF ( ParEnv % PEs <= 1 ) RETURN
 !
 !      Update mesh interfaces for parallel execution.
 !      ==============================================
@@ -20938,7 +21188,7 @@ CONTAINS
       Element % ElementIndex = i
 
       CALL AllocateVector( Element % NodeIndexes, ne )
-      Element % Ndofs = ne
+      Element % Ndofs = ne ! TO DO: This is not consistent for "Element = n:N", with N>1
 
       Element % NodeIndexes(1) = (i-1)*Order + 1
       Element % NodeIndexes(2) = i*Order + 1
@@ -21054,7 +21304,7 @@ CONTAINS
       Element % FaceIndexes => NULL()
       Element % ElementIndex = i
       CALL AllocateVector( Element % NodeIndexes, 4 )
-      Element % Ndofs = 4
+      Element % Ndofs = 4 ! TO DO: This is not consistent for "Element = n:N", with N>1
 
       col = MOD(i-1,ney)
       row = (i-1)/ney
@@ -22029,7 +22279,7 @@ CONTAINS
     arr(n+1)=arr(n)+indi
   END SUBROUTINE ComputeCRSIndexes
 
-  !> Calcalate body average for a discontinuous galerkin field.
+  !> Calculate body average for a discontinuous galerkin field.
   !> The intended use is in conjunction of saving the results. 
   !> This tampers the field and therefore may have unwanted side effects
   !> if the solution is to be used for something else too.
@@ -22046,7 +22296,9 @@ CONTAINS
     INTEGER :: n,i,j,k,l,nodeind,dgind, Nneighbours
     REAL(KIND=dp) :: AveHits
     LOGICAL, ALLOCATABLE :: IsNeighbour(:)
+    LOGICAL :: Parallel
 
+    
     IF(.NOT. ASSOCIATED(var)) RETURN
     IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
 
@@ -22058,10 +22310,13 @@ CONTAINS
           //TRIM(Var % Name), Level=8)
     END IF
 
+    Parallel = (ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
+    
+    
     n = Mesh % NumberOfNodes
     ALLOCATE( BodyCount(n), BodyAverage(n), IsNeighbour(Parenv % PEs) )
-
-
+  
+    
     DO i=1,CurrentModel % NumberOfBodies
 
       DO k=1,Var % Dofs
@@ -22087,7 +22342,7 @@ CONTAINS
           !PRINT *,'AveHits:',i,AveHits
         END IF
 
-        IF(ParEnv % Pes>1) THEN
+        IF( Parallel ) THEN
           Nneighbours = MeshNeighbours(Mesh, IsNeighbour)
           CALL SendInterface(); CALL RecvInterface()
         END IF

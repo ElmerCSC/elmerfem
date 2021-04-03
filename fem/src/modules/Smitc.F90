@@ -23,7 +23,7 @@
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver: SmitcSolver
 !------------------------------------------------------------------------------
-  SUBROUTINE SmitcSolver_Init( Model,Solver,dt,Transient )
+  SUBROUTINE SmitcSolver_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
 
@@ -35,17 +35,14 @@
     TYPE(ValueList_t), POINTER :: SolverParams
 !------------------------------------------------------------------------------
     SolverParams => GetSolverParams()
-    IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      CALL ListAddInteger( SolverParams, 'Variable DOFs', 3 )
-      CALL ListAddString( SolverParams, 'Variable', 'Deflection' )
-    END IF
+    CALL ListAddNewString( SolverParams, 'Variable', '-dofs 3 Deflection' )
        
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
-    CALL ListAddLogical( SolverParams, 'Plate Solver', .TRUE. )
+    CALL ListAddNewLogical( SolverParams, 'Plate Solver', .TRUE. )
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE SmitcSolver_Init
+  END SUBROUTINE SmitcSolver_Init0
 !------------------------------------------------------------------------------
 
  

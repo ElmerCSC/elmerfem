@@ -167,12 +167,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,lpar,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen, &
-      jsonpos
-  INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit
+      jsonpos, PassiveCoordinate
+  INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
 
-  SAVE :: jsonpos
+  SAVE :: jsonpos, PrevRunInd
   
 !------------------------------------------------------------------------------
 
@@ -190,6 +190,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   SaveFluxRange = ListGetLogical( Params,'Save Flux Range',GotIt)
   IF(.NOT. GotIt) SaveFluxRange = .TRUE.
+
+  RunInd = 0
+  Var => VariableGet( Model % Variables,'run')
+  IF( ASSOCIATED( Var ) ) RunInd = NINT( Var % Values(1) )
+
   
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -202,13 +207,28 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       IF(i > 0) THEN
         Suffix = ScalarsFile(i:j)
         WRITE( ScalarsFile,'(A,I0,A)') &
-            ScalarsFile(1:i-1)//'_',ParEnv % PEs,Suffix(1:j-i+1)
+            ScalarsFile(1:i-1)//'_np',ParEnv % PEs,Suffix(1:j-i+1)
       ELSE
         WRITE( ScalarsFile,'(A,I0)') &
-            ScalarsFile(1:j)//'_',ParEnv % PEs 
+            ScalarsFile(1:j)//'_np',ParEnv % PEs 
       END IF
     END IF
 
+    ! Optionally number files by the run control loop.
+    IF(ListGetLogical(Params,'Run Control Numbering',GotIt)) THEN
+      i = INDEX( ScalarsFile,'.',.TRUE. )
+      j = LEN_TRIM(ScalarsFile)
+      IF(i > 0) THEN
+        Suffix = ScalarsFile(i:j)
+        WRITE( ScalarsFile,'(A,I0,A)') &
+            ScalarsFile(1:i-1)//'_run',RunInd,Suffix(1:j-i+1)
+      ELSE
+        WRITE( ScalarsFile,'(A,I0)') &
+            ScalarsFile(1:j)//'_run',RunInd
+      END IF
+      IF( RunInd /= PrevRunInd ) Solver % TimesVisited = 0      
+    END IF
+    
     CALL SolverOutputDirectory( Solver, ScalarsFile, OutputDirectory )
     ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
     
@@ -500,7 +520,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       NegOper = .TRUE.
       Oper = Oper(10:nlen)
     END IF
-    
+
+    ! We may want to do integrals over projected surfaces
+    PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate',GotIt )
+    IF(.NOT. GotIt ) THEN
+      PassiveCoordinate = ListGetInteger( Params,'Passive Coordinate '//TRIM(I2S(NoOper)), GotIt )
+    END IF
 
     WRITE (Name,'(A,I0)') 'Coefficient ',NoOper
     CoefficientName = ListGetString(Params,TRIM(Name),GotCoeff )
@@ -1185,7 +1210,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     LineInd = ListGetInteger( Params,'Line Marker',GotIt)
     PrevNoValues = ListGetInteger( Params,'Save Scalars Dofs',GotIt) 
 
-    IF(WriteCore .AND. NoValues /= PrevNoValues) THEN 
+    IF(WriteCore .AND. ( NoValues /= PrevNoValues .OR. RunInd /= PrevRunInd ) ) THEN 
       CALL ListAddInteger( Params,'Save Scalars Dofs',NoValues )
 
       WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
@@ -1475,6 +1500,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
   n = 1
   n = NINT( ParallelReduction(1.0_dp*n) )
+
+  PrevRunInd = RunInd
   
   CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 
@@ -2069,7 +2096,17 @@ CONTAINS
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
-      
+
+      IF( PassiveCoordinate > 0 ) THEN
+        SELECT CASE( PassiveCoordinate ) 
+        CASE(1) 
+          ElementNodes % x(1:n) = 0.0_dp 
+        CASE(2)           
+          ElementNodes % y(1:n) = 0.0_dp
+        CASE(3) 
+          ElementNodes % z(1:n) = 0.0_dp
+        END SELECT
+      END IF
 
       ! If we are masking operators with correct (body, body force, or material) then do it here
       IF( BodyOper ) THEN        
@@ -2421,8 +2458,18 @@ CONTAINS
         ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
 
+        IF( PassiveCoordinate > 0 ) THEN
+          SELECT CASE( PassiveCoordinate ) 
+          CASE(1) 
+            ElementNodes % x(1:n) = 0.0_dp 
+          CASE(2)           
+            ElementNodes % y(1:n) = 0.0_dp
+          CASE(3) 
+            ElementNodes % z(1:n) = 0.0_dp
+          END SELECT
+        END IF
 
-
+        
         SELECT CASE(OperName)
           
         CASE('diffusive flux') 

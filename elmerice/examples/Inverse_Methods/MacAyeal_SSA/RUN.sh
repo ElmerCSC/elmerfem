@@ -21,7 +21,7 @@ DATAFILE="..\/DATA\/MacAyeal_VELOCITIES_NOISE.txt"
 
 rm -rf LCurve.dat
 
-# looop over reg. coefs.
+# loop over reg. coefs.
 c=0
 for i in $lambda
 do
@@ -41,7 +41,7 @@ do
     ElmerSolver
   fi
 
-  # psot process
+  # post process
   python ../SCRIPTS/MakeReport.py $NAME
   echo $(tail -n 1 Cost_"$NAME".dat | awk '{print $3}') $(tail -n 1 CostReg_"$NAME".dat | awk '{print $2}') $i >> LCurve.dat 
 done

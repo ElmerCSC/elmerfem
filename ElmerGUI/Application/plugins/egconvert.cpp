@@ -3541,7 +3541,7 @@ allocate:
 
 
 static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int usetaggeom, int info)
+			  char *filename,int usetaggeom, int keeporphans, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
@@ -3668,6 +3668,8 @@ omstart:
       }   
     }
     else if(strstr(line,"$PhysicalNames")) {
+      int entdim;
+      entdim = dim;
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
@@ -3676,16 +3678,20 @@ omstart:
         if(allocated) {
             cp = line;
             gmshtype = next_int(&cp);
+	    if(gmshtype < entdim-1) {
+	      printf("Assuming maximum entity dim to be %d\n",dim-1);
+	      entdim--;
+	    }
             tagphys = next_int(&cp);
-            if(gmshtype == dim-1) {
+            if(gmshtype == entdim-1) {
                 physsurfexist = TRUE;
                 if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
-                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
+                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
             }
-            else if(gmshtype == dim) {
+            else if(gmshtype == entdim) {
                 physvolexist = TRUE;
                 if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
-                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
+                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
             }
             else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
                         "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
@@ -3746,7 +3752,7 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
-  ElementsToBoundaryConditions(data,bound,FALSE,info);
+  ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
@@ -3758,7 +3764,7 @@ omstart:
 
 
 static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int usetaggeom, int info)
+			  char *filename,int usetaggeom, int keeporphans, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
@@ -4024,6 +4030,8 @@ omstart:
     }
 
     else if(strstr(line,"$PhysicalNames")) {
+      int entdim;
+      entdim = dim;
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
@@ -4032,24 +4040,30 @@ omstart:
         if(allocated) {
 	  cp = line;
 	  gmshtype = next_int(&cp);
+	  if(gmshtype < entdim-1) {
+	    printf("Assuming maximum entity dim to be %d\n",dim-1);
+	    entdim--;
+	  }
 	  tagphys = next_int(&cp);
-	  if(gmshtype == dim-1) {
+	  if(gmshtype == entdim-1) {
 	    physsurfexist = TRUE;
-	    if(tagphys < MAXBCS) {
+	    if(tagphys < MAXBCS)  {
 	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
 	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }	    
 	  }
-	  else if(gmshtype == dim) {
+	  else if(gmshtype == entdim) {
 	    physvolexist = TRUE;
 	    if(tagphys < MAXBODIES) {
 	      sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
 	      printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }
 	  }
 	  else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
 		      "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
@@ -4171,7 +4185,7 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
-  ElementsToBoundaryConditions(data,bound,FALSE,info);
+  ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
@@ -4185,7 +4199,7 @@ omstart:
 
 
 static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
-			   char *filename,int usetaggeom, int info)
+			   char *filename,int usetaggeom, int keeporphans, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
@@ -4471,6 +4485,8 @@ omstart:
     }
 
     else if(strstr(line,"$PhysicalNames")) {
+      int entdim;
+      entdim = dim;
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
@@ -4479,24 +4495,30 @@ omstart:
         if(allocated) {
 	  cp = line;
 	  gmshtype = next_int(&cp);
+	  if(gmshtype < entdim-1) {
+	    printf("Assuming maximum entity dim to be %d\n",dim-1);
+	    entdim--;
+	  }
 	  tagphys = next_int(&cp);
-	  if(gmshtype == dim-1) {
+	  if(gmshtype == entdim-1) {
 	    physsurfexist = TRUE;
-	    if(tagphys < MAXBCS) {
+	    if(tagphys < MAXBCS)  {
 	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
 	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }	    
 	  }
-	  else if(gmshtype == dim) {
+	  else if(gmshtype == entdim) {
 	    physvolexist = TRUE;
 	    if(tagphys < MAXBODIES) {
 	      sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
 	      printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }
 	  }
 	  else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
 		      "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
@@ -4511,17 +4533,30 @@ omstart:
     else if(strstr(line,"$Periodic")) {
       int numPeriodicLinks;
       if(allocated) printf("Reading periodic links but doing nothing with them!\n");
-      
-      GETLINE;
-      cp = line;
-      numPeriodicLinks = next_int(&cp);
-      for(i=1; i <= numPeriodicLinks; i++) {
+
+      if(1) {
+	numPeriodicLinks = 0;
+	for(;;) {
+	  GETLINE;
+	  if(strstr(line,"$EndPeriodic")) {
+	    if(allocated) printf("Number of lines for periodic stuff: %d\n",numPeriodicLinks);
+	    break;
+	  }
+	  numPeriodicLinks++;
+	}
+      }
+      else {	      
 	GETLINE;
-      }     
-      GETLINE;
-      if(!strstr(line,"$EndPeriodic")) {
-	printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
-      }           
+	cp = line;
+	numPeriodicLinks = next_int(&cp);
+	for(i=1; i <= numPeriodicLinks; i++) {
+	  GETLINE;
+	}     
+	GETLINE;
+	if(!strstr(line,"$EndPeriodic")) {
+	  printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
+	}
+      }
     }
 
     else if(strstr(line,"$PartitionedEntities")) {
@@ -4618,7 +4653,7 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
-  ElementsToBoundaryConditions(data,bound,FALSE,info);
+  ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
@@ -4630,12 +4665,16 @@ omstart:
   return(0);
 }
 
+
 int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
-		  char *prefix,int info)
+		  char *prefix,int keeporphans,int info)
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
   int errnum,usetaggeom;
+
+  /* keeprophans - Should we keep lower order elements not associated to any 
+     higher order entity? ElmerGUI certainly does not like it. */
   
   sprintf(filename,"%s",prefix);
   if ((in = fopen(filename,"r")) == NULL) {
@@ -4668,14 +4707,14 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     
     if( verno == 4 ) {
       if( minorno == 0 ) 
-	errnum = LoadGmshInput4(data,bound,filename,usetaggeom,info);
+	errnum = LoadGmshInput4(data,bound,filename,usetaggeom,keeporphans,info);
       else if( minorno == 1 ) 
-	errnum = LoadGmshInput41(data,bound,filename,usetaggeom,info);
+	errnum = LoadGmshInput41(data,bound,filename,usetaggeom,keeporphans,info);
       else
 	printf("Minor version not yet supported, cannot continue!\n");
     }
     else {
-      errnum = LoadGmshInput2(data,bound,filename,usetaggeom,info);
+      errnum = LoadGmshInput2(data,bound,filename,usetaggeom,keeporphans,info);
     }      
   } else {
     fclose(in);
@@ -5395,6 +5434,9 @@ omstart:
 	  }	  
 	}
       }
+      if(info) {
+	printf("Element type range in whole mesh is [%d %d]\n",minelemtype,maxelemtype);
+      }
     }
 
     if( mode == 2420 ) {
@@ -5590,6 +5632,7 @@ omstart:
 	  }
 	  else if(grouptype == 7) {
 	    nopoints += 1;
+
 	    if(allocated) {
 	      elemcode = 101;
 	      data->material[noelements+nopoints] = nogroup;
@@ -5748,7 +5791,7 @@ end:
      Now separate the lower dimensional elements to be boundary elements. */
   ElementsToBoundaryConditions(data,bound,TRUE,info);
  
-  if(info) printf("The Universal mesh was loaded from file %s.\n\n",filename);
+  if(info) printf("The Universal mesh was loaded from file %s.\n",filename);
 
   return(0);
 }

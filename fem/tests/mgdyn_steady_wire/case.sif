@@ -64,11 +64,13 @@ Solver 1
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ilu1
-  Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1e-10
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1e-12
   Linear System Iterative Method = BiCGStabL
   Linear System Residual Output = 20
   Steady State Convergence Tolerance = 1e-06
+
+  Linear System Abort Not Converged = False
 
   Desired Coil Current = Real 1.0
   Nonlinear System Consistent Norm = True
@@ -131,7 +133,7 @@ Solver 4
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
 
-  Reference Sums(6) = Real 44 13 116875 1442 402295082 3.6139440456815133
+  Reference Sums(6) = Real 44 13 116875 1442 402220888.0 4.178146196905
   Reference Norm = 1.0
 End
 
@@ -214,3 +216,4 @@ End
 
 Solver 1 :: Reference Norm = 3.26776127E-05
 Solver 2 :: Reference Norm = 1.68332777E-10
+  

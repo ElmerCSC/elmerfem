@@ -1,0 +1,19 @@
+! define some parameters for the test
+$yearinsec = 31536000.0
+$rhoi = 910.0/(1.0e6*yearinsec^2)   
+$rhow = 1028.0/(1.0e6*yearinsec^2)
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$A = 4.9e-7*yearinsec
+$eta = (2.0*A)^(-1.0/n)
+$zsl=0.0
+! critical thickness
+$Hcr = 1.0
+
+! inflow dirichlet velocity
+$V_gl=100.0
+! ice thickness at the GL and Front
+$Hgl=400.0
+! slope
+$dhdx=-1.0e-3
+

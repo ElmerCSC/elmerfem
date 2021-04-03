@@ -189,6 +189,7 @@ void Instructions()
   printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
   printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
   printf("-autoclean           : this performs the united action of the four above\n");
+  printf("-multidim            : keep lower order entities even if they are not boundaries\n");
   printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
   printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
   printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
@@ -3587,6 +3588,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->increase = FALSE;
   eg->translate = FALSE;
   eg->isoparam = FALSE;
+  eg->multidim = FALSE;
   eg->removelowdim = FALSE;
   eg->removeintbcs = FALSE;
   eg->removeunused = FALSE;
@@ -3922,6 +3924,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
     if(strcmp(argv[arg],"-nonames") == 0) {
       eg->usenames = FALSE;
       printf("Names will be omitted even if they would exist\n");
+    }   
+
+    if(strcmp(argv[arg],"-multidim") == 0) {
+      eg->multidim = TRUE;
+      printf("Lower dimensional entities may be bulk too!\n");
     }   
 
     if(strcmp(argv[arg],"-removelowdim") == 0) {

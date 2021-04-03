@@ -30,7 +30,7 @@ The observations can be given in an ascii or netcdf file.
 
 The model variable can be a scalar or a vector, and the observations can be only the first *n* components of the variable, e.g. in general only the horizontal components of the surface velocity vector are observed.
 
-Be carefull, this solver will reset the values of the cost and sensitivity to 0; so that it must be used in first place in an assimilation sequence.
+Be careful, this solver will reset the values of the cost and sensitivity to 0; so that it must be used in first place in an assimilation sequence.
 
 In general this solver will be executed on the whole mesh for vertically integrated models or on the upper free surface
 for a 3D model and 2D surface observations.

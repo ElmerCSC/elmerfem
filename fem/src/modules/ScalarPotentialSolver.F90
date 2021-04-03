@@ -138,21 +138,18 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % rhs = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
   
   CALL BulkAssembly()
-  IF(.NOT. ConstantBulkMatrixInUse ) THEN
+  IF ( ConstantBulkMatrix ) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
 
   ! No flux BCs
-  CALL DefaultFinishAssembly()
 
+  CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
 
   
