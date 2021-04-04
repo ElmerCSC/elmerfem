@@ -1904,7 +1904,7 @@ CONTAINS
     REAL(KIND=dp) :: xc   
     !------------
     xc = MAX(Salinity/Xi,0.0_dp)
-    rhogw = rhow*(18.01528_dp * (1.0_dp - xc) + 58.443_dp * xc)/18.01528_dp
+    rhogw_driesner = rhow*(18.01528_dp * (1.0_dp - xc) + 58.443_dp * xc)/18.01528_dp
   END FUNCTION rhogw_driesner
   !---------------------------------------------------------------------------------------------
   REAL (KIND=dp) FUNCTION rhogwP(rhowp,rhocp,Xi,Salinity)
