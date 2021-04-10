@@ -750,7 +750,7 @@ void MainWindow::createActions() {
           SLOT(sharpEdgeColorSlot()));
 
   // View -> Colors -> Selection
-  chooseSelectionColorAct = new QAction(QIcon(), tr("Selection ..."), this);
+  chooseSelectionColorAct = new QAction(QIcon(), tr("Selection..."), this);
   chooseSelectionColorAct->setStatusTip(tr("Set selection color"));
   connect(chooseSelectionColorAct, SIGNAL(triggered()), this,
           SLOT(selectionColorSlot()));
