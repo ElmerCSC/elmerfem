@@ -173,6 +173,7 @@ public:
   QColor edgeColor;
   QColor surfaceMeshColor;
   QColor sharpEdgeColor;
+  QColor selectionColor;
   
   // public hash tables:
   QMap<int, int> boundaryMap; // QHash<int, int> boundaryMap;

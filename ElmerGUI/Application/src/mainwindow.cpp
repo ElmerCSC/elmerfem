@@ -300,7 +300,7 @@ MainWindow::MainWindow() {
   loadDefinitions();
 
   // initialization ready:
-  synchronizeMenuToState();
+//  synchronizeMenuToState(); Commented out as this will be called from loadSettings() later
   setWindowTitle(tr("ElmerGUI"));
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
   finalizeSplash();
@@ -749,6 +749,12 @@ void MainWindow::createActions() {
   connect(chooseSharpEdgeColorAct, SIGNAL(triggered()), this,
           SLOT(sharpEdgeColorSlot()));
 
+  // View -> Colors -> Selection
+  chooseSelectionColorAct = new QAction(QIcon(), tr("Selection ..."), this);
+  chooseSelectionColorAct->setStatusTip(tr("Set selection color"));
+  connect(chooseSelectionColorAct, SIGNAL(triggered()), this,
+          SLOT(selectionColorSlot()));
+
   // View -> Colors -> Boundaries
   showBoundaryColorAct = new QAction(QIcon(), tr("Boundaries"), this);
   showBoundaryColorAct->setStatusTip(
@@ -1050,6 +1056,8 @@ void MainWindow::createMenus() {
   colorizeMenu->addAction(chooseSurfaceMeshColorAct);
   colorizeMenu->addAction(chooseSharpEdgeColorAct);
   colorizeMenu->addSeparator();
+  colorizeMenu->addAction(chooseSelectionColorAct);  
+  colorizeMenu->addSeparator();  
   colorizeMenu->addAction(showBoundaryColorAct);
   colorizeMenu->addAction(showBodyColorAct);
   viewMenu->addSeparator();
@@ -4656,7 +4664,7 @@ void MainWindow::resetSlot() {
     return;
   }
 
-  glWidget->stateFlatShade = true;
+  //glWidget->stateFlatShade = true;
   glWidget->stateDrawSurfaceMesh = true;
 #ifndef WIN32
   glWidget->stateDrawSharpEdges = true;
@@ -4948,6 +4956,19 @@ void MainWindow::sharpEdgeColorSlot() {
 
   QColor newColor = QColorDialog::getColor(glWidget->sharpEdgeColor, this);
   glWidget->sharpEdgeColor = newColor;
+  glWidget->rebuildLists();
+}
+
+// View -> Colors -> Selection
+//-----------------------------------------------------------------------------
+void MainWindow::selectionColorSlot() {
+  if (!glWidget->hasMesh()) {
+    logMessage("Unable to change sharp edge colors when the mesh is empty");
+    return;
+  }
+
+  QColor newColor = QColorDialog::getColor(glWidget->selectionColor, this);
+  glWidget->selectionColor = newColor;
   glWidget->rebuildLists();
 }
 
@@ -7661,6 +7682,29 @@ void MainWindow::loadSettings() {
     case 1: selectVtkPostSlot(); break;
     case 2: selectParaViewSlot(); break;
   }
+  
+  // view menu settings
+  //glWidget->stateDrawSurfaceMesh = settings_value("view/surfaceMesh", glWidget->stateDrawSurfaceMesh).toBool(); 
+  //glWidget->stateDrawVolumeMesh = settings_value("view/volumeMesh", glWidget->stateDrawVolumeMesh).toBool(); 
+  //glWidget->stateDrawSharpEdges = settings_value("view/sharpEdge", glWidget->stateDrawSharpEdges).toBool(); 
+  glWidget->stateDrawCoordinates = settings_value("view/compass", glWidget->stateDrawCoordinates).toBool(); 
+  glWidget->stateFlatShade = settings_value("view/flatShade", glWidget->stateFlatShade).toBool(); 
+  glWidget->stateOrtho = settings_value("view/orthogonal", glWidget->stateOrtho).toBool();
+  //glWidget->stateDrawSurfaceNumbers = settings_value("view/surfaceNumbers", glWidget->stateDrawSurfaceNumbers).toBool();
+  //glWidget->stateDrawEdgeNumbers = settings_value("view/edgeNumbers", glWidget->stateDrawEdgeNumbers).toBool();
+  //glWidget->stateDrawNodeNumbers = settings_value("view/nodeNumbers", glWidget->stateDrawNodeNumbers).toBool();
+  //glWidget->stateDrawBoundaryIndex = settings_value("view/boundaryIndex", glWidget->stateDrawBoundaryIndex).toBool();
+  //glWidget->stateDrawBodyIndex = settings_value("view/bodyIndex", glWidget->stateDrawBodyIndex).toBool();
+  //glWidget->stateBcColors = settings_value("view/colorBoundaries", glWidget->stateBcColors).toBool();
+  //glWidget->stateBodyColors = settings_value("view/colorBodies", glWidget->stateBodyColors).toBool();
+  glWidget->backgroundColor = settings_value("color/background", glWidget->backgroundColor).value<QColor>();
+  glWidget->surfaceColor = settings_value("color/surface", glWidget->surfaceColor).value<QColor>();
+  glWidget->edgeColor = settings_value("color/edge", glWidget->edgeColor).value<QColor>();
+  glWidget->surfaceMeshColor = settings_value("color/surfaceMesh", glWidget->surfaceMeshColor).value<QColor>();
+  glWidget->sharpEdgeColor = settings_value("color/sharpEdge", glWidget->sharpEdgeColor).value<QColor>();
+  glWidget->selectionColor = settings_value("color/selection", glWidget->selectionColor).value<QColor>();
+  
+  synchronizeMenuToState();  
 }
 
 // Save settings
@@ -7697,6 +7741,28 @@ void MainWindow::saveSettings() {
   }else if(selectParaViewAct->isChecked()){
     settings_setValue("postProcessor/i", 2);
   }
+  
+  // view menu settings
+  //settings_setValue("view/surfaceMesh", glWidget->stateDrawSurfaceMesh); 
+  //settings_setValue("view/volumeMesh", glWidget->stateDrawVolumeMesh); 
+  //settings_setValue("view/sharpEdge", glWidget->stateDrawSharpEdges); 
+  settings_setValue("view/compass", glWidget->stateDrawCoordinates); 
+  settings_setValue("view/flatShade", glWidget->stateFlatShade); 
+  settings_setValue("view/orthogonal", glWidget->stateOrtho);
+  //settings_setValue("view/surfaceNumbers", glWidget->stateDrawSurfaceNumbers);
+  //settings_setValue("view/edgeNumbers", glWidget->stateDrawEdgeNumbers);
+  //settings_setValue("view/nodeNumbers", glWidget->stateDrawNodeNumbers);
+  //settings_setValue("view/boundaryIndex", glWidget->stateDrawBoundaryIndex);
+  //settings_setValue("view/bodyIndex", glWidget->stateDrawBodyIndex);
+  //settings_setValue("view/colorBoundaries", glWidget->stateBcColors);
+  //settings_setValue("view/colorBodies", glWidget->stateBodyColors);
+  settings_setValue("color/background", glWidget->backgroundColor);
+  settings_setValue("color/surface", glWidget->surfaceColor);
+  settings_setValue("color/edge", glWidget->edgeColor);
+  settings_setValue("color/surfaceMesh", glWidget->surfaceMeshColor);
+  settings_setValue("color/sharpEdge", glWidget->sharpEdgeColor);
+  settings_setValue("color/selection", glWidget->selectionColor);
+  
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
