@@ -4664,7 +4664,7 @@ void MainWindow::resetSlot() {
     return;
   }
 
-  //glWidget->stateFlatShade = true;
+  glWidget->stateFlatShade = true;
   glWidget->stateDrawSurfaceMesh = true;
 #ifndef WIN32
   glWidget->stateDrawSharpEdges = true;
@@ -7689,20 +7689,7 @@ void MainWindow::loadSettings() {
     case 2: selectParaViewSlot(); break;
   }
   
-  // view menu settings
-  //glWidget->stateDrawSurfaceMesh = settings_value("view/surfaceMesh", glWidget->stateDrawSurfaceMesh).toBool(); 
-  //glWidget->stateDrawVolumeMesh = settings_value("view/volumeMesh", glWidget->stateDrawVolumeMesh).toBool(); 
-  //glWidget->stateDrawSharpEdges = settings_value("view/sharpEdge", glWidget->stateDrawSharpEdges).toBool(); 
-  glWidget->stateDrawCoordinates = settings_value("view/compass", glWidget->stateDrawCoordinates).toBool(); 
-  glWidget->stateFlatShade = settings_value("view/flatShade", glWidget->stateFlatShade).toBool(); 
-  glWidget->stateOrtho = settings_value("view/orthogonal", glWidget->stateOrtho).toBool();
-  //glWidget->stateDrawSurfaceNumbers = settings_value("view/surfaceNumbers", glWidget->stateDrawSurfaceNumbers).toBool();
-  //glWidget->stateDrawEdgeNumbers = settings_value("view/edgeNumbers", glWidget->stateDrawEdgeNumbers).toBool();
-  //glWidget->stateDrawNodeNumbers = settings_value("view/nodeNumbers", glWidget->stateDrawNodeNumbers).toBool();
-  //glWidget->stateDrawBoundaryIndex = settings_value("view/boundaryIndex", glWidget->stateDrawBoundaryIndex).toBool();
-  //glWidget->stateDrawBodyIndex = settings_value("view/bodyIndex", glWidget->stateDrawBodyIndex).toBool();
-  //glWidget->stateBcColors = settings_value("view/colorBoundaries", glWidget->stateBcColors).toBool();
-  //glWidget->stateBodyColors = settings_value("view/colorBodies", glWidget->stateBodyColors).toBool();
+  // Color settings
   glWidget->backgroundColor = settings_value("color/background", glWidget->backgroundColor).value<QColor>();
   glWidget->surfaceColor = settings_value("color/surface", glWidget->surfaceColor).value<QColor>();
   glWidget->edgeColor = settings_value("color/edge", glWidget->edgeColor).value<QColor>();
@@ -7748,20 +7735,7 @@ void MainWindow::saveSettings() {
     settings_setValue("postProcessor/i", 2);
   }
   
-  // view menu settings
-  //settings_setValue("view/surfaceMesh", glWidget->stateDrawSurfaceMesh); 
-  //settings_setValue("view/volumeMesh", glWidget->stateDrawVolumeMesh); 
-  //settings_setValue("view/sharpEdge", glWidget->stateDrawSharpEdges); 
-  settings_setValue("view/compass", glWidget->stateDrawCoordinates); 
-  settings_setValue("view/flatShade", glWidget->stateFlatShade); 
-  settings_setValue("view/orthogonal", glWidget->stateOrtho);
-  //settings_setValue("view/surfaceNumbers", glWidget->stateDrawSurfaceNumbers);
-  //settings_setValue("view/edgeNumbers", glWidget->stateDrawEdgeNumbers);
-  //settings_setValue("view/nodeNumbers", glWidget->stateDrawNodeNumbers);
-  //settings_setValue("view/boundaryIndex", glWidget->stateDrawBoundaryIndex);
-  //settings_setValue("view/bodyIndex", glWidget->stateDrawBodyIndex);
-  //settings_setValue("view/colorBoundaries", glWidget->stateBcColors);
-  //settings_setValue("view/colorBodies", glWidget->stateBodyColors);
+  // Color settings
   settings_setValue("color/background", glWidget->backgroundColor);
   settings_setValue("color/surface", glWidget->surfaceColor);
   settings_setValue("color/edge", glWidget->edgeColor);
