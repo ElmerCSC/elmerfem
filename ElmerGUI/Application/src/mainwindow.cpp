@@ -7174,38 +7174,43 @@ void MainWindow::compilerFinishedSlot(int) {
 
 // About dialog...
 //-----------------------------------------------------------------------------
+
 void MainWindow::showaboutSlot() {
-  QMessageBox::about(
-      this, tr("Information about ElmerGUI"),
+
+  QMessageBox msgBox(this);
+  msgBox.setTextFormat(Qt::RichText);
+  msgBox.setIconPixmap( windowIcon().pixmap(32));
+  msgBox.setWindowTitle(tr("Information about ElmerGUI"));
+  msgBox.setText(
       tr("ElmerGUI is a preprocessor for two and "
          "three dimensional modeling with Elmer "
          "finite element software. The program "
          "uses elmergrid, nglib, and optionally tetlib, "
-         "as finite element mesh generators:\n\n"
-         "http://www.csc.fi/elmer/\n"
-         "https://ngsolve.org/\n"
-         "http://tetgen.berlios.de/\n\n"
+         "as finite element mesh generators:<BR><BR>"
+         "<A HREF='https://www.csc.fi/elmer/'>https://www.csc.fi/elmer/</A><BR>"
+         "<A HREF='https://ngsolve.org/'>https://ngsolve.org/</A><BR>"
+         "<A HREF='https://www.berlios.de/software/tetgen/'>https://www.berlios.de/software/tetgen/</A><BR><BR>"
          "ElmerGUI uses the Qt Cross-Platform "
-         "Application Framework by The Qt Company:\n\n"
-         "http://www.qt.io/\n\n"
+         "Application Framework by The Qt Company:<BR><BR>"
+         "<A HREF='https://www.qt.io/'>https://www.qt.io/</A><BR><BR>"
 #ifdef EG_VTK
          "This version of ElmerGUI contains a built-in "
          "postprocessor based on the Visualization Toolkit "
-         "(VTK):\n\n"
-         "http://www.vtk.org/\n\n"
+         "(VTK):<BR><BR>"
+         "<A HREF='https://vtk.org/'>https://vtk.org/</A><BR><BR>"
 #endif
 
 #ifdef EG_PARAVIEW
          "This version of ElmerGUI has been linked "
          "against ParaView visualization software."
-         "\n\n"
-         "http://www.paraview.org\n\n"
+         "<BR><BR>"
+         "<A HREF='https://www.paraview.org/'>https://www.paraview.org</A><BR><BR>"
 #endif
 
 #ifdef EG_OCC
          "This version of ElmerGUI has been compiled with "
-         "the OpenCascade solids modeling library:\n\n"
-         "http://www.opencascade.org/\n\n"
+         "the OpenCascade solids modeling library:<BR><BR>"
+         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</A><BR><BR>"
 #endif
 
 #ifdef MPICH2
@@ -7214,14 +7219,15 @@ void MainWindow::showaboutSlot() {
          "national laboratory. In order to use the parallel "
          "solver, the MPICH2 runtime environment should be "
          "installed and configured on your system. For more "
-         "details, see:\n\n"
-         "http://www.mcs.anl.gov/research/projects/mpich2/\n\n"
+         "details, see:<BR><BR>"
+         "<A HREF='https://www.mpich.org/'>https://www.mpich.org/</A><BR><BR>"
 #endif
          "The GPL-licensed source code of ElmerGUI is available "
-         "from the git repository\n\n"
-         "https://github.com/ElmerCSC/elmerfem/\n\n"
-         "Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki,\n"
+         "from the git repository<BR><BR>"
+         "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A><BR><BR>"
+         "Written by Mikko Lyly, Juha Ruokolainen, Saeki Takayuki,<BR>"
          "Peter Raback and Sampo Sillanpaa 2008-2020"));
+  msgBox.exec();
 }
 
 //*****************************************************************************

@@ -325,32 +325,7 @@ int main(int argc, char *argv[])
       Goodbye();
     nomeshes++;
     break;
-
     
-#if 0
-  case 16: 
-    InitializeKnots(&(data[nofile]));
-    if( Easymesh(argc,argv,&data[nofile].noknots,
-		 &data[nofile].noelements,&sides)) 
-      Goodbye();	
-    
-    data[nofile].dim = 2;
-    data[nofile].coordsystem = COORD_CART2;
-    data[nofile].maxnodes = 3;
-    
-    AllocateKnots(&(data[nofile]));
-    boundaries[nofile] = (struct BoundaryType*)
-      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
-    for(i=0;i<MAXBOUNDARIES;i++) {
-      boundaries[nofile][i].created = FALSE; 
-      boundaries[nofile][i].nosides = 0;
-    }
-    if(EasymeshCopy(&(data[nofile]),boundaries[nofile]))
-      Goodbye();    
-    nomeshes++;
-    break;
-#endif
-
   case 17:
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
@@ -879,12 +854,6 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++)
       SaveFidapOutput(&data[k],eg.filesout[k],info,1,data[k].dofs[1]);
     break;
-
-#if 0
-  case 8:
-    EasymeshSave();
-    break;
-#endif
 
 
     /* Some obsolete special formats related to mapping, view factors etc. */

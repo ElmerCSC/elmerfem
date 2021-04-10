@@ -146,8 +146,14 @@ CONTAINS
       CALL Fatal( 'ParCommInit', Message )
     END IF
 #else
+
+! This is a dirty fix for Windows compiler (msys2+gfortran+MSMPI) where this
+! caused problems. However, likelyhood of this having to be used under
+! Windows is close to zero. 
+#ifndef WIN32
     CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
     IF ( ierr /= 0 ) RETURN
+#endif
     IF (.NOT. ParEnv % ExternalInit) THEN
         CALL MPI_INIT( ierr )
     END IF
