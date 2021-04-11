@@ -7179,7 +7179,8 @@ void MainWindow::showaboutSlot() {
 
   QMessageBox msgBox(this);
   msgBox.setTextFormat(Qt::RichText);
-  msgBox.setIconPixmap( windowIcon().pixmap(32));
+  QIcon icon(windowIcon());
+  msgBox.setIconPixmap( icon.pixmap(32));
   msgBox.setWindowTitle(tr("Information about ElmerGUI"));
   msgBox.setText(
       tr("ElmerGUI is a preprocessor for two and "
