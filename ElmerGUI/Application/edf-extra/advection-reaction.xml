@@ -11,6 +11,12 @@
 				<Name>Convection</Name>
 				<Type> String </Type>
 			</Parameter>
+			<Parameter Widget="TextEdit" Enabled="True">
+				<Name> Free text </Name>
+				<Type> String </Type>
+				<Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+				<StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+			</Parameter>
 			<Item>
 				<Name>None</Name>
 			</Item>
@@ -53,18 +59,6 @@
 				<StatusTip></StatusTip>
 			</Parameter>
 			<Parameter Widget="Edit">
-				<Name> Nonlinear System Convergence Tolerance </Name>
-				<Type> Real </Type>
-				<Whatis> The criterion to terminate the nonlinear iteration after the relative change of the norm of the field variable between two consecutive iterations k is small enough ||ck − ck−1|| &lt; e||ck||, where e is the value given with this keyword. </Whatis>
-				<StatusTip></StatusTip>
-			</Parameter>
-			<Parameter Widget="Edit">
-				<Name> Nonlinear System Max Iterations </Name>
-				<Type> Integer </Type>
-				<Whatis> The maximum number of nonlinear iterations the solver is allowed to do. </Whatis>
-				<StatusTip></StatusTip>
-			</Parameter>
-			<Parameter Widget="Edit">
 				<Name> Steady State Convergence Tolerance </Name>
 				<Type> Real </Type>
 				<Whatis> With this keyword a equation specific steady state or coupled system convergence tolerance is given. All the active equation solvers must meet their own tolerances for their variable c before the whole system is deemed converged. The tolerance criterion is: ||ci − ci−1|| &lt; e||ci ||, where e is the value given with this keyword. </Whatis>
@@ -75,12 +69,20 @@
 				<Type> Logical </Type>
 				<Whatis> Assumes the variational inequality method to apply, if set to true. </Whatis>
 				<StatusTip></StatusTip>
+				<Activate> /Advection-Reaction/Material/Variable_name Upper Limit</Activate>
+				<Activate> /Advection-Reaction/Material/Variable_name Lower Limit</Activate>
 			</Parameter>
 			<Parameter Widget="Edit">
-				<Name> Exported Variable </Name>
+				<Name> Exported Variable 1 </Name>
 				<Type> String </Type>
 				<Whatis> in order to write the DG variable Variable_name to a for ElmerPost (non-DG mesh) readable variable, an exported variable with an arbitrary name (e.g., Exported Variable 1 = Variable_name Nodal Result) has to be defined. It is then used to interpolate the DG result to nodal values in order to display them. </Whatis>
 				<StatusTip></StatusTip>
+			</Parameter>
+			<Parameter Widget="TextEdit" Enabled="True">
+				<Name> Free text </Name>
+				<Type> String </Type>
+				<Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+				<StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
 			</Parameter>
 		</Solver>
 		<BodyForce>
@@ -89,12 +91,28 @@
 				<Type> Real </Type>
 				<Whatis> defines the volumetric source for variable c </Whatis>
 			</Parameter>
+			<Parameter Widget="TextEdit" Enabled="True">
+				<Name> Free text </Name>
+				<Type> String </Type>
+				<Whatis> Free text is copied into the BodyForce-block of the SIF as such. </Whatis>
+				<StatusTip> Free text is copied into the BodyForce-block of the SIF as such. </StatusTip>
+			</Parameter>
 		</BodyForce>
 		<Material>
 			<Parameter Widget="Edit">
-				<Name>Convection Velocity</Name>
+				<Name>Convection Velocity 1</Name>
 				<Type> Real </Type>
-				<Whatis> Convection velocity i= 1, 2, 3 for the constant convection model. </Whatis>
+				<Whatis> Convection velocity i= 1for the constant convection model. </Whatis>
+			</Parameter>
+			<Parameter Widget="Edit">
+				<Name>Convection Velocity 2</Name>
+				<Type> Real </Type>
+				<Whatis> Convection velocity i= 2 for the constant convection model. </Whatis>
+			</Parameter>
+			<Parameter Widget="Edit">
+				<Name>Convection Velocity 3</Name>
+				<Type> Real </Type>
+				<Whatis> Convection velocity i= 3 for the constant convection model. </Whatis>
 			</Parameter>
 			<Parameter Widget="Edit">
 				<Name>Variable_name Upper Limit</Name>
@@ -111,6 +129,12 @@
 				<Type> Real </Type>
 				<Whatis> defines the reaction rate, Γ </Whatis>
 			</Parameter>
+			<Parameter Widget="TextEdit" Enabled="True">
+				<Name> Free text </Name>
+				<Type> String </Type>
+				<Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+				<StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+			</Parameter>
 		</Material>
 		<InitialCondition>
 			<Parameter Widget="Edit">
@@ -118,12 +142,24 @@
 				<Type> Real </Type>
 				<Whatis> sets the initial value for the scalar c </Whatis>
 			</Parameter>
+			<Parameter Widget="TextEdit" Enabled="True">
+				<Name> Free text </Name>
+				<Type> String </Type>
+				<Whatis> Free text is copied into the InitialCondition-block of the SIF as such. </Whatis>
+				<StatusTip> Free text is copied into the InitialCondition-block of the SIF as such. </StatusTip>
+			</Parameter>
 		</InitialCondition>
 		<BoundaryCondition>
 			<Parameter Widget="Edit">
 				<Name>Variable_name</Name>
 				<Type> Real </Type>
 				<Whatis> sets the value for c at inflow boundaries </Whatis>
+			</Parameter>
+			<Parameter Widget="TextEdit" Enabled="True">
+				<Name> Free text </Name>
+				<Type> String </Type>
+				<Whatis> Free text is copied into the BoundaryCondition-block of the SIF as such. </Whatis>
+				<StatusTip> Free text is copied into the BoundaryCondition-block of the SIF as such. </StatusTip>
 			</Parameter>
 		</BoundaryCondition>
 	</PDE>
