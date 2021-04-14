@@ -3236,7 +3236,7 @@ CONTAINS
 !> This is a line of monolithic solvers where different physics and constraints 
 !> are assemblied to the same matrix.
 !> Provide assembly loop and solution of linear and nonlinear systems
-!> This routine uses minimalistic assmebly routines to create the 
+!> This routine uses minimalistic assembly routines to create the 
 !> matrices. Often the results to less labour in coding which may be 
 !> comprimized by less flexibility.
 ! 
@@ -5235,7 +5235,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
-         UpdateExported, GotCoordTransform, NamespaceFound
+         GotCoordTransform, NamespaceFound
      INTEGER :: i, j, k, n, BDOFs, timestep, timei, timei0, PassiveBcId, Execi
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct

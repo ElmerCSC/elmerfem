@@ -552,8 +552,6 @@ CONTAINS
      END IF
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
 
-     Element => GetCurrentElement(UElement)
-
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
@@ -564,6 +562,8 @@ CONTAINS
        END IF
      END IF
 
+     Element => GetCurrentElement(UElement)
+
      ! If variable is defined on gauss points return that instead
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        j = Element % ElementIndex
@@ -572,6 +572,15 @@ CONTAINS
          x(i) = Values(Variable % Perm(j) + i)
        END DO
        RETURN
+     ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       Indexes => Element % DGIndexes
+       n = Element % Type % NumberOfNodes
+       DO i=1,n
+         j = Variable % Perm(Indexes(i))
+         IF(j==0) CYCLE
+         x(i) = Values(j)
+       END DO
+       RETURN       
      END IF
 
      
@@ -649,16 +658,6 @@ CONTAINS
      END IF
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
 
-     Element => GetCurrentElement(UElement)
-
-     Indexes => GetIndexStore()
-     IF ( ASSOCIATED(Variable % Solver ) ) THEN
-       n = GetElementDOFs( Indexes, Element, Variable % Solver )
-     ELSE
-       n = GetElementDOFs( Indexes, Element, Solver )
-     END IF
-     n = MIN( n, SIZE(x,2) )
-
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
@@ -668,8 +667,10 @@ CONTAINS
          END IF
        END IF
      END IF
+     
+     Element => GetCurrentElement(UElement)
 
-
+       
      ! If variable is defined on gauss points return that instead
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        ASSOCIATE(dofs => variable % dofs)
@@ -689,8 +690,30 @@ CONTAINS
          END DO
          RETURN
        END ASSOCIATE
+     ELSE IF(  Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       Indexes => Element % DGIndexes
+       n = Element % TYPE % NumberOfNodes
+       ASSOCIATE(dofs => variable % dofs)
+         DO i=1,n
+           j = variable % perm(indexes(i))
+           IF( j==0 ) CYCLE
+           DO k=1,dofs
+             x(k, i) = Values((j-1)*dofs + k)
+           END DO
+         END DO
+         RETURN
+       END ASSOCIATE       
      END IF
 
+     
+     Indexes => GetIndexStore()
+     IF ( ASSOCIATED(Variable % Solver ) ) THEN
+       n = GetElementDOFs( Indexes, Element, Variable % Solver )
+     ELSE
+       n = GetElementDOFs( Indexes, Element, Solver )
+     END IF
+     n = MIN( n, SIZE(x,2) )
+     
      DO i=1,Variable % DOFs
        IF ( ASSOCIATED( Variable % Perm ) ) THEN
          IF( Variable % PeriodicFlipActive ) THEN
@@ -6856,387 +6879,6 @@ CONTAINS
     DEALLOCATE(Indexes, DOFIndexes)
   END SUBROUTINE CheckColourings
 
-
-
-!------------------------------------------------------------------------------
-!> Assemble coupling matrices related to shell-solid interaction by
-!> utilizing the director data of the shell model.
-!> A possible scenario is that the diagonal blocks are the matrices of the 
-!> solvers listed using the keyword "Block Solvers". The (1,1)-block is then
-!> tied up with the value of the first entry in the "Block Solvers" array. 
-!> Here it is assumed that the (2,2)-block is a shell stiffness matrix.
-!> NOTE: This is still under construction and doesn't couple forces from
-!> the shell model to the solid model.  
-!------------------------------------------------------------------------------
-  SUBROUTINE StructureCouplingAssembly_defutils( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
-      IsSolid, IsPlate, IsShell, IsBeam )
-!------------------------------------------------------------------------------   
-    TYPE(Solver_t) :: Solver          !< The leading solver defining block structure 
-    TYPE(Variable_t), POINTER :: FVar !< Slave structure variable
-    TYPE(Variable_t), POINTER :: SVar !< Master structure variable
-    TYPE(Matrix_t), POINTER :: A_f    !< (2,2)-block for the "slave" variable
-    TYPE(Matrix_t), POINTER :: A_s    !< (1,1)-block for the "master" variable
-    TYPE(Matrix_t), POINTER :: A_fs   !< (2,1)-block for interaction
-    TYPE(Matrix_t), POINTER :: A_sf   !< (1,2)-block for interaction
-    LOGICAL :: IsSolid, IsPlate, IsShell, IsBeam !< The type of the slave variable
-   !------------------------------------------------------------------------------
-    LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
-    INTEGER, POINTER :: FPerm(:), SPerm(:)
-    INTEGER :: FDofs, SDofs
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
-    REAL(KIND=dp) :: vdiag
-    !------------------------------------------------------------------------------
-
-    CALL Info('StructureCouplingAssembly','Creating coupling matrix for structures',Level=6)
-    
-    Mesh => Solver % Mesh
-    dim = Mesh % MeshDim
-
-    ! S refers to the first and F to the second block (was fluid):
-    FPerm => FVar % Perm
-    SPerm => SVar % Perm
-    
-    fdofs = FVar % Dofs
-    sdofs = SVar % Dofs
-
-    IF( IsSolid ) CALL Info('StructureCouplingAssembly','Assuming coupling with solid solver',Level=8)
-    IF( IsBeam )  CALL Info('StructureCouplingAssembly','Assuming coupling with beam solver',Level=8)
-    IF( IsPlate ) CALL Info('StructureCouplingAssembly','Assuming coupling with plate solver',Level=8)
-    IF( IsShell ) CALL Info('StructureCouplingAssembly','Assuming coupling with shell solver',Level=8)
-    
-    ConstrainedF => A_f % ConstrainedDof
-    ConstrainedS => A_s % ConstrainedDof
-                  
-    nf = SIZE( FVar % Values ) 
-    ns = SIZE( SVar % Values ) 
-    
-    CALL Info('StructureCouplingAssembly','Slave structure dofs '//TRIM(I2S(nf))//&
-        ' with '//TRIM(I2S(fdofs))//' components',Level=10)
-    CALL Info('StructureCouplingAssembly','Master structure dofs '//TRIM(I2S(ns))//&
-        ' with '//TRIM(I2S(sdofs))//' components',Level=10)   
-    CALL Info('StructureCouplingAssembly','Assuming '//TRIM(I2S(dim))//&
-        ' active spatial dimensions',Level=10)   
-
-    IF( A_fs % FORMAT == MATRIX_LIST ) THEN
-      ! Add the largest entry that allocates the whole list matrix structure
-      CALL AddToMatrixElement(A_fs,nf,ns,0.0_dp)
-      CALL AddToMatrixElement(A_sf,ns,nf,0.0_dp)
-    ELSE
-      ! If we are revisiting then initialize the CRS matrices to zero
-      A_fs % Values = 0.0_dp
-      A_sf % Values = 0.0_dp      
-    END IF
-
-
-    IF (IsShell) THEN
-      !
-      ! The (2,2)-block is a shell matrix. The (2,1)-block should define
-      ! Dirichlet constraints and the (1,2)-block should apply forces for the
-      ! (1,1)-block.
-      !
-      ! The following block tries to mimic the functionality of the subroutine 
-      ! SetSolidCouplingBCs in ShellSolver.F90
-      !
-      SetSolidCouplingBCs: BLOCK
-        TYPE(Variable_t), POINTER :: Displacement
-        TYPE(Matrix_t), POINTER :: ShellMatrix, A
-        TYPE(ValueList_t), POINTER :: ValueList
-        TYPE(Element_t), POINTER :: Element
-
-        INTEGER, ALLOCATABLE, TARGET :: BoundaryNodes(:)
-        INTEGER, ALLOCATABLE :: NearNodes(:)
-        INTEGER, POINTER :: Perm(:), NodeIndices(:)
-        INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
-        INTEGER :: TargetCount, TargetNode, TargetInd, Row, ShellDOFs, DOFs
-        INTEGER :: i, j, k, l, n, p, jz, lz, np, i0
-        INTEGER :: ju, jv, ku, kv
-
-        REAL(KIND=dp), ALLOCATABLE :: NearCoordinates(:,:), AllDirectors(:,:)
-        REAL(KIND=dp), POINTER :: DirectorValues(:)
-        REAL(KIND=dp) :: res_z, maxres_z, minres_z, h_eff
-        REAL(KIND=dp) :: d(3), e3(3), d_h(3), v(3)
-
-        IF (.NOT. SVar % DOFs == 3) CALL Fatal('StructureCouplingAssembly', &
-            'Solid-shell coupling possible in 3D only')
-        DOFs = 3
-
-        ShellMatrix => A_f
-        ShellDOFs = FVar % DOFs
-        IF (.NOT. ALLOCATED(ShellMatrix % ConstrainedDOF)) &
-            ALLOCATE(ShellMatrix % ConstrainedDOF(ShellMatrix % NumberOfRows))
-
-        A => A_s
-        Diag => A % Diag
-        Rows => A % Rows
-        Cols => A % Cols
-        Perm => SVar % Perm
-
-        IF (.NOT. ASSOCIATED(A % InvPerm)) THEN
-          ALLOCATE(A % InvPerm(A % NumberOfRows))
-          DO i = 1,SIZE(Perm)
-            IF (Perm(i) > 0) THEN
-              A % InvPerm(Perm(i)) = i
-            END IF
-          END DO
-        END IF
-
-        ! ---------------------------------------------------------
-        ! Count nodes where the coupling will be activated and
-        ! allocate arrays for saving the directors at these nodes:
-        ! ---------------------------------------------------------
-        p = 0
-        DO i=1,Mesh % NumberOfNodes
-          jf = FPerm(i)      
-          js = SPerm(i)
-          IF (jf > 0 .AND. js > 0 ) p = p + 1
-        END DO
-
-        ALLOCATE(BoundaryNodes(p))
-        ALLOCATE(AllDirectors(3,p))
-        BoundaryNodes = 0
-
-        ! -----------------------------------------------------------
-        ! Try to figure out the director from the shell element data:
-        ! -----------------------------------------------------------
-        l = 0
-        DO K=1,Mesh % NumberOfBulkElements
-          Element => Mesh % Elements(K)
-          NodeIndices => Element % NodeIndexes
-          n = Element % TYPE % NumberOfNodes
-          !
-          ! Proceed with shell elements only
-          !
-          IF (ANY(FPerm(NodeIndices(1:n)) == 0)) CYCLE
-          
-          DirectorValues => NULL()
-          DirectorValues => GetElementalDirectorInt(Mesh,Element)
-
-          IF (.NOT. ASSOCIATED(DirectorValues)) THEN
-            CALL Fatal('StructureCouplingAssembly', &
-                'Director cannot be found from shell elements')
-          ! ELSE
-          !  PRINT *, 'ok, DIRECTOR DATA FOUND FOR ELEMENT = ', K
-          END IF
-
-          !print *, 'Nodes are = ', NodeIndices(1:n)
-          DO i=1,n
-            IF (SPerm(NodeIndices(i)) > 0) THEN
-              ! This is a common node. If the node hasn't yet been listed,
-              ! do it now:
-              IF (ANY(BoundaryNodes(:) == NodeIndices(i))) THEN
-                ! PRINT *, 'Skipping already listed node'
-                CYCLE
-              END IF
-              l = l + 1
-              BoundaryNodes(l) = NodeIndices(i)
-              i0 = 3*(i-1)
-              AllDirectors(1:3,l) = DirectorValues(i0+1:i0+3)
-            !ELSE
-              ! PRINT *, 'This node is not shared with solid, index = ', NodeIndices(i)
-            END IF
-          END DO
-
-        END DO
-        NodeIndices => BoundaryNodes(:)
-        TargetCount = l
-
-        IF (TargetCount /= SIZE(BoundaryNodes)) CALL Fatal('StructureCouplingAssembly', &
-            'Error in retrieving director on solid-shell interface')
-        
-        ncount = 0
-
-        Generate_Dirichlet_Block: DO p=1,TargetCount
-          TargetNode = NodeIndices(p)
-          TargetInd = Perm(TargetNode)
-          ! IF (TargetInd == 0) CYCLE
-          !------------------------------------------------------------------------------
-          ! Find nodes which can potentially be used to calculate the normal derivative
-          ! of the 3-D solution:
-          !------------------------------------------------------------------------------
-          Row = TargetInd * DOFs
-          n = (Rows(Row+1)-1 - Rows(Row)-Dofs+1)/DOFs + 1
-          ALLOCATE(NearNodes(n), NearCoordinates(3,n))
-
-          k = 0
-          DO i = Rows(Row)+Dofs-1, Rows(Row+1)-1, Dofs
-            j = Cols(i)/Dofs
-            k = k + 1
-            NearNodes(k) = A % InvPerm(j)
-          END DO
-          ! PRINT *, 'POTENTIAL NODE CONNECTIONS:'
-          ! print *, 'Nodes near target=', NearNodes(1:k)       
-
-          !
-          ! The position vectors for the potential nodes:
-          !
-          NearCoordinates(1,1:n) = Mesh % Nodes % x(NearNodes(1:n)) - Mesh % Nodes % x(TargetNode)
-          NearCoordinates(2,1:n) = Mesh % Nodes % y(NearNodes(1:n)) - Mesh % Nodes % y(TargetNode)
-          NearCoordinates(3,1:n) = Mesh % Nodes % z(NearNodes(1:n)) - Mesh % Nodes % z(TargetNode)  
-
-          d = AllDirectors(:,p)
-          e3 = d/SQRT(DOT_PRODUCT(d,d))
-          !------------------------------------------------------------------------------
-          ! Seek for nodes which are closest to be parallel to d and have a non-negligible
-          ! component with respect to d
-          !------------------------------------------------------------------------------
-          maxres_z = 0.0d0
-          minres_z = 0.0d0
-          jz = 0
-          lz = 0
-          DO i=1,n
-            IF (NearNodes(i) == TargetNode) CYCLE
-
-            res_z = DOT_PRODUCT(e3(:), NearCoordinates(:,i)) / &
-                SQRT(DOT_PRODUCT(NearCoordinates(:,i), NearCoordinates(:,i)))
-            !
-            ! Skip nearly orthogonal couplings:
-            !
-            IF (ABS(res_z) < 2.0d-2) CYCLE
-
-            IF (res_z > 0.0d0) THEN
-              !
-              ! A near node is on +d side
-              !
-              IF (res_z > maxres_z) THEN
-                jz = NearNodes(i)
-                maxres_z = res_z
-              END IF
-            ELSE
-              !
-              ! A near node is on -d side
-              !
-              IF (res_z < minres_z) THEN
-                lz = NearNodes(i)
-                minres_z = res_z
-              END IF
-            END IF
-          END DO
-
-          IF (jz == 0) jz = TargetNode
-          IF (lz == 0) lz = TargetNode
-          IF (jz == lz) CALL Fatal('StructureCouplingAssembly', &
-              'No solid nodes to span the director')
-          
-
-           !PRINT *, 'HANDLING NODE = ', TargetNode
-           !PRINT *, 'UPPER NODE = ', JZ
-           !PRINT *, 'LOWER NODE = ', LZ
-
-          ! Now, evaluate the directional derivative DNU(:) in the normal direction:
-!          i = Perm(lz)
-!          j = Perm(jz)
-!          k = Perm(TargetNode)
-!          U_lower(1:3) = SVar % Values(i*DOFs-2:i*DOFs)
-!          U_upper(1:3) = SVar % Values(j*DOFs-2:j*DOFs)
-!          U_mid(1:3) = SVar % Values(k*DOFs-2:k*DOFs)
-          
-          v(1:3) = [Mesh % Nodes % x(jz) - Mesh % Nodes % x(lz), &
-              Mesh % Nodes % y(jz) - Mesh % Nodes % y(lz), &
-              Mesh % Nodes % z(jz) - Mesh % Nodes % z(lz)]
-          h_eff = SQRT(DOT_PRODUCT(v,v))
-!          DNU(:) = -1.0d0/h_eff * (U_upper(:) - U_lower(:))
-
-          d_h = v/SQRT(DOT_PRODUCT(v,v))
-          IF (ABS(DOT_PRODUCT(d_h,e3)) < 0.98d0) THEN
-            CALL Warn('StructureCouplingAssembly', &
-                'A coupling omitted: Solid-model nodes does not span the director')
-            CYCLE
-          END IF
-
-          !
-          ! Finally, constrain the shell to follow the deformation of the solid: 
-          !
-          jv = FPerm(TargetNode)
-          DO j=1,DOFs
-            ju = SPerm(TargetNode)
-            ku = sdofs*(ju-1)+j
-            kv = fdofs*(jv-1)+j
-
-            DO k = A_f % Rows(kv),A_f % Rows(kv+1)-1
-              IF (.NOT. ConstrainedF(ku)) THEN
-                !
-                ! TO DO: Add shell forces to solid
-                !
-              END IF
-              ! 
-              ! Erase matrix values as a preparation for setting Dirichlet constraints:
-              !
-              A_f % Values(k) = 0.0_dp
-            END DO
-            !
-            ! Create a Dirichlet constraint to make the shell translation to
-            ! follow the translation of the solid:
-            !
-            A_f % rhs(kv) = 0.0_dp
-            A_f % Values(A_f % Diag(kv)) = 1.0_dp
-            CALL AddToMatrixElement(A_fs, kv, ku, -1.0_dp) 
-
-            !---------------------
-            ! The rotational DOFs
-            !---------------------
-            kv = fdofs*(jv-1)+3+j
-            DO k = A_f % Rows(kv),A_f % Rows(kv+1)-1
-              !
-              ! TO DO: Add shell moments to solid
-              !
-
-              ! 
-              ! Erase values as a preparation for setting Dirichlet constraints:
-              !
-              A_f % Values(k) = 0.0_dp
-            END DO
-            !
-            ! Create a Dirichlet constraint to make the shell rotation to
-            ! follow the deformation of the solid:
-            !
-            A_f % rhs(kv) = 0.0_dp
-            A_f % Values(A_f % Diag(kv)) = 1.0_dp
-            ju = SPerm(lz)
-            ku = sdofs*(ju-1)+j
-            CALL AddToMatrixElement(A_fs, kv, ku, -1.0d0/h_eff)
-            ju = SPerm(jz)
-            ku = sdofs*(ju-1)+j
-            CALL AddToMatrixElement(A_fs, kv, ku, 1.0d0/h_eff)
-          END DO
-          
-          DEALLOCATE(NearNodes, NearCoordinates)
-          ncount = ncount + 1
-        END DO Generate_Dirichlet_Block
-
-        IF (TargetCount /= ncount) CALL Fatal('StructureCouplingAssembly', &
-            'Constraint setting fails for some nodes')
-        
-        IF (ALLOCATED(AllDirectors)) DEALLOCATE(AllDirectors)
-        IF (ALLOCATED(BoundaryNodes)) DEALLOCATE(BoundaryNodes)
-
-      END BLOCK SetSolidCouplingBCs
-
-    ELSE
-      CALL Fatal('StructureCouplingAssembly','Coupling type not implemented yet!')
-    END IF
-      
-    IF( A_fs % FORMAT == MATRIX_LIST ) THEN
-      CALL List_toCRSMatrix(A_fs)
-      CALL List_toCRSMatrix(A_sf)
-    END IF
-      
-    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
-    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
-
-    CALL Info('StructureCouplingAssembly','Number of nodes on interface: '&
-        //TRIM(I2S(ncount)),Level=10)    
-    CALL Info('StructureCouplingAssembly','Number of entries in slave-master coupling matrix: '&
-        //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
-    CALL Info('StructureCouplingAssembly','Number of entries in master-slave coupling matrix: '&
-        //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
-    
-    CALL Info('StructureCouplingAssembly','All done',Level=20)
-  
-
-!------------------------------------------------------------------------------- 
-  END SUBROUTINE StructureCouplingAssembly_defutils
-!------------------------------------------------------------------------------- 
 
 END MODULE DefUtils
 

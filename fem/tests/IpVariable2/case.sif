@@ -2,7 +2,9 @@
 ! using the "update exported variables" and body force definitions. 
 !
 ! This is a masked version of the variable.
-!!
+!
+! This case has later addition of projected fields to {nodal,dg,elem}.
+!
 ! P.R. 19.1.2018
 
 Header
@@ -13,16 +15,17 @@ Header
 End
 
 Simulation
-  Max Output Level = 12
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 
   Simulation Type = "Steady State"
-  Steady State Max Iterations = 1
+  Steady State Max Iterations = 2
   Output Intervals = 1
 
   Post File = "case.vtu"
+!  vtu: discontinuous galerkin = logical true
 End
 
 Constants
@@ -85,6 +88,17 @@ Solver 1
 
 ! This could be used just to create the table but not do anything with it
 !  Create Integration Points Table = Logical True 
+
+
+! These are special projection calls
+  Project Variable 1 = String "testvar a"
+  Project Type 1 = String "nodal"
+
+  Project Variable 2 = String "testvar b"
+  Project Type 2 = String "elem"
+
+  Project Variable 3 = String "testvar a"
+  Project Type 3 = String "dg"
 End
 
 
@@ -92,6 +106,9 @@ Solver 2
   Exec Solver = "Always"
   Procedure = "SaveData" "SaveScalars"
   Equation = "ShowScalars"
+
+! This is needed to create DGIndexes that allow the projection type "dg" above.
+  Discontinuous Galerkin = Logical True
 
   Variable 1 = "Temperature"
   Operator 1 = max

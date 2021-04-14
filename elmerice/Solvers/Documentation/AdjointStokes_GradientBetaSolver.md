@@ -32,7 +32,7 @@ If a change of variable is used for the input slip coefficient, the derivative o
 the friction coefficient with respect to your input variable can directly be provided
 in the *Boundary Condition* section. 
 
-Be carefull:  
+Be careful:  
   - **This solver must be executed on the bottom boundary where the slip condition is applied**   
   - **The NormalTangential system has to be used**  
   - **In 3D Slip Coefficient 2 and 3 have to be equal**  

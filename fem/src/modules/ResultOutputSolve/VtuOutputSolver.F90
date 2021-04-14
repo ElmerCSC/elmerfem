@@ -646,7 +646,7 @@ CONTAINS
     LOGICAL :: ScalarsExist, VectorsExist, Found,&
         ComponentVector, ComponentVectorB, ComplementExists, Use2, IsHarmonic, FlipActive
     LOGICAL :: WriteData, WriteXML, L, Buffered
-    TYPE(Variable_t), POINTER :: Solution
+    TYPE(Variable_t), POINTER :: Solution, TmpSolDg
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Values2(:), Values3(:), DispValues(:)
     REAL(KIND=dp), POINTER :: ValuesB(:), ValuesB2(:), ValuesB3(:), DispBValues(:)
@@ -678,7 +678,7 @@ CONTAINS
     Params => GetSolverParams()
     Buffered = .TRUE.
     FlipActive = .FALSE.
-    
+    TmpSolDg => NULL()
 
     ! we could have huge amount of gauss points
     ALLOCATE( ElemInd(512)) !Model % Mesh % MaxElementDOFS))
@@ -811,7 +811,8 @@ CONTAINS
             CYCLE
           ELSE IF( VarType == Variable_on_gauss_points ) THEN
             IF ( DG ) THEN
-              CALL Ip2DgSwapper( Mesh, Solution )
+              CALL Ip2DgSwapper( Mesh, Solution, TmpSolDg, Variable_on_nodes_on_elements )
+              Solution => TmpSolDg 
             ELSE
               CYCLE
             END IF
@@ -1766,6 +1767,10 @@ CONTAINS
     CALL AscBinWriteFree()
 
     IF( ALLOCATED( ElemInd ) ) DEALLOCATE(ElemInd)
+
+    IF( ASSOCIATED( TmpSolDg ) ) THEN
+      CALL ReleaseVariableList( TmpSolDg )
+    END IF
     
     CALL Info('WriteVtuFile','Finished writing file',Level=15)
     

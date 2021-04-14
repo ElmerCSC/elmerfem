@@ -66,8 +66,10 @@
 ! *
 ! *****************************************************************************/
 
+
+
 !------------------------------------------------------------------------------
-SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
+SUBROUTINE ShellSolver_Init0(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -132,7 +134,7 @@ SUBROUTINE ShellSolver_Init(Model, Solver, dt, Transient)
   CALL ListAddLogical( SolverPars,'Shell Solver',.TRUE.)
   
 !------------------------------------------------------------------------------
-END SUBROUTINE ShellSolver_Init
+END SUBROUTINE ShellSolver_Init0
 !------------------------------------------------------------------------------
 
 
@@ -3547,7 +3549,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element => NULL()
     TYPE(Element_t), POINTER :: GElement => NULL()     
     TYPE(Nodes_t) :: Nodes, PNodes, PRefNodes
-    TYPE(ValueList_t), POINTER :: BodyForce
+    TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Stat, Found
@@ -3697,9 +3699,11 @@ CONTAINS
     ! --------------------------------------------------------------------------
     ! Body forces, material parameters and the shell thickness:
     ! --------------------------------------------------------------------------
-    PoissonRatio(1:n) = GetReal(GetMaterial(), 'Poisson Ratio')
-    YoungsMod(1:n) = GetReal(GetMaterial(), 'Youngs Modulus')
-    ShellThickness(1:n) = GetReal(GetMaterial(), 'Shell Thickness')
+    Material => GetMaterial()
+    PoissonRatio(1:n) = GetReal(Material, 'Poisson Ratio')
+    YoungsMod(1:n) = GetReal(Material, 'Youngs Modulus')
+    ShellThickness(1:n) = GetReal(Material, 'Shell Thickness')
+
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) THEN
       Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
@@ -3707,8 +3711,8 @@ CONTAINS
       Load(1:n) = 0.0d0
     END IF
     IF ( MassAssembly ) THEN
-      rho(1:n) = GetReal(GetMaterial(), 'Density')
-      Damping(1:n) = GetReal(GetMaterial(), 'Rayleigh Damping Alpha', Found)
+      rho(1:n) = GetReal(Material, 'Density')
+      Damping(1:n) = GetReal(Material, 'Rayleigh Damping Alpha', Found)
     END IF
 
     ! ------------------------------------------------------------------------------

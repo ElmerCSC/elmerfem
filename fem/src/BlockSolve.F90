@@ -1784,34 +1784,44 @@ CONTAINS
 
     TYPE(Solver_t) :: Solver
     
-    INTEGER :: i,j,k,ind1,ind2,Novar
+    INTEGER :: i,j,k,ind1,ind2,Novar,Nsol
     INTEGER, POINTER :: ConstituentSolvers(:)
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Params, ShellParams
     TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
     TYPE(Variable_t), POINTER :: FVar, SVar
     LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid, GotBlockSolvers
-    LOGICAL :: DrillingDOFs
-    
+    LOGICAL :: DrillingDOFs, GotCoupling
+    TYPE(Solver_t), POINTER :: PSol
+
     Params => Solver % Values
     ConstituentSolvers => ListGetIntegerArray(Params, 'Block Solvers', GotBlockSolvers)
+    IF(.NOT. GotBlockSolvers ) THEN
+      CALL Fatal('StructureCouplingBlocks','We need "Block Solvers" defined!')
+    END IF
 
     ! Currently we simply assume the master solver to be listed as the first entry in
     ! the 'Block Solvers' array.
     i = 1
+    SVar => TotMatrix % Subvector(i) % Var
+    A_s => TotMatrix % Submatrix(i,i) % Mat
     
-    DO k = 1, 4
-      IsSolid = .FALSE.
-      IsPlate = .FALSE.
-      IsShell = .FALSE.
-      IsBeam = .FALSE.
-      
-      IF(k==1) j = ListGetInteger( Params,'Solid Solver Index',IsSolid)
-      IF(k==2) j = ListGetInteger( Params,'Plate Solver Index',IsPlate)
-      IF(k==3) j = ListGetInteger( Params,'Shell Solver Index',IsShell)
-      IF(k==4) j = ListGetInteger( Params,'Beam Solver Index',IsBeam)
+    Nsol = SIZE( ConstituentSolvers )
+    GotCoupling = .FALSE.
 
-      IF(j==0) CYCLE
+    
+    DO j = 1, Nsol
+      k = ConstituentSolvers(j)
+      
+      PSol => CurrentModel % Solvers(k)
+      
+      IsSolid = ListGetLogical( Psol % Values,'Solid Solver',IsSolid)
+      IsPlate = ListGetLogical( Psol % Values,'Plate Solver',IsPlate)
+      IsShell = ListGetLogical( Psol % Values,'Shell Solver',IsShell)
+      IsBeam = ListGetLogical( Psol % Values,'Beam Solver',IsBeam)
+      
+      ! No need to couple to one self!
+      IF(j==1) CYCLE
       
       IF (GotBlockSolvers) THEN
         IF (j > size(ConstituentSolvers)) CALL Fatal('StructureCouplingBlocks', &
@@ -1828,13 +1838,15 @@ CONTAINS
             //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
       END IF
 
+      GotCoupling = .TRUE.
+      
       A_fs => TotMatrix % Submatrix(j,i) % Mat
       A_sf => TotMatrix % Submatrix(i,j) % Mat
       
-      SVar => TotMatrix % Subvector(i) % Var
+      !SVar => TotMatrix % Subvector(i) % Var
       FVar => TotMatrix % Subvector(j) % Var
       
-      A_s => TotMatrix % Submatrix(i,i) % Mat
+      !A_s => TotMatrix % Submatrix(i,i) % Mat
       A_f => TotMatrix % Submatrix(j,j) % Mat
       
       IF(.NOT. ASSOCIATED( SVar ) ) THEN
@@ -1845,7 +1857,7 @@ CONTAINS
       END IF
 
       IF (IsShell) THEN
-        ShellParams => CurrentModel % Solvers(ind2) % Values
+        ShellParams => Fvar % Solver % Values
         DrillingDOFs = GetLogical(ShellParams, 'Drilling DOFs', Found)
       ELSE
         DrillingDOFs = .FALSE.
@@ -1853,12 +1865,12 @@ CONTAINS
       
       CALL StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
           IsSolid, IsPlate, IsShell, IsBeam, DrillingDOFs)
-      !IF (IsShell) THEN
-      !  CALL StructureCouplingAssembly_defutils( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
-      !      IsSolid, IsPlate, IsShell, IsBeam)
-      !END IF
     END DO
-      
+
+    IF(.NOT. GotCoupling ) THEN
+      CALL Fatal('StructureCouplingBlocks','Could not determine coupling blocks!')
+    END IF
+    
   END SUBROUTINE StructureCouplingBlocks
   
   

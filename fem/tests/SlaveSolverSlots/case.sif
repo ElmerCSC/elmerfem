@@ -8,7 +8,7 @@ Check Keywords "Warn"
 Header :: Mesh DB "." "square"
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1

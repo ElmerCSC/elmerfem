@@ -198,8 +198,8 @@ CONTAINS
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
-      WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
-      CALL Info('AddComponentsToBodyList',Message,Level=3)
+      WRITE(Message,'(A)') '"Body '//TRIM(I2S(i))//'" associated to "Component '//TRIM(I2S(j))//'"' 
+      CALL Info('AddComponentsToBodyList',Message,Level=5)
       BodyParams => Null()
     END DO
 !------------------------------------------------------------------------------

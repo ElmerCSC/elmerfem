@@ -9,7 +9,7 @@ Check Keywords "Warn"
 Header :: Mesh DB "." "square"
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Transient
   Timestep Sizes = 0.005

@@ -2,7 +2,7 @@
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
 ! an optional skew of 20 degrees in the rotor. 
-! Increse number of extruded layers for better accuracy. 
+! Increase number of extruded layers for better accuracy. 
 
 $skew=0.0  ! does not yet work with skew
 $omega=20.0 

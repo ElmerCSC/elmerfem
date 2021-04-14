@@ -61,8 +61,8 @@ Solver 1
   Linear System Solver = Iterative
   Linear System Iterative Method = IDRS
   Linear System Preconditioning = none
-!  Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 1000
+  Linear System Residual Output = 10
   Linear System Convergence Tolerance = 1e-11
 End
 

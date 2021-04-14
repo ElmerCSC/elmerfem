@@ -72,7 +72,7 @@
      TYPE(Element_t), POINTER :: Element
      TYPE(Matrix_t), POINTER :: Amatrix
      TYPE(Factors_t), POINTER :: GebhardtFactors, ViewFactors(:)
-
+          
      INTEGER :: i,j,k,l,t,n,n2,istat,Colj,j0,couplings, sym 
 
      REAL (KIND=dp) :: SimulationTime,dt,MinFactor,MaxOmittedFactor, ConsideredSum
@@ -83,8 +83,8 @@
      REAL (KIND=dp), ALLOCATABLE :: SOL(:), RHS(:), Fac(:), RowSums(:), &
              Reflectivity(:), Emissivity(:), Areas(:), RelAreas(:), Diag(:)
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
-         ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
-         GeometryFixedTol, BackScale(3), Coord(3)
+         ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, Tol, &
+         BackScale(3), Coord(3)
      REAL (KIND=dp) :: at, at0, st
      INTEGER :: BandSize,SubbandSize,RadiationSurfaces, GeometryFixedAfter, &
          Row,Col,MatrixElements, MatrixFormat, maxind, TimesVisited=0, &
@@ -108,6 +108,7 @@
      INTEGER, PARAMETER :: VFUnit = 10
 
      TYPE(ValueList_t), POINTER :: Params, BC
+     TYPE(Variable_t), POINTER :: Var
      
      SAVE TimesVisited 
 
@@ -148,24 +149,38 @@
        IF(GeometryFixedAfter < TimesVisited) UpdateViewFactors = .FALSE.
        IF(TimesVisited > 1 ) THEN
          SteadyChange = TSolver % Variable % SteadyChange
-         GeometryFixedTol = GetConstReal( Params, 'View Factors Fixed Tolerance',GotIt)
-         IF(GotIt .AND. SteadyChange < GeometryFixedTol) UpdateViewFactors = .FALSE.
+         Tol = GetConstReal( Params, 'View Factors Fixed Tolerance',GotIt)
+         IF(GotIt .AND. SteadyChange < Tol) UpdateViewFactors = .FALSE.
        END IF
      END IF 
 
      UpdateGebhardtFactors = GetLogical( Params, 'Update Gebhardt Factors',GotIt )
 
-     FactorsFixedAfter = GetInteger( Params, &
-         'Gebhardt Factors Fixed After Iterations',GotIt)
-     IF(.NOT. GotIt) FactorsFixedAfter = HUGE(FactorsFixedAfter)
 
-     IF( UpdateGebhardtFactors ) THEN
-       IF(FactorsFixedAfter < TimesVisited) UpdateGebhardtFactors = .FALSE.
-       IF(TimesVisited > 1 ) THEN
-         SteadyChange = TSolver % Variable % SteadyChange
-         FactorsFixedTol = ListGetConstReal(TSolver % Values, &
+     IF( UpdateGebhardtFactors ) THEN       
+       FactorsFixedAfter = GetInteger( Params, &
+         'Gebhardt Factors Fixed After Iterations',GotIt)
+       IF( GotIt ) THEN       
+         IF(FactorsFixedAfter < TimesVisited) UpdateGebhardtFactors = .FALSE.
+       END IF
+       
+       FactorsFixedAfter = GetInteger( Params, &
+         'Gebhardt Factors Fixed After Nonlinear Iterations',GotIt)
+       IF( GotIt ) THEN                
+         Var => VariableGet( Mesh % Variables, 'nonlin iter' )
+         IF( ASSOCIATED( Var ) ) THEN
+           k = NINT( Var % Values(1) ) 
+           IF(FactorsFixedAfter < k ) UpdateGebhardtFactors = .FALSE.
+         END IF
+       END IF
+      
+       Tol = ListGetConstReal(TSolver % Values, &
            'Gebhardt Factors Fixed Tolerance',GotIt)
-         IF( GotIt .AND. SteadyChange < FactorsFixedTol) UpdateGebhardtFactors = .FALSE.
+       IF( GotIt ) THEN
+         IF(TimesVisited > 1 ) THEN
+           SteadyChange = TSolver % Variable % SteadyChange
+           IF( SteadyChange < Tol) UpdateGebhardtFactors = .FALSE.
+         END IF
        END IF
      END IF
 

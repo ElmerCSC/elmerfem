@@ -96,7 +96,7 @@ END SUBROUTINE HeatSolver_Init
 
 
 !-----------------------------------------------------------------------------
-!> A modern version for the heat eqution supporting multi-threading and
+!> A modern version for the heat equation supporting multi-threading and
 !> SIMD friendly ElmerSolver kernels. This tries to be backward compatible
 !> with the lagacy HeatSolver but some rarely used features are missing. 
 !------------------------------------------------------------------------------
@@ -650,7 +650,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 ! Compute the fraction to be assembled. In serial case it is always one,
-! in parallel case only true parents result to assmebly, mixed parents gives
+! in parallel case only true parents result to assembly, mixed parents gives
 ! assembly fraction of 1/2. 
 !------------------------------------------------------------------------------
   FUNCTION BCAssemblyFraction( Element ) RESULT ( AssFrac ) 
