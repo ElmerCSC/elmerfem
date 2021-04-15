@@ -45,9 +45,10 @@
                 <Whatis> The name of the equation. </Whatis>
                 <StatusTip></StatusTip>
             </Parameter>
-            <Parameter Widget="CheckBox" Enabled="True">
+            <Parameter Widget="CheckBox" Enabled="False">
                 <Name> Discontinuous Galerkin </Name>
                 <Type> Logical </Type>
+                <DefaultValue>True</DefaultValue>
                 <Whatis></Whatis>
                 <StatusTip> Needs to be set to true. </StatusTip>
             </Parameter>
@@ -69,8 +70,6 @@
                 <Type> Logical </Type>
                 <Whatis> Assumes the variational inequality method to apply, if set to true. </Whatis>
                 <StatusTip></StatusTip>
-                <Activate> /Advection-Reaction/Material/Variable_name Upper Limit</Activate>
-                <Activate> /Advection-Reaction/Material/Variable_name Lower Limit</Activate>
             </Parameter>
             <Parameter Widget="Edit">
                 <Name> Exported Variable 1 </Name>
@@ -117,12 +116,12 @@
             <Parameter Widget="Edit">
                 <Name>Variable_name Upper Limit</Name>
                 <Type> Real </Type>
-                <Whatis> The upper limit, cmax, for variable Variable_name. Only used if keyword Limit Solution for the solver is set to true </Whatis>
+                <Whatis> The upper limit, cmax, for variable Variable_name. Only used if keyword Limit Solution for the solver is set to true. </Whatis>
             </Parameter>
             <Parameter Widget="Edit">
                 <Name>Variable_name Lower Limit</Name>
                 <Type> Real </Type>
-                <Whatis> The upper limit, cmin, for variable Variable_name. Only used if keyword Limit Solution for the solver is set to true </Whatis>
+                <Whatis> The upper limit, cmin, for variable Variable_name. Only used if keyword Limit Solution for the solver is set to true. </Whatis>
             </Parameter>
             <Parameter Widget="Edit">
                 <Name>Variable_name Gamma</Name>
