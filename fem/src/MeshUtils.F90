@@ -2109,12 +2109,13 @@ CONTAINS
    !------------------------------------------------------------------------------    
    INTEGER :: i,j,k,n
    INTEGER :: BaseNameLen, Save_Dim
-   LOGICAL :: GotIt, Found, ForcePrep=.FALSE.
+   LOGICAL :: GotIt, Found
    CHARACTER(MAX_NAME_LEN) :: FileName
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
    LOGICAL :: parallel, LoadNewMesh
-
+   CHARACTER(LEN=MAX_NAME_LEN) :: Caller='LoadMesh'
+   TYPE(ValueList_t), POINTER :: VList
 
    Mesh => Null()
 
@@ -2125,19 +2126,19 @@ CONTAINS
    IF(NumProcs<=1) THEN
      INQUIRE( FILE=MeshNamePar(1:n)//'/mesh.header', EXIST=Found)
      IF(.NOT. Found ) THEN
-       CALL Fatal('LoadMesh','Requested mesh > '//MeshNamePar(1:n)//' < does not exist!')
+       CALL Fatal(Caller,'Requested mesh > '//MeshNamePar(1:n)//' < does not exist!')
      END IF
    ELSE
      INQUIRE( FILE=MeshNamePar(1:n)//'/partitioning.'// & 
          TRIM(i2s(Numprocs))//'/part.1.header', EXIST=Found)
      IF(.NOT. Found ) THEN
-       CALL Warn('LoadMesh','Requested mesh > '//MeshNamePar(1:n)//' < in partition '&
+       CALL Warn(Caller,'Requested mesh > '//MeshNamePar(1:n)//' < in partition '&
            //TRIM(I2S(Numprocs))//' does not exist!')
        RETURN
      END IF
    END IF
 
-   CALL Info('LoadMesh','Starting',Level=8)
+   CALL Info(Caller,'Starting',Level=8)
 
    Parallel = .FALSE.
    IF ( PRESENT(numprocs) .AND. PRESENT(mype) ) THEN
@@ -2212,28 +2213,32 @@ CONTAINS
    !------------------------------------------------------------------
    CALL LoadMeshStep( 6 )
 
-   CALL Info('LoadMesh','Loading mesh done',Level=8)
-
-   ForcePrep = ListGetLogical( Model % Simulation,'Finalize Meshes Before Extrusion',Found)
+   CALL Info(Caller,'Loading mesh done',Level=8)
    
    IF( PRESENT( LoadOnly ) ) THEN
-     IF( LoadOnly ) THEN
+     CALL Info(Caller,'Only loading mesh, saving final preparation for later!',Level=12)     
+     IF( LoadOnly ) RETURN
+   END IF
+
+   IF( PRESENT( mySolver ) ) THEN     
+     VList => Model % Solvers(mySolver) % Values
+   ELSE
+     VList => Model % Simulation
+   END IF
+   IF(.NOT. ListGetLogical( VList,'Finalize Meshes Before Extrusion',Found ) ) THEN
+     ! The final preparation for the mesh (including dof defintions) will be
+     ! done only after the mesh has been extruded. 
+     IF( ListCheckPresent( VList,'Extruded Mesh Levels') .OR. &
+       ListCheckPresent( VList,'Extruded Mesh Layers') ) THEN
+       CALL Info(Caller,'This mesh will be extruded, skipping finalization',Level=12)
        RETURN
-     ELSE
-       ForcePrep = .TRUE.
      END IF
    END IF
-
+     
    ! Prepare the mesh for next steps.
    ! For example, create non-nodal mesh structures, periodic projectors etc. 
-   IF( (ListCheckPresent( Model % Simulation,'Extruded Mesh Levels') .OR. &
-       ListCheckPresent( Model % Simulation,'Extruded Mesh Layers')) .AND. (.NOT. ForcePrep) ) THEN
-     CALL Info('LoadMesh','This mesh will be extruded, skipping finalization',Level=12)
-     RETURN
-   END IF
-
    CALL PrepareMesh(Model,Mesh,Parallel,Def_Dofs,mySolver)      
-   CALL Info('LoadMesh','Preparing mesh done',Level=8)
+   CALL Info(Caller,'Preparing mesh done',Level=8)
 
    
  CONTAINS
@@ -2418,7 +2423,7 @@ CONTAINS
          END IF
          !
          !IF( IndexMap( id ) /= 0 .AND. id /= DefaultTargetBC ) THEN
-         !  CALL Warn('LoadMesh','Unset BC already set by > Target Boundaries < : '&
+         !  CALL Warn(Caller,'Unset BC already set by > Target Boundaries < : '&
          !      //TRIM(I2S(id)) )
          !ELSE 
          !  ! IndexMap( id ) = id
@@ -2594,9 +2599,9 @@ CONTAINS
    LOGICAL :: Parallel
    INTEGER, OPTIONAL :: Def_Dofs(:,:), mySolver
    LOGICAL :: Found
+   CHARACTER(LEN=MAX_NAME_LEN) :: Caller='PrepareMesh'
 
-   
-   
+      
    IF( Mesh % MaxDim == 0) THEN
      CALL SetMeshDimension( Mesh )
    END IF
@@ -2648,9 +2653,9 @@ CONTAINS
      
      
      EdgeDOFs => NULL()
-     CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
+     CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, Caller )
      FaceDOFs => NULL()
-     CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )     
+     CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, Caller )     
     
      DGIndex = 0
 
