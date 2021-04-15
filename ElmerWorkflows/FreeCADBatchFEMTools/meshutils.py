@@ -65,7 +65,8 @@ def collect_geometry_ids_from_geo_file(geo_file_path):
 
 def _get_transfinite_line_geo_file_line(line_param_dict):
     """
-    Returns transfinite line geo file line 'Transfinite Line {59, 60} = 9 Using Progression 1;'.
+    Returns transfinite line geo file line e.g. 'Transfinite Line {59, 60} = 9 Using Progression 1;'
+    or 'Transfinite Line {59, 60} = 9 Using Bump 0.1;'.
 
     :param line_param_dict: A dictionary containing transfinite line params.
 
@@ -75,9 +76,14 @@ def _get_transfinite_line_geo_file_line(line_param_dict):
         comment = '  // {}'.format(line_param_dict['comment'])
     else:
         comment = ''
-    return 'Transfinite Line {{{}}} = {} Using Progression {};{}\n'.format(', '.join(line_param_dict['lines']),
+    if line_param_dict.get('mesh_type', ''):
+        mesh_type = line_param_dict['mesh_type']
+    else:
+        mesh_type = 'Progression'
+    coef = line_param_dict['progression']
+    return 'Transfinite Line {{{}}} = {} Using {} {};{}\n'.format(', '.join(line_param_dict['lines']),
                                                                            line_param_dict['points'],
-                                                                           line_param_dict['progression'], comment)
+                                                                           mesh_type, coef, comment)
 
 
 def _get_transfinite_surface_geo_file_line(surface_name, transfinite_param_dict, geometry_id_dict,
@@ -144,8 +150,15 @@ def add_transfinite_lines_to_geo_file(directory, transfinite_param_list, file_na
                         for surface_name in p_dict['surface_list']:
                             geo_file.write(_get_transfinite_surface_geo_file_line(surface_name, p_dict, geom_id_dict,
                                                                                   exact_surface_equality))
-                        geo_file.write('Transfinite Volume {{{}}};\n'.format(', '.join(geom_id_dict[p_dict['volume']])))
+                        if p_dict.get('volume_corner_points', None):
+                            geo_file.write('Transfinite Volume {{{}}} = {{{}}};\n'.format(', '.join(geom_id_dict[p_dict['volume']]),
+                                                                                          ', '.join(p_dict['volume_corner_points'])))
+                        else:
+                            geo_file.write('Transfinite Volume {{{}}};\n'.format(', '.join(geom_id_dict[p_dict['volume']])))
                     geo_file.write('\n')
                 geo_file.write(line)
     os.remove(geo_path_cp)
+    
+    
+    
 
