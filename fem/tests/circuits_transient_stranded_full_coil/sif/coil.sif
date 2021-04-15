@@ -192,7 +192,7 @@ Equation 2
   Name = "MagnetoDynamic for air"
   Active Solvers(2) = 3 4
 End
-Solver 3 :: Reference Norm = Real 1.16293140E-03
+Solver 3 :: Reference Norm = Real 8.190E-04 
 Solver 3 :: Reference Norm Tolerance = Real 1E-03
 Solver 4 :: Reference Norm = Real 3.12279970E-03
 Solver 4 :: Reference Norm Tolerance = Real 1E-03
