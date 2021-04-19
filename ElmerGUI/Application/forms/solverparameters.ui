@@ -442,17 +442,17 @@
            <widget class="QComboBox" name="linearSystemDirectMethod">
             <item>
              <property name="text">
-              <string>Banded</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
               <string>Umfpack</string>
              </property>
             </item>
             <item>
              <property name="text">
               <string>MUMPS</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Banded</string>
              </property>
             </item>
            </widget>
