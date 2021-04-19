@@ -14341,7 +14341,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
+  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, &
+      IpVariable, ElemVariable, DgVariable, NodalVariable )
 
     CHARACTER(LEN=*)  :: var_name
     LOGICAL, OPTIONAL :: NoOutput, Global
@@ -14349,6 +14350,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     LOGICAL, OPTIONAL :: IpVariable
     LOGICAL, OPTIONAL :: ElemVariable
     LOGICAL, OPTIONAL :: DgVariable
+    LOGICAL, OPTIONAL :: NodalVariable
 
     INTEGER :: i,j,k,m
 
@@ -14356,7 +14358,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     IF(PRESENT(Global)) Global = .FALSE.
     IF(PRESENT(Dofs)) Dofs = 0
     IF(PRESENT(IpVariable)) IpVariable = .FALSE.
-
+    IF(PRESENT(DgVariable)) DgVariable = .FALSE.      
+    IF(PRESENT(ElemVariable)) ElemVariable = .FALSE.      
+    IF(PRESENT(NodalVariable)) NodalVariable = .FALSE.      
+    
+    
     DO WHILE( var_name(1:1) == '-' )
 
       m = 0
@@ -14379,6 +14385,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       ELSE IF ( SEQL(var_name, '-elem ') ) THEN
         IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
         m = 6
+
+      ELSE IF ( SEQL(var_name, '-nodal ') ) THEN
+        IF(PRESENT(NodalVariable)) NodalVariable = .TRUE.      
+        m = 7
       END IF
 
       IF( m > 0 ) THEN

@@ -1821,4 +1821,9 @@ solver:logical:      'use elemental coilcurrent'
 bodyforce:real:      'current density multiplier'
 solver:logical:      'nonlinear system nodal norm'
 solver:logical:      'steady state nodal norm'
+solver:logical:      'calculate nodal average'
+material:real:       'tracer gamma'
+bodyforce:real:      'tracer source'
+bc:real:             'tracer'
+
 

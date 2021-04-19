@@ -695,7 +695,7 @@ CONTAINS
      Mesh => Solver % Mesh
      DGIndex = 0
 
-     ! Check whetther the DG indexes might already have been allocated
+     ! Check whether the DG indexes might already have been allocated
      HaveSome = .FALSE.
      DO t=1,Mesh % NumberOfBulkElements 
        Element => Mesh % Elements(t)
@@ -830,6 +830,57 @@ CONTAINS
      CALL Info('CreateDGPerm','Created permutation for DG nodes: '//TRIM(I2S(DgCount)),Level=8)  
      
    END SUBROUTINE CreateDGPerm
+
+
+   !> Simple nodal permutation without any mask or other complications.
+   !> For the more complex version there is MakePermUsingMask.
+   !> This simple one could be used when primary variable is DG field and we want
+   !> to create a nodal exported variable.
+   !-----------------------------------------------------------------------------------
+   SUBROUTINE CreateNodalPerm( Solver, NodalPerm, nSize )
+
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER, POINTER :: NodalPerm(:)
+     INTEGER :: nSize
+     
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: t, n, i, j
+     CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
+     LOGICAL :: Found
+     
+     CALL Info('CreateNodalPerm','Creating simple permutation for nodal variable',Level=12)
+     
+     EquationName = ListGetString( Solver % Values, 'Equation', Found)
+     IF( .NOT. Found ) THEN
+       CALL Fatal('CreateNodalPerm','Equation not present!')
+     END IF     
+     
+     Mesh => Solver % Mesh
+     n = Mesh % NumberOfNodes 
+
+     ALLOCATE( NodalPerm(n) ) 
+     NodalPerm = 0 
+     
+     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOFBoundaryElements
+       Element => Mesh % Elements(t)         
+       IF ( CheckElementEquation( CurrentModel, Element, EquationName ) ) THEN             
+         NodalPerm( Element % NodeIndexes ) = 1
+       END IF
+     END DO
+
+     j = 0
+     DO i=1,n
+       IF( NodalPerm(i) > 0 ) THEN
+         j = j + 1
+         NodalPerm(i) = j
+       END IF
+     END DO
+     nSize = j
+     
+     CALL Info('CreateNodalPerm','Number of active nodes in NodalPerm: '//TRIM(I2S(nSize)),Level=12)
+     
+   END SUBROUTINE CreateNodalPerm
 
 
    
@@ -1727,6 +1778,7 @@ CONTAINS
       NewVariable => VariableGet( Solver % Mesh % Variables, Var_name )
     
       IF ( .NOT. ASSOCIATED(NewVariable) ) THEN
+        CALL Info('AddEquationBasics','Creating exported variable: '//TRIM(var_name),Level=12)
         
         IF( VariableIp ) THEN
           VariableType = Variable_on_gauss_points
@@ -1772,9 +1824,15 @@ CONTAINS
         ELSE IF( VariableNodal ) THEN
           VariableType = Variable_on_nodes
           NULLIFY( Perm ) 
-          CALL MakePermUsingMask( CurrentModel, Solver, Solver % Mesh, Mask_Name, &
-              .TRUE., Perm, nsize )
-          nsize = DOFs * nsize
+
+          IF( UseMask ) THEN
+            CALL MakePermUsingMask( CurrentModel, Solver, Solver % Mesh, Mask_Name, &
+                .TRUE., Perm, nsize )
+            nsize = DOFs * nsize
+          ELSE
+            ! Just simple permutation
+            CALL CreateNodalPerm( Solver, Perm, nSize )
+          END IF
           
         ELSE IF( VariableGlobal ) THEN
           VariableType = Variable_global
