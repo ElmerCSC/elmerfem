@@ -233,7 +233,14 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
         CALL Fatal(Caller,'Sizes must agree: '//TRIM(VarName))
       END IF
     ELSE
-      CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = VeloVar ) 
+      n = len_TRIM(VarName)
+      ! Create full vector if the field is given by component
+      IF( VERIFY( VarName(n:n),'123') == 0 ) THEN
+        CALL DefaultVariableAdd( VarName(1:n-1), dofs = dim, Perm = MaskPerm )
+        VeloVar => VariableGet( Mesh % Variables, VarName ) 
+      ELSE
+        CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = VeloVar ) 
+      END IF
     END IF
   END IF
 
@@ -250,7 +257,14 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
         CALL Fatal(Caller,'Sizes must agree: '//TRIM(VarName))
       END IF
     ELSE
-      CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = UpdateVar ) 
+      n = len_TRIM(VarName)
+      ! Create full vector if the field is given by component
+      IF( VERIFY( VarName(n:n),'123') == 0 ) THEN
+        CALL DefaultVariableAdd( VarName(1:n-1), dofs = dim, Perm = MaskPerm )
+        UpdateVar => VariableGet( Mesh % Variables, VarName ) 
+      ELSE
+        CALL DefaultVariableAdd( VarName, Perm = MaskPerm, Var = UpdateVar )
+      END IF
     END IF
   END IF
   
