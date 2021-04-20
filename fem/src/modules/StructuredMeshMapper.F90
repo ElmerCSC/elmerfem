@@ -135,7 +135,11 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   END IF
   
   RecompStab = ListGetLogical(SolverParams, "Recompute Stabilization", Found)
-
+  IF(.NOT. Found) THEN
+    CALL Info(Caller,'Defaulting "Recompute Stabilization" to True.',Level=8)
+    RecompStab = .TRUE.
+  END IF
+    
   FixedLayers => ListGetIntegerArray( SolverParams,'Fixed Layer Indexes',MultiLayer)
   NumberOfFixedLayers = SIZE( FixedLayers )
 
