@@ -18506,8 +18506,7 @@ CONTAINS
 
     Flag = .TRUE.
     Width = OptimizeBandwidth( ListMatrix, Perm, InvPerm, &
-
-         LocalNodes, Flag, Flag, MaskName )
+        LocalNodes, Flag, Flag, MaskName )
 
     ! We really only need the permutation, as there will be no matrix equation
     ! associated with it.
