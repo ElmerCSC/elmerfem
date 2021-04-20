@@ -2494,7 +2494,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: GElement => NULL()
-    LOGICAL :: Stat
+    LOGICAL :: Stat, Found
     LOGICAL :: Converged, ComputeTaylorPolynomial
     LOGICAL :: ApproximatePlaneDomain, CheckOrientation, WriteElementProperties
     LOGICAL :: Subtriangulation, Planar, Umbilical
@@ -2647,6 +2647,12 @@ CONTAINS
     ELSE
       Umbilical = .FALSE.
     END IF
+
+    !----------------------------------------------------------------------
+    ! Check if the user wants to guide the reparametrization by defining
+    ! a spherical part:
+    !----------------------------------------------------------------------       
+    Umbilical = GetLogical(GetBodyParams(Element), 'Spherical Body', Found)
 
     !--------------------------------------------------------------
     ! Order the eigenvalues by their absolute values:
