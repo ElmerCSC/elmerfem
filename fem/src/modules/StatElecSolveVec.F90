@@ -71,13 +71,13 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
     CalculateNodal = .TRUE.
   END IF
 
-  IF (ListGetLogical(Params,'Calculate Energy Density',Found)) THEN
+  IF (ListGetLogical(Params,'Calculate Electric Energy',Found)) THEN
     IF( CalculateElemental ) & 
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-dg Energy Density e' )
+        '-dg Electric Energy Density e' )
     IF( CalculateNodal ) &
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        'Energy Density' )
+        'Electric Energy Density' )
   END IF
   
   IF( ListGetLogical(Params,'Calculate Elecric Flux',Found) ) THEN
@@ -123,6 +123,10 @@ SUBROUTINE StatElecSolver_init( Model,Solver,dt,Transient )
    CALL ListAddInteger( Params,'Time Derivative Order', 0 )
 
    CALL ListWarnUnsupportedKeyword('solver','adaptive mesh redinement',FatalFound=.TRUE.)
+   CALL ListWarnUnsupportedKeyword('body force','piezo material',FatalFound=.TRUE.)
+   CALL ListWarnUnsupportedKeyword('boundary condition','Layer Relative Permittivity',FatalFound=.TRUE.)
+   CALL ListWarnUnsupportedKeyword('boundary condition','infinity bc',FatalFound=.TRUE.)
+
 
    
  END SUBROUTINE StatElecSolver_Init
@@ -155,7 +159,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 
   CALL Info(Caller,'------------------------------------------------')
-  CALL Info(Caller,'Solving static electric fields')
+  CALL Info(Caller,'Solving static electric field for insulators')
 
   CALL DefaultStart()
 
@@ -503,7 +507,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h, Farfield_h
+    TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h, Farfield_h, Infty_h
 
     SAVE Nodes, Eps0
     !$OMP THREADPRIVATE(Nodes,Flux_h,Robin_h,Ext_h,Farfield_h)
@@ -512,7 +516,8 @@ CONTAINS
     IF (.NOT.ASSOCIATED(BC) ) RETURN
 
     IF( InitHandles ) THEN
-      CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Charge Density')
+      CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Electric Flux')
+      CALL ListInitElementKeyword( Infty_h,'Boundary Condition','Electric Infinity BC')
       CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Potential')
       IF( ASSOCIATED( Model % Constants ) ) THEN
         Eps0 = ListGetCReal( Model % Constants,'Permittivity Of Vacuum',Found )
@@ -556,22 +561,24 @@ CONTAINS
 
       ! Robin type of condition for farfield potential (r*(u-u_0)):
       ! -----------------------------------------------------------
-      Ext = ListGetElementReal( Farfield_h, Basis, Element, Found )
-      IF( Found ) THEN
+      IF( ListGetElementLogical( Infty_h, Element, Found ) ) THEN
         Coord(1) = SUM( Nodes % x(1:n)*Basis(1:n) )
         Coord(2) = SUM( Nodes % y(1:n)*Basis(1:n) )
         Coord(3) = SUM( Nodes % z(1:n)*Basis(1:n) )
-
+        
         Normal = NormalVector( Element, Nodes, IP % u(t), IP % v(t), .TRUE. )
         C = Eps0 * SUM( Coord * Normal ) / SUM( Coord * Coord )         
-
+        
         DO p=1,nd
           DO q=1,nd
             STIFF(p,q) = STIFF(p,q) + Weight * C * Basis(q) * Basis(p)
           END DO
         END DO
-        FORCE(1:nd) = FORCE(1:nd) + Weight * C * Ext * Basis(1:nd)
-      END IF      
+        Ext = ListGetElementReal( Farfield_h, Basis, Element, Found )
+        IF( Found ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + Weight * C * Ext * Basis(1:nd)
+        END IF
+      END IF
     END DO
     
     CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
@@ -645,8 +652,8 @@ SUBROUTINE StatElecSolver_post( Model,Solver,dt,Transient )
   ! Joule losses: type 1, component 1
   PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Energy Density')
   PostVars(1) % NodalField = .TRUE.
-  PostVars(2) % Var => VariableGet( Mesh % Variables, 'Energy Density')
-  PostVars(3) % Var => VariableGet( Mesh % Variables, 'Energy Density e')
+  PostVars(2) % Var => VariableGet( Mesh % Variables, 'Electric Energy Density')
+  PostVars(3) % Var => VariableGet( Mesh % Variables, 'Electric Energy Density e')
   PostVars(1:3) % FieldType = 1
 
   ! Electric current: type 2, components 2:4
@@ -956,16 +963,18 @@ CONTAINS
    VolTot = ParallelReduction(VolTot)
    EnergyTot = ParallelReduction(EnergyTot)
   
-   WRITE( Message, * ) 'Total Electric Energy   :', Energytot
+   WRITE( Message,'(A,ES12.3)') 'Total Electric Energy:', Energytot
    CALL Info( Caller, Message, Level=6 )
-   CALL ListAddConstReal( Model % Simulation,'RES: Total Electric Energy', Energytot )
+   CALL ListAddConstReal( Model % Simulation,'res: Electric Energy', Energytot )
    
    PotDiff = DirichletDofsRange( Solver )     
    IF( PotDiff > TINY( PotDiff ) ) THEN
+     CALL ListAddConstReal( Model % Simulation,'res: Potential Difference', PotDiff )
      Capacitance = 2 * EnergyTot / PotDiff**2 
-     WRITE( Message, * ) 'Effective Capacitance  :', Capacitance
+     WRITE( Message,'(A,ES12.3)') 'Effective Capacitance:', Capacitance
      CALL Info(Caller, Message, Level=6 )
-     CALL ListAddConstReal( Model % Simulation,'RES: Effective Capacitance', Capacitance )
+     CALL ListAddConstReal( Model % Simulation,&
+         'RES: Effective Capacitance', Capacitance )
    END IF
      
     
@@ -1026,10 +1035,10 @@ CONTAINS
    END IF
      
    IF( Found ) THEN
-     WRITE( Message, * ) 'Control Scaling       :', ControlScaling
+     WRITE( Message,'(A,ES12.3)') 'Control Scaling:', ControlScaling
      CALL Info(Caller, Message, Level=4 )
-     CALL ListAddConstReal( Model % Simulation, &
-         'RES: StatElec Scaling', ControlScaling )
+     CALL ListAddConstReal( Model % Simulation,'RES: StatElec Scaling',ControlScaling )
+
      Solver % Variable % Values = ControlScaling * Solver % Variable % Values
           
      DO Vari = 1, 8 
@@ -1044,7 +1053,15 @@ CONTAINS
        END IF
      END DO
    END IF
-     
+
+#if 0
+   DO Vari = 1, 8 
+     pVar => PostVars(Vari) % Var
+     IF( .NOT. ASSOCIATED( pVar ) ) CYCLE
+     ! check this
+     CALL InvalidateVariable( Model % Meshes, Solver % Mesh,PostVars(Vari) % Var % Name ) 
+   END DO
+#endif
    
 !------------------------------------------------------------------------------
  END SUBROUTINE GlobalPostScale
