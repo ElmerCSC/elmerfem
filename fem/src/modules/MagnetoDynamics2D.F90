@@ -1378,7 +1378,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
   COMPLEX(KIND=dp), PARAMETER :: im=(0._dp,1._dp)
-  LOGICAL, SAVE :: NewtonRaphson = .FALSE., CSymmetry
+  LOGICAL, SAVE :: NewtonRaphson = .FALSE., CSymmetry, DoRestart, RestartDone = .FALSE.
   INTEGER :: CoupledIter, TransientSolverInd
   TYPE(Variable_t), POINTER :: IterV, CoordVar, LVar
   TYPE(Matrix_t),POINTER::CM
@@ -1388,14 +1388,18 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     
 !------------------------------------------------------------------------------
 
+  Params => GetSolverParams()
+  DoRestart = ListGetLogical( Params,'Transient Restart',Found )
 
-  CALL Info( Caller,&
-      '------------------------------------------------', Level=4 )
-  CALL Info( Caller, &
-      'Solving equation for magnetic vector potential', Level=4 )
-  CALL Info( Caller,&
-      '------------------------------------------------', Level=4 )
-
+  IF( DoRestart ) THEN
+    ! IF we do restart, do it only once!
+    IF( RestartDone ) RETURN    
+  END IF
+        
+  CALL Info( Caller,'------------------------------------------------', Level=4 )
+  CALL Info( Caller,'Solving equation for magnetic vector potential', Level=4 )
+  CALL Info( Caller,'------------------------------------------------', Level=4 )
+  
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
 
@@ -1424,12 +1428,11 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   IF( TransientSolverInd > 0 ) THEN
     CALL Info(Caller,'Transient solver index found: '//TRIM(I2S(i)),Level=8)
     CALL ListPushNameSpace('harmonic:')
+  ELSE IF( DoRestart ) THEN
+    CALL Fatal(Caller,'Could not find transient solver for restart!')
   END IF
     
-  Params => GetSolverParams()
-
-  NonlinIter = GetInteger(Params, &
-      'Nonlinear system max iterations',Found)
+  NonlinIter = GetInteger(Params,'Nonlinear system max iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
   CALL DefaultStart()
@@ -1443,10 +1446,10 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     CALL DefaultInitialize()
 !$omp parallel do private(Element,n,nd)
     DO t=1,active
-       Element => GetActiveElement(t)
-       n  = GetElementNOFNodes(Element)
-       nd = GetElementNOFDOFs(Element)
-       CALL LocalMatrix(Element, n, nd)
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
+      CALL LocalMatrix(Element, n, nd)
     END DO
 !$omp end parallel do
 
@@ -1456,68 +1459,68 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
       Element => GetBoundaryElement(t)
       BC=>GetBC(Element)
       IF(.NOT.ASSOCIATED(BC)) CYCLE
-
+      
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
-         n  = GetElementNOFNodes(Element)
-         nd = GetElementNOFDOFs(Element)
-         CALL LocalMatrixBC(  Element, n, nd )
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        CALL LocalMatrixBC(  Element, n, nd )
       ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
-         n  = GetElementNOFNodes( Element )
-         nd = GetElementNOFDOFs( Element )
-         CALL LocalMatrixAirGapBC(Element, BC, n, nd)
+        n  = GetElementNOFNodes( Element )
+        nd = GetElementNOFDOFs( Element )
+        CALL LocalMatrixAirGapBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
 
     CALL DefaultFinishAssembly()
-
+    
     CALL SetMagneticFluxDensityBC()
     CALL DefaultDirichletBCs()
     Norm = DefaultSolve()
- 
+        
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT
   END DO
+  
+  IF(.NOT. CSymmetry ) THEN
+    CALL CalculateLumped(Model % NumberOfBodyForces)
+  END IF
 
-   IF(.NOT. CSymmetry ) THEN
-     CALL CalculateLumped(Model % NumberOfBodyForces)
-   END IF
 
-   CoordVar => VariableGet(Mesh % Variables,'Coordinates')
-   IF(ASSOCIATED(CoordVar)) THEN
-     DO i=1,Mesh % NumberOfNodes
-       j = 3*(CoordVar % Perm(i)-1)
-       CoordVar % Values(j+1) = Mesh % Nodes % x(i)
-       CoordVar % Values(j+2) = Mesh % Nodes % y(i)
-       CoordVar % Values(j+3) = Mesh % Nodes % z(i)
-     END DO
-   END IF
+  CoordVar => VariableGet(Mesh % Variables,'Coordinates')
+  IF(ASSOCIATED(CoordVar)) THEN
+    DO i=1,Mesh % NumberOfNodes
+      j = 3*(CoordVar % Perm(i)-1)
+      CoordVar % Values(j+1) = Mesh % Nodes % x(i)
+      CoordVar % Values(j+2) = Mesh % Nodes % y(i)
+      CoordVar % Values(j+3) = Mesh % Nodes % z(i)
+    END DO
+  END IF
    
-   CALL DefaultFinish()
+  CALL DefaultFinish()
+  
+  ! Perform restart if continuing to transient real-valued combination. 
+  IF( DoRestart ) THEN
+    LVar => Model % Solvers(TransientSolverInd) % Variable 
+    IF( ASSOCIATED( LVar ) ) THEN         
+      LVar % Values = Solver % Variable % Values(1::2)
+      LVar % PrevValues(:,1) = LVar % Values
+    END IF
 
-   ! Perform restart if continuing to transient real-valued combination. 
-   IF( ListGetLogical( Params,'Transient Restart',Found ) ) THEN
-     IF( TransientSolverInd == 0 ) THEN
-       CALL Fatal('MagnetoDynamics2Harmonic','Could not find transient solver for restart!')
-     END IF
-     
-     LVar => Model % Solvers(TransientSolverInd) % Variable 
-     IF( ASSOCIATED( LVar ) ) THEN         
-       LVar % Values = Solver % Variable % Values(1::2)
-     END IF
-     
-     Lvar => VariableGet( Mesh % Variables,'LagrangeMultiplier')
-     IF ( ASSOCIATED(Lvar) ) THEN
-       CALL Info(Caller,&
-           'Size of Lagrange Multiplier: '//TRIM(I2S(SIZE(LVar % Values))),Level=8)
-       DO i=1,SIZE( LVar % Values ) / 2
-         Lvar % Values(i) = Lvar % Values(2*(i-1)+1)
-       END DO
-     END IF     
-   END IF
+    Lvar => VariableGet( Mesh % Variables,'LagrangeMultiplier')
+    IF ( ASSOCIATED(Lvar) ) THEN
+      CALL Info(Caller,&
+          'Size of Lagrange Multiplier: '//TRIM(I2S(SIZE(LVar % Values))),Level=8)
+      DO i=1,SIZE( LVar % Values ) / 2
+        Lvar % Values(i) = Lvar % Values(2*(i-1)+1)
+      END DO
+    END IF
+    CALL Info(Caller,'Harmonic solution provided as initial guess for transient system!')
+    RestartDone = .TRUE.
+  END IF
 
-   IF( TransientSolverInd > 0 ) THEN
-     CALL ListPopNamespace()
-   END IF
+  IF( TransientSolverInd > 0 ) THEN
+    CALL ListPopNamespace()
+  END IF
   
 CONTAINS
 
