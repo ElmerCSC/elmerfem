@@ -482,7 +482,7 @@ CONTAINS
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
     LOGICAL, OPTIONAL :: Found
-    TYPE(Element_t), POINTER, OPTIONAL :: UElement
+    TYPE(Element_t), OPTIONAL :: UElement
 
     w = ListGetAngularFrequency( ValueList, Found, UElement )
   END FUNCTION GetAngularFrequency

@@ -8364,7 +8364,8 @@ use spariterglobals
     TYPE(ValueList_t), OPTIONAL, POINTER :: ValueList
     LOGICAL, OPTIONAL :: Found
     LOGICAL :: GotIt
-    TYPE(Element_t), POINTER :: Element, UElement
+    TYPE(Element_t), TARGET  :: UElement
+    TYPE(Element_t), POINTER :: Element
     OPTIONAL :: UElement
     INTEGER :: elem_id,eq_id,mat_id
 
