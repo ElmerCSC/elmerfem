@@ -1722,7 +1722,7 @@ CONTAINS
 
     CALL GetLocalSolution(POT, UElement=Element)
     POTC = POT(1,:) + im*POT(2,:)
-    Omega = GetAngularFrequency()
+    Omega = GetAngularFrequency(UElement=Element)
 
     !Numerical integration:
     !----------------------
@@ -1789,7 +1789,7 @@ CONTAINS
 
     Material => GetMaterial(Element)
 
-    Omega = GetAngularFrequency()
+    Omega = GetAngularFrequency(UElement=Element)
     
     InPlaneProximity = .FALSE.
     
