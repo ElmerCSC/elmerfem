@@ -111,7 +111,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     Model % HarmonicCircuits = .FALSE.
     CALL AddComponentsToBodyLists()
     
-    ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
+    ALLOCATE( Model % Circuit_tot_n, Model % n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'CircuitsAndDynamicsHarmonic', 'Memory allocation error.' )
     END IF
@@ -126,9 +126,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     Circuits => Model%Circuits
 
     CALL SetBoundaryAreasToValueLists() 
-    
+
     DO p=1,n_Circuits
-      
       n = GetNofCircVariables(p)
       CALL AllocateCircuit(p)
       
@@ -356,7 +355,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           
           nn = GetElementNOFNodes(Element)
           nd = GetElementNOFDOFs(Element,ASolver)
-          !          CALL GetConductivity(Element, Tcoef, nn)
           
           IF (SIZE(Tcoef,3) /= nn) THEN
             DEALLOCATE(Tcoef)
@@ -542,8 +540,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! ----------------------------         
           IF (dim == 2) value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
-          CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, value)
 
+          value = value * Comp % SymmetryCoeff
+
+          CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, value)
         END IF
       END DO
     END DO
@@ -1441,6 +1441,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) cmplx_value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
           IF (i_multiplier /= 0._dp) cmplx_value = i_multiplier*cmplx_value
+
+          cmplx_value = cmplx_value * Comp % SymmetryCoeff
           
           CALL AddToCmplxMatrixElement(CM,ReIndex(PS(Indexes(q))), IvarId, &
              REAL(cmplx_value), AIMAG(cmplx_value))
