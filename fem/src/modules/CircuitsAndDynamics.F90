@@ -54,20 +54,29 @@ SUBROUTINE CircuitsAndDynamics_init( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation !< Steady state or transient simulation
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-
+  LOGICAL :: RotMachine, Found
+  
   Params => Solver % Values
 
   ! When we introduce the variables in this way the variables are created
   ! so that they exist when the proper simulation cycle starts.
-  ! This also keeps the command file cleaner.
-  CALL ListAddString( Params,'Exported Variable 1',&
-      '-global Rotor Angle')
-  CALL ListAddString( Params,'Exported Variable 2',&
-      '-global Rotor Velo')
+  ! This also keeps the command file cleaner. 
+
+  RotMachine = ListGetLogical( Params,'Rotating Machine',Found )
+  IF(.NOT. Found ) THEN
+    RotMachine = ListGetLogicalAnyBC(Model,'Rotational Projector') .OR. &
+        ListGetLogicalAnyBC(Model,'Anti Rotational Projector') 
+  END IF
+
+  IF( RotMachine ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-global Rotor Angle' )
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-global Rotor Velo' )
+  END IF
   CALL ListAddLogical( Params,'No Matrix',.TRUE.)
-
+  
   Solver % Values => Params
-
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamics_init
 !------------------------------------------------------------------------------
@@ -113,7 +122,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     ALLOCATE( Model % Circuit_tot_n, Model % n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CircuitsAndDynamicsHarmonic', 'Memory allocation error.' )
+      CALL Fatal( 'CircuitsAndDynamics', 'Memory allocation error.' )
     END IF
 
     n_Circuits => Model%n_Circuits
@@ -152,7 +161,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     CALL Circuits_MatrixInit()
     ALLOCATE(ip(Model % Circuit_tot_n))
   END IF
-  
+
+  CALL SetDynamicAngle()
+
   IF (Tstep /= GetTimestep()) THEN
     Tstep = GetTimestep()
     ! Circuit variable values from previous timestep:
@@ -194,8 +205,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
      ASolver % Matrix % AddMatrix => Null()
   END IF
 
-  CONTAINS
+CONTAINS
 
+    
+
+
+    
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p,ip,dt)
 !------------------------------------------------------------------------------
@@ -900,6 +915,59 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   END SUBROUTINE GetConductivity
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Set the rotation angle in case moment of inertia and torque are given.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetDynamicAngle()
+    TYPE(Variable_t), POINTER :: AngVar, VeloVar
+    TYPE(ValueList_t), POINTER :: Simulation
+    REAL(KIND=dp) :: dt, ang, velo, ang0, velo0, imom, torq    
+    INTEGER :: tStep, tStepPrev = 0
+    LOGICAL :: Found
+    
+    SAVE ang0, velo0, imom, tStepPrev
+    
+    ! Variable should alreadt exist as it was introduced in the _init section.
+    AngVar => DefaultVariableGet( 'Rotor Angle' )
+    IF(.NOT. ASSOCIATED( AngVar ) ) RETURN
+    
+    VeloVar => DefaultVariableGet( 'Rotor Velo' )
+    IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
+      CALL Fatal('SetRotation','Variable > Rotor Velo < does not exist!')
+    END IF
+    
+    Simulation => GetSimulation()
+
+    tStep = GetTimestep()
+
+    ! We initiate these at the start of the timestep when they still present the previous
+    ! computed values. 
+    IF( tStep /= tStepPrev ) THEN
+      ang0 = AngVar % Values(1)
+      velo0 = VeloVar % Values(1)
+      imom = GetConstReal( Simulation,'Imom') ! interatial moment of the motor      
+      tStepPrev = tStep
+    END IF
+     
+    IF(imom < EPSILON(imom) ) THEN
+      CALL Warn('SetDynamicAngle','Moment of inertia "Imom" close to zero, skipping rotations...')
+      RETURN
+    END IF
+
+    torq = GetConstReal( Simulation,'res: Air Gap Torque', Found)
+    IF(.NOT. Found ) CALL Fatal('SetRotation','Torque is needed!')
+    
+    velo = velo0 + dt * (torq-0) / imom
+    ang  = ang0  + dt * velo
+
+    VeloVar % Values(1) = velo
+    AngVar % Values(1) = ang
+
+    CALL ListAddConstReal(Simulation,'res: Angle(rad)', ang)
+    CALL ListAddConstReal(Simulation,'res: Speed(rpm)', velo/(2._dp*pi)*60)
+      
+  END SUBROUTINE SetDynamicAngle
+  
 
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamics
@@ -919,18 +987,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic_init( Model,Solver,dt,TransientSimulation
   LOGICAL :: TransientSimulation !< Steady state or transient simulation
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-
+  
   Params => Solver % Values
 
-  ! When we introduce the variables in this way the variables are created
-  ! so that they exist when the proper simulation cycle starts.
-  ! This also keeps the command file cleaner.
-  CALL ListAddString( Params,'Exported Variable 1',&
-      '-global Rotor Angle')
-  CALL ListAddString( Params,'Exported Variable 2',&
-      '-global Rotor Velo')
-  Solver % Values => Params
+  CALL ListAddLogical( Params,'No Matrix',.TRUE.)
 
+  Solver % Values => Params
+    
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamicsHarmonic_init
 !------------------------------------------------------------------------------
@@ -1863,7 +1926,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   REAL (KIND=dp), POINTER :: Az(:)
   REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
   REAL (KIND=dp), POINTER :: Acorr(:)
-  
+  CHARACTER(*), PARAMETER :: Caller = 'CircuitsOutput'
+
 !------------------------------------------------------------------------------  
   
    CALL DefaultStart()
@@ -1876,7 +1940,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ! Look for the solver we attach the circuit equations to:
    ! -------------------------------------------------------
    ASolver => CurrentModel % Asolver
-   IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CircuitsOutput','ASolver not found!')
+   IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal(Caller,'ASolver not found!')
       
    nm =  Asolver % Matrix % NumberOfRows
 
@@ -1886,15 +1950,14 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     ! Reading parameter for supply frequency
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
     IF (EEC) THEN
-      CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=4)
-	    WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
-      
-          
+      CALL Info(Caller, "Using EEC steady state forcing.", Level=4)
+      WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
+      CALL Info(Caller, Message, Level=4)
+                
       EEC_max = GetInteger( SolverParams, 'EEC Steps', EEC_lim)
       IF (.NOT. EEC_lim) EEC_max = 5 !Typically 5 correections is enough
       WRITE( Message,'(A,I5,A)') 'Applying ', EEC_max, ' halfperiod corrections'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
+      CALL Info(Caller, Message, Level=4)
       
       EEC_time_0 = 0.0
       
@@ -1919,7 +1982,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
       EEC_cnt = EEC_cnt + 1
       WRITE( Message,'(A,4G11.4)') 'Performing EEC #', EEC_cnt
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=4)
+      CALL Info(Caller, Message, Level=4)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq
 
@@ -1966,11 +2029,11 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
 
-   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=5) 
+   CALL Info(Caller, 'Writing Circuit Results', Level=5) 
    DO p=1,n_Circuits
-     CALL Info('CircuitsOutput', 'Writing Circuit Variables for &
+     CALL Info(Caller, 'Writing Circuit Variables for &
        Circuit '//TRIM(i2s(p)), Level=5) 
-     CALL Info('CircuitsOutput', 'There are '//TRIM(i2s(Circuits(p)%n))//&
+     CALL Info(Caller, 'There are '//TRIM(i2s(Circuits(p)%n))//&
        ' Circuit Variables', Level=5)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
@@ -2008,7 +2071,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
      END DO
 
-     CALL Info('CircuitsOutput', 'Writing Component Variables for &
+     CALL Info(Caller, 'Writing Component Variables for &
        Circuit '//TRIM(i2s(p)), Level=5) 
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
@@ -2048,6 +2111,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
 CONTAINS
 
+  
 !-------------------------------------------------------------------
   SUBROUTINE SimListAddAndOutputConstReal(VariableName, VariableValue, Level)
 !-------------------------------------------------------------------
@@ -2061,7 +2125,7 @@ CONTAINS
   IF (PRESENT(Level)) LevelVal = Level
 
   WRITE(VarVal,'(ES15.4)') VariableValue
-  CALL Info('CircuitsOutput', TRIM(VariableName)//' '//&
+  CALL Info(Caller, TRIM(VariableName)//' '//&
     TRIM(VarVal), Level=LevelVal)
 
   CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)
