@@ -18169,18 +18169,17 @@ CONTAINS
               ! trace of the global rotations ROT is related to the directional derivative
               ! of the displacement field u by -Du[d] x d = d x ROT x d. This implementation 
               ! is limited to cases where the director is aligned with one of the global
-              ! coordinate axes.
+              ! coordinate axes. Find the closest one and use that. 
               !
-              NormalDir = 0
-              DO i=1,3
-                IF (ABS(1.0_dp - ABS(Director(i))) < 1.0d-5) THEN
-                  NormalDir = i
-                  EXIT
-                END IF
+              NormalDir = 1              
+              DO i=2,3
+                IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
               END DO
-              IF( NormalDir == 0 ) THEN
-                CALL Fatal(Caller, &
-                    'Coupling with drilling rotation formulation needs an axis-aligned director')
+              ! This is not good, but maybe not bad enough to through the whole analysis away...
+              IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
+                WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
+                    NormalDir,': ',Director(NormalDir)
+                CALL Warn(Caller,Message)
               END IF
             END IF
         
