@@ -9900,7 +9900,7 @@ CONTAINS
                   IF(isPElement(Element)) THEN
                     jj = Indexes(j)                                    
                   ELSE
-                    jj = Element % NodeIndexes(i)
+                    jj = Element % NodeIndexes(j)
                   END IF
                   IF (j<=n) jj=InvPerm1(jj)
 
