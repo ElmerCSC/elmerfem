@@ -35,49 +35,33 @@
 !> Solve for the sheet hydraulic Potential, sheet thickness and channels area
 !> similutaneously  (GlaDS model) - This solver replace the 3 solvers solving
 !> for these 3 variables independently.  
-!>  Equations defined in Werder et al., 2013 
+!> Equations defined in Werder et al., 2013. 
+!------------------------------------------------------------------------------
    RECURSIVE SUBROUTINE GlaDSCoupledsolver( Model,Solver,Timestep,TransientSimulation )
-!******************************************************************************
-!
-!  ARGUMENTS:
-!
-!  TYPE(Model_t) :: Model,  
-!     INPUT: All model information (mesh,materials,BCs,etc...)
-!
-!  TYPE(Solver_t) :: Solver
-!     INPUT: Linear equation solver options
-!
-!  REAL(KIND=dp) :: Timestep
-!     INPUT: Timestep size for time dependent simulations
-!
-!******************************************************************************
+!------------------------------------------------------------------------------
      USE Differentials
      USE MaterialModels
      USE DefUtils
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 !------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-!    External variables
-!------------------------------------------------------------------------------
-     TYPE(Model_t)  :: Model
-     TYPE(Solver_t), TARGET :: Solver
-     LOGICAL :: TransientSimulation
-     REAL(KIND=dp) :: Timestep
+     TYPE(Solver_t) :: Solver        !< Linear & nonlinear equation solver options
+     TYPE(Model_t) :: Model          !< All model information (mesh, materials, BCs, etc...)
+     REAL(KIND=dp) :: Timestep       !< Timestep size for time dependent simulations
+     LOGICAL :: TransientSimulation  !< Steady state or transient simulation
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     TYPE(Solver_t), POINTER :: PointerToSolver
      TYPE(Matrix_t), POINTER :: Systemmatrix
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge, Face, Bulk
      TYPE(ValueList_t), POINTER :: Equation, Material, SolverParams, BodyForce, BC, Constants
-     TYPE(Variable_t), POINTER :: WorkVar, WorkVar2
+     TYPE(Variable_t), POINTER :: WorkVar, WorkVar2, WorkVar3
 
-     INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
+     INTEGER :: i, j, k, l, m, n, t, iter, body_id, material_id, &
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
-          NSDOFs, NonlinearIter, GhostNodes, NonlinearIterMin, Ne, BDForder, &
-          CoupledIter, Nel, ierror, ChannelSolver, FluxVariable, ThicknessSolver, ierr
+          NonlinearIter, GhostNodes, NonlinearIterMin, BDForder, &
+          CoupledIter, ChannelSolver, ThicknessSolver
      INTEGER :: tpack, Mpack
 
      TYPE(Variable_t), POINTER :: HydPotSol
@@ -105,15 +89,15 @@
           CycleElement=.FALSE., MABool = .FALSE., MHBool = .FALSE. 
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
-     REAL(KIND=dp) :: NonlinearTol, dt, CumulativeTime, RelativeChange, &
+     REAL(KIND=dp) :: NonlinearTol, dt, RelativeChange, &
           Norm, PrevNorm, S, C, Qc, MaxArea, MaxH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:), SheetConductivity(:), ChannelConductivity(:),&
-       FORCE(:),  C1(:), CT(:), OldValues(:), Refq(:)
+       FORCE(:), CT(:), OldValues(:), Refq(:)
 
      REAL(KIND=dp), ALLOCATABLE :: Vvar(:), ublr(:), hr2(:)
 
-     REAL(KIND=dp), ALLOCATABLE :: lr(:), hr(:), Ar(:), Wopen(:), &
+     REAL(KIND=dp), ALLOCATABLE :: lr(:), hr(:), Ar(:), Wopen(:), & 
          ub(:), Snn(:), Ev(:), &
          ng(:), alphas(:), betas(:), betac(:), Phi0(:), Phim(:), Afactor(:), Bfactor(:), &
          MoulinArea(:), MoulinFlux(:)
@@ -124,18 +108,12 @@
                  ALPHA, BETA, CoupledTol, CoupledNorm, PrevCoupledNorm, &
                  Discharge(3)
    
-     REAL(KIND=dp) :: totat, st, totst, t1
+     REAL(KIND=dp) :: totat, st, totst
      REAL(KIND=dp) :: Np, pw, zb, Wo, he
-
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
-#else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-#endif
 
      SAVE &
           ElementNodes, EdgeNodes,      &
-          C1,                    &
           CT,                    &
           FirstTime,             &
           SheetConductivity,      &
@@ -152,7 +130,7 @@
           ChannelAreaName, ZbName, IceDensity, Ac, alphac, CCt, &
           CCw, lc, Lw, NoChannel, NodalNoChannel, &
           Channels, meltChannels, NeglectH, BDForder, &
-          Vvar, ublr, hr2, Refq, Nel,&
+          Vvar, ublr, hr2, Refq, &
           Calving
 
       
@@ -168,8 +146,6 @@
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
      SystemMatrix => Solver % Matrix
      ForceVector => Solver % Matrix % RHS
-
-     PointerToSolver => Solver
 
      HydPotSol => Solver % Variable
      HydPotPerm  => HydPotSol % Perm
@@ -188,8 +164,6 @@
      IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
         N = Solver % Mesh % MaxElementNodes
         M = Solver % Mesh % NumberOfNodes
-        Ne = Solver % Mesh % NumberOfEdges
-        Nel = Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements
         K = SIZE( SystemMatrix % Values )
         L = SIZE( SystemMatrix % RHS )
 
@@ -201,7 +175,6 @@
                 EdgeNodes % x,         &
                 EdgeNodes % y,         &
                 EdgeNodes % z,         &
-                C1,                       &
                 CT,                       &
                 SheetConductivity,         &
                 ChannelConductivity,         &
@@ -227,7 +200,6 @@
              EdgeNodes % x( N ),                &
              EdgeNodes % y( N ),                &
              EdgeNodes % z( N ),                &
-             C1( N ),                              &
              CT( N ),                              &
              SheetConductivity( N ),            &
              ChannelConductivity( N ),            &
@@ -246,50 +218,53 @@
              STAT=istat)
 
         IF ( istat /= 0 ) THEN
-           CALL FATAL( SolverName, 'Memory allocation error' )
+           CALL Fatal(SolverName, 'Memory allocation error' )
         ELSE
-           CALL INFO(SolverName, 'Memory allocation done', level=1 )
+           CALL Info(SolverName, 'Memory allocation done', level=5)
         END IF
         
-        ! get the ghost nodes of this partition
-        IF ( ParEnv % PEs > 1 ) THEN !only if we have a parallel run
-           IsGhostNode( 1:M ) = .FALSE.
-           GhostNodes = 0;
+        ! get the ghost nodes of this partition in a parallel run.
+        ! The old counter was too liberal, this should just computes those nodes
+        ! which are truly not part of the active elements. 
+        IF ( ParEnv % PEs > 1 ) THEN 
+           IsGhostNode( 1:M ) = .TRUE.
            DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t)
-              IF (ParEnv % myPe .EQ. Element % partIndex) CYCLE
-              DO i=1,GetElementNOFNodes(Element)
-                 IsGhostNode(Element % NodeIndexes(i)) = .TRUE.
-                 GhostNodes = GhostNodes + 1
-              END DO
-           END DO
-        PRINT *, ParEnv % myPe, ':', GhostNodes, ' ghost nodes'
+              IF (ParEnv % myPe /= Element % partIndex) CYCLE
+              IsGhostNode(Element % NodeIndexes) = .FALSE.
+            END DO
+            GhostNodes = COUNT(IsGhostNode)
+           PRINT *,'Ghost nodes:', ParEnv % myPe, GhostNodes
         END IF
 
         ! Find the nodes for which we have no channel (on the boundary)
         ! Default is False - We allow Channel to growth everywhere
-        NoChannel = .False.
+        NoChannel = .FALSE.
         DO t=1, Solver % Mesh % NumberOfBoundaryElements
            ! get element information
            Element => GetBoundaryElement(t)
            !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
-           IF ((ParEnv % PEs > 1) .AND. &
-            (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1))) CYCLE
 
+           ! In parallel the owner decides the destiny
+           IF (ParEnv % PEs > 1) THEN
+             IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+           END IF
+             
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
    
            NULLIFY(BC)
            BC => GetBC( Element )
            bc_id = GetBCId( Element )
-           NodalNoChannel = .False.
            NodalNoChannel(1:n) =  GetLogical(BC, 'No Channel BC', Found)
            IF (Found) NoChannel(Element % NodeIndexes(1:n)) = NodalNoChannel(1:n)
         END DO
 
+        n = COUNT( NoChannel )
+        PRINT *,'No channel:',ParEnv % MyPe, n
+        
         AllocationsDone = .TRUE.
      END IF
-
 
 !------------------------------------------------------------------------------
 !    Read physical and numerical constants and initialize 
@@ -297,52 +272,57 @@
      IF (FirstTime) THEN
         FirstTime = .FALSE.
         Constants => GetConstants()
-
+        
+        IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+          CALL Fatal( SolverName,'Implemented only for cartesian coordinates!')
+        END IF
+                   
         WaterDensity = ListGetConstReal( Constants, 'Water Density', UnFoundFatal=.TRUE. )
         gravity = ListGetConstReal( Constants, 'Gravity Norm', UnFoundFatal=.TRUE. )
         Lw = ListGetConstReal( Constants, 'Latent Heat', UnFoundFatal=.TRUE. ) 
 
-        ChannelAreaName = GetString( Constants, &
-            'Channel Area Variable Name', Found )
+        ChannelAreaName = GetString( Constants,'Channel Area Variable Name', Found )
         IF(.NOT.Found) THEN        
-           CALL WARN(SolverName,'Keyword >Channel Area Variable Name< not found in section Constants')
-           CALL WARN(SolverName,'Taking default value >Channel Area<')
+           CALL Warn(SolverName,'Keyword >Channel Area Variable Name< not found in section Constants')
+           CALL Warn(SolverName,'Taking default value >Channel Area<')
            WRITE(ChannelAreaName,'(A)') 'Channel Area'
         END IF
 
-        SheetThicknessName = GetString( Constants, &
-            'Sheet Thickness Variable Name', Found )
+        SheetThicknessName = GetString( Constants,'Sheet Thickness Variable Name', Found )
         IF(.NOT.Found) THEN        
-           CALL WARN(SolverName,'Keyword >Sheet Thickness Variable Name< not found in section Constants')
-           CALL WARN(SolverName,'Taking default value >Sheet Thickness<')
+           CALL Warn(SolverName,'Keyword >Sheet Thickness Variable Name< not found in section Constants')
+           CALL Warn(SolverName,'Taking default value >Sheet Thickness<')
            WRITE(SheetThicknessName,'(A)') 'Sheet Thickness'
         END IF
 
         ZbName = GetString( Constants, 'Bedrock Variable Name', Found )
         IF(.NOT.Found) THEN        
-           CALL WARN(SolverName,'Keyword >Bedrock Variable Name< not found in section Constants')
-           CALL WARN(SolverName,'Taking default value >zb<')
+           CALL Warn(SolverName,'Keyword >Bedrock Variable Name< not found in section Constants')
+           CALL Warn(SolverName,'Taking default value >zb<')
            WRITE(ZbName,'(A)') 'Zb'
         END IF
 
         !CHANGE - to get Channel variables added to this solver mesh if
         !doing calving and hydrology and consequently having many meshes
         Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
-        IF(.NOT.Found) Calving = .FALSE.
         IF(Calving) THEN
+          CALL Info(SolverName,'Calving is activated for this solver!')
+          ChannelSolver = 0
           DO i=1,Model % NumberOfSolvers
             IF(Model % Solvers(i) % Variable % Name == ChannelAreaName) THEN 
               ChannelSolver = i
               EXIT
             END IF
           END DO
+          CALL Info(SolverName,'Channel solver is: '//TRIM(I2S(ChannelSolver)),Level=10)
           WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
                      % Variables, ChannelAreaName, ThisOnly=.TRUE.)
-          ALLOCATE(CAPerm(SIZE(WorkVar % Perm)), CAValues(SIZE(WorkVar % Values)))
-          CAPerm = WorkVar % Perm
+
+          ALLOCATE(CAValues(SIZE(WorkVar % Values)))
+          CAPerm => WorkVar % Perm
           CAValues = WorkVar % Values
           CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Channel Area', 1, CAValues, CAPerm)
+               'Channel Area', 1, CAValues, CAPerm, Secondary = .TRUE. )
           WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',&
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
@@ -352,10 +332,10 @@
           WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
                      % Variables, 'Channel Flux', ThisOnly=.TRUE.)
           ALLOCATE(CFPerm(SIZE(WorkVar % Perm)), CFValues(SIZE(WorkVar % Values)))
-          CFPerm = WorkVar % Perm
+          CFPerm => WorkVar % Perm
           CFValues = WorkVar % Values
           CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Channel Flux', 1, CFValues, CFPerm) 
+               'Channel Flux', 1, CFValues, CFPerm, Secondary = .TRUE.) 
           WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Flux',&
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
@@ -363,19 +343,22 @@
           WorkVar % PrevValues(:,1) = WorkVar % Values
 
           !The same for sheet thickness
-          DO i=1,Model % NumberOfSolvers
+          ThicknessSolver = 0
+          DO i=1,Model % NumberOfSolvers            
             IF(Model % Solvers(i) % Variable % Name == SheetThicknessName) THEN 
               ThicknessSolver = i
               EXIT
             END IF
           END DO
+          CALL Info(SolverName,'Sheet solver is: '//TRIM(I2S(ThicknessSolver)),Level=10)
+
           WorkVar => VariableGet(Model % Solvers(ThicknessSolver) % Mesh&
                      % Variables, SheetThicknessName, ThisOnly=.TRUE.)
           ALLOCATE(SHPerm(SIZE(WorkVar % Perm)), SHValues(SIZE(WorkVar % Values)))
-          SHPerm = WorkVar % Perm
+          SHPerm => WorkVar % Perm
           SHValues = WorkVar % Values !Needed to reflect initial condition
           CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Sheet Thickness', 1, SHValues, SHPerm)
+               'Sheet Thickness', 1, SHValues, SHPerm, Secondary = .TRUE.)
           WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
                       ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
@@ -389,9 +372,8 @@
         ! TODO : implement higher order BDF method
         BDForder = GetInteger(GetSimulation(),'BDF Order', Found)
         IF (.NOT.Found) BDForder = 1
-        IF (BDForder .NE. 1) THEN
-           WRITE(Message,'(a)') 'Only working for BDF = 1' 
-           CALL FATAL(SolverName, Message)
+        IF (BDForder /= 1) THEN
+          CALL Fatal(SolverName,'Only working for BDF = 1')
         END IF
      END IF ! FirstTime
 
@@ -399,69 +381,60 @@
 
      NeglectH = GetLogical( SolverParams,'Neglect Sheet Thickness in Potential', Found )
      IF ( .NOT.Found ) THEN
-        CALL FATAL(SolverName, 'No >Neglect Sheet Thickness in Potential< found')
+        CALL Fatal(SolverName, 'No >Neglect Sheet Thickness in Potential< found')
      END IF
 
      methodSheet = GetString( SolverParams, 'Sheet Integration Method', Found )
      IF(.NOT.Found) THEN        
-        CALL FATAL(SolverName, 'No >Sheet Integration Methods< found')
-     ELSE
-        IF ((methodSheet.NE.'explicit').AND.(methodSheet.NE.'implicit').AND.(methodSheet.NE.'crank-nicolson')) THEN
-           CALL FATAL(SolverName, 'Sheet Integration Method: Implicit, Explicit or Crank-Nicolson')
-        END IF 
+        CALL Fatal(SolverName, 'No >Sheet Integration Methods< found')
+     ELSE IF ((methodSheet/='explicit').AND.(methodSheet/='implicit').AND.(methodSheet/='crank-nicolson')) THEN
+       CALL Fatal(SolverName, 'Sheet Integration Method: Implicit, Explicit or Crank-Nicolson')
      END IF
 
      Channels = GetLogical( SolverParams,'Activate Channels', Found )
-     IF (.NOT. Found) Channels = .FALSE.
 
      !CHANGE
      !To pick up channel and sheet size limiters, if specified
-     MaxArea  = GetConstReal( SolverParams, &
-          'Max Channel Area',    MABool )
-     IF ((.NOT. MABool)) CALL WARN(SolverName,'No max channel area specified. &
-          Channels may grow very large')
+     MaxArea  = GetConstReal( SolverParams,'Max Channel Area', MABool )
+     IF (.NOT. MABool) CALL Warn(SolverName,'No max channel area specified. Channels may grow very large!')
 
-     MaxH  = GetConstReal( SolverParams, &
-          'Max Sheet Thickness',    MHBool )
-     IF ((.NOT. MHBool)) CALL WARN(SolverName,'No max sheet thickness specified.&
-          Sheet may grow very large')
+     MaxH  = GetConstReal( SolverParams,'Max Sheet Thickness', MHBool )
+     IF (.NOT. MHBool) CALL Warn(SolverName,'No max sheet thickness specified. Sheet may grow very large!')
 
      IF (Channels) THEN
         meltChannels = GetLogical( SolverParams,'Activate Melt From Channels', Found )
         IF ( .NOT.Found ) THEN
-           CALL FATAL(SolverName, 'No >Activate Melt From Channels< found')
+           CALL Fatal(SolverName, 'No >Activate Melt From Channels< found')
         END IF
 
         methodChannels = GetString( SolverParams, 'Channels Integration Method', Found )
         IF(.NOT.Found) THEN        
-           CALL FATAL(SolverName, 'No >Channels Integration Methods< found')
-        ELSE
-           IF ((methodChannels.NE.'explicit').AND.(methodChannels.NE.'implicit').AND.(methodChannels.NE.'crank-nicolson')) THEN
-              CALL FATAL(SolverName, 'Channels Integration Method: Implicit, Explicit or Crank-Nicolson')
-           END IF 
+           CALL Fatal(SolverName, 'No >Channels Integration Methods< found')
+        ELSE IF ((methodChannels/='explicit').AND.(methodChannels/='implicit').AND.(methodChannels/='crank-nicolson')) THEN
+          CALL Fatal(SolverName, 'Channels Integration Method: Implicit, Explicit or Crank-Nicolson')
         END IF
      END IF
 
-     NonlinearIter = GetInteger( SolverParams, &
-                     'Nonlinear System Max Iterations', Found )
+     NonlinearIter = GetInteger( SolverParams,'Nonlinear System Max Iterations', Found )
      IF ( .NOT.Found ) NonlinearIter = 1
 
-     NonlinearIterMin = GetInteger(   SolverParams, &
-                     'Nonlinear System Min Iterations', Found )
+     NonlinearIterMin = GetInteger( SolverParams,'Nonlinear System Min Iterations', Found )
      IF ( .NOT.Found ) NonlinearIterMin = 1
  
-     NonlinearTol  = GetConstReal( SolverParams, &
-          'Nonlinear System Convergence Tolerance',    Found )
-     IF ((.Not.Found).AND.(NonlinearIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
-
-     CoupledIter = GetInteger( SolverParams, &
-                    'Coupled Max Iterations', Found)
+     NonlinearTol = GetConstReal( SolverParams, &
+          'Nonlinear System Convergence Tolerance', Found )
+     IF ((.NOT.Found) .AND. (NonlinearIter>1)) THEN
+       CALL Fatal(SolverName,'Need >Nonlinear System Convergence Tolerance<')
+     END IF
+       
+     CoupledIter = GetInteger( SolverParams,'Coupled Max Iterations', Found)
      IF ( .NOT.Found ) CoupledIter = 1
 
-     CoupledTol  = GetConstReal( SolverParams, &
-          'Coupled Convergence Tolerance',    Found )
-     IF ((.Not.Found).AND.(CoupledIter>1)) CALL FATAL(SolverName,'Need >Nonlinear System Convergence Tolerance<')
-     
+     CoupledTol = GetConstReal( SolverParams,'Coupled Convergence Tolerance', Found )
+     IF ((.NOT.Found) .AND. (CoupledIter>1)) THEN
+       CALL Fatal(SolverName,'Need >Nonlinear System Convergence Tolerance<')
+     END IF
+       
      ThickSol => VariableGet( Solver % Mesh % Variables, SheetThicknessName, UnfoundFatal = .TRUE. )
      ThickPerm     => ThickSol % Perm
      ThickSolution => ThickSol % Values
@@ -562,9 +535,8 @@
            at0 = RealTime()
 
            CALL Info( SolverName, ' ', Level=4 )
-           CALL Info( SolverName, ' ', Level=4 )
            CALL Info( SolverName, '-------------------------------------',Level=4 )
-           WRITE( Message,'(A,A,I3,A,I3)') &
+           WRITE( Message,'(A,A,I0,A,I0)') &
                 TRIM(Solver % Variable % Name),  ' iteration no.', iter,' of ',NonlinearIter
            CALL Info( SolverName, Message, Level=4 )
            CALL Info( SolverName, '-------------------------------------',Level=4 )
@@ -572,7 +544,6 @@
            CALL Info( SolverName, 'Starting Assembly...', Level=4 )
               
            M = Solver % Mesh % NumberOfNodes
-           Ne = Solver % Mesh % NumberOfEdges
             
            !------------------------------------------------------------------------------
            ! lets start
@@ -603,26 +574,22 @@
               
               ! cycle halo elements
               !-------------------
-              IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+              IF (ParEnv % myPe /= Element % partIndex) CYCLE
 
-              IF (.NOT.ASSOCIATED(Element)) CYCLE
               IF ( Element % BodyId /= body_id ) THEN
                  body_id = Element % bodyId
                  Equation => GetEquation()
                  IF (.NOT.ASSOCIATED(Equation)) THEN
-                    WRITE (Message,'(A,I3)') 'No Equation  found for boundary element no. ', t
-                    CALL FATAL(SolverName,Message)
+                   CALL Fatal(SolverName,'No Equation  found for boundary element no. '//TRIM(I2S(t)))
                  END IF
 
                  Material => GetMaterial()
                  IF (.NOT.ASSOCIATED(Material)) THEN
-                    WRITE (Message,'(A,I3)') 'No Material found for boundary element no. ', t
-                    CALL FATAL(SolverName,Message)
+                   CALL Fatal(SolverName,'No Material found for boundary element no. '//TRIM(I2S(t)))
                  ELSE
                     material_id = GetMaterialId( Element, Found)
                     IF(.NOT.Found) THEN
-                       WRITE (Message,'(A,I3)') 'No Material ID found for boundary element no. ', t
-                       CALL FATAL(SolverName,Message)
+                       CALL Fatal(SolverName,'No Material ID found for boundary element no. '//TRIM(I2S(t)))
                     END IF
                  END IF
               END IF
@@ -631,8 +598,7 @@
               !------------------------------------------------------------------------------
               dimSheet = Element % TYPE % DIMENSION
               IF(dimSheet>2) THEN
-                  WRITE (Message,'(A,I3)')' Work only for 1D or 2D elements' 
-                  CALL FATAL(SolverName,Message)
+                CALL Fatal(SolverName,'Invalid element dimension: '//TRIM(I2S(dimSheet)))
               END IF
 
               !------------------------------------------------------------------------------
@@ -653,8 +619,8 @@
 ! v = A . h . | N |^{n-1} . N 
 !----------------------------------------------------              
 
-             CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
-                 betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
+              CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
+                  betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
 
               CT = 0.0_dp
               Wopen = 0.0_dp
@@ -700,18 +666,14 @@
               MASS = 0.0_dp
               STIFF = 0.0_dp 
               FORCE = 0.0_dp
-              ! cartesian coords
-              !----------------
-              IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-                  CALL SheetCompose( MASS, STIFF, FORCE, LOAD, &
-                       ThickSolution(ThickPerm(Element % NodeIndexes(1:n))), &
-                       HydPot(HydPotPerm(Element % NodeIndexes(1:N))), &
-                       CT(1:N), SheetConductivity(1:n), alphas(1:n), betas(1:n), & 
-                       Phi0(1:n), Ar(1:n), ng(1:n), Element, N, ElementNodes ) 
-              ELSE
-                 WRITE(Message,'(A)')' Work only for cartesian coordinate'
-                 CALL FATAL( SolverName, Message)
-              END IF              
+              
+              ! Local matrix assembly in cartesian coords
+              !------------------------------------------
+              CALL SheetCompose( MASS, STIFF, FORCE, LOAD, &
+                  ThickSolution(ThickPerm(Element % NodeIndexes(1:n))), &
+                  HydPot(HydPotPerm(Element % NodeIndexes(1:N))), &
+                  CT(1:N), SheetConductivity(1:n), alphas(1:n), betas(1:n), & 
+                  Phi0(1:n), Ar(1:n), ng(1:n), Element, N, ElementNodes ) 
               !------------------------------------------------------------------------------
               ! If time dependent simulation add mass matrix to stiff matrix
               !------------------------------------------------------------------------------
@@ -738,12 +700,12 @@
               Edge => Solver % Mesh % Edges(t)
               IF (.NOT.ASSOCIATED(Edge)) CYCLE
               IF (ParEnv % PEs > 1) THEN
-                IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
               END IF
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
-              IF (n/=2) CALL FATAL(SolverName, 'Work only for edge element of type 202')
+              IF (n/=2) CALL Fatal(SolverName, 'Work only for edge element of type 202')
               ! We keep only the edge which belong in the sheet surface
               ! i.e. Both nodes have Perm > 0
               IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
@@ -777,24 +739,21 @@
                     IF (.Not.ASSOCIATED(Bulk)) Bulk => Face % BoundaryInfo % Right
                  END IF
               END IF
-              IF (.Not.ASSOCIATED(Bulk)) THEN
-                 WRITE(Message,'(a,i0)')'No face or bulk element associated to edge no:', t
-                 CALL FATAL(SolverName, Message)
+              IF (.NOT.ASSOCIATED(Bulk)) THEN
+                CALL Fatal(SolverName, 'No face or bulk element associated to edge: '//TRIM(I2S(t)))
               END IF
 
               IF ( Bulk % BodyId /= body_id ) THEN
-                 body_id = Bulk % bodyId
-                 Material => GetMaterial( Bulk )
-                 IF (.NOT.ASSOCIATED(Material)) THEN
-                    WRITE (Message,'(A,I3)') 'No Material found for edge no. ', t
-                    CALL FATAL(SolverName,Message)
-                 ELSE
-                    material_id = GetMaterialId( Bulk, Found)
-                    IF(.NOT.Found) THEN
-                       WRITE (Message,'(A,I3)') 'No Material ID found for edge no. ', t
-                       CALL FATAL(SolverName,Message)
-                    END IF
-                 END IF
+                body_id = Bulk % bodyId
+                Material => GetMaterial( Bulk )
+                IF (.NOT.ASSOCIATED(Material)) THEN
+                  CALL Fatal(SolverName,'No Material found for edge: '//TRIM(I2S(t)))
+                ELSE
+                  material_id = GetMaterialId( Bulk, Found)
+                  IF(.NOT.Found) THEN
+                    CALL Fatal(SolverName,'No Material ID found for edge: '//TRIM(I2S(t)))
+                  END IF
+                END IF
               END IF
               
 !----------------------------------------------------              
@@ -826,7 +785,7 @@
                  END If
                  Phim(i) = gravity*WaterDensity*zb
                  Phi0(i) = Snn(i) + Phim(i) 
-                 IF (.Not.NeglectH) THEN
+                 IF (.NOT.NeglectH) THEN
                     k = ThickPerm(Edge % NodeIndexes(i))
                     Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
                  END IF
@@ -852,20 +811,16 @@
               MASS = 0.0_dp
               STIFF = 0.0_dp
               FORCE = 0.0_dp
-              ! cartesian coords
-              !----------------
 
-              IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-                 CALL ChannelCompose( MASS, STIFF, FORCE, &
-                      ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
-                      HydPot(HydPotPerm(Edge % NodeIndexes(1:N))), ChannelArea, &
-                      ChannelConductivity, alphac, betac, Phi0, Phim, Ac, lc, ng, &
-                      SheetConductivity, alphas, betas, Afactor, Bfactor, EdgeTangent, &
-                      Edge, n, EdgeNodes )
-              ELSE
-                 WRITE(Message,'(A)')' Work only for cartesian coordinate'
-                 CALL FATAL( SolverName, Message)
-              END IF              
+              ! Local matrix assembly in cartesian coords
+              !------------------------------------------
+              CALL ChannelCompose( MASS, STIFF, FORCE, &
+                  ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
+                  HydPot(HydPotPerm(Edge % NodeIndexes(1:N))), ChannelArea, &
+                  ChannelConductivity, alphac, betac, Phi0, Phim, Ac, lc, ng, &
+                  SheetConductivity, alphas, betas, Afactor, Bfactor, EdgeTangent, &
+                  Edge, n, EdgeNodes )
+
               !CHANGE
               !To stop weird channel instability where some channels grow
               !exponentially to stupid levels and eventually mess up whole
@@ -897,7 +852,7 @@
 
               ! cycle halo elements
               !--------------------
-              IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+              IF (ParEnv % myPe /= Element % partIndex) CYCLE
               n = GetElementNOFNodes()
 
               IF ( GetElementFamily() == 1 ) THEN 
@@ -911,10 +866,8 @@
                   FORCE=0.0_dp
                   MASS=0.0_dp
 
-                  Storage = .False.
-                  Storage =  GetLogical(BC,'Moulin Storage', Found)
+                  Storage = GetLogical(BC,'Moulin Storage', Found)
                   IF (Storage) THEN
-                    MoulinArea = 0.0_dp
                     MoulinArea(1:N) = ListGetReal( BC, 'Moulin Area',  N, Element % NodeIndexes, Found, &
                          UnfoundFatal = .TRUE. )
                     ! MASS is a scalar here
@@ -922,7 +875,6 @@
                   END IF
 
                   ! Is there surface input
-                  MoulinFlux = 0.0_dp
                   MoulinFlux(1:N) = ListGetReal( BC, 'Moulin Flux',  N, Element % NodeIndexes, Found, &
                          UnfoundFatal = .TRUE. )
                   FORCE(1) = MoulinFlux(1)
@@ -945,43 +897,31 @@
                 END IF
 
               ELSE
-              ! flux over the sheet
+                ! flux over the sheet
                 BC => GetBC( Element )
                 bc_id = GetBCId( Element )
                 CALL GetElementNodes( ElementNodes )
 
                 IF ( ASSOCIATED( BC ) ) THEN            
-                  ! Check that we are on the correct boundary part!
-                  STIFF=0.0_dp 
-                  FORCE=0.0_dp
-                  MASS=0.0_dp
 
-                  LOAD=0.0_dp
-                  FluxBC = .FALSE.
+                  ! Check that we are on the correct boundary part!
                   FluxBC =  GetLogical(BC,TRIM(Solver % Variable % Name) // ' Flux BC', Found)
 
                   IF (FluxBC) THEN
-                     !---------------
-                     !BC: -k@T/@n = q
-                     !---------------
-                     LOAD(1:N)  = LOAD(1:N) + &
-                             GetReal( BC, 'Sheet Water Flux', Found )
-                     ! -------------------------------------
-                     ! set boundary due to coordinate system
-                     ! -------------------------------------
-                     IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-                        CALL SheetBoundary( STIFF, FORCE, &
-                            LOAD, Element, n, ElementNodes )
-                     ELSE
-                        WRITE(Message,'(A)')' Work only for cartesian coordinate'
-                        CALL FATAL( SolverName, Message)
-                     END IF
-                     !!! TODO : do we need that as MASS = 0 here
-                     IF ( TransientSimulation ) THEN
-                        CALL Default1stOrderTime( MASS, STIFF, FORCE, Element )
-                     END IF
-
-                     CALL DefaultUpdateEquations( STIFF, FORCE, Element )
+                    LOAD=0.0_dp
+                    STIFF=0.0_dp 
+                    FORCE=0.0_dp
+                    !---------------
+                    !BC: -k@T/@n = q
+                    !---------------
+                    LOAD(1:N) = GetReal( BC, 'Sheet Water Flux', Found )
+                    ! -------------------------------------
+                    ! set boundary due to coordinate system
+                    ! -------------------------------------
+                    CALL SheetBoundary( STIFF, FORCE, &
+                        LOAD, Element, n, ElementNodes )
+                    
+                    CALL DefaultUpdateEquations( STIFF, FORCE, Element )
                   END IF
                 END IF
               END IF ! Element 1O1
@@ -1036,27 +976,23 @@
 !------------------------------------------------------------------------------
            DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t,Solver)
-              IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+              IF (ParEnv % myPe /= Element % partIndex) CYCLE
 
-              IF (.NOT.ASSOCIATED(Element)) CYCLE
               IF ( Element % BodyId /= body_id ) THEN
                  body_id = Element % bodyId
                  Equation => GetEquation()
                  IF (.NOT.ASSOCIATED(Equation)) THEN
-                    WRITE (Message,'(A,I3)') 'No Equation  found for boundary element no. ', t
-                    CALL FATAL(SolverName,Message)
+                    CALL Fatal(SolverName,'No Equation  found for boundary element: '//TRIM(I2S(t)))
                  END IF
 
                  Material => GetMaterial()
                  IF (.NOT.ASSOCIATED(Material)) THEN
-                    WRITE (Message,'(A,I3)') 'No Material found for boundary element no. ', t
-                    CALL FATAL(SolverName,Message)
+                   CALL Fatal(SolverName, 'No Material found for boundary element: '//TRIM(I2S(t)))
                  ELSE
-                    material_id = GetMaterialId( Element, Found)
-                    IF(.NOT.Found) THEN
-                       WRITE (Message,'(A,I3)') 'No Material ID found for boundary element no. ', t
-                       CALL FATAL(SolverName,Message)
-                    END IF
+                   material_id = GetMaterialId( Element, Found)
+                   IF(.NOT.Found) THEN
+                     CALL Fatal(SolverName,'No Material ID found for boundary element: '//TRIM(I2S(t)))
+                   END IF
                  END IF
               END IF
 
@@ -1070,26 +1006,24 @@
                 CycleElement = .FALSE.
                 WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                 WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+
                 IF(ASSOCIATED(WorkVar)) THEN
                   DO i=1, N
                     IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
                       !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
-                        CycleElement = .TRUE.
-
-                        WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
-                        Vvar(Element % NodeIndexes(i)) = 0.0
-                        NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                        !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
-                        hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
+                      CycleElement = .TRUE.                     
+                      WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
+                      Vvar(Element % NodeIndexes(i)) = 0.0
+                      NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
+                      !PwSolution(PwPerm(Element % NodeIndexes(i))) = 0.0
+                      hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
                       !END IF
                     END IF
                   END DO
-                END IF
-                IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
+                ELSE IF(ASSOCIATED(WorkVar2) ) THEN
                   DO i=1, N
                     IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
                       CycleElement = .TRUE.
-
                       WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
                       Vvar(Element % NodeIndexes(i)) = 0.0
                       NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
@@ -1150,6 +1084,14 @@
                  IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he
               END DO
            END DO     !  Bulk elements
+
+           IF(Calving) THEN
+             WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+             WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+             WorkVar3 => VariableGet(Solver % Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+           END IF
+
+           
            ! Loop over all nodes to update ThickSolution
            DO j = 1, Solver % Mesh % NumberOfNodes
               k = ThickPerm(j)
@@ -1159,30 +1101,18 @@
               !hydrology variables
               IF(Calving) THEN
                 CycleElement = .FALSE.
-                WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
                 IF(ASSOCIATED(WorkVar)) THEN
-                  IF(WorkVar % Values(k)>0.0) THEN !.AND. WorkVar2 % Values(k)<0.0) THEN
-                      CycleElement = .TRUE.
-                      ThickSolution(k) = 0.0
-                      ThickPrev(k,1) = 0.0
-                  END IF
+                  IF(WorkVar % Values(k)>0.0) CycleElement = .TRUE.
+                ELSE
+                  IF(WorkVar2 % Values(k)<0.0) CycleElement = .TRUE.
                 END IF
-                IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
-                  IF(WorkVar2 % Values(k)<0.0) THEN 
-                    CycleElement = .TRUE.
-                    ThickSolution(k) = 0.0
-                    ThickPrev(k,1) = 0.0
-                  END IF
-                END IF
-                WorkVar => VariableGet(Solver % Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                IF(WorkVar % Values(k)==0.0) THEN
+                IF(WorkVar3 % Values(k)==0.0) CycleElement = .TRUE.
+
+                IF(CycleElement) THEN
                   ThickSolution(k) = 0.0
                   ThickPrev(k,1) = 0.0
-                  CycleElement = .TRUE.
+                  CYCLE
                 END IF
-                NULLIFY(WorkVar, WorkVar2)
-                IF(CycleElement) CYCLE
               END IF
               IF(MHBool) THEN
                 IF (ThickSolution(k)>MaxH) THEN
@@ -1240,7 +1170,7 @@
                  Edge => Solver % Mesh % Edges(t)
                  IF (.NOT.ASSOCIATED(Edge)) CYCLE
                  IF (ParEnv % PEs > 1) THEN
-                   IF (ParEnv % myPe .NE. Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                   IF (ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
                  END IF
                  n = Edge % TYPE % NumberOfNodes
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
@@ -1256,25 +1186,22 @@
                    IF(ASSOCIATED(WorkVar)) THEN
                      DO i=1, n
                        IF(WorkVar % Values(WorkVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
-                         !IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN
-                           CycleElement = .TRUE.
-                           AreaSolution(AreaPerm(M+t)) = 0.0
-                           QcSolution(QcPerm(M+t)) = 0.0
-                         !END IF
+                         CycleElement = .TRUE.
                        END IF
                      END DO
-                   END IF
-                   IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
+                   ELSE IF(ASSOCIATED(WorkVar2) ) THEN
                      DO i=1,n
-                       IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN 
+                       IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN
                          CycleElement = .TRUE.
-                         AreaSolution(AreaPerm(M+t)) = 0.0
-                         QcSolution(QcPerm(M+t)) = 0.0
                        END IF
                      END DO
                    END IF
                    NULLIFY(WorkVar, WorkVar2)
-                   IF(CycleElement) CYCLE
+                   IF(CycleElement) THEN
+                     AreaSolution(AreaPerm(M+t)) = 0.0
+                     QcSolution(QcPerm(M+t)) = 0.0
+                     CYCLE
+                   END IF
                  END IF              
 
                  EdgeNodes % x(1:n) = Solver % Mesh % Nodes % x(Edge % NodeIndexes(1:n))
@@ -1289,18 +1216,18 @@
 
                  IF (DIM==2) THEN 
                     Bulk => Edge % BoundaryInfo % Left
-                    IF (.Not.ASSOCIATED(Bulk)) Bulk => Edge % BoundaryInfo % Right
+                    IF (.NOT.ASSOCIATED(Bulk)) Bulk => Edge % BoundaryInfo % Right
                  ELSE 
                     Face => Edge % BoundaryInfo % Left
-                    IF (.Not.ASSOCIATED(Face)) Face => Edge % BoundaryInfo % Right
+                    IF (.NOT.ASSOCIATED(Face)) Face => Edge % BoundaryInfo % Right
                     IF (ASSOCIATED(Face)) THEN
                        Bulk => Face % BoundaryInfo % Left 
-                       IF (.Not.ASSOCIATED(Bulk)) Bulk => Face % BoundaryInfo % Right
+                       IF (.NOT.ASSOCIATED(Bulk)) Bulk => Face % BoundaryInfo % Right
                     END IF
                  END IF
-                 IF (.Not.ASSOCIATED(Bulk)) THEN
+                 IF (.NOT.ASSOCIATED(Bulk)) THEN
                     WRITE(Message,'(a,i0)')'No face or bulk element associated to edge no:', t
-                    CALL FATAL(SolverName, Message)
+                    CALL Fatal(SolverName, Message)
                  END IF
 
                  IF ( Bulk % BodyId /= body_id ) THEN
@@ -1308,12 +1235,12 @@
                     Material => GetMaterial( Bulk )
                     IF (.NOT.ASSOCIATED(Material)) THEN
                        WRITE (Message,'(A,I3)') 'No Material found for edge no. ', t
-                       CALL FATAL(SolverName,Message)
+                       CALL Fatal(SolverName,Message)
                     ELSE
                        material_id = GetMaterialId( Bulk, Found)
                        IF(.NOT.Found) THEN
                           WRITE (Message,'(A,I3)') 'No Material ID found for edge no. ', t
-                          CALL FATAL(SolverName,Message)
+                          CALL Fatal(SolverName,Message)
                        END IF
                     END IF
                  END IF
@@ -1339,7 +1266,7 @@
                     END If
                     Phim(i) = gravity*WaterDensity*zb
                     Phi0(i) = Snn(i) + Phim(i) 
-                    IF (.Not.NeglectH) THEN
+                    IF (.NOT.NeglectH) THEN
                        k = ThickPerm(Edge % NodeIndexes(i))
                        Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
                     END IF 
@@ -1354,17 +1281,12 @@
 
 ! Compute the force term to evolve the channels area
 ! Equation of the form dS/dt = S x ALPHA + BETA
-                 IF ( CurrentCoordinateSystem() == Cartesian ) THEN
-                    CALL GetEvolveChannel( ALPHA, BETA, Qc, ChannelArea, &
-                         HydPot(HydPotPerm(Edge % NodeIndexes(1:n))), &
-                         ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
-                         alphac, betac, ChannelConductivity, Phi0, Phim, Ac, lc, ng, &
-                         SheetConductivity, alphas, betas, Afactor, Bfactor, &
-                         EdgeTangent, Edge, n, EdgeNodes )
-                 ELSE
-                    WRITE(Message,'(A)')' Work only for cartesian coordinate'
-                    CALL FATAL( SolverName, Message)
-                 END IF
+                 CALL GetEvolveChannel( ALPHA, BETA, Qc, ChannelArea, &
+                     HydPot(HydPotPerm(Edge % NodeIndexes(1:n))), &
+                     ThickSolution(ThickPerm(Edge % NodeIndexes(1:n))), &
+                     alphac, betac, ChannelConductivity, Phi0, Phim, Ac, lc, ng, &
+                     SheetConductivity, alphas, betas, Afactor, Bfactor, &
+                     EdgeTangent, Edge, n, EdgeNodes )
 
                  k = AreaPerm(M+t)
                  IF ( k <=  0 ) CYCLE  
@@ -1384,7 +1306,7 @@
                  !shouldn't do much, so resetting to 0 seems safest
                  !TODO Come up with a better way of fixing this
                  IF(MABool) THEN
-                   IF(AreaPrev(k,1) .NE. 0.0) THEN
+                   IF(AreaPrev(k,1) /= 0.0) THEN
                      IF(AreaSolution(k)>1.0 .AND. (AreaSolution(k)/AreaPrev(k,1))>5.0) THEN
                        AreaSolution(k) = AreaPrev(k,1)
                      END IF
@@ -1492,7 +1414,7 @@
          !boundary elements are last in first loop where it's set
          dimSheet = Element % TYPE % DIMENSION
          Element => GetActiveElement(t,Solver)
-         IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+         IF (ParEnv % myPe /= Element % partIndex) CYCLE
 
          IF (.NOT.ASSOCIATED(Element)) CYCLE
          IF ( Element % BodyId /= body_id ) THEN
@@ -1500,12 +1422,12 @@
             Material => GetMaterial()
             IF (.NOT.ASSOCIATED(Material)) THEN
                WRITE (Message,'(A,I3)') 'No Material found for boundary element no. ', t
-               CALL FATAL(SolverName,Message)
+               CALL Fatal(SolverName,Message)
             ELSE
                material_id = GetMaterialId( Element, Found)
                IF(.NOT.Found) THEN
                   WRITE (Message,'(A,I3)') 'No Material ID found for boundary element no. ', t
-                  CALL FATAL(SolverName,Message)
+                  CALL Fatal(SolverName,Message)
                END IF
             END IF
          END IF
@@ -1519,22 +1441,20 @@
            CycleElement = .FALSE.
            WorkVar => VariableGet(Solver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
            WorkVar2 => VariableGet(Solver % Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+
            IF(ASSOCIATED(WorkVar)) THEN
              DO i=1, n
                IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                 !IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN
-                   CycleElement = .TRUE.
-                   DO j=1,dimSheet
-                     k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                     qSolution(k) = 0.0
-                     Refq(k) = 0.0
-                   END DO
-                   EXIT
-                 !END IF
+                 CycleElement = .TRUE.
+                 DO j=1,dimSheet
+                   k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
+                   qSolution(k) = 0.0
+                   Refq(k) = 0.0
+                 END DO
+                 EXIT
                END IF
              END DO
-           END IF
-           IF(ASSOCIATED(WorkVar2) .AND. .NOT. ASSOCIATED(WorkVar)) THEN
+           ELSE IF(ASSOCIATED(WorkVar2) ) THEN
              DO i=1,n
                IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
                  CycleElement = .TRUE.
@@ -1547,7 +1467,6 @@
                END IF
              END DO
            END IF
-           NULLIFY(WorkVar, WorkVar2)
            IF(CycleElement) CYCLE
          END IF             
  
@@ -1574,14 +1493,9 @@
       END DO
 
       ! Mean nodal value
-      DO i=1,n
-         DO j=1,dimSheet
-            k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-            IF ( Refq(k) > 0.0_dp ) THEN 
-              qSolution(k) = qSolution(k)/Refq(k) 
-            END IF
-         END DO  
-      END DO
+      WHERE( Refq > 0.5_dp )
+        qSolution = qSolution / Refq
+      END WHERE
 
    END IF
 
@@ -1589,11 +1503,9 @@
 
    !CHANGE - to make sure PrevValues for added variables in calving updated
    IF(Calving) THEN
-     WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
-                ThisOnly=.TRUE.)
+     WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',ThisOnly=.TRUE.)
      WorkVar % PrevValues(1:Solver % Mesh % NumberOfNodes,1) = WorkVar % Values(1:Solver % Mesh % NumberOfNodes)
-     WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',&
-                ThisOnly=.TRUE.)
+     WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',ThisOnly=.TRUE.)
      WorkVar % PrevValues(1:Solver % Mesh % NumberOfEdges,1) = WorkVar % Values(1:Solver % Mesh % NumberOfEdges)
      NULLIFY(WorkVar)
    END IF
@@ -1616,35 +1528,20 @@ CONTAINS
     REAL(KIND=dp) :: NodalHydPot(:), Nodalalphas(:), NodalBetas(:)
     REAL(KIND=dp) :: NodalCT(:), NodalC2(:), NodalH(:)
     REAL(KIND=dp) :: NodalPhi0(:), NodalAr(:), NodalNg(:)
-
     INTEGER :: n
-
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
 
     !------------------------------------------------------------------------------
     !    Local variables
     !------------------------------------------------------------------------------
-
-    REAL(KIND=dp) :: dBasisdx(n,3), detJ
-    REAL(KIND=dp) :: Basis(n)
-
-    REAL(KIND=dp) :: Force
-
-    REAL(KIND=dp) :: A, M
-    REAL(KIND=dp) :: Load
-
-    REAL(KIND=dp) :: x, y, z
-
+    REAL(KIND=dp) :: dBasisdx(n,3), detJ, Basis(n)
+    REAL(KIND=dp) :: Force, A, M, Load
     INTEGER :: i, j, k, c, p, q, t, dim, N_Integ, NBasis
-
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     REAL(KIND=dp) :: s, u, v, w
-
     REAL(KIND=dp) :: CT, C2, Vfactor, Phi0, PhiG
-
     REAL(KIND=dp) :: gradPhi(3), Ngrad, na, nb, ng, hsheet 
-
     REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ, V_Integ, W_Integ, S_Integ
 
     LOGICAL :: Found, Transient, stat
@@ -1763,20 +1660,15 @@ CONTAINS
      REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:), LoadVector(:)
      TYPE(Nodes_t)   :: Nodes
      TYPE(Element_t) :: Element
-
      INTEGER :: n
-
+!------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(n)
      REAL(KIND=dp) :: dBasisdx(n,3), detJ
-
      REAL(KIND=dp) :: U, V, W, S
      REAL(KIND=dp) :: Force
      REAL(KIND=dp), POINTER :: U_Integ(:), V_Integ(:), W_Integ(:), S_Integ(:)
-
      INTEGER :: i, t, q, p, N_Integ
-
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
      LOGICAL :: stat
 !------------------------------------------------------------------------------
      BoundaryVector = 0.0_dp
@@ -1833,38 +1725,22 @@ SUBROUTINE ChannelCompose( MassMatrix, StiffMatrix, ForceVector, &
      REAL(KIND=dp) :: NodalPhi0(:), NodalPhim(:), NodalNg(:), NodalAfactor(:)
      REAL(KIND=dp) :: NodalKc(:), NodalAlphac(:), NodalAc(:), Nodallc(:)
      REAL(KIND=dp) :: NodalBetac(:), NodalKs(:), NodalBfactor(:)
-
      INTEGER :: n
-
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
 
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
-     REAL(KIND=dp) :: dBasisdx(n,3), detJ
-     REAL(KIND=dp) :: Basis(n), dBasisds(n)
-
-     REAL(KIND=dp) :: Force
-
-     REAL(KIND=dp) :: A, M
-     REAL(KIND=dp) :: Load
-
-     REAL(KIND=dp) :: x, y, z
-
-     INTEGER :: i, j, k, c, p, q, t, N_Integ, NBasis
-
+     REAL(KIND=dp) :: dBasisdx(n,3), detJ, Basis(n), dBasisds(n)
+     REAL(KIND=dp) :: Force, A, M, Load
+     INTEGER :: i, j, k, p, q, t, N_Integ, NBasis
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      REAL(KIND=dp) :: s, u, v, w
-
      REAL(KIND=dp) :: Vfactor, Phi0, PhiG, Afactor, Bfactor, GradPhim, dPw, Ffactor
-
      REAL(KIND=dp) :: GradPhi, Ngrad, nbc, nbs, nas, nac, hsheet, ng, qc, Kc, Ks, lc
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ, V_Integ, W_Integ, S_Integ
-
-     LOGICAL :: Vms, Found, Transient, stat
-     TYPE(ValueList_t), POINTER :: BodyForce
+     LOGICAL :: Found, Transient, stat
 
 !------------------------------------------------------------------------------
 
@@ -1979,7 +1855,7 @@ SUBROUTINE ChannelCompose( MassMatrix, StiffMatrix, ForceVector, &
           A = A + Kc * dBasisds(p) * dBasisds(q)
           A = A - Afactor * Kc * dPw * Basis(p) * dBasisds(q)
           A = A + Ffactor * Basis(p) * dBasisds(q)
-          A = A + Vfactor*ng*Basis(p)*Basis(q)
+          A = A + Vfactor *ng * Basis(p) * Basis(q)
           A = A + Bfactor * Basis(p) * dBasisds(q) 
 
           StiffMatrix(p,q) = StiffMatrix(p,q) + s * A
@@ -2003,47 +1879,29 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
   USE Differentials
 
   IMPLICIT NONE
-
-            
+           
      REAL(KIND=dp) :: ALPHA, BETA, Qcc
      REAL(KIND=dp) :: NodalHydPot(:), NodalAlphas(:), NodalBetas(:)
      REAL(KIND=dp) :: NodalH(:), CArea, Tangent(3)
      REAL(KIND=dp) :: NodalPhi0(:), NodalPhim(:), NodalNg(:), NodalAfactor(:)
      REAL(KIND=dp) :: NodalKc(:), Nodalalphac(:), NodalAc(:), Nodallc(:)
      REAL(KIND=dp) :: NodalBetac(:), NodalKs(:), NodalBfactor(:)
-
      INTEGER :: n
-
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t), POINTER :: Element
 
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
-     REAL(KIND=dp) :: dBasisdx(n,3), detJ
-     REAL(KIND=dp) :: Basis(n), dBasisds(n)
-
-
-     REAL(KIND=dp) :: A, M
-     REAL(KIND=dp) :: Load
-
-     REAL(KIND=dp) :: x, y, z
-
-     INTEGER :: i, j, k, c, p, q, t, N_Integ,NBasis
-
+     REAL(KIND=dp) :: dBasisdx(n,3), detJ, Basis(n), dBasisds(n)
+     INTEGER :: i, j, k, p, q, t, N_Integ,NBasis
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      REAL(KIND=dp) :: s, u, v, w
-
      REAL(KIND=dp) :: Phi0, PhiG, Afactor, Bfactor, GradPhim, dPw, Ffactor
-
      REAL(KIND=dp) :: GradPhi, Ngrad, nbc, hsheet, nas, nbs, nac, ng, qc, Kc, Ks, lc
-     
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ, V_Integ, W_Integ, S_Integ
-
-     REAL(KIND=dp) :: Xi, Pii, Nef, Vc 
-
-     LOGICAL :: Vms, Found, Transient, stat
+     REAL(KIND=dp) :: Xi, Pii, Vc 
+     LOGICAL :: Found, Transient, stat
 
 !------------------------------------------------------------------------------
 
@@ -2159,48 +2017,38 @@ END SUBROUTINE GetEvolveChannel
   TYPE(Element_t), POINTER :: Element
   TYPE(ValueList_t), POINTER :: Material
 
-!------------------------------------------------------------------------------
-  SheetConductivity = 0.0_dp
+  ! Note: By default these return zero so there is little use to initialize them just before...
+  !------------------------------------------------------------------------------------------
   SheetConductivity = ListGetReal(Material, 'Sheet Conductivity', n, Element % NodeIndexes, &
-           Found, UnfoundFatal = .TRUE. )
-                   
-  alphas = 0.0_dp
-  alphas(1:N) =  ListGetReal( Material, 'Sheet Flow Exponent alpha', n, Element % NodeIndexes, &
-           Found, UnfoundFatal = .TRUE. )
+      Found, UnfoundFatal = .TRUE. )
 
-  betas = 0.0_dp
+  alphas(1:N) =  ListGetReal( Material, 'Sheet Flow Exponent alpha', n, Element % NodeIndexes, &
+      Found, UnfoundFatal = .TRUE. )
+
   betas(1:N) =  ListGetReal( Material, 'Sheet Flow Exponent beta', n, Element % NodeIndexes, &
-           Found, UnfoundFatal = .TRUE. ) 
-                   
-  Ev = 0.0_dp
+      Found, UnfoundFatal = .TRUE. ) 
+
   Ev(1:N) =  ListGetReal( Material, 'Englacial Void Ratio', n, Element % NodeIndexes, & 
-           Found, UnfoundFatal = .TRUE. ) 
-                   
-  ub = 0.0_dp
+      Found, UnfoundFatal = .TRUE. ) 
+
   ub(1:N) = ListGetReal( Material, 'Sliding Velocity',  n, Element % NodeIndexes, &
             Found, UnfoundFatal = .TRUE. )
 
-  Snn = 0.0_dp
   Snn(1:N) = ListGetReal( Material, 'Ice Normal Stress',  N, Element % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
   IF (ANY(Snn(1:N) < 0.0)) THEN
-     WRITE(Message,'(A)')'The Ice Normal Stress (overburden pressure) must be positive'
-     CALL FATAL(SolverName, Message)
+    CALL Fatal(SolverName,'The Ice Normal Stress (overburden pressure) must be positive!')
   END IF
 
-  lr = 0.0_dp
   lr(1:N) = ListGetReal( Material, 'Bedrock Bump Length',  N, Element % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
-  hr = 0.0_dp
   hr(1:N) = ListGetReal( Material, 'Bedrock Bump High',  N, Element % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 
-  Ar = 0.0_dp
   Ar(1:N) = ListGetReal( Material, 'Sheet Closure Coefficient',  N, Element % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 
-  ng = 0.0_dp
   ng(1:N) = ListGetReal( Material, 'Glen Exponent',  N, Element % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 !------------------------------------------------------------------------------
@@ -2228,59 +2076,45 @@ END SUBROUTINE GetParametersSheet
 
 !------------------------------------------------------------------------------
 
-  SheetConductivity = 0.0_dp
   SheetConductivity(1:n) = ListGetReal(Material, 'Sheet Conductivity', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. )
                    
-  ChannelConductivity = 0.0_dp
   ChannelConductivity(1:n) = ListGetReal(Material, 'Channel Conductivity', n, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
                    
-  alphac = 0.0_dp
   alphac(1:n) =  ListGetReal( Material, 'Channel Flow Exponent Alpha', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
                    
-  betac = 0.0_dp
   betac(1:n) =  ListGetReal( Material, 'Channel Flow Exponent Beta', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
   
-  alphas = 0.0_dp
   alphas(1:n) =  ListGetReal( Material, 'Sheet Flow Exponent alpha', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 
-  betas = 0.0_dp
   betas(1:n) =  ListGetReal( Material, 'Sheet Flow Exponent beta', n, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
                    
-  IceDensity = 0.0_dp
   IceDensity(1:n) = ListGetReal( Material, 'Density',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
-  Snn = 0.0_dp
   Snn(1:n) = ListGetReal( Material, 'Ice Normal Stress',  N, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
   IF (ANY(Snn(1:n) < 0.0)) THEN
-     WRITE(Message,'(A)')'The Ice Normal Stress (overburden pressure) must be positive'
-     CALL FATAL(SolverName, Message)
+    CALL Fatal(SolverName,'The Ice Normal Stress (overburden pressure) must be positive!')
   END IF
 
-  Ac = 0.0_dp
   Ac(1:n) = ListGetReal( Material, 'Channel Closure Coefficient',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
-  ng = 0.0_dp
   ng(1:n) = ListGetReal( Material, 'Glen Exponent',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
-  CCt = 0.0_dp
   CCt(1:n) = ListGetReal( Material, 'Pressure Melting Coefficient',  N, Edge % NodeIndexes, & 
            Found, UnfoundFatal = .TRUE. ) 
 
-  CCw = 0.0_dp
   CCw(1:n) = ListGetReal( Material, 'Water Heat Capacity',  N, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 
-  lc = 0.0_dp
   lc(1:n) = ListGetReal( Material, 'Sheet Width Over Channel',  N, Edge % NodeIndexes, &
            Found, UnfoundFatal = .TRUE. ) 
 !------------------------------------------------------------------------------
@@ -2306,12 +2140,8 @@ END SUBROUTINE GetParametersChannel
     !------------------------------------------------------------------------------
     !    Local variables
     !------------------------------------------------------------------------------
-
-    REAL(KIND=dp) :: dBasisdx(n,3), detJ
-    REAL(KIND=dp) :: Basis(n)
-
+    REAL(KIND=dp) :: dBasisdx(n,3), detJ, Basis(n)
     INTEGER :: i, dim
-
     REAL(KIND=dp) :: u, v, w
     REAL(KIND=dp) :: gradPhi(3), Ngrad 
     LOGICAL :: stat
