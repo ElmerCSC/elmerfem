@@ -9138,7 +9138,8 @@ CONTAINS
 
         Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Element % NodeIndexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Element % NodeIndexes(1:n))
-        IF  (DoNodes .AND. isPelement(Element)) THEN
+
+        IF (DoNodes .AND. isPelement(Element)) THEN
           Nodes % x(n+1:nd) = 0
           Nodes % y(n+1:nd) = 0
         END IF
@@ -9916,8 +9917,14 @@ CONTAINS
 
                   DO i=1,nd
                     Nslave = Nslave + 1
-                    ii = Indexes(i)
-                    IF(i<=n) ii=InvPerm1(ii)
+
+                    IF(isPElement(Element)) THEN
+                      ii = Indexes(i)
+                    ELSE
+                      ii = Element % NodeIndexes(i)
+                    END IF
+                    IF(i<=nM) ii=InvPerm1(ii)
+
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                                ii, NodeCoeff * Basis(i) * val ) 
 
@@ -9930,12 +9937,12 @@ CONTAINS
                   DO i=1,ndM
 !                   IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
 
-                    IF(isPElement(Element)) THEN
-                      jj = Indexes(j)                                    
+                    IF(isPElement(ElementM)) THEN
+                      ii = IndexesM(i)
                     ELSE
-                      jj = Element % NodeIndexes(i)
+                      ii = ElementM % NodeIndexes(i)
                     END IF
-                    IF(i<=n) ii=InvPerm2(ii)
+                    IF(i<=nM) ii=InvPerm2(ii)
 
                     Nmaster = Nmaster + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
