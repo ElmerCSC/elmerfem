@@ -9897,8 +9897,11 @@ CONTAINS
                 END IF
 
                 DO j=1,nd
-                  jj = Indexes(j)                                    
-
+                  IF(isPElement(Element)) THEN
+                    jj = Indexes(j)                                    
+                  ELSE
+                    jj = Element % NodeIndexes(i)
+                  END IF
                   IF (j<=n) jj=InvPerm1(jj)
 
                   nrow = NodePerm(jj)
@@ -9927,7 +9930,11 @@ CONTAINS
                   DO i=1,ndM
 !                   IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
 
-                    ii = IndexesM(i)
+                    IF(isPElement(Element)) THEN
+                      jj = Indexes(j)                                    
+                    ELSE
+                      jj = Element % NodeIndexes(i)
+                    END IF
                     IF(i<=n) ii=InvPerm2(ii)
 
                     Nmaster = Nmaster + 1
