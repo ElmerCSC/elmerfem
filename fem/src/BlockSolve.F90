@@ -3544,7 +3544,8 @@ CONTAINS
     SaveRHS => SolverMatrix % RHS
     SolverMatrix % RHS => b
     
-    IF( .NOT. GotSlaveSolvers ) THEN    
+    IF( .NOT. GotSlaveSolvers ) THEN
+      CALL Info('BlockSolveInt','Splitting monolithic matrix into pieces',Level=10)
       IF( BlockDomain .OR. BlockHdiv ) THEN
         CALL BlockPickMatrixPerm( Solver, BlockIndex, VarDofs )
         DEALLOCATE( BlockIndex ) 
@@ -3567,6 +3568,7 @@ CONTAINS
       END IF
 
       CALL BlockPrecMatrix( Solver, VarDofs ) 
+      CALL Info('BlockSolveInt','Block matrix system created',Level=12)
     END IF
 
     ! Currently we cannot have both structure-structure and fluid-structure couplings!
@@ -3584,6 +3586,7 @@ CONTAINS
     END IF
 
     IF (isParallel) THEN
+      CALL Info('BlockSolveInt','Initializing parallel block matrices',Level=12)
       DO RowVar=1,NoVar
         DO ColVar=1,NoVar
           CALL ParallelActive( .TRUE.)
@@ -3608,6 +3611,7 @@ CONTAINS
           Solver % Variable  => SolverVar
         END DO
       END DO
+      CALL Info('BlockSolveInt','Initialization of block matrix finished',Level=20)
     END IF
     
     !------------------------------------------------------------------------------
