@@ -33,7 +33,7 @@
 ! *
 ! *****************************************************************************/
 !> Solve for the sheet hydraulic Potential, sheet thickness and channels area
-!> similutaneously  (GlaDS model) - This solver replace the 3 solvers solving
+!> simultaneously  (GlaDS model) - This solver replace the 3 solvers solving
 !> for these 3 variables independently.  
 !> Equations defined in Werder et al., 2013. 
 !------------------------------------------------------------------------------
@@ -62,7 +62,6 @@
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
           NonlinearIter, GhostNodes, NonlinearIterMin, BDForder, &
           CoupledIter, ChannelSolver, ThicknessSolver
-     INTEGER :: tpack, Mpack
 
      TYPE(Variable_t), POINTER :: HydPotSol
      TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
@@ -141,9 +140,15 @@
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
      VariableName = TRIM(Solver % Variable % Name)
-     SolverName = 'GlaDSCoupledsolver ('// VariableName // ')'
+     SolverName = 'GlaDSCoupledsolver ('// TRIM(VariableName) // ')'
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
+     
+     CALL Info( SolverName, ' ', Level=4 )
+     CALL Info( SolverName, '----------------------------------------------',Level=4 )
+     CALL Info( SolverName,'Solving coupled hydraulic problem', Level=4 )
+     CALL Info( SolverName, '----------------------------------------------',Level=4 )
+     
      SystemMatrix => Solver % Matrix
      ForceVector => Solver % Matrix % RHS
 
@@ -317,14 +322,17 @@
           CALL Info(SolverName,'Channel solver is: '//TRIM(I2S(ChannelSolver)),Level=10)
           WorkVar => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
                      % Variables, ChannelAreaName, ThisOnly=.TRUE.)
-
-          ALLOCATE(CAValues(SIZE(WorkVar % Values)))
+          IF(.NOT. ASSOCIATED(WorkVar)) THEN
+            CALL Fatal(SolverName,'We really need "channel area" as variable!')
+          END IF
+          
+          !ALLOCATE(CAValues(SIZE(WorkVar % Values)))
           CAPerm => WorkVar % Perm
-          CAValues = WorkVar % Values
-          CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Channel Area', 1, CAValues, CAPerm, Secondary = .TRUE. )
-          WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',&
-                      ThisOnly=.TRUE.)
+          CAValues => WorkVar % Values
+          !CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
+          !     'Channel Area', 1, CAValues, CAPerm, Secondary = .TRUE. )
+          !WorkVar => VariableGet(Solver % Mesh % Variables, 'Channel Area',&
+          !            ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
           WorkVar % PrevValues(:,1) = WorkVar % Values
@@ -354,13 +362,20 @@
 
           WorkVar => VariableGet(Model % Solvers(ThicknessSolver) % Mesh&
                      % Variables, SheetThicknessName, ThisOnly=.TRUE.)
-          ALLOCATE(SHPerm(SIZE(WorkVar % Perm)), SHValues(SIZE(WorkVar % Values)))
+          IF(.NOT. ASSOCIATED(WorkVar)) THEN
+            CALL Fatal(SolverName,'We really need "sheet thickess" as edge variable!')
+          END IF
+          
           SHPerm => WorkVar % Perm
-          SHValues = WorkVar % Values !Needed to reflect initial condition
-          CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-               'Sheet Thickness', 1, SHValues, SHPerm, Secondary = .TRUE.)
-          WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
-                      ThisOnly=.TRUE.)
+          SHValues => WorkVar % Values
+          ! We already have the field - no need to redo it!
+          !ALLOCATE(SHPerm(SIZE(WorkVar % Perm)), SHValues(SIZE(WorkVar % Values)))
+          !SHPerm => WorkVar % Perm
+          !SHValues = WorkVar % Values !Needed to reflect initial condition
+          !CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
+          !     'Sheet Thickness', 1, SHValues, SHPerm, Secondary = .TRUE.)
+          !WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
+          !            ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
           WorkVar % PrevValues(:,1) = WorkVar % Values
@@ -513,17 +528,15 @@
 !------------------------------------------------------------------------------
     ! check on the coupled Convergence is done on the potential solution only
     M = Solver % Mesh % NumberOfNodes
-    Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
 
-    IF (ParEnv % PEs > 1) THEN
-       PrevCoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M)
-    ELSE
-       PrevCoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) &
-                               & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
-    END IF
-
+    PrevCoupledNorm = MyNodeNorm( Solver % Mesh, HydPotPerm, HydPot ) 
+    
     DO iterC = 1, CoupledIter
 
+      CALL Info( SolverName, ' ',Level=4 )
+      CALL Info( SolverName, '-------------------------------------',Level=4 )
+      CALL Info( SolverName, 'Coupled iteration: '//TRIM(I2S(iterC))//' / '//TRIM(I2S(CoupledIter)),Level=4)
+      
 !------------------------------------------------------------------------------
 !       non-linear system iteration loop
 !------------------------------------------------------------------------------
@@ -534,14 +547,8 @@
            at  = CPUTime()
            at0 = RealTime()
 
-           CALL Info( SolverName, ' ', Level=4 )
-           CALL Info( SolverName, '-------------------------------------',Level=4 )
-           WRITE( Message,'(A,A,I0,A,I0)') &
-                TRIM(Solver % Variable % Name),  ' iteration no.', iter,' of ',NonlinearIter
-           CALL Info( SolverName, Message, Level=4 )
-           CALL Info( SolverName, '-------------------------------------',Level=4 )
-           CALL Info( SolverName, ' ', Level=4 )
-           CALL Info( SolverName, 'Starting Assembly...', Level=4 )
+           CALL Info( SolverName, 'Nonlinear iteration: '//TRIM(I2S(iter))//' / '//TRIM(I2S(NonlinearIter)),Level=4)
+           CALL Info( SolverName, 'Starting Assembly...', Level=8 )
               
            M = Solver % Mesh % NumberOfNodes
             
@@ -562,7 +569,6 @@
                  WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
                       (Solver % NumberOfActiveElements-t) / &
                       (1.0*Solver % NumberOfActiveElements)), ' % done'
-
                  CALL Info( SolverName, Message, Level=5 )
                  at0 = RealTime()
               END IF
@@ -730,10 +736,10 @@
               ! In case DIM = 3, Bulk elements have material ASSOCIATED
               IF (DIM==2) THEN 
                  Bulk => Edge % BoundaryInfo % Left
-                 IF (.Not.ASSOCIATED(Bulk)) Bulk => Edge % BoundaryInfo % Right
+                 IF (.NOT.ASSOCIATED(Bulk)) Bulk => Edge % BoundaryInfo % Right
               ELSE 
                  Face => Edge % BoundaryInfo % Left
-                 IF (.Not.ASSOCIATED(Face)) Face => Edge % BoundaryInfo % Right
+                 IF (.NOT.ASSOCIATED(Face)) Face => Edge % BoundaryInfo % Right
                  IF (ASSOCIATED(Face)) THEN
                     Bulk => Face % BoundaryInfo % Left 
                     IF (.Not.ASSOCIATED(Bulk)) Bulk => Face % BoundaryInfo % Right
@@ -933,14 +939,13 @@
 
            CALL DefaultDirichletBCs()
 
-           CALL Info( SolverName, 'Assembly done', Level=4 )
+           CALL Info( SolverName, 'Assembly done', Level=8 )
 
            !------------------------------------------------------------------------------
            !     Solve the system and check for convergence
            !------------------------------------------------------------------------------
            at = CPUTime() - at
            st = CPUTime()
-           Norm = 0.0_dp
 
            PrevNorm = Solver % Variable % Norm
            Norm = DefaultSolve()
@@ -951,24 +956,14 @@
            WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Assembly: (s)', at, totat
            CALL Info( SolverName, Message, Level=4 )
            WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
-           CALL Info( SolverName, Message, Level=4 )
-
-
-           IF ( PrevNorm + Norm /= 0.0d0 ) THEN
-              RelativeChange = 2.0d0 * ABS( PrevNorm-Norm ) / (PrevNorm + Norm)
-           ELSE
-              RelativeChange = 0.0d0
-           END IF
-
-           WRITE( Message, * ) 'Result Norm   : ',Norm
-           CALL Info( SolverName, Message, Level=4 )
-           WRITE( Message, * ) 'Relative Change : ',RelativeChange
-           CALL Info( SolverName, Message, Level=4 )
-
+           CALL Info( SolverName, Message, Level=4 )           
+           CALL Info( SolverName, '-------------------------------------',Level=4 )
+ 
     !      !----------------------
     !      ! check for convergence
     !      !----------------------
-           IF ( RelativeChange < NonlinearTol .AND. iter > NonlinearIterMin ) EXIT 
+           IF( DefaultConverged(Solver) ) EXIT
+          
         END DO ! of the nonlinear iteration
 
 !------------------------------------------------------------------------------
@@ -1072,7 +1067,6 @@
                  IF(Calving) THEN
                    IF(Snn(i)==0.0) THEN
                      Np = 0.0
-                     !pw = 0.0
                      he = 0.0
                    END IF
                  END IF 
@@ -1154,17 +1148,9 @@
 !       non-linear system iteration loop
 !------------------------------------------------------------------------------
      IF (Channels) THEN 
-        t = Solver % Mesh % NumberOfEdges 
-        M = Solver % Mesh % NumberOfNodes
-        tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
-
-        IF (ParEnv % PEs > 1) THEN
-            PrevNorm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
-        ELSE
-           PrevNorm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
-                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
-        END IF
-
+       PrevNorm = MyEdgeNorm( Solver % Mesh, AreaPerm, AreaSolution )
+       AreaSol % Norm = PrevNorm
+        
         DO iter = 1, NonlinearIter
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
@@ -1323,29 +1309,28 @@
               END DO
 
            t = Solver % Mesh % NumberOfEdges 
-           tpack = size( pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))
-           IF (ParEnv % PEs > 1) THEN
-               Norm = ParallelNorm(tpack,AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))/(ParEnv % PEs*t) 
-           ELSE
-               Norm = SQRT(SUM(AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)) &
-                            & *AreaSolution(pack (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))))/t
-           END IF
 
+           Norm = MyEdgeNorm( Solver % Mesh, AreaPerm, AreaSolution )
+           AreaSol % Norm = Norm
+           
            IF ( PrevNorm + Norm /= 0.0d0 ) THEN
               RelativeChange = 2.0d0 * ABS( PrevNorm-Norm ) / (PrevNorm + Norm)
            ELSE
               RelativeChange = 0.0d0
            END IF
-
+           AreaSol % NonlinChange = RelativeChange
+           
            PrevNorm = Norm 
 
            WRITE( Message, * ) 'S (NRM,RELC) : ',iter, Norm, RelativeChange
-           CALL Info( SolverName, Message, Level=3 )
-           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) ,&
-                AreaPerm(M+1:M+t) /=0))),MAXLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
-           CALL Info( SolverName, Message, Level=3 )
+           CALL Info( SolverName, Message, Level=4 )
+                      
+           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),&
+                MAXLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
+           CALL Info( SolverName, Message, Level=4 )
            WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),&
                 MINLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
+           CALL Info( SolverName, Message, Level=4 )
 
 
     !      !----------------------
@@ -1368,14 +1353,7 @@
 
      END IF  ! If Channels
 
-      !   Check for convergence                           
-      Mpack = size( pack  (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ) )
-      IF (ParEnv % PEs > 1) THEN
-         CoupledNorm = ParallelNorm(Mpack,HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )))/(ParEnv % PEs*M) 
-      ELSE
-         CoupledNorm = SQRT(SUM(HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 )) & 
-                             & *HydPot(pack (HydPotPerm(1:M) , HydPotPerm(1:M) /=0 ))))/M
-      END IF
+      CoupledNorm = MyNodeNorm( Solver % Mesh, HydPotPerm, HydPot ) 
       
       IF ( PrevCoupledNorm + CoupledNorm /= 0.0d0 ) THEN
          RelativeChange = 2.0d0 * ABS( PrevCoupledNorm-CoupledNorm ) / (PrevCoupledNorm + CoupledNorm)
@@ -1385,9 +1363,9 @@
       PrevCoupledNorm = CoupledNorm 
 
       WRITE( Message, * ) 'COUPLING LOOP (NRM,RELC) : ',iterC, CoupledNorm, RelativeChange
-      CALL Info( SolverName, Message, Level=3 )
+      CALL Info( SolverName, Message, Level=4 )
 
-      IF ((RelativeChange < CoupledTol).AND. (iterC > 1)) EXIT 
+      IF ((RelativeChange < CoupledTol) .AND. (iterC > 1)) EXIT 
    END DO ! iterC
 
 !--------------------------------------------------------------------------------------------
@@ -1397,11 +1375,10 @@
    M = Solver % Mesh % NumberOfNodes
 
    IF (ASSOCIATED(VSol)) THEN 
-      DO i=1, M
-        IF ( VPerm(i) <=  0 ) CYCLE
-        VSolution(VPerm(i)) = Vvar(i)
-      ENDDO
-   ENDIF 
+     WHERE( VPerm(1:M) > 0 ) 
+       VSolution(VPerm) = Vvar
+     END WHERE
+   ENDIF
 
 ! Output the sheet discharge (dimension = dimSheet)
    IF (ASSOCIATED(qSol)) THEN
@@ -1512,6 +1489,93 @@
 
 CONTAINS    
 
+  FUNCTION MyEdgeNorm( Mesh, Perm, Sol ) RESULT ( Norm ) 
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Perm(:)
+    REAL(KIND=dp), POINTER :: Sol(:)
+    REAL(KIND=dp) :: Norm
+    
+    INTEGER :: i,j,m,n,t,ns
+    REAL(KIND=dp) :: s
+    
+    s = 0.0_dp
+    n = 0
+    Norm = 0.0_dp
+
+    t = Mesh % NumberOfEdges
+    m = Mesh % NumberOfNodes
+    ns = 0
+    
+    DO i=1,t
+      j = Perm(m+i)
+      IF(j==0) CYCLE
+             
+      IF (ParEnv % PEs > 1) THEN
+        IF (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours(1)) THEN
+          ns = ns + 1
+          CYCLE
+        END IF
+      END IF
+             
+      s = Sol(j)
+      n = n + 1
+      Norm = Norm + s**2
+    END DO
+
+    !PRINT *,'Active Edges:',ParEnv % MyPe, n, ns
+    IF( ParEnv % PEs > 1 ) THEN
+      Norm = ParallelReduction( Norm )
+      n = NINT( ParallelReduction(1.0_dp * n) )
+    END IF
+           
+    Norm = SQRT(Norm) / n
+  END FUNCTION MyEdgeNorm
+
+
+  FUNCTION MyNodeNorm( Mesh, Perm, Sol ) RESULT ( Norm ) 
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Perm(:)
+    REAL(KIND=dp), POINTER :: Sol(:)
+    REAL(KIND=dp) :: Norm
+    
+    INTEGER :: i,j,m,n,t,ns
+    REAL(KIND=dp) :: s
+    
+    s = 0.0_dp
+    n = 0
+    Norm = 0.0_dp
+
+    m = Mesh % NumberOfNodes
+    ns = 0
+    
+    DO i=1,m
+      j = Perm(i)
+      IF(j==0) CYCLE
+             
+      IF (ParEnv % PEs > 1) THEN
+        IF (ParEnv % myPe /= Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1)) THEN
+          ns = ns + 1
+          CYCLE
+        END IF
+      END IF
+             
+      s = Sol(j)
+      n = n + 1
+      Norm = Norm + s**2
+    END DO
+
+    !PRINT *,'Active Nodes:',ParEnv % MyPe, n, ns
+    IF( ParEnv % PEs > 1 ) THEN
+      Norm = ParallelReduction( Norm )
+      n = NINT( ParallelReduction(1.0_dp * n) )
+    END IF
+           
+    Norm = SQRT(Norm) / n
+  END FUNCTION MyNodeNorm
+
+
+
+  
 !------------------------------------------------------------------------------
   SUBROUTINE SheetCompose( MassMatrix, StiffMatrix, ForceVector,  &
        LoadVector, NodalH, NodalHydPot, NodalCT, NodalC2, Nodalalphas, &
