@@ -545,7 +545,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: SolverMatrix
     TYPE(Matrix_t), POINTER :: Amat
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: ReuseMatrix, Found
+    LOGICAL :: ReuseMatrix, Found, EliminateZero
     INTEGER::i,j,k,i_aa,i_vv,i_av,i_va,n;
     REAL(KIND=DP) :: SumAbsMat
     
@@ -555,6 +555,8 @@ CONTAINS
     Params => Solver % Values
         
     ReuseMatrix = ListGetLogical( Params,'Block Matrix Reuse',Found)
+    EliminateZero = ListGetLogical( Params, &
+                         'Block Eliminate Zero Submatrices', Found )
 
     DO RowVar=1,NoVar
       DO ColVar=1,NoVar            
@@ -579,16 +581,18 @@ CONTAINS
               //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)          
           CALL CRS_BlockMatrixPick(SolverMatrix,Amat,NoVar,RowVar,ColVar)          
             
-          IF( Amat % NumberOfRows > 0 ) THEN
-            SumAbsMat = SUM( ABS( Amat % Values ) )
-            IF( SumAbsMat < SQRT( TINY( SumAbsMat ) ) ) THEN
-              CALL Info('BlockPickMatrix','Matrix is actually all zero, eliminating it!',Level=12)
-              DEALLOCATE( Amat % Values ) 
-              IF( .NOT. ReuseMatrix ) THEN
-                DEALLOCATE( Amat % Rows, Amat % Cols )
-                IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag, Amat % rhs ) 
+          IF( EliminateZero ) THEN
+            IF( Amat % NumberOfRows > 0 ) THEN
+              SumAbsMat = SUM( ABS( Amat % Values ) )
+              IF( SumAbsMat < SQRT( TINY( SumAbsMat ) ) ) THEN
+                CALL Info('BlockPickMatrix','Matrix is actually all zero, eliminating it!',Level=12)
+                DEALLOCATE( Amat % Values ) 
+                IF( .NOT. ReuseMatrix ) THEN
+                  DEALLOCATE( Amat % Rows, Amat % Cols )
+                  IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag, Amat % rhs ) 
+                END IF
+                Amat % NumberOfRows = 0
               END IF
-              Amat % NumberOfRows = 0
             END IF
           END IF
 
@@ -3589,7 +3593,7 @@ CONTAINS
       CALL Info('BlockSolveInt','Initializing parallel block matrices',Level=12)
       DO RowVar=1,NoVar
         DO ColVar=1,NoVar
-          CALL ParallelActive( .TRUE.)
+
           Amat => TotMatrix % SubMatrix(RowVar,ColVar) % Mat
           Amat % Comm = Solver % Matrix % Comm
           Parenv % ActiveComm = Amat % Comm
@@ -3597,8 +3601,10 @@ CONTAINS
 
           IF(Amat % NumberOfRows>0) THEN
             IF(Amat % NumberOfRows==MAXVAL(Amat % Cols)) THEN
-              IF (.NOT.ASSOCIATED(Amat % ParMatrix)) &
+              IF (.NOT.ASSOCIATED(Amat % ParMatrix)) THEN
                 CALL ParallelInitMatrix(Solver,Amat)
+              ELSE
+              END IF
             END IF
 
             IF(ASSOCIATED(Amat % ParMatrix )) THEN
@@ -3608,9 +3614,10 @@ CONTAINS
             END IF
           END IF
 
-          Solver % Variable  => SolverVar
+          CALL SParIterActiveBarrier()
         END DO
       END DO
+      Solver % Variable  => SolverVar
       CALL Info('BlockSolveInt','Initialization of block matrix finished',Level=20)
     END IF
     
