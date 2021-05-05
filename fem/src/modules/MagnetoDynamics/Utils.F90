@@ -732,7 +732,7 @@ CONTAINS
 
   
   !-------------------------------------------------------------------------------
-  ! Mark nodes that are on outher boundary using face elements and node parmutation.
+  ! Mark nodes that are on outer boundary using face elements and node parmutation.
   !-------------------------------------------------------------------------------
   SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm,EnsureBC) 
 

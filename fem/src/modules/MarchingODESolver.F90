@@ -200,7 +200,7 @@ SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
       IF(BotPointer(j) /= i) CYCLE
 
       ! Ok, check that also the next node would be at BC
-      ! The 1st layer may be an exeption, check for 2nd too
+      ! The 1st layer may be an exception, check for 2nd too
 
       ! The variable to be marched does not exist 
       IF( Var3D % Perm(UpPointer(j)) == 0 ) CYCLE

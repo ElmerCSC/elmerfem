@@ -594,7 +594,13 @@ END FUNCTION isComponentName
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
 
-        Comp % N_j = Comp % nofturns / Comp % ElArea
+        Comp % CoilThickness = GetConstReal(CompParams, 'Coil Thickness', Found)
+        IF (.NOT. Found) Comp % CoilThickness = 1._dp
+
+        Comp % SymmetryCoeff = GetConstReal(CompParams, 'Symmetry Coefficient', Found)
+        IF (.NOT. Found) Comp % SymmetryCoeff = 1.0_dp
+
+        Comp % N_j = Comp % CoilThickness * Comp % nofturns / Comp % ElArea
 
         ! Stranded coil has current and voltage 
         ! variables (which both have a dof):
@@ -641,6 +647,7 @@ END FUNCTION isComponentName
 
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+
 
         Comp % N_j = Comp % nofturns / Comp % ElArea
 

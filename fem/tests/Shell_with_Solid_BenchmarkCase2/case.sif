@@ -29,7 +29,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 8
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
   Output Intervals = 1

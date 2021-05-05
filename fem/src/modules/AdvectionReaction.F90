@@ -35,6 +35,35 @@
 ! ****************************************************************************
 
 
+  SUBROUTINE AdvectionReactionSolver_init( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+     USE DefUtils
+     IMPLICIT NONE
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model            
+     TYPE(Solver_t), TARGET :: Solver  
+     REAL(KIND=dp) :: dt               
+     LOGICAL :: Transient    
+!------------------------------------------------------------------------------     
+     TYPE(ValueList_t), POINTER :: SolverParams
+     LOGICAL :: Found 
+     CHARACTER(LEN=MAX_NAME_LEN) ::  VariableName
+   
+     SolverParams => GetSolverParams()
+
+     CALL ListAddLogical( SolverParams,'Discontinuous Galerkin',.TRUE.) 
+     
+     CALL ListAddNewString( SolverParams,'Variable','Tracer')     
+     VariableName = ListGetString(SolverParams,'Variable')
+
+     IF( ListGetLogical( SolverParams,'Calculate Nodal Average',Found ) ) THEN
+       CALL ListAddString( SolverParams,NextFreeKeyword('Exported Variable ',SolverParams), &
+           "-nodal "//TRIM(VariableName)//"_nodal" )
+     END IF
+       
+   END SUBROUTINE AdvectionReactionSolver_init
+     
+
 !------------------------------------------------------------------------------
 !>  Advection-reaction equation solver for scalar fields with discontinuous Galerkin method.
 !> \ingroup Solvers
@@ -48,7 +77,7 @@
      TYPE(Model_t) :: Model            !< All model information (mesh, materials, BCs, etc...)
      TYPE(Solver_t), TARGET :: Solver  !< Linear & nonlinear equation solver options
      REAL(KIND=dp) :: dt               !< Timestep size for time dependent simulations
-     LOGICAL :: Transient    !< Steady state or transient simulation
+     LOGICAL :: Transient              !< Steady state or transient simulation
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -70,23 +99,20 @@
               UpperLimit(:), LowerLimit(:)
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Variable_t), POINTER ::  Var
-     CHARACTER(LEN=MAX_NAME_LEN) ::  VariableName, SolverName, ExpVariableName
-
-     SAVE MASS, STIFF, LOAD, FORCE, Velo, MeshVelo, Gamma, &
-          AllocationsDone, DIM, VariableName, SolverName, &
-          UpperLimit, LowerLimit
-!*******************************************************************************
-
+     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName = 'AdvectionReaction'
+     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, ExpVariableName
      TYPE( Element_t ), POINTER :: Faces(:)
      TYPE(Nodes_t) :: ElementNodes
-
      INTEGER :: DOFs
-!*******************************************************************************
-     SolverName = 'AdvectionReaction ('// TRIM(Solver % Variable % Name) // ')'
+
+     SAVE MASS, STIFF, LOAD, FORCE, Velo, MeshVelo, Gamma, &
+          AllocationsDone, DIM, VariableName, UpperLimit, LowerLimit
+     !------------------------------------------------------------------------------------
+
      VariableName = TRIM(Solver % Variable % Name)
      WRITE(Message,'(A,A)')&
           'AdvectionReactionSolver for variable ', VariableName
-     CALL INFO(SolverName,Message,Level=5)
+     CALL Info(SolverName,Message,Level=5)
 
      Mesh => GetMesh()
 
@@ -108,9 +134,9 @@
                   UpperLimit(n), LowerLimit(n), STAT = istat )
         
        IF ( istat /= 0 ) THEN
-          CALL FATAL(SolverName,'Memory allocation error.' )
+          CALL Fatal(SolverName,'Memory allocation error.' )
        ELSE
-          CALL INFO(SolverName,'Memory allocation done',Level=12 )
+          CALL Info(SolverName,'Memory allocation done',Level=12 )
        END IF
        DIM = CoordinateSystemDimension()
        AllocationsDone = .TRUE.
@@ -123,21 +149,21 @@
      SolverParams => GetSolverParams()
 
      NonlinearIterMax = GetInteger(   SolverParams, &
-                     'Nonlinear System Max Iterations', Found )
+         'Nonlinear System Max Iterations', Found )
      IF ( .NOT.Found ) THEN
-        CALL WARN(SolverName,'No > Nonlinear System Max Iterations < found. Setting 1')
+        CALL Warn(SolverName,'No > Nonlinear System Max Iterations < found. Setting 1')
         NonlinearIterMax = 1
      END IF
 
      NonlinearIterMin = GetInteger(   SolverParams, &
                      'Nonlinear System Min Iterations', Found )
      IF ( .NOT.Found ) THEN        
-        CALL WARN(SolverName,'No >Nonlinear System Min Iterations< found. Setting 1')
+        CALL Warn(SolverName,'No >Nonlinear System Min Iterations< found. Setting 1')
         NonlinearIterMin = 1
      ELSE IF (NonlinearIterMin > NonlinearIterMax) THEN
-        CALL WARN(SolverName,&
+        CALL Warn(SolverName,&
              '>Nonlinear System Min Iterations< is exceeding >Nonlinear System Max Iterations<.')
-         CALL WARN(SolverName,&
+         CALL Warn(SolverName,&
              'First is being reset to the latter.')
         NonlinearIterMin = NonlinearIterMax
      END IF
@@ -148,9 +174,9 @@
         LimitSolution = .FALSE.
 
      IF (LimitSolution) THEN
-        CALL INFO(SolverName, 'Keyword > Limit Solution < found. Solution will be limited',Level=6)
+        CALL Info(SolverName, 'Keyword > Limit Solution < found. Solution will be limited',Level=6)
      ELSE
-        CALL INFO(SolverName, 'No keyword > Limit Solution < found. Solution will not be limited',Level=6)
+        CALL Info(SolverName, 'No keyword > Limit Solution < found. Solution will not be limited',Level=6)
      END IF
 
      !------------------------------------------------------------------------------
@@ -326,10 +352,10 @@
            WRITE(Message,'(A,I0,A,I0,A)') &
                 'Nonlinear iteration converged after ', iter, &
                 ' out of max ',NonlinearIterMax,' iterations'
-           CALL INFO(SolverName,Message)
+           CALL Info(SolverName,Message)
            EXIT
-        ELSE IF ((iter .EQ. NonlinearIterMax) .AND. (NonlinearIterMax > 1)) THEN
-           CALL WARN(SolverName,'Maximum nonlinear iterations reached, but system not converged')
+        ELSE IF ((iter == NonlinearIterMax) .AND. (NonlinearIterMax > 1)) THEN
+           CALL Warn(SolverName,'Maximum nonlinear iterations reached, but system not converged')
         END IF
 
      !-----------------------------------------------
@@ -373,50 +399,6 @@
      END IF
 
 
-     ! Average the elemental results to nodal values:
-     !-----------------------------------------------
-     ExpVariableName = GetString(SolverParams , 'Exported Variable 1', Found )
-     IF( Found ) THEN
-       CALL Info(SolverName,'Using >Exported Variable 1< for the nodal output field',Level=7)
-
-       Var => VariableGet( Mesh % Variables,TRIM(ExpVariableName))
-       IF( .NOT. ASSOCIATED( Var ) ) THEN
-         WRITE(Message,'(A,A,A)') 'Exported Variable >',TRIM(VariableName) //   ' Nodal Result','< not found'
-         CALL Fatal(SolverName,Message)
-       END IF
-         
-       
-       n1 = Mesh % NumberOfNodes
-       ALLOCATE( Ref(n1) )
-       Ref = 0
-       Var % TYPE = Variable_on_nodes
-
-       IF ( ASSOCIATED( Var % Perm, Solver % Variable % Perm ) ) THEN
-         ALLOCATE( Var % Perm(SIZE(Solver % Variable % Perm))  )
-         Var % Perm = 0
-         DO i = 1,n1
-           Var % Perm(i) = i
-         END DO
-       END IF
-
-       Var % Values = 0.0d0
-       DO t=1,Active
-         Element => GetActiveElement(t) 
-         n = GetElementDOFs( Indexes )
-         n = GetElementNOFNodes()
-         DO i=1,n
-           k = Element % NodeIndexes(i)
-           Var % Values(k) = Var % Values(k) + &
-               Solver % Variable % Values( Solver % Variable % Perm(Indexes(i)) )
-           Ref(k) = Ref(k) + 1
-         END DO
-       END DO
-
-       WHERE( Ref > 0 )
-         Var % Values(1:n1) = Var % Values(1:n1) / Ref
-       END WHERE
-       DEALLOCATE( Ref )
-     END IF
 
      
    CONTAINS
@@ -711,24 +693,21 @@
      n  = GetElementNOFNodes( Element )
      ConvectionFlag = GetString( Equation, 'Convection', Found )
      IF (.NOT. Found) &
-          CALL FATAL(SolverName, 'No string for keyword >Convection< found in Equation')
+          CALL Fatal(SolverName, 'No string for keyword >Convection< found in Equation')
      Velo = 0.0d00
      ! constant (i.e., in section Material given) velocity
      !---------------------------------------------------
      IF ( ConvectionFlag == 'constant' ) THEN
         Velo(1,1:N) = GetReal( Material, 'Convection Velocity 1', Found, Element )
-        IF (.NOT.Found) Velo(1,1:N) = 0.0d0
         Velo(2,1:N) = GetReal( Material, 'Convection Velocity 2', Found, Element )
-        IF (.NOT.Found) Velo(2,1:N) = 0.0d0
         Velo(3,1:N) = GetReal( Material, 'Convection Velocity 3', Found, Element )
-        IF (.NOT.Found) Velo(3,1:N) = 0.0d0
         ! computed velocity
         !------------------Equation => GetEquation()
      ELSE IF (ConvectionFlag == 'computed' ) THEN
         FlowSolName =  GetString( Equation,'Flow Solution Name', Found)
         IF(.NOT.Found) THEN        
-           CALL WARN(SolverName,'Keyword >Flow Solution Name< not found in section >Equation<')
-           CALL WARN(SolverName,'Taking default value >Flow Solution<')
+           CALL Warn(SolverName,'Keyword >Flow Solution Name< not found in section >Equation<')
+           CALL Warn(SolverName,'Taking default value >Flow Solution<')
            WRITE(FlowSolName,'(A)') 'Flow Solution'
         END IF
         FlowSol => VariableGet( Solver % Mesh % Variables, FlowSolName )
@@ -739,7 +718,7 @@
         ELSE
            WRITE(Message,'(A,A,A)') &
                 'Convection flag set to >computed<, but no variable >',FlowSolName,'< found'
-           CALL FATAL(SolverName,Message)              
+           CALL Fatal(SolverName,Message)              
         END IF
 
 
@@ -768,7 +747,7 @@
         Velo = 0.0d0
      ELSE  
         WRITE(Message,'(A,A,A)') 'Convection flag >', ConvectionFlag ,'< not recognised'
-        CALL FATAL(SolverName,Message) 
+        CALL Fatal(SolverName,Message) 
      END IF
 
      !-------------------------------------------------
@@ -786,3 +765,72 @@
 !------------------------------------------------------------------------------
  END SUBROUTINE AdvectionReactionSolver
 !------------------------------------------------------------------------------
+
+
+
+ SUBROUTINE AdvectionReactionSolver_post( Model,Solver,dt,Transient )
+!------------------------------------------------------------------------------
+   USE DefUtils
+   IMPLICIT NONE
+!------------------------------------------------------------------------------
+   TYPE(Model_t) :: Model            
+   TYPE(Solver_t), TARGET :: Solver  
+   REAL(KIND=dp) :: dt               
+   LOGICAL :: Transient    
+!------------------------------------------------------------------------------     
+   LOGICAL :: Found 
+   CHARACTER(LEN=MAX_NAME_LEN) ::  VariableName
+   INTEGER :: i,j,k,n,t,Active
+   INTEGER, ALLOCATABLE :: Cnt(:)
+   TYPE(Element_t), POINTER :: Element
+   TYPE(Variable_t), POINTER :: Var
+   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName = 'AdvectionReaction_post'
+   TYPE(Mesh_t), POINTER :: Mesh
+   
+   ! Average the elemental results to nodal values:
+   !-----------------------------------------------
+   Mesh => GetMesh()
+
+   VariableName = TRIM(Solver % Variable % Name)//"_nodal"
+   Var => VariableGet( Mesh % Variables,TRIM(VariableName))
+
+   ! This is provided for the backward compatibility
+   IF(.NOT. ASSOCIATED( Var ) ) THEN
+     VariableName = "Nodal Result"
+     Var => VariableGet( Mesh % Variables,TRIM(VariableName))
+   END IF
+
+   IF(.NOT. ASSOCIATED( Var ) ) RETURN
+      
+   CALL Info(SolverName,'Using "'//TRIM(VariableName)//'" for the nodal average output field',Level=7)  
+   ALLOCATE( Cnt(SIZE(Var % Values)) )
+
+   Cnt = 0
+   Var % Values = 0.0_dp
+
+   Active = GetNOFActive()
+   
+   DO t=1,Active
+     Element => GetActiveElement(t) 
+     n = GetElementNOFNodes()
+     DO i=1,n
+       j = Element % DGIndexes(i)
+       k = Element % NodeIndexes(i)
+
+       j = Solver % Variable % Perm(j)
+       IF(j==0) CYCLE
+       k = Var % Perm(k)
+       IF(k==0) CYCLE
+       
+       Var % Values(k) = Var % Values(k) + Solver % Variable % Values(j)
+       Cnt(k) = Cnt(k) + 1
+     END DO
+   END DO
+
+   WHERE( Cnt > 0 )
+     Var % Values = Var % Values / Cnt
+   END WHERE
+   DEALLOCATE( Cnt )
+   
+ END SUBROUTINE AdvectionReactionSolver_post
+ 

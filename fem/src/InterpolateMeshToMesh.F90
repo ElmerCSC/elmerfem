@@ -190,7 +190,7 @@
           proc = i-1
 
           ! extract those of the missing nodes that are within the other
-          ! partions bounding box:
+          ! partitions bounding box:
           ! ------------------------------------------------------------
           myBB = BB(:,i)
           npart = 0

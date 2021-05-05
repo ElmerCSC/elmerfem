@@ -47,7 +47,7 @@ Constants
   !PrecipFile = File "Data/temp_rikha.csv"  !Contain daily precipitation (optional)
     
   Precip = real 0.300  		!Mean annual precipitation if PrecipFile not provided
-  TempCorrec= real -0.12	!Possibility of shifting temperature to get steady state mass balance for exemple (optional)
+  TempCorrec= real -0.12	!Possibility of shifting temperature to get steady state mass balance for example (optional)
   PrecipCorrec = real 1.0	!Possibility of adding a correcting factor on precipitation if PrecipFile provided (optional)
   
   GradTemp = real 0.0065	!Air temperature Lapse Rate (K m^-1)

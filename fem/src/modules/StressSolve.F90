@@ -2388,7 +2388,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-! At the end of each iteration assemblys one line of the Kmatrix and finally 
+! At the end of each iteration assemblies one line of the Kmatrix and finally 
 ! invert the matrix. The displacements and the springs are taken to be the 
 ! average values on the surface.
 !------------------------------------------------------------------------------
@@ -2924,7 +2924,7 @@ CONTAINS
      ExtPressure(1:En) = GetReal( BC, 'Normal Force', Found )
 
      ! If dirichlet BC for displacement in any direction given,
-     ! nullify force in that directon:
+     ! nullify force in that direction:
      ! --------------------------------------------------------
      Dir = 1.0d0
      IF ( ListCheckPresent( BC, 'Displacement' ) )   Dir = 0

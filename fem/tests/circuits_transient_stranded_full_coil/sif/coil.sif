@@ -99,9 +99,10 @@ Solver 1  !---- CoilSolver, CoilSolver
   Linear System Convergence Tolerance = 1e-6
   Linear System Iterative Method = BiCGStab
   Linear System Residual Output = 1
-  ! When we normalize, we introduce propably some divergence that
+  ! When we normalize, we introduce probably some divergence that
   ! does not impress the solver very much... Helmholtz projection needed?
-  Normalize Coil Current = Logical False 
+  Normalize Coil Current = Logical True
+  Fix Input Current Density = Logical True
   Nonlinear System Consistent Norm = Logical True
   Coil Closed = Logical True
   Narrow Interface = Logical True
@@ -191,9 +192,9 @@ Equation 2
   Name = "MagnetoDynamic for air"
   Active Solvers(2) = 3 4
 End
-Solver 3 :: Reference Norm = Real 8.82413861E-04
+Solver 3 :: Reference Norm = Real 8.190E-04 
 Solver 3 :: Reference Norm Tolerance = Real 1E-03
-Solver 4 :: Reference Norm = Real 4.71459285E-01
+Solver 4 :: Reference Norm = Real 3.12279970E-03
 Solver 4 :: Reference Norm Tolerance = Real 1E-03
 $fprintf( stderr, "TEST CASE 1\n");
 RUN

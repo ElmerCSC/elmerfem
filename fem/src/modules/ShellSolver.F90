@@ -185,7 +185,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
 
   INTEGER, PARAMETER :: GeometryMaxIters = 50
-  REAL(KIND=dp), PARAMETER :: UmbilicalDelta = 2.0d-2  ! The tolerance to decide umbilical points
+  REAL(KIND=dp), PARAMETER :: ParabolicDelta = 1.0d-8  ! The tolerance to decide parabolic points
   REAL(KIND=dp), PARAMETER :: GeometryEpsilon = 1.0d-6
 !------------------------------------------------------------------------------
 ! Local variables:
@@ -2494,7 +2494,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: GElement => NULL()
-    LOGICAL :: Stat
+    LOGICAL :: Stat, Found
     LOGICAL :: Converged, ComputeTaylorPolynomial
     LOGICAL :: ApproximatePlaneDomain, CheckOrientation, WriteElementProperties
     LOGICAL :: Subtriangulation, Planar, Umbilical
@@ -2509,7 +2509,6 @@ CONTAINS
     REAL(KIND=dp) :: DualBase1(3), DualBase2(3), Id(2,2), EigenMat(2,2), T(2,2) 
     REAL(KIND=dp) :: BPrinc(2,2), scale, Err
     REAL(KIND=dp) :: rK, hK, h1, h2, pk(3), xi, eta, z(MaxPatchNodes), x1(4), x2(4), uk, vk
-    REAL(KIND=dp) :: rK_umbilical_test
     REAL(KIND=dp) :: p(3), r(2), delta(2), DerMat(2,2), ptarget(2), p0(2)
     REAL(KIND=dp) :: APar, BPar, DPar, EPar, FPar, GPar
     REAL(KIND=dp) :: FrameData(FrameDataSize), NodesArray(3*MaxPatchNodes)
@@ -2633,19 +2632,27 @@ CONTAINS
     DualBase2(:) = ContravA(2,1)*a1(:) + ContravA(2,2)*a2(:)    
 
     c(1:2,1:2) = MATMUL(b,ContravA)
-    detc = c(1,1)*c(2,2)-c(1,2)*c(2,1)
-    trc = c(1,1) + c(2,2)
+    detc = c(1,1)*c(2,2)-c(1,2)*c(2,1) ! = the Gaussian curvature K
+    trc = c(1,1) + c(2,2)              ! = 2H, H = the mean curvature
     discriminant = trc**2 - 4.0d0*detc
-    !------------------------------------
-    ! Allow some arithmetic inaccuracy:
-    !------------------------------------
+    !--------------------------------------------------------------------------
+    ! Allow some arithmetic inaccuracy: The discriminant = 4H^2 - 4K shouldn't
+    ! be negative. The zero value happens at an umbilical point, so 
+    ! a (small) negative value is taken to indicate an umbilical point
+    !--------------------------------------------------------------------------
     IF (discriminant < 0.0d0) THEN
-      IF (-discriminant/trc**2 > UmbilicalDelta**2) THEN
-        CALL Fatal('LinesOfCurvatureFrame', 'Error in computing lines of curvature')
-      ELSE
-        discriminant = 0.0d0
-      END IF
+      CALL Warn('LinesOfCurvatureFrame', 'A negative discriminant in curvature computation?')
+      discriminant = 0.0d0
+      Umbilical = .TRUE.
+    ELSE
+      Umbilical = .FALSE.
     END IF
+
+    !----------------------------------------------------------------------
+    ! Check if the user wants to guide the reparametrization by defining
+    ! a spherical part:
+    !----------------------------------------------------------------------       
+    Umbilical = GetLogical(GetBodyParams(Element), 'Spherical Body', Found)
 
     !--------------------------------------------------------------
     ! Order the eigenvalues by their absolute values:
@@ -2675,8 +2682,7 @@ CONTAINS
       END IF
     END IF
 
-    Umbilical = .FALSE.
-    IF (.NOT. Planar) THEN
+    IF (.NOT. Planar .AND. .NOT. Umbilical) THEN
       ! ------------------------------------------------------------------------------ 
       ! The test for umbilical points depends on a rough estimate of the element size:
       ! ------------------------------------------------------------------------------
@@ -2695,16 +2701,19 @@ CONTAINS
         rK = MAX(rK, SQRT((Nodes % x(4) - Nodes % x(2))**2 + (Nodes % y(4) - Nodes % y(2))**2 + &
             (Nodes % z(4) - Nodes % z(2))**2))
       END SELECT
-      delta(1) = ABS(Lambda1-Lambda2)/LambdaMax
+
+      ! If the point is (nearly) umbilical, two reparametrization coefficients
+      ! may be (nearly) singular. A minimal stability condition to obtain a regular
+      ! reparametrization is of the form
       !
-      ! The following test is based on assuming a quadratic error for the principal radii.
-      ! In addition a certain similarity of the eigenvalues is always required.
+      !      H/(2L^2) < | Lambda1-Lambda2 |
       !
-      Umbilical = delta(1) < 5.0d1*(rK*LambdaMax)**2 .AND. delta(1) < 9.0d-2 
-      IF (Umbilical) rK_umbilical_test = rK
-      !print *, 'this point is umbilical=', Umbilical
-      !PRINT *, 'difference of eigenvals=',delta(1)
-      !print *, 'O-term', 5.0d1*(rK*LambdaMax)**2
+      ! with H and L being a mesh size parameter and a characteristic length of the geometry. 
+      ! If the stability may be expected to be problematic, we avoid using (nearly) singular 
+      ! coefficients by using a reparametrization which is suitable for a sphere. 
+      ! Here we choose L = R_min, where R_min is the minimal principal radius of curvature.
+
+      Umbilical = ABS(Lambda1-Lambda2) < 0.5d0 * rK * LambdaMax**2
     END IF
 
     !-----------------------------------------------------------------
@@ -3001,7 +3010,8 @@ CONTAINS
       TaylorParams(5) = FPar
       TaylorParams(6) = GPar
 
-      
+      ! Check that two coefficients of the Taylor polynomial are close to the eigenvalues:
+      !
       IF (Planar) THEN
         IF ( (ABS(APar) > 1000.0*EPSILON(1.0)) .AND. (ABS(BPar) > 1000.0*EPSILON(1.0)) ) THEN
           CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (planar point)')
@@ -3009,27 +3019,12 @@ CONTAINS
           print *, 'Bpar,Lambda2=', Bpar, Lambda2
         END IF
       ELSE
-        IF (Umbilical) THEN
-          err = ABS(APar-BPar)/MAX(ABS(APar), ABS(BPar))
-          IF ( err > 5.0d1*(rK_umbilical_test * MAX(ABS(APar), ABS(BPar)))**2 ) THEN
-            CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial (umbilical point)')
-            print *, '|APar-BPar|/max(|APar|,|BPar|) = ', err
-          END IF
-        ELSE
-          !-------------------------------------------------------------------------------------
-          ! Make a rough check that a reparametrization of the surface based on the Taylor
-          ! polynomial will be plausible:
-          !-------------------------------------------------------------------------------------
-          IF ( ABS(FPar/(BPar - APar))*rK > 1.0d0 .OR. ABS(EPar/(BPar - APar))*rK > 1.0d0 ) &
-              CALL Warn('LinesOfCurvatureFrame', 'Possibly very rough geometry model used')
-
-          err = ABS( ABS(BPar)-ABS(Lambda2) ) / LambdaMax
-          err = MAX( err, ABS(ABS(APar)-ABS(lambda1))/LambdaMax )
-          IF ( err > 5.0d-2) THEN
-            CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial')
-            print *, '|Apar-Lambda1|/LambdaMax=', ABS(ABS(APar)-ABS(lambda1))/LambdaMax
-            print *, '|Bpar-Lambda2|/LambdaMax=', ABS(ABS(BPar)-ABS(lambda2))/LambdaMax
-          END IF
+        err = ABS( ABS(BPar)-ABS(Lambda2) ) / LambdaMax
+        err = MAX( err, ABS(ABS(APar)-ABS(lambda1))/LambdaMax )
+        IF ( err > 10.0d-2) THEN
+          CALL Warn('LinesOfCurvatureFrame', 'Possibly inaccurate Taylor polynomial')
+          print *, '|Apar-Lambda1|/LambdaMax=', ABS(ABS(APar)-ABS(lambda1))/LambdaMax
+          print *, '|Bpar-Lambda2|/LambdaMax=', ABS(ABS(BPar)-ABS(lambda2))/LambdaMax
         END IF
       END IF
 
@@ -3040,7 +3035,13 @@ CONTAINS
     ! can be approximated by a plane up to errors O(h^3).
     ! -------------------------------------------------------------------------
     IF ( PRESENT(PlanarPoint) ) PlanarPoint = Planar
-    IF ( PRESENT(UmbilicalPoint) ) UmbilicalPoint = Umbilical
+    IF ( PRESENT(UmbilicalPoint) ) THEN
+      IF (Planar) THEN
+        UmbilicalPoint = .FALSE.
+      ELSE
+        UmbilicalPoint = Umbilical
+      END IF
+    END IF
 
     IF ( PRESENT(e1) ) e1(:) = GlobPDir1(:)
     IF ( PRESENT(e2) ) e2(:) = GlobPDir2(:)
@@ -3079,7 +3080,7 @@ CONTAINS
       END IF
       CALL SetElementProperty('planar point', PlanarFlag, Element)
 
-      IF (Umbilical) THEN
+      IF (Umbilical .AND. .NOT. Planar) THEN
         UmbilicalFlag = 1.0d0
       ELSE
         UmbilicalFlag = -1.0d0
@@ -3120,7 +3121,7 @@ CONTAINS
 ! can be used to cross-check different approximations but may not have final utility.
 !-----------------------------------------------------------------------------------
   SUBROUTINE LinesOfCurvaturePatch(Element, LocalFrameNodes, TaylorParams, &
-      Family, PlanarSurface, UmbilicalPoint, ZNodes)
+      Family, PlanarSurface, Umbilical, ZNodes)
 !-----------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t), POINTER, INTENT(IN) :: Element
@@ -3128,10 +3129,10 @@ CONTAINS
     REAL(KIND=dp), POINTER, INTENT(IN) :: TaylorParams(:)
     INTEGER, INTENT(IN) :: Family
     LOGICAL, OPTIONAL, INTENT(IN) :: PlanarSurface
-    LOGICAL, OPTIONAL, INTENT(IN) :: UmbilicalPoint
+    LOGICAL, INTENT(IN) :: Umbilical
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: ZNodes(MaxPatchNodes)
 !-----------------------------------------------------------------------------------
-    LOGICAL :: Planar, Umbilical, Converged
+    LOGICAL :: Planar, Parabolic, Converged
     INTEGER :: i, k, n
 
     REAL(KIND=dp) :: PatchNodes(MaxPatchNodes,2)
@@ -3168,42 +3169,41 @@ CONTAINS
     F = TaylorParams(5)
     G = TaylorParams(6)
 
-    IF (PRESENT(UmbilicalPoint)) THEN
-      Umbilical = UmbilicalPoint
+    Parabolic = .FALSE.
+    IF (.NOT. Umbilical) Parabolic = ABS(A)/ABS(B) < ParabolicDelta
+
+    !---------------------------------------------------------------------------------
+    ! The following constants relate to the most general third-order polynomial 
+    ! perturbations of the coordinate functions; cf. the definitions of x and y
+    ! below.
+    !---------------------------------------------------------------------------------
+    IF (Umbilical) THEN
+      !---------------------------------------------------------------------------------
+      ! If the point is nearly umbilical, then the reparametrization is done as for a sphere.
+      ! This is not fully accurate when the Taylor polynomial doesn't correspond to 
+      ! a sphere, with F /= 0 or E /= 0. Then the error is that the second diagonal form
+      ! is diagonal only up to an error O(h).
+      !---------------------------------------------------------------------------------
+      c1 = 0.0d0       ! Follows from Taylor's polynomial for a sphere
+      c2 = 0.0d0       ! Follows from Taylor's polynomial for a sphere
     ELSE
-      Umbilical =  ABS(B-A)/MAX(ABS(A),ABS(B)) < UmbilicalDelta
+      c1 = F/(B - A)   ! To make the 2nd fundamental form diagonal
+      c2 = E/(B - A)   ! To make the 2nd fundamental form diagonal
     END IF
 
-    IF (.NOT. Umbilical) THEN
-      !---------------------------------------------------------------------------------
-      ! The following constants relate to the most general third-order polynomial 
-      ! perturbations of the coordinate functions; cf. the definitions of x and y
-      ! below.
-      !---------------------------------------------------------------------------------
-      c1 = F/(B - A)                 ! To make the 2nd fundamental form diagonal
-      c2 = E/(B - A)                 ! To make the 2nd fundamental form diagonal
-      c4 = -A**2 - c2**2 + c1**2     ! To make the Christoffel symbol C111 constant
-      c5 = -2.0d0*c1*c2              ! To make the Christoffel symbol C111 constant
-      c6 = c2**2 - c1**2             ! To make the Christoffel symbol C112 constant
-      c7 = -c5                       ! To make the Christoffel symbol C222 constant
-      b7 = -B**2 + c2**2 - c1**2     ! To make the Christoffel symbol C222 constant
-      b5 = -A*B - c6                 ! Orthogonal surface basis vectors up to O(h^3)
+    IF (Parabolic) THEN
+      c4 = 0.0d0
     ELSE
-      !---------------------------------------------------------------------------------
-      ! If the point is umbilical and the surface is not planar, then the surface
-      ! is considered to be umbilical and hence spherical. Surface approximation
-      ! is then constructed such that its Taylor expansion agrees with the Taylor's 
-      ! polynomial of a sphere.
-      !---------------------------------------------------------------------------------
-      c1 = 0.0d0                 ! To make the 2nd fundamental form diagonal
-      c2 = 0.0d0                 ! To make the 2nd fundamental form diagonal
-      c4 = -A**2                 ! To make the Christoffel symbol C111 constant
-      c5 = 0.0d0                 ! To make the Christoffel symbol C111 constant
-      c7 = 0.0d0                 ! To make the Christoffel symbol C222 constant
-      b7 = -B**2                 ! To make the Christoffel symbol C222 constant
-      c6 = -A*B/2.0d0            ! Symmetry of coordinate perturbations
-      b5 = -A*B - c6             ! Orthogonal surface basis vectors up to O(h^3)
+      c4 = -0.5d0*(A**2 + A*B + B**2) ! To enforce symmetries
     END IF
+
+    c5 = -2.0d0*c1*c2              ! To simplify the Christoffel symbols
+    c6 = -A**2 - A*B - c4          ! An isothermal reparametrization
+    c7 = -c5                       ! An isothermal reparametrization
+    b7 = -B**2 + c6                ! An isothermal reparametrization
+    b5 = -A*B - c6                 ! Orthogonal surface basis vectors up to O(h^3)
+    ! b4 = -c5                     ! Orthogonal surface basis vectors up to O(h^3)
+    ! b6 = -c7                     ! Orthogonal surface basis vectors up to O(h^3)
 
     ! Estimate the size of the domain to adapt a termination criterion
     SELECT CASE(Family)
@@ -3302,7 +3302,7 @@ CONTAINS
   SUBROUTINE SurfaceBasisVectors(x, y, TaylorParams, e1, e2, e3, o, a1, a2, a3, &
       A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, C211, C212, &
       dual1, dual2, XGlob, YGlob, ZGlob, LowestOrderBasis, PlanarPoint, &
-      UmbilicalPoint)
+      Umbilical)
 !-----------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp), INTENT(IN) :: x, y
@@ -3315,12 +3315,12 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, INTENT(OUT) :: XGlob, YGlob, ZGlob
     LOGICAL, OPTIONAL, INTENT(IN) :: LowestOrderBasis
     LOGICAL, OPTIONAL, INTENT(IN) :: PlanarPoint
-    LOGICAL, OPTIONAL, INTENT(IN) :: UmbilicalPoint
+    LOGICAL, INTENT(IN) :: Umbilical
 !-----------------------------------------------------------------------------------
     LOGICAL :: ReturnDualBasis, ReturnGlobalCoords
-    LOGICAL :: Planar, Umbilical
+    LOGICAL :: Planar, Parabolic
     REAL(KIND=dp) :: A, B, D, E, F, G
-    REAL(KIND=dp) :: c1, c2, c4, c5, c6, c7, b5, b7
+    REAL(KIND=dp) :: c1, c2, c4, c5, c6, c7, b5, b7, d1, d2
     REAL(KIND=dp) :: x1, x2, x3
     REAL(KIND=dp) :: Norm
 !-----------------------------------------------------------------------------------
@@ -3369,61 +3369,50 @@ CONTAINS
     F = TaylorParams(5)
     G = TaylorParams(6)
 
-    IF (PRESENT(UmbilicalPoint)) THEN
-      Umbilical = UmbilicalPoint
-    ELSE
-      Umbilical =  ABS(B-A)/MAX(ABS(A),ABS(B)) < UmbilicalDelta
-    END IF
+    Parabolic = .FALSE.
+    IF (.NOT. Umbilical) Parabolic = ABS(A)/ABS(B) < ParabolicDelta
 
     ! ---------------------------------------------------------------------------- 
     ! The constants to diagonalize the fundamental forms
     ! ---------------------------------------------------------------------------- 
     IF (Umbilical) THEN
-      c1 = 0.0d0                 ! To make the 2nd fundamental form diagonal
-      c2 = 0.0d0                 ! To make the 2nd fundamental form diagonal
-      c4 = -A**2                 ! To make the Christoffel symbol C111 constant
-      c5 = 0.0d0                 ! To make the Christoffel symbol C111 constant
-      c7 = 0.0d0                 ! To make the Christoffel symbol C222 constant
-      b7 = -B**2                 ! To make the Christoffel symbol C222 constant
-      c6 = -A*B/2.0d0            ! Symmetry of coordinate perturbations
-      b5 = -A*B - c6             ! Orthogonal surface basis vectors up to O(h^3)
+      c1 = 0.0d0       ! Follows from Taylor's polynomial for a sphere
+      c2 = 0.0d0       ! Follows from Taylor's polynomial for a sphere
     ELSE
-      c1 = F/(B - A)             ! To make the 2nd fundamental form diagonal
-      c2 = E/(B - A)             ! To make the 2nd fundamental form diagonal
-      c4 = -A**2 - c2**2 + c1**2 ! To make the Christoffel symbol C111 constant
-      c5 = -2.0d0*c1*c2          ! To make the Christoffel symbol C111 constant
-      c6 = c2**2 - c1**2         ! To make the Christoffel symbol C112 constant
-      c7 = -c5                   ! To make the Christoffel symbol C222 constant
-      b7 = -B**2 + c2**2 - c1**2 ! To make the Christoffel symbol C222 constant
-      b5 = -A*B - c6             ! Orthogonal surface basis vectors up to O(h^3)
+      c1 = F/(B - A)   ! To make the 2nd fundamental form diagonal
+      c2 = E/(B - A)   ! To make the 2nd fundamental form diagonal
     END IF
+
+    IF (Parabolic) THEN
+      c4 = 0.0d0
+    ELSE
+      c4 = -0.5d0*(A**2 + A*B + B**2) ! To enforce symmetries
+    END IF
+
+    c5 = -2.0d0*c1*c2              ! To simplify the Christoffel symbols
+    c6 = -A**2 - A*B - c4          ! An isothermal reparametrization
+    c7 = -c5                       ! An isothermal reparametrization
+    b7 = -B**2 + c6                ! An isothermal reparametrization
+    b5 = -A*B - c6                 ! Orthogonal surface basis vectors up to O(h^3)
 
     ! ---------------------------------------------------------------------------- 
     ! The covariant surface basis vectors expanded up to O(h^3)
     ! ---------------------------------------------------------------------------- 
-    IF (Umbilical) THEN
-      a1(:) = (0.1D1 - A ** 2 * x ** 2 / 0.2D1 - A * B * y ** 2 / 0.4D1) * e1(:) + &
-          (-A * B * x * y / 0.2D1) * e2(:) + (A * x) * e3(:)
-      a2(:) = (-A * B * x * y / 0.2D1) * e1(:) + &
-          (0.1D1 - A * B * x ** 2 / 0.4D1 - B ** 2 * y ** 2 / 0.2D1) * e2(:) + &
-          (B * y) * e3(:)
-    ELSE
-      a1(:) = (0.1D1 - c1 * x + c2 * y + c4 * x ** 2 / 0.2D1 + c5 * x * y + &
-          c6 * y ** 2 / 0.2D1) * e1(:) + &
-          (-c2 * x - c1 * y - c5 * x ** 2 / 0.2D1 + b5 * x * y - &
-          c7 * y ** 2 / 0.2D1) * e2(:) + &
-          (A * x + (-0.3D1 / 0.2D1 * A * c1 + D / 0.2D1) * x ** 2 + &
-          (0.2D1 * A * c2 - B * c2 + E) * y * x + (A * c1 / 0.2D1 - B * c1 + &
-          F / 0.2D1) * y ** 2) *  e3(:)
+    a1(:) = (0.1D1 - c1 * x + c2 * y + c4 * x ** 2 / 0.2D1 + c5 * x * y + &
+        c6 * y ** 2 / 0.2D1) * e1(:) + &
+        (-c2 * x - c1 * y - c5 * x ** 2 / 0.2D1 + b5 * x * y - &
+        c7 * y ** 2 / 0.2D1) * e2(:) + &
+        (A * x + (-0.3D1 / 0.2D1 * A * c1 + D / 0.2D1) * x ** 2 + &
+        (0.2D1 * A * c2 - B * c2 + E) * y * x + (A * c1 / 0.2D1 - B * c1 + &
+        F / 0.2D1) * y ** 2) *  e3(:)
 
-      a2(:) = (c2 * x + c1 * y + c5 * x ** 2 / 0.2D1 + c6 * x * y + &
-          c7 * y ** 2 / 0.2D1) *  e1(:) + &
-          (0.1D1 - c1 * x + c2 * y + b5 * x ** 2 / 0.2D1 - c7 * x * y + &
-          b7 * y ** 2 / 0.2D1) * e2(:) + & 
-          (B * y + (A * c2 - B * c2 / 0.2D1 + E / 0.2D1) * x ** 2 + &
-          (A * c1 - 0.2D1 * B * c1 + F) * y * x + (0.3D1 / 0.2D1 * B * c2 + &
-          G /0.2D1) * y ** 2) *  e3(:)
-    END IF
+    a2(:) = (c2 * x + c1 * y + c5 * x ** 2 / 0.2D1 + c6 * x * y + &
+        c7 * y ** 2 / 0.2D1) *  e1(:) + &
+        (0.1D1 - c1 * x + c2 * y + b5 * x ** 2 / 0.2D1 - c7 * x * y + &
+        b7 * y ** 2 / 0.2D1) * e2(:) + & 
+        (B * y + (A * c2 - B * c2 / 0.2D1 + E / 0.2D1) * x ** 2 + &
+        (A * c1 - 0.2D1 * B * c1 + F) * y * x + (0.3D1 / 0.2D1 * B * c2 + &
+        G /0.2D1) * y ** 2) *  e3(:)
 
     a3(:) = CrossProduct(a1,a2)
     Norm = SQRT(SUM(a3(1:3)**2))
@@ -3449,21 +3438,15 @@ CONTAINS
     ! ----------------------------------------------------------------------------
     ! The Christoffel symbols Cijk = C_{ij}^k:
     ! ----------------------------------------------------------------------------
-    IF (Umbilical) THEN
-      C111 = 0.0d0
-      C112 = A * B * y / 0.2D1
-      C221 = A * B * x / 0.2D1
-      C222 = 0.0d0
-      C211 = -A * B * y / 0.2D1
-      C212 = -A * B * x / 0.2D1
-    ELSE
-      C111 = -c1
-      C112 = -c2
-      C221 = c1 + A * B  * x
-      C222 = c2
-      C211 = c2
-      C212 = -c1 - A * B * x
-    END IF
+    d1 = A**2 + c4 - c1**2 + c2**2 
+    d2 = A**2 + A*B + c4 - c1**2 + c2**2
+    C111 = -c1 + d1 * x
+    C221 = -C111
+    C212 = C111
+    C222 = c2 - d2 * y
+    C211 = C222
+    C112 = -C222
+
     ! ----------------------------------------------------------------------------
     ! The contravariant surface basis vectors:
     ! ----------------------------------------------------------------------------      
@@ -3549,7 +3532,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element => NULL()
     TYPE(Element_t), POINTER :: GElement => NULL()     
     TYPE(Nodes_t) :: Nodes, PNodes, PRefNodes
-    TYPE(ValueList_t), POINTER :: BodyForce
+    TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(GaussIntegrationPoints_t) :: IP
 
     LOGICAL :: Stat, Found
@@ -3699,9 +3682,11 @@ CONTAINS
     ! --------------------------------------------------------------------------
     ! Body forces, material parameters and the shell thickness:
     ! --------------------------------------------------------------------------
-    PoissonRatio(1:n) = GetReal(GetMaterial(), 'Poisson Ratio')
-    YoungsMod(1:n) = GetReal(GetMaterial(), 'Youngs Modulus')
-    ShellThickness(1:n) = GetReal(GetMaterial(), 'Shell Thickness')
+    Material => GetMaterial()
+    PoissonRatio(1:n) = GetReal(Material, 'Poisson Ratio')
+    YoungsMod(1:n) = GetReal(Material, 'Youngs Modulus')
+    ShellThickness(1:n) = GetReal(Material, 'Shell Thickness')
+
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) THEN
       Load(1:n) = GetReal(BodyForce, 'Normal Pressure', Found)
@@ -3709,8 +3694,8 @@ CONTAINS
       Load(1:n) = 0.0d0
     END IF
     IF ( MassAssembly ) THEN
-      rho(1:n) = GetReal(GetMaterial(), 'Density')
-      Damping(1:n) = GetReal(GetMaterial(), 'Rayleigh Damping Alpha', Found)
+      rho(1:n) = GetReal(Material, 'Density')
+      Damping(1:n) = GetReal(Material, 'Rayleigh Damping Alpha', Found)
     END IF
 
     ! ------------------------------------------------------------------------------
@@ -3736,7 +3721,7 @@ CONTAINS
         CALL SurfaceBasisVectors(Nodes % x(j), Nodes % y(j), TaylorParams, e1, e2, e3, o, &
             abasis1, abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
             C211, C212, XGlob=XGlob, YGlob=YGlob, ZGlob=ZGlob, PlanarPoint=PlateBody, &
-            UmbilicalPoint=SphericalSurface)
+            Umbilical=SphericalSurface)
 
         ChristoffelMat1(1,1,j) = C111
         ChristoffelMat1(2,1,j) = C211
@@ -3778,7 +3763,7 @@ CONTAINS
 
       CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
           abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
-          C211, C212, PlanarPoint=PlateBody, UmbilicalPoint=SphericalSurface)
+          C211, C212, PlanarPoint=PlateBody, Umbilical=SphericalSurface)
 
       QBlock(1,1:3) = abasis1(1:3)
       QBlock(2,1:3) = abasis2(1:3)
@@ -3944,7 +3929,7 @@ CONTAINS
       CALL SurfaceBasisVectors(y1, y2, TaylorParams, e1, e2, e3, o, abasis1, &
           abasis2, abasis3, A11, A22, SqrtDetA, B11, B22, C111, C112, C221, C222, &
           C211, C212, dual1=dual1, dual2=dual2, XGlob=XGlob, YGlob=YGlob, ZGlob=ZGlob, &
-          PlanarPoint=PlateBody, UmbilicalPoint=SphericalSurface)
+          PlanarPoint=PlateBody, Umbilical=SphericalSurface)
 
       ! The geometric Lame parameters:
       ! ------------------------------

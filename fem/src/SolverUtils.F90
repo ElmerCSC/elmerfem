@@ -8040,6 +8040,8 @@ CONTAINS
       RETURN
     END IF
     
+
+
     
     IF( PRESENT( OffDiagonal ) ) THEN
       NoDiag = OffDiagonal
@@ -8106,7 +8108,7 @@ CONTAINS
     ! Deallocate scaling since otherwise it could be misused out of context
     IF (ScaleSystem) DEALLOCATE( A % DiagScaling ) 
         
-    CALL Info(Caller,'Dirichlet boundary conditions enforced', Level=12)
+    CALL Info(Caller,'Dirichlet conditions enforced for dofs: '//TRIM(I2S(n)), Level=6)
     
   END SUBROUTINE EnforceDirichletConditions
 !-------------------------------------------------------------------------------
@@ -9574,6 +9576,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: y(:)
     LOGICAL :: Parallel
+    LOGICAL, ALLOCATABLE :: PassiveDof(:)
     
     CALL Info('ComputeNorm','Computing norm of solution',Level=10)
     
@@ -9595,7 +9598,7 @@ END FUNCTION SearchNodeL
     NormComponents => ListGetIntegerArray(Solver % Values,&
         'Nonlinear System Norm Components',Stat)
     IF(Stat) THEN
-      NormDofs = SIZE( NormComponents ) 
+      NormDofs = SIZE( NormComponents )       
     ELSE
       NormDofs = ListGetInteger(Solver % Values,'Nonlinear System Norm Dofs',Stat)
       IF(Stat) THEN
@@ -9608,7 +9611,18 @@ END FUNCTION SearchNodeL
         NormDofs = Dofs        
       END IF
     END IF
- 
+
+    ALLOCATE( PassiveDof(0:Dofs-1) )
+    IF( NormDofs < Dofs ) THEN
+      PassiveDof = .TRUE.
+      DO i=1,NormDofs
+        PassiveDof(NormComponents(i)-1) = .FALSE.        
+      END DO
+    ELSE
+      PassiveDof = .FALSE.
+    END IF
+          
+    
     n = nin
     totn = 0
     
@@ -9636,12 +9650,71 @@ END FUNCTION SearchNodeL
       x => y
       DEALLOCATE(iPerm)
     END IF
-    
-    IF( NormDofs < Dofs ) THEN
-      IF( ConsistentNorm ) THEN
-        CALL Warn('ComputeNorm','Consistent norm not implemented for selective norm')
-      END IF
 
+
+    IF( ConsistentNorm ) THEN
+      ! In consistent norm we have to skip the dofs not owned by the partition in order
+      ! to count each dof only once. 
+      Norm = 0.0_dp
+      
+      SELECT CASE(NormDim)
+
+      CASE(0) 
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = MAX( Norm, ABS( val ) )
+          totn = totn + 1
+        END DO
+
+      CASE(1)
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + ABS(val)
+          totn = totn + 1
+        END DO
+
+      CASE(2)          
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + val**2
+          totn = totn + 1
+        END DO
+
+      CASE DEFAULT
+        DO j=1,n
+          IF(PassiveDof(MODULO(j-1,Dofs))) CYCLE
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + val**NormDim 
+          totn = totn + 1
+        END DO
+      END SELECT
+
+      totn = NINT( ParallelReduction(1._dp*totn) )
+      nscale = 1.0_dp * totn
+      
+      SELECT CASE(NormDim)
+      CASE(0)
+        Norm = ParallelReduction(Norm,2)
+      CASE(1)
+        Norm = ParallelReduction(Norm) / nscale
+      CASE(2)
+        Norm = SQRT(ParallelReduction(Norm)/nscale)
+      CASE DEFAULT
+        Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
+      END SELECT
+    
+    ELSE IF( NormDofs < Dofs ) THEN
       totn = NINT( ParallelReduction(1._dp*n) )
       nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
@@ -9686,66 +9759,7 @@ END FUNCTION SearchNodeL
           Norm = (Norm/nscale)**(1.0d0/NormDim)
         END IF
       END SELECT
-    ELSE IF( ConsistentNorm ) THEN
-      ! In consistent norm we have to skip the dofs not owned by the partition in order
-      ! to count each dof only once. 
-
-      Norm = 0.0_dp
-      totn = 0
-      DO j=1,n
-        IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-            == ParEnv % MyPE ) totn = totn + 1
-      END DO        
-
-      totn = NINT( ParallelReduction(1._dp*totn) )
-      nscale = 1.0_dp * totn
-
-      SELECT CASE(NormDim)
-        
-      CASE(0) 
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = MAX( Norm, ABS( val ) )
-        END DO
-        
-      CASE(1)
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = Norm + ABS(val)
-        END DO
-        
-      CASE(2)          
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = Norm + val**2 
-        END DO
-        
-      CASE DEFAULT
-        DO j=1,n
-          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-              /= ParEnv % MyPE ) CYCLE
-          val = x(j)
-          Norm = Norm + val**NormDim 
-        END DO
-      END SELECT
-
-      SELECT CASE(NormDim)
-      CASE(0)
-        Norm = ParallelReduction(Norm,2)
-      CASE(1)
-        Norm = ParallelReduction(Norm) / nscale
-      CASE(2)
-        Norm = SQRT(ParallelReduction(Norm)/nscale)
-      CASE DEFAULT
-        Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
-      END SELECT
-      
+            
     ELSE IF( Parallel ) THEN
       val = ParallelReduction(1.0_dp*n)
       totn = NINT( val )
@@ -9770,7 +9784,7 @@ END FUNCTION SearchNodeL
           Norm = (ParallelReduction(val)/nscale)**(1.0d0/NormDim)
         END SELECT
       END IF
-      
+
     ELSE
       val = 0.0_dp
       SELECT CASE(NormDim)
@@ -9907,7 +9921,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: iterVar, VeloVar, dtVar, WeightVar
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
-        SkipConstraints, ResidualMode, RelativeP
+        SkipConstraints, ResidualMode, RelativeP, NodalNorm
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
@@ -9951,6 +9965,8 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= IterNo ) Relax = .FALSE.
       END IF	
 
+      NodalNorm = ListGetLogical(SolverParams,'Steady State Nodal Norm',Stat)
+      
       RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
@@ -10006,6 +10022,8 @@ END FUNCTION SearchNodeL
       SkipConstraints = ListGetLogical(SolverParams,&
           'Nonlinear System Convergence Without Constraints',Stat) 
 
+      NodalNorm = ListGetLogical(SolverParams,'Nonlinear System Nodal Norm',Stat)
+      
       RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
@@ -10040,6 +10058,14 @@ END FUNCTION SearchNodeL
 
     IF( SkipConstraints ) n = MIN( n, Solver % Matrix % NumberOfRows )
 
+    ! If requested (for p-elements) only use the dofs associated to nodes. 
+    ! One should not optimize bandwidth if this is desired. 
+    IF( NodalNorm ) THEN
+      i = MAXVAL( Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes ) )
+      n = MIN(n,i*Solver % Variable % Dofs)
+    END IF
+
+    
     Stat = .FALSE.
     x0 => NULL()
     IF(PRESENT(values0)) THEN
@@ -11346,7 +11372,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: PreSolve
     LOGICAL, OPTIONAL :: NoSolve
     !------------------------------------------------------------------------------
-    ! We have a special stucture for the iterates and residuals so that we can
+    ! We have a special structure for the iterates and residuals so that we can
     ! cycle over the pointers instead of the values. 
     TYPE AndersonVect_t
       LOGICAL :: Additive
@@ -11941,8 +11967,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp), POINTER :: bc_weights(:),body_weights(:),&
         mat_weights(:),bf_weights(:),tmp_weights(:)
-    REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3), &
-        Coeff
+    REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3),Coeff
     LOGICAL :: Found, Stat, BodyElem
 
 
@@ -11998,7 +12023,6 @@ END FUNCTION SearchNodeL
       mat_id = 0
       body_id = 0
       bc_id = 0
-      Coeff = 1.0_dp
 
       BodyElem = ( e <= Mesh % NumberOfBulkElements ) 
       Element => Mesh % Elements( e )
@@ -12011,7 +12035,7 @@ END FUNCTION SearchNodeL
             'Material',Found)
       ELSE
         Found = .FALSE.
-        DO bc_id = 1,Model % NumberOfBCs
+        DO bc_id = 1,NoBC
           Found = ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) 
           IF( Found ) EXIT
         END DO
@@ -12049,12 +12073,18 @@ END FUNCTION SearchNodeL
       Indexes => Element % NodeIndexes
 
       n = Element % TYPE % NumberOfNodes
+
+      ElementNodes % x = 0.0_dp
+      ElementNodes % y = 0.0_dp
+      ElementNodes % z = 0.0_dp
+      
       ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes)
       ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes)
       ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes)
 
-      IntegStuff = GaussPoints( Element )
-
+      IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints, &
+          EdgeBasis = .FALSE., PReferenceElement = .FALSE. )
+      
       DO t=1,IntegStuff % n        
         U = IntegStuff % u(t)
         V = IntegStuff % v(t)
@@ -14042,7 +14072,7 @@ END FUNCTION SearchNodeL
 
       CALL LinearSystemResidual( A, b, x, res )
       bb => res
-      ! Set the initial guess for the redidual system to zero
+      ! Set the initial guess for the residual system to zero
       x = 0.0_dp
     ELSE
       bb => b
@@ -14311,7 +14341,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
+  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, &
+      IpVariable, ElemVariable, DgVariable, NodalVariable )
 
     CHARACTER(LEN=*)  :: var_name
     LOGICAL, OPTIONAL :: NoOutput, Global
@@ -14319,6 +14350,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     LOGICAL, OPTIONAL :: IpVariable
     LOGICAL, OPTIONAL :: ElemVariable
     LOGICAL, OPTIONAL :: DgVariable
+    LOGICAL, OPTIONAL :: NodalVariable
 
     INTEGER :: i,j,k,m
 
@@ -14326,7 +14358,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     IF(PRESENT(Global)) Global = .FALSE.
     IF(PRESENT(Dofs)) Dofs = 0
     IF(PRESENT(IpVariable)) IpVariable = .FALSE.
-
+    IF(PRESENT(DgVariable)) DgVariable = .FALSE.      
+    IF(PRESENT(ElemVariable)) ElemVariable = .FALSE.      
+    IF(PRESENT(NodalVariable)) NodalVariable = .FALSE.      
+    
+    
     DO WHILE( var_name(1:1) == '-' )
 
       m = 0
@@ -14349,6 +14385,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       ELSE IF ( SEQL(var_name, '-elem ') ) THEN
         IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
         m = 6
+
+      ELSE IF ( SEQL(var_name, '-nodal ') ) THEN
+        IF(PRESENT(NodalVariable)) NodalVariable = .TRUE.      
+        m = 7
       END IF
 
       IF( m > 0 ) THEN
@@ -16754,7 +16794,7 @@ CONTAINS
     END IF
 
     IF(.NOT. ASSOCIATED( A ) ) THEN
-      CALL Fatal(Caller,'Matrix not assciated!')
+      CALL Fatal(Caller,'Matrix not associated!')
     END IF
 
     SaveMass = ListGetLogical( Params,'Linear System Save Mass',Found)
@@ -18129,18 +18169,17 @@ CONTAINS
               ! trace of the global rotations ROT is related to the directional derivative
               ! of the displacement field u by -Du[d] x d = d x ROT x d. This implementation 
               ! is limited to cases where the director is aligned with one of the global
-              ! coordinate axes.
+              ! coordinate axes. Find the closest one and use that. 
               !
-              NormalDir = 0
-              DO i=1,3
-                IF (ABS(1.0_dp - ABS(Director(i))) < 1.0d-5) THEN
-                  NormalDir = i
-                  EXIT
-                END IF
+              NormalDir = 1              
+              DO i=2,3
+                IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
               END DO
-              IF( NormalDir == 0 ) THEN
-                CALL Fatal(Caller, &
-                    'Coupling with drilling rotation formulation needs an axis-aligned director')
+              ! This is not good, but maybe not bad enough to through the whole analysis away...
+              IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
+                WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
+                    NormalDir,': ',Director(NormalDir)
+                CALL Warn(Caller,Message)
               END IF
             END IF
         
@@ -20622,7 +20661,7 @@ CONTAINS
          nd = LEN_TRIM(OutputDirectory)
        END IF
        ! To be on the safe side create the directory. If it already exists no harm done.
-       ! Note that only one direcory may be created. Hence if there is a path with many subdirectories
+       ! Note that only one directory may be created. Hence if there is a path with many subdirectories
        ! that will be a problem. Fortran does not have a standard ENQUIRE for directories hence
        ! we just try to make it. 
        IF( DoDir ) THEN

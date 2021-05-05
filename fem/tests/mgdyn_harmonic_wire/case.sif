@@ -25,7 +25,7 @@ Simulation
 
   Coordinate Scaling = 1.0e-3
 
-  Post File = a.ep
+!  Post File = a.ep
 
   $ w = 1.0e5
   Angular Frequency = Real $w
@@ -74,7 +74,6 @@ Solver 1
   Linear System Residual Output = 50
   Linear System Max Iterations = 1000
   Linear System Iterative Method = BiCGStabl
-  !GCR
   Linear System Convergence Tolerance = 1.0e-8
   BicgStabl Polynomial Degree = 4
 End
@@ -118,7 +117,7 @@ Solver 3
   Vtu format = Logical True
   Discontinuous Bodies = Logical True
 
-  Reference Sums(6) = Real 59 13 206250 2064 402295082 3.6139440456815133
+  Reference Sums(6) = Real 59 13 206250 2064 402220888 4.178146196
   Reference Norm = 1.0
 End
 
@@ -206,5 +205,5 @@ Boundary Condition 6
 End
 
 
-Solver 4 :: Reference Norm = 1.42296361E+03
+Solver 4 :: Reference Norm = 1.42295178E+03
 Solver 4 :: Reference Norm Tolerance = 1e-4
