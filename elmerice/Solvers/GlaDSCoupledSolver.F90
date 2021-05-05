@@ -159,7 +159,7 @@
      
      LocalNodes = COUNT( HydPotPerm > 0 )
      IF ( LocalNodes <= 0 ) RETURN
-
+     
      !CHANGE (and at all DIMs)
      DIM = Solver % Mesh % MeshDim
 
@@ -239,7 +239,7 @@
               IsGhostNode(Element % NodeIndexes) = .FALSE.
             END DO
             GhostNodes = COUNT(IsGhostNode)
-           PRINT *,'Ghost nodes:', ParEnv % myPe, GhostNodes
+            PRINT *,'Ghost nodes:', ParEnv % myPe, GhostNodes
         END IF
 
         ! Find the nodes for which we have no channel (on the boundary)
@@ -291,8 +291,8 @@
            CALL Warn(SolverName,'Keyword >Channel Area Variable Name< not found in section Constants')
            CALL Warn(SolverName,'Taking default value >Channel Area<')
            WRITE(ChannelAreaName,'(A)') 'Channel Area'
-        END IF
-
+        END IF        
+        
         SheetThicknessName = GetString( Constants,'Sheet Thickness Variable Name', Found )
         IF(.NOT.Found) THEN        
            CALL Warn(SolverName,'Keyword >Sheet Thickness Variable Name< not found in section Constants')
@@ -325,7 +325,7 @@
           IF(.NOT. ASSOCIATED(WorkVar)) THEN
             CALL Fatal(SolverName,'We really need "channel area" as variable!')
           END IF
-          
+
           !ALLOCATE(CAValues(SIZE(WorkVar % Values)))
           CAPerm => WorkVar % Perm
           CAValues => WorkVar % Values
@@ -368,19 +368,10 @@
           
           SHPerm => WorkVar % Perm
           SHValues => WorkVar % Values
-          ! We already have the field - no need to redo it!
-          !ALLOCATE(SHPerm(SIZE(WorkVar % Perm)), SHValues(SIZE(WorkVar % Values)))
-          !SHPerm => WorkVar % Perm
-          !SHValues = WorkVar % Values !Needed to reflect initial condition
-          !CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, Solver,&
-          !     'Sheet Thickness', 1, SHValues, SHPerm, Secondary = .TRUE.)
-          !WorkVar => VariableGet(Solver % Mesh % Variables, 'Sheet Thickness',&
-          !            ThisOnly=.TRUE.)
           ALLOCATE(WorkVar % PrevValues(SIZE(WorkVar % Values),MAX(Solver&
                    % Order, Solver % TimeOrder)))
+          ! Necessary to ensure initial condition value reflected in PrevValues
           WorkVar % PrevValues(:,1) = WorkVar % Values
-          !Necessary to ensure initial condition value reflected in PrevValues
-          WorkVar % PrevValues(1:Solver % Mesh % NumberOfNodes,1) = WorkVar % Values(1:Solver % Mesh % NumberOfNodes)
           NULLIFY(WorkVar)
         END IF
 
@@ -460,6 +451,8 @@
         AreaPerm     => AreaSol % Perm
         AreaSolution => AreaSol % Values
         AreaPrev => AreaSol % PrevValues
+
+        PRINT *,'ChannelSize:',ParEnv % MyPe, SIZE( AreaSol % Values )                    
         
         ! flux in the channels (for output only) - edge type variable
         QcSol => VariableGet( Solver % Mesh % Variables, "Channel Flux" )
@@ -636,18 +629,18 @@
                  k = ThickPerm(j)
                  IF ( ASSOCIATED( ZbSol )) THEN
                     zb = ZbSolution(ZbPerm(j))
-                 ELSE 
+                  ELSE 
                     IF (dimSheet==1) THEN  
                        zb = Solver % Mesh % Nodes % y(j)
-                    ELSE
+                     ELSE
                        zb = Solver % Mesh % Nodes % z(j)
-                    END IF 
+                     END IF
                  END IF
                  CT(i) = Ev(i) /( WaterDensity * gravity)
                  Wopen(i) = MAX(ub(i) / lr(i) * (hr(i) - ThickSolution(k)), 0.0)
- 
+                   
                  Phi0(i) = Snn(i) + gravity*WaterDensity*zb
-                 IF (.Not.NeglectH) THEN 
+                 IF (.NOT.NeglectH) THEN 
                     Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
                  END IF
               END DO
@@ -702,12 +695,22 @@
         IF (Channels) THEN
            body_id = -1
            NULLIFY(Material)
+           
+           M = Solver % Mesh % NumberOfNodes
+           
            DO t=1, Solver % Mesh % NumberOfEdges 
+              ! The variable Channel Area is defined on the edges only
+              IF (AreaPerm(M+t) == 0)  CYCLE 
+             
               Edge => Solver % Mesh % Edges(t)
-              IF (.NOT.ASSOCIATED(Edge)) CYCLE
+
               IF (ParEnv % PEs > 1) THEN
-                IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) THEN
+!                  PRINT *,'Cycling edge:',ParEnv % MyPe, t
+                  CYCLE
+                END IF
               END IF
+              
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
@@ -719,11 +722,10 @@
               ! We check if we are in a boundary where we want No channel
               IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
 
-
               EdgeNodes % x(1:n) = Solver % Mesh % Nodes % x(Edge % NodeIndexes(1:n))
               EdgeNodes % y(1:n) = Solver % Mesh % Nodes % y(Edge % NodeIndexes(1:n))
               EdgeNodes % z(1:n) = Solver % Mesh % Nodes % z(Edge % NodeIndexes(1:n))
-
+              
               ! Compute the unit tangent vector of the edge
               EdgeTangent(1) = EdgeNodes % x(2) - EdgeNodes % x(1)
               EdgeTangent(2) = EdgeNodes % y(2) - EdgeNodes % y(1)
@@ -761,7 +763,7 @@
                   END IF
                 END IF
               END IF
-              
+
 !----------------------------------------------------              
 ! Get parameters to compute the Total Conductivity 
 ! Kc = kc . fc(h) . |grad HydPot |^(betac-2)
@@ -800,24 +802,20 @@
                  IF (meltChannels) Bfactor(i) = Bfactor(i) - 1.0/(Lw * WaterDensity)
               END DO
 
-! The variable Channel Area is defined on the edges only
-              M = Solver % Mesh % NumberOfNodes
-              IF (AreaPerm(M+t) <=   0)  CYCLE 
-
               !CHANGE
               !To stabilise channels
               IF(MABool) THEN
                 IF(AreaSolution(AreaPerm(M+t)) > MaxArea) AreaSolution(AreaPerm(M+t)) = MaxArea
               END IF
               ChannelArea = AreaSolution(AreaPerm(M+t))
-
+              
               !------------------------------------------------------------------------------
               ! Get element local matrices, and RHS vectors
               !------------------------------------------------------------------------------
               MASS = 0.0_dp
               STIFF = 0.0_dp
               FORCE = 0.0_dp
-
+              
               ! Local matrix assembly in cartesian coords
               !------------------------------------------
               CALL ChannelCompose( MASS, STIFF, FORCE, &
@@ -837,13 +835,9 @@
                 k = AreaPerm(M+t)
                 IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
               END IF
-              ! This should be not needed as MASS = 0 here
-              IF ( TransientSimulation ) THEN
-                 CALL Default1stOrderTime( MASS, STIFF, FORCE, Edge )
-              END IF
 
               CALL DefaultUpdateEquations( STIFF, FORCE, Edge )
-           END DO ! Edge elements 
+            END DO ! Edge elements
         END IF
 
            
@@ -965,7 +959,7 @@
            IF( DefaultConverged(Solver) ) EXIT
           
         END DO ! of the nonlinear iteration
-
+        
 !------------------------------------------------------------------------------
 !       Update the Sheet Thickness                 
 !------------------------------------------------------------------------------
