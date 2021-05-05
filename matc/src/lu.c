@@ -179,12 +179,9 @@ VARIABLE *mtr_inv(var)
   for(i = n - 2; i >= 0; i--)
     for(j = n - 1; j > i; j--)
     {
-      s = 0.0;
-      for(k = i+1; k <= j; k++)
-	if (k != j)  
-	  s = s - A(i,k) * A(k,j);
-	else 
-	  s = s - A(i,k);
+      s = -A(i,j);
+      for(k = i+1; k<j; k++)
+        s = s - A(i,k) * A(k,j);
       A(i,j) = s;
     }
 
@@ -218,7 +215,7 @@ VARIABLE *mtr_inv(var)
   /*
    * A = INV(A) (at last)
    */
-  for(i = 0; i < n; i++)
+  for(i = n-1; i >= 0; i--)
     if (pivot[i] != i)
       for(j = 0; j < n; j++)
       {
@@ -227,6 +224,7 @@ VARIABLE *mtr_inv(var)
 	A(pivot[i],j) = s;
       }
   
+
   FREEMEM((char *)pivot);
 
   return ptr;
@@ -247,12 +245,12 @@ void LUDecomp(a, n, pivot)
 {
   double swap;
   int i, j, k, l;
-  
-  for (i = 0; i < n - 1; i++)
+
+  for (i = 0; i<n; i++)
   {
     j = i;
-    for(k = i + 1; k < n; k++)
-      if (abs(A(i,k)) > abs(A(j,k))) j = k;
+    for(k=i+1; k<n; k++)
+      if (abs(A(i,k)) > abs(A(i,j))) j = k;
     
     if (A(i,j) == 0.0) 
     {
@@ -263,15 +261,18 @@ void LUDecomp(a, n, pivot)
     
     if (j != i)
     {
-      swap = A(i,i);
-      A(i,i) = A(i,j);
-      A(i,j) = swap;
+      for(k=0; k<=i; k++ )
+      {
+        swap = A(k,i);
+        A(k,i) = A(k,j);
+        A(k,j) = swap;
+      }
     }
     
     for(k = i + 1; k < n; k++)
       A(i,k) = A(i,k) / A(i,i);
     
-    for(k = i + 1; k < n; k++) 
+    for(k = i+1; k<n; k++) 
     {
       if (j != i)
       {

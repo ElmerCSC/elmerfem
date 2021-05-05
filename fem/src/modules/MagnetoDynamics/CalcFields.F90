@@ -965,7 +965,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF( WvecInitHandle ) THEN
            CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
            IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
-           CALL ListInitElementVariable( Wvec_h, 'W Vector E' )
+           CALL ListInitElementVariable( Wvec_h, CoilWVecVarname )
            WvecInitHandle = .FALSE.
          END IF
        ELSE
@@ -1139,11 +1139,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
          ELSE
            wvec = -MATMUL(Wbase(1:n), dBasisdx(1:n,:))
-         END IF
-         IF(SUM(wvec**2._dp) > AEPS) THEN
-           wvec = wvec/SQRT(SUM(wvec**2._dp))
-         ELSE
-           wvec = [0.0_dp, 0.0_dp, 1.0_dp]
+           IF(SUM(wvec**2._dp) > AEPS) THEN
+             wvec = wvec/SQRT(SUM(wvec**2._dp))
+           ELSE
+             wvec = [0.0_dp, 0.0_dp, 1.0_dp]
+           END IF
          END IF
        END IF
 
@@ -1217,10 +1217,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
              ELSE
                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             END IF
              ! btw. This does not allow ununiform windings... I don't fix it now. -ettaka
-             wvec = wvec/SQRT(SUM(wvec**2._dp)) 
+               wvec = wvec/SQRT(SUM(wvec**2._dp)) !Why were we doing this? 04132021 -ettaka
+             END IF
            END SELECT
+
+
            IF(CMat_ip(3,3) /= 0._dp ) THEN
              imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
              E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
@@ -1326,10 +1328,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
              ELSE
                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+               wvec = wvec/SQRT(SUM(wvec**2._dp))
              END IF
-             wvec = wvec/SQRT(SUM(wvec**2._dp))
-             IF(CMat_ip(3,3) /= 0._dp ) &
+             IF(CMat_ip(3,3) /= 0._dp ) THEN
                E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
+             ELSE IF (.NOT. ImposeCircuitCurrent) THEN
+               CircuitCurrent = LagrangeVar % Values(IvarId)
+               ItoJCoeff = N_j
+               ItoJCoeffFound = .TRUE.
+             END IF
            END SELECT
 
          CASE ('massive')

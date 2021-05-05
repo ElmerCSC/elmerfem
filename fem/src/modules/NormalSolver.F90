@@ -300,14 +300,12 @@ END SUBROUTINE NormalSolver
     SolverParams => GetSolverParams()
     dim = CoordinateSystemDimension()
 
-    IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      CALL ListAddString( SolverParams, 'Variable','-nooutput nrm_temp' )
-    END IF
+    CALL ListAddNewString( SolverParams, 'Variable','-nooutput nrm_temp' )
     
     VarName = GetString(SolverParams,'Normals Result Variable', Found )
     IF( .NOT. Found ) THEN
       CALL ListAddString( SolverParams,'Normals Result Variable','Normals')
-      CALL ListAddString( SolverParams,  'Exported Variable 1', 'Normals[Normals:2]' )
+      CALL ListAddString( SolverParams,  'Exported Variable 1', 'Normals[Normals:'//TRIM(I2S(dim))//']' )
     END IF
 
     CALL ListAddInteger( SolverParams, 'Time derivative order', 0 )

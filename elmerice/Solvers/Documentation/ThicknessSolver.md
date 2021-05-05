@@ -18,7 +18,7 @@ As for the Free surface solver Min and Max limiters can be used.
 As for the Free surface solver only a Dirichlet boundary condition can be imposed.
 This solver can be used on a mesh of the same dimension as the problem (e.g. solve on the bottom or top boundary of a 3D mesh to solve the 2D thickness field) or on a mesh of lower dimension (e.g. can be use in a 2D plane view mesh with the [SSA solver](./SSA.md) for example).
 
-When working on a mesh of the same dimension as the problem it can be usefull to have an extruded mesh along the vertical direction and to use the StructuredProjectToPlane and StructuredMeshMapper solvers to compute the mean horizontal velocity (from the Stokes solution), export the value of H computed on one boundary in the whole mesh and update the mesh (see examples).
+When working on a mesh of the same dimension as the problem it can be useful to have an extruded mesh along the vertical direction and to use the StructuredProjectToPlane and StructuredMeshMapper solvers to compute the mean horizontal velocity (from the Stokes solution), export the value of H computed on one boundary in the whole mesh and update the mesh (see examples).
 
 ## SIF contents
 Solver section:

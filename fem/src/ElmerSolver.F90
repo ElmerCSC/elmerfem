@@ -159,7 +159,7 @@ END INTERFACE
            i = i + 1 
            CALL GET_COMMAND_ARGUMENT(i, OptionString)
            IF( OptionString=='-rpar' ) THEN
-             ! Followed by number of paramters + the parameter values
+             ! Followed by number of parameters + the parameter values
              i = i + 1
              CALL GET_COMMAND_ARGUMENT(i, OptionString)
              READ( OptionString,*) nr             
@@ -174,7 +174,7 @@ END INTERFACE
            END IF
 
            IF( OptionString=='-ipar' ) THEN
-             ! Followed by number of paramters + the parameter values
+             ! Followed by number of parameters + the parameter values
              i = i + 1
              CALL GET_COMMAND_ARGUMENT(i, OptionString)
              READ( OptionString,*) ni             
@@ -2035,19 +2035,22 @@ END INTERFACE
          
        END DO
      END IF
- 
+
      ! Do the standard global restart
      !-----------------------------------------------------------------
      RestartList => CurrentModel % Simulation
 
-     ! We may supress restart from certain meshes.
-     ! This was initially only related to calving, but no need to limit to that. 
+     ! We may suppress restart from certain meshes.
+     ! This was initially only related to calving, but no need to limit to that.
      l = 0
      MeshesToRestart => ListGetIntegerArray(RestartList,&
          'Meshes To Restart', CheckMesh )
-     
+
      RestartFile = ListGetString( RestartList, 'Restart File', GotIt )
-     IF ( GotIt ) THEN      
+     IF ( GotIt ) THEN
+       k = ListGetInteger( RestartList,'Restart File Number',GotIt)
+       IF( GotIt ) RestartFile = TRIM(RestartFile)//'_'//TRIM(I2S(k))//'nc'
+              
        k = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
        Mesh => CurrentModel % Meshes
 
@@ -2247,7 +2250,15 @@ END INTERFACE
            END IF
          END IF
 
-         IF ( Transient .OR. Scanning ) THEN
+         ! Sometimes when timestep depends on time we need to have first timestep size
+         ! given separately to avoid problems. 
+         GotIt = .FALSE.
+         IF( cum_Timestep == 1 ) THEN
+           dtfunc = ListGetCReal( CurrentModel % Simulation,'First Timestep Size',GotIt )
+           IF(GotIt) dt = dtfunc
+         END IF
+         
+         IF ( ( Transient .OR. Scanning ) .AND. .NOT. GotIt ) THEN
            dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Function',GotIt )
            IF(GotIt) THEN
              CALL Warn('ExecSimulation','Obsolete keyword > Timestep Function < , use > Timestep Size < instead')
@@ -2278,6 +2289,7 @@ END INTERFACE
                END IF
              END BLOCK
            END IF
+           
            IF(GotIt) THEN
              dt = dtfunc
              IF(dt < EPSILON(dt) ) THEN
@@ -2849,13 +2861,13 @@ END INTERFACE
             //TRIM(OutputFile))
       END IF
       
-      IF ( ParEnv % PEs > 1 ) THEN
-        DO i=1,MAX_NAME_LEN
-          IF ( OutputFile(i:i) == ' ' ) EXIT
-        END DO
-        OutputFile(i:i) = '.'
-        WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
-      END IF
+      !IF ( ParEnv % PEs > 1 ) THEN
+      !  DO i=1,MAX_NAME_LEN
+      !    IF ( OutputFile(i:i) == ' ' ) EXIT
+      !  END DO
+      !  OutputFile(i:i) = '.'
+      !  WRITE( OutputFile(i+1:), '(a)' ) TRIM(i2s(ParEnv % MyPE))
+      !END IF
       
       BinaryOutput = ListGetLogical( CurrentModel % Simulation,'Binary Output',GotIt )
       IF ( .NOT.GotIt ) BinaryOutput = .FALSE.
@@ -2941,7 +2953,7 @@ END INTERFACE
         Mesh => Mesh % Next
       END DO
     END IF
-! We want to seprate saving of ElmerPost file and Result file.    
+! We want to separate saving of ElmerPost file and Result file.
 !    CALL SaveToPost(CurrentStep)
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveCurrent

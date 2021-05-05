@@ -28,7 +28,7 @@ ncks -d x,-1515000.0,-535000.0,4 -d y,135000.0,1040000.0,4 antarctica_ice_veloci
 2. In addition to run RonneFilchner2 you need the topography (bedrock and thickness):
 
    - You can get [BedMachine](https://sites.uci.edu/morlighem/dataproducts/bedmachine-antarctica)
-   - It can be usefull to define thickness values in the cells that correspond to the ocean to a novalue so that 
+   - It can be useful to define thickness values in the cells that correspond to the ocean to a novalue so that 
    the interpolation with the [Scattered2DDataInterpolator solver](http://elmerfem.org/elmerice/wiki/doku.php?id=solvers:scattered) will not use these values if a node if close to the front. This can be achieved using nco tools as:
 
 ```

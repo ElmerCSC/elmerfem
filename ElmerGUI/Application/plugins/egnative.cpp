@@ -186,10 +186,10 @@ void Instructions()
   printf("-removeintbcs        : remove internal boundaries if they are not needed\n");
   printf("-removelowdim        : remove boundaries that are two ranks lower than highest dim\n");
   printf("-removeunused        : remove nodes that are not used in any element\n");
-  printf("-multidim            : keep lower order entities even if they are not boundaries\n");
   printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
   printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
   printf("-autoclean           : this performs the united action of the four above\n");
+  printf("-multidim            : keep lower order entities even if they are not boundaries\n");
   printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
   printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
   printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
@@ -5503,7 +5503,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   fail = chdir(directoryname);
   if(fail) {
-#ifdef MINGW32
+#ifdef __MINGW32__
     fail = mkdir(directoryname);
 #else
     fail = mkdir(directoryname,0750);

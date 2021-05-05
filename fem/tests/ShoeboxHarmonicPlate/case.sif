@@ -20,7 +20,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = scanning
   Output Intervals = 1

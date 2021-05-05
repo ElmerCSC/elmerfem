@@ -19,7 +19,6 @@ Simulation
 
   $w=1.0e6
   Angular Frequency = Real $w
-!  Post File = skin.vtu
 End
 
 Body 1
@@ -203,7 +202,6 @@ Boundary Condition 6
   AV im {e} 1 = Real 0.0
   AV im {e} 2 = Real 0.0
   AV im {e} 3 = Real 0.0
-
 End
 
 

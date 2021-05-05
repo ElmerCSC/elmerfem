@@ -1,8 +1,8 @@
 Elmer version: 9.0
-Elmer revision: 25e3b98b
-Elmer compilation date: 2020-12-09
+Elmer revision: 1675a9cd
+Elmer compilation date: 2021-04-13
 Solver input file: sif/6480.sif
-File started at: 2020/12/09 16:59:29
+File started at: 2021/04/13 20:31:10
  
 Variables in columns of matrix: 6480/dat/6480.dat
    1: res: eddy current power
