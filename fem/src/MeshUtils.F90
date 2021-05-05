@@ -3082,7 +3082,7 @@ CONTAINS
    !-------------------------------------------------------------------    
    SUBROUTINE ParallelNonNodalElements()
 
-     INTEGER :: i,n,mype     
+     INTEGER :: i,j,k,n,mype     
      TYPE(Element_t), POINTER :: Element
 
      !IF(.NOT. Parallel ) RETURN
@@ -3090,7 +3090,15 @@ CONTAINS
      n = SIZE( Mesh % ParallelInfo % NeighbourList )
      mype = ParEnv % Mype
 
-     
+     IF( InfoActive(8) ) THEN     
+       CALL Info('ParallelNonNodalElements','Number of initial nodes: '&
+           //TRIM(I2S(Mesh % NumberOfNodes)))
+       CALL Info('ParallelNonNodalElements','Number of initial faces: '&
+           //TRIM(I2S(Mesh % NumberOfFaces)))
+       CALL Info('ParallelNonNodalElements','Number of initial edges: '&
+           //TRIM(I2S(Mesh % NumberOfEdges)))
+     END IF
+
      ! For unset neighbours just set the this partition to be the only owner
      DO i=1,n
        IF (.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
@@ -3102,14 +3110,73 @@ CONTAINS
      ! Create parallel numbering of faces
      CALL SParFaceNumbering(Mesh, .TRUE. )
 
+     ! Create parallel numbering for edges
+     CALL SParEdgeNumbering(Mesh, .TRUE.)
+
+     ! There are mainly implemented for parallel debugging.
+     ! The whole sequence is only activated when "Max Output Level >= 8". 
+     IF( InfoActive(8) ) THEN     
+       j = 0; k = 0
+       DO i=1,Mesh % NumberOfNodes
+         IF( SIZE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) > 1 ) THEN
+           j = j + 1
+           IF( Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPe ) k = k + 1
+         END IF
+       END DO      
+       CALL Info('ParallelNonNodalElements','Number of shared nodes: '//TRIM(I2S(j)))
+       CALL Info('ParallelNonNodalElements','Number of owned shared nodes: '//TRIM(I2S(k)))
+            
+       IF( Mesh % NumberOfFaces > 0 ) THEN
+         j = 0; k = 0 
+         DO i=1,Mesh % NumberOfFaces
+           IF( SIZE( Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours ) > 1 ) THEN
+             j = j + 1 
+             IF( Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours(1) == ParEnv % MyPe ) k = k + 1   
+           END IF
+         END DO
+         CALL Info('ParallelNonNodalElements','Number of shared faces: '//TRIM(I2S(j)))
+         CALL Info('ParallelNonNodalElements','Number of owned shared faces: '//TRIM(I2S(k)))
+
+#if 0
+         DO i=1,Mesh % NumberOfFaces
+           IF( SIZE( Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours ) == 1 ) THEN
+             BLOCK
+               TYPE(Element_t), POINTER :: Face
+               Face => Mesh % Faces(i)
+               k = 0
+               DO j=1,Face % TYPE % NumberOfNodes 
+                 IF( SIZE( Mesh % ParallelInfo % NeighbourList(Face % NodeIndexes(j)) % Neighbours ) > 1 ) k = k + 1 
+               END DO
+               IF( k == Face % TYPE % NumberOfNodes ) THEN
+                 PRINT *,'Face is shared but not listed!',ParEnv % MyPe, Mesh % NumberOfFaces,i
+               END IF
+             END BLOCK
+           ELSE
+             PRINT *,'Face is shared and listed: ',ParEnv % MyPe, Mesh % NumberOfFaces,i             
+           END IF
+         END DO
+#endif   
+
+       END IF
+       
+       IF( Mesh % NumberOfEdges > 0 ) THEN
+         j = 0; k = 0
+         DO i=1,Mesh % NumberOfEdges
+           IF( SIZE( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours ) > 1 ) THEN
+             j = j + 1
+             IF( Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours(1) == ParEnv % MyPe ) k = k + 1   
+           END IF
+         END DO
+         CALL Info('ParallelNonNodalElements','Number of shared edges: '//TRIM(I2S(j)))
+         CALL Info('ParallelNonNodalElements','Number of owned shared edges: '//TRIM(I2S(k)))
+       END IF
+     END IF
+            
      DO i=1,Mesh % NumberOfFaces
        Mesh % MinFaceDOFs = MIN(Mesh % MinFaceDOFs,Mesh % Faces(i) % BDOFs)
        Mesh % MaxFaceDOFs = MAX(Mesh % MaxFaceDOFs,Mesh % Faces(i) % BDOFs)
      END DO
      IF(Mesh % MinFaceDOFs > Mesh % MaxFaceDOFs) Mesh % MinFaceDOFs = Mesh % MaxFaceDOFs
-
-     ! Create parallel numbering for edges
-     CALL SParEdgeNumbering(Mesh, .TRUE.)
 
      DO i=1,Mesh % NumberOfEdges
        Mesh % MinEdgeDOFs = MIN(Mesh % MinEdgeDOFs,Mesh % Edges(i) % BDOFs)
