@@ -591,7 +591,7 @@ CONTAINS
       LOGICAL :: IsNeighbour(:)
 
       IsNeighbour = .FALSE.
-      DO i=1,Mesh % Nodes % NumberOfNodes
+      DO i=1,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % Interface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
             IsNeighbour(Mesh % ParallelInfo % &
