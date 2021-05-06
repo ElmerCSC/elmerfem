@@ -3093,8 +3093,10 @@ CONTAINS
      IF( InfoActive(8) ) THEN     
        CALL Info('ParallelNonNodalElements','Number of initial nodes: '&
            //TRIM(I2S(Mesh % NumberOfNodes)))
+
        CALL Info('ParallelNonNodalElements','Number of initial faces: '&
            //TRIM(I2S(Mesh % NumberOfFaces)))
+
        CALL Info('ParallelNonNodalElements','Number of initial edges: '&
            //TRIM(I2S(Mesh % NumberOfEdges)))
      END IF
@@ -13744,6 +13746,7 @@ CONTAINS
       END DO
     END DO
     Mesh_out % NumberOfNodes=cnt
+    Mesh_out % Nodes % NumberOfNodes = cnt
 
     
     IF( Rotational ) THEN
