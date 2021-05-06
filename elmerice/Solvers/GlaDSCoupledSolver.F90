@@ -61,7 +61,7 @@
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, material_id, &
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
           NonlinearIter, GhostNodes, NonlinearIterMin, BDForder, &
-          CoupledIter, ChannelSolver, ThicknessSolver
+          CoupledIter, ChannelSolver, ThicknessSolver, EdgeCnt
 
      TYPE(Variable_t), POINTER :: HydPotSol
      TYPE(Variable_t), POINTER :: ThickSol, AreaSol, VSol, WSol, NSol,  &
@@ -85,7 +85,7 @@
      LOGICAL :: Found, FluxBC, Channels, Storage, FirstTime = .TRUE., &
           AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
-          CycleElement=.FALSE., MABool = .FALSE., MHBool = .FALSE. 
+          CycleElement=.FALSE., MABool = .FALSE., MHBool = .FALSE.
      LOGICAL, ALLOCATABLE ::  IsGhostNode(:), NoChannel(:), NodalNoChannel(:)
 
      REAL(KIND=dp) :: NonlinearTol, dt, RelativeChange, &
@@ -108,7 +108,7 @@
                  Discharge(3)
    
      REAL(KIND=dp) :: totat, st, totst
-     REAL(KIND=dp) :: Np, pw, zb, Wo, he
+     REAL(KIND=dp) :: Np, pw, zb, Wo, he, mins, maxs
      REAL(KIND=dp) :: at, at0
 
      SAVE &
@@ -141,7 +141,7 @@
 !------------------------------------------------------------------------------
      VariableName = TRIM(Solver % Variable % Name)
      SolverName = 'GlaDSCoupledsolver ('// TRIM(VariableName) // ')'
-
+     
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
      
      CALL Info( SolverName, ' ', Level=4 )
@@ -251,9 +251,9 @@
            !IF ( .NOT.ActiveBoundaryElement() ) CYCLE
 
            ! In parallel the owner decides the destiny
-           IF (ParEnv % PEs > 1) THEN
-             IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-           END IF
+           !IF (ParEnv % PEs > 1) THEN
+           !  IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+           !END IF
              
            n = GetElementNOFNodes()
            IF ( GetElementFamily() == 1 ) CYCLE
@@ -381,6 +381,10 @@
         IF (BDForder /= 1) THEN
           CALL Fatal(SolverName,'Only working for BDF = 1')
         END IF
+
+        ! Add this so the norms are always comparable
+        CALL ListAddNewLogical( Solver % Values,'Linear System Consistent Norm',.TRUE.)
+        
      END IF ! FirstTime
 
      SolverParams => GetSolverParams()
@@ -652,8 +656,7 @@
               BodyForce => GetBodyForce()
               IF ( ASSOCIATED( BodyForce ) ) THEN
                  bf_id = GetBodyForceId()
-                 LOAD(1:N) = LOAD(1:N) + &
-                   GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
+                 LOAD(1:N) = GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
               END IF
               ! f = m - w + v
               ! v is not added here as it will be linearized for the assembly
@@ -685,7 +688,7 @@
 
            ! TODO: Is this really needed? 
             CALL DefaultFinishBulkAssembly()
-        
+            
         !------------------------------------------------------------------------------
         ! Edge element (the channels)
         ! Edge element are created in the SIF file using Element = 'n=1 e:1' 
@@ -693,6 +696,8 @@
         ! Go only if Activate Channels is True
         !------------------------------------------------------------------------------
         IF (Channels) THEN
+
+           EdgeCnt = 0
            body_id = -1
            NULLIFY(Material)
            
@@ -704,11 +709,10 @@
              
               Edge => Solver % Mesh % Edges(t)
 
+              ! Here we assemble the contribution of each edge. On parrallel they should be only counted
+              ! on the owner side!
               IF (ParEnv % PEs > 1) THEN
-                IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) THEN
-!                  PRINT *,'Cycling edge:',ParEnv % MyPe, t
-                  CYCLE
-                END IF
+                IF(ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
               END IF
               
               n = Edge % TYPE % NumberOfNodes
@@ -808,6 +812,8 @@
                 IF(AreaSolution(AreaPerm(M+t)) > MaxArea) AreaSolution(AreaPerm(M+t)) = MaxArea
               END IF
               ChannelArea = AreaSolution(AreaPerm(M+t))
+
+              EdgeCnt = EdgeCnt + 1
               
               !------------------------------------------------------------------------------
               ! Get element local matrices, and RHS vectors
@@ -833,11 +839,16 @@
               !TODO Come up with a better way of fixing this
               IF(MABool) THEN
                 k = AreaPerm(M+t)
-                IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
+                IF(AreaSolution(k) > MaxArea) THEN
+                  PRINT *,'Limiting solution:',ParEnv % MyPe, k, AreaSolution(k)
+                  AreaSolution(k) = MaxArea
+                END IF
               END IF
 
               CALL DefaultUpdateEquations( STIFF, FORCE, Edge )
             END DO ! Edge elements
+
+            CALL Info(SolverName,'Channel was added for edges: '//TRIM(I2S(EdgeCnt)))
         END IF
 
            
@@ -908,7 +919,6 @@
                   FluxBC =  GetLogical(BC,TRIM(Solver % Variable % Name) // ' Flux BC', Found)
 
                   IF (FluxBC) THEN
-                    LOAD=0.0_dp
                     STIFF=0.0_dp 
                     FORCE=0.0_dp
                     !---------------
@@ -930,10 +940,12 @@
            !------------------------------------------------------------------------------
 
            CALL DefaultFinishAssembly()
-
+           
            CALL DefaultDirichletBCs()
 
            CALL Info( SolverName, 'Assembly done', Level=8 )
+
+
 
            !------------------------------------------------------------------------------
            !     Solve the system and check for convergence
@@ -952,7 +964,7 @@
            WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
            CALL Info( SolverName, Message, Level=4 )           
            CALL Info( SolverName, '-------------------------------------',Level=4 )
- 
+           
     !      !----------------------
     !      ! check for convergence
     !      !----------------------
@@ -1148,10 +1160,10 @@
         DO iter = 1, NonlinearIter
               DO t=1, Solver % Mesh % NumberOfEdges 
                  Edge => Solver % Mesh % Edges(t)
-                 IF (.NOT.ASSOCIATED(Edge)) CYCLE
-                 IF (ParEnv % PEs > 1) THEN
-                   IF (ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-                 END IF
+
+                 !IF (ParEnv % PEs > 1) THEN
+                 !  IF (ParEnv % myPe /= Solver % Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+                 !END IF
                  n = Edge % TYPE % NumberOfNodes
                  IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
                  IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
@@ -1255,9 +1267,10 @@
                  END DO
 
                  M = Solver % Mesh % NumberOfNodes
-
-                 IF (AreaPerm(M+t) <= 0 ) CYCLE
-                 ChannelArea = AreaSolution(AreaPerm(M+t))
+                 k = AreaPerm(M+t)
+                 IF ( k <= 0 ) CYCLE  
+ 
+                 ChannelArea = AreaSolution(k)
 
 ! Compute the force term to evolve the channels area
 ! Equation of the form dS/dt = S x ALPHA + BETA
@@ -1268,8 +1281,6 @@
                      SheetConductivity, alphas, betas, Afactor, Bfactor, &
                      EdgeTangent, Edge, n, EdgeNodes )
 
-                 k = AreaPerm(M+t)
-                 IF ( k <=  0 ) CYCLE  
                  SELECT CASE(methodChannels)
                  CASE('implicit') 
                     AreaSolution(k) = (AreaPrev(k,1) + dt*BETA)/(1.0_dp - dt*ALPHA)
@@ -1316,14 +1327,13 @@
            
            PrevNorm = Norm 
 
-           WRITE( Message, * ) 'S (NRM,RELC) : ',iter, Norm, RelativeChange
+           WRITE( Message,'(A,I0,A,2ES12.5)') 'S (ITER',iter,') (NRM,RELC) : ',Norm, RelativeChange
            CALL Info( SolverName, Message, Level=4 )
-                      
-           WRITE( Message, * ) 'Max S :', MAXVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),&
-                MAXLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
-           CALL Info( SolverName, Message, Level=4 )
-           WRITE( Message, * ) 'Min S :', MINVAL(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0))),&
-                MINLOC(AreaSolution(PACK (AreaPerm(M+1:M+t) , AreaPerm(M+1:M+t) /=0)))  
+
+           mins = ParallelReduction( MINVAL( AreaSolution ), 1 ) 
+           maxs = ParallelReduction( MAXVAL( AreaSolution ), 2 ) 
+           
+           WRITE( Message,'(A,2ES12.5)') 'S range [min,max]:', mins, maxs
            CALL Info( SolverName, Message, Level=4 )
 
 
