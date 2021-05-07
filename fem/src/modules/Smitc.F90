@@ -47,7 +47,7 @@
 
  
 !------------------------------------------------------------------------------
-!>  Solve the Reissner-Mindlin equations i.e. displacement equations for
+!> Solve the Reissner-Mindlin equations, i.e. displacement equations for
 !> elastic plates. 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -65,7 +65,7 @@
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     INTEGER :: k,n,nd,t,bf_id,mat_id,istat,DOFs
+     INTEGER :: n,t,bf_id,mat_id,istat,DOFs
  
      TYPE(Element_t),POINTER :: Element
      TYPE(Nodes_t) :: ElementNodes
@@ -73,17 +73,17 @@
      TYPE(ValueList_t), POINTER :: Material, BodyForce
  
      LOGICAL :: AllocationsDone = .FALSE., HoleCorrection, &
-         got_mat_id, got_bf_id, NeglectSprings, EigenOrHarmonic, Found
+         got_mat_id, got_bf_id, EigenOrHarmonic, Found
 
      INTEGER, POINTER, SAVE ::  Indexes(:)
      INTEGER :: MaxIter, iter
      TYPE(ValueList_t), POINTER :: SolverParams
      
      REAL(KIND=dp), ALLOCATABLE :: &
-                     STIFF(:,:), Load(:), Load2(:), FORCE(:), &
-                     Poisson(:), Thickness(:), Young(:), Tension(:), &
-                     MASS(:,:), DAMP(:,:), Density(:), &
-                     DampingCoef(:), HoleFraction(:), HoleSize(:), SpringCoef(:)
+         STIFF(:,:), Load(:), Load2(:), FORCE(:), &
+         Poisson(:), Thickness(:), Young(:), Tension(:), &
+         MASS(:,:), DAMP(:,:), Density(:), &
+         DampingCoef(:), HoleFraction(:), HoleSize(:), SpringCoef(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
@@ -141,8 +141,8 @@
        CALL DefaultInitialize()
        
        !       
-       ! These keywords enable that the use of a second parameter set for the
-       ! same elements where the material properties are given in an additional
+       ! These keywords enable the use of a second parameter set for the
+       ! same elements so that the material properties are given in an additional
        ! body. May be used to model microphone and its backplate, for example:
        ! --------------------------------------------------------------------
        mat_id = ListGetInteger( SolverParams, 'Material Index',got_mat_id, &
@@ -298,8 +298,8 @@
        TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), &
-                           Curvature(3,100), ShearStrain(2,100), &
-                           Ematrix(3,3), Gmatrix(2,2), Tmatrix(2,2)
+           Curvature(3,3*n), ShearStrain(2,3*n), &
+           Ematrix(3,3), Gmatrix(2,2), Tmatrix(2,2)
        REAL(KIND=dp) :: detJ,U,V,W,S,Kappa,rho,h,qeff
        REAL(KIND=dp) :: Pressure, DampCoef, WinklerCoef
        LOGICAL :: Stat
@@ -317,7 +317,7 @@
 !      Numerical integration:
 !      ----------------------
 
-       IntegStuff = GaussPoints(Element,3)
+       IntegStuff = GaussPoints(Element)
 
        DO t = 1,IntegStuff % n
          U = IntegStuff % u(t)
@@ -508,8 +508,8 @@
        REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V
        INTEGER :: n
 !------------------------------------------------------------------------------
-       REAL(KIND=dp) :: detJ,Jmat(2,2),invJ(2,2),ShearRef(2,100)
-       REAL(KIND=dp) :: Tau(2),Sdofs(100)
+       REAL(KIND=dp) :: detJ,Jmat(2,2),invJ(2,2),ShearRef(2,3*n)
+       REAL(KIND=dp) :: Tau(2),Sdofs(3*n)
        INTEGER :: j
 
        SELECT CASE(n)
@@ -572,7 +572,7 @@
 
 !         Compute the final reduced shear strain
 !         ======================================
-          ShearStrain(1:2,1:9) = MATMUL(invJ,ShearRef(1:2,1:9))
+          ShearStrain(1:2,1:9) = -MATMUL(invJ,ShearRef(1:2,1:9))
 
 
 !      The SMITC4 element
@@ -652,7 +652,7 @@
 !         Compute the final reduced shear strain
 !         ======================================
           CALL Jacobi4(Jmat,invJ,detJ,U,V,x,y)
-          ShearStrain(1:2,1:12) = MATMUL(invJ,ShearRef(1:2,1:12))
+          ShearStrain(1:2,1:12) = -MATMUL(invJ,ShearRef(1:2,1:12))
 
        CASE DEFAULT
          CALL WARN('SmitcSolver','Illegal number of nodes for Smitc elements.')
