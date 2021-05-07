@@ -57,8 +57,8 @@
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Element_t), POINTER :: Element, Edge, Face, Bulk
      TYPE(ValueList_t), POINTER :: Material, SolverParams, BodyForce, BC, Constants
-     TYPE(Variable_t), POINTER :: WorkVar, WorkVar2, WorkVar3
-
+     TYPE(Variable_t), POINTER :: GmCheckVar, GroundedMaskVar, WorkVar
+     
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, &
           istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
           NonlinearIter, NonlinearIterMin, BDForder, &
@@ -85,7 +85,7 @@
           AllocationsDone = .FALSE.,  SubroutineVisited = .FALSE., &
           meltChannels = .TRUE., NeglectH = .TRUE., Calving = .FALSE., &
           CycleElement=.FALSE., MABool = .FALSE., MHBool = .FALSE.
-     LOGICAL, ALLOCATABLE ::  NoChannel(:)
+     LOGICAL, ALLOCATABLE ::  NoChannel(:), NodeDone(:)
 
      REAL(KIND=dp) :: NonlinearTol, dt, RelativeChange, &
           Norm, PrevNorm, S, C, Qc, MaxArea, MaxH
@@ -125,7 +125,7 @@
           ub, Snn, Ev, WaterDensity, gravity, &
           ng, alphas, betas, betac, Phi0, Phim, SheetThicknessName, &
           ChannelAreaName, ZbName, IceDensity, Ac, alphac, CCt, &
-          CCw, lc, Lw, NoChannel, &
+          CCw, lc, Lw, NoChannel, NodeDone, &
           Channels, meltChannels, NeglectH, BDForder, &
           Vvar, ublr, hr2, Refq, &
           Calving
@@ -146,7 +146,7 @@
      
      CALL Info( SolverName, ' ', Level=4 )
      CALL Info( SolverName, '----------------------------------------------',Level=4 )
-     CALL Info( SolverName,'Solving coupled hydraulic problem', Level=4 )
+     CALL Info( SolverName, 'Solving coupled hydraulic problem', Level=4 )
      CALL Info( SolverName, '----------------------------------------------',Level=4 )
      
      SystemMatrix => Solver % Matrix
@@ -192,7 +192,7 @@
                 ub, Snn, Ev, &
                 ng, alphas, betas, betac, Phi0, Phim, &
                 IceDensity, Ac, alphac, CCt, &
-                CCw, lc, OldValues, NoChannel, &
+                CCw, lc, OldValues, NoChannel, NodeDone, &
                 Vvar, ublr, hr2, &
                 Refq)
 
@@ -217,7 +217,7 @@
              ng(N), alphas(N), betas(N), betac(N), Phi0(N), Phim(N),   &
              IceDensity(N), Ac(N), alphac(N), CCt(N), &
              CCw(N), lc(N), OldValues(K), NoChannel(M), &
-             Vvar(M), ublr(M), hr2(M), &
+             NodeDone(M), Vvar(M), ublr(M), hr2(M), &
              refq(dim*M), &
              STAT=istat)
 
@@ -370,7 +370,7 @@
 
      methodSheet = GetString( SolverParams, 'Sheet Integration Method', Found )
      IF(.NOT.Found) THEN        
-        CALL Fatal(SolverName, 'No >Sheet Integration Methods< found')
+       CALL Fatal(SolverName, 'No >Sheet Integration Methods< found')
      ELSE IF ((methodSheet/='explicit').AND.(methodSheet/='implicit').AND.(methodSheet/='crank-nicolson')) THEN
        CALL Fatal(SolverName, 'Sheet Integration Method: Implicit, Explicit or Crank-Nicolson')
      END IF
@@ -493,6 +493,9 @@
           hstoreSolution => hstoreSol % Values
      END IF
 
+     GmCheckVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE.)
+     GroundedMaskVar => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE.)
+
 !------------------------------------------------------------------------------
 !   Loop for the coupling of the three equations
 !------------------------------------------------------------------------------
@@ -500,7 +503,8 @@
     M = Mesh % NumberOfNodes
     NULLIFY(Material)
     
-    PrevCoupledNorm = MyNodeNorm( Mesh, HydPotPerm, HydPot ) 
+    PrevCoupledNorm = ComputeNorm(Solver, SIZE(HydPot), HydPot) 
+
     
     DO iterC = 1, CoupledIter
 
@@ -649,8 +653,7 @@
               CALL DefaultUpdateEquations( STIFF, FORCE )
            END DO     !  Bulk elements
 
-           ! TODO: Is this really needed? 
-            CALL DefaultFinishBulkAssembly()
+           CALL DefaultFinishBulkAssembly()
             
         !------------------------------------------------------------------------------
         ! Edge element (the channels)
@@ -671,7 +674,8 @@
               IF (AreaPerm(M+t) == 0)  CYCLE 
              
               Edge => Mesh % Edges(t)
-
+              IF(ANY(HydPotPerm(Edge % NodeIndexes)==0)) CYCLE
+              
               ! Here we assemble the contribution of each edge. On parrallel they should be only counted
               ! on the owner side!
               IF (ParEnv % PEs > 1) THEN
@@ -744,19 +748,20 @@
               Phi0 = 0.0_dp
               Phim = 0.0_dp
               DO i=1,N
-                 IF ( ASSOCIATED( ZbSol )) THEN
-                    zb = ZbSolution(ZbPerm(Edge % NodeIndexes(i)))
+                j = (Edge % NodeIndexes(i))
+                IF ( ASSOCIATED( ZbSol )) THEN
+                    zb = ZbSolution(ZbPerm(j))
                  ELSE 
                     IF (dimSheet==1) THEN
-                       zb = Mesh % Nodes % y(Edge % NodeIndexes(i))
+                       zb = Mesh % Nodes % y(j)
                     ELSE
-                       zb = Mesh % Nodes % z(Edge % NodeIndexes(i))
+                       zb = Mesh % Nodes % z(j)
                     END IF
                  END If
                  Phim(i) = gravity*WaterDensity*zb
                  Phi0(i) = Snn(i) + Phim(i) 
                  IF (.NOT.NeglectH) THEN
-                    k = ThickPerm(Edge % NodeIndexes(i))
+                    k = ThickPerm(j)
                     Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
                  END IF
                  Afactor(i) = CCt(i) * CCw(i) * WaterDensity
@@ -933,10 +938,13 @@
 !------------------------------------------------------------------------------
 !       Update the Sheet Thickness                 
 !------------------------------------------------------------------------------
+           NodeDone = .FALSE.
            DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t,Solver)
               IF (ParEnv % myPe /= Element % partIndex) CYCLE
 
+              IF( ALL( NodeDone(Element % NodeIndexes)) ) CYCLE
+              
               IF ( Element % BodyId /= body_id ) THEN
                  body_id = Element % bodyId
                  Material => GetMaterial(Element)
@@ -952,33 +960,31 @@
               ! If calving, cycle elements with ungrounded nodes and zero all hydrology variables.
               IF(Calving) THEN
                 CycleElement = .FALSE.
-                WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-
-                IF(ASSOCIATED(WorkVar)) THEN
+                IF(ASSOCIATED(GmCheckVar)) THEN
                   DO i=1, N
-                    IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
+                    j = Element % NodeIndexes(i)
+                    IF(GmCheckVar % Values(GmCheckVar % Perm(j))>0.0) THEN
                       CycleElement = .TRUE.                     
-                      WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
-                      Vvar(Element % NodeIndexes(i)) = 0.0
-                      NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                      hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
+                      WSolution(WPerm(j)) = 0.0
+                      Vvar(j) = 0.0
+                      NSolution(NPerm(j)) = 0.0
+                      hstoreSolution(hstorePerm(j)) = 0.0
                     END IF
                   END DO
-                ELSE IF(ASSOCIATED(WorkVar2) ) THEN
+                ELSE IF(ASSOCIATED(GroundedMaskVar) ) THEN
                   DO i=1, N
-                    IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
+                    j = Element % NodeIndexes(i)                   
+                    IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(j))<0.0) THEN 
                       CycleElement = .TRUE.
-                      WSolution(WPerm(Element % NodeIndexes(i))) = 0.0
-                      Vvar(Element % NodeIndexes(i)) = 0.0
-                      NSolution(NPerm(Element % NodeIndexes(i))) = 0.0
-                      hstoreSolution(hstorePerm(Element % NodeIndexes(i))) = 0.0
+                      WSolution(WPerm(j)) = 0.0
+                      Vvar(j) = 0.0
+                      NSolution(NPerm(j)) = 0.0
+                      hstoreSolution(hstorePerm(j)) = 0.0
                     END IF
                   END DO
                 END IF
-                NULLIFY(WorkVar, WorkVar2)
                 IF(CycleElement) CYCLE
-              END IF              
+              END IF
 
               CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
                   betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
@@ -987,6 +993,8 @@
               Phi0 = 0.0_dp
               DO i=1, n 
                  j = Element % NodeIndexes(i)
+                 IF(NodeDone(j)) CYCLE
+                
                  k = ThickPerm(j)
                  IF ( ASSOCIATED( ZbSol )) THEN
                     zb = ZbSolution(ZbPerm(j))
@@ -1025,14 +1033,10 @@
                  IF (ASSOCIATED(NSol)) NSolution(NPerm(j)) = Np
                  IF (ASSOCIATED(PwSol)) PwSolution(PwPerm(j)) = pw
                  IF (ASSOCIATED(hstoreSol)) hstoreSolution(hstorePerm(j)) = he
+
+                 NodeDone(j) = .TRUE.
               END DO
            END DO     !  Bulk elements
-
-           IF(Calving) THEN
-             WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-             WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-             WorkVar3 => VariableGet(Mesh % Variables, "hydraulic potential", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-           END IF
 
            
            ! Loop over all nodes to update ThickSolution
@@ -1043,12 +1047,12 @@
               ! If calving, cycle elements with ungrounded nodes and zero all hydrology variables
               IF(Calving) THEN
                 CycleElement = .FALSE.
-                IF(ASSOCIATED(WorkVar)) THEN
-                  IF(WorkVar % Values(k)>0.0) CycleElement = .TRUE.
+                IF(ASSOCIATED(GmCheckVar)) THEN
+                  IF(GmCheckVar % Values(k)>0.0) CycleElement = .TRUE.
                 ELSE
-                  IF(WorkVar2 % Values(k)<0.0) CycleElement = .TRUE.
+                  IF(GroundedMaskVar % Values(k)<0.0) CycleElement = .TRUE.
                 END IF
-                IF(WorkVar3 % Values(k)==0.0) CycleElement = .TRUE.
+                IF(HydPotSol % Values(k)==0.0) CycleElement = .TRUE.
 
                 IF(CycleElement) THEN
                   ThickSolution(k) = 0.0
@@ -1088,7 +1092,12 @@
               ! Update Vvar
               Vvar(j) = Vvar(j) * ThickSolution(k)
 
-           END DO 
+            END DO
+
+            Norm = ComputeNorm(Solver, SIZE(ThickSolution), ThickSolution)
+
+            PRINT *,'ThickNorm:',Norm
+            
 !------------------------------------------------------------------------------
 !       Update the Channels Area                 
 !------------------------------------------------------------------------------
@@ -1096,41 +1105,40 @@
 !       non-linear system iteration loop
 !------------------------------------------------------------------------------
      IF (Channels) THEN 
-       PrevNorm = MyEdgeNorm( Mesh, AreaPerm, AreaSolution )
+       PrevNorm = MyEdgeNorm( Mesh, AreaPerm, AreaSolution, mins, maxs )
        AreaSol % Norm = PrevNorm
         
         DO iter = 1, NonlinearIter
               DO t=1, Mesh % NumberOfEdges 
                  Edge => Mesh % Edges(t)
-
+                                  
                  !IF (ParEnv % PEs > 1) THEN
                  !  IF (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
                  !END IF
                  n = Edge % TYPE % NumberOfNodes
-                 IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
-                 IF (ALL(NoChannel(Edge % NodeIndexes(1:n)))) CYCLE
+                 IF (ANY(HydPotPerm(Edge % NodeIndexes)==0)) CYCLE
+                 IF (ALL(NoChannel(Edge % NodeIndexes))) CYCLE
 
                  !CHANGE
                  !If calving, cycle elements with ungrounded nodes and zero all
                  !hydrology variables
                  IF(Calving) THEN
                    CycleElement = .FALSE.
-                   WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                   WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-                   IF(ASSOCIATED(WorkVar)) THEN
+                   IF(ASSOCIATED(GmCheckVar)) THEN
                      DO i=1, n
-                       IF(WorkVar % Values(WorkVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
+                       IF(GmCheckVar % Values(GmCheckVar % Perm(Edge % NodeIndexes(i)))>0.0) THEN
                          CycleElement = .TRUE.
+                         EXIT
                        END IF
                      END DO
-                   ELSE IF(ASSOCIATED(WorkVar2) ) THEN
+                   ELSE IF(ASSOCIATED(GroundedMaskVar) ) THEN
                      DO i=1,n
-                       IF(WorkVar2 % Values(WorkVar2 % Perm(Edge % NodeIndexes(i)))<0.0) THEN
+                       IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Edge % NodeIndexes(i)))<0.0) THEN
                          CycleElement = .TRUE.
+                         EXIT
                        END IF
                      END DO
                    END IF
-                   NULLIFY(WorkVar, WorkVar2)
                    IF(CycleElement) THEN
                      AreaSolution(AreaPerm(M+t)) = 0.0
                      QcSolution(QcPerm(M+t)) = 0.0
@@ -1148,6 +1156,7 @@
                  EdgeTangent(3) = EdgeNodes % z(2) - EdgeNodes % z(1)
                  EdgeTangent = EdgeTangent / SQRT(SUM(EdgeTangent*EdgeTangent))
 
+                 
                  IF (DIM==2) THEN 
                     Bulk => Edge % BoundaryInfo % Left
                     IF (.NOT.ASSOCIATED(Bulk)) Bulk => Edge % BoundaryInfo % Right
@@ -1199,7 +1208,7 @@
                     Afactor(i) = CCt(i) * CCw(i) * WaterDensity
                     Bfactor(i) = 1.0/(Lw * IceDensity(i)) 
                  END DO
-
+                   
                  M = Mesh % NumberOfNodes
                  k = AreaPerm(M+t)
                  IF ( k <= 0 ) CYCLE  
@@ -1249,7 +1258,7 @@
 
            t = Mesh % NumberOfEdges 
 
-           Norm = MyEdgeNorm( Mesh, AreaPerm, AreaSolution )
+           Norm = MyEdgeNorm( Mesh, AreaPerm, AreaSolution, mins, maxs )
            AreaSol % Norm = Norm
            
            IF ( PrevNorm + Norm /= 0.0d0 ) THEN
@@ -1261,12 +1270,9 @@
            
            PrevNorm = Norm 
 
-           WRITE( Message,'(A,I0,A,2ES12.5)') 'S (ITER',iter,') (NRM,RELC) : ',Norm, RelativeChange
+           WRITE( Message,'(A,I0,A,2ES12.5)') 'S (ITER=',iter,') (NRM,RELC) : ',Norm, RelativeChange
            CALL Info( SolverName, Message, Level=4 )
 
-           mins = ParallelReduction( MINVAL( AreaSolution ), 1 ) 
-           maxs = ParallelReduction( MAXVAL( AreaSolution ), 2 ) 
-           
            WRITE( Message,'(A,2ES12.5)') 'S range [min,max]:', mins, maxs
            CALL Info( SolverName, Message, Level=4 )
 
@@ -1291,7 +1297,7 @@
 
      END IF  ! If Channels
 
-      CoupledNorm = MyNodeNorm( Mesh, HydPotPerm, HydPot ) 
+      CoupledNorm = ComputeNorm(Solver, SIZE(HydPot), HydPot )
       
       IF ( PrevCoupledNorm + CoupledNorm /= 0.0d0 ) THEN
          RelativeChange = 2.0d0 * ABS( PrevCoupledNorm-CoupledNorm ) / (PrevCoupledNorm + CoupledNorm)
@@ -1299,8 +1305,8 @@
          RelativeChange = 0.0d0
       END IF
       PrevCoupledNorm = CoupledNorm 
-
-      WRITE( Message, * ) 'COUPLING LOOP (NRM,RELC) : ',iterC, CoupledNorm, RelativeChange
+      
+      WRITE( Message,'(A,I0,A,2ES13.5)') 'COUPLING LOOP ',iterC,': (NRM,RELC) : ',CoupledNorm, RelativeChange
       CALL Info( SolverName, Message, Level=4 )
 
       IF ((RelativeChange < CoupledTol) .AND. (iterC > 1)) EXIT 
@@ -1348,12 +1354,9 @@
          !hydrology variables
          IF(Calving) THEN
            CycleElement = .FALSE.
-           WorkVar => VariableGet(Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-           WorkVar2 => VariableGet(Mesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
-
-           IF(ASSOCIATED(WorkVar)) THEN
+           IF(ASSOCIATED(GmCheckVar)) THEN
              DO i=1, n
-               IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
+               IF(GmCheckVar % Values(GmCheckVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
                  CycleElement = .TRUE.
                  DO j=1,dimSheet
                    k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
@@ -1363,9 +1366,9 @@
                  EXIT
                END IF
              END DO
-           ELSE IF(ASSOCIATED(WorkVar2) ) THEN
+           ELSE IF(ASSOCIATED(GroundedMaskVar) ) THEN
              DO i=1,n
-               IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(i)))<0.0) THEN 
+               IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN 
                  CycleElement = .TRUE.
                  DO j=1,dimSheet
                    k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
@@ -1412,20 +1415,18 @@
 
    !CHANGE - to make sure PrevValues for added variables in calving updated
    IF(Calving) THEN
-     WorkVar => VariableGet(Mesh % Variables, 'Sheet Thickness',ThisOnly=.TRUE.)
-     WorkVar % PrevValues(1:Mesh % NumberOfNodes,1) = WorkVar % Values(1:Mesh % NumberOfNodes)
-     WorkVar => VariableGet(Mesh % Variables, 'Channel Area',ThisOnly=.TRUE.)
-     WorkVar % PrevValues(1:Mesh % NumberOfEdges,1) = WorkVar % Values(1:Mesh % NumberOfEdges)
-     NULLIFY(WorkVar)
+     ThickSol % PrevValues(:,1) = ThickSol % Values(:)
+     AreaSol % PrevValues(:,1) = AreaSol % Values(:)
    END IF
 
 CONTAINS    
 
-  FUNCTION MyEdgeNorm( Mesh, Perm, Sol ) RESULT ( Norm ) 
+  FUNCTION MyEdgeNorm( Mesh, Perm, Sol, mins, maxs ) RESULT ( Norm ) 
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Perm(:)
     REAL(KIND=dp), POINTER :: Sol(:)
     REAL(KIND=dp) :: Norm
+    REAL(KIND=dp) :: mins, maxs
     
     INTEGER :: i,j,m,n,t,ns
     REAL(KIND=dp) :: s
@@ -1437,11 +1438,17 @@ CONTAINS
     t = Mesh % NumberOfEdges
     m = Mesh % NumberOfNodes
     ns = 0
+
+    mins = HUGE(mins)
+    maxs = -HUGE(maxs)
     
     DO i=1,t
       j = Perm(m+i)
       IF(j==0) CYCLE
-             
+
+      ! In 3D the edge variable is everywhere but we are just looking at the 2D plane!
+      IF (ANY(HydPotPerm(Mesh % Edges(i) % NodeIndexes)==0)) CYCLE
+      
       IF (ParEnv % PEs > 1) THEN
         IF (ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours(1)) THEN
           ns = ns + 1
@@ -1452,60 +1459,21 @@ CONTAINS
       s = Sol(j)
       n = n + 1
       Norm = Norm + s**2
-    END DO
 
-    !PRINT *,'Active Edges:',ParEnv % MyPe, n, ns
-    IF( ParEnv % PEs > 1 ) THEN
+      mins = MIN(mins,s)
+      maxs = MAX(maxs,s)
+    END DO
+               
+    !PRINT *,'Active Edges:',ParEnv % MyPe, n, ns, Norm
+    IF( ParEnv % PEs > 1 ) THEN      
       Norm = ParallelReduction( Norm )
       n = NINT( ParallelReduction(1.0_dp * n) )
+      mins = ParallelReduction( mins )
+      maxs = ParallelReduction( maxs )
     END IF
            
     Norm = SQRT(Norm) / n
   END FUNCTION MyEdgeNorm
-
-
-  FUNCTION MyNodeNorm( Mesh, Perm, Sol ) RESULT ( Norm ) 
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: Perm(:)
-    REAL(KIND=dp), POINTER :: Sol(:)
-    REAL(KIND=dp) :: Norm
-    
-    INTEGER :: i,j,m,n,t,ns
-    REAL(KIND=dp) :: s
-    
-    s = 0.0_dp
-    n = 0
-    Norm = 0.0_dp
-
-    m = Mesh % NumberOfNodes
-    ns = 0
-    
-    DO i=1,m
-      j = Perm(i)
-      IF(j==0) CYCLE
-             
-      IF (ParEnv % PEs > 1) THEN
-        IF (ParEnv % myPe /= Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1)) THEN
-          ns = ns + 1
-          CYCLE
-        END IF
-      END IF
-             
-      s = Sol(j)
-      n = n + 1
-      Norm = Norm + s**2
-    END DO
-
-    !PRINT *,'Active Nodes:',ParEnv % MyPe, n, ns
-    IF( ParEnv % PEs > 1 ) THEN
-      Norm = ParallelReduction( Norm )
-      n = NINT( ParallelReduction(1.0_dp * n) )
-    END IF
-           
-    Norm = SQRT(Norm) / n
-  END FUNCTION MyNodeNorm
-
-
 
   
 !------------------------------------------------------------------------------
