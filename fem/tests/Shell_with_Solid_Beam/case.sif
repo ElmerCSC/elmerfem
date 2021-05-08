@@ -10,9 +10,10 @@
 ! the beam length. The solution of the simple beam theory is seen to be
 ! fairly closed to that of the more complicated coupled model.
 !
-! The original version P.R. 3.9.2019, 
-! modified to allow a comparison with the simple beam theory 
-! by M.M. June, 2020.
+! The original version P.R. 3.9.2019; 
+!   - modified to allow a comparison with the simple beam theory 
+!     by M.M. June, 2020.
+!   - tested to work with the drilling rotation formulation (Oct 6, 2020)
 !------------------------------------------------------------
 
 Header
@@ -22,7 +23,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 8
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -133,6 +134,9 @@ End
 Solver 2
   Equation = "Shell equations"
   Procedure = "ShellSolver" "ShellSolver"
+
+  Large Deflection = False
+  Drilling DOFs = False
 
 !  Linear System Solver = "Direct"
 !  Linear System Direct Method = MUMPS

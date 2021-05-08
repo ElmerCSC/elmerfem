@@ -111,6 +111,9 @@ CONTAINS
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
       TYPE(ValueList_t), POINTER :: Params
 
+      CHARACTER(*), PARAMETER :: Caller = 'EigenSolve'
+
+      
 !     %--------------------------------------%
 !     | Check if system is damped and if so, |
 !     | move to other subroutine             |
@@ -160,7 +163,7 @@ CONTAINS
       IF ( .NOT. stat ) NCV = 3*NEIG + 1
 
       IF ( NCV <=  NEIG ) THEN
-         CALL Fatal( 'EigenSolve', & 
+         CALL Fatal( Caller, & 
                'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
 
@@ -168,7 +171,7 @@ CONTAINS
                 WORKEV(3*NCV), V(n,NCV), CHOOSE(NCV), STAT=istat )
 
       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'EigenSolve', 'Memory allocation error.' )
+         CALL Fatal( Caller, 'Memory allocation error.' )
       END IF
 !
 !     %--------------------------------------------------%
@@ -322,8 +325,8 @@ CONTAINS
          IF (ido == -1 .OR. ido == 1) THEN
 
            WRITE( Message,'(A,I0)') 'Arpack reverse communication calls: ',Iter
-           CALL Info( 'EigenSolve', Message, Level=6 )
-!            CALL Info( 'EigenSolve', '.', .TRUE., Level=5 )
+           CALL Info( Caller, Message, Level=6 )
+!            CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
 
 !---------------------------------------------------------------------
@@ -377,7 +380,7 @@ CONTAINS
               CASE ('direct')
                 CALL DirectSolver( A, x, b, Solver )
               CASE DEFAULT
-                CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
+                CALL Fatal(Caller,'Unknown linear system method: '//TRIM(Method))
               END SELECT
 
               A % rhs => SaveRhs
@@ -441,7 +444,7 @@ CONTAINS
 !        %--------------------------%
 !
          WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( 'EigenSolve', Message )
+         CALL Fatal( Caller, Message )
 !
       ELSE 
 !
@@ -486,7 +489,7 @@ CONTAINS
 !           %------------------------------------%
 ! 
             WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
-            CALL Fatal( 'EigenSolve', Message )
+            CALL Fatal( Caller, Message )
          END IF
 !
 !        %------------------------------------------%
@@ -494,9 +497,9 @@ CONTAINS
 !        %------------------------------------------%
 !
          IF ( kinfo == 1 ) THEN
-            CALL Fatal( 'EigenSolve', 'Maximum number of iterations reached.' )
+            CALL Fatal( Caller, 'Maximum number of iterations reached.' )
          ELSE IF ( kinfo == 3 ) THEN
-            CALL Fatal( 'EigenSolve', 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
+            CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
          END IF      
 !
 !        Sort the eigenvalues to ascending order:
@@ -508,25 +511,25 @@ CONTAINS
          END DO
          CALL SortC( NEIG, EigValues, Perm )
          IF( MINVAL( Perm ) < 1 .OR. MAXVAL( Perm ) > NEIG ) THEN
-           CALL Fatal('EigenSolve','Reordering of EigenValues failed')
+           CALL Fatal(Caller,'Reordering of EigenValues failed')
          END IF
 
 !
 !        Extract the values to Elmer structures:
 !        -----------------------------------------
-         CALL Info( 'EigenSolve', ' ', Level=4 )
-         CALL Info( 'EigenSolve', 'Eigen system solution complete: ', Level=4 )
-         CALL Info( 'EigenSolve', ' ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'Eigen system solution complete: ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
-         CALL Info( 'EigenSolve', Message, Level=4 )
+         CALL Info( Caller, Message, Level=4 )
          WRITE( Message,'(A,I0)' ) 'Number of converged Ritz values is: ', IPARAM(5)
-         CALL Info( 'EigenSolve', Message, Level=4 )
+         CALL Info( Caller, Message, Level=4 )
          WRITE( Message,'(A,I0)') 'Number of update iterations taken: ',  IPARAM(3)
-         CALL Info( 'EigenSolve', Message, Level=4 )
-         CALL Info( 'EigenSolve', ' ', Level=4 )
+         CALL Info( Caller, Message, Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,I0,A)') 'Computed ',NEIG,' Eigen Values'
-         CALL Info( 'EigenSolve',Message, Level=4 )
-         CALL Info( 'EigenSolve', '--------------------------------', Level=4 )
+         CALL Info( Caller,Message, Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=4 )
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -540,7 +543,7 @@ CONTAINS
          DO i=1,NEIG
            p = Perm(i)
            WRITE( Message,'(I0,A,2ES15.6)') i,': ',EigValues(i)
-           CALL Info( 'EigenSolve', Message, Level=4 )
+           CALL Info( Caller, Message, Level=4 )
 
            k = 1
            DO j=1,p-1
@@ -551,7 +554,7 @@ CONTAINS
               END IF
            END DO
 
-           CALL Info('EigenSolve','Copying Eigenvectors to solution',Level=12)
+           CALL Info(Caller,'Copying Eigenvectors to solution',Level=12)
 
            DO j=1,N
               IF ( D(p,2) /= 0.0d0 ) THEN
@@ -566,16 +569,16 @@ CONTAINS
          END DO
                     
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
-           CALL Info('EigenSolve','Computing eigen system residuals',Level=8)
+           CALL Info(Caller,'Computing eigen system residuals',Level=8)
            CALL CheckResiduals( Matrix, Neig, EigValues, EigVectors )
          END IF
-         CALL Info( 'EigenSolve', '--------------------------------',Level=4 )
+         CALL Info( Caller, '--------------------------------',Level=4 )
       END IF
 
       DEALLOCATE( WORKL, D, WORKEV, V, CHOOSE, Perm )
 
 #else
-      CALL Fatal( 'EigenSolve', 'Arpack Eigen System Solver not available.' )
+      CALL Fatal( Caller, 'Arpack Eigen System Solver not available!' )
 #endif
 !
 !------------------------------------------------------------------------------
@@ -603,7 +606,10 @@ CONTAINS
       REAL(KIND=dp) :: r
       COMPLEX(KIND=dp) :: s, s1, mx
 
-      CALL Info('ScaleEigenVectors','Scaling eigen vectors',Level=10)
+      CHARACTER(*), PARAMETER :: Caller = 'ScaleEigenVectors'
+
+      
+      CALL Info(Caller,'Scaling eigen vectors',Level=10)
 
       ! Real case: Normalize eigenvector  (x) so that x^T(M x) = 1
       ! Complex case: Normalize eigenvectors (x) so that x^H(M x) = 1
@@ -643,10 +649,10 @@ CONTAINS
           IF ( ABS(s) > 0 ) THEN
             s = SQRT(s) 
             WRITE(Message,'(A,2ES12.3)') 'Normalizing Eigenvector with: ',REAL(s),AIMAG(s)
-            CALL Info('EigenSolve',Message,Level=12)
+            CALL Info(Caller,Message,Level=12)
             EigVectors(i,1:n) = EigVectors(i,1:n) / s
           ELSE
-            CALL Warn('EigenSolve','Eigenmode has zero amplitude!')
+            CALL Warn(Caller,'Eigenmode has zero amplitude!')
           END IF
         ELSE          
           r = 0.0_dp
@@ -671,14 +677,14 @@ CONTAINS
           r = ParallelReduction(r) 
 
           IF( ABS(r - 1) < EPSILON( r ) ) THEN
-            CALL Info('EigenSolve','Eigenmode already normalized!',Level=12)              
+            CALL Info(Caller,'Eigenmode already normalized!',Level=12)              
           ELSE IF ( ABS(r) > 0 ) THEN            
             r = SQRT( r ) 
             WRITE(Message,'(A,ES12.3)') 'Normalizing Eigenvector with: ',r
-            CALL Info('EigenSolve',Message,Level=12)
+            CALL Info(Caller,Message,Level=12)
             EigVectors(i,:) = EigVectors(i,:) / r
           ELSE
-            CALL Warn('EigenSolve','Eigenmode has zero amplitude!')
+            CALL Warn(Caller,'Eigenmode has zero amplitude!')
           END IF
         END IF
           
@@ -687,7 +693,54 @@ CONTAINS
     END SUBROUTINE ScaleEigenVectors
 !------------------------------------------------------------------------------
 
-     
+
+!------------------------------------------------------------------------------
+!> Expand complex valued eigenvector to a real that is actually the same vector ;-)
+!------------------------------------------------------------------------------
+    SUBROUTINE ExpandEigenVectors( Matrix, EigVectors, NoEigen, dofs )
+
+      USE Types
+
+      IMPLICIT NONE
+
+      TYPE(Matrix_t), TARGET :: Matrix
+      COMPLEX(KIND=dp) :: EigVectors(:,:)
+      INTEGER :: NoEigen
+      INTEGER :: dofs
+
+      COMPLEX(KIND=dp), ALLOCATABLE :: EigTmp(:)
+      INTEGER :: n,i,j,k,cdofs
+      COMPLEX(KIND=dp) :: s
+
+      CHARACTER(*), PARAMETER :: Caller = 'ExpandEigenVectors'
+
+      IF ( .NOT. Matrix % COMPLEX ) RETURN
+    
+      CALL Info(Caller,'Expanding eigen vectors',Level=10)
+      
+      n = Matrix % NumberOfRows / dofs
+      cdofs = dofs / 2
+
+      ALLOCATE(EigTmp(SIZE(EigVectors(1,:))))
+      
+      DO i = 1, NoEigen
+
+        EigTmp = EigVectors(i,:)
+
+        DO j = 1, n
+          DO k = 1, cdofs          
+            s = EigTmp(cdofs*(j-1)+k)
+            EigVectors(i,dofs*(j-1)+k) = REAL(s)
+            EigVectors(i,dofs*(j-1)+k+cdofs) = AIMAG(s)
+          END DO
+        END DO
+      END DO
+
+    END SUBROUTINE ExpandEigenVectors
+!------------------------------------------------------------------------------
+
+
+    
 !------------------------------------------------------------------------------
     SUBROUTINE CheckResiduals( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
@@ -762,6 +815,9 @@ END SUBROUTINE CheckResiduals
 !
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
 
+      CHARACTER(*), PARAMETER :: Caller = 'StabEigenSolve'
+
+      
 !     %-----------------------%
 !     | Executable Statements |
 !     %-----------------------%
@@ -780,8 +836,7 @@ END SUBROUTINE CheckResiduals
 !     %----------------------------------------------------%
 !
       IF ( Matrix % Lumped ) THEN
-         CALL Error( 'BucklingEigenSolve', &
-              'Lumped matrices are not allowed in stability analysis.' )
+         CALL Error(Caller,'Lumped matrices are not allowed in stability analysis.' )
       END IF
 
       NCV = 3 * NEIG + 1
@@ -791,7 +846,7 @@ END SUBROUTINE CheckResiduals
       ALLOCATE( WORKL(lWORKL), D(NCV,2), V(N,NCV), CHOOSE(NCV), STAT=istat )
 
       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'StabEigenSolve', 'Memory allocation error.' )
+         CALL Fatal(Caller, 'Memory allocation error.' )
       END IF
 
       TOL = ListGetConstReal( Solver % Values, 'Eigen System Convergence Tolerance', stat )
@@ -894,8 +949,8 @@ END SUBROUTINE CheckResiduals
 
          IF( ido==-1 .OR. ido==1 ) THEN
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( 'StabEigenSolve', Message, Level=5 )
-            CALL Info( 'StabEigenSolve', '.', .TRUE., Level=5 )
+!           CALL Info( Caller, Message, Level=5 )
+            CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
          END IF
 
@@ -984,7 +1039,7 @@ END SUBROUTINE CheckResiduals
 !
          IF (IERR /= 0) THEN
             WRITE( Message, * ) ' Error with DSEUPD, info = ', IERR
-            CALL Fatal( 'StabEigenSolve', Message )
+            CALL Fatal( Caller, Message )
          END IF
 !
 !        %------------------------------------------%
@@ -992,9 +1047,9 @@ END SUBROUTINE CheckResiduals
 !        %------------------------------------------%
 !
          IF ( kinfo == 1 ) THEN
-            CALL Fatal( 'StabEigenSolve', 'Maximum number of iterations reached.' )
+            CALL Fatal( Caller, 'Maximum number of iterations reached.' )
          ELSE IF ( kinfo == 3 ) THEN
-            CALL Fatal( 'StabEigenSolve', 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
+            CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
          END IF      
 !
 !        Sort the eigenvalues to ascending order:
@@ -1009,22 +1064,22 @@ END SUBROUTINE CheckResiduals
 !
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
-         CALL Info( 'StabEigenSolve', ' ', Level=4 )
-         CALL Info( 'StabEigenSolve', 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
-         CALL Info( 'StabEigenSolve', ' ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
          WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( 'StabEigenSolve', Message, Level=4 )
+         CALL Info( Caller, Message, Level=4 )
          WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-         CALL Info( 'StabEigenSolve', Message, Level=4 )
-         CALL Info( 'StabEigenSolve', ' ', Level=4 )
-         CALL Info( 'StabEigenSolve', 'Computed Eigen Values: ', Level=4 )
-         CALL Info( 'StabEigenSolve', '--------------------------------', Level=4 )
+         CALL Info( Caller, Message, Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=4 )
          k = 1
 
          DO i=1,NEIG
            p = Perm(i)
            WRITE( Message, * ) i,EigValues(i)
-           CALL Info( 'StabEigenSolve', Message, Level=4 )
+           CALL Info( Caller, Message, Level=4 )
 
            k = 1
            DO j=1,p-1
@@ -1046,7 +1101,7 @@ END SUBROUTINE CheckResiduals
            ! Normalizatin moved to ScaleEigenVectors
         END DO
 
-        CALL Info( 'StabEigenSolve', '--------------------------------',Level=4 )
+        CALL Info( Caller, '--------------------------------',Level=4 )
 
       END IF
 
@@ -1058,7 +1113,7 @@ END SUBROUTINE CheckResiduals
 
       DEALLOCATE( WORKL, D, V, CHOOSE, Perm )
 #else
-      CALL Fatal( 'StabEigenSolve', 'Arpack Eigen System Solver not available.' )
+      CALL Fatal( Caller, 'Arpack Eigen System Solver not available!' )
 #endif
 !
 !------------------------------------------------------------------------------
@@ -1114,6 +1169,9 @@ END SUBROUTINE CheckResiduals
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
 
       TYPE(ValueList_t), POINTER :: Params
+
+      CHARACTER(*), PARAMETER :: Caller = 'EigenSolveComplex'
+    
 !
 !     %-----------------------%
 !     | Executable Statements |
@@ -1132,6 +1190,9 @@ END SUBROUTINE CheckResiduals
 !     |               NEV + 1 <= NCV <= MAXNCV             | 
 !     %----------------------------------------------------%
 !
+
+      CALL Info(Caller,'Starting eigen system solution with complex matrices!',Level=6)
+
       Params => Solver % Values
 
       NCV   = 3*NEIG+1
@@ -1140,7 +1201,7 @@ END SUBROUTINE CheckResiduals
          WORKEV(3*NCV), V(n,NCV+1), CHOOSE(NCV), STAT=istat )
 
       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'EigenSolveComplex', 'Memory allocation error.' )
+         CALL Fatal(Caller, 'Memory allocation error.' )
       END IF
 !
 !     %--------------------------------------------------%
@@ -1294,8 +1355,8 @@ END SUBROUTINE CheckResiduals
 
          IF (ido == -1 .OR. ido == 1) THEN
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( 'EigenSolveComplex', Message, Level=5 )
-            CALL Info( 'EigenSolveComplex', '.', .TRUE., Level=5 )
+!           CALL Info(Caller, Message, Level=5 )
+            CALL Info(Caller, '.', .TRUE., Level=5 )
             Iter = Iter + 1
 !---------------------------------------------------------------------
 !           Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
@@ -1342,7 +1403,7 @@ END SUBROUTINE CheckResiduals
             CASE ('direct')
               CALL DirectSolver( A, x, b, Solver )
             CASE DEFAULT
-              CALL Fatal('EigenSolve','Unknown linear system method: '//TRIM(Method))
+              CALL Fatal(Caller,'Unknown linear system method: '//TRIM(Method))
             END SELECT
 
             A % rhs => SaveRhs
@@ -1394,7 +1455,7 @@ END SUBROUTINE CheckResiduals
 !        %--------------------------%
 !
          WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( 'EigenSolveComplex', Message )
+         CALL Fatal( Caller, Message )
 !
       ELSE 
 !
@@ -1431,7 +1492,7 @@ END SUBROUTINE CheckResiduals
 !           %------------------------------------%
 ! 
             WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
-            CALL Fatal( 'EigenSolveComplex', Message )
+            CALL Fatal( Caller, Message )
          END IF
 !
 !        %------------------------------------------%
@@ -1439,9 +1500,9 @@ END SUBROUTINE CheckResiduals
 !        %------------------------------------------%
 !
          IF ( kinfo == 1 ) THEN
-            CALL Fatal( 'EigenSolveComplex', 'Maximum number of iterations reached.' )
+            CALL Fatal( Caller, 'Maximum number of iterations reached.' )
          ELSE IF ( kinfo == 3 ) THEN
-            CALL Fatal( 'EigenSolveComplex', 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
+            CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
          END IF      
 !
 !        Sort the eigenvalues to ascending order:
@@ -1456,16 +1517,16 @@ END SUBROUTINE CheckResiduals
 !
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
-         CALL Info( 'EigenSolveComplex', ' ', Level=4 )
-         CALL Info( 'EigenSolveComplex', 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
-         CALL Info( 'EigenSolveComplex', ' ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
          WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( 'EigenSolveComplex', Message, Level=4 )
+         CALL Info( Caller, Message, Level=4 )
          WRITE( Message, * ) ' The number of converged Ritz values is ', IPARAM(5)
-         CALL Info( 'EigenSolveComplex', Message, Level=4 )
-         CALL Info( 'EigenSolveComplex', ' ', Level=4 )
-         CALL Info( 'EigenSolveComplex', 'Computed Eigen Values: ', Level=4 )
-         CALL Info( 'EigenSolveComplex', '--------------------------------', Level=4 )
+         CALL Info( Caller, Message, Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=4 )
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -1473,30 +1534,36 @@ END SUBROUTINE CheckResiduals
            Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
          END IF
 
+         EigVectors = -1.0_dp
+
+         PRINT *,'NEIG:',NEIG,n,SIZE(EigVectors,1),SIZE(EigVectors,2),&
+             SIZE(V,1),SIZE(V,2)
+         
          k = 1
          DO i=1,NEIG
             p = Perm(i)
             WRITE( Message, * ) i,EigValues(i)
-            CALL Info( 'EigenSolveComplex', Message, Level=4 )
+            CALL Info( Caller, Message, Level=4 )
 
             DO j=1,N
-               EigVectors(i,j) = V(j,p)
+              EigVectors(i,j) = V(j,p)
             END DO
-
-            ! Scaling moved to ScaleEigenVectors
          END DO
 
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
-           CALL Info('EigenSolve','Computing eigen system residuals',Level=8)
+           CALL Info(Caller,'Computing eigen system residuals',Level=8)
            CALL CheckResidualsComplex( Matrix, Neig, EigValues, EigVectors )
          END IF
-         CALL Info( 'EigenSolveComplex', '--------------------------------',Level=4 )
+         CALL Info( Caller, '--------------------------------',Level=4 )
 !
       END IF
 
       DEALLOCATE( WORKL, D, WORKEV, V, CHOOSE, Perm )
+      
+      CALL Info(Caller,'Finished eigen system solution!',Level=8)
+      
 #else
-      CALL Fatal( 'EigenSolveComplex', 'Arpack Eigen System Solver not available.' )
+      CALL Fatal( Caller, 'Arpack Eigen System Solver not available!' )
 #endif
 !
 !------------------------------------------------------------------------------
@@ -1537,7 +1604,7 @@ END SUBROUTINE CheckResiduals
         Matrix % Values => svals
 
         WRITE( Message, * ) 'L^2 Norm of the residual: ', i, SQRT(SUM(ABS(y)**2))
-        CALL Info( 'CheckResiduals', Message, Level = 3 )
+        CALL Info( 'CheckResidualsComplex', Message, Level = 3 )
       END DO
       DEALLOCATE( x,y )
 !------------------------------------------------------------------------------
@@ -1589,22 +1656,25 @@ END SUBROUTINE CheckResidualsComplex
       LOGICAL   ::     First, Stat, NewSystem, UseI = .FALSE.
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, DampedTOL, IScale
 
+      CHARACTER(*), PARAMETER :: Caller = 'DampedEigenSolve'
+
+      
 !     %-------------------------------------%
 !     | So far only iterative solver        |
 !     | and non-lumped matrixes are allowed |
 !     %-------------------------------------%
 
       IF ( KMatrix % Lumped ) THEN
-         CALL Error( 'DampedEigenSolve', 'Lumped matrixes are not allowed' )
+         CALL Error( Caller, 'Lumped matrixes are not allowed' )
       END IF
 
       IF (  ListGetString( Solver % Values, 'Linear System Solver', Stat ) &
            == 'direct' ) THEN
-         CALL Error( 'DampedEigenSolve', 'Direct solver is not allowed' )
+         CALL Error( Caller, 'Direct solver is not allowed' )
       END IF
 
       IF ( Solver % MultiGridSolver ) THEN
-         CALL Error( 'DampedEigenSolve', 'MultiGrid solver is not allowed' )
+         CALL Error( Caller, 'MultiGrid solver is not allowed' )
       END IF
 
       Stat = ListGetLogical( Solver % Values, &
@@ -1645,7 +1715,7 @@ END SUBROUTINE CheckResidualsComplex
       d = 0.0d0
 
       IF ( istat /= 0 ) THEN
-         CALL Fatal( 'DampedEigenSolve', 'Memory allocation error.' )
+         CALL Fatal( Caller, 'Memory allocation error.' )
       END IF
 
 !     %--------------------------------------------------%
@@ -1759,20 +1829,20 @@ END SUBROUTINE CheckResidualsComplex
       str = ListGetString( Solver % Values, 'Linear System Preconditioning', Stat )
 
       IF ( .NOT. Stat ) THEN
-         CALL Warn( 'DampedEigenSolve', 'Using ILU0 preconditioning' )
+         CALL Warn( Caller, 'Using ILU0 preconditioning' )
          ILU = 0
       ELSE
          IF ( str == 'none' .OR. str == 'diagonal' .OR. &
               str == 'ilut' .OR. str == 'multigrid' ) THEN
 
            ILU = 0
-           CALL Warn( 'DampedEigenSolve', 'Useing ILU0 preconditioning' )
+           CALL Warn( Caller, 'Useing ILU0 preconditioning' )
          ELSE IF ( SEQL(str,'ilu') ) THEN
            ILU = ICHAR(str(4:4)) - ICHAR('0')
            IF ( ILU  < 0 .OR. ILU > 9 ) ILU = 0
          ELSE
            ILU = 0
-           CALL Warn( 'DampedEigenSolve','Unknown preconditioner type, using ILU0' )
+           CALL Warn( Caller,'Unknown preconditioner type, using ILU0' )
          END IF
       END IF
 
@@ -1817,8 +1887,8 @@ END SUBROUTINE CheckResidualsComplex
             ! ido =-1 inv(A)*z:
             !--------------------------
 !           WRITE( Message, * ) 'Arpack reverse communication calls: ', Iter
-!           CALL Info( 'DampedEigenSolve', Message, Level=5 )
-            CALL Info( 'DampedEigenSolve', '.', .TRUE., Level=5 )
+!           CALL Info( Caller, Message, Level=5 )
+            CALL Info( Caller, '.', .TRUE., Level=5 )
             iter = iter + 1
 
             x => workd( ipntr(2) : ipntr(2)+n-1 )
@@ -1857,7 +1927,7 @@ END SUBROUTINE CheckResidualsComplex
 !        %--------------------------%
 !
          WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( 'DampedEigenSolve', Message )
+         CALL Fatal( Caller, Message )
       ELSE 
 !        %-------------------------------------------%
 !        | No fatal errors occurred.                 |
@@ -1890,7 +1960,7 @@ END SUBROUTINE CheckResidualsComplex
 !           | Check the documentation of DNEUPD. |
 !           %------------------------------------%
             WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
-            CALL Fatal( 'DampedEigenSolve', Message )
+            CALL Fatal( Caller, Message )
          END IF
 
 !        %------------------------------------------%
@@ -1898,9 +1968,9 @@ END SUBROUTINE CheckResidualsComplex
 !        %------------------------------------------%
 
          IF ( kinfo == 1 ) THEN
-            CALL Fatal( 'DampedEigenSolve', 'Maximum number of iterations reached.' )
+            CALL Fatal( Caller, 'Maximum number of iterations reached.' )
          ELSE IF ( kinfo == 3 ) THEN
-            CALL Fatal( 'DampedEigenSolve', &
+            CALL Fatal( Caller, &
                  'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
          END IF      
 
@@ -1929,20 +1999,20 @@ END SUBROUTINE CheckResidualsComplex
          
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
-         CALL Info( 'DampedEigenSolve', ' ', Level=4 )
-         CALL Info( 'DampedEigenSolve', 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
-         CALL Info( 'DampedEigenSolve', ' ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'EIGEN SYSTEM SOLUTION COMPLETE: ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
 
          WRITE( Message, * ) 'The convergence criterion is ', TOL
-         CALL Info( 'DampedEigenSolve', Message, Level=4 )
+         CALL Info( Caller, Message, Level=4 )
 
          WRITE( Message, * ) ' The number of converged Ritz values is ', &
               IPARAM(5)
-         CALL Info( 'DampedEigenSolve', Message, Level=4 )
+         CALL Info( Caller, Message, Level=4 )
 
-         CALL Info( 'DampedEigenSolve', ' ', Level=4 )
-         CALL Info( 'DampedEigenSolve', 'Computed Eigen Values: ', Level=4 )
-         CALL Info( 'DampedEigenSolve', '--------------------------------', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
+         CALL Info( Caller, '--------------------------------', Level=4 )
 
 !------------------------------------------------------------------------------
 ! Extracting the right eigen values and vectors.
@@ -1953,7 +2023,7 @@ END SUBROUTINE CheckResidualsComplex
          EigValues(1) = EigTemp(1)         
          
          WRITE( Message, * ) 1,EigValues(1)
-         CALL Info( 'DampedEigenSolve', Message, Level=4 )
+         CALL Info( Caller, Message, Level=4 )
          
          p = Perm(1)
          k = kMap(p)
@@ -1980,7 +2050,7 @@ END SUBROUTINE CheckResidualsComplex
             END IF
             
             WRITE( Message, * ) i,EigValues(i)
-            CALL Info( 'DampedEigenSolve', Message, Level=4 )
+            CALL Info( Caller, Message, Level=4 )
             
             p = Perm(l)
             k = kMap(p)
@@ -2008,12 +2078,12 @@ END SUBROUTINE CheckResidualsComplex
             IF ( ABS(s) > 0 ) EigVectors(i,:) = EigVectors(i,:) / SQRT(s)
          END DO
 
-         CALL Warn('DampedEigenSolve','Check that the scaling is not done twice if you call this!')
+         CALL Warn(Caller,'Check that the scaling is not done twice if you call this!')
          
          ! Standard scaling moved to ScaleEigenVectors
 
          
-         CALL Info( 'DampedEigenSolve', '--------------------------------',Level=4 )
+         CALL Info( Caller, '--------------------------------',Level=4 )
       END IF
 
       DEALLOCATE( WORKL, D, WORKEV, V, CHOOSE, Perm )
@@ -2024,7 +2094,7 @@ END SUBROUTINE CheckResidualsComplex
       NULLIFY( BMatrix % Rows, BMatrix % Cols, BMatrix % Diag, BMatrix % Values )
       CALL FreeMatrix( BMatrix )
 #else
-      CALL Fatal( 'DampedEigenSolve', 'Arpack Eigen System Solver not available.' )
+      CALL Fatal( Caller, 'Arpack Eigen System Solver not available!' )
 #endif
 !------------------------------------------------------------------------------
      END SUBROUTINE ArpackDampedEigenSolve

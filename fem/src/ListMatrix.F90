@@ -211,7 +211,7 @@ CONTAINS
       P => L(i) % Head
       DO WHILE(ASSOCIATED(P))
         j = j + 1
-        Cols(j) = P % Index
+        Cols(j)   = P % Index
         Values(j) = P % Value
         P => P % Next
       END DO
@@ -230,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=8)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=7)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix
@@ -255,11 +255,17 @@ CONTAINS
     A % ListMatrix => List_AllocateMatrix(A % NumberOfRows)
 
     DO i=1,A % NumberOfRows
+      A % ListMatrix(i) % Level  = 0
+      A % ListMatrix(i) % Degree = 0
+
+      IF(A % Rows(i) == A % Rows(i+1)) THEN
+        A % ListMatrix(i) % Head => Null()
+        CYCLE
+      END IF
+
       ALLOCATE(A % ListMatrix(i) % Head)
       Clist => A % ListMatrix(i) % Head
       Clist % Next => Null()
-      A % ListMatrix(i) % Level  = 0
-      A % ListMatrix(i) % Degree = 0
 
       DO j=A % Rows(i), A % Rows(i+1)-1
         IF(Trunc) THEN
@@ -308,7 +314,12 @@ CONTAINS
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
-    CALL Info('ListToCRSMatrix','Matrix format changed from CRS to List', Level=7)
+
+    A % Rows => Null()  
+    A % Cols => Null()  
+    A % Diag => Null()  
+    A % Values => Null()  
+    CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix
 !-------------------------------------------------------------------------------
@@ -772,7 +783,7 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList1, CList2, Lptr
               
      IF ( .NOT. ASSOCIATED(List) ) THEN
-       CALL Warn('List_MoveRow','No List matrix present!')
+       CALL Warn('List_ExchangeRowStructure','No List matrix present!')
        RETURN
      END IF
          
@@ -806,49 +817,17 @@ CONTAINS
 
 
 
-   
+!------------------------------------------------------------------------------
+!>    Add the entries of a local matrix to a list-format matrix.    
 !------------------------------------------------------------------------------
   SUBROUTINE List_GlueLocalMatrix( A,N,Dofs,Indexes,LocalMatrix )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  DESCRIPTION:
-!    Add a set of values (.i.e. element stiffness matrix) to a CRS format
-!    matrix. For this matrix the entries are ordered so that 1st for one
-!    dof you got all nodes, and then for second etc. 
-!
-!  ARGUMENTS:
-!
-!  TYPE(Matrix_t) :: Lmat
-!     INOUT: Structure holding matrix, values are affected in the process
-!
-!  INTEGER :: Nrow, Ncol
-!     INPUT: Number of nodes in element, or other dofs
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: RowInds, ColInds
-!     INPUT: Permutation of the rows and column dofs
-!
-!  REAL(KIND=dp) :: LocalMatrix(:,:)
-!     INPUT: A (Nrow x RowDofs) x ( Ncol x ColDofs) matrix holding the values to be
-!            added to the CRS format matrix
-!
-!******************************************************************************
-!------------------------------------------------------------------------------
- 
-     REAL(KIND=dp) :: LocalMatrix(:,:)
-     INTEGER :: N,DOFs, Indexes(:)
      TYPE(ListMatrix_t), POINTER :: A(:)
-
+     INTEGER :: N,DOFs, Indexes(:)
+     REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
      REAL(KIND=dp) :: Value
      INTEGER :: i,j,k,l,c,Row,Col
      
@@ -871,48 +850,18 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!>    Add the entries of a local matrix to a list-format matrix by allowing
+!>    offsets
+!------------------------------------------------------------------------------
    SUBROUTINE List_GlueLocalSubMatrix( List,row0,col0,Nrow,Ncol, &
           RowInds,ColInds,RowDofs,ColDofs,LocalMatrix )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  DESCRIPTION:
-!    Add a set of values (.i.e. element stiffness matrix) to a CRS format
-!    matrix. For this matrix the entries are ordered so that 1st for one
-!    dof you got all nodes, and then for second etc. 
-!
-!  ARGUMENTS:
-!
-!  TYPE(Matrix_t) :: Lmat
-!     INOUT: Structure holding matrix, values are affected in the process
-!
-!  INTEGER :: Nrow, Ncol
-!     INPUT: Number of nodes in element, or other dofs
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: RowInds, ColInds
-!     INPUT: Permutation of the rows and column dofs
-!
-!  REAL(KIND=dp) :: LocalMatrix(:,:)
-!     INPUT: A (Nrow x RowDofs) x ( Ncol x ColDofs) matrix holding the values to be
-!            added to the CRS format matrix
-!
-!******************************************************************************
-!------------------------------------------------------------------------------
- 
-     REAL(KIND=dp) :: LocalMatrix(:,:)
-     TYPE(ListMatrix_t), POINTER :: List(:)
+     TYPE(ListMatrix_t), POINTER :: List(:) 
      INTEGER :: Nrow,Ncol,RowDofs,ColDofs,Col0,Row0,RowInds(:),ColInds(:)
-
+     REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
      REAL(KIND=dp) :: Value
      INTEGER :: i,j,k,l,c,Row,Col
      

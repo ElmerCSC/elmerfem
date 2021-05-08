@@ -20,7 +20,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Steady State Max Iterations = 1
@@ -111,4 +111,4 @@ Boundary Condition 1
   Deflection 3 = 0  ! y-rotation
 End
 
-Solver 1 :: Reference Norm = 4.79055836E-01
+Solver 1 :: Reference Norm = 4.75938775E-01

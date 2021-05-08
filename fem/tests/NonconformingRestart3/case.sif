@@ -18,7 +18,7 @@ End
 Simulation
   Coordinate System = Cartesian
 
-  Max Output Level = 7
+  Max Output Level = 5
 
   Simulation Type = Steady
   Steady State Max Iterations = 1

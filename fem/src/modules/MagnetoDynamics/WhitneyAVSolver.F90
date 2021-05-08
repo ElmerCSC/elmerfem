@@ -52,6 +52,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   INTEGER, PARAMETER :: b_empty = 0, b_Piola = 1, &
        b_Secondorder = 2, b_Gauge = 4, b_Transient = 8, b_StaticCond = 16
   INTEGER :: Paramlist
+  CHARACTER(LEN=MAX_NAME_LEN):: ElemType
   Paramlist = 0
 
   SolverParams => GetSolverParams()
@@ -60,13 +61,13 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   IF( .NOT. Found ) THEN
     IF( ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .OR. &
         ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity") ) THEN
-      CALL Info("WhitneyAVSolver_Init0", "Moving material requires always scalar potential",Level=10)
+      CALL Info("WhitneyAVSolver_Init0", "Moving material triggers the use of scalar potential",Level=10)
       StaticConductivity = .TRUE.
     END IF
 
     IF( ListCheckPrefixAnyBC(Model, "Electric Current Density") ) THEN
       CALL Info("WhitneyAVSolver_Init0", &
-          "> Electric Current Density < always requires scalar potential",Level=10)    
+          "> Electric Current Density < triggers the use of scalar potential",Level=10)    
       StaticConductivity = .TRUE.
     END IF
   END IF
@@ -98,36 +99,34 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
          b_Piola + b_Gauge + b_Secondorder, &
          b_Piola + b_Transient + b_Secondorder + b_StaticCond, &
          b_Piola + b_Secondorder + b_StaticCond)
-      CALL ListAddString( SolverParams, "Element", &
-         "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
+      ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2"
 
     CASE (b_Piola + b_Transient, &
          b_Piola + b_Transient + b_StaticCond, &
          b_Piola + b_Transient + b_Gauge)
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
 
     CASE (b_Piola + b_Gauge)
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
 
     CASE (b_Piola + b_Secondorder)
-      CALL ListAddString( SolverParams, "Element", &
-           "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
+      ElemType = "n:0 e:2 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" 
 
     CASE (b_Piola)
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:0 e:1 -brick b:3 -quad_face b:2"
 
     CASE (b_Piola + b_StaticCond )
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+      ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
 
     CASE (b_Transient, &
          b_Transient + b_StaticCond, &
          b_StaticCond, &
          b_Gauge + b_Transient, &
          b_Gauge)
-      CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+      ElemType = "n:1 e:1" 
 
     CASE (b_empty)
-      CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
+      ElemType = "n:0 e:1" 
 
     CASE default
       WRITE (Message,*) 'Unsupported degree-gauge-transient combination', Paramlist
@@ -135,6 +134,10 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 
     END SELECT
 
+    CALL Info('WhitneyAVSolver_Init0','Setting element type to: "'//TRIM(ElemType)//'"')
+    CALL ListAddString( SolverParams,'Element',ElemType ) 
+
+    
     IF( GetString(SolverParams,'Linear System Solver',Found) == 'block' ) THEN
       IF ( PiolaVersion ) THEN
         CALL Fatal('WhitneyAVSolver_Init0','Block strategy not applicable to piola version!')
@@ -197,12 +200,12 @@ END SUBROUTINE WhitneyAVSolver_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solve vector potential A
+!>  Solve a vector potential A and scalar potential V from
 ! 
-!> sigma @A/@t + rot (1/mu) rot A = J^s + curl(M^s) - sigma grad(V^s)
-!>   -div(sigma*(@A/@t+grad(V))=0 .
+!>  sigma @A/@t + rot (1/mu) rot A + sigma grad(V) = J^s + curl(M^s) - sigma grad(V^s)
+!>   -div(sigma*(@A/@t+grad(V))) = 0 .
 !
-!>  using edge elements (Nedelec/Whitney basis of lowest degree)+nodal basis for V.
+!>  by using edge elements for A + nodal basis for V.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
@@ -231,7 +234,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: VecPot(:)
-  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:)
+  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:), &
@@ -253,7 +256,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: SteadyGauge, TransientGauge, TransientGaugeCollected=.FALSE., &
        HasStabC, RegularizeWithMass
 
-  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, mass_reg_epsilon
+  REAL(KIND=dp) :: Relax, gauge_penalize_c, gauge_penalize_m, gauge_coeff, mass_reg_epsilon
 
   REAL(KIND=dp) :: NewtonTol
   INTEGER :: NewtonIter
@@ -268,7 +271,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER :: n_n, n_e
   INTEGER, POINTER :: Vperm(:), Aperm(:)
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
-    
+
+  CHARACTER(LEN=MAX_NAME_LEN):: CoilCurrentName
+  LOGICAL :: UseCoilCurrent, ElemCurrent
+  TYPE(Variable_t), POINTER :: CoilCurrentVar
+  REAL(KIND=dp) :: CurrAmp
+  
   SAVE STIFF, LOAD, MASS, FORCE, JFixFORCE, JFixVec, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
        Acoef_t, DConstr, ThinLineCrossect, ThinLineCond
@@ -292,10 +300,35 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Using Piola Transformed element basis functions',Level=4)
   END IF
 
-  SteadyGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. .not. Transient
-  TransientGauge = GetLogical(GetSolverParams(), 'Use Lagrange Gauge', Found) .and. Transient
- 
+  SteadyGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. .NOT. Transient
+  TransientGauge = GetLogical(SolverParams, 'Use Lagrange Gauge', Found) .AND. Transient
 
+  CoilCurrentName = GetString( SolverParams,'Current Density Name',UseCoilCurrent ) 
+  IF(.NOT. UseCoilCurrent ) THEN
+    UseCoilCurrent = GetLogical(SolverParams,'Use Nodal CoilCurrent',Found )
+    IF(UseCoilCurrent) THEN
+      CoilCurrentName = 'CoilCurrent'
+    ELSE
+      UseCoilCurrent = GetLogical(SolverParams,'Use Elemental CoilCurrent',Found )
+      IF(Found) CoilCurrentName = 'CoilCurrent e'
+    END IF
+  END IF
+  ElemCurrent = .FALSE.
+  IF( UseCoilCurrent ) THEN
+    CoilCurrentVar => VariableGet(Solver % Mesh % Variables, CoilCurrentName )
+    IF( ASSOCIATED( CoilCurrentVar ) ) THEN
+      CALL Info('WhitneyAVSolver','Using precomputed field for current density: '//TRIM(CoilCurrentName),Level=5)
+      IF( CoilCurrentVar % TYPE == Variable_on_nodes_on_elements ) THEN
+        ElemCurrent = .TRUE.
+      ELSE
+        CALL Warn('WhitneyAVSolver','Precomputed CoilCurrent is not an elemental field!')
+      END IF
+    ELSE
+      CALL Fatal('WhitneyAVSolver','Elemental current requested but not found:'//TRIM(CoilCurrentName))
+    END IF
+  END IF
+
+  
   IF (SteadyGauge) THEN
     CALL Info("WhitneyAVSolver", "Utilizing Lagrange multipliers for gauge condition in steady state computation")
     IF(.not. ListCheckPresent( SolverParams, 'Linear System Refactorize') ) THEN
@@ -322,7 +355,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     ! TODO: Check if there is mortar boundaries and report the above in that case only.
   END IF
   
-  mass_reg_epsilon = GetCReal(GetSolverParams(), 'Mass regularize epsilon', RegularizeWithMass)
+  mass_reg_epsilon = GetCReal(SolverParams, 'Mass regularize epsilon', RegularizeWithMass)
   IF (RegularizeWithMass .AND. mass_reg_epsilon == 0.0_dp) THEN
     RegularizeWithMass = .FALSE.
   END IF
@@ -331,11 +364,13 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     CALL Info("WhitneyAVSolver", Message)
   END IF
 
-  gauge_penalize_c = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient', HasStabC)
-  gauge_penalize_m = GetCReal(GetSolverParams(), 'Lagrange Gauge Penalization coefficient mass', Found)
+  gauge_coeff = GetCReal(SolverParams, 'Lagrange Gauge coefficient',Found )
+  IF(.NOT. Found ) gauge_coeff = 1.0_dp
+  gauge_penalize_c = GetCReal(SolverParams, 'Lagrange Gauge Penalization coefficient', HasStabC)
+  gauge_penalize_m = GetCReal(SolverParams, 'Lagrange Gauge Penalization coefficient mass', Found)
   HasStabC = HasStabC .OR. Found
 
-  IF (HasStabC .and. (SteadyGauge .or. TransientGauge)) THEN
+  IF ( HasStabC ) THEN
     WRITE (Message, *) 'Lagrange Gauge penalization coefficient', gauge_penalize_c
     CALL Info('WhitneyAVSolver', message)
     WRITE (Message, *) 'Lagrange Gauge penalization coefficient mass', gauge_penalize_m
@@ -372,14 +407,14 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
      IF(ALLOCATED(FORCE)) THEN
        DEALLOCATE(FORCE, JFixFORCE, JFixVec, LOAD, STIFF, MASS, TCoef, GapLength, AirGapMu, &
-             Acoef, LamThick, LamCond, WBase, RotM, DConstr, Acoef_t,ThinLineCrossect, ThinLineCond )
+             Acoef, LamThick, LamCond, WBase, RotM, DConstr, ThinLineCrossect, ThinLineCond )
      END IF
 
      ALLOCATE( FORCE(N), JFixFORCE(n), JFixVec(3,n), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
           LamCond(N), Wbase(N), RotM(3,3,N),  &
-          DConstr(N,N), Acoef_t(3,3,N), &
+          DConstr(N,N), &
           ThinLineCrossect(N), ThinLineCond(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
@@ -425,9 +460,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SkipAssembly = DoneAssembly.AND.(ConstantBulk.OR.ConstantSystem)
 
   JFix = GetLogical(SolverParams,'Fix input Current Density', Found)
-  IF (.NOT. Found .AND. .NOT. Transient ) THEN
+  IF (.NOT. ( Found .OR. Transient ) ) THEN
     ! Only fix the current density if there is one
-    JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
+    JFix = ListCheckPrefixAnyBodyForce(Model, 'Current Density') 
   END IF
   JFixSolve = JFix
 
@@ -583,11 +618,31 @@ CONTAINS
      END IF
      
      LOAD = 0.0d0
+
+     ! This way we don't have to inquire the list for all three components separately.
+     ! Also writing of the sif file becomes more economical.
+     
      BodyForce => GetBodyForce()
      FoundMagnetization = .FALSE.
-     IF ( ASSOCIATED(BodyForce) ) THEN
+
+     ! If the coil current field is elemental it is discontinuous and need not be limited
+     ! to the body force. For nodal ones we don't have the same luxury.
+     IF( UseCoilCurrent ) THEN
+       IF( ElemCurrent .OR. ASSOCIATED(BodyForce) ) THEN
+         CALL GetVectorLocalSolution( Load,UElement=Element,UVariable=CoilCurrentVar)       
+       END IF
+     END IF
        
-       CALL GetRealVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
+
+     IF ( ASSOCIATED(BodyForce) ) THEN       
+       ! If not already given by CoilCurrent, request for current density
+       IF( .NOT. UseCoilCurrent ) THEN
+         CALL GetRealVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
+       END IF
+
+       CurrAmp = ListGetCReal( BodyForce,'Current Density Multiplier',Found ) 
+       IF(Found) Load(1:3,1:n) = CurrAmp * Load(1:3,1:n)
+       
        CALL GetRealVector( BodyForce, Load(4:6,1:n), &
                 'Magnetization', FoundMagnetization )
        Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
@@ -620,30 +675,33 @@ CONTAINS
        END IF
      END IF
 
+     LaminateStack = .FALSE.
+     LaminateStackModel = ''
+     HasTensorReluctivity = .FALSE.
      Acoef = 0.0d0
-     Acoef_t = 0.0d0
      Tcoef = 0.0d0
-     Material => GetMaterial( Element )
      IF ( ASSOCIATED(Material) ) THEN
-       HasTensorReluctivity = .FALSE.
-       CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
-       IF (HasTensorReluctivity) THEN
-         IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
-           i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
-           Acoef(1:i) = Acoef_t(1,1,1:i) 
-           HasTensorReluctivity = .FALSE.
+       IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+         CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+         IF (HasTensorReluctivity) THEN
+           IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+             i = MIN(SIZE(Acoef), SIZE(Acoef_t,3))
+             Acoef(1:i) = Acoef_t(1,1,1:i) 
+             HasTensorReluctivity = .FALSE.
+           END IF
+         ELSE
+           CALL GetReluctivity(Material,Acoef,n)
          END IF
-       ELSE
-         CALL GetReluctivity(Material,Acoef,n)
+         IF (HasTensorReluctivity) THEN
+           IF (size(Acoef_t,1)/=3) CALL Fatal('WhitneyAVSolver', &
+               'Reluctivity tensor should be of size 3x3')
+         END IF
        END IF
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
-       
-       Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
-       
+       Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)       
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
-       IF (.NOT. LaminateStack) LaminateStackModel = ''
      END IF
 
 
@@ -675,7 +733,7 @@ CONTAINS
      IF (Transient) CALL DefaultUpdateMass(MASS)
 
      
-     ! Collect weak diverence constraint.
+     ! Collect weak divergence constraint.
      !-----------------------------------------------------------------
      IF (Transient .AND. TransientGauge .AND. .NOT. TransientGaugeCollected) THEN
        CALL LocalConstraintMatrix( DConstr, Element, n, nd+nb, PiolaVersion, SecondOrder)
@@ -825,7 +883,7 @@ CONTAINS
   ! ---------------------------------------------
   IF ( TG ) THEN
     ! temporary fix to some scaling problem (to be resolved)...
-    CALL ListAddLogical( GetSolverParams(), 'Linear System Dirichlet Scaling', .FALSE.) 
+    CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
   END IF
 
   CALL DefaultDirichletBCs()
@@ -1495,22 +1553,22 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
-    INTEGER :: n, nd
+    LOGICAL :: LaminateStack, CoilBody
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega(3), omega_velo(3,n), &
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Acoefder(n), C(3,3), &
+                     RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
                      A_t(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
-
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, &
-        HasVelocity, HasLorentzVelocity, HasAngularVelocity
+    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, &
+        HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -1546,9 +1604,11 @@ END SUBROUTINE LocalConstraintMatrix
     END IF
       
     HasVelocity = .FALSE.
+    LocalGauge = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN
       CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
       CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorentzVelocity)
+      LocalGauge = GetLogical( BodyForce,'Local Lagrange Gauge', Found ) 
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
 
@@ -1566,7 +1626,6 @@ END SUBROUTINE LocalConstraintMatrix
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
-        HBCurve = .TRUE.
       END IF
     END IF
     
@@ -1604,15 +1663,19 @@ END SUBROUTINE LocalConstraintMatrix
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
-       A = SUM( Basis(1:n) * Acoef(1:n) )
-       mu = A
-
-       IF(HasTensorReluctivity) THEN
-         DO i = 1,3
-           DO j = 1,3
-             A_t(i,j) = sum(Basis(1:n)*Acoef_t(i,j,1:n))
+       IF (HasTensorReluctivity) THEN
+         IF (SIZE(Acoef_t,2) == 1) THEN
+           A_t = 0.0d0
+           DO i = 1,3
+             A_t(i,i) = SUM(Basis(1:n)*Acoef_t(i,1,1:n))
            END DO
-         END DO
+         ELSE
+           DO i = 1,3
+             DO j = 1,3
+               A_t(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+             END DO
+           END DO
+         END IF
        END IF
 
        ! Compute convection type term coming from a rigid motion:
@@ -1643,13 +1706,19 @@ END SUBROUTINE LocalConstraintMatrix
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilBody .AND. CoilType /= 'massive') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') THEN
+         DO i=1,3
+           DO j=1,3
+             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+           END DO
+         END DO
+         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       END IF
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
@@ -1660,7 +1729,7 @@ END SUBROUTINE LocalConstraintMatrix
        ! Add -C * grad(V^s), where C is a tensor
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
-       
+
        IF( JFix ) THEN
          IF( JFixSolve ) THEN
            ! If we haven't solved for the disbalance of source terms assemble it here
@@ -1683,6 +1752,7 @@ END SUBROUTINE LocalConstraintMatrix
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
        ELSE
+         mu = SUM( Basis(1:n) * Acoef(1:n) )
          muder = 0._dp
        END IF
 
@@ -1697,7 +1767,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          ! --------------------------------------------------------
-         CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+         CONDUCTOR: IF ( SUM(ABS(C)) > AEPS ) THEN
            IF ( Transient ) THEN
              DO p=1,np
                DO q=1,np
@@ -1757,7 +1827,7 @@ END SUBROUTINE LocalConstraintMatrix
          ! All terms that are added here depend on the electrical conductivity,
          ! so they have an effect on a conductor only.
          !
-         A_CONDUCTOR: IF ( SUM(C) /= 0._dp ) THEN
+         A_CONDUCTOR: IF ( SUM(ABS(C)) > AEPS ) THEN
            !
            ! In the case of steady state model add the effect of v x curl A to 
            ! the electromagnetic field: 
@@ -1810,12 +1880,12 @@ END SUBROUTINE LocalConstraintMatrix
             SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
          DO j = 1,nd-np
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) 
 
-           ! Aniostropic part
-           IF(HasTensorReluctivity) THEN
+           IF (HasTensorReluctivity) THEN
              STIFF(p,q) = STIFF(p,q) &
-                  + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+                 + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+           ELSE
+             STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)              
            END IF
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
@@ -1846,23 +1916,21 @@ END SUBROUTINE LocalConstraintMatrix
 
        ! In steady state we can utilize the scalar variable
        ! for gauging the vector potential.
-       IF ( SteadyGauge ) THEN
+       IF ( SteadyGauge .OR. LocalGauge ) THEN
          DO j = 1, np
            q = j
            DO i = 1,nd-np
              p = i+np
-             STIFF(q,p) = STIFF(q,p) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
-             STIFF(p,q) = STIFF(p,q) + SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(q,p) = STIFF(q,p) - gauge_coeff * SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
+             STIFF(p,q) = STIFF(p,q) - gauge_coeff * SUM(dBasisdx(j,:)*WBasis(i,:))*detJ*IP % s(t)
            END DO
          END DO
 
          IF ( HasStabC ) THEN
-           DO j = 1, np
-             q = j
-             DO i = 1, np
-               p = i
-               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(j,:)*dBasisdx(i,:))*detJ*IP % s(t) &
-                     + gauge_penalize_m*Basis(j)*Basis(i)*detJ*IP%s(t)
+           DO q = 1, np
+             DO p = 1, np
+               STIFF(p,q) = STIFF(p,q) + gauge_penalize_c*SUM(dBasisdx(q,:)*dBasisdx(p,:))*detJ*IP % s(t) &
+                     + gauge_penalize_m*Basis(q)*Basis(p)*detJ*IP%s(t)
              END DO
            END DO
          END IF
@@ -2314,7 +2382,7 @@ END SUBROUTINE LocalConstraintMatrix
 
     ALLOCATE(FaceMap(Mesh % NumberOfFaces)); FaceMap=0
     Faces = 0
-    DO t=1,Active
+   DO t=1,Active
       Element => GetBoundaryElement(t)
 
       IF ( GetElementFamily()==1 ) CYCLE

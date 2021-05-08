@@ -29,12 +29,16 @@ Header
 End 
 
 Simulation
-  Max Output Level = 8
+  Max Output Level = 5
   Coordinate System = Cartesian 3D
   Simulation Type = Steady State
   Output Intervals = 1
   Steady State Max Iterations = 1
-  Post File = coupled2.vtu
+
+  Post File = coupled.vtu
+  vtu: Vector Field 1 = String "displacement"
+  vtu: Vector Field 1 Complement = String "u"
+  vtu: Vector Field 2 = String "dnu"
 End
 
 Body 1
@@ -190,7 +194,7 @@ Boundary Condition 8
 End
 
 
-Solver 1:: Reference Norm = 7.15674386E-07
+Solver 1:: Reference Norm = 7.14556203E-07
 
 
 

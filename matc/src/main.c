@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <signal.h>
+#include <string.h>
 #include "../config.h"
 
 #ifdef USE_READLINE
@@ -45,7 +46,8 @@ int main( int argc, char **argv )
 {
   char strt[2000];
   char *str;
-
+  char *ioptr;
+  
 #ifdef _OPENMP
   /* Set number of threads to 1, computations are single threaded anyway */
   omp_set_num_threads(1);
@@ -65,7 +67,7 @@ int main( int argc, char **argv )
 	add_history (str);
 
 #else
-      fgets( strt,  2000 , stdin);
+      ioptr = fgets( strt,  2000 , stdin);
       str = strt;      
 #endif
       

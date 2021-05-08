@@ -260,7 +260,7 @@ SUBROUTINE FreeSurfaceReduced( Model,Solver,dt,TransientSimulation )
 
        END DO
 
-       ! The initial displacement shoud be zero
+       ! The initial displacement should be zero
        MoveCoord % Values = 0.0d0
      END IF
 

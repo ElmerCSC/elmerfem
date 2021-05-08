@@ -198,8 +198,8 @@ CONTAINS
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
-      WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
-      CALL Info('AddComponentsToBodyList',Message,Level=3)
+      WRITE(Message,'(A)') '"Body '//TRIM(I2S(i))//'" associated to "Component '//TRIM(I2S(j))//'"' 
+      CALL Info('AddComponentsToBodyList',Message,Level=5)
       BodyParams => Null()
     END DO
 !------------------------------------------------------------------------------
@@ -594,7 +594,13 @@ END FUNCTION isComponentName
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
 
-        Comp % N_j = Comp % nofturns / Comp % ElArea
+        Comp % CoilThickness = GetConstReal(CompParams, 'Coil Thickness', Found)
+        IF (.NOT. Found) Comp % CoilThickness = 1._dp
+
+        Comp % SymmetryCoeff = GetConstReal(CompParams, 'Symmetry Coefficient', Found)
+        IF (.NOT. Found) Comp % SymmetryCoeff = 1.0_dp
+
+        Comp % N_j = Comp % CoilThickness * Comp % nofturns / Comp % ElArea
 
         ! Stranded coil has current and voltage 
         ! variables (which both have a dof):
@@ -641,6 +647,7 @@ END FUNCTION isComponentName
 
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+
 
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
@@ -1810,7 +1817,7 @@ CONTAINS
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
-    CALL SetCircuitsParallelInfo()
+    IF (ParEnv % PEs > 1) CALL SetCircuitsParallelInfo()
 
     ! COUNT SIZES:
     ! ============

@@ -18,7 +18,7 @@
 ! Peter Raback, Juha Ruokolainen, Mikko Lyly, and Esko Jarvinen
 !
 ! 13.8.2013 / P.R. - case included as test
-! 27.1.2020 / P.R. - minor modifcation to simplify geometry
+! 27.1.2020 / P.R. - minor modification to simplify geometry
 
  Check Keywords Warn
 
@@ -193,7 +193,7 @@ Solver 6
   Vtu format = Logical True
   Save Geometry IDs = True
 
-! Supress saving of lines
+! Suppress saving of lines
   Minimum Mesh Dimension = Integer 2
 End
 

@@ -272,8 +272,10 @@ CONTAINS
            DO i=1,Mesh % NumberOfBulkElements
              Element=>Mesh % Elements(i)
 
-             bdofs = Solver % Def_Dofs(Element % Type % ElementCode/100, &
-                    Element % Bodyid, 5)
+             j = Element % Type % ElementCode/100
+             bdofs = Solver % Def_Dofs(j, Element % Bodyid, 5)
+             IF ( bdofs<=0 .AND. &
+                Solver % Def_Dofs(j,Element % Bodyid,6)>1) bdofs = Element % BDOFs
 
              DO l=1,bdofs
                DO j=1,DOFs 
@@ -631,6 +633,7 @@ CONTAINS
              END DO
            END IF
          END DO
+
          DO i=1,n
            MtrxN => MatrixPI % NeighbourList(i)
            IF ( .NOT.ASSOCIATED( MtrxN % Neighbours) ) THEN

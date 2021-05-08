@@ -37,6 +37,29 @@
 ! *
 !******************************************************************************
 
+
+!------------------------------------------------------------------------------
+SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+
+  SolverParams => GetSolverParams()
+  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
+!------------------------------------------------------------------------------
+END SUBROUTINE HelmholtzProjector_Init
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
 !> Compute a H1-regular scalar field to obtain the Helmholtz projection P(A)
 !> of a curl-conforming vector field A. Given the solution field Phi of this 
@@ -62,6 +85,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   LOGICAL :: AllocationsDone = .FALSE.
   LOGICAL :: Found
   LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix
 !  LOGICAL :: SecondFamily
 
   INTEGER :: dim, PotDOFs
@@ -91,6 +115,11 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     END IF
     AllocationsDone = .TRUE.
   END IF
+
+  ! Check if accelerated assembly is desired:
+  ConstantBulkMatrix = GetLogical(SolverParams, 'Constant Bulk Matrix', Found)
+  ReadySystemMatrix = ASSOCIATED(Solver % Matrix % BulkValues) .AND. &
+      ConstantBulkMatrix
 
   !
   ! Find the variable which is projected:
@@ -135,7 +164,7 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   ! System assembly:
   !----------------------
   active = GetNOFActive()
-  CALL DefaultInitialize()
+  CALL DefaultInitialize(Solver, ReadySystemMatrix)
 
   DO t=1,active
     Element => GetActiveElement(t)
@@ -155,17 +184,27 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
     ! Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(Stiff, Force, Element, n, dim, PiolaVersion, &
-        SecondOrder, n_pot, nd_pot, PotSol)
+        SecondOrder, n_pot, nd_pot, PotSol, ReadySystemMatrix)
     
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
-    CALL DefaultUpdateEquations(Stiff, Force)
-
+    IF (ReadySystemMatrix) THEN
+      CALL DefaultUpdateForce(Force)
+    ELSE
+      CALL DefaultUpdateEquations(Stiff, Force)
+    END IF
   END DO
 
-  CALL DefaultFinishBulkAssembly()
+  IF (ConstantBulkMatrix) THEN 
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ReadySystemMatrix, RHSUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
+  END IF
 
-  CALL DefaultFinishAssembly()
+  !
+  ! In this case no need to CALL DefaultFinishAssembly()
+  !
+
   CALL DefaultDirichletBCs()
   !
   ! In connection with the prime application of the solver, the RHS
@@ -181,7 +220,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(Stiff, Force, Element, n, dim, PiolaVersion, &
-      SecondOrder, n_pot, nd_pot, PotSol)
+      SecondOrder, n_pot, nd_pot, PotSol, ReadySystemMatrix)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Stiff(:,:), Force(:)
     TYPE(Element_t), POINTER :: Element
@@ -190,6 +229,7 @@ CONTAINS
     LOGICAL :: PiolaVersion, SecondOrder
     INTEGER :: n_pot, nd_pot      ! The size parameters of target field
     REAL(KIND=dp) :: PotSol(:,:)  ! The values of target field DOFS
+    LOGICAL :: ReadySystemMatrix  ! A flag to suppress the integration of Stiff
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -239,11 +279,14 @@ CONTAINS
       A(1,1:dim) = MATMUL(PotSol(1,n_pot+1:nd_pot), WBasis(1:nd_pot-n_pot,1:dim))
       s = detJ * IP % s(t)
 
-      DO p=1,n
-        DO q=1,n
-          STIFF(p,q) = STIFF(p,q) + SUM(DBasis(q,1:dim) * DBasis(p,1:dim)) * s
+      IF (.NOT. ReadySystemMatrix) THEN
+        DO p=1,n
+          DO q=1,n
+            STIFF(p,q) = STIFF(p,q) + SUM(DBasis(q,1:dim) * DBasis(p,1:dim)) * s
+          END DO
         END DO
-
+      END IF
+      DO p=1,n
         Force(p) = Force(p) + SUM(A(1,1:dim) * DBasis(p,1:dim)) * s
       END DO
     END DO
@@ -271,6 +314,8 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   LOGICAL :: Found, PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
+  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+
   IF (.NOT. ListCheckPresent(SolverParams, "Element")) THEN
     !
     ! Automatization is not perfect due to the early phase when this 
@@ -330,6 +375,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
   LOGICAL :: AllocationsDone = .FALSE.
   LOGICAL :: Found
   LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: ConstantBulkMatrix, ReadySystemMatrix
 !  LOGICAL :: SecondFamily
 
   INTEGER :: dim, PotDOFs
@@ -359,6 +405,11 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
     END IF
     AllocationsDone = .TRUE.
   END IF
+
+  ! Check if accelerated assembly is desired:
+  ConstantBulkMatrix = GetLogical(SolverParams, 'Constant Bulk Matrix', Found)
+  ReadySystemMatrix = ASSOCIATED(Solver % Matrix % BulkValues) .AND. &
+      ConstantBulkMatrix
 
   !
   ! Find the variable which is projected:
@@ -424,7 +475,7 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
   ! System assembly:
   !----------------------
   active = GetNOFActive()
-  CALL DefaultInitialize()
+  CALL DefaultInitialize(Solver, ReadySystemMatrix)
 
   DO t=1,active
     Element => GetActiveElement(t)
@@ -445,15 +496,23 @@ SUBROUTINE RemoveKernelComponent(Model, Solver, dt, TransientSimulation)
     ! Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
-        SecondOrder, PhiSol)
+        SecondOrder, PhiSol, ReadySystemMatrix)
     
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
-    CALL DefaultUpdateEquations(Stiff, Force)
+    IF (ReadySystemMatrix) THEN
+      CALL DefaultUpdateForce(Force)
+    ELSE
+      CALL DefaultUpdateEquations(Stiff, Force)
+    END IF
 
   END DO
 
-  CALL DefaultFinishBulkAssembly()
+  IF (ConstantBulkMatrix) THEN 
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ReadySystemMatrix, RHSUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
+  END IF
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
@@ -489,13 +548,14 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(Stiff, Force, Element, n, nd, dim, PiolaVersion, &
-      SecondOrder, PhiSol)
+      SecondOrder, PhiSol, ReadySystemMatrix)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Stiff(:,:), Force(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd, dim
     LOGICAL :: PiolaVersion, SecondOrder
     REAL(KIND=dp) :: PhiSol(:)
+    LOGICAL :: ReadySystemMatrix  ! A flag to suppress the integration of Stiff
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -549,12 +609,15 @@ CONTAINS
       DO i=1,n
         A(1:dim) = A(1:dim) + PhiSol(i) * DBasis(i,1:dim)
       END DO
- 
-      DO p=1,nd
-        DO q=1,nd
-          STIFF(p,q) = STIFF(p,q) + SUM(WBasis(q,1:dim) * WBasis(p,1:dim)) * s
-        END DO
 
+      IF (.NOT. ReadySystemMatrix) THEN 
+        DO p=1,nd
+          DO q=1,nd
+            STIFF(p,q) = STIFF(p,q) + SUM(WBasis(q,1:dim) * WBasis(p,1:dim)) * s
+          END DO
+        END DO
+      END IF
+      DO p=1,nd
         Force(p) = Force(p) + SUM(A(1:dim) * WBasis(p,1:dim)) * s
       END DO
     END DO

@@ -928,25 +928,24 @@ CONTAINS
     LOGICAL :: AllocationsDone = .FALSE.
 
     SAVE AllocationsDone, Nodes, Basis, dBasisdx, Conductivity, CoeffTensor, Pwrk
-    
-
+        
     IF( .NOT. AllocationsDone ) THEN
       n = Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), Basis(n), dBasisdx(n,3), &
           Conductivity(n), CoeffTensor(3,3,n) )
       AllocationsDone = .TRUE.
     END IF    
-
+    
     Tvar => VariableGet( Mesh % Variables, TRIM(VarName) )
     IF( .NOT. ASSOCIATED( TVar ) ) THEN
       CALL Fatal('BoundaryFlux','Cannot calculate fluxes without potential field!')
     END IF
-          
+    
     Permutated = ASSOCIATED(Tvar % Perm)
     Element => Model % CurrentElement
 
     BC => GetBC( Element )
-    FluxBody = ListGetInteger( Model % BCs(k) % Values,'Flux Integrate Body', gotIt )
+    FluxBody = ListGetInteger( BC,'Flux Integrate Body', gotIt )
     
     IF ( FluxBody > 0 ) THEN
       lbody = 0
@@ -1154,10 +1153,10 @@ CONTAINS
       
       IF(CalculateFlux) THEN
         CALL Info('SaveLine','Calculating nodal fluxes',Level=8)
-
         ALLOCATE(PointFluxes(SaveNodes,3),PointWeight(SaveNodes), STAT=istat)    
+
         IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 4') 
-        
+
         PointFluxes = 0.0d0
         PointWeight = 0.0d0
 
@@ -1165,34 +1164,34 @@ CONTAINS
         ! Fluxes only possible for DIM-1 
         DO t = Mesh % NumberOfBulkElements + 1,  &
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements                        
-
+                    
           CurrentElement => Mesh % Elements(t)
           Model % CurrentElement => CurrentElement
           n = CurrentElement % TYPE % NumberOfNodes
           NodeIndexes => CurrentElement % NodeIndexes        
           
           IF( .NOT. ALL(SavePerm(NodeIndexes) > 0)) CYCLE 
-        
+
           IF(t <= Mesh % NumberOfBulkElements) THEN
             ValueList => GetBodyForce()
           ELSE
             ValueList => GetBC()
           END IF
-
+ 
+          IF( .NOT. ASSOCIATED( ValueList ) ) CYCLE
           IF( .NOT. ListCheckPresent( ValueList, MaskName ) ) CYCLE
                   
           ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
           ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
           ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-          
+
           DO i=1,n
             node = NodeIndexes(i)
-            
+
             CALL BoundaryFlux( Model, node, TempName,  &
                 CondName, f1, f2, fn, weight, Mesh % MaxElementDOFs ) 
             
             j = SavePerm(node) 
-            
             IF( j == 0 ) CYCLE
             
             PointFluxes(j,1) = PointFluxes(j,1) + weight * f1
@@ -1210,7 +1209,6 @@ CONTAINS
         END DO
       END IF
       
-
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
@@ -1295,7 +1293,6 @@ CONTAINS
         MaxBoundary = MAX( MaxBoundary, k ) 
 
       END DO
-
       
       ! Save the nodes if not in DG mode     
       !---------------------------------  

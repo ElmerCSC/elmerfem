@@ -1408,7 +1408,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
       if(info) printf("Allocating for %d knots and %d %d-node elements.\n",
 		      noknots,noelements,maxnodes);
       AllocateKnots(data);
-      if(info) printf("reading the nodes\n");
+      if(info) printf("Reading the nodes\n");
       for(i=1;i<=noknots;i++) {
 	GETLINE;
 	if (dim == 2)
@@ -1465,7 +1465,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
 	  data->topology = topology;
 	}
 
-	if(0) printf("reading %d element topologies with %d nodes for %s\n",
+	if(info) printf("reading %d element topologies with %d nodes for %s\n",
 			elems,nodes,entityname);
 
 	for(entity=1;entity<=maxentity;entity++) {
@@ -1498,7 +1498,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
 	  ReorderFidapNodes(data,i,nodes,typeflag);
 
 	  if(data->elementtypes[i] == 0) {
-	    printf("******** nolla\n");
+	    printf("Elementtype is zero!\n");
 	  }
 
 	  if(entity) data->material[i] = entity;
@@ -1510,7 +1510,8 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
     break;
       
     case 10:
-      if(info) printf("reading the velocity field\n");
+      dim = 3;
+      if(info) printf("Reading the velocity field\n");
       CreateVariable(data,2,dim,0.0,"Velocity",FALSE);
       vel = data->dofs[2];
       for(j=1;j<=noknots;j++) {
@@ -1524,8 +1525,7 @@ int LoadFidapInput(struct FemType *data,struct BoundaryType *boundaries,char *pr
       break;
       
     case 11:
-
-      if(info) printf("reading the temperature field\n");
+      if(info) printf("Reading the temperature field\n");
       CreateVariable(data,1,1,0.0,"Temperature",FALSE);
       temp = data->dofs[1];
       for(j=1;j<=noknots;j++) {
@@ -1549,7 +1549,7 @@ end:
       if(data->topology[i][j] > maxknot) maxknot = data->topology[i][j];
 
   if(maxknot > noknots) {
-    if(info) printf("renumbering the nodes from 1 to %d\n",noknots);
+    if(info) printf("Renumbering the nodes from 1 to %d\n",noknots);
 
     ind = ivector(1,maxknot);
     for(i=1;i<=maxknot;i++)
@@ -1577,7 +1577,7 @@ end:
   if(info) printf("Finished reading the Fidap neutral file\n");
 
   ElementsToBoundaryConditions(data,boundaries,FALSE,TRUE);
-  RenumberBoundaryTypes(data,boundaries,TRUE,0,info);  
+  /* RenumberBoundaryTypes(data,boundaries,TRUE,0,info); */
 
   return(0);
 }
@@ -1984,7 +1984,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   FindPointParents(data,bound,boundarynodes,nodeindx,boundindx,info);
 
   if(namesexist) {
-    int bcind,*bctypes=NULL,*bctypeused=NULL,*bcused=NULL,newsides;
+    int bcind=0,*bctypes=NULL,*bctypeused=NULL,*bcused=NULL,newsides=0;
 
     data->bodynamesexist = TRUE;
     if(bound[0].nosides) {
@@ -3541,13 +3541,13 @@ allocate:
 
 
 static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int info)
+			  char *filename,int usetaggeom, int keeporphans, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
-  int usetaggeom,tagmat,verno;
+  int tagmat,verno;
   int physvolexist, physsurfexist;
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
@@ -3564,10 +3564,10 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
-  usetaggeom = FALSE;
   physvolexist = FALSE;
   physsurfexist = FALSE;
-
+  usetaggeom = FALSE;
+  
 omstart:
 
   for(;;) {
@@ -3668,6 +3668,8 @@ omstart:
       }   
     }
     else if(strstr(line,"$PhysicalNames")) {
+      int entdim;
+      entdim = dim;
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
@@ -3676,16 +3678,20 @@ omstart:
         if(allocated) {
             cp = line;
             gmshtype = next_int(&cp);
+	    if(gmshtype < entdim-1) {
+	      printf("Assuming maximum entity dim to be %d\n",dim-1);
+	      entdim--;
+	    }
             tagphys = next_int(&cp);
-            if(gmshtype == dim-1) {
+            if(gmshtype == entdim-1) {
                 physsurfexist = TRUE;
                 if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
-                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
+                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
             }
-            else if(gmshtype == dim) {
+            else if(gmshtype == entdim) {
                 physvolexist = TRUE;
                 if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
-                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
+                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
             }
             else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
                         "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
@@ -3746,13 +3752,8 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
-  ElementsToBoundaryConditions(data,bound,FALSE,info);
+  ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
-  /* The geometric entities are rather randomly numbered */
-  if( usetaggeom ) {
-    RenumberBoundaryTypes(data,bound,TRUE,0,info);
-    RenumberMaterialTypes(data,bound,info);
-  }
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
 
@@ -3763,12 +3764,12 @@ omstart:
 
 
 static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int info)
+			  char *filename,int usetaggeom, int keeporphans, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
   int tagmat,verno;
   int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
   FILE *in;
@@ -3788,6 +3789,7 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   maxelemtype = 0;
   physvolexist = FALSE;
   physsurfexist = FALSE;
+  usetaggeom = TRUE; /* The default */
   for(i=0;i<4;i++) maxtag[i] = 0;
 
   
@@ -3864,13 +3866,14 @@ omstart:
       int nobound, idum;
       Real rdum;
       
+      usetaggeom = FALSE;
+
       GETLINE;
       cp = line;
       numPoints = next_int(&cp);
       numCurves = next_int(&cp);
       numSurfaces = next_int(&cp);
       numVolumes = next_int(&cp);
-
       
       if(allocated) {
 	tagsize = 0;
@@ -3885,7 +3888,6 @@ omstart:
       }
       
       for(tagdim=0;tagdim<=3;tagdim++) {	
-
 	
 	if( tagdim == 0 ) 
 	  numEnt = numPoints;
@@ -3901,8 +3903,9 @@ omstart:
 	else if( maxtag[tagdim] > 0 )
 	  printf("Maximum original tag for %d %dDIM entities is %d\n",numEnt,tagdim,maxtag[tagdim]);
 
-	if(numEnt > 0 && !allocated) printf("Reading %d entities in %dD\n",numEnt,tagdim);
-
+	if(numEnt > 0 && !allocated) {
+	  printf("Reading %d entities in %dD\n",numEnt,tagdim);
+	}
 	
 	for(i=1; i <= numEnt; i++) {
 	  GETLONGLINE;
@@ -4027,6 +4030,8 @@ omstart:
     }
 
     else if(strstr(line,"$PhysicalNames")) {
+      int entdim;
+      entdim = dim;
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
@@ -4035,24 +4040,30 @@ omstart:
         if(allocated) {
 	  cp = line;
 	  gmshtype = next_int(&cp);
+	  if(gmshtype < entdim-1) {
+	    printf("Assuming maximum entity dim to be %d\n",dim-1);
+	    entdim--;
+	  }
 	  tagphys = next_int(&cp);
-	  if(gmshtype == dim-1) {
+	  if(gmshtype == entdim-1) {
 	    physsurfexist = TRUE;
-	    if(tagphys < MAXBCS) {
+	    if(tagphys < MAXBCS)  {
 	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
 	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }	    
 	  }
-	  else if(gmshtype == dim) {
+	  else if(gmshtype == entdim) {
 	    physvolexist = TRUE;
 	    if(tagphys < MAXBODIES) {
 	      sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
 	      printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }
 	  }
 	  else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
 		      "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
@@ -4174,7 +4185,7 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
-  ElementsToBoundaryConditions(data,bound,FALSE,info);
+  ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
@@ -4188,12 +4199,12 @@ omstart:
 
 
 static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int info)
+			   char *filename,int usetaggeom, int keeporphans, int info)
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
   int tagmat,verno;
   int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
   FILE *in;
@@ -4213,6 +4224,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   maxelemtype = 0;
   physvolexist = FALSE;
   physsurfexist = FALSE;
+  usetaggeom = TRUE; /* The default */
   for(i=0;i<4;i++) maxtag[i] = 0;
 
 omstart:
@@ -4303,6 +4315,8 @@ omstart:
       int tag,tagdim,nophys,phystag;
       int nobound, idum;
       Real rdum;
+
+      usetaggeom = FALSE;
       
       GETLINE;
       cp = line;
@@ -4471,6 +4485,8 @@ omstart:
     }
 
     else if(strstr(line,"$PhysicalNames")) {
+      int entdim;
+      entdim = dim;
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
@@ -4479,24 +4495,30 @@ omstart:
         if(allocated) {
 	  cp = line;
 	  gmshtype = next_int(&cp);
+	  if(gmshtype < entdim-1) {
+	    printf("Assuming maximum entity dim to be %d\n",dim-1);
+	    entdim--;
+	  }
 	  tagphys = next_int(&cp);
-	  if(gmshtype == dim-1) {
+	  if(gmshtype == entdim-1) {
 	    physsurfexist = TRUE;
-	    if(tagphys < MAXBCS) {
+	    if(tagphys < MAXBCS)  {
 	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
 	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }	    
 	  }
-	  else if(gmshtype == dim) {
+	  else if(gmshtype == entdim) {
 	    physvolexist = TRUE;
 	    if(tagphys < MAXBODIES) {
 	      sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
 	      printf("Body name for physical group %d is: %s\n",tagphys,data->bodyname[tagphys]);
 	    }
-	    else
-	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
+	    else {
+	      printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+	    }
 	  }
 	  else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
 		      "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
@@ -4511,17 +4533,30 @@ omstart:
     else if(strstr(line,"$Periodic")) {
       int numPeriodicLinks;
       if(allocated) printf("Reading periodic links but doing nothing with them!\n");
-      
-      GETLINE;
-      cp = line;
-      numPeriodicLinks = next_int(&cp);
-      for(i=1; i <= numPeriodicLinks; i++) {
+
+      if(1) {
+	numPeriodicLinks = 0;
+	for(;;) {
+	  GETLINE;
+	  if(strstr(line,"$EndPeriodic")) {
+	    if(allocated) printf("Number of lines for periodic stuff: %d\n",numPeriodicLinks);
+	    break;
+	  }
+	  numPeriodicLinks++;
+	}
+      }
+      else {	      
 	GETLINE;
-      }     
-      GETLINE;
-      if(!strstr(line,"$EndPeriodic")) {
-	printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
-      }           
+	cp = line;
+	numPeriodicLinks = next_int(&cp);
+	for(i=1; i <= numPeriodicLinks; i++) {
+	  GETLINE;
+	}     
+	GETLINE;
+	if(!strstr(line,"$EndPeriodic")) {
+	  printf("$Periodic section should end to string $EndPeriodic:\n%s\n",line);
+	}
+      }
     }
 
     else if(strstr(line,"$PartitionedEntities")) {
@@ -4618,7 +4653,7 @@ omstart:
     free_Ivector(revindx,1,maxindx);
   }
 
-  ElementsToBoundaryConditions(data,bound,FALSE,info);
+  ElementsToBoundaryConditions(data,bound,keeporphans,info);
 
   data->bodynamesexist = physvolexist;
   data->boundarynamesexist = physsurfexist;
@@ -4630,13 +4665,17 @@ omstart:
   return(0);
 }
 
+
 int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int info)
+		  char *prefix,int keeporphans,int info)
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
-  int errnum;
+  int errnum,usetaggeom;
 
+  /* keeprophans - Should we keep lower order elements not associated to any 
+     higher order entity? ElmerGUI certainly does not like it. */
+  
   sprintf(filename,"%s",prefix);
   if ((in = fopen(filename,"r")) == NULL) {
     sprintf(filename,"%s.msh",prefix);
@@ -4668,14 +4707,14 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     
     if( verno == 4 ) {
       if( minorno == 0 ) 
-	errnum = LoadGmshInput4(data,bound,filename,info);
+	errnum = LoadGmshInput4(data,bound,filename,usetaggeom,keeporphans,info);
       else if( minorno == 1 ) 
-	errnum = LoadGmshInput41(data,bound,filename,info);
+	errnum = LoadGmshInput41(data,bound,filename,usetaggeom,keeporphans,info);
       else
 	printf("Minor version not yet supported, cannot continue!\n");
     }
     else {
-      errnum = LoadGmshInput2(data,bound,filename,info);
+      errnum = LoadGmshInput2(data,bound,filename,usetaggeom,keeporphans,info);
     }      
   } else {
     fclose(in);
@@ -4688,6 +4727,13 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     errnum = LoadGmshInput1(data,bound,filename,info);
   }     
 
+  if( info ) {
+    if( usetaggeom )
+      printf("Using geometric numbering of entities\n");
+    else
+      printf("Using physical numbering of entities\n");
+  }
+  
   return(errnum);
 }
 
@@ -4700,7 +4746,7 @@ int LoadFvcomMesh(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
   int elemnodes,maxelemtype,elemtype0,bclines;
-  int usetaggeom,tagmat,bccount;
+  int tagmat,bccount;
   int *bcinds,*bctags,nbc,nbc0,bc_id;
   FILE *in;
   char *cp,line[MAXLINESIZE];
@@ -4717,7 +4763,6 @@ int LoadFvcomMesh(struct FemType *data,struct BoundaryType *bound,
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 303;
-  usetaggeom = FALSE;
 
   noelements = 0;
   bclines = 0;
@@ -4838,7 +4883,7 @@ int LoadGeoInput(struct FemType *data,struct BoundaryType *bound,
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
   int elemnodes,maxelemtype,elemtype0;
-  int usetaggeom,tagmat;
+  int tagmat;
   FILE *in;
   char *cp,line[MAXLINESIZE];
 
@@ -4854,7 +4899,6 @@ int LoadGeoInput(struct FemType *data,struct BoundaryType *bound,
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
-  usetaggeom = FALSE;
 
 omstart:
 
@@ -5390,6 +5434,9 @@ omstart:
 	  }	  
 	}
       }
+      if(info) {
+	printf("Element type range in whole mesh is [%d %d]\n",minelemtype,maxelemtype);
+      }
     }
 
     if( mode == 2420 ) {
@@ -5585,6 +5632,7 @@ omstart:
 	  }
 	  else if(grouptype == 7) {
 	    nopoints += 1;
+
 	    if(allocated) {
 	      elemcode = 101;
 	      data->material[noelements+nopoints] = nogroup;
@@ -5743,7 +5791,7 @@ end:
      Now separate the lower dimensional elements to be boundary elements. */
   ElementsToBoundaryConditions(data,bound,TRUE,info);
  
-  if(info) printf("The Universal mesh was loaded from file %s.\n\n",filename);
+  if(info) printf("The Universal mesh was loaded from file %s.\n",filename);
 
   return(0);
 }

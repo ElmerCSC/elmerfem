@@ -4,20 +4,20 @@
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
 ! * 
-! *  This program is free software; you can redistribute it and/or
-! *  modify it under the terms of the GNU General Public License
-! *  as published by the Free Software Foundation; either version 2
-! *  of the License, or (at your option) any later version.
-! * 
-! *  This program is distributed in the hope that it will be useful,
-! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
-! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-! *  GNU General Public License for more details.
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
 ! *
-! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
-! *  Boston, MA 02110-1301, USA.
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
@@ -59,6 +59,9 @@ SUBROUTINE ElasticSolver_Init0( Model,Solver,dt,Transient )
   IF( MixedFormulation ) THEN
     CALL ListAddNewString( SolverParams, "Element", "p:2" )
   END IF
+  
+  CALL ListAddLogical( SolverParams,'Solid Solver',.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE ElasticSolver_Init0
 !------------------------------------------------------------------------------
@@ -336,6 +339,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)
   REAL(KIND=dp), POINTER :: UmatEnergy0(:),UmatStress0(:), UmatState0(:)
   LOGICAL, ALLOCATABLE :: UmatInitDone(:)
+  LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta
+  REAL(KIND=dp) :: RayleighAlpha, RayleighBeta  
   
   CHARACTER(*), PARAMETER :: Caller = 'ElasticSolver'
 
@@ -460,7 +465,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
       ListGetLogical( SolverParams, 'Mixed Formulation', GotIt )
   IF (MixedFormulation .AND. (STDOFs /= (dim + 1))) CALL Fatal(Caller, &
       'With mixed formulation variable DOFs should equal to space dimensions + 1')
-
+  
+  AnyDamping = ListCheckPresentAnyMaterial( Model,"Damping" ) .OR. &
+      ListCheckPrefixAnyMaterial( Model,"Rayleigh" )
+  GotDamping = .FALSE.
+  GotRayleighAlpha = .FALSE.
+  GotRayleighBeta = .FALSE.
+  
   !------------------------------------------------------------------------------
   !     Allocate some permanent storage, this is done first time only
   !------------------------------------------------------------------------------
@@ -814,7 +825,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         ReferenceTemperature(1:n) = GetReal( Material, 'Reference Temperature', GotIt )
         
         Density(1:n) = GetReal( Material, 'Density', GotIt )
-        Damping(1:n) = GetReal( Material, 'Damping' ,GotIt )
+
+        IF( AnyDamping ) THEN
+          Damping(1:n) = GetReal( Material, 'Damping' ,GotDamping )
+          RayleighAlpha = GetCReal( Material, 'Rayleigh Damping alpha',GotRayleighAlpha )
+          RayleighBeta = GetCReal( Material, 'Rayleigh Damping beta', GotRayleighBeta )
+        END IF
+                
         !------------------------------------------------------------------------------
         !        Set body forces
         !------------------------------------------------------------------------------
@@ -931,6 +948,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                 Isotropic, RotateModuli, TransformMatrix)
           END IF
         END IF
+
+        IF( GotRayleighAlpha ) THEN
+          LocalDampMatrix = LocalDampMatrix + RayleighAlpha * LocalMassMatrix
+        END IF
+        IF( GotRayleighBeta ) THEN
+          LocalDampMatrix = LocalDampMatrix + RayleighBeta * LocalStiffMatrix
+        END IF
+        
         !------------------------------------------------------------------------------
         !        If time dependent simulation, add mass matrix to global 
         !        matrix and global RHS vector
@@ -2032,7 +2057,17 @@ CONTAINS
 
       ! Utilize the Rayleigh damping:
       ! -----------------------------
-      DampMatrix = Damping * MassMatrix
+      IF( GotDamping ) THEN
+        DO p = 1,ntot
+          DO q = 1,ntot
+            DO i = 1,cdim
+              DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  = DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  + Basis(p)*Basis(q)*Damping*s
+            END DO
+          END DO
+        END DO
+      END IF
 
     END DO
 !------------------------------------------------------------------------------
@@ -2412,21 +2447,29 @@ CONTAINS
        !      Integrate mass matrix:
        !      ----------------------
        DO p = 1,ntot
-          DO q = 1,ntot
-             DO i = 1,cdim
-
-                MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                     = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                     + Basis(p)*Basis(q)*Density*s
-
-             END DO
-          END DO
+         DO q = 1,ntot
+           DO i = 1,cdim
+             MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                 = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                 + Basis(p)*Basis(q)*Density*s
+           END DO
+         END DO
        END DO
 
-       !      Utilize the Rayleigh damping:
+       !      Utilize the nodal damping:
        !      -----------------------------
-       DampMatrix = Damping * MassMatrix
-
+       IF( GotDamping ) THEN
+         DO p = 1,ntot
+           DO q = 1,ntot
+             DO i = 1,cdim               
+               DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                   = DampMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                   + Basis(p)*Basis(q)*Damping*s
+             END DO
+           END DO
+         END DO
+       END IF
+       
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -2738,9 +2781,19 @@ CONTAINS
        END DO
 
        !-------------------------------------
-       !      Utilize the Rayleigh damping:
+       !  Utilize the nodal damping:
        !-------------------------------------
-       DampMatrix = Damping * MassMatrix
+       IF( GotDamping ) THEN
+         DO p = 1,ntot
+           DO q = 1,ntot
+             DO i = 1,cdim
+               DampMatrix(DOFs*(p-1)+i,DOFs*(q-1)+i) &
+                   = DampMatrix(DOFs*(p-1)+i,DOFs*(q-1)+i) &
+                   + Basis(p)*Basis(q)*Damping*s
+             END DO
+           END DO
+         END DO
+       END IF
        
        !-------------------------------------------------------------------------------
        ! Add remaining terms which relate to having the pressure variable as an unknown: 
@@ -4654,7 +4707,7 @@ END SUBROUTINE ElasticSolver
           'Normal Force', En, Edge % NodeIndexes, GotIt )
 
 !       If dirichlet BC for displacement in any direction given,
-!       nullify force in that directon:
+!       nullify force in that direction:
 !       ------------------------------------------------------------------
         Dir = 1.0d0
         s = ListGetConstReal( Model % BCs(j) % Values, 'Displacement 1', GotIt )

@@ -26,7 +26,6 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 !  Post File = "interpolationtest.ep"
-  New Load Mesh = Logical True
 End
 
 Body 1

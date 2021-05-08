@@ -23,7 +23,7 @@
 ! ******************************************************************************
 ! *
 ! *  Authors: Samuel Cook 
-! *  Email:   sc690@cam.ac.uk
+! *  Email:   samuel.cook@univ-grenoble-alpes.fr
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - Scientific Computing Ltd.
 ! *           Keilaranta 14
@@ -248,6 +248,31 @@
 
       END IF!LoadReaders
     END IF!FirstTime
+    
+    !To update reader variables each time called. Perhaps not always necessary
+    !but better safe than sorry
+    LoadReaders = GetLogical(Params,'Load Reader Variables',Found)
+    IF(LoadReaders .AND. .NOT. FirstTime) THEN
+      NumVar = GetInteger(Params, 'Number Of Variables To Read',Found)
+      IF(.NOT. Found) CALL Fatal('Ice2Hydro', 'Number of variables to read &
+      not specified')
+      IF(NumVar > 10) CALL Info('Ice2Hydro', 'Not set up for more than 10&
+      reader variables - increase maximum limit in source code', Level=1)
+      DO i=1, NumVar
+        iString = STR(i)
+        Reader = GetInteger(Params, 'Reader Solver '//iString, Found)
+        IF(Found) THEN
+          VarName = GetString(Params, 'Reader V'//iString, Found)
+          IF(.NOT. Found) PRINT *, 'No reader '//iString//' variable specified'
+          WorkVar => VariableGet(Model % Solvers(Reader) % Mesh % Variables,&
+                     VarName, ThisOnly=.TRUE.)
+          WorkVar2 => VariableGet(Model % Solvers(HPSolver) % Mesh % Variables,&
+                     VarName, ThisOnly=.TRUE.)
+          WorkVar2 % Values = WorkVar % Values
+        END IF
+      END DO
+
+    END IF
 
     !Time to interpolate variables that are solved on ice mesh
     HydroSolver => Model % Solvers(HPSolver)

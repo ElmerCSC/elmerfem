@@ -6,4 +6,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO squares.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(MortarPoisson2Dpriority)
-ADD_ELMER_LABEL(MortarPoisson2Dpriority quick)
+ADD_ELMER_LABEL(MortarPoisson2Dpriority mortar quick)

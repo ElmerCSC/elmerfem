@@ -175,6 +175,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   
   IF( VecAsm .AND. AxiSymmetric ) THEN
     CALL Info(Caller,'Vectorized loop not yet available in axisymmetric case',Level=7)    
+    VecAsm = .FALSE.
   END IF
 
   IF( VecAsm ) THEN
@@ -243,7 +244,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
       !$OMP SINGLE
-      CALL Info('ModelPDEthreaded','Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
+      CALL Info(Caller,'Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
       Active = GetNOFBoundaryActive(Solver)
       !$OMP END SINGLE
 

@@ -9,7 +9,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 1
 
-! Post File   = "ptest.ep"
+! Post File   = "ptest.vtu"
 End
 
 Body 1
@@ -68,15 +68,18 @@ End
 
 ! magnetic flux density
 Solver 3
-  Equation = ComputeFlux
+  Equation = MgDynCalcFields
 
-  Procedure = "MagnetoDynamics2D" "bSolver"
-  Variable = -nooutput temp
-  Target Variable="A"
-  Exported Variable 1 = B[B:2]
+!  Procedure = "MagnetoDynamics2D" "bSolver"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+
+  Potential Variable="A"
 
   Linear System Solver = "Direct"
   Linear System Direct Method = UMFPack
+
+  Skip Compute Steady State Change = Logical True
+  Show Norm Index = 2
 End
 
 ! make outer boundary  circular + asymptotic bc
@@ -98,4 +101,3 @@ Boundary Condition 2
 End
 
 Solver 3 :: Reference Norm = Real 0.11769191
-RUN

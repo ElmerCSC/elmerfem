@@ -300,6 +300,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: CalcNonZeros
 !------------------------------------------------------------------------------
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat
+    INTEGER :: NDOFs, DOFsPerNode
     INTEGER, ALLOCATABLE :: InvPerm(:), IndirectPairs(:)
     LOGICAL :: Flag, FoundDG, GB, DB, Found, Radiation, DoProjectors, &
         DoNonZeros, DgIndirect
@@ -327,6 +328,7 @@ CONTAINS
     
     List => List_AllocateMatrix(LocalNodes)
 
+    NDOFs = Mesh % MaxNDOFs
     BDOFs = Mesh % MaxBDOFs
     EDOFs = Mesh % MaxEdgeDOFs
     FDOFs = Mesh % MaxFaceDOFs
@@ -740,10 +742,19 @@ CONTAINS
          END IF
 
          n = 0
-         DO i=1,Element % NDOFs
-            n = n + 1
-            Indexes(n) = Element % NodeIndexes(i)
-         END DO
+         DOFsPerNode = Element % NDOFs / Element % TYPE % NumberOfNodes
+         IF (DOFsPerNode > 0) THEN
+           DO i=1,Element % TYPE % NumberOfNodes
+             DO j=1,DOFsPerNode
+               n = n + 1
+               Indexes(n) = NDOFs * (Element % NodeIndexes(i)-1) + j
+             END DO
+           END DO
+         END IF
+!         DO i=1,Element % NDOFs
+!            n = n + 1
+!            Indexes(n) = Element % NodeIndexes(i)
+!         END DO
 
          IF ( EDOFs > 0 ) THEN
             IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
@@ -751,7 +762,7 @@ CONTAINS
                  DO i=1, Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
                    n = n + 1
                    Indexes(n) = EDOFs * (Element % EdgeIndexes(j)-1) + i &
-                                + Mesh % NumberOfNodes
+                                + NDOFs * Mesh % NumberOfNodes
                 END DO
              END DO
            END IF
@@ -763,7 +774,7 @@ CONTAINS
                DO i=1, Mesh % Faces(Element % FaceIndexes(j)) % BDOFs
                  n = n + 1
                  Indexes(n) = FDOFs*(Element % FaceIndexes(j)-1) + i + &
-                     Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
+                     NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
                END DO
              END DO
            END IF
@@ -773,7 +784,7 @@ CONTAINS
             DO i=1,Element % BDOFs
               n = n + 1
               Indexes(n) = FDOFs*Mesh % NumberOfFaces + &
-                   Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+                   NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                         Element % BubbleIndexes(i)
             END DO
          END IF
@@ -970,6 +981,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: CalcNonZeros
 !------------------------------------------------------------------------------
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, nReord, EDOFs, FDOFs, BDOFs, This, istat, nthr
+    INTEGER :: NDOFs, DOFsPerNode
     LOGICAL :: Flag, FoundDG, GB, Found, Radiation, DoProjectors, DoNonZeros
     INTEGER, ALLOCATABLE :: InvPerm(:)    
     TYPE(Matrix_t), POINTER :: Projector
@@ -1005,6 +1017,7 @@ CONTAINS
     NeedLocking = (NumberOfMeshColours == 1) .AND. (nthr > 1)
     CALL ListMatrixArray_Allocate(List, LocalNodes, Atomic=NeedLocking)
     
+    NDOFs = Mesh % MaxNDOFs
     BDOFs = Mesh % MaxBDOFs
     EDOFs = Mesh % MaxEdgeDOFs
     FDOFs = Mesh % MaxFaceDOFs
@@ -1121,11 +1134,11 @@ CONTAINS
     IF (.NOT. FoundDG) THEN
       
       !$OMP PARALLEL &
-      !$OMP SHARED(LocalNodes, List, Equation, EDOFS, FDOFS, GB, &
+      !$OMP SHARED(LocalNodes, List, Equation, NDOFs, EDOFS, FDOFS, GB, &
       !$OMP        Reorder, Model, Mesh, NumberOfMeshColours, CurrentColourStart, NeedLocking, &
       !$OMP        CurrentColourEnd, CurrentColourList, ElementsList, Solver, BoundaryColour) &
       !$OMP PRIVATE(Element, Indexes, istat, IndexSize, IndexReord, &
-      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, &
+      !$OMP         IPerm, n, i, j, nReord, k1, k2, Lptr, DOFsPerNode, &
       !$OMP         CurrentColour) &
       !$OMP DEFAULT(NONE)
 
@@ -1192,10 +1205,19 @@ CONTAINS
             END IF
             
             n = 0
-            DO i=1,Element % NDOFs
-               n = n + 1
-               Indexes(n) = Element % NodeIndexes(i)
-            END DO
+            DOFsPerNode = Element % NDOFs / Element % TYPE % NumberOfNodes
+            IF (DOFsPerNode > 0) THEN
+              DO i=1,Element % TYPE % NumberOfNodes
+                DO j=1,DOFsPerNode
+                  n = n + 1
+                  Indexes(n) = NDOFs * (Element % NodeIndexes(i)-1) + j
+                END DO
+              END DO
+            END IF
+!            DO i=1,Element % NDOFs
+!               n = n + 1
+!               Indexes(n) = Element % NodeIndexes(i)
+!            END DO
             
             IF ( EDOFs > 0 ) THEN
                IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
@@ -1203,7 +1225,7 @@ CONTAINS
                      DO i=1, Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
                         n = n + 1
                         Indexes(n) = EDOFs * (Element % EdgeIndexes(j)-1) + i &
-                             + Mesh % NumberOfNodes
+                             + NDOFs * Mesh % NumberOfNodes
                      END DO
                   END DO
                END IF
@@ -1215,7 +1237,7 @@ CONTAINS
                      DO i=1, Mesh % Faces(Element % FaceIndexes(j)) % BDOFs
                         n = n + 1
                         Indexes(n) = FDOFs*(Element % FaceIndexes(j)-1) + i + &
-                             Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
+                             NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges
                      END DO
                   END DO
                END IF
@@ -1225,7 +1247,7 @@ CONTAINS
                DO i=1,Element % BDOFs
                   n = n + 1
                   Indexes(n) = FDOFs*Mesh % NumberOfFaces + &
-                       Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
+                       NDOFs * Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                        Element % BubbleIndexes(i)
                END DO
             END IF
@@ -1541,7 +1563,8 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: Eq, str
      LOGICAL :: GotIt, DG, GB, UseOptimized, Found
      INTEGER i,j,k,l,k1,t,n, p,m, minEdgeDOFs, maxEdgeDOFs, &
-           minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat
+           minFaceDOFs, maxFaceDOFs, BDOFs, cols, istat, &
+           NDOFs
      INTEGER, POINTER :: Ivals(:)
      INTEGER, ALLOCATABLE, SAVE :: InvInitialReorder(:)
      INTEGER :: nthr
@@ -1586,6 +1609,7 @@ CONTAINS
      minFaceDOFs = HUGE(minFaceDOFs)
      maxFaceDOFs = 0
      BDOFs = 0
+     NDOFs = 0
 
      !$OMP PARALLEL SHARED(Mesh) &
      !$OMP          REDUCTION(min:minEdgeDOFs) REDUCTION(max:maxEdgeDOFs) &
@@ -1611,6 +1635,9 @@ CONTAINS
      END DO
      !$OMP END DO NOWAIT
      !$OMP END PARALLEL
+     DO i=1,Mesh % NumberOfBulkElements
+        NDOFs = MAX( NDOFs, Mesh % Elements(i) % NDOFs )
+     END DO
      
      Mesh % MaxEdgeDOFs = maxEdgeDOFs
      IF(minEdgeDOFs <= maxEdgeDOFs ) THEN
@@ -2993,7 +3020,7 @@ CONTAINS
                en % z( n ), STAT=istat )
 
      IF( istat /= 0 ) THEN
-       CALL Fatal('ElementCharacteristicLengths','Allocation error for ElementNodes')
+       CALL Fatal('NormalOfDegenerateElement','Allocation error for ElementNodes')
      END IF
 
      en % x(1:n) = Model % Nodes % x(Element % NodeIndexes)

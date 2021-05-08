@@ -118,12 +118,6 @@ int main(int argc, char *argv[])
       Goodbye();
     }
   }
-#if 0
-  if(eg.inmethod != 8 && eg.outmethod == 5) {
-    printf("To write Easymesh format you need to read easymesh format!\n");
-    errorstat++;
-  }
-#endif
 
   if(eg.timeron) timer_activate(eg.infofile);
 
@@ -216,6 +210,10 @@ int main(int argc, char *argv[])
     }
     if(LoadFidapInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
       Goodbye();
+    
+    eg.bulkorder = TRUE;
+    eg.boundorder = TRUE;
+
     if(!eg.usenames) data[nofile].boundarynamesexist = data[nofile].bodynamesexist = FALSE;
   
     nomeshes++;
@@ -301,9 +299,11 @@ int main(int argc, char *argv[])
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
-    if (LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+
+    if (LoadGmshInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],
+		      eg.multidim,TRUE))
       Goodbye();
-    nomeshes++;
+    nomeshes++;    
     break;
 
   case 15: 
@@ -325,32 +325,7 @@ int main(int argc, char *argv[])
       Goodbye();
     nomeshes++;
     break;
-
     
-#if 0
-  case 16: 
-    InitializeKnots(&(data[nofile]));
-    if( Easymesh(argc,argv,&data[nofile].noknots,
-		 &data[nofile].noelements,&sides)) 
-      Goodbye();	
-    
-    data[nofile].dim = 2;
-    data[nofile].coordsystem = COORD_CART2;
-    data[nofile].maxnodes = 3;
-    
-    AllocateKnots(&(data[nofile]));
-    boundaries[nofile] = (struct BoundaryType*)
-      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
-    for(i=0;i<MAXBOUNDARIES;i++) {
-      boundaries[nofile][i].created = FALSE; 
-      boundaries[nofile][i].nosides = 0;
-    }
-    if(EasymeshCopy(&(data[nofile]),boundaries[nofile]))
-      Goodbye();    
-    nomeshes++;
-    break;
-#endif
-
   case 17:
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
@@ -695,6 +670,9 @@ int main(int argc, char *argv[])
   
   if(eg.coordinatemap[0] && eg.coordinatemap[1] && eg.coordinatemap[2] ) {
     Real *tmpcoord[3];
+
+    if(info) printf("Mapping coordinates with [%d %d %d]\n",
+		    eg.coordinatemap[0],eg.coordinatemap[1],eg.coordinatemap[2]);
     for(k=0;k<nomeshes;k++) {
       tmpcoord[0] = data[k].x;
       tmpcoord[1] = data[k].y;
@@ -792,11 +770,13 @@ int main(int argc, char *argv[])
 	free_Ivector(data[k].periodic,1,data[k].noknots);
 	data[k].periodicexist = FALSE;
       }
+      if(info) printf("Partitioning routines finished!\n");	
     }
     timer_show();
   }
 
   if(eg.timeron) {
+    if(info) printf("Saving size info for timing purposes\n");
     for(k=0;k<nomeshes;k++) 
       SaveSizeInfo(&data[k],boundaries[k],eg.infofile,info);
   }
@@ -874,12 +854,6 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++)
       SaveFidapOutput(&data[k],eg.filesout[k],info,1,data[k].dofs[1]);
     break;
-
-#if 0
-  case 8:
-    EasymeshSave();
-    break;
-#endif
 
 
     /* Some obsolete special formats related to mapping, view factors etc. */

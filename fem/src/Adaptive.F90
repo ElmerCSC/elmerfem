@@ -109,7 +109,7 @@ CONTAINS
     REAL(KIND=dp) :: MaxError, ErrorLimit, minH, maxH, MaxChangeFactor, &
       LocalIndicator,ErrorEstimate,t,TotalTime,RemeshTime,s
 
-    LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles
+    LOGICAL :: BandwidthOptimize, Found, Coarsening, GlobalBubbles, MeshNumbering
     INTEGER :: MaxDepth, NLen
     CHARACTER(LEN=1024) :: Path
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName
@@ -414,6 +414,8 @@ CONTAINS
        CALL Info( 'RefineMesh', &
                 'Current mesh seems fine. I will do nothing.', Level=6 )
        GOTO 10
+    ELSE
+       CALL SetMeshMaxDofs(NewMesh)
     END IF
 
     CALL Info( 'RefineMesh', 'The new mesh consists of: ', Level=5 )
@@ -446,9 +448,15 @@ CONTAINS
          'Adaptive Mesh Name', Found )
     IF ( .NOT. Found ) NewMesh % Name = 'RefinedMesh'
 
+    MeshNumbering = ListGetLogical( Solver % Values, &
+        'Adaptive Mesh Numbering', Found )
+    IF(.NOT. Found ) MeshNumbering = .TRUE.
+    
     NewMesh % AdaptiveDepth = RefMesh % AdaptiveDepth + 1
-    NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // TRIM(I2S(NewMesh % AdaptiveDepth))
-     
+    IF( MeshNumbering ) THEN
+      NewMesh % Name = TRIM( NewMesh % Name(1:NLen) ) // TRIM(I2S(NewMesh % AdaptiveDepth))
+    END IF
+      
     Nlen = LEN_TRIM(OutputPath)
     IF ( Nlen > 0 ) THEN
        Path = OutputPath(1:Nlen) // '/' // TRIM(NewMesh % Name)
@@ -848,13 +856,8 @@ CONTAINS
     IF ( .NOT. Found ) Path = 'RefinedMesh'
 
     i = RefMesh % AdaptiveDepth + 1
-    n = FLOOR(LOG10(REAL(i))) + 1.5d0 
     nLen = LEN_TRIM(Path)
-    DO j=n,1,-1
-       k = i / 10**(j-1)
-       Path = Path(1:nlen) // CHAR(k+ICHAR('0'))
-       i = i - k*10**(j-1)
-    END DO
+    Path = Path(1:nlen) // TRIM(I2S(i))
 
     nLen = LEN_TRIM(OutputPath)
     IF ( nlen > 0 ) THEN

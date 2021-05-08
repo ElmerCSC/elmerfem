@@ -106,6 +106,14 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
 
      DIM = CoordinateSystemDimension()
      WRITE(SolverName, '(A)') 'DJDBeta_Adjoint'
+
+   CALL Info(SolverName,'***********************',level=0)
+   CALL Info(SolverName,' This solver has been replaced by:',level=0)
+   CALL Info(SolverName,'   AdjointStokes_GradientBetaSolver  ',level=0)
+   CALL Info(SolverName,' See documentation under:   ',level=0)
+   CALL Info(SolverName,'   elmerice/Solvers/Documentation   ',level=0)
+   CALL Info(SolverName,'***********************',level=0)
+   CALL FATAL(SolverName,' Use new solver !!')
      
      NMAX=Solver % Mesh % NumberOfNodes
      allocate(VisitedNode(NMAX),db(NMAX),  &

@@ -175,13 +175,6 @@
           </property>
          </widget>
         </item>
-        <item>
-         <widget class="QLabel" name="label_3">
-          <property name="text">
-           <string>%ep is the post file name (Model -&gt; Setup...)</string>
-          </property>
-         </widget>
-        </item>
        </layout>
       </item>
      </layout>

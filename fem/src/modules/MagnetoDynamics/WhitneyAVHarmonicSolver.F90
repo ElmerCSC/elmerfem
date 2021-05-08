@@ -107,12 +107,12 @@ END SUBROUTINE WhitneyAVHarmonicSolver_Init
 
 
 !------------------------------------------------------------------------------
-!>  Solve vector potential A, scale potential V
+!>  Solve a vector potential A and scalar potential V from
 ! 
 !>  j omega sigma A+rot (1/mu) rot A+sigma grad(V) = J^s+rot M^s-sigma grad(V^s)
 !>  -div(sigma (j omega A+grad(V)))=0
 !
-!>  using edge elements (Nedelec/W basis of lowest degree) + nodal basis for V.
+!>  by using edge elements (Nedelec) + nodal basis for V.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
@@ -130,47 +130,41 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
-  TYPE(Element_t),POINTER :: Element, Edge
-
-  REAL(KIND=dp) :: Norm, Omega
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams, SolverParams
+  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
+  LOGICAL :: ExtNewton
+  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
   INTEGER :: NoIterationsMin, NoIterationsMax
-
-  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER :: NewtonIter
+  INTEGER, POINTER :: Perm(:)
+  INTEGER, ALLOCATABLE :: FluxMap(:)
 
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
+  COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
 
+  REAL(KIND=dp) :: Norm, Omega
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
-
-  REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
-
+  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
-  TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
+  REAL(KIND=dp) :: NewtonTol
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
-  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
-  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar
-  REAL(KIND=dp) :: NewtonTol
-  INTEGER :: NewtonIter
-  LOGICAL :: ExtNewton
-  
-  INTEGER, POINTER :: Perm(:)
-  INTEGER, ALLOCATABLE :: FluxMap(:)
-  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
-
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Element_t),POINTER :: Element, Edge
+  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams, SolverParams
+  TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
-  
   TYPE(ValueList_t), POINTER :: CompParams
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
-       Acoef, Cwrk, Cwrk_im, LamCond, &
+       Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
        GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
@@ -368,19 +362,32 @@ CONTAINS
            END SELECT
          END IF
        END IF
+
+       LaminateStack = .FALSE.
+       LaminateStackModel = ''
+       HasTensorReluctivity = .FALSE.
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
-       Material => GetMaterial( Element )
        IF ( ASSOCIATED(Material) ) THEN
-         CALL GetReluctivity(Material,Acoef,n)
-
+         IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+           CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+           IF (HasTensorReluctivity) THEN
+             IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+               Acoef(1:n) = Acoef_t(1,1,1:n) 
+               HasTensorReluctivity = .FALSE.
+             ELSE IF (size(Acoef_t,1)/=3) THEN
+               CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
+             END IF
+           ELSE
+             CALL GetReluctivity(Material,Acoef,n)
+           END IF
+         END IF
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
          Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
-         IF (.NOT. LaminateStack) LaminateStackModel = ''
        END IF
 
        LamThick=0d0
@@ -507,7 +514,18 @@ CONTAINS
            IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
            CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
          ELSE         
-           CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+           GapLength = GetConstReal( BC, 'Thin Sheet Thickness', Found)
+           IF (Found) THEN
+             MuParameter=GetConstReal( BC, 'Thin Sheet Relative Permeability', Found)
+             IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
+             ! Technically, there is no skin but why create yet another conductivity variable?
+             SkinCond = GetConstReal( BC, 'Thin Sheet Electric Conductivity', Found)
+             IF (.NOT. Found) SkinCond = 1.0_dp ! if not found default to "air" property
+             CALL LocalMatrixThinSheet( STIFF, FORCE, LOAD, GapLength, MuParameter, &
+                                            SkinCond, Element, n, nd )
+           ELSE
+             CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+           END IF
          END IF
        END IF
        
@@ -1048,37 +1066,37 @@ CONTAINS
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
-    INTEGER :: n, nd
+    LOGICAL :: LaminateStack, CoilBody
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
+                     RotMLoc(3,3), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
-
-    COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
-                        CVelo(3), CVeloSum
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
-
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody, &
-               HasVelocity, HasLorenzVelocity, HasAngularVelocity
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
-    TYPE(GaussIntegrationPoints_t) :: IP
-
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
-           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueListEntry_t), POINTER :: Lst
-    
-    TYPE(Nodes_t), SAVE :: Nodes
-
-    TYPE(ValueList_t), POINTER :: CompParams
-    LOGICAL :: StrandedHomogenization, FoundIm
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
+           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
+
+    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
+    COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
+                        CVelo(3), CVeloSum
+
+    LOGICAL :: Stat, Newton, Cubic, HBCurve, &
+               HasVelocity, HasLorenzVelocity, HasAngularVelocity
+    LOGICAL :: StrandedHomogenization, FoundIm
+
+    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
+
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueListEntry_t), POINTER :: Lst
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -1125,7 +1143,6 @@ CONTAINS
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
-        HBCurve = .TRUE.
       END IF
     END IF
 
@@ -1191,7 +1208,6 @@ CONTAINS
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
-       mu = SUM( Basis(1:n) * Acoef(1:n) )
 
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
@@ -1218,14 +1234,19 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilBody .AND. CoilType /= 'massive') &
-                   RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') THEN
+         DO i=1,3
+           DO j=1,3
+             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )             
+           END DO
+         END DO
+         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       END IF
 
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
@@ -1234,6 +1255,8 @@ CONTAINS
          IF ( Newton ) THEN
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
+       ELSE
+         mu = SUM( Basis(1:n) * Acoef(1:n) )
        END IF
 
        IF (LaminateStack) THEN
@@ -1251,20 +1274,35 @@ CONTAINS
          END SELECT
        END IF
 
-       Nu = CMPLX(0._dp, 0._dp)
-       Nu(1,1) = mu
-       Nu(2,2) = mu
-       Nu(3,3) = mu
+       IF (HasTensorReluctivity) THEN
+         IF (SIZE(Acoef_t,2) == 1) THEN
+           Nu = CMPLX(0._dp, 0._dp, kind=dp)
+           DO i = 1,3
+             Nu(i,i) = SUM(Basis(1:n)*Acoef_t(i,1,1:n))
+           END DO
+         ELSE
+           DO i = 1,3
+             DO j = 1,3
+               Nu(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+             END DO
+           END DO
+         END IF
+       ELSE
+         Nu = CMPLX(0._dp, 0._dp, kind=dp)
+         Nu(1,1) = mu
+         Nu(2,2) = mu
+         Nu(3,3) = mu
 
-       IF (CoilBody .AND. StrandedHomogenization) THEN
-         nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
-         nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
-         Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
-         nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
-         nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
-         Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
-         Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
-       END IF 
+         IF (CoilBody .AND. StrandedHomogenization) THEN
+           nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
+           nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
+           Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
+           nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
+           nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
+           Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
+           Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
+         END IF
+       END IF
  
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
@@ -1286,27 +1324,24 @@ CONTAINS
            L = L - MATMUL(JfixPot, dBasisdx(1:n,:))
          END IF
        END IF
-                
+
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
        ! If we calculate a coil, the nodal degrees of freedom are not used:
        ! ------------------------------------------------------------------
-       IF (.NOT. CoilBody) THEN
+       NONCOIL_CONDUCTOR: IF (.NOT. CoilBody .AND. SUM(ABS(C)) > AEPS ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
           DO i=1,np
             p = i
-            DO j=1,np
-              q = j
+            DO q=1,np
 
               ! Compute the conductivity term <C grad V,grad v> for stiffness 
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
-              IF ( SUM(C) /= 0._dp ) THEN
-                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
-              END IF
+                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np
@@ -1323,7 +1358,7 @@ CONTAINS
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
             END DO
           END DO
-       END IF ! (.NOT. CoilBody)
+       END IF NONCOIL_CONDUCTOR
 
        IF ( HasVelocity ) THEN
          DO i=1,np
@@ -1366,7 +1401,7 @@ CONTAINS
            END IF
 
            STIFF(p,q) = STIFF(p,q) + &
-              SUM(MATMUL(Nu, RotWBasis(i,:))*RotWBasis(j,:))*detJ*IP%s(t)
+              SUM(MATMUL(Nu, RotWBasis(j,:))*RotWBasis(i,:))*detJ*IP%s(t)
 
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
@@ -1615,6 +1650,118 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixAirGapBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixThinSheet(  STIFF, FORCE, LOAD, Thickness, Permeability, &
+                                          Conductivity, Element, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: LOAD(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
+    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C
+    
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
+
+       sheetThickness  = SUM(Basis(1:n) * Thickness(1:n))
+       mu  = SUM(Basis(1:n) * Permeability(1:n))
+       C  = SUM(Basis(1:n) * Conductivity(1:n))
+
+       CONDUCTOR: IF ( C > AEPS ) THEN
+          !
+          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
+          ! --------------------------------------------------------
+          DO i=1,np
+            p = i
+            DO q=1,np
+
+              ! Compute the conductivity term <C grad V,grad v> for stiffness 
+              ! matrix (anisotropy taken into account)
+              ! -------------------------------------------
+                STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+            END DO
+            DO j=1,nd-np
+              q = j+np
+              
+              ! Compute the conductivity term <j * omega * C A,grad v> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+                  sheetThickness * C*SUM(Wbasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+
+              ! Compute the conductivity term <C grad V, eta> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! ------------------------------------------------
+              STIFF(q,p) = STIFF(q,p) + sheetThickness * C*SUM(dBasisdx(i,:)*WBasis(j,:))*detJ*IP % s(t)
+            END DO
+          END DO
+       END IF CONDUCTOR
+
+       ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
+       !        J + curl(M) - C*grad(P'):
+       ! ----------------------------------------------------
+       DO i = 1,nd-np
+         p = i+np
+       !  FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
+       !     SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
+
+         DO j = 1,nd-np
+           q = j+np
+           STIFF(p,q) = STIFF(p,q) + sheetThickness / (mu*muVacuum) * &
+              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+
+           ! Compute the conductivity term <j * omega * C A,eta> 
+           ! for stiffness matrix (anisotropy taken into account)
+           ! ----------------------------------------------------
+           STIFF(p,q) = STIFF(p,q) + sheetThickness * im*Omega* &
+              C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+         END DO
+       END DO
+
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixThinSheet
 !------------------------------------------------------------------------------
 
 

@@ -1,0 +1,99 @@
+! This is a consistency test for a transient case with only inertia
+! resisting the movement under constant force. Hence we can analytically
+! compute the position with rho=1 and t=1s to be f/2 i.e. here (0.5,1.0,1.5).
+!
+! Both nonlinear and linear solvers are tested within the same test. 
+!
+! P.R. 30.3.2021
+
+Header
+  Mesh DB "." "cube"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+
+! The more timesteps we have the closer we get to the analytical solution
+$tsteps=100
+  Timestepping Method = Bossak
+  Timestep Sizes = $1.0/tsteps
+  Timestep Intervals = $tsteps
+
+  Output Intervals = 0
+  vtu: Save Bulk Only = Logical True
+  Post File = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+
+Body Force 1
+  Name = "Force"
+  Stress Bodyforce 1 = 1.0
+  Stress Bodyforce 2 = 2.0
+  Stress Bodyforce 3 = 3.0
+End
+
+Initial Condition 1
+  Name = "Start"
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End 
+
+Material 1
+  Density = 1.0
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+End
+
+Solver 1
+  Equation = StressSolver
+  Variable = -dofs 3 DisplacementA
+  Procedure = "StressSolve" "StressSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+End
+
+Solver 2
+  Equation = ElasticitySolver
+  Variable = -dofs 3 DisplacementB
+  Procedure = "ElasticSolve" "ElasticSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1 :: Reference Norm = 1.06938176
+Solver 2 :: Reference Norm = 1.06938176
+

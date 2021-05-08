@@ -15,7 +15,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
 
   Coordinate System = "Cartesian"
   Simulation Type = Transient
@@ -45,7 +45,7 @@ Material 1
 End
 
 Equation 1
-  Active Solvers(2) = 1 2
+  Active Solvers(3) = 1 2 3
 End
 
 
@@ -80,7 +80,10 @@ Solver 2
   Procedure = "EMWaveSolver" "EMWaveCalcFields"
   Linear System Symmetric = False
 
-  Calculate Elemental Fields = Logical False
+!  Discontinuous Galerkin = True
+!  Average Within Materials = True
+  Calculate Elemental Fields = False
+  Calculate Nodal Fields = True
 !  Calculate Electric field derivatives = Logical True
 
   Steady State Convergence Tolerance = 1

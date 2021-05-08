@@ -75,7 +75,7 @@ Solver *solver id*
 
 Values for the nodal variable **V** can be given in the body force if  *Optimized Variable Name* was
 not provided in the solver parameters. 
-This can be usefull if we want to apply some change of variable compared to the variable that is optimised,
+This can be useful if we want to apply some change of variable compared to the variable that is optimised,
 However it will be to the user responsability to provide the exact derivative of his change of variable 
 as, by default, the solver computes the derivative with respect to the nodal value.
 In this cas ethe user can directly provide the derivative with the keyword *CostReg Nodal Variable der = Real ...*

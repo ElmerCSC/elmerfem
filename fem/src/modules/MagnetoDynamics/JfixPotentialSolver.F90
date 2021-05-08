@@ -60,7 +60,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   INTEGER :: i,j,k,n,m,dim,dofs
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: A => NULL(),B
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, Eps
   LOGICAL:: SingleNodeBC, EnsureBC, Found
   INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
@@ -100,16 +100,26 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     IF(.NOT.Visited) THEN
       CALL ListAddNewString(SolverParams,'Jfix: Linear System Solver', 'Iterative')
       CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Max Iterations', 1000 )
-      CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStab')
+      CALL ListAddNewString(SolverParams,'Jfix: Linear System Iterative Method', 'BiCGStabl')
       CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Use HYPRE', .FALSE.)
       CALL ListAddNewLogical(SolverParams,'Jfix: Use Global Mass Matrix',.FALSE.)
-      CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu')
-      CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance', &
-          0.001_dp*GetCReal(SolverParams,'Linear System Convergence Tolerance', Found))
+      CALL ListAddNewString(SolverParams,'Jfix: Linear System Preconditioning', 'Ilu0')
+
+      ! Use somewhat more complex logic for setting the convergence since one could try out the
+      ! AV tolerances messing then Jfix tolerances too. 
+      Eps = GetCReal(SolverParams,'Linear System Convergence Tolerance', Found)
+      IF(Found) THEN
+        Eps = MIN(0.001_dp * Eps,1.0e-8)
+      ELSE
+        Eps = 1.0e-8
+      END IF
+        
+      CALL ListAddNewConstReal(SolverParams,'Jfix: Linear System Convergence Tolerance',Eps)
       CALL ListAddNewLogical(SolverParams,'Jfix: Skip Compute Nonlinear Change',.TRUE.)
       CALL ListAddNewLogical(SolverParams,'Jfix: Nonlinear System Consistent Norm',.TRUE.)
       CALL ListAddNewInteger(SolverParams,'Jfix: Linear System Residual Output',20)
       CALL ListAddNewString(SolverParams,'Jfix: Nonlinear System Convergence Measure','Norm')
+      CALL ListAddNewInteger(SolverParams,'Jfix: Norm Permutation',1)
       CALL ListAddNewLogical(SolverParams,'Jfix: Linear System Complex',.FALSE.)
       CALL ListAddNewLogical(SolverParams,'Jfix: Apply Conforming BCs',.FALSE.)
 
@@ -257,7 +267,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     IF ( ParEnv % PEs>1) ParEnv = A % ParMatrix % ParEnv
 
     CALL SolveSystem(A,ParMatrix,A % rhs,jfixpot % Values,jfixpot % Norm,1,Solver)
-
+    
     WRITE(Message,'(A,ES12.3)') 'Norm for Jfix computation: ',SUM( ABS( jfixpot % Values ) )
     CALL Info('JfixPotentialSolver',Message,Level=8)
 

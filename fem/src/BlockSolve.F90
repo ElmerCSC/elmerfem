@@ -545,7 +545,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: SolverMatrix
     TYPE(Matrix_t), POINTER :: Amat
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: ReuseMatrix, Found
+    LOGICAL :: ReuseMatrix, Found, EliminateZero
     INTEGER::i,j,k,i_aa,i_vv,i_av,i_va,n;
     REAL(KIND=DP) :: SumAbsMat
     
@@ -555,6 +555,8 @@ CONTAINS
     Params => Solver % Values
         
     ReuseMatrix = ListGetLogical( Params,'Block Matrix Reuse',Found)
+    EliminateZero = ListGetLogical( Params, &
+                         'Block Eliminate Zero Submatrices', Found )
 
     DO RowVar=1,NoVar
       DO ColVar=1,NoVar            
@@ -579,16 +581,18 @@ CONTAINS
               //TRIM(I2S(RowVar))//','//TRIM(I2S(ColVar))//')',Level=20)          
           CALL CRS_BlockMatrixPick(SolverMatrix,Amat,NoVar,RowVar,ColVar)          
             
-          IF( Amat % NumberOfRows > 0 ) THEN
-            SumAbsMat = SUM( ABS( Amat % Values ) )
-            IF( SumAbsMat < SQRT( TINY( SumAbsMat ) ) ) THEN
-              CALL Info('BlockPickMatrix','Matrix is actually all zero, eliminating it!',Level=12)
-              DEALLOCATE( Amat % Values ) 
-              IF( .NOT. ReuseMatrix ) THEN
-                DEALLOCATE( Amat % Rows, Amat % Cols )
-                IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag, Amat % rhs ) 
+          IF( EliminateZero ) THEN
+            IF( Amat % NumberOfRows > 0 ) THEN
+              SumAbsMat = SUM( ABS( Amat % Values ) )
+              IF( SumAbsMat < SQRT( TINY( SumAbsMat ) ) ) THEN
+                CALL Info('BlockPickMatrix','Matrix is actually all zero, eliminating it!',Level=12)
+                DEALLOCATE( Amat % Values ) 
+                IF( .NOT. ReuseMatrix ) THEN
+                  DEALLOCATE( Amat % Rows, Amat % Cols )
+                  IF( RowVar == ColVar ) DEALLOCATE( Amat % Diag, Amat % rhs ) 
+                END IF
+                Amat % NumberOfRows = 0
               END IF
-              Amat % NumberOfRows = 0
             END IF
           END IF
 
@@ -1784,34 +1788,44 @@ CONTAINS
 
     TYPE(Solver_t) :: Solver
     
-    INTEGER :: i,j,k,ind1,ind2,Novar
+    INTEGER :: i,j,k,ind1,ind2,Novar,Nsol
     INTEGER, POINTER :: ConstituentSolvers(:)
     LOGICAL :: Found
-    TYPE(ValueList_t), POINTER :: Params
+    TYPE(ValueList_t), POINTER :: Params, ShellParams
     TYPE(Matrix_t), POINTER :: A_fs, A_sf, A_s, A_f
     TYPE(Variable_t), POINTER :: FVar, SVar
     LOGICAL :: IsPlate, IsShell, IsBeam, IsSolid, GotBlockSolvers
+    LOGICAL :: DrillingDOFs, GotCoupling
+    TYPE(Solver_t), POINTER :: PSol
 
-    
     Params => Solver % Values
     ConstituentSolvers => ListGetIntegerArray(Params, 'Block Solvers', GotBlockSolvers)
+    IF(.NOT. GotBlockSolvers ) THEN
+      CALL Fatal('StructureCouplingBlocks','We need "Block Solvers" defined!')
+    END IF
 
     ! Currently we simply assume the master solver to be listed as the first entry in
     ! the 'Block Solvers' array.
     i = 1
+    SVar => TotMatrix % Subvector(i) % Var
+    A_s => TotMatrix % Submatrix(i,i) % Mat
     
-    DO k = 1, 4
-      IsSolid = .FALSE.
-      IsPlate = .FALSE.
-      IsShell = .FALSE.
-      IsBeam = .FALSE.
-      
-      IF(k==1) j = ListGetInteger( Params,'Solid Solver Index',IsSolid)
-      IF(k==2) j = ListGetInteger( Params,'Plate Solver Index',IsPlate)
-      IF(k==3) j = ListGetInteger( Params,'Shell Solver Index',IsShell)
-      IF(k==4) j = ListGetInteger( Params,'Beam Solver Index',IsBeam)
+    Nsol = SIZE( ConstituentSolvers )
+    GotCoupling = .FALSE.
 
-      IF(j==0) CYCLE
+    
+    DO j = 1, Nsol
+      k = ConstituentSolvers(j)
+      
+      PSol => CurrentModel % Solvers(k)
+      
+      IsSolid = ListGetLogical( Psol % Values,'Solid Solver',IsSolid)
+      IsPlate = ListGetLogical( Psol % Values,'Plate Solver',IsPlate)
+      IsShell = ListGetLogical( Psol % Values,'Shell Solver',IsShell)
+      IsBeam = ListGetLogical( Psol % Values,'Beam Solver',IsBeam)
+      
+      ! No need to couple to one self!
+      IF(j==1) CYCLE
       
       IF (GotBlockSolvers) THEN
         IF (j > size(ConstituentSolvers)) CALL Fatal('StructureCouplingBlocks', &
@@ -1828,13 +1842,15 @@ CONTAINS
             //TRIM(I2S(i))//' and '//TRIM(I2S(j)))
       END IF
 
+      GotCoupling = .TRUE.
+      
       A_fs => TotMatrix % Submatrix(j,i) % Mat
       A_sf => TotMatrix % Submatrix(i,j) % Mat
       
-      SVar => TotMatrix % Subvector(i) % Var
+      !SVar => TotMatrix % Subvector(i) % Var
       FVar => TotMatrix % Subvector(j) % Var
       
-      A_s => TotMatrix % Submatrix(i,i) % Mat
+      !A_s => TotMatrix % Submatrix(i,i) % Mat
       A_f => TotMatrix % Submatrix(j,j) % Mat
       
       IF(.NOT. ASSOCIATED( SVar ) ) THEN
@@ -1843,15 +1859,22 @@ CONTAINS
       IF(.NOT. ASSOCIATED( FVar ) ) THEN
         CALL Fatal('StructureCouplingBlocks','Slave structure variable not present!')
       END IF
+
+      IF (IsShell) THEN
+        ShellParams => Fvar % Solver % Values
+        DrillingDOFs = GetLogical(ShellParams, 'Drilling DOFs', Found)
+      ELSE
+        DrillingDOFs = .FALSE.
+      END IF
       
       CALL StructureCouplingAssembly( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
-          IsSolid, IsPlate, IsShell, IsBeam )
-      !IF (IsShell) THEN
-      !  CALL StructureCouplingAssembly_defutils( Solver, FVar, SVar, A_f, A_s, A_fs, A_sf, &
-      !      IsSolid, IsPlate, IsShell, IsBeam)
-      !END IF
+          IsSolid, IsPlate, IsShell, IsBeam, DrillingDOFs)
     END DO
-      
+
+    IF(.NOT. GotCoupling ) THEN
+      CALL Fatal('StructureCouplingBlocks','Could not determine coupling blocks!')
+    END IF
+    
   END SUBROUTINE StructureCouplingBlocks
   
   
@@ -3525,7 +3548,8 @@ CONTAINS
     SaveRHS => SolverMatrix % RHS
     SolverMatrix % RHS => b
     
-    IF( .NOT. GotSlaveSolvers ) THEN    
+    IF( .NOT. GotSlaveSolvers ) THEN
+      CALL Info('BlockSolveInt','Splitting monolithic matrix into pieces',Level=10)
       IF( BlockDomain .OR. BlockHdiv ) THEN
         CALL BlockPickMatrixPerm( Solver, BlockIndex, VarDofs )
         DEALLOCATE( BlockIndex ) 
@@ -3548,6 +3572,7 @@ CONTAINS
       END IF
 
       CALL BlockPrecMatrix( Solver, VarDofs ) 
+      CALL Info('BlockSolveInt','Block matrix system created',Level=12)
     END IF
 
     ! Currently we cannot have both structure-structure and fluid-structure couplings!
@@ -3565,9 +3590,10 @@ CONTAINS
     END IF
 
     IF (isParallel) THEN
+      CALL Info('BlockSolveInt','Initializing parallel block matrices',Level=12)
       DO RowVar=1,NoVar
         DO ColVar=1,NoVar
-          CALL ParallelActive( .TRUE.)
+
           Amat => TotMatrix % SubMatrix(RowVar,ColVar) % Mat
           Amat % Comm = Solver % Matrix % Comm
           Parenv % ActiveComm = Amat % Comm
@@ -3575,8 +3601,10 @@ CONTAINS
 
           IF(Amat % NumberOfRows>0) THEN
             IF(Amat % NumberOfRows==MAXVAL(Amat % Cols)) THEN
-              IF (.NOT.ASSOCIATED(Amat % ParMatrix)) &
+              IF (.NOT.ASSOCIATED(Amat % ParMatrix)) THEN
                 CALL ParallelInitMatrix(Solver,Amat)
+              ELSE
+              END IF
             END IF
 
             IF(ASSOCIATED(Amat % ParMatrix )) THEN
@@ -3586,9 +3614,11 @@ CONTAINS
             END IF
           END IF
 
-          Solver % Variable  => SolverVar
+          CALL SParIterActiveBarrier()
         END DO
       END DO
+      Solver % Variable  => SolverVar
+      CALL Info('BlockSolveInt','Initialization of block matrix finished',Level=20)
     END IF
     
     !------------------------------------------------------------------------------

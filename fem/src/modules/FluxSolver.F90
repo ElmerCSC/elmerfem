@@ -62,7 +62,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   INTEGER :: i,j,k,dim,DOFs,firstmag
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry, GotIt  
   LOGICAL :: CalculateFluxMag, CalculateFlux, CalculateGradMag, CalculateGrad, &
-      EnforcePositiveMagnitude, UsePot
+      EnforcePositiveMagnitude, UsePot, AutoNorm
   REAL(KIND=dp) :: Unorm, Totnorm, val
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
   REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
@@ -79,6 +79,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   CALL Info( 'FluxSolver', '-------------------------------------',Level=4 )
 
   dim = CoordinateSystemDimension()
+
 !------------------------------------------------------------------------------
 !  Check what needs to be computed
 !------------------------------------------------------------------------------
@@ -103,12 +104,17 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     CALL Warn('FluxSolver','No field computation requested, exiting...')     
     RETURN
   END IF
-
+  
 !-------------------------------------------------------------------------------
 ! If only one component is used use the scalar equation, otherwise use an
 ! auxiliary variable to store all the dimensions
 !-------------------------------------------------------------------------------
 
+  AutoNorm = .NOT. ListCheckPresent( SolverParams,'Skip Compute Nonlinear Change') 
+  IF( AutoNorm ) THEN
+    CALL ListAddLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.) 
+  END IF  
+  
   VarName = GetString(SolverParams,'Flux Variable',GotIt )
   UsePot = .FALSE.
   IF(.NOT. GotIt) VarName = GetString(SolverParams,'Target Variable',GotIt )
@@ -181,22 +187,22 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % rhs = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
   
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),DOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
   
   CALL BulkAssembly()
-  IF( ConstantBulkMatrix ) THEN
-    IF(.NOT. ConstantBulkMatrixInUse ) THEN
-      CALL DefaultFinishBulkAssembly( BulkUpdate = .TRUE.)
+
+  IF ( ConstantBulkMatrix ) THEN
+    IF (.NOT. ConstantBulkMatrixInUse) THEN
+      CALL Info('FluxSolver','Saving the system matrix', Level=6)
+      CALL CopyBulkMatrix(Solver % Matrix, BulkRHS = .FALSE.)
     END IF
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
   END IF
 
   CALL DefaultFinishAssembly()
@@ -212,17 +218,25 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   TotNorm = 0.0_dp
   DO i=1,Dofs
     Solver % Matrix % RHS => ForceVector(:,i)
-    UNorm = DefaultSolve()
 
+    ! If nothing else specified, then consider only the last component
+    ! for norm comparison. The the coupled system norm also converges. 
+    IF( i == Dofs .AND. AutoNorm ) THEN
+      CALL ListRemove( SolverParams,'Skip Compute Nonlinear Change')
+    END IF
+
+    UNorm = DefaultSolve()
+    
     TotNorm = TotNorm + Unorm ** 2
     Fields(i) % Values = Solver % Variable % Values
-
+      
     IF( EnforcePositiveMagnitude .AND. i >= firstmag ) THEN
       DO j=1,SIZE( Fields(i) % Values ) 
         Fields(i) % Values(j) = MAX( Fields(i) % Values(j), 0.0_dp )
       END DO
     END IF
   END DO
+  
   DEALLOCATE( ForceVector )  
   Solver % Matrix % RHS => SaveRHS
   TotNorm = SQRT(TotNorm)
@@ -576,8 +590,7 @@ END SUBROUTINE FluxSolver
 !------------------------------------------------------------------------------
     SolverParams => GetSolverParams()
     dim = CoordinateSystemDimension()
-
-
+    
     IF( dim < 2 .OR. dim > 3 ) THEN
       CALL Fatal('FluxSolver_init','Flux computation makes sense only in 2D and 3D')
     END IF
@@ -671,24 +684,15 @@ END SUBROUTINE FluxSolver
           NextFreeKeyword('Exported Variable',SolverParams),TRIM(GradName))
     END IF
 
-
     CALL ListAddInteger( SolverParams, 'Time derivative order', 0 )
       
-    CALL ListAddLogical( SolverParams,'Skip Compute Nonlinear Change',.TRUE.)
-
     ! Add linear system defaults: cg+diagonal
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Solver')) &
-        CALL ListAddString(SolverParams,'Linear System Solver','Iterative')
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Iterative Method')) &
-        CALL ListAddString(SolverParams,'Linear System Iterative Method','cg')
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Preconditioning')) &
-        CALL ListAddString(SolverParams,'Linear System Preconditioning','diagonal')
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Max Iterations')) &
-        CALL ListAddInteger(SolverParams,'Linear System Max Iterations',500)
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Residual Output')) &
-        CALL ListAddInteger(SolverParams,'Linear System Residual Output',10)
-    IF(.NOT. ListCheckPresent(SolverParams,'Linear System Convergence Tolerance')) &
-        CALL ListAddConstReal(SolverParams,'Linear System Convergence Tolerance',1.0e-10_dp)
+    CALL ListAddNewString(SolverParams,'Linear System Solver','Iterative')
+    CALL ListAddNewString(SolverParams,'Linear System Iterative Method','cg')
+    CALL ListAddNewString(SolverParams,'Linear System Preconditioning','ILU0')
+    CALL ListAddNewInteger(SolverParams,'Linear System Max Iterations',500)
+    CALL ListAddNewInteger(SolverParams,'Linear System Residual Output',10)
+    CALL ListAddNewConstReal(SolverParams,'Linear System Convergence Tolerance',1.0e-10_dp)
     
 !------------------------------------------------------------------------------
   END SUBROUTINE FluxSolver_Init

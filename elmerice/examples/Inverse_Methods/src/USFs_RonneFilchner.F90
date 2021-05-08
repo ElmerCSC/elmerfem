@@ -1,6 +1,6 @@
 !#
 !# A User function for Ronne-Filchner test case;
-!# to impose Conditionnal Dirichlet conditions only for Grounded ice and GL
+!# to impose Conditional Dirichlet conditions only for Grounded ice and GL
 !#   VarIn=GroundedMask (-1 : for floating ice; 0 : for GL; 1: for grounded ice)
 !#   Varout return a positive value for Grounded ice and GL
        FUNCTION GM_CONDITION(Model,nodenumber,VarIn) RESULT(VarOut)

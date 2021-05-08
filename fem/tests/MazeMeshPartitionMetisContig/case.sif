@@ -1,6 +1,6 @@
 !---------------------------------------------------------
 ! Test case for the consistency of partitioning.
-! This case is partitoned exactly using Metis partitioning
+! This case is partitioned exactly using Metis partitioning
 ! into 6 partitions. The partitioning is enforced to being
 ! contiguous. Without the flag it would not be.
 !

@@ -40,7 +40,7 @@ Some solvers are model specific.
 
 The following chapters describe solvers specific to compute the gradients (4), and are model specific.
 
-The adjoint codes have been derived by hand as usually the stucture of Elmer is too complex
+The adjoint codes have been derived by hand as usually the structure of Elmer is too complex
 to use  automatic differentiation softwares.
 
 The solvers have been designed to be as generic as possible. A strength of Elmer is its modularity,

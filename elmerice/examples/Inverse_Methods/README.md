@@ -24,3 +24,6 @@ TEST CASES USING THE SSA SOLVER:
 
 TEST CASES USING THE STOKES SOLVER:
    - MacAyeal_Stokes: Optimisation of the basal friction coefficient based on a synthetic test case.
+
+TEST CASES FOR THE THICKNESS SOLVER:
+   - MassConservation: Validation of the adjoint of the steady state thickness solver; i.e. the mass conservation method.

@@ -16,7 +16,7 @@ Header
 End
 
 Simulation
-   Max Output Level = 8
+   Max Output Level = 5
    Coordinate System = "Cartesian 3D"
    Coordinate Mapping(3) = 1 2 3 
    Simulation Type = Steady state
@@ -77,7 +77,9 @@ Solver 3
    Linear System Symmetric = True
    Potential Variable = String "P"
 
-   Calculate Magnetic Vector Potential = False
+   Separate Magnetic Energy = True
+
+   Calculate Magnetic Vector Potential = True
    Calculate Magnetic Flux Density = True
    Calculate Magnetic Field Strength = Logical True
    Steady State Convergence Tolerance = 0
@@ -97,16 +99,14 @@ Solver 4
   Save Geometry IDs = Logical True
   Vtu format = Logical True
   Output File Name = with_projection
-!  Vector Field 1 = String "Volume Current"
-!  Vector Field 2 = String "Magnetic Flux Density E"
-!  Vector Field 3 = String "Magnetic Field Strength E"
+  Discontinuous Bodies = True
 End
 
 Solver 5
   Equation = "scalars"
   procedure = "SaveData" "SaveScalars"
   !variable 1 = res: magnetic field energy
-  show norm index = integer 2
+  show norm index = integer 3
 End
 
 
@@ -117,6 +117,7 @@ Solver 6
   Potential variable = "P"
   Variable = "phi"
   Variable DOFs = 1
+  Constant Bulk Matrix = True
   linear system solver = iterative
   linear system iterative method = CG
   linear system max iterations = 1000
@@ -134,6 +135,7 @@ Solver 7
   Potential variable = "P"
   Variable = "Kernel Component"
   Variable DOFs = 1
+  Constant Bulk Matrix = True
 
   linear system solver = iterative
   linear system iterative method = CG
@@ -171,7 +173,6 @@ Material 2
   relative Permittivity = 1.0
   Name = "Iron"
   Electric Conductivity = 0.0
-  Relative Permeability = 1000.
 
   H-B Curve(31,2) = Real
    INCLUDE HB
@@ -255,7 +256,6 @@ Body Force 1
   Current Density 3 = Equals Volume current 3
 End
 
-Solver 3 :: Reference Norm = Real 17.869450
+Solver 3 :: Reference Norm = Real 0.28682860E-03
 Solver 5 :: reference norm = real 2.204993E-05
-RUN
-!End Of File
+

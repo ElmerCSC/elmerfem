@@ -905,6 +905,9 @@
           ElementNumber, NodalPoisson, NodalYoung, NodalDampingCoef, &
           LocalDeflection, LargeDeflection, StabilityAnalysis, Nvector )
 !------------------------------------------------------------------------------
+       USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor, &
+           IsotropicElasticity
+
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), MASS(:,:), &
             Amatrix(3,3), Bmatrix(3,3), Dmatrix(3,3), Astarmatrix(2,2)
        REAL(KIND=dp) :: FORCE(:)
@@ -1184,7 +1187,7 @@
             END IF
          END DO
 
-         CALL AddEnergy(STIFF, Dmatrix, Kappa, 3, 6*n, s)
+         CALL StrainEnergyDensity(STIFF, Dmatrix, Kappa, 3, 6*n, s)
 
 !        In-plane stiffness:
 !        -------------------
@@ -1206,7 +1209,7 @@
             END IF
          END DO
 
-         CALL AddEnergy(STIFF, Amatrix, EPS, 3, 6*n, s)
+         CALL StrainEnergyDensity(STIFF, Amatrix, EPS, 3, 6*n, s)
 
 !        Coupling through the B-matrix:
 !        ------------------------------
@@ -1249,7 +1252,7 @@
             Gammaa(1:2,6*p-3) = dBasisdx(p,1:2)
          END DO
 
-         CALL AddEnergy(STIFF, Astarmatrix, Gammaa, 2, 6*n, SCF*s)
+         CALL StrainEnergyDensity(STIFF, Astarmatrix, Gammaa, 2, 6*n, SCF*s)
 
 !        Drilling DOFs (in-plane rotations):
 !        -----------------------------------
@@ -1260,7 +1263,7 @@
             Omega(1,6*p-0) =  Basis(p)              !  rotation
          END DO
 
-         CALL AddEnergy(STIFF, Gdrilling, Omega, 1, 6*n, s)
+         CALL StrainEnergyDensity(STIFF, Gdrilling, Omega, 1, 6*n, s)
 
 !        Newton lin. terms:
 !        -----------------
@@ -1528,7 +1531,9 @@
           Mten, MtenMaterial, NodalYoung, NodalPoisson, NodalThickness, &
           LargeDeflection )
 !------------------------------------------------------------------------------
+       USE SolidMechanicsUtils, ONLY: ShearCorrectionFactor, IsotropicElasticity
        IMPLICIT NONE
+
        REAL(KIND=dp) :: StabParam1, StabParam2, LocalDeflection(:), &
             Weight3(:), Weight4(:), Eps(3,3), Kap(3,3), NTen(3,3), MTen(3,3), &
             NtenMaterial(2,2), MtenMaterial(2,2),  &
@@ -1953,6 +1958,7 @@
 !------------------------------------------------------------------------------
      FUNCTION LocalBasis( Nodes, n ) RESULT( BasisVectors )
 !------------------------------------------------------------------------------
+       USE ElementDescription, ONLY: CrossProduct
        TYPE(Nodes_t) :: Nodes
        REAL(KIND=dp) :: BasisVectors(3,3)
        INTEGER :: n
@@ -1977,42 +1983,10 @@
        BasisVectors(1:3,1) = Tangent1
        BasisVectors(1:3,2) = Tangent2 - SUM( Tangent1 * Tangent2 ) * Tangent1
        BasisVectors(1:3,2) = BasisVectors(1:3,2) / SQRT( SUM( BasisVectors(1:3,2)**2 ) )
-       BasisVectors(1:3,3) = CrossProductL( BasisVectors(1:3,1), BasisVectors(1:3,2) )
+       BasisVectors(1:3,3) = CrossProduct( BasisVectors(1:3,1), BasisVectors(1:3,2) )
 !------------------------------------------------------------------------------       
      END FUNCTION LocalBasis
 !------------------------------------------------------------------------------       
-
-
-!------------------------------------------------------------------------------       
-     SUBROUTINE IsotropicElasticity(Ematrix, &
-          Gmatrix,Poisson,Young,Thickness,Basis,n)
-!------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Ematrix(:,:), Gmatrix(:,:), Basis(:)
-     REAL(KIND=dp) :: Poisson(:), Young(:), Thickness(:)
-     REAL(KIND=dp) :: Euvw, Puvw, Guvw, Tuvw
-     INTEGER :: n
-!------------------------------------------------------------------------------
-       Euvw = SUM( Young(1:n)    * Basis(1:n) )
-       Puvw = SUM( Poisson(1:n)  * Basis(1:n) )
-       Tuvw = SUM( Thickness(1:n)* Basis(1:n) )
-       Guvw = Euvw/(2.0d0*(1.0d0 + Puvw))
-
-       Ematrix = 0.0d0
-       Ematrix(1,1) = 1.0d0
-       Ematrix(1,2) = Puvw
-       Ematrix(2,1) = Puvw
-       Ematrix(2,2) = 1.0d0
-       Ematrix(3,3) = (1.0d0-Puvw)/2.0d0
-       Ematrix = Ematrix * Euvw * (Tuvw**3) / (12.0d0 * (1.0d0 - Puvw*Puvw))
-
-       Gmatrix = 0.0d0
-       Gmatrix(1,1) = Guvw*Tuvw
-       Gmatrix(2,2) = Guvw*Tuvw
-!------------------------------------------------------------------------------
-     END SUBROUTINE IsotropicElasticity
-!------------------------------------------------------------------------------
-
-!==============================================================================
 
 !------------------------------------------------------------------------------
      SUBROUTINE IsotropicInPlaneElasticity( Ematrix, &
@@ -2039,89 +2013,6 @@
      END SUBROUTINE IsotropicInPlaneElasticity
 !------------------------------------------------------------------------------
 
-!==============================================================================
-
-!------------------------------------------------------------------------------
-     SUBROUTINE ShearCorrectionFactor(Kappa,Thickness,x,y,n,StabParam)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Kappa,Thickness,x(:),y(:),StabParam
-       INTEGER :: n
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: x21,x32,x43,x13,x14,y21,y32,y43,y13,y14, &
-            l21,l32,l43,l13,l14,alpha,h
-!------------------------------------------------------------------------------
-       Kappa = 1.0d0
-       SELECT CASE(n)
-          CASE(3)
-             alpha = 0.20d0 * StabParam
-             x21 = x(2)-x(1)
-             x32 = x(3)-x(2)
-             x13 = x(1)-x(1)
-             y21 = y(2)-y(1)
-             y32 = y(3)-y(2)
-             y13 = y(1)-y(1)
-             l21 = SQRT(x21**2 + y21**2)
-             l32 = SQRT(x32**2 + y32**2)
-             l13 = SQRT(x13**2 + y13**2)
-             h = MAX(l21,l32,l13)
-             Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-          CASE(4)
-             alpha = 0.10d0 * StabParam
-             x21 = x(2)-x(1)
-             x32 = x(3)-x(2)
-             x43 = x(4)-x(3)
-             x14 = x(1)-x(4)
-             y21 = y(2)-y(1)
-             y32 = y(3)-y(2)
-             y43 = y(4)-y(3)
-             y14 = y(1)-y(4)
-             l21 = SQRT(x21**2 + y21**2)
-             l32 = SQRT(x32**2 + y32**2)
-             l43 = SQRT(x43**2 + y43**2)
-             l14 = SQRT(x14**2 + y14**2)
-             h = MAX(l21,l32,l43,l14)
-             Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-           CASE DEFAULT
-             CALL Fatal('ShellSolver','Illegal number of nodes for Smitc elements')
-           END SELECT
-!------------------------------------------------------------------------------
-     END SUBROUTINE ShearCorrectionFactor
-!------------------------------------------------------------------------------
-
-!==============================================================================
-
-!------------------------------------------------------------------------------
-     SUBROUTINE AddEnergy(A,B,C,m,n,s)
-!------------------------------------------------------------------------------
-!      Performs the operation
-!
-!         A = A + C' * B * C * s
-!
-!      with
-!
-!         Size( A ) = n x n
-!         Size( B ) = m x m
-!         Size( C ) = m x n
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: A(:,:),B(:,:),C(:,:),s
-       INTEGER :: m,n
-!------------------------------------------------------------------------------
-       INTEGER :: i,j,k,l
-!------------------------------------------------------------------------------
-       DO i=1,n
-          DO j=1,n
-             DO k=1,m
-                DO l=1,m
-                   A(i,j) = A(i,j) + C(k,i)*B(k,l)*C(l,j) * s
-                END DO
-             END DO
-          END DO
-       END DO
-!------------------------------------------------------------------------------
-     END SUBROUTINE AddEnergy
-!------------------------------------------------------------------------------
-
-!==============================================================================
 
 !------------------------------------------------------------------------------
      SUBROUTINE AddInnerProducts(A,B,C,D,m,n,s)
@@ -2160,6 +2051,7 @@
 !------------------------------------------------------------------------------
      SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n)
 !------------------------------------------------------------------------------
+       USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4 
        REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V
        INTEGER :: n
 !------------------------------------------------------------------------------
@@ -2313,77 +2205,6 @@
      END SUBROUTINE CovariantInterpolation
 !------------------------------------------------------------------------------
 
-!==============================================================================
-
-!------------------------------------------------------------------------------
-     SUBROUTINE Jacobi3(Jmat,invJ,detJ,x,y)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Jmat(:,:),invJ(:,:),detJ,x(:),y(:)
-!------------------------------------------------------------------------------
-       Jmat(1,1) = x(2)-x(1)
-       Jmat(2,1) = x(3)-x(1)
-       Jmat(1,2) = y(2)-y(1)
-       Jmat(2,2) = y(3)-y(1)
-
-       detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
-
-       invJ(1,1) =  Jmat(2,2)/detJ
-       invJ(2,2) =  Jmat(1,1)/detJ
-       invJ(1,2) = -Jmat(1,2)/detJ
-       invJ(2,1) = -Jmat(2,1)/detJ
-!------------------------------------------------------------------------------
-     END SUBROUTINE Jacobi3
-!------------------------------------------------------------------------------
-
-!==============================================================================
-
-!------------------------------------------------------------------------------
-     SUBROUTINE Jacobi4(Jmat,invJ,detJ,xi,eta,x,y)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Jmat(:,:),invJ(:,:),detJ,xi,eta,x(:),y(:)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: dNdxi(4), dNdeta(4)
-       INTEGER :: i
-
-       dNdxi(1) = -(1-eta)/4.0d0
-       dNdxi(2) =  (1-eta)/4.0d0
-       dNdxi(3) =  (1+eta)/4.0d0
-       dNdxi(4) = -(1+eta)/4.0d0
-       dNdeta(1) = -(1-xi)/4.0d0
-       dNdeta(2) = -(1+xi)/4.0d0
-       dNdeta(3) =  (1+xi)/4.0d0
-       dNdeta(4) =  (1-xi)/4.0d0
-       
-       Jmat = 0.0d0
-       DO i=1,4
-          Jmat(1,1) = Jmat(1,1) + dNdxi(i)*x(i)
-          Jmat(1,2) = Jmat(1,2) + dNdxi(i)*y(i)
-          Jmat(2,1) = Jmat(2,1) + dNdeta(i)*x(i)
-          Jmat(2,2) = Jmat(2,2) + dNdeta(i)*y(i)
-       END DO
-
-       detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
-
-       invJ(1,1) = Jmat(2,2)/detJ
-       invJ(2,2) = Jmat(1,1)/detJ
-       invJ(1,2) = -Jmat(1,2)/detJ
-       invJ(2,1) = -Jmat(2,1)/detJ
-!------------------------------------------------------------------------------
-     END SUBROUTINE Jacobi4
-!------------------------------------------------------------------------------
-
-!==============================================================================
-
-!------------------------------------------------------------------------------
-     FUNCTION CrossProductL( v1, v2 ) RESULT( v3 )
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: v1(3), v2(3), v3(3)
-       v3(1) =  v1(2)*v2(3) - v1(3)*v2(2)
-       v3(2) = -v1(1)*v2(3) + v1(3)*v2(1)
-       v3(3) =  v1(1)*v2(2) - v1(2)*v2(1)
-!------------------------------------------------------------------------------
-     END FUNCTION CrossProductL
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 END SUBROUTINE ShellSolver

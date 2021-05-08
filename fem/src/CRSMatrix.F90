@@ -920,7 +920,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Add a set of values (.i.e. element stiffness matrix) to a CRS format
 !>    matrix. For this matrix the entries are ordered so that first for one
-!>    dof you got all nodes, and then for second etc. There may be on offset
+!>    dof you got all nodes, and then for second etc. There may be an offset
 !>    to the entries making the subroutine suitable for coupled monolithic
 !>    matrix assembly.
 !------------------------------------------------------------------------------

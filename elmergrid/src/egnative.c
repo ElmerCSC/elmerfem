@@ -133,7 +133,6 @@ void Instructions()
   printf("15) .ep.i     : Partitioned ElmerPost format\n");
   printf("16) .2dm      : 2D triangular FVCOM format\n");
 #if 0
-  printf("16)  .d       : Easymesh input format\n");
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");
   printf("19) .geo      : Geo format\n");
@@ -150,7 +149,6 @@ void Instructions()
 #if 0
   printf("5)  .inp      : Abaqus input format\n");
   printf("7)  .fidap    : Fidap format\n");
-  if(0) printf("8)  .n .e .s  : Easymesh output format\n");
   printf("18) .ep       : Fastcap input format.\n");
 #endif
 
@@ -191,6 +189,7 @@ void Instructions()
   printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
   printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
   printf("-autoclean           : this performs the united action of the four above\n");
+  printf("-multidim            : keep lower order entities even if they are not boundaries\n");
   printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
   printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
   printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
@@ -214,7 +213,6 @@ void Instructions()
   printf("-partcell int[3]     : the mesh will be partitioned in cells of fixed sizes\n");
   printf("-partcyl int[3]      : the mesh will be partitioned in cylindrical main directions\n");
 #if USE_METIS
-  if(0) printf("-metis int           : mesh will be partitioned with Metis using mesh routines\n");
   printf("-metiskway int       : mesh will be partitioned with Metis using graph Kway routine\n");
   printf("-metisrec int        : mesh will be partitioned with Metis using graph Recursive routine\n");
   printf("-metiscontig         : enforce that the metis partitions are contiguous\n");
@@ -3590,6 +3588,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->increase = FALSE;
   eg->translate = FALSE;
   eg->isoparam = FALSE;
+  eg->multidim = FALSE;
   eg->removelowdim = FALSE;
   eg->removeintbcs = FALSE;
   eg->removeunused = FALSE;
@@ -3925,6 +3924,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[],int first,in
     if(strcmp(argv[arg],"-nonames") == 0) {
       eg->usenames = FALSE;
       printf("Names will be omitted even if they would exist\n");
+    }   
+
+    if(strcmp(argv[arg],"-multidim") == 0) {
+      eg->multidim = TRUE;
+      printf("Lower dimensional entities may be bulk too!\n");
     }   
 
     if(strcmp(argv[arg],"-removelowdim") == 0) {

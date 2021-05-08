@@ -67,14 +67,14 @@ set NumberOfScalarVariables 1
 
 proc mesh_update {} {
 
+   .mesh.set.min delete 0 end
+   .mesh.set.max delete 0 end
+
    global MeshColor MeshColorMin MeshColorMax
 
    UpdateVariable MeshColor
 
-   .mesh.set.min delete 0 end
    .mesh.set.min insert end [format %-10.5g $MeshColorMin]
-
-   .mesh.set.max delete 0 end
    .mesh.set.max insert end [format %-10.5g $MeshColorMax]
 }
 

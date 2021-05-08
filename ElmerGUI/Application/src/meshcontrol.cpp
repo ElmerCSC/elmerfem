@@ -162,7 +162,7 @@ void MeshControl::defaultControls()
   ui.nglibMaxHEdit->setText("1000000");
   ui.nglibFinenessEdit->setText("0.5");
   ui.nglibBgmeshEdit->setText("");
-  ui.elmerGridStringEdit->setText("-relh 1.0");
+  ui.elmerGridStringEdit->setText("-autoclean -relh 1.0");
   ui.elementCodesStringEdit->setText("");
 }
 

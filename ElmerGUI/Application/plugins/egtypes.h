@@ -5,27 +5,37 @@
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
-#define MAXBOUNDARIES 50    /* maximum number of boundaries for BCs */
-#define MAXMATERIALS  50    /* maximum index of materials */
+#define MAXBOUNDARIES 1000  /* maximum number of boundaries for BCs */
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
-#define MAXFILESIZE 600      /* maximum filenamesize for i/o files */
-#define MAXLINESIZE 200     /* maximum length of line to be read */
-#define MAXNAMESIZE 30      /* maximum size of the variablename */
+#define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
+#define MAXLINESIZE 600     /* maximum length of line to be read */
+#define LONGLINESIZE 1201  
+#define MAXNAMESIZE 50      /* maximum size of the variablename */
 #define MAXPARAMS 30        /* maximum number of parameters */
 #define MAXVARS 20          /* maximum number of variables at the sides */
+#define MAXNODESD3 64       /* maximum number of 3D nodes */ 
 #define MAXNODESD2 27       /* maximum number of 2D nodes */ 
 #define MAXNODESD1 9        /* maximum number of 1D nodes */
-#define MAXMAPPINGS 10      /* maximum number of geometry mappings */
-#define MAXCONNECTIONS 100  /* maximum number of connections in dual graph */
+#define MAXMAPPINGS 20      /* maximum number of geometry mappings */
+#define MAXCONNECTIONS 500  /* maximum number of connections in nodal or dual graph */
 #define MAXBCS 1000         /* maximum number of BCs in naming */
-#define MAXBODIES 100       /* maximum number of bodies in naming */
+#define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
+#define MAXHALOMODES 10
 #define MAXFORMATS 15
 
 #define CONPLAIN 0
 #define CONDISCONT 1
 #define CONPERIODIC 2
 #define CONCONSTRAINT 3
+
+#define MAXELEMENTTYPE 827
+
+struct CRSType {
+  int *rows, *cols;
+  int rowsize,colsize; 
+  int created;
+};
 
 /* Structure GridType includes the subcell structure of the 
    geometry and the meshing information. The elements may be 
@@ -54,18 +64,22 @@ struct GridType {
     elemmidpoints, 
     wantedelems,
     limitdxverify,
+    wantedelems3d,
+    wantednodes3d,
     firstmaterial, /* first material to be included in mesh */
     lastmaterial,  /* last material to be included in mesh */
     nocells,       /* number of subcells */
     xcells,        /* number of subcells in x-direction */
     ycells,
     zcells,
+    layerbcoffset,     /* offset of bcs when doing extrusion */
     noelements,    /* number of elements in the mesh */
     noknots,       /* number of knots in the mesh */
     nonodes,       /* number of nodes in one element */
     numbering,     /* numbering scheme */
     maxwidth,      /* maxwidth of the band matrix */
-    noboundaries;  /* number of boundaries for BCs */
+    noboundaries,  /* number of boundaries for BCs */
+    maxmaterial;   /* maximum material index */
   int xlinear[MAXCELLS+1],    /* linearity flag within the subcells */
     ylinear[MAXCELLS+1],
     zlinear[MAXCELLS+1],
@@ -79,6 +93,9 @@ struct GridType {
     boundext[MAXBOUNDARIES],  /* external material for boundary */
     boundsolid[MAXBOUNDARIES],/* which of these is the solid? */
     boundtype[MAXBOUNDARIES]; /* type of the boundary */
+  int **zmaterialmap,zmaterialmapexists;
+  Real zhelicity;
+  int zhelicityexists;
   int structure[MAXCELLS+2][MAXCELLS+2], /* material structure of subcells */
     numbered[MAXCELLS+2][MAXCELLS+2];    /* numbering order of the subcells */
   Real dx0,    /* global mesh scale in x-direction */
@@ -159,39 +176,48 @@ struct FemType {
   int created,     /* is the structure created? */
     noknots,       /* number of knots */
     noelements,    /* number of elements */
+    nodepermexist, /* are the nodes permutated at the start */
+    *nodeperm,    /* Inverse node permutation to save */
     coordsystem,   /* coordsystem flag */
     nocells,       /* number of subcells */
     maxnodes,      /* maximum number of nodes */
     dim,           /* dimension of space */
+    numbering,     /* numbering scheme */
     variables,     /* number of variables */
-    *dualgraph[MAXCONNECTIONS],  
-    dualmaxconnections,
-    indexwidth,
+    indexwidth,    /* maximum difference of node indices */
+    mapgeo,        /* mappings for geometry */
+    *nodalgraph[MAXCONNECTIONS],  
+    nodalmaxconnections,
+    nodalexists,
     dualexists,
-
     *partitiontable[MAXCONNECTIONS],  
     maxpartitiontable,
     partitiontableexists, 
 
-    *invtopo[MAXCONNECTIONS],
-    maxinvtopo,
-    invtopoexists,
+    nocorners,     /* number material corners in the mesh */
     timesteps,     /* number of timesteps */
     periodicexist, /* does the periodic vector exist? */
     *periodic,     /* periodic ordering vector, if needed */
-    connectexist,  /* does the connection vector exist? */
-    *connect,      /* connections between nodes, if needed */
+    nodeconnectexist,  /* does the node connection vector exist? */
+    *nodeconnect,      /* connections between nodes, if needed */
+    elemconnectexist,  /* does the element connection vector exist? */
+    *elemconnect,      /* connections between elements, if needed */
     partitionexist,/* does the partitioning exist? */
     nopartitions,  /* number of partitions */
     *elempart,     /* which partition owns the element */
     *nodepart,     /* which partition owns the node */
-    *elementtypes, /* types of elements using Elmer convention */
+    *corners,      /* corners associated to elements */ 
+    *elementtypes, /* types of elements if not all the same */
     *material,     /* material for each element */
     **topology,    /* element topology */
     bodynamesexist,
     boundarynamesexist;
   int edofs[MAXDOFS],   /* number of dofs in each node */
-    alldofs[MAXDOFS];   /* total number of variables */
+    eorder[MAXDOFS],    /* does order exist */
+    bandwidth[MAXDOFS], /* bandwidth accounting fixed points */
+    alldofs[MAXDOFS],   /* total number of variables */
+    iterdofs[MAXDOFS],  /* iterations for variable */
+    *order[MAXDOFS];    /* order of the dofs */
   Real minsize,maxsize;
   Real *x,  /* in axisymmetric case r */ 
       *y,   /* in axisymmetric case z */
@@ -206,6 +232,10 @@ struct FemType {
       boundext[MAXBOUNDARIES],   /* external material in the boundary */
       boundsolid[MAXBOUNDARIES], /* which one is solid? */
       boundtype[MAXBOUNDARIES];  /* type of the boundary */
+
+  struct CRSType dualgraph,      /* The dual graph of the finite element mesh */
+    nodalgraph2,                  /* The nodal graph of the finite element mesh */
+    invtopo;                      /* The inverse of the finite element mesh topology */
 };
 
 /* The boundaries between different materials or domains
@@ -217,14 +247,8 @@ struct FemType {
 struct BoundaryType {
   int created,       /* is boundary created? */
     nosides,         /* sides on the boundary */
-    maxsidenodes,  /* number of sidenodes on the element */
-    fixedpoints,     /* number of fixed points allowed */
+    maxsidenodes,    /* number of sidenodes on the element */
     coordsystem,     /* coordinate system flag */
-    vfcreated,       /* are view factors created */
-    gfcreated,       /* are Gephart factors created */
-    maparea,         /* mappings of the area */
-    mapvf,           /* mappings of the view factors */ 
-    open,            /* is the closure partially open? */
     echain,          /* does the chain exist? */
     ediscont,        /* does the discontinuous boundary exist */
     chainsize;       /* size of the chain */ 
@@ -239,15 +263,29 @@ struct BoundaryType {
     *normal,         /* direction of the normal */
     *elementtypes,   /* side element types if needed */
     **topology,       /* topology if needed */
-    points[MAXVARS], /* how many points for each side? */
-    evars[MAXVARS];  /* does the variables exist? */
-  Real totalarea,       /* total area of the side */
-    areasexist,
-    *areas,             /* side areas */
-    **vf,               /* view factors */
-    **gf,               /* Gephart factors */
-    *vars[MAXVARS];     /* variables on the sides */
-  char varname[MAXVARS][MAXNAMESIZE]; /* variable name */
+    points[MAXVARS]; /* how many points for each side? */
+};
+
+/* Sometimes one point is discontinuous or there is 
+   BC for one point only. This structure may then be
+   needed. */
+#define MAXNOPOINTS 20
+struct PointType {
+  int nopoints;
+  int parent[MAXNOPOINTS],corner[MAXNOPOINTS];
+  int material[MAXNOPOINTS],type[MAXNOPOINTS];
+};
+
+
+/* Physical parameters are read with a general manner. 
+   They may be added without constraints. */
+struct ModelType {
+  int iparameters,            /* number of int parameters */
+    rparameters,              /* number of Real parameters */
+    iparameter[MAXPARAMS];    /* values of int parameters */
+  Real rparameter[MAXPARAMS]; /* values of Real parameters */
+  char ikeyword[MAXPARAMS][MAXNAMESIZE]; /* names of int */
+  char rkeyword[MAXPARAMS][MAXNAMESIZE]; /* names of Real */
 };
 
 
@@ -264,6 +302,7 @@ struct ElmergridType {
     rotate,     /* rotate the mesh */
     clone[3],   /* clone the mesh the number of given times */
     mirror[3],  /* mirror the mash around the given axis */
+    cloneinds,  /* should the material and bc indexes be altered when cloning */
     canter, 
     decimals,   /* save the mesh with number of decimals */
     layers,     /* create boundary layers */
@@ -271,15 +310,21 @@ struct ElmergridType {
     layernumber[MAXBOUNDARIES], 
     layermove,  /* map the created layer to the original geometry */
     metis,      /* number of Metis partitions */
+    metiscontig,  /* is Metis partitioning contiguous */
+    metisseed,   /* seed for Metis partitioning routines */
     partopt,    /* free parameter for optimization */
+    partoptim,  /* apply aggressive optimization to node sharing on bulk */
+    partbcoptim,  /* apply aggressive optimization to node sharing on bcs */
     partitions, /* number of simple geometric partitions */
     partdim[3],
+    partjoin,   /* number of parallel dimensions to be joined */
     inmethod,   /* method in which mesh is read in to ElmerGrid */
     outmethod,  /* method in which the mesh is written by ElmerGrid */
     sidemap[3*MAXBOUNDARIES],
     sidemappings,
-    bulkmap[3*MAXMATERIALS],
+    bulkmap[3*MAXMAPPINGS],
     bulkmappings,
+    coordinatemap[3],
     boundorder, 
     bulkorder, 
     boundbounds,
@@ -294,15 +339,17 @@ struct ElmergridType {
     usenames, 
     isoparam,
     cylinder,
-    info,
     unitemeshes,
     reduce,
+    multidim, 
     removelowdim,
     removeunused,
+    removeintbcs,
     increase,
     reducemat1,
     reducemat2,
     findsides,
+    vtuone, 
     saveboundaries,
     nodes3d,
     elements3d,
@@ -312,19 +359,31 @@ struct ElmergridType {
     discontbounds[MAXBOUNDARIES],
     connect,
     connectbounds[MAXBOUNDARIES],
+    connectboundsset[MAXBOUNDARIES],
+    connectboundsnosets,
     partorder,
-    partitionhalo, /* create halo for the partitioning */
+    parthalo[MAXHALOMODES], /* create halo for the partitioning */
     partitionindirect, /* should one create indirect connections between nodes */
+    partbw, /* minimize bandwidth for partitions */
+    parthypre, /* renumber for hypre */
+    partdual, 
+    partbcz,
+    partbcr, 
+    partbcmetis,
+    partbclayers,
     nofilesin,
     saveinterval[3],
     elementsredone,
-    pelemmap[4*MAXMATERIALS],pelems,
-    belemmap[4*MAXMATERIALS], belems,
-    advancedelem[7*MAXMATERIALS], advancedmat,
-    bcoffset;
+    bcoffset,
+    rotatecurve,
+    timeron,
+    nosave,
+    nooverwrite,
+    unitenooverlap;
 
   Real cscale[3], 
     corder[3],
+    parttol,
     cmerge,
     ctranslate[3],
     crotate[3],
@@ -335,10 +394,11 @@ struct ElmergridType {
     triangleangle, 
     partcorder[3],
     polarradius,
+    curverad,curveangle,curvezet,
     relh;
 
   char filesin[MAXCASES][MAXFILESIZE],
     filesout[MAXCASES][MAXFILESIZE], 
-    mapfile[MAXFILESIZE];
+    infofile[MAXFILESIZE];
 };
 
