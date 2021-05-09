@@ -60,7 +60,7 @@
      TYPE(Variable_t), POINTER :: GmCheckVar, GroundedMaskVar, WorkVar
      
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, &
-          istat, LocalNodes,bf_id, bc_id,  DIM, dimSheet, iterC, &
+          istat, LocalNodes,DIM, dimSheet, iterC, &
           NonlinearIter, NonlinearIterMin, BDForder, &
           CoupledIter, ChannelSolver, ThicknessSolver, EdgeCnt
 
@@ -91,7 +91,9 @@
           Norm, PrevNorm, S, C, Qc, MaxArea, MaxH
      REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), &
        STIFF(:,:), LOAD(:), SheetConductivity(:), ChannelConductivity(:),&
-       FORCE(:), CT(:), OldValues(:), Refq(:)
+       FORCE(:), CT(:), OldValues(:)
+
+     INTEGER, ALLOCATABLE :: Qcnt(:)
 
      REAL(KIND=dp), ALLOCATABLE :: Vvar(:), ublr(:), hr2(:)
 
@@ -127,7 +129,7 @@
           ChannelAreaName, ZbName, IceDensity, Ac, alphac, CCt, &
           CCw, lc, Lw, NoChannel, NodeDone, &
           Channels, meltChannels, NeglectH, BDForder, &
-          Vvar, ublr, hr2, Refq, &
+          Vvar, ublr, hr2, Qcnt, &
           Calving
 
       
@@ -193,8 +195,7 @@
                 ng, alphas, betas, betac, Phi0, Phim, &
                 IceDensity, Ac, alphac, CCt, &
                 CCw, lc, OldValues, NoChannel, NodeDone, &
-                Vvar, ublr, hr2, &
-                Refq)
+                Vvar, ublr, hr2 )
 
         END IF                           
         
@@ -218,7 +219,6 @@
              IceDensity(N), Ac(N), alphac(N), CCt(N), &
              CCw(N), lc(N), OldValues(K), NoChannel(M), &
              NodeDone(M), Vvar(M), ublr(M), hr2(M), &
-             refq(dim*M), &
              STAT=istat)
 
         IF ( istat /= 0 ) THEN
@@ -293,8 +293,8 @@
         Channels = GetLogical( SolverParams,'Activate Channels', Found )
         IF( Channels )  CALL Info(SolverName,'Channels are activated for this solver!')
                 
-        !CHANGE - to get Channel variables added to this solver mesh if
-        !doing calving and hydrology and consequently having many meshes
+        ! To get Channel variables added to this solver mesh if
+        ! doing calving and hydrology and consequently having many meshes
         Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
         IF( Calving )  CALL Info(SolverName,'Calving is activated for this solver!')
 
@@ -483,10 +483,13 @@
 
      qSol => VariableGet( Mesh % Variables, 'Sheet Discharge' )
      IF ( ASSOCIATED( qSol ) ) THEN
-          qPerm     => qSol % Perm
-          qSolution => qSol % Values
+       qPerm     => qSol % Perm
+       qSolution => qSol % Values
+       IF(.NOT. ALLOCATED( qcnt ) ) THEN
+         ALLOCATE( qcnt( SIZE( qSolution ) ) )
+       END IF
      END IF
-
+     
      hstoreSol => VariableGet( Mesh % Variables, 'Sheet Storage' )
      IF ( ASSOCIATED( hstoreSol ) ) THEN
           hstorePerm     => hstoreSol % Perm
@@ -622,9 +625,9 @@
               LOAD = 0.0_dp
               BodyForce => GetBodyForce()
               IF ( ASSOCIATED( BodyForce ) ) THEN
-                 bf_id = GetBodyForceId()
                  LOAD(1:N) = GetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Volume Source', Found )
-              END IF
+               END IF
+               
               ! f = m - w + v
               ! v is not added here as it will be linearized for the assembly
               LOAD(1:N) = LOAD(1:N) - Wopen(1:N)
@@ -674,18 +677,11 @@
               IF (AreaPerm(M+t) == 0)  CYCLE 
              
               Edge => Mesh % Edges(t)
-              IF(ANY(HydPotPerm(Edge % NodeIndexes)==0)) CYCLE
-              
-              ! Here we assemble the contribution of each edge. On parrallel they should be only counted
-              ! on the owner side!
-              IF (ParEnv % PEs > 1) THEN
-                IF(ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
-              END IF
-              
               n = Edge % TYPE % NumberOfNodes
 
               ! Work only for 202 elements => n=2
               IF (n/=2) CALL Fatal(SolverName, 'Work only for edge element of type 202')
+
               ! We keep only the edge which belong in the sheet surface
               ! i.e. Both nodes have Perm > 0
               IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
@@ -747,36 +743,34 @@
               Bfactor = 0.0_dp
               Phi0 = 0.0_dp
               Phim = 0.0_dp
+              
               DO i=1,N
                 j = (Edge % NodeIndexes(i))
                 IF ( ASSOCIATED( ZbSol )) THEN
-                    zb = ZbSolution(ZbPerm(j))
-                 ELSE 
-                    IF (dimSheet==1) THEN
-                       zb = Mesh % Nodes % y(j)
-                    ELSE
-                       zb = Mesh % Nodes % z(j)
-                    END IF
-                 END If
-                 Phim(i) = gravity*WaterDensity*zb
-                 Phi0(i) = Snn(i) + Phim(i) 
-                 IF (.NOT.NeglectH) THEN
-                    k = ThickPerm(j)
-                    Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
-                 END IF
-                 Afactor(i) = CCt(i) * CCw(i) * WaterDensity
-                 Bfactor(i) = 1.0/(Lw * IceDensity(i)) 
-                 IF (meltChannels) Bfactor(i) = Bfactor(i) - 1.0/(Lw * WaterDensity)
+                  zb = ZbSolution(ZbPerm(j))
+                ELSE 
+                  IF (dimSheet==1) THEN
+                    zb = Mesh % Nodes % y(j)
+                  ELSE
+                    zb = Mesh % Nodes % z(j)
+                  END IF
+                END If
+                Phim(i) = gravity*WaterDensity*zb
+                Phi0(i) = Snn(i) + Phim(i) 
+                IF (.NOT.NeglectH) THEN
+                  k = ThickPerm(j)
+                  Phi0(i) = Phi0(i) + gravity*WaterDensity*ThickSolution(k)
+                END IF
+                Afactor(i) = CCt(i) * CCw(i) * WaterDensity
+                Bfactor(i) = 1.0/(Lw * IceDensity(i)) 
+                IF (meltChannels) Bfactor(i) = Bfactor(i) - 1.0/(Lw * WaterDensity)
               END DO
 
-              !CHANGE
-              !To stabilise channels
+              ! To stabilise channels
               IF(MABool) THEN
                 IF(AreaSolution(AreaPerm(M+t)) > MaxArea) AreaSolution(AreaPerm(M+t)) = MaxArea
               END IF
               ChannelArea = AreaSolution(AreaPerm(M+t))
-
-              EdgeCnt = EdgeCnt + 1
               
               !------------------------------------------------------------------------------
               ! Get element local matrices, and RHS vectors
@@ -794,7 +788,6 @@
                   SheetConductivity, alphas, betas, Afactor, Bfactor, EdgeTangent, &
                   Edge, n, EdgeNodes )
 
-              !CHANGE
               !To stop weird channel instability where some channels grow
               !exponentially to stupid levels and eventually mess up whole
               !mesh. Usually seems to be channels with limited fluxes that
@@ -808,6 +801,13 @@
                 END IF
               END IF
 
+              ! Here we assemble the contribution of each edge. On parrallel they should be only counted
+              ! on the owner side!
+              IF (ParEnv % PEs > 1) THEN
+                IF(ParEnv % myPe /= Mesh % ParallelInfo % EdgeNeighbourList(t) % Neighbours(1)) CYCLE
+              END IF
+              
+              EdgeCnt = EdgeCnt + 1                                          
               CALL DefaultUpdateEquations( STIFF, FORCE, Edge )
             END DO ! Edge elements
 
@@ -833,7 +833,6 @@
               ! Moulin case (flux at node)
               
                 BC => GetBC( Element )
-                bc_id = GetBCId( Element )
                 CALL GetElementNodes( ElementNodes )
                 IF ( ASSOCIATED( BC ) ) THEN            
                   STIFF=0.0_dp
@@ -873,7 +872,6 @@
               ELSE
                 ! flux over the sheet
                 BC => GetBC( Element )
-                bc_id = GetBCId( Element )
                 CALL GetElementNodes( ElementNodes )
 
                 IF ( ASSOCIATED( BC ) ) THEN            
@@ -938,11 +936,36 @@
 !------------------------------------------------------------------------------
 !       Update the Sheet Thickness                 
 !------------------------------------------------------------------------------
-           NodeDone = .FALSE.
-           DO t=1,Solver % NumberOfActiveElements
+        NodeDone = .FALSE.
+        body_id = -1
+        
+
+        ! The old way of setting thigs when masked are active could have resulted into
+        ! cases where only the 1st elemental node was zeroed. 
+        IF( Calving ) THEN
+          CycleElement = .FALSE.
+          DO j=1,Mesh % NumberOfNodes
+            IF(ASSOCIATED(GmCheckVar)) THEN
+              CycleElement = GmCheckVar % Values(GmCheckVar % Perm(j))>0.0
+            ELSE IF(ASSOCIATED(GroundedMaskVar) ) THEN
+              CycleElement = GroundedMaskVar % Values(GroundedMaskVar % Perm(j))<0.0 
+            END IF
+            IF( CycleElement ) THEN
+              WSolution(WPerm(j)) = 0.0
+              Vvar(j) = 0.0
+              NSolution(NPerm(j)) = 0.0
+              hstoreSolution(hstorePerm(j)) = 0.0
+            END IF
+          END DO
+        END IF
+                 
+
+        DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t,Solver)
               IF (ParEnv % myPe /= Element % partIndex) CYCLE
 
+              ! If all nodes for this element have already been treated,
+              ! there is nothing to be done.
               IF( ALL( NodeDone(Element % NodeIndexes)) ) CYCLE
               
               IF ( Element % BodyId /= body_id ) THEN
@@ -956,34 +979,13 @@
               N = GetElementNOFNodes(Element)
               CALL GetElementNodes( ElementNodes )
 
-              !CHANGE
               ! If calving, cycle elements with ungrounded nodes and zero all hydrology variables.
               IF(Calving) THEN
-                CycleElement = .FALSE.
                 IF(ASSOCIATED(GmCheckVar)) THEN
-                  DO i=1, N
-                    j = Element % NodeIndexes(i)
-                    IF(GmCheckVar % Values(GmCheckVar % Perm(j))>0.0) THEN
-                      CycleElement = .TRUE.                     
-                      WSolution(WPerm(j)) = 0.0
-                      Vvar(j) = 0.0
-                      NSolution(NPerm(j)) = 0.0
-                      hstoreSolution(hstorePerm(j)) = 0.0
-                    END IF
-                  END DO
-                ELSE IF(ASSOCIATED(GroundedMaskVar) ) THEN
-                  DO i=1, N
-                    j = Element % NodeIndexes(i)                   
-                    IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(j))<0.0) THEN 
-                      CycleElement = .TRUE.
-                      WSolution(WPerm(j)) = 0.0
-                      Vvar(j) = 0.0
-                      NSolution(NPerm(j)) = 0.0
-                      hstoreSolution(hstorePerm(j)) = 0.0
-                    END IF
-                  END DO
+                  IF( ANY(GmCheckVar % Values(GmCheckVar % Perm(Element % NodeIndexes))>0.0)) CYCLE
+                ELSE IF(ASSOCIATED(GroundedMaskVar)) THEN 
+                  IF(ANY(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes))<0.0)) CYCLE
                 END IF
-                IF(CycleElement) CYCLE
               END IF
 
               CALL GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
@@ -1012,13 +1014,13 @@
                     Np = Np + WaterDensity*gravity*ThickSolution(k)
                  END IF
                  pw = HydPot(HydPotPerm(j)) - gravity*WaterDensity*zb
-                 Vvar(j) = Ar(i)*ABS(Np)**(ng(i)-1.0)*Np
                  Wo = MAX(ub(i) / lr(i) * (hr(i) - ThickSolution(k)), 0.0) 
                  he = Ev(i)*(HydPot(HydPotPerm(j))/(WaterDensity*gravity)-zb)
+
+                 Vvar(j) = Ar(i)*ABS(Np)**(ng(i)-1.0)*Np 
                  ublr(j) = ub(i)/lr(i)
                  hr2(j) = hr(i)
 
-                 !CHANGE
                  !To stop it working out values for non-ice covered parts of a
                  !hydromesh in a coupled calving-hydro simulation
                  IF(Calving) THEN
@@ -1043,7 +1045,7 @@
            DO j = 1, Mesh % NumberOfNodes
               k = ThickPerm(j)
               IF (k==0) CYCLE
-              !CHANGE
+
               ! If calving, cycle elements with ungrounded nodes and zero all hydrology variables
               IF(Calving) THEN
                 CycleElement = .FALSE.
@@ -1095,8 +1097,7 @@
             END DO
 
             Norm = ComputeNorm(Solver, SIZE(ThickSolution), ThickSolution)
-
-            PRINT *,'ThickNorm:',Norm
+            IF( ParEnv % MyPe == 0 ) PRINT *,'ThickNorm:',Norm
             
 !------------------------------------------------------------------------------
 !       Update the Channels Area                 
@@ -1108,7 +1109,8 @@
        PrevNorm = MyEdgeNorm( Mesh, AreaPerm, AreaSolution, mins, maxs )
        AreaSol % Norm = PrevNorm
         
-        DO iter = 1, NonlinearIter
+       DO iter = 1, NonlinearIter
+         body_id = -1
               DO t=1, Mesh % NumberOfEdges 
                  Edge => Mesh % Edges(t)
                                   
@@ -1285,13 +1287,14 @@
 
 
         DO i=1,t
-          IF ( AreaPerm(M+i) <= 0 ) CYCLE 
+          j = AreaPerm(M+i)
+          IF ( j <= 0 ) CYCLE 
           ! Make sure Area >= 0
-          AreaSolution(AreaPerm(M+i)) = MAX(AreaSolution(AreaPerm(M+i)), 0.0_dp)
-          !CHANGE
+          AreaSolution(j) = MAX(AreaSolution(j), 0.0_dp)
+
           !Stop channels from expanding to eleventy-stupid
           IF(MABool) THEN
-            AreaSolution(AreaPerm(M+i)) = MIN(AreaSolution(AreaPerm(M+i)),MaxArea)
+            AreaSolution(j) = MIN(AreaSolution(j),MaxArea)
           END IF
         END DO
 
@@ -1326,8 +1329,9 @@
 
 ! Output the sheet discharge (dimension = dimSheet)
    IF (ASSOCIATED(qSol)) THEN
-      Refq = 0.0_dp
+      qcnt = 0
       qSolution = 0.0_dp
+      body_id = -1
 
       ! Loop over all elements are we need to compute grad(Phi)
       DO t=1,Solver % NumberOfActiveElements
@@ -1336,8 +1340,7 @@
          dimSheet = Element % TYPE % DIMENSION
          Element => GetActiveElement(t,Solver)
          IF (ParEnv % myPe /= Element % partIndex) CYCLE
-
-         IF (.NOT.ASSOCIATED(Element)) CYCLE
+         
          IF ( Element % BodyId /= body_id ) THEN
             body_id = Element % bodyId
             Material => GetMaterial(Element)
@@ -1349,37 +1352,14 @@
 
          n = GetElementNOFNodes(Element)
          CALL GetElementNodes( ElementNodes )
-         !CHANGE
-         !If calving, cycle elements with ungrounded nodes and zero all
-         !hydrology variables
+
+         ! If calving, cycle elements with ungrounded nodes and zero all hydrology variables.
          IF(Calving) THEN
-           CycleElement = .FALSE.
            IF(ASSOCIATED(GmCheckVar)) THEN
-             DO i=1, n
-               IF(GmCheckVar % Values(GmCheckVar % Perm(Element % NodeIndexes(i)))>0.0) THEN
-                 CycleElement = .TRUE.
-                 DO j=1,dimSheet
-                   k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                   qSolution(k) = 0.0
-                   Refq(k) = 0.0
-                 END DO
-                 EXIT
-               END IF
-             END DO
+             IF(ANY(GmCheckVar % Values(GmCheckVar % Perm(Element % NodeIndexes))>0.0)) CYCLE
            ELSE IF(ASSOCIATED(GroundedMaskVar) ) THEN
-             DO i=1,n
-               IF(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes(i)))<0.0) THEN 
-                 CycleElement = .TRUE.
-                 DO j=1,dimSheet
-                   k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                   qSolution(k) = 0.0
-                   Refq(k) = 0.0
-                 END DO
-                 EXIT
-               END IF
-             END DO
+             IF(ANY(GroundedMaskVar % Values(GroundedMaskVar % Perm(Element % NodeIndexes))<0.0)) CYCLE
            END IF
-           IF(CycleElement) CYCLE
          END IF             
  
          ! we need the SheetConductivity, alphas, betas
@@ -1398,15 +1378,15 @@
              ! One more value for that node          
              DO j=1,dimSheet
                 k = dimSheet*(qPerm(Element % NodeIndexes(i))-1)+j
-                Refq(k) = Refq(k) + 1.0_dp
+                Qcnt(k) = Qcnt(k) + 1
                 qSolution(k) = qSolution(k) + Discharge(j)
              END DO  
           END DO
       END DO
 
       ! Mean nodal value
-      WHERE( Refq > 0.5_dp )
-        qSolution = qSolution / Refq
+      WHERE( qcnt > 0 )
+        qSolution = qSolution / qcnt
       END WHERE
 
    END IF
@@ -2131,6 +2111,7 @@ END SUBROUTINE GetParametersChannel
     Ngrad = SQRT(SUM(gradPhi(1:dim)*gradPhi(1:dim)))
     IF (Ngrad < AEPS) Ngrad = AEPS
 
+    Discharge = 0.0_dp
     DO i=1,dim
        Discharge(i) = -ks * (hsheet**na) * (Ngrad**(nb-2.0_dp)) * gradPhi(i) 
     END DO
