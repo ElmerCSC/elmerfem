@@ -19,7 +19,8 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-!  Post File = "interpolationtest.ep"
+
+!  Post File = "interpolationtest.vtu"
 End
 
 Body 1
@@ -54,12 +55,13 @@ Solver 1
   Linear System Preconditioning = ILU0
   Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 1000
+  Linear System Residual Output = 50
   Linear System Convergence Tolerance = 1e-12
 
   Error Computation = Logical True
   Use Energy Norm = Logical True
   Tabulate Basis = Logical False
-End
-
-Solver 1 :: Reference Norm = Real 6.15433172E-02
+End 
+ 
+Solver 1 :: Reference Norm = 0.89147461E-01
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-6

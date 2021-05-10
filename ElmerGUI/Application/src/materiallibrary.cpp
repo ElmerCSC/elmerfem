@@ -125,9 +125,9 @@ void MaterialLibrary::okButtonClicked()
       QString propertyValue = property.text().trimmed();
 
 #if 0
-      cout << string(materialName.toAscii()) << ": " 
-	   << string(propertyName.toAscii()) << ": " 
-	   << string(propertyValue.toAscii()) << endl;
+      cout << string(materialName.toLatin1()) << ": " 
+	   << string(propertyName.toLatin1()) << ": " 
+	   << string(propertyValue.toLatin1()) << endl;
 #endif
 
       // Copy the parameter value into material editor:
@@ -144,6 +144,10 @@ void MaterialLibrary::okButtonClicked()
 	  if(propertyName == widgetName) {
 	    match = true;
 	    lineEdit->setText(propertyValue);
+#if 0 	    
+	    cout << "Material loader: found match for parameter: "
+	     << string(propertyName.toLatin1()) << endl;
+#endif
 	  }
 	}
 
@@ -158,12 +162,15 @@ void MaterialLibrary::okButtonClicked()
 	    match = true;
 	  }
 	}
+	// Without this check there will be multiple instances same material parameter
+	// in case there are multiple Solvers where it fits!
+	if(match) break;
       }
       
 #if 0
       if(!match) 
 	cout << "Material loader: no match for parameter: "
-	     << string(propertyName.toAscii()) << endl;
+	     << string(propertyName.toLatin1()) << endl;
 #endif
     }
   }

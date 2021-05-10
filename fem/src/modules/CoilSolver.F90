@@ -76,13 +76,7 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
   CalculateNodal = ListGetLogical( Params,'Calculate Nodal Fields',Found )
   IF(.NOT. Found ) CalculateNodal = .TRUE.
   
-  !IF(.NOT. (CalculateElemental .OR. CalculateNodal ) ) THEN
-  !  CalculateNodal = .TRUE.
-  !END IF
-
-  IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
-    CALL ListAddString( Params,'Variable','-nooutput CoilTmp')
-  END IF
+  CALL ListAddNewString( Params,'Variable','-nooutput CoilTmp')
 
   CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params),&
       'CoilPot')
@@ -114,22 +108,24 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
         '-elem CoilIndex e')
   END IF
 
-  CalcCurr = GetLogical( Params,'Calculate Coil Current',Found )
-  IF( .NOT. Found ) CalcCurr = .TRUE.
-  IF( CalcCurr ) THEN
-    IF( CalculateElemental ) THEN
-      CALL ListAddString( Params,&
-          NextFreeKeyword('Exported Variable',Params),&
-          '-dg CoilCurrent e[CoilCurrent e:'//TRIM(I2S(dim))//']')
-    END IF
-    IF( CalculateNodal ) THEN
-      CALL ListAddString( Params,&
-          NextFreeKeyword('Exported Variable',Params),&
-          'CoilCurrent[CoilCurrent:'//TRIM(I2S(dim))//']')
+  IF(.NOT. CalculateElemental ) THEN
+    IF( ListGetLogical( Params,'Fix Input Current Density',Found ) ) THEN
+      CalculateElemental = .TRUE.
+      CALL Info('CoilSolver_int','Computing elemental field as only that can be fixed!')
     END IF
   END IF
-    
   
+  IF( CalculateElemental ) THEN
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable',Params),&
+        '-dg -dofs '//TRIM(I2S(dim))//' CoilCurrent e')
+  END IF
+  IF( CalculateNodal ) THEN
+    CALL ListAddString( Params,&
+        NextFreeKeyword('Exported Variable',Params),&
+        '-dofs '//TRIM(I2S(dim))//' CoilCurrent')
+  END IF
+      
 ! Loads are needed to compute the induced currents in a numerically optimal way
   CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
 
@@ -447,13 +443,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
           val = 0.0_dp
         END IF
         
-        !s = StiffMatrix % Values(StiffMatrix % Diag(i))
-        !ForceVector(i) = val * s
-
         CALL UpdateDirichletDof( Solver % Matrix, i, val )
-                
-        !CALL ZeroRow( StiffMatrix,i )
-        !CALL SetMatrixElement( StiffMatrix,i,i,1.0d0*s )     
       END DO
       
       ! If we use narrow strategy we need to cut the connections in the bulk values
@@ -557,7 +547,42 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
     END IF
     CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
   END IF
+
+  IF( ListGetLogical( Params,'Fix Input Current Density',Found ) ) THEN
+    CALL Info('CoilSolver','Finding fixing potential for elemental current density!')
     
+    FluxVarE => VariableGet( Mesh % Variables,'CoilCurrent E')  
+    IF( .NOT. ( ASSOCIATED( FluxVarE ) ) ) THEN
+      CALL Fatal('CoilSolver','Fixing can be done only for elemental coil current!')
+    END IF    
+    
+    CALL DefaultInitialize()
+    Active = GetNOFActive()          
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()           
+      CALL LocalCorrMatrix(  Element, n, nd )
+    END DO
+
+    ! Set just one Dirichlet node.
+    ! In serial it can be as well the 1st one. 
+    CALL UpdateDirichletDof(Solver % Matrix, 1, 0._dp)        
+      
+    ! Only Default dirichlet conditions activate the BCs above!
+    CALL DefaultDirichletBCs()
+    
+    Norm = DefaultSolve()
+    
+    CALL Info('CoilSolver','Fixing elemental current density to be divergence free!')
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()           
+      CALL LocalCorrCurrent(  Element, n, nd )
+    END DO
+  END IF
+  
 
   ! Some optional postprocessing mainly for debugging purposes
   CoilSetVar => VariableGet( Mesh % Variables,'CoilSet' )
@@ -649,12 +674,12 @@ CONTAINS
 
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s
-    INTEGER :: e,t,i,j,n,Active
+    INTEGER :: e,t,i,j,n,Active,ierr
     LOGICAL :: stat,Found,CoilCenterSet
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: Volume,Center(3),SerTmp(4),ParTmp(4),ierr
+    REAL(KIND=dp) :: Volume,Center(3),SerTmp(4),ParTmp(4)
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
 
     n = Mesh % MaxElementNodes
@@ -764,12 +789,12 @@ CONTAINS
     REAL(KIND=dp), POINTER :: HelperArray(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
     REAL(KIND=dp) :: DetJ,r(3),s,CoilTangentTmp(3)
-    INTEGER :: e,t,i,j,n,Active
+    INTEGER :: e,t,i,j,n,Active,ierr
     LOGICAL :: stat,Found
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), CP(3), ierr
+    REAL(KIND=dp) :: Imoment(9), EigVec(3,3), EigVal(3), ParTmp(9), CP(3)
     REAL(KIND=dp) :: EigWrk(20)
     INTEGER :: EigInfo, Three
 
@@ -906,8 +931,8 @@ CONTAINS
     LOGICAL :: Mirror 
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: x,y,z,x0,y0,dy
-    REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3),ierr
-    INTEGER :: i,j,k,ioffset
+    REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3)
+    INTEGER :: i,j,k,ioffset,ierr
     LOGICAL :: Found
 
     CALL Info('CoilSolver','Choosing fixing nodes for set: '//TRIM(I2S(SetNo)))
@@ -1528,6 +1553,119 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  ! Assembly the potential equation related to Jfix field with divergence of
+  ! elemental coil current as source.
+  !-------------------------------------------------------------------------
+  SUBROUTINE LocalCorrMatrix( Element, n, nd )
+    !------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    !------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,L(3),Lfix(3,nd)
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+    LOGICAL :: Stat,Found
+    INTEGER :: i,t,p,q
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: Material
+    SAVE Nodes
+    !------------------------------------------------------------------------------
+
+    CALL GetElementNodes( Nodes )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    ! Current density at nodes
+    DO i=1,n
+      j = FluxVarE % Perm( Element % DGIndexes(i) )      
+      Lfix(1:3,i) = FluxVarE % Values( 3*j-2: 3*j )
+    END DO
+    
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )                
+      Weight = IP % s(t) * detJ
+
+      ! Current density at integration point
+      L = MATMUL(Lfix(1:3,1:n),Basis(1:n))
+      
+      DO p=1,n
+        DO q=1,n
+          STIFF(p,q) = STIFF(p,q) + Weight * SUM(dBasisdx(q,:)*dBasisdx(p,:))
+        END DO
+        FORCE(p) = FORCE(p) + SUM(L * dBasisdx(p,:)) * Weight
+      END DO
+    END DO
+
+    CALL DefaultUpdateEquations(STIFF,FORCE)
+    !------------------------------------------------------------------------------
+  END SUBROUTINE LocalCorrMatrix
+!------------------------------------------------------------------------------
+
+  ! Correct the current elementwise to be divergence free.
+  ! This is done by solving elementwise the fixing currents.
+  !------------------------------------------------------------------------------
+  SUBROUTINE LocalCorrCurrent( Element, n, nd )
+    !------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    !------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),NodalPot(nd),DetJ,Weight
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd,3),x(nd)
+    INTEGER :: pivot(nd)
+    LOGICAL :: Stat,Found
+    INTEGER :: i,j,k,t,p,q
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: Nodes
+    SAVE Nodes
+    !------------------------------------------------------------------------------
+
+    CALL GetElementNodes( Nodes )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    
+    NodalPot(1:n) = Solver % Variable % Values( Perm( Element % NodeIndexes ) )             
+    
+    ! Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx )                
+      Weight = IP % s(t) * detJ
+
+      DO p=1,n
+        DO q=1,n
+          STIFF(p,q) = STIFF(p,q) + Weight * Basis(p) * Basis(q) 
+        END DO
+        ! Source for each coordinate direction
+        DO k=1,3
+          FORCE(p,k) = FORCE(p,k) + Weight * Basis(p) * SUM(dBasisdx(1:n,k)*NodalPot(1:n))
+        END DO
+      END DO
+    END DO
+
+
+    CALL LUdecomp(STIFF,n,pivot)
+    ! Fixing for each coordinate direction
+    DO k=1,3
+      x = FORCE(1:n,k)
+      CALL LUSolve(n,STIFF,x,pivot)
+
+      DO i=1,n
+        j = FluxVarE % Perm( Element % DGIndexes(i) )              
+        FluxVarE % Values( 3*(j-1)+k) = FluxVarE % Values( 3*(j-1)+k) - x(i)
+      END DO
+    END DO    
+    
+    !------------------------------------------------------------------------------
+  END SUBROUTINE LocalCorrCurrent
+!------------------------------------------------------------------------------
+
+
+  
 ! Scale the potential such that the total current is the desired one.
 ! The scaling uses the feature where the nodal current is computed from
 ! r=Ax-b where the components of r are the nodal currents corresponding to
@@ -1537,6 +1675,7 @@ CONTAINS
     
     REAL(KIND=dp) :: InitialCurrent,possum, negsum, sumerr
     INTEGER :: i,j,k,Coil,nsize,posi,negi
+    LOGICAL :: DoIt
 
 
     nsize = SIZE( LoadVar % Perm ) 
@@ -1554,7 +1693,7 @@ CONTAINS
       DO i=1,nsize
         j = LoadVar % Perm(i) 
         IF( j == 0 ) CYCLE
-
+        
         IF( ParEnv % PEs > 1 ) THEN
           IF( Solver % Matrix % ParallelInfo % Neighbourlist(j) % Neighbours(1) &
               /= ParEnv % MyPe ) CYCLE
@@ -1563,11 +1702,13 @@ CONTAINS
         IF( NoCoils > 1 ) THEN
           IF( CoilIndex(i) /= Coil ) CYCLE
         END IF
-
+        
         ! Note that the narrow part of the gap is omitted and here only 
         ! currents related to the outher parts of the gap (with |sgn|=2) 
         ! are accounted for. 
         sgn = Set(j)
+        IF( sgn == 0 ) CYCLE
+        
         IF( MODULO(sgn,10) == 2  ) THEN
           possum = possum + LoadVar % Values(j)
           posi = posi + 1
@@ -1576,7 +1717,7 @@ CONTAINS
           negi = negi + 1
         END IF
       END DO
-    
+          
       IF( ParEnv % PEs > 1 ) THEN
         possum = ParallelReduction( possum ) 
         negsum = ParallelReduction( negsum ) 
@@ -1587,20 +1728,31 @@ CONTAINS
 
       WRITE (Message,'(A,I6,ES12.4)') 'Negative coil currents:',negi,negsum
       CALL Info('CoilSolver',Message,Level=12)
-    
+
+
+      DoIt = .TRUE.
+      
       IF( ABS( possum ) < EPSILON( possum ) ) THEN
-        CALL Fatal('CoilSolver','No positive current sources on coil end!')
+        CALL Warn('CoilSolver','No positive current sources on coil end!')
+        DoIt = .FALSE.
       END IF
       IF( ABS( negsum ) < EPSILON( negsum ) ) THEN
-        CALL Fatal('CoilSolver','No negative current sources on coil end!')
-      END IF            
+        CALL Warn('CoilSolver','No negative current sources on coil end!')
+        DoIt = .FALSE.
+      END IF
+
+      IF(.NOT. DoIt) THEN
+        CALL Fatal('CoilSolver','Crappy potentials, cannot continue!')
+        RETURN
+      END IF
+
       
       sumerr = 2.0 * ABS( ABS( possum ) - ABS( negsum ) )  / (ABS( possum ) + ABS( negsum ) ) 
       WRITE (Message,'(A,ES12.4)') 'Discrepancy of start and end coil currents: ',sumerr 
       CALL Info('CoilSolver',Message,Level=7)
 
       IF( sumerr > 0.5 ) THEN
-        CALL Warn('CoilSolver','Positive and negative sums differ too much!')
+        CALL Warn('CoilSolver','Positive and negative sums differ quite a bit!')
       END IF
 
       InitialCurrent = ( possum - negsum ) / 2.0
@@ -1657,13 +1809,14 @@ CONTAINS
 
     n = Mesh % MaxElementNodes
     ALLOCATE( Basis(n), NodalCurr(3,n) )
-    
+
+    ! Current densties to be computed
     FluxVar => VariableGet( Mesh % Variables,'CoilCurrent')
     FluxVarE => VariableGet( Mesh % Variables,'CoilCurrent E')
+    
     IF( .NOT. ( ASSOCIATED( FluxVar ) .OR. ASSOCIATED( FluxVarE ) ) ) THEN
       CALL Fatal('CoilSolver','CoilCurrent (nodal and elemental) not associated!')
-    END IF
-    
+    END IF    
 
     DO Coil = 1, NoCoils 
 

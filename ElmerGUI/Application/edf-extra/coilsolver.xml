@@ -23,7 +23,6 @@
 			<Name> Procedure </Name>
 			<DefaultValue> "CoilSolver" "CoilSolver" </DefaultValue>
 		</Parameter>
-
 		<Parameter Widget="CheckBox" >
 			<Parameter Widget="Label" > <Name> Options </Name> </Parameter>
 			<Name> Coil Closed </Name>
@@ -50,25 +49,11 @@
 			<Type> Logical </Type>
 			<Whatis> After the current has been computed normalize it to the desired magnitude if this flag is given. </Whatis>
 		</Parameter>
-		<Parameter Widget="CheckBox" >
-			<Name> Coil Conductivity Fix </Name>
-			<Type> Logical </Type>
-			<Whatis> Fix the coil conductivity so that the current density would be more even. </Whatis>
-		</Parameter>
-		<Parameter Widget="CheckBox" >
-			<Name> Coil Anisotropic </Name>
-			<Type> Logical </Type>
-			<Whatis> Make the conductivity be aligned with the gradient of the potential. </Whatis>
-		</Parameter>
-		<Parameter Widget="CheckBox" >
-			<Name> Use Wall Distance </Name>
-			<Type> Logical </Type>
-			<Whatis> Use wall distance to introduce anisotropy into the coil conductivity. </Whatis>
-		</Parameter>
 		<Parameter Widget="Edit" >
-			<Name> Cfix diffusion </Name>
+			<Name> Coil Normal (3-vector) </Name>
+			<SifName> Coil Normal(3)</SifName>
 			<Type> Real </Type>
-			<Whatis> Diffusion coefficient for regularization of c field. </Whatis>
+			<Whatis>Normal vector of the coild. If not given axis of maximum inertia of the coil. </Whatis>
 		</Parameter>
 		<Parameter Widget="Edit" >
 			<Name> Coil Center (3-vector) </Name>
@@ -76,29 +61,27 @@
 			<Type> Real </Type>
 			<Whatis> Center of the coil. If not given center of volume of the coil. </Whatis>
 		</Parameter>
-		<Parameter Widget="Edit" >
-			<Name> Coil Normal (3-vector) </Name>
-			<SifName> Coil Normal(3)</SifName>
-			<Type> Real </Type>
-			<Whatis>Normal vector of the coild. If not given axis of maximum inertia of the coil. </Whatis>
-		</Parameter>
 		<Parameter Widget="CheckBox" >
-			<Name> Calculate Nodal Fields </Name>
+			<Name> Calculate Elemental Fields </Name>
 			<Type> Logical </Type>
 			<DefaultValue> True </DefaultValue>
-			<Whatis> Calculate standard nodal fields. </Whatis>
+			<Whatis> Calculate elemental fields using Discontinuous Galerkin basis. </Whatis>
 		</Parameter>
 		<Parameter Widget="CheckBox" >
 			<Name> Calculate Nodal Fields </Name>
 			<Type> Logical </Type>
-			<Whatis> Calculate elemental fields using Discontinuous Galerkin basis. </Whatis>
+			<Whatis> Calculate standard nodal fields. </Whatis>
 		</Parameter>
 		<Parameter Widget="CheckBox" >
 			<Name> Narrow Interface </Name>
 			<Type> Logical </Type>
 			<Whatis> For closed coil use narrow strategy to set the one/zero BCs. </Whatis>
 		</Parameter>
-
+                <Parameter Widget="CheckBox" >
+	           <Name> Fix Input Current Density </Name>
+	           <Type> Logical </Type>
+	           <Whatis> Fix the computed elemental current density to be divergence free. </Whatis>
+                </Parameter>
 	</Solver>
 
 	<BoundaryCondition>
