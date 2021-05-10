@@ -359,8 +359,12 @@
         END IF
 
         ! Add this so the norms are always comparable
-        CALL ListAddNewLogical( Solver % Values,'Linear System Consistent Norm',.TRUE.)
-        
+        CALL ListAddNewLogical( Solver % Values,'Nonlinear System Consistent Norm',.TRUE.)
+        IF( ThicknessSolver > 0 ) THEN
+          CALL ListAddNewLogical( Model % Solvers(ThicknessSolver) % Values,&
+              'Nonlinear System Consistent Norm',.TRUE.)
+        END IF
+          
      END IF ! FirstTime
 
      NeglectH = GetLogical( SolverParams,'Neglect Sheet Thickness in Potential', Found )
@@ -375,7 +379,6 @@
        CALL Fatal(SolverName, 'Sheet Integration Method: Implicit, Explicit or Crank-Nicolson')
      END IF
 
-     !CHANGE
      !To pick up channel and sheet size limiters, if specified
      MaxArea  = GetConstReal( SolverParams,'Max Channel Area', MABool )
      IF (.NOT. MABool) CALL Warn(SolverName,'No max channel area specified. Channels may grow very large!')
@@ -507,8 +510,7 @@
     NULLIFY(Material)
     
     PrevCoupledNorm = ComputeNorm(Solver, SIZE(HydPot), HydPot) 
-
-    
+     
     DO iterC = 1, CoupledIter
 
       CALL Info( SolverName, ' ',Level=4 )
@@ -657,7 +659,9 @@
            END DO     !  Bulk elements
 
            CALL DefaultFinishBulkAssembly()
-            
+
+
+           
         !------------------------------------------------------------------------------
         ! Edge element (the channels)
         ! Edge element are created in the SIF file using Element = 'n=1 e:1' 
@@ -768,7 +772,8 @@
 
               ! To stabilise channels
               IF(MABool) THEN
-                IF(AreaSolution(AreaPerm(M+t)) > MaxArea) AreaSolution(AreaPerm(M+t)) = MaxArea
+                k = AreaPerm(M+t)
+                IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
               END IF
               ChannelArea = AreaSolution(AreaPerm(M+t))
               
@@ -795,10 +800,7 @@
               !TODO Come up with a better way of fixing this
               IF(MABool) THEN
                 k = AreaPerm(M+t)
-                IF(AreaSolution(k) > MaxArea) THEN
-                  PRINT *,'Limiting solution:',ParEnv % MyPe, k, AreaSolution(k)
-                  AreaSolution(k) = MaxArea
-                END IF
+                IF(AreaSolution(k) > MaxArea) AreaSolution(k) = MaxArea
               END IF
 
               ! Here we assemble the contribution of each edge. On parrallel they should be only counted
@@ -808,10 +810,15 @@
               END IF
               
               EdgeCnt = EdgeCnt + 1                                          
-              CALL DefaultUpdateEquations( STIFF, FORCE, Edge )
+              CALL UpdateGlobalEquations( SystemMatrix,STIFF,SystemMatrix % rhs,FORCE,n,1,&
+                  HydPotPerm(Edge % NodeIndexes),UElement = Edge )
+
+              ! This bummer did not work correctly for edges here!
+              ! CALL DefaultUpdateEquations( STIFF, FORCE, Edge )
             END DO ! Edge elements
 
             CALL Info(SolverName,'Channel was added for edges: '//TRIM(I2S(EdgeCnt)))
+            
         END IF
 
            
@@ -899,13 +906,11 @@
           
            END DO   ! Neumann & Newton BCs
            !------------------------------------------------------------------------------
-
            CALL DefaultFinishAssembly()
            
            CALL DefaultDirichletBCs()
 
            CALL Info( SolverName, 'Assembly done', Level=8 )
-
 
 
            !------------------------------------------------------------------------------
@@ -916,6 +921,11 @@
 
            PrevNorm = Solver % Variable % Norm
            Norm = DefaultSolve()
+
+
+           WRITE(Message,*) 'HydPot NRM:',Norm
+           CALL Info( SolverName, Message ) 
+ 
 
            st = CPUTime()-st
            totat = totat + at
@@ -960,6 +970,10 @@
         END IF
                  
 
+        ! Here we compute over some nodal quanties using the elemental loop.
+        ! The result should be the same coming from each element for the same node
+        ! hence we set the nodal values only once using the "NodeDone" flag.
+        !---------------------------------------------------------------------------
         DO t=1,Solver % NumberOfActiveElements
               Element => GetActiveElement(t,Solver)
               IF (ParEnv % myPe /= Element % partIndex) CYCLE
@@ -1097,7 +1111,10 @@
             END DO
 
             Norm = ComputeNorm(Solver, SIZE(ThickSolution), ThickSolution)
-            IF( ParEnv % MyPe == 0 ) PRINT *,'ThickNorm:',Norm
+            
+            WRITE(Message,*) 'Thikcness NRM:',Norm
+            CALL Info( SolverName, Message ) 
+
             
 !------------------------------------------------------------------------------
 !       Update the Channels Area                 
@@ -1262,6 +1279,11 @@
 
            Norm = MyEdgeNorm( Mesh, AreaPerm, AreaSolution, mins, maxs )
            AreaSol % Norm = Norm
+
+           WRITE(Message,*) 'Area NRM:',Norm
+           CALL Info( SolverName, Message ) 
+
+
            
            IF ( PrevNorm + Norm /= 0.0d0 ) THEN
               RelativeChange = 2.0d0 * ABS( PrevNorm-Norm ) / (PrevNorm + Norm)
@@ -1327,7 +1349,8 @@
      END WHERE
    ENDIF
 
-! Output the sheet discharge (dimension = dimSheet)
+   ! Output the sheet discharge (dimension = dimSheet)
+#if 0
    IF (ASSOCIATED(qSol)) THEN
       qcnt = 0
       qSolution = 0.0_dp
@@ -1398,9 +1421,12 @@
      ThickSol % PrevValues(:,1) = ThickSol % Values(:)
      AreaSol % PrevValues(:,1) = AreaSol % Values(:)
    END IF
+#endif
 
+   
 CONTAINS    
 
+  
   FUNCTION MyEdgeNorm( Mesh, Perm, Sol, mins, maxs ) RESULT ( Norm ) 
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Perm(:)
@@ -1461,10 +1487,6 @@ CONTAINS
        LoadVector, NodalH, NodalHydPot, NodalCT, NodalC2, Nodalalphas, &
        Nodalbetas, NodalPhi0, NodalAr, NodalNg, Element, n, Nodes )
 !------------------------------------------------------------------------------
-    USE MaterialModels
-    USE Integration
-    USE Differentials
-
     IMPLICIT NONE
 
     REAL(KIND=dp), DIMENSION(:)   :: ForceVector, LoadVector
@@ -1544,6 +1566,7 @@ CONTAINS
        END DO
        Ngrad = SQRT(SUM(gradPhi(1:dim)*gradPhi(1:dim)))
        IF (Ngrad < AEPS) Ngrad = AEPS
+
        nb = SUM(NodalBetas(1:n)*Basis(1:n))
        na = SUM(Nodalalphas(1:n)*Basis(1:n))
        hsheet = SUM(NodalH(1:n)*Basis(1:n))
@@ -1945,6 +1968,8 @@ SUBROUTINE GetEvolveChannel(ALPHA, BETA, Qcc, CArea, NodalHydPot, NodalH, &
 END SUBROUTINE GetEvolveChannel
 !------------------------------------------------------------------------------
 
+! This routine returns elemental values for some keywords. The values only depend
+! on the nodal index and material. 
 !------------------------------------------------------------------------------
   SUBROUTINE GetParametersSheet( Element, Material, N, SheetConductivity, alphas, &
                  betas, Ev, ub, Snn, lr, hr, Ar, ng ) 
