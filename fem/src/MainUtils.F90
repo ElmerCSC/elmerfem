@@ -5009,7 +5009,7 @@ CONTAINS
     Mesh => Solver % Mesh
 
     MeshDim = 0 
-    Parallel = ( ParEnv % MyPe > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
+    Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Mesh % SingleMesh ) 
 
     
     DO Sweep = 0, 1    
