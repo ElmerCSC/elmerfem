@@ -353,5 +353,5 @@ Boundary Condition 3
   Flux integrate = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 1.23764612E-01
+Solver 3 :: Reference Norm = Real 1.26257247E-01
 Solver 3 :: Reference Norm Tolerance = Real 1E-06

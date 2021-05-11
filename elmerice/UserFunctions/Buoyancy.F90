@@ -379,7 +379,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    INTEGER :: nodenumber, NumberOfNodesOnBoundary 
    INTEGER, ALLOCATABLE :: NodeOnBoundary(:)
    INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, OldMeshTag
-   REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv
+   REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv, aux
    REAL(KIND=dp) :: rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: Ns(:), normal(:,:)
    LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,MeshChanged=.FALSE.
@@ -391,7 +391,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
-
+   
    !Element type 101 doesn't have a parent element, can't enquire SeaLevel
    !Should only occur during SaveBoundaryValues, so isn't an issue
    IF(GetElementFamily(Model % CurrentElement) < 2) THEN
@@ -425,12 +425,12 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
 
       DIM = CoordinateSystemDimension()
 
+      aux = GetConstReal(Model % Constants, 'Sea Spring Timestep Size', GotIt)
+      IF (GotIt) dt = aux
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
       IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Water Density not found. &
-              &Setting to 1.03225e-18'
-         CALL INFO('SeaSpring', Message, level=20)
-         rhow = 1.03225e-18_dp
+         WRITE(Message,'(A)') 'Variable "Water Density" not found in Constants.'
+         CALL FATAL('SeaSpring', Message)
       ELSE
          WRITE(Message,'(A,F10.4)') 'Water Density = ', rhow
          CALL INFO('SeaSpring', Message , level = 20)
@@ -441,7 +441,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
       !-----------------------------------------------------------------
       BoundaryElement => Model % CurrentElement
       IF ( .NOT. ASSOCIATED(BoundaryElement) ) THEN
-         CALL FATAL('Sea Pressure','No boundary element found')
+         CALL FATAL('SeaSpring','No boundary element found')
       END IF
       other_body_id = BoundaryElement % BoundaryInfo % outbody
       IF (other_body_id < 1) THEN ! only one body in calculation
@@ -475,6 +475,8 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
          IF( GetElementFamily(BCElement) == 1 ) CYCLE
          ComputeS = GetLogical( BC, 'Compute Sea Spring', GotIt)
          IF (.Not.GotIt) ComputeS = .FALSE.
+
+         
          IF (ComputeS) THEN
             n = BCElement % Type % NumberOfNodes
             DO i = 1, n
@@ -526,7 +528,8 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
          END IF
          Ns(i) = SQRT(Ns(i))
       ELSE
-         Ns(i) = -999.0
+        Ns(i) = -999.0
+        CALL WARN('SeaSpring', 'Lower surface almost is vertically aligned')
       END IF
       END DO
       DEALLOCATE (Normal)
