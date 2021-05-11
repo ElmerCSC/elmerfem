@@ -4826,8 +4826,8 @@ CONTAINS
         PassPerm(Mesh % Elements(j) % NodeIndexes)=1
       END DO
 
-      DO t=1,Solver % NumberOfActiveElements
-        Element => Mesh % Elements(Solver % ActiveElements(i))
+      DO t = 1, Mesh % NumberOfBulkElements 
+        Element => Mesh % Elements(t)
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
           CALL Warn(Caller,'Element body id beyond body table!')
           CYCLE
