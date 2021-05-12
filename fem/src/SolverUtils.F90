@@ -4854,6 +4854,17 @@ CONTAINS
         IF (ListGetLogical(ValueList,PassCondName,GotIt)) THEN
           IF (.NOT.CheckPassiveElement(Element)) CYCLE
           DO j=1,n
+            k=Indexes(j)
+            IF (k<=0) CYCLE
+            k=Perm(k)
+            IF (k<=0) CYCLE
+            s=0._dp
+            DO l=1,NDOFs
+              m=NDOFs*(k-1)+l
+              s=s+ABS(A % Values(A % Diag(m)))
+            END DO
+            IF (s>EPSILON(s)) CYCLE
+
             NodeIndexes(1) = Indexes(j)
             IF(PassPerm(NodeIndexes(1))==0) CALL SetPointValues(1)
           END DO
