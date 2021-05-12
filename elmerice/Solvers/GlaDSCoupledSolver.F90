@@ -1350,7 +1350,6 @@
    ENDIF
 
    ! Output the sheet discharge (dimension = dimSheet)
-#if 0
    IF (ASSOCIATED(qSol)) THEN
       qcnt = 0
       qSolution = 0.0_dp
@@ -1421,7 +1420,6 @@
      ThickSol % PrevValues(:,1) = ThickSol % Values(:)
      AreaSol % PrevValues(:,1) = AreaSol % Values(:)
    END IF
-#endif
 
    
 CONTAINS    
