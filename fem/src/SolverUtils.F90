@@ -4826,8 +4826,8 @@ CONTAINS
         PassPerm(Mesh % Elements(j) % NodeIndexes)=1
       END DO
 
-      DO t = 1, Mesh % NumberOfBulkElements 
-        Element => Mesh % Elements(t)
+      DO t=1,Solver % NumberOfActiveElements
+        Element => Mesh % Elements(Solver % ActiveElements(t))
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
           CALL Warn(Caller,'Element body id beyond body table!')
           CYCLE
@@ -5159,6 +5159,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF ( Passive ) THEN
+      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
+      DO i=0,Mesh % PassBCCnt-1
+        j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
+        PassPerm(Mesh % Elements(j) % NodeIndexes)=1
+      END DO
+
       Solver => Model % Solver
       Mesh => Solver % Mesh
       DO i=1,Solver % NumberOfActiveElements
@@ -5172,13 +5178,8 @@ CONTAINS
             k=Perm(k)
             IF (k<=0) CYCLE
 
-            s=0._dp
-            DO l=1,NDOFs
-              m=NDOFs*(k-1)+l
-              s=s+ABS(A % Values(A % Diag(m)))
-            END DO
-            IF (s>EPSILON(s)) CYCLE
- 
+            IF(PassPerm(Indexes(j))==1) CYCLE
+
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
               IF(A % ConstrainedDOF(m)) CYCLE
@@ -5187,6 +5188,7 @@ CONTAINS
           END DO
         END IF
       END DO
+      DEALLOCATE(PassPerm,NodeIndexes)
     END IF
 
 
