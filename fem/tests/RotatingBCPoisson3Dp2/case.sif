@@ -21,17 +21,13 @@ Header
 End
    
 Simulation
-  Max Output Level = 5
+  Max Output Level = 12
   Coordinate System = Cartesian
-  Coordinate Mapping(3) = 1 2 3
-  Simulation Type = Transient
+
+  Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Output Intervals = 1
   
-  Timestepping Method = BDF
-  BDF Order = 1
-  Timestep Sizes = 1.0
-  Timestep Intervals = 3
+  Coordinate Mapping(3) = 1 2 3
   Output Intervals = 1
 
   Simulation Timing = Logical True
@@ -75,41 +71,48 @@ End
 
 Solver 1
   Exec Solver = Before Timestep
+
   Equation = MeshDeform
+
   Procedure = "RigidMeshMapper" "RigidMeshMapper"
-  Cumulative Displacements = Logical False
+
   Translate Before Rotate = Logical True
+  Cumulative Displacements = Logical False
 End
 
 
 Solver 2
-  Equation = Heat Equation
-  Procedure = "HeatSolve" "HeatSolver"
-  Variable = -dofs 1 Temperature
+  Equation = HE
+
+  Procedure = "Poisson" "PoissonSolver"
+  Variable = Potential
+
   Exec Solver = Always
-  Stabilize = True
-  Bubbles = False
-  Lumped Mass Matrix = False
 
   Steady State Convergence Tolerance = 1.0e-5
   Nonlinear System Convergence Tolerance = 1.0e-9
   Nonlinear System Max Iterations = 1
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-3
-  Nonlinear System Convergence Without Constraints = True
 
   Nonlinear System Relaxation Factor = 1.0  
   Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStabL
+  Linear System Iterative Method = GCR
   Linear System Max Iterations = 5000
-  Linear System Convergence Tolerance = 1.0e-8
-  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Preconditioning = ilu
   Linear System ILUT Tolerance = 1.0e-3
-  Linear System Abort Not Converged = False
-  Linear System Residual Output = 20
-  Linear System Precondition Recompute = 1
 
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
  
+  Optimize Bandwidth = True
+
+  Element = p:2
+  Eliminate Slave = True
+  Eliminate Linear Constraints = True
+
   Apply Mortar BCs = Logical True
   Export Lagrange Multiplier = Logical True
 
@@ -119,61 +122,6 @@ Solver 2
   Solver Timing Cumulative = Logical True
 End
 
-Solver 3
-! Settings mainly for timing and verification
-  Exec Solver = never
-
-  Equation = SaveScalars
-  Procedure = "SaveData" "SaveScalars"
-
-  Filename = scalars.dat
-
-  Variable 1 = Temperature
-  Operator 1 = dofs
-  Operator 2 = partitions
-  Operator 3 = min
-  Operator 4 = max
-  Operator 5 = norm
-  Operator 6 = cpu time
-  Operator 7 = wall time
-
-!  File Append = Logical True
-
-! Reduce just to one file when parallel
-  Parallel Reduce = Logical True
-  Default Parallel Operator = String max
-  Parallel Operator 1 = String sum
-End 
-
-
-Solver 4
-  Exec Solver = never
-
-  Equation = "SaveLine"
-  Procedure = "SaveData" "SaveLine"
-  Filename = line.dat
-
-! Put all data in the same file
-!  File Append = True
-
-! Number the files [1,2,...] starting from 1st free number
-  Filename Numbering = True
-
-  Coordinate Transformation = String "cartesian to cylindrical"
-  Coordinate Transformation Use Degrees = Logical True
-  Polyline Coordinates(2,3) = 0.99 -360.0 0.5 0.99 360.0 0.99
-End
-
-
-Solver 5
-!  Exec Solver = never
-  Equation = VtuOutput
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
-  Vtu Format = True
-  Single Precision = True
-End 
-
 Equation 1
   Name = "Heat"
   Active Solvers(1) = 2
@@ -181,9 +129,6 @@ End
 
 Material 1
   Name = "Ideal"
-  Heat Conductivity = 1
-  Heat Capacity = 1
-  Density = 1
 End
 
 Body Force 1
@@ -198,7 +143,9 @@ End
 
 Body Force 2 
   Name = "Hot Move"
-  Heat Source = 100.0
+
+  Source = real 100.0
+
   Mesh Translate 3 = Real 0.1
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*tx(0)+skew*tx(1)"
@@ -209,7 +156,9 @@ End
 
 Body Force 3
   Name = "Cold Move"
-  Heat Source = -100.0
+
+  Source = real -100.0
+
   Mesh Translate 3 = Real 0.1
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*tx(0)+skew*tx(1)"
@@ -220,7 +169,7 @@ End
 Boundary Condition 1
   Target Boundaries(2) = 8 9
   Name = "Ambient"
-  Temperature = 0
+  Potential = real 0
 End
 
 Boundary Condition 2
@@ -234,6 +183,7 @@ Boundary Condition 3
 
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
+
 
 ! Because there is skew on both sides the code cannot 
 ! decide the periodicity from the interface mesh directly. 
@@ -249,6 +199,7 @@ End
 Boundary Condition 4
   Name = "Periodic Rotor Master"
   Target Boundaries(1) = 4
+
 
   Mortar BC =  Integer 5
   Radial Projector = Logical True
@@ -282,5 +233,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = 1.49702482
+Solver 2 :: Reference Norm = 7.09427816E-01
 Solver 2 :: Reference Norm Tolerance = 1.0e-4

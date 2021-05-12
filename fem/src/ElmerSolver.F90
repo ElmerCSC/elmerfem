@@ -265,7 +265,7 @@ END INTERFACE
          CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
 #ifdef HAVE_LUA
-         CALL Info( 'MAIN', ' Lua interpreted linked in.' )
+         CALL Info( 'MAIN', ' Lua interpreter linked in.' )
 #endif
 #ifdef HAVE_ZOLTAN
          CALL Info( 'MAIN', ' Zoltan library linked in.' )

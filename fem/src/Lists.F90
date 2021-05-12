@@ -2902,8 +2902,12 @@ use spariterglobals
       ptr % Fdim = 0
       IF( N > 1 ) ptr % Fdim = 1
       IF( M > 1 ) ptr % Fdim = ptr % Fdim + 1
-      
-      ptr % TYPE  = LIST_TYPE_CONSTANT_TENSOR
+
+      IF( ptr % Fdim == 0 ) THEN
+        ptr % TYPE  = LIST_TYPE_CONSTANT_SCALAR
+      ELSE
+        ptr % TYPE  = LIST_TYPE_CONSTANT_TENSOR
+      END IF
       ptr % FValues(1:n,1:m,1) = FValues(1:n,1:m)
 
       IF ( PRESENT(Proc) ) THEN
@@ -2911,10 +2915,14 @@ use spariterglobals
       END IF
 
       IF ( PRESENT( Cvalue ) ) THEN
-         ptr % CValue = CValue
-         ptr % TYPE  = LIST_TYPE_CONSTANT_TENSOR_STR
+        ptr % CValue = CValue
+        IF( ptr % Fdim == 0 ) THEN
+          ptr % TYPE  = LIST_TYPE_CONSTANT_SCALAR_STR
+        ELSE           
+          ptr % TYPE  = LIST_TYPE_CONSTANT_TENSOR_STR
+        END IF
       END IF
-
+      
       ptr % NameLen = StringToLowerCase( ptr % Name,Name )
     END SUBROUTINE ListAddConstRealArray
 !------------------------------------------------------------------------------
@@ -7029,7 +7037,6 @@ use spariterglobals
        WRITE(Message,*) 'Value type for property [', TRIM(Name), &
                '] not used consistently.'
        CALL Fatal( 'ListGetConstRealArray', Message )
-       RETURN
      END IF
 
      N1 = SIZE( ptr % FValues,1 )

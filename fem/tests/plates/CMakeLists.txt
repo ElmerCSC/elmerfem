@@ -5,5 +5,4 @@ CONFIGURE_FILE( plates.sif plates.sif COPYONLY)
 
 file(COPY plates.grd ELMERSOLVER_STARTINFO  plates DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(plates)
-ADD_ELMER_LABEL(plates quick)
+ADD_ELMER_TEST(plates LABELS quick plate)
