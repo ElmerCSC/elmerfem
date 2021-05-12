@@ -103,7 +103,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element parametrization
   TYPE(Variable_t), POINTER :: GMSol,BedrockSol
 
-  SAVE rhow,sealevel
+  SAVE rhow
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
        NodalZs, NodalZb,   &
@@ -165,6 +165,14 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
      BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
   END IF
 
+  sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )
+  If (.NOT.Found) Then
+      WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
+           &Setting to 0.0'
+      CALL INFO(SolverName, Message, level=20)
+      sealevel=0.0_dp
+  End if
+
   !--------------------------------------------------------------
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -179,13 +187,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       rhow = 1.03225e-18_dp
     End if
 
-    sealevel = GetCReal( Model % Constants, 'Sea Level', Found )
-    If (.NOT.Found) Then
-      WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
-           &Setting to 0.0'
-      CALL INFO(SolverName, Message, level=20)
-      sealevel=0.0_dp
-    End if
 
     ! Allocate
 
