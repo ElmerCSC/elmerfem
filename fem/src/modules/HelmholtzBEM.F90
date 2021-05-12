@@ -89,6 +89,13 @@
 
      EXTERNAL Matvec, Precond
 
+     CALL Info('HelmholtzBEMSolver','Solving the Helmholtz equation on boundaries')
+
+     IF( ParEnv % PEs > 1 ) THEN
+       CALL Fatal('HelmholtzBEMSolver','Unfortunately this module does not support MPI!')
+     END IF
+     
+     
      IF( CurrentCoordinateSystem() /= Cartesian ) THEN
        CALL Fatal('HelmholtzBEMSolver','This solver is implemented only for cartesian coordinates!')
      END IF
@@ -129,6 +136,8 @@
            END DO
         END DO
 
+        CALL Info('HelmholtzBEMSolver','Number of nodes on boundaries: '//TRIM(I2S(BoundaryNodes)))
+        
         N = Model % MaxElementNodes
  
         ALLOCATE( ElementNodes % x( N ),                  &
@@ -268,10 +277,11 @@
 !
 !    Solve system:
 !    -------------
+     CALL Info('HelmholtzBEMSolver','Solving full linear BEM matrix!',Level=7)
      CALL SolveFull( BoundaryNodes, Matrix, Potential, ForceVector, Solver )
-!
-!    Extract potential and fluxes for the boundary nodes:
+
 !    ----------------------------------------------------
+     CALL Info('HelmholtzBEMSolver','Extract potential and fluxes for the boundary nodes',Level=7)
      DO i=1,BoundaryNodes
         IF ( PotentialKnown(i) ) THEN
            Flx(i) = Potential(i)
@@ -285,8 +295,9 @@
      PRINT*,'Solve (s):    ',st
 !
      st = CPUTime()
-!    Now compute potential for all mesh points:
+
 !    ------------------------------------------
+     CALL Info('HelmholtzBEMSolver','Now compute potential for all mesh points',Level=7)
      Potential = 0.0d0
      DO i=1,BoundaryNodes
         Potential(BoundaryPerm(i)) = Pot(i)
@@ -307,7 +318,9 @@
 
         CALL ComputePotential( Potential, Pot, Flx, CurrentElement, n, ElementNodes )
      END DO
-
+     
+!    ------------------------------------------
+     CALL Info('HelmholtzBEMSolver','Creating fields for postprocessing',Level=7)
      Solver % Variable % Values = 0.0d0
      DO i=1,Solver % Mesh % NumberOfNodes
         j = Solver % Variable % Perm(i)
@@ -331,14 +344,16 @@
 !    -------------------
      Solver % Variable % Norm = SQRT( SUM( ABS(Potential)**2 ) ) / &
                 Solver % Mesh % NumberOfNodes 
-
+     
      CALL InvalidateVariable( Model % Meshes, &
                   Solver % Mesh, Solver % Variable % Name )
 !------------------------------------------------------------------------------
      st = CPUTime() - st
      PRINT*,'Post Processing (s):    ',st
 !------------------------------------------------------------------------------
- 
+         
+     CALL Info('HelmholtzBEMSolver','All done for now!',Level=7)
+    
 
    CONTAINS
 
