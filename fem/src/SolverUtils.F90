@@ -5159,14 +5159,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF ( Passive ) THEN
+      Solver => Model % Solver
+      Mesh => Solver % Mesh
+
       ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
       DO i=0,Mesh % PassBCCnt-1
         j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
         PassPerm(Mesh % Elements(j) % NodeIndexes)=1
       END DO
 
-      Solver => Model % Solver
-      Mesh => Solver % Mesh
       DO i=1,Solver % NumberOfActiveElements
         Element => Mesh % Elements(Solver % ActiveElements(i))
         IF (CheckPassiveElement(Element)) THEN
@@ -5179,6 +5180,13 @@ CONTAINS
             IF (k<=0) CYCLE
 
             IF(PassPerm(Indexes(j))==1) CYCLE
+
+            s=0._dp
+            DO l=1,NDOFs
+              m=NDOFs*(k-1)+l
+              s=s+ABS(A % Values(A % Diag(m)))
+            END DO
+            IF (s>EPSILON(s)) CYCLE
 
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
