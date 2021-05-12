@@ -11821,11 +11821,18 @@ CONTAINS
     DO k=1,2
 
       ! Potentially the projector may be set to rotate by just adding an offset 
-      ! to the angle. This may depende on time etc. 
+      ! to the angle. This may depende on time etc.
+      ! Note that user may say in Simulation section if she prefers radians instead of degrees.
+      ! This routine uses radians!
       IF( k == 1 ) THEN
         DegOffset = ListGetCReal(BParams,'Rotational Projector Angle Offset',SetDegOffset ) 
         IF(.NOT. SetDegOffset ) THEN
           DegOffset = ListGetCReal(BParams,'Mesh Rotate 3',SetDegOffset )          
+        END IF
+        IF( SetDegOffset ) THEN
+          IF( ListGetLogical( CurrentModel % Simulation,'Rotate in Radians',Found ) ) THEN
+            DegOffset = DegOffset * 180.0_dp / PI
+          END IF
         END IF
       ELSE
         SetDegOffset = .FALSE.

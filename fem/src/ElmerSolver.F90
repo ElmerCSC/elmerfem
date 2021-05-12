@@ -77,7 +77,8 @@
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
          steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sScan(:),&
-         sSweep(:),sPar(:),sFinish(:),sProduce(:),sSlice(:),sSliceRatio(:),sSliceWeight(:)
+         sSweep(:),sPar(:),sFinish(:),sProduce(:),sSlice(:),sSliceRatio(:),&
+         sSliceWeight(:), sAngle(:), sAngleVelo(:)
 
      LOGICAL :: GotIt,Transient,Scanning, LastSaved, MeshMode = .FALSE.
 
@@ -717,7 +718,8 @@ END INTERFACE
            ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
            steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), &
            sPar(1), sScan(1), sSweep(1), sFinish(1), sProduce(1),&
-           sSlice(1), sSliceRatio(1), sSliceWeight(1) )
+           sSlice(1), sSliceRatio(1), sSliceWeight(1), sAngle(1), &
+           sAngleVelo(1) )
        
        dt = 0._dp       
        sTime = 0._dp
@@ -735,6 +737,8 @@ END INTERFACE
        sSlice = 0._dp
        sSliceRatio = 0._dp
        sSliceWeight = 1.0_dp
+       sAngle = 0.0_dp
+       sAngleVelo = 0.0_dp
        
      END SUBROUTINE InitializeIntervals
        
@@ -1254,7 +1258,12 @@ END INTERFACE
          CALL VariableAdd( Mesh % Variables, Mesh, Name='Finish',DOFs=1, Values=sFinish )
          CALL VariableAdd( Mesh % Variables, Mesh, Name='Produce',DOFs=1, Values=sProduce )         
        END IF
-      
+
+       IF( ListCheckPresent( CurrentModel % Simulation,'Rotor Angle') ) THEN
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor angle',DOFs=1, Values=sAngle )
+         CALL VariableAdd( Mesh % Variables, Mesh, Name='rotor velo',DOFs=1, Values=sAngleVelo )
+       END IF
+       
        IF( ListCheckPresentAnySolver( CurrentModel,'Scanning Loops') ) THEN
          CALL VariableAdd( Mesh % Variables, Mesh, Name='scan', DOFs=1, Values=sScan )
        END IF
@@ -2218,6 +2227,13 @@ END INTERFACE
      ! For parallel slices we need to introduce the slices
      ParallelSlices = ListGetLogical( CurrentModel % Simulation,'Parallel Slices',GotIt ) &
          .AND. ( ParEnv % PEs > 1 )
+
+     IF( ParallelTime .OR. ParallelSlices ) THEN
+       IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Single Mesh',GotIt ) ) THEN
+         CALL Fatal('ExecSimulation','Parallel time and slices only available with "Single Mesh"')
+       END IF
+     END IF
+
      
      nSlices = 1
      nTimes = 1
@@ -2453,6 +2469,21 @@ END INTERFACE
          sInterval(1) = interval
          IF (.NOT. Transient ) steadyIt(1) = steadyIt(1) + 1
 
+
+!-----------------------------------------------------------------------------
+         IF( ListCheckPresent( CurrentModel % Simulation,'Rotor Angle') ) THEN
+           BLOCK
+             REAL(KIND=dp) :: PrevAngle
+             PrevAngle = sAngle(1)
+             sAngle(1) = ListGetCReal( CurrentModel % Simulation,'Rotor Angle')
+             sAngleVelo(1) = (sAngle(1)-PrevAngle)/dt
+             WRITE(Message,'(A,ES12.3)') '"Rotor Angle" set to value: ',sAngle(1)
+             CALL Info('ExecSimulation',Message,Level=6)
+             WRITE(Message,'(A,ES12.3)') '"Rotor Velo" set to value: ',sAngleVelo(1)
+             CALL Info('ExecSimulation',Message,Level=6)
+           END BLOCK
+         END IF       
+         
 !------------------------------------------------------------------------------
 
          BLOCK
@@ -2461,10 +2492,6 @@ END INTERFACE
            CHARACTER(LEN=MAX_NAME_LEN) :: MeshStr
            
            IF( ListCheckPresent( GetSimulation(), 'Mesh Name Index') ) THEN
-!            IF( Transient ) THEN
-!              CALL Fatal('ExecSimulation','Mesh swapping not supported in transient!')
-!            END IF
-             
              ! we cannot have mesh depend on "time" or "timestep" if they are not available as
              ! variables. 
              Mesh => CurrentModel % Meshes             
