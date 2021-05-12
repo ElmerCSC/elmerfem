@@ -36,24 +36,22 @@
 !
 ! Serial/Parallel   and 2D/3D
 !
-!
 ! .sif parameters:
 !    In the Solver section:
 !     - Flow Solution Name = String ; name of the variable for the direct problem ("Flow Solution" default)
 !     - Adjoint Solution Name = String ; name of the variable for the Adjoint system ("Adjoint"  default)
 !     - Optimized Variable Name = String ;  ("Mu" default)
 !     - Gradient Variable Name = String ; t ("DJDMu" default)
-!     - SquareFormulation = Logical ; True if the viscosity ios defined as alpha^2
-!                                               and optimisation on alpha to insure Mu> 0
 !
-!
-! In the  Material Section:
-!     if SquareFormulation = False:
-!          Viscosity = Equals mu
-!     If SquareFormulation = True:
-!         Viscosity = Variable mu
-!           Real MATC "tx*tx"
-!
+! Sometimes a modified function of viscosity is used such that viscosity != optvar and instead
+! viscosity = f(optvar) where optvar is the variable to be optimised.  In this case the 'Viscosity
+! derivative' must be set in the material section. The USF_CoV functions can be used for this.
+! For example, for the case viscosity = optvar^2, viscosity can be set like this in the material section:
+!   viscosity = variable optvar
+!     REAL procedure "ElmerIceUSF" "Asquare"
+! And the partial derivative can be set like this:
+!   Viscosity derivative = Variable optvar
+!     REAL procedure "ElmerIceUSF" "Asquare_d"
 !
 !  Execute this solver in the main ice body in conjunction with :
 !       -CostSolver_Adjoint.f90: To compute the cost function;
@@ -61,7 +59,7 @@
 !       -Optimise_m1qn3[Serial/Parallel].f90: for the optimization
 !
 ! *****************************************************************************
-SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
+SUBROUTINE  AdjointStokes_GradientMuSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
   USE DefUtils
@@ -79,6 +77,8 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t) :: ElementNodes
   TYPE(GaussIntegrationPoints_t) :: IntegStuff
   TYPE(ValueList_t), POINTER :: SolverParams,Material
+  TYPE(ValueList_t), POINTER :: BC
+
   real(kind=dp),allocatable :: Basis(:),dBasisdx(:,:)
   real(kind=dp) :: u,v,w,SqrtElementMetric
   INTEGER, POINTER :: NodeIndexes(:)
@@ -86,9 +86,9 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
 
 !!!!! variables Elmer
   TYPE(Variable_t), POINTER :: GradVariable, Variable, VeloSolN,VeloSolD
-  REAL(KIND=dp), POINTER ::  GradValues(:),VelocityN(:),VelocityD(:),Values(:)
-  INTEGER, POINTER :: GradPerm(:), VeloNPerm(:),VeloDPerm(:),Perm(:)
-  CHARACTER(LEN=MAX_NAME_LEN) ::GradSolName,NeumannSolName,DirichletSolName,VarSolName
+  REAL(KIND=dp), POINTER ::  GradValues(:),VelocityN(:),VelocityD(:)
+  INTEGER, POINTER :: GradPerm(:), VeloNPerm(:),VeloDPerm(:)
+  CHARACTER(LEN=MAX_NAME_LEN) ::GradSolName,NeumannSolName,DirichletSolName
 
 !! autres variables
   real(kind=dp),allocatable :: VisitedNode(:),db(:)
@@ -98,21 +98,20 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   real(kind=dp) :: mub,Viscosityb
   real(kind=dp),allocatable,dimension(:) :: c2n,c3n
   real(kind=dp),allocatable,dimension(:) :: NodalViscosityb
+  REAL(kind=dp),allocatable,SAVE :: NodalDer(:)
+  LOGICAL :: HaveDer
 
-
-  integer :: i,j,t,n,NMAX,NpN,NActiveNodes,DIM,e,p,q
+  integer :: i,j,t,n,NMAX,NpN,DIM,e,p,q
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag
 
-  logical :: SquareFormulation
   Logical ::  Firsttime=.true.,Found,stat,gotit,UnFoundFatal=.TRUE.
 
 
   save Firsttime,DIM
   save ElementNodes
   save SolverName
-  save NeumannSolName,DirichletSolName,VarSolName,GradSolName
-  save SquareFormulation
+  save NeumannSolName,DirichletSolName,GradSolName
   save VisitedNode,db,Basis,dBasisdx
   save Ux,Uy,Uz
   save c2n,c3n
@@ -121,184 +120,171 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   !!!! Firsttime Do some allocation and initialisation
   If (Firsttime) then
 
-      DIM = CoordinateSystemDimension()
-      WRITE(SolverName, '(A)') 'DJDMu_Adjoint'
-
-      NMAX=Solver % Mesh % NumberOfNodes
-      NpN=Model % MaxElementNodes
-
-      allocate(VisitedNode(NMAX),db(NMAX), &
-               Basis(NpN),  &
-               dBasisdx(NpN,3), &
-               Ux(NpN),Uy(NpN),Uz(NpN),&
-               c2n(NpN),c3n(NpN),&
-               NodalViscosityb(NpN))
-
+    DIM = CoordinateSystemDimension()
+    WRITE(SolverName, '(A)') 'DJDMu_Adjoint'
+    
+    NMAX=Solver % Mesh % NumberOfNodes
+    NpN=Model % MaxElementNodes
+    
+    allocate(VisitedNode(NMAX),db(NMAX), &
+         Basis(NpN),  &
+         dBasisdx(NpN,3), &
+         Ux(NpN),Uy(NpN),Uz(NpN),&
+         c2n(NpN),c3n(NpN),&
+         NodalViscosityb(NpN))
+    
+    allocate(NodalDer(NMAX))
+      
 !!!!!!!!!!! get Solver Variables
-      SolverParams => GetSolverParams()
-
-      NeumannSolName =  GetString( SolverParams,'Flow Solution Name', Found)
-          IF(.NOT.Found) THEN        
-               CALL WARN(SolverName,'Keyword >Flow Solution Name< not found in section >Solver<')
-               CALL WARN(SolverName,'Taking default value >Flow Solution<')
-               WRITE(NeumannSolName,'(A)') 'Flow Solution'
-          END IF
-      DirichletSolName =  GetString( SolverParams,'Adjoint Solution Name', Found)
-          IF(.NOT.Found) THEN        
-               CALL WARN(SolverName,'Keyword >Adjoint Solution Name< not found in section >Solver<')
-               CALL WARN(SolverName,'Taking default value >VeloD<')
-               WRITE(DirichletSolName,'(A)') 'VeloD'
-          END IF
-      VarSolName =  GetString( SolverParams,'Optimized Variable Name', Found)
-             IF(.NOT.Found) THEN
-                    CALL WARN(SolverName,'Keyword >Optimized Variable Name< not found  in section >Solver<')
-                    CALL WARN(SolverName,'Taking default value >Mu<')
-                    WRITE(VarSolName,'(A)') 'Mu'
-              END IF
-      GradSolName =  GetString( SolverParams,'Gradient Variable Name', Found)
-             IF(.NOT.Found) THEN
-                    CALL WARN(SolverName,'Keyword >Gradient Variable Name< not found  in section >Solver<')
-                    CALL WARN(SolverName,'Taking default value >DJDMu<')
-                    WRITE(GradSolName,'(A)') 'DJDmu'
-             END IF
-       SquareFormulation=GetLogical( SolverParams, 'SquareFormulation', Found)
-           IF(.NOT.Found) THEN
-                   CALL WARN(SolverName,'Logical Keyword >SquareFormulation< not found  in section >Solver<')
-                   CALL WARN(SolverName,'Taking default value >FALSE<')
-                   SquareFormulation=.FALSE.
-           END IF
-  
+    SolverParams => GetSolverParams()
+    
+    NeumannSolName =  GetString( SolverParams,'Flow Solution Name', Found)
+    IF(.NOT.Found) THEN        
+      CALL WARN(SolverName,'Keyword >Flow Solution Name< not found in section >Solver<')
+      CALL WARN(SolverName,'Taking default value >Flow Solution<')
+      WRITE(NeumannSolName,'(A)') 'Flow Solution'
+    END IF
+    DirichletSolName =  GetString( SolverParams,'Adjoint Solution Name', Found)
+    IF(.NOT.Found) THEN        
+      CALL WARN(SolverName,'Keyword >Adjoint Solution Name< not found in section >Solver<')
+      CALL WARN(SolverName,'Taking default value >VeloD<')
+      WRITE(DirichletSolName,'(A)') 'VeloD'
+    END IF
+    GradSolName =  GetString( SolverParams,'Gradient Variable Name', Found)
+    IF(.NOT.Found) THEN
+      CALL WARN(SolverName,'Keyword >Gradient Variable Name< not found  in section >Solver<')
+      CALL WARN(SolverName,'Taking default value >DJDMu<')
+      WRITE(GradSolName,'(A)') 'DJDmu'
+    END IF
+           
   !!! End of First visit
     Firsttime=.false.
   Endif
 
- ! Get variables needed by the Solver
+  ! Get variables needed by the Solver
 
-        GradVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
-        GradValues => GradVariable % Values
-        GradPerm => GradVariable % Perm
-        GradValues=0._dp
+  GradVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
+  GradValues => GradVariable % Values
+  GradPerm => GradVariable % Perm
+  GradValues=0._dp
+    
+  VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
+  VelocityN => VeloSolN % Values
+  VeloNPerm => VeloSolN % Perm
+  
+  VeloSolD => VariableGet( Solver % Mesh % Variables, DirichletSolName,UnFoundFatal=UnFoundFatal)
+  VelocityD => VeloSolD % Values
+  VeloDPerm => VeloSolD % Perm
+  
+  VisitedNode=0.0_dp
+  db=0.0_dp
 
-        Variable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
-        Values => Variable % Values
-        Perm => Variable % Perm
+  Elements: DO e=1,Solver % NumberOfActiveElements
 
-        VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
-        VelocityN => VeloSolN % Values
-        VeloNPerm => VeloSolN % Perm
-
-        VeloSolD => VariableGet( Solver % Mesh % Variables, DirichletSolName,UnFoundFatal=UnFoundFatal)
-        VelocityD => VeloSolD % Values
-        VeloDPerm => VeloSolD % Perm
-
-
-    VisitedNode=0.0_dp
-    db=0.0_dp
-
-    DO e=1,Solver % NumberOfActiveElements
-
-          Element => GetActiveElement(e)
-          Material => GetMaterial()
-          CALL GetElementNodes( ElementNodes )
-          n = GetElementNOFNodes()
-          NodeIndexes => Element % NodeIndexes
-
-          VisitedNode(NodeIndexes(1:n))=VisitedNode(NodeIndexes(1:n))+1.0_dp
-
-          Ux=0.0_dp
-          Uy=0.0_dp
-          Uz=0.0_dp
-          Ux(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+1)
-          Uy(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+2)
-          If (DIM.eq.3) Uz(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+3)
-
-          !!!!
-          nodalViscosityb=0.0_dp
-
-          IntegStuff = GaussPoints( Element )
-
-          DO t=1,IntegStuff%n
-
-             u = IntegStuff % u(t)
-             v = IntegStuff % v(t)
-             w =IntegStuff % w(t)
-
-             stat = ElementInfo( Element, ElementNodes, u, v, w,SqrtElementMetric, &
-                           Basis, dBasisdx) !removed bubbles 
-
-             s = SqrtElementMetric * IntegStuff % s(t)
-
-             mub=0.0_dp
-             Do p=1,n
-                Do q=1,n
-                  Do i=1,DIM
-                    Do j=1,DIM
-                       mub=mub+ s * dBasisdx(q,j) * dBasisdx(p,j) * &
-                         (- VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(q))-1)+i) * &
-                          VelocityD((DIM+1)*(VeloDPerm(NodeIndexes(p))-1)+i))
-
-                       mub=mub+ s * dBasisdx(q,i) * dBasisdx(p,j) * &
-                         (- VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(q))-1)+j) * &
-                           & VelocityD((DIM+1)*(VeloDPerm(NodeIndexes(p))-1)+i))
-                    End Do !j
-                  End Do !i
-                 End Do !q
-              End Do !p
-
-              ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt,UnFoundFatal)
-
-              SELECT CASE( ViscosityFlag )
-                CASE('power law')
-                DO j=1,3
-                   dVelodx(1,j) = SUM( Ux(1:n)*dBasisdx(1:n,j) )
-                   dVelodx(2,j) = SUM( Uy(1:n)*dBasisdx(1:n,j) )
-                   dVelodx(3,j) = SUM( Uz(1:n)*dBasisdx(1:n,j) )
-                END DO
-
-                Velo(1) = SUM( Basis(1:n) * Ux(1:n) )
-                Velo(2) = SUM( Basis(1:n) * Uy(1:n) )
-                Velo(3) = SUM( Basis(1:n) * Uz(1:n) )
-
-                ss = SecondInvariant(Velo,dVelodx)/2
+    Element => GetActiveElement(e)
+    Material => GetMaterial()
+    CALL GetElementNodes( ElementNodes )
+    n = GetElementNOFNodes()
+    NodeIndexes => Element % NodeIndexes
         
-                c2n = ListGetReal( Material, 'Viscosity Exponent', n, NodeIndexes )
-                c2 = SUM( Basis(1:n) * c2n(1:n) )
-
-                s = ss
-
-                c3n = ListGetReal( Material, 'Critical Shear Rate',n, NodeIndexes ,gotIt )
-                IF (GotIt) THEN
-                  c3 = SUM( Basis(1:n) * c3n(1:n) )
-                  IF(s < c3**2) THEN
-                     s = c3**2
-                  END IF
-                END IF
-
-                Viscosityb=mub*s**((c2-1)/2)
-
-                CASE default
-                    CALL FATAL(SolverName,'Viscosity Model has to be power Law')
-              END SELECT 
-
-              nodalViscosityb(1:n)=nodalViscosityb(1:n)+Viscosityb*Basis(1:n)
-          End Do !on IPs
-
-          IF (SquareFormulation) then
-               nodalViscosityb(1:n)=nodalViscosityb(1:n)*2.0_dp*Values(Perm(NodeIndexes(1:n)))
+    NodalDer(1:n) = ListGetReal(Material,'Viscosity derivative',n,NodeIndexes,Found=HaveDer)
+    
+    VisitedNode(NodeIndexes(1:n))=VisitedNode(NodeIndexes(1:n))+1.0_dp
+    
+    Ux=0.0_dp
+    Uy=0.0_dp
+    Uz=0.0_dp
+    Ux(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+1)
+    Uy(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+2)
+    If (DIM.eq.3) Uz(1:n)=VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(1:n))-1)+3)
+    
+!!!!
+    nodalViscosityb=0.0_dp
+    
+    IntegStuff = GaussPoints( Element )
+    
+    IPs: DO t=1,IntegStuff%n
+      
+      u = IntegStuff % u(t)
+      v = IntegStuff % v(t)
+      w =IntegStuff % w(t)
+      
+      stat = ElementInfo( Element, ElementNodes, u, v, w,SqrtElementMetric, &
+           Basis, dBasisdx) !removed bubbles 
+      
+      s = SqrtElementMetric * IntegStuff % s(t)
+      
+      mub=0.0_dp
+      p_loop: DO p=1,n
+        q_loop: DO q=1,n
+          i_loop: DO i=1,DIM
+            j_loop: DO j=1,DIM
+              mub=mub+ s * dBasisdx(q,j) * dBasisdx(p,j) * &
+                   (- VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(q))-1)+i) * &
+                   VelocityD((DIM+1)*(VeloDPerm(NodeIndexes(p))-1)+i))
+              
+              mub=mub+ s * dBasisdx(q,i) * dBasisdx(p,j) * &
+                   (- VelocityN((DIM+1)*(VeloNPerm(NodeIndexes(q))-1)+j) * &
+                   & VelocityD((DIM+1)*(VeloDPerm(NodeIndexes(p))-1)+i))
+            END DO j_loop
+          END DO i_loop
+        END DO q_loop
+      END DO p_loop
+      
+      ViscosityFlag = ListGetString( Material,'Viscosity Model', GotIt,UnFoundFatal)
+      
+      SELECT CASE( ViscosityFlag )
+      CASE('power law')
+        DO j=1,3
+          dVelodx(1,j) = SUM( Ux(1:n)*dBasisdx(1:n,j) )
+          dVelodx(2,j) = SUM( Uy(1:n)*dBasisdx(1:n,j) )
+          dVelodx(3,j) = SUM( Uz(1:n)*dBasisdx(1:n,j) )
+        END DO
+        
+        Velo(1) = SUM( Basis(1:n) * Ux(1:n) )
+        Velo(2) = SUM( Basis(1:n) * Uy(1:n) )
+        Velo(3) = SUM( Basis(1:n) * Uz(1:n) )
+        
+        ss = SecondInvariant(Velo,dVelodx)/2
+        
+        c2n = ListGetReal( Material, 'Viscosity Exponent', n, NodeIndexes )
+        c2 = SUM( Basis(1:n) * c2n(1:n) )
+        
+        s = ss
+        
+        c3n = ListGetReal( Material, 'Critical Shear Rate',n, NodeIndexes ,gotIt )
+        IF (GotIt) THEN
+          c3 = SUM( Basis(1:n) * c3n(1:n) )
+          IF(s < c3**2) THEN
+            s = c3**2
           END IF
-
-          db(NodeIndexes(1:n)) = db(NodeIndexes(1:n)) + nodalViscosityb(1:n)
-       End Do ! on elements
-
-   Do t=1,Solver % Mesh % NumberOfNodes
-     if (VisitedNode(t).lt.1.0_dp) cycle
-     GradValues(GradPerm(t))=db(t) 
-   End do
-
-   Return
-
+        END IF
+        
+        Viscosityb=mub*s**((c2-1)/2)
+        
+      CASE default
+        CALL FATAL(SolverName,'Viscosity Model has to be power Law')
+      END SELECT
+      
+      nodalViscosityb(1:n)=nodalViscosityb(1:n)+Viscosityb*Basis(1:n)
+    END DO IPs
+    
+    IF (HaveDer) THEN
+      nodalViscosityb(1:n)=nodalViscosityb(1:n)*NodalDer(1:n)
+    END IF
+    
+    db(NodeIndexes(1:n)) = db(NodeIndexes(1:n)) + nodalViscosityb(1:n)
+  END DO Elements
+  
+  DO t=1,Solver % Mesh % NumberOfNodes
+    IF (VisitedNode(t).LT.1.0_dp) CYCLE
+    GradValues(GradPerm(t))=db(t) 
+  END DO
+  
+  RETURN
+  
 !------------------------------------------------------------------------------
-END SUBROUTINE DJDMu_Adjoint
+END SUBROUTINE AdjointStokes_GradientMuSolver
 !------------------------------------------------------------------------------
 
 
