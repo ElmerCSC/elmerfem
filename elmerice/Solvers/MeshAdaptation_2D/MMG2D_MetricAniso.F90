@@ -276,7 +276,9 @@
        Param(1)=ListGetRealAtNode(BodyForce,TRIM(TensorName) // ' hmin', node)
        Param(2)=ListGetRealAtNode(BodyForce,TRIM(TensorName) // ' hmax', node)
        Param(3)= ListGetRealAtNode(BodyForce,TRIM(TensorName) // ' err', node)
-       Hessian(1:3)=HValues(3*(HPerm(node)-1) + 1:3)
+       DO i=1,3
+         Hessian(i)=HValues(3*(HPerm(node)-1) + i)
+       END DO
        CALL ComputeMetric(Hessian,Param,Metric)
        DO COMP=1,3
          TensorValues(3*(TensorPerm(node)-1) + COMP )=Metric(COMP)

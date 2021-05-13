@@ -75,7 +75,8 @@ SET(ElmerIce_SRC ElmerIceUtils.F90 AIFlowSolve_nlD2.F90 AIFlowSolve_nlS2.F90
     IntegrateVertically.F90 EnthalpySolver.F90 SubShelfMelt.F90
     ./Adjoint/Adjoint_LinearSolver.F90 ./Adjoint/Adjoint_CostDiscSolver.F90
     ./Adjoint/Adjoint_CostContSolver.F90 ./Adjoint/Adjoint_CostRegSolver.F90 
-    ./Adjoint/Adjoint_GradientValidation.F90 
+    ./Adjoint/Adjoint_GradientValidation.F90
+    ./AdjointStokes/AdjointStokes_GradientMu.F90 
     ./AdjointStokes/AdjointStokes_GradientBetaSolver.F90  
     ./AdjointSSA/AdjointSSA_AdjointSolver.F90 ./AdjointSSA/AdjointSSA_CostDiscSolver.F90
     ./AdjointSSA/AdjointSSA_CostRegSolver.F90 ./AdjointSSA/AdjointSSA_SSASolver.F90

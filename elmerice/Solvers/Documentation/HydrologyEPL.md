@@ -11,7 +11,7 @@
 This solver treat the diffusion equation for the efficient drainage system. The activation of the layer is dealt by the Open EPL mask. The upper limit is needed to increase the size of the drainage system once the water head in the efficient layer reaches a given value.
 
 ## SIF contents
-The required keywords in the SIF file for this solver are given below. The [IDSSolver](./HydrologyIDS.md) is needed to use the efficient layer solver. In the following, we assume that the SIF file is written as shown in the [IDSSolver](./HydrologyIDS.md) section; the SIF should then be written as follows.
+The required keywords in the SIF file for this solver are given below. The [IDSSolver](./HydrologyIDS.md) is needed to use the efficient layer solver, and its upper limit should be set. In the following, we assume that the SIF file is written as shown in the [IDSSolver](./HydrologyIDS.md) section; the SIF should then be written as follows.
 
 ```
 ! Initial condition for the hydrology
@@ -25,7 +25,7 @@ The transfer between the two layers is dealt with here. An example is given here
 Body Force 1
 EPLToIDS Transfer = Variable Coordinate 1
   Real Procedure "ElmerIceUSF" "EPLToIDS"
-    
+
 EPLHead Passive = Equals Open EPL
 Active Element Min Nodes = Integer 1
 End
@@ -82,22 +82,22 @@ The boundary condition of the hydrological model should be applied on a 1D bound
 Boundary Condition 4
   Name = "Lower frame"
   Target Boundaries = 4
-  
+
 ! Flux condition on the borders of the hydrological domain
-! Zero flux is not a necessary input as it is the natural 
+! Zero flux is not a necessary input as it is the natural
 ! boundary condition of the system
 
-  EPLHead Flux BC = Logical True 
+  EPLHead Flux BC = Logical True
   EPLHead Water Flux = Real 0.0
 End
 
 Boundary Condition 5
   Name = "Glacier snout"
   Target Boundaries = 5
-  
-! Take care to choose a value bellow or equals to the upper 
+
+! Take care to choose a value bellow or equals to the upper
 1 limit of the water head
-  
+
   EPLHead = variable coordinate 3, depth
     real matc "tx(0)+0.91*tx(1)"
 End
