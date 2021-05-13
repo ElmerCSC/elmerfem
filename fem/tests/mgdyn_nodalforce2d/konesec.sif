@@ -3,7 +3,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 10
   Coordinate System = Cartesian
   Simulation Type = steady state
 
@@ -54,6 +54,8 @@ Body 4
   Name = "airgap"
   Equation = 1
   Material = 1
+
+! This launches computation using "Arkkio's formula" for the torque. 
   R Inner = Real 0.0982
   R Outer = Real 0.1000
 End
@@ -261,8 +263,7 @@ Solver 5
   Variable 1 = time
   Expression 1 = Variable time,timestep size  ! save rotation angle 
     Real MATC "omega*(tx(0)-tx(1))"
-  show norm index = integer 15
-  reference norm = 3.98464218E+01
+  show norm index = integer 10 !15
 End
 
 ! Periodic boundary, stator part
@@ -295,3 +296,8 @@ Boundary Condition 7
   Name = "stator_ext"
   A = Real 0
 End
+
+Solver 2 :: reference norm = 3.40831276E-02
+Solver 3 :: reference norm = 5.76003804E+05
+Solver 5 :: reference norm = 1.57043489E+02
+
