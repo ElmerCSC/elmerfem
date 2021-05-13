@@ -12015,6 +12015,9 @@ CONTAINS
     err1 = ( x1r_max(3) - x1r_min(3) ) / Radius
     err2 = ( x2r_max(3) - x2r_min(3) ) / Radius
 
+    WRITE(Message,'(A,ES12.3)') 'Radius of the rotational interface:',Radius
+    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
+ 
     WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius:',err1
     CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
 
@@ -12025,6 +12028,10 @@ CONTAINS
       CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
     END IF
 
+    ! Add "Rotor Radius" to the simulation section in case it should be usefull elsewhere...
+    CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',Radius )
+    
+    
     ! Ok, so we have concluded that the interface has constant radius
     ! therefore the constant radius may be removed from the mesh description.
     ! Or perhaps we don't remove to allow more intelligent projector building 
@@ -12083,7 +12090,8 @@ CONTAINS
         END IF
         CALL Fatal('RotationalInterfaceMeshes','Check your settings, this cannot be periodic!')
       END IF
-      CALL ListAddInteger(BParams,'Rotational Projector Periods', NINT( Nsymmetry ) ) 
+      i = NINT( Nsymmetry ) 
+      CALL ListAddInteger(BParams,'Rotational Projector Periods', i) 
     ELSE
       WRITE(Message,'(A,I0)') 'Using enforced number of periods: ',i
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
@@ -12092,6 +12100,13 @@ CONTAINS
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
     END IF
 
+    ! We benefit of knowing the rotor periods also elsewhere in electrical machine
+    ! computation. This is the most reliable place where it was computed so let's
+    ! add it here. 
+    IF( i /= 1 ) THEN
+      CALL ListAddInteger(CurrentModel % Simulation,'Rotor Periods',i)
+    END IF
+    
   END SUBROUTINE RotationalInterfaceMeshes
 !------------------------------------------------------------------------------
 

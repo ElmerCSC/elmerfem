@@ -354,25 +354,46 @@ CONTAINS
  SUBROUTINE CalculateLumped()
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: torq,TorqArea,IMoment,IA, &
-       rinner,router,rmean,ctorq,detJ,Weight,Bp,Br,Bx,By,x,y,r,rho
-   REAL(KIND=dp), ALLOCATABLE, SAVE :: a(:),u(:),POT(:),dPOT(:), &
+       rinner,router,rmean,rdiff,ctorq,detJ,Weight,&
+       Bp,Br,Bx,By,x,y,r,rho
+   REAL(KIND=dp), ALLOCATABLE :: a(:),u(:),POT(:),dPOT(:), &
        pPot(:),Density(:)
-   REAL(KIND=dp), POINTER, SAVE :: Basis(:), dBasisdx(:,:)
+   REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
+   LOGICAL, ALLOCATABLE :: TorqueElem(:)
    INTEGER :: i,bfid,n,nd,nbf
    LOGICAL :: Found, Stat
    TYPE(ValueList_t),POINTER::Params
    TYPE(GaussIntegrationPoints_t) :: IP
-   TYPE(Nodes_t), SAVE :: Nodes
+   TYPE(Nodes_t) :: Nodes
    LOGICAL :: CalcTorque, CalcPot, CalcInert
-   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel
-   LOGICAL, SAVE :: Visited = .FALSE.
-
+   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange
+   LOGICAL :: Visited = .FALSE.
+   
+   SAVE Visited, Nodes, Basis, dBasisdx, a, u, POT, dPOT, pPot, Density, Ctorq, TorqueElem
+   
 !------------------------------------------------------------------------------
 
    CALL Info(Caller,'Calculating lumped parameters',Level=8)
 
    ! Define whether we have something to compute
-   CalcTorque = ListCheckPresentAnyBody( Model,'r inner')
+   rinner = ListGetCRealAnyBody( Model,'r inner',CalcTorque )
+   IF( CalcTorque ) THEN
+     router = ListGetCRealAnyBody( Model,'r outer')
+     rmean = (rinner+router)/2
+     rdiff = (router-rinner)
+     HaveRange = .TRUE.     
+   ELSE
+     rmean = ListGetConstReal( CurrentModel % Simulation,'Rotor Radius',CalcTorque)
+     rmean = ParallelReduction( rmean, 2 )
+     IF(.NOT. CalcTorque .AND. rmean > EPSILON(rmean) ) THEN
+       CALL ListAddConstReal( CurrentModel % Simulation,'Rotor Radius',rmean)
+       CalcTorque = .TRUE.
+     END IF
+     rdiff = ListGetConstReal( CurrentModel % Simulation,'Rotor Air Gap Width',Found)
+     IF(.NOT. Found ) rdiff = 1.0e-3 * rmean
+     HaveRange = .FALSE.
+   END IF
+   
    CalcPot = ListGetLogicalAnyBodyForce( Model,'Calculate Potential' )
    CalcInert = CalcTorque .AND. .NOT. Visited 
    
@@ -391,9 +412,6 @@ CONTAINS
    IF( CalcTorque ) THEN
      torq = 0._dp
      TorqArea = 0._dp
-     rinner = ListGetCRealAnyBody( Model,'r inner',Found )
-     router = ListGetCRealAnyBody( Model,'r outer',Found )
-     rmean = (rinner+router)/2
    END IF
    IF( CalcInert ) THEN
      IMoment = 0._dp
@@ -405,6 +423,47 @@ CONTAINS
    END IF
 
    tind = 0
+
+   IF(.NOT. Visited .AND. CalcTorque ) THEN
+     ALLOCATE( TorqueElem( GetNOFActive() ) )
+     TorqueElem = .FALSE.
+     
+     DO i=1,GetNOFActive()
+       Element => GetActiveElement(i)
+     
+       ThisTorque = .FALSE.
+       
+       n  = GetElementNOFNodes(Element)     
+       CALL GetElementNodes( Nodes, Element )
+
+       IF( HaveRange ) THEN       
+         ! We are given range in classical Arkkio style. 
+         ! Check how the center lies with respect to the range.
+         x = SUM(Nodes % x(1:n))/n
+         y = SUM(Nodes % y(1:n))/n
+         r = SQRT(x**2+y**2)
+         IF (r >= rinner .AND. r <= router) THEN
+           TorqueElem(i) = .TRUE.
+         END IF
+       ELSE
+         ! We are not given a range. Just take any element
+         ! which has even one node at the given radius. 
+         DO j=1,n
+           x = Nodes % x(j)
+           y = Nodes % y(j)
+           r = SQRT(x**2+y**2)
+           IF( ABS(r-rmean) < rdiff / 2 ) THEN
+             TorqueElem(i) = .TRUE.
+             EXIT
+           END IF
+         END DO
+       END IF
+     END DO
+              
+     i = COUNT( TorqueElem )
+     CALL Info(Caller,'Number of elements to compute torque: '//TRIM(I2S(i)))
+   END IF
+
    
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
@@ -441,10 +500,7 @@ CONTAINS
      END IF
      
      IF( CalcTorque ) THEN
-       Params=>GetBodyParams(Element)
-       IF(ASSOCIATED(Params)) THEN
-         ThisTorque = ListCheckPresent( Params,'r inner')
-       END IF
+       ThisTorque = TorqueElem(i)
        IF(ThisTorque .AND. .NOT. ThisPot ) THEN
          CALL GetLocalSolution(POT, UElement=Element)
        END IF
@@ -499,14 +555,12 @@ CONTAINS
        END IF
        
        IF( ThisTorque ) THEN                      
-         IF (r >= rinner .AND. r <= router) THEN
-           Bx =  SUM(POT(1:n)*dBasisdx(1:n,2))
-           By = -SUM(POT(1:n)*dBasisdx(1:n,1))
-           Br =  x/r*Bx + y/r*By
-           Bp = -y/r*Bx + x/r*By
-           Torq = Torq + Weight * r*Br*Bp / (PI*4.0d-7*(router-rinner))
-           TorqArea = TorqArea + Weight
-         END IF
+         Bx =  SUM(POT(1:n)*dBasisdx(1:n,2))
+         By = -SUM(POT(1:n)*dBasisdx(1:n,1))
+         Br =  x/r*Bx + y/r*By
+         Bp = -y/r*Bx + x/r*By
+         Torq = Torq + Weight * r*Br*Bp / (PI*4.0d-7*rdiff)
+         TorqArea = TorqArea + Weight
        END IF
        
        IF( ThisInert ) THEN
@@ -548,20 +602,42 @@ CONTAINS
        TorqArea = ParallelReduction(TorqArea)
      END IF
 
-     WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
-     CALL Info(Caller,Message,Level=8)
-     
-     IF (TorqArea /= 0) THEN
-       Ctorq = PI*(router**2-rinner**2) / TorqArea
-     ELSE
-       Ctorq = 0.0_dp
+     ! Arkkios formula assumes that rinner and router are nicely aligned with elements.
+     ! This may not the case, so the 1st time we make a geometric correction. 
+     IF(.NOT. Visited ) THEN
+       WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
+       CALL Info(Caller,Message,Level=6)
+
+       IF (TorqArea /= 0) THEN
+         !Ctorq = PI*(router**2-rinner**2) / TorqArea
+         Ctorq = 2 * PI * rmean * rdiff / TorqArea
+
+         WRITE(Message,'(A,F8.4)') 'Air gap correction initial:', cTorq
+         CALL Info(Caller,Message,Level=4)
+         
+         ! The correction factor also corrects for the number of periods.
+         ! We don't want that - so let us take back that and the torque
+         ! can be compared to inertial moment of the sector still. 
+         i = ListGetInteger( CurrentModel % Simulation,'Rotor Periods',Found )
+         i = NINT( ParallelReduction( 1.0_dp * i, 2 ) )
+         IF( i > 1 ) THEN
+           WRITE(Message,'(A,I0)') 'Air gap correction rotor periods: ',i
+           CALL Info(Caller,Message,Level=4)
+           Ctorq = Ctorq / i 
+         END IF         
+       ELSE
+         Ctorq = 1.0_dp
+       END IF
+       
+       WRITE(Message,'(A,F8.4)') 'Air gap correction:', cTorq
+       CALL Info(Caller,Message,Level=4)
+       !CALL ListAddConstReal(Model % Simulation,'res: air gap correction', cTorq)
      END IF
-     WRITE(Message,'(A,ES15.4)') 'Air gap correction:', cTorq
-     CALL Info(Caller,Message,Level=8)
+       
      Torq = Ctorq * Torq
-     
+       
      WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
-     CALL Info(Caller,Message,Level=7)
+     CALL Info(Caller,Message,Level=6)
      
      CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
    END IF

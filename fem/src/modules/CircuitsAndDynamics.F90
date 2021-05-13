@@ -58,22 +58,28 @@ SUBROUTINE CircuitsAndDynamics_init( Model,Solver,dt,TransientSimulation )
   
   Params => Solver % Values
 
+  ! This is only created if no variable present!
+  CALL ListAddNewString( Params,'Variable','ckt')
+  
   ! When we introduce the variables in this way the variables are created
   ! so that they exist when the proper simulation cycle starts.
   ! This also keeps the command file cleaner. 
-
-  RotMachine = ListGetLogical( Params,'Rotating Machine',Found )
-  IF(.NOT. Found ) THEN
-    RotMachine = ListGetLogicalAnyBC(Model,'Rotational Projector') .OR. &
-        ListGetLogicalAnyBC(Model,'Anti Rotational Projector') 
+  ! If "Rotor Angle" is created in Simulation section no need to do it here!
+  IF( .NOT. ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
+    RotMachine = ListGetLogical( Params,'Rotating Machine',Found )
+    IF(.NOT. Found ) THEN
+      RotMachine = ListGetLogicalAnyBC(Model,'Rotational Projector') .OR. &
+          ListGetLogicalAnyBC(Model,'Anti Rotational Projector') 
+    END IF
+    
+    IF( RotMachine ) THEN
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-global Rotor Angle' )
+      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+          '-global Rotor Velo' )
+    END IF
   END IF
-
-  IF( RotMachine ) THEN
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-global Rotor Angle' )
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-        '-global Rotor Velo' )
-  END IF
+  
   CALL ListAddLogical( Params,'No Matrix',.TRUE.)
   
   Solver % Values => Params
@@ -162,8 +168,11 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ALLOCATE(ip(Model % Circuit_tot_n))
   END IF
 
-  CALL SetDynamicAngle()
-
+  ! If we have angle given explicitely, do not compute it 
+  IF( .NOT. ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
+    CALL SetDynamicAngle()
+  END IF
+      
   IF (Tstep /= GetTimestep()) THEN
     Tstep = GetTimestep()
     ! Circuit variable values from previous timestep:
@@ -328,7 +337,7 @@ CONTAINS
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
             CALL Info('AddComponentEquationsAndCouplings',&
-                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 7)
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
           ELSE
             Comp % Resistance = 0._dp
@@ -938,31 +947,36 @@ CONTAINS
     
     Simulation => GetSimulation()
 
-    tStep = GetTimestep()
+    IF( ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
+      CALL Info('SetRotation','Using "Rotor Velo" from simulation section',Level=6)
+    ELSE      
+      CALL Info('SetRotation','Using computed torque to set rotation!',Level=6)
+      tStep = GetTimestep()
 
-    ! We initiate these at the start of the timestep when they still present the previous
-    ! computed values. 
-    IF( tStep /= tStepPrev ) THEN
-      ang0 = AngVar % Values(1)
-      velo0 = VeloVar % Values(1)
-      imom = GetConstReal( Simulation,'Imom') ! interatial moment of the motor      
-      tStepPrev = tStep
+      ! We initiate these at the start of the timestep when they still present the previous
+      ! computed values. 
+      IF( tStep /= tStepPrev ) THEN
+        ang0 = AngVar % Values(1)
+        velo0 = VeloVar % Values(1)
+        imom = GetConstReal( Simulation,'Imom') ! interatial moment of the motor      
+        tStepPrev = tStep
+      END IF
+
+      IF(imom < EPSILON(imom) ) THEN
+        CALL Warn('SetDynamicAngle','Moment of inertia "Imom" close to zero, skipping rotations...')
+        RETURN
+      END IF
+
+      torq = GetConstReal( Simulation,'res: Air Gap Torque', Found)
+      IF(.NOT. Found ) CALL Fatal('SetRotation','Torque is needed!')
+
+      velo = velo0 + dt * (torq-0) / imom
+      ang  = ang0  + dt * velo
+
+      VeloVar % Values(1) = velo
+      AngVar % Values(1) = ang
     END IF
-     
-    IF(imom < EPSILON(imom) ) THEN
-      CALL Warn('SetDynamicAngle','Moment of inertia "Imom" close to zero, skipping rotations...')
-      RETURN
-    END IF
-
-    torq = GetConstReal( Simulation,'res: Air Gap Torque', Found)
-    IF(.NOT. Found ) CALL Fatal('SetRotation','Torque is needed!')
-    
-    velo = velo0 + dt * (torq-0) / imom
-    ang  = ang0  + dt * velo
-
-    VeloVar % Values(1) = velo
-    AngVar % Values(1) = ang
-
+      
     CALL ListAddConstReal(Simulation,'res: Angle(rad)', ang)
     CALL ListAddConstReal(Simulation,'res: Speed(rpm)', velo/(2._dp*pi)*60)
       
@@ -1244,7 +1258,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
             CALL Info('AddComponentEquationsAndCouplings', &
-                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 7)
             CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
           ELSE
             Comp % Resistance = 0._dp
