@@ -69,7 +69,10 @@ CONTAINS
   SUBROUTINE ParallelFinalize()
 !-------------------------------------------------------------------------------
 #ifdef PARALLEL_FOR_REAL
-    CALL ParEnvFinalize()
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Info('ParallelFinalize','Final syncronization of the MPI system!',Level=12)
+      CALL ParEnvFinalize()
+    END IF
 #endif
 !-------------------------------------------------------------------------------
   END SUBROUTINE ParallelFinalize

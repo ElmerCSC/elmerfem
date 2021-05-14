@@ -21195,8 +21195,8 @@ CONTAINS
      REAL(KIND=dp), ALLOCATABLE :: PeriodicSol(:,:), PeriodicMult(:,:), PeriodicNrm(:), &
          PeriodicChange(:), dx(:), dy(:)
      REAL(KIND=dp), POINTER :: x(:), y(:)
-     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, Nconv, N1st, Ntimes 
-     LOGICAL :: ExportMult, ParallelTime, PeriodicConv
+     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, Nconv, N1st, Ntimes, Nslices 
+     LOGICAL :: ExportMult, ParallelTime, PeriodicConv, ParallelSlices
      TYPE(Variable_t), POINTER :: Var
      CHARACTER(LEN=MAX_NAME_LEN) :: MultName
      REAL(KIND=dp) :: Relax, AveErr, AveNrm, Tol
@@ -21217,7 +21217,9 @@ CONTAINS
 
      Ncycle = ListGetInteger( Model % Simulation,'Periodic Timesteps')
      Ntimes = ListGetInteger( Model % Simulation,'Number of Times',Found )  
-     
+     Nslices = ListGetInteger( Model % Simulation,'Number of Slices',Found )
+
+     ParallelSlices = ( Nslices > 1 ) 
      ParallelTime = ( Ntimes > 1 )
      IF( ParallelTime ) Ncycle = Ncycle / Ntimes
      
@@ -21341,7 +21343,7 @@ CONTAINS
        WRITE(Message,'(A,ES12.5)') 'Average cyclic norm '//TRIM(I2S(Ntime))//': ',AveNrm
        CALL Info(Caller,Message )
             
-       IF( ParallelTime ) THEN
+       IF( ParallelTime .OR. ParallelSlices ) THEN
          AveErr = ParallelReduction( AveErr ) / ParEnv % PEs
          WRITE(Message,'(A,ES12.5)') 'Parallel cyclic error '//TRIM(I2S(Ntime))//': ',AveErr
          CALL Info(Caller,Message )        

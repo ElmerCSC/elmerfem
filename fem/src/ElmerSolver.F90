@@ -2292,7 +2292,7 @@ END INTERFACE
      IF( ListGetLogical( CurrentModel % Simulation,'Parallel Slices',GotIt ) ) THEN
        IF( nSlices <= 1 ) THEN
          sSlice = 0.0_dp
-         sSliceRatio = 1.0_dp
+         sSliceRatio = 0.0_dp
          sSliceWeight = 1.0_dp
        ELSE
          sSlice = 1.0_dp * iSlice
