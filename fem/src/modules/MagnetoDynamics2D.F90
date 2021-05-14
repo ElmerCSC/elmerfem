@@ -360,13 +360,13 @@ CONTAINS
        pPot(:),Density(:)
    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
    LOGICAL, ALLOCATABLE :: TorqueElem(:)
-   INTEGER :: i,bfid,n,nd,nbf
+   INTEGER :: i,bfid,n,nd,nbf,NoSlices,PrevComm
    LOGICAL :: Found, Stat
    TYPE(ValueList_t),POINTER::Params
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t) :: Nodes
    LOGICAL :: CalcTorque, CalcPot, CalcInert
-   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange
+   LOGICAL :: ThisTorque, ThisPot, ThisInert, Parallel, HaveRange, SliceAverage
    LOGICAL :: Visited = .FALSE.
    
    SAVE Visited, Nodes, Basis, dBasisdx, a, u, POT, dPOT, pPot, Density, Ctorq, TorqueElem
@@ -400,7 +400,16 @@ CONTAINS
    IF(.NOT. (CalcTorque .OR. CalcPot .OR. CalcInert) ) RETURN
 
    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
+   
+   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices',Found )
 
+   SliceAverage = ( NoSlices > 1 )
+   IF( SliceAverage ) THEN
+     CALL Info(Caller,'Changing communicator for slice operation!',Level=5)
+     PrevComm = ParEnv % ActiveComm
+     ParEnv % ActiveComm = ParallelSlicesComm() 
+   END IF
+   
    
    nbf = Model % NumberOfBodyForces
    IF(.NOT. Visited ) THEN
@@ -585,7 +594,7 @@ CONTAINS
          a(i) = ParallelReduction(a(i))
          u(i) = ParallelReduction(u(i))
        END DO
-     END IF
+     END IF     
      DO i=1,nbf
        IF(a(i)>0) THEN
          CALL ListAddConstReal(Model % Simulation,'res: Potential / bodyforce ' &
@@ -635,10 +644,18 @@ CONTAINS
      END IF
        
      Torq = Ctorq * Torq
+
+     IF( SliceAverage ) THEN
+       WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//TRIM(I2S(ParEnv % MyPe))//':', Torq
+       CALL Info(Caller,Message,Level=5)
+       Torq = ParallelReduction(Torq) / NoSlices
+       WRITE(Message,'(A,ES15.4)') 'Air gap torque average:', Torq
+       CALL Info(Caller,Message,Level=5)
+     ELSE
+       WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
+       CALL Info(Caller,Message,Level=6)
+     END IF
        
-     WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
-     CALL Info(Caller,Message,Level=6)
-     
      CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
    END IF
    
@@ -647,16 +664,22 @@ CONTAINS
        IMoment = ParallelReduction(IMoment)
        IA = ParallelReduction(IA)
      END IF
-       
+
      WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
      CALL Info(Caller,Message,Level=7)
+
      WRITE(Message,'(A,ES15.4)') 'Inertial moment:', Imoment
      CALL Info(Caller,Message,Level=7)
-     
+       
      CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
      CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
    END IF
-   
+
+   IF( SliceAverage ) THEN
+     CALL Info(Caller,'Reverting communicator from slice operation!',Level=10)
+     ParEnv % ActiveComm = PrevComm
+   END IF
+     
    Visited = .TRUE.
    
 !------------------------------------------------------------------------------
