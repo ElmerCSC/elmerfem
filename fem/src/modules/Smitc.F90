@@ -593,19 +593,32 @@
          ShearStrain = 0.0d0
 
          IF (KernelVersion) THEN
-
-           ! The basis corresponding to the kernel of curl-conforming ABF_0:  
-           abf0basis(1,1) = 1.0d0
+           
+           ! The kernel of curl-conforming ABF_0 can be generated in terms of basis functions 
+           ! associated with the edges. The fourth edge (14) DOF is set such that the interpolant
+           ! is in the kernel space. An equivalent constraint is to enforce the vanishing 
+           ! circulation around the element boundary.
+           ! ---------------------------------------------------------------------------
+           abf0basis(1,1) = (1.0d0-V)/4.0d0
            abf0basis(2,1) = 0.0d0
            abf0basis(1,2) = 0.0d0
-           abf0basis(2,2) = 1.0d0
-           abf0basis(1,3) = V
-           abf0basis(2,3) = U
+           abf0basis(2,2) = (1.0d0+U)/4.0d0
+           abf0basis(1,3) = (1.0d0+V)/4.0d0
+           abf0basis(2,3) = 0.0d0
+           abf0basis(1,4) = 0.0d0
+           abf0basis(2,4) = (1.0d0-U)/4.0d0
+           !
+           ! No need for the basis functions associated with the curl DOFs:
+           !
+           ! abf0basis(1,5) = 0.0d0
+           ! abf0basis(2,5) = 3.0d0/8.0d0 * (U**2-1.0d0)
+           ! abf0basis(1,6) = 3.0d0/8.0d0 * (1.0d0-V**2)
+           ! abf0basis(2,6) = 0.0d0
 
-         
            ! The coefficients of the element map written as
            ! x(u,v) := a12*u*v + a1*u + a2*v + a0
            ! y(u,v) := b12*u*v + b1*u + b2*v + b0
+           !
            a1 = 0.25d0 * (-x(1)+x(2)+x(3)-x(4))
            a2 = 0.25d0 * (-x(1)-x(2)+x(3)+x(4))
            a12 = 0.25d0 * (x(1)-x(2)+x(3)-x(4))
@@ -613,50 +626,47 @@
            b2 = 0.25d0 * (-y(1)-y(2)+y(3)+y(4))
            b12 = 0.25d0 * (y(1)-y(2)+y(3)-y(4))
 
-           ! The gradient of the deflection (no approximation introduced):
-           ShearRef(:,1) = ShearRef(:,1) - 0.25_dp * abf0basis(:,1)
-           ShearRef(:,4) = ShearRef(:,4) + 0.25_dp * abf0basis(:,1)
-           ShearRef(:,7) = ShearRef(:,7) + 0.25_dp * abf0basis(:,1)
-           ShearRef(:,10) = ShearRef(:,10) - 0.25_dp * abf0basis(:,1)
-             
-           ShearRef(:,1) = ShearRef(:,1) - 0.25_dp * abf0basis(:,2)
-           ShearRef(:,4) = ShearRef(:,4) - 0.25_dp * abf0basis(:,2)
-           ShearRef(:,7) = ShearRef(:,7) + 0.25_dp * abf0basis(:,2)
-           ShearRef(:,10) = ShearRef(:,10) + 0.25_dp * abf0basis(:,2)
-             
-           ShearRef(:,1) = ShearRef(:,1) + 0.25_dp * abf0basis(:,3)
-           ShearRef(:,4) = ShearRef(:,4) - 0.25_dp * abf0basis(:,3)
-           ShearRef(:,7) = ShearRef(:,7) + 0.25_dp * abf0basis(:,3)
-           ShearRef(:,10) = ShearRef(:,10) - 0.25_dp * abf0basis(:,3)
+           ! The negative gradient of the deflection (no approximation introduced):
+           ShearRef(:,1) = ShearRef(:,1) + abf0basis(:,1)  
+           ShearRef(:,4) = ShearRef(:,4) - abf0basis(:,1)
+           ShearRef(:,4) = ShearRef(:,4) + abf0basis(:,2)
+           ShearRef(:,7) = ShearRef(:,7) - abf0basis(:,2)
+           ShearRef(:,7) = ShearRef(:,7) - abf0basis(:,3)
+           ShearRef(:,10) = ShearRef(:,10) + abf0basis(:,3)
+           ShearRef(:,10) = ShearRef(:,10) - abf0basis(:,4)
+           ShearRef(:,1) = ShearRef(:,1) + abf0basis(:,4)
 
+           ! Edge 12:
+           ! ----------
+           ShearRef(:,2) = ShearRef(:,2) + (a1-a12) * abf0basis(:,1)
+           ShearRef(:,3) = ShearRef(:,3) + (b1-b12) * abf0basis(:,1)
+           ShearRef(:,5) = ShearRef(:,5) + (a1-a12) * abf0basis(:,1)
+           ShearRef(:,6) = ShearRef(:,6) + (b1-b12) * abf0basis(:,1)
 
-           ShearRef(:,2) = ShearRef(:,2) + (3.0_dp*a1-a12)/12.0d0 * abf0basis(:,1)
-           ShearRef(:,3) = ShearRef(:,3) + (3.0_dp*b1-b12)/12.0d0 * abf0basis(:,1)          
-           ShearRef(:,5) = ShearRef(:,5) + (3.0_dp*a1-a12)/12.0d0 * abf0basis(:,1)
-           ShearRef(:,6) = ShearRef(:,6) + (3.0_dp*b1-b12)/12.0d0 * abf0basis(:,1)
-           ShearRef(:,8) = ShearRef(:,8) + (3.0_dp*a1+a12)/12.0d0  * abf0basis(:,1)
-           ShearRef(:,9) = ShearRef(:,9) +  (3.0_dp*b1+b12)/12.0d0 * abf0basis(:,1)
-           ShearRef(:,11) = ShearRef(:,11) + (3.0_dp*a1+a12)/12.0d0  * abf0basis(:,1)
-           ShearRef(:,12) = ShearRef(:,12) +  (3.0_dp*b1+b12)/12.0d0 * abf0basis(:,1)
+           ! Edge 23:
+           ! -----------
+           ShearRef(:,5) = ShearRef(:,5) + (a2+a12) * abf0basis(:,2)
+           ShearRef(:,6) = ShearRef(:,6) + (b2+b12) * abf0basis(:,2)
+           ShearRef(:,8) = ShearRef(:,8) + (a2+a12) * abf0basis(:,2)
+           ShearRef(:,9) = ShearRef(:,9) + (b2+b12) * abf0basis(:,2)
 
-           ShearRef(:,2) = ShearRef(:,2) + (3.0_dp*a2-a12)/12.0d0 * abf0basis(:,2)
-           ShearRef(:,3) = ShearRef(:,3) + (3.0_dp*b2-b12)/12.0d0 * abf0basis(:,2)          
-           ShearRef(:,5) = ShearRef(:,5) + (3.0_dp*a2+a12)/12.0d0 * abf0basis(:,2)
-           ShearRef(:,6) = ShearRef(:,6) + (3.0_dp*b2+b12)/12.0d0 * abf0basis(:,2)
-           ShearRef(:,8) = ShearRef(:,8) + (3.0_dp*a2+a12)/12.0d0  * abf0basis(:,2)
-           ShearRef(:,9) = ShearRef(:,9) +  (3.0_dp*b2+b12)/12.0d0 * abf0basis(:,2)
-           ShearRef(:,11) = ShearRef(:,11) + (3.0_dp*a2-a12)/12.0d0  * abf0basis(:,2)
-           ShearRef(:,12) = ShearRef(:,12) +  (3.0_dp*b2-b12)/12.0d0 * abf0basis(:,2)
+           ! Edge 43:
+           ! -----------
+           ShearRef(:,8) = ShearRef(:,8) + (a1+a12) * abf0basis(:,3)
+           ShearRef(:,9) = ShearRef(:,9) + (b1+b12) * abf0basis(:,3)
+           ShearRef(:,11) = ShearRef(:,11) + (a1+a12) * abf0basis(:,3)
+           ShearRef(:,12) = ShearRef(:,12) + (b1+b12) * abf0basis(:,3)
 
-           ShearRef(:,2) = ShearRef(:,2) + (-a1+2.0_dp*a12-a2)/8.0d0 * abf0basis(:,3)
-           ShearRef(:,3) = ShearRef(:,3) + (-b1+2.0_dp*b12-b2)/8.0d0 * abf0basis(:,3)          
-           ShearRef(:,5) = ShearRef(:,5) + (-a1+2.0_dp*a12+a2)/8.0d0 * abf0basis(:,3)
-           ShearRef(:,6) = ShearRef(:,6) + (-b1+2.0_dp*b12+b2)/8.0d0 * abf0basis(:,3)
-           ShearRef(:,8) = ShearRef(:,8) + (a1+2.0_dp*a12+a2)/8.0d0  * abf0basis(:,3)
-           ShearRef(:,9) = ShearRef(:,9) +  (b1+2.0_dp*b12+b2)/8.0d0 * abf0basis(:,3)
-           ShearRef(:,11) = ShearRef(:,11) + (a1+2.0_dp*a12-a2)/8.0d0  * abf0basis(:,3)
-           ShearRef(:,12) = ShearRef(:,12) +  (b1+2.0_dp*b12-b2)/8.0d0 * abf0basis(:,3)
-  
+           ! Edge 14: 
+           ! ------------
+           ShearRef(:,2) = ShearRef(:,2) + (a1-a12) * abf0basis(:,4)
+           ShearRef(:,3) = ShearRef(:,3) + (b1-b12) * abf0basis(:,4)
+           ShearRef(:,5) = ShearRef(:,5) + (a1+a2) * abf0basis(:,4)
+           ShearRef(:,6) = ShearRef(:,6) + (b1+b2) * abf0basis(:,4)
+           ShearRef(:,8) = ShearRef(:,8) + (a2-a1) * abf0basis(:,4)
+           ShearRef(:,9) = ShearRef(:,9) + (b2-b1) * abf0basis(:,4)
+           ShearRef(:,11) = ShearRef(:,11) + (-a1-a12) * abf0basis(:,4)
+           ShearRef(:,12) = ShearRef(:,12) + (-b1-b12) * abf0basis(:,4)
 
            ! The following would give the full MIN4 element based on adding 5 bubble 
            ! functions that are determined by linked interpolation. It appears that
