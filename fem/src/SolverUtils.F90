@@ -13440,7 +13440,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
     LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve
-    REAL(KIND=dp), POINTER :: px(:)
+    REAL(KIND=dp), POINTER :: pv(:)
 
     TARGET b, x 
     
@@ -13803,8 +13803,8 @@ END FUNCTION SearchNodeL
 
     IF( InfoActive(30) ) THEN
       CALL VectorValuesRange(A % values,SIZE(A % values),'A')
-      px => b
-      CALL VectorValuesRange(px,SIZE(px),'b')
+      pv => b
+      CALL VectorValuesRange(pv,SIZE(pv),'b')
     END IF
       
     
@@ -13845,8 +13845,8 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( InfoActive(30) ) THEN
-      px => x
-      CALL VectorValuesRange(px,SIZE(px),'x')
+      pv => x
+      CALL VectorValuesRange(pv,SIZE(pv),'x')
     END IF
     
     
@@ -21385,12 +21385,15 @@ CONTAINS
      PeriodicNrm(Nstore) = Solver % Variable % Norm
      PeriodicChange(Nstore) = Solver % Variable % NonlinChange
      
-     IF( ExportMult ) THEN
+     IF( ExportMult ) THEN       
        PeriodicMult(:,Nstore) = y
      END IF
      
      IF( DoGuess ) THEN
        CALL Info(Caller,'Using values from previous cycle for initial guess!')
+       IF( ExportMult ) THEN
+         CALL Info(Caller,'Initializing Lagrange multipliers of size: '//TRIM(I2S(SIZE(y))),Level=8)
+       END IF
 
        IF( GuessMode < 0 ) THEN
          CONTINUE

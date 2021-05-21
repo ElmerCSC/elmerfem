@@ -1970,6 +1970,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
   REAL (KIND=dp), POINTER :: Acorr(:)
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsOutput'
+  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: CktPrefix
   LOGICAL :: Parallel
 !------------------------------------------------------------------------------  
       
@@ -2015,14 +2016,18 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
       END IF
       
     END IF
+    
+    CktPrefix = ListGetString(SolverParams,'Scalars Prefix',Found )
+    IF(.NOT. Found) CktPrefix = 'res:'
+
     First = .FALSE.
   END IF
 
 
-  IF (EEC .AND. (EEC_cnt .LT. EEC_max)) THEN
+  IF (EEC .AND. (EEC_cnt < EEC_max)) THEN
     
     TTime = GetTime()
-    IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
+    IF(TTime >= (EEC_time_0 + 0.5/EEC_freq)) THEN
       EEC_cnt = EEC_cnt + 1
       WRITE( Message,'(A,4G11.4)') 'Performing EEC #', EEC_cnt
       CALL Info(Caller, Message, Level=4)
@@ -2057,6 +2062,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ipt = 0._dp
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
    IF(ASSOCIATED(LagrangeVar)) THEN
+     CALL Info(Caller,'Initializing Lagrange multipliers of size: '&
+         //TRIM(I2S(SIZE(LagrangeVar % VAlues))),Level=8)
      IF( Parallel ) THEN
        DO i=1,circuit_tot_n 
          IF (ASSOCIATED(Model%CircuitMatrix)) THEN  
@@ -2069,11 +2076,15 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
        ip(1:circuit_tot_n) = LagrangeVar % Values
      END IF
    END IF
-    
+
+   !IF( ListGetLogical( Solver % Values,'Store Cyclic System',Found ) ) THEN 
+   !  Solver % Variable => LagrangeVar 
+   !END IF
+   
    ! Export circuit & dynamic variables for "SaveScalars":
    ! -----------------------------------------------------
 
-   CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
+   CALL ListAddConstReal(GetSimulation(),TRIM(CktPrefix)//' time', GetTime())
 
    CALL Info(Caller, 'Writing Circuit Results', Level=5) 
    DO p=1,n_Circuits
@@ -2139,7 +2150,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          CALL SimListAddAndOutputConstReal('p_dc_component('//TRIM(i2s(Comp % ComponentId))//')',&
            p_dc_component, Level=8) 
 
-         CompRealPower = GetConstReal( Model % Simulation, 'res: Power re & 
+         CompRealPower = GetConstReal( Model % Simulation, TRIM(CktPrefix)//' Power re & 
                  in Component '//TRIM(i2s(Comp % ComponentId)), Found)
          IF (Found .AND. ABS(Current) > TINY(CompRealPower)) THEN
            CALL SimListAddAndOutputConstReal('p_ac_component('//&
@@ -2174,7 +2185,7 @@ CONTAINS
   CALL Info(Caller, TRIM(VariableName)//' '//&
     TRIM(VarVal), Level=LevelVal)
 
-  CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)
+  CALL ListAddConstReal(GetSimulation(),TRIM(CktPrefix)//' '//TRIM(VariableName), VariableValue)
 !-------------------------------------------------------------------
   END SUBROUTINE SimListAddAndOutputConstReal
 !-------------------------------------------------------------------

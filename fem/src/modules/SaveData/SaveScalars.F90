@@ -274,6 +274,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     SlicesReduce = GetLogical( Params,'Slices Reduce',GotIt)
     TimesReduce = GetLogical( Params,'Times Reduce',GotIt)
 
+    nSlices = 0
+    nTimes = 0
     IF( SlicesReduce .OR. TimesReduce ) THEN
       ParallelReduce = .TRUE.
       nSlices = ListGetInteger( Model % Simulation,'Number Of Slices',GotIt)
@@ -289,7 +291,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CommRank = ParEnv % MyPe 
     END IF
 
-    PRINT *,'ParallelStuff:',ParEnv % MyPe, CommRank, CommSize, nSlices,nTimes
+    !PRINT *,'ParallelStuff:',ParEnv % MyPe, CommRank, CommSize, nSlices,nTimes
     IF( CommRank > 0 ) EchoValues = .FALSE.
     
     IF( ParallelReduce ) THEN

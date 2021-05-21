@@ -2296,7 +2296,7 @@ END INTERFACE
          sSliceWeight = 1.0_dp
        ELSE
          sSlice = 1.0_dp * iSlice
-         sSliceRatio = ( iSlice + 0.5_dp ) / nSlices
+         sSliceRatio = ( iSlice + 0.5_dp ) / nSlices - 0.5_dp
          sSliceWeight = 1.0_dp / nSlices 
        END IF
      END IF
