@@ -4456,16 +4456,40 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Compute range of the linear system mainly for debugging purposes.
 !------------------------------------------------------------------------------
-  SUBROUTINE VectorValuesRange(x,n,str)
+  SUBROUTINE VectorValuesRange(x,n,str,AlwaysSerial)
 !------------------------------------------------------------------------------    
     REAL(KIND=dp), POINTER :: x(:)
     INTEGER :: n
     CHARACTER(LEN=*) :: str
-    REAL(KIND=dp) :: s(3)
+    LOGICAL, OPTIONAL :: AlwaysSerial
     
-    s(1) = ParallelReduction( MINVAL( x(1:n) ),1 ) 
-    s(2) = ParallelReduction( MAXVAL( x(1:n) ),2 ) 
-    s(3) = ParallelReduction( SUM( x(1:n) ) ) 
+    REAL(KIND=dp) :: s(3)
+    LOGICAL :: Parallel, Found
+    
+    IF(.NOT. ASSOCIATED(x) ) RETURN
+    
+    Parallel = ( ParEnv % PEs > 1)
+    IF( Parallel ) THEN
+      IF( PRESENT( AlwaysSerial ) ) THEN
+        IF( AlwaysSerial ) Parallel = .FALSE.
+      END IF
+    END IF
+    IF( Parallel ) THEN
+      IF( ListGetLogical( CurrentModel % Simulation,'Serial Range',Found ) ) THEN
+        Parallel = .FALSE.
+      END IF
+    END IF
+    
+    s(1) = MINVAL( x(1:n) ) 
+    s(2) = MAXVAL( x(1:n) ) 
+    s(3) = SUM( x(1:n) ) 
+
+    IF( Parallel ) THEN
+      s(1) = ParallelReduction( s(1),1 ) 
+      s(2) = ParallelReduction( s(2),2 ) 
+      s(3) = ParallelReduction( s(3) )
+    END IF
+      
     WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
     CALL Info('VectorValuesRange',Message)
 
@@ -9930,7 +9954,13 @@ END FUNCTION SearchNodeL
     IF( SteadyState .OR. DoIt ) THEN          
       CALL DerivateExportedVariables( Solver )  
     END IF       
-    
+
+    IF( SteadyState ) THEN
+      CALL Info(Caller,'Finished updating steady state objects!',Level=32)
+    ELSE
+      CALL Info(Caller,'Finished updaing nonlinear objects!',Level=32)
+    END IF
+
   END SUBROUTINE UpdateDependentObjects
 
 
@@ -10077,7 +10107,7 @@ END FUNCTION SearchNodeL
     ELSE
       x => Solver % Variable % Values      
     END IF
-
+    
     IF ( .NOT. ASSOCIATED(x) ) THEN
       Solver % Variable % Norm = 0.0d0 
       IF(SteadyState) THEN
@@ -10087,23 +10117,23 @@ END FUNCTION SearchNodeL
       END IF
       RETURN
     END IF
-
     
     IF(PRESENT(nsize)) THEN
       n = nsize 
     ELSE 
       n = SIZE( x )
     END IF
-
-    IF( SkipConstraints ) n = MIN( n, Solver % Matrix % NumberOfRows )
-
+    
+    IF( SkipConstraints ) THEN
+      n = MIN( n, Solver % Matrix % NumberOfRows )
+    END IF
+      
     ! If requested (for p-elements) only use the dofs associated to nodes. 
     ! One should not optimize bandwidth if this is desired. 
     IF( NodalNorm ) THEN
       i = MAXVAL( Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes ) )
       n = MIN(n,i*Solver % Variable % Dofs)
     END IF
-
     
     Stat = .FALSE.
     x0 => NULL()
@@ -10161,6 +10191,7 @@ END FUNCTION SearchNodeL
     ELSE
       PrevNorm = Solver % Variable % Norm
     END IF
+
     
     Norm = ComputeNorm(Solver, n, x)
     Solver % Variable % Norm = Norm
@@ -10249,7 +10280,7 @@ END FUNCTION SearchNodeL
       ! This option is useful for certain special solvers.  
       !--------------------------------------------------------------------------
       A => Solver % Matrix
-      b => Solver % Matrix % rhs
+      b => Solver % Matrix % rhs     
       
       IF (Parallel) THEN
 
@@ -13409,6 +13440,9 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
     LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve
+    REAL(KIND=dp), POINTER :: px(:)
+
+    TARGET b, x 
     
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
@@ -13765,7 +13799,15 @@ END FUNCTION SearchNodeL
         IF ( Prec=='circuit' ) CALL CircuitPrecCreate(A,Solver)
       END IF
     END IF
-   
+
+
+    IF( InfoActive(30) ) THEN
+      CALL VectorValuesRange(A % values,SIZE(A % values),'A')
+      px => b
+      CALL VectorValuesRange(px,SIZE(px),'b')
+    END IF
+      
+    
     IF ( .NOT. Parallel ) THEN
       CALL Info('SolveLinearSystem','Serial linear System Solver: '//TRIM(Method),Level=8)
       
@@ -13802,6 +13844,12 @@ END FUNCTION SearchNodeL
       END SELECT
     END IF
 
+    IF( InfoActive(30) ) THEN
+      px => x
+      CALL VectorValuesRange(px,SIZE(px),'x')
+    END IF
+    
+    
 110 IF( AndersonAcc .AND. AndersonScaled )  THEN
       CALL NonlinearAcceleration( A, x, b, Solver, .FALSE.)
     END IF
@@ -14870,7 +14918,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var, DerVar, dtVar
   CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
-  INTEGER :: VarNo
+  INTEGER :: VarNo, Cnt
   LOGICAL :: Found, DoIt
   REAL(KIND=dp) :: dt
   
@@ -14881,6 +14929,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
   Params => Solver % Values
 
   VarNo = 0
+  Cnt = 0
+  
   DO WHILE( .TRUE. )
     VarNo = VarNo + 1
 
@@ -14910,6 +14960,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       
       CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
       DerVar % Values = (Var % Values(:) - Var % PrevValues(:,1)) / dt
+      Cnt = Cnt + 1
     END IF
 
     str = TRIM( ComponentName(Var_name) )//' Calculate Acceleration'
@@ -14927,10 +14978,13 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
       CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
       DerVar % Values = (Var % Values(:) - 2*Var % PrevValues(:,1) - Var % PrevValues(:,2)) / dt**2
+      Cnt = Cnt + 1
     END IF
 
   END DO
-    
+
+  CALL Info('DerivateExportedVariables','Derivating done for variables: '//TRIM(I2S(Cnt)),Level=20)
+
 END SUBROUTINE DerivateExportedVariables
 
 
@@ -15578,7 +15632,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        RestMatrixTranspose, TMat, XMat
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
      AddVector(:), Tvals(:), Vals(:)
-  REAL(KIND=dp), POINTER  :: MultiplierValues(:)
+  REAL(KIND=dp), POINTER  :: MultiplierValues(:), pSol(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:), TotValues(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l, m, n, p,q, ix, Loop
@@ -15609,7 +15663,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   SolverPointer => Solver  
   Parallel = (ParEnv % PEs > 1 )
-
+  IF( Solver % Mesh % SingleMesh ) Parallel = .FALSE.
+  
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
   IF(.NOT. Found) NotExplicit=.FALSE.
 
@@ -16004,7 +16059,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END IF
   END IF
 
-  IF ( ParEnv % Pes>1 ) THEN
+  IF ( Parallel ) THEN
     EliminateDiscont =  ListGetLogical( Solver % values, 'Eliminate Discont',Found )
     IF( EliminateDiscont ) THEN
       CALL totv( StiffMatrix, SlaveDiag, SlaveIPerm )
@@ -16264,6 +16319,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(CollectionMatrix % FORMAT==MATRIX_LIST) &
       CALL List_toCRSMatrix(CollectionMatrix)
 
+  IF( InfoActive(30) ) THEN    
+    CALL VectorValuesRange(CollectionMatrix % Values,&
+        SIZE(CollectionMatrix % Values),'CollectionMatrix')           
+    CALL VectorValuesRange(CollectionVector,&
+        SIZE(CollectionVector),'CollectionVector')           
+  END IF
+  
   CALL Info( Caller, 'CollectionMatrix done', Level=5 )
 
 !------------------------------------------------------------------------------
@@ -16278,14 +16340,21 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionSolution(i:j) = 0._dp
   IF(ExportMultiplier) CollectionSolution(i:j) = MultiplierValues(1:j-i+1)
 
+  IF( InfoActive(30) ) THEN
+    pSol => CollectionSolution
+    CALL VectorValuesRange(pSol,j,'CollectionSolution')           
+  END IF
+  
   CollectionMatrix % ExtraDOFs = CollectionMatrix % NumberOfRows - &
                   StiffMatrix % NumberOfRows
 
   CollectionMatrix % ParallelDOFs = 0
-  IF(ASSOCIATED(AddMatrix)) &
-    CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
-                  StiffMatrix % NumberOfRows,0)
-
+  IF( Parallel ) THEN
+    IF(ASSOCIATED(AddMatrix)) &
+        CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
+        StiffMatrix % NumberOfRows,0)
+  END IF
+    
   CALL Info( Caller, 'CollectionVector done', Level=5 )
 
 !------------------------------------------------------------------------------
@@ -16337,11 +16406,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionMatrix % Comm = StiffMatrix % Comm
 
   CALL Info(Caller,'Now going for the coupled linear system',Level=10)
-
+  
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
-
-  
+    
   !-------------------------------------------------------------------------------
   ! For restricted systems study the norm without some block components.
   ! For example, excluding gauge constraints may give valuable information
@@ -16458,7 +16526,9 @@ CONTAINS
       END DO
     END IF
 
-    CALL ParallelSumVector(A, x)
+    IF( Parallel ) THEN
+      CALL ParallelSumVector(A, x)
+    END IF
 !   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, i ); x=r
 
     IF(ALLOCATED(perm)) THEN
@@ -16497,7 +16567,7 @@ CONTAINS
 
      ALLOCATE(TotValues(SIZE(A % Values))); TotValues=A % Values
 
-     IF (ParEnv  % PEs>1 ) THEN
+     IF ( Parallel ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs-1))
        cnt = 0
        DO i=1,n
@@ -20595,6 +20665,14 @@ CONTAINS
        CALL Info(Caller,'Number of neglected rows: '//TRIM(I2S(NeglectedRows)),Level=6)
      END IF
         
+     IF( InfoActive(30) ) THEN
+       BLOCK
+         REAL(KIND=dp), POINTER :: px(:)
+         px => Btmp % Values
+         CALL VectorValuesRange(px,SIZE(px),'ConstraintMatrix')
+       END BLOCK
+     END IF
+
      Solver % Matrix % ConstraintMatrix => Btmp     
      Solver % MortarBCsChanged = .FALSE.
      

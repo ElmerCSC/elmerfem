@@ -105,23 +105,24 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: First=.TRUE.
-
   TYPE(Solver_t), POINTER :: Asolver => Null()
-
   INTEGER :: p, n, istat, max_element_dofs
   TYPE(Mesh_t), POINTER :: Mesh  
-
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null()
-  TYPE(Circuit_t), POINTER :: Circuits(:)
-  
+  TYPE(Circuit_t), POINTER :: Circuits(:)  
   REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)     
   TYPE(Variable_t), POINTER :: LagrangeVar
   INTEGER, SAVE :: Tstep=-1
+  LOGICAL, SAVE :: Parallel
+  REAL(KIND=dp), POINTER :: px(:)
 !------------------------------------------------------------------------------
-
+  
   IF (First) THEN
     First = .FALSE.
+    
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Model % Mesh % SingleMesh ) Parallel = .FALSE.
     
     Model % HarmonicCircuits = .FALSE.
     CALL AddComponentsToBodyLists()
@@ -150,6 +151,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
       
       Circuits(p) % Harmonic = .FALSE.
+      Circuits(p) % Parallel = Parallel
       
       CALL ReadCircuitVariables(p)
       CALL ReadComponents(p)
@@ -195,25 +197,34 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
   CM % RHS = 0._dp
   IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
-
+  
   ! Write Circuit equations:
   ! ------------------------
   DO p = 1,n_Circuits
     CALL AddBasicCircuitEquations(p,ip,dt)
     CALL AddComponentEquationsAndCouplings(p, max_element_dofs,dt)
   END DO
-  Asolver %  Matrix % AddMatrix => CM
-
-  IF(ASSOCIATED(CM)) THEN
-    IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
-    IF(CM % NumberOfRows<=0)  THEN
-      CALL FreeMatrix(CM)
-      Asolver % Matrix % AddMatrix => Null()
-    END IF
-  ELSE
-     ASolver % Matrix % AddMatrix => Null()
+       
+  IF(.NOT. ASSOCIATED( CM ) ) THEN
+    Asolver %  Matrix % AddMatrix => NULL()
+    RETURN
   END IF
+ 
+  Asolver %  Matrix % AddMatrix => CM  
+  IF(  CM % FORMAT == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
 
+  IF( InfoActive(20) ) THEN
+    px => CM % Values
+    CALL VectorValuesRange(px,SIZE(px),'CircuitMatrix',.TRUE.)
+    px => CM % rhs
+    CALL VectorValuesRange(px,SIZE(px),'CircuitRhs',.TRUE.)
+  END IF
+   
+  IF(CM % NumberOfRows<=0)  THEN
+    CALL FreeMatrix(CM)
+    Asolver % Matrix % AddMatrix => NULL()
+  END IF
+      
 CONTAINS
 
     
@@ -241,8 +252,10 @@ CONTAINS
     DO i=1,Circuit % n
       Cvar => Circuit % CircuitVariables(i)
 
-      IF(Cvar % Owner /= ParEnv % myPE) CYCLE
-
+      IF( Parallel ) THEN
+        IF(Cvar % Owner /= ParEnv % myPE) CYCLE
+      END IF
+        
       RowId = Cvar % ValueId + nm
       
       vphi=0._dp
@@ -258,7 +271,6 @@ CONTAINS
       DO j=1,Circuit % n
 
         ColId = Circuit % CircuitVariables(j) % ValueId + nm
-
 
         IF ( TransientSimulation ) THEN 
           ! A d/dt(x): (x could be voltage or current):
@@ -297,12 +309,13 @@ CONTAINS
     REAL(KIND=dp) :: RotM(3,3,nn)
     REAL(KIND=dp) :: value, dt
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    LOGICAL :: Found
+    LOGICAL :: Found, IsActive
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('AddComponentEquationsAndCouplings','ASolver not found!')
 
     Circuit => CurrentModel % Circuits(p)
+    
     nm = Asolver % Matrix % NumberOfRows
     CM => CurrentModel%CircuitMatrix
 
@@ -332,7 +345,12 @@ CONTAINS
         END IF
       END IF
 
-      IF ( Cvar % Owner == ParEnv % myPE ) THEN
+      IsActive = .TRUE.
+      IF( Circuit % Parallel ) THEN
+        IsActive = ( Cvar % Owner == ParEnv % myPE )
+      END IF
+      
+      IF ( IsActive ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
@@ -405,12 +423,14 @@ CONTAINS
       END DO
     END DO
 
-    DO CompInd = 1, Circuit % n_comp
-      Comp => Circuit % Components(CompInd)
-      Comp % Resistance = ParallelReduction(Comp % Resistance)
-      Comp % Conductance = ParallelReduction(Comp % Conductance)
-    END DO
-
+    IF( Parallel ) THEN
+      DO CompInd = 1, Circuit % n_comp
+        Comp => Circuit % Components(CompInd)
+        Comp % Resistance = ParallelReduction(Comp % Resistance)
+        Comp % Conductance = ParallelReduction(Comp % Conductance)
+      END DO
+    END IF
+      
     DEALLOCATE(Tcoef)
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
@@ -1039,16 +1059,20 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)
-    
+  LOGICAL :: Parallel
+  
 !------------------------------------------------------------------------------
 
+  Parallel = (ParEnv % PEs > 1 )
+  IF( Solver % Mesh % SingleMesh ) Parallel = .FALSE.
+  
   CALL DefaultStart()
 
   IF (First) THEN
     First = .FALSE.
     
     Model % HarmonicCircuits = .TRUE.
-
+    
     CALL AddComponentsToBodyLists()
     
     ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
@@ -1076,6 +1100,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
       
       Circuits(p) % Harmonic = .TRUE.
+      Circuits(p) % Parallel = Parallel 
       
       CALL ReadCircuitVariables(p)
       CALL ReadComponents(p)
@@ -1151,8 +1176,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     DO i=1,Circuit % n
       Cvar => Circuit % CircuitVariables(i)
 
-      IF(Cvar % Owner /= ParEnv % myPE) CYCLE
-
+      IF(Circuit % Parallel ) THEN
+        IF(Cvar % Owner /= ParEnv % myPE) CYCLE
+      END IF
+        
       RowId = Cvar % ValueId + nm
       
       vphi=0._dp
@@ -1253,7 +1280,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
       END IF
 
-      IF ( Cvar % Owner == ParEnv % myPE ) THEN
+      IF ( Cvar % Owner == ParEnv % myPE .OR. .NOT. Circuit % Parallel ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
@@ -1360,12 +1387,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END DO
     END DO
 
-    DO CompInd = 1, Circuit % n_comp
-      Comp => Circuit % Components(CompInd)
-      Comp % Resistance = ParallelReduction(Comp % Resistance)
-      Comp % Conductance = ParallelReduction(Comp % Conductance)
-    END DO
-
+    IF( Circuit % Parallel ) THEN
+      DO CompInd = 1, Circuit % n_comp
+        Comp => Circuit % Components(CompInd)
+        Comp % Resistance = ParallelReduction(Comp % Resistance)
+        Comp % Conductance = ParallelReduction(Comp % Conductance)
+      END DO
+    END IF
+      
     IF (ALLOCATED(Tcoef)) THEN
       DEALLOCATE(Tcoef,sigma_33,sigmaim_33)
     END IF
@@ -1941,9 +1970,9 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
   REAL (KIND=dp), POINTER :: Acorr(:)
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsOutput'
-
+  LOGICAL :: Parallel
 !------------------------------------------------------------------------------  
-  
+      
    CALL DefaultStart()
 
    Circuit_tot_n => Model%Circuit_tot_n
@@ -2020,12 +2049,15 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    ! Circuit variable values from previous timestep:
    ! -----------------------------------------------
-   ALLOCATE(ip(circuit_tot_n), ipt(circuit_tot_n))
+  Parallel = ( ParEnv % PEs > 1 )
+  IF( Solver % Mesh % SingleMesh ) Parallel = .FALSE.
+
+  ALLOCATE(ip(circuit_tot_n), ipt(circuit_tot_n))
    ip = 0._dp
    ipt = 0._dp
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
    IF(ASSOCIATED(LagrangeVar)) THEN
-     IF(ParEnv % PEs>1) THEN
+     IF( Parallel ) THEN
        DO i=1,circuit_tot_n 
          IF (ASSOCIATED(Model%CircuitMatrix)) THEN  
            IF( CM % RowOwner(nm+i)==Parenv%myPE) ipt(i) = LagrangeVar%Values(i)
