@@ -482,7 +482,7 @@ CONTAINS
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
     LOGICAL, OPTIONAL :: Found
-    TYPE(Element_t), POINTER, OPTIONAL :: UElement
+    TYPE(Element_t), OPTIONAL :: UElement
 
     w = ListGetAngularFrequency( ValueList, Found, UElement )
   END FUNCTION GetAngularFrequency
@@ -3245,7 +3245,6 @@ CONTAINS
     TYPE(Variable_t), POINTER :: x
     REAL(KIND=dp), POINTER CONTIG :: b(:)
     REAL(KIND=dp), POINTER CONTIG :: SOL(:)
-!   REAL(KIND=dp), POINTER :: SOL(:)
 
     LOGICAL :: Found, BackRot
 
@@ -3255,7 +3254,8 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI, Count, MaxCount, i
     LOGICAL :: LinearSystemTrialing, SourceControl
-
+    REAL(KIND=dp) :: s(3)
+    
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
     
     Solver => CurrentModel % Solver
@@ -3313,22 +3313,17 @@ CONTAINS
 
     ! Debugging stuff activated only when "Max Output Level" >= 20
     IF( InfoActive( 20 ) ) THEN
-      PRINT *,'range b'//TRIM(I2S(ParEnv % MyPe))//':', &
-          MINVAL( b ), MAXVAL( b ), SUM( b ), SUM( ABS( b ) )
-      PRINT *,'range A'//TRIM(I2S(ParEnv % MyPe))//':', &
-          MINVAL( A % Values ), MAXVAL( A % Values ), SUM( A % Values ), SUM( ABS(A % Values) )
+      CALL VectorValuesRange(A % Values,SIZE(A % Values),'A')       
+      CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b')       
     END IF
-       
-    
+      
 10  CONTINUE
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
     
     IF( InfoActive( 20 ) ) THEN
-      PRINT *,'range x'//TRIM(I2S(ParEnv % MyPe))//':', &
-          MINVAL( SOL ), MAXVAL( SOL ), SUM( SOL ), SUM( ABS( SOL ) )
+      CALL VectorValuesRange(x % Values,SIZE(x % values),'x')       
     END IF
-
     
     IF( LinearSystemTrialing ) THEN
       IF( x % LinConverged > 0 ) THEN

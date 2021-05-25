@@ -4453,7 +4453,25 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+!------------------------------------------------------------------------------
+!> Compute range of the linear system mainly for debugging purposes.
+!------------------------------------------------------------------------------
+  SUBROUTINE VectorValuesRange(x,n,str)
+!------------------------------------------------------------------------------    
+    REAL(KIND=dp), POINTER :: x(:)
+    INTEGER :: n
+    CHARACTER(LEN=*) :: str
+    REAL(KIND=dp) :: s(3)
+    
+    s(1) = ParallelReduction( MINVAL( x(1:n) ),1 ) 
+    s(2) = ParallelReduction( MAXVAL( x(1:n) ),2 ) 
+    s(3) = ParallelReduction( SUM( x(1:n) ) ) 
+    WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+    CALL Info('VectorValuesRange',Message)
+
+  END SUBROUTINE VectorValuesRange
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
@@ -4826,8 +4844,8 @@ CONTAINS
         PassPerm(Mesh % Elements(j) % NodeIndexes)=1
       END DO
 
-      DO t = 1, Mesh % NumberOfBulkElements 
-        Element => Mesh % Elements(t)
+      DO t=1,Solver % NumberOfActiveElements
+        Element => Mesh % Elements(Solver % ActiveElements(t))
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
           CALL Warn(Caller,'Element body id beyond body table!')
           CYCLE
@@ -4854,6 +4872,17 @@ CONTAINS
         IF (ListGetLogical(ValueList,PassCondName,GotIt)) THEN
           IF (.NOT.CheckPassiveElement(Element)) CYCLE
           DO j=1,n
+            k=Indexes(j)
+            IF (k<=0) CYCLE
+            k=Perm(k)
+            IF (k<=0) CYCLE
+            s=0._dp
+            DO l=1,NDOFs
+              m=NDOFs*(k-1)+l
+              s=s+ABS(A % Values(A % Diag(m)))
+            END DO
+            IF (s>EPSILON(s)) CYCLE
+
             NodeIndexes(1) = Indexes(j)
             IF(PassPerm(NodeIndexes(1))==0) CALL SetPointValues(1)
           END DO
@@ -5161,6 +5190,13 @@ CONTAINS
     IF ( Passive ) THEN
       Solver => Model % Solver
       Mesh => Solver % Mesh
+
+      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
+      DO i=0,Mesh % PassBCCnt-1
+        j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
+        PassPerm(Mesh % Elements(j) % NodeIndexes)=1
+      END DO
+
       DO i=1,Solver % NumberOfActiveElements
         Element => Mesh % Elements(Solver % ActiveElements(i))
         IF (CheckPassiveElement(Element)) THEN
@@ -5172,13 +5208,15 @@ CONTAINS
             k=Perm(k)
             IF (k<=0) CYCLE
 
+            IF(PassPerm(Indexes(j))==1) CYCLE
+
             s=0._dp
             DO l=1,NDOFs
               m=NDOFs*(k-1)+l
               s=s+ABS(A % Values(A % Diag(m)))
             END DO
             IF (s>EPSILON(s)) CYCLE
- 
+
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
               IF(A % ConstrainedDOF(m)) CYCLE
@@ -5187,6 +5225,7 @@ CONTAINS
           END DO
         END IF
       END DO
+      DEALLOCATE(PassPerm,NodeIndexes)
     END IF
 
 
@@ -14341,7 +14380,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
+  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, &
+      IpVariable, ElemVariable, DgVariable, NodalVariable )
 
     CHARACTER(LEN=*)  :: var_name
     LOGICAL, OPTIONAL :: NoOutput, Global
@@ -14349,6 +14389,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     LOGICAL, OPTIONAL :: IpVariable
     LOGICAL, OPTIONAL :: ElemVariable
     LOGICAL, OPTIONAL :: DgVariable
+    LOGICAL, OPTIONAL :: NodalVariable
 
     INTEGER :: i,j,k,m
 
@@ -14356,7 +14397,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     IF(PRESENT(Global)) Global = .FALSE.
     IF(PRESENT(Dofs)) Dofs = 0
     IF(PRESENT(IpVariable)) IpVariable = .FALSE.
-
+    IF(PRESENT(DgVariable)) DgVariable = .FALSE.      
+    IF(PRESENT(ElemVariable)) ElemVariable = .FALSE.      
+    IF(PRESENT(NodalVariable)) NodalVariable = .FALSE.      
+    
+    
     DO WHILE( var_name(1:1) == '-' )
 
       m = 0
@@ -14379,6 +14424,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       ELSE IF ( SEQL(var_name, '-elem ') ) THEN
         IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
         m = 6
+
+      ELSE IF ( SEQL(var_name, '-nodal ') ) THEN
+        IF(PRESENT(NodalVariable)) NodalVariable = .TRUE.      
+        m = 7
       END IF
 
       IF( m > 0 ) THEN
@@ -18159,18 +18208,17 @@ CONTAINS
               ! trace of the global rotations ROT is related to the directional derivative
               ! of the displacement field u by -Du[d] x d = d x ROT x d. This implementation 
               ! is limited to cases where the director is aligned with one of the global
-              ! coordinate axes.
+              ! coordinate axes. Find the closest one and use that. 
               !
-              NormalDir = 0
-              DO i=1,3
-                IF (ABS(1.0_dp - ABS(Director(i))) < 1.0d-5) THEN
-                  NormalDir = i
-                  EXIT
-                END IF
+              NormalDir = 1              
+              DO i=2,3
+                IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
               END DO
-              IF( NormalDir == 0 ) THEN
-                CALL Fatal(Caller, &
-                    'Coupling with drilling rotation formulation needs an axis-aligned director')
+              ! This is not good, but maybe not bad enough to through the whole analysis away...
+              IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
+                WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
+                    NormalDir,': ',Director(NormalDir)
+                CALL Warn(Caller,Message)
               END IF
             END IF
         

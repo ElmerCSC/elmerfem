@@ -244,9 +244,12 @@
                      ReferenceTemperature, &
                      LocalTemperature,     &
                      LocalFlowWidth,	   &
-                     LocalVelo,            &
+                     K1,K2,E1,E2,E3,       &
                      LocalForce,           &
                      RefD, RefS, RefSpin,  &
+                     LocalVelo,            &
+                     Basis,ddBasisddx,dBasisdx, &
+                     TimeForce, &
                      LocalMassMatrix,      &
                      LocalStiffMatrix,     &
                      LoadVector, Alpha, Beta, &

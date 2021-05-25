@@ -16,7 +16,7 @@ $ function dx(c)  { x=c(0); y=c(1); _dx = pi*y^2*cos(pi*x*y^2) }
 $ function dy(c)  { x=c(0); y=c(1); _dy = pi*x*2*y*cos(pi*x*y^2) }
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 7
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady
@@ -48,21 +48,20 @@ Material 1
   Convection Velocity 2 = Variable Coordinate
     Real MATC "uy(tx)"
 
-  Potential Gamma = Variable Coordinate
+  Tracer Gamma = Variable Coordinate
      Real MATC "g(tx)"
 End
 
 Solver 1
   Equation = "AdvReact"
   Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
-  Variable = "Potential"
-  Exported Variable 1 = "Nodal Result"
+  Variable = "Tracer"
   Discontinuous Galerkin = True
 
 !  Discontinuous bodies = True
   Optimize Bandwidth = False
   
-  Linear System Save = True
+!  Linear System Save = True
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
@@ -72,16 +71,18 @@ Solver 1
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = True
+
+  Calculate Nodal Average = Logical True
 End
 
 Body Force 1
-  Potential Source = Variable Coordinate
+  Tracer Source = Variable Coordinate
     Real MATC "r(tx)*g(tx)+ux(tx)*dx(tx)+uy(tx)*dy(tx)"
 End
 
 Boundary Condition 1
   Target Boundaries(4) = 1 2 3 4
-  Potential = Variable Coordinate
+  Tracer = Variable Coordinate
     Real MATC "r(tx)"
 End
 

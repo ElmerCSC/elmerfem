@@ -265,7 +265,7 @@ END INTERFACE
          CALL Info( 'MAIN', ' Intel MKL linked in.' )
 #endif
 #ifdef HAVE_LUA
-         CALL Info( 'MAIN', ' Lua interpreted linked in.' )
+         CALL Info( 'MAIN', ' Lua interpreter linked in.' )
 #endif
 #ifdef HAVE_ZOLTAN
          CALL Info( 'MAIN', ' Zoltan library linked in.' )
@@ -2250,7 +2250,15 @@ END INTERFACE
            END IF
          END IF
 
-         IF ( Transient .OR. Scanning ) THEN
+         ! Sometimes when timestep depends on time we need to have first timestep size
+         ! given separately to avoid problems. 
+         GotIt = .FALSE.
+         IF( cum_Timestep == 1 ) THEN
+           dtfunc = ListGetCReal( CurrentModel % Simulation,'First Timestep Size',GotIt )
+           IF(GotIt) dt = dtfunc
+         END IF
+         
+         IF ( ( Transient .OR. Scanning ) .AND. .NOT. GotIt ) THEN
            dtfunc = ListGetCReal( CurrentModel % Simulation,'Timestep Function',GotIt )
            IF(GotIt) THEN
              CALL Warn('ExecSimulation','Obsolete keyword > Timestep Function < , use > Timestep Size < instead')
@@ -2281,6 +2289,7 @@ END INTERFACE
                END IF
              END BLOCK
            END IF
+           
            IF(GotIt) THEN
              dt = dtfunc
              IF(dt < EPSILON(dt) ) THEN

@@ -341,6 +341,7 @@ MODULE NetCDFInterface
 
       CHARACTER(*), INTENT(IN) :: VarName
       INTEGER :: DimSize(3),nTime,TimeIndex
+      INTEGER :: TI
       !-----------------------------------------------------------------------------
 
       VarId = 0
@@ -351,6 +352,7 @@ MODULE NetCDFInterface
 
 
       IF (READALL) THEN
+       TI=max(1,TimeIndex)
        CALL INFO('GridDataReader','Reading full variable array from NETCDF file',level=5)
        IF (ALLOCATED(VarValues)) deallocate(VarValues)
        IF (DimSize(3).EQ.0) THEN
@@ -360,7 +362,7 @@ MODULE NetCDFInterface
         ELSE
          ALLOCATE(VarValues(DimSize(1),DimSize(2),nTime,1))
          NetCDFstatus = NF90_GET_VAR(FileId,VarId,VarValues(:,:,:,1),&
-           (/ 1, 1,TimeIndex /),(/ DimSize(1),DimSize(2),nTime /))        
+           (/ 1, 1,TI /),(/ DimSize(1),DimSize(2),nTime /))        
         ENDIF
        ELSE
         IF (nTime.EQ.0) THEN
@@ -369,9 +371,14 @@ MODULE NetCDFInterface
         ELSE
          ALLOCATE(VarValues(DimSize(1),DimSize(2),DimSize(3),nTime))
          NetCDFstatus = NF90_GET_VAR(FileId,VarId,VarValues(:,:,:,:),&
-           (/ 1, 1, 1, TimeIndex /),(/ DimSize(1),DimSize(2),DimSize(3),nTime /)) 
+           (/ 1, 1, 1, TI /),(/ DimSize(1),DimSize(2),DimSize(3),nTime /)) 
         ENDIF
       ENDIF
+      IF ( NetCDFstatus /= NF90_NOERR ) THEN
+        PRINT *,NetCDFstatus
+        PRINT *,DimSize(1:3),nTime,TimeIndex
+        CALL Fatal('GridDataReader','NetCDF GET_VAR error')
+      END IF
      ENDIF
       
       IF(Debug) PRINT *,'NetCDF variable index: ',TRIM(VarName), VarId
@@ -416,7 +423,8 @@ MODULE NetCDFInterface
         outcome(:,:,1) = stencil3D(:,:,1)
       END IF
 
-      IF ( NetCDFstatus /= NF90_NOERR ) THEN
+      IF (.NOT.READALL) THEN
+       IF ( NetCDFstatus /= NF90_NOERR ) THEN
         PRINT *,'FileId:',FileId
         PRINT *,'VarId:',VarId
         IF( TimeIndex == 0 ) THEN
@@ -427,6 +435,7 @@ MODULE NetCDFInterface
           PRINT *,'CountVector:',CountVector3D
         END IF
         CALL Fatal('GridDataReader','NetCDF variable access failed in 2D.')
+       END IF
       END IF
 
     END SUBROUTINE NetCDFDataCell2D
@@ -473,6 +482,7 @@ MODULE NetCDFInterface
         outcome(:,:,:) = stencil4D(:,:,:,1)
       END IF
 
+      IF (.NOT.READALL) THEN
        IF ( NetCDFstatus /= NF90_NOERR ) THEN
         PRINT *,'FileId:',FileId
         PRINT *,'VarId:',VarId
@@ -485,6 +495,7 @@ MODULE NetCDFInterface
         END IF
         CALL Fatal('GridDataReader','NetCDF variable access failed in 3D.')
       END IF
+     END IF
 
     END SUBROUTINE NetCDFDataCell3D
 
