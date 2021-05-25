@@ -73,7 +73,7 @@
      TYPE(ValueList_t), POINTER :: Material, BodyForce
  
      LOGICAL :: AllocationsDone = .FALSE., HoleCorrection, &
-         got_mat_id, got_bf_id, EigenOrHarmonic, Found
+         got_mat_id, got_bf_id, EigenOrHarmonic, Found, KernelVersion
 
      INTEGER, POINTER, SAVE ::  Indexes(:)
      INTEGER :: MaxIter, iter
@@ -128,6 +128,11 @@
      
      EigenOrHarmonic = EigenOrHarmonicAnalysis() &
          .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
+
+     ! The following may be used to switch to a 4-node formulation where the shear is enforced to
+     ! be in the kernel of curl-conforming ABF_0: 
+     !
+     KernelVersion = ListGetLogical(SolverParams, 'Kernel Interpolation', Found)
 
      CALL DefaultStart()     
      
@@ -233,7 +238,7 @@
          ! Get element local matrix, and rhs vector
          !-----------------------------------------
          CALL LocalMatrix(  STIFF, DAMP, MASS, FORCE, Load, &
-             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef )
+             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef, KernelVersion)
 
          IF( TransientSimulation ) &
              CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
@@ -286,16 +291,17 @@
 
 !------------------------------------------------------------------------------
      SUBROUTINE LocalMatrix( STIFF, DAMP, MASS, &
-         Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef )
+         Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef, KernelVersion )
 !------------------------------------------------------------------------------
        USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor, &
            IsotropicElasticity
 
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), &
             MASS(:,:), Force(:), Load(:), DampingCoef(:), SpringCoef(:)
+       TYPE(Element_t), POINTER :: Element
        INTEGER :: n, DOFs
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       LOGICAL :: KernelVersion
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), &
            Curvature(3,3*n), ShearStrain(2,3*n), &
@@ -316,7 +322,6 @@
 !
 !      Numerical integration:
 !      ----------------------
-
        IntegStuff = GaussPoints(Element)
 
        DO t = 1,IntegStuff % n
@@ -378,15 +383,17 @@
 !        Shear stiffness:
 !        ----------------
          CALL CovariantInterpolation(ShearStrain, &
-              Basis, Nodes % x(1:n),Nodes % y(1:n),U,V,n)
+              Basis, Nodes % x(1:n),Nodes % y(1:n), U, V, n, Pressure, s, KernelVersion)
 
          CALL ShearCorrectionFactor(Kappa, h, &
               Nodes % x(1:n), Nodes % y(1:n), n)
 
-         DO p=1,n
-            ShearStrain(1,3*p-2) = dBasisdx(p,1)
-            ShearStrain(2,3*p-2) = dBasisdx(p,2)
-         END DO 
+         IF (.NOT. KernelVersion) then
+           DO p=1,n
+             ShearStrain(1,3*p-2) = dBasisdx(p,1)
+             ShearStrain(2,3*p-2) = dBasisdx(p,2)
+           END DO
+         END IF
 
          CALL StrainEnergyDensity(STIFF, &
               Gmatrix,ShearStrain,2,3*n,Kappa*s)
@@ -502,14 +509,19 @@
 
 
 !------------------------------------------------------------------------------
-     SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n)
+     SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n,Pressure,s, &
+         KernelVersion)
 !------------------------------------------------------------------------------
        USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4 
-       REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V
+       REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V,Pressure,s
        INTEGER :: n
+       LOGICAL :: KernelVersion
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: detJ,Jmat(2,2),invJ(2,2),ShearRef(2,3*n)
        REAL(KIND=dp) :: Tau(2),Sdofs(3*n)
+       REAL(KIND=dp) :: a1, a2, a12, b1, b2, b12
+       REAL(KIND=dp) :: abf0basis(2,6)
+       REAL(KIND=dp) :: Bubble
        INTEGER :: j
 
        SELECT CASE(n)
@@ -575,85 +587,293 @@
           ShearStrain(1:2,1:9) = -MATMUL(invJ,ShearRef(1:2,1:9))
 
 
-!      The SMITC4 element
-!      ==================
+
        CASE(4)
-          ShearRef = 0.0d0
-          ShearStrain = 0.0d0
+         ShearRef = 0.0d0
+         ShearStrain = 0.0d0
 
-!         Compute the shear-dofs for edge 12:
-!         ===================================
-          Tau(1) = 1.0d0
-          Tau(2) = 0.0d0
+         IF (KernelVersion) THEN
+           
+           ! The kernel of curl-conforming ABF_0 can be generated in terms of basis functions 
+           ! associated with the edges. The fourth edge (14) DOF is set such that the interpolant
+           ! is in the kernel space. An equivalent constraint is to enforce the vanishing 
+           ! circulation around the element boundary.
+           ! ---------------------------------------------------------------------------
+           abf0basis(1,1) = (1.0d0-V)/4.0d0
+           abf0basis(2,1) = 0.0d0
+           abf0basis(1,2) = 0.0d0
+           abf0basis(2,2) = (1.0d0+U)/4.0d0
+           abf0basis(1,3) = (1.0d0+V)/4.0d0
+           abf0basis(2,3) = 0.0d0
+           abf0basis(1,4) = 0.0d0
+           abf0basis(2,4) = (1.0d0-U)/4.0d0
+           !
+           ! No need for the basis functions associated with the curl DOFs:
+           !
+           ! abf0basis(1,5) = 0.0d0
+           ! abf0basis(2,5) = 3.0d0/8.0d0 * (U**2-1.0d0)
+           ! abf0basis(1,6) = 3.0d0/8.0d0 * (1.0d0-V**2)
+           ! abf0basis(2,6) = 0.0d0
 
-          CALL Jacobi4(Jmat,invJ,detJ,0.0d0,-1.0d0,x,y)
+           ! The coefficients of the element map written as
+           ! x(u,v) := a12*u*v + a1*u + a2*v + a0
+           ! y(u,v) := b12*u*v + b1*u + b2*v + b0
+           !
+           a1 = 0.25d0 * (-x(1)+x(2)+x(3)-x(4))
+           a2 = 0.25d0 * (-x(1)-x(2)+x(3)+x(4))
+           a12 = 0.25d0 * (x(1)-x(2)+x(3)-x(4))
+           b1 = 0.25d0 * (-y(1)+y(2)+y(3)-y(4))
+           b2 = 0.25d0 * (-y(1)-y(2)+y(3)+y(4))
+           b12 = 0.25d0 * (y(1)-y(2)+y(3)-y(4))
+
+           ! The negative gradient of the deflection (no approximation introduced):
+           ShearRef(:,1) = ShearRef(:,1) + abf0basis(:,1)  
+           ShearRef(:,4) = ShearRef(:,4) - abf0basis(:,1)
+           ShearRef(:,4) = ShearRef(:,4) + abf0basis(:,2)
+           ShearRef(:,7) = ShearRef(:,7) - abf0basis(:,2)
+           ShearRef(:,7) = ShearRef(:,7) - abf0basis(:,3)
+           ShearRef(:,10) = ShearRef(:,10) + abf0basis(:,3)
+           ShearRef(:,10) = ShearRef(:,10) - abf0basis(:,4)
+           ShearRef(:,1) = ShearRef(:,1) + abf0basis(:,4)
+
+           ! Edge 12:
+           ! ----------
+           ShearRef(:,2) = ShearRef(:,2) + (a1-a12) * abf0basis(:,1)
+           ShearRef(:,3) = ShearRef(:,3) + (b1-b12) * abf0basis(:,1)
+           ShearRef(:,5) = ShearRef(:,5) + (a1-a12) * abf0basis(:,1)
+           ShearRef(:,6) = ShearRef(:,6) + (b1-b12) * abf0basis(:,1)
+
+           ! Edge 23:
+           ! -----------
+           ShearRef(:,5) = ShearRef(:,5) + (a2+a12) * abf0basis(:,2)
+           ShearRef(:,6) = ShearRef(:,6) + (b2+b12) * abf0basis(:,2)
+           ShearRef(:,8) = ShearRef(:,8) + (a2+a12) * abf0basis(:,2)
+           ShearRef(:,9) = ShearRef(:,9) + (b2+b12) * abf0basis(:,2)
+
+           ! Edge 43:
+           ! -----------
+           ShearRef(:,8) = ShearRef(:,8) + (a1+a12) * abf0basis(:,3)
+           ShearRef(:,9) = ShearRef(:,9) + (b1+b12) * abf0basis(:,3)
+           ShearRef(:,11) = ShearRef(:,11) + (a1+a12) * abf0basis(:,3)
+           ShearRef(:,12) = ShearRef(:,12) + (b1+b12) * abf0basis(:,3)
+
+           ! Edge 14: 
+           ! ------------
+           ShearRef(:,2) = ShearRef(:,2) + (a1-a12) * abf0basis(:,4)
+           ShearRef(:,3) = ShearRef(:,3) + (b1-b12) * abf0basis(:,4)
+           ShearRef(:,5) = ShearRef(:,5) + (a1+a2) * abf0basis(:,4)
+           ShearRef(:,6) = ShearRef(:,6) + (b1+b2) * abf0basis(:,4)
+           ShearRef(:,8) = ShearRef(:,8) + (a2-a1) * abf0basis(:,4)
+           ShearRef(:,9) = ShearRef(:,9) + (b2-b1) * abf0basis(:,4)
+           ShearRef(:,11) = ShearRef(:,11) + (-a1-a12) * abf0basis(:,4)
+           ShearRef(:,12) = ShearRef(:,12) + (-b1-b12) * abf0basis(:,4)
+
+           ! The following would give the full MIN4 element based on adding 5 bubble 
+           ! functions that are determined by linked interpolation. It appears that
+           ! this is not the best possible element, but the code is left here for
+           ! comparison.
+           !
+           FMIN4: IF (.FALSE.) THEN
+
+             ! A local basis for ABF_0:
+             ! ------------------------------
+             abf0basis(1,1) = (1.0d0-V)/4.0d0
+             abf0basis(2,1) = 0.0d0
+             abf0basis(1,2) = 0.0d0
+             abf0basis(2,2) = (1.0d0+U)/4.0d0
+             abf0basis(1,3) = (1.0d0+V)/4.0d0
+             abf0basis(2,3) = 0.0d0
+             abf0basis(1,4) = 0.0d0
+             abf0basis(2,4) = (1.0d0-U)/4.0d0
+             abf0basis(1,5) = 0.0d0
+             abf0basis(2,5) = 3.0d0/8.0d0 * (U**2-1.0d0)
+             abf0basis(1,6) = 3.0d0/8.0d0 * (1.0d0-V**2)
+             abf0basis(2,6) = 0.0d0
+
+             ! The coefficients of the element map written as
+             ! x(u,v) := a12*u*v + a1*u + a2*v + a0
+             ! y(u,v) := b12*u*v + b1*u + b2*v + b0
+             a1 = 0.25d0 * (-x(1)+x(2)+x(3)-x(4))
+             a2 = 0.25d0 * (-x(1)-x(2)+x(3)+x(4))
+             a12 = 0.25d0 * (x(1)-x(2)+x(3)-x(4))
+             b1 = 0.25d0 * (-y(1)+y(2)+y(3)-y(4))
+             b2 = 0.25d0 * (-y(1)-y(2)+y(3)+y(4))
+             b12 = 0.25d0 * (y(1)-y(2)+y(3)-y(4))
+
+             ! Edge 12:
+             ! ----------
+             !ShearRef(:,1) = ShearRef(:,1) - abf0basis(:,1)
+             ShearRef(:,2) = ShearRef(:,2) + (a1-a12) * abf0basis(:,1)
+             ShearRef(:,3) = ShearRef(:,3) + (b1-b12) * abf0basis(:,1)
+
+             !ShearRef(:,4) = ShearRef(:,4) + abf0basis(:,1)
+             ShearRef(:,5) = ShearRef(:,5) + (a1-a12) * abf0basis(:,1)
+             ShearRef(:,6) = ShearRef(:,6) + (b1-b12) * abf0basis(:,1)
+
+             Bubble = 0.5d0*(U**2-1.0d0)*(V-1.0d0)
+             Force(2) = Force(2) + Pressure * 0.25d0*(a1-a12) * Bubble * s
+             Force(3) = Force(3) + Pressure * 0.25d0*(b1-b12) * Bubble * s
+             Force(5) = Force(5) + Pressure * 0.25d0*(-a1+a12) * Bubble * s
+             Force(6) = Force(6) + Pressure * 0.25d0*(-b1+b12) * Bubble * s
+
+             ! Edge 23:
+             ! -----------
+             !ShearRef(:,4) = ShearRef(:,4) - abf0basis(:,2)
+             ShearRef(:,5) = ShearRef(:,5) + (a2+a12) * abf0basis(:,2)
+             ShearRef(:,6) = ShearRef(:,6) + (b2+b12) * abf0basis(:,2)
+
+             !ShearRef(:,7) = ShearRef(:,7) + abf0basis(:,2)
+             ShearRef(:,8) = ShearRef(:,8) + (a2+a12) * abf0basis(:,2)
+             ShearRef(:,9) = ShearRef(:,9) + (b2+b12) * abf0basis(:,2)
+
+             Bubble = -0.5d0*(V**2-1.0d0)*(U+1.0d0)
+             Force(5) = Force(5) + Pressure * 0.25d0*(a2+a12) * Bubble * s
+             Force(6) = Force(6) + Pressure * 0.25d0*(b2+b12) * Bubble * s
+             Force(8) = Force(8) + Pressure * 0.25d0*(-a2-a12) * Bubble * s
+             Force(9) = Force(9) + Pressure * 0.25d0*(-b2-b12) * Bubble * s
+
+             ! Edge 43:
+             ! -----------
+             ! ShearRef(:,7) = ShearRef(:,7) + abf0basis(:,3)
+             ShearRef(:,8) = ShearRef(:,8) + (a1+a12) * abf0basis(:,3)
+             ShearRef(:,9) = ShearRef(:,9) + (b1+b12) * abf0basis(:,3)
+
+             !ShearRef(:,10) = ShearRef(:,10) - abf0basis(:,3)
+             ShearRef(:,11) = ShearRef(:,11) + (a1+a12) * abf0basis(:,3)
+             ShearRef(:,12) = ShearRef(:,12) + (b1+b12) * abf0basis(:,3)
+
+             Bubble = -0.5d0*(U**2-1.0d0)*(V+1.0d0)
+             Force(8) = Force(8) + Pressure * 0.25d0*(-a1-a12) * Bubble * s
+             Force(9) = Force(9) + Pressure * 0.25d0*(-b1+b12) * Bubble * s
+             Force(11) = Force(11) + Pressure * 0.25d0*(a1+a12) * Bubble * s
+             Force(12) = Force(12) + Pressure * 0.25d0*(b1+b12) * Bubble * s
+
+             ! Edge 14:
+             ! ------------
+             !ShearRef(:,10) = ShearRef(:,10) + abf0basis(:,4)
+             ShearRef(:,11) = ShearRef(:,11) + (a2-a12) * abf0basis(:,4)
+             ShearRef(:,12) = ShearRef(:,12) + (b2-b12) * abf0basis(:,4)
+
+             !ShearRef(:,1) = ShearRef(:,1) - abf0basis(:,4)           
+             ShearRef(:,2) = ShearRef(:,2) + (a2-a12) * abf0basis(:,4)
+             ShearRef(:,3) = ShearRef(:,3) + (b2-b12) * abf0basis(:,4)
+
+             Bubble = 0.5d0*(V**2-1.0d0)*(U-1.0d0)
+             Force(2) = Force(2) + Pressure * 0.25d0*(a2-a12) * Bubble * s
+             Force(3) = Force(3) + Pressure * 0.25d0*(b2-b12) * Bubble * s
+             Force(11) = Force(11) + Pressure * 0.25d0*(-a2+a12) * Bubble * s
+             Force(12) = Force(12) + Pressure * 0.25d0*(-b2+b12) * Bubble * s
+
+             ! The first curl-DOF:
+             ShearRef(:,2) = ShearRef(:,2) + (-a1-a12)/3.0d0 * abf0basis(:,5)
+             ShearRef(:,3) = ShearRef(:,3) + (-b1-b12)/3.0d0 * abf0basis(:,5)          
+             ShearRef(:,5) = ShearRef(:,5) + (a1+a12)/3.0d0 * abf0basis(:,5)
+             ShearRef(:,6) = ShearRef(:,6) + (b1+b12)/3.0d0 * abf0basis(:,5)
+             ShearRef(:,8) = ShearRef(:,8) + (-a1+a12)/3.0d0 * abf0basis(:,5)
+             ShearRef(:,9) = ShearRef(:,9) + (-b1+b12)/3.0d0 * abf0basis(:,5)
+             ShearRef(:,11) = ShearRef(:,11) + (a1-a12)/3.0d0 * abf0basis(:,5)
+             ShearRef(:,12) = ShearRef(:,12) + (b1-b12)/3.0d0 * abf0basis(:,5)
+
+             ! The second curl-DOF:
+             ShearRef(:,2) = ShearRef(:,2) + (a2+a12)/3.0d0 * abf0basis(:,6)
+             ShearRef(:,3) = ShearRef(:,3) + (b2+b12)/3.0d0 * abf0basis(:,6)          
+             ShearRef(:,5) = ShearRef(:,5) + (-a2+a12)/3.0d0 * abf0basis(:,6)
+             ShearRef(:,6) = ShearRef(:,6) + (-b2+b12)/3.0d0 * abf0basis(:,6)
+             ShearRef(:,8) = ShearRef(:,8) + (a2-a12)/3.0d0 * abf0basis(:,6)
+             ShearRef(:,9) = ShearRef(:,9) + (b2-b12)/3.0d0 * abf0basis(:,6)
+             ShearRef(:,11) = ShearRef(:,11) + (-a2-a12)/3.0d0 * abf0basis(:,6)
+             ShearRef(:,12) = ShearRef(:,12) + (-b2-b12)/3.0d0 * abf0basis(:,6)
+
+             Bubble = (V**2-1.0d0)*(U**2-1.0d0)
+             Force(2) = Force(2) + Pressure * 0.125d0 * a12 * Bubble * s
+             Force(3) = Force(3) + Pressure * 0.125d0 * b12 * Bubble * s
+             Force(5) = Force(5) + Pressure * 0.125d0 * (-a12) * Bubble * s
+             Force(6) = Force(6) + Pressure * 0.125d0 * (-b12) * Bubble * s
+             Force(8) = Force(8) + Pressure * 0.125d0 * a12 * Bubble * s
+             Force(9) = Force(9) + Pressure * 0.125d0 * b12 * Bubble * s
+             Force(11) = Force(11) + Pressure * 0.125d0 * (-a12) * Bubble * s
+             Force(12) = Force(12) + Pressure * 0.125d0 * (-b12) * Bubble * s
+           END IF FMIN4
+
+         ELSE
+
+!          The SMITC4 element
+!          ==================
+
+!          Compute the shear-dofs for edge 12:
+!          ===================================
+           Tau(1) = 1.0d0
+           Tau(2) = 0.0d0
+
+           CALL Jacobi4(Jmat,invJ,detJ,0.0d0,-1.0d0,x,y)
           
-          Sdofs = 0.0d0
-          Sdofs(2) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(3) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(2) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(3) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(1,j) = ShearRef(1,j) + (1-V)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the shear-dofs for edge 23:
-!         ===================================
-          Tau(1) = 0.0d0
-          Tau(2) = 1.0d0
+!          Compute the shear-dofs for edge 23:
+!          ===================================
+           Tau(1) = 0.0d0
+           Tau(2) = 1.0d0
 
-          CALL Jacobi4(Jmat,invJ,detJ,1.0d0,0.0d0,x,y)
+           CALL Jacobi4(Jmat,invJ,detJ,1.0d0,0.0d0,x,y)
 
-          Sdofs = 0.0d0
-          Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(8) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(9) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(8) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(9) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(2,j) = ShearRef(2,j) + (1+U)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the shear-dofs for edge 34:
-!         ===================================
-          Tau(1) = -1.0d0
-          Tau(2) =  0.0d0
+!          Compute the shear-dofs for edge 34:
+!          ===================================
+           Tau(1) = -1.0d0
+           Tau(2) =  0.0d0
 
-          CALL Jacobi4(Jmat,invJ,detJ,0.0d0,1.0d0,x,y)
+           CALL Jacobi4(Jmat,invJ,detJ,0.0d0,1.0d0,x,y)
 
-          Sdofs = 0.0d0
-          Sdofs(8)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(9)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(8)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(9)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(1,j) = ShearRef(1,j) + (-1-V)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the shear-dofs for edge 41:
-!         ===================================
-          Tau(1) =  0.0d0
-          Tau(2) = -1.0d0
+!          Compute the shear-dofs for edge 41:
+!          ===================================
+           Tau(1) =  0.0d0
+           Tau(2) = -1.0d0
 
-          CALL Jacobi4(Jmat,invJ,detJ,-1.0d0,0.0d0,x,y)
+           CALL Jacobi4(Jmat,invJ,detJ,-1.0d0,0.0d0,x,y)
 
-          Sdofs = 0.0d0
-          Sdofs(2)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(3)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(2)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(3)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(2,j) = ShearRef(2,j) + (-1+U)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the final reduced shear strain
-!         ======================================
-          CALL Jacobi4(Jmat,invJ,detJ,U,V,x,y)
-          ShearStrain(1:2,1:12) = -MATMUL(invJ,ShearRef(1:2,1:12))
+         END IF
 
+!        Compute the final reduced shear strain
+!        ======================================
+         CALL Jacobi4(Jmat,invJ,detJ,U,V,x,y)
+         ShearStrain(1:2,1:12) = -MATMUL(invJ,ShearRef(1:2,1:12))
        CASE DEFAULT
          CALL WARN('SmitcSolver','Illegal number of nodes for Smitc elements.')
 

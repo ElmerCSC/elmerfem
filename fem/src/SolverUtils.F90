@@ -4453,7 +4453,25 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+!------------------------------------------------------------------------------
+!> Compute range of the linear system mainly for debugging purposes.
+!------------------------------------------------------------------------------
+  SUBROUTINE VectorValuesRange(x,n,str)
+!------------------------------------------------------------------------------    
+    REAL(KIND=dp), POINTER :: x(:)
+    INTEGER :: n
+    CHARACTER(LEN=*) :: str
+    REAL(KIND=dp) :: s(3)
+    
+    s(1) = ParallelReduction( MINVAL( x(1:n) ),1 ) 
+    s(2) = ParallelReduction( MAXVAL( x(1:n) ),2 ) 
+    s(3) = ParallelReduction( SUM( x(1:n) ) ) 
+    WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+    CALL Info('VectorValuesRange',Message)
+
+  END SUBROUTINE VectorValuesRange
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
@@ -4826,8 +4844,8 @@ CONTAINS
         PassPerm(Mesh % Elements(j) % NodeIndexes)=1
       END DO
 
-      DO t = 1, Mesh % NumberOfBulkElements 
-        Element => Mesh % Elements(t)
+      DO t=1,Solver % NumberOfActiveElements
+        Element => Mesh % Elements(Solver % ActiveElements(t))
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
           CALL Warn(Caller,'Element body id beyond body table!')
           CYCLE
@@ -4854,6 +4872,17 @@ CONTAINS
         IF (ListGetLogical(ValueList,PassCondName,GotIt)) THEN
           IF (.NOT.CheckPassiveElement(Element)) CYCLE
           DO j=1,n
+            k=Indexes(j)
+            IF (k<=0) CYCLE
+            k=Perm(k)
+            IF (k<=0) CYCLE
+            s=0._dp
+            DO l=1,NDOFs
+              m=NDOFs*(k-1)+l
+              s=s+ABS(A % Values(A % Diag(m)))
+            END DO
+            IF (s>EPSILON(s)) CYCLE
+
             NodeIndexes(1) = Indexes(j)
             IF(PassPerm(NodeIndexes(1))==0) CALL SetPointValues(1)
           END DO
@@ -5161,6 +5190,13 @@ CONTAINS
     IF ( Passive ) THEN
       Solver => Model % Solver
       Mesh => Solver % Mesh
+
+      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
+      DO i=0,Mesh % PassBCCnt-1
+        j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
+        PassPerm(Mesh % Elements(j) % NodeIndexes)=1
+      END DO
+
       DO i=1,Solver % NumberOfActiveElements
         Element => Mesh % Elements(Solver % ActiveElements(i))
         IF (CheckPassiveElement(Element)) THEN
@@ -5172,13 +5208,15 @@ CONTAINS
             k=Perm(k)
             IF (k<=0) CYCLE
 
+            IF(PassPerm(Indexes(j))==1) CYCLE
+
             s=0._dp
             DO l=1,NDOFs
               m=NDOFs*(k-1)+l
               s=s+ABS(A % Values(A % Diag(m)))
             END DO
             IF (s>EPSILON(s)) CYCLE
- 
+
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
               IF(A % ConstrainedDOF(m)) CYCLE
@@ -5187,6 +5225,7 @@ CONTAINS
           END DO
         END IF
       END DO
+      DEALLOCATE(PassPerm,NodeIndexes)
     END IF
 
 
