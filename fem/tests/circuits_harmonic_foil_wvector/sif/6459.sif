@@ -78,7 +78,7 @@ Solver 4  !---- WPotentialSolver, Wsolve
 End
 Solver 5  ! --- WPotentialFix for fixing the gradient of wire potential
   Exec Solver = Before All
-  Exec Solver = never
+  !Exec Solver = never
   Equation = "WFix"
   Procedure = "WVectorFix" "WVectorFix"
   Steady State Convergence Tolerance = 1e-06 
