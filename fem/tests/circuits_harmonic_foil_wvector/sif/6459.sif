@@ -135,7 +135,6 @@ Solver 8  !---- MagnetoDynamics, MagnetoDynamicsCalcFields
    Linear System Iterative Method = CG
    Steady State Convergence Tolerance = 1e-6
    Linear System Convergence Tolerance = 1.0e-10
-   Calculate Winding Voltage = Logical True
 End
 Solver 9  !---- CircuitsAndDynamics, CircuitsOutput
    Exec Solver = Always
