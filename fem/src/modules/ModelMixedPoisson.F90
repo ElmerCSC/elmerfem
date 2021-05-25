@@ -242,7 +242,8 @@ CONTAINS
 
     INTEGER :: t, i, j, p, q, np
 
-    REAL(KIND=dp) :: Load(n), a_parameter(n), mu(dim,dim,n), K(dim,dim), MatPar, f
+    REAL(KIND=dp) :: Load(n), a_parameter(n), mu(dim,dim,n), K(dim,dim),  capacity(n), &
+         MatPar, f, IPcapacity
     REAL(KIND=dp) :: Velo(dim,n), v(dim), tmp(dim)
     REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
     REAL(KIND=dp) :: Basis(n), DetJ, s
@@ -281,6 +282,9 @@ CONTAINS
       IF (.NOT. EvaluateMatPar) MatPar = 1.0_dp
     END IF
 
+    capacity(1:n) = GetReal(Material, 'Material Capacity', Found)
+    IF (.NOT.Found) capacity=1.0_dp
+    
     Convection = .FALSE.
     Velo = 0.0d0
     DO i=1,dim
@@ -313,6 +317,7 @@ CONTAINS
 
       IF (EvaluateSource) f = SUM(Basis(1:n) * Load(1:n))
       IF (Convection) v(:) = MATMUL(Velo(:,1:n), Basis(1:n))
+      IF (NeedMass) IPcapacity = SUM(Basis(1:n) * capacity(1:n))
 
       s = detJ * IP % s(t)
 
@@ -393,7 +398,8 @@ CONTAINS
         ! Here piecewise constant approximation is assumed. This
         ! could be integrated with one-point quadrature.
         !
-        Mass(nd,nd) = Mass(nd,nd) - s
+        
+        Mass(nd,nd) = Mass(nd,nd) - IPcapacity*s
       END IF
 
     END DO
