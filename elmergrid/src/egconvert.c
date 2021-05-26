@@ -318,19 +318,22 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
 {
   int noknots,noelements,elemcode,maxnodes,material,maxelem,nodeoffset;
   int mode,allocated,nvalue,nvalue2,maxknot,nosides,elemnodes,ncum;
-  int boundarytype,boundarynodes,elsetactive,elmatactive,cont;
+  int boundarytype,boundarynodes,elsetactive,elmatactive,cont,bcind;
   int *nodeindx=NULL,*boundindx=NULL,*materials=NULL,*elemindx=NULL;
-  char *pstr;
+  char *pstr,*pstr2;
   char filename[MAXFILESIZE];
   char line[MAXLINESIZE];
-  int i,j,k,*ind=NULL;
+  int i,j,k,l,*ind=NULL;
   FILE *in;
   Real rvalues[MAXDOFS];
-  int ivalues[MAXDOFS],ivalues0[MAXDOFS];
+  int *ivalues,ivalues0[MAXDOFS];
+  int ivaluessize;
   int setmaterial;
   int debug,firstline;
-  char entityname[MAXNAMESIZE];
-
+  char entityname[MAXNAMESIZE];  
+  int side,type;
+  int *bcsides,*bctypes,*bcparent;
+ 
   strcpy(filename,prefix);
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"inp");
@@ -349,6 +352,11 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
   maxelem = 0;
   elsetactive = FALSE;
   elmatactive = FALSE;
+  ivaluessize = MAXDOFS;
+  ivalues = Ivector(0,ivaluessize-1);
+  for(i=0;i<ivaluessize;i++)
+    ivalues[i] = 0;
+  
   
   /* Because the file format doesn't provide the number of elements
      or nodes the results are read twice but registered only in the
@@ -367,8 +375,10 @@ omstart:
   boundarytype = 0;
   boundarynodes = 0;
   material = 0;
+  nosides = 0;
+  bcind = 0;
   ivalues0[0] = ivalues0[1] = 0;
-
+  
 
   for(;;) {
     /* GETLINE; */
@@ -493,10 +503,10 @@ omstart:
 	  printf("Treating keyword CLOAD\n");
 	}
       }
-       else if(pstr = strstr(line,"NSET=")) {
-	 if( strstr(line,"ELSET=") ) {
-	   /* Skipping association of ELSET to NSET */
-	   mode = 10;
+      else if(pstr = strstr(line,"NSET=")) {
+	if( strstr(line,"ELSET=") ) {
+	  /* Skipping association of ELSET to NSET */
+	  mode = 10;
 	 }
 	 else {
 	   boundarytype++;
@@ -512,11 +522,46 @@ omstart:
 	mode = 6;
 
 	if(allocated) {
-	  printf("Loading element set %d from %s",material,pstr+6);
-	  sscanf(pstr+6,"%s",entityname);
-	  strcpy(data->bodyname[material],entityname);
-	  data->bodynamesexist = TRUE;
-	  data->boundarynamesexist = TRUE;
+	  pstr += 6;
+	  if( strstr( line,"ELSET=_")) {
+	    pstr += 1;
+	    side = 0;
+	    if( pstr2 = strstr(pstr,"_S1") )
+	      side = 5; /* ok */
+	    else if( pstr2 = strstr(pstr,"_S2") )
+	      side = 6; 
+	    else if( pstr2 = strstr(pstr,"_S3") )
+	      side = 1;  
+	    else if( pstr2 = strstr(pstr,"_S4") )
+	      side = 2; /* ok */ 
+	    else if( pstr2 = strstr(pstr,"_S5") )
+	      side = 3; /* ok */
+	    else if( pstr2 = strstr(pstr,"_S6") )
+	      side = 4; /* ok */	    
+	    
+	    l = pstr2-pstr;
+	    
+	    if(side )
+	      printf("Elset are set of sides %d!\n",side);
+	    else
+	      printf("Could not determine side!\n");		
+	  }
+
+	  if( side > 0 ) {
+	    pstr2[k] = '\n';
+	    sscanf(pstr,"%s",entityname);
+	    bcind += 1;
+
+	    printf("Loading element set %d with index %d from %s\n",material,bcind,entityname);
+	    strcpy(data->boundaryname[bcind],entityname);
+	    data->boundarynamesexist = TRUE;
+	  }	  
+	  else {
+	    sscanf(pstr,"%s",entityname);
+	    printf("Loading element set %d from %s\n",material,entityname);	    	    
+	    strcpy(data->bodyname[material],entityname);
+	    data->bodynamesexist = TRUE;
+	  }
 	}
       }
       else if(pstr = strstr(line,"PART, NAME=")) {
@@ -583,8 +628,9 @@ omstart:
 	
       case 3: /* ELEMENT */
 	noelements++;
-	
-	nvalue = StringToIntegerNoZero(line,ivalues,elemnodes+1,',');
+
+	i = elemnodes+1;
+	nvalue = StringToIntegerNoZero(line,ivalues,&i,',',FALSE);
 
 	if(allocated) {
 	  if( debug && firstline ) {	  
@@ -618,7 +664,8 @@ omstart:
 	/* Read 2nd line if needed */
 	if(ncum < elemnodes ) {
 	  Getrow(line,in,TRUE);
-	  nvalue = StringToIntegerNoZero(line,ivalues,elemnodes-ncum,',');
+	  i = elemnodes-ncum;
+	  nvalue = StringToIntegerNoZero(line,ivalues,&i,',',FALSE);
 	  if(allocated) {
 	    for(i=0;i<nvalue;i++) 
 	      data->topology[noelements][ncum+i] = ivalues[i];	  	    
@@ -629,7 +676,8 @@ omstart:
 	/* Be prepared for 3rd line as well */
 	if(ncum < elemnodes ) {
 	  Getrow(line,in,TRUE);
-	  nvalue = StringToIntegerNoZero(line,ivalues,elemnodes-ncum,',');
+	  i = elemnodes-ncum;
+	  nvalue = StringToIntegerNoZero(line,ivalues,&i,',',FALSE);
 	  if(allocated) {
 	    for(i=0;i<nvalue;i++) 
 	      data->topology[noelements][ncum+i] = ivalues[i];	  	    
@@ -669,7 +717,7 @@ omstart:
 	break;
 
       case 5: /* NSET */
-	nvalue = StringToIntegerNoZero(line,ivalues,10,',');
+	nvalue = StringToIntegerNoZero(line,ivalues,&ivaluessize,',',TRUE);
 
 	if(allocated) {
 	  for(i=0;i<nvalue;i++) {
@@ -680,17 +728,26 @@ omstart:
 	}
 	else
 	  boundarynodes += nvalue;
+
 	break;
 
       case 6: /* ELSET */
-	nvalue = StringToIntegerNoZero(line,ivalues,10,',');
-
-	if(allocated) {
-	  for(i=0;i<nvalue;i++) {
+	nvalue = StringToIntegerNoZero(line,ivalues,&ivaluessize,',',TRUE);
+	
+	if(allocated) {	  
+	  for(i=0;i<nvalue;i++) {	    
+#if 0 
 	    j = ivalues[i];
 	    materials[j] = material;
+#else
+	    bcsides[nosides+i] = side;
+	    bctypes[nosides+i] = bcind;
+	    bcparent[nosides+i] = ivalues[i];
+#endif
 	  }
 	}
+
+	nosides += nvalue;
 	break;
 
       case 10: 
@@ -763,9 +820,14 @@ omstart:
 	data->material[i] = materials[j];
       }
     }
+
+    if(nosides) {
+      SideInfoToBoundaryConditions(data,bound,nosides,bcsides,bcparent,bctypes,info);
+    }
+    else {
+      ElementsToBoundaryConditions(data,bound,FALSE,info);
+    }
       
-    ElementsToBoundaryConditions(data,bound,FALSE,info);
-    
     free_ivector(ind,1,maxknot);
     free_ivector(materials,1,maxelem);
     free_Ivector(elemindx,1,noelements);
@@ -782,6 +844,7 @@ omstart:
   }
 
   rewind(in);
+  
   data->noknots = noknots;
   data->noelements = noelements;
   data->maxnodes = maxnodes;
@@ -801,6 +864,9 @@ omstart:
     boundindx = Ivector(1,boundarynodes);
   }
 
+  printf("Maximum temporal index array size: %d\n",ivaluessize);
+  free_Ivector(ivalues,0,ivaluessize-1);
+   
   printf("Maximum element index in file: %d\n",maxelem);
   maxelem = MAX( maxelem, noelements );
   materials = ivector(1,maxelem);
@@ -812,7 +878,13 @@ omstart:
   ind = ivector(1,maxknot);
   for(i=1;i<=maxknot;i++)
     ind[i] = 0;
-    
+
+  if(nosides > 0 ) {
+    bcsides = Ivector(0,nosides-1);    
+    bctypes = Ivector(0,nosides-1);
+    bcparent = Ivector(0,nosides-1);
+  }
+ 
   allocated = TRUE;
   goto omstart;
 }

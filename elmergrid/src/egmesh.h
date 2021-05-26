@@ -78,6 +78,8 @@ void MergeBoundaries(struct FemType *data,struct BoundaryType *bound,int *double
 void SeparateCartesianBoundaries(struct FemType *data,struct BoundaryType *bound,int info);
 void ElementsToBoundaryConditions(struct FemType *data,
 				  struct BoundaryType *bound,int retainorphans, int info);
+void SideInfoToBoundaryConditions(struct FemType *data,struct BoundaryType *bound,
+				  int nosides,int *sides,int *parent,int *bctypes,int info);
 int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct ElmergridType *eg,int info);
 int SideAndBulkBoundaries(struct FemType *data,struct BoundaryType *bound,struct ElmergridType *eg,int info);
 void NodesToBoundaryChain(struct FemType *data,struct BoundaryType *bound,

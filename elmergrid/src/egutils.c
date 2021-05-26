@@ -690,11 +690,15 @@ int StringToInteger(const char *buf,int *dest,int maxcnt,char separator)
   return cnt;
 }
 
-int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator)
+int StringToIntegerNoZero(const char *buf,int *dest,int *maxcnt,char separator,int alloc)
 {
   int cnt = 0;
   char *ptr1 = (char *)buf, *ptr2;
   int ival;
+  int *tmpdest;
+  int i,n;
+
+  n = *maxcnt;
   
   if (!buf[0]) return 0;
   do {
@@ -708,8 +712,27 @@ int StringToIntegerNoZero(const char *buf,int *dest,int maxcnt,char separator)
     dest[cnt++] = ival;      
 
     if (ptr2) ptr1 = ptr2+1;
-  } while (cnt < maxcnt && ptr2 != NULL);
 
+    if( cnt == n ) {
+      if(alloc) {
+	tmpdest = Ivector(0,n-1);
+	for(i=0;i<n;i++) tmpdest[i] = dest[i];
+	free_Ivector(dest,0,n-1);
+	dest = Ivector(0,2*n-1);	
+	for(i=0;i<n;i++) dest[i] = tmpdest[i];
+	free_Ivector(tmpdest,0,n-1);
+	for(i=n;i<2*n;i++) dest[i] = 0;
+	n *= 2;
+      }
+      else {
+	break;
+      }      
+    }
+    
+  } while (ptr2 != NULL);
+
+  *maxcnt = n;
+  
   return cnt;
 }
 

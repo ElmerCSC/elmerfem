@@ -7533,6 +7533,84 @@ void ElementsToBoundaryConditions(struct FemType *data,
 }
 
 
+
+void SideInfoToBoundaryConditions(struct FemType *data,struct BoundaryType *bound,
+				  int nosides,int *sides,int *parent,int *bctypes,int info)
+{
+  int i,j,k,l,n,sideelemtype,sideelemtype2,elemind,elemind2,sideelem,sameelem;
+  int sideind[MAXNODESD1],sideind2[MAXNODESD1],elemsides,side,hit,same,minelemtype;
+  int sidenodes,sidenodes2,maxelemtype,elemtype,elemdim,sideelements,material;
+  int *moveelement=NULL,*parentorder=NULL,*possible=NULL,**invtopo=NULL;
+  int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim,minelemdim,maxelemdim;
+  int debug,unmoved,removed,elemhits,loopdim,lowdimbulk;
+  int notfound,*notfounds=NULL;
+
+
+  if(info) printf("Making side info of size %d to boundary elements\n",nosides);
+  
+  for(j=0;j < MAXBOUNDARIES;j++) 
+    bound[j].created = FALSE;
+  for(j=0;j < MAXBOUNDARIES;j++) 
+    bound[j].nosides = 0;
+  if(!nosides) return;
+  
+  noelements = data->noelements;
+  noknots = data->noknots;
+
+  maxelemtype = GetMaxElementType(data);
+  if(info) printf("Leading bulk elementtype is %d\n",maxelemtype);
+
+  minelemtype = GetMinElementType(data);
+  if(info) printf("Trailing bulk elementtype is %d\n",minelemtype);
+
+  if(0) maxelemdim = GetElementDimension(maxelemtype);
+  if(0) minelemdim = GetElementDimension(minelemtype);
+
+  AllocateBoundary(bound,nosides);
+  
+  bound->topology = Imatrix(1,nosides,0,MAXNODESD2-1);
+
+  j = 0;
+  for(i=0;i<nosides;i++) {
+
+    if(!sides[i]) continue;
+
+    j += 1;    
+    bound->parent[j] = parent[i];
+    bound->side[j] = sides[i]-1;
+    bound->parent2[j] = 0;
+    bound->side2[j] = 0;	    
+    bound->types[j] = bctypes[i];
+    
+#if 0
+    if(data->bodynamesexist) {
+      data->boundarynamesexist = TRUE;
+      if(material < MAXBODIES && material < MAXBOUNDARIES) 
+	strcpy(data->boundaryname[material],data->bodyname[material]);
+      if(!strncmp(data->boundaryname[material],"body",4))
+	strncpy(data->boundaryname[material],"bnry",4);
+    }
+#endif
+    
+    GetElementSide(parent[i],sides[i]-1,1,data,&sideind2[0],&sideelemtype);
+    
+    if(0) printf("sideele = %d %d\n",sideelemtype,sideelemtype % 100);
+    if(!sideelemtype) j--; 
+    
+    for(k=0;k<sideelemtype % 100;k++)
+      bound->topology[j][k] = sideind2[k];
+  }
+  
+  if(info) printf("Set side element to be BCs\n");
+  
+  bound->nosides = j;
+  
+  return;
+}
+
+
+
+
 int SideAndBulkMappings(struct FemType *data,struct BoundaryType *bound,struct ElmergridType *eg,int info)
 {
   int i,j,l,currenttype;
