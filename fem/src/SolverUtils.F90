@@ -9997,12 +9997,14 @@ END FUNCTION SearchNodeL
     INTEGER :: ipar(1)
     TYPE(ValueList_t), POINTER :: SolverParams
     CHARACTER(*), PARAMETER :: Caller = 'ComputeChange'
-    LOGICAL :: Parallel
+    LOGICAL :: Parallel, SingleMesh
     
     
     SolverParams => Solver % Values
     RelativeP = .FALSE.
-    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Solver % Mesh % SingleMesh )  
+    SingleMesh = Solver % Mesh % SingleMesh
+    
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. SingleMesh ) 
     
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
@@ -10347,6 +10349,17 @@ END FUNCTION SearchNodeL
       CALL Warn(Caller,'Unknown convergence measure: '//TRIM(ConvergenceType))    
       
     END SELECT
+
+
+    ! This could be a multislice case, for example. We don't want each slice to have
+    ! different iteration count so we need to check the max norm of the partitions
+    ! even for multislice case. For time parallel system, not so much.
+    IF( SingleMesh ) THEN
+      IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Parallel Times', Stat ) ) THEN
+        Change = ParallelReduction( Change, 2 )
+      END IF
+    END IF
+
     
     !--------------------------------------------------------------------------
     ! Check for convergence: 0/1

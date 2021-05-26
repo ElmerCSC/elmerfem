@@ -59,7 +59,7 @@ MODULE ModelDescription
                           PostFileUnit = 29, InFileUnit = 28
 
     INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
-
+    
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -130,7 +130,8 @@ CONTAINS
     INTEGER, POINTER :: OutputMask(:)
     INTEGER :: i
     LOGICAL :: GotIt
-    
+    CHARACTER(LEN=1024) :: InfoFileName 
+   
 
     MinOutputLevel = ListGetInteger( OutputList, &
         'Min Output Level', GotIt )
@@ -164,6 +165,7 @@ CONTAINS
 
     ! By default only on partition is used to show the results
     ! For debugging it may be useful to show several.
+    MinOutputPE = 0
     MaxOutputPE = ListGetInteger( OutputList, &
         'Max Output Partition', GotIt )    
     IF( GotIt ) THEN
@@ -180,6 +182,22 @@ CONTAINS
       END IF
     END IF
 
+    IF( .NOT. InfoToFile ) THEN 
+      IF( ListGetLogical( OutputList,'Info To File', GotIt ) ) THEN
+        InfoToFile = .TRUE.
+      END IF
+      IF( InfoToFile ) THEN
+        IF( MinOutputPE == MaxOutputPE ) THEN
+          InfoFileName = 'InfoFile.txt'
+        ELSE
+          InfoFileName = 'InfoFile.txt.'//TRIM(I2S(ParEnv % MyPe))                 
+        END IF
+        InfoOutUnit = InfoToFileUnit
+        OPEN(InfoOutUnit,FILE=InfoFileName,STATUS='Unknown')
+      END IF
+    END IF
+
+    
   END SUBROUTINE InitializeOutputLevel
 
 
