@@ -526,18 +526,20 @@ omstart:
 	  if( strstr( line,"ELSET=_")) {
 	    pstr += 1;
 	    side = 0;
+
+	    /* This numbering is true for Abaqus-to-Elmer hexas only! */
 	    if( pstr2 = strstr(pstr,"_S1") )
-	      side = 5; /* ok */
+	      side = 5; 
 	    else if( pstr2 = strstr(pstr,"_S2") )
 	      side = 6; 
 	    else if( pstr2 = strstr(pstr,"_S3") )
 	      side = 1;  
 	    else if( pstr2 = strstr(pstr,"_S4") )
-	      side = 2; /* ok */ 
+	      side = 2; 
 	    else if( pstr2 = strstr(pstr,"_S5") )
-	      side = 3; /* ok */
+	      side = 3; 
 	    else if( pstr2 = strstr(pstr,"_S6") )
-	      side = 4; /* ok */	    
+	      side = 4; 
 	    
 	    l = pstr2-pstr;
 	    
