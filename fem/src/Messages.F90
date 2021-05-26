@@ -43,6 +43,7 @@
 !-------------------------------------------------------------------------------
 MODULE Messages
 
+  ! In Fortran standard 2003 this should work, else activate the 2nd
 #if 1
    USE, INTRINSIC :: iso_fortran_env, ONLY : stdout=>output_unit
 #else
