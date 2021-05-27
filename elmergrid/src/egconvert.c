@@ -306,6 +306,100 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
 }
 
 
+static void AbaqusSideInfoToBoundary(struct FemType *data,struct BoundaryType *bound,
+				     int nosides,int *sides,int *parent,int *bctypes,int info)
+{
+  int i,j,k,l,n,noelements,noknots,elemside,elemfamily;
+  int minelemdim,maxelemdim,elemtype,sideelemtype,minelemtype,maxelemtype;
+  int sideind2[MAXNODESD2];				  
+  int order8[]={4,5,0,1,2,3};
+  int order7[]={3,4,0,1,2};
+  int order6[]={4,0,1,2,3};
+  int order5[]={3,0,1,2};
+  int order4[]={0,1,2,3};
+  int order3[]={0,1,2};
+  int *faceorder;
+
+  
+  if(info) printf("Making side info of size %d to boundary elements\n",nosides);
+  
+  for(j=0;j < MAXBOUNDARIES;j++) 
+    bound[j].created = FALSE;
+  for(j=0;j < MAXBOUNDARIES;j++) 
+    bound[j].nosides = 0;
+  if(!nosides) return;
+  
+  noelements = data->noelements;
+  noknots = data->noknots;
+
+  maxelemtype = GetMaxElementType(data);
+  if(info) printf("Leading bulk elementtype is %d\n",maxelemtype);
+
+  minelemtype = GetMinElementType(data);
+  if(info) printf("Trailing bulk elementtype is %d\n",minelemtype);
+
+  if(0) maxelemdim = GetElementDimension(maxelemtype);
+  if(0) minelemdim = GetElementDimension(minelemtype);
+
+  AllocateBoundary(bound,nosides);
+  
+  bound->topology = Imatrix(1,nosides,0,MAXNODESD2-1);
+
+  j = 0;
+  for(i=0;i<nosides;i++) {
+
+    if(!sides[i]) continue;
+
+    j += 1;    
+    bound->parent[j] = parent[i];
+    
+    elemtype = data->elementtypes[parent[i]];
+    elemfamily = elemtype / 100;
+
+    if(elemfamily == 8 )
+      faceorder = &order8[0];
+    else if(elemfamily == 7 )
+      faceorder = &order7[0];
+    else if(elemfamily == 6 )
+      faceorder = &order6[0];
+    else if(elemfamily == 5 )
+      faceorder = &order5[0];
+    else if(elemfamily == 4 )
+      faceorder = &order4[0];
+    else if(elemfamily == 3 )
+      faceorder = &order3[0];
+    else {
+      printf("Face order not implemented for family: %d\n",elemfamily);
+      j--;
+      continue;
+    }
+    
+    elemside = faceorder[sides[i]-1];
+    
+    bound->side[j] = elemside;
+    bound->parent2[j] = 0;
+    bound->side2[j] = 0;	    
+    bound->types[j] = bctypes[i];
+            
+    GetElementSide(parent[i],elemside,1,data,&sideind2[0],&sideelemtype);
+    
+    if(!sideelemtype) {
+      printf("sideele = %d %d\n",sideelemtype,sideelemtype % 100);
+      j--; 
+    }
+    else  {      
+      for(k=0;k<sideelemtype % 100;k++)
+	bound->topology[j][k] = sideind2[k];
+    }
+  }
+  
+  if(info) printf("Settting side element to be BCs finished!\n");
+  
+  bound->nosides = j;
+  
+  return;
+}
+
 
 
 int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
@@ -329,7 +423,7 @@ int LoadAbaqusInput(struct FemType *data,struct BoundaryType *bound,
   int *ivalues,ivalues0[MAXDOFS];
   int ivaluessize;
   int setmaterial;
-  int debug,firstline;
+  int debug,firstline,generate;
   char entityname[MAXNAMESIZE];  
   int side,type;
   int *bcsides,*bctypes,*bcparent;
@@ -518,58 +612,64 @@ omstart:
       }
       else if(pstr = strstr(line,"ELSET=")) {
 	elsetactive = TRUE;
-	material += 1;
 	mode = 6;
 
-	if(allocated) {
-	  pstr += 6;
-	  if( strstr( line,"ELSET=_")) {
-	    pstr += 1;
-	    side = 0;
+	generate = FALSE;
+	if( strstr(pstr,"GENERATE") ) generate = TRUE;
+	side = 0;
+	
+	pstr += 6;
+	if( strstr( line,"ELSET=_")) {
+	  pstr += 1;
 
-	    /* This numbering is true for Abaqus-to-Elmer hexas only! */
-	    if( pstr2 = strstr(pstr,"_S1") )
-	      side = 5; 
-	    else if( pstr2 = strstr(pstr,"_S2") )
-	      side = 6; 
-	    else if( pstr2 = strstr(pstr,"_S3") )
-	      side = 1;  
-	    else if( pstr2 = strstr(pstr,"_S4") )
-	      side = 2; 
-	    else if( pstr2 = strstr(pstr,"_S5") )
-	      side = 3; 
-	    else if( pstr2 = strstr(pstr,"_S6") )
-	      side = 4; 
+	  /* This numbering is true for Abaqus-to-Elmer hexas only! */
+	  if( pstr2 = strstr(pstr,"_S1") )
+	    side = 1; 
+	  else if( pstr2 = strstr(pstr,"_S2") )
+	    side = 2; 
+	  else if( pstr2 = strstr(pstr,"_S3") )
+	    side = 3;  
+	  else if( pstr2 = strstr(pstr,"_S4") )
+	    side = 4; 
+	  else if( pstr2 = strstr(pstr,"_S5") )
+	    side = 5; 
+	  else if( pstr2 = strstr(pstr,"_S6") )
+	    side = 6; 
+	   	    
+	  l = pstr2-pstr;
 	    
-	    l = pstr2-pstr;
-	    
-	    if(side )
-	      printf("Elset are set of sides %d!\n",side);
-	    else
-	      printf("Could not determine side!\n");		
-	  }
-
-	  if( side > 0 ) {
-	    pstr2[k] = '\n';
-	    sscanf(pstr,"%s",entityname);
-	    bcind += 1;
-
-	    printf("Loading element set %d with index %d from %s\n",material,bcind,entityname);
+	  if(side )
+	    printf("Elset are set of sides %d!\n",side);
+	  else
+	    printf("Could not determine side!\n");		
+	}
+	  	 
+	if( side > 0 ) {
+	  bcind += 1;
+	  pstr2[0] = '\n';
+	  sscanf(pstr,"%s",entityname);
+	  printf("Loading boundary set %d for side %d of %s\n",bcind,side,entityname);
+	  if(allocated) {
 	    strcpy(data->boundaryname[bcind],entityname);
 	    data->boundarynamesexist = TRUE;
-	  }	  
-	  else {
-	    sscanf(pstr,"%s",entityname);
-	    printf("Loading element set %d from %s\n",material,entityname);	    	    
+	  }
+	}	  
+	else {
+	  material++;
+	  sscanf(pstr,"%s",entityname);
+	  printf("Loading element set %d of %s\n",material,entityname);
+	  if(allocated) {
 	    strcpy(data->bodyname[material],entityname);
 	    data->bodynamesexist = TRUE;
 	  }
 	}
+	
       }
       else if(pstr = strstr(line,"PART, NAME=")) {
 	elmatactive = TRUE;
 	material += 1;
 	mode = 6;
+	generate = FALSE;
 
 	if(allocated) {
 	  printf("Loading part name %d from %s",material,pstr+11);
@@ -735,21 +835,43 @@ omstart:
 
       case 6: /* ELSET */
 	nvalue = StringToIntegerNoZero(line,ivalues,&ivaluessize,',',TRUE);
+
+	if(generate) {
+	  nvalue = (ivalues[1]-ivalues[0])/ivalues[2]+1;
+	  printf("generate: %d %d %d %d\n",ivalues[0],ivalues[1],ivalues[2],nvalue);
+	}       	
 	
 	if(allocated) {	  
-	  for(i=0;i<nvalue;i++) {	    
-#if 0 
-	    j = ivalues[i];
-	    materials[j] = material;
-#else
-	    bcsides[nosides+i] = side;
-	    bctypes[nosides+i] = bcind;
-	    bcparent[nosides+i] = ivalues[i];
-#endif
+	  if(generate) {
+	    i=0;
+	    for(j=ivalues[0];j<=ivalues[1];j+=ivalues[2]) {	    
+	      if( side ) {
+		bcsides[nosides+i] = side;
+		bctypes[nosides+i] = bcind;
+		bcparent[nosides+i] = j;
+		i++;
+	      }
+	      else {
+		materials[j] = material;
+	      }		
+	    }
+	  }
+	  else {
+	    for(i=0;i<nvalue;i++) {	    
+	      if( side ) {
+		bcsides[nosides+i] = side;
+		bctypes[nosides+i] = bcind;
+		bcparent[nosides+i] = ivalues[i];
+	      }
+	      else {
+		j = ivalues[i];
+		materials[j] = material;
+	      }
+	    }
 	  }
 	}
 
-	nosides += nvalue;
+	if(side) nosides += nvalue;
 	break;
 
       case 10: 
@@ -777,8 +899,7 @@ omstart:
        be renumberred from 1 to noknots. */
 
     if(noknots != maxknot) {
-      if(info) printf("There are %d nodes but maximum index is %d.\n",
-		      noknots,maxknot);
+      if(info) printf("There are %d nodes but maximum index is %d.\n",noknots,maxknot);
       if(info) printf("Renumbering %d elements\n",noelements);
       errcount = 0;
       okcount = 0;
@@ -824,7 +945,7 @@ omstart:
     }
 
     if(nosides) {
-      SideInfoToBoundaryConditions(data,bound,nosides,bcsides,bcparent,bctypes,info);
+      AbaqusSideInfoToBoundary(data,bound,nosides,bcsides,bcparent,bctypes,info);
     }
     else {
       ElementsToBoundaryConditions(data,bound,FALSE,info);
