@@ -158,6 +158,6 @@ End
 Solver 3 :: Reference Norm = Real 8.16115E-04
 Solver 3 :: Reference Norm Tolerance = Real 1e-2 
 solver 6 :: Reference Norm = real 9.745811085169E+002
-solver 6 :: reference norm tolerance = real 1e-4
+solver 6 :: reference norm tolerance = real 1e-3
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
