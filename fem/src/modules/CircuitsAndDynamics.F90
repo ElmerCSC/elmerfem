@@ -98,7 +98,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: First=.TRUE.
+  LOGICAL, SAVE :: First=.TRUE.
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
@@ -437,7 +437,7 @@ CONTAINS
 
     TYPE(VariableHandle_t), SAVE :: Wvec_h
     
-    SAVE CSymmetry, dim
+    SAVE CSymmetry, dim, First, InitHandle
 
     IF (First) THEN
       First = .FALSE.
@@ -590,7 +590,7 @@ CONTAINS
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: ncdofs,q
 
-    SAVE CSymmetry, dim
+    SAVE CSymmetry, dim, First
 
     IF (First) THEN
       First = .FALSE.
@@ -1015,7 +1015,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: First=.TRUE.
+  LOGICAL,SAVE :: First=.TRUE.
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
@@ -1338,7 +1338,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
          !   CALL GetConductivity(Element, Tcoef, nn_elem)
             Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
-            CALL Add_foil_winding(Element,Tcoef,Comp,nn_elem,nd_elem)
+            CALL Add_foil_winding(Element,Tcoef,Comp,nn_elem,nd_elem,CompParams)
           CASE DEFAULT
             CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
           END SELECT
@@ -1395,7 +1395,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     TYPE(VariableHandle_t), SAVE :: Wvec_h
 
-    SAVE CSymmetry, dim
+    SAVE CSymmetry, dim, First, InitHandle
 
     IF (First) THEN
       First = .FALSE.
@@ -1433,6 +1433,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         CALL GetWPotential(WBase)
         !print *, "W Potential", Wbase
       END IF
+
     END IF
 
     VvarId = Comp % vvar % ValueId + nm
@@ -1466,6 +1467,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         ELSE
           w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
         END IF
+
         !print *, "W Pot norm:", SQRT(SUM(w**2._dp))
       END SELECT
 
@@ -1545,7 +1547,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     INTEGER :: ncdofs,q
     REAL(KIND=dp) :: ModelDepth
 
-    SAVE CSymmetry, dim
+    SAVE CSymmetry, dim, First
 
     IF (First) THEN
       First = .FALSE.
@@ -1640,7 +1642,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd)
+   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,CompParams)
 !------------------------------------------------------------------------------
     USE MGDynMaterialUtils
     IMPLICIT NONE
@@ -1648,6 +1650,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value
     TYPE(Component_t) :: Comp
+    TYPE(Valuelist_t), POINTER :: CompParams
 
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
@@ -1662,14 +1665,21 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+               CoilUseWvec=.FALSE., Found
+    LOGICAL :: InitJHandle=.TRUE., FoilUseJvec=.FALSE.
     REAL(KIND=dp) :: localR
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
+    CHARACTER(LEN=MAX_NAME_LEN) :: FoilJVecVarname
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
+    TYPE(VariableHandle_t), SAVE :: Jvec_h
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
+    REAL(KIND=dp) :: Jvec(3)
     INTEGER :: i,ncdofs,q
 
-    SAVE CSymmetry, dim, First
+    SAVE CSymmetry, dim, First, InitHandle, InitJHandle
 
     IF (First) THEN
       First = .FALSE.
@@ -1692,9 +1702,40 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     ncdofs=nd
     IF (dim == 3) THEN
-      !CALL GetLocalSolution(Wbase, 'w')
-      CALL GetWPotential(WBase)
+
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        !CALL GetLocalSolution(Wbase, 'w')
+        CALL GetWPotential(WBase)
+      END IF
+
+      FoilUseJvec = GetLogical(CompParams, 'Foil Winding Use J Vector', Found)
+      IF (.NOT. Found) FoilUseJvec = .FALSE.
+
+      IF (FoilUseJvec) THEN
+        IF( InitJHandle ) THEN
+          FoilJVecVarname = GetString(CompParams, 'Foil J Vector Variable Name', Found)
+          IF ( .NOT. Found) FoilJVecVarname = 'J Vector E'
+          CALL ListInitElementVariable(Jvec_h, FoilJVecVarname)
+          IF ( .NOT. ASSOCIATED(Jvec_h % Variable)) THEN
+            CALL Fatal('Add_foil_winding','You are trying to use Foil J Vector for describing the &
+                                    component source field but I cannot the variable')
+          END IF
+          InitJHandle = .FALSE.
+        END IF
+      END IF
+
       CALL GetElementRotM(Element, RotM, nn)
+
       ncdofs=nd-nn
     END IF
 
@@ -1728,7 +1769,18 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff / Comp % VoltageFactor
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+
+        IF (CoilUseWvec) THEN
+          gradv = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
+
         ! Compute the conductivity tensor
         ! -------------------------------
         DO i=1,3
@@ -1737,15 +1789,16 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
-        ! I * R, where 
-        ! R = (1/sigma * js,js):
-        ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+        IF (FoilUseJvec) THEN
+          Jvec = ListGetElementVectorSolution( Jvec_h, Basis, Element, dofs = dim )
+        ELSE
+          Jvec = MATMUL(C,gradv)
+        END IF
 
         ! Transform the conductivity tensor:
         ! ----------------------------------
-        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
       END SELECT
       
       localAlpha = SUM(alpha(1:nn) * Basis(1:nn))
@@ -1765,11 +1818,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
           localV = localAlpha**vpolord
           dofId = 2*(vpolord + 1) + vvarId
-          
+
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
-          IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+          IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(Jvec*gradv)
           value = value * Comp % VoltageFactor
 
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
@@ -1795,7 +1848,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             q=j
             IF (dim == 3) q=q+nn
             IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
-            IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
+            IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(Jvec*Wbasis(j,:))
             value = value * Comp % VoltageFactor
             CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId+nm, REAL(value), AIMAG(value))
         END DO
