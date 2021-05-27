@@ -25,7 +25,7 @@ Simulation
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
 
-! When stiffness matrix is nonlinear this could be used, but should be checked for consistancy
+! When stiffness matrix is nonlinear this could be used, but should be checked for consistency
   !Nonlinear Timestepping = Logical True
 
   Mesh Levels = 1
@@ -42,7 +42,7 @@ end
 
 Material 2 ! nonlinear material
   Name = "Iron"
-  Relative reluctivity(3,3) = variable coordinate
+  Reluctivity(3,3) = variable coordinate
     real procedure "reluctivity" "reluct"
   Relative Permittivity = 1
 End
@@ -115,10 +115,7 @@ Solver 1 ! whitneyavsolver
  !Linear System Solver = "Direct"
  !Linear System Direct Method = UMFPack
   Steady State Convergence Tolerance = 1e-06
-  Apply Mortar BCs = Logical True
-  use biorthogonal basis = logical true
 
-  projector skip nodes = true
   Edge Basis = Logical True
   Optimize Bandwidth = False
 End
@@ -136,7 +133,6 @@ Solver 2 ! MagnetoDynamicsCalcFields
   Calculate Nodal Forces = Logical True
   Calculate Elemental Fields = Logical True
   !Calculate Maxwell Stress = Logical True
-  Apply Mortar BCs = Logical false
   !Optimize Bandwidth = False
 
   Linear System Solver = Iterative
@@ -171,5 +167,5 @@ Equation 1
   active solvers(4) = 1 2 3 4
 End
 
-solver 3::Reference norm = 11.516506516399119
+solver 3::Reference norm = 9.54680124E+00
 solver 3::Reference norm tolerance = 1e-5

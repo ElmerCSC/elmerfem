@@ -1,0 +1,98 @@
+! Test case for generalized source control
+! This one with reaction for set to zero at given location.
+!
+! P.R. 27.8.2020
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "angle"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1 
+End
+
+$rho=1.0e3
+
+Body Force 1
+  Name = "Gravity"
+  Stress BodyForce 2 = $-rho
+End 
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Poisson Ratio = 0.3
+  Youngs Modulus = 1.0e6
+  Density = $rho
+End 
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Displacement
+!  Element = p:2
+
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Min Iterations = 2
+  Nonlinear System Max Iterations = 10
+  Linear System Solver = Direct
+  Linear System Direct Method = Umfpack
+
+! Use control such that the reaction for at lower left
+! corner for y-displacement vanishes.
+  Apply Source Control = Logical True
+  Control Target Value = Real 0.0
+  Control Node Coordinates(3) = Real 0.0 0.0 0.0
+  Control Target Component = Integer 2
+  Control Use Loads = Logical True
+
+! This looks good only when veryfying the results
+!  Calculate Loads = Logical True
+End 
+
+Boundary Condition 1
+  Name = "Natural"
+  Target Boundaries = 1
+End
+
+Boundary Condition 2
+  Name = "Fixed"
+  Target Boundaries = 2
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 3
+  Name = "Force"
+  Target Boundaries = 3
+
+! This is the source term for which amplitude is found
+  Displacement Control 1 = Real 1.0
+
+! We can verify the results using the scaled force
+!  Force 1 = 2.604603E+02
+End
+
+
+Solver 1 :: Reference Norm = 2.31795009E-03
+
+
+

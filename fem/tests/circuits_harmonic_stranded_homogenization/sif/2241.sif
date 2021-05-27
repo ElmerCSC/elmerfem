@@ -123,7 +123,6 @@ Solver 8
 End
 Solver 9
    Exec Solver = Always
-   Exec Solver = Always
    Equation = Circuits Output
    Procedure = "CircuitsAndDynamics" "CircuitsOutput"
 End
@@ -200,6 +199,7 @@ Component 1
    Sigma 33 = Real 9e7
    Number of Turns = Real 144
    Electrode Area = Real 0.000185614878383
+   Circuit Equation Voltage Factor = Real 0.5 !symmetry (half of the problem is solved)
 End
 Body Force 1
    Name = "Circuit"

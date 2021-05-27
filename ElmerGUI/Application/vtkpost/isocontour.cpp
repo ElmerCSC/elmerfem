@@ -280,7 +280,8 @@ void IsoContour::draw(VtkPost* vtkPost, TimeStep* timeStep)
   mapper->SelectColorArray("IsoContourColor");
   mapper->SetScalarModeToUsePointFieldData();
   mapper->SetScalarRange(colorMinVal, colorMaxVal);
-  mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  //mapper->SetLookupTable(vtkPost->GetCurrentLut());
+  mapper->SetLookupTable(vtkPost->GetLut("Isocontour"));
   // mapper->ImmediateModeRenderingOn();
 
   // Actor & renderer:

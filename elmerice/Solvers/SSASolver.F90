@@ -35,7 +35,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   !******************************************************************************
   !
   !  Solve the in-plane basal velocity with the SSA solution !
-  !  To be computed only at the base. Use then the SSASolver to export verticaly 
+  !  To be computed only at the base. Use then the SSASolver to export vertically 
   !  the basal velocity and compute the vertical velocity and pressure (if needed)
   !
   !  ARGUMENTS:
@@ -103,7 +103,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element parametrization
   TYPE(Variable_t), POINTER :: GMSol,BedrockSol
 
-  SAVE rhow,sealevel
+  SAVE rhow
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
        NodalZs, NodalZb,   &
@@ -165,6 +165,14 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
      BedrockSol => VariableGet( Solver % Mesh % Variables, 'bedrock',UnFoundFatal=.TRUE. )
   END IF
 
+  sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )
+  If (.NOT.Found) Then
+      WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
+           &Setting to 0.0'
+      CALL INFO(SolverName, Message, level=20)
+      sealevel=0.0_dp
+  End if
+
   !--------------------------------------------------------------
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -179,13 +187,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       rhow = 1.03225e-18_dp
     End if
 
-    sealevel = GetCReal( Model % Constants, 'Sea Level', Found )
-    If (.NOT.Found) Then
-      WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
-           &Setting to 0.0'
-      CALL INFO(SolverName, Message, level=20)
-      sealevel=0.0_dp
-    End if
 
     ! Allocate
 
@@ -267,7 +268,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
     ! bulk assembly
     DO t=1,Solver % NumberOfActiveElements
       Element => GetActiveElement(t)
-      IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+      !IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
       n = GetElementNOFNodes()
 
       NodeIndexes => Element % NodeIndexes
@@ -346,8 +347,6 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       IF (iFriction > 1) THEN
         fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=UnFoundFatal)
 
-        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=UnFoundFatal)
-        !Previous default value: MinN = 1.0e-6_dp
 
         NodalLinVelo = 0.0_dp
         NodalLinVelo(1:n) = ListGetReal( &
@@ -370,6 +369,9 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
         ELSE
           CALL FATAL(SolverName,'Could not find variable >Effective Pressure<')
         END IF
+
+        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=UnFoundFatal)
+        !Previous default value: MinN = 1.0e-6_dp
       END IF
 
 
@@ -411,7 +413,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
       IF ( GetElementFamily() == 1 ) CYCLE
 
       NodeIndexes => BoundaryElement % NodeIndexes
-      IF (ParEnv % myPe .NE. BoundaryElement % partIndex) CYCLE
+      !IF (ParEnv % myPe .NE. BoundaryElement % partIndex) CYCLE
 
       n = GetElementNOFNodes()
       FORCE = 0.0_dp

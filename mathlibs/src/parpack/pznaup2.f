@@ -260,8 +260,8 @@ c
       Complex*16 
      &           zdotc 
       Double precision   
-     &           pdznorm2 , pdlamch , dlapy2 
-      external   zdotc , pdznorm2 , pdlamch , dlapy2 
+     &           pdznorm2 , pdlamch10 , dlapy2 
+      external   zdotc , pdznorm2 , pdlamch10 , dlapy2 
 c
 c     %---------------------%
 c     | Intrinsic Functions |
@@ -299,7 +299,7 @@ c        %---------------------------------%
 c        | Get machine dependent constant. |
 c        %---------------------------------%
 c
-         eps23 = pdlamch (comm, 'Epsilon-Machine')
+         eps23 = pdlamch10 (comm, 'Epsilon-Machine')
          eps23 = eps23**(2.0  / 3.0 )
 c
 c        %---------------------------------------%

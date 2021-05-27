@@ -1,0 +1,1 @@
+Example for Rika Samba Glacier. To be run on 3 partitions.

@@ -28,7 +28,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Esko Järvinen, Mikko Lyly, Peter Råback
+! *  Authors: Esko Jï¿½rvinen, Mikko Lyly, Peter RÃ¥back
 ! *  Email:   Esko.Jarvinen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -64,6 +64,7 @@ SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
     CALL Info('OutletCompute_Init','Creating internal 1D mesh')
 
     Mesh => CreateLineMesh( Params )
+    CALL SetMeshMaxDofs(Mesh)
     Solver % Mesh => Mesh 
 
     PMesh => Model % Meshes
@@ -259,12 +260,12 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   !---------------------------------------------------------------------------------------
   ! Compute the lumped values for area, flux and pressure on the corresponding boundaries
   !---------------------------------------------------------------------------------------
-  
+
   ! Check which boundaries should be lumped and mark them with the corresponding 1D dof
-  ! This is the old obsolite method!
+  ! This is the old obsolete method!
   LumpedBoundaries = 0
   SolidEndBoundaries = 0
-  
+
   DO bc=1,Model % NumberOfBCs       
     
     ! Coupling with what Boundary Condition nro (j)   

@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back
+! *  Authors: Juha Ruokolainen, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -57,7 +57,6 @@
 !------------------------------------------------------------------------------
   INTEGER :: i,j,k,n,nd,nb,t,ind,STDOFs,LocalNodes,istat,dim,NoActive
   INTEGER :: VisitedTimes = 0
-
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t),POINTER :: Params, Material, BC
   REAL(KIND=dp) :: UNorm, maxu, TargetCoeff, val, Relax
@@ -66,16 +65,16 @@
   REAL(KIND=dp), POINTER :: MeshUpdate(:), PrevMeshUpdate(:)
   INTEGER, POINTER :: MeshPerm(:), NodeIndexes(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: TargetFieldName
-
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
             GotForceBC, Found, MovingMesh, Cumulative,GotTargetField, &
-            GotTargetSurface, GotGradSol
-			
+            GotTargetSurface, GotGradSol			
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:),PoissonRatio(:), &
 		Alpha(:,:), Beta(:), Gamma(:), RefSurface(:)
-  REAL(KIND=dp), POINTER :: OrigX(:), OrigY(:), OrigZ(:), &
+  REAL(KIND=dp), POINTER CONTIG :: OrigX(:), OrigY(:), OrigZ(:), &
       TrueX(:), TrueY(:), TrueZ(:)
+  REAL(KIND=dp) :: at,at0
+  CHARACTER(*), PARAMETER :: Caller = 'NonPhysicalMeshSolve'
 
   SAVE STIFF, LOAD, FORCE, AllocationsDone, &
        ElasticModulus, PoissonRatio, &
@@ -83,17 +82,10 @@
        VisitedTimes,dim,Alpha,Beta,Gamma,RefSurface
 
 !------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: at,at0
-#else
-  REAL(KIND=dp) :: at,at0,CPUTime,RealTime
-#endif
-!------------------------------------------------------------------------------
 
- CALL Info( 'MeshSolve', '-------------------------------------', Level=4 )
- CALL Info( 'MeshSolve', 'Nonphysical Mesh Solver:', Level=4 )
- CALL Info( 'MeshSolve', '-------------------------------------', Level=4 )
+ CALL Info( Caller, '-------------------------------------', Level=4 )
+ CALL Info( Caller, 'Nonphysical Mesh Solver:', Level=4 )
+ CALL Info( Caller, '-------------------------------------', Level=4 )
  
  
 !------------------------------------------------------------------------------
@@ -142,7 +134,7 @@
     END IF
     
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'MeshSolve', 'Memory allocation error.' )
+      CALL Fatal( Caller, 'Memory allocation error.' )
     END IF
 
     AllocationsDone = .TRUE.
@@ -330,7 +322,7 @@
 !------------------------------------------------------------------------------
 
    CALL DefaultFinishAssembly()
-   CALL Info( 'MeshSolve', 'Assembly done', Level=4 )
+   CALL Info( Caller, 'Assembly done', Level=4 )
    
 !------------------------------------------------------------------------------
 ! Set the nodal displacement for the nodes by using weights, if requested
@@ -343,7 +335,7 @@
    CALL DefaultDirichletBCs()
    
 !------------------------------------------------------------------------------
-   CALL Info( 'MeshSolve', 'Set boundaries done', Level=4 )
+   CALL Info( Caller, 'Set boundaries done', Level=4 )
 !------------------------------------------------------------------------------
 ! Solve the system and check for convergence
 !------------------------------------------------------------------------------
@@ -685,9 +677,9 @@
      END IF       
      GotWeightSol = ASSOCIATED(WeightSol)
      IF( GotWeightSol ) THEN
-       CALL Info('NonphysicalMeshSolver','Using Boundary Weights for setting nodal penalty',Level=8)
+       CALL Info(Caller,'Using Boundary Weights for setting nodal penalty',Level=8)
      ELSE
-       CALL Fatal('NonphysicalMeshSolver','Boundary Weights not present!')
+       CALL Fatal(Caller,'Boundary Weights not present!')
      END IF
    END IF
 
@@ -697,7 +689,7 @@
    END IF
 
    IF( LocalPenalty ) THEN
-     CALL Info('NonphysicalMeshSolve','Setting permutation for local penalties')
+     CALL Info(Caller,'Setting permutation for local penalties')
      ALLOCATE( PenaltyPerm( Mesh % NumberOfNodes ) )
      CALL MakePermUsingMask( Model, Solver, Mesh,'Apply Nodal Penalty', .FALSE., PenaltyPerm, i )
      ! PRINT *,'Number of penalty nodes',i

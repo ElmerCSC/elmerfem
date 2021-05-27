@@ -124,7 +124,7 @@
 
          <Parameter  Widget="Edit" Enabled="False" Visible="False">
            <Name> Concentration Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
            <StatusTip> Give temperature condition value for this boundary. </StatusTip>
          </Parameter>
 

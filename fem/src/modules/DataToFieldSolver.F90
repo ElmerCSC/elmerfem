@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback, Juha Ruokolainen
+! *  Authors: Peter RÃ¥back, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -237,7 +237,7 @@ CONTAINS
     REAL(KIND=dp) :: GlobalCoords(3)
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: CurrentElement
-    INTEGER :: Success, DataColumn
+    INTEGER :: Success, DataColumn, IOUnit
 
 
     SAVE :: AllocationsDone, ElementIndex, Basis, dBasisdx, ElementNodes
@@ -255,7 +255,7 @@ CONTAINS
     DataColumn = ListGetInteger(Params,'Point Data Column',Found )
     IF( .NOT. Found ) DataColumn = dim + 1
 
-    OPEN(10,FILE = Filename, IOSTAT=Success)
+    OPEN(NEWUNIT=IOUnit,FILE = Filename, IOSTAT=Success)
     IF( Success /= 0 ) THEN
       CALL Fatal('DataToFieldSolver','Could not open file for reading: '//TRIM(FileName))
     ELSE
@@ -264,7 +264,7 @@ CONTAINS
 
     No = 0 
     DO WHILE(.TRUE.) 
-      READ(10,*,IOSTAT=Success) InputData(1:DataColumn)
+      READ(IOUnit,*,IOSTAT=Success) InputData(1:DataColumn)
       IF( Success /= 0 ) THEN
         CALL Info('DataToFieldSolver','End of file after '//TRIM(I2S(No))//' values')
         IF( No == 0 ) CALL Fatal('DataToFieldSolver','Could not read any points from file!')
@@ -284,22 +284,22 @@ CONTAINS
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
       CALL GetElementNodes(ElementNodes,CurrentElement)
-      
+
       u = LocalCoords(1)
       v = LocalCoords(2)
       w = LocalCoords(3)
-      
+
       stat = ElementInfo( CurrentElement, ElementNodes, U, V, W, SqrtElementMetric, &
           Basis, dBasisdx )
-      
+
       DO i = 1,n
         j = FieldPerm( NodeIndexes(i) )
-          
+
         IF( j == 0 ) CYCLE
-        
-        ! As the weight should be proporpotional to the particle amount rather than
+
+        ! As the weight should be proportional to the particle amount rather than
         ! element volume the weight is not multiplied with local element size!
-        ! Note that the weight could be also ~1/r^2 from the nodes etc. 
+        ! Note that the weight could be also ~1/r^2 from the nodes etc.
         !-------------------------------------------------------------------------
         weight = Basis(i)
         
@@ -311,7 +311,7 @@ CONTAINS
       END DO      
     END DO
 
-    CLOSE(10) 
+    CLOSE(IOUnit) 
 
     CALL Info('DataToFieldSolver','Done reading data points',Level=12)
 
@@ -793,17 +793,11 @@ SUBROUTINE DataToFieldSolver_init( Model,Solver,dt,TransientSimulation )
   
   ! Add some cheap linear system defaults: bicgstab + none (diagonal when scaled)
   !------------------------------------------------------------------------
-  IF(.NOT. ListCheckPresent(Params,'Linear System Solver')) &
-      CALL ListAddString(Params,'Linear System Solver','Iterative')
-  IF(.NOT. ListCheckPresent(Params,'Linear System Iterative Method')) &
-      CALL ListAddString(Params,'Linear System Iterative Method','bicgstab')
-  IF(.NOT. ListCheckPresent(Params,'Linear System Preconditioning')) &
-      CALL ListAddString(Params,'Linear System Preconditioning','none')
-  IF(.NOT. ListCheckPresent(Params,'Linear System Max Iterations')) &
-      CALL ListAddInteger(Params,'Linear System Max Iterations',1000)
-  IF(.NOT. ListCheckPresent(Params,'Linear System Residual Output')) &
-      CALL ListAddInteger(Params,'Linear System Residual Output',20)
-  IF(.NOT. ListCheckPresent(Params,'Linear System Convergence Tolerance')) &
-      CALL ListAddConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)
+  CALL ListAddNewString(Params,'Linear System Solver','Iterative')
+  CALL ListAddNewString(Params,'Linear System Iterative Method','bicgstab')
+  CALL ListAddNewString(Params,'Linear System Preconditioning','none')
+  CALL ListAddNewInteger(Params,'Linear System Max Iterations',1000)
+  CALL ListAddNewInteger(Params,'Linear System Residual Output',20)
+  CALL ListAddNewConstReal(Params,'Linear System Convergence Tolerance',1.0e-10_dp)
   
 END SUBROUTINE DataToFieldSolver_init

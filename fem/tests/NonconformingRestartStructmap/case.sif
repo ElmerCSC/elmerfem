@@ -1,0 +1,143 @@
+! Test case demonstrating how to have a non-conforming restart using.
+! mesh of lower dimension.
+!
+! P.R. 18.10.2019
+
+Header
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Coordinate System = Cartesian 3D
+  Max Output Level = 5
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+
+  Initialize Dirichlet Conditions = False
+  Restart Before Initial Conditions = Logical True
+  Restart Error Continue = Logical True  ! continues even if mismatch in number of partitions
+  Use Mesh Projector = Logical False
+
+  Extruded Mesh Levels = 9
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "Body"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Name = "Material"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+
+Body Force 1
+  Name = "source"
+  Heat Source = 1
+End 
+
+Equation 1
+  Name = "JustCond"
+  Active Solvers(1) = 3
+End
+
+
+Solver 1
+  Exec Solver = before all
+  Equation = "InterpSolver"
+
+! Perform the interpolation solver before all other solvers, only once.
+  Exec Solver = Before all
+  Procedure = "Mesh2MeshSolver" "Mesh2MeshSolver"
+
+!  Mesh = -part 2 "rect"  ! in parallel when initial computation in several partitions
+  Mesh = -single "rect"  ! in serial 
+  Restart File = File "rect.dat"
+  Restart Error Continue = Logical True  
+
+! Ensures that we perform interpolation on plane 
+  Interpolation Passive Coordinate = Integer 3 
+
+  Variable 1 = "TempA"
+  Variable 2 = "TempB"
+End 
+
+
+Solver 2
+  Exec Solver = before all 
+  Equation = "MapCoordinates"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+End 
+
+
+Solver 3
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Stabilize = False
+  Bubbles = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+
+  Linear System Symmetric = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGstabl
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+
+! The masking is essential to have the variables only exist at top/bottom
+  Exported Variable 1 = TempA
+  Exported Variable 1 Mask = String "MaskA"
+  Exported Variable 2 = TempB
+  Exported variable 2 Mask = String "MaskB"
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Dummy = Logical False
+End
+
+Boundary Condition 2
+  Name = "Bot"
+  Temperature = 0.0
+  Bottom Surface = Equals "TempA"
+  MaskA = Logical True
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Temperature = 1.0
+  Top Surface = Equals "TempB"
+  MaskB = Logical True
+End
+
+Solver 3 :: Reference Norm = 6.03229164E-01
+
+
+
+

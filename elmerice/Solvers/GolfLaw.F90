@@ -709,6 +709,7 @@
       Real(dp),dimension(3),intent(out) :: ai,Euler
       Real(dp),dimension(3,3) :: A,EigenVec
       Real(dp) :: Dumy(1,3),EI(3),Work(24)
+      Real(dp) :: norm
       integer :: dim               ! dimension  (2D-3D)
       integer :: i,infor 
 
@@ -733,6 +734,10 @@
       EigenVec(1,3)=EigenVec(2,1)*EigenVec(3,2)-EigenVec(3,1)*EigenVec(2,2)
       EigenVec(2,3)=EigenVec(3,1)*EigenVec(1,2)-EigenVec(1,1)*EigenVec(3,2)
       EigenVec(3,3)=EigenVec(1,1)*EigenVec(2,2)-EigenVec(2,1)*EigenVec(1,2)
+
+     ! normalize
+      norm=sqrt(EigenVec(1,3)**2+EigenVec(2,3)**2+EigenVec(3,3)**2)
+      EigenVec(:,3)=EigenVec(:,3)/norm
 
       Euler(2)=Acos(EigenVec(3,3))
       if (abs(Euler(2)).gt.tiny(Euler(2))) then !3D euler angles 

@@ -3,6 +3,13 @@ SUBROUTINE mpi_init(ierr)
   ierr = 0
 END SUBROUTINE mpi_init
 
+SUBROUTINE mpi_initialized(init, ierr)
+  LOGICAL :: init
+  INTEGER :: ierr
+  init = .FALSE.
+  ierr = 0
+END SUBROUTINE mpi_initialized
+
 SUBROUTINE mpi_init_thread(req, prov, ierr)
   INTEGER :: req, prov, ierr
   prov = req
@@ -56,6 +63,10 @@ SUBROUTINE mpi_barrier
   RETURN
 END SUBROUTINE mpi_barrier
 
+SUBROUTINE mpi_wait
+  RETURN
+END SUBROUTINE mpi_wait
+
 SUBROUTINE mpi_waitany
   RETURN
 END SUBROUTINE mpi_waitany
@@ -87,6 +98,30 @@ END SUBROUTINE mpi_comm_create
 SUBROUTINE mpi_irecv
   RETURN
 END SUBROUTINE mpi_irecv
+
+SUBROUTINE mpi_isend
+  RETURN
+END SUBROUTINE mpi_isend
+
+SUBROUTINE mpi_bcast
+  RETURN
+END SUBROUTINE mpi_bcast
+
+SUBROUTINE mpi_allgather
+  RETURN
+END SUBROUTINE mpi_allgather
+
+SUBROUTINE mpi_gatherv
+  RETURN
+END SUBROUTINE mpi_gatherv
+
+SUBROUTINE mpi_gather
+  RETURN
+END SUBROUTINE mpi_gather
+
+SUBROUTINE mpi_reduce
+  RETURN
+END SUBROUTINE mpi_reduce
 
 ! Parpack 
 SUBROUTINE pdseupd

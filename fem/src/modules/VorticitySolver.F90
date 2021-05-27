@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -62,12 +62,9 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   LOGICAL :: GotIt, GotCoeff, Visited = .FALSE., DirMask(3)
   REAL(KIND=dp) :: Unorm, Totnorm
-  REAL(KIND=dp), POINTER :: ForceVectors(:,:), ForceVector(:), SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp), POINTER CONTIG :: SaveRHS(:)
+  REAL(KIND=dp), POINTER CONTIG :: ForceVectors(:,:), ForceVector(:)
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: VorticitySol
   
   SAVE Visited
@@ -123,12 +120,7 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % RHS = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   ! If vorticity has many components, compute them one-by-one
   IF(Dofs > 1) THEN
@@ -138,7 +130,9 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
   END IF
 
   CALL BulkAssembly()
-  IF(.NOT. ConstantBulkMatrixInUse ) THEN
+  IF (ConstantBulkMatrix) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
 
@@ -165,7 +159,6 @@ SUBROUTINE VorticitySolver( Model,Solver,dt,Transient )
         VorticitySol % Values(DOFs*(j-1)+i) = Solver % Variable % Values(j)
       END DO
     END DO
-    Solver % Matrix % RHS => SaveRHS
     TotNorm = SQRT(TotNorm)
  
     DEALLOCATE( ForceVectors )

@@ -1,0 +1,261 @@
+!
+! This sif file gives an alternate for the original test as defined in the file
+! case.sif. This alternative makes the vector potential variable unique in an 
+! iterated manner (in connection with the nonlinear iteration) by performing the
+! Helmholtz projection after solving the A-V solution candidate. Here the 
+! nonlinear iteration thus combines two tasks. It resolves the nonlinearity due 
+! to the B-H law and makes the vector potential unique.
+!
+
+
+$fileprefix  = "tet"
+
+Header
+   CHECK KEYWORDS "Warn"
+   Mesh DB "." mesh_$fileprefix
+End
+
+Simulation
+   Max Output Level = 5
+   Coordinate System = "Cartesian 3D"
+   Coordinate Mapping(3) = 1 2 3 
+   Simulation Type = Steady state
+   Steady State Max Iterations = 1
+   Output Intervals = 1
+End
+
+Constants
+   Permittivity of Vacuum = 8.8542e-12
+End
+
+Solver 1
+   Exec Solver = Before Simulation
+
+   Procedure = "StatCurrentSolve" "StatCurrentSolver"
+   Equation = "Stat Current Solver"
+   Variable = Potential
+   Variable DOFs = 1
+   Calculate Volume Current = True
+   Calculate Joule Heating = False
+   Current Control = Real 12.5           ! 1/4th of 50 A
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 1000
+   Linear System Convergence Tolerance = 1.0e-8
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1
+End
+
+Solver 2
+   Equation = "MGDynamics"
+
+   Variable = "P"
+
+   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   Fix Input Current Density = Logical True
+
+   Newton-Raphson Iteration = Logical True
+   Nonlinear System Max Iterations = 30
+   Nonlinear System Convergence Tolerance = 1e-6
+
+   Linear System Symmetric = Logical True
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Convergence Tolerance = 1e-8
+   Linear System Residual Output = 100
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = BiCGStabl
+   Steady State Convergence Tolerance = 1e-6
+
+   Nonlinear Post Solvers(2) = Integer 6 7
+End
+
+Solver 3
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "P"
+
+   Separate Magnetic Energy = True
+
+   Calculate Magnetic Vector Potential = True
+   Calculate Magnetic Flux Density = True
+   Calculate Magnetic Field Strength = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 0
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG !BiCGStabl
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Save Geometry IDs = Logical True
+  Vtu format = Logical True
+  Output File Name = with_projection
+  Discontinuous Bodies = True
+End
+
+Solver 5
+  Equation = "scalars"
+  procedure = "SaveData" "SaveScalars"
+  !variable 1 = res: magnetic field energy
+  show norm index = integer 3
+End
+
+
+Solver 6
+  equation = "Helmholtz projection"
+  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
+  Procedure = "HelmholtzProjection" "HelmholtzProjector"
+  Potential variable = "P"
+  Variable = "phi"
+  Variable DOFs = 1
+  Constant Bulk Matrix = True
+  linear system solver = iterative
+  linear system iterative method = CG
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-8
+  linear system preconditioning = ILU0
+  linear system abort not converged = True
+  linear system residual output = 1
+End
+
+Solver 7
+  equation = "Remove kernel component"
+  Exec Solver = never ! This is nevertheless called as a "nonlinear post solver"
+  Procedure = "HelmholtzProjection" "RemoveKernelComponent"
+  Kernel Variable = String "phi"
+  Potential variable = "P"
+  Variable = "Kernel Component"
+  Variable DOFs = 1
+  Constant Bulk Matrix = True
+
+  linear system solver = iterative
+  linear system iterative method = CG
+  linear system max iterations = 1000
+  linear system convergence tolerance = 1e-8
+  linear system preconditioning = ILU0
+  linear system abort not converged = True
+  linear system residual output = 1
+End
+
+
+Equation 1
+  Name = "Coupled Equations"
+  Active Solvers(4) = 2 3 6 7
+End
+
+Equation 2
+  Name = "Coupled Equations"
+  Active Solvers(5) = 1 2 3 6 7
+End
+
+Equation 3
+  Name = "Coupled Equations"
+  Active Solvers(4) = 2 3 6 7
+End
+
+Material 1
+  Name = "Air"
+  Electric Conductivity = 0.0
+  Relative Permeability = 1.0
+  relative Permittivity = 1.0
+End
+
+Material 2
+  relative Permittivity = 1.0
+  Name = "Iron"
+  Electric Conductivity = 0.0
+
+  H-B Curve(31,2) = Real
+   INCLUDE HB
+End
+
+Material 3
+  relative Permittivity = 1.0
+  Name = "Copper"
+  Electric Conductivity = 58.14e6
+  Relative Permeability = 1.0
+End
+
+! ----- names for bodies -----
+$ V_AIR = 1
+$ V_RING = 2
+$ V_CABLE = 3
+
+Body 1
+   Name = "Air"
+   Target Bodies(1) = 1
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = "Ring"
+   Target Bodies(1) = 2
+   Equation = 3
+   Material = 2
+End
+
+Body 3
+   Name = "Cable"
+   Target Bodies(1) = 3
+   Equation = 2
+   Material = 3
+   Body Force = 1
+End
+
+! ----- names for boundaries -----
+$ A_AIR_Y = 2
+$ A_AIR_BOT = 4
+$ A_AIR_X = 6
+$ A_CABLE_Y = 8
+$ A_CABLE_X = 9
+$ A_RING_Y = 22
+$ A_RING_X = 23
+$ A_AIR_TOP = 28
+$ A_AIR_EXT = 29
+$ A_CABLE_BOT = 42
+$ A_CABLE_TOP = 52
+
+Boundary Condition 1
+   Name = "BC Potential"
+   Target Boundaries(1) = 52
+   P {e} = real 0
+   Potential = 0.001
+   Phi = Real 0.0
+End
+
+Boundary Condition 2
+   Name = "BC Voltage Ground"
+   Target Boundaries(1) = 42
+   P {e} = Real 0
+   Potential = 0.0
+   Phi = Real 0.0
+End
+
+Boundary Condition 3
+   Name = "BCn Flux Parallel"
+   Target Boundaries(3) = 4 28 29
+   P {e} = Real 0
+   Phi = Real 0.0
+End
+
+Body Force 1
+  Name = "Current Density"
+
+  Current Density 1 = 0 ! Equals Volume current 1
+  Current Density 2 = 0 ! Equals Volume current 2
+  Current Density 3 = Equals Volume current 3
+End
+
+Solver 3 :: Reference Norm = Real 0.28682860E-03
+Solver 5 :: reference norm = real 2.204993E-05
+

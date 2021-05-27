@@ -1,0 +1,112 @@
+! Solve eigenvalues of linear shell equations of Reissner-Naghdi type in the case 
+! of a cylindrical benchmark problem with bending-dominated asymptotic behaviour 
+! in the linear regime. The linearized problem has been described in 
+! Pitkäranta et al. Shell deformation states and the finite element method: 
+! a benchmark study of cylindrical shells. Computer Methods in Applied Mechanics 
+! and Engineering 1995. 128:81-121. 
+!
+! NOTE: Only symmetric modes are sought here
+!
+
+$ t = 5.0e-2
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "p1mesh3"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+  Post File = "shell_eigen.vtu"
+  vtu: Eigen Analysis = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+!  Body Force = 1
+End
+
+Material 1
+ Poisson Ratio = Real $1.0/3.0
+ Youngs Modulus = Real 7.0e+10
+ Density = 2.7e3
+ Shell Thickness = Real $t
+End
+
+!Body Force 1 
+!  Normal Pressure = Variable Coordinate
+!     Real MATC "-t * 1.0e+5 * (1-2*tx(0)*tx(0))"
+!End
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "Shell equations"
+
+  Procedure = "ShellSolver" "ShellSolver"
+  Large Deflection = False
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Select = Smallest Magnitude
+
+  Linear System Solver = "Direct"
+  Steady State Convergence Tolerance = 1e-09
+  Nonlinear System Convergence Tolerance = 1e-8
+
+  Displace Mesh = False
+End
+
+Solver 2
+  Equation = "SaveScalars"
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = Logical True
+  !  Filename = f.dat
+  !
+  ! Pick the second eigenvalue:
+  !
+  Show Norm Index = 2
+End
+
+! ----------------------------------------------------
+! BCs are defined with respect the global XYZ system:
+! ----------------------------------------------------
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  U 2 = Real 0
+  DNU 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  U 3 = Real 0
+  DNU 3 = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+!  U 1 = Real 0
+!  U 2 = Real 0
+!  U 3 = Real 0
+!  DNU 1 = Real 0
+!  DNU 2 = Real 0
+!  DNU 3 = Real 0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  U 1 = Real 0
+  DNU 1 = Real 0
+End
+
+Solver 2 :: Reference Norm = Real 1.255816E+06
+!Solver 2 :: Reference Norm Tolerance = Real 1.0e-5

@@ -41,7 +41,7 @@
  * in Ai (Ap (n) + 1 ... Ap (n+1)) and Ax (Ap (n) + 1 ... Ap (n+1)).  The row
  * indices in Ai are in the range 0 to m-1.  They must be sorted, with no
  * duplicate entries allowed.  Refer to umfpack_di_triplet_to_col for a more
- * flexible format for the input matrix.  The following defintions apply
+ * flexible format for the input matrix.  The following definitions apply
  * for each of the routines in this file:
  *
  *	integer m, n, Ap (n+1), Ai (nz), symbolic, numeric, filenum, status

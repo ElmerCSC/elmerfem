@@ -1,0 +1,161 @@
+!--------------------------------------------------------------------
+! A test case for Structured mesh mapper with a mask.
+! The extruded structure and related operations are only covered where
+! the mask name is true.
+!
+! This one with reduced basis dg. 
+!
+! Peter R�back / 24.8.2020
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "pilars"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+  Post File = "case.vtu"
+  vtu: discontinuous bodies = Logical True
+  vtu: save bulk only = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 1
+  Material = 2
+  Body Force = 2
+End
+
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+
+Body Force 1 
+  Name = "HeatingA"
+  Heat Source = 1.0
+  Extrude Mask = Logical True
+End 
+
+Body Force 2
+  Name = "HeatingB"
+  Heat Source = 0.0
+End 
+
+
+Solver 1
+  Equation = "Heat"
+  Variable = "Temperature"
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Stabilize = True
+
+  Discontinuous Galerkin = Logical True
+  DG Reduced Basis = Logical True
+  DG Reduced Basis Master Bodies(1) = Integer 1 
+
+  Nonlinear System Max Iterations = 1
+End
+
+
+Solver 2
+  Equation = "HeightDepth"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+ 
+  Operator 1 = depth
+  Operator 2 = height
+  Operator 3 = distance
+  Operator 4 = index
+  Operator 5 = thickness
+
+  Operator 6 = int 
+  Variable 6 = Temperature
+  Operator 7 = sum
+  Operator 8 = min
+  Operator 9 = max
+
+  Show Norm Index = 6
+
+  Mapping Mask Name = String "Extrude Mask"  
+End 
+
+
+Material 1
+  Name = "LeftMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Material 2
+  Name = "RightMat"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+
+Boundary Condition 1
+  Name = "OneBC"
+  Target Boundaries(1) = 1
+  Temperature = Real 0.0
+End 
+
+Boundary Condition 2
+  Name = "TwoBC"
+  Target Boundaries(1) = 2
+  Temperature = Real 0.0
+End
+
+
+Boundary Condition 3
+  Name = "Middle"
+  Target Boundaries(1) = 3
+
+  Heat Gap = Logical True
+  Heat Gap Coefficient = Real 1.0e1
+End
+
+
+Boundary Condition 4
+  Name = "Bottom"
+  Target Boundaries(2) = 4 5
+End
+
+Boundary Condition 5
+  Name = "Middle"
+  Target Boundaries(2) = 6 7
+End
+
+
+Solver 1 :: Reference Norm = 2.12434127E-02
+Solver 2 :: Reference Norm = 2.73000291E-02
+

@@ -35,8 +35,8 @@
 ! *****************************************************************************/
  !------------------------------------------------------------------------------
 !>  Solve the advection equation for the Levelset-function using stabilization
-!>  or bubbless. For the accuracy it is advisable to use 2nd order time-stepping
-!>  and courant number smaller than one. 
+!>  or bubbles. For the accuracy it is advisable to use 2nd order time-stepping
+!>  and Courant number smaller than one. 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
    SUBROUTINE LevelSetSolver( Model,Solver,Timestep,TransientSimulation )
@@ -77,11 +77,7 @@
          TimeForce, LocalForce, ElementNodes,AllocationsDone, &
          ElemVelo, Surf, SurfaceFlux
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,totat,st,totst
-#else
-     REAL(KIND=dp) :: at,totat,st,totst,CPUTime
-#endif
 
 
 !------------------------------------------------------------------------------
@@ -454,11 +450,9 @@ CONTAINS
            M = Basis(q) * Basis(p)
            A = 0.0d0
 
-           IF(GradAbs > AEPS) THEN
-             DO i=1,dim
-               A = A + FL * (Grad(i) / GradAbs) * dBasisdx(q,i) * Basis(p)
-             END DO
-           END IF
+           DO i=1,dim
+             A = A + FL * Grad(i) * dBasisdx(q,i) * Basis(p)
+           END DO
 
 !------------------------------------------------------------------------------
 !           The convection term

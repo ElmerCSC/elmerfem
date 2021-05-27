@@ -1,8 +1,8 @@
-#include <QApplication>
 #include "tester.h"
+#include <QApplication>
 
-int main(int argc, char **argv)
-{
+
+int main(int argc, char **argv) {
   QApplication app(argc, argv);
   Tester tester;
   tester.show();

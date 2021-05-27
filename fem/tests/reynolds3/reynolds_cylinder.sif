@@ -1,6 +1,8 @@
 ! Solves the fluid pressure for a flow between two non-concentric cylinders 
 ! from the Reynolds equation.
-! Compared to test reynolds1 also cavitation is accounted for.
+! Compared to test reynolds1 also cavitation is accounted for using a generic
+! contact set model (no mass conservation ensured!).
+! Also the postprocessing solver is features in this test.
 
 ! desired cavitation pressure
 $ pcav = 0.0
@@ -19,6 +21,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals = 1
+
 !  Post File = "reynolds_cylinder.vtu"
 End
 
@@ -40,7 +43,7 @@ End
 
 Equation 1
   Name = "Equation1"
-  Active Solvers(1) = 1 
+  Active Solvers(2) = 1 2
 End
 
 ! the cavity model is sort of a contact model,
@@ -57,7 +60,7 @@ Body Force 1
 End 
 
 Solver 1
-  Equation = "Reynolds"
+  Equation = "ReynoldsSolve"
 
   Procedure = File "ReynoldsSolver" "ReynoldsSolver"
   Variable = FilmPressure
@@ -82,8 +85,32 @@ Solver 1
 End
 
 
-
 Solver 2
+  Equation = "ReynoldsPost"
+
+  Procedure = File "ReynoldsSolver" "ReynoldsPostprocess"
+  Calculate Heating = Logical True
+  Calculate Force = Logical True
+  Calculate Flux = Logical True
+
+! As the Reynolds eq. is 2D the results can only be 3D
+  Calculate Force Dim = Integer 3
+  Calculate Flux Dim = Integer 3
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-9
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 10
+End 
+
+
+
+Solver 3
   Equation = "SaveMaterial"
   Procedure = File "SaveData" "SaveMaterials"
 
@@ -130,6 +157,7 @@ Boundary Condition 1
 End
 
 Solver 1 :: Reference Norm = Real 4661.4716
-RUN
+Solver 2 :: Reference Norm = Real 1.24060131E+06
+
 
 

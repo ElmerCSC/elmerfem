@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO barrel.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(NtCartesianBC)
-ADD_ELMER_LABEL(NtCartesianBC contact)
+ADD_ELMER_TEST(NtCartesianBC LABELS contact elasticsolve)

@@ -31,7 +31,7 @@
 ! *****************************************************************************
 !> Limited solver to compute the water head in a sediment layer
 !> Exported Variables IDSHead (dof=1), WaterPressure (dof=1)
-!> The solver is treated on DIM-1, wit DIM-2 boundary conditions
+!> The solver is treated on DIM-1, with DIM-2 boundary conditions
 ! *****************************************************************************
 RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
   !------------------------------------------------------------------------------
@@ -522,7 +522,7 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
 
         LOAD(1:N) = Influx(1:N) + EPLToIDS(1:N)
 
-        !Computing the Storing coeficient and transmitivity of the layer 
+        !Computing the Storing coefficient and transmitivity of the layer 
         !----------------------------------------------------------------------------------
         CALL ListGetRealArray( Material,'IDS Transmitivity',Hwrk,N, Element % NodeIndexes )
         IF(.NOT.Found) THEN

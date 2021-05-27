@@ -157,12 +157,7 @@ REAL(kind=dp) :: tt,realtime
 
     LOGICAL, ALLOCATABLE :: isNeighbour(:)
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, GotNewCol, Found
-
-#ifdef USE_ISO_C_BINDINGS
     REAL(kind=dp) :: st
-#else
-    REAL(kind=dp) :: realtime,st
-#endif
   !******************************************************************
 st = realtime()
     ALLOCATE( SplittedMatrix )
@@ -215,7 +210,7 @@ st = realtime()
 
   !----------------------------------------------------------------------
   !
-  ! Compute the memory allocations for splitted matrix blocks
+  ! Compute the memory allocations for split matrix blocks
   !
   !----------------------------------------------------------------------
     InsideMRows = 0; InsideMCols = 0
@@ -701,8 +696,10 @@ st = realtime()
     DO j = 1, CurrIf % NumberOfRows
       IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) CYCLE
       RowInd = SplittedMatrix % IfORows(i) % IfVec(j)
+ if ( rowind<=0 ) cycle
       DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
         ColInd = SplittedMatrix % IfLCols(i) % IfVec(k)
+ if ( colind<=0 ) cycle
         CALL List_AddMatrixIndex(A % ListMatrix,RowInd,ColInd)
       END DO
     END DO
@@ -839,7 +836,9 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
      END IF
 
      IF ( SplittedMatrix % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
-       SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+       IF(ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Values)) &
+         SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
+
        IF ( NeedILU.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % ILUvalues) ) &
          SplittedMatrix % NbsIfMatrix(i) % ILUValues  = 0._dp
        IF ( NeedPrec.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Precvalues) ) &
@@ -1199,7 +1198,7 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 !> Create continuous numbering for the dofs expected by some linear solvers.
 !----------------------------------------------------------------------
-  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin,Mesh, nOwn )
+  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin, Mesh, nOwn )
 !--------------------------------------------------------------------
      INTEGER :: Mperm(:), Aperm(:), Owner(:)
      TYPE(Mesh_t), OPTIONAL :: Mesh
@@ -1256,12 +1255,14 @@ END SUBROUTINE ZeroSplittedMatrix
      gindp = gind
      DO i=1,n
        nb => ParallelInfo % NeighbourList(i) % Neighbours
-       IF ( nb(1)==my_id ) THEN
+       IF ( nb(1)==my_id .OR. ALL(nb/=my_id) ) THEN
          Owner(i) = 1
          gind = gind + 1
          Aperm(i) = gind
        END IF
      END DO
+
+
      ! Compute the number of dofs owned                                         
      IF (PRESENT(nOwn)) nOwn = gind - gindp
 
@@ -1292,34 +1293,43 @@ END SUBROUTINE ZeroSplittedMatrix
 
      sz = 0
      DO i=1,n
-       IF ( Owner(i) == 1 ) THEN
+       IF ( Owner(i)==1 ) THEN
          nb => ParallelInfo % NeighbourList(i) % Neighbours
-         DO j=2,SIZE(nb)
-           k = neigh(nb(j)+1)
-           IF(k<=0) CYCLE
-           sz(k) = sz(k) + 1
-         END DO
+         IF(nb(1) == my_id) THEN
+           DO j=2,SIZE(nb)
+             k = neigh(nb(j)+1)
+             IF(k<=0) CYCLE
+             sz(k) = sz(k) + 1
+           END DO
+         END IF
        END IF
      END DO
+
 
      ALLOCATE( buf_a(MAXVAL(sz),nneigh), &
                buf_g(MAXVAL(sz),nneigh))
 
      nob = COUNT(owner==0)
+     DO i=1,n
+       nb => ParallelInfo % NeighbourList(i) % Neighbours
+       IF(Owner(i)==1.AND. nb(1)/=my_id) nob=nob+1
+     END DO
      ALLOCATE( n_nownbuf(nob), g_nownbuf(nob), i_nownbuf(nob) )
 
      sz  = 0
      nob = 0
      DO i=1,n
-       IF ( Owner(i) /= 0  ) THEN
+       IF ( Owner(i)==1 ) THEN
          nb => ParallelInfo % NeighbourList(i) % Neighbours
-         DO j=2,SIZE(nb)
-           k = neigh(nb(j)+1)
-           IF(k<=0) CYCLE
-           sz(k) = sz(k) + 1
-           buf_a(sz(k),k) = Aperm(i)
-           buf_g(sz(k),k) = ParallelInfo % GlobalDOFs(i)
-         END DO
+         IF(nb(1)==my_id) THEN
+           DO j=2,SIZE(nb)
+             k = neigh(nb(j)+1)
+             IF(k<=0) CYCLE
+             sz(k) = sz(k) + 1
+             buf_a(sz(k),k) = Aperm(i)
+             buf_g(sz(k),k) = ParallelInfo % GlobalDOFs(i)
+           END DO
+         END IF
        ELSE
          nob = nob + 1
          i_nownbuf(nob) = nob
@@ -1558,11 +1568,15 @@ INTEGER::inside
 
   !******************************************************************
 
+  CALL Info('SParIterSolver','Solving linear in parallel with iterative methods',Level=8)
+
   Params => Solver % Values
 
 #ifdef HAVE_HYPRE
     IF (ListGetLogical(Params,'Linear System Use HYPRE', Found )) THEN
 
+      CALL Info('SParIterSolver','Solving linear system using HYPRE library',Level=6)
+      
       Prec = ListGetString(Params,'Linear System Preconditioning', Found )
       ILUn = 0
       hypre_pre = 0
@@ -1571,30 +1585,32 @@ INTEGER::inside
       IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )
 
       IF ( IterativeMethod == 'bicgstab' ) THEN
-        CALL Info("SParIterSolver", "Hypre: BiCGStab",Level=3)
+        CALL Info("SParIterSolver", "Hypre: BiCGStab",Level=5)
         hypre_sol = 0;
       ELSE IF ( IterativeMethod == 'boomeramg' )THEN
-        CALL Info("SParIterSolver", "Hypre: BoomerAMG",Level=3)
+        CALL Info("SParIterSolver", "Hypre: BoomerAMG",Level=5)
         hypre_sol = 1;
       ELSE IF ( IterativeMethod == 'cg' ) THEN
         hypre_sol = 2;
-        CALL Info("SParIterSolver", "Hypre: CG",Level=3)
+        CALL Info("SParIterSolver", "Hypre: CG",Level=5)
       ELSE IF ( IterativeMethod == 'gmres' ) THEN
         hypre_sol = 3;
-        CALL Info("SParIterSolver", "Hypre: GMRes",Level=3)
+        CALL Info("SParIterSolver", "Hypre: GMRes",Level=5)
       ELSE IF ( IterativeMethod == 'flexgmres' ) THEN
         hypre_sol = 4;
-        CALL Info("SParIterSolver", "Hypre: FlexGMRes",Level=3)
+        CALL Info("SParIterSolver", "Hypre: FlexGMRes",Level=5)
       ELSE IF ( IterativeMethod == 'lgmres' ) THEN
         hypre_sol = 5;
-        CALL Info("SParIterSolver", "Hypre: LGMRes",Level=3)
+        CALL Info("SParIterSolver", "Hypre: LGMRes",Level=5)
       ELSE
         CALL Fatal('SParIterSolver','Unknown iterative method: '//TRIM(IterativeMethod))
       END IF
 
       IF ( hypre_sol /= 1) THEN
          IF ( SEQL(Prec,'ilu') ) THEN
-           READ( Prec(4:), * ) ILUn
+           Ilun = 0
+           READ( Prec(4:), *, END=10 ) ILUn
+10         CONTINUE
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
          ELSE IF( Prec == 'parasails' ) THEN
@@ -1612,7 +1628,8 @@ INTEGER::inside
       END IF
 
       hypremethod = hypre_sol * 10 + hypre_pre
-
+      CALL Info('SParIterSolver','Hypre method index: '//TRIM(I2S(hypremethod)),Level=8)
+      
       ! NB.: hypremethod = 0 ... BiCGStab + ILUn
       !                    1 ... BiCGStab + ParaSails
       !                    2 ... BiCGStab + BoomerAMG
@@ -1715,7 +1732,9 @@ INTEGER::inside
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
       IF( .NOT. Found ) verbosity = 10
 
-      NewSetup=ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+      IF(.NOT.Found) NewSetup = .TRUE.
+
       IF (ListGetLogical(Params, 'HYPRE Block Diagonal', Found)) THEN
         bilu = Solver % Variable % Dofs
       ELSE
@@ -1723,13 +1742,16 @@ INTEGER::inside
       END IF
 
       CALL SParIterActiveBarrier()
+
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
             CALL SolveHYPRE4(SourceMatrix % Hypre)
+            SourceMatrix % Hypre = 0
           END IF
         END IF
         ! setup solver/preconditioner
+
         IF (SourceMatrix % Hypre == 0) THEN
           precond=0
           PrecVals => SourceMatrix % PrecValues
@@ -1826,6 +1848,8 @@ INTEGER::inside
       DEALLOCATE( VecEPerNB )
 
 !     CALL ExchangeSourceVec( SourceMatrix, SplittedMatrix, ParallelInfo, RHSVec )
+      CALL Info('SParIterSolver','Finished solving linear system with HYPRE',Level=12)
+
       RETURN
    END IF
 #endif
@@ -1846,7 +1870,7 @@ INTEGER::inside
       xmlfile = TRIM(xmlfile)//C_NULL_CHAR
 
       ! tolerance and max iter are taken from the Elmer
-      ! internal list to overrule the settings inthe XML file
+      ! internal list to overrule the settings in the XML file
       TOL = ListGetConstReal( Params, &
            'Linear System Convergence Tolerance', Found )
       IF ( .NOT. Found ) TOL=-1.0
@@ -2097,24 +2121,16 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
   REAL(KIND=dp), DIMENSION(:,:), POINTER :: Work
   REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRHSVec, r
-#ifndef USE_ISO_C_BINDINGS
-  INTEGER(KIND=AddrInt) :: AddrFunc
-#else
   INTEGER(KIND=AddrInt) :: AddrFunc
   EXTERNAL :: AddrFunc
-#endif
   REAL(KIND=dp) :: ILUT_TOL
   INTEGER :: ILUn
   CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner
 
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
-  INTEGER, POINTER :: SPerm(:), SCols(:)
-
-#ifdef USE_ISO_C_BINDINGS
+  INTEGER, POINTER :: SPerm(:)
+  INTEGER, POINTER CONTIG :: SCols(:)
   REAL(kind=dp)::tt,rt
-#else
-  REAL(kind=dp)::cputime,realtime,tt,rt
-#endif
 
   !*******************************************************************
 
@@ -2331,24 +2347,12 @@ END SUBROUTINE Solve
   TYPE (Matrix_t), POINTER :: InsideMatrix
 
   INTEGER :: nneigh
-
   TYPE(Buff_t), POINTER ::  buffer(:)
-
   REAL(KIND=dp) :: rsum
-
   REAL(KIND=dp), POINTER CONTIG :: Vals(:)
-! REAL(KIND=dp), POINTER :: Vals(:)
-
   INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
-! INTEGER, POINTER :: Cols(:),Rows(:)
-
   INTEGER, ALLOCATABLE :: neigh(:), recv_size(:), requests(:)
-
-#ifdef USE_ISO_C_BINDINGS
   REAL(kind=dp) :: s
-#else
-  REAL(kind=dp) :: s, RealTime
-#endif
   !*******************************************************************
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
@@ -2553,16 +2557,11 @@ REAL(kind=dp) :: s, RealTime
   Vals => InsideMatrix % Values
 
   IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
-#ifdef USE_ISO_C_BINDINGS
-  ALLOCATE(Abs_Vals(size(InsideMatrix % Values)))
-  Abs_Vals = ABS(Vals)
+    ALLOCATE(Abs_Vals(SIZE(InsideMatrix % Values)))
+    Abs_Vals = ABS(Vals)
     CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
-  DEALLOCATE(Abs_Vals)
-#else
-    CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
-            GlobalMatrix % SpMV, n,Rows,Cols,ABS(Vals),u,v,0)
-#endif
+        GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
+    DEALLOCATE(Abs_Vals)
   ELSE
 !$omp parallel do private(j,rsum)
     DO i = 1, n
@@ -3129,7 +3128,10 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
            IF ( RowInd > 0 ) THEN
               DO k = RecvdIfMatrix(i) % Rows(j), RecvdIfMatrix(i) % Rows(j+1) - 1
                  l = RecvdIfMatrix(i) % Cols(k)
-                 ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+
+!                ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
+!XYXY
+                 ColIndA =  SearchNode(ParallelInfo,l, Order=ParallelInfo % Gorder )
                  IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
 
                  IF ( ColIndA  <= 0 ) CYCLE
@@ -3241,8 +3243,11 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
         IF ( RowInd /= -1 ) THEN
            DO j = RecvdIfMatrix(p) % Rows(i),RecvdIfMatrix(p) % Rows(i+1) - 1
 
-              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
-                        Order = SourceMatrix % Perm )
+!             GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j),&
+!                       Order = SourceMatrix % Perm )
+!XYXY
+              GCol = SearchNode( ParallelInfo,  RecvdIfMatrix(p) % Cols(j), Order=ParallelInfo % Gorder )
+
 !             GCol = SourceMatrix % Perm( Gcol )
 
               ColInd = -1

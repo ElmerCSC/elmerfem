@@ -12,15 +12,15 @@ IF(CMAKE_CROSSCOMPILING)
   ENDIF()
 ENDIF()
 
-# Dont install metis
+# Don't install metis
 SET(METIS_INSTALL FALSE CACHE BOOL "")
 ADD_SUBDIRECTORY(metis-5.1.0)
 
-SET(elmergrid_SRCS common.h femdef.h femelmer.h femfilein.h
-  femfileout.h feminfo.h femknot.h femmesh.h 
-  femtypes.h nrutil.h common.c femelmer.c femfilein.c femfileout.c
-  feminfo.c femknot.c femmesh.c fempre.c 
-  nrutil.c)
+SET(elmergrid_SRCS egdef.h egparallel.h egnative.h egconvert.h
+  egexport.h egextra.h egmesh.h 
+  egtypes.h egutils.h egparallel.c egnative.c egconvert.c egexport.c
+  egextra.c egmesh.c fempre.c 
+  egutils.c)
 
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/metis)
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
@@ -33,7 +33,7 @@ ADD_EXECUTABLE(ElmerGrid ${elmergrid_SRCS})
 
 TARGET_LINK_LIBRARIES(ElmerGrid metis m)
 IF(NOT(WIN32))
-  SET_TARGET_PROPERTIES(ElmerGrid PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
+  SET_TARGET_PROPERTIES(ElmerGrid PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 
 INSTALL(TARGETS ElmerGrid RUNTIME DESTINATION "bin")

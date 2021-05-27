@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Rï¿½back                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -37,9 +37,10 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
+#include "mainwindow.h"
 #include <QApplication>
 #include <iostream>
-#include "mainwindow.h"
+
 
 using namespace std;
 
@@ -48,55 +49,51 @@ using namespace std;
 #include <stdlib.h>
 #endif
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 #ifdef __APPLE__
-// we'll change ENVIRONMENT so that the Elmer binaries and libraries
-// hidden wihtin the application bundle will be correctly found
+  // we'll change ENVIRONMENT so that the Elmer binaries and libraries
+  // hidden within the application bundle will be correctly found
 
   char executablePath[MAXPATHLENGTH] = {0};
   uint32_t len = MAXPATHLENGTH;
-  
-  if(! _NSGetExecutablePath( (char*) executablePath, &len)){
+
+  if (!_NSGetExecutablePath((char *)executablePath, &len)) {
     // remove executable name from path:
-    *(strrchr(executablePath,'/'))='\0';
+    *(strrchr(executablePath, '/')) = '\0';
     char *oldValue = 0, *newValue = 0;
-    
+
     oldValue = getenv("PATH");
-    asprintf(&newValue, "%s/../bin:%s",executablePath,oldValue);
-    setenv("PATH",newValue,1);
+    asprintf(&newValue, "%s/../bin:%s", executablePath, oldValue);
+    setenv("PATH", newValue, 1);
     free(newValue);
-    
+
     oldValue = getenv("DYLD_LIBRARY_PATH");
-    asprintf(&newValue,"%s/../lib:%s",executablePath,oldValue);
-    setenv("DYLD_LIBRARY_PATH",newValue,0);
+    asprintf(&newValue, "%s/../lib:%s", executablePath, oldValue);
+    setenv("DYLD_LIBRARY_PATH", newValue, 0);
     free(newValue);
-    
-    asprintf(&newValue,"%s/..",executablePath);        
-    setenv("ELMER_HOME",newValue,0);
+
+    asprintf(&newValue, "%s/..", executablePath);
+    setenv("ELMER_HOME", newValue, 0);
     free(newValue);
-    
-    asprintf(&newValue,"%s/../share/elmerpost",executablePath);        
-    setenv("ELMER_POST_HOME",newValue,0);
+
+    asprintf(&newValue, "%s/../share/elmerpost", executablePath);
+    setenv("ELMER_POST_HOME", newValue, 0);
     free(newValue);
-    
-    
+
 #ifdef DEBUG
-    printf("PATH = %s\nDYLD_LIBRARY_PATH=%s\nELMER_HOME=%s\n", 
-	   getenv("PATH"), 
-	   getenv("DYLD_LIBRARY_PATH"), 
-	   getenv("ELMER_HOME"));
+    printf("PATH = %s\nDYLD_LIBRARY_PATH=%s\nELMER_HOME=%s\n", getenv("PATH"),
+           getenv("DYLD_LIBRARY_PATH"), getenv("ELMER_HOME"));
 #endif
-  }    
+  }
 #endif
-  
+
   //========================================================================
 
   QApplication app(argc, argv);
 
   QStringList argList = QCoreApplication::arguments();
 
-  if(argList.contains("-h") || argList.contains("--help")) {
+  if (argList.contains("-h") || argList.contains("--help")) {
     cout << "Usage:" << endl;
     cout << "  ElmerGUI [OPTION [FILE|DIR]]..." << endl;
     cout << endl;
@@ -108,13 +105,14 @@ int main(int argc, char *argv[])
     cout << " -o <string>      Select output dir" << endl;
     cout << " -nogui           Disable GUI" << endl;
     cout << " -e               Exit after saving" << endl;
+    cout << " -tq <value>      Mesh quality (Tetgen only)" << endl;
     cout << endl;
     return 0;
   }
 
   // Borrow locale from C
   QLocale::setDefault(QLocale::c());
-  
+
   MainWindow mainWindow;
   mainWindow.parseCmdLine();
 

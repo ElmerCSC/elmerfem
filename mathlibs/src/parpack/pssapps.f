@@ -194,8 +194,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Real
-     &           pslamch
-      external   pslamch
+     &           pslamch10
+      external   pslamch10
 c
 c     %----------------------%
 c     | Intrinsics Functions |
@@ -214,7 +214,7 @@ c     | Executable Statements |
 c     %-----------------------%
 c
       if (first) then
-         epsmch = pslamch(comm, 'Epsilon-Machine')
+         epsmch = pslamch10(comm, 'Epsilon-Machine')
          first = .false.
       end if
       itop = 1

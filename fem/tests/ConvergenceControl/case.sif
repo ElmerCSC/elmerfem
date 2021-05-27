@@ -5,7 +5,7 @@
 ! conditionally stable. With time the nonlinear source term increases and
 ! hence at some point we loose convergence.
 !
-! The type of control here is quite primitive one only measuring wheather
+! The type of control here is quite primitive one only measuring whether
 ! we have convergence or not. So it is not any fancy timestep control system.
 !
 ! Without any tricks the convergence is lost with

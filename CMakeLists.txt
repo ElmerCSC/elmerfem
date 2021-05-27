@@ -10,18 +10,88 @@
 # First public beta release 11th of October, 2013
 #
 
+if(APPLE)
+  # message("you need to have gcc-gfrotran installed using HomeBrew")
+  # set(CMAKE_C_COMPILER "/usr/bin/gcc")
+  # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
+  set(CMAKE_C_COMPILER "/usr/local/bin/gcc-10")
+  set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-10")
+  set(CMAKE_Fortran_COMPILER "/usr/local/bin/gfortran")
+  # set(BLA_VENDOR "OpenBLAS")
+  # option(HUNTER_ENABLED "Enable Hunter package manager support" OFF)
+  # set (CMAKE_GENERATOR "Unix Makefiles" CACHE INTERNAL "" FORCE)
+  # set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY")
+endif()
+
+
+
+
+
 IF(NOT CMAKE_BUILD_TYPE)
   SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebugInfo, MinSizeRel)")
 ENDIF()
 
 PROJECT(Elmer Fortran C CXX)
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
+
+# CMAKE_VERSION seems to require this in minimum
+CMAKE_MINIMUM_REQUIRED(VERSION 3.0.2)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1) 
+    # on OSX FindOpenGL uses framework version of OpenGL, but we need X11 version
+    FIND_PATH(GLX_INCLUDE_DIR GL/glx.h
+      PATHS /opt/X11/include /usr/X11/include /usr/X11R6/include)
+    find_library(X11_GL_LIB GL
+      PATH /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# FIND_LIBRARY(OPENGL_gl_LIBRARY GL
+#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# FIND_LIBRARY(OPENGL_glu_LIBRARY GLU
+#        PATHS /opt/X11/lib /usr/X11/lib /usr/X11R6/lib)
+# LIST(APPEND LIBS ${OPENGL_gl_LIBRARY})
+INCLUDE_DIRECTORIES(${GLX_INCLUDE_DIR})
 ENDIF()
 
+#shamelessly borrowed from FreeCAD project: https://github.com/FreeCAD/FreeCAD/blob/master/cMake/FreeCAD_Helpers/SetupPython.cmake
+# For building on OS X
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+  # If the user doesn't tell us which package manager they're using
+  if(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+    # Try to find MacPorts path
+    find_program(MACPORTS_EXECUTABLE port)
+    if(EXISTS ${MACPORTS_EXECUTABLE})
+      string(REPLACE "/bin/port" ""
+      MACPORTS_PREFIX ${MACPORTS_EXECUTABLE})
+      message(STATUS "Detected MacPorts install at ${MACPORTS_PREFIX}")
+    endif(EXISTS ${MACPORTS_EXECUTABLE})
+
+    # Try to find Homebrew path
+    find_program(HOMEBREW_EXECUTABLE brew)
+    if(EXISTS ${HOMEBREW_EXECUTABLE})
+      string(REPLACE "/bin/brew" ""
+      HOMEBREW_PREFIX ${HOMEBREW_EXECUTABLE})
+      message(STATUS "Detected Homebrew install at ${HOMEBREW_PREFIX}")
+    endif()
+
+  endif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+
+  # In case someone tries to shoot themselves in the foot
+  if(DEFINED MACPORTS_PREFIX AND DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "Multiple package management systems detected - ")
+    message(SEND_ERROR "define either MACPORTS_PREFIX or HOMEBREW_PREFIX")
+
+  # No package manager
+  elseif(NOT DEFINED MACPORTS_PREFIX AND NOT DEFINED HOMEBREW_PREFIX)
+    message(SEND_ERROR "No package manager detected - install MacPorts or Homebrew")
+  endif()
+endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+
+
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
+
+SET(CMAKE_Fortran_MODULE_DIRECTORY
+  ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
@@ -41,18 +111,26 @@ SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
+SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
+
+SET(WITH_Zoltan FALSE CACHE BOOL "Link in Zoltan mesh repartitioning library.")
+
+# Let user select if the contiguous attribute is used or not
+SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
-if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
-  CMAKE_POLICY(SET CMP0022 OLD)
-ENDIF()
+# if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
+#   CMAKE_POLICY(SET CMP0022 OLD)
+# ENDIF()
 
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
 ENABLE_TESTING()
 
-SET(ELMER_FEM_MAJOR_VERSION 8)
-SET(ELMER_FEM_MINOR_VERSION 3)
+SET(ELMER_FEM_MAJOR_VERSION 9)
+SET(ELMER_FEM_MINOR_VERSION 0)
+
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
 
@@ -87,6 +165,18 @@ IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
   ENDIF()
 ENDIF()
 
+IF(WITH_LUA)
+  IF(NOT(${USE_SYSTEM_LUA}))
+    ADD_SUBDIRECTORY(${CMAKE_CURRENT_SOURCE_DIR}/contrib/lua-5.1.5/)
+    set(LUA_LIBRARIES luaelmer CACHE STRING "")
+    set(LUA_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/contrib/lua-5.1.5/src CACHE STRING "")
+  ELSE()
+    FIND_PACKAGE(Lua51 REQUIRED)
+  ENDIF()
+  SET(HAVE_LUA TRUE)
+  MARK_AS_ADVANCED(HAVE_LUA)
+ENDIF()
+
 IF(WITH_OpenMP)
   # Advanced properties
   MARK_AS_ADVANCED(
@@ -94,13 +184,34 @@ IF(WITH_OpenMP)
     OpenMP_Fortran_FLAGS
     OpenMP_CXX_FLAGS
     )
-  
   FIND_PACKAGE(OpenMP REQUIRED)
-  # Add OpenMP flags to compilation flags
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 
+  # Add OpenMP flags to compilation flags
+  # if(APPLE)
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_C "${CMAKE_C_COMPILER}")
+  #     set(OpenMP_C_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_C_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_C_LIB_NAMES})
+  #   endif()
+  #   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  #     set(OpenMP_CXX "${CMAKE_CXX_COMPILER}")
+  #     set(OpenMP_CXX_FLAGS "-fopenmp=libomp -Wno-unused-command-line-argument")
+  #     set(OpenMP_CXX_LIB_NAMES "libomp" "libgomp" "libiomp5")
+  #     set(OpenMP_libomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libgomp_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #     set(OpenMP_libiomp5_LIBRARY ${OpenMP_CXX_LIB_NAMES})
+  #   endif()
+  # else()
+    SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+  # endif()
+
+ 
+  
   # Test compiler support for OpenMP 4.0 features used
   INCLUDE(testOpenMP40)
   IF(CMAKE_Fortran_COMPILER_SUPPORTS_OPENMP40)
@@ -114,6 +225,15 @@ IF(WITH_OpenMP)
     ENDIF()
   ENDIF()
 ENDIF()
+
+# Get rid of the annoying rank mismatch warning
+IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
+  IF(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 9.9)
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fallow-argument-mismatch")
+#    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -std=legacy")
+  ENDIF()
+ENDIF()
+  
 
 IF(WITH_MPI)
   # Advanced properties
@@ -133,38 +253,64 @@ IF(WITH_MPI)
   SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
 
-IF(WITH_MKL)
-  # Find MKL
-  FIND_PACKAGE(MKL REQUIRED)
-  SET(HAVE_MKL TRUE)
-  MARK_AS_ADVANCED(HAVE_MKL)
-  # Set BLAS and LAPACK to point to MKL
-  SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-  SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-  IF(MKL_SCALAPACK_LIBRARIES_FOUND)
-    SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
-    # Versions >11.1 of MKL include Cluster PARDISO direct solver
-    IF(MKL_CPARDISO_FOUND)
-      SET(HAVE_CPARDISO TRUE)
-      MARK_AS_ADVANCED(HAVE_CPARDISO)
+# if(APPLE)
+#   # message(STATUS "Trying to find Accelerate library")
+#   # find_library(BLAS_LIBRARIES Accelerate HINTS /System/Library/Frameworks/Accelerate.framework)
+#   # MARK_AS_ADVANCED(BLAS_LIBRARIES)
+#   # set(BLAS_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -framework accelerate")
+#   # find_path(LAPACK_INCLUDE_DIRS
+#   #   NAMES clapack.h
+#   #   PATHS ${BLAS_INCLUDE_DIRS}
+#   #   NO_DEFAULT_PATH
+#   # )
+#   # set(LAPACK_HEADER ${LAPACK_INCLUDE_DIRS}/clapack.h)
+#   # set(LAPACK_SUFFIX "_")
+#   # set(LAPACK_PREFIX)
+
+#   # message(STATUS "Using Accelerate framework on macOS")
+#   message("using the local blas library")
+#   # option(BLAS_VERBOSE "Print some additional information during BLAS libraries detection" ON)
+#   set(BLAS_DIR "./mathlibs/src/blas/")
+# set(BLA_VENDOR "Generic")
+
+  # set(ACCELERATE_LIBS "-framework Accelerate")
+  # BLAS_Accelerate_LIBRARY:FILEPATH=/System/Library/Frameworks/Accelerate.framework
+
+
+# else()
+  IF(WITH_MKL)
+    # Find MKL
+    FIND_PACKAGE(MKL REQUIRED)
+    SET(HAVE_MKL TRUE)
+    MARK_AS_ADVANCED(HAVE_MKL)
+    # Set BLAS and LAPACK to point to MKL
+    SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+    SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+    IF(MKL_SCALAPACK_LIBRARIES_FOUND)
+      SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
+      # Versions >11.1 of MKL include Cluster PARDISO direct solver
+      IF(MKL_CPARDISO_FOUND)
+        SET(HAVE_CPARDISO TRUE)
+        MARK_AS_ADVANCED(HAVE_CPARDISO)
+      ENDIF()
+    ENDIF()
+    INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+    SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+  ELSE()
+    IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
+      # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
+      FIND_PACKAGE(MKL QUIET)
+      IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
+        # Set BLAS and LAPACK to point to MKL, in order to work around
+        # CMake FindBLAS finding wrong core library for GNU Fortran
+        SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
+        SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
+        INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
+        SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
+      ENDIF()
     ENDIF()
   ENDIF()
-  INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-ELSE()
-  IF (NOT BLAS_LIBRARIES OR NOT LAPACK_LIBRARIES)
-    # If BLAS/LAPACK not explicitly set, attempt to find MKL BLAS/LAPACK
-    FIND_PACKAGE(MKL QUIET)
-    IF (MKL_BLAS_LIBRARIES_FOUND AND MKL_LAPACK_LIBRARIES_FOUND)
-      # Set BLAS and LAPACK to point to MKL, in order to work around
-      # CMake FindBLAS finding wrong core library for GNU Fortran
-      SET(BLAS_LIBRARIES ${MKL_BLAS_LIBRARIES} CACHE FILEPATH "")
-      SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
-      INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
-      SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
-    ENDIF()
-  ENDIF()
-ENDIF()
+# endif(APPLE)
 
 # MARK_AS_ADVANCED(WITH_Trilinos)
 IF(WITH_Trilinos)
@@ -175,6 +321,78 @@ IF(WITH_Trilinos)
     ADD_DEFINITIONS(-DHAVE_TRILINOS)
   ENDIF()
 ENDIF()
+
+IF(WITH_Zoltan)
+  # ZOLTAN Remeshing
+  MESSAGE(STATUS "------------------------------------------------")
+
+  SET(USE_SYSTEM_ZOLTAN FALSE CACHE BOOL "Use system Zoltan library")
+  IF(NOT ${USE_SYSTEM_ZOLTAN})
+    MESSAGE(STATUS "Building Zoltan mesh repartitioner")
+    ADD_SUBDIRECTORY(contrib/Zoltan_v3.83)
+    SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" ) 
+    MARK_AS_ADVANCED(HAVE_ZOLTAN)
+    MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+    MESSAGE(STATUS "------------------------------------------------")
+  ELSE()
+    FIND_PACKAGE(Zoltan)
+
+    IF(ZOLTAN_FOUND)
+
+      SET(HAVE_ZOLTAN TRUE CACHE BOOL "Has Zoltan tools for mesh (re)partitioning" )
+      GET_FILENAME_COMPONENT(ZOLTAN_LIBDIR ${ZOLTAN_LIBRARY} DIRECTORY)
+
+      MARK_AS_ADVANCED(HAVE_ZOLTAN)
+      MESSAGE(STATUS "  Zoltan:           " "${ZOLTAN_FOUND}")
+      MESSAGE(STATUS "  Zoltan_INC:       " "${ZOLTAN_INCLUDE_DIR}")
+      MESSAGE(STATUS "  Zoltan_LIB:      " "${ZOLTAN_LIBRARY}")
+      MESSAGE(STATUS "  Zoltan_LIBDIR:      " "${ZOLTAN_LIBDIR}")
+
+      INCLUDE_DIRECTORIES(${ZOLTAN_INCLUDE_DIR})
+      MESSAGE(STATUS "------------------------------------------------")
+
+    ELSE()
+      MESSAGE(STATUS "  Library not found: >ZOLTAN_FOUND< ")
+      MESSAGE(STATUS "    Missing: >ZOLTAN_INCLUDE_DIR< , >ZOLTAN_LIBRARY< for mesh (re)partitioning")
+    ENDIF(ZOLTAN_FOUND)
+
+    MESSAGE(STATUS "------------------------------------------------")
+  ENDIF()
+ENDIF(WITH_Zoltan)
+
+# MMG Remeshing
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "Mesh adaptation 2D/3D looking for [Mmg] tools ")
+
+FIND_PACKAGE(MMG)
+# INCLUDE("cmake/Modules/FindMMG.cmake")
+# INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+# TARGET_LINK_LIBRARIES( ${YOUR_TARGET} ${MMG_LIBRARY})
+
+
+IF(MMG_FOUND)
+
+  SET(HAVE_MMG TRUE CACHE BOOL "Has Mmg tools for Elmer/Ice Mesh adaptation" )
+  GET_FILENAME_COMPONENT(MMG_LIBDIR ${MMG_LIBRARY} DIRECTORY)
+
+  MARK_AS_ADVANCED(HAVE_MMG)
+  MESSAGE(STATUS "  Mmg:           " "${MMG_FOUND}")
+  MESSAGE(STATUS "  Mmg_INC:       " "${MMG_INCLUDE_DIR}")
+  MESSAGE(STATUS "  Mmg_LIB:      " "${MMG_LIBRARY}")
+  MESSAGE(STATUS "  Mmg_LIBDIR:      " "${MMG_LIBDIR}")
+  MESSAGE(STATUS "Compile MMG2DSolver/MMG3DSolver")
+  ADD_DEFINITIONS(-DHAVE_MMG)
+
+  INCLUDE_DIRECTORIES(${MMG_INCLUDE_DIR})
+  MESSAGE(STATUS "------------------------------------------------")
+
+ELSE()
+  MESSAGE(STATUS "  Library not found: >MMG_FOUND< ")
+  MESSAGE(STATUS "    Missing: >MMG_INCLUDE_DIR< , >MMG_LIBRARY<, to compile MMG3DSolver")
+ENDIF(MMG_FOUND)
+
+MESSAGE(STATUS "------------------------------------------------")
+
 
 # MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
@@ -190,7 +408,7 @@ IF(MPI_FOUND)
   ENDIF()
   # Hypre
   IF(WITH_Hypre)
-    FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv QUIET)
+    FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv FEI core QUIET)
   ENDIF()
 
   # Permon
@@ -226,7 +444,7 @@ ENDIF()
 
 # Check if Fortran compiler supports contiguous keyword
 INCLUDE(testContiguous)
-IF(CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
+IF(USE_CONTIGUOUS AND CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
   ADD_DEFINITIONS(-DCONTIG=,CONTIGUOUS)
 ELSE()
   ADD_DEFINITIONS(-DCONTIG=)
@@ -389,6 +607,11 @@ IF(WITH_ELMERPOST)
   MESSAGE(STATUS "------------------------------------------------")
   ADD_SUBDIRECTORY(post)
 ENDIF(WITH_ELMERPOST)
+
+IF(HAVE_LUA)
+  MESSAGE(STATUS "  Building Lua")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(HAVE_LUA)
 
 # Packaging
 if(NOT BYPASS_CPACK)

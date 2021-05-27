@@ -1,0 +1,221 @@
+! Test case for normal projector & Poisson equation.
+! This projector does not not make assumptions on geometry.
+!
+! P.R. 15.1.2020
+
+
+$dx=0.0 !0.12
+$dz=0.0 !0.1
+$sc=1.0 !1.2
+$tsteps=21
+$dt=1.0/(tsteps-1)
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mortar3d"
+  Include Path ""
+  Results Directory ""
+End
+   
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = $dt 
+
+! For full circle increase steps to $tsteps
+  Timestep Intervals = 3 ! $tsteps
+  Output Intervals = 1
+
+  Simulation Timing = Logical True
+!  Post File = case.vtu  
+End 
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Stator"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "Rotor-Hot"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body 3
+  Target Bodies(1) = 3
+  Name = "Rotor-Cold"
+  Equation = 1
+  Material = 1
+  Body Force = 3
+End
+
+
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+  Translate Before Rotate = Logical True
+End
+
+
+Solver 2
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Optimize Bandwidth = False
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+  Linear System Solver = Iterative
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Iterative Method = Bicgstabl
+  Linear System Max Iterations = 1000
+  Linear System Residual Output = 10
+  Linear System Preconditioning = ILU0
+
+  Apply Mortar BCs = Logical True
+
+  Linear System Timing = Logical True
+  Solver Timing = Logical True
+  Linear System Timing Cumulative = Logical True
+  Solver Timing Cumulative = Logical True
+End
+
+Solver 3
+! Settings mainly for timing and verification
+  Exec Solver = after all
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = f.dat
+
+  Variable 1 = Temperature
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = min
+  Operator 4 = max
+  Operator 5 = norm
+  Operator 6 = cpu time
+  Operator 7 = wall time
+
+!  File Append = Logical True
+
+! Reduce just to one file when parallel
+  Parallel Reduce = Logical True
+  Default Parallel Operator = String max
+  Parallel Operator 1 = String sum
+End 
+
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 2
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1
+  Heat Capacity = 1
+  Density = 1
+End
+
+Body Force 1
+  Name = "MoveToLeft"
+  Mesh Translate 1 = $dx-4.0
+End
+
+Body Force 2 
+  Name = "RotorMove"
+  Mesh Scale 3 = Real $sc
+  Mesh Translate 3 = Real $dz
+  Mesh Rotate 3 = Variable time 
+    Real MATC "360*(tx-dt)"
+  Heat Source = 1.0
+End 
+
+Body Force 3 
+  Name = "RotorMove"
+  Mesh Scale 3 = Real $sc
+  Mesh Translate 3 = Real $dz
+  Mesh Rotate 3 = Variable time 
+    Real MATC "360*(tx-dt)"
+  Heat Source = -1.0
+End 
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 10
+  Name = "South"
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 11
+  Name = "East"
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 12
+  Name = "North"
+  Temperature = 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 13
+  Name = "West"
+End
+
+Boundary Condition 5
+  Target Boundaries(4) = 1 2 3 4
+  Name = "Mortar Inside"
+
+  Mortar BC = Integer 6
+
+! This assumes rotational geometry and should be the same.
+! The discrepancy in results is around 1e-4
+! Rotational Projector = Logical True
+! Galerkin Projector = Logical True
+
+! This assumes nothing.
+  Normal Projector = Logical True
+
+! This is set automatically if not given.
+!  Projector Max Distance = Real 0.3 
+End
+
+Boundary Condition 6
+  Target Boundaries(4) = 6 7 8 9
+  Name = "Mortar Outside"
+End
+
+Boundary Condition 7
+  Target Boundaries(4) = 15 16 18 19
+  Name = "Rotor Ends"
+End
+
+Solver 2 :: Reference Norm = 6.56011484E-02

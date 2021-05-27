@@ -550,7 +550,7 @@
 
       !----------------------------------------------------------------------
       ! For convenience, set a Velocity table that will be 
-      ! used to compute the velocity gradient and the free boudary condition
+      ! used to compute the velocity gradient and the free boundary condition
       !----------------------------------------------------------------------
       k = FlowVariable % DOFs
       Velocity = 0.0d0

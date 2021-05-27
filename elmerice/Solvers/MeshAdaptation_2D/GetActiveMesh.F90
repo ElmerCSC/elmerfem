@@ -121,7 +121,7 @@
         END IF
       END DO
 
-! Release previous mesh (shoudl be optionnal)
+! Release previous mesh (should be optional)
 !-------------------
       RELEASE_MESH=ListGetLogical(SolverParams,'Release previous mesh')
       IF (RELEASE_MESH) THEN
@@ -212,7 +212,7 @@
 
         !check for Left Parent 
         IF (ASSOCIATED(Parent)) THEN
-           !if associated check if pasive or not
+           !if associated check if passive or not
            IF (CheckPassiveElement(Parent)) &
                Parent => Element % BoundaryInfo % Right
         ELSE

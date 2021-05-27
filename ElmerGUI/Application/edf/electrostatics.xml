@@ -3,6 +3,28 @@
 <edf version="1.0" >
    <PDE Name="Electrostatics" >
       <Name>Electrostatics</Name>
+      <Equation>
+         <Parameter Widget="Label">
+           <Name> Electric Field </Name>
+         </Parameter>
+        <Parameter Widget="Combo"> 
+          <Name> Electric Field </Name>
+          <Type> String </Type>
+          <Item Type="Active"> <Name> None </Name> </Item>
+          <Item> <Name> Computed </Name> </Item>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter> 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
       <Material>
         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
          <Parameter Widget="Edit" >
@@ -11,6 +33,7 @@
             <Whatis> Give the relative permittivity compared to vacuum. </Whatis>
          </Parameter>    
       </Material>   
+
       <BodyForce>
       <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
           <Parameter Widget="Edit" >
@@ -19,6 +42,7 @@
             <Whatis> Give the volume charge density. </Whatis>
          </Parameter>    
       </BodyForce>   
+
       <InitialCondition>   
         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
           <Parameter Widget="Edit" >
@@ -27,6 +51,7 @@
             <Whatis> Give the initial condition for electrostatic potential. </Whatis>
          </Parameter>    
       </InitialCondition>   
+
       <Solver>
          <Parameter Widget="Edit" >
            <Name> Procedure </Name>
@@ -73,6 +98,15 @@
             <Type> String </Type>
             <Whatis> File to save the capacitance matrix. </Whatis>
          </Parameter> 
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
        </Solver>
 
       <BoundaryCondition>
@@ -84,12 +118,12 @@
 
          <Parameter  Widget="Edit">
            <Name> Potential Condition </Name>
-           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <Whatis> If the given value is less than zero, apply flux condition instead of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
          </Parameter>
 
          <Parameter  Widget="Edit" Enabled="True" Visible="True">
            <Name>Capacitance Body</Name>
-           <Whatis> This keyword should be provided for capacitance matrix computation only. The numbers should provide continuous numbering from 1 to the total number of bodies. Ground may be defined with value 0 or by explicitely setting potential to zero somewhere.</Whatis>
+           <Whatis> This keyword should be provided for capacitance matrix computation only. The numbers should provide continuous numbering from 1 to the total number of bodies. Ground may be defined with value 0 or by explicitly setting potential to zero somewhere.</Whatis>
          </Parameter>
  
          <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
@@ -104,7 +138,17 @@
             <Whatis> Use a far field condition for the electric flux. </Whatis>
          </Parameter>
 
-		 </BoundaryCondition>
+        <Parameter Widget="Label">
+          <Name> Free text input </Name>
+        </Parameter>
+        <Parameter Widget="TextEdit" Enabled="True">
+          <Name> Free text </Name>
+          <Type> String </Type>
+          <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+          <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+        </Parameter>
+
+	</BoundaryCondition>
    </PDE>
 </edf>
 

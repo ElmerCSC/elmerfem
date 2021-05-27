@@ -13,7 +13,7 @@ Simulation
   Coordinate System = Cartesian 
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Post File = "case.ep"
+  Post File = "case.vtu"
 End
 
 Constants
@@ -61,8 +61,8 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Steady State Convergence Tolerance = 1.0e-4
 
-! This must be alloated here bacause it is referred to before being created in Solver 2
-  Exported Variable 1 = -dofs 2 Electric Force Density 
+! This must be allocated here because it is referred to before being created in Solver 2
+  Exported Variable 1 = -dofs 2 Electric Force Density
 End
 
 Solver 2
@@ -149,8 +149,7 @@ End
 
 
 
-Solver 3 :: Reference Norm = Real 0.23697253E-03
-RUN
+Solver 3 :: Reference Norm = 2.36963985E-04
 
 !End Of File
 

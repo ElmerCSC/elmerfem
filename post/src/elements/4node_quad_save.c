@@ -457,7 +457,7 @@ int elm_4node_quad_point_inside
  *         Input:  (char *) description of the element
  *                 (int)    numeric code for the element
  *
- *         Output:  Global list of element types is modfied
+ *         Output:  Global list of element types is modified
  *
  *   Return value:  malloc() success
  *

@@ -62,7 +62,7 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Visited = .FALSE., SetD
   REAL(KIND=dp) :: Unorm, Totnorm, nrm
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
-  REAL(KIND=dp), POINTER  :: SaveRHS(:)
+  REAL(KIND=dp), POINTER  CONTIG  :: SaveRHS(:)
   REAL(KIND=dp) :: at0,at1,at2
 
   TYPE(Variable_t), POINTER :: NrmSol

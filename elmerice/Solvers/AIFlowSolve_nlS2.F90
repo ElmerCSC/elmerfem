@@ -244,9 +244,12 @@
                      ReferenceTemperature, &
                      LocalTemperature,     &
                      LocalFlowWidth,	   &
-                     LocalVelo,            &
+                     K1,K2,E1,E2,E3,       &
                      LocalForce,           &
                      RefD, RefS, RefSpin,  &
+                     LocalVelo,            &
+                     Basis,ddBasisddx,dBasisdx, &
+                     TimeForce, &
                      LocalMassMatrix,      &
                      LocalStiffMatrix,     &
                      LoadVector, Alpha, Beta, &
@@ -434,8 +437,9 @@
 !------------------------------------------------------------------------------
          CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
       END DO
-
+      
       CALL Info( 'AIFlowSolve', 'Assembly done', Level=4 )
+      CALL DefaultFinishBulkAssembly()
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
@@ -475,6 +479,7 @@
             LoadVector(3,1:n) = &
                      ListGetReal( BC, 'Force 3', n, NodeIndexes, GotIt )
             GotForceBC = GotForceBC .OR. gotIt
+
 
             Beta(1:n) = &
                 ListGetReal( BC, 'Normal Force', n, NodeIndexes, GotIt )
@@ -517,7 +522,7 @@
          END IF
       END DO
 !------------------------------------------------------------------------------
-
+      CALL DefaultFinishBoundaryAssembly()
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------

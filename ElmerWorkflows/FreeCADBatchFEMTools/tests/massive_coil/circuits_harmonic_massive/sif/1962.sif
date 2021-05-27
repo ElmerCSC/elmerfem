@@ -1,0 +1,178 @@
+! A simple testcase for testing CircuitsAndDynamics module.
+! Author: Eelis Takala, Trafotek Oy
+! Original date: October 2015
+! eelis.takala@trafotek.fi
+Check Keywords "Warn"
+INCLUDE sif/1962-circuits.definitions
+INCLUDE 1962/mesh.names
+Header 1
+   Mesh DB "." "1962"
+End
+Constants 1
+   Permittivity of Vacuum = 8.8542e-12
+End
+Simulation 1
+   Max Output Level = 3
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   BDF Order = 1
+   Output Intervals = 1
+   Angular Frequency = 314.159265359
+!   output file = "runoutput.dat"
+End
+Solver 1
+   Exec Solver = Before All
+   Procedure = "WPotentialSolver" "Wsolve"
+   Equation = "Wire direction"
+   Variable = W
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 10000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 1000
+End
+Solver 2
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+Solver 3
+   Equation = "MGDynamics"
+   Variable = "A[A re:1 A im:1]"
+   Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+   Angular Frequency = 314.159265359
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = Logical True
+   Linear System Complex = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = Circuit
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 1000
+   BicgStabL Polynomial Degree = 4
+   Linear System Abort not Converged = True
+   Steady State Convergence Tolerance = 1e-06
+End
+Solver 4
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Loss Estimation = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 1000
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+Solver 5
+   Exec Solver = Never
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 1962-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+Solver 6
+   Exec Solver = After timestep
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 7
+   Exec Solver = Never
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+   Filename = 1962/dat/1962.dat
+End
+Equation 1
+   Active Solvers(2) = 3 4
+End
+Equation 2
+   Active Solvers(4) = 1 2 3 4
+End
+Material 1
+   Name = perm1e1
+   Relative Permittivity = Real 1
+   Electric Conductivity = Real 0
+   Relative Permeability = Real 1e1
+End
+Material 2
+   Name = air
+   Relative Permittivity = Real 1
+   Electric Conductivity = Real 0
+   Relative Permeability = Real 1
+End
+Material 3
+   Name = aluminium
+   Relative Permittivity = Real 1
+   Relative Permeability = Real 1
+   Electric Conductivity = 3.07e7
+End
+Body 1
+   Name = core
+   Target Bodies(1) = $ core
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+End
+Body 2
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+Body 3
+   Name = L1
+   Target Bodies(1) = $ L1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+End
+Component 1
+   Name = String L1
+   Master Bodies = Integer 3
+   Coil Type = String massive
+   Foil Winding Voltage Polynomial Order = Integer 1
+End
+Body Force 1
+   Name = "Circuit"
+   testsource Re = Real $1414.21356237*cos(0.0*pi/3)
+   testsource Im = Real $1414.21356237*sin(0.0*pi/3)
+End
+Boundary Condition 1
+   Name = BCn Flux Parallel
+   Target Boundaries(2) = $ core_xy0 air_xy0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 2
+   Name = ground
+   Target Boundaries = $ L1_gamma1
+   W = Real 0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Boundary Condition 3
+   Name = current in foil winding
+   Target Boundaries = $ L1_gamma0
+   W = Real 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+Solver 3 :: Reference Norm = Real 7.20251538E-06
+Solver 3 :: Reference Norm Tolerance = Real 1e-03 
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

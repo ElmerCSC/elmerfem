@@ -156,7 +156,7 @@ static PyObject *PythonQtWrapper_getattro(PyObject *obj,PyObject *name)
     break;
   }
   
-  // look for the interal methods (className(), help())
+  // look for the internal methods (className(), help())
   PyObject* internalMethod = Py_FindMethod( PythonQtWrapper_methods, obj, (char*)attributeName);
   if (internalMethod) {
     return internalMethod;

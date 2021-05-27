@@ -1,0 +1,84 @@
+! Test case for MarchingODESolver.
+! Structured mesh is detected in x-direction.
+! We integrate over x and should get 0.5 as max value.
+!
+! Compared to base case this is transient i.e. we integrate
+! one mesh size at a time. 
+!
+! P.R. 4.8.2020
+
+$v0=1.0
+$h=0.1
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "rect"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+
+! We would achieve steady state at 10 timesteps.
+! Hence use less for the test to study the transient stuff. 
+  Timestep Intervals = 7 
+
+! This may be multiple of courant timestep .OR.
+! large enough to give steady state marching. 
+  Timestep Sizes = $h/v0
+
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File = "case.vtu"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End 
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End 
+
+Initial Condition 1
+  Name = "Guess"
+  Integrator = Real 0.0
+End 
+
+Material 1
+  Name = "Material"
+  Integrator: Source = Equals "Coordinate 1"
+End
+
+Solver 1
+  Exec Solver = always
+  Equation = "MarchingOde"
+  Procedure = "MarchingODESolver" "MarchingODESolver"
+
+! Detects sctructured mesh in x-direction
+  Active Coordinate = Integer 1
+
+! This gives 2nd order accuracy
+  Newmark Beta = Real 0.5 
+
+  Draw Velocity = Real $v0
+
+! The name of the target field
+  Variable = Integrator 
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(4) = 1 2 3 4
+End
+
+Solver 1 :: Reference Norm = 2.27910469E-01 !0.23994791
+

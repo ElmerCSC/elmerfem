@@ -14,7 +14,7 @@ Simulation
   Simulation Type = Steady State
   Steady State Max Iterations = 1
   Output Intervals = 1
-! Post File = "shell.ep"
+!  Post File = "shell.vtu"
 ! Output File = "shell.dat"
 End
 
@@ -65,6 +65,6 @@ Boundary Condition 1
   Deflection 6 = Real 0
 End
 
-Solver 1 :: Reference Norm = Real 0.339311018401
+Solver 1 :: Reference Norm = Real 3.39194159E-01
 Solver 1 :: Reference Norm Tolerance = Real 1e-4
 RUN

@@ -382,7 +382,7 @@ MODULE MaxwellAxiS
 
      s = SqrtElementMetric * S_Integ(t)
 !------------------------------------------------------------------------------
-!    Add to load: tangetial derivative of something
+!    Add to load: tangential derivative of something
 !------------------------------------------------------------------------------
      DO i=1,DIM
        Force(i) = SUM( NodalBeta(1:n)*dBasisdx(1:n,i) )

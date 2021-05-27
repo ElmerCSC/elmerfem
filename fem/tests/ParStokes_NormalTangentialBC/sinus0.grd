@@ -17,10 +17,6 @@ Boundary Definitions
   3        5        1        1       
   4        6        1        1       
 End
-!Advanced Elements
-!!mat n e f d b
-!  1  1 0 0 0 0
-!End
 Numbering = Horizontal
 !Plane Elements = 1980
 Coordinate Ratios = 1 

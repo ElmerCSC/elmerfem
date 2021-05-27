@@ -1,6 +1,6 @@
 ! This file can be used to create meshes of different density.
 ! The default density is obtained with i=0 and with increase of i by one
-! the number of elements increase rougly to double.
+! the number of elements increase roughly to double.
 m = 2^(1.0/3.0);
 i = 0;
 c = 0.1/(m^i);

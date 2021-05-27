@@ -3,13 +3,13 @@
 ! thermal expansion. Due to symmetry, we only model one half of the
 ! square plate, unlike in the benchmark.
 !
-! Reference results, mesh and the problem setting all benchmark from 
+! Reference results, mesh and the problem setting all benchmark from
 ! Code_Aster documentation. For complete original documentation see
 ! http://www.code-aster.org/V2/doc/v11/en/man_v/v3/v3.02.116.pdf
 !
-! The results between Elmer and Aster differ a little. 
-! Aster seems to suffer a bit less from locking, propably due to
-! beneficial approximations. Using higher p- elements counters 
+! The results between Elmer and Aster differ a little.
+! Aster seems to suffer a bit less from locking, probably due to
+! beneficial approximations. Using higher p- elements counters
 ! this problem.
 !
 ! J.K / 24.8.2015

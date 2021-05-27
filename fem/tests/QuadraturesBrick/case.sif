@@ -1,0 +1,84 @@
+! This is test case for integration rules for brick elements.
+! The test includes
+! triple product rules: 8, 27, 64
+!
+! P.R. 13.11.2019
+
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "cube"
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+  Post File   = "case.vtu"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+!  Convection Velocity 1 = 0
+!  Convection Velocity 2 = 0
+  diffusion coefficient = 1.0
+!  convection coefficient = 0.0
+!  time derivative coefficient = 0.0
+End
+
+Body Force 1
+  Field Source = Real 0
+End 
+
+Equation 1 :: Active Solvers(1) = 1
+
+Solver 1
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDE" "AdvDiffSolver"
+  Element = "p:2"
+  Linear System Solver = Direct
+  Steady State Convergence Tolerance = 1e-9
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+!  Field = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Field = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Field Flux = 1.0
+End
+
+
+
+!Solver 1 :: Reference Norm = 6.45497224E-01
+Solver 1 :: Reference Norm = 0.37267800 ! p:2
+!Solver 1 :: Reference Norm = 2.88675135E-01 ! p:3
+RUN
+
+! Test other rules. Following combinations should be ok:
+! laplace, 1st order: consistent
+! 8,27,64
+! p:2
+! 8-> ok
+! p:3
+! 27-> ok
+
+Solver 1 :: Number of Integration Points = 8
+RUN
+Solver 1 :: Number of Integration Points = 27
+RUN
+Solver 1 :: Number of Integration Points = 64
+RUN

@@ -75,7 +75,10 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: LocalParam(:)
   CHARACTER(LEN=MAX_NAME_LEN) ::  ParamName(99), Name
   LOGICAL :: GotCoeff, GotIt, GotOper, GotVar
+  INTEGER :: PrevNodes = 0
 
+  SAVE PrevNodes 
+  
 
   CALL Info('SaveMaterials','Creating selected material parameters as fields')
 
@@ -88,6 +91,15 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
 
   DIM = CoordinateSystemDimension()
   LocalNodes = Model % NumberOfNodes
+
+  IF( PrevNodes > 0 ) THEN
+    IF( LocalNodes /= PrevNodes ) THEN
+      CALL Warn('SaveMaterials','Solver cannot deal with changed mesh: Exiting!')
+      RETURN
+    END IF
+  END IF
+  PrevNodes = LocalNodes
+
   
   n = Mesh % MaxElementNodes
   ALLOCATE( LocalParam(n), STAT=istat )
@@ -123,13 +135,13 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
     
     FieldPerm = 0
     
-    DO elementNumber=1,Mesh % NumberOfBulkElements
+    DO elementNumber=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       
       CurrentElement => Mesh % Elements(elementNumber)
       !------------------------------------------------------------------
       ! do nothing, if we are dealing with a halo-element in parallel run
       !------------------------------------------------------------------
-      IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
+      !IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
       
       n = GetElementNOFNodes(CurrentElement)
       NodeIndexes => CurrentElement % NodeIndexes           
@@ -140,6 +152,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       ELSE
         ValueList => GetBodyForce(CurrentElement)
       END IF
+      IF(.NOT. ASSOCIATED( ValueList ) ) CYCLE
       IF( ListCheckPresent(ValueList, TRIM(ParamName(ParamNo))) ) THEN
         FieldPerm( NodeIndexes ) = 1
       END IF
@@ -156,21 +169,24 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
     IF( j == 0 ) THEN
       CALL Warn('SaveMaterials',&
           'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
-    ELSE
-      WRITE( Message,'(A,I0,A)') 'Parameter > '//TRIM(ParamName(ParamNo))&
-          //' < defined with ',j,' dofs'
-      CALL Info('SaveMaterials',Message)
-      
+    END IF
+    WRITE( Message,'(A,I0,A)') 'Parameter > '//TRIM(ParamName(ParamNo))&
+        //' < defined with ',j,' dofs'
+    CALL Info('SaveMaterials',Message)
+
+    IF( j > 0 ) THEN
       ALLOCATE(Field(j),STAT=istat)
       IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 3') 
       Field = 0.0_dp
-      
-      CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
-          TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
-      
-      NULLIFY( Field )
     END IF
 
+    IF( j > 0 .OR. ParEnv % PEs > 1 ) THEN
+      ! Add this always in parallel since the variable may be active in some partition 
+      CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
+          TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
+    END IF
+      
+    NULLIFY( Field )
     NULLIFY( FieldPerm )
   END DO
 
@@ -180,21 +196,26 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   DO ParamNo=1,NoParams 
     
     Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
-    Field => Var % Values
-    FieldPerm => Var % Perm
+    IF( .NOT. ASSOCIATED( Var ) ) CYCLE
 
-    DO elementNumber=1,Mesh % NumberOfBulkElements
+    Field => Var % Values
+    IF( .NOT. ASSOCIATED( Field ) ) CYCLE
+    
+    FieldPerm => Var % Perm
+    IF( .NOT. ASSOCIATED( FieldPerm ) ) CYCLE
+    
+    IF( MAXVAL( FieldPerm ) <= 0 ) CYCLE
+    
+    DO elementNumber=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       
       CurrentElement => Mesh % Elements(elementNumber)
       IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
       
       n = GetElementNOFNodes(CurrentElement)
       NodeIndexes => CurrentElement % NodeIndexes           
-
-      IF( ASSOCIATED( FieldPerm ) ) THEN
-        IF( .NOT. ALL(FieldPerm(NodeIndexes) > 0) ) CYCLE
-      END IF
-
+      
+      IF( .NOT. ALL(FieldPerm(NodeIndexes) > 0) ) CYCLE
+      
       Model % CurrentElement => CurrentElement
 
       IF( ParamNo > BodyForceParams ) THEN
@@ -202,16 +223,12 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       ELSE
         ValueList => GetBodyForce(CurrentElement)
       END IF
+      IF(.NOT. ASSOCIATED( ValueList ) ) CYCLE
       LocalParam(1:n) = ListGetReal(ValueList, TRIM(ParamName(ParamNo)), &
           n, NodeIndexes, GotIt)
       IF(.NOT. GotIt) CYCLE
       
-      IF( ASSOCIATED( FieldPerm ) ) THEN
-        Field(FieldPerm(NodeIndexes(1:n))) = LocalParam(1:n)      
-      ELSE
-        Field(NodeIndexes(1:n)) = LocalParam(1:n)      
-      END IF
-      
+      Field(FieldPerm(NodeIndexes(1:n))) = LocalParam(1:n)      
     END DO
   END DO
 

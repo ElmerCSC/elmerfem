@@ -35,9 +35,7 @@
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
-!>  Solve Maxwell equations in vector potential formulation (or the A-V
-!>  formulation) and (relatively)low frequency approximation using lowest
-!>  order Withney 1-forms (edge elements).
+!>  Utilities for the A-V solvers of electromagnetism
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 MODULE MagnetoDynamicsUtils
@@ -45,6 +43,13 @@ MODULE MagnetoDynamicsUtils
    USE MGDynMaterialUtils
    IMPLICIT NONE
 
+   INTEGER :: JfixPhase
+   REAL(KIND=dp), POINTER :: Jfixrhs(:)
+   COMPLEX(KIND=dp), POINTER :: JfixRhsC(:)
+   INTEGER, POINTER :: JfixSurfacePerm(:) 
+   REAL(KIND=dp), ALLOCATABLE, TARGET :: JfixSurfaceVec(:)
+   COMPLEX(KIND=dp), ALLOCATABLE :: JfixSurfaceVecC(:)
+   
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
    INTERFACE SetDOFtoValue
@@ -91,7 +96,7 @@ CONTAINS
       DO n1 = 1,SIZE(M % diag)
         M % Diag(n1) = A % Diag(n1) 
         IF (M % diag(n1) == 0) THEN
-          write (*,*), 'diag', n1, 'is zero'
+          WRITE (*,*) 'diag', n1, 'is zero'
         end if
       END DO
 
@@ -123,6 +128,7 @@ CONTAINS
       M => AddConstraintFromBulk(A, M0 % ConstraintMatrix)
     END IF
   END FUNCTION AddConstraintFromBulk
+
 !------------------------------------------------------------------------------
   FUNCTION GetBoundaryEdgeIndex(Boundary,nedge) RESULT(n)
 !------------------------------------------------------------------------------
@@ -241,18 +247,19 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
-    INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
+    INTEGER :: n
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    LOGICAL :: Found, FirstTime = .TRUE.
     REAL(KIND=dp) :: Avacuum
 
-    SAVE Avacuum 
+    SAVE FirstTime, Avacuum 
+!------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
       Avacuum = GetConstReal( CurrentModel % Constants, &
               'Permeability of Vacuum', Found )
-      IF(.NOT. Found ) Avacuum = PI * 4.0d-7
+      IF (.NOT. Found ) Avacuum = PI * 4.0d-7
       FirstTime = .FALSE.
     END IF
   
@@ -267,10 +274,9 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
     END IF
-    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+    IF( .NOT. Found .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
-      CALL Warn('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
-      Warned = .TRUE.
+      CALL Fatal('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
     END IF
 
 !------------------------------------------------------------------------------
@@ -283,13 +289,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
-    INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
+    INTEGER :: n
 !------------------------------------------------------------------------------
-    LOGICAL :: L, Found, FirstTime = .TRUE., Warned = .FALSE.
+    LOGICAL :: L, Found, FirstTime = .TRUE.
     REAL(KIND=dp) :: Avacuum
 
-    SAVE Avacuum 
+    SAVE Avacuum, FirstTime
+!------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
       Avacuum = GetConstReal( CurrentModel % Constants, &
@@ -312,75 +319,96 @@ CONTAINS
          GetReal( Material, 'Reluctivity im', L ), KIND=dp )
       Found = Found .OR. L
     END IF
-    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+    IF( .NOT. Found .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
-      CALL Warn('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
-      Warned = .TRUE.
+      CALL Fatal('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityC
 !------------------------------------------------------------------------------
 
-!> Get real tensorial reluctivity
+!> Get a real-valued reluctivity tensor. This subroutine seeks values which
+!> are strictly given as reluctivity (giving the permeability is not an option
+!> here).
 !------------------------------------------------------------------------------
   SUBROUTINE GetReluctivityTensorR(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
-    REAL(KIND=dp), POINTER :: Acoef(:,:,:)
+    REAL(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
     INTEGER, INTENT(IN) :: n
-    LOGICAL , INTENT(OUT) :: Found
-!-------------------------------------------------------------------------------
-    LOGICAL :: FirstTime = .FALSE.
-    INTEGER :: k
-    REAL(KIND=dp) :: Avacuum
+    LOGICAL, INTENT(OUT) :: Found
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), SAVE :: nu_vacuum
+    LOGICAL, SAVE :: FirstTime
+!------------------------------------------------------------------------------
 
-    SAVE Avacuum
+    IF ( FirstTime ) THEN
+      nu_vacuum = GetConstReal( CurrentModel % Constants, &
+              'Permeability of Vacuum', Found )
+      IF (.NOT. Found ) THEN
+        nu_vacuum = 1.0d0/(PI * 4.0d-7)
+      ELSE
+        nu_vacuum =  1.0d0/nu_vacuum
+      END IF
+      FirstTime = .FALSE.
+    END IF
 
-    CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
+    CALL GetRealArray( Material, Acoef, 'Reluctivity', Found )
+
+    IF (.NOT. Found) THEN
+      CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
+      IF (Found) Acoef = nu_vacuum * Acoef
+    END IF
 !-------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityTensorR
 !-------------------------------------------------------------------------------
 
-!> Get complex tensorial reluctivity
-!> Untested
+!> Get a complex-valued reluctivity tensor. This subroutine seeks values which
+!> are strictly given as reluctivity (giving the permeability is not an option
+!> here).
 !------------------------------------------------------------------------------
-  SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found, Cwrk)
+  SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found)
 !-------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
-    COMPLEX(KIND=dp), POINTER :: Acoef(:,:,:)
-    REAL(KIND=dp), POINTER, OPTIONAL :: Cwrk(:,:,:)
-    INTEGER, INTENT(IN) :: n
-    LOGICAL , INTENT(OUT) :: Found
+    COMPLEX(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
+    INTEGER, INTENT(IN) :: n                                      ! An inactive variable
+    LOGICAL, INTENT(OUT) :: Found                                 
 !-------------------------------------------------------------------------------
-    LOGICAL :: FirstTime = .FALSE.
     LOGICAL :: Found_im
-    INTEGER :: k1,k2,k3
-    REAL(KIND=dp) :: Avacuum
-    REAL(KIND=dp), POINTER :: work(:,:,:)
+    REAL(KIND=dp), POINTER :: work(:,:,:) => NULL()
+    INTEGER :: n1, n2, n3
 
-    SAVE Avacuum
+    IF (ASSOCIATED(Acoef)) DEALLOCATE(Acoef)
 
-    IF(.NOT. PRESENT(Cwrk)) THEN
-      ALLOCATE(work(size(Acoef,1), size(Acoef,2), size(Acoef,3)))
-    ELSE
-      work => Cwrk
+    CALL GetRealArray( Material, work, 'Reluctivity', Found )
+
+    IF (Found) THEN
+      n1 = SIZE(work,1)
+      n2 = SIZE(work,2)
+      n3 = SIZE(work,3)
+      ALLOCATE(Acoef(n1, n2, n3))
+      Acoef(:,:,:) = CMPLX(work(:,:,:), 0.0d0, kind=dp)
     END IF
 
-
-    CALL GetRealArray( Material, work, 'Relative Reluctivity', Found )
-    Acoef(:,:,:) = work(:,:,:)
-
-    CALL GetRealArray( Material, work, 'Relative Reluctivity im', Found_im )
-
-    Acoef = CMPLX(REAL(Acoef), work)
-
+    CALL GetRealArray( Material, work, 'Reluctivity im', Found_im )
+    IF (Found_im) THEN
+      n1 = SIZE(work,1)
+      n2 = SIZE(work,2)
+      n3 = SIZE(work,3)
+      IF (.NOT. ASSOCIATED(Acoef)) THEN
+        ALLOCATE(Acoef(n1, n2, n3))
+        Acoef(:,:,:) = CMPLX(0.0d0, work(:,:,:), kind=dp)
+      ELSE
+        IF (SIZE(Acoef,1) /= n1 .OR. SIZE(Acoef,2) /= n2 .OR.  SIZE(Acoef,3) /= n3) &
+            CALL Fatal('GetReluctivityTensorC', 'Reluctivity and Reluctivity im of different size')
+        Acoef(1:n1,1:n2,1:n3) = CMPLX(REAL(Acoef(1:n1,1:n2,1:n3)), work(1:n1,1:n2,1:n3), kind=dp)
+      END IF
+    END IF
     Found = Found .OR. Found_im
 
-    IF(.NOT. PRESENT(Cwrk)) THEN
-      DEALLOCATE(work)
-    END IF
+    IF (ASSOCIATED(work)) DEALLOCATE(work)
 !-------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityTensorC
 !-------------------------------------------------------------------------------
@@ -394,14 +422,16 @@ CONTAINS
     REAL(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
     LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
-    REAL(KIND=dp) :: Pvacuum = 0._dp
+    REAL(KIND=dp) :: Pvacuum
+    SAVE FirstTime, Warned, Pvacuum
+!------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
       Pvacuum = GetConstReal( CurrentModel % Constants, &
               'Permittivity of Vacuum', Found )
+      IF (.NOT. Found) Pvacuum = 8.854187817d-12
       FirstTime = .FALSE.
     END IF
-    
 
     Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
     IF ( Found ) THEN
@@ -459,7 +489,7 @@ CONTAINS
     numempty = 0
     ROW_LOOP: DO i = 1, CM % NumberOfRows
       ! If CM % ConstrainedDOF(i) is true, then this must be a row corresponding to
-      ! edge dof so it must tbe zero. 
+      ! edge dof so it must be zero. 
       IF ( CM % ConstrainedDOF(i) ) THEN
         Emptyrow(i) = .TRUE.
       ELSE ! Otherwise the row might correspond with dirichlet scalar dof
@@ -663,7 +693,7 @@ CONTAINS
           END DO
         END IF
       END DO
-
+ 
       DO i=Parenv % mype+1,Parenv % PEs-1
         k = i+1
         CALL MPI_BSEND( ii(k),1,MPI_INTEGER,i,112,Solver % matrix % comm,ierr )
@@ -699,5 +729,558 @@ CONTAINS
   !-------------------------------------------------------------------------------
   END SUBROUTINE SendDoneNodesAndEdges
   !-------------------------------------------------------------------------------
+
+  
+  !-------------------------------------------------------------------------------
+  ! Mark nodes that are on outer boundary using face elements and node parmutation.
+  !-------------------------------------------------------------------------------
+  SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm,EnsureBC) 
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: Perm(:),SurfacePerm(:)
+    INTEGER :: SurfaceNodes
+    LOGICAL :: EnsureBC
+    
+    INTEGER :: snodes0, snodes, i,t,n,ActParents,ParParents
+    TYPE(Element_t), POINTER :: Element, P1, P2, P
+    LOGICAL, ALLOCATABLE :: BcNode(:)
+    
+    CALL Info('MarkOuterNodes','Marking outer nodes on outer boundary',Level=8)
+    
+    SurfaceNodes = 0
+
+    IF( Mesh % NumberOfFaces == 0 ) THEN
+      CALL Fatal('MarkOuterNodes','The faces are not created!')
+    END IF
+    
+    n = Mesh % NumberOfNodes
+    IF(.NOT. ASSOCIATED( SurfacePerm ) ) THEN
+      ALLOCATE( SurfacePerm( n ) )
+    END IF
+    SurfacePerm = 0
+    
+       
+    DO t=1, Mesh % NumberOfFaces 
+      
+      Element => Mesh % Faces(t)         
+      
+      IF( ParEnv % PEs > 1 ) THEN
+        ! Don't set BCs on partition interfaces
+        IF( Mesh % ParallelInfo % FaceInterface(t) ) CYCLE
+      END IF
+      
+      P1 => Element % BoundaryInfo % Left
+      P2 => Element % BoundaryInfo % Right
+      
+      ActParents = 0
+      ParParents = 0
+
+      IF( ASSOCIATED( P1 ) ) THEN
+        IF (ALL(Perm(P1 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P1 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1
+        ELSE
+          NULLIFY( P1 )
+        END IF
+      END IF
+      IF( ASSOCIATED( P2 ) ) THEN
+        IF (ALL(Perm(P2 % NodeIndexes)>0)) THEN
+          ActParents = ActParents + 1
+          IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1         
+        ELSE
+          NULLIFY( P2 )
+        END IF
+      END IF
+
+      ! We have either none or both parents as actice.
+      ! The BCs will be set only to outer boundaries of the domain. 
+      IF( ActParents /= 1 ) CYCLE
+      
+      ! The one parent is not a true one!
+      ! This can happen when we have halo elements. 
+      IF( ParEnv % PEs > 0 .AND. ParParents == 0 ) CYCLE
+      
+      SurfacePerm(Element % NodeIndexes) = 1
+    END DO
+
+    IF( EnsureBC ) THEN
+      ALLOCATE( BcNode(n) )
+      BcNode = .FALSE.
+
+      DO t=Mesh % NumberOfBulkElements +1, &
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements      
+        Element => Mesh % Elements(t)         
+        BcNode(Element % NodeIndexes) = .TRUE.
+      END DO
+
+      snodes0 = COUNT( SurfacePerm > 0 )
+      snodes0 = NINT( ParallelReduction(1.0_dp * snodes0) ) 
+
+      !DO i=1,n
+      !  IF( SurfacePerm(i) > 0 .AND. .NOT. BcNode(i) ) THEN
+      !    PRINT *,'node:',ParEnv % MyPe, i, Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
+      !  END IF
+      !END DO
+
+      WHERE( .NOT. BcNode ) SurfacePerm = 0
+      DEALLOCATE( BcNode ) 
+    END IF
+      
+    ! Create numbering for the surface nodes
+    snodes = 0
+    DO i=1,n
+      IF( SurfacePerm(i) > 0 ) THEN
+        snodes = snodes + 1
+        SurfacePerm(i) = snodes
+      END IF
+    END DO     
+    
+    snodes = NINT( ParallelReduction(1.0_dp * snodes) ) 
+    CALL Info('MarkOuterNodes','Total number of surface nodes: '//TRIM(I2S(snodes)),Level=6)
+
+    IF( EnsureBC ) THEN
+      IF( snodes0 > snodes ) THEN
+        CALL Info('MarkOuterNodes','Removed number of surface nodes not at BCs: '&
+            //TRIM(I2S(snodes0-snodes)),Level=6)
+      END IF
+    END IF
+
+    SurfaceNodes = snodes
+    
+  END SUBROUTINE MarkOuterNodes
+
+!------------------------------------------------------------------------------
+  SUBROUTINE GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    INTEGER :: FluxCount, FluxMap(:)
+    LOGICAL :: Transient
+    TYPE(Mesh_t) :: Mesh
+    LOGICAL, ALLOCATABLE :: TreeEdges(:)
+
+    TYPE(ListMatrixEntry_t), POINTER :: Aentry
+    TYPE(ListMatrix_t), POINTER :: Alist(:)
+    INTEGER :: i,j,k,l,n,Start
+    LOGICAL, ALLOCATABLE :: Done(:), CondReg(:)
+    TYPE(ValueList_t), POINTER :: BC
+    REAL(KIND=dp) :: Cond1
+    TYPE(Element_t), POINTER :: Edge, Boundary, Element
+
+    INTEGER, ALLOCATABLE :: r_e(:), s_e(:,:), iperm(:)
+    LOGICAL :: Found
+    INTEGER :: ssz, status(MPI_STATUS_SIZE), ierr, ii(ParEnv % PEs)
+!------------------------------------------------------------------------------
+
+    IF( ALLOCATED( TreeEdges ) ) THEN
+      CALL Info('WhitneyAVSolver','Gauge tree already created',Level=15)
+      RETURN
+    END IF
+      
+    ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
+    TreeEdges = .FALSE.
+
+    n = Mesh % NumberOfNodes
+    ALLOCATE(Done(n)); Done=.FALSE.
+
+    ! Skip Dirichlet BCs in terms of A:
+    ! ---------------------------------
+    DO i=1,Mesh % NumberOfBoundaryElements
+      Boundary => GetBoundaryElement(i)
+
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
+
+      BC => GetBC()
+      IF (.NOT.ASSOCIATED(BC)) CYCLE
+      IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
+                 TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
+ 
+      Done(Element % NodeIndexes) = .TRUE.
+    END DO
+
+    IF( Transient ) THEN
+      IF ( GetLogical( GetSolverParams(), 'Gauge Tree Skip Conducting Regions', Found) ) THEN
+        ! Skip conducting regions:
+        ! -------------------------
+        ALLOCATE(CondReg(Mesh % NumberOfNodes))
+        condReg = .TRUE.
+        DO i=1,GetNOFActive()
+          Element => GetActiveElement(i)
+          Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
+          IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
+        END DO
+
+        CALL CommunicateCondReg(Solver,Mesh,CondReg)
+
+        Done = Done.OR.CondReg
+        DEALLOCATE(CondReg)
+      END IF
+    END IF
+
+    ! 
+    ! Skip Dirichlet BCs in terms of B:
+    ! ---------------------------------
+    DO i=1,FluxCount
+      j = FluxMap(i)
+      IF ( Solver % Variable % Perm(j+n)<=0 ) CYCLE
+      Edge => Mesh % Edges(j)
+      Done(Edge % NodeIndexes)=.TRUE.
+    END DO
+
+    ! 
+    ! already set:
+    ! ------------
+
+    CALL RecvDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
+
+    ! node -> edge list
+    ! -----------------
+    Alist => NULL()
+    n = Mesh % NumberOfNodes
+    DO i=1,Mesh % NumberOfEdges
+      Edge => Mesh % Edges(i)
+      IF ( Solver % Variable % Perm(i+n)<=0 ) CYCLE
+      DO j=1,Edge % TYPE % NumberOfNodes
+        k=Edge % NodeIndexes(j)
+        Aentry=>List_GetMatrixIndex(Alist,k,i)
+      END DO
+    END DO
+
+    !
+    ! generate the tree for all (perhaps disconnected) parts:
+    ! -------------------------------------------------------
+    DO WHILE(.NOT.ALL(Done))
+      DO Start=1,n
+        IF (.NOT. Done(Start)) EXIT
+      END DO
+      CALL DepthFirstSearch(Alist,Done,Start)
+    END DO
+    CALL List_FreeMatrix(SIZE(Alist),Alist)
+
+    CALL SendDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
+    DEALLOCATE(Done)
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+  RECURSIVE SUBROUTINE DepthFirstSearch(Alist,done,i)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ListMatrix_t) :: Alist(:)
+    INTEGER :: i
+    LOGICAL :: Done(:)
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixEntry_t), POINTER :: Aentry
+    INTEGER :: j,k,l,n
+    TYPE(Element_t), POINTER :: Edge
+!------------------------------------------------------------------------------
+
+    ! To give better matrix conditioning some directional heuristics
+    ! could be added,e.g. select the order of going through the nodes
+    ! edge list here:
+
+    Done(i) = .TRUE.
+
+    Aentry => Alist(i) % Head
+    DO WHILE(ASSOCIATED(Aentry))
+      k = Aentry % Index
+      Aentry => Aentry % Next
+
+      Edge => Mesh % Edges(k)
+      IF (ALL(Done(Edge % NodeIndexes))) CYCLE
+
+      IF ( .NOT. TreeEdges(k)) CALL SetDOFToValue(Solver,k,0._dp)
+      TreeEdges(k)=.TRUE.
+      DO l=1,2
+        n = Edge % NodeIndexes(l)
+        IF (.NOT. Done(n)) CALL DepthFirstSearch(Alist,done,n)
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE DepthFirstSearch
+!------------------------------------------------------------------------------
+
+
+    
+!------------------------------------------------------------------------------
+  END SUBROUTINE GaugeTree
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
+    INTEGER :: FluxCount, FluxMap(:)
+    TYPE(Solver_t) :: Solver
+    TYPE(Mesh_t) :: Mesh
+    LOGICAL, ALLOCATABLE :: TreeEdges(:)
+!------------------------------------------------------------------------------
+!   TYPE(Mesh_t) :: Mesh
+!   LOGICAL, ALLOCATABLE :: TreeEdges(:)
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(ListMatrix_t), POINTER :: Alist(:)
+    INTEGER :: i,j,k,l,n,Start,nCount,fixedge
+    LOGICAL, ALLOCATABLE :: Done(:)
+    INTEGER, ALLOCATABLE :: NodeList(:)
+    TYPE(Element_t), POINTER :: Edge, Boundary, Element
+!------------------------------------------------------------------------------
+
+    IF( ALLOCATED( TreeEdges ) ) THEN
+      CALL Info('WhitneyAVSolver','Boundary Gauge tree already created',Level=15)
+      RETURN
+    END IF
+
+    ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
+    TreeEdges = .FALSE.
+
+    n = Mesh % NumberOfNodes
+    ALLOCATE(Done(n)); Done=.FALSE.
+
+    !
+    ! list the candidate nodes:
+    ! -------------------------
+    DO i=1,FluxCount
+      j = FluxMap(i)
+      Edge => Mesh % Edges(j)
+      Done(Edge % NodeIndexes)=.TRUE.
+    END DO
+
+    ALLOCATE(NodeList(COUNT(Done)))
+    nCount = 0
+    DO i=1,n
+      IF ( Done(i) ) THEN
+        nCount = nCount+1
+        NodeList(nCount)=i
+      END IF
+    END DO
+
+    Done=.FALSE.
+    DO i=1,FluxCount
+      IF ( TreeEdges(FluxMap(i)) ) THEN
+        Edge => Mesh % Edges(FluxMap(i))
+        Done(Edge % NodeIndexes)=.TRUE.
+      END IF
+    END DO
+
+    ! 
+    ! Skip Dirichlet BCs in terms of A:
+    ! ---------------------------------
+    DO i=1,Mesh % NumberOfBoundaryElements
+      Boundary => GetBoundaryElement(i)
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
+      BC => GetBC()
+      IF (.NOT.ASSOCIATED(BC)) CYCLE
+      IF (.NOT.ListCheckPresent( BC, &
+           TRIM(Solver % Variable % Name)//' {e}')) CYCLE
+ 
+      j=1; k=GetBoundaryEdgeIndex(Boundary,j)
+      DO WHILE(k>0)
+        Edge => Mesh % Edges(k)
+        TreeEdges(k) = .TRUE.
+        Done(Edge % NodeIndexes) = .TRUE.
+        j=j+1; k=GetBoundaryEdgeIndex(Boundary,j)
+      END DO
+    END DO
+
+    ! node -> edge list
+    ! -----------------
+    Alist => NULL()
+    DO i=1,FluxCount
+      j = FluxMap(i)
+      IF ( Solver % Variable % Perm(j+n)<=0 ) CYCLE
+
+      Edge => Mesh % Edges(j)
+      DO k=1,Edge % TYPE % NumberOfNodes
+        l=Edge % NodeIndexes(k)
+        Aentry=>List_GetMatrixIndex(Alist,l,j)
+      END DO
+    END DO
+
+    ALLOCATE(BasicCycles(FluxCount))
+    BasicCycles(:) % Degree = 0
+    DO i=1,FluxCount
+       BasicCycles(i) % Head => NULL()
+    END DO
+
+    ! generate the tree for all (perhaps disconnected) parts:
+    ! -------------------------------------------------------
+    DO WHILE(.NOT.ALL(Done(NodeList)))
+      DO i=1,nCount
+        Start = NodeList(i)
+        IF ( .NOT. Done(Start) ) EXIT
+      END DO
+      CALL BreadthFirstSearch(Alist,Done,Start,nCount,NodeList)
+    END DO
+    DEALLOCATE(Done,NodeList)
+    CALL List_FreeMatrix(SIZE(Alist),Alist)
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+  SUBROUTINE BreadthFirstSearch(Alist,done,start,nCount,NodeList)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: start,nCount,NodeList(:)
+    LOGICAL :: Done(:)
+    TYPE(ListMatrix_t) :: Alist(:)
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp, Btmp
+    INTEGER :: i,j,k,l,n,m,ll,IF,bcycle
+    LOGICAL :: FirstTime= .TRUE.
+    TYPE(Element_t), POINTER :: Edge,Edge1,Boundary
+    LOGICAL, ALLOCATABLE :: DoneL(:)
+    INTEGER, ALLOCATABLE :: Fifo(:), Previous(:), FiFo1(:)
+!------------------------------------------------------------------------------
+
+   ALLOCATE(DoneL(Mesh % NumberOfEdges)); DoneL=.FALSE.
+   ALLOCATE(Fifo(FluxCount),FiFo1(FluxCount))
+   ALLOCATE(Previous(Mesh % NumberOfNodes)); Previous=0;
+
+   bcycle = 0
+   DO bcycle=0,FluxCount
+     IF(.NOT.ASSOCIATED(BasicCycles(bcycle+1) % Head)) EXIT
+   END DO
+
+   IF = 0; m=0
+
+   IF( FirstTime ) THEN
+     DO i=1,nCount
+       j = NodeList(i)
+       IF ( Done(j) ) THEN
+         m=m+1; fifo1(m)=j
+         IF=IF+1; fifo(IF)=j
+       END IF
+     END DO
+     FirstTime = .FALSE.
+   END IF
+
+   IF ( IF==0 ) THEN
+     Done(Start)=.TRUE.
+     m=m+1; fifo1(m)=start
+     IF=1; fifo(IF)=start;
+   END IF
+
+   IF ( IF>0 ) THEN
+     DO WHILE(m>0)
+       j = Fifo1(m); m=m-1
+
+       Aentry => Alist(j) % Head
+       DO WHILE(ASSOCIATED(Aentry))
+         k = Aentry % Index
+         Aentry => Aentry % Next
+
+         Edge => Mesh % Edges(k)
+         IF (.NOT. TreeEdges(k) .OR. DoneL(k) ) CYCLE
+         DoneL(k)=.TRUE.
+
+         l = Edge % NodeIndexes(1)
+         IF (l==j) l=Edge % NodeIndexes(2)
+
+         IF=IF+1; Fifo(IF)=l
+         m=m+1; Fifo1(m)=l
+         Previous(l)=j
+       END DO
+     END DO
+     Start = l
+   END IF
+
+
+   DO WHILE(IF>0)
+     j = Fifo(IF); IF=IF-1
+
+     Aentry => Alist(j) % Head
+     DO WHILE(ASSOCIATED(Aentry))
+       k = Aentry % Index
+       Aentry => Aentry % Next
+
+       Edge => Mesh % Edges(k)
+       IF ( DoneL(k) ) CYCLE
+       DoneL(k)=.TRUE.
+
+       l = Edge % NodeIndexes(1)
+       IF (l==j) l=Edge % NodeIndexes(2)
+
+       IF ( Done(l) ) THEN
+         ! Generate fundamental cycle
+         bcycle = bcycle+1
+         CALL AddToCycle(bcycle,k)
+
+         m = j
+         DO WHILE(m/=Previous(l))
+           Ltmp => Alist(m) % Head
+           DO WHILE(ASSOCIATED(Ltmp))
+             Edge1 => Mesh % Edges(Ltmp % Index)
+             IF ( ANY(Edge1 % NodeIndexes(1:2)==Previous(m)) ) THEN
+               CALL AddToCycle(bcycle,Ltmp % Index); EXIT
+             END IF
+             Ltmp=>Ltmp % Next
+           END DO
+           IF (ANY(Edge1 % NodeIndexes(1:2) == l) ) EXIT
+           m = Previous(m)
+           IF(m==0) EXIT
+         END DO
+
+         IF (ALL(Edge1 % NodeIndexes(1:2) /= l) ) THEN
+           ltmp => Alist(l) % Head
+           DO WHILE(ASSOCIATED(ltmp))
+             edge1 => Mesh % Edges(Ltmp % Index)
+             IF ( ANY(Edge1 % NodeIndexes(1:2)==Previous(l)) ) THEN
+               CALL AddToCycle(bcycle,Ltmp % Index); EXIT
+             END IF
+             ltmp=>ltmp % Next
+           END DO
+         END IF
+       ELSE
+         IF (.NOT.TreeEdges(k)) CALL SetDOFToValue(Solver,k,0._dp)
+         IF=IF+1; Fifo(IF)=l
+         Previous(l)=j
+         Done(l)=.TRUE.
+         TreeEdges(k) = .TRUE.
+       END IF
+     END DO
+   END DO
+   DEALLOCATE(Fifo, Fifo1, DoneL)
+!------------------------------------------------------------------------------
+  END SUBROUTINE BreadthFirstSearch
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AddToCycle(bcycle,index)
+    IMPLICIT NONE
+    INTEGER :: bcycle,index
+!------------------------------------------------------------------------------
+    TYPE(ListMatrixEntry_t), POINTER :: Btmp
+
+    ALLOCATE(Btmp); Btmp % Next => BasicCycles(bcycle) % Head;
+    Btmp % Index = index; BasicCycles(bcycle) % Head => Btmp
+    BasicCycles(bcycle) % Degree=BasicCycles(bcycle) % Degree+1
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddToCycle
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE GaugeTreeFluxBC
+!------------------------------------------------------------------------------
 
 END MODULE MagnetoDynamicsUtils

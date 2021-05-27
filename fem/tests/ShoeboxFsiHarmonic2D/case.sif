@@ -23,7 +23,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -200,4 +200,4 @@ Boundary Condition 4
 End
  
 
-Solver 1 :: reference norm = 1.29319759E+03
+Solver 1 :: reference norm = 1.10379107E+03

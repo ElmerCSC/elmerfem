@@ -425,6 +425,29 @@ void error( char *format, ... )
     longjmp( *jmpbuf, 2 );
 }
 
+void error_matc( char *format, ... )
+{// Just a copy of error( char *format, ...) to avoid undefined reference error
+    va_list args;
+
+    va_start( args, format );
+#ifdef STRING_OUTPUT
+    if ( math_out_count+512 > math_out_allocated )
+    { 
+        math_out_allocated += 512;
+        math_out_str = (char *)realloc( math_out_str, math_out_allocated );
+    }
+    math_out_count += sprintf( &math_out_str[math_out_count], "MATC ERROR: " );
+    math_out_count += vsprintf( &math_out_str[math_out_count], format, args );
+#else
+    fprintf( math_err, "MATC ERROR: " );
+    vfprintf( math_err, format, args );
+#endif
+    va_end( args );
+
+    (void)mem_free_all();
+    longjmp( *jmpbuf, 2 );
+}
+
 void PrintOut( char *format, ... )
 {
 
@@ -445,6 +468,7 @@ void PrintOut( char *format, ... )
 }
 #else
 extern void error( char *format, ... );
+extern void error_matc( char *format, ... );
 extern void PrintOut( char *format, ... );
 #endif
 

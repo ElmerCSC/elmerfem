@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( mixed_fem.sif mixed_fem.sif COPYONLY)
+ADD_ELMERTEST_MODULE(MixedPoisson2D Source Source.F90)
+
+file(COPY ELMERSOLVER_STARTINFO square Source.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(MixedPoisson2D LABELS quick vector_element)

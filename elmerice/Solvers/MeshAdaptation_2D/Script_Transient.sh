@@ -19,11 +19,18 @@ display_usage() {
 if [[ ( "$@" == "--help") ||  "$@" == "-h" ]] 
 then 
   display_usage
-  exit 
+  return
 fi 
 #####################################################################################
 #####################################################################################
-ELMERSOLVER=ElmerSolver
+if [[ -z "${ELMERSOLVER_BIN}" ]]; then
+  ELMERSOLVER=ElmerSolver
+else
+  ELMERSOLVER="${ELMERSOLVER_BIN}"
+fi
+echo "################################"
+echo ElmerSolver Binary: $ELMERSOLVER_BIN
+echo "################################"
 ##
 TEMPLATES=SIFs
 ##
@@ -34,7 +41,7 @@ if [ ! -d "$TEMPLATES" ]; then
    echo "################################"
    echo
    display_usage
-   exit
+   return
 else
   if [ ! -f "$TEMPLATES/RUN_INIT.sif" ]||[ ! -f "$TEMPLATES/RUN_I_J.sif" ]||[ ! -f "$TEMPLATES/MESH_OPTIM_I_J.sif" ]; then
    echo "################################"
@@ -42,7 +49,7 @@ else
    echo "################################"
    echo
    display_usage
-   exit
+   return
   fi
 fi
 #####################################################################################
@@ -57,7 +64,7 @@ output_interval=5 # output intervals
 imin=0
 imax=0
 ##   2- REMESHING LOOP
-jmax=1 # maxium number of remeshing loops
+jmax=1 # maximum number of remeshing loops
 
 ### III- CONVERGENCE TEST (Here compute the relative node number difference between 2 remeshing loops) 
 converged (){
@@ -136,7 +143,7 @@ do
      # MESH ADAPTATION HAS FINISHED
      then
         # PHYSICAL SIMULATION HAS FINISHED
-        if [ $i -eq $imax ];then exit;fi 
+        if [ $i -eq $imax ];then return;fi 
 	# i=i+1; only read last time step for mesh adaptation
         INTERVALS=1
         Exec="never"

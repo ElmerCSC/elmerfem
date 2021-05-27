@@ -151,7 +151,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
 
    Debug = .FALSE.
 
-   IF(ParEnv % Pes > 1) CALL Fatal(SolverName, "Solver doesnt work in parallel!")
+   IF(ParEnv % Pes > 1) CALL Fatal(SolverName, "Solver does not work in parallel!")
 
    Timevar => VariableGet( Model % Variables,'Time', UnfoundFatal=.TRUE.)
    t = TimeVar % Values(1)
@@ -228,7 +228,7 @@ SUBROUTINE Find_Calving (Model, Solver, dt, TransientSimulation )
       TimeSinceLast = 0
 
       Mesh => Solver % Mesh
-      NoNodes = SIZE( Mesh % Nodes % x )
+      NoNodes = Mesh % NumberOfNodes
 
       FrontMaskName = 'Calving Front Mask'
       TopMaskName = 'Top Surface Mask'

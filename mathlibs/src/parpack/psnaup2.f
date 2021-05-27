@@ -262,8 +262,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Real 
-     &           sdot, psnorm2, slapy2, pslamch
-      external   sdot, psnorm2, slapy2, pslamch
+     &           sdot, psnorm2, slapy2, pslamch10
+      external   sdot, psnorm2, slapy2, pslamch10
 c
 c     %---------------------%
 c     | Intrinsic Functions |
@@ -285,7 +285,7 @@ c        %-------------------------------------%
 c        | Get the machine dependent constant. |
 c        %-------------------------------------%
 c
-         eps23 = pslamch(comm, 'Epsilon-Machine')
+         eps23 = pslamch10(comm, 'Epsilon-Machine')
          eps23 = eps23**(2.0  / 3.0 )
 c
          nev0   = nev

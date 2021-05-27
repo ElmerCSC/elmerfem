@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back, Juha Ruokolainen
+! *  Authors: Peter Råback, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -106,11 +106,7 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Visited = .FALSE., DirMask(3)
   REAL(KIND=dp) :: Unorm, Totnorm
   REAL(KIND=dp), POINTER :: ForceVector(:,:), SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: ScalarPotentialSol
   
   SAVE Visited
@@ -142,21 +138,18 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-    Solver % Matrix % rhs = 0.0_dp
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
   
   CALL BulkAssembly()
-  IF(.NOT. ConstantBulkMatrixInUse ) THEN
+  IF ( ConstantBulkMatrix ) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
     CALL DefaultFinishBulkAssembly()
   END IF
 
   ! No flux BCs
-  CALL DefaultFinishAssembly()
 
+  CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
 
   

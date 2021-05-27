@@ -52,6 +52,11 @@ MODULE Types
    USE omp_lib 
 #endif 
 
+#ifdef HAVE_LUA
+   USE Lua
+#endif
+   IMPLICIT NONE
+
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
    ! Parameter for internal blocking
    INTEGER, PARAMETER :: VECTOR_BLOCK_LENGTH = 128
@@ -85,13 +90,13 @@ MODULE Types
                         SOLVER_EXEC_PREDCORR = 7
 
   INTEGER, PARAMETER :: SOLVER_MODE_DEFAULT = 0, &    ! normal pde
-	                SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
-	                SOLVER_MODE_ASSEMBLY = 2, &   ! coupled solver with single block
-	                SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
-	                SOLVER_MODE_BLOCK = 4, &      ! block solver
-	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
-	                SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
-                        SOLVER_MODE_STEPS = 7         ! as the legacy but splitted to different steps
+	                      SOLVER_MODE_AUXILIARY = 1, &  ! no fem machinery (SaveData)
+	                      SOLVER_MODE_ASSEMBLY = 2, &   ! coupled solver with single block
+	                      SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
+	                      SOLVER_MODE_BLOCK = 4, &      ! block solver
+	                      SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
+	                      SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
+                        SOLVER_MODE_STEPS = 7         ! as the legacy but split to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
@@ -104,34 +109,6 @@ MODULE Types
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
 !------------------------------------------------------------------------------
 
-
-
-  
-#ifndef USE_ISO_C_BINDINGS
-INTERFACE
-  SUBROUTINE Envir(a,b,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: a(*), b(*)
-  END SUBROUTINE Envir
-
-  SUBROUTINE SystemC(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE SystemC
-
-  SUBROUTINE MakeDirectory(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE MakeDirectory
-
-  SUBROUTINE Matc(cmd,VALUE,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: cmd(*), VALUE(*)
-  END SUBROUTINE Matc
-END INTERFACE
-#endif
 
 #ifdef HAVE_MUMPS
   INCLUDE 'dmumps_struc.h'
@@ -169,6 +146,7 @@ END INTERFACE
     LOGICAL, ALLOCATABLE :: SubMatrixActive(:,:)
     TYPE(SubVector_t), POINTER :: SubVector(:) => NULL()
     INTEGER, POINTER :: BlockStruct(:)
+    INTEGER, POINTER :: InvBlockStruct(:)
     LOGICAL :: GotBlockStruct
     LOGICAL, ALLOCATABLE :: SubMatrixTranspose(:,:)
   END TYPE BlockMatrix_t
@@ -221,7 +199,8 @@ END INTERFACE
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
-        BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), PrecValues(:)=>NULL()
+        BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), BulkDampValues(:)=>NULL(), &
+        PrecValues(:)=>NULL(), HaloValues(:)=>Null(), HaloMassValues(:)=>Null()
 
 #ifdef HAVE_FETI4I
     TYPE(C_PTR) :: PermonMatrix = C_NULL_PTR, PermonSolverInstance = C_NULL_PTR
@@ -288,6 +267,7 @@ END INTERFACE
      LOGICAL, DIMENSION(:), POINTER   :: SendingNB
      INTEGER                          :: NumOfNeighbours
      INTEGER                          :: NumberOfThreads = 1
+     LOGICAL                          :: ExternalInit
    END TYPE ParEnv_t
 
 
@@ -388,7 +368,9 @@ END INTERFACE
                                                     ! interpolation type
 
      TYPE(BasisFunctions_t), POINTER :: BasisFunctions(:)
-     REAL(KIND=dp), DIMENSION(:), POINTER CONTIG :: NodeU, NodeV, NodeW
+     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: NodeU, NodeV, NodeW
+     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: P_NodeU, P_NodeV, P_NodeW
+     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: N_NodeU, N_NodeV, N_NodeW
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------
@@ -414,6 +396,11 @@ END INTERFACE
 #ifdef DEVEL_LISTCOUNTER 
      INTEGER :: Counter = 0
 #endif
+
+#ifdef HAVE_LUA
+     LOGICAL :: LuaFun = .FALSE.
+     !CHARACTER(len=:), ALLOCATABLE :: LuaCmd
+#endif
      
    END TYPE ValueListEntry_t
 
@@ -421,7 +408,13 @@ END INTERFACE
      TYPE(ValueListEntry_t), POINTER :: Head => Null()
    END TYPE ValueList_t
 
+   
+   TYPE VariableTable_t     
+     TYPE(Variable_t), POINTER :: Variable => NULL()
+     REAL(KIND=dp) :: ParamValue
+   END TYPE VariableTable_t
 
+   
    ! This is a tentative data type to speed up the retrieval of parameters
    ! at elements.
    !----------------------------------------------------------------------
@@ -457,15 +450,34 @@ END INTERFACE
      LOGICAL :: GlobalEverywhere = .FALSE.
      LOGICAL :: GlobalInList = .FALSE.
      LOGICAL :: EvaluateAtIP = .FALSE.
+     LOGICAL :: SomeVarAtIp = .FALSE.
      LOGICAL :: SomewhereEvaluateAtIP = .FALSE.
      LOGICAL :: NotPresentAnywhere = .FALSE.
      LOGICAL :: UnfoundFatal = .FALSE.
      REAL(KIND=dp) :: minv, maxv
      LOGICAL :: GotMinv = .FALSE., GotMaxv = .FALSE.
+     TYPE(VariableTable_t) :: VarTable(32)
+     INTEGER :: VarCount
 
-     
+     TYPE(ValueHandle_t), POINTER :: HandleIm => NULL()
+     TYPE(ValueHandle_t), POINTER :: Handle2 => NULL()
+     TYPE(ValueHandle_t), POINTER :: Handle3 => NULL()
    END TYPE ValueHandle_t
 
+
+   TYPE VariableHandle_t     
+     TYPE(Variable_t), POINTER :: Variable=>NULL()
+     REAL(KIND=dp),POINTER :: Values(:)=>NULL()
+     INTEGER,POINTER :: Perm(:)=>NULL()
+     INTEGER :: dofs
+     INTEGER :: tstep = 0
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: ActiveElement = .FALSE.
+     INTEGER :: Indexes(100)
+     INTEGER :: n = 0
+   END TYPE VariableHandle_t
+   
+   
 !------------------------------------------------------------------------------
 
    TYPE MaterialArray_t
@@ -475,7 +487,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE BoundaryConditionArray_t
-     INTEGER :: TYPE,Tag
+     INTEGER :: Type=0,Tag=0
      TYPE(Matrix_t), POINTER :: PMatrix => NULL()
      LOGICAL :: PMatrixGalerkin = .FALSE.
      TYPE(ValueList_t), POINTER :: Values => Null()
@@ -484,7 +496,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE InitialConditionArray_t
-     INTEGER :: TYPE,Tag
+     INTEGER :: TYPE=0,Tag=0
      TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE InitialConditionArray_t
 
@@ -552,10 +564,11 @@ END INTERFACE
      CHARACTER(LEN=MAX_NAME_LEN) :: Name
 
      TYPE(Solver_t), POINTER :: Solver => NULL()
-     LOGICAL :: Valid, Output
+     LOGICAL :: Valid = .TRUE.
+     LOGICAL :: Output = .TRUE.
      TYPE(Mesh_t), POINTER :: PrimaryMesh => NULL()
 
-     LOGICAL :: ValuesChanged = .FALSE.
+     LOGICAL :: ValuesChanged = .TRUE.
 
 ! Some variables are created from pointers to the primary variables
      LOGICAL :: Secondary = .FALSE.
@@ -564,8 +577,10 @@ END INTERFACE
 
      INTEGER :: DOFs = 0
      INTEGER, POINTER          :: Perm(:) => NULL()
+     LOGICAL :: PeriodicFlipActive = .FALSE.
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
      INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter=-1
+     INTEGER :: LinConverged=-1
      COMPLEX(KIND=dp), POINTER :: EigenValues(:) => NULL(), &
           EigenVectors(:,:) => NULL()
      REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
@@ -580,11 +595,6 @@ END INTERFACE
      TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
    END TYPE Variable_t
 
-   
-   TYPE VariableTable_t     
-     TYPE(Variable_t), POINTER :: Variable
-   END TYPE VariableTable_t
-   
 !------------------------------------------------------------------------------
    TYPE ListMatrixEntry_t
      INTEGER :: Index = -1
@@ -727,6 +737,7 @@ END INTERFACE
      LOGICAL, POINTER               :: INTERFACE(:)
      INTEGER, POINTER               :: GlobalDOFs(:)
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+     INTEGER, POINTER               :: Gorder(:) => NULL()
 
      LOGICAL, POINTER               :: FaceInterface(:)
      TYPE(NeighbourList_t),POINTER  :: FaceNeighbourList(:)
@@ -745,7 +756,7 @@ END INTERFACE
      TYPE(Quadrant_t), POINTER  :: RootQuadrant
 
      LOGICAL :: Changed, OutputActive, Stabilize
-     INTEGER :: SavesDone, AdaptiveDepth
+     INTEGER :: SavesDone, AdaptiveDepth, MeshTag = 1
 
      TYPE(Factors_t), POINTER :: ViewFactors(:)
 
@@ -760,17 +771,27 @@ END INTERFACE
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
      INTEGER :: DisContNodes
+
+     INTEGER, POINTER :: PeriodicPerm(:) => NULL()
+     LOGICAL, POINTER :: PeriodicFlip(:) => NULL()
      
      INTEGER, POINTER :: InvPerm(:)
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
-                NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
+                NumberOfFaces, NumberOfBoundaryElements, MeshDim = 0, MaxDim = 0, PassBCcnt=0
      INTEGER :: MinEdgeDOFs, MinFaceDOFs
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
+     INTEGER :: MaxNDOFs ! The maximum of nodal DOFs per node (created with a flag "n:")
 
      LOGICAL :: EntityWeightsComputed 
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
          BodyWeight(:), MaterialWeight(:)
+
+     INTEGER, POINTER :: RePartition(:) => NULL()
+     TYPE(NeighbourList_t), POINTER :: Halo(:) => NULL()
+     LOGICAL :: HaveHalo = .FALSE.
+
+     LOGICAL :: SingleMesh = .FALSE.
      
    END TYPE Mesh_t
 
@@ -795,6 +816,13 @@ END INTERFACE
      LOGICAL :: LumpedDiag = .TRUE.
    END TYPE MortarBC_t
 
+   TYPE TabulatedBasisAtIp_t
+     REAL(KIND=dp), POINTER :: Basis(:) => NULL()
+     REAL(KIND=dp), POINTER :: dBasisdx(:,:) => NULL()
+     REAL(KIND=dp) :: Weight = 0.0_dp
+   END TYPE TabulatedBasisAtIp_t
+
+   
 !------------------------------------------------------------------------------
 
 !   TYPE Constants_t
@@ -814,13 +842,18 @@ END INTERFACE
 
       REAL(KIND=dp) :: Alpha,Beta,dt
 
+      LOGICAL :: NewtonActive = .FALSE.
+      LOGICAL :: PeriodicFlipActive = .FALSE.
+      
       INTEGER :: SolverExecWhen
       INTEGER :: SolverMode
 
       INTEGER :: MultiGridLevel,  MultiGridTotal, MultiGridSweep
       LOGICAL :: MultiGridSolver, MultiGridEqualSplit
       TYPE(Mesh_t), POINTER :: Mesh => NULL()
-
+      INTEGER :: MeshTag = 1
+      LOGICAL :: MeshChanged = .FALSE.
+      
       INTEGER, POINTER :: ActiveElements(:) => NULL()
       INTEGER, POINTER :: InvActiveElements(:) => NULL()
       INTEGER :: NumberOfActiveElements
@@ -833,16 +866,13 @@ END INTERFACE
       TYPE(Matrix_t), POINTER :: ConstraintMatrix => NULL()
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., ConstraintMatrixVisited = .FALSE.
-      INTEGER(KIND=AddrInt) :: MortarProc, &
-          BoundaryElementProcedure=0, BulkElementProcedure=0
+      INTEGER(KIND=AddrInt) :: BoundaryElementProcedure=0, BulkElementProcedure=0
 
       TYPE(Graph_t), POINTER :: ColourIndexList => NULL(), BoundaryColourIndexList => NULL()
       INTEGER :: CurrentColour = 0, CurrentBoundaryColour = 0
       INTEGER :: DirectMethod = DIRECT_NORMAL
       LOGICAL :: GlobalBubbles = .FALSE., DG = .FALSE.
-#ifdef USE_ISO_C_BINDINGS
       TYPE(C_PTR) :: CWrap = C_NULL_PTR
-#endif
       TYPE(IntegrationPointsTable_t), POINTER :: IPTable => NULL()
     END TYPE Solver_t
 
@@ -865,7 +895,8 @@ END INTERFACE
   
   TYPE Component_t
     REAL(KIND=dp) :: Inductance=0._dp, Resistance=0._dp, Conductance = 0._dp, ElArea, &
-                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
+         N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns, &
+         VoltageFactor=1._dp, SymmetryCoeff=1._dp
     INTEGER :: polord, nofcnts, BodyId, ComponentId
     INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
@@ -880,6 +911,7 @@ END INTERFACE
     LOGICAL :: Harmonic = .FALSE.
   END TYPE Component_t
 
+!-------------------Circuit stuff----------------------------------------------
   TYPE ComponentPointer_t
     TYPE(Component_t), POINTER :: Component
   END TYPE ComponentPointer_t
@@ -899,7 +931,7 @@ END INTERFACE
     TYPE Model_t
 !------------------------------------------------------------------------------
 !
-!     Coodrinate system dimension + type
+!     Coordinate system dimension + type
 !
       INTEGER :: DIMENSION, CoordinateSystem
 !
@@ -916,7 +948,10 @@ END INTERFACE
 !     Variables
 !
       TYPE(Variable_t), POINTER  :: Variables => NULL()
-!
+
+!     External control of the simulation to sweep over parameter space.
+      TYPE(ValueList_t), POINTER :: Control => Null()
+      
 !     Some physical constants, that will be read from the database or set by
 !     other means: gravity direction/intensity and Stefan-Boltzmann constant)
 !
@@ -1017,6 +1052,7 @@ END INTERFACE
       TYPE(Solver_t), POINTER :: ASolver    
       
       LOGICAL :: HarmonicCircuits
+
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel

@@ -5,5 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO  angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(OdeSolver1stOrder)
-ADD_ELMER_LABEL(OdeSolver1stOrder quick)
+ADD_ELMER_TEST(OdeSolver1stOrder LABELS quick transient)

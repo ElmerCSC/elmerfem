@@ -81,14 +81,21 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: Norm, Pave
   INTEGER :: dim, maxiter, iter, n, nb, nd, t, active
-  LOGICAL :: Found, InitHandles
+  LOGICAL :: Found, InitHandles, NeedMass
 !------------------------------------------------------------------------------
+
+  CALL Info('WaveSolver','Solving the divergence pressure wave')
   
   dim = CoordinateSystemDimension()
   maxiter = ListGetInteger(GetSolverParams(), &
       'Nonlinear System Max Iterations', Found, minv=1)
   IF(.NOT. Found ) maxiter = 1
 
+  NeedMass = EigenOrHarmonicAnalysis() 
+  IF( NeedMass ) THEN
+    CALL Info('WaveSolver','We have a harmonic or eigenmode system')
+  END IF
+  
   CALL DefaultStart()
 
   DO iter=1,maxiter
@@ -115,8 +122,7 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
       IF (ActiveBoundaryElement()) THEN
         n  = GetElementNOFNodes(Element)
         nd = GetElementNOFDOFs(Element)
-        nb = GetElementNOFBDOFs(Element)
-        CALL LocalMatrixBC(Element, n, nd+nb, InitHandles)
+        CALL LocalMatrixBC(Element, n, nd, InitHandles)
       END IF
     END DO
 
@@ -206,12 +212,12 @@ CONTAINS
 
       ! The Laplace term:
       ! -----------------------------------------------
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) - Weight * &
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
           MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
 
       ! Damping term to implement "viscous wave equation":
       !---------------------------------------------------
-      IF (DampingActive) Damp(1:nd,1:nd) = Damp(1:nd,1:nd) - Weight * &
+      IF (DampingActive) Damp(1:nd,1:nd) = Damp(1:nd,1:nd) + Weight * &
           (att/c**2) * MATMUL( dBasisdx, TRANSPOSE( dBasisdx ) )
 
       DO p=1,nd
@@ -219,29 +225,31 @@ CONTAINS
 
           ! Reaction term:
           ! -----------------------------------
-          IF (ReactiveMedium) Damp(p,q) = Damp(p,q) - Weight * &
+          IF (ReactiveMedium) Damp(p,q) = Damp(p,q) + Weight * &
               (react/c**2) * Basis(q) * Basis(p)
 
           ! The 2nd time derivative:
           ! ------------------------------
-          MASS(p,q) = MASS(p,q) - Weight * &
+          MASS(p,q) = MASS(p,q) + Weight * &
               1.0_dp/ c**2  * Basis(q) * Basis(p)
 
         END DO
       END DO
 
       IF (AssembleSource) &
-          FORCE(1:nd) = FORCE(1:nd) + Weight * LoadAtIP * Basis(1:nd)
+          FORCE(1:nd) = FORCE(1:nd) - Weight * LoadAtIP * Basis(1:nd)
     END DO
-
+    
     IF( TransientSimulation) THEN
-       CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+      CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+    ELSE IF( NeedMass ) THEN
+      CALL DefaultUpdateMass( MASS )
     END IF
 
     ! Applying static condensation is a risky endeavour since the values of 
     ! the bubble DOFs at previous time steps are not recovered, disable the 
     ! static condensation?
-    CALL LCondensate( nd-nb, nb, STIFF, FORCE )
+    CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     CALL DefaultUpdateEquations(STIFF, FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -304,53 +312,25 @@ CONTAINS
         c = ListGetElementRealParent(SoundSpeed_h, Basis, Element)
         DO p=1,nd
           DO q=1,nd
-            DAMP(p,q) = DAMP(p,q) - Weight * Basis(q) * Basis(p) / c
+            DAMP(p,q) = DAMP(p,q) + Weight * Basis(q) * Basis(p) / c
           END DO
         END DO
       END IF
 
       g = ListGetElementReal(Flux_h, Basis, Element, AssembleFlux)
       IF (AssembleFlux) THEN
-        FORCE(1:nd) = FORCE(1:nd) + Weight * g * Basis(1:nd)
+        FORCE(1:nd) = FORCE(1:nd) - Weight * g * Basis(1:nd)
       END IF
 
     END DO
 
     IF( TransientSimulation) THEN
-       CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
+      CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
     END IF
+
     CALL DefaultUpdateEquations(STIFF,FORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( N, Nb, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-    INTEGER :: N, Nb
-    REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
-         Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
-
-    INTEGER :: m, i, j, l, p, Ldofs(N), Bdofs(Nb)
-
-    IF ( Nb <= 0 ) RETURN
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = (/ (i, i=n+1,n+nb) /)
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL InvertMatrix( Kbb,nb )
-
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

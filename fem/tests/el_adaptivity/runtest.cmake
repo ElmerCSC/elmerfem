@@ -1,3 +1,4 @@
+include(test_macros)
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/kulma)
 execute_process(COMMAND ${MESH2D_BIN} kulma.mif kulma)
 file(COPY kulma.mif DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/kulma)

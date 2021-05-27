@@ -1,0 +1,108 @@
+! A simple 3D steady-state of bottom variable
+! spread over the whole column of structured mesh
+! Test case authors: Peter Råback, Thomas Zwinger
+! Test case created: 06.10.2019
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Extruded Mesh Levels = 10
+  Extruded Max Coordinate = 1.0
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+  Exported Variable 1 = -dofs 1 "Bottom Temperature"
+End
+
+Solver 2
+  Exec Solver = before all 
+  Equation = "HeightDepth"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+  Variable 1 = "Temperature"
+  Operator 1 = "bottom"
+End 
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+
+! Just an other way of telling that the source is one,
+! This one effectively checks for the projection
+  Heat Source = Variable "bottom temperature"
+   Real MATC "-10.0*tx(0)" 
+End
+
+Boundary Condition 1
+  Name = "Adibatic sides"
+  Target Boundaries(2) = 1 2
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  !Target Boundaries = 5 
+  Temperature = Variable Coordinate
+    Real MATC "1.0*sin(2*pi*tx(0))*cos(2*pi*tx(1))"
+End
+
+Boundary Condition 3
+  Name = "Top"
+  !Target Boundaries = 6 
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = Real 1.72939174E-01
+RUN
+
+!End Of File

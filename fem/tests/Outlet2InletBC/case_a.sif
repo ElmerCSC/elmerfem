@@ -1,0 +1,114 @@
+! This case demonstrates how to use outlet as the inlet for next
+! simulation. We choose to use Gmsh format for the communication as it comes
+! with the mesh + results in a rather compact form (and has other uses as well).  
+!
+! This generates a .msh file used to interpolate.
+!
+! P.R. 14.8.2020
+
+Header
+  Mesh DB "." "beam_a"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = "case_a.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "Ideal"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1 
+End
+
+Material 1
+  Name = "Material"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "Source"
+  Heat Source = 1.0
+End 
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+ 
+Solver 2
+  Exec Solver = after all
+  
+  Equation = "GmshOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+
+  Output Directory = "."
+  Output File Name = case_a.msh
+
+  Gmsh Format = Logical True
+  Scalar Field 1 = temperature
+End
+
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries = 1
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries = 2
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries = 3
+End
+
+Boundary Condition 4
+  Name = "Inlet"
+  Target Boundaries = 4
+  Temperature = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 6.713656

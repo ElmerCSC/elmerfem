@@ -54,13 +54,14 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: ListElemTypes(MaxElemCode)
 
 
-  CHARACTER(LEN=1024) :: OutputFile, ResFile, MshFile, Txt, Family, &
+  CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile, OutputDirectory, ResFile, MshFile, Txt, Family, &
        ScalarFieldName, VectorFieldName, TensorFieldName, CompName
   CHARACTER(LEN=1024) :: Txt2, Txt3
 
   INTEGER :: PyramidMap613(14,4), PyramidMap605(2,4)
   INTEGER :: WedgeMap706(3,4), WedgeMap715(21,4)
-
+  INTEGER :: GidUnit
+  
 !------------------------------------------------------------------------------
 
   PyramidMap605(1,:) = (/ 3, 5, 4, 1 /)
@@ -123,21 +124,22 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   OutputFile = GetString( Solver % Values, 'Output File Name', Found )
   IF(.NOT. Found) OutputFile = 'Output'
 
+  CALL SolverOutputDirectory( Solver, OutputFile, OutputDirectory, UseMeshDir = .TRUE. )
+  OutputFile = TRIM(OutputDirectory)// '/' //TRIM(OutputFile)
+  
   WRITE(ResFile,'(A,A)') TRIM(OutputFile),'.flavia.res'
   WRITE(MshFile,'(A,A)') TRIM(OutputFile),'.flavia.msh'
-
 
   CALL Info('GidOutputSolver','Writing result for GiD postprocessing')
   CALL Info('GidOutputSolver','res-file = :'//TRIM(ResFile) )
   CALL Info('GidOutputSolver','msh-file = :'//TRIM(MshFile) )
-
 
   ! Write the GiD msh-file:
   !------------------------
   dim = CoordinateSystemDimension()
   IF( CoordinatesWritten ) GOTO 10
 
-  OPEN( UNIT=10, FILE=MshFile )
+  OPEN(NEWUNIT=GidUnit, FILE=MshFile )
 
   ! First check how many element types are involved in the analysis:
   !-----------------------------------------------------------------
@@ -177,26 +179,26 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
      WRITE(Txt,'(A,I1,A,A,A,I0)') 'MESH "Elmer Mesh" dimension ',&
              dim,' ElemType ', TRIM(Family),' Nnode ', n
 
-     WRITE(10,'(A)') TRIM(Txt)
+     WRITE(GidUnit,'(A)') TRIM(Txt)
 
      ! Write all node coordinates in the first block:
      !-----------------------------------------------
      IF( .NOT.CoordinatesWritten ) THEN
-        WRITE(10,'(A)') 'Coordinates'
+        WRITE(GidUnit,'(A)') 'Coordinates'
         DO j = 1, Model % Mesh % NumberOfNodes
-           WRITE(10,'(I6,3ES16.7E3)') j, &
+           WRITE(GidUnit,'(I6,3ES16.7E3)') j, &
                 Model % Mesh % Nodes % x(j), &
                 Model % Mesh % Nodes % y(j), &
                 Model % Mesh % Nodes % z(j)
         END DO
-        WRITE(10,'(A)') 'end coordinates'
-        WRITE(10,'(A)') ' '
+        WRITE(GidUnit,'(A)') 'end coordinates'
+        WRITE(GidUnit,'(A)') ' '
         CoordinatesWritten = .TRUE.
      END IF
 
      ! Write the element connectivity tables:
      !---------------------------------------
-     WRITE(10,'(A)') 'Elements'
+     WRITE(GidUnit,'(A)') 'Elements'
 !     DO j = 1, Solver % NumberOfActiveElements
 !        Element => GetActiveElement( j )
      DO j = 1, Model % NumberOfBulkElements !+ Model % NumberOfBoundaryElements
@@ -207,47 +209,47 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
         body_id = Element % BodyId
 
         IF( Code == 613 ) THEN
-           ! 13 noded pyramids will be splitted into 14 linear tetraheda
+           ! 13 noded pyramids will be split into 14 linear tetraheda
            !------------------------------------------------------------
            DO m = 1,14
               ElementCounter = ElementCounter + 1
-              WRITE(10,'(100I10)') ElementCounter, &
+              WRITE(GidUnit,'(100I10)') ElementCounter, &
                    Element % NodeIndexes(PyramidMap613(m,:)), body_id
            END DO
         ELSEIF( Code == 605 ) THEN
-           ! 5 noded pyramids will be splitted into 2 linear tetraheda
+           ! 5 noded pyramids will be split into 2 linear tetraheda
            !----------------------------------------------------------
            DO m = 1,2
               ElementCounter = ElementCounter + 1
-              WRITE(10,'(100I10)') ElementCounter, &
+              WRITE(GidUnit,'(100I10)') ElementCounter, &
                    Element % NodeIndexes(PyramidMap605(m,:)), body_id
            END DO           
         ELSEIF( Code == 706 ) THEN
-           ! 6 noded wedges will be splitted into 3 linear tetraheda
+           ! 6 noded wedges will be split into 3 linear tetraheda
            !---------------------------------------------------------
            DO m = 1,3
               ElementCounter = ElementCounter + 1
-              WRITE(10,'(100I10)') ElementCounter, &
+              WRITE(GidUnit,'(100I10)') ElementCounter, &
                    Element % NodeIndexes(WedgeMap706(m,:)), body_id
            END DO           
         ELSEIF( Code == 715 ) THEN
-           ! 15 noded wedges will be splitted into 21 linear tetraheda
+           ! 15 noded wedges will be split into 21 linear tetraheda
            !----------------------------------------------------------
            DO m = 1,21
               ElementCounter = ElementCounter + 1
-              WRITE(10,'(100I10)') ElementCounter, &
+              WRITE(GidUnit,'(100I10)') ElementCounter, &
                    Element % NodeIndexes(WedgeMap715(m,:)), body_id
            END DO           
         ELSE
            ! Standard elements are understood by GiD as such
            !------------------------------------------------
            ElementCounter = ElementCounter + 1 
-           WRITE(10,'(100I10)') ElementCounter, Element % NodeIndexes, body_id
+           WRITE(GidUnit,'(100I10)') ElementCounter, Element % NodeIndexes, body_id
         END IF
 
      END DO
-     WRITE(10,'(A)') 'end elements'
-     WRITE(10,'(A)') ' '
+     WRITE(GidUnit,'(A)') 'end elements'
+     WRITE(GidUnit,'(A)') ' '
   END DO
 
 10 CONTINUE
@@ -255,10 +257,10 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   ! Write the GiD res-file:
   !------------------------
   IF( FirstTimeStep ) THEN
-    OPEN(UNIT=10, FILE=ResFile )
-    WRITE(10,'(A)') 'GiD Post Result File 1.0'
+    OPEN(NEWUNIT=GidUnit, FILE=ResFile )
+    WRITE(GidUnit,'(A)') 'GiD Post Result File 1.0'
   ELSE
-    OPEN(UNIT=10, FILE=ResFile, POSITION='APPEND' )
+    OPEN(NEWUNIT=GidUnit, FILE=ResFile, POSITION='APPEND' )
   END IF
 
   Nloop = 1
@@ -295,31 +297,31 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
          IF( TransientSimulation ) THEN
            TimeVariable => VariableGet( Model % Mesh % Variables, 'Time' )
            PRINT *,'Current time=',TimeVariable % Values(1)
-           WRITE(10,'(A,A,A,ES16.7E3,A)') 'Result "',&
+           WRITE(GidUnit,'(A,A,A,ES16.7E3,A)') 'Result "',&
                TRIM(ScalarFieldName),'" "Transient analysis" ', &
                TimeVariable % Values(1) ,' Scalar OnNodes'
          ELSE
            IF( .NOT.EigenAnalysis ) THEN
-             WRITE(10,'(A,A,A,I2,A)') 'Result "',&
+             WRITE(GidUnit,'(A,A,A,I2,A)') 'Result "',&
                  TRIM(ScalarFieldName),'" "Steady analysis"',SteadyStep,' Scalar OnNodes'
            ELSE
-             WRITE(10,'(A,A,A,I2,A)') 'Result "',&
+             WRITE(GidUnit,'(A,A,A,I2,A)') 'Result "',&
                  TRIM(ScalarFieldName),'" "Eigen analysis"',Loop,' Scalar OnNodes'
            END IF
          END IF
          
-         WRITE(10,'(A,A,A)') 'ComponentNames "',TRIM(ScalarFieldName),'"'
-         WRITE(10,'(A)') 'Values'
+         WRITE(GidUnit,'(A,A,A)') 'ComponentNames "',TRIM(ScalarFieldName),'"'
+         WRITE(GidUnit,'(A)') 'Values'
          DO j = 1, Model % Mesh % NumberOfNodes
            k = Perm(j)
            IF( .NOT.EigenAnalysis ) THEN
-             WRITE(10,'(I6,ES16.7E3)') j, Values(k)
+             WRITE(GidUnit,'(I6,ES16.7E3)') j, Values(k)
            ELSE
-             WRITE(10,'(I6,ES16.7E3)') j, REAL(CValues(k))
+             WRITE(GidUnit,'(I6,ES16.7E3)') j, REAL(CValues(k))
            END IF
          END DO
-         WRITE(10,'(A)') 'end values'
-         WRITE(10,'(A)') ' '
+         WRITE(GidUnit,'(A)') 'end values'
+         WRITE(GidUnit,'(A)') ' '
        END IF
      END DO
 
@@ -335,15 +337,15 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
        IF( TransientSimulation ) THEN
          TimeVariable => VariableGet( Model % Mesh % Variables, 'Time' )
          PRINT *,'Current time=',TimeVariable % Values(1)
-         WRITE(10,'(A,A,A,ES16.7E3,A)') 'Result "',&
+         WRITE(GidUnit,'(A,A,A,ES16.7E3,A)') 'Result "',&
              TRIM(VectorFieldName),'" "Transient analysis" ', &
              TimeVariable % Values(1) ,' Vector OnNodes'
        ELSE
          IF( .NOT.EigenAnalysis ) THEN
-           WRITE(10,'(A,A,A,I2,A)') 'Result "',&
+           WRITE(GidUnit,'(A,A,A,I2,A)') 'Result "',&
                TRIM(VectorFieldName),'" "Steady analysis"',SteadyStep,' Vector OnNodes'
          ELSE
-           WRITE(10,'(A,A,A,I2,A)') 'Result "',&
+           WRITE(GidUnit,'(A,A,A,I2,A)') 'Result "',&
                TRIM(VectorFieldName),'" "Eigen analysis"',Loop,' Vector OnNodes'
          END IF
        END IF
@@ -358,14 +360,14 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
                TRIM(Txt), ' "', TRIM(VectorFieldName),j,'"'
          END IF
        END DO
-       WRITE(10,'(A)') TRIM(Txt)
-       WRITE(10,'(A)') 'Values'
+       WRITE(GidUnit,'(A)') TRIM(Txt)
+       WRITE(GidUnit,'(A)') 'Values'
        
        DO j = 1, Model % Mesh % NumberOfNodes
          WRITE(Txt2,'(I10)') j
          DO k = 1,dim
            
-           ! Check if vector field components have been defined explicitely:
+           ! Check if vector field components have been defined explicitly:
            !----------------------------------------------------------------
            WRITE(Txt3,'(A,I1,A,I1)') 'Vector Field ',i,' component ',k
            CompName = GetString( Solver % Values, TRIM(Txt3), Found )
@@ -393,10 +395,10 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
              
            END IF
          END DO
-         WRITE(10,'(A)') TRIM(Txt2)
+         WRITE(GidUnit,'(A)') TRIM(Txt2)
          
        END DO
-       WRITE(10,'(A)') 'end values'
+       WRITE(GidUnit,'(A)') 'end values'
      END DO
      
 
@@ -412,15 +414,15 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
        IF( TransientSimulation ) THEN
          TimeVariable => VariableGet( Model % Mesh % Variables, 'Time' )
          PRINT *,'Current time=',TimeVariable % Values(1)
-         WRITE(10,'(A,A,A,ES16.7E3,A)') 'Result "',&
+         WRITE(GidUnit,'(A,A,A,ES16.7E3,A)') 'Result "',&
              TRIM(TensorFieldName),'" "Transient analysis" ', &
              TimeVariable % Values(1) ,' Matrix OnNodes'
        ELSE
          IF( .NOT.EigenAnalysis ) THEN
-           WRITE(10,'(A,A,A,I2,A)') 'Result "',&
+           WRITE(GidUnit,'(A,A,A,I2,A)') 'Result "',&
                TRIM(TensorFieldName),'" "Steady analysis"',SteadyStep,' Matrix OnNodes'
          ELSE
-           WRITE(10,'(A,A,A,I2,A)') 'Result "',&
+           WRITE(GidUnit,'(A,A,A,I2,A)') 'Result "',&
                TRIM(TensorFieldName),'" "Eigen analysis"',Loop,' Matrix OnNodes'
          END IF
          
@@ -451,14 +453,14 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
                TRIM(Txt), ' "', TRIM(txt2), '"'
          END IF
        END DO
-       WRITE(10,'(A)') TRIM(Txt)
-       WRITE(10,'(A)') 'Values'
+       WRITE(GidUnit,'(A)') TRIM(Txt)
+       WRITE(GidUnit,'(A)') 'Values'
        
        DO j = 1, Model % Mesh % NumberOfNodes
          WRITE(Txt2,'(I10)') j
          DO k = 1,TensorComponents
            
-           ! Check if tensor field components have been defined explicitely:
+           ! Check if tensor field components have been defined explicitly:
            !----------------------------------------------------------------
            WRITE(Txt3,'(A,I1,A,I1)') 'Tensor Field ',i,' component ',k
            CompName = GetString( Solver % Values, TRIM(Txt3), Found )
@@ -488,16 +490,16 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
 
            END IF
          END DO
-         WRITE(10,'(A)') TRIM(Txt2)
+         WRITE(GidUnit,'(A)') TRIM(Txt2)
          
        END DO
-       WRITE(10,'(A)') 'end values'
+       WRITE(GidUnit,'(A)') 'end values'
      END DO
      
    END DO ! Nloop
 
 
-   CLOSE(10)
+   CLOSE(GidUnit)
   
    CALL Info('GitOutputSolver','Output complete',Level=7)
 

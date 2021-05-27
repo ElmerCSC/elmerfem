@@ -67,6 +67,7 @@ SUBROUTINE SSAmask( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
+  USE ElementDescription
 
   IMPLICIT NONE
   !------------------------------------------------------------------------------

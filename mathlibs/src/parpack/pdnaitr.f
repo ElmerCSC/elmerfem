@@ -297,8 +297,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Double precision
-     &           ddot, pdnorm2, dlanhs, pdlamch
-      external   ddot, pdnorm2, dlanhs, pdlamch
+     &           ddot, pdnorm2, dlanhs, pdlamch10
+      external   ddot, pdnorm2, dlanhs, pdlamch10
 c
 c     %---------------------%
 c     | Intrinsic Functions |
@@ -326,10 +326,10 @@ c        | overflow should not occur.              |
 c        | REFERENCE: LAPACK subroutine dlahqr     |
 c        %-----------------------------------------%
 c
-         unfl = pdlamch(comm, 'safe minimum' )
+         unfl = pdlamch10(comm, 'safe minimum' )
          ovfl = one / unfl
          call dlabad( unfl, ovfl )
-         ulp = pdlamch( comm, 'precision' )
+         ulp = pdlamch10( comm, 'precision' )
          smlnum = unfl*( n / ulp )
          first = .false.
       end if

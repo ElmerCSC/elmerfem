@@ -141,7 +141,7 @@ Boundary Condition
 ! Use weak projector (mortar method)
   Galerkin Projector = True
   Normal-Tangential Displacement = True
-  Mass Consistant Normals = True
+  Mass Consistent Normals = True
 
 ! Type of contact 
   Tie Contact = Logical True

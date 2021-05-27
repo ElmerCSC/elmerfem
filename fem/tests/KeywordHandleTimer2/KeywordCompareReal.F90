@@ -116,8 +116,9 @@ SUBROUTINE KeywordCompare( Model,Solver,dt,TransientSimulation )
 
     PRINT *,'Compare integrals:', OldCounter(key), NewCounter(key), &
         NewCounter(key)/OldCounter(key)
-    PRINT *,'Compare time consumptions:',OldTimes(key),NewTimes(key),&
-        OldTimes(key)/NewTimes(key)
+    PRINT *,'Time consumptions:',OldTimes(key),NewTimes(key)
+    PRINT *,'Speed-up for Real:', OldTimes(key)/NewTimes(key)
+
   END DO
 
 

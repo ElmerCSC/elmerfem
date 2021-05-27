@@ -71,7 +71,7 @@
     USE Adaptive
     USE DefUtils
     USE FreeSurface
-
+    USE ElementDescription, ONLY: GetEdgeMap
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
@@ -94,7 +94,7 @@
      REAL(KIND=dp) :: RelativeChange,UNorm,Gravity(3),AngularVelocity(3), &
        Tdiff,s,Relaxation,NewtonTol,NewtonUBound,NonlinearTol, &
        ReferencePressure=0.0, SpecificHeatRatio, &
-       PseudoCompressibilityScale=1.0, NonlinearRelax, FreeSTol, res
+       PseudoCompressibilityScale=1.0, FreeSTol, res
 
      INTEGER :: NSDOFs,NewtonIter,NewtonMaxIter,NonlinearIter,FreeSIter
 
@@ -142,7 +142,7 @@
        ReferenceTemperature(:), Permeability(:),Mx(:),My(:),Mz(:),       &
        LocalTemperature(:), GasConstant(:), HeatCapacity(:),             &
        LocalTempPrev(:),SlipCoeff(:,:), PseudoCompressibility(:),        &
-       PseudoPressure(:), PSolution(:), Drag(:,:), PotentialField(:),    &
+       PseudoPressure(:), Drag(:,:), PotentialField(:),    &
        PotentialCoefficient(:)
 
      SAVE U,V,W,MASS,STIFF,LoadVector,Viscosity, TimeForce,FORCE,ElementNodes,  &
@@ -151,14 +151,10 @@
        Permeability,Mx,My,Mz,LayerThickness, SlipCoeff, SurfaceRoughness,       &
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
-       PseudoPressureExists, PSolution, Drag, PotentialField, PotentialCoefficient, &
+       PseudoPressureExists, Drag, PotentialField, PotentialCoefficient, &
        ComputeFree, Indexes
 
-#ifdef USE_ISO_C_BINDINGS
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
-#else
-      REAL(KIND=dp) :: at,at0,at1,totat,st,totst,CPUTime,RealTime
-#endif
 !------------------------------------------------------------------------------
 
      INTERFACE
@@ -287,7 +283,7 @@
 !     Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
 
-     IF ( .NOT.AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+     IF ( .NOT.AllocationsDone .OR. Solver % MeshChanged ) THEN
 
        N = Solver % Mesh % MaxElementDOFs
        
@@ -312,7 +308,6 @@
                ReferenceTemperature,                & 
                LocalTempPrev, LocalTemperature,     &
                PotentialField, PotentialCoefficient, &
-               !PSolution, &
                LoadVector, Alpha, Beta, &
                ExtPressure, STAT=istat )
        END IF
@@ -337,7 +332,6 @@
                  GasConstant( N ), HeatCapacity( N ),    &
                  ReferenceTemperature(N),                & 
                  LocalTempPrev(N), LocalTemperature(N),  &
-                 !PSolution( SIZE( FlowSolution ) ),      &
                  PotentialField( N ), PotentialCoefficient( N ), &
                  LoadVector( 4,N ), Alpha( N ), Beta( N ), &
                  ExtPressure( N ), STAT=istat )
@@ -371,8 +365,11 @@
           ALLOCATE( PseudoPressure(n),STAT=istat ) 
        END IF
 
+!------------------------------------------------------------------------------
+!     This hack is needed  cause of the fluctuating pressure levels
+!------------------------------------------------------------------------------
        IF( AllIncompressible ) THEN
-         CALL Info('FlowSole','Enforcing relative pressure relaxation',Level=8)
+         CALL Info('FlowSolve','Enforcing relative pressure relaxation',Level=8)
          CALL ListAddNewLogical( Solver % Values,'Relative Pressure Relaxation',.TRUE.)
        END IF
        
@@ -411,8 +408,6 @@
          ListCheckPresentAnyBodyForce(Model,'Angular Velocity 2') .OR. &
          ListCheckPresentAnyBodyForce(Model,'Angular Velocity 3') 
          
-
-
 !------------------------------------------------------------------------------
      P2P1 = .FALSE.
      Bubbles   = ListGetLogical( Solver % Values,'Bubbles',GotIt )
@@ -482,18 +477,7 @@
      FreeSIter = ListGetInteger( Solver % Values, &
         'Free Surface After Iterations', GotIt, minv=0 )
      IF ( .NOT. GotIt ) FreeSIter = 0
-!------------------------------------------------------------------------------
-!    We do our own relaxation...
-!------------------------------------------------------------------------------
-     !NonlinearRelax = GetCReal( Solver % Values, &
-     !   'Nonlinear System Relaxation Factor', GotIt )
-     !IF ( .NOT. GotIt ) NonlinearRelax = 1.0d0
 
-     !CALL ListAddConstReal( Solver % Values, &
-     !       'Nonlinear System Relaxation Factor', 1.0d0 )
-
-     !IF ( NonlinearRelax /= 1._dp ) &
-     !  CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .TRUE. )
 !------------------------------------------------------------------------------
 !    Check if free surfaces present
 !------------------------------------------------------------------------------
@@ -1270,7 +1254,6 @@
       at = CPUTime() - at
       st = CPUTime()
 
-      !IF ( NonlinearRelax /= 1.0d0 ) PSolution = FlowSolution
       Unorm = DefaultSolve()
 
       st = CPUTIme()-st
@@ -1283,37 +1266,6 @@
 
       n = NSDOFs * LocalNodes
 
-!------------------------------------------------------------------------------
-!     This hack is needed  cause of the fluctuating pressure levels
-!------------------------------------------------------------------------------
-
-      !IF ( NonlinearRelax /= 1.0d0 ) THEN
-      !   IF ( CompressibilityModel == Incompressible ) THEN
-      !      s = FlowSolution(NSDOFs)
-      !      FlowSolution(NSDOFs:n:NSDOFs) = FlowSolution(NSDOFs:n:NSDOFs)-s
-      !      PSolution(NSDOFs:n:NSDOFs)=PSolution(NSDOFs:n:NSDOFs)-PSolution(NSDOFs)
-      !   END IF
-
-      !   FlowSolution(1:n) = (1-NonlinearRelax)*PSolution(1:n) + &
-      !              NonlinearRelax*FlowSolution(1:n)
-       
-      !   IF ( CompressibilityModel == Incompressible ) THEN
-      !      FlowSolution(NSDOFs:n:NSDOFs)=FlowSolution(NSDOFs:n:NSDOFs)+s
-      !   END IF
-
-      !  RelaxBefore = GetLogical( Solver % Values, &
-      !        'Nonlinear system Relaxation Before', gotIt )
-      !  IF ( .NOT.gotIt .OR. RelaxBefore ) THEN
-      !    CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .FALSE. )
-
-      !    Solver % Variable % Norm = ComputeNorm(Solver, n, PSolution)
-
-      !    CALL ComputeChange( Solver, .FALSE., n, FlowSolution, PSolution )
-
-       !   Solver % Variable % Norm = ComputeNorm(Solver, n, FlowSolution)
-        !END IF
-      ! END IF
-      !RelativeChange = Solver % Variable % NonlinChange
 
 !------------------------------------------------------------------------------
 
@@ -1442,9 +1394,6 @@
 
       END DO
     END IF
-
-    !CALL ListAddConstReal( Solver % Values, &
-    !    'Nonlinear System Relaxation Factor', NonlinearRelax )
 
     IF (ListGetLogical(Solver % Values,'Adaptive Mesh Refinement',GotIt)) &
       CALL RefineMesh( Model,Solver,FlowSolution,FlowPerm, &
@@ -1716,7 +1665,7 @@ CONTAINS
 
 !
 !       If dirichlet BC for velocity in any direction given,
-!       nullify force in that directon:
+!       nullify force in that direction:
 !       ------------------------------------------------------------------
         Dir = 1
         s = ListGetConstReal( Model % BCs(bc) % Values, 'Velocity 1', GotIt )

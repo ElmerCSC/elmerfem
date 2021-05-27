@@ -14,8 +14,7 @@ Simulation
   Steady State Max Iterations = 1
 
   Output Intervals = 1
-! Post File = "Step.ep"
-! Output File = "Step.dat"
+  Post File = "Step.vtu"
 End
 
 
@@ -42,7 +41,6 @@ Equation 1
   Name = "Equation1"
   Active Solvers(1) = 1
   NS Convect = False
-
 End
 
 
@@ -68,7 +66,7 @@ End
 Material 1
   Name = "Material1"
   Density = 1
-  Viscosity = 1e20
+  Viscosity = 1.0e3
 End
 
 Boundary Condition 1
@@ -84,7 +82,7 @@ Boundary Condition 2
   Name = "outflow"
   Target Boundaries = 2
 
-  Pressure = 0
+!  Pressure = 0
   Velocity 2 = 0
 End
 
@@ -96,6 +94,4 @@ Boundary Condition 3
   Velocity 2 = 0
 End
  
-Solver 1 :: Reference Norm = Real 0.75227162E-01
-Solver 1 :: Reference Norm Tolerance = Real 1e-2
-RUN
+Solver 1 :: Reference Norm = 7.52106669E-02

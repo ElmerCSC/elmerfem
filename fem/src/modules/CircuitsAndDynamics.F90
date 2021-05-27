@@ -54,20 +54,29 @@ SUBROUTINE CircuitsAndDynamics_init( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation !< Steady state or transient simulation
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-
+  LOGICAL :: RotMachine, Found
+  
   Params => Solver % Values
 
   ! When we introduce the variables in this way the variables are created
   ! so that they exist when the proper simulation cycle starts.
-  ! This also keeps the command file cleaner.
-  CALL ListAddString( Params,'Exported Variable 1',&
-      '-global Rotor Angle')
-  CALL ListAddString( Params,'Exported Variable 2',&
-      '-global Rotor Velo')
+  ! This also keeps the command file cleaner. 
+
+  RotMachine = ListGetLogical( Params,'Rotating Machine',Found )
+  IF(.NOT. Found ) THEN
+    RotMachine = ListGetLogicalAnyBC(Model,'Rotational Projector') .OR. &
+        ListGetLogicalAnyBC(Model,'Anti Rotational Projector') 
+  END IF
+
+  IF( RotMachine ) THEN
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-global Rotor Angle' )
+    CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+        '-global Rotor Velo' )
+  END IF
   CALL ListAddLogical( Params,'No Matrix',.TRUE.)
-
+  
   Solver % Values => Params
-
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamics_init
 !------------------------------------------------------------------------------
@@ -89,7 +98,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: First=.TRUE.
+  LOGICAL, SAVE :: First=.TRUE.
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
@@ -111,9 +120,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     Model % HarmonicCircuits = .FALSE.
     CALL AddComponentsToBodyLists()
     
-    ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
+    ALLOCATE( Model % Circuit_tot_n, Model % n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CircuitsAndDynamicsHarmonic', 'Memory allocation error.' )
+      CALL Fatal( 'CircuitsAndDynamics', 'Memory allocation error.' )
     END IF
 
     n_Circuits => Model%n_Circuits
@@ -153,9 +162,11 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! Create CRS matrix strucures for the circuit equations:
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
-    ALLOCATE(ip(Model%Circuit_tot_n))
+    ALLOCATE(ip(Model % Circuit_tot_n))
   END IF
-  
+
+  CALL SetDynamicAngle()
+
   IF (Tstep /= GetTimestep()) THEN
     Tstep = GetTimestep()
     ! Circuit variable values from previous timestep:
@@ -172,7 +183,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   n_Circuits => Model%n_Circuits
   CM=>Model%CircuitMatrix
   
-  ! Initialialize Circuit matrix:
+  ! Initialize Circuit matrix:
   ! -----------------------------
   IF(.NOT.ASSOCIATED(CM)) RETURN
 
@@ -202,6 +213,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
   CONTAINS
 
+
+    
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p,ip,dt)
 !------------------------------------------------------------------------------
@@ -362,7 +375,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     END IF
     
     DO CompInd = 1, Circuit % n_comp
-    
       Comp => Circuit % Components(CompInd)
 
       Comp % Resistance = 0._dp 
@@ -380,7 +392,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         CvarOwner = Cvar % Owner
       END IF
 
-      CompParams => CurrentModel % Components(CompInd) % Values
+      CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
         Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
@@ -395,7 +407,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
-            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            CALL Info('AddComponentEquationsAndCouplings',&
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
             CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
           ELSE
             Comp % Resistance = 0._dp
@@ -437,7 +450,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           
           nn = GetElementNOFNodes(Element)
           nd = GetElementNOFDOFs(Element,ASolver)
-          !          CALL GetConductivity(Element, Tcoef, nn)
           
           IF (SIZE(Tcoef,3) /= nn) THEN
             DEALLOCATE(Tcoef)
@@ -450,7 +462,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           Tcoef = GetElectricConductivityTensor(Element, nn, 're', .TRUE., CoilType)
           SELECT CASE(CoilType)
           CASE ('stranded')
-            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,VvarId,IvarId)
+            CALL Add_stranded(Element,Tcoef,Comp,nn,nd,dt,VvarId,IvarId,CompParams)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
             CALL Add_massive(Element,Tcoef,Comp,nn,nd,dt,VvarId)
@@ -480,11 +492,12 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt,VvarId,IvarId)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt,VvarId,IvarId,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
+    TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Component_t) :: Comp
     INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
 
@@ -499,13 +512,17 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
     LOGICAL :: stat
 
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+               CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
+
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
     
-    SAVE CSymmetry, dim
-    
+    SAVE CSymmetry, dim, First, InitHandle
+
     IF (First) THEN
       First = .FALSE.
       CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -535,7 +552,23 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
     
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase, 'w')
+
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+    
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        !CALL GetLocalSolution(Wbase, 'w')
+        ! when W Potential solver is used, 'w' is not enough.
+        CALL GetWPotential(WBase)
+      END IF
+
       ncdofs=nd-nn
     END IF
 
@@ -562,7 +595,12 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+
+        IF (CoilUseWvec) THEN
+          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
       END SELECT
 
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
@@ -571,7 +609,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor
         Comp % Resistance = Comp % Resistance + localR
       
         CALL AddToMatrixElement(CM, VvarId, IvarId, localR)
@@ -586,8 +624,10 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
           IF ( TransientSimulation ) THEN 
             IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt*w(3)
             IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
- !          localL = value
-!          Comp % Inductance = Comp % Inductance + localL
+            value = value / Comp % VoltageFactor
+
+!           localL = value
+!           Comp % Inductance = Comp % Inductance + localL
 
             CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
             CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
@@ -599,8 +639,10 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
           ! ----------------------------         
           IF (dim == 2) value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
-          CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, value)
 
+          value = value * Comp % SymmetryCoeff
+
+          CALL AddToMatrixElement(CM,PS(Indexes(q)), IvarId, value)
         END IF
       END DO
     END DO
@@ -632,7 +674,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: ncdofs,q
 
-    SAVE CSymmetry, dim
+    SAVE CSymmetry, dim, First
 
     IF (First) THEN
       First = .FALSE.
@@ -700,6 +742,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
       ! ------------------------------------------------
       IF(dim==2) value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
       IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
+      value = value * Comp % VoltageFactor
 
       localConductance = ABS(value)
       Comp % Conductance = Comp % Conductance + localConductance
@@ -723,6 +766,7 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
 
         IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
         IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
+        value = value * Comp % VoltageFactor
         CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, value)
       END DO
     END DO
@@ -734,9 +778,10 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
 !------------------------------------------------------------------------------
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt,VvarId)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: nn, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value, dt
     TYPE(Component_t) :: Comp
 
@@ -819,6 +864,10 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff/Comp % VoltageFactor
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -830,6 +879,11 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3)/Comp % VoltageFactor
         ! Transform the conductivity tensor:
         ! ----------------------------------
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
@@ -843,11 +897,6 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
       ! ------------------------------------------------------
       localAlpha = localAlpha * Comp % coilthickness
 
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(gradv*MATMUL(C,gradv))
       Comp % Resistance = Comp % Resistance + localR
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
@@ -862,6 +911,8 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+
+          value = value * Comp % VoltageFactor
           CALL AddToMatrixElement(CM, dofIdtest, dofId, value)
         END DO
 
@@ -892,6 +943,8 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
             IF (dim == 3) q=q+nn
             IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
             IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
+
+            value = value * Comp % VoltageFactor
             CALL AddToMatrixElement(CM, PS(indexes(q)), dofId, value)
         END DO
       END DO
@@ -948,37 +1001,58 @@ print*,parenv % mype, compind, 'go red 2'; flush(6)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
+!> Set the rotation angle in case moment of inertia and torque are given.
 !------------------------------------------------------------------------------
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
+  SUBROUTINE SetDynamicAngle()
+    TYPE(Variable_t), POINTER :: AngVar, VeloVar
+    TYPE(ValueList_t), POINTER :: Simulation
+    REAL(KIND=dp) :: dt, ang, velo, ang0, velo0, imom, torq    
+    INTEGER :: tStep, tStepPrev = 0
+    LOGICAL :: Found
+    
+    SAVE ang0, velo0, imom, tStepPrev
+    
+    ! Variable should alreadt exist as it was introduced in the _init section.
+    AngVar => DefaultVariableGet( 'Rotor Angle' )
+    IF(.NOT. ASSOCIATED( AngVar ) ) RETURN
+    
+    VeloVar => DefaultVariableGet( 'Rotor Velo' )
+    IF(.NOT. ASSOCIATED( VeloVar ) ) THEN
+      CALL Fatal('SetRotation','Variable > Rotor Velo < does not exist!')
+    END IF
+    
+    Simulation => GetSimulation()
+
+    tStep = GetTimestep()
+
+    ! We initiate these at the start of the timestep when they still present the previous
+    ! computed values. 
+    IF( tStep /= tStepPrev ) THEN
+      ang0 = AngVar % Values(1)
+      velo0 = VeloVar % Values(1)
+      imom = GetConstReal( Simulation,'Imom') ! interatial moment of the motor      
+      tStepPrev = tStep
+    END IF
+     
+    IF(imom < EPSILON(imom) ) THEN
+      CALL Warn('SetDynamicAngle','Moment of inertia "Imom" close to zero, skipping rotations...')
+      RETURN
+    END IF
+
+    torq = GetConstReal( Simulation,'res: Air Gap Torque', Found)
+    IF(.NOT. Found ) CALL Fatal('SetRotation','Torque is needed!')
+    
+    velo = velo0 + dt * (torq-0) / imom
+    ang  = ang0  + dt * velo
+
+    VeloVar % Values(1) = velo
+    AngVar % Values(1) = ang
+
+    CALL ListAddConstReal(Simulation,'res: Angle(rad)', ang)
+    CALL ListAddConstReal(Simulation,'res: Speed(rpm)', velo/(2._dp*pi)*60)
+      
+  END SUBROUTINE SetDynamicAngle
   
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamics
@@ -998,18 +1072,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic_init( Model,Solver,dt,TransientSimulation
   LOGICAL :: TransientSimulation !< Steady state or transient simulation
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-
+  
   Params => Solver % Values
 
-  ! When we introduce the variables in this way the variables are created
-  ! so that they exist when the proper simulation cycle starts.
-  ! This also keeps the command file cleaner.
-  CALL ListAddString( Params,'Exported Variable 1',&
-      '-global Rotor Angle')
-  CALL ListAddString( Params,'Exported Variable 2',&
-      '-global Rotor Velo')
-  Solver % Values => Params
+  CALL ListAddLogical( Params,'No Matrix',.TRUE.)
 
+  Solver % Values => Params
+    
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamicsHarmonic_init
 !------------------------------------------------------------------------------
@@ -1031,7 +1100,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: First=.TRUE.
+  LOGICAL,SAVE :: First=.TRUE.
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
@@ -1104,7 +1173,7 @@ print*,'circ enter', parenv % mype; flush(6)
   n_Circuits => Model%n_Circuits
   CM=>Model%CircuitMatrix
   
-  ! Initialialize Circuit matrix:
+  ! Initialize Circuit matrix:
   ! -----------------------------
 !  print *, ParEnv % MyPe, "CommSave1", CommSave
 !  IF (ASSOCIATED(SaveActive)) THEN
@@ -1350,7 +1419,7 @@ print*,'circ enter', parenv % mype; flush(6)
         CvarOwner = Cvar % Owner
       END IF
 
-      CompParams => CurrentModel % Components(CompInd) % Values
+      CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
         Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
@@ -1365,7 +1434,8 @@ print*,'circ enter', parenv % mype; flush(6)
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Comp % UseCoilResistance) THEN
-            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            CALL Info('AddComponentEquationsAndCouplings', &
+                'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
             CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
           ELSE
             Comp % Resistance = 0._dp
@@ -1449,7 +1519,7 @@ print*,'circ enter', parenv % mype; flush(6)
             ELSE
               Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
             END IF
-            CALL Add_stranded(Element,Tcoef,Comp,nn_elem,nd_elem,VvarId,IvarId)
+            CALL Add_stranded(Element,Tcoef,Comp,nn_elem,nd_elem,VvarId,IvarId,CompParams)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
          !   CALL GetConductivity(Element, Tcoef, nn_elem)
@@ -1459,7 +1529,7 @@ print*,'circ enter', parenv % mype; flush(6)
             IF (.NOT. HasSupport(Element,nn_elem)) CYCLE
          !   CALL GetConductivity(Element, Tcoef, nn_elem)
             Tcoef = GetCMPLXElectricConductivityTensor(Element, nn_elem, .TRUE., CoilType) 
-            CALL Add_foil_winding(Element,Tcoef,Comp,nn_elem,nd_elem,VvarId)
+            CALL Add_foil_winding(Element,Tcoef,Comp,nn_elem,nd_elem,VvarId,CompParams)
           CASE DEFAULT
             CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
           END SELECT
@@ -1481,13 +1551,14 @@ print*,'circ enter', parenv % mype; flush(6)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,VvarId,IvarId)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,VvarId,IvarId,CompParams)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(Component_t) :: Comp
-    INTEGER :: nn, nd, Indexes(nd),VvarId,IvarId
+    TYPE(Valuelist_t), POINTER :: CompParams
+    INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
 
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
@@ -1507,8 +1578,15 @@ print*,'circ enter', parenv % mype; flush(6)
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: dim, ncdofs,q
+
+    LOGICAL :: InitHandle = .TRUE.
     
-    SAVE CSymmetry, dim
+    LOGICAL :: CoilUseWvec=.FALSE., Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
+
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
+
+    SAVE CSymmetry, dim, First, InitHandle
 
     IF (First) THEN
       First = .FALSE.
@@ -1530,8 +1608,22 @@ print*,'circ enter', parenv % mype; flush(6)
     ncdofs=nd
     IF (dim == 3) THEN
       ncdofs=nd-nn
-      CALL GetWPotential(WBase)
-      !print *, "W Potential", Wbase
+
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        CALL GetWPotential(WBase)
+        !print *, "W Potential", Wbase
+      END IF
+
     END IF
 
     i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
@@ -1557,7 +1649,12 @@ print*,'circ enter', parenv % mype; flush(6)
         circ_eq_coeff = GetCircuitModelDepth()
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        IF (CoilUseWvec) THEN
+          w = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
+
         !print *, "W Pot norm:", SQRT(SUM(w**2._dp))
       END SELECT
 
@@ -1567,13 +1664,14 @@ print*,'circ enter', parenv % mype; flush(6)
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor
+
         Comp % Resistance = Comp % Resistance + localR
         
 
         CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
-              REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
-             AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff))
+              REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor), &
+             AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff / Comp % VoltageFactor))
       END IF
       
       DO j=1,ncdofs
@@ -1586,6 +1684,7 @@ print*,'circ enter', parenv % mype; flush(6)
           IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
                   * IP % s(t)*detJ*SUM(WBasis(j,:)*w)
 
+          cmplx_value = cmplx_value / Comp % VoltageFactor
 !          localL = ABS(cmplx_value)
 !          Comp % Inductance = Comp % Inductance + localL
 
@@ -1595,6 +1694,8 @@ print*,'circ enter', parenv % mype; flush(6)
           IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)*w(3)
           IF (dim == 3) cmplx_value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
           IF (i_multiplier /= 0._dp) cmplx_value = i_multiplier*cmplx_value
+
+          cmplx_value = cmplx_value * Comp % SymmetryCoeff
           
           CALL AddToCmplxMatrixElement(CM,ReIndex(PS(Indexes(q))), IvarId, &
              REAL(cmplx_value), AIMAG(cmplx_value))
@@ -1634,7 +1735,7 @@ print*,'circ enter', parenv % mype; flush(6)
     INTEGER :: ncdofs,q
     REAL(KIND=dp) :: ModelDepth
 
-    SAVE CSymmetry, dim
+    SAVE CSymmetry, dim, First
 
     IF (First) THEN
       First = .FALSE.
@@ -1690,8 +1791,10 @@ print*,'circ enter', parenv % mype; flush(6)
 
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
-      IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
-      IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
+      IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff * Comp % VoltageFactor
+
+      IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv) * Comp % VoltageFactor
+
       localConductance = ABS(cmplx_value)
       Comp % Conductance = Comp % Conductance + localConductance
       CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
@@ -1703,15 +1806,17 @@ print*,'circ enter', parenv % mype; flush(6)
         ! computing the mass term (sigma * im * Omega * a, grad si):
         ! ---------------------------------------------------------
         IF(dim==2) cmplx_value = im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff
+
         IF(dim==3) cmplx_value = im * Omega * IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)
+
         CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
                REAL(cmplx_value), AIMAG(cmplx_value))
 
 !        localL = ABS(1._dp/cmplx_value)
 !        Comp % Inductance = Comp % Inductance + localL
         
-        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
-        IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
+        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)*grads_coeff * Comp % VoltageFactor
+        IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:)) * Comp % VoltageFactor 
         CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
                 REAL(cmplx_value), AIMAG(cmplx_value))
       END DO
@@ -1722,13 +1827,15 @@ print*,'circ enter', parenv % mype; flush(6)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,VvarId)
+   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,VvarId,CompParams)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     IMPLICIT NONE
     INTEGER :: nn, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value
     TYPE(Component_t) :: Comp
+    TYPE(Valuelist_t), POINTER :: CompParams
 
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
@@ -1743,14 +1850,21 @@ print*,'circ enter', parenv % mype; flush(6)
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    LOGICAL :: CSymmetry, First=.TRUE.
+    LOGICAL :: CSymmetry, First=.TRUE., InitHandle=.TRUE., &
+               CoilUseWvec=.FALSE., Found
+    LOGICAL :: InitJHandle=.TRUE., FoilUseJvec=.FALSE.
     REAL(KIND=dp) :: localR
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilWVecVarname
+    CHARACTER(LEN=MAX_NAME_LEN) :: FoilJVecVarname
+    TYPE(VariableHandle_t), SAVE :: Wvec_h
+    TYPE(VariableHandle_t), SAVE :: Jvec_h
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
+    REAL(KIND=dp) :: Jvec(3)
     INTEGER :: i,ncdofs,q
 
-    SAVE CSymmetry, dim, First
+    SAVE CSymmetry, dim, First, InitHandle, InitJHandle
 
     IF (First) THEN
       First = .FALSE.
@@ -1772,9 +1886,40 @@ print*,'circ enter', parenv % mype; flush(6)
     
     ncdofs=nd
     IF (dim == 3) THEN
-      !CALL GetLocalSolution(Wbase, 'w')
-      CALL GetWPotential(WBase)
+
+      CoilUseWvec = GetLogical(CompParams, 'Coil Use W Vector', Found)
+      IF (.NOT. Found) CoilUseWvec = .FALSE.
+
+      IF (CoilUseWvec) THEN
+        IF( InitHandle ) THEN
+          CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
+          IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
+          CALL ListInitElementVariable(Wvec_h, CoilWVecVarname)
+          InitHandle = .FALSE.
+        END IF
+      ELSE
+        !CALL GetLocalSolution(Wbase, 'w')
+        CALL GetWPotential(WBase)
+      END IF
+
+      FoilUseJvec = GetLogical(CompParams, 'Foil Winding Use J Vector', Found)
+      IF (.NOT. Found) FoilUseJvec = .FALSE.
+
+      IF (FoilUseJvec) THEN
+        IF( InitJHandle ) THEN
+          FoilJVecVarname = GetString(CompParams, 'Foil J Vector Variable Name', Found)
+          IF ( .NOT. Found) FoilJVecVarname = 'J Vector E'
+          CALL ListInitElementVariable(Jvec_h, FoilJVecVarname)
+          IF ( .NOT. ASSOCIATED(Jvec_h % Variable)) THEN
+            CALL Fatal('Add_foil_winding','You are trying to use Foil J Vector for describing the &
+                                    component source field but I cannot the variable')
+          END IF
+          InitJHandle = .FALSE.
+        END IF
+      END IF
+
       CALL GetElementRotM(Element, RotM, nn)
+
       ncdofs=nd-nn
     END IF
 
@@ -1802,9 +1947,24 @@ print*,'circ enter', parenv % mype; flush(6)
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff / Comp % VoltageFactor
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+
+        IF (CoilUseWvec) THEN
+          gradv = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+        ELSE
+          gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
+        END IF
+
         ! Compute the conductivity tensor
         ! -------------------------------
         DO i=1,3
@@ -1813,9 +1973,16 @@ print*,'circ enter', parenv % mype; flush(6)
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+
+        IF (FoilUseJvec) THEN
+          Jvec = ListGetElementVectorSolution( Jvec_h, Basis, Element, dofs = dim )
+        ELSE
+          Jvec = MATMUL(C,gradv)
+        END IF
+
         ! Transform the conductivity tensor:
         ! ----------------------------------
-        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
       END SELECT
       
       localAlpha = SUM(alpha(1:nn) * Basis(1:nn))
@@ -1826,11 +1993,6 @@ print*,'circ enter', parenv % mype; flush(6)
       ! ------------------------------------------------------
       localAlpha = localAlpha * Comp % coilthickness
 
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      IF (dim == 2) localR = Comp % N_j **2 * IP % s(t)*detJ/C(1,1)*circ_eq_coeff
-      IF (dim == 3) localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(gradv*MATMUL(C,gradv))
       Comp % Resistance = Comp % Resistance + localR
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
@@ -1840,11 +2002,12 @@ print*,'circ enter', parenv % mype; flush(6)
 
           localV = localAlpha**vpolord
           dofId = 2*(vpolord + 1) + vvarId
-          
+
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
-          IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+          IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(Jvec*gradv)
+          value = value * Comp % VoltageFactor
 
           CALL AddToCmplxMatrixElement(CM, dofIdtest, dofId, REAL(value), AIMAG(value))
         END DO
@@ -1869,7 +2032,8 @@ print*,'circ enter', parenv % mype; flush(6)
             q=j
             IF (dim == 3) q=q+nn
             IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
-            IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
+            IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(Jvec*Wbasis(j,:))
+            value = value * Comp % VoltageFactor
             CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId, REAL(value), AIMAG(value))
         END DO
       END DO
@@ -1948,39 +2112,6 @@ print*,'circ enter', parenv % mype; flush(6)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-  
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamicsHarmonic
 !------------------------------------------------------------------------------
 
@@ -2024,7 +2155,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   LOGICAL, SAVE :: EEC, First =.TRUE.
   LOGICAL :: EEC_lim
-  REAL, SAVE :: EEC_freq, EEC_time_0
+  REAL(KIND=dp), SAVE :: EEC_freq, EEC_time_0
   INTEGER, SAVE :: EEC_max, EEC_cnt = 0
   REAL :: TTime
   TYPE(ValueList_t), POINTER :: SolverParams
@@ -2032,7 +2163,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
   REAL (KIND=dp), POINTER :: Az(:)
   REAL (KIND=dp), ALLOCATABLE, SAVE :: Az0(:)
   REAL (KIND=dp), POINTER :: Acorr(:)
-  
+  CHARACTER(*), PARAMETER :: Caller = 'CircuitsOutput'
+
 !------------------------------------------------------------------------------  
   
    CALL DefaultStart()
@@ -2045,7 +2177,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ! Look for the solver we attach the circuit equations to:
    ! -------------------------------------------------------
    ASolver => CurrentModel % Asolver
-   IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CircuitsOutput','ASolver not found!')
+   IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal(Caller,'ASolver not found!')
       
 
   IF (First) THEN
@@ -2053,15 +2185,14 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     ! Reading parameter for supply frequency
     EEC_freq = GetConstReal( SolverParams, 'EEC Frequency', EEC)
     IF (EEC) THEN
-      CALL Info('CircuitsAndDynamicsEEC', "Using EEC steady state forcing.", Level=1)
-	    WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
-      
-          
+      CALL Info(Caller, "Using EEC steady state forcing.", Level=4)
+      WRITE( Message,'(A,4G11.4,A)') 'EEC signal frequency: ', EEC_freq, ' Hz'
+      CALL Info(Caller, Message, Level=4)
+                
       EEC_max = GetInteger( SolverParams, 'EEC Steps', EEC_lim)
       IF (.NOT. EEC_lim) EEC_max = 5 !Typically 5 correections is enough
       WRITE( Message,'(A,I5,A)') 'Applying ', EEC_max, ' halfperiod corrections'
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info(Caller, Message, Level=4)
       
       EEC_time_0 = 0.0
       
@@ -2086,7 +2217,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
     IF(TTime .GE. (EEC_time_0 + 0.5/EEC_freq)) THEN
       EEC_cnt = EEC_cnt + 1
       WRITE( Message,'(A,4G11.4)') 'Performing EEC #', EEC_cnt
-      CALL Info('CircuitsAndDynamicsEEC', Message, Level=1)
+      CALL Info(Caller, Message, Level=4)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq
 
@@ -2133,12 +2264,12 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
 
-   CALL Info('CircuitsOutput', 'Writing Circuit Results', Level=3) 
+   CALL Info(Caller, 'Writing Circuit Results', Level=5) 
    DO p=1,n_Circuits
-     CALL Info('CircuitsOutput', 'Writing Circuit Variables for &
-       Circuit '//TRIM(i2s(p)), Level=3) 
-     CALL Info('CircuitsOutput', 'There are '//TRIM(i2s(Circuits(p)%n))//&
-       ' Circuit Variables', Level=3)
+     CALL Info(Caller, 'Writing Circuit Variables for &
+       Circuit '//TRIM(i2s(p)), Level=5) 
+     CALL Info(Caller, 'There are '//TRIM(i2s(Circuits(p)%n))//&
+       ' Circuit Variables', Level=5)
      DO i=1,Circuits(p) % n
        Cvar => Circuits(p) % CircuitVariables(i)
        
@@ -2175,8 +2306,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
      END DO
 
-     CALL Info('CircuitsOutput', 'Writing Component Variables for &
-       Circuit '//TRIM(i2s(p)), Level=3) 
+     CALL Info(Caller, 'Writing Component Variables for &
+       Circuit '//TRIM(i2s(p)), Level=5) 
      DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
          IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
@@ -2215,6 +2346,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
 CONTAINS
 
+  
 !-------------------------------------------------------------------
   SUBROUTINE SimListAddAndOutputConstReal(VariableName, VariableValue, Level)
 !-------------------------------------------------------------------
@@ -2228,7 +2360,7 @@ CONTAINS
   IF (PRESENT(Level)) LevelVal = Level
 
   WRITE(VarVal,'(ES15.4)') VariableValue
-  CALL Info('CircuitsOutput', TRIM(VariableName)//' '//&
+  CALL Info(Caller, TRIM(VariableName)//' '//&
     TRIM(VarVal), Level=LevelVal)
 
   CALL ListAddConstReal(GetSimulation(),'res: '//TRIM(VariableName), VariableValue)

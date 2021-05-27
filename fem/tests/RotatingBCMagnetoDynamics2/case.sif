@@ -3,7 +3,7 @@
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
 ! an optional skew of 20 degrees in the rotor. 
-! Increse number of extruded layers for better accuracy. 
+! Increase number of extruded layers for better accuracy. 
 !
 ! This test case uses a level projector which assumes that 
 ! the extruded layers are at constant z-levels.
@@ -185,7 +185,7 @@ End
 
 Equation 1
   Name = "MagFields"
-  Active Solvers(3) = 2 3 7
+  Active Solvers(3) = 2 3 6
 End
 
 Material 1
@@ -341,6 +341,7 @@ Boundary Condition 14
 End 
  
 
-Solver 2 :: Reference Norm = Real 0.41206705E-02
+Solver 2 :: Reference Norm = Real 4.12067301E-03
+Solver 2 :: Reference Norm Tolerance = Real 2e-4
 RUN
 

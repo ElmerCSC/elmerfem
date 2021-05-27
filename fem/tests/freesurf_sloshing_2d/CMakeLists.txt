@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(freesurf_sloshing_2d)
+ADD_ELMER_TEST(freesurf_sloshing_2d LABELS transient)

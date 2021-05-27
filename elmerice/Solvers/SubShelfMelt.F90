@@ -27,7 +27,7 @@
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
 ! *  Calculate sub ice shelf melting as a function of depth.  A number of 
-! *  parameters may determine the melt function and are specificed in the sif.
+! *  parameters may determine the melt function and are specified in the sif.
 ! *  
 ! *  sub shelf melt function (string) is the name of one of the hard coded melt 
 ! *  functions in this routine.  Currently available are:

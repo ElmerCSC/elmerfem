@@ -70,14 +70,14 @@ End
 Boundary condition 2
   name = "wire_a"
   target boundaries(1) = 10 
-  electric current density = $ -Jcurr
+  current density = $ -Jcurr
   A {e} = real 0
 end
 
 Boundary condition 3
   name = "wire_b"
   target boundaries(1) = 9
-  electric current density = $ Jcurr
+  current density = $ Jcurr
   A {e} = real 0
 end
 

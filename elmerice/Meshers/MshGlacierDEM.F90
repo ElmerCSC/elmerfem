@@ -30,7 +30,7 @@
 ! * 
 ! *****************************************************************************
 !> Create a 3D mesh given by its bed and surface topography 
-!> given as structued Grid DEMs (x, y, z)
+!> given as structured Grid DEMs (x, y, z)
 !> Add some testing to ensure the file structure does correspond to what is 
 !> indicated in mesh_input.dat
 ! *****************************************************************************

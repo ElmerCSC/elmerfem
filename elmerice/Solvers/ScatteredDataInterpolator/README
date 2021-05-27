@@ -8,7 +8,7 @@
 ####### These libraries must be compiled by the user and this Makefile edited/updated
 
 #To compile the Scattered2DDataInterpolator Solver
-#       1) Edit/update the Makefile according to your installation (Require NETCDF,NN, and CSA librairies)
+#       1) Edit/update the Makefile according to your installation (Require NETCDF,NN, and CSA libraries)
 #       2) make
 #       3) make install
 

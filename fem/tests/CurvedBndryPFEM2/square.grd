@@ -14,10 +14,6 @@ Boundary Definitions
 ! type     out      int     
   1        0        1        1       
 End
-!Advanced Elements
-! mat n e f d b
-! 1   1 1 0 0 1
-!End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = false

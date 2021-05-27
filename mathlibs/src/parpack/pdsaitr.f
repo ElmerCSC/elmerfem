@@ -290,8 +290,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Double precision
-     &           ddot, pdnorm2, pdlamch
-      external   ddot, pdnorm2, pdlamch
+     &           ddot, pdnorm2, pdlamch10
+      external   ddot, pdnorm2, pdlamch10
 c
 c     %-----------------%
 c     | Data statements |
@@ -318,7 +318,7 @@ c        | safmin = safe minimum is such  |
 c        | that 1/sfmin does not overflow |
 c        %--------------------------------%
 c
-         safmin = pdlamch(comm,'safmin')
+         safmin = pdlamch10(comm,'safmin')
       end if
 c
       if (ido .eq. 0) then

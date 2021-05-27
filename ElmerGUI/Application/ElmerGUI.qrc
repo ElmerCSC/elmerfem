@@ -29,6 +29,7 @@
    <file>icons/Solver-red.png</file>
    <file>icons/Post.png</file>
    <file>icons/Post-red.png</file>
+   <file>icons/Paraview.png</file>
    <file>icons/list-add.png</file>
    <file>icons/list-remove.png</file>
    <file>icons/dialog-close.png</file>
@@ -45,5 +46,9 @@
    <file>icons/edit-find.png</file>
    <file>icons/document-new.png</file>
    <file>icons/view-preview.png</file>
+   <file>icons/arrow-right.png</file>
+   <file>icons/arrow-right-double.png</file>
+   <file>icons/set-body-property.png</file>
+   <file>icons/set-boundary-property.png</file>
 </qresource>
 </RCC>

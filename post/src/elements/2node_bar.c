@@ -139,7 +139,7 @@ static double elm_2node_bar_dndu_fvalue(double *F,double u)
  *         Input:  (char *) description of the element
  *                 (int)    numeric code for the element
  *
- *         Output:  Global list of element types is modfied
+ *         Output:  Global list of element types is modified
  *
  *   Return value:  malloc() success
  *

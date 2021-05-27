@@ -1,0 +1,117 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! INITIALISATION FILE:
+!  Read and interpolate:
+!   - the topography bedrock, thickness
+!   - update top and bottom surface elevations (zs and zb), and groundedmask from floatation criteria
+!   - observed velocities (used as BC)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! # PARAMETERS:
+!#######################################################
+!  mesh dir.
+$MESH="mesh"
+!#########################################################
+!  Physical constants:
+include SIF/Physical_Params.IN
+!#########################################################
+!  Data sets:
+$TOPOGRAPHY_DATA="../DATA/BedMachineAntarctica_2019-11-05_v01_m.nc"
+$VELOCITY_DATA="../DATA/RonneFilchner.nc"
+!#######################################################
+!#########################################################
+!#########################################################
+Header
+  Mesh DB "." "$MESH$"
+End
+!#######################################################
+Constants
+  sea level = Real $zsl
+  water density = Real $rhow
+End
+!#######################################################
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "RUN0_.result"
+  Post File = "RUN0_.vtu"
+  max output level = 3
+End
+!#######################################################
+!#######################################################
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+!#######################################################
+!#######################################################
+Initial Condition 1
+! List of variable that must be initialised
+  H = Real 0.0
+  bedrock = Real 0.0
+  Zs= Real 0.0
+  Zb= Real 0.0
+End
+!#######################################################
+Material 1
+! Material properties
+  SSA Mean Density = Real $rhoi
+End
+!#######################################################
+Solver 1
+  Equation = Reader
+    Procedure = "Scattered2DDataInterpolator" "Scattered2DDataInterpolator"
+    Variable = -nooutput dumy
+
+!
+  Bounding Box dx = Real 20.0e3
+
+  Variable 1 = File "thickness"
+  Variable 1 data file = File "$TOPOGRAPHY_DATA$"
+  Target Variable 1 = String "H"
+  !Variable 1 method = String "li"
+  !
+  Variable 1 Valid Min Value  = Real 0.9
+
+  Variable 2 = File "bed"
+  Variable 2 data file = File "$TOPOGRAPHY_DATA$"
+  Target Variable 2 = String "bedrock"
+  !Variable 2 method = String "li"
+
+
+  Variable 3 = File "VX"
+  Variable 3 data file = File "$VELOCITY_DATA$"
+  Target Variable 3 = String "Uobs 1"
+
+  Variable 4 = File "VY"
+  Variable 4 data file = File "$VELOCITY_DATA$"
+  Target Variable 4 = String "Uobs 2"
+
+  Exported Variable 1 = H
+  Exported Variable 2 = bedrock
+  Exported Variable 3 = -dofs 2 Uobs
+End
+Solver 2
+   Equation = "Flotation"
+      Variable = GroundedMask
+      Procedure = "ElmerIceSolvers" "Flotation"
+
+   Exported Variable 1 = Zs
+   Exported Variable 2 = Zb
+End
+!#######################################################
+Equation 1
+  Active Solvers(2) = 1 2
+End
+!#######################################################
+Boundary Condition 1
+  Target Boundaries = 1
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+End

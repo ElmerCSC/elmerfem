@@ -1,0 +1,9 @@
+Input File = mesh
+Output File = mesh3d
+Input Mode = ElmerSolver
+Output Mode = ElmerSolver
+Extruded Divisions = 1 
+Extruded Limits = 0 1.0
+Extruded Ratios = 1.0 
+Extruded Elements = 5
+ 

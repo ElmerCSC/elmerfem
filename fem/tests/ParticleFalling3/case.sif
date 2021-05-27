@@ -1,6 +1,6 @@
 ! In this example particles are falling one second under the influence of unity gravity field.
 ! As the particles are initially at rest they obtain velocity of 1.0 m/s in the end. 
-! The information is used to constract a continuous velocity field from the data
+! The information is used to construct a continuous velocity field from the data
 ! with the help of an auxiliary solver that utilizes the r.h.s. created by the particle solver.
 ! Periodic BCs are enforced on the particles. 
 !
@@ -15,7 +15,7 @@ Header
 End
  
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
@@ -149,4 +149,5 @@ Boundary Condition 1
 !  FitData Continue = Logical True  
 End
 
-Solver 2 :: Reference Norm = Real 7.50036220E-01
+Solver 2 :: Reference Norm = 7.50036220E-01
+Solver 2 :: Reference Norm Tolerance = 1.0e-3

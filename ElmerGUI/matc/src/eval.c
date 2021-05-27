@@ -353,7 +353,7 @@ VARIABLE *evaltree(root) TREE *root;
     */
 
     /******************************************************
-       deleteting temporaries, preparing for next loop
+       deleting temporaries, preparing for next loop
     *******************************************************/
     if (subs != NULL)
     {
@@ -584,7 +584,7 @@ VARIABLE *evalclause(root) CLAUSE *root;
         par = NULL;
 
         /*
-         *   there is an explicit assigment  (ie. x = x + 1, not x + 1)
+         *   there is an explicit assignment  (ie. x = x + 1, not x + 1)
          */
         if (root->this)
         {

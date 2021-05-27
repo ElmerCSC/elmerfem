@@ -388,8 +388,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Double precision 
-     &           dlapy2 , dnrm2 , pdlamch 
-      external   dlapy2 , dnrm2 , pdlamch 
+     &           dlapy2 , dnrm2 , pdlamch10
+      external   dlapy2 , dnrm2 , pdlamch10
 c
 c     %---------------------%
 c     | Intrinsic Functions |
@@ -414,7 +414,7 @@ c     %---------------------------------%
 c     | Get machine dependent constant. |
 c     %---------------------------------%
 c
-      eps23 = pdlamch (comm, 'Epsilon-Machine')
+      eps23 = pdlamch10(comm, 'Epsilon-Machine')
       eps23 = eps23**(2.0  / 3.0 )
 c
 c     %--------------%

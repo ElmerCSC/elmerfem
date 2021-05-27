@@ -274,7 +274,7 @@ static void vis_sphere_delete(sphere_t *sphere)
  *
  *         Output:  none
  *   
- *   Return value:  vis_add_visual_type (malloc success propably)...
+ *   Return value:  vis_add_visual_type (malloc success probably)...
  *
  ******************************************************************************/
 int vis_initialize_sphere_visual()

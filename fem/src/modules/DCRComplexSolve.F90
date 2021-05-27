@@ -87,11 +87,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
        AllocationsDone, &
        Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
        Bvector, BscalarReal, BscalarImag
-#ifdef USE_ISO_C_BINDINGS
    REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-   REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
 !------------------------------------------------------------------------------
      INTERFACE
         FUNCTION DCRBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
@@ -142,7 +138,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Solver % Mesh % MaxElementNodes
 
      IF ( AllocationsDone ) THEN
@@ -209,7 +205,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
      CALL Info( 'DCRComplexSolve', Message, Level=4 )
      CALL Info( 'DCRComplexSolve', '-------------------------------------', Level=4 )
      CALL Info( 'DCRComplexSolve', ' ', Level=4 )
-     CALL Info( 'DCRComplexSolve', 'Starting Assmebly', Level=4 )
+     CALL Info( 'DCRComplexSolve', 'Starting Assembly', Level=4 )
 
      CALL InitializeToZero( StiffMatrix, ForceVector )
 !
@@ -430,7 +426,7 @@ CONTAINS
    SUBROUTINE InputTensor( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:,:)
-      INTEGER :: n, NodeIndexes(:)
+      INTEGER :: i, n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material
@@ -452,26 +448,33 @@ CONTAINS
 
       IF ( .NOT. stat ) RETURN
 
-      IF ( SIZE(Hwrk,1) == 1 ) THEN
 
-         DO i=1,MIN(3,SIZE(Hwrk,2))
-            Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
-         END DO
-
-      ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
-
-         DO i=1,MIN(3,SIZE(Hwrk,1))
-            Tensor(i,i,1:n) = Hwrk(i,1,1:n)
-         END DO
-
-      ELSE
-
-        DO i=1,MIN(3,SIZE(Hwrk,1))
-           DO j=1,MIN(3,SIZE(Hwrk,2))
-              Tensor( i,j,1:n ) = Hwrk(i,j,1:n)
-           END DO
+      IF ( IsScalar ) THEN
+        DO i=1,SIZE(Tensor,1)
+          Tensor(i,i,1:n) = Hwrk(1,1,1:n)
         END DO
+      ELSE
+        IF ( SIZE(Hwrk,1) == 1 ) THEN
 
+          DO i=1,MIN(3,SIZE(Hwrk,2))
+            Tensor( i,i,1:n ) = Hwrk( 1,i,1:n )
+          END DO
+
+        ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
+
+          DO i=1,MIN(3,SIZE(Hwrk,1))
+            Tensor(i,i,1:n) = Hwrk(i,1,1:n)
+          END DO
+
+        ELSE
+
+          DO i=1,MIN(3,SIZE(Hwrk,1))
+            DO j=1,MIN(3,SIZE(Hwrk,2))
+              Tensor( i,j,1:n ) = Hwrk(i,j,1:n)
+            END DO
+          END DO
+
+        END IF
       END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE InputTensor
@@ -489,7 +492,8 @@ CONTAINS
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
       REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
-
+      INTEGER :: i
+      
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
       IF ( FirstTime ) THEN
@@ -507,7 +511,7 @@ CONTAINS
       IF ( SIZE(Hwrk,1) == 1 ) THEN
 
          DO i=1,MIN(3,SIZE(Hwrk,2))
-            Tensor( i,1:n ) = Hwrk( 1,1,1:n )
+            Tensor( i,1:n ) = Hwrk( 1,i,1:n )
          END DO
 
       ELSE
@@ -634,7 +638,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF ( Bubbles ) THEN
-       CALL LCondensate( n,LSTIFF,LFORCE )
+       CALL CondensateP( n, n, LSTIFF, LFORCE )
     END IF
 
     DO i=1,n
@@ -774,33 +778,6 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBoundary
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( n, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-!------------------------------------------------------------------------------
-    INTEGER :: n
-    COMPLEX(KIND=dp) :: K(:,:), F(:), Kbb(n,n), &
-         Kbl(n,n), Klb(n,n), Fb(n)
-
-    INTEGER :: i, Ldofs(n), Bdofs(n)
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = Ldofs + n
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL ComplexInvertMatrix( Kbb,n )
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1092,13 +1069,13 @@ END SUBROUTINE DCRComplexSolver
 
 !------------------------------------------------------------------------------
 
-contains
+   CONTAINS
 
 !------------------------------------------------------------------------------
    SUBROUTINE InputVector( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:)
-      INTEGER :: n, NodeIndexes(:)
+      INTEGER :: i, n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material
@@ -1158,7 +1135,6 @@ contains
 
      INTEGER :: i,j,k,l,n,t,DIM,En,Pn
      LOGICAL :: stat, GotIt
-!     REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
 
      REAL(KIND=dp) :: Grad(3,3), Normal(3), EdgeLength, Jump, JumpReal, JumpImag, &
                       GradReal(3,3),GradImag(3,3)
@@ -1179,17 +1155,6 @@ contains
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-!     LOGICAL :: First = .TRUE.
-!     SAVE Hwrk, First
-!------------------------------------------------------------------------------
-
-!    Initialize:
-!    -----------
-
-!     IF ( First ) THEN
-!        First = .FALSE.
-!        NULLIFY( Hwrk )
-!     END IF
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
@@ -1392,13 +1357,13 @@ contains
        Temperature, Pressure )
 !------------------------------------------------------------------------------
 
-contains
+   CONTAINS
 
 !------------------------------------------------------------------------------
    SUBROUTINE InputTensor( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:,:)
-      INTEGER :: n, NodeIndexes(:)
+      INTEGER :: i, n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material
@@ -1450,7 +1415,7 @@ contains
    SUBROUTINE InputVector( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:)
-      INTEGER :: n, NodeIndexes(:)
+      INTEGER :: i, n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material
@@ -1528,9 +1493,6 @@ contains
      LOGICAL :: notScalar = .TRUE.
      TYPE( ValueList_t ), POINTER :: Material
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-
-!     LOGICAL :: First = .TRUE.
-!     SAVE Hwrk, First
 !------------------------------------------------------------------------------
 
 !    Initialize:
@@ -1751,7 +1713,7 @@ CONTAINS
    SUBROUTINE InputTensor( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:,:)
-      INTEGER :: n, NodeIndexes(:)
+      INTEGER :: i, n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material
@@ -1803,7 +1765,7 @@ CONTAINS
    SUBROUTINE InputVector( Tensor, IsScalar, Name, Material, n, NodeIndexes )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: Tensor(:,:)
-      INTEGER :: n, NodeIndexes(:)
+      INTEGER :: i, n, NodeIndexes(:)
       LOGICAL :: IsScalar
       CHARACTER(LEN=*) :: Name
       TYPE(ValueList_t), POINTER :: Material

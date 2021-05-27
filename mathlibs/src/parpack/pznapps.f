@@ -207,8 +207,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Double precision                 
-     &           zlanhs, pdlamch, dlapy2
-      external   zlanhs, pdlamch, dlapy2
+     &           zlanhs, dlapy2
+      external   zlanhs, dlapy2
 c
 c     %----------------------%
 c     | Intrinsics Functions |

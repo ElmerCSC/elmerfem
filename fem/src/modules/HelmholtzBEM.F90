@@ -60,7 +60,6 @@
  
      TYPE(Model_t) :: Model
      TYPE(Solver_t):: Solver
- 
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
  
@@ -68,32 +67,18 @@
 !    Local variables
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,t,istat,bf_id,BoundaryNodes
- 
      TYPE(Matrix_t),POINTER  :: STIFF
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: CurrentElement
- 
      REAL(KIND=dp) :: Norm, PrevNorm
      INTEGER, POINTER :: NodeIndexes(:)
-
      LOGICAL :: AllocationsDone = .FALSE., GotIt
- 
-     COMPLEX(KIND=dp), POINTER CONTIG :: Potential(:),ForceVector(:), &
-               Diagonal(:)
+     COMPLEX(KIND=dp), POINTER CONTIG :: Potential(:),ForceVector(:), Diagonal(:)
      INTEGER, POINTER :: PotentialPerm(:), BoundaryPerm(:)
-
      LOGICAL, ALLOCATABLE :: PotentialKnown(:)
- 
-     COMPLEX(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), &
-                       Load(:)
-
-     REAL(KIND=dp), ALLOCATABLE :: P1(:), P2(:)
- 
-#ifdef USE_ISO_C_BINDINGS
+     COMPLEX(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), Load(:)
+     REAL(KIND=dp), ALLOCATABLE :: P1(:), P2(:) 
      REAL(KIND=dp) :: at,st,s, AngularFrequency, Work(1)
-#else
-     REAL(KIND=dp) :: at,st,CPUTime,s, AngularFrequency, Work(1)
-#endif
      TYPE(Variable_t), POINTER :: Var
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
@@ -104,6 +89,13 @@
 
      EXTERNAL Matvec, Precond
 
+     CALL Info('HelmholtzBEMSolver','Solving the Helmholtz equation on boundaries')
+
+     IF( ParEnv % PEs > 1 ) THEN
+       CALL Fatal('HelmholtzBEMSolver','Unfortunately this module does not support MPI!')
+     END IF
+     
+     
      IF( CurrentCoordinateSystem() /= Cartesian ) THEN
        CALL Fatal('HelmholtzBEMSolver','This solver is implemented only for cartesian coordinates!')
      END IF
@@ -144,6 +136,8 @@
            END DO
         END DO
 
+        CALL Info('HelmholtzBEMSolver','Number of nodes on boundaries: '//TRIM(I2S(BoundaryNodes)))
+        
         N = Model % MaxElementNodes
  
         ALLOCATE( ElementNodes % x( N ),                  &
@@ -283,10 +277,11 @@
 !
 !    Solve system:
 !    -------------
+     CALL Info('HelmholtzBEMSolver','Solving full linear BEM matrix!',Level=7)
      CALL SolveFull( BoundaryNodes, Matrix, Potential, ForceVector, Solver )
-!
-!    Extract potential and fluxes for the boundary nodes:
+
 !    ----------------------------------------------------
+     CALL Info('HelmholtzBEMSolver','Extract potential and fluxes for the boundary nodes',Level=7)
      DO i=1,BoundaryNodes
         IF ( PotentialKnown(i) ) THEN
            Flx(i) = Potential(i)
@@ -300,8 +295,9 @@
      PRINT*,'Solve (s):    ',st
 !
      st = CPUTime()
-!    Now compute potential for all mesh points:
+
 !    ------------------------------------------
+     CALL Info('HelmholtzBEMSolver','Now compute potential for all mesh points',Level=7)
      Potential = 0.0d0
      DO i=1,BoundaryNodes
         Potential(BoundaryPerm(i)) = Pot(i)
@@ -322,7 +318,9 @@
 
         CALL ComputePotential( Potential, Pot, Flx, CurrentElement, n, ElementNodes )
      END DO
-
+     
+!    ------------------------------------------
+     CALL Info('HelmholtzBEMSolver','Creating fields for postprocessing',Level=7)
      Solver % Variable % Values = 0.0d0
      DO i=1,Solver % Mesh % NumberOfNodes
         j = Solver % Variable % Perm(i)
@@ -346,14 +344,16 @@
 !    -------------------
      Solver % Variable % Norm = SQRT( SUM( ABS(Potential)**2 ) ) / &
                 Solver % Mesh % NumberOfNodes 
-
+     
      CALL InvalidateVariable( Model % Meshes, &
                   Solver % Mesh, Solver % Variable % Name )
 !------------------------------------------------------------------------------
      st = CPUTime() - st
      PRINT*,'Post Processing (s):    ',st
 !------------------------------------------------------------------------------
- 
+         
+     CALL Info('HelmholtzBEMSolver','All done for now!',Level=7)
+    
 
    CONTAINS
 
@@ -713,9 +713,7 @@
 !------------------------------------------------------------------------------
      SUBROUTINE FullIterSolver( N,x,b,SolverParam )
 !------------------------------------------------------------------------------
-#ifdef USE_ISO_C_BINDINGS
-    USE huti_sfe
-#endif
+       USE huti_sfe
        IMPLICIT NONE
 !------------------------------------------------------------------------------
        TYPE(Solver_t) :: SolverParam
@@ -723,23 +721,12 @@
        COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: dpar(50)
-
        INTEGER :: ipar(50),wsize
-       ! REAL(KIND=dp), ALLOCATABLE :: Work(:,:)
        COMPLEX(KIND=dp), ALLOCATABLE :: Work(:,:)
-
        COMPLEX :: s
-
        LOGICAL :: AbortNotConverged
-
-#ifndef USE_ISO_C_BINDINGS
-       INTEGER  :: HUTI_Z_BICGSTAB
-       EXTERNAL :: HUTI_Z_BICGSTAB
-       INTEGER(KIND=addrInt) :: AddrFunc
-#else
        INTEGER(KIND=AddrInt) :: AddrFunc
        EXTERNAL :: AddrFunc
-#endif 
        INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
 !------------------------------------------------------------------------------
        ipar = 0; dpar = 0

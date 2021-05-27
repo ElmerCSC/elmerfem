@@ -42,7 +42,7 @@
 !!!  
 !!!   - replace current mesh by NewMesh to have remeshing during the simulation:
 !!!     
-!!!    TODO: Varaible RELEASE_MESH (default false) allow to release prev
+!!!    TODO: Variable RELEASE_MESH (default false) allow to release prev
 !mesh if true (seems that not everything is deallocated); 
 !!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -82,6 +82,10 @@
 #ifdef HAVE_MMG
 #include "mmg/mmg2d/libmmg2df.h"
 #endif
+#ifndef MMGVERSION_H
+#define MMG_VERSION_LT(MAJOR,MINOR) 1
+#endif
+
       TYPE(Model_t) :: Model
       TYPE(Solver_t), TARGET :: Solver
       TYPE(Solver_t), POINTER ::PSolver
@@ -310,14 +314,22 @@
 !------------------------------------------------------------------------------
       TYPE(Element_t),POINTER ::  Element
       INTEGER, POINTER :: NodeIndexes(:)
-      INTEGER :: np,nt,na,ier
+      INTEGER :: np,nt,na,nq,ier
       INTEGER :: ref,corner,required,ridge
       INTEGER :: parent,ied
       INTEGER :: tt, jj, kk, ll
 
 
      !> a) get the size of the mesh: vertices,  triangles, edges
+
+#if MMG_VERSION_LT(5,5) 
       CALL MMG2D_Get_meshSize(mmgMesh,np,nt,na,ier)
+#else
+      CALL MMG2D_Get_meshSize(mmgMesh,np,nt,nq,na,ier)
+      IF (nq.ne.0) CALL FATAL('MMGSolver',&
+                           'Sorry no support for 404 elements')
+#endif
+
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                            'CALL TO MMGS_Get_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Get_meshSize DONE'    
@@ -331,7 +343,7 @@
       END IF
 
       NewMesh%MaxElementNodes=3
-      NewMesh%MaxElementDOFs=3
+      !NewMesh%MaxElementDOFs=3
       NewMesh%MeshDim=Solver%Mesh%MeshDim
 
       NewMesh % NumberOfNodes = np
@@ -416,6 +428,8 @@
          Element % BoundaryInfo % Left => NewMesh % Elements(parent)
       End do
 
+      CALL SetMeshMaxDOFs(NewMesh)
+
       END FUNCTION GET_MMG2D_MESH
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -467,7 +481,7 @@
       TYPE(Element_t),POINTER :: Element
       INTEGER, POINTER :: NodeIndexes(:)
 
-      INTEGER :: NVert,NEle,NEdge
+      INTEGER :: NVert,NEle,NEdge,Nquad
       INTEGER :: n
       INTEGER :: ier
       INTEGER :: ii,tt
@@ -475,8 +489,15 @@
       NVert=Mesh%NumberOfNodes
       NEle=Mesh%NumberOfBulkElements
       NEdge=Mesh%NumberOfBoundaryElements
+      ! support only 303 elements no 404
+      Nquad=0
 
+#if MMG_VERSION_LT(5,5) 
       CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,NEdge,ier)
+#else
+      CALL MMG2D_Set_meshSize(mmgMesh,NVert,NEle,Nquad,NEdge,ier)
+#endif
+
       IF ( ier == 0 ) CALL FATAL('MMGSolver',&
                         'CALL TO MMG2D_Set_meshSize FAILED')
       IF (DEBUG) PRINT *,'--**-- MMG2D_Set_meshSize DONE'
@@ -653,7 +674,7 @@
       NoSurf=GetLogical(SolverParams,'No surf',Found)
       IF (Found .AND. NoSurf) THEN
         CALL MMG2D_SET_IPARAMETER(mmgMesh,mmgSol,MMG2D_IPARAM_nosurf,&
-                0,ier)
+                1,ier)
         IF ( ier == 0 ) CALL FATAL('M/MGSolver',&
                        'CALL TO MMG2D_SET_IPARAMETER <No surf> Failed')
       END IF

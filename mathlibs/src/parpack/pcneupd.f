@@ -336,8 +336,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Real 
-     &           scnrm2,pslamch,slapy2
-      external   scnrm2,pslamch,slapy2
+     &           scnrm2,pslamch10,slapy2
+      external   scnrm2,pslamch10,slapy2
 c
       Complex 
      &           cdotc
@@ -367,7 +367,7 @@ c     %---------------------------------%
 c     | Get machine dependent constant. |
 c     %---------------------------------%
 c
-      eps23 = pslamch(comm, 'Epsilon-Machine')
+      eps23 = pslamch10(comm, 'Epsilon-Machine')
       eps23 = eps23**(2.0  / 3.0 )
 c
 c     %-------------------------------%

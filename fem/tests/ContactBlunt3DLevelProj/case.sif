@@ -1,0 +1,220 @@
+!------------------------------------------------------------------
+! Test case for contact 
+! - 3D case weak projector (surface-to-surface)
+! - Using normal-tangential coordinate system for contact
+! - Only one steady-state contact searched for
+! - Using plane assumption for mortar projector. 
+!
+! P.R. / 18.3.2020
+!------------------------------------------------------------------
+ 
+$dy = 0.3
+$mu = 0.3
+$fileid = "pl"
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh3d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  
+  Mesh Levels = 1
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+End
+
+Body 1
+  Name = "Blunt"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+End
+
+
+Body 2
+  Name = "Base"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 2
+End
+
+Solver 1
+  Equation = "NonlinElast"
+
+  Procedure = "ElasticSolve" "ElasticSolver"
+!  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 20
+!  Nonlinear System Relaxation Factor = Real 0.7
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Ilu1
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = Idrs !Bicgstabl
+  BiCGStabl Polynomial Degree = 6
+  Idrs Parameter = 6
+  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Residual Mode = Logical True
+
+  Calculate Stresses = Logical True
+
+  Apply Contact BCs = Logical True
+
+  Nonlinear System Convergence Without Constraints = Logical True
+!  Eliminate Linear Constraints = Logical True
+!  Eliminate Slave = Logical True
+
+!! unused tricks for testing etc. 
+!  Elasticity Solver Linear = Logical True
+!  Apply Limiter Conservative Remove After Iterations = Integer 5
+!  Apply Limiter Conservative Add After Iterations = Integer 5
+!  Optimize Bandwidth = False
+!  Linear System Scaling = False
+
+!  Debug Normals = Logical True
+
+!  Use Nodal Normal = Logical True
+End
+
+
+Solver 2
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case_$fileid$
+  Vtu Format = Logical True
+  Displace Mesh = Logical False
+  Single Precision = Logical False
+  Vtu Part Collection = Logical True
+  Save Bulk Only = True
+End
+
+
+Equation 1
+  Name = "Deformation"
+  Active Solvers(1) = 1 
+End
+
+
+Material 1
+  Name = "BluntMat"
+  Youngs modulus = 2.0e3
+  Density = 1000.0
+  Poisson ratio = 0.3
+End
+
+Material 2
+  Name = "BaseMat"
+  Youngs modulus = 1.0e3
+  Density = 1000.0
+  Poisson ratio = 0.3
+End
+
+
+Boundary Condition 1
+  Name = "Contact"
+!  Target Boundaries(2) = 1 2
+  Target Boundaries(1) = 9
+
+  Mortar BC = 2
+
+!  Stick Contact = Logical True
+  Slip Contact = Logical True
+
+  Mortar BC Nonlinear = Logical True
+  Mortar BC Initial Contact Depth = Real $ mu/2
+!  Contact Active Set Minimum = Integer 10
+
+!  Create Dual Projector = Logical True
+  Projector Max Distance = Real $dy
+
+! Flatten the interfaces to enable 1D projection
+  Plane Projector = Logical True
+  Galerkin Projector = Logical True
+
+!  Normal Projector = Logical True
+
+! Use N-T conditions which allow friction for generic cases be set
+  Normal-Tangential Displacement = Logical True
+  Mass Consistent Normals = Logical True
+
+!  Use Biorthogonal Basis = Logical True
+!  Save projector = Logical True
+
+  Save Contact = Logical True
+!  No-Slip Displacement = Logical True
+End
+
+
+Boundary Condition 2
+  Name = "BaseTop"
+!  Target Boundaries(1) = 9
+  Target Boundaries(2) = 1 2
+
+  Normal-Tangential Displacement = Logical True
+  Mass Consistent Normals = Logical True
+End
+
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(1) = 4
+
+  Displacement 1 = 0.0
+  Displacement 2 = $-dy 
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 4 
+  Name = "Sides"
+  Target Boundaries(2) = 3 5
+End
+
+
+Boundary Condition 5
+  Name = "BaseBottom"
+  Target Boundaries(1) = 7
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+  
+
+Boundary Condition 6
+  Name = "BaseRight"
+  Target Boundaries(1) = 8 
+End
+
+Boundary Condition 7
+  Name = "BaseLeft"
+  Target Boundaries(1) = 10
+End
+
+Boundary Condition 8
+  Name = "Sides"
+  Target Boundaries(4) = 11 12 13 14
+
+! The spring in z-direction is needed to disable "slip" of the blunt object
+! and stabilize the simulation. 
+  Spring 3 = Real 1.0e3
+End 
+
+Solver 1 :: Reference Norm = 1.10123792E-01
+

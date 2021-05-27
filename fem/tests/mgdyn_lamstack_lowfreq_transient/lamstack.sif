@@ -8,7 +8,7 @@ End
 $ f = 500
 $ omega = 2*pi*f
 $ intervals = 5
-$ periods = 0.5
+$ periods = 0.5000001 
 $ tsize = periods/(f*intervals)
 
 Simulation

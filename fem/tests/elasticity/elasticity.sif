@@ -13,7 +13,7 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 ! Output File = "elasticity.result"
- Post File = "elasticity.ep"
+  Post File = "elasticity.vtu"
 End
 
 Body 1
@@ -46,11 +46,17 @@ Solver 1
   Nonlinear System Relaxation Factor = 1.0
   Steady State Convergence Tolerance = 1.0e-4
 
+!  Elasticity Solver Linear = True
+!  Neo-Hookean Material = True 
+
+  Calculate Strains = True
+  Calculate Stresses = True
   Calculate Loads = Logical True
 End
 
 Equation 1
   Active Solvers(1) = 1
+  Plane Stress = False
 End
 
 Boundary Condition 1

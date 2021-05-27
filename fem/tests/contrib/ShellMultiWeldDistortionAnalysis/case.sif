@@ -1409,7 +1409,7 @@ End
 
 Body Force 17
   Name = "BodyForce 17"
-  ! Transverse member generall
+  ! Transverse member general
   Direction Of Outward Normal = Real 1.0
   Thickness = Real 0.009
 End
@@ -1422,7 +1422,7 @@ Body Force 18
 End
 
 ! Boundary conditions involve all displacements zero at the center
-! and disp y and Rot x zero alog x axis and disp x and Rot y zero along y axis.
+! and disp y and Rot x zero along x axis and disp x and Rot y zero along y axis.
 
 Boundary Condition 1
   Target Boundaries(3) = 289 290 291

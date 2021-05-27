@@ -50,7 +50,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !     INPUT: Linear equation matrix information
 !
 !  INTEGER :: DOFs
-!     INPUT: Number of degrees of freedon of the equation
+!     INPUT: Number of degrees of freedom of the equation
 !
 !  INTEGER :: n
 !     INPUT: Length of unknown vector
@@ -90,12 +90,9 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
   REAL(KIND=dp), POINTER :: LocalEigenVectors(:,:), ElimDiriEigenVectors(:,:)
   REAL(KIND=dp), POINTER :: CenterOfRigidBody(:,:), NodeOutput(:), NodeTypes(:)
   REAL(KIND=dp), POINTER :: FVector(:), XVector(:)
-  REAL(KIND=dp), POINTER :: f(:), u(:), u2(:)
-#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp), POINTER :: u(:), u2(:)
+  REAL(KIND=dp), POINTER CONTIG :: f(:)
   REAL(KIND=dp) :: TotTime, at, s, val
-#else
-  REAL(KIND=dp) :: CPUtime, TotTime, at, s, val
-#endif
   LOGICAL, ALLOCATABLE :: Visited(:)
   LOGICAL :: GotIt, Rigid, EigAnal, Verbose
   INTEGER, ALLOCATABLE :: RealNodeTypes(:), RigidIndex(:), FixedIndex(:)
@@ -545,7 +542,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !  Find out the mass center points of rigid blocks
 !------------------------------------------------------------------------------
 
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      
      CALL ComputeMassCenter( CenterOfRigidBody, Model, Solver, &
           RigidIndex, NbrRigids )
@@ -633,7 +630,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !  And finally the Cols and Values for rigid blocks
 !------------------------------------------------------------------------------
 
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
 
      DO j = 1, NbrRigids
 
@@ -1200,7 +1197,7 @@ CONTAINS
 
     INTEGER, ALLOCATABLE :: RowPerm(:)
     INTEGER, POINTER :: Cols(:), Rows(:), Diag(:)
-    REAL(KIND=dp), POINTER :: Values(:), MassValues(:), DampValues(:)
+    REAL(KIND=dp), POINTER CONTIG :: Values(:), MassValues(:), DampValues(:)
 
 
     Diag   => A % Diag
@@ -1593,8 +1590,9 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
     LOGICAL, OPTIONAL :: DoneAlready
 
-    REAL(KIND=dp), POINTER :: Vals(:), MassVals(:), DampVals(:), b(:)
-    INTEGER, POINTER :: Rows(:), Cols(:), Diag(:), RowEntrys(:)
+    REAL(KIND=dp), POINTER CONTIG :: Vals(:) 
+    REAL(KIND=dp), POINTER CONTIG :: MassVals(:), DampVals(:), b(:)
+    INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:), RowEntrys(:)
     INTEGER, POINTER :: NewPerm(:), NbrNeighbors(:,:), TempCol(:)
     INTEGER :: RowCompleted, RowAdded, Lag, TempMin
     INTEGER :: i, j, k, n, istat

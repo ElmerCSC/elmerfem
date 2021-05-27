@@ -23,7 +23,7 @@
 ! 
 ! ******************************************************************************
 ! *
-! *  Authors: Peter Råback
+! *  Authors: Peter RÃ¥back
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science 
@@ -695,9 +695,9 @@ CONTAINS
 
 
 
-!-------------------------------------------------------------------------------------------  
-!> Subroutine creates isotherm where the tempereature coinsides with the melting temperature.
-!-------------------------------------------------------------------------------------------  
+!-------------------------------------------------------------------------------------------
+!> Subroutine creates isotherm where the temperature coincides with the melting temperature.
+!-------------------------------------------------------------------------------------------
   SUBROUTINE CreateIsotherm()
 
     IsoSurfAllocated = .FALSE.
@@ -914,10 +914,10 @@ CONTAINS
        
        ! ratio at where the node is an line segment
        q = (xx - x1) / (x2 - x1)
-       
-       ! the corresponging y-coordinate
+
+       ! the corresponding y-coordinate
        yc = (1-q) * y1 + q * y2
-       
+
        IF(yy > yc ) THEN
           r = 1.0_dp - (yy - yc) / ( ytop - yc )
        ELSE
@@ -950,9 +950,9 @@ END SUBROUTINE BoxMoveMesh
 
 !-------------------------------------------------------------------------------
 !> This subroutine computes the heat flux resulting from solidification.
-!> It may be computed when the velocity of the solification front is known a priori
-!> as is the case for various steady state pulling techniques. 
-!> \ingroup UDF 
+!> It may be computed when the velocity of the solidification front is known
+!> a priori as is the case for various steady state pulling techniques.
+!> \ingroup UDF
 !-------------------------------------------------------------------------------
   FUNCTION MeltingHeat(Model, Node, t) RESULT(Flux)
 !-------------------------------------------------------------------------------

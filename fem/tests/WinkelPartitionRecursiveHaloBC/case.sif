@@ -1,6 +1,6 @@
 !---------------------------------------------------------
 ! Test case for the consistency of partitioning.
-! This case is partitoned exactly using recursive geometric partition
+! This case is partitioned exactly using recursive geometric partition
 ! into 8 partitions. The number of 
 ! partitions can not be freely chosen here.
 !
@@ -76,5 +76,5 @@ RUN
 
 ! check the neighbours
 Solver 1:: Show Norm Index = 3 
-Solver 1:: Reference Norm = 9.67620000E+05
+Solver 1:: Reference Norm = 1.06106400E+06
 RUN 

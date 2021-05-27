@@ -251,7 +251,7 @@ fprintf( stderr, "%d\n", 2 );
 
 fprintf( stderr, "%d\n", 3 );
 #if 1
-   fprintf( stderr, "SIZE: %d\n", NElements*sizeof(Geometry_t) );
+   fprintf( stderr, "SIZE: %ld\n", NElements*sizeof(Geometry_t) );
    Geometry = malloc( NElements*sizeof(Geometry_t) );
    memcpy( Geometry,Elements,NElements*sizeof(Geometry_t) );
 
@@ -280,7 +280,8 @@ fprintf( stderr, "%d\n", 5 );
 void MakeTestModelLinear()
 {
     double a,r,PI=2*acos(0.0),XMin,XMax,YMin,YMax,ZMin,ZMax,*nx,*ny,*nz;
-
+    static char *ioptr;
+    
     int i,j,k,n,NN,NE;
 
     FILE *fp = fopen( "qq.qq", "r" );
@@ -301,12 +302,12 @@ void MakeTestModelLinear()
     ShapeFunctionMatrix3[2][1] =  0.0;
     ShapeFunctionMatrix3[2][2] =  1.0;
 
-    fgets( str,100,fp ); 
+    ioptr = fgets( str,100,fp ); 
     sscanf( str, "%d %d", &NN, &NE );
 
     for( j=0; j<NN; j++ )
     {
-       fgets( str,100, fp );
+       ioptr = fgets( str,100, fp );
        sscanf( str, "%lf %lf %lf", &GeomNodes[j][0],&GeomNodes[j][1],&GeomNodes[j][2] );
     }
 
@@ -316,7 +317,7 @@ void MakeTestModelLinear()
 
     for( j=0; j<NE; j++ )
     {
-       fgets( str,100, fp );
+       ioptr = fgets( str,100, fp );
        sscanf( str, "%d %d %d %d %d %d %lf %lf %lf ", 
                &i, &Type[j],&GeomElem[j][0],&GeomElem[j][1],
           &GeomElem[j][2],&GeomElem[j][3], &nx[j],&ny[j],&nz[j] );
@@ -386,7 +387,8 @@ void MakeTestModelLinear()
 void MakeTestModelTriangle()
 {
     double a,r,PI=2*acos(0.0),XMin,XMax,YMin,YMax,ZMin,ZMax;
-
+    static char *ioptr;
+ 
     int i,j,k,kk,n,NN,NE;
 
     FILE *fp = fopen( "qq.qq", "r" );
@@ -405,18 +407,18 @@ void MakeTestModelTriangle()
     ShapeFunctionMatrix3[2][2] =  1.0;
 
 
-    fgets( str,100,fp ); 
+    ioptr = fgets( str,100,fp ); 
     sscanf( str, "%d %d", &NN, &NE );
 
     for( j=0; j<NN; j++ )
     {
-       fgets( str,100, fp );
+       ioptr = fgets( str,100, fp );
        sscanf( str, "%lf %lf %lf", &xx[j],&yy[j],&zz[j] );
     }
  
     for( j=0; j<NE; j++ )
     {
-       fgets( str,100, fp );
+       ioptr = fgets( str,100, fp );
        sscanf( str, "%*d %*d %d %d %d %d %lf %lf %lf ", &e[0][j],&e[1][j],&e[2][j],&e[3][j],&nx[j],&ny[j],&nz[j] );
     }
  

@@ -3,7 +3,7 @@
 # the inner square is made of iron, the outer is not specified (default)
 # boundary condition 1 on the outside, 2 on the interface between inner and outer square
 
-# new .in2d geomety files ... 
+# new .in2d geometry files ... 
 
 # start with keyword splinecurves2dv2 
 splinecurves2dv2

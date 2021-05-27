@@ -10,7 +10,8 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Updated January 2014: comment Solver 5 (top freesurface)
 !    because of implementation problems when using 2 same solvers 
-!    whithout recompiling one of them
+!    without recompiling one of them
+! Updated September 2020 to make it faster and some cleaning
 
 check keywords warn
 echo on
@@ -40,19 +41,17 @@ Simulation
   Coordinate System  =  Cartesian 3D 
   Simulation Type = Transient     
 
-  Extruded Mesh Levels = Integer 16
+  Extruded Mesh Levels = Integer 5 
 
   Timestepping Method = "bdf"
   BDF Order = 1
-  TimeStep intervals = 2       
+  TimeStep intervals = 1
   Timestep Sizes =  $10.0/365.            
   Output Intervals = 1
 
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Output File = "teterousse_$Step".result"!"
-  Post File = "teterousse_$Step".ep"!"
   max output level = 4
 End
 
@@ -219,7 +218,7 @@ Solver 4
 End
 
 Solver 5
-  !Exec Solver = Never !!!!!!!!
+  Exec Solver = Never
   Equation = "Free Surface Top"
   Variable = String "Zs Top" 
   Variable DOFs =  1
@@ -258,6 +257,7 @@ Solver 5
 End
 
 Solver 6
+  Exec Solver = Never
   Equation = "Free Surface Bottom"
   Variable = String "Zs Bottom" 
   Variable DOFs =  1
@@ -296,40 +296,10 @@ Solver 6
    Normal Flux = Logical False
 End
 
-Solver 7
-  Exec Solver = After TimeStep
-  Exec Interval = 1
-  Equation = "result output"
-  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = teterousse_$Step
-  Output Format = String vtu
-End
-
-Solver 8
-  Exec Solver = After TimeStep
-  Equation = SaveScalars
-  Procedure = File "SaveData" "SaveScalars"
-  Filename = "results.dat"
-  Variable 1 = String "Time"
-  Variable 2 = String "velocity"
-  Operator 2 = String "int"
-  Variable 3 = String "velocity"
-  Operator 3 = String "max"
-  Variable 4 = String "velocity"
-  Operator 4 = String "min"
-  Variable 5 = String "pressure"
-  Operator 5 = String "int"
-  Variable 6 = String "pressure"
-  Operator 6 = String "max"
-  Variable 7 = String "pressure"
-  Operator 7 = String "min"
-  Operator 8 = String "cpu time"
-End
-
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Volume
 Equation 1
-  Active Solvers(6) = 1 2 3 4 7 8
+  Active Solvers(4) = 1 2 3 4
 End
 ! Top surface
 Equation 2
@@ -383,8 +353,5 @@ Boundary Condition 3
   Flux integrate = Logical True
 End
 
-Solver 6 :: Reference Norm = Real 3164.3866
-Solver 6 :: Reference Norm Tolerance = Real 1E-06
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=3164.3866,EPS=1E-06\n" );
+Solver 3 :: Reference Norm = Real 1.26257247E-01
+Solver 3 :: Reference Norm Tolerance = Real 1E-06

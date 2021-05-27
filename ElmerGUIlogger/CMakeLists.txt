@@ -1,10 +1,7 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 SET(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
 MESSAGE(STATUS "------------------------------------------------")
-FIND_PACKAGE(Qt4 COMPONENTS QtOpenGL QtXml QtScript QtGui QtCore REQUIRED)
-MESSAGE(STATUS "  [ElmerGUIlogger] Qt4:               " ${Qt4_FOUND})
-MESSAGE(STATUS "  [ElmerGUIlogger] Qt4_LIBRARIES:     " ${Qt4_LIBRARY})
-MESSAGE(STATUS "------------------------------------------------")
+
 IF(ElmerGUIloggerSTANDALONE)
   PROJECT(ElmerGUIlogger CXX C)
   IF(WIN32)
@@ -12,6 +9,23 @@ IF(ElmerGUIloggerSTANDALONE)
   ENDIF(WIN32)
 ENDIF(ElmerGUIloggerSTANDALONE)
 
+IF(WITH_QT5)
+  MESSAGE(STATUS "------------------------------------------------")
+  SET(QT5_PKG_LIST Qt5OpenGL Qt5Xml Qt5Script Qt5Gui Qt5Core Qt5Widgets Qt5PrintSupport)
+  FOREACH(_pkg ${QT5_PKG_LIST})
+    FIND_PACKAGE(${_pkg} PATHS ${QT5_PATH})
+  ENDFOREACH()
+  ADD_DEFINITIONS(-DWITH_QT5)
+  MESSAGE(STATUS "  [ElmerGUIlogger] Qt5:               " ${Qt5_FOUND})
+  MESSAGE(STATUS "  [ElmerGUIlogger] Qt5 Libraries: ${Qt5OpenGL_LIBRARIES} ${Qt5Xml_LIBRARIES} ${Qt5Script_LIBRARIES} ${Qt5Widgets_LIBRARIES} ${Qt5Gui_LIBRARIES} ${Qt5Core_LIBRARIES} ${Qt5PrintSupport_LIBRARIES}")
+  MESSAGE(STATUS "------------------------------------------------")
+ELSE()  
+  MESSAGE(STATUS "------------------------------------------------")
+  FIND_PACKAGE(Qt4 COMPONENTS QtOpenGL QtXml QtScript QtGui QtCore REQUIRED)
+  MESSAGE(STATUS "  [ElmerGUIlogger] Qt4:               " ${Qt4_FOUND})
+  MESSAGE(STATUS "  [ElmerGUIlogger] Qt4_LIBRARIES:     " ${Qt4_LIBRARY})
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
 
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 SET(CMAKE_AUTOMOC ON)
@@ -24,10 +38,16 @@ SET(RESOURCES ElmerGUIlogger.qrc)
 SET(RC_FILE ElmerGUIlogger.rc)
 
 
-QT4_ADD_RESOURCES(UI_RESOURCES ElmerGUIlogger.qrc)
-MESSAGE(WARNING "QT_USE_FILE: ${QT_USE_FILE}")
-INCLUDE(${QT_USE_FILE})
-ADD_DEFINITIONS(${QT_DEFINITIONS})
+IF(WITH_QT5)
+  QT5_ADD_RESOURCES(UI_RESOURCES ElmerGUIlogger.qrc)
+  ADD_DEFINITIONS(-DWITH_QT5)
+ELSE()
+  QT4_ADD_RESOURCES(UI_RESOURCES ElmerGUIlogger.qrc)
+  MESSAGE(WARNING "QT_USE_FILE: ${QT_USE_FILE}")
+  INCLUDE(${QT_USE_FILE})
+  ADD_DEFINITIONS(${QT_DEFINITIONS})
+ENDIF()
+
 
 
 IF(MINGW AND WIN32)
@@ -40,6 +60,11 @@ ENDIF()
 
 
 ADD_EXECUTABLE(ElmerGUIlogger WIN32 ${SOURCES} ${UI_RESOURCES})
+
+IF(WITH_QT5)
+  QT5_USE_MODULES(ElmerGUIlogger OpenGL Xml Script Gui Core Widgets PrintSupport)
+ENDIF()
+
 TARGET_LINK_LIBRARIES(ElmerGUIlogger ${QT_LIBRARIES})
 
 INSTALL(TARGETS ElmerGUIlogger RUNTIME DESTINATION "bin" COMPONENT "elmergui")

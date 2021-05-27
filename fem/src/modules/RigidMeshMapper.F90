@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -70,9 +70,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, dCoord(3), Norm, dx(3)
   REAL(KIND=dp) :: at0,at1,at2,Coeff,Source,relax(1),MaxDeform
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: CPUTime,RealTime
-#endif
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
       RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
@@ -227,7 +224,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END DO
 
-    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize') ) THEN
+    IF( ListGetLogical(SolverParams,'Mesh Relax Normalize',Found) ) THEN
       MaxDeform = MAXVAL( ABS( Solver % Variable % Values ) )
       MaxDeform = ParallelReduction( MaxDeform, 2 )      
       WRITE(Message,'(A,ES12.3)') 'Normalizing deformation by:',MaxDeform
@@ -263,7 +260,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
       ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 2') .OR. &
       ListCheckPresentAnyBodyForce( Model,'Mesh Displacement 3')
    IF( AnyMeshTranslate ) THEN
-     CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolite keyword',Level=3)
+     CALL Info('RigidMeshMapper','> Mesh Displacement < is an obsolete keyword',Level=3)
      CALL Warn('RigidMeshMapper','Replace with > Mesh Translate < ')
      AnyMeshTranslate = .FALSE.
    END IF

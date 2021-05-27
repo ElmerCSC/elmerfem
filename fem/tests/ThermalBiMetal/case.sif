@@ -11,7 +11,7 @@ Simulation
   Coordinate System = Cartesian 
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-!  Post File = "case.ep"
+!  Post File = "case.vtu"
 End
 
 Constants

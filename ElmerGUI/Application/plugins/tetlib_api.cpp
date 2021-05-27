@@ -27,7 +27,7 @@
  *                                                                           *
  *****************************************************************************
  *                                                                           *
- *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
+ *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Raback                   *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -151,7 +151,7 @@ mesh_t *TetlibAPI::createElmerMeshStructure()
   mesh->newSurfaceArray(mesh->getSurfaces());
 
   int *trifacelist = out->trifacelist;
-  int *adjtetlist = out->adjtetlist;
+  int *face2tetlist = out->face2tetlist;
 
   for(int i=0; i < mesh->getSurfaces(); i++) {
     surface_t *surface = mesh->getSurface(i);
@@ -178,9 +178,9 @@ mesh_t *TetlibAPI::createElmerMeshStructure()
     surface->setElementIndex(1, -1);
 
     // must have "nn" in control string:
-    if(out->adjtetlist != (int*)NULL) {
-      surface->setElementIndex(0, (*adjtetlist++) - out->firstnumber);
-      surface->setElementIndex(1, (*adjtetlist++) - out->firstnumber);
+    if(out->face2tetlist != (int*)NULL) {
+      surface->setElementIndex(0, (*face2tetlist++) - out->firstnumber);
+      surface->setElementIndex(1, (*face2tetlist++) - out->firstnumber);
     }
 
     int u = (*trifacelist++) - out->firstnumber;

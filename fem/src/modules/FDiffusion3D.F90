@@ -99,12 +99,7 @@ SUBROUTINE FourierDiffusion3DSolver( Model,Solver,dt,TransientSimulation )
        Impedance, AllocationsDone, Conductivity, Permeability, &
        LrF, LocalNodes
 
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
-
   TYPE(Solver_t), POINTER :: SolverPointer
 
 !------------------------------------------------------------------------------
@@ -129,7 +124,7 @@ SUBROUTINE FourierDiffusion3DSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Solver % Mesh % MaxElementNodes
 
      IF ( AllocationsDone ) THEN
@@ -527,10 +522,6 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
 
-    IF ( Bubbles ) THEN
-       CALL LCondensate( n,LSTIFF,LFORCE )
-    END IF
-
     DO p=1,n
        DO i=1,dim
           Force( 2*dim*(p-1)+2*i-1 ) = REAL( LFORCE(dim*(p-1)+i) )
@@ -640,35 +631,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBoundary
 !------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE LCondensate( n, K, F )
-!------------------------------------------------------------------------------
-    USE LinearAlgebra
-!------------------------------------------------------------------------------
-    INTEGER :: n
-    COMPLEX(KIND=dp) :: K(:,:), F(:), Kbb(n,n), &
-         Kbl(n,n), Klb(n,n), Fb(n)
-
-    INTEGER :: i, Ldofs(n), Bdofs(n)
-
-    Ldofs = (/ (i, i=1,n) /)
-    Bdofs = Ldofs + n
-
-    Kbb = K(Bdofs,Bdofs)
-    Kbl = K(Bdofs,Ldofs)
-    Klb = K(Ldofs,Bdofs)
-    Fb  = F(Bdofs)
-
-    CALL ComplexInvertMatrix( Kbb,n )
-    F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
-!------------------------------------------------------------------------------
-  END SUBROUTINE LCondensate
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
    SUBROUTINE LorentzForceAve( LrFx,LrFy,LrFz,BRex,BImx,BRey,BImy,BRez,BImz,&

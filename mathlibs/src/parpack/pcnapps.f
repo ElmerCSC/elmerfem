@@ -207,8 +207,8 @@ c     | External Functions |
 c     %--------------------%
 c
       Real                 
-     &           clanhs, pslamch, slapy2
-      external   clanhs, pslamch, slapy2
+     &           clanhs, pslamch10, slapy2
+      external   clanhs, pslamch10, slapy2
 c
 c     %----------------------%
 c     | Intrinsics Functions |

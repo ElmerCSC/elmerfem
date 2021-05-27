@@ -162,7 +162,7 @@ MODULE Interpolation
     IsInElement = .FALSE.
     n = Element % TYPE % NumberOfNodes
 
-    ! The numberic precision 
+    ! The numeric precision 
     IF ( PRESENT(NumericEps) ) THEN
       eps0 = NumericEps
     ELSE
@@ -286,7 +286,7 @@ MODULE Interpolation
 
     trans = PRESENT(EdgeBasis)
     IF(trans) trans=EdgeBasis
-    trans = trans .OR. isPElement(Element)
+    trans = trans .OR. isActivePElement(Element)
 
     IF (trans) THEN
       SELECT CASE(Element % Type % ElementCode/100)
@@ -320,7 +320,7 @@ MODULE Interpolation
 !------------------------------------------------------------------------------
     SUBROUTINE BuildQuadrantTree(Mesh, BoundingBox, RootQuadrant)
 !------------------------------------------------------------------------------
-    TYPE(Mesh_t) :: Mesh                        !< Finite elememt mesh
+    TYPE(Mesh_t) :: Mesh                        !< Finite element mesh
     REAL(KIND=dp), DIMENSION(6) :: BoundingBox  !< XMin, YMin, ZMin, XMax, YMax, ZMax
     TYPE(Quadrant_t), POINTER :: RootQuadrant   !< Quadrant tree structure root
 !------------------------------------------------------------------------------

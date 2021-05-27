@@ -287,7 +287,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
   END IF
   ! just to be on the save side, check again
   IF ( .NOT. ASSOCIATED(ParentElement) ) THEN
-     CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','No parent element found for boudnary element')
+     CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','No parent element found for boundary element')
   END IF
 
   body_id = ParentElement % BodyId
@@ -431,8 +431,8 @@ END FUNCTION helmholtz_smoluchowski_comp
 
 !------------------------------------------------------------------------------
 !> Joule heat source as a function of electric field
-!> This subroutine is basically obsolite. A more accurate version is build
-!> inside the Differentials for the field Potential.  
+!> This subroutine is basically obsolete. A more accurate version is built
+!> inside the Differentials for the field Potential.
 !> \deprecated Is this used any more?
 !> \ingroup UDF
 !-------------------------------------------------------------------------------

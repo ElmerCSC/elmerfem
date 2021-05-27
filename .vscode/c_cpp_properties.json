@@ -1,0 +1,32 @@
+{
+    "env": {
+        "myDefaultIncludePath": [
+            "${workspaceFolder}"
+        ],
+        "myCompilerPath": "/usr/local/bin/gcc-9"
+    },
+    "configurations": [
+        {
+            "name": "Mac GNU GCC HomeBrew",
+            "intelliSenseMode": "gcc-x64",
+            "includePath": [
+                "${myDefaultIncludePath}",
+                "/usr/local/Cellar/qt@4/4.8.7_6/lib/QtGui.framework/Versions/4/Headers"
+            ],
+            "macFrameworkPath": [
+                "/System/Library/Frameworks"
+            ],
+            "compilerPath": "/usr/local/bin/gcc-9",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}"
+                ],
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": ""
+            }
+        }
+    ],
+    "version": 4
+}

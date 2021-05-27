@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back, Juha Ruokolainen
+! *  Authors: Peter Råback, Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -55,19 +55,15 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t),POINTER :: SolverParams
+  TYPE(ValueList_t), POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: Vname, VarName, CondName
   INTEGER :: i,j,k,dim,DOFs
   LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
   LOGICAL :: GotIt, Visited = .FALSE., SetD
   REAL(KIND=dp) :: Unorm, Totnorm, nrm
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
-  REAL(KIND=dp), POINTER  :: SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp), POINTER  CONTIG :: SaveRHS(:)
   REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
   TYPE(Variable_t), POINTER :: NrmSol
 
   REAL(KIND=dp), ALLOCATABLE :: Values(:)
@@ -114,18 +110,18 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
   
-  IF ( ConstantBulkMatrixInUse ) THEN
-    Solver % Matrix % Values = Solver % Matrix % BulkValues        
-  ELSE
-    CALL DefaultInitialize()
-  END IF
+  CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
 
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),dim))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
-!    
+
   CALL BulkAssembly()
-  CALL DefaultFinishBulkAssembly()
+  IF (ConstantBulkMatrix) THEN
+    CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
+  ELSE
+    CALL DefaultFinishBulkAssembly()
+  END IF
 
   !No flux BCs for this solver
   CALL DefaultFinishAssembly()
@@ -159,8 +155,9 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
     DO j=1,Solver % Matrix % NumberOfRows
       NrmSol % Values(DOFs*(j-1)+i) = Solver % Variable % Values(j)
     END DO
-    Solver % Matrix % RHS => SaveRHS
   END DO
+  Solver % Matrix % RHS => SaveRHS
+
   IF ( SetD ) DEALLOCATE(Values)
 
   DO i=1,Solver % Matrix % NumberOFRows
@@ -180,7 +177,6 @@ SUBROUTINE NormalSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------     
  
   DEALLOCATE( ForceVector )
-  Solver % Matrix % RHS => SaveRHS
   
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1
@@ -194,9 +190,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:,:), Basis(:)
-    REAL(KIND=dp) :: Weight,Normal(3),detJ
+    REAL(KIND=dp), POINTER :: ArrayPtr(:) => NULL()
+    REAL(KIND=dp) :: Weight, Normal(3), detJ, Point(3), r(3)
 
-    LOGICAL :: Found
+    LOGICAL :: Found, CheckOrientation
 
     INTEGER :: elem,t,i,j,p,q,n,nd, Rank
 
@@ -214,7 +211,15 @@ CONTAINS
       CALL GetElementNodes( Nodes )
       nd = GetElementNOFDOFs()
       n  = GetElementNOFNodes()
-      
+
+      ArrayPtr => ListGetConstRealArray1(GetBodyParams(Element), 'Point on Negative Side', CheckOrientation)
+      IF (CheckOrientation) THEN
+        Point = 0.0d0
+        DO i=1,SIZE(ArrayPtr)
+          Point(i) = ArrayPtr(i)
+        END DO
+      END IF
+
       ! Integrate local stresses:
       ! -------------------------
       IntegStuff = GaussPoints( Element )
@@ -239,6 +244,12 @@ CONTAINS
         
         Normal = NormalVector( Element, Nodes, &
            IntegStuff % u(t), IntegStuff % v(t), .TRUE. )
+        IF (CheckOrientation) THEN
+          r(1) = SUM(Basis(1:n) * Nodes % x(1:n)) - Point(1)
+          r(2) = SUM(Basis(1:n) * Nodes % y(1:n)) - Point(2)
+          r(3) = SUM(Basis(1:n) * Nodes % z(1:n)) - point(3)
+          IF (SUM(Normal*r) < 0.0d0) Normal = -Normal
+        END IF
         DO i=1,dim
           FORCE(i,1:nd) = FORCE(i,1:nd) + Weight*Normal(i)*Basis(1:nd)
         END DO
@@ -289,14 +300,12 @@ END SUBROUTINE NormalSolver
     SolverParams => GetSolverParams()
     dim = CoordinateSystemDimension()
 
-    IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      CALL ListAddString( SolverParams, 'Variable','-nooutput nrm_temp' )
-    END IF
+    CALL ListAddNewString( SolverParams, 'Variable','-nooutput nrm_temp' )
     
     VarName = GetString(SolverParams,'Normals Result Variable', Found )
     IF( .NOT. Found ) THEN
       CALL ListAddString( SolverParams,'Normals Result Variable','Normals')
-      CALL ListAddString( SolverParams,  'Exported Variable 1', 'Normals[Normals:2]' )
+      CALL ListAddString( SolverParams,  'Exported Variable 1', 'Normals[Normals:'//TRIM(I2S(dim))//']' )
     END IF
 
     CALL ListAddInteger( SolverParams, 'Time derivative order', 0 )

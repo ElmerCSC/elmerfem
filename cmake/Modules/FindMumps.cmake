@@ -48,7 +48,7 @@ ELSE()
 ENDIF()
    
 IF (MUMPSLIBS_FOUND)
-  # Paralel Mumps always needs Scalapack
+  # Parallel Mumps always needs Scalapack
   FIND_PACKAGE(SCALAPACK QUIET)
   
   IF(SCALAPACK_FOUND)    

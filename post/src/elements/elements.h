@@ -105,31 +105,31 @@ typedef struct element_type_s
     int NumberOfNodes;     /* number of nodes */
 
     /*
-     * function to give value of a variable (f), given coorinates (u,v,w)
+     * function to give value of a variable (f), given coordinates (u,v,w)
      */
     double (*FunctionValue)( double *f,double u,double v,double w );
 
     /*
      * function to give value of first partial derivate in (u) of a variable (f),
-     * given coorinates (u,v,w)
+     * given coordinates (u,v,w)
      */
     double (*PartialU)( double *f,double u,double v,double w );
 
     /*
      * function to give value of first partial derivate in (v) of a variable (f),
-     * given coorinates (u,v,w)
+     * given coordinates (u,v,w)
      */
     double (*PartialV)( double *f,double u,double v,double w );
 
     /*
      * function to give value of first partial derivate in (w) of a variable (f),
-     * given coorinates (u,v,w)
+     * given coordinates (u,v,w)
      */
     double (*PartialW)( double *f,double u,double v,double w );
 
     /*
      * function to give value of second partial derivates of a variable (f),
-     * given coorinates (u,v,w)
+     * given coordinates (u,v,w)
      */
     double (*SecondPartials)( double *f,double u,double v,double w,double *Values );
 

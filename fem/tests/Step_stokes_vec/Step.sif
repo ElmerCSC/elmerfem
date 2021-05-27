@@ -1,0 +1,108 @@
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+  Post File = "case.vtu"
+End
+
+
+Constants
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  initial condition = 1
+End
+
+initial condition 1
+ velocity 1 = 0
+ velocity 2 = 0
+end
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+  NS Convect = False
+End
+
+
+Solver 1
+  Equation = "NS-Vec"
+
+  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+
+  Linear System Solver = Iterative
+
+!  Linear System Direct Method = mumps
+
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 3
+
+!
+! Note: Stabilization terms for equal-order interpolation have not been implemented.
+! The only way to get a stable solution is to apply bubbles or p2-p1 approximation.
+!       
+  Element = "p:1 -quad b:3"
+!  Stabilization Method = String Stabilized   !Note: this keyword is not supported
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 1e3
+End
+
+Boundary Condition 1
+  Name = "inflow"
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Coordinate 2
+     Real MATC "(2-tx)*(tx-1)"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "outflow"
+  Target Boundaries = 2
+
+!  Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "wall"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+ 
+Solver 1 :: Reference Norm = 7.55491505E-02

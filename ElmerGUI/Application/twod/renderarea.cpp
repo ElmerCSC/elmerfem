@@ -38,6 +38,7 @@
  *                                                                           *
  *****************************************************************************/
 #include <QPainter>
+#include <QPainterPath>
 #include <QMouseEvent>
 #include <QFile>
 #include <QTextStream>
