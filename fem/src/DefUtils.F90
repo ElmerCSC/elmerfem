@@ -531,9 +531,9 @@ CONTAINS
      REAL(KIND=dp), POINTER :: Values(:)
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
-     TYPE(Element_t),  POINTER :: Element
+     TYPE(Element_t),  POINTER :: Element, Parent
 
-     INTEGER :: i, j, k, n
+     INTEGER :: i, j, k, n, lr
      INTEGER, POINTER :: Indexes(:)
 
      Solver => CurrentModel % Solver
@@ -564,7 +564,13 @@ CONTAINS
 
      Element => GetCurrentElement(UElement)
 
+     ! Some variables do not really follow the numbering
+     ! nodes + faces + edges etc. of the standard solver.
+     ! For example, if we want to request DG values from a variable
+     ! that is not called by a DG solver we have to treat the DG variable
+     ! separately. As is the case for Gauss variables.
      ! If variable is defined on gauss points return that instead
+     !-------------------------------------------------------------
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        j = Element % ElementIndex
        n = Variable % Perm(j+1) - Variable % Perm(j)
@@ -573,17 +579,37 @@ CONTAINS
        END DO
        RETURN
      ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
-       Indexes => Element % DGIndexes
-       n = Element % Type % NumberOfNodes
-       DO i=1,n
-         j = Variable % Perm(Indexes(i))
-         IF(j==0) CYCLE
-         x(i) = Values(j)
-       END DO
+       n = Element % TYPE % NumberOfNodes
+       Indexes => Element % DGIndexes       
+       IF(ASSOCIATED( Indexes ) ) THEN
+         DO i=1,n
+           j = Variable % Perm(Indexes(i))
+           IF(j>0) x(i) = Values(j)
+         END DO
+       ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+         DO lr=1,2
+           IF(lr==1) THEN
+             Parent => Element % BoundaryInfo % Left
+           ELSE
+             Parent => Element % BoundaryInfo % Right
+           END IF
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                          
+           DO i=1,n
+             DO j=1,Parent % TYPE % NumberOfNodes
+               IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                 k = Variable % Perm( Parent % DGIndexes(j) )
+                 IF(k>0) x(i) = Values(k)
+                 EXIT
+               END IF
+             END DO
+           END DO
+           EXIT
+         END DO
+       END IF
        RETURN       
      END IF
 
-     
      Indexes => GetIndexStore()
      IF ( ASSOCIATED(Variable % Solver) ) THEN
        n = GetElementDOFs( Indexes, Element, Variable % Solver )
@@ -636,9 +662,9 @@ CONTAINS
 
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
-     TYPE(Element_t),  POINTER :: Element
+     TYPE(Element_t),  POINTER :: Element, Parent
 
-     INTEGER :: i, j, k, l, n
+     INTEGER :: i, j, k, l, lr, n
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
 
@@ -676,9 +702,9 @@ CONTAINS
        ASSOCIATE(dofs => variable % dofs)
          j = Element % ElementIndex
          n = Variable % Perm(j+1) - Variable % Perm(j)
-         IF (size(x,1) < dofs .or. size(x,2) < n) THEN
-           write (message,*) 'Attempting to get IP solution to a too small array of size', &
-               shape(x), '. Required size:', dofs, n
+         IF (SIZE(x,1) < dofs .OR. SIZE(x,2) < n) THEN
+           WRITE (message,*) 'Attempting to get IP solution to a too small array of size', &
+               SHAPE(x), '. Required size:', dofs, n
            CALL Fatal('GetVectorLocalSolution', message)
          END IF
          DO i=1,n
@@ -691,18 +717,48 @@ CONTAINS
          RETURN
        END ASSOCIATE
      ELSE IF(  Variable % TYPE == Variable_on_nodes_on_elements ) THEN
-       Indexes => Element % DGIndexes
        n = Element % TYPE % NumberOfNodes
-       ASSOCIATE(dofs => variable % dofs)
-         DO i=1,n
-           j = variable % perm(indexes(i))
-           IF( j==0 ) CYCLE
-           DO k=1,dofs
-             x(k, i) = Values((j-1)*dofs + k)
+       Indexes => Element % DGIndexes
+       IF(ASSOCIATED( Indexes ) ) THEN
+         ASSOCIATE(dofs => variable % dofs)
+           DO i=1,n
+             j = variable % perm(indexes(i))
+             IF( j==0 ) CYCLE
+             DO k=1,dofs
+               x(k,i) = Values((j-1)*dofs + k)
+             END DO
            END DO
+           RETURN
+         END ASSOCIATE
+       ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+         DO lr=1,2
+           IF(lr==1) THEN
+             Parent => Element % BoundaryInfo % Left
+           ELSE
+             Parent => Element % BoundaryInfo % Right
+           END IF
+           IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                          
+
+           ASSOCIATE(dofs => variable % dofs)
+             DO i=1,n
+               DO j=1,Parent % TYPE % NumberOfNodes
+                 IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
+                   l = Variable % Perm( Parent % DGIndexes(j) )
+                   IF(l>0) THEN
+                     DO k=1,dofs
+                       x(k,i) = Values((l-1)*dofs + k )
+                     END DO
+                   END IF
+                   EXIT
+                 END IF
+               END DO
+             END DO
+           END ASSOCIATE
+           EXIT
          END DO
-         RETURN
-       END ASSOCIATE       
+       END IF
+       RETURN       
      END IF
 
      
