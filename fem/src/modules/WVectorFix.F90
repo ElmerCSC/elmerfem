@@ -91,7 +91,7 @@ SUBROUTINE WVectorFix( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Norm!, s
-  INTEGER :: active, dim, n, nd, nsize, t, j !,i,k, nb, iter, Part, sgn, CoilParts, &
+  INTEGER :: active, dim, n, nd, nsize, t, j, i, varindex!,k, nb, iter, Part, sgn, CoilParts, &
 !       MaxNonlinIter,dimi,ierr, NoCoils, MaxNoCoils
   INTEGER :: Dnode_index
   INTEGER, POINTER :: Perm(:)!, Set(:),TargetBodies(:)
@@ -103,6 +103,7 @@ SUBROUTINE WVectorFix( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: Params!, CoilList 
   TYPE(Valuelist_t), POINTER :: Material
+  CHARACTER(LEN=MAX_NAME_LEN) :: FluxVarname(2)
 !  REAL(KIND=dp) :: CoilCrossSection,InitialCurrent, Coeff, val, x0
 !  REAL(KIND=dp), ALLOCATABLE :: DesiredCoilCurrent(:), DesiredCurrentDensity(:)
 !  LOGICAL :: Found, CoilClosed, CoilAnisotropic, UseDistance, FixConductivity, &
@@ -130,36 +131,45 @@ SUBROUTINE WVectorFix( Model,Solver,dt,TransientSimulation )
 
   dim = CoordinateSystemDimension()
 
-  GradV => VariableGet( Mesh % Variables,'W Vector E')  
-  IF( .NOT. ( ASSOCIATED( GradV ) ) ) THEN
-    CALL Fatal('WVectorFix','Fixing is done currently only for W Vector E!')
-  END IF    
-  
-  CALL DefaultInitialize()
-  Active = GetNOFActive() 
-  DO t=1,Active
-    Element => GetActiveElement(t)
-    n  = GetElementNOFNodes()
-    nd = GetElementNOFDOFs()           
-    CALL LocalCorrMatrix(  Element, n, nd )
-  END DO
-  IF( Parenv%myPE == parenv % pes ) Dnode_index = Element % NodeIndexes(1)
+  FluxVarname(1) = 'W Vector E'
+  FluxVarname(2) = 'J Vector E'
 
-  ! Set just one Dirichlet node.
-  ! In serial it can be as well the 1st one. 
-  !CALL UpdateDirichletDof(Solver % Matrix, Dnode_index, 0._dp)        
+  DO varindex = 1, 2
+    GradV => VariableGet( Mesh % Variables,FluxVarname(varindex))  
+    IF( .NOT. ( ASSOCIATED( GradV ) ) ) THEN
+      IF (varindex .EQ. 2) CYCLE
+      CALL Fatal('WVectorFix','Fixing is done currently only for '//TRIM(FluxVarname(varindex))//&
+        '! I cannot find it.')
+    END IF    
+
+    CALL INFO('WVectorFix','Applying elemental div()=0 to: '//TRIM(FluxVarname(varindex)),level=3)
     
-  ! Only Default dirichlet conditions activate the BCs above!
-  !CALL DefaultDirichletBCs()
-  
-  Norm = DefaultSolve()
-  
-  CALL Info('WVectorFix','Fixing W Vector E to be divergence free!')
-  DO t=1,Active
-    Element => GetActiveElement(t)
-    n  = GetElementNOFNodes()
-    nd = GetElementNOFDOFs()           
-    CALL LocalCorrCurrent(  Element, n, nd )
+    CALL DefaultInitialize()
+    Active = GetNOFActive() 
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()           
+      CALL LocalCorrMatrix(  Element, n, nd )
+    END DO
+    IF( Parenv%myPE == parenv % pes ) Dnode_index = Element % NodeIndexes(1)
+
+    ! Set just one Dirichlet node.
+    ! In serial it can be as well the 1st one. 
+    !CALL UpdateDirichletDof(Solver % Matrix, Dnode_index, 0._dp)        
+      
+    ! Only Default dirichlet conditions activate the BCs above!
+    !CALL DefaultDirichletBCs()
+    
+    Norm = DefaultSolve()
+    
+    CALL Info('WVectorFix','Fixing '//TRIM(FluxVarname(varindex))//' to be divergence free!')
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()           
+      CALL LocalCorrCurrent(  Element, n, nd )
+    END DO
   END DO
 
 CONTAINS 

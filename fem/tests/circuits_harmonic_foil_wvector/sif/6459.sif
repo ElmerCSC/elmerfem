@@ -1,6 +1,22 @@
 ! Circuits and dynamics test case with foil winding.
-! Author: Eelis Takala, Trafotek Oy
-! Original date: May 2017
+! This test case uses the elemental W Vector as the test function 
+! and the elemental J Vector as the source field. These fields 
+! are computed in WPotentialSolver and their divergence is imposed
+! zero elementally in WVectorFix. Using this arrangement the source 
+! component should be divergence free even if some divergence would 
+! be generated in creating W and J vectors. In this case it seems 
+! though that the divergence is fine even before the fix.
+! Notice the key words using J Vector
+! Solver 4 :: Compute J Vector = Logical True 
+! Component 1 :: Foil Winding Use J Vector = Logical True
+! In addition if when you use W Vector you need to define
+! Component 1 :: Coil Use W Vector = Logical True
+! if J Vector and W Vector are used then source term is of the form (J Vector, W Vector)
+! if only J Vector is used then (J Vector, grad w)
+! if only W Vector is used then (C W Vector, W Vector)
+! When neighter are used then (C grad w, grad w)
+! Author: Eelis Takala
+! Original date: May 2021
 ! eelis.takala@gmail.com
 Check Keywords "Warn"
 INCLUDE sif/6459-circuits.definitions
@@ -69,6 +85,7 @@ Solver 4  !---- WPotentialSolver, Wsolve
    Procedure = "WPotentialSolver" "Wsolve"
    Equation = "Wire direction"
    Variable = W
+   Compute J Vector = Logical True ! This has to be computed if foil winding is sourced with J vector
    Linear System Solver = Iterative
    Linear System Iterative Method = CG
    Linear System Max Iterations = 10000
@@ -86,9 +103,9 @@ Solver 5  ! --- WPotentialFix for fixing the gradient of wire potential
   Linear System Solver = "Iterative"
   Linear System Preconditioning = ILU1
   Linear System Max Iterations = 500
-  Linear System Convergence Tolerance = 1e-7
+  Linear System Convergence Tolerance = 1e-10
   Linear System Iterative Method = CG
-  Linear System Residual Output = 1
+  Linear System Residual Output = 100
 
 End
 Solver 6  !---- CircuitsAndDynamics, CircuitsAndDynamicsHarmonic
@@ -144,7 +161,7 @@ Solver 9  !---- CircuitsAndDynamics, CircuitsOutput
 End
 Solver 10  !---- ResultOutputSolve, ResultOutputSolver
    Exec Solver = After timestep
-   Exec Solver = Never
+   !Exec Solver = Never
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
    Output File Name = 6459-results
@@ -158,12 +175,17 @@ Solver 11  !---- SaveData, SaveScalars
    Procedure = "SaveData" "SaveScalars"
    Filename = 6459/dat/6459.dat
 End
+Solver 12
+   Equation = Divergence Solver
+   Procedure = "DivergenceSolver" "DivergenceSolver"
+   Target Variable = J Vector E
+End
 Equation 1
-   Active Solvers(7) = 1 2 3 4 5 7 8
+   Active Solvers(8) = 1 2 3 4 5 7 8 12
 End
 Equation 2
-   Active Solvers(8) = 1 2 3 4 5 6 \
-                       7 8
+   Active Solvers(9) = 1 2 3 4 5 6 \
+                       7 8 12
 End
 Material 1  !---- iron: generic
    Name = iron
@@ -215,7 +237,7 @@ Component 1  !---- A1
    Electrode Area = Real 0.01 ! This should be automated in the future and invoked with the "Electrode Boundaries" key
    Foil Winding Voltage Polynomial Order = Integer 1
    Coil Use W Vector = Logical True
-   W Vector Variable Name = String W Vector e
+   Foil Winding Use J Vector = Logical True
    Coil Thickness = Real 0.1
    Foil Layer Thickness = Real 0.0112
    Circuit Equation Voltage Factor = Real 0.5 !symmetry (half of the problem is solved)
