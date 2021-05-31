@@ -4832,7 +4832,7 @@ CONTAINS
      REAL(KIND=dp), ALLOCATABLE :: Work(:), STIFF(:,:)
      REAL(KIND=dp), POINTER :: b(:)
      REAL(KIND=dp), POINTER :: DiagScaling(:)
-     REAL(KIND=dp) :: xx, s, dval
+     REAL(KIND=dp) :: xx, s, dval, Cond
      REAL(KIND=dp) :: DefaultDOFs(4)
 
      INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
@@ -5182,6 +5182,9 @@ CONTAINS
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
            IF ( .NOT. ListCheckPrefix(BC, TRIM(Name)//' {e}') .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {f}') ) CYCLE
+
+           Cond = SUM(GetReal( BC, GetVarName(Solver % Variable) // ' Condition' ),Found) / n
+           IF(Cond<0) CYCLE
 
            ! Get parent element:
            ! -------------------

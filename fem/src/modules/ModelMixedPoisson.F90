@@ -143,7 +143,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
   INTEGER :: dim, n, nb, nd, t, istat, active
 
   REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Mass(:,:), Force(:), Load(:,:)
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, Cond
 
 
   SAVE Stiff, Mass, Force, AllocationsDone
@@ -203,6 +203,10 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
     IF (ActiveBoundaryElement()) THEN
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
+
+      Cond = SUM( GetReal(GetBC(), GetVarName(Solver % Variable)//' Condition', Found))/n
+      IF(Cond >= 0) CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
+
       CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
     END IF
   END DO
