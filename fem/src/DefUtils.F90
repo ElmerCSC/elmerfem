@@ -5170,7 +5170,7 @@ CONTAINS
         IF (x % DOFs>1) name=ComponentName(name,DOF)
         
         IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {e}') .AND. &
-            .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {f}') ) CYCLE
+             .NOT. ListCheckPrefixAnyBC(CurrentModel, TRIM(Name)//' {f}') ) CYCLE
 
         CALL Info('SetDefaultDirichlet','Setting edge and face dofs',Level=15)
 
@@ -5183,8 +5183,8 @@ CONTAINS
            IF ( .NOT. ListCheckPrefix(BC, TRIM(Name)//' {e}') .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {f}') ) CYCLE
 
-           Cond = SUM(GetReal( BC, GetVarName(Solver % Variable) // ' Condition' ),Found) / n
-           IF(Cond<0) CYCLE
+           Cond = SUM(GetReal(BC,GetVarName(Solver % Variable)//' Condition',Found)) / n
+           IF(Cond>0) CYCLE
 
            ! Get parent element:
            ! -------------------

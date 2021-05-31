@@ -204,7 +204,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
 
-      Cond = SUM( GetReal(GetBC(), GetVarName(Solver % Variable)//' Condition', Found))/n
+      Cond = SUM(GetReal(GetBC(), GetVarName(Solver % Variable)//' Condition', Found))/n
       IF(Cond >= 0) CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
     END IF
   END DO
