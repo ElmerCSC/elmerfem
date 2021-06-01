@@ -756,7 +756,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
         CALL INFO(SolverName,Message,Level=9)
       END IF
 
-      CALL SetIPValues(  Element, t, Active, n, nd+nb, WriteIPVar,&
+      CALL SetIPValues(  Element, Element % ElementIndex, Active, n, nd+nb, WriteIPVar,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial)
     END DO
@@ -1064,7 +1064,7 @@ SUBROUTINE InitiliazeXi( Model,Solver,dt,TransientSimulation )
       CALL INFO(SolverName,Message,Level=9)
     END IF
 
-    CALL EvaluateXi(  Element, t, Active, n, nd+nb,&
+    CALL EvaluateXi(  Element, Element % ElementIndex, Active, n, nd+nb,&
          CurrentSoluteMaterial, CurrentSolventMaterial,&
          NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,&
          ActiveMassMatrix,FluxOutput)

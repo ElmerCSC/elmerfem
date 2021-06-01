@@ -320,7 +320,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
 
       ! compose element-wise contributions to matrix and R.H.S
 
-      CALL LocalMatrixDarcy( Model, Element, t, N, ND+NB, Active,  &
+      CALL LocalMatrixDarcy( Model, Element, Element % ElementIndex, N, ND+NB, Active,  &
            CurrentSoluteMaterial,CurrentSolventMaterial,&
            PhaseChangeModel,ElementWiseRockMaterial, ActiveMassMatrix, &
            ComputeDt,ComputeDeformation,HydroGeo, OffsetDensity,FluxOutput, &
@@ -952,7 +952,7 @@ CONTAINS
       ! Get stuff from SIF Material section
       Material => GetMaterial(ParentElement)
       IF (ElementWiseRockMaterial) THEN
-        RockMaterialID = Element_ID  ! each element has it's own set of parameters
+        RockMaterialID = ParentElement % ElementIndex  ! each element has it's own set of parameters
       ELSE
         RockMaterialID = ListGetInteger(ParentMaterial,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
       END IF

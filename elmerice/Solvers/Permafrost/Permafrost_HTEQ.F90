@@ -254,7 +254,7 @@ SUBROUTINE PermafrostHeatTransfer( Model,Solver,dt,TransientSimulation )
         CALL INFO(SolverName,Message,Level=9)
       END IF
 
-      CALL LocalMatrixHTEQ(  Element, t, Active, n, nd+nb,&
+      CALL LocalMatrixHTEQ(  Element, Element % ElementIndex, Active, n, nd+nb,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,&
            ActiveMassMatrix,FluxOutput)

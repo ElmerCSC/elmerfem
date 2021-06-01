@@ -209,7 +209,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
         CALL INFO(SolverName,'Permafrost Phase Change Model" set to '//TRIM(PhaseChangeModel),Level=9)
       END IF
 
-      CALL LocalMatrixSolute(  Element, t, Active, n, nd+nb,&
+      CALL LocalMatrixSolute(  Element, Element % ElementIndex, Active, n, nd+nb,&
            CurrentSoluteMaterial, CurrentSolventMaterial,&
            NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial,ActiveMassMatrix, ExtForce)
     END DO
@@ -224,7 +224,7 @@ SUBROUTINE PermafrostSoluteTransport( Model,Solver,dt,TransientSimulation )
         n  = GetElementNOFNodes()
         nd = GetElementNOFDOFs()
         nb = GetElementNOFBDOFs()
-        CALL LocalMatrixBCSolute(  Element, t, Active, n, nd+nb,&
+        CALL LocalMatrixBCSolute(  Element, n, nd+nb,&
              CurrentSoluteMaterial, CurrentSolventMaterial,&
              NumberOfRockRecords, PhaseChangeModel,ElementWiseRockMaterial)
         ! PRINT *,"Solute:",t,"of",Active,":",n, nb
@@ -594,13 +594,13 @@ CONTAINS
 
   ! Assembly of the matrix entries arising from the Neumann and Robin conditions
   !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBCSolute(Element, ElementID, NoElements, n, nd,&
+  SUBROUTINE LocalMatrixBCSolute(Element, n, nd,&
        CurrentSoluteMaterial, CurrentSolventMaterial,&
        NumberOfRockRecords, PhaseChangeModel, ElementWiseRockMaterial)
     USE DefUtils
     IMPLICIT NONE
     !------------------------------------------------------------------------------
-    INTEGER, INTENT(IN) :: n, nd, ElementID, NoElements, NumberOfRockRecords
+    INTEGER, INTENT(IN) :: n, nd, NumberOfRockRecords
     TYPE(Element_t), POINTER :: Element
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
@@ -662,7 +662,7 @@ CONTAINS
     ! Get stuff from SIF Material section
     Material => GetMaterial(ParentElement)
     IF (ElementWiseRockMaterial) THEN
-      RockMaterialID = ElementID  ! each element has it's own set of parameters
+      RockMaterialID = ParentElement % ElementIndex ! each element has it's own set of parameters
     ELSE
       RockMaterialID = ListGetInteger(ParentMaterial,'Rock Material ID', Found,UnfoundFatal=.TRUE.)
     END IF
