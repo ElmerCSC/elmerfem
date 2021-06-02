@@ -892,7 +892,7 @@ CONTAINS
             GO TO 2
 1           CLOSE(IncludeUnit)
             IncludeUnit = IncludeUnit+1
-            READ( Unit,'(A)',END=10,ERR=10 ) readstr
+            READ( IncludeUnit,'(A)',END=10,ERR=10 ) readstr
 2           CONTINUE
           ELSE
             READ( Unit,'(A)',END=10,ERR=10 ) readstr
