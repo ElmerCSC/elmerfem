@@ -50,7 +50,7 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  CHARACTER(LEN=MAX_NAME_LEN) :: varname
+  CHARACTER(LEN=MAX_NAME_LEN) :: varname, jvarname
   LOGICAL :: Found
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
@@ -70,6 +70,8 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
   END DO
 
   varname = GetString(GetSolverParams(), 'Variable', Found)
+  IF (.NOT. Found) varname = 'W'
+  
 
   n = Model % NumberOfSolvers
   DO i=1,Model % NumberOFEquations
@@ -123,6 +125,15 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
 
   CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
           "-dg "//TRIM(varname)//" Vector E["//TRIM(varname)//" Vector E:3]" )
+
+  IF (GetLogical(GetSolverParams(), 'Compute J Vector', Found)) THEN
+    jvarname = GetString(GetSolverParams(), 'J Variable', Found)
+    IF (.NOT. Found) jvarname = 'J'
+    i=i+1
+
+    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "-dg "//TRIM(jvarname)//" Vector E["//TRIM(jvarname)//" Vector E:3]" )
+  END IF
 
   DEALLOCATE(Model % Solvers)
   Model % Solvers => Solvers
@@ -183,7 +194,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
   LOGICAL :: AllocationsDone = .FALSE., Found, PosEl, NegEl
   TYPE(Element_t),POINTER :: Element
 
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, Wnorms(Model%numberofbodies)
   INTEGER :: n, nb, nd, t, istat, active, i, j, MaxN
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce, BC, BodyParams, Material
@@ -305,7 +316,42 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
    !--------------------
    Norm = DefaultSolve()
 
-   CALL SaveWPotSolution(Model % numberofbodies)
+  ! CALL SaveWPotSolution(Model % numberofbodies, Tcoef)
+
+  Wnorms = GetWNormsForBodies(Model % numberofbodies)
+  DO t=1,Active
+     Element => GetActiveElement(t)
+     n = GetElementNOFNodes()
+
+     CoilBody = .FALSE.
+     CompParams => GetComponentParams( Element )
+     CoilType = ''
+     RotM = 0._dp
+     IF (ASSOCIATED(CompParams)) THEN
+       CoilType = GetString(CompParams, 'Coil Type', Found)
+       IF (Found) CoilBody = .TRUE.
+     END IF 
+
+      IF (CoilBody) THEN
+        SELECT CASE (CoilType)
+        CASE ('stranded')
+          CoilBody = .True.
+          CALL GetElementRotM(Element, RotM, n)
+        CASE ('massive')
+          CoilBody = .True.
+        CASE ('foil winding')
+          CoilBody = .True.
+          CALL GetElementRotM(Element, RotM, n)
+        CASE DEFAULT
+          CALL Fatal ('Wsolve', 'Non existent Coil Type Chosen!')
+        END SELECT
+      END IF
+
+      Tcoef = 0.0d0
+      Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
+      CALL SaveElementWSolution(Element, n, Wnorms(Element%BodyId), RotM, Tcoef)
+
+  END DO
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -445,47 +491,53 @@ CONTAINS
     END DO
   END SUBROUTINE BoundaryCondition
 
-!------------------------------------------------------------------------------
-  SUBROUTINE SaveWPotSolution(nofbodies)
-!------------------------------------------------------------------------------
-  IMPLICIT NONE
-  INTEGER :: Active, n, t, nn, ns_iter, nofbodies
-  REAL(KIND=dp) :: Wnorms(nofbodies)
-  TYPE(Element_t), POINTER :: Element
-!------------------------------------------------------------------------------
-  Wnorms = GetWNormsForBodies(nofbodies)
-  Active = GetNOFActive()
-  DO t=1,Active
-     Element => GetActiveElement(t)
-     nn = GetElementNOFNodes()
-     CALL SaveElementWSolution(Element, nn, Wnorms(Element%BodyId))
-  END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE SaveWPotSolution
-!------------------------------------------------------------------------------
+!!------------------------------------------------------------------------------
+!  SUBROUTINE SaveWPotSolution(nofbodies, Tcoef)
+!!------------------------------------------------------------------------------
+!  IMPLICIT NONE
+!  INTEGER :: Active, n, t, nn, ns_iter, nofbodies
+!  REAL(KIND=dp) :: Tcoef(:,:,:)
+!  REAL(KIND=dp) :: Wnorms(nofbodies)
+!  TYPE(Element_t), POINTER :: Element
+!!------------------------------------------------------------------------------
+!!------------------------------------------------------------------------------
+!  END SUBROUTINE SaveWPotSolution
+!!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SaveElementWSolution(Element, nn, Wnorm)
+  SUBROUTINE SaveElementWSolution(Element, n, Wnorm, RotM, Tcoef)
 !------------------------------------------------------------------------------
   IMPLICIT NONE
-  INTEGER :: nn, j, k
+  INTEGER :: n, j, k, t
   TYPE(Element_t), POINTER :: Element
   TYPE(Valuelist_t), POINTER :: Solverparams
   TYPE(Variable_t), POINTER, SAVE :: wpotvar
   TYPE(Variable_t), POINTER, SAVE :: wvecvar
+  TYPE(Variable_t), POINTER, SAVE :: jvecvar
   LOGICAL, SAVE :: First=.TRUE.
-  LOGICAL :: stat
-  REAL(KIND=dp) :: Basis(nn), DetJ
-  REAL(KIND=dp) :: dBasisdx(nn,3)
-  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: varname
-  REAL(KIND=dp) :: wpot(nn), wvec(3)
+  LOGICAL :: stat, ComputeJvec
+  REAL(KIND=dp) :: Basis(n), DetJ
+  REAL(KIND=dp) :: dBasisdx(n,3)
+  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: varname, jvarname
+  REAL(KIND=dp) :: wpot(n), wvec(3), jvec(3)
   REAL(KIND=dp) :: Wnorm
   TYPE(GaussIntegrationPoints_t) :: IP
   TYPE(Nodes_t) :: Nodes
+  REAL(KIND=dp) :: Tcoef(:,:,:)
+  REAL(KIND=dp) :: C(3,3), RotMLoc(3,3), RotM(3,3,n)
   SAVE Nodes
 
   CALL GetElementNodes(Nodes)
   varname = GetString(GetSolverParams(), 'Variable', Found)
+  IF (.NOT. Found) varname = 'W'
+  ComputeJVec = GetLogical(GetSolverParams(), 'Compute J Vector', Found)
+  IF (.NOT. Found) ComputeJVec = .False.
+
+  IF (ComputeJVec) THEN
+    jvarname = GetString(GetSolverParams(), 'J Variable', Found)
+    IF (.NOT. Found) jvarname = 'J'
+  END IF
+
   IF (First) THEN
     First = .FALSE.
     wpotvar => VariableGet( Mesh % Variables, TRIM(varname)//' Potential')
@@ -496,18 +548,25 @@ CONTAINS
     IF(.NOT. ASSOCIATED(wvecvar)) THEN
       CALL Fatal('SaveElementWSolution()','W Vector variable not found')
     END IF
+
+    IF (ComputeJVec) THEN
+      jvecvar => VariableGet( Mesh % Variables, TRIM(jvarname)//' Vector E')
+      IF(.NOT. ASSOCIATED(jvecvar)) THEN
+        CALL Fatal('SaveElementWSolution()','J Vector variable not found')
+      END IF
+    END IF
   END IF
- 
+   
   CALL GetLocalSolution(wpot, varname)
   IP = GaussPoints(Element)
-  DO j=1,nn
+  DO t=1,n
     IF (ASSOCIATED(wpotvar)) THEN
       DO k=1,wpotvar % DOFs
         IF (Wnorm > EPSILON(Wnorm)) THEN
           IF( CoilType/='stranded' ) Wnorm = 1._dp
 !          print *, ParEnv % MyPe, "Wnorm:", Wnorm
           wpotvar % Values( wpotvar % DOFs*(wpotvar % Perm( &
-              Element % DGIndexes(j))-1)+k) = wpot(j)/Wnorm
+              Element % DGIndexes(t))-1)+k) = wpot(t)/Wnorm
         END IF
       END DO
     END IF
@@ -517,19 +576,48 @@ CONTAINS
       ! Basis function values & derivatives at the integration point
       ! That hopefully are at the vardof locations:
       !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-                IP % W(j), detJ, Basis,dBasisdx )
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                IP % W(t), detJ, Basis,dBasisdx )
 
-      wvec = MATMUL(wpot(1:nn), dBasisdx(1:nn,:))
+      wvec = MATMUL(wpot(1:n), dBasisdx(1:n,:))
 
       DO k=1,wvecvar % DOFs
         IF (Wnorm > EPSILON(Wnorm)) THEN
           IF( CoilType/='stranded' ) Wnorm = 1._dp
 !          print *, ParEnv % MyPe, "Wnorm:", Wnorm
           wvecvar % Values( wvecvar % DOFs*(wvecvar % Perm( &
-              Element % DGIndexes(j))-1)+k) = wvec(k)/Wnorm
+              Element % DGIndexes(t))-1)+k) = wvec(k)/Wnorm
         END IF
       END DO
+
+      IF (ComputeJVec) THEN
+        IF (ASSOCIATED(jvecvar)) THEN
+
+          DO i=1,3
+            DO j=1,3
+              C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
+              IF (CoilBody .AND. CoilType /= 'massive') THEN
+                RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+              END IF
+            END DO
+          END DO
+          
+          ! Transform the conductivity tensor (in case of a foil winding):
+          ! --------------------------------------------------------------
+          IF (CoilBody .AND. CoilType /= 'massive') THEN
+            C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+          END IF
+          jvec = MATMUL(C, wvec)
+
+          DO k=1,wvecvar % DOFs
+            IF (Wnorm > EPSILON(Wnorm)) THEN
+    !          print *, ParEnv % MyPe, "Wnorm:", Wnorm
+              jvecvar % Values( jvecvar % DOFs*(jvecvar % Perm( &
+                  Element % DGIndexes(t))-1)+k) = jvec(k)
+            END IF
+          END DO
+        END IF
+      END IF
     END IF
   END DO 
 !------------------------------------------------------------------------------

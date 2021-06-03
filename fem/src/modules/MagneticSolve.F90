@@ -66,17 +66,17 @@
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,UNorm,PrevUNorm,Gravity(3), &
-         Tdiff,Normal(3),s,r,NewtonTol,NonlinearTol
+         Tdiff,Normal(3),s,r,NonlinearTol
 
      TYPE(Variable_t), POINTER :: ElectricSol, ForceSol, ElecFieldSol
-     INTEGER :: NSDOFs,NewtonIter,NonlinearIter, dim
+     INTEGER :: NSDOFs,NonlinearIter, dim
 
      REAL(KIND=dp), POINTER :: MagneticField(:),ElectricCurrent(:), &
          Work(:,:), M1(:),M2(:),M3(:),E1(:),E2(:),E3(:), &
          ForceVector(:), divB(:),ExB(:), LrF(:), LrF1(:), LrF2(:), LrF3(:), &
          ElecField(:), Field1(:), Field2(:), Field3(:)
      
-     LOGICAL :: Stabilize,NewtonLinearization = .FALSE.,GotForceBC,GotIt
+     LOGICAL :: Stabilize,GotForceBC,GotIt
 
      INTEGER :: body_id,bf_id,eq_id
      INTEGER, POINTER :: NodeIndexes(:)
@@ -174,12 +174,6 @@
 
      NonlinearTol = GetConstReal( SolverParams, &
         'Nonlinear System Convergence Tolerance' )
-
-     NewtonTol = GetConstReal( SolverParams, &
-        'Nonlinear System Newton After Tolerance' )
-
-     NewtonIter = GetInteger( SolverParams,  &
-        'Nonlinear System Newton After Iterations' )
 
      NonlinearIter = GetInteger( SolverParams, &
         'Nonlinear System Max Iterations' )
@@ -448,10 +442,7 @@
       WRITE( Message, * ) 'Relative Change : ',RelativeChange
       CALL Info( 'MagneticSolve', Message, Level=4 )
 
-      IF ( RelativeChange < NewtonTol .OR. &
-             iter > NewtonIter ) NewtonLinearization = .TRUE.
-
-     IF ( RelativeChange < NonLinearTol ) EXIT
+      IF ( RelativeChange < NonLinearTol ) EXIT
     END DO
 
     M1 => Solver % Variable %  Values(1::3)

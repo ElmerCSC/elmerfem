@@ -1186,7 +1186,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
        
-       IF (vDOFs > 1) THEN   ! Complex case
+       IF (vDOFs > 1) THEN   ! Complex case (harmonic case)
          IF (CoilType /= 'stranded') THEN
            ! -j * Omega A
            SELECT CASE(dim)
@@ -1254,8 +1254,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              E(1,3) = E(1,3)-localV(1) * grads_coeff
              E(2,3) = E(2,3)-localV(2) * grads_coeff
            CASE(3)
-             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             IF (CoilUseWvec) THEN
+               wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+             ELSE
+               wvec = MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             END IF
+
+             E(1,:) = E(1,:)-localV(1) * wvec
+             E(2,:) = E(2,:)-localV(2) * wvec
            END SELECT
 
          CASE DEFAULT
@@ -1300,7 +1306,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
          END SELECT
          
-       ELSE   ! Real case
+       ELSE   ! Real case (transient case)
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
            CASE(2)
