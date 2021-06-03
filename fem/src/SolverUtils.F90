@@ -10356,6 +10356,7 @@ END FUNCTION SearchNodeL
     ! even for multislice case. For time parallel system, not so much.
     IF( SingleMesh ) THEN
       IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Parallel Times', Stat ) ) THEN
+        CALL Info(Caller,'Communicating maximum norm in single mesh operation',Level=10)
         Change = ParallelReduction( Change, 2 )
       END IF
     END IF
@@ -21277,32 +21278,45 @@ CONTAINS
    ! solver for a given steady-state iteration.
    !-----------------------------------------------------------------------------
    SUBROUTINE StoreCyclicSolution(Solver)
+     
+     TYPE CyclicSol_t
+       REAL(KIND=dp), ALLOCATABLE :: PeriodicSol(:,:), PeriodicMult(:,:), &
+           PeriodicNrm(:), PeriodicChange(:), dx(:), dy(:)
+       LOGICAL :: DoGuess = .FALSE., PeriodicConv = .FALSE.
+       INTEGER :: NConv = 0, N1st = 0       
+     END TYPE CyclicSol_t
+     
      TYPE(Solver_t), POINTER :: Solver     
      TYPE(Model_t), POINTER :: Model
 
+     REAL(KIND=dp), POINTER :: PeriodicSol(:,:), PeriodicMult(:,:), &
+         PeriodicNrm(:), PeriodicChange(:), dx(:), dy(:)
+     LOGICAL :: DoGuess, PeriodicConv
+     INTEGER :: NConv, N1st       
+     
      LOGICAL :: Found
      TYPE(Variable_t), POINTER :: v
      TYPE(Matrix_t), POINTER :: A     
-     REAL(KIND=dp), ALLOCATABLE :: PeriodicSol(:,:), PeriodicMult(:,:), PeriodicNrm(:), &
-         PeriodicChange(:), dx(:), dy(:)
      REAL(KIND=dp), POINTER :: x(:), y(:)
-     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, Nconv, N1st, Ntimes, Nslices 
-     LOGICAL :: ExportMult, ParallelTime, PeriodicConv, ParallelSlices
+     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, Ntimes, Nslices 
+     LOGICAL :: ExportMult, ParallelTime, ParallelSlices
      TYPE(Variable_t), POINTER :: Var
      CHARACTER(LEN=MAX_NAME_LEN) :: MultName
      REAL(KIND=dp) :: Relax, AveErr, AveNrm, Tol
      CHARACTER(*), PARAMETER :: Caller = 'StoreCyclicSolution'
-     LOGICAL :: DoGuess = .FALSE.
+     INTEGER :: nSol     
+     TYPE(CyclicSol_t), POINTER :: Sols(:) => NULL(), pSol
      
      
-     SAVE PeriodicSol, dx, PeriodicNrm, PeriodicChange, PeriodicMult, dy, &
-         Nconv, PeriodicConv, DoGuess, N1st
+     SAVE Sols
 
      CALL Info(Caller,'Saving restoring cyclic solution!',Level=7)
 
+     Model => CurrentModel
+     IF(.NOT. ASSOCIATED( Sols ) ) THEN
+       ALLOCATE( Sols(Model % NumberOfSolvers ) )
+     END IF
      
-     Model => CurrentModel 
-
      v => VariableGet( Solver % Mesh % Variables, 'coupled iter' )     
      IF( NINT(v % Values(1)) > 1 ) RETURN
 
@@ -21317,12 +21331,8 @@ CONTAINS
      v => VariableGet( Solver % Mesh % Variables, 'timestep' )
      Ntime = NINT(v % Values(1))
 
-     IF( Ntime == 1 ) THEN
-       ! Nothing to do except initializations before solution exists
-       PeriodicConv = .FALSE.
-       NConv = 0
-       RETURN
-     END IF
+     ! Nothing to do before solution exists
+     IF( Ntime == 1 ) RETURN
           
      A => Solver % Matrix
      n = A % NumberOfRows     
@@ -21345,23 +21355,40 @@ CONTAINS
        END IF
      END IF
      
+
+     nSol = Solver % SolverId
+     pSol => Sols(nsol) 
      
      IF( Ntime == 2 ) THEN       
        ! allocate stuff to save vectors
-       IF(.NOT. ALLOCATED( PeriodicSol ) ) THEN
+       IF(.NOT. ALLOCATED( pSol % PeriodicSol ) ) THEN
          CALL Info(Caller,'Allocating for periodic solver values',Level=6)
-         ALLOCATE( PeriodicSol(n,Ncycle), PeriodicNrm(n), PeriodicChange(n), dx(n) )
-         PeriodicSol = 0.0_dp
-         PeriodicNrm = 0.0_dp
-         PeriodicChange = 0.0_dp
+         ALLOCATE( pSol % PeriodicSol(n,Ncycle), pSol % PeriodicNrm(n), pSol % PeriodicChange(n), pSol % dx(n) )
+         pSol % PeriodicSol = 0.0_dp
+         pSol % PeriodicNrm = 0.0_dp
+         pSol % PeriodicChange = 0.0_dp
          
          IF( ExportMult ) THEN
            CALL Info(Caller,'Allocating for periodic Lagrange values',Level=6)
-           ALLOCATE( PeriodicMult(m,Ncycle), dy(m) )
-           PeriodicMult = 0.0_dp
+           ALLOCATE( pSol % PeriodicMult(m,Ncycle), pSol % dy(m) )
+           pSol % PeriodicMult = 0.0_dp
          END IF         
        END IF
      END IF
+
+     ! This was added afterwards to support multiple Solvers.
+     ! Hence we make the original variables point to the Solver-specific variables.
+     PeriodicSol => pSol % PeriodicSol
+     PeriodicNrm => pSol % PeriodicNrm
+     PeriodicChange => pSol % PeriodicChange     
+     dx => pSol % dx
+     PeriodicMult => pSol % PeriodicMult
+     dy => pSol % dy
+     DoGuess = pSol % doGuess
+     PeriodicConv = pSol % PeriodicConv
+     N1st = pSol % N1st
+     NConv = pSol % NConv
+ 
 
      ! Both should be in [1,Ncycle]
      Nstore = MODULO( Ntime-2,Ncycle)+1
@@ -21471,7 +21498,15 @@ CONTAINS
          END IF
        END IF
      END IF
-       
+
+
+     ! Store the flags in Solver-specific container.
+     pSol % DoGuess = doGuess
+     pSol % PeriodicConv = PeriodicConv
+     pSol % N1st = N1st
+     pSol % NConv = NConv
+
+
      
    CONTAINS
 
