@@ -9163,7 +9163,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   SUBROUTINE InitializeTimestep( Solver )
 !------------------------------------------------------------------------------
-     TYPE(Solver_t) :: Solver  !< Solver to be initialized.
+     TYPE(Solver_t), TARGET :: Solver  !< Solver to be initialized.
 !------------------------------------------------------------------------------
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
      LOGICAL :: GotIt
@@ -9171,6 +9171,7 @@ END FUNCTION SearchNodeL
      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
      TYPE(Matrix_t), POINTER :: A
      TYPE(Variable_t), POINTER :: Var
+     TYPE(Solver_t), POINTER :: pSolver
      
 !------------------------------------------------------------------------------
      Solver % DoneTime = Solver % DoneTime + 1
@@ -9178,7 +9179,7 @@ END FUNCTION SearchNodeL
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) .OR. &
           .NOT. ASSOCIATED( Solver % Variable % Values ) ) RETURN
-
+          
      IF ( Solver % TimeOrder <= 0 ) RETURN
 !------------------------------------------------------------------------------
 
@@ -9349,6 +9350,13 @@ END FUNCTION SearchNodeL
          Var % PrevValues(:,1) = Var % Values
        END DO
      END BLOCK
+
+     ! This is after the timestep initialization since then we can recommunicate the cyclic
+     ! solution for PrevValues in time-parallel simulation.
+     IF( ListGetLogical( Solver % Values,'Store Cyclic System',GotIt ) ) THEN      
+       pSolver => Solver
+       CALL StoreCyclicSolution(pSolver)
+     END IF     
      
 !------------------------------------------------------------------------------
   END SUBROUTINE InitializeTimestep
@@ -15651,7 +15659,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l, m, n, p,q, ix, Loop
   TYPE(Variable_t), POINTER :: MultVar
-  REAL(KIND=dp) :: scl, rowsum
+  REAL(KIND=dp) :: scl, rowsum, Relax
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
               NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
               SkipConstraints
@@ -15756,21 +15764,32 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      IF(ASSOCIATED(AddMatrix))  j = j+MAX(0,AddMatrix % NumberofRows-StiffMatrix % NumberOfRows)
 
      IF ( .NOT. ASSOCIATED(MultVar) ) THEN
+       CALL Info(Caller,'Creating variable for Lagrange multiplier',Level=8)
        ALLOCATE( MultiplierValues(j), STAT=istat )
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error.')
 
        MultiplierValues = 0.0_dp
        CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
-                  MultiplierName, 1, MultiplierValues)
+                  MultiplierName, 1, MultiplierValues)      
+       MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
      END IF
-     MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
-
+          
      MultiplierValues => MultVar % Values
 
      IF (j>SIZE(MultiplierValues)) THEN
        CALL Info(Caller,'Increasing Lagrange multiplier size to: '//TRIM(I2S(j)),Level=8)
-       ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp
-       MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values
+       ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp       
+       MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values     
+
+       ! If the Lagrange variable includes history also change its size.
+       IF( ASSOCIATED( MultVar % PrevValues ) ) THEN
+         MultVar % Values = MultVar % PrevValues(:,1)
+         DEALLOCATE( MultVar % PrevValues )
+         ALLOCATE( MultVar % PrevValues(j,1) )
+         MultVar % PrevValues = 0.0_dp
+         MultVar % PrevValues(:,1) = MultVar % Values
+       END IF
+
        DEALLOCATE(MultVar % Values)
        MultVar % Values => MultiplierValues
      END IF
@@ -16483,10 +16502,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       IF(ASSOCIATED(AddMatrix)) &
         j=j+MAX(0,AddMatrix % NumberOfRows - StiffMatrix % NumberOFRows)
 
-      MultiplierValues = 0.0_dp
-      IF(ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
+      IF(ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN        
         ! Compute eliminated l-coefficient values:
         ! ---------------------------------------
+        MultiplierValues = 0.0_dp
         DO i=1,RestMatrix % NumberOfRows
           scl = 1._dp / UseDiag(i)
           m = UseIPerm(i)
@@ -16497,7 +16516,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           END DO
         END DO
       ELSE
-        MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+        Relax = ListGetCReal( Solver % Values,'Lagrange Multiplier Relaxation Factor', Found )
+        IF( Found ) THEN          
+          MultiplierValues(1:j) = (1-Relax) * MultiplierValues(1:j) + &
+              Relax * CollectionSolution(i+1:i+j)
+        ELSE       
+          MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+        END IF
       END IF
 
       IF(EliminateConstraints.AND.EliminateDiscont) THEN
@@ -21296,9 +21321,8 @@ CONTAINS
      
      LOGICAL :: Found
      TYPE(Variable_t), POINTER :: v
-     TYPE(Matrix_t), POINTER :: A     
      REAL(KIND=dp), POINTER :: x(:), y(:)
-     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, Ntimes, Nslices 
+     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, LGuessMode, Ntimes, Nslices, mmin
      LOGICAL :: ExportMult, ParallelTime, ParallelSlices
      TYPE(Variable_t), POINTER :: Var
      CHARACTER(LEN=MAX_NAME_LEN) :: MultName
@@ -21310,7 +21334,7 @@ CONTAINS
      
      SAVE Sols
 
-     CALL Info(Caller,'Saving restoring cyclic solution!',Level=7)
+     CALL Info(Caller,'Saving and restoring cyclic solution!',Level=7)
 
      Model => CurrentModel
      IF(.NOT. ASSOCIATED( Sols ) ) THEN
@@ -21333,17 +21357,32 @@ CONTAINS
 
      ! Nothing to do before solution exists
      IF( Ntime == 1 ) RETURN
-          
-     A => Solver % Matrix
-     n = A % NumberOfRows     
+     
      x => Solver % Variable % Values 
+     IF(.NOT. ASSOCIATED( x ) ) THEN
+       CALL Warn(Caller,'Cannot store solution without a solution!')
+       RETURN
+     END IF
 
+     IF( ASSOCIATED( Solver % Matrix ) ) THEN
+       n = Solver % Matrix % NumberOfRows
+     ELSE
+       n = SIZE( x ) 
+     END IF
+     
      Relax = ListGetConstReal( Solver % Values,'Parallel Timestepping Relaxation Factor',Found ) 
      IF(.NOT. Found ) Relax = 1.0_dp
      
      GuessMode = ListGetInteger( Solver % Values,'Cyclic Guess Mode',Found ) 
+     LGuessMode = ListGetInteger( Solver % Values,'Cyclic Lagrange Guess Mode',Found ) 
+     IF(.NOT. Found) LGuessMode = GuessMode
+
      
-     ExportMult = ListGetLogical( Solver % Values, 'Export Lagrange Multiplier', Found )     
+     ExportMult = ListGetLogical( Solver % Values, 'Cyclic Lagrange Multiplier', Found )
+     IF(.NOT. Found ) THEN
+       ExportMult = ListGetLogical( Solver % Values, 'Export Lagrange Multiplier', Found )          
+     END IF
+       
      IF ( ExportMult ) THEN
        MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
        IF ( .NOT. Found ) MultName = "LagrangeMultiplier"
@@ -21362,14 +21401,14 @@ CONTAINS
      IF( Ntime == 2 ) THEN       
        ! allocate stuff to save vectors
        IF(.NOT. ALLOCATED( pSol % PeriodicSol ) ) THEN
-         CALL Info(Caller,'Allocating for periodic solver values',Level=6)
+         CALL Info(Caller,'Allocating for periodic solver values for Solver: '//TRIM(I2S(nSol)),Level=6)
          ALLOCATE( pSol % PeriodicSol(n,Ncycle), pSol % PeriodicNrm(n), pSol % PeriodicChange(n), pSol % dx(n) )
          pSol % PeriodicSol = 0.0_dp
          pSol % PeriodicNrm = 0.0_dp
          pSol % PeriodicChange = 0.0_dp
          
          IF( ExportMult ) THEN
-           CALL Info(Caller,'Allocating for periodic Lagrange values',Level=6)
+           CALL Info(Caller,'Allocating for periodic Lagrange values of size: '//TRIM(I2S(m)),Level=6)
            ALLOCATE( pSol % PeriodicMult(m,Ncycle), pSol % dy(m) )
            pSol % PeriodicMult = 0.0_dp
          END IF         
@@ -21382,8 +21421,11 @@ CONTAINS
      PeriodicNrm => pSol % PeriodicNrm
      PeriodicChange => pSol % PeriodicChange     
      dx => pSol % dx
-     PeriodicMult => pSol % PeriodicMult
-     dy => pSol % dy
+     IF( ExportMult ) THEN
+       PeriodicMult => pSol % PeriodicMult
+       dy => pSol % dy
+     END IF
+     
      DoGuess = pSol % doGuess
      PeriodicConv = pSol % PeriodicConv
      N1st = pSol % N1st
@@ -21407,7 +21449,15 @@ CONTAINS
      
      IF( NGuess == 1 .AND. ParallelTime ) THEN
        CALL Info(Caller,'Performing parallel initial guess!')
-       CALL CommunicateCyclicSolution()       
+       CALL CommunicateCyclicSolution(n,x,Solver % Variable % PrevValues)
+       IF( ExportMult ) THEN
+         IF(ASSOCIATED( Var % PrevValues ) ) THEN
+           CALL Info(Caller,'Performing parallel initial guess for Lagrange variable!')
+           CALL CommunicateCyclicSolution(m,y,Var % PrevValues)        
+         ELSE
+           CALL Warn(Caller,'PrevValues does not exist for Lagrange variable!')           
+         END IF
+       END  IF
      END IF
 
      
@@ -21415,7 +21465,9 @@ CONTAINS
      IF( DoGuess ) THEN
        IF( GuessMode == 0 ) THEN
          dx = PeriodicSol(:,Nguess)-PeriodicSol(:,Nstore)
-         IF( ExportMult ) THEN
+       END IF
+       IF( ExportMult ) THEN
+         IF( LGuessMode == 0 ) THEN
            dy = PeriodicMult(:,Nguess)-PeriodicMult(:,Nstore)
          END IF
        END IF
@@ -21435,21 +21487,22 @@ CONTAINS
          CALL Info(Caller,'Initializing Lagrange multipliers of size: '//TRIM(I2S(SIZE(y))),Level=8)
        END IF
 
-       IF( GuessMode < 0 ) THEN
-         CONTINUE
-       ELSE IF( GuessMode == 0 ) THEN
+       IF( GuessMode == 0 ) THEN
          x = x + dx
-         IF( ExportMult ) THEN
-           y = y + dy 
-         END IF         
          Solver % Variable % Norm = SQRT( SUM(x(1:n)**2) / n )
        ELSE
          x = PeriodicSol(:,Nguess)
-         IF( ExportMult ) THEN
-           y = PeriodicMult(:,Nguess)
-         END IF
          Solver % Variable % Norm = PeriodicNrm(Nguess)
        END IF
+
+       IF( ExportMult ) THEN
+         IF( LGuessMode == 0 ) THEN
+           y = y + dy 
+         ELSE
+           y = PeriodicMult(:,Nguess)
+         END IF
+       END IF
+       
      END IF
      
      ! We have computed one full cycle to deduce we have converged.
@@ -21474,10 +21527,14 @@ CONTAINS
          CALL Info(Caller,Message )        
        END IF
          
+       mmin = ListGetInteger( Solver % Values,'Cyclic System Min Iterations',Found)
        Tol = ListGetCReal( Solver % Values,'Cyclic System Convergence Tolerance',Found)
+
        IF( Found ) THEN
          ! We want to start production from the 1st periodic timestep.
-         IF( Nguess == 1 .AND. AveErr < Tol ) THEN
+         m = NINT( 1.0_dp * Ntime / Ncycle ) 
+         
+         IF( Nguess == 1 .AND. AveErr < Tol .AND. m >= mmin ) THEN
            PeriodicConv = .TRUE.
            CALL Info(Caller,'Cyclic convergence reached at step: '//TRIM(I2S(Ntime)),Level=4)         
            m = NINT( 1.0_dp * Ntime / Ncycle ) 
@@ -21499,13 +21556,11 @@ CONTAINS
        END IF
      END IF
 
-
      ! Store the flags in Solver-specific container.
      pSol % DoGuess = doGuess
      pSol % PeriodicConv = PeriodicConv
      pSol % N1st = N1st
      pSol % NConv = NConv
-
 
      
    CONTAINS
@@ -21514,7 +21569,10 @@ CONTAINS
      ! Here we communicate data among different periodic segments each
      ! of which takes certain interval of the periodic system.
      !--------------------------------------------------------------------------------
-     SUBROUTINE CommunicateCyclicSolution()
+     SUBROUTINE CommunicateCyclicSolution(n,x,prevx)
+       REAL(KIND=dp), POINTER :: x(:),prevx(:,:)
+       INTEGER :: n
+       
        INTEGER :: toproc, fromproc
        INTEGER :: mpistat(MPI_STATUS_SIZE), ierr
        REAL(KIND=dp), ALLOCATABLE :: tovals(:), fromvals(:)
@@ -21547,7 +21605,7 @@ CONTAINS
        CALL MPI_RECV( fromvals, n, MPI_DOUBLE_PRECISION, &
            fromproc, 2005, MPI_COMM_WORLD, mpistat, ierr )
 
-       Solver % Variable % PrevValues(:,1) = fromvals
+       prevx(:,1) = fromvals 
 
        DEALLOCATE( tovals, fromvals ) 
 
