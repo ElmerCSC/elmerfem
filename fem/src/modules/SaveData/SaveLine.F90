@@ -779,6 +779,7 @@ CONTAINS
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
+          Values(No) = 0.0_dp
           IF( ASSOCIATED( PtoIndexes ) ) THEN
             DO k=1,nd-np
               l = PtoIndexes(np+k)
@@ -789,6 +790,7 @@ CONTAINS
         END DO
         IF( AVBasis ) THEN
           No = No + 1
+          Values(No) = 0.0_dp
           DO k=1,n
             l = PtoIndexes(k)
             IF(l > 0) Values(No) = Values(No) + NodeBasis(k) * Var % Values(l)
@@ -1909,7 +1911,7 @@ CONTAINS
             No = No + 3
             IF( AVBasis ) THEN
               No = No + 1
-              ValueNames(No+1) = TRIM(Var % Name)//' nodal'
+              ValueNames(No) = TRIM(Var % Name)//' nodal'
             END IF
           ELSE IF( comps > 1 ) THEN
             No = No + 1
