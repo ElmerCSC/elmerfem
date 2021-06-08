@@ -5183,7 +5183,7 @@ CONTAINS
            IF ( .NOT. ListCheckPrefix(BC, TRIM(Name)//' {e}') .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {f}') ) CYCLE
 
-           Cond = SUM(GetReal(BC,GetVarName(Solver % Variable)//' Condition',Found)) / n
+           Cond = SUM(GetReal(BC,GetVarName(Solver % Variable)//' Condition',Found))/n
            IF(Cond>0) CYCLE
 
            ! Get parent element:
@@ -5633,9 +5633,9 @@ CONTAINS
     Load(1:n) = GetReal( BC, Name, Lstat, Element )
 
     i = LEN_TRIM(Name)
-    VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',Lstat,element)
-    VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
-    VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
+    VLoad(1,1:n) = GetReal(BC,Name(1:i)//' 1',Lstat,element)
+    VLoad(2,1:n) = GetReal(BC,Name(1:i)//' 2',Lstat,element)
+    VLoad(3,1:n) = GetReal(BC,Name(1:i)//' 3',Lstat,element)
 
     e(1) = PNodes % x(k) - PNodes % x(j)
     e(2) = PNodes % y(k) - PNodes % y(j)
@@ -5831,7 +5831,7 @@ CONTAINS
     LOGICAL :: SecondKindBasis, stat, ElementCopyCreated
     INTEGER :: TetraFaceMap(4,3), BrickFaceMap(6,4), ActiveFaceMap(4)
     INTEGER :: DOFs, i, j, p
-    REAL(KIND=dp) :: VLoad(3,n), VL(3), Normal(3), Basis(n), DetJ, s
+    REAL(KIND=dp) :: VLoad(3,n), LOAD(n), VL(3), L, Normal(3), Basis(n), DetJ, s
     REAL(KIND=dp) :: f(3), u, v
     REAL(KIND=dp) :: Mass(4,4), rhs(4)
 !------------------------------------------------------------------------------
@@ -5892,6 +5892,8 @@ CONTAINS
       END IF
       CALL GetElementNodes(Nodes, ElementCopy)
 
+      Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
+
       i = LEN_TRIM(Name)
       VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
       VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
@@ -5912,6 +5914,8 @@ CONTAINS
         Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
 
         VL = MATMUL(VLoad(:,1:n), Basis(1:n))
+        L  = SUM(Load(1:n)*Basis(1:n)) + SUM(VL*Normal)
+
         s = IP % s(p) * DetJ
 
         IF (SecondKindBasis) THEN
@@ -5925,10 +5929,10 @@ CONTAINS
           f(3) = sqrt(3.0d0) * (-1.0d0/3.0d0 + 2.0d0/sqrt(3.0d0)*v)
 
           DO i=1,DOFs
-            Integral(i) = Integral(i) + SUM(VL(1:3) * Normal(1:3)) * f(i) * s
+            Integral(i) = Integral(i) + L * f(i) * s
           END DO
         ELSE
-          Integral(1) = Integral(1) + SUM(VL(1:3) * Normal(1:3)) * s
+          Integral(1) = Integral(1) + L * s
         END IF
       END DO
 
@@ -5964,6 +5968,8 @@ CONTAINS
 
       CALL GetElementNodes(Nodes, ElementCopy)
 
+      Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
+
       i = LEN_TRIM(Name)
       VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
       VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
@@ -5987,6 +5993,7 @@ CONTAINS
         Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
 
         VL = MATMUL(VLoad(:,1:n), Basis(1:n))
+        L  = SUM(Load(1:n)*Basis(1:n)) + SUM(VL*Normal)
         s = IP % s(p) * DetJ
 
         DO i=1,DOFs
@@ -5994,7 +6001,7 @@ CONTAINS
             ! Note: here a non-existent DetJ is not a mistake
             Mass(i,j) = Mass(i,j) + Basis(i) * Basis(j) * IP % s(p)
           END DO
-          rhs(i) = rhs(i) + SUM(VL(1:3) * Normal(1:3)) * Basis(i) * s
+          rhs(i) = rhs(i) + L * Basis(i) * s
         END DO
       END DO
 
