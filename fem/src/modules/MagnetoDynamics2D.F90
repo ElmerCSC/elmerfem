@@ -400,11 +400,9 @@ CONTAINS
    IF(.NOT. (CalcTorque .OR. CalcPot .OR. CalcInert) ) RETURN
 
    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
-   
-   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices',Found )
 
-   SliceAverage = ( NoSlices > 1 )
-   IF( SliceAverage ) THEN
+   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices',SliceAverage )
+   IF( NoSlices > 1 ) THEN
      CALL Info(Caller,'Changing communicator for slice operation!',Level=5)
      PrevComm = ParEnv % ActiveComm
      ParEnv % ActiveComm = ParallelSlicesComm() 
@@ -646,16 +644,20 @@ CONTAINS
      Torq = Ctorq * Torq
 
      IF( SliceAverage ) THEN
+       ! Save slice torque even for one slice since then the output for scalars is the same
+       ! for any number of slices.       
        WRITE(Message,'(A,ES15.4)') 'Air gap torque for slice'//TRIM(I2S(ParEnv % MyPe))//':', Torq
        CALL Info(Caller,Message,Level=5)
-       Torq = ParallelReduction(Torq) / NoSlices
-       WRITE(Message,'(A,ES15.4)') 'Air gap torque average:', Torq
-       CALL Info(Caller,Message,Level=5)
-     ELSE
-       WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
-       CALL Info(Caller,Message,Level=6)
+       CALL ListAddConstReal(Model % Simulation,'res: air gap torque for slice', Torq)
+
+       ! But the averaging makes sense only for more than one slice
+       IF( NoSlices > 1 ) THEN
+         Torq = ParallelReduction(Torq) / NoSlices
+       END IF
      END IF
        
+     WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
+     CALL Info(Caller,Message,Level=5)
      CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
    END IF
    

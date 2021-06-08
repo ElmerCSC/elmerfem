@@ -10361,9 +10361,9 @@ END FUNCTION SearchNodeL
 
     ! This could be a multislice case, for example. We don't want each slice to have
     ! different iteration count so we need to check the max norm of the partitions
-    ! even for multislice case. For time parallel system, not so much.
+    ! even for multislice case. 
     IF( SingleMesh ) THEN
-      IF(.NOT. ListGetLogical( CurrentModel % Simulation,'Parallel Times', Stat ) ) THEN
+      IF( ListGetInteger( CurrentModel % Simulation,'Number of Slices', Stat ) > 1 ) THEN
         CALL Info(Caller,'Communicating maximum norm in single mesh operation',Level=10)
         Change = ParallelReduction( Change, 2 )
       END IF
@@ -21634,17 +21634,16 @@ CONTAINS
      TYPE(Model_t), POINTER :: Model
      LOGICAL :: Found
      TYPE(ProjTable_t), POINTER :: ProjTable(:)
-     INTEGER :: n, i, Ncycle, Ntime, Nstore
+     INTEGER :: n, i, Ncycle, Ntime, Nstore, Ntimes
      LOGICAL :: SetProj
      
      SAVE ProjTable
      
      Model => CurrentModel 
      Ncycle = ListGetInteger( Model % Simulation,'Periodic Timesteps')
-     IF( ListGetLogical( Model % Simulation,'Parallel Timestepping',Found ) ) THEN
-       Ncycle = Ncycle / ParEnv % PEs
-     END IF
-     
+     Ntimes = ListGetInteger( Model % Simulation,'Number Of Times',Found )
+     IF(Found ) Ncycle = Ncycle / Ntimes     
+
      v => VariableGet( Solver % Mesh % Variables, 'timestep' )
      Ntime = NINT(v % Values(1))
 

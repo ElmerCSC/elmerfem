@@ -2242,8 +2242,16 @@ END INTERFACE
      
      IF( ParallelTime .AND. ParallelSlices ) THEN
        nSlices = ListGetInteger( CurrentModel % Simulation,'Number Of Slices',GotIt)
-       IF( nSlices <= 0 ) THEN
-         CALL Fatal('ExecSimulation','We need "Number Of Slices" with parallel timestepping')
+       IF(GotIt) THEN
+         IF( nSlices > ParEnv % PEs ) THEN
+           CALL Fatal('ExecSimulation','"Number Of Slices" cannot be be larger than #np')
+         END IF
+       ELSE
+         IF( ParEnv % PEs == 1 ) THEN
+           CALL ListAddInteger( CurrentModel % Simulation,'Number Of Slices',nSlices)
+         ELSE
+           CALL Fatal('ExecSimulation','We need "Number Of Slices" with parallel timestepping')
+         END IF
        END IF
        IF( MODULO( ParEnv % PEs, nSlices ) /= 0 ) THEN
          CALL Fatal('ExecSimulation','For hybrid parallellism #np must be divisible with "Number of Slices"')
