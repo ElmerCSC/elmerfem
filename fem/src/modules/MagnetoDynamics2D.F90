@@ -2304,6 +2304,9 @@ SUBROUTINE Bsolver_init( Model,Solver,dt,Transient )
         'Current Density[Current Density re:1 Current Density im:1]' )
   END IF
 
+  ! The refrence norm is sum of all solutions. Hence we don't really want to recompute and spoil it externally.
+  CALL ListAddNewLogical( SolverParams,'Skip Compute Steady State Change',.TRUE.)
+  
 
 END SUBROUTINE Bsolver_init
 
@@ -2469,7 +2472,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
     Solver % Matrix % RHS => ForceVector(:,i)
     Solver % Variable % Values = 0
     UNorm = DefaultSolve()
-    TotNorm = TotNorm + SUM(Solver % Variable % Values**2)
+    TotNorm = TotNorm + Unorm**2
     IF( i <= FluxDofs ) THEN
       FluxSol % Values(i::FluxDofs) = Solver % Variable % Values
     ELSE IF( i == FluxDofs + 1 ) THEN

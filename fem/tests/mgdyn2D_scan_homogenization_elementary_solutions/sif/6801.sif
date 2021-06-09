@@ -11,7 +11,7 @@ Header 1
 End
 
 Simulation 1
-   Max Output Level = 6
+   Max Output Level = 5
    Coordinate System = Cartesian
    Simulation Type = Scanning
    Timestep Intervals = 3 
