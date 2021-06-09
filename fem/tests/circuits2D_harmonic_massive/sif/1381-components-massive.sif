@@ -187,8 +187,7 @@ Boundary Condition 3
    Infinity BC = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 2.295797E-06
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
+Solver 3 :: Reference Norm = 2.29579655E-06
+Solver 4 :: Reference Norm = 1.30972027E+02
 
 
