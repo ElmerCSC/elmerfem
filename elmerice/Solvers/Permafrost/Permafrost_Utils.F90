@@ -602,16 +602,17 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: WriteIPVar(6)=.FALSE., Found
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostIPOutput_init'
-
+  INTEGER :: DIM, kGpeDOFs
   
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
   CALL INFO( SolverName, ' Permafrost IP Output initialization ',Level=4 )
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
-
+  
+  DIM = CoordinateSystemDimension()
   SolverParams => GetSolverParams()
   WriteIPVar(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
   WriteIPVar(2)=ListGetLogical(SolverParams,"Export mugw",Found)
-  !WriteIPVar(3)=ListGetLogical(SolverParams,"Export ",Found)
+  WriteIPVar(3)=ListGetLogical(SolverParams,"Export kGpe",Found)
   !WriteIPVar(4)=ListGetLogical(SolverParams,"Export ",Found)
   !WriteIPVar(5)=ListGetLogical(SolverParams,"Export ",Found)
   !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
@@ -622,11 +623,30 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
          "-IP -dofs 1 rhogw")
     CALL INFO(SolverName,'Added rhogw as variable',Level=5)
   END IF
-    IF(WriteIPVar(1)) THEN 
+  IF(WriteIPVar(2)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
          "-IP -dofs 1 mugw")
     CALL INFO(SolverName,'Added mugw as variable',Level=5)
+  END IF
+  IF(WriteIPVar(3)) THEN
+    IF (DIM == 1) THEN
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-IP -dofs 1 kGpe")
+      kGpeDOFs = 1
+    ELSE IF (DIM == 2) THEN
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-IP -dofs 4 kGpe")
+       kGpeDOFs = 4
+    ELSE
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-IP -dofs 9 kGpe")
+       kGpeDOFs = 9
+    END IF
+    CALL INFO(SolverName,'Added kGpe as variable',Level=5)
   END IF
   
 END SUBROUTINE PermafrostIPOutput_init
@@ -647,7 +667,8 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams, Material
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
-  INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter, maxiter, istat,DepthDOFs
+  INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter,&
+       maxiter, istat, DepthDOFs, kGpeDOFs
   INTEGER,PARAMETER :: io=23
   REAL(KIND=dp) :: Norm
  
@@ -668,7 +689,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
        ElementWiseRockMaterial,ComputeDt,DepthExists,&
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        PressureVelo_h, SalinityVelo_h, Depth_h, &
-       Vstar1_h, Vstar2_h, Vstar3_h
+       Vstar1_h, Vstar2_h, Vstar3_h, kGpeDOFs
  
 
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
@@ -680,6 +701,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
 
   IF (FirstTime) THEN
     DIM = CoordinateSystemDimension()
+    kGpeDOFs = DIM*DIM 
     ! Handles to other system variables
     CALL ListInitElementKeyword( Temperature_h, 'Material', 'Temperature Variable' )
     CALL ListInitElementKeyword( Pressure_h, 'Material', 'Pressure Variable' )
@@ -708,7 +730,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   SolverParams => GetSolverParams()
   WriteIPVar(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
   WriteIPVar(2)=ListGetLogical(SolverParams,"Export mugw",Found)
-  !WriteIPVar(3)=ListGetLogical(SolverParams,"Export ",Found)
+  WriteIPVar(3)=ListGetLogical(SolverParams,"Export kGpe",Found)
   !WriteIPVar(4)=ListGetLogical(SolverParams,"Export ",Found)
   !WriteIPVar(5)=ListGetLogical(SolverParams,"Export ",Found)
   !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
@@ -786,10 +808,10 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,&
          TemperatureAtIP,PorosityAtIP,PressureAtIP,SalinityAtIP,&
          PressureVeloAtIP,SalinityVeloAtIP,&
-         StiffPQ, meanfactor, vstarAtIP(3)
+         StiffPQ, meanfactor, vstarAtIP(3), auxtensor(3,3)
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LOAD(n)
     REAL(KIND=dp), POINTER :: gWork(:,:)
-    INTEGER :: i,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
+    INTEGER :: i,j,k,t,p,q,IPPerm,DIM, RockMaterialID, FluxDOFs
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE.,ConstVal=.FALSE.,&
          CryogenicSuction=.FALSE.,HydroGeo=.FALSE.,ComputeFlux=.TRUE.,&
          NoSalinity=.FALSE.
@@ -798,13 +820,16 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='PermafrostIPOutput(SetIPValues)'
-    TYPE(Variable_t), POINTER :: XiAtIPVar, rhogwAtIPVar, mugwAtIPVar
-    INTEGER, POINTER :: XiAtIPPerm(:),GWfluxPerm(:),rhogwAtIPPerm(:),mugwAtIPPerm(:)
-    REAL(KIND=dp), POINTER :: XiAtIP(:), FluxAtElem(:), rhogwAtIP(:), mugwATIP(:)
+    TYPE(Variable_t), POINTER :: XiAtIPVar, rhogwAtIPVar, mugwAtIPVar, kGpeAtIPVar
+    INTEGER, POINTER :: XiAtIPPerm(:),GWfluxPerm(:),rhogwAtIPPerm(:),&
+         mugwAtIPPerm(:), kGpeAtIPPerm(:)
+    REAL(KIND=dp), POINTER :: XiAtIP(:), FluxAtElem(:), rhogwAtIP(:),&
+         mugwATIP(:), kGpeAtIP(:)
 
     !------------------------------------------------------------------------------
     SAVE Nodes, ConstantsRead, ConstVal,DIM, GasConstant, N0,DeltaT, T0, p0, eps, Gravity
     !------------------------------------------------------------------------------
+    DIM = CoordinateSystemDimension()
     gradTAtIP = 0.0_dp
     gradPAtIP = 0.0_dp
     IF(.NOT.ConstantsRead) THEN
@@ -845,6 +870,17 @@ CONTAINS
       mugwAtIPPerm => mugwAtIPVar % Perm
       mugwAtIP => mugwAtIPVar % Values
     END IF
+
+    IF (WriteIPVar(3)) THEN
+      kGpeAtIPVar => VariableGet( Solver % Mesh % Variables, 'kGpe')
+      IF (.NOT.ASSOCIATED(kGpeAtIPVar)) THEN
+        WRITE(Message,*) 'Variable "kGpe" is not associated'
+        CALL FATAL(SolverName,Message)
+      END IF
+      kGpeAtIPPerm => kGpeAtIPVar % Perm
+      kGpeAtIP => kGpeAtIPVar % Values
+    END IF
+    
     ! Get stuff from SIF Material section
     Material => GetMaterial(Element)
     IF (ElementWiseRockMaterial) THEN
@@ -950,7 +986,19 @@ CONTAINS
         mugwAtIP(mugwATIPPerm(ElementID) +t) = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
              XiAtIP(IPPerm),T0,SalinityAtIP,TemperatureAtIP,ConstVal)
       END IF
-    END DO
+      IF (WriteIPVar(3)) THEN
+        auxtensor = &
+                 GetKGpe(RockMaterialID,CurrentSolventMaterial,XiAtIp(IPPerm))
+        K = 0
+        DO I=1,DIM
+          DO J=1,DIM
+            K = K + 1
+            kGpeAtIP( kGpeDOFs*((kGpeATIPPerm(ElementID) + t) - 1) + K) = &
+                 auxtensor(I,J)
+          END DO
+        END DO
+      END IF
+    END DO ! end loop over IP points
   END SUBROUTINE SetIPValues
 END SUBROUTINE PermafrostIPOutput
 !------------------------------------------------------------------------------
