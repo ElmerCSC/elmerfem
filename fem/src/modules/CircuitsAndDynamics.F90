@@ -1769,11 +1769,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
 
-        ! I * R, where 
-        ! R = (1/sigma * js,js):
-        ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
-
         IF (CoilUseWvec) THEN
           gradv = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
         ELSE
@@ -1789,6 +1784,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           END DO
         END DO
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
 
         IF (FoilUseJvec) THEN
           Jvec = ListGetElementVectorSolution( Jvec_h, Basis, Element, dofs = dim )
