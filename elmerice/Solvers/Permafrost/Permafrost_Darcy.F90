@@ -116,7 +116,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
   !CHARACTER(LEN=MAX_NAME_LEN) :: TemperatureName, PorosityName, SalinityName, StressInvName, &
   CHARACTER(LEN=MAX_NAME_LEN) ::    VarName,PhaseChangeModel,ElementRockMaterialName,DeformationName
   TYPE(ValueHandle_t) :: Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
-       TemperatureBC_h, PressureBC_h, SalinityBC_h, PorosityBC_h, &
+       TemperatureBC_h, PressureBC_h, SalinityBC_h, PorosityBC_h, Recharge_h, GWFlux_h,&
        TemperatureDt_h, SalinityDt_h, StressInv_h,StressInvDt_h,Vstar1_h, Vstar2_h, Vstar3_h
   TYPE(VariableHandle_t) :: NormalVar_h
   
@@ -132,7 +132,7 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
        StressInvAllocationsDone, StressInvDtAllocationsDone, OffsetDensity, &
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        TemperatureDt_h, SalinityDt_h, StressInv_h, StressInvDt_h, &
-       Vstar1_h, Vstar2_h, Vstar3_h, NormalVar_h, &
+       Vstar1_h, Vstar2_h, Vstar3_h, NormalVar_h, Recharge_h, GWFlux_h,&
        TemperatureBC_h, PressureBC_h, SalinityBC_h, PorosityBC_h,&
        ActiveMassMatrix, InitializeSteadyState, HydroGeo, ComputeDt, &
        ComputeFreshwaterHead
@@ -206,6 +206,9 @@ SUBROUTINE PermafrostGroundwaterFlow( Model,Solver,dt,TransientSimulation )
     CALL ListInitElementKeyword( SalinityBC_h, 'Boundary Condition', 'Salinity Variable' )
     CALL ListInitElementKeyword( PorosityBC_h, 'Boundary Condition', 'Porosity Variable' )
     CALL ListInitElementKeyword( TemperatureBC_h, 'Boundary Condition','Temperature Variable' )
+    !Handles to values on boundaries
+    CALL ListInitElementKeyword( Recharge_h, 'Boundary Condition', 'Freshwater Recharge' )
+    CALL ListInitElementKeyword( GWFlux_h, 'Boundary Condition', 'Groundwater Flux' )
     !CALL ListInitElementKeyword( StressInv_h, 'Material', 'Stress Invariant Variable' )
     ! Handles to advection velocities
     CALL ListInitElementKeyword( Vstar1_h,'Material','Convection Velocity 1')
@@ -406,7 +409,7 @@ CONTAINS
          gwaAtIP,giaAtIP,gwaTAtIP,giaTAtIP,gwapAtIP,giapAtIP !needed by XI
     REAL(KIND=dp) :: fwAtIP, mugwAtIP !  JgwD stuff
     REAL(KIND=dp) :: deltaInElement,D1AtIP,D2AtIP
-    REAL(KIND=dp) :: ks0th,e1,bs,rhos0,cs0,Xi0,eta0,Kgwh0(3,3),qexp,alphaL,alphaT,RadGen,acs(0:5),&
+    REAL(KIND=dp) :: ks0th,e1,bs,rhos0,cs0,Xi0,eta0,alphaL,alphaT,RadGen,acs(0:5),&
          as0,aas(0:5),ks0,cks(0:5)  ! stuff coming from RockMaterial
     INTEGER :: acsl,aasl,cksl       ! stuff coming from RockMaterial
     REAL(KIND=dp) :: EGAtIP,nuGAtIP,kappaGAtIP ! bedrock deformation
@@ -425,7 +428,7 @@ CONTAINS
     !REAL(KIND=dp) , ALLOCATABLE :: CgwpI1AtNodes(:)
     INTEGER :: i,t,p,q,DIM, RockMaterialID, FluxDOFs,IPPerm,IPPermRhogw,IPPermFreshwaterHead
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
-         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE.
+         ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
@@ -501,6 +504,8 @@ CONTAINS
     IF (.NOT.Found .OR. (MinKgw <= 0.0_dp))  &
          MinKgw = 1.0D-14
 
+    swaptensor = GetLogical(Material,'Swap Tensor',Found)
+    
     NoSalinity = GetLogical(Material,'No Salinity',Found)
     
     ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
@@ -879,7 +884,8 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
     !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Flux(n), Coeff(n), Pressure(n), F,Weight
+    !REAL(KIND=dp) :: Flux(n), Coeff(n), Pressure(n), FluxAtIP, Weight
+    REAL(KIND=dp) :: FluxAtIP, Weight
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,WeakPressure(nd)
     REAL(KIND=dp) :: MASS(nd,nd),STIFF(nd,nd), FORCE(nd), LOAD(nd)
     REAL(KIND=dp), PARAMETER :: C=1000.0_dp
@@ -906,41 +912,56 @@ CONTAINS
     
     FluxCondition = .FALSE.
     Recharge = .FALSE.
-    WeakDirichletCond = .FALSE.
-    
-    NodeIndexes => Element % NodeIndexes
-    Flux(1:n) = ListGetReal( &
-         BoundaryCondition, 'Freshwater Recharge', n, NodeIndexes, Recharge)
-    IF (Recharge) THEN
-      FluxCondition = .TRUE.
-    ELSE
-      Flux(1:n) = ListGetReal( &
-           BoundaryCondition, 'Groundwater Flux', n, NodeIndexes, FluxCondition)
-      !IF (FluxCondition) PRINT *, 'Groundwater Flux',  Flux(1:n)
-    END IF
 
+    ! just using WeakPressure as dummy destination to inquire whether we have a
+    ! Dirichlet condition and can stop composing weakly imposed conditions
+    WeakPressure(1:n) = GetReal( BoundaryCondition,TRIM(VarName), Found)
+    IF (Found) RETURN
+    
+    WeakDirichletCond = .FALSE.
+
+    WeakPressure(1:n) = GetReal( BoundaryCondition,'Imposed '// TRIM(VarName), WeakDirichletCond)
+   
+    IF (WeakDirichletCond) THEN
+      CALL INFO(FunctionName,'Setting weak condition (ignoring recharge and flux)',Level=12)
+    ELSE
+      FluxCondition = .TRUE.
+    END IF
+    
     IF(.NOT.ConstantsRead) THEN
       ConstantsRead = &
            ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
       !PRINT *, "BCSolute: (Constantsread) ", GasConstant, N0, DeltaT, T0, p0, eps, Gravity, ConstantsRead
     END IF
 
-    !IF (Recharge) THEN
     IF (FluxCondition) THEN
+      body_id = GetInteger(BoundaryCondition,'Permafrost Target Body', Found)   
       ! inquire parent element and material
-      other_body_id = Element % BoundaryInfo % outbody
-      IF (other_body_id < 1) THEN ! only one body in calculation
-        ParentElement => Element % BoundaryInfo % Right
-        IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => Element % BoundaryInfo % Left
-      ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
-        ParentElement => Element % BoundaryInfo % Right
-        IF (ParentElement % BodyId == other_body_id) ParentElement => Element % BoundaryInfo % Left
+      IF (Found) THEN
+        IF (body_id == Element % BoundaryInfo % outbody) THEN
+          ParentElement => Element % BoundaryInfo % Right
+        ELSE         
+          ParentElement => Element % BoundaryInfo % Left
+        !ELSE
+        !  WRITE(Message,*)&
+        !     'No material body found for given body id ', body_id
+        !  CALL FATAL(FunctionName,Message)
+        END IF
+      ELSE    
+        other_body_id = Element % BoundaryInfo % outbody      
+        IF (other_body_id < 1) THEN ! only one body in calculation
+          ParentElement => Element % BoundaryInfo % Right
+          IF ( .NOT. ASSOCIATED(ParentElement) ) ParentElement => Element % BoundaryInfo % Left
+        ELSE ! we are dealing with a body-body boundary and asume that the normal is pointing outwards
+          ParentElement => Element % BoundaryInfo % Right
+          IF (ParentElement % BodyId == other_body_id) ParentElement => Element % BoundaryInfo % Left
+        END IF
       END IF
       ! all the above was just so we can get the material properties of the parent element...
       body_id = ParentElement % BodyId
       material_id = ListGetInteger(Model % Bodies(body_id) % Values, 'Material', Found)
-      IF (.NOT.Found) CALL FATAL(FunctionName,'Parent Material ID not found')
-
+      IF (.NOT.Found) CALL FATAL(FunctionName,'Parent Material ID in BC not found')
+      !PRINT *,"Parent Material ID",  body_id,  material_id
       ParentMaterial => Model % Materials(material_id) % Values
       IF (.NOT. ASSOCIATED(ParentMaterial)) THEN
         WRITE(Message,*)&
@@ -973,62 +994,45 @@ CONTAINS
     LOAD = 0._dp
 
  
-    WeakPressure(1:n) = GetReal( BoundaryCondition,'Imposed '// TRIM(VarName), WeakDirichletCond)
+    
 
     ! Numerical integration:
     !-----------------------
-    IF (FluxCondition .OR. WeakDirichletCond) THEN ! spare us, if natural BC
+    !IF (FluxCondition .OR. WeakDirichletCond) THEN ! spare us, if natural BC
       IP = GaussPoints( Element )
       DO t=1,IP % n
         ! Basis function values & derivatives at the integration point:
         !--------------------------------------------------------------
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
              IP % W(t), detJ, Basis, dBasisdx )
-        !PRINT *, "Normal"
-        NormalAtIP = &
-             ListGetElementVectorSolution( NormalVar_h, Basis, Element, Found=Found, GaussPoint=t,dofs=DIM)
+        Weight = IP % s(t) * DetJ
+        !NodeIndexes => Element % NodeIndexes
+        FluxAtIP = ListGetElementReal(Recharge_h, Basis, Element, Recharge)
+
         IF (Recharge) THEN
+          FluxCondition = .TRUE.
           ! Variables (Temperature, Porosity, Pressure, Salinity) at IP
-          TemperatureAtIP = ListGetElementReal( TemperatureBC_h, Basis, Element, Found=Found, GaussPoint=t)
-          IF (.NOT.Found) CALL FATAL(SolverName,'Temperature not found')
-          PorosityAtIP = ListGetElementReal( PorosityBC_h, Basis, Element, Found=Found, GaussPoint=t)
-          IF (.NOT.Found) CALL FATAL(SolverName,'Porosity not found')
-          PressureAtIP = ListGetElementReal( PressureBC_h, Basis, Element, Found=Found, GaussPoint=t)
-          !SalinityAtIP = ListGetElementReal( Salinity_h, Basis, Element, Found, GaussPoint=t)
+          !TemperatureAtIP = ListGetElementReal( TemperatureBC_h, Basis=Basis, Element=Element, Found=Found, GaussPoint=t)
+          TemperatureAtIP = ListGetElementRealParent( Temperature_h, Basis=Basis, Element=Element, Found=Found )
+          IF (.NOT.Found) CALL FATAL(SolverName,'Temperature in BC not found')
+          PorosityAtIP = ListGetElementRealParent( Porosity_h, Basis=Basis, Element=Element, Found=Found)
+          IF (.NOT.Found) CALL FATAL(SolverName,'Porosity in BC not found')
+          PressureAtIP = ListGetElementRealParent( Pressure_h, Basis=Basis, Element=Element, Found=Found)
+          !SalinityAtIP = ListGetElementReal( SalinityBC_h, Basis, Element, Found, GaussPoint=t)
 
           SalinityAtIP = 0.0_dp ! WE ASSUME FRESHWATER INFLOW!!!
-          !XiAtIP = 1.0_dp  ! WE ASSUME FULLY UNFROZEN INFLOW!!!
-          !mugwAtIP = mugw(CurrentSolventMaterial,CurrentSoluteMaterial,&
-          !     XiAtIP,T0,SalinityAtIP,TemperatureAtIP,ConstVal)
-          !KgwAtIP = 0.0_dp
-          !KgwAtIP = GetKgw(RockMaterialID,CurrentSolventMaterial,&
-          !     mugwAtIP,XiAtIP,MinKgw)
-          ! using pure water for recharge
-          rhogwAtIP =  rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)
-         ! DO i=1,DIM
-         !   fluxgAtIP(i) = rhogwAtIP * SUM(KgwAtIP(i,1:DIM)*Gravity(1:DIM))
-         ! END DO
-        !ELSE
-          !  fluxgAtIP(1:DIM) = 0.0_dp
-          
+          rhogwAtIP =  rhow(CurrentSolventMaterial,T0,p0,TemperatureAtIP,PressureAtIP,ConstVal)! WE ASSUME FRESHWATER INFLOW!!!
+          FluxAtIP = FluxAtIP*rhogwAtIP
+        ELSE
+          FluxCondition = .FALSE.
+          FluxAtIP = ListGetElementReal(GWFlux_h, Basis, Element, FluxCondition)
+          !IF (FluxCondition) PRINT *, 'Groundwater Flux',  Flux(1:n)
         END IF
         
-        Weight = IP % s(t) * DetJ
-        ! Given flux:
-        ! -----------
+       
         IF (Fluxcondition) THEN
-          !DO i=1,DIM
-          !  fluxgAtIP(i) = rhogwAtIP * SUM(KgwAtIP(i,1:DIM)*Gravity(1:DIM))
-            !PRINT *, "fluxgAtIP(",i,")=",rhogwAtIP, "KgwAtIP=", KgwAtIP(i,1:DIM)
-          !END DO
-          IF (Recharge) THEN
-            F = SUM(Basis(1:n)*rhogwAtIP*flux(1:n))
-          ELSE
-            F = SUM(Basis(1:n)*flux(1:n))
-          END IF
-          
-          !PRINT *,"F=",F,SUM(Basis(1:n)*flux(1:n)), NormalAtIP(1:DIM), fluxgAtIP(1:DIM)
-          FORCE(1:nd) = FORCE(1:nd) + Weight * F * Basis(1:nd)
+          FORCE(1:nd) = FORCE(1:nd) + Weight * FluxAtIP * Basis(1:nd)
+          !PRINT *,"FluxCondition", body_id, material_id
           ! Given pressure, weakly imposed
           !----------------------------------------------------------------------
         ELSE IF (WeakDirichletCond) THEN
@@ -1042,7 +1046,7 @@ CONTAINS
         END IF
       END DO
       CALL DefaultUpdateEquations(STIFF,FORCE)
-    END IF
+    !END IF
     !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBCDarcy
   !------------------------------------------------------------------------------

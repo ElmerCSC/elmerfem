@@ -76,7 +76,7 @@ MODULE PermafrostMaterials
   ! type for rock material
   !---------------------------------
   TYPE RockMaterial_t
-     INTEGER :: NumerOfRockRecords
+     INTEGER :: NumberOfRockRecords
      REAL(KIND=dp), ALLOCATABLE :: ks0th(:),e1(:),bs(:),rhos0(:),&
           Xi0(:),eta0(:),etak(:),hs0(:),Kgwh0(:,:,:),qexp(:),alphaL(:),alphaT(:),RadGen(:),&
           cs0(:),acs(:,:),as0(:),aas(:,:),ks0(:),cks(:,:),Es0(:),nus0(:),betas(:)
@@ -377,24 +377,26 @@ CONTAINS
   END SUBROUTINE ReadPermafrostSoluteMaterial
 
   !---------------------------------------------------------------------------------------------
-  FUNCTION ReadPermafrostRockMaterial( Params ) RESULT(NumerOfRockRecords)
+  FUNCTION ReadPermafrostRockMaterial( Params ) RESULT(NumberOfRockRecords)
     IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Params
-    Integer :: NumerOfRockRecords
+    INTEGER :: NumberOfRockRecords
     !--------------
-    INTEGER :: i,j,k,l, n,t, active, DIM, ok,InitialNumerOfRockRecords, EntryNumber
+    INTEGER :: I,J,K, n,t, RockMaterialID, active, DIM, ok,InitialNumberOfRockRecords, EntryNumber
     INTEGER,parameter :: io=21
-    LOGICAL :: Found, fexist, FirstTime=.TRUE., AllocationsDone=.FALSE., DataRead=.FALSE.
+    LOGICAL :: Found, fexist, FirstTime=.TRUE., AllocationsDone=.FALSE., DataRead=.FALSE.,&
+         dimensionalTensorReduction = .FALSE.
     CHARACTER(LEN=MAX_NAME_LEN) ::  MaterialFileName, NewMaterialFileName, str, Comment
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='ReadPermafrostRockMaterial'
 
-    SAVE AllocationsDone,DataRead,InitialNumerOfRockRecords,MaterialFileName
+    SAVE AllocationsDone,DataRead,InitialNumberOfRockRecords,MaterialFileName
 
     IF (DataRead) THEN
-      NumerOfRockRecords = InitialNumerOfRockRecords
+      NumberOfRockRecords = InitialNumberOfRockRecords
       RETURN
     ELSE ! we read Data from file database
       DIM = CoordinateSystemDimension()
+      dimensionalTensorReduction = GetLogical( Params, 'Swap Tensor', Found)
       !------------------------------------------------------------------------------
       ! Inquire and open file
       !------------------------------------------------------------------------------
@@ -443,11 +445,11 @@ CONTAINS
         !------------------------------------------------------------------------------
         ! Read in the number of records in file (first line integer)
         !------------------------------------------------------------------------------
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) NumerOfRockRecords, Comment
-        WRITE (Message,*) "Attempting to read ",NumerOfRockRecords," ",&
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) NumberOfRockRecords, Comment
+        WRITE (Message,*) "Attempting to read ",NumberOfRockRecords," ",&
              TRIM(Comment)," records from data file ",TRIM(MaterialFileName)        
         CALL INFO(FunctionName,Message,level=3)
-        InitialNumerOfRockRecords = NumerOfRockRecords
+        InitialNumberOfRockRecords = NumberOfRockRecords
       END IF
       !------------------------------------------------------------------------------
       ! Allocate and read stuff
@@ -482,31 +484,31 @@ CONTAINS
              GlobalRockMaterial % VariableBaseName)
       END IF
       ALLOCATE(&
-           GlobalRockMaterial % ks0th(NumerOfRockRecords),&
-           GlobalRockMaterial % e1(NumerOfRockRecords),&
-           GlobalRockMaterial % bs(NumerOfRockRecords),&
-           GlobalRockMaterial % rhos0(NumerOfRockRecords),&
-           GlobalRockMaterial % cs0(NumerOfRockRecords),&
-           GlobalRockMaterial % Xi0(NumerOfRockRecords),&
-           GlobalRockMaterial % eta0(NumerOfRockRecords),&
-           GlobalRockMaterial % etak(NumerOfRockRecords),&
-           GlobalRockMaterial % hs0(NumerOfRockRecords),&
-           GlobalRockMaterial % Kgwh0(3,3,NumerOfRockRecords),&
-           GlobalRockMaterial % qexp(NumerOfRockRecords), &
-           GlobalRockMaterial % alphaL(NumerOfRockRecords), &
-           GlobalRockMaterial % alphaT(NumerOfRockRecords), &
-           GlobalRockMaterial % RadGen(NumerOfRockRecords), &
-           GlobalRockMaterial % acs(0:5,NumerOfRockRecords), &
-           GlobalRockMaterial % as0(NumerOfRockRecords), &
-           GlobalRockMaterial % aas(0:5,NumerOfRockRecords), &
-           GlobalRockMaterial % ks0(NumerOfRockRecords), &
-           GlobalRockMaterial % cks(0:5,NumerOfRockRecords), &
-           GlobalRockMaterial % Es0(NumerOfRockRecords), &
-           GlobalRockMaterial % nuS0(NumerOfRockRecords), &
-           GlobalRockMaterial % acsl(NumerOfRockRecords), &     
-           GlobalRockMaterial % aasl(NumerOfRockRecords), &
-           GlobalRockMaterial % cksl(NumerOfRockRecords), &
-           GlobalRockMaterial % VariableBaseName(NumerOfRockRecords),&
+           GlobalRockMaterial % ks0th(NumberOfRockRecords),&
+           GlobalRockMaterial % e1(NumberOfRockRecords),&
+           GlobalRockMaterial % bs(NumberOfRockRecords),&
+           GlobalRockMaterial % rhos0(NumberOfRockRecords),&
+           GlobalRockMaterial % cs0(NumberOfRockRecords),&
+           GlobalRockMaterial % Xi0(NumberOfRockRecords),&
+           GlobalRockMaterial % eta0(NumberOfRockRecords),&
+           GlobalRockMaterial % etak(NumberOfRockRecords),&
+           GlobalRockMaterial % hs0(NumberOfRockRecords),&
+           GlobalRockMaterial % Kgwh0(3,3,NumberOfRockRecords),&
+           GlobalRockMaterial % qexp(NumberOfRockRecords), &
+           GlobalRockMaterial % alphaL(NumberOfRockRecords), &
+           GlobalRockMaterial % alphaT(NumberOfRockRecords), &
+           GlobalRockMaterial % RadGen(NumberOfRockRecords), &
+           GlobalRockMaterial % acs(0:5,NumberOfRockRecords), &
+           GlobalRockMaterial % as0(NumberOfRockRecords), &
+           GlobalRockMaterial % aas(0:5,NumberOfRockRecords), &
+           GlobalRockMaterial % ks0(NumberOfRockRecords), &
+           GlobalRockMaterial % cks(0:5,NumberOfRockRecords), &
+           GlobalRockMaterial % Es0(NumberOfRockRecords), &
+           GlobalRockMaterial % nuS0(NumberOfRockRecords), &
+           GlobalRockMaterial % acsl(NumberOfRockRecords), &     
+           GlobalRockMaterial % aasl(NumberOfRockRecords), &
+           GlobalRockMaterial % cksl(NumberOfRockRecords), &
+           GlobalRockMaterial % VariableBaseName(NumberOfRockRecords),&
            STAT=OK)
       AllocationsDone = .TRUE.
       DataRead = .TRUE.
@@ -515,58 +517,68 @@ CONTAINS
         CALL FATAL(FunctionName, 'Allocation Error of input data array')
       END IF
       
-      DO I=1,NumerOfRockRecords
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % VariableBaseName(I), EntryNumber
-        IF (EntryNumber /= I) THEN
+      DO RockMaterialID=1,NumberOfRockRecords
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % VariableBaseName(RockMaterialID), EntryNumber
+        IF (EntryNumber /= RockMaterialID) THEN
           WRITE(Message,'(A,I3,A,I3)') &
                "Entry number", EntryNumber, "does not match expected number ",I
           CLOSE(io)
           CALL FATAL(FunctionName,Message)
         ELSE
           WRITE(Message,'(A,A,A,I3,A)')&
-               "Material ", TRIM(GlobalRockMaterial % VariableBaseName(I)),&
+               "Material ", TRIM(GlobalRockMaterial % VariableBaseName(RockMaterialID)),&
                " entry number ", EntryNumber, " will be read in"
           CALL INFO(FunctionName,Message,Level=3)
         END IF
-        WRITE(Message,'(A,I2,A,A)') "Input for Variable No.",I,": ", GlobalRockMaterial % VariableBaseName(I)
+        WRITE(Message,'(A,I2,A,A)') "Input for Variable No.",RockMaterialID,": ",&
+             GlobalRockMaterial % VariableBaseName(RockMaterialID)
         CALL INFO(FunctionName,Message,Level=9)
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Xi0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % eta0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % etak(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0th(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % e1(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % bs(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % rhos0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cs0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % hs0(I), Comment
-        DO J=1,3
-          DO K=1,3
-            READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Kgwh0(J,K,I), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Xi0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % eta0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % etak(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0th(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % e1(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % bs(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % rhos0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cs0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % hs0(RockMaterialID), Comment
+        DO I=1,3
+          DO J=1,3
+            READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Kgwh0(I,J,RockMaterialID), Comment
           END DO
         END DO
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % qexp(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaL(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaT(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % RadGen(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acs(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % as0(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aas(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0(I),  Comment
+        IF ((DIM == 2) .AND. dimensionalTensorReduction) THEN
+          WRITE(Message,'(A,I2,A,A)') "Reducing tensor Kgwh0 for material no.",RockMaterialID
+          CALL INFO(FunctionName,Message,Level=9)
+          GlobalRockMaterial % Kgwh0(2,2,RockMaterialID) = GlobalRockMaterial % Kgwh0(3,3,RockMaterialID)
+          GlobalRockMaterial % Kgwh0(1,2,RockMaterialID) = GlobalRockMaterial % Kgwh0(1,3,RockMaterialID)
+          GlobalRockMaterial % Kgwh0(2,1,RockMaterialID) = GlobalRockMaterial % Kgwh0(3,1,RockMaterialID)
+          GlobalRockMaterial % Kgwh0(3,1:3,RockMaterialID) = 0.0_dp
+          GlobalRockMaterial % Kgwh0(1:3,3,RockMaterialID) = 0.0_dp
+        END IF
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % qexp(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaL(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % alphaT(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % RadGen(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acs(0:5,RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % as0(RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aas(0:5,RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % ks0(RockMaterialID),  Comment
         !--------------------
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cks(0:5,I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Es0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % nuS0(I), Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acsl(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(I),  Comment
-        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(I),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cks(0:5,RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % Es0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % nuS0(RockMaterialID), Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % acsl(RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % aasl(RockMaterialID),  Comment
+        READ (io, *, END=30, IOSTAT=OK, ERR=40) GlobalRockMaterial % cksl(RockMaterialID),  Comment
       END DO
       !CALL INFO(FunctionName,Message,Level=1)
 30    CLOSE(io)
-      IF (I < NumerOfRockRecords) THEN
-        WRITE(Message,'(I3,A,I3)') I,"records read, which is smaller than given number ", NumerOfRockRecords
+      IF (RockMaterialID < NumberOfRockRecords) THEN
+        WRITE(Message,'(I3,A,I3)') RockMaterialID,"records read, which is smaller than given number ", NumberOfRockRecords
         CALL FATAL(FunctionName,Message)
       ELSE
-        WRITE(Message,'(A,I2,A,A)') "Read ",NumerOfRockRecords," rock material records from file ", TRIM(MaterialFileName)
+        WRITE(Message,'(A,I2,A,A)') "Read ",NumberOfRockRecords," rock material records from file ", TRIM(MaterialFileName)
         CALL INFO(FunctionName,Message,Level=1)
       END IF
       RETURN
@@ -758,7 +770,7 @@ CONTAINS
           WRITE(Message,*) 'Element',I
           GlobalRockMaterial % VariableBaseName(I) = TRIM(Message)
         END DO
-        GlobalRockMaterial % NumerOfRockRecords = NoElements
+        GlobalRockMaterial % NumberOfRockRecords = NoElements
         NumberOfRockRecords = NoElements
 50      CLOSE(io)
         IF (LocalNoElements < NoElements) THEN
@@ -2292,13 +2304,28 @@ CONTAINS
     END DO
   END FUNCTION GetKGpe
   !---------------------------------------------------------------------------------------------
-  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,&
-       mugw,Xi,MinKgw)RESULT(Kgw)
-    IMPLICIT NONE
+  FUNCTION GetXikG0hy(RockMaterialID,Xi)RESULT(XikG0hy)
+     IMPLICIT NONE
     TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
     INTEGER, INTENT(IN) :: RockMaterialID 
+    REAL(KIND=dp), INTENT(IN) :: Xi
+    REAL(KIND=dp) :: XikG0hy(3,3)
+    !--------------------------
+    REAL(KIND=dp) :: Kgwh0(3,3), qexp
+    Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
+    qexp = GlobalRockMaterial % qexp(RockMaterialID)
+    XikG0hy = (Xi**qexp) * Kgwh0
+    !PRINT *,  "GetXikG0hy", XikG0hy, Xi,qexp,Kgwh0(1:3,1:3)
+  END FUNCTION GetXikG0hy
+  !---------------------------------------------------------------------------------------------
+  FUNCTION GetKgw(RockMaterialID,CurrentSolventMaterial,mugw,Xi,MinKgw) RESULT(Kgw)
+    
+    IMPLICIT NONE
+    TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
+    INTEGER, INTENT(IN) :: RockMaterialID
     REAL(KIND=dp), INTENT(IN) :: Xi,MinKgw,mugw
     REAL(KIND=dp) :: Kgw(3,3)
+ 
     !--------------------------
     REAL(KIND=dp) :: muw0,rhow0,qexp,Kgwh0(3,3),factor
     REAL(KIND=dp), PARAMETER :: gval=9.81_dp !hard coded, so match Kgwh0 with this value
@@ -2309,11 +2336,13 @@ CONTAINS
     muw0 = CurrentSolventMaterial % muw0
     rhow0 = CurrentSolventMaterial % rhow0
     qexp = GlobalRockMaterial % qexp(RockMaterialID)
+        ! this is OK
+    !PRINT *,"Kgw:",muw0,mugw,rhow0,Kgwh0,Xi,factor
+
     Kgwh0(1:3,1:3) = GlobalRockMaterial % Kgwh0(1:3,1:3,RockMaterialID) ! hydro-conductivity
     ! transformation factor from hydr. conductivity to permeability hydr. conductivity tensor
     factor = (muw0/mugw)*(Xi**qexp)/(rhow0*gval)
-    ! this is OK
-    !PRINT *,"Kgw:",muw0,mugw,rhow0,Kgwh0,Xi,factor
+
     Kgw = 0.0_dp
     DO I=1,3
       DO J=1,3

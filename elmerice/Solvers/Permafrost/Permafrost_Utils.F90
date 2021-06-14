@@ -325,7 +325,7 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
   ! 9 ks0
   ! 10 Kgwh0)
 
-  LOGICAL :: WriteToFile(6)=.FALSE., Found, WriteAll
+  LOGICAL :: WriteToFile(7)=.FALSE., Found, WriteAll
   TYPE(ValueList_t), POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostElmntOutput'
   
@@ -335,14 +335,15 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
   SolverParams => GetSolverParams()
   WriteAll=ListGetLogical(SolverParams,"Export all",Found)
   IF (WriteAll) THEN
-    WriteToFile(1:6)=.TRUE.
+    WriteToFile(1:7)=.TRUE.
   ELSE
     WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)
     WriteToFile(2)=ListGetLogical(SolverParams,"Export etak",Found)
     WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
     WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
     WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
-    WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
+    WriteToFile(6)=ListGetLogical(SolverParams,"Export qexp",Found)
+    WriteToFile(7)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
   END IF
   IF(WriteToFile(1)) THEN 
     CALL ListAddString( SolverParams,&
@@ -375,6 +376,12 @@ SUBROUTINE PermafrostElmntOutput_init( Model,Solver,dt,TransientSimulation )
     CALL INFO(SolverName,'Added cs0 as variable',Level=5)    
   END IF
   IF(WriteToFile(6)) THEN 
+    CALL ListAddString( SolverParams,&
+         NextFreeKeyword('Exported Variable',SolverParams),&
+         "-elem -dofs 1 qexp")
+    CALL INFO(SolverName,'Added qexp as variable',Level=5)    
+  END IF
+  IF(WriteToFile(7)) THEN 
     CALL ListAddString( SolverParams,&
          NextFreeKeyword('Exported Variable',SolverParams),&
          "-elem -dofs 1 Kgwh0_11")
@@ -417,7 +424,7 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Local variables
   !------------------------------------------------------------------------------
-  LOGICAL :: WriteToFile(11)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
+  LOGICAL :: WriteToFile(12)=.FALSE., FirstTime=.TRUE., WriteAll, Found,&
        ElementWiseRockMaterial
   INTEGER :: Active, t, J, RockMaterialID, CurrentValue, NumberOfRockRecords,&
        NumberOfExportedValues=0, DIM
@@ -445,15 +452,15 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
     DIM=CoordinateSystemDimension()
     WriteAll=ListGetLogical(SolverParams,"Export all",Found)
     IF (WriteAll) THEN
-      WriteToFile(1:6)=.TRUE.
-      NumberOfExportedValues=8
-      WriteToFile(7) = .TRUE. 
-      WriteToFile(8)= .TRUE.
+      WriteToFile(1:7)=.TRUE.
+      NumberOfExportedValues=9
+      WriteToFile(8) = .TRUE. 
+      WriteToFile(9)= .TRUE.
       IF (DIM==3) THEN
-        WriteToFile(9)= .TRUE.
         WriteToFile(10)= .TRUE.
         WriteToFile(11)= .TRUE.
-        NumberOfExportedValues=11
+        WriteToFile(12)= .TRUE.
+        NumberOfExportedValues=12
       END IF
     ELSE
       WriteToFile(1)=ListGetLogical(SolverParams,"Export eta0",Found)      
@@ -461,17 +468,18 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
       WriteToFile(3)=ListGetLogical(SolverParams,"Export alphaL",Found)
       WriteToFile(4)=ListGetLogical(SolverParams,"Export alphaT",Found)
       WriteToFile(5)=ListGetLogical(SolverParams,"Export cs0",Found)
-      WriteToFile(6)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
-      NumberOfExportedValues = 6
-       IF (WriteToFile(6)) THEN
-        WriteToFile(7) = .TRUE.
-        WriteToFile(8) = .TRUE. 
-        NumberOfExportedValues=8
+      WriteToFile(6)=ListGetLogical(SolverParams,"Export qexp",Found)
+      WriteToFile(7)=ListGetLogical(SolverParams,"Export Kgwh0",Found)
+      NumberOfExportedValues = 7
+       IF (WriteToFile(7)) THEN
+        WriteToFile(8) = .TRUE.
+        WriteToFile(9) = .TRUE. 
+        NumberOfExportedValues=9
         IF (DIM==3) THEN
-          WriteToFile(9)= .TRUE.
           WriteToFile(10)= .TRUE.
           WriteToFile(11)= .TRUE.
-          NumberOfExportedValues=11
+          WriteToFile(12)= .TRUE.
+          NumberOfExportedValues=12
 
         END IF
       END IF
@@ -494,16 +502,18 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
     CASE(5)
       WRITE (ElmntVarName,'(A)') "cs0"
     CASE(6)
-      WRITE (ElmntVarName,'(A)') "Kgwh0_11"
+      WRITE (ElmntVarName,'(A)') "qexp"
     CASE(7)
-      WRITE (ElmntVarName,'(A)') "Kgwh0_22"
+      WRITE (ElmntVarName,'(A)') "Kgwh0_11"
     CASE(8)
-      WRITE (ElmntVarName,'(A)') "Kgwh0_12"
+      WRITE (ElmntVarName,'(A)') "Kgwh0_22"
     CASE(9)
-      WRITE (ElmntVarName,'(A)') "Kgwh0_33"
+      WRITE (ElmntVarName,'(A)') "Kgwh0_12"
     CASE(10)
-      WRITE (ElmntVarName,'(A)') "Kgwh0_13"
+      WRITE (ElmntVarName,'(A)') "Kgwh0_33"
     CASE(11)
+      WRITE (ElmntVarName,'(A)') "Kgwh0_13"
+    CASE(12)
       WRITE (ElmntVarName,'(A)') "Kgwh0_23"
     END SELECT
     WRITE (Message,*) 'Writing ', TRIM(ElmntVarName), ' as variable'
@@ -562,21 +572,21 @@ SUBROUTINE PermafrostElmntOutput( Model,Solver,dt,TransientSimulation )
         ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % alphaT(RockMaterialID)
       CASE(5)
         ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % cs0(RockMaterialID)        
-      CASE(6)
+      CASE(7)
         ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,1,RockMaterialID)
 !!$        PRINT *, "Kgwh0(", RockMaterialID, ")", GlobalRockMaterial % Kgwh0(1,1,RockMaterialID), &
 !!$             GlobalRockMaterial % Kgwh0(2,2,RockMaterialID), GlobalRockMaterial % Kgwh0(3,3,RockMaterialID), &
 !!$             GlobalRockMaterial % etak(RockMaterialID), GlobalRockMaterial % aas(0,RockMaterialID),&
 !!$             GlobalRockMaterial % aas(1,RockMaterialID), GlobalRockMaterial % aas(2,RockMaterialID)
-      CASE(7)
-        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,2,RockMaterialID)
       CASE(8)
-        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,2,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,2,RockMaterialID)
       CASE(9)
-        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(3,3,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,2,RockMaterialID)
       CASE(10)
-        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,3,RockMaterialID)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(3,3,RockMaterialID)
       CASE(11)
+        ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(1,3,RockMaterialID)
+      CASE(12)
         ElmntVarVal(ElmntVarPerm(t)) = GlobalRockMaterial % Kgwh0(2,3,RockMaterialID)
     END SELECT
     END DO
@@ -602,7 +612,7 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: WriteIPVar(6)=.FALSE., Found
   CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='PermafrostIPOutput_init'
-  INTEGER :: DIM, kGpeDOFs
+  INTEGER :: DIM, kGpeDOFs, XikG0hyDOFs
   
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
   CALL INFO( SolverName, ' Permafrost IP Output initialization ',Level=4 )
@@ -613,6 +623,7 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
   WriteIPVar(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
   WriteIPVar(2)=ListGetLogical(SolverParams,"Export mugw",Found)
   WriteIPVar(3)=ListGetLogical(SolverParams,"Export kGpe",Found)
+  WriteIPVar(4)=ListGetLogical(SolverParams,"Export XikG0hy", Found)
   !WriteIPVar(4)=ListGetLogical(SolverParams,"Export ",Found)
   !WriteIPVar(5)=ListGetLogical(SolverParams,"Export ",Found)
   !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
@@ -645,10 +656,30 @@ SUBROUTINE PermafrostIPOutput_init( Model,Solver,dt,TransientSimulation )
            NextFreeKeyword('Exported Variable',SolverParams),&
            "-IP -dofs 9 kGpe")
        kGpeDOFs = 9
-    END IF
-    CALL INFO(SolverName,'Added kGpe as variable',Level=5)
+     END IF
+     WRITE (Message,*) 'Added kGpe as variable with ',kGpeDOFs,' DOFs'
+     CALL INFO(SolverName,Message,Level=5)
   END IF
-  
+  IF(WriteIPVar(4)) THEN
+    IF (DIM == 1) THEN
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-IP -dofs 1 XikG0hy")
+      XikG0hyDOFs = 1
+    ELSE IF (DIM == 2) THEN
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-IP -dofs 4 XikG0hy")
+      XikG0hyDOFs = 4
+    ELSE
+      CALL ListAddString( SolverParams,&
+           NextFreeKeyword('Exported Variable',SolverParams),&
+           "-IP -dofs 9 XikG0hy")
+      XikG0hyDOFs = 9
+    END IF
+    WRITE (Message,*) 'Added XikG0hy as variable with ',XikG0hyDOFs,' DOFs'
+    CALL INFO(SolverName,Message,Level=5)
+  END IF
 END SUBROUTINE PermafrostIPOutput_init
 SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   !==============================================================================
@@ -668,7 +699,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   TYPE(SoluteMaterial_t), POINTER :: CurrentSoluteMaterial
   TYPE(SolventMaterial_t), POINTER :: CurrentSolventMaterial
   INTEGER :: i,j,k,l,n,nb, nd,t, DIM, ok, NumberOfRockRecords, active,iter,&
-       maxiter, istat, DepthDOFs, kGpeDOFs
+       maxiter, istat, DepthDOFs, kGpeDOFs, XikG0hyDOFs
   INTEGER,PARAMETER :: io=23
   REAL(KIND=dp) :: Norm
  
@@ -689,7 +720,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
        ElementWiseRockMaterial,ComputeDt,DepthExists,&
        Load_h, Temperature_h, Pressure_h, Salinity_h, Porosity_h,&
        PressureVelo_h, SalinityVelo_h, Depth_h, &
-       Vstar1_h, Vstar2_h, Vstar3_h, kGpeDOFs
+       Vstar1_h, Vstar2_h, Vstar3_h, kGpeDOFs, XikG0hyDOFs
  
 
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
@@ -701,7 +732,8 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
 
   IF (FirstTime) THEN
     DIM = CoordinateSystemDimension()
-    kGpeDOFs = DIM*DIM 
+    kGpeDOFs = DIM*DIM
+    XikG0hyDOFs = DIM*DIM
     ! Handles to other system variables
     CALL ListInitElementKeyword( Temperature_h, 'Material', 'Temperature Variable' )
     CALL ListInitElementKeyword( Pressure_h, 'Material', 'Pressure Variable' )
@@ -731,7 +763,7 @@ SUBROUTINE PermafrostIPOutput( Model,Solver,dt,TransientSimulation )
   WriteIPVar(1)=ListGetLogical(SolverParams,"Export rhogw",Found)      
   WriteIPVar(2)=ListGetLogical(SolverParams,"Export mugw",Found)
   WriteIPVar(3)=ListGetLogical(SolverParams,"Export kGpe",Found)
-  !WriteIPVar(4)=ListGetLogical(SolverParams,"Export ",Found)
+  WriteIPVar(4)=ListGetLogical(SolverParams,"Export XikG0hy",Found)
   !WriteIPVar(5)=ListGetLogical(SolverParams,"Export ",Found)
   !WriteIPVar(6)=ListGetLogical(SolverParams,"Export ",Found)
   
@@ -820,11 +852,11 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     CHARACTER(LEN=MAX_NAME_LEN) :: MaterialFileName
     CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: FunctionName='PermafrostIPOutput(SetIPValues)'
-    TYPE(Variable_t), POINTER :: XiAtIPVar, rhogwAtIPVar, mugwAtIPVar, kGpeAtIPVar
+    TYPE(Variable_t), POINTER :: XiAtIPVar, rhogwAtIPVar, mugwAtIPVar, kGpeAtIPVar, XikG0hyAtIPVar
     INTEGER, POINTER :: XiAtIPPerm(:),GWfluxPerm(:),rhogwAtIPPerm(:),&
-         mugwAtIPPerm(:), kGpeAtIPPerm(:)
+         mugwAtIPPerm(:), kGpeAtIPPerm(:), XikG0hyAtIPPerm(:)
     REAL(KIND=dp), POINTER :: XiAtIP(:), FluxAtElem(:), rhogwAtIP(:),&
-         mugwATIP(:), kGpeAtIP(:)
+         mugwATIP(:), kGpeAtIP(:), XikG0hyAtIP(:)
 
     !------------------------------------------------------------------------------
     SAVE Nodes, ConstantsRead, ConstVal,DIM, GasConstant, N0,DeltaT, T0, p0, eps, Gravity
@@ -880,7 +912,15 @@ CONTAINS
       kGpeAtIPPerm => kGpeAtIPVar % Perm
       kGpeAtIP => kGpeAtIPVar % Values
     END IF
-    
+    IF (WriteIPVar(4)) THEN
+      XikG0hyAtIPVar => VariableGet( Solver % Mesh % Variables, 'XikG0hy')
+      IF (.NOT.ASSOCIATED(XikG0hyAtIPVar)) THEN
+        WRITE(Message,*) 'Variable "XikG0hy" is not associated'
+        CALL FATAL(SolverName,Message)
+      END IF
+      XikG0hyAtIPPerm => XikG0hyAtIPVar % Perm
+      XikG0hyAtIP => XikG0hyAtIPVar % Values
+    END IF
     ! Get stuff from SIF Material section
     Material => GetMaterial(Element)
     IF (ElementWiseRockMaterial) THEN
@@ -993,7 +1033,20 @@ CONTAINS
         DO I=1,DIM
           DO J=1,DIM
             K = K + 1
-            kGpeAtIP( kGpeDOFs*((kGpeATIPPerm(ElementID) + t) - 1) + K) = &
+            kGpeAtIP( kGpeDOFs*( (kGpeATIPPerm(ElementID) + t) - 1) + K) = &
+                 auxtensor(I,J)
+          END DO
+        END DO
+      END IF
+      IF (WriteIPVar(4)) THEN
+        auxtensor = &
+             GetXikG0hy(RockMaterialID,XiAtIp(IPPerm))
+        !PRINT *, "XikG0hy", auxtensor
+        K = 0
+        DO I=1,DIM
+          DO J=1,DIM
+            K = K + 1
+            XikG0hyAtIP( XikG0hyDOFs*( (XikG0hyATIPPerm(ElementID) + t) - 1) + K) = &
                  auxtensor(I,J)
           END DO
         END DO

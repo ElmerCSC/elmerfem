@@ -14826,7 +14826,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       END IF
 
       IF( ExpVariable % TYPE /= Variable_on_gauss_points ) THEN
-        CALL Fatal(Caller,'Variable projection implemented on for IP variable!')
+        CALL Fatal(Caller,'Variable projection implemented only for IP variable!')
       END IF
 
       k = Variable_on_nodes

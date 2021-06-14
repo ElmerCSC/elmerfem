@@ -34,7 +34,7 @@ ADD_SUBDIRECTORY(UserFunctions)
 ADD_SUBDIRECTORY(Solvers)
 ADD_SUBDIRECTORY(Tests)
 
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/permafrostmaterialdb.dat
-  ${CMAKE_CURRENT_BINARY_DIR}/permafrostmaterialdb.dat COPYONLY)
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/Solvers/Permafrost/permafrostmaterialdb.dat
+  ${CMAKE_CURRENT_BINARY_DIR}/Solvers/Permafrost/permafrostmaterialdb.dat COPYONLY)
 
-INSTALL(FILES permafrostmaterialdb.dat  DESTINATION "share/elmersolver/lib")
+INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/Solvers/Permafrost/permafrostmaterialdb.dat  DESTINATION "share/elmersolver/lib")
