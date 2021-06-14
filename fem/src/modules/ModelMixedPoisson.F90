@@ -292,8 +292,11 @@ CONTAINS
     END DO
 
     BodyForce => GetBodyForce()
-    IF ( ASSOCIATED(BodyForce) ) &
+    IF ( ASSOCIATED(BodyForce) ) THEN
         Load(1:n) = GetReal(BodyForce, 'Source Field', EvaluateSource)
+    ELSE 
+        EvaluateSource = .FALSE.
+    END IF
 
     ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
     np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
