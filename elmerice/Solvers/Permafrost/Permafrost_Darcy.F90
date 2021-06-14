@@ -886,7 +886,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     !REAL(KIND=dp) :: Flux(n), Coeff(n), Pressure(n), FluxAtIP, Weight
     REAL(KIND=dp) :: FluxAtIP, Weight
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,WeakPressure(nd)
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP,WeakPressure(nd), PressureCond(n)
     REAL(KIND=dp) :: MASS(nd,nd),STIFF(nd,nd), FORCE(nd), LOAD(nd)
     REAL(KIND=dp), PARAMETER :: C=1000.0_dp
     REAL(KIND=dp) :: GasConstant, N0, DeltaT, T0, p0, eps, Gravity(3) ! constants read only once
@@ -916,7 +916,11 @@ CONTAINS
     ! just using WeakPressure as dummy destination to inquire whether we have a
     ! Dirichlet condition and can stop composing weakly imposed conditions
     WeakPressure(1:n) = GetReal( BoundaryCondition,TRIM(VarName), Found)
-    IF (Found) RETURN
+    IF (Found) THEN
+      PressureCond(1:n) = 1.0_dp
+      PressureCond(1:n) = GetReal(BoundaryCondition, TRIM(VarName)//" Condition", Found)
+      IF (.NOT.(ANY(PressureCond <= 0.0_dp))) RETURN
+    END IF
     
     WeakDirichletCond = .FALSE.
 
@@ -1013,6 +1017,7 @@ CONTAINS
           FluxCondition = .TRUE.
           ! Variables (Temperature, Porosity, Pressure, Salinity) at IP
           !TemperatureAtIP = ListGetElementReal( TemperatureBC_h, Basis=Basis, Element=Element, Found=Found, GaussPoint=t)
+          PRINT *, "Recharge=", FluxAtIP
           TemperatureAtIP = ListGetElementRealParent( Temperature_h, Basis=Basis, Element=Element, Found=Found )
           IF (.NOT.Found) CALL FATAL(SolverName,'Temperature in BC not found')
           PorosityAtIP = ListGetElementRealParent( Porosity_h, Basis=Basis, Element=Element, Found=Found)
@@ -1026,7 +1031,7 @@ CONTAINS
         ELSE
           FluxCondition = .FALSE.
           FluxAtIP = ListGetElementReal(GWFlux_h, Basis, Element, FluxCondition)
-          !IF (FluxCondition) PRINT *, 'Groundwater Flux',  Flux(1:n)
+          IF (FluxCondition) PRINT *, 'Groundwater Flux',  FluxAtIP
         END IF
         
        
