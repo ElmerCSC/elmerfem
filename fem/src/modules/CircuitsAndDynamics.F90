@@ -1783,12 +1783,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
-        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
         ! I * R, where 
         ! R = (1/sigma * js,js):
         ! ----------------------
         localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+        print *, "localR",localR,"C(3,3)",C(3,3)
+
+        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
         IF (FoilUseJvec) THEN
           Jvec = ListGetElementVectorSolution( Jvec_h, Basis, Element, dofs = dim )
