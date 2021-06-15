@@ -6309,7 +6309,7 @@ CONTAINS
            weight = WeightVar % Values( k )
            coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
                //Name(1:nlen),ii, Found )
-           val = -weight * coeff !* DiagScaling(k)**2
+           val = -weight * coeff 
            scale = -1.0
          ELSE         
            val = 1.0_dp
@@ -6326,17 +6326,11 @@ CONTAINS
              m = Perm( Projector % Cols(l) )
              IF ( m > 0 ) THEN
                m = NDOFs * (m-1) + DOF
-               CALL AddToMatrixElement( A,k,m,val * Projector % Values(l) ) !* &
-                   !( DiagScaling(m) / DiagScaling(k) ) )
+               CALL AddToMatrixElement( A,k,m,val * Projector % Values(l) )
              END IF
           END DO
 
-          !IF(.NOT. Jump) THEN
-          !  A % ConstrainedDof(k) = .TRUE.
-          !  A % DValues(k) = -ValueOffset
-          !ELSE          
-            b(k) = b(k) - ValueOffset !/ DiagScaling(k)
-          !END IF
+          b(k) = b(k) - ValueOffset 
           CALL AddToMatrixElement( A,k,k,scale*val )
           
         END IF
@@ -15567,8 +15561,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IMPLICIT NONE
   TYPE(Matrix_t), POINTER :: StiffMatrix !< Linear equation matrix information. 
                                          !< The restriction matrix is assumed to be in the EMatrix-field
-  REAL(KIND=dp),TARGET :: ForceVector(:)        !< The right hand side of the linear equation
-  REAL(KIND=dp),TARGET :: Solution(:)           !< Previous solution as input, new solution as output.
+  REAL(KIND=dp),TARGET :: ForceVector(:) !< The right hand side of the linear equation
+  REAL(KIND=dp),TARGET :: Solution(:)    !< Previous solution as input, new solution as output.
   REAL(KIND=dp) :: Norm                  !< The L2 norm of the solution.
   INTEGER :: DOFs                        !< Number of degrees of freedom of the equation.
   TYPE(Solver_t), TARGET :: Solver       !< Linear equation solver options.
@@ -15614,15 +15608,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(.NOT. Found) NotExplicit=.FALSE.
 
   RestMatrix => NULL()
-  IF(.NOT.NotExplicit) &
-        RestMatrix => StiffMatrix % ConstraintMatrix
+  IF(.NOT.NotExplicit) RestMatrix => StiffMatrix % ConstraintMatrix
   RestVector => Null()
   IF(ASSOCIATED(RestMatrix)) RestVector => RestMatrix % RHS
 
   AddMatrix => StiffMatrix % AddMatrix
   AddVector => NULL()
-  IF(ASSOCIATED(AddMatrix)) &
-    AddVector => AddMatrix % RHS
+  IF(ASSOCIATED(AddMatrix)) AddVector => AddMatrix % RHS
 
   NumberOfRows = StiffMatrix % NumberOfRows
   
@@ -15800,6 +15792,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  RestMatrix % Cols(j), k, RestMatrix % Values(j))
             END IF
 
+            ! Add the Transpose part
             IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
               CALL AddToMatrixElement( CollectionMatrix, &
                        k, RestMatrix % Cols(j), RestMatrix % TValues(j))
@@ -19389,8 +19382,9 @@ CONTAINS
      TYPE(Solver_t), TARGET :: Solver
      LOGICAL, OPTIONAL :: Nonlinear, SteadyState
 
-     LOGICAL :: IsNonlinear,IsSteadyState,Timing, RequireNonlinear, ContactBC
-     LOGICAL :: ApplyMortar, ApplyContact, StoreCyclic, Found, StaticProj
+     LOGICAL :: IsNonlinear,IsSteadyState,Timing, RequireNonlinear, ContactBC, &
+         MortarBC, IntegralBC
+     LOGICAL :: ApplyMortar, ApplyContact, ApplyIntegral, StoreCyclic, Found, StaticProj
      INTEGER :: i,j,k,l,n,dsize,size0,col,row,dim
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
@@ -19400,17 +19394,17 @@ CONTAINS
      TYPE(Solver_t), POINTER :: PSolver
      TYPE(Matrix_t), POINTER :: Proj
 
-          
-     ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
-     ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found) 
 
+     ApplyIntegral = ListGetLogical( Solver % Values,'Apply Integral BCs',Found)
+     ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
+     ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found)     
+     
+     IF( .NOT. ( ApplyMortar .OR. ApplyContact .OR. ApplyIntegral ) ) RETURN
+     
      ! Here we give the option to block out cyclic projector if not wanted. 
      StoreCyclic = ListGetLogical( Solver % Values,'Store Cyclic Projector', Found)
      IF(.NOT. Found ) StoreCyclic = ListGetLogical( Solver % Values,'Store Cyclic System', Found)
      PSolver => Solver
-     
-     
-     IF( .NOT. ( ApplyMortar .OR. ApplyContact) ) RETURN
      
      i = ListGetInteger( Solver % Values,'Mortar BC Master Solver',Found ) 
      IF( Found ) THEN
@@ -19422,7 +19416,7 @@ CONTAINS
        RETURN
      END IF
 
-     CALL Info(Caller,'Generating mortar projectors',Level=8)
+     CALL Info(Caller,'Generating various boundary projectors',Level=8)
 
      Timing = ListCheckPrefix(Solver % Values,'Projector Timing')
      IF( Timing ) THEN
@@ -19445,19 +19439,32 @@ CONTAINS
      DO i=1,Model % NumberOFBCs
        BC => Model % BCs(i) % Values
        
-       ContactBC = .FALSE.
-       j = ListGetInteger( BC,'Mortar BC',Found)       
-       IF( .NOT. Found ) THEN
-         j = ListGetInteger( BC,'Contact BC',Found)       
-         ContactBC = Found
+       k = 0
+       j = ListGetInteger( BC,'Mortar BC',MortarBC)       
+       j = j + ListGetInteger( BC,'Contact BC',ContactBC)       
+       IntegralBC = ListGetLogical( BC,'Integral BC',Found ) 
+       IF( MortarBC ) k = k+1
+       IF( ContactBC ) k = k+1
+       IF( IntegralBC ) k = k+1
+       IF( k > 1 ) THEN
+         CALL Fatal(Caller,'Boundary '//TRIM(I2S(i))//' can only be one of mortar, contact and integral!')
+       END IF     
+       IF(k==0) CYCLE
+
+       IF( InfoActive(10) ) THEN
+         IF( MortarBC ) CALL Info(Caller,'Generating mortar conditions for BC: '//TRIM(I2S(i)))
+         IF( ContactBC ) CALL Info(Caller,'Generating contact conditions for BC: '//TRIM(I2S(i)))
+         IF( IntegralBC ) CALL Info(Caller,'Generating integral conditions for BC: '//TRIM(I2S(i)))
        END IF
-       IF( .NOT. Found ) CYCLE
-              
+
+       
        RequireNonlinear = ListGetLogical( BC,'Mortar BC Nonlinear',Found)
        IF( .NOT. Found ) THEN
          RequireNonlinear = ContactBC .AND. .NOT. ListGetLogical( BC,'Tie Contact',Found )
        END IF
 
+       IF( IntegralBC ) RequireNonlinear = .FALSE.
+       
        IF( IsNonlinear ) THEN
          IF( .NOT. RequireNonlinear ) CYCLE
        ELSE
@@ -19488,8 +19495,13 @@ CONTAINS
        END IF
 
        ! Compute new projector
-       Proj => PeriodicProjector(Model,Solver % Mesh,i,j,dim,.TRUE.)
-
+       IF( IntegralBC ) THEN         
+         Proj => IntegralProjector(Model,Solver % Mesh, i ) 
+       ELSE
+         ! This is the same for mortar and contact!
+         Proj => PeriodicProjector(Model,Solver % Mesh,i,j,dim,.TRUE.)
+       END IF
+         
        Solver % MortarBCs(i) % Projector => Proj       
        IF( ASSOCIATED( Proj ) ) THEN
          Solver % MortarBCsChanged = .TRUE.
@@ -19569,6 +19581,9 @@ CONTAINS
      LOGICAL, POINTER :: PerFlip(:)
      CHARACTER(*), PARAMETER :: Caller = 'GenerateConstraintMatrix'
 
+     LOGICAL :: IntegralBC
+     REAL(KIND=dp) :: SetVal(6)
+     
      
      ! Should we genarete the matrix
      NeedToGenerate = Solver % MortarBCsChanged
@@ -19781,10 +19796,14 @@ CONTAINS
            CALL Fatal(Caller,'InvPerm is required!')
          END IF
 
+         BC => Model % BCs(bc_ind) % Values         
          IF( AnyPriority ) THEN
-           Priority = ListGetInteger( Model % BCs(bc_ind) % Values,'Projector Priority',Found)
+           Priority = ListGetInteger( BC,'Projector Priority',Found)
          END IF
-           
+
+         IntegralBC = ListGetLogical( BC,'Integral BC',Found ) 
+
+         
          ! Enable that the user can for vector valued cases either set some 
          ! or skip some field components. 
          SomeSet = .FALSE.
@@ -19796,7 +19815,11 @@ CONTAINS
              str = Solver % Variable % Name 
            END IF
 
-           SetDof = ListGetLogical( Model % BCs(bc_ind) % Values,'Mortar BC '//TRIM(str),Found )
+           IF( IntegralBC ) THEN
+             SetVal(i) = ListGetCReal( BC,'Integral BC '//TRIM(str),SetDof )
+           ELSE
+             SetDof = ListGetLogical( BC,'Mortar BC '//TRIM(str),Found )
+           END IF
 
            SetDefined(i) = Found
            IF(Found) THEN
@@ -20115,7 +20138,9 @@ CONTAINS
            END IF
 
            IF( AllocationsDone ) THEN
-             IF( ThisIsMortar ) THEN
+             IF( IntegralBC ) THEN
+               Btmp % Rhs(row) = SetVal(1)
+             ELSE IF( ThisIsMortar ) THEN
                IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
                  Btmp % Rhs(row) = Btmp % Rhs(row) + wsum * MortarBC % rhs(i)
                END IF
@@ -20506,7 +20531,9 @@ CONTAINS
 
                
              IF( AllocationsDone ) THEN
-               IF( ThisIsMortar ) THEN
+               IF( IntegralBC ) THEN
+                 Btmp % Rhs(row) = SetVal(j)
+               ELSE IF( ThisIsMortar ) THEN
                  IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
                    Btmp % Rhs(row) = wsum * MortarBC % rhs(Dofs*(i-1)+j)
                  END IF
@@ -20597,6 +20624,17 @@ CONTAINS
         
      Solver % Matrix % ConstraintMatrix => Btmp     
      Solver % MortarBCsChanged = .FALSE.
+
+     IF( InfoActive(20) ) THEN
+       WRITE(Message,'(A,ES12.3)') 'Sum of constraint matrix entries: ',SUM(Btmp % Values)
+       CALL Info(Caller,Message)
+       WRITE(Message,'(A,ES12.3)') 'Sum of constraint matrix rhs: ',SUM(Btmp % Rhs)
+       CALL Info(Caller,Message)
+       CALL Info(Caller,'Constraint matrix cols min:'//TRIM(I2S(MINVAL(Btmp%Cols))))
+       CALL Info(Caller,'Constraint matrix cols max:'//TRIM(I2S(MAXVAL(Btmp%Cols))))
+       CALL Info(Caller,'Constraint matrix rows min:'//TRIM(I2S(MINVAL(Btmp%Rows))))
+       CALL Info(Caller,'Constraint matrix rows max:'//TRIM(I2S(MINVAL(Btmp%Rows))))
+     END IF
      
      CALL Info(Caller,'Finished creating constraint matrix',Level=12)
 
