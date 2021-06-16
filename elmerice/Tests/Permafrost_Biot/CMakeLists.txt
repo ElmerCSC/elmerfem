@@ -5,4 +5,4 @@ CONFIGURE_FILE(biot.sif biot.sif COPYONLY)
 FILE(COPY biot.dat ELMERSOLVER_STARTINFO biot DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMERICE_TEST(Permafrost_Biot)
-ADD_ELMERICE_LABEL(Permafrost_Biot elmerice-fast)
+ADD_ELMERICE_LABEL(Permafrost_Biot permafrost)
