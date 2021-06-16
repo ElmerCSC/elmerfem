@@ -8631,7 +8631,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Origin(3),Axis(3)
     REAL(KIND=dp), POINTER :: Pwrk(:,:)
-    LOGICAL :: GotOrigin,GotAxis
+    LOGICAL :: GotOrigin,GotAxis,OneSidedNormals
     CHARACTER(*), PARAMETER :: Caller = 'AverageBoundaryNormals'
 
     !------------------------------------------------------------------------------
@@ -8642,7 +8642,6 @@ CONTAINS
 
     Mesh => Model % Mesh
     NrmVar => VariableGet( Mesh % Variables, 'Normals' )
-
     
     IF ( ASSOCIATED(NrmVar) ) THEN
 
@@ -8753,14 +8752,20 @@ CONTAINS
           DEALLOCATE(Condition)
         END DO
 
+        ! Here we go through the periodic projectors and average the normals
+        ! such that the normals are the same where the nodes are the same.
+        !--------------------------------------------------------------------
         DO iBC=1,Model % NumberOfBCs
           Projector => Model % BCs(iBC) % PMatrix
           IF ( .NOT. ASSOCIATED( Projector ) ) CYCLE
 
-          !
+          ! This is the legacy periodic projector.
+          ! The mortars etc. should be treated differently. 
+          IF( Projector % ProjectorType /= PROJECTOR_TYPE_NODAL ) CYCLE
+          BC => Model % BCs(iBC) % Values
+                              
           ! TODO: consistent normals, if rotations given:
           ! ---------------------------------------------
-          BC => Model % BCs(iBC) % Values
           Rot => ListGetConstRealArray(BC,'Periodic BC Rotate', Found )
           IF ( Found .AND. ASSOCIATED(Rot) ) THEN
             IF ( ANY(Rot/=0) ) THEN
@@ -8784,23 +8789,49 @@ CONTAINS
               CYCLE
             END IF
           END IF
-
+          
+          ! Here we are projecting with transpose of the projector which is not
+          ! really exact generally, but is usually better than not considering the values
+          ! at all!
+          !-------------------------------------------------------------------------------
+          OneSidedNormals = ListGetLogical(BC,'One Sided Normals',Found ) 
+          IF(.NOT. OneSidedNormals ) THEN
+            DO i=1,Projector % NumberOfRows
+              k = BoundaryReorder(Projector % InvPerm(i))
+              IF ( k <= 0 ) CYCLE
+              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
+                IF ( Projector % Cols(l) <= 0 ) CYCLE
+                m = BoundaryReorder(Projector % Cols(l))
+                IF ( m>0 ) THEN
+                  BoundaryNormals(k,:) = BoundaryNormals(k,:) + &
+                      Projector % Values(l) * BoundaryNormals(m,:)
+                END IF
+              END DO
+            END DO
+          END IF
+            
+          ! Ok, now we need to nullify the values so that we can apply the projector
+          ! in the next sequence. This used to be done before without the upper part
+          !--------------------------------------------------------------------------
           DO i=1,Projector % NumberOfRows
             k = BoundaryReorder(Projector % InvPerm(i))
             IF ( k <= 0 ) CYCLE
             DO l=Projector % Rows(i),Projector % Rows(i+1)-1
               IF ( Projector % Cols(l) <= 0 ) CYCLE
               m = BoundaryReorder(Projector % Cols(l))
-              IF ( m>0 ) BoundaryNormals(m,:) = 0._dp
+              IF ( m>0 ) BoundaryNormals(m,:) = 0.0_dp
             END DO
           END DO
         END DO
 
+        ! Here we use the values of the master side to have same values
+        ! on the slave side as well. So this is hierarchical.
+        !----------------------------------------------------------------
         DO iBC=1,Model % NumberOfBCs
            Projector => Model % BCs(iBC) % PMatrix
            IF ( .NOT. ASSOCIATED( Projector ) ) CYCLE
-
-           !
+           IF( Projector % ProjectorType /= PROJECTOR_TYPE_NODAL ) CYCLE
+          
            ! TODO: consistent normals, if rotations given:
            ! ---------------------------------------------
            BC => Model % BCs(iBC) % Values
@@ -8815,14 +8846,18 @@ CONTAINS
               DO l=Projector % Rows(i),Projector % Rows(i+1)-1
                 IF ( Projector % Cols(l) <= 0 ) CYCLE
                 m = BoundaryReorder(Projector % Cols(l))
-                IF ( m > 0 ) &
-                   BoundaryNormals(m,:) = BoundaryNormals(m,:) + &
-                     Projector % Values(l) * BoundaryNormals(k,:)
+                IF ( m > 0 ) THEN
+                  BoundaryNormals(m,:) = BoundaryNormals(m,:) + &
+                      Projector % Values(l) * BoundaryNormals(k,:)
+                END IF
               END DO
-           END DO
+            END DO
         END DO
       END IF
 
+      ! Communicate normals in parallel case so that they are consistent
+      ! over the interfaces
+      !-----------------------------------------------------------------
       IF (ParEnv % PEs>1 ) THEN
         ALLOCATE( n_count(ParEnv% PEs),n_index(ParEnv % PEs) )
         n_count = 0
@@ -8978,7 +9013,8 @@ CONTAINS
         END IF
       END IF
 
-
+      ! Normalize the normals and compute the tangent directions.
+      !----------------------------------------------------------
       DO i=1,Model % NumberOfNodes
         k = BoundaryReorder(i) 
         IF ( k > 0 ) THEN
