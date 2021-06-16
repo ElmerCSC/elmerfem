@@ -217,7 +217,7 @@ CONTAINS
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
-    TYPE(ValueList_t), POINTER :: BF
+    TYPE(ValueList_t), POINTER :: BF, Params
     TYPE(Matrix_t), POINTER :: CM
     INTEGER :: p, i, nm, RowId, ColId, j
     REAL(KIND=dp) :: vphi,dt
@@ -228,6 +228,8 @@ CONTAINS
     nm = CurrentModel % Asolver % Matrix % NumberOfRows
     BF => CurrentModel % BodyForces(1) % Values
     CM => CurrentModel%CircuitMatrix
+  
+    Params => GetSolverParams()
 
     DO i=1,Circuit % n
       Cvar => Circuit % CircuitVariables(i)
@@ -236,13 +238,11 @@ CONTAINS
 
       RowId = Cvar % ValueId + nm
       
-      vphi=0._dp
-      IF ( ASSOCIATED(BF) ) &
-        vphi = GetCReal(BF, TRIM(Circuit % Source(i)), Found)
-      
-      IF (Found) THEN 
-        Cvar % SourceRe(i) = vphi
+      vphi = GetCReal(Params, Circuit % Source(i), Found)
+      IF ( .NOT. Found .AND. ASSOCIATED(BF) ) THEN
+        vphi = GetCReal(BF, Circuit % Source(i), Found)
       END IF
+      IF (Found) Cvar % SourceRe(i) = vphi
       
       CM % RHS(RowId) = Cvar % SourceRe(i)
         
@@ -1120,7 +1120,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
-    TYPE(ValueList_t), POINTER :: BF
+    TYPE(ValueList_t), POINTER :: BF, Params
     TYPE(Matrix_t), POINTER :: CM
     INTEGER :: p, i, nm, RowId, ColId, j
     REAL(KIND=dp) :: Omega, vphi
@@ -1133,6 +1133,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     Omega = GetAngularFrequency()
     BF => CurrentModel % BodyForces(1) % Values
     CM => CurrentModel%CircuitMatrix
+
+    Params => GetSolverParams()
     
     DO i=1,Circuit % n
       Cvar => Circuit % CircuitVariables(i)
@@ -1141,20 +1143,17 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
       RowId = Cvar % ValueId + nm
       
-      vphi=0._dp
-      IF ( ASSOCIATED(BF) ) &
+      vphi = GetCReal(Params, TRIM(Circuit % Source(i))//" re", Found)
+      IF ( .NOT.Found.AND.ASSOCIATED(BF) ) THEN
         vphi = GetCReal(BF, TRIM(Circuit % Source(i))//" re", Found)
-      
-      IF (Found) THEN 
-        Cvar % SourceRe(i) = vphi
       END IF
+      IF (Found) Cvar % SourceRe(i) = vphi
       
-      IF (ASSOCIATED(BF) ) &
+      vphi = GetCReal(Params, TRIM(Circuit % Source(i))//" im", Found)
+      IF ( .NOT.Found.AND.ASSOCIATED(BF) ) THEN
         vphi = GetCReal(BF, TRIM(Circuit % Source(i))//" im", Found)
-
-      IF (Found) THEN 
-        Cvar % SourceIm(i) = vphi
       END IF
+      IF (Found) Cvar % SourceIm(i) = vphi
       
       CM % RHS(RowId) = Cvar % SourceRe(i)
       CM % RHS(RowId+1) = Cvar % SourceIm(i)
@@ -1770,11 +1769,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
 
-        ! I * R, where 
-        ! R = (1/sigma * js,js):
-        ! ----------------------
-        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
-
         IF (CoilUseWvec) THEN
           gradv = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
         ELSE
@@ -1789,6 +1783,13 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
           END DO
         END DO
+
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ/C(3,3) / Comp % VoltageFactor
+        print *, "localR",localR,"C(3,3)",C(3,3)
+
         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
         IF (FoilUseJvec) THEN
