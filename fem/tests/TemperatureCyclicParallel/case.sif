@@ -2,7 +2,10 @@
 ! are saved for the next round. Convergence tolerance is the average nonlinear
 ! system change over the time compared to the previous simulation.
 !
-! P.R. 19.12.2020
+! As the base case but this one also with parallel timestepping.
+! Paradoxically this converges a lot faster!
+!
+! P.R. 8.4.2021
 
 Header
   CHECK KEYWORDS Warn
@@ -33,6 +36,10 @@ $dt = 1.0/(f*ncycle)
   BDF Order = 1
   Output Intervals = 1
   Steady State Max Iterations = 1
+
+! Enforce parallel timestepping
+  Parallel Timestepping = True
+  Single Mesh = Logical True
 End
 
 
@@ -75,18 +82,18 @@ Solver 1
   Linear System Preconditioning = "ILU1"
   Linear System Residual Output = 1
 
-  Nonlinear System Convergence Tolerance = 1.0e-05
   Nonlinear System Max Iterations = 1
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-02
-  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Relaxation Factor = 0.7
+  Nonlinear System Convergence Measure = "solution"
 
 ! This ensures good initial guess the next time
   Store Cyclic System = True
 ! This looks at the average error through the whole cycle.
 ! Upon success the flag "produce" is set to 1.
-  Cyclic System Convergence Tolerance = 5.0e-4
-  Cyclic Guess Mode = Integer 1
+  Cyclic System Convergence Tolerance = 1.0e-5
+  Cyclic Guess Mode = Integer 0
+
+!  Vector Assembly = Logical True
 End
 
 
@@ -94,7 +101,7 @@ Solver 2
 ! After cyclic convergence we still take full cycle with production.
   Exec Condition = Equals "produce"
 !  Exec Solver = After timestep
-
+ 
   Equation = VtuOutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
@@ -123,8 +130,6 @@ Solver 3
 ! We want to save the "heat source" also.
   Expression 1 = Variable "time"
     Real MATC "sin(omega*tx)"
-
-  Show Norm Index = 5
 End
  
 
@@ -147,7 +152,6 @@ Boundary Condition 1
   Temperature = 0.0
 End
 
-Solver 1 :: Reference Norm = 1.43373393E-02
-Solver 3 :: Reference Norm = 1.64456025E-02
+Solver 1 :: Reference Norm = 1.43457554E-02
 
 !End Of File

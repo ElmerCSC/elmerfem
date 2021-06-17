@@ -908,7 +908,7 @@ MODULE Types
   TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
-    LOGICAL :: UsePerm = .FALSE., Harmonic
+    LOGICAL :: UsePerm = .FALSE., Harmonic, Parallel
     INTEGER :: n, m, n_comp,CvarDofs
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
     TYPE(Component_t), POINTER :: Components(:)

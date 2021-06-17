@@ -235,8 +235,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       EdgeBasis = .FALSE.
       IF( ASSOCIATED( Var % Solver ) ) THEN
         EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
-        IF( EdgeBasis ) THEN
-          IF( ANY( Var % Perm(1: Mesh % NumberOfNodes) > 0 ) ) AVBasis = .TRUE.
+        IF( EdgeBasis .AND. ASSOCIATED( Var % Perm ) ) THEN
+          IF( ANY( Var % Perm(1: Mesh % NumberOfNodes) > 0 ) ) AVBasis = .TRUE. 
         END IF
       END IF
       IF( EdgeBasis ) THEN

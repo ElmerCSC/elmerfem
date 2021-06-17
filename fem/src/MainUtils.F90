@@ -3274,8 +3274,8 @@ CONTAINS
 
          IF ( ALL(DoneThis) ) EXIT
       END DO
-
-      IF( TestConvergence ) THEN
+      
+      IF( TestConvergence .AND. CoupledMaxIter > 1 ) THEN
         IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
           CALL Info( 'SolveEquations','Coupled system iteration: '//TRIM(I2S(MIN(i,CoupledMaxIter))),Level=4)
           CoupledAbort = ListGetLogical( Model % Simulation,  &

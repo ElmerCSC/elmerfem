@@ -43,6 +43,14 @@
 !-------------------------------------------------------------------------------
 MODULE Messages
 
+  ! In Fortran standard 2003 this should work, else activate the 2nd
+#if 1
+   USE, INTRINSIC :: iso_fortran_env, ONLY : stdout=>output_unit
+#else
+#define stdout 6
+#endif
+
+
    IMPLICIT NONE
    CHARACTER(LEN=512) :: Message = ' '
    INTEGER, PRIVATE :: i
@@ -50,7 +58,10 @@ MODULE Messages
    LOGICAL :: OutputLevelMask(0:31) = .TRUE.
    INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
-
+   INTEGER :: InfoOutUnit = stdout
+   INTEGER, PARAMETER :: InfoToFileUnit = 33   
+   LOGICAL :: InfoToFile = .FALSE.
+   
    INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
 
 CONTAINS
@@ -65,14 +76,13 @@ CONTAINS
      INTEGER, OPTIONAL :: Level
      LOGICAL, OPTIONAL :: noAdvance
 !-----------------------------------------------------------------------
-
      LOGICAL :: nadv, nadv1 = .FALSE.
      INTEGER :: n
      INTEGER, PARAMETER :: DefLevel = 4
+     LOGICAL :: StdoutSet = .FALSE.
      SAVE nadv1
 
-!-----------------------------------------------------------------------
-
+!-----------------------------------------------------------------------          
      IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
@@ -84,16 +94,20 @@ CONTAINS
        IF( .NOT. OutputLevelMask(DefLevel) ) RETURN
      END IF
 
+     IF(.NOT. StdoutSet ) THEN
+       StdoutSet = .TRUE.
+     END IF
+     
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
-
+     
      IF(.NOT. nadv1 ) THEN
        IF ( OutputPrefix ) THEN
-         WRITE( *,'(A)', ADVANCE = 'NO' ) 'INFO:: '
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' ) 'INFO:: '
        END IF
 
        IF ( OutputCaller ) THEN
-         WRITE( *,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
        END IF
      END IF
 
@@ -101,20 +115,20 @@ CONTAINS
      IF ( nadv ) THEN
        ! If there are several partitions to be saved than plot the partition too
        IF( MaxOutputPE > 0 ) THEN
-         WRITE( *,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
+         WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
        ELSE         
-         WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
        END IF
      ELSE
        IF( MaxOutputPE > 0 ) THEN
-         WRITE( *,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
+         WRITE( InfoOutUnit,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
        ELSE
-         WRITE( *,'(A)', ADVANCE = 'YES' ) TRIM(String)
+         WRITE( InfoOutUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
        END IF
      END IF
      nadv1 = nadv
 
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Info
 !-----------------------------------------------------------------------
@@ -163,27 +177,27 @@ CONTAINS
 
      IF ( nadv ) THEN
        IF ( MaxOutputPE > 0 ) THEN
-         WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='NO' ) &
+         WRITE( InfoOutUnit, '(A,A,A,I0,A,A)', ADVANCE='NO' ) &
              'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
        ELSE
-         WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+         WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='NO' ) &
              'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
        END IF
      ELSE
        IF ( .NOT. nadv1 ) THEN
          IF( MaxOutputPE > 0 ) THEN
-           WRITE( *, '(A,A,A,I0,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,I0,A,A)', ADVANCE='YES' ) &
                'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
          ELSE
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='YES' ) &
                'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
          END IF
        ELSE
-         WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+         WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
        END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Warn
 !-----------------------------------------------------------------------
@@ -209,18 +223,18 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+        WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='NO' ) &
           'ERROR:: ', TRIM(Caller), ': ', TRIM(String )
      ELSE
         IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='YES' ) &
              'ERROR:: ', TRIM(Caller), ': ', TRIM(String)
         ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+           WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Error
 !-----------------------------------------------------------------------
@@ -244,19 +258,19 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+        WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='NO' ) &
           'ERROR:: ', TRIM(Caller), ': ', TRIM(String )
      ELSE
         IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( InfoOutUnit, '(A,A,A,A)', ADVANCE='YES' ) &
              'ERROR:: ', TRIM(Caller), ': ', TRIM(String)
         ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+           WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
         STOP EXIT_ERROR
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(InfoOutUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------

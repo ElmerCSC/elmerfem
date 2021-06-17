@@ -171,7 +171,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
-
+  LOGICAL :: SlicesReduce, TimesReduce
+  INTEGER :: PrevComm, CommRank, CommSize, nSlices, nTimes
+  
   SAVE :: jsonpos, PrevRunInd
   
 !------------------------------------------------------------------------------
@@ -259,16 +261,45 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   WriteCore = .TRUE.
   ParallelWrite = .FALSE.
   ParallelReduce = .FALSE.
-
-  IF( ParEnv % PEs > 1 ) THEN
+  SlicesReduce = .FALSE.
+  TimesReduce = .FALSE.
+  PrevComm = 0
+  CommRank = 0
+  CommSize = ParEnv % PEs
+  
+  IF( CommSize > 1 ) THEN
     IsParallel = .TRUE.
     ParallelReduce = GetLogical( Params,'Parallel Reduce',GotIt)
-    ParallelWrite = .NOT. ParallelReduce
-    IF( ParEnv % MyPe > 0 .AND. ParallelReduce ) THEN
-      EchoValues = .FALSE.
-      WriteCore = .FALSE. 
+    
+    SlicesReduce = GetLogical( Params,'Slices Reduce',GotIt)
+    TimesReduce = GetLogical( Params,'Times Reduce',GotIt)
+
+    nSlices = 0
+    nTimes = 0
+    IF( SlicesReduce .OR. TimesReduce ) THEN
+      ParallelReduce = .TRUE.
+      nSlices = ListGetInteger( Model % Simulation,'Number Of Slices',GotIt)
+      nTimes = ListGetInteger( Model % Simulation,'Number Of Times',GotIt)
+      IF( nSlices > 1 .AND. nTimes > 1 ) THEN
+        PrevComm = ParEnv % ActiveComm 
+        IF( SlicesReduce ) ParEnv % ActiveComm = ParallelSlicesComm()
+        IF( TimesReduce ) ParEnv % ActiveComm = ParallelTimesComm()
+      END IF
+      CommRank = ParallelPieceRank(ParEnv % ActiveComm)
+      CommSize = ParallelPieceSize(ParEnv % ActiveComm)
+    ELSE
+      CommRank = ParEnv % MyPe 
     END IF
-    !OutputPE = ParEnv % MYPe
+
+    !PRINT *,'ParallelStuff:',ParEnv % MyPe, CommRank, CommSize, nSlices,nTimes
+    IF( CommRank > 0 ) EchoValues = .FALSE.
+    
+    IF( ParallelReduce ) THEN
+      WriteCore = ( CommRank == 0 )
+      ParallelWrite = ( CommSize < ParEnv % PEs )
+    ELSE
+      ParallelWrite = .TRUE.      
+    END IF
   END IF
 
   NoLines = 0
@@ -1280,9 +1311,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     WRITE( Message,'(A)' ) 'Saving values to file: '// TRIM(ScalarsFile)
     CALL Info( 'SaveScalars', Message, Level=4 )
     
-    IF ( ParallelWrite ) THEN
-      WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPE
-      
+    IF ( ParallelWrite ) THEN      
+      IF(WriteCore) WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPe      
       IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
         OPEN(NEWUNIT=ScalarsUnit, FILE=ScalarParFile,POSITION='APPEND')
       ELSE 
@@ -1502,6 +1532,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   n = NINT( ParallelReduction(1.0_dp*n) )
 
   PrevRunInd = RunInd
+
+
+  IF( PrevComm > 0 ) ParEnv % ActiveComm = PrevComm
+
   
   CALL Info('SaveScalars', '-----------------------------------------', Level=7 )
 
@@ -1518,7 +1552,6 @@ CONTAINS
 
     ParOper = 'NONE'
     IF(.NOT. ParallelReduce ) RETURN
-
 
     SELECT CASE(LocalOper)
       
@@ -1650,7 +1683,9 @@ CONTAINS
           MPIOper = MPI_MIN
         CASE('sum' )
           MPIOper = MPI_SUM
-
+        CASE('mean' )
+          MPIOper = 3
+          
         CASE DEFAULT
           MPIOper = 0
           
@@ -1658,8 +1693,7 @@ CONTAINS
 
         
         IF( MPIOper > 0 ) THEN
-          CALL MPI_ALLREDUCE(Val,ParVal,1,&
-              MPI_DOUBLE_PRECISION,MPIOper,ELMER_COMM_WORLD,ierr)
+          ParVal = ParallelReduction( Val, MPIOper )
           Values(n) = ParVal
           IF( MPIOper == MPI_MIN ) THEN
             WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_min'
@@ -1667,6 +1701,8 @@ CONTAINS
             WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_max'
           ELSE IF( MPIOper == MPI_SUM ) THEN
             WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_sum'
+          ELSE IF( MPIOper == 3 ) THEN
+            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_mean'
           END IF
         END IF
         

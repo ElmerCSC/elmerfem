@@ -3238,11 +3238,7 @@ CONTAINS
      
      CALL Info('DefaultStart','Starting solver: '//&
         TRIM(ListGetString(Params,'Equation')),Level=10)
-     
-     IF( ListGetLogical( Params,'Store Cyclic System', Found ) ) THEN
-       CALL StoreCyclicSolution( Solver ) 
-     END IF
-     
+          
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
