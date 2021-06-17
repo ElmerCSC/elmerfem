@@ -100,8 +100,9 @@ MODULE Types
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
-                        PROJECTOR_TYPE_GALERKIN = 2    ! Galerkin projector
-
+                        PROJECTOR_TYPE_GALERKIN = 2, & ! Galerkin projector
+                        PROJECTOR_TYPE_INTEGRAL = 3 
+                        
   INTEGER, PARAMETER :: DIRECT_NORMAL = 0, & ! Normal direct method
                         DIRECT_PERMON = 1    ! Permon direct method
   

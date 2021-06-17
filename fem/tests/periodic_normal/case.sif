@@ -1,0 +1,96 @@
+! Test case with roots in Elmer/Ice but simplified just to test
+! the normal-tangential stuff with periodic BCs.
+!
+! P.R. & O.G. 17.6.2021 and before
+
+check keywords warn
+echo off
+
+Header
+  Mesh DB "." "sinus"
+End
+
+
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady 
+
+  Steady State Max Iterations = 1
+
+!  Post File = case.vtu
+  max output level = 7
+
+  Save Averaged Normals = Logical True
+End
+
+
+Body 1
+  Name = "body"
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Material 1
+  Name = "ideal"
+  Density = 1.0
+  Viscosity = 1.0 
+End
+
+
+Solver 1
+  Equation = "Navier-Stokes"
+  Linear System Solver = Direct     
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 1
+  Stabilization Method = String Stabilized 
+  Flow Model = String "Stokes"
+End
+
+Solver 2
+  Exec Solver = After Simulation
+  Equation = "Save Line"
+  Procedure = File "SaveData" "SaveLine"
+  Filename = f.dat
+End
+
+
+Equation 1
+  Active Solvers (2) = 1 2
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Name = "bottom"
+
+  Normal-Tangential Velocity = Logical True
+  Mass Consistent Normals = Logical True
+
+  Velocity 1 = Real 0.0
+  Save Line = Logical True
+End
+
+Boundary Condition 2  
+  Target Boundaries = 2
+  Name = "right"
+  Periodic BC = 4 
+  Periodic BC Velocity 1 = Logical True
+  Periodic BC Velocity 2 = Logical True
+  Periodic BC Pressure = Logical True
+
+! This reverts to the old style
+!  One Sided Normals = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Name = "top"
+  Velocity 1 = 1.0
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+  Name = "left"
+End
+
+Solver 1 :: Reference Norm = 5.19392417E-01

@@ -235,7 +235,9 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       EdgeBasis = .FALSE.
       IF( ASSOCIATED( Var % Solver ) ) THEN
         EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
-        IF( ANY( Var % Perm(1: Mesh % NumberOfNodes) > 0 ) ) AVBasis = .TRUE. 
+        IF( EdgeBasis ) THEN
+          IF( ANY( Var % Perm(1: Mesh % NumberOfNodes) > 0 ) ) AVBasis = .TRUE.
+        END IF
       END IF
       IF( EdgeBasis ) THEN
         CALL Info('SaveLine','Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl',Level=7)
@@ -243,8 +245,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         IF( AVBasis ) NoResults = NoResults + 1
       ELSE
         NoResults = NoResults + MAX( Var % Dofs, Comps ) 
-     END IF
-   END IF
+      END IF
+    END IF
   END DO
   
   IF( DG ) THEN

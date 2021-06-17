@@ -12936,7 +12936,170 @@ CONTAINS
 
   END SUBROUTINE SetProjectorRowsum
 
+  
+  ! This creates a projector that integrates over the BCs on the boundary such that
+  ! an integral constraint may be applied on it. For example, we could set the
+  ! incoming flow without actually setting the profile.
+  !--------------------------------------------------------------------------------------
+  FUNCTION IntegralProjector(Model, Mesh, BCInd ) RESULT ( Projector )
 
+    TYPE(Model_t) :: Model  
+    TYPE(Mesh_t), TARGET :: Mesh
+    INTEGER :: BCInd    
+    TYPE(Matrix_t), POINTER :: Projector
+        
+    REAL(KIND=dp) :: area
+    TYPE(ValueList_t), POINTER :: BC
+    LOGICAL :: Found
+    INTEGER :: n
+    CHARACTER(LEN=MAX_NAME_LEN) :: Caller="IntegralProjector"
+
+    
+    BC => Model % BCs(BCInd) % Values
+    NULLIFY(Projector)
+    
+    IF( .NOT. ListGetLogical( BC,'Integral BC', Found ) ) RETURN
+
+    CALL Info(Caller,'Creating integral constraint matrix for boundary: '//TRIM(I2S(BCind)),Level=6)
+    
+    Projector => AllocateMatrix()
+    Projector % FORMAT = MATRIX_LIST
+    Projector % ProjectorType = PROJECTOR_TYPE_INTEGRAL
+    
+    CALL CreateIntegralProjector()
+    
+    CALL List_toCRSMatrix(Projector)
+    area = SUM( Projector % Values )
+    n = SIZE( Projector % Values ) 
+    
+    WRITE( Message,'(A,ES12.4)') 'Total area of boundary integral:',area  
+    CALL Info(Caller, Message, Level=6 )
+
+    CALL SetInvPermIndex()
+    
+    IF( InfoActive(20) ) THEN
+       WRITE(Message,'(A,ES12.3)') 'Sum of constraint matrix entries: ',SUM(Projector%Values)
+       CALL Info(Caller,Message)
+       CALL Info(Caller,'Constraint matrix cols min:'//TRIM(I2S(MINVAL(Projector%Cols))))
+       CALL Info(Caller,'Constraint matrix cols max:'//TRIM(I2S(MAXVAL(Projector%Cols))))
+       CALL Info(Caller,'Constraint matrix rows min:'//TRIM(I2S(MINVAL(Projector%Rows))))
+       CALL Info(Caller,'Constraint matrix rows max:'//TRIM(I2S(MINVAL(Projector%Rows))))
+     END IF
+            
+  CONTAINS
+    
+    SUBROUTINE CreateIntegralProjector()
+    
+      INTEGER :: i,j,n,t,p
+      REAL(KIND=dp) :: u,v,w,weight,x,detJ,val
+      REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+      TYPE(Nodes_t) :: Nodes
+      TYPE(Element_t), POINTER :: Element
+      INTEGER, POINTER :: Indexes(:)  
+      TYPE(GaussIntegrationPoints_t) :: IP
+      LOGICAL :: AxisSym, Stat, Visited = .FALSE.
+
+      SAVE Visited, Nodes, Basis
+
+      IF(.NOT. Visited ) THEN
+        n = Mesh % MaxElementNodes
+        ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+        Visited = .TRUE.
+      END IF
+
+      AxisSym = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+          CurrentCoordinateSystem() == CylindricSymmetric ) 
+
+      DO t = 1, Mesh % NumberOfBoundaryElements
+
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+
+        IF ( Element % BoundaryInfo % Constraint /= Model % BCs(BCInd) % Tag ) CYCLE
+
+        n = Element % TYPE % NumberOfNodes        
+        Indexes => Element % NodeIndexes      
+        IP = GaussPoints( Element )
+
+        Nodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
+        Nodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
+        Nodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
+
+        DO j=1,IP % n
+          u = IP % u(j)
+          v = IP % v(j)
+          w = IP % w(j)
+
+          Stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis)
+
+          weight = detJ * IP % s(j)
+          IF( AxisSym ) THEN
+            x = SUM( Basis(1:n) * Nodes % x(1:n) )
+            weight = weight * x
+          END IF
+          
+          DO p=1,n
+            val = weight * Basis(p)
+            CALL List_AddToMatrixElement(Projector % ListMatrix, 1, Indexes(p), val ) 
+          END DO
+          
+        END DO
+      END DO
+
+    END SUBROUTINE CreateIntegralProjector    
+
+
+    ! Let us associate the inverso permutation to some degree of freedom that is unique and not
+    ! set by some other BCs. This unique index is needed in the future. 
+    !------------------------------------------------------------------------------------------
+    SUBROUTINE SetInvPermIndex()
+    
+      INTEGER :: i,j,t,n,maxind
+      TYPE(Element_t), POINTER :: Element
+      INTEGER, POINTER :: Indexes(:)  
+      LOGICAL, ALLOCATABLE :: SomeOtherBC(:)
+      
+      IF(.NOT. ASSOCIATED( Projector % InvPerm ) ) THEN
+        ALLOCATE( Projector % InvPerm(1) ) 
+        Projector % InvPerm = 0
+      END IF
+
+      n = Mesh % NumberOfNodes
+      ALLOCATE( SomeOtherBC(n) )
+      SomeOtherBC = .FALSE.
+      maxind = 0
+      
+      DO t = 1, Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(BCInd) % Tag ) CYCLE
+        Indexes => Element % NodeIndexes      
+        SomeOtherBC(Indexes) = .TRUE.
+      END DO
+
+      DO t = 1, Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(BCInd) % Tag ) THEN
+          Indexes => Element % NodeIndexes      
+          n = Element % TYPE % NumberOfNodes        
+          DO i=1,n
+            j = Indexes(i)
+            IF( SomeOtherBC(j) ) CYCLE
+            maxind = MAX(maxind,j)
+          END DO
+        END IF
+      END DO
+      
+      IF( maxind == 0 ) THEN
+        CALL Fatal(Caller,'Could not determine maxiumum unset index!')
+      ELSE
+        CALL Info(Caller,'Setting the representative node to: '//TRIM(I2S(maxind)),Level=8)
+        Projector % InvPerm(1) = maxind
+      END IF        
+    END SUBROUTINE SetInvPermIndex
+    
+  END FUNCTION IntegralProjector
+
+
+  
 !------------------------------------------------------------------------------
 !> Create a projector between Master and Target boundaries.
 !> The projector may be a nodal projector x=Px or a weigted 
@@ -13466,6 +13629,7 @@ CONTAINS
       END IF
     END DO
 
+    
     IF( ListCheckPresentAnyBC( Model,'Conforming BC' ) ) THEN
       IF(.NOT. ASSOCIATED( Mesh % PeriodicPerm ) ) THEN
         n = Mesh % NumberOfNodes + Mesh % NumberOfEdges

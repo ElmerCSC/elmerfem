@@ -136,7 +136,8 @@
      INTEGER :: RadiationBody, MaxRadiationBody, Nrays
      LOGICAL :: RadiationOpen, Combine
      INTEGER, PARAMETER :: VFUnit = 10
-
+     INTEGER :: iostat, NoArgs
+     
      EXTERNAL MatvecViewFact,DiagPrecViewFact
 
 
@@ -157,16 +158,17 @@
      CALL Info( 'ViewFactors', 'Reading Model... ', Level=3 )
 
 !------------------------------------------------------------------------------
-     OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', ERR=10 )
-     GOTO 20
-
-
-10   CONTINUE
-     CALL Fatal( 'ElmerSolver', 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
-
-20   CONTINUE
+     NoArgs = COMMAND_ARGUMENT_COUNT()
+     IF ( NoArgs > 0 ) THEN
+       CALL GET_COMMAND_ARGUMENT(1, ModelName)
+     ELSE
+       OPEN( 1,file='ELMERSOLVER_STARTINFO', STATUS='OLD', IOSTAT=iostat )
+       IF( iostat /= 0 ) THEN
+         CALL Fatal( 'ViewFactors', 'Unable to find ELMERSOLVER_STARTINFO, cannot execute.' )
+       END IF
        READ(1,'(a)') ModelName
-     CLOSE(1)
+       CLOSE(1)
+     END IF
 
      Model => LoadModel( ModelName,.FALSE.,1,0 )
 
