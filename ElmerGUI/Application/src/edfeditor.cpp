@@ -156,7 +156,24 @@ EdfEditor::EdfEditor(QWidget *parent)
   dynamicEditorIC = new DynamicEditor;
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+  
+#ifdef __APPLE__DONTGO_HERE_TODO
+  defaultDir = this->homePath ;
+#else
+  defaultDir =
+    QCoreApplication::applicationDirPath() + "/../share/ElmerGUI";
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if (!elmerGuiHome.isEmpty())
+    defaultDir = elmerGuiHome;
+
+  defaultDir.replace('\\', '/');
+#endif
+
 }
+
 
 // dtor...
 //----------------------------------------------------------------------------
@@ -485,7 +502,7 @@ void EdfEditor::saveAsButtonClicked()
   QString fileName;
 
   fileName = QFileDialog::getSaveFileName(this,
-                 tr("Save definitions"), "", tr("EDF (*.xml)") );
+                 tr("Save definitions"), defaultDir, tr("EDF (*.xml)") );
 
   if(fileName.isEmpty())
     return;
@@ -524,7 +541,7 @@ void EdfEditor::openButtonClicked()
   QString fileName;
 
   fileName = QFileDialog::getOpenFileName(this, 
-	      tr("Open definitions"), "", tr("EDF (*.xml)") );
+	      tr("Open definitions"), defaultDir, tr("EDF (*.xml)") );
 
   if(fileName.isEmpty())
     return;
@@ -561,7 +578,6 @@ void EdfEditor::openButtonClicked()
   edfTree->setCurrentItem(NULL);
 }
 
-
 // Append...
 //----------------------------------------------------------------------------
 void EdfEditor::appendButtonClicked()
@@ -569,7 +585,7 @@ void EdfEditor::appendButtonClicked()
   QString fileName;
 
   fileName = QFileDialog::getOpenFileName(this, 
-	      tr("Open definitions"), "", tr("EDF (*.xml)") );
+	      tr("Open definitions"), defaultDir, tr("EDF (*.xml)") );
 
   if(fileName.isEmpty())
     return;

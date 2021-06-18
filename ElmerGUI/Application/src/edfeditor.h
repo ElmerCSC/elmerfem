@@ -121,6 +121,8 @@ private:
   QTreeWidgetItem *lastActiveItem;
   bool ctrlPressed;
   bool altPressed;
+
+  QString defaultDir;
 };
 
 #endif // EDFEDITOR_H

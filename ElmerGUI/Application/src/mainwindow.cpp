@@ -7667,6 +7667,8 @@ void MainWindow::loadSettings() {
     case 1: selectVtkPostSlot(); break;
     case 2: selectParaViewSlot(); break;
   }
+  
+  saveDirName = settings_value("defaultDir/project", "").toString();
 }
 
 // Save settings
@@ -7703,6 +7705,8 @@ void MainWindow::saveSettings() {
   }else if(selectParaViewAct->isChecked()){
     settings_setValue("postProcessor/i", 2);
   }
+  
+  settings_setValue("defaultDir/project", saveDirName);
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
