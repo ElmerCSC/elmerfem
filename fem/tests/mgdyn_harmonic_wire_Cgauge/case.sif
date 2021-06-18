@@ -106,7 +106,7 @@ End
 
 
 ! Compute (Q,w) = (grad(P),w) (+boundary terms), A = A-Q
-! Modified the vector potential field A fullfills div(A)=0
+! Modified vector potential field A fullfills div(A)=0
 ! ------------------------------------------------------------
 Solver 3
   Equation = "MGDynamics AVM"
