@@ -183,7 +183,7 @@ CONTAINS
     END IF
 
     IF( .NOT. InfoToFile ) THEN 
-      IF( ListGetLogical( OutputList,'Info To File', GotIt ) ) THEN
+      IF( ListGetLogical( OutputList,'Output To File', GotIt ) ) THEN
         InfoToFile = .TRUE.
       END IF
       IF( InfoToFile ) THEN
