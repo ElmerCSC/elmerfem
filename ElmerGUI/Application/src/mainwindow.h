@@ -265,6 +265,11 @@ private slots:
   void loadRecentProject2Slot();
   void loadRecentProject3Slot();
   void loadRecentProject4Slot();
+  void loadRecentProject5Slot();
+  void loadRecentProject6Slot();
+  void loadRecentProject7Slot();
+  void loadRecentProject8Slot();
+  void loadRecentProject9Slot();
 
   void selectElmerPostSlot();
   void selectVtkPostSlot();  
@@ -338,6 +343,11 @@ private:
   QAction *recentProject2Act;
   QAction *recentProject3Act;
   QAction *recentProject4Act;
+  QAction *recentProject5Act;
+  QAction *recentProject6Act;
+  QAction *recentProject7Act;
+  QAction *recentProject8Act;
+  QAction *recentProject9Act;
   QAction *saveAct;                      // File -> Save...
   QAction *saveAsAct;                    // File -> Save As...
   QAction *saveProjectAct;               // File -> Save project

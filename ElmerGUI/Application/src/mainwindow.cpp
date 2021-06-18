@@ -431,7 +431,21 @@ void MainWindow::createActions() {
   recentProject4Act = new QAction("", this);
   connect(recentProject4Act, SIGNAL(triggered()), this,
           SLOT(loadRecentProject4Slot()));
-
+  recentProject5Act = new QAction("", this);
+  connect(recentProject5Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject5Slot()));
+  recentProject6Act = new QAction("", this);
+  connect(recentProject6Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject6Slot()));
+  recentProject7Act = new QAction("", this);
+  connect(recentProject7Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject7Slot()));
+  recentProject8Act = new QAction("", this);
+  connect(recentProject8Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject8Slot()));
+  recentProject9Act = new QAction("", this);
+  connect(recentProject9Act, SIGNAL(triggered()), this,
+          SLOT(loadRecentProject9Slot()));
   // File -> Definitions...
   editDefinitionsAct = new QAction(QIcon(":/icons/games-config-custom.png"),
                                    tr("&Definitions..."), this);
@@ -7647,7 +7661,7 @@ void MainWindow::loadSettings() {
 
   int n = settings_value("recentProject/n", 0).toInt();
   QString key = "recentProject/";
-  char num[] = "01234";
+  char num[] = "0123456789";
   QString path;
   for (int i = n - 1; i >= 0; i--) {
     path = settings_value(key + num[i], "$").toString();
@@ -7722,41 +7736,71 @@ void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
   recentProjectsMenu->removeAction(recentProject2Act);
   recentProjectsMenu->removeAction(recentProject3Act);
   recentProjectsMenu->removeAction(recentProject4Act);
+  recentProjectsMenu->removeAction(recentProject5Act);
+  recentProjectsMenu->removeAction(recentProject6Act);
+  recentProjectsMenu->removeAction(recentProject7Act);
+  recentProjectsMenu->removeAction(recentProject8Act);
+  recentProjectsMenu->removeAction(recentProject9Act);
   recentProjectsMenu->clear(); // just in case
 
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject0Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject0Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject1Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject1Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject2Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject2Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject3Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject3Act);
   }
   i++;
-  if (i < 5 && i < recentProject.size()) {
+  if (i < 10 && i < recentProject.size()) {
     recentProject4Act->setText(recentProject.at(i));
     recentProjectsMenu->addAction(recentProject4Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject5Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject5Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject6Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject6Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject7Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject7Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject8Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject8Act);
+  }
+  i++;
+  if (i < 10 && i < recentProject.size()) {
+    recentProject9Act->setText(recentProject.at(i));
+    recentProjectsMenu->addAction(recentProject9Act);
   }
   recentProjectsMenu->setEnabled(recentProject.size() > 0);
 
   if (bSaveToIni) {
     int n = recentProject.size();
-    if (n > 5)
-      n = 5;
+    if (n > 10)
+      n = 10;
     settings_setValue("recentProject/n", n);
     QString key = "recentProject/";
-    char num[] = "01234";
+    char num[] = "0123456789";
     for (int i = 0; i < n; i++) {
       settings_setValue(key + num[i], recentProject.at(i));
     }
@@ -7772,6 +7816,16 @@ void MainWindow::loadRecentProject2Slot() { loadProject(recentProject.at(2)); }
 void MainWindow::loadRecentProject3Slot() { loadProject(recentProject.at(3)); }
 
 void MainWindow::loadRecentProject4Slot() { loadProject(recentProject.at(4)); }
+
+void MainWindow::loadRecentProject5Slot() { loadProject(recentProject.at(5)); }
+
+void MainWindow::loadRecentProject6Slot() { loadProject(recentProject.at(6)); }
+
+void MainWindow::loadRecentProject7Slot() { loadProject(recentProject.at(7)); }
+
+void MainWindow::loadRecentProject8Slot() { loadProject(recentProject.at(8)); }
+
+void MainWindow::loadRecentProject9Slot() { loadProject(recentProject.at(9)); }
 
 bool MainWindow::loadExtraSolver(QString solverName) {
 
