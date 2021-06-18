@@ -25,8 +25,12 @@
 ! *  of a curl-conforming vector field A. The projection can be obtained as 
 ! *  P(A) = A - W where  W is the curl-conforming field fitted to represent 
 ! *  grad Phi, with Phi being a H1-regular scalar field.
+! * 
+! *  This file contains harmonic version of the transormation and also applies the
+!    correction to the V field within conducting regions.
 ! *
-! *  Authors: Mika Malinen
+! *
+! *  Authors: Mika Malinen, Juha Ruokolainen
 ! *  Email:   mika.malinen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -34,6 +38,7 @@
 ! *           02101 Espoo, Finland 
 ! *
 ! *  Original Date: March 20, 2020
+! *  Last Modifed: June 18, 2021, Juha
 ! *
 !******************************************************************************
 
