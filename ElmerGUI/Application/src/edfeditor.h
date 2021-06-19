@@ -63,6 +63,7 @@ public:
 
   void setupEditor(QDomDocument *elmerDefs);
   bool appendFrom(QString);
+  QString defaultEdfDir();
 
 signals:
 

@@ -41,6 +41,7 @@
 #include <QtGui>
 #include <iostream>
 #include "edfeditor.h"
+#include "MainWindow.h"
 
 using namespace std;
 
@@ -157,9 +158,9 @@ EdfEditor::EdfEditor(QWidget *parent)
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
   
-  
+    
 #ifdef __APPLE__DONTGO_HERE_TODO
-  defaultDir = this->homePath ;
+  defaultDir = ((MainWindow*)paernt->homePath ;
 #else
   defaultDir =
     QCoreApplication::applicationDirPath() + "/../share/ElmerGUI";
@@ -172,6 +173,9 @@ EdfEditor::EdfEditor(QWidget *parent)
   defaultDir.replace('\\', '/');
 #endif
 
+  // Commented out as restoring defaultDir is not so useful
+  //defaultDir = ((MainWindow*) parent)->settings_value("defaultDir/edfEditor", defaultDir).toString();
+
 }
 
 
@@ -179,6 +183,7 @@ EdfEditor::EdfEditor(QWidget *parent)
 //----------------------------------------------------------------------------
 EdfEditor::~EdfEditor()
 {
+
 }
 
 // Min window size...
@@ -514,6 +519,10 @@ void EdfEditor::saveAsButtonClicked()
   file.open(QIODevice::WriteOnly);
   QTextStream out(&file);
   elmerDefs->save(out, indent);
+  
+  // Commented out as restoring defaultDir is not so useful
+  // QFileInfo info(file);
+  // defaultDir = info.dir().absolutePath();  
 }
 
 
@@ -576,6 +585,10 @@ void EdfEditor::openButtonClicked()
   setupEditor(elmerDefs);
 
   edfTree->setCurrentItem(NULL);
+  
+  // Commented out as restoring defaultDir is not so useful
+  //QFileInfo info(file);
+  //defaultDir = info.dir().absolutePath();  
 }
 
 // Append...
@@ -630,6 +643,10 @@ void EdfEditor::appendButtonClicked()
   setupEditor(elmerDefs);
 
   edfTree->setCurrentItem(NULL);
+  
+  // Commented out as restoring defaultDir is not so useful
+  //QFileInfo info(file);
+  //defaultDir = info.dir().absolutePath();  
 }
 
 
@@ -783,4 +800,8 @@ bool EdfEditor::appendFrom(QString path)
   edfTree->setCurrentItem(NULL);
 
   return true;
+}
+
+QString EdfEditor::defaultEdfDir(){
+  return defaultDir; 
 }

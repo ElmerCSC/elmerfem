@@ -7721,6 +7721,9 @@ void MainWindow::saveSettings() {
   }
   
   settings_setValue("defaultDir/project", saveDirName);
+  
+  // Commented aout as restoring defaultEdfDir is not so useful
+  // settings_setValue("defaultDir/edfEditor", edfEditor->defaultEdfDir());  
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
