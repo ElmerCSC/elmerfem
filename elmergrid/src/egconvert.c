@@ -641,14 +641,14 @@ omstart:
 	  mode = 3;
 
 	  if(allocated) {
-	    printf("Loading elements of type %d starting from element %d to body %d.\n",
-		   elemcode,noelements,bodyid);
+	    if(info) printf("Loading elements of type %d starting from element %d to body %d.\n",
+			    elemcode,noelements,bodyid);
 	  }
 	  
 	  if(pstr = strstr(line,"ELSET=")) {
 	    bodyid++;	    	      
 	    if(allocated) {
-	      printf("Loading elements to body %d from ELSET %s",bodyid,pstr+6);
+	      if(info) printf("Loading elements to body %d from ELSET %s",bodyid,pstr+6);
 	      sscanf(pstr+6,"%s",entityname);
 	      strcpy(data->bodyname[bodyid],entityname);
 	      data->bodynamesexist = TRUE;
@@ -662,7 +662,7 @@ omstart:
       else if( strstr(line,"BOUNDARY") ) {
 	boundarytype++;
 	mode = 4;
-	if(allocated) printf("Treating keyword BOUNDARY for bc %d\n",boundarytype);
+	if(allocated && info) printf("Treating keyword BOUNDARY for bc %d\n",boundarytype);
       }
       else if( strstr(line,"SOLID SECTION") ) {
 	/* Have this here since solid section may include ELSET */
@@ -675,7 +675,7 @@ omstart:
       else if( strstr(line,"CLOAD") ) {	
 	boundarytype++;
 	mode = 4;
-	if(allocated) printf("Treating keyword CLOAD for bc %d\n",boundarytype);
+	if(allocated && info) printf("Treating keyword CLOAD for bc %d\n",boundarytype);
       }
       else if(pstr = strstr(line,"NSET=")) {
 	
@@ -686,7 +686,7 @@ omstart:
 	 else {
 	   boundarytype++;
 	   mode = 5;	   
-	   if(allocated) printf("Treating keyword NSET for bc %d from: %s",boundarytype,pstr+5);
+	   if(allocated && info) printf("Treating keyword NSET for bc %d from: %s",boundarytype,pstr+5);
 	 }
       }
       else if(pstr = strstr(line,"ELSET=")) {
@@ -725,7 +725,7 @@ omstart:
 	  pstr2[0] = '\n';
 	  sscanf(pstr,"%s",entityname);
 	  if(allocated) {
-	    printf("Loading boundary set %d for side %d of %s\n",bcind+newsurface,side,entityname);
+	    if(info) printf("Loading boundary set %d for side %d of %s\n",bcind+newsurface,side,entityname);
 	    strcpy(data->boundaryname[bcind+newsurface],entityname);
 	    data->boundarynamesexist = TRUE;
 	  }
@@ -734,7 +734,7 @@ omstart:
 	  bodyid++;
 	  sscanf(pstr,"%s",entityname);
 	  if(allocated) {
-	    printf("Loading element to body %d from %s\n",bodyid,entityname);
+	    if(info) printf("Loading element to body %d from %s\n",bodyid,entityname);
 	    strcpy(data->bodyname[bodyid],entityname);
 	    data->bodynamesexist = TRUE;
 	  }
@@ -752,7 +752,7 @@ omstart:
 	generate = FALSE;
 
 	if(allocated) {
-	  printf("Loading part to body %d from %s",bodyid,pstr+11);
+	  if(info) printf("Loading part to body %d from %s",bodyid,pstr+11);
 	  sscanf(pstr+6,"%s",entityname);
 	  strcpy(data->bodyname[bodyid],entityname);
 	  data->bodynamesexist = TRUE;
@@ -978,23 +978,23 @@ omstart:
 		    noknots,noelements,maxnodes);
     AllocateKnots(data);
   
-    printf("Number of boundary nodes: %d\n",boundarynodes);
+    if(info) printf("Number of boundary nodes: %d\n",boundarynodes);
     if( boundarynodes > 0 ) {
       nodeindx = Ivector(1,boundarynodes);
       boundindx = Ivector(1,boundarynodes);
     }
 
-    printf("Maximum temporal index array size: %d\n",ivaluessize);
+    if(info) printf("Maximum temporal index array size: %d\n",ivaluessize);
     free_Ivector(ivalues,0,ivaluessize-1);
    
-    printf("Maximum element index in file: %d\n",maxelem);
+    if(info) printf("Maximum element index in file: %d\n",maxelem);
     maxelem = MAX( maxelem, noelements );
 
     elemindx = Ivector(1,maxelem);
     for(i=1;i<=maxelem;i++)
       elemindx[i] = 0;
     
-    printf("Maximum node index in file: %d\n",maxknot);
+    if(info) printf("Maximum node index in file: %d\n",maxknot);
     maxknot = MAX( maxknot, noknots );
     ind = ivector(1,maxknot);
     for(i=1;i<=maxknot;i++)
@@ -1038,7 +1038,7 @@ omstart:
 	}
       }
     }
-    printf("There are %d positive and %d non-positive indexes in elements!\n",okcount,errcount);
+    if(info) printf("There are %d positive and %d non-positive indexes in elements!\n",okcount,errcount);
       
     if(info) printf("Renumbering %d nodes in node sets\n",boundarynodes);
     errcount = 0;
@@ -1068,7 +1068,7 @@ omstart:
     }
     if(mincnt) {
       maxid +=1;
-      printf("Setting %d unset elements to body index %d and name 'DefaulBody'\n",mincnt,maxid);
+      if(info) printf("Setting %d unset elements to body index %d and name 'DefaulBody'\n",mincnt,maxid);
       for(i=1;i<=noelements;i++) 
 	if(!data->material[i]) data->material[i] = maxid;
       strcpy(data->bodyname[maxid],"DefaultBody");
@@ -1083,25 +1083,29 @@ omstart:
     
 
   if(nosides) {
-    printf("Creating boundary elements from side pointers!\n");
+    if(info) printf("Creating boundary elements from side pointers!\n");
     AbaqusSideInfoToBoundary(data,bound,nosides,bcsides,bcparent,bctypes,info);
   }
   else if(boundarynodes) {
-    printf("Creating boundary elements from node set!\n");
+    if(info) printf("Creating boundary elements from node set!\n");
     FindPointParents(data,bound,boundarynodes,nodeindx,boundindx,info);
     if(0) ElementsToBoundaryConditions(data,bound,FALSE,info);
   }
       
   free_ivector(ind,1,maxknot);
-  free_Ivector(elemindx,1,noelements);
+  free_Ivector(elemindx,1,maxelem);
 
   if( boundarynodes > 0 ) {
-    printf("Number of nodes in boundary sets: %d\n",boundarynodes);      
+    if(info) printf("Number of nodes in boundary sets: %d\n",boundarynodes);      
+    /* Temporarily supress the deallocation while trying to find a bug */
     free_Ivector(nodeindx,1,boundarynodes);
     free_Ivector(boundindx,1,boundarynodes);
   }    
   fclose(in);
 
+  if(info) printf("Finished reading ABAQUS input file\n");
+  
+  
   return(0);
 }
 
