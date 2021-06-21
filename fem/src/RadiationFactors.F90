@@ -425,7 +425,12 @@
        END IF
        
        ! Compute the factors using an external program call
+#if 1
+       cmd = 'ViewFactors '//TRIM(GetSifName())
+       CALL SystemCommand( cmd )
+#else
        CALL SystemCommand( 'ViewFactors' )
+#endif
        
        ! Set back the original node coordinates to prevent unwanted user errors
        IF(.NOT. FirstTime) THEN

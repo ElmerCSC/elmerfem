@@ -127,7 +127,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
 
   LOGICAL, ALLOCATABLE :: LineTag(:)
-  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen
+  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen, AVBasis
   
   REAL(KIND=dp) :: R0(3),R1(3),dR(3),S0(3),S1(3),dS(3),LocalCoord(3),&
       MinCoord(3),MaxCoord(3),GlobalCoord(3),LineN(3),LineT1(3), &
@@ -215,6 +215,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     CALL CreateListForSaving( Model, Params,.TRUE.,UseGenericKeyword = .TRUE.)    
   END IF
 
+  AVBasis = .FALSE.
   DG = .FALSE.
   NoVar = 0
   NoResults = 0
@@ -234,14 +235,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       EdgeBasis = .FALSE.
       IF( ASSOCIATED( Var % Solver ) ) THEN
         EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
+        IF( EdgeBasis .AND. ASSOCIATED( Var % Perm ) ) THEN
+          IF( ANY( Var % Perm(1: Mesh % NumberOfNodes) > 0 ) ) AVBasis = .TRUE. 
+        END IF
       END IF
       IF( EdgeBasis ) THEN
         CALL Info('SaveLine','Variable '//TRIM(I2S(ivar))//' is treated as living in Hcurl',Level=7)
         NoResults = NoResults + 3
+        IF( AVBasis ) NoResults = NoResults + 1
       ELSE
         NoResults = NoResults + MAX( Var % Dofs, Comps ) 
-     END IF
-   END IF
+      END IF
+    END IF
   END DO
   
   IF( DG ) THEN
@@ -776,6 +781,7 @@ CONTAINS
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
+          Values(No) = 0.0_dp
           IF( ASSOCIATED( PtoIndexes ) ) THEN
             DO k=1,nd-np
               l = PtoIndexes(np+k)
@@ -784,7 +790,15 @@ CONTAINS
             END DO
           END IF
         END DO
-
+        IF( AVBasis ) THEN
+          No = No + 1
+          Values(No) = 0.0_dp
+          DO k=1,n
+            l = PtoIndexes(k)
+            IF(l > 0) Values(No) = Values(No) + NodeBasis(k) * Var % Values(l)
+          END DO
+        END IF
+          
       ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
         NoEigenValues = SIZE(Var % EigenValues) 
         IF( ASSOCIATED( PtoIndexes ) ) THEN
@@ -1897,6 +1911,10 @@ CONTAINS
             ValueNames(No+2) = TRIM(Var % Name)//' {e} 2'
             ValueNames(No+3) = TRIM(Var % Name)//' {e} 3'         
             No = No + 3
+            IF( AVBasis ) THEN
+              No = No + 1
+              ValueNames(No) = TRIM(Var % Name)//' nodal'
+            END IF
           ELSE IF( comps > 1 ) THEN
             No = No + 1
             ValueNames(No) = TRIM(Var % Name)             

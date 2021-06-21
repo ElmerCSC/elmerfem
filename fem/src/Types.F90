@@ -100,8 +100,9 @@ MODULE Types
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
-                        PROJECTOR_TYPE_GALERKIN = 2    ! Galerkin projector
-
+                        PROJECTOR_TYPE_GALERKIN = 2, & ! Galerkin projector
+                        PROJECTOR_TYPE_INTEGRAL = 3 
+                        
   INTEGER, PARAMETER :: DIRECT_NORMAL = 0, & ! Normal direct method
                         DIRECT_PERMON = 1    ! Permon direct method
   
@@ -893,8 +894,8 @@ MODULE Types
   
   TYPE Component_t
     REAL(KIND=dp) :: Inductance=0._dp, Resistance=0._dp, Conductance = 0._dp, ElArea, &
-                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns, &
-                     VoltageFactor=1._dp
+         N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns, &
+         VoltageFactor=1._dp, SymmetryCoeff=1._dp
     INTEGER :: polord, nofcnts, BodyId, ComponentId
     INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
@@ -907,7 +908,7 @@ MODULE Types
   TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
-    LOGICAL :: UsePerm = .FALSE., Harmonic
+    LOGICAL :: UsePerm = .FALSE., Harmonic, Parallel
     INTEGER :: n, m, n_comp,CvarDofs
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
     TYPE(Component_t), POINTER :: Components(:)

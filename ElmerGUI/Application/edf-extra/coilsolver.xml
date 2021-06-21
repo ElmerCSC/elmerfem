@@ -82,19 +82,17 @@
 	           <Type> Logical </Type>
 	           <Whatis> Fix the computed elemental current density to be divergence free. </Whatis>
                 </Parameter>
-	</Solver>
-
-	<BoundaryCondition>
-		<Parameter  Widget="Checkbox">
-			<Name> Coil Start </Name>
-			<Type> Logical </Type>
-			<Whatis> Defines a boundary where coil starts. Not needed if coil is closed. </Whatis>
-		</Parameter>
-		<Parameter  Widget="Checkbox">
-			<Name> Coil End </Name>
-			<Type> Logical </Type>
-			<Whatis> Defines a boundary where coil ends. Not needed if coil is closed. </Whatis>
-		</Parameter>
+	</Solver>	
+        <BoundaryCondition>
+           <Parameter Widget="Label" > <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="CheckBox">
+             <Name>Coil Start </Name>
+             <Whatis> Defines a boundary where coil starts. Not needed if coil is closed. </Whatis>
+          </Parameter>
+          <Parameter Widget="CheckBox">
+             <Name>Coil End </Name>
+             <Whatis> Defines a boundary where coil ends. Not needed if coil is closed. </Whatis>
+          </Parameter>
 	</BoundaryCondition>
 	</PDE>
 </edf>

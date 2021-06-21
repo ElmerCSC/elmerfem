@@ -165,6 +165,7 @@ GLWidget::GLWidget(QWidget *parent)
   edgeColor = Qt::green;
   surfaceMeshColor = Qt::black;
   sharpEdgeColor = Qt::black;
+  selectionColor = Qt::red;
 
   stateOrtho = false;
   stateFlatShade = true;
@@ -872,7 +873,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
     // Highlight current selection:
     if(l->getType() == SURFACELIST) {
       if(l->isSelected()) {
-	l->setObject(generateSurfaceList(l->getIndex(), Qt::red)); // red
+	l->setObject(generateSurfaceList(l->getIndex(), selectionColor)); // red
       } else {
 	l->setObject(generateSurfaceList(l->getIndex(), surfaceColor)); // cyan
       }
@@ -884,7 +885,7 @@ void GLWidget::mouseDoubleClickEvent(QMouseEvent *event)
 
     } else if(l->getType() == EDGELIST) {
       if(l->isSelected()) {
-	l->setObject(generateEdgeList(l->getIndex(), Qt::red)); // red
+	l->setObject(generateEdgeList(l->getIndex(), selectionColor)); // red
       } else {
 	l->setObject(generateEdgeList(l->getIndex(), edgeColor)); // green
       }
@@ -1059,7 +1060,7 @@ void GLWidget::rebuildSurfaceLists()
      {
        glDeleteLists( l->getObject(), 1 );
        if(l->isSelected()) {
- 	 l->setObject(generateSurfaceList(l->getIndex(), Qt::red)); // red
+ 	 l->setObject(generateSurfaceList(l->getIndex(), selectionColor)); // red
        } else {
  	 l->setObject(generateSurfaceList(l->getIndex(), surfaceColor)); // cyan
        }
@@ -1078,7 +1079,7 @@ void GLWidget::rebuildEdgeLists()
      {
        glDeleteLists( l->getObject(), 1 );
        if(l->isSelected()) {
- 	 l->setObject(generateEdgeList(l->getIndex(), Qt::red)); // red
+ 	 l->setObject(generateEdgeList(l->getIndex(), selectionColor)); // red
        } else {
  	 l->setObject(generateEdgeList(l->getIndex(), edgeColor)); // green
        }

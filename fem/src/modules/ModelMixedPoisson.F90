@@ -143,7 +143,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
   INTEGER :: dim, n, nb, nd, t, istat, active
 
   REAL(KIND=dp), ALLOCATABLE :: Stiff(:,:), Mass(:,:), Force(:), Load(:,:)
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, Cond
 
 
   SAVE Stiff, Mass, Force, AllocationsDone
@@ -203,7 +203,9 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
     IF (ActiveBoundaryElement()) THEN
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
-      CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
+
+      Cond = SUM(GetReal(GetBC(), GetVarName(Solver % Variable)//' Condition', Found))/n
+      IF(Cond >= 0) CALL LocalMatrixBC(Element, Mesh, n, nd, SecondFamily, InitHandles)
     END IF
   END DO
 
@@ -290,8 +292,11 @@ CONTAINS
     END DO
 
     BodyForce => GetBodyForce()
-    IF ( ASSOCIATED(BodyForce) ) &
+    IF ( ASSOCIATED(BodyForce) ) THEN
         Load(1:n) = GetReal(BodyForce, 'Source Field', EvaluateSource)
+    ELSE 
+        EvaluateSource = .FALSE.
+    END IF
 
     ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
     np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    

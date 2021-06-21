@@ -4453,7 +4453,49 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+!------------------------------------------------------------------------------
+!> Compute range of the linear system mainly for debugging purposes.
+!------------------------------------------------------------------------------
+  SUBROUTINE VectorValuesRange(x,n,str,AlwaysSerial)
+!------------------------------------------------------------------------------    
+    REAL(KIND=dp), POINTER :: x(:)
+    INTEGER :: n
+    CHARACTER(LEN=*) :: str
+    LOGICAL, OPTIONAL :: AlwaysSerial
+    
+    REAL(KIND=dp) :: s(3)
+    LOGICAL :: Parallel, Found
+    
+    IF(.NOT. ASSOCIATED(x) ) RETURN
+    
+    Parallel = ( ParEnv % PEs > 1)
+    IF( Parallel ) THEN
+      IF( PRESENT( AlwaysSerial ) ) THEN
+        IF( AlwaysSerial ) Parallel = .FALSE.
+      END IF
+    END IF
+    IF( Parallel ) THEN
+      IF( ListGetLogical( CurrentModel % Simulation,'Serial Range',Found ) ) THEN
+        Parallel = .FALSE.
+      END IF
+    END IF
+    
+    s(1) = MINVAL( x(1:n) ) 
+    s(2) = MAXVAL( x(1:n) ) 
+    s(3) = SUM( x(1:n) ) 
+
+    IF( Parallel ) THEN
+      s(1) = ParallelReduction( s(1),1 ) 
+      s(2) = ParallelReduction( s(2),2 ) 
+      s(3) = ParallelReduction( s(3) )
+    END IF
+      
+    WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+    CALL Info('VectorValuesRange',Message)
+
+  END SUBROUTINE VectorValuesRange
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
@@ -4826,8 +4868,8 @@ CONTAINS
         PassPerm(Mesh % Elements(j) % NodeIndexes)=1
       END DO
 
-      DO t = 1, Mesh % NumberOfBulkElements 
-        Element => Mesh % Elements(t)
+      DO t=1,Solver % NumberOfActiveElements
+        Element => Mesh % Elements(Solver % ActiveElements(t))
         IF( Element % BodyId <= 0 .OR. Element % BodyId > Model % NumberOfBodies ) THEN
           CALL Warn(Caller,'Element body id beyond body table!')
           CYCLE
@@ -4854,6 +4896,17 @@ CONTAINS
         IF (ListGetLogical(ValueList,PassCondName,GotIt)) THEN
           IF (.NOT.CheckPassiveElement(Element)) CYCLE
           DO j=1,n
+            k=Indexes(j)
+            IF (k<=0) CYCLE
+            k=Perm(k)
+            IF (k<=0) CYCLE
+            s=0._dp
+            DO l=1,NDOFs
+              m=NDOFs*(k-1)+l
+              s=s+ABS(A % Values(A % Diag(m)))
+            END DO
+            IF (s>EPSILON(s)) CYCLE
+
             NodeIndexes(1) = Indexes(j)
             IF(PassPerm(NodeIndexes(1))==0) CALL SetPointValues(1)
           END DO
@@ -5161,6 +5214,13 @@ CONTAINS
     IF ( Passive ) THEN
       Solver => Model % Solver
       Mesh => Solver % Mesh
+
+      ALLOCATE(PassPerm(Mesh % NumberOfNodes),NodeIndexes(1));PassPerm=0
+      DO i=0,Mesh % PassBCCnt-1
+        j=Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements-i
+        PassPerm(Mesh % Elements(j) % NodeIndexes)=1
+      END DO
+
       DO i=1,Solver % NumberOfActiveElements
         Element => Mesh % Elements(Solver % ActiveElements(i))
         IF (CheckPassiveElement(Element)) THEN
@@ -5172,13 +5232,15 @@ CONTAINS
             k=Perm(k)
             IF (k<=0) CYCLE
 
+            IF(PassPerm(Indexes(j))==1) CYCLE
+
             s=0._dp
             DO l=1,NDOFs
               m=NDOFs*(k-1)+l
               s=s+ABS(A % Values(A % Diag(m)))
             END DO
             IF (s>EPSILON(s)) CYCLE
- 
+
             DO l=1,NDOFs
               m = NDOFs*(k-1)+l
               IF(A % ConstrainedDOF(m)) CYCLE
@@ -5187,6 +5249,7 @@ CONTAINS
           END DO
         END IF
       END DO
+      DEALLOCATE(PassPerm,NodeIndexes)
     END IF
 
 
@@ -6270,7 +6333,7 @@ CONTAINS
            weight = WeightVar % Values( k )
            coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
                //Name(1:nlen),ii, Found )
-           val = -weight * coeff !* DiagScaling(k)**2
+           val = -weight * coeff 
            scale = -1.0
          ELSE         
            val = 1.0_dp
@@ -6287,17 +6350,11 @@ CONTAINS
              m = Perm( Projector % Cols(l) )
              IF ( m > 0 ) THEN
                m = NDOFs * (m-1) + DOF
-               CALL AddToMatrixElement( A,k,m,val * Projector % Values(l) ) !* &
-                   !( DiagScaling(m) / DiagScaling(k) ) )
+               CALL AddToMatrixElement( A,k,m,val * Projector % Values(l) )
              END IF
           END DO
 
-          !IF(.NOT. Jump) THEN
-          !  A % ConstrainedDof(k) = .TRUE.
-          !  A % DValues(k) = -ValueOffset
-          !ELSE          
-            b(k) = b(k) - ValueOffset !/ DiagScaling(k)
-          !END IF
+          b(k) = b(k) - ValueOffset 
           CALL AddToMatrixElement( A,k,k,scale*val )
           
         END IF
@@ -8598,7 +8655,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Origin(3),Axis(3)
     REAL(KIND=dp), POINTER :: Pwrk(:,:)
-    LOGICAL :: GotOrigin,GotAxis
+    LOGICAL :: GotOrigin,GotAxis,OneSidedNormals
     CHARACTER(*), PARAMETER :: Caller = 'AverageBoundaryNormals'
 
     !------------------------------------------------------------------------------
@@ -8609,7 +8666,6 @@ CONTAINS
 
     Mesh => Model % Mesh
     NrmVar => VariableGet( Mesh % Variables, 'Normals' )
-
     
     IF ( ASSOCIATED(NrmVar) ) THEN
 
@@ -8720,14 +8776,20 @@ CONTAINS
           DEALLOCATE(Condition)
         END DO
 
+        ! Here we go through the periodic projectors and average the normals
+        ! such that the normals are the same where the nodes are the same.
+        !--------------------------------------------------------------------
         DO iBC=1,Model % NumberOfBCs
           Projector => Model % BCs(iBC) % PMatrix
           IF ( .NOT. ASSOCIATED( Projector ) ) CYCLE
 
-          !
+          ! This is the legacy periodic projector.
+          ! The mortars etc. should be treated differently. 
+          IF( Projector % ProjectorType /= PROJECTOR_TYPE_NODAL ) CYCLE
+          BC => Model % BCs(iBC) % Values
+                              
           ! TODO: consistent normals, if rotations given:
           ! ---------------------------------------------
-          BC => Model % BCs(iBC) % Values
           Rot => ListGetConstRealArray(BC,'Periodic BC Rotate', Found )
           IF ( Found .AND. ASSOCIATED(Rot) ) THEN
             IF ( ANY(Rot/=0) ) THEN
@@ -8751,23 +8813,49 @@ CONTAINS
               CYCLE
             END IF
           END IF
-
+          
+          ! Here we are projecting with transpose of the projector which is not
+          ! really exact generally, but is usually better than not considering the values
+          ! at all!
+          !-------------------------------------------------------------------------------
+          OneSidedNormals = ListGetLogical(BC,'One Sided Normals',Found ) 
+          IF(.NOT. OneSidedNormals ) THEN
+            DO i=1,Projector % NumberOfRows
+              k = BoundaryReorder(Projector % InvPerm(i))
+              IF ( k <= 0 ) CYCLE
+              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
+                IF ( Projector % Cols(l) <= 0 ) CYCLE
+                m = BoundaryReorder(Projector % Cols(l))
+                IF ( m>0 ) THEN
+                  BoundaryNormals(k,:) = BoundaryNormals(k,:) + &
+                      Projector % Values(l) * BoundaryNormals(m,:)
+                END IF
+              END DO
+            END DO
+          END IF
+            
+          ! Ok, now we need to nullify the values so that we can apply the projector
+          ! in the next sequence. This used to be done before without the upper part
+          !--------------------------------------------------------------------------
           DO i=1,Projector % NumberOfRows
             k = BoundaryReorder(Projector % InvPerm(i))
             IF ( k <= 0 ) CYCLE
             DO l=Projector % Rows(i),Projector % Rows(i+1)-1
               IF ( Projector % Cols(l) <= 0 ) CYCLE
               m = BoundaryReorder(Projector % Cols(l))
-              IF ( m>0 ) BoundaryNormals(m,:) = 0._dp
+              IF ( m>0 ) BoundaryNormals(m,:) = 0.0_dp
             END DO
           END DO
         END DO
 
+        ! Here we use the values of the master side to have same values
+        ! on the slave side as well. So this is hierarchical.
+        !----------------------------------------------------------------
         DO iBC=1,Model % NumberOfBCs
            Projector => Model % BCs(iBC) % PMatrix
            IF ( .NOT. ASSOCIATED( Projector ) ) CYCLE
-
-           !
+           IF( Projector % ProjectorType /= PROJECTOR_TYPE_NODAL ) CYCLE
+          
            ! TODO: consistent normals, if rotations given:
            ! ---------------------------------------------
            BC => Model % BCs(iBC) % Values
@@ -8782,14 +8870,18 @@ CONTAINS
               DO l=Projector % Rows(i),Projector % Rows(i+1)-1
                 IF ( Projector % Cols(l) <= 0 ) CYCLE
                 m = BoundaryReorder(Projector % Cols(l))
-                IF ( m > 0 ) &
-                   BoundaryNormals(m,:) = BoundaryNormals(m,:) + &
-                     Projector % Values(l) * BoundaryNormals(k,:)
+                IF ( m > 0 ) THEN
+                  BoundaryNormals(m,:) = BoundaryNormals(m,:) + &
+                      Projector % Values(l) * BoundaryNormals(k,:)
+                END IF
               END DO
-           END DO
+            END DO
         END DO
       END IF
 
+      ! Communicate normals in parallel case so that they are consistent
+      ! over the interfaces
+      !-----------------------------------------------------------------
       IF (ParEnv % PEs>1 ) THEN
         ALLOCATE( n_count(ParEnv% PEs),n_index(ParEnv % PEs) )
         n_count = 0
@@ -8945,7 +9037,8 @@ CONTAINS
         END IF
       END IF
 
-
+      ! Normalize the normals and compute the tangent directions.
+      !----------------------------------------------------------
       DO i=1,Model % NumberOfNodes
         k = BoundaryReorder(i) 
         IF ( k > 0 ) THEN
@@ -9100,7 +9193,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   SUBROUTINE InitializeTimestep( Solver )
 !------------------------------------------------------------------------------
-     TYPE(Solver_t) :: Solver  !< Solver to be initialized.
+     TYPE(Solver_t), TARGET :: Solver  !< Solver to be initialized.
 !------------------------------------------------------------------------------
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
      LOGICAL :: GotIt
@@ -9108,6 +9201,7 @@ END FUNCTION SearchNodeL
      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
      TYPE(Matrix_t), POINTER :: A
      TYPE(Variable_t), POINTER :: Var
+     TYPE(Solver_t), POINTER :: pSolver
      
 !------------------------------------------------------------------------------
      Solver % DoneTime = Solver % DoneTime + 1
@@ -9115,7 +9209,7 @@ END FUNCTION SearchNodeL
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) .OR. &
           .NOT. ASSOCIATED( Solver % Variable % Values ) ) RETURN
-
+          
      IF ( Solver % TimeOrder <= 0 ) RETURN
 !------------------------------------------------------------------------------
 
@@ -9286,6 +9380,13 @@ END FUNCTION SearchNodeL
          Var % PrevValues(:,1) = Var % Values
        END DO
      END BLOCK
+
+     ! This is after the timestep initialization since then we can recommunicate the cyclic
+     ! solution for PrevValues in time-parallel simulation.
+     IF( ListGetLogical( Solver % Values,'Store Cyclic System',GotIt ) ) THEN      
+       pSolver => Solver
+       CALL StoreCyclicSolution(pSolver)
+     END IF     
      
 !------------------------------------------------------------------------------
   END SUBROUTINE InitializeTimestep
@@ -9891,7 +9992,13 @@ END FUNCTION SearchNodeL
     IF( SteadyState .OR. DoIt ) THEN          
       CALL DerivateExportedVariables( Solver )  
     END IF       
-    
+
+    IF( SteadyState ) THEN
+      CALL Info(Caller,'Finished updating steady state objects!',Level=32)
+    ELSE
+      CALL Info(Caller,'Finished updaing nonlinear objects!',Level=32)
+    END IF
+
   END SUBROUTINE UpdateDependentObjects
 
 
@@ -9928,12 +10035,14 @@ END FUNCTION SearchNodeL
     INTEGER :: ipar(1)
     TYPE(ValueList_t), POINTER :: SolverParams
     CHARACTER(*), PARAMETER :: Caller = 'ComputeChange'
-    LOGICAL :: Parallel
+    LOGICAL :: Parallel, SingleMesh
     
     
     SolverParams => Solver % Values
     RelativeP = .FALSE.
-    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Solver % Mesh % SingleMesh )  
+    SingleMesh = Solver % Mesh % SingleMesh
+    
+    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. SingleMesh ) 
     
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
@@ -10038,7 +10147,7 @@ END FUNCTION SearchNodeL
     ELSE
       x => Solver % Variable % Values      
     END IF
-
+    
     IF ( .NOT. ASSOCIATED(x) ) THEN
       Solver % Variable % Norm = 0.0d0 
       IF(SteadyState) THEN
@@ -10048,23 +10157,23 @@ END FUNCTION SearchNodeL
       END IF
       RETURN
     END IF
-
     
     IF(PRESENT(nsize)) THEN
       n = nsize 
     ELSE 
       n = SIZE( x )
     END IF
-
-    IF( SkipConstraints ) n = MIN( n, Solver % Matrix % NumberOfRows )
-
+    
+    IF( SkipConstraints ) THEN
+      n = MIN( n, Solver % Matrix % NumberOfRows )
+    END IF
+      
     ! If requested (for p-elements) only use the dofs associated to nodes. 
     ! One should not optimize bandwidth if this is desired. 
     IF( NodalNorm ) THEN
       i = MAXVAL( Solver % Variable % Perm(1:Solver % Mesh % NumberOfNodes ) )
       n = MIN(n,i*Solver % Variable % Dofs)
     END IF
-
     
     Stat = .FALSE.
     x0 => NULL()
@@ -10122,6 +10231,7 @@ END FUNCTION SearchNodeL
     ELSE
       PrevNorm = Solver % Variable % Norm
     END IF
+
     
     Norm = ComputeNorm(Solver, n, x)
     Solver % Variable % Norm = Norm
@@ -10210,7 +10320,7 @@ END FUNCTION SearchNodeL
       ! This option is useful for certain special solvers.  
       !--------------------------------------------------------------------------
       A => Solver % Matrix
-      b => Solver % Matrix % rhs
+      b => Solver % Matrix % rhs     
       
       IF (Parallel) THEN
 
@@ -10277,6 +10387,18 @@ END FUNCTION SearchNodeL
       CALL Warn(Caller,'Unknown convergence measure: '//TRIM(ConvergenceType))    
       
     END SELECT
+
+
+    ! This could be a multislice case, for example. We don't want each slice to have
+    ! different iteration count so we need to check the max norm of the partitions
+    ! even for multislice case. 
+    IF( SingleMesh ) THEN
+      IF( ListGetInteger( CurrentModel % Simulation,'Number of Slices', Stat ) > 1 ) THEN
+        CALL Info(Caller,'Communicating maximum norm in single mesh operation',Level=10)
+        Change = ParallelReduction( Change, 2 )
+      END IF
+    END IF
+
     
     !--------------------------------------------------------------------------
     ! Check for convergence: 0/1
@@ -13370,6 +13492,9 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
     LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve
+    REAL(KIND=dp), POINTER :: pv(:)
+
+    TARGET b, x 
     
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
@@ -13726,7 +13851,15 @@ END FUNCTION SearchNodeL
         IF ( Prec=='circuit' ) CALL CircuitPrecCreate(A,Solver)
       END IF
     END IF
-   
+
+
+    IF( InfoActive(30) ) THEN
+      CALL VectorValuesRange(A % values,SIZE(A % values),'A')
+      pv => b
+      CALL VectorValuesRange(pv,SIZE(pv),'b')
+    END IF
+      
+    
     IF ( .NOT. Parallel ) THEN
       CALL Info('SolveLinearSystem','Serial linear System Solver: '//TRIM(Method),Level=8)
       
@@ -13763,6 +13896,12 @@ END FUNCTION SearchNodeL
       END SELECT
     END IF
 
+    IF( InfoActive(30) ) THEN
+      pv => x
+      CALL VectorValuesRange(pv,SIZE(pv),'x')
+    END IF
+    
+    
 110 IF( AndersonAcc .AND. AndersonScaled )  THEN
       CALL NonlinearAcceleration( A, x, b, Solver, .FALSE.)
     END IF
@@ -14341,7 +14480,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 !> A parser of the variable name that returns the true variablename
 !> where the inline options have been interpreted.
 !------------------------------------------------------------------------------
-  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, IpVariable, ElemVariable, DgVariable )
+  SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs, &
+      IpVariable, ElemVariable, DgVariable, NodalVariable )
 
     CHARACTER(LEN=*)  :: var_name
     LOGICAL, OPTIONAL :: NoOutput, Global
@@ -14349,6 +14489,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     LOGICAL, OPTIONAL :: IpVariable
     LOGICAL, OPTIONAL :: ElemVariable
     LOGICAL, OPTIONAL :: DgVariable
+    LOGICAL, OPTIONAL :: NodalVariable
 
     INTEGER :: i,j,k,m
 
@@ -14356,7 +14497,11 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
     IF(PRESENT(Global)) Global = .FALSE.
     IF(PRESENT(Dofs)) Dofs = 0
     IF(PRESENT(IpVariable)) IpVariable = .FALSE.
-
+    IF(PRESENT(DgVariable)) DgVariable = .FALSE.      
+    IF(PRESENT(ElemVariable)) ElemVariable = .FALSE.      
+    IF(PRESENT(NodalVariable)) NodalVariable = .FALSE.      
+    
+    
     DO WHILE( var_name(1:1) == '-' )
 
       m = 0
@@ -14379,6 +14524,10 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       ELSE IF ( SEQL(var_name, '-elem ') ) THEN
         IF(PRESENT(ElemVariable)) ElemVariable = .TRUE.      
         m = 6
+
+      ELSE IF ( SEQL(var_name, '-nodal ') ) THEN
+        IF(PRESENT(NodalVariable)) NodalVariable = .TRUE.      
+        m = 7
       END IF
 
       IF( m > 0 ) THEN
@@ -14821,7 +14970,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var, DerVar, dtVar
   CHARACTER(LEN=MAX_NAME_LEN) :: str, var_name
-  INTEGER :: VarNo
+  INTEGER :: VarNo, Cnt
   LOGICAL :: Found, DoIt
   REAL(KIND=dp) :: dt
   
@@ -14832,6 +14981,8 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
   Params => Solver % Values
 
   VarNo = 0
+  Cnt = 0
+  
   DO WHILE( .TRUE. )
     VarNo = VarNo + 1
 
@@ -14861,6 +15012,7 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
       
       CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
       DerVar % Values = (Var % Values(:) - Var % PrevValues(:,1)) / dt
+      Cnt = Cnt + 1
     END IF
 
     str = TRIM( ComponentName(Var_name) )//' Calculate Acceleration'
@@ -14878,10 +15030,13 @@ SUBROUTINE SolveConstraintModesSystem( A, x, b, Solver )
 
       CALL Info('DerivatingExportedVariables','Computing numerical derivative for:'//TRIM(str),Level=8)     
       DerVar % Values = (Var % Values(:) - 2*Var % PrevValues(:,1) - Var % PrevValues(:,2)) / dt**2
+      Cnt = Cnt + 1
     END IF
 
   END DO
-    
+
+  CALL Info('DerivateExportedVariables','Derivating done for variables: '//TRIM(I2S(Cnt)),Level=20)
+
 END SUBROUTINE DerivateExportedVariables
 
 
@@ -15518,8 +15673,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IMPLICIT NONE
   TYPE(Matrix_t), POINTER :: StiffMatrix !< Linear equation matrix information. 
                                          !< The restriction matrix is assumed to be in the EMatrix-field
-  REAL(KIND=dp),TARGET :: ForceVector(:)        !< The right hand side of the linear equation
-  REAL(KIND=dp),TARGET :: Solution(:)           !< Previous solution as input, new solution as output.
+  REAL(KIND=dp),TARGET :: ForceVector(:) !< The right hand side of the linear equation
+  REAL(KIND=dp),TARGET :: Solution(:)    !< Previous solution as input, new solution as output.
   REAL(KIND=dp) :: Norm                  !< The L2 norm of the solution.
   INTEGER :: DOFs                        !< Number of degrees of freedom of the equation.
   TYPE(Solver_t), TARGET :: Solver       !< Linear equation solver options.
@@ -15529,12 +15684,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        RestMatrixTranspose, TMat, XMat
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
      AddVector(:), Tvals(:), Vals(:)
-  REAL(KIND=dp), POINTER  :: MultiplierValues(:)
+  REAL(KIND=dp), POINTER  :: MultiplierValues(:), pSol(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:), TotValues(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l, m, n, p,q, ix, Loop
   TYPE(Variable_t), POINTER :: MultVar
-  REAL(KIND=dp) :: scl, rowsum
+  REAL(KIND=dp) :: scl, rowsum, Relax
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
               NonEmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
               SkipConstraints
@@ -15560,20 +15715,19 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   SolverPointer => Solver  
   Parallel = (ParEnv % PEs > 1 )
-
+  IF( Solver % Mesh % SingleMesh ) Parallel = .FALSE.
+  
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
   IF(.NOT. Found) NotExplicit=.FALSE.
 
   RestMatrix => NULL()
-  IF(.NOT.NotExplicit) &
-        RestMatrix => StiffMatrix % ConstraintMatrix
+  IF(.NOT.NotExplicit) RestMatrix => StiffMatrix % ConstraintMatrix
   RestVector => Null()
   IF(ASSOCIATED(RestMatrix)) RestVector => RestMatrix % RHS
 
   AddMatrix => StiffMatrix % AddMatrix
   AddVector => NULL()
-  IF(ASSOCIATED(AddMatrix)) &
-    AddVector => AddMatrix % RHS
+  IF(ASSOCIATED(AddMatrix)) AddVector => AddMatrix % RHS
 
   NumberOfRows = StiffMatrix % NumberOfRows
   
@@ -15638,21 +15792,32 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      IF(ASSOCIATED(AddMatrix))  j = j+MAX(0,AddMatrix % NumberofRows-StiffMatrix % NumberOfRows)
 
      IF ( .NOT. ASSOCIATED(MultVar) ) THEN
+       CALL Info(Caller,'Creating variable for Lagrange multiplier',Level=8)
        ALLOCATE( MultiplierValues(j), STAT=istat )
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error.')
 
        MultiplierValues = 0.0_dp
        CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
-                  MultiplierName, 1, MultiplierValues)
+                  MultiplierName, 1, MultiplierValues)      
+       MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
      END IF
-     MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
-
+          
      MultiplierValues => MultVar % Values
 
      IF (j>SIZE(MultiplierValues)) THEN
        CALL Info(Caller,'Increasing Lagrange multiplier size to: '//TRIM(I2S(j)),Level=8)
-       ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp
-       MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values
+       ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp       
+       MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values     
+
+       ! If the Lagrange variable includes history also change its size.
+       IF( ASSOCIATED( MultVar % PrevValues ) ) THEN
+         MultVar % Values = MultVar % PrevValues(:,1)
+         DEALLOCATE( MultVar % PrevValues )
+         ALLOCATE( MultVar % PrevValues(j,1) )
+         MultVar % PrevValues = 0.0_dp
+         MultVar % PrevValues(:,1) = MultVar % Values
+       END IF
+
        DEALLOCATE(MultVar % Values)
        MultVar % Values => MultiplierValues
      END IF
@@ -15751,6 +15916,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  RestMatrix % Cols(j), k, RestMatrix % Values(j))
             END IF
 
+            ! Add the Transpose part
             IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
               CALL AddToMatrixElement( CollectionMatrix, &
                        k, RestMatrix % Cols(j), RestMatrix % TValues(j))
@@ -15955,7 +16121,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END IF
   END IF
 
-  IF ( ParEnv % Pes>1 ) THEN
+  IF ( Parallel ) THEN
     EliminateDiscont =  ListGetLogical( Solver % values, 'Eliminate Discont',Found )
     IF( EliminateDiscont ) THEN
       CALL totv( StiffMatrix, SlaveDiag, SlaveIPerm )
@@ -16215,6 +16381,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(CollectionMatrix % FORMAT==MATRIX_LIST) &
       CALL List_toCRSMatrix(CollectionMatrix)
 
+  IF( InfoActive(30) ) THEN    
+    CALL VectorValuesRange(CollectionMatrix % Values,&
+        SIZE(CollectionMatrix % Values),'CollectionMatrix')           
+    CALL VectorValuesRange(CollectionVector,&
+        SIZE(CollectionVector),'CollectionVector')           
+  END IF
+  
   CALL Info( Caller, 'CollectionMatrix done', Level=5 )
 
 !------------------------------------------------------------------------------
@@ -16229,14 +16402,21 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionSolution(i:j) = 0._dp
   IF(ExportMultiplier) CollectionSolution(i:j) = MultiplierValues(1:j-i+1)
 
+  IF( InfoActive(30) ) THEN
+    pSol => CollectionSolution
+    CALL VectorValuesRange(pSol,j,'CollectionSolution')           
+  END IF
+  
   CollectionMatrix % ExtraDOFs = CollectionMatrix % NumberOfRows - &
                   StiffMatrix % NumberOfRows
 
   CollectionMatrix % ParallelDOFs = 0
-  IF(ASSOCIATED(AddMatrix)) &
-    CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
-                  StiffMatrix % NumberOfRows,0)
-
+  IF( Parallel ) THEN
+    IF(ASSOCIATED(AddMatrix)) &
+        CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
+        StiffMatrix % NumberOfRows,0)
+  END IF
+    
   CALL Info( Caller, 'CollectionVector done', Level=5 )
 
 !------------------------------------------------------------------------------
@@ -16288,11 +16468,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionMatrix % Comm = StiffMatrix % Comm
 
   CALL Info(Caller,'Now going for the coupled linear system',Level=10)
-
+  
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
-
-  
+    
   !-------------------------------------------------------------------------------
   ! For restricted systems study the norm without some block components.
   ! For example, excluding gauge constraints may give valuable information
@@ -16352,10 +16531,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       IF(ASSOCIATED(AddMatrix)) &
         j=j+MAX(0,AddMatrix % NumberOfRows - StiffMatrix % NumberOFRows)
 
-      MultiplierValues = 0.0_dp
-      IF(ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
+      IF(ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN        
         ! Compute eliminated l-coefficient values:
         ! ---------------------------------------
+        MultiplierValues = 0.0_dp
         DO i=1,RestMatrix % NumberOfRows
           scl = 1._dp / UseDiag(i)
           m = UseIPerm(i)
@@ -16366,7 +16545,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           END DO
         END DO
       ELSE
-        MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+        Relax = ListGetCReal( Solver % Values,'Lagrange Multiplier Relaxation Factor', Found )
+        IF( Found ) THEN          
+          MultiplierValues(1:j) = (1-Relax) * MultiplierValues(1:j) + &
+              Relax * CollectionSolution(i+1:i+j)
+        ELSE       
+          MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+        END IF
       END IF
 
       IF(EliminateConstraints.AND.EliminateDiscont) THEN
@@ -16409,7 +16594,9 @@ CONTAINS
       END DO
     END IF
 
-    CALL ParallelSumVector(A, x)
+    IF( Parallel ) THEN
+      CALL ParallelSumVector(A, x)
+    END IF
 !   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, i ); x=r
 
     IF(ALLOCATED(perm)) THEN
@@ -16448,7 +16635,7 @@ CONTAINS
 
      ALLOCATE(TotValues(SIZE(A % Values))); TotValues=A % Values
 
-     IF (ParEnv  % PEs>1 ) THEN
+     IF ( Parallel ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs-1))
        cnt = 0
        DO i=1,n
@@ -18159,18 +18346,17 @@ CONTAINS
               ! trace of the global rotations ROT is related to the directional derivative
               ! of the displacement field u by -Du[d] x d = d x ROT x d. This implementation 
               ! is limited to cases where the director is aligned with one of the global
-              ! coordinate axes.
+              ! coordinate axes. Find the closest one and use that. 
               !
-              NormalDir = 0
-              DO i=1,3
-                IF (ABS(1.0_dp - ABS(Director(i))) < 1.0d-5) THEN
-                  NormalDir = i
-                  EXIT
-                END IF
+              NormalDir = 1              
+              DO i=2,3
+                IF (ABS(Director(i)) > ABS(Director(NormalDir))) NormalDir = i
               END DO
-              IF( NormalDir == 0 ) THEN
-                CALL Fatal(Caller, &
-                    'Coupling with drilling rotation formulation needs an axis-aligned director')
+              ! This is not good, but maybe not bad enough to through the whole analysis away...
+              IF (1.0_dp - ABS(Director(NormalDir)) > 1.0d-5) THEN
+                WRITE(Message,'(A,I0,A,F7.4)') 'Director not properly aligned with axis ',&
+                    NormalDir,': ',Director(NormalDir)
+                CALL Warn(Caller,Message)
               END IF
             END IF
         
@@ -19341,8 +19527,9 @@ CONTAINS
      TYPE(Solver_t), TARGET :: Solver
      LOGICAL, OPTIONAL :: Nonlinear, SteadyState
 
-     LOGICAL :: IsNonlinear,IsSteadyState,Timing, RequireNonlinear, ContactBC
-     LOGICAL :: ApplyMortar, ApplyContact, StoreCyclic, Found, StaticProj
+     LOGICAL :: IsNonlinear,IsSteadyState,Timing, RequireNonlinear, ContactBC, &
+         MortarBC, IntegralBC
+     LOGICAL :: ApplyMortar, ApplyContact, ApplyIntegral, StoreCyclic, Found, StaticProj
      INTEGER :: i,j,k,l,n,dsize,size0,col,row,dim
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
@@ -19352,17 +19539,17 @@ CONTAINS
      TYPE(Solver_t), POINTER :: PSolver
      TYPE(Matrix_t), POINTER :: Proj
 
-          
-     ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
-     ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found) 
 
+     ApplyIntegral = ListGetLogical( Solver % Values,'Apply Integral BCs',Found)
+     ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
+     ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found)     
+     
+     IF( .NOT. ( ApplyMortar .OR. ApplyContact .OR. ApplyIntegral ) ) RETURN
+     
      ! Here we give the option to block out cyclic projector if not wanted. 
      StoreCyclic = ListGetLogical( Solver % Values,'Store Cyclic Projector', Found)
      IF(.NOT. Found ) StoreCyclic = ListGetLogical( Solver % Values,'Store Cyclic System', Found)
      PSolver => Solver
-     
-     
-     IF( .NOT. ( ApplyMortar .OR. ApplyContact) ) RETURN
      
      i = ListGetInteger( Solver % Values,'Mortar BC Master Solver',Found ) 
      IF( Found ) THEN
@@ -19374,7 +19561,7 @@ CONTAINS
        RETURN
      END IF
 
-     CALL Info(Caller,'Generating mortar projectors',Level=8)
+     CALL Info(Caller,'Generating various boundary projectors',Level=8)
 
      Timing = ListCheckPrefix(Solver % Values,'Projector Timing')
      IF( Timing ) THEN
@@ -19397,19 +19584,32 @@ CONTAINS
      DO i=1,Model % NumberOFBCs
        BC => Model % BCs(i) % Values
        
-       ContactBC = .FALSE.
-       j = ListGetInteger( BC,'Mortar BC',Found)       
-       IF( .NOT. Found ) THEN
-         j = ListGetInteger( BC,'Contact BC',Found)       
-         ContactBC = Found
+       k = 0
+       j = ListGetInteger( BC,'Mortar BC',MortarBC)       
+       j = j + ListGetInteger( BC,'Contact BC',ContactBC)       
+       IntegralBC = ListGetLogical( BC,'Integral BC',Found ) 
+       IF( MortarBC ) k = k+1
+       IF( ContactBC ) k = k+1
+       IF( IntegralBC ) k = k+1
+       IF( k > 1 ) THEN
+         CALL Fatal(Caller,'Boundary '//TRIM(I2S(i))//' can only be one of mortar, contact and integral!')
+       END IF     
+       IF(k==0) CYCLE
+
+       IF( InfoActive(10) ) THEN
+         IF( MortarBC ) CALL Info(Caller,'Generating mortar conditions for BC: '//TRIM(I2S(i)))
+         IF( ContactBC ) CALL Info(Caller,'Generating contact conditions for BC: '//TRIM(I2S(i)))
+         IF( IntegralBC ) CALL Info(Caller,'Generating integral conditions for BC: '//TRIM(I2S(i)))
        END IF
-       IF( .NOT. Found ) CYCLE
-              
+
+       
        RequireNonlinear = ListGetLogical( BC,'Mortar BC Nonlinear',Found)
        IF( .NOT. Found ) THEN
          RequireNonlinear = ContactBC .AND. .NOT. ListGetLogical( BC,'Tie Contact',Found )
        END IF
 
+       IF( IntegralBC ) RequireNonlinear = .FALSE.
+       
        IF( IsNonlinear ) THEN
          IF( .NOT. RequireNonlinear ) CYCLE
        ELSE
@@ -19440,8 +19640,13 @@ CONTAINS
        END IF
 
        ! Compute new projector
-       Proj => PeriodicProjector(Model,Solver % Mesh,i,j,dim,.TRUE.)
-
+       IF( IntegralBC ) THEN         
+         Proj => IntegralProjector(Model,Solver % Mesh, i ) 
+       ELSE
+         ! This is the same for mortar and contact!
+         Proj => PeriodicProjector(Model,Solver % Mesh,i,j,dim,.TRUE.)
+       END IF
+         
        Solver % MortarBCs(i) % Projector => Proj       
        IF( ASSOCIATED( Proj ) ) THEN
          Solver % MortarBCsChanged = .TRUE.
@@ -19521,6 +19726,9 @@ CONTAINS
      LOGICAL, POINTER :: PerFlip(:)
      CHARACTER(*), PARAMETER :: Caller = 'GenerateConstraintMatrix'
 
+     LOGICAL :: IntegralBC
+     REAL(KIND=dp) :: SetVal(6)
+     
      
      ! Should we genarete the matrix
      NeedToGenerate = Solver % MortarBCsChanged
@@ -19733,10 +19941,14 @@ CONTAINS
            CALL Fatal(Caller,'InvPerm is required!')
          END IF
 
+         BC => Model % BCs(bc_ind) % Values         
          IF( AnyPriority ) THEN
-           Priority = ListGetInteger( Model % BCs(bc_ind) % Values,'Projector Priority',Found)
+           Priority = ListGetInteger( BC,'Projector Priority',Found)
          END IF
-           
+
+         IntegralBC = ListGetLogical( BC,'Integral BC',Found ) 
+
+         
          ! Enable that the user can for vector valued cases either set some 
          ! or skip some field components. 
          SomeSet = .FALSE.
@@ -19748,7 +19960,11 @@ CONTAINS
              str = Solver % Variable % Name 
            END IF
 
-           SetDof = ListGetLogical( Model % BCs(bc_ind) % Values,'Mortar BC '//TRIM(str),Found )
+           IF( IntegralBC ) THEN
+             SetVal(i) = ListGetCReal( BC,'Integral BC '//TRIM(str),SetDof )
+           ELSE
+             SetDof = ListGetLogical( BC,'Mortar BC '//TRIM(str),Found )
+           END IF
 
            SetDefined(i) = Found
            IF(Found) THEN
@@ -20067,7 +20283,9 @@ CONTAINS
            END IF
 
            IF( AllocationsDone ) THEN
-             IF( ThisIsMortar ) THEN
+             IF( IntegralBC ) THEN
+               Btmp % Rhs(row) = SetVal(1)
+             ELSE IF( ThisIsMortar ) THEN
                IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
                  Btmp % Rhs(row) = Btmp % Rhs(row) + wsum * MortarBC % rhs(i)
                END IF
@@ -20458,7 +20676,9 @@ CONTAINS
 
                
              IF( AllocationsDone ) THEN
-               IF( ThisIsMortar ) THEN
+               IF( IntegralBC ) THEN
+                 Btmp % Rhs(row) = SetVal(j)
+               ELSE IF( ThisIsMortar ) THEN
                  IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
                    Btmp % Rhs(row) = wsum * MortarBC % rhs(Dofs*(i-1)+j)
                  END IF
@@ -20547,8 +20767,27 @@ CONTAINS
        CALL Info(Caller,'Number of neglected rows: '//TRIM(I2S(NeglectedRows)),Level=6)
      END IF
         
+     IF( InfoActive(30) ) THEN
+       BLOCK
+         REAL(KIND=dp), POINTER :: px(:)
+         px => Btmp % Values
+         CALL VectorValuesRange(px,SIZE(px),'ConstraintMatrix')
+       END BLOCK
+     END IF
+
      Solver % Matrix % ConstraintMatrix => Btmp     
      Solver % MortarBCsChanged = .FALSE.
+
+     IF( InfoActive(20) ) THEN
+       WRITE(Message,'(A,ES12.3)') 'Sum of constraint matrix entries: ',SUM(Btmp % Values)
+       CALL Info(Caller,Message)
+       WRITE(Message,'(A,ES12.3)') 'Sum of constraint matrix rhs: ',SUM(Btmp % Rhs)
+       CALL Info(Caller,Message)
+       CALL Info(Caller,'Constraint matrix cols min:'//TRIM(I2S(MINVAL(Btmp%Cols))))
+       CALL Info(Caller,'Constraint matrix cols max:'//TRIM(I2S(MAXVAL(Btmp%Cols))))
+       CALL Info(Caller,'Constraint matrix rows min:'//TRIM(I2S(MINVAL(Btmp%Rows))))
+       CALL Info(Caller,'Constraint matrix rows max:'//TRIM(I2S(MINVAL(Btmp%Rows))))
+     END IF
      
      CALL Info(Caller,'Finished creating constraint matrix',Level=12)
 
@@ -21138,62 +21377,86 @@ CONTAINS
    ! solver for a given steady-state iteration.
    !-----------------------------------------------------------------------------
    SUBROUTINE StoreCyclicSolution(Solver)
+     
+     TYPE CyclicSol_t
+       REAL(KIND=dp), ALLOCATABLE :: PeriodicSol(:,:), PeriodicMult(:,:), &
+           PeriodicNrm(:), PeriodicChange(:), dx(:), dy(:)
+       LOGICAL :: DoGuess = .FALSE., PeriodicConv = .FALSE.
+       INTEGER :: NConv = 0, N1st = 0       
+     END TYPE CyclicSol_t
+     
      TYPE(Solver_t), POINTER :: Solver     
      TYPE(Model_t), POINTER :: Model
 
+     REAL(KIND=dp), POINTER :: PeriodicSol(:,:), PeriodicMult(:,:), &
+         PeriodicNrm(:), PeriodicChange(:), dx(:), dy(:)
+     LOGICAL :: DoGuess, PeriodicConv
+     INTEGER :: NConv, N1st       
+     
      LOGICAL :: Found
      TYPE(Variable_t), POINTER :: v
-     TYPE(Matrix_t), POINTER :: A     
-     REAL(KIND=dp), ALLOCATABLE :: PeriodicSol(:,:), PeriodicMult(:,:), PeriodicNrm(:), &
-         PeriodicChange(:), dx(:), dy(:)
      REAL(KIND=dp), POINTER :: x(:), y(:)
-     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, Nconv, N1st 
-     LOGICAL :: ExportMult, ParallelTime, PeriodicConv
+     INTEGER :: n, m, Ncycle, Ntime, Nguess, Nstore, GuessMode, LGuessMode, Ntimes, Nslices, mmin
+     LOGICAL :: ExportMult, ParallelTime, ParallelSlices
      TYPE(Variable_t), POINTER :: Var
      CHARACTER(LEN=MAX_NAME_LEN) :: MultName
      REAL(KIND=dp) :: Relax, AveErr, AveNrm, Tol
      CHARACTER(*), PARAMETER :: Caller = 'StoreCyclicSolution'
-     LOGICAL :: DoGuess = .FALSE.
+     INTEGER :: nSol     
+     TYPE(CyclicSol_t), POINTER :: Sols(:) => NULL(), pSol
      
      
-     SAVE PeriodicSol, dx, PeriodicNrm, PeriodicChange, PeriodicMult, dy, &
-         Nconv, PeriodicConv, DoGuess, N1st
+     SAVE Sols
 
-     CALL Info(Caller,'Saving restoring cyclic solution!',Level=7)
+     CALL Info(Caller,'Saving and restoring cyclic solution!',Level=7)
 
+     Model => CurrentModel
+     IF(.NOT. ASSOCIATED( Sols ) ) THEN
+       ALLOCATE( Sols(Model % NumberOfSolvers ) )
+     END IF
      
-     Model => CurrentModel 
-
      v => VariableGet( Solver % Mesh % Variables, 'coupled iter' )     
      IF( NINT(v % Values(1)) > 1 ) RETURN
 
      Ncycle = ListGetInteger( Model % Simulation,'Periodic Timesteps')
-     ParallelTime = ListGetLogical( Model % Simulation,'Parallel Timestepping',Found ) .AND. &
-         ( ParEnv % PEs > 1 )
-     IF( ParallelTime ) THEN
-       Ncycle = Ncycle / ParEnv % PEs
-     END IF
+     Ntimes = ListGetInteger( Model % Simulation,'Number of Times',Found )  
+     Nslices = ListGetInteger( Model % Simulation,'Number of Slices',Found )
+
+     ParallelSlices = ( Nslices > 1 ) 
+     ParallelTime = ( Ntimes > 1 )
+     IF( ParallelTime ) Ncycle = Ncycle / Ntimes
      
      v => VariableGet( Solver % Mesh % Variables, 'timestep' )
      Ntime = NINT(v % Values(1))
 
-     IF( Ntime == 1 ) THEN
-       ! Nothing to do except initializations before solution exists
-       PeriodicConv = .FALSE.
-       NConv = 0
+     ! Nothing to do before solution exists
+     IF( Ntime == 1 ) RETURN
+     
+     x => Solver % Variable % Values 
+     IF(.NOT. ASSOCIATED( x ) ) THEN
+       CALL Warn(Caller,'Cannot store solution without a solution!')
        RETURN
      END IF
-          
-     A => Solver % Matrix
-     n = A % NumberOfRows     
-     x => Solver % Variable % Values 
 
+     IF( ASSOCIATED( Solver % Matrix ) ) THEN
+       n = Solver % Matrix % NumberOfRows
+     ELSE
+       n = SIZE( x ) 
+     END IF
+     
      Relax = ListGetConstReal( Solver % Values,'Parallel Timestepping Relaxation Factor',Found ) 
      IF(.NOT. Found ) Relax = 1.0_dp
      
      GuessMode = ListGetInteger( Solver % Values,'Cyclic Guess Mode',Found ) 
+     LGuessMode = ListGetInteger( Solver % Values,'Cyclic Lagrange Guess Mode',Found ) 
+     IF(.NOT. Found) LGuessMode = GuessMode
+
      
-     ExportMult = ListGetLogical( Solver % Values, 'Export Lagrange Multiplier', Found )     
+     ExportMult = ListGetLogical( Solver % Values, 'Cyclic Lagrange Multiplier', Found )
+     IF(.NOT. Found ) THEN
+       ExportMult = ListGetLogical( Solver % Values, 'Export Lagrange Multiplier', Found )          
+     END IF
+       
      IF ( ExportMult ) THEN
        MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
        IF ( .NOT. Found ) MultName = "LagrangeMultiplier"
@@ -21205,23 +21468,43 @@ CONTAINS
        END IF
      END IF
      
+
+     nSol = Solver % SolverId
+     pSol => Sols(nsol) 
      
      IF( Ntime == 2 ) THEN       
        ! allocate stuff to save vectors
-       IF(.NOT. ALLOCATED( PeriodicSol ) ) THEN
-         CALL Info(Caller,'Allocating for periodic solver values',Level=6)
-         ALLOCATE( PeriodicSol(n,Ncycle), PeriodicNrm(n), PeriodicChange(n), dx(n) )
-         PeriodicSol = 0.0_dp
-         PeriodicNrm = 0.0_dp
-         PeriodicChange = 0.0_dp
+       IF(.NOT. ALLOCATED( pSol % PeriodicSol ) ) THEN
+         CALL Info(Caller,'Allocating for periodic solver values for Solver: '//TRIM(I2S(nSol)),Level=6)
+         ALLOCATE( pSol % PeriodicSol(n,Ncycle), pSol % PeriodicNrm(n), pSol % PeriodicChange(n), pSol % dx(n) )
+         pSol % PeriodicSol = 0.0_dp
+         pSol % PeriodicNrm = 0.0_dp
+         pSol % PeriodicChange = 0.0_dp
          
          IF( ExportMult ) THEN
-           CALL Info(Caller,'Allocating for periodic Lagrange values',Level=6)
-           ALLOCATE( PeriodicMult(m,Ncycle), dy(m) )
-           PeriodicMult = 0.0_dp
+           CALL Info(Caller,'Allocating for periodic Lagrange values of size: '//TRIM(I2S(m)),Level=6)
+           ALLOCATE( pSol % PeriodicMult(m,Ncycle), pSol % dy(m) )
+           pSol % PeriodicMult = 0.0_dp
          END IF         
        END IF
      END IF
+
+     ! This was added afterwards to support multiple Solvers.
+     ! Hence we make the original variables point to the Solver-specific variables.
+     PeriodicSol => pSol % PeriodicSol
+     PeriodicNrm => pSol % PeriodicNrm
+     PeriodicChange => pSol % PeriodicChange     
+     dx => pSol % dx
+     IF( ExportMult ) THEN
+       PeriodicMult => pSol % PeriodicMult
+       dy => pSol % dy
+     END IF
+     
+     DoGuess = pSol % doGuess
+     PeriodicConv = pSol % PeriodicConv
+     N1st = pSol % N1st
+     NConv = pSol % NConv
+ 
 
      ! Both should be in [1,Ncycle]
      Nstore = MODULO( Ntime-2,Ncycle)+1
@@ -21240,7 +21523,15 @@ CONTAINS
      
      IF( NGuess == 1 .AND. ParallelTime ) THEN
        CALL Info(Caller,'Performing parallel initial guess!')
-       CALL CommunicateCyclicSolution()       
+       CALL CommunicateCyclicSolution(n,x,Solver % Variable % PrevValues)
+       IF( ExportMult ) THEN
+         IF(ASSOCIATED( Var % PrevValues ) ) THEN
+           CALL Info(Caller,'Performing parallel initial guess for Lagrange variable!')
+           CALL CommunicateCyclicSolution(m,y,Var % PrevValues)        
+         ELSE
+           CALL Warn(Caller,'PrevValues does not exist for Lagrange variable!')           
+         END IF
+       END  IF
      END IF
 
      
@@ -21248,7 +21539,9 @@ CONTAINS
      IF( DoGuess ) THEN
        IF( GuessMode == 0 ) THEN
          dx = PeriodicSol(:,Nguess)-PeriodicSol(:,Nstore)
-         IF( ExportMult ) THEN
+       END IF
+       IF( ExportMult ) THEN
+         IF( LGuessMode == 0 ) THEN
            dy = PeriodicMult(:,Nguess)-PeriodicMult(:,Nstore)
          END IF
        END IF
@@ -21258,28 +21551,32 @@ CONTAINS
      PeriodicNrm(Nstore) = Solver % Variable % Norm
      PeriodicChange(Nstore) = Solver % Variable % NonlinChange
      
-     IF( ExportMult ) THEN
+     IF( ExportMult ) THEN       
        PeriodicMult(:,Nstore) = y
      END IF
      
      IF( DoGuess ) THEN
        CALL Info(Caller,'Using values from previous cycle for initial guess!')
+       IF( ExportMult ) THEN
+         CALL Info(Caller,'Initializing Lagrange multipliers of size: '//TRIM(I2S(SIZE(y))),Level=8)
+       END IF
 
-       IF( GuessMode < 0 ) THEN
-         CONTINUE
-       ELSE IF( GuessMode == 0 ) THEN
+       IF( GuessMode == 0 ) THEN
          x = x + dx
-         IF( ExportMult ) THEN
-           y = y + dy 
-         END IF         
          Solver % Variable % Norm = SQRT( SUM(x(1:n)**2) / n )
        ELSE
          x = PeriodicSol(:,Nguess)
-         IF( ExportMult ) THEN
-           y = PeriodicMult(:,Nguess)
-         END IF
          Solver % Variable % Norm = PeriodicNrm(Nguess)
        END IF
+
+       IF( ExportMult ) THEN
+         IF( LGuessMode == 0 ) THEN
+           y = y + dy 
+         ELSE
+           y = PeriodicMult(:,Nguess)
+         END IF
+       END IF
+       
      END IF
      
      ! We have computed one full cycle to deduce we have converged.
@@ -21294,7 +21591,7 @@ CONTAINS
        WRITE(Message,'(A,ES12.5)') 'Average cyclic norm '//TRIM(I2S(Ntime))//': ',AveNrm
        CALL Info(Caller,Message )
             
-       IF( ParallelTime ) THEN
+       IF( ParallelTime .OR. ParallelSlices ) THEN
          AveErr = ParallelReduction( AveErr ) / ParEnv % PEs
          WRITE(Message,'(A,ES12.5)') 'Parallel cyclic error '//TRIM(I2S(Ntime))//': ',AveErr
          CALL Info(Caller,Message )        
@@ -21304,10 +21601,14 @@ CONTAINS
          CALL Info(Caller,Message )        
        END IF
          
+       mmin = ListGetInteger( Solver % Values,'Cyclic System Min Iterations',Found)
        Tol = ListGetCReal( Solver % Values,'Cyclic System Convergence Tolerance',Found)
+
        IF( Found ) THEN
          ! We want to start production from the 1st periodic timestep.
-         IF( Nguess == 1 .AND. AveErr < Tol ) THEN
+         m = NINT( 1.0_dp * Ntime / Ncycle ) 
+         
+         IF( Nguess == 1 .AND. AveErr < Tol .AND. m >= mmin ) THEN
            PeriodicConv = .TRUE.
            CALL Info(Caller,'Cyclic convergence reached at step: '//TRIM(I2S(Ntime)),Level=4)         
            m = NINT( 1.0_dp * Ntime / Ncycle ) 
@@ -21328,7 +21629,13 @@ CONTAINS
          END IF
        END IF
      END IF
-       
+
+     ! Store the flags in Solver-specific container.
+     pSol % DoGuess = doGuess
+     pSol % PeriodicConv = PeriodicConv
+     pSol % N1st = N1st
+     pSol % NConv = NConv
+
      
    CONTAINS
 
@@ -21336,11 +21643,14 @@ CONTAINS
      ! Here we communicate data among different periodic segments each
      ! of which takes certain interval of the periodic system.
      !--------------------------------------------------------------------------------
-     SUBROUTINE CommunicateCyclicSolution()
+     SUBROUTINE CommunicateCyclicSolution(n,x,prevx)
+       REAL(KIND=dp), POINTER :: x(:),prevx(:,:)
+       INTEGER :: n
+       
        INTEGER :: toproc, fromproc
        INTEGER :: mpistat(MPI_STATUS_SIZE), ierr
        REAL(KIND=dp), ALLOCATABLE :: tovals(:), fromvals(:)
-       INTEGER :: rank, size
+       INTEGER :: rank, size, Nslices
        INTEGER :: mpitag
        INTEGER, SAVE :: VisitedTimes = 0
 
@@ -21349,8 +21659,12 @@ CONTAINS
        CALL Info(Caller,'Communicating data between time segments!',Level=5)
        
        ! Sent data forward in time.
-       toproc = MODULO( ParEnv % MyPe + 1, ParEnv % PEs )
-       fromproc = MODULO( ParEnv % MyPe - 1, ParEnv % PEs )
+       ! For multislice model the offset to next/previous partition is bigger. 
+       Nslices = ListGetInteger( CurrentModel % Simulation,'Number of Slices',Found )
+       IF(.NOT. Found) Nslices = 1
+              
+       toproc = MODULO( ParEnv % MyPe + Nslices, ParEnv % PEs )
+       fromproc = MODULO( ParEnv % MyPe - Nslices, ParEnv % PEs )
             
        ALLOCATE( tovals(n), fromvals(n) )
 
@@ -21365,7 +21679,7 @@ CONTAINS
        CALL MPI_RECV( fromvals, n, MPI_DOUBLE_PRECISION, &
            fromproc, 2005, MPI_COMM_WORLD, mpistat, ierr )
 
-       Solver % Variable % PrevValues(:,1) = fromvals
+       prevx(:,1) = fromvals 
 
        DEALLOCATE( tovals, fromvals ) 
 
@@ -21394,17 +21708,16 @@ CONTAINS
      TYPE(Model_t), POINTER :: Model
      LOGICAL :: Found
      TYPE(ProjTable_t), POINTER :: ProjTable(:)
-     INTEGER :: n, i, Ncycle, Ntime, Nstore
+     INTEGER :: n, i, Ncycle, Ntime, Nstore, Ntimes
      LOGICAL :: SetProj
      
      SAVE ProjTable
      
      Model => CurrentModel 
      Ncycle = ListGetInteger( Model % Simulation,'Periodic Timesteps')
-     IF( ListGetLogical( Model % Simulation,'Parallel Timestepping',Found ) ) THEN
-       Ncycle = Ncycle / ParEnv % PEs
-     END IF
-     
+     Ntimes = ListGetInteger( Model % Simulation,'Number Of Times',Found )
+     IF(Found ) Ncycle = Ncycle / Ntimes     
+
      v => VariableGet( Solver % Mesh % Variables, 'timestep' )
      Ntime = NINT(v % Values(1))
 

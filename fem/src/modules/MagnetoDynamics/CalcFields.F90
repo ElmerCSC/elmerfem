@@ -965,7 +965,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF( WvecInitHandle ) THEN
            CoilWVecVarname = GetString(CompParams, 'W Vector Variable Name', Found)
            IF ( .NOT. Found) CoilWVecVarname = 'W Vector E'
-           CALL ListInitElementVariable( Wvec_h, 'W Vector E' )
+           CALL ListInitElementVariable( Wvec_h, CoilWVecVarname )
            WvecInitHandle = .FALSE.
          END IF
        ELSE
@@ -1139,11 +1139,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
          ELSE
            wvec = -MATMUL(Wbase(1:n), dBasisdx(1:n,:))
-         END IF
-         IF(SUM(wvec**2._dp) > AEPS) THEN
-           wvec = wvec/SQRT(SUM(wvec**2._dp))
-         ELSE
-           wvec = [0.0_dp, 0.0_dp, 1.0_dp]
+           IF(SUM(wvec**2._dp) > AEPS) THEN
+             wvec = wvec/SQRT(SUM(wvec**2._dp))
+           ELSE
+             wvec = [0.0_dp, 0.0_dp, 1.0_dp]
+           END IF
          END IF
        END IF
 
@@ -1186,7 +1186,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
        
-       IF (vDOFs > 1) THEN   ! Complex case
+       IF (vDOFs > 1) THEN   ! Complex case (harmonic case)
          IF (CoilType /= 'stranded') THEN
            ! -j * Omega A
            SELECT CASE(dim)
@@ -1217,10 +1217,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
              ELSE
                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             END IF
              ! btw. This does not allow ununiform windings... I don't fix it now. -ettaka
-             wvec = wvec/SQRT(SUM(wvec**2._dp)) 
+               wvec = wvec/SQRT(SUM(wvec**2._dp)) !Why were we doing this? 04132021 -ettaka
+             END IF
            END SELECT
+
+
            IF(CMat_ip(3,3) /= 0._dp ) THEN
              imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
              E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
@@ -1252,8 +1254,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              E(1,3) = E(1,3)-localV(1) * grads_coeff
              E(2,3) = E(2,3)-localV(2) * grads_coeff
            CASE(3)
-             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             IF (CoilUseWvec) THEN
+               wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
+             ELSE
+               wvec = MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             END IF
+
+             E(1,:) = E(1,:)-localV(1) * wvec
+             E(2,:) = E(2,:)-localV(2) * wvec
            END SELECT
 
          CASE DEFAULT
@@ -1298,7 +1306,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
          END SELECT
          
-       ELSE   ! Real case
+       ELSE   ! Real case (transient case)
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
            CASE(2)
@@ -1326,10 +1334,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                wvec = ListGetElementVectorSolution( Wvec_h, Basis, Element, dofs = dim )
              ELSE
                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+               wvec = wvec/SQRT(SUM(wvec**2._dp))
              END IF
-             wvec = wvec/SQRT(SUM(wvec**2._dp))
-             IF(CMat_ip(3,3) /= 0._dp ) &
+             IF(CMat_ip(3,3) /= 0._dp ) THEN
                E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
+             ELSE IF (.NOT. ImposeCircuitCurrent) THEN
+               CircuitCurrent = LagrangeVar % Values(IvarId)
+               ItoJCoeff = N_j
+               ItoJCoeffFound = .TRUE.
+             END IF
            END SELECT
 
          CASE ('massive')

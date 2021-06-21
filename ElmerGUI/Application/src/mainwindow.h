@@ -172,6 +172,7 @@ private slots:
   void edgeColorSlot();             // View -> Colors -> Edges
   void surfaceMeshColorSlot();      // View -> Colors -> Surface mesh
   void sharpEdgeColorSlot();        // View -> Colors -> Sharp edges
+  void selectionColorSlot();        // View -> Colors -> Selection
   void colorizeBoundarySlot();      // View -> Colors -> Boundaries
   void colorizeBodySlot();          // View -> Colors -> Bodies
   void selectDefinedSurfacesSlot(); // View -> Select defined surfaces
@@ -387,6 +388,7 @@ private:
   QAction *chooseSurfaceMeshColorAct; // View -> Colors -> Surface mesh
   QAction *chooseSharpEdgeColorAct;   // View -> Colors -> Sharp edges
   QAction *chooseEdgeColorAct;        // View -> Colors -> Edge color
+  QAction *chooseSelectionColorAct;   // View -> Colors -> Selection
   QAction *showBoundaryColorAct;      // View -> Colors -> Boundaries
   QAction *showBodyColorAct;          // View -> Colors -> Body
   QAction *hideselectedAct;           // View -> Show selected

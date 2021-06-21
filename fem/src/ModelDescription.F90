@@ -59,7 +59,7 @@ MODULE ModelDescription
                           PostFileUnit = 29, InFileUnit = 28
 
     INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
-
+    
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -130,7 +130,8 @@ CONTAINS
     INTEGER, POINTER :: OutputMask(:)
     INTEGER :: i
     LOGICAL :: GotIt
-    
+    CHARACTER(LEN=1024) :: InfoFileName 
+   
 
     MinOutputLevel = ListGetInteger( OutputList, &
         'Min Output Level', GotIt )
@@ -164,6 +165,7 @@ CONTAINS
 
     ! By default only on partition is used to show the results
     ! For debugging it may be useful to show several.
+    MinOutputPE = 0
     MaxOutputPE = ListGetInteger( OutputList, &
         'Max Output Partition', GotIt )    
     IF( GotIt ) THEN
@@ -180,6 +182,22 @@ CONTAINS
       END IF
     END IF
 
+    IF( .NOT. InfoToFile ) THEN 
+      IF( ListGetLogical( OutputList,'Output To File', GotIt ) ) THEN
+        InfoToFile = .TRUE.
+      END IF
+      IF( InfoToFile ) THEN
+        IF( MinOutputPE == MaxOutputPE ) THEN
+          InfoFileName = 'InfoFile.txt'
+        ELSE
+          InfoFileName = 'InfoFile.txt.'//TRIM(I2S(ParEnv % MyPe))                 
+        END IF
+        InfoOutUnit = InfoToFileUnit
+        OPEN(InfoOutUnit,FILE=InfoFileName,STATUS='Unknown')
+      END IF
+    END IF
+
+    
   END SUBROUTINE InitializeOutputLevel
 
 
@@ -1564,7 +1582,8 @@ CONTAINS
 
       CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
-      LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, Cubic, AllInt, Monotone
+      LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
+          Cubic, AllInt, Monotone, Stat
 
       INTEGER(KIND=AddrInt) :: Proc
       INTEGER :: i,j,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
@@ -1600,6 +1619,8 @@ CONTAINS
         N1   = 1
         N2   = 1
         SizeGiven = .FALSE.
+        SizeUnknown = .FALSE.
+        
         DO WHILE( ReadAndTrim(InFileUnit,str,echo,string_literal) ) 
 
           IF ( string_literal ) THEN
@@ -1626,6 +1647,7 @@ CONTAINS
           str_beg = j+2
 
           SELECT CASE(Keyword)
+            
           CASE('real')
              CALL CheckKeyWord( Name,'real',CheckAbort,FreeNames,Section )
 
@@ -1691,7 +1713,7 @@ CONTAINS
                IF ( .NOT. ScanOnly ) THEN 
                  SELECT CASE ( TYPE )
                  CASE (LIST_TYPE_CONSTANT_SCALAR )
-                   call Fatal('SectionContents', 'Constant expressions are not supported with Lua. &
+                   CALL Fatal('SectionContents', 'Constant expressions are not supported with Lua. &
                        Please provide at least a dummy argument.')
 
                    IF ( SizeGiven ) THEN
@@ -1703,15 +1725,15 @@ CONTAINS
                    END IF
 
                  CASE( LIST_TYPE_VARIABLE_SCALAR )
-                   block
+                   BLOCK
                      TYPE(ValueListEntry_t), POINTER :: v_ptr
                      CHARACTER(len=:, kind=c_char), pointer :: lua_fname
-                     integer :: fname_len, lstat
+                     INTEGER :: fname_len, lstat
                      !$OMP PARALLEL default(shared)
                      !$OMP CRITICAL
                      lstat = lua_dostring(LuaState, &
                          'return create_new_fun("'//trim(name)//'", "' // &
-                         trim(str(str_beg+4:)) // '")'// c_null_char, 1)
+                         TRIM(str(str_beg+4:)) // '")'// c_null_char, 1)
                      lua_fname => lua_popstring(LuaState, fname_len)
                      !$OMP END CRITICAL
                      !$OMP END PARALLEL
@@ -1723,10 +1745,10 @@ CONTAINS
                            Proc, lua_fname(1:fname_len) // c_null_char)
                      END IF
                      v_ptr => ListFind(list, name)
-                     v_ptr % LuaFun = .true.
-                   end block
-                   END SELECT
-
+                     v_ptr % LuaFun = .TRUE.
+                   END BLOCK
+                 END SELECT
+                 
                END IF
 #endif
              ELSE
@@ -1748,8 +1770,12 @@ CONTAINS
                         END DO
 
                         IF ( k > slen ) THEN
-                          IF ( .NOT. ReadAndTrim( InFileUnit,str,Echo) ) &
-                            CALL SyntaxError( Section,Name,str )
+                          IF( SizeUnknown ) THEN
+                            N1 = i-1
+                            GOTO 11
+                          END IF                                                                     
+                          Stat = ReadAndTrim( InFileUnit,str,Echo) 
+                          IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
                           k = 1
                           slen = LEN_TRIM(str)
                         END IF
@@ -1763,13 +1789,13 @@ CONTAINS
                      END DO
                   END DO
  
-                  IF ( .NOT. ScanOnly ) THEN
-                     IF ( SizeGiven ) THEN
-                       CALL ListAddConstRealArray( List,Name,N1,N2, &
-                              ATx(1:N1,1:N2,1) )
-                     ELSE
-                       CALL ListAddConstReal( List,Name,ATx(1,1,1) )
-                     END IF
+11                IF ( .NOT. ScanOnly ) THEN
+                    IF ( SizeGiven ) THEN
+                      CALL ListAddConstRealArray( List,Name,N1,N2, &
+                          ATx(1:N1,1:N2,1) )
+                    ELSE
+                      CALL ListAddConstReal( List,Name,ATx(1,1,1) )
+                    END IF
                   END IF
   
                CASE( LIST_TYPE_VARIABLE_SCALAR )
@@ -1826,11 +1852,16 @@ CONTAINS
                        END DO
 
                        IF ( k > slen ) THEN
-                          IF ( .NOT. ReadAndTrim( InFileUnit,str,Echo) ) &
-                            CALL SyntaxError( Section,Name,str )
-
-                          k = 1
-                          slen = LEN_TRIM(str)
+                         IF( SizeUnknown ) THEN
+                           N1 = i-1
+                           GOTO 12
+                         END IF
+                                                                       
+                         Stat = ReadAndTrim( InFileUnit,str,Echo) 
+                         IF(.NOT. Stat) CALL SyntaxError( Section,Name,str )
+                         
+                         k = 1
+                         slen = LEN_TRIM(str)
                        END IF
 
                        IF ( .NOT. ScanOnly ) THEN
@@ -1845,7 +1876,7 @@ CONTAINS
                  END DO
 
 
-                 IF( .NOT. ScanOnly ) THEN
+12               IF( .NOT. ScanOnly ) THEN
                    IF( n == 0 ) THEN
                      CALL Fatal('SectionContents','Table dependence has zero size: '//TRIM(Name))
                    END IF
@@ -1903,7 +1934,7 @@ CONTAINS
                      ALLOCATE(IValues(n1))
                    END IF
                  END IF
-
+                 
                  k = 0
                  DO i=1,N1
                    DO WHILE( k <= slen )
@@ -1917,12 +1948,16 @@ CONTAINS
                    END DO
 
                    IF ( k > slen ) THEN
-                     IF ( .NOT. ReadAndTrim(InFileUnit,str,Echo)) &
-                       CALL SyntaxError( Section,Name,str )
-
+                     IF( SizeUnknown ) THEN
+                       N1 = i-1
+                       EXIT
+                     END IF
+                     Stat = ReadAndTrim(InFileUnit,str,Echo)
+                     IF ( .NOT. Stat) CALL SyntaxError( Section,Name,str )
                      k = 1
                      slen = LEN_TRIM(str)
                    END IF
+
                    IF ( .NOT. ScanOnly ) THEN
                      READ( str(k:),*,iostat=iostat ) IValues(i)
                      IF( iostat /= 0 ) THEN
@@ -2021,12 +2056,21 @@ CONTAINS
             EXIT
 
           CASE('size')
-            N1 = 1
-            N2 = 1
-            READ( str(str_beg:),*,err=1,END=1) N1,N2
+
+            ! If the size is an asterisk it is not known
+            IF( str(str_beg:str_beg) == '*') THEN
+              SizeUnknown = .TRUE.
+              N1 = 100
+              N2 = 1
+              GOTO 1
+            ELSE
+              N1 = 1
+              N2 = 1
+              READ( str(str_beg:),*,err=1,END=1) N1,N2
+            END IF
 
 1           CONTINUE
-
+            
             IF ( .NOT. ScanOnly ) THEN
                IF ( ALLOCATED( ATx ) ) DEALLOCATE( ATx )
                ALLOCATE( ATx(N1,N2,1) )

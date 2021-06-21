@@ -508,10 +508,14 @@ END FUNCTION isComponentName
     REAL(KIND=dp) :: BoundaryAreas(CurrentModel % NumberOFBCs)
     INTEGER :: Active, t, i, BCid, n
     LOGICAL :: Found
+    LOGICAL :: Parallel 
 
     BoundaryAreas = 0._dp
     Mesh => CurrentModel % Mesh
 
+    Parallel = ( ParEnv % PEs > 1 )
+    IF( Mesh % SingleMesh ) Parallel = .FALSE.
+    
     DO i=1, CurrentModel % NumberOfBcs
        BC => CurrentModel % BCs(i) % Values
        IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('SetBoundaryAreasToValueLists', 'Boundary not found!')
@@ -535,7 +539,9 @@ END FUNCTION isComponentName
        BC => CurrentModel % BCs(i) % Values
        IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeCoilBoundaryAreas', 'Boundary not found!')
        BCid = GetInteger(BC, 'Boundary Id', Found)
-       BoundaryAreas(BCid) = ParallelReduction(BoundaryAreas(BCid))
+       IF( Parallel ) THEN
+         BoundaryAreas(BCid) = ParallelReduction(BoundaryAreas(BCid))
+       END IF
        CALL ListAddConstReal(BC, 'Area', BoundaryAreas(BCid))
     END DO
     
@@ -594,7 +600,13 @@ END FUNCTION isComponentName
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
 
-        Comp % N_j = Comp % nofturns / Comp % ElArea
+        Comp % CoilThickness = GetConstReal(CompParams, 'Coil Thickness', Found)
+        IF (.NOT. Found) Comp % CoilThickness = 1._dp
+
+        Comp % SymmetryCoeff = GetConstReal(CompParams, 'Symmetry Coefficient', Found)
+        IF (.NOT. Found) Comp % SymmetryCoeff = 1.0_dp
+
+        Comp % N_j = Comp % CoilThickness * Comp % nofturns / Comp % ElArea
 
         ! Stranded coil has current and voltage 
         ! variables (which both have a dof):
@@ -642,6 +654,7 @@ END FUNCTION isComponentName
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
 
+
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
       END SELECT
@@ -663,10 +676,14 @@ END FUNCTION isComponentName
   TYPE(Mesh_t), POINTER :: Mesh
   INTEGER :: t, n, BCid
   LOGICAL :: Found
+  LOGICAL :: Parallel 
   
   Mesh => CurrentModel % Mesh
   Comp % ElArea = 0._dp
 
+  Parallel = ( ParEnv % PEs > 1 )
+  IF( Mesh % SingleMesh ) Parallel = .FALSE.
+  
   IF (CoordinateSystemDimension() == 2) THEN
     DO t=1,GetNOFActive()
       Element => GetActiveElement(t)
@@ -675,10 +692,12 @@ END FUNCTION isComponentName
         Comp % ElArea = Comp % ElArea + ElementAreaNoAxisTreatment(Mesh, Element, n) 
       END IF
     END DO
-    Comp % ElArea = ParallelReduction(Comp % ElArea)
+    IF( Parallel ) THEN
+      Comp % ElArea = ParallelReduction(Comp % ElArea)
+    END IF
   ELSE
     IF (.NOT. ASSOCIATED(Comp % ElBoundaries)) &
-      CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')
+        CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')
 
     BCid = Comp % ElBoundaries(1)
     BC => CurrentModel % BCs(BCid) % Values
@@ -782,12 +801,12 @@ END FUNCTION isComponentName
       IF(Owner<=0) Owner = MAX(Parenv % PEs/2,1)
       Owner = Owner - 1
       Variable % Owner = Owner
-variable % owner = 0
+      variable % owner = 0
     ELSE
       IF(Owner<=ParEnv % PEs/2) Owner = ParEnv % PEs
       Owner = Owner - 1
       Variable % Owner = Owner
-variable % owner = ParEnv % PEs-1
+      variable % owner = ParEnv % PEs-1
     END IF
 
     IF (Circuit % Harmonic) THEN
@@ -1788,7 +1807,8 @@ CONTAINS
     LOGICAL :: dofsdone
     LOGICAL*1, ALLOCATABLE :: Done(:)
     REAL(KIND=dp), POINTER CONTIG :: Values(:)
-
+    LOGICAL :: Parallel 
+    
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
     Circuit_tot_n = CurrentModel%Circuit_tot_n
@@ -1810,7 +1830,10 @@ CONTAINS
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
-    IF (ParEnv % PEs > 1) CALL SetCircuitsParallelInfo()
+    Parallel = (ParEnv % PEs > 1)
+    IF( CurrentModel % Mesh % SingleMesh ) Parallel = .FALSE.
+
+    IF( Parallel ) CALL SetCircuitsParallelInfo()
 
     ! COUNT SIZES:
     ! ============

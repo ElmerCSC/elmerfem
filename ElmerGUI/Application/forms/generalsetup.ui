@@ -538,7 +538,7 @@
           <item row="0" column="3">
            <widget class="QLineEdit" name="boltzmannEdit">
             <property name="text">
-             <string>1.3807e-23</string>
+             <string>1.380649e-23</string>
             </property>
            </widget>
           </item>
@@ -552,7 +552,7 @@
           <item row="1" column="1">
            <widget class="QLineEdit" name="stefanBoltzmannEdit">
             <property name="text">
-             <string>5.67e-08</string>
+             <string>5.670374419e-08</string>
             </property>
            </widget>
           </item>
@@ -566,7 +566,7 @@
           <item row="1" column="3">
            <widget class="QLineEdit" name="unitChargeEdit">
             <property name="text">
-             <string>1.602e-19</string>
+             <string>1.6021766e-19</string>
             </property>
            </widget>
           </item>
@@ -580,10 +580,24 @@
           <item row="2" column="1">
            <widget class="QLineEdit" name="vacuumPermittivityEdit">
             <property name="text">
-             <string>8.8542e-12</string>
+             <string>8.85418781e-12</string>
             </property>
            </widget>
           </item>
+          <item row="2" column="2">
+           <widget class="QLabel" name="vacuumPermeabilityLabel">
+            <property name="text">
+             <string>Vacuum permeability</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="3">
+           <widget class="QLineEdit" name="vacuumPermeabilityEdit">
+            <property name="text">
+             <string>1.25663706e-6</string>
+            </property>
+           </widget>
+          </item>	  
           <item row="3" column="0">
            <widget class="QLabel" name="constantsFreeTextLabel">
             <property name="text">

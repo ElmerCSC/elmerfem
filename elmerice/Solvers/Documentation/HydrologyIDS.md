@@ -13,7 +13,7 @@ This solver treats the diffusion equation with a user-defined upper limit.
 ## SIF contents
 The required keywords in the SIF file for this solver are given bellow. The IDSSolver can be used alone, coupling between the two layer is treated in the [EPLSolver](./HydrologyEPL.md) section
 
-The hydrological system is only treated at the bed, it requires then a new equation, we keep the Material an Body Force section of the ice.
+The hydrological system is only treated at the bed, it requires then a new body with a specific equation and intial condition, the Material and Body Force section are using the one from the ice.
 
 ```
 Body 2
@@ -37,13 +37,13 @@ Only the parameters which are needed for the treatment of the hydrology are give
 Body Force 1
   Flow BodyForce 1 = 0.0
   Flow BodyForce 2 = 0.0
-  Flow BodyForce 3 = MATC "-9.81*(31556926.0)^(2.0)"
+  Flow BodyForce 3 = -9.7696e15  ! or whichever value is used for gravity
 
-  IDSHead Source Flux = Real 2.0
+  IDSHead Source Flux = Real 2.0  !water input into the sediment layer (distributed)
 End
 Material 1
 ! General Hydrology Parameters
-  Water Density = Real MATC "1000.0*1.0E-06*(31556926.0)^(-2.0)"
+  Water Density = Real MATC "1000.0*1.0E-06*(31556926.0)^(-2.0)"  !This is freshwater density
 
 ! IDS Solver
   IDS Transmitivity = Real 5.0e2
@@ -91,22 +91,22 @@ The boundary condition of the hydrological model should be applied on a 1D bound
 Boundary Condition 4
   Name = "Lower frame"
   Target Boundaries = 4
-  
+
 ! Flux condition on the borders of the hydrological domain
-! Zero flux is not a necessary input as it is the natural 
+! Zero flux is not a necessary input as it is the natural
 ! boundary condition of the system
 
-  IDSHead Flux BC = Logical True 
+  IDSHead Flux BC = Logical True
   IDSHead Water Flux = Real 0.0
 End
 
 Boundary Condition 5
   Name = "Glacier snout"
   Target Boundaries = 5
-  
-! Take care to choose a value bellow or equals to the upper 
+
+! Take care to choose a value bellow or equals to the upper
 1 limit of the water head
-  
+
   IDSHead = variable coordinate 3, depth
     real matc "tx(0)+0.91*tx(1)"
 End

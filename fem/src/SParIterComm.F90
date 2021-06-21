@@ -591,7 +591,7 @@ CONTAINS
       LOGICAL :: IsNeighbour(:)
 
       IsNeighbour = .FALSE.
-      DO i=1,Mesh % Nodes % NumberOfNodes
+      DO i=1,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % Interface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
             IsNeighbour(Mesh % ParallelInfo % &
@@ -1867,7 +1867,7 @@ tstart = realtime()
      ELSE
        ALLOCATE(IsNeighbour(ParEnv % PEs))
        IsNeighbour = .FALSE.
-       DO i=1,OldMesh % Nodes % NumberOfNodes
+       DO i=1,OldMesh % NumberOfNodes
          IF ( OldMesh % ParallelInfo % Interface(i) ) THEN
            DO j=1,SIZE(OldMesh % ParallelInfo % NeighbourList(i) % Neighbours)
              IsNeighbour(OldMesh % ParallelInfo % &
@@ -1883,7 +1883,7 @@ tstart = realtime()
 !    -------------------------------
      MaxLcl = MAXVAL( Mesh % ParallelInfo % GlobalDOFs )
      MaxGlb = MaxLcl
-     n = Mesh % Nodes % NumberOfNodes - NewNodeCnt + 1
+     n = Mesh % NumberOfNodes - NewNodeCnt + 1
 
 !    Allocate space for local tables:
 !    --------------------------------
@@ -1893,7 +1893,7 @@ tstart = realtime()
           oldnodes2( ParEnv % PEs ), &
           tosend( ParEnv % PEs ), &
           toreceive( ParEnv % PEs ), &
-          parentnodes( Mesh % Nodes % NumberOfNodes,2 ) )
+          parentnodes( Mesh % NumberOfNodes,2 ) )
      
      newnodes    = 0
      newnodes2   = 0
@@ -1912,8 +1912,8 @@ tstart = realtime()
      !
      ! Prepare the inverse connection table for nodes and elements:
      !-------------------------------------------------------------
-     ALLOCATE( Node( Mesh % Nodes % NumberOfNodes ) )
-     DO i = 1,Mesh % Nodes % NumberOfNodes
+     ALLOCATE( Node( Mesh % NumberOfNodes ) )
+     DO i = 1,Mesh % NumberOfNodes
         Node(i) % ElementIndexes => NULL()
      END DO
      
@@ -1930,9 +1930,9 @@ tstart = realtime()
      !PRINT *,'PE:',ParEnv % MyPE,'write ep...'
      !j = 10+ParEnv%MyPE
      !OPEN(unit=j)
-     !WRITE(j,*) Mesh % Nodes % NumberOfNodes, &
+     !WRITE(j,*) Mesh % NumberOfNodes, &
      !     Mesh % NumberOfBulkElements, 1, 1, 'scalar: interface'
-     !DO i = 1,Mesh % Nodes % NumberOfNodes
+     !DO i = 1,Mesh % NumberOfNodes
      !   WRITE(j,*) Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
      !END DO
      !DO i = 1, mesh % numberofbulkelements
@@ -1953,7 +1953,7 @@ tstart = realtime()
      !
      ! Loop over all new nodes:
      !--------------------------
-     DO i = n, Mesh % Nodes % NumberOfNodes
+     DO i = n, Mesh % NumberOfNodes
         IF( .NOT. Mesh % ParallelInfo % INTERFACE(i) ) CYCLE
         !
         ! This is an interface node:
@@ -2063,7 +2063,7 @@ tstart = realtime()
      oldnodes = 0
      newnodes = 0
      j = ParEnv % MyPE
-     DO i = 1, Mesh % Nodes % NumberOfNodes
+     DO i = 1, Mesh % NumberOfNodes
         k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1)
         IF( k /= j ) CYCLE
         IF( Mesh % ParallelInfo % GlobalDOFs(i)  > 0 ) THEN
@@ -2088,7 +2088,7 @@ tstart = realtime()
      j = ParEnv % MyPE
      ! Start numbering from index k:
      k = SUM( oldnodes2 ) + SUM( newnodes2(1:j) ) + 1
-     DO i = 1, Mesh % Nodes % NumberOfNodes
+     DO i = 1, Mesh % NumberOfNodes
         l = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1)
         IF( l /= j ) CYCLE
         IF( Mesh % ParallelInfo % GlobalDOFs(i) == 0 ) THEN
@@ -2106,7 +2106,7 @@ tstart = realtime()
      !-----------------------------------------------------------
      tosend = 0
      toreceive = 0
-     DO i = n, Mesh % Nodes % NumberOfNodes
+     DO i = n, Mesh % NumberOfNodes
         IF( Mesh % ParallelInfo % Interface(i) ) THEN
            j = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(1)
            IF( j /= ParEnv % MyPE ) THEN
@@ -2132,7 +2132,7 @@ tstart = realtime()
         DataSize = 3*tosend(i)
         ALLOCATE( gindices(DataSize) )
         k = 1
-        DO l = n, Mesh % Nodes % NumberOfNodes
+        DO l = n, Mesh % NumberOfNodes
            IF( .NOT.( Mesh % ParallelInfo % Interface(l) ) ) CYCLE
            m = Mesh % ParallelInfo % NeighbourList(l) % Neighbours(1)
            IF( m /= ParEnv % MyPE ) CYCLE
@@ -2169,7 +2169,7 @@ tstart = realtime()
         ALLOCATE( gindices(3*DataSize) ) ! work space
         CALL MPI_RECV( gindices, 3*DataSize, MPI_INTEGER, i-1, 400, ELMER_COMM_WORLD, status, ierr )
 
-        DO k = n, Mesh % Nodes % NumberOfnodes
+        DO k = n, Mesh % NumberOfnodes
            IF( .NOT. Mesh % ParallelInfo % Interface(k) ) CYCLE
            IF( Mesh % ParallelInfo % GlobalDOFs(k) > 0 ) CYCLE
            
@@ -2430,7 +2430,7 @@ tstart = realtime()
      DEALLOCATE( oldnodes, oldnodes2, newnodes, newnodes2, &
           parentnodes, tosend, toreceive )
      
-     DO i = 1,Mesh % Nodes % NumberOfNodes
+     DO i = 1,Mesh % NumberOfNodes
        DEALLOCATE( Node(i) % ElementIndexes )
      END DO
      DEALLOCATE(Node)
@@ -2574,7 +2574,7 @@ tstart = realtime()
 !                -------------------------------------
                  k2 = 0
                  k1 = 0
-                 DO k=n,Mesh % Nodes % NumberOfNodes
+                 DO k=n,Mesh % NumberOfNodes
                     IF ( .NOT.Mesh % ParallelInfo % INTERFACE(k) ) CYCLE
 
                     k1 = k1 + 1
@@ -2614,7 +2614,7 @@ tstart = realtime()
 !
 !    Renumber our own new set of nodes:
 !    ----------------------------------
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % GlobalDOFs(i) == 0 ) THEN
            MaxGlb = MaxGlb + 1
            Mesh % ParallelInfo % GlobalDOFs(i) = MaxGlb
@@ -2628,7 +2628,7 @@ tstart = realtime()
      IF ( InterfaceNodes > 0 ) ALLOCATE( Gindices(InterfaceNodes) )
 
      InterfaceNodes = 0
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            InterfaceNodes = InterfaceNodes + 1
            Gindices(InterfaceNodes) = Mesh % ParallelInfo % GlobalDOFs(i)
@@ -2716,7 +2716,7 @@ tstart = realtime()
      InterfaceNodes = COUNT( Mesh % ParallelInfo % INTERFACE(n:) )
      ALLOCATE( GIndices( InterfaceNodes ) )
      j = 0
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            j = j + 1
            GIndices(j) = Mesh % ParallelInfo % GlobalDOFs(i)
@@ -2738,10 +2738,10 @@ tstart = realtime()
 
      DEALLOCATE( Gindices )
 
-     ALLOCATE( IntCnts( Mesh % Nodes % NumberOfNodes ) )
+     ALLOCATE( IntCnts( Mesh % NumberOfNodes ) )
 
      IntCnts = 0
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            IntCnts(i) = IntCnts(i) + 1
            Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPE
@@ -2773,7 +2773,7 @@ tstart = realtime()
 !    Reallocate the nodal neighbour lists to
 !    correct sizes:
 !    ---------------------------------------
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            k = IntCnts(i)
            ALLOCATE( Gindices(k) ) ! just work space
@@ -2788,7 +2788,7 @@ tstart = realtime()
 
 ! final test:
 !     IF( ParEnv % MyPE == 3 ) THEN
-!        DO i = 1, Mesh % Nodes % NumberOfNodes
+!        DO i = 1, Mesh % NumberOfNodes
 !           PRINT *,'Local:',i, &
 !                'Global:' ,Mesh % Parallelinfo % GlobalDOFs(i), &
 !                'Interface:', Mesh % ParallelInfo % INTERFACE(i), &
@@ -4710,12 +4710,17 @@ SUBROUTINE SParActiveSUM(tsum, oper)
    INTEGER :: oper
    REAL(KIND=dp) :: tsum
 !*********************************************************************
-   INTEGER :: ierr, comm
+   INTEGER :: ierr, comm, nact
    REAL(KIND=dp) :: ssum
 
    comm = ParEnv % ActiveComm
-   IF ( COUNT(ParEnv % Active)<= 0 ) comm = ELMER_COMM_WORLD
-
+   nact = COUNT(ParEnv % Active)
+   
+   IF( nact <= 0 ) THEN
+     comm = ELMER_COMM_WORLD
+     nact = ParEnv % PEs
+   END IF
+     
    ssum = tsum
    SELECT CASE(oper)
    CASE(0)
@@ -4727,7 +4732,11 @@ SUBROUTINE SParActiveSUM(tsum, oper)
    CASE(2)
      CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
             MPI_MAX, comm, ierr )
-   END SELECT
+   CASE(3) ! average
+     CALL MPI_ALLREDUCE( ssum, tsum, 1, MPI_DOUBLE_PRECISION, &
+            MPI_SUM, comm, ierr )
+     tsum = tsum / nact
+  END SELECT
 !*********************************************************************
 END SUBROUTINE SParActiveSUM
 !*********************************************************************

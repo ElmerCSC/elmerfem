@@ -5,4 +5,4 @@ CONFIGURE_FILE( plates.sif plates.sif COPYONLY)
 
 file(COPY plates.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(PlatesHarmonic3 LABELS harmonic block)
+ADD_ELMER_TEST(PlatesHarmonic3 LABELS harmonic plate block)

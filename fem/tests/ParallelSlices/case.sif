@@ -1,0 +1,101 @@
+! This is a test case for parallel slices.
+! If the number of slices is not given it is assumed to be
+! defined by the number of partitions i.e. one slice per partition. 
+! Rotation depending on the slice + coordinate dependent heating
+! are added to show how slices may be controlled.
+!
+! P.R. 8.4.2021
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+
+! These keywords make one slice per partition and
+! introduce variable "slice". 
+  Single Mesh = Logical True
+  Parallel Slices = Logical True
+
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 2
+End
+
+Solver 1
+  Exec Solver = Before Timestep
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+  Translate Before Rotate = Logical True
+End
+
+
+Solver 2
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Max Iterations = 1
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = Variable "Coordinate 1"
+    Real MATC "tx"
+  Mesh Rotate 3 = Variable "slice"
+    Real MATC "45*(tx-0.5)"
+  Mesh Translate 3 = Variable "slice"
+    Real MATC "0.1*tx"
+End
+
+Boundary Condition 1
+  Name = "Constraint"
+  Target Boundaries(1) = 1 
+  Temperature = 0
+End
+
+Solver 2 :: Reference Norm = 2.34430248E-02
