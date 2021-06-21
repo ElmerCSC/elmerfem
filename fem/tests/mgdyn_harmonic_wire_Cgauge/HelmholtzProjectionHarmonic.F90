@@ -93,12 +93,12 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   LOGICAL :: ConstantBulkMatrix
 !  LOGICAL :: SecondFamily
 
-  INTEGER :: i, n, n_pot, nd_pot, t
+  INTEGER :: i, j,k,l,n, n_pot, nd_pot, t
   INTEGER :: dim, PotDOFs
   INTEGER :: istat, active
 
   REAL(KIND=dp), ALLOCATABLE, TARGET :: Stiff(:,:), Force(:,:), PotSol(:,:), F(:,:)
-  REAL(KIND=dp) :: Norm
+  REAL(KIND=dp) :: Norm, Omega
   REAL(KIND=dp), POINTER :: SaveRHS(:), SOL(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: PotName
 
@@ -217,22 +217,6 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   Solver % Matrix % RHS => SaveRHS
 
 
-
-BLOCK
-  REAL(KIND=dp) :: omega, x(Mesh % MaxElementNodes)
-  TYPE(Element_t), POINTER :: Element
-  INTEGER :: j,k
-  LOGICAL :: ActiveNodes(Mesh % NumberOfNodes)
-
-
-  activenodes = .FALSE.
-  DO i=1,GetNOFActive()
-    Element => GetActiveElement(i)
-    n = GetElementNOFNodes()
-    x(1:n) = GetReal(GetMaterial(), 'Electric Conductivity', Found )
-    IF ( ANY(x/=0.0_dp) ) ActiveNodes(Element % NodeIndexes) = .TRUE. 
-  END DO
-
   omega = GetAngularFrequency()
 
   !
@@ -240,7 +224,7 @@ BLOCK
   ! -----------------------------------------
   DO i=1,Solver % Mesh % NumberOfNodes
     j = Solver % Variable % Perm(i)
-    IF(j==0 .OR. .NOT. ActiveNodes(i)) CYCLE
+    IF(j==0) CYCLE
 
     k = SolverPtr % Variable % Perm(i)
     IF (k == 0) THEN
@@ -254,7 +238,6 @@ BLOCK
     SolverPtr % Variable % Values(2*k) = SolverPtr % Variable % Values(2*k) + &
         omega * SOL(2*j-1)
   END DO
-END BLOCK
 
 CONTAINS
 
