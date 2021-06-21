@@ -370,7 +370,8 @@ static void AbaqusSideInfoToBoundary(struct FemType *data,struct BoundaryType *b
   int order4[]={0,1,2,3};
   int order3[]={0,1,2};
   int *faceorder;
-
+  int zeroparent,zerosides;
+  
   
   if(info) printf("Making side info of size %d to boundary elements\n",nosides);
   
@@ -395,11 +396,27 @@ static void AbaqusSideInfoToBoundary(struct FemType *data,struct BoundaryType *b
   AllocateBoundary(bound,nosides);
   
   bound->topology = Imatrix(1,nosides,0,MAXNODESD2-1);
-
+  for(i=1;i<=nosides;i++)
+    for(j=0;j<MAXNODESD2;j++)
+      bound->topology[i][j] = 0;
+  
   j = 0;
+  zeroparent = 0;
+  zerosides = 0;
+  
   for(i=0;i<nosides;i++) {
 
     if(!sides[i]) continue;
+
+    if(parent[i] <= 0) {
+      zeroparent++;
+      continue;
+    }
+
+    if(sides[i] <= 0) {
+      zerosides++;
+      continue;
+    }
 
     j += 1;    
     bound->parent[j] = parent[i];
@@ -443,8 +460,10 @@ static void AbaqusSideInfoToBoundary(struct FemType *data,struct BoundaryType *b
 	bound->topology[j][k] = sideind2[k];
     }
   }
+  if(zeroparent) printf("Number of zero parents: %d\n",zeroparent);
+  if(zerosides) printf("Number of zero sides: %d\n",zerosides);
   
-  if(info) printf("Settting side element to be BCs finished!\n");
+  if(info) printf("Setting side %d elements to be BCs finished!\n",j);
   
   bound->nosides = j;
   
