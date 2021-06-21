@@ -41,7 +41,7 @@
 #include <QtGui>
 #include <iostream>
 #include "edfeditor.h"
-#include "MainWindow.h"
+//#include "MainWindow.h"
 
 using namespace std;
 
