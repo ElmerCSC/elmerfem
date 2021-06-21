@@ -41,6 +41,7 @@
 #include <QtGui>
 #include <iostream>
 #include "edfeditor.h"
+#include "MainWindow.h"
 
 using namespace std;
 
@@ -156,12 +157,33 @@ EdfEditor::EdfEditor(QWidget *parent)
   dynamicEditorIC = new DynamicEditor;
 
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
+  
+    
+#ifdef __APPLE__DONTGO_HERE_TODO
+  defaultDir = ((MainWindow*)paernt->homePath ;
+#else
+  defaultDir =
+    QCoreApplication::applicationDirPath() + "/../share/ElmerGUI";
+
+  QString elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
+
+  if (!elmerGuiHome.isEmpty())
+    defaultDir = elmerGuiHome;
+
+  defaultDir.replace('\\', '/');
+#endif
+
+  // Commented out as restoring defaultDir is not so useful
+  //defaultDir = ((MainWindow*) parent)->settings_value("defaultDir/edfEditor", defaultDir).toString();
+
 }
+
 
 // dtor...
 //----------------------------------------------------------------------------
 EdfEditor::~EdfEditor()
 {
+
 }
 
 // Min window size...
@@ -485,7 +507,7 @@ void EdfEditor::saveAsButtonClicked()
   QString fileName;
 
   fileName = QFileDialog::getSaveFileName(this,
-                 tr("Save definitions"), "", tr("EDF (*.xml)") );
+                 tr("Save definitions"), defaultDir, tr("EDF (*.xml)") );
 
   if(fileName.isEmpty())
     return;
@@ -497,6 +519,10 @@ void EdfEditor::saveAsButtonClicked()
   file.open(QIODevice::WriteOnly);
   QTextStream out(&file);
   elmerDefs->save(out, indent);
+  
+  // Commented out as restoring defaultDir is not so useful
+  // QFileInfo info(file);
+  // defaultDir = info.dir().absolutePath();  
 }
 
 
@@ -524,7 +550,7 @@ void EdfEditor::openButtonClicked()
   QString fileName;
 
   fileName = QFileDialog::getOpenFileName(this, 
-	      tr("Open definitions"), "", tr("EDF (*.xml)") );
+	      tr("Open definitions"), defaultDir, tr("EDF (*.xml)") );
 
   if(fileName.isEmpty())
     return;
@@ -559,8 +585,11 @@ void EdfEditor::openButtonClicked()
   setupEditor(elmerDefs);
 
   edfTree->setCurrentItem(NULL);
+  
+  // Commented out as restoring defaultDir is not so useful
+  //QFileInfo info(file);
+  //defaultDir = info.dir().absolutePath();  
 }
-
 
 // Append...
 //----------------------------------------------------------------------------
@@ -569,7 +598,7 @@ void EdfEditor::appendButtonClicked()
   QString fileName;
 
   fileName = QFileDialog::getOpenFileName(this, 
-	      tr("Open definitions"), "", tr("EDF (*.xml)") );
+	      tr("Open definitions"), defaultDir, tr("EDF (*.xml)") );
 
   if(fileName.isEmpty())
     return;
@@ -614,6 +643,10 @@ void EdfEditor::appendButtonClicked()
   setupEditor(elmerDefs);
 
   edfTree->setCurrentItem(NULL);
+  
+  // Commented out as restoring defaultDir is not so useful
+  //QFileInfo info(file);
+  //defaultDir = info.dir().absolutePath();  
 }
 
 
@@ -767,4 +800,8 @@ bool EdfEditor::appendFrom(QString path)
   edfTree->setCurrentItem(NULL);
 
   return true;
+}
+
+QString EdfEditor::defaultEdfDir(){
+  return defaultDir; 
 }
