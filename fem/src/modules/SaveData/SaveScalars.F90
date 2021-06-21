@@ -519,7 +519,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CYCLE
     END IF
 
-    
+    Oper = ""
     BodyOper = .FALSE.
     BodyForceOper = .FALSE.      
     MaterialOper = .FALSE.
@@ -534,7 +534,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       MaterialOper = .TRUE.
       Oper = Oper0(10:nlen)
     ELSE
-      Oper = Oper0
+      Oper = Oper0(1:nlen)
     END IF
     MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
     IF( MaskOper ) THEN
