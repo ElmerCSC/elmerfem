@@ -1674,36 +1674,33 @@ CONTAINS
         ParOper = ListGetString(Params,TRIM(Str),GotParOper)
       END IF
 
+      ! Note: the parallel operators for ParallelReduction have different numbering
+      ! conventions that MPI_MIN, MPI_MAX, etc. 
+      
       IF( GotParOper ) THEN
         SELECT CASE( ParOper )
-          
-        CASE('max' )
-          MPIOper = MPI_MAX
-        CASE('min' )
-          MPIOper = MPI_MIN
+         
         CASE('sum' )
-          MPIOper = MPI_SUM
+          MPIOper = 0 
+        CASE('min' )
+          MPIOper = 1 
+        CASE('max' )
+          MPIOper = 2 
         CASE('mean' )
           MPIOper = 3
+        CASE('none' )
+          MPIOper = -1
           
         CASE DEFAULT
-          MPIOper = 0
+          CALL Warn('SaveScalars','Unknown parallel operator: '//TRIM(ParOper))
+          MPIOper = -1
           
         END SELECT
-
         
-        IF( MPIOper > 0 ) THEN
+        IF( MPIOper >= 0 ) THEN
           ParVal = ParallelReduction( Val, MPIOper )
           Values(n) = ParVal
-          IF( MPIOper == MPI_MIN ) THEN
-            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_min'
-          ELSE IF( MPIOper == MPI_MAX ) THEN
-            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_max'
-          ELSE IF( MPIOper == MPI_SUM ) THEN
-            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_sum'
-          ELSE IF( MPIOper == 3 ) THEN
-            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_mean'
-          END IF
+          WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_'//TRIM(ParOper)
         END IF
         
       END IF
