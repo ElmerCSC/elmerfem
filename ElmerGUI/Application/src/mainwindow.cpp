@@ -300,7 +300,7 @@ MainWindow::MainWindow() {
   loadDefinitions();
 
   // initialization ready:
-  synchronizeMenuToState();
+//  synchronizeMenuToState(); Commented out as this will be called from loadSettings() later
   setWindowTitle(tr("ElmerGUI"));
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
   finalizeSplash();
@@ -749,6 +749,12 @@ void MainWindow::createActions() {
   connect(chooseSharpEdgeColorAct, SIGNAL(triggered()), this,
           SLOT(sharpEdgeColorSlot()));
 
+  // View -> Colors -> Selection
+  chooseSelectionColorAct = new QAction(QIcon(), tr("Selection..."), this);
+  chooseSelectionColorAct->setStatusTip(tr("Set selection color"));
+  connect(chooseSelectionColorAct, SIGNAL(triggered()), this,
+          SLOT(selectionColorSlot()));
+
   // View -> Colors -> Boundaries
   showBoundaryColorAct = new QAction(QIcon(), tr("Boundaries"), this);
   showBoundaryColorAct->setStatusTip(
@@ -1050,6 +1056,8 @@ void MainWindow::createMenus() {
   colorizeMenu->addAction(chooseSurfaceMeshColorAct);
   colorizeMenu->addAction(chooseSharpEdgeColorAct);
   colorizeMenu->addSeparator();
+  colorizeMenu->addAction(chooseSelectionColorAct);  
+  colorizeMenu->addSeparator();  
   colorizeMenu->addAction(showBoundaryColorAct);
   colorizeMenu->addAction(showBodyColorAct);
   viewMenu->addSeparator();
@@ -4951,6 +4959,19 @@ void MainWindow::sharpEdgeColorSlot() {
   glWidget->rebuildLists();
 }
 
+// View -> Colors -> Selection
+//-----------------------------------------------------------------------------
+void MainWindow::selectionColorSlot() {
+  if (!glWidget->hasMesh()) {
+    logMessage("Unable to change sharp edge colors when the mesh is empty");
+    return;
+  }
+
+  QColor newColor = QColorDialog::getColor(glWidget->selectionColor, this);
+  glWidget->selectionColor = newColor;
+  glWidget->rebuildLists();
+}
+
 // View -> Cad model...
 //-----------------------------------------------------------------------------
 void MainWindow::showCadModelSlot() {
@@ -7158,7 +7179,8 @@ void MainWindow::showaboutSlot() {
 
   QMessageBox msgBox(this);
   msgBox.setTextFormat(Qt::RichText);
-  msgBox.setIconPixmap( windowIcon().pixmap(32));
+  QIcon icon(windowIcon());
+  msgBox.setIconPixmap( icon.pixmap(32));
   msgBox.setWindowTitle(tr("Information about ElmerGUI"));
   msgBox.setText(
       tr("ElmerGUI is a preprocessor for two and "
@@ -7667,6 +7689,16 @@ void MainWindow::loadSettings() {
     case 1: selectVtkPostSlot(); break;
     case 2: selectParaViewSlot(); break;
   }
+  
+  // Color settings
+  glWidget->backgroundColor = settings_value("color/background", glWidget->backgroundColor).value<QColor>();
+  glWidget->surfaceColor = settings_value("color/surface", glWidget->surfaceColor).value<QColor>();
+  glWidget->edgeColor = settings_value("color/edge", glWidget->edgeColor).value<QColor>();
+  glWidget->surfaceMeshColor = settings_value("color/surfaceMesh", glWidget->surfaceMeshColor).value<QColor>();
+  glWidget->sharpEdgeColor = settings_value("color/sharpEdge", glWidget->sharpEdgeColor).value<QColor>();
+  glWidget->selectionColor = settings_value("color/selection", glWidget->selectionColor).value<QColor>();
+  
+  synchronizeMenuToState();  
 }
 
 // Save settings
@@ -7703,6 +7735,15 @@ void MainWindow::saveSettings() {
   }else if(selectParaViewAct->isChecked()){
     settings_setValue("postProcessor/i", 2);
   }
+  
+  // Color settings
+  settings_setValue("color/background", glWidget->backgroundColor);
+  settings_setValue("color/surface", glWidget->surfaceColor);
+  settings_setValue("color/edge", glWidget->edgeColor);
+  settings_setValue("color/surfaceMesh", glWidget->surfaceMeshColor);
+  settings_setValue("color/sharpEdge", glWidget->sharpEdgeColor);
+  settings_setValue("color/selection", glWidget->selectionColor);
+  
 }
 
 void MainWindow::addRecentProject(QString dir, bool bSaveToIni) {
