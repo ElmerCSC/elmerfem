@@ -1401,7 +1401,7 @@ CONTAINS
   !----------------------------------------------------------------------------
 
   FUNCTION PointInPolygon2D(Polygon, Point) RESULT(inside)
-    REAL(kind=dp), ALLOCATABLE :: polygon(:,:)
+    REAL(kind=dp) :: polygon(:,:)
     REAL(kind=dp) :: left, point(2)
     INTEGER :: n, i, windingnumber
     LOGICAL :: inside
