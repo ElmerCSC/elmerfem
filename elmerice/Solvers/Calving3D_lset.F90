@@ -58,7 +58,7 @@
         FaceNodeCount, DOFs, PathCount, LeftConstraint, RightConstraint, &
         FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount, &
         node, nodecounter, CurrentNodePosition, StartNode, NodePositions(3), &
-        directions, Counter, ClosestCrev
+        directions, Counter, ClosestCrev, NumEdgeNodes, UnFoundLoops
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
         FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
@@ -66,7 +66,7 @@
         EdgeMap(:,:)
    INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
          PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
-         WorkInt(:), IMBdryNNums(:)
+         WorkInt(:), IMBdryNNums(:), WorkInt2D(:,:)
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
@@ -83,14 +83,14 @@
    REAL(KIND=dp), POINTER :: DistValues(:), SignDistValues(:), WorkReal(:), &
         CalvingValues(:)
    REAL(KIND=dp), ALLOCATABLE :: CrevX(:),CrevY(:),IMBdryNodes(:,:), Polygon(:,:), PathPoly(:,:), &
-        EdgeX(:), EdgeY(:)
+        EdgeX(:), EdgeY(:), EdgePoly(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         filename_root, &
         FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
         PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
         MoveMeshDir
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
-        SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside
+        SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside, Complete
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), IMOnMargin(:), &
         IMOnLeft(:), IMOnRight(:), FoundNode(:), &
         IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
@@ -477,8 +477,9 @@
           UsedElem(i)=.TRUE.
         END DO
 
+        NumEdgeNodes = COUNT(EdgeNode)
         ! add startnodes to edgeline
-        ALLOCATE(Edgeline(directions, COUNT(EdgeNode)), nodes(directions), &
+        ALLOCATE(Edgeline(directions, NumEdgeNodes), nodes(directions), &
                 EdgeCount(directions), FoundNode(directions))
         EdgeCount = 0
         EdgeLine = 0
@@ -497,7 +498,9 @@
 
         ! loop through starting with startnodes to find remaining edgenodes
         ! in order
-        DO WHILE(COUNT(EdgeNode) > SUM(EdgeCount))
+        UnFoundLoops = 0
+        Complete = .FALSE.
+        DO WHILE(.NOT. Complete)
           FoundNode=.FALSE.
           DO i=1, PlaneMesh % NumberOfBulkElements
             IF(.NOT. PlaneEdgeElem(i)) CYCLE
@@ -524,14 +527,25 @@
               ELSE IF(nodecounter == 2) THEN
                 counter=0
                 DO k=1, nodecounter
+                  IF(ANY(EdgeLine(j, :) == NodeIndexes(NodePositions(k)))) THEN
+                    ! increase capactiy by one
+                    ALLOCATE(WorkInt2D(directions, NumEdgeNodes))
+                    WorkInt2D = EdgeLine
+                    DEALLOCATE(EdgeLine)
+                    NumEdgeNodes=NumEdgeNodes+1
+                    ALLOCATE(EdgeLine(directions, NumEdgeNodes))
+                    EdgeLine=0
+                    EdgeLine(:,1:NumEdgeNodes-1) = WorkInt2D
+                    DEALLOCATE(WorkInt2D)
+                  END IF
                   IF(ABS(CurrentNodePosition - NodePositions(k)) /= 2) THEN ! first node
                     EdgeLine(j, EdgeCount(j) + 1 + Counter) = NodeIndexes(NodePositions(k))
-                    counter=counter+1
                   ELSE ! second node
-                    EdgeLine(j, EdgeCount(j) + 2) = NodeIndexes(NodePositions(k))
+                    EdgeLine(j, EdgeCount(j) + 1 + Counter) = NodeIndexes(NodePositions(k))
                   END IF
+                  counter=counter+1
                 END DO
-                EdgeCount(j) = EdgeCount(j) + 2
+                EdgeCount(j) = EdgeCount(j) + Counter
               ELSE IF(nodecounter == 3) THEN
                 CALL FATAL('PlaneMesh', '4 edge nodes in one element!')
               END IF
@@ -547,7 +561,45 @@
               IF(FoundNode(i)) CYCLE
               Nodes(i)=Edgeline(i, EdgeCount(i)-1)
             END DO
+            UnFoundLoops=UnFoundLoops+1
+          ELSE
+            UnFoundLoops=0
           END IF
+          IF(UnFoundLoops == 2) THEN
+            ! if can't find all edge nodes
+            ! check if unfound node lies in poly of edgeline
+            ALLOCATE(EdgePoly(2, SUM(EdgeCount)+1))
+            nodecounter=0
+            IF(directions > 1) THEN
+              DO i=EdgeCount(2),1, -1 ! backwards iteration
+                nodecounter=nodecounter+1
+                EdgePoly(1,nodecounter) = PlaneMesh % Nodes % x(EdgeLine(2, i))
+                EdgePoly(2,nodecounter) = PlaneMesh % Nodes % y(EdgeLine(2, i))
+              END DO
+            END IF
+            DO i=1, EdgeCount(1)
+              nodecounter=nodecounter+1
+              EdgePoly(1,nodecounter) = PlaneMesh % Nodes % x(EdgeLine(1, i))
+              EdgePoly(2,nodecounter) = PlaneMesh % Nodes % y(EdgeLine(1, i))
+            END DO
+            EdgePoly(1, SUM(EdgeCount)+1) = EdgePoly(1,1)
+            EdgePoly(2, SUM(EdgeCount)+1) = EdgePoly(2,1)
+
+            counter=0
+            DO i=1, PlaneMesh % NumberOfNodes
+              inside=.FALSE.
+              IF(.NOT. EdgeNode(i)) CYCLE
+              IF(ANY(EdgeLine == i)) CYCLE
+              xx = PlaneMesh % Nodes % x(i)
+              yy = PlaneMesh % Nodes % y(i)
+              inside = PointInPolygon2D(EdgePoly, (/xx, yy/))
+              IF(inside) counter=counter+1
+            END DO
+            IF(NumEdgeNodes == SUM(EdgeCount) + counter) Complete = .TRUE.
+            DEALLOCATE(EdgePoly)
+          END IF
+          IF(NumEdgeNodes == SUM(EdgeCount)) Complete = .TRUE.
+          IF(UnFoundLoops == 10) CALL FATAL('Calving_lset', 'Cannot find all edge nodes')
         END DO
         EXIT ! initial loop only to get random start point
       END DO
