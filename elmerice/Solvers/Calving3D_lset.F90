@@ -886,7 +886,7 @@
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight)
        !CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
        !     IMOnLeft, IMOnRight, .FALSE.)
-       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY)
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMOnleft, IMOnRight, gridmesh_dx)
        CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, FrontLeft, FrontRight)
 
        IF(Debug) THEN

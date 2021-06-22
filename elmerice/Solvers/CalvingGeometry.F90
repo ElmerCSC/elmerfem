@@ -5255,19 +5255,21 @@ CONTAINS
 
   END SUBROUTINE GetCalvingPolygons
 
-  SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, OnLeft, OnRight)
+  SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, OnLeft, OnRight, GridSize)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     REAL(kind=dp) :: EdgeX(:), EdgeY(:)
     LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:)
+    REAL(kind=dp), OPTIONAL :: GridSize
     !-------------------------------------------------
     TYPE(CrevassePath_t), POINTER :: CurrentPath, WorkPath
-    INTEGER :: i,j, counter, first, last, path
+    INTEGER :: i,j, counter, first, last, path, start, end, startidx, endidx, DeleteEndNodes
     REAL(kind=dp), ALLOCATABLE :: Polygons(:,:), PathPoly(:,:)
-    INTEGER, ALLOCATABLE :: PolyStart(:), PolyEnd(:)
-    REAL(kind=dp) :: xx, yy
-    LOGICAL :: inside, debug
+    INTEGER, ALLOCATABLE :: PolyStart(:), PolyEnd(:), WorkInt(:)
+    REAL(kind=dp) :: xx, yy, StartX, StartY, EndX, EndY, err_buffer
+    LOGICAL :: inside, debug, Found(2)
+    LOGICAL, ALLOCATABLE :: DeleteNode(:), DeleteElement(:)
 
     ! remove paths that end on both lateral boundaries
     IF(PRESENT(OnLeft) .OR. PRESENT(OnRight)) THEN
@@ -5302,7 +5304,104 @@ CONTAINS
       END DO
     END IF
 
-    CALL GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygons, PolyStart, PolyEnd)
+    ! crop crev path so it ends on edge node
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+
+      Found = .FALSE.
+      ! buffer for floating point errors
+      IF(PRESENT(GridSize)) THEN
+        err_buffer = GridSize/10
+      ELSE
+        err_buffer = 0.0_dp
+      END IF
+
+      DO i=1, CurrentPath % NumberOfNodes-1
+        IF(.NOT. Found(1)) THEN
+          start=CurrentPath % NodeNumbers(i)
+          startidx=i
+        END IF
+        IF(.NOT. Found(2)) THEN
+          end=CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes+1-i)
+          endidx=CurrentPath % NumberOfNodes+1-i
+        END IF
+        StartX = Mesh % Nodes % x(start)
+        StartY = Mesh % Nodes % y(start)
+        EndX = Mesh % Nodes % x(end)
+        EndY = Mesh % Nodes % y(end)
+        DO j=1, SIZE(EdgeX)
+          IF((EdgeX(j) <= StartX+err_buffer .AND. EdgeX(j) >= StartX-err_buffer) .AND. &
+          (EdgeY(j) <= StartY+err_buffer  .AND. EdgeY(j) >= StartY-err_buffer)) Found(1) = .TRUE.
+          IF((EdgeX(j) <= EndX+err_buffer  .AND. EdgeX(j) >= EndX-err_buffer) .AND. &
+          (EdgeY(j) <= EndY+err_buffer  .AND. EdgeY(j) >= EndY-err_buffer )) Found(2) = .TRUE.
+        END DO
+        IF(ALL(Found)) EXIT
+      END DO
+
+      ! If crevasses does not intersect edgeline twice remove it
+      IF(ANY(.NOT. Found)) THEN
+        CALL WARN('RemoveInvalidCrevs', 'Crev does not intersect edge twice so removing')
+        CurrentPath % Valid = .FALSE.
+      END IF
+
+      ALLOCATE(DeleteElement(CurrentPath % NumberOfElements),&
+             DeleteNode(CurrentPath % NumberOfNodes))
+      DeleteElement = .FALSE.
+      DeleteNode = .FALSE.
+
+      IF(startidx /= 1) THEN
+        DeleteNode(1:startidx-1) = .TRUE.
+        DeleteElement(1:startidx-1) = .TRUE.
+      END IF
+      IF(endidx /= CurrentPath % NumberOfNodes) THEN
+        DeleteEndNodes = CurrentPath % NumberOfNodes - endidx
+        DeleteNode(endidx+1:CurrentPath % NumberOfNodes) = .TRUE.
+        DeleteElement(CurrentPath % NumberOfElements - DeleteEndNodes:CurrentPath % NumberOfElements) = .TRUE.
+      END IF
+
+      !Delete them
+      IF(COUNT(DeleteElement) > 0) THEN
+        !elements
+        ALLOCATE(WorkInt(COUNT(.NOT. DeleteElement)))
+        WorkInt = PACK(CurrentPath % ElementNumbers,.NOT.DeleteElement)
+
+        DEALLOCATE(CurrentPath % ElementNumbers)
+        ALLOCATE(CurrentPath % ElementNumbers(SIZE(WorkInt)))
+
+        CurrentPath % ElementNumbers = WorkInt
+        CurrentPath % NumberOfElements = SIZE(WorkInt)
+        DEALLOCATE(WorkInt)
+
+        !nodes
+        ALLOCATE(WorkInt(COUNT(.NOT. DeleteNode)))
+        WorkInt = PACK(CurrentPath % NodeNumbers, .NOT.DeleteNode)
+
+        DEALLOCATE(CurrentPath % NodeNumbers)
+        ALLOCATE(CurrentPath % NodeNumbers(SIZE(WorkInt)))
+
+        CurrentPath % NodeNumbers = WorkInt
+        CurrentPath % NumberOfNodes = SIZE(WorkInt)
+        DEALLOCATE(WorkInt)
+      END IF
+
+      DEALLOCATE(DeleteElement, DeleteNode)
+      CurrentPath => CurrentPath % Next
+    END DO
+
+    ! actually remove path
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+      WorkPath => CurrentPath % Next
+
+      IF(.NOT. CurrentPath % Valid) THEN
+        IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
+        CALL RemoveCrevassePath(CurrentPath)
+        IF(Debug) CALL Info("RemoveInvalidCrevs","Removing a crevasse path which doesn't end on the edge")
+      END IF
+      CurrentPath => WorkPath
+    END DO
+
+    CALL GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygons, PolyStart, PolyEnd, GridSize)
 
     ! remove crevs found within other crevasses
     CurrentPath => CrevassePaths
