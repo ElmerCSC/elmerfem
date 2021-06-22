@@ -1112,7 +1112,10 @@ CONTAINS
     END DO
 
     DO i=1,Mesh % NumberOfNodes
-      IF(Mesh % ParallelInfo % GlobalDOFs(i) <= 0) CALL Fatal(SolverName, 'Node has ID 0')
+      IF(Mesh % ParallelInfo % GlobalDOFs(i) <= 0) THEN
+        PRINT*, ParEnv % MyPE, 'Node ', i, 'Has no GlobalID'
+        CALL Fatal(SolverName, 'Node has ID 0')
+      END IF
       DO j=1,Mesh % NumberOfNodes
         IF(i==j) CYCLE
         IF(Mesh % ParallelInfo % GlobalDOFs(i) == Mesh % ParallelInfo % GlobalDOFs(j)) THEN
