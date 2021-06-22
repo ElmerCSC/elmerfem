@@ -1185,7 +1185,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: interpedValue(:), PartInterpedValues(:,:), &
          SuppNodeWeights(:), PartSuppNodeWeights(:,:), WorkArray(:), SumWeights(:),&
          FinalInterpedValues(:)
-    INTEGER :: i,j,k,n,idx,NoNeighbours,NoSuppNodes,&
+    INTEGER :: i,j,k,n,idx,NoNeighbours,NoSuppNodes,NoUsedNeighbours,&
          proc,status(MPI_STATUS_SIZE), counter, ierr, MaskCount
     INTEGER, ALLOCATABLE :: NeighbourParts(:), WorkInt(:), SuppNodes(:), PartNoSuppNodes(:)
     INTEGER, POINTER :: Neighbours(:)
@@ -1301,7 +1301,7 @@ CONTAINS
     DEALLOCATE(WorkInt)
 
     IF(NoSuppNodes == 0) THEN
-      WRITE(Message, '(i0,A,i0)') ParEnv % MyPE, 'NoSuppNodes = ',NoSuppNodes
+      WRITE(Message, '(i0,A,i0)') ParEnv % MyPE, ' NoSuppNodes = ',NoSuppNodes
       CALL WARN('InterpVarToVar', Message)
     END IF
 
@@ -1317,6 +1317,9 @@ CONTAINS
     END DO
 
     ! an mpi_error can occur if one proc has zero supp nodes
+    ! if proc has zero supp nodes it needs to receive mpi info but cannot send any
+    ! therefore neighbours need to allocate less space to avoid nans
+    NoUsedNeighbours=NoNeighbours
     ALLOCATE(UseProc(NoNeighbours+1))
     UseProc = .TRUE. ! default is to use proc
     IF(ANY(PartNoSuppNodes == 0)) THEN
@@ -1324,7 +1327,7 @@ CONTAINS
          IF(PartNoSuppNodes(i) == 0) UseProc(i) = .FALSE.
       END DO
       !reassign noneighbours to neighbours with suppnodes
-      NoNeighbours = COUNT(UseProc)-1
+      NoUsedNeighbours = COUNT(UseProc(2:NoNeighbours+1))
     END IF
 
     !create suppnode mask and get node values
@@ -1385,7 +1388,7 @@ CONTAINS
     ! one proc could have no suppnodes so need to calculate maskcount
     IF(NoSuppNodes == 0) THEN
       IF(PRESENT(Variables)) THEN
-        MaskCount = 1
+        MaskCount = 1 ! since already got height?
         Var => Variables
         DO WHILE(ASSOCIATED(Var))
           MaskCount = MaskCount + 1
@@ -1404,26 +1407,31 @@ CONTAINS
     InterpedValue = WorkArray
     DEALLOCATE(WorkMask, WorkArray)
 
+    ! all parallel communication changed to use NoUsedNeighbours so neighbouring procs
+    ! of those with zero suppnodes (no info) do not over allocate (eg allocate nans)
     !share SuppNodeMask
-    ALLOCATE(PartSuppNodeMask(NoNeighbours+1, 25, MaskCount))
+    ALLOCATE(PartSuppNodeMask(NoUsedNeighbours+1, 25, MaskCount))
     PartSuppNodeMask = .FALSE.
     PartSuppNodeMask(1,:NoSuppNodes,:) = SuppNodeMask
+    counter=0
     DO i=1, NoNeighbours
       proc = NeighbourParts(i)
       IF(UseProc(1)) THEN ! if this proc has supp nodes send
         CALL MPI_BSEND( SuppNodeMask, NoSuppNodes*MaskCount, MPI_LOGICAL, proc, &
           4001, ELMER_COMM_WORLD,ierr )
       END IF
-      IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
-        CALL MPI_RECV( PartSuppNodeMask(i+1,:PartNoSuppNodes(i+1),: ) , &
+      IF(UseProc(i+1)) THEN !neighouring proc has supp nodes
+        counter=counter+1
+        CALL MPI_RECV( PartSuppNodeMask(counter+1,:PartNoSuppNodes(i+1),: ) , &
           PartNoSuppNodes(i+1)*MaskCount, MPI_LOGICAL, proc, &
           4001, ELMER_COMM_WORLD, status, ierr )
       END If
     END DO
 
     !share interped value
-    ALLOCATE(PartInterpedValues(NoNeighbours+1, MaskCount))
+    ALLOCATE(PartInterpedValues(NoUsedNeighbours+1, MaskCount))
     PartInterpedValues(1,1:MaskCount) = InterpedValue
+    counter=0
     DO i=1, NoNeighbours
       proc = NeighbourParts(i)
       IF(UseProc(1)) THEN ! if this proc has supp nodes send
@@ -1431,14 +1439,17 @@ CONTAINS
           4002, ELMER_COMM_WORLD,ierr )
       END IF
       IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
-        CALL MPI_RECV( PartInterpedValues(i+1,:), MaskCount, MPI_DOUBLE_PRECISION, proc, &
+        counter=counter+1
+        CALL MPI_RECV( PartInterpedValues(counter+1,:), MaskCount, MPI_DOUBLE_PRECISION, proc, &
           4002, ELMER_COMM_WORLD, status, ierr )
       END IF
     END DO
 
     !share suppnode weights
-    ALLOCATE(PartSuppNodeWeights(NoNeighbours+1, 25))
+    ALLOCATE(PartSuppNodeWeights(NoUsedNeighbours+1, 25))
+    PartSuppNodeWeights=0.0_dp
     PartSuppNodeWeights(1,1:NoSuppNodes) = SuppNodeWeights
+    counter=0
     DO i=1, NoNeighbours
       proc = NeighbourParts(i)
       IF(UseProc(1)) THEN ! if this proc has supp nodes send
@@ -1446,7 +1457,8 @@ CONTAINS
           4003, ELMER_COMM_WORLD,ierr )
       END IF
       IF(UseProc(i+1)) THEN !neighouring prco has supp nodes
-        CALL MPI_RECV( PartSuppNodeWeights(i+1,1:PartNoSuppNodes(i+1)), &
+        counter=counter+1
+        CALL MPI_RECV( PartSuppNodeWeights(counter+1,1:PartNoSuppNodes(i+1)), &
           PartNoSuppNodes(i+1), MPI_DOUBLE_PRECISION, proc, &
           4003, ELMER_COMM_WORLD, status, ierr )
       END IF
@@ -1456,14 +1468,27 @@ CONTAINS
     ALLOCATE(FinalInterpedValues(MaskCount))
     FinalInterpedValues = 0.0_dp
     ! add up interpedvalues
-    DO i=1, NoNeighbours+1
+    DO i=1, NoUsedNeighbours+1
       FinalInterpedValues = FinalInterpedValues + PartInterpedValues(i, :)
     END DO
+
+    ! convert PartNoSuppNodes to only used procs
+    ALLOCATE(WorkInt(NoNeighbours+1))
+    WorkInt=PartNoSuppNodes
+    DEALLOCATE(PartNoSuppNodes)
+    ALLOCATE(PartNoSuppNodes(NoUsedNeighbours+1))
+    counter=0
+    DO i=1, NoNeighbours+1
+      IF(i/=1 .AND. .NOT. UseProc(i)) CYCLE
+      counter=counter+1
+      PartNoSuppNodes(counter) = WorkInt(i)
+    END DO
+    DEALLOCATE(WorkInt)
 
     ! calculate weight for each var
     ALLOCATE(SumWeights(MaskCount))
     SumWeights = 0.0_dp
-    DO i=1, NoNeighbours+1
+    DO i=1, NoUsedNeighbours+1
       ! loop through procs suppnodes
       DO j=1, PartNoSuppNodes(i)
         DO k=1, MaskCount
