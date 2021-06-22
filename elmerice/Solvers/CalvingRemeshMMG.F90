@@ -83,9 +83,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
        Nodes(:), IslandCounts(:), pNCalvNodes(:,:)
-  REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
+  REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, newdist
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
-       target_length(:,:)
+       target_length(:,:), Ptest_dist(:), Gtest_dist(:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
@@ -182,6 +182,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   remeshed_node = .FALSE.
   fixed_node = .FALSE.
 
+  ! TO DO some other wah to define remeshed nodes
+  DistanceVar  => VariableGet(Mesh % Variables, "Distance", .TRUE., UnfoundFatal=.TRUE.)
+  ALLOCATE(test_dist(NNodes))
+  test_dist = DistanceVar  % Values(DistanceVar % Perm(:))
+  remeshed_node = test_dist < remesh_thresh
+
   !Get the calving levelset function (-ve inside calving event, +ve in intact ice)
   !-------------------
   IF (CalvingOccurs) THEN
@@ -194,13 +200,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
      calved_node = .FALSE.
      test_lset = CalvingVar % Values(CalvingVar % Perm(:)) !TODO - quick&dirty, possibly zero perm?
      calved_node = test_lset < 0.0
-     remeshed_node = test_lset < remesh_thresh
-  ELSE
-     ! TO DO some other wah to define remeshed nodes
-     DistanceVar  => VariableGet(Mesh % Variables, "Distance", .TRUE., UnfoundFatal=.TRUE.)
-     ALLOCATE(test_dist(NNodes))
-     test_dist = DistanceVar  % Values(DistanceVar % Perm(:))
-     remeshed_node = test_dist < remesh_thresh
+     ! calving front boundary nodes may have lset value greater than remesh dist
+     DO i=1, NNodes
+        newdist = MINVAL((/test_lset(i), test_dist(i)/))
+        remeshed_node(i) = newdist < remesh_thresh
+     END DO
   END IF
 
   my_calv_front = 0
@@ -376,12 +380,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       GNNode = GatheredMesh % NumberOfNodes
 
       ALLOCATE(PGDOFs_send(SUM(Prnode_count)), &
-           Ptest_lset(SUM(Prnode_count)), &
+           Ptest_dist(SUM(Prnode_count)), &
            disps(ncalv_parts),GtoLNN(GLNode_min:GLNode_max),&
-           gtest_lset(GNNode),&
+           gtest_dist(GNNode),&
            fixed_node(GNNode),&
            fixed_elem(GNBulk + GNBdry))
 
+      IF(CalvingOccurs) ALLOCATE(Ptest_lset(SUM(Prnode_count)), &
+                                gtest_lset(GNNode))
       fixed_node = .FALSE.
       fixed_elem = .FALSE.
       gtest_lset = remesh_thresh + 500.0 !Ensure any far (unshared) nodes are fixed
@@ -404,16 +410,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     END IF
 
     IF (CalvingOccurs) THEN
-    !Gather the level set function
-    CALL MPI_GatherV(PACK(test_lset,remeshed_node), COUNT(remeshed_node), MPI_DOUBLE_PRECISION, &
-          Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, croot, COMM_CALVE,ierr)
-    IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
-    ELSE
+      !Gather the level set function
+      CALL MPI_GatherV(PACK(test_lset,remeshed_node), COUNT(remeshed_node), MPI_DOUBLE_PRECISION, &
+            Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, croot, COMM_CALVE,ierr)
+      IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
+    END IF
     !Gather the distance to front, but let it output to Ptest_lset to avoid repetitive code
     CALL MPI_GatherV(PACK(test_dist,remeshed_node), COUNT(remeshed_node), MPI_DOUBLE_PRECISION, &
-          Ptest_lset, Prnode_count, disps, MPI_DOUBLE_PRECISION, croot, COMM_CALVE,ierr)
+          Ptest_dist, Prnode_count, disps, MPI_DOUBLE_PRECISION, croot, COMM_CALVE,ierr)
     IF(ierr /= MPI_SUCCESS) CALL Fatal(SolverName,"MPI Error!")
-    END IF
+    !END IF
     !Gather the GDOFs
     CALL MPI_GatherV(PACK(Mesh % ParallelInfo % GlobalDOFs,remeshed_node), &
          COUNT(remeshed_node), MPI_INTEGER, PGDOFs_send, Prnode_count, &
@@ -427,10 +433,20 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       DO i=1,SUM(Prnode_count)
         k = GtoLNN(PGDOFs_send(i))
         IF(k==0) CALL Fatal(SolverName, "Programming error in Global to Local NNum map")
-        Gtest_lset(k) = Ptest_lset(i)
+        IF(CalvingOccurs) Gtest_lset(k) = Ptest_lset(i)
+        Gtest_dist(k) = Ptest_dist(i)
       END DO
 
-      fixed_node = Gtest_lset > remesh_thresh
+      ! calving front boundary nodes may have lset value greater than remesh dist
+      ! so use dist so front boundary nodes aren't fixed
+      IF(CalvingOccurs) THEN
+        DO i=1,GNNode
+          newdist = MINVAL((/Gtest_lset(i), Gtest_dist(i)/))
+          fixed_node(i) = newdist > remesh_thresh
+        END DO
+      ELSE
+        fixed_node = Gtest_dist > remesh_thresh
+      END IF
 
       DO i=1, GNBulk + GNBdry
         Element => GatheredMesh % Elements(i)
