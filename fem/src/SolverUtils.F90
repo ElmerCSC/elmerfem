@@ -15578,7 +15578,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END DO
 
 
-
   IF( AnyDirichlet ) THEN
     DO j=1,DOFs
       Name = ComponentName( SaveVar % Name, j ) 
@@ -15589,10 +15588,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
           2*j, 2*DOFs, SaveVar % Perm )
     END DO
-
-    CALL EnforceDirichletConditions( Solver, Aharm, b )
   END IF
-
 
   
   ! Create the new fields, the total one and the imaginary one
@@ -15676,6 +15672,11 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   ! the system will automatically be solved as complex
   Solver % Variable => HarmVar
   Solver % Matrix => Aharm
+
+  IF(AnyDirichlet) THEN
+    IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver, Aharm)
+    CALL EnforceDirichletConditions( Solver, Aharm, b )
+  END IF
 
   ! Save the original matrix and variable in Ematrix and Evar
   Solver % Matrix % Ematrix => SaveMatrix
