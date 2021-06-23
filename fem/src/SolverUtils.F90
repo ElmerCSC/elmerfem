@@ -14346,9 +14346,6 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
 
 print*,size(eigenvalues,1), size(eigenvalues)
 
-block
-
-
       CALL Info('SolveEigenSystem','Soving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
@@ -14357,7 +14354,6 @@ block
         CALL ParallelArpackEigenSolveComplex( Solver, StiffMatrix, n/2, NOFEigen, &
             EigenValues, EigenVectors )
       END IF
-end block
     END IF
     
 !------------------------------------------------------------------------------
@@ -15418,8 +15414,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   Are => Solver % Matrix
 
   CALL Info('ChangeToHarmonicSystem','Number of real system rows: '//TRIM(I2S(n)),Level=16)
-  
-
 
   ! Obtain the frequency, it may depend on iteration step etc. 
   Omega = 0._dp
@@ -15432,9 +15426,9 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     CALL Info( 'ChangeToHarmonicSystem', Message, Level=5 )
 
      omega = 2 * PI * Frequency
+     CALL ListAddConstReal( CurrentModel % Simulation, 'res: frequency', Frequency )
   END IF
 
-  CALL ListAddConstReal( CurrentModel % Simulation, 'res: frequency', Frequency )
   
   HarmonicReal = ListGetLogical( Solver % Values,'Harmonic Mode Real',Found ) 
   IF( HarmonicReal ) THEN
@@ -15509,7 +15503,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   ! Set the harmonic system matrix
   IF( EigenMode ) THEN
     ALLOCATE(Aharm % MassValues(SIZE(Aharm % Values)))
-    Aharm % MassValues = 0._dp
 
     DO k=1,n
       kr = Aharm % Rows(2*(k-1)+1)
@@ -15678,37 +15671,10 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END IF
 
   IF ( EigenMode ) THEN 
-BLOCK
-     TYPE(Variable_t), POINTER :: Var
-     CHARACTER(MAX_NAME_LEN) :: str
-
      IF ( ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
-       n = Solver % NOFEigenValues
-       HarmVar % EigenValues => Solver % Variable % Eigenvalues
-       ALLOCATE( HarmVar % EigenVectors(n, SIZE( HarmVar % Values ) ) )
-
-       HarmVar % EigenValues  = 0.0_dp
-       HarmVAr % EigenVectors = 0.0_dp
-
-       IF( HarmVar % DOFs > 1 ) THEN
-         CALL Info('AddEquationSolution','Repointing '//TRIM(I2S(Solver % Variable % DOFs))//&
-             ' eigenvalue components for: '//TRIM(HarmVar % Name))
-
-         DO k=1,HarmVar % DOFs
-           str = ComponentName( Solver % Variable % Name, k )
-           Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
-
-           IF( ASSOCIATED( Var ) ) THEN
-             CALL Info('AddEquationSolution','Eigenvalue component '&
-                 //TRIM(I2S(k))//': '//TRIM(str))
-             Var % EigenValues => HarmVar % EigenValues
-             Var % EigenVectors =>  &
-                 HarmVar % EigenVectors(:,k::Solver % Variable % DOFs )
-           END IF
-         END DO
-       END IF
+       HarmVar % EigenValues  => Solver % Variable % Eigenvalues
+       HarmVar % EigenVectors => Solver % Variable % EigenVectors
      END IF
-END BLOCK
   END IF
 
 
