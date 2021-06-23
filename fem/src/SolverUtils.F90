@@ -2165,13 +2165,12 @@ CONTAINS
      dofs = Var % Dofs
      Params => Solver % Values
 
-     IF( ListGetLogical( Params,'Enforce Linear Contact',Found ) ) THEN
+     pContact = IsPelement(Mesh % Elements(1) )
+     IF( ListGetLogical( Params,'Contact Linear Basis',Found ) ) THEN
        pContact = .FALSE.
-     ELSE    
-       pContact = IsPelement(Mesh % Elements(1) )
      END IF
      IF( pContact ) THEN
-       CALL Info(Caller,'Using p-elements for contact also!',Level=8)
+       CALL Info(Caller,'Using p-elements for contact, if available in projector!',Level=8)
      END IF
      
      IterVar => VariableGet( Model % Variables,'coupled iter')
@@ -2833,8 +2832,8 @@ CONTAINS
        END DO
 
        n = COUNT(InterfaceDof)
-       CALL Info(Caller,&
-           'Number of interface dofs: '//TRIM(I2S(n)),Level=8)
+       CALL Info(Caller,'Number of interface dofs: '//TRIM(I2S(n)),Level=8)
+       
      END SUBROUTINE MarkInterfaceDofs
      
 
@@ -2907,7 +2906,7 @@ CONTAINS
            IF ( Element % BoundaryInfo % Constraint == Model % BCs(master_ind) % Tag ) THEN
              IF( pContact ) THEN
                n = mGetElementDOFs(pIndexes,Element)                   
-               SlaveNode(pIndexes(1:n)) = .TRUE.
+               MasterNode(pIndexes(1:n)) = .TRUE.
              ELSE               
                MasterNode( Element % NodeIndexes ) = .TRUE.
              END IF
@@ -3292,8 +3291,10 @@ CONTAINS
        INTEGER :: i1,i2,j1,j2,ElemCode
        
        n = Mesh % MaxElementNodes
-       ALLOCATE(Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+       ALLOCATE(Basis(2*n), Nodes % x(2*n), Nodes % y(2*n), Nodes % z(2*n) )
+       Nodes % x = 0.0_dp; Nodes % y = 0.0_dp; Nodes % z = 0.0_dp
 
+       
        CoordSys = CurrentCoordinateSystem()
        NodalForce = 0.0_dp
 
@@ -3324,7 +3325,7 @@ CONTAINS
          Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
          Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
          
-         IntegStuff = GaussPoints( Element, n )
+         IntegStuff = GaussPoints( Element )
 
          DO t=1,IntegStuff % n        
            U = IntegStuff % u(t)
@@ -3394,8 +3395,13 @@ CONTAINS
        DO i=1,SIZE(FieldPerm)
          IF( NodeDone( i ) ) THEN             
            j = WeightVar % Perm(i)
-           SlipLoadVar % Values(j) = SlipLoadVar % Values(j) / WeightVar % Values(j)**2
-           NormalLoadVar % Values(j) = NormalLoadVar % Values(j) / WeightVar % Values(j)**2
+           IF(j==0) CYCLE
+           s = WeightVar % Values(j)
+           IF( s /= s ) CYCLE
+           IF( ABS(s) > EPSILON(s) ) THEN
+             SlipLoadVar % Values(j) = SlipLoadVar % Values(j) / s**2
+             NormalLoadVar % Values(j) = NormalLoadVar % Values(j) / s**2
+           END IF
          END IF
        END DO
 

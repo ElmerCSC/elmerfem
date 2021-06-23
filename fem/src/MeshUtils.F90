@@ -6881,7 +6881,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
-    LOGICAL :: SecondOrder
+    LOGICAL :: SecondOrder, pElemProj, pElemBasis
 
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
 
@@ -7144,15 +7144,27 @@ CONTAINS
         'Use Piola Transform', Found)
     SecondOrder = ListGetLogical( CurrentModel % Solver % Values, &
         'Quadratic Approximation', Found)
-
+      
+    ! We assume that the 1st element may be used to determine whether the mesh is a p-element
+    ! mesh or not.
+    Element => BMesh1 % Elements(1)        
+    pElemBasis = isPElement(Element) 
+    pElemProj = pElemBasis
+    IF( pElemProj ) THEN
+      IF( ListGetLogical( BC,'Projector Linear Basis',Found ) ) pElemProj = .FALSE.
+    END IF
+    IF( pElemProj ) THEN
+      CALL Info('LevelProjector','Using p-elements when creating mortar projector',Level=8)
+    END IF
+       
     ! At the 1st stage determine the maximum size of the projector
     ! If the strong projector is used then the numbering is done as we go
     ! this way we can eliminate unneeded rows. 
     ! For the weak projector there is no need to eliminate rows. 
     IF( DoNodes ) THEN      
       ALLOCATE( NodePerm( MAX(Mesh % NumberOfNodes,SIZE(Mesh % Nodes % x))+Mesh% NumberOfEdges ) )
-      NodePerm = 0
-
+      NodePerm = 0      
+      
       ! in parallel only consider nodes that truly are part of this partition
       DO i=1,BMesh1 % NumberOfBulkElements
         Element => BMesh1 % Elements(i)        
@@ -7160,16 +7172,17 @@ CONTAINS
           IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
         END IF        
         NodePerm(InvPerm1(Element % NodeIndexes)) = 1
-        IF(ASSOCIATED(Element % EdgeIndexes)) THEN
-          NodePerm(Element % EdgeIndexes+Mesh % NumberOfNodes) = 1
-        ELSE IF (Element % Type % ElementCode==202.AND.isPElement(Element) ) THEN
-          NodePerm(Element % ElementIndex+Mesh % NumberOfNodes) = 1
+        IF( pElemProj ) THEN
+          IF(ASSOCIATED(Element % EdgeIndexes)) THEN
+            NodePerm(Element % EdgeIndexes+Mesh % NumberOfNodes) = 1
+          ELSE IF (Element % TYPE % ElementCode==202) THEN
+            NodePerm(Element % ElementIndex+Mesh % NumberOfNodes) = 1
+          END IF
         END IF
       END DO
 
       n = SUM( NodePerm )
-      CALL Info('LevelProjector','Initial number of slave nodes '//TRIM(I2S(n))//&
-          ' out of '//TRIM(I2S(BMesh1 % NumberOfNodes ) ), Level = 10 )
+      CALL Info('LevelProjector','Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
 
       ! Eliminate the redundant nodes by default. 
       ! These are noded that depend on themselves.
@@ -7181,7 +7194,7 @@ CONTAINS
         m = 0
         n = SUM(NodePerm)
         CALL Info('LevelProjector',&
-            'Number of potential nodes in projector: '//TRIM(I2S(n)),Level=10)        
+            'Number of potential dofs in projector: '//TRIM(I2S(n)),Level=10)        
         ! Now eliminate the nodes which also occur in the other mesh
         ! These must be redundant edges
         DO i=1, SIZE(InvPerm2)
@@ -7214,7 +7227,7 @@ CONTAINS
           m = 0
           n = SUM( DualNodePerm )
           CALL Info('LevelProjector',&
-              'Number of potential nodes in dual projector: '//TRIM(I2S(n)),Level=10)        
+              'Number of potential dofs in dual projector: '//TRIM(I2S(n)),Level=10)        
           ! Now eliminate the nodes which also occur in the other mesh
           ! These must be redundant edges
           DO i=1, SIZE(InvPerm1)
@@ -7258,7 +7271,7 @@ CONTAINS
       END IF
       
       m = 0
-      DO i=1,Mesh % NumberOfNodes + Mesh % NumberOfEdges
+      DO i=1,SIZE(NodePerm) 
         IF( NodePerm(i) > 0 ) THEN
           m = m + 1
           NodePerm(i) = m
@@ -7336,7 +7349,7 @@ CONTAINS
       END IF
 
       m = 0
-      DO i=1,Mesh % NumberOfEdges
+      DO i=1,SIZE(EdgePerm)
         IF( EdgePerm(i) > 0 ) THEN
           m = m + 1
           EdgePerm(i) = m
@@ -9269,7 +9282,7 @@ CONTAINS
         nd = mGetElementDOFs(Indexes,Element)
 
         n = Element % TYPE % NumberOfNodes
-        IF(DoNodes .AND. .NOT.isPElement(Element)) nd = n
+        IF(DoNodes .AND. .NOT. pElemBasis) nd = n
 
         ! We use 'ne' also to indicate number of corners since for triangles and quads these are the same
         ne = Element % TYPE % NumberOfEdges  ! #(SLAVE EDGES)
@@ -9283,7 +9296,7 @@ CONTAINS
         Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Element % NodeIndexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Element % NodeIndexes(1:n))
 
-        IF (DoNodes .AND. isPelement(Element)) THEN
+        IF (DoNodes .AND. pElemBasis ) THEN
           Nodes % x(n+1:nd) = 0
           Nodes % y(n+1:nd) = 0
         END IF
@@ -9418,7 +9431,7 @@ CONTAINS
              IF(ASSOCIATED(Projector % Child)) &
                CALL List_AddMatrixIndex(Projector % Child % ListMatrix, nrow, j ) 
           END DO
-          IF(isPElement(Element)) THEN 
+          IF( pElemProj ) THEN
             DO i=n+1,nd
               j = Indexes(i)
               nrow = NodePerm(j)
@@ -9445,8 +9458,7 @@ CONTAINS
           nM  = ElementM % TYPE % NumberOfNodes
 
           ndM =  mGetElementDOFs(IndexesM,ElementM)
-
-          IF(DoNodes.AND..NOT.isPElement(ElementM)) ndM = nM
+          IF(DoNodes .AND. .NOT. pElemBasis) ndM = nM
 
           ElemCodeM = Element % TYPE % ElementCode 
           LinCodeM = 101 * neM
@@ -9533,7 +9545,7 @@ CONTAINS
             END IF
           END IF
 
-          IF  (isPelement(ElementM)) THEN
+          IF( pElemBasis ) THEN
             nodesM % x(nM+1:ndM) = 0
             nodesM % y(nM+1:ndM) = 0
             nodesM % z(nM+1:ndM) = 0
@@ -9872,7 +9884,7 @@ CONTAINS
               CoeffBasis = 0
               area = 0
               DO nip=1, IP % n 
-                IF ( ne == 3 .AND. isPElement(Element) ) THEN
+                IF ( ne == 3 .AND. pElemBasis ) THEN
                    uq = u
                    vq = v
                    u = -1.0d0 + 2.0d0*uq + vq
@@ -9977,7 +9989,7 @@ CONTAINS
                   CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
                 END IF
               ELSE
-                IF ( ne == 3 .AND. isPelement(Element) ) THEN
+                IF ( ne == 3 .AND. pElemBasis ) THEN
                   uq = u
                   vq = v
                   u = -1.0d0 + 2.0d0*uq + vq
@@ -10020,7 +10032,7 @@ CONTAINS
                   CALL GetEdgeBasis(ElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
                 END IF
               ELSE
-                IF ( neM == 3 .AND. isPElement(ElementM) ) THEN
+                IF ( neM == 3 .AND. pElemBasis ) THEN
                   uq = um
                   vq = vm
                   um = -1.0d0 + 2.0d0*uq + vq
@@ -10042,13 +10054,14 @@ CONTAINS
                 END IF
 
                 DO j=1,nd
-                  IF(isPElement(Element)) THEN
+                  IF(pElemBasis) THEN
                     jj = Indexes(j)                                    
+                    IF(.NOT. pElemProj .AND. j > n ) CYCLE
                   ELSE
                     jj = Element % NodeIndexes(j)
                   END IF
                   IF (j<=n) jj=InvPerm1(jj)
-
+                  
                   nrow = NodePerm(jj)
                   IF( nrow == 0 ) CYCLE
 
@@ -10062,8 +10075,9 @@ CONTAINS
                   DO i=1,nd
                     Nslave = Nslave + 1
 
-                    IF(isPElement(Element)) THEN
-                      ii = Indexes(i)
+                    IF(pElemBasis) THEN
+                      IF(.NOT. pElemProj .AND. i > n ) CYCLE
+                      ii = Indexes(i)                      
                     ELSE
                       ii = Element % NodeIndexes(i)
                     END IF
@@ -10081,7 +10095,8 @@ CONTAINS
                   DO i=1,ndM
 !                   IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
 
-                    IF(isPElement(ElementM)) THEN
+                    IF(pElemBasis) THEN
+                      IF(.NOT. pElemProj .AND. i > nM ) CYCLE
                       ii = IndexesM(i)
                     ELSE
                       ii = ElementM % NodeIndexes(i)
@@ -10445,7 +10460,6 @@ CONTAINS
       CHARACTER(LEN=20) :: FileName
 
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
-      LOGICAL :: pElem
       CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeak1D"
 
       
@@ -10491,15 +10505,7 @@ CONTAINS
       AntiPeriodicHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
-
-      pElem = isPelement(BMesh1 % Elements(1))
-      IF( pElem ) THEN
-        CALL Info(Caller,'Using p-element when creating 1D mortar projector',Level=8)
-      END IF
-      IF( BiOrthogonalBasis ) THEN
-        CALL Info(Caller,'Using biorthogonal basis when creating 1D mortar projector',Level=8)
-      END IF
-           
+      
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -10510,11 +10516,11 @@ CONTAINS
         
         nd = mGetElementDOFs(Indexes,Element)
         n = Element % TYPE % NumberOfNodes
-        IF(.NOT. pElem) nd = n
+        IF(.NOT. pElemBasis) nd = n
 
         n = Element % TYPE % NumberOfNodes        
         Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
-        IF(pElem) Nodes % x(n+1:) = 0._dp
+        IF(pElemBasis) Nodes % x(n+1:) = 0._dp
 
         ! There is a discontinuity of angle at 180 degs
         ! If we are working on left-hand-side then add 360 degs to the negative angles
@@ -10566,7 +10572,7 @@ CONTAINS
 
         END DO
 
-        IF(pElem) THEN 
+        IF(pElemProj) THEN 
           DO i=n+1,nd
             j = Indexes(i)
             nrow = NodePerm(j)
@@ -10584,10 +10590,10 @@ CONTAINS
           ndM = mGetElementDOFs(IndexesM,ElementM)
 
           nM = ElementM % TYPE % NumberOfNodes
-          IF(.NOT.pElem) ndM = nM
+          IF(.NOT.pElemBasis) ndM = nM
         
           NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
-          IF(pElem) NodesM % x(nM+1:) = 0._dp
+          IF(pElemBasis) NodesM % x(nM+1:) = 0._dp
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
@@ -10745,7 +10751,7 @@ CONTAINS
 
             ! Add the entries to the projector
             DO j=1,nd
-              IF(pElem) THEN
+              IF(pElemBasis) THEN
                 jj = Indexes(j)                                    
               ELSE
                 jj = Element % NodeIndexes(j)
@@ -10762,7 +10768,7 @@ CONTAINS
               END IF
 
               DO i=1,nd
-                IF(pElem) THEN
+                IF(pElemBasis) THEN
                   ii = Indexes(i)
                 ELSE
                   ii = Element % NodeIndexes(i)
@@ -10779,7 +10785,7 @@ CONTAINS
               END DO
               
               DO i=1,ndM
-                IF(pElem) THEN
+                IF(pElemBasis) THEN
                   ii = IndexesM(i)
                 ELSE
                   ii = ElementM % NodeIndexes(i)

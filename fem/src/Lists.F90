@@ -1105,7 +1105,9 @@ use spariterglobals
         
         NULLIFY(TmpValues)
         ALLOCATE(TmpValues(ndofs*nsize))
-        TmpValues = 0.0_dp         
+        IF(.NOT. PRESENT(InitValue) ) THEN
+          TmpValues = 0.0_dp
+        END IF
       END IF
 
       IF( PRESENT( InitValue ) ) THEN

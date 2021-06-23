@@ -3686,26 +3686,24 @@ CONTAINS
     REAL(KIND=dp) :: G(:,:), f(:)
     LOGICAL, OPTIONAL :: VecAssembly
 
-    TYPE(Solver_t), POINTER   :: Solver
     TYPE(Matrix_t), POINTER   :: A
     REAL(KIND=dp), POINTER :: pvalues(:), prhs(:)
     
     IF ( PRESENT( USolver ) ) THEN
-      Solver => USolver
+      A => USolver % Matrix
     ELSE
-      Solver => CurrentModel % Solver
+      A => CurrentModel % Solver % Matrix
     END IF
-    A => Solver % Matrix
     
     IF(.NOT. ASSOCIATED( A % Values_im ) ) THEN
-      ALLOCATE( A % Values_im(SIZE( A % Values ) )
+      ALLOCATE( A % Values_im(SIZE( A % Values ) ) )
       A % Values_im = 0.0_dp
     END IF
     pvalues => A % Values
     A % Values => A % Values_im    
     
     IF(.NOT. ASSOCIATED( A % rhs_im ) ) THEN
-      ALLOCATE( A % rhs_im(SIZE( A % rhs ) )
+      ALLOCATE( A % rhs_im(SIZE( A % rhs ) ) )
       A % rhs_im = 0.0_dp
     END IF
     prhs => A % Rhs
@@ -4615,6 +4613,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+  
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateBulkR( B, F, UElement, USolver ) 
 !------------------------------------------------------------------------------
