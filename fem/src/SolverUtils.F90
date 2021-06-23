@@ -14344,8 +14344,6 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
       END IF
     ELSE
 
-print*,size(eigenvalues,1), size(eigenvalues)
-
       CALL Info('SolveEigenSystem','Soving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
@@ -15461,10 +15459,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     
     Aharm => CreateChildMatrix( Are, Dofs, 2*Dofs, CreateRhs = .TRUE., Diagonal = Diagonal )
 
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('ChangeToHarmonicSystem','ParallelInfo may not have been generated properly!')
-    END IF
-
     Aharm % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex', Found ) 
     IF( .NOT. Found ) Aharm % COMPLEX = .NOT. Diagonal !TRUE. 
   END IF
@@ -15682,7 +15676,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   ! the system will automatically be solved as complex
   Solver % Variable => HarmVar
   Solver % Matrix => Aharm
-  
+
   ! Save the original matrix and variable in Ematrix and Evar
   Solver % Matrix % Ematrix => SaveMatrix
   Solver % Variable % Evar => SaveVar    
