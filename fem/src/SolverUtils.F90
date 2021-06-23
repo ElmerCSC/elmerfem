@@ -2141,9 +2141,9 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: Projector, DualProjector
      TYPE(ValueList_t), POINTER :: BC, MasterBC
      REAL(KIND=dp), POINTER :: nWrk(:,:)
-     LOGICAL :: CreateDual
-    CHARACTER(*), PARAMETER :: Caller = 'DetermineContact'
-
+     LOGICAL :: CreateDual, pContact
+     CHARACTER(*), PARAMETER :: Caller = 'DetermineContact'
+     INTEGER, TARGET :: pIndexes(12)
      
      SAVE FirstTime
 
@@ -2165,6 +2165,15 @@ CONTAINS
      dofs = Var % Dofs
      Params => Solver % Values
 
+     IF( ListGetLogical( Params,'Enforce Linear Contact',Found ) ) THEN
+       pContact = .FALSE.
+     ELSE    
+       pContact = IsPelement(Mesh % Elements(1) )
+     END IF
+     IF( pContact ) THEN
+       CALL Info(Caller,'Using p-elements for contact also!',Level=8)
+     END IF
+     
      IterVar => VariableGet( Model % Variables,'coupled iter')
      CoupledIter = NINT( IterVar % Values(1) )
 
@@ -2505,8 +2514,8 @@ CONTAINS
        ALLOCATE( RotatedField(Solver % Matrix % NumberOfRows ) )
        RotatedField = Var % Values
        
-       DO i=1,Solver % Mesh % NumberOfNodes
-         j = Solver % Variable % Perm(i)
+       DO i=1,SIZE(FieldPerm)
+         j = FieldPerm(i)
          IF( j == 0 ) CYCLE
          m = BoundaryReorder(i)
          IF( m == 0 ) CYCLE
@@ -2568,12 +2577,13 @@ CONTAINS
        INTEGER :: i,j,k,t,n
        TYPE(Element_t), POINTER :: Element
        LOGICAL, ALLOCATABLE :: ActiveBCs(:)
-
+       
 
        IF( DoAllocate ) THEN
          CALL Info(Caller,'Creating contact fields',Level=8)
-        
-         ALLOCATE( BoundaryPerm(Mesh % NumberOfNodes) )
+
+         n = SIZE( FieldPerm ) 
+         ALLOCATE( BoundaryPerm(n) ) 
          BoundaryPerm = 0
 
          ALLOCATE( ActiveBCs(Model % NumberOfBcs ) )
@@ -2597,7 +2607,12 @@ CONTAINS
            DO i = 1, Model % NumberOfBCs
              IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
                IF( ActiveBCs(i) ) THEN
-                 BoundaryPerm( Element % NodeIndexes ) = 1
+                 IF( pContact ) THEN
+                   n = mGetElementDOFs(pIndexes,Element)                   
+                   BoundaryPerm(pIndexes(1:n)) = 1
+                 ELSE                 
+                   BoundaryPerm( Element % NodeIndexes ) = 1
+                 END IF
                END IF
              END IF
            END DO
@@ -2606,7 +2621,7 @@ CONTAINS
          DEALLOCATE( ActiveBCs )
 
          j = 0
-         DO i=1,Mesh % NumberOfNodes
+         DO i=1,SIZE(BoundaryPerm)
            IF( BoundaryPerm(i) > 0 ) THEN
              j = j + 1
              BoundaryPerm(i) = j
@@ -2785,10 +2800,15 @@ CONTAINS
          
          Element => Mesh % Elements( elem )         
          IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc_ind) % Tag ) CYCLE
-         
-         n = Element % TYPE % NumberOfNodes
-         Indexes => Element % NodeIndexes
-         
+
+         IF( pContact ) THEN
+           n = mGetElementDOFs(pIndexes,Element)                   
+           Indexes => pIndexes
+         ELSE         
+           n = Element % TYPE % NumberOfNodes         
+           Indexes => Element % NodeIndexes
+         END IF
+           
          DO i=1,n
            j = FieldPerm( Indexes(i) )
            IF( j == 0 ) CYCLE
@@ -2836,7 +2856,7 @@ CONTAINS
        INTEGER, POINTER :: Indexes(:)
        INTEGER :: elemcode, CoeffSign
        REAL(KIND=dp), ALLOCATABLE :: CoeffTable(:)
-       INTEGER :: l2,elem,i1,i2,j1,j2
+       INTEGER :: l2,elem,i1,i2,j1,j2,n
        LOGICAL :: LinearContactGap, DebugNormals
        
        
@@ -2863,11 +2883,11 @@ CONTAINS
        LinearContactGap = ListGetLogical( Model % Simulation,&
            'Contact BCs linear gap', Found )      
 
-       ALLOCATE( SlaveNode( Mesh % NumberOfNodes ) ) 
+       ALLOCATE( SlaveNode( SIZE( FieldPerm ) ) )
        SlaveNode = .FALSE.
 
        IF( CreateDual ) THEN
-         ALLOCATE( MasterNode( Mesh % NumberOfNodes ) ) 
+         ALLOCATE( MasterNode( SIZE( FieldPerm ) ) )
          MasterNode = .FALSE.
        END IF
 
@@ -2876,11 +2896,21 @@ CONTAINS
 
          Element => Mesh % Elements( i )                  
          IF( Element % BoundaryInfo % Constraint == Model % BCs(bc_ind) % Tag ) THEN
-           SlaveNode( Element % NodeIndexes ) = .TRUE.
+           IF( pContact ) THEN
+             n = mGetElementDOFs(pIndexes,Element)                   
+             SlaveNode(pIndexes(1:n)) = .TRUE.
+           ELSE
+             SlaveNode( Element % NodeIndexes ) = .TRUE.
+           END IF
          END IF
          IF( CreateDual ) THEN
            IF ( Element % BoundaryInfo % Constraint == Model % BCs(master_ind) % Tag ) THEN
-             MasterNode( Element % NodeIndexes ) = .TRUE.
+             IF( pContact ) THEN
+               n = mGetElementDOFs(pIndexes,Element)                   
+               SlaveNode(pIndexes(1:n)) = .TRUE.
+             ELSE               
+               MasterNode( Element % NodeIndexes ) = .TRUE.
+             END IF
            END IF
          END IF
        END DO
@@ -3270,7 +3300,7 @@ CONTAINS
        NormalSign0 = 0
        NormalCount = 0
        
-       ALLOCATE( NodeDone( Mesh % NumberOfNodes ) )
+       ALLOCATE( NodeDone( SIZE( FieldPerm ) ) )
        NodeDone = .FALSE.
 
        LinearContactLoads = ListGetLogical( Model % Simulation,&
@@ -3361,7 +3391,7 @@ CONTAINS
        END DO
 
        ! Normalize the computed normal loads such that the unit will be that of pressure
-       DO i=1,Mesh % NumberOfNodes
+       DO i=1,SIZE(FieldPerm)
          IF( NodeDone( i ) ) THEN             
            j = WeightVar % Perm(i)
            SlipLoadVar % Values(j) = SlipLoadVar % Values(j) / WeightVar % Values(j)**2
@@ -4007,26 +4037,38 @@ CONTAINS
        REAL(KIND=dp) :: MinDist, MaxDist, CoeffEps
        LOGICAL, ALLOCATABLE :: SlaveNode(:), NodeDone(:)
        REAL(KIND=dp), ALLOCATABLE :: CoeffTable(:), RealActive(:)
-       INTEGER :: i,j,k,l,l2
+       INTEGER :: i,j,k,l,l2,Indexes(12)
 
        CALL Info(Caller,'Mapping entities from slave to master',Level=10)
 
-       ALLOCATE( SlaveNode( Mesh % NumberOfNodes ) ) 
+       n = SIZE( FieldPerm )
+       ALLOCATE( SlaveNode( n ) )
        SlaveNode = .FALSE.
-
+       
        DO i=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
          Element => Mesh % Elements( i )                  
-         IF( Element % BoundaryInfo % Constraint == Model % BCs(bc_ind) % Tag ) THEN
+         IF( Element % BoundaryInfo % Constraint /= Model % BCs(bc_ind) % Tag ) CYCLE
+
+         CurrentModel % CurrentElement => Element
+         
+         IF( pContact ) THEN
+           n = mGetElementDOFs(pIndexes,Element)
+           SlaveNode(pIndexes(1:n)) = .TRUE.
+         ELSE
            SlaveNode( Element % NodeIndexes ) = .TRUE.
          END IF
        END DO
- 
+
+       IF( InfoActive(20) ) THEN
+         n = COUNT( SlaveNode )
+         CALL Info(Caller,'Number of dofs on slave side: '//TRIM(I2S(n)))
+       END IF
+         
        n = SIZE( DistVar % Values )
        ALLOCATE( CoeffTable( n ), NodeDone( n ) )
            
-
        CoeffTable = 0.0_dp
        NodeDone = .FALSE.
        
@@ -4036,8 +4078,16 @@ CONTAINS
          IF( Projector % InvPerm(i) == 0 ) CYCLE          
          l = DistVar % Perm( Projector % InvPerm(i) )
          
+         IF(.NOT. pContact ) THEN
+           IF( l > Mesh % NumberOfNodes ) CYCLE
+         END IF
+
          DO j = Projector % Rows(i),Projector % Rows(i+1)-1
            k = Projector % Cols(j)
+
+           IF(.NOT. pContact ) THEN
+             IF( k > Mesh % NumberOfNodes ) CYCLE
+           END IF                  
            
            IF( FieldPerm( k ) == 0 ) CYCLE               
            IF( SlaveNode( k ) ) CYCLE
@@ -4109,6 +4159,11 @@ CONTAINS
        DO i = 1, Projector % NumberOfRows
          j = Projector % InvPerm(i)
          IF( j == 0 ) CYCLE
+         
+         IF( .NOT. pContact ) THEN
+           IF( j > Mesh % NumberOfNodes ) CYCLE
+         END IF
+         
          k = NormalActiveVar % Perm(j)
          
          IF( NormalActiveVar % Values( k ) < 0.0_dp ) THEN
@@ -9497,7 +9552,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
      IF ( NormalTangentialNOFNodes <= 0 ) RETURN
-
+     
      dim = CoordinateSystemDimension()
 
      k = BoundaryReorder(NodeNumber)

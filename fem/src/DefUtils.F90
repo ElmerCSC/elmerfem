@@ -3679,6 +3679,45 @@ CONTAINS
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
 
+  
+  SUBROUTINE DefaultUpdateEquationsIm( G, F, UElement, USolver, VecAssembly )     
+    TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
+    TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    REAL(KIND=dp) :: G(:,:), f(:)
+    LOGICAL, OPTIONAL :: VecAssembly
+
+    TYPE(Solver_t), POINTER   :: Solver
+    TYPE(Matrix_t), POINTER   :: A
+    REAL(KIND=dp), POINTER :: pvalues(:), prhs(:)
+    
+    IF ( PRESENT( USolver ) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver
+    END IF
+    A => Solver % Matrix
+    
+    IF(.NOT. ASSOCIATED( A % Values_im ) ) THEN
+      ALLOCATE( A % Values_im(SIZE( A % Values ) )
+      A % Values_im = 0.0_dp
+    END IF
+    pvalues => A % Values
+    A % Values => A % Values_im    
+    
+    IF(.NOT. ASSOCIATED( A % rhs_im ) ) THEN
+      ALLOCATE( A % rhs_im(SIZE( A % rhs ) )
+      A % rhs_im = 0.0_dp
+    END IF
+    prhs => A % Rhs
+    A % rhs => A % rhs_im    
+    
+    CALL DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly )     
+    
+    A % Values => pValues
+    A % rhs => prhs
+    
+  END SUBROUTINE DefaultUpdateEquationsIm
+  
 
 !------------------------------------------------------------------------------
  SUBROUTINE UpdatePermonMatrix(A,G,n,dofs,nind)

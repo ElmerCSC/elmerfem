@@ -5510,7 +5510,7 @@ CONTAINS
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: i,n,m
-    
+        
     CALL Info('NormalProjector','Creating projector between 3D surfaces',Level=7)
     
     Parallel = ( ParEnv % PEs > 1 )
@@ -5591,8 +5591,7 @@ CONTAINS
         NodePerm(i) = n
       END IF
     END DO
-    CALL Info('NormalProjector','Initial number of slave nodes '//TRIM(I2S(n))//&
-        ' out of '//TRIM(I2S(BMesh1 % NumberOfNodes ) ), Level = 10 )
+    CALL Info('NormalProjector','Initial number of slave dofs: '//TRIM(I2S(n)), Level = 10 )
     
     ALLOCATE( Projector % InvPerm(n) )
     Projector % InvPerm = 0
@@ -6866,13 +6865,13 @@ CONTAINS
     !--------------------------------------------------------------------------
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL ::  StrongNodes, StrongEdges, StrongLevelEdges, StrongExtrudedEdges, &
-        StrongSkewEdges, StrongConformingEdges, StrongConformingNodes, pElementsUsed
+        StrongSkewEdges, StrongConformingEdges, StrongConformingNodes
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, WeakProjector, &
         StrongProjector, CreateDual, HaveMaxDistance
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
-        ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance
+        ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance, val
     INTEGER :: NoNodes1, NoNodes2, MeshDim
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow, Naxial
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:),DualNodePerm(:)
@@ -7449,11 +7448,26 @@ CONTAINS
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(Projector,.TRUE.)
-    CALL Info('LevelProjector','Number of rows in projector: '&
-        //TRIM(I2S(Projector % NumberOfRows)),Level=12)
-    CALL Info('LevelProjector','Number of entries in projector: '&
-        //TRIM(I2S(SIZE(Projector % Values))),Level=12)
-  
+
+    IF( InfoActive(15) ) THEN
+      val = SUM( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Sum of projector entries:',val
+      CALL Info('LevelProjector',Message)
+      
+      val = MINVAL( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Minimum of projector entries:',val
+      CALL Info('LevelProjector',Message)
+      
+      val = MAXVAL( Projector % Values )
+      WRITE(Message,'(A,ES12.3)') 'Maximum of projector entries:',val
+      CALL Info('LevelProjector',Message)
+      
+      CALL Info('LevelProjector','Number of rows in projector: '&
+          //TRIM(I2S(Projector % NumberOfRows)))
+      CALL Info('LevelProjector','Number of entries in projector: '&
+          //TRIM(I2S(SIZE(Projector % Values))))
+    END IF
+      
 
     IF(ASSOCIATED(Projector % Child)) THEN
       CALL List_toCRSMatrix(Projector % Child)
@@ -9122,9 +9136,11 @@ CONTAINS
           EdgeErr, MaxEdgeErr, cFact(6),cFactM(6)
       CHARACTER(LEN=20) :: FileName
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
+      CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeakGeneric"
+
 
       
-      CALL Info('AddProjectorWeakGeneric','Creating weak constraints using a generic integrator',Level=8)      
+      CALL Info(Caller,'Creating weak constraints using a generic integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
 
@@ -9146,7 +9162,7 @@ CONTAINS
           NodesM % x(n), NodesM % y(n), NodesM % z(n), &
           NodesT % x(n), NodesT % y(n), NodesT % z(n), & 
           Basis(n), BasisM(n), dBasisdx(n,3), STAT = AllocStat )
-      IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 1')
+      IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 1')
 
       Nodes % x  = 0
       Nodes % y  = 0
@@ -9165,13 +9181,13 @@ CONTAINS
 
       IF(BiOrthogonalBasis) THEN
         ALLOCATE(CoeffBasis(n), MASS(n,n), STAT=AllocStat)
-        IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 2')        
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 2')        
       END IF
 
       IF( EdgeBasis ) THEN 
         n = 12 ! Hard-coded size sufficient for second-order edge elements
         ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3), STAT=AllocStat )
-        IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 3')
+        IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error 3')
       END IF
         
       Nodes % z  = 0.0_dp
@@ -9222,7 +9238,7 @@ CONTAINS
         DO i=1,BMesh1 % NumberOfNodes
           IF( BMesh1 % Nodes % x(i)**2 + BMesh1 % Nodes % y(i)**2 < 1.0d-20 ) THEN
             CenterI = i
-            CALL Info('AddProjectorWeakGeneric','Found center node in slave: '&
+            CALL Info(Caller,'Found center node in slave: '&
                 //TRIM(I2S(CenterI)),Level=10)
             EXIT
           END IF
@@ -9230,7 +9246,7 @@ CONTAINS
         DO i=1,BMesh2 % NumberOfNodes
           IF( BMesh2 % Nodes % x(i)**2 + BMesh2 % Nodes % y(i)**2 < 1.0d-20 ) THEN
             CenterIM = i
-            CALL Info('AddProjectorWeakGeneric','Found center node in master: '&
+            CALL Info(Caller,'Found center node in master: '&
                 //TRIM(I2S(CenterI)),Level=10)
             EXIT
           END IF
@@ -10313,58 +10329,58 @@ CONTAINS
         DEALLOCATE(CoeffBasis, MASS )
       END IF
        
-      CALL Info('AddProjectorWeakGeneric','Number of integration pair candidates: '&
+      CALL Info(Caller,'Number of integration pair candidates: '&
           //TRIM(I2S(TotCands)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of integration pairs: '&
+      CALL Info(Caller,'Number of integration pairs: '&
           //TRIM(I2S(TotHits)),Level=10)
 
-      CALL Info('AddProjectorWeakGeneric','Number of edge intersections: '&
+      CALL Info(Caller,'Number of edge intersections: '&
           //TRIM(I2S(EdgeHits)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of corners inside element: '&
+      CALL Info(Caller,'Number of corners inside element: '&
           //TRIM(I2S(EdgeHits)),Level=10)
 
-      CALL Info('AddProjectorWeakGeneric','Number of initial corners: '&
+      CALL Info(Caller,'Number of initial corners: '&
           //TRIM(I2S(InitialHits)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of active corners: '&
+      CALL Info(Caller,'Number of active corners: '&
           //TRIM(I2S(ActiveHits)),Level=10)
 
-      CALL Info('AddProjectorWeakGeneric','Number of most subelement corners: '&
+      CALL Info(Caller,'Number of most subelement corners: '&
           //TRIM(I2S(MaxSubTriangles)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Element of most subelement corners: '&
+      CALL Info(Caller,'Element of most subelement corners: '&
           //TRIM(I2S(MaxSubElem)),Level=10)
 
       WRITE( Message,'(A,ES12.5)') 'Total reference area:',TotRefArea
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,ES12.5)') 'Total integrated area:',TotSumArea
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       Err = TotSumArea / TotRefArea
       WRITE( Message,'(A,ES15.6)') 'Average ratio in area integration:',Err 
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Maximum relative discrepancy in areas (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Minimum relative discrepancy in areas (element: ',MinErrInd,'):',MinErr-1.0_dp 
-      CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
-      CALL Info('AddProjectorWeakGeneric','Number of slave entries: '&
+      CALL Info(Caller,'Number of slave entries: '&
           //TRIM(I2S(Nslave)),Level=10)
-      CALL Info('AddProjectorWeakGeneric','Number of master entries: '&
+      CALL Info(Caller,'Number of master entries: '&
           //TRIM(I2S(Nmaster)),Level=10)
 
       IF( DebugEdge ) THEN
         CALL ListAddConstReal( CurrentModel % Simulation,'res: err',err) 
 
         WRITE( Message,'(A,ES15.6)') 'Slave entries total sum:', sums
-        CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         WRITE( Message,'(A,ES15.6)') 'Master entries total sum:', summ
-        CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         WRITE( Message,'(A,ES15.6)') 'Master entries total sum2:', summ2
-        CALL Info('AddProjectorWeakGeneric',Message,Level=8)
+        CALL Info(Caller,Message,Level=8)
         WRITE( Message,'(A,ES15.6)') 'Maximum edge projection error:', MaxEdgeErr
-        CALL Info('AddProjectorWeakGeneric',Message,Level=6)
+        CALL Info(Caller,Message,Level=6)
 
         CALL ListAddConstReal( CurrentModel % Simulation,'res: sums',sums) 
         CALL ListAddConstReal( CurrentModel % Simulation,'res: summ',summ) 
@@ -10399,7 +10415,9 @@ CONTAINS
 
     
     !----------------------------------------------------------------------
-    ! Create weak projector for the nodes in 1D mesh.
+    ! Create weak projector for the nodes and p:2 elements in 1D mesh.
+    ! Accurate integration is used. For the purpose a intermediate mesh
+    ! consisting of several element segments is used. 
     !----------------------------------------------------------------------
     SUBROUTINE AddProjectorWeak1D()
 
@@ -10427,8 +10445,11 @@ CONTAINS
       CHARACTER(LEN=20) :: FileName
 
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
+      LOGICAL :: pElem
+      CHARACTER(*), PARAMETER :: Caller = "AddProjectorWeak1D"
 
-      CALL Info('AddProjectorWeak1D','Creating weak constraints using a 1D integrator',Level=8)      
+      
+      CALL Info(Caller,'Creating weak constraints using a 1D integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
 
@@ -10471,6 +10492,14 @@ CONTAINS
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
 
+      pElem = isPelement(BMesh1 % Elements(1))
+      IF( pElem ) THEN
+        CALL Info(Caller,'Using p-element when creating 1D mortar projector',Level=8)
+      END IF
+      IF( BiOrthogonalBasis ) THEN
+        CALL Info(Caller,'Using biorthogonal basis when creating 1D mortar projector',Level=8)
+      END IF
+           
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -10478,14 +10507,14 @@ CONTAINS
         SaveElem = ( SaveInd == ind )
 
         Element => BMesh1 % Elements(ind)        
+        
         nd = mGetElementDOFs(Indexes,Element)
-
         n = Element % TYPE % NumberOfNodes
-        IF(.NOT.isPElement(Element)) nd = n
+        IF(.NOT. pElem) nd = n
 
         n = Element % TYPE % NumberOfNodes        
         Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
-        IF(isPElement(Element)) Nodes % x(n+1:) = 0._dp
+        IF(pElem) Nodes % x(n+1:) = 0._dp
 
         ! There is a discontinuity of angle at 180 degs
         ! If we are working on left-hand-side then add 360 degs to the negative angles
@@ -10537,7 +10566,7 @@ CONTAINS
 
         END DO
 
-        IF(isPElement(Element)) THEN 
+        IF(pElem) THEN 
           DO i=n+1,nd
             j = Indexes(i)
             nrow = NodePerm(j)
@@ -10555,10 +10584,10 @@ CONTAINS
           ndM = mGetElementDOFs(IndexesM,ElementM)
 
           nM = ElementM % TYPE % NumberOfNodes
-          IF(.NOT.isPElement(Element)) ndM = nM
+          IF(.NOT.pElem) ndM = nM
         
           NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
-          IF(isPElement(ElementM)) NodesM % x(nM+1:) = 0._dp
+          IF(pElem) NodesM % x(nM+1:) = 0._dp
 
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
@@ -10716,7 +10745,7 @@ CONTAINS
 
             ! Add the entries to the projector
             DO j=1,nd
-              IF(isPElement(Element)) THEN
+              IF(pElem) THEN
                 jj = Indexes(j)                                    
               ELSE
                 jj = Element % NodeIndexes(j)
@@ -10733,7 +10762,7 @@ CONTAINS
               END IF
 
               DO i=1,nd
-                IF(isPElement(Element)) THEN
+                IF(pElem) THEN
                   ii = Indexes(i)
                 ELSE
                   ii = Element % NodeIndexes(i)
@@ -10750,7 +10779,7 @@ CONTAINS
               END DO
               
               DO i=1,ndM
-                IF(isPElement(ElementM)) THEN
+                IF(pElem) THEN
                   ii = IndexesM(i)
                 ELSE
                   ii = ElementM % NodeIndexes(i)
@@ -10836,28 +10865,28 @@ CONTAINS
       DEALLOCATE( NodesT % x, NodesT % y, NodesT % z )
       DEALLOCATE( Basis, BasisM )
 
-      CALL Info('AddProjectorWeak1D','Number of integration pairs: '&
+      CALL Info(Caller,'Number of integration pairs: '&
           //TRIM(I2S(TotHits)),Level=10)
       IF( AntiPeriodicHits > 0 ) THEN
-        CALL Info('AddProjectorWeak1D','Number of antiperiodic pairs: '&
+        CALL Info(Caller,'Number of antiperiodic pairs: '&
           //TRIM(I2S(AntiPeriodicHits)),Level=10)
       END IF
 
       WRITE( Message,'(A,ES12.5)') 'Total reference length:',TotRefArea / ArcCoeff
-      CALL Info('AddProjectorWeak1D',Message,Level=8) 
+      CALL Info(Caller,Message,Level=8) 
       WRITE( Message,'(A,ES12.5)') 'Total integrated length:',TotSumArea / ArcCoeff
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       Err = TotSumArea / TotRefArea
       WRITE( Message,'(A,ES12.3)') 'Average ratio in length integration:',Err 
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Maximum relative discrepancy in length (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Minimum relative discrepancy in length (element: ',MinErrInd,'):',MinErr-1.0_dp 
-      CALL Info('AddProjectorWeak1D',Message,Level=8)
+      CALL Info(Caller,Message,Level=8)
 
 
     END SUBROUTINE AddProjectorWeak1D
@@ -12815,6 +12844,7 @@ CONTAINS
     INTEGER, POINTER :: IntInvPerm(:)
     LOGICAL :: GlobalInds
     INTEGER, POINTER :: GlobalDofs(:)
+    CHARACTER(*), PARAMETER :: Caller = "SaveProjector"
     
     IF(.NOT.ASSOCIATED(Projector)) RETURN
     
@@ -12839,7 +12869,7 @@ CONTAINS
         GlobalDofs => CurrentModel % Solver % Matrix % ParallelInfo % GlobalDofs
       END IF
       IF(.NOT. ASSOCIATED( GlobalDofs ) ) THEN
-        CALL Info('SaveProjector','Cannot find GlobalDofs for Solver matrix')
+        CALL Info(Caller,'Cannot find GlobalDofs for Solver matrix')
         GlobalDofs => CurrentModel % Mesh % ParallelInfo % GlobalDofs
       END IF
     END IF

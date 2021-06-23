@@ -195,7 +195,7 @@ MODULE Types
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
     REAL(KIND=dp),  POINTER CONTIG :: Values(:)=>NULL(), ILUValues(:)=>NULL(), &
-               DiagScaling(:) => NULL(), TValues(:) => Null()
+               DiagScaling(:) => NULL(), TValues(:) => NULL(), Values_im(:)
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
