@@ -14404,6 +14404,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
             EigenValues, EigenVectors )
       END IF
     ELSE
+
       CALL Info('SolveEigenSystem','Soving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
@@ -15423,8 +15424,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   REAL(KIND=dp) :: frequency
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Variable_t), POINTER :: TmpVar, ReVar, HarmVar, SaveVar
-  LOGICAL :: ToReal, ParseName, AnyDirichlet, Diagonal, HarmonicReal
-  
+  LOGICAL :: ToReal, ParseName, AnyDirichlet, Diagonal, HarmonicReal, EigenMode
   
   IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
     CALL Warn('ChangeToHarmonicSystem','Not applicable without a variable')
@@ -15435,7 +15435,9 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     CALL Warn('ChangeToHarmonicSystem','Not applicable without a matrix')
     RETURN    
   END IF
-  
+
+  EigenMode = ListgetLogical( Solver % Values, 'Eigen Analysis', Found )
+
   ToReal = .FALSE.
   IF( PRESENT( BackToReal ) ) ToReal = BackToReal
 
@@ -15471,18 +15473,20 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   Are => Solver % Matrix
 
   CALL Info('ChangeToHarmonicSystem','Number of real system rows: '//TRIM(I2S(n)),Level=16)
-  
-  ! Obtain the frequency, it may depend on iteration step etc. 
-  Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
-  IF( .NOT. Found ) THEN
-    CALL Fatal( 'ChangeToHarmonicSystem', '> Frequency < must be given for harmonic analysis.' )
-  END IF
-  WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
-  CALL Info( 'ChangeToHarmonicSystem', Message, Level=5 )
-  omega = 2 * PI * Frequency
 
-  
-  CALL ListAddConstReal( CurrentModel % Simulation, 'res: frequency', Frequency )
+  ! Obtain the frequency, it may depend on iteration step etc. 
+  Omega = 0._dp
+  IF (.NOT. EigenMode) THEN
+    Frequency = ListGetAngularFrequency( Solver % Values, Found ) / (2*PI)
+    IF( .NOT. Found ) THEN
+      CALL Fatal( 'ChangeToHarmonicSystem', '> Frequency < must be given for harmonic analysis.' )
+    END IF
+    WRITE( Message, '(a,e12.3)' ) 'Frequency value: ', frequency
+    CALL Info( 'ChangeToHarmonicSystem', Message, Level=5 )
+
+     omega = 2 * PI * Frequency
+     CALL ListAddConstReal( CurrentModel % Simulation, 'res: frequency', Frequency )
+  END IF
 
   
   HarmonicReal = ListGetLogical( Solver % Values,'Harmonic Mode Real',Found ) 
@@ -15515,10 +15519,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     ! Create the matrix if it does not
     
     Aharm => CreateChildMatrix( Are, Dofs, 2*Dofs, CreateRhs = .TRUE., Diagonal = Diagonal )
-
-    IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('ChangeToHarmonicSystem','ParallelInfo may not have been generated properly!')
-    END IF
 
     Aharm % COMPLEX = ListGetLogical( Solver % Values,'Linear System Complex', Found ) 
     IF( .NOT. Found ) Aharm % COMPLEX = .NOT. Diagonal !TRUE. 
@@ -15555,9 +15555,32 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     CALL Info('ChangeToHarmonicSystem','We do not have damp matrix values',Level=12)
   END IF
 
-
   ! Set the harmonic system matrix
-  IF( Diagonal ) THEN
+  IF( EigenMode ) THEN
+    ALLOCATE(Aharm % MassValues(SIZE(Aharm % Values)))
+
+    DO k=1,n
+      kr = Aharm % Rows(2*(k-1)+1)
+      ki = Aharm % Rows(2*(k-1)+2)
+      DO j=Are % Rows(k),Are % Rows(k+1)-1
+        Aharm % Values(kr) = Are % Values(j)
+        Aharm % Values(ki+1) = Are % Values(j)
+        
+        IF (ASSOCIATED(Are % DampValues)) THEN
+          Aharm % Values(kr+1) = -Are % Dampvalues(j)
+          Aharm % Values(ki)   =  Are % Dampvalues(j)
+        END IF
+
+        IF (ASSOCIATED(Are % MassValues)) THEN
+          Aharm % MassValues(kr) = Are % MassValues(j)
+          Aharm % MassValues(ki+1) = Are % MassValues(j)
+        END IF
+
+        kr = kr + 2
+        ki = ki + 2
+      END DO
+    END DO
+  ELSE IF( Diagonal ) THEN
     DO k=1,n
       kr = Aharm % Rows(2*(k-1)+1)
       ki = Aharm % Rows(2*(k-1)+2)
@@ -15616,7 +15639,6 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
   END DO
 
 
-
   IF( AnyDirichlet ) THEN
     DO j=1,DOFs
       Name = ComponentName( SaveVar % Name, j ) 
@@ -15627,10 +15649,7 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
       CALL SetDirichletBoundaries( CurrentModel, Aharm, b, TRIM(Name) // ' im', &
           2*j, 2*DOFs, SaveVar % Perm )
     END DO
-
-    CALL EnforceDirichletConditions( Solver, Aharm, b )
   END IF
-
 
   
   ! Create the new fields, the total one and the imaginary one
@@ -15702,11 +15721,24 @@ SUBROUTINE ChangeToHarmonicSystem( Solver, BackToReal )
     
   END IF
 
+  IF ( EigenMode ) THEN 
+     IF ( ASSOCIATED( Solver % Variable % EigenValues ) ) THEN
+       HarmVar % EigenValues  => Solver % Variable % Eigenvalues
+       HarmVar % EigenVectors => Solver % Variable % EigenVectors
+     END IF
+  END IF
+
+
   ! Now change the pointers such that when we visit the linear solver
   ! the system will automatically be solved as complex
   Solver % Variable => HarmVar
   Solver % Matrix => Aharm
-  
+
+  IF(AnyDirichlet) THEN
+    IF(ParEnv % PEs>1) CALL ParallelInitMatrix(Solver, Aharm)
+    CALL EnforceDirichletConditions( Solver, Aharm, b )
+  END IF
+
   ! Save the original matrix and variable in Ematrix and Evar
   Solver % Matrix % Ematrix => SaveMatrix
   Solver % Variable % Evar => SaveVar    
