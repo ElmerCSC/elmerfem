@@ -58,7 +58,6 @@ SUBROUTINE CalvingRemeshParMMG( Model, Solver, dt, Transient )
     USE CalvingGeometry
     USE MeshPartition
     USE MeshRemeshing
-    USE CalvingRemeshMMG
 
     IMPLICIT NONE
 
