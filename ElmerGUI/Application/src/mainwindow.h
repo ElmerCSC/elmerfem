@@ -114,11 +114,12 @@ public:
                           const QVariant &defaultValue = QVariant()) const;
   void settings_setValue(const QString &key, const QVariant &value);
   void saveAndRun(bool generateSif);
+  void showContextMenu(QPoint);
 
 protected:
   void contextMenuEvent(QContextMenuEvent *event);
   void closeEvent(QCloseEvent *event);
-
+  
 private slots:
   // menu slots:
   void openSlot();                      // File -> Open...

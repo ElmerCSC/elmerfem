@@ -4254,6 +4254,7 @@ void MainWindow::modelClearSlot() {
 void MainWindow::viewFullScreenSlot() {
   if (!isFullScreen()) {
     cout << "Switching to full screen mode" << endl;
+    cout << "Press 'Esc' to leave full screen mode" << endl;
     menuBar()->hide();
     statusBar()->hide();
     fileToolBar->hide();
@@ -4289,8 +4290,13 @@ void MainWindow::viewNormalModeSlot() {
 // Context menu event (usually mouse has been right clicked)...
 //-----------------------------------------------------------------------------
 void MainWindow::contextMenuEvent(QContextMenuEvent *event) {
-  // if(isFullScreen())
-  contextMenu->popup(event->globalPos());
+  if(event->reason() != QContextMenuEvent::Mouse){
+    contextMenu->popup(event->globalPos());
+  }
+}
+
+void MainWindow::showContextMenu(QPoint globalPos){
+  contextMenu->popup(globalPos);
 }
 
 // View -> Surface mesh
