@@ -193,6 +193,7 @@ protected:
   void focusInEvent(QFocusEvent*);
   void mouseDoubleClickEvent(QMouseEvent*);
   void mousePressEvent(QMouseEvent*);
+  void mouseReleaseEvent(QMouseEvent*);
   void mouseMoveEvent(QMouseEvent*);
   void wheelEvent(QWheelEvent*);
   void keyPressEvent(QKeyEvent*);
@@ -213,6 +214,10 @@ private:
   void getMatrix();
   
   QPoint lastPos;
+  
+  /* lastPressPos decleard below is used to identify whether to show contextmenu or
+   not when releaseing right mouse button*/
+  QPoint lastPressPos;
   
   GLuint generateSurfaceList(int, QColor);
   GLuint generateSurfaceMeshList(int, QColor);
