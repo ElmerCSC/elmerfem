@@ -389,20 +389,25 @@ END FUNCTION isComponentName
   SUBROUTINE ReadCircuitVariables(CId)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: slen, ComponentId,i,j,CId, CompInd
+    INTEGER :: slen, ComponentId,i,j,CId, CompInd, nofc
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: CVar
 
-    Circuit => CurrentModel%Circuits(CId)
-    
+    Circuit => CurrentModel % Circuits(CId)
+
+    nofc = SIZE(Circuit % Components)
+    DO i=1,nofc
+      Circuit % Components(i) % ComponentId = 0
+    END DO
+
     CompInd = 0
     DO i=1,Circuit % n
       cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
       Circuit % names(i) = name(1:slen)
-      
+
       CVar => Circuit % CircuitVariables(i)
       CVar % isIvar = .FALSE.
       CVar % isVvar = .FALSE.
@@ -413,15 +418,19 @@ END FUNCTION isComponentName
           IF(name(j:j)==')') EXIT 
         END DO
         READ(name(13:j-1),*) ComponentId
-        
+
         CVar % BodyId = ComponentId
         
-        IF ( .NOT. ANY(Circuit % ComponentIds == ComponentId) ) THEN
+        DO j=1,nofc
+          Cvar % Component => Circuit % Components(j)
+          IF(CVar % Component % ComponentId==ComponentId) EXIT
+        END DO
+
+        IF(CVar % Component % ComponentID /= ComponentId ) THEN
           CompInd = CompInd + 1
-          Circuit % ComponentIds(CompInd) = ComponentId
+          CVar % Component => Circuit % Components(CompInd)
         END IF
 
-        Cvar % Component => Circuit % Components(CompInd)
         Cvar % Component % ComponentId = ComponentId
 
         SELECT CASE (name(1:12))
@@ -446,6 +455,7 @@ END FUNCTION isComponentName
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadCircuitVariables
 !------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   FUNCTION GetNofCircVariables(CId) RESULT(n)
