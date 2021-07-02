@@ -817,6 +817,10 @@ use spariterglobals
          CYCLE
        END SELECT
 
+       IF( InfoActive(30) ) THEN
+         CALL Info('ReleaseVariableList','Trying to release variable: '//TRIM(Var % Name))
+       END IF
+       
 	IF( Var % Secondary ) THEN
           Var => Var % Next
           CYCLE

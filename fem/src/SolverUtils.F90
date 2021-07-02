@@ -2113,7 +2113,7 @@ CONTAINS
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar, IterVar
      TYPE(Variable_t), POINTER :: DistVar, NormalLoadVar, SlipLoadVar, VeloVar, &
-         WeightVar, NormalActiveVar, StickActiveVar, GapVar
+         WeightVar, NormalActiveVar, StickActiveVar, GapVar, ContactLagrangeVar
      TYPE(Element_t), POINTER :: Element
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, &
@@ -2144,6 +2144,9 @@ CONTAINS
      LOGICAL :: CreateDual, pContact
      CHARACTER(*), PARAMETER :: Caller = 'DetermineContact'
      INTEGER, TARGET :: pIndexes(12)
+     TYPE(Variable_t), POINTER :: UseLoadVar
+     LOGICAL :: UseLagrange
+     
      
      SAVE FirstTime
 
@@ -2235,6 +2238,8 @@ CONTAINS
      ! a) Create rotateted contact if needed
      CALL RotatedDisplacementField() 
 
+     CALL PickLagrangeMultiplier()
+
      ! b) Create and/or obtain pointers to boundary variables 
      CALL GetContactFields( FirstTime )
 
@@ -2242,6 +2247,13 @@ CONTAINS
      LoadVar => CalculateContactLoad() 
      LoadValues => LoadVar % Values
 
+     UseLagrange = ListGetLogical( Params,'Use Lagrange Multiplier for Contact',Found )
+     IF( UseLagrange ) THEN
+       CALL Info(Caller,'Using Lagrange multiplier to determine contact condition!')
+       UseLoadVar => ContactLagrangeVar 
+     ELSE
+       UseLoadVar => NormalLoadVar 
+     END IF     
      
      ! Loop over each contact pair
      !--------------------------------------------------------------
@@ -2447,6 +2459,7 @@ CONTAINS
        !------------------------------------------------------------------
        CALL CalculateContactPressure()
 
+       
        ! g) Calculate the distance used to determine whether contact should be added
        !------------------------------------------------------------------
        CALL CalculateMortarDistance()
@@ -2545,7 +2558,7 @@ CONTAINS
        INTEGER :: i,j,k,m
 
 
-       CALL Info(Caller,'Determining contact load for contact problems',Level=10)
+       CALL Info(Caller,'Determining reaction forces for contact problem',Level=10)
 
        LoadVar => VariableGet( Model % Variables, &
            TRIM(VarName) // ' Contact Load',ThisOnly = .TRUE. )
@@ -2565,6 +2578,63 @@ CONTAINS
      END FUNCTION CalculateContactLoad
 
 
+     ! Given the previous solution and the related Lagrange multiplier pick the
+     ! new multiplier such that it may be visualized as a field.
+     !-------------------------------------------------------------------------
+     SUBROUTINE PickLagrangeMultiplier( ) 
+
+       TYPE(Variable_t), POINTER :: LinSysVar, ContactSysVar, ActiveVar
+       INTEGER :: i,j,k,l,n,dofs
+       INTEGER, POINTER :: InvPerm(:)
+       
+       CALL Info(Caller,'Pick lagrange coefficient from the active set to whole set',Level=10)
+
+       LinSysVar => VariableGet( Model % Variables, &
+           'LagrangeMultiplier',ThisOnly = .TRUE. )
+       IF( .NOT. ASSOCIATED( LinSysVar ) ) THEN
+         CALL Warn(Caller, &
+             'No Lagrange multiplier field associated with linear system: '//GetVarName(Var) )
+         RETURN
+       END IF
+       
+       ContactSysVar => VariableGet( Model % Variables, &
+           TRIM(VarName) // ' Lagrange Multiplier',ThisOnly = .TRUE. )
+       IF( .NOT. ASSOCIATED( ContactSysVar ) ) THEN
+         CALL Fatal(Caller, &
+             'No Lagrange multiplier field associated with: '//GetVarName(Var) )
+       END IF
+       ContactSysVar % Values = 0.0_dp
+
+       IF(.NOT. ASSOCIATED( Solver % Matrix % ConstraintMatrix ) ) THEN
+          CALL Fatal(Caller, &
+             'No constraint matrix associated with: '//GetVarName(Var) )          
+       END IF            
+       
+       InvPerm => Solver % Matrix % ConstraintMatrix % InvPerm
+       n = Solver % Matrix % ConstraintMatrix % NumberOfRows
+       dofs = Solver % Variable % dofs
+       
+       DO i=1,SIZE(InvPerm)
+         ! This is related to the full matrix equation
+         j = InvPerm(i)
+
+         IF( MODULO(j,dofs) /= 1 ) CYCLE
+         l = (j-1)/dofs+1
+         
+         IF( l > 0 .AND. l <= SIZE( ContactSysVar % Perm ) ) THEN
+           k = ContactSysVar % Perm(l)
+           IF( k > 0 ) THEN
+             ContactSysVar % Values(k) = LinSysVar % Values(i)
+           END IF
+         END IF
+       END DO
+
+       PRINT *,'range1:',MINVAL(LinSysVar % Values), MAXVAL(LinsysVar % Values)
+       PRINT *,'range2:',MINVAL(COntactSysVar % Values), MAXVAL(ContactsysVar % Values)
+                     
+     END SUBROUTINE PickLagrangeMultiplier
+
+     
      ! Create fields where the contact information will be saved.
      ! Create the fields both for slave and master nodes at each 
      ! contact pair.
@@ -2582,9 +2652,9 @@ CONTAINS
          CALL Info(Caller,'Creating contact fields',Level=8)
 
          n = SIZE( FieldPerm ) 
-         ALLOCATE( BoundaryPerm(n) ) 
+         ALLOCATE( BoundaryPerm(n) )
          BoundaryPerm = 0
-
+         
          ALLOCATE( ActiveBCs(Model % NumberOfBcs ) )
          ActiveBCs = .FALSE.
 
@@ -2645,6 +2715,8 @@ CONTAINS
            CALL VariableAddVector( Model % Variables,Mesh,Solver,&
                TRIM(VarName)//' Contact Velocity',Dofs,Perm = BoundaryPerm )
          END IF
+         CALL VariableAddVector( Model % Variables,Mesh,Solver,&
+             TRIM(VarName)//' Lagrange Multiplier',1,Perm = BoundaryPerm )
        END IF
 
        DistVar => VariableGet( Model % Variables,&
@@ -2665,7 +2737,10 @@ CONTAINS
          VeloVar => VariableGet( Model % Variables,&
              TRIM(VarName)//' Contact Velocity')
        END IF
-
+       
+       ContactLagrangeVar => VariableGet( Model % Variables,&
+           TRIM(VarName)//' Lagrange Multiplier')       
+       
        NormalActiveVar % Values = -1.0_dp
        StickActiveVar % Values = -1.0_dp
 
@@ -3288,7 +3363,7 @@ CONTAINS
        TYPE(Matrix_t), POINTER :: ActiveProjector
        LOGICAL, ALLOCATABLE :: NodeDone(:)
        LOGICAL :: LinearContactLoads
-       INTEGER :: i1,i2,j1,j2,ElemCode
+       INTEGER :: i1,i2,j1,j2,ElemCode,m
        
        n = Mesh % MaxElementNodes
        ALLOCATE(Basis(2*n), Nodes % x(2*n), Nodes % y(2*n), Nodes % z(2*n) )
@@ -3416,15 +3491,22 @@ CONTAINS
            IF( .NOT. ( IsSlave .OR. ( CreateDual .AND. IsMaster ) ) ) CYCLE
            
            Indexes => Element % NodeIndexes         
+           n = Element % TYPE % NumberOfNodes
            ElemCode = Element % TYPE % ElementCode           
 
            SELECT CASE ( ElemCode )
+             
+           CASE( 203, 306, 408 )
+             n = MODULO( ElemCode, 100 )
+             m = ElemCode / 100             
 
-           CASE( 408 )
-             DO i=5,8
-               i1=i-4
-               i2=i1+1
-               IF(i2==5) i2=1
+             DO i=m+1,n
+               i1=i-m
+               IF(i1==m) THEN                 
+                 i2=m+1
+               ELSE
+                 i2=1
+               END IF
                j = SlipLoadVar % Perm(Indexes(i))
                j1 = SlipLoadVar % Perm(Indexes(i1))
                j2 = SlipLoadVar % Perm(Indexes(i2))
@@ -3501,7 +3583,7 @@ CONTAINS
          IF( j == 0 ) CYCLE
          k = FieldPerm( j ) 
          IF( k == 0 ) CYCLE
-         k = NormalLoadVar % Perm(j)
+         k = UseLoadVar % Perm(j)
 
          ind = Dofs * (i-1) + DofN
 
@@ -3530,7 +3612,7 @@ CONTAINS
          ! Free nodes with wrong sign in contact force
          !--------------------------------------------------------------------------       
          IF( MortarBC % Active( ind ) ) THEN
-           NodeLoad = NormalLoadVar % Values(k)
+           NodeLoad = UseLoadVar % Values(k)
            MaxLoad = MAX( MaxLoad, NodeLoad )
            MinLoad = MIN( MinLoad, NodeLoad )
            DoRemove = ( LimitSign * NodeLoad > LimitSign * LoadEps ) 
@@ -3677,13 +3759,13 @@ CONTAINS
            IF( j == 0 ) CYCLE
            k = FieldPerm( j ) 
            IF( k == 0 ) CYCLE
-           k = NormalLoadVar % Perm(j)
+           k = UseLoadVar % Perm(j)
                       
            ! If there is no contact there can be no stick either
            indN = Dofs * (i-1) + DofN
            IF( .NOT. MortarBC % Active(indN) ) CYCLE
 
-           NodeLoad = NormalLoadVar % Values(k)
+           NodeLoad = UseLoadVar % Values(k)
            TangentLoad = SlipLoadVar % Values(k)
          
            mustatic = ListGetRealAtNode( BC,'Static Friction Coefficient', j )
@@ -3732,7 +3814,7 @@ CONTAINS
          IF( j == 0 ) CYCLE
          k = FieldPerm( j ) 
          IF( k == 0 ) CYCLE
-         k = NormalLoadVar % Perm(j)
+         k = UseLoadVar % Perm(j)
 
          indN = Dofs * (i-1) + DofN
          indT1 = ind - DofN + DofT1
@@ -3772,7 +3854,7 @@ CONTAINS
          ! Remove nodes with too large tangent force
          !--------------------------------------------------------------------------       
 
-         NodeLoad = NormalLoadVar % Values(k)
+         NodeLoad = UseLoadVar % Values(k)
          TangentLoad = SlipLoadVar % Values(k)
          
          mustatic = ListGetRealAtNode( BC,'Static Friction Coefficient', j )
@@ -3866,7 +3948,7 @@ CONTAINS
          IF( j == 0 ) CYCLE
          k = FieldPerm( j ) 
          IF( k == 0 ) CYCLE
-         k = NormalLoadVar % Perm(j)
+         k = UseLoadVar % Perm(j)
 
          indN = Dofs * (i-1) + DofN
          indT1 = Dofs * (i-1) + DofT1
@@ -19631,6 +19713,7 @@ CONTAINS
      CHARACTER(*), PARAMETER :: Caller = 'GenerateProjectors'
      TYPE(Solver_t), POINTER :: PSolver
      TYPE(Matrix_t), POINTER :: Proj
+     CHARACTER(LEN=MAX_NAME_LEN) :: MultName
 
 
      ApplyIntegral = ListGetLogical( Solver % Values,'Apply Integral BCs',Found)
@@ -19821,6 +19904,10 @@ CONTAINS
 
      LOGICAL :: IntegralBC
      REAL(KIND=dp) :: SetVal(6)
+     REAL(KIND=dp), ALLOCATABLE :: PrevValues(:)
+     CHARACTER(LEN=MAX_NAME_LEN) :: MultName
+     INTEGER, ALLOCATABLE :: PrevInvPerm(:)
+     TYPE(Variable_t), POINTER :: Var
      
      
      ! Should we genarete the matrix
@@ -19901,7 +19988,13 @@ CONTAINS
 
      ! Now we are generating something more complex and different than last time
      IF( ASSOCIATED( Solver % Matrix % ConstraintMatrix ) ) THEN
-       CALL Info(Caller,'Releasing previous constraint matrix',Level=12)
+       IF ( ListGetLogical( Solver % Values,'Apply Contact BCs', Found ) ) THEN
+         CALL Info(Caller,'Remember the previous InvPerm for contact mechanics',Level=20)
+         ALLOCATE( PrevInvPerm( SIZE( Solver % Matrix % ConstraintMatrix % InvPerm ) ) )
+         PrevInvPerm = Solver % Matrix % ConstraintMatrix % InvPerm       
+       END IF
+       
+       CALL Info(Caller,'Releasing previous constraint matrix',Level=12)     
        CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
        Solver % Matrix % ConstraintMatrix => NULL()
      END IF
@@ -20881,7 +20974,42 @@ CONTAINS
        CALL Info(Caller,'Constraint matrix rows min:'//TRIM(I2S(MINVAL(Btmp%Rows))))
        CALL Info(Caller,'Constraint matrix rows max:'//TRIM(I2S(MINVAL(Btmp%Rows))))
      END IF
-     
+
+
+     ! For contact mechanics the number of lagrange multipliers may change.
+     ! Hence redistribute the old values to the new initial guess using the InvPerm
+     ! to identify the correct location.
+     !---------------------------------------------------------------------------------     
+     IF ( ListGetLogical( Solver % Values,'Apply Contact BCs', Found ) .AND. &
+         ALLOCATED( PrevInvPerm ) ) THEN
+       MultName = ListGetString( Solver % Values, 'Lagrange Multiplier Name', Found )
+       IF ( .NOT. Found ) MultName = "LagrangeMultiplier"
+
+       Var => VariableGet(Solver % Mesh % Variables, MultName)
+       IF( ASSOCIATED( Var ) ) THEN
+         ALLOCATE( PrevValues( SIZE( Var % Values ) ) )
+         PrevValues = Var % Values
+         
+         k = 0
+         l = SIZE(Btmp % InvPerm) 
+         Var % Values = 0.0_dp
+         
+         DO i=1,l
+           DO j=1,SIZE(PrevInvPerm)
+             IF( Btmp % InvPerm(i) == PrevInvPerm(j) ) THEN
+               k = k + 1
+               Var % Values(i) = PrevValues(j)
+               EXIT
+             END IF
+           END DO
+         END DO
+
+         CALL Info(Caller,'Previous Lagrange multipliers utilized: '&
+             //TRIM(I2S(k))//' out of '//TRIM(I2S(l)),Level=8)
+       END IF
+     END IF
+
+
      CALL Info(Caller,'Finished creating constraint matrix',Level=12)
 
    END SUBROUTINE GenerateConstraintMatrix
