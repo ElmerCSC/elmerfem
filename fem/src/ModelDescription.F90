@@ -58,8 +58,8 @@ MODULE ModelDescription
     INTEGER, PARAMETER :: PosUnit = 32, OutputUnit = 31, RestartUnit = 30,&
                           PostFileUnit = 29, InFileUnit = 28
 
-    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000
-    
+    INTEGER, PARAMETER, PRIVATE :: MAX_OUTPUT_VARS = 1000, MAX_MESHES = 32
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -2326,6 +2326,10 @@ CONTAINS
     TYPE(valuelist_t), POINTER :: lst
     INTEGER, ALLOCATABLE :: EdgeDOFs(:),FaceDOFs(:)
     LOGICAL :: Parallel
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshNames(MAX_MESHES)
+    INTEGER :: MeshCount, MeshI
+    LOGICAL, ALLOCATABLE :: MeshSolvers(:,:)
 !------------------------------------------------------------------------------
 
     ALLOCATE( Model )
@@ -2423,7 +2427,11 @@ CONTAINS
 
     Def_Dofs = -1; Def_Dofs(:,1)=1
 
+    ALLOCATE(MeshSolvers(MAX_MESHES, Model % NumberOfSolvers))
+    MeshSolvers = .FALSE.
+
     i = 1
+    MeshCount = 0
     DO WHILE(i<=Model % NumberOFSolvers)
 
       Solver => Model % Solvers(i)
@@ -2441,7 +2449,24 @@ CONTAINS
         END IF
       END IF
 
-      GotMesh = ListCheckPresent(Solver % Values, 'Mesh')
+      Name = ListGetString(Solver % Values, 'Mesh',GotMesh)
+      IF(GotMesh) THEN
+        DO j=1,MeshCount
+          IF(Name==MeshNames(j)) THEN
+            GotMesh = .FALSE.
+            EXIT
+          END IF
+        END DO
+        
+        IF ( GotMesh ) THEN
+          MeshCount = MeshCount + 1
+          MeshNames(MeshCount) = Name
+          MeshSolvers(MeshCount, i) = .TRUE.
+        ELSE
+          MeshSolvers(j, i) = .TRUE.
+        END IF
+
+      END IF
 
       !
       ! Allocate Def_Dofs array in the Solver structure for handling information
@@ -2512,7 +2537,7 @@ CONTAINS
           ElementDef = ElementDef0
         END IF
         !  Calling GetDefs fills Def_Dofs arrays:
-        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs, .NOT. GotMesh )
+        CALL GetDefs( ElementDef, Solver % Def_Dofs, Def_Dofs(:,:), .NOT. GotMesh )
         IF(j>0) THEN
           ElementDef0 = ElementDef0(j+1:)
         ELSE
@@ -2721,8 +2746,14 @@ CONTAINS
       END DO
     END IF
 
+    MeshCount = 0
     DO s=1,Model % NumberOfSolvers
       Name = ListGetString( Model % Solvers(s) % Values, 'Mesh', GotIt )
+
+      DO MeshI=1,MeshCount
+        IF(Name==MeshNames(MeshI)) EXIT
+      END DO
+
       IF(PRESENT(MeshIndex)) THEN
         IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
       END IF
@@ -2730,6 +2761,7 @@ CONTAINS
       IF( GotIt ) THEN
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
         CALL Info('LoadModel',Message,Level=7)
+
 
         single=.FALSE.
       
@@ -2824,13 +2856,17 @@ CONTAINS
             CYCLE
           END IF
         END IF
-          
-        DO i=1,6
-          DO j=1,10
-            Def_Dofs(j,i) = MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i))
-          END DO
-        END DO
 
+        Def_Dofs = -1
+        DO k=1,Model % NumberOfSolvers
+          IF(MeshSolvers(MeshI,k)) THEN
+            DO i=1,6
+              DO j=1,10
+                Def_Dofs(j,i) = MAX(Def_Dofs(j,i),MAXVAL(Model % Solvers(k) % Def_Dofs(j,:,i)))
+              END DO
+            END DO
+          END IF
+        END DO
 
         IF ( Single ) THEN
           Model % Solvers(s) % Mesh => &
