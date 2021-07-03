@@ -35,6 +35,7 @@
 #include <QtGui>
 #include <QFileDialog>
 #include <iostream>
+#include <QDomDocument>
 #include "newprojectdialog.h"
 
 using namespace std;
@@ -117,15 +118,17 @@ void NewProjectDialog::setDirectories(QString& defaultDir, QString& extraDirName
   nameFilters << "*.xml";
   QStringList fileNameList = extraDir.entryList(nameFilters, QDir::Files | QDir::Readable);
   
-  ui.listWidget_unselectedSolvers->addItems(fileNameList);
+  for(int i=0; i < fileNameList.size(); i++){
+	if(isEdfFile( extraDirPath + "/" + fileNameList.at(i))) ui.listWidget_unselectedSolvers->addItem(fileNameList.at(i));
+  }
   
   QString labelString;
   QDir edfDir(extraDirPath + "/../edf");
   fileNameList = edfDir.entryList(nameFilters, QDir::Files | QDir::Readable);
   for(int i=0; i<fileNameList.size(); i++){
-    if( fileNameList[i] != "edf.xml" && fileNameList[i] != "egini.xml" && fileNameList[i] != "egmaterials.xml")
+    if( fileNameList[i] != "edf.xml" && fileNameList[i] != "egini.xml" && fileNameList[i] != "egmaterials.xml" )
     {
-      labelString +=  " " + fileNameList[i] + "\n";
+      if(isEdfFile( extraDirPath + "/../edf/" + fileNameList.at(i))) labelString +=  " " + fileNameList[i] + "\n";
     }
   }
   ui.label_defaultSolvers->setText(labelString);
@@ -151,4 +154,31 @@ void NewProjectDialog::selectedSolverChanged(int i){
 
 void NewProjectDialog::unselectedSolverChanged(int i){
   ui.pushButton_addSolver->setEnabled(i >= 0); 
+}
+
+bool NewProjectDialog::isEdfFile(QString path){
+  QString errStr;
+  int errRow;
+  int errCol;
+  QFile file(path);
+  QDomDocument doc;
+  
+  if(!file.exists()) {
+    return false;
+
+  } else {  
+
+    if(!doc.setContent(&file, true, &errStr, &errRow, &errCol)) {
+      file.close();
+      return false;
+    }
+  }
+
+  file.close();	
+  
+  if(doc.documentElement().tagName() != "edf") {
+    return false;
+  }
+  
+  return true;
 }

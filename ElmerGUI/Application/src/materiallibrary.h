@@ -66,11 +66,14 @@ private slots:
   void appendButtonClicked();
   void clearButtonClicked();
   void closeButtonClicked();
-  void itemDoubleClicked(QListWidgetItem*); 
+  void itemDoubleClicked(QListWidgetItem*);
+  void fileChanged(int);
 
 private:
   QDomDocument materialDoc;
   void appendDocument(QString);
+  void appendFileToComboBox(QString);
+  void addExtraMaterialLibraryFilesToComboBox();
 
 };
 

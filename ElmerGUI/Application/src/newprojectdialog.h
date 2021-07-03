@@ -67,6 +67,7 @@ private slots:
 private:
   QString defaultDirName;
   QString extraDirPath;
+  bool isEdfFile(QString);
 };
 
 #endif // NEWPROJECTDIALOG_H
