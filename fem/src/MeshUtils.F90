@@ -5279,18 +5279,18 @@ CONTAINS
   !----------------------------------------------------------------------------------------
   !> Given a temporal triangle "ElementT", calculate mass matrix contributions for projection
   !> for the slave element "Element" and master element "ElementM".
-  !> The nubmering associated to these surface meshes is InvPerm and InvPermM, respectively. 
-  !> This is lifted at an outer level in the hope that it would be called by number of
-  !> routines in the future.
+  !> The numbering associated to these surface meshes is InvPerm and InvPermM, respectively. 
+  !> This is lifted to a separate subroutine in the hope that it would be called by number of
+  !> different routines in the future.
   !----------------------------------------------------------------------------------------
   SUBROUTINE TemporalTriangleMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
-      Biorthogonal, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
+      pElemBasis, Biorthogonal, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
       NodePerm, InvPerm, InvPermM, SumArea ) 
     !----------------------------------------------------------------------------------------
     TYPE(Element_t) :: ElementT
     TYPE(Element_t), POINTER :: Element, ElementM
     TYPE(Nodes_t) :: NodesT, Nodes, NodesM
-    LOGICAL :: Biorthogonal, DualMaster, DualLCoeff
+    LOGICAL :: pElemBasis, Biorthogonal, DualMaster, DualLCoeff
     INTEGER :: NoGaussPoints
     TYPE(Matrix_t) :: Projector
     REAL(KIND=dp) :: NodeScale, SumArea
@@ -5299,18 +5299,19 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: ElementP, ElementLin
     TYPE(GaussIntegrationPoints_t) :: IPT
-    REAL(KIND=dp) :: area, xt, yt, zt = 0.0_dp, u, v, w, um, vm, wm, &
+    REAL(KIND=dp) :: area, xt, yt, zt = 0.0_dp, u, v, w, um, vm, wm, uq, vq, &
         detJ, val, val_dual, weight
     REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:), MASS(:,:), CoeffBasis(:)
-    INTEGER :: i,j,jj,n,ne,nM,neM,ElemCode,LinCode,ElemCodeM,LinCodeM,nip,nrow,AllocStat
+    INTEGER :: i,j,jj,n,m,ne,nM,neM,nd,ndM,ElemCode,LinCode,ElemCodeM,LinCodeM,nip,nrow,AllocStat
     INTEGER, POINTER :: Indexes(:),IndexesM(:)
-    LOGICAL :: Stat, AllocationsDone = .FALSE.
+    INTEGER, TARGET :: pIndexes(128),pIndexesM(128)
+    LOGICAL :: Stat, InitPhase, AllocationsDone = .FALSE.
 
     SAVE :: BasisT, Basis, BasisM, CoeffBasis, MASS
 
     IF(.NOT. AllocationsDone ) THEN
       n = CurrentModel % Mesh % MaxElementNodes
-      ALLOCATE( BasisT(3),Basis(n), BasisM(n), CoeffBasis(n), MASS(n,n), STAT = AllocStat )
+      ALLOCATE( BasisT(3),Basis(n), BasisM(n), CoeffBasis(n), MASS(n,n), STAT=AllocStat )             
       IF( AllocStat /= 0 ) CALL Fatal('TemporalTriangleMortarAssembly','Allocation error!')
       AllocationsDone = .TRUE.
     END IF
@@ -5320,90 +5321,62 @@ CONTAINS
     ne = Element % TYPE % ElementCode / 100      
     ElemCode = Element % TYPE % ElementCode 
     LinCode = 101 * ne
-    Indexes => Element % NodeIndexes
-
+    IF( pElemBasis ) THEN
+      nd = mGetElementDOFs(pIndexes,Element)
+      Indexes => pIndexes
+    ELSE
+      nd = n
+      Indexes => Element % NodeIndexes
+    END IF
+      
     nM = ElementM % TYPE % NumberOfNodes
     neM = ElementM % TYPE % ElementCode / 100      
     ElemCodeM = Element % TYPE % ElementCode 
     LinCodeM = 101 * neM
-    IndexesM => ElementM % NodeIndexes
-
+    IF( pElemBasis ) THEN
+      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      Indexes => pIndexesM
+    ELSE
+      ndM = nM
+      IndexesM => ElementM % NodeIndexes
+    END IF
+      
     IF( NoGaussPoints > 0 ) THEN
       IPT = GaussPoints( ElementT, NoGaussPoints, PreferenceElement = .FALSE. )
     ELSE
       IPT = GaussPoints( ElementT, PreferenceElement = .FALSE. )
     END IF
-
+    
     IF(BiOrthogonal) THEN
+      InitPhase = .TRUE.
       MASS  = 0
       CoeffBasis = 0
-      area = 0._dp
-      DO nip=1, IPT % n 
-        stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
-            IPT % v(nip),IPT % w(nip),detJ,BasisT)
-        IF(.NOT. Stat ) EXIT
-
-        ! We will actually only use the global coordinates and the integration weight 
-        ! from the temporal mesh. 
-
-        ! Global coordinates of the integration point
-        xt = SUM( BasisT(1:3) * NodesT % x(1:3) )
-        yt = SUM( BasisT(1:3) * NodesT % y(1:3) )
-
-        ! Integration weight for current integration point
-        Weight = DetJ * IPT % s(nip) 
-        area = area + weight
-
-        ! Integration point at the slave element
-        IF( ElemCode /= LinCode ) THEN
-          ElementLin % TYPE => GetElementType( LinCode, .FALSE. )
-          ElementLin % NodeIndexes => Element % NodeIndexes
-          ElementP => ElementLin
-          CALL GlobalToLocal( u, v, w, xt, yt, zt, ElementP, Nodes )
-        ELSE
-          CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
-        END IF
-
-        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-        IF(.NOT. Stat) CYCLE
-
-        DO i=1,n
-          DO j=1,n
-            MASS(i,j) = MASS(i,j) + weight * Basis(i) * Basis(j)
-          END DO
-          CoeffBasis(i) = CoeffBasis(i) + Weight * Basis(i)
-        END DO
-      END DO
-
-      ! Even if there would be multiple ip points, area is still the same...
-      IF(Area<1.d-12) RETURN
-
-      CALL InvertMatrix( MASS, n )
-
-      DO i=1,n
-        DO j=1,n
-          MASS(i,j) = MASS(i,j) * CoeffBasis(i)
-        END DO
-      END DO
-    END IF
+    ELSE
+      InitPhase = .FALSE.
+    END IF    
+        
+1   area = 0._dp
 
     ! Integration over the temporal element using integration points of that element
-    DO nip=1, IPT % n 
+    DO nip=1, IPT % n
       stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
           IPT % v(nip),IPT % w(nip),detJ,BasisT)
-      IF(.NOT. Stat) EXIT
+      IF(.NOT. Stat ) EXIT
 
+      ! If the triangle is too small there is nothing much to integrate...
+      IF( DetJ < 1.0d-12 ) RETURN
+      
       ! We will actually only use the global coordinates and the integration weight 
       ! from the temporal mesh. 
-
+      
       ! Global coordinates of the integration point
       xt = SUM( BasisT(1:3) * NodesT % x(1:3) )
       yt = SUM( BasisT(1:3) * NodesT % y(1:3) )
-
+      
       ! Integration weight for current integration point
-      weight = DetJ * IPT % s(nip)
-      sumarea = sumarea + weight
-
+      Weight = DetJ * IPT % s(nip) 
+      area = area + weight
+      
       ! Integration point at the slave element
       IF( ElemCode /= LinCode ) THEN
         ElementLin % TYPE => GetElementType( LinCode, .FALSE. )
@@ -5413,9 +5386,38 @@ CONTAINS
       ELSE
         CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
       END IF
+      
+      ! Take into account that the reference elements are different:
+      IF( ne == 3 .AND. pElemBasis ) THEN
+        uq = u
+        vq = v
+        u = -1.0d0 + 2.0d0*uq + vq
+        v = SQRT(3.0d0)*vq
+      END IF
 
       stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-
+      IF(.NOT. Stat) CYCLE
+      
+      IF(BiOrthogonal) THEN
+        IF( InitPhase ) THEN      
+          DO i=1,nd
+            DO j=1,nd
+              MASS(i,j) = MASS(i,j) + weight * Basis(i) * Basis(j)
+            END DO
+            CoeffBasis(i) = CoeffBasis(i) + Weight * Basis(i)
+          END DO
+          ! For initialization phase end the assembly early!
+          CYCLE
+        ELSE      
+          CoeffBasis = 0._dp
+          DO i=1,nd
+            DO j=1,nd
+              CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
+            END DO
+          END DO
+        END IF
+      END IF
+        
       ! Integration point at the master element
       IF( ElemCodeM /= LinCodeM ) THEN
         ElementLin % TYPE => GetElementType( LinCodeM, .FALSE. )
@@ -5426,32 +5428,29 @@ CONTAINS
         CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
       END IF
 
+      IF ( neM == 3 .AND. pElemBasis ) THEN
+        uq = um
+        vq = vm
+        um = -1.0d0 + 2.0d0*uq + vq
+        vm = SQRT(3.0d0)*vq
+      END IF
+      
       stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
       IF(.NOT. Stat) CYCLE
-
-      ! Add the nodal dofs
-      IF(BiOrthogonal) THEN
-        CoeffBasis = 0._dp
-        DO i=1,n
-          DO j=1,n
-            CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
-          END DO
-        END DO
-      END IF
-
-      DO j=1,n 
+            
+      DO j=1,nd 
         jj = Indexes(j)                                    
-
+        
         nrow = NodePerm(InvPerm(jj))
         IF( nrow == 0 ) CYCLE
-
+        
         Projector % InvPerm(nrow) = InvPerm(jj)
         val = Basis(j) * weight
         IF(Biorthogonal) val_dual = CoeffBasis(j) * weight
-
-        DO i=1,n
+        
+        DO i=1,nd
           IF( ABS( val * Basis(i) ) < 1.0d-10 ) CYCLE
-
+          
           !Nslave = Nslave + 1
           CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
               InvPerm(Indexes(i)), Basis(i) * val ) 
@@ -5461,8 +5460,8 @@ CONTAINS
                 InvPerm(Indexes(i)), Basis(i) * val_dual ) 
           END IF
         END DO
-
-        DO i=1,nM
+        
+        DO i=1,ndM
           IF( ABS( val * BasisM(i) ) < 1.0d-12 ) CYCLE
 
           !Nmaster = Nmaster + 1
@@ -5482,8 +5481,224 @@ CONTAINS
       END DO
     END DO
 
+    ! For biorthogonal basis functions we perform a second loop
+    IF( InitPhase ) THEN
+      CALL InvertMatrix( MASS, nd )
+      DO i=1,nd
+        DO j=1,nd
+          MASS(i,j) = MASS(i,j) * CoeffBasis(i)
+        END DO
+      END DO
+      InitPhase = .FALSE.
+      GOTO 1
+    END IF  ! Biortogonal initialization 
+
+    sumarea = sumarea + area
+
   END SUBROUTINE TemporalTriangleMortarAssembly
 
+
+  !----------------------------------------------------------------------------------------
+  !> Given a temporal segment "ElementT", calculate mass matrix contributions for projection
+  !> for the slave element "Element" and master element "ElementM".
+  !----------------------------------------------------------------------------------------
+ SUBROUTINE TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+      sgn0, pElemBasis, Biorthogonal, CreateDual, DualMaster, DualLCoeff, NoGaussPoints, &
+      Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, InvPerm, InvPermM, SumArea ) 
+    !----------------------------------------------------------------------------------------
+    TYPE(Element_t) :: ElementT
+    TYPE(Element_t), POINTER :: Element, ElementM
+    TYPE(Nodes_t) :: NodesT, Nodes, NodesM
+    INTEGER :: sgn0
+    LOGICAL :: pElemBasis, Biorthogonal, CreateDual, DualMaster, DualLCoeff
+    INTEGER :: NoGaussPoints
+    TYPE(Matrix_t) :: Projector
+    REAL(KIND=dp) :: NodeCoeff, ArcCoeff, NodeScale, SumArea
+    INTEGER :: NodePerm(:), DualNodePerm(:)
+    INTEGER, POINTER :: InvPerm(:), InvPermM(:)
+    !----------------------------------------------------------------------------------------
+    TYPE(GaussIntegrationPoints_t) :: IPT
+    INTEGER :: i,j,ii,jj,n,nd,nM,ndM,nrow,nip
+    INTEGER, TARGET :: pIndexes(24), pIndexesM(24)    
+    INTEGER, POINTER :: Indexes(:), IndexesM(:)
+    REAL(KIND=dp) :: val, val_dual, u, v, w, um, vm, wm, xt, yt, zt, wtemp,DetJ
+    REAL(KIND=dp), ALLOCATABLE :: BasisT(:),Basis(:), BasisM(:), MASS(:,:), CoeffBasis(:)
+    LOGICAL :: AllocationsDone = .FALSE.
+    TYPE(Matrix_t), POINTER :: DualProjector 
+    LOGICAL :: InitPhase,Stat
+
+    SAVE :: BasisT, Basis, BasisM, MASS, CoeffBasis
+    
+    IF(.NOT. AllocationsDone ) THEN
+      n = 2 * CurrentModel % Mesh % MaxElementNodes
+      ALLOCATE(BasisT(n),Basis(n),BasisM(n),MASS(n,n),CoeffBasis(n))
+      AllocationsDone = .TRUE.
+    END IF
+       
+    n = Element % TYPE % NumberOfNodes   
+    IF( pElemBasis ) THEN    
+      nd = mGetElementDOFs(pIndexes,Element)
+      Indexes => pIndexes
+    ELSE
+      nd = n
+      Indexes => Element % NodeIndexes
+    END IF
+
+    nM = ElementM % TYPE % NumberOfNodes      
+    IF( pElemBasis ) THEN    
+      ndM = mGetElementDOFs(pIndexesM,ElementM)
+      IndexesM => pIndexesM
+    ELSE
+      ndM = nM
+      IndexesM => ElementM % NodeIndexes
+    END IF
+    
+    IF( NoGaussPoints == 0 ) THEN
+      IPT = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
+    ELSE    
+      IPT = GaussPoints( ElementT, NoGaussPoints ) 
+    END IF
+
+    DualProjector => Projector % EMatrix
+    
+    IF(BiOrthogonal) THEN
+      MASS = 0.0_dp
+      CoeffBasis = 0.0_dp
+      InitPhase = .TRUE.
+    ELSE
+      InitPhase = .FALSE.
+    END IF
+
+    yt = 0.0_dp
+    zt = 0.0_dp
+    Basis = 0.0_dp
+    BasisM = 0.0_dp
+
+    
+1   DO nip=1, IPT % n 
+      stat = ElementInfo( ElementT,NodesT,IPT % u(nip),&
+          IPT % v(nip),IPT % w(nip),detJ,BasisT)
+      
+      ! Global coordinate of the integration point
+      xt = SUM( BasisT(1:2) * NodesT % x(1:2) )
+      
+      ! Integration weight for current integration point
+      ! Use the real arc length so that this projector weights correctly 
+      ! in rotational case when used with other projectors.
+      Wtemp = ArcCoeff * DetJ * IPT % s(nip)
+      
+      ! Integration point at the slave element
+      CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
+      stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+      
+      IF( Biorthogonal ) THEN      
+        IF( InitPhase ) THEN
+          DO i=1,nd
+            DO j=1,nd
+              MASS(i,j) = MASS(i,j) + wTemp * Basis(i) * Basis(j)
+            END DO
+            CoeffBasis(i) = CoeffBasis(i) + wTemp * Basis(i)
+          END DO
+          CYCLE
+        ELSE
+          CoeffBasis = 0._dp
+          DO i=1,nd
+            DO j=1,nd
+              CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
+            END DO
+          END DO          
+        END IF
+      END IF
+            
+      sumarea = sumarea + Wtemp
+
+      ! Integration point at the master element
+      CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
+      stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
+      
+      ! Add the entries to the projector
+      DO j=1,nd
+        jj = Indexes(j)                                    
+        IF (j<=n) jj = InvPerm(jj)
+        
+        nrow = NodePerm(jj)
+        IF( nrow == 0 ) CYCLE
+
+        Projector % InvPerm(nrow) = jj
+        val = NodeCoeff * Basis(j) * Wtemp
+        IF(Biorthogonal) THEN
+          val_dual = NodeCoeff * CoeffBasis(j) * Wtemp
+        END IF
+        
+        DO i=1,nd
+          ii = Indexes(i)
+          IF(i<=n) ii=InvPerm(ii)
+          
+          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+              ii, Basis(i) * val )
+          
+          IF(Biorthogonal) THEN
+            CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                ii, Basis(i) * val_dual )
+          END IF
+        END DO
+        
+        DO i=1,ndM
+          ii = IndexesM(i)
+          IF(i<=nM) ii=InvPermM(ii)
+          
+          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+              ii, -sgn0 * NodeScale * BasisM(i) * val )
+          
+          IF(Biorthogonal) THEN
+            IF(DualMaster .OR. DualLCoeff) THEN
+              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                  ii, -sgn0 * NodeScale * BasisM(i) * val_dual )
+            ELSE
+              CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                  ii, -sgn0 * NodeScale * BasisM(i) * val )
+            END IF
+          END IF
+        END DO
+      END DO
+
+      ! Add the entries to the dual projector 
+      IF( CreateDual ) THEN
+        DO j=1,nM 
+          jj = IndexesM(j)                                    
+          nrow = DualNodePerm(InvPermM(jj))
+          IF( nrow == 0 ) CYCLE
+          
+          DualProjector % InvPerm(nrow) = InvPermM(jj)
+          val = NodeCoeff * BasisM(j) * Wtemp
+          
+          DO i=1,nM
+            CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
+                InvPermM(IndexesM(i)), sgn0 * BasisM(i) * val ) 
+          END DO
+          
+          DO i=1,n
+            !IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
+            CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
+                InvPerm(Indexes(i)), -NodeScale * Basis(i) * val )                   
+          END DO
+        END DO
+      END IF
+    END DO
+
+    IF(InitPhase ) THEN          
+      CALL InvertMatrix( MASS, nd )      
+      DO i=1,nd
+        DO j=1,nd
+          MASS(i,j) = MASS(i,j) * CoeffBasis(i)
+        END DO
+      END DO
+      InitPhase = .FALSE.
+      GOTO 1
+    END IF
+    
+  END SUBROUTINE TemporalSegmentMortarAssembly
+    
   
   !---------------------------------------------------------------------------
   !> Create a projector for mapping between interfaces using the Galerkin method
@@ -6236,7 +6451,7 @@ CONTAINS
             END IF
             
             CALL TemporalTriangleMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
-                BiorthogonalBasis, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
+                .FALSE.,BiorthogonalBasis, DualMaster, DualLCoeff, NoGaussPoints, Projector, NodeScale, &
                 NodePerm, InvPerm1, InvPerm2, SumArea ) 
           END DO
                              
@@ -9883,16 +10098,10 @@ CONTAINS
               MASS  = 0
               CoeffBasis = 0
               area = 0
-              DO nip=1, IP % n 
-                IF ( ne == 3 .AND. pElemBasis ) THEN
-                   uq = u
-                   vq = v
-                   u = -1.0d0 + 2.0d0*uq + vq
-                   v = SQRT(3.0d0)*vq
-                END IF
-
+              DO nip=1, IP % n
+                ! ElementT is not a pelement ever?
                 stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
-                      IP % v(nip),IP % w(nip),detJ,Basis)
+                    IP % v(nip),IP % w(nip),detJ,Basis)
                 IF(.NOT. Stat ) EXIT
 
                 ! We will actually only use the global coordinates and the integration weight 
@@ -9965,16 +10174,16 @@ CONTAINS
                 CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
               END IF
 
-
+              ! Take into account that the reference elements are different:
+              IF( ne == 3 .AND. ( pElemBasis .OR. (EdgeBasis .AND. PiolaVersion ))) THEN
+                uq = u
+                vq = v
+                u = -1.0d0 + 2.0d0*uq + vq
+                v = SQRT(3.0d0)*vq
+              END IF
+              
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  ! Take into account that the reference elements are different:
-                  IF ( ne == 3) THEN
-                    uq = u
-                    vq = v
-                    u = -1.0d0 + 2.0d0*uq + vq
-                    v = SQRT(3.0d0)*vq
-                  END IF
                   IF (SecondOrder) THEN
                     stat = EdgeElementInfo( Element, Nodes, u, v, w, &
                         DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
@@ -9989,12 +10198,6 @@ CONTAINS
                   CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
                 END IF
               ELSE
-                IF ( ne == 3 .AND. pElemBasis ) THEN
-                  uq = u
-                  vq = v
-                  u = -1.0d0 + 2.0d0*uq + vq
-                  v = SQRT(3.0d0)*vq
-                END IF
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
               END IF
 
@@ -10008,16 +10211,16 @@ CONTAINS
                 CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
               END IF
 
-
+              ! Take into account that the reference elements are different:
+              IF( neM == 3 .AND. ( pElemBasis .OR. (EdgeBasis .AND. PiolaVersion ))) THEN
+                uq = um
+                vq = vm
+                um = -1.0d0 + 2.0d0*uq + vq
+                vm = SQRT(3.0d0)*vq
+              END IF
+              
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  ! Take into account that the reference elements are different:
-                  IF ( neM == 3) THEN
-                    uq = um
-                    vq = vm
-                    um = -1.0d0 + 2.0d0*uq + vq
-                    vm = SQRT(3.0d0)*vq
-                  END IF
                   IF (SecondOrder) THEN
                     stat = EdgeElementInfo( ElementM, NodesM, um, vm, wm, &
                         DetF=detJ, Basis=BasisM, EdgeBasis=WBasisM, &
@@ -10032,12 +10235,6 @@ CONTAINS
                   CALL GetEdgeBasis(ElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
                 END IF
               ELSE
-                IF ( neM == 3 .AND. pElemBasis ) THEN
-                  uq = um
-                  vq = vm
-                  um = -1.0d0 + 2.0d0*uq + vq
-                  vm = SQRT(3.0d0)*vq
-                END IF
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
               END IF
               IF(.NOT. Stat) CYCLE
@@ -10677,7 +10874,15 @@ CONTAINS
             END DO
             CLOSE( 10 )           
           END IF
-                   
+
+#if 1
+          ! In order to reuse the innermost assembly loop it has been
+          ! restructured into a separate routine. 
+          CALL TemporalSegmentMortarAssembly(ElementT, NodesT, Element, Nodes, ElementM, NodesM, &
+              sgn0, pElemBasis, BiorthogonalBasis, CreateDual, DualMaster, DualLCoeff, 0, &
+              Projector, NodeCoeff, ArcCoeff, NodeScale, NodePerm, DualNodePerm, &
+              InvPerm1, InvPerm2, SumArea )
+#else
           ! Use somewhat higher integration rules than the default
           IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
           
@@ -10762,9 +10967,9 @@ CONTAINS
               IF( nrow == 0 ) CYCLE
 
               Projector % InvPerm(nrow) = jj
-              val = Basis(j) * Wtemp
+              val = NodeCoeff * Basis(j) * Wtemp
               IF(BiorthogonalBasis) THEN
-                val_dual = CoeffBasis(j) * Wtemp
+                val_dual = NodeCoeff *CoeffBasis(j) * Wtemp
               END IF
 
               DO i=1,nd
@@ -10776,11 +10981,11 @@ CONTAINS
                 IF(i<=n) ii=InvPerm1(ii)
 
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                      ii, NodeCoeff * Basis(i) * val )
+                      ii, Basis(i) * val )
 
                 IF(BiorthogonalBasis ) THEN
                   CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                       ii, NodeCoeff * Basis(i) * val_dual )
+                       ii, Basis(i) * val_dual )
                 END IF
               END DO
               
@@ -10793,15 +10998,15 @@ CONTAINS
                 IF(i<=nM) ii=InvPerm2(ii)
 
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                    ii, -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )
-
+                    ii, -sgn0 * NodeScale * BasisM(i) * val )
+                
                 IF(BiorthogonalBasis) THEN
                   IF(DualMaster .OR. DualLCoeff) THEN
                     CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                      ii, -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val_dual )
+                      ii, -sgn0 * NodeScale * BasisM(i) * val_dual )
                   ELSE
                     CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                      ii, -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )
+                      ii, -sgn0 * NodeScale * BasisM(i) * val )
                   END IF
                 END IF
               END DO
@@ -10815,22 +11020,23 @@ CONTAINS
                 IF( nrow == 0 ) CYCLE
                 
                 DualProjector % InvPerm(nrow) = InvPerm2(jj)
-                val = BasisM(j) * Wtemp
+                val = NodeCoeff * BasisM(j) * Wtemp
 
                 DO i=1,nM
                   CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), sgn0 * NodeCoeff * BasisM(i) * val ) 
+                      InvPerm2(IndexesM(i)), sgn0 * BasisM(i) * val ) 
                 END DO
 
                 DO i=1,n
                   !IF( ABS( val * BasisM(i) ) < 1.0d-10 ) CYCLE
                   CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
-                      InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val )                   
+                      InvPerm1(Indexes(i)), -NodeScale * Basis(i) * val )                   
                 END DO
               END DO
             END IF
           END DO
-
+#endif
+          
 100       IF( Repeating ) THEN
             IF( NRange2 /= 0 ) THEN
               xminm = xminm + Nrange2 * XRange
@@ -10843,7 +11049,7 @@ CONTAINS
           END IF
 
         END DO
-
+        
         IF( SaveElem ) THEN
           FileName = 't'//TRIM(I2S(TimeStep))//'_n.dat'
           OPEN( 10,FILE=Filename)
