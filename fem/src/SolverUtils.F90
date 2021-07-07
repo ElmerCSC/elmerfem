@@ -10873,7 +10873,7 @@ END FUNCTION SearchNodeL
     !IF( Debug ) PRINT *,'Adapt',UseAdapt,Element % ElementIndex, n,MaxV,MinV,MaxLim,MinLim,Np,RelOrder
 
     IF( ElementalRule ) THEN
-      Np = ElementalNp( Element % TYPE % ElementCode / 100 ) 
+      Np = ElementalNp( Element % TYPE % ElementCode / 100 )
     END IF
     
     IF( Np > 0 ) THEN
@@ -10894,16 +10894,18 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
       CHARACTER(LEN=*) :: GaussDef
 !------------------------------------------------------------------------------
-      INTEGER  :: i,j,k,n,m
+      INTEGER  :: i,j,k,n,m,iostat
       
 
       n = LEN_TRIM(GaussDef)
       ElementalNp = 0
 
-      ! PRINT *,'gauss def:',GaussDef(1:n)
+      !PRINT *,'gauss def:',GaussDef(1:n)
       
       DO i=2,8
+        
         j = 0
+        
         SELECT CASE( i )
         CASE( 2 )
           j =  INDEX( GaussDef(1:n), '-line' ) ! position of string "-line"
@@ -10927,14 +10929,17 @@ END FUNCTION SearchNodeL
           j =  INDEX( GaussDef(1:n), '-brick' )
           m = 6
         END SELECT
-
+        
         IF( j > 0 ) THEN
-          READ( GaussDef(j+m:n), * ) k
+          READ( GaussDef(j+m:n), *, IOSTAT = iostat ) k
+          IF( iostat /= 0 ) THEN
+            CALL Fatal('ElementGaussRules','Problems reading integer from: '//TRIM(GaussDef(j+m:n)))
+          END IF
           ElementalNp(i) = k
         END IF
       END DO
 
-      ! PRINT *,'Elemental Gauss Rules:',ElementalNp
+      !PRINT *,'Elemental Gauss Rules:',ElementalNp
       
 !------------------------------------------------------------------------------
     END SUBROUTINE ElementalGaussRules
