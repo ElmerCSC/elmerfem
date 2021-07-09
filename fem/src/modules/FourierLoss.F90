@@ -673,6 +673,7 @@ CONTAINS
       RightRule = .FALSE.
       CurrentCycle = NINT( time / tcycle )
 
+      
       IF( CurrentCycle /= PreviousCycle ) THEN
         ! Check whether we have proceeded to a new cycle
         ! 1) if the previous and current timestep point to different timestep
@@ -686,8 +687,14 @@ CONTAINS
           IF( LeftRule ) THEN
             CALL Fatal('FourierLossSolver','Cannot use left and right rule at the same time!')
           END IF
-          ratio = 1.0_dp - (time-INT((time)/tcycle)*tcycle)/dt
-          
+
+          ! With some stretch we can finish this step. 
+          IF( CurrentCycle * tcycle - time > 0.0_dp ) THEN
+            ratio = 1.0_dp - (time-INT(1+time/tcycle)*tcycle)/dt
+          ELSE
+            ratio = 1.0_dp - (time-INT(time/tcycle)*tcycle)/dt
+          END IF
+                      
           CALL Info('FourierLossSolver','Finising Fourier transform cycle',Level=6)
           
           ! Return a True flag so that we know that we might need to start also the cycle.
@@ -695,6 +702,9 @@ CONTAINS
           PreviousCycle = CurrentCycle
         END IF
       END IF
+      
+      !PRINT *,'Cycle:',time, EndCycle, CurrentCycle, PreviousCycle, tcycle, RightRule, LeftRule, ratio
+      
     END IF
 
     ! Set the time interval for integration, [ta,tb]
