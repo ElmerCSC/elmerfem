@@ -21164,77 +21164,6 @@ CONTAINS
    END SUBROUTINE SolverOutputDirectory
    !-----------------------------------------------------------------------------
 
-
-   
-   ! When we have a field defined on IP points we may temporarily swap it to be a field
-   ! defined on DG points. This is done by solving small linear system for each element.
-   !------------------------------------------------------------------------------------
-   SUBROUTINE Ip2DgField( Mesh, Element, nip, fip, ndg, fdg )
-     !------------------------------------------------------------------------------
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Element_t), POINTER :: Element
-     INTEGER :: nip, ndg
-     REAL(KIND=dp) :: fip(:), fdg(:)
-     !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Weight, DetJ
-     REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
-     INTEGER :: i,t,p,q,n
-     TYPE(GaussIntegrationPoints_t) :: IP
-     TYPE(Nodes_t) :: Nodes
-     LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
-     CHARACTER(*), PARAMETER :: Caller = 'Ip2DgField'
-
-     
-     SAVE Nodes, Basis, MASS, LOAD, CSymmetry, AllocationsDone
-     !------------------------------------------------------------------------------
-
-     IF( .NOT. AllocationsDone ) THEN
-       n = Mesh % MaxElementNodes
-       ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
-       CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
-           CurrentCoordinateSystem() == CylindricSymmetric
-       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-       AllocationsDone = .TRUE.
-     END IF
-
-     n = Element % TYPE % NumberOfNodes 
-     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
-
-     Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
-     Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
-     Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
-
-     MASS  = 0._dp
-     LOAD = 0._dp
-
-     ! Numerical integration:
-     !-----------------------
-     IP = GaussPoints( Element, nip )
-
-     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
-       Weight = IP % s(t) * DetJ
-
-       IF( CSymmetry ) THEN
-         Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
-       END IF
-
-       DO p=1,n
-         LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
-         DO q=1,n
-           MASS(p,q) = MASS(p,q) + Weight * Basis(q) * Basis(p)
-         END DO
-       END DO
-     END DO
-
-     CALL LuSolve(n,MASS,LOAD) 
-
-     fdg(1:n) = LOAD(1:n)
-
-   END SUBROUTINE Ip2DgField
-
-
-
    ! This routine changes the IP field to DG field just while the results are being written.
    !---------------------------------------------------------------------------------------
    SUBROUTINE Ip2DgSwapper( Mesh, FromVar, ToVar, ToType, ToName )
@@ -21255,7 +21184,18 @@ CONTAINS
      INTEGER, POINTER :: Indexes(:)
      CHARACTER(LEN=MAX_NAME_LEN) :: TmpName
      CHARACTER(*), PARAMETER :: Caller = 'Ip2DgSwapper'
-     
+
+     INTERFACE 
+       SUBROUTINE Ip2DgFieldInElement( Mesh, Parent, nip, fip, np, fdg )
+         USE Types
+         IMPLICIT NONE
+         TYPE(Mesh_t), POINTER :: Mesh
+         TYPE(Element_t), POINTER :: Parent
+         INTEGER :: nip, np
+         REAL(KIND=dp) :: fip(:), fdg(:)
+       END SUBROUTINE Ip2DgFieldInElement
+     END INTERFACE
+       
      IF( FromVar % TYPE /= Variable_on_gauss_points ) THEN
        CALL Warn(Caller,'Only IP fields can be swapped!: '//TRIM(FromVar % Name))
        RETURN
@@ -21418,7 +21358,7 @@ CONTAINS
          END IF
 
          ! Solve the elemental equation involving mass matrix
-         CALL Ip2DgField( Mesh, Element, m, fip, n, fdg )
+         CALL Ip2DgFieldInElement( Mesh, Element, m, fip, n, fdg )
 
          IF( DgField ) THEN
            Indexes => Element % DgIndexes
@@ -21464,9 +21404,9 @@ CONTAINS
      
    END SUBROUTINE Ip2DgSwapper
    !-------------------------------------------------------------------------------------
-       
 
 
+  
    ! Generic evaluation of field value at given point of element.
    ! The idea is that the field value to be evaluated may be nodal, elemental,
    ! dg, or gauss point field. Perhaps even edge or face element field.
@@ -21569,7 +21509,7 @@ CONTAINS
          ELSE
            VValues(1:nip) = rValues(i1:i2-1)
          END IF
-         CALL Ip2DgField( Mesh, Element, nip, VValues, n, FValues )         
+         CALL Ip2DgFieldInElement( Mesh, Element, nip, VValues, n, FValues )         
 
          Val = SUM( Basis(1:n) * FValues(1:n) )
 

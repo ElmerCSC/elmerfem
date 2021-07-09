@@ -288,21 +288,6 @@ IF(NOT(WIN32))
   SET_TARGET_PROPERTIES(ViewFactors PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
 ENDIF()
 
-# GebhardFactors
-ADD_EXECUTABLE(GebhardtFactors GebhardtFactors.F90)
-TARGET_LINK_LIBRARIES(GebhardtFactors ${ELMERSOLVER_LIBRARIES} 
-                                      mpi_stubs elmersolver)
-
-IF(NOT(WIN32))
-  SET_TARGET_PROPERTIES(GebhardtFactors PROPERTIES INSTALL_RPATH "${ELMERSOLVER_RPATH_STRING}")
-ENDIF()
-
-IF(WITH_Trilinos)
-  TARGET_LINK_LIBRARIES(GebhardtFactors elmersolver "${Trilinos_LIBRARIES};${Belos_LIBRARIES};${ML_LIBRARIES};${Epetra_LIBRARIES};${Teuchos_LIBRARIES}")
-ENDIF()
-
-INSTALL(TARGETS GebhardtFactors mpi_stubs RUNTIME DESTINATION "bin"
-  LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
 
 # Installation rules
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")
