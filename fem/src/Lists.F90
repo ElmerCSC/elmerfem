@@ -1917,8 +1917,6 @@ use spariterglobals
 #ifdef DEVEL_LISTCOUNTER
      IF( ASSOCIATED( ptr ) ) THEN
        ptr % Counter = ptr % Counter + 1
-       !ELSE IF( INDEX( name,': not found' ) == 0 ) THEN
-       !CALL ListAddNewLogical( CurrentModel % Simulation, TRIM(name)//': not found',.TRUE.) 
      END IF
 #endif
      
@@ -8552,34 +8550,48 @@ END SUBROUTINE
    !------------------------------------------------------------------------------
    SUBROUTINE ReportListCounters( Model ) 
      TYPE(Model_t) :: Model
-     CHARACTER(LEN=MAX_NAME_LEN) :: dirname
+     CHARACTER(LEN=MAX_NAME_LEN) :: dirname,filename
 
-     INTEGER :: i, totcount, nelem     
-     LOGICAL :: Unused
+     INTEGER :: i, totcount, nelem, ReportUnit     
+     LOGICAL :: Unused, GotFile
      
      CALL Info('ReportListCounters','Saving ListGet operations count per bulk elements')
 
-     ! OPEN(10,FILE="listcounter.dat")
-     OPEN( 10,File='../listcounter.dat',&
-         STATUS='UNKNOWN',POSITION='APPEND' )
+     filename = ListGetString( Model % Simulation,'List Counter File',GotFile )     
+     IF(.NOT. GotFile ) filename = '../listcounter.dat'
 
+     ! We may toggle this to enable is disable automatic writing to file
+     ! For example, when we want to collect data automatically from tests. 
+     !GotFile = .TRUE.
+       
+     IF( GotFile ) THEN
+       ReportUnit = 10
+       !IF( ParEnv % PEs > 1 ) THEN
+       !  filename = TRIM(filename)//'.'//TRIM(I2S(ParEnv % MyPe))
+       !END IF         
+       OPEN( 10,File=filename,STATUS='UNKNOWN',POSITION='APPEND' )
+       CALL GETCWD(dirname)
+
+       ! These are only for reference if writing lot of data to same file
+       WRITE( ReportUnit,'(A)') 'Working directory: '//TRIM(dirname)
+       nelem = Model % Mesh % NumberOfBulkElements       
+       WRITE( ReportUnit,'(T4,A)') 'Number of elements: '//TRIM(I2S(nelem))
+       WRITE( ReportUnit,'(T4,A)') 'Number of nodes: '//TRIM(I2S(Model % Mesh % NumberOfNodes))       
+     ELSE
+       IF( .NOT. InfoActive(12) ) RETURN
+       ! IF( ParEnv % MyPe /= 0) RETURN 
+       ReportUnit = 6
+     END IF
+              
      totcount = 0
-
      
-     CALL GETCWD(dirname)
-     WRITE( 10,'(A)') 'Working directory: '//TRIM(dirname)
-        
-     ! These are only for reference
-     nelem = Model % Mesh % NumberOfBulkElements
-
-     WRITE( 10,'(T4,A)') 'Number of elements: '//TRIM(I2S(nelem))
-     WRITE( 10,'(T4,A)') 'Number of nodes: '//TRIM(I2S(Model % Mesh % NumberOfNodes))
-         
+     ! In the first round write the unused keywords
+     ! On the 2nd round write the keywords that 
      Unused = .TRUE.
 100  IF( Unused ) THEN
-       WRITE( 10,'(T4,A)') 'Unused keywords:'       
+       WRITE( ReportUnit,'(T4,A)') 'Unused keywords:'       
      ELSE
-       WRITE( 10,'(T4,A)') 'Used keywords:'              
+       WRITE( ReportUnit,'(T4,A)') 'Used keywords:'              
      END IF
                
      CALL ReportList('Simulation', Model % Simulation, Unused )
@@ -8614,8 +8626,7 @@ END SUBROUTINE
        GOTO 100
      END IF
 
-     CLOSE(10)
-
+     IF( GotFile ) CLOSE(ReportUnit)
          
      CALL Info('ReportListCounters','List operations total count:'//TRIM(I2S(totcount)))     
 
@@ -8641,9 +8652,9 @@ END SUBROUTINE
          m = ptr % Counter 
 
          IF( Unused .AND. m == 0 ) THEN
-           WRITE( 10,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)         
+           WRITE( ReportUnit,'(T8,A,T30,A)') TRIM(SectionName),ptr % Name(1:n)         
          ELSE IF(.NOT. Unused .AND. m > 0 ) THEN
-           WRITE( 10,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
+           WRITE( ReportUnit,'(T8,A,T30,I0,T40,A)') TRIM(SectionName),m,ptr % Name(1:n)
            totcount = totcount + m
          END IF
          ptr => ptr % Next
