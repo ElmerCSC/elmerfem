@@ -1017,7 +1017,7 @@ CONTAINS
           FluxCondition = .TRUE.
           ! Variables (Temperature, Porosity, Pressure, Salinity) at IP
           !TemperatureAtIP = ListGetElementReal( TemperatureBC_h, Basis=Basis, Element=Element, Found=Found, GaussPoint=t)
-          PRINT *, "Recharge=", FluxAtIP
+          !IF (FluxAtIP > 0.0) PRINT *, "Recharge=", FluxAtIP
           TemperatureAtIP = ListGetElementRealParent( Temperature_h, Basis=Basis, Element=Element, Found=Found )
           IF (.NOT.Found) CALL FATAL(SolverName,'Temperature in BC not found')
           PorosityAtIP = ListGetElementRealParent( Porosity_h, Basis=Basis, Element=Element, Found=Found)
