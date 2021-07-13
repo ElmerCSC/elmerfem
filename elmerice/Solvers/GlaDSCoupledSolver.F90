@@ -266,16 +266,7 @@
            CALL Warn(SolverName,'Taking default value >Channel Area<')
            WRITE(ChannelAreaName,'(A)') 'Channel Area'
         END IF        
-        
-        ChannelSolver = 0
-        DO i=1,Model % NumberOfSolvers
-          IF(Model % Solvers(i) % Variable % Name == ChannelAreaName) THEN 
-            ChannelSolver = i
-            EXIT
-          END IF
-        END DO
-        CALL Info(SolverName,'Channel solver is: '//TRIM(I2S(ChannelSolver)),Level=10)        
-        
+         
         SheetThicknessName = GetString( Constants,'Sheet Thickness Variable Name', Found )
         IF(.NOT.Found) THEN        
            CALL Warn(SolverName,'Keyword >Sheet Thickness Variable Name< not found in section Constants')
@@ -293,11 +284,8 @@
         Channels = GetLogical( SolverParams,'Activate Channels', Found )
         IF( Channels )  CALL Info(SolverName,'Channels are activated for this solver!')
                 
-        ! To get Channel variables added to this solver mesh if
-        ! doing calving and hydrology and consequently having many meshes
         Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
         IF( Calving )  CALL Info(SolverName,'Calving is activated for this solver!')
-
         
         IF( Channels .OR. Calving ) THEN
           AreaSol => VariableGet( Mesh % Variables, ChannelAreaName, UnfoundFatal = .TRUE. )
@@ -305,8 +293,7 @@
             CALL Fatal(SolverName,'We really need "channel area" as variable!')
           END IF
           
-          QcSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
-              % Variables, 'Channel Flux', ThisOnly=.TRUE.)
+          QcSol => VariableGet( Mesh % Variables, 'Channel Flux', ThisOnly=.TRUE.)
           IF(.NOT. ASSOCIATED( QcSol ) ) THEN
             CALL Fatal(SolverName,'We really need "channel flux" as variable!')
           END IF          
@@ -322,32 +309,9 @@
           CALL Info(SolverName,'Sheet thickness solver is: '&
               //TRIM(I2S(ThicknessSolver)),Level=10)
 
-          ThickSol => VariableGet(Model % Solvers(ThicknessSolver) % Mesh&
-              % Variables, SheetThicknessName, ThisOnly=.TRUE.)
+          ThickSol => VariableGet( Mesh % Variables, SheetThicknessName, ThisOnly=.TRUE.)
           IF(.NOT. ASSOCIATED(ThickSol)) THEN
-            CALL Fatal(SolverName,'We really need "sheet thickess" as edge variable!')
-          END IF
-        END IF
-
-        
-        IF(Calving) THEN
-          ! Calving seems to require PrevValues for the fields
-          IF(.NOT. ASSOCIATED(AreaSol % PrevValues)) THEN
-            ALLOCATE(AreaSol % PrevValues(SIZE(AreaSol % Values),MAX(Solver&
-                % Order, Solver % TimeOrder)))
-            AreaSol % PrevValues(:,1) = AreaSol % Values
-          END IF
-            
-          IF(.NOT. ASSOCIATED( QcSol % PrevValues) ) THEN
-            ALLOCATE(QcSol % PrevValues(SIZE(QcSol % Values),MAX(Solver&
-                % Order, Solver % TimeOrder)))
-            QcSol % PrevValues(:,1) = QcSol % Values
-          END IF
-
-          IF(.NOT. ASSOCIATED( ThickSol % PrevValues) ) THEN
-            ALLOCATE(ThickSol % PrevValues(SIZE(ThickSol % Values),MAX(Solver&
-                % Order, Solver % TimeOrder)))
-            ThickSol % PrevValues(:,1) = ThickSol % Values
+            CALL Fatal(SolverName,'We really need "sheet thickness" as a variable!')
           END IF
         END IF
 
@@ -1065,10 +1029,10 @@
                 CycleElement = .FALSE.
                 IF(ASSOCIATED(GmCheckVar)) THEN
                   IF(GmCheckVar % Values(k)>0.0) CycleElement = .TRUE.
-                ELSE
+                ELSE IF(ASSOCIATED(GroundedMaskVar)) THEN
                   IF(GroundedMaskVar % Values(k)<0.0) CycleElement = .TRUE.
                 END IF
-                IF(HydPotSol % Values(k)==0.0) CycleElement = .TRUE.
+                !IF(HydPotSol % Values(k)==0.0) CycleElement = .TRUE.
 
                 IF(CycleElement) THEN
                   ThickSolution(k) = 0.0
@@ -1414,12 +1378,6 @@
    END IF
 
    SubroutineVisited = .TRUE.
-
-   !CHANGE - to make sure PrevValues for added variables in calving updated
-   IF(Calving) THEN
-     ThickSol % PrevValues(:,1) = ThickSol % Values(:)
-     AreaSol % PrevValues(:,1) = AreaSol % Values(:)
-   END IF
 
    
 CONTAINS    
