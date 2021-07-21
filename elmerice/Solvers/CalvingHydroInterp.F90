@@ -257,11 +257,11 @@
     ALLOCATE(NewValues6(SIZE(WorkVar % Values)))
     NewValues6 = 0.0_dp
     NewValues6 = WorkVar % Values
-    !CALL CalculateNodalWeights(TempSolver, .TRUE., WorkVar % Perm, 'IceWeights')
+
     WorkVar2 => VariableGet(Model % Mesh % Variables, 'IceWeights', ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    !IF(ParEnv % PEs > 1) CALL ParallelSumVector(TempSolver % Matrix, WorkVar2 % Values)
 
     DO i=1, SIZE(WorkVar % Perm)
+      IF(WorkVar2 % Perm(i) < 1) CYCLE
       IF(WorkVar % Perm(i) < 1) CYCLE
       IF(WorkVar2 % Values(WorkVar2 % Perm(i)) .NE. 0.0) THEN
         WorkVar % Values(WorkVar % Perm(i)) = WorkVar % Values(WorkVar % Perm(i))/WorkVar2 % Values(WorkVar2 % Perm(i))
@@ -434,10 +434,9 @@
     IceTempResSum = SUM(WorkVar % Values)
 
     WorkVar => VariableGet(HydroSolver % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    !!WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
-    WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+    WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
+
     IF(.NOT. ASSOCIATED(WorkVar2)) WorkVar2 => WorkVar
-    !IF(ParEnv % PEs > 1) CALL ParallelSumVector(HydroSolver % Matrix, WorkVar2 % Values)
     DO i=1,SIZE(WorkVar % Perm)
       IF(WorkVar % Perm(i) < 1) CYCLE
       WorkVar % Values(WorkVar % Perm(i)) =&
