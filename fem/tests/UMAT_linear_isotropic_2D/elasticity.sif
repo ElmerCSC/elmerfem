@@ -62,7 +62,6 @@ Solver 1
 
   Large Deflection = False ! Switch to the small strain formulation 
   Initialize State Variables = Logical False
-
 End
 
 Equation 1

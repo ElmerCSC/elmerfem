@@ -111,6 +111,14 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 
    WRITE(SolverName, '(A)') 'CostSolver_Regular'
 
+   CALL Info(SolverName,'***********************',level=0)
+   CALL Info(SolverName,' This solver has been replaced by:',level=0)
+   CALL Info(SolverName,'   Adjoint_CostRegSolver  ',level=0)
+   CALL Info(SolverName,' See documentation under:   ',level=0)
+   CALL Info(SolverName,'   elmerice/Solvers/Documentation   ',level=0)
+   CALL Info(SolverName,'***********************',level=0)
+   CALL FATAL(SolverName,' Use new solver !!')
+
   SolverParams => GetSolverParams()
 
 !! Dimension of the pb; ie with SSA we can be 1D or 2D on a 2D mesh, or 2D on a 3D mesh
@@ -376,7 +384,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
    
    Return
 
- 1000  format('#date,time,',a1,'/',a1,'/',a4,',',a2,':',a2,':',a2)
+ 1000  format('#date,time,',a2,'/',a2,'/',a4,',',a2,':',a2,':',a2)
  1001  format('#lambda,',e15.8)
 !------------------------------------------------------------------------------
 END SUBROUTINE AdjointSSA_CostRegSolver

@@ -1,0 +1,107 @@
+! Test case for MarchingODESolver.
+! We integrate over structured mesh from left to right.
+! The value to integrate over is Temperature.
+! We only integrate on extruded BCs.
+!
+! P.R. 4.12.2019
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "rect"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+  Post File = "case.vtu"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End 
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End 
+
+Initial Condition 1
+  Name = "Guess"
+  Integrator = Real 0.0
+End 
+
+Body Force 1
+  Heat Source = 10.0
+End 
+
+Material 1
+  Name = "Material"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 0.0
+
+  Integrator: Source = Equals "Temperature"
+End
+
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Solver 2 
+  Exec Solver = always
+  Equation = "MarchingOde"
+  Procedure = "MarchingODESolver" "MarchingODESolver"
+
+! Detects sctructured mesh in direction "2"
+  Active Coordinate = Integer 1
+
+!  Newmark Beta = Real 0.5
+  Apply BCs Only = Logical True
+
+  Draw Velocity = Real 1.0
+  Variable = Integrator 
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(2) = 1 3
+End
+
+Boundary Condition 2
+  Name = "Left"
+  Target Boundaries(1) = 4
+  Temperature = 0.0
+End
+
+Boundary Condition 3
+  Name = "Right"
+  Target Boundaries(1) = 2
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 8.70344759E-01
+Solver 2 :: Reference Norm = 3.83307970E-01
+

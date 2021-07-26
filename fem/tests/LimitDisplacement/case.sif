@@ -11,7 +11,7 @@ Simulation
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
   Steady State Max Iterations = 1
-  Post File = case.ep
+!  Post File = case.vtu
 End
 
 Constants

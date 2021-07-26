@@ -83,7 +83,7 @@ CONTAINS
        TYPE(Matrix_t), POINTER :: Matrix
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
-       INTEGER :: i, j, k, l, m, n, DOFs, PDOFs
+       INTEGER :: i, j, k, l, m, n, DOFs, PDOFs, bdofs
        LOGICAL :: DGSolver, Found, GB, Global_dof, LocalConstraints, DiscontBC, &
                      OwnersGiven, NeighboursGiven, DGReduced
        TYPE(Mesh_t), POINTER :: Mesh
@@ -121,14 +121,25 @@ CONTAINS
        k = n*DOFs + Matrix % ExtraDOFs
        ALLOCATE( Matrix % Perm(k), Matrix % InvPerm(k))
 
-       Matrix % Perm = 0
-       DO i=1,n
-         IF ( Perm(i) /= 0 )  THEN
-            DO j=1,DOFs
-               Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
-            END DO
-         END IF
-       END DO
+       BLOCK
+         LOGICAL :: DoConf = .FALSE.
+
+         DoConf = ListGetLogical( Solver % Values, 'Apply Conforming BCs',Found )
+         DoConf = DoConf .AND. ASSOCIATED(Mesh % PeriodicPerm)
+
+         Matrix % Perm = 0
+         DO i=1,n
+           IF ( DoConf ) THEN
+             IF ( Mesh % PeriodicPerm(i) /= 0 ) CYCLE
+           END IF
+
+           IF ( Perm(i) /= 0 ) THEN
+              DO j=1,DOFs
+                 Matrix % Perm((i-1)*DOFs+j) = DOFs * (Perm(i)-1) + j
+              END DO
+           END IF
+         END DO
+        END BLOCK
 
         DO i=n*DOFs+1,SIZE(Matrix % Perm)
           Matrix % Perm(i) = i
@@ -157,7 +168,8 @@ CONTAINS
          DO i=1,Mesh % NumberOfNodes
            DO j=1,DOFs
               k = Matrix % Perm((i-1)*DOFs+j)
-              IF(k<=0) CYCLE
+              IF ( k<=0 ) CYCLE
+
               Matrix % ParallelInfo % GlobalDOFs(k) = &
                 DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
               Matrix % ParallelInfo % Interface(k) = &
@@ -198,7 +210,7 @@ CONTAINS
              DO j=1,Element % BDOFs
                DO m=1,DOFs
                  l = DOFs*(l_beg + edofs*(i-1)+j-1)+m
-                 l=Matrix % Perm(l)
+                 l = Matrix % Perm(l)
                  IF(l==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(l) = &
                      DOFs*(g_beg+maxedofs*(Element % GelementIndex-1)+j-1)+m
@@ -259,7 +271,13 @@ CONTAINS
 
            DO i=1,Mesh % NumberOfBulkElements
              Element=>Mesh % Elements(i)
-             DO l=1,Element % BDOFs
+
+             j = Element % Type % ElementCode/100
+             bdofs = Solver % Def_Dofs(j, Element % Bodyid, 5)
+             IF ( bdofs<=0 .AND. &
+                Solver % Def_Dofs(j,Element % Bodyid,6)>1) bdofs = Element % BDOFs
+
+             DO l=1,bdofs
                DO j=1,DOFs 
                  k = Matrix % Perm(DOFs*(l_beg+Element % BubbleIndexes(l)-1)+j)
                  IF(k==0) CYCLE
@@ -274,7 +292,7 @@ CONTAINS
          END IF
 
          ! Add extra degrees of freedom to parallel structures. The additional
-         ! variables are assingned to task zero, and are assumed to be shared by
+         ! variables are assigned to task zero, and are assumed to be shared by
          ! all tasks (TODO: to be optimized if need be...)
          ! --------------------------------------------------------------------
          g_beg = NINT(ParallelReduction(1._dp*MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2))
@@ -314,8 +332,21 @@ CONTAINS
              IF(NeighboursGiven) THEN
                ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours( &
                   SIZE(Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours)))
+
                Matrix % ParallelInfo % NeighbourList(i) % Neighbours = &
                   Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours
+
+               IF(ALL(Matrix % ParallelInfo % NeighbourList(i) % Neighbours /= ParEnv % myPE)) THEN
+                 Matrix % ParallelInfo % Interface(i) = .FALSE.
+                 DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
+                 ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
+                 Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % mype
+
+                 CALL CRS_ZeroRow(Matrix,i)
+                 CALL CRS_SetMatrixElement(Matrix,i,i,1._dp)
+                 Matrix % RHS(i) = 0._dp
+               END IF
+
              ELSE IF (OwnersGiven) THEN
                ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
                DO k=1,ParEnv % PEs
@@ -602,6 +633,7 @@ CONTAINS
              END DO
            END IF
          END DO
+
          DO i=1,n
            MtrxN => MatrixPI % NeighbourList(i)
            IF ( .NOT.ASSOCIATED( MtrxN % Neighbours) ) THEN
@@ -1077,13 +1109,13 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-    SUBROUTINE ParallelGlobalNumbering(Mesh,OldMesh,NewNodes,IntCnts,IntArray,Reorder)
+    SUBROUTINE ParallelGlobalNumbering(Mesh,OldMesh,NewNodes,Reorder)
 !-------------------------------------------------------------------------------
        TYPE(Mesh_t) :: Mesh, OldMesh
-       INTEGER :: NewNodes,IntCnts(:),IntArray(:),Reorder(:)
+       INTEGER :: NewNodes,Reorder(:)
 !-------------------------------------------------------------------------------
 #ifdef PARALLEL_FOR_REAL
-        CALL SparGlobalNumbering( Mesh,OldMesh,NewNodes,IntCnts,IntArray,Reorder )
+        CALL SparGlobalNumbering( Mesh,OldMesh,NewNodes,Reorder )
 #endif
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelGlobalNumbering
@@ -1153,9 +1185,11 @@ CONTAINS
         ELSE
           oper = 0
         END IF
-        IF(.NOT.ASSOCIATED(ParEnv % Active)) &
+
+        IF (.NOT.ASSOCIATED(ParEnv % Active)) &
           CALL ParallelActive(.TRUE.)
         CALL SparActiveSUM(rsum,oper)
+
       END IF
 #endif
 !-------------------------------------------------------------------------------

@@ -24,7 +24,7 @@
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Ville Savolainen, Jussi Heikonen,
-! *           Peter R�back, Antti Pursula
+! *           Peter Råback, Antti Pursula
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -76,15 +76,9 @@
         LocalMassMatrix(:,:),LocalStiffMatrix(:,:),LocalForce(:), &
         Ap(:),Permeability(:), Conductivity(:), Ae(:),VecLoadVector(:,:)
 
-#ifdef USE_ISO_C_BINDINGS
     REAL (KIND=DP) :: UNorm,RelativeChange, &
         at,at0,AngularFrequency, jc, jre, jim, &
         TotalHeating, DesiredHeating, TotalVolume, PermeabilityOfVacuum
-#else
-    REAL (KIND=DP) :: UNorm,RelativeChange, &
-        at,at0,RealTime,CPUTime, AngularFrequency, jc, jre, jim, &
-        TotalHeating, DesiredHeating, TotalVolume, PermeabilityOfVacuum
-#endif
 
     INTEGER :: body_id, eq_id, bf_id, LocalNodes, NonlinearIter
     INTEGER :: t,n,k,istat,i,iter,q,j,dofs,dim
@@ -672,7 +666,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Subroutine for computing local matrices for harmonic magnetic field
 !> in cylindrical coordinates with axisymmetry.
-! Author: Peter R�back
+! Author: Peter Råback
 !------------------------------------------------------------------------------
    SUBROUTINE HarmMagAxisCompose( &
        StiffMatrix,ForceVector,CurrentDensity,NodalAngle,NodalReluctivity, NodalConductivity,&

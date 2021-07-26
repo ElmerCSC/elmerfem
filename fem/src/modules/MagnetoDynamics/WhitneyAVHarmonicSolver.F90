@@ -83,14 +83,36 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+SUBROUTINE WhitneyAVHarmonicSolver_Init(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE MagnetoDynamicsUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
+
+  Mesh => GetMesh()
+  IF( Mesh % MeshDim /= 3 ) THEN
+    CALL Fatal('WhitneyAVHarmonicSolver_Init','Solver requires 3D mesh!')
+  END IF
+    
+!------------------------------------------------------------------------------
+END SUBROUTINE WhitneyAVHarmonicSolver_Init
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
-!>  Solve vector potential A, scale potential V
+!>  Solve a vector potential A and scalar potential V from
 ! 
 !>  j omega sigma A+rot (1/mu) rot A+sigma grad(V) = J^s+rot M^s-sigma grad(V^s)
 !>  -div(sigma (j omega A+grad(V)))=0
 !
-!>  using edge elements (Nedelec/W basis of lowest degree) + nodal basis for V.
+!>  by using edge elements (Nedelec) + nodal basis for V.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
@@ -108,49 +130,43 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: AllocationsDone = .FALSE., Found, L1
-  TYPE(Element_t),POINTER :: Element, Edge
-
-  REAL(KIND=dp) :: Norm, Omega
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams, SolverParams
+  LOGICAL :: Stat, EigenAnalysis, TG, Jfix, JfixSolve, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar, HasTensorReluctivity
+  LOGICAL :: ExtNewton
+  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
   INTEGER :: NoIterationsMin, NoIterationsMax
-
-  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER :: NewtonIter
+  INTEGER, POINTER :: Perm(:)
+  INTEGER, ALLOCATABLE :: FluxMap(:)
 
   COMPLEX(kind=dp) :: Aval
-  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), JFixFORCE(:),JFixVec(:,:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), AirGapMu(:)
-
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
+  COMPLEX(KIND=dp), POINTER :: Acoef_t(:,:,:) => NULL()
 
-  REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
-
+  REAL(KIND=dp) :: Norm, Omega
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), MuParameter(:), SkinCond(:)
+  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
-  TYPE(Variable_t), POINTER :: fixJpot, HbCurveVar
+  REAL(KIND=dp) :: NewtonTol
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
-  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar
-  REAL(KIND=dp) :: NewtonTol
-  INTEGER :: NewtonIter
-  LOGICAL :: ExtNewton
-  
-  INTEGER, POINTER :: Perm(:)
-  INTEGER, ALLOCATABLE :: FluxMap(:)
-  LOGICAL, ALLOCATABLE, SAVE :: TreeEdges(:)
-
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Element_t),POINTER :: Element, Edge
+  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams, SolverParams
+  TYPE(Variable_t), POINTER :: jfixvar, jfixvarIm, HbCurveVar
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
-  
   TYPE(ValueList_t), POINTER :: CompParams
 
-  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
-       Acoef, Cwrk, Cwrk_im, LamCond, &
+  SAVE STIFF, LOAD, MASS, FORCE, Tcoef, JFixVec, JFixFORCE, &
+       Acoef, Acoef_t, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM, &
-       GapLength, AirGapMu
+       GapLength, MuParameter, SkinCond
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
@@ -164,14 +180,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   END IF
 
   IF (PiolaVersion) THEN
-    CALL Info('WhitneyAVSolver', &
+    CALL Info('WhitneyAVHarmonicSolver', &
         'Using Piola Transformed element basis functions',Level=4)
-    CALL Info('WhitneyAVSolver', &
+    CALL Info('WhitneyAVHarmonicSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
-    IF (SecondOrder) &
-        CALL Info('WhitneyAVHarmonicSolver', &
-        'Using quadratic approximation, pyramidical elements are not yet available',Level=4)   
- END IF
+  END IF
 
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
@@ -183,13 +196,13 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   IF ( .NOT. AllocationsDone ) THEN
 
-     IF (Solver % Variable % dofs /= 2) CALL Fatal ('WhitneyAVHarmonicSolver_Init', &
-       'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
+     IF (Solver % Variable % dofs /= 2) CALL Fatal('WhitneyAVHarmonicSolver', &
+         'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
 
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
-          MASS(N,N), Tcoef(3,3,N), RotM(3,3,N), &
-          GapLength(N), AirGapMu(N), Acoef(N), LamCond(N), &
+          MASS(N,N), JFixVec(3,N),JFixFORCE(n), Tcoef(3,3,N), RotM(3,3,N), &
+          GapLength(N), MuParameter(N), SkinCond(N), Acoef(N), LamCond(N), &
           LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
@@ -206,16 +219,28 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
     CALL Fatal('WhitneyHarmonicAVSolver','Harmonic solution requires frequency!')
   END IF
     
-  
-  FixJ = GetLogical(SolverParams,'Fix input Current Density', Found)
-
-  ! If not specified compute the Jfix field only if there is a specified current BC
+  Jfix = GetLogical(SolverParams,'Fix input Current Density', Found)
   IF(.NOT. Found ) THEN
-    FixJ = ListCheckPrefixAnyBodyForce( Model,'Current Density' )
+    ! If not specified compute the Jfix field only if there is a specified current BC
+    Jfix = ListCheckPrefixAnyBodyForce( Model,'Current Density' )
   END IF
+  JfixSolve = Jfix
 
-  IF (FixJ) CALL JfixPotentialSolver(Model,Solver,dt,Transient)
-
+  IF (Jfix) THEN
+    JfixPhase = 1
+    CALL JfixPotentialSolver(Model,Solver,dt,Transient)
+    JfixVar => VariableGet(Mesh % Variables, 'Jfix')    
+    JfixVarIm => VariableGet(Mesh % Variables, 'Jfix Im')    
+    IF(.NOT. ASSOCIATED( JfixRhsC ) ) THEN
+      CALL Fatal('WhitneyAVHarmonicSolver','JfixRhsC should be associated!')
+    END IF
+    IF(.NOT. ASSOCIATED( JFixSurfacePerm ) ) THEN
+      CALL Fatal('WhitneyAVHarmonicSolver','JFixVecSurfacePerm should be associated!')
+    END IF
+    IF(.NOT. ALLOCATED( JFixSurfaceVecC ) ) THEN
+      CALL Fatal('WhitneyAVHarmonicSolver','JFixVecSurfaceVecC should be associated!')
+    END IF   
+  END IF  
   
   HbCurveVarName = GetString( SolverParams,'H-B Curve Variable', GotHbCurveVar )
   IF( GotHbCurveVar ) THEN
@@ -253,10 +278,13 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   DO i=1,NoIterationsMax
     ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
+
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
     IF( EdgeBasis ) CALL ListAddLogical(SolverParams,'Linear System Refactorize',.FALSE.)
+
+    JFixSolve = .FALSE.
   END DO
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
@@ -285,8 +313,8 @@ CONTAINS
     Active = GetNOFActive()
     DO t=1,active
        Element => GetActiveElement(t)
-       n  = GetElementNOFNodes() ! kulmat
-       nd = GetElementNOFDOFs()  ! vapausasteet
+       n  = GetElementNOFNodes() ! vertices
+       nd = GetElementNOFDOFs()  ! dofs
        
        IF (SIZE(Tcoef,3) /= n) THEN
          DEALLOCATE(Tcoef)
@@ -334,19 +362,32 @@ CONTAINS
            END SELECT
          END IF
        END IF
+
+       LaminateStack = .FALSE.
+       LaminateStackModel = ''
+       HasTensorReluctivity = .FALSE.
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
-       Material => GetMaterial( Element )
        IF ( ASSOCIATED(Material) ) THEN
-         CALL GetReluctivity(Material,Acoef,n)
-
+         IF (.NOT. ListCheckPresent(Material, 'H-B Curve')) THEN
+           CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+           IF (HasTensorReluctivity) THEN
+             IF (size(Acoef_t,1)==1 .AND. size(Acoef_t,2)==1) THEN
+               Acoef(1:n) = Acoef_t(1,1,1:n) 
+               HasTensorReluctivity = .FALSE.
+             ELSE IF (size(Acoef_t,1)/=3) THEN
+               CALL Fatal('WhitneyAVHarmonicSolver', 'Reluctivity tensor should be of size 3x3')
+             END IF
+           ELSE
+             CALL GetReluctivity(Material,Acoef,n)
+           END IF
+         END IF
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
          Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
-         IF (.NOT. LaminateStack) LaminateStackModel = ''
        END IF
 
        LamThick=0d0
@@ -355,22 +396,22 @@ CONTAINS
          SELECT CASE(LaminateStackModel)
          CASE('low-frequency model')
            LamThick(1:n) = GetReal( Material, 'Laminate Thickness', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Thickness not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Thickness not found!')
   
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Stack Conductivity not found!')
            LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE('wide-frequency-band model')
            LamThick(1:n) = GetReal( Material, 'Laminate Thickness', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Thickness not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Thickness not found!')
 
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
-           IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
+           IF (.NOT. Found) CALL Fatal('WhitneyAVHarmonicSolver', 'Laminate Stack Conductivity not found!')
            LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE DEFAULT
-           CALL WARN('WhitneyAVSolver', 'Nonexistent Laminate Stack Model chosen!')
+           CALL WARN('WhitneyAVHarmonicSolver', 'Nonexistent Laminate Stack Model chosen!')
          END SELECT
        END IF
 
@@ -378,16 +419,47 @@ CONTAINS
 
        !Get element local matrix and rhs vector:
        !----------------------------------------
-       CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+       CALL LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
           LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
-    END DO
+       
+       ! Memorize stuff for the fixing potential
+       ! 1) Divergence of the source term
+       ! 2) The source terms at the surface to determine the direction
+       !-------------------------------------------------------------------
+       IF( JFixSolve ) THEN
+         JFixRhsC(JFixVar % Perm(Element % NodeIndexes)) = &
+             JFixRhsC(JFixVar % Perm(Element % NodeIndexes)) + JFixFORCE(1:n)
+         DO i=1,n
+           j = JfixSurfacePerm(Element % NodeIndexes(i) )         
+           IF( j > 0 ) JfixSurfaceVecC(3*j-2:3*j) = &
+               JfixSurfaceVecC(3*j-2:3*j) + JFixVec(1:3,i)
+         END DO
+       END IF
+     END DO
+    
+     IF( JfixSolve ) THEN    
+       CALL Info('WhitneyAVHarmonicSolver','Solving the fixing potential')
+       JfixPhase = 2 
+       CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
-    !
+       CALL Info('WhitneyAVHarmonicSolver','Adding the fixing potential to the r.h.s. of AV equation')   
+       DO t=1,active
+         Element => GetActiveElement(t)
+         n  = GetElementNOFNodes() 
+         nd = GetElementNOFDOFs()  
+         nb = GetElementNOFBDOFs() 
+
+         CALL LocalFixMatrixC( FORCE, Element, n, nd+nb, PiolaVersion, SecondOrder)      
+       END DO
+       CALL Info('WhitneyAVHarmonicSolver','Finished adding the fixing potential',Level=10)   
+     END IF
+
+    
     ! Robin type of BC in terms of H:
     !--------------------------------
     Active = GetNOFBoundaryElements()
@@ -430,17 +502,36 @@ CONTAINS
          GetReal( BC, 'Magnetic Transfer Coefficient im', Found), KIND=dp)
 
        !If air gap length keyword is detected, use air gap boundary condition
-       GapLength=GetConstReal( BC, 'Air Gap Length', Found)
+       GapLength = GetConstReal( BC, 'Air Gap Length', Found)
        IF (Found) THEN
-         AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
-         IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
-         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
+         MuParameter=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+         IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
+         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,MuParameter,Element,n,nd )
        ELSE
-         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+         SkinCond = GetConstReal( BC, 'Layer Electric Conductivity', Found)
+         IF (ANY(ABS(SkinCond(1:n)) > AEPS)) THEN
+           MuParameter=GetConstReal( BC, 'Layer Relative Permeability', Found)
+           IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property           
+           CALL LocalMatrixSkinBC(STIFF,FORCE,SkinCond,MuParameter,Element,n,nd)
+         ELSE         
+           GapLength = GetConstReal( BC, 'Thin Sheet Thickness', Found)
+           IF (Found) THEN
+             MuParameter=GetConstReal( BC, 'Thin Sheet Relative Permeability', Found)
+             IF (.NOT. Found) MuParameter = 1.0_dp ! if not found default to "air" property
+             ! Technically, there is no skin but why create yet another conductivity variable?
+             SkinCond = GetConstReal( BC, 'Thin Sheet Electric Conductivity', Found)
+             IF (.NOT. Found) SkinCond = 1.0_dp ! if not found default to "air" property
+             CALL LocalMatrixThinSheet( STIFF, FORCE, LOAD, GapLength, MuParameter, &
+                                            SkinCond, Element, n, nd )
+           ELSE
+             CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+           END IF
+         END IF
        END IF
        
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
+
 
     CALL DefaultFinishAssembly()
 
@@ -456,7 +547,7 @@ CONTAINS
     ! ---------------------------------------------
     IF ( TG ) THEN
       ! temporary fix to some scaling problem (to be resolved)...
-      CALL ListAddLogical( GetSolverParams(), 'Linear System Dirichlet Scaling', .FALSE.) 
+      CALL ListAddLogical( SolverParams, 'Linear System Dirichlet Scaling', .FALSE.) 
     END IF
 
     CALL DefaultDirichletBCs()
@@ -469,7 +560,8 @@ CONTAINS
 
     A => GetMatrix()
     IF (TG) THEN
-      IF(.NOT.ALLOCATED(TreeEdges)) CALL GaugeTree()
+      IF(.NOT.ALLOCATED(TreeEdges)) &
+         CALL GaugeTree(Solver,Mesh,TreeEdges,FluxCount,FluxMap,Transient)
 
       WRITE(Message,*) 'Volume tree edges: ', &
           TRIM(i2s(COUNT(TreeEdges))),     &
@@ -525,7 +617,7 @@ CONTAINS
       j = 2*(j-1)
       Aval = CMPLX(dDiag(j+1), dDiag(j+2), KIND=dp)
 
-      IF (Aval==0._dp) THEN
+      IF (ABS(Aval)==0._dp) THEN
         A % RHS(j+1) = 0._dp
         CALL ZeroRow(A,j+1)
         A % Values(A % Diag(j+1)) = 1._dp
@@ -963,434 +1055,48 @@ CONTAINS
   END SUBROUTINE Potential
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-  SUBROUTINE GaugeTree()
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry
-    TYPE(ListMatrix_t), POINTER :: Alist(:)
-    INTEGER :: i,j,k,l,n,Start
-    LOGICAL, ALLOCATABLE :: Done(:), CondReg(:)
-    LOGICAL :: Found
-    REAL(KIND=dp) :: Cond1
-    TYPE(Element_t), POINTER :: Edge, Boundary, Element
-!------------------------------------------------------------------------------
-
-    IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
-      ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
-    END IF
-    TreeEdges = .FALSE.
-
-    n = Mesh % NumberOfNodes
-    ALLOCATE(Done(n)); Done=.FALSE.
-
-    ! 
-    ! Skip Dirichlet BCs in terms of A:
-    ! ---------------------------------
-    DO i=1,Mesh % NumberOfBoundaryElements
-      Boundary => GetBoundaryElement(i)
-
-      SELECT CASE(GetElementFamily())
-      CASE(1)
-        CYCLE
-      CASE(2)
-        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
-      CASE(3,4)
-        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
-      END SELECT
-      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
-
-      BC => GetBC()
-      IF (.NOT.ASSOCIATED(BC)) CYCLE
-      IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
-                 TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
- 
-      Done(Element % NodeIndexes) = .TRUE.
-    END DO
-
-
-    IF ( GetLogical( GetSolverParams(), 'Gauge Tree Skip Conducting Regions', Found) ) THEN
-      ! Skip conducting regions:
-      ! -------------------------
-      ALLOCATE(CondReg(Mesh % NumberOfNodes))
-      condReg = .TRUE.
-      DO i=1,GetNOFActive()
-        Element => GetActiveElement(i)
-        Cond1 = GetCReal(GetMaterial(), 'Electric Conductivity',Found)
-        IF (cond1==0) condReg(Element % NodeIndexes) = .FALSE.
-      END DO
-
-      CALL CommunicateCondReg(Solver,Mesh,CondReg)
-
-      Done = Done.OR.CondReg
-      DEALLOCATE(CondReg)
-    END IF
-
-    ! 
-    ! Skip Dirichlet BCs in terms of B:
-    ! ---------------------------------
-    DO i=1,FluxCount
-      j = FluxMap(i)
-      IF ( Perm(j+n)<=0 ) CYCLE
-      Edge => Mesh % Edges(j)
-      Done(Edge % NodeIndexes)=.TRUE.
-    END DO
-
-    CALL RecvDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
-
-    !
-    ! node -> edge list
-    ! -----------------
-    Alist => NULL()
-    n = Mesh % NumberOfNodes
-    DO i=1,Mesh % NumberOfEdges
-      Edge => Mesh % Edges(i)
-      IF ( Perm(i+n)<=0 ) CYCLE
-      DO j=1,Edge % TYPE % NumberOfNodes
-        k=Edge % NodeIndexes(j)
-        Aentry=>List_GetMatrixIndex(Alist,k,i)
-      END DO
-    END DO
-
-    !
-    ! generate the tree for all (perhaps disconnected) parts:
-    ! -------------------------------------------------------
-    DO WHILE(.NOT.ALL(Done))
-      DO Start=1,n
-        IF (.NOT. Done(Start)) EXIT
-      END DO
-      CALL DepthFirstSearch(Alist,Done,Start)
-    END DO
-
-    CALL SendDoneNodesAndEdges(Solver,Mesh,Done,TreeEdges)
-
-    DEALLOCATE(Done)
-    CALL List_FreeMatrix(SIZE(Alist),Alist)
-!------------------------------------------------------------------------------
-  END SUBROUTINE GaugeTree
-!------------------------------------------------------------------------------
-
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE GaugeTreeFluxBC()
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp
-    TYPE(ListMatrix_t), POINTER :: Alist(:)
-    INTEGER :: i,j,k,l,n,Start,nCount,fixedge
-    LOGICAL, ALLOCATABLE :: Done(:)
-    INTEGER, ALLOCATABLE :: NodeList(:)
-    TYPE(Element_t), POINTER :: Edge, Boundary, Element
-!------------------------------------------------------------------------------
-    IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
-      ALLOCATE(TreeEdges(Mesh % NumberOfEdges)); TreeEdges=.FALSE.
-    END IF
-
-    n = Mesh % NumberOfNodes
-    ALLOCATE(Done(n)); Done=.FALSE.
-
-    !
-    ! list the candidate nodes:
-    ! -------------------------
-    DO i=1,FluxCount
-      j = FluxMap(i)
-      Edge => Mesh % Edges(j)
-      Done(Edge % NodeIndexes)=.TRUE.
-    END DO
-
-    ALLOCATE(NodeList(COUNT(Done)))
-    nCount = 0
-    DO i=1,n
-      IF ( Done(i) ) THEN
-        nCount = nCount+1
-        NodeList(nCount)=i
-      END IF
-    END DO
-
-    Done=.FALSE.
-    DO i=1,FluxCount
-      IF ( TreeEdges(FluxMap(i)) ) THEN
-        Edge => Mesh % Edges(FluxMap(i))
-        Done(Edge % NodeIndexes)=.TRUE.
-      END IF
-    END DO
-
-    ! 
-    ! Skip Dirichlet BCs in terms of A:
-    ! ---------------------------------
-    DO i=1,Mesh % NumberOfBoundaryElements
-      Boundary => GetBoundaryElement(i)
-      SELECT CASE(GetElementFamily())
-      CASE(1)
-        CYCLE
-      CASE(2)
-        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
-      CASE(3,4)
-        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
-      END SELECT
-      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
-
-      BC => GetBC()
-      IF (.NOT.ASSOCIATED(BC)) CYCLE
-      IF (.NOT.ListCheckPresent( BC, &
-           TRIM(Solver % Variable % Name)//' {e}')) CYCLE
- 
-      j=1; k=GetBoundaryEdgeIndex(Boundary,j)
-      DO WHILE(k>0)
-        Edge => Mesh % Edges(k)
-        TreeEdges(k) = .TRUE.
-        Done(Edge % NodeIndexes) = .TRUE.
-        j=j+1; k=GetBoundaryEdgeIndex(Boundary,j)
-      END DO
-    END DO
-
-    ! node -> edge list
-    ! -----------------
-    Alist => NULL()
-    DO i=1,FluxCount
-      j = FluxMap(i)
-      IF ( Perm(j+n)<=0 ) CYCLE
-
-      Edge => Mesh % Edges(j)
-      DO k=1,Edge % TYPE % NumberOfNodes
-        l=Edge % NodeIndexes(k)
-        Aentry=>List_GetMatrixIndex(Alist,l,j)
-      END DO
-    END DO
- 
-    ! generate the tree for all (perhaps disconnected) parts:
-    ! -------------------------------------------------------
-    DO WHILE(.NOT.ALL(Done(NodeList)))
-      DO i=1,nCount
-        Start = NodeList(i)
-        IF ( .NOT. Done(Start) ) EXIT
-      END DO
-      CALL BreadthFirstSearch(Alist,Done,start,nCount,NodeList)
-    END DO
-    DEALLOCATE(Done,NodeList)
-    CALL List_FreeMatrix(SIZE(Alist),Alist)
-!------------------------------------------------------------------------------
-  END SUBROUTINE GaugeTreeFluxBC
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE BreadthFirstSearch(Alist,done,start,nCount,NodeList)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    INTEGER :: start,nCount,NodeList(:)
-    LOGICAL :: Done(:)
-    TYPE(ListMatrix_t) :: Alist(:)
-!------------------------------------------------------------------------------
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp, Btmp
-    INTEGER :: i,j,k,l,n,m,ll,IF,bcycle
-    TYPE(Element_t), POINTER :: Edge,Edge1,Boundary
-    LOGICAL, ALLOCATABLE :: DoneL(:)
-    INTEGER, ALLOCATABLE :: Fifo(:), Previous(:), FiFo1(:)
-!------------------------------------------------------------------------------
-   ALLOCATE(DoneL(Mesh % NumberOfEdges)); DoneL=.FALSE.
-   ALLOCATE(Fifo(FluxCount),FiFo1(FluxCount))
-   ALLOCATE(Previous(Mesh % NumberOfNodes)); Previous=0;
-
-   IF = 0; m=0
-   DO i=1,nCount
-     j = NodeList(i)
-     IF ( Done(j) ) THEN
-       m=m+1; fifo1(m)=j
-       IF=IF+1; fifo(IF)=j
-     END IF
-   END DO
-
-   IF ( IF>0 ) THEN
-     DO WHILE(m>0)
-       j = Fifo1(m); m=m-1
-
-       Aentry => Alist(j) % Head
-       DO WHILE(ASSOCIATED(Aentry))
-         k = Aentry % Index
-         Aentry => Aentry % Next
-
-         Edge => Mesh % Edges(k)
-         IF (.NOT. TreeEdges(k) .OR. DoneL(k) ) CYCLE
-         DoneL(k)=.TRUE.
-
-         l = Edge % NodeIndexes(1)
-         IF (l==j) l=Edge % NodeIndexes(2)
-
-         IF=IF+1; Fifo(IF)=l
-         m=m+1; Fifo1(m)=l
-         Previous(l)=j
-       END DO
-     END DO
-     Start = l
-   END IF
-   
-   IF ( IF==0 ) THEN
-     Done(Start)=.TRUE.
-     IF=1; fifo(IF)=start;
-   END IF
-
-   Bcycle=0;
-   ALLOCATE(BasicCycles(FluxCount))
-   BasicCycles(:) % Degree = 0
-   DO i=1,FluxCount
-     BasicCycles(i) % Head => NULL()
-   END DO
-
-   DO WHILE(IF>0)
-     j = Fifo(IF); IF=IF-1
-
-     Aentry => Alist(j) % Head
-     DO WHILE(ASSOCIATED(Aentry))
-       k = Aentry % Index
-       Aentry => Aentry % Next
-
-       Edge => Mesh % Edges(k)
-       IF ( DoneL(k) ) CYCLE
-       DoneL(k)=.TRUE.
-
-       l = Edge % NodeIndexes(1)
-       IF (l==j) l=Edge % NodeIndexes(2)
-
-       IF ( Done(l) ) THEN
-         ! Generate fundamental cycle
-         bcycle = bcycle+1
-         CALL AddToCycle(bcycle,k)
-
-         m = j
-         DO WHILE(m/=Previous(l))
-           Ltmp => Alist(m) % Head
-           DO WHILE(ASSOCIATED(Ltmp))
-             Edge1 => Mesh % Edges(Ltmp % Index)
-             IF ( ANY(Edge1 % NodeIndexes(1:2)==Previous(m)) ) THEN
-               CALL AddToCycle(bcycle,Ltmp % Index); EXIT
-             END IF
-             Ltmp=>Ltmp % Next
-           END DO
-           IF ( ANY(Edge1 % NodeIndexes(1:2) == l) ) EXIT
-           m = Previous(m)
-         END DO
-
-         IF ( ALL(Edge1 % NodeIndexes(1:2) /= l) ) THEN
-           ltmp => Alist(l) % Head
-           DO WHILE(ASSOCIATED(ltmp))
-             edge1 => Mesh % Edges(Ltmp % Index)
-             IF ( ANY(Edge1 % NodeIndexes(1:2)==Previous(l)) ) THEN
-               CALL AddToCycle(bcycle,Ltmp % Index); EXIT
-             END IF
-             ltmp=>ltmp % Next
-           END DO
-         END IF
-       ELSE
-         IF (.NOT.TreeEdges(k)) CALL SetDOFToValue(Solver,k,(0._dp,0._dp))
-         IF=IF+1; Fifo(IF)=l
-         Previous(l)=j
-         Done(l)=.TRUE.
-         TreeEdges(k) = .TRUE.
-       END IF
-     END DO
-   END DO
-   DEALLOCATE(Fifo, Fifo1, DoneL)
-!------------------------------------------------------------------------------
-  END SUBROUTINE BreadthFirstSearch
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE AddToCycle(bcycle,index)
-    IMPLICIT NONE
-    INTEGER :: bcycle,index
-!------------------------------------------------------------------------------
-    TYPE(ListMatrixEntry_t), POINTER :: Btmp
-
-    ALLOCATE(Btmp); Btmp % Next => BasicCycles(bcycle) % Head;
-    Btmp % Index = index; BasicCycles(bcycle) % Head => Btmp
-    BasicCycles(bcycle) % Degree=BasicCycles(bcycle) % Degree+1
-!------------------------------------------------------------------------------
-  END SUBROUTINE AddToCycle
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE DepthFirstSearch(Alist,done,i)
-!------------------------------------------------------------------------------
-    IMPLICIT NONE
-    TYPE(ListMatrix_t) :: Alist(:)
-    INTEGER :: i
-    LOGICAL :: Done(:)
-!------------------------------------------------------------------------------
-    TYPE(ListMatrixEntry_t), POINTER :: Aentry
-    INTEGER :: j,k,l,n
-    TYPE(Element_t), POINTER :: Edge
-!------------------------------------------------------------------------------
-    ! To give better matrix conditioning some directional heuristics
-    ! could be added,e.g. select the order of going through the nodes
-    ! edge list here:
-
-    Done(i) = .TRUE.
-
-    Aentry => Alist(i) % Head
-    DO WHILE(ASSOCIATED(Aentry))
-      k = Aentry % Index
-      Aentry => Aentry % Next
-
-      Edge => Mesh % Edges(k)
-      IF (ALL(Done(Edge % NodeIndexes))) CYCLE
-
-      IF ( .NOT. TreeEdges(k)) CALL SetDOFToValue(Solver,k,(0._dp,0._dp))
-      TreeEdges(k)=.TRUE.
-      DO l=1,2
-        n = Edge % NodeIndexes(l)
-        IF (.NOT. Done(n)) CALL DepthFirstSearch(Alist,done,n)
-      END DO
-    END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE DepthFirstSearch
-!------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+  SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
             LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
             PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
-    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
-                        LamCond(:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), JFixFORCE(:), JFixVec(:,:)
+    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), LamCond(:)
     REAL(KIND=dp) :: LamThick(:)
-    INTEGER :: n, nd
+    LOGICAL :: LaminateStack, CoilBody
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    REAL(KIND=dp) :: RotM(3,3,n)
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n), Nu(3,3)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd), &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, &
+                     RotMLoc(3,3), velo(3), omega_velo(3,n), &
                      lorentz_velo(3,n), RotWJ(3)
-
-    COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
-                        CVelo(3), CVeloSum
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
-
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody, &
-               HasVelocity, HasLorenzVelocity, HasAngularVelocity
-    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
-    TYPE(GaussIntegrationPoints_t) :: IP
-
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
-           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueListEntry_t), POINTER :: Lst
-    
-    TYPE(Nodes_t), SAVE :: Nodes
-
-    TYPE(ValueList_t), POINTER :: CompParams
-    LOGICAL :: StrandedHomogenization, FoundIm
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
+           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
+
+    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), JfixPot(n), Nu(3,3)
+    COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd), &
+                        CVelo(3), CVeloSum
+
+    LOGICAL :: Stat, Newton, Cubic, HBCurve, &
+               HasVelocity, HasLorenzVelocity, HasAngularVelocity
+    LOGICAL :: StrandedHomogenization, FoundIm
+
+    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
+
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueListEntry_t), POINTER :: Lst
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -1404,10 +1110,14 @@ CONTAINS
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
-    FixJpotC=0._dp
-    IF (FixJ) THEN
-      CALL GetVectorLocalSolution( FixJPot, 'Jfix')
-      FixJPotC = CMPLX(FixJPot(1,1:n),FixJPot(2,1:n),dp)
+    IF( Jfix ) THEN
+      IF( JfixSolve ) THEN
+        JfixFORCE = 0.0_dp
+        JfixVec = 0.0_dp
+      ELSE
+        JfixPot(1:n) = CMPLX( JfixVar % Values( JfixVar % Perm( Element % NodeIndexes ) ), &
+            JfixVarIm % Values( JfixVarIm % Perm( Element % NodeIndexes ) ) )
+      END IF
     END IF
 
     JAC = 0._dp
@@ -1433,7 +1143,6 @@ CONTAINS
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
-        HBCurve = .TRUE.
       END IF
     END IF
 
@@ -1485,7 +1194,7 @@ CONTAINS
          EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
-
+    
     DO t=1,IP % n
        IF (PiolaVersion) THEN
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -1499,7 +1208,6 @@ CONTAINS
           CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
        END IF
 
-       mu = SUM( Basis(1:n) * Acoef(1:n) )
 
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
@@ -1526,14 +1234,19 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilBody .AND. CoilType /= 'massive') &
-                   RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') THEN
+         DO i=1,3
+           DO j=1,3
+             RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )             
+           END DO
+         END DO
+         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       END IF
 
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
@@ -1542,6 +1255,8 @@ CONTAINS
          IF ( Newton ) THEN
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
+       ELSE
+         mu = SUM( Basis(1:n) * Acoef(1:n) )
        END IF
 
        IF (LaminateStack) THEN
@@ -1559,49 +1274,74 @@ CONTAINS
          END SELECT
        END IF
 
-       Nu = CMPLX(0._dp, 0._dp)
-       Nu(1,1) = mu
-       Nu(2,2) = mu
-       Nu(3,3) = mu
+       IF (HasTensorReluctivity) THEN
+         IF (SIZE(Acoef_t,2) == 1) THEN
+           Nu = CMPLX(0._dp, 0._dp, kind=dp)
+           DO i = 1,3
+             Nu(i,i) = SUM(Basis(1:n)*Acoef_t(i,1,1:n))
+           END DO
+         ELSE
+           DO i = 1,3
+             DO j = 1,3
+               Nu(i,j) = SUM(Basis(1:n)*Acoef_t(i,j,1:n))
+             END DO
+           END DO
+         END IF
+       ELSE
+         Nu = CMPLX(0._dp, 0._dp, kind=dp)
+         Nu(1,1) = mu
+         Nu(2,2) = mu
+         Nu(3,3) = mu
 
-       IF (CoilBody .AND. StrandedHomogenization) THEN
-         nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
-         nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
-         Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
-         nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
-         nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
-         Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
-         Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
-       END IF 
+         IF (CoilBody .AND. StrandedHomogenization) THEN
+           nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
+           nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
+           Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
+           nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
+           nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
+           Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
+           Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
+         END IF
+       END IF
  
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
-       L = L - MATMUL(FixJPotC, dBasisdx(1:n,:))
-
+      
        ! Compute C * grad(V), where C is a tensor
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
+
+       IF( Jfix ) THEN
+         IF( JFixSolve ) THEN
+           ! If we haven't solved for the disbalance of source terms assemble it here
+           DO i = 1,n
+             p = i
+             JFixFORCE(p) = JFixFORCE(p) + SUM(L * dBasisdx(i,:)) * detJ * IP%s(t) 
+             JFixVec(:,p) = JFixVec(:,p) + L * Basis(i) * detJ * IP%s(t)
+           END DO
+         ELSE         
+           ! If we have already solved for the Jfix potential use it here
+           L = L - MATMUL(JfixPot, dBasisdx(1:n,:))
+         END IF
+       END IF
 
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
        ! If we calculate a coil, the nodal degrees of freedom are not used:
        ! ------------------------------------------------------------------
-       IF (.NOT. CoilBody) THEN
+       NONCOIL_CONDUCTOR: IF (.NOT. CoilBody .AND. SUM(ABS(C)) > AEPS ) THEN
           !
           ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
           ! --------------------------------------------------------
           DO i=1,np
             p = i
-            DO j=1,np
-              q = j
+            DO q=1,np
 
               ! Compute the conductivity term <C grad V,grad v> for stiffness 
               ! matrix (anisotropy taken into account)
               ! -------------------------------------------
-              IF ( SUM(C) /= 0._dp ) THEN
-                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
-              END IF
+                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
             END DO
             DO j=1,nd-np
               q = j+np
@@ -1618,7 +1358,7 @@ CONTAINS
               STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
             END DO
           END DO
-       END IF ! (.NOT. CoilBody)
+       END IF NONCOIL_CONDUCTOR
 
        IF ( HasVelocity ) THEN
          DO i=1,np
@@ -1661,7 +1401,7 @@ CONTAINS
            END IF
 
            STIFF(p,q) = STIFF(p,q) + &
-              SUM(MATMUL(Nu, RotWBasis(i,:))*RotWBasis(j,:))*detJ*IP%s(t)
+              SUM(MATMUL(Nu, RotWBasis(j,:))*RotWBasis(i,:))*detJ*IP%s(t)
 
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
@@ -1670,7 +1410,8 @@ CONTAINS
                         SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
-    END DO
+
+     END DO
 
     IF ( Newton ) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
@@ -1681,6 +1422,74 @@ CONTAINS
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
 
+
+!-----------------------------------------------------------------------------
+  SUBROUTINE LocalFixMatrixC( FORCE, &
+      Element, n, nd, PiolaVersion, SecondOrder )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: PiolaVersion, SecondOrder
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
+    COMPLEX(KIND=dp) :: JfixPot(nd), L(3)
+    LOGICAL :: Stat 
+    INTEGER :: t, i, p, np, EdgeBasisDegree
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+      EdgeBasisDegree = 2
+    ELSE
+      EdgeBasisDegree = 1
+    END IF
+
+    CALL GetElementNodes( Nodes )
+
+    FORCE = 0.0d0
+    JfixPot(1:n) = CMPLX( JfixVar % Values(JfixVar % Perm(Element % NodeIndexes)), &
+        JfixVarIm % Values(JfixVarIm % Perm(Element % NodeIndexes)) )
+    
+!    IF( SUM( ABS( JfixPot(1:n) ) ) < TINY( DetJ ) ) RETURN
+
+    
+    ! Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
+    
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
+    DO t=1,IP % n
+      IF (PiolaVersion) THEN
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+            RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )        
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+      
+      L = MATMUL(JfixPot(1:n), dBasisdx(1:n,:))
+      DO i = 1,nd-np
+        p = i+np
+        FORCE(p) = FORCE(p) - SUM(L*WBasis(i,:)) * detJ * IP%s(t) 
+      END DO
+    END DO
+
+    CALL DefaultUpdateForce(FORCE, Element )
+   
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalFixMatrixC
+!------------------------------------------------------------------------------
+
+  
+ 
+  
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
@@ -1843,7 +1652,227 @@ CONTAINS
   END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixThinSheet(  STIFF, FORCE, LOAD, Thickness, Permeability, &
+                                          Conductivity, Element, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: LOAD(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: Thickness(:), Permeability(:), Conductivity(:)
+    REAL(KIND=dp) :: sheetThickness, mu, muVacuum, C
+    
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
+
+       sheetThickness  = SUM(Basis(1:n) * Thickness(1:n))
+       mu  = SUM(Basis(1:n) * Permeability(1:n))
+       C  = SUM(Basis(1:n) * Conductivity(1:n))
+
+       CONDUCTOR: IF ( C > AEPS ) THEN
+          !
+          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
+          ! --------------------------------------------------------
+          DO i=1,np
+            p = i
+            DO q=1,np
+
+              ! Compute the conductivity term <C grad V,grad v> for stiffness 
+              ! matrix (anisotropy taken into account)
+              ! -------------------------------------------
+                STIFF(p,q) = STIFF(p,q) + sheetThickness * C * SUM(dBasisdx(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
+            END DO
+            DO j=1,nd-np
+              q = j+np
+              
+              ! Compute the conductivity term <j * omega * C A,grad v> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+                  sheetThickness * C*SUM(Wbasis(j,:)*dBasisdx(i,:))*detJ*IP % s(t)
+
+              ! Compute the conductivity term <C grad V, eta> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! ------------------------------------------------
+              STIFF(q,p) = STIFF(q,p) + sheetThickness * C*SUM(dBasisdx(i,:)*WBasis(j,:))*detJ*IP % s(t)
+            END DO
+          END DO
+       END IF CONDUCTOR
+
+       ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
+       !        J + curl(M) - C*grad(P'):
+       ! ----------------------------------------------------
+       DO i = 1,nd-np
+         p = i+np
+       !  FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)) + &
+       !     SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
+
+         DO j = 1,nd-np
+           q = j+np
+           STIFF(p,q) = STIFF(p,q) + sheetThickness / (mu*muVacuum) * &
+              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+
+           ! Compute the conductivity term <j * omega * C A,eta> 
+           ! for stiffness matrix (anisotropy taken into account)
+           ! ----------------------------------------------------
+           STIFF(p,q) = STIFF(p,q) + sheetThickness * im*Omega* &
+              C * SUM(WBasis(j,:)*WBasis(i,:))*detJ*IP % s(t)
+         END DO
+       END DO
+
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixThinSheet
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixSkinBC( STIFF, FORCE, SkinCond, SkinMu, Element, n, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp) :: SkinCond(:), SkinMu(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, nd
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), DetJ
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), cond, mu, muVacuum, delta
+    LOGICAL :: Stat
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+    COMPLEX(KIND=dp) :: imu, invZs
+    
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+    imu = CMPLX(0.0_dp, 1.0_dp, KIND=dp) 
+    
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+
+    DO t=1,IP % n
+      IF ( PiolaVersion ) THEN
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
+
+      cond = SUM(Basis(1:n) * SkinCond(1:n))
+      mu  = muVacuum * SUM(Basis(1:n) * SkinMu(1:n))
+      delta = SQRT( 2.0_dp/(cond*omega*mu))      
+      invZs = (cond*delta)/(1.0_dp+imu)
+      !PRINT *,'skin:',cond,delta,omega,invZs
+      !PRINT *,'elem:',Element % NodeIndexes
+
+      !
+      ! The contributions from the constraint (H x n) x n = 1/Z E x n:
+      !
+      DO i = 1,nd-np
+        p = i+np
+        DO j = 1,nd-np
+          q = j+np
+          !
+          ! The term i*omega/Z < A x n, v x n> : With ApplyPiolaTransform = .TRUE.
+          ! the edge basis functions returned by the function EdgeElementInfo are automatically 
+          ! tangential and hence the normal doesn't appear in the expression.
+          !
+          STIFF(p,q) = STIFF(p,q) + imu * Omega * invZs * &
+              SUM(WBasis(i,:) * WBasis(j,:)) * detJ * IP % s(t)
+        END DO
+
+        DO q = 1,np
+          !
+          ! The term 1/Z < grad V x n, v x n> : 
+          ! Some tensor calculation shows that the component form of this term is analogous to 
+          ! the case < A x n, v x n>. 
+          !
+          STIFF(p,q) = STIFF(p,q) + invZs * &
+              SUM(WBasis(i,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+        END DO
+      END DO
+
+      !
+      ! The contributions from applying Ohm's law to the tangential surface current 
+      ! which is assumed to be constant over the skin depth: NOTE that a non-vanishing 
+      ! surface current cannot yet be prescribed on the one-dimensional boundary of the skin
+      ! surface via giving a current BC (the conducting skin must be either insulated over its
+      ! boundary or constrained by a Dirichlet condition for the scalar potential).
+      !
+      DO p = 1,np
+        DO q = 1,np
+          STIFF(p,q) = STIFF(p,q) + delta * cond * &
+              SUM(dBasisdx(p,:) * dBasisdx(q,:)) * detJ * IP % s(t)
+        END DO
+
+        DO j = 1,nd-np
+          q = j+np
+          STIFF(p,q) = STIFF(p,q) + delta * cond * imu * Omega * &
+              SUM(dBasisdx(p,:) * WBasis(j,:)) * detJ * IP % s(t)
+        END DO
+      END DO
+
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixSkinBC
+!------------------------------------------------------------------------------
+
+  
 !-----------------------------------------------------------------------------
   FUNCTION LocalFluxBC( LOAD, Element, n, nd ) RESULT(Bn)
 !------------------------------------------------------------------------------
@@ -1978,7 +2007,8 @@ CONTAINS
 
     ! Make gauge tree for the boundary:
     ! ---------------------------------
-    CALL GaugeTreeFluxBC()
+    CALL GaugeTreeFluxBC(Solver,Mesh,TreeEdges,BasicCycles,FluxCount,FluxMap)
+
     WRITE(Message,*) 'Boundary tree edges: ', &
       TRIM(i2s(COUNT(TreeEdges(FluxMap)))),   &
              ' of total: ',TRIM(i2s(FluxCount))
@@ -2235,39 +2265,6 @@ CONTAINS
     Found=.TRUE.; RETURN
 !------------------------------------------------------------------------------
   END FUNCTION FloodFill
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
- 
-
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

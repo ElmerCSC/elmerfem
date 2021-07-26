@@ -106,6 +106,14 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
 
      DIM = CoordinateSystemDimension()
      WRITE(SolverName, '(A)') 'DJDBeta_Adjoint'
+
+   CALL Info(SolverName,'***********************',level=0)
+   CALL Info(SolverName,' This solver has been replaced by:',level=0)
+   CALL Info(SolverName,'   AdjointStokes_GradientBetaSolver  ',level=0)
+   CALL Info(SolverName,' See documentation under:   ',level=0)
+   CALL Info(SolverName,'   elmerice/Solvers/Documentation   ',level=0)
+   CALL Info(SolverName,'***********************',level=0)
+   CALL FATAL(SolverName,' Use new solver !!')
      
      NMAX=Solver % Mesh % NumberOfNodes
      allocate(VisitedNode(NMAX),db(NMAX),  &
@@ -257,7 +265,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
         s = SqrtElementMetric * IntegStuff % s(t) 
         
         ! compute gradient from Stokes and adjoint computation
-        ! follow the compuation of the stiffMatrix as done in the NS solver
+        ! follow the computation of the stiffMatrix as done in the NS solver
         Normal = NormalVector( Element, ElementNodes, u,v,.TRUE. )
         SELECT CASE( Element % TYPE % DIMENSION )
         CASE(1)

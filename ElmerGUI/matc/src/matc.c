@@ -184,7 +184,7 @@ void mtc_init( FILE *input_file, FILE *output_file, FILE *error_file )
 
 #if 0
   /*
-   *  trap INTERRUPT and Floating Point Exeption signals
+   *  trap INTERRUPT and Floating Point Exception signals
    */ 
    signal(SIGFPE, sig_trap);
 
@@ -605,7 +605,7 @@ VARIABLE *com_pointw(sub, ptr)  double (*sub)(); VARIABLE *ptr;
 ?  This routine does a function call (*sub)(), for each element in
 |  matrix given by ptr.  
 |
-=  a temporay VARIABLE for which M(res, i, j) = (*sub)(M(ptr, i, j)
+=  a temporary VARIABLE for which M(res, i, j) = (*sub)(M(ptr, i, j)
 &  var_temp_new(), *(sub)()
 ^=====================================================================*/
 {
@@ -660,7 +660,7 @@ VARIABLE *com_el(ptr) VARIABLE *ptr;
 {
   VARIABLE *res,               /* result ... */
            *par = NEXT(ptr);   /* pointer to list of VARIABLES */
-                               /* containig indexes            */
+                               /* containing indexes            */
 
   static double defind = 0.0;
 

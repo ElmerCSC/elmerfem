@@ -1,0 +1,9 @@
+Input File = wire2d
+Output File = wire3d
+Input Mode = ElmerSolver
+Output Mode = ElmerSolver
+Extruded Divisions = 1 
+Extruded Limits = 0 5.0
+Extruded Ratios = 1.0 
+Extruded Elements = 5
+ 

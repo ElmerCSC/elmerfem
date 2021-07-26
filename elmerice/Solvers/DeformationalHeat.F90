@@ -99,7 +99,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
+  IF ( (.NOT. AllocationsDone) .OR. Solver % MeshChanged  ) THEN
      N = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
      M = Model % Mesh % NumberOfNodes
      IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, Viscosity, Velo)

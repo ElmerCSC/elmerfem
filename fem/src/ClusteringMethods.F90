@@ -27,7 +27,7 @@
 !------------------------------------------------------------------------------
 !> Module containing various clustering methods that may be used in conjunction
 !> with algebraic multigrid methods, for example.
-! author Peter R�back
+! author Peter Råback
 !------------------------------------------------------------------------------
 
 
@@ -35,6 +35,7 @@ MODULE ClusteringMethods
   
   USE Lists
   USE CRSMatrix
+  IMPLICIT NONE
 
 CONTAINS
   
@@ -261,7 +262,7 @@ CONTAINS
       INTEGER, POINTER, OPTIONAL :: CFLayer(:)
 
       INTEGER, POINTER :: TopPointer(:), DownPointer(:)
-      INTEGER :: i, j, nsize, NoLayers, NoClusters, ClusterSize
+      INTEGER :: i, j, k, ind, nsize, NoLayers, cluster, NoClusters, ClusterSize
       TYPE(Variable_t), POINTER :: ExtVar
       TYPE(Solver_t), POINTER :: Psolver
 
@@ -269,8 +270,7 @@ CONTAINS
       
       nsize = SIZE( MaskPerm )
       ALLOCATE( CF( nsize) )
-      TopPerm = 0
-      TopNodes = 0
+
       CF = 0
 
       ClusterSize = ListGetInteger(Solver % Values,'MG Cluster Size',GotIt)
@@ -332,7 +332,7 @@ CONTAINS
       INTEGER, POINTER, OPTIONAL :: CFLayer(:)
 
       INTEGER, POINTER :: TopPointer(:), BotPointer(:)
-      INTEGER :: i, j, nsize, NoLayers, NoClusters
+      INTEGER :: i, j, k, j2, nsize, NoLayers, NoClusters
       TYPE(Variable_t), POINTER :: ExtVar
       TYPE(Solver_t), POINTER :: Psolver
       TYPE(Mesh_t), POINTER :: Mesh
@@ -354,12 +354,8 @@ CONTAINS
       ALLOCATE( CF( nsize), CFPerm(nsize) )
       CF = 0
       CFPerm = 0
-      
-      TopPerm = 0
-      TopNodes = 0
 
       Ncount = 0
-      
       
       ! Find the extruded structure 
       CALL DetectExtrudedElements( Mesh, PSolver, ExtVar, &
@@ -412,7 +408,7 @@ CONTAINS
 
       END DO
         
-      FCPerm = 0
+      CFPerm = 0
       DO i=1,nsize        
         CFPerm( CF(i) ) = 1
       END DO
@@ -832,7 +828,7 @@ CONTAINS
               END IF
             END DO
             
-            ! If there are many possible candinate parents for the orphan take into account the 
+            ! If there are many possible candidate parents for the orphan take into account the 
             ! sum of all normalized contributions
             !----------------------------------------------------------------------------------
             IF( OrphansBest .AND. nbonds > 2) THEN

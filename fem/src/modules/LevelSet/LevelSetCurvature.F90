@@ -64,11 +64,7 @@
      INTEGER, POINTER :: CurvPerm(:), SurfPerm(:)
      REAL(KIND=dp), POINTER :: Curvature(:),ForceVector(:), Curv(:),Surface(:) 
      REAL(KIND=dp), ALLOCATABLE :: LocalStiffMatrix(:,:),LocalForce(:),Surf(:)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,totat,st,totst
-#else
-     REAL(KIND=dp) :: at,totat,st,totst,CPUTime
-#endif
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
      LOGICAL :: GotIt, Stat, AllocationsDone = .FALSE.
 

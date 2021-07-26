@@ -123,6 +123,7 @@ int FtFont(ClientData,Tcl_Interp*,int,char**);
 int FtText(ClientData,Tcl_Interp*,int,char**);
 #endif
 
+
 static void fpe_sig( int sig ) { signal( SIGFPE, fpe_sig ); }
 
 static void int_sig( int sig )
@@ -1187,7 +1188,7 @@ static int MathCommand(ClientData cl,Tcl_Interp *interp,int argc,char **argv)
 
 
     /*
-     * then check the varibles which are good for then
+     * then check the variables which are good for then
      * element model...
      *
      */

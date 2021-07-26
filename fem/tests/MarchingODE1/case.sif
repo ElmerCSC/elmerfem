@@ -1,0 +1,69 @@
+! Test case for MarchingODESolver.
+! Structured mesh is detected in x-direction.
+! We integrate over x and should get 0.5 as max value.
+!
+! P.R. 4.12.2019
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "rect"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File = "case.vtu"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End 
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End 
+
+Initial Condition 1
+  Name = "Guess"
+  Integrator = Real 0.0
+End 
+
+Material 1
+  Name = "Material"
+  Integrator: Source = Equals "Coordinate 1"
+End
+
+Solver 1
+  Exec Solver = always
+  Equation = "MarchingOde"
+  Procedure = "MarchingODESolver" "MarchingODESolver"
+
+! Detects sctructured mesh in x-direction
+  Active Coordinate = Integer 1
+
+! This gives 2nd order accuracy
+  Newmark Beta = Real 0.5
+
+  Draw Velocity = Real 1.0
+
+! The name of the target field
+  Variable = Integrator 
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(4) = 1 2 3 4
+End
+
+Solver 1 :: Reference Norm = 0.23994791
+

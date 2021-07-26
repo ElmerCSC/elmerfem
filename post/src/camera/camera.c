@@ -91,7 +91,7 @@ void cam_set_camera_obj_mask(int ncam,int obj,int status)
  *         Input:   (double,double) lower left hand corner of the viewport
  *                  (double,double) upper right hand corner of the viewport
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
  *   Return value:  void
  *
@@ -114,7 +114,7 @@ void cam_set_viewport(camera_t *camera,double lx,double ly,double hx,double hy)
  *
  *         Input:   (camera_proj_t) projection type to set.
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
  *   Return value:  void
  *
@@ -135,7 +135,7 @@ void cam_set_projection( camera_t *camera,camera_proj_t projection )
  *
  *         Input:   (float) intput field angle.
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
  *   Return value:  void
  *
@@ -157,7 +157,7 @@ void cam_set_field_angle( camera_t *camera, double angle )
  *                  (int) flag saying if inputs should be added to current
  *                        position
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
  *   Return value:  void
  *
@@ -187,7 +187,7 @@ void cam_set_look_from(camera_t *camera,double x,double y,double z,int relative)
  *
  *         Input:   (double,double,double) x,y,z direction upwadrds
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
  *   Return value:  void
  *
@@ -209,7 +209,7 @@ void cam_set_up_vector(camera_t *camera,double x,double y,double z )
  *
  *         Input:   (double,double) near and far plane coordinates
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
  *   Return value:  void
  *
@@ -232,7 +232,7 @@ void cam_set_clip(camera_t *camera,double n,double f)
  *                  (int) flag saying if inputs should be added to current
  *                        position
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
  *   Return value:  void
  *
@@ -269,9 +269,9 @@ void cam_set_onoff( camera_t *camera,int onoff)
  *         Input:   (camera_t *) input list of cameras
  *                  (char *)     name to be given to the camera
  *
- *         Output:  (camera_t *) camera strucrure is modified
+ *         Output:  (camera_t *) camera structure is modified
  *
- *   Return value:  (camera_t *) pointer to the crated camera structure
+ *   Return value:  (camera_t *) pointer to the created camera structure
  *
  *******************************************************************************/
 camera_t *cam_add_camera( camera_t *camera,char *name )

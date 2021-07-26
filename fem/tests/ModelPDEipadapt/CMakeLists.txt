@@ -7,4 +7,4 @@ ADD_ELMERTEST_MODULE(ModelPDEipadapt Capacity Capacity.F90)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO ModelPDEhandle.F90 Capacity.F90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ModelPDEipadapt)
+ADD_ELMER_TEST(ModelPDEipadapt LABELS transient)

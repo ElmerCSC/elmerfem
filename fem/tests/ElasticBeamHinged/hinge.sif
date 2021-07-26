@@ -1,0 +1,110 @@
+! Case of 2D hinged beam.
+!
+! P.R. 3.8.2020
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "hinge"
+End
+
+Simulation
+  Coordinate System = "Cartesian"
+  Max Output Level = 5
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Post File = hinge.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Youngs modulus = 1.0e3
+  Poisson ratio = 0.3
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End 
+
+Solver 1
+  Equation = "Displacement analysis"
+  Procedure = "StressSolve" "StressSolver"
+	
+  Variable = -dofs 2 Displacement
+
+  Calculate stresses = True
+!  Calculate Principal = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear system iterative method = BiCGstabL
+  Linear system convergence tolerance = 1.0e-8
+  Linear system max iterations = 1000
+  Linear system preconditioning = ILU1
+  Linear system residual output = 10
+
+  Steady State Convergence Tolerance = 1e-08
+
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Convergence Tolerance = Real 1.0e-8
+End
+
+
+Boundary Condition 1      
+  Name = "Bottom" 
+  Target Boundaries(1) = 1  
+End
+
+Boundary Condition 2
+  Name = "Sides" 
+  Target Boundaries(2) = 2 4
+End
+
+Boundary Condition 3
+  Name = "Top" 
+  Target Boundaries(1) = 3
+  Force 2 = -5.0
+End
+
+Boundary Condition 4
+  Name = "LeftCircle" 
+  Target Boundaries(4) = 5 6 7 8
+
+! Define N-T system
+  Normal-Tangential Displacement = True
+
+! We could use the following also for better accuracy
+! In this case there is no difference!
+!  Rotational Normals = Logical True
+!  Normals Origin(3) = Real 1.0 1.0 0.0
+!  Normals Axis(3) = Real 0.0 0.0 1.0
+
+! Slip BCs in N-T coordinates
+! 1st component normal, 2nd component tangential
+  Displacement 1 = 0.0
+!  Displacement 2 = 0.0
+End
+
+Boundary Condition 5
+  Name = "RightCircle" 
+  Target Boundaries(4) = 9 10 11 12
+
+! Define N-T system
+  Normal-Tangential Displacement = True
+
+!  Rotational Normals = Logical True
+!  Normals Origin(3) = Real 9.0 1.0 0.0
+!  Normals Axis(3) = Real 0.0 0.0 1.0
+
+! Slip BCs in N-T coordinates
+  Displacement 1 = 0.0
+!  Displacement 2 = 0.0
+End
+
+
+Solver 1 :: Reference Norm = 1.52787946E-01
+
+

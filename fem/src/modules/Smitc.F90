@@ -23,7 +23,7 @@
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver: SmitcSolver
 !------------------------------------------------------------------------------
-  SUBROUTINE SmitcSolver_Init( Model,Solver,dt,Transient )
+  SUBROUTINE SmitcSolver_Init0( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
 
@@ -35,22 +35,19 @@
     TYPE(ValueList_t), POINTER :: SolverParams
 !------------------------------------------------------------------------------
     SolverParams => GetSolverParams()
-    IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      CALL ListAddInteger( SolverParams, 'Variable DOFs', 3 )
-      CALL ListAddString( SolverParams, 'Variable', 'Deflection' )
-    END IF
+    CALL ListAddNewString( SolverParams, 'Variable', '-dofs 3 Deflection' )
        
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
-    CALL ListAddLogical( SolverParams, 'Plate Solver', .TRUE. )
+    CALL ListAddNewLogical( SolverParams, 'Plate Solver', .TRUE. )
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE SmitcSolver_Init
+  END SUBROUTINE SmitcSolver_Init0
 !------------------------------------------------------------------------------
 
  
 !------------------------------------------------------------------------------
-!>  Solve the Reissner-Mindlin equations i.e. displacement equations for
+!> Solve the Reissner-Mindlin equations, i.e. displacement equations for
 !> elastic plates. 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -68,7 +65,7 @@
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     INTEGER :: k,n,nd,t,bf_id,mat_id,istat,DOFs
+     INTEGER :: n,t,bf_id,mat_id,istat,DOFs
  
      TYPE(Element_t),POINTER :: Element
      TYPE(Nodes_t) :: ElementNodes
@@ -76,24 +73,22 @@
      TYPE(ValueList_t), POINTER :: Material, BodyForce
  
      LOGICAL :: AllocationsDone = .FALSE., HoleCorrection, &
-         got_mat_id, got_bf_id, NeglectSprings, EigenOrHarmonic, Found
+         got_mat_id, got_bf_id, EigenOrHarmonic, Found, FMIN4
 
      INTEGER, POINTER, SAVE ::  Indexes(:)
      INTEGER :: MaxIter, iter
      TYPE(ValueList_t), POINTER :: SolverParams
      
      REAL(KIND=dp), ALLOCATABLE :: &
-                     STIFF(:,:), Load(:), Load2(:), FORCE(:), &
-                     Poisson(:), Thickness(:), Young(:), Tension(:), &
-                     MASS(:,:), DAMP(:,:), Density(:), &
-                     DampingCoef(:), HoleFraction(:), HoleSize(:), SpringCoef(:)
+         STIFF(:,:), Load(:), Load2(:), FORCE(:), &
+         Poisson(:), Thickness(:), Young(:), Tension(:), &
+         MASS(:,:), DAMP(:,:), Density(:), &
+         DampingCoef(:), HoleFraction(:), HoleSize(:), SpringCoef(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
      REAL(KIND=dp) :: at,st
-#ifndef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: CPUTime
-#endif
+
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
           DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef, Dofs
@@ -134,6 +129,11 @@
      EigenOrHarmonic = EigenOrHarmonicAnalysis() &
          .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
 
+     ! The following may be used to switch to a 4-node approximation based on adding 5 bubble 
+     ! functions that are determined by linked interpolation:
+     !
+     FMIN4 = ListGetLogical(SolverParams, 'Full Linked Interpolation', Found)
+
      CALL DefaultStart()     
      
      MaxIter = GetInteger( SolverParams, &
@@ -146,8 +146,8 @@
        CALL DefaultInitialize()
        
        !       
-       ! These keywords enable that the use of a second parameter set for the
-       ! same elements where the material properties are given in an additional
+       ! These keywords enable the use of a second parameter set for the
+       ! same elements so that the material properties are given in an additional
        ! body. May be used to model microphone and its backplate, for example:
        ! --------------------------------------------------------------------
        mat_id = ListGetInteger( SolverParams, 'Material Index',got_mat_id, &
@@ -238,7 +238,7 @@
          ! Get element local matrix, and rhs vector
          !-----------------------------------------
          CALL LocalMatrix(  STIFF, DAMP, MASS, FORCE, Load, &
-             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef )
+             Element, n, DOFs, ElementNodes, DampingCoef, SpringCoef, FMIN4)
 
          IF( TransientSimulation ) &
              CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
@@ -291,17 +291,21 @@
 
 !------------------------------------------------------------------------------
      SUBROUTINE LocalMatrix( STIFF, DAMP, MASS, &
-          Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef )
+         Force, Load, Element, n, DOFs, Nodes, DampingCoef, SpringCoef, FMIN4 )
 !------------------------------------------------------------------------------
+       USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor, &
+           IsotropicElasticity
+
        REAL(KIND=dp) :: STIFF(:,:), DAMP(:,:), &
             MASS(:,:), Force(:), Load(:), DampingCoef(:), SpringCoef(:)
+       TYPE(Element_t), POINTER :: Element
        INTEGER :: n, DOFs
        TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
+       LOGICAL :: FMIN4
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), &
-                           Curvature(3,100), ShearStrain(2,100), &
-                           Ematrix(3,3), Gmatrix(2,2), Tmatrix(2,2)
+           Curvature(3,3*n), ShearStrain(2,3*n), &
+           Ematrix(3,3), Gmatrix(2,2), Tmatrix(2,2)
        REAL(KIND=dp) :: detJ,U,V,W,S,Kappa,rho,h,qeff
        REAL(KIND=dp) :: Pressure, DampCoef, WinklerCoef
        LOGICAL :: Stat
@@ -318,8 +322,11 @@
 !
 !      Numerical integration:
 !      ----------------------
-
-       IntegStuff = GaussPoints(Element,3)
+       IF (FMIN4 .AND. GetElementFamily(Element)==4) THEN
+         IntegStuff = GaussPoints(Element,9)
+       ELSE
+         IntegStuff = GaussPoints(Element)
+       END IF
 
        DO t = 1,IntegStuff % n
          U = IntegStuff % u(t)
@@ -371,7 +378,7 @@
             Curvature(3,3*p  ) = dBasisdx(p,1)
          END DO
 
-         CALL AddInnerProducts(STIFF,Ematrix,Curvature,3,3*n,s)
+         CALL StrainEnergyDensity(STIFF,Ematrix,Curvature,3,3*n,s)
 
 !        In-plane stiffness:
 !        -------------------
@@ -380,7 +387,7 @@
 !        Shear stiffness:
 !        ----------------
          CALL CovariantInterpolation(ShearStrain, &
-              Basis, Nodes % x(1:n),Nodes % y(1:n),U,V,n)
+              Basis, Nodes % x(1:n),Nodes % y(1:n), U, V, n, Pressure, s, FMIN4)
 
          CALL ShearCorrectionFactor(Kappa, h, &
               Nodes % x(1:n), Nodes % y(1:n), n)
@@ -390,7 +397,7 @@
             ShearStrain(2,3*p-2) = dBasisdx(p,2)
          END DO 
 
-         CALL AddInnerProducts(STIFF, &
+         CALL StrainEnergyDensity(STIFF, &
               Gmatrix,ShearStrain,2,3*n,Kappa*s)
 !
 !        Tensile stiffness:
@@ -401,7 +408,7 @@
             ShearStrain(2,3*p-2) = dBasisdx(p,2)
          END DO 
 
-         CALL AddInnerProducts(STIFF,Tmatrix,ShearStrain,2,3*n,s)
+         CALL StrainEnergyDensity(STIFF,Tmatrix,ShearStrain,2,3*n,s)
 
 !        Spring Coeffficient:
 !        -------------------
@@ -447,38 +454,8 @@
        END DO
 !------------------------------------------------------------------------------
      END SUBROUTINE LocalMatrix
-
-
-!==============================================================================
-
-
-     SUBROUTINE IsotropicElasticity(Ematrix, &
-          Gmatrix,Poisson,Young,Thickness,Basis,n)
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Ematrix(:,:), Gmatrix(:,:), Basis(:)
-     REAL(KIND=dp) :: Poisson(:), Young(:), Thickness(:)
-     REAL(KIND=dp) :: Euvw, Puvw, Guvw, Tuvw
-     INTEGER :: n
-!------------------------------------------------------------------------------
-       Euvw = SUM( Young(1:n)*Basis(1:n) )
-       Puvw = SUM( Poisson(1:n)*Basis(1:n) )
-       Tuvw = SUM( Thickness(1:n)*Basis(1:n) )
-       Guvw = Euvw/(2.0d0*(1.0d0 + Puvw))
 
-       Ematrix = 0.0d0
-       Ematrix(1,1) = 1.0d0
-       Ematrix(1,2) = Puvw
-       Ematrix(2,1) = Puvw
-       Ematrix(2,2) = 1.0d0
-       Ematrix(3,3) = (1.0d0-Puvw)/2.0d0
-
-       Ematrix = Ematrix* Euvw * (Tuvw**3) / (12.0d0*(1.0d0-Puvw**2))
-
-       Gmatrix = 0.0d0
-       Gmatrix(1,1) = Guvw*Tuvw
-       Gmatrix(2,2) = Guvw*Tuvw
-!------------------------------------------------------------------------------
-     END SUBROUTINE IsotropicElasticity
 
 
 !------------------------------------------------------------------------------
@@ -488,7 +465,6 @@
 !>  in silicon condenser microphones', Sensors and Actuators A 54 (1996) 499-504.
 ! The model in verified in the special assignment of Jani Paavilainen 
 !------------------------------------------------------------------------------
-
      SUBROUTINE PerforatedElasticity(Ematrix, &
          Gmatrix,Poisson,Young,Thickness,HoleFraction, &
          HoleSize, Basis,n)
@@ -531,99 +507,23 @@
        Gmatrix(2,2) = Gmatrix(1,1)
 !------------------------------------------------------------------------------
      END SUBROUTINE PerforatedElasticity
-
-!==============================================================================
-
-
-     SUBROUTINE ShearCorrectionFactor(Kappa,Thickness,x,y,n)
 !------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Kappa,Thickness,x(:),y(:)
+
+
+!------------------------------------------------------------------------------
+     SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n,Pressure,s, &
+         FMIN4)
+!------------------------------------------------------------------------------
+       USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4 
+       REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V,Pressure,s
        INTEGER :: n
+       LOGICAL :: FMIN4
 !------------------------------------------------------------------------------
-       REAL(KIND=dp) :: x21,x32,x43,x13,x14,y21,y32,y43,y13,y14, &
-            l21,l32,l43,l13,l14,alpha,h
-!------------------------------------------------------------------------------
-       Kappa = 1.0d0
-       SELECT CASE(n)
-          CASE(3)
-             alpha = 0.20d0
-             x21 = x(2)-x(1)
-             x32 = x(3)-x(2)
-             x13 = x(1)-x(1)
-             y21 = y(2)-y(1)
-             y32 = y(3)-y(2)
-             y13 = y(1)-y(1)
-             l21 = SQRT(x21**2 + y21**2)
-             l32 = SQRT(x32**2 + y32**2)
-             l13 = SQRT(x13**2 + y13**2)
-             h = MAX(l21,l32,l13)
-             Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-          CASE(4)
-             alpha = 0.10d0
-             x21 = x(2)-x(1)
-             x32 = x(3)-x(2)
-             x43 = x(4)-x(3)
-             x14 = x(1)-x(4)
-             y21 = y(2)-y(1)
-             y32 = y(3)-y(2)
-             y43 = y(4)-y(3)
-             y14 = y(1)-y(4)
-             l21 = SQRT(x21**2 + y21**2)
-             l32 = SQRT(x32**2 + y32**2)
-             l43 = SQRT(x43**2 + y43**2)
-             l14 = SQRT(x14**2 + y14**2)
-             h = MAX(l21,l32,l43,l14)
-             Kappa = (Thickness**2)/(Thickness**2 + alpha*(h**2))
-          CASE DEFAULT
-            CALL Fatal('SmitcSolver','Illegal number of nodes for Smitc elements: '//TRIM(I2S(n)))
-          END SELECT
-!------------------------------------------------------------------------------
-     END SUBROUTINE ShearCorrectionFactor
-
-
-!==============================================================================
-
-
-     SUBROUTINE AddInnerProducts(A,B,C,m,n,s)
-!------------------------------------------------------------------------------
-!      Performs the operation
-!
-!         A = A + C' * B * C * s
-!
-!      with
-!
-!         Size( A ) = n x n
-!         Size( B ) = m x m
-!         Size( C ) = m x n
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: A(:,:),B(:,:),C(:,:),s
-       INTEGER :: m,n
-!------------------------------------------------------------------------------
-       INTEGER :: i,j,k,l
-!------------------------------------------------------------------------------
-       DO i=1,n
-          DO j=1,n
-             DO k=1,m
-                DO l=1,m
-                   A(i,j) = A(i,j) + C(k,i)*B(k,l)*C(l,j) * s
-                END DO
-             END DO
-          END DO
-       END DO
-!------------------------------------------------------------------------------
-     END SUBROUTINE AddInnerProducts
-
-
-!==============================================================================
-
-
-     SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V
-       INTEGER :: n
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: detJ,Jmat(2,2),invJ(2,2),ShearRef(2,100)
-       REAL(KIND=dp) :: Tau(2),Sdofs(100)
+       REAL(KIND=dp) :: detJ,Jmat(2,2),invJ(2,2),ShearRef(2,3*n)
+       REAL(KIND=dp) :: Tau(2),Sdofs(3*n)
+       REAL(KIND=dp) :: a1, a2, a12, b1, b2, b12
+       REAL(KIND=dp) :: abf0basis(2,6)
+       REAL(KIND=dp) :: Bubble
        INTEGER :: j
 
        SELECT CASE(n)
@@ -686,156 +586,215 @@
 
 !         Compute the final reduced shear strain
 !         ======================================
-          ShearStrain(1:2,1:9) = MATMUL(invJ,ShearRef(1:2,1:9))
+          ShearStrain(1:2,1:9) = -MATMUL(invJ,ShearRef(1:2,1:9))
 
 
-!      The SMITC4 element
-!      ==================
+
        CASE(4)
-          ShearRef = 0.0d0
-          ShearStrain = 0.0d0
+         ShearRef = 0.0d0
+         ShearStrain = 0.0d0
 
-!         Compute the shear-dofs for edge 12:
-!         ===================================
-          Tau(1) = 1.0d0
-          Tau(2) = 0.0d0
+         IF (FMIN4) THEN
 
-          CALL Jacobi4(Jmat,invJ,detJ,0.0d0,-1.0d0,x,y)
+           ! A local basis for ABF_0:
+           ! ------------------------------
+           abf0basis(1,1) = (1.0d0-V)/4.0d0
+           abf0basis(2,1) = 0.0d0
+           abf0basis(1,2) = 0.0d0
+           abf0basis(2,2) = (1.0d0+U)/4.0d0
+           abf0basis(1,3) = (1.0d0+V)/4.0d0
+           abf0basis(2,3) = 0.0d0
+           abf0basis(1,4) = 0.0d0
+           abf0basis(2,4) = (1.0d0-U)/4.0d0
+           abf0basis(1,5) = 0.0d0
+           abf0basis(2,5) = 3.0d0/8.0d0 * (U**2-1.0d0)
+           abf0basis(1,6) = 3.0d0/8.0d0 * (1.0d0-V**2)
+           abf0basis(2,6) = 0.0d0
+           
+           ! The coefficients of the element map written as
+           ! x(u,v) := a12*u*v + a1*u + a2*v + a0
+           ! y(u,v) := b12*u*v + b1*u + b2*v + b0
+           a1 = 0.25d0 * (-x(1)+x(2)+x(3)-x(4))
+           a2 = 0.25d0 * (-x(1)-x(2)+x(3)+x(4))
+           a12 = 0.25d0 * (x(1)-x(2)+x(3)-x(4))
+           b1 = 0.25d0 * (-y(1)+y(2)+y(3)-y(4))
+           b2 = 0.25d0 * (-y(1)-y(2)+y(3)+y(4))
+           b12 = 0.25d0 * (y(1)-y(2)+y(3)-y(4))
+
+           ! Edge 12:
+           ! ----------
+           ShearRef(:,2) = ShearRef(:,2) + (a1-a12) * abf0basis(:,1)
+           ShearRef(:,3) = ShearRef(:,3) + (b1-b12) * abf0basis(:,1)
+
+           ShearRef(:,5) = ShearRef(:,5) + (a1-a12) * abf0basis(:,1)
+           ShearRef(:,6) = ShearRef(:,6) + (b1-b12) * abf0basis(:,1)
+
+           Bubble = 0.5d0*(U**2-1.0d0)*(V-1.0d0)
+           Force(2) = Force(2) + Pressure * 0.25d0*(a1-a12) * Bubble * s
+           Force(3) = Force(3) + Pressure * 0.25d0*(b1-b12) * Bubble * s
+           Force(5) = Force(5) + Pressure * 0.25d0*(-a1+a12) * Bubble * s
+           Force(6) = Force(6) + Pressure * 0.25d0*(-b1+b12) * Bubble * s
+
+           ! Edge 23:
+           ! -----------
+           ShearRef(:,5) = ShearRef(:,5) + (a2+a12) * abf0basis(:,2)
+           ShearRef(:,6) = ShearRef(:,6) + (b2+b12) * abf0basis(:,2)
+
+           ShearRef(:,8) = ShearRef(:,8) + (a2+a12) * abf0basis(:,2)
+           ShearRef(:,9) = ShearRef(:,9) + (b2+b12) * abf0basis(:,2)
+
+           Bubble = -0.5d0*(V**2-1.0d0)*(U+1.0d0)
+           Force(5) = Force(5) + Pressure * 0.25d0*(a2+a12) * Bubble * s
+           Force(6) = Force(6) + Pressure * 0.25d0*(b2+b12) * Bubble * s
+           Force(8) = Force(8) + Pressure * 0.25d0*(-a2-a12) * Bubble * s
+           Force(9) = Force(9) + Pressure * 0.25d0*(-b2-b12) * Bubble * s
+
+           ! Edge 43:
+           ! -----------
+           ShearRef(:,8) = ShearRef(:,8) + (a1+a12) * abf0basis(:,3)
+           ShearRef(:,9) = ShearRef(:,9) + (b1+b12) * abf0basis(:,3)
+
+           ShearRef(:,11) = ShearRef(:,11) + (a1+a12) * abf0basis(:,3)
+           ShearRef(:,12) = ShearRef(:,12) + (b1+b12) * abf0basis(:,3)
+
+           Bubble = -0.5d0*(U**2-1.0d0)*(V+1.0d0)
+           Force(8) = Force(8) + Pressure * 0.25d0*(-a1-a12) * Bubble * s
+           Force(9) = Force(9) + Pressure * 0.25d0*(-b1+b12) * Bubble * s
+           Force(11) = Force(11) + Pressure * 0.25d0*(a1+a12) * Bubble * s
+           Force(12) = Force(12) + Pressure * 0.25d0*(b1+b12) * Bubble * s
+
+           ! Edge 14:
+           ! ------------
+           ShearRef(:,11) = ShearRef(:,11) + (a2-a12) * abf0basis(:,4)
+           ShearRef(:,12) = ShearRef(:,12) + (b2-b12) * abf0basis(:,4)
+           
+           ShearRef(:,2) = ShearRef(:,2) + (a2-a12) * abf0basis(:,4)
+           ShearRef(:,3) = ShearRef(:,3) + (b2-b12) * abf0basis(:,4)
+
+           Bubble = 0.5d0*(V**2-1.0d0)*(U-1.0d0)
+           Force(2) = Force(2) + Pressure * 0.25d0*(a2-a12) * Bubble * s
+           Force(3) = Force(3) + Pressure * 0.25d0*(b2-b12) * Bubble * s
+           Force(11) = Force(11) + Pressure * 0.25d0*(-a2+a12) * Bubble * s
+           Force(12) = Force(12) + Pressure * 0.25d0*(-b2+b12) * Bubble * s
+
+           ! The first curl-DOF:
+           ShearRef(:,2) = ShearRef(:,2) + (-a1-a12)/3.0d0 * abf0basis(:,5)
+           ShearRef(:,3) = ShearRef(:,3) + (-b1-b12)/3.0d0 * abf0basis(:,5)          
+           ShearRef(:,5) = ShearRef(:,5) + (a1+a12)/3.0d0 * abf0basis(:,5)
+           ShearRef(:,6) = ShearRef(:,6) + (b1+b12)/3.0d0 * abf0basis(:,5)
+           ShearRef(:,8) = ShearRef(:,8) + (-a1+a12)/3.0d0 * abf0basis(:,5)
+           ShearRef(:,9) = ShearRef(:,9) + (-b1+b12)/3.0d0 * abf0basis(:,5)
+           ShearRef(:,11) = ShearRef(:,11) + (a1-a12)/3.0d0 * abf0basis(:,5)
+           ShearRef(:,12) = ShearRef(:,12) + (b1-b12)/3.0d0 * abf0basis(:,5)
+
+           ! The second curl-DOF:
+           ShearRef(:,2) = ShearRef(:,2) + (a2+a12)/3.0d0 * abf0basis(:,6)
+           ShearRef(:,3) = ShearRef(:,3) + (b2+b12)/3.0d0 * abf0basis(:,6)          
+           ShearRef(:,5) = ShearRef(:,5) + (-a2+a12)/3.0d0 * abf0basis(:,6)
+           ShearRef(:,6) = ShearRef(:,6) + (-b2+b12)/3.0d0 * abf0basis(:,6)
+           ShearRef(:,8) = ShearRef(:,8) + (a2-a12)/3.0d0 * abf0basis(:,6)
+           ShearRef(:,9) = ShearRef(:,9) + (b2-b12)/3.0d0 * abf0basis(:,6)
+           ShearRef(:,11) = ShearRef(:,11) + (-a2-a12)/3.0d0 * abf0basis(:,6)
+           ShearRef(:,12) = ShearRef(:,12) + (-b2-b12)/3.0d0 * abf0basis(:,6)
+
+           Bubble = (V**2-1.0d0)*(U**2-1.0d0)
+           Force(2) = Force(2) + Pressure * 0.125d0 * a12 * Bubble * s
+           Force(3) = Force(3) + Pressure * 0.125d0 * b12 * Bubble * s
+           Force(5) = Force(5) + Pressure * 0.125d0 * (-a12) * Bubble * s
+           Force(6) = Force(6) + Pressure * 0.125d0 * (-b12) * Bubble * s
+           Force(8) = Force(8) + Pressure * 0.125d0 * a12 * Bubble * s
+           Force(9) = Force(9) + Pressure * 0.125d0 * b12 * Bubble * s
+           Force(11) = Force(11) + Pressure * 0.125d0 * (-a12) * Bubble * s
+           Force(12) = Force(12) + Pressure * 0.125d0 * (-b12) * Bubble * s
+
+         ELSE
+
+!          The SMITC4 element
+!          ==================
+
+!          Compute the shear-dofs for edge 12:
+!          ===================================
+           Tau(1) = 1.0d0
+           Tau(2) = 0.0d0
+
+           CALL Jacobi4(Jmat,invJ,detJ,0.0d0,-1.0d0,x,y)
           
-          Sdofs = 0.0d0
-          Sdofs(2) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(3) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(2) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(3) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(1,j) = ShearRef(1,j) + (1-V)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the shear-dofs for edge 23:
-!         ===================================
-          Tau(1) = 0.0d0
-          Tau(2) = 1.0d0
+!          Compute the shear-dofs for edge 23:
+!          ===================================
+           Tau(1) = 0.0d0
+           Tau(2) = 1.0d0
 
-          CALL Jacobi4(Jmat,invJ,detJ,1.0d0,0.0d0,x,y)
+           CALL Jacobi4(Jmat,invJ,detJ,1.0d0,0.0d0,x,y)
 
-          Sdofs = 0.0d0
-          Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(8) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(9) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(8) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(9) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(2,j) = ShearRef(2,j) + (1+U)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the shear-dofs for edge 34:
-!         ===================================
-          Tau(1) = -1.0d0
-          Tau(2) =  0.0d0
+!          Compute the shear-dofs for edge 34:
+!          ===================================
+           Tau(1) = -1.0d0
+           Tau(2) =  0.0d0
 
-          CALL Jacobi4(Jmat,invJ,detJ,0.0d0,1.0d0,x,y)
+           CALL Jacobi4(Jmat,invJ,detJ,0.0d0,1.0d0,x,y)
 
-          Sdofs = 0.0d0
-          Sdofs(8)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(9)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(8)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(9)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(1,j) = ShearRef(1,j) + (-1-V)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the shear-dofs for edge 41:
-!         ===================================
-          Tau(1) =  0.0d0
-          Tau(2) = -1.0d0
+!          Compute the shear-dofs for edge 41:
+!          ===================================
+           Tau(1) =  0.0d0
+           Tau(2) = -1.0d0
 
-          CALL Jacobi4(Jmat,invJ,detJ,-1.0d0,0.0d0,x,y)
+           CALL Jacobi4(Jmat,invJ,detJ,-1.0d0,0.0d0,x,y)
 
-          Sdofs = 0.0d0
-          Sdofs(2)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(3)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
-          Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
-          Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs = 0.0d0
+           Sdofs(2)  = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(3)  = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
+           Sdofs(11) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
+           Sdofs(12) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))
 
-          DO j = 1,12
+           DO j = 1,12
              ShearRef(2,j) = ShearRef(2,j) + (-1+U)/4.0d0*Sdofs(j)
-          END DO
+           END DO
 
-!         Compute the final reduced shear strain
-!         ======================================
-          CALL Jacobi4(Jmat,invJ,detJ,U,V,x,y)
-          ShearStrain(1:2,1:12) = MATMUL(invJ,ShearRef(1:2,1:12))
+         END IF
 
+!        Compute the final reduced shear strain
+!        ======================================
+         CALL Jacobi4(Jmat,invJ,detJ,U,V,x,y)
+         ShearStrain(1:2,1:12) = -MATMUL(invJ,ShearRef(1:2,1:12))
        CASE DEFAULT
          CALL WARN('SmitcSolver','Illegal number of nodes for Smitc elements.')
 
        END SELECT
 !------------------------------------------------------------------------------
      END SUBROUTINE CovariantInterpolation
-
-
-!==============================================================================
-
-
-     SUBROUTINE Jacobi3(Jmat,invJ,detJ,x,y)
 !------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Jmat(:,:),invJ(:,:),detJ,x(:),y(:)
+
+
 !------------------------------------------------------------------------------
-       Jmat(1,1) = x(2)-x(1)
-       Jmat(2,1) = x(3)-x(1)
-       Jmat(1,2) = y(2)-y(1)
-       Jmat(2,2) = y(3)-y(1)
-
-       detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
-
-       invJ(1,1) =  Jmat(2,2)/detJ
-       invJ(2,2) =  Jmat(1,1)/detJ
-       invJ(1,2) = -Jmat(1,2)/detJ
-       invJ(2,1) = -Jmat(2,1)/detJ
-!------------------------------------------------------------------------------
-     END SUBROUTINE Jacobi3
-
-
-!==============================================================================
-
-
-     SUBROUTINE Jacobi4(Jmat,invJ,detJ,xi,eta,x,y)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Jmat(:,:),invJ(:,:),detJ,xi,eta,x(:),y(:)
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: dNdxi(4), dNdeta(4)
-       INTEGER :: i
-
-       dNdxi(1) = -(1-eta)/4.0d0
-       dNdxi(2) =  (1-eta)/4.0d0
-       dNdxi(3) =  (1+eta)/4.0d0
-       dNdxi(4) = -(1+eta)/4.0d0
-       dNdeta(1) = -(1-xi)/4.0d0
-       dNdeta(2) = -(1+xi)/4.0d0
-       dNdeta(3) =  (1+xi)/4.0d0
-       dNdeta(4) =  (1-xi)/4.0d0
-       
-       Jmat = 0.0d0
-       DO i=1,4
-          Jmat(1,1) = Jmat(1,1) + dNdxi(i)*x(i)
-          Jmat(1,2) = Jmat(1,2) + dNdxi(i)*y(i)
-          Jmat(2,1) = Jmat(2,1) + dNdeta(i)*x(i)
-          Jmat(2,2) = Jmat(2,2) + dNdeta(i)*y(i)
-       END DO
-
-       detJ = Jmat(1,1)*Jmat(2,2)-Jmat(1,2)*Jmat(2,1)
-
-       invJ(1,1) = Jmat(2,2)/detJ
-       invJ(2,2) = Jmat(1,1)/detJ
-       invJ(1,2) = -Jmat(1,2)/detJ
-       invJ(2,1) = -Jmat(2,1)/detJ
-!------------------------------------------------------------------------------
-     END SUBROUTINE Jacobi4
-
-!==============================================================================
-
-
    END SUBROUTINE SmitcSolver
 !------------------------------------------------------------------------------

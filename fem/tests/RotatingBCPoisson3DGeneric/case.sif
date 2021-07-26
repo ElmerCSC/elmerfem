@@ -90,26 +90,26 @@ Solver 2
   Stabilize = True
   Bubbles = False
   Lumped Mass Matrix = False
-  Optimize Bandwidth = True
+
   Steady State Convergence Tolerance = 1.0e-5
   Nonlinear System Convergence Tolerance = 1.0e-9
   Nonlinear System Max Iterations = 1
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Convergence Without Constraints = True
 
   Nonlinear System Relaxation Factor = 1.0  
   Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStabl
+  Linear System Iterative Method = BiCGStabL
   Linear System Max Iterations = 5000
-  Linear System Convergence Tolerance = 1.0e-9
+  Linear System Convergence Tolerance = 1.0e-8
   Linear System Preconditioning = ILU0
   Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
- 
-  Optimize Bandwidth = False
 
+ 
   Apply Mortar BCs = Logical True
   Export Lagrange Multiplier = Logical True
 
@@ -282,5 +282,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = 7.22541711E+00
+Solver 2 :: Reference Norm = 1.49702482
 Solver 2 :: Reference Norm Tolerance = 1.0e-4

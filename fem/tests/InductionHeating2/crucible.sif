@@ -11,7 +11,7 @@ Simulation
   Coordinate System = "Axi Symmetric"
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-!  Post File = "crucible.ep"
+!  Post File = "crucible.vtu"
 End
 
 Constants
@@ -104,7 +104,7 @@ End
 
 Solver 2
   Equation = heat equation
-!solver
+
   Variable = Temperature
   Procedure = "HeatSolve" "HeatSolver"
 

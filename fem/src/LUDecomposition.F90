@@ -46,6 +46,7 @@
 MODULE LUDecomposition
 
   USE Types
+  IMPLICIT NONE
 
  CONTAINS
 

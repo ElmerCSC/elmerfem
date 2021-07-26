@@ -260,7 +260,7 @@ fprintf( stderr, "yseD: %d\n", used );
           break;
 
       default :
-          std::cout << "UpdatePage: Ignoring unknwon token " << current[0] << "...\n" << std::flush;
+          std::cout << "UpdatePage: Ignoring unknown token " << current[0] << "...\n" << std::flush;
           current ++;
           used --;
           break;

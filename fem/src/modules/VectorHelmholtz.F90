@@ -36,13 +36,14 @@
     
 !------------------------------------------------------------------------------
 !> Solve time-harmonic Maxwell equations using the curl-curl equation at relatively
-!> high frequency using curl-conforming edge elemeing. Also low frequency model
+!> high frequency using curl-conforming edge elements. Also low frequency model
 !> available.
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 MODULE VectorHelmholtzUtils
 
    USE DefUtils
+   IMPLICIT NONE
 
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
   
@@ -180,9 +181,9 @@ END SUBROUTINE VectorHelmholtzSolver_Init0
 
 !------------------------------------------------------------------------------
 !> Solve the electric field E from the rot-rot equation 
-!> rot (1/mu_r) rot E + i \omega \sigma - \omega^2 epsilon_r E = i omega mu_0 J
+!> rot (1/mu) rot E + i \omega \sigma E - \omega^2 epsilon E = i omega J
 !
-!> Using edge elements (Nedelec/W basis of 1st or 2nd degree) 
+!> using edge elements (vector-valued basis of 1st or 2nd degree) 
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
@@ -237,7 +238,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
-    mu0inv = GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
+    mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
   END IF
   IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
   
@@ -249,7 +250,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   LowFrequencyModel = GetLogical( SolverParams,'Low Frequency Model',Found)
   
-  ! Resolve internal non.linearities, if requeted:
+  ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
       'Nonlinear System Max Iterations',Found)
@@ -301,7 +302,7 @@ CONTAINS
     CALL DefaultFinishBulkAssembly()
 
     
-    ! Robin type of BC in terms of H:
+    ! Robin type of BC in terms of E:
     !--------------------------------
     CALL Info('VectorHelmholtzSolver','Starting boundary assembly',Level=12)
   
@@ -529,7 +530,7 @@ CONTAINS
       ! This is present always
       DO i = 1,nd
         DO j = 1,nd
-          ! the mu^-1 curl u . curl v 
+          ! the mu^-1 curl E . curl v 
           STIFF(i,j) = STIFF(i,j) + muinv * &
               SUM(RotWBasis(i,:) * RotWBasis(j,:)) * weight
         END DO
@@ -540,8 +541,8 @@ CONTAINS
       IF( Found ) THEN
         DO i = 1,nd
           DO j = 1,nd
-            ! the term i\omega\sigma u.v
-            STIFF(i,j) = STIFF(i,j) + im * Omega * Cond * &
+            ! the term i\omega\sigma E.v
+            STIFF(i,j) = STIFF(i,j) - im * Omega * Cond * &
                 SUM(WBasis(j,:) * WBasis(i,:)) * weight
           END DO
         END DO
@@ -558,9 +559,9 @@ CONTAINS
           
         DO i = 1,nd
           DO j = 1,nd            
-            ! the term \omega^2 \epsilon u.v
+            ! the term \omega^2 \epsilon E.v
             MASS(i,j) = MASS(i,j) - Omega**2 * Eps * &
-                SUM(WBasis(J,:) * WBasis(i,:)) * weight
+                SUM(WBasis(j,:) * WBasis(i,:)) * weight
           END DO
         END DO
       END IF
@@ -1026,7 +1027,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN
-     mu0inv = GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
+     mu0inv = 1.0_dp / GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
    END IF
    IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
    
@@ -1212,9 +1213,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
            k = k+3
          END IF
          IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H) 
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H)*Basis(p)
            k = k+3
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)*Basis(p)
            k = k+3
          END IF
          IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN

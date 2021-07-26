@@ -148,6 +148,7 @@ CONTAINS
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
       IMPLICIT NONE
+      CHARACTER(LEN=MAX_NAME_LEN) :: msg
 
       ! Parameters 
       INTEGER, INTENT(IN) :: face, localNode
@@ -159,8 +160,8 @@ CONTAINS
       localEdge = BrickFaceEdgeMap(face,localNode)
 
       IF (localEdge == 0) THEN
-         WRITE (*,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
-         STOP
+         WRITE (msg,'(A,I2,I3)') 'Unknown combination node for (face,node)', face,localNode 
+         CALL Fatal('getBrickFaceEdgeMap', msg)
       END IF
     END FUNCTION getBrickFaceEdgeMap
 
@@ -859,6 +860,7 @@ CONTAINS
         retVal = retVal.AND.ANY(CurrentModel % Solver % Def_Dofs(c,:,6)>0)
       END IF
     END IF
+
 !------------------------------------------------------------------------------
   END FUNCTION isActivePElement
 !------------------------------------------------------------------------------
@@ -883,6 +885,7 @@ CONTAINS
 
       TYPE(Element_t), INTENT(IN) :: Element
       LOGICAL :: retVal
+
       retVal = ASSOCIATED(Element % PDefs)
 !------------------------------------------------------------------------------
     END FUNCTION isPElement
@@ -1282,32 +1285,26 @@ CONTAINS
 !>     Subroutine for getting reference p element nodes (because these are NOT
 !>     yet defined in element description files)
 !------------------------------------------------------------------------------
-  SUBROUTINE GetRefPElementNodes(Element, U, V, W, PerformCheck)
+  SUBROUTINE GetRefPElementNodes(Element, U, V, W)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    TYPE(Element_t) :: Element
-    REAL(KIND=dp), POINTER CONTIG :: U(:), V(:), W(:)
-    LOGICAL, OPTIONAL :: PerformCheck
+    TYPE(ElementType_t) :: Element
+    REAL(KIND=dp) :: U(:), V(:), W(:)
 !--------------------------------------------------------------------------------
     INTEGER :: n
-!--------------------------------------------------------------------------------
-    LOGICAL :: PElementRequired
 !--------------------------------------------------------------------------------    
-    PElementRequired = .TRUE.
-    IF ( PRESENT(PerformCheck) ) PElementRequired = PerformCheck
-    IF (PElementRequired) THEN
-       ! If element is not p element return
-       IF ( .NOT. isPElement(Element) ) THEN 
-          CALL Warn('PElementMaps::GetRefPElementNodes','Element given not a p element')
-          RETURN
-       END IF
+    ! Reserve space for element nodes
+    n = Element % NumberOfNodes
+
+    IF(.NOT.ALLOCATED(element % N_NodeU).AND.ALLOCATED(Element % NodeU) ) THEN
+      ALLOCATE(Element % N_NodeU(n), Element % N_NodeV(n), Element % N_NodeW(n))
+      element % N_NodeU = element % NodeU
+      element % N_NodeV = element % NodeV
+      element % N_NodeW = element % NOdeW
     END IF
 
-    ! Reserve space for element nodes
-    n = Element % TYPE % NumberOfNodes
-
     ! Select by element type given
-    SELECT CASE(Element % TYPE % ElementCode / 100)
+    SELECT CASE(Element % ElementCode / 100)
     ! Line
     CASE(2)
        U(1:n) = (/ -1d0,1d0 /)
@@ -1340,7 +1337,8 @@ CONTAINS
        V(1:n) = (/ -1d0,-1d0,1d0,1d0,-1d0,-1d0,1d0,1d0 /)
        W(1:n) = (/ -1d0,-1d0,-1d0,-1d0,1d0,1d0,1d0,1d0 /)
     CASE DEFAULT
-       CALL Warn('PElementMaps::GetRefPElementNodes','Unknown element type')
+      WRITE(Message,'(A,I0)') 'Unknown element type: ',Element % ElementCode
+      CALL Warn('PElementMaps::GetRefPElementNodes',Message)
     END SELECT
 !------------------------------------------------------------------------------
     END SUBROUTINE GetRefPElementNodes

@@ -1,0 +1,34 @@
+!------ Skeleton for body section -----
+Body 1
+  Name = air
+End
+
+!------ Skeleton for boundary section -----
+Boundary Condition 1
+  Name = yminus
+End
+
+Boundary Condition 2
+  Name = yplus
+End
+
+Boundary Condition 3
+  Name = xminus
+End
+
+Boundary Condition 4
+  Name = xplus
+End
+
+Boundary Condition 5
+  Name = zminus
+End
+
+Boundary Condition 6
+  Name = zplus
+End
+
+Boundary Condition 7
+  Name = bnry8
+End
+

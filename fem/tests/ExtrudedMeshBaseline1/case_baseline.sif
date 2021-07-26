@@ -1,0 +1,149 @@
+! A simple 3D (extruded 2D) steady-state structured mesh mapping example
+! including a solver run on its base, including boundary conditions of DIM-2
+!
+! If an extruded structure with a base-surface may be recovered
+! this is the fastest way to perform mapping.
+! Test case authors: Peter Råback/Juha Ruokolainen/Thomas Zwinger
+! Test case created: 19.08.2019
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+
+  Extruded Mesh Levels=10
+  Preserve Baseline = Logical True
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "full dimesnion body"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+ Name = "lower dimension body"
+ Equation = 2
+ Material = 1
+End
+
+Equation 1
+  Name = "Equation full dim"
+  Active Solvers(2) = 1 2
+End
+Equation 2
+  Name = "Equation reduced dim"
+  Active Solvers = 3
+End
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Solver 2 
+  Exec Solver = before all 
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+End
+
+Solver 3
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Variable DOFs = 1
+  Procedure = "Poisson" "PoissonSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Hot line"
+  Target Boundaries (2)  = 1 3
+  Potential = Real 60.0
+End
+
+Boundary Condition 2
+  Name = "cold line"
+  Target Boundaries(2) = 2 4
+  Potential = Real -10.0
+End
+Boundary Condition 3
+  Name = "Hot surface"
+  Target Boundaries(2) = 5 7
+  Temperature = Real 40.0
+End
+
+Boundary Condition 4
+  Name = "Adiabatic surface"
+  Target Boundaries(2) = 6 8
+  !Temperature = Real 0.0
+End
+
+Boundary Condition 5
+  Name = "Bottom"
+  Body ID = 2
+  !Target Boundaries = 9
+  Bottom Surface = Variable "Coordinate"
+     Real MATC "0.1*cos(pi*tx(0))*sin(pi*tx(1))"
+  Temperature = 0
+End
+
+Boundary Condition 6
+  Name = "Top"
+  !Target Boundaries = 10
+  Top Surface = Variable "Coordinate"
+    Real MATC "0.5+0.1*sin(2*pi*tx(0))*cos(pi*tx(1))"
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = Real 1.76006621E+01
+Solver 3 :: Reference Norm = Real 3.35220719E+01
+RUN
+
+!End Of File

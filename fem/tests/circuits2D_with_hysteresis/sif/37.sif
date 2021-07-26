@@ -176,7 +176,18 @@ End
 Body Force 1  !---- Circuit
    Name = "Circuit"
    S1 = Variable time
-     Real MATC "if(tx>=2 & tx<=3) 100; 0"
+     Real
+       0.0 0.0
+       1.999 0.0
+       2.0   100.0
+       3.0   100.0
+       3.001 0.0
+       4.0   0.0        
+     End 
+
+! Note: this causes IO problems on taito! Investigate!
+!     Real MATC "if(tx>=2 & tx<=3) 100; 0"
+
 !   S1: Frequency = Real 1
 !   S1: Phase = Real 0.0
 !   S1: Harmonic Content (1,2) = Real

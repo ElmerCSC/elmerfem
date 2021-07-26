@@ -173,5 +173,4 @@ Solver 2 :: Reference Norm Tolerance = Real 1E-05
 
 Solver 3 :: Reference Norm = Real 1500.0
 Solver 3 :: Reference Norm Tolerance = Real 1E-06
-RUN
 

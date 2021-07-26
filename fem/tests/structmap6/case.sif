@@ -1,9 +1,9 @@
 !--------------------------------------------------------------------
-! A test case for Stuctured mesh mapper with a mask.
+! A test case for Structured mesh mapper with a mask.
 ! The extruded structure and related operations are only covered where
-! the mask is. 
+! the mask variable has positive permutation. 
 !
-! Peter Råback / 10.8.2018
+! Peter Rï¿½back / 10.8.2018
 !--------------------------------------------------------------------
 
 Header
@@ -14,7 +14,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 32
+  Max Output Level = 5
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
 

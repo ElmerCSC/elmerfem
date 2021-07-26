@@ -287,7 +287,7 @@ FUNCTION helmholtz_smoluchowski_comp( Model, NodeNumber, direction) RESULT(hs_ve
   END IF
   ! just to be on the save side, check again
   IF ( .NOT. ASSOCIATED(ParentElement) ) THEN
-     CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','No parent element found for boudnary element')
+     CALL FATAL('electrokinetics (helmholtz_smoluchowski_comp)','No parent element found for boundary element')
   END IF
 
   body_id = ParentElement % BodyId

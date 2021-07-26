@@ -85,15 +85,17 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: pwt(:), Basis(:), dBasisdx(:,:), &
                                 ddBasisddx(:,:,:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VarName
-       
+  CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+  CHARACTER(LEN=MAX_NAME_LEN),PARAMETER :: SolverName='GetHydrostaticLoads'
 
-  SAVE AllocationsDone, DIM, SolverName, pwt
+  SAVE AllocationsDone, DIM, pwt
   SAVE Basis, dBasisdx, ddBasisddx
   
   !------------------------------------------------------------------------------
 
   PointerToVariable => Solver % Variable
+  IF (.NOT.ASSOCIATED(PointerToVariable)) &
+       CALL FATAL(SolverName,"Variable not associated")
   Permutation  => PointerToVariable % Perm
   VariableValues => PointerToVariable % Values
 
@@ -101,10 +103,8 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
 
-  IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
-
+  IF ( (.NOT. AllocationsDone) .OR. Solver % MeshChanged  ) THEN
     DIM = CoordinateSystemDimension()
-    WRITE(SolverName, '(A)') 'GetHydrostaticLoads'
     n = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
     m = Model % Mesh % NumberOfNodes
     IF (AllocationsDone) DEALLOCATE(pwt, Basis, dBasisdx, ddBasisddx)
@@ -129,13 +129,21 @@ SUBROUTINE GetHydrostaticLoads( Model,Solver,dt,TransientSimulation )
   DO t = Model % Mesh % NumberOfBulkElements+1,&
        Model % Mesh % NumberOfBulkElements + Model % Mesh % NumberOfBoundaryElements
     Element => Model % Mesh % Elements(t)
+    IF (.NOT.ASSOCIATED(Element)) THEN
+      WRITE(Message,*) 'Element no. ', t,' not associated'
+      CALL FATAL(SolverName,Message)
+    END IF
+    Model % CurrentElement => Element
+
     IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
     n = GetElementNOFNodes( Element )
 
     !Does this element contribute to any basal nodes?
     IF(.NOT. ANY(Permutation(Element % NodeIndexes(1:n)) > 0)) CYCLE
 
-    BC => GetBC( Element ) 
+    BC => GetBC( Element )
+    IF (.NOT.ASSOCIATED(BC)) CYCLE
+    
     pwt(1:n) =  -1.0 * ListGetReal(BC, 'External Pressure', n, &
                     Element % NodeIndexes , GotIt)
 

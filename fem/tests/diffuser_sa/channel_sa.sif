@@ -1,3 +1,8 @@
+! Provides good initial guess for the diffuser case.
+!
+! Note: this historic may have been broken, I'm not able to create 
+! a good initial guess for the test (P.R. 6.2.2021).
+
 Header
   Mesh DB "." "diffuser"
 End
@@ -9,8 +14,8 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations  = 500
 
-!  Post File = "channel.ep"
-  Output File = "channel.dat"
+!  Post File = "channel.vtu"
+  Output File = "channel.result"
 End
 
 
@@ -137,4 +142,3 @@ Boundary Condition 3
   Noslip Wall BC = Logical True
 End
 
-RUN

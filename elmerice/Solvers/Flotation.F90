@@ -36,12 +36,12 @@
 !   OUTPUT Variables:
 !     Zb
 !     Zs
-!     DZbDt (optionnal, if variable found and transient simulation)
-!     DZsDt (optionnal, if variable found and transient simulation)
+!     DZbDt (optional, if variable found and transient simulation)
+!     DZsDt (optional, if variable found and transient simulation)
 !   
 !   INPUT Variable:
 !     H
-!     bedrock (optionnal)
+!     bedrock (optional)
 !
 ! PARAMETERS:
 !   Constants: 
@@ -126,10 +126,12 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   INTEGER :: ActiveDirection
   INTEGER :: t,i,n
   INTEGER :: topnode
+  INTEGER :: Active
 
   LOGICAL,SAVE :: Initialized = .FALSE.
   LOGICAL,SAVE :: ExtrudedMesh=.False.
   LOGICAL :: Found,GotIt
+  LOGICAL :: BoundarySolver
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName='Flotation'
   CHARACTER(LEN=MAX_NAME_LEN) :: ZbName,ZsName,HName
@@ -138,6 +140,8 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   Mesh => Model % Mesh
 
   Params => Solver % Values
+
+  BoundarySolver = ( Solver % ActiveElements(1) > Model % Mesh % NumberOfBulkElements )
 
 !!! get required variables Zb,Zs,H
   ZbName = ListGetString(Params, 'Bottom Surface Name', UnFoundFatal=.TRUE.)
@@ -207,9 +211,26 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
  IF (ASSOCIATED(DZsDt)) ZsPrev=ZsVar%Values
 
  IF (ASSOCIATED(GLMask)) GLMask%Values = -1.0
- Do t=1,Solver % Mesh % NumberOfBulkElements
-    Element => Solver % Mesh % Elements(t)
-    Model % CurrentElement => Solver % Mesh % Elements(t)
+
+! Active = GetNOFActive()
+! Do t=1,Active
+    !Element => GetActiveElement(t)
+
+   IF (BoundarySolver) THEN
+     Active = GetNOFBoundaryElements()
+   ELSE
+     Active = Solver % Mesh % NumberOfBulkElements
+   ENDIF
+
+   Do t=1,Active
+
+    IF (BoundarySolver) THEN
+      Element => GetBoundaryElement(t,Solver)
+    ELSE
+      Element => Solver % Mesh % Elements(t)
+      CurrentModel % CurrentElement => Element
+    ENDIF
+
     n = GetElementNOFNodes(Element)
     NodeIndexes => Element % NodeIndexes
 

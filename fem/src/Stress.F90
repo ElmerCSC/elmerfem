@@ -47,7 +47,7 @@ MODULE StressLocal
 
 !------------------------------------------------------------------------------
   USE DefUtils
-
+  USE Materialmodels
 
   IMPLICIT NONE
 
@@ -60,7 +60,7 @@ MODULE StressLocal
      NodalPreStress, NodalPreStrain, NodalStressLoad, NodalStrainLoad,           &
      NodalHeatExpansion, NodalTemperature, Element, n, ntot, Nodes, RelIntegOrder, StabilityAnalysis, &
      GeometricStiffness, NodalDisplacement, RotateC, TransformMatrix, NodalMeshVelo, &
-     NodalDamping, RayleighDamping, RayleighAlpha, RayleighBeta  )
+     NodalDamping, RayleighDamping, RayleighAlpha, RayleighBeta, EvaluateAtIP, EvaluateLoadAtIp, NeedMass)
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: STIFF(:,:), MASS(:,:), DAMP(:,:), FORCE(:), LOAD(:,:)
      REAL(KIND=dp) :: FORCE_im(:), LOAD_im(:,:)
@@ -72,12 +72,14 @@ MODULE StressLocal
      REAL(KIND=dp) :: RayleighAlpha(:), RayleighBeta(:)
      REAL(KIND=dp), DIMENSION(:) :: NodalPoisson, NodalDensity, NodalDamping
 
+     
      LOGICAL :: PlaneStress, Isotropic(2), StabilityAnalysis, GeometricStiffness
      LOGICAL :: RotateC, RayleighDamping
-
+     LOGICAL  :: EvaluateAtIP(3),EvaluateLoadAtIp,NeedMass
+ 
 
      TYPE(Nodes_t) :: Nodes
-     TYPE(Element_t) :: Element
+     TYPE(Element_t),POINTER :: Element
      INTEGER :: RelIntegOrder
 
      INTEGER :: n, ntot
@@ -102,9 +104,9 @@ MODULE StressLocal
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
-     LOGICAL :: stat, CSymmetry, NeedMass, NeedHeat, NeedStress, NeedHarmonic, &
+     LOGICAL :: stat, CSymmetry, NeedHeat, NeedStress, NeedHarmonic, &
          NeedPreStress, ActiveGeometricStiffness, GPA
-
+     TYPE(ValueHandle_t), SAVE :: BetaIP_h, EIP_h, nuIP_h, Load_h(4), Load_h_im(4)
 
      TYPE(ValueList_t), POINTER :: BF
    
@@ -112,18 +114,39 @@ MODULE StressLocal
 
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: ndim
-     LOGICAL :: Found, Incompressible, MaxwellMaterial
+     LOGICAL :: Found, Incompressible,  MaxwellMaterial, FirstTime = .TRUE.
      REAL(KIND=dp) :: Pres, Pres0
      REAL(KIND=dp) :: PSOL(4,32), SOL(4,32), ShearModulus, Viscosity, PrevStress(3,3)
+     CHARACTER :: DimensionString
 !------------------------------------------------------------------------------
 
      TYPE(Variable_t), POINTER, SAVE :: ve_stress
 
      REAL(KIND=dp), ALLOCATABLE, SAVE :: StressStore(:,:,:,:)
 
+     SAVE FirstTime, dim
 
-     dim = CoordinateSystemDimension()
-
+     IF (FirstTime) THEN
+       dim = CoordinateSystemDimension()
+       !IF PRESENT(EvaluateAtIP) THEN
+         IF(EvaluateAtIP(1)) &
+              CALL ListInitElementKeyword( EIP_h,'Material','Youngs Modulus')
+         IF(EvaluateAtIP(2)) &
+              CALL ListInitElementKeyword( BetaIP_h,'Material','Heat Expansion Coefficient')
+         IF(EvaluateAtIP(3)) &
+              CALL ListInitElementKeyword( nuIP_h,'Material','Poisson Ratio')
+       !END IF
+       IF(EvaluateLoadAtIP) THEN
+         DO I=1,DIM
+           WRITE(DimensionString,'(I1)') I
+           CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))          
+           CALL ListInitElementKeyword( Load_h_im(I),'Body Force','Stress BodyForce '//TRIM(DimensionString)//' im')
+         END DO
+         CALL ListInitElementKeyword( Load_h(4),'Body Force','Stress Pressure')
+         CALL ListInitElementKeyword( Load_h_im(4),'Body Force','Stress Pressure im')
+       END IF
+       FirstTime = .FALSE.
+     END IF
      Incompressible = GetLogical( GetSolverParams(), 'Incompressible', Found )
      IF (Incompressible) THEN
        ndim = dim+1
@@ -146,11 +169,12 @@ MODULE StressLocal
      MASS  = 0.0d0
      DAMP  = 0.0d0
 
-     NeedMass = ANY( NodalDensity(1:n) /= 0.0d0 )
-     NeedMass = NeedMass .OR. ANY( NodalDamping(1:n) /= 0.0d0 )
+     IF (NeedMass) &
+          NeedMass = ANY( NodalDensity(1:n) /= 0.0d0 )       
+     NeedMass = NeedMass .OR. ANY( NodalDamping(1:n) /= 0.0d0 ) .OR. RayleighDamping
 
      NeedHeat = ANY( NodalTemperature(1:n) /= 0.0d0 )
-     NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
+     IF (.NOT.EvaluateLoadAtIP) NeedHarmonic = ANY( LOAD_im(:,1:n) /= 0.0d0 ) 
      NeedPreStress = ANY( NodalPreStrain(1:6,1:n) /= 0.0d0 ) 
      NeedPreStress = NeedPreStress .OR. ANY( NodalPreStress(1:6,1:n) /= 0.0d0 ) 
 
@@ -232,17 +256,29 @@ MODULE StressLocal
          HeatExpansion = 0.0d0
          DO i=1,3
            IF ( Isotropic(2) ) THEN
-              HeatExpansion(i,i) = SUM( NodalHeatExpansion(1,1,1:n)*Basis(1:n) )
+             IF (EvaluateAtIP(2)) THEN
+               HeatExpansion(i,i) = ListGetElementReal( BetaIP_h, Basis, Element, Found, GaussPoint=t)
+             ELSE
+               HeatExpansion(i,i) = SUM( NodalHeatExpansion(1,1,1:n)*Basis(1:n) )
+             END IF
            ELSE
               DO j=1,3
                 HeatExpansion(i,j) = SUM( NodalHeatExpansion(i,j,1:n)*Basis(1:n) )
+                !HeatExpansion(i,i) = ListGetElementReal( BetaIP_h, Basis, Element, Found,&
+                !    Rdim = Rdim, Rtensor = NewVal, GaussPoint=t)
               END DO
            END IF
          END DO
        END IF
 
-       IF ( Isotropic(1) ) Poisson = SUM( Basis(1:n) * NodalPoisson(1:n) )
-
+       IF ( Isotropic(1) ) THEN
+         IF (EvaluateAtIP(3)) THEN
+           Poisson = ListGetElementReal( nuIP_h, Basis, Element, Found, GaussPoint=t)
+         ELSE
+           Poisson = SUM( Basis(1:n) * NodalPoisson(1:n) )
+         END IF
+       END IF
+       
        C = 0
        IF ( .NOT. Isotropic(1) ) THEN 
           DO i=1,SIZE(ElasticModulus,1)
@@ -251,7 +287,12 @@ MODULE StressLocal
             END DO
           END DO
        ELSE
-          Young = SUM( Basis(1:n) * ElasticModulus(1,1,1:n) )
+         IF (EvaluateAtIP(1)) THEN
+           Young = ListGetElementReal( EIP_h, Basis, Element, Found, GaussPoint=t)
+           !PRINT *,"Stress:", t
+         ELSE
+           Young = SUM( Basis(1:n) * ElasticModulus(1,1,1:n) )
+         END IF
        END IF
 
        SELECT CASE(dim)
@@ -556,22 +597,32 @@ MODULE StressLocal
                END IF
              END DO
            END IF
-
          END DO
 
          !
          ! The (rest of the) righthand side:
          ! ---------------------------------
-         DO i=1,dim
-           LoadAtIp(i) = LoadAtIp(i) + &
-               SUM( LOAD(i,1:n)*Basis(1:n) ) * Basis(p) + &
-               SUM( LOAD(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
-           IF( NeedHarmonic ) THEN
-             LoadAtIp_im(i) = LoadAtIp_im(i) + &
-                 SUM( LOAD_im(i,1:n)*Basis(1:n) ) * Basis(p) + &
-                 SUM( LOAD_im(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
-           END IF
-         END DO
+         IF (EvaluateLoadAtIP) THEN
+           DO I=1,DIM
+             LoadAtIp(I) = LoadAtIp(I) &
+                  + ListGetElementReal( Load_h(I), Basis, Element, Found, GaussPoint=t)* Basis(p) &
+                  + ListGetElementReal( Load_h(4), Basis, Element, Found, GaussPoint=t)* dBasisdx(p,i)
+             LoadAtIp_im(i) = LoadAtIp_im(i) &
+                  + ListGetElementReal( Load_h_im(I), Basis, Element, NeedHarmonic, GaussPoint=t)* Basis(p) &
+                  + ListGetElementReal( Load_h_im(4), Basis, Element, Found, GaussPoint=t)* dBasisdx(p,i)
+           END DO
+         ELSE
+           DO i=1,dim
+             LoadAtIp(i) = LoadAtIp(i) + &
+                  SUM( LOAD(i,1:n)*Basis(1:n) ) * Basis(p) + &
+                  SUM( LOAD(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
+             IF( NeedHarmonic ) THEN
+               LoadAtIp_im(i) = LoadAtIp_im(i) + &
+                    SUM( LOAD_im(i,1:n)*Basis(1:n) ) * Basis(p) + &
+                    SUM( LOAD_im(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
+             END IF
+           END DO
+         END IF
 
          IF ( NeedHeat ) THEN
            DO i=1,dim
@@ -588,7 +639,8 @@ MODULE StressLocal
              END IF
            END DO
          END IF
-
+         
+         IF (EvaluateLoadAtIP) NeedHarmonic = ANY( LoadAtIp_im(1:DIM) /= 0.0d0 ) 
          DO i=1,dim
            FORCE(ndim*(p-1)+i) = FORCE(ndim*(p-1)+i) + s*LoadAtIp(i)
            IF( NeedHarmonic ) THEN
@@ -922,12 +974,13 @@ CONTAINS
          ! ---------------------------------
          DO i=1,dim
            LoadAtIp(i) = LoadAtIp(i) + &
-               SUM( LOAD(i,1:n)*Basis(1:n) ) * Basis(p) + &
-               SUM( LOAD(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
+                SUM( LOAD(i,1:n)*Basis(1:n) ) * Basis(p) + &
+                SUM( LOAD(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
            LoadAtIp_im(i) = LoadAtIp_im(i) + &
-               SUM( LOAD_im(i,1:n)*Basis(1:n) ) * Basis(p) + &
-               SUM( LOAD_im(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
+                SUM( LOAD_im(i,1:n)*Basis(1:n) ) * Basis(p) + &
+                SUM( LOAD_im(4,1:n)*Basis(1:n) ) * dBasisdx(p,i)
          END DO
+
 
          IF ( NeedHeat ) THEN
            DO i=1,dim
@@ -1176,25 +1229,70 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE LocalStress( Stress, Strain, PoissonRatio, ElasticModulus, &
       Heatexpansion, NodalTemp, Isotropic, CSymmetry, PlaneStress,     &
-      NodalDisp, Basis, dBasisdx, Nodes, dim, n, nBasis, ApplyPressure )
+      NodalDisp, Basis, dBasisdx, Nodes, dim, n, nBasis, ApplyPressure,&
+      argEvaluateAtIP, argEvaluateLoadAtIP, GaussPoint)
 !------------------------------------------------------------------------------
      LOGICAL :: Isotropic(2), CSymmetry, PlaneStress  
      LOGICAL, OPTIONAL :: ApplyPressure
      INTEGER :: n,nd,dim
-     INTEGER, OPTIONAL :: nBasis
+     INTEGER, OPTIONAL :: nBasis, GaussPoint
      TYPE(Nodes_t) :: Nodes
      REAL(KIND=dp) :: Stress(:,:), Strain(:,:), ElasticModulus(:,:,:), &
                       HeatExpansion(:,:,:), NodalTemp(:), Temperature
      REAL(KIND=dp) :: Basis(:), dBasisdx(:,:), PoissonRatio(:), NodalDisp(:,:)
+     LOGICAL, OPTIONAL :: argEvaluateAtIP(3), argEvaluateLoadAtIP     
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,p,q,IND(9),ic
-     LOGICAL :: Found, Incompressible
+     LOGICAL :: Found, Incompressible, FirstTime=.TRUE.
      REAL(KIND=dp) :: C(6,6), Young, LGrad(3,3), Poisson, S(6), &
-             Pressure, Radius, HEXP(3,3)
+          Pressure, Radius, HEXP(3,3)
+     TYPE(ValueHandle_t), SAVE :: BetaIP_h, EIP_h, nuIP_h, Load_h(4), Load_h_im(4)
+     TYPE(Element_t), POINTER :: Element
+     CHARACTER :: DimensionString
+     LOGICAL :: EvaluateAtIP(3), EvaluateLoadAtIP     
 !------------------------------------------------------------------------------
 
+     SAVE FirstTime
+
+     IF(PRESENT(argEvaluateAtIP)) THEN
+       EvaluateAtIp = argEvaluateAtIp
+     ELSE
+       EvaluateAtIp = .FALSE.
+     END IF
+
+     IF(PRESENT(argEvaluateLoadAtIP)) THEN
+       EvaluateLoadAtIp = argEvaluateLoadAtIp
+     ELSE
+       EvaluateLoadAtIp = .FALSE.
+     END IF
+     
      Incompressible = GetLogical( GetSolverParams(), 'Incompressible', Found )
 
+     Element => CurrentModel % CurrentElement
+     IF (FirstTime) THEN
+       dim = CoordinateSystemDimension()
+       IF (PRESENT(argEvaluateAtIP)) THEN
+         IF(EvaluateAtIP(1)) &
+              CALL ListInitElementKeyword( EIP_h,'Material','Youngs Modulus')
+         IF(EvaluateAtIP(2)) &
+              CALL ListInitElementKeyword( BetaIP_h,'Material','Heat Expansion Coefficient')
+         IF(EvaluateAtIP(3)) &
+              CALL ListInitElementKeyword( nuIP_h,'Material','Poisson Ratio')
+       END IF
+       IF(PRESENT(argEvaluateLoadAtIP) ) THEN
+         IF(EvaluateLoadAtIP) THEN
+           DO I=1,DIM
+             WRITE(DimensionString,'(I1)') I
+             CALL ListInitElementKeyword( Load_h(I),'Body Force','Stress BodyForce '//TRIM(DimensionString))          
+             CALL ListInitElementKeyword( Load_h_im(I),'Body Force','Stress BodyForce '//TRIM(DimensionString)//' im')
+           END DO
+           CALL ListInitElementKeyword( Load_h(4),'Body Force','Stress Pressure')
+           CALL ListInitElementKeyword( Load_h_im(4),'Body Force','Stress Pressure im')
+         END IF
+       END IF
+       FirstTime = .FALSE.
+     END IF
+     
      Stress = 0.0d0
      Strain = 0.0d0
 
@@ -1206,11 +1304,21 @@ CONTAINS
 !
 !    Material parameters:
 !    --------------------
-     IF ( Isotropic(1) ) Poisson = SUM( Basis(1:n) * PoissonRatio(1:n) )
+     IF ( Isotropic(1) ) THEN
+       IF (EvaluateAtIP(3)) THEN
+         Poisson =  ListGetElementReal(nuIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
+       ELSE
+         Poisson = SUM( Basis(1:n) * PoissonRatio(1:n) )
+       END IF
+     END IF
 
      C = 0
-     IF ( Isotropic(1) ) THEN 
-       Young = SUM( Basis(1:n) * ElasticModulus(1,1,1:n) )
+     IF ( Isotropic(1) ) THEN
+       IF (EvaluateAtIP(1)) THEN
+         Young = ListGetElementReal( EIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
+       ELSE
+         Young = SUM( Basis(1:n) * ElasticModulus(1,1,1:n) )
+       END IF
      ELSE
        DO i=1,SIZE(ElasticModulus,1)
          DO j=1,SIZE(ElasticModulus,2)
@@ -1221,9 +1329,13 @@ CONTAINS
 
      HEXP = 0.0_dp
      IF ( Isotropic(2) ) THEN
-        DO i=1,ic
-          HEXP(i,i) = SUM( Basis(1:n) * HeatExpansion(1,1,1:n) )
-        END DO
+       DO i=1,ic
+         IF (EvaluateAtIP(2)) THEN
+           HEXP(i,i)= ListGetElementReal( BetaIP_h, Basis, Element, Found, GaussPoint=GaussPoint)
+         ELSE
+           HEXP(i,i) = SUM( Basis(1:n) * HeatExpansion(1,1,1:n) )
+         END IF
+       END DO
      ELSE
         DO i=1,ic
           DO j=1,ic
@@ -1359,9 +1471,6 @@ CONTAINS
      END IF
    END SUBROUTINE LocalStress
 !------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
    SUBROUTINE Strain2Stress( Stress, Strain, C, dim, CSymmetry )
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Stress(:,:), Strain(:,:), C(:,:)
@@ -1381,15 +1490,15 @@ CONTAINS
           S(2) = Strain(2,2)
           S(3) = Strain(3,3)
           S(4) = Strain(1,2)*2
-          i1(1:n) = (/ 1,2,3,1 /)
-          i2(1:n) = (/ 1,2,3,2 /)
+          i1(1:n) = [ 1,2,3,1 ]
+          i2(1:n) = [ 1,2,3,2 ]
         ELSE
           n = 3
           S(1) = Strain(1,1)
           S(2) = Strain(2,2)
           S(3) = Strain(1,2)*2
-          i1(1:n) = (/ 1,2,1 /)
-          i2(1:n) = (/ 1,2,2 /)
+          i1(1:n) = [ 1,2,1 ]
+          i2(1:n) = [ 1,2,2 ]
         END IF
      CASE(3)
         n = 6
@@ -1399,8 +1508,8 @@ CONTAINS
         S(4) = Strain(1,2)*2
         S(5) = Strain(2,3)*2
         S(6) = Strain(1,3)*2
-        i1(1:n) = (/ 1,2,3,1,2,1 /)
-        i2(1:n) = (/ 1,2,3,2,3,3 /)
+        i1(1:n) = [ 1,2,3,1,2,1 ]
+        i2(1:n) = [ 1,2,3,2,3,3 ]
      END SELECT
 
      DO i=1,n
@@ -1434,17 +1543,17 @@ CONTAINS
      CASE(2)
         IF ( CSymmetry ) THEN
           n = 4
-          i1(1:n) = (/ 1,2,3,1 /)
-          i2(1:n) = (/ 1,2,3,2 /)
+          i1(1:n) = [ 1,2,3,1 ]
+          i2(1:n) = [ 1,2,3,2 ]
         ELSE
           n = 3
-          i1(1:n) = (/ 1,2,1 /)
-          i2(1:n) = (/ 1,2,2 /)
+          i1(1:n) = [ 1,2,1 ]
+          i2(1:n) = [ 1,2,2 ]
         END IF
      CASE(3)
         n = 6
-        i1(1:n) = (/ 1,2,3,1,2,1 /)
-        i2(1:n) = (/ 1,2,3,2,3,3 /)
+        i1(1:n) = [ 1,2,3,1,2,1 ]
+        i2(1:n) = [ 1,2,3,2,3,3 ]
      END SELECT
 
 
@@ -1496,7 +1605,7 @@ CONTAINS
       ELSE
         IF ( SIZE(Hwrk,1) == 1 ) THEN
            DO i=1,MIN(6,SIZE(HWrk,2) )
-              Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
+              Tensor( i,i,1:n ) = Hwrk( 1,i,1:n )
            END DO
         ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
            DO i=1,MIN(6,SIZE(Hwrk,1))
@@ -1523,7 +1632,7 @@ CONTAINS
 
     REAL(KIND=dp) :: T(:,:), C(:), CT(3,3)
     INTEGER :: i,j,p,q,r,s
-    INTEGER :: I1(6) = (/ 1,2,3,1,2,1 /), I2(6) = (/ 1,2,3,2,3,3 /)
+    INTEGER :: I1(6) = [ 1,2,3,1,2,1 ], I2(6) = [ 1,2,3,2,3,3 ]
 
     !
     ! Convert stress vector to stress tensor:
@@ -1561,7 +1670,7 @@ CONTAINS
 
     REAL(KIND=dp) :: T(:,:), C(:), CT(3,3)
     INTEGER :: i,j,p,q,r,s
-    INTEGER :: I1(6) = (/ 1,2,3,1,2,1 /), I2(6) = (/ 1,2,3,2,3,3 /)
+    INTEGER :: I1(6) = [ 1,2,3,1,2,1 ], I2(6) = [ 1,2,3,2,3,3 ]
 
     !
     ! Convert strain vector to strain tensor:
@@ -1618,7 +1727,7 @@ CONTAINS
 
     REAL(KIND=dp) :: T(:,:), C(:,:), CT(2,2,2,2)
     INTEGER :: i,j,p,q,r,s
-    INTEGER :: I1(3) = (/ 1,2,1 /), I2(3) = (/ 1,2,2 /)
+    INTEGER :: I1(3) = [ 1,2,1 ], I2(3) = [ 1,2,2 ]
 
     !
     ! Convert C-matrix to 4 index elasticity tensor:
@@ -1666,7 +1775,7 @@ CONTAINS
 
     REAL(KIND=dp) :: T(:,:), C(:,:), CT(3,3,3,3)
     INTEGER :: i,j,p,q,r,s
-    INTEGER :: I1(6) = (/ 1,2,3,1,2,1 /), I2(6) = (/ 1,2,3,2,3,3 /)
+    INTEGER :: I1(6) = [ 1,2,3,1,2,1 ], I2(6) = [ 1,2,3,2,3,3 ]
 
     !
     ! Convert C-matrix to 4 index elasticity tensor:

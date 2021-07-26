@@ -175,6 +175,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
   
   IF( VecAsm .AND. AxiSymmetric ) THEN
     CALL Info(Caller,'Vectorized loop not yet available in axisymmetric case',Level=7)    
+    VecAsm = .FALSE.
   END IF
 
   IF( VecAsm ) THEN
@@ -243,7 +244,7 @@ SUBROUTINE StatCurrentSolver( Model,Solver,dt,Transient )
     !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
     DO col=1,nColours
       !$OMP SINGLE
-      CALL Info('ModelPDEthreaded','Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
+      CALL Info(Caller,'Assembly of boundary colour: '//TRIM(I2S(col)),Level=10)
       Active = GetNOFBoundaryActive(Solver)
       !$OMP END SINGLE
 
@@ -298,7 +299,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), EpsAtIpVec(:), SourceAtIpVec(:)
     REAL(KIND=dp) :: eps0, weight
-    LOGICAL :: Stat,Found
+    LOGICAL :: Stat,Found, Pref
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
@@ -328,12 +329,12 @@ CONTAINS
     
     dim = CoordinateSystemDimension()
 
-    ! Currently the vectorized basis always use p-elements which have different
-    ! local coordinate convention
+    ! Use p-element basis, unless 2nd or 3rd order nodal element
+    Pref = isPElement(Element) .OR. Element % Type % BasisFunctionDegree<2
     IF( RelOrder /= 0 ) THEN
-      IP = GaussPoints( Element, PReferenceElement = .TRUE., RelOrder = RelOrder)
+      IP = GaussPoints( Element, PReferenceElement = Pref, RelOrder = RelOrder)
     ELSE
-      IP = GaussPoints( Element, PReferenceElement = .TRUE. )      
+      IP = GaussPoints( Element, PReferenceElement = Pref )
     END IF
       
     ngp = IP % n
@@ -551,7 +552,7 @@ CONTAINS
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Flux_h,'Boundary Condition','Current Density')
-      CALL ListInitElementKeyword( Robin_h,'Boundary Condition','Electric Resistivity')
+      CALL ListInitElementKeyword( Robin_h,'Boundary Condition','External Conductivity')
       CALL ListInitElementKeyword( Ext_h,'Boundary Condition','External Potential')
       CALL ListInitElementKeyword( Farfield_h,'Boundary Condition','Farfield Potential')
       InitHandles = .FALSE.
@@ -645,10 +646,12 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   INTEGER :: i, dofs, n, nb, nd, t, active, CondRank
   LOGICAL :: Found, InitHandles
   TYPE(Mesh_t), POINTER :: Mesh
-  REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:)  
+  REAL(KIND=dp), ALLOCATABLE :: WeightVector(:),MASS(:,:),FORCE(:,:),&
+      PotInteg(:),PotVol(:)
   INTEGER, POINTER :: WeightPerm(:)
   CHARACTER(*), PARAMETER :: Caller = 'StatCurrentSolver_post'
-  LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights, Axisymmetric
+  LOGICAL :: CalcCurrent, CalcField, CalcHeating, NeedScaling, ConstantWeights, &
+      Axisymmetric, CalcAvePotential
   TYPE(ValueList_t), POINTER :: Params
   REAL(KIND=dp) :: HeatingTot, Voltot
   REAL(KIND=dp), POINTER :: CondTensor(:,:)  
@@ -671,6 +674,15 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
   ConstantWeights = ListGetLogical( Params,'Constant Weights',Found ) 
 
   AxiSymmetric = ( CurrentCoordinateSystem() /= Cartesian )     
+
+  CalcAvePotential = ListGetLogical( Params,'Calculate Average Potential',Found )
+
+  IF( CalcAvePotential ) THEN   
+    n = Model % NumberOfBodies 
+    ALLOCATE( PotInteg(n), PotVol(n) )
+    PotInteg = 0.0_dp
+    PotVol = 0.0_dp
+  END IF
   
   ! Joule losses: type 1, component 1
   PostVars(1) % Var => VariableGet( Mesh % Variables, 'Nodal Joule Heating')
@@ -742,6 +754,32 @@ SUBROUTINE StatCurrentSolver_post( Model,Solver,dt,Transient )
     CALL GlobalPostScale()
   END IF
 
+  IF( CalcAvePotential ) THEN
+    BLOCK        
+      REAL(KIND=dp), ALLOCATABLE:: PotTmp(:)
+      INTEGER :: ierr      
+      REAL(KIND=dp) :: PotAve
+      n = Model % NumberOfBodies
+      IF( ParEnv % PEs > 1 ) THEN
+        ALLOCATE( PotTmp(n) )        
+        CALL MPI_ALLREDUCE(PotVol,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
+        PotVol = PotTmp
+        CALL MPI_ALLREDUCE(PotInteg,PotTmp,n,MPI_DOUBLE_PRECISION,MPI_SUM,ParEnv % ActiveComm,ierr)
+        PotInteg = PotTmp
+        DEALLOCATE( PotTmp ) 
+      END IF
+
+      DO i = 1, n
+        IF( PotVol(i) < EPSILON( PotVol(i) ) ) CYCLE
+        PotAve = PotInteg(i) / PotVol(i)
+        WRITE( Message,'(A,ES12.5)') 'Average body'//TRIM(I2S(i))//' potential: ',PotAve
+        CALL Info(Caller,Message,Level=7)
+        CALL ListAddConstReal( Model % Simulation,&
+            'res: Average body'//TRIM(I2S(i))//' potential',PotAve)
+      END DO
+    END BLOCK
+  END IF
+    
   CALL Info(Caller,'All done',Level=12)
   
 
@@ -861,6 +899,12 @@ CONTAINS
       IF( CalcHeating ) THEN
         Force(2,1:n) = Force(2,1:n) + Heat * Weight * Basis(1:n)
       END IF
+
+      IF( CalcAvePotential ) THEN
+        i = Element % BodyId
+        PotVol(i) = PotVol(i) + Weight
+        PotInteg(i) = PotInteg(i) + Weight * SUM( Basis(1:n) * ElementPot(1:n) ) 
+      END IF
       
       VolTot = VolTot + Weight
       HeatingTot = HeatingTot + Weight * Heat 
@@ -960,7 +1004,7 @@ CONTAINS
    TYPE(Variable_t), POINTER :: pVar
    REAL(KIND=dp), ALLOCATABLE :: tmp(:)
    LOGICAL :: DoneWeight = .FALSE.
-   REAL(KIND=dp) :: PotDiff, Resistance, ControlTarget, ControlScaling
+   REAL(KIND=dp) :: PotDiff, Resistance, ControlTarget, ControlScaling, val
    
    VolTot     = ParallelReduction(VolTot)
    HeatingTot = ParallelReduction(HeatingTot)
@@ -1011,7 +1055,8 @@ CONTAINS
      END IF
      
      DO i=1,dofs
-       pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
+       WHERE( ABS( WeightVector ) > EPSILON( val ) ) &
+           pVar % Values(i::dofs) = pVar % Values(i::dofs) / WeightVector
      END DO
    END DO
 

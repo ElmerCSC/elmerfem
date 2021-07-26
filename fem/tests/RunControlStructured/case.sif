@@ -1,0 +1,112 @@
+!--------------------------------------------------------------------
+! A test case for combined Run Control and Structured mesh mapper.
+! The combination is used to repetitively run through several
+! sequences such that the previous end results acts as start conditions
+! for the next simulation.
+!
+! P.R. 25.5.2020
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Run Control
+  Run Control Iterations = 5
+End 
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+
+  Output Intervals = 0
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Block"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 0.0
+End 
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 2
+End
+
+
+Body Force 1 
+  Name = "Heating"
+  Heat Source = 1.0
+End 
+
+
+Solver 1
+  Equation = "MapTemperature"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+
+! Map top temperature to everywhere
+  Operator 1 = top
+  Variable 1 = Temperature
+End 
+
+
+Solver 2
+  Equation = "HeatEq"
+  Variable = "Temperature"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Max Iterations = 1
+
+  Exported Variable 1 = "Top Temperature"
+End
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries = 5
+
+! Use the previous top temperature as the next bottom temperature
+  Temperature = Equals "Top Temperature"
+End
+
+
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries = 6 
+End
+
+
+Solver 2 :: Reference Norm = 2.32896378

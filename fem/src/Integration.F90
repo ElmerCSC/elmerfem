@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,13 +28,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
 ! ****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !-----------------------------------------------------------------------------
@@ -53,7 +53,7 @@ MODULE Integration
 
    LOGICAL, PRIVATE :: GInit = .FALSE.
    !$OMP THREADPRIVATE(GInit)
-   
+
 !------------------------------------------------------------------------------
    TYPE GaussIntegrationPoints_t
       INTEGER :: N
@@ -69,7 +69,7 @@ MODULE Integration
 ! Storage for 1d Gauss points, and weights. The values are computed on the
 ! fly (see ComputeGaussPoints1D below). These values are used for quads and
 ! bricks as well. To avoid NUMA issues, Points and Weights are private for each
-! thread.   
+! thread.
 !------------------------------------------------------------------------------
    REAL(KIND=dp), PRIVATE, SAVE :: Points(MAXNPAD,MAXN),Weights(MAXNPAD,MAXN)
    !$OMP THREADPRIVATE(Points, Weights)
@@ -357,10 +357,10 @@ MODULE Integration
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-! A SELECTION OF QUADRATURE RULES UP TO A HIGH ORDER DESIGNED FOR ECONOMIC 
+! A SELECTION OF QUADRATURE RULES UP TO A HIGH ORDER DESIGNED FOR ECONOMIC
 ! INTEGRATION OF COMPLETE POLYNOMIALS
 !
-! These rules have been reproduced from the source "P. Solin, K. Segeth 
+! These rules have been reproduced from the source "P. Solin, K. Segeth
 ! and I. Dolezel: Higher-Order Finite Element Methods",
 ! Chapman & Hall/CRC Press, 2003.
 !------------------------------------------------------------------------------
@@ -471,7 +471,7 @@ MODULE Integration
 !------------------------------------------------------------------------------
 ! Quadrilateral - 36-point rule for complete polynomials of order p<=13
 ! Note 1: Some points lie outside the reference element
-! Note 2: Weigths somewhat inaccurate?
+! Note 2: Weights somewhat inaccurate?
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(36), PRIVATE :: UPQuad36 = &
        (/  0.108605615857397d1,  -0.108605615857397d1,   0.000000000000000d0, &
@@ -512,7 +512,7 @@ MODULE Integration
        0.117496926974491d0,   0.117496926974491d0,   0.117496926974491d0,  &
        0.117496926974491d0,   0.117496926974491d0,   0.117496926974491d0,  &
        0.117496926974491d0,   0.666557701862050d-1,  0.666557701862050d-1, &
-       0.666557701862050d-1,  0.666557701862050d-1,  0.666557701862050d-1, &   
+       0.666557701862050d-1,  0.666557701862050d-1,  0.666557701862050d-1, &
        0.666557701862050d-1,  0.666557701862050d-1,  0.666557701862050d-1  /)
 !------------------------------------------------------------------------------
 ! Quadrilateral - 45-point rule for complete polynomials of order p<=15
@@ -637,6 +637,553 @@ MODULE Integration
        0.219225594818640d-1,  0.219225594818640d-1,   0.219225594818640d-1, &
        0.219225594818640d-1,  0.219225594818640d-1,   0.219225594818640d-1  /)
 
+
+!------------------------------------------------------------------------------
+! These rules have been reproduced from the paper
+! Ethan J. Kubatko, Benjamin A. Yeager, Ashley L. Magg and I. Dolezel:
+! "New computationally efficient quadrature formulas for triangular
+! prism elements.", Computers & Fluids 73 (2013) 187–201.
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+! Wedge - 4 point rule, 2nd order polynoms
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: SWedge4P = [ &
+       1.000000000000000d0, &
+       1.000000000000000d0, &
+       1.000000000000000d0, &
+       1.000000000000000d0]
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: UWedge4P = [ &
+       0.483163247594393d0, &
+       -0.605498860309242d0, &
+       -0.605498860309242d0, &
+       -0.605498860309242d0]
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: VWedge4P = [ &
+       -0.741581623797196d0, &
+       0.469416096821288d0, &
+       -0.530583903178712d0, &
+       -0.530583903178712d0]
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: WWedge4P = [ &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.816496580927726d0, &
+       -0.816496580927726d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=5, p=2
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: SWedge5P = [ &
+       0.333333333333333d0, &
+       0.333333333333333d0, &
+       0.333333333333333d0, &
+       1.500000000000000d0, &
+       1.500000000000000d0 ]
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: UWedge5P = [ &
+       -1.000000000000000d0, &
+       -1.000000000000000d0, &
+       1.000000000000000d0, &
+       -0.333333333333333d0, &
+       -0.333333333333333d0 ]
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: VWedge5P = [ &
+       -1.000000000000000d0, &
+       1.000000000000000d0, &
+       -1.000000000000000d0, &
+       -0.333333333333333d0, &
+       -0.333333333333333d0 ]
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: WWedge5P = [ &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.666666666666667d0, &
+       -0.666666666666667d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=6, p=3
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(6), PRIVATE :: SWedge6P = [ &
+       0.742534890852309d0, &
+       0.375143463443327d0, &
+       0.495419047908462d0, &
+       0.523999970843238d0, &
+       0.980905839025611d0, &
+       0.881996787927053d0 ]
+   REAL(KIND=dp), DIMENSION(6), PRIVATE :: UWedge6P = [ &
+       0.240692796349625d0, &
+       -0.968326281451138d0, &
+       0.467917833640195d0, &
+       -0.786144119530819d0, &
+       -0.484844897886675d0, &
+       -0.559053711932125d0 ]
+   REAL(KIND=dp), DIMENSION(6), PRIVATE :: VWedge6P = [ &
+       -0.771991660873412d0, &
+       -0.568046512457875d0, &
+       -0.549342790168347d0, &
+       0.362655041695561d0, &
+       -0.707931130717342d0, &
+       0.260243325246813d0 ]
+   REAL(KIND=dp), DIMENSION(6), PRIVATE :: WWedge6P = [ &
+       0.614747128207527d0, &
+       0.676689529541421d0, &
+       -0.599905857322635d0, &
+       -0.677609795694786d0, &
+       -0.502482717716373d0, &
+       0.493010512161538d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=7, p=3
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(7), PRIVATE :: SWedge7P = [ &
+       -2.250000000000000d0, &
+       1.041666666666667d0, &
+       1.041666666666667d0, &
+       1.041666666666667d0, &
+       1.041666666666667d0, &
+       1.041666666666667d0, &
+       1.041666666666667d0 ]
+   REAL(KIND=dp), DIMENSION(7), PRIVATE :: UWedge7P = [ &
+       -0.333333333333333d0, &
+       -0.600000000000000d0, &
+       -0.600000000000000d0, &
+       0.200000000000000d0, &
+       -0.600000000000000d0, &
+       -0.600000000000000d0, &
+       0.200000000000000d0 ]
+   REAL(KIND=dp), DIMENSION(7), PRIVATE :: VWedge7P = [ &
+       -0.333333333333333d0, &
+       -0.600000000000000d0, &
+       0.200000000000000d0, &
+       -0.600000000000000d0, &
+       -0.600000000000000d0, &
+       0.200000000000000d0, &
+       -0.600000000000000d0 ]
+   REAL(KIND=dp), DIMENSION(7), PRIVATE :: WWedge7P = [ &
+       0.000000000000000d0, &
+       0.461880215351701d0, &
+       0.461880215351701d0, &
+       0.461880215351701d0, &
+       -0.461880215351701d0, &
+       -0.461880215351701d0, &
+       -0.461880215351701d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=10, p=4
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(10), PRIVATE :: SWedge10P = [ &
+       0.111155943811228d0, &
+       0.309060899887509d0, &
+       0.516646862442958d0, &
+       0.567975205132714d0, &
+       0.382742555939017d0, &
+       0.355960928492268d0, &
+       0.108183228294342d0, &
+       0.126355242780924d0, &
+       0.587370828592853d0, &
+       0.934548304626188d0 ]
+   REAL(KIND=dp), DIMENSION(10), PRIVATE :: UWedge10P = [ &
+       0.812075900047562d0, &
+       -0.792166223585545d0, &
+       -0.756726179789306d0, &
+       -0.552495167978340d0, &
+       -0.357230019521233d0, &
+       -0.987225392999058d0, &
+       -0.816603728785918d0, &
+       0.423489172633859d0, &
+       0.363041084609230d0, &
+       -0.175780343149613d0 ]
+   REAL(KIND=dp), DIMENSION(10), PRIVATE :: VWedge10P = [ &
+       -0.986242751499303d0, &
+       0.687201105597868d0, &
+       -0.731311840596107d0, &
+       0.015073398439985d0, &
+       0.126888850505978d0, &
+       0.082647545710800d0, &
+       -0.915066171481315d0, &
+       -1.112801167237130d0, &
+       -0.499011410082669d0, &
+       -0.654971142379686d0 ]
+   REAL(KIND=dp), DIMENSION(10), PRIVATE :: WWedge10P = [ &
+       0.850716248413834d0, &
+       -0.115214772515700d0, &
+       -0.451491675441927d0, &
+       -0.824457000064439d0, &
+       0.855349689995606d0, &
+       0.452976444667786d0, &
+       0.997939285245240d0, &
+       -0.963298774205756d0, &
+       -0.299892769705443d0, &
+       0.367947041936472d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=11, p=4
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: SWedge11P = [ &
+       0.545658450421913d0, &
+       0.545658450421913d0, &
+       0.545658450421913d0, &
+       0.431647899262139d0, &
+       0.249954808368331d0, &
+       0.249954808368331d0, &
+       0.249954808368331d0, &
+       0.431647899262139d0, &
+       0.249954808368331d0, &
+       0.249954808368331d0, &
+       0.249954808368331d0 ]
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: UWedge11P = [ &
+       -0.062688380276010d0, &
+       -0.062688380276010d0, &
+       -0.874623239447980d0, &
+       -0.333333333333333d0, &
+       -0.798519188402179d0, &
+       -0.798519188402179d0, &
+       0.597038376804357d0, &
+       -0.333333333333333d0, &
+       -0.798519188402179d0, &
+       -0.798519188402179d0, &
+       0.597038376804357d0 ]
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: VWedge11P = [ &
+       -0.062688380276010d0, &
+       -0.874623239447980d0, &
+       -0.062688380276010d0, &
+       -0.333333333333333d0, &
+       -0.798519188402179d0, &
+       0.597038376804357d0, &
+       -0.798519188402179d0, &
+       -0.333333333333333d0, &
+       -0.798519188402179d0, &
+       0.597038376804357d0, &
+       -0.798519188402179d0 ]
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: WWedge11P = [ &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.866861974009030d0, &
+       0.675639823682265d0, &
+       0.675639823682265d0, &
+       0.675639823682265d0, &
+       -0.866861974009030d0, &
+       -0.675639823682265d0, &
+       -0.675639823682265d0, &
+       -0.675639823682265d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=14, p=5
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(14), PRIVATE :: SWedge14P = [ &
+       0.087576186678730d0, &
+       0.229447629454892d0, &
+       0.229447629454891d0, &
+       0.833056798542985d0, &
+       0.166443428304729d0, &
+       0.166443428304729d0, &
+       0.376993270712316d0, &
+       0.170410864470884d0, &
+       0.298194157223163d0, &
+       0.298194157223162d0, &
+       0.376993270712316d0, &
+       0.170410864470884d0, &
+       0.298194157223163d0, &
+       0.298194157223162d0 ]
+   REAL(KIND=dp), DIMENSION(14), PRIVATE :: UWedge14P = [ &
+       -0.955901336867574d0, &
+       -0.051621305926029d0, &
+       -1.017063354038640d0, &
+       -0.297388746460523d0, &
+       0.774849157169622d0, &
+       -0.849021640062097d0, &
+       -0.665292008657551d0, &
+       -0.012171148087346d0, &
+       -0.734122164680096d0, &
+       0.334122164680066d0, &
+       -0.665292008657551d0, &
+       -0.012171148087346d0, &
+       -0.734122164680096d0, &
+       0.334122164680066d0 ]
+   REAL(KIND=dp), DIMENSION(14), PRIVATE :: VWedge14P = [ &
+       -0.955901336867577d0, &
+       -1.017063354038640d0, &
+       -0.051621305926032d0, &
+       -0.297388746460521d0, &
+       -0.849021640062096d0, &
+       0.774849157169620d0, &
+       -0.665292008657551d0, &
+       -0.012171148087349d0, &
+       0.334122164680066d0, &
+       -0.734122164680096d0, &
+       -0.665292008657551d0, &
+       -0.012171148087349d0, &
+       0.334122164680066d0, &
+       -0.734122164680096d0 ]
+   REAL(KIND=dp), DIMENSION(14), PRIVATE :: WWedge14P = [ &
+       0.000000000000286d0, &
+       0.000000000000038d0, &
+       0.000000000000038d0, &
+       0.000000000000008d0, &
+       0.000000000000080d0, &
+       0.000000000000080d0, &
+       0.756615409654429d0, &
+       0.600149379161583d0, &
+       0.808115770496521d0, &
+       0.808115770496521d0, &
+       -0.756615409654429d0, &
+       -0.600149379161583d0, &
+       -0.808115770496521d0, &
+       -0.808115770496521d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=15, p=5
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(15), PRIVATE :: SWedge15P = [ &
+       0.213895020288765d0, &
+       0.141917375616806d0, &
+       0.295568859378071d0, &
+       0.256991945593379d0, &
+       0.122121979248381d0, &
+       0.175194917962627d0, &
+       0.284969106392719d0, &
+       0.323336131783334d0, &
+       0.159056110329063d0, &
+       0.748067388709644d0, &
+       0.280551223607231d0, &
+       0.147734016552639d0, &
+       0.259874920383688d0, &
+       0.235144061421191d0, &
+       0.355576942732463d0 ]
+   REAL(KIND=dp), DIMENSION(15), PRIVATE :: UWedge15P = [ &
+       -0.820754415297359d0, &
+       0.611831616907812d0, &
+       -0.951379065092975d0, &
+       0.200535109198601d0, &
+       -0.909622841605196d0, &
+       0.411514133287729d0, &
+       -0.127534496411879d0, &
+       -0.555217727817199d0, &
+       0.706942532529193d0, &
+       -0.278092963133809d0, &
+       -0.057824844208300d0, &
+       -0.043308436222116d0, &
+       -0.774478920734726d0, &
+       -0.765638443571458d0, &
+       -0.732830649614460d0 ]
+   REAL(KIND=dp), DIMENSION(15), PRIVATE :: VWedge15P = [ &
+       0.701020947925133d0, &
+       -0.869995576950389d0, &
+       -0.087091980055873d0, &
+       -0.783721735474016d0, &
+       -0.890218158063352d0, &
+       -0.725374126531787d0, &
+       -0.953467283619037d0, &
+       -0.530472194607007d0, &
+       -0.782248553944540d0, &
+       -0.291936530517119d0, &
+       -0.056757587543798d0, &
+       0.012890722780611d0, &
+       0.476188541042454d0, &
+       0.177195164202219d0, &
+       -0.737447982744191d0 ]
+   REAL(KIND=dp), DIMENSION(15), PRIVATE :: WWedge15P = [ &
+       -0.300763696502910d0, &
+       0.348546607420888d0, &
+       0.150656042323906d0, &
+       -0.844285153176719d0, &
+       0.477120081549168d0, &
+       0.864653509536562d0, &
+       0.216019762875977d0, &
+       0.873409672725819d0, &
+       -0.390653804976705d0, &
+       -0.126030507204870d0, &
+       0.539907869785112d0, &
+       -0.776314479909204d0, &
+       0.745875967497062d0, &
+       -0.888355356215127d0, &
+       -0.651653242952189d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=16, p=5
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(16), PRIVATE :: SWedge16P = [ &
+       0.711455555931488d0, &
+       0.224710067228267d0, &
+       0.224710067228267d0, &
+       0.224710067228267d0, &
+       0.185661421316158d0, &
+       0.185661421316158d0, &
+       0.185661421316158d0, &
+       0.250074285747794d0, &
+       0.250074285747794d0, &
+       0.250074285747794d0, &
+       0.185661421316158d0, &
+       0.185661421316158d0, &
+       0.185661421316158d0, &
+       0.250074285747794d0, &
+       0.250074285747794d0, &
+       0.250074285747794d0 ]
+   REAL(KIND=dp), DIMENSION(16), PRIVATE :: UWedge16P = [ &
+       -0.333333333333333d0, &
+       -0.025400070899509d0, &
+       -0.025400070899509d0, &
+       -0.949199858200983d0, &
+       -0.108803790659256d0, &
+       -0.108803790659256d0, &
+       -0.782392418681488d0, &
+       -0.798282108034583d0, &
+       -0.798282108034583d0, &
+       0.596564216069166d0, &
+       -0.108803790659256d0, &
+       -0.108803790659256d0, &
+       -0.782392418681488d0, &
+       -0.798282108034583d0, &
+       -0.798282108034583d0, &
+       0.596564216069166d0 ]
+   REAL(KIND=dp), DIMENSION(16), PRIVATE :: VWedge16P = [ &
+       -0.333333333333333d0, &
+       -0.025400070899509d0, &
+       -0.949199858200983d0, &
+       -0.025400070899509d0, &
+       -0.108803790659256d0, &
+       -0.782392418681488d0, &
+       -0.108803790659256d0, &
+       -0.798282108034583d0, &
+       0.596564216069166d0, &
+       -0.798282108034583d0, &
+       -0.108803790659256d0, &
+       -0.782392418681488d0, &
+       -0.108803790659256d0, &
+       -0.798282108034583d0, &
+       0.596564216069166d0, &
+       -0.798282108034583d0 ]
+   REAL(KIND=dp), DIMENSION(16), PRIVATE :: WWedge16P = [ &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.871002934865444d0, &
+       0.871002934865444d0, &
+       0.871002934865444d0, &
+       0.570426980705159d0, &
+       0.570426980705159d0, &
+       0.570426980705159d0, &
+       -0.871002934865444d0, &
+       -0.871002934865444d0, &
+       -0.871002934865444d0, &
+       -0.570426980705159d0, &
+       -0.570426980705159d0, &
+       -0.570426980705159d0 ]
+
+!------------------------------------------------------------------------------
+! Wedge - n=24, p=6
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: SWedge24P = [ &
+       0.168480079940386d0, &
+       0.168480079940386d0, &
+       0.168480079940386d0, &
+       0.168480079940386d0, &
+       0.168480079940386d0, &
+       0.168480079940386d0, &
+       0.000079282874851d0, &
+       0.000079282874851d0, &
+       0.000079282874851d0, &
+       0.544286440652304d0, &
+       0.026293733850586d0, &
+       0.283472344926041d0, &
+       0.283472344926041d0, &
+       0.283472344926041d0, &
+       0.115195615637235d0, &
+       0.115195615637235d0, &
+       0.115195615637235d0, &
+       0.026293733850586d0, &
+       0.283472344926041d0, &
+       0.283472344926041d0, &
+       0.283472344926041d0, &
+       0.115195615637235d0, &
+       0.115195615637235d0, &
+       0.115195615637235d0 ]
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: UWedge24P = [ &
+       0.513019949700545d0, &
+       -0.582925557762337d0, &
+       -0.582925557762337d0, &
+       0.513019949700545d0, &
+       -0.930094391938207d0, &
+       -0.930094391938207d0, &
+       -1.830988812620400d0, &
+       -1.830988812620400d0, &
+       2.661977625240810d0, &
+       -0.333333333333333d0, &
+       -0.333333333333333d0, &
+       -0.098283514203544d0, &
+       -0.098283514203544d0, &
+       -0.803432971592912d0, &
+       -0.812603471654584d0, &
+       -0.812603471654584d0, &
+       0.625206943309168d0, &
+       -0.333333333333333d0, &
+       -0.098283514203544d0, &
+       -0.098283514203544d0, &
+       -0.803432971592912d0, &
+       -0.812603471654584d0, &
+       -0.812603471654584d0, &
+       0.625206943309168d0 ]
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: VWedge24P = [ &
+       -0.930094391938207d0, &
+       -0.930094391938207d0, &
+       0.513019949700545d0, &
+       -0.582925557762337d0, &
+       -0.582925557762337d0, &
+       0.513019949700545d0, &
+       -1.830988812620400d0, &
+       2.661977625240810d0, &
+       -1.830988812620400d0, &
+       -0.333333333333333d0, &
+       -0.333333333333333d0, &
+       -0.098283514203544d0, &
+       -0.803432971592912d0, &
+       -0.098283514203544d0, &
+       -0.812603471654584d0, &
+       0.625206943309168d0, &
+       -0.812603471654584d0, &
+       -0.333333333333333d0, &
+       -0.098283514203544d0, &
+       -0.803432971592912d0, &
+       -0.098283514203544d0, &
+       -0.812603471654584d0, &
+       0.625206943309168d0, &
+       -0.812603471654584d0 ]
+   REAL(KIND=dp), DIMENSION(24), PRIVATE :: WWedge24P = [ &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       0.000000000000000d0, &
+       1.250521622121900d0, &
+       0.685008566774710d0, &
+       0.685008566774710d0, &
+       0.685008566774710d0, &
+       0.809574716992997d0, &
+       0.809574716992997d0, &
+       0.809574716992997d0, &
+       -1.250521622121900d0, &
+       -0.685008566774710d0, &
+       -0.685008566774710d0, &
+       -0.685008566774710d0, &
+       -0.809574716992997d0, &
+       -0.809574716992997d0, &
+       -0.809574716992997d0 ]
+
+! continue wedge rules here
+!------------------------------------------------------------------------------
+! Wedge - n=27, p=6
+!------------------------------------------------------------------------------
+!   REAL(KIND=dp), DIMENSION(27), PRIVATE :: SWedge27P = [ &
+!   REAL(KIND=dp), DIMENSION(27), PRIVATE :: UWedge27P = [ &
+!   REAL(KIND=dp), DIMENSION(27), PRIVATE :: VWedge27P = [ &
+!   REAL(KIND=dp), DIMENSION(27), PRIVATE :: WWedge27P = [ &
+
+
+
  CONTAINS
 
 
@@ -648,12 +1195,8 @@ MODULE Integration
     INTEGER :: n
     REAL(KIND=dp) :: Points(n),Weights(n)
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,m 
-#ifdef USE_ISO_C_BINDINGS
+    INTEGER :: i,j,k,l,m
     TYPE(C_FFTCMPLX) :: W(n+1)
-#else
-    COMPLEX(KIND=dp) :: W(n+1)
-#endif
     REAL(KIND=dp) :: arr((n+1)/2+1), V(n+2)
 
     DO i=1,(n+1)/2
@@ -674,11 +1217,7 @@ MODULE Integration
     V(k+1) = 1._dp/arr(k)
 
     DO i=1,n+1
-#ifdef USE_ISO_C_BINDINGS
       W(i) % rval = -(V(i)+V(n-i+3))
-#else
-      W(i) = -(V(i)+V(n-i+3))
-#endif
     END DO
     CALL frfftb(n+1,W,V)
 
@@ -820,7 +1359,7 @@ CONTAINS
    FUNCTION EvalPoly( n,P,x ) RESULT(s)
      INTEGER :: i,n
      REAL(KIND=dp) :: P(n+1),x,s
- 
+
      s = 0.0d0
      DO i=1,n+1
        s = s * x + P(i)
@@ -832,18 +1371,18 @@ CONTAINS
    SUBROUTINE DerivPoly( n,Q,P )
      INTEGER :: i,n
      REAL(KIND=dp) :: Q(n),P(n+1)
- 
+
      DO i=1,n
        Q(i) = P(i)*(n-i+1)
      END DO
    END SUBROUTINE DerivPoly
- 
+
 !--------------------------------------------------------------------------
 
    SUBROUTINE RefineRoots( n,P,Q,Points )
      INTEGER :: i,j,n
      REAL(KIND=dp) :: P(n+1),Q(n),Points(n)
- 
+
      REAL(KIND=dp) :: x,s
      INTEGER, PARAMETER :: MaxIter = 100
 
@@ -1011,32 +1550,32 @@ CONTAINS
 !       p => IntegStuff(thread)
       p => IntegStuff
 
-      ! Construct Gauss points for p (barycentric) triangle from 
+      ! Construct Gauss points for p (barycentric) triangle from
       ! Gauss points for quadrilateral
       p = GaussPointsQuad( n )
-      
-      ! For each point apply mapping from quad to triangle and 
+
+      ! For each point apply mapping from quad to triangle and
       ! multiply weight by detJ of mapping
 !DIR$ IVDEP
-      DO i=1,p % n  
-         uq = p % u(i) 
-         vq = p % v(i) 
+      DO i=1,p % n
+         uq = p % u(i)
+         vq = p % v(i)
          sq = p % s(i)
          p % u(i) = 1d0/2*(uq-uq*vq)
          p % v(i) = SQRT(3d0)/2*(1d0+vq)
          p % s(i) = -SQRT(3d0)/4*(-1+vq)*sq
       END DO
-      
+
       p % w(1:n) = 0.0d0
 !------------------------------------------------------------------------------
     END FUNCTION GaussPointsPTriangle
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>    Return Gaussian integration points for 2D triangle element. Here the 
+!>    Return Gaussian integration points for 2D triangle element. Here the
 !>    reference element over which the integration is done can also be the
 !>    equilateral triangle used in the description of p-elements. In that case,
-!>    this routine may return a more economical set of integration points. 
+!>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
    FUNCTION GaussPointsTriangle( n, PReferenceElement ) RESULT(p)
 !------------------------------------------------------------------------------
@@ -1124,14 +1663,14 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the equilateral triangle used in the description of p-elements.
-	 ! We map the original integration points into their counterparts on the 
-	 ! p-reference element and scale the weights by the determinant of the 
+	 ! We map the original integration points into their counterparts on the
+	 ! p-reference element and scale the weights by the determinant of the
 	 ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
-        DO i=1,P % n  
-            uq = P % u(i) 
-            vq = P % v(i) 
+        DO i=1,P % n
+            uq = P % u(i)
+            vq = P % v(i)
             sq = P % s(i)
             P % u(i) = -1.0d0 + 2.0d0*uq + vq
             P % v(i) = SQRT(3.0d0)*vq
@@ -1217,7 +1756,7 @@ CONTAINS
 
       n = SQRT( REAL(np) ) + 0.5
 
-      ! WRITE (*,*) 'Integration:', n, np 
+      ! WRITE (*,*) 'Integration:', n, np
 
       IF ( n < 1 .OR. n > MAXN ) THEN
         p % n = 0
@@ -1249,7 +1788,7 @@ CONTAINS
    TYPE(GaussIntegrationPoints_t), POINTER :: p
    REAL(KIND=dp) :: uh, vh, wh, sh
 !  INTEGER :: thread, omp_get_thread_num
-!------------------------------------------------------------------------------   
+!------------------------------------------------------------------------------
    IF ( .NOT. GInit ) CALL GaussPointsInit
 !    thread = 1
 ! !$ thread = omp_get_thread_num()+1
@@ -1257,14 +1796,14 @@ CONTAINS
    p => IntegStuff
    n = DBLE(np)**(1.0D0/3.0D0) + 0.5D0
 
-   ! Get Gauss points of p brick 
+   ! Get Gauss points of p brick
    ! (take into account term z^2) from jacobian determinant
    p = GaussPointsPBrick(n,n,n+1)
    ! p = GaussPointsBrick( np )
    ! WRITE (*,*) 'Getting Gauss points for: ', n, p % n
 
-   ! For each point apply mapping from brick to 
-   ! tetrahedron and multiply each weight by detJ 
+   ! For each point apply mapping from brick to
+   ! tetrahedron and multiply each weight by detJ
    ! of mapping
 !DIR$ IVDEP
    DO i=1,p % n
@@ -1283,15 +1822,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>    Return Gaussian integration points for 3D tetrahedral element. Here the 
+!>    Return Gaussian integration points for 3D tetrahedral element. Here the
 !>    reference element over which the integration is done can also be the
 !>    regular tetrahedron used in the description of p-elements. In that case,
-!>    this routine may return a more economical set of integration points. 
+!>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
    FUNCTION GaussPointsTetra( n, PReferenceElement ) RESULT(p)
 !------------------------------------------------------------------------------
       INTEGER :: n      !< number of points in the requested rule
-      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element 
+      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element
       TYPE(GaussIntegrationPoints_t), POINTER :: p
 !------------------------------------------------------------------------------
       REAL( KIND=dp ) :: ScaleFactor
@@ -1365,15 +1904,15 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the regular tetrahedron used in the description of p-elements
-	 ! We map the original integration points into their counterparts on the 
-	 ! p-reference element and scale the weights by the determinant of the 
+	 ! We map the original integration points into their counterparts on the
+	 ! p-reference element and scale the weights by the determinant of the
 	 ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
-        DO i=1,P % n  
-            uq = P % u(i) 
+        DO i=1,P % n
+            uq = P % u(i)
             vq = P % v(i)
-            wq = P % w(i)            
+            wq = P % w(i)
             sq = P % s(i)
             P % u(i) = -1.0d0 + 2.0d0*uq + vq + wq
             P % v(i) = SQRT(3.0d0)*vq + 1.0d0/SQRT(3.0d0)*wq
@@ -1387,7 +1926,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    FUNCTION GaussPointsPPyramid( np ) RESULT(p)
-!------------------------------------------------------------------------------     
+!------------------------------------------------------------------------------
    INTEGER :: np,n,i
    REAL(KIND=dp) :: uh,vh,wh,sh
    TYPE(GaussIntegrationPoints_t), POINTER :: p
@@ -1401,12 +1940,12 @@ CONTAINS
 
    n = DBLE(np)**(1.0D0/3.0D0) + 0.5D0
 
-   ! Get Gauss points of p brick 
+   ! Get Gauss points of p brick
    ! (take into account term (-1+z)^2) from jacobian determinant
    p = GaussPointsPBrick(n,n,n+1)
 
-   ! For each point apply mapping from brick to 
-   ! pyramid and multiply each weight by detJ 
+   ! For each point apply mapping from brick to
+   ! pyramid and multiply each weight by detJ
    ! of mapping
 !DIR$ IVDEP
    DO i=1,p % n
@@ -1419,12 +1958,12 @@ CONTAINS
       p % v(i)= 1d0/2*vh*(1d0-wh)
       p % w(i)= SQRT(2d0)/2*(1d0+wh)
       p % s(i)= sh * SQRT(2d0)/8 * (-1d0+wh)**2
-   END DO      
+   END DO
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsPPyramid
 !------------------------------------------------------------------------------
 
-   
+
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D pyramid element.
 !------------------------------------------------------------------------------
@@ -1479,7 +2018,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    FUNCTION GaussPointsPWedge(n) RESULT(p)
-!------------------------------------------------------------------------------      
+!------------------------------------------------------------------------------
    INTEGER :: n, i
    REAL(KIND=dp) :: uh,vh,wh,sh
    TYPE(GaussIntegrationPoints_t), POINTER :: p
@@ -1494,8 +2033,8 @@ CONTAINS
    ! Get Gauss points of brick
    p = GaussPointsBrick(n)
 
-   ! For each point apply mapping from brick to 
-   ! wedge and multiply each weight by detJ 
+   ! For each point apply mapping from brick to
+   ! wedge and multiply each weight by detJ
    ! of mapping
 !DIR$ IVDEP
    DO i=1,p % n
@@ -1513,6 +2052,8 @@ CONTAINS
    END FUNCTION GaussPointsPWedge
 !------------------------------------------------------------------------------
 
+
+   
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D wedge element
 !------------------------------------------------------------------------------
@@ -1566,7 +2107,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>  Return an optimized number of Gaussian points for integrating over prisms.
-!>  Here the reference element can also be that of the p-approximation. 
+!>  Here the reference element can also be that of the p-approximation.
 !>  A rule with m x n points is returned.
 !------------------------------------------------------------------------------
    FUNCTION GaussPointsWedge2(m,n,PReferenceElement) RESULT(p)
@@ -1574,12 +2115,12 @@ CONTAINS
       TYPE(GaussIntegrationPoints_t), POINTER :: p
       INTEGER :: m     !< The number of points over a triangular face
       INTEGER :: n     !< The number of points in the orthogonal direction to the triangular faces
-      LOGICAL, OPTIONAL ::  PReferenceElement !< Used for switching the reference element      
+      LOGICAL, OPTIONAL ::  PReferenceElement !< Used for switching the reference element
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,t
       LOGICAL :: ConvertToPPrism
       REAL(KIND=dp) :: uq(20), vq(20), sq(20)
-      REAL(KIND=dp) :: uh,vh,wh,sh    
+      REAL(KIND=dp) :: uh,vh,wh,sh
 !-----------------------------------------------------------------------------
       ConvertToPPrism = .FALSE.
       IF ( PRESENT(PReferenceElement) ) THEN
@@ -1705,9 +2246,9 @@ CONTAINS
          END IF
       CASE DEFAULT
          !-------------------------------------------------------------------------------------
-         ! The requested number of integration points associated with the triangular face 
+         ! The requested number of integration points associated with the triangular face
          ! cannot be created. Therefore use the given number of points in the third direction
-         ! and generate silently n x n x n rule. 
+         ! and generate silently n x n x n rule.
          !-----------------------------------------------------------------------------------
          IF (ConvertToPPrism) THEN
            p = GaussPointsBrick(n*n*n)
@@ -1767,8 +2308,121 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!>    Return Gaussian integration points for 3D wedge elements using
+!> economical quadratures that are not product of segment and triangle rules.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsWedgeEconomic( n, PReferenceElement ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: n      !< number of points in the requested rule
+      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element 
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      REAL( KIND=dp ) :: ScaleFactor
+      INTEGER :: i
+      LOGICAL :: ConvertToPWedge
+      REAL (KIND=dp) :: uq, vq, wq, sq
+!     INTEGER :: thread, omp_get_thread_num
+!----------------------------------------------------------------------------------
+      ConvertToPWedge = .FALSE.
+      IF ( PRESENT(PReferenceElement) ) THEN
+        ConvertToPWedge = PReferenceElement
+      END IF
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!       thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      SELECT CASE (n)
+      CASE (4)
+         p % u(1:n) = UWedge4P
+         p % v(1:n) = VWedge4P
+         p % w(1:n) = WWedge4P
+         p % s(1:n) = SWedge4P
+      CASE (5)
+         p % u(1:n) = UWedge5P
+         p % v(1:n) = VWedge5P
+         p % w(1:n) = WWedge5P
+         p % s(1:n) = SWedge5P 
+      CASE (6)
+         p % u(1:n) = UWedge6P
+         p % v(1:n) = VWedge6P
+         p % w(1:n) = WWedge6P
+         p % s(1:n) = SWedge6P 
+      CASE (7)
+         p % u(1:n) = UWedge7P
+         p % v(1:n) = VWedge7P
+         p % w(1:n) = WWedge7P
+         p % s(1:n) = SWedge7P
+      CASE (10)
+         p % u(1:n) = UWedge10P
+         p % v(1:n) = VWedge10P
+         p % w(1:n) = WWedge10P
+         p % s(1:n) = SWedge10P 
+      CASE (11)
+         p % u(1:n) = UWedge11P
+         p % v(1:n) = VWedge11P
+         p % w(1:n) = WWedge11P
+         p % s(1:n) = SWedge11P 
+      CASE (14)
+         p % u(1:n) = UWedge14P
+         p % v(1:n) = VWedge14P
+         p % w(1:n) = WWedge14P
+         p % s(1:n) = SWedge14P 
+      CASE (15)
+         p % u(1:n) = UWedge15P
+         p % v(1:n) = VWedge15P
+         p % w(1:n) = WWedge15P
+         p % s(1:n) = SWedge15P 
+      CASE (16)
+         p % u(1:n) = UWedge16P
+         p % v(1:n) = VWedge16P
+         p % w(1:n) = WWedge16P
+         p % s(1:n) = SWedge16P
+      CASE (24)
+         p % u(1:n) = UWedge24P
+         p % v(1:n) = VWedge24P
+         p % w(1:n) = WWedge24P
+         p % s(1:n) = SWedge24P
+         
+      CASE DEFAULT
+        CALL Fatal( 'GaussPointsWedgeEconomic',&
+            'Invalid number of points requested')
+      END SELECT
+
+      p % n = n
+
+      IF (ConvertToPWedge ) THEN
+        DO i=1,P % n  
+          uq = P % u(i) 
+          vq = P % v(i)
+          sq = P % s(i)
+
+          ! first to classical
+          uq = (uq+1.d0)/2.0d0
+          vq = (vq+1.d0)/2.0d0
+
+          ! then to p-convention
+          P % u(i) = -1.0d0 + 2.0d0*uq + vq
+          P % v(i) = SQRT(3.0d0) * vq            
+          P % s(i) = SQRT(3.0d0) * sq / 2.0d0
+        END DO
+      ELSE
+        ! Map to classical Elmer local coordinates in [0,1]
+        p % u(1:n) = ( p % u(1:n)+1.0d0 ) / 2.0d0
+        p % v(1:n) = ( p % v(1:n)+1.0d0 ) / 2.0d0 
+        p % s(1:n) = p % s(1:n) / 4.0d0
+      END IF
+!------------------------------------------------------------------------------
+    END FUNCTION GaussPointsWedgeEconomic
+!------------------------------------------------------------------------------
+
+    
+
+!------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D brick element for
-!>    composite rule 
+!>    composite rule
 !>    sum_i=1^nx(sum_j=1^ny(sum_k=1^nz w_ijk f(x_{i,j,k},y_{i,j,k},z_{i,j,k}))).
 !------------------------------------------------------------------------------
    FUNCTION GaussPointsPBrick( nx, ny, nz ) RESULT(p)
@@ -1877,7 +2531,7 @@ CONTAINS
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
      LOGICAL :: pElement, UsePRefElement, Economic
-     INTEGER :: n, eldim, p1d
+     INTEGER :: n, eldim, p1d, ntri, nseg, necon
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
@@ -1895,12 +2549,12 @@ CONTAINS
        END IF
      END IF
 
-      IF( PRESENT(PReferenceElement)) THEN
-        pElement = PReferenceElement
-      ELSE     
-        pElement = isActivePElement(elm)
-      END IF
-        
+     IF( PRESENT(PReferenceElement)) THEN
+       pElement = PReferenceElement
+     ELSE
+       pElement = isActivePElement(elm)
+     END IF
+     
      IF ( PRESENT(np) ) THEN
        n = np
      ELSE IF( PRESENT( RelOrder ) ) THEN
@@ -1908,7 +2562,7 @@ CONTAINS
          n = elm % PDefs % GaussPoints
          IF( RelOrder == 0 ) THEN
            CONTINUE
-         ELSE 
+         ELSE
            eldim = elm % type % dimension
            p1d = NINT( n**(1.0_dp/eldim) ) + RelOrder
            IF( p1d < 1 ) THEN
@@ -1949,7 +2603,7 @@ CONTAINS
          ELSE
            PRINT *,'RelOrder can only be {-1, 0, 1} !'
          END IF
-       END IF  
+       END IF
      ELSE
        IF (pElement) THEN
          IF( ASSOCIATED( elm % PDefs ) ) THEN
@@ -1976,14 +2630,14 @@ CONTAINS
         ELSE
           IntegStuff = GaussPointsTriangle(n)
         END IF
- 
+
      CASE (4)
-       IF (isActivePElement(elm)) THEN
+       IF (pElement .AND. ASSOCIATED( elm % pdefs ) ) THEN
          Economic = .FALSE.
-         ! For certain polynomial orders, economic quadratures may be used: 
+         ! For certain polynomial orders, economic quadratures may be used:
          IF (elm % PDefs % P > 1 .AND.  elm % PDefs % P <= 8) Economic = .TRUE.
-         ! An explicit bubble augmentation with lower-order methods switches to 
-         ! the standard rule:  
+         ! An explicit bubble augmentation with lower-order methods switches to
+         ! the standard rule:
          IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
          IntegStuff = GaussPointsQuad(n, Economic)
        ELSE
@@ -2004,10 +2658,47 @@ CONTAINS
            IntegStuff = GaussPointsPyramid(n)
         END IF
 
-     CASE (7)
+      CASE (7)
+        IF( PRESENT( np ) ) THEN
+          ! possible values:
+          ! triangle = 1, 3, 4, 6, 7, 11, 12, 17, 20
+          ! segment  = 1, 2, 3, 4, 5, 6,  7,  8,  9,
+
+          ntri = 0; nseg = 0; necon = 0
+
+          SELECT CASE( n )
+
+            ! Cases ordered so that we have the segment x triangle rules first
+          CASE( 1, 2, 3)
+            nseg = n
+          CASE( 6, 8 )
+            nseg = 2
+          CASE( 12, 18, 21 )
+            nseg = 3
+          CASE( 28, 44, 48 )
+            nseg = 4
+          CASE( 85, 100 )
+            nseg = 5
+
+            ! The economical rules
+          CASE( 4, 5, 7, 10, 11, 14, 15, 16, 24 )
+            ! Note: we would have 6 and 8 point rules from the economic family as well
+            necon = n 
+          END SELECT
+
+          IF( nseg > 0 ) THEN
+            ntri =  n / nseg
+            IntegStuff = GaussPointsWedge2(ntri,nseg,PReferenceElement=pElement)
+            RETURN
+          ELSE IF( necon > 0 ) THEN
+            IntegStuff = GaussPointsWedgeEconomic(necon,PReferenceElement=pElement)
+            RETURN
+          END IF
+        END IF
+
         IF (pElement) THEN
            IntegStuff = GaussPointsPWedge(n)
-        ELSE 
+        ELSE
            IntegStuff = GaussPointsWedge(n)
         END IF
 
@@ -2020,12 +2711,12 @@ CONTAINS
 
 !----------------------------------------------------------------------------------
 !>  Return a suitable version of the Gaussian numerical integration method for
-!>  H(curl)-conforming finite elements. The default here is that the edge basis 
+!>  H(curl)-conforming finite elements. The default here is that the edge basis
 !>  functions are obtained via calling the function EdgeElementInfo, so that
-!>  the reference element is chosen to be that used for p-approximation. 
+!>  the reference element is chosen to be that used for p-approximation.
 !>  By giving the optional argument PiolaVersion = .FALSE. this function returns
-!>  an alternate (usually smaller) set of integration points on the classic 
-!>  reference element. This option may be useful when the edge basis functions are 
+!>  an alternate (usually smaller) set of integration points on the classic
+!>  reference element. This option may be useful when the edge basis functions are
 !>  obtained via calling the alternate subroutine GetEdgeBasis.
 !----------------------------------------------------------------------------------------
    FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion, BasisDegree) RESULT(IP)
@@ -2044,9 +2735,9 @@ CONTAINS
 
      SELECT CASE(ElementFamily)
      CASE (1)
-        IntegStuff = GaussPoints0D(1)
+        IP = GaussPoints0D(1)
      CASE (2)
-        IntegStuff = GaussPoints1D(2)
+        IP = GaussPoints1D(2)
      CASE(3)
         IF (SecondOrder) THEN
            IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)

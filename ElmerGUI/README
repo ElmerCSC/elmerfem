@@ -1,7 +1,7 @@
 Brief build instructions for ElmerGUI:
 --------------------------------------
 
-Prequisites:
+Prerequisites:
 
    - Qt 4             (4.8 or higher)
 

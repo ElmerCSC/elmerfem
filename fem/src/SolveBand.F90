@@ -58,14 +58,14 @@
       CALL DGBTRF( N,N,Subband,Subband,A,Band,IPIV,iINFO )
       IF ( iinfo /= 0 ) THEN
          PRINT*,'ERROR: SolveBand: singular matrix. LAPACK DGBTRF info: ',iinfo
-         STOP
+         STOP 1
       END IF
 
       iINFO = 0
       CALL DGBTRS( 'N',N,Subband,Subband,M,A,Band,IPIV,X,N,iINFO )
         IF ( iinfo /= 0 ) THEN
         PRINT*,'ERROR: SolveBand: singular matrix. LAPACK DGBTRS info: ',iinfo
-          STOP
+          STOP 1
         END IF
 
       END
@@ -87,14 +87,14 @@
       CALL ZGBTRF( N,N,Subband,Subband,A,Band,IPIV,iINFO )
         IF ( iinfo /= 0 ) THEN
         PRINT*,'ERROR: SolveBand: singular matrix. LAPACK ZGBTRF info: ',iinfo
-          STOP
+          STOP 1
         END IF
 
       iINFO = 0
       CALL ZGBTRS( 'N',N,Subband,Subband,M,A,Band,IPIV,X,N,iINFO )
         IF ( iinfo /= 0 ) THEN
         PRINT*,'ERROR: SolveBand: singular matrix. LAPACK ZGBTRS info: ',iinfo
-          STOP
+          STOP 1
         END IF
 
       END

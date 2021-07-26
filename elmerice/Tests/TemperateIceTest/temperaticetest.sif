@@ -152,6 +152,3 @@ End
 ! 3 and 4 are natural BC's
 Solver 2 :: Reference Norm = Real 262.21426
 Solver 2 :: Reference Norm Tolerance = Real 1E-05
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-

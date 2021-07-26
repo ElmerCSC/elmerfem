@@ -34,9 +34,9 @@
 ! *
 ! *****************************************************************************/
 !------------------------------------------------------------------------------
-!>  Compute the volume and area in 3D or area and line intgral in 2D over the 
+!>  Compute the volume and area in 3D or area and line integral in 2D over the 
 !>  levelset function. This is better done within a dedicated solver since 
-!>  it is crucial for the accuracy that the Heaviside and Delta function are
+!>  it is crucial for the accuracy that the Heaviside and Delta functions are
 !>  computed at Gaussian integration points.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------

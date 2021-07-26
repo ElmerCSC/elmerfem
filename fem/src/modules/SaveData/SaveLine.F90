@@ -111,10 +111,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
       SkipBoundaryInfo, GotDivisions, EdgeBasis, DG
   INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
-      Side, SaveNodes, SaveNodes2, node, NoResults, LocalNodes, NoVar, &
-      No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, NoFaces, &
-      NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
-      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex
+      Side, SaveNodes=0, SaveNodes2, SaveNodes3, SaveNodes4, node, NoResults, &
+      LocalNodes, NoVar, No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, &
+      NoFaces, NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, istat, &
+      i1, i2, NoTests, NormInd, Comps, SaveSolverMeshIndex, LineInd
   INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(Variable_t), POINTER :: Var, Var2, Var3, IsosurfVar
@@ -127,22 +127,27 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
 
   LOGICAL, ALLOCATABLE :: LineTag(:)
-  LOGICAL :: cand, Parallel, InitializePerm
+  LOGICAL :: cand, Parallel, InitializePerm, FileIsOpen
   
   REAL(KIND=dp) :: R0(3),R1(3),dR(3),S0(3),S1(3),dS(3),LocalCoord(3),&
       MinCoord(3),MaxCoord(3),GlobalCoord(3),LineN(3),LineT1(3), &
       LineT2(3),detJ, Norm
-  INTEGER :: imin,imax,nsize
+  INTEGER :: imin,imax,nsize,LineUnit
 
   SAVE SavePerm, PrevMaskName, SaveNodes
 
 !------------------------------------------------------------------------------
 
-  CALL Info('SaveLine','-----------------------------------------', Level=4 )
-  CALL Info('SaveLine','Saving data on specified lines',Level=4)
-
   Params => GetSolverParams()
+  SideFile = ListGetString(Params,'Filename',GotIt )
+  IF(.NOT. GotIt) SideFile = DefaultSideFile
 
+  CALL Info('SaveLine','-----------------------------------------', Level=4 )
+  CALL Info('SaveLine','Saving data on lines to file: '//TRIM(SideFile),Level=4)
+  CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
+
+  FileIsOpen = .FALSE.
+  
   i = GetInteger( Params,'Save Solver Mesh Index',Found ) 
   IF( Found ) THEN
     CALL Info('SaveLine','Using mesh of solver '//TRIM(I2S(i)))
@@ -199,7 +204,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     CondName = ListGetString(Params,'Flux Coefficient',GotIt )
     IF(.NOT. gotIt) CondName = TRIM('Heat Conductivity')
   END IF
-
+  
+  LineInd = ListGetInteger( Params,'Line Marker',GotIt)
+  SaveNodes2 = 0;SaveNodes3 = 0; SaveNodes4 = 0
+  
 !----------------------------------------------
 ! Specify the number of entries for each node
 !---------------------------------------------- 
@@ -259,8 +267,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
   ! Open files for saving
   !------------------------------------------------------------------------------
-  CALL OpenLineFile()
-  
+  !CALL OpenLineFile()
+
   ! Search existing boundary to save if any
   !------------------------------------------------------------------------------
   CALL SaveExistingLines()
@@ -570,6 +578,42 @@ CONTAINS
   END SUBROUTINE GlobalToLocalCoordsReduced
   
 
+  SUBROUTINE OpenLineFile() 
+
+    IF(FileIsOpen) RETURN
+    FileIsOpen = .TRUE.    
+    
+    CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
+    SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
+
+    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
+
+    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
+      IF( Parallel ) THEN
+        CALL Warn('SaveLine','Cannot number filenames in parallel with another number!')
+      ELSE
+        SideParFile = NextFreeFilename( SideParFile ) 
+      END IF
+    END IF
+
+    CALL Info('SaveLine','Saving line data to file: '//TRIM(SideParFile),Level=12)
+
+    FileAppend = ListGetLogical(Params,'File Append',GotIt )
+
+    IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
+      OPEN (NEWUNIT=LineUnit, FILE=SideParFile,POSITION='APPEND')
+    ELSE 
+      OPEN (NEWUNIT=LineUnit,FILE=SideParFile)
+    END IF
+
+
+  END SUBROUTINE OpenLineFile
+
+  
+  SUBROUTINE CloseLineFile()
+    IF(FileIsOpen) CLOSE(LineUnit)
+  END SUBROUTINE CloseLineFile
+
 
   ! Write a line of data for a point in a known element.
   !----------------------------------------------------------------------
@@ -584,42 +628,46 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL :: LocalCoord(3)
     REAL(KIND=dp), OPTIONAL :: GlobalCoord(3)
     
-    INTEGER :: i,j,k,l,ivar,ii
+    INTEGER :: i,j,k,l,ivar,ii,i1,i2
     TYPE(Nodes_t) :: Nodes
     LOGICAL :: UseGivenNode, PiolaVersion, EdgeBasis
-    INTEGER :: n, nd, np, EdgeBasisDegree, Labels(4)
+    INTEGER :: n, nd, np, EdgeBasisDegree, Labels(5)
     INTEGER, POINTER :: PtoIndexes(:)
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
     REAL(KIND=dp) :: u,v,w
     INTEGER, TARGET :: NodeIndex(1), Indexes(27)
     INTEGER :: n0
-
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
-
+    REAL(KIND=dp) :: AveMult
+    
     SAVE :: Nodes
 
     Indexes = 0
     n0 = 0
-    
+
+    CALL OpenLineFile()
+      
     IF( .NOT. SkipBoundaryInfo ) THEN      
       Labels = 0
+      IF( LineInd /= 0 ) THEN
+        n0 = n0 + 1
+        Labels(n0) = LineInd
+      END IF
+
       IF(TransientSimulation) THEN
-        Labels(1) = Solver % DoneTime
-        n0 = 1
-      ELSE
-        n0 = 0
+        n0 = n0 + 1
+        Labels(n0) = Solver % DoneTime
       END IF
 
       Labels(n0+1) = Solver % TimesVisited + 1
       Labels(n0+2) = bc_id
-      Labels(n0+3) = node_id
-      
+      Labels(n0+3) = node_id      
       n0 = n0 + 3
 
       DO i=1,n0
-        WRITE(10,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
+        WRITE(LineUnit,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
       END DO
       
       IF( NormInd > 0 .AND. NormInd <= n0 ) THEN
@@ -689,7 +737,6 @@ CONTAINS
             END IF
             np = n * Var % Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
           END IF
-
         ELSE
           nd = GetElementDOFs( Indexes, Element )
           n = Element % Type % NumberOfNodes
@@ -717,6 +764,7 @@ CONTAINS
         ELSE
           PtoIndexes => Element % NodeIndexes 
         END IF
+
       ELSE
         IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
           NodeIndex(1) = dgnode_id
@@ -754,8 +802,47 @@ CONTAINS
           END DO
         END IF
         No = No + Var % Dofs * NoEigenValues
-      ELSE                  
-        IF( ASSOCIATED( PtoIndexes ) ) THEN
+      ELSE                          
+        IF( Var % TYPE == Variable_on_elements ) THEN
+          l = Element % ElementIndex 
+          IF( SIZE( Var % Perm ) >= l ) THEN
+            l = Var % Perm(l)
+          END IF
+          IF( l > 0 ) THEN
+            DO ii=1,Var % Dofs
+              Values(No+ii) = Var % Values(Var%Dofs*(l-1)+ii)
+            END DO
+            IF( comps >= 2 ) THEN
+              Values(No+2) = Var % Values(l)
+            END IF
+            IF( comps >= 3 ) THEN
+              Values(No+3) = Var % Values(l)
+            END IF
+          END IF
+        ELSE IF ( Var % TYPE == Variable_on_gauss_points ) THEN
+          i1 = Var % Perm(Element % ElementIndex)
+          i2 = Var % Perm(Element % ElementIndex+1)-1
+          IF(i2>i1 ) THEN
+            AveMult = 1.0_dp/(i2-i1) 
+            i2 = i2-1
+            IF( Var % Dofs > 1 ) THEN
+              DO l=1,Var % Dofs
+                DO ii=i1,i2
+                  Values(No+l) = Values(No+l) + AveMult * Var % Values(Var%Dofs*(ii-1)+l)
+                END DO
+              END DO
+            ELSE
+              Values(No+1) = AveMult * SUM(Var % Values(i1:i2))
+              IF( comps >= 2 ) THEN
+                Values(No+2) = AveMult * SUM(Var2 % Values(i1:i2))
+              END IF
+              IF( comps >= 3 ) THEN
+                Values(No+3) = AveMult * SUM(Var3 % Values(i1:i2))
+              END IF
+            END IF
+          END IF
+
+        ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
           DO k=1,n
             l = PtoIndexes(k)
             IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
@@ -764,7 +851,6 @@ CONTAINS
                 Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
                     Var % Values(Var%Dofs*(l-1)+ii)
               END DO
-
               IF( comps >= 2 ) THEN
                 Values(No+2) = Values(No+2) + PtoBasis(k) * &
                     Var2 % Values(l)
@@ -772,11 +858,11 @@ CONTAINS
               IF( comps >= 3 ) THEN
                 Values(No+3) = Values(No+3) + PtoBasis(k) * &
                     Var3 % Values(l)
-              END IF
-                
+              END IF                
             END IF
           END DO
         END IF
+        
         No = No + MAX( Var % Dofs, comps )
      END IF
     END DO
@@ -790,9 +876,9 @@ CONTAINS
     END IF
     
     DO j=1,NoResults-1
-      WRITE(10,'(ES20.11E3)',ADVANCE='NO') Values(j)
+      WRITE(LineUnit,'(ES20.11E3)',ADVANCE='NO') Values(j)
     END DO
-    WRITE(10,'(ES20.11E3)') Values(NoResults)
+    WRITE(LineUnit,'(ES20.11E3)') Values(NoResults)
 
     
     IF( NormInd > n0 ) THEN
@@ -806,7 +892,7 @@ CONTAINS
 
 
 !-----------------------------------------------------------------------
-!> Compuation of normal flux.
+!> Computation of normal flux.
 !> Note that this is calculated on the nodal points only
 !> using a single boundary element. The direction of the normal
 !> may be somewhat different on the nodal point when calculated using 
@@ -842,25 +928,24 @@ CONTAINS
     LOGICAL :: AllocationsDone = .FALSE.
 
     SAVE AllocationsDone, Nodes, Basis, dBasisdx, Conductivity, CoeffTensor, Pwrk
-    
-
+        
     IF( .NOT. AllocationsDone ) THEN
       n = Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), Basis(n), dBasisdx(n,3), &
           Conductivity(n), CoeffTensor(3,3,n) )
       AllocationsDone = .TRUE.
     END IF    
-
+    
     Tvar => VariableGet( Mesh % Variables, TRIM(VarName) )
     IF( .NOT. ASSOCIATED( TVar ) ) THEN
       CALL Fatal('BoundaryFlux','Cannot calculate fluxes without potential field!')
     END IF
-          
+    
     Permutated = ASSOCIATED(Tvar % Perm)
     Element => Model % CurrentElement
 
     BC => GetBC( Element )
-    FluxBody = ListGetInteger( Model % BCs(k) % Values,'Flux Integrate Body', gotIt )
+    FluxBody = ListGetInteger( BC,'Flux Integrate Body', gotIt )
     
     IF ( FluxBody > 0 ) THEN
       lbody = 0
@@ -997,61 +1082,6 @@ CONTAINS
   END SUBROUTINE BoundaryFlux
 
 
-  SUBROUTINE OpenLineFile() 
-    
-    SideFile = ListGetString(Params,'Filename',GotIt )
-    IF(.NOT. GotIt) SideFile = DefaultSideFile
-
-    IF ( .NOT. FileNameQualified(SideFile) ) THEN
-      OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-      IF(.NOT. GotIt ) OutputDirectory = GetString( Model % Simulation,&
-          'Output Directory',GotIt)
-      IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
-        SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
-        IF( Solver % TimesVisited == 0 ) THEN
-          CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-        END IF
-      ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-        SideFile = TRIM(OutputPath)// '/' //TRIM(SideFile)
-      END IF
-    END IF
-
-
-    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
-
-    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-      IF( Parallel ) THEN
-        CALL Warn('SaveLine','Cannot number filenames in parallel with another number!')
-      ELSE
-        SideParFile = NextFreeFilename( SideParFile ) 
-      END IF
-    END IF
-
-    CALL Info('SaveLine','Saving line data to file: '//TRIM(SideParFile),Level=12)
-
-
-    FileAppend = ListGetLogical(Params,'File Append',GotIt )
-
-
-    IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
-      OPEN (10, FILE=SideParFile,POSITION='APPEND')
-    ELSE 
-      OPEN (10,FILE=SideParFile)
-    END IF
-
-    CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
-    WRITE( Message, * ) 'Saving line data to file ', TRIM(SideFile)
-    CALL Info( 'SaveLine', Message, Level=4 )
-    CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
-
-  END SUBROUTINE OpenLineFile
-
-
-  
-  SUBROUTINE CloseLineFile()
-    CLOSE(10)
-  END SUBROUTINE CloseLineFile
-
 
 
 ! Save a line (or boundary) that exist already in mesh.
@@ -1076,14 +1106,13 @@ CONTAINS
 
     IF( Solver % TimesVisited > 0 ) THEN
       InitializePerm = ( MaskName /= PrevMaskName ) 
-      InitializePerm = InitializePerm .OR. Solver % Mesh % Changed
+      InitializePerm = InitializePerm .OR. Solver % MeshChanged
     ELSE
       InitializePerm = .TRUE.
     END IF
 
     IF( InitializePerm ) THEN
       SavePerm = 0
-      SaveNodes = 0
 
       OptimizeOrder = ListGetLogical(Params,'Optimize Node Ordering',GotIt)
       IF(.NOT. GotIt) OptimizeOrder = .NOT. Parallel
@@ -1124,10 +1153,10 @@ CONTAINS
       
       IF(CalculateFlux) THEN
         CALL Info('SaveLine','Calculating nodal fluxes',Level=8)
-
         ALLOCATE(PointFluxes(SaveNodes,3),PointWeight(SaveNodes), STAT=istat)    
+
         IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 4') 
-        
+
         PointFluxes = 0.0d0
         PointWeight = 0.0d0
 
@@ -1135,34 +1164,34 @@ CONTAINS
         ! Fluxes only possible for DIM-1 
         DO t = Mesh % NumberOfBulkElements + 1,  &
             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements                        
-
+                    
           CurrentElement => Mesh % Elements(t)
           Model % CurrentElement => CurrentElement
           n = CurrentElement % TYPE % NumberOfNodes
           NodeIndexes => CurrentElement % NodeIndexes        
           
           IF( .NOT. ALL(SavePerm(NodeIndexes) > 0)) CYCLE 
-        
+
           IF(t <= Mesh % NumberOfBulkElements) THEN
             ValueList => GetBodyForce()
           ELSE
             ValueList => GetBC()
           END IF
-
+ 
+          IF( .NOT. ASSOCIATED( ValueList ) ) CYCLE
           IF( .NOT. ListCheckPresent( ValueList, MaskName ) ) CYCLE
                   
           ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
           ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
           ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-          
+
           DO i=1,n
             node = NodeIndexes(i)
-            
+
             CALL BoundaryFlux( Model, node, TempName,  &
                 CondName, f1, f2, fn, weight, Mesh % MaxElementDOFs ) 
             
             j = SavePerm(node) 
-            
             IF( j == 0 ) CYCLE
             
             PointFluxes(j,1) = PointFluxes(j,1) + weight * f1
@@ -1180,7 +1209,6 @@ CONTAINS
         END DO
       END IF
       
-
       
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
@@ -1265,7 +1293,6 @@ CONTAINS
         MaxBoundary = MAX( MaxBoundary, k ) 
 
       END DO
-
       
       ! Save the nodes if not in DG mode     
       !---------------------------------  
@@ -1332,7 +1359,6 @@ CONTAINS
     END IF
     
 
-    SaveNodes2 = 0  
     IF( NoLines > 0  .OR. ANY(SaveAxis(1:DIM) ) ) THEN
       NoTests = 0
 
@@ -1563,7 +1589,6 @@ CONTAINS
 
     CALL Info('SaveLine','Saving data on given circles: '//TRIM(I2S(NoLines)),Level=7)
 
-    SaveNodes2 = 0  
     NoTests = 0
     
     t = MAXVAL( NoDivisions )     
@@ -1682,7 +1707,7 @@ CONTAINS
                 LocalCoord(2), LocalCoord(3), detJ, Basis ) !, dBasisdx ) 
 
             LineTag(ii) = .TRUE.
-            SaveNodes2 = SaveNodes2 + 1
+            SaveNodes3 = SaveNodes3 + 1
             CALL WriteFieldsAtElement( CurrentElement, Basis, Line, ii, &
                 0, LocalCoord = LocalCoord )
           END IF
@@ -1702,7 +1727,7 @@ CONTAINS
       CALL Info('SaveLine','Number of candidate nodes: '//TRIM(I2S(NoTests)),Level=8)
     END IF
     
-    CALL Info('SaveLine','Number of nodes in specified lines: '//TRIM(I2S(SaveNodes2)))
+    CALL Info('SaveLine','Number of nodes in specified circle: '//TRIM(I2S(SaveNodes3)))
     
     DEALLOCATE( LineTag )
 
@@ -1736,7 +1761,6 @@ CONTAINS
       
       Line = Line + 1
       LineTag = .FALSE.
-      SaveNodes2 = 0
  
       WRITE (Name,'(A,I0)') 'IsoSurface Variable ',Line
       VarName = ListGetString( Params, Name, GotVar )
@@ -1813,7 +1837,7 @@ CONTAINS
           IF( LineTag(k) ) CYCLE
           LineTag(k) = .TRUE.
         END IF
-        SaveNodes2 = SaveNodes2 + 1
+        SaveNodes4 = SaveNodes4 + 1
         
 
         No = 0
@@ -1822,7 +1846,7 @@ CONTAINS
         CALL WriteFieldsAtElement( CurrentElement, Basis, MaxBoundary, k, 0 )         
       END DO
 
-      WRITE( Message, * ) 'Number of nodes in isocurve: ', SaveNodes2
+      WRITE( Message, * ) 'Number of nodes in isocurves: ', SaveNodes4
       CALL Info('SaveLine',Message)
          
     END DO
@@ -1833,12 +1857,12 @@ CONTAINS
 
   
   SUBROUTINE SaveVariableNames()
+
+    INTEGER :: NamesUnit
+    
     ! Finally save the names of the variables to help to identify the 
     ! columns in the result matrix.
     !-----------------------------------------------------------------
-    !SaveNodes = NINT( ParallelReduction( 1.0_dp * SaveNodes ) )
-    !SaveNodes2 = NINT( ParallelReduction( 1.0_dp * SaveNodes2 ) )
-
     IF( Solver % TimesVisited == 0 .AND. NoResults > 0 .AND. &
         (.NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
       ALLOCATE( ValueNames(NoResults), STAT=istat )
@@ -1906,54 +1930,63 @@ CONTAINS
       END IF
 
       SideNamesFile = TRIM(SideFile) // '.' // TRIM("names")
-      OPEN (10, FILE=SideNamesFile)
+      OPEN (newunit=NamesUnit, FILE=SideNamesFile)
 
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
-        WRITE(10,'(A)') TRIM(Message)
+        WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
       Message = ListGetString(Params,'Comment',GotIt)
       IF( GotIt ) THEN
-        WRITE(10,'(A)') TRIM(Message)
+        WRITE(NamesUnit,'(A)') TRIM(Message)
       END IF
-      WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideFile)
+      WRITE(NamesUnit,'(A,A)') 'Variables in file: ',TRIM(SideFile)
 
       DateStr = GetVersion()
-      WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+      WRITE( NamesUnit,'(A)') 'Elmer version: '//TRIM(DateStr)     
       DateStr = GetRevision( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Elmer revision: '//TRIM(DateStr)
       END IF        
       DateStr = GetCompilationDate( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
       END IF
 
       DateStr = GetSifName( GotIt )
       IF( GotIt ) THEN
-        WRITE( 10,'(A)') 'Solver input file: '//TRIM(DateStr)
+        WRITE( NamesUnit,'(A)') 'Solver input file: '//TRIM(DateStr)
       END IF
       
       DateStr = FormatDate()
-      WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)
+      WRITE( NamesUnit,'(A,A)') 'File started at: ',TRIM(DateStr)
 
-      WRITE(10,'(I7,A)') SaveNodes,' boundary nodes for each step'
-      WRITE(10,'(I7,A)') SaveNodes2,' polyline nodes for each step'
+      WRITE(NamesUnit,'(A)') 'Number of data nodes for each step'
+      WRITE(NamesUnit,'(A)') '  bc nodes: '//TRIM(I2S(SaveNodes))
+      WRITE(NamesUnit,'(A)') '  polyline nodes: '//TRIM(I2S(SaveNodes2))
+      WRITE(NamesUnit,'(A)') '  circle nodes: '//TRIM(I2S(SaveNodes3))
+      WRITE(NamesUnit,'(A)') '  isocurve nodes: '//TRIM(I2S(SaveNodes4))
+
+      WRITE(NamesUnit,'(A)') 'Data on different columns'
       j = 0
       IF( .NOT. SkipBoundaryInfo ) THEN
-        IF(TransientSimulation) THEN
-          WRITE(10,'(I3,": ",A)') 1,'Time step'
-          j = 1
+        IF( LineInd /= 0 ) THEN
+          j = j+1
+          WRITE(NamesUnit,'(I3,": ",A)') j,'Line Marker'
         END IF
-        WRITE(10,'(I3,": ",A)') 1+j,'Iteration step'
-        WRITE(10,'(I3,": ",A)') 2+j,'Boundary condition'
-        WRITE(10,'(I3,": ",A)') 3+j,'Node index'
+        IF(TransientSimulation) THEN
+          j = j+1
+          WRITE(NamesUnit,'(I3,": ",A)') j,'Time step'
+        END IF
+        WRITE(NamesUnit,'(I3,": ",A)') 1+j,'Iteration step'
+        WRITE(NamesUnit,'(I3,": ",A)') 2+j,'Boundary condition'
+        WRITE(NamesUnit,'(I3,": ",A)') 3+j,'Node index'
         j = j + 3
       END IF
       DO i=1,NoResults
-        WRITE(10,'(I3,": ",A)') i+j,TRIM(ValueNames(i))
+        WRITE(NamesUnit,'(I3,": ",A)') i+j,TRIM(ValueNames(i))
       END DO
-      CLOSE(10)
+      CLOSE(NamesUnit)
       DEALLOCATE( ValueNames )
     END IF
 

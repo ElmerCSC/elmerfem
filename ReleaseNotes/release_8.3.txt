@@ -1,0 +1,291 @@
+Elmer Release Notes for version 8.3
+===================================
+
+Previous release: 8.2
+Period covered: 12 March 2016 - 18 May 2017
+Number of commits: ~620
+
+
+ElmerSolver library functionality
+--------------------------------
+This is functionality that can be controlled by the user by choose of keywords.
+
+- IDR(s): New linear solver "IDR(s)" implemented. This is a contribution
+  from Martin van Gijzen. It is called by setting > Linear System Iterative Method = "idrs".
+  The s-parameter is set by "Idrs Parameter = 4", for example. The method is quite robust and
+  may often provide the best available strategy for nonsymmetric matrices.
+  The convergence may be made monotonic by setting > Idrs Smoothing = True <
+
+- Hcurl conforming elements
+  o Second-order pyramidic (31-DOF) edge element added: curl-conforming
+    approximation of degree 2 is now possible with all element shapes
+  o General Dirichlet BCs can now be specified for all available curl-conforming
+    (edge) elements (second order, optimal family, and second kind basis options
+    supported); see Appendix F of Elmer Solver Manual
+  o Mortar BCs of Galerkin type for second-order edge elements over the lowest-
+    order background mesh
+
+- Linear solver control: These are routines that should make the use of linear solvers more robust.
+  o Upper limit for detecting divergence in the internal Krylov methods of Elmer.
+    Activated by keyword > Linear System Divergence Limit <, default is 1e20.
+  o Changing linear system on-the-fly: There is a mapping between nonlinear (or coupled system)
+    iteration and iteration strategy. Different iteration levels may have different linear solvers.
+    See test case LinearSolverNamespace for example. 
+  o The linear system may be solved for the change of solution only i.e. system Ax=b is
+    replaced by system Adx=b-Ax0. This is activated by setting > Linear System Residual Mode =  True <.
+  o Added strategies that ensure that even in case of divergence the almost best solution so far is
+    used. This is applicable to BiCGStabl mainly. Set > Linear System Robust = True <.  
+
+- Scanning Loops: each solver can have "Scanning Loops" that call the same solver repeatedly.
+  This can be used to scan over parameter space, for example frequency. Often the same iteration
+  could be achieved with steady state or time level iterations, but this gives additional flexibility.
+  The scanning loops introduce an additional variable "scan" that may be used similarly to "time"
+  in parametric dependencies. Look for test cases *Scan for examples. 
+
+- SlaveSolvers: each solve can have a number of slave solvers i.e. other solvers that are called
+  within the primary solver. They may be called at various slots associated with specific
+  DefaultRoutines in the solver. Currently the possible slave solver slots are: 
+  Pre Solvers(n) = Integer
+  Nonlinear Pre Solvers(n) = Integer
+  Nonlinear Post Solvers(n) = Integer
+  Post Solvers(n) = Integer
+  Look for test cases SlaveSolverSlots* for example. 
+
+- Allow for computation of ConstraintModes i.e. modes resulting from unit nodal load.
+  These can be used as a basis in model reduction, possibly alongside with eigenmodes.
+
+- Mortar FEs: the mortar projector may involve coordinate transformation from 3D to 2D
+  assuming either cylindrical/rotational, axial or radial interfaces.
+
+- Sif parser: Optionally the sif parser can renumber all entities in the order they appear.
+  The idea is that it may be easier to copy-paste BCs, for example, between sif files.
+  This has not been taken into use but may be attractive to some users. 
+
+- Transient Restart: Enable restart in higher order time-stepping schemes with
+  > Transient Restart = Logical True < keyword in Simulation section. In effect the code will
+  save all the previous values needed also for higher order schemes. Note that this can result
+  to bloated output files. If this is not used the restart will always mean that the 1st timestep
+  uses 1st order time stepping scheme. 
+
+- Added a Predictor-Corrector time scheme for adaptive time stepping
+  method. It automatically adjusts the time steps based on stability
+  criteria and the requirement of the accuracy. An example is given in
+  "PredictorCorrector" test case.
+
+- The user can choose to continue after all numerical/convergence errors by setting
+  "Global Abort Not Converged = Logical False". Alternatively, the user can specify
+  "Linear System Abort Not Converged = Logical False" in an individual solver section."
+
+- Rotational normals: for rotating machines the vector fields should be continuous over the
+  rotating interface. This asks for optimal normal-tangential coordinate system. This is
+  achieved by setting > Rotational Normals = True < at the BC. 
+
+- Structured operations: Allow for midlayer in addition to top and bottom layers. 
+
+
+ElmerSolver library routines:
+----------------------------
+These are features that only affect those writing new code.
+
+- Metainformation: GetVersion(), GetRevision() & GetCompilationDate() functions added
+  that can be used in writing meta information in the output files. 
+
+- The name of the MPI communicator in ElmerSolver was changed from MPI_COMM_WORLD
+  to ELMER_COMM_WORLD. The idea is that Elmer may be coupled with other codes (e.g. OpenFOAM)
+  using MPI such that both codes have their own internal communicator. 
+
+- Multithreading and vectorization
+  o Added OpenMP SIMD implementation of high-order H^1 elements for Line,
+    Triangle, Quadrilateral, Tetrahedral, Prismatic and Hexahedral elements.
+  o Added MultiColour Consistent (Logical) keyword for creating consistent mesh colorings
+    when requested (serial computation).
+  o GetCurrentElement and SetCurrentElement modified to give correct return values when
+    called from within OpenMP parallel regions.
+  o Added GetRealValues routine having the same functionality as GetReal but without having
+    to use an additional intermediate buffer.
+
+- Keyword Optimization: the excessive retrieving of some keywords was reduced by
+  replacaing some commonly fetched keywords with hard-coded variables (e.g. DG and
+  Bubble flags). Also some operations where masked behind ListCheckPresentAnyBC
+  type of keywords. 
+
+- New more effective ListGet operations that are intended for element loops.
+  The ideas is that each keyword has a handle that helps to retrieve its value
+  with minimal effort. The speedup of the new routines is in the range from 1 to
+  20 depending on the type of evaluation. The new routines include:
+  o ListInitElementKeyword - initialize the keyword before element loop
+  o ListGetElementReal - retrieve real valued keyword in gaussian integration point
+  o ListGetElementRealVec - retrieve real valued keyword in all gaussian points
+  o ListGetElementInteger - retrieve integer valued keyword
+  o ListGetElementLogical - retrieve logical valued keyword
+  o ListGetElementString - retrieve string valued keyword
+  o ListCompareElementString - compare to given string and return result of comparison
+
+- ListAddNew*: The keywords may now be conditionally added more economically by using
+  ListAddNewLogical etc. type of keywords that check whether the keyword is already defined.
+  The keyword value is only added if it does not exist. This can be used in setting default
+  values in _Init sections of the solvers. 
+
+- ChildSolver: A primary solver may create child solvers that share the same
+  active domain but may have different dofs. The intended use of this strategy is for
+  people working with various block solution techniques, for example.
+  The child solver may also inherit some keywords with an appropriate namespace.
+
+- "Assert takes one LOGICAL mandatory argument, and stops the simulation if this argument
+  is false. E.g. CALL Assert(Mesh % NumberOfNodes > 0). The second and third arguments are
+  optional strings which specify the calling routine and the error message."
+
+
+
+
+ElmerSolver Solver modules
+---------------------------
+These are improvements related to different solver modules, or completely new ones.
+The Chapter for the documentaion of the solver in Elmer Models Manual is given if available.
+Note that the documentation might not even include all the new features. 
+
+- MagnetoDynamics, Ch. 15
+  o Penalized Lagrangian formulation to remove null-space of the curl operator in statics.
+    Also in transient, but that is not theoretically justified.  Useful sometimes with nonlinearities
+    and direct solver.
+  o Calculate nodal forces in harmonic case similarly airgap torque is calculated
+  o Enable calculation of harmonic average power P = E.sigma E/2. Calculate peak power by setting
+    > Calculate peak harmonic power = True <
+  o Real tensorial reluctivity. Enable with > Relative Reluctivity(3,3) < in material block.
+    Overrides related scalar linear keywords. Behaves additively .withHB curve.
+  o Enable saving of Joule losses also as nodal losses (in terms of Watts in SI units). 
+
+- Circuits and Dynamics (new), Ch. 16
+  o Model documentation
+    - Basic circuit equation functionality
+    - Massive, stranded and foil winding formulations
+  o Explicit coil resistance
+  o Output AC Power, DC resistance and AC resistance for circuit components
+  o Large number of new tests: massive, stranded and foil windings in 2D and 3D +
+    basic homogenization for stranded windings
+
+- MagnetoDynamics2D, Ch. 18
+  o Proximity effect due to in plane magnetic field in foil windings
+  o Complex power computation for circuit components
+  o Lorentz force computation
+
+- FourierLossSolver, Ch. 32
+  o A heavy facelift for the FourierLoss solver. It is now possible to use any number of loss components.
+    The visualization and export features have been improved etc.
+
+- CoilSolver, Ch. 33
+  o Let user to explicitly define coilsolver normal
+    Coil Normal(3,1) = Real nx ny nz 
+
+- ElasticitySolver, Ch. 6
+  o Nonlinear elasticity solver can now handle incompressible neo-Hookean
+    materials via a mixed FE formulation
+
+- ShellSolver (new), Ch, 7
+  o First version of a new solver for elastic shell equations based on a kinematic assumption of 
+    Reissner-Naghdi type, see the section "Shell Equations of Linear Elasticity" in 
+    Elmer Models Manual
+  o The solver is still under development and strain reduction operators needed in practice
+    have been worked out only for the lowest-order elements (a 3-node triangle or 4-node quadrilateral)
+    
+- RigidMeshMapper, Ch. 40
+  o Enable source term >Mesh Relax Source< to relaxation field solver, and
+    enable normalization to unity of this field.
+
+- Elmer2OpenFoamIO (new), Ch. 52
+  o First version of a file based coupler from Elmer to OpenFOAM coupler.
+    The idea is that Elmer computes some field (i.e. heat source) that is written in
+    OpenFOAM format for a OpenFOAM solver to read. Currently only one-directional
+    operation is supported. 
+  o Rudimentary documentation in Models Manual. 
+
+- VtuOutputSolver, Ch. 49
+  o The simple way of calling VtuOutputSolver is to set the >Post File< to have suffix .vtu.
+    Now this operation inherits all keywords from Simulation section with the prefix "vtu:",
+    for example >vtu: Save Elemental Fields = Logical False<.
+  o Enable vtu output using linear basis for DG fields.
+  o Enable mapping of geometry IDs such that the indexes in VTU format may be defined
+    in the sif file for each body and boundary. 
+  o Enable user to save results only in the current mesh by specifying
+    > Save This Mesh Only = Logical True <
+
+- SaveLine, Ch. 47
+  o Enable user given resolution rather than using the resolution obtained from the mesh faces.
+    Set > Polyline Intervals(n) = m1 m2 ... < to give number of subelements for each segment.
+
+- CraigBamptonSolver (new) 
+  o Solver can use eigen modes and constrained modes to perform model reduction.
+  o Undocumented solver. 
+
+- ScannedFieldSolver (new)
+  o Outputs the scanned fields with a prefix "Scan i" and
+    sums up the fields in the original field name
+  o Undocumented solver. (test: circuits2D_scan_harmonics)
+
+- PartitionMeshSolver (new)
+  o Firsts steps for an internal ElmerSolver routine to perform partitioning.
+  o The idea is that it is easier to consider the constraints of physics with access to the whole case.
+  o Various geometric strategies implemented.
+  o Partitioning may be done in several groups enabling minimal communication between constacts, for example. 
+  o Undocumented solver. 
+
+- ElementStats (new), Ch. 61
+  o Solver gives information on the mesh including element size, skewness, edge ratio.
+  o The results are reported in a range but also as a distrubution. 
+
+- DirectionSolver
+  o Computes body wise direction potentials for coils
+  o Undocumented solver
+  
+- RotMSolver
+  o Computes Rotation matrix based on direction potentials
+  o Undocumented solver
+  
+- WPotentialSolver
+  o Computes Wire Direction potential for coils based on rotation matrix and conductivity
+  o Undocumented solver
+
+- ShellMultiSolver (new):
+  o Contributed solver provided by prof. Gupta.
+    This is placed under "modules/contrib" (as for contributed modules) as is compiled optionally. 
+  o Documentation provided in the source directory. 
+
+
+ElmerGrid
+---------
+- Enable hybrid partitioning using radial splitting. 
+- Enable reading of mesh.names also in native Elmer format. 
+- Number of small fixes.
+
+
+ElmerGUI
+--------
+- Add colors to the coundary condition editor if 'stateBcColors'.
+
+
+Build system
+------------
+- Allow inclusion of contributed solvers under fem/src/modules/contrib
+- Cleanup of redundant code
+- Allow ElmerGrid to be compiled as a standalone application
+- Allow splitting of modules in subdirectories, see fem/modules/SaveData for example.
+- Enable QT5 support in ElmerGUI (cmake option WITH_QT5=TRUE)
+- Added travis integration that builds and runs tests with `quick` label.
+
+
+Tests
+-----
+- There are currently 533 tests which is a significant increase from the
+  403 of the previous release. This is without the Elmer/ICE specific tests. 
+
+
+Acknowledgements
+----------------
+Apart from the core Elmer team at CSC git log shows contributions from from 
+Mikko Byckling, Eelis Takala, Pavel Ponomarev, Erik Edelmann, Joe Todd, Cheng Gong,
+Fabien Gillet-Chaulet, Laure Tavard, Erik Edelmann, Rupert Gladstone, Juris Vencels,
+and Ondrej Meca. Additionally there are many ongoing deveopments in several branches
+that have not been merged to this release, and are therefore not covered heere. Also
+sometimes the code has been passed on by the original author by means other than the
+git. This is the case, for example, with IDR(s) solver provided by Martin van Gijzen.
+

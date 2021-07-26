@@ -577,7 +577,7 @@ static void vis_particle_delete(particle_t *particle)
  *
  *         Output:  none
  *   
- *   Return value:  vis_add_visual_type (malloc success propably)...
+ *   Return value:  vis_add_visual_type (malloc success probably)...
  *
  ******************************************************************************/
 int vis_initialize_particle_visual()

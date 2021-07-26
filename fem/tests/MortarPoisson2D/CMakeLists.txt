@@ -6,4 +6,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY square.grd ELMERSOLVER_STARTINFO pieces.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(MortarPoisson2D)
-ADD_ELMER_LABEL(MortarPoisson2D quick)
+ADD_ELMER_LABEL(MortarPoisson2D quick mortar)

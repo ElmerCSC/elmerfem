@@ -72,15 +72,9 @@
        STIFF(:,:), LOAD(:,:),FORCE(:), LocalKinEnergy(:), TimeForce(:)
 
      TYPE(ValueList_t), POINTER :: BC, Equation, Material
+     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
 
      SAVE MASS,STIFF,LOAD,FORCE, ElementNodes,AllocationsDone,TimeForce
-
-#ifdef USE_ISO_C_BINDINGS
-     REAL(KIND=dp) :: at,at0,KMax, EMax, KVal, EVal
-#else
-     REAL(KIND=dp) :: at,at0,CPUTime,RealTime, KMax, EMax, KVal, EVal
-#endif
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution

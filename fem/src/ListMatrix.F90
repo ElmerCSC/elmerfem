@@ -211,7 +211,7 @@ CONTAINS
       P => L(i) % Head
       DO WHILE(ASSOCIATED(P))
         j = j + 1
-        Cols(j) = P % Index
+        Cols(j)   = P % Index
         Values(j) = P % Value
         P => P % Next
       END DO
@@ -230,7 +230,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=8)
+    CALL Info('List_ToCRSMatrix','Matrix format changed from List to CRS', Level=7)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix
@@ -255,11 +255,17 @@ CONTAINS
     A % ListMatrix => List_AllocateMatrix(A % NumberOfRows)
 
     DO i=1,A % NumberOfRows
+      A % ListMatrix(i) % Level  = 0
+      A % ListMatrix(i) % Degree = 0
+
+      IF(A % Rows(i) == A % Rows(i+1)) THEN
+        A % ListMatrix(i) % Head => Null()
+        CYCLE
+      END IF
+
       ALLOCATE(A % ListMatrix(i) % Head)
       Clist => A % ListMatrix(i) % Head
       Clist % Next => Null()
-      A % ListMatrix(i) % Level  = 0
-      A % ListMatrix(i) % Degree = 0
 
       DO j=A % Rows(i), A % Rows(i+1)-1
         IF(Trunc) THEN
@@ -308,7 +314,12 @@ CONTAINS
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
-    CALL Info('ListToCRSMatrix','Matrix format changed from CRS to List', Level=5)
+
+    A % Rows => Null()  
+    A % Cols => Null()  
+    A % Diag => Null()  
+    A % Values => Null()  
+    CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix
 !-------------------------------------------------------------------------------
@@ -367,15 +378,20 @@ CONTAINS
    END FUNCTION List_GetMatrixIndex
 !-------------------------------------------------------------------------------
 
-   SUBROUTINE List_AddMatrixIndexes(List,k1,nk2,Ind,Pind)
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_AddMatrixIndexes(List,k1,nk2,Ind)
+   ! Add an array of sorted indeces to a row in ListMatrix_t. "ind" may
+   ! contain duplicate entries.
+!-------------------------------------------------------------------------------
      IMPLICIT NONE
-     TYPE(ListMatrix_t), POINTER :: List(:)
+
+     TYPE(ListMatrix_t) :: List(:)
      INTEGER, INTENT(IN) :: k1, nk2
-     INTEGER, INTENT(IN) :: Ind(nk2), Pind(nk2)
+     INTEGER, INTENT(IN) :: Ind(nk2)
 
      TYPE(ListMatrixEntry_t), POINTER :: RowPtr, PrevPtr, Entry
 !-------------------------------------------------------------------------------
-     INTEGER :: i,k2,k2i,j
+     INTEGER :: i,k2,k2i,j, k,prevind
 
      IF (k1>SIZE(List)) THEN
        CALL Fatal('List_AddMatrixIndexes','Row index out of bounds')
@@ -387,36 +403,42 @@ CONTAINS
      ! First element needs special treatment as it may modify 
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
-       Entry => List_GetMatrixEntry(Ind(Pind(1)),NULL())
+       Entry => List_GetMatrixEntry(Ind(1),NULL())
        List(k1) % Degree = 1
        List(k1) % Head => Entry
        k2i = 2
-     ELSE IF (RowPtr % INDEX > Ind(Pind(1))) THEN
-         Entry => List_GetMatrixEntry(Ind(Pind(1)),RowPtr)
-         List(k1) % Degree = List(k1) % Degree + 1
-         List(k1) % Head => Entry
-         k2i = 2
-     ELSE IF (RowPtr % INDEX == Ind(Pind(1))) THEN
-         k2i = 2
+       prevind = ind(1)
+     ELSE IF (RowPtr % Index > Ind(1)) THEN
+       Entry => List_GetMatrixEntry(Ind(1),RowPtr)
+       List(k1) % Degree = List(k1) % Degree + 1
+       List(k1) % Head => Entry
+       k2i = 2
+       prevind = ind(1)
+     ELSE IF (RowPtr % Index == Ind(1)) THEN
+        k2i = 2
+        prevind = ind(1)
      ELSE
        k2i = 1
+       prevind = -1
      END IF
 
      PrevPtr => List(k1) % Head
-     RowPtr => List(k1) % Head % Next
+     RowPtr  => List(k1) % Head % Next
+
      DO i=k2i,nk2
-       k2=Ind(Pind(i))
+       k2=Ind(i)
+       if (k2 == prevind) cycle
 
        ! Find a correct place place to add index to
        DO WHILE( ASSOCIATED(RowPtr) )
-         IF (RowPtr % INDEX >= k2) EXIT
+         IF (RowPtr % Index >= k2) EXIT
          PrevPtr => RowPtr
-         RowPtr => RowPtr % Next
+         RowPtr  => RowPtr % Next
        END DO
        
        IF (ASSOCIATED(RowPtr)) THEN
          ! Do not add duplicates
-         IF (RowPtr % INDEX /= k2) THEN
+         IF (RowPtr % Index /= k2) THEN
            ! Create new element between PrevPtr and RowPtr
            Entry => List_GetMatrixEntry(k2,RowPtr)
            PrevPtr % Next => Entry
@@ -424,28 +446,36 @@ CONTAINS
 
            ! Advance to next element in list
            PrevPtr => Entry
-           RowPtr => Entry % Next
+!          RowPtr  => 
          ELSE
            ! Advance to next element in list
            PrevPtr => RowPtr
-           RowPtr => RowPtr % Next
+           RowPtr  => RowPtr % Next
          END IF
        ELSE
          EXIT
        END IF
+
+       prevind = k2
      END DO
 
-     ! Add rest of the entries in Ind to list (if any)
      DO j=i,nk2
-       k2=Ind(Pind(j))
-       Entry => List_GetMatrixEntry(k2,NULL())
+       k2 = Ind(j)
+       if (k2 == prevind) cycle
+       prevind = k2
+
+       Entry => List_GetMatrixEntry(k2,null())
        PrevPtr % Next => Entry
-       PrevPtr => Entry
+       PrevPtr => PrevPtr % Next
        List(k1) % Degree = List(k1) % Degree + 1
      END DO
+!-------------------------------------------------------------------------------
    END SUBROUTINE List_AddMatrixIndexes
+!-------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------------------
    FUNCTION List_GetMatrixEntry(ind, next) RESULT(ListEntry)
+!-------------------------------------------------------------------------------
      IMPLICIT NONE
 
      INTEGER, INTENT(IN) :: ind
@@ -462,7 +492,9 @@ CONTAINS
      ListEntry % Value = REAL(0,dp)
      ListEntry % INDEX = ind
      ListEntry % Next => next
+!-------------------------------------------------------------------------------
    END FUNCTION List_GetMatrixEntry     
+!-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
    SUBROUTINE List_DeleteMatrixElement(List,k1,k2)
@@ -751,7 +783,7 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList1, CList2, Lptr
               
      IF ( .NOT. ASSOCIATED(List) ) THEN
-       CALL Warn('List_MoveRow','No List matrix present!')
+       CALL Warn('List_ExchangeRowStructure','No List matrix present!')
        RETURN
      END IF
          
@@ -785,49 +817,17 @@ CONTAINS
 
 
 
-   
+!------------------------------------------------------------------------------
+!>    Add the entries of a local matrix to a list-format matrix.    
 !------------------------------------------------------------------------------
   SUBROUTINE List_GlueLocalMatrix( A,N,Dofs,Indexes,LocalMatrix )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  DESCRIPTION:
-!    Add a set of values (.i.e. element stiffness matrix) to a CRS format
-!    matrix. For this matrix the entries are ordered so that 1st for one
-!    dof you got all nodes, and then for second etc. 
-!
-!  ARGUMENTS:
-!
-!  TYPE(Matrix_t) :: Lmat
-!     INOUT: Structure holding matrix, values are affected in the process
-!
-!  INTEGER :: Nrow, Ncol
-!     INPUT: Number of nodes in element, or other dofs
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: RowInds, ColInds
-!     INPUT: Permutation of the rows and column dofs
-!
-!  REAL(KIND=dp) :: LocalMatrix(:,:)
-!     INPUT: A (Nrow x RowDofs) x ( Ncol x ColDofs) matrix holding the values to be
-!            added to the CRS format matrix
-!
-!******************************************************************************
-!------------------------------------------------------------------------------
- 
-     REAL(KIND=dp) :: LocalMatrix(:,:)
-     INTEGER :: N,DOFs, Indexes(:)
      TYPE(ListMatrix_t), POINTER :: A(:)
-
+     INTEGER :: N,DOFs, Indexes(:)
+     REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
      REAL(KIND=dp) :: Value
      INTEGER :: i,j,k,l,c,Row,Col
      
@@ -850,48 +850,18 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!>    Add the entries of a local matrix to a list-format matrix by allowing
+!>    offsets
+!------------------------------------------------------------------------------
    SUBROUTINE List_GlueLocalSubMatrix( List,row0,col0,Nrow,Ncol, &
           RowInds,ColInds,RowDofs,ColDofs,LocalMatrix )
 !------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  DESCRIPTION:
-!    Add a set of values (.i.e. element stiffness matrix) to a CRS format
-!    matrix. For this matrix the entries are ordered so that 1st for one
-!    dof you got all nodes, and then for second etc. 
-!
-!  ARGUMENTS:
-!
-!  TYPE(Matrix_t) :: Lmat
-!     INOUT: Structure holding matrix, values are affected in the process
-!
-!  INTEGER :: Nrow, Ncol
-!     INPUT: Number of nodes in element, or other dofs
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: row0, col0
-!     INPUT: Offset of the matrix resulting from other blocks
-!
-!  INTEGER :: RowInds, ColInds
-!     INPUT: Permutation of the rows and column dofs
-!
-!  REAL(KIND=dp) :: LocalMatrix(:,:)
-!     INPUT: A (Nrow x RowDofs) x ( Ncol x ColDofs) matrix holding the values to be
-!            added to the CRS format matrix
-!
-!******************************************************************************
-!------------------------------------------------------------------------------
- 
-     REAL(KIND=dp) :: LocalMatrix(:,:)
-     TYPE(ListMatrix_t), POINTER :: List(:)
+     TYPE(ListMatrix_t), POINTER :: List(:) 
      INTEGER :: Nrow,Ncol,RowDofs,ColDofs,Col0,Row0,RowInds(:),ColInds(:)
-
+     REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-
      REAL(KIND=dp) :: Value
      INTEGER :: i,j,k,l,c,Row,Col
      

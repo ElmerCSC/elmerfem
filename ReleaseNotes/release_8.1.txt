@@ -1,0 +1,163 @@
+Elmer Release Notes for version 8.1
+===================================
+
+Previous release: 8.0
+Period covered: 29 April 2015 - 29 October 2015
+
+Finite elements
+----------------
+- Second-order curl-conforming (edge) finite elements for triangles and tetrahedra are now available. 
+  The background mesh for these elements can also be based on the second-order Lagrange interpolation 
+  (the choice between the element types 306 vs 303 and 510 vs 504). 
+  Two new test cases for the second-order edge elements are also available.
+
+
+Linear system solvers
+---------------------
+- Constraint Modes Analysis:
+  o New analysis type that permutes over given boundaries and sets values to zero or one.
+    Using this permutation it is possible to create lumped models. 
+  o Automated procedure to compute matrix between the constraint modes. For electrostatics this 
+    would be capacitance matrix, for example. 
+  o Preliminary documentation in the ElmerSolver manual.
+
+- Keyword "Linear System Residual Mode" implemented to enforce solution for the difference rather 
+  than for the absolute norm. Relaxes the needed tolerances for iterative linear solvers. 
+  Makes some simulations, like those in contact mechanics, much more robust. 
+
+- Keyword "Linear System Consistent Norm" implemented that enforces the parallel norm to be exactly 
+  the same as the serial norm. Essential in parallel consistency testing. 
+
+- Added possibility to specify Dirichlet boundary condition order for a specific solver with 
+  "Dirichlet BC Order" keyword. This is relevant when BCs may be conflicting.
+
+
+
+Mesh interpolation, projection and manipulation
+------------------------------------------------
+- Projectors
+  o New accurate 1D edge-to-edge projector (Galerkin type)
+  o Enable rotation of rotational interfaces simply by providing offset for angle
+  o New strategies (plane, cylindrical) implemented to allow flattening of interface meshes.
+    The flattened interface meshes allow more accurate projection since there is no faceting of the meshes.
+    These options fit the parameters for the plane/cylinder automatically.
+  o Biorthogonal basis functions for the exact Galerkin projectors and discontinuous projector
+
+- Constraint matrix
+  o When combining projectors to constraint matrix allow projectors to be additive with keyword
+    "Mortar BCs Additive = Logical True". 
+  o Introduced possibility to determine priorities such that only higher priority is accounted for. 
+    This may be useful if there are number of constraints applied to the same dofs. 
+  o Improvements on the elimination of dofs when constraint matrix is given.
+
+- Developments in contact mechanics 
+  o Features to deal correctly with N-T coordinate system. For example, in 3D the coordinate system
+    must be left-handed for the master boundary. Still limitations in cases with conflicting conditions. 
+  o Preliminary implementation of various friction models
+  o Utilization of more robust residual mode in setting up the linear problem
+
+- Discontinuous Meshes:
+  o Improvements for robustness and parallel operation. Problems in parallel operation using elimination persists. 
+
+- When interpolating from mesh to mesh, the Solver section keyword "Interpolate Passive Coordinate = Integer n"    
+  will treat nodal coordinate n as zero when performing the interpolation.
+
+- InterpolateMeshToMesh can return a list of unfound nodes. Also a mask may be used to narrow down the dofs that 
+  the interpolation is applied for. 
+
+
+
+Other library functionality
+---------------------------
+- First steps towards internal mesh partitioning features with some simple partitioning routines added. 
+
+- Compute the number of continuous sections in the mesh when setting keyword in Simulation section
+  "Calculate Mesh Pieces = Logical True". Works only in serial.
+
+- Better support for ordinary differential equations
+
+- Implemented "GetRealVector" and "GetComplexVector" functions to make it more simple to take vector valued 
+  input in Solver modules.
+
+- Added "ListGetActiveName()" to retreive activating keyword name within UDFs. Also
+  add "ListPushNameSpace()", "ListPopNamespace()".
+
+- Add "Component" input file section / model type field. This could be used for parameters that are not mesh 
+  related, such as electric circuits, equations of state, chemical reactions or other lumped models. 
+
+- First version of "mesh swap" functionality that allows for changing the mesh on-the-fly.
+  Implement "Mesh mode" to allow the same simulation to be performed for a series of meshes.
+
+- SaveMesh can now output the model mesh at each timestep.
+
+
+
+ElmerSolver Solver modules
+---------------------------
+- MagnetoDynamics
+  o The solver for the A-V formulation now supports the second-order edge elements 
+    (with Quadratic Approximation = Logical True). 
+
+- MagnetoDynamicsCalcFields (post-processor for MgDyn solvers):
+  o Generalized nodal force (GNF) based on derivative of magnetic energy
+    with respect to nodal virtual displacements. To enable force
+    calculation, use "Calculate Nodal Force = Logical True" 
+  o Calculate torque of arbitrary number of bodies using GNF wrt arbitrary axes
+  o Added keyword "Impose Body Force Current" to add impressed body force current
+    density to conduction current density.
+  o Fixed post-processing of current density in 2D.
+  o Enabled field calculation via postprocessing when using second-order edge elements in A-V simulations
+
+- ParticleAdvector:
+  o Path and time integrals implemented 
+  o Parallel operation restored 
+
+- ResultOutputSolver:
+  o Output for Constraint Modes Analysis (similar to Eigen Analysis)
+
+- ElasticSolver:
+  o Using the p-version of FEM is now possible in connection with finite elasticity.
+
+- SaveScalars
+  o Implemented masking for body, body force and material sections in SaveScalars. 
+    For example, one can now give for "Variable i" a corresponding mask "Mask Name i"
+    such that the "Operator i = material myoper" would be applied only at the material
+    where the given mask is True. 
+
+- StructuredMeshMapper
+  o Enable an intermediate layer with the keyword "Mid Surface = Real" at on internal boundary.  
+
+- ComputeNormal 
+  o Enable parallel operation without halo elements.
+
+
+ElmerSolver environment:
+-----------------------
+- Parallel testing features implemented
+  o ADD_ELMER_TEST now accepts two optional named list arguments NPROCS and LABELS.
+  o Correct MPI launcher has to be specified using CMake MPIEXEC variables.
+
+- Introduced use of labels in the tests. This allows easy selecting of a subset of tests when performing them. 
+  For example label 'slow' is added for the slowest tests and label 'quick' to fastest tests.
+  Label 'parallel' is automatically added for parallel tests, and 'serial' for serial tests. 
+
+- Tens of new serial and parallel tests included among the consistency tests.
+
+- Added "ELMER_MODULES_PATH" environment variable. User can now set variable ELMER_MODULES_PATH to a
+  colon separated list of search paths that are used when loading the solver modules.
+
+
+ElmerGrid
+---------
+- Implemented "-halobc" flag that only writes the halos around the boundary conditions. This may be needed
+  as some routines (e.g. the discontinuity creation) requires parent information of the boundary elements.
+
+- Implemented "-nooverwrite" flag that terminates the execution of ElmerGrid if the mesh file to be written 
+  already exists. This could, for example, save from some unnecessary I/O when doing automated testing. 
+
+- Enforces serial mode for mesh output if only one partition is requested. 
+
+
+
+
+

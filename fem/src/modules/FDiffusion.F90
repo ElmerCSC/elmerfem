@@ -98,11 +98,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
        Impedance, AllocationsDone, Conductivity, Permeability, &
        LrF, LocalNodes
 
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at,at0,totat,st,totst,t1
-#else
-  REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
-#endif
 
   TYPE(Solver_t), POINTER :: SolverPointer
 
@@ -128,7 +124,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
+  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
      N = Solver % Mesh % MaxElementNodes
 
      IF ( AllocationsDone ) THEN
@@ -204,7 +200,7 @@ SUBROUTINE FourierDiffusionSolver( Model,Solver,dt,TransientSimulation )
       CALL Info( 'FourierDiffusionSolve', ' ', Level=4 )
       CALL Info( 'FourierDiffusionSolve', &
            '-------------------------------------', Level=4 )
-      WRITE( Message, * ) 'Fourier Diffusuion  iteration', iter
+      WRITE( Message, * ) 'Fourier Diffusion  iteration', iter
       CALL Info( 'FourierDiffusionSolve', Message, Level=4 )
       WRITE( Message, * ) 'Frequency (Hz): ', AngularFrequency/(2*PI)
       CALL Info( 'FourierDiffusionSolve', Message, Level=4 )

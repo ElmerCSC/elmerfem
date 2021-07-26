@@ -26,7 +26,7 @@
 ! *  Module for solving losses by utilizing the Fourier expansion of 
 ! *  degrees of freedom.
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back, Mika Malinen
+! *  Authors: Juha Ruokolainen, Peter Råback, Mika Malinen
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -235,9 +235,6 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Norm, Omega
   REAL(KIND=dp), POINTER :: FourierField(:)
   REAL(KIND=dp) :: at0,at1,at2,at3
-#ifndef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: CPUTime,RealTime
-#endif
   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), SeriesLoss(:,:), CompLoss(:)
   TYPE(Variable_t), POINTER :: TargetVar, LossVar, NodalLossVar
   REAL(KIND=dp), POINTER :: TargetField(:), PrevTargetField(:,:)

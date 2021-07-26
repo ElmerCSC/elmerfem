@@ -7,4 +7,4 @@ ADD_ELMERTEST_MODULE(2ndtime TimeIntegrate TimeIntegrate.f90)
 
 file(COPY ELMERSOLVER_STARTINFO Source.f90 1d.grd  TimeIntegrate.f90 1d DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(2ndtime)
+ADD_ELMER_TEST(2ndtime LABELS transient)

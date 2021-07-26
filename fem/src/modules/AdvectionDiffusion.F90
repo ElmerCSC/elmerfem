@@ -133,11 +133,7 @@
          LocalPotential(:), Density(:), HeatCapacity(:), Pressure(:),GasConstant(:), &
          SpeciesTransferCoeff(:), SExt(:), MU(:), MV(:), MW(:)
 
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at,totat,st,totst,at0
-#else
-     REAL(KIND=dp) :: at,totat,st,totst,CPUTime,at0,RealTime
-#endif
      REAL(KIND=dp) :: Nrm(3), Nrm2(3)
      REAL(KIND=dp), ALLOCATABLE :: BackupForceVector(:)
 
@@ -1737,7 +1733,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!>  Diffuse-convective local matrix computing for general euclidian coordinates.
+!>  Diffuse-convective local matrix computing for general euclidean coordinates.
 !>  Returns element local matrices and RSH vector for diffusion-convection
 !>  equation.
 !------------------------------------------------------------------------------
@@ -2346,7 +2342,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for boundary conditions
-!>  of diffusion convection equation in general euclidian coordinates.
+!>  of diffusion convection equation in general euclidean coordinates.
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveGenBoundary( BoundaryMatrix,BoundaryVector, &
               LoadVector,NodalAlpha,Element,n,Nodes)

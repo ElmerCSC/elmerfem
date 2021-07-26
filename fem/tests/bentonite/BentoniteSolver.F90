@@ -183,7 +183,7 @@ RECURSIVE SUBROUTINE BentoniteSolver( Model,Solver,dt,TransientSimulation )
      CALL Info( 'BentoniteSolve', Message, Level=4 )
      CALL Info( 'BentoniteSolve', '-------------------------------------', Level=4 )
      CALL Info( 'BentoniteSolve', ' ', Level=4 )
-     CALL Info( 'BentoniteSolve', 'Starting Assmebly', Level=4 )
+     CALL Info( 'BentoniteSolve', 'Starting Assembly', Level=4 )
 
 !
 !    Do the bulk assembly:

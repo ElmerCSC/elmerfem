@@ -121,7 +121,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
     IF (CompAll) CompBC = .TRUE.
   END IF
 
-  IF((FirstTime .OR. Solver % Mesh % Changed) .AND. Parallel) THEN
+  IF((FirstTime .OR. Solver % MeshChanged) .AND. Parallel) THEN
      
      IF(.NOT. FirstTime) THEN
         DEALLOCATE(Hit, NeighbourPerm, PassCount, RecvCount, &
@@ -162,7 +162,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   DO t = 1, Solver % Mesh % NumberOfBoundaryElements
     Element => GetBoundaryElement(t)
 
-    IF(Element % PartIndex /= ParEnv % MyPE) CYCLE
+    !IF(Element % PartIndex /= ParEnv % MyPE) CYCLE
 
     n = GetElementNOFNodes(Element)
     BC => GetBC(Element)
@@ -204,7 +204,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
 
   IF(Parallel) THEN
 
-     IF(FirstTime .OR. Solver % Mesh % Changed) THEN
+     IF(FirstTime .OR. Solver % MeshChanged) THEN
 
         !Find nodes on partition boundaries
         FirstTime = .FALSE.

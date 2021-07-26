@@ -1,0 +1,147 @@
+!
+! A 2-D case for the electromagnetic wave solver.
+! Utilizes constant matrices for speedier assembly.
+!
+
+Check Keywords "Warn"
+
+$ w=2*pi*(2.5e9)
+$ eps0=8.854187817e-12
+$ mu0=4e-7*pi
+$ nwave=50
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Simulation
+  Max Output Level = 5
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Transient
+  Timestepping Method = Bossak
+  Timestep Sizes = $2*pi/(w*nwave)
+
+  Timestep Intervals = $5*nwave/2
+  Steady State Max Iterations = 1
+
+  Output Intervals(1) = 1
+End
+
+Constants
+  Permittivity of Vacuum = $eps0
+  Permeability of Vacuum = $mu0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Relative Permittivity = 1.0
+  Relative Permeability = 1.0
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+
+Solver 1
+  Equation = "Electromagnetic Wave"
+  Variable = E
+
+  Optimize Bandwidth = True
+  Linear System Symmetric = False
+  Procedure = "EMWaveSolver" "EMWaveSolver"
+
+  Quadratic Approximation = False
+  Use Piola Transform = True
+
+  Linear System Scaling = True
+  Linear System Solver = String "Iterative"
+  Linear System Iterative Method = String "bicgstabl"
+  BiCGstabl polynomial degree = Integer 4  
+  Linear System Preconditioning = String "none"
+  Linear System ILUT Tolerance = Real 1e-3
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Residual Output = 1
+
+  Constant Bulk Matrix = True
+End
+
+Solver 2
+  Equation = "calcfields"
+
+  Procedure = "EMWaveSolver" "EMWaveCalcFields"
+  Linear System Symmetric = False
+
+!  Discontinuous Galerkin = True
+!  Average Within Materials = True
+  Calculate Elemental Fields = False
+  Calculate Nodal Fields = True
+!  Calculate Electric field derivatives = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+
+! Not much effect as we need to assembly many RHS vectors anyways
+  Constant Bulk Matrix = True
+
+  Exec Solver = before saving
+!  Exec Solver = never
+End
+
+Solver 3
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = wave
+  Vtu Format = Logical True
+  Save Geometry Ids = Logical True
+
+!  Exec Solver = before saving
+  Exec Solver = never
+End 
+
+Body Force 1
+  !Current Density Rate 1 = ...
+  !Current Density Rate 2 = ...
+  !Current Density Rate 3 = ...
+End
+
+Boundary Condition 1
+  Name = "Inlet"
+  Target Boundaries(1) = 3
+
+  E {e} 1 = Variable "time"
+    Real MATC "sin(w*tx)"
+  E {e} 2 = Real 0
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries(1) = 1 
+  Electric Damping Coefficient = Real $ sqrt(eps0 * mu0)
+End
+
+Boundary Condition 3
+  Name = "Sides"
+  Target Boundaries(2) = 2 4 
+  E {e} 1 = Real 0
+  E {e} 2 = Real 0
+End
+
+
+Solver 1 :: Reference Norm = 4.85876745E-03
+
+! For "Quadratic Approximation = True":
+!Solver 1 :: Reference Norm = 2.45795628E-03

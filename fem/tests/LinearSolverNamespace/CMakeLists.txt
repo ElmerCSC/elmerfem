@@ -5,5 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(LinearSystemNamespace)
-ADD_ELMER_LABEL(LinearSystemNamespace quick)
+ADD_ELMER_TEST(LinearSystemNamespace LABELS quick namespace)

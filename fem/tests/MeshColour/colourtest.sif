@@ -10,7 +10,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  ! Post File   = "colourtest.ep"
+  ! Post File   = "colourtest.vtu"
   ! Output File = "colourtest.dat"
 End
 

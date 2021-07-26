@@ -565,7 +565,7 @@ void fil_com_init()
   static char *freadHelp =
   {
       "str = fread( fp,len )\n\n"
-      "Read len character  from file fp.  File pointer fp shoud have been\n"
+      "Read len character from file fp.  File pointer fp should have been\n"
       "obtained from a call to fopen or freopen, or be the standard input\n"
       "file stdin. Characters are returned as function value.\n"
       "\n"
@@ -576,7 +576,7 @@ void fil_com_init()
   {
       "vec = fscanf( fp,format )\n\n"
       "Read file fp as given in format. Format is equal to C-language format\n"
-      "File pointer fp shoud have been obtained from a call to fopen or freopen,\n"
+      "File pointer fp should have been obtained from a call to fopen or freopen,\n"
       "or be the standard input.\n"
       "\n"
       "SEE ALSO: fopen,freopen,fgets,fread,matcvt,cvtmat.\n"
@@ -585,7 +585,7 @@ void fil_com_init()
   static char *fgetsHelp =
   {
       "str = fgets( fp )\n\n"
-      "Read next line from fp. File pointer fp shoud have been obtained from a call\n"
+      "Read next line from fp. File pointer fp should have been obtained from a call\n"
       "to fopen or freopen or be the standard input.\n"
       "\n"
       "SEE ALSO: fopen,freopen,fread,fscanf,matcvt,cvtmat.\n"
@@ -594,7 +594,7 @@ void fil_com_init()
   static char *fwriteHelp =
   {
       "n = fwrite( fp, buf,len )\n\n"
-      "Write len bytes form buf to file fp. File pointer fp shoud have been obtained\n"
+      "Write len bytes form buf to file fp. File pointer fp should have been obtained\n"
       "from a call to fopen or freopen or be the standard output (stdout) or standard\n"
       "error (stderr). Return value is number of characters actually written.\n"
       "\n"
@@ -604,7 +604,7 @@ void fil_com_init()
   static char *fprintfHelp =
   {
       "n = fprintf( fp, format[, vec] )\n\n"
-      "Write formatted string to file fp. File pointer fp shoud have been obtained\n"
+      "Write formatted string to file fp. File pointer fp should have been obtained\n"
       "from a call to fopen or freopen or be the standard output (stdout) or standard\n"
       "error (stderr). The format is equal to C-language format.\n"
       "\n"

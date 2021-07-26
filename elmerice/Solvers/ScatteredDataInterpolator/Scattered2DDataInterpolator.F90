@@ -31,7 +31,7 @@
 ! *****************************************************************************
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
-!  Interpolate scattered 2D data readed from an ASCII file (x y Value)
+!  Interpolate scattered 2D data read from an ASCII file (x y Value)
 !    in the mesh nodes using:
 !     - nn-c library (http://code.google.com/p/nn-c/): linear and Natural
 !               Neighbours interpolation
@@ -60,6 +60,7 @@
         INTEGER, POINTER :: Perm(:)
 
         REAL(KIND=DP) :: Win,NaNVal,fillv
+        REAL(KIND=DP) :: Val,MinMaxVals(2)
         REAL(KIND=DP) :: x,y,z,MinD,D
         REAL(KIND=DP) :: xmin,xmax,ymin,ymax,BBoxdx
         REAL(KIND=DP),allocatable :: xx(:),yy(:),DEM(:,:)
@@ -71,6 +72,9 @@
         INTEGER :: NetcdfStatus,varid,ncid
         INTEGER :: compt,nx,ny,nval
         INTEGER :: nodeind,Varind
+        INTEGER :: nlines
+        INTEGER :: XMinIndex,XMaxIndex
+        INTEGER :: YMinIndex,YMaxIndex
 
         CHARACTER(LEN=MAX_NAME_LEN) :: TargetVariableName,VariableName,DataF
         CHARACTER(LEN=MAX_NAME_LEN) :: Name,FName,WName,MName,CSVName,tmpName
@@ -80,6 +84,8 @@
         CHARACTER(2) :: method
 
         LOGICAL :: GotVar,GotTVar,Found,UnFoundFatal=.TRUE.
+        LOGICAL :: HaveMin,HaveMax
+        LOGICAL :: INBOX
         LOGICAL :: CheckBBox,CheckNaN,ReplaceNaN,NETCDFFormat
         LOGICAL :: GoodVal,HaveFillv
         LOGICAL,dimension(:,:), allocatable :: mask
@@ -173,6 +179,25 @@
             if (.NOT.Found) then
                 method='n'
             endif
+
+            WRITE (MName,'(A,I0,A)') 'Variable ',NoVar,&
+                                     ' Valid Min Value'
+            Val = ListGetCReal( Params, TRIM(MName), Found )
+            IF (Found) THEN
+              MinMaxVals(1)=Val
+            ELSE
+              MinMaxVals(1)=-HUGE(MinMaxVals(1))
+            ENDIF
+            HaveMin=Found
+            WRITE (MName,'(A,I0,A)') 'Variable ',NoVar,&
+                                     ' Valid Max Value'
+            Val = ListGetCReal( Params, TRIM(MName), Found )
+            IF (Found) THEN
+              MinMaxVals(2)=Val
+            ELSE
+              MinMaxVals(2)=HUGE(MinMaxVals(1))
+            ENDIF
+            HaveMax=Found
             
            IF (.NOT.NETCDFFormat) Then
                open(unit = io, file = TRIM(DataF), status = 'old',iostat = ok)
@@ -183,14 +208,23 @@
                end if
             
                nin=0
+               nlines=0
                !count the line number in the file
                do while(ok == 0) 
-                 read(io,*,iostat = ok)
-                 if (ok == 0) nin = nin + 1
+                 read(io,*,iostat = ok) x,y,z
+                 if (ok == 0) THEN
+                   nlines = nlines + 1
+                   IF (CheckBBox) THEN
+                    INBOX=(x.GE.xmin).AND.(x.LE.xmax).AND.&
+                          (y.GE.ymin).AND.(y.LE.ymax)
+                    IF (.NOT.INBOX) CYCLE
+                   ENDIF
+                   nin = nin + 1
+                  ENDIF
                end do 
 
                IF (nin.eq.0) then
-                   write(message,'(A,A)') 'No Data found in',TRIM(DataF)
+                   write(message,'(A,A)') 'No Data within BBox found in',TRIM(DataF)
                    CALL Fatal(Trim(SolverName),Trim(message))
                ENDIF
                                         
@@ -200,10 +234,25 @@
                ! comes back to beginning of file
                rewind(unit=io,iostat=ok)
 
-               ! read datas
-               do i = 1, nin
-                   read(io,*,iostat = ok) pin(i)%x,pin(i)%y,pin(i)%z
+               ! read data
+               compt=0
+               do i = 1, nlines
+                   read(io,*,iostat = ok) x,y,z
+                   IF (CheckBBox) THEN
+                    INBOX=(x.GE.xmin).AND.(x.LE.xmax).AND.&
+                          (y.GE.ymin).AND.(y.LE.ymax)
+                    IF (.NOT.INBOX) CYCLE
+                   ENDIF
+                   compt = compt + 1
+                   pin(compt)%x=x
+                   pin(compt)%y=y
+                   pin(compt)%z=z
+                   IF (HaveMin) pin(compt)%z=Max(MinMaxVals(1),pin(compt)%z)
+                   IF (HAVEMax) pin(compt)%z=Min(MinMaxVals(2),pin(compt)%z)
                end do
+               IF (compt.NE.nin) &
+                 CALL Fatal(Trim(SolverName), &
+                                        'error in reading values')
                close(io)
            ELSE
                NetCDFstatus = NF90_OPEN(trim(DataF),NF90_NOWRITE,ncid)
@@ -239,27 +288,9 @@
                     CALL Fatal(Trim(SolverName), &
                         'Unable to  get netcdf ny')
                ENDIF
+
                !! allocate good size
-               allocate(xx(nx),yy(ny),DEM(nx,ny),mask(nx,ny))
-               !! Get the variable
-               NetCDFstatus = nf90_inq_varid(ncid,TRIM(VariableName),varid)
-               IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf variable id')
-               ENDIF
-               NetCDFstatus = nf90_get_var(ncid, varid,DEM)
-               IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   CALL Fatal(Trim(SolverName), &
-                        'Unable to get netcdf variable')
-               ENDIF
-               HaveFillV=.True.
-               NetCDFstatus = nf90_get_att(ncid, varid,"_FillValue",fillv)
-               IF ( NetCDFstatus /= NF90_NOERR ) THEN
-                   WRITE (FillName,'(A,I0,A)') 'Variable ',&
-                           NoVar,' Fill Value'
-                   fillv=ListGetConstReal(Params, TRIM(FillName) , Found)
-                   if (.NOT.Found) HaveFillV=.False.
-               ENDIF
+               allocate(xx(nx),yy(ny))
 
                !! Get X variable
                WRITE (dimName,'(A,I0,A)') 'Variable ',&
@@ -291,6 +322,64 @@
                    CALL Fatal(Trim(SolverName), &
                         'Unable to get netcdf y-variable')
                ENDIF
+
+               !! Check that there is data within the domain
+               IF ((MAXVAL(xx).LT.xmin).OR.(MINVAL(xx).GT.xmax)&
+                .OR.(MAXVAL(yy).LT.ymin).OR.(MINVAL(yy).GT.ymax)) &
+                 CALL Fatal(Trim(SolverName), &
+                        'No data within model domain')
+
+               !! only get Vars within BBox
+               IF (CheckBBox) THEN
+                 CALL MinMaxIndex(xx,nx,xmin,xmax,XMinIndex,XMaxIndex)
+                 CALL MinMaxIndex(yy,ny,ymin,ymax,YMinIndex,YMaxIndex)
+               ELSE
+                 XMinIndex = 1
+                 XMaxIndex = nx
+                 YMinIndex = 1
+                 YMaxIndex = ny
+               END IF
+               nx=XMaxIndex-XMinIndex+1
+               ny=YMaxIndex-YMinIndex+1
+
+               write(message,'(A,I0,A,I0,A)') 'NETCDF: reading nx=',nx,&
+                     ' and ny=',ny,' data points'
+              CALL INFO(Trim(SolverName),Trim(message),Level=5)
+               write(message,*) 'X Indexes: ',&
+                XMinIndex,XMaxIndex,xx(XMinIndex),xx(XMaxIndex)
+              CALL INFO(Trim(SolverName),Trim(message),Level=10)
+               write(message,*) 'Y Indexes: ', &
+                YMinIndex,YMaxIndex,yy(YMinIndex),yy(YMaxIndex)
+              CALL INFO(Trim(SolverName),Trim(message),Level=10)
+
+               allocate(DEM(nx,ny),mask(nx,ny))
+
+               !! Get the variable
+               NetCDFstatus = nf90_inq_varid(ncid,TRIM(VariableName),varid)
+               IF ( NetCDFstatus /= NF90_NOERR ) THEN
+                   CALL Fatal(Trim(SolverName), &
+                        'Unable to get netcdf variable id')
+               ENDIF
+               NetCDFstatus = nf90_get_var(ncid, varid,DEM(:,:),&
+                       start = (/ XMinIndex, YMinIndex /),     &
+                       count = (/ nx,ny/))
+               IF ( NetCDFstatus /= NF90_NOERR ) THEN
+                   CALL Fatal(Trim(SolverName), &
+                        'Unable to get netcdf variable')
+               ENDIF
+               HaveFillV=.True.
+               NetCDFstatus = nf90_get_att(ncid, varid,"_FillValue",fillv)
+               IF ( NetCDFstatus /= NF90_NOERR ) THEN
+                   HaveFillV=.False.
+               ENDIF
+               WRITE (FillName,'(A,I0,A)') 'Variable ',NoVar,' Fill Value'
+               Val=ListGetConstReal(Params, TRIM(FillName) , Found)
+               IF (Found) THEN
+                HaveFillV=.TRUE.
+                fillv=Val
+               ENDIF
+
+
                !! Close NETCDF
                NetCDFstatus = nf90_close(ncid)
 
@@ -326,9 +415,13 @@
                           CALL Fatal(Trim(SolverName),&
                                'get more Non-Nan values than expected')
                        ENDIF
-                       pin(compt)%x = xx(i)
-                       pin(compt)%y = yy(j)
+                       pin(compt)%x = xx(XMinIndex+i-1)
+                       pin(compt)%y = yy(YMinIndex+j-1)
                        pin(compt)%z = DEM(i,j)
+                       IF (HaveMin) &
+                         pin(compt)%z=Max(MinMaxVals(1),pin(compt)%z)
+                       IF (HAVEMax) &
+                         pin(compt)%z=Min(MinMaxVals(2),pin(compt)%z)
                        IF (DEBUG) write(10,*) pin(compt)%x,pin(compt)%y,pin(compt)%z
                      endif         
                   End do
@@ -337,33 +430,6 @@
                if (compt.ne.nin) CALL Fatal(Trim(SolverName),&
                        'sorry I didn t found the good number of values')
                deallocate(xx,yy,DEM,mask)
-           ENDIF
-
-           IF (CheckBBox) THEN
-            allocate(Bbox(nin),ptmp(nin))
-            ptmp=pin
-            deallocate(pin)
-            Bbox(:)=((ptmp(:)%x.ge.xmin).and.(ptmp(:)%x.le.xmax)& 
-                       .and.(ptmp(:)%y.ge.ymin).and.(ptmp(:)%y.le.ymax))
-            nval=COUNT(Bbox)
-            if (nval.eq.0) CALL Fatal(Trim(SolverName), &
-                                  'no data within bounding box??')
-            write(message,'(A,I0,A,I0)') 'I Found ',nval,&
-                     ' data points within bounding box over ',nin
-              CALL INFO(Trim(SolverName),Trim(message),Level=5)
-            allocate(pin(nval))
-            compt=0
-            Do i=1,nin
-               if ((ptmp(i)%x.ge.xmin).and.(ptmp(i)%x.le.xmax)&
-                   .and.(ptmp(i)%y.ge.ymin).and.(ptmp(i)%y.le.ymax)) then
-                  compt=compt+1
-                  pin(compt)=ptmp(i)
-                endif
-            End do
-            nin=nval
-            if (compt.ne.nin) CALL Fatal(Trim(SolverName),&
-                 'BBox: sorry I didn t found the good number of values')
-            deallocate(Bbox,ptmp)
            ENDIF
 
             ! call the nn C library
@@ -465,8 +531,12 @@
                       Varind=Element % NodeIndexes(i)
                    ENDIF
                    k=Perm(Varind)
-                   IF (k.GT.0) &
-                     Values(Perm(Varind))=pout(nodeind)%z
+                   IF (k.GT.0) THEN
+                     z = pout(nodeind)%z
+                     IF (HaveMin) z=Max(MinMaxVals(1),z)
+                     IF (HaveMax) z=Min(MinMaxVals(2),z)
+                     Values(Perm(Varind))= z 
+                   END IF
                 END DO
              END DO
             deallocate(pin)
@@ -477,4 +547,43 @@
        CALL INFO(Trim(SolverName), &
            '-----ALL DONE----------',Level=5)
 
-        END SUBROUTINE Scattered2DDataInterpolator
+       CONTAINS
+
+       ! Find the min and max indexes of values within bBox
+       SUBROUTINE MinMaxIndex(x,n,minx,maxx,MinIndex,MaxIndex)
+       IMPLICIT NONE
+       REAL(KIND=dp),INTENT(IN) :: x(:),minx,maxx
+       INTEGER,INTENT(IN) :: n
+       INTEGER,INTENT(OUT) :: MinIndex,MaxIndex
+
+       ! coordinates should be  monotonically increasing or
+       ! decreasing 
+       IF ((x(2)>x(1)).AND.(x(n)>x(n-1))) THEN
+        MinIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
+        MinIndex=MAX(MinIndex,1)
+
+        MaxIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
+        IF (MaxIndex.LE.1) MaxIndex=n
+       ELSE IF ((x(2)<x(1)).AND.(x(n)<x(n-1))) THEN
+        MaxIndex = MAXLOC(x, DIM=1,MASK=(x < minx))
+        IF (MaxIndex.LE.1) MaxIndex=n
+
+        MinIndex = MINLOC(x, DIM=1,MASK=(x > maxx))
+        MinIndex=MAX(MinIndex,1)
+       ELSE
+        CALL FATAL(SolverName,'coordinate is neither monotonically increasing or decreasing')
+       ENDIF
+
+       IF (MaxIndex.LT.MinIndex) THEN
+         WRITE(message,*) 'Error Min Max Indexes ',MinIndex,MaxIndex
+         CALL WARN(SolverName,message)
+         WRITE(message,*) 'Min values ',MINVAL(x),minx
+         CALL WARN(SolverName,message)
+         WRITE(message,*) 'Max values ',MAXVAL(x),maxx
+         CALL WARN(SolverName,message)
+         CALL FATAL(SolverName,'This is a fatal error')
+       ENDIF
+
+       END SUBROUTINE MinMaxIndex
+             
+       END SUBROUTINE Scattered2DDataInterpolator

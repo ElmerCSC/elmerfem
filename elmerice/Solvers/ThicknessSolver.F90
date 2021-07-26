@@ -100,7 +100,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        ResidualVector, StiffVector, MeshVelocity
 
   !------------------------------------------------------------------------------
-  !    Get variabel/solver name
+  !    Get variable/solver name
   !------------------------------------------------------------------------------
   VariableName = TRIM(Solver % Variable % Name)
   SolverName = 'ThicknessSolver ('// TRIM(Solver % Variable % Name) // ')'

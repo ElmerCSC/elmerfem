@@ -57,12 +57,13 @@ SUBROUTINE ReloadInput( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
    CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, MeshDir, MeshName
-
+   INTEGER :: IOUnit
+   
 !------------------------------------------------------------------------------
 
-   OPEN( 11,file='ELMERSOLVER_REREADINFO', STATUS='OLD', ERR=10 )
-   READ(11,'(a)') ModelName
-   CLOSE(11)
+   OPEN(NEWUNIT=IOUnit,file='ELMERSOLVER_REREADINFO', STATUS='OLD', ERR=10 )
+   READ(IOUnit,'(a)') ModelName
+   CLOSE(IOUnit)
 
    OPEN( InFileUnit, File=ModelName )
    CALL LoadInputFile( Model, InFileUnit, ModelName, MeshDir, MeshName, .FALSE.,.FALSE. )
@@ -72,9 +73,9 @@ SUBROUTINE ReloadInput( Model,Solver,dt,TransientSimulation )
 
 10 CONTINUE
 
-   OPEN( 11,file='ELMERSOLVER_REREADINFO', STATUS='OLD', ERR=20 )
-   READ(11,'(a)') ModelName
-   CLOSE(11)
+   OPEN(NEWUNIT=IOUnit,file='ELMERSOLVER_REREADINFO', STATUS='OLD', ERR=20 )
+   READ(IOUnit,'(a)') ModelName
+   CLOSE(IOUnit)
 
 20 CONTINUE
 

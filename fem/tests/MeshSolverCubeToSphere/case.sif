@@ -1,0 +1,130 @@
+! This is a application of mesh deformation where a
+! cube is transformed to an approximation of sphere.
+!
+! The test case has been saved from some old work originating from 2013.
+! The resolution of the case has been decreased to fit a test.
+! Note the speed-up gained by using F90 instead of MATC. 
+!
+! P.R. 2.10.2019
+
+
+$coeff = 1.0
+$rad = 2.0
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 20
+  Output Intervals = 0
+  
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Volume"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Equation 1
+  Name = "BulkEq"
+  Active Solvers(1) = 1 
+End
+
+Initial Condition 1
+!  Surf = Variable Coordinate
+!    Real MATC "sqrt(tx(0)*tx(0)+tx(1)*tx(1)+tx(2)*tx(2))"
+  Surf = Variable "time"
+    Real Procedure "SphereDistance" "SphereDistance"    
+End 
+
+Body Force 1 
+!  Surf = Variable Coordinate
+!    Real MATC "sqrt(tx(0)*tx(0)+tx(1)*tx(1)+tx(2)*tx(2))"
+  Surf = Variable "time"
+    Real Procedure "SphereDistance" "SphereDistance"    
+End 
+
+
+! Deforms the mesh so that it will follow the isosurface
+Solver 1
+  Equation = SmoothMeshUpdate
+  Procedure = "NonphysicalMeshSolve" "MeshSolver"
+
+  Variable = TmpUpdate[MeshU:3]
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  BiCgstabl Polynomial Degree = 5
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Residual Output = 1
+  Linear System Convergence Tolerance = 1.0e-8
+  
+!  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = Real 1.0
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+! Isosurface variable used as target
+  Target Surface = String "Surf"
+  
+! In cumulative mode the original shape does not need to be known
+  Cumulative Displacement = Logical True
+
+! Move the mesh and recompute surf and iterate
+  Moving Mesh = Logical False
+
+! Recompute the "Surf" after each nonlinear iteration
+! This could be done by some external solver also.
+  Nonlinear Update Exported Variables = Logical True
+  Update Exported Variables = Logical True
+  Exported Variable 1 = "Surf"
+End
+
+
+Material 1
+  Name = "Material"
+  Youngs Modulus = 1.0
+  Poisson Ratio = 0.3
+End
+
+
+Body Force 1
+  Name = "BodyForce1"
+End
+
+
+Boundary Condition 1
+  Name = "Outer sides"
+  Target Boundaries(3) = 1 2 3
+
+! Target value for the isosurface variable
+  Reference Surface = Real $rad
+
+! Penalty factor used to run the system till convergence
+  Mesh Penalty Factor = Real $coeff
+End
+
+Solver 1 :: Reference Norm = 3.01171939E-04
+

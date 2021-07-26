@@ -9,7 +9,7 @@ Simulation
   Simulation Type = Steady
   Steady State Max Iterations  = 50
   Output Intervals = 1
-! Post File =  "ThermalCompress.ep"
+! Post File =  "ThermalCompress.vtu"
 ! Output File = "ThermalCompress.result"
 End
 
@@ -34,6 +34,8 @@ End
 
 Solver 1
   Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
   Stabilize = True
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-6

@@ -215,7 +215,7 @@
                  STIFF( 2*STDOFs*N,2*STDOFs*N ),  &
                  LOAD( 4,N ), Alpha( 3,N ), Beta( N ), &
                  CurrFabric( 5*SIZE(Solver % Variable % Values)), &
-                 TempFabVal( 5*SIZE(Solver % Variable % Values)), &
+                 TempFabVal( SIZE(FabricValues)), &
                  STAT=istat )
 
 
@@ -474,6 +474,7 @@
 
       END IF
 
+      CALL DefaultFinishBulkAssembly()
 !------------------------------------------------------------------------------
 !     Loop over the boundary elements
 !------------------------------------------------------------------------------
@@ -815,6 +816,7 @@ CONTAINS
       END INTERFACE
 !------------------------------------------------------------------------------
       Fond=.False.
+      
       hmax = maxval (Nodes % y(1:n))
         
      dim = CoordinateSystemDimension()
@@ -875,7 +877,7 @@ CONTAINS
 !     function of the Temperature )
 !     -----------------------------------------------------
       Theta = 1._dp / ( FabricGrid(5) + FabricGrid(6) )
-      Theta = Theta 
+      !Theta = Theta 
 
 !      Strain-Rate, Stresses and Spin
 
@@ -909,7 +911,7 @@ CONTAINS
 !    Compute strainRate and Spin :
 !    -----------------------------
 
-      LGrad = MATMUL( NodalVelo(:,1:n), dBasisdx(1:n,:) )
+      LGrad = MATMUL( NodalVelo(1:3,1:n), dBasisdx(1:n,1:3) )
 
       StrainRate = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
 
@@ -991,7 +993,6 @@ CONTAINS
       CASE(1)
         !C0 = -2._dp*(SD(1)-SD(3))
         C0=-2._dp*SD(1)-3._dp*lambda*Deq
-
       CASE(2)
         !C0 = -2._dp*(SD(2)-SD(3))
         C0 = -2._dp*SD(2)-3._dp*lambda*Deq

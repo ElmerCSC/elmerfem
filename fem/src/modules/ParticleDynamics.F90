@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Peter R�back & Juha Ruokolainen
+! *  Authors: Peter Råback & Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -475,11 +475,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
        TimeOrder, TimeStepsTaken=0,estindexes(6),&
        ParticleStepsTaken=0, Group, NoGroups = 0
   REAL(KIND=dp) :: dtime, tottime = 0.0
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: cput1,cput2,dcput
-#else
-  REAL(KIND=dp) :: cput1,cput2,dcput,CPUTime
-#endif
   REAL(KIND=dp), POINTER :: TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
 
@@ -504,7 +500,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
   Mesh => Solver % Mesh
   DIM = CoordinateSystemDimension()
 
-  ! Do some initalialization: allocate space, check fields  
+  ! Do some initialization: allocate space, check fields  
   !------------------------------------------------------------------------
   IF( VisitedTimes == 1 ) THEN
     TimeOrder = GetInteger( Params,'Time Order',Found)
@@ -598,7 +594,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
     CALL ParticleStatistics( Particles, 1 )
   END IF
 
-  ! a logaritmic scale of indexes is used to estimate time
+  ! a logarithmic scale of indexes is used to estimate time
   !--------------------------------------------------------
   IF( TimeInfo ) THEN
     cput1 = CPUTime()
@@ -828,7 +824,7 @@ CONTAINS
         Particles % Velocity(No,2) = COS( Angle ) * Velo(2) + SIN( Angle ) * Velo(1)
 
         ! For higher order scheme enforce the previous velocity also to zero since
-        ! otheriwse there is a funny velocity correction added.
+        ! otherwise there is a funny velocity correction added.
         IF( Particles % TimeOrder > 1 ) THEN
           Particles % PrevVelocity(No,:) = Particles % Velocity(No,:)
         END IF

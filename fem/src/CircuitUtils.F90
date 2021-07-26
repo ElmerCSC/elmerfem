@@ -1,4 +1,4 @@
-
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -73,6 +73,24 @@ CONTAINS
   END FUNCTION GetCircuitModelDepth
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentVoltageFactor(CompInd) RESULT (VoltageFactor)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: CompInd
+    REAL(KIND=dp) :: VoltageFactor
+    TYPE(Valuelist_t), POINTER :: CompParams
+    LOGICAL :: Found
+     
+    CompParams => CurrentModel % Components(CompInd) % Values
+    IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('GetComponentVoltageFactor',&
+                                                        'Component parameters not found')
+    VoltageFactor = GetConstReal(CompParams, 'Circuit Equation Voltage Factor', Found)
+    IF (.NOT. Found) VoltageFactor = 1._dp
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentVoltageFactor
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
@@ -97,6 +115,25 @@ CONTAINS
    
 !------------------------------------------------------------------------------
   END FUNCTION GetComponentParams
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentId(Element) RESULT (ComponentId)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    INTEGER :: ComponentId
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Valuelist_t), POINTER :: BodyParams
+    LOGICAL :: Found
+    
+    BodyParams => GetBodyParams( Element )
+    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
+   
+    ComponentId = GetInteger(BodyParams, 'Component', Found)
+    
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentId
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -161,8 +198,8 @@ CONTAINS
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
-      WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
-      CALL Info('AddComponentsToBodyList',Message,Level=3)
+      WRITE(Message,'(A)') '"Body '//TRIM(I2S(i))//'" associated to "Component '//TRIM(I2S(j))//'"' 
+      CALL Info('AddComponentsToBodyList',Message,Level=5)
       BodyParams => Null()
     END DO
 !------------------------------------------------------------------------------
@@ -317,8 +354,8 @@ CONTAINS
       cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
-      
-      IF(name(1:12) == 'i_component(' .OR. name(1:12) == 'v_component(') THEN
+
+      IF(isComponentName(name,slen)) THEN
         DO j=13,slen
           IF(name(j:j)==')') EXIT 
         END DO
@@ -332,6 +369,21 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION CountNofCircComponents
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+FUNCTION isComponentName(name, len) RESULT(L)
+!------------------------------------------------------------------------------
+   CHARACTER(LEN=*) :: name
+   INTEGER :: len
+   LOGICAL :: L
+   
+   L = .FALSE.
+   IF(len<12) RETURN
+   IF(name(1:12)=='i_component(' .OR. name(1:12)=='v_component(') L=.TRUE.
+!------------------------------------------------------------------------------
+END FUNCTION isComponentName
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCircuitVariables(CId)
@@ -356,7 +408,7 @@ CONTAINS
       CVar % isVvar = .FALSE.
       CVar % Component => Null()
 
-      IF(name(1:12) == 'i_component(' .OR. name(1:12) == 'v_component(') THEN
+      IF(isComponentName(name,slen)) THEN
         DO j=13,slen
           IF(name(j:j)==')') EXIT 
         END DO
@@ -529,6 +581,9 @@ CONTAINS
       Comp % i_multiplier_im = GetConstReal(CompParams, 'Current Multiplier im', Found)
       IF (.NOT. Found) Comp % i_multiplier_im = 0._dp
 
+      Comp % VoltageFactor = GetConstReal(CompParams, 'Circuit Equation Voltage Factor', Found)
+      IF (.NOT. Found) Comp % VoltageFactor = 1._dp
+
       Comp % ElBoundaries => ListGetIntegerArray(CompParams, 'Electrode Boundaries', Found)
       
       SELECT CASE (Comp % CoilType) 
@@ -539,7 +594,13 @@ CONTAINS
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
 
-        Comp % N_j = Comp % nofturns / Comp % ElArea
+        Comp % CoilThickness = GetConstReal(CompParams, 'Coil Thickness', Found)
+        IF (.NOT. Found) Comp % CoilThickness = 1._dp
+
+        Comp % SymmetryCoeff = GetConstReal(CompParams, 'Symmetry Coefficient', Found)
+        IF (.NOT. Found) Comp % SymmetryCoeff = 1.0_dp
+
+        Comp % N_j = Comp % CoilThickness * Comp % nofturns / Comp % ElArea
 
         ! Stranded coil has current and voltage 
         ! variables (which both have a dof):
@@ -586,6 +647,7 @@ CONTAINS
 
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+
 
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
@@ -824,7 +886,7 @@ variable % owner = ParEnv % PEs-1
 
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.A'//CHAR(0),Circuit % A,n,n)
     CALL matc_get_array('C.'//TRIM(i2s(CId))//'.B'//CHAR(0),Circuit % B,n,n)
-    
+
     IF (Circuit % Harmonic) THEN
       ! Complex multiplier matrix is used for:
       ! B = times(M,B), where B times is the element-wise product
@@ -1122,8 +1184,8 @@ CONTAINS
         RowId = Cvar % ValueId + nm
 
         nn = COUNT(r_cnt>0)
-        IF(r_cnt(Cvar % Owner+1)<=0) nn=nn+1
-        
+        IF( r_cnt(CVar % Owner+1)<=0 ) Nn=nn+1
+
         IF (Circuits(p) % Harmonic) THEN
           DO j=1,Cvar % Dofs
             IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1))%Neighbours)) THEN
@@ -1131,7 +1193,7 @@ CONTAINS
               ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(nn))
             END IF
             CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(1)   = CVar % Owner
-            CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(1) = CVar % Owner
+            CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(1) = Cvar % Owner
             l = 1
             DO k=0,ParEnv % PEs-1
               IF(k==CVar % Owner) CYCLE
@@ -1141,7 +1203,7 @@ CONTAINS
                 CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(l) = k
               END IF
             END DO
-            CM % RowOwner(RowId + AddIndex(j-1)) = Cvar % Owner
+            CM % RowOwner(RowId + AddIndex(j-1))   = Cvar % Owner
             CM % RowOwner(RowId + AddImIndex(j-1)) = Cvar % Owner
           END DO
         ELSE
@@ -1515,7 +1577,7 @@ CONTAINS
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER :: p,i,j,k,Indexes(nd)
     INTEGER, OPTIONAL :: Jsind
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
@@ -1549,6 +1611,13 @@ CONTAINS
     
     DO p=ncdofs1,ncdofs2
       j = Indexes(p)
+
+      IF( ASSOCIATED( CurrentModel % Mesh % PeriodicPerm ) ) THEN
+        ! If we have periodicity eliminated only flag the master in Done
+        k = CurrentModel % Mesh % PeriodicPerm(j)
+        IF( k > 0 ) j = k
+      END IF
+
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
         j = PS(j)
@@ -1576,7 +1645,7 @@ CONTAINS
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER :: p,i,j,k,Indexes(nd)
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
     LOGICAL :: First=.TRUE.
@@ -1607,6 +1676,13 @@ CONTAINS
     END IF
     DO p=ncdofs1,ncdofs2
       j = Indexes(p)
+
+      IF( ASSOCIATED( CurrentModel % Mesh % PeriodicPerm ) ) THEN
+        ! If we have periodicity eliminated only flag the master in Done
+        k = CurrentModel % Mesh % PeriodicPerm(j)
+        IF( k > 0 ) j = k
+      END IF
+
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
         j = PS(j)
@@ -1677,7 +1753,7 @@ CONTAINS
       END DO
 
       DO j=1,ncdofs
-        q=j
+        q=j                        
         IF (dim == 3) q=q+nn
         IF (PRESENT(Cols)) THEN  
           q = PS(Indexes(q))
@@ -1741,7 +1817,7 @@ CONTAINS
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
-    CALL SetCircuitsParallelInfo()
+    IF (ParEnv % PEs > 1) CALL SetCircuitsParallelInfo()
 
     ! COUNT SIZES:
     ! ============
@@ -1777,7 +1853,7 @@ CONTAINS
 
     Cnts = 0
 
-    ! CREATE COLMUNS:
+    ! CREATE COLUMNS:
     ! ===============
 
     CALL CreateBasicCircuitEquations(Rows, Cols, Cnts)

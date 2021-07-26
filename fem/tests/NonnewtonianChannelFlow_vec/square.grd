@@ -18,8 +18,7 @@ End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = False
-Surface Elements = 500
 Element Ratios 1 = 1
-Element Ratios 2 = -3
-Element Densities 1 = 1
-Element Densities 2 = 10
+Element Ratios 2 = -5
+Element Divisions 1 = 10
+Element Divisions 2 = 100

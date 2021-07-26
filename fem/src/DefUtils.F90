@@ -482,7 +482,7 @@ CONTAINS
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
     LOGICAL, OPTIONAL :: Found
-    TYPE(Element_t), POINTER, OPTIONAL :: UElement
+    TYPE(Element_t), OPTIONAL :: UElement
 
     w = ListGetAngularFrequency( ValueList, Found, UElement )
   END FUNCTION GetAngularFrequency
@@ -533,7 +533,7 @@ CONTAINS
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element
 
-     INTEGER :: i, j, n
+     INTEGER :: i, j, k, n
      INTEGER, POINTER :: Indexes(:)
 
      Solver => CurrentModel % Solver
@@ -552,15 +552,17 @@ CONTAINS
      END IF
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
 
-     Element => GetCurrentElement(UElement)
-
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
-         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
-           Values => Variable % PrevValues(:,-tStep)
+         IF ( ASSOCIATED(Variable % PrevValues) ) THEN
+           IF( -tStep<=SIZE(Variable % PrevValues,2)) &
+              Values => Variable % PrevValues(:,-tStep)
+         END IF
        END IF
      END IF
+
+     Element => GetCurrentElement(UElement)
 
      ! If variable is defined on gauss points return that instead
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
@@ -570,6 +572,15 @@ CONTAINS
          x(i) = Values(Variable % Perm(j) + i)
        END DO
        RETURN
+     ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       Indexes => Element % DGIndexes
+       n = Element % Type % NumberOfNodes
+       DO i=1,n
+         j = Variable % Perm(Indexes(i))
+         IF(j==0) CYCLE
+         x(i) = Values(j)
+       END DO
+       RETURN       
      END IF
 
      
@@ -583,13 +594,26 @@ CONTAINS
 
 
      IF ( ASSOCIATED( Variable % Perm ) ) THEN
-       DO i=1,n
-         j = Indexes(i)
-         IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
-           j = Variable % Perm(j)
-           IF ( j>0 ) x(i) = Values(j)
-         END IF
-       END DO
+       IF( Variable % PeriodicFlipActive ) THEN
+         DO i=1,n
+           j = Indexes(i)
+           IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+             k = Variable % Perm(j)
+             IF ( k>0 ) THEN
+               x(i) = Values(k)
+               IF( CurrentModel % Mesh % PeriodicFlip(j) ) x(i) = -x(i)
+             END IF
+           END IF
+         END DO
+       ELSE
+         DO i=1,n
+           j = Indexes(i)
+           IF ( j>0 .AND. j<=SIZE(Variable % Perm) ) THEN
+             j = Variable % Perm(j)
+             IF ( j>0 ) x(i) = Values(j)
+           END IF
+         END DO
+       END IF
      ELSE
         DO i=1,n
           j = Indexes(i)
@@ -614,7 +638,7 @@ CONTAINS
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element
 
-     INTEGER :: i, j, k, n
+     INTEGER :: i, j, k, l, n
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
 
@@ -634,25 +658,19 @@ CONTAINS
      END IF
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
 
-     Element => GetCurrentElement(UElement)
-
-     Indexes => GetIndexStore()
-     IF ( ASSOCIATED(Variable % Solver ) ) THEN
-       n = GetElementDOFs( Indexes, Element, Variable % Solver )
-     ELSE
-       n = GetElementDOFs( Indexes, Element, Solver )
-     END IF
-     n = MIN( n, SIZE(x) )
-
      Values => Variable % Values
      IF ( PRESENT(tStep) ) THEN
        IF ( tStep<0 ) THEN
-         IF ( ASSOCIATED(Variable % PrevValues) .AND. -tStep<=SIZE(Variable % PrevValues,2)) &
+         IF ( ASSOCIATED(Variable % PrevValues) ) THEN
+           IF ( -tStep<=SIZE(Variable % PrevValues,2)) &
              Values => Variable % PrevValues(:,-tStep)
+         END IF
        END IF
      END IF
+     
+     Element => GetCurrentElement(UElement)
 
-
+       
      ! If variable is defined on gauss points return that instead
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        ASSOCIATE(dofs => variable % dofs)
@@ -672,17 +690,52 @@ CONTAINS
          END DO
          RETURN
        END ASSOCIATE
+     ELSE IF(  Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       Indexes => Element % DGIndexes
+       n = Element % TYPE % NumberOfNodes
+       ASSOCIATE(dofs => variable % dofs)
+         DO i=1,n
+           j = variable % perm(indexes(i))
+           IF( j==0 ) CYCLE
+           DO k=1,dofs
+             x(k, i) = Values((j-1)*dofs + k)
+           END DO
+         END DO
+         RETURN
+       END ASSOCIATE       
      END IF
 
+     
+     Indexes => GetIndexStore()
+     IF ( ASSOCIATED(Variable % Solver ) ) THEN
+       n = GetElementDOFs( Indexes, Element, Variable % Solver )
+     ELSE
+       n = GetElementDOFs( Indexes, Element, Solver )
+     END IF
+     n = MIN( n, SIZE(x,2) )
+     
      DO i=1,Variable % DOFs
        IF ( ASSOCIATED( Variable % Perm ) ) THEN
-         DO j=1,n
-           k = Indexes(j)
-           IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
-             k = Variable % Perm(k)
-             IF (k>0) x(i,j) = Values(Variable % DOFs*(k-1)+i)
-           END IF
-         END DO
+         IF( Variable % PeriodicFlipActive ) THEN
+           DO j=1,n
+             k = Indexes(j)
+             IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+               l = Variable % Perm(k)
+               IF( l>0 ) THEN
+                 x(i,j) = Values(Variable % DOFs*(l-1)+i)
+                 IF( CurrentModel % Mesh % PeriodicFlip(k) ) x(i,j) = -x(i,j)
+               END IF
+             END IF
+           END DO
+         ELSE           
+           DO j=1,n
+             k = Indexes(j)
+             IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
+               l = Variable % Perm(k)
+               IF (l>0) x(i,j) = Values(Variable % DOFs*(l-1)+i)
+             END IF
+           END DO
+         END IF
        ELSE
          DO j=1,n
            IF ( Variable % DOFs*(Indexes(j)-1)+i <= &
@@ -1576,9 +1629,6 @@ CONTAINS
      INTEGER :: i,j, id, ElemFamily
      LOGICAL :: Found, GB, NeedEdges
 
-     Element => GetCurrentElement( UElement )
-     ElemFamily = GetElementFamily(Element)
-
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
@@ -1586,13 +1636,22 @@ CONTAINS
      END IF
 
      n = 0
-     IF( Solver % DG ) THEN
-       n = Element % DGDOFs
-        IF ( n>0 ) RETURN
+
+     IF (.NOT. ASSOCIATED(Solver)) THEN
+       CALL Warn('GetElementNOFDOFS', &
+           'Cannot return the number of DOFs without knowing solver')
+       RETURN
      END IF
 
+     Element => GetCurrentElement( UElement )
+     ElemFamily = GetElementFamily(Element)
 
-     id =Element % BodyId
+     IF( Solver % DG ) THEN
+       n = Element % DGDOFs
+       IF ( n>0 ) RETURN
+     END IF
+
+     id = Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
          id = Element % BoundaryInfo % Left % BodyId
@@ -1611,6 +1670,17 @@ CONTAINS
          EXIT
        END IF
      END DO
+
+     IF (.NOT. NeedEdges) THEN
+       !
+       ! Check whether face DOFs have been generated by "-quad_face b: ..." or
+       ! "-tri_face b: ..."
+       !
+       IF (ElemFamily == 3 .OR. ElemFamily == 4) THEN
+         IF (Solver % Def_Dofs(6+ElemFamily, id, 5)>=0) NeedEdges = .TRUE.
+       END IF
+     END IF
+
      IF ( .NOT. NeedEdges ) RETURN
 
      IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
@@ -1645,7 +1715,7 @@ CONTAINS
 
 !> In addition to returning the number of degrees of freedom associated with 
 !> the element, the indexes of the degrees of freedom are also returned.
-  FUNCTION GetElementDOFs( Indexes, UElement, USolver,NotDG )  RESULT(NB)
+  FUNCTION GetElementDOFs( Indexes, UElement, USolver, NotDG )  RESULT(NB)
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      INTEGER :: Indexes(:)
@@ -1655,18 +1725,24 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face
 
      LOGICAL :: Found, GB, DGdisable, NeedEdges
-     INTEGER :: nb,i,j,k,id,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs, Ind, ElemFamily
-
-     Element => GetCurrentElement(UElement)
-     ElemFamily = GetElementFamily(Element)
+     INTEGER :: nb,i,j,k,id,NDOFs,EDOFs, FDOFs, BDOFs,FaceDOFs, EdgeDOFs, BubbleDOFs
+     INTEGER :: Ind, ElemFamily, DOFsPerNode
      
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
         Solver => CurrentModel % Solver
      END IF
-
+       
      NB = 0
+
+     IF (.NOT. ASSOCIATED(Solver)) THEN
+       CALL Warn('GetElementDOFS', 'Cannot return DOFs data without knowing solver')
+       RETURN
+     END IF
+
+     Element => GetCurrentElement(UElement)
+     ElemFamily = GetElementFamily(Element)
 
      DGDisable=.FALSE.
      IF (PRESENT(NotDG)) DGDisable=NotDG
@@ -1695,7 +1771,7 @@ CONTAINS
         IF ( NB > 0 ) RETURN
      END IF
 
-     id =Element % BodyId
+     id = Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
          id = Element % BoundaryInfo % Left % BodyId
@@ -1705,17 +1781,32 @@ CONTAINS
      END IF
      IF ( id == 0 ) id=1
 
+     IF (.NOT.ASSOCIATED(Solver % Mesh)) THEN
+       IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN  
+         CALL Warn('GetElementDOFS', &
+             'Solver mesh unknown, the node indices are returned')
+         NDOFs = 1
+       ELSE
+         CALL Warn('GetElementDOFS', &
+             'Solver mesh unknown, no indices returned')
+       END IF
+     ELSE
+       NDOFs = Solver % Mesh % MaxNDOFs
+     END IF
+
      IF ( Solver % Def_Dofs(ElemFamily,id,1)>0 ) THEN
-       DO i=1,Element % NDOFs
-          NB = NB + 1
-          Indexes(NB) = Element % NodeIndexes(i)
+       DOFsPerNode = Element % NDOFs / Element % TYPE % NumberOfNodes
+       DO i=1,Element % TYPE % NumberOfNodes
+         DO j=1,DOFsPerNode
+           NB = NB + 1
+           Indexes(NB) = NDOFs * (Element % NodeIndexes(i)-1) + j
+         END DO
        END DO
      END IF
 
-     ! default for nodal elements, if no solver active:
-     ! ------------------------------------------------
-     IF(.NOT.ASSOCIATED(Solver)) RETURN
-     IF(.NOT.ASSOCIATED(Solver % Mesh)) RETURN
+     ! The DOFs of advanced elements cannot be returned without knowing mesh
+     ! ---------------------------------------------------------------------
+     IF (.NOT.ASSOCIATED(Solver % Mesh)) RETURN
 
      NeedEdges = .FALSE.
      DO i=2,SIZE(Solver % Def_Dofs,3)
@@ -1724,6 +1815,17 @@ CONTAINS
          EXIT
        END IF
      END DO
+
+     IF (.NOT. NeedEdges) THEN
+       !
+       ! Check whether face DOFs have been generated by "-quad_face b: ..." or
+       ! "-tri_face b: ..."
+       !
+       IF (ElemFamily == 3 .OR. ElemFamily == 4) THEN
+         IF (Solver % Def_Dofs(6+ElemFamily, id, 5)>=0) NeedEdges = .TRUE.
+       END IF
+     END IF
+
      IF ( .NOT. NeedEdges ) RETURN
 
      FaceDOFs   = Solver % Mesh % MaxFaceDOFs
@@ -1736,7 +1838,7 @@ CONTAINS
           DO i=1,EDOFs
              NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Element % EdgeIndexes(j)-1) + &
-                      i + Solver % Mesh % NumberOfNodes
+                      i + NDOFs * Solver % Mesh % NumberOfNodes
           END DO
         END DO
      END IF
@@ -1747,7 +1849,8 @@ CONTAINS
            DO i=1,FDOFs
               NB = NB + 1
               Indexes(NB) = FaceDOFs*(Element % FaceIndexes(j)-1) + i + &
-                 Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+                 NDOFs * Solver % Mesh % NumberOfNodes + &
+                 EdgeDOFs*Solver % Mesh % NumberOfEdges
            END DO
         END DO
      END IF
@@ -1760,7 +1863,7 @@ CONTAINS
          Parent => Element % BoundaryInfo % Right
        IF (.NOT.ASSOCIATED(Parent) ) RETURN
 
-       SELECT CASE(GetElementFamily(Element))
+       SELECT CASE(ElemFamily)
        CASE(2)
          IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
            IF ( isActivePElement(Element) ) THEN
@@ -1780,9 +1883,9 @@ CONTAINS
 
            EDOFs = Element % BDOFs
            DO i=1,EDOFs
-               NB = NB + 1
+             NB = NB + 1
              Indexes(NB) = EdgeDOFs*(Parent % EdgeIndexes(Ind)-1) + &
-                      i + Solver % Mesh % NumberOfNodes
+                      i + NDOFs * Solver % Mesh % NumberOfNodes
            END DO
          END IF
 
@@ -1807,7 +1910,7 @@ CONTAINS
            DO i=1,FDOFs
              NB = NB + 1
              Indexes(NB) = FaceDOFs*(Parent % FaceIndexes(Ind)-1) + i + &
-                Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
+                NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges
            END DO
          END IF
        END SELECT
@@ -1816,8 +1919,8 @@ CONTAINS
            DO i=1,Element % BDOFs
               NB = NB + 1
               Indexes(NB) = FaceDOFs*Solver % Mesh % NumberOfFaces + &
-                 Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
-                   Element % BubbleIndexes(i)
+                  NDOFs * Solver % Mesh % NumberOfNodes + EdgeDOFs*Solver % Mesh % NumberOfEdges + &
+                  Element % BubbleIndexes(i)
            END DO
         END IF
      END IF
@@ -2098,6 +2201,12 @@ CONTAINS
      CurrElement => GetCurrentElement(Element)
      body_id = CurrElement % BodyId 
 
+     IF( body_id <= 0 ) THEN
+       mat_id = 0
+       IF( PRESENT( Found ) ) Found = .FALSE.
+       RETURN
+     END IF
+     
      IF ( PRESENT( Found ) ) THEN
         mat_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
            'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
@@ -2480,6 +2589,7 @@ CONTAINS
 
     Params => GetSolverParams(Solver)
 
+    ! Antiperiodic elimination and FCT always use this
     IF (GetLogical(Params,'Use Global Mass Matrix',Found)) THEN
       CALL DefaultUpdateMass(M,UElement,USolver)
       RETURN
@@ -2492,9 +2602,10 @@ CONTAINS
     dt = Solver % dt
     Indexes => GetIndexStore()
     n = GetElementDOFs( Indexes,Element,Solver )
-
+          
     CALL Add1stOrderTime( M, A, F, dt, n, x % DOFs, &
-           x % Perm(Indexes(1:n)), Solver, UElement=Element )
+        x % Perm(Indexes(1:n)), Solver, UElement=Element )
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE Default1stOrderTimeR
 !------------------------------------------------------------------------------
@@ -2602,19 +2713,6 @@ CONTAINS
    Order = MAX( MIN( Solver % DoneTime, Solver % Order ), 1)   
    HasMass = ASSOCIATED( Solver % Matrix % MassValues )
 
-   Method = ListGetString( Solver % Values, 'Timestepping Method', Found )
-   IF ( Method == 'bdf' ) THEN
-     Dts(1) = Solver % Dt
-     ConstantDt = .TRUE.
-     IF(Order > 1) THEN
-       DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
-       DO i=2,Order
-         Dts(i) = DtVar % PrevValues(1,i-1)
-         IF(ABS(Dts(i)-Dts(1)) > 1.0d-6 * Dts(1)) ConstantDt = .FALSE.
-       END DO
-     END IF
-   END IF
-   
    HasFCT = ListGetLogical( Solver % Values,'Linear System FCT', Found )
 
    IF( HasFCT ) THEN
@@ -2636,6 +2734,7 @@ CONTAINS
      RETURN
    END IF
 
+
    ! The rest of the code in this subroutine is obsolete
    IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
      IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF,MASS,X )
@@ -2652,13 +2751,25 @@ CONTAINS
    MASS = 0.0_dp
    X = 0.0_dp
 
-
+   Method = ListGetString( Solver % Values, 'Timestepping Method', Found )
+   IF ( Method == 'bdf' ) THEN
+     Dts(1) = Solver % Dt
+     ConstantDt = .TRUE.
+     IF(Order > 1) THEN
+       DtVar => VariableGet( Solver % Mesh % Variables, 'Timestep size' )
+       DO i=2,Order
+         Dts(i) = DtVar % PrevValues(1,i-1)
+         IF(ABS(Dts(i)-Dts(1)) > 1.0d-6 * Dts(1)) ConstantDt = .FALSE.
+       END DO
+     END IF
+   END IF
+   
    DO i=1,Solver % Matrix % NumberOFRows
      n = 0
      k = 0
 
      DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
-       n=n+1
+       n = n+1
        STIFF(1,n) = Solver % Matrix % Values(j)
        IF( HasMass ) THEN
          MASS(1,n) = Solver % Matrix % MassValues(j)
@@ -2676,6 +2787,7 @@ CONTAINS
          MASS(1,k) = Solver % Matrix % MassValuesLumped(i)
        END IF
      END IF
+
      FORCE(1) = Solver % Matrix % RHS(i)
      Solver % Matrix % Force(i,1) = FORCE(1)
 
@@ -2684,7 +2796,7 @@ CONTAINS
        CALL FractionalStep( n, Solver % dt, MASS, STIFF, FORCE, &
            X(:,1), Solver % Beta, Solver )
        
-     CASE('bdf')
+     CASE('bdf')       
        IF(ConstantDt) THEN
          CALL BDFLocal( n, Solver % dt, MASS, STIFF, FORCE, X, Order )
        ELSE
@@ -2696,9 +2808,7 @@ CONTAINS
            X(:,1), Solver % Beta )
      END SELECT
 
-     IF( HasFCT ) THEN
-       MASS(1,k) = 0.0_dp
-     END IF
+     IF( HasFCT ) MASS(1,k) = 0.0_dp
 
      n = 0
      DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
@@ -2998,35 +3108,23 @@ CONTAINS
        Solver => CurrentModel % Solver
      END IF
 
+     IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+       CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
+     END IF     
+
      IF( PRESENT( UseConstantBulk ) ) THEN
        IF ( UseConstantBulk ) THEN
+         IF (.NOT. ASSOCIATED( Solver % Matrix % BulkRhs ) ) THEN
+           Solver % Matrix % rhs = 0.0d0
+         END IF
+
          CALL Info('DefaultInitialize','Using constant bulk matrix',Level=8)
-         IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
+         IF (.NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
            CALL Warn('DefaultInitialize','Constant bulk system requested but not associated!')
            RETURN
          END IF
 
-         n = SIZE(Solver % Matrix % Values)
-         DO i=1,n
-           Solver % Matrix % Values(i) = Solver % Matrix % BulkValues(i)
-         END DO
-
-         IF( ASSOCIATED( Solver % Matrix % BulkMassValues ) ) THEN
-           DO i=1,n
-             Solver % Matrix % MassValues(i) = Solver % Matrix % BulkMassValues(i)
-           END DO
-         END IF
-         IF( ASSOCIATED( Solver % Matrix % BulkDampValues ) ) THEN
-           DO i=1,n
-             Solver % Matrix % DampValues(i) = Solver % Matrix % BulkDampValues(i)
-           END DO
-         END IF
-         IF( ASSOCIATED( Solver % Matrix % BulkRhs ) ) THEN
-           n = SIZE(Solver % Matrix % RHS)
-           DO i=1,n
-             Solver % Matrix % rhs(i) = Solver % Matrix % BulkRhs(i)
-           END DO
-         END IF
+         CALL RestoreBulkMatrix(Solver % Matrix)
          RETURN
        END IF
      END IF
@@ -3041,11 +3139,6 @@ CONTAINS
        CALL ChangeToHarmonicSystem( Solver, .TRUE. )
      END IF
      
-     
-     IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
-       CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
-     END IF     
-     
      CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
 
      IF( ALLOCATED(Solver % Matrix % ConstrainedDOF) ) THEN
@@ -3059,7 +3152,10 @@ CONTAINS
      IF( ListGetLogical( Solver % Values,'Bulk Assembly Timing',Found ) ) THEN 
        CALL ResetTimer('BulkAssembly'//GetVarName(Solver % Variable) ) 
      END IF
-       
+
+     ! This is a slot for calling solver that contribute to the assembly
+     CALL DefaultSlaveSolvers(Solver,'Assembly Solvers')
+                
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultInitialize
 !------------------------------------------------------------------------------
@@ -3086,7 +3182,11 @@ CONTAINS
      
      CALL Info('DefaultStart','Starting solver: '//&
         TRIM(ListGetString(Params,'Equation')),Level=10)
-
+     
+     IF( ListGetLogical( Params,'Store Cyclic System', Found ) ) THEN
+       CALL StoreCyclicSolution( Solver ) 
+     END IF
+     
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -3153,8 +3253,9 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
     INTEGER :: NameSpaceI, Count, MaxCount, i
-    LOGICAL :: LinearSystemTrialing
-
+    LOGICAL :: LinearSystemTrialing, SourceControl
+    REAL(KIND=dp) :: s(3)
+    
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
     
     Solver => CurrentModel % Solver
@@ -3170,12 +3271,6 @@ CONTAINS
     IF( NameSpaceI > 0 ) THEN
       CALL Info('DefaultSolve','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
       CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
-    END IF
-
-    IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
-        ListCheckPresent( Params, 'Dump system RHS') ) THEN
-      CALL Error('DefaultSolve','> Dump System Matrix < and > Dump System Rhs < are obsolete')
-      CALL Fatal('DefaultSolve','Use > Linear System Save = True < instead!')
     END IF
 
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
@@ -3197,30 +3292,38 @@ CONTAINS
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
-
     
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
-
     
     IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
       RETURN
-    END IF
-    
+    END IF    
 
+    SourceControl = ListGetLogical( Params,'Apply Source Control',Found )
+    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.TRUE. ) 
     
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
     A => Solver % Matrix
-    x => Solver % Variable
-    
+    x => Solver % Variable    
     b => A % RHS
     SOL => x % Values
 
+    ! Debugging stuff activated only when "Max Output Level" >= 20
+    IF( InfoActive( 20 ) ) THEN
+      CALL VectorValuesRange(A % Values,SIZE(A % Values),'A')       
+      CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b')       
+    END IF
+      
 10  CONTINUE
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+    
+    IF( InfoActive( 20 ) ) THEN
+      CALL VectorValuesRange(x % Values,SIZE(x % values),'x')       
+    END IF
     
     IF( LinearSystemTrialing ) THEN
       IF( x % LinConverged > 0 ) THEN
@@ -3253,7 +3356,8 @@ CONTAINS
       END IF
     END IF
     
-
+    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.FALSE. ) 
+    
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF( Found .AND. TRIM( saveslot ) == 'after') THEN
@@ -3267,6 +3371,7 @@ CONTAINS
       CALL FCT_Correction( Solver )
     END IF
 
+    ! Backchange the linear system 
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver, .TRUE. )
     END IF
@@ -3372,7 +3477,8 @@ CONTAINS
     ReduceStep = CheckStepSize(Solver,First,nsize,values,values0) 
 
     IF( Last .AND. .NOT. ReduceStep ) THEN
-      CALL Info('DefaultLinesearch','Maximum number of nonlinear iterations reached, giving up after linesearch')
+      CALL Info('DefaultLinesearch',&
+          'Maximum number of nonlinear iterations reached, giving up after linesearch',Level=6)
     END IF
 
     IF( PRESENT( Converged ) ) THEN
@@ -3384,40 +3490,26 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, BulkUpdate, VecAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      REAL(KIND=dp) :: G(:,:), f(:)
-     LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
+     LOGICAL, OPTIONAL :: VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-     REAL(KIND=dp), POINTER CONTIG   :: b(:)
+     REAL(KIND=dp), POINTER CONTIG   :: b(:), svalues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
      LOGICAL :: Found, BUpd, VecAsm, MCAsm
 
-     INTEGER :: j, n, nd
+     INTEGER :: i, j, n, nd
      INTEGER(KIND=AddrInt) :: Proc
      INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
-
-#ifndef USE_ISO_C_BINDINGS
-     INTERFACE 
-       SUBROUTINE ExecLocalProc( Proc, Model, Solver, G, F, Element, n, nd )
-         USE Types
-         INTEGER(KIND=AddrInt) :: Proc
-         TYPE(Model_t)   :: Model
-         TYPE(Solver_t)  :: Solver
-         TYPE(Element_t) :: Element
-         INTEGER :: n, nd
-         REAL(KIND=dp) :: G(:,:), F(:)
-       END SUBROUTINE ExecLocalProc
-     END INTERFACE
-#endif
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
@@ -3448,15 +3540,16 @@ CONTAINS
      END IF
 
      IF ( ParEnv % PEs > 1 ) THEN
+
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
           P1 => Element % BoundaryInfo % Left
           P2 => Element % BoundaryInfo % Right
           IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
-            IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
-                 P2 % PartIndex/=ParEnv % myPE )RETURN
+            IF ( P1 % PartIndex /= ParEnv % myPE .AND. &
+                 P2 % PartIndex /= ParEnv % myPE )RETURN
 
-            IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
-                 P2 % PartIndex/=ParEnv % myPE ) THEN
+            IF ( P1 % PartIndex /= ParEnv % myPE .OR. &
+                 P2 % PartIndex /= ParEnv % myPE ) THEN
               G=G/2; F=F/2; 
             END IF
           ELSE IF ( ASSOCIATED(P1) ) THEN
@@ -3465,7 +3558,16 @@ CONTAINS
             IF ( P2 % PartIndex /= ParEnv % myPE ) RETURN
           END IF
        ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
-          RETURN
+          IF(GetLogical(Solver % Values,'Linear System FCT',Found)) THEN
+            Indexes => GetIndexStore()
+            n = GetElementDOFs( Indexes, Element, Solver )
+            IF(.NOT.ASSOCIATED(A % HaloValues)) THEN
+              ALLOCATE(A % HaloValues(SIZE(A % Values))); A % HaloValues=0._dp
+            END IF
+            CALL UpdateGlobalEquations( A,G,b,0._dp*f,n,x % DOFs, &
+              x % Perm(Indexes(1:n)),UElement=Element,GlobalValues=A % HaloValues )
+            END IF
+            RETURN
        END IF
      END IF
 
@@ -3499,14 +3601,27 @@ CONTAINS
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
 
+       ! If we have any antiperiodic entries we need to check them all!
+       IF( Solver % PeriodicFlipActive ) THEN
+         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+       END IF
+               
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                               x % Perm(Indexes(1:n)), UElement=Element )
          CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
        ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-                              x % Perm(Indexes(1:n)), UElement=Element )
+          x % Perm(Indexes(1:n)), UElement=Element )
        END IF
+
+       ! backflip, in case G is needed again
+       IF( Solver % PeriodicFlipActive ) THEN
+         CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+       END IF
+       
      END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
@@ -3588,12 +3703,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate, MCAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
-     LOGICAL, OPTIONAL :: BulkUpdate, MCAssembly
+     LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this 
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
@@ -3658,6 +3773,12 @@ CONTAINS
        END DO
      END DO
 
+     ! If we have any antiperiodic entries we need to check them all!
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+          
      CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
 
      DEALLOCATE( G, F)
@@ -3712,8 +3833,18 @@ CONTAINS
        END IF
      END IF
 
+     ! If we have any antiperiodic entries we need to check them all!
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+     
      CALL UpdateGlobalForce( Solver % Matrix % RHS, &
          F, n, x % DOFs, x % Perm(Indexes(1:n)), UElement=Element)
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+     
 
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateForceR
@@ -3774,6 +3905,10 @@ CONTAINS
        F( 2*(i-1) + 2 ) = AIMAG(FC(i))
     END DO
 
+    IF( Solver % PeriodicFlipActive ) THEN
+      CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+    END IF
+            
     CALL UpdateGlobalForce( Solver % Matrix % RHS, &
         F, n, x % DOFs, x % Perm(Indexes(1:n)) )
 
@@ -3826,8 +3961,17 @@ CONTAINS
        END IF
      END IF
 
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+          
      CALL UpdateTimeForce( Solver % Matrix,Solver % Matrix % RHS, &
-          F, n, x % DOFs, x % Perm(Indexes(1:n)) )
+         F, n, x % DOFs, x % Perm(Indexes(1:n)) )
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF     
+     
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateTimeForceR
 !------------------------------------------------------------------------------
@@ -3885,7 +4029,11 @@ CONTAINS
          F( 2*(i-1) + 1 ) =   REAL(FC(i))
          F( 2*(i-1) + 2 ) = -AIMAG(FC(i))
       END DO
-
+      
+      IF( Solver % PeriodicFlipActive ) THEN
+        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+      END IF      
+      
       CALL UpdateTimeForce( Solver % Matrix,Solver % Matrix % RHS, &
                F, n, x % DOFs, x % Perm(Indexes(1:n)) )
 
@@ -3947,14 +4095,24 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
-         ALLOCATE( A % PrecValues(SIZE(A % Values)) )
-         A % PrecValues = 0.0d0
-       END IF
+     IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
+       ALLOCATE( A % PrecValues(SIZE(A % Values)) )
+       A % PrecValues = 0.0d0
+     END IF
 !$OMP END CRITICAL
 
+     ! flip mass matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+      
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), & 
-            A % PrecValues )
+         A % PrecValues )
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+          
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdatePrecR
 !------------------------------------------------------------------------------
@@ -4029,6 +4187,11 @@ CONTAINS
        END DO
      END DO
 
+     ! flip preconditioning matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+     
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
               A % PrecValues )
      DEALLOCATE( M )
@@ -4047,6 +4210,8 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
+
+     LOGICAL :: Found
 
      INTEGER :: i,j,n
      INTEGER, POINTER :: Indexes(:)
@@ -4082,19 +4247,41 @@ CONTAINS
             IF ( P2 % PartIndex /= ParEnv % myPE ) RETURN
           END IF
        ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
+          IF (ListGetLogical(Solver % Values, 'Linear System FCT', Found)) THEN
+            Indexes => GetIndexStore()
+            n = GetElementDOFs( Indexes, Element, Solver )
+            IF(.NOT.ASSOCIATED(A % HaloMassValues)) THEN
+              ALLOCATE(A % HaloMassValues(SIZE(A % Values))); A % HaloMassValues=0._dp
+            END IF
+            CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
+                               A % HaloMassValues ) 
+          END IF
           RETURN
        END IF
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
-         ALLOCATE( A % MassValues(SIZE(A % Values)) )
-         A % MassValues = 0.0d0
-       END IF
+     IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
+       ALLOCATE( A % MassValues(SIZE(A % Values)) )
+       A % MassValues = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
+
+     ! flip mass matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF
+                
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
-             A % MassValues ) 
+         A % MassValues ) 
+     
+     ! backflip to be on the safe side
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % Dofs, M )
+     END IF
+
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateMassR
 !------------------------------------------------------------------------------
@@ -4169,6 +4356,11 @@ CONTAINS
        END DO
      END DO
 
+     ! flip mass matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
+     END IF                
+
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
                     A % MassValues )
      DEALLOCATE( M )
@@ -4228,14 +4420,23 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
-          ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
-          A % DampValues = 0.0d0
-       END IF
+     IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
+       ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
+       A % DampValues = 0.0d0
+     END IF
 !$OMP END CRITICAL
 
+     ! flip damp matrix for periodic elimination
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+     END IF                
+     
      CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
               A  % DampValues )
+
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+     END IF                
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateDampR
 !------------------------------------------------------------------------------
@@ -4311,6 +4512,10 @@ CONTAINS
        END DO
      END DO
 
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+     END IF                
+     
      CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
                  A % DampValues )
      DEALLOCATE( B )
@@ -4371,21 +4576,34 @@ CONTAINS
      END IF
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-          ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
-          A % BulkValues = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
+       ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+       A % BulkValues = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-          ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
-          A % BulkRHS = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
+       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+       A % BulkRHS = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
+       
+     ! If we have any antiperiodic entries we need to check them all!
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+     
      CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)),  &
-                  GlobalValues=A % BulkValues )
+         GlobalValues=A % BulkValues )
+     
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+      
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateBulkR
 !------------------------------------------------------------------------------
@@ -4448,17 +4666,17 @@ CONTAINS
 
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-          ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
-          A % BulkValues = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
+       ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+       A % BulkValues = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
 !$OMP CRITICAL
-       IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-            ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
-          A % BulkRHS = 0.0_dp
-       END IF
+     IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
+       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+       A % BulkRHS = 0.0_dp
+     END IF
 !$OMP END CRITICAL
 
      ALLOCATE( B(DOFs*n, DOFs*n), F(DOFs*n) )
@@ -4474,10 +4692,15 @@ CONTAINS
        END DO
      END DO
 
+     IF( Solver % PeriodicFlipActive ) THEN
+       CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
+       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+     END IF
+      
      CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)), &
                  GlobalValues=A % BulkValues )
 
-     DEALLOCATE( B )
+     DEALLOCATE( B, F )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateBulkC
 !------------------------------------------------------------------------------
@@ -4554,15 +4777,15 @@ CONTAINS
      REAL(KIND=dp), POINTER :: b(:)
      REAL(KIND=dp), POINTER :: DiagScaling(:)
      REAL(KIND=dp) :: xx, s, dval
-     REAL(KIND=dp) :: DefaultDOFs(3)
+     REAL(KIND=dp) :: DefaultDOFs(4)
 
      INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
-     INTEGER :: FDofMap(4,3)
+     INTEGER :: FDofMap(6,4)
      INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj, i0
      INTEGER :: EDOFs, FDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
      INTEGER :: ActiveFaceId
 
-     LOGICAL :: RevertSign(4) ! Size for tetrahedra, update for other element shapes
+     LOGICAL :: ReverseSign(6)
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem, DirichletComm
      LOGICAL :: BUpd, PiolaTransform, QuadraticApproximation, SecondKindBasis
 
@@ -4598,13 +4821,6 @@ CONTAINS
        CALL DetermineSoftLimiter( Solver )	
      END IF
 
-
-     ! Create contact BCs using mortar conditions.
-     !---------------------------------------------------------------------
-     !IF( ListGetLogical( Solver % Values,'Apply Contact BCs',Found) ) THEN
-     !  CALL DetermineContact( Solver )	
-     !END IF
-
      IF(.NOT.ALLOCATED(A % ConstrainedDOF)) THEN
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
        A % ConstrainedDOF = .FALSE.
@@ -4636,7 +4852,7 @@ CONTAINS
      END IF
 
      CALL Info('DefUtils::DefaultDirichletBCs', &
-            'Setting Dirichlet boundary conditions', Level=5)
+            'Setting Dirichlet boundary conditions', Level=6)
      
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled: 
@@ -4882,6 +5098,11 @@ CONTAINS
          SaveElement => SetCurrentElement(SaveElement)
      END DO
 
+     !
+     ! Apply special couple loads for 3-D models of solids:
+     !
+     CALL SetCoupleLoads(CurrentModel, x % Perm, A, b, x % DOFs )
+
      ! ----------------------------------------------------------------------------
      ! Set Dirichlet BCs for edge and face dofs which arise from approximating with
      ! edge (curl-conforming) or face (div-conforming) elements:
@@ -4923,27 +5144,27 @@ CONTAINS
               IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
                  SELECT CASE(GetElementFamily())
                  CASE(2)
-                   DO j=1,Parent % TYPE % NumberOfEdges
-                     Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
-                     n = 0
-                     DO k=1,Element % TYPE % NumberOfNodes
-                       DO l=1,Edge % TYPE % NumberOfNodes
-                         IF ( Element % NodeIndexes(k)==Edge % NodeIndexes(l)) n=n+1
-                       END DO
-                     END DO
-                     IF ( n==Element % TYPE % NumberOfNodes ) EXIT
-                   END DO
 
+                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
+
+                   IF ( .NOT. ASSOCIATED(Edge) ) CYCLE
                    IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
+                   IF (EDOFs < 1) CYCLE
+
                    n = Edge % TYPE % NumberOfNodes
                    CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {e}',Work, &
                        EDOFs, SecondKindBasis)
 
                    n=GetElementDOFs(gInd,Edge)
 
-                   n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+                   IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                     n_start = Edge % NDOFs
+                   ELSE
+                     n_start = 0
+                   END IF
+
                    DO j=1,EDOFs
                      k = n_start + j
                      nb = x % Perm(gInd(k))
@@ -4955,21 +5176,9 @@ CONTAINS
                    END DO
 
                  CASE(3,4)
-                   !Check that solver % mesh % faces exists?
-!-- Better:                   IF ( ASSOCIATED(Parent % FaceIndexes) ) THEN
-                   DO j=1,Parent % TYPE % NumberOfFaces
-                     Face => Solver % Mesh % Faces(Parent % FaceIndexes(j))
-                     IF ( GetElementFamily(Element)==GetElementFamily(Face) ) THEN
-                       n = 0
-                       DO k=1,Element % TYPE % NumberOfNodes
-                         DO l=1,Face % TYPE % NumberOfNodes
-                           IF ( Element % NodeIndexes(k)==Face % NodeIndexes(l)) n=n+1
-                         END DO
-                       END DO
-                       IF ( n==Face % TYPE % NumberOfNodes ) EXIT
-                     END IF
-                   END DO
+                   CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
 
+                   IF (.NOT. ASSOCIATED(Face)) CYCLE
                    IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                    ! ---------------------------------------------------------------------
@@ -4981,6 +5190,7 @@ CONTAINS
                    DO l=1,Face % TYPE % NumberOfEdges
                      Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
                      EDOFs = Edge % BDOFs
+                     IF (EDOFs < 1) CYCLE                     
                      n = Edge % TYPE % NumberOfNodes
 
                      CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, TRIM(Name)//' {e}', &
@@ -4988,8 +5198,12 @@ CONTAINS
                      
                      n = GetElementDOFs(gInd,Edge)
 
-                     n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
-
+                     IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                       n_start = Edge % NDOFs
+                     ELSE
+                       n_start = 0
+                     END IF
+ 
                      DO j=1,EDOFs
 
                        k = n_start + j
@@ -5033,34 +5247,105 @@ CONTAINS
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)
              ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D and
-             ! for the Nedelec tetrahedron of the first and second kind in 3D.
+             ! for a 48-DOF brick and the Nedelec tetrahedron of the first and second kind 
+             ! in 3D.
              !--------------------------------------------------------------------------
              SELECT CASE(GetElementFamily())
              CASE(2)
-               IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
-                 DO j=1,Parent % TYPE % NumberOfEdges
-                   Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
-                   n = 0
-                   DO k=1,Element % TYPE % NumberOfNodes
-                     DO l=1,Edge % TYPE % NumberOfNodes
-                       IF ( Element % NodeIndexes(k)==Edge % NodeIndexes(l)) n=n+1
-                     END DO
+               
+               CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
+
+               IF (.NOT. ASSOCIATED(Edge)) CYCLE
+               IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
+
+               EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
+
+               IF (EDOFs < 1) CYCLE
+
+               n = Edge % TYPE % NumberOfNodes
+               CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {f}',Work, &
+                   EDOFs, SecondKindBasis, FaceElement=.TRUE.)
+
+               n=GetElementDOFs(gInd,Edge)
+
+               IF (Solver % Def_Dofs(2,Parent % BodyId,1) > 0) THEN
+                 n_start = Edge % NDOFs
+               ELSE
+                 n_start = 0
+               END IF
+               DO j=1,EDOFs
+                 k = n_start + j
+                 nb = x % Perm(gInd(k))
+                 IF ( nb <= 0 ) CYCLE
+                 nb = Offset + x % DOFs*(nb-1) + DOF
+
+                 A % ConstrainedDOF(nb) = .TRUE.
+                 A % Dvalues(nb) = Work(j) 
+               END DO
+
+             CASE(3)
+               
+               CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
+
+               IF (.NOT. ASSOCIATED(Face)) CYCLE
+               IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
+
+               FDOFs = Face % BDOFs
+
+               IF (FDOFs > 0) THEN
+                 CALL FaceElementOrientation(Parent, ReverseSign, ActiveFaceId)
+                 IF (SecondKindBasis) &
+                     CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
+                 n = Face % TYPE % NumberOfNodes
+
+                 CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
+                     TRIM(Name)//' {f}', Work, FDOFs, SecondKindBasis)
+
+                 IF (SecondKindBasis) THEN
+                   !
+                   ! Conform to the orientation and ordering used in the
+                   ! assembly of the global equations
+                   !
+                   DefaultDOFs(1:FDOFs) = Work(1:FDOFs)
+                   IF (ReverseSign(ActiveFaceId)) THEN
+                     S = -1.0d0
+                   ELSE
+                     S = 1.0d0
+                   END IF
+
+                   DO j=1,FDOFs
+                     k = FDofMap(ActiveFaceId,j)
+                     Work(j) = S * DefaultDOFs(k)
                    END DO
-                   IF ( n==Element % TYPE % NumberOfNodes ) EXIT
-                 END DO
+                 ELSE
+                   IF (ReverseSign(ActiveFaceId)) Work(1:FDOFs) = -1.0d0*Work(1:FDOFs)
+                 END IF
 
-                 IF (n /= Element % TYPE % NumberOfNodes) CYCLE
-                 IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
+                 n = GetElementDOFs(GInd,Face)
+                 !
+                 ! Make an offset by the count of nodal DOFs. This provides
+                 ! the right starting point if edge DOFs are not present.
+                 !
+                 IF (Solver % Def_Dofs(3,Parent % BodyId,1) > 0) THEN
+                   n_start = Face % NDOFs
+                 ELSE
+                   n_start = 0
+                 END IF
+                 !
+                 ! Check if we need to increase the offset by the count of
+                 ! edge DOFs:
+                 !
+                 IF ( ASSOCIATED(Face % EdgeIndexes) .AND. &
+                     Solver % Def_Dofs(3,Parent % BodyId,2) > 0) THEN
+                   EDOFs = 0
+                   DO l=1,Face % TYPE % NumberOfEdges
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     EDOFs = EDOFs + Edge % BDOFs
+                   END DO
+                   n_start = n_start + EDOFs
+                 END IF
 
-                 EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
-                 n = Edge % TYPE % NumberOfNodes
-                 CALL VectorElementEdgeDOFs(BC,Edge,n,Parent,np,TRIM(Name)//' {f}',Work, &
-                     EDOFs, SecondKindBasis, FaceElement=.TRUE.)
-
-                 n=GetElementDOFs(gInd,Edge)
-
-                 n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
-                 DO j=1,EDOFs
+                 DO j=1,FDOFs
                    k = n_start + j
                    nb = x % Perm(gInd(k))
                    IF ( nb <= 0 ) CYCLE
@@ -5069,87 +5354,74 @@ CONTAINS
                    A % ConstrainedDOF(nb) = .TRUE.
                    A % Dvalues(nb) = Work(j) 
                  END DO
-
                END IF
 
-             CASE(3)
-               IF ( ASSOCIATED( Parent % FaceIndexes ) ) THEN
-                 DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
-                   Face => Solver % Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
-                   IF ( GetElementFamily(Element)==GetElementFamily(Face) ) THEN
-                     n = 0
-                     DO k=1,Element % TYPE % NumberOfNodes
-                       DO l=1,Face % TYPE % NumberOfNodes
-                         IF ( Element % NodeIndexes(k)==Face % NodeIndexes(l)) n=n+1
-                       END DO
-                     END DO
-                     IF ( n==Face % TYPE % NumberOfNodes ) EXIT
-                   END IF
+             CASE(4)
+               
+               CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
+
+               IF (.NOT. ASSOCIATED(Face)) CYCLE
+               IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
+
+               FDOFs = Face % BDOFs
+
+               IF (FDOFs > 0) THEN
+                 CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId, ReverseSign)
+                 n = Face % TYPE % NumberOfNodes
+
+                 CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
+                     TRIM(Name)//' {f}', Work, FDOFs)
+
+                 !
+                 ! Conform to the orientation and ordering used in the
+                 ! assembly of the global equations
+                 !
+                 DefaultDOFs(1:FDOFs) = Work(1:FDOFs)
+                 IF (ReverseSign(ActiveFaceId)) THEN
+                   S = -1.0d0
+                 ELSE
+                   S = 1.0d0
+                 END IF
+
+                 DO j=1,FDOFs
+                   k = FDofMap(ActiveFaceId,j)
+                   Work(j) = S * DefaultDOFs(k)
                  END DO
 
-                 IF (n /= Element % TYPE % NumberOfNodes) CYCLE
-                 IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
-                 
-                 FDOFs = Face % BDOFs
+                 n = GetElementDOFs(GInd,Face)
 
-                 IF (FDOFs > 0) THEN
-                   CALL FaceElementOrientation(Parent, RevertSign, ActiveFaceId)
-                   IF (SecondKindBasis) &
-                       CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
-                   n = Face % TYPE % NumberOfNodes
-
-                   CALL FaceElementDOFs(BC, Face, n, Parent, ActiveFaceId, &
-                       TRIM(Name)//' {f}', Work, FDOFs, SecondKindBasis)
-
-                   IF (SecondKindBasis) THEN
-                     !
-                     ! Conform to the orientation and ordering used in the
-                     ! assembly of the global equations
-                     !
-                     DefaultDOFs(1:FDOFs) = Work(1:FDOFs)
-                     IF (RevertSign(ActiveFaceId)) THEN
-                       S = -1.0d0
-                     ELSE
-                       S = 1.0d0
-                     END IF
-
-                     DO j=1,FDOFs
-                       k = FDofMap(ActiveFaceId,j)
-                       Work(j) = S * DefaultDOFs(k)
-                     END DO
-                   ELSE
-                     IF (RevertSign(ActiveFaceId)) Work(1:FDOFs) = -1.0d0*Work(1:FDOFs)
-                   END IF
-
-                   n = GetElementDOFs(GInd,Face)
-                   !
-                   ! Make an offset by the count of nodal DOFs. This provides
-                   ! the right starting point if edge DOFs are not present.
-                   !
-                   n_start = Solver % Def_Dofs(3,Parent % BodyId,1) * Face % NDOFs
-                   !
-                   ! Check if we need to increase the offset by the count of
-                   ! edge DOFs:
-                   !
-                   IF ( ASSOCIATED(Face % EdgeIndexes) ) THEN
-                     EDOFs = 0
-                     DO l=1,Face % TYPE % NumberOfEdges
-                       Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
-                       EDOFs = EDOFs + Edge % BDOFs
-                     END DO
-                     n_start = n_start + Solver % Def_Dofs(3,Parent % BodyId,2) * EDOFs
-                   END IF
-
-                   DO j=1,FDOFs
-                     k = n_start + j
-                     nb = x % Perm(gInd(k))
-                     IF ( nb <= 0 ) CYCLE
-                     nb = Offset + x % DOFs*(nb-1) + DOF
-
-                     A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = Work(j) 
-                   END DO
+                 !
+                 ! Make an offset by the count of nodal DOFs. This provides
+                 ! the right starting point if edge DOFs are not present.
+                 !
+                 IF (Solver % Def_Dofs(4,Parent % BodyId,1) > 0) THEN
+                   n_start = Face % NDOFs
+                 ELSE
+                   n_start = 0
                  END IF
+                 !
+                 ! Check if we need to increase the offset by the count of
+                 ! edge DOFs:
+                 !
+                 IF ( ASSOCIATED(Face % EdgeIndexes) .AND. &
+                     Solver % Def_Dofs(4,Parent % BodyId,2) > 0) THEN
+                   EDOFs = 0
+                   DO l=1,Face % TYPE % NumberOfEdges
+                     Edge => Solver % Mesh % Edges(Face % EdgeIndexes(l))
+                     EDOFs = EDOFs + Edge % BDOFs
+                   END DO
+                   n_start = n_start + EDOFs
+                 END IF
+
+                 DO j=1,FDOFs
+                   k = n_start + j
+                   nb = x % Perm(gInd(k))
+                   IF ( nb <= 0 ) CYCLE
+                   nb = Offset + x % DOFs*(nb-1) + DOF
+
+                   A % ConstrainedDOF(nb) = .TRUE.
+                   A % Dvalues(nb) = Work(j) 
+                 END DO
                END IF
 
              CASE DEFAULT
@@ -5179,7 +5451,7 @@ CONTAINS
      CALL EnforceDirichletConditions( Solver, A, b )
      
  
-     CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=5)
+     CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=10)
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultDirichletBCs
 !------------------------------------------------------------------------------
@@ -5218,76 +5490,12 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Here the given element can be supposed to be some face of its parent element.
-!> The index of the face in reference to the parent element and pointer
-!> to the face are returned. The given element and the face returned are thus
-!> representations of the same entity but they may still be indexed differently.
-!------------------------------------------------------------------------------
-SUBROUTINE PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
-!------------------------------------------------------------------------------
-  IMPLICIT NONE
-  TYPE(Mesh_t), POINTER, INTENT(IN) :: Mesh  
-  TYPE(Element_t), POINTER, INTENT(IN) :: Parent, Element
-  TYPE(Element_t), POINTER, INTENT(OUT) :: Face
-  INTEGER, INTENT(OUT) :: ActiveFaceId
-!------------------------------------------------------------------------------
-  INTEGER :: matches, k, l
-!------------------------------------------------------------------------------
-  SELECT CASE( GetElementFamily(Element) )
-  CASE(2)
-    IF ( ASSOCIATED(Parent % EdgeIndexes) ) THEN
-      DO ActiveFaceId=1,Parent % TYPE % NumberOfEdges
-        Face => Mesh % Edges(Parent % EdgeIndexes(ActiveFaceId))
-        matches = 0
-        DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Face % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
-                matches=matches+1
-          END DO
-        END DO
-        IF (matches==Element % TYPE % NumberOfNodes) EXIT
-      END DO
-    ELSE
-      matches = 0
-    END IF
-  CASE(3,4)
-    IF ( ASSOCIATED(Parent % FaceIndexes) ) THEN
-      DO ActiveFaceId=1,Parent % TYPE % NumberOfFaces
-        Face => Mesh % Faces(Parent % FaceIndexes(ActiveFaceId))
-        IF (GetElementFamily(Element) /= GetElementFamily(Face)) CYCLE
-        matches = 0
-        DO k=1,Element % TYPE % NumberOfNodes
-          DO l=1,Face % TYPE % NumberOfNodes
-            IF (Element % NodeIndexes(k) == Face % NodeIndexes(l)) &
-                matches=matches+1
-          END DO
-        END DO
-        IF (matches == Element % TYPE % NumberOfNodes ) EXIT
-      END DO
-    ELSE
-      matches = 0
-    END IF
-  CASE DEFAULT
-    CALL Fatal('PickActiveFace', 'Element variable is of a wrong dimension')
-  END SELECT
-
-  IF (matches /= Element % TYPE % NumberOfNodes) THEN
-    Face => NULL()
-    ActiveFaceId = 0
-    CALL Warn('PickActiveFace', 'The element is not a face of given parent')
-  END IF
-!------------------------------------------------------------------------------
-END SUBROUTINE PickActiveFace
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
 !> This subroutine computes the values of DOFs that are associated with 
 !> mesh edges in the case of vector-valued (edge or face) finite elements, so that
 !> the vector-valued interpolant of the BC data can be constructed. 
 !> The values of the DOFs are defined as D = S*(g.e,v)_E where the unit vector e
 !> can be either tangential or normal to the edge, g is vector-valued data, 
-!> v is a polynomial on the edge E, and S reverts sign if necessary.
+!> v is a polynomial on the edge E, and S reverses sign if necessary.
 !------------------------------------------------------------------------------
   SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
       SecondFamily, FaceElement)
@@ -5310,7 +5518,7 @@ END SUBROUTINE PickActiveFace
     TYPE(ElementType_t), POINTER :: SavedType
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    LOGICAL :: Lstat, RevertSign, SecondKindBasis, DivConforming
+    LOGICAL :: Lstat, ReverseSign, SecondKindBasis, DivConforming
     INTEGER, POINTER :: Edgemap(:,:)
     INTEGER :: i,j,k,p,DOFs
     INTEGER :: i1,i2,i3
@@ -5346,7 +5554,7 @@ END SUBROUTINE PickActiveFace
     CALL GetElementNodes(Nodes, Element)
     CALL GetElementNodes(PNodes, Parent)
 
-    RevertSign = .FALSE.
+    ReverseSign = .FALSE.
     EdgeMap => GetEdgeMap(GetElementFamily(Parent))
     DO i=1,SIZE(EdgeMap,1)
       j=EdgeMap(i,1)
@@ -5358,7 +5566,7 @@ END SUBROUTINE PickActiveFace
           Parent % NodeIndexes(k)==Element % NodeIndexes(1) ) THEN
         ! This is the right edge but has opposite orientation as compared
         ! with the listing of the parent element edges
-        RevertSign = .TRUE.
+        ReverseSign = .TRUE.
         EXIT
       END IF
     END DO
@@ -5422,9 +5630,9 @@ END SUBROUTINE PickActiveFace
             v = Basis(2)-Basis(1)
             ! The parent element must define the default for the positive tangent associated
             ! with the edge. Thus, if the boundary element handled has an opposite orientation, 
-            ! the sign must be reverted to get the positive coordinate associated with the
+            ! the sign must be reversed to get the positive coordinate associated with the
             ! parent element edge.
-            IF (RevertSign) v = -1.0d0*v
+            IF (ReverseSign) v = -1.0d0*v
             Integral(2)=Integral(2)+s*(L+SUM(VL*e))*v
           END IF
         END IF
@@ -5538,11 +5746,10 @@ END SUBROUTINE PickActiveFace
 !> the vector-valued interpolant of the BC data can be constructed. 
 !> The values of the DOFs are defined as D = S*(g.n,v)_F where the unit vector n
 !> is normal to the face, g is vector-valued data, v is a polynomial on the face F, 
-!> and S reverts sign if necessary. This subroutine performs neither sign 
+!> and S reverses sign if necessary. This subroutine performs neither sign 
 !> reversions nor the permutations of DOFs, i.e. the DOFs are returned in
 !> the default form.
-! TO DO: This can now handle only tetrahedral faces and needs an update when
-!        new 3-D element types are added. 
+! TO DO: This may need an update when new 3-D elements are added. 
 !------------------------------------------------------------------------------
   SUBROUTINE FaceElementDOFs(BC, Element, n, Parent, FaceId, Name, Integral, &
       FDOFs, SecondFamily)
@@ -5554,7 +5761,7 @@ END SUBROUTINE PickActiveFace
     INTEGER, INTENT(IN) :: n                        !< The number of boundary element nodes
     TYPE(Element_t), POINTER, INTENT(IN) :: Parent  !< The parent element of the boundary element
     INTEGER, INTENT(IN) :: FaceId                 !< The parent element face corresponding to Element
-    CHARACTER(LEN=*), INTENT(IN) :: Name          !< The name of boundary condition
+    CHARACTER(LEN=*), INTENT(IN) :: Name          !< The variable name in the boundary condition
     REAL(KIND=dp), INTENT(OUT) :: Integral(:)     !< The values of DOFs
     INTEGER, OPTIONAL, INTENT(IN) :: FDOFs        !< The number of DOFs
     LOGICAL, OPTIONAL, INTENT(IN) :: SecondFamily !< To select the element family
@@ -5563,43 +5770,122 @@ END SUBROUTINE PickActiveFace
     TYPE(Element_t), POINTER :: ElementCopy
     TYPE(GaussIntegrationPoints_t) :: IP
     LOGICAL :: SecondKindBasis, stat, ElementCopyCreated
-    INTEGER :: TetraFaceMap(4,3), ActiveFaceMap(3)
-    INTEGER :: DOFs, i, p
+    INTEGER :: TetraFaceMap(4,3), BrickFaceMap(6,4), ActiveFaceMap(4)
+    INTEGER :: DOFs, i, j, p
     REAL(KIND=dp) :: VLoad(3,n), VL(3), Normal(3), Basis(n), DetJ, s
     REAL(KIND=dp) :: f(3), u, v
+    REAL(KIND=dp) :: Mass(4,4), rhs(4)
 !------------------------------------------------------------------------------
-    IF (GetElementFamily(Parent) /= 5) &
-        CALL Fatal('FaceElementDOFs','A tetrahedral parent element supposed')
+    IF (.NOT.(GetElementFamily(Parent) == 5 .OR. GetElementFamily(Parent) == 8)) &
+        CALL Fatal('FaceElementDOFs','A tetrahedral or hexahedral parent element supposed')
 
-    DOFs = 1
     IF (PRESENT(FDOFs)) THEN
-      IF (FDOFs > 3) THEN
-        CALL Fatal('FaceElementDOFs','Cannot yet handle more than 3 DOFs per face')
-      ELSE
-        DOFs = FDOFs
-      END IF
-    END IF
-
-    IF (PRESENT(SecondFamily)) THEN
-      SecondKindBasis = SecondFamily
-      IF (SecondKindBasis .AND. (DOFs /= 3) ) &
-          CALL Fatal('FaceElementDOFs','3 DOFs per face expected')
+      DOFs = FDOFs
     ELSE
-      SecondKindBasis = .FALSE.
+      DOFs = 1
     END IF
-    IF (.NOT. SecondKindBasis .AND. DOFs > 1) &
-        CALL Fatal('FaceElementDOFs','An unexpected DOFs count per face')
 
-    ElementCopyCreated= .FALSE.
-    IF (SecondKindBasis) THEN
-      TetraFaceMap(1,:) = (/ 2, 1, 3 /)
-      TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-      TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
-      TetraFaceMap(4,:) = (/ 3, 1, 4 /)
-      
-      ActiveFaceMap(1:3) = TetraFaceMap(FaceId,1:3)
+    ElementCopyCreated = .FALSE.
 
-      IF (ANY(Element % NodeIndexes(1:3) /= Parent % NodeIndexes(ActiveFaceMap(1:3)))) THEN
+    SELECT CASE(GetElementFamily(Element))
+    CASE(3)
+
+      IF (DOFs > 3) CALL Fatal('FaceElementDOFs', &
+          'Cannot yet handle more than 3 DOFs per 3-node face')
+ 
+      IF (PRESENT(SecondFamily)) THEN
+        SecondKindBasis = SecondFamily
+        IF (SecondKindBasis .AND. (DOFs /= 3) ) &
+            CALL Fatal('FaceElementDOFs','3 DOFs per face expected')
+      ELSE
+        SecondKindBasis = .FALSE.
+      END IF
+      IF (.NOT. SecondKindBasis .AND. DOFs > 1) &
+          CALL Fatal('FaceElementDOFs','An unexpected DOFs count per face')
+
+      IF (SecondKindBasis) THEN
+        TetraFaceMap(1,:) = [ 2, 1, 3 ]
+        TetraFaceMap(2,:) = [ 1, 2, 4 ]
+        TetraFaceMap(3,:) = [ 2, 3, 4 ] 
+        TetraFaceMap(4,:) = [ 3, 1, 4 ]
+
+        ActiveFaceMap(1:3) = TetraFaceMap(FaceId,1:3)
+
+        IF (ANY(Element % NodeIndexes(1:3) /= Parent % NodeIndexes(ActiveFaceMap(1:3)))) THEN
+          !
+          ! The parent element face is indexed differently than the boundary element.
+          ! Create a copy of the boundary element which is indexed as the parent element
+          ! face so that we can return the values of DOFs in the default order.
+          ! Reordering is supposed to be done outside this subroutine. 
+          !
+          ElementCopyCreated = .TRUE.
+          ElementCopy => AllocateElement()
+          ElementCopy % Type => Element % Type
+          ALLOCATE(ElementCopy % NodeIndexes(3))
+          ElementCopy % NodeIndexes(1:3) = Parent % NodeIndexes(ActiveFaceMap(1:3))
+          ElementCopy % BodyId = Element % BodyId
+          ElementCopy % BoundaryInfo => Element % BoundaryInfo
+        ELSE
+          ElementCopy => Element
+        END IF
+      ELSE
+        ElementCopy => Element
+      END IF
+      CALL GetElementNodes(Nodes, ElementCopy)
+
+      i = LEN_TRIM(Name)
+      VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
+      VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
+      VLoad(3,1:n) = GetReal(BC, Name(1:i)//' 3', stat, ElementCopy)
+
+      IP = GaussPoints(ElementCopy, 3) ! Feasible for a triangular face
+      Integral(:) = 0.0d0
+      DO p=1,IP % n
+        stat = ElementInfo(ElementCopy, Nodes, IP % u(p), &
+            IP % v(p), IP % w(p), DetJ, Basis)
+        !
+        ! We need a normal that points outwards from the parent element.
+        ! The following function call should be consistent with this goal
+        ! in the case of a volume-vacuum interface provided a target body
+        ! for the normal has not been given to blur the situation.
+        ! TO DO: Modify to allow other scenarios 
+        !
+        Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
+
+        VL = MATMUL(VLoad(:,1:n), Basis(1:n))
+        s = IP % s(p) * DetJ
+
+        IF (SecondKindBasis) THEN
+          ! Standard coordinates mapped to the p-element coordinates:
+          u = -1.0d0 + 2.0d0*IP % u(p) + IP % v(p)
+          v = sqrt(3.0d0)*IP % v(p)
+          !
+          ! The weight functions for the evaluation of DOFs:
+          f(1) = sqrt(3.0d0) * 0.5d0 * (1.0d0 - 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
+          f(2) = sqrt(3.0d0) * 0.5d0 * (1.0d0 + 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
+          f(3) = sqrt(3.0d0) * (-1.0d0/3.0d0 + 2.0d0/sqrt(3.0d0)*v)
+
+          DO i=1,DOFs
+            Integral(i) = Integral(i) + SUM(VL(1:3) * Normal(1:3)) * f(i) * s
+          END DO
+        ELSE
+          Integral(1) = Integral(1) + SUM(VL(1:3) * Normal(1:3)) * s
+        END IF
+      END DO
+
+    CASE(4)
+      IF (DOFs /= 4) CALL Fatal('FaceElementDOFs','4 DOFs per 4-node face expected')
+
+      BrickFaceMap(1,:) = (/ 2, 1, 4, 3 /)
+      BrickFaceMap(2,:) = (/ 5, 6, 7, 8 /)
+      BrickFaceMap(3,:) = (/ 1, 2, 6, 5 /)
+      BrickFaceMap(4,:) = (/ 2, 3, 7, 6 /)
+      BrickFaceMap(5,:) = (/ 3, 4, 8, 7 /)
+      BrickFaceMap(6,:) = (/ 4, 1, 5, 8 /)
+
+      ActiveFaceMap(1:4) = BrickFaceMap(FaceId,1:4)
+
+      IF (ANY(Element % NodeIndexes(1:4) /= Parent % NodeIndexes(ActiveFaceMap(1:4)))) THEN
         !
         ! The parent element face is indexed differently than the boundary element.
         ! Create a copy of the boundary element which is indexed as the parent element
@@ -5609,57 +5895,54 @@ END SUBROUTINE PickActiveFace
         ElementCopyCreated = .TRUE.
         ElementCopy => AllocateElement()
         ElementCopy % Type => Element % Type
-        ALLOCATE(ElementCopy % NodeIndexes(3))
-        ElementCopy % NodeIndexes(1:3) = Parent % NodeIndexes(ActiveFaceMap(1:3))
+        ALLOCATE(ElementCopy % NodeIndexes(4))
+        ElementCopy % NodeIndexes(1:4) = Parent % NodeIndexes(ActiveFaceMap(1:4))
         ElementCopy % BodyId = Element % BodyId
         ElementCopy % BoundaryInfo => Element % BoundaryInfo
       ELSE
         ElementCopy => Element
       END IF
-    ELSE
-      ElementCopy => Element
-    END IF
-    CALL GetElementNodes(Nodes, ElementCopy)
 
-    i = LEN_TRIM(Name)
-    VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
-    VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
-    VLoad(3,1:n) = GetReal(BC, Name(1:i)//' 3', stat, ElementCopy)
+      CALL GetElementNodes(Nodes, ElementCopy)
 
-    IP = GaussPoints(ElementCopy, 3) ! Feasible for a triangular face
-    Integral(:) = 0.0d0
-    DO p=1,IP % n
-      stat = ElementInfo(ElementCopy, Nodes, IP % u(p), &
+      i = LEN_TRIM(Name)
+      VLoad(1,1:n) = GetReal(BC, Name(1:i)//' 1', stat, ElementCopy)
+      VLoad(2,1:n) = GetReal(BC, Name(1:i)//' 2', stat, ElementCopy)
+      VLoad(3,1:n) = GetReal(BC, Name(1:i)//' 3', stat, ElementCopy)
+
+      IP = GaussPoints(ElementCopy, 4)
+
+      Mass = 0.0d0
+      rhs = 0.0d0
+
+      DO p=1,IP % n
+        stat = ElementInfo(ElementCopy, Nodes, IP % u(p), &
             IP % v(p), IP % w(p), DetJ, Basis)
-      !
-      ! We need a normal that points outwards from the parent element.
-      ! The following function call should be consistent with this goal
-      ! in the case of a volume-vacuum interface provided a target body
-      ! for the normal has not been given to blur the situation.
-      ! TO DO: Modify to allow other scenarios 
-      !
-      Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
-
-      VL = MATMUL(VLoad(:,1:n), Basis(1:n))
-      s = IP % s(p) * DetJ
-
-      IF (SecondKindBasis) THEN
-        ! Standard coordinates mapped to the p-element coordinates:
-        u = -1.0d0 + 2.0d0*IP % u(p) + IP % v(p)
-        v = sqrt(3.0d0)*IP % v(p)
         !
-        ! The weight functions for the evaluation of DOFs:
-        f(1) = sqrt(3.0d0) * 0.5d0 * (1.0d0 - 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
-        f(2) = sqrt(3.0d0) * 0.5d0 * (1.0d0 + 2.0d0*u + 1.0d0/3.0d0 - 2.0d0/sqrt(3.0d0)*v)
-        f(3) = sqrt(3.0d0) * (-1.0d0/3.0d0 + 2.0d0/sqrt(3.0d0)*v)
+        ! We need a normal that points outwards from the parent element.
+        ! The following function call should be consistent with this goal
+        ! in the case of a volume-vacuum interface provided a target body
+        ! for the normal has not been given to blur the situation.
+        ! TO DO: Modify to allow other scenarios 
+        !
+        Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
+
+        VL = MATMUL(VLoad(:,1:n), Basis(1:n))
+        s = IP % s(p) * DetJ
 
         DO i=1,DOFs
-          Integral(i) = Integral(i) + SUM(VL(1:3) * Normal(1:3)) * f(i) * s
+          DO j=1,DOFs
+            ! Note: here a non-existent DetJ is not a mistake
+            Mass(i,j) = Mass(i,j) + Basis(i) * Basis(j) * IP % s(p)
+          END DO
+          rhs(i) = rhs(i) + SUM(VL(1:3) * Normal(1:3)) * Basis(i) * s
         END DO
-      ELSE
-        Integral(1) = Integral(1) + SUM(VL(1:3) * Normal(1:3)) * s
-      END IF
-    END DO
+      END DO
+
+      CALL LUSolve(DOFs, Mass(1:DOFs,1:DOFs), rhs(1:DOFs))
+      Integral(1:DOFs) = rhs(1:DOFs)
+
+    END SELECT
     IF (ElementCopyCreated) DEALLOCATE(ElementCopy % NodeIndexes)
 !------------------------------------------------------------------------------
   END SUBROUTINE FaceElementDOFs
@@ -5724,17 +6007,18 @@ END SUBROUTINE PickActiveFace
 
 
 !------------------------------------------------------------------------------
-!> Finished the bulk assembly of the matrix equation.
+!> Finishes the bulk assembly of the matrix equation.
 !> Optionally save the matrix for later use.
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultFinishBulkAssembly( Solver, BulkUpdate )
+  SUBROUTINE DefaultFinishBulkAssembly( Solver, BulkUpdate, RHSUpdate )
 !------------------------------------------------------------------------------
     TYPE(Solver_t), OPTIONAL, TARGET :: Solver
-    LOGICAL, OPTIONAL :: BulkUpdate
+    LOGICAL, OPTIONAL :: BulkUpdate  ! Direct control on whether matrices are saved
+    LOGICAL, OPTIONAL :: RHSUpdate   ! Direct control on whether RHS is saved
 
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: Bupd, Found
+    LOGICAL :: Bupd, UpdateRHS, Found
     INTEGER :: n
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     LOGICAL :: Transient
@@ -5756,6 +6040,12 @@ END SUBROUTINE PickActiveFace
     ! Reset colouring 
     PSolver % CurrentColour = 0
 
+    IF ( PRESENT(RHSUpdate) ) THEN
+      UpdateRHS = RHSUpdate
+    ELSE  
+      UpdateRHS = .TRUE.
+    END IF
+
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
       BUpd = BulkUpdate 
@@ -5771,16 +6061,17 @@ END SUBROUTINE PickActiveFace
       BUpd = BUpd .OR. GetLogical( Params,'Save Bulk System', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk Matrix', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constraint Modes Analysis',Found) 
+      BUpd = BUpd .OR. GetLogical( Params,'Control Use Loads',Found )
     END IF
 
     IF( BUpd ) THEN
       str = GetString( Params,'Equation',Found)
-      CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=5 )
+      CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=6 )
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
-        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE., BulkRHS = UpdateRHS ) 
       ELSE
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues), &
-            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues) ) 
+            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues), BulkRHS = UpdateRHS ) 
       END IF
     END IF
 
@@ -5828,7 +6119,7 @@ END SUBROUTINE PickActiveFace
     END IF
 
     Params => GetSolverParams(PSolver)
-
+   
     IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN 
       CALL CheckTimer('BoundaryAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. ) 
     END IF
@@ -6034,7 +6325,7 @@ END SUBROUTINE PickActiveFace
      xP => x
      yP => y
      zP => z
-     CALL GetRefPElementNodes( Element,xP,yP,zP )
+     CALL GetRefPElementNodes( Element % Type,xP,yP,zP )
      ALLOCATE(bNodes % x(n), bNodes % y(n), bNodes % z(n))
         
      ! Set coordinate points of destination
@@ -6082,8 +6373,7 @@ END SUBROUTINE PickActiveFace
              DetJ, Basis )
 
         IF (.NOT. stat) THEN
-           WRITE (*,*) 'DefUtils::MapGaussPoints: Element to map degenerate'
-           STOP
+           CALL Fatal( 'DefUtils::MapGaussPoints', 'Element to map degenerate')
         END IF
 
         ! Get mapped points
@@ -6405,7 +6695,7 @@ END SUBROUTINE PickActiveFace
      CHARACTER(LEN=*), OPTIONAL :: Caller, ErrorMessage
      LOGICAL :: Condition
 !-----------------------------------------------------------------------
-     IF ( .NOT. OutputLevelMask(0) ) STOP
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      IF(Condition) RETURN !Assertion passed
 
@@ -6426,9 +6716,7 @@ END SUBROUTINE PickActiveFace
      IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
 #endif
 
-     STOP
-
-     CALL FLUSH(6)
+     STOP EXIT_ERROR
 !-----------------------------------------------------------------------
    END SUBROUTINE Assert
 !-----------------------------------------------------------------------

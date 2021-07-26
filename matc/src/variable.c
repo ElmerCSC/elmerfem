@@ -535,6 +535,14 @@ void var_reset_status(char *name)
    if ( ptr ) ptr->changed = 0;
 }
 
+VARIABLE *var_com_free()
+{
+  VARIABLE *ptr;
+
+  var_free();
+  return NULL;
+}
+
 
 int var_get_status(char *name)
 {
@@ -572,8 +580,15 @@ void var_com_init()
       "Delete a variable with given name.\n"
    };
 
+   static char *clearHelp =
+   {
+      "clear()\n"
+      "Clear all variables.\n"
+   };
+
    com_init( "exists",  FALSE, FALSE, var_ccheck , 1, 1000, existsHelp );
    com_init( "who"   ,  FALSE, FALSE, var_varlist, 0, 0,    whoHelp    );
    com_init( "format" , FALSE, FALSE, var_format, 1, 2,     formatHelp );
    com_init( "delete",  FALSE, FALSE, var_vdelete, 1, 1,    deleteHelp );
+   com_init( "clear",   FALSE, FALSE, var_com_free, 0, 0,    clearHelp );
 }

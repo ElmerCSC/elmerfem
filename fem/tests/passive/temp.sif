@@ -63,6 +63,8 @@ End
 
 Solver 1
   Equation = heat equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
 
   Linear System Solver = Iterative
   Linear System Direct Method = UMFPack

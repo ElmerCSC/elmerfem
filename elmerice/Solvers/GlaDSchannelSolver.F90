@@ -74,7 +74,7 @@
      TYPE(Nodes_t) :: ElementNodes, EdgeNodes
      TYPE(Element_t), POINTER :: Element, Edge
 
-     TYPE(Variable_t), POINTER :: TimeVar 
+     TYPE(Variable_t), POINTER :: TimeVar
      TYPE(Variable_t), POINTER :: HydPotSol, AreaSol, QcSol, QmSol 
      INTEGER, POINTER :: NodeIndexes(:), HydPotPerm(:),  &
               AreaPerm(:), QcPerm(:), QmPerm(:)
@@ -84,7 +84,7 @@
 
      INTEGER :: i, j, k, l, m, n, t, iter, body_id, eq_id, material_id, &
           istat, LocalNodes, bc_id, DIM, NodeSheet, EdgeSheet, NbMoulin, NbMoulinAll, &
-          GhostNodes, it, itOut, ierr
+          GhostNodes, it, itOut, ierr, ChannelSolver
      INTEGER, ALLOCATABLE :: TableNodeSheet(:), TableMoulin(:)     
 
      CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, HydPotName, &
@@ -97,7 +97,7 @@
      INTEGER :: VtuUnit, offset, Cpt, kk
      INTEGER, ALLOCATABLE :: EdgePointArray(:), EdgeOffsetArray(:), EdgeTypeArray(:)
 
-     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE., OutPutQm = .FALSE. 
+     LOGICAL :: SaveVTU=.False. , VtuBinary=.False., FileVTU = .FALSE., OutPutQm = .FALSE., Calving = .FALSE.
 
      CHARACTER :: lf
      CHARACTER(LEN=1024) :: OutStr
@@ -116,19 +116,50 @@
           IsGhostNode,  OutPutFileName, OutPutDirectoryName, FileVTU, VtuBinary, it, itOut,  &
           AllocationsDone, FirstTime, FirstVisit, SolverName, HydPotName, M, &
           NodeSheet, TableNodeSheet, EdgeSheet, NbMoulin, TableMoulin, OutPutQm, Flux, &
-          ChFluxVarName, ChAreaVarName, QmVarName 
+          ChFluxVarName, ChAreaVarName, QmVarName, ChannelSolver
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
      SolverName = 'GlaDSchannelOut ('// TRIM(Solver % Variable % Name) // ')'
-
-     AreaSol => Solver % Variable
-     AreaPerm  => AreaSol % Perm
-     AreaSolution => AreaSol % Values
+     !CHANGE - to get Channel variables added to this solver mesh if
+     !doing calving and hydrology and consequently having many meshes
+     Calving = ListGetLogical(Model % Simulation, 'Calving', Found)
+     IF(.NOT. Found) Calving = .FALSE.
+     IF(Calving) THEN
+       IF(FirstVisit) THEN
+         DO i=1,Model % NumberOfSolvers
+           IF(Model % Solvers(i) % Variable % Name == 'hydraulic potential') THEN 
+             ChannelSolver = i
+             EXIT
+           END IF
+         END DO
+         AreaSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                    % Variables, 'Channel Area', ThisOnly=.TRUE.)
+         IF (ASSOCIATED(AreaSol)) THEN
+            AreaPerm     => AreaSol % Perm
+            AreaSolution => AreaSol % Values
+         END IF
+         LocalNodes = COUNT( AreaPerm > 0 )
+         IF ( LocalNodes <= 0 ) RETURN
+       ELSE
+         AreaSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                    % Variables, 'Channel Area', ThisOnly=.TRUE.)
+         IF (ASSOCIATED(AreaSol)) THEN
+            AreaPerm     => AreaSol % Perm
+            AreaSolution => AreaSol % Values
+         END IF
+         LocalNodes = COUNT( AreaPerm > 0 )
+         IF ( LocalNodes <= 0 ) RETURN
+       END IF
+     ELSE
+       AreaSol => Solver % Variable
+       AreaPerm  => AreaSol % Perm
+       AreaSolution => AreaSol % Values
      
-     LocalNodes = COUNT( AreaPerm > 0 )
-     IF ( LocalNodes <= 0 ) RETURN
+       LocalNodes = COUNT( AreaPerm > 0 )
+       IF ( LocalNodes <= 0 ) RETURN
+     END IF
 
      DIM = CoordinateSystemDimension()
 
@@ -137,7 +168,7 @@
 !------------------------------------------------------------------------------
      IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
         N = Solver % Mesh % MaxElementNodes
-        M = Model % Mesh % NumberOfNodes
+        M = Solver % Mesh % NumberOfNodes
 
         IF ( AllocationsDone ) THEN
            DEALLOCATE(                    &
@@ -207,20 +238,41 @@
      END IF
 
      ! Point on the needed variables
-     HydPotSol => VariableGet( Solver % Mesh % Variables, HydPotName, UnfoundFatal = .TRUE. )
-     HydPotPerm     => HydPotSol % Perm
-     HydPot => HydPotSol % Values
+     !CHANGE - to avoid interpolation of variables between solvers when calving
+     IF(Calving) THEN
+       HydPotSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                    % Variables, HydPotName, ThisOnly=.TRUE.)
+       HydPotPerm     => HydPotSol % Perm
+       HydPot => HydPotSol % Values
+       QcSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                % Variables, ChFluxVarName)
+       IF (ASSOCIATED(QcSol)) THEN
+         QcPerm     => QcSol % Perm
+         QcSolution => QcSol % Values
+       END IF
+       QmSol => VariableGet(Model % Solvers(ChannelSolver) % Mesh&
+                % Variables, QmVarName)
+       IF (ASSOCIATED(QmSol)) THEN
+         QmPerm     => QmSol % Perm
+         QmSolution => QmSol % Values
+       END IF
+     ELSE
+       QcSol => VariableGet( Solver % Mesh % Variables, ChFluxVarName )
+       IF (ASSOCIATED(QcSol)) THEN
+          QcPerm     => QcSol % Perm
+          QcSolution => QcSol % Values
+       END IF
 
-     QcSol => VariableGet( Solver % Mesh % Variables, ChFluxVarName )
-     IF (ASSOCIATED(QcSol)) THEN
-        QcPerm     => QcSol % Perm
-        QcSolution => QcSol % Values
-     END IF
+       QmSol => VariableGet( Solver % Mesh % Variables, QmVarName )
+       IF (ASSOCIATED(QmSol)) THEN
+          QmPerm     => QmSol % Perm
+          QmSolution => QmSol % Values
+       END IF
 
-     QmSol => VariableGet( Solver % Mesh % Variables, QmVarName )
-     IF (ASSOCIATED(QmSol)) THEN
-        QmPerm     => QmSol % Perm
-        QmSolution => QmSol % Values
+       HydPotSol => VariableGet(Solver % Mesh % Variables, HydPotName,&
+                    UnfoundFatal=.TRUE.)
+       HydPotPerm     => HydPotSol % Perm
+       HydPot => HydPotSol % Values
      END IF
 
      TimeVar => VariableGet( Solver % Mesh % Variables, 'Time' )
@@ -462,7 +514,7 @@
            n = Edge % TYPE % NumberOfNodes
            IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             
-           M = Model % Mesh % NumberOfNodes
+           M = Solver % Mesh % NumberOfNodes
            Cpt = Cpt+1
            ChannelAreaArray(Cpt) = AreaSolution(AreaPerm(M+t))
         END DO
@@ -481,7 +533,7 @@
               n = Edge % TYPE % NumberOfNodes
               IF (ANY(HydPotPerm(Edge % NodeIndexes(1:n))==0)) CYCLE
             
-              M = Model % Mesh % NumberOfNodes
+              M = Solver % Mesh % NumberOfNodes
               Cpt = Cpt+1
               ChannelFluxArray(Cpt) = QcSolution(QcPerm(M+t))
            END DO

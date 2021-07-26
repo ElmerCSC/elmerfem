@@ -62,6 +62,7 @@ public:
   QSize sizeHint() const;
 
   void setupEditor(QDomDocument *elmerDefs);
+  bool appendFrom(QString);
 
 signals:
 

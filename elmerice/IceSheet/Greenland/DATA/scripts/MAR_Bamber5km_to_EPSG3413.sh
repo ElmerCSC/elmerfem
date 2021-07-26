@@ -59,7 +59,7 @@ xmax=960000
 ymin=-3450000
 ymax=-570000
 #######################
-# get corner defintion rq. this will perform only integer operation.
+# get corner definition rq. this will perform only integer operation.
 xlc=$(($xmin-$res/2))
 xrc=$(($xmax+$res/2))
 ylc=$(($ymin-$res/2))

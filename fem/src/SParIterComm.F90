@@ -47,9 +47,7 @@
 MODULE SParIterComm
 
   USE Types
-#ifdef USE_ISO_C_BINDINGS
   USE LoadMod
-#endif
   USE SParIterGlobals
 
   IMPLICIT NONE
@@ -134,6 +132,7 @@ CONTAINS
     ParEnv % MyPE = 0
     ParEnv % PEs  = 1
     ParEnv % ActiveComm = 0
+    ParEnv % ExternalInit = .FALSE.
 
     ierr = 0
 #ifdef _OPENMP
@@ -147,7 +146,17 @@ CONTAINS
       CALL Fatal( 'ParCommInit', Message )
     END IF
 #else
-    CALL MPI_INIT( ierr )
+
+! This is a dirty fix for Windows compiler (msys2+gfortran+MSMPI) where this
+! caused problems. However, likelyhood of this having to be used under
+! Windows is close to zero. 
+#ifndef WIN32
+    CALL MPI_INITIALIZED(ParEnv % ExternalInit, ierr)
+    IF ( ierr /= 0 ) RETURN
+#endif
+    IF (.NOT. ParEnv % ExternalInit) THEN
+        CALL MPI_INIT( ierr )
+    END IF
 #endif
     IF ( ierr /= 0 ) RETURN
 
@@ -256,11 +265,7 @@ CONTAINS
     INTEGER :: i, j, k, m, ii, n, sz, ierr, proc, MinActive
     INTEGER, ALLOCATABLE :: Active(:), buf(:)
     LOGICAL :: L, Interf
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: tstart, tend,s
-#else
-    REAL(KIND=dp) :: RealTime, tstart, tend,s
-#endif
     LOGICAL(KIND=1), ALLOCATABLE :: NeighAll(:,:)
     !******************************************************************
 
@@ -586,7 +591,7 @@ CONTAINS
       LOGICAL :: IsNeighbour(:)
 
       IsNeighbour = .FALSE.
-      DO i=1,Mesh % Nodes % NumberOfNodes
+      DO i=1,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % Interface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
             IsNeighbour(Mesh % ParallelInfo % &
@@ -633,12 +638,7 @@ CONTAINS
      LOGICAL :: AllM, Intf, Found
      LOGICAL, POINTER :: IsNeighbour(:)
      TYPE(Element_t), POINTER :: Element
-
-#ifdef USE_ISO_C_BINDINGS
      real(kind=dp) :: tt
-#else
-     real(kind=dp) :: realtime,tt
-#endif
 !-------------------------------------------------------------------------------
 
     IF ( .NOT. ASSOCIATED(Mesh % Edges) ) RETURN
@@ -1305,12 +1305,7 @@ CONTAINS
      LOGICAL :: AllM, Intf
      LOGICAL, POINTER :: IsNeighbour(:)
      TYPE(Element_t), POINTER :: Element, Edge
-
-#ifdef USE_ISO_C_BINDINGS
      real(kind=dp) :: tt
-#else
-     real(kind=dp) :: realtime,tt
-#endif
 !-------------------------------------------------------------------------------
 
     IF ( .NOT. ASSOCIATED(Mesh % Faces) ) RETURN
@@ -1816,14 +1811,12 @@ CONTAINS
 
 
 !--------------------------------------------------------------------  
-   SUBROUTINE SParGlobalNumbering( Mesh, OldMesh, NewNodeCnt, &
-            OldIntCnts, OldIntArray, Reorder )
+   SUBROUTINE SParGlobalNumbering( Mesh, OldMesh, NewNodeCnt, Reorder )
 !-----------------------------------------------------------------------
     USE GeneralUtils
 !-----------------------------------------------------------------------
      TYPE(Mesh_t) :: Mesh, OldMesh
-     INTEGER, TARGET :: NewNodeCnt, OldIntArray(:), &
-               OldIntCnts(:), Reorder(:)
+     INTEGER, TARGET :: NewNodeCnt,Reorder(:)
 !-----------------------------------------------------------------------
      INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
      INTEGER :: ierr
@@ -1852,11 +1845,7 @@ CONTAINS
      INTEGER :: LIndex(100), IntN, Gindex, k1, k2, Iterate, p, q
      INTEGER :: DataSize, TmpArray(3),ddd
      INTEGER, POINTER :: IntArray(:),IntCnts(:),GIndices(:),Gorder(:)
-#ifdef USE_ISO_C_BINDINGS
      real(kind=dp) :: tstart
-#else
-     real(kind=dp) :: realtime, tstart
-#endif
 !-----------------------------------------------------------------------
      CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 tstart = realtime()
@@ -1878,7 +1867,7 @@ tstart = realtime()
      ELSE
        ALLOCATE(IsNeighbour(ParEnv % PEs))
        IsNeighbour = .FALSE.
-       DO i=1,OldMesh % Nodes % NumberOfNodes
+       DO i=1,OldMesh % NumberOfNodes
          IF ( OldMesh % ParallelInfo % Interface(i) ) THEN
            DO j=1,SIZE(OldMesh % ParallelInfo % NeighbourList(i) % Neighbours)
              IsNeighbour(OldMesh % ParallelInfo % &
@@ -1894,7 +1883,7 @@ tstart = realtime()
 !    -------------------------------
      MaxLcl = MAXVAL( Mesh % ParallelInfo % GlobalDOFs )
      MaxGlb = MaxLcl
-     n = Mesh % Nodes % NumberOfNodes - NewNodeCnt + 1
+     n = Mesh % NumberOfNodes - NewNodeCnt + 1
 
 !    Allocate space for local tables:
 !    --------------------------------
@@ -1904,7 +1893,7 @@ tstart = realtime()
           oldnodes2( ParEnv % PEs ), &
           tosend( ParEnv % PEs ), &
           toreceive( ParEnv % PEs ), &
-          parentnodes( Mesh % Nodes % NumberOfNodes,2 ) )
+          parentnodes( Mesh % NumberOfNodes,2 ) )
      
      newnodes    = 0
      newnodes2   = 0
@@ -1923,8 +1912,8 @@ tstart = realtime()
      !
      ! Prepare the inverse connection table for nodes and elements:
      !-------------------------------------------------------------
-     ALLOCATE( Node( Mesh % Nodes % NumberOfNodes ) )
-     DO i = 1,Mesh % Nodes % NumberOfNodes
+     ALLOCATE( Node( Mesh % NumberOfNodes ) )
+     DO i = 1,Mesh % NumberOfNodes
         Node(i) % ElementIndexes => NULL()
      END DO
      
@@ -1941,9 +1930,9 @@ tstart = realtime()
      !PRINT *,'PE:',ParEnv % MyPE,'write ep...'
      !j = 10+ParEnv%MyPE
      !OPEN(unit=j)
-     !WRITE(j,*) Mesh % Nodes % NumberOfNodes, &
+     !WRITE(j,*) Mesh % NumberOfNodes, &
      !     Mesh % NumberOfBulkElements, 1, 1, 'scalar: interface'
-     !DO i = 1,Mesh % Nodes % NumberOfNodes
+     !DO i = 1,Mesh % NumberOfNodes
      !   WRITE(j,*) Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
      !END DO
      !DO i = 1, mesh % numberofbulkelements
@@ -1964,7 +1953,7 @@ tstart = realtime()
      !
      ! Loop over all new nodes:
      !--------------------------
-     DO i = n, Mesh % Nodes % NumberOfNodes
+     DO i = n, Mesh % NumberOfNodes
         IF( .NOT. Mesh % ParallelInfo % INTERFACE(i) ) CYCLE
         !
         ! This is an interface node:
@@ -2074,7 +2063,7 @@ tstart = realtime()
      oldnodes = 0
      newnodes = 0
      j = ParEnv % MyPE
-     DO i = 1, Mesh % Nodes % NumberOfNodes
+     DO i = 1, Mesh % NumberOfNodes
         k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1)
         IF( k /= j ) CYCLE
         IF( Mesh % ParallelInfo % GlobalDOFs(i)  > 0 ) THEN
@@ -2099,7 +2088,7 @@ tstart = realtime()
      j = ParEnv % MyPE
      ! Start numbering from index k:
      k = SUM( oldnodes2 ) + SUM( newnodes2(1:j) ) + 1
-     DO i = 1, Mesh % Nodes % NumberOfNodes
+     DO i = 1, Mesh % NumberOfNodes
         l = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1)
         IF( l /= j ) CYCLE
         IF( Mesh % ParallelInfo % GlobalDOFs(i) == 0 ) THEN
@@ -2117,7 +2106,7 @@ tstart = realtime()
      !-----------------------------------------------------------
      tosend = 0
      toreceive = 0
-     DO i = n, Mesh % Nodes % NumberOfNodes
+     DO i = n, Mesh % NumberOfNodes
         IF( Mesh % ParallelInfo % Interface(i) ) THEN
            j = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(1)
            IF( j /= ParEnv % MyPE ) THEN
@@ -2143,7 +2132,7 @@ tstart = realtime()
         DataSize = 3*tosend(i)
         ALLOCATE( gindices(DataSize) )
         k = 1
-        DO l = n, Mesh % Nodes % NumberOfNodes
+        DO l = n, Mesh % NumberOfNodes
            IF( .NOT.( Mesh % ParallelInfo % Interface(l) ) ) CYCLE
            m = Mesh % ParallelInfo % NeighbourList(l) % Neighbours(1)
            IF( m /= ParEnv % MyPE ) CYCLE
@@ -2180,7 +2169,7 @@ tstart = realtime()
         ALLOCATE( gindices(3*DataSize) ) ! work space
         CALL MPI_RECV( gindices, 3*DataSize, MPI_INTEGER, i-1, 400, ELMER_COMM_WORLD, status, ierr )
 
-        DO k = n, Mesh % Nodes % NumberOfnodes
+        DO k = n, Mesh % NumberOfnodes
            IF( .NOT. Mesh % ParallelInfo % Interface(k) ) CYCLE
            IF( Mesh % ParallelInfo % GlobalDOFs(k) > 0 ) CYCLE
            
@@ -2441,7 +2430,7 @@ tstart = realtime()
      DEALLOCATE( oldnodes, oldnodes2, newnodes, newnodes2, &
           parentnodes, tosend, toreceive )
      
-     DO i = 1,Mesh % Nodes % NumberOfNodes
+     DO i = 1,Mesh % NumberOfNodes
        DEALLOCATE( Node(i) % ElementIndexes )
      END DO
      DEALLOCATE(Node)
@@ -2497,7 +2486,9 @@ tstart = realtime()
 
      RETURN
 
+
 !???????????????????????????????????????????????????????????????????????????????
+#if 0
 
 !
 !    Lowest numbered PE will compute the size of
@@ -2583,7 +2574,7 @@ tstart = realtime()
 !                -------------------------------------
                  k2 = 0
                  k1 = 0
-                 DO k=n,Mesh % Nodes % NumberOfNodes
+                 DO k=n,Mesh % NumberOfNodes
                     IF ( .NOT.Mesh % ParallelInfo % INTERFACE(k) ) CYCLE
 
                     k1 = k1 + 1
@@ -2623,7 +2614,7 @@ tstart = realtime()
 !
 !    Renumber our own new set of nodes:
 !    ----------------------------------
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % GlobalDOFs(i) == 0 ) THEN
            MaxGlb = MaxGlb + 1
            Mesh % ParallelInfo % GlobalDOFs(i) = MaxGlb
@@ -2637,7 +2628,7 @@ tstart = realtime()
      IF ( InterfaceNodes > 0 ) ALLOCATE( Gindices(InterfaceNodes) )
 
      InterfaceNodes = 0
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            InterfaceNodes = InterfaceNodes + 1
            Gindices(InterfaceNodes) = Mesh % ParallelInfo % GlobalDOFs(i)
@@ -2725,7 +2716,7 @@ tstart = realtime()
      InterfaceNodes = COUNT( Mesh % ParallelInfo % INTERFACE(n:) )
      ALLOCATE( GIndices( InterfaceNodes ) )
      j = 0
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            j = j + 1
            GIndices(j) = Mesh % ParallelInfo % GlobalDOFs(i)
@@ -2747,10 +2738,10 @@ tstart = realtime()
 
      DEALLOCATE( Gindices )
 
-     ALLOCATE( IntCnts( Mesh % Nodes % NumberOfNodes ) )
+     ALLOCATE( IntCnts( Mesh % NumberOfNodes ) )
 
      IntCnts = 0
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            IntCnts(i) = IntCnts(i) + 1
            Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPE
@@ -2782,7 +2773,7 @@ tstart = realtime()
 !    Reallocate the nodal neighbour lists to
 !    correct sizes:
 !    ---------------------------------------
-     DO i=n,Mesh % Nodes % NumberOfNodes
+     DO i=n,Mesh % NumberOfNodes
         IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
            k = IntCnts(i)
            ALLOCATE( Gindices(k) ) ! just work space
@@ -2797,7 +2788,7 @@ tstart = realtime()
 
 ! final test:
 !     IF( ParEnv % MyPE == 3 ) THEN
-!        DO i = 1, Mesh % Nodes % NumberOfNodes
+!        DO i = 1, Mesh % NumberOfNodes
 !           PRINT *,'Local:',i, &
 !                'Global:' ,Mesh % Parallelinfo % GlobalDOFs(i), &
 !                'Interface:', Mesh % ParallelInfo % INTERFACE(i), &
@@ -2813,6 +2804,7 @@ END DO
 
 
      CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
+#endif
 
 CONTAINS
 
@@ -4179,12 +4171,7 @@ SUBROUTINE BuildRevVecIndices( SplittedMatrix )
   INTEGER, DIMENSION(:), ALLOCATABLE :: GIndices,RowOwner,neigh,L
 
   TYPE(iBuff_t), ALLOCATABLE :: sbuf(:)
-
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: tt
-#else
-  REAL(KIND=dp) :: tt,CPUTime
-#endif
 
   !*********************************************************************
 tt = realTime()
@@ -4901,11 +4888,13 @@ SUBROUTINE ParEnvFinalize()
 
   !*********************************************************************
   CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
-  CALL MPI_FINALIZE( ierr )
+  IF (.NOT. ParEnv % ExternalInit) THEN
+    CALL MPI_FINALIZE( ierr )
 
-  IF ( ierr /= 0 ) THEN
-     WRITE( Message, * ) 'MPI Finalization failed ! (ierr=', ierr, ')'
-     CALL Fatal( 'ParEnvFinalize', Message )
+    IF ( ierr /= 0 ) THEN
+       WRITE( Message, * ) 'MPI Finalization failed ! (ierr=', ierr, ')'
+       CALL Fatal( 'ParEnvFinalize', Message )
+    END IF
   END IF
 !*********************************************************************
 END SUBROUTINE ParEnvFinalize

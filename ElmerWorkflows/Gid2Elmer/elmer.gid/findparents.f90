@@ -114,10 +114,10 @@ PROGRAM FindParents
      CASE( 5, 6, 7, 8 )
         BoundaryDim = 3
      CASE DEFAULT
-        PRINT *,'Cant detect dimension for bounbdary element',A(1)
+        PRINT *,'Cannot detect dimension for boundary element',A(1)
         BoundaryDim = 0
      END SELECT
-     
+
      NumberOfParents = 0
      HashPtr1 => HashTable( A(6) ) % Head
      Parent = 0
@@ -155,7 +155,7 @@ PROGRAM FindParents
            CASE( 5, 6, 7, 8 )
               ElementDim = 3
            CASE DEFAULT
-              PRINT *,'Cant detect dimension for element',Candidate
+              PRINT *,'Cannot detect dimension for element',Candidate
               ElementDim = 0
            END SELECT
 

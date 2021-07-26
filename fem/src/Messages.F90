@@ -53,6 +53,8 @@ MODULE Messages
    INTEGER :: MaxOutputLevel=31, MinOutputLevel=0, OutputPE = 0
    INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
 
+   INTEGER, PARAMETER :: EXIT_OK=0, EXIT_ERROR=1
+
 CONTAINS
 
 !-----------------------------------------------------------------------
@@ -96,17 +98,22 @@ CONTAINS
          WRITE( MessageUnit,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
        END IF
 
-       ! If there are several partitions to be saved than plot the partition too
-       IF ( MaxOutputPE > 0 ) THEN
-         WRITE( MessageUnit,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '
-       END IF
      END IF
 
 
      IF ( nadv ) THEN
-        WRITE( MessageUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
+       ! If there are several partitions to be saved than plot the partition too
+       IF( MaxOutputPE > 0 ) THEN
+         WRITE( MessageUnit,'(A,I0,A,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': ',TRIM(String)
+       ELSE         
+         WRITE( MessageUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
+       END IF
      ELSE
-        WRITE( MessageUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
+       IF( MaxOutputPE > 0 ) THEN
+         WRITE( MessageUnit,'(A,I0,A,A)', ADVANCE = 'YES' ) 'Part',OutputPE,': ',TRIM(String)
+       ELSE
+         WRITE( MessageUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
+       END IF
      END IF
      nadv1 = nadv
 
@@ -158,15 +165,25 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='NO' ) &
-          'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-     ELSE
-        IF ( .NOT. nadv1 ) THEN
-           WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='YES' ) &
+       IF ( MaxOutputPE > 0 ) THEN
+         WRITE( MessageUnit, '(A,A,A,I0,A,A)', ADVANCE='NO' ) &
+             'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
+       ELSE
+         WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='NO' ) &
              'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
-        ELSE
-           WRITE( MessageUnit, '(A)', ADVANCE='YES' ) TRIM(String)
-        END IF
+       END IF
+     ELSE
+       IF ( .NOT. nadv1 ) THEN
+         IF( MaxOutputPE > 0 ) THEN
+           WRITE( MessageUnit, '(A,A,A,I0,A,A)', ADVANCE='YES' ) &
+               'WARNING:: ', TRIM(Caller), ': Part',OutputPE,':', TRIM(String)
+         ELSE
+           WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='YES' ) &
+               'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
+         END IF
+       ELSE
+         WRITE( MessageUnit, '(A)', ADVANCE='YES' ) TRIM(String)
+       END IF
      END IF
      nadv1 = nadv
      CALL FLUSH(MessageUnit)
@@ -224,7 +241,7 @@ CONTAINS
      SAVE nadv1
 
 !-----------------------------------------------------------------------
-     IF ( .NOT. OutputLevelMask(0) ) STOP
+     IF ( .NOT. OutputLevelMask(0) ) STOP EXIT_ERROR
 
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
@@ -239,7 +256,7 @@ CONTAINS
         ELSE
            WRITE( MessageUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
-        STOP
+        STOP EXIT_ERROR
      END IF
      nadv1 = nadv
      CALL FLUSH(MessageUnit)

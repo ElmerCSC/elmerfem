@@ -104,35 +104,38 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
       FIND_FILE(BLAS_LIB libblas.dll PATH_SUFFIXES "bin")
     ENDIF()
 
-    # mingw runtime dynamic link libraries
-    FIND_FILE(MINGW_GFORT_LIB libgfortran-3.dll)
-    FIND_FILE(QUADMATH_LIB libquadmath-0.dll)
-    FIND_FILE(WINPTHREAD_LIB libwinpthread-1.dll)
-    FIND_FILE(GCC_LIB libgcc_s_sjlj-1.dll)
-    FIND_FILE(STDCPP_LIB libstdc++-6.dll)
+    # msys2 runtime dynamic link libraries
+    INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_msys2/bin" DESTINATION ".")
 
-    INSTALL(FILES ${MINGW_GFORT_LIB} ${QUADMATH_LIB} ${WINPTHREAD_LIB} ${GCC_LIB} ${STDCPP_LIB} ${BLAS_LIB} ${LAPACK_LIB} DESTINATION "bin")
+# Here we augment the installation by some needed dll's that should be included with QT5. 
+# This is a quick and dirty remedy. I'm sure there is a prettier way too. 
+    IF(WITH_QT5)
+      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_qt5/bin" DESTINATION ".")
+      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../platforms" DESTINATION "bin")
+	ENDIF()
+    IF(WITH_VTK)
+      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_vtk/bin" DESTINATION ".")
+    ENDIF()
+    IF(WITH_OCC)
+      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_oce/bin" DESTINATION ".")
+    ENDIF()
 
     IF(BUNDLE_STRIPPED_GFORTRAN)
       # TODO: This will make the windows package to be GPL3
       INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran" DESTINATION "." COMPONENT "stripped_gfortran")
-      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 4.8.3 (sjlj) compiler for compiling Elmer modules.")
-      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 4.8.3")
+      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 10.2.0 compiler for compiling Elmer modules.")
+      SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 10.2.0")
     ENDIF()
 
     IF(WITH_MPI)
       IF(BUNDLE_MSMPI_REDIST)
-        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/MSMpiSetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x64.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x86.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
-        SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION "Install HPC Pack 2012 R2 MS-MPI Redistributable Package")
+        INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/msmpisetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+        SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION "Install MS-MPI 10.1.1. Redistributable Package")
         SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DISPLAY_NAME "MS-MPI")
         LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
-        IfFileExists '$INSTDIR\\\\redist\\\\MSMpiSetup.exe' MSMpiSetupExists MsMpiSetupNotExist
+        IfFileExists '$INSTDIR\\\\redist\\\\msmpisetup.exe' MSMpiSetupExists MsMpiSetupNotExist
         MsMpiSetupExists:
-        ExecWait '$INSTDIR\\\\redist\\\\vcredist_x64.exe'
-        ExecWait '$INSTDIR\\\\redist\\\\vcredist_x86.exe'
-        ExecWait '$INSTDIR\\\\redist\\\\MSMpiSetup.exe'
+        ExecWait '$INSTDIR\\\\redist\\\\msmpisetup.exe'
         MsMpiSetupNotExist:
         ")
       ENDIF()

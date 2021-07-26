@@ -60,11 +60,12 @@
         MeltRate, Displace(3), NodeHolder(3), DangerGrad, ShiftTo, direction, &
         ShiftDist, y_coord(2), epsShift, ShiftToY, LongRangeLimit, MaxDisplacement, LimitZ, &
         p1(2),p2(2),q1(2),q2(2),intersect(2), LeftY, RightY, EpsTangle,thisEps,Shift, thisY
-   REAL(KIND=dp), POINTER :: PArray(:,:) => NULL(), Advance(:)
+   REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), ColumnNormals(:,:), &
         TangledShiftTo(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
-        Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting
+        Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
+        IgnoreVelo
    LOGICAL, ALLOCATABLE :: DangerZone(:), WorkLogical(:), UpdatedColumn(:),&
         Tangled(:), DontMove(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VeloVarName, MeltVarName, &
@@ -91,13 +92,22 @@
    DOFs = Var % DOFs
    IF(Var % DOFs /= 3) CALL Fatal(SolverName, "Variable should have 3 DOFs...")
 
-   !Get the flow solution
-   VeloVarName = ListGetString(Params, "Flow Solution Variable Name", Found)
+   IgnoreVelo = ListGetLogical(Params, "Ignore Velocity", Found)
    IF(.NOT. Found) THEN
-     CALL Info(SolverName, "Flow Solution Variable Name not found, assuming 'Flow Solution'")
-     VeloVarName = "Flow Solution"
+     IgnoreVelo = .FALSE.
+   ELSE
+     CALL Info(SolverName, "Ignoring velocity (melt undercutting only)")
    END IF
-   VeloVar => VariableGet(Mesh % Variables, VeloVarName, .TRUE., UnfoundFatal=.TRUE.)
+
+   IF(.NOT. IgnoreVelo) THEN
+     !Get the flow solution
+     VeloVarName = ListGetString(Params, "Flow Solution Variable Name", Found)
+     IF(.NOT. Found) THEN
+       CALL Info(SolverName, "Flow Solution Variable Name not found, assuming 'Flow Solution'")
+       VeloVarName = "Flow Solution"
+     END IF
+     VeloVar => VariableGet(Mesh % Variables, VeloVarName, .TRUE., UnfoundFatal=.TRUE.)
+   END IF
 
    !Get melt rate
    MeltVarName = ListGetString(Params, "Melt Variable Name", Found)
@@ -119,10 +129,7 @@
 
    !Get the orientation of the calving front, compute rotation matrix
    !TODO: generalize and link
-   PArray => ListGetConstRealArray( Model % Constants,'Front Orientation', Found, UnfoundFatal=.TRUE.)
-   DO i=1,3
-      FrontOrientation(i) = PArray(i,1)
-   END DO
+   FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
 
    DangerGrad = ListGetConstReal(Params, "Front Gradient Threshold", Found)
@@ -183,8 +190,8 @@
    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
         .FALSE., FrontPerm, FaceNodeCount)
 
-   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontMaskName, &
-        FrontNodes, FrontNodeNums, Parallel, Simplify=.FALSE.)
+   CALL GetDomainEdge(Model, Mesh, TopPerm, FrontNodes, &
+        FrontNodeNums, Parallel, FrontMaskName, Simplify=.FALSE.)
 
    !Pass FrontNodeNums to all CPUs
    IF(Boss) FrontLineCount = SIZE(FrontNodeNums)
@@ -268,11 +275,14 @@
        NodeMelt = 0.0_dp
      END IF
 
-     !Compute front normal component of velocity
-     NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
-     NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
-     NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
-
+     IF(IgnoreVelo) THEN
+       NodeVelo = 0.0
+     ELSE
+       !Compute front normal component of velocity
+       NodeVelo(1) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 1)
+       NodeVelo(2) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 2)
+       NodeVelo(3) = VeloVar % Values(((VeloVar % Perm(i)-1)*VeloVar % DOFs) + 3)
+     END IF
 
      Displace = 0.0
 
@@ -718,11 +728,11 @@
          IF(DontMove(i)) THEN
            ShiftSecond = .FALSE.
            DontMove(i-1) = .TRUE.
-           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, dont move second: ',i
+           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, do not move second: ',i
          ELSE IF(DontMove(i-1)) THEN
            ShiftSecond = .TRUE.
            DontMove(i) = .TRUE.
-           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, dont move first: ',i-1
+           IF(Debug) PRINT *,ParEnv % MyPE,'Debug, do not move first: ',i-1
          ELSE
            IF(SUM(Rot_z_coords(i,:)) > SUM(Rot_z_coords(i-1,:))) THEN
              ShiftSecond = .TRUE.
@@ -895,7 +905,7 @@
            END IF
 
          ELSE
-           PRINT *,'Debug, found no intersection, so nodes arent QUITE tangled: ',i,j
+           PRINT *,'Debug, found no intersection, so nodes are not QUITE tangled: ',i,j
 
            Tangled(i:j) = .TRUE.
            TangledPivotIdx(i:j) = PivotIdx

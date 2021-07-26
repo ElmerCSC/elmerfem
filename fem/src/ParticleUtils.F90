@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter R�back & Juha Ruokolainen
+! *  Authors: Peter Råback & Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -2128,6 +2128,8 @@ RETURN
         i = Particles % ElementIndex(No)        
         IF( i > 0 ) THEN
           ElementSize = SizeValues(i)
+        ELSE
+          ElementSize = 0._dp
         END IF
       END IF
       RETURN
@@ -2142,7 +2144,8 @@ RETURN
     IF( .NOT. ConstantDt ) THEN
       ! Use existing variable only if it is of correct size!
       ElementSizeVar => VariableGet( Mesh % Variables,'Element Size' )
-      NULLIFY( SizeValues ) 
+      NULLIFY( SizeValues )
+
       IF( ASSOCIATED( ElementSizeVar ) ) THEN
         SizeValues => ElementSizeVar % Values
         IF( ASSOCIATED( SizeValues ) ) THEN
@@ -2163,7 +2166,7 @@ RETURN
     DO t=1,NoElems
       Element => Mesh % Elements(t)      
       CALL GetElementNodes( Nodes, Element ) 
-      n = Element % TYPE % NumberOfNodes
+      n = GetElementNOFNodes()
 
       IP = GaussPoints( Element )
       u = SUM( IP % u ) / IP % n 
@@ -2202,10 +2205,70 @@ RETURN
     ELSE
       h0 = ElementSizeAve
     END IF
+
+    IF(ConstantDt) THEN
+       ElementSize =  h0
+    ELSE
+      ElementSize =  SizeValues(No)
+    END IF
           
     Visited = .TRUE.
     
   END FUNCTION CharacteristicElementSize
+
+
+
+  !-----------------------------------------------------------------------
+  !> Computes the characterestic time spent for each direction separately.
+  !> Currently can only be computed for one particle at a time. 
+  !-----------------------------------------------------------------------
+  FUNCTION CharacteristicUnisoTime( Particles, No ) RESULT ( CharTime )
+    
+    TYPE(Particle_t), POINTER :: Particles
+    REAL(KIND=dp) :: CharTime
+    INTEGER, OPTIONAL :: No
+    
+    REAL(KIND=dp) :: Center(3),CartSize(3),Velo(3)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER :: i, t, n, dim
+    LOGICAL :: Visited = .FALSE.
+    
+    SAVE Visited, Mesh, dim, Nodes
+
+    IF(.NOT. Visited ) THEN
+      Mesh => GetMesh()
+      dim = Mesh % MeshDim
+      Visited = .TRUE.
+    END IF
+
+    ! Absolute of velocity in each direction
+    Velo(1:dim) = ABS( Particles % Velocity(No,1:dim) )
+
+    t = Particles % ElementIndex(No)               
+    Element => Mesh % Elements(t)      
+    CALL GetElementNodes( Nodes, Element ) 
+    n = Element % TYPE % NumberOfNodes
+
+    ! Center point of element
+    Center(1) = SUM( Nodes % x(1:n) ) / n
+    Center(2) = SUM( Nodes % y(1:n) ) / n
+    Center(3) = SUM( Nodes % z(1:n) ) / n
+
+    ! Average distance from center multiplied by two in eadh direction
+    CartSize(1) = 2 * SUM( ABS( Nodes % x(1:n) - Center(1) ) ) / n
+    CartSize(2) = 2 * SUM( ABS( Nodes % y(1:n) - Center(2) ) ) / n
+    CartSize(3) = 2 * SUM( ABS( Nodes % z(1:n) - Center(3) ) ) / n
+
+    CharTime = HUGE( CharTime )
+    DO i=1,dim
+      IF( CharTime * Velo(i) > CartSize(i) ) THEN
+        CharTime = CartSize(i) / Velo(i)
+      END IF      
+    END DO
+    
+  END FUNCTION CharacteristicUnisoTime
 
 
   
@@ -3106,7 +3169,9 @@ RETURN
     END SELECT
 
 
-    IF( GotMask .AND. ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    IF( GotMask ) THEN
+      IF ( ASSOCIATED(InvPerm) ) DEALLOCATE( InvPerm ) 
+    END IF
 
     !------------------------------------------------------------------------
     ! Velocities may be initialized using a given list, or obtaining them
@@ -4580,7 +4645,7 @@ RETURN
 
   !-------------------------------------------------------------
   !> This subroutine may be used to enquire position dependent material data.
-  !> Also if the particle is splitted between two elements then this 
+  !> Also if the particle is split between two elements then this 
   !> routine can assess the data on the secondary mesh.
   !-------------------------------------------------------------
   FUNCTION GetMaterialPropertyInMesh(PropertyName, BulkElement, Basis, &
@@ -5803,16 +5868,16 @@ RETURN
     INTEGER :: No, Status    
     REAL(KIND=dp) :: dt,dt0,tfin,tprev,dsgoal,hgoal,dtmax,dtmin,dtup,dtlow, &
         CharSpeed, CharTime, dtave
-    LOGICAL :: GotIt,TfinIs,NStepIs,DsGoalIs,HgoalIs,DtIs
-    INTEGER :: nstep, TimeStep, PrevTimeStep = -1, flag
+    LOGICAL :: GotIt,TfinIs,NStepIs,DsGoalIs,HgoalIs,HgoalIsUniso,DtIs
+    INTEGER :: nstep, TimeStep, PrevTimeStep = -1
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: TimeVar, DtVar
     
     SAVE dt0,dsgoal,hgoal,dtmax,dtmin,DtIs,Nstep,&
-        tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,PrevTimeStep, &
+        tprev,Tfin,TfinIs,DsGoalIs,HgoalIs,HgoalIsUniso,PrevTimeStep, &
 	DtVar,TimeVar
     
-    dtout = 0.0_dp
+    dtout = 0.0_dp; dtave = 0._dp
 
     IF( InitInterval ) THEN
       Params => ListGetSolverParams()
@@ -5825,6 +5890,12 @@ RETURN
       
       ! Constraint by relative step size taken (1 means size of the element)
       hgoal = GetCReal( Params,'Timestep Courant Number',HGoalIs)
+
+      ! Constraint by relative step size taken (each cartesian direction of element)
+      HGoalIsUniso = .FALSE.
+      IF(.NOT. HGoalIs ) THEN
+        hgoal = GetCReal( Params,'Timestep Unisotropic Courant Number',HGoalIsUniso)
+      END IF
       
       Nstep = GetInteger( Params,'Max Timestep Intervals',GotIt)
       IF(.NOT. GotIt) Nstep = 1
@@ -5872,17 +5943,18 @@ RETURN
       ELSE IF( HgoalIs ) THEN
         CharTime = CharacteristicElementTime( Particles )
         dt = Hgoal * CharTime ! ElementH / Speed
-
         !PRINT *,'ratio of timesteps:',tfin/dt
       ELSE IF( tfinIs ) THEN
         dt = tfin / Nstep
+      ELSE IF( HgoalIsUniso ) THEN
+        CALL Fatal('GetParticleTimesStep','Cannot use unisotropic courant number with constant dt!')
       ELSE
-        CALL Fatal('GetParticlesTimeStep','Cannot determine timestep size!')
+        CALL Fatal('GetParticleTimeStep','Cannot determine timestep size!')
       END IF
 
       ! Constrain the timestep
       !------------------------------------------------------------------
-      dt = MAX( MIN( dt, dtmax ), dtmin )
+!     dt = MAX( MIN( dt, dtmax ), dtmin )
 
       ! Do not exceed the total integration time
       !-------------------------------------------
@@ -5907,22 +5979,19 @@ RETURN
 
 	tprev = TimeVar % Values(No)        
 
-	flag = 1
-
         IF( DtIs ) THEN
           dt = dt0 
-	  flag = 2
         ELSE IF( DsGoalIs ) THEN
           CharSpeed = CharacteristicSpeed( Particles, No )     
           dt = dsgoal / CharSpeed
-	  flag = 3
         ELSE IF( HgoalIs ) THEN
           CharTime = CharacteristicElementTime( Particles, No )     
           dt = Hgoal * CharTime ! ElementH / Speed
-	  flag = 4
         ELSE IF( tfinIs ) THEN
           dt = tfin / Nstep
-	  flag = 5
+        ELSE IF( HgoalIsUniso ) THEN
+          CharTime = CharacteristicUnisoTime( Particles, No )     
+          dt = Hgoal * CharTime ! ElementH / Speed
         ELSE
           CALL Fatal('GetParticlesTimeStep','Cannot determine timestep size!')
         END IF
@@ -6701,13 +6770,12 @@ RETURN
     LOGICAL :: GotIt, Parallel, FixedMeshend,SinglePrec
     
     CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
-    CHARACTER(MAX_NAME_LEN) :: VtuFile, PvtuFile 
+    CHARACTER(MAX_NAME_LEN) :: VtuFile, PvtuFile, BaseFile, OutputDirectory
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, &
         Status, MinSaveStatus, MaxSaveStatus, PrecBits, PrecSize, IntSize, &
         iTime 
-    CHARACTER(MAX_NAME_LEN) :: Dir
     REAL(KIND=dp) :: SaveNodeFraction, LocalVal(3)
     LOGICAL :: BinaryOutput,AsciiOutput,Found,Visited = .FALSE.,SaveFields
     REAL(KIND=dp) :: DoubleWrk
@@ -6715,11 +6783,13 @@ RETURN
 
     CHARACTER(MAX_NAME_LEN) :: Str
     INTEGER :: NumberOfNodes, ParallelNodes, Dim
+    TYPE(Solver_t), POINTER :: pSolver
     
     SAVE :: MinSaveStatus, MaxSaveStatus
     
     Params => ListGetSolverParams()
     Mesh => GetMesh()
+    pSolver => GetSolver()
     
     ExtCount = ListGetInteger( Params,'Output Count',GotIt)
     IF( GotIt ) THEN
@@ -6755,7 +6825,7 @@ RETURN
 
     SinglePrec = GetLogical( Params,'Single Precision',GotIt) 
     IF( SinglePrec ) THEN
-      CALL Info('VtuOutputSolver','Using single precision arithmetics in output!',Level=7)
+      CALL Info('ParticleOutputVtu','Using single precision arithmetics in output!',Level=7)
     END IF
     
     IF( SinglePrec ) THEN
@@ -6790,35 +6860,32 @@ RETURN
       END IF
     END IF
 
+    BaseFile = FilePrefix
+    CALL SolverOutputDirectory( pSolver, BaseFile, OutputDirectory, UseMeshDir = .TRUE.  )
+    BaseFile = TRIM(OutputDirectory)// '/' //TRIM(BaseFile)    
 
-    IF (LEN_TRIM(Mesh % Name) > 0 ) THEN
-      Dir = TRIM(Mesh % Name) // "/"
-    ELSE
-      Dir = "./"
-    END IF
-    
     IF(Parallel .AND. Part == 0) THEN
       IF( iTime < 10000 ) THEN
-        WRITE( PvtuFile,'(A,A,I4.4,".pvtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( PvtuFile,'(A,I4.4,".pvtu")' ) TRIM(BaseFile),iTime
       ELSE
-        WRITE( PvtuFile,'(A,A,I0,".pvtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( PvtuFile,'(A,I0,".pvtu")' ) TRIM(BaseFile),iTime
       END IF
       CALL WritePvtuFile( PvtuFile )
     END IF
     
     IF ( Parallel ) THEN
       IF( iTime < 10000 ) THEN
-        WRITE( VtuFile,'(A,A,I4.4,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
+        WRITE( VtuFile,'(A,I4.4,A,I4.4,".vtu")' ) TRIM(BaseFile),Part+1,"par",&
             iTime
       ELSE
-        WRITE( VtuFile,'(A,A,I4.4,A,I0,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
+        WRITE( VtuFile,'(A,I4.4,A,I0,".vtu")' ) TRIM(BaseFile),Part+1,"par",&
             iTime
       END IF
     ELSE
       IF( iTime < 10000 ) THEN
-        WRITE( VtuFile,'(A,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( VtuFile,'(A,I4.4,".vtu")' ) TRIM(BaseFile),iTime
       ELSE
-        WRITE( VtuFile,'(A,A,I0,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+        WRITE( VtuFile,'(A,I0,".vtu")' ) TRIM(BaseFile),iTime
       END IF
     END IF
 
@@ -7587,10 +7654,6 @@ RETURN
 !------------------------------------------------------------------------------
   SUBROUTINE ParticleOutputVti( Particles, GridExtent, GridOrigin, GridDx, GridIndex )
 !------------------------------------------------------------------------------
-
-!    USE DefUtils 
-!    USE MeshUtils
-!    USE ElementDescription
     USE AscBinOutputUtils    
 
     IMPLICIT NONE
@@ -7687,7 +7750,7 @@ RETURN
     SUBROUTINE WriteVtiFile( VtiFile )
       CHARACTER(LEN=*), INTENT(IN) :: VtiFile
       INTEGER, PARAMETER :: VtiUnit = 58
-      TYPE(Variable_t), POINTER :: Var, Solution
+      TYPE(Variable_t), POINTER :: Var, Solution, Solution2
       CHARACTER(LEN=512) :: str
       INTEGER :: i,j,k,l,dofs,Rank,cumn,n,vari,sdofs,ind,IsVector,IsAppend,GridPoints,Offset
       CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
@@ -7828,14 +7891,14 @@ RETURN
           ! Some vectors are defined by a set of components (either 2 or 3)
           !---------------------------------------------------------------------
           IF( ComponentVector ) THEN
-            Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN
-              Values2 => Solution % Values
+            Solution2 => VariableGet( Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly )
+            IF( ASSOCIATED(Solution2)) THEN
+              Values2 => Solution2 % Values
               dofs = 2
             END IF
-            Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN
-              Values3 => Solution % Values
+            Solution2 => VariableGet( Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly )
+            IF( ASSOCIATED(Solution2)) THEN
+              Values3 => Solution2 % Values
               dofs = 3
             END IF
           END IF
@@ -7849,11 +7912,11 @@ RETURN
 
           FieldName2 = ListGetString( Params, TRIM(Txt), Found )
           IF( Found ) THEN
-            Solution => VariableGet( Mesh % Variables, &
+            Solution2 => VariableGet( Mesh % Variables, &
                 TRIM(FieldName2), ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN 
-              Values2 => Solution % Values
-              Perm2 => Solution % Perm 
+            IF( ASSOCIATED(Solution2)) THEN 
+              Values2 => Solution2 % Values
+              Perm2 => Solution2 % Perm 
               ComplementExists = .TRUE.
             ELSE
               CALL Warn('WriteVTIFile','Complement does not exist:'//TRIM(FieldName2))
@@ -7939,7 +8002,7 @@ RETURN
                     END IF
                     
                     stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
-                                        
+                    
                     IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
                       ElemInd(1:n) = Perm( Element % DGIndexes(1:n) )
                       IF( ComplementExists ) THEN

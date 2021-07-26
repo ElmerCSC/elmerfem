@@ -40,9 +40,9 @@ Solver 1
   Y Var Name = String "y1"
 
   !--- Interpolation variables
-  Epsilon X = Real 1.0e-2 
-  Epsilon Y = Real 1.0e-2 
-  Epsilon Time = Real 0.01
+  X Epsilon  = Real 1.0e-2 
+  Y Epsilon  = Real 1.0e-2 
+  Time Epsilon  = Real 0.01
 
   Interpolation Bias = Real 0.0 
   Interpolation Multiplier = Real 1.0 
@@ -68,8 +68,4 @@ End
 
 Solver 2 :: Reference Norm = Real 3.31694136E+01
 Solver 2 :: Reference Norm Tolerance = Real 1E-06
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=3.31694136E+01,EPS=1E-06\n" );
-
 

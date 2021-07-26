@@ -1,0 +1,87 @@
+!----------------------------------------------------------------
+! Apply a hydrostatic pressure on an elastic steel tank.
+! 
+! See ../tests/tank.sif for the origin of this test problem. 
+!-----------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "tank" 
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Axi Symmetric ! Simplifies the case to 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = quads.vtu
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Nonlinear Elasticity
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Large Deflection = True
+  Variable = -dofs 2 Displacement
+  Steady State Convergence Tolerance = 1.0e-5
+  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+  !
+  ! "Output State Variables" controls whether the UMAT variables at integration
+  ! points (the state and energy variables and stresses) are output to
+  ! the vtu file. "Calculate Stresses" and "Calculate Strains" activates
+  ! the stress/strain calculation via global L2-projection to obtain nodal fields.
+  !
+  Output State Variables = True
+  Calculate Stresses = True
+  Calculate Strains = True
+
+  Nonlinear System Convergence Tolerance = 1e-5
+  Nonlinear System Max Iterations = 20
+  Displace Mesh = False
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Material 1" ! Corresponds to steel
+  Number of Material Constants = 3
+  Number of State Variables = 0
+  ! List material constants as {density, Young's modulus, Poisson's ratio}:
+  Material Constants(3) = 1.0 2.1e11 0.3
+  Reference Temperature = 293.0
+  UMAT Subroutine = File "./LocalUMAT" "stvenant_kirchhoff_axials"
+  Name = "st venant-kirchhoff-axials" ! This specifies the CMNAME argument of UMAT
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 4 
+  Name = "Pressure"
+  Force 1 = Variable Coordinate 2; Real MATC "(1-tx/4)*200000"
+!  Save Line = Logical True ! Saves the line for comparison.
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 1 
+  Name = "bottom"
+  Displacement 2 = 0
+End
+
+
+Solver 1 :: Reference Norm = Real 5.01028973E-06
+Solver 1 :: Reference Norm Tolerance = Real 1.0E-5
+
+

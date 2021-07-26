@@ -10,7 +10,8 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 100
-  Post File   = "ptest.ep"
+
+!  Post File   = "ptest.vtu"
 
 ! Set Dirichlet BCs By BC Numbering = True
 ! Output File = "ptest.dat"
@@ -68,4 +69,3 @@ Boundary Condition 3
 End
 
 Solver 1 :: Reference Norm = Real 0.39106727
-RUN

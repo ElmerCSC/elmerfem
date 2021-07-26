@@ -40,6 +40,7 @@ Solver 1
   Linear System Preconditioning = Jacobi
   Linear System Max Iterations = 100
   Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = False
 
   Steady State Convergence Tolerance = 1.0e-6
 End

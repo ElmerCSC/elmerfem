@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback
+! *  Authors: Peter Raback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -337,7 +337,7 @@ CONTAINS
     
     Mesh % NumberOfNodes = NumberOfNodes
          
-    ! This is just empty left paranthesis
+    ! This is just empty left parenthesis
     READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
    
     DO i=1,n
@@ -349,12 +349,12 @@ CONTAINS
       j =  INDEX( ReadStr,'(',.TRUE.) 
       IF( j == 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit',&
-            'Expecting a paranthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the start of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
       k =  INDEX( ReadStr,')',.TRUE.) 
       IF( k == 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit',&
-            'Expecting a paranthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
+            'Expecting a parenthesis at the end of OpenFOAM line: '//TRIM(I2S(i)))
       END IF
       
       READ( ReadStr(j+1:k-1),*,IOSTAT=IOStatus ) x,y,z
@@ -464,7 +464,7 @@ CONTAINS
     CALL Info('OpenFoam2ElmerFit','Number of OpenFOAM nodes: '&
         //TRIM(I2S(n)),Level=10)
     
-    ! This is just empty left paranthesis
+    ! This is just empty left parenthesis
     READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
    
     DO i=1,OFMesh % NumberOfNodes

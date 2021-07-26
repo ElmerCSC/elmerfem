@@ -37,9 +37,16 @@
  *  Original Date: 15 Mar 2008                                               *
  *                                                                           *
  *****************************************************************************/
-
+#if WITH_QT5
+  #include <QtWidgets>
+#endif
 #include <QtGui>
 #include <iostream>
+#include <vtkXMLUnstructuredGridReader.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkDataSet.h>
+#include <vtkPointData.h>
+#include <vtkCellData.h>
 #include "readepfile.h"
 
 using namespace std;
@@ -70,9 +77,11 @@ ReadEpFile::~ReadEpFile()
 
 void ReadEpFile::browseButtonClickedSlot()
 {
-  QString fileName = QFileDialog::getOpenFileName(this, tr("Select input file"), "", tr("Ep files (*.ep)"));
+  QString fileName = QFileDialog::getOpenFileName(this, tr("Select input file"), "", tr("Postprocessor files (*.ep *.vtu);;ElmerPost files (*.ep);;Paraview files (*.vtu)"));
 
   ui.fileName->setText(fileName.trimmed());
+  ui.start->setValue(1);
+  ui.end->setValue(1);
 
   readHeader();
 }
@@ -124,18 +133,62 @@ void ReadEpFile::readHeader()
     return;
   }
 
-  QTextStream post(&postFile);
-
-  QTextStream txtStream;
-  QString tmpLine = post.readLine().trimmed();
-  while(tmpLine.isEmpty() || (tmpLine.at(0) == '#'))
-    tmpLine = post.readLine().trimmed();
-  txtStream.setString(&tmpLine);
-
   int nodes, elements, timesteps, components;
-  txtStream >> nodes >> elements >> components >> timesteps;
 
-  postFile.close();
+  if(ui.fileName->text().endsWith(".vtu", Qt::CaseInsensitive)){
+  
+    vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
+    reader->SetFileName(ui.fileName->text().toLatin1().data());
+    reader->Update();
+    
+	nodes = reader->GetNumberOfPoints();
+    elements = reader->GetNumberOfCells();
+	components = 1;
+    timesteps = reader->GetNumberOfTimeSteps();
+	if(timesteps == 0) timesteps = 1;
+	components = 0;
+    vtkUnstructuredGrid *output = reader->GetOutput();
+	vtkPointData *pointData = output->GetPointData();
+	vtkCellData *cellData = output->GetCellData();
+    
+    for(int i = 0; i < reader->GetNumberOfPointArrays(); i++){
+	  components += pointData->GetArray(reader->GetPointArrayName(i))->GetNumberOfComponents();
+    }
+	reader->Delete();
+
+
+	QFileInfo info(fileName);
+	QDir dir = info.dir();
+	QString name = info.fileName();
+	int l = name.length();
+	int i = 4;
+	while(name.at(l-i-1).isNumber() && i>0) i++;
+	QString filter = name.left(l-i) + "*.vtu";
+	cout << ".vtu file: " <<  filter.toLatin1().data() << endl;
+
+	QStringList filterList;
+	filterList << "*.vtu";
+	vtuFileNameList = dir.entryList(filterList,  QDir::Readable|QDir::Files|QDir::NoSymLinks, QDir::SortFlags(QDir::Name | QDir::IgnoreCase));
+	//for(int i=0; i < vtuFileNameList.length(); i++){
+	//	cout <<  vtuFileNameList.at(i).toLatin1().data() << endl;
+	//}
+	vtuFileNameList = vtuFileNameList.mid(vtuFileNameList.indexOf(info.fileName()));
+	timesteps = vtuFileNameList.length();
+  
+  }else if(ui.fileName->text().endsWith(".ep", Qt::CaseInsensitive)){
+
+    QTextStream post(&postFile);
+
+    QTextStream txtStream;
+    QString tmpLine = post.readLine().trimmed();
+    while(tmpLine.isEmpty() || (tmpLine.at(0) == '#'))
+      tmpLine = post.readLine().trimmed();
+    txtStream.setString(&tmpLine);
+
+    txtStream >> nodes >> elements >> components >> timesteps;
+
+    postFile.close();
+  }
 
   ui.nodesEdit->setText(QString::number(nodes));
   ui.elementsEdit->setText(QString::number(elements));

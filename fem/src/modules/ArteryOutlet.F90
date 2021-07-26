@@ -28,7 +28,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Esko J�rvinen, Mikko Lyly, Peter R�back
+! *  Authors: Esko J�rvinen, Mikko Lyly, Peter Råback
 ! *  Email:   Esko.Jarvinen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -64,6 +64,7 @@ SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
     CALL Info('OutletCompute_Init','Creating internal 1D mesh')
 
     Mesh => CreateLineMesh( Params )
+    CALL SetMeshMaxDofs(Mesh)
     Solver % Mesh => Mesh 
 
     PMesh => Model % Meshes

@@ -62,27 +62,32 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   IMPLICIT NONE
 
 #include "mmg/mmg3d/libmmgtypesf.h"
+#ifndef MMGVERSION_H
+#define MMG_VERSION_LT(MAJOR,MINOR) 1
+#endif
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t), TARGET :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
   !--------------------------------------
+  TYPE(Variable_t), POINTER :: CalvingVar
   TYPE(ValueList_t), POINTER :: SolverParams
-  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,FinalMesh
+  TYPE(Mesh_t),POINTER :: Mesh,GatheredMesh,NewMeshR,NewMeshRR,FinalMesh
   TYPE(Element_t),POINTER :: Element, ParentElem
   INTEGER :: i,j,k,NNodes,GNBulk, GNBdry, GNNode, NBulk, Nbdry, ierr, &
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),front_BC_ID, &
-       my_calv_front,calv_front, ncalv_parts, group_calve, comm_calve, group_world,ecode, NElNodes
-  INTEGER, POINTER :: NodeIndexes(:)
-  INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:),elem_fixed(:), &
+       my_calv_front,calv_front, ncalv_parts, group_calve, comm_calve, group_world,ecode, NElNodes,&
+       target_bodyid,gdofs(4)
+  INTEGER, POINTER :: NodeIndexes(:), geom_id
+  INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:)
   REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd
-  REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:)
-  REAL(KIND=dp), POINTER :: PArray(:,:)=> NULL()
+  REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
+       target_length(:,:)
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
-       elem_send(:), RmElem(:), RmNode(:)
-  LOGICAL :: ImBoss, Found, Debug=.FALSE.
+       elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:)
+  LOGICAL :: ImBoss, Found, Isolated, Debug=.TRUE.
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -106,9 +111,13 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
     END IF
   END DO
 
-  !For testing - set a calving levelset function to mimick calving events
+  !Get Body ID
+  target_bodyid = Mesh % Elements(1) % BodyID
+  IF(target_bodyid /= 1) CALL Warn(SolverName, "Body ID is not 1, this case might not be well handled")
+  !For testing - set a calving levelset function to mimic calving events
   !-------------------
 
+  !TODO - unhardcode (detect?) this
   front_BC_id = 1
 
   hmin = ListGetConstReal(SolverParams, &
@@ -127,18 +136,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        "Mesh Hausd", Found)
   IF(.NOT. Found) hausd = 20.0
 
-  PArray => ListGetConstRealArray(SolverParams, &
-       "Test Point", Found)
-  IF(Found) THEN
-    test_point = PArray(1:3,1)
-  ELSE 
-    test_point = (/491600.0, -2290000.0,79.9166641235/)
-  END IF
-
-  test_thresh = ListGetConstReal(SolverParams, &
-       "Test Calve Dist", Found)
-  IF(.NOT. Found) test_thresh = 1500.0
-
   remesh_thresh = ListGetConstReal(SolverParams, &
        "Test Remesh Dist", Found)
   IF(.NOT. Found) remesh_thresh = 1000.0
@@ -146,7 +143,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   PRINT *,ParEnv % MyPE,' hmin: ',hmin
   PRINT *,ParEnv % MyPE,' hmax: ',hmax
   PRINT *,ParEnv % MyPE,' hausd: ',hausd
-  PRINT *,ParEnv % MyPE,' test_point: ',test_point
+  PRINT *,ParEnv % MyPE,' remesh_thresh: ',remesh_thresh
+
+
+  !Get the calving levelset function (-ve inside calving event, +ve in intact ice)
+  !-------------------
+  CalvingVar => VariableGet(Mesh % Variables, "Calving Lset", .TRUE., UnfoundFatal=.TRUE.)
 
   ALLOCATE(test_dist(NNodes),&
        test_lset(NNodes),&
@@ -160,56 +162,60 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   calved_node = .FALSE.
   fixed_node = .FALSE.
 
-  !Compute involved nodes
-  DO i=1, NNodes
-    test_dist(i) = (((Mesh % Nodes % x(i) - test_point(1))**2.0) + &
-         ((Mesh % Nodes % y(i) - test_point(2))**2.0) + &
-         ((Mesh % Nodes % z(i) - test_point(3))**2.0)) ** 0.5
-  END DO
-
-  calved_node = test_dist < test_thresh
-  remeshed_node = test_dist < (test_thresh + remesh_thresh)
-  test_lset = test_dist - test_thresh
+  test_lset = CalvingVar % Values(CalvingVar % Perm(:)) !TODO - quick&dirty, possibly zero perm?
+  calved_node = test_lset < 0.0
+  remeshed_node = test_lset < remesh_thresh
 
   my_calv_front = 0
   IF(ANY(remeshed_node)) THEN
     my_calv_front = 1 !this is integer (not logical) so we can later move to multiple calving fronts
   END IF
 
-  !TODO - could make this more efficent by cutting out some of the elements from the calved region.
+  !TODO - could make this more efficient by cutting out some of the elements from the calved region.
   !This region will be remeshed too, but we discard it, so the closer we can get to the edge of the
   !calving event, the better.
 
   !Identify all elements which need to be sent (including those fixed in place)
   !Here we also find extra nodes which are just beyond the remeshing threshold
   !but which are in fixed elements, thus also need to be sent
-  ALLOCATE(elem_fixed(nbulk+nbdry), elem_send(nbulk+nbdry))
-  elem_fixed = 0 !integer rather than logical to facilitate sending in packed element structure
+  ALLOCATE(elem_send(nbulk+nbdry))
   elem_send = .FALSE.
 
   IF(my_calv_front > 0) THEN
     !Each partition identifies (based on nodes), elements which need to be transferred
-    DO i=1,Nbulk+Nbdry
+    DO i=1,Nbulk
       Element => Mesh % Elements(i)
+      CALL Assert(Element % ElementIndex == i, SolverName,"Misnumbered bulk element.")
       NodeIndexes => Element % NodeIndexes
       NElNodes = Element % TYPE % NumberOfNodes
       IF(ANY(remeshed_node(NodeIndexes(1:NElNodes)))) THEN
         elem_send(i) = .TRUE.
         IF(.NOT. ALL(remeshed_node(NodeIndexes(1:NElNodes)))) THEN
-          elem_fixed(i) = 1
           fixed_node(NodeIndexes(1:NElNodes)) = .TRUE.
         END IF
       END IF
     END DO
-    
+
     remeshed_node = remeshed_node .OR. fixed_node
+
+    !Cycle boundary elements, checking parent elems
+    !BC elements follow parents
+    DO i=NBulk+1, NBulk+NBdry
+      Element => Mesh % Elements(i)
+      ParentElem => Element % BoundaryInfo % Left
+      IF(.NOT. ASSOCIATED(ParentElem)) THEN
+        ParentElem => Element % BoundaryInfo % Right
+      END IF
+      CALL Assert(ASSOCIATED(ParentElem),SolverName,"Boundary element has no parent!")
+      IF(elem_send(ParentElem % ElementIndex)) elem_send(i) = .TRUE.
+    END DO
 
     DEALLOCATE(fixed_node) !reuse later
   END IF
 
 
   !This does nothing yet but it will be important - determine
-  !the discrete calving zones, each of which will be seperately remeshed
+  !the discrete calving zones, each of which will be separately remeshed
   !by a nominated boss partition
   !  CALL CountCalvingEvents(Model, Mesh, ccount)
   ccount = 1
@@ -267,7 +273,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !contain entire calving/remeshing regions.
   IF(.NOT. ASSOCIATED(Mesh % Repartition)) THEN
     ALLOCATE(Mesh % Repartition(NBulk+NBdry), STAT=ierr)
-    IF(ierr /= 0) PRINT *,ParEnv % MyPE,' couldnt allocate Mesh % Repartition'
+    IF(ierr /= 0) PRINT *,ParEnv % MyPE,' could not allocate Mesh % Repartition'
   END IF
 
   Mesh % Repartition = ParEnv % MyPE + 1
@@ -285,7 +291,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   END IF
 
   !Now we have the gathered mesh, need to send:
-  ! - Remeshed_node, test_lset, elem_fixed
+  ! - Remeshed_node, test_lset
   ! - we can convert this into an integer code on elements (0 = leave alone, 1 = remeshed, 2 = fixed)
   ! - or we can simply send test_lset and recompute on calving_boss
 
@@ -364,12 +370,13 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
   END IF
 
-  !Nominated parition does the remeshing
+  !Nominated partition does the remeshing
   IF(ImBoss) THEN
 
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgSol  = 0
+      mmgMet  = 0
 
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
@@ -426,18 +433,22 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
+#if MMG_VERSION_LT(5,5) 
       CALL MMG3D_mmg3dls(mmgMesh,mmgSol,ierr)
+#else
+      CALL MMG3D_mmg3dls(mmgMesh,mmgSol,mmgMet,ierr)
+#endif
 
       CALL MMG3D_SaveMesh(mmgMesh,"test_out.mesh",LEN(TRIM("test_out.mesh")),ierr)
 
-      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE.)
+      CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
       NewMeshR % Name = Mesh % Name
 
       NNodes = NewMeshR % NumberOfNodes
       NBulk = NewMeshR % NumberOfBulkElements
       NBdry = NewMeshR % NumberOfBoundaryElements
-      IF(DEBUG) PRINT *, 'NewMeshR nonodes: ',NNodes, NBulk, NBdry
+      IF(DEBUG) PRINT *, 'NewMeshR nonodes, nbulk, nbdry: ',NNodes, NBulk, NBdry
       
       !Clear out unneeded elements
       !Body elems with BodyID 3 (2) are the calving event (remaining domain)
@@ -462,12 +473,36 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           !on some split calving elements
           NewMeshR % ParallelInfo % GlobalDOFs(Element % NodeIndexes) = 0
           CYCLE
+        ELSE IF(Element % BodyID == 2) THEN
+          Element % BodyID = target_bodyid
+        ELSE
+          PRINT *,'Erroneous body id: ',Element % BodyID
+          CALL Fatal(SolverName, "Bad body id!")
         END IF
 
+        !Get rid of any isolated elements (I think?)
+        ! This may not be necessary, if the calving levelset is well defined
         CALL MMG3D_Get_AdjaTet(mmgMesh, i, adjList,ierr)
-        IF(ALL(adjList == 0)) RmElem(i) = .TRUE.
+        IF(ALL(adjList == 0)) THEN
 
-        !Mark any nodes found in valid bulk elements 
+          !check if this is truly isolated or if it's at a partition boundary
+          isolated = .TRUE.
+          gdofs = NewMeshR % ParallelInfo % GlobalDOFs(Element % NodeIndexes(1:NELNodes))
+          DO j=1,GatheredMesh % NumberOfNodes
+            IF(ANY(gdofs == GatheredMesh % ParallelInfo % GlobalDOFs(j)) .AND. &
+                 GatheredMesh % ParallelInfo % INTERFACE(j)) THEN
+              isolated = .FALSE.
+              EXIT
+            END IF
+          END DO
+
+          IF(isolated) THEN
+            RmElem(i) = .TRUE.
+            CALL WARN(SolverName, 'Found an isolated body element.')
+          END IF
+        END IF
+
+        !Mark all nodes in valid elements for keeping
         RmNode(Element % NodeIndexes(1:NElNodes)) = .FALSE.
       END DO
 
@@ -478,7 +513,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         Element => NewMeshR % Elements(i)
         NElNodes = Element % TYPE % NumberOfNodes
 
+        !Get rid of non-triangles
         IF(Element % TYPE % ElementCode /= 303) THEN
+          RmElem(i) = .TRUE.
+          CYCLE
+        END IF
+
+        !Get rid of boundary elements without BCID (newly created internal)
+        IF(Element % BoundaryInfo % Constraint == 0) THEN
           RmElem(i) = .TRUE.
           CYCLE
         END IF
@@ -498,7 +540,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
             CALL MMG3D_Get_AdjaTet(mmgMesh, ParentElem % ElementIndex, adjList,ierr)
             DO j=1,4
               IF(adjlist(j) == 0) CYCLE
-              IF(NewMeshR % Elements(adjlist(j)) % BodyID == 2) THEN
+              IF(NewMeshR % Elements(adjlist(j)) % BodyID == target_bodyid) THEN
                 Element % BoundaryInfo % Left => NewMeshR % Elements(adjList(j))
                 EXIT
               END IF
@@ -513,15 +555,21 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       END DO
 
       !Set constraint 10 (the newly formed calving front) to front_BC_id
-      !and (temporarily (TODO)) set 0 to 4 so that it doesn't break WriteMeshToDisk2
       !NOTE: I think this will be 10 * the previous BC ID...
+      !And set all BC BodyIDs based on constraint
       DO i=NBulk+1, NBulk + NBdry
-        Element => NewMeshR % Elements(i)
-        IF(Element % BoundaryInfo % Constraint == 10) &
-             Element % BoundaryInfo % Constraint = front_BC_id
 
-        IF(Element % BoundaryInfo % Constraint == 0) &
-             Element % BoundaryInfo % Constraint = 4
+        IF(RmElem(i)) CYCLE
+
+        Element => NewMeshR % Elements(i)
+        geom_id => Element % BoundaryInfo % Constraint
+        IF(geom_id == 10) geom_id = front_BC_id
+
+        CALL Assert((geom_id > 0) .AND. (geom_id <= Model % NumberOfBCs),&
+             SolverName,"Unexpected BC element body id!")
+
+        Element % BodyId  = ListGetInteger( &
+             Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
       END DO
      
 
@@ -549,6 +597,9 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !Chop out the flagged elems and nodes
       CALL CutMesh(NewMeshR, RmNode, RmElem)
 
+      new_fixed_elem = PACK(new_fixed_elem, .NOT. RmElem)
+      new_fixed_node = PACK(new_fixed_node, .NOT. RmNode)
+
       IF(Debug) THEN
         DO i=1,NewMeshR % NumberOfNodes
           PRINT *, ParEnv % MyPE,' debug new ',i,&
@@ -565,12 +616,23 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
         END DO
       END IF
 
+      !Anisotropic mesh improvement following calving cut:
+      !TODO - unhardcode! Also this doesn't work very well yet.
+      ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
+      target_length(:,1) = 300.0
+      target_length(:,2) = 300.0
+      target_length(:,3) = 50.0
+
+      CALL RemeshMMG3D(NewMeshR, target_length, NewMeshRR, new_fixed_node, new_fixed_elem)
+
       !Update parallel info from old mesh nodes (shared node neighbours)
-      CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
+      CALL MapNewParallelInfo(GatheredMesh, NewMeshRR)
 
       CALL ReleaseMesh(GatheredMesh)
-      GatheredMesh => NewMeshR
+      CALL ReleaseMesh(NewMeshR)
+      GatheredMesh => NewMeshRR
       NewMeshR => NULL()
+      NewMeshRR => NULL()
    END IF
 
    !Wait for all partitions to finish
@@ -605,24 +667,176 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
           CALL Fatal(SolverName, 'Bad GID 0')
    END DO
 
-   IF(ANY(GatheredMesh % Elements % GElementIndex <= 0)) CALL Fatal(SolverName, 'Element has ID 0')
-
-
    !Call zoltan to determine redistribution of mesh
    ! then do the redistribution
    !-------------------------------
+
    CALL Zoltan_Interface( Model, GatheredMesh )
 
    FinalMesh => RedistributeMesh(Model, GatheredMesh, .TRUE., .FALSE.)
 
-   Model % Mesh => FinalMesh
-   Solver % Mesh => FinalMesh
-   Model % Meshes => FinalMesh
+   CALL CheckMeshQuality(FinalMesh)
 
+   FinalMesh % Name = TRIM(Mesh % Name)
+   FinalMesh % OutputActive = .TRUE.
+   FinalMesh % Changed = .TRUE. 
+
+   !Actually switch the model's mesh
+   CALL SwitchMesh(Model, Solver, Mesh, FinalMesh)
+
+   !After SwitchMesh because we need GroundedMask
+   CALL EnforceGroundedMask(Mesh)
+
+   !Recompute mesh bubbles etc
+   CALL MeshStabParams( Model % Mesh )
+
+   !Release the old mesh
    CALL ReleaseMesh(GatheredMesh)
 
-   !TODO here - call something like SwitchMesh from CalvingRemesh.F90 to 
-   !handle the interpolation of the variables, the reconstruction of the
-   !solver matrices etc.
+CONTAINS
+
+  SUBROUTINE CheckMeshQuality(Mesh)
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Element_t),POINTER :: Element, Parent
+    REAL(KIND=dp) :: U,V,W,detJ,Basis(10), mean 
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: i,j,n,l,k, count
+    LOGICAL :: stat
+    CHARACTER(LEN=MAX_NAME_LEN) :: FuncName="CheckMeshQuality"
+
+    n = Mesh % MaxElementNodes
+    ALLOCATE(ElementNodes % x(n),&
+         ElementNodes % y(n),&
+         ElementNodes % z(n))
+
+    !Check all BC elements have parents
+    DO i=Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(i)
+      Parent => Element % BoundaryInfo % Left
+      IF( .NOT. ASSOCIATED(Parent) ) THEN
+        Parent => Element % BoundaryInfo % Right
+      END IF
+      IF( .NOT. ASSOCIATED( Parent ) ) THEN
+        PRINT *,ParEnv % MyPE,i,' BC element without parent! constraint: ',Element % BoundaryInfo % constraint, &
+             ' body id: ',Element % BodyID,' nodes: ',Element % NodeIndexes,&
+             ' global: ',Mesh % ParallelInfo % GlobalDOFs(Element%NodeIndexes)
+        CALL Fatal(SolverName, "BC Element without parent!")
+      END IF
+    END DO
+
+    !check for duplicate element & node indices (locally only)
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      IF(Mesh % Elements(i) % GElementIndex <= 0) CALL Fatal(SolverName, 'Element has ID 0')
+      DO j=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        IF(i==j) CYCLE
+        IF(Mesh % Elements(i) % GElementIndex == Mesh % Elements(j) % GElementIndex) THEN
+          PRINT *,ParEnv % MyPE,' elements ',i,j,' have same GElementIndex: ',&
+               Mesh % Elements(j) % GElementIndex
+          CALL Fatal(SolverName, "Duplicate GElementIndexes!")
+        END IF
+      END DO
+    END DO
+
+    DO i=1,Mesh % NumberOfNodes
+      IF(Mesh % ParallelInfo % GlobalDOFs(i) <= 0) CALL Fatal(SolverName, 'Node has ID 0')
+      DO j=1,Mesh % NumberOfNodes
+        IF(i==j) CYCLE
+        IF(Mesh % ParallelInfo % GlobalDOFs(i) == Mesh % ParallelInfo % GlobalDOFs(j)) THEN
+          PRINT *,ParEnv % MyPE,' nodes ',i,j,' have same GlobalDOF: ',&
+               Mesh % ParallelInfo % GlobalDOFs(j)
+          CALL Fatal(SolverName, "Duplicate GlobalDOFs!")
+        END IF
+      END DO
+    END DO
+
+    !Check element detj etc
+    DO j=1,2
+      IF(j==1) mean = 0.0
+      DO i=1,Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(i)
+        n = Element % TYPE % NumberOfNodes
+        NodeIndexes => Element % NodeIndexes
+
+        !Check element for duplicate node indexes
+        DO k=1,n
+          DO l=1,n
+            IF(l==k) CYCLE
+            IF(NodeIndexes(k) == NodeIndexes(l)) THEN
+              WRITE(Message, '(A,i0,A)') "Mesh Element ",i," has duplicate node indexes!"
+              CALL Fatal(FuncName,Message)
+            END IF
+          END DO
+        END DO
+
+        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
+        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
+        ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
+
+        stat = ElementInfo( Element,ElementNodes,U,V,W,detJ, &
+             Basis )
+        !Check detj - warn if deviates from mean, fatal if <= 0
+        IF(j==2) THEN
+          IF(detj <= 0.0) THEN
+            WRITE(Message, '(A,i0,A)') "Element ",j," has detj <= 0" 
+            CALL Fatal(FuncName, Message)
+          ELSE IF(detj < mean/10.0 .OR. detj > mean*10.0) THEN
+            WRITE(Message, '(i0,A,i0,A,F10.2,A,F10.2,A)') ParEnv % MyPE,' element ',&
+                 i,' detj (',detj,') deviates from mean (',mean,')'
+            CALL Warn(FuncName, Message)
+          END IF
+        ELSE
+          mean = mean + detj
+        END IF
+      END DO
+      IF(j==1) mean = mean / Mesh % NumberOfBulkElements
+    END DO
+
+
+
+
+  END SUBROUTINE CheckMeshQuality
+
+  !Takes a mesh with GroundedMask defined on the base, and
+  !ensures that grounded nodes remain grounded
+  !i.e. sets z = min zs bottom wherever GroundedMask>-0.5
+  SUBROUTINE EnforceGroundedMask(Mesh)
+    TYPE(Mesh_t), POINTER :: Mesh
+    !-------------------------
+    TYPE(ValueList_t), POINTER :: Material
+    TYPE(Variable_t), POINTER :: GMaskVar
+    REAL(KIND=dp), POINTER :: GMask(:)
+    REAL(KIND=dp) :: zb
+    INTEGER :: i,n
+    INTEGER, POINTER :: GMaskPerm(:)
+    CHARACTER(MAX_NAME_LEN) :: FuncName="EnforceGroundedMask", GMaskVarName
+
+    GMaskVarName = "GroundedMask"
+    GMaskVar => VariableGet(Mesh % Variables, GMaskVarName, .TRUE.)
+    IF(.NOT.ASSOCIATED(GMaskVar)) THEN
+      CALL Info(FuncName, "Didn't find GroundedMask, so not enforcing bed height",Level=5)
+      RETURN
+    END IF
+
+    Material => GetMaterial(Mesh % Elements(1)) !TODO, this is not generalised
+
+    GMask => GMaskVar % Values
+    GMaskPerm => GMaskVar % Perm
+
+    DO i=1,Mesh % NumberOfNodes
+      IF(GMaskPerm(i) == 0) CYCLE
+      zb = ListGetRealAtNode(Material, "Min Zs Bottom",i,UnfoundFatal=.TRUE.)
+
+      !Floating -> check no penetration
+      !Grounded -> set to bedrock height
+      IF(GMask(GMaskPerm(i)) < -0.5) THEN
+        IF(Mesh % Nodes % z(i) < zb) Mesh % Nodes % z(i) = zb
+      ELSE
+        Mesh % Nodes % z(i) = zb
+      END IF
+    END DO
+
+  END SUBROUTINE EnforceGroundedMask
 
 END SUBROUTINE CalvingRemeshMMG

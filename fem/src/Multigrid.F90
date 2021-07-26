@@ -144,14 +144,7 @@ CONTAINS
        REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:)
        REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL, tmp
        TYPE(ValueList_t), POINTER :: Params
-
-#ifdef USE_ISO_C_BINDINGS
        REAL(KIND=dp) :: tt
-#else
-       REAL(KIND=dp) :: CPUTime, tt
-#endif
-
-
        LOGICAL :: NewLinearSystem
        SAVE NewLinearSystem
 
@@ -902,12 +895,7 @@ CONTAINS
 
        REAL(KIND=dp), POINTER, SAVE :: SolutionStore(:,:), Degree(:)
 
-#ifdef USE_ISO_C_BINDINGS
        REAL(KIND=dp) :: tt, detJ
-#else
-       REAL(KIND=dp) :: CPUTime, tt, detJ
-#endif
-
        LOGICAL :: NewLinearSystem, stat, LIter
 
        SAVE NewLinearSystem
@@ -1498,7 +1486,7 @@ CONTAINS
 !> Also some ideas of compatible relaxation have been tested within the context but their usability has
 !> so far been rather limited.
 !
-!        Author: Peter R�back
+!        Author: Peter Råback
 !        Modified by: 
 !        Date of modification: 30.10.2003
 !------------------------------------------------------------------------------
@@ -1535,11 +1523,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Residual(:), Solution2(:), Work2(:)
     REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
     REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: tt
-#else
-    REAL(KIND=dp) :: CPUTime, tt
-#endif
     TYPE(ValueList_t), POINTER :: Params
 
     LOGICAL :: NewLinearSystem, gotit
@@ -5089,7 +5073,7 @@ CONTAINS
 !> This provides in princinple an economical approach to multilevel schemes.
 !> The utilization of the routines are still not complete.
 ! 
-!       Author: Peter R�back
+!       Author: Peter Råback
 !       Modified by: 
 !       Date of modification: 30.10.2007
 !------------------------------------------------------------------------------
@@ -5121,11 +5105,7 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG :: Residual2(:)
     REAL(KIND=dp), POINTER :: TmpArray(:,:)
     REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL, Alpha, Rnorm
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: tt, tmp
-#else
-    REAL(KIND=dp) :: CPUTime, tt, tmp
-#endif
     TYPE(ValueList_t), POINTER :: Params
 
     LOGICAL :: NewLinearSystem, gotit, Normalize 

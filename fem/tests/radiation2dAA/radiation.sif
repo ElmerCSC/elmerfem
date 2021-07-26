@@ -1,0 +1,115 @@
+! Legacy radiation test.
+! Now with Anderson acceleration.
+! The case is slightly modified to give better use for the method. 
+! Anderson acceleration optimally improves 1st order convergence
+! but does not beat 2nd order convergence i.e. Newton's linearization.
+!
+! P.R. 11.12.2019
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "radiation"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+!  Post File = radiation.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 250.0
+End
+
+Body Force 1
+  Heat Source = 10000.0
+End
+
+Material 1
+   Density = 1.0
+   Heat Conductivity = 0.2
+   Heat Capacity = 1.0
+   Emissivity = 0.6
+End
+
+Material 2
+   Density = 1.0
+   Heat Conductivity = 0.2
+   Heat Capacity = 1.0
+   Emissivity = 0.6
+End
+
+Solver 1
+  Equation = Heat Equation
+  Stabilize = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Convergence Tolerance = 1.0e-4
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU
+  Nonlinear System Newton After Iterations = 1
+  Nonlinear System Newton After Tolerance = 1.0e-8
+
+! Number of iterations is tuned so that this does not converge without AA
+  Nonlinear System Max Iterations = 15 !100
+  NonLinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Abort Not Converged = Logical True
+  Steady State Convergence Tolerance = 1.0e-8
+
+! If we apply nonlinear acceleration then set this to zero.
+!  Nonlinear System Relaxation Factor = 0.5
+
+! Apply anderson acceleration.
+! With these settings every 3rd nonlinear iteration is replaced
+! by a search where previous iterates are used to minize the residual
+! of current nonlinear system.
+  Nonlinear System Acceleration = Logical True
+
+! The number of nonlinear basis vectors.
+  Nonlinear System Acceleration Interval = Integer 4
+
+! This is the share of the new solution. 
+  Nonlinear System Acceleration Relaxation = Real 0.7
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+Boundary Condition 1
+  Name = "RadiationBC"
+  Target Boundaries(2) = 1 2
+  Heat Flux BC = True
+  Radiation = Diffuse Gray
+End
+
+Boundary Condition 2
+  Name = "Outside"
+  Target Boundaries = 3
+  Temperature = 100
+End
+
+
+Solver 1 :: Reference Norm = 5.49088764E+02
+Solver 1 :: Reference Norm Tolerance = 1.0e-4

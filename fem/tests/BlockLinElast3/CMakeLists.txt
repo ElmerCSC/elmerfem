@@ -5,4 +5,4 @@ CONFIGURE_FILE( gcr_amg_sgs.sif gcr_amg_sgs.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(BlockLinElast3 LABELS block)
+ADD_ELMER_TEST(BlockLinElast3 LABELS block namespace)

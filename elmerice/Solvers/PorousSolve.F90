@@ -368,8 +368,13 @@
 !------------------------------------------------------------------------------
          ! The Density can be a DG variable and it is then safe to call it 
          ! using the permutation vector
-         LocalDensity(1:n) =  &
+         IF (DensityVariable%TYPE == Variable_on_nodes_on_elements) THEN
+           LocalDensity(1:n) =  &
+              DensityValues(DensityPerm(CurrentElement % DGIndexes(1:n)))
+         ELSE
+           LocalDensity(1:n) =  &
               DensityValues(DensityPerm(CurrentElement % NodeIndexes(1:n))) 
+         ENDIF
          
          CALL GetVectorLocalSolution(LocalVelo)
           

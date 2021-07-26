@@ -297,12 +297,12 @@
       TYPE(Solver_t), POINTER :: sv => Null()
 !-------------------------------------------------------------------------------
       A => GlobalMatrix
+      n = A % CircuitMatrix % NumberOfRows
 
       ndim = ipar(3)
       u(1:ndim) = v(1:ndim)
       CALL CRS_LUPrecondition( u,v, ipar)
 
-      n = A % CircuitMatrix % NumberOfRows
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
           ALLOCATE(sv)
@@ -310,10 +310,10 @@
           CALL ListAddLogical( sv % Values, 'Linear System Refactorize', .FALSE.)
           CALL ListAddLogical( sv % Values, 'Linear System Free Factorization', .FALSE.)
         END IF
- 
         i = ndim - A % ExtraDOFs + 1
         j = ndim - A % ExtraDOFs + n
         CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
+
       END IF
 !-------------------------------------------------------------------------------
     END SUBROUTINE CircuitPrec
@@ -587,20 +587,27 @@
          END DO
        END DO
      ELSE
-       ii = 0
-       DO i=1,n
+       j = 0; k = 0
+       DO i=nm+1,nm+n
+         j = j + 1
          IF ( ParEnv % PEs > 1) THEN
-           IF ( A % ParallelInfo % NeighbourList(i+nm) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+           IF ( A % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
          END IF
-         ii = ii + 1
-         jj = 0
-         DO j=A % Rows(i+1)-1,A % Rows(i)
+         k = k + 1
+         Perm(j) = k
+       END DO
+
+       DO i=nm+1,nm+n
+         IF ( ParEnv % PEs > 1) THEN
+           IF ( A % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+         END IF
+         ii = Perm(i-nm)
+         DO j=A % Rows(i+1)-1,A % Rows(i),-1
            k = A % Cols(j) - nm
            IF(k <= 0) EXIT
            IF(k  > n) CYCLE
-           jj = jj + 1
-           IF(ABS(TotValues(j))>AEPS) &
-             CALL AddToMatrixElement( tm, ii, jj,  TotValues(j))
+           jj = Perm(k)
+           CALL AddToMatrixElement(tm, ii, jj,  TotValues(j))
          END DO
        END DO
      END IF

@@ -1,0 +1,87 @@
+! Test case for generalized source control
+! This one with temperature set at given location. 
+!
+! P.R. 27.8.2020
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+  Name = "SourceControl"
+
+! Base source
+  Heat Source = 1.0
+
+! This is an additive heat source for which we need
+! an amplitude. It is of the form: "VarName"+ "Control"
+  Temperature Control = Real 1.0
+
+! Same results without control for reference:
+!   Heat Source = $1+1.807037E+03
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolveVec" "HeatSolver"
+
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+
+  Apply Source Control = Logical True
+  Control Target Value = Real 100.0
+  Control Node Coordinates(3) = Real 0.3 0.3 0.0
+
+! On the 2nd iteration this has been found and is used instead
+! Control Node Index = Integer 37
+End 
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+Solver 1 :: Reference Norm = 6.83746764E+01
+
+
+

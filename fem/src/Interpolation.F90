@@ -162,7 +162,7 @@ MODULE Interpolation
     IsInElement = .FALSE.
     n = Element % TYPE % NumberOfNodes
 
-    ! The numberic precision 
+    ! The numeric precision 
     IF ( PRESENT(NumericEps) ) THEN
       eps0 = NumericEps
     ELSE
@@ -286,7 +286,7 @@ MODULE Interpolation
 
     trans = PRESENT(EdgeBasis)
     IF(trans) trans=EdgeBasis
-    trans = trans .OR. isPElement(Element)
+    trans = trans .OR. isActivePElement(Element)
 
     IF (trans) THEN
       SELECT CASE(Element % Type % ElementCode/100)

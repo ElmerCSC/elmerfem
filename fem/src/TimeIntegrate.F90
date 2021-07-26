@@ -277,6 +277,7 @@ CONTAINS
 
      SELECT CASE( Order)
      CASE(1)
+
        DO i=1,NB1
          s = 0.0_dp
          DO j=1,N
@@ -425,7 +426,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Apply second order Bossok time integration scheme to the elementwise matrix
+!> Apply second order Bossak time integration scheme to the elementwise matrix
 !> entry.
 !------------------------------------------------------------------------------
    SUBROUTINE Bossak2ndOrder( N, dt, MassMatrix, DampMatrix, StiffMatrix, &
@@ -534,12 +535,12 @@ CONTAINS
 !> Apply 2nd order Newmark time integration scheme.
 !------------------------------------------------------------------------------
    SUBROUTINE Newmark2ndOrder( N, dt, MassMatrix, DampMatrix, StiffMatrix, &
-                        Force, PrevSol0,PrevSol1, Avarage )
+                        Force, PrevSol0,PrevSol1, Average )
 !------------------------------------------------------------------------------
 
      INTEGER :: N
      REAL(KIND=dp) :: Force(:),PrevSol0(:),PrevSol1(:),dt
-     LOGICAL :: Avarage
+     LOGICAL :: Average
      REAL(KIND=dp) :: MassMatrix(:,:),DampMatrix(:,:),StiffMatrix(:,:)
 
 !------------------------------------------------------------------------------
@@ -547,7 +548,7 @@ CONTAINS
 
      REAL(KIND=dp) :: s
 !------------------------------------------------------------------------------
-     IF ( Avarage ) THEN 
+     IF ( Average ) THEN 
        DO i=1,N
          s = 0.0d0
          DO j=1,N
@@ -790,6 +791,8 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:)
     REAL(KIND=dp) :: su,mu,uj,ui,a(6)
 !------------------------------------------------------------------------------
+
+    IF( Order == 0 ) RETURN
     
     n = Matrix % NumberOfRows
     Rows   => Matrix % Rows

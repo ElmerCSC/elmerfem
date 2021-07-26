@@ -1,0 +1,105 @@
+!---------------------------------------------------------
+! Reference case for solving solid and shell equations as coupled.
+!
+! P.R. 3.9.2019
+!------------------------------------------------------------
+
+Header
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End 
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Post File = ref.vtu
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1 
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 1
+  Material = 1 
+End
+
+Equation 1
+  Name = "Elasticity"
+  Active Solvers = 1 
+End
+
+Material 1
+  Name = "Ideal"
+  Youngs Modulus = 1.0e9
+  Density = 1.0e3
+  Poisson Ratio = 0.3
+End
+
+
+Solver 1
+  Equation = LinElast
+  Variable = -dofs 3 Displacement
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+  Linear System Scaling = True
+  Optimize Bandwidth = False
+
+  Displace Mesh = False
+End 
+
+Solver 2
+  Exec Solver = never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  
+  Filename = f.dat
+  File Append = Logical True
+  Parallel Reduce = Logical True
+
+  Variable 1 = Displacement
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = max abs 
+  Operator 4 = norm
+  Operator 5 = min
+  Operator 6 = max
+End 
+
+
+Boundary Condition 1
+  Name = "LeftWall"
+  Target Boundaries(1) = 1
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 2
+  Name = "RightWall"
+  Target Boundaries(1) = 2
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(2) = 3 4
+  Normal Force = 1.0e4
+End
+
+
+Solver 1:: Reference Norm = 6.59486705E-02

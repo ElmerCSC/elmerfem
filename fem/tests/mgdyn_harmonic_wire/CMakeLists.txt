@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO wire.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_harmonic_wire LABELS whitney)
+ADD_ELMER_TEST(mgdyn_harmonic_wire LABELS whitney vtu)

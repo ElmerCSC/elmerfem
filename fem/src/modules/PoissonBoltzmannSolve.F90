@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back
+! *  Authors: Juha Ruokolainen, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -76,13 +76,8 @@
      REAL (KIND=DP), ALLOCATABLE ::  Permittivity(:), &
        LocalStiffMatrix(:,:), Load(:), LocalForce(:), LocalPot(:)
 
-#ifdef USE_ISO_C_BINDINGS
      REAL (KIND=DP) :: Norm, RelativeChange, TotEnergy, at0
      REAL (KIND=DP) :: at, st
-#else
-     REAL (KIND=DP) :: Norm, RelativeChange, TotEnergy, at0, RealTime
-     REAL (KIND=DP) :: at, st, CPUTime
-#endif
 
      REAL (KIND=DP) :: Cboltz, Ccharge, Cunit, ReferenceTemperature, Npos, Nneg, &
          NewtonTol, PermittivityOfVacuum, &
