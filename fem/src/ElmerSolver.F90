@@ -1912,7 +1912,7 @@ CONTAINS
           CALL SetCurrentMesh( CurrentModel, Mesh )
           
           kk = ListGetInteger( RestartList,'Restart Position',GotIt, minv=0 )
-          CALL LoadRestartFile( OutputName, kk, Mesh, RestartList = RestartList )
+          CALL LoadRestartFile( OutputName, kk, Mesh, SolverId = ii )
           
           StartTime = ListGetConstReal( RestartList ,'Restart Time',GotIt)
           IF( GotIt ) THEN
