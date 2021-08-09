@@ -4453,7 +4453,25 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+!------------------------------------------------------------------------------
+!> Compute range of the linear system mainly for debugging purposes.
+!------------------------------------------------------------------------------
+  SUBROUTINE VectorValuesRange(x,n,str)
+!------------------------------------------------------------------------------    
+    REAL(KIND=dp), POINTER :: x(:)
+    INTEGER :: n
+    CHARACTER(LEN=*) :: str
+    REAL(KIND=dp) :: s(3)
+    
+    s(1) = ParallelReduction( MINVAL( x(1:n) ),1 ) 
+    s(2) = ParallelReduction( MAXVAL( x(1:n) ),2 ) 
+    s(3) = ParallelReduction( SUM( x(1:n) ) ) 
+    WRITE(Message,*) '[min,max,sum] for '//TRIM(str)//':', s
+    CALL Info('VectorValuesRange',Message)
+
+  END SUBROUTINE VectorValuesRange
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
