@@ -8,6 +8,7 @@
 typedef double Real;
 #define Rvector       dvector
 #define Ivector       ivector
+#define Cvector       cvector
 #define Rmatrix       dmatrix
 #define Imatrix       imatrix
 #define free_Rvector  free_dvector
@@ -37,7 +38,7 @@ double ***f3tensor(int nrl,int nrh,int ncl,int nch,int ndl,int ndh);
 
 void free_vector(float *,int,int);
 void free_ivector(int *,int,int);
-void free_cvector(unsigned char *,int,int);
+void free_cvector(char *,int,int);
 void free_lvector(unsigned long *,int,int);
 void free_dvector(double *,int,int);
  

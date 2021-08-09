@@ -115,11 +115,11 @@ int *ivector(int nl,int nh)
 
 
 unsigned char *cvector(int nl,int nh)
-/* allocate an unsigned char vector with subscript range v[nl..nh] */
+/* allocate an char vector with subscript range v[nl..nh] */
 {
-  unsigned char *v;
+  char *v;
   
-  v=(unsigned char *)malloc((size_t) (nh-nl+1+1)*sizeof(unsigned char));
+  v=(char *)malloc((size_t) (nh-nl+1+1)*sizeof(char));
   if (!v) nrerror("allocation failure in cvector()");
   return(v-nl+1);
 }
@@ -334,7 +334,7 @@ void free_ivector(int *v,int nl,int nh)
   free((FREE_ARG) (v+nl-1));
 } 
 
-void free_cvector(unsigned char *v,int nl,int nh)
+void free_cvector(char *v,int nl,int nh)
 {
   free((FREE_ARG) (v+nl-1));
 }

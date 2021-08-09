@@ -5431,6 +5431,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	  nameproblem = TRUE;
 	}
 	else {
+	  if(!data->bodyname[j]) data->bodyname[j] = Cvector(0,MAXNAMESIZE);
 	  strcpy(data->bodyname[j],line2);	
 	  data->bodynamesexist = TRUE;
 	}
@@ -5642,8 +5643,13 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     
     if(data->bodynamesexist) {
       fprintf(out,"! ----- names for bodies -----\n");
-      for(i=1;i<MAXBODIES;i++) 
-	if(usedbody[i]) fprintf(out,"$ %s = %d\n",data->bodyname[i],i);
+      for(i=1;i<MAXBODIES;i++)
+	if(usedbody[i]) {
+	  if(data->bodyname[i])
+	    fprintf(out,"$ %s = %d\n",data->bodyname[i],i);
+	  else
+	    fprintf(out,"$ body%d = %d\n",i,i);	    
+	}
     }     
     if(data->boundarynamesexist) {
       fprintf(out,"! ----- names for boundaries -----\n");

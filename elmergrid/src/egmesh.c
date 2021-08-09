@@ -911,10 +911,14 @@ void InitializeKnots(struct FemType *data)
     strcpy(data->dofname[i],""); 
   }
 
+#if 0
+  /* Currently allocated dynamically! */
   for(i=0;i<MAXBODIES;i++) {
     strcpy(data->bodyname[i],""); 
     sprintf(data->bodyname[i],"body%d",i);
   }
+#endif
+  
   for(i=0;i<MAXBCS;i++) {
     strcpy(data->boundaryname[i],""); 
     sprintf(data->boundaryname[i],"bc%d",i);
@@ -2949,6 +2953,8 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	if( !bodynameis[mat] ) {
 	  bodynameis[mat] = mat;
 	  bodyused[mat] = TRUE;
+	  if(!data1->bodyname[mat]) data1->bodyname[mat] = Cvector(0,MAXNAMESIZE);
+
 	  strcpy(data1->bodyname[mat],data2->bodyname[mat]);
 	}
       }
@@ -2980,7 +2986,8 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	  if(info) printf("Renumbering body %d to %d\n",mat,k);
 	  bodynameis[mat] = k;	  
 	  bodyused[k] = TRUE;
-	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	  if(!data1->bodyname[k]) data1->bodyname[k] = Cvector(0,MAXNAMESIZE);
+  	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
 	}
       }
     }
@@ -4108,7 +4115,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 
 void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int info)
 {     
-  int i,j,noelements,doinit;
+  int i,j,k,noelements,doinit;
   int minmat=0,maxmat=0,*mapmat;
   
   if(0) printf("Setting new material types\n");
@@ -4155,8 +4162,11 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
     if(data->bodynamesexist) {
       if(info) printf("Mapping entity names to follow material indexes\n");
       for(j=minmat;j<=MIN(maxmat,MAXBODIES-1);j++) {
-	if(mapmat[j]) 
-	  strcpy(data->bodyname[mapmat[j]],data->bodyname[j]);
+	if(mapmat[j]) {
+	  k = mapmat[j];
+	  if(!data->bodyname[k]) data->bodyname[k] = Cvector(0,MAXNAMESIZE);
+	  strcpy(data->bodyname[k],data->bodyname[j]);
+	}
       }
     }
   }
@@ -6310,8 +6320,10 @@ void CreateKnotsExtruded(struct FemType *dataxy,struct BoundaryType *boundxy,
 
 
   if( usenames ) {
-    for(i=1;i< MAXBODIES;i++) 
+    for(i=1;i< MAXBODIES;i++) {
+      if(!data->bodyname[i]) data->bodyname[i] = Cvector(0,MAXNAMESIZE);
       strcpy(data->bodyname[i],dataxy->bodyname[i]);
+    }
     for(i=1;i< MAXBOUNDARIES;i++) 
       strcpy(data->boundaryname[i],dataxy->boundaryname[i]);
     data->bodynamesexist = TRUE;
@@ -7370,10 +7382,15 @@ void ElementsToBoundaryConditions(struct FemType *data,
 	  }		
 	  if(data->bodynamesexist) {
 	    data->boundarynamesexist = TRUE;
-	    if(material < MAXBODIES && material < MAXBOUNDARIES) 
-	      strcpy(data->boundaryname[material],data->bodyname[material]);
-	    if(!strncmp(data->boundaryname[material],"body",4))
+	    if(material < MAXBODIES && material < MAXBOUNDARIES) {
+	      if(data->bodyname[material]) 
+		strcpy(data->boundaryname[material],data->bodyname[material]);
+	      else
+		sprintf(data->boundaryname[material],"body%d",material);
+	    }
+	    if(!strncmp(data->boundaryname[material],"body",4)) {
 	      strncpy(data->boundaryname[material],"bnry",4);
+	    }
 	  }
 
 	  /* Only try to find two parents if the boundary element is one degree smaller than maximum dimension */
