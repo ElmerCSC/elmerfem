@@ -727,7 +727,9 @@ omstart:
 	  sscanf(pstr,"%s",entityname);
 	  if(allocated) {
 	    if(info) printf("Loading boundary set %d for side %d of %s\n",bcind+newsurface,side,entityname);
-	    strcpy(data->boundaryname[bcind+newsurface],entityname);
+	    k = bcind+newsurface;
+	    if(!data->boundaryname[k]) data->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+	    strcpy(data->boundaryname[k],entityname);
 	    data->boundarynamesexist = TRUE;
 	  }
 	}	  
@@ -2329,6 +2331,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	bcind = i;
 	bctypeused[bcind] = TRUE;
 	if(0) printf("First unused boundary is of type %d\n",bcind);
+	if(!data->boundaryname[bcind]) data->boundaryname[bcind] = Cvector(0,MAXNAMESIZE);
 	strcpy(data->boundaryname[bcind],text);
 	
 	/* Check which of the BCs have already been named */
@@ -2355,7 +2358,10 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	    bound[1].normal[newsides] = bound[0].normal[i];
 	  }
 	}
-	if(info) printf("There are %d boundary elements with name %s.\n",k+l,data->boundaryname[bcind]);
+	if(info) {
+	  if(data->boundaryname[bcind]) 
+	    printf("There are %d boundary elements with name %s.\n",k+l,data->boundaryname[bcind]);
+	}
       }
     }
 
@@ -3987,8 +3993,11 @@ omstart:
             tagphys = next_int(&cp);
             if(gmshtype == entdim-1) {
                 physsurfexist = TRUE;
-                if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
-                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
+                if(tagphys < MAXBCS) {
+		  if(!data->boundaryname[tagphys]) data->boundaryname[tagphys] = Cvector(0,MAXNAMESIZE);
+		  sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
+		}
+		else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[gmshtype],cp+1);
             }
             else if(gmshtype == entdim) {
                 physvolexist = TRUE;
@@ -4354,6 +4363,7 @@ omstart:
 	  if(gmshtype == entdim-1) {
 	    physsurfexist = TRUE;
 	    if(tagphys < MAXBCS)  {
+	      if(!data->boundaryname[tagphys]) data->boundaryname[tagphys] = Cvector(0,MAXNAMESIZE);
 	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
 	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys]);
 	    }
@@ -4810,6 +4820,7 @@ omstart:
 	  if(gmshtype == entdim-1) {
 	    physsurfexist = TRUE;
 	    if(tagphys < MAXBCS)  {
+	      if(!data->boundaryname[tagphys]) data->boundaryname[tagphys] = Cvector(0,MAXNAMESIZE);
 	      sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
 	      printf("Boundary name for physical group %d is: %s\n",tagphys,data->boundaryname[tagphys]);
 	    }

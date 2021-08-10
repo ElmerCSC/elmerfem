@@ -13,6 +13,7 @@ typedef double Real;
 #define Imatrix       imatrix
 #define free_Rvector  free_dvector
 #define free_Ivector  free_ivector  
+#define free_Cvector  free_cvector  
 #define free_Rmatrix  free_dmatrix
 #define free_Imatrix  free_imatrix
 #define TRUE 1
@@ -26,7 +27,7 @@ void nrerror(const char error_text[]);
 
 float *vector(int,int);
 int  *ivector(int,int);
-unsigned char *cvector(int,int);
+char *cvector(int,int);
 unsigned long *lvector(int,int);
 double *dvector(int,int);
 

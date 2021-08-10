@@ -114,7 +114,7 @@ int *ivector(int nl,int nh)
 }
 
 
-unsigned char *cvector(int nl,int nh)
+char *cvector(int nl,int nh)
 /* allocate an char vector with subscript range v[nl..nh] */
 {
   char *v;

@@ -227,8 +227,8 @@ struct FemType {
   char dofname[MAXDOFS][MAXNAMESIZE]; 
   /*  char *bodyname[MAXBODIES][MAXNAMESIZE]; */
   char *bodyname[MAXBODIES]; 
-  char boundaryname[MAXBCS][MAXNAMESIZE]; 
-  /* char *boundaryname[MAXBCS]; */
+  /* char boundaryname[MAXBCS][MAXNAMESIZE]; */
+  char *boundaryname[MAXBCS]; 
   int noboundaries,              /* number of boundaries */
       boundint[MAXBOUNDARIES],   /* internal material in the boundary */
       boundext[MAXBOUNDARIES],   /* external material in the boundary */
