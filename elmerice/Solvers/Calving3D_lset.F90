@@ -935,7 +935,8 @@
        END IF
 
        CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMOnleft, IMOnRight, gridmesh_dx)
-       CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, FrontLeft, FrontRight)
+       CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, &
+                      FrontLeft, FrontRight, EdgeX, EdgeY, gridmesh_dx)
 
        IF(Debug) THEN
           PRINT*, 'Debug: Crevs PostChecks'

@@ -5513,25 +5513,29 @@ CONTAINS
 
   END SUBROUTINE GetFrontCorners
 
-  SUBROUTINE ValidateNPCrevassePaths(Mesh, CrevassePaths, OnLeft, OnRight, FrontLeft, FrontRight)
+  SUBROUTINE ValidateNPCrevassePaths(Mesh, CrevassePaths, OnLeft, OnRight, FrontLeft, FrontRight, &
+                                    EdgeX, EdgeY, GridSize)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     LOGICAL, ALLOCATABLE :: OnLeft(:),OnRight(:)
-    REAL(KIND=dp) :: FrontRight(2), FrontLeft(2)
+    REAL(KIND=dp) :: FrontRight(2), FrontLeft(2), EdgeX(:), EdgeY(:)
+    REAL(KIND=dp), OPTIONAL :: GridSize
     INTEGER :: First, Last, LeftIdx, RightIdx
     !---------------------------------------------------
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
          ShiftTo, Dir1(2), Dir2(2), CCW_value,a1(2),a2(2),b1(2),b2(2),intersect(2), &
-         StartX, StartY, EndX, EndY, Orientation(3), temp
-    REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:)
+         StartX, StartY, EndX, EndY, Orientation(3), temp, NodeHolder(3), err_buffer,&
+         yy, zz, gradient, c, intersect_z
+    REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:), REdge(:,:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
-    INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path
-    INTEGER, ALLOCATABLE :: WorkInt(:)
+    INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path, &
+         EdgeLength,crop(2)
+    INTEGER, ALLOCATABLE :: WorkInt(:), IsBelow(:)
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
-         DoProjectible, headland
+         DoProjectible, headland, CrevBelow, LeftToRight
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
-         FarNode(:), DeleteNode(:), Constriction(:)
+         FarNode(:), DeleteNode(:), Constriction(:), InRange(:)
     CHARACTER(MAX_NAME_LEN) :: FuncName="ValidateNPCrevassePaths"
     REAL(kind=dp) :: rt0, rt
 
@@ -5622,6 +5626,100 @@ CONTAINS
       !perspective of someone sitting in the fjord, looking at the front
       ToLeft = Mesh % Nodes % y(Last) > Mesh % Nodes % y(First)
 
+      ! since front no longer projectible we must now see if the crev is below or
+      ! above the front (edge of glacier)
+
+      ! rotate edgex and edgey
+      EdgeLength = SIZE(EdgeX)
+      ALLOCATE(REdge(3, EdgeLength))
+      DO i=1,EdgeLength
+        NodeHolder(1) = EdgeX(i)
+        NodeHolder(2) = EdgeY(i)
+        NodeHolder(3) = 0.0_dp
+
+        NodeHolder = MATMUL(RotationMatrix,NodeHolder)
+
+        REdge(1,i) = NodeHolder(1)
+        REdge(2,i) = NodeHolder(2)
+        REdge(3,i) = NodeHolder(3)
+      END DO
+
+      IF(PRESENT(GridSize)) THEN
+        err_buffer = GridSize/10
+      ELSE
+        err_buffer = 0.0_dp
+      END IF
+
+      ! crop edge around crev ends
+      crop=0
+      DO i=1, EdgeLength
+        IF((REdge(2,i) <= Mesh % Nodes % y(First) + err_buffer .AND. &
+            REdge(2,i) >= Mesh % Nodes % y(First) - err_buffer) .AND. &
+          (REdge(3,i) <= Mesh % Nodes % z(First) + err_buffer  .AND. &
+            REdge(3,i) >= Mesh % Nodes % z(First) - err_buffer)) crop(1) = i
+        IF((REdge(2,i) <= Mesh % Nodes % y(Last) + err_buffer  .AND. &
+            REdge(2,i) >= Mesh % Nodes % y(Last) - err_buffer) .AND. &
+          (REdge(3,i) <= Mesh % Nodes % z(Last) + err_buffer  .AND. &
+            REdge(3,i) >= Mesh % Nodes % z(Last) - err_buffer )) crop(2) = i
+      END DO
+      IF(ANY(crop == 0)) CALL FATAL(FuncName, 'Edge not found')
+
+      ! see if crev is above or below glacier edge
+      ALLOCATE(IsBelow(CurrentPath % NumberOfNodes-2),&
+            InRange(CurrentPath % NumberOfNodes-2))
+      IsBelow = 0
+      InRange = .FALSE.
+      DO i=2, CurrentPath % NumberOfNodes-1
+        yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(i))
+        zz = Mesh % Nodes % z(CurrentPath % NodeNumbers(i))
+        DO j=MINVAL(crop), MAXVAL(crop)-1
+          IF((yy >= REdge(2,j) - err_buffer .AND. yy <= REdge(2,j+1) + err_buffer) .OR. &
+            (yy <= REdge(2,j) + err_buffer .AND. yy >= REdge(2,j+1) - err_buffer)) THEN
+            IF(REdge(2,j) - err_buffer <= REdge(2,j+1) .AND. &
+                REdge(2,j) + err_buffer >= REdge(2,j+1)) CYCLE ! vertical
+            IF(REdge(3,j) - err_buffer <= REdge(3,j+1) .AND. &
+                REdge(3,j) + err_buffer >= REdge(3,j+1)) THEN ! horizontal
+              intersect_z = REdge(3,j)
+            ELSE
+              gradient = (REdge(3,j)-REdge(3,j+1)) / (REdge(2,j)-REdge(2,j+1))
+              c = zz - (gradient*yy)
+              intersect_z = gradient * yy + c
+            END IF
+            InRange(i-1) = .TRUE. ! found
+            IF(zz - err_buffer <= intersect_z) THEN
+              IF(zz + err_buffer >= intersect_z) THEN
+                IsBelow(i-1) = 1 !in same position as edge
+              ELSE
+                IsBelow(i-1) = 2 ! below edge
+              END IF
+              EXIT
+            END IF
+          END IF
+        END DO
+      END DO
+
+      IF(SIZE(IsBelow) == 0) CALL FATAL(FuncName, 'No crev nodes in range of edge segment')
+
+      IF(ALL(IsBelow >= 1)) THEN
+        CrevBelow = .TRUE.
+      ELSE IF(ALL(IsBelow <= 1)) THEN
+        CrevBelow = .FALSE.
+      ELSE
+        CALL FATAL(FuncName, 'Some of the crevasse is below and some is above the glacier edge')
+      END IF
+
+      ! see if crev runs from its left to right
+      IF(CrevBelow .AND. ToLeft) THEN
+        LeftToRight = .TRUE.
+      ELSE IF(.NOT. CrevBelow .AND. .NOT. ToLeft) THEN
+        LeftToRight = .TRUE.
+      ELSE
+        LeftToRight = .FALSE.
+      END IF
+
+      ! deallocations
+      DEALLOCATE(REdge, IsBelow, InRange)
+
       IF(Debug) THEN
           FrontDist = NodeDist3D(Mesh % Nodes,First, Last)
           PRINT *,'PATH: ', CurrentPath % ID, ' FrontDist: ',FrontDist
@@ -5652,7 +5750,7 @@ CONTAINS
 
           CCW = CCW_value > 0.0_dp
 
-          IF((CCW .NEQV. ToLeft) .AND. (ABS(CCW_value) > 10*AEPS)) THEN
+          IF((CCW .NEQV. LeftToRight) .AND. (ABS(CCW_value) > 10*AEPS)) THEN
             Constriction(i) = .TRUE.
             !Calculate constriction direction
 
@@ -5666,8 +5764,9 @@ CONTAINS
 
             ConstrictDirection(i,1) = Dir1(1) + Dir2(1)
             ConstrictDirection(i,2) = Dir1(2) + Dir2(2)
-            ConstrictDirection(i,:) = ConstrictDirection(i,:) / &
-                 ((ConstrictDirection(i,1)**2.0 + ConstrictDirection(i,2)**2.0) ** 0.5)
+            ! no point normalising just gives floating point errors?
+            !ConstrictDirection(i,:) = ConstrictDirection(i,:) / &
+            !     ((ConstrictDirection(i,1)**2.0 + ConstrictDirection(i,2)**2.0) ** 0.5)
 
             IF(Debug) PRINT *, 'Debug, node ',i,' dir1,2: ',Dir1, Dir2
             IF(Debug) PRINT *, 'Debug, node ',i,' constriction direction: ',ConstrictDirection(i,:)
@@ -5689,7 +5788,7 @@ CONTAINS
 
         !Depending on which end of the chain we are,
         !we take either the right or left orthogonal vector
-        IF(ToLeft) THEN
+        IF(LeftToRight) THEN
           ConstrictDirection(1,1) = Dir1(2)
           ConstrictDirection(1,2) = -1.0 * Dir1(1)
         ELSE
@@ -5705,7 +5804,7 @@ CONTAINS
         Dir1(2) = Mesh % Nodes % z(n) - Mesh % Nodes % z(Last)
         Dir1 = Dir1 / ((Dir1(1)**2.0 + Dir1(2)**2.0) ** 0.5)
 
-        IF(.NOT. ToLeft) THEN
+        IF(.NOT. LeftToRight) THEN
           ConstrictDirection(CurrentPath % NumberOfNodes,1) = Dir1(2)
           ConstrictDirection(CurrentPath % NumberOfNodes,2) = -1.0 * Dir1(1)
         ELSE
@@ -5737,13 +5836,13 @@ CONTAINS
             !If the two constrictions aren't roughly facing each other:
             ! <  > rather than    > <
             ! then skip this combo
-            IF(SUM(ConstrictDirection(i,:)*Dir1) < 0) THEN
+            IF(SUM(ConstrictDirection(i,:)*Dir1) < 0.0_dp) THEN
               IF(Debug) PRINT *,'Constrictions ',i,j,' do not face each other 1: ',&
                    SUM(ConstrictDirection(i,:)*Dir1)
               CYCLE
             END IF
 
-            IF(SUM(ConstrictDirection(j,:)*Dir2) < 0) THEN
+            IF(SUM(ConstrictDirection(j,:)*Dir2) < 0.0_dp) THEN
               IF(Debug) PRINT *,'Constrictions ',j,i,' do not face each other 2: ',&
                    SUM(ConstrictDirection(j,:)*Dir2)
               CYCLE
