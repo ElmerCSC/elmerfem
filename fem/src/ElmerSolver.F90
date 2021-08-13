@@ -475,6 +475,12 @@ END INTERFACE
        IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime()
 
 !------------------------------------------------------------------------------
+!      Initialize the random seeds so that all simulation depending on that
+!      give consistent results.
+!------------------------------------------------------------------------------      
+       IF( FirstLoad ) CALL InitializeRandomSeed()
+       
+!------------------------------------------------------------------------------
 !      Get Output File Options
 !------------------------------------------------------------------------------
 
@@ -590,6 +596,29 @@ END INTERFACE
    CONTAINS 
 
 
+     SUBROUTINE InitializeRandomSeed()
+       INTEGER :: i,n
+       INTEGER, ALLOCATABLE :: seeds(:)
+       
+       CALL RANDOM_SEED() ! initialize with system generated seed
+
+       i = ListGetInteger( CurrentModel % Simulation,'Random Number Seed',Found ) 
+       IF( .NOT. Found ) i = 314159265
+
+       CALL RANDOM_SEED(size=j) ! find out size of seed
+       ALLOCATE(seeds(j))
+       !CALL RANDOM_SEED(get=seeds) ! get system generated seed
+       !WRITE(*,*) seeds            ! writes system generated seed
+       seeds = i
+       CALL RANDOM_SEED(put=seeds) ! set current seed
+       !CALL RANDOM_SEED(get=seeds) ! get current seed
+       !WRITE(*,*) seeds            ! writes 314159265
+       DEALLOCATE(seeds)           
+       
+       CALL Info('ElmerSolver','Random seed initialized to: '//TRIM(I2S(i)),Level=10)
+     END SUBROUTINE InitializeRandomSeed
+
+     
      ! Optionally create extruded mesh on-the-fly.
      !--------------------------------------------------------------------
      SUBROUTINE CreateExtrudedMesh()
