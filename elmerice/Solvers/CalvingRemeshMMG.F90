@@ -78,23 +78,28 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        my_cboss,MyPE, PEs,CCount, counter, GlNode_min, GlNode_max,adjList(4),&
        front_BC_ID, front_body_id, my_calv_front,calv_front, ncalv_parts, &
        group_calve, comm_calve, group_world,ecode, NElNodes, target_bodyid,gdofs(4), &
-       PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss
+       PairCount,RPairCount, NCalvNodes, croot, nonCalvBoss,&
+       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges
   INTEGER, POINTER :: NodeIndexes(:), geom_id
   INTEGER, ALLOCATABLE :: Prnode_count(:), cgroup_membs(:),disps(:), &
        PGDOFs_send(:),pcalv_front(:),GtoLNN(:),EdgePairs(:,:),REdgePairs(:,:), ElNodes(:),&
-       Nodes(:), IslandCounts(:), pNCalvNodes(:,:)
-  REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, newdist
+       Nodes(:), IslandCounts(:), pNCalvNodes(:,:), TetraQuality(:)
+  REAL(KIND=dp) :: test_thresh, test_point(3), remesh_thresh, hmin, hmax, hgrad, hausd, &
+       newdist, Quality
   REAL(KIND=dp), ALLOCATABLE :: test_dist(:), test_lset(:), Ptest_lset(:), Gtest_lset(:), &
-       target_length(:,:), Ptest_dist(:), Gtest_dist(:)
+       target_length(:,:), Ptest_dist(:), Gtest_dist(:), hminarray(:), hausdarray(:)
+  REAL(KIND=dp), POINTER :: WorkArray(:,:) => NULL()
   LOGICAL, ALLOCATABLE :: calved_node(:), remeshed_node(:), fixed_node(:), fixed_elem(:), &
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
-       RemeshOccurs,CheckFlowConvergence, Remesh, HasNeighbour
+       RemeshOccurs,CheckFlowConvergence, HasNeighbour, RSuccess, Success
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
   TYPE(Variable_t), POINTER :: TimeVar
-  INTEGER :: Time, remeshtimestep, proc, idx, island, node
-  REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume
+  INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
+  REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
+
+  SAVE :: WorkArray
 
   SolverParams => GetSolverParams()
   SolverName = "CalvingRemeshMMG"
@@ -113,8 +118,6 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 #else
   CALL FATAL(SolverName, 'Calving code only works with MMG 5.5')
 #endif
-
-  Remesh = .FALSE.
 
   TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
   TimeReal = TimeVar % Values(1)
@@ -145,21 +148,33 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   front_body_id =  ListGetInteger( &
        Model % BCs(front_bc_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
 
-  hmin = ListGetConstReal(SolverParams, "Mesh Hmin",  Default=20.0_dp)
+  WorkArray => ListGetConstRealArray(SolverParams, "Mesh Hmin", Found)
+  IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
+  MaxLsetIter= SIZE(WorkArray(:,1))
+  ALLOCATE(hminarray(MaxLsetIter))
+  hminarray = WorkArray(:,1)
+  NULLIFY(WorkArray)
   hmax = ListGetConstReal(SolverParams, "Mesh Hmax",  Default=4000.0_dp)
   hgrad = ListGetConstReal(SolverParams,"Mesh Hgrad", Default=0.5_dp)
-  hausd = ListGetConstReal(SolverParams, "Mesh Hausd",Default=20.0_dp)
+  WorkArray => ListGetConstRealArray(SolverParams, "Mesh Hausd", Found)
+  IF(.NOT. Found) CALL FATAL(SolverName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
+  IF(MaxLsetIter /= SIZE(WorkArray(:,1))) CALL FATAL(SolverName, 'The number of hmin options &
+          must equal the number of hausd options')
+  ALLOCATE(hausdarray(MaxLsetIter))
+  hausdarray = WorkArray(:,1)
+  NULLIFY(WorkArray)
   remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", Default=1000.0_dp)
+  LsetMinQuality = ListGetConstReal(SolverParams,"Mesh Min Quality", Default=0.00001_dp)
   CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", Default="Calving Lset")
-  remeshtimestep = ListGetInteger(SolverParams,"Remesh TimeStep", Default=2)
+
 
   IF(ParEnv % MyPE == 0) THEN
-    PRINT *,ParEnv % MyPE,' hmin: ',hmin
+    PRINT *,ParEnv % MyPE,' hmin: ',hminarray
     PRINT *,ParEnv % MyPE,' hmax: ',hmax
     PRINT *,ParEnv % MyPE,' hgrad: ',hgrad
-    PRINT *,ParEnv % MyPE,' hausd: ',hausd
+    PRINT *,ParEnv % MyPE,' hausd: ',hausdarray
     PRINT *,ParEnv % MyPE,' remeshing distance: ',remesh_thresh
-    PRINT *,ParEnv % MyPE,' remeshing every ', remeshtimestep
+    PRINT *,ParEnv % MyPE,' Max Levelset Iterations ', MaxLsetIter
   END IF
 
   !If FlowSolver failed to converge (usually a result of weird mesh), large unphysical
@@ -460,18 +475,30 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   !Nominated partition does the remeshing
   IF(ImBoss) THEN
     IF (CalvingOccurs) THEN
+
+      CALL MeshVolume(GatheredMesh, .FALSE., PreCalveVolume)
+
+      CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., EdgePairs, PairCount)
+
+      mmgloops = 0
+
+10 CONTINUE
+
+      mmgloops=mmgloops+1
+      hmin = hminarray(mmgloops)
+      hausd = hausdarray(mmgloops)
+
+      WRITE(Message, '(A,F10.5,A,F10.5)') 'Applying levelset with Hmin ',Hmin, ' and Hausd ', Hausd
+      CALL INFO(SolverName, Message)
       !Initialise MMG datastructures
       mmgMesh = 0
       mmgLs  = 0
       mmgMet  = 0
 
-      CALL MeshVolume(GatheredMesh, .FALSE., PreCalveVolume)
-
       CALL MMG3D_Init_mesh(MMG5_ARG_start, &
           MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppLs,mmgLs, &
           MMG5_ARG_end)
 
-      CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., EdgePairs, PairCount)
       !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
       CALL Set_MMG3D_Mesh(GatheredMesh, .TRUE., EdgePairs, PairCount)
 
@@ -511,8 +538,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_hgrad,&
            hgrad,ierr)
 
-      CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_rmc,&
-           0.0001_dp,ierr)
+      !CALL MMG3D_SET_DPARAMETER(mmgMesh,mmgLs,MMGPARAM_rmc,&
+      !     0.0001_dp,ierr)
 
       !Feed in the level set distance
       CALL MMG3D_SET_SOLSIZE(mmgMesh, mmgLs, MMG5_Vertex, GNNode ,MMG5_Scalar, ierr)
@@ -558,13 +585,49 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
       IF ( ierr == MMG5_STRONGFAILURE ) THEN
         PRINT*,"BAD ENDING OF MMG3DLS: UNABLE TO SAVE MESH", Time
+        !! Release mmg mesh
+        CALL MMG3D_Free_all(MMG5_ARG_start, &
+            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+            MMG5_ARG_end)
+        WRITE(Message, '(A,F10.5,A,F10.5)') 'Levelset failed with Hmin ',Hmin, ' and Hausd ', Hausd
+        CALL WARN(SolverName, Message)
+        IF(mmgloops==MaxLsetIter) THEN
+          GO TO 20
+        ELSE
+          GO TO 10
+        END IF
       ELSE IF ( ierr == MMG5_LOWFAILURE ) THEN
-        PRINT*,"BAD ENDING OF MMG3DLS", time
-        Remesh =.TRUE.
+        PRINT*,"LOW ENDING OF MMG3DLS", time
       ENDIF
 
       CALL MMG3D_SaveMesh(mmgMesh,"test_ls.mesh",LEN(TRIM("test_ls.mesh")),ierr)
       CALL MMG3D_SaveSol(mmgMesh, mmgLs,"test_ls.sol",LEN(TRIM("test_ls.sol")),ierr)
+
+      CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
+
+      counter=0
+      Do i=1, NTetras
+        CALL MMG3D_Get_TetrahedronQuality(mmgMesh, mmgSol, i, Quality)
+        IF(Quality == 0) CALL WARN(SolverName, 'Levelset could not determine elem quality')
+        IF(Quality <= LsetMinQuality) counter = counter+1
+      END DO
+      IF ( Counter > 0 ) THEN
+        PRINT*,"Bad elements detected - reruning levelset"
+        !! Release mmg mesh
+        CALL MMG3D_Free_all(MMG5_ARG_start, &
+            MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+            MMG5_ARG_end)
+          WRITE(Message, '(A,F10.5,A,F10.5)') 'Levelset failed with Hmin ',Hmin, ' and Hausd ', Hausd
+        CALL WARN(SolverName, Message)
+        IF(mmgloops==MaxLsetIter) THEN
+          Success=.FALSE.
+          CalvingOccurs = .FALSE.
+          GO TO 20
+        ELSE
+          GO TO 10
+        END IF
+        !STOP MMG5_STRONGFAILURE
+      ENDIF
 
       CALL Get_MMG3D_Mesh(NewMeshR, .TRUE., new_fixed_node, new_fixed_elem)
 
@@ -841,6 +904,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
     END IF ! CalvingOccurs
 
+20    CONTINUE
+
+      DEALLOCATE(hminarray, hausdarray)
+
       DoAniso = .TRUE.
       IF(DoAniso .AND. CalvingOccurs) THEN
 
@@ -865,10 +932,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         !Anisotropic mesh improvement following calving cut:
         !TODO - unhardcode! Also this doesn't work very well yet.
-        ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
-        target_length(:,1) = 300.0
-        target_length(:,2) = 300.0
-        target_length(:,3) = 50.0
+        !ALLOCATE(target_length(NewMeshR % NumberOfNodes,3))
+        !target_length(:,1) = 300.0
+        !target_length(:,2) = 300.0
+        !target_length(:,3) = 50.0
 
         !Parameters for anisotropic remeshing are set in the Materials section, or can &
         !optionally be passed as a valuelist here. They have prefix RemeshMMG3D
@@ -884,22 +951,17 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
         PRINT*, 'CalveVolume', CalveVolume
 
-        !remesh?
-        !! assume no other failures do we remesh after calving
-        ! always remesh firsttime step
-        IF(Time == 1) Remesh=.TRUE.
-
-        ! then remesh every nth term
-        IF(INT((Time-1)/remeshtimestep)*remeshtimestep == Time-1) Remesh=.TRUE.
-
-        IF(Remesh) THEN
-          CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
-          !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-          CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem)
-          CALL ReleaseMesh(NewMeshR)
-          NewMeshR => NewMeshRR
-          NewMeshRR => NULL()
+        CALL GetCalvingEdgeNodes(NewMeshR, .FALSE., REdgePairs, RPairCount)
+        !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
+        CALL RemeshMMG3D(Model, NewMeshR, NewMeshRR,REdgePairs, RPairCount,&
+            NodeFixed=new_fixed_node, ElemFixed=new_fixed_elem, Success=RSuccess)
+        IF(.NOT. RSuccess) THEN
+          CALL WARN(SolverName, 'Remeshing failed - no calving at this timestep')
+          GO TO 30
         END IF
+        CALL ReleaseMesh(NewMeshR)
+        NewMeshR => NewMeshRR
+        NewMeshRR => NULL()
 
         !Update parallel info from old mesh nodes (shared node neighbours)
         CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
@@ -908,8 +970,13 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
          ! remeshing but no calving
         CALL GetCalvingEdgeNodes(GatheredMesh, .FALSE., REdgePairs, RPairCount)
         !  now Set_MMG3D_Mesh(Mesh, Parallel, EdgePairs, PairCount)
-        CALL RemeshMMG3D(Model, GatheredMesh, NewMeshR,REdgePairs, RPairCount,NodeFixed=fixed_node, ElemFixed=fixed_elem)
+        CALL RemeshMMG3D(Model, GatheredMesh, NewMeshR,REdgePairs, RPairCount,&
+            NodeFixed=fixed_node, ElemFixed=fixed_elem, Success=RSuccess)
                 !Update parallel info from old mesh nodes (shared node neighbours)
+        IF(.NOT. RSuccess) THEN
+          CALL WARN(SolverName, 'Remeshing failed - no calving at this timestep')
+          GO TO 30 ! remeshing failed so no calving at this timestep
+        END IF
         CALL MapNewParallelInfo(GatheredMesh, NewMeshR)
 
       ELSE ! Not DoAniso
@@ -925,6 +992,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       NewMeshR => NULL()
       NewMeshRR => NULL()
    END IF ! ImBoss
+
+30 CONTINUE
 
    !Wait for all partitions to finish
    IF(My_Calv_Front>0) THEN

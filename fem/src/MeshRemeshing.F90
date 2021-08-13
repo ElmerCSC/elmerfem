@@ -33,6 +33,7 @@ USE DefUtils
 USE Types
 USE MeshUtils
 USE MeshPartition
+USE SparIterComm
 
 IMPLICIT NONE
 
@@ -56,6 +57,25 @@ MMG5_DATA_PTR_T :: mmgMesh
 MMG5_DATA_PTR_T :: mmgSol
 MMG5_DATA_PTR_T :: mmgMet
 MMG5_DATA_PTR_T :: mmgLs
+#endif
+
+#ifdef HAVE_PARMMG
+!#include "parmmg/libparmmgf.h"
+#endif
+
+#ifdef HAVE_PARMMG
+!INTEGER :: PMMGPARAM_hausd = PMMG_DPARAM_hausd
+!INTEGER :: PMMGPARAM_hmin = PMMG_DPARAM_hmin
+!INTEGER :: PMMGPARAM_hmax = PMMG_DPARAM_hmax
+!INTEGER :: PMMGPARAM_iso = PMMG_IPARAM_iso
+!INTEGER :: PMMGPARAM_hgrad = PMMG_DPARAM_hgrad
+!INTEGER :: PMMGPARAM_angle = PMMG_IPARAM_angle
+!INTEGER :: PMMGPARAM_angleDetection = PMMG_DPARAM_angleDetection
+!INTEGER :: PMMGPARAM_debug = PMMG_IPARAM_debug
+!INTEGER :: PMMGPARAM_nosurf = PMMG_IPARAM_nosurf
+!INTEGER :: PMMGPARAM_aniso = PMMG_IPARAM_anisosize
+MMG5_DATA_PTR_T :: pmmgMesh
+MMG5_DATA_PTR_T :: pmmgMet
 #endif
 
 CONTAINS
@@ -859,7 +879,7 @@ END SUBROUTINE MapNewParallelInfo
 !Output:
 !   OutMesh - the improved mesh
 !
-SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params)
+SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemFixed,Params,Success)
 
   TYPE(Model_t) :: Model
   TYPE(Mesh_t), POINTER :: InMesh, OutMesh
@@ -867,20 +887,23 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   LOGICAL, ALLOCATABLE, OPTIONAL :: NodeFixed(:), ElemFixed(:)
   INTEGER, ALLOCATABLE, OPTIONAL :: EdgePairs(:,:)
   INTEGER, OPTIONAL :: PairCount
+  LOGICAL :: Success
   !-----------
   TYPE(Mesh_t), POINTER :: WorkMesh
   TYPE(ValueList_t), POINTER :: FuncParams, Material
   TYPE(Element_t), POINTER :: Element
-  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:)
-  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL()
-  REAL(KIND=dp) :: hsiz(3),hmin,hmax,hgrad,hausd
+  REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:),hminarray(:),hausdarray(:)
+  REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL(), WorkArray(:,:) => NULL()
+  REAL(KIND=dp) :: hsiz(3),hmin,hmax,hgrad,hausd,RemeshMinQuality,Quality
   INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType,body_offset,&
-       nBCs,NodeNum(1)
-  LOGICAL :: Debug, Parallel, AnisoFlag
+       nBCs,NodeNum(1), MaxRemeshIter, mmgloops, &
+       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, Counter
+  INTEGER, ALLOCATABLE :: TetraQuality(:)
+  LOGICAL :: Debug, Parallel, AnisoFlag, Found
   LOGICAL, ALLOCATABLE :: RmElement(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: FuncName
 
-  SAVE :: WorkReal
+  SAVE :: WorkReal,WorkArray
 
 #ifdef HAVE_MMG
 
@@ -899,11 +922,24 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   !hausd, hmin, hmax, hgrad, anisoflag, the metric
   !Scalar, vector, tensor metric?
 
-  hmin = ListGetConstReal(FuncParams, "RemeshMMG3D Hmin",  Default=20.0_dp)
+  WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hmin", Found)
+  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hmin"')
+  MaxRemeshIter= SIZE(WorkArray(:,1))
+  ALLOCATE(hminarray(MaxRemeshIter))
+  hminarray = WorkArray(:,1)
+  NULLIFY(WorkArray)
   hmax = ListGetConstReal(FuncParams, "RemeshMMG3D Hmax",  Default=4000.0_dp)
   hgrad = ListGetConstReal(FuncParams,"RemeshMMG3D Hgrad", Default=0.5_dp)
-  hausd = ListGetConstReal(FuncParams, "RemeshMMG3D Hausd",Default=20.0_dp)
+  WorkArray => ListGetConstRealArray(FuncParams, "RemeshMMG3D Hausd", Found)
+  IF(.NOT. Found) CALL FATAL(FuncName, 'Provide hmin input array to be iterated through: "Mesh Hausd"')
+  IF(MaxRemeshIter /= SIZE(WorkArray(:,1))) CALL FATAL(FuncName, 'The number of hmin options &
+          must equal the number of hausd options')
+  ALLOCATE(hausdarray(MaxRemeshIter))
+  hausdarray = WorkArray(:,1)
+  NULLIFY(WorkArray)
+  RemeshMinQuality = ListGetConstReal(FuncParams, "RemeshMMG3D Min Quality",Default=0.0001_dp)
   AnisoFlag = ListGetLogical(FuncParams, "RemeshMMG3D Anisotropic", Default=.TRUE.)
+  MaxRemeshIter = ListGetInteger(FuncParams, "Max Remeshing Iterations", Default=5)
 
   NNodes = InMesh % NumberOfNodes
   NBulk = InMesh % NumberOfBulkElements
@@ -927,6 +963,7 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
       Metric(i,1) = 1.0 / (WorkReal(1,1,1)**2.0)
       Metric(i,4) = 1.0 / (WorkReal(2,1,1)**2.0)
       Metric(i,6) = 1.0 / (WorkReal(3,1,1)**2.0)
+
     END DO
 
     Model % Mesh => WorkMesh
@@ -943,6 +980,21 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
 
   END IF
 
+  body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
+  nBCs = CurrentModel % NumberOfBCs
+  DO i=1,InMesh % NumberOfBulkElements
+    InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
+  END DO
+
+  mmgloops=0
+  Success=.TRUE.
+
+10 CONTINUE
+
+  mmgloops = mmgloops+1
+  hmin = hminarray(mmgloops)
+  Hausd = hausdarray(mmgloops)
+
   mmgMesh = 0
   mmgSol  = 0
 
@@ -956,11 +1008,6 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   ! Model % NumberOfBCs + 1, then afterwards we
   ! delete all the extra BC elems & revert the bodyID
   !----------------------------------
-  body_offset = CurrentModel % NumberOfBCs + CurrentModel % NumberOfBodies + 1
-  nBCs = CurrentModel % NumberOfBCs
-  DO i=1,InMesh % NumberOfBulkElements
-    InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID + body_offset
-  END DO
 
   CALL MMG3D_Init_mesh(MMG5_ARG_start, &
        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
@@ -987,6 +1034,13 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
       IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
     END IF
   END DO
+
+  IF(ParEnv % MyPE == 0) THEN
+    PRINT *,ParEnv % MyPE,' hmin: ',hmin
+    PRINT *,ParEnv % MyPE,' hmax: ',hmax
+    PRINT *,ParEnv % MyPE,' hgrad: ',hgrad
+    PRINT *,ParEnv % MyPE,' hausd: ',hausd
+  END IF
 
   !Turn on debug (1)
   CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_debug, &
@@ -1039,16 +1093,54 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
 
   CALL MMG3D_mmg3dlib(mmgMesh,mmgSol,ierr)
-  IF ( ierr == MMG5_STRONGFAILURE ) THEN
+  IF ( ierr == MMG5_STRONGFAILURE .OR. ierr == MMG5_LOWFAILURE ) THEN
     PRINT*,"BAD ENDING OF MMG3DLIB: UNABLE TO SAVE MESH"
-    STOP MMG5_STRONGFAILURE
-  ELSE IF ( ierr == MMG5_LOWFAILURE ) THEN
-    PRINT*,"BAD ENDING OF MMG3DLIB"
+    !! Release mmg mesh
+    CALL MMG3D_Free_all(MMG5_ARG_start, &
+        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+        MMG5_ARG_end)
+    mmgloops=mmgloops+1
+    WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
+    CALL WARN(FuncName, Message)
+    IF(mmgloops==MaxRemeshIter) THEN
+      Success=.FALSE.
+      GO TO 20
+    ELSE
+      GO TO 10
+    END IF
+    !STOP MMG5_STRONGFAILURE
   ENDIF
+
   IF (DEBUG) PRINT *,'--**-- MMG3D_mmg3dlib DONE'
 
   CALL MMG3D_SaveMesh(mmgMesh,"MMG3D_remesh.mesh",LEN(TRIM("MMG3D_remesh.mesh")),ierr)
   CALL MMG3D_SaveSol(mmgMesh, mmgSol, "MMG3D_remesh.sol",LEN(TRIM("MMG3D_remesh.sol")),ierr)
+
+  CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
+
+  counter=0
+  Do i=1, NTetras
+    CALL MMG3D_Get_TetrahedronQuality(mmgMesh, mmgSol, i, Quality)
+    IF(Quality == 0) CALL WARN(FuncName, 'Remeshing could not determine elem quality')
+    IF(Quality <= RemeshMinQuality) counter = counter+1
+  END DO
+  IF ( Counter > 0 ) THEN
+    PRINT*,"Bad elements detected - reruning remeshing"
+    !! Release mmg mesh
+    CALL MMG3D_Free_all(MMG5_ARG_start, &
+        MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
+        MMG5_ARG_end)
+    WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
+    CALL WARN(FuncName, Message)
+    IF(mmgloops==MaxRemeshIter) THEN
+      Success=.FALSE.
+      PRINT*, 'remesh failed on bad elements'
+      GO TO 20
+    ELSE
+      GO TO 10
+    END IF
+    !STOP MMG5_STRONGFAILURE
+  ENDIF
 
   !! GET THE NEW MESH
   CALL GET_MMG3D_MESH(OutMesh,Parallel)
@@ -1076,6 +1168,15 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
     END IF
   END DO
   CALL CutMesh(OutMesh, RmElem=RmElement)
+
+20 CONTINUE
+
+  ! if remeshing has failed need to reset body ids
+  IF(.NOT. Success) THEN
+    DO i=1,InMesh % NumberOfBulkElements
+      InMesh % Elements(i) % BodyID = InMesh % Elements(i) % BodyID - body_offset
+    END DO
+  END IF
 
 #else
   CALL Fatal(FuncName, "Remeshing utility MMG3D has not been installed")
