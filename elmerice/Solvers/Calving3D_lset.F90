@@ -886,8 +886,48 @@
        CALL CheckCrevasseNodes(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight)
        !CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
        !     IMOnLeft, IMOnRight, .FALSE.)
+       IF(Debug) THEN
+          PRINT*, 'Debug: Crevs PreChecks'
+          counter=0
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              counter=counter+1
+              PRINT*, counter, ',',counter+CurrentPath % NumberOfNodes-1, ','
+              counter=counter+CurrentPath % NumberOfNodes-1
+              CurrentPath => CurrentPath % Next
+          END DO
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              DO i=1, CurrentPath % NumberOfNodes
+                PRINT*, IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),',',&
+                  IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i)), ','
+              END DO
+              CurrentPath => CurrentPath % Next
+          END DO
+       END IF
+
        CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMOnleft, IMOnRight, gridmesh_dx)
        CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, FrontLeft, FrontRight)
+
+       IF(Debug) THEN
+          PRINT*, 'Debug: Crevs PostChecks'
+          counter=0
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              counter=counter+1
+              PRINT*, counter, ',',counter+CurrentPath % NumberOfNodes-1, ','
+              counter=counter+CurrentPath % NumberOfNodes-1
+              CurrentPath => CurrentPath % Next
+          END DO
+          CurrentPath => CrevassePaths
+          DO WHILE(ASSOCIATED(CurrentPath))
+              DO i=1, CurrentPath % NumberOfNodes
+                PRINT*, IsoMesh % Nodes % x(CurrentPath % NodeNumbers(i)),',',&
+                  IsoMesh % Nodes % y(CurrentPath % NodeNumbers(i)), ','
+              END DO
+              CurrentPath => CurrentPath % Next
+          END DO
+       END IF
 
        IF(Debug) THEN
           PRINT *,'Crevasse Path Count: ', PathCount
