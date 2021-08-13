@@ -934,7 +934,7 @@
           END DO
        END IF
 
-       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMOnleft, IMOnRight, gridmesh_dx)
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMOnleft, IMOnRight, IMOnFront, gridmesh_dx)
        CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, &
                       FrontLeft, FrontRight, EdgeX, EdgeY, gridmesh_dx)
 

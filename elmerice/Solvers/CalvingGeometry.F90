@@ -5255,12 +5255,12 @@ CONTAINS
 
   END SUBROUTINE GetCalvingPolygons
 
-  SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, OnLeft, OnRight, GridSize)
+  SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, OnLeft, OnRight, OnFront, GridSize)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     REAL(kind=dp) :: EdgeX(:), EdgeY(:)
-    LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:)
+    LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:),OnFront(:)
     REAL(kind=dp), OPTIONAL :: GridSize
     !-------------------------------------------------
     TYPE(CrevassePath_t), POINTER :: CurrentPath, WorkPath
@@ -5269,7 +5269,35 @@ CONTAINS
     INTEGER, ALLOCATABLE :: PolyStart(:), PolyEnd(:), WorkInt(:)
     REAL(kind=dp) :: xx, yy, StartX, StartY, EndX, EndY, err_buffer
     LOGICAL :: inside, debug, Found(2)
-    LOGICAL, ALLOCATABLE :: DeleteNode(:), DeleteElement(:)
+    LOGICAL, ALLOCATABLE :: DeleteNode(:), DeleteElement(:), OnEdge(:)
+
+    ! if no part of crev is in interior remove
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+      Found = .FALSE.
+      ! buffer for floating point errors
+      IF(PRESENT(GridSize)) THEN
+        err_buffer = GridSize/10
+      ELSE
+        err_buffer = 0.0_dp
+      END IF
+
+      ALLOCATE(OnEdge(CurrentPath % NumberOfNodes))
+      OnEdge = .FALSE.
+      DO i=1, CurrentPath % NumberOfNodes
+        xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(i))
+        yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(i))
+        DO j=1, SIZE(EdgeX)
+          IF((EdgeX(j) <= xx+err_buffer .AND. EdgeX(j) >= xx-err_buffer) .AND. &
+          (EdgeY(j) <= yy+err_buffer  .AND. EdgeY(j) >= yy-err_buffer)) OnEdge(i) = .TRUE.
+        END DO
+      END DO
+
+      IF(ALL(OnEdge)) CurrentPath % Valid = .FALSE.
+
+      DEALLOCATE(OnEdge)
+      CurrentPath => CurrentPath % Next
+    END DO
 
     ! remove paths that end on both lateral boundaries
     IF(PRESENT(OnLeft) .OR. PRESENT(OnRight)) THEN
