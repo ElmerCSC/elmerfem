@@ -522,6 +522,18 @@
                 NodePositions(nodecounter) = k
               END DO
               IF(nodecounter == 1) THEN
+                IF(ABS(CurrentNodePosition - NodePositions(1)) == 2) CYCLE ! nodes not connected
+                IF(ANY(EdgeLine(j, :) == NodeIndexes(NodePositions(1)))) THEN
+                  ! increase capactiy by one
+                  ALLOCATE(WorkInt2D(directions, NumEdgeNodes))
+                  WorkInt2D = EdgeLine
+                  DEALLOCATE(EdgeLine)
+                  NumEdgeNodes=NumEdgeNodes+1
+                  ALLOCATE(EdgeLine(directions, NumEdgeNodes))
+                  EdgeLine=0
+                  EdgeLine(:,1:NumEdgeNodes-1) = WorkInt2D
+                  DEALLOCATE(WorkInt2D)
+                END IF
                 EdgeCount(j) = EdgeCount(j) + 1
                 EdgeLine(j, EdgeCount(j)) = NodeIndexes(NodePositions(1))
               ELSE IF(nodecounter == 2) THEN
