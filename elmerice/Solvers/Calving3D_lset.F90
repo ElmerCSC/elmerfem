@@ -862,14 +862,30 @@
         IF(counter==1) THEN
           Nodecounter=nodecounter+1
           IMBdryNNums(nodecounter) = WorkInt(i)
+          ! shift constraints to match nodenumbers
+          IMBdryConstraint(nodecounter) = IMBdryConstraint(INT((i+1)/2))
         END IF
        END DO
+       DEALLOCATE(WorkInt)
+
+       ! remove and deallocate removed nodes from IMBdryNNums, IMBdryConstraint and
+       ! recalculate IMBdryCount
+       IMBdryCount = COUNT(IMBdryNNums /= 0)
+       ALLOCATE(WorkInt(IMBdryCount))
+       WorkInt = IMBdryNNums(1:IMBdryCount)
+       DEALLOCATE(IMBdryNNums)
+       ALLOCATE(IMBdryNNums(IMBdryCount))
+       IMBdryNNums = WorkInt
+       WorkInt = IMBdryConstraint(1:IMBdryCount)
+       DEALLOCATE(IMBdryConstraint)
+       ALLOCATE(IMBdryConstraint(IMBdryCount))
+       IMBdryConstraint = WorkInt
        DEALLOCATE(WorkInt)
 
        DO i=1,IMBdryCount
          k = IMBdryNNums(i)
          PRINT*, i, k, IMBdryConstraint(i)
-         IF(k==0) CYCLE
+         IF(k==0) CALL FATAL(SolverName, 'IMBdryConstraint = zero')
          IF(IMBdryConstraint(i) == FrontConstraint) IMOnFront(k) = .TRUE.
          IF(IMBdryConstraint(i) == LeftConstraint) IMOnLeft(k) = .TRUE.
          IF(IMBdryConstraint(i) == RightConstraint) IMOnRight(k) = .TRUE.
