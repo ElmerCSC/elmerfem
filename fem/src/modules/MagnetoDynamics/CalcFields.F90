@@ -301,7 +301,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       ELSE
         CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
             "Current Density[Current Density re:3 Current Density im:3]" )
-      END IF
+      END IF      
     END IF
 
     IF ( GetLogical( SolverParams, 'Calculate Joule Heating', Found ) ) THEN
@@ -348,24 +348,26 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
       END IF
     END IF
   END IF    
-  
+
+  IF ( GetLogical( SolverParams, 'Calculate Current Density', Found ) ) THEN
+    IF( ListCheckPresentAnyBC( Model,'Layer Electric Conductivity') ) THEN 
+      i = i + 1
+      IF ( RealField ) THEN
+        !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        !    "Surface Current[Surface Current:3]" )
+      ELSE
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            "Surface Current[Surface Current re:3 Surface Current im:3]" )
+      END IF
+    END IF
+  END IF
+
   IF ( GetLogical( SolverParams, 'Calculate Nodal Heating', Found ) ) THEN
     i = i + 1
     CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
         "Nodal Joule Heating" )
   END IF
     
-  IF ( GetLogical( SolverParams, 'Calculate Nodal Current', Found ) ) THEN
-    i = i + 1
-    IF ( RealField ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-          "Nodal Current[Nodal Current:3]" )
-    ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-          "Nodal Current[Nodal Current re:3 Nodal Current im:3]" )
-    END IF
-  END IF
-
   IF( ListGetLogicalAnyComponent(Model,'Calculate Magnetic Force') .OR. &
       ListGetLogicalAnyComponent(Model,'Calculate Magnetic Torque') .OR. &
       GetLogical(SolverParams, 'Calculate Nodal Forces', Found) ) THEN
@@ -565,7 +567,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
-   TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, NCD, EF, MST, &
+   TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, SCD, EF, MST, &
                                 JH, NJH, VP, FWP, JXB, ML, ML2, LagrangeVar, NF
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
                                 EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML, EL_ML2, &
@@ -626,7 +628,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
    LOGICAL :: LayerBC
    REAL(KIND=dp) :: SurfPower
-   INTEGER :: jh_k, cd_k
+   INTEGER :: jh_k
+   REAL, ALLOCATABLE :: SurfWeight(:)
    
 !-------------------------------------------------------------------------------------------
    IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
@@ -750,7 +753,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    EL_JH => VariableGet( Mesh % Variables, 'Joule Heating E' )
 
    NJH => VariableGet( Mesh % Variables, 'Nodal Joule Heating' )
-   NCD => VariableGet( Mesh % Variables, 'Nodal Current' )
+
+   SCD => VariableGet( Mesh % Variables, 'Surface Current' )
+   IF( ASSOCIATED( SCD ) ) THEN
+     SCD % Values = 0.0_dp
+     i = SIZE( SCD % Values ) / SCD % Dofs
+     ALLOCATE( SurfWeight(i) )
+     SurfWeight = 0.0_dp
+   END IF
    
    IF(.NOT. RealField ) THEN
      ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear')
@@ -787,7 +797,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ASSOCIATED(MFD) .OR. &
        ASSOCIATED(MFS) .OR. &
        ASSOCIATED(VP) .OR. &
-       ASSOCIATED(CD) .OR. ASSOCIATED(NCD) .OR. &
+       ASSOCIATED(CD) .OR. &
        ASSOCIATED(FWP) .OR. &
        ASSOCIATED(EF) .OR. &
        ASSOCIATED(JXB) .OR. &
@@ -1584,7 +1594,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          IF ( ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)) THEN
-           cd_k = k
            IF (ItoJCoeffFound) THEN
              IF (Vdofs == 1) THEN
                DO l=1,3
@@ -1949,20 +1958,22 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
          END IF
 
-         IF( ASSOCIATED(CD) .OR. ASSOCIATED( NCD ) ) THEN
+         IF( ASSOCIATED( SCD ) ) THEN
            DO p=1,n
-             FORCE(p,cd_k+1:cd_k+3) = FORCE(p,cd_k+1:cd_k+3)+s*val*c_ip*E(1,1:3)*Basis(p)
-             FORCE(p,cd_k+4:cd_k+6) = FORCE(p,cd_k+4:cd_k+6)+s*val*c_ip*E(2,1:3)*Basis(p)
+             k = SCD % Perm(Element % NodeIndexes(p))
+             SCD % Values(6*k-5:6*k-3) = SCD % Values(6*k-5:6*k-3) + s*val*c_ip*E(1,1:3)*Basis(p)
+             SCD % Values(6*k-2:6*k-0) = SCD % Values(6*k-2:6*k-0) + s*val*c_ip*E(2,1:3)*Basis(p)
+             SurfWeight(k) = SurfWeight(k) + s
            END DO
          END IF
 
        END DO
 
-       DO l=1,Dofs
-         CALL UpdateGlobalForce( GForce(:,l), &
-             Force(1:n,l), n, 1, Solver % Variable % Perm(Element % NodeIndexes(1:n)), UElement=Element)
-       END DO
-
+       !DO l=1,Dofs
+       l = jh_k
+       CALL UpdateGlobalForce( GForce(:,l), &
+           Force(1:n,l), n, 1, Solver % Variable % Perm(Element % NodeIndexes(1:n)), UElement=Element)
+       !END DO       
      END DO
 
    END IF
@@ -1986,14 +1997,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(MFS,  fdim*vdofs, Gforce, Dofs, EL_MFS)
      CALL GlobalSol(VP ,  3*vdofs, Gforce, Dofs, EL_VP)
      CALL GlobalSol(EF,   3*vdofs, Gforce, Dofs, EL_EF)
-
-     ! Nodal current density uses the loads
-     IF (ASSOCIATED(NCD)) THEN
-       DO i=1,3*vdofs
-         NCD % Values(i::3*vdofs) = Gforce(:,dofs+i)
-       END DO
-       IF(.NOT. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) dofs = dofs + 3*vdofs
-     END IF
      CALL GlobalSol(CD,   3*vdofs, Gforce, Dofs, EL_CD)
      CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs, EL_JXB)
      CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs, EL_FWP)
@@ -2017,7 +2020,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
      Solver % Matrix % RHS => Fsave
    END IF
-
+   
+   ! surface current density uses the loads
+   IF (ASSOCIATED(SCD)) THEN
+     DO i=1,3*vdofs
+       WHERE( SurfWeight > 0 ) 
+         SCD % Values(i::3*vdofs) = SCD % Values(i::3*vdofs) / SurfWeight(:)
+       END WHERE
+     END DO
+   END IF
+      
 
    ! Lump componentwise forces and torques. 
    ! Prefer DG nodal force variable if air gap is present
