@@ -5726,6 +5726,9 @@ CONTAINS
         END DO
       END DO
 
+      ! if out of edge range remove
+      IsBelow = PACK(IsBelow, InRange)
+
       IF(SIZE(IsBelow) == 0) CALL FATAL(FuncName, 'No crev nodes in range of edge segment')
 
       IF(ALL(IsBelow >= 1)) THEN
