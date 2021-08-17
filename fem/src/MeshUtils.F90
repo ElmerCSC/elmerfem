@@ -4823,7 +4823,7 @@ CONTAINS
     CALL AllocateVector( BMesh2 % Nodes % y, BMesh2 % NumberOfNodes ) 
     CALL AllocateVector( BMesh2 % Nodes % z, BMesh2 % NumberOfNodes )
     
-    BMesh1 % NumberOfEdges = COUNT(EPerm2>0)
+    BMesh2 % NumberOfEdges = COUNT(EPerm2>0)
     ALLOCATE( BMesh2 % Edges(COUNT(EPerm2>0)) )
 
     n = BMesh1 % NumberOfNodes + COUNT(Eperm1>0) + COUNT(BPerm1>0)
