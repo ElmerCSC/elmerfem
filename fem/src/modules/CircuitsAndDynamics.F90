@@ -249,7 +249,13 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     px => CM % rhs
     CALL VectorValuesRange(px,SIZE(px),'CircuitRhs',.TRUE.)
   END IF
-   
+
+  IF( LIstGetLogical( Solver % Values,'Save Circuit Matrix',Found ) ) THEN
+    CALL ListAddString( Solver % Values, 'Linear System Save Prefix','circuit')
+    CALL SaveLinearSystem( Solver, CM )
+  END IF
+    
+  
   IF(CM % NumberOfRows<=0)  THEN
     CALL FreeMatrix(CM)
     Asolver % Matrix % AddMatrix => NULL()
@@ -424,7 +430,8 @@ CONTAINS
         Element => GetActiveElement(q)
         IF (ElAssocToComp(Element, Comp)) THEN
           CompParams => GetComponentParams( Element )
-          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('Circuits_apply', 'Component parameters not found')
+          IF (.NOT. ASSOCIATED(CompParams)) &
+              CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
 
           CoilType = ListGetString(CompParams, 'Coil Type', UnfoundFatal=.TRUE.)
           
@@ -477,8 +484,9 @@ CONTAINS
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
     TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Component_t) :: Comp
-    INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
+    INTEGER :: nn, nd, nm
 
+    INTEGER :: Indexes(nd),VvarId,IvarId
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
@@ -518,13 +526,13 @@ CONTAINS
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
 
-    CALL GetLocalSolution(pPOT,'A',Element,ASolver,tstep=-1)
+    CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
 
     IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN 
       tscl=1.0_dp
     ELSE
       tscl=1.5_dp
-      CALL GetLocalSolution(ppPOT,'A',Element,ASolver,tstep=-2)
+      CALL GetLocalSolution(ppPOT,UElement=Element,USolver=ASolver,tstep=-2)
       pPot = 2*pPOT - 0.5_dp*ppPOT
     END IF
     
@@ -670,13 +678,13 @@ CONTAINS
 
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
-    CALL GetLocalSolution(pPOT,'A',Element,ASolver,tstep=-1)
+    CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
 
     IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN 
       tscl=1.0_dp
     ELSE
       tscl=1.5_dp
-      CALL GetLocalSolution(ppPOT,'A',Element,ASolver,tstep=-2)
+      CALL GetLocalSolution(ppPOT,UElement=Element,USolver=ASolver,tstep=-2)
       pPot = 2*pPOT - 0.5_dp*ppPOT
     END IF
 
@@ -802,13 +810,13 @@ CONTAINS
     nd = GetElementDOFs(Indexes,Element,ASolver)
     CALL GetLocalSolution(alpha,'Alpha')
 
-    CALL GetLocalSolution(pPOT,'A',Element,ASolver,tstep=-1)
+    CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
 
     IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN 
       tscl=1.0_dp
     ELSE
       tscl=1.5_dp
-      CALL GetLocalSolution(ppPOT,'A',Element,ASolver,tstep=-2)
+      CALL GetLocalSolution(ppPOT,UElement=Element,USolver=ASolver,tstep=-2)
       pPot = 2*pPOT - 0.5_dp*ppPOT
     END IF
 
@@ -1395,7 +1403,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
               sigma_33 = GetReal(CompParams, 'sigma 33', Found)
               sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
               IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('AddComponentEquationsAndCouplings', &
-                                                                 'Homogenization Model Sigma 33 not found!')
+                  'Homogenization Model Sigma 33 not found!')
               Tcoef = CMPLX(0._dp, 0._dp, KIND=dp)
               Tcoef(3,3,1:nn_elem) = CMPLX(sigma_33, sigmaim_33, KIND=dp)
             ELSE
@@ -2096,7 +2104,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
       ALLOCATE(Az0(nm))
       
       ! Store MVP solution at t=0
-      AzVar => VariableGet( Asolver % Mesh % Variables, 'A')
+      AzVar => Asolver % Variable 
       IF(ASSOCIATED( AzVar)) THEN
         Az => AzVar % Values
         Az0 = Az
@@ -2121,7 +2129,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
       
       EEC_time_0 = EEC_time_0 + 0.5/EEC_freq
 
-      AzVar => VariableGet( Asolver % Mesh % Variables, 'A')
+      AzVar => Asolver % Variable 
       
       IF(ASSOCIATED( AzVar)) THEN
         Az => AzVar % Values

@@ -253,7 +253,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     
     Norm = DefaultSolve()
  
-    IF( Solver % Variable % NonlinConverged > 0 ) EXIT
+    IF( DefaultConverged() ) EXIT
   END DO
   
   ! For cylindrical symmetry the model lumping has not been implemented
@@ -401,8 +401,8 @@ CONTAINS
 
    Parallel = ( ParEnv % PEs > 1 ) .AND. (.NOT. Mesh % SingleMesh ) 
 
-   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices',SliceAverage )
-   IF( NoSlices > 1 ) THEN
+   NoSlices = ListGetInteger( Model % Simulation,'Number Of Slices', SliceAverage ) 
+   IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
      CALL Info(Caller,'Changing communicator for slice operation!',Level=5)
      PrevComm = ParEnv % ActiveComm
      ParEnv % ActiveComm = ParallelSlicesComm() 
@@ -678,8 +678,10 @@ CONTAINS
    END IF
 
    IF( SliceAverage ) THEN
-     CALL Info(Caller,'Reverting communicator from slice operation!',Level=10)
-     ParEnv % ActiveComm = PrevComm
+     IF( NoSlices > 1 .AND. NoSlices < ParEnv % PEs ) THEN
+       CALL Info(Caller,'Reverting communicator from slice operation!',Level=10)
+       ParEnv % ActiveComm = PrevComm
+     END IF
    END IF
      
    Visited = .TRUE.
