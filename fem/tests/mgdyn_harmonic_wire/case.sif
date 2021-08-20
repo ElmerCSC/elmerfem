@@ -27,7 +27,7 @@ Simulation
 
 !  Post File = a.ep
 
-  $ w = 1.0e6
+  $ w = 1.0e5
   Angular Frequency = Real $w
 End
 

@@ -7,10 +7,12 @@ Subcell Limits 2 = 0 10.0
 Material Structure in 2D
   1    1    2    
 End
-Materials Interval = 2 2
+Materials Interval = 1 2
 Boundary Definitions
 ! type     out      int      double   of the boundaries
-  2        -4        2        1       
+  1        -1        1        1       
+  2        -2        1        1       
+  3        -3        1        1       
   4        -1        2        1       
   5        -2        2        1       
   6        -3        2        1       
