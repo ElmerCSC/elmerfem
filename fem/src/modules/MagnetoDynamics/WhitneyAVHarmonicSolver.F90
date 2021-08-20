@@ -50,6 +50,8 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, PiolaVersion, SecondOrder
+  CHARACTER(LEN=MAX_NAME_LEN):: ElemType
+
   
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
@@ -60,16 +62,17 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
       PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )
     END IF
 
-    IF (PiolaVersion) THEN    
-       IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, &
-              "Element", "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" )
-       ELSE
-          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
-       END IF
+    IF (PiolaVersion) THEN          
+      IF (SecondOrder) THEN
+        ElemType = "n:1 e:2 -brick b:6 -prism b:2 -pyramid b:3 -quad_face b:4 -tri_face b:2" 
+      ELSE
+        ElemType = "n:1 e:1 -brick b:3 -quad_face b:2" 
+      END IF
     ELSE
-       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+      ElemType = "n:1 e:1"
     END IF
+    CALL Info('WhitneyHarmonicSolver_Init0','Setting element type to: "'//TRIM(ElemType)//'"',Level=6)
+    CALL ListAddString( SolverParams, "Element", TRIM(ElemType) )
   END IF
 
   CALL ListAddNewLogical( SolverParams, 'Linear System Complex', .TRUE. )

@@ -1,6 +1,8 @@
-! 
 ! A sif file to test a surface impedance BC
-! 
+! This differs from the base test in that no inner wire is generated at all.
+! Also frequency is the same as in "mgdyn_harmonic_wire" to enable comparison
+! of outgoing currents.
+
 
 Check Keywords "Warn"
 
@@ -17,31 +19,27 @@ Simulation
 
   Coordinate Scaling = 1.0e-3
 
-  $w=1.0e6
+  $w=1.0e5
   Angular Frequency = Real $w
-!  Post File = skin.vtu
 End
 
 Body 1
   Name = "Wire"
-  Equation = 1
   Material = 1
 End
 
 Body 2
   Name = "Air"
   Equation = 1
-  Material = 2
+  Material = 1
 End
+
 
 Material 1
   Name = "Cu"
   Permittivity = 0
-!  Relative Permittivity = 1
   Relative Permeability = 1
   Electric Conductivity = 0.0
-!  Electric Conductivity = Real 58e6
-!  Skin Electric Conductivity = Real 58e6
 End
 
 Material 2
@@ -74,7 +72,7 @@ Solver 1
   Linear System Convergence Tolerance = 1.0e-8
   BicgStabl Polynomial Degree = 4
 End
-
+ 
 
 Solver 2
   Equation = "MGDynamicsCalc"
@@ -142,17 +140,6 @@ End
 
 Boundary Condition 1
   !
-  ! No surface currents, given scalar potential
-  !
-  Name = "WireStart"
-  Target Boundaries(1) = 1 
-
-  AV re = Real 0.0
-  AV im = Real 0.0
-End
-
-Boundary Condition 2
-  !
   ! Impedance BC
   !
   Name = "WireSurface"
@@ -161,18 +148,8 @@ Boundary Condition 2
   Layer Relative Permeability = Real 1
 End
 
-Boundary Condition 3
-  !
-  ! No surface currents, given scalar potential
-  !
-  Name = "WireEnd"
-  Target Boundaries(1) = 3
 
-  AV re = Real 0.01
-  AV im = Real 0.0
-End
-
-Boundary Condition 4
+Boundary Condition 2
   Name = "AirStart"
   Target Boundaries(1) = 4
 
@@ -184,10 +161,14 @@ Boundary Condition 4
   AV im {e} 2 = Real 0.0
   AV im {e} 3 = Real 0.0
 
+  ! given scalar potential
+  ! affects the boundary layer!
+  AV re = Real 0.0
+  AV im = Real 0.0
 End
 
 
-Boundary Condition 5
+Boundary Condition 3
   Name = "AirSurface"
   Target Boundaries(1) = 5
 
@@ -201,18 +182,21 @@ Boundary Condition 5
 
 End
 
-Boundary Condition 6
+Boundary Condition 4
   Name = "AirEnd"
   Target Boundaries(1) = 6 
 
   AV re {e} 1 = Real 0.0
   AV re {e} 2 = Real 0.0
   AV re {e} 3 = Real 0.0
-
+ 
   AV im {e} 1 = Real 0.0
   AV im {e} 2 = Real 0.0
   AV im {e} 3 = Real 0.0
 
+  ! BCs for the layer end also
+  AV re = Real 0.01
+  AV im = Real 0.0
 End
 
 
