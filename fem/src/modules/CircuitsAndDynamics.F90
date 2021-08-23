@@ -128,8 +128,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     First = .FALSE.
     
     Parallel = ( ParEnv % PEs > 1 )
-    IF( Model % Mesh % SingleMesh ) Parallel = .FALSE.
-    
+    IF( Parallel ) THEN
+      IF( Model % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel',Found ) 
+    END IF
+      
     Model % HarmonicCircuits = .FALSE.
     CALL AddComponentsToBodyLists()
     
@@ -1091,22 +1093,21 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL,SAVE :: First=.TRUE.
-
   TYPE(Solver_t), POINTER :: Asolver => Null()
-
   INTEGER :: p, n, istat, max_element_dofs
   TYPE(Mesh_t), POINTER :: Mesh  
-
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(Circuit_t), POINTER :: Circuits(:)
-  LOGICAL :: Parallel
+  LOGICAL :: Parallel, Found
   
 !------------------------------------------------------------------------------
 
   Parallel = (ParEnv % PEs > 1 )
-  IF( Solver % Mesh % SingleMesh ) Parallel = .FALSE.
-  
+  IF( Parallel ) THEN
+    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel',Found ) 
+  END IF
+    
   CALL DefaultStart()
 
   IF (First) THEN
@@ -2150,8 +2151,10 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    ! Circuit variable values from previous timestep:
    ! -----------------------------------------------
   Parallel = ( ParEnv % PEs > 1 )
-  IF( Solver % Mesh % SingleMesh ) Parallel = .FALSE.
-
+  IF( Parallel ) THEN
+    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( SolverParams,'Enforce Parallel',Found )
+  END IF
+    
   ALLOCATE(crt(circuit_tot_n), crtt(circuit_tot_n))
    crt = 0._dp
    crtt = 0._dp

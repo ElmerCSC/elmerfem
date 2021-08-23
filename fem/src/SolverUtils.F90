@@ -8908,7 +8908,15 @@ CONTAINS
                         Bv = Element % TYPE % NodeV(j)
                         nrm = NormalVector(Element,ElementNodes,Bu,Bv,.TRUE.)
                       END IF
-                      n_comp(NodeIndexes(j)) = 1
+
+                      l = n_comp(NodeIndexes(j))
+                      n_comp(NodeIndexes(j)) = l + 1
+                      IF( l > 0 ) THEN
+                        IF( SUM( BoundaryNormals(k,:) * nrm ) < 0 ) THEN
+                          CALL Warn(Caller,'Node '//TRIM(I2S(NodeIndexes(j)))//' has conflicting normal directions!')
+                        END IF
+                      END IF
+
                       BoundaryNormals(k,:) = BoundaryNormals(k,:) + nrm
                     END IF
                   END DO
@@ -12461,8 +12469,11 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
 
-    Parallel = ( ParEnv % PEs > 1) .AND. (.NOT. Solver % Mesh % SingleMesh ) 
-    
+    Parallel = ( ParEnv % PEs > 1)
+    IF( Parallel ) THEN
+      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+    END IF
+      
     CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
 
     IF( PRESENT( DiagScaling ) ) THEN
@@ -13639,7 +13650,7 @@ END FUNCTION SearchNodeL
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
     TYPE(Variable_t), POINTER :: IterV
-    LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve
+    LOGICAL :: NormalizeToUnity, AndersonAcc, AndersonScaled, NoSolve, Found
     REAL(KIND=dp), POINTER :: pv(:)
 
     TARGET b, x 
@@ -13698,8 +13709,11 @@ END FUNCTION SearchNodeL
       CALL Info('SolveLinearSystem','Assuming real valued linear system',Level=8)
     END IF
 
-    Parallel = ( ParEnv % Pes>1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh )
-
+    Parallel = ( ParEnv % Pes>1 ) 
+    IF( Parallel ) THEN
+      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+    END IF
+    
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
 !------------------------------------------------------------------------------
@@ -15895,7 +15909,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   SolverPointer => Solver  
   Parallel = (ParEnv % PEs > 1 )
-  IF( Solver % Mesh % SingleMesh ) Parallel = .FALSE.
+  IF( Parallel ) THEN
+    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+  END IF
   
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
   IF(.NOT. Found) NotExplicit=.FALSE.
