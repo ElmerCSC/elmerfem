@@ -5274,12 +5274,12 @@ CONTAINS
     LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:),OnFront(:)
     REAL(kind=dp), OPTIONAL :: GridSize
     !-------------------------------------------------
-    TYPE(CrevassePath_t), POINTER :: CurrentPath, WorkPath
-    INTEGER :: i,j, counter, first, last, path, start, end, startidx, endidx, DeleteEndNodes
+    TYPE(CrevassePath_t), POINTER :: CurrentPath, WorkPath, SecondPath
+    INTEGER :: i,j,k, counter, first, last, path, start, end, startidx, endidx, DeleteEndNodes, spath
     REAL(kind=dp), ALLOCATABLE :: Polygons(:,:), PathPoly(:,:)
     INTEGER, ALLOCATABLE :: PolyStart(:), PolyEnd(:), WorkInt(:)
-    REAL(kind=dp) :: xx, yy, StartX, StartY, EndX, EndY, err_buffer
-    LOGICAL :: inside, debug, Found(2)
+    REAL(kind=dp) :: xx, yy, StartX, StartY, EndX, EndY, err_buffer, area1, area2
+    LOGICAL :: inside, debug, Found(2), overlap
     LOGICAL, ALLOCATABLE :: DeleteNode(:), DeleteElement(:), OnEdge(:)
 
     ! if no part of crev is in interior remove
@@ -5456,11 +5456,62 @@ CONTAINS
           xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(j))
           yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(j))
           inside = PointInPolygon2D(PathPoly, (/xx, yy/))
-          IF(inside) THEN
-            CurrentPath % Valid = .FALSE.
-            EXIT
-          END IF
+          IF(inside) EXIT
         END DO
+        IF(inside) THEN
+          ! two options here
+          ! 1 crev lies fully inside second crev
+          ! 2 crevs overlap - remove smaller crev
+          spath=0
+          overlap=.FALSE.
+          SecondPath => CrevassePaths
+          DO WHILE(ASSOCIATED(SecondPath))
+            spath=spath+1
+            IF(spath == i) THEN !inside this path
+              DO j=2, CurrentPath % NumberOfNodes-1
+                xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(j))
+                yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(j))
+                DO k=2, SecondPath % NumberOfNodes-1
+                  IF(Mesh % Nodes % x(SecondPath % NodeNumbers(k)) == xx .AND. &
+                    Mesh % Nodes % y(SecondPath % NodeNumbers(k)) == yy) THEN
+                      overlap = .TRUE.
+                      EXIT
+                  END IF
+                END DO
+                IF(overlap) EXIT
+              END DO
+            END IF
+            SecondPath => SecondPath % Next
+          END DO
+          IF(overlap) THEN
+            ! area 1
+            area1 = 0.0_dp
+            xx = Polygons(1,PolyStart(path))
+            yy = Polygons(2,PolyStart(path))
+            DO j=PolyStart(path), PolyEnd(path)
+              area1 = area1 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
+            END DO
+            area2 = 0.0_dp
+            xx = Polygons(1,PolyStart(i))
+            yy = Polygons(2,PolyStart(i))
+            DO j=PolyStart(i), PolyEnd(i)
+              area2 = area2 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
+            END DO
+            IF(ABS(area1) >= ABS(area2)) THEN ! remove this path
+              CurrentPath % Valid = .FALSE.
+            ELSE !remove second path
+              SecondPath => CrevassePaths
+              spath=0
+              DO WHILE(ASSOCIATED(SecondPath))
+                spath=spath+1
+                IF(spath==i) SecondPath % Valid = .FALSE.
+                SecondPath => SecondPath % Next
+              END DO
+            END IF
+          ELSE
+            CurrentPath % Valid = .FALSE.
+          END IF
+        END IF
         DEALLOCATE(PathPoly)
         IF(inside) EXIT
       END DO
