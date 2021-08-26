@@ -939,7 +939,6 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   NULLIFY(WorkArray)
   RemeshMinQuality = ListGetConstReal(FuncParams, "RemeshMMG3D Min Quality",Default=0.0001_dp)
   AnisoFlag = ListGetLogical(FuncParams, "RemeshMMG3D Anisotropic", Default=.TRUE.)
-  MaxRemeshIter = ListGetInteger(FuncParams, "Max Remeshing Iterations", Default=5)
 
   NNodes = InMesh % NumberOfNodes
   NBulk = InMesh % NumberOfBulkElements
@@ -995,6 +994,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   hmin = hminarray(mmgloops)
   Hausd = hausdarray(mmgloops)
 
+  WRITE(Message, '(A,F10.5,A,F10.5)') 'Applying levelset with Hmin ',Hmin, ' and Hausd ', Hausd
+  CALL INFO(FuncName, Message)
+
   mmgMesh = 0
   mmgSol  = 0
 
@@ -1034,13 +1036,6 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
       IF(ierr /= 1) CALL Fatal(FuncName, "Failed to set scalar solution at vertex")
     END IF
   END DO
-
-  IF(ParEnv % MyPE == 0) THEN
-    PRINT *,ParEnv % MyPE,' hmin: ',hmin
-    PRINT *,ParEnv % MyPE,' hmax: ',hmax
-    PRINT *,ParEnv % MyPE,' hgrad: ',hgrad
-    PRINT *,ParEnv % MyPE,' hausd: ',hausd
-  END IF
 
   !Turn on debug (1)
   CALL MMG3D_SET_IPARAMETER(mmgMesh,mmgSol,MMGPARAM_debug, &
@@ -1099,7 +1094,6 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
     CALL MMG3D_Free_all(MMG5_ARG_start, &
         MMG5_ARG_ppMesh,mmgMesh,MMG5_ARG_ppMet,mmgSol, &
         MMG5_ARG_end)
-    mmgloops=mmgloops+1
     WRITE(Message, '(A,F10.5,A,F10.5)') 'Remesh failed with Hmin ',Hmin, ' and Hausd ', Hausd
     CALL WARN(FuncName, Message)
     IF(mmgloops==MaxRemeshIter) THEN
