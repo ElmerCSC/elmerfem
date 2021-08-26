@@ -937,6 +937,7 @@
        CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMOnleft, IMOnRight, IMOnFront, gridmesh_dx)
        CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, &
                       FrontLeft, FrontRight, EdgeX, EdgeY, gridmesh_dx)
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, GridSize=gridmesh_dx)
 
        IF(Debug) THEN
           PRINT*, 'Debug: Crevs PostChecks'
