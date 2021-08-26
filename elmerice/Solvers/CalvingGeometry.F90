@@ -6102,20 +6102,20 @@ CONTAINS
             !If the two constrictions aren't roughly facing each other:
             ! <  > rather than    > <
             ! then skip this combo
-            IF(SUM(ConstrictDirection(i,:)*Dir1) < 0.0_dp) THEN
+            IF(SUM(ConstrictDirection(i,:)*Dir1) < 0.0000001_dp) THEN
               IF(Debug) PRINT *,'Constrictions ',i,j,' do not face each other 1: ',&
                    SUM(ConstrictDirection(i,:)*Dir1)
               CYCLE
             END IF
 
-            IF(SUM(ConstrictDirection(j,:)*Dir2) < 0.0_dp) THEN
+            IF(SUM(ConstrictDirection(j,:)*Dir2) < 0.0000001_dp) THEN
               IF(Debug) PRINT *,'Constrictions ',j,i,' do not face each other 2: ',&
                    SUM(ConstrictDirection(j,:)*Dir2)
               CYCLE
             END IF
 
             IF(Debug) PRINT *,'Constrictions ',i,j,' do face each other: ',&
-                 SUM(ConstrictDirection(i,:)*Dir1)
+                 SUM(ConstrictDirection(i,:)*Dir1), SUM(ConstrictDirection(j,:)*Dir2)
 
             !test that the line drawn between the constriction doesn't intersect
             !any intermediate elements as this indicates
