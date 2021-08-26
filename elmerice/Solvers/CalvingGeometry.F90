@@ -180,6 +180,17 @@ CONTAINS
     dist = ((xydist**2) + (zdist**2))**0.5
   END FUNCTION NodeDist3D
 
+  FUNCTION PointDist3D( Point1, Point2 ) RESULT (dist)
+    REAL(KIND=dp) :: Point1(3),Point2(3),xdist,ydist,zdist,xydist,dist
+    !Pythagoras in 3D
+    xdist = Point1(1) - Point2(1)
+    ydist = Point1(2) - Point2(2)
+    zdist = Point1(3) - Point2(3)
+    !TODO: Can this be simplified?  See Interpolation.f90
+    xydist = ((xdist**2) + (ydist**2))**0.5
+    dist = ((xydist**2) + (zdist**2))**0.5
+  END FUNCTION PointDist3D
+
   !-----------------------------------------------------------------------------
   !Returns the inverse permutation table for a given perm and DOFs
   !NOTE, differs from the definition of InvPerm currently used in
@@ -5554,12 +5565,16 @@ CONTAINS
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
          ShiftTo, Dir1(2), Dir2(2), CCW_value,a1(2),a2(2),b1(2),b2(2),intersect(2), &
          StartX, StartY, EndX, EndY, Orientation(3), temp, NodeHolder(3), err_buffer,&
-         yy, zz, gradient, c, intersect_z
+         yy, zz, gradient, c, intersect_z, SideCorner(3), MinDist, TempDist
     REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:), REdge(:,:)
+    REAL(KIND=dp), POINTER :: WorkReal(:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
+    TYPE(Element_t), POINTER :: WorkElements(:)
+    TYPE(Nodes_t) :: WorkNodes
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path, &
-         EdgeLength,crop(2)
+         EdgeLength,crop(2),OnSide,SideCornerNum,addnodes,AddEdgeInt(2), CrevEndNode
     INTEGER, ALLOCATABLE :: WorkInt(:), IsBelow(:)
+    INTEGER, POINTER :: WorkPerm(:), NodeIndexes(:)
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
          DoProjectible, headland, CrevBelow, LeftToRight
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
@@ -5581,20 +5596,27 @@ CONTAINS
       StartY = Mesh % Nodes % y(First)
       EndX = Mesh % Nodes % x(Last)
       EndY = Mesh % Nodes % y(Last)
-
+      ! onside = 0, crev not on side
+      ! onside =1, first node on side
+      ! onside =2, second node on side
+      OnSide = 0
       IF(OnLeft(First)) THEN
         StartX = FrontLeft(1)
         StartY = FrontLeft(2)
+        OnSide = 1
       ELSE IF(OnRight(First)) THEN
         StartX = FrontRight(1)
         StartY = FrontRight(2)
+        Onside = 1
       END IF
       IF(OnLeft(Last)) THEN
         EndX = FrontLeft(1)
         EndY = FrontLeft(2)
+        Onside = 2
       ELSE IF(OnRight(Last)) THEN
         EndX = FrontRight(1)
         EndY = FrontRight(2)
+        Onside = 2
       END IF
 
       orientation(3) = 0.0_dp
@@ -5672,6 +5694,23 @@ CONTAINS
         REdge(3,i) = NodeHolder(3)
       END DO
 
+      ! rotate side corner if it exists
+      IF(OnSide /= 0) THEN
+        IF(Onside == 1) THEN
+          NodeHolder(1) = FrontLeft(1)
+          NodeHolder(2) = FrontLeft(2)
+          NodeHolder(3) = 0.0_dp
+        ELSE IF(OnSide == 2) THEN
+          NodeHolder(1) = FrontRight(1)
+          NodeHolder(2) = FrontRight(2)
+          NodeHolder(3) = 0.0_dp
+        END IF
+
+        NodeHolder = MATMUL(RotationMatrix,NodeHolder)
+
+        SideCorner = NodeHolder
+      END IF
+
       IF(PRESENT(GridSize)) THEN
         err_buffer = GridSize/10
       ELSE
@@ -5691,6 +5730,151 @@ CONTAINS
             REdge(3,i) >= Mesh % Nodes % z(Last) - err_buffer )) crop(2) = i
       END DO
       IF(ANY(crop == 0)) CALL FATAL(FuncName, 'Edge not found')
+
+      ! if onside we need to consider that constriction may occur as result of
+      ! narrowing on the fjord walls. Easiest way to do this is add the lateral edge nodes
+      ! to the crevasse permanently
+      ! GetFrontCorners only provides surface edges - is this a problem on a nonvertical front?
+      IF(OnSide /= 0) THEN
+        SideCornerNum = 0
+        MinDist = HUGE(1.0_dp)
+        DO i=1, EdgeLength
+          TempDist = PointDist3D(REdge(:,i), SideCorner)
+          IF(TempDist < MinDist) THEN
+            MinDist = TempDist
+            SideCornerNum = i
+          END IF
+        END DO
+        IF(SideCornerNum==0) CALL FATAL(FuncName, 'Side Corner not found')
+        IF(SideCornerNum > MAXVAL(crop) .OR. SideCornerNum < MINVAL(crop)) &
+          CALL FATAL(FuncName, 'Side Corner not in cropped edge range')
+
+        ! see which nodes we want to add
+        IF(OnSide == 1) THEN
+          AddEdgeInt(1) = crop(1) + 1
+          AddEdgeInt(2) = SideCornerNum
+          crop(1) = SideCornerNum
+          CrevEndNode = First
+        ELSE IF(Onside == 2) THEN
+          AddEdgeInt(1) = SideCornerNum
+          AddEdgeInt(2) = crop(2) - 1
+          crop(2) = SideCornerNum
+          CrevEndNode = Last
+        END IF
+        addnodes = AddEdgeInt(2) - AddEdgeInt(1) + 1
+
+        ! add elements to the mesh
+        ALLOCATE(WorkElements(Mesh % NumberOfBulkElements + addnodes))
+        WorkElements(1:Mesh % NumberOfBulkElements) = Mesh % Elements
+        IF(Onside == 1) THEN
+          DO i=1, addnodes
+            WorkElements(Mesh % NumberOfBulkElements + i) %  ElementIndex = Mesh % NumberOfBulkElements + i
+            WorkElements(Mesh % NumberOfBulkElements + i) %  TYPE => GetElementType(202)
+            WorkElements(Mesh % NumberOfBulkElements + i) % BodyID = 1
+            CALL AllocateVector(WorkElements(Mesh % NumberOfBulkElements + i) %  NodeIndexes, 2)
+            NodeIndexes => WorkElements(Mesh % NumberOfBulkElements + i) %  NodeIndexes
+            IF(i==1) THEN
+              NodeIndexes(2) = CrevEndNode
+            ELSE
+              NodeIndexes(2) = Mesh % NumberOfNodes + i - 1
+            END IF
+            NodeIndexes(1) = Mesh % NumberOfNodes + i
+          END DO
+        ELSE IF(OnSide == 2) THEN
+          DO i=1, addnodes
+            WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) %  ElementIndex = &
+                Mesh % NumberOfBulkElements - i + addnodes + 1
+            WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) % TYPE => GetElementType(202)
+            WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) % BodyID = 1
+            CALL AllocateVector(WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) %  NodeIndexes, 2)
+            NodeIndexes => WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) %  NodeIndexes
+            IF(i==1) THEN
+              NodeIndexes(1) = CrevEndNode
+            ELSE
+              NodeIndexes(1) = Mesh % NumberOfNodes - i + addnodes + 2
+            END IF
+            NodeIndexes(2) = Mesh % NumberOfNodes - i + addnodes + 1
+          END DO
+        END IF
+
+        ! add nodes to mesh
+        WorkNodes % NumberOfNodes = Mesh % NumberOfNodes + addnodes
+
+        ALLOCATE(WorkNodes % x(WorkNodes % NumberOfNodes),&
+             WorkNodes % y(WorkNodes % NumberOfNodes),&
+             WorkNodes % z(WorkNodes % NumberOfNodes))
+        WorkNodes % x(1:Mesh % NumberOfNodes) = Mesh % Nodes % x
+        WorkNodes % y(1:Mesh % NumberOfNodes) = Mesh % Nodes % y
+        WorkNodes % z(1:Mesh % NumberOfNodes) = Mesh % Nodes % z
+        DO i=1, addnodes
+          WorkNodes % x(Mesh % NumberOfNodes + i) = REdge(1,AddEdgeInt(1)+i-1)
+          WorkNodes % y(Mesh % NumberOfNodes + i) = REdge(2,AddEdgeInt(1)+i-1)
+          WorkNodes % z(Mesh % NumberOfNodes + i) = REdge(3,AddEdgeInt(1)+i-1)
+        END DO
+
+        IF(ASSOCIATED(Mesh % Elements)) DEALLOCATE(Mesh % Elements)
+        Mesh % Elements => WorkElements
+        DEALLOCATE(Mesh % Nodes % x, Mesh % Nodes % y, Mesh % Nodes % z)
+        ALLOCATE(Mesh % Nodes % x(WorkNodes % NumberOfNodes), &
+              Mesh % Nodes % y(WorkNodes % NumberOfNodes), &
+              Mesh % Nodes % z(WorkNodes % NumberOfNodes))
+        Mesh % NumberOfNodes = WorkNodes % NumberOfNodes
+        Mesh % Nodes % NumberOfNodes = WorkNodes % NumberOfNodes
+        Mesh % Nodes % x = WorkNodes % x
+        Mesh % Nodes % y = WorkNodes % y
+        Mesh % Nodes % z = WorkNodes % z
+        Mesh % NumberOfBulkElements = SIZE(WorkElements)
+
+        NULLIFY(WorkElements) !nulify as mesh % elements points to this allocation
+        DEALLOCATE(WorkNodes % x, WorkNodes % y, WorkNodes % z)
+
+        !modify crevasse
+        ALLOCATE(WorkInt(CurrentPath % NumberOfNodes + addnodes))
+        IF(OnSide == 1) THEN ! add at start
+          WorkInt(addnodes+1:CurrentPath % NumberOfNodes+addnodes) = CurrentPath % NodeNumbers
+          DO i=1,addnodes
+            WorkInt(i) = Mesh % NumberOfNodes - i + 1 !new nodes always on end
+          END DO
+        ELSE IF(OnSide == 2) THEN
+          WorkInt(1:CurrentPath % NumberOfNodes) = CurrentPath % NodeNumbers
+          DO i=1,addnodes
+            WorkInt(CurrentPath % NumberOfNodes+ i) = Mesh % NumberOfNodes-i+1 !new nodes always on end
+          END DO
+        END IF
+        CurrentPath % NumberOfNodes = SIZE(WorkInt)
+        DEALLOCATE(CurrentPath % NodeNumbers)
+        ALLOCATE(Currentpath % NodeNumbers(CurrentPath % NumberOfNodes))
+        CurrentPath % NodeNumbers = WorkInt
+        DEALLOCATE(WorkInt)
+
+        ! elements
+        ALLOCATE(WorkInt(CurrentPath % NumberOfElements + addnodes))
+        IF(OnSide == 1) THEN
+          WorkInt(addnodes+1:CurrentPath % NumberOfElements+addnodes) = CurrentPath % ElementNumbers
+          DO i=1,addnodes
+            WorkInt(i) = Mesh % NumberOfBulkElements - i + 1 !new nodes always on end
+          END DO
+        ELSE IF(OnSide == 2) THEN
+          WorkInt(1:CurrentPath % NumberOfElements) = CurrentPath % ElementNumbers
+          DO i=1,addnodes
+            WorkInt(CurrentPath % NumberOfElements+ i) = Mesh % NumberOfBulkElements - i + 1  !new nodes always on end
+          END DO
+        END IF
+        CurrentPath % NumberOfElements = SIZE(WorkInt)
+        DEALLOCATE(CurrentPath % ElementNumbers)
+        ALLOCATE(Currentpath % ElementNumbers(CurrentPath % NumberOfElements))
+        CurrentPath % ElementNumbers = WorkInt
+        DEALLOCATE(WorkInt)
+
+        ! adjust mesh perm
+        n = Mesh % NumberOfNodes
+        ALLOCATE(WorkPerm(n), WorkReal(n))
+        WorkReal = 0.0_dp
+        WorkPerm = [(i,i=1,n)]
+        CALL VariableRemove(Mesh % Variables, "isoline id", .TRUE.)
+        CALL VariableAdd(Mesh % Variables, Mesh, NULL(), "isoline id", 1, WorkReal, WorkPerm)
+        NULLIFY(WorkPerm, WorkReal) ! new variables points to these allocations
+      END IF ! end onside
 
       ! see if crev is above or below glacier edge
       ALLOCATE(IsBelow(CurrentPath % NumberOfNodes-2),&
