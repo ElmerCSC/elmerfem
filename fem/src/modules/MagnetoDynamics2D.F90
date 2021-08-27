@@ -79,8 +79,8 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,Transient ) ! {{{
       CALL Warn(Caller,'Handle assembly not yet available for Coil types!')
       HandleAsm = .FALSE.
     END IF
-    IF( ListCheckPresentAnyBodyForce(Model, 'Lorenz velocity') ) THEN
-      CALL Warn(Caller,'Handle assembly not yet available for Lorenz velocity!')
+    IF( ListCheckPresentAnyBodyForce(Model, 'Lorentz velocity') ) THEN
+      CALL Warn(Caller,'Handle assembly not yet available for Lorentz velocity!')
       HandleAsm = .FALSE.
     END IF
     IF(.NOT. HandleAsm ) THEN
@@ -711,15 +711,15 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), &
         LOAD(nd),R(2,2,n),C(n), mu,muder,Babs,POT(nd), &
-        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, &
-        Lorentz_velo(3,nd), Velo(3)
+        JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x, y,&
+        Lorentz_velo(3,nd), Velo(3), omega_velo
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
     REAL(KIND=dp) :: B_ip(2), Alocal, H_ip(2)
 
     INTEGER :: i,p,q,t,siz
 
-    LOGICAL :: Cubic, HBcurve, WithVelocity, Found, Stat
+    LOGICAL :: Cubic, HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
     LOGICAL :: CoilBody, StrandedCoil    
 
 !$omp threadprivate(Nodes, CubicCoeff, HB)
@@ -790,10 +790,13 @@ CONTAINS
     Load = 0.0d0
 
     WithVelocity = .FALSE.
+    WithAngularVelocity = .FALSE.
+    
     BodyForce => GetBodyForce(Element)
     IF ( ASSOCIATED(BodyForce) ) THEN
       Load(1:n) = GetReal(BodyForce, 'Current Density', Found, Element)
       CALL GetRealVector(BodyForce, Lorentz_velo, 'Lorentz velocity', WithVelocity)
+      omega_velo = ListGetCReal(BodyForce, 'Angular velocity', WithAngularVelocity) 
     END IF
 
     CoilBody = .FALSE.
@@ -916,13 +919,23 @@ CONTAINS
         END DO
       END IF
 
-      IF (WithVelocity) THEN
+      IF (WithVelocity .OR. WithAngularVelocity ) THEN
         !
         ! Create an additional Lorentz effect so that the electric field
         ! has an added term v x curl A:
         !
-        Velo(1:2) = [ SUM(Basis(1:n)*Lorentz_velo(1,1:n)), &
-                      SUM(Basis(1:n)*Lorentz_velo(2,1:n)) ]
+        IF( WithVelocity ) THEN        
+          Velo(1:2) = [ SUM(Basis(1:n)*Lorentz_velo(1,1:n)), &
+              SUM(Basis(1:n)*Lorentz_velo(2,1:n)) ]
+        ELSE
+          x = SUM( Basis(1:n) * Nodes % x(1:n) )
+          y = SUM( Basis(1:n) * Nodes % y(1:n) ) 
+          
+          ! Simplified omega \times r in 2D
+          Velo(1) = -omega_velo * y
+          Velo(2) = omega_velo * x
+        END IF
+          
         IF (CSymmetry) THEN
           DO p=1,nd
             STIFF(p,1:nd) = STIFF(p,1:nd) + IP % s(t) * DetJ * C_ip * Basis(p) * ( & 
@@ -1869,18 +1882,18 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
         CubicCoeff(:) => NULL(), HB(:,:) => NULL()
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,x
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,x,y
     REAL(KIND=dp) :: POT(2,nd),Babs,mu,muder,Omega
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
     REAL(KIND=dp) :: foilthickness, coilthickness, nofturns, skindepth, mu0 
-    REAL(KIND=dp) :: Lorentz_velo(3,nd), Velo(3)
+    REAL(KIND=dp) :: Lorentz_velo(3,nd), Velo(3), omega_velo
 
     INTEGER :: i,p,q,t,siz
 
     LOGICAL :: Cubic, HBcurve, Found, Stat, StrandedHomogenization
     LOGICAL :: CoilBody    
-    LOGICAL :: InPlaneProximity = .FALSE., WithVelocity
+    LOGICAL :: InPlaneProximity = .FALSE., WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
     
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
@@ -1993,11 +2006,14 @@ CONTAINS
 
     Load = 0.0d0
     WithVelocity = .FALSE.
+    WithAngularVelocity = .FALSE.
+    
     BodyForce => GetBodyForce(Element)
     IF ( ASSOCIATED(BodyForce) ) THEN
       Load(1:n) = GetReal( BodyForce, 'Current Density', Found, Element )
       Load(1:n) = Load(1:n) + im*GetReal( BodyForce, 'Current Density im', Found, Element )
       CALL GetRealVector(BodyForce, Lorentz_velo, 'Lorentz velocity', WithVelocity)
+      omega_velo = ListGetCReal(BodyForce,'Angular velocity', WithAngularVelocity) 
     END IF
 
     !Numerical integration:
@@ -2101,13 +2117,23 @@ CONTAINS
         END DO
       END IF
 
-      IF (WithVelocity) THEN
+      IF (WithVelocity .OR. WithAngularVelocity ) THEN
         !
         ! Create an additional Lorentz effect so that the electric field
         ! has an added term v x curl A:
         !
-        Velo(1:2) = [ SUM(Basis(1:n)*Lorentz_velo(1,1:n)), &
-            SUM(Basis(1:n)*Lorentz_velo(2,1:n)) ]
+        IF( WithVelocity ) THEN
+          Velo(1:2) = [ SUM(Basis(1:n)*Lorentz_velo(1,1:n)), &
+              SUM(Basis(1:n)*Lorentz_velo(2,1:n)) ]
+        ELSE 
+          x = SUM( Basis(1:n) * Nodes % x(1:n) )
+          y = SUM( Basis(1:n) * Nodes % y(1:n) ) 
+
+          ! Simplified omega \times r in 2D
+          Velo(1) = -omega_velo * y
+          Velo(2) = omega_velo * x
+        END IF
+
         DO p=1,nd
           STIFF(p,1:nd) = STIFF(p,1:nd) + IP % s(t) * DetJ * C_ip * Basis(p) * ( & 
               -Velo(2) * Bt(1:nd,1) + Velo(1) * Bt(1:nd,2) )
