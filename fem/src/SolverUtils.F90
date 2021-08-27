@@ -2518,13 +2518,22 @@ CONTAINS
      SUBROUTINE RotatedDisplacementField( ) 
 
        REAL(KIND=dp) :: RotVec(3)
-       INTEGER :: i,j,k,m
+       INTEGER :: i,j,k,n,m
 
        IF( .NOT. AnyRotatedContact ) RETURN
 
        CALL Info(Caller,'Rotating displacement field',Level=8)
        ALLOCATE( RotatedField(Solver % Matrix % NumberOfRows ) )
        RotatedField = Var % Values
+
+       n = SIZE( FieldPerm ) 
+       m = SIZE( BoundaryReorder )
+       IF( n > m ) THEN
+         i = COUNT(FieldPerm(m+1:n) > 0 )
+         IF( i > 0 ) THEN
+           CALL Fatal(Caller,'Number of potential untreated rotations: '//TRIM(I2S(i)))
+         END IF
+       END IF
        
        DO i=1,SIZE(FieldPerm)
          j = FieldPerm(i)
@@ -2775,12 +2784,16 @@ CONTAINS
        DO i=1,SIZE( Projector % InvPerm )
          j = Projector % InvPerm(i) 
          IF( j == 0 ) CYCLE
+         IF( j > SIZE( Perm ) ) THEN
+           PRINT *,'j beyond perm:',j,SIZE(Perm)
+           CALL Fatal('','This is the end')
+         END IF
          Perm( j ) = i
        END DO
 
        ! First time nothing is allocated
        IF( .NOT. ASSOCIATED( MortarBC % Perm ) ) THEN
-         CALL Info(Caller,'Allocating projector mortar vectors',Level=10)
+         CALL Info(Caller,'Allocating projector mortar vectors of size: '//TRIM(I2S(totsize)),Level=10)
          ALLOCATE( MortarBC % Active( totsize ), MortarBC % Rhs( totsize) )
          MortarBC % Active = .FALSE.
          MortarBC % Rhs = 0.0_dp
@@ -3014,7 +3027,7 @@ CONTAINS
          j = ActiveProjector % InvPerm(i)
 
          IF( j == 0 ) CYCLE
-
+         
          wsum = 0.0_dp
          wsumM = 0.0_dp
          Dist = 0.0_dp
@@ -3126,11 +3139,16 @@ CONTAINS
 
          ! Slave and master multipliers should sum up to same value
          mult = ABS( wsum / wsumM ) 
-
+         
          ! Compute the weigted distance in the normal direction.
          DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
            k = ActiveProjector % Cols(j)
 
+           IF( k > SIZE( FieldPerm ) ) THEN
+             PRINT *,'k:',K,SIZE(FieldPerm)
+             CALL Fatal('','Index too large')
+           END IF
+           
            l = FieldPerm( k ) 
            IF( l == 0 ) CYCLE
 
@@ -3145,7 +3163,7 @@ CONTAINS
              coeff = mult * coeff
              IF( ThisRotatedContact ) CoeffSign = -1
            END IF
-             
+           
            IF( dofs == 2 ) THEN
              disp(1) = DispVals( 2 * l - 1)
              disp(2) = DispVals( 2 * l )
@@ -3157,7 +3175,7 @@ CONTAINS
            END IF
 
            ! If nonlinear analysis is used we may need to cancel the introduced gap due to numerical errors 
-           IF( TieContact .AND. ResidualMode ) THEN
+           IF( TieContact .AND. ResidualMode ) THEN !.AND. k <= dofs * Mesh % NumberOfNodes ) THEN
              IF( ThisRotatedContact ) THEN
                ContactVec(1) = ContactVec(1) + coeff * SUM( LocalNormal * Disp )
                ContactVec(2) = ContactVec(2) + coeff * SUM( LocalT1 * Disp )
@@ -3248,6 +3266,7 @@ CONTAINS
          CartVec = CartVec / wsum
          
 200      IF( IsSlave ) THEN
+
            MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactVec(1)
            IF( StickContact .OR. TieContact ) THEN
              MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactVec(2) 
@@ -3255,7 +3274,7 @@ CONTAINS
                MortarBC % Rhs(Dofs*(i-1)+DofT2) = -ContactVec(3)
              END IF
            END IF
-
+           
            MinDist = MIN( Dist, MinDist ) 
            MaxDist = MAX( Dist, MaxDist )
          END IF
@@ -3279,7 +3298,7 @@ CONTAINS
            END DO
          END IF
        END DO
-
+       
        IF( IsSlave ) THEN
          IF( CreateDual ) THEN
            IsSlave = .FALSE.
@@ -3290,7 +3309,7 @@ CONTAINS
        END IF
 
        
-       IF( LinearContactGap ) THEN       
+       IF( LinearContactGap .OR. pContact ) THEN       
          DO elem=Mesh % NumberOfBulkElements + 1, &
              Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
            
@@ -3300,46 +3319,98 @@ CONTAINS
            IsMaster = ( Element % BoundaryInfo % Constraint == Model % BCs(master_ind) % Tag ) 
            IF( .NOT. ( IsSlave .OR. ( CreateDual .AND. IsMaster ) ) ) CYCLE
            
-           Indexes => Element % NodeIndexes         
            ElemCode = Element % TYPE % ElementCode           
-
+           IF( pContact ) THEN
+             n = mGetElementDOFs(pIndexes,Element)                   
+             Indexes => pIndexes
+           ELSE            
+             n = Element % TYPE % NumberOfNodes
+             Indexes => Element % NodeIndexes         
+           END IF
+           
            SELECT CASE ( ElemCode )
+           CASE( 202, 203 )
+             i=3
+             
+             j = DistVar % Perm(Indexes(i))
+             IF( j > 0 ) THEN
+               IF( pContact ) THEN
+                 DistVar % Values(j) = 0.0_dp
+                 GapVar % Values(j) = 0.0_dp
+                 IF( CalculateVelocity ) THEN
+                   DO k=1,Dofs
+                     VeloVar % Values( Dofs*(j-1)+k ) = 0.0_dp
+                   END DO
+                 END IF
+               ELSE
+                 i1=1
+                 i2=2
+                 j1 = DistVar % Perm(Indexes(i1))
+                 j2 = DistVar % Perm(Indexes(i2))
+                 
+                 DistVar % Values(j) = 0.5_dp * &
+                     ( DistVar % Values(j1) + DistVar % Values(j2))
+                 GapVar % Values(j) = 0.5_dp * &
+                     ( GapVar % Values(j1) + GapVar % Values(j2))
+                 
+                 IF( CalculateVelocity ) THEN
+                   DO k=1,Dofs
+                     VeloVar % Values( Dofs*(j-1)+k ) = 0.5_dp * &
+                         ( VeloVar % Values(Dofs*(j1-1)+k) + VeloVar % Values(Dofs*(j2-1)+k))  
+                   END DO
+                 END IF
+               END IF
+             END IF
 
-           CASE( 408 )
+           CASE( 404, 408 )
              DO i=5,8
-               i1=i-4
-               i2=i1+1
-               IF(i2==5) i2=1
+               
                j = DistVar % Perm(Indexes(i))
                IF( j == 0 ) CYCLE
-               j1 = DistVar % Perm(Indexes(i1))
-               j2 = DistVar % Perm(Indexes(i2))
-
-               DistVar % Values(j) = 0.5_dp * &
-                   ( DistVar % Values(j1) + DistVar % Values(j2))
-               GapVar % Values(j) = 0.5_dp * &
-                   ( GapVar % Values(j1) + GapVar % Values(j2))
                
-               IF( CalculateVelocity ) THEN
-                 DO k=1,Dofs
-                   VeloVar % Values( Dofs*(j-1)+k ) = 0.5_dp * &
-                       ( VeloVar % Values(Dofs*(j1-1)+k) + VeloVar % Values(Dofs*(j2-1)+k))  
-                 END DO
+               IF( pContact ) THEN
+                 DistVar % Values(j) = 0.0_dp
+                 GapVar % Values(j) = 0.0_dp
+                 IF( CalculateVelocity ) THEN
+                   DO k=1,Dofs
+                     VeloVar % Values( Dofs*(j-1)+k ) = 0.0_dp
+                   END DO
+                 END IF
+               ELSE
+                 i1=i-4
+                 i2=i1+1
+                 IF(i2==5) i2=1
+                 j1 = DistVar % Perm(Indexes(i1))
+                 j2 = DistVar % Perm(Indexes(i2))
+                 
+                 DistVar % Values(j) = 0.5_dp * &
+                     ( DistVar % Values(j1) + DistVar % Values(j2))
+                 GapVar % Values(j) = 0.5_dp * &
+                     ( GapVar % Values(j1) + GapVar % Values(j2))
+                 
+                 IF( CalculateVelocity ) THEN
+                   DO k=1,Dofs
+                     VeloVar % Values( Dofs*(j-1)+k ) = 0.5_dp * &
+                         ( VeloVar % Values(Dofs*(j1-1)+k) + VeloVar % Values(Dofs*(j2-1)+k))  
+                   END DO
+                 END IF
                END IF
              END DO
-             
+               
            CASE DEFAULT
              CALL Fatal('CalculateMortarDistance','Implement linear gaps for: '//TRIM(I2S(ElemCode)))
            END SELECT
+
          END DO
        END IF
-     
+       
        DEALLOCATE( SlaveNode )
        IF( CreateDual ) DEALLOCATE( MasterNode )
-
-       IF( InfoActive(20 ) ) THEN
-         PRINT *,'Distance Range:',MinDist, MaxDist
-         PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
+       
+       IF( InfoActive(25 ) ) THEN
+         CALL VectorValuesRange(DistVar % Values,SIZE(DistVar % Values),'Dist')       
+         CALL VectorValuesRange(GapVar % Values,SIZE(GapVar % Values),'Gap')       
+         CALL VectorValuesRange(MortarBC % rhs,SIZE(MortarBC % rhs),'Mortar Rhs')       
        END IF
          
      END SUBROUTINE CalculateMortarDistance
@@ -3369,6 +3440,7 @@ CONTAINS
        ALLOCATE(Basis(2*n), Nodes % x(2*n), Nodes % y(2*n), Nodes % z(2*n) )
        Nodes % x = 0.0_dp; Nodes % y = 0.0_dp; Nodes % z = 0.0_dp
 
+       CALL Info(Caller,'Computing pressure for contact problems',Level=20)
        
        CoordSys = CurrentCoordinateSystem()
        NodalForce = 0.0_dp
@@ -3392,13 +3464,25 @@ CONTAINS
          IsMaster = ( Element % BoundaryInfo % Constraint == Model % BCs(master_ind) % Tag ) 
 
          IF( .NOT. ( IsSlave .OR. ( CreateDual .AND. IsMaster ) ) ) CYCLE
+                  
+         IF( pContact ) THEN
+           n = mGetElementDOFs(pIndexes,Element)                   
+           Indexes => pIndexes
+         ELSE         
+           n = Element % TYPE % NumberOfNodes         
+           Indexes => Element % NodeIndexes
+         END IF
+
+         IF( MAXVAL( Indexes(1:n) ) > SIZE( Mesh % Nodes % x ) ) THEN
+           PRINT *,'Indexes:',n,Indexes(1:n)
+           PRINT *,'size x:',SIZE( Mesh % Nodes % x )
+           CALL Fatal('','index too large for x')
+         END IF
+
          
-         Indexes => Element % NodeIndexes
-         
-         n = Element % TYPE % NumberOfNodes
-         Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
-         Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
-         Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+         Nodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
+         Nodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
+         Nodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
          
          IntegStuff = GaussPoints( Element )
 
@@ -3433,8 +3517,19 @@ CONTAINS
            END IF
 
            DO i=1,n
-             j = NormalLoadVar % Perm( Indexes(i) ) 
+             IF( Indexes(i) > SIZE( NormalLoadVar % Perm ) ) THEN
+               PRINT *,'Index too big for NodeDone',j,SIZE(NormalLoadVar % Perm)
+               CALL Fatal('','just stop')
+             END IF
 
+             j = NormalLoadVar % Perm( Indexes(i) )
+             IF( j == 0 ) CYCLE
+             
+             IF( Indexes(i) > SIZE( NodeDone ) ) THEN
+               PRINT *,'Index too big for NodeDone',j,SIZE(NodeDone)
+               CALL Fatal('','just stop')
+             END IF
+             
              IF( .NOT. NodeDone( Indexes(i) ) ) THEN             
                NodeDone( Indexes(i) ) = .TRUE.
                WeightVar % Values(j) = 0.0_dp
@@ -3443,7 +3538,8 @@ CONTAINS
              END IF
 
              k = FieldPerm( Indexes(i) )
-             IF( k == 0 .OR. j == 0 ) CYCLE
+             IF( k == 0 ) CYCLE
+             
              DO l=1,dofs
                NodalForce(l) = LoadValues(dofs*(k-1)+l)
              END DO
@@ -3539,9 +3635,10 @@ CONTAINS
        IF( ListGetLogical( BC,'Normal Sign Negative',Found ) ) DistSign = -1
        IF( ListGetLogical( BC,'Normal Sign Positive',Found ) ) DistSign = 1
 
-
        DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z, NodeDone )
 
+       CALL Info(Caller,'Finished computing contact pressure',Level=30)
+       
      END SUBROUTINE CalculateContactPressure
 
   
@@ -3577,6 +3674,12 @@ CONTAINS
        IF( .NOT. Found ) DistOffset = ListGetCReal( BC,&
            'Contact Depth Offset',Found)
 
+       
+       PRINT *,'Active Count 0:',COUNT( MortarBC % Active ), SIZE( MortarBC % Active ), &
+           Projector % NumberOfRows
+           
+
+       
        ! Determine now whether we have contact or not
        DO i = 1,Projector % NumberOfRows
          j = Projector % InvPerm( i ) 
@@ -3650,6 +3753,8 @@ CONTAINS
              PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
            END IF
          END IF
+         PRINT *,'NormalContactSet active count:',COUNT(MortarBC % Active)
+         PRINT *,'NormalContactSet passive count:',COUNT(.NOT. MortarBC % Active)
        END IF
 
        IF(added > 0) THEN
@@ -3661,6 +3766,9 @@ CONTAINS
          WRITE(Message,'(A,I0,A)') 'Removed ',removed,' nodes from the set'
          CALL Info(Caller,Message,Level=6)
        END IF
+
+       PRINT *,'Active Count 1:',COUNT( MortarBC % Active ) 
+
 
      END SUBROUTINE NormalContactSet
 
@@ -3750,6 +3858,9 @@ CONTAINS
        INTEGER :: i,j,k,l,ind,IndN, IndT1, IndT2
        LOGICAL :: Found
 
+       
+       CALL Info(Caller,'Setting Tangent contact set',Level=20)
+       
        IF( FrictionContact .AND. &
            ListGetLogical( BC,'Stick Contact Global',Found ) ) THEN
         
@@ -3925,6 +4036,8 @@ CONTAINS
            StickActiveVar % Values(k) = -1.0_dp
          END IF
        END DO
+
+       PRINT *,'Active Tangent:',COUNT( MortarBC % Active ) 
 
      END SUBROUTINE TangentContactSet
 
@@ -8545,30 +8658,29 @@ CONTAINS
         BoundaryTangent1, BoundaryTangent2, dim )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
-
     CHARACTER(LEN=*) :: VariableName
-
     INTEGER, POINTER :: BoundaryReorder(:)
     INTEGER :: NumberOfBoundaryNodes,dim
-
     REAL(KIND=dp), POINTER :: BoundaryNormals(:,:),BoundaryTangent1(:,:), &
-                       BoundaryTangent2(:,:)
+        BoundaryTangent2(:,:)
 !------------------------------------------------------------------------------
-
-    TYPE(Element_t), POINTER :: CurrentElement
-    INTEGER :: i,j,k,n,t,ierr,iter, proc
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: i,j,k,n,np,t,ierr,iter, proc
     LOGICAL :: GotIt, Found, Conditional
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER, POINTER :: Indexes(:)
     REAL(KIND=dp), ALLOCATABLE :: Condition(:)
-
     TYPE buff_t
       INTEGER, ALLOCATABLE :: buff(:)
     END TYPE buff_t
     INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
+    INTEGER, TARGET :: pIndexes(12)
     INTEGER, POINTER :: nlist(:)
     TYPE(Buff_t), ALLOCATABLE, TARGET :: n_index(:)
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:)
+    TYPE(Variable_t), POINTER :: DispVar
+    LOGICAL :: pDisp
+    CHARACTER(*), PARAMETER :: Caller = 'CheckNormalTangentialBoundary'
 !------------------------------------------------------------------------------
 
     ! need an early initialization to average normals across partitions:
@@ -8594,38 +8706,58 @@ CONTAINS
     Mesh => Model % Mesh
     n = Mesh % NumberOFNodes
 
+    pDisp = .FALSE.
+    NULLIFY( DispVar )
+    DO i=1,Model % NumberOfSolvers
+      IF( ListGetLogical( Model % Solvers(i) % Values,'Use p Normals',GotIt ) ) THEN
+        DispVar => Model % Solvers(i) % Variable
+        pDisp = .TRUE.
+        IF( SIZE( DispVar % Perm ) > n ) THEN
+          n = SIZE( DispVar % Perm )        
+        END IF
+        EXIT
+      END IF
+    END DO
+            
+    IF ( ASSOCIATED( BoundaryReorder ) ) THEN
+      IF ( SIZE(BoundaryReorder) < n ) DEALLOCATE( BoundaryReorder )
+    END IF
+    
     IF ( .NOT. ASSOCIATED( BoundaryReorder ) ) THEN
-      ALLOCATE( BoundaryReorder(n) )
-    ELSE IF ( SIZE(BoundaryReorder)<n ) THEN
-      DEALLOCATE( BoundaryReorder )
+      CALL Info( Caller,'Allocating BoundaryOrder of size: '//TRIM(I2S(n)),Level=12)
+      IF( pDisp ) THEN
+        CALL Info(Caller,'Creating normals for p-dofs as well!',Level=12)
+      END IF
       ALLOCATE( BoundaryReorder(n) )
     END IF
+    
     BoundaryReorder = 0
-
+    
 !------------------------------------------------------------------------------
     DO t=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
                   Mesh % NumberOfBoundaryElements
 
-      CurrentElement => Model % Elements(t)
-      IF ( CurrentElement % TYPE % ElementCode == 101 )  CYCLE
+      Element => Model % Elements(t)
+      IF ( Element % TYPE % ElementCode == 101 )  CYCLE
 
-      n = CurrentElement % TYPE % NumberOfNodes
-      NodeIndexes => CurrentElement % NodeIndexes
+      Indexes => Element % NodeIndexes
+      n = Element % TYPE % NumberOfNodes      
       ALLOCATE( Condition(n)  )
+      
       DO i=1,Model % NumberOfBCs
-        IF ( CurrentElement % BoundaryInfo % Constraint == &
-                  Model % BCs(i) % Tag ) THEN
+        IF ( Element % BoundaryInfo % Constraint == &
+            Model % BCs(i) % Tag ) THEN
           IF ( ListGetLogical( Model % BCs(i) % Values,VariableName, gotIt) ) THEN
             Found = ListGetLogical( Model % BCs(i) % Values, &
-                 TRIM(VariableName) // ' Rotate',gotIt)
+                TRIM(VariableName) // ' Rotate',gotIt)
             IF ( Found .OR. .NOT. GotIt ) THEN
               Condition(1:n) = ListGetReal( Model % BCs(i) % Values, &
-                 TRIM(VariableName) // ' Condition', n, NodeIndexes, Conditional )
-
+                  TRIM(VariableName) // ' Condition', n, Indexes, Conditional )
+              
               DO j=1,n
                 IF ( Conditional .AND. Condition(j)<0._dp ) CYCLE
-
-                k = NodeIndexes(j)
+                
+                k = Indexes(j)
                 IF ( BoundaryReorder(k)==0 ) THEN
                   NumberOfBoundaryNodes = NumberOfBoundaryNodes + 1
                   BoundaryReorder(k) = NumberOfBoundaryNodes
@@ -8637,7 +8769,7 @@ CONTAINS
       END DO
       DEALLOCATE( Condition )
     END DO
-
+        
     IF (ParEnv % PEs>1 )  THEN
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
@@ -8714,6 +8846,50 @@ CONTAINS
       DEALLOCATE( n_index, n_count )
     END IF
 
+
+    ! We add the normals for p-elements at 2nd stage to get higher indexes for them.
+    ! This way the lower indexes should be the same as for non p-elements.
+    ! Also these dofs do not to be communicated.
+    !-------------------------------------------------------------------------------
+    IF( pDisp ) THEN
+      IF( ListCheckPresentAnyBC( Model,TRIM(VariableName) // ' Condition') ) THEN
+        CALL Fatal(Caller,'Cannot deal with conditional n-t condition and p-elements')
+      END IF      
+      
+      DO t=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
+          Mesh % NumberOfBoundaryElements
+        
+        Element => Model % Elements(t)
+        IF ( Element % TYPE % ElementCode < 200 )  CYCLE
+        
+        n = Element % TYPE % NumberOfNodes
+        np = mGetElementDOFs(pIndexes,Element,USolver=DispVar % Solver)
+        Indexes => pIndexes
+
+        DO i=1,Model % NumberOfBCs
+          IF ( Element % BoundaryInfo % Constraint == &
+              Model % BCs(i) % Tag ) THEN
+            IF ( ListGetLogical( Model % BCs(i) % Values,VariableName, gotIt) ) THEN
+              Found = ListGetLogical( Model % BCs(i) % Values, &
+                  TRIM(VariableName) // ' Rotate',gotIt)
+              IF ( Found .OR. .NOT. GotIt ) THEN
+                DO j=n+1,np
+                  k = Indexes(j)
+                  IF ( BoundaryReorder(k)==0 ) THEN
+                    NumberOfBoundaryNodes = NumberOfBoundaryNodes + 1
+                    BoundaryReorder(k) = NumberOfBoundaryNodes
+                  END IF
+                END DO
+              END IF
+            END IF
+          END IF
+        END DO
+      END DO
+    END IF
+
+    CALL Info(Caller,'Number of normal-tangential dofs: '&
+        //TRIM(I2S(NumberOfBoundaryNodes)),Level=10)
+    
 !------------------------------------------------------------------------------
 
     IF ( NumberOfBoundaryNodes == 0 ) THEN
@@ -8737,6 +8913,8 @@ CONTAINS
       BoundaryTangent2 = 0.0d0
     END IF
 
+
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE CheckNormalTangentialBoundary
 !------------------------------------------------------------------------------
@@ -8752,21 +8930,18 @@ CONTAINS
        BoundaryTangent1, BoundaryTangent2, dim )
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
-
     INTEGER, POINTER :: BoundaryReorder(:)
-    INTEGER :: NumberOfBoundaryNodes,DIM
-
+    INTEGER :: NumberOfBoundaryNodes, dim
     REAL(KIND=dp), POINTER :: BoundaryNormals(:,:),BoundaryTangent1(:,:), &
-                       BoundaryTangent2(:,:)
-
+        BoundaryTangent2(:,:)
     CHARACTER(LEN=*) :: VariableName
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: ElementNodes
-    INTEGER :: i,j,k,l,m,n,t, iBC, ierr, proc
+    INTEGER :: i,j,k,l,m,n,np,t,iBC,ierr,proc,i1,i2,k1,k2
     LOGICAL :: GotIt, Found, PeriodicNormals, Conditional
     REAL(KIND=dp) :: s,Bu,Bv,Nrm(3),Basis(32),DetJ
-    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER, POINTER :: Indexes(:)
     TYPE(Matrix_t), POINTER :: Projector
     REAL(KIND=dp), ALLOCATABLE :: Condition(:)
 
@@ -8789,19 +8964,29 @@ CONTAINS
     TYPE(Buff_t), ALLOCATABLE :: n_index(:)
     REAL(KIND=dp), ALLOCATABLE :: nbuff(:)
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
-
     LOGICAL :: MassConsistent, LhsSystem, RotationalNormals
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
     INTEGER :: LhsConflicts
-
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: Origin(3),Axis(3)
+    INTEGER, TARGET :: pIndexes(12)
     REAL(KIND=dp), POINTER :: Pwrk(:,:)
-    LOGICAL :: GotOrigin,GotAxis,OneSidedNormals
+    LOGICAL :: GotOrigin,GotAxis,OneSidedNormals,pDisp
     CHARACTER(*), PARAMETER :: Caller = 'AverageBoundaryNormals'
-
+    TYPE(Variable_t), POINTER :: DispVar
+    
     !------------------------------------------------------------------------------
+
+    pDisp = .FALSE.
+    NULLIFY( DispVar )
+    DO i=1,Model % NumberOfSolvers
+      IF( ListGetLogical( Model % Solvers(i) % Values,'Use p Normals',GotIt ) ) THEN
+        DispVar => Model % Solvers(i) % Variable
+        pDisp = .TRUE.
+        EXIT
+      END IF
+    END DO
 
     ElementNodes % x => x
     ElementNodes % y => y
@@ -8811,7 +8996,7 @@ CONTAINS
     NrmVar => VariableGet( Mesh % Variables, 'Normals' )
     
     IF ( ASSOCIATED(NrmVar) ) THEN
-
+      
       IF ( NumberOfBoundaryNodes >0 ) THEN
         BoundaryNormals = 0._dp
         DO i=1,Model % NumberOfNodes
@@ -8841,12 +9026,17 @@ CONTAINS
           Element => Model % Elements(t)
           IF ( Element % TYPE  % ElementCode < 200 ) CYCLE
 
-          n = Element % TYPE % NumberOfNodes
-          NodeIndexes => Element % NodeIndexes
+          IF(pDisp) THEN
+            np = mGetElementDOFs(pIndexes,Element,USolver=DispVar % Solver)
+            Indexes => pIndexes
+          ELSE
+            n = Element % TYPE % NumberOfNodes
+            Indexes => Element % NodeIndexes
+          END IF
 
-          ElementNodes % x(1:n) = Model % Nodes % x(NodeIndexes)
-          ElementNodes % y(1:n) = Model % Nodes % y(NodeIndexes)
-          ElementNodes % z(1:n) = Model % Nodes % z(NodeIndexes)
+          ElementNodes % x(1:n) = Model % Nodes % x(Indexes)
+          ElementNodes % y(1:n) = Model % Nodes % y(Indexes)
+          ElementNodes % z(1:n) = Model % Nodes % z(Indexes)
 
           ALLOCATE(Condition(n))
 
@@ -8880,12 +9070,14 @@ CONTAINS
                   END IF
                   
                   Condition(1:n) = ListGetReal( BC,&
-                       TRIM(VariableName) // ' Condition', n, NodeIndexes, Conditional )
+                       TRIM(VariableName) // ' Condition', n, Indexes, Conditional )
 
                   DO j=1,n
-                    IF ( Conditional .AND. Condition(j) < 0._dp ) CYCLE
-
-                    k = BoundaryReorder( NodeIndexes(j) )
+                    IF ( Conditional ) THEN
+                      IF( Condition(j) < 0._dp ) CYCLE
+                    END IF
+                      
+                    k = BoundaryReorder( Indexes(j) )
                     IF (k>0) THEN
                       nrm = 0._dp
                       IF (MassConsistent) THEN
@@ -8909,11 +9101,11 @@ CONTAINS
                         nrm = NormalVector(Element,ElementNodes,Bu,Bv,.TRUE.)
                       END IF
 
-                      l = n_comp(NodeIndexes(j))
-                      n_comp(NodeIndexes(j)) = l + 1
+                      l = n_comp(Indexes(j))
+                      n_comp(Indexes(j)) = l + 1
                       IF( l > 0 ) THEN
                         IF( SUM( BoundaryNormals(k,:) * nrm ) < 0 ) THEN
-                          CALL Warn(Caller,'Node '//TRIM(I2S(NodeIndexes(j)))//' has conflicting normal directions!')
+                          CALL Warn(Caller,'Node '//TRIM(I2S(Indexes(j)))//' has conflicting normal directions!')
                         END IF
                       END IF
 
@@ -9170,12 +9362,12 @@ CONTAINS
           IF ( Element % TYPE  % ElementCode < 200 ) CYCLE
           
           n = Element % TYPE % NumberOfNodes
-          NodeIndexes => Element % NodeIndexes
+          Indexes => Element % NodeIndexes
           
           DO i=1,Model % NumberOfBCs
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
-              IF( NtMasterBC(i) ) LhsTangent( NodeIndexes ) = .TRUE.
-              IF( NtSlaveBC(i) ) RhsTangent( NodeIndexes ) = .TRUE.
+              IF( NtMasterBC(i) ) LhsTangent( Indexes ) = .TRUE.
+              IF( NtSlaveBC(i) ) RhsTangent( Indexes ) = .TRUE.
               EXIT
             END IF
           END DO
@@ -9187,7 +9379,8 @@ CONTAINS
               'There are '//TRIM(I2S(LhsConflicts))//' nodes that could be both rhs and lhs!')
         END IF
       END IF
-
+            
+      
       ! Normalize the normals and compute the tangent directions.
       !----------------------------------------------------------
       DO i=1,Model % NumberOfNodes
@@ -9195,7 +9388,7 @@ CONTAINS
         IF ( k > 0 ) THEN
           s = SQRT( SUM( BoundaryNormals(k,:)**2 ) )
           IF ( s /= 0.0d0 ) &
-            BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
+              BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
           IF ( dim > 2 ) THEN
             CALL TangentDirections( BoundaryNormals(k,:),  &
                 BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
@@ -9208,6 +9401,43 @@ CONTAINS
         END IF
       END DO
       
+
+      ! Normalize the normals and compute the tangent directions.
+      !----------------------------------------------------------
+
+
+      IF( ListCheckPresentAnySolver( Model,'Use p Normal') ) THEN
+        DO t=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
+            Mesh % NumberOfBoundaryElements
+          
+          Element => Model % Elements(t)
+          IF ( Element % TYPE % ElementCode < 200 )  CYCLE
+          
+          n = Element % TYPE % NumberOfNodes
+          np = mGetElementDOFs(pIndexes,Element,USolver=DispVar % Solver)
+          Indexes => pIndexes
+          
+          DO i=n+1,np
+            i1 = i-n
+            i2 = i+1-n
+            IF(i2>n) i2=1
+
+            k1 = BoundaryReorder(i1) 
+            k2 = BoundaryReorder(i2) 
+            k = BoundaryReorder(i) 
+
+            BoundaryNormals(k,:) = ( BoundaryNormals(k1,:) + BoundaryNormals(k2,:) ) / 2
+            IF( dim > 2 ) THEN
+              BoundaryTangent1(k,:) = ( BoundaryTangent1(k1,:) + BoundaryTangent1(k2,:) ) / 2
+              BoundaryTangent2(k,:) = ( BoundaryTangent2(k1,:) + BoundaryTangent2(k2,:) ) / 2
+            END IF
+          END DO
+        END DO
+      END IF
+                  
+
+      ! Normalize the normals and compute the tangent directions.
+      !----------------------------------------------------------
       IF( ListGetLogical( Model % Simulation,'Save Averaged Normals',Found ) ) THEN
         CALL Info(Caller,'Saving averaged boundary normals to variable: Averaged Normals')
         NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
@@ -9255,7 +9485,10 @@ CONTAINS
         END IF
       END IF
     END IF
-
+      
+      DO i=1,NumberOfBoundaryNodes
+        PRINT *,'nrm',i,BoundaryNormals(i,:)
+      END DO
 
 
  CONTAINS
@@ -9651,6 +9884,11 @@ END FUNCTION SearchNodeL
      
      dim = CoordinateSystemDimension()
 
+     IF( NodeNumber > SIZE( BoundaryReorder ) ) THEN
+       CALL Fatal('RotateNTSystem',&
+           'Index '//TRIM(I2S(NodeNumber))//' beyond BoundaryReorder size '//TRIM(I2S(SIZE(BoundaryReorder))))
+     END IF
+     
      k = BoundaryReorder(NodeNumber)
      IF ( k <= 0 ) RETURN
 

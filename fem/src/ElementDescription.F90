@@ -11850,7 +11850,7 @@ END SUBROUTINE PickActiveFace
 
     INTEGER :: LMat,RMat,n,k
 
-    REAL(KIND=dp) :: x1,y1,z1
+    REAL(KIND=dp) :: u,v,w,dCoord(3)
     REAL(KIND=dp), ALLOCATABLE :: nx(:),ny(:),nz(:)
     LOGICAL :: LPassive
 !------------------------------------------------------------------------------
@@ -11905,35 +11905,36 @@ END SUBROUTINE PickActiveFace
     SELECT CASE( Element % TYPE % ElementCode / 100 )
 
     CASE(2,4,8)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 0.0d0 )
+      u = 0.0_dp
+      v = 0.0_dp
+      w = 0.0_dp
     CASE(3)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE(5)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/4, 1.0d0/4, 1.0d0/4 )
+      u = 1.0d0/4
+      v = 1.0d0/4
+      w = 1.0d0/4
     CASE(6)
-       x1 = InterpolateInElement( Element, nx, 0.0d0, 0.0d0, 1.0d0/3 )
-       y1 = InterpolateInElement( Element, ny, 0.0d0, 0.0d0, 1.0d0/3 )
-       z1 = InterpolateInElement( Element, nz, 0.0d0, 0.0d0, 1.0d0/3 )
+      u = 0.0
+      v = 0.0
+      w = 1.0d0/3
     CASE(7)
-       x1 = InterpolateInElement( Element, nx, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       y1 = InterpolateInElement( Element, ny, 1.0d0/3, 1.0d0/3, 0.0d0 )
-       z1 = InterpolateInElement( Element, nz, 1.0d0/3, 1.0d0/3, 0.0d0 )
+      u = 1.0d0/3
+      v = 1.0d0/3
+      w = 0.0d0
     CASE DEFAULT
-       CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
-
+      CALL Fatal('CheckNormalDirection','Invalid elementcode for parent element!')   
+      
     END SELECT
-    x1 = x1 - x
-    y1 = y1 - y
-    z1 = z1 - z
 
+    dCoord(1) = InterpolateInElement( Element, nx, u, v, w ) - x
+    dCoord(2) = InterpolateInElement( Element, ny, u, v, w ) - y
+    dCoord(3) = InterpolateInElement( Element, nz, u, v, w ) - z
+  
     IF ( PRESENT(turn) ) turn = .FALSE.
-    IF ( x1*Normal(1) + y1*Normal(2) + z1*Normal(3) > 0 ) THEN
+    IF ( SUM( dCoord * Normal ) > 0 ) THEN
        IF ( Element % BodyId /= k ) THEN
           Normal = -Normal
           IF ( PRESENT(turn) ) turn = .TRUE.
