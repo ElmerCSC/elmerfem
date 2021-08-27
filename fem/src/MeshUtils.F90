@@ -13019,6 +13019,33 @@ CONTAINS
       CLOSE(1)     
     END IF
 
+    IF( ASSOCIATED(projector % rhs) ) THEN
+      IF(ParEnv % PEs == 1 ) THEN
+        FileName = TRIM(Prefix)//'_rhs.dat'
+      ELSE
+        FileName = TRIM(Prefix)//'_rhs_part'//&
+            TRIM(I2S(ParEnv % MyPe))//'.dat'
+      END IF
+      
+      OPEN(1,FILE=FileName,STATUS='Unknown')
+      DO i=1,projector % numberofrows
+        IF( ASSOCIATED( IntInvPerm ) ) THEN
+          ii = intinvperm(i)
+          IF( ii == 0 ) CYCLE
+        ELSE
+          ii = i
+        END IF
+
+        IF( GlobalInds ) THEN
+          ii = GlobalDofs(ii)
+          WRITE(1,*) ii, i, ParEnv % MyPe, projector % rhs(i)
+        ELSE
+          WRITE(1,*) ii, i, projector % rhs(i)
+        END IF
+      END DO
+      CLOSE(1)     
+    END IF
+
   END SUBROUTINE SaveProjector
 
 
