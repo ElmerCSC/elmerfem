@@ -5908,9 +5908,11 @@ CONTAINS
           Conditional = Conditional .AND. GotIt
         END IF
 
-       !
-       ! Check for nodes belonging to n-t boundary getting set by other bcs.
-       ! -------------------------------------------------------------------
+        !
+        ! Check for nodes belonging to n-t boundary getting set by other bcs.
+        ! Here we don't need to track p-bubbles as they are not shared by
+        ! many BCs. 
+        ! -------------------------------------------------------------------
         CheckNT = .FALSE.
         IF ( NormalTangentialNOFNodes>0 .AND. DOF>0 ) THEN
           CheckNT = .TRUE.
@@ -9015,7 +9017,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Compute sum of elementwise normals for nodes on boundaries
 !------------------------------------------------------------------------------
-      ALLOCATE( n_comp(Model % NumberOfNodes) )
+      ALLOCATE( n_comp(SIZE(BoundaryReorder)) )
       n_comp = 0
 
       IF ( NumberOfBoundaryNodes>0 ) THEN
@@ -9026,17 +9028,18 @@ CONTAINS
           Element => Model % Elements(t)
           IF ( Element % TYPE  % ElementCode < 200 ) CYCLE
 
+          n = Element % TYPE % NumberOfNodes
           IF(pDisp) THEN
             np = mGetElementDOFs(pIndexes,Element,USolver=DispVar % Solver)
             Indexes => pIndexes
           ELSE
-            n = Element % TYPE % NumberOfNodes
+            np = n
             Indexes => Element % NodeIndexes
           END IF
 
-          ElementNodes % x(1:n) = Model % Nodes % x(Indexes)
-          ElementNodes % y(1:n) = Model % Nodes % y(Indexes)
-          ElementNodes % z(1:n) = Model % Nodes % z(Indexes)
+          ElementNodes % x(1:n) = Model % Nodes % x(Indexes(1:n))
+          ElementNodes % y(1:n) = Model % Nodes % y(Indexes(1:n))
+          ElementNodes % z(1:n) = Model % Nodes % z(Indexes(1:n))
 
           ALLOCATE(Condition(n))
 
@@ -9087,6 +9090,8 @@ CONTAINS
                         nrm(2) = ElementNodes % y(j)
                         nrm(3) = ElementNodes % z(j)
 
+                        !PRINT *,'nrm:',j,nrm
+                        
                         IF( GotOrigin ) nrm = nrm - Origin
                         IF( GotAxis ) THEN
                           nrm = nrm - SUM( nrm * Axis ) * Axis
@@ -9404,9 +9409,7 @@ CONTAINS
 
       ! Normalize the normals and compute the tangent directions.
       !----------------------------------------------------------
-
-
-      IF( ListCheckPresentAnySolver( Model,'Use p Normal') ) THEN
+      IF( pDisp ) THEN
         DO t=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
             Mesh % NumberOfBoundaryElements
           
@@ -9416,17 +9419,24 @@ CONTAINS
           n = Element % TYPE % NumberOfNodes
           np = mGetElementDOFs(pIndexes,Element,USolver=DispVar % Solver)
           Indexes => pIndexes
+
+          IF(ALL(BoundaryReorder(Indexes(1:n)) == 0 ) ) CYCLE
           
           DO i=n+1,np
             i1 = i-n
             i2 = i+1-n
             IF(i2>n) i2=1
 
-            k1 = BoundaryReorder(i1) 
-            k2 = BoundaryReorder(i2) 
-            k = BoundaryReorder(i) 
+            k1 = BoundaryReorder(Indexes(i1)) 
+            IF(k1==0) CYCLE
+
+            k2 = BoundaryReorder(Indexes(i2))
+            IF(k2==0) CYCLE
+            
+            k = BoundaryReorder(Indexes(i)) 
 
             BoundaryNormals(k,:) = ( BoundaryNormals(k1,:) + BoundaryNormals(k2,:) ) / 2
+            
             IF( dim > 2 ) THEN
               BoundaryTangent1(k,:) = ( BoundaryTangent1(k1,:) + BoundaryTangent1(k2,:) ) / 2
               BoundaryTangent2(k,:) = ( BoundaryTangent2(k1,:) + BoundaryTangent2(k2,:) ) / 2
@@ -9434,7 +9444,6 @@ CONTAINS
           END DO
         END DO
       END IF
-                  
 
       ! Normalize the normals and compute the tangent directions.
       !----------------------------------------------------------
@@ -9486,9 +9495,9 @@ CONTAINS
       END IF
     END IF
       
-      DO i=1,NumberOfBoundaryNodes
-        PRINT *,'nrm',i,BoundaryNormals(i,:)
-      END DO
+    !DO i=1,NumberOfBoundaryNodes
+    !  PRINT *,'nrm',i,BoundaryNormals(i,:)
+    !END DO
 
 
  CONTAINS
