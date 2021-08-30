@@ -1961,8 +1961,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF( ASSOCIATED( SCD ) ) THEN
            DO p=1,n
              k = SCD % Perm(Element % NodeIndexes(p))
-             SCD % Values(6*k-5:6*k-3) = SCD % Values(6*k-5:6*k-3) + s*val*c_ip*E(1,1:3)*Basis(p)
-             SCD % Values(6*k-2:6*k-0) = SCD % Values(6*k-2:6*k-0) + s*val*c_ip*E(2,1:3)*Basis(p)
+             SCD % Values(6*k-5:6*k-3) = SCD % Values(6*k-5:6*k-3) + &
+                 s * val * c_ip * Basis(p) * ( E(1,1:3) + E(2,1:3) ) / 2
+             SCD % Values(6*k-2:6*k-0) = SCD % Values(6*k-2:6*k-0) + &
+                 s * val * c_ip * Basis(p) * ( -E(1,1:3) + E(2,1:3) ) / 2
              SurfWeight(k) = SurfWeight(k) + s*Basis(p)
            END DO
          END IF
