@@ -80,7 +80,11 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,Transient ) ! {{{
       HandleAsm = .FALSE.
     END IF
     IF( ListCheckPresentAnyBodyForce(Model, 'Lorentz velocity') ) THEN
-      CALL Warn(Caller,'Handle assembly not yet available for Lorentz velocity!')
+      CALL Warn(Caller,'Handle assembly not yet available for "Lorentz velocity"!')
+      HandleAsm = .FALSE.
+    END IF
+    IF( ListCheckPresentAnyBodyForce(Model, 'Angular Velocity') ) THEN
+      CALL Warn(Caller,'Handle assembly not yet available for "Angular Velocity"!')
       HandleAsm = .FALSE.
     END IF
     IF(.NOT. HandleAsm ) THEN

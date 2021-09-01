@@ -3035,7 +3035,7 @@ CONTAINS
      axes = omegas
      DO k = 1, num_axes
        nrm = sqrt(sum(axes(k,:)*axes(k,:))) 
-       IF (nrm .EQ. 0._dp) THEN
+       IF (nrm == 0._dp) THEN
          CALL Warn('MagnetoDynamicsCalcFields',&
              'Axis for the torque group '//TRIM(I2S(k))//' is a zero vector')
          CYCLE
@@ -3055,7 +3055,7 @@ CONTAINS
      Element => GetActiveElement(pnodal)
      BodyParams => GetBodyParams(Element)
      LocalGroups => ListGetIntegerArray(BodyParams, "Torque Groups", Found)
-     IF(.not. Found) CYCLE
+     IF(.NOT. Found) CYCLE
      ndofs = GetElementDOFs(ElemNodeDofs)
      DO nnt=1,ndofs
        globalnode = ElemNodeDofs(nnt)
@@ -3068,19 +3068,19 @@ CONTAINS
        DO ng=1,size(LocalGroups)
          IF (.NOT. VisitedNode(globalnode, LocalGroups(ng))) THEN
            VisitedNode(globalnode, LocalGroups(ng)) = .TRUE.
-           IF (LocalGroups(ng) .gt. num_origins) THEN
+           IF (LocalGroups(ng) > num_origins) THEN
              origin = 0._dp
            ELSE
              origin = origins(LocalGroups(ng),1:3)
            END IF
-           IF (LocalGroups(ng) .gt. num_axes) THEN
+           IF (LocalGroups(ng) > num_axes) THEN
              axisvector = 0._dp
              axisvector(3) = 1._dp
            ELSE
              axisvector = axes(LocalGroups(ng), 1:3)
            END IF
            v1 = P - origin
-           v1 = (1 - sum(axisvector*v1))*v1
+           v1 = (1 - SUM(axisvector*v1))*v1
            v2 = CrossProduct(v1,F)
            T(LocalGroups(ng)) = T(LocalGroups(ng)) + sum(axisvector*v2)
          END IF
