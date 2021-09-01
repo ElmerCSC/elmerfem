@@ -113,6 +113,7 @@ CONTAINS
 !tt = realtime()
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
+       
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
 
@@ -177,10 +178,13 @@ CONTAINS
                 DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
               Matrix % ParallelInfo % Interface(k) = &
                 Mesh % ParallelInfo % Interface(i)
-              ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
-                   Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
-              Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
-                Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+              
+              IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+                ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
+                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
+                Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
+                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+              END IF
            END DO
          END DO
 

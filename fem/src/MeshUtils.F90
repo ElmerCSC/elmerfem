@@ -1420,12 +1420,12 @@ CONTAINS
    INTEGER :: i,j,k,n,BaseNameLen, SharedNodes = 0, mype = 0, numprocs = 0
    INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
    INTEGER :: MinNodeTag = 0, MaxNodeTag = 0, istat
-   LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel
-
+   LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel, &
+       PseudoParallel, Found
 
 
    SAVE PrevStep, BaseName, BaseNameLen, Mesh, mype, Parallel, &
-       NodeTags, ElementTags, LocalPerm
+       NodeTags, ElementTags, LocalPerm, PseudoParallel
 
    CALL Info('ElmerAsciiMesh','Performing step: '//TRIM(I2S(Step)),Level=8)
 
@@ -1458,6 +1458,12 @@ CONTAINS
      END IF
      Parallel = IsParallel
 
+     PseudoParallel = .FALSE.
+     IF(.NOT. Parallel ) THEN
+       PseudoParallel = ( ParEnv % PEs > 1 ) .AND. &
+           ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found ) 
+     END IF
+     
      i = LEN_TRIM(MeshNamePar)
      DO WHILE(MeshNamePar(i:i) == CHAR(0))
        i=i-1
@@ -1465,7 +1471,7 @@ CONTAINS
      BaseNameLen = i
      CALL Info('ElmerAsciiMesh','Base mesh name: '//TRIM(MeshNamePar(1:BaseNameLen)))
    END IF
-
+   
 
    SELECT CASE( Step ) 
 
@@ -1483,9 +1489,13 @@ CONTAINS
      CALL PermuteNodeNumbering()
 
    CASE(5)
-     CALL InitParallelInfo()
-     CALL ReadSharedFile()
-
+     IF( PseudoParallel ) THEN
+       CALL InitPseudoParallel()
+     ELSE
+       CALL InitParallelInfo()
+       CALL ReadSharedFile()
+     END IF
+       
    CASE(6)
      IF( ASSOCIATED( LocalPerm) ) DEALLOCATE( LocalPerm ) 
      IF( ASSOCIATED( ElementTags) ) DEALLOCATE( ElementTags )
@@ -2028,6 +2038,46 @@ CONTAINS
 
    END SUBROUTINE ReadSharedFile
 
+
+   ! Initialize parallel info for pseudo parallel meshes
+   !-------------------------------------------------------
+   SUBROUTINE InitPseudoParallel()
+
+     INTEGER, POINTER :: TmpGlobalDofs(:)
+
+     ! This also for serial runs ...
+     n = ParEnv % MyPe * Mesh % NumberOfBulkElements
+
+     DO i=1,Mesh % NumberOfBulkElements
+       Mesh % Elements(i) % GElementIndex = ElementTags(i) + n
+     END DO
+
+     n = Mesh % NumberOfNodes + &
+         Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
+         Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
+         Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
+
+     ALLOCATE( TmpGlobalDOFs(n) )
+     TmpGlobalDOFs = 0
+     TmpGlobalDOFs(1:Mesh % NumberOfNodes) = &
+         Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes) + n
+     DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs ) 
+     Mesh % ParallelInfo % GlobalDofs => TmpGlobalDofs
+     
+     ALLOCATE(Mesh % ParallelInfo % NeighbourList(n), STAT=istat)
+     IF (istat /= 0) CALL Fatal('InitParallelInfo', 'Unable to allocate NeighbourList array.')
+     
+     DO i=1,n
+       ALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) )
+       Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe
+     END DO
+
+     CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, n, 'InitParallelInfo')
+     Mesh % ParallelInfo % INTERFACE = .FALSE.       
+
+   END SUBROUTINE InitPseudoParallel
+
+   
  END SUBROUTINE ElmerAsciiMesh
 
 

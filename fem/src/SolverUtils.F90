@@ -12471,7 +12471,9 @@ END FUNCTION SearchNodeL
 
     Parallel = ( ParEnv % PEs > 1)
     IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+      IF( Solver % Mesh % SingleMesh ) THEN
+        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
+      END IF
     END IF
       
     CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
@@ -13711,7 +13713,9 @@ END FUNCTION SearchNodeL
 
     Parallel = ( ParEnv % Pes>1 ) 
     IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+      IF( Solver % Mesh % SingleMesh ) THEN
+        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
+      END IF
     END IF
     
 !------------------------------------------------------------------------------
@@ -15910,7 +15914,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   SolverPointer => Solver  
   Parallel = (ParEnv % PEs > 1 )
   IF( Parallel ) THEN
-    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+    IF( Solver % Mesh % SingleMesh ) THEN
+      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
+    END IF
   END IF
   
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
@@ -21925,14 +21931,14 @@ CONTAINS
          Proj => ProjTable(Nstore) % Proj
        END IF
        GotProj = ASSOCIATED( Proj ) 
-       IF( InfoActive(12) ) THEN
+       IF( InfoActive(20) ) THEN
          PRINT *,'Getting cyclic projector:',GotProj,Ntime,Nstore,Ncycle,ASSOCIATED(Proj)
        END IF
      ELSE
        ! storing projector
        SetProj = .NOT. ASSOCIATED( ProjTable(Nstore) % Proj )       
        IF( SetProj ) ProjTable(Nstore) % Proj => Proj
-       IF( InfoActive(12) ) THEN
+       IF( InfoActive(20) ) THEN
          PRINT *,'Setting cyclic projector:',SetProj,Ntime,Nstore,Ncycle,ASSOCIATED(Proj)
        END IF
      END IF
