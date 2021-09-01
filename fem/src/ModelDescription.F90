@@ -6040,6 +6040,7 @@ END SUBROUTINE GetNodalElementSize
    ! They may be predefined or set by some optimization method. 
    !-------------------------------------------------------------------
    IF( OptimalStart .AND. piter == 1 ) THEN
+     CALL Info(Caller,'Trying to read previous optimal values from a file!')     
      CALL GetSavedOptimum()  
    ELSE IF( OptimalFinish .AND. piter == NoValues ) THEN
      CALL Info(Caller,'Performing the last step with the best so far')
@@ -6199,8 +6200,11 @@ END SUBROUTINE GetNodalElementSize
      INTEGER :: IOUnit
 
      Name = ListGetString(Params,'Parameter Restart File',GotIt )
-     IF(.NOT. GotIt) RETURN
-     
+     IF(.NOT. GotIt) THEN
+       Name = 'optimize-best.dat'
+       CALL Info(Caller,'Using default value for optimal parameters: '//TRIM(Name),Level=6)
+     END IF
+       
      INQUIRE (FILE=Name, EXIST=fileis)
 
      IF(.NOT. fileis ) THEN
@@ -6219,7 +6223,9 @@ END SUBROUTINE GetNodalElementSize
      n = MIN( n, SIZE( param) )
      param(1:n) = guessparam(1:n)
 
-   END SUBROUTINE GetSavedOptimum
+     CALL Info(Caller,'Number of parameters initialized from file: '//TRIM(I2S(n)),Level=6)
+
+     END SUBROUTINE GetSavedOptimum
       
  END SUBROUTINE ControlParameters
 
