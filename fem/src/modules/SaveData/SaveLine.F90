@@ -687,6 +687,7 @@ CONTAINS
 
     IF( UseGivenNode ) THEN
       n = 1
+      nd = n
       NodeIndex(1) = node_id
       PtoIndexes => NodeIndex
       PointBasis(1) = 1.0_dp
@@ -781,7 +782,8 @@ CONTAINS
       ELSE IF( .NOT. UseGivenNode ) THEN
         PtoBasis => Basis
         n = Element % TYPE % NumberOfNodes
-
+        nd = n
+        
         IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
           PtoIndexes => Element % DgIndexes
         ELSE
@@ -875,9 +877,9 @@ CONTAINS
           END IF
 
         ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
-          !PRINT *,'nd:',nd,SUM(PtoBasis(1:n))
           DO k=1,nd
             l = PtoIndexes(k)
+            IF(l==0) CYCLE
             IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
             IF(l > 0) THEN
               DO ii=1,Var % Dofs
@@ -1389,6 +1391,9 @@ CONTAINS
     GotDivisions = .FALSE.
     IF( NoLines > 0 ) THEN
       NoDivisions => ListGetIntegerArray( Params,'Polyline Divisions',GotDivisions)
+      IF(.NOT. GotDivisions) THEN
+        NoDivisions => ListGetIntegerArray( Params,'Polyline Intervals',GotDivisions)
+      END IF
       IF( GotDivisions ) THEN
         IF( SIZE( NoDivisions ) < NoLines + COUNT(SaveAxis) ) THEN
           CALL Fatal('SaveLine','Polyline divisions size too small!')
