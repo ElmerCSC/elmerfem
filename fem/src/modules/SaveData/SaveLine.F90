@@ -93,7 +93,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
@@ -641,11 +641,13 @@ CONTAINS
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
     REAL(KIND=dp) :: u,v,w
-    INTEGER, TARGET :: NodeIndex(1), Indexes(27)
+    INTEGER, TARGET :: NodeIndex(1), Indexes(54)
     INTEGER :: n0
+    REAL(KIND=dp) :: up,vp,wp
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
     REAL(KIND=dp) :: AveMult
+    LOGICAL :: pElem
     
     SAVE :: Nodes
 
@@ -714,6 +716,7 @@ CONTAINS
       
       EdgeBasis = .FALSE.
       PiolaVersion = .FALSE.
+      pElem = .FALSE.
       np = 0
       
       IF( PRESENT( LocalCoord ) ) THEN
@@ -732,7 +735,9 @@ CONTAINS
         IF( ASSOCIATED( Var % Solver ) ) THEN
           nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
           n = Element % TYPE % NumberOfNodes
-                    
+
+          IF(nd > n) pElem = isActivePElement(Element,Var % Solver) 
+                 
           EdgeBasis = GetLogical(Var % Solver % Values,'Hcurl Basis', Found )            
           IF( EdgeBasis ) THEN
             IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
@@ -749,11 +754,24 @@ CONTAINS
 
         IF( EdgeBasis ) THEN
           stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, RotBasis = RotWBasis, USolver = Var % Solver)
-        ELSE
-          stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
+              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = Var % Solver)
+        ELSE          
+          IF( pElem ) THEN
+            ! The standard element of SaveLine is most likely standard nodal element.
+            ! In the user gives something else we may be trouble...
+            up=u; vp=v; wp=w
+            CALL ConvertToPReference(Element % Type % ElementCode,up,vp,wp)            
+            stat = ElementInfo( Element, Nodes, up, vp, wp, detJ, NodeBasis, &
+                USolver = Var % Solver )
+          ELSE
+            stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
+          END IF
+
           IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
             PtoIndexes => Element % DgIndexes
+          ELSE IF( pElem ) THEN
+            pToIndexes => Indexes
           ELSE
             PtoIndexes => Element % NodeIndexes 
           END IF           
@@ -857,7 +875,8 @@ CONTAINS
           END IF
 
         ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
-          DO k=1,n
+          !PRINT *,'nd:',nd,SUM(PtoBasis(1:n))
+          DO k=1,nd
             l = PtoIndexes(k)
             IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
             IF(l > 0) THEN
@@ -1337,6 +1356,11 @@ CONTAINS
   ! in uniformly distributed points. 
   !-------------------------------------------------------------------------------------
   SUBROUTINE SavePolyLines()
+
+    TYPE(Solver_t), POINTER :: pSolver
+
+    pSolver => Solver
+    
     
     SaveAxis(1) = ListGetLogical(Params,'Save Axis',GotIt)
     IF(GotIt) THEN
@@ -1507,7 +1531,8 @@ CONTAINS
 
               GlobalCoord = R0 + i * dR / nsize
 
-              IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, LocalCoord ) ) THEN
+              IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, &
+                  LocalCoord, USolver = pSolver ) ) THEN
                 LineTag(i) = .TRUE.
 
                 SaveNodes2 = SaveNodes2 + 1
@@ -1580,7 +1605,12 @@ CONTAINS
   SUBROUTINE SaveCircleLines()
     
     REAL(KIND=dp) :: CylCoord(3), Radius, Phi, Rtol
+    TYPE(Solver_t), POINTER :: pSolver
 
+    pSolver => Solver
+
+
+    
     PointCoordinates => ListGetConstRealArray(Params,'Circle Coordinates',gotIt)
     IF(.NOT. GotIt) RETURN
 
@@ -1718,7 +1748,7 @@ CONTAINS
 
           IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, LocalCoord ) ) THEN
             stat = ElementInfo( CurrentElement, ElementNodes, LocalCoord(1), &
-                LocalCoord(2), LocalCoord(3), detJ, Basis ) !, dBasisdx ) 
+                LocalCoord(2), LocalCoord(3), detJ, Basis, USolver = pSolver )
 
             LineTag(ii) = .TRUE.
             SaveNodes3 = SaveNodes3 + 1

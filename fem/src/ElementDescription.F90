@@ -1903,19 +1903,20 @@ CONTAINS
 !>  p-element, the values of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w)
+   SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w, USolver)
 !------------------------------------------------------------------------------
      INTEGER :: n                 !< The number of (background) element nodes
      REAL(KIND=dp) :: Basis(:)    !< The values of reference element basis
      TYPE(Element_t) :: element   !< The element structure
      REAL(KIND=dp) :: u,v,w       !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
 
      dim = Element % TYPE % DIMENSION
 
-     IF ( isActivePElement(Element) ) THEN
+     IF ( isActivePElement(Element, USolver) ) THEN
        SELECT CASE(dim)
        CASE(1)
          CALL NodalBasisFunctions1D( Basis, element, u )
@@ -1977,19 +1978,20 @@ CONTAINS
 !>  of p-element, the gradients of the lowest-order basis functions corresponding 
 !>  to the background mesh are returned.
 !------------------------------------------------------------------------------
-   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w)
+   SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w, USolver )
 !------------------------------------------------------------------------------
      INTEGER :: n                    !< The number of (background) element nodes
      REAL(KIND=dp) :: dLBasisdx(:,:) !< The gradient of reference element basis functions
      TYPE(Element_t) :: element      !< The element structure
      REAL(KIND=dp) :: u,v,w          !< The coordinates of the reference element point
+     TYPE(Solver_t), POINTER, OPTIONAL :: USolver
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
 !------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
 
-     IF ( IsActivePElement(Element) ) THEN
+     IF ( IsActivePElement(Element, USolver ) ) THEN
        SELECT CASE(dim)
        CASE(1)
          CALL NodalFirstDerivatives1D( dLBasisdx, element, u )
@@ -2570,16 +2572,16 @@ CONTAINS
      END IF
 
      Basis = 0.0d0
-     CALL NodalBasisFunctions(n, Basis, element, u, v, w)
+     CALL NodalBasisFunctions(n, Basis, element, u, v, w, USolver)
 
      dLbasisdx = 0.0d0
-     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w)
+     CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, USolver)
 
      q = n
 
      ! P ELEMENT CODE:
      ! ---------------
-     IF ( isActivePElement(element) ) THEN
+     IF ( isActivePElement(element,USolver) ) THEN
 
       ! Check for need of P basis degrees and set degree of
       ! linear basis if vector asked:
