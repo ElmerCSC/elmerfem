@@ -180,6 +180,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   INTEGER, PARAMETER :: MITC = 2                   ! This builds on RT_0
   INTEGER, PARAMETER :: DoubleReduction = 3        ! This builds on Ker(curl) of RT_0 (triangles)
   INTEGER, PARAMETER :: CurlKernelWithEdgeDOFs = 4 ! This also builds on Ker(curl) of ABF_0
+  INTEGER, PARAMETER :: ExperimentalReduction = 5  ! A developer's option
 
   INTEGER, PARAMETER :: MaxBGElementNodes = 9
   INTEGER, PARAMETER :: MaxPatchNodes = 16    ! The maximum node count for the surface description 
@@ -233,6 +234,7 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: BlendingSurfaceArea, ShellModelArea, MappedMeshArea, RefArea
   REAL(KIND=dp) :: NonlinTol, NonlinRes, NonlinRes0
   REAL(KIND=dp) :: DrillingPar
+  REAL(KIND=dp) :: ShearAlpha, MembraneAlpha, StretchAlpha
 
   CHARACTER(LEN=MAX_NAME_LEN) :: OutputFile
 
@@ -281,6 +283,16 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       MembraneStrainReductionMethod = AutomatedChoice
   IF (StrainReductionMethod /= NoStrainReduction) &
       StrainReductionMethod = AutomatedChoice
+
+  ! ---------------------------------------------------------------------------------
+  ! Parameters for shear/membrane/stretch relaxation: 
+  ! ---------------------------------------------------------------------------------  
+  ShearAlpha = ListGetCReal(SolverPars, 'Shear Relaxation Alpha', Found)
+  IF (.NOT. Found) ShearAlpha = 1.0d0
+  MembraneAlpha = ListGetCReal(SolverPars, 'Membrane Relaxation Alpha', Found)
+  IF (.NOT. Found) MembraneAlpha = 0.0d0
+  StretchAlpha = ListGetCReal(SolverPars, 'Stretch Relaxation Alpha', Found)
+  IF (.NOT. Found) StretchAlpha = 0.0d0
 
   Bubbles = GetLogical(SolverPars, 'Bubbles', Found)
 
@@ -502,8 +514,9 @@ SUBROUTINE ShellSolver(Model, Solver, dt, TransientSimulation)
       ! -----------------------------------------------------------------------------
       CALL ShellLocalMatrix(BGElement, n, nd+nb, ShellModelPar, LocalSol, &
           LargeDeflection, StrainReductionMethod, MembraneStrainReductionMethod, &
-          ApplyBubbles, DrillingDOFs, DrillingPar, RotateDOFs, MassAssembly, HarmonicAssembly, &
-          LocalRHSForce, ShellModelArea, TotalErr, BenchmarkProblem=SolveBenchmarkCase)
+          ShearAlpha, MembraneAlpha, StretchAlpha, ApplyBubbles, DrillingDOFs, DrillingPar, &
+          RotateDOFs, MassAssembly, HarmonicAssembly, LocalRHSForce, ShellModelArea, TotalErr, &
+          BenchmarkProblem=SolveBenchmarkCase)
 
       IF (LargeDeflection .AND. NonlinIter == 1) THEN
         ! ---------------------------------------------------------------------------
@@ -3503,9 +3516,9 @@ CONTAINS
 ! inaccurate results for thin shells (with low p)! 
 !------------------------------------------------------------------------------
   SUBROUTINE ShellLocalMatrix(BGElement, n, nd, m, LocalSol, LargeDeflection, &
-      StrainReductionMethod, MembraneStrainReductionMethod, Bubbles, &
-      DrillingDOFs, DrillingPar, RotateDOFs, MassAssembly, HarmonicAssembly, &
-      RHSForce, Area, Error, BenchmarkProblem)
+      StrainReductionMethod, MembraneStrainReductionMethod, ShearAlpha, &
+      MembraneAlpha, StretchAlpha, Bubbles, DrillingDOFs, DrillingPar, RotateDOFs, &
+      MassAssembly, HarmonicAssembly, RHSForce, Area, Error, BenchmarkProblem)
 !------------------------------------------------------------------------------
     USE SolidMechanicsUtils, ONLY: StrainEnergyDensity, ShearCorrectionFactor
     IMPLICIT NONE
@@ -3518,6 +3531,9 @@ CONTAINS
     LOGICAL, INTENT(IN) :: LargeDeflection             ! To activate nonlinear terms
     INTEGER, INTENT(IN) :: StrainReductionMethod       ! The choice of strain reduction method
     INTEGER, INTENT(IN) :: MembraneStrainReductionMethod ! The choice of membrane strain reduction method    
+    REAL(KIND=dp), INTENT(IN) :: ShearAlpha            ! A parameter for shear relaxation (correction) 
+    REAL(KIND=dp), INTENT(IN) :: MembraneAlpha         ! A parameter for membrane relaxation
+    REAL(KIND=dp), INTENT(IN) :: StretchAlpha          ! A parameter for membrane relaxation
     LOGICAL, INTENT(IN) :: Bubbles                     ! To indicate that bubble functions are used
     LOGICAL, INTENT(IN) :: DrillingDOFs                ! Switches to drilling DOFs (limited functionality)
     REAL(KIND=dp), INTENT(IN) :: DrillingPar           ! A stabilization parameter for drilling DOFs 
@@ -3583,7 +3599,7 @@ CONTAINS
     REAL(KIND=dp) :: BParMat(2,2,nd), BParMat1(2,2,nd), BParMat2(2,2,nd)
     REAL(KIND=dp) :: PoissonRatio(n), YoungsMod(n), ShellThickness(n), Load(n), rho(n), rho0
     REAL(KIND=dp) :: Damping(n), DampCoef
-    REAL(KIND=dp) :: nu, E, h, NormalTraction, Kappa
+    REAL(KIND=dp) :: nu, E, h, NormalTraction, KappaS, KappaM, KappaStr
     REAL(KIND=dp) :: DetJ, Weight, Norm
 
     SAVE Element, GElement, Nodes, PNodes, PRefNodes
@@ -3954,11 +3970,20 @@ CONTAINS
 
       ! Shear correction factor:
       IF ( UseShearCorrection ) THEN
-        CALL ShearCorrectionFactor(Kappa, h, Nodes % x(1:Family), Nodes % y(1:Family), Family)
+        CALL ShearCorrectionFactor(KappaS, h, Nodes % x(1:Family), Nodes % y(1:Family), Family, ShearAlpha)
+        !
+        ! Now shear relaxation also triggers membrane/stretch relaxation provided an alpha parameter is given:
+        !
+        CALL ShearCorrectionFactor(KappaM, h, Nodes % x(1:Family), Nodes % y(1:Family), Family, MembraneAlpha)
+        CALL ShearCorrectionFactor(KappaStr, h, Nodes % x(1:Family), Nodes % y(1:Family), Family, StretchAlpha)        
       ELSE
-        Kappa = 1.0d0
+        KappaS = 1.0d0
+        KappaM = 1.0d0
+        KappaStr = 1.0d0
       END IF
 
+      ! Relaxation of the term acting like a penalty term for the normal stress:
+      IF (.NOT. DrillingDOFs) CMat(4,4) = KappaStr/KappaM * CMat(4,4)
 
       !-----------------------------------------------------------------------------------
       ! THE PART CORRESPONDING TO THE MEMBRANE STRAINS:
@@ -4233,7 +4258,7 @@ CONTAINS
       END IF
 
       
-      CALL StrainEnergyDensity(Stiff, CMat, BM + NonlinBM, csize, DOFs, Weight)
+      CALL StrainEnergyDensity(Stiff, CMat, BM + NonlinBM, csize, DOFs, KappaM*Weight)
       
       ! The linear part of strain for the current iterate:
       StrainVec(1:csize) = StrainVec(1:csize) + MATMUL( BM(1:csize,1:DOFs), PrevSolVec(1:DOFs) )
@@ -4241,38 +4266,38 @@ CONTAINS
       ! Residual terms for RHS:
       StressVec(1:csize) = MATMUL( CMat(1:csize,1:csize), StrainVec(1:csize) )
       Force(1:DOFs) = Force(1:DOFs) - MATMUL( TRANSPOSE(BM(1:csize,1:DOFs) + NonlinBM(1:csize,1:DOFs)), &
-         StressVec(1:csize) ) * Weight
+         StressVec(1:csize) ) * Weight * KappaM
 
       ! The remaining terms for the complete Newton iteration:
       IF (LargeDeflection) THEN
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + &
             MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BM(1:1,1:DOFs))/A1**2 * &
-            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2) * Weight + &
+            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2) * KappaM * Weight + &
             MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BWork(1:1,1:DOFs))/A2**2 * &
-            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2 ) * Weight + &
+            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2 ) * KappaM* Weight + &
             MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(2:2,1:DOFs)) * &
-            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2) * Weight
+            (StressVec(1) + nu/(1.0d0-nu) * StressVec(4)/A1**2) * KappaM * Weight
  
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + &
             MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BM(2:2,1:DOFs))/A2**2 * &
-            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * Weight + &
+            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * KappaM * Weight + &
             MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BWork(3:3,1:DOFs))/A1**2 * &
-            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * Weight + &
+            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * KappaM * Weight + &
             MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(4:4,1:DOFs)) * &
-            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * Weight
+            (StressVec(2) + nu/(1.0d0-nu) * StressVec(4)/A2**2) * KappaM * Weight
 
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + ( &
             MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BM(1:1,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(3:3,1:DOFs)) ) * StressVec(3)/A1**2 * Weight + ( &
+            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(3:3,1:DOFs)) ) * StressVec(3)/A1**2 * KappaM * Weight + ( &
             MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BM(2:2,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BWork(1:1,1:DOFs)) ) * StressVec(3)/A2**2 * Weight + ( &
+            MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BWork(1:1,1:DOFs)) ) * StressVec(3)/A2**2 * KappaM * Weight + ( &
             MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(4:4,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(2:2,1:DOFs)) ) * StressVec(3) * Weight
+            MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(2:2,1:DOFs)) ) * StressVec(3) * KappaM * Weight
 
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) + &
-            MATMUL(TRANSPOSE(BWork(5:5,1:DOFs)),BWork(5:5,1:DOFs)) * StressVec(4) / A1**2 * Weight + &
-            MATMUL(TRANSPOSE(BWork(6:6,1:DOFs)),BWork(6:6,1:DOFs)) * StressVec(4) / A2**2 * Weight + &
-            MATMUL(TRANSPOSE(BWork(7:7,1:DOFs)),BWork(7:7,1:DOFs)) * StressVec(4) * Weight
+            MATMUL(TRANSPOSE(BWork(5:5,1:DOFs)),BWork(5:5,1:DOFs)) * StressVec(4) / A1**2 * KappaM * Weight + &
+            MATMUL(TRANSPOSE(BWork(6:6,1:DOFs)),BWork(6:6,1:DOFs)) * StressVec(4) / A2**2 * KappaM * Weight + &
+            MATMUL(TRANSPOSE(BWork(7:7,1:DOFs)),BWork(7:7,1:DOFs)) * StressVec(4) * KappaM * Weight
       END IF
 
       !-----------------------------------------------------------------------------------
@@ -4388,9 +4413,9 @@ CONTAINS
             SUM( BM(2,1:DOFs) * PrevSolVec(1:DOFs) ) * PrevField(6) / A2**2 - PrevField(4) * PrevField(7)
 
       END IF
-      
-      CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs+BubbleDOFs, Kappa*Weight)
-      
+
+      CALL StrainEnergyDensity(Stiff, GMat, BS+NonlinBS, 2, DOFs+BubbleDOFs, KappaS*Weight)
+
       ! The linear part of strain for the current iterate:
       StrainVec(5:6) = StrainVec(5:6) + MATMUL( BS(1:2,1:DOFs), PrevSolVec(1:DOFs) )
 
@@ -4398,25 +4423,25 @@ CONTAINS
       StressVec(5:6) = MATMUL( GMat(1:2,1:2), StrainVec(5:6) )
       Force(1:DOFs+BubbleDOFs) = Force(1:DOFs+BubbleDOFs) - & 
           MATMUL( TRANSPOSE(BS(1:2,1:DOFs+BubbleDOFs) + NonlinBS(1:2,1:DOFs+BubbleDOFs)), &
-          StressVec(5:6) ) * Kappa * Weight
+          StressVec(5:6) ) * KappaS * Weight
 
       ! The remaining terms for the complete Newton iteration:
       IF (LargeDeflection) THEN
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - ( &
             MATMUL( TRANSPOSE(BWork(5:5,1:DOFs)),BM(1:1,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(5:5,1:DOFs)) ) * StressVec(5)/A1**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BM(1:1,1:DOFs)),BWork(5:5,1:DOFs)) ) * StressVec(5)/A1**2 * KappaS * Weight - ( &
             MATMUL( TRANSPOSE(BWork(1:1,1:DOFs)),BWork(6:6,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BWork(1:1,1:DOFs)) ) * StressVec(5)/A2**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BWork(1:1,1:DOFs)) ) * StressVec(5)/A2**2 * KappaS * Weight - ( &
             MATMUL( TRANSPOSE(BWork(2:2,1:DOFs)),BWork(7:7,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(2:2,1:DOFs)) ) * StressVec(5) * Kappa * Weight
+            MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(2:2,1:DOFs)) ) * StressVec(5) * KappaS * Weight
 
         Stiff(1:DOFs,1:DOFs) = Stiff(1:DOFs,1:DOFs) - ( &
             MATMUL( TRANSPOSE(BWork(5:5,1:DOFs)),BWork(3:3,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BWork(5:5,1:DOFs)) ) * StressVec(6)/A1**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BWork(3:3,1:DOFs)),BWork(5:5,1:DOFs)) ) * StressVec(6)/A1**2 * KappaS * Weight - ( &
             MATMUL( TRANSPOSE(BM(2:2,1:DOFs)),BWork(6:6,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BM(2:2,1:DOFs)) ) * StressVec(6)/A2**2 * Kappa * Weight - ( &
+            MATMUL( TRANSPOSE(BWork(6:6,1:DOFs)),BM(2:2,1:DOFs)) ) * StressVec(6)/A2**2 * KappaS * Weight - ( &
             MATMUL( TRANSPOSE(BWork(4:4,1:DOFs)),BWork(7:7,1:DOFs)) + &
-            MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(4:4,1:DOFs)) ) * StressVec(6) * Kappa * Weight
+            MATMUL( TRANSPOSE(BWork(7:7,1:DOFs)),BWork(4:4,1:DOFs)) ) * StressVec(6) * KappaS * Weight
       END IF
 
       !----------------------------------------------------------------------------------------
@@ -5021,7 +5046,7 @@ CONTAINS
     LOGICAL, INTENT(IN) :: PlateBody                  ! A dummy argument
     INTEGER, INTENT(OUT) :: ReducedStrainDim          ! The number of basis functions for strain interpolation
     LOGICAL, INTENT(INOUT) :: UseBubbles              ! To augment approximation by bubble functions
-    LOGICAL, INTENT(OUT) :: UseShearCorrection        ! To activate shear correctionn trick
+    LOGICAL, INTENT(OUT) :: UseShearCorrection        ! To activate shear correction trick
     REAL(KIND=dp), INTENT(INOUT) :: DOFsTransform(3,4)! To reduce RT_0 functions to Ker(curl)
     LOGICAL, INTENT(IN) :: MembraneStrains            ! To select the method for membrane strains
 !------------------------------------------------------------------------------
