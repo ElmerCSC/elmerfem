@@ -40,8 +40,8 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Element = p:$pn$
 
-  Linear System Positive Definite = Logical True
-  Linear System Symmetric = True
+!  Linear System Positive Definite = Logical True
+!  Linear System Symmetric = True
 
 ! We use multigrid as preconditioner, to use it as solver change this.
 ! By theory multigrid should be more robust as preconditioner but could
@@ -53,7 +53,7 @@ Solver 1
 
 ! gcr may be superior if number of iterations stay small
 ! otherwise use idrs, bicgstabl, etc. 
-  Linear System Iterative Method = gcr !idrs
+  Linear System Iterative Method = idrs
   Linear System Max Iterations = 500
   Linear System Convergence Tolerance = 1.0e-08
 
@@ -62,14 +62,19 @@ Solver 1
 
 ! Settings for multigrid method
   MG Method = p
-  MG Levels = $pn                                  
-  MG Smoother = SGS ! cg
-  MG Pre Smoothing iterations = 2
-  MG Post Smoothing Iterations = 2
+  MG Levels = $pn
+
+! It seems that "cg" is superior smoother for p:2 in parallel
+! compared to "sgs". Increasing smoothing makes things converge
+! in less iterations. 
+  MG Smoother = cg
+  MG Pre Smoothing iterations = 5
+  MG Post Smoothing Iterations = 5
 
 ! The strategy to be used at the lowest level
   MG Lowest Linear Solver = direct
-  Linear System Direct Method = umfpack
+  Linear System Direct Method = MUMPS
+
 
 ! Get info on linear system speed
   Linear System Timing = Logical True
@@ -83,6 +88,7 @@ Solver 1
   stress: Linear System Max Iterations = 1000
   stress: Linear System Convergence Tolerance = 1.0e-8
   stress: Linear System Symmetric = True
+  stress: Linear System Residual Output = 0
 
 ! This keyword reduces the number of Gauss points needed.
 ! As we have only entries involving dBasisdx lower order rules will do!
@@ -91,7 +97,6 @@ End
 
 
 Solver 2
-!  Exec Solver = never
   Equation = "save line"
   Procedure = "SaveData" "SaveLine"
 
@@ -106,7 +111,7 @@ Solver 2
 End
 
 Solver 3
-  Exec Solver = never
+!  Exec Solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
@@ -143,5 +148,4 @@ Boundary Condition 3
   Force 1 = 1.0e6
 End
 
-Solver 1 :: Reference Norm = 9.98685341E-03
-Solver 2 :: Reference Norm = 1.86258907E+08
+Solver 1 :: Reference Norm = 1.00381108E-02

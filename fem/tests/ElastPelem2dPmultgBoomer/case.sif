@@ -40,49 +40,58 @@ Solver 1
   Nonlinear System Max Iterations = 1
   Element = p:$pn$
 
-  Linear System Positive Definite = Logical True
-  Linear System Symmetric = True
+!  Linear System Positive Definite = Logical True
+!  Linear System Symmetric = True
 
-! We use multigrid as preconditioner, to use it as solver change this.
-! By theory multigrid should be more robust as preconditioner but could
-! be faster as a solver. 
-  Linear System Solver = iterative ! multigrid
-
-! Toggle this active to get a reference with a direct method
-!  Linear System Solver = direct
-
-! gcr may be superior if number of iterations stay small
-! otherwise use idrs, bicgstabl, etc. 
+! Outer level: iterative solver "idrs"
+  Linear System Solver = iterative 
   Linear System Iterative Method = gcr !idrs
   Linear System Max Iterations = 500
   Linear System Convergence Tolerance = 1.0e-08
 
-! You can edit here to compare to something more simple
-  Linear System Preconditioning = Multigrid ! ILU2
-
-! Settings for multigrid method
+! Preconditioning by p-multigrid
+  Linear System Preconditioning = multigrid
   MG Method = p
-  MG Levels = $pn                                  
-  MG Smoother = SGS ! cg
-  MG Pre Smoothing iterations = 2
-  MG Post Smoothing Iterations = 2
+  MG Levels = $pn
+  MG Smoother = cg
+  MG Pre Smoothing iterations = 5
+  MG Post Smoothing Iterations = 5
+  MG Lowest Linear Solver = iterative
 
-! The strategy to be used at the lowest level
-  MG Lowest Linear Solver = direct
-  Linear System Direct Method = umfpack
+! Lowest method BoomerAMG
+  mglowest: Linear System Use Hypre = Logical True
+  mglowest: Linear System Iterative Method = "boomeramg"
+  mglowest: Linear System Max Iterations = 5
+  mglowest: Linear System Convergence Tolerance = 1.0E-03
+  mglowest: Linear System Abort Not Converged = False
+  mglowest: Linear System Residual Output = 20
 
-! Get info on linear system speed
-  Linear System Timing = Logical True
+! BoomerAMG specific keywords
+  BoomerAMG Relax Type = Integer 3
+  BoomerAMG Coarsen Type = Integer 0
+  BoomerAMG Num Sweeps = Integer 1
+  Boomeramg Max Levels = Integer 25
+  BoomerAMG Interpolation Type = Integer 0
+  BoomerAMG Smooth Type = Integer 6
+  BoomerAMG Cycle Type = Integer 1
+  BoomerAMG Num Functions = Integer 2 ! DOFs
+  BoomerAMG Strong Threshold = Real 0.25
+
 
   Calculate Stresses = Logical True
-! The stress field is solved one-by-one using basically a mass
-! matrix which is easy for any method. Hence use just basic cg.
+
+! compute stresses with cimple CG+ILU1
   stress: Linear System Solver = iterative
+  stress: Linear System Use Hypre = False
   stress: Linear System Iterative Method = cg
   stress: Linear System Preconditioning = ILU1
   stress: Linear System Max Iterations = 1000
   stress: Linear System Convergence Tolerance = 1.0e-8
   stress: Linear System Symmetric = True
+  stress: Linear System Residual Output = 0
+
+! Get info on linear system speed
+  Linear System Timing = Logical True
 
 ! This keyword reduces the number of Gauss points needed.
 ! As we have only entries involving dBasisdx lower order rules will do!
@@ -91,7 +100,6 @@ End
 
 
 Solver 2
-!  Exec Solver = never
   Equation = "save line"
   Procedure = "SaveData" "SaveLine"
 
@@ -99,14 +107,14 @@ Solver 2
   Polyline Coordinates(2,2) = -1.0 -1.0 3.0 2.999
   Polyline Divisions(1) = 400
 
-  Filename = g$pn$.dat
+  Filename = g.dat
 
 ! Just make a reference norm from sum of stress_xx entries. 
   Show Norm Index = 9
 End
 
 Solver 3
-  Exec Solver = never
+!  Exec Solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
@@ -143,5 +151,5 @@ Boundary Condition 3
   Force 1 = 1.0e6
 End
 
-Solver 1 :: Reference Norm = 9.98685341E-03
-Solver 2 :: Reference Norm = 1.86258907E+08
+Solver 1 :: Reference Norm = 9.98172517E-03
+Solver 2 :: Reference Norm = 4.81018928E+07
