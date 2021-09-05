@@ -20829,6 +20829,9 @@ CONTAINS
 
     dim = Mesh % MeshDim
     Parray => ListGetConstRealArray( Params,'Clustering Normal Vector',GotIt )
+    IF(.NOT. GotIt) THEN
+      Parray => ListGetConstRealArray( Params,'Partitioning Normal Vector',GotIt )
+    END IF
     IF( GotIt ) THEN
       Normal = Parray(1:3,1)
     ELSE

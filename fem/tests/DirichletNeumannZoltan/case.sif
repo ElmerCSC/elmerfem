@@ -31,7 +31,8 @@ Simulation
   Partition Connected BCs = Logical True
 !  Number of partitions = Integer 3
 
-  Partition Equation Balance = Logical True 
+  Partition Equation Balance = Logical True
+  
 End
 
 Constants
