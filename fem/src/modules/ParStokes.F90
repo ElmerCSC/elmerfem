@@ -1456,9 +1456,16 @@ CONTAINS
        IF (Anisotropy) THEN
 
          IF ( SkipPowerLaw ) THEN
+           !
+           ! Create a viscosity tensor for the case of a scalar viscosity.
+           ! Note that the diagonal entries are not equal, since mu_tensor
+           ! acts on the vectorized representation of the symmetric part of
+           ! the velocity gradient, i.e. [D11,D22,D33,2*D12,2*D13,2*D23].
+           !
            mu_tensor = 0.0_dp
-           DO i=1,6
-             mu_tensor(i,i) = ViscAtIP
+           DO i=1,3
+             mu_tensor(i,i) = 2.0_dp * ViscAtIP
+             mu_tensor(i+3,i+3) = ViscAtIP
            END DO
          ELSE       
            ! Compute the effective anisotropic viscosity
@@ -1470,8 +1477,8 @@ CONTAINS
          ! The trace of the viscosity tensor (this should yield the same trace as defined for
          ! the fourth-order tensor)
          mu_iso = 0
-         DO i=1,6
-           mu_iso = mu_iso + mu_tensor(i,i)
+         DO i=1,3
+           mu_iso = mu_iso + 0.5_dp*mu_tensor(i,i) + mu_tensor(i+3,i+3)
          END DO
 
          ! Normalize so that the case of a scalar viscosity can also be handled as a special case:
