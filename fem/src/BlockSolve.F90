@@ -3252,9 +3252,7 @@ CONTAINS
       
       NoEigen = Solver %  NOFEigenValues
 
-      DampedEigen = ListGetLogical(Solver % Values,'Damped Eigen System',Found )  
-      IF(.NOT. Found) DampedEigen = (NoEigen > 0 ) .AND. HaveDamp 
-
+      DampedEigen = ListGetLogical(Solver % Values,'Complex Eigen System',Found )  
       IF( DampedEigen ) THEN
         CALL Info(Caller,'Creating complex system for eigen values!')
       END IF
