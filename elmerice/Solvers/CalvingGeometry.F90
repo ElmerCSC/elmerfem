@@ -5497,7 +5497,7 @@ CONTAINS
             DO j=PolyStart(i), PolyEnd(i)
               area2 = area2 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
             END DO
-            IF(ABS(area1) >= ABS(area2)) THEN ! remove this path
+            IF(ABS(area1) <= ABS(area2)) THEN ! remove this path
               CurrentPath % Valid = .FALSE.
             ELSE !remove second path
               SecondPath => CrevassePaths
