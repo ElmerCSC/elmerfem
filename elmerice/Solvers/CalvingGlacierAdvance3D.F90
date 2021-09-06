@@ -351,8 +351,8 @@
             ! new rail direction
             RailDir=(/xRail(jmin-1),yRail(jmin-1)/)-(/xRail(jmin+1),yRail(jmin+1)/)
             ! add proportion left to travel along new direction
-              Displace(1:2)+DOT_PRODUCT(NodeVelo(1:2),RailDir)
-              RailDir * dt * t / DOT_PRODUCT(RailDir,RailDir)
+            !Displace(1:2) = Displace(1:2)+DOT_PRODUCT(NodeVelo(1:2),RailDir)
+            !  RailDir * dt * t / DOT_PRODUCT(RailDir,RailDir)
             Displace(1:2) = DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
                  RailDir * dt / DOT_PRODUCT(RailDir,RailDir)
          ELSE ! not moving past node, just project onto current rail
