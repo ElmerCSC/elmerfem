@@ -2616,9 +2616,10 @@ CONTAINS
           Model % Meshes => ReDistributeMesh( Model, SerialMesh, .FALSE., .TRUE. )
         ELSE
           CALL Info('LoadModel','Only one active partition, using the serial mesh as it is!')
-          IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
-            DEALLOCATE( SerialMesh % RePartition ) 
-          END IF
+     
+          !IF( MAXVAL( SerialMesh % RePartition ) <= 1 ) THEN
+          !  DEALLOCATE( SerialMesh % RePartition ) 
+          !END IF
           Model % Meshes => SerialMesh
         END IF
 
