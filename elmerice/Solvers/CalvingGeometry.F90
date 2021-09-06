@@ -5616,7 +5616,7 @@ CONTAINS
     REAL(KIND=dp) :: RotationMatrix(3,3), UnRotationMatrix(3,3), FrontDist, MaxDist, &
          ShiftTo, Dir1(2), Dir2(2), CCW_value,a1(2),a2(2),b1(2),b2(2),intersect(2), &
          StartX, StartY, EndX, EndY, Orientation(3), temp, NodeHolder(3), err_buffer,&
-         yy, zz, gradient, c, intersect_z, SideCorner(3), MinDist, TempDist
+         yy, zz, gradient, c, intersect_z, SideCorner(3), MinDist, TempDist, IsBelowMean
     REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:), REdge(:,:)
     REAL(KIND=dp), POINTER :: WorkReal(:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
@@ -5971,7 +5971,7 @@ CONTAINS
               intersect_z = REdge(3,j)
             ELSE
               gradient = (REdge(3,j)-REdge(3,j+1)) / (REdge(2,j)-REdge(2,j+1))
-              c = zz - (gradient*yy)
+              c = REdge(3,j) - (gradient*REdge(2,j))
               intersect_z = gradient * yy + c
             END IF
             InRange(i-1) = .TRUE. ! found
@@ -5990,11 +5990,18 @@ CONTAINS
       ! if out of edge range remove
       IsBelow = PACK(IsBelow, InRange)
 
-      IF(SIZE(IsBelow) == 0) CALL FATAL(FuncName, 'No crev nodes in range of edge segment')
+      IF(SIZE(IsBelow) == 0) THEN
+        ! occurs when crev is on lateral margin and only had one node on front
+        CurrentPath % Valid = .FALSE.
+        CALL WARN(FuncName, 'No crev nodes in range of edge segment')
+      END IF
 
-      IF(ALL(IsBelow >= 1)) THEN
+      IF(.NOT. CurrentPath % Valid) GOTO 10 ! skip constriction
+
+      IsBelowMean = SUM(IsBelow)/SIZE(IsBelow)
+      IF(IsBelowMean >= 1) THEN
         CrevBelow = .TRUE.
-      ELSE IF(ALL(IsBelow <= 1)) THEN
+      ELSE IF(IsBelowMean <= 1) THEN
         CrevBelow = .FALSE.
       ELSE
         CALL FATAL(FuncName, 'Some of the crevasse is below and some is above the glacier edge')
@@ -6257,6 +6264,8 @@ CONTAINS
 
         DEALLOCATE(FarNode, Constriction, ConstrictDirection, BreakElement, DeleteElement)
 
+10    CONTINUE ! if crev was invalid need to rotate mesh back
+
       ! deallocations
       DEALLOCATE(REdge, IsBelow, InRange)
       !--------------------------------------------------------
@@ -6264,6 +6273,20 @@ CONTAINS
       !--------------------------------------------------------
       CALL RotateMesh(Mesh, UnRotationMatrix)
       CurrentPath => CurrentPath % Next
+    END DO
+
+    !Actually remove previous marked
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+       WorkPath => CurrentPath % Next
+       path=path+1
+
+       IF(.NOT. CurrentPath % Valid) THEN
+          IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
+          CALL RemoveCrevassePath(CurrentPath)
+          IF(Debug) CALL Info("ValidateNPCrevassePaths","Removing a crevasse path")
+       END IF
+       CurrentPath => WorkPath
     END DO
 
     rt = RealTime() - rt0
