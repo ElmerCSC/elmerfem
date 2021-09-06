@@ -5266,12 +5266,13 @@ CONTAINS
 
   END SUBROUTINE GetCalvingPolygons
 
-  SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, OnLeft, OnRight, OnFront, GridSize)
+  SUBROUTINE RemoveInvalidCrevs(Mesh, CrevassePaths, EdgeX, EdgeY, RemoveInsideCrevs, OnLeft, OnRight, OnFront, GridSize)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     REAL(kind=dp) :: EdgeX(:), EdgeY(:)
     LOGICAL, OPTIONAL :: OnLeft(:),OnRight(:),OnFront(:)
+    LOGICAL :: RemoveInsideCrevs
     REAL(kind=dp), OPTIONAL :: GridSize
     !-------------------------------------------------
     TYPE(CrevassePath_t), POINTER :: CurrentPath, WorkPath, SecondPath
@@ -5440,99 +5441,101 @@ CONTAINS
       CurrentPath => WorkPath
     END DO
 
-    CALL GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygons, PolyStart, PolyEnd, GridSize)
+    IF(RemoveInsideCrevs) THEN ! made optional as after validation the largest crev could already be removed etc...
+      CALL GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygons, PolyStart, PolyEnd, GridSize)
 
-    ! remove crevs found within other crevasses
-    CurrentPath => CrevassePaths
-    path=0
-    DO WHILE(ASSOCIATED(CurrentPath))
-      path=path+1
-      inside = .FALSE.
-      DO i=1, SIZE(PolyStart)
-        IF(i==path) CYCLE
-        ALLOCATE(PathPoly(2, PolyEnd(i)-PolyStart(i)+1))
-        PathPoly = Polygons(:, PolyStart(i):PolyEnd(i))
-        DO j=2, CurrentPath % NumberOfNodes-1
-          xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(j))
-          yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(j))
-          inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+      ! remove crevs found within other crevasses
+      CurrentPath => CrevassePaths
+      path=0
+      DO WHILE(ASSOCIATED(CurrentPath))
+        path=path+1
+        inside = .FALSE.
+        DO i=1, SIZE(PolyStart)
+          IF(i==path) CYCLE
+          ALLOCATE(PathPoly(2, PolyEnd(i)-PolyStart(i)+1))
+          PathPoly = Polygons(:, PolyStart(i):PolyEnd(i))
+          DO j=2, CurrentPath % NumberOfNodes-1
+            xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(j))
+            yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(j))
+            inside = PointInPolygon2D(PathPoly, (/xx, yy/))
+            IF(inside) EXIT
+          END DO
+          IF(inside) THEN
+            ! two options here
+            ! 1 crev lies fully inside second crev
+            ! 2 crevs overlap - remove smaller crev
+            spath=0
+            overlap=.FALSE.
+            SecondPath => CrevassePaths
+            DO WHILE(ASSOCIATED(SecondPath))
+              spath=spath+1
+              IF(spath == i) THEN !inside this path
+                DO j=2, CurrentPath % NumberOfNodes-1
+                  xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(j))
+                  yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(j))
+                  DO k=2, SecondPath % NumberOfNodes-1
+                    IF(Mesh % Nodes % x(SecondPath % NodeNumbers(k)) == xx .AND. &
+                      Mesh % Nodes % y(SecondPath % NodeNumbers(k)) == yy) THEN
+                        overlap = .TRUE.
+                        EXIT
+                    END IF
+                  END DO
+                  IF(overlap) EXIT
+                END DO
+              END IF
+              SecondPath => SecondPath % Next
+            END DO
+            IF(overlap) THEN
+              ! area 1
+              area1 = 0.0_dp
+              xx = Polygons(1,PolyStart(path))
+              yy = Polygons(2,PolyStart(path))
+              DO j=PolyStart(path), PolyEnd(path)
+                area1 = area1 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
+              END DO
+              area2 = 0.0_dp
+              xx = Polygons(1,PolyStart(i))
+              yy = Polygons(2,PolyStart(i))
+              DO j=PolyStart(i), PolyEnd(i)
+                area2 = area2 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
+              END DO
+              IF(ABS(area1) <= ABS(area2)) THEN ! remove this path if smaller
+                CurrentPath % Valid = .FALSE.
+              ELSE !remove second path
+                SecondPath => CrevassePaths
+                spath=0
+                DO WHILE(ASSOCIATED(SecondPath))
+                  spath=spath+1
+                  IF(spath==i) SecondPath % Valid = .FALSE.
+                  SecondPath => SecondPath % Next
+                END DO
+              END IF
+            ELSE
+              CurrentPath % Valid = .FALSE.
+            END IF
+          END IF
+          DEALLOCATE(PathPoly)
           IF(inside) EXIT
         END DO
-        IF(inside) THEN
-          ! two options here
-          ! 1 crev lies fully inside second crev
-          ! 2 crevs overlap - remove smaller crev
-          spath=0
-          overlap=.FALSE.
-          SecondPath => CrevassePaths
-          DO WHILE(ASSOCIATED(SecondPath))
-            spath=spath+1
-            IF(spath == i) THEN !inside this path
-              DO j=2, CurrentPath % NumberOfNodes-1
-                xx = Mesh % Nodes % x(CurrentPath % NodeNumbers(j))
-                yy = Mesh % Nodes % y(CurrentPath % NodeNumbers(j))
-                DO k=2, SecondPath % NumberOfNodes-1
-                  IF(Mesh % Nodes % x(SecondPath % NodeNumbers(k)) == xx .AND. &
-                    Mesh % Nodes % y(SecondPath % NodeNumbers(k)) == yy) THEN
-                      overlap = .TRUE.
-                      EXIT
-                  END IF
-                END DO
-                IF(overlap) EXIT
-              END DO
-            END IF
-            SecondPath => SecondPath % Next
-          END DO
-          IF(overlap) THEN
-            ! area 1
-            area1 = 0.0_dp
-            xx = Polygons(1,PolyStart(path))
-            yy = Polygons(2,PolyStart(path))
-            DO j=PolyStart(path), PolyEnd(path)
-              area1 = area1 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
-            END DO
-            area2 = 0.0_dp
-            xx = Polygons(1,PolyStart(i))
-            yy = Polygons(2,PolyStart(i))
-            DO j=PolyStart(i), PolyEnd(i)
-              area2 = area2 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
-            END DO
-            IF(ABS(area1) <= ABS(area2)) THEN ! remove this path
-              CurrentPath % Valid = .FALSE.
-            ELSE !remove second path
-              SecondPath => CrevassePaths
-              spath=0
-              DO WHILE(ASSOCIATED(SecondPath))
-                spath=spath+1
-                IF(spath==i) SecondPath % Valid = .FALSE.
-                SecondPath => SecondPath % Next
-              END DO
-            END IF
-          ELSE
-            CurrentPath % Valid = .FALSE.
-          END IF
-        END IF
-        DEALLOCATE(PathPoly)
-        IF(inside) EXIT
+
+        CurrentPath => CurrentPath % Next
       END DO
 
-      CurrentPath => CurrentPath % Next
-    END DO
+      !Actually remove previous marked
+      CurrentPath => CrevassePaths
+      DO WHILE(ASSOCIATED(CurrentPath))
+        WorkPath => CurrentPath % Next
 
-    !Actually remove previous marked
-    CurrentPath => CrevassePaths
-    DO WHILE(ASSOCIATED(CurrentPath))
-       WorkPath => CurrentPath % Next
+        IF(.NOT. CurrentPath % Valid) THEN
+            IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
+            CALL RemoveCrevassePath(CurrentPath)
+            IF(Debug) CALL Info("ValidateCrevassePaths","Removing a crevasse path")
+        END IF
+        CurrentPath => WorkPath
+      END DO
 
-       IF(.NOT. CurrentPath % Valid) THEN
-          IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
-          CALL RemoveCrevassePath(CurrentPath)
-          IF(Debug) CALL Info("ValidateCrevassePaths","Removing a crevasse path")
-       END IF
-       CurrentPath => WorkPath
-    END DO
-
-    DEALLOCATE(Polygons)
+      DEALLOCATE(Polygons)
+    END IF
 
   END SUBROUTINE RemoveInvalidCrevs
 
