@@ -341,18 +341,20 @@
             ! nodes first move along the current rail segment to the nearest rail node jmin.
             ! whatever magnitude of the horizontal part of v*dt is left
             ! will be the distance the node travels on the new segment.
-            RailDir=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! direction of current rail
-            Displace(1:2)=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! get to new rail node
+            !RailDir=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! direction of current rail
+            !Displace(1:2)=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! get to new rail node
             !TempDist is total distance it would have travelled only along its original segment
-            TempDist=DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
-                 (RailDir(1)**2+RailDir(2)**2)**0.5 * dt / DOT_PRODUCT(RailDir,RailDir)
+            !TempDist=DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
+            !     (RailDir(1)**2+RailDir(2)**2)**0.5 * dt / DOT_PRODUCT(RailDir,RailDir)
             ! t is the proportion left to travel along new segment
-            t=(TempDist - ((xx-xRail(jmin))**2.+(yy-yRail(jmin))**2.)**0.5)/TempDist
+            !t=(TempDist - ((xx-xRail(jmin))**2.+(yy-yRail(jmin))**2.)**0.5)/TempDist
             ! new rail direction
-            RailDir=(/xRail(jmin),yRail(jmin)/)-(/xRail(k),yRail(k)/) 
+            RailDir=(/xRail(jmin-1),yRail(jmin-1)/)-(/xRail(jmin+1),yRail(jmin+1)/)
             ! add proportion left to travel along new direction
-            Displace(1:2) = Displace(1:2)+DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
-                 RailDir * dt * t / DOT_PRODUCT(RailDir,RailDir)
+              Displace(1:2)+DOT_PRODUCT(NodeVelo(1:2),RailDir)
+              RailDir * dt * t / DOT_PRODUCT(RailDir,RailDir)
+            Displace(1:2) = DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
+                 RailDir * dt / DOT_PRODUCT(RailDir,RailDir)
          ELSE ! not moving past node, just project onto current rail
             RailDir=(/xRail(jmin),yRail(jmin)/)-(/xRail(k),yRail(k)/)
             Displace(1:2) = DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
@@ -361,7 +363,7 @@
          END IF
          ! TO DO write warning if distance point on margin to rail segment too large?
          ! TO DO also write warning if glacier advances out of range of rails?
-         ! TO DO ASSERT that ||NewDisplace|| <= ||V||*dt    
+         ! TO DO ASSERT that ||NewDisplace|| <= ||V||*dt
          DEALLOCATE(xRail,yRail)
      END IF
 
