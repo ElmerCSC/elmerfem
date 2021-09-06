@@ -66,7 +66,7 @@
         EdgeMap(:,:)
    INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
          PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
-         WorkInt(:), IMBdryNNums(:), WorkInt2D(:,:)
+         WorkInt(:), WorkInt2D(:,:)
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
@@ -91,8 +91,8 @@
         MoveMeshDir
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
         SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside, Complete
-   LOGICAL, ALLOCATABLE :: RemoveNode(:), IMOnFront(:), IMOnSide(:), IMOnMargin(:), &
-        IMOnLeft(:), IMOnRight(:), FoundNode(:), &
+   LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
+        IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
         IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
 
    TYPE(CrevassePath_t), POINTER :: CrevassePaths, CurrentPath
@@ -687,13 +687,12 @@
        ! Isomesh.
        !-------------------------------------------------
 
-       ALLOCATE(IMOnFront(IsoMesh % NumberOfNodes), &
-            IMOnLeft(IsoMesh % NumberOfNodes),&
-            IMOnRight(IsoMesh % NumberOfNodes),&
-            IMOnSide(IsoMesh % NumberOfNodes),&
+       ALLOCATE(IMNOnFront(IsoMesh % NumberOfNodes), &
+            IMNOnLeft(IsoMesh % NumberOfNodes),&
+            IMNOnRight(IsoMesh % NumberOfNodes),&
             IMOnMargin(IsoMesh % NumberOfNodes))
-       IMOnFront=.FALSE.; IMOnSide=.FALSE.; IMOnMargin=.FALSE.
-       IMOnLeft=.FALSE.; IMOnRight=.FALSE.
+       IMNOnFront=.FALSE.; IMOnMargin=.FALSE.
+       IMNOnLeft=.FALSE.; IMNOnRight=.FALSE.
 
        IsolineIdVar => VariableGet(IsoMesh % Variables, "isoline id", .TRUE.,UnfoundFatal=.TRUE.)
        DO i=1, IsoMesh % NumberOfNodes
@@ -719,10 +718,9 @@
              IMBdryNodes(IMBdryCount,3) = Isomesh % Nodes % x(NodeIndexes(2))
              IMBdryNodes(IMBdryCount,4) = Isomesh % Nodes % y(NodeIndexes(2))
              IMBdryENums(IMBdryCount) = i
-             WorkInt(1+(IMBdryCount-1)*2: IMBdryCount*2) = NodeIndexes ! becomes IMBdryNNums
            END IF
          END DO
-         IF(k==1) ALLOCATE(IMBdryNodes(IMBdryCount,4),IMBdryENums(IMBdryCount), WorkInt(IMBdryCount*2))
+         IF(k==1) ALLOCATE(IMBdryNodes(IMBdryCount,4),IMBdryENums(IMBdryCount))
        END DO
 
      END IF
@@ -737,6 +735,7 @@
 
      CALL MPI_BCAST(IMBdryNodes,IMBdryCount*4, MPI_DOUBLE_PRECISION,&
           0, ELMER_COMM_WORLD, ierr)
+
      ALLOCATE(IMBdryConstraint(IMBdryCount))
      IMBdryConstraint = 0
 
@@ -849,57 +848,54 @@
        IsoMesh % NumberOfBulkElements = SIZE(WorkElements)
        NULLIFY(WorkElements)
 
-       ALLOCATE(IMBdryNNums(IMBdryCount))
-       nodecounter=0
-       IMBdryNNums=0
-       DO i=1, IMBdryCount*2
-        counter=0
-        DO j=1, IsoMesh % NumberOfBulkElements
-          NodeIndexes => Isomesh % Elements(j) % NodeIndexes
-          IF(.NOT. ANY(NodeIndexes == WorkInt(i))) CYCLE
-          counter=counter+1
-        END DO
-        IF(counter==1) THEN
-          Nodecounter=nodecounter+1
-          IMBdryNNums(nodecounter) = WorkInt(i)
-          ! shift constraints to match nodenumbers
-          IMBdryConstraint(nodecounter) = IMBdryConstraint(INT((i+1)/2))
-        END IF
+       Counter=0
+       DO i=1,IsoMesh % NumberOfBulkElements
+          NodeIndexes => Isomesh % Elements(i) % NodeIndexes
+          IF(IMOnMargin(NodeIndexes(1)) .EQV. IMOnMargin(NodeIndexes(2))) CYCLE
+          counter = counter + 1
+          IMBdryENums(Counter) = i
        END DO
-       DEALLOCATE(WorkInt)
+       IF(counter /= IMBdryCount) THEN
+          IMBdryCount = Counter
+          ALLOCATE(WorkInt(IMBdryCount))
+          WorkInt = IMBdryENums(1:IMBdryCount)
+          DEALLOCATE(IMBdryENums)
+          ALLOCATE(IMBdryENums(IMBdryCount))
+          IMBdryENums = WorkInt
+          DEALLOCATE(WorkInt)
+       END IF
 
-       ! remove and deallocate removed nodes from IMBdryNNums, IMBdryConstraint and
-       ! recalculate IMBdryCount
-       IMBdryCount = COUNT(IMBdryNNums /= 0)
-       ALLOCATE(WorkInt(IMBdryCount))
-       WorkInt = IMBdryNNums(1:IMBdryCount)
-       DEALLOCATE(IMBdryNNums)
-       ALLOCATE(IMBdryNNums(IMBdryCount))
-       IMBdryNNums = WorkInt
-       WorkInt = IMBdryConstraint(1:IMBdryCount)
-       DEALLOCATE(IMBdryConstraint)
-       ALLOCATE(IMBdryConstraint(IMBdryCount))
-       IMBdryConstraint = WorkInt
-       DEALLOCATE(WorkInt)
+       ALLOCATE(IMElmOnFront(IsoMesh % NumberOfBulkElements), &
+       IMElmOnLeft(IsoMesh % NumberOfBulkElements),&
+       IMElmOnRight(IsoMesh % NumberOfBulkElements))
+       IMElmOnFront=.FALSE.; IMElmOnLeft=.FALSE.; IMElmOnRight=.FALSE.
 
+       ! remember IMOnMargin - nodes, IMBdryConstrain - Elems
        DO i=1,IMBdryCount
-         k = IMBdryNNums(i)
+         k = IMBdryENums(i)
          PRINT*, i, k, IMBdryConstraint(i)
          IF(k==0) CALL FATAL(SolverName, 'IMBdryConstraint = zero')
-         IF(IMBdryConstraint(i) == FrontConstraint) IMOnFront(k) = .TRUE.
-         IF(IMBdryConstraint(i) == LeftConstraint) IMOnLeft(k) = .TRUE.
-         IF(IMBdryConstraint(i) == RightConstraint) IMOnRight(k) = .TRUE.
+         IF(IMBdryConstraint(i) == FrontConstraint) IMElmOnFront(k) = .TRUE.
+         IF(IMBdryConstraint(i) == LeftConstraint) IMElmOnLeft(k) = .TRUE.
+         IF(IMBdryConstraint(i) == RightConstraint) IMElmOnRight(k) = .TRUE.
+         NodeIndexes => Isomesh % Elements(k) % NodeIndexes
+         DO j=1,2
+          IF(.NOT. IMOnMargin(NodeIndexes(j))) CYCLE
+          IF(IMBdryConstraint(i) == FrontConstraint) IMNOnFront(NodeIndexes(j)) = .TRUE.
+          IF(IMBdryConstraint(i) == LeftConstraint) IMNOnLeft(NodeIndexes(j)) = .TRUE.
+          IF(IMBdryConstraint(i) == RightConstraint) IMNOnRight(NodeIndexes(j)) = .TRUE.
+         END DO
        END DO
 
        IF(Debug) THEN
-          PRINT *, 'debug, count IMOnFront: ', COUNT(IMOnFront)
-          PRINT *, 'debug, count IMOnSide: ', COUNT(IMOnSide)
+          PRINT *, 'debug, count IMNOnFront: ', COUNT(IMNOnFront), 'IMElmOnFront', COUNT(IMElmOnFront)
+          PRINT *, 'debug, count IMNOnLeft: ', COUNT(IMNOnLeft), 'IMElmOnLeft', COUNT(IMElmOnLeft)
+          PRINT *, 'debug, count IMNOnRight: ', COUNT(IMNOnRight), 'IMElmOnRight', COUNT(IMElmOnRight)
           PRINT *, 'debug, count IMOnMargin: ', COUNT(IMOnMargin)
           PRINT *, 'debug, isomesh bulkelements,', IsoMesh % NumberOfBulkElements
           PRINT *, 'debug, isomesh boundaryelements,', IsoMesh % NumberOfBoundaryElements
           PRINT *, 'debug, size isomesh elements: ', SIZE(IsoMesh % Elements)
        END IF
-
 
        !Find chains which make contact with front twice
        !===============================================
@@ -911,7 +907,7 @@
        ! remain, but this also isn't a problem as InterpVarToVar
        ! cycles elements, not nodes.
        CALL FindCrevassePaths(IsoMesh, IMOnMargin, CrevassePaths, PathCount)
-       CALL CheckCrevasseNodes(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight)
+       CALL CheckCrevasseNodes(IsoMesh, CrevassePaths, IMNOnLeft, IMNOnRight)
        !CALL ValidateCrevassePaths(IsoMesh, CrevassePaths, FrontOrientation, PathCount,&
        !     IMOnLeft, IMOnRight, .FALSE.)
        IF(Debug) THEN
@@ -934,8 +930,8 @@
           END DO
        END IF
 
-       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMOnleft, IMOnRight, IMOnFront, gridmesh_dx)
-       CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMOnLeft, IMOnRight, &
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, IMNOnleft, IMNOnRight, IMNOnFront, gridmesh_dx)
+       CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMNOnLeft, IMNOnRight, &
                       FrontLeft, FrontRight, EdgeX, EdgeY, gridmesh_dx)
        CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, GridSize=gridmesh_dx)
 
