@@ -16,7 +16,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 15
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -74,8 +74,9 @@ Solver 1
 
   Nonlinear System Max Iterations = 1
   Nonlinear System Consistent Norm = Logical True
+
   Linear System Solver = direct 
-!  Linear System Direct Method = MUMPS
+  Linear System Direct Method = umfpack
   Linear System Scaling = False
 
 ! Request for a linear system that couples two structural models:
@@ -97,9 +98,6 @@ Solver 1
   Linear System Block Method = String "other"
   Block Monolithic = Logical True
 
-!  Outer: Linear System Solver = string "Direct"
-!  Outer: Linear System Direct Method = string "mumps"
-
 ! We don't want to displace the mesh in this test since only the solid would
 ! be displaced, not the shell. 
   Displace Mesh = False
@@ -113,7 +111,8 @@ Solver 1
 !  Eigen System Normalize To Unity = Logical True
 !  Save EigenValues = Logical True
 
-!Save EigenValues = Logical True
+! This makes it possible to consider damping
+  Eigen System Complex = Logical True
 End
  
 
@@ -149,24 +148,16 @@ End
 
 
 Solver 3
-  Exec Solver = never
+!  Exec Solver = never
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
   
-!  Filename = f.dat
-!  File Append = Logical True
+  Filename = f.dat
+  File Append = Logical True
   Parallel Reduce = Logical True
 
-  Variable 1 = Displacement
-  Operator 1 = dofs
-  Operator 2 = partitions
-  Operator 3 = max abs 
-  Operator 4 = norm
-  Operator 5 = min
-  Operator 6 = max
-
   Show Norm = True
-  Show Norm Index = 1
+  Show Norm Index = 7
 
   Save EigenValues = Logical True
 End 
@@ -204,7 +195,8 @@ Boundary Condition 4
 End
 
 
-Solver 1:: Reference Norm = 2.26383078E-02
+Solver 1:: Reference Norm = 1.84727770E-02
+Solver 3:: Reference Norm = 1.39962983E+05
 
 
 

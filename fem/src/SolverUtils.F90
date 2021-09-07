@@ -14499,8 +14499,8 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
 
-    IF ( .NOT. Solver % Matrix % COMPLEX ) THEN
-      CALL Info('SolveEigenSystem','Soving real valued eigen system of size: '//TRIM(I2S(n)),Level=8)
+    IF ( .NOT. StiffMatrix % COMPLEX ) THEN
+      CALL Info('SolveEigenSystem','Solving real valued eigen system of size: '//TRIM(I2S(n)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolve( Solver, StiffMatrix, n, NOFEigen, &
             EigenValues, EigenVectors )
@@ -14510,7 +14510,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
       END IF
     ELSE
 
-      CALL Info('SolveEigenSystem','Soving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
+      CALL Info('SolveEigenSystem','Solving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
             NOFEigen, EigenValues, EigenVectors )
