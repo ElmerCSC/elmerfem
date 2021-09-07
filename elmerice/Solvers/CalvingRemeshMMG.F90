@@ -369,6 +369,11 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   GatheredMesh => RedistributeMesh(Model, Mesh, .TRUE., .FALSE.)
   !Confirmed that boundary info is for Zoltan at this point
 
+  IF(ASSOCIATED(Mesh % Repartition)) THEN
+    DEALLOCATE(Mesh % Repartition)
+    Mesh % Repartition => NULL()
+  END IF
+
   IF(Debug) THEN
     PRINT *,ParEnv % MyPE,' gatheredmesh % nonodes: ',GatheredMesh % NumberOfNodes
     PRINT *,ParEnv % MyPE,' gatheredmesh % neelems: ',GatheredMesh % NumberOfBulkElements, &
@@ -1067,6 +1072,12 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
 
    !Release the old mesh
    CALL ReleaseMesh(GatheredMesh)
+
+   ! Release GatheredMesh % Redistribution
+   IF(ASSOCIATED(GatheredMesh % Repartition)) THEN
+      DEALLOCATE(GatheredMesh % Repartition)
+      GatheredMesh % Repartition => NULL()
+   END IF
 
    !remove mesh update
    CALL ResetMeshUpdate(Model, Solver)
