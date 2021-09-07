@@ -3528,10 +3528,12 @@ CONTAINS
      CALL CreateNeighbourList()
 
 
-     n = Mesh % NumberOfBulkElements
-     DO i=MINVAL(ElementPart(1:n)),MAXVAL(ElementPart(1:n))
-       PRINT *,'Partition elems:',i,COUNT(ElementPart(1:n)==i)
-     END DO
+     IF( InfoActive(12) ) THEN
+       n = Mesh % NumberOfBulkElements
+       DO i=MINVAL(ElementPart(1:n)),MAXVAL(ElementPart(1:n))
+         PRINT *,'Partition elems:',i,COUNT(ElementPart(1:n)==i)
+       END DO
+     END IF
 
      
 100  CALL Info(FuncName,'All done for now',Level=12)
@@ -3744,7 +3746,7 @@ CONTAINS
            EqTag( Element % NodeIndexes ) = .TRUE.
          END DO
 
-         PRINT *,'Eq count:',eq_id,COUNT(EqTag)
+         !PRINT *,'Eq count:',eq_id,COUNT(EqTag)
          
 
          ! If we found this equation then add the counter for number of equations for the node
@@ -4057,7 +4059,7 @@ CONTAINS
            NodeActive( Element % NodeIndexes ) = .TRUE.
          END DO
 
-         PRINT *,'noactive:',dim,ownerpart,COUNT( NodeActive ) 
+         !PRINT *,'noactive:',dim,ownerpart,COUNT( NodeActive ) 
          
          BBox(1) = MINVAL( Mesh % Nodes % x, NodeActive ) 
          BBox(2) = MAXVAL( Mesh % Nodes % x, NodeActive ) 
@@ -4105,7 +4107,7 @@ CONTAINS
 
            IF(.NOT. Hit ) CYCLE
 
-           PRINT *,'hit:',t,ElementPart(t),i,j,Coord, Element % Type % ElementCode
+           !PRINT *,'hit:',t,ElementPart(t),i,j,Coord, Element % Type % ElementCode
 
            
            IF(.NOT. ASSOCIATED( Mesh % Halo(t) % Neighbours ) ) THEN
