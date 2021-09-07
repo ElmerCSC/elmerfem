@@ -3278,6 +3278,8 @@ CONTAINS
       CollMat % Diag = 0
       CollMat % Rows = 0
       CollX = 0.0_dp
+
+      CollMat % Complex = DampedEigen
       
       ALLOCATE( CollMat % Values(mc), CollMat % Cols(mc+1) )
       CollMat % Values = 0.0_dp

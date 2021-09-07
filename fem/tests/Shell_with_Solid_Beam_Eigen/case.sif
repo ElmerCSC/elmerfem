@@ -16,7 +16,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 15
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -112,6 +112,9 @@ Solver 1
 !  Eigen System Shift = Real 1.0e3
 !  Eigen System Normalize To Unity = Logical True
 !  Save EigenValues = Logical True
+
+  Complex Eigen System = Logical True
+  Linear System Complex = True
 End
  
 
