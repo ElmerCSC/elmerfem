@@ -1278,6 +1278,8 @@
     PCSolver % Matrix % Perm => NULL()
     CALL FreeMatrix(PCSolver % Matrix)
     CALL ReleaseMesh(PlaneMesh)
+    ! isomesh doesn't seem to released as part of planemesh
+    CALL ReleaseMesh(IsoMesh)
 
     DEALLOCATE(TopPerm, BotPerm, LeftPerm, RightPerm, FrontPerm)
 
