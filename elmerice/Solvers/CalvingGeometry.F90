@@ -4019,7 +4019,8 @@ CONTAINS
 
     DEALLOCATE(OldMaskLogical, &
          NewMaskLogical, NewMaskPerm, &
-         OldMaskPerm, UnfoundNodes)
+         OldMaskPerm, UnfoundNodes, &
+         InterpDim)
 
   END SUBROUTINE InterpMaskedBCReduced
 
@@ -6461,6 +6462,10 @@ CONTAINS
       END DO
       IF(j==1) mean = mean / Mesh % NumberOfBulkElements
     END DO
+
+    DEALLOCATE(ElementNodes % x,&
+    ElementNodes % y,&
+    ElementNodes % z)
 
   END SUBROUTINE CheckMeshQuality
 
