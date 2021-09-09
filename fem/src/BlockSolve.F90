@@ -3240,15 +3240,34 @@ CONTAINS
         A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
         n = n + A % NumberOfRows
 
+        
         DO NoCol = 1,NoVar
           A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
-          IF( ASSOCIATED( A ) ) THEN
-            m = m + SIZE( A % Values )
-            IF( ASSOCIATED( A % MassValues ) ) HaveMass = .TRUE.
-            IF( ASSOCIATED( A % DampValues ) ) HaveDamp = .TRUE.
+          IF(.NOT. ASSOCIATED(A) ) CYCLE
+          
+          IF(InfoActive(20)) THEN
+            CALL VectorValuesRange(A % Values,SIZE(A % Values),'A'//TRIM(I2S(10*NoRow+NoCol)))       
+            IF( ASSOCIATED( A % MassValues ) ) THEN
+              CALL VectorValuesRange(A % MassValues,SIZE(A % MassValues),'M'//TRIM(I2S(10*NoRow+NoCol)))       
+            END IF
+          END IF
+          
+          m = m + SIZE( A % Values )
+          IF( ASSOCIATED( A % MassValues ) ) HaveMass = .TRUE.
+          IF( ASSOCIATED( A % DampValues ) ) HaveDamp = .TRUE.
+        END DO
+
+      END DO
+      
+      IF( HaveMass ) THEN
+        DO NoRow = 1,NoVar 
+          A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
+          IF(.NOT. ASSOCIATED( A % MassValues ) ) THEN
+            CALL Fatal(Caller,'MassValues are missing for block: '//TRIM(I2S(11*NoRow)))
           END IF
         END DO
-      END DO
+      END IF
+
       
       NoEigen = Solver %  NOFEigenValues
 
@@ -3389,9 +3408,17 @@ CONTAINS
       END DO
     END IF
 
+    IF(InfoActive(20)) THEN
+      CALL VectorValuesRange(CollMat % Values,SIZE(CollMat % Values),'Atot')
+      IF( ASSOCIATED( CollMat % MassValues ) ) THEN
+        CALL VectorValuesRange(CollMat % MassValues,SIZE(CollMat % MassValues),'Mtot')
+      END IF
+    END IF
+          
+
+    
     CALL Info(Caller,'True number of nonzeros in monolithic matrix: '//TRIM(I2S(k)),Level=7)
  
-    
     IF(.NOT. Visited ) THEN
       MonolithicVar % Name = '' ! Some name needed to avoid an uninitialised value error
       MonolithicVar % Values => CollX

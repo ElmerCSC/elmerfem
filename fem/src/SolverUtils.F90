@@ -18215,12 +18215,12 @@ CONTAINS
    !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
-    LOGICAL :: DoDamp, DoMass
+    LOGICAL :: Found, DoDamp, DoMass, DoLumping 
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
-    CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
+    CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'    
    !------------------------------------------------------------------------------
 
     CALL Info(Caller,'Creating coupling matrix for structures',Level=6)
@@ -18277,6 +18277,9 @@ CONTAINS
       CALL Warn(Caller,'Damping matrix values at a coupling interface will be dropped!')
     END IF
 
+    DoLumping = ListGetLogical( CurrentModel % Solver % Values,'Block System Mass Lumping',Found )
+    IF(.NOT. Found) DoLumping = .TRUE.
+    
     ! This is still under development and not used for anything
     ! Probably this will not be needed at all but rather we need the director.
     !IF( IsShell ) CALL DetermineCouplingNormals()
@@ -18716,6 +18719,7 @@ CONTAINS
 
       END BLOCK
     END IF
+
     
     ! Note: we may have to recheck this coupling if visiting for 2nd time!
     !
@@ -18758,13 +18762,17 @@ CONTAINS
             ! We zero the mass associated to the Dirichlet conditions since
             ! otherwise the inertia will affect the condition.
             ! We use mass lumping since not all dofs of shell are present in the solid. 
-            IF( DoMass ) THEN
-              A_s % MassValues(A_s % Diag(ks)) = A_s % MassValues(A_s % Diag(ks)) + A_f % MassValues(k)
-              A_f % MassValues(k) = 0.0_dp
+            IF( DoLumping ) THEN
+              IF( DoMass ) THEN
+                IF( .NOT. ConstrainedS(ks) ) THEN                     
+                  A_s % MassValues(A_s % Diag(ks)) = A_s % MassValues(A_s % Diag(ks)) + A_f % MassValues(k)
+                END IF
+                A_f % MassValues(k) = 0.0_dp
+              END IF
+              IF( DoDamp) THEN
+                A_f % DampValues(k) = 0.0_dp
+              END IF
             END IF
-            IF( DoDamp) THEN
-              A_f % DampValues(k) = 0.0_dp
-            END IF            
           END DO
           
           ! Set Dirichlet Condition to "F" such that it is equal to "S".
@@ -18779,12 +18787,11 @@ CONTAINS
       CALL Fatal(Caller,'Coupling type not implemented yet!')
     END IF
 
-      
     IF( A_fs % FORMAT == MATRIX_LIST ) THEN
       CALL List_toCRSMatrix(A_fs)
       CALL List_toCRSMatrix(A_sf)
     END IF
-      
+
     !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
     !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
@@ -18794,6 +18801,61 @@ CONTAINS
         //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
     CALL Info(Caller,'Number of entries in master-slave coupling matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
+
+    
+    IF(.NOT. DoLumping ) THEN
+      ! This is just summary version of the previous for mass & damp values
+      ! Now we know that the CRS matrix has been created. 
+      BLOCK
+        REAL(KIND=dp), POINTER :: TmpValues(:),DerValues(:)
+        INTEGER :: der
+        ncount = 0
+        
+        DO der=1,2
+          IF( der == 1 .AND. .NOT. DoDamp ) CYCLE
+          IF( der == 2 .AND. .NOT. DoMass ) CYCLE
+          
+          TmpValues => A_sf % Values
+          IF( der == 1 ) THEN
+            CALL Info(Caller,'Creating cross-terms for damping matrix',Level=10)
+            IF(.NOT. ASSOCIATED( A_sf % DampValues ) ) THEN
+              ALLOCATE( A_sf % DampValues(SIZE(A_sf % Values) ) )
+            END IF
+            A_sf % DampValues = 0.0_dp
+            A_sf % Values => A_sf % DampValues
+            DerValues => A_f % DampValues 
+          ELSE
+            CALL Info(Caller,'Creating cross-terms for mass matrix',Level=10)
+            IF(.NOT. ASSOCIATED( A_sf % MassValues ) ) THEN
+              ALLOCATE( A_sf % MassValues(SIZE(A_sf % Values) ) )
+            END IF
+            A_sf % MassValues = 0.0_dp
+            A_sf % Values => A_sf % MassValues
+            DerValues => A_f % MassValues 
+          END IF
+          
+          DO i=1,Mesh % NumberOfNodes
+            jf = FPerm(i)
+            js = SPerm(i)          
+            IF( jf == 0 .OR. js == 0 ) CYCLE
+            
+            DO j = 1, dim
+              kf = fdofs*(jf-1)+j
+              ks = sdofs*(js-1)+j                                    
+              DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                IF( .NOT. ConstrainedS(ks) ) THEN        
+                  CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k), DerValues(k) )
+                  ncount = ncount + 1
+                END IF
+                DerValues(k) = 0.0_dp              
+              END DO
+            END DO
+          END DO
+          CALL Info(Caller,'Number of entries at interface: '//TRIM(I2S(ncount)),Level=10)    
+        END DO
+        A_sf % Values => TmpValues
+      END BLOCK
+    END IF     
     
     CALL Info(Caller,'All done',Level=20)
     

@@ -3259,6 +3259,13 @@ CONTAINS
         CALL ListAddInteger(List,'Pre Solvers',j)
         CALL ListAddString(ListB,'Exec Solver','never')
         CALL ListAddLogical(ListB,'Linear System Solver Disabled',.TRUE.)                
+
+        ! Make allocations for eigen analysis follow the primary solver
+        Flag = ListGetLogical(List,'Eigen Analysis',Found )
+        IF( Found ) CALL ListAddLogical(ListB,'Eigen Analysis',Flag)
+        j = ListGetInteger(List,'Eigen System Values',Found )
+        IF( Found ) CALL ListAddInteger(ListB,'Eigen System Values',j)
+        
         EXIT
       END IF
     END DO
