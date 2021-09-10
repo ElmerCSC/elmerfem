@@ -2099,9 +2099,10 @@ CONTAINS
       ELSE 
         DO k = 1, SIZE( pVar % PrevValues, 2 )
           Component => pVar % PrevValues(:,k)
-          str = TRIM( pVar % Name ) //' PrevValues'//TRIM(I2S(k))          
+          str = TRIM( pVar % Name ) !//' PrevValues'//TRIM(I2S(k))          
           CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
-              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., VarType = pvar % Type )
+              str, pVar % Dofs, Component, pVar % Perm, Secondary = .TRUE., &
+              VarType = pvar % TYPE, VarSuffix = 'PrevValues'//TRIM(I2S(k)))
         END DO
       END IF
     END IF
