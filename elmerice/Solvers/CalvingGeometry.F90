@@ -1418,6 +1418,9 @@ CONTAINS
     LOGICAL :: inside
 
     IF(SIZE(polygon(:,1)) /= 2) CALL FATAL('PointInPolygon2D', 'Please provide a 2D array with x and y coords')
+
+    CALL ZeroPolygon(polygon, point)
+
     n=SIZE(polygon(1,:))
 
     windingnumber=100
@@ -1426,14 +1429,14 @@ CONTAINS
       IF(polygon(2,i) <= point(2)) THEN !start with y<=P.y
         IF(polygon(2, i+1) > point(2)) THEN !upward crossing
           left=IsLeft(Polygon(:, i), Polygon(:, i+1), Point(:))
-          IF(left > 0) THEN !p is to left of intersect
+          IF(left > 0.0_dp) THEN !p is to left of intersect
             windingnumber=windingnumber+1 !valid up intersect
           END IF
         END IF
       ELSE    !start at y> point y
         IF(polygon(2, i+1) <= point(2)) THEN ! downward crossing
           Left = IsLeft(Polygon(:, i), Polygon(:, i+1), Point(:))
-          IF(left < 0) THEN ! p right of edge
+          IF(left < 0.0_dp) THEN ! p right of edge
             windingnumber=windingnumber-1
           END IF
         END IF
@@ -1447,6 +1450,25 @@ CONTAINS
     END IF
 
   END FUNCTION PointInPolygon2D
+
+  !----------------------------------------------------------------------------
+  ! zeros polygon to reduce floating point errors in PointInPolygon2D
+  !----------------------------------------------------------------------------
+
+  SUBROUTINE ZeroPolygon(Polygon, Point)
+    REAL(kind=dp) :: Polygon(:,:), Point(2)
+    REAL(kind=dp) :: minx, miny
+
+    minx = MINVAL(Polygon(1,:))
+    miny = MINVAL(Polygon(2,:))
+
+    Polygon(1,:) = Polygon(1,:) - minx
+    Polygon(2,:) = Polygon(2,:) - miny
+
+    Point(1) = Point(1) - minx
+    Point(2) = Point(2) - miny
+
+  END SUBROUTINE ZeroPolygon
 
   !-----------------------------------------------------------------------------
   ! Constructs groups of nodes which fall below a given threshold for some variable
