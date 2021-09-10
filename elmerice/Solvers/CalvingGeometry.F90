@@ -5628,11 +5628,11 @@ CONTAINS
     TYPE(Nodes_t) :: WorkNodes
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path, &
          EdgeLength,crop(2),OnSide,SideCornerNum,addnodes,AddEdgeInt(2), CrevEndNode, Sideloops,&
-         Counter, SideCornerOptions(3)
+         Counter, SideCornerOptions(3), LeftRight
     INTEGER, ALLOCATABLE :: WorkInt(:), IsBelow(:)
     INTEGER, POINTER :: WorkPerm(:), NodeIndexes(:)
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
-         DoProjectible, headland, CrevBelow, LeftToRight
+         DoProjectible, headland, CrevBelow, LeftToRight, AddLateralMargins
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:), InRange(:)
     CHARACTER(MAX_NAME_LEN) :: FuncName="ValidateNPCrevassePaths"
@@ -5642,6 +5642,8 @@ CONTAINS
     Debug = .FALSE.
     Snakey = .TRUE.
     CurrentPath => CrevassePaths
+
+    ! invalid lateral crevs must first be removed before this subroutine
 
     path=0
     DO WHILE(ASSOCIATED(CurrentPath))
@@ -5653,33 +5655,35 @@ CONTAINS
       EndX = Mesh % Nodes % x(Last)
       EndY = Mesh % Nodes % y(Last)
       ! onside = 0, crev not on side
-      ! onside =1, first node on side
-      ! onside =2, second node on side
-      ! onside =3, on both lateral margins
-      OnSide = 0
+      ! onside =1, first node on side   leftright=1, on left
+      ! onside =2, second node on side  leftright=2, on right
+      ! if on both sides corrected in loop
+      Sideloops = 0; Onside = 0; LeftRight = 0
       IF(OnLeft(First)) THEN
         StartX = FrontLeft(1)
         StartY = FrontLeft(2)
-        OnSide = 1
+        Onside = 1; LeftRight = 1
+        Sideloops = Sideloops + 1
       ELSE IF(OnRight(First)) THEN
         StartX = FrontRight(1)
         StartY = FrontRight(2)
-        Onside = 1
+        Onside = 1; LeftRight = 2
+        Sideloops = Sideloops + 1
       END IF
       IF(OnLeft(Last)) THEN
         EndX = FrontLeft(1)
         EndY = FrontLeft(2)
-        Onside = 2
+        OnSide = 2; LeftRight = 1
+        Sideloops = Sideloops + 1
       ELSE IF(OnRight(Last)) THEN
         EndX = FrontRight(1)
         EndY = FrontRight(2)
-        Onside = 2
+        Onside = 2; LeftRight = 2
+        Sideloops = Sideloops + 1
       END IF
 
-      !can only be first on left and last on right since crevs
-      ! move left to right
-      Sideloops=1
-      IF(OnLeft(First) .AND. OnRight(Last)) Sideloops = 2
+      AddLateralMargins = .FALSE.
+      IF(Onside /= 0) AddLateralMargins = .TRUE.
 
       orientation(3) = 0.0_dp
       IF( ABS(StartX-EndX) < AEPS) THEN
@@ -5762,18 +5766,22 @@ CONTAINS
       ! to the crevasse permanently
       ! GetFrontCorners only provides surface edges - is this a problem on a nonvertical front?
       ! loop as crev may be on both lateral margins
-      IF(OnSide /= 0) THEN
+      IF(AddLateralMargins) THEN
         DO j=1,Sideloops
-          !adjust onside
-          IF(j==1 .AND. Sideloops==2) Onside=1
-          IF(j==2) Onside=2
+          !adjust onside and leftright
+          !if on both side must be  left(first) then right(last)
+          IF(j==1 .AND. Sideloops==2) THEN
+            LeftRight = 1; OnSide = 1
+          ELSE IF(j==2) THEN
+            LeftRight = 2; OnSide = 2
+          END IF
 
           ! rotate side corner if it exists
-          IF(Onside == 1) THEN
+          IF(LeftRight == 1) THEN
             NodeHolder(1) = FrontLeft(1)
             NodeHolder(2) = FrontLeft(2)
             NodeHolder(3) = 0.0_dp
-          ELSE IF(OnSide == 2) THEN
+          ELSE IF(LeftRight == 2) THEN
             NodeHolder(1) = FrontRight(1)
             NodeHolder(2) = FrontRight(2)
             NodeHolder(3) = 0.0_dp
@@ -5811,18 +5819,18 @@ CONTAINS
           END IF
 
           ! see which nodes we want to add
-          IF(OnSide == 1) THEN
-            AddEdgeInt(1) = crop(1) + 1
+          IF(LeftRight == 1) THEN
+            AddEdgeInt(1) = crop(OnSide) + 1
             AddEdgeInt(2) = SideCornerNum
-            crop(1) = SideCornerNum
-            CrevEndNode = First
-          ELSE IF(Onside == 2) THEN
+          ELSE IF(LeftRight == 2) THEN
             AddEdgeInt(1) = SideCornerNum
-            AddEdgeInt(2) = crop(2) - 1
-            crop(2) = SideCornerNum
-            CrevEndNode = Last
+            AddEdgeInt(2) = crop(OnSide) - 1
           END IF
+          crop(Onside) = SideCornerNum
           addnodes = AddEdgeInt(2) - AddEdgeInt(1) + 1
+
+          IF(Onside == 1) CrevEndNode=First
+          IF(OnSide == 2) CrevEndNode=Last
 
           ! add elements to the mesh
           ALLOCATE(WorkElements(Mesh % NumberOfBulkElements + addnodes))
@@ -5891,15 +5899,25 @@ CONTAINS
 
           !modify crevasse
           ALLOCATE(WorkInt(CurrentPath % NumberOfNodes + addnodes))
-          IF(OnSide == 1) THEN ! add at start
+          IF(OnSide == 1 .AND. LeftRight == 1) THEN ! add at start
             WorkInt(addnodes+1:CurrentPath % NumberOfNodes+addnodes) = CurrentPath % NodeNumbers
             DO i=1,addnodes
-              WorkInt(i) = Mesh % NumberOfNodes - i + 1 !new nodes always on end
+              WorkInt(i) = Mesh % NumberOfNodes - i + 1 !edge nodes added backwards
             END DO
-          ELSE IF(OnSide == 2) THEN
+          ELSE IF(OnSide == 1 .AND. LeftRight == 2) THEN ! add at start
+            WorkInt(addnodes+1:CurrentPath % NumberOfNodes+addnodes) = CurrentPath % NodeNumbers
+            DO i=1,addnodes
+              WorkInt(i) = Mesh % NumberOfNodes - addnodes + i !edge nodes added forwards
+            END DO
+          ELSE IF(OnSide == 2 .AND. LeftRight == 1) THEN
             WorkInt(1:CurrentPath % NumberOfNodes) = CurrentPath % NodeNumbers
             DO i=1,addnodes
-              WorkInt(CurrentPath % NumberOfNodes+ i) = Mesh % NumberOfNodes-i+1 !new nodes always on end
+              WorkInt(CurrentPath % NumberOfNodes+ i) = Mesh % NumberOfNodes - addnodes + i !edge nodes added forwards
+            END DO
+          ELSE IF(OnSide == 2 .AND. LeftRight == 2) THEN
+            WorkInt(1:CurrentPath % NumberOfNodes) = CurrentPath % NodeNumbers
+            DO i=1,addnodes
+              WorkInt(CurrentPath % NumberOfNodes+ i) = Mesh % NumberOfNodes-i+1 !edge nodes added backwards
             END DO
           END IF
           CurrentPath % NumberOfNodes = SIZE(WorkInt)
@@ -5927,6 +5945,10 @@ CONTAINS
           CurrentPath % ElementNumbers = WorkInt
           DEALLOCATE(WorkInt)
         END DO
+
+        ! update first and last
+        First = CurrentPath % NodeNumbers(1)
+        Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
 
         ! adjust mesh perm
         n = Mesh % NumberOfNodes
