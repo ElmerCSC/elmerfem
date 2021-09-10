@@ -930,10 +930,13 @@
           END DO
        END IF
 
-       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .FALSE., IMNOnleft, IMNOnRight, IMNOnFront, gridmesh_dx)
+       ! do not remove crevs inside each other as the bigger crev may be severely constricted
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .FALSE., .FALSE., &
+                      IMNOnleft, IMNOnRight, IMNOnFront, gridmesh_dx)
        CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMNOnLeft, IMNOnRight, &
                       FrontLeft, FrontRight, EdgeX, EdgeY, gridmesh_dx)
-       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .TRUE., GridSize=gridmesh_dx)
+       ! this call to remove crevs within other crevs
+       CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .TRUE., .TRUE., GridSize=gridmesh_dx)
 
        IF(Debug) THEN
           PRINT*, 'Debug: Crevs PostChecks'
