@@ -5628,7 +5628,7 @@ CONTAINS
     TYPE(Nodes_t) :: WorkNodes
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path, &
          EdgeLength,crop(2),OnSide,SideCornerNum,addnodes,AddEdgeInt(2), CrevEndNode, Sideloops,&
-         Counter, SideCornerOptions(3), LeftRight
+         Counter, SideCornerOptions(3), LeftRight, ONNodes
     INTEGER, ALLOCATABLE :: WorkInt(:), IsBelow(:)
     INTEGER, POINTER :: WorkPerm(:), NodeIndexes(:)
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
@@ -5767,6 +5767,7 @@ CONTAINS
       ! GetFrontCorners only provides surface edges - is this a problem on a nonvertical front?
       ! loop as crev may be on both lateral margins
       IF(AddLateralMargins) THEN
+        ONNodes = Mesh % NumberOfNodes
         DO j=1,Sideloops
           !adjust onside and leftright
           !if on both side must be  left(first) then right(last)
@@ -6289,6 +6290,81 @@ CONTAINS
         END IF
 
         DEALLOCATE(FarNode, Constriction, ConstrictDirection, BreakElement, DeleteElement)
+
+        ! remove excess lateral nodes as this leads to errors in level set
+        IF(AddLateralMargins) THEN
+          IF(CurrentPath % NodeNumbers(1) <= ONNodes) THEN
+            crop(1) = 1
+          ELSE
+            DO i=1, CurrentPath % NumberOfNodes-1
+              IF(CurrentPath % NodeNumbers(i) > ONNodes .AND. &
+                  CurrentPath % NodeNumbers(i+1) <= ONNodes) THEN
+                crop(1) = i
+                EXIT
+              END IF
+            END DO
+          END IF
+          IF(CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes) <= ONNodes) THEN
+            crop(2) = CurrentPath % NumberOfNodes
+          ELSE
+            DO i=CurrentPath % NumberOfNodes, 2, -1
+              IF(CurrentPath % NodeNumbers(i) > ONNodes .AND. &
+                  CurrentPath % NodeNumbers(i-1) <= ONNodes) THEN
+                crop(2) = i
+                EXIT
+              END IF
+            END DO
+          END IF
+
+          ALLOCATE(DeleteNode(CurrentPath % NumberOfNodes),&
+              DeleteElement(CurrentPath % NumberOfElements),&
+              BreakElement(CurrentPath % NumberOfElements))
+          DeleteNode = .TRUE.; DeleteElement = .FALSE.; BreakElement = .FALSE.
+          DeleteNode(crop(1):crop(2)) = .FALSE.
+          DO i=1,CurrentPath % NumberOfElements
+            IF(ANY(DeleteNode(i:i+1))) THEN
+              IF(ALL(DeleteNode(i:i+1))) THEN
+                DeleteElement(i) = .TRUE.
+              ELSE
+                BreakElement(i) = .TRUE.
+              END IF
+            END IF
+          END DO
+
+          IF(COUNT(BreakElement) > 1) THEN
+            IF(COUNT(BreakElement) > 2) CALL FATAL('ValidateNPCrevassePath', &
+              'Assumption removing lateral margins does not break elements')
+            IF(DeleteElement(1) .OR. DeleteElement(CurrentPath % NumberOfElements)) &
+              CALL FATAL('ValidateNPCrevassePath', &
+              'Assumption removing lateral margins does not break elements')
+          END IF
+
+          !Delete them
+          IF(COUNT(DeleteElement) > 0) THEN
+            !elements
+            ALLOCATE(WorkInt(COUNT(.NOT. DeleteElement)))
+            WorkInt = PACK(CurrentPath % ElementNumbers,.NOT.DeleteElement)
+
+            DEALLOCATE(CurrentPath % ElementNumbers)
+            ALLOCATE(CurrentPath % ElementNumbers(SIZE(WorkInt)))
+
+            CurrentPath % ElementNumbers = WorkInt
+            CurrentPath % NumberOfElements = SIZE(WorkInt)
+            DEALLOCATE(WorkInt)
+
+            !nodes
+            ALLOCATE(WorkInt(COUNT(.NOT. DeleteNode)))
+            WorkInt = PACK(CurrentPath % NodeNumbers, .NOT.DeleteNode)
+
+            DEALLOCATE(CurrentPath % NodeNumbers)
+            ALLOCATE(CurrentPath % NodeNumbers(SIZE(WorkInt)))
+
+            CurrentPath % NodeNumbers = WorkInt
+            CurrentPath % NumberOfNodes = SIZE(WorkInt)
+            DEALLOCATE(WorkInt)
+          END IF
+          DEALLOCATE(DeleteElement, DeleteNode, BreakElement)
+        END IF
 
 10    CONTINUE ! if crev was invalid need to rotate mesh back
 
