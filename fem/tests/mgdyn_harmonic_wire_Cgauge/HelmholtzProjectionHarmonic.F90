@@ -365,6 +365,9 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
       END IF
     END IF
   END IF
+
+  CALL ListAddNewLogical( SolverParams,"Hcurl Basis",.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE RemoveKernelComponent_Init0
 !------------------------------------------------------------------------------

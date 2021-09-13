@@ -2402,7 +2402,7 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
 
   SolverParams => GetSolverParams()
-  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
+  CALL ListAddNewLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
   CALL ListAddString( SolverParams, 'Variable', 'pd' )
 
@@ -2462,7 +2462,6 @@ SUBROUTINE HelmholtzProjector(Model, Solver, dt, TransientSimulation)
   LOGICAL :: Found
   LOGICAL :: PiolaVersion, SecondOrder
   LOGICAL :: ConstantBulkMatrix
-!  LOGICAL :: SecondFamily
 
   INTEGER :: i, j,k,l,n, n_pot, nd_pot, t
   INTEGER :: dim, PotDOFs
@@ -2778,10 +2777,11 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   CALL ListAddInteger( SolverParams, 'Linear System Residual Output', 25 )
   CALL ListAddInteger( SolverParams, 'Linear System Max Iterations', 2000 )
   CALL ListAddString(  SolverParams, 'Linear System Iterative Method', 'CG' )
-  CALL ListAddConstReal(   SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
+  CALL ListAddConstReal( SolverParams, 'Linear System Convergence Tolerance', 1.0d-9 )
+  CALL ListAddLogical( SolverParams,"Hcurl Basis",.TRUE.)
 
   CALL ListCopyPrefixedKeywords(Model % Solvers(i) % Values, SolverParams, 'RemoveKernelComponent:')
-
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE RemoveKernelComponent_Init0
 !------------------------------------------------------------------------------

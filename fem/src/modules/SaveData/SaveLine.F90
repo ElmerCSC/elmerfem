@@ -754,7 +754,7 @@ CONTAINS
           nd = GetElementDOFs( Indexes, Element )
           n = Element % Type % NumberOfNodes
         END IF
-
+        
         IF( EdgeBasis ) THEN
           stat = ElementInfo( Element, Nodes, u, v, w, &
               detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, &
@@ -799,7 +799,8 @@ CONTAINS
           NodeIndex(1) = node_id 
         END IF       
       END IF
-      
+
+            
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
@@ -822,6 +823,11 @@ CONTAINS
         END IF
           
       ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
+        IF( nd > SIZE( PtoIndexes ) ) THEN
+          CALL Warn('SaveLine','nd exceeds size of index table!')
+          nd = SIZE( PToIndexes ) 
+        END IF
+
         NoEigenValues = SIZE(Var % EigenValues) 
         IF( ASSOCIATED( PtoIndexes ) ) THEN
           DO j=1,NoEigenValues          
