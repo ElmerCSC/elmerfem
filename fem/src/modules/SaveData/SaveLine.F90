@@ -300,6 +300,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
 
   IF( NormInd > 0 ) THEN
+    Norm = ParallelReduction(Norm) 
     Solver % Variable % Values = Norm
     Solver % Variable % Norm = Norm
   END IF
@@ -591,7 +592,8 @@ CONTAINS
     CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
     SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
 
-    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
+    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe,&
+        PeMax = ParEnv % PEs, PeSeparator = '_' ) 
 
     IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
       IF( Parallel ) THEN
