@@ -58,8 +58,9 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
 
   SolverParams => GetSolverParams()
-  CALL ListAddLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
-
+  CALL ListAddNewLogical( SolverParams, 'Linear System Refactorize', .FALSE.)
+  CALL ListAddNewLogical(SolverParams,'Variable Output',.FALSE.) 
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE HelmholtzProjector_Init
 !------------------------------------------------------------------------------
@@ -367,7 +368,8 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   END IF
 
   CALL ListAddNewLogical( SolverParams,"Hcurl Basis",.TRUE.)
-  
+  CALL ListAddNewLogical(SolverParams,'Variable Output',.FALSE.) 
+
 !------------------------------------------------------------------------------
 END SUBROUTINE RemoveKernelComponent_Init0
 !------------------------------------------------------------------------------

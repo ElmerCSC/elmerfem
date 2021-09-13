@@ -2405,6 +2405,7 @@ SUBROUTINE HelmholtzProjector_Init(Model, Solver, dt, Transient)
   CALL ListAddNewLogical(SolverParams, 'Linear System Refactorize', .FALSE.)
 
   CALL ListAddString( SolverParams, 'Variable', 'pd' )
+  CALL ListAddString( SolverParams, 'Variable Output',.FALSE. )
 
   DO i=1,Model % NumberOfSolvers
     IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
@@ -2755,13 +2756,14 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
 ! Linear System Convergence Tolerance = 1.0e-9
 
   CALL ListAddString( SolverParams, 'Variable', 'avm' )
-
+  CALL ListAddString( SolverParams, 'Variable Output',.FALSE. )
+  
 ! Potential Variable = String "AV"
   DO i=1,Model % NumberOfSolvers
     IF(ListGetLogical( Model % Solvers(i) % Values, 'Helmholtz Projection', Found)) EXIT
   END DO
   AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
-
+  
   j = index(AVname, '[')
   IF(i>0) AVname = AVname(1:j-1)
   CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
