@@ -3269,9 +3269,76 @@ CONTAINS
         EXIT
       END IF
     END DO
+
+
+    ! Enable the use of "master bodies name" and "master boundaries name" for components.
+    ! This makes it possible to have circuits without reference to entity numbering.
+    BLOCK
+      LOGICAL :: BcMode
+      INTEGER, POINTER :: MasterIndexes(:)
+      INTEGER :: phase
       
+      DO i=1,Model % NumberOfComponents
+        List => Model % Components(i) % Values
+
+        BcMode = .FALSE.
+        Name = ListGetString( List,'Master Bodies Name',Found )     
+        IF( .NOT. Found ) THEN
+          Name = ListGetString( List,'Master Boundaries Name',Found ) 
+          BcMode = .TRUE.
+        END IF
+        IF(.NOT. Found) CYCLE
+
+        IF( BCMode ) THEN
+          n = Model % NumberOfBCs
+        ELSE
+          n = Model % NumberOfBodies
+        END IF
+
+        DO phase=0,1
+          j = 0
+          DO k=1,n
+            IF( BcMode ) THEN
+              NameB = ListGetString( Model % BCs(k) % Values,'Name',Found )
+            ELSE            
+              NameB = ListGetString( Model % Bodies(k) % Values,'Name',Found )
+            END IF
+            IF(.NOT. Found) CYCLE
+            IF(Name == NameB) THEN
+              j = j + 1
+              IF(phase==1) MasterIndexes(j) = k
+            END IF
+          END DO
+          IF(j==0) EXIT
+          IF(phase==0) THEN
+            NULLIFY( MasterIndexes )
+            ALLOCATE( MasterIndexes(j) )
+            MasterIndexes = 0
+          END IF
+        END DO
+
+        IF(j>0) THEN
+          IF( BCMode ) THEN
+            CALL ListAddIntegerArray( List,'Master Boundaries',j,MasterIndexes)
+            CALL Info('CompleteModelKeywords',&
+                'Created "Master Boundaries" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+          ELSE
+            CALL ListAddIntegerArray( List,'Master Bodies',j,MasterIndexes)         
+            CALL Info('CompleteModelKeywords',&
+                'Created "Master Bodies" for '//TRIM(Name)//' of size '//TRIM(I2S(j)),Level=6)
+          END IF
+        ELSE
+          IF( BCMode ) THEN
+            CALL Fatal('CompleteModelKeywords',&
+                'Could not find entities for "Master Boundaries" with name: '//TRIM(Name))
+          ELSE
+            CALL Fatal('CompleteModelKeywords',&
+                'Could not find entities for "Master Bodies" with name: '//TRIM(Name))
+          END IF
+        END IF
+      END DO
+    END BLOCK
       
-    
 
   END SUBROUTINE CompleteModelKeywords
   
