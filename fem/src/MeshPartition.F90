@@ -713,16 +713,16 @@ CONTAINS
     IF( NBulk == 0 ) RETURN
     
     !Find and globally number mesh faces
-    IF( .TRUE.) THEN
+!   IF( .TRUE.) THEN
 !     CALL FindMeshEdges(Mesh)
-    ELSE IF(DIM == 3) THEN
+!   ELSE IF(DIM == 3) THEN
 !     CALL FindMeshFaces3D(Mesh)
-      CALL FindMeshEdges2D(Mesh)
-    ELSE IF(DIM == 2 ) THEN
-      CALL FindMeshEdges2D(Mesh)
-    ELSE
-      CALL Fatal(FuncName,"Not implemented in 1D")
-    END IF
+!     CALL FindMeshEdges2D(Mesh)
+!   ELSE IF(DIM == 2 ) THEN
+!     CALL FindMeshEdges2D(Mesh)
+!   ELSE
+!     CALL Fatal(FuncName,"Not implemented in 1D")
+!   END IF
 
     ! Determine the dimension used for connections
     IF( PRESENT( PartitionPerm ) ) THEN
@@ -739,10 +739,14 @@ CONTAINS
       condim = dim
     END IF
 
-    IF (condim==2) THEN
-      CALL FindMeshEdges2D(Mesh, PartitionPerm/=0)
+    IF( PRESENT(PartitionPerm) ) THEN
+      IF (condim==2) THEN
+        CALL FindMeshEdges2D(Mesh, PartitionPerm/=0)
+      ELSE
+        CALL FindMeshFaces3D(Mesh, PartitionPerm/=0)
+      END IF
     ELSE
-      CALL FindMeshFaces3D(Mesh, PartitionPerm/=0)
+      CALL FindMeshEdges(Mesh)
     END IF
 
     CALL Info(FuncName,'Dimension for connectivity matrix: '//TRIM(I2S(condim)))
