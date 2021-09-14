@@ -714,7 +714,7 @@ CONTAINS
     
     !Find and globally number mesh faces
     IF( .TRUE.) THEN
-      CALL FindMeshEdges(Mesh)
+!     CALL FindMeshEdges(Mesh)
     ELSE IF(DIM == 3) THEN
 !     CALL FindMeshFaces3D(Mesh)
       CALL FindMeshEdges2D(Mesh)
@@ -737,6 +737,12 @@ CONTAINS
       END DO
     ELSE
       condim = dim
+    END IF
+
+    IF (condim==2) THEN
+      CALL FindMeshEdges2D(Mesh, PartitionPerm/=0)
+    ELSE
+      CALL FindMeshFaces3D(Mesh, PartitionPerm/=0)
     END IF
 
     CALL Info(FuncName,'Dimension for connectivity matrix: '//TRIM(I2S(condim)))
@@ -796,15 +802,19 @@ CONTAINS
 
       IF(ASSOCIATED(Mesh % Faces)) THEN
 BLOCK
-TYPE(Element_t), POINTER :: L
+TYPE(Element_t), POINTER :: Elment
+LOGICAL :: Ll, Lr
+
         IF(el1 <= Mesh % NumberOfFaces) THEN
-          L => Mesh % Faces(el1)
-          IF(ASSOCIATED(L,  Left)) CYCLE
+          Element => Mesh % Faces(el1)
+          Ll = ASSOCIATED(Element,  Left)
         END IF
         IF(el2 <= Mesh % NumberOfFaces) THEN
-          L => Mesh % Faces(el2)
-          IF(ASSOCIATED(L,  Right)) CYCLE
+          Element => Mesh % Faces(el2)
+          Lr = ASSOCIATED(Element,  Right)
         END IF
+
+        IF(Ll.AND.Lr) CYCLE
 END BLOCK
       END IF
 
