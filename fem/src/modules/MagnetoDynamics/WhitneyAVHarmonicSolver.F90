@@ -2765,7 +2765,7 @@ SUBROUTINE RemoveKernelComponent_Init0(Model, Solver, dt, Transient)
   AVname = ListGetString( Model % Solvers(i) % Values, 'Variable'  )
   
   j = index(AVname, '[')
-  IF(i>0) AVname = AVname(1:j-1)
+  IF(j>0) AVname = AVname(1:j-1)
   CALL ListAddString( GetSolverParams(), 'Potential Variable', AVName )
 
   ! Solver is using a single linear system to solve complex components,
