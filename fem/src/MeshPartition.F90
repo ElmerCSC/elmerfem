@@ -715,9 +715,8 @@ CONTAINS
     !Find and globally number mesh faces
     IF( .TRUE.) THEN
       CALL FindMeshEdges(Mesh)
-      
     ELSE IF(DIM == 3) THEN
-!      CALL FindMeshFaces3D(Mesh)
+!     CALL FindMeshFaces3D(Mesh)
       CALL FindMeshEdges2D(Mesh)
     ELSE IF(DIM == 2 ) THEN
       CALL FindMeshEdges2D(Mesh)
@@ -782,17 +781,33 @@ CONTAINS
     ElemConnPart = 0
     NElConn = 0
 
-    !Compute local adjacency and gather interface faces
+    ! Compute local adjacency and gather interface faces
+
     DO i=1,NFaces
       !Populate the local graph using non-interface faces
       Left => MFacePtr(i) % BoundaryInfo % Left
       IF(.NOT. ASSOCIATED(Left) ) CYCLE
-      el1 = Left % ElementIndex
 
       Right => MFacePtr(i) % BoundaryInfo % Right
       IF(.NOT. ASSOCIATED(Right)) CYCLE
+
+      el1 = Left % ElementIndex
       el2 = Right % ElementIndex
-      
+
+      IF(ASSOCIATED(Mesh % Faces)) THEN
+BLOCK
+TYPE(Element_t), POINTER :: L
+        IF(el1 <= Mesh % NumberOfFaces) THEN
+          L => Mesh % Faces(el1)
+          IF(ASSOCIATED(L,  Left)) CYCLE
+        END IF
+        IF(el2 <= Mesh % NumberOfFaces) THEN
+          L => Mesh % Faces(el2)
+          IF(ASSOCIATED(L,  Right)) CYCLE
+        END IF
+END BLOCK
+      END IF
+
       ! If we do not make partitioning with all elements then skip the ones
       ! that are not candidantes
       IF( PRESENT( PartitionPerm ) ) THEN
@@ -802,7 +817,7 @@ CONTAINS
         el2 = PartitionPerm(el2)
         IF( el1 == 0 .OR. el2 == 0 ) CYCLE
       END IF
-      
+
       NElConn(el1) = NElConn(el1) + 1
       ElemConn(NElConn(el1),el1) = el2
       ElemConnPart(NElConn(el1),el1) = ParEnv % MyPE

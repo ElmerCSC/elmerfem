@@ -15412,7 +15412,7 @@ CONTAINS
 
     INTEGER, POINTER :: FaceMap(:,:)
     INTEGER, TARGET  :: TetraFaceMap(4,6), BrickFaceMap(6,9), &
-         WedgeFaceMap(5,8), PyramidFaceMap(5,8)
+         WedgeFaceMap(5,8), PyramidFaceMap(5,8), TriFaceMap(1,3), QuadFaceMap(1,4)
     
     INTEGER :: nf(4)
 !------------------------------------------------------------------------------
@@ -15420,6 +15420,9 @@ CONTAINS
     CALL Info('FindMeshFaces3D','Finding mesh faces in 3D mesh',Level=12)
 
     Masked = PRESENT(BulkMask)
+
+    TriFaceMap(1,:)  = [1,2,3]
+    QuadFaceMap(1,:) = [1,2,3,4]
 
     TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
     TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
@@ -15591,6 +15594,30 @@ CONTAINS
 
 
              SELECT CASE( Element % TYPE % ElementCode / 100 )
+             CASE(3)
+               !
+               !               linear tri
+               !               -----------
+               SELECT CASE( Degree ) 
+               CASE(1)
+                 n1 = 3
+               CASE DEFAULT
+               END SELECT
+
+               Faces(Face) % TYPE => GetElementType( 300+n1, .FALSE. )
+
+             CASE(4)
+               !
+               !               linear quad
+               !               -----------
+               SELECT CASE( Degree ) 
+               CASE(1)
+                 n1 = 4
+               CASE DEFAULT
+               END SELECT
+
+               Faces(Face) % TYPE => GetElementType( 400+n1, .FALSE. )
+
              CASE(5)
                !
                !               for tetras:
@@ -15663,7 +15690,7 @@ CONTAINS
              Faces(Face) % NDOFs  = 0
              IF (Element % NDOFs /= 0) Faces(Face) % NDOFs = &
                  Element % NDOFs / Element % TYPE % NumberOfNodes * &
-                 Faces(Face) % TYPE % NumberOfNodes
+                      Faces(Face) % Type % NumberOfNodes
              Faces(Face) % BDOFs  = 0
              Faces(Face) % DGDOFs = 0
              Faces(Face) % EdgeIndexes => NULL()
@@ -15760,7 +15787,6 @@ CONTAINS
     QuadEdgeMap(2,:) = [2,3,6]
     QuadEdgeMap(3,:) = [3,4,7]
     QuadEdgeMap(4,:) = [4,1,8]
-
 
     TetraFaceMap(1,:) = [ 1, 2, 3, 5, 6, 7 ]
     TetraFaceMap(2,:) = [ 1, 2, 4, 5, 9, 8 ]
@@ -15932,7 +15958,7 @@ CONTAINS
                 Edges(Edge) % PDefs % pyramidQuadEdge = .TRUE.
              END IF
 
-             IF ( ASSOCIATED(Mesh % Faces).AND.ASSOCIATED(FaceEdgeMap) ) THEN
+             IF ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(FaceEdgeMap) ) THEN
                DO ii=1,Element % TYPE % NumberOfFaces
                  Face => Mesh % Faces(Element % FaceIndexes(ii))
                  IF ( .NOT. ASSOCIATED(Face % EdgeIndexes) ) THEN
@@ -15943,14 +15969,20 @@ CONTAINS
                     IF (FaceEdgeMap(ii,jj) == k) THEN
                        Face % EdgeIndexes(jj) = Edge
                        IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
-                          Edges(Edge) % BoundaryInfo % Left => Face
+                         Edges(Edge) % BoundaryInfo % Left => Face
                        ELSE
-                          Edges(Edge) % BoundaryInfo % Right => Face
+                         Edges(Edge) % BoundaryInfo % Right => Face
                        END IF
                        EXIT
                     END IF
                  END DO
                END DO
+             ELSE
+               IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
+                 Edges(Edge) % BoundaryInfo % Left  => Element
+               ELSE
+                 Edges(Edge) % BoundaryInfo % Right => Element
+               END IF
              END IF
           ELSE
 
@@ -15968,7 +16000,7 @@ CONTAINS
              Edges(Edge) % NDOFs  = 0
              IF (Element % NDOFs /= 0) Edges(Edge) % NDOFs = &
                  Element % NDOFs / Element % TYPE % NumberOfNodes * &
-                 Edges(Edge) % TYPE % NumberOfNodes
+                     Edges(Edge) % TYPE % NumberOfNodes
              Edges(Edge) % BDOFs  = 0
              Edges(Edge) % DGDOFs = 0
              Edges(Edge) % EdgeIndexes => NULL()
@@ -15999,24 +16031,30 @@ CONTAINS
                 NULLIFY( Edges(Edge) % PDefs )
              END IF
 
-             IF ( ASSOCIATED(Mesh % Faces) ) THEN
+             IF ( ASSOCIATED(Mesh % Faces) .AND. ASSOCIATED(FaceEdgeMap) ) THEN
                DO ii=1,Element % TYPE % NumberOfFaces
-                 Face => Mesh % Faces( Element % FaceIndexes(ii) )
-                 IF ( .NOT. ASSOCIATED(Face % EdgeIndexes) ) THEN
-                    ALLOCATE( Face % EdgeIndexes( Face % TYPE % NumberOfEdges ) )
+                 Face => Mesh % Faces(Element % FaceIndexes(ii))
+                 IF (.NOT.ASSOCIATED(Face % EdgeIndexes)) THEN
+                    ALLOCATE(Face % EdgeIndexes(Face % TYPE % NumberOfEdges))
                     Face % EdgeIndexes = 0
                  END IF
                  DO jj=1,Face % TYPE % NumberOfEdges
-                    IF ( FaceEdgeMap(ii,jj) == k ) THEN
+                    IF (FaceEdgeMap(ii,jj) == k) THEN
                        Face % EdgeIndexes(jj) = Edge
                        IF (.NOT.ASSOCIATED( Edges(Edge) % BoundaryInfo % Left)) THEN
-                          Edges(Edge) % BoundaryInfo % Left => Face
+                         Edges(Edge) % BoundaryInfo % Left => Face
                        ELSE
-                          Edges(Edge) % BoundaryInfo % Right => Face
+                         Edges(Edge) % BoundaryInfo % Right => Face
                        END IF
                     END IF
                  END DO
                END DO
+             ELSE
+               IF ( .NOT. ASSOCIATED(Edges(Edge) % BoundaryInfo % Left)) THEN
+                 Edges(Edge) % BoundaryInfo % Left  => Element
+               ELSE
+                 Edges(Edge) % BoundaryInfo % Right => Element
+               END IF
              END IF
 
 !            Update the hash table:
