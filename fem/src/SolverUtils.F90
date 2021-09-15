@@ -18220,7 +18220,8 @@ CONTAINS
     INTEGER :: FDofs, SDofs
     INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
-    CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'    
+    LOGICAL :: EnsureTrans
+    CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
    !------------------------------------------------------------------------------
 
     CALL Info(Caller,'Creating coupling matrix for structures',Level=6)
@@ -18279,6 +18280,8 @@ CONTAINS
 
     DoLumping = ListGetLogical( CurrentModel % Solver % Values,'Block System Mass Lumping',Found )
     IF(.NOT. Found) DoLumping = .TRUE.
+
+    EnsureTrans = ListGetLogical( CurrentModel % Solver % Values,'Block System Topo Symmetric',Found )
     
     ! This is still under development and not used for anything
     ! Probably this will not be needed at all but rather we need the director.
@@ -18641,10 +18644,17 @@ CONTAINS
                         END IF
                         
                         CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
-
                         DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                           CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
                         END DO
+
+                        IF( EnsureTrans ) THEN
+                          CALL AddToMatrixElement(A_sf,ks,kf,0.0_dp)
+                          DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                            CALL AddToMatrixElement(A_fs,A_f % Cols(k),ks,0.0_dp)
+                          END DO
+                        END IF                          
+                        
                       END DO
 
                     ELSE
@@ -18679,7 +18689,10 @@ CONTAINS
                         !    ls,js,ks,kf,weight,val,Director(ls)
 
                         CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
-
+                        IF( EnsureTrans ) THEN
+                          CALL AddToMatrixElement(A_sf,ks,kf,0.0_dp)
+                        END IF
+                        
                         ! Here the idea is to distribute the implicit moments of the shell solver
                         ! to forces for the solid solver. So even though the stiffness matrix related to the
                         ! directional derivatives is nullified, the forces are not forgotten.
@@ -18698,6 +18711,12 @@ CONTAINS
                         DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                           CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
                         END DO
+                        
+                        IF( EnsureTrans ) THEN
+                          DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                            CALL AddToMatrixElement(A_fs,A_f % Cols(k),ks,0.0_dp)
+                          END DO
+                        END IF
                       END DO
                     END DO
                   END IF
@@ -18756,6 +18775,9 @@ CONTAINS
           DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
             IF( .NOT. ConstrainedS(ks) ) THEN        
               CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k), A_f % Values(k) )
+              IF( EnsureTrans ) THEN
+                CALL AddToMatrixElement(A_fs,A_f % Cols(k),ks,0.0_dp)
+              END IF
             END IF
             A_f % Values(k) = 0.0_dp
 
@@ -18780,7 +18802,10 @@ CONTAINS
           ! but this is much more economical. 
           A_f % Values( A_f % Diag(kf)) = vdiag          
           CALL AddToMatrixElement(A_fs,kf,ks, -vdiag )
-          
+
+          IF( EnsureTrans ) THEN
+            CALL AddToMatrixElement(A_sf,ks,kf,0.0_dp )
+          END IF
         END DO
       END DO
     ELSE
