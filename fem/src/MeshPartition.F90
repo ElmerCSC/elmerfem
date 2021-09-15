@@ -735,17 +735,14 @@ CONTAINS
           EXIT
         END IF
       END DO
-    ELSE
-      condim = dim
-    END IF
 
-    IF( PRESENT(PartitionPerm) ) THEN
       IF (condim==2) THEN
         CALL FindMeshEdges2D(Mesh, PartitionPerm/=0)
       ELSE
         CALL FindMeshFaces3D(Mesh, PartitionPerm/=0)
       END IF
     ELSE
+      condim = dim
       CALL FindMeshEdges(Mesh)
     END IF
 
@@ -803,24 +800,6 @@ CONTAINS
 
       el1 = Left % ElementIndex
       el2 = Right % ElementIndex
-
-      IF(ASSOCIATED(Mesh % Faces)) THEN
-BLOCK
-TYPE(Element_t), POINTER :: Elment
-LOGICAL :: Ll, Lr
-
-        IF(el1 <= Mesh % NumberOfFaces) THEN
-          Element => Mesh % Faces(el1)
-          Ll = ASSOCIATED(Element,  Left)
-        END IF
-        IF(el2 <= Mesh % NumberOfFaces) THEN
-          Element => Mesh % Faces(el2)
-          Lr = ASSOCIATED(Element,  Right)
-        END IF
-
-        IF(Ll.AND.Lr) CYCLE
-END BLOCK
-      END IF
 
       ! If we do not make partitioning with all elements then skip the ones
       ! that are not candidantes
