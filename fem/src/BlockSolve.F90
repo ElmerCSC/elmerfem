@@ -3409,6 +3409,8 @@ CONTAINS
     END IF
 
     IF(InfoActive(20)) THEN
+      !CALL CRS_CheckSymmetricTopo(CollMat)
+      !CALL CRS_CheckComplexTopo(CollMat)
       CALL VectorValuesRange(CollMat % Values,SIZE(CollMat % Values),'Atot')
       IF( ASSOCIATED( CollMat % MassValues ) ) THEN
         CALL VectorValuesRange(CollMat % MassValues,SIZE(CollMat % MassValues),'Mtot')

@@ -18817,9 +18817,6 @@ CONTAINS
       CALL List_toCRSMatrix(A_sf)
     END IF
 
-    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
-    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
-
     CALL Info(Caller,'Number of nodes on interface: '&
         //TRIM(I2S(ncount)),Level=10)    
     CALL Info(Caller,'Number of entries in slave-master coupling matrix: '&
@@ -18834,17 +18831,19 @@ CONTAINS
       BLOCK
         REAL(KIND=dp), POINTER :: TmpValues(:),DerValues(:)
         INTEGER :: der
-        ncount = 0
         
+        TmpValues => A_sf % Values
+
         DO der=1,2
           IF( der == 1 .AND. .NOT. DoDamp ) CYCLE
           IF( der == 2 .AND. .NOT. DoMass ) CYCLE
           
-          TmpValues => A_sf % Values
+          ncount = 0
+          
           IF( der == 1 ) THEN
             CALL Info(Caller,'Creating cross-terms for damping matrix',Level=10)
             IF(.NOT. ASSOCIATED( A_sf % DampValues ) ) THEN
-              ALLOCATE( A_sf % DampValues(SIZE(A_sf % Values) ) )
+              ALLOCATE( A_sf % DampValues(SIZE(TmpValues) ) )
             END IF
             A_sf % DampValues = 0.0_dp
             A_sf % Values => A_sf % DampValues
@@ -18852,13 +18851,13 @@ CONTAINS
           ELSE
             CALL Info(Caller,'Creating cross-terms for mass matrix',Level=10)
             IF(.NOT. ASSOCIATED( A_sf % MassValues ) ) THEN
-              ALLOCATE( A_sf % MassValues(SIZE(A_sf % Values) ) )
+              ALLOCATE( A_sf % MassValues(SIZE(TmpValues) ) )
             END IF
             A_sf % MassValues = 0.0_dp
             A_sf % Values => A_sf % MassValues
             DerValues => A_f % MassValues 
           END IF
-          
+
           DO i=1,Mesh % NumberOfNodes
             jf = FPerm(i)
             js = SPerm(i)          
@@ -18878,11 +18877,11 @@ CONTAINS
           END DO
           CALL Info(Caller,'Number of entries at interface: '//TRIM(I2S(ncount)),Level=10)    
         END DO
-        A_sf % Values => TmpValues
+
       END BLOCK
     END IF     
     
-    CALL Info(Caller,'All done',Level=20)
+    CALL Info(Caller,'Structural coupling matrices created!',Level=20)
     
   CONTAINS
 
