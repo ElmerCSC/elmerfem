@@ -18218,7 +18218,7 @@ CONTAINS
     LOGICAL :: Found, DoDamp, DoMass, DoLumping 
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
-    INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
+    INTEGER :: i,j,k,n,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
     LOGICAL :: EnsureTrans
     CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
@@ -18264,6 +18264,14 @@ CONTAINS
       A_sf % Values = 0.0_dp      
     END IF
 
+    n = COUNT( FPerm>0 .AND. SPerm>0 ) 
+    IF( n == 0 ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+      CALL Info(Caller,'No shared nodes between two structures! Nothing to do!',Level=6)
+      RETURN
+    END IF
+    
     DoMass = .FALSE.
     IF( ASSOCIATED( A_f % MassValues ) ) THEN
       IF( ASSOCIATED( A_s % MassValues ) ) THEN
@@ -18298,7 +18306,7 @@ CONTAINS
             EdgeSolidCount(:),EdgeSolidTable(:,:)
         INTEGER :: MaxEdgeSolidCount, MaxEdgeShellCount, NoFound, NoFound2
         INTEGER :: InterfaceN, hits, TotCount, EdgeCount, Phase
-        INTEGER :: p,lf,ls,ii,jj,n,m,t,l,e1,e2,k1,k2
+        INTEGER :: p,lf,ls,ii,jj,m,t,l,e1,e2,k1,k2
         INTEGER :: NormalDir
         REAL(KIND=dp), POINTER :: Director(:)
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
@@ -18308,14 +18316,15 @@ CONTAINS
         TYPE(Element_t), POINTER :: Element, ShellElement, Edge
         TYPE(Nodes_t) :: Nodes
         LOGICAL :: Stat
-
+       
         n = Mesh % MaxElementNodes 
         ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-
+              
         ! Memorize the original values
         ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
         A_f0 = A_f % Values
 
+                
         IF (DrillingDOFs) THEN
           ALLOCATE(rhs0(SIZE(A_f % rhs)))
           rhs0 = A_f % rhs
@@ -18363,7 +18372,6 @@ CONTAINS
 
         CALL Info(Caller,'Number of nodes at interface: '//TRIM(I2S(InterfaceN)),Level=10)
 
-
         ! We need to create mesh edges to simplify many things
         CALL FindMeshEdges( Mesh, FindFaces=.FALSE. ) 
         ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
@@ -18382,6 +18390,12 @@ CONTAINS
         END DO
                 
         CALL Info(Caller,'Number of edges at interface: '//TRIM(I2S(EdgeCount)),Level=10)
+        IF( EdgeCount == 0 ) THEN
+          CALL List_toCRSMatrix(A_fs)
+          CALL List_toCRSMatrix(A_sf)
+          CALL Info(Caller,'Coupling matrices are empty! Nothing to do!',Level=6)
+          RETURN
+        END IF
         
         ALLOCATE( EdgeShellCount(EdgeCount), EdgeSolidCount(EdgeCount) )
         

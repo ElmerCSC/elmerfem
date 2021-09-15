@@ -3192,7 +3192,8 @@ CONTAINS
    
   END SUBROUTINE blockKrylovIter
 
-
+  
+  
   !> This makes the system monolithic. If it was initially monolithic
   !> and then made block, it does not make any sense. However, for
   !> multiphysics coupled cases it may be a good strategy. 
@@ -3408,6 +3409,19 @@ CONTAINS
       END DO
     END IF
 
+
+    IF( ParEnv % PEs > 1 ) THEN
+      IF( NoVar /= 2 ) THEN
+        CALL Fatal(Caller,'Parallel operation currently assumes just 2x2 blocks!')
+      END IF
+
+      CALL Info(Caller,'Merging parallel info of matrices')
+      CALL ParallelMergeMatrix( Solver, CollMat, &
+          TotMatrix % SubMatrix(1,1) % Mat, &
+          TotMatrix % SubMatrix(2,2) % Mat )
+    END IF
+
+    
     IF(InfoActive(20)) THEN
       !CALL CRS_CheckSymmetricTopo(CollMat)
       !CALL CRS_CheckComplexTopo(CollMat)
