@@ -5626,7 +5626,7 @@ CONTAINS
          ShiftTo, Dir1(2), Dir2(2), CCW_value,a1(2),a2(2),b1(2),b2(2),intersect(2), &
          StartX, StartY, EndX, EndY, Orientation(3), temp, NodeHolder(3), err_buffer,&
          yy, zz, gradient, c, intersect_z, SideCorner(3), MinDist, TempDist, IsBelowMean
-    REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:), REdge(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: ConstrictDirection(:,:), REdge(:,:), Polygons(:,:)
     REAL(KIND=dp), POINTER :: WorkReal(:)
     TYPE(CrevassePath_t), POINTER :: CurrentPath, OtherPath, WorkPath, LeftPath, RightPath
     TYPE(Element_t), POINTER :: WorkElements(:)
@@ -5634,10 +5634,10 @@ CONTAINS
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path, &
          EdgeLength,crop(2),OnSide,SideCornerNum,addnodes,AddEdgeInt(2), CrevEndNode, Sideloops,&
          Counter, SideCornerOptions(3), LeftRight, ONNodes
-    INTEGER, ALLOCATABLE :: WorkInt(:), IsBelow(:)
+    INTEGER, ALLOCATABLE :: WorkInt(:), IsBelow(:), PolyStart(:), PolyEnd(:)
     INTEGER, POINTER :: WorkPerm(:), NodeIndexes(:)
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
-         DoProjectible, headland, CrevBelow, LeftToRight, AddLateralMargins
+         DoProjectible, headland, CrevBelow, LeftToRight, AddLateralMargins, inside
     LOGICAL, ALLOCATABLE :: PathMoveNode(:), DeleteElement(:), BreakElement(:), &
          FarNode(:), DeleteNode(:), Constriction(:), InRange(:)
     CHARACTER(MAX_NAME_LEN) :: FuncName="ValidateNPCrevassePaths"
@@ -5646,10 +5646,49 @@ CONTAINS
     rt0 = RealTime()
     Debug = .FALSE.
     Snakey = .TRUE.
+
+    ! if on lateral margin need to make sure that glacier corner is within crev.
+    ! if it lies outside the crev then the crev isn't really on front but on the lateral corner
+    ! first and last both actually on same lateral margin
+    CALL GetCalvingPolygons(Mesh, CrevassePaths, EdgeX, EdgeY, Polygons, PolyStart, PolyEnd, GridSize)
     CurrentPath => CrevassePaths
+    path=0
+    DO WHILE(ASSOCIATED(CurrentPath))
+      path = path+1
+      First = CurrentPath % NodeNumbers(1)
+      Last = CurrentPath % NodeNumbers(CurrentPath % NumberOfNodes)
+      IF(OnLeft(First) .OR. OnLeft(Last)) THEN
+        inside = PointInPolygon2D(Polygons(:,PolyStart(path):PolyEnd(path)),FrontLeft)
+        IF(.NOT. inside) THEN
+          CurrentPath % Valid = .FALSE.
+          CALL WARN(FuncName,'Left sidecorner not in crevasse so removing')
+        END IF
+      END IF
+      IF(OnRight(First) .OR. OnRight(Last)) THEN
+        inside = PointInPolygon2D(Polygons(:,PolyStart(path):PolyEnd(path)),FrontRight)
+        IF(.NOT. inside) THEN
+          CurrentPath % Valid = .FALSE.
+          CALL WARN(FuncName,'Right sidecorner not in crevasse so removing')
+        END IF
+      END IF
+      CurrentPath => CurrentPath % Next
+    END DO
+
+    !Actually remove previous marked
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+      WorkPath => CurrentPath % Next
+
+      IF(.NOT. CurrentPath % Valid) THEN
+          IF(ASSOCIATED(CurrentPath,CrevassePaths)) CrevassePaths => WorkPath
+          CALL RemoveCrevassePath(CurrentPath)
+          IF(Debug) CALL Info("ValidateCrevassePaths","Removing a crevasse path")
+      END IF
+      CurrentPath => WorkPath
+    END DO
 
     ! invalid lateral crevs must first be removed before this subroutine
-
+    CurrentPath => CrevassePaths
     path=0
     DO WHILE(ASSOCIATED(CurrentPath))
       path=path+1
