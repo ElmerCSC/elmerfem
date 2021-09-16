@@ -5499,18 +5499,22 @@ CONTAINS
             END DO
           END DO
           IF(inside) THEN
-            ! area 1
+            ! area 1 actual gives area*2
             area1 = 0.0_dp
             xx = Polygons(1,PolyStart(path))
             yy = Polygons(2,PolyStart(path))
-            DO j=PolyStart(path), PolyEnd(path)
+            DO j=PolyStart(path)+1, PolyEnd(path)
               area1 = area1 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
+              xx = Polygons(1,j)
+              yy = Polygons(2,j)
             END DO
             area2 = 0.0_dp
             xx = Polygons(1,PolyStart(i))
             yy = Polygons(2,PolyStart(i))
-            DO j=PolyStart(i), PolyEnd(i)
+            DO j=PolyStart(i)+1, PolyEnd(i)
               area2 = area2 + (Polygons(1,j) * yy - Polygons(2,j) * xx)
+              xx = Polygons(1,j)
+              yy = Polygons(2,j)
             END DO
             IF(ABS(area1) <= ABS(area2)) THEN ! remove this path if smaller
               CurrentPath % Valid = .FALSE.
