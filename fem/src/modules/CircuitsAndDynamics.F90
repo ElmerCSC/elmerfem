@@ -207,10 +207,14 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         IF( .NOT. ASSOCIATED( LagrangeVar % PrevValues ) ) THEN
           CALL Info('CircuitsAndDynanamics','Add PrevValues to Lagrange multiplier!',Level=8)
           ALLOCATE( LagrangeVar % PrevValues(n,1) )
+
           ! First time doing this the InitializeTimestep has not done this!
           LagrangeVar % PrevValues(:,1) = LagrangeVar % Values 
         END IF        
       END IF
+
+      ! Rotate solution here, as InitializeTimestep() doesn't do anything,  with 'no matrix' solvers...
+      LagrangeVar % PrevValues(:,1) = LagrangeVar % Values 
         
       Crt = LagrangeVar % PrevValues(1:Model%Circuit_tot_n,1)
       !PRINT *,'Lagrange In:',SIZE(LagrangeVar % Values),MINVAL(Crt),&
