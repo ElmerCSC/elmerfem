@@ -5854,6 +5854,10 @@ CONTAINS
           ! this is for when the closest edgenode to the SideCorner is actually on
           ! the front causing a constriction in crevasse. This moves it back onto the
           ! lateral margin
+          IF(counter == 2) THEN
+            IF(LeftRight == 1) SideCornerNum = MINVAL(SideCornerOptions(1:2))
+            IF(LeftRight == 2) SideCornerNum = MAXVAL(SideCornerOptions(1:2))
+          END IF
           IF(counter >= 3) SideCornerNum = SideCornerOptions(2)
 
           IF(SideCornerNum==0) CALL FATAL(FuncName, 'Side Corner not found')
@@ -5887,12 +5891,21 @@ CONTAINS
               WorkElements(Mesh % NumberOfBulkElements + i) % BodyID = 1
               CALL AllocateVector(WorkElements(Mesh % NumberOfBulkElements + i) %  NodeIndexes, 2)
               NodeIndexes => WorkElements(Mesh % NumberOfBulkElements + i) %  NodeIndexes
-              IF(i==1) THEN
-                NodeIndexes(2) = CrevEndNode
-              ELSE
-                NodeIndexes(2) = Mesh % NumberOfNodes + i - 1
+              IF(LeftRight == 1) THEN
+                IF(i==1) THEN
+                  NodeIndexes(2) = CrevEndNode
+                ELSE
+                  NodeIndexes(2) = Mesh % NumberOfNodes + i - 1
+                END IF
+                NodeIndexes(1) = Mesh % NumberOfNodes + i
+              ELSE IF(LeftRight == 2) THEN
+                IF(i==1) THEN
+                  NodeIndexes(2) = CrevEndNode
+                ELSE
+                  NodeIndexes(2) = Mesh % NumberOfNodes + addnodes - i + 2
+                END IF
+                NodeIndexes(1) = Mesh % NumberOfNodes + addnodes - i + 1
               END IF
-              NodeIndexes(1) = Mesh % NumberOfNodes + i
             END DO
           ELSE IF(OnSide == 2) THEN
             DO i=1, addnodes
@@ -5902,12 +5915,21 @@ CONTAINS
               WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) % BodyID = 1
               CALL AllocateVector(WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) %  NodeIndexes, 2)
               NodeIndexes => WorkElements(Mesh % NumberOfBulkElements - i + addnodes + 1) %  NodeIndexes
-              IF(i==1) THEN
-                NodeIndexes(1) = CrevEndNode
-              ELSE
-                NodeIndexes(1) = Mesh % NumberOfNodes - i + addnodes + 2
+              IF(LeftRight == 1) THEN
+                IF(i==1) THEN
+                  NodeIndexes(1) = CrevEndNode
+                ELSE
+                  NodeIndexes(1) = Mesh % NumberOfNodes + i - 1
+                END IF
+                NodeIndexes(2) = Mesh % NumberOfNodes + i
+              ELSE IF(LeftRight == 2) THEN
+                IF(i==1) THEN
+                  NodeIndexes(1) = CrevEndNode
+                ELSE
+                  NodeIndexes(1) = Mesh % NumberOfNodes - i + addnodes + 2
+                END IF
+                NodeIndexes(2) = Mesh % NumberOfNodes - i + addnodes + 1
               END IF
-              NodeIndexes(2) = Mesh % NumberOfNodes - i + addnodes + 1
             END DO
           END IF
 
