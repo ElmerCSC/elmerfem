@@ -2930,16 +2930,18 @@ CONTAINS
           END IF
 
           !Check geom id is legal
-          IF(geom_id <= 0 .OR. geom_id > Model % NumberOfBCs) THEN
+          IF(geom_id < 0 .OR. geom_id > Model % NumberOfBCs) THEN
             PRINT *, ParEnv % MyPE,'Received element ',i,' from part: ',&
                  part,' with constraint: ',geom_id
             CALL Fatal(Caller, "Unexpected constraint on BC element")
           END IF
 
           Element % BoundaryInfo % Constraint = geom_id
-          Element % BodyId  = ListGetInteger( &
-             Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
-
+          IF( geom_id > 0 ) THEN
+            Element % BodyId  = ListGetInteger( &
+                Model % BCs(geom_id) % Values, 'Body Id', Found, 1, Model % NumberOfBodies )
+          END IF
+            
           ! These are the left and right boundary indexes that currently are not used at all!
           LeftParent(t) = PPack % idata(icount+4)
           RightParent(t) = PPack % idata(icount+5)
@@ -3434,7 +3436,7 @@ CONTAINS
 
      EqInterface = ListGetLogical( Model % Simulation,'Partition Equation Interface',Found )
               
-     CALL Info(FuncName,'Partitioning the boundary elements sets') 
+     CALL Info(FuncName,'Partitioning boundary elements sets') 
      CALL InitializeBoundaryElementSet(NumberOfBoundarySets)
      
      IF( NumberOfBoundarySets > 0 ) THEN
@@ -4264,10 +4266,13 @@ CONTAINS
        INTEGER, ALLOCATABLE :: BCPart(:)
        INTEGER :: allocstat
 
+       NumberOfParts = 0
+       IF( Model % NumberOfBCs == 0 ) RETURN
        
+      
        SeparateBoundarySets = ListGetLogical( Params, &
            'Partitioning Separate Boundary Set', Found)
-       
+
        ALLOCATE( BCPart( Model % NUmberOfBCs ), STAT = allocstat )
        IF( allocstat /= 0 ) THEN
          CALL Fatal(FuncName,'Allocation error for BCPart')
@@ -4275,7 +4280,6 @@ CONTAINS
        BCPart = 0
 
        ! First, set the partition sets enforced by the user
-       NumberOfParts = 0
        DO bc_id = 1, Model % NumberOfBCs 
          ValueList => Model % BCs(bc_id) % Values
          k = ListGetInteger( ValueList,'Partition Set',Found)
@@ -4283,6 +4287,8 @@ CONTAINS
          BCPart(bc_id) = k 
          ParameterInd(k) = bc_id
        END DO
+
+       IF( MAXVAL( BCPart ) == 0 ) RETURN
        
        IF( ListGetLogical( Params,'Partition Connected BCs',Found ) ) THEN 
          j = MAXVAL( BCPart ) + 1
