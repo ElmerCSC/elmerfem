@@ -1278,6 +1278,8 @@
      ! get calving polygons
      IF(Boss) THEN
       CALL GetCalvingPolygons(IsoMesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, gridmesh_dx)
+      ! release crevasse paths
+      CALL ReleaseCrevassePaths(CrevassePaths)
      END IF
 
      ! send bdrynode info to all procs

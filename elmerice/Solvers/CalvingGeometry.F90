@@ -6977,5 +6977,26 @@ CONTAINS
   
   END SUBROUTINE ResetMeshUpdate
 
+  SUBROUTINE ReleaseCrevassePaths(CrevassePaths)
+    TYPE(CrevassePath_t), POINTER :: CrevassePaths,CurrentPath
+
+    CurrentPath => CrevassePaths
+    DO WHILE(ASSOCIATED(CurrentPath))
+      IF(ASSOCIATED(CurrentPath % NodeNumbers)) THEN
+        DEALLOCATE(CurrentPath % NodeNumbers)
+        CurrentPath % NodeNumbers => NULL()
+      END IF
+      IF(ASSOCIATED(CurrentPath % ElementNumbers)) THEN
+        DEALLOCATE(CurrentPath % ElementNumbers)
+        CurrentPath % ElementNumbers => NULL()
+      END IF
+
+      CurrentPath => CurrentPath % Next
+    END DO
+
+    DEALLOCATE(CrevassePaths)
+
+  END SUBROUTINE ReleaseCrevassePaths
+
 END MODULE CalvingGeometry
 
