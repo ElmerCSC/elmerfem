@@ -797,6 +797,12 @@
       END DO
     END IF
 
+    IF(Debug .AND. Boss) THEN
+      PRINT*, 'EdgeLine ----'
+      DO i=1, EdgeLength
+        PRINT*, EdgeX(i), ',', EdgeY(i), ','
+      END DO
+    END IF
 
     IF(Boss) THEN
        ! Locate Isosurface Solver
@@ -1278,6 +1284,15 @@
      ! get calving polygons
      IF(Boss) THEN
       CALL GetCalvingPolygons(IsoMesh, CrevassePaths, EdgeX, EdgeY, Polygon, PolyStart, PolyEnd, gridmesh_dx)
+      IF(Debug) THEN
+        PRINT*, 'Calving Polygons ----'
+        DO i=1, SIZE(PolyStart)
+          PRINT*, PolyStart(i), ',', PolyEnd(i), ','
+        END DO
+        DO i=1, SIZE(Polygon(1,:))
+          PRINT*, Polygon(1,i), ',', Polygon(2,i), ','
+        END DO
+      END IF
       ! release crevasse paths
       CALL ReleaseCrevassePaths(CrevassePaths)
      END IF
