@@ -57,8 +57,9 @@
    INTEGER :: i,j,jmin,k,n,dim, dummyint, NoNodes, ierr, PEs, &
         FaceNodeCount, DOFs, PathCount, LeftConstraint, RightConstraint, &
         FrontConstraint, NoCrevNodes, NoPaths, IMBdryCount, &
-        node, nodecounter, CurrentNodePosition, StartNode, NodePositions(3), &
-        directions, Counter, ClosestCrev, NumEdgeNodes, UnFoundLoops
+        node, nodecounter, CurrentNodePosition, StartNode, &
+        directions, Counter, ClosestCrev, NumEdgeNodes, UnFoundLoops, EdgeLength,&
+        status(MPI_STATUS_SIZE)
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
         FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
@@ -66,14 +67,15 @@
         EdgeMap(:,:)
    INTEGER, ALLOCATABLE :: CrevEnd(:),CrevStart(:),IMBdryConstraint(:),IMBdryENums(:),&
          PolyStart(:), PolyEnd(:), EdgeLine(:,:), EdgeCount(:), Nodes(:), StartNodes(:,:),&
-         WorkInt(:), WorkInt2D(:,:)
+         WorkInt(:), WorkInt2D(:,:), PartCount(:), ElemsToAdd(:), PartElemsToAdd(:), &
+         EdgeLineNodes(:), NodePositions(:)
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), &
         MaxMeshDist, MeshEdgeMinLC, MeshEdgeMaxLC, MeshLCMinDist, MeshLCMaxDist,&
         CrevasseThreshold, MinCalvingSize, PauseVolumeThresh, &
         y_coord(2), TempDist,MinDist, xl,xr,yl, yr, xx,yy,&
         angle,angle0,a1(2),a2(2),b1(2),b2(2),a2a1(2),isect(2),front_extent(4), &
-        buffer, gridmesh_dx, FrontLeft(2), FrontRight(2),&
+        buffer, gridmesh_dx, FrontLeft(2), FrontRight(2), ElemEdge(2,5), &
 #ifdef USE_ISO_C_BINDINGS
         rt0, rt
 #else
@@ -426,7 +428,7 @@
       ! following code assumes this structure in order to find edge nodes in order
       ! create edgeline so we can stitch this with crevasses
 
-      ALLOCATE(UsedElem(PlaneMesh % NumberOfBulkElements), StartNodes(2, 5))
+      ALLOCATE(UsedElem(PlaneMesh % NumberOfBulkElements), StartNodes(2, 5), NodePositions(3))
       UsedElem=.FALSE.
       StartNodes=0
       DO startnode=1, PlaneMesh % NumberOfNodes
@@ -615,25 +617,188 @@
         END DO
         EXIT ! initial loop only to get random start point
       END DO
+      DEALLOCATE(UsedElem, NodePositions)
 
+      EdgeLength = SUM(EdgeCount)
       ! translate edge nodes into x and y and join both strings
-      ALLOCATE(EdgeX(SUM(EdgeCount)), EdgeY(SUM(EdgeCount)))
+      ALLOCATE(EdgeX(EdgeLength), EdgeY(EdgeLength), EdgeLineNodes(EdgeLength))
       nodecounter=0
       IF(directions > 1) THEN
         DO i=EdgeCount(2),1, -1 ! backwards iteration
           nodecounter=nodecounter+1
           EdgeX(nodecounter) = PlaneMesh % Nodes % x(EdgeLine(2, i))
           EdgeY(nodecounter) = PlaneMesh % Nodes % y(EdgeLine(2, i))
+          EdgeLineNodes(nodecounter) = EdgeLine(2,i)
         END DO
       END IF
       DO i=1, EdgeCount(1)
         nodecounter=nodecounter+1
         EdgeX(nodecounter) = PlaneMesh % Nodes % x(EdgeLine(1, i))
         EdgeY(nodecounter) = PlaneMesh % Nodes % y(EdgeLine(1, i))
+        EdgeLineNodes(nodecounter) = EdgeLine(1,i)
       END DO
 
+      ! see if all mesh nodes lie with edgeline if not adjust
+      ALLOCATE(EdgePoly(2, EdgeLength+1))
+      EdgePoly(1,1:EdgeLength) = EdgeX
+      EdgePoly(1,EdgeLength+1) = EdgeX(1)
+      EdgePoly(2,1:EdgeLength) = EdgeY
+      EdgePoly(2,EdgeLength+1) = EdgeY(1)
       ! end of finding planmesh edge
+    END IF ! BOSS
 
+    CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
+    CALL MPI_BCAST(EdgeLength, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+    IF(.NOT. Boss) ALLOCATE(EdgePoly(2,EdgeLength+1))
+    CALL MPI_BCAST(EdgePoly, (EdgeLength+1)*2, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
+
+    ! check all nodes lie within edgeline
+    ALLOCATE(ElemsToAdd(Mesh % NumberOfNodes))
+    counter=0; ElemsToAdd = 0
+    DO i=1, Mesh % NumberOfNodes
+      IF(DistValues(DistPerm(i)) + buffer > MaxMeshDist) CYCLE
+      inside = PointInPolygon2D(EdgePoly, (/Mesh % Nodes % x(i), Mesh % Nodes % y(i)/))
+      IF(.NOT. inside) THEN
+        DO j=1, PlaneMesh % NumberOfBulkElements
+          NodeIndexes => PlaneMesh % Elements(j) % NodeIndexes
+          DO k=1,4
+            ElemEdge(1,k) = PlaneMesh % Nodes % x(NodeIndexes(k))
+            ElemEdge(2,k) = PlaneMesh % Nodes % y(NodeIndexes(k))
+          END DO
+          ElemEdge(1,5) = PlaneMesh % Nodes % x(NodeIndexes(1))
+          ElemEdge(2,5) = PlaneMesh % Nodes % y(NodeIndexes(1))
+          inside = PointInPolygon2D(ElemEdge, (/Mesh % Nodes % x(i), Mesh % Nodes % y(i)/))
+          IF(inside) THEN
+            IF(ANY(ElemsToAdd == j)) CYCLE
+            counter=counter+1
+            ElemsToAdd(counter) = j
+          END IF
+        END DO
+      END IF
+    END DO
+
+    ALLOCATE(PartCount(ParEnv % PEs))
+    PartCount=0
+    CALL MPI_GATHER(counter, 1, MPI_INTEGER, PartCount, 1, MPI_INTEGER, 0, ELMER_COMM_WORLD, ierr)
+
+    IF(.NOT. Boss .AND. Counter > 0) THEN
+      CALL MPI_BSEND(ElemsToAdd, counter, MPI_INTEGER, 0, &
+          8000, ELMER_COMM_WORLD, ierr)
+    END IF
+    IF(Boss.AND. SUM(PartCount) > 0) THEN
+      ALLOCATE(PartElemsToAdd(SUM(PartCount)))
+      IF(counter > 0) PartElemsToAdd(1:Counter) = ElemsToAdd(1:counter)
+      DO i=2, ParEnv % PEs ! boss is zero
+        IF(PartCount(i) == 0) CYCLE
+        PRINT*, i-1, counter, PartCount(i)
+        CALL MPI_RECV(PartElemsToAdd(counter+1:counter+PartCount(i)), PartCount(i), &
+            MPI_INTEGER, i-1, 8000, ELMER_COMM_WORLD, status, ierr)
+        counter=counter+PartCount(i)
+      END DO
+
+    END IF
+
+    IF(Boss .AND. SUM(PartCount) > 0) THEN
+      !if nodes lie outwith edgeline expand edgeline
+      ALLOCATE(UsedElem(SIZE(PartElemsToAdd)), NodePositions(4))
+      UsedElem=.FALSE.
+      DO WHILE(.NOT. ALL(UsedElem))
+        DO i=1, SIZE(PartElemsToAdd)
+          IF(UsedElem(i)) CYCLE
+          NodeIndexes => PlaneMesh % Elements(PartElemsToAdd(i)) % NodeIndexes
+          counter=0
+          DO j=1,4
+            IF(ANY(EdgeLineNodes == NodeIndexes(j))) counter=counter+1
+          END DO
+          IF(counter <= 1) CYCLE
+          IF(Counter == 2) THEN
+            ! add two missing nodes in order
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                  IF(NodeIndexes(k) == EdgeLineNodes(j+1)) NodePositions(2) = k
+                END DO
+                PRINT*, PartElemsToAdd(i), j, NodePositions(1:2)
+                IF(NodePositions(1) == NodePositions(2)) CYCLE
+                IF(ABS(NodePositions(1) - NodePositions(2)) == 2) &
+                  CALL FATAL('Calving3D_lset', 'Error building edgeine')
+                ! add in other nodes
+                ALLOCATE(WorkInt(EdgeLength+2))
+                WorkInt(1:j) = EdgeLineNodes(1:j)
+                ! first node is opposite NodePostiions(1)
+                DO k=1,4
+                  IF(ANY(NodePositions(1:2) == k)) CYCLE
+                  IF(ABS(k-NodePositions(1)) /= 2) WorkInt(j+1) = NodeIndexes(k)
+                  IF(ABS(k-NodePositions(2)) /= 2) WorkInt(j+2) = NodeIndexes(k)
+                END DO
+                WorkInt(j+3:EdgeLength+2) = EdgeLineNodes(j+1:EdgeLength)
+                DEALLOCATE(EdgeLineNodes)
+                EdgeLength = EdgeLength + 2
+                ALLOCATE(EdgeLineNodes(EdgeLength))
+                EdgeLineNodes = WorkInt
+                DEALLOCATE(WorkInt)
+                EXIT
+              END IF
+            END DO
+          ELSE IF(counter == 3) THEN !swap middle node for unsed node
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                IF(ANY(EdgeLineNodes(j+1:j+2) == EdgeLineNodes(j))) CYCLE ! loops back on itself
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+1))) CYCLE ! moves out of element
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+2))) CYCLE ! moves out of element
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                  IF(NodeIndexes(k) == EdgeLineNodes(j+1)) NodePositions(2) = k
+                  IF(ANY(EdgeLineNodes(j:j+2) == NodeIndexes(k))) CYCLE
+                  NodePositions(4) = k
+                END DO
+                ! swap node 2 with 4
+                EdgeLineNodes(j+1) = NodeIndexes(NodePositions(4))
+                EXIT
+              END IF
+            END DO
+          ELSE IF(counter == 4) THEN ! remove two middle nodes
+            DO j=1,EdgeLength
+              IF(ANY(NodeIndexes == EdgeLineNodes(j))) THEN ! found first node
+                IF(ANY(EdgeLineNodes(j+1:j+3) == EdgeLineNodes(j))) CYCLE ! loops back on itself
+                IF(ANY(EdgeLineNodes(j+2:j+3) == EdgeLineNodes(j+1))) CYCLE ! loops back on itself
+                IF(EdgeLineNodes(j+2) == EdgeLineNodes(j+3)) CYCLE ! loops back on itself
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+1))) CYCLE ! moves out of element
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+2))) CYCLE ! moves out of element
+                IF(.NOT. ANY(NodeIndexes == EdgeLineNodes(j+3))) CYCLE ! moves out of element
+                DO k=1,4
+                  IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
+                  IF(NodeIndexes(k) == EdgeLineNodes(j+3)) NodePositions(4) = k
+                END DO
+                IF(ABS(NodePositions(1) - NodePositions(4)) == 2) &
+                  CALL FATAL('Calving3D_lset', 'Error building edgeine')
+                ALLOCATE(WorkInt(EdgeLength-2))
+                WorkInt(1:j) = EdgeLineNodes(1:j)
+                WorkInt(j:) = EdgeLineNodes(j+3:)
+                DEALLOCATE(EdgeLineNodes)
+                EdgeLength = EdgeLength - 2
+                ALLOCATE(EdgeLineNodes(EdgeLength))
+                EdgeLineNodes = WorkInt
+                DEALLOCATE(WorkInt)
+                EXIT
+              END IF
+            END DO
+          END IF
+          UsedElem(i)=.TRUE.
+        END DO
+      END DO
+      ! update edge line
+      DEALLOCATE(EdgeX, EdgeY)
+      ALLOCATE(EdgeX(EdgeLength), EdgeY(EdgeLength))
+      DO i=1, EdgeLength
+        EdgeX(i) = PlaneMesh % Nodes % x(EdgeLineNodes(i))
+        EdgeY(i) = PlaneMesh % Nodes % y(EdgeLineNodes(i))
+      END DO
+    END IF
+
+
+    IF(Boss) THEN
        ! Locate Isosurface Solver
        DO i=1,Model % NumberOfSolvers
           IF(GetString(Model % Solvers(i) % Values, 'Equation') == Iso_EqName) THEN
