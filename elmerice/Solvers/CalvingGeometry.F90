@@ -1413,29 +1413,33 @@ CONTAINS
 
   FUNCTION PointInPolygon2D(Polygon, Point) RESULT(inside)
     REAL(kind=dp) :: polygon(:,:)
-    REAL(kind=dp) :: left, point(2)
+    REAL(kind=dp), ALLOCATABLE :: ZPolygon(:,:)
+    REAL(kind=dp) :: left, point(2), ZPoint(2)
     INTEGER :: n, i, windingnumber
     LOGICAL :: inside
 
     IF(SIZE(polygon(:,1)) /= 2) CALL FATAL('PointInPolygon2D', 'Please provide a 2D array with x and y coords')
 
-    CALL ZeroPolygon(polygon, point)
-
     n=SIZE(polygon(1,:))
+
+    ZPoint = Point
+    ALLOCATE(ZPolygon(2,n))
+    ZPolygon = Polygon
+    CALL ZeroPolygon(ZPolygon, ZPoint)
 
     windingnumber=100
     DO i=1, n-1
       ! polygon y i <= point y
-      IF(polygon(2,i) <= point(2)) THEN !start with y<=P.y
-        IF(polygon(2, i+1) > point(2)) THEN !upward crossing
-          left=IsLeft(Polygon(:, i), Polygon(:, i+1), Point(:))
+      IF(ZPolygon(2,i) <= ZPoint(2)) THEN !start with y<=P.y
+        IF(ZPolygon(2, i+1) > ZPoint(2)) THEN !upward crossing
+          left=IsLeft(ZPolygon(:, i), ZPolygon(:, i+1), ZPoint(:))
           IF(left > 0.0_dp) THEN !p is to left of intersect
             windingnumber=windingnumber+1 !valid up intersect
           END IF
         END IF
       ELSE    !start at y> point y
-        IF(polygon(2, i+1) <= point(2)) THEN ! downward crossing
-          Left = IsLeft(Polygon(:, i), Polygon(:, i+1), Point(:))
+        IF(ZPolygon(2, i+1) <= ZPoint(2)) THEN ! downward crossing
+          Left = IsLeft(ZPolygon(:, i), ZPolygon(:, i+1), ZPoint(:))
           IF(left < 0.0_dp) THEN ! p right of edge
             windingnumber=windingnumber-1
           END IF
