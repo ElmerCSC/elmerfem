@@ -13,7 +13,7 @@ Header
 End 
 
 Simulation
-  Max Output Level = 20
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Output Intervals = 1
@@ -75,12 +75,13 @@ Solver 1
   Nonlinear System Consistent Norm = Logical True
 
   Linear System Solver = direct
-  Linear System Direct Method = umfpack !MUMPS
+  Linear System Direct Method = MUMPS
   Linear System Scaling = False
   Optimize Bandwidth = False
 
   Block Monolithic = Logical True
   Block System Mass Lumping = Logical False
+
 
   Automated Structure-Structure Coupling = True
   Displace Mesh = False
@@ -90,7 +91,7 @@ Solver 1
   Eigen System Convergence Tolerance = Real 1.0e-6
   Eigen System Select = smallest magnitude
 
-!  Eigen System Complex = Logical False
+!  Eigen System Complex = Logical True
 End
 
 
@@ -104,8 +105,8 @@ Solver 2
   Nonlinear System Max Iterations = 1
 !  Nonlinear System Consistent Norm = Logical True
 
-!  Eigen Analysis = True
-!  Eigen System Values = 10
+  Eigen Analysis = True
+  Eigen System Values = 10
   Nonlinear System Max Iterations = 1
   Optimize Bandwidth = False
   Displace Mesh = Logical False
