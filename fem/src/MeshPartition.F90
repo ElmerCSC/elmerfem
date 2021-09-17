@@ -3473,7 +3473,7 @@ CONTAINS
          CALL InheritHaloToBulkPart
        END IF
        
-       CALL ExtendBoundaryPart()
+       CALL ExtendBoundaryPart(.TRUE.)
 
        ! We could do the halo stuff also after extending 
        IF( ListGetLogical( Params,'Boundary Bounding Box Halo',Found ) ) THEN
@@ -3486,6 +3486,7 @@ CONTAINS
      ELSE IF( EqInterface ) THEN
        NumberOfBoundarySets = 1
        CALL SetInterfacePartition()
+       CALL ExtendBoundaryPart(.FALSE.)
        CALL InheritBulkToBoundaryPart()
      END IF
      
@@ -4152,16 +4153,21 @@ CONTAINS
      ! The routine is written with just a small number of existing
      ! boundary partitions in mind and uses minimal memory. 
      !------------------------------------------------------------
-     SUBROUTINE ExtendBoundaryPart()
-       
+     SUBROUTINE ExtendBoundaryPart(StartFromBC)
+
+       LOGICAL :: StartFromBC
+
        TYPE(Element_t), POINTER :: Element
        INTEGER :: t, ExtendLayers, NoExtend, ElemIndx, NoHits, TestPart, NumberOfParts
        LOGICAL, ALLOCATABLE :: ActiveNode(:)
        INTEGER, ALLOCATABLE :: RefHits(:)
        INTEGER :: allocstat
+       LOGICAL :: BCfirst
 
        NoExtend = 0
+       BCFirst = StartFromBC
 
+       
        ExtendLayers = ListGetInteger( Params,'Partition Mesh Extend Layers', Found ) 
        IF( ExtendLayers <= 0 ) RETURN
        
@@ -4180,6 +4186,8 @@ CONTAINS
          IF( allocstat /= 0 ) THEN
            CALL Fatal(FuncName,'Allocation error for RefHits')
          END IF
+       ELSE
+         CALL Info(FuncName,'Extending boundary to all neighbours of 1st partition.')
        END IF
 
 
@@ -4194,7 +4202,7 @@ CONTAINS
 
            ! Set the active nodes for the partition under testing
            ActiveNode = .FALSE.
-           IF( i == 1 ) THEN
+           IF( BCFirst ) THEN
              ! First layer make starting from boundary elements
              DO t=Mesh % NumberOfBulkElements + 1, &
                  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -4203,6 +4211,7 @@ CONTAINS
                  ActiveNode( Element % NodeIndexes ) = .TRUE.
                END IF
              END DO
+             BCFirst = .FALSE.
            ELSE
              ! Thereafter continue from bulk elements
              DO t=1, Mesh % NumberOfBulkElements 

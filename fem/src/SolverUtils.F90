@@ -13723,7 +13723,10 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     IF ( Parallel  ) THEN
       IF( .NOT. ASSOCIATED(A % ParMatrix) ) THEN
+        CALL Info('SolveLinearSystem','Creating parallel matrix stuctures',Level=8)
         CALL ParallelInitMatrix( Solver, A )
+      ELSE
+        CALL Info('SolveLinearSystem','Using previously created parallel matrix stuctures!',Level=15)
       END IF      
       Parallel = ASSOCIATED(A % ParMatrix)       
     END IF

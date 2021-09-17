@@ -3240,12 +3240,11 @@ CONTAINS
         rhs => TotMatrix % SubVector(NoRow) % rhs      
         A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
         n = n + A % NumberOfRows
-
-        
+      
         DO NoCol = 1,NoVar
           A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
           IF(.NOT. ASSOCIATED(A) ) CYCLE
-          
+         
           IF(InfoActive(20)) THEN
             CALL VectorValuesRange(A % Values,SIZE(A % Values),'A'//TRIM(I2S(10*NoRow+NoCol)))       
             IF( ASSOCIATED( A % MassValues ) ) THEN
@@ -3257,19 +3256,22 @@ CONTAINS
           IF( ASSOCIATED( A % MassValues ) ) HaveMass = .TRUE.
           IF( ASSOCIATED( A % DampValues ) ) HaveDamp = .TRUE.
         END DO
-
       END DO
-      
+
       IF( HaveMass ) THEN
         DO NoRow = 1,NoVar 
           A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
           IF(.NOT. ASSOCIATED( A % MassValues ) ) THEN
-            CALL Fatal(Caller,'MassValues are missing for block: '//TRIM(I2S(11*NoRow)))
+            CALL Warn(Caller,'MassValues are missing for block: '//TRIM(I2S(11*NoRow)))
           END IF
         END DO
+        CALL Info(Caller,'Treating MassValues of block matrix too!',Level=20)
       END IF
 
-      
+      IF( HaveDamp ) THEN
+        CALL Info(Caller,'Treating DampValues of block matrix too!',Level=20)
+      END IF
+        
       NoEigen = Solver %  NOFEigenValues
 
       DampedEigen = ListGetLogical(Solver % Values,'Eigen System Complex',Found )  
