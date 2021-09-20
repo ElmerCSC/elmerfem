@@ -206,7 +206,7 @@ SUBROUTINE Compute2DNodalGradient( Model,Solver,dt,TransientSimulation )
 
          DO i=1,Solver%Mesh % NumberOfNodes
             IF (.NOT.ActiveNode(i)) CYCLE
-            IF (.NOT.Solver % Mesh % ParallelInfo % INTERFACE(i) ) CYCLE
+            IF (.NOT.Solver % Mesh % ParallelInfo % NodeInterface(i) ) CYCLE
   
             nlist => Solver%Mesh % ParallelInfo % NeighbourList(i) % Neighbours
             DO j=1,SIZE(nlist)
@@ -224,7 +224,7 @@ SUBROUTINE Compute2DNodalGradient( Model,Solver,dt,TransientSimulation )
          n_count = 0
          DO i=1,Model % NumberOfNodes
             IF (.NOT.ActiveNode(i)) CYCLE
-            IF (.NOT.Solver % Mesh % ParallelInfo % INTERFACE(i) ) CYCLE
+            IF (.NOT.Solver % Mesh % ParallelInfo % NodeInterface(i) ) CYCLE
 
             nlist =>Solver% Mesh % ParallelInfo % NeighbourList(i) % Neighbours
             DO j=1,SIZE(nlist)
