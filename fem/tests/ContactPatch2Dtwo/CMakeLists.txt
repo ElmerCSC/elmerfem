@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO squares.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(ContactPatch2Dtwo LABELS contact elasticsolve)
+ADD_ELMER_TEST(ContactPatch2Dtwo LABELS contact elasticsolve n-t)
