@@ -903,7 +903,7 @@ CONTAINS
     NBulk = Mesh % NumberOfBulkElements
     NNodes = Mesh % NumberOfNodes
 
-    SharedNode => Mesh % ParallelInfo % Interface
+    SharedNode => Mesh % ParallelInfo % NodeInterface
     ALLOCATE(IsNeighbour(ParEnv % PEs),&
          NodeNeighs(NNodes*2),&
          NNcount(ParEnv % PEs)) !<- likely too big
@@ -1764,17 +1764,17 @@ CONTAINS
       work_neighlist => NULL()
     END IF
 
-    !Get rid of ParallelInfo % INTERFACE
-    IF(ASSOCIATED(Mesh % ParallelInfo % INTERFACE)) THEN
+    !Get rid of ParallelInfo % NodeInterface
+    IF(ASSOCIATED(Mesh % ParallelInfo % NodeInterface)) THEN
       ALLOCATE(work_logical(NewNNodes))
       counter = 0
       DO i=1,NNodes
         IF(RmNode(i)) CYCLE
         counter = counter + 1
-        work_logical(counter) = Mesh % ParallelInfo % INTERFACE(i)
+        work_logical(counter) = Mesh % ParallelInfo % NodeInterface(i)
       END DO
-      DEALLOCATE(Mesh % ParallelInfo % INTERFACE)
-      Mesh % ParallelInfo % INTERFACE => work_logical
+      DEALLOCATE(Mesh % ParallelInfo % NodeInterface)
+      Mesh % ParallelInfo % NodeInterface => work_logical
       work_logical => NULL()
     END IF
 
@@ -2339,7 +2339,7 @@ CONTAINS
               PPack % rcount = PPack % rcount + dim
               
               PPack % lcount = PPack % lcount + 1
-              PPack % ldata(PPack % lcount) = Mesh % ParallelInfo % Interface(i)
+              PPack % ldata(PPack % lcount) = Mesh % ParallelInfo % NodeInterface(i)
             END IF
           END DO
 
@@ -2826,12 +2826,12 @@ CONTAINS
 
     CALL Info(Caller,'Copying staying nodes',Level=20)
 
-    IF( .NOT. ASSOCIATED( NewMesh % ParallelInfo % INTERFACE ) ) THEN
-      ALLOCATE( NewMesh % ParallelInfo % INTERFACE( NewMesh % NumberOfNodes ), STAT = allocstat )
+    IF( .NOT. ASSOCIATED( NewMesh % ParallelInfo % NodeInterface ) ) THEN
+      ALLOCATE( NewMesh % ParallelInfo % NodeInterface( NewMesh % NumberOfNodes ), STAT = allocstat )
       IF( allocstat /= 0 ) THEN
         CALL Fatal(Caller,'Cannot allocate partition interface?')
       END IF
-      NewMesh % ParallelInfo % Interface = .FALSE.
+      NewMesh % ParallelInfo % NodeInterface = .FALSE.
     END IF
 
     
@@ -2852,7 +2852,7 @@ CONTAINS
       NewMesh % Nodes % y(k) = Mesh % Nodes % y(i)
       IF( dim == 3 ) NewMesh % Nodes % z(k) = Mesh % Nodes % z(i)
 
-      NewMesh % ParallelInfo % Interface(k) = Mesh % ParallelInfo % Interface(i)
+      NewMesh % ParallelInfo % NodeInterface(k) = Mesh % ParallelInfo % NodeInterface(i)
     END DO
 
 
@@ -3067,7 +3067,7 @@ CONTAINS
         IF( dim == 3 ) NewMesh % Nodes % z(k) = PPack % rdata(rcount+3)
         rcount = rcount + dim
 
-        NewMesh % ParallelInfo % INTERFACE(k) = PPack % ldata(lcount+1)
+        NewMesh % ParallelInfo % NodeInterface(k) = PPack % ldata(lcount+1)
         lcount = lcount + 1
       END DO
     END DO
@@ -3078,7 +3078,7 @@ CONTAINS
  
 
     
-    n = COUNT( NewMesh % ParallelInfo % INTERFACE )
+    n = COUNT( NewMesh % ParallelInfo % NodeInterface )
     CALL Info(Caller,'Potential interface nodes '//TRIM(I2S(n))//' out of '&
         //TRIM(I2S(NewMesh % NumberOfNodes)),Level=20)
 
@@ -3136,14 +3136,14 @@ CONTAINS
     IF( n == 0 ) RETURN
 
     ! The interface includes the old interface between partitions
-    IF( .NOT. ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) THEN
-      ALLOCATE( Mesh % ParallelInfo % INTERFACE( n ), STAT=allocstat )
+    IF( .NOT. ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) THEN
+      ALLOCATE( Mesh % ParallelInfo % NodeInterface( n ), STAT=allocstat )
       IF( allocstat /= 0 ) THEN
         CALL Fatal(Caller,'Allocation error for parallel interface!')
       END IF
-      Mesh % ParallelInfo % Interface = .FALSE.
+      Mesh % ParallelInfo % NodeInterface = .FALSE.
     END IF
-    PartInterface => Mesh % ParallelInfo % Interface
+    PartInterface => Mesh % ParallelInfo % NodeInterface
 
     IF( .NOT. ASSOCIATED( Mesh % RePartition ) ) THEN
       CALL Fatal(Caller,'Allocation error for parallel interface!')
@@ -3186,7 +3186,7 @@ CONTAINS
   END SUBROUTINE UpdateInterfaceNodeCandidates
 
   !> Based on a conservative list of potential interface nodes
-  !> in ParallelInfo % Interface, find real interface nodes &
+  !> in ParallelInfo % NodeInterface, find real interface nodes &
   !> populate NeighbourList % Neighbours
   !-------------------------------------------------------------------
   SUBROUTINE FindRepartitionInterfaces(Model, Mesh, DIM)
@@ -3210,7 +3210,7 @@ CONTAINS
     !Find potential neighbour partitions - shouldn't really need to buffer
     PartMaybeNeigh = FindMeshNeighboursGeometric(Mesh,DIM,1.0_dp)
 
-    Iface => Mesh % ParallelInfo % Interface
+    Iface => Mesh % ParallelInfo % NodeInterface
     NeighList => Mesh % ParallelInfo % NeighbourList
 
     n = COUNT(Iface)

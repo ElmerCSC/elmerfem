@@ -737,7 +737,7 @@ MODULE Types
 
    TYPE ParallelInfo_t
      INTEGER :: NumberOfIfDOFs
-     LOGICAL, POINTER               :: INTERFACE(:)
+     LOGICAL, POINTER               :: NodeInterface(:)
      INTEGER, POINTER               :: GlobalDOFs(:)
      TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
      INTEGER, POINTER               :: Gorder(:) => NULL()

@@ -159,11 +159,11 @@ CONTAINS
          n = Matrix % NumberOfRows
          ALLOCATE( Matrix % ParallelInfo )
          ALLOCATE( Matrix % ParallelInfo % NeighbourList(n) )
-         CALL AllocateVector( Matrix % ParallelInfo % Interface, n)
+         CALL AllocateVector( Matrix % ParallelInfo % NodeInterface, n)
          CALL AllocateVector( Matrix % ParallelInfo % GlobalDOFs, n)
 
          DO i=1,n
-           Matrix % ParallelInfo % Interface(i) = .FALSE.
+           Matrix % ParallelInfo % NodeInterface(i) = .FALSE.
            Matrix % ParallelInfo % GlobalDOFs(i) = 0
            Matrix % ParallelInfo % NeighbourList(i) % Neighbours => NULL()
          END DO
@@ -175,8 +175,8 @@ CONTAINS
 
               Matrix % ParallelInfo % GlobalDOFs(k) = &
                 DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
-              Matrix % ParallelInfo % Interface(k) = &
-                Mesh % ParallelInfo % Interface(i)
+              Matrix % ParallelInfo % NodeInterface(k) = &
+                Mesh % ParallelInfo % NodeInterface(i)
               
               IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
                 ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
@@ -220,7 +220,7 @@ CONTAINS
                  IF(l==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(l) = &
                      DOFs*(g_beg+maxedofs*(Element % GelementIndex-1)+j-1)+m
-                 Matrix % ParallelInfo % Interface(l) = Mesh % ParallelInfo % EdgeInterface(i)
+                 Matrix % ParallelInfo % NodeInterface(l) = Mesh % ParallelInfo % EdgeInterface(i)
                 
                  ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
                       Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)))
@@ -255,7 +255,7 @@ CONTAINS
                  IF(l==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(l) = &
                      DOFs*(g_beg+maxfdofs*(Element % GelementIndex-1)+j-1)+m
-                 Matrix % ParallelInfo % Interface(l) = Mesh % ParallelInfo % FaceInterface(i)
+                 Matrix % ParallelInfo % NodeInterface(l) = Mesh % ParallelInfo % FaceInterface(i)
 
                  ALLOCATE(Matrix % Parallelinfo % NeighbourList(l) % Neighbours(SIZE( &
                       Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours)))
@@ -289,7 +289,7 @@ CONTAINS
                  IF(k==0) CYCLE
                  Matrix % ParallelInfo % GlobalDOFs(k) = &
                    DOFs*(g_beg+maxbdofs*(Element % GElementIndex-1)+l-1)+j
-                 Matrix % ParallelInfo % Interface(k) = .FALSE.
+                 Matrix % ParallelInfo % NodeInterface(k) = .FALSE.
                  ALLOCATE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours(1))
                  Matrix % ParallelInfo % NeighbourList(k) % Neighbours=ParEnv % MyPE
                END DO
@@ -333,7 +333,7 @@ CONTAINS
            j=j+1
            Global_dof = j <= Matrix % ParallelDOFs
            IF (Global_dof) THEN
-             Matrix % Parallelinfo % Interface(i) = .TRUE.
+             Matrix % ParallelInfo % NodeInterface(i) = .TRUE.
 
              IF(NeighboursGiven) THEN
                ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours( &
@@ -343,7 +343,7 @@ CONTAINS
                   Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours
 
                IF(ALL(Matrix % ParallelInfo % NeighbourList(i) % Neighbours /= ParEnv % myPE)) THEN
-                 Matrix % ParallelInfo % Interface(i) = .FALSE.
+                 Matrix % ParallelInfo % NodeInterface(i) = .FALSE.
                  DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
                  ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
                  Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % mype
@@ -380,20 +380,20 @@ CONTAINS
              k = MOD(n-1,Solver % Matrix % NumberOfRows)+1
              n = (n-1) / Solver % Matrix % NumberOfRows
 
-             Matrix % Parallelinfo % Interface(i) = Matrix % ParallelInfo % Interface(k)
+             Matrix % ParallelInfo % NodeInterface(i) = Matrix % ParallelInfo % NodeInterface(k)
 
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
 
              IF(LocalConstraints) THEN
                IF(.NOT.DiscontBC) THEN
-                 IF (Matrix % Parallelinfo % Interface(k)) &
+                 IF (Matrix % ParallelInfo % NodeInterface(k)) &
                    CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
                END IF
 
                DO m=Matrix % Rows(i), Matrix % Diag(i)-1
                  col = Matrix % Cols(m)
-                 IF (Matrix % Parallelinfo % Interface(col)) THEN
+                 IF (Matrix % ParallelInfo % NodeInterface(col)) THEN
                    DO l=1,SIZE(Matrix % ParallelInfo % NeighbourList(col) % Neighbours)
                      proc = Matrix % ParallelInfo % NeighbourList(col) % Neighbours(l)
                      IF(proc==ParEnv % mype) THEN
@@ -604,8 +604,8 @@ CONTAINS
            END DO
          END IF
          
-         ALLOCATE( MatrixPI % INTERFACE(n), MatrixPI % NeighbourList(n) )
-         MatrixPI % Interface = .FALSE.
+         ALLOCATE( MatrixPI % NodeInterface(n), MatrixPI % NeighbourList(n) )
+         MatrixPI % NodeInterface = .FALSE.
          DO i=1,n
            MtrxN => MatrixPI % NeighbourList(i)
            MtrxN % Neighbours => NULL()
@@ -614,7 +614,7 @@ CONTAINS
          DO i=1,Mesh % NumberOfBulkElements
            Element => Mesh % Elements(i)
            IF ( .NOT. ASSOCIATED(Element % DGIndexes) ) CYCLE
-           IF ( ALL(MeshPI % Interface(Element % NodeIndexes)) ) THEN
+           IF ( ALL(MeshPI % NodeInterface(Element % NodeIndexes)) ) THEN
              DO j=1,Element % Type % NumberOfNodes
                 K = Matrix % Perm(Element % DGIndexes(j))
                 IF(K==0) CYCLE
@@ -623,7 +623,7 @@ CONTAINS
                 MeshN => MeshPI % NeighbourList(L)
                 MtrxN => MatrixPI % NeighbourList(K)
 
-                MatrixPI % Interface(k) = .TRUE.
+                MatrixPI % NodeInterface(k) = .TRUE.
 
                 CALL AllocateVector( MtrxN % Neighbours,  SIZE(MeshN % Neighbours) )
                 MtrxN % Neighbours = MeshN % Neighbours
@@ -1361,7 +1361,7 @@ CONTAINS
 
       n = A % NumberOfRows
       ALLOCATE( P % NeighbourList(n) )
-      CALL AllocateVector( P % Interface, n)
+      CALL AllocateVector( P % NodeInterface, n)
       CALL AllocateVector( P % GlobalDOFs, n)
       IF( ASSOCIATED( A1 % Perm ) ) CALL AllocateVector( A % Perm, n)      
       IF( ASSOCIATED( A1 % InvPerm ) ) CALL AllocateVector( A % InvPerm, n)
@@ -1382,11 +1382,11 @@ CONTAINS
         m = jumps(i)
 
         IF(c==1) THEN
-          P % INTERFACE(n+1:n+ni) = Pi % INTERFACE(1:ni) 
+          P % NodeInterface(n+1:n+ni) = Pi % NodeInterface(1:ni) 
           P % GlobalDofs(n+1:n+ni) = Pi % GlobalDofs(1:ni) + m
         ELSE
-          P % INTERFACE(2*n+1:2*(n+ni)-1:2) = Pi % INTERFACE(1:ni) 
-          P % INTERFACE(2*n+2:2*(n+ni):2) = Pi % INTERFACE(1:ni) 
+          P % NodeInterface(2*n+1:2*(n+ni)-1:2) = Pi % NodeInterface(1:ni) 
+          P % NodeInterface(2*n+2:2*(n+ni):2) = Pi % NodeInterface(1:ni) 
           P % GlobalDofs(2*n+1:2*(n+ni)-1:2) = 2*Pi % GlobalDofs(1:ni)-1 + 2*m
           P % GlobalDofs(2*n+2:2*(n+ni):2) = 2*Pi % GlobalDofs(1:ni) + 2*m
         END IF

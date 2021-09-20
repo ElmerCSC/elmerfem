@@ -386,13 +386,13 @@ CONTAINS
       NeighList(i) % Head => NULL()
     END DO
     DEALLOCATE( Active )
-    ALLOCATE( Active(SIZE(ParallelInfo % Interface)) )
+    ALLOCATE( Active(SIZE(ParallelInfo % NodeInterface)) )
 
 !   IF ( .NOT. SourceMatrix % DGMatrix ) THEN
       DO ii=1,SourceMatrix % NumberOfRows
 
         Active(ii) = HUGE(i)
-        IF ( ParallelInfo % Interface(ii) ) THEN
+        IF ( ParallelInfo % NodeInterface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
           DO j=1,sz
             k = ParallelInfo % NeighbourList(ii) % Neighbours(j)
@@ -466,7 +466,7 @@ CONTAINS
       END DO
 
       DO ii=1,SourceMatrix % NumberOfRows
-        IF ( ParallelInfo % Interface(ii) ) THEN
+        IF ( ParallelInfo % NodeInterface(ii) ) THEN
           sz = SIZE(ParallelInfo % NeighbourList(ii) % Neighbours)
           IF ( Active(ii)>1 .AND. Active(ii) <= sz ) THEN
             n = ParallelInfo % NeighbourList(ii) % Neighbours(Active(ii))
@@ -592,7 +592,7 @@ CONTAINS
 
       IsNeighbour = .FALSE.
       DO i=1,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % Interface(i) ) THEN
+        IF ( Mesh % ParallelInfo % NodeInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
             IsNeighbour(Mesh % ParallelInfo % &
               NeighbourList(i) % Neighbours(j)+1) = .TRUE.
@@ -673,7 +673,7 @@ CONTAINS
 
     Edgen(:) % n = 0
     gdofs => Mesh % ParallelInfo % GlobalDOFs
-    ig => Mesh % ParallelInfo % Interface
+    ig => Mesh % ParallelInfo % NodeInterface
     nb => Mesh % ParallelInfo % NeighbourList
 
     !
@@ -1340,7 +1340,7 @@ CONTAINS
 
     Facen(:) % n = 0
     gdofs => Mesh % ParallelInfo % GlobalDOFs
-    ig => Mesh % ParallelInfo % Interface
+    ig => Mesh % ParallelInfo % NodeInterface
     nb => Mesh % ParallelInfo % NeighbourList
 
 
@@ -1868,7 +1868,7 @@ tstart = realtime()
        ALLOCATE(IsNeighbour(ParEnv % PEs))
        IsNeighbour = .FALSE.
        DO i=1,OldMesh % NumberOfNodes
-         IF ( OldMesh % ParallelInfo % Interface(i) ) THEN
+         IF ( OldMesh % ParallelInfo % NodeInterface(i) ) THEN
            DO j=1,SIZE(OldMesh % ParallelInfo % NeighbourList(i) % Neighbours)
              IsNeighbour(OldMesh % ParallelInfo % &
                NeighbourList(i) % Neighbours(j)+1) = .TRUE.
@@ -1939,7 +1939,7 @@ tstart = realtime()
      !   WRITE(j,*) 'body1 504', Mesh % Elements(i) % NodeIndexes-1
      !END DO
      !DO i = 1,Mesh % nodes % numberOfnodes
-     !   IF( Mesh %ParallelInfo % INTERFACE(i) ) THEN
+     !   IF( Mesh %ParallelInfo % NodeInterface(i) ) THEN
      !      WRITE(j,*) 1
      !   ELSE
      !     WRITE(j,*) 0
@@ -1954,7 +1954,7 @@ tstart = realtime()
      ! Loop over all new nodes:
      !--------------------------
      DO i = n, Mesh % NumberOfNodes
-        IF( .NOT. Mesh % ParallelInfo % INTERFACE(i) ) CYCLE
+        IF( .NOT. Mesh % ParallelInfo % NodeInterface(i) ) CYCLE
         !
         ! This is an interface node:
         !---------------------------
@@ -1975,7 +1975,7 @@ tstart = realtime()
               !--------------------------------------------------
               l = Element % NodeIndexes(k)
               IF( l >= n ) CYCLE ! parents have local number < n
-              IF( .NOT. Mesh % ParallelInfo % Interface(l) ) CYCLE
+              IF( .NOT. Mesh % ParallelInfo % NodeInterface(l) ) CYCLE
               IF( ANY( parentnodes(i,:)==l) ) CYCLE ! already found
               !
               ! Construct the parent table:
@@ -2107,7 +2107,7 @@ tstart = realtime()
      tosend = 0
      toreceive = 0
      DO i = n, Mesh % NumberOfNodes
-        IF( Mesh % ParallelInfo % Interface(i) ) THEN
+        IF( Mesh % ParallelInfo % NodeInterface(i) ) THEN
            j = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(1)
            IF( j /= ParEnv % MyPE ) THEN
               toreceive(j+1) = toreceive(j+1)+1
@@ -2133,7 +2133,7 @@ tstart = realtime()
         ALLOCATE( gindices(DataSize) )
         k = 1
         DO l = n, Mesh % NumberOfNodes
-           IF( .NOT.( Mesh % ParallelInfo % Interface(l) ) ) CYCLE
+           IF( .NOT.( Mesh % ParallelInfo % NodeInterface(l) ) ) CYCLE
            m = Mesh % ParallelInfo % NeighbourList(l) % Neighbours(1)
            IF( m /= ParEnv % MyPE ) CYCLE
 
@@ -2170,7 +2170,7 @@ tstart = realtime()
         CALL MPI_RECV( gindices, 3*DataSize, MPI_INTEGER, i-1, 400, ELMER_COMM_WORLD, status, ierr )
 
         DO k = n, Mesh % NumberOfnodes
-           IF( .NOT. Mesh % ParallelInfo % Interface(k) ) CYCLE
+           IF( .NOT. Mesh % ParallelInfo % NodeInterface(k) ) CYCLE
            IF( Mesh % ParallelInfo % GlobalDOFs(k) > 0 ) CYCLE
            
            DO l = 1, DataSize
@@ -2282,7 +2282,7 @@ tstart = realtime()
            mm = 0
            nn = 0
            DO j = n, Mesh % NumberOfNodes
-              IF( .NOT. Mesh % ParallelInfo % Interface(j)) CYCLE
+              IF( .NOT. Mesh % ParallelInfo % NodeInterface(j)) CYCLE
               mm = 0
               nn = 0
               DO k = 1,SIZE( Node(j) % ElementIndexes )
@@ -2575,7 +2575,7 @@ tstart = realtime()
                  k2 = 0
                  k1 = 0
                  DO k=n,Mesh % NumberOfNodes
-                    IF ( .NOT.Mesh % ParallelInfo % INTERFACE(k) ) CYCLE
+                    IF ( .NOT.Mesh % ParallelInfo % NodeInterface(k) ) CYCLE
 
                     k1 = k1 + 1
                     IF ( IntN == OldIntCnts(k1) ) THEN
@@ -2624,12 +2624,12 @@ tstart = realtime()
 !
 !    Extract interface nodes:
 !    ------------------------
-     InterfaceNodes = COUNT( Mesh % ParallelInfo % INTERFACE(n:) )
+     InterfaceNodes = COUNT( Mesh % ParallelInfo % NodeInterface(n:) )
      IF ( InterfaceNodes > 0 ) ALLOCATE( Gindices(InterfaceNodes) )
 
      InterfaceNodes = 0
      DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
+        IF ( Mesh % ParallelInfo % NodeInterface(i) ) THEN
            InterfaceNodes = InterfaceNodes + 1
            Gindices(InterfaceNodes) = Mesh % ParallelInfo % GlobalDOFs(i)
         END IF
@@ -2713,11 +2713,11 @@ tstart = realtime()
 !    information which PEs share which of the new
 !    interface nodes:
 !    -----------------------------------------------
-     InterfaceNodes = COUNT( Mesh % ParallelInfo % INTERFACE(n:) )
+     InterfaceNodes = COUNT( Mesh % ParallelInfo % NodeInterface(n:) )
      ALLOCATE( GIndices( InterfaceNodes ) )
      j = 0
      DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
+        IF ( Mesh % ParallelInfo % NodeInterface(i) ) THEN
            j = j + 1
            GIndices(j) = Mesh % ParallelInfo % GlobalDOFs(i)
            ALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs) )
@@ -2742,7 +2742,7 @@ tstart = realtime()
 
      IntCnts = 0
      DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
+        IF ( Mesh % ParallelInfo % NodeInterface(i) ) THEN
            IntCnts(i) = IntCnts(i) + 1
            Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPE
         END IF
@@ -2774,7 +2774,7 @@ tstart = realtime()
 !    correct sizes:
 !    ---------------------------------------
      DO i=n,Mesh % NumberOfNodes
-        IF ( Mesh % ParallelInfo % INTERFACE(i) ) THEN
+        IF ( Mesh % ParallelInfo % NodeInterface(i) ) THEN
            k = IntCnts(i)
            ALLOCATE( Gindices(k) ) ! just work space
            Gindices = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1:k)
@@ -2791,7 +2791,7 @@ tstart = realtime()
 !        DO i = 1, Mesh % NumberOfNodes
 !           PRINT *,'Local:',i, &
 !                'Global:' ,Mesh % Parallelinfo % GlobalDOFs(i), &
-!                'Interface:', Mesh % ParallelInfo % INTERFACE(i), &
+!                'Interface:', Mesh % ParallelInfo % NodeInterface(i), &
 !                'Neighbours:', Mesh % ParallelInfo % NeighbourList(i) % Neighbours + 1
 !        END DO
 !     END IF
@@ -2799,7 +2799,7 @@ tstart = realtime()
 PRINT *,'****OK:', parenv % mype+1
 DO i = 1, mesh % nodes % numberofnodes
    PRINT *,'(+++)',parenv % mype+1, i, Mesh % ParallelInfo % GlobalDOFs(i), &
-        Mesh % ParallelInfo % INTERFACE(i), Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+        Mesh % ParallelInfo % NodeInterface(i), Mesh % ParallelInfo % NeighbourList(i) % Neighbours
 END DO
 
 
@@ -2821,20 +2821,20 @@ CONTAINS
         swapx =  Mesh % Nodes % x(i)
         swapy =  Mesh % Nodes % y(i)
         swapz =  Mesh % Nodes % z(i)
-        swapi =  Mesh % ParallelInfo % INTERFACE(i)
+        swapi =  Mesh % ParallelInfo % NodeInterface(i)
         swapl => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
  
         Mesh % Nodes % x(i) = Mesh % Nodes % x(k)
         Mesh % Nodes % y(i) = Mesh % Nodes % y(k)
         Mesh % Nodes % z(i) = Mesh % Nodes % z(k)
-        Mesh % ParallelInfo % INTERFACE(i) = Mesh % ParallelInfo % INTERFACE(k) 
+        Mesh % ParallelInfo % NodeInterface(i) = Mesh % ParallelInfo % NodeInterface(k) 
         Mesh % ParallelInfo % NeighbourList(i) % Neighbours => &
                  Mesh % ParallelInfo % NeighbourList(k) % Neighbours
 
         Mesh % Nodes % x(k) = swapx
         Mesh % Nodes % y(k) = swapy
         Mesh % Nodes % z(k) = swapz
-        Mesh % ParallelInfo % INTERFACE(k) = swapi
+        Mesh % ParallelInfo % NodeInterface(k) = swapi
         Mesh % ParallelInfo % NeighbourList(k) % Neighbours => swapl
 !-----------------------------------------------------------------------
      END SUBROUTINE SwapNodes

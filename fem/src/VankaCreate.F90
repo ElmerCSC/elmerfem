@@ -138,7 +138,7 @@
        cnt = 0
        DO i=1,A % NumberOfRows
          DO j=Rows(i),Rows(i+1)-1
-           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
              DO l=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
                m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(l)
                IF ( m==ParEnv % myPE ) CYCLE
@@ -425,7 +425,7 @@
            IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
              m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(1)
              IF ( m==ParEnv % myPE ) CYCLE
              cnt(m) = cnt(m)+1
@@ -445,7 +445,7 @@
            IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
            IF(TotValues(j)==0) CYCLE
 
-           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+           IF ( A % ParallelInfo % NodeInterface(Cols(j)) ) THEN
              m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(1)
              IF ( m==ParEnv % myPE ) CYCLE
              cnt(m) = cnt(m)+1

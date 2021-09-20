@@ -532,7 +532,7 @@ CONTAINS
 
      Mesh % ParallelInfo % NumberOfIfDOFs =  0
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
-     NULLIFY( Mesh % ParallelInfo % INTERFACE )
+     NULLIFY( Mesh % ParallelInfo % NodeInterface )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )
          
   END FUNCTION AllocateMesh

@@ -2759,7 +2759,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
   ResEPerNB = 0; RHSEPerNB = 0
 
   DO i = 1, SourceMatrix % NumberOfRows
-     IF ( ParallelInfo % INTERFACE(i) ) THEN
+     IF ( ParallelInfo % NodeInterface(i) ) THEN
         IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
            DO j = 1, SIZE( ParallelInfo % NeighbourList(i) % Neighbours )
                IF ( ParallelInfo % NeighbourList(i) % Neighbours(j)/=ParEnv % MyPE ) THEN

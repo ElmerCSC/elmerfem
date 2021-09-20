@@ -208,7 +208,7 @@ CONTAINS
     
      Mesh % ParallelInfo % NumberOfIfDOFs =  0        
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
-     NULLIFY( Mesh % ParallelInfo % INTERFACE )
+     NULLIFY( Mesh % ParallelInfo % NodeInterface )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )     
 
      i = 0
@@ -317,7 +317,7 @@ CONTAINS
      ALLOCATE(Mesh % ParallelInfo % GlobalDOFs(Mesh % NumberOfNodes), STAT=istat )
      IF ( istat /= 0 ) &
          CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
-     ALLOCATE(Mesh % ParallelInfo % INTERFACE(Mesh % NumberOfNodes), STAT=istat )
+     ALLOCATE(Mesh % ParallelInfo % NodeInterface(Mesh % NumberOfNodes), STAT=istat )
      IF ( istat /= 0 ) &
          CALL Fatal( Caller, 'Unable to allocate Mesh % ParallelInfo % NeighbourList' )
      ALLOCATE(Mesh % ParallelInfo % NeighbourList(Mesh % NumberOfNodes), STAT=istat )
@@ -1384,15 +1384,15 @@ CONTAINS
    ! Create logical table showing the interface nodes
    ALLOCATE( Intf(n1) )
    Intf = .FALSE.
-   Intf(1:n0) = Mesh % ParallelInfo % INTERFACE(1:n0)
+   Intf(1:n0) = Mesh % ParallelInfo % NodeInterface(1:n0)
    DO i=n0+1,n1
      j = Perm(i)
      IF(j > 0 ) THEN
        Intf(i) = Intf(j) 
      END IF
    END DO
-   DEALLOCATE( Mesh % ParallelInfo % INTERFACE )
-   Mesh % ParallelInfo % Interface => Intf
+   DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
+   Mesh % ParallelInfo % NodeInterface => Intf
 
 
  END SUBROUTINE EnlargeParallelInfo
@@ -1975,8 +1975,8 @@ CONTAINS
        NULLIFY( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
      END DO
 
-     CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, n, 'InitParallelInfo')
-     Mesh % ParallelInfo % INTERFACE = .FALSE.       
+     CALL AllocateVector( Mesh % ParallelInfo % NodeInterface, n, 'InitParallelInfo')
+     Mesh % ParallelInfo % NodeInterface = .FALSE.       
 
    END SUBROUTINE InitParallelInfo
 
@@ -2018,7 +2018,7 @@ CONTAINS
        npart = ivals(2)       
 
        k = LocalPerm( tag-MinNodeTag+1 )
-       Mesh % ParallelInfo % INTERFACE(k) = .TRUE.
+       Mesh % ParallelInfo % NodeInterface(k) = .TRUE.
        CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(k) % Neighbours,npart)
 
        IF( nread < 2 + npart ) THEN
@@ -2072,8 +2072,8 @@ CONTAINS
        Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe
      END DO
 
-     CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, n, 'InitParallelInfo')
-     Mesh % ParallelInfo % INTERFACE = .FALSE.       
+     CALL AllocateVector( Mesh % ParallelInfo % NodeInterface, n, 'InitParallelInfo')
+     Mesh % ParallelInfo % NodeInterface = .FALSE.       
 
    END SUBROUTINE InitPseudoParallel
 
@@ -14078,7 +14078,7 @@ CONTAINS
       IF(.NOT. ASSOCIATED( PI_out ) ) CALL Fatal('MeshExtrude','PI_out not associated!')
             
       ALLOCATE(PI_out % NeighbourList(nnodes))
-      ALLOCATE(PI_out % INTERFACE(nnodes))
+      ALLOCATE(PI_out % NodeInterface(nnodes))
       ALLOCATE(PI_out % GlobalDOFs(nnodes))
 
       IF(.NOT. ASSOCIATED( PI_in % NeighbourList ) ) THEN
@@ -14176,7 +14176,7 @@ CONTAINS
         ActiveCoord(cnt) = CurrCoord
 
         IF (isParallel) THEN
-          PI_out % INTERFACE(cnt) = PI_in % INTERFACE(j)
+          PI_out % NodeInterface(cnt) = PI_in % NodeInterface(j)
 
           ALLOCATE(PI_out % NeighbourList(cnt) % Neighbours(&
                SIZE(PI_in % NeighbourList(j) % Neighbours)))
@@ -17982,7 +17982,7 @@ CONTAINS
        ALLOCATE( NewMesh % ParallelInfo % NeighbourList(n), stat=istat )
        IF ( istat /= 0 ) &
          CALL Fatal( 'UpdateParallelMesh', 'Allocate error.' )
-       CALL AllocateVector( NewMesh % ParallelInfo % INTERFACE,n  )
+       CALL AllocateVector( NewMesh % ParallelInfo % NodeInterface,n  )
        CALL AllocateVector( NewMesh % ParallelInfo % GlobalDOFs,n )
 
        DO i=1,n
@@ -17990,8 +17990,8 @@ CONTAINS
        END DO
 
        n = Mesh % NumberOfNodes
-       NewMesh % ParallelInfo % INTERFACE = .FALSE.
-       NewMesh % ParallelInfo % INTERFACE(1:n) = Mesh % ParallelInfo % INTERFACE
+       NewMesh % ParallelInfo % NodeInterface = .FALSE.
+       NewMesh % ParallelInfo % NodeInterface(1:n) = Mesh % ParallelInfo % NodeInterface
 
        NewMesh % ParallelInfo % GlobalDOFs = 0
        NewMesh % ParallelInfo % GlobalDOFs(1:n) = &
@@ -18015,7 +18015,7 @@ CONTAINS
           !-----------------------
           p = 0 
           DO i = 1, Mesh % NumberOfNodes
-             IF( Mesh % ParallelInfo % INTERFACE(i) ) p = p+1
+             IF( Mesh % ParallelInfo % NodeInterface(i) ) p = p+1
           END DO
 !         WRITE(*,'(A,I4,A,I6,A)')'SplitMeshEqual: PE:', &
 !              Parenv % MyPE+1, ' Found',p,' interface nodes'
@@ -18028,7 +18028,7 @@ CONTAINS
              Edge => Mesh % Edges(i)
              IF( ASSOCIATED(Edge % BoundaryInfo % Left) .AND. &
                   ASSOCIATED(Edge % BoundaryInfo % Right) ) CYCLE
-             IF( .NOT.ALL( Mesh % ParallelInfo % INTERFACE( Edge % NodeIndexes ) )) CYCLE
+             IF( .NOT.ALL( Mesh % ParallelInfo % NodeInterface( Edge % NodeIndexes ) )) CYCLE
              InterfaceTag(i) = .TRUE.
           END DO
           !
@@ -18076,11 +18076,11 @@ CONTAINS
              
              ! This is just for the edge count:
              !---------------------------------
-             IF( NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + i) ) CYCLE
+             IF( NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + i) ) CYCLE
              
              ! Mark interface nodes and count edges:
              !--------------------------------------
-             NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + i) = .TRUE.
+             NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + i) = .TRUE.
              p = p+1
 
           END DO
@@ -18098,7 +18098,7 @@ CONTAINS
           !-----------------------
           p = 0 
           DO i = 1, Mesh % NumberOfNodes
-             IF( Mesh % ParallelInfo % INTERFACE(i) ) p = p+1
+             IF( Mesh % ParallelInfo % NodeInterface(i) ) p = p+1
           END DO
 !         WRITE(*,'(A,I4,A,I6,A)')'SplitMeshEqual: PE:', &
 !              Parenv % MyPE+1, ' Found',p,' interface nodes'
@@ -18111,7 +18111,7 @@ CONTAINS
              Face => Mesh % Faces(i)
              IF( ASSOCIATED(Face % BoundaryInfo % Left) .AND. &
                   ASSOCIATED(Face % BoundaryInfo % Right) ) CYCLE
-             IF( .NOT.ALL( Mesh % ParallelInfo % INTERFACE( Face % NodeIndexes ) )) CYCLE
+             IF( .NOT.ALL( Mesh % ParallelInfo % NodeInterface( Face % NodeIndexes ) )) CYCLE
              InterfaceTag(i) = .TRUE.
           END DO
           
@@ -18174,11 +18174,11 @@ CONTAINS
                 
                 ! This is just for the edge count:
                 !---------------------------------
-                IF( NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + k) ) CYCLE
+                IF( NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + k) ) CYCLE
                 
                 ! Mark interface nodes and count edges:
                 !--------------------------------------
-                NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes + k) = .TRUE.
+                NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes + k) = .TRUE.
                 p = p+1
              END DO
           END DO
@@ -18201,8 +18201,8 @@ CONTAINS
        DO i = 1,Mesh % NumberOfFaces
           Face => Mesh % Faces(i) 
           IF( Face % TYPE % NumberOfNodes == 4 ) THEN
-             IF ( ALL( Mesh % ParallelInfo % INTERFACE( Face % NodeIndexes ) ) ) THEN
-                NewMesh % ParallelInfo % INTERFACE( Mesh % NumberOfNodes &
+             IF ( ALL( Mesh % ParallelInfo % NodeInterface( Face % NodeIndexes ) ) ) THEN
+                NewMesh % ParallelInfo % NodeInterface( Mesh % NumberOfNodes &
                      + Mesh % NumberOfEdges + i ) = .TRUE.
                 j = j + 1
                 k = k + Face % TYPE % NumberOfNodes
@@ -18228,7 +18228,7 @@ CONTAINS
 !      of the interface nodes:
 !      ----------------------------------------
        DO i=Mesh % NumberOfNodes+1, NewMesh % NumberOfNodes
-          IF ( .NOT. NewMesh % ParallelInfo % INTERFACE(i) ) THEN
+          IF ( .NOT. NewMesh % ParallelInfo % NodeInterface(i) ) THEN
             CALL AllocateVector( NewMesh % ParallelInfo % NeighbourList(i) % Neighbours,1 )
             NewMesh % ParallelInfo % NeighbourList(i) %  Neighbours(1) = ParEnv % MyPE
           END IF
@@ -18248,7 +18248,7 @@ CONTAINS
 !         Found = .NOT.( ASSOCIATED(edge % boundaryinfo % left) &
 !              .AND.  ASSOCIATED(edge % boundaryinfo % right) )
 !         
-!         IF ( ALL(Mesh % ParallelInfo % INTERFACE(Edge % NodeIndexes)) .AND. Found ) THEN
+!         IF ( ALL(Mesh % ParallelInfo % NodeInterface(Edge % NodeIndexes)) .AND. Found ) THEN
 !            j = j + 1
 !            IntCnts(j) = Edge % TYPE % NumberOfNodes
 !            IntArray( k+1:k+IntCnts(j) ) = &
@@ -18263,7 +18263,7 @@ CONTAINS
 !      DO i = 1,Mesh % NumberOfFaces
 !         Face => Mesh % Faces(i)
 !         IF( Face % TYPE % NumberOfNodes == 4 ) THEN
-!            IF ( ALL( Mesh % ParallelInfo % INTERFACE(Face % NodeIndexes) ) ) THEN
+!            IF ( ALL( Mesh % ParallelInfo % NodeInterface(Face % NodeIndexes) ) ) THEN
 !               j = j + 1
 !               IntCnts(j) = Face % TYPE % NumberOfNodes
 !               IntArray(k+1:k+IntCnts(j)) = &
@@ -18342,8 +18342,8 @@ CONTAINS
          DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
        END IF
 
-       IF ( ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) &
-           DEALLOCATE( Mesh % ParallelInfo % INTERFACE )
+       IF ( ASSOCIATED( Mesh % ParallelInfo % NodeInterface ) ) &
+           DEALLOCATE( Mesh % ParallelInfo % NodeInterface )
      END IF
 
      Mesh % Nodes => NULL()
@@ -19056,14 +19056,14 @@ CONTAINS
         ineigh(k) = nn
       END DO
 
-      n = COUNT(Perm > 0 .AND. Mesh % ParallelInfo % Interface)
+      n = COUNT(Perm > 0 .AND. Mesh % ParallelInfo % NodeInterface)
       ALLOCATE( s_e(n, nn ), r_e(n) )
 
       CALL CheckBuffer( nn*3*n )
 
       ii = 0
       DO i=1, Mesh % NumberOfNodes
-        IF(Perm(i) > 0 .AND. Mesh % ParallelInfo % Interface(i) ) THEN
+        IF(Perm(i) > 0 .AND. Mesh % ParallelInfo % NodeInterface(i) ) THEN
           DO j=1,SIZE(Mesh % ParallelInfo % Neighbourlist(i) % Neighbours)
             k = Mesh % ParallelInfo % Neighbourlist(i) % Neighbours(j)
             IF ( k == ParEnv % MyPE ) CYCLE
@@ -21688,7 +21688,7 @@ CONTAINS
       ! Mark all interface nodes as forbidden nodes
       !-----------------------------------------------
       IF( ParEnv % PEs > 1 ) THEN
-        ig => Mesh % ParallelInfo % INTERFACE
+        ig => Mesh % ParallelInfo % NodeInterface
         ForbiddenNodes = ig(1:Mesh % NumberOfNodes)
       END IF
 
@@ -23045,7 +23045,7 @@ CONTAINS
 
        cnt = 0
        DO i=1,Mesh % NumberOfNodes
-         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(.NOT.Mesh % ParallelInfo % NodeInterface(i)) CYCLE
          IF(BodyCount(i) <= 0 ) CYCLE
 
          DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
@@ -23060,7 +23060,7 @@ CONTAINS
 
        cnt = 0
        DO i=1,Mesh % NumberOfNodes
-         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(.NOT.Mesh % ParallelInfo % NodeInterface(i)) CYCLE
          IF(BodyCount(i) <= 0 ) CYCLE
 
          DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
@@ -23508,7 +23508,7 @@ CONTAINS
    OPEN(1,FILE=dumpfile, STATUS='Unknown')  
    DO i=1,n
      j = ParInfo % GlobalDOFs(i)
-     IF( ParInfo % INTERFACE(i) ) THEN
+     IF( ParInfo % NodeInterface(i) ) THEN
        k = 1
      ELSE
        k = 0
