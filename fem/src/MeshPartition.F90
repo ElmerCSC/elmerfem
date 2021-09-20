@@ -4297,8 +4297,6 @@ CONTAINS
          ParameterInd(k) = bc_id
        END DO
 
-       IF( MAXVAL( BCPart ) == 0 ) RETURN
-       
        IF( ListGetLogical( Params,'Partition Connected BCs',Found ) ) THEN 
          j = MAXVAL( BCPart ) + 1
 

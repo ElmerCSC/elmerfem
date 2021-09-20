@@ -1213,21 +1213,21 @@ CONTAINS
 !> Add element local matrices & vectors to global matrices and vectors.
 !------------------------------------------------------------------------------
    SUBROUTINE UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
-      ForceVector, LocalForce, n, NDOFs, NodeIndexes, RotateNT, UElement, &
+      ForceVector, LocalForce, n, NDOFs, DofIndexes, RotateNT, UElement, &
               GlobalValues )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), POINTER :: StiffMatrix  !< The global matrix
      REAL(KIND=dp) :: LocalStiffMatrix(:,:)  !< Local matrix to be added to the global matrix.
      REAL(KIND=dp) :: LocalForce(:)          !< Element local force vector.
      REAL(KIND=dp) :: ForceVector(:)         !< The global RHS vector.
-     INTEGER :: n                            !< Number of nodes.
-     INTEGER :: NDOFs                        !< Number of element nodes. 
-     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     INTEGER :: n                            !< Number of degrees of freedom in element for each component
+     INTEGER :: NDOFs                        !< Number of components for vector field.
+     INTEGER :: DofIndexes(:)                !< Element node/edge/face to global node/edge/face numbering mapping.
      LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
      TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
      REAL(KIND=dp), OPTIONAL :: GlobalValues(:)
 !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,dim, Indexes(n)
+     INTEGER :: i,j,k,np,dim, NormalIndexes(n), pIndexes(64)
      LOGICAL :: Rotate
      TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -1248,34 +1248,41 @@ CONTAINS
      IF ( PRESENT(RotateNT) ) Rotate = RotateNT
 
      dim = CoordinateSystemDimension()	
-     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
-       Indexes = 0
-       Indexes(1:Element % TYPE % NumberOfNodes) = &
-             BoundaryReorder(Element % NodeIndexes)
+     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs >= dim) THEN
+       NormalIndexes = 0
+#if 1
+       np = mGetElementDOFs(pIndexes,Element)
+       np = MIN(np,n)
+       NormalIndexes(1:np) = BoundaryReorder(pIndexes(1:np))
+#else
+       np = Element % TYPE % NumberOfNodes
+       NormalIndexes(1:np) = BoundaryReorder(Element % NodeIndexes)
+#endif
+       
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
-          Indexes, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+          NormalIndexes, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
      END IF
 !------------------------------------------------------------------------------
      IF ( ASSOCIATED( StiffMatrix ) ) THEN
        SELECT CASE( StiffMatrix % FORMAT )
        CASE( MATRIX_CRS )
          CALL CRS_GlueLocalMatrix( StiffMatrix,n,NDOFs, &
-                      NodeIndexes, LocalStiffMatrix, GlobalValues )
+                      DofIndexes, LocalStiffMatrix, GlobalValues )
 
        CASE( MATRIX_LIST )
-         CALL List_GlueLocalMatrix( StiffMatrix % ListMatrix,n,NDOFs,NodeIndexes, &
+         CALL List_GlueLocalMatrix( StiffMatrix % ListMatrix,n,NDOFs,DofIndexes, &
                           LocalStiffMatrix )
 
        CASE( MATRIX_BAND,MATRIX_SBAND )
-         CALL Band_GlueLocalMatrix( StiffMatrix,n,NDOFs,NodeIndexes, &
+         CALL Band_GlueLocalMatrix( StiffMatrix,n,NDOFs,DofIndexes, &
                           LocalStiffMatrix )
        END SELECT
      END IF
 
      DO i=1,n
-       IF ( Nodeindexes(i) > 0 ) THEN
+       IF ( DofIndexes(i) > 0 ) THEN
          DO j=1,NDOFs
-           k = NDOFs * (NodeIndexes(i)-1) + j
+           k = NDOFs * (DofIndexes(i)-1) + j
 !$omp atomic
            ForceVector(k) = ForceVector(k) + LocalForce(NDOFs*(i-1)+j)
          END DO
@@ -1290,21 +1297,21 @@ CONTAINS
 !> Vectorized version, does not support normal or tangential boundary
 !> conditions yet.
    SUBROUTINE UpdateGlobalEquationsVec( Gmtr, Lmtr, Gvec, Lvec, n, &
-           NDOFs, NodeIndexes, RotateNT, UElement, MCAssembly )
+           NDOFs, DofIndexes, RotateNT, UElement, MCAssembly )
      TYPE(Matrix_t), POINTER :: Gmtr         !< The global matrix
      REAL(KIND=dp) CONTIG :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
      REAL(KIND=dp) CONTIG :: Gvec(:)                !< Element local force vector.
      REAL(KIND=dp) CONTIG :: Lvec(:)                !< The global RHS vector.
      INTEGER :: n                            !< Number of nodes.
      INTEGER :: NDOFs                        !< Number of degrees of free per node.
-     INTEGER CONTIG :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     INTEGER CONTIG :: DofIndexes(:)               !< Element node to global node numbering mapping.
      LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
      TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
      LOGICAL, OPTIONAL :: MCAssembly   !< Assembly process is multicoloured and guaranteed race condition free 
 
      ! Local variables
-     INTEGER :: dim, i,j,k
-     INTEGER :: Ind(n*NDOFs)
+     INTEGER :: dim, i,j,k,np
+     INTEGER :: Ind(n*NDOFs),pIndexes(64)
      REAL(KIND=dp) :: Vals(n*NDOFs)
 !DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
 
@@ -1326,13 +1333,18 @@ CONTAINS
      IF ( PRESENT(MCAssembly) ) ColouredAssembly = MCAssembly
 
      dim = CoordinateSystemDimension()
-     ! TEMP
-     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
-     
-        DO i=1,Element % TYPE % NumberOfNodes
-           Ind(i) = BoundaryReorder(Element % NodeIndexes(i))
-        END DO
 
+     IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
+       Ind = 0
+#if 1
+       np = mGetElementDOFs(pIndexes,Element)
+       np = MIN(np,n)
+       Ind(1:np) = BoundaryReorder(pIndexes(1:np))
+#else
+       np = Element % TYPE % NumberOfNodes
+       Ind(1:np) = BoundaryReorder( Element % NodeIndexes ) 
+#endif
+       
        ! TODO: See that RotateMatrix is vectorized
        CALL RotateMatrix( Lmtr, Lvec, n, dim, NDOFs, Ind, BoundaryNormals, &
                     BoundaryTangent1, BoundaryTangent2 )
@@ -1344,7 +1356,7 @@ CONTAINS
 
      NeedMasking = .FALSE.
      DO i=1,n
-       IF (NodeIndexes(i)<=0) THEN
+       IF (DofIndexes(i)<=0) THEN
          NeedMasking = .TRUE.
          EXIT
        END IF
@@ -1353,7 +1365,7 @@ CONTAINS
      IF ( ASSOCIATED( Gmtr ) ) THEN
        SELECT CASE( Gmtr % FORMAT )
        CASE( MATRIX_CRS )
-         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly, NeedMasking)
+         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, DofIndexes, Lmtr, ColouredAssembly, NeedMasking)
        CASE DEFAULT
          CALL Fatal('UpdateGlobalEquationsVec','Not implemented for given matrix type')
        END SELECT
@@ -1365,9 +1377,9 @@ CONTAINS
          ! Vector masking needed, no ATOMIC needed
          !_ELMER_OMP_SIMD PRIVATE(j,k)
          DO i=1,n
-           IF (NodeIndexes(i)>0) THEN
+           IF (DofIndexes(i)>0) THEN
              DO j=1,NDOFs
-               k = NDOFs*(NodeIndexes(i)-1) + j
+               k = NDOFs*(DofIndexes(i)-1) + j
                Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
              END DO
            END IF
@@ -1378,14 +1390,14 @@ CONTAINS
            !_ELMER_OMP_SIMD PRIVATE(j,k)
            DO i=1,n
              DO j=1,NDOFs
-               k = NDOFs*(NodeIndexes(i)-1) + j
+               k = NDOFs*(DofIndexes(i)-1) + j
                Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
              END DO
            END DO
          ELSE
            !_ELMER_OMP_SIMD
            DO i=1,n
-             Gvec(NodeIndexes(i)) = Gvec(NodeIndexes(i)) + Lvec(i)
+             Gvec(DofIndexes(i)) = Gvec(DofIndexes(i)) + Lvec(i)
            END DO
          END IF
        END IF ! Vector masking
@@ -1393,10 +1405,10 @@ CONTAINS
        IF (NeedMasking) THEN
          ! Vector masking needed, ATOMIC needed
          DO i=1,n
-           IF (NodeIndexes(i)>0) THEN
+           IF (DofIndexes(i)>0) THEN
 !DIR$ IVDEP
              DO j=1,NDOFs
-               k = NDOFs*(NodeIndexes(i)-1) + j
+               k = NDOFs*(DofIndexes(i)-1) + j
                !$OMP ATOMIC
                Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
              END DO
@@ -1407,7 +1419,7 @@ CONTAINS
          DO i=1,n
 !DIR$ IVDEP
            DO j=1,NDOFs
-             k = NDOFs*(NodeIndexes(i)-1) + j
+             k = NDOFs*(DofIndexes(i)-1) + j
              !$OMP ATOMIC
              Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
            END DO
@@ -1420,18 +1432,18 @@ CONTAINS
 !> Update the global vector with the local vector entry.
 !------------------------------------------------------------------------------
    SUBROUTINE UpdateGlobalForce(ForceVector, LocalForce, n, &
-             NDOFs, NodeIndexes, RotateNT, UElement )
+             NDOFs, DofIndexes, RotateNT, UElement )
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: LocalForce(:)          !< Element local force vector.
      REAL(KIND=dp) :: ForceVector(:)         !< The global RHS vector.
      INTEGER :: n                            !< Number of nodes.
      INTEGER :: NDOFs                        !< Number of element nodes. 
-     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     INTEGER :: DofIndexes(:)                !< Element node/edge/face to global node/edge/face numbering mapping.
      LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
      TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
 !------------------------------------------------------------------------------
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: i,j,k, dim,indexes(n)
+     INTEGER :: i,j,k,np,dim,NormalIndexes(n),pIndexes(64)
      LOGICAL :: Rotate
      REAL(KIND=dp) :: LocalStiffMatrix(n*NDOFs,n*NDOFs), LForce(n*NDOFs)
 !------------------------------------------------------------------------------
@@ -1450,18 +1462,25 @@ CONTAINS
 
      IF ( Rotate .AND. NormalTangentialNOFNodes>0 ) THEN
        dim = CoordinateSystemDimension()
-       Indexes = 0
-       ! Element => CurrentModel % CurrentElement
-       Indexes(1:Element % TYPE % NumberOfNodes) = &
-             BoundaryReorder(Element % NodeIndexes)
+
+       NormalIndexes = 0
+#if 1
+       np = mGetElementDOFs(pIndexes,Element)
+       np = MIN(np,n)
+       NormalIndexes(1:np) = BoundaryReorder(pIndexes(1:np))
+#else
+       np = Element % TYPE % NumberOfNodes
+       NormalIndexes(1:np) = BoundaryReorder(Element % NodeIndexes)
+#endif
+
        CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
-          Indexes, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+          NormalIndexes, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
      END IF
 
      DO i=1,n
-       IF ( NodeIndexes(i) > 0 ) THEN
+       IF ( DofIndexes(i) > 0 ) THEN
          DO j=1,NDOFs
-           k = NDOFs * (NodeIndexes(i)-1) + j
+           k = NDOFs * (DofIndexes(i)-1) + j
 !$omp atomic
            ForceVector(k) = ForceVector(k) + LocalForce(NDOFs*(i-1)+j)
          END DO
@@ -1475,13 +1494,13 @@ CONTAINS
 !> Updates the mass matrix only.
 !------------------------------------------------------------------------------
    SUBROUTINE UpdateMassMatrix( StiffMatrix, LocalMassMatrix, &
-              n, NDOFs, NodeIndexes, GlobalValues )
+              n, NDOFs, DofIndexes, GlobalValues )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), POINTER :: StiffMatrix  !< The global matrix structure
      REAL(KIND=dp) :: LocalMassMatrix(:,:)   !< Local matrix to be added to the global matrix
      INTEGER :: n                            !<  number of nodes in element
      INTEGER :: NDOFs                        !< number of DOFs per node
-     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping
+     INTEGER :: DofIndexes(:)               !< Element node to global node numbering mapping
      REAL(KIND=dp), OPTIONAL, TARGET :: GlobalValues(:)
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k
@@ -1515,15 +1534,15 @@ CONTAINS
      SELECT CASE( StiffMatrix % Format )
         CASE( MATRIX_CRS )
            CALL CRS_GlueLocalMatrix( StiffMatrix, &
-                n, NDOFs, NodeIndexes, LocalMassMatrix, GlobalValues )
+                n, NDOFs, DofIndexes, LocalMassMatrix, GlobalValues )
 
 !       CASE( MATRIX_LIST )
 !          CALL List_GlueLocalMatrix( StiffMatrix % ListMatrix, &
-!               n, NDOFs, NodeIndexes, LocalMassMatrix )
+!               n, NDOFs, DofIndexes, LocalMassMatrix )
 
 !      CASE( MATRIX_BAND,MATRIX_SBAND )
 !          CALL Band_GlueLocalMatrix( StiffMatrix, &
-!               n, NDOFs, NodeIndexes, LocalMassMatrix )
+!               n, NDOFs, DofIndexes, LocalMassMatrix )
 
         CASE DEFAULT
           CALL FATAL( 'UpdateMassMatrix', 'Unexpected matrix format')
@@ -3408,9 +3427,10 @@ CONTAINS
        IF( CreateDual ) DEALLOCATE( MasterNode )
        
        IF( InfoActive(25 ) ) THEN
-         CALL VectorValuesRange(DistVar % Values,SIZE(DistVar % Values),'Dist')       
-         CALL VectorValuesRange(GapVar % Values,SIZE(GapVar % Values),'Gap')       
-         CALL VectorValuesRange(MortarBC % rhs,SIZE(MortarBC % rhs),'Mortar Rhs')       
+         ! We don't know if other partitions are here, so let us not make parallel reductions!
+         CALL VectorValuesRange(DistVar % Values,SIZE(DistVar % Values),'Dist',.TRUE.)
+         CALL VectorValuesRange(GapVar % Values,SIZE(GapVar % Values),'Gap',.TRUE.)
+         CALL VectorValuesRange(MortarBC % rhs,SIZE(MortarBC % rhs),'Mortar Rhs',.TRUE.)       
        END IF
          
      END SUBROUTINE CalculateMortarDistance
@@ -4794,7 +4814,7 @@ CONTAINS
 
     INTEGER :: NoNodes,NoDims,bf_id,nlen, NOFNodesFound, dim, &
         bndry_start, bndry_end, Upper
-    REAL(KIND=dp), POINTER :: CoordNodes(:,:), Condition(:), Work(:)!,DiagScaling(:)
+    REAL(KIND=dp), POINTER :: CoordNodes(:,:), Condition(:), Work(:)
     REAL(KIND=dp) :: GlobalMinDist,Dist, Eps
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActiveCond(:), ActivePartAll(:)
     TYPE(ValueList_t), POINTER :: ValueList, Params
@@ -5949,7 +5969,7 @@ CONTAINS
                   b(lmax) = 0._dp
 
                   IF( .NOT. OffDiagonal ) THEN
-                    b(lmax) = b(lmax) + Work(j) !/DiagScaling(lmax)
+                    b(lmax) = b(lmax) + Work(j) 
                   END IF
 
                   ! Consider all components of the cartesian vector mapped to the 
@@ -6330,14 +6350,7 @@ CONTAINS
         k = Perm(ii)
         IF ( .NOT. Done(ii) .AND. k>0 ) THEN
           k = NDOFs * (k-1) + DOF
-          !IF( .NOT.A % NoDirichlet ) THEN
-          !  CALL ZeroRow( A,k )
-          !  CALL AddToMatrixElement( A, k, k, 1.0_dp )
-          !ELSE
-          !END IF
-          !IF(ALLOCATED(A % Dvalues))
           A % Dvalues(k) = 0._dp
-          !IF(ALLOCATED(A % ConstrainedDOF))
           A % ConstrainedDOF(k) = .TRUE.
           
           DO l = Projector % Rows(i), Projector % Rows(i+1)-1
@@ -6345,13 +6358,8 @@ CONTAINS
             m = Perm( Projector % Cols(l) )
             IF ( m > 0 ) THEN
               m = NDOFs * (m-1) + DOF
-              !IF(ALLOCATED(A % Dvalues)) THEN
-                A % Dvalues(k) = A % Dvalues(k) - Scale * Projector % Values(l) * &
-                    Var % Values(m) !/DiagScaling(k)
-              !ELSE
-              !  b(k) = b(k) - Scale * Projector % Values(l) * &
-              !      Var % Values(m)/DiagScaling(k)
-              !END IF
+              A % Dvalues(k) = A % Dvalues(k) - Scale * Projector % Values(l) * &
+                  Var % Values(m)
             END IF
           END DO
         END IF
@@ -6484,15 +6492,13 @@ CONTAINS
                 m = NDOFs*(m-1) + DOF
                 DO nn=A % Rows(k),A % Rows(k+1)-1
                    CALL AddToMatrixElement( A, m, A % Cols(nn), &
-                          -scale*Projector % Values(l) * A % Values(nn) ) !/ &
-                          !DiagScaling(k) * DiagScaling(m))
+                          -scale*Projector % Values(l) * A % Values(nn) ) 
                    IF (ASSOCIATED(F % Values)) THEN
                      CALL AddToMatrixElement( F, m, F % Cols(nn), &
                           -scale*Projector % Values(l) * F % Values(nn) )
                    END IF
                 END DO
-                b(m)=b(m) - scale*Projector % Values(l)*b(k) !*&
-                        !DiagScaling(m) / DiagScaling(k)
+                b(m)=b(m) - scale*Projector % Values(l)*b(k) 
                 IF (ASSOCIATED(F % RHS)) THEN
                   F % RHS(m) = F % RHS(m) - scale*Projector % Values(l)*F % RHS(k)
                 END IF
@@ -8977,7 +8983,6 @@ CONTAINS
     LOGICAL :: GotOrigin,GotAxis,OneSidedNormals,pDisp
     CHARACTER(*), PARAMETER :: Caller = 'AverageBoundaryNormals'
     TYPE(Variable_t), POINTER :: DispVar
-    
     !------------------------------------------------------------------------------
 
     pDisp = .FALSE.
@@ -9022,7 +9027,7 @@ CONTAINS
 
       IF ( NumberOfBoundaryNodes>0 ) THEN
         BoundaryNormals = 0._dp
-
+        
         DO t=Model % NumberOfBulkElements + 1, Model % NumberOfBulkElements + &
                       Model % NumberOfBoundaryElements
           Element => Model % Elements(t)
@@ -9084,6 +9089,7 @@ CONTAINS
                     IF (k>0) THEN
                       nrm = 0._dp
                       IF (MassConsistent) THEN
+                        IF(j>n) CYCLE
                         CALL IntegMassConsistent(j,n,nrm)
                       ELSE IF( RotationalNormals ) THEN
                         nrm(1) = ElementNodes % x(j)
@@ -9407,8 +9413,8 @@ CONTAINS
       END DO
       
 
-      ! Normalize the normals and compute the tangent directions.
-      !----------------------------------------------------------
+      ! Inherit the normal direction for 2nd order p-elments from the nodes.
+      !---------------------------------------------------------------------
       IF( pDisp ) THEN
         DO t=Mesh % NumberOfBulkElements + 1, Mesh % NumberOfBulkElements + &
             Mesh % NumberOfBoundaryElements
@@ -9436,16 +9442,26 @@ CONTAINS
             k = BoundaryReorder(Indexes(i)) 
 
             BoundaryNormals(k,:) = ( BoundaryNormals(k1,:) + BoundaryNormals(k2,:) ) / 2
+
+            ! Even though the two normals have unit length their mean may not have unit length. 
+            s = SQRT( SUM( BoundaryNormals(k,:)**2 ) )
+            IF ( s /= 0.0d0 ) BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
             
             IF( dim > 2 ) THEN
               BoundaryTangent1(k,:) = ( BoundaryTangent1(k1,:) + BoundaryTangent1(k2,:) ) / 2
               BoundaryTangent2(k,:) = ( BoundaryTangent2(k1,:) + BoundaryTangent2(k2,:) ) / 2
+
+              s = SQRT( SUM( BoundaryTangent1(k,:)**2 ) )
+              IF ( s /= 0.0d0 ) BoundaryTangent1(k,:) = BoundaryTangent1(k,:) / s
+
+              s = SQRT( SUM( BoundaryTangent2(k,:)**2 ) )
+              IF ( s /= 0.0d0 ) BoundaryTangent2(k,:) = BoundaryTangent2(k,:) / s
             END IF
           END DO
         END DO
       END IF
 
-      ! Normalize the normals and compute the tangent directions.
+      ! Save the normals and tangents as fields if requested. 
       !----------------------------------------------------------
       IF( ListGetLogical( Model % Simulation,'Save Averaged Normals',Found ) ) THEN
         CALL Info(Caller,'Saving averaged boundary normals to variable: Averaged Normals')
@@ -9891,8 +9907,6 @@ END FUNCTION SearchNodeL
 
      IF ( NormalTangentialNOFNodes <= 0 ) RETURN
      
-     dim = CoordinateSystemDimension()
-
      IF( NodeNumber > SIZE( BoundaryReorder ) ) THEN
        CALL Fatal('RotateNTSystem',&
            'Index '//TRIM(I2S(NodeNumber))//' beyond BoundaryReorder size '//TRIM(I2S(SIZE(BoundaryReorder))))
@@ -9901,6 +9915,7 @@ END FUNCTION SearchNodeL
      k = BoundaryReorder(NodeNumber)
      IF ( k <= 0 ) RETURN
 
+     dim = CoordinateSystemDimension()
      IF ( dim < 3 ) THEN
        Bu = Vec(1)
        Bv = Vec(2)
@@ -9934,9 +9949,11 @@ END FUNCTION SearchNodeL
     INTEGER :: i,j,k, dim
     REAL(KIND=dp) :: Bu,Bv,Bw,RM(3,3)
 !------------------------------------------------------------------------------
-    dim = CoordinateSystemDimension()
 
-    IF ( NormalTangentialNOFNodes<=0.OR.ndofs<dim ) RETURN
+    IF ( NormalTangentialNOFNodes <= 0 ) RETURN
+
+    dim = CoordinateSystemDimension()    
+    IF( ndofs < dim ) RETURN
 
     DO i=1,SIZE(BoundaryReorder)
        k = BoundaryReorder(i)
@@ -9981,9 +9998,11 @@ END FUNCTION SearchNodeL
      INTEGER :: i,j,k, dim
      REAL(KIND=dp) :: Bu,Bv,Bw,RM(3,3)
 !------------------------------------------------------------------------------
-     dim = CoordinateSystemDimension()
 
-     IF ( NormalTangentialNOFNodes<=0.OR.ndofs<dim ) RETURN
+     IF ( NormalTangentialNOFNodes <= 0 ) RETURN
+
+     dim = CoordinateSystemDimension()
+     IF ( ndofs < dim ) RETURN
 
      DO i=1,SIZE(BoundaryReorder)
        k = BoundaryReorder(i)
@@ -10028,29 +10047,33 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     INTEGER :: k,dim
 !------------------------------------------------------------------------------
-    dim = CoordinateSystemDimension()
 
-    Rotated=.FALSE.
+    A = 0._dp
+    k = 0 
 
-    A=0._dp
-    A(1,1)=1._dp
-    A(2,2)=1._dp
-    A(3,3)=1._dp
-    IF (NormalTangentialNOFNodes<=0) RETURN
-
-    k = BoundaryReorder(n)
-    IF (k>0) THEN
+    IF (NormalTangentialNOFNodes > 0) THEN
+      k = BoundaryReorder(n)
+    END IF
+      
+    IF (k > 0) THEN
       Rotated = .TRUE.
+      dim = CoordinateSystemDimension()
       IF (dim==2) THEN
-        A(1,1)= BoundaryNormals(k,1)
-        A(1,2)=-BoundaryNormals(k,2)
-        A(2,1)= BoundaryNormals(k,2)
-        A(2,2)= BoundaryNormals(k,1)
+        A(1,1) = BoundaryNormals(k,1)
+        A(1,2) = -BoundaryNormals(k,2)
+        A(2,1) = BoundaryNormals(k,2)
+        A(2,2) = BoundaryNormals(k,1)
+        A(3,3) = 1._dp
       ELSE
-        A(:,1)=BoundaryNormals(k,:)
-        A(:,2)=BoundaryTangent1(k,:)
-        A(:,3)=BoundaryTangent2(k,:)
+        A(:,1) = BoundaryNormals(k,:)
+        A(:,2) = BoundaryTangent1(k,:)
+        A(:,3) = BoundaryTangent2(k,:)
       END IF
+    ELSE
+      Rotated = .FALSE.
+      A(1,1)=1._dp
+      A(2,2)=1._dp
+      A(3,3)=1._dp            
     END IF
 !------------------------------------------------------------------------------
   END FUNCTION GetSolutionRotation
@@ -19142,6 +19165,8 @@ CONTAINS
           CALL Info(Caller,'Number of entries at interface: '//TRIM(I2S(ncount)),Level=10)    
         END DO
 
+        A_sf % Values => TmpValues
+        
       END BLOCK
     END IF     
     
