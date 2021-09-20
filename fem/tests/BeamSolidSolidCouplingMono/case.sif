@@ -1,0 +1,135 @@
+!---------------------------------------------------------
+! Case for solving two displacement equations as coupled.
+! This one with monolithic coupled system + direct solver.
+!
+! P.R. 8.9.2021
+!------------------------------------------------------------
+
+Header
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End 
+
+Simulation
+  Max Output Level = 20
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+  Post File = case.vtu
+
+! Create a union of "dispa" and "dispb"
+  vtu: Vector Field 1 = String "dispa"
+  vtu: Vector Field 1 Complement = String "dispb"
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1 
+  Body Force = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 2
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Name = "ElasticityA"
+  Active Solvers = 1 
+End
+
+Equation 2
+  Name = "ElasticityB"
+  Active Solvers = 2 
+End
+
+
+Material 1
+  Name = "Ideal"
+  Youngs Modulus = 1.0e9
+  Density = 1.0e3
+  Poisson Ratio = 0.3
+  Shell Thickness = 0.001
+End
+
+Body Force 1
+  Name = "Load"
+  Stress BodyForce 2 = -1.0e7
+End 
+
+
+Solver 1
+  Equation = LinElastA
+  Variable = -dofs 3 DispA
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Consistent Norm = Logical True
+  Linear System Solver = direct
+  Linear System Direct Method = MUMPS
+  Linear System Scaling = False
+  Optimize Bandwidth = False
+
+  Automated Structure-Structure Coupling = True
+  Displace Mesh = False
+  Block System Model Lumping = Logical True
+!  Block System Mass Lumping = Logical True
+End
+
+
+Solver 2
+  Equation = LinElastB
+  Variable = -dofs 3 DispB
+  Procedure = "StressSolve" "StressSolver"
+
+  Nonlinear System Max Iterations = 1
+  Optimize Bandwidth = False
+  Displace Mesh = Logical False
+End
+
+Solver 3
+  Exec Solver = never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  
+  Filename = f.dat
+  File Append = Logical True
+  Parallel Reduce = Logical True
+
+  Variable 1 = DispA
+  Operator 1 = dofs
+  Operator 2 = partitions
+  Operator 3 = max abs 
+  Operator 4 = norm
+  Operator 5 = min
+  Operator 6 = max
+End 
+
+
+Boundary Condition 1
+  Name = "LeftWall"
+  Target Boundaries(1) = 1
+  DispA 1 = Real 0.0
+  DispA 2 = Real 0.0
+  DispA 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "RightWall"
+  Target Boundaries(1) = 2
+  DispB 1 = Real 0.0
+  DispB 2 = Real 0.0
+  DispB 3 = Real 0.0
+End
+
+
+Solver 1:: Reference Norm = 1.34162053E-02
+
+
+

@@ -1040,7 +1040,7 @@ use spariterglobals
 !> Also allocates the field values if not given in the parameter list. 
 !------------------------------------------------------------------------------
     SUBROUTINE VariableAddVector( Variables,Mesh,Solver,Name,DOFs,Values,&
-      Perm,Output,Secondary,VarType,Global,InitValue,IpPoints)
+      Perm,Output,Secondary,VarType,Global,InitValue,IpPoints,varsuffix)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       TYPE(Mesh_t),   TARGET :: Mesh
@@ -1055,6 +1055,7 @@ use spariterglobals
       LOGICAL, OPTIONAL :: Global
       REAL(KIND=dp), OPTIONAL :: InitValue
       LOGICAL, OPTIONAL :: IpPoints
+      CHARACTER(LEN=*), OPTIONAL :: VarSuffix
 !------------------------------------------------------------------------------
       CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
       REAL(KIND=dp), POINTER :: Component(:), TmpValues(:)
@@ -1121,14 +1122,20 @@ use spariterglobals
       IF( nDOFs > 1 ) THEN
         DO i=1,nDOFs
           tmpname = ComponentName(Name,i)
+          IF(PRESENT(VarSuffix)) tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
           Component => TmpValues(i::nDOFs)
           CALL VariableAdd( Variables,Mesh,Solver,TmpName,1,Component,&
               Perm,Output,Secondary,VarType)
         END DO
       END IF
 
-      CALL VariableAdd( Variables,Mesh,Solver,Name,nDOFs,TmpValues,&
-            Perm,Output,Secondary,VarType)
+      tmpname = TRIM(Name)
+      IF(PRESENT(VarSuffix)) THEN
+        tmpname = TRIM(tmpname)//' '//TRIM(VarSuffix)
+      END IF
+        
+      CALL VariableAdd( Variables,Mesh,Solver,tmpname,nDOFs,TmpValues,&
+          Perm,Output,Secondary,VarType)
 
 !------------------------------------------------------------------------------
     END SUBROUTINE VariableAddVector

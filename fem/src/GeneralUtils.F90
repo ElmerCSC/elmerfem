@@ -2454,20 +2454,23 @@ INCLUDE "mpif.h"
 !> Given the filename0 add a string related to the partitioning.
 !------------------------------------------------------------------------------
 
-  FUNCTION AddFilenameParSuffix(Filename0,Suffix0,Parallel,MyPe) RESULT (Filename)
+  FUNCTION AddFilenameParSuffix(Filename0,Suffix0,Parallel,MyPe,NumWidth,PeMax,PeSeparator) RESULT (Filename)
 
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename0
     CHARACTER(LEN=*), OPTIONAL :: Suffix0 
+    CHARACTER(LEN=*), OPTIONAL :: PeSeparator
     LOGICAL :: Parallel
     INTEGER :: MyPe
+    INTEGER, OPTIONAL :: NumWidth
+    INTEGER, OPTIONAL :: PeMax
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename
-    CHARACTER(LEN=MAX_NAME_LEN) :: Prefix, Suffix
-    INTEGER :: No, ind, len
-
+ !------------------------------------------------------------------------------   
+    CHARACTER(LEN=MAX_NAME_LEN) :: OutStyle, Prefix, Suffix
+    INTEGER :: No, ind, len, NumW, NoLim
 
     ind = INDEX( FileName0,'.',.TRUE. )
     len = LEN_TRIM(Filename0)
-
+    
     ! If the only dot is the first one it only related to the current working directory.
     IF(ind > 1) THEN
       Prefix = Filename0(1:ind-1)
@@ -2483,10 +2486,25 @@ INCLUDE "mpif.h"
     
     IF( Parallel ) THEN
       No = MyPe + 1
-      IF( No < 10000 ) THEN
-        WRITE( FileName,'(A,I4.4,A)') TRIM(Prefix),No,TRIM(Suffix)
+   
+      IF( PRESENT(NumWidth) ) THEN
+        NumW = NumWidth
+      ELSE IF( PRESENT( PeMax ) ) THEN
+        NumW = CEILING( LOG10( 1.0_dp * PeMax ) )
       ELSE
+        NumW = 4
+      END IF
+      NoLim = 10**NumW
+
+      IF( PRESENT( PeSeparator ) ) THEN
+        Prefix = TRIM(Prefix)//TRIM(PeSeparator)
+      END IF
+              
+      IF( No >= NoLim ) THEN
         WRITE( FileName,'(A,I0,A)') TRIM(Prefix),No,TRIM(Suffix)
+      ELSE
+        WRITE( OutStyle,'(A,I1,A,I1,A)') '(A,I',NumW,'.',NumW,',A)'
+        WRITE( FileName,OutStyle) TRIM(Prefix),No,TRIM(Suffix)
       END IF
     ELSE
       FileName = TRIM(Prefix)//TRIM(Suffix)

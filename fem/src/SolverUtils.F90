@@ -12718,7 +12718,9 @@ END FUNCTION SearchNodeL
 
     Parallel = ( ParEnv % PEs > 1)
     IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+      IF( Solver % Mesh % SingleMesh ) THEN
+        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
+      END IF
     END IF
       
     CALL Info('ScaleLinearSystem','Scaling diagonal entries to unity',Level=10)
@@ -13958,7 +13960,9 @@ END FUNCTION SearchNodeL
 
     Parallel = ( ParEnv % Pes>1 ) 
     IF( Parallel ) THEN
-      IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+      IF( Solver % Mesh % SingleMesh ) THEN
+        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
+      END IF
     END IF
     
 !------------------------------------------------------------------------------
@@ -13966,7 +13970,10 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     IF ( Parallel  ) THEN
       IF( .NOT. ASSOCIATED(A % ParMatrix) ) THEN
+        CALL Info('SolveLinearSystem','Creating parallel matrix stuctures',Level=8)
         CALL ParallelInitMatrix( Solver, A )
+      ELSE
+        CALL Info('SolveLinearSystem','Using previously created parallel matrix stuctures!',Level=15)
       END IF      
       Parallel = ASSOCIATED(A % ParMatrix)       
     END IF
@@ -14742,8 +14749,8 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
 
-    IF ( .NOT. Solver % Matrix % COMPLEX ) THEN
-      CALL Info('SolveEigenSystem','Soving real valued eigen system of size: '//TRIM(I2S(n)),Level=8)
+    IF ( .NOT. StiffMatrix % COMPLEX ) THEN
+      CALL Info('SolveEigenSystem','Solving real valued eigen system of size: '//TRIM(I2S(n)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolve( Solver, StiffMatrix, n, NOFEigen, &
             EigenValues, EigenVectors )
@@ -14753,7 +14760,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
       END IF
     ELSE
 
-      CALL Info('SolveEigenSystem','Soving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
+      CALL Info('SolveEigenSystem','Solving complex valued eigen system of size: '//TRIM(I2S(n/2)),Level=8)
       IF ( ParEnv % PEs <= 1 ) THEN
         CALL ArpackEigenSolveComplex( Solver, StiffMatrix, n/2, &
             NOFEigen, EigenValues, EigenVectors )
@@ -16157,7 +16164,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   SolverPointer => Solver  
   Parallel = (ParEnv % PEs > 1 )
   IF( Parallel ) THEN
-    IF( Solver % Mesh % SingleMesh ) Parallel = ListGetLogical( Solver % Values,'Enforce Parallel', Found ) 
+    IF( Solver % Mesh % SingleMesh ) THEN
+      Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel', Found ) 
+    END IF
   END IF
   
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
@@ -18456,11 +18465,12 @@ CONTAINS
    !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL, POINTER :: ConstrainedF(:), ConstrainedS(:)
-    LOGICAL :: DoDamp, DoMass
+    LOGICAL :: Found, DoDamp, DoMass, DoLumping 
     INTEGER, POINTER :: FPerm(:), SPerm(:)
     INTEGER :: FDofs, SDofs
-    INTEGER :: i,j,k,jf,js,kf,ks,nf,ns,dim,ncount
+    INTEGER :: i,j,k,n,jf,js,kf,ks,nf,ns,dim,ncount
     REAL(KIND=dp) :: vdiag
+    LOGICAL :: EnsureTrans
     CHARACTER(*), PARAMETER :: Caller = 'StructureCouplingAssembly'
    !------------------------------------------------------------------------------
 
@@ -18504,6 +18514,14 @@ CONTAINS
       A_sf % Values = 0.0_dp      
     END IF
 
+    n = COUNT( FPerm>0 .AND. SPerm>0 ) 
+    IF( n == 0 ) THEN
+      CALL List_toCRSMatrix(A_fs)
+      CALL List_toCRSMatrix(A_sf)
+      CALL Info(Caller,'No shared nodes between two structures! Nothing to do!',Level=6)
+      RETURN
+    END IF
+    
     DoMass = .FALSE.
     IF( ASSOCIATED( A_f % MassValues ) ) THEN
       IF( ASSOCIATED( A_s % MassValues ) ) THEN
@@ -18518,6 +18536,11 @@ CONTAINS
       CALL Warn(Caller,'Damping matrix values at a coupling interface will be dropped!')
     END IF
 
+    DoLumping = ListGetLogical( CurrentModel % Solver % Values,'Block System Mass Lumping',Found )
+    IF(.NOT. Found) DoLumping = .TRUE.
+
+    EnsureTrans = ListGetLogical( CurrentModel % Solver % Values,'Block System Topo Symmetric',Found )
+    
     ! This is still under development and not used for anything
     ! Probably this will not be needed at all but rather we need the director.
     !IF( IsShell ) CALL DetermineCouplingNormals()
@@ -18533,7 +18556,7 @@ CONTAINS
             EdgeSolidCount(:),EdgeSolidTable(:,:)
         INTEGER :: MaxEdgeSolidCount, MaxEdgeShellCount, NoFound, NoFound2
         INTEGER :: InterfaceN, hits, TotCount, EdgeCount, Phase
-        INTEGER :: p,lf,ls,ii,jj,n,m,t,l,e1,e2,k1,k2
+        INTEGER :: p,lf,ls,ii,jj,m,t,l,e1,e2,k1,k2
         INTEGER :: NormalDir
         REAL(KIND=dp), POINTER :: Director(:)
         REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
@@ -18543,14 +18566,15 @@ CONTAINS
         TYPE(Element_t), POINTER :: Element, ShellElement, Edge
         TYPE(Nodes_t) :: Nodes
         LOGICAL :: Stat
-
+       
         n = Mesh % MaxElementNodes 
         ALLOCATE( Basis(n), dBasisdx(n,3), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-
+              
         ! Memorize the original values
         ALLOCATE( A_f0( SIZE( A_f % Values ) ) )
         A_f0 = A_f % Values
 
+                
         IF (DrillingDOFs) THEN
           ALLOCATE(rhs0(SIZE(A_f % rhs)))
           rhs0 = A_f % rhs
@@ -18598,7 +18622,6 @@ CONTAINS
 
         CALL Info(Caller,'Number of nodes at interface: '//TRIM(I2S(InterfaceN)),Level=10)
 
-
         ! We need to create mesh edges to simplify many things
         CALL FindMeshEdges( Mesh, FindFaces=.FALSE. ) 
         ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
@@ -18617,6 +18640,12 @@ CONTAINS
         END DO
                 
         CALL Info(Caller,'Number of edges at interface: '//TRIM(I2S(EdgeCount)),Level=10)
+        IF( EdgeCount == 0 ) THEN
+          CALL List_toCRSMatrix(A_fs)
+          CALL List_toCRSMatrix(A_sf)
+          CALL Info(Caller,'Coupling matrices are empty! Nothing to do!',Level=6)
+          RETURN
+        END IF
         
         ALLOCATE( EdgeShellCount(EdgeCount), EdgeSolidCount(EdgeCount) )
         
@@ -18879,10 +18908,17 @@ CONTAINS
                         END IF
                         
                         CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
-
                         DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                           CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
                         END DO
+
+                        IF( EnsureTrans ) THEN
+                          CALL AddToMatrixElement(A_sf,ks,kf,0.0_dp)
+                          DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                            CALL AddToMatrixElement(A_fs,A_f % Cols(k),ks,0.0_dp)
+                          END DO
+                        END IF                          
+                        
                       END DO
 
                     ELSE
@@ -18917,7 +18953,10 @@ CONTAINS
                         !    ls,js,ks,kf,weight,val,Director(ls)
 
                         CALL AddToMatrixElement(A_fs,kf,ks,weight*val)
-
+                        IF( EnsureTrans ) THEN
+                          CALL AddToMatrixElement(A_sf,ks,kf,0.0_dp)
+                        END IF
+                        
                         ! Here the idea is to distribute the implicit moments of the shell solver
                         ! to forces for the solid solver. So even though the stiffness matrix related to the
                         ! directional derivatives is nullified, the forces are not forgotten.
@@ -18936,6 +18975,12 @@ CONTAINS
                         DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
                           CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k),-weight*val*A_f0(k)) 
                         END DO
+                        
+                        IF( EnsureTrans ) THEN
+                          DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                            CALL AddToMatrixElement(A_fs,A_f % Cols(k),ks,0.0_dp)
+                          END DO
+                        END IF
                       END DO
                     END DO
                   END IF
@@ -18957,6 +19002,7 @@ CONTAINS
 
       END BLOCK
     END IF
+
     
     ! Note: we may have to recheck this coupling if visiting for 2nd time!
     !
@@ -18993,19 +19039,26 @@ CONTAINS
           DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
             IF( .NOT. ConstrainedS(ks) ) THEN        
               CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k), A_f % Values(k) )
+              IF( EnsureTrans ) THEN
+                CALL AddToMatrixElement(A_fs,A_f % Cols(k),ks,0.0_dp)
+              END IF
             END IF
             A_f % Values(k) = 0.0_dp
 
             ! We zero the mass associated to the Dirichlet conditions since
             ! otherwise the inertia will affect the condition.
             ! We use mass lumping since not all dofs of shell are present in the solid. 
-            IF( DoMass ) THEN
-              A_s % MassValues(A_s % Diag(ks)) = A_s % MassValues(A_s % Diag(ks)) + A_f % MassValues(k)
-              A_f % MassValues(k) = 0.0_dp
+            IF( DoLumping ) THEN
+              IF( DoMass ) THEN
+                IF( .NOT. ConstrainedS(ks) ) THEN                     
+                  A_s % MassValues(A_s % Diag(ks)) = A_s % MassValues(A_s % Diag(ks)) + A_f % MassValues(k)
+                END IF
+                A_f % MassValues(k) = 0.0_dp
+              END IF
+              IF( DoDamp) THEN
+                A_f % DampValues(k) = 0.0_dp
+              END IF
             END IF
-            IF( DoDamp) THEN
-              A_f % DampValues(k) = 0.0_dp
-            END IF            
           END DO
           
           ! Set Dirichlet Condition to "F" such that it is equal to "S".
@@ -19013,21 +19066,20 @@ CONTAINS
           ! but this is much more economical. 
           A_f % Values( A_f % Diag(kf)) = vdiag          
           CALL AddToMatrixElement(A_fs,kf,ks, -vdiag )
-          
+
+          IF( EnsureTrans ) THEN
+            CALL AddToMatrixElement(A_sf,ks,kf,0.0_dp )
+          END IF
         END DO
       END DO
     ELSE
       CALL Fatal(Caller,'Coupling type not implemented yet!')
     END IF
 
-      
     IF( A_fs % FORMAT == MATRIX_LIST ) THEN
       CALL List_toCRSMatrix(A_fs)
       CALL List_toCRSMatrix(A_sf)
     END IF
-      
-    !PRINT *,'interface fs sum:',SUM(A_fs % Values), SUM( ABS( A_fs % Values ) )
-    !PRINT *,'interface sf sum:',SUM(A_sf % Values), SUM( ABS( A_sf % Values ) )
 
     CALL Info(Caller,'Number of nodes on interface: '&
         //TRIM(I2S(ncount)),Level=10)    
@@ -19035,8 +19087,65 @@ CONTAINS
         //TRIM(I2S(SIZE(A_fs % Values))),Level=10)
     CALL Info(Caller,'Number of entries in master-slave coupling matrix: '&
         //TRIM(I2S(SIZE(A_sf % Values))),Level=10)
+
     
-    CALL Info(Caller,'All done',Level=20)
+    IF(.NOT. DoLumping ) THEN
+      ! This is just summary version of the previous for mass & damp values
+      ! Now we know that the CRS matrix has been created. 
+      BLOCK
+        REAL(KIND=dp), POINTER :: TmpValues(:),DerValues(:)
+        INTEGER :: der
+        
+        TmpValues => A_sf % Values
+
+        DO der=1,2
+          IF( der == 1 .AND. .NOT. DoDamp ) CYCLE
+          IF( der == 2 .AND. .NOT. DoMass ) CYCLE
+          
+          ncount = 0
+          
+          IF( der == 1 ) THEN
+            CALL Info(Caller,'Creating cross-terms for damping matrix',Level=10)
+            IF(.NOT. ASSOCIATED( A_sf % DampValues ) ) THEN
+              ALLOCATE( A_sf % DampValues(SIZE(TmpValues) ) )
+            END IF
+            A_sf % DampValues = 0.0_dp
+            A_sf % Values => A_sf % DampValues
+            DerValues => A_f % DampValues 
+          ELSE
+            CALL Info(Caller,'Creating cross-terms for mass matrix',Level=10)
+            IF(.NOT. ASSOCIATED( A_sf % MassValues ) ) THEN
+              ALLOCATE( A_sf % MassValues(SIZE(TmpValues) ) )
+            END IF
+            A_sf % MassValues = 0.0_dp
+            A_sf % Values => A_sf % MassValues
+            DerValues => A_f % MassValues 
+          END IF
+
+          DO i=1,Mesh % NumberOfNodes
+            jf = FPerm(i)
+            js = SPerm(i)          
+            IF( jf == 0 .OR. js == 0 ) CYCLE
+            
+            DO j = 1, dim
+              kf = fdofs*(jf-1)+j
+              ks = sdofs*(js-1)+j                                    
+              DO k=A_f % Rows(kf),A_f % Rows(kf+1)-1
+                IF( .NOT. ConstrainedS(ks) ) THEN        
+                  CALL AddToMatrixElement(A_sf,ks,A_f % Cols(k), DerValues(k) )
+                  ncount = ncount + 1
+                END IF
+                DerValues(k) = 0.0_dp              
+              END DO
+            END DO
+          END DO
+          CALL Info(Caller,'Number of entries at interface: '//TRIM(I2S(ncount)),Level=10)    
+        END DO
+
+      END BLOCK
+    END IF     
+    
+    CALL Info(Caller,'Structural coupling matrices created!',Level=20)
     
   CONTAINS
 
@@ -22172,14 +22281,14 @@ CONTAINS
          Proj => ProjTable(Nstore) % Proj
        END IF
        GotProj = ASSOCIATED( Proj ) 
-       IF( InfoActive(12) ) THEN
+       IF( InfoActive(20) ) THEN
          PRINT *,'Getting cyclic projector:',GotProj,Ntime,Nstore,Ncycle,ASSOCIATED(Proj)
        END IF
      ELSE
        ! storing projector
        SetProj = .NOT. ASSOCIATED( ProjTable(Nstore) % Proj )       
        IF( SetProj ) ProjTable(Nstore) % Proj => Proj
-       IF( InfoActive(12) ) THEN
+       IF( InfoActive(20) ) THEN
          PRINT *,'Setting cyclic projector:',SetProj,Ntime,Nstore,Ncycle,ASSOCIATED(Proj)
        END IF
      END IF

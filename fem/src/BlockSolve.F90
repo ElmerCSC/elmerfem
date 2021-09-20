@@ -3192,7 +3192,8 @@ CONTAINS
    
   END SUBROUTINE blockKrylovIter
 
-
+  
+  
   !> This makes the system monolithic. If it was initially monolithic
   !> and then made block, it does not make any sense. However, for
   !> multiphysics coupled cases it may be a good strategy. 
@@ -3202,9 +3203,9 @@ CONTAINS
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: MaxChange
 
-    INTEGER :: i,j,k,m,n,NoVar,NoCol,NoRow,NoEigen,vdofs,comp
+    INTEGER :: i,j,k,m,n,nc,mc,c,NoVar,NoCol,NoRow,NoEigen,vdofs,comp
     INTEGER, POINTER :: BlockOrder(:)
-    LOGICAL :: GotIt
+    LOGICAL :: GotIt, DampedEigen
     REAL(KIND=dp), POINTER CONTIG :: rhs_save(:), b(:)
     REAL(KIND=dp), POINTER :: CollX(:), rhs(:)
     TYPE(Matrix_t), POINTER :: A, mat_save
@@ -3213,11 +3214,11 @@ CONTAINS
     REAL(KIND=dp) :: TotNorm
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: CollMat
-    LOGICAL :: Found, HaveMass, HaveDamp, Visited = .FALSE.
+    LOGICAL :: Found, HaveMass, HaveDamp, SaveImag, Visited = .FALSE.
     CHARACTER(LEN=max_name_len) :: CompName
     CHARACTER(*), PARAMETER :: Caller = 'BlockMonolithicSolve'
-
-    SAVE Visited, CollMat, CollX, HaveMass, HaveDamp
+    
+    SAVE Visited, CollMat, CollX, HaveMass, HaveDamp, SaveImag
     
     CALL Info(Caller,'Solving block matrix as monolithic!',Level=6)
     
@@ -3225,9 +3226,9 @@ CONTAINS
     Params => Solver % Values
     SolverVar => Solver % Variable
     Solver % Variable => MonolithicVar
-    
+
+        
     IF(.NOT. Visited ) THEN
-      Visited = .TRUE.
       n = 0
       m = 0
 
@@ -3239,135 +3240,229 @@ CONTAINS
         rhs => TotMatrix % SubVector(NoRow) % rhs      
         A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
         n = n + A % NumberOfRows
-
+      
         DO NoCol = 1,NoVar
           A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
-          IF( ASSOCIATED( A ) ) THEN
-            m = m + SIZE( A % Values )
-            IF( ASSOCIATED( A % MassValues ) ) HaveMass = .TRUE.
-            IF( ASSOCIATED( A % DampValues ) ) HaveDamp = .TRUE.
-         END IF
-        END DO                
+          IF(.NOT. ASSOCIATED(A) ) CYCLE
+         
+          IF(InfoActive(20)) THEN
+            CALL VectorValuesRange(A % Values,SIZE(A % Values),'A'//TRIM(I2S(10*NoRow+NoCol)))       
+            IF( ASSOCIATED( A % MassValues ) ) THEN
+              CALL VectorValuesRange(A % MassValues,SIZE(A % MassValues),'M'//TRIM(I2S(10*NoRow+NoCol)))       
+            END IF
+          END IF
+          
+          m = m + SIZE( A % Values )
+          IF( ASSOCIATED( A % MassValues ) ) HaveMass = .TRUE.
+          IF( ASSOCIATED( A % DampValues ) ) HaveDamp = .TRUE.
+        END DO
       END DO
 
-      CollMat % NumberOfRows = n 
-      CALL Info(Caller,'Size of monolithic matrix: '//TRIM(I2S(n)),Level=7)
-      CALL Info(Caller,'Number of nonzeros in monolithic matrix: '//TRIM(I2S(m)),Level=7)
+      IF( HaveMass ) THEN
+        DO NoRow = 1,NoVar 
+          A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
+          IF(.NOT. ASSOCIATED( A % MassValues ) ) THEN
+            CALL Warn(Caller,'MassValues are missing for block: '//TRIM(I2S(11*NoRow)))
+          END IF
+        END DO
+        CALL Info(Caller,'Treating MassValues of block matrix too!',Level=20)
+      END IF
+
+      IF( HaveDamp ) THEN
+        CALL Info(Caller,'Treating DampValues of block matrix too!',Level=20)
+      END IF
+        
+      NoEigen = Solver %  NOFEigenValues
+
+      DampedEigen = ListGetLogical(Solver % Values,'Eigen System Complex',Found )  
+      IF( DampedEigen ) THEN
+        CALL Info(Caller,'Creating complex system for eigen values!')
+      END IF
       
-      ALLOCATE( CollMat % rhs(n), CollMat % Diag(n), CollMat % Rows(n+1), CollX(n) )
+      SaveImag = ListGetLogical(Solver % Values,'Pick Im Component',Found )  
+    
+      ! The matrix sizes depend on whether we create a complex or real valued system. 
+      IF(DampedEigen) THEN
+        nc = 2*n
+        mc = 4*m
+      ELSE
+        nc = n
+        mc = m
+      END IF
+
+      
+      CollMat % NumberOfRows = nc
+      CALL Info(Caller,'Size of monolithic matrix: '//TRIM(I2S(nc)),Level=7)
+      CALL Info(Caller,'Estimated number of nonzeros in monolithic matrix: '//TRIM(I2S(mc)),Level=7)
+      
+      ALLOCATE( CollMat % rhs(nc), CollMat % Diag(nc), CollMat % Rows(nc+1), CollX(nc) )
       CollMat % rhs = 0.0_dp
       CollMat % Diag = 0
       CollMat % Rows = 0
       CollX = 0.0_dp
+
+      CollMat % Complex = DampedEigen
       
-      ALLOCATE( CollMat % Values(m), CollMat % Cols(m+1) )
+      ALLOCATE( CollMat % Values(mc), CollMat % Cols(mc+1) )
       CollMat % Values = 0.0_dp
       CollMat % Cols = 0
 
       IF( HaveMass ) THEN
-        ALLOCATE( CollMat % MassValues(m) )
+        ALLOCATE( CollMat % MassValues(mc) )
         CollMat % MassValues = 0.0_dp
       END IF
-      IF( HaveDamp ) THEN
-        ALLOCATE( CollMat % DampValues(m) )
+      IF( HaveDamp .AND. .NOT. DampedEigen ) THEN
+        ALLOCATE( CollMat % DampValues(mc) )
         CollMat % DampValues = 0.0_dp
       END IF
-      
-      k = 0
-      CollMat % Rows(1) = 1
-      
+    END IF
+
+    k = 0
+    CollMat % Rows(1) = 1
+  
+
+    IF(DampedEigen) THEN
       DO NoRow = 1,NoVar
         n = TotMatrix % Offset(NoRow)
         
         A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
         m = A % NumberOfRows
-        
+
         DO i=1,m
-          DO NoCol = 1,NoVar
-            A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
-            IF( ASSOCIATED( A ) ) THEN
-              IF( SIZE(A % Rows) < i+1 ) CYCLE 
+
+          ! Loop over real and imaginary rows
+          DO c=1,2
+          
+            DO NoCol = 1,NoVar
+              A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
+              IF( .NOT. ASSOCIATED( A ) ) CYCLE
+
               DO j=A % Rows(i),A % Rows(i+1)-1
-                k = k + 1
-                CollMat % Values(k) = A % Values(j)
-                CollMat % Cols(k) = TotMatrix % Offset(NoCol) + A % Cols(j) 
-                IF( HaveMass ) THEN
-                  IF( ASSOCIATED( A % MassValues ) ) THEN
-                    CollMat % MassValues(k) = A % MassValues(j)
+                ! If we have the imaginary row add the multiplier of real value first
+                IF( c == 2 ) THEN
+                  k = k + 1
+                  CollMat % Cols(k) = 2*TotMatrix % Offset(NoCol) + 2*A % Cols(j)-1
+                  IF( ASSOCIATED( A % DampValues) ) THEN
+                    CollMat % Values(k) = A % DampValues(j)
                   END IF
                 END IF
-                IF( HaveDamp ) THEN
-                  IF( ASSOCIATED( A % DampValues ) ) THEN
-                    CollMat % DampValues(k) = A % DampValues(j)
+
+                k = k + 1
+                CollMat % Values(k) = A % Values(j)
+                CollMat % Cols(k) = 2*TotMatrix % Offset(NoCol) + 2*(A % Cols(j)-1)+c
+                IF( ASSOCIATED( A % MassValues ) ) THEN
+                  CollMat % MassValues(k) = A % MassValues(j)
+                END IF
+
+                ! If we have the real row add the multiplier of imaginary value last
+                IF( c == 1 ) THEN
+                  k = k + 1
+                  CollMat % Cols(k) = 2*TotMatrix % Offset(NoCol) + 2*A % Cols(j)
+                  IF( ASSOCIATED( A % DampValues) ) THEN
+                    CollMat % Values(k) = -A % DampValues(j)
                   END IF
                 END IF
               END DO
-              IF( ASSOCIATED( A % rhs ) ) THEN
-                CollMat % rhs(n+i) = A % rhs(i)
-              END IF
+            END DO
+            IF(.NOT. Visited ) THEN
+              CollMat % Rows(2*((n+i)-1)+c+1) = k+1
             END IF
           END DO
-          CollMat % Rows(n+i+1) = k+1
         END DO
       END DO
+      
+    ELSE
+      DO NoRow = 1,NoVar
+        n = TotMatrix % Offset(NoRow)
 
+        A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
+        m = A % NumberOfRows
+
+        DO i=1,m
+          DO NoCol = 1,NoVar
+            A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
+            IF( .NOT. ASSOCIATED( A ) ) CYCLE
+            IF( SIZE(A % Rows) < i+1 ) CYCLE 
+            DO j=A % Rows(i),A % Rows(i+1)-1
+              k = k + 1
+              CollMat % Values(k) = A % Values(j)
+              IF(.NOT. Visited ) THEN
+                CollMat % Cols(k) = TotMatrix % Offset(NoCol) + A % Cols(j)
+              END IF
+              IF( HaveMass ) THEN
+                IF( ASSOCIATED( A % MassValues ) ) THEN
+                  CollMat % MassValues(k) = A % MassValues(j)
+                END IF
+              END IF
+              IF( HaveDamp ) THEN
+                IF( ASSOCIATED( A % DampValues ) ) THEN
+                  CollMat % DampValues(k) = A % DampValues(j)
+                END IF
+              END IF
+            END DO
+            IF( ASSOCIATED( A % rhs ) ) THEN
+              CollMat % rhs(n+i) = A % rhs(i)
+            END IF
+          END DO
+          IF(.NOT. Visited ) THEN
+            CollMat % Rows(n+i+1) = k+1
+          END IF
+        END DO
+      END DO
+    END IF
+
+
+    IF( ParEnv % PEs > 1 ) THEN
+      IF( NoVar /= 2 ) THEN
+        CALL Fatal(Caller,'Parallel operation currently assumes just 2x2 blocks!')
+      END IF
+
+      CALL Info(Caller,'Merging parallel info of matrices')
+      CALL ParallelMergeMatrix( Solver, CollMat, &
+          TotMatrix % SubMatrix(1,1) % Mat, &
+          TotMatrix % SubMatrix(2,2) % Mat )
+    END IF
+
+    
+    IF(InfoActive(20)) THEN
+      !CALL CRS_CheckSymmetricTopo(CollMat)
+      !CALL CRS_CheckComplexTopo(CollMat)
+      CALL VectorValuesRange(CollMat % Values,SIZE(CollMat % Values),'Atot')
+      IF( ASSOCIATED( CollMat % MassValues ) ) THEN
+        CALL VectorValuesRange(CollMat % MassValues,SIZE(CollMat % MassValues),'Mtot')
+      END IF
+    END IF
+          
+
+    
+    CALL Info(Caller,'True number of nonzeros in monolithic matrix: '//TRIM(I2S(k)),Level=7)
+ 
+    IF(.NOT. Visited ) THEN
       MonolithicVar % Name = '' ! Some name needed to avoid an uninitialised value error
       MonolithicVar % Values => CollX
       MonolithicVar % Dofs = 1
       MonolithicVar % Perm => NULL()
-
+      
       NoEigen = Solver %  NOFEigenValues
       IF( NoEigen > 0 ) THEN
         n = CollMat % NumberOfRows
         ALLOCATE( MonolithicVar % EigenValues(NoEigen), MonolithicVar % EigenVectors(NoEigen,n) )
         MonolithicVar % EigenValues = 0.0_dp
         MonolithicVar % EigenVectors = 0.0_dp
-      END IF 
-    ELSE
-      k = 0
-      
-      DO NoRow = 1,NoVar
-        n = TotMatrix % Offset(NoRow) 
-
-        A => TotMatrix % SubMatrix( NoRow, NoRow ) % Mat
-        m = A % NumberOfRows
-        
-        DO i=1,m
-          DO NoCol = 1,NoVar
-            A => TotMatrix % SubMatrix( NoRow, NoCol ) % Mat
-            IF( ASSOCIATED( A ) ) THEN
-              IF( SIZE(A % Rows) < i+1 ) CYCLE 
-              DO j=A % Rows(i),A % Rows(i+1)-1
-                k = k + 1
-                CollMat % Values(k) = A % Values(j)
-                IF( HaveMass ) THEN
-                  IF( ASSOCIATED( A % MassValues ) ) THEN
-                    CollMat % MassValues(k) = A % MassValues(j)
-                  END IF
-                END IF
-                IF( HaveDamp ) THEN
-                  IF( ASSOCIATED( A % DampValues ) ) THEN
-                    CollMat % DampValues(k) = A % DampValues(j)
-                  END IF
-                END IF                
-              END DO
-              IF( ASSOCIATED( A % rhs ) ) THEN
-                CollMat % rhs(n+i) = A % rhs(i)
-              END IF              
-            END IF
-          END DO
-        END DO
-      END DO      
+      END IF
+      Visited = .TRUE.      
     END IF
 
-    CALL Info(Caller,'Copying block solution to monolithic vector',Level=12)
-    DO i=1,NoVar
-      Var => TotMatrix % SubVector(i) % Var 
-      n = SIZE( Var % Values )       
-      m = TotMatrix % Offset(i)
-      CollX(m+1:m+n) = Var % Values(1:n) 
-    END DO
-    
+    IF(.NOT. DampedEigen) THEN        
+      CALL Info(Caller,'Copying block solution to monolithic vector',Level=12)
+      DO i=1,NoVar
+        Var => TotMatrix % SubVector(i) % Var 
+        n = SIZE( Var % Values )       
+        m = TotMatrix % Offset(i)
+        CollX(m+1:m+n) = Var % Values(1:n) 
+      END DO
+    END IF
+      
     ! Solve monolithic matrix equation. 
     CALL SolveLinearSystem( CollMat, CollMat % rhs, CollX, TotNorm, 1, Solver )
 
@@ -3384,7 +3479,7 @@ CONTAINS
       n = SIZE( Var % Values ) 
       m = TotMatrix % Offset(i)
       Var % Values(1:n) = CollX(m+1:m+n) 
-
+      
       IF( NoEigen > 0 ) THEN
         IF(.NOT. ASSOCIATED( Var % EigenValues ) ) THEN
           IF( ASSOCIATED( Var % Solver ) ) THEN
@@ -3404,10 +3499,19 @@ CONTAINS
             END DO
           END IF
         END IF
- 
-        DO k=1,NoEigen
+
+        DO k=1,NoEigen                    
           Var % EigenValues(k) = MonolithicVar % EigenValues(k)
-          Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,m+1:m+n)
+          IF( DampedEigen ) THEN
+            IF( SaveImag ) THEN
+              ! This is mainly for debugging purposes
+              Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,2*m+2:2*(m+n-1)+2:2)
+            ELSE
+              Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,2*m+1:2*(m+n-1)+1:2)
+            END IF
+          ELSE
+            Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,m+1:m+n)
+          END IF
         END DO
         
       END IF

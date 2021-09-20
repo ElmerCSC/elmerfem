@@ -93,7 +93,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
@@ -300,6 +300,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
 
   IF( NormInd > 0 ) THEN
+    Norm = ParallelReduction(Norm) 
     Solver % Variable % Values = Norm
     Solver % Variable % Norm = Norm
   END IF
@@ -591,7 +592,8 @@ CONTAINS
     CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
     SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
 
-    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
+    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe,&
+        PeMax = ParEnv % PEs, PeSeparator = '_' ) 
 
     IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
       IF( Parallel ) THEN
@@ -641,11 +643,13 @@ CONTAINS
     REAL(KIND=dp), POINTER :: PtoBasis(:)
     REAL(KIND=dp), TARGET :: PointBasis(1)
     REAL(KIND=dp) :: u,v,w
-    INTEGER, TARGET :: NodeIndex(1), Indexes(27)
+    INTEGER, TARGET :: NodeIndex(1), Indexes(54)
     INTEGER :: n0
+    REAL(KIND=dp) :: up,vp,wp
     REAL(KIND=dp), TARGET :: NodeBasis(54)
     REAL(KIND=dp) :: WBasis(54,3),RotWBasis(54,3), NodedBasisdx(54,3)
     REAL(KIND=dp) :: AveMult
+    LOGICAL :: pElem
     
     SAVE :: Nodes
 
@@ -685,6 +689,7 @@ CONTAINS
 
     IF( UseGivenNode ) THEN
       n = 1
+      nd = n
       NodeIndex(1) = node_id
       PtoIndexes => NodeIndex
       PointBasis(1) = 1.0_dp
@@ -714,6 +719,7 @@ CONTAINS
       
       EdgeBasis = .FALSE.
       PiolaVersion = .FALSE.
+      pElem = .FALSE.
       np = 0
       
       IF( PRESENT( LocalCoord ) ) THEN
@@ -732,7 +738,9 @@ CONTAINS
         IF( ASSOCIATED( Var % Solver ) ) THEN
           nd = GetElementDOFs( Indexes, Element, Var % Solver ) 
           n = Element % TYPE % NumberOfNodes
-                    
+
+          IF(nd > n) pElem = isActivePElement(Element,Var % Solver) 
+                 
           EdgeBasis = GetLogical(Var % Solver % Values,'Hcurl Basis', Found )            
           IF( EdgeBasis ) THEN
             IF( GetLogical(Var % Solver % Values, 'Quadratic Approximation', Found) ) THEN
@@ -746,14 +754,27 @@ CONTAINS
           nd = GetElementDOFs( Indexes, Element )
           n = Element % Type % NumberOfNodes
         END IF
-
+        
         IF( EdgeBasis ) THEN
           stat = ElementInfo( Element, Nodes, u, v, w, &
-              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, RotBasis = RotWBasis, USolver = Var % Solver)
-        ELSE
-          stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
+              detJ, NodeBasis, NodedBasisdx,  EdgeBasis = WBasis, &
+              RotBasis = RotWBasis, USolver = Var % Solver)
+        ELSE          
+          IF( pElem ) THEN
+            ! The standard element of SaveLine is most likely standard nodal element.
+            ! In the user gives something else we may be trouble...
+            up=u; vp=v; wp=w
+            CALL ConvertToPReference(Element % Type % ElementCode,up,vp,wp)            
+            stat = ElementInfo( Element, Nodes, up, vp, wp, detJ, NodeBasis, &
+                USolver = Var % Solver )
+          ELSE
+            stat = ElementInfo( Element, Nodes, u, v, w, detJ, NodeBasis )
+          END IF
+
           IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
             PtoIndexes => Element % DgIndexes
+          ELSE IF( pElem ) THEN
+            pToIndexes => Indexes
           ELSE
             PtoIndexes => Element % NodeIndexes 
           END IF           
@@ -763,7 +784,8 @@ CONTAINS
       ELSE IF( .NOT. UseGivenNode ) THEN
         PtoBasis => Basis
         n = Element % TYPE % NumberOfNodes
-
+        nd = n
+        
         IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
           PtoIndexes => Element % DgIndexes
         ELSE
@@ -777,7 +799,8 @@ CONTAINS
           NodeIndex(1) = node_id 
         END IF       
       END IF
-      
+
+            
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
@@ -800,6 +823,11 @@ CONTAINS
         END IF
           
       ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
+        IF( nd > SIZE( PtoIndexes ) ) THEN
+          CALL Warn('SaveLine','nd exceeds size of index table!')
+          nd = SIZE( PToIndexes ) 
+        END IF
+
         NoEigenValues = SIZE(Var % EigenValues) 
         IF( ASSOCIATED( PtoIndexes ) ) THEN
           DO j=1,NoEigenValues          
@@ -857,8 +885,9 @@ CONTAINS
           END IF
 
         ELSE IF( ASSOCIATED( PtoIndexes ) ) THEN
-          DO k=1,n
+          DO k=1,nd
             l = PtoIndexes(k)
+            IF(l==0) CYCLE
             IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
             IF(l > 0) THEN
               DO ii=1,Var % Dofs
@@ -1337,6 +1366,11 @@ CONTAINS
   ! in uniformly distributed points. 
   !-------------------------------------------------------------------------------------
   SUBROUTINE SavePolyLines()
+
+    TYPE(Solver_t), POINTER :: pSolver
+
+    pSolver => Solver
+    
     
     SaveAxis(1) = ListGetLogical(Params,'Save Axis',GotIt)
     IF(GotIt) THEN
@@ -1365,6 +1399,9 @@ CONTAINS
     GotDivisions = .FALSE.
     IF( NoLines > 0 ) THEN
       NoDivisions => ListGetIntegerArray( Params,'Polyline Divisions',GotDivisions)
+      IF(.NOT. GotDivisions) THEN
+        NoDivisions => ListGetIntegerArray( Params,'Polyline Intervals',GotDivisions)
+      END IF
       IF( GotDivisions ) THEN
         IF( SIZE( NoDivisions ) < NoLines + COUNT(SaveAxis) ) THEN
           CALL Fatal('SaveLine','Polyline divisions size too small!')
@@ -1507,7 +1544,8 @@ CONTAINS
 
               GlobalCoord = R0 + i * dR / nsize
 
-              IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, LocalCoord ) ) THEN
+              IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, &
+                  LocalCoord, USolver = pSolver ) ) THEN
                 LineTag(i) = .TRUE.
 
                 SaveNodes2 = SaveNodes2 + 1
@@ -1580,7 +1618,12 @@ CONTAINS
   SUBROUTINE SaveCircleLines()
     
     REAL(KIND=dp) :: CylCoord(3), Radius, Phi, Rtol
+    TYPE(Solver_t), POINTER :: pSolver
 
+    pSolver => Solver
+
+
+    
     PointCoordinates => ListGetConstRealArray(Params,'Circle Coordinates',gotIt)
     IF(.NOT. GotIt) RETURN
 
@@ -1718,7 +1761,7 @@ CONTAINS
 
           IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, LocalCoord ) ) THEN
             stat = ElementInfo( CurrentElement, ElementNodes, LocalCoord(1), &
-                LocalCoord(2), LocalCoord(3), detJ, Basis ) !, dBasisdx ) 
+                LocalCoord(2), LocalCoord(3), detJ, Basis, USolver = pSolver )
 
             LineTag(ii) = .TRUE.
             SaveNodes3 = SaveNodes3 + 1

@@ -1322,7 +1322,8 @@ END INTERFACE
            
            CALL Info('AddMeshCoordinatesAndTime','Adding partitioning also as a field')
            
-           n = Mesh % NumberOfBulkElements
+           n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
            NULLIFY( PartField, PartPerm )
            ALLOCATE( PartField(n), PartPerm(n) )
            DO i=1,n

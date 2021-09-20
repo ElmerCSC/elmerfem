@@ -1817,7 +1817,7 @@ CONTAINS
     LOGICAL :: dofsdone
     LOGICAL*1, ALLOCATABLE :: Done(:)
     REAL(KIND=dp), POINTER CONTIG :: Values(:)
-    LOGICAL :: Parallel 
+    LOGICAL :: Parallel, Found
     
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
@@ -1841,8 +1841,12 @@ CONTAINS
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
     Parallel = (ParEnv % PEs > 1)
-    IF( CurrentModel % Mesh % SingleMesh ) Parallel = .FALSE.
-
+    IF( Parallel ) THEN
+      IF( ASolver % Mesh % SingleMesh ) THEN
+        Parallel = ListGetLogical( CurrentModel % Simulation,'Enforce Parallel',Found )
+      END IF
+    END IF
+      
     IF( Parallel ) CALL SetCircuitsParallelInfo()
 
     ! COUNT SIZES:

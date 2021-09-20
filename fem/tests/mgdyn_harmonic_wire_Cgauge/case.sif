@@ -184,7 +184,7 @@ Solver 6
   Polyline Divisions(1) = 200 
 
 ! The Joule heating 
-  Show Norm Index = Integer 37
+  Show Norm Index = Integer 35
 End
 
 Solver 7

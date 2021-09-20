@@ -113,9 +113,9 @@ CONTAINS
 !tt = realtime()
 #ifdef PARALLEL_FOR_REAL
        IF ( ParEnv % PEs <= 1 .OR. .NOT. ASSOCIATED(Matrix) ) RETURN
+       
        Mesh => Solver % Mesh
        DOFs = Solver % Variable % DOFs
-
 
        Perm => Solver % Variable % Perm
        IF(PRESENT(inPerm)) Perm=>InPerm
@@ -177,10 +177,13 @@ CONTAINS
                 DOFs*(Mesh % ParallelInfo % GlobalDOFs(i)-1)+j
               Matrix % ParallelInfo % Interface(k) = &
                 Mesh % ParallelInfo % Interface(i)
-              ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
-                   Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
-              Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
-                Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+              
+              IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+                ALLOCATE( Matrix % ParallelInfo % NeighbourList(k) % Neighbours(SIZE( &
+                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) )
+                Matrix % ParallelInfo % NeighbourList(k) % Neighbours = &
+                    Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+              END IF
            END DO
          END DO
 
@@ -1305,6 +1308,126 @@ CONTAINS
 #endif       
     END FUNCTION ParallelPieceSize
 
+
+
+!--------------------------------'-----------------------------------------------
+    SUBROUTINE ParallelMergeMatrix( Solver, A, A1, A2 )
+!-------------------------------------------------------------------------------
+      TYPE(Solver_t) :: Solver
+      TYPE(Matrix_t), POINTER :: A, A1, A2
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), POINTER :: Ai
+      TYPE(ParallelInfo_t), POINTER :: P, Pi
+      INTEGER :: i, j, k, l, m, n, ni, ksum, c
+      INTEGER :: jumps(3)
+      INTEGER :: Ierr, status(MPI_STATUS_SIZE)     
+!-------------------------------------------------------------------------------
+#ifdef PARALLEL_FOR_REAL
+      IF ( ParEnv % PEs <= 1 ) RETURN       
+
+      n = 0
+      jumps = 0 
+
+      DO i=1,2
+        IF(i == 1) THEN
+          Ai => A1
+        ELSE
+          Ai => A2
+        END IF
+        ni = Ai % NumberOfRows
+        Pi => Ai % ParallelInfo
+        IF(.NOT. ASSOCIATED(Pi) ) THEN
+          CALL Fatal('ParallelMergeMatrix',&
+              'Submatrix '//TRIM(I2S(i))//' does not have parallel info!')
+        END IF
+        
+        n = n + ni         
+        m = NINT(ParallelReduction(1._dp*MAXVAL(Pi % GlobalDOFs),2))
+        jumps(i+1) = jumps(i) + m 
+      END DO
+
+      IF( ParEnv % MyPe == 1 ) THEN
+        PRINT *,'offsets for parallel info:',jumps
+      END IF
+      
+      ALLOCATE( A % ParallelInfo )
+      P => A % ParallelInfo
+
+      c = A % NumberOfRows / n
+      IF( n /= A % NumberOfRows ) THEN
+        PRINT *,'n:',n,A % NumberOfRows,c
+        CALL Warn('ParallelMergeMatrix','Mismatch in vector length')
+      END IF
+
+      n = A % NumberOfRows
+      ALLOCATE( P % NeighbourList(n) )
+      CALL AllocateVector( P % Interface, n)
+      CALL AllocateVector( P % GlobalDOFs, n)
+      IF( ASSOCIATED( A1 % Perm ) ) CALL AllocateVector( A % Perm, n)      
+      IF( ASSOCIATED( A1 % InvPerm ) ) CALL AllocateVector( A % InvPerm, n)
+
+
+      ! This is made so that would there be need it is easy to add matrices
+      ! if we later need more than two...
+      n = 0
+      DO i=1,2
+        IF(i == 1) THEN
+          Ai => A1
+        ELSE
+          Ai => A2
+        END IF
+
+        ni = Ai % NumberOfRows
+        Pi => Ai % ParallelInfo
+        m = jumps(i)
+
+        IF(c==1) THEN
+          P % INTERFACE(n+1:n+ni) = Pi % INTERFACE(1:ni) 
+          P % GlobalDofs(n+1:n+ni) = Pi % GlobalDofs(1:ni) + m
+        ELSE
+          P % INTERFACE(2*n+1:2*(n+ni)-1:2) = Pi % INTERFACE(1:ni) 
+          P % INTERFACE(2*n+2:2*(n+ni):2) = Pi % INTERFACE(1:ni) 
+          P % GlobalDofs(2*n+1:2*(n+ni)-1:2) = 2*Pi % GlobalDofs(1:ni)-1 + 2*m
+          P % GlobalDofs(2*n+2:2*(n+ni):2) = 2*Pi % GlobalDofs(1:ni) + 2*m
+        END IF
+          
+        !IF( ASSOCIATED( A % Perm ) ) THEN
+        !  A % Perm(n+1:n+ni) = Ai % Perm(1:ni)           
+        !END IF
+        !IF( ASSOCIATED( A % InvPerm ) ) THEN
+        !  A % InvPerm(n+1:n+ni) = Ai % InvPerm(1:ni)           
+        !END IF
+
+        ksum = 0
+        DO j=1,ni
+          IF(.NOT. ASSOCIATED(Pi % NeighbourList(j) % Neighbours)) CYCLE
+          k = SIZE(Pi % NeighbourList(j) % Neighbours)
+          ksum = ksum + k
+          IF(c==1) THEN
+            ALLOCATE(P % NeighbourList(n+j) % Neighbours(k))
+            P % NeighbourList(n+j) % Neighbours = Pi % NeighbourList(j) % Neighbours
+          ELSE
+            ALLOCATE(P % NeighbourList(2*n+2*j-1) % Neighbours(k))
+            P % NeighbourList(2*n+2*j-1) % Neighbours = Pi % NeighbourList(j) % Neighbours
+            ALLOCATE(P % NeighbourList(2*n+2*j) % Neighbours(k))
+            P % NeighbourList(2*n+2*j) % Neighbours = Pi % NeighbourList(j) % Neighbours
+          END IF
+        END DO
+
+        PRINT *,'Number of neighbours:',i,ksum
+        
+        n = n + ni
+      END DO
+
+      ! Finalize creation of parallel structures
+      A % ParMatrix => ParInitMatrix( A, A % ParallelInfo )
+
+#endif
+!-------------------------------------------------------------------------------
+    END SUBROUTINE ParallelMergeMatrix
+!-------------------------------------------------------------------------------
+
+    
   END MODULE ParallelUtils
 
 !> \}
