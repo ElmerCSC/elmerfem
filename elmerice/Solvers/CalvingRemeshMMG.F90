@@ -421,7 +421,7 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
                                 gtest_lset(GNNode))
       fixed_node = .FALSE.
       fixed_elem = .FALSE.
-      gtest_lset = remesh_thresh + 500.0 !Ensure any far (unshared) nodes are fixed
+      IF(CalvingOccurs) gtest_lset = remesh_thresh + 500.0 !Ensure any far (unshared) nodes are fixed
 
       !Compute the global to local map
       DO i=1,GNNode
