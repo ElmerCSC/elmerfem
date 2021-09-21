@@ -891,17 +891,19 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   !-----------
   TYPE(Mesh_t), POINTER :: WorkMesh
   TYPE(ValueList_t), POINTER :: FuncParams, Material
+  TYPE(Variable_t), POINTER :: TimeVar
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp), ALLOCATABLE :: TargetLength(:,:), Metric(:,:),hminarray(:),hausdarray(:)
   REAL(KIND=dp), POINTER :: WorkReal(:,:,:) => NULL(), WorkArray(:,:) => NULL()
   REAL(KIND=dp) :: hsiz(3),hmin,hmax,hgrad,hausd,RemeshMinQuality,Quality
   INTEGER :: i,j,MetricDim,NNodes,NBulk,NBdry,ierr,SolType,body_offset,&
        nBCs,NodeNum(1), MaxRemeshIter, mmgloops, &
-       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, Counter
+       NVerts, NTetras, NPrisms, NTris, NQuads, NEdges, Counter, Time
   INTEGER, ALLOCATABLE :: TetraQuality(:)
-  LOGICAL :: Debug, Parallel, AnisoFlag, Found
+  LOGICAL :: Debug, Parallel, AnisoFlag, Found, SaveMMGMeshes, SaveMMGSols
   LOGICAL, ALLOCATABLE :: RmElement(:)
-  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName
+  CHARACTER(LEN=MAX_NAME_LEN) :: FuncName, MeshName, SolName, &
+       premmg_meshfile, mmg_meshfile, premmg_solfile, mmg_solfile
 
   SAVE :: WorkReal,WorkArray
 
@@ -910,6 +912,9 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   Debug = .TRUE.
   Parallel = ParEnv % PEs > 1
   FuncName = "RemeshMMG3D"
+
+  TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep' )
+  Time = INT(TimeVar % Values(1))
 
   !Optionally pass valuelist, by default use the Simulation section
   IF(PRESENT(Params)) THEN
@@ -939,6 +944,16 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
   NULLIFY(WorkArray)
   RemeshMinQuality = ListGetConstReal(FuncParams, "RemeshMMG3D Min Quality",Default=0.0001_dp)
   AnisoFlag = ListGetLogical(FuncParams, "RemeshMMG3D Anisotropic", Default=.TRUE.)
+  SaveMMGMeshes = ListGetLogical(FuncParams,"Save RemeshMMG3D Meshes", Default=.FALSE.)
+  SaveMMGSols = ListGetLogical(FuncParams,"Save RemeshMMG3D Sols", Default=.FALSE.)
+  IF(SaveMMGMeshes) THEN
+    premmg_meshfile = ListGetString(FuncParams, "Pre RemeshMMG3D Mesh Name", UnfoundFatal = .TRUE.)
+    mmg_meshfile = ListGetString(FuncParams, "RemeshMMG3D Output Mesh Name", UnfoundFatal = .TRUE.)
+  END IF
+  IF(SaveMMGSols) THEN
+    premmg_solfile = ListGetString(FuncParams, "Pre RemeshMMG3D Sol Name", UnfoundFatal = .TRUE.)
+    mmg_solfile = ListGetString(FuncParams, "RemeshMMG3D Output Sol Name", UnfoundFatal = .TRUE.)
+  END IF
 
   NNodes = InMesh % NumberOfNodes
   NBulk = InMesh % NumberOfBulkElements
@@ -1082,8 +1097,14 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
     END DO
   END IF
 
-  CALL MMG3D_SaveMesh(mmgMesh,"MMG3D_preremesh.mesh",LEN(TRIM("MMG3D_preremesh.mesh")),ierr)
-  CALL MMG3D_SaveSol(mmgMesh, mmgSol, "MMG3D_preremesh.sol",LEN(TRIM("MMG3D_preremesh.sol")),ierr)
+  IF(SaveMMGMeshes) THEN
+    WRITE(MeshName, '(A,i0,A)') TRIM(premmg_meshfile), time, '.mesh'
+    CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
+  END IF
+  IF(SaveMMGSols) THEN
+    WRITE(SolName, '(A,i0,A)') TRIM(premmg_solfile), time, '.sol'
+    CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
+  END IF
   IF (DEBUG) PRINT *,'--**-- SET MMG3D PARAMETERS '
   ! CALL SET_MMG3D_PARAMETERS(SolverParams)
 
@@ -1107,8 +1128,14 @@ SUBROUTINE RemeshMMG3D(Model, InMesh,OutMesh,EdgePairs,PairCount,NodeFixed,ElemF
 
   IF (DEBUG) PRINT *,'--**-- MMG3D_mmg3dlib DONE'
 
-  CALL MMG3D_SaveMesh(mmgMesh,"MMG3D_remesh.mesh",LEN(TRIM("MMG3D_remesh.mesh")),ierr)
-  CALL MMG3D_SaveSol(mmgMesh, mmgSol, "MMG3D_remesh.sol",LEN(TRIM("MMG3D_remesh.sol")),ierr)
+  IF(SaveMMGMeshes) THEN
+    WRITE(MeshName, '(A,i0,A)') TRIM(mmg_meshfile), time, '.mesh'
+    CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
+  END IF
+  IF(SaveMMGSols) THEN
+    WRITE(SolName, '(A,i0,A)') TRIM(mmg_solfile), time, '.sol'
+    CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
+  END IF
 
   CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
 

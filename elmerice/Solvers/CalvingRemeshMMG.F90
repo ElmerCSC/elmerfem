@@ -93,8 +93,10 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
        elem_send(:), RmElem(:), RmNode(:),new_fixed_node(:), new_fixed_elem(:), FoundNode(:,:), &
        UsedElem(:), NewNodes(:), RmIslandNode(:), RmIslandElem(:)
   LOGICAL :: ImBoss, Found, Isolated, Debug,DoAniso,NSFail,CalvingOccurs,&
-       RemeshOccurs,CheckFlowConvergence, HasNeighbour, RSuccess, Success
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName
+       RemeshOccurs,CheckFlowConvergence, HasNeighbour, RSuccess, Success,&
+       SaveMMGMeshes, SaveMMGSols
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, CalvingVarName, MeshName, SolName, &
+       premmgls_meshfile, mmgls_meshfile, premmgls_solfile, mmgls_solfile
   TYPE(Variable_t), POINTER :: TimeVar
   INTEGER :: Time, remeshtimestep, proc, idx, island, node, MaxLSetIter, mmgloops
   REAL(KIND=dp) :: TimeReal, PreCalveVolume, PostCalveVolume, CalveVolume, LsetMinQuality
@@ -166,7 +168,16 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
   remesh_thresh = ListGetConstReal(SolverParams,"Remeshing Distance", Default=1000.0_dp)
   LsetMinQuality = ListGetConstReal(SolverParams,"Mesh Min Quality", Default=0.00001_dp)
   CalvingVarName = ListGetString(SolverParams,"Calving Variable Name", Default="Calving Lset")
-
+  SaveMMGMeshes = ListGetLogical(SolverParams,"Save MMGLS Meshes", Default=.FALSE.)
+  SaveMMGSols = ListGetLogical(SolverParams,"Save MMGLS Sols", Default=.FALSE.)
+  IF(SaveMMGMeshes) THEN
+    premmgls_meshfile = ListGetString(SolverParams, "Pre MMGLS Mesh Name", UnfoundFatal = .TRUE.)
+    mmgls_meshfile = ListGetString(SolverParams, "MMGLS Output Mesh Name", UnfoundFatal = .TRUE.)
+  END IF
+  IF(SaveMMGSols) THEN
+    premmgls_solfile = ListGetString(SolverParams, "Pre MMGLS Sol Name", UnfoundFatal = .TRUE.)
+    mmgls_solfile = ListGetString(SolverParams, "MMGLS Output Sol Name", UnfoundFatal = .TRUE.)
+  END IF
 
   IF(ParEnv % MyPE == 0) THEN
     PRINT *,ParEnv % MyPE,' hmin: ',hminarray
@@ -579,9 +590,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       !> 4) (not mandatory): check if the number of given entities match with mesh size
       CALL MMG3D_Chk_meshData(mmgMesh,mmgLs,ierr)
       IF ( ierr /= 1 ) CALL EXIT(105)
-
-      CALL MMG3D_SaveMesh(mmgMesh,"test_prels.mesh",LEN(TRIM("test_prels.mesh")),ierr)
-      CALL MMG3D_SaveSol(mmgMesh, mmgLs,"test_prels.sol",LEN(TRIM("test_prels.sol")),ierr)
+      IF(SaveMMGMeshes) THEN
+        WRITE(MeshName, '(A,i0,A)') TRIM(premmgls_meshfile), time, '.mesh'
+        CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
+      END IF
+      IF(SaveMMGSols) THEN
+        WRITE(SolName, '(A,i0,A)') TRIM(premmgls_solfile), time, '.sol'
+        CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
+      END IF
       !> ------------------------------ STEP  II --------------------------
       !! remesh function
       ! mmg5.5 not using isosurface discretization. More robust to remesh seperately
@@ -604,9 +620,14 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
       ELSE IF ( ierr == MMG5_LOWFAILURE ) THEN
         PRINT*,"LOW ENDING OF MMG3DLS", time
       ENDIF
-
-      CALL MMG3D_SaveMesh(mmgMesh,"test_ls.mesh",LEN(TRIM("test_ls.mesh")),ierr)
-      CALL MMG3D_SaveSol(mmgMesh, mmgLs,"test_ls.sol",LEN(TRIM("test_ls.sol")),ierr)
+      IF(SaveMMGMeshes) THEN
+        WRITE(MeshName, '(A,i0,A)') TRIM(mmgls_meshfile), time, '.mesh'
+        CALL MMG3D_SaveMesh(mmgMesh,MeshName,LEN(TRIM(MeshName)),ierr)
+      END IF
+      IF(SaveMMGSols) THEN
+        WRITE(SolName, '(A,i0,A)') TRIM(mmgls_solfile), time, '.sol'
+        CALL MMG3D_SaveSol(mmgMesh, mmgLs,SolName,LEN(TRIM(SolName)),ierr)
+      END IF
 
       CALL MMG3D_Get_meshSize(mmgMesh,NVerts,NTetras,NPrisms,NTris,NQuads,NEdges,ierr)
 
