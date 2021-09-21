@@ -656,7 +656,7 @@
     ALLOCATE(ElemsToAdd(Mesh % NumberOfNodes))
     counter=0; ElemsToAdd = 0
     DO i=1, Mesh % NumberOfNodes
-      IF(DistValues(DistPerm(i)) + buffer > MaxMeshDist) CYCLE
+      IF(DistValues(DistPerm(i)) > MaxMeshDist/2) CYCLE
       inside = PointInPolygon2D(EdgePoly, (/Mesh % Nodes % x(i), Mesh % Nodes % y(i)/))
       IF(.NOT. inside) THEN
         DO j=1, PlaneMesh % NumberOfBulkElements
@@ -699,6 +699,21 @@
     END IF
 
     IF(Boss .AND. SUM(PartCount) > 0) THEN
+      !remove duplicates
+      ALLOCATE(WorkInt(SUM(PartCount)), RemoveNode(SUM(PartCount)))
+      WorkInt = PartElemsToAdd
+      RemoveNode = .FALSE.
+      DO i=1,SUM(PartCount)
+        IF(RemoveNode(i)) CYCLE
+        DO j=1,SUM(PartCount)
+          IF(i==j) CYCLE
+          IF(WorkInt(i) == WorkInt(j)) RemoveNode(j) = .TRUE.
+        END DO
+      END DO
+      DEALLOCATE(PartElemsToAdd)
+      PartElemsToAdd = PACK(WorkInt, .NOT. RemoveNode)
+      DEALLOCATE(WorkInt, RemoveNode)
+
       !if nodes lie outwith edgeline expand edgeline
       ALLOCATE(UsedElem(SIZE(PartElemsToAdd)), NodePositions(4))
       UsedElem=.FALSE.
@@ -719,7 +734,6 @@
                   IF(NodeIndexes(k) == EdgeLineNodes(j)) NodePositions(1) = k
                   IF(NodeIndexes(k) == EdgeLineNodes(j+1)) NodePositions(2) = k
                 END DO
-                PRINT*, PartElemsToAdd(i), j, NodePositions(1:2)
                 IF(NodePositions(1) == NodePositions(2)) CYCLE
                 IF(ABS(NodePositions(1) - NodePositions(2)) == 2) &
                   CALL FATAL('Calving3D_lset', 'Error building edgeine')
