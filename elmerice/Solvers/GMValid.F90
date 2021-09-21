@@ -104,7 +104,7 @@
   
    !Set up inverse perm for FindNodeNeighbours
    InvPerm => CreateInvPerm(Matrix % Perm) !Create inverse perm for neighbour search
-   ALLOCATE(Neighbours(Mesh % NumberOfNodes, 10), NoNeighbours(Mesh % NumberOfNodes))
+   ALLOCATE(Neighbours(Mesh % NumberOfNodes, 50), NoNeighbours(Mesh % NumberOfNodes))
    Neighbours = 0
 
    !Find neighbours for each node on the bed
