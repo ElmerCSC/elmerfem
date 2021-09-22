@@ -171,7 +171,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: IntVal, FirstInd, LastInd, ScalarsUnit, MarkerUnit, NamesUnit, RunInd, PrevRunInd=-1
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT  
-  LOGICAL :: SlicesReduce, TimesReduce
+  LOGICAL :: SlicesReduce, TimesReduce, DoIt
   INTEGER :: PrevComm, CommRank, CommSize, nSlices, nTimes
   
   SAVE :: jsonpos, PrevRunInd
@@ -1199,8 +1199,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Add results in Components
   !------------------------------------------------------------------------------
-  IF( ListGetLogical( Params,'Save Component Results',GotIt ) ) THEN
-    CALL Info('SaveScalars','Saving results from component',Level=10)
+  DoIt = ListGetLogical( Params,'Save Component Results',GotIt )
+  IF(.NOT. GotIt) DoIt = (Model % NumberOfComponents > 0)
+  IF(DoIt) THEN
+    CALL Info('SaveScalars','Saving results from component - if any',Level=10)
     l = 0
     DO i = 1, Model % NumberOfComponents
       Lst => ListHead( Model % Components(i) % Values )

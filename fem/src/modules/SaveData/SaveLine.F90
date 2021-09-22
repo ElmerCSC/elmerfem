@@ -592,8 +592,14 @@ CONTAINS
     CALL SolverOutputDirectory( Solver, SideFile, OutputDirectory )
     SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
 
-    SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe,&
-        PeMax = ParEnv % PEs, PeSeparator = '_' ) 
+    IF( ParEnv % PEs > 1 ) THEN
+      SideParFile = TRIM(SideFile)//'.'//TRIM(I2S(ParEnv % MyPe))
+    ELSE
+      SideParFile = TRIM(SideFile)
+    END IF
+
+    !SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe,&
+    !    PeMax = ParEnv % PEs, PeSeparator = '_' ) 
 
     IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
       IF( Parallel ) THEN
