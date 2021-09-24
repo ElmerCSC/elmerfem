@@ -4772,7 +4772,150 @@ CONTAINS
   END SUBROUTINE VectorValuesRange
 !------------------------------------------------------------------------------
 
+  SUBROUTINE FindClosestNode(Mesh,Coord,MinDist,MinNode,Parallel,Eps,Perm)
+    TYPE(Mesh_t) :: Mesh
+    REAL(KIND=dp) :: Coord(:)
+    REAL(KIND=dp) :: MinDist
+    INTEGER :: MinNode
+    LOGICAL :: Parallel
+    REAL(KIND=dp), OPTIONAL :: Eps
+    INTEGER, OPTIONAL :: Perm(:)
+    
+    INTEGER :: i,j,k,n,dim
+    REAL(KIND=dp) :: Dist
+    INTEGER, POINTER :: neigh(:)
+    
+    CALL Info('FindClosestNode','Trying to find the closest node',Level=20)
+    
+    dim = SIZE( Coord )
+    MinDist = HUGE(MinDist)
+    MinNode = 0
+    
+    DO i=1,Mesh % NumberOfNodes
+      IF( PRESENT( Perm ) ) THEN
+        IF( Perm(i) == 0) CYCLE
+      END IF
+      Dist = (Mesh % Nodes % x(i) - Coord(1))**2 
+      IF(dim >= 2) Dist = Dist + (Mesh % Nodes % y(i) - Coord(2))**2
+      IF(dim == 3) Dist = Dist + (Mesh % Nodes % z(i) - Coord(3))**2
+      
+      IF( PRESENT( Eps ) ) THEN
+        IF( Dist > Eps ) CYCLE
+      END IF
+      
+      IF(Dist < MinDist ) THEN
+        MinDist = Dist
+        MinNode = i
+      END IF
+    END DO
+    
+    ! We found minimum square
+    MinDist = SQRT(MinDist)    
+    
+    !PRINT *,'MinNode serial:',ParEnv % MyPe, MinDist, MinNode, &
+    !    Mesh % Nodes % x(MinNode), Mesh % Nodes % y(MinNode)
+    
+    ! In parallel case eliminate all except the nearest node. 
+    ! This relies on the fact that for each node partition the 
+    ! distance to nearest node is computed accurately. 
+    IF( Parallel ) THEN
 
+      ! In parallel apply load only on the owner partition:
+      ! On shared nodes penalize the non-owner candidate. 
+      ! ---------------------------------------------------
+      IF(MinNode>0) THEN
+        neigh => Mesh % ParallelInfo % NeighbourList(MinNode) % Neighbours
+        ! Find the 1st index active for this model
+        n = SIZE(neigh)
+        IF(n>1) THEN         
+          ! Of the sharing partitions who owns this
+          DO i=1,n
+            IF(ParEnv % Active(neigh(i))) EXIT
+          END DO
+          ! And if it is not in this partition then skip it
+          IF(i<n) THEN
+            IF(neigh(i) /= ParEnv % MyPE) THEN          
+              MinDist = HUGE(MinDist)
+            END IF
+          END IF
+        END IF
+      END IF
+
+      ! These should be legit candidates.
+      ! Let's choose the one with shortest distance
+      Dist = MinDist 
+      MinDist = ParallelReduction( Dist, 1 )
+      IF( ABS( MinDist - Dist ) > EPSILON(Dist) ) THEN
+        MinNode = 0
+      END IF          
+    END IF
+
+    CALL Info('FindClosestNode','Clocest node found to be: '//TRIM(I2S(MinNode)),Level=20)
+    
+  END SUBROUTINE FindClosestNode
+
+
+  SUBROUTINE TargetCoordinatesToTargetNodes( Mesh, ValueList, Success, Perm )
+    TYPE(Mesh_t) :: Mesh
+    TYPE(ValueList_t), POINTER :: ValueList
+    LOGICAL :: Success
+    INTEGER, OPTIONAL :: Perm(:)
+    
+    LOGICAL :: Found, Parallel  
+    REAL(KIND=dp), POINTER :: CoordNodes(:,:)
+    REAL(KIND=dp) :: Eps, MinDist
+    INTEGER :: i,j,NoNodes, NoDims, NofNodesFound
+    INTEGER, POINTER :: IndNodes(:)
+    
+    
+    Success = .FALSE.
+
+    Parallel = ( ParEnv % PEs > 1 )
+    IF(Mesh % SingleMesh) Parallel = .FALSE.
+    
+    CoordNodes => ListGetConstRealArray(ValueList,'Target Coordinates',Found)
+    IF(.NOT. Found) RETURN
+
+    Eps = ListGetConstReal( ValueList, 'Target Coordinates Eps',Found )
+    IF ( .NOT. Found ) THEN
+      Eps = HUGE(Eps)
+    ELSE
+      ! We are looking at square of distance
+      Eps = Eps**2
+    END IF
+    
+    NoNodes = SIZE(CoordNodes,1)
+    NoDims = SIZE(CoordNodes,2)    
+    IF(NoNodes == 0 ) RETURN
+    
+    ALLOCATE( IndNodes(NoNodes) )
+    IndNodes = -1
+            
+    NofNodesFound = 0
+    DO j=1,NoNodes           
+      CALL FindClosestNode(Mesh,CoordNodes(j,:),MinDist,i,&
+          Parallel,Eps,Perm)
+      IF(i>0) THEN
+        NofNodesFound = NofNodesFound + 1
+        IndNodes(NofNodesFound) = i
+      END IF
+    END DO
+    
+    ! If no nodes found, add still an empty list and make sure the 
+    ! zero is not treated later on. Otherwise this search would be 
+    ! retreated each time. 
+    NofNodesFound = MAX(1,NofNodesFound)
+    
+    CALL ListAddIntegerArray( ValueList,'Target Nodes', &
+        NOFNodesFound, IndNodes) 
+    
+    ! Finally deallocate the temporal vectors
+    DEALLOCATE( IndNodes )
+    Success = .TRUE.
+    
+  END SUBROUTINE TargetCoordinatesToTargetNodes
+
+  
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
 !> set based on the given name and applied directly to the matrix structure
@@ -4801,7 +4944,6 @@ CONTAINS
     INTEGER, ALLOCATABLE :: Indexes(:), PassPerm(:)
     INTEGER :: BC,i,j,j2,k,l,m,n,nd,p,t,k1,k2,OffSet
     LOGICAL :: GotIt, periodic, OrderByBCNumbering, ReorderBCs
-    REAL(KIND=dp), POINTER :: MinDist(:)
     REAL(KIND=dp), POINTER :: WorkA(:,:,:) => NULL()
     REAL(KIND=dp) ::  s
 
@@ -4815,7 +4957,7 @@ CONTAINS
     INTEGER :: NoNodes,NoDims,bf_id,nlen, NOFNodesFound, dim, &
         bndry_start, bndry_end, Upper
     REAL(KIND=dp), POINTER :: CoordNodes(:,:), Condition(:), Work(:)
-    REAL(KIND=dp) :: GlobalMinDist,Dist, Eps
+    REAL(KIND=dp) :: MinDist,Dist, Eps
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActiveCond(:), ActivePartAll(:)
     TYPE(ValueList_t), POINTER :: ValueList, Params
     LOGICAL :: NodesFound, Passive, OffDiagonal, ApplyLimiter
@@ -5213,96 +5355,11 @@ CONTAINS
       ! The coordinates are only requested for a body that has no list of nodes.
       ! At the first calling the list of coordinates is transformed to list of nodes.
       IF(.NOT. NodesFound) THEN
-        CoordNodes => ListGetConstRealArray(ValueList,'Target Coordinates',GotIt)
-        IF(GotIt) THEN
-          Eps = ListGetConstReal( ValueList, 'Target Coordinates Eps', Gotit )
-          IF ( .NOT. GotIt ) THEN
-            Eps = HUGE(Eps)
-          ELSE
-            ! We are looking at square of distance
-            Eps = Eps**2
-          END IF
-
-          NoNodes = SIZE(CoordNodes,1)
-          NoDims = SIZE(CoordNodes,2)
-          
-          IF(NoNodes > 0) THEN               
-            ALLOCATE( IndNodes(NoNodes), MinDist(NoNodes) )
-            IndNodes = -1
-            MinDist = HUGE( Dist )
-            DO j=1,NoNodes
-              DO i=1,Model % NumberOfNodes
-                IF( Perm(i) == 0) CYCLE
-                
-                Dist = (Mesh % Nodes % x(i) - CoordNodes(j,1))**2 
-                IF(NoDims >= 2) Dist = Dist + (Mesh % Nodes % y(i) - CoordNodes(j,2))**2
-                IF(NoDims == 3) Dist = Dist + (Mesh % Nodes % z(i) - CoordNodes(j,3))**2
-                Dist = SQRT(Dist)
-                
-                IF(Dist < MinDist(j) .AND. Dist <= Eps ) THEN
-                  MinDist(j) = Dist
-                  IndNodes(j) = i
-                END IF
-              END DO
-            END DO
-
-            IF( InfoActive( 20 ) ) THEN
-              DO j=1,NoNodes
-                i = IndNodes(j)
-                IF(i<1) CYCLE
-                PRINT *,'Nearest node is:',i,MinDist(j)                
-                PRINT *,'Target Coordinates:',CoordNodes(j,:)
-                PRINT *,'Nearest coordinates:',Model % Mesh % Nodes % x(i),&
-                    Model % Mesh % Nodes % y(i), Model % Mesh % Nodes % z(i)
-              END DO
-            END IF
-            
-            ! In parallel case eliminate all except the nearest node. 
-            ! This relies on the fact that for each node partition the 
-            ! distance to nearest node is computed accurately. 
-            IF( Parallel ) THEN
-              DO j=1,NoNodes
-                GlobalMinDist = ParallelReduction( MinDist(j), 1 )
-                IF( ABS( GlobalMinDist - MinDist(j) ) > TINY(Dist) ) THEN
-                  IndNodes(j) = 0
-                END IF
-              END DO
-              
-              NOFNodesFound = 0
-              DO j=1,NoNodes
-                IF ( IndNodes(j)>0 ) THEN
-                  NOFNodesFound = NOFNodesFound+1
-                  IndNodes(NOFNodesFound) = IndNodes(j)
-                END IF
-              END DO
-            ELSE
-              NOFNodesFound = COUNT( IndNodes(1:NoNodes) > 0 ) 
-            END IF
-
-              
-            ! In the first time add the found nodes to the list structure
-            IF ( NOFNodesFound > 0 ) THEN
-              DO i=1,NOFNodesFound
-                CALL Info(Caller, 'Target Nodes('//TRIM(I2S(i))//&
-                    ') = '//TRIM(I2S(IndNodes(i))),Level=7)
-              END DO
-              CALL ListAddIntegerArray( ValueList,'Target Nodes', &
-                  NOFNodesFound, IndNodes) 
-              NodesFound = .TRUE.            
-            ELSE
-              ! If no nodes found, add still an empty list and make sure the 
-              ! zero is not treated later on. Otherwise this search would be 
-              ! retreated each time. 
-              CALL ListAddIntegerArray( ValueList,'Target Nodes', &
-                  1, IndNodes) 
-            END IF
-
-            ! Finally deallocate the temporal vectors
-            DEALLOCATE( IndNodes, MinDist ) 
-          END IF
+        IF( ListCheckPresent( ValueList,'Target Coordinates' ) ) THEN
+          CALL TargetCoordinatesToTargetNodes( Mesh, ValueList, NodesFound )
         END IF
       END IF
-      
+                  
       ! If the target coordinates has already been assigned to an empty list 
       ! cycle over it by testing the 1st node. 
       IF( NodesFound ) THEN
@@ -7363,11 +7420,13 @@ END SUBROUTINE SetNodalSources
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActivePartAll(:), DoneLoad(:)
     LOGICAL :: NodesFound
     TYPE(ValueList_t), POINTER :: ValueList
+    CHARACTER(*), PARAMETER :: Caller = 'SetNodalLoads'
 
+    
     LoadName = TRIM(Name) // ' Load'
     nlen = LEN_TRIM(LoadName)
     
-    CALL Info('SetNodalLoads','Checking for nodal loads for variable: '//TRIM(Name),Level=12)
+    CALL Info(Caller,'Checking for nodal loads for variable: '//TRIM(Name),Level=12)
 
     n = MAX(Model % NumberOfBCs, Model % NumberOFBodyForces) 
     ALLOCATE( ActivePart(n), ActivePartAll(n) )
@@ -7387,7 +7446,7 @@ END SUBROUTINE SetNodalSources
     END DO
 
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
-      CALL Info('SetNodalLoads','Setting nodal loads on boundaries: '//TRIM(LoadName),Level=9)
+      CALL Info(Caller,'Setting nodal loads on boundaries: '//TRIM(LoadName),Level=9)
       ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )
       DoneLoad = .FALSE.
 
@@ -7427,7 +7486,7 @@ END SUBROUTINE SetNodalSources
     END DO
 
     IF ( ANY( ActivePart ) .OR. ANY(ActivePartAll) ) THEN
-      CALL Info('SetNodalLoads','Setting nodal loads on body force: '//TRIM(LoadName),Level=9)
+      CALL Info(Caller,'Setting nodal loads on body force: '//TRIM(LoadName),Level=9)
       IF(.NOT. ALLOCATED(DoneLoad)) ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )      
       DoneLoad = .FALSE.
 
@@ -7462,114 +7521,34 @@ END SUBROUTINE SetNodalSources
     DO BC=1,Model % NumberOfBCs
       ValueList => Model % BCs(BC) % Values
       IF( .NOT. ListCheckPresent( ValueList,LoadName )) CYCLE
+
       NodesFound = ListCheckPresent(ValueList,'Target Nodes')
 
       ! At the first calling the list of coordinates is transformed to list of nodes.
       IF(.NOT. NodesFound) THEN
-        CoordNodes => ListGetConstRealArray(ValueList, 'Target Coordinates',GotIt)
-        IF(GotIt) THEN
-          Eps = ListGetConstReal( ValueList, 'Target Coordinates Eps', Gotit )
-          IF ( .NOT. GotIt ) THEN
-            Eps = HUGE(Eps)
-          ELSE
-            ! We are looking at square of distance
-            Eps = Eps**2
-          END IF
-
-          NoNodes = SIZE(CoordNodes,1)
-          NoDims = SIZE(CoordNodes,2)
-          
-          IF(NoNodes > 0) THEN               
-            ALLOCATE( IndNodes(NoNodes), MinDist(NoNodes) )
-            IndNodes = -1
-            MinDist = HUGE( Dist )
-            DO j=1,NoNodes
-              DO i=1,Model % NumberOfNodes
-                IF( Perm(i) == 0) CYCLE
-                
-                Dist = (Model % Mesh % Nodes % x(i) - CoordNodes(j,1))**2 
-                IF(NoDims >= 2) Dist = Dist + (Model % Mesh % Nodes % y(i) - CoordNodes(j,2))**2
-                IF(NoDims == 3) Dist = Dist + (Model % Mesh % Nodes % z(i) - CoordNodes(j,3))**2
-                Dist = SQRT(Dist)
-                
-                IF(Dist < MinDist(j) .AND. Dist <= Eps ) THEN
-                  MinDist(j) = Dist
-                  IndNodes(j) = i
-                END IF
-              END DO
-            END DO
-
-            IF( InfoActive( 20 ) ) THEN
-              DO j=1,NoNodes
-                i = IndNodes(j)
-                IF(i<1) CYCLE
-                PRINT *,'Nearest node is:',i,MinDist(j)
-                PRINT *,'Target Coordinates:',CoordNodes(j,:)
-                PRINT *,'Nearest coordinates:',Model % Mesh % Nodes % x(i),&
-                    Model % Mesh % Nodes % y(i), Model % Mesh % Nodes % z(i)
-              END DO
-            END IF
-            
-            ! In parallel case eliminate all except the nearest node. 
-            ! This relies on the fact that for each node partition the 
-            ! distance to nearest node is computed accurately. 
-            DO j=1,NoNodes
-              GlobalMinDist = ParallelReduction( MinDist(j), 1 )
-              IF(ABS(GlobalMinDist - MinDist(j) )>TINY(Dist)) THEN
-                IndNodes(j) = 0
-              ELSE IF(ParEnv % PEs>1) THEN
-                ! In parallel apply load only on the owner partition:
-                ! ---------------------------------------------------
-                neigh=>Model % Mesh % ParallelInfo % NeighbourList(IndNodes(j)) % Neighbours
-                DO i=1,SIZE(Neigh)
-                  IF(ParEnv % Active(neigh(i))) EXIT
-                END DO
-                IF(neigh(i)/=ParEnv % MyPE) IndNodes(j) = 0
-              END IF
-            END DO
-
-            NOFNodesFound = 0
-            DO j=1,NoNodes
-               IF ( IndNodes(j)>0 ) THEN
-                 NOFNodesFound = NOFNodesFound+1
-                 IndNodes(NOFNodesFound) = IndNodes(j)
-               END IF
-            END DO
-            
-            ! In the first time add the found nodes to the list structure
-            IF ( NOFNodesFound > 0 ) THEN
-              DO i=1,NOFNodesFound
-                CALL Info('SetNodalLoads','Target Nodes('//TRIM(I2S(i))//&
-                    ') = '//TRIM(I2S(IndNodes(i))),Level=7)
-              END DO
-              CALL ListAddIntegerArray( ValueList,'Target Nodes', &
-                  NOFNodesFound, IndNodes) 
-              NodesFound = .TRUE.            
-            ELSE
-              ! If no nodes found, add still an empty list and make sure the 
-              ! zero is not treated later on. Otherwise this search would be 
-              ! retreated each time. 
-              CALL ListAddIntegerArray( ValueList,'Target Nodes', 0, IndNodes) 
-            END IF
-
-            ! Finally deallocate the temporal vectors
-            DEALLOCATE( IndNodes, MinDist ) 
+        IF(.NOT. NodesFound) THEN
+          IF( ListCheckPresent( ValueList,'Target Coordinates' ) ) THEN
+            CALL TargetCoordinatesToTargetNodes( Model % Mesh, ValueList, NodesFound )
           END IF
         END IF
       END IF
       
       IF(NodesFound) THEN           
-        CALL Info('SetNodalLoads','Setting nodal loads on target nodes: '//TRIM(Name),Level=9)
+        CALL Info(Caller,'Setting nodal loads on target nodes: '//TRIM(Name),Level=9)
         NodeIndexes => ListGetIntegerArray( ValueList,'Target Nodes')
         n = SIZE(NodeIndexes)
-        CALL SetPointLoads(n)
+
+        PRINT *,'ParEnv:',ParEnv % MyPe, NodeIndexes
+        IF(ANY(NodeIndexes>0)) THEN
+          CALL SetPointLoads(n)
+        END IF
       END IF
 
     END DO
 
     DEALLOCATE( Indexes )
 
-    CALL Info('SetNodalLoads','Finished checking for nodal loads',Level=12)
+    CALL Info(Caller,'Finished checking for nodal loads',Level=12)
 
 
 CONTAINS
@@ -7634,8 +7613,12 @@ CONTAINS
        
        IF ( GotIt ) THEN
          DO j=1,n
-           IF ( NodeIndexes(j) > SIZE(Perm) .OR. NodeIndexes(j) < 1 ) THEN
-             CALL Warn('SetPointLoads','Invalid Node Number')
+           IF ( NodeIndexes(j) > SIZE(Perm) ) THEN
+             CALL Warn('SetPointLoads','Node number too large!')
+             CYCLE
+           END IF
+           IF( NodeIndexes(j) == 0 ) THEN             
+             CALL Warn('SetPointLoads','Node number is zero')
              CYCLE
            END IF
          
@@ -7663,8 +7646,12 @@ CONTAINS
          
          IF (GotIt) THEN
            DO j=1,n
-             IF ( NodeIndexes(j) > SIZE(Perm) .OR. NodeIndexes(j) < 1 ) THEN
-               CALL Warn('SetPointLoads','Invalid Node Number')
+             IF ( NodeIndexes(j) > SIZE(Perm) ) THEN
+               CALL Warn('SetPointLoads','Node number too large!')
+               CYCLE
+             END IF             
+             IF( NodeIndexes(j) == 0 ) THEN             
+               CALL Warn('SetPointLoads','Node number is zero')
                CYCLE
              END IF
          
@@ -12399,8 +12386,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: Var
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL Warn('CalculateMeshPieces','Implemented only for serial meshes, doing nothing!')
-      RETURN
+      CALL Warn('CalculateMeshPieces','Implemented only for serial meshes!')
     END IF
 
     n = Mesh % NumberOfNodes
