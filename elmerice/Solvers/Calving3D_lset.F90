@@ -210,8 +210,7 @@
 
    DO i=1, Mesh % NumberOfNodes
       IF(InflowPerm(i) > 0) THEN
-        PRINT*, ABS(DistValues(DistPerm(i)) * FrontOrientation(2))
-        IF(DistValues(DistPerm(i)) <= MaxMeshDist) &
+        IF(ABS(DistValues(DistPerm(i)) * FrontOrientation(2)) <= MaxMeshDist) &
           CALL FATAL(SolverName, "Reduce Calving Search Distance as parts of the inflow &
             boundary have a lower distance.")
       END IF
