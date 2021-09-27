@@ -236,7 +236,8 @@
    ! to pass for Grid Min X, etc
    ! Use MaxMeshDist...
 
-   gridmesh_dx = 20.0_dp
+   gridmesh_dx = ListGetConstReal(Params, "PlaneMesh Grid Size",Found, Default=20.0_dp)
+   IF(.NOT. Found) CALL WARN(SolverName, "No PlaneMesh Grid Size set in sif so setting to 20")
    buffer = gridmesh_dx * 4
 
    front_extent = GetFrontExtent(Mesh, RotationMatrix, DistVar, MaxMeshDist, buffer)
