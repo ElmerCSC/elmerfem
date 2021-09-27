@@ -61,7 +61,7 @@
         directions, Counter, ClosestCrev, NumEdgeNodes, UnFoundLoops, EdgeLength,&
         status(MPI_STATUS_SIZE)
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
-        LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
+        LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), InflowPerm(:)=>NULL(),&
         FrontNodeNums(:), FaceNodeNums(:)=>NULL(), DistPerm(:), WorkPerm(:), &
         SignDistPerm(:), NodeIndexes(:),IceNodeIndexes(:),&
         EdgeMap(:,:)
@@ -88,7 +88,7 @@
         EdgeX(:), EdgeY(:), EdgePoly(:,:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, DistVarname, &
         filename_root, &
-        FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName, &
+        FrontMaskName,TopMaskName,BotMaskName,LeftMaskName,RightMaskName,InflowMaskName, &
         PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
         MoveMeshDir
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
@@ -103,7 +103,7 @@
         DistVarName, PC_EqName, Iso_EqName, &
         MinCalvingSize, PauseVolumeThresh, MoveMesh,LeftConstraint, &
         RightConstraint, FrontConstraint,TopMaskName, BotMaskName, &
-        LeftMaskName, RightMaskName, FrontMaskName
+        LeftMaskName, RightMaskName, FrontMaskName, InflowMaskName
 
 !---------------Get Variables and Parameters for Solution-----------
 
@@ -121,6 +121,7 @@
       LeftMaskName = "Left Sidewall Mask"
       RightMaskName = "Right Sidewall Mask"
       FrontMaskName = "Calving Front Mask"
+      InflowMaskName = "Inflow Mask"
 
       dim = CoordinateSystemDimension()
       IF(dim /= 3) CALL Fatal(SolverName, "Solver only works in 3D!")
@@ -185,7 +186,7 @@
 
    NoNodes = Mesh % NumberOfNodes
    ALLOCATE( TopPerm(NoNodes), BotPerm(NoNodes), LeftPerm(NoNodes),&
-        RightPerm(NoNodes), FrontPerm(NoNodes))
+        RightPerm(NoNodes), FrontPerm(NoNodes), InflowPerm(NoNodes))
 
    !Generate perms to quickly get nodes on each boundary
    CALL MakePermUsingMask( Model, Solver, Mesh, TopMaskName, &
@@ -198,11 +199,23 @@
         .FALSE., RightPerm, dummyint)
    CALL MakePermUsingMask( Model, Solver, Mesh, FrontMaskName, &
         .FALSE., FrontPerm, FaceNodeCount)
+   CALL MakePermUsingMask( Model, Solver, Mesh, InflowMaskName, &
+        .FALSE., InflowPerm, dummyint)
 
    !Get the orientation of the calving front, compute rotation matrix
    FrontOrientation = GetFrontOrientation(Model)
    RotationMatrix = ComputeRotationMatrix(FrontOrientation)
    UnRotationMatrix = TRANSPOSE(RotationMatrix)
+
+
+   DO i=1, Mesh % NumberOfNodes
+      IF(InflowPerm(i) > 0) THEN
+        PRINT*, ABS(DistValues(DistPerm(i)) * FrontOrientation(2))
+        IF(DistValues(DistPerm(i)) <= MaxMeshDist) &
+          CALL FATAL(SolverName, "Reduce Calving Search Distance as parts of the inflow &
+            boundary have a lower distance.")
+      END IF
+   END DO
 
    NameSuffix = ListGetString(Params, "Calving Append Name", Found, UnfoundFatal=.TRUE.)
    MoveMeshDir = ListGetString(Params, "Calving Move Mesh Dir", Found)
@@ -1481,7 +1494,7 @@
     ! isomesh doesn't seem to released as part of planemesh
     CALL ReleaseMesh(IsoMesh)
 
-    DEALLOCATE(TopPerm, BotPerm, LeftPerm, RightPerm, FrontPerm)
+    DEALLOCATE(TopPerm, BotPerm, LeftPerm, RightPerm, FrontPerm, InflowPerm)
 
     IF(Parallel) CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
 
