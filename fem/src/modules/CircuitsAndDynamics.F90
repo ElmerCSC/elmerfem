@@ -383,7 +383,7 @@ CONTAINS
       CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
-        Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+        Comp % Resistance = ListGetCReal(CompParams, 'Resistance', Found)
         IF (Found) THEN
           Comp % UseCoilResistance = .TRUE.
         ELSE
@@ -1317,7 +1317,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CompParams => CurrentModel % Components(Comp % ComponentId) % Values
       IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
       IF (Comp % CoilType == 'stranded') THEN
-        Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+        Comp % Resistance = ListGetCReal(CompParams, 'Resistance', Found)
         IF (Found) THEN
           Comp % UseCoilResistance = .TRUE.
         ELSE
