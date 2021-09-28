@@ -3421,6 +3421,11 @@ CONTAINS
       CALL ParallelMergeMatrix( Solver, CollMat, &
           TotMatrix % SubMatrix(1,1) % Mat, &
           TotMatrix % SubMatrix(2,2) % Mat )
+
+      DO i=1,CollMat % NumberOfRows
+        j = SIZE(CollMat % ParallelInfo % NeighbourList(i) % Neighbours)
+        CALL Sort(j,CollMat % ParallelInfo % NeighbourList(i) % Neighbours)
+      END DO
     END IF
 
     
