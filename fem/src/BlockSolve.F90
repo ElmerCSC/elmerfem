@@ -3370,7 +3370,7 @@ CONTAINS
           END DO
         END DO
       END DO
-      
+
     ELSE
       DO NoRow = 1,NoVar
         n = TotMatrix % Offset(NoRow)
@@ -3433,8 +3433,6 @@ CONTAINS
       END IF
     END IF
           
-
-    
     CALL Info(Caller,'True number of nonzeros in monolithic matrix: '//TRIM(I2S(k)),Level=7)
  
     IF(.NOT. Visited ) THEN
@@ -3502,16 +3500,7 @@ CONTAINS
 
         DO k=1,NoEigen                    
           Var % EigenValues(k) = MonolithicVar % EigenValues(k)
-          IF( DampedEigen ) THEN
-            IF( SaveImag ) THEN
-              ! This is mainly for debugging purposes
-              Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,2*m+2:2*(m+n-1)+2:2)
-            ELSE
-              Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,2*m+1:2*(m+n-1)+1:2)
-            END IF
-          ELSE
-            Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,m+1:m+n)
-          END IF
+          Var % EigenVectors(k,1:n) = MonolithicVar % EigenVectors(k,m+1:m+n)
         END DO
         
       END IF
