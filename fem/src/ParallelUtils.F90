@@ -1420,6 +1420,8 @@ CONTAINS
 BLOCK
      INTEGER, ALLOCATABLE :: Ind(:)
 
+     n = A % NumberOfRows
+
      ALLOCATE(P % Gorder(n), Ind(n))
      Ind = P % GlobalDOFs
      P % Gorder = [(i,i=1,n)]
