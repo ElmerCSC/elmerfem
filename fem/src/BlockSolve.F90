@@ -3338,7 +3338,7 @@ CONTAINS
               IF( .NOT. ASSOCIATED( A ) ) CYCLE
 
               DO j=A % Rows(i),A % Rows(i+1)-1
-                ! If we have the imaginary row add the multiplier of real value first
+                ! If we have the imaginary row add the multiplier of imaginary value first
                 IF( c == 2 ) THEN
                   k = k + 1
                   CollMat % Cols(k) = 2*TotMatrix % Offset(NoCol) + 2*A % Cols(j)-1
@@ -3421,11 +3421,6 @@ CONTAINS
       CALL ParallelMergeMatrix( Solver, CollMat, &
           TotMatrix % SubMatrix(1,1) % Mat, &
           TotMatrix % SubMatrix(2,2) % Mat )
-
-      DO i=1,CollMat % NumberOfRows
-        j = SIZE(CollMat % ParallelInfo % NeighbourList(i) % Neighbours)
-        CALL Sort(j,CollMat % ParallelInfo % NeighbourList(i) % Neighbours)
-      END DO
     END IF
 
     

@@ -1354,10 +1354,10 @@ CONTAINS
       P => A % ParallelInfo
 
       c = A % NumberOfRows / n
-      IF( n /= A % NumberOfRows ) THEN
-        PRINT *,'n:',n,A % NumberOfRows,c
-        CALL Warn('ParallelMergeMatrix','Mismatch in vector length')
-      END IF
+!     IF( n /= A % NumberOfRows ) THEN
+!       PRINT *,'n:',parenv % mype, n,A % NumberOfRows,c
+!       CALL Warn('ParallelMergeMatrix','Mismatch in vector length')
+!     END IF
 
       n = A % NumberOfRows
       ALLOCATE( P % NeighbourList(n) )
@@ -1414,14 +1414,20 @@ CONTAINS
           END IF
         END DO
 
-        PRINT *,'Number of neighbours:',i,ksum
-        
         n = n + ni
       END DO
 
-      ! Finalize creation of parallel structures
-      A % ParMatrix => ParInitMatrix( A, A % ParallelInfo )
+BLOCK
+     INTEGER, ALLOCATABLE :: Ind(:)
 
+     ALLOCATE(P % Gorder(n), Ind(n))
+     Ind = P % GlobalDOFs
+     P % Gorder = [(i,i=1,n)]
+     CALL SortI( n, Ind, P % Gorder)
+END BLOCK
+
+     ! Finalize creation of parallel structures
+     A % ParMatrix => ParInitMatrix( A, A % ParallelInfo )
 #endif
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelMergeMatrix
