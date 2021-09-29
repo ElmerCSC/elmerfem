@@ -312,8 +312,9 @@
         END IF
         i = ndim - A % ExtraDOFs + 1
         j = ndim - A % ExtraDOFs + n
-        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
 
+
+        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
       END IF
 !-------------------------------------------------------------------------------
     END SUBROUTINE CircuitPrec
@@ -409,8 +410,12 @@
      Cols => A % Cols
 
      nm = A % NumberOfRows - A % ExtraDOFs
-     n  = A % ParallelDOFs
-     
+     IF ( ParEnv % PEs>1 ) THEN
+       n  = A % ParallelDOFs
+     ELSE
+       n  = A % ExtraDOFs
+     END IF
+
      m = SIZE(A % Values)
      ALLOCATE(TotValues(m))
 
