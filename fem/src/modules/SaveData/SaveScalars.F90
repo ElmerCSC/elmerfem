@@ -897,6 +897,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     
     l = 0
     DO i = 1, Model % NumberOfSolvers       
+
+      ! When we have strong coupling then two solvers will have exactly same eigenvalues.
+      ! Let's skip the one which is passive.
+      IF( ListGetLogical( Model % Solvers(i) % Values,'Linear System Solver Disabled',GotIt ) ) CYCLE
+
       IF ( Model % Solvers(i) % NOFEigenValues > 0 ) THEN
         DO k = 1, Model % Solvers(i) % NOFEigenValues
           

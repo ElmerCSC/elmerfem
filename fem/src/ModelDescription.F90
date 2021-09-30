@@ -3108,7 +3108,7 @@ CONTAINS
     TYPE(Model_t), POINTER :: Model 
     TYPE(ValueList_t), POINTER :: List, ListB
     INTEGER :: i,j,k,n,nb
-    LOGICAL :: Found, Flag
+    LOGICAL :: Found, Flag, DoIt, DoItB
     CHARACTER(LEN=MAX_NAME_LEN) :: Name, NameB
     REAL(KIND=dp) :: Tol = 1.0e-8
     INTEGER, POINTER :: TmpInts(:)
@@ -3226,12 +3226,22 @@ CONTAINS
     ! This hack is of course prone to errors if the underlaying assumptions change. 
     DO i=1,Model % NumberOfSolvers
       List => Model % Solvers(i) % Values
-      IF( ListGetLogical( List,'Automated Structure-Structure Coupling',Found) ) THEN
-        ! Ok, we need to set automated coupling
-        CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
-        CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+            
+      DoIt =  ListGetLogical( List,'Automated Structure-Structure Coupling',Found) 
+      DoItB =  ListGetLogical( List,'Automated Fluid-Structure Coupling',Found) 
 
-        CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
+      IF( DoIt .OR. DoItB ) THEN
+        ! Ok, we need to set automated coupling
+        IF( DoIt ) THEN
+          CALL Info('CompleteModelKeywords','Setting automated structural coupling!')
+          CALL Info('CompleteModelKeywords','Leading structure solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL ListAddLogical( List,'Structure-Structure Coupling',.TRUE.)
+        ELSE
+          CALL Info('CompleteModelKeywords','Setting automated fsi coupling!')
+          CALL Info('CompleteModelKeywords','Fluid solver has index: '//TRIM(I2S(i)),Level=6)
+          CALL ListAddLogical( List,'Fluid-Structure Coupling',.TRUE.)
+        END IF
+          
         CALL ListAddLogical( List,'Linear System Block Mode',.TRUE.) 
         CALL ListAddNewLogical( List,'Block Monolithic',.TRUE.)
         Flag = .FALSE.
@@ -3245,8 +3255,10 @@ CONTAINS
           IF( Flag ) EXIT
         END DO
         
-        IF(.NOT. Flag) THEN
-          CALL Fatal('CompleteModelKeywords','Cannot find the other structure solver!')
+        IF(Flag) THEN
+          CALL ListAddNewInteger( List,'Structure Solver Index',j)
+        ELSE
+          CALL Fatal('CompleteModelKeywords','Cannot find the structure solver!')
         END IF
         CALL Info('CompleteModelKeywords','Slave structure solver has index: '//TRIM(I2S(j)),Level=6)
 
