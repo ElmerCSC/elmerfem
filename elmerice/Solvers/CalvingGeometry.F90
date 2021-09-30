@@ -5641,7 +5641,7 @@ CONTAINS
     TYPE(Nodes_t) :: WorkNodes
     INTEGER :: i,j,k,n,ElNo,ShiftToMe, NodeNums(2),A,B,FirstIndex, LastIndex,Start, path, &
          EdgeLength,crop(2),OnSide,SideCornerNum,addnodes,AddEdgeInt(2), CrevEndNode, Sideloops,&
-         Counter, SideCornerOptions(3), LeftRight, ONNodes
+         Counter, SideCornerOptions(4), LeftRight, ONNodes
     INTEGER, ALLOCATABLE :: WorkInt(:), IsBelow(:), PolyStart(:), PolyEnd(:)
     INTEGER, POINTER :: WorkPerm(:), NodeIndexes(:)
     LOGICAL :: Debug, Shifted, CCW, ToLeft, Snakey, OtherRight, ShiftRightPath, &
@@ -5856,9 +5856,11 @@ CONTAINS
             END IF
             IF(TempDist < GridSize) THEN
               counter = counter + 1
+              IF(counter > 4) CALL FATAL(FuncName, 'More than 4 nodes closer than gridsize to side corner')
               SideCornerOptions(counter) = i
             END IF
           END DO
+
           ! this is for when the closest edgenode to the SideCorner is actually on
           ! the front causing a constriction in crevasse. This moves it back onto the
           ! lateral margin
@@ -5866,7 +5868,11 @@ CONTAINS
             IF(LeftRight == 1) SideCornerNum = MINVAL(SideCornerOptions(1:2))
             IF(LeftRight == 2) SideCornerNum = MAXVAL(SideCornerOptions(1:2))
           END IF
-          IF(counter >= 3) SideCornerNum = SideCornerOptions(2)
+          IF(counter == 3) SideCornerNum = SideCornerOptions(2)
+          IF(counter == 4) THEN
+            IF(LeftRight == 1) SideCornerNum = MINVAL(SideCornerOptions)
+            IF(LeftRight == 2) SideCornerNum = MAXVAL(SideCornerOptions)
+          END IF
 
           IF(SideCornerNum==0) CALL FATAL(FuncName, 'Side Corner not found')
           IF(SideCornerNum > MAXVAL(crop) .OR. SideCornerNum < MINVAL(crop)) THEN
@@ -6406,11 +6412,16 @@ CONTAINS
           END DO
 
           IF(COUNT(BreakElement) > 1) THEN
-            IF(COUNT(BreakElement) > 2) CALL FATAL('ValidateNPCrevassePath', &
-              'Assumption removing lateral margins does not break elements')
-            IF(DeleteElement(1) .OR. DeleteElement(CurrentPath % NumberOfElements)) &
-              CALL FATAL('ValidateNPCrevassePath', &
-              'Assumption removing lateral margins does not break elements')
+            IF(Sideloops > 1) THEN
+              IF(COUNT(BreakElement) > 3) CALL FATAL('ValidateNPCrevassePath', &
+                'Assumption removing lateral margins does not break elements')
+            ELSE
+              IF(COUNT(BreakElement) > 2) CALL FATAL('ValidateNPCrevassePath', &
+                'Assumption removing lateral margins does not break elements')
+              IF(DeleteElement(1) .OR. DeleteElement(CurrentPath % NumberOfElements)) &
+                CALL FATAL('ValidateNPCrevassePath', &
+                'Assumption removing lateral margins does not break elements')
+            END IF
           END IF
 
           !Delete them
