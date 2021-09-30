@@ -58,22 +58,27 @@
    INTEGER :: i, j,jmin, k, m, n, DOFs, TotalNodes,&
         FaceNodeCount, DummyInt,  hits, ierr, FrontLineCount, county,&
         ShiftIdx, ShiftToIdx, NoTangledGroups, PivotIdx, CornerIdx, &
-        SecondIdx, FirstTangleIdx, LastTangleIdx, Nl, Nr, Naux, ok, Nrail
+        SecondIdx, FirstTangleIdx, LastTangleIdx, Nl, Nr, Naux, ok, Nrail,&
+        NNodes, NBulk, NBdry, counter, LeftBCtag, RightBCtag, FrontBCtag,&
+        OnRails
    INTEGER, POINTER :: Perm(:), FrontPerm(:)=>NULL(), TopPerm(:)=>NULL(), &
-        FrontNodeNums(:)=>NULL(),LeftPerm(:)=>NULL(), RightPerm(:)=>NULL()
+        FrontNodeNums(:)=>NULL(),LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), &
+        NodeIndexes(:)
    INTEGER, ALLOCATABLE :: FrontLocalNodeNumbers(:), &
         NodeNumbers(:), TangledGroup(:), TangledPivotIdx(:), UpdatedDirection(:)
    REAL(KIND=dp) :: NodeVelo(3), NodeMelt(3), NodeNormal(3), RailDir(2),&
         MeltRate, Displace(3), y_coord(2), epsShift, LongRangeLimit, MaxDisplacement, &
-        EpsTangle,thisEps,Shift, thisY,xx,yy,TempDist,MinDist,xt,yt,t
+        EpsTangle,thisEps,Shift, thisY,xx,yy,TempDist,MinDist,xt,yt,t, &
+        a1(2), a2(2), b1(2), b2(2), b3(2), intersect(2), DistRailNode, RDisplace(3),&
+        buffer
    REAL(KIND=dp), POINTER :: Advance(:)
    REAL(KIND=dp), ALLOCATABLE :: Rot_y_coords(:,:), Rot_z_coords(:,:), &
         TangledShiftTo(:), xL(:),yL(:),xR(:),yR(:),xRail(:),yRail(:)
    LOGICAL :: Found, Debug, Parallel, Boss, ShiftLeft, LeftToRight, MovedOne, ShiftSecond, &
         Protrusion, SqueezeLeft, SqueezeRight, FirstTime=.TRUE., intersect_flag, FrontMelting, &
-        MovePastRailNode
+        MovePastRailNode, HitsRails, Reverse, ThisBC
    LOGICAL, ALLOCATABLE :: DangerZone(:), WorkLogical(:), &
-        Tangled(:), DontMove(:)
+        Tangled(:), DontMove(:), FrontToRight(:), FrontToLeft(:)
    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, VeloVarName, MeltVarName, &
         NormalVarName, FrontMaskName, TopMaskName, TangledVarName, &
         LeftMaskName, RightMaskName, LeftRailFName, RightRailFName
@@ -192,6 +197,9 @@
      MaxDisplacement = 1.0E4_dp
    END IF
 
+   buffer = ListGetConstReal(Params, "Rail Buffer", Found, Default=0.1_dp)
+   IF(.NOT. Found) CALL Info(SolverName, "No Rail Buffer set using default 0.1")
+
    !Get the front line
    FrontMaskName = "Calving Front Mask"
    TopMaskName = "Top Surface Mask"
@@ -216,9 +224,17 @@
    !         This is the main function of the Solver.
    !         TO DO: check for 'tangled' regions, see CalvingFrontAdvance3D.F90
    !--------------------------------------
+
+   NNodes = Mesh % NumberOfNodes
+   NBulk = Mesh % NumberOfBulkElements
+   NBdry = Mesh % NumberOfBoundaryElements
+
+   ALLOCATE(FrontToRight(NNodes), FrontToLeft(NNodes))
+   FrontToRight = .FALSE.; FrontToLeft = .FALSE.
     
    DO i=1,Mesh % NumberOfNodes
       IF(Perm(i) <= 0) CYCLE
+      IF(FrontPerm(i) == 0) CYCLE ! surely only need front nodes beyond here
 
       IF(FrontMelting .AND. (FrontPerm(i) >0 )) THEN
          IF(MeltVar % Perm(i) <= 0) &
@@ -247,11 +263,138 @@
          Displace(1) =  NodeVelo(1) - NodeMelt(1)
          Displace(2) =  NodeVelo(2) - NodeMelt(2)
          Displace(3) =  NodeVelo(3) - NodeMelt(3)
-	 Displace = Displace * dt
+	      Displace = Displace * dt
       END IF
+
+      OnRails = 0
+      ! if not lateral node need to check we don't cross rails if fjord narrowing
+      IF(LeftPerm(i) == 0 .AND. RightPerm(i) == 0) THEN
+         a1(1) = Solver % Mesh % Nodes % x(i)
+         a1(2) = Solver % Mesh % Nodes % y(i)
+         a2(1) = a1(1) + Displace(1)
+         a2(2) = a1(2) + Displace(2)
+
+         DO j=1, Nl-1
+            b1(1) = xL(j); b1(2) = yL(j)
+            b2(1) = xL(j+1); b2(2) = yl(j+1)
+            IF(j < Nr - 1) THEN
+               b3(1) = xR(j+2); b3(2) = yR(j+2)
+            END IF
+            tempdist = PointLineSegmDist2D(b1, b2, a1)
+            IF(tempdist < buffer + AEPS) THEN
+               FrontToLeft(i) = .TRUE.
+               OnRails = 1 ! on rails so treat as edge
+               EXIT
+            END IF
+
+            CALL LineSegmentsIntersect(a1, a2, b1, b2, intersect, HitsRails)
+
+            IF(HitsRails) THEN
+               FrontToLeft(i) = .TRUE.
+               ! check direction
+               Reverse = .FALSE.
+               IF (PointDist2D(intersect,b2) > PointDist2D(a1, b2)) Reverse = .TRUE.
+
+               IF(Reverse) THEN
+                  b1(1) = xL(j+1); b1(2) = yL(j+1)
+                  b2(1) = xL(j); b2(2) = yL(j)
+                  IF(j > 1) THEN
+                     b3(1) = xL(j-1); b3(2) = yL(j-1)
+                  END IF
+               END IF
+               EXIT
+            END IF
+         END DO
+
+         IF(.NOT. HitsRails) THEN ! didn't hit left rail
+            DO j=1, Nr-1
+               b1(1) = xR(j); b1(2) = yR(j)
+               b2(1) = xR(j+1); b2(2) = yR(j+1)
+               IF(j < Nr - 1) THEN
+                  b3(1) = xR(j+2); b3(2) = yR(j+2)
+               END IF
+               tempdist = PointLineSegmDist2D(b1, b2, a1)
+               IF(tempdist < buffer + AEPS) THEN
+                  FrontToRight(i) = .TRUE.
+                  OnRails = 2! on rails so treat as edge
+                  EXIT
+               END IF
+
+               CALL LineSegmentsIntersect(a1, a2, b1, b2, intersect, HitsRails)
+
+               IF(HitsRails) THEN
+                  FrontToRight(i) = .TRUE.
+                  ! check direction
+                  Reverse = .FALSE.
+                  IF (PointDist2D(intersect,b2) > PointDist2D(a1, b2)) Reverse = .TRUE.
+
+                  IF(Reverse) THEN
+                     b1(1) = xR(j+1); b1(2) = yR(j+1)
+                     b2(1) = xR(j); b2(2) = yR(j)
+                     IF(j > 1) THEN
+                        b3(1) = xR(j-1); b3(2) = yR(j-1)
+                     END IF
+                  END IF
+                  EXIT
+               END IF
+            END DO
+         END IF
+
+         IF(HitsRails) THEN ! hit a rail b1, b2, and b3 should be correct from above
+            ! limit to rail and then move along
+            Displace(1:2) = intersect-a1
+
+            !remaining displacement
+            RDisplace = 0.0_dp
+            RDisplace(1) =  (NodeVelo(1) - NodeMelt(1)) * dt - Displace(1)
+            RDisplace(2) =  (NodeVelo(2) - NodeMelt(2)) * dt - Displace(2)
+
+            DistRailNode = PointDist2D(intersect, b2)
+            TempDist = ( RDisplace(1)**2 + RDisplace(2)**2 ) ** 0.5
+
+            !check if move past rail node
+            MovePastRailNode = .FALSE.
+            IF(TempDist > DistRailNode) MovePastRailNode=.TRUE.
+
+            !project along rail
+            IF(.NOT. MovePastRailNode) THEN
+
+               RailDir = b1 - b2
+               Displace(1:2) = Displace(1:2) + DOT_PRODUCT(RDisplace(1:2),RailDir) * &
+                  RailDir / DOT_PRODUCT(RailDir,RailDir)
+
+            ELSE
+
+               IF((Reverse .AND. j == 1) .AND. (.NOT. Reverse .AND. j == Nr - 1)) &
+                  CALL FATAL(SolverName, 'Moving past the end of the rails')
+
+               RailDir = b1 - b2
+               Displace(1:2) = Displace(1:2) + b2 - a1 ! get to new rail node
+               !TempDist is total distance it would have travelled only along its original segment
+               TempDist=DOT_PRODUCT(RDisplace(1:2),RailDir) * &
+                  (RailDir(1)**2+RailDir(2)**2)**0.5 * dt / DOT_PRODUCT(RailDir,RailDir)
+               TempDist=ABS(TempDist) ! distance no sign
+
+               IF(TempDist < DistRailNode) THEN
+                  CALL WARN(SolverName, 'Node outside rails and moving past rail node')
+                  TempDist = DistRailNode
+               END IF
+
+               t=(TempDist - DistRailNode)/TempDist
+
+               ! new rail direction
+               RailDir = b2 - b3
+               ! add proportion left to travel along new direction
+               Displace(1:2) = Displace(1:2)+DOT_PRODUCT(RDisplace(1:2),RailDir) * &
+                  RailDir * dt * t / DOT_PRODUCT(RailDir,RailDir)
+            END IF
+         END IF
+      END IF
+
+
       ! NOTE: Displace overwritten on corner of left-front and right-front
       ! melt not taken into account on those corner nodes
-      IF ((LeftPerm(i)>0) .OR. (RightPerm(i)>0)) THEN  
+      IF ((LeftPerm(i)>0) .OR. (RightPerm(i)>0) .OR. (OnRails > 0) ) THEN
          ! Strategy to project displace from x to x+v*dt along rail direction:
          ! - find closest rail node, then find cosest rail segment.
          ! - three cases to find which rail segment should be used:
@@ -265,7 +408,7 @@
          yy = Solver % Mesh % Nodes % y(i)
          xt=xx+NodeVelo(1)*dt
          yt=yy+NodeVelo(2)*dt
-         IF (LeftPerm(i)>0) THEN
+         IF (LeftPerm(i)>0 .OR. OnRails == 1) THEN
             Nrail= Nl
             ALLOCATE(xRail(Nrail), yRail(Nrail))
             xRail = xL
@@ -337,29 +480,38 @@
             END IF
          END IF
          IF(MovePastRailNode) THEN
+            ! check not moving past last node
+            IF((k > jmin .AND. jmin == Nrail) .OR. (k < jmin .AND. jmin == 1)) &
+               CALL FATAL(SolverName, 'Moving past the end of the rails')
             ! k is defined such that the node should after displacement lay on jmin -- k segment
             ! nodes first move along the current rail segment to the nearest rail node jmin.
             ! whatever magnitude of the horizontal part of v*dt is left
             ! will be the distance the node travels on the new segment.
-            !RailDir=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! direction of current rail
-            !Displace(1:2)=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! get to new rail node
+            RailDir=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! direction of current rail
+            Displace(1:2)=(/xRail(jmin),yRail(jmin)/)-(/xx,yy/) ! get to new rail node
             !TempDist is total distance it would have travelled only along its original segment
-            !TempDist=DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
-            !     (RailDir(1)**2+RailDir(2)**2)**0.5 * dt / DOT_PRODUCT(RailDir,RailDir)
+            TempDist=DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
+                 (RailDir(1)**2+RailDir(2)**2)**0.5 * dt / DOT_PRODUCT(RailDir,RailDir)
+            TempDist=ABS(TempDist) ! distance no sign
             ! t is the proportion left to travel along new segment
-            !t=(TempDist - ((xx-xRail(jmin))**2.+(yy-yRail(jmin))**2.)**0.5)/TempDist
+            DistRailNode = ((xx-xRail(jmin))**2.+(yy-yRail(jmin))**2.)**0.5
+            IF(TempDist < DistRailNode) THEN
+               CALL WARN(SolverName, 'Node outside rails and moving past rail node')
+               TempDist = DistRailNode
+            END IF
+
+            t=(TempDist - DistRailNode)/TempDist
+
             ! new rail direction
-            RailDir=(/xRail(jmin-1),yRail(jmin-1)/)-(/xRail(jmin+1),yRail(jmin+1)/)
+            RailDir=(/xRail(jmin),yRail(jmin)/)-(/xRail(k),yRail(k)/)
             ! add proportion left to travel along new direction
-            !Displace(1:2) = Displace(1:2)+DOT_PRODUCT(NodeVelo(1:2),RailDir)
-            !  RailDir * dt * t / DOT_PRODUCT(RailDir,RailDir)
-            Displace(1:2) = DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
-                 RailDir * dt / DOT_PRODUCT(RailDir,RailDir)
+            Displace(1:2) = Displace(1:2)+DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
+              RailDir * dt * t / DOT_PRODUCT(RailDir,RailDir)
          ELSE ! not moving past node, just project onto current rail
             RailDir=(/xRail(jmin),yRail(jmin)/)-(/xRail(k),yRail(k)/)
             Displace(1:2) = DOT_PRODUCT(NodeVelo(1:2),RailDir) * &
              RailDir / DOT_PRODUCT(RailDir,RailDir)
-            Displace = Displace * dt
+            Displace(1:2) = Displace(1:2) * dt
          END IF
          ! TO DO write warning if distance point on margin to rail segment too large?
          ! TO DO also write warning if glacier advances out of range of rails?
@@ -377,8 +529,58 @@
      Advance((Perm(i)-1)*DOFs + 1) = Displace(1)
      Advance((Perm(i)-1)*DOFs + 2) = Displace(2)
      Advance((Perm(i)-1)*DOFs + 3) = Displace(3)
+
    END DO
 
+   ! find lateral boundary tags
+   DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,LeftMaskName,Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      LeftBCtag =  Model % BCs(i) % Tag
+      EXIT
+   END DO
+   DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,RightMaskName,Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      RightBCtag =  Model % BCs(i) % Tag
+      EXIT
+   END DO
+   DO i=1,Model % NumberOfBCs
+      ThisBC = ListGetLogical(Model % BCs(i) % Values,FrontMaskName,Found)
+      IF((.NOT. Found) .OR. (.NOT. ThisBC)) CYCLE
+      FrontBCtag =  Model % BCs(i) % Tag
+      EXIT
+   END DO
+
+   !reassign any elements that now only contain nodes on lateral margins
+   DO i=NBulk+1, NBulk+NBdry
+      IF(Mesh % Elements(i) % BoundaryInfo % constraint /= FrontBCtag) CYCLE
+      NodeIndexes => Mesh % Elements(i) % NodeIndexes
+      n = Mesh % Elements(i) % TYPE % NumberOfNodes
+      counter = 0
+      DO j=1,n
+         IF(RightPerm(NodeIndexes(j)) > 0) CYCLE
+         IF(FrontToRight(NodeIndexes(j))) CYCLE
+         counter = counter + 1
+      END DO
+
+      IF(counter == 0) Mesh % Elements(i) % BoundaryInfo % constraint = RightBCtag
+   END DO
+
+   !reassign any elements that now only contain nodes on lateral margins
+   DO i=NBulk+1, NBulk+NBdry
+      IF(Mesh % Elements(i) % BoundaryInfo % constraint /= FrontBCtag) CYCLE
+      NodeIndexes => Mesh % Elements(i) % NodeIndexes
+      n = Mesh % Elements(i) % TYPE % NumberOfNodes
+      counter = 0
+      DO j=1,n
+         IF(LeftPerm(NodeIndexes(j)) > 0) CYCLE
+         IF(FrontToLeft(NodeIndexes(j))) CYCLE
+         counter = counter + 1
+      END DO
+
+      IF(counter == 0) Mesh % Elements(i) % BoundaryInfo % constraint = LeftBCtag
+   END DO
 
    !---------------------------------------
    !Done, just deallocations

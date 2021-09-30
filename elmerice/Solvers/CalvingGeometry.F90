@@ -180,6 +180,15 @@ CONTAINS
     dist = ((xydist**2) + (zdist**2))**0.5
   END FUNCTION NodeDist3D
 
+  FUNCTION PointDist2D( Point1, Point2 ) RESULT (dist)
+    REAL(KIND=dp) :: Point1(2),Point2(2),xdist,ydist,dist
+    !Pythagoras in 3D
+    xdist = Point1(1) - Point2(1)
+    ydist = Point1(2) - Point2(2)
+    !TODO: Can this be simplified?  See Interpolation.f90
+    dist = ((xdist**2) + (ydist**2))**0.5
+  END FUNCTION PointDist2D
+
   FUNCTION PointDist3D( Point1, Point2 ) RESULT (dist)
     REAL(KIND=dp) :: Point1(3),Point2(3),xdist,ydist,zdist,xydist,dist
     !Pythagoras in 3D
