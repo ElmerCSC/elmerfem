@@ -1084,6 +1084,8 @@ SUBROUTINE CalvingRemeshMMG( Model, Solver, dt, Transient )
    !After SwitchMesh because we need GroundedMask
    CALL EnforceGroundedMask(Mesh)
 
+   CALL EnforceLateralMargins(Model, Solver % Values)
+
    !Calculate mesh volume
    CALL MeshVolume(Model % Mesh, .TRUE., PostCalveVolume)
    IF(MyPe == 0) PRINT*, 'Post calve volume: ', PostCalveVolume, ' after timestep', Time

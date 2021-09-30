@@ -6998,5 +6998,224 @@ CONTAINS
 
   END SUBROUTINE ReleaseCrevassePaths
 
+  SUBROUTINE EnforceLateralMargins(Model, SolverParams)
+    IMPLICIT NONE
+    TYPE(Model_t) :: Model
+    TYPE(Valuelist_t), POINTER :: SolverParams
+    !-----------------------------------------
+    TYPE(Solver_t), POINTER :: AdvSolver
+    TYPE(Valuelist_t), POINTER :: AdvParams
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(MAX_NAME_LEN) :: FuncName, Adv_EqName, LeftRailFName, RightRailFName, &
+          FrontMaskName,LeftMaskName, RightMaskName
+    INTEGER, POINTER :: FrontPerm(:)=>NULL(), LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), &
+          NodeIndexes(:)
+    LOGICAL :: Found, inside, GotNode, ClosestRight
+    LOGICAL, ALLOCATABLE :: UsedNode(:)
+    INTEGER :: i,j,k,m,Nl,Nr, Naux, ok, DummyInt, ClosestRail, ClosestNode, counter, node(1), &
+        closest, DuplicateNode, ierr
+    REAL(kind=dp), ALLOCATABLE :: xL(:),yL(:),xR(:),yR(:), RailPoly(:,:)
+    REAL(kind=dp) :: xx,yy, mindist, tempdist, minx, maxx, miny, maxy, &
+          triangle(4,2,3), area(4), poly(2,4), closestpoint(2), buffer
+    INTEGER, PARAMETER :: io=20
+
+    FuncName = "EnforceLateralMargins"
+
+    Mesh => Model % Mesh
+
+    Adv_EqName = ListGetString(SolverParams,"Front Advance Solver", Default="Front Advance")
+    ! Locate CalvingAdvance Solver
+    DO i=1,Model % NumberOfSolvers
+      IF(GetString(Model % Solvers(i) % Values, 'Equation') == Adv_EqName) THEN
+         AdvSolver => Model % Solvers(i)
+         EXIT
+      END IF
+    END DO
+    AdvParams => AdvSolver % Values
+
+    buffer = ListGetConstReal(AdvParams, "Rail Buffer", Found, Default=0.1_dp)
+    IF(.NOT. Found) CALL Info(FuncName, "No Rail Buffer set using default 0.1")
+
+    LeftRailFName = ListGetString(AdvParams, "Left Rail File Name", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Left Rail File Name not found, assuming './LeftRail.xy'")
+      LeftRailFName = "LeftRail.xy"
+    END IF
+    Nl = ListGetInteger(AdvParams, "Left Rail Number Nodes", Found)
+    IF(.NOT.Found) THEN
+      WRITE(Message,'(A,A)') 'Left Rail Number Nodes not found'
+      CALL FATAL(FuncName, Message)
+    END IF
+    !TO DO only do these things if firsttime=true?
+    OPEN(unit = io, file = TRIM(LeftRailFName), status = 'old',iostat = ok)
+    IF (ok /= 0) THEN
+      WRITE(message,'(A,A)') 'Unable to open file ',TRIM(LeftRailFName)
+      CALL FATAL(Trim(FuncName),Trim(message))
+    END IF
+    ALLOCATE(xL(Nl), yL(Nl))
+
+    ! read data
+    DO i = 1, Nl
+      READ(io,*,iostat = ok, end=200) xL(i), yL(i)
+    END DO
+200   Naux = Nl - i
+    IF (Naux > 0) THEN
+      WRITE(Message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(LeftRailFName)
+      CALL INFO(Trim(FuncName),Trim(message))
+    END IF
+    CLOSE(io)
+    RightRailFName = ListGetString(AdvParams, "Right Rail File Name", Found)
+    IF(.NOT. Found) THEN
+      CALL Info(FuncName, "Right Rail File Name not found, assuming './RightRail.xy'")
+      RightRailFName = "RightRail.xy"
+    END IF
+
+    Nr = ListGetInteger(AdvParams, "Right Rail Number Nodes", Found)
+    IF(.NOT.Found) THEN
+      WRITE(Message,'(A,A)') 'Right Rail Number Nodes not found'
+      CALL FATAL(FuncName, Message)
+    END IF
+    !TO DO only do these things if firsttime=true?
+    OPEN(unit = io, file = TRIM(RightRailFName), status = 'old',iostat = ok)
+
+    IF (ok /= 0) THEN
+      WRITE(Message,'(A,A)') 'Unable to open file ',TRIM(RightRailFName)
+      CALL FATAL(Trim(FuncName),Trim(message))
+    END IF
+    ALLOCATE(xR(Nr), yR(Nr))
+
+    ! read data
+    DO i = 1, Nr
+       READ(io,*,iostat = ok, end=100) xR(i), yR(i)
+    END DO
+100   Naux = Nr - i
+    IF (Naux > 0) THEN
+      WRITE(message,'(I0,A,I0,A,A)') Naux,' out of ',Nl,' datasets in file ', TRIM(RightRailFName)
+      CALL INFO(Trim(FuncName),Trim(message))
+    END IF
+    CLOSE(io)
+
+    ALLOCATE(RailPoly(2, Nl+Nr+1))
+    RailPoly(1,1:Nl) = xL
+    RailPoly(2,1:Nl) = yL
+    counter=0
+    DO i=Nr, 1, -1
+      counter=counter+1
+      RailPoly(1,Nl+counter) = xR(i)
+      RailPoly(2,Nl+counter) = yR(i)
+    END DO
+    RailPoly(1,Nl+Nr+1) = xL(1)
+    RailPoly(2,Nl+Nr+1) = yL(1)
+
+    LeftMaskName = "Left Sidewall Mask"
+    RightMaskName = "Right Sidewall Mask"
+    FrontMaskName = "Calving Front Mask"
+
+    !Generate perms to quickly get nodes on each boundary
+    CALL MakePermUsingMask( Model, AdvSolver, Mesh, LeftMaskName, &
+          .FALSE., LeftPerm, dummyint)
+    CALL MakePermUsingMask( Model, AdvSolver, Mesh, RightMaskName, &
+          .FALSE., RightPerm, dummyint)
+    CALL MakePermUsingMask( Model, AdvSolver, Mesh, FrontMaskName, &
+          .FALSE., FrontPerm, dummyint)
+
+    DO i=1, Mesh % NumberOfNodes
+      IF(.NOT. (LeftPerm(i) > 0 .OR. RightPerm(i) > 0 .OR. FrontPerm(i) > 0)) CYCLE
+      xx = Mesh % Nodes % x(i)
+      yy = Mesh % Nodes % y(i)
+
+      inside = PointInPolygon2D(RailPoly, (/xx,yy/))
+      IF(inside) CYCLE
+
+      IF(LeftPerm(i) > 0) THEN ! check if on left side
+        mindist = HUGE(1.0_dp)
+        DO j=1, Nl-1
+          tempdist = PointLineSegmDist2D((/xL(j), yL(j)/),(/xL(j+1), yL(j+1)/), (/xx, yy/))
+          IF(tempdist < mindist) THEN
+            closest = j
+            mindist = tempdist
+          END IF
+        END DO
+
+        IF(mindist > buffer) THEN
+          closestpoint = ClosestPointOfLineSegment((/xL(closest), yL(closest)/),(/xL(closest+1), yL(closest+1)/), (/xx, yy/))
+          Mesh % Nodes % x(i) = closestpoint(1)
+          Mesh % Nodes % y(i) = closestpoint(2)
+        END IF
+      END IF
+
+      IF(RightPerm(i) > 0) THEN ! check if on left side
+        mindist = HUGE(1.0_dp)
+        DO j=1, Nr-1
+          tempdist = PointLineSegmDist2D((/xR(j), yR(j)/),(/xR(j+1), yR(j+1)/), (/xx, yy/))
+          IF(tempdist < mindist) THEN
+            closest = j
+            mindist = tempdist
+          END IF
+        END DO
+
+        IF(mindist > buffer) THEN
+          closestpoint = ClosestPointOfLineSegment((/xR(closest), yR(closest)/),(/xR(closest+1), yR(closest+1)/), (/xx, yy/))
+          Mesh % Nodes % x(i) = closestpoint(1)
+          Mesh % Nodes % y(i) = closestpoint(2)
+        END IF
+      END IF
+
+      IF(FrontPerm(i) > 0) THEN ! check if front is on rail eg advance on narrowing rails
+        mindist = HUGE(1.0_dp)
+        DO j=1, Nr-1
+          tempdist = PointLineSegmDist2D((/xR(j), yR(j)/),(/xR(j+1), yR(j+1)/), (/xx, yy/))
+          IF(tempdist < mindist) THEN
+            closest = j
+            mindist = tempdist
+          END IF
+        END DO
+        ClosestRight = .TRUE.
+        DO j=1, Nl-1
+          tempdist = PointLineSegmDist2D((/xL(j), yL(j)/),(/xL(j+1), yL(j+1)/), (/xx, yy/))
+          IF(tempdist < mindist) THEN
+            closest = j
+            mindist = tempdist
+            ClosestRight = .FALSE.
+          END IF
+        END DO
+        ! check to see if closest point is frontleft to right eg outside the rail polygon
+        ! from the front not over the sides don't need to enforce margins
+        ! check both ends of rails as not sure which way glacier flowing
+        tempdist = PointLineSegmDist2D((/xL(1), yL(1)/),(/xR(1), yL(1)/), (/xx, yy/))
+        IF(tempdist < mindist) CYCLE
+        tempdist = PointLineSegmDist2D((/xL(Nl), yL(Nl)/),(/xR(Nr), yL(Nr)/), (/xx, yy/))
+        IF(tempdist < mindist) CYCLE
+
+        IF(mindist > buffer) THEN
+          IF(ClosestRight) THEN
+            closestpoint = ClosestPointOfLineSegment((/xR(closest), yR(closest)/),(/xR(closest+1), yR(closest+1)/), (/xx, yy/))
+          ELSE
+            closestpoint = ClosestPointOfLineSegment((/xL(closest), yL(closest)/),(/xL(closest+1), yL(closest+1)/), (/xx, yy/))
+          END IF
+          Mesh % Nodes % x(i) = closestpoint(1)
+          Mesh % Nodes % y(i) = closestpoint(2)
+        END IF
+      END IF
+    END DO
+
+    DEALLOCATE(FrontPerm, LeftPerm, RightPerm)
+
+  END SUBROUTINE EnforceLateralMargins
+
+  ! determine the closest point of a line segment to a given point
+  FUNCTION ClosestPointOfLineSegment(a1, a2, b) RESULT(c)
+    REAL(kind=dp) :: a1(2), a2(2), b(2), a(2), c(2), dist, nx
+
+    a = a2 - a1
+    dist = a(1)**2 + a(2)**2
+    nx = ((b(1) - a1(1))*a(1) + (b(2)-a1(2))*a(2)) / dist
+
+    c(1) = a(1)*nx + a1(1)
+    c(2) = a(2)*nx + a1(2)
+
+  END FUNCTION ClosestPointOfLineSegment
+
 END MODULE CalvingGeometry
 
