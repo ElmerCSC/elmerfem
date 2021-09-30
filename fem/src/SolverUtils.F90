@@ -16871,12 +16871,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionMatrix % ExtraDOFs = CollectionMatrix % NumberOfRows - &
                   StiffMatrix % NumberOfRows
 
+
   CollectionMatrix % ParallelDOFs = 0
-  IF( Parallel ) THEN
-    IF(ASSOCIATED(AddMatrix)) &
-        CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
-        StiffMatrix % NumberOfRows,0)
-  END IF
+  IF(ASSOCIATED(AddMatrix)) &
+    CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
+            StiffMatrix % NumberOfRows,0)
     
   CALL Info( Caller, 'CollectionVector done', Level=5 )
 
