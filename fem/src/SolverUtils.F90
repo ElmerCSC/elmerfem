@@ -16871,12 +16871,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   CollectionMatrix % ExtraDOFs = CollectionMatrix % NumberOfRows - &
                   StiffMatrix % NumberOfRows
 
+
   CollectionMatrix % ParallelDOFs = 0
-  IF( Parallel ) THEN
-    IF(ASSOCIATED(AddMatrix)) &
-        CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
-        StiffMatrix % NumberOfRows,0)
-  END IF
+  IF(ASSOCIATED(AddMatrix)) &
+    CollectionMatrix % ParallelDOFs = MAX(AddMatrix % NumberOfRows - &
+            StiffMatrix % NumberOfRows,0)
     
   CALL Info( Caller, 'CollectionVector done', Level=5 )
 
@@ -17781,7 +17780,7 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'FsiCouplingAssembly'
    
     
-    CALL Info(Caller,'Creating coupling matrix for harmonic FSI',Level=6)
+    CALL Info(Caller,'Creating coupling matrix for FSI',Level=6)
 
     
     IF( A_fs % FORMAT /= MATRIX_LIST ) THEN
@@ -17797,12 +17796,20 @@ CONTAINS
     fdofs = FVar % Dofs
     sdofs = SVar % Dofs
 
-    IF( IsPlate ) CALL Info(Caller,'Assuming structure to be plate',Level=8)
-
-    IF( IsShell ) CALL Info(Caller,'Assuming structure to be shell',Level=8)
-
-    IF( IsNS ) CALL Info(Caller,'Assuming fluid to have velocities',Level=8)
-
+    IF( IsPlate ) THEN
+      CALL Info(Caller,'Assuming structure to be plate',Level=8)
+    ELSE IF( IsShell ) THEN
+      CALL Info(Caller,'Assuming structure to be shell',Level=8)
+    ELSE
+      CALL Info(Caller,'Assuming structure to be solid',Level=8)      
+    END IF
+      
+    IF( IsNS ) THEN
+      CALL Info(Caller,'Assuming fluid to have velocities',Level=8)
+    ELSE
+      CALL Info(Caller,'Assuming fluid to have pressure',Level=8)
+    END IF
+      
 
     UseDensity = .FALSE.
     DO i=1,CurrentModel % NumberOfSolvers

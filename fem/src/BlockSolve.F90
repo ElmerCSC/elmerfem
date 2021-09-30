@@ -1670,6 +1670,7 @@ CONTAINS
     IsPres = .FALSE.
     
     i = ListGetInteger( Params,'Structure Solver Index',Found)
+
     IF ( Found ) THEN
       IsPlate = ListGetLogical( CurrentModel % Solvers(i) % Values,&
           'Plate Solver', Found )
@@ -1681,8 +1682,7 @@ CONTAINS
         i = ListGetInteger( Params,'Shell Solver Index',IsShell)
       END IF
     END IF
-
-    !
+    
     ! The first and second entries in the "Block Solvers" list define 
     ! the solver sections to assemble the (1,1)-block and (2,2)-block, 
     ! respectively. The following check is needed as the solver section
@@ -3667,7 +3667,7 @@ CONTAINS
       CALL BlockPrecMatrix( Solver, VarDofs ) 
       CALL Info('BlockSolveInt','Block matrix system created',Level=12)
     END IF
-
+    
     ! Currently we cannot have both structure-structure and fluid-structure couplings!
     IF( ListGetLogical( Solver % Values,'Structure-Structure Coupling',Found ) ) THEN
       CALL StructureCouplingBlocks( Solver )

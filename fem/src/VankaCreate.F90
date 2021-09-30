@@ -410,11 +410,7 @@
      Cols => A % Cols
 
      nm = A % NumberOfRows - A % ExtraDOFs
-     IF ( ParEnv % PEs>1 ) THEN
-       n  = A % ParallelDOFs
-     ELSE
-       n  = A % ExtraDOFs
-     END IF
+     n  = A % ParallelDOFs
 
      m = SIZE(A % Values)
      ALLOCATE(TotValues(m))
