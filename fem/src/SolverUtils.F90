@@ -17772,13 +17772,14 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:)
     REAL(KIND=dp), POINTER :: Basis(:)
     REAL(KIND=dp) :: detJ, val, c(3), pc(3), Normal(3), coeff, Omega, Rho, area, fdiag
-    LOGICAL :: Stat, IsHarmonic
+    LOGICAL :: Stat, IsHarmonic, IsTransient
     INTEGER :: dim,mat_id,tcount
     LOGICAL :: FreeF, FreeS, FreeFim, FreeSim, UseDensity, Found
     LOGICAL, ALLOCATABLE :: NodeDone(:)
-    REAL(KIND=dp) :: MultSF, MultFS
+    REAL(KIND=dp) :: MultSF, MultFS, dt
     CHARACTER(*), PARAMETER :: Caller = 'FsiCouplingAssembly'
-   
+    TYPE(Variable_t), POINTER :: dtVar
+    
     
     CALL Info(Caller,'Creating coupling matrix for FSI',Level=6)
 
@@ -17855,8 +17856,16 @@ CONTAINS
     ! The elasticity solver defines whether the system is real or harmonic
     IF( IsHarmonic ) THEN
       CALL Info(Caller,'Assuming harmonic coupling matrix',Level=10)
+      IsTransient = .FALSE.
     ELSE
       CALL Info(Caller,'Assuming real valued coupling matrix',Level=10)
+      IsTransient = ( ListGetString( CurrentModel % Simulation,&
+          'Simulation Type' ) == 'transient' ) 
+      IF( IsTransient ) THEN
+        CALL Info(Caller,'Assuming transient coupling matrix',Level=10)
+      ELSE
+        CALL Info(Caller,'Assuming steady-state coupling matrix',Level=10)       
+      END IF      
     END IF
 
     
@@ -17895,8 +17904,11 @@ CONTAINS
       IF( .NOT. Stat) THEN
         CALL Fatal(Caller,'Frequency in Simulation list not found!')
       END IF
+      dt = 0.0_dp
     ELSE
       Omega = 0.0_dp
+      dtVar => VariableGet( Solver % Mesh % Variables,'timestep size')
+      dt = dtVar % Values(1)
     END IF
     
     i = SIZE( FVar % Values ) 
@@ -18063,7 +18075,9 @@ CONTAINS
                 val = omega
                 jstruct = sdofs*(SPerm(jj)-1)+2*(k-1)+1  
               ELSE
-                CALL Fatal(Caller,'NS coupling only done for harmonic system!')               
+                val = 1.0/dt
+                jstruct = sdofs*(SPerm(jj)-1)+k 
+                CALL Fatal(Caller,'NS coupling only done for harmonic elasticity!')               
               END IF
 
                 
@@ -18074,10 +18088,9 @@ CONTAINS
                 ! By default the plate should be oriented so that normal points to z
                 ! If there is a plate then fluid is always 3D
                 IF( Normal(3) < 0 ) val = -val
-
                 jstruct = sdofs*(SPerm(jj)-1)+1
               ELSE
-                CALL Fatal(Caller,'NS coupling only done for harmonic system!')               
+                CALL Fatal(Caller,'NS coupling only done for harmonic plates!')               
               END IF
             END IF
 
@@ -18094,14 +18107,23 @@ CONTAINS
               IF( FreeFim ) THEN
                 CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,-MultFS*val*fdiag)      ! Im
               ELSE                
-                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp )
+                CALL AddToMatrixElement(A_fs,ifluid+1,jstruct,0.0_dp )
               END IF
 
               ! These must be created for completeness because the matrix topology of complex
               ! matrices must be the same for all components.
               CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
               CALL AddToMatrixElement(A_fs,ifluid+1,jstruct+1,0.0_dp)
-            ELSE
+            ELSE IF( IsTransient ) THEN
+              ! Structure load on the fluid: v = (u-u_prev)/dt              
+              fdiag = A_f % Values( A_f % diag(ifluid) )
+              IF( FreeF ) THEN
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct+1,MultFS*val*fdiag) 
+                A_f % rhs(ifluid) = A_f % rhs(ifluid) + MultFS*val*fdiag * &
+                    SVar % PrevValues(jstruct,1)
+              ELSE
+                CALL AddToMatrixElement(A_fs,ifluid,jstruct,0.0_dp)
+              END IF                            
               CALL Fatal(Caller,'NS coupling only done for harmonic system!')
             END IF
           END DO
