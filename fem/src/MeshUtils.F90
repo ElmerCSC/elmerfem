@@ -17689,12 +17689,15 @@ CONTAINS
           IF ( ASSOCIATED( Face % BoundaryInfo ) ) THEN
              DEALLOCATE( Face % BoundaryInfo )
           END IF
+          IF ( ASSOCIATED( Face % EdgeIndexes ) ) THEN
+             DEALLOCATE( Face % EdgeIndexes )
+          END IF
+
        END DO
 
        DEALLOCATE( Mesh % Faces )
     END IF
     NULLIFY( Mesh % Faces )
-    Mesh % NumberOfFaces = 0
 
     DO i=1,Mesh % NumberOfBulkElements
        IF ( ASSOCIATED( Mesh % Elements(i) % FaceIndexes ) ) THEN
@@ -17702,6 +17705,24 @@ CONTAINS
           NULLIFY( Mesh % Elements(i) % FaceIndexes )
        END IF
     END DO
+
+    IF ( ASSOCIATED( Mesh % ParallelInfo % FaceInterface ) ) THEN
+      DEALLOCATE( Mesh % ParallelInfo % FaceInterface )
+      NULLIFY( Mesh % ParallelInfo % FaceInterface )
+    END IF
+
+    IF ( ASSOCIATED( Mesh % ParallelInfo % FaceNeighbourList ) ) THEN
+      DO i=1, Mesh % NumberOfFaces
+        IF ( ASSOCIATED( Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours ) ) THEN
+          DEALLOCATE( Mesh % ParallelInfo % FaceNeighbourList(i) % Neighbours )
+        END IF
+      END DO
+
+      DEALLOCATE( Mesh % ParallelInfo % FaceNeighbourList )
+      NULLIFY( Mesh % ParallelInfo % FaceNeighbourList )
+    END IF
+
+    Mesh % NumberOfFaces = 0
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMeshFaceTables
 !------------------------------------------------------------------------------
