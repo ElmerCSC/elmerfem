@@ -1027,7 +1027,7 @@ CONTAINS
       IF ( .NOT. ScanOnly .AND. ArrayN == 0 ) CYCLE
 
       CALL SectionContents( Model, List, CheckAbort, FreeNames, &
-          Section, InFileUnit, ScanOnly, Echo )
+           Section, InFileUnit, ScanOnly, Echo )
       
 !------------------------------------------------------------------------------
     END DO
@@ -1580,12 +1580,13 @@ CONTAINS
       INTEGER, ALLOCATABLE  :: IValues(:)
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
 
-      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
+      CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, SizeUnknown, &
           Cubic, AllInt, Monotone, Stat
 
       INTEGER(KIND=AddrInt) :: Proc
+
       INTEGER :: i,j,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
           abuflen=0, maxbuflen=0, iostat
 
@@ -1695,9 +1696,10 @@ CONTAINS
    
                   CASE( LIST_TYPE_VARIABLE_SCALAR )
 
+
                     IF ( SizeGiven ) THEN
                       CALL ListAddDepRealArray( List,Name,Depname,1,ATt, &
-                            N1,N2,ATx(1:N1,1:N2,1:n),Proc, str(str_beg+5:) )
+                          N1,N2,ATx(1:N1,1:N2,1:n),Proc, str(str_beg+5:) )
                     ELSE
                       CALL ListAddDepReal( List,Name,Depname,1,ATt,ATx, &
                                   Proc, str(str_beg+5:) )
@@ -1720,8 +1722,7 @@ CONTAINS
                      CALL ListAddConstRealArray( List, Name, N1, N2, &
                          ATx(1:N1,1:N2,1), Proc, str(str_beg+4:) )
                    ELSE
-                     CALL ListAddConstReal(List, Name, Val, Proc, &
-                         str(str_beg+4:))
+                     CALL ListAddConstReal(List, Name, Val, Proc, str(str_beg+4:))
                    END IF
 
                  CASE( LIST_TYPE_VARIABLE_SCALAR )
@@ -1737,13 +1738,15 @@ CONTAINS
                      lua_fname => lua_popstring(LuaState, fname_len)
                      !$OMP END CRITICAL
                      !$OMP END PARALLEL
+
                      IF ( SizeGiven ) THEN 
                        CALL ListAddDepRealArray( List, Name, Depname, 1, Att, &
-                           N1, N2, Atx(1:N1, 1:N2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
+                           n1, n2, Atx(1:n1, 1:n2, 1:n), proc, lua_fname(1:fname_len) // c_null_char)
                      ELSE
                        CALL ListAddDepReal( List, Name, Depname, 1, ATt, ATx, &
                            Proc, lua_fname(1:fname_len) // c_null_char)
                      END IF
+
                      v_ptr => ListFind(list, name)
                      v_ptr % LuaFun = .TRUE.
                    END BLOCK
@@ -1791,8 +1794,7 @@ CONTAINS
  
 11                IF ( .NOT. ScanOnly ) THEN
                     IF ( SizeGiven ) THEN
-                      CALL ListAddConstRealArray( List,Name,N1,N2, &
-                          ATx(1:N1,1:N2,1) )
+                      CALL ListAddConstRealArray( List,Name,n1,n2, ATx(1:n1,1:n2,1) )
                     ELSE
                       CALL ListAddConstReal( List,Name,ATx(1,1,1) )
                     END IF
@@ -1883,7 +1885,7 @@ CONTAINS
                    
                    IF ( SizeGiven ) THEN
                      CALL ListAddDepRealArray( List,Name,Depname,n,ATt(1:n), &
-                              N1,N2,ATx(1:N1,1:N2,1:n) )
+                              n1,n2,ATx(1:n1,1:n2,1:n) )
                    ELSE
                      CALL ListAddDepReal( List,Name,Depname,n,ATt(1:n), &
                          ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone )
@@ -1999,6 +2001,7 @@ CONTAINS
               IF ( str(k:k) /= ' ' ) EXIT 
             END DO
 
+            n = 1
             Depname = str(str_beg:k)
 
             TYPE = LIST_TYPE_VARIABLE_SCALAR
