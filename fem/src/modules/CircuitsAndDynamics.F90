@@ -81,8 +81,10 @@ SUBROUTINE CircuitsAndDynamics_init( Model,Solver,dt,TransientSimulation )
     IF( RotMachine ) THEN
       CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
           '-global Rotor Angle' )
-      CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-          '-global Rotor Velo' )
+      IF( TransientSimulation ) THEN
+        CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
+            '-global Rotor Velo' )
+      END IF
     END IF
   END IF
     
@@ -180,7 +182,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   
   ! If we have angle given explicitely, do not compute it 
   IF( .NOT. ListCheckPresent( Model % Simulation,'Rotor Angle') ) THEN
-    CALL SetDynamicAngle()
+    IF( TransientSimulation ) CALL SetDynamicAngle()
   END IF
       
   IF (Tstep /= GetTimestep()) THEN
@@ -1035,11 +1037,12 @@ CONTAINS
       END IF
 
       torq = GetConstReal( Simulation,'res: Air Gap Torque', Found)
-      IF(.NOT. Found ) CALL Fatal('SetRotation','Torque is needed!')
-
-      velo = velo0 + dt * (torq-0) / imom
-      ang  = ang0  + dt * velo
-
+      IF(.NOT. Found ) THEN
+        CALL Warn('SetRotation','Without torque rotor velocity stays the same!')
+      ELSE
+        velo = velo0 + dt * (torq-0) / imom
+        ang  = ang0  + dt * velo
+      END IF
       VeloVar % Values(1) = velo
       AngVar % Values(1) = ang
     END IF
