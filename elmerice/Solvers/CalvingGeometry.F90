@@ -5630,11 +5630,12 @@ CONTAINS
   END SUBROUTINE GetFrontCorners
 
   SUBROUTINE ValidateNPCrevassePaths(Mesh, CrevassePaths, OnLeft, OnRight, FrontLeft, FrontRight, &
-                                    EdgeX, EdgeY, GridSize)
+                                    EdgeX, EdgeY, LatCalvMargins, GridSize)
     IMPLICIT NONE
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(CrevassePath_t), POINTER :: CrevassePaths
     LOGICAL, ALLOCATABLE :: OnLeft(:),OnRight(:)
+    LOGICAL :: LatCalvMargins
     REAL(KIND=dp) :: FrontRight(2), FrontLeft(2), EdgeX(:), EdgeY(:)
     REAL(KIND=dp), OPTIONAL :: GridSize
     INTEGER :: First, Last, LeftIdx, RightIdx
@@ -5744,7 +5745,7 @@ CONTAINS
       END IF
 
       AddLateralMargins = .FALSE.
-      IF(Onside /= 0) AddLateralMargins = .TRUE.
+      IF(Onside /= 0 .AND. LatCalvMargins) AddLateralMargins = .TRUE.
 
       orientation(3) = 0.0_dp
       IF( ABS(StartX-EndX) < AEPS) THEN

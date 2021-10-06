@@ -92,7 +92,8 @@
         PC_EqName, Iso_EqName, VTUSolverName, NameSuffix,&
         MoveMeshDir
    LOGICAL :: Found, Parallel, Boss, Debug, FirstTime = .TRUE., CalvingOccurs=.FALSE., &
-        SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside, Complete
+        SaveParallelActive, PauseSolvers, LeftToRight, MoveMesh=.FALSE., inside, Complete,&
+        LatCalvMargins
    LOGICAL, ALLOCATABLE :: RemoveNode(:), IMNOnFront(:), IMOnMargin(:), &
         IMNOnLeft(:), IMNOnRight(:), IMElmONFront(:), IMElmOnLeft(:), IMElmOnRight(:), FoundNode(:), &
         IMElemOnMargin(:), DeleteMe(:), IsCalvingNode(:), PlaneEdgeElem(:), EdgeNode(:), UsedElem(:)
@@ -156,6 +157,10 @@
    END IF !FirstTime
 
    Mesh => Model % Mesh
+
+   ! addition of the lateral boundaries when calculating constrictions for crevasses
+   ! on the lateral boundaries
+   LatCalvMargins = ListGetLogical(Params,"Lateral Calving Margins", Default=.TRUE.)
 
    !TODO - these 4 are defunct
    MeshEdgeMinLC = ListGetConstReal(Params, "Calving Mesh Min LC",Found, UnfoundFatal=.TRUE.)
@@ -1132,7 +1137,7 @@
        CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .FALSE., .FALSE., &
                       IMNOnleft, IMNOnRight, IMNOnFront, gridmesh_dx)
        CALL ValidateNPCrevassePaths(IsoMesh, CrevassePaths, IMNOnLeft, IMNOnRight, &
-                      FrontLeft, FrontRight, EdgeX, EdgeY, gridmesh_dx)
+                      FrontLeft, FrontRight, EdgeX, EdgeY, LatCalvMargins, gridmesh_dx)
        ! this call to remove crevs within other crevs
        CALL RemoveInvalidCrevs(IsoMesh, CrevassePaths, EdgeX, EdgeY, .TRUE., .TRUE., GridSize=gridmesh_dx)
 
