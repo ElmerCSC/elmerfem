@@ -4489,7 +4489,8 @@ CONTAINS
           END DO
 
           IF( InfoActive( 20 ) ) THEN
-            CALL VectorValuesRange(Var % Values,SIZE(Var % Values),TRIM(NewName))
+            PRINT *,'LoadRestartFile range:',TRIM(VarName), &
+                ParEnv % MyPe, MINVAL( Var % Values ), MAXVAL( Var % Values )
           END IF
           
           CALL InvalidateVariable( CurrentModel % Meshes, Mesh, NewName )
